@@ -22,6 +22,20 @@ func (r stubResolver) Resolve(
 	return r.resolution, nil
 }
 
+type mapResolver struct {
+	bySource map[string]resolver.Resolution
+}
+
+func (r mapResolver) Resolve(
+	_ context.Context, mod *tfmodules.ParsedModule,
+) (resolver.Resolution, error) {
+	res, ok := r.bySource[mod.Source]
+	if !ok {
+		return resolver.Resolution{}, &tfmodules.UnresolvedError{Reason: "unknown source " + mod.Source}
+	}
+	return res, nil
+}
+
 func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 	root, moduleDir := writeModuleGraphFixture(t)
 
@@ -44,6 +58,7 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 		Version:         "1.2.3",
 		Name:            "network",
 		LocalPath:       moduleDir,
+		PackageRoot:     moduleDir,
 		CanonicalSource: "git::https://github.com/acme/network//modules/vpc?ref=v1@1.2.3",
 	}}, result.Modules)
 }
@@ -88,6 +103,117 @@ func TestResolveTraversesLocalModuleToRemoteModule(t *testing.T) {
 	require.Len(t, result.Modules, 1)
 	require.Equal(t, "registry.example.com/acme/network/aws", result.Modules[0].Source)
 	require.Equal(t, wrapperDir, result.Modules[0].CallerRoot)
+}
+
+func TestResolveConfinesRemoteLocalModulesToPackageRoot(t *testing.T) {
+	root := t.TempDir()
+	base := t.TempDir()
+	packageRoot := filepath.Join(base, "package")
+	selected := filepath.Join(packageRoot, "modules", "selected")
+	shared := filepath.Join(packageRoot, "modules", "shared")
+	outside := filepath.Join(base, "outside")
+	for _, dir := range []string{selected, shared, outside} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "remote" {
+  source = "example.com/acme/module/aws"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(selected, "main.tf"), []byte(`
+module "shared" {
+  source = "../shared"
+}
+module "escape" {
+  source = "../../../outside"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(shared, "main.tf"), []byte(`resource "x" "shared" {}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "main.tf"), []byte(`resource "x" "outside" {}`), 0o644))
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath:   selected,
+			PackageRoot: packageRoot,
+		}},
+		MaxDepth: 4,
+	})
+
+	require.Equal(t, []string{
+		filepath.Join(selected, "main.tf"),
+		filepath.Join(shared, "main.tf"),
+	}, result.ScanPaths)
+}
+
+func TestFlatTerraformFilePathsSkipsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(mainPath, []byte(`resource "x" "main" {}`), 0o644))
+	outside := filepath.Join(t.TempDir(), "outside.tf")
+	require.NoError(t, os.WriteFile(outside, []byte(`resource "x" "outside" {}`), 0o644))
+	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "linked.tf")))
+
+	require.Equal(t, []string{mainPath}, flatTerraformFilePaths(t.Context(), dir, dir))
+}
+
+func TestResolveRevisitsSamePathWhenPackageRootDiffers(t *testing.T) {
+	root := t.TempDir()
+	base := t.TempDir()
+	packageRoot := filepath.Join(base, "package")
+	selected := filepath.Join(packageRoot, "modules", "selected")
+	shared := filepath.Join(packageRoot, "modules", "shared")
+	hidden := filepath.Join(packageRoot, "hidden")
+	extra := filepath.Join(base, "extra")
+	for _, dir := range []string{selected, shared, hidden, extra} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "narrow" {
+  source = "git::https://example.com/narrow.git?ref=v1"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(selected, "main.tf"), []byte(`
+module "shared" {
+  source = "../shared"
+}
+module "broad" {
+  source = "git::https://example.com/broad.git?ref=v1"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(shared, "main.tf"), []byte(`resource "x" "shared" {}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(hidden, "main.tf"), []byte(`
+module "extra" {
+  source = "git::https://example.com/extra.git?ref=v1"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(extra, "main.tf"), []byte(`resource "x" "extra" {}`), 0o644))
+	require.NoError(t, os.Symlink(filepath.Join(hidden, "main.tf"), filepath.Join(selected, "linked.tf")))
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: mapResolver{bySource: map[string]resolver.Resolution{
+			"git::https://example.com/narrow.git?ref=v1": {
+				LocalPath:   selected,
+				PackageRoot: selected,
+			},
+			"git::https://example.com/broad.git?ref=v1": {
+				LocalPath:   selected,
+				PackageRoot: packageRoot,
+			},
+			"git::https://example.com/extra.git?ref=v1": {
+				LocalPath:   extra,
+				PackageRoot: extra,
+			},
+		}},
+		MaxDepth: 6,
+	})
+
+	require.Contains(t, result.ScanPaths, filepath.Join(selected, "main.tf"))
+	require.Contains(t, result.ScanPaths, filepath.Join(shared, "main.tf"))
+	require.Contains(t, result.ScanPaths, filepath.Join(extra, "main.tf"))
 }
 
 func writeModuleGraphFixture(t *testing.T) (string, string) {

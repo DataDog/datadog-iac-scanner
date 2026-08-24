@@ -452,6 +452,55 @@ resource "aws_s3_bucket" "local" {
 	}
 }
 
+func TestEvaluateModule_ConfinesRemotePackageTraversal(t *testing.T) {
+	base := t.TempDir()
+	root := writeModule(t, base, "root", map[string]string{
+		"main.tf": `
+module "remote" {
+  source = "example.com/acme/module/aws"
+}
+`,
+	})
+	packageRoot := filepath.Join(base, "package")
+	selected := writeModule(t, packageRoot, "modules/selected", map[string]string{
+		"main.tf": `
+resource "test_resource" "selected" {}
+module "shared" {
+  source = "../shared"
+}
+module "escape" {
+  source = "../../../outside"
+}
+`,
+	})
+	writeModule(t, packageRoot, "modules/shared", map[string]string{
+		"main.tf": `resource "test_resource" "shared" {}`,
+	})
+	outside := writeModule(t, base, "outside", map[string]string{
+		"main.tf": `resource "test_resource" "outside" {}`,
+	})
+	if err := os.Symlink(filepath.Join(outside, "main.tf"), filepath.Join(selected, "linked.tf")); err != nil {
+		t.Fatal(err)
+	}
+
+	evaluator := New()
+	evaluator.SetRemoteResolver(func(_, _, _, _ string) (string, string, bool) {
+		return selected, packageRoot, true
+	})
+	resources, _, _, err := evaluator.EvaluateModule(t.Context(), root, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+
+	findResource(t, resources, "test_resource", "selected")
+	findResource(t, resources, "test_resource", "shared")
+	for _, resource := range resources {
+		if resource.Name == "outside" {
+			t.Fatalf("resource outside acquired package was evaluated: %+v", resource)
+		}
+	}
+}
+
 func TestEvaluateModule_RepeatedBlocksGroupedIntoTuple(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{

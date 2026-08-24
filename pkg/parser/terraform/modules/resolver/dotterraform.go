@@ -31,18 +31,25 @@ type dotTerraformModuleRecord struct {
 	Dir     string `json:"Dir"`
 }
 
+type installedModulePath struct {
+	localPath   string
+	packageRoot string
+	scanRoot    string
+}
+
 // DotTerraformResolver reads terraform init output: .terraform/modules/modules.json.
 type DotTerraformResolver struct {
 	RootDirs []string
 
 	once  sync.Once
-	index map[string]string
+	index map[string]installedModulePath
 }
 
 func (r *DotTerraformResolver) load() {
-	r.index = make(map[string]string)
+	r.index = make(map[string]installedModulePath)
 	for _, root := range r.RootDirs {
-		path := filepath.Join(root, ".terraform", "modules", "modules.json")
+		installRoot := filepath.Join(root, ".terraform", "modules")
+		path := filepath.Join(installRoot, "modules.json")
 		data, err := os.ReadFile(filepath.Clean(path))
 		if err != nil {
 			continue
@@ -59,28 +66,53 @@ func (r *DotTerraformResolver) load() {
 			if !filepath.IsAbs(absDir) {
 				absDir = filepath.Join(root, absDir)
 			}
-			r.index[dotTerraformKey(root, rec.Source, rec.Version)] = filepath.Clean(absDir)
+			resolvedPath, ok := installedModulePaths(root, installRoot, absDir)
+			if !ok {
+				continue
+			}
+			r.index[dotTerraformKey(root, rec.Source, rec.Version)] = resolvedPath
 			if rec.Key != "" {
 				for _, key := range dotTerraformLoadCallKeys(root, rec.Source, rec.Version, moduleNameFromKey(rec.Key)) {
-					r.index[key] = filepath.Clean(absDir)
+					r.index[key] = resolvedPath
 				}
 			}
 			if _, exists := r.index[dotTerraformKey(root, rec.Source, "")]; !exists {
-				r.index[dotTerraformKey(root, rec.Source, "")] = filepath.Clean(absDir)
+				r.index[dotTerraformKey(root, rec.Source, "")] = resolvedPath
 			}
 		}
 	}
 }
 
-func (r *DotTerraformResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+func installedModulePaths(scanRoot, installRoot, localPath string) (installedModulePath, bool) {
+	scanRoot = filepath.Clean(scanRoot)
+	installRoot = filepath.Clean(installRoot)
+	localPath = filepath.Clean(localPath)
+	scanRel, err := filepath.Rel(scanRoot, localPath)
+	if err != nil || scanRel == "." || pathEscapesDir(scanRel) {
+		return installedModulePath{}, false
+	}
+	packageRoot := localPath
+	if installRel, relErr := filepath.Rel(installRoot, localPath); relErr == nil &&
+		installRel != "." && !pathEscapesDir(installRel) {
+		first, _, _ := strings.Cut(installRel, string(os.PathSeparator))
+		packageRoot = filepath.Join(installRoot, first)
+	}
+	return installedModulePath{
+		localPath:   localPath,
+		packageRoot: packageRoot,
+		scanRoot:    scanRoot,
+	}, true
+}
+
+func (r *DotTerraformResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
 	if mod.IsLocal {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
 	}
 	r.once.Do(r.load)
-	dir, ok := "", false
+	path, ok := installedModulePath{}, false
 	for _, root := range r.rootsFor(mod.FileName) {
 		for _, key := range dotTerraformResolveKeys(root, mod.Source, mod.Version, mod.Name) {
-			if dir, ok = r.index[key]; ok {
+			if path, ok = r.index[key]; ok {
 				break
 			}
 		}
@@ -93,13 +125,22 @@ func (r *DotTerraformResolver) Resolve(_ context.Context, mod *tfmodules.ParsedM
 			Reason: fmt.Sprintf("module %q not found in .terraform/modules (run terraform init)", mod.Source),
 		}
 	}
-	// Stale modules.json entry; fall through to re-fetch.
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+	packageRoot, err := ResolvePathWithinRoot(ctx, path.scanRoot, path.packageRoot)
+	if err != nil {
 		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: fmt.Sprintf("module %q .terraform/modules dir %q no longer exists; will re-fetch", mod.Source, dir),
+			Reason: fmt.Sprintf("module %q has unsafe .terraform/modules package root %q: %v", mod.Source, path.packageRoot, err),
 		}
 	}
-	return Resolution{LocalPath: dir}, nil
+	resolution, err := ConfineResolution(ctx, Resolution{
+		LocalPath:   path.localPath,
+		PackageRoot: packageRoot,
+	})
+	if err != nil {
+		return Resolution{}, &tfmodules.UnresolvedError{
+			Reason: fmt.Sprintf("module %q has unsafe .terraform/modules dir %q: %v", mod.Source, path.localPath, err),
+		}
+	}
+	return resolution, nil
 }
 
 func (r *DotTerraformResolver) rootsFor(fileName string) []string {

@@ -67,3 +67,61 @@ func TestPrefetchedResolverUsesManifest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, moduleDir, got.LocalPath)
 }
+
+func TestLoadManifestPreservesPackageRootForSiblingModules(t *testing.T) {
+	dir := t.TempDir()
+	packageRoot := filepath.Join(dir, "package")
+	selected := filepath.Join(packageRoot, "modules", "selected")
+	shared := filepath.Join(packageRoot, "modules", "shared")
+	require.NoError(t, os.MkdirAll(selected, 0o755))
+	require.NoError(t, os.MkdirAll(shared, 0o755))
+
+	manifestPath := filepath.Join(dir, "modules.json")
+	manifestData, err := json.Marshal(Manifest{
+		Dir: dir,
+		Modules: map[string]ManifestEntry{
+			"example/module/aws": {
+				LocalPath:   selected,
+				PackageRoot: packageRoot,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, manifestData, 0o644))
+
+	manifest, err := LoadManifest(manifestPath)
+	require.NoError(t, err)
+	resolution, err := NewPrefetchedResolver(manifest).Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: "example/module/aws",
+	})
+	require.NoError(t, err)
+	require.Equal(t, selected, resolution.LocalPath)
+	require.Equal(t, packageRoot, resolution.PackageRoot)
+	_, err = ResolvePathWithinRoot(t.Context(), resolution.PackageRoot, shared)
+	require.NoError(t, err)
+}
+
+func TestLoadManifestRejectsSymlinkEscape(t *testing.T) {
+	dir := t.TempDir()
+	packageRoot := filepath.Join(dir, "package")
+	require.NoError(t, os.Mkdir(packageRoot, 0o755))
+	outside := t.TempDir()
+	selected := filepath.Join(packageRoot, "selected")
+	require.NoError(t, os.Symlink(outside, selected))
+
+	manifestPath := filepath.Join(dir, "modules.json")
+	manifestData, err := json.Marshal(Manifest{
+		Dir: dir,
+		Modules: map[string]ManifestEntry{
+			"example/module/aws": {
+				LocalPath:   selected,
+				PackageRoot: packageRoot,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, manifestData, 0o644))
+
+	_, err = LoadManifest(manifestPath)
+	require.ErrorContains(t, err, "escapes package root")
+}

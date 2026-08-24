@@ -6,6 +6,7 @@
 package resolver
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -20,6 +21,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -28,6 +32,9 @@ import (
 
 // dirPerm is the permission mode used for all directories created by resolvers.
 const dirPerm = 0o750
+
+// maxArchiveExtractBytes caps cumulative bytes read from a single git archive tar stream.
+const maxArchiveExtractBytes = 200 * 1024 * 1024
 
 // BareGitResolver keeps one bare clone per repo and extracts refs via git archive.
 type BareGitResolver struct {
@@ -339,107 +346,294 @@ func (repo *bareRepo) fetchNamedRef(ctx context.Context, ref string) (string, er
 	return v.(string), nil
 }
 
-func archiveCacheKey(sha, subdir string) string {
-	h := sha256.Sum256([]byte(sha + ":" + subdir))
+func archiveCacheKey(sha string) string {
+	h := sha256.Sum256([]byte("sparse-package-v1\x00" + sha))
 	// sha[:8] prefix makes the directory human-readable during debugging.
 	return sha[:8] + "-" + fmt.Sprintf("%x", h[:4])
 }
 
-func archiveCacheDir(extractBase, sha, subdir string) string {
-	return filepath.Join(extractBase, archiveCacheKey(sha, subdir))
+func archiveCacheDir(extractBase, sha string) string {
+	return filepath.Join(extractBase, archiveCacheKey(sha))
+}
+
+func archiveMarkerPath(extractBase, sha, subdir string) string {
+	h := sha256.Sum256([]byte(filepath.ToSlash(filepath.Clean(subdir))))
+	return filepath.Join(extractBase, ".sparse-state", archiveCacheKey(sha), fmt.Sprintf("%x", h[:8]))
 }
 
 func cachedArchiveDir(extractBase, sha, subdir string) (string, bool) {
-	dest := archiveCacheDir(extractBase, sha, subdir)
+	dest := archiveCacheDir(extractBase, sha)
 	info, err := os.Stat(dest)
-	return dest, err == nil && info.IsDir()
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	_, err = os.Stat(archiveMarkerPath(extractBase, sha, subdir))
+	return dest, err == nil
 }
 
-// archiveExtract materializes sha:subdir into a persistent local directory.
-// It extracts into a temp dir and renames atomically so a partial extraction
-// from a prior crash is never mistaken for a complete cache entry.
+var archiveMaterializeLocks sync.Map
+
+func archiveMaterializeLock(gitDir, sha string) *sync.Mutex {
+	key := filepath.Clean(gitDir) + "\x00" + sha
+	lock, _ := archiveMaterializeLocks.LoadOrStore(key, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+// archiveExtract materializes the selected module and its local-module closure
+// into a sparse directory whose layout matches the repository at the given SHA.
 func archiveExtract(ctx context.Context, gitDir, extractBase, sha, subdir string) error {
-	key := archiveCacheKey(sha, subdir)
-	dest := filepath.Join(extractBase, key)
-
-	if info, err := os.Stat(dest); err == nil && info.IsDir() {
-		return nil // cache hit from a previous scan
-	}
-
-	if err := os.MkdirAll(extractBase, dirPerm); err != nil {
+	cleanSubdir, err := cleanArchiveSubdir(subdir)
+	if err != nil {
 		return err
 	}
 
-	// Extract into a sibling temp dir; rename to dest only on full success.
-	tmp, err := os.MkdirTemp(extractBase, ".tmp-extract-")
-	if err != nil {
-		return fmt.Errorf("creating extract temp dir: %w", err)
+	lock := archiveMaterializeLock(gitDir, sha)
+	lock.Lock()
+	defer lock.Unlock()
+
+	key := archiveCacheKey(sha)
+	dest := filepath.Join(extractBase, key)
+	if _, ok := cachedArchiveDir(extractBase, sha, cleanSubdir); ok {
+		return nil
+	}
+	if err := os.MkdirAll(dest, dirPerm); err != nil {
+		return err
 	}
 
+	extracted := int64(0)
+	if err := materializeModuleClosure(ctx, gitDir, sha, dest, extractBase, cleanSubdir, map[string]bool{}, &extracted); err != nil {
+		return err
+	}
+	return nil
+}
+
+func cleanArchiveSubdir(subdir string) (string, error) {
+	clean := filepath.Clean(filepath.FromSlash(subdir))
+	if clean == "." {
+		return clean, nil
+	}
+	if !filepath.IsLocal(clean) {
+		return "", fmt.Errorf("module subdirectory %q is not a local path", subdir)
+	}
+	return clean, nil
+}
+
+func materializeModuleClosure(
+	ctx context.Context,
+	gitDir, sha, packageRoot, extractBase, subdir string,
+	visited map[string]bool,
+	extracted *int64,
+) error {
+	if visited[subdir] {
+		return nil
+	}
+	visited[subdir] = true
+
+	marker := archiveMarkerPath(extractBase, sha, subdir)
+	if _, err := os.Stat(marker); err == nil {
+		return nil
+	}
+	if err := extractArchiveSubdir(ctx, gitDir, sha, packageRoot, subdir, extracted); err != nil {
+		return err
+	}
+
+	moduleDir := packageRoot
+	if subdir != "." {
+		moduleDir = filepath.Join(packageRoot, subdir)
+	}
+	children, err := localModuleArchiveSubdirs(moduleDir, packageRoot)
+	if err != nil {
+		return err
+	}
+	for _, child := range children {
+		if err := materializeModuleClosure(
+			ctx, gitDir, sha, packageRoot, extractBase, child, visited, extracted,
+		); err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(marker), dirPerm); err != nil {
+		return fmt.Errorf("creating sparse archive state: %w", err)
+	}
+	if err := os.WriteFile(marker, nil, cacheFilePerms); err != nil {
+		return fmt.Errorf("marking sparse archive path %q: %w", subdir, err)
+	}
+	return nil
+}
+
+func extractArchiveSubdir(
+	ctx context.Context, gitDir, sha, dest, subdir string, extracted *int64,
+) error {
 	release, err := acquireGitProc(ctx)
 	if err != nil {
-		_ = os.RemoveAll(tmp)
 		return err
 	}
 	defer release()
 
 	archiveArg, argErr := gitSafeArg(sha)
-	if subdir != "" {
-		archiveArg, argErr = gitSafeArg(sha + ":" + subdir)
-	}
 	if argErr != nil {
-		_ = os.RemoveAll(tmp)
 		return argErr
 	}
-	archive := gitInDir(ctx, gitDir, "archive", "--format=tar", archiveArg)
-	untar := tarExtract(ctx, tmp)
-
-	pr, pw := io.Pipe()
-	archive.Stdout = pw
-	untar.Stdin = pr
-
-	var archiveErr, untarErr error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		archiveErr = archive.Run()
-		pw.CloseWithError(archiveErr)
-	}()
-	go func() {
-		defer wg.Done()
-		untarErr = untar.Run()
-	}()
-	wg.Wait()
-
-	if archiveErr != nil {
-		_ = os.RemoveAll(tmp)
-		return fmt.Errorf("git archive %s: %w", archiveArg, archiveErr)
+	archiveArgs := []string{"archive", "--format=tar", archiveArg}
+	if subdir != "." {
+		archiveArgs = append(archiveArgs, "--", filepath.ToSlash(subdir))
 	}
-	if untarErr != nil {
-		_ = os.RemoveAll(tmp)
-		return fmt.Errorf("tar extract: %w", untarErr)
+	archive := gitInDir(ctx, gitDir, archiveArgs...)
+	output, err := archive.Output()
+	if err != nil {
+		return fmt.Errorf("git archive %s path %q: %w", archiveArg, subdir, err)
 	}
-	if err := os.Rename(tmp, dest); err != nil {
-		_ = os.RemoveAll(tmp)
-		// Another process may have won the race; accept if dest is now present.
-		if info, statErr := os.Stat(dest); statErr == nil && info.IsDir() {
-			return nil
-		}
-		return fmt.Errorf("publishing extract cache entry: %w", err)
+	if err := extractRegularFilesWithBudget(bytes.NewReader(output), dest, extracted); err != nil {
+		return fmt.Errorf("extracting git archive %s: %w", archiveArg, err)
 	}
 	return nil
 }
 
+func extractRegularFilesWithBudget(r io.Reader, dest string, extracted *int64) error {
+	tr := tar.NewReader(r)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("reading tar entry: %w", err)
+		}
+		if *extracted > maxArchiveExtractBytes {
+			return fmt.Errorf("git archive exceeds %d byte limit", maxArchiveExtractBytes)
+		}
+		name := filepath.Clean(header.Name)
+		if name == "." || !filepath.IsLocal(name) {
+			return fmt.Errorf("tar entry %q is not a local path", header.Name)
+		}
+		if err := extractTarEntry(tr, header, dest, name, extracted); err != nil {
+			return err
+		}
+	}
+}
+
+func extractTarEntry(
+	tr *tar.Reader, header *tar.Header, dest, name string, extracted *int64,
+) error {
+	switch header.Typeflag {
+	case tar.TypeXHeader, tar.TypeXGlobalHeader:
+		return nil
+	case tar.TypeDir:
+		if err := os.MkdirAll(filepath.Join(dest, name), dirPerm); err != nil {
+			return fmt.Errorf("creating directory for tar entry %q: %w", header.Name, err)
+		}
+		return nil
+	case tar.TypeReg:
+		return extractTarRegularFile(tr, header, filepath.Join(dest, name), extracted)
+	case tar.TypeSymlink, tar.TypeLink, tar.TypeChar, tar.TypeBlock, tar.TypeFifo, tar.TypeCont:
+		return nil
+	default:
+		return fmt.Errorf("tar entry %q has unsupported type %d", header.Name, header.Typeflag)
+	}
+}
+
+func extractTarRegularFile(
+	tr *tar.Reader, header *tar.Header, path string, extracted *int64,
+) error {
+	if header.Size > maxArchiveExtractBytes-*extracted {
+		return fmt.Errorf("git archive exceeds %d byte limit", maxArchiveExtractBytes)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
+		return fmt.Errorf("creating parent for tar entry %q: %w", header.Name, err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, header.FileInfo().Mode().Perm()) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("creating tar entry %q: %w", header.Name, err)
+	}
+	_, copyErr := io.CopyN(file, tr, header.Size)
+	closeErr := file.Close()
+	if copyErr != nil {
+		return fmt.Errorf("writing tar entry %q: %w", header.Name, copyErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("closing tar entry %q: %w", header.Name, closeErr)
+	}
+	*extracted += header.Size
+	return nil
+}
+
+func localModuleArchiveSubdirs(moduleDir, packageRoot string) ([]string, error) {
+	entries, err := os.ReadDir(moduleDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading materialized module %q: %w", moduleDir, err)
+	}
+	seen := make(map[string]bool)
+	var children []string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".tf") {
+			continue
+		}
+		path := filepath.Join(moduleDir, entry.Name())
+		src, readErr := os.ReadFile(filepath.Clean(path))
+		if readErr != nil {
+			continue
+		}
+		for _, source := range localModuleSources(src, path) {
+			rel, ok := localArchiveSubdir(moduleDir, packageRoot, source)
+			if !ok || seen[rel] {
+				continue
+			}
+			seen[rel] = true
+			children = append(children, rel)
+		}
+	}
+	return children, nil
+}
+
+func localModuleSources(src []byte, path string) []string {
+	file, diags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return nil
+	}
+	body, ok := file.Body.(*hclsyntax.Body)
+	if !ok {
+		return nil
+	}
+	var sources []string
+	for _, block := range body.Blocks {
+		if block.Type != "module" {
+			continue
+		}
+		attr := block.Body.Attributes["source"]
+		if attr == nil {
+			continue
+		}
+		value, valueDiags := attr.Expr.Value(nil)
+		if valueDiags.HasErrors() || !value.IsKnown() || value.IsNull() || value.Type() != cty.String {
+			continue
+		}
+		sources = append(sources, strings.TrimSpace(value.AsString()))
+	}
+	return sources
+}
+
+func localArchiveSubdir(moduleDir, packageRoot, source string) (string, bool) {
+	if !tfmodules.LooksLikeLocalModuleSource(source) ||
+		filepath.IsAbs(source) || strings.HasPrefix(source, "file://") {
+		return "", false
+	}
+	childPath := filepath.Clean(filepath.Join(moduleDir, filepath.FromSlash(source)))
+	rel, err := filepath.Rel(packageRoot, childPath)
+	if err != nil || pathEscapesDir(rel) || rel == "." {
+		return "", false
+	}
+	return rel, true
+}
+
 func (repo *bareRepo) extract(ctx context.Context, sha, subdir string) (string, error) {
-	key := archiveCacheKey(sha, subdir)
+	key := archiveCacheKey(sha) + "\x00" + filepath.Clean(subdir)
 	_, err, _ := repo.extractSF.Do(key, func() (interface{}, error) {
 		return nil, archiveExtract(ctx, repo.barePath, repo.extractBase, sha, subdir)
 	})
 	if err != nil {
 		return "", err
 	}
-	return archiveCacheDir(repo.extractBase, sha, subdir), nil
+	return archiveCacheDir(repo.extractBase, sha), nil
 }
 
 // Resolve implements Resolver for any git:: source that carries a ref= parameter.
@@ -459,8 +653,11 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 
 	// SHA refs have stable extraction keys; branch/tag refs must be re-resolved.
 	if looksLikeSHA(ref) {
-		if dest, ok := cachedArchiveDir(repo.extractBase, ref, subdir); ok {
-			return Resolution{LocalPath: dest}, nil
+		if packageRoot, ok := cachedArchiveDir(repo.extractBase, ref, subdir); ok {
+			return ConfineResolution(ctx, Resolution{
+				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
+				PackageRoot: packageRoot,
+			})
 		}
 	}
 
@@ -474,13 +671,16 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
-	dir, err := repo.extract(ctx, sha, subdir)
+	packageRoot, err := repo.extract(ctx, sha, subdir)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msgf("BareGitResolver: archive %s:%s failed", sha, subdir)
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
-	return Resolution{LocalPath: dir}, nil
+	return ConfineResolution(ctx, Resolution{
+		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
+		PackageRoot: packageRoot,
+	})
 }
 
 // normalizeSCPGitSource converts SCP-form git sources to git::ssh://git@... so

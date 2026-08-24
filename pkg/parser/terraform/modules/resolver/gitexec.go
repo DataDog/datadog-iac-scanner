@@ -87,7 +87,3 @@ func gitInWorktree(ctx context.Context, root string, args ...string) *exec.Cmd {
 func gitCloneBare(ctx context.Context, remoteURL, dest string) *exec.Cmd {
 	return exec.CommandContext(ctx, "git", "clone", "--bare", "--filter=blob:none", remoteURL, gitSafePath(dest)) //nolint:gosec
 }
-
-func tarExtract(ctx context.Context, dest string) *exec.Cmd {
-	return exec.CommandContext(ctx, "tar", "-x", "-C", gitSafePath(dest)) //nolint:gosec
-}

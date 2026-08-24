@@ -51,20 +51,29 @@ func TestBuildRemoteResolverUsesVersion(t *testing.T) {
 	root := filepath.Dir(callerFile)
 	inspector := &Inspector{
 		repoPath: repoPath,
-		remoteModuleDirs: map[string]string{
-			RemoteModuleKey(root, "terraform-aws-modules/vpc/aws", "1.0.0"):                             "/cache/v1",
-			RemoteModuleKey(root, "terraform-aws-modules/vpc/aws", "2.0.0"):                             "/cache/v2",
-			RemoteModuleKey(filepath.Join(repoPath, "other"), "terraform-aws-modules/vpc/aws", "2.0.0"): "/cache/other",
+		remoteModuleDirs: map[string]RemoteModuleDirectory{
+			RemoteModuleKey(root, "terraform-aws-modules/vpc/aws", "1.0.0"): {
+				Path: "/cache/v1", PackageRoot: "/cache",
+			},
+			RemoteModuleKey(root, "terraform-aws-modules/vpc/aws", "2.0.0"): {
+				Path: "/cache/v2", PackageRoot: "/cache",
+			},
+			RemoteModuleKey(filepath.Join(repoPath, "other"), "terraform-aws-modules/vpc/aws", "2.0.0"): {
+				Path: "/cache/other", PackageRoot: "/cache",
+			},
 		},
 	}
 
 	resolver := inspector.buildRemoteResolver()
-	got, ok := resolver("terraform-aws-modules/vpc/aws", "2.0.0", callerFile, "vpc")
+	got, packageRoot, ok := resolver("terraform-aws-modules/vpc/aws", "2.0.0", callerFile, "vpc")
 	if !ok {
 		t.Fatal("expected resolver hit")
 	}
 	if got != "/cache/v2" {
 		t.Fatalf("resolved dir = %q, want /cache/v2", got)
+	}
+	if packageRoot != "/cache" {
+		t.Fatalf("package root = %q, want /cache", packageRoot)
 	}
 
 	metaResolver := inspector.buildModuleMetadataResolver()
@@ -86,14 +95,18 @@ func TestBuildRemoteResolverPrefersCallSpecificMapping(t *testing.T) {
 	callerFile := filepath.Join(repoPath, "main.tf")
 	inspector := &Inspector{
 		repoPath: repoPath,
-		remoteModuleDirs: map[string]string{
-			RemoteModuleKey(repoPath, "same/source/aws", "1.0.0"):             "/cache/generic",
-			RemoteModuleCallKey(repoPath, "same/source/aws", "1.0.0", "call"): "/cache/call",
+		remoteModuleDirs: map[string]RemoteModuleDirectory{
+			RemoteModuleKey(repoPath, "same/source/aws", "1.0.0"): {
+				Path: "/cache/generic", PackageRoot: "/cache",
+			},
+			RemoteModuleCallKey(repoPath, "same/source/aws", "1.0.0", "call"): {
+				Path: "/cache/call", PackageRoot: "/cache",
+			},
 		},
 	}
 
 	resolver := inspector.buildRemoteResolver()
-	got, ok := resolver("same/source/aws", "1.0.0", callerFile, "call")
+	got, _, ok := resolver("same/source/aws", "1.0.0", callerFile, "call")
 	if !ok {
 		t.Fatal("expected resolver hit")
 	}
@@ -116,11 +129,11 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 	calledDirs := map[string]bool{"/cache/vpc": true}
 	successfulRoots := map[string]bool{root: true}
 
-	stripModuleCalls(doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, bool) {
+	stripModuleCalls(doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, string, bool) {
 		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
-			return "/cache/vpc", true
+			return "/cache/vpc", "/cache", true
 		}
-		return "", false
+		return "", "", false
 	})
 
 	if _, ok := doc["module"]; ok {
