@@ -137,6 +137,7 @@ func (e *Evaluator) EvaluateModule(
 	dir string,
 	inputs map[string]cty.Value,
 ) (resources []ResolvedResource, outputs map[string]cty.Value, visitedChildDirs map[string]bool, err error) {
+	ctx = resolver.WithResolvedPathCache(ctx)
 	abs, absErr := filepath.Abs(dir)
 	if absErr != nil {
 		contextLogger := logger.FromContext(ctx)
@@ -332,7 +333,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 
 		version := knownString(mb.Body.Attributes["version"], evalCtx)
 		childDir, childPackageRoot, ok := e.resolveModuleDir(
-			dir, packageRoot, source, version, mb.TypeRange.Filename, label,
+			ctx, dir, packageRoot, source, version, mb.TypeRange.Filename, label,
 		)
 		if !ok {
 			continue
@@ -374,7 +375,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 }
 
 func (e *Evaluator) resolveModuleDir(
-	callerDir, packageRoot, source, version, callerFile, moduleName string,
+	ctx context.Context, callerDir, packageRoot, source, version, callerFile, moduleName string,
 ) (dir, childPackageRoot string, ok bool) {
 	cleanSource := StripGetterPrefix(source)
 	if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
@@ -382,7 +383,7 @@ func (e *Evaluator) resolveModuleDir(
 		if packageRoot == "" {
 			return localDir, "", true
 		}
-		confined, resolveErr := resolver.ResolvePathWithinRoot(packageRoot, localDir)
+		confined, resolveErr := resolver.ResolvePathWithinRoot(ctx, packageRoot, localDir)
 		return confined, packageRoot, resolveErr == nil
 	}
 	if e.remoteResolver != nil {
@@ -784,7 +785,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		}
 		version := knownString(mb.Body.Attributes["version"], evalCtx)
 		childDir, childPackageRoot, ok := e.resolveModuleDir(
-			dir, packageRoot, source, version, mb.TypeRange.Filename, label,
+			ctx, dir, packageRoot, source, version, mb.TypeRange.Filename, label,
 		)
 		if !ok {
 			continue

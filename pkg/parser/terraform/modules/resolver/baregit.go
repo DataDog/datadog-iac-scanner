@@ -479,24 +479,12 @@ func extractArchiveSubdir(
 		archiveArgs = append(archiveArgs, "--", filepath.ToSlash(subdir))
 	}
 	archive := gitInDir(ctx, gitDir, archiveArgs...)
-	stdout, err := archive.StdoutPipe()
+	output, err := archive.Output()
 	if err != nil {
-		return fmt.Errorf("opening git archive output: %w", err)
+		return fmt.Errorf("git archive %s path %q: %w", archiveArg, subdir, err)
 	}
-	if err := archive.Start(); err != nil {
-		return fmt.Errorf("starting git archive %s: %w", archiveArg, err)
-	}
-	extractErr := extractRegularFilesWithBudget(stdout, dest, extracted)
-	if extractErr != nil {
-		_ = stdout.Close()
-		_ = archive.Process.Kill()
-	}
-	archiveErr := archive.Wait()
-	if extractErr != nil {
-		return fmt.Errorf("extracting git archive %s: %w", archiveArg, extractErr)
-	}
-	if archiveErr != nil {
-		return fmt.Errorf("git archive %s path %q: %w", archiveArg, subdir, archiveErr)
+	if err := extractRegularFilesWithBudget(bytes.NewReader(output), dest, extracted); err != nil {
+		return fmt.Errorf("extracting git archive %s: %w", archiveArg, err)
 	}
 	return nil
 }
@@ -666,7 +654,7 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 	// SHA refs have stable extraction keys; branch/tag refs must be re-resolved.
 	if looksLikeSHA(ref) {
 		if packageRoot, ok := cachedArchiveDir(repo.extractBase, ref, subdir); ok {
-			return ConfineResolution(Resolution{
+			return ConfineResolution(ctx, Resolution{
 				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 				PackageRoot: packageRoot,
 			})
@@ -689,7 +677,7 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
-	return ConfineResolution(Resolution{
+	return ConfineResolution(ctx, Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
 	})

@@ -97,7 +97,7 @@ func TestLoadManifestPreservesPackageRootForSiblingModules(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, selected, resolution.LocalPath)
 	require.Equal(t, packageRoot, resolution.PackageRoot)
-	_, err = ResolvePathWithinRoot(resolution.PackageRoot, shared)
+	_, err = ResolvePathWithinRoot(t.Context(), resolution.PackageRoot, shared)
 	require.NoError(t, err)
 }
 

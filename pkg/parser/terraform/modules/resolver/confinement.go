@@ -6,6 +6,7 @@
 package resolver
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -14,33 +15,57 @@ import (
 	"sync"
 )
 
-var resolvedPathCache sync.Map // clean path → EvalSymlinks result
+type resolvedPathCacheKey struct{}
 
-func evalSymlinksCached(path string) (string, error) {
+// WithResolvedPathCache attaches a scan-scoped EvalSymlinks cache to ctx.
+// Nested calls reuse the existing cache so graph walking and evaluation share hits.
+func WithResolvedPathCache(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if resolvedPathCacheFrom(ctx) != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, resolvedPathCacheKey{}, &sync.Map{})
+}
+
+func resolvedPathCacheFrom(ctx context.Context) *sync.Map {
+	if ctx == nil {
+		return nil
+	}
+	cache, _ := ctx.Value(resolvedPathCacheKey{}).(*sync.Map)
+	return cache
+}
+
+func evalSymlinksCached(ctx context.Context, path string) (string, error) {
 	clean := filepath.Clean(path)
-	if v, ok := resolvedPathCache.Load(clean); ok {
-		return v.(string), nil
+	if cache := resolvedPathCacheFrom(ctx); cache != nil {
+		if v, ok := cache.Load(clean); ok {
+			return v.(string), nil
+		}
 	}
 	resolved, err := filepath.EvalSymlinks(clean)
 	if err != nil {
 		return "", err
 	}
-	resolvedPathCache.Store(clean, resolved)
+	if cache := resolvedPathCacheFrom(ctx); cache != nil {
+		cache.Store(clean, resolved)
+	}
 	return resolved, nil
 }
 
-func ConfineResolution(res Resolution) (Resolution, error) {
+func ConfineResolution(ctx context.Context, res Resolution) (Resolution, error) {
 	if res.LocalPath == "" {
 		return Resolution{}, fmt.Errorf("resolved module has no local path")
 	}
 	if res.PackageRoot == "" {
 		res.PackageRoot = res.LocalPath
 	}
-	root, err := resolveDirectory(res.PackageRoot)
+	root, err := resolveDirectory(ctx, res.PackageRoot)
 	if err != nil {
 		return Resolution{}, fmt.Errorf("resolving package root %q: %w", res.PackageRoot, err)
 	}
-	localPath, err := ResolvePathWithinRoot(root, res.LocalPath)
+	localPath, err := ResolvePathWithinRoot(ctx, root, res.LocalPath)
 	if err != nil {
 		return Resolution{}, fmt.Errorf("resolving module path %q: %w", res.LocalPath, err)
 	}
@@ -49,12 +74,12 @@ func ConfineResolution(res Resolution) (Resolution, error) {
 	return res, nil
 }
 
-func ResolvePathWithinRoot(root, target string) (string, error) {
-	resolvedRoot, err := evalSymlinksCached(root)
+func ResolvePathWithinRoot(ctx context.Context, root, target string) (string, error) {
+	resolvedRoot, err := evalSymlinksCached(ctx, root)
 	if err != nil {
 		return "", err
 	}
-	resolvedTarget, err := evalSymlinksCached(target)
+	resolvedTarget, err := evalSymlinksCached(ctx, target)
 	if err != nil {
 		return "", err
 	}
@@ -72,8 +97,8 @@ func ResolvePathWithinRoot(root, target string) (string, error) {
 	return filepath.Clean(target), nil
 }
 
-func resolveDirectory(path string) (string, error) {
-	resolved, err := evalSymlinksCached(path)
+func resolveDirectory(ctx context.Context, path string) (string, error) {
+	resolved, err := evalSymlinksCached(ctx, path)
 	if err != nil {
 		return "", err
 	}
@@ -94,7 +119,7 @@ func pathEscapesDir(rel string) bool {
 // ScannableTerraformPath reports whether a directory entry is a .tf file that can be read.
 // Regular files are accepted. Symlinks are accepted only when their target is a regular
 // file confined within packageRoot (or dir when packageRoot is empty).
-func ScannableTerraformPath(entry fs.DirEntry, dir, packageRoot string) (path string, ok bool) {
+func ScannableTerraformPath(ctx context.Context, entry fs.DirEntry, dir, packageRoot string) (path string, ok bool) {
 	if entry.IsDir() {
 		return "", false
 	}
@@ -110,7 +135,7 @@ func ScannableTerraformPath(entry fs.DirEntry, dir, packageRoot string) (path st
 	if entryType&fs.ModeSymlink == 0 && entryType != 0 {
 		return "", false
 	}
-	resolved, err := evalSymlinksCached(candidate)
+	resolved, err := evalSymlinksCached(ctx, candidate)
 	if err != nil {
 		return "", false
 	}
@@ -122,7 +147,7 @@ func ScannableTerraformPath(entry fs.DirEntry, dir, packageRoot string) (path st
 	if confineRoot == "" {
 		confineRoot = dir
 	}
-	if _, err := ResolvePathWithinRoot(confineRoot, resolved); err != nil {
+	if _, err := ResolvePathWithinRoot(ctx, confineRoot, resolved); err != nil {
 		return "", false
 	}
 	return candidate, true

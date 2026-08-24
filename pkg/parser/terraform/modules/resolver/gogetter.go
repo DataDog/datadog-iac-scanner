@@ -145,7 +145,7 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 	if selectedSubdir == "" && st == sourceTypeRegistry {
 		selectedSubdir = registrySubdir(mod.Source)
 	}
-	if res, ok, cacheErr := r.lookupCache(mod, cacheVersion, selectedSubdir, useCache); cacheErr != nil {
+	if res, ok, cacheErr := r.lookupCache(ctx, mod, cacheVersion, selectedSubdir, useCache); cacheErr != nil {
 		return Resolution{}, cacheErr
 	} else if ok {
 		return res, nil
@@ -193,7 +193,7 @@ func (r *GoGetterResolver) fetchAndCommit(
 	}
 	defer r.releaseFetchSlot()
 
-	if res, ok, cacheErr := r.lookupCache(mod, cacheVersion, selectedSubdir, useCache); cacheErr != nil {
+	if res, ok, cacheErr := r.lookupCache(ctx, mod, cacheVersion, selectedSubdir, useCache); cacheErr != nil {
 		return Resolution{}, cacheErr
 	} else if ok {
 		return res, nil
@@ -203,7 +203,7 @@ func (r *GoGetterResolver) fetchAndCommit(
 	if err != nil {
 		return Resolution{}, err
 	}
-	return r.commitFetchedDir(mod.Source, cacheVersion, tmpDir, selectedSubdir, useCache)
+	return r.commitFetchedDir(ctx, mod.Source, cacheVersion, tmpDir, selectedSubdir, useCache)
 }
 
 func (r *GoGetterResolver) resolveCacheVersion(
@@ -233,7 +233,7 @@ func (r *GoGetterResolver) getterSourceFor(
 }
 
 func (r *GoGetterResolver) lookupCache(
-	mod *tfmodules.ParsedModule, cacheVersion, selectedSubdir string, useCache bool,
+	ctx context.Context, mod *tfmodules.ParsedModule, cacheVersion, selectedSubdir string, useCache bool,
 ) (Resolution, bool, error) {
 	if !useCache {
 		return Resolution{}, false, nil
@@ -245,7 +245,7 @@ func (r *GoGetterResolver) lookupCache(
 	if err := r.reserveDirBytes(packageRoot); err != nil {
 		return Resolution{}, false, err
 	}
-	resolution, err := resolutionForPackage(packageRoot, selectedSubdir)
+	resolution, err := resolutionForPackage(ctx, packageRoot, selectedSubdir)
 	if err != nil {
 		return Resolution{}, false, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 	}
@@ -321,7 +321,7 @@ func (r *GoGetterResolver) reserveDirBytes(dir string) error {
 
 // commitFetchedDir enforces size limits, caches, returns Resolution.
 func (r *GoGetterResolver) commitFetchedDir(
-	source, version, tmpDir, selectedSubdir string, useCache bool,
+	ctx context.Context, source, version, tmpDir, selectedSubdir string, useCache bool,
 ) (Resolution, error) {
 	size, err := measureDir(tmpDir)
 	if err != nil {
@@ -336,7 +336,7 @@ func (r *GoGetterResolver) commitFetchedDir(
 		if cached, storeErr := r.cfg.Cache.store(source, version, tmpDir, selectedSubdir); storeErr == nil {
 			_ = os.RemoveAll(tmpDir)
 			r.cfg.accountedDirs.Store(filepath.Clean(cached), struct{}{})
-			resolution, err := resolutionForPackage(cached, selectedSubdir)
+			resolution, err := resolutionForPackage(ctx, cached, selectedSubdir)
 			if err != nil {
 				return Resolution{}, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 			}
@@ -344,7 +344,7 @@ func (r *GoGetterResolver) commitFetchedDir(
 		}
 	}
 	cleanup := func() { _ = os.RemoveAll(tmpDir) }
-	resolution, err := resolutionForPackage(tmpDir, selectedSubdir)
+	resolution, err := resolutionForPackage(ctx, tmpDir, selectedSubdir)
 	if err != nil {
 		cleanup()
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "invalid fetched module package: " + err.Error()}
@@ -353,12 +353,12 @@ func (r *GoGetterResolver) commitFetchedDir(
 	return resolution, nil
 }
 
-func resolutionForPackage(packageRoot, selectedSubdir string) (Resolution, error) {
+func resolutionForPackage(ctx context.Context, packageRoot, selectedSubdir string) (Resolution, error) {
 	localPath := packageRoot
 	if selectedSubdir != "" {
 		localPath = filepath.Join(packageRoot, filepath.FromSlash(selectedSubdir))
 	}
-	return ConfineResolution(Resolution{
+	return ConfineResolution(ctx, Resolution{
 		LocalPath:   localPath,
 		PackageRoot: packageRoot,
 	})

@@ -67,7 +67,7 @@ func (m *Manifest) validate() error {
 				}
 			}
 		}
-		confined, err := ConfineResolution(Resolution{
+		confined, err := ConfineResolution(context.Background(), Resolution{
 			LocalPath:   entry.LocalPath,
 			PackageRoot: entry.PackageRoot,
 		})
@@ -79,7 +79,7 @@ func (m *Manifest) validate() error {
 				"local_path":   confined.LocalPath,
 				"package_root": confined.PackageRoot,
 			} {
-				if _, err := ResolvePathWithinRoot(m.Dir, path); err != nil {
+				if _, err := ResolvePathWithinRoot(context.Background(), m.Dir, path); err != nil {
 					return fmt.Errorf("entry %q: resolved %s %q escapes dir %q: %w", src, field, path, m.Dir, err)
 				}
 			}
@@ -97,7 +97,7 @@ func NewPrefetchedResolver(m *Manifest) *PrefetchedResolver {
 	return &PrefetchedResolver{manifest: m}
 }
 
-func (r *PrefetchedResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
 	if mod.IsLocal {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
 	}
@@ -115,7 +115,7 @@ func (r *PrefetchedResolver) Resolve(_ context.Context, mod *tfmodules.ParsedMod
 			Reason: fmt.Sprintf("module %q version %q not found in manifest", mod.Source, mod.Version),
 		}
 	}
-	return ConfineResolution(Resolution{
+	return ConfineResolution(ctx, Resolution{
 		LocalPath:   entry.LocalPath,
 		PackageRoot: entry.PackageRoot,
 	})

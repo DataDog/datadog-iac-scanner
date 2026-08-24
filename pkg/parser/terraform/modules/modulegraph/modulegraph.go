@@ -111,6 +111,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	if request == nil || request.MaxDepth <= 0 || request.Resolver == nil {
 		return result
 	}
+	ctx = resolver.WithResolvedPathCache(ctx)
 
 	w := &walker{
 		visited: visitedSet{
@@ -166,7 +167,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 func (w *walker) parseModulesInDir(
 	ctx context.Context, dir string, allowedFiles map[string]bool, packageRoot string,
 ) map[string]tfmodules.ParsedModule {
-	key := filepath.Clean(dir) + "\x00" + allowedFilesCacheKey(allowedFiles)
+	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot) + "\x00" + allowedFilesCacheKey(allowedFiles)
 
 	if mods, ok := w.parseCache.get(key); ok {
 		return mods
@@ -199,13 +200,18 @@ func allowedFilesCacheKey(allowed map[string]bool) string {
 	return strings.Join(paths, "\x00")
 }
 
-func (s *visitedSet) tryAdd(localPath string) bool {
+func visitKey(localPath, packageRoot string) string {
+	return filepath.Clean(localPath) + "\x00" + filepath.Clean(packageRoot)
+}
+
+func (s *visitedSet) tryAdd(localPath, packageRoot string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.paths[localPath] {
+	key := visitKey(localPath, packageRoot)
+	if s.paths[key] {
 		return false
 	}
-	s.paths[localPath] = true
+	s.paths[key] = true
 	return true
 }
 
@@ -428,7 +434,7 @@ func (w *walker) traverse(
 			}
 		} else {
 			var err error
-			localDir, err = resolver.ResolvePathWithinRoot(packageRoot, localDir)
+			localDir, err = resolver.ResolvePathWithinRoot(ctx, packageRoot, localDir)
 			if err != nil {
 				contextLogger := logger.FromContext(ctx)
 				contextLogger.Debug().
@@ -437,11 +443,11 @@ func (w *walker) traverse(
 				continue
 			}
 		}
-		if !w.visited.tryAdd(localDir) {
+		if !w.visited.tryAdd(localDir, packageRoot) {
 			continue
 		}
 		if packageRoot != "" {
-			w.results.addPaths(flatTerraformFilePaths(localDir, packageRoot)...)
+			w.results.addPaths(flatTerraformFilePaths(ctx, localDir, packageRoot)...)
 		}
 		w.traverse(ctx, localDir, childAllowedFiles, repoAllowedDirs, depth+1, packageRoot)
 	}
@@ -526,13 +532,13 @@ func (w *walker) traverseRemoteModuleGroup(
 	for _, mod := range group.callers {
 		w.results.addResolvedModule(mod, resolution)
 	}
-	if !w.visited.tryAdd(resolution.LocalPath) {
+	if !w.visited.tryAdd(resolution.LocalPath, resolution.PackageRoot) {
 		return
 	}
 	if resolution.Cleanup != nil {
 		w.results.addCleanup(resolution.Cleanup)
 	}
-	w.results.addPaths(flatTerraformFilePaths(resolution.LocalPath, resolution.PackageRoot)...)
+	w.results.addPaths(flatTerraformFilePaths(ctx, resolution.LocalPath, resolution.PackageRoot)...)
 	w.results.addSourceMapping(
 		resolution.LocalPath,
 		canonicalModuleURL(representative.Source, representative.Version),
@@ -563,14 +569,14 @@ func callKey(root, source, version, name string) string {
 		strings.TrimSpace(version) + "\x00" + strings.TrimSpace(name)
 }
 
-func flatTerraformFilePaths(dir, packageRoot string) []string {
+func flatTerraformFilePaths(ctx context.Context, dir, packageRoot string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
 	var paths []string
 	for _, entry := range entries {
-		if path, ok := resolver.ScannableTerraformPath(entry, dir, packageRoot); ok {
+		if path, ok := resolver.ScannableTerraformPath(ctx, entry, dir, packageRoot); ok {
 			paths = append(paths, path)
 		}
 	}

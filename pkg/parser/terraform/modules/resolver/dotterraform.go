@@ -104,7 +104,7 @@ func installedModulePaths(scanRoot, installRoot, localPath string) (installedMod
 	}, true
 }
 
-func (r *DotTerraformResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+func (r *DotTerraformResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
 	if mod.IsLocal {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
 	}
@@ -125,13 +125,13 @@ func (r *DotTerraformResolver) Resolve(_ context.Context, mod *tfmodules.ParsedM
 			Reason: fmt.Sprintf("module %q not found in .terraform/modules (run terraform init)", mod.Source),
 		}
 	}
-	packageRoot, err := ResolvePathWithinRoot(path.scanRoot, path.packageRoot)
+	packageRoot, err := ResolvePathWithinRoot(ctx, path.scanRoot, path.packageRoot)
 	if err != nil {
 		return Resolution{}, &tfmodules.UnresolvedError{
 			Reason: fmt.Sprintf("module %q has unsafe .terraform/modules package root %q: %v", mod.Source, path.packageRoot, err),
 		}
 	}
-	resolution, err := ConfineResolution(Resolution{
+	resolution, err := ConfineResolution(ctx, Resolution{
 		LocalPath:   path.localPath,
 		PackageRoot: packageRoot,
 	})

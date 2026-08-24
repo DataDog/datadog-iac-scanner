@@ -229,7 +229,7 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 	// Warm-cache fast path for pinned SHA refs.
 	if looksLikeSHA(ref) {
 		if packageRoot, ok := cachedArchiveDir(info.extractBase, ref, subdir); ok {
-			return ConfineResolution(Resolution{
+			return ConfineResolution(ctx, Resolution{
 				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 				PackageRoot: packageRoot,
 			})
@@ -255,7 +255,7 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 	}
 
 	packageRoot := archiveCacheDir(info.extractBase, sha)
-	return ConfineResolution(Resolution{
+	return ConfineResolution(ctx, Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
 	})
