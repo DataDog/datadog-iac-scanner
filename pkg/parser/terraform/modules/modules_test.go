@@ -542,6 +542,8 @@ func TestDetectModuleSourceTypeWithScope(t *testing.T) {
 		{"terraform-aws-modules/eks/aws//modules/karpenter", "registry", "public"},
 		{"company.internal.io/infra/mod/aws", "registry", "private"},
 		{"company.internal.io/infra/mod/aws//child", "registry", "private"},
+		{"registry.example.com:8443/ns/name/aws", "registry", "private"},
+		{"registry.terraform.io:443/org/vpc/aws", "registry", "public"},
 		{"https://github.com/org/repo", "unknown", ""},
 		{"data_ref:aws_s3.bucket.id", "data_ref", ""},
 		{"", "unknown", ""},

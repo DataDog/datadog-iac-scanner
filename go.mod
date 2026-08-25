@@ -20,10 +20,12 @@ require (
 	github.com/hashicorp/hcl v1.0.0
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/hashicorp/terraform-json v0.27.2
+	github.com/hashicorp/terraform-svchost v0.1.1
 	github.com/johnfercher/maroto v1.0.0
 	github.com/moby/buildkit v0.27.1
 	github.com/open-policy-agent/opa v1.13.2
 	github.com/open-policy-agent/regal v0.38.1
+	github.com/opentofu/registry-address v0.0.0-20230922120653-901b9ae4061a
 	github.com/pkg/errors v0.9.1
 	github.com/relex/aini v1.6.0
 	github.com/rmuir/tree-sitter-ghactions v0.2.5

@@ -73,12 +73,6 @@ type ModuleAttributesInfo struct {
 	Inputs    map[string]string `json:"inputs"`
 }
 
-var registryPattern = regexp.MustCompile(`^[a-z0-9\-]+/[a-z0-9\-]+/[a-z0-9\-]+$`)
-
-func isValidRegistryFormat(s string) bool {
-	return registryPattern.MatchString(s)
-}
-
 func resolveModulePath(source, rootDir string) string {
 	clean := strings.TrimPrefix(source, "file://")
 	clean = strings.TrimPrefix(clean, "git::")
@@ -700,43 +694,24 @@ func LooksLikeLocalModuleSource(source string) bool {
 
 func DetectModuleSourceType(source string) (sourceType, registryScope string) {
 	source = strings.TrimSpace(source)
-
 	if source == "" {
 		return stringUnknown, ""
 	}
-	registrySource := source
-	if idx := strings.Index(registrySource, "//"); idx != -1 {
-		registrySource = registrySource[:idx]
-	}
-
 	if strings.HasPrefix(source, "data_ref:") {
 		return "data_ref", ""
 	}
-
-	// Recognize git-based sources
 	if strings.HasPrefix(source, "git::") {
 		return "git", ""
 	}
-
-	// Recognize public registry hostname
-	if strings.HasPrefix(registrySource, "registry.terraform.io/") {
-		return stringRegistry, stringPublic
-	}
-
-	// Recognize private registries by fully qualified domain with 3 parts
-	if strings.Count(registrySource, "/") == 3 && strings.Contains(registrySource, ".") {
-		return stringRegistry, stringPrivate
-	}
-
-	// Recognize implicit public registry format (namespace/name/provider)
-	if isValidRegistryFormat(registrySource) {
-		return stringRegistry, stringPublic
-	}
-
 	if LooksLikeLocalModuleSource(source) {
 		return stringLocal, ""
 	}
-
+	if addr, err := ParseRegistryModuleSource(source); err == nil {
+		if addr.Public() {
+			return stringRegistry, stringPublic
+		}
+		return stringRegistry, stringPrivate
+	}
 	return stringUnknown, ""
 }
 
