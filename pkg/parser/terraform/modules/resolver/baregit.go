@@ -43,6 +43,7 @@ const maxArchiveExtractBytes = 200 * 1024 * 1024
 type BareGitResolver struct {
 	// Defaults to <user-cache-dir>/datadog-iac-scanner/git-bare.
 	CacheDir string
+	MaxBytes int64
 
 	hostAllowlist []string
 	policy        *httpDestinationPolicy
@@ -1076,7 +1077,21 @@ func (rem *bareRemote) extract(ctx context.Context, sha, subdir string) (string,
 	if err != nil {
 		return "", err
 	}
-	return archiveCacheDir(rem.extractBase, sha), nil
+	dest := archiveCacheDir(rem.extractBase, sha)
+	return dest, nil
+}
+
+func (r *BareGitResolver) evictGitCache() {
+	if r == nil || r.MaxBytes <= 0 {
+		return
+	}
+	r.mu.Lock()
+	retained := make(map[string]bool, len(r.repos))
+	for _, repo := range r.repos {
+		retained[filepath.Clean(filepath.Dir(repo.barePath))] = true
+	}
+	r.mu.Unlock()
+	evictUnretainedDirs(r.effectiveCacheDir(), r.MaxBytes, retained)
 }
 
 // Resolve implements Resolver for pinnable git:: sources. A missing ref uses HEAD.
@@ -1123,6 +1138,7 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 	if err := remote.ensureClone(ctx); err != nil {
 		return Resolution{}, unresolvedResourceError(err)
 	}
+	defer r.evictGitCache()
 
 	sha, err := remote.fetchRef(ctx, ref)
 	if err != nil {

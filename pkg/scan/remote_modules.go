@@ -158,23 +158,24 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 	}
 	ggCfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
 
+	cacheBytes := c.ScanParams.MaxModuleCacheBytes
+	if cacheBytes == 0 {
+		cacheBytes = DefaultRemoteModuleMaxCacheBytes
+	}
+
 	if c.ScanParams.EnableRemoteModules {
 		gitCacheDir := tfresolver.ModuleCacheSubdir(c.ScanParams.RemoteModulesCacheDir, tfresolver.CacheSubdirGitBare)
 		localCacheDir := tfresolver.ModuleCacheSubdir(c.ScanParams.RemoteModulesCacheDir, tfresolver.CacheSubdirGitLocal)
 		git := tfresolver.NewBareGitResolver(gitCacheDir, c.ScanParams.RemoteModulesHostAllowlist...)
+		git.MaxBytes = cacheBytes
 		ggCfg.Git = git
-		resolvers = append(resolvers,
-			tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), localCacheDir),
-			git,
-		)
+		localGit := tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), localCacheDir)
+		localGit.MaxBytes = cacheBytes
+		resolvers = append(resolvers, localGit, git)
 	}
 
 	if !ggCfg.Disabled {
 		moduleCacheDir := tfresolver.ModuleCacheSubdir(c.ScanParams.RemoteModulesCacheDir, tfresolver.CacheSubdirModules)
-		cacheBytes := c.ScanParams.MaxModuleCacheBytes
-		if cacheBytes == 0 {
-			cacheBytes = DefaultRemoteModuleMaxCacheBytes
-		}
 		cache, err := tfresolver.NewModuleCacheWithDir(moduleCacheDir, cacheBytes)
 		if err != nil {
 			contextLogger.Warn().Err(err).Msg("Module disk cache unavailable; fetched modules will not be cached")

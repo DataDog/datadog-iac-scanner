@@ -25,6 +25,7 @@ type LocalGitRefResolver struct {
 
 	// Defaults to <user-cache-dir>/datadog-iac-scanner/git-local.
 	CacheDir string
+	MaxBytes int64
 
 	initOnce sync.Once
 	repos    []*localRepoInfo // scan roots that are git repos
@@ -258,8 +259,20 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 	}
 
 	packageRoot := archiveCacheDir(info.extractBase, sha)
+	r.evictGitCache()
 	return ConfineResolution(ctx, Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
 	})
+}
+
+func (r *LocalGitRefResolver) evictGitCache() {
+	if r == nil || r.MaxBytes <= 0 {
+		return
+	}
+	retained := make(map[string]bool, len(r.repos))
+	for _, info := range r.repos {
+		retained[filepath.Clean(info.extractBase)] = true
+	}
+	evictUnretainedDirs(r.effectiveCacheDir(), r.MaxBytes, retained)
 }

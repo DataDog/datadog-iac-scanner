@@ -8,6 +8,7 @@ package resolver
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -35,6 +36,8 @@ const (
 	CacheSubdirGitLocal = "git-local"
 )
 
+var errCacheEntryTooLarge = errors.New("module package exceeds cache size limit")
+
 // moduleCache is a content-addressed on-disk module store.
 type moduleCache struct {
 	dir      string
@@ -43,6 +46,7 @@ type moduleCache struct {
 	evictMu  sync.Mutex
 	total    int64
 	sized    bool
+	inUse    map[string]bool
 }
 
 func NewModuleCache() (*moduleCache, error) {
@@ -121,6 +125,7 @@ func (c *moduleCache) lookup(source, version string) (packageRoot string, ok boo
 	if _, err := os.ReadFile(filepath.Join(dir, cacheSelectionFile)); err != nil { //nolint:gosec
 		return "", false
 	}
+	c.retain(dir)
 	return dir, true
 }
 
@@ -153,6 +158,10 @@ func (c *moduleCache) store(source, version, srcDir, subdir string) (string, err
 			return "", fmt.Errorf("writing cache selection: %w", err)
 		}
 		size := copied + int64(len(subdir))
+		if c.maxBytes > 0 && size > c.maxBytes {
+			_ = os.RemoveAll(tmp)
+			return "", errCacheEntryTooLarge
+		}
 		if err := os.WriteFile(filepath.Join(tmp, cacheSizeFile), []byte(strconv.FormatInt(size, 10)), cacheFilePerms); err != nil {
 			_ = os.RemoveAll(tmp)
 			return "", fmt.Errorf("writing cache size: %w", err)
@@ -172,10 +181,23 @@ func (c *moduleCache) store(source, version, srcDir, subdir string) (string, err
 		return "", err
 	}
 	stored := v.(string)
+	c.retain(stored)
 	if published {
 		c.accountAndEvict(stored, added)
 	}
 	return stored, nil
+}
+
+func (c *moduleCache) retain(path string) {
+	if c == nil || path == "" {
+		return
+	}
+	c.evictMu.Lock()
+	defer c.evictMu.Unlock()
+	if c.inUse == nil {
+		c.inUse = make(map[string]bool)
+	}
+	c.inUse[filepath.Clean(path)] = true
 }
 
 func (c *moduleCache) accountAndEvict(keep string, added int64) {
@@ -207,7 +229,8 @@ func (c *moduleCache) accountAndEvict(keep string, added int64) {
 		if total <= c.maxBytes {
 			break
 		}
-		if filepath.Clean(entry.path) == keep {
+		path := filepath.Clean(entry.path)
+		if path == keep || c.inUse[path] {
 			continue
 		}
 		if err := os.RemoveAll(entry.path); err != nil {
@@ -236,8 +259,10 @@ func listCacheEntries(dir string) (entries []cacheEntry, total int64) {
 		if infoErr != nil {
 			continue
 		}
-		if !item.IsDir() {
-			total += info.Size()
+		if !item.IsDir() || strings.HasPrefix(item.Name(), ".") {
+			if !item.IsDir() {
+				total += info.Size()
+			}
 			continue
 		}
 		size, ok := readCacheSize(path)
@@ -248,6 +273,35 @@ func listCacheEntries(dir string) (entries []cacheEntry, total int64) {
 		entries = append(entries, cacheEntry{path: path, size: size, modTime: info.ModTime()})
 	}
 	return entries, total
+}
+
+func evictUnretainedDirs(dir string, maxBytes int64, retained map[string]bool) {
+	if maxBytes <= 0 || dir == "" {
+		return
+	}
+	entries, total := listCacheEntries(dir)
+	if total <= maxBytes {
+		return
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].modTime.Equal(entries[j].modTime) {
+			return entries[i].path < entries[j].path
+		}
+		return entries[i].modTime.Before(entries[j].modTime)
+	})
+	for _, entry := range entries {
+		if total <= maxBytes {
+			return
+		}
+		path := filepath.Clean(entry.path)
+		if retained[path] {
+			continue
+		}
+		if err := os.RemoveAll(entry.path); err != nil {
+			continue
+		}
+		total -= entry.size
+	}
 }
 
 func readCacheSize(dir string) (int64, bool) {

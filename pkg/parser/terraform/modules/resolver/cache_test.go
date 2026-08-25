@@ -6,6 +6,7 @@
 package resolver
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -173,7 +174,8 @@ func TestModuleCacheKeyAliasesEquivalentSources(t *testing.T) {
 }
 
 func TestModuleCacheEvictsOldestEntries(t *testing.T) {
-	cache, err := NewModuleCacheWithDir(t.TempDir(), 150)
+	dir := t.TempDir()
+	previous, err := NewModuleCacheWithDir(dir, 150)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +189,7 @@ func TestModuleCacheEvictsOldestEntries(t *testing.T) {
 		return src
 	}
 
-	first, err := cache.store("example/one/aws", "1.0.0", write("one", 80), "")
+	first, err := previous.store("example/one/aws", "1.0.0", write("one", 80), "")
 	if err != nil {
 		t.Fatalf("store one: %v", err)
 	}
@@ -195,12 +197,17 @@ func TestModuleCacheEvictsOldestEntries(t *testing.T) {
 	if err := os.Chtimes(first, past, past); err != nil {
 		t.Fatal(err)
 	}
-	second, err := cache.store("example/two/aws", "1.0.0", write("two", 80), "")
+	second, err := previous.store("example/two/aws", "1.0.0", write("two", 80), "")
 	if err != nil {
 		t.Fatalf("store two: %v", err)
 	}
 	older := time.Now().Add(-time.Hour)
 	if err := os.Chtimes(second, older, older); err != nil {
+		t.Fatal(err)
+	}
+
+	cache, err := NewModuleCacheWithDir(dir, 150)
+	if err != nil {
 		t.Fatal(err)
 	}
 	third, err := cache.store("example/three/aws", "1.0.0", write("three", 80), "")
@@ -250,5 +257,102 @@ func TestModuleCacheHitsDoNotEvictSiblings(t *testing.T) {
 	}
 	if _, err := os.Stat(second); err != nil {
 		t.Fatalf("sibling evicted on cache hit: %v", err)
+	}
+}
+
+func TestModuleCacheDoesNotEvictInUseEntries(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, size int) string {
+		t.Helper()
+		src := t.TempDir()
+		if err := os.WriteFile(filepath.Join(src, name+".tf"), []byte(strings.Repeat("a", size)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return src
+	}
+
+	previous, err := NewModuleCacheWithDir(dir, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := previous.store("example/stale/aws", "1.0.0", write("stale", 80), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(stale, time.Now().Add(-2*time.Hour), time.Now().Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	cache, err := NewModuleCacheWithDir(dir, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := cache.store("example/live/aws", "1.0.0", write("live", 80), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cache.lookup("example/live/aws", "1.0.0"); !ok {
+		t.Fatal("expected live cache hit")
+	}
+	if _, err := cache.store("example/newer/aws", "1.0.0", write("newer", 80), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("unused previous-scan entry should have been evicted, stat: %v", err)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Fatalf("in-use cache entry was evicted: %v", err)
+	}
+}
+
+func TestModuleCacheRejectsEntryLargerThanLimit(t *testing.T) {
+	cache, err := NewModuleCacheWithDir(t.TempDir(), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "main.tf"), []byte(strings.Repeat("a", 80)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cache.store("example/huge/aws", "1.0.0", src, ""); !errors.Is(err, errCacheEntryTooLarge) {
+		t.Fatalf("store oversized package: %v", err)
+	}
+	entries, err := os.ReadDir(cache.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			t.Fatalf("oversized package was published as %s", entry.Name())
+		}
+	}
+}
+
+func TestEvictUnretainedDirsSkipsRetained(t *testing.T) {
+	root := t.TempDir()
+	writeDir := func(name string, size int, age time.Duration) string {
+		t.Helper()
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "blob"), []byte(strings.Repeat("a", size)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		when := time.Now().Add(-age)
+		if err := os.Chtimes(dir, when, when); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	stale := writeDir("stale", 80, 2*time.Hour)
+	live := writeDir("live", 80, time.Hour)
+	evictUnretainedDirs(root, 100, map[string]bool{filepath.Clean(live): true})
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("unretained dir should have been evicted, stat: %v", err)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Fatalf("retained dir was evicted: %v", err)
 	}
 }
