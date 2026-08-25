@@ -1209,3 +1209,22 @@ func TestGetIgnoreLines_scalarReferenceWithIgnoreBlock(t *testing.T) {
 	require.ElementsMatch(t, []int{1, 2}, got)
 }
 
+func TestGetIgnoreLines_anchorCycle(t *testing.T) {
+	original := `cycle: &cycle
+  self: *cycle
+include:
+  - included.yaml
+services:
+  foo:
+    # dd-iac-scan ignore-line
+    ports:
+      - "1111:1111"
+`
+	got := GetIgnoreLines(&FileMetadata{
+		FilePath:     "docker-compose.yaml",
+		OriginalData: original,
+		LinesIgnore:  []int{99},
+	})
+	require.Equal(t, []int{7, 8}, got)
+}
+

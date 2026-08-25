@@ -91,7 +91,7 @@ func GetIgnoreLines(file *FileMetadata) []int {
 		if err := dec.Decode(&node); err != nil {
 			break
 		}
-		walkIgnoreCommentsYAML(&node, ignore)
+		walkIgnoreCommentsYAML(&node, ignore, make(map[*yaml.Node]bool))
 		found = true
 	}
 	if found {
@@ -100,19 +100,25 @@ func GetIgnoreLines(file *FileMetadata) []int {
 	return ignoreLines
 }
 
-func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore) {
+func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore, visited map[*yaml.Node]bool) {
 	if node == nil {
 		return
 	}
+	if visited[node] {
+		return
+	}
+	visited[node] = true
+	defer delete(visited, node)
+
 	ignore.ignoreCommentsYAML(node)
 	switch node.Kind {
 	case yaml.DocumentNode, yaml.MappingNode, yaml.SequenceNode:
 		for _, child := range node.Content {
-			walkIgnoreCommentsYAML(child, ignore)
+			walkIgnoreCommentsYAML(child, ignore, visited)
 		}
 	case yaml.AliasNode:
 		if node.Alias != nil {
-			walkIgnoreCommentsYAML(node.Alias, ignore)
+			walkIgnoreCommentsYAML(node.Alias, ignore, visited)
 		}
 	}
 }
