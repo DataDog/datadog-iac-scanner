@@ -58,9 +58,16 @@ var HostFetchConcurrency = hostFetchConcurrencyFromEnv()
 
 func hostFetchConcurrencyFromEnv() int {
 	if v := os.Getenv("IAC_MODULE_HOST_FETCH_CONCURRENCY"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n
 		}
+	}
+	return defaultHostFetchConcurrency
+}
+
+func hostFetchLimit() int {
+	if HostFetchConcurrency > 0 {
+		return HostFetchConcurrency
 	}
 	return defaultHostFetchConcurrency
 }
@@ -263,20 +270,22 @@ func (r *GoGetterResolver) lookupCache(
 	if !useCache {
 		return Resolution{}, false, nil
 	}
-	packageRoot, ok := r.cfg.Cache.lookup(mod.Source, cacheVersion)
+	packageRoot, release, ok := r.cfg.Cache.lookupLease(mod.Source, cacheVersion)
 	if !ok {
 		return Resolution{}, false, nil
 	}
 	if ResourceBudgetFromContext(ctx) == nil {
 		if err := r.reserveDirBytes(ctx, packageRoot); err != nil {
+			release()
 			return Resolution{}, false, err
 		}
 	}
 	resolution, err := resolutionForPackage(ctx, packageRoot, selectedSubdir)
 	if err != nil {
+		release()
 		return Resolution{}, false, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 	}
-	return resolution, true, nil
+	return withResolutionCleanup(resolution, release), true, nil
 }
 
 func (r *GoGetterResolver) checkByteLimits(size int64) error {
@@ -331,10 +340,11 @@ func (r *GoGetterResolver) releaseFetchSlot() {
 }
 
 func (r *GoGetterResolver) acquireHostSlot(ctx context.Context, host string) (func(), error) {
-	if HostFetchConcurrency <= 0 || host == "" {
+	if host == "" {
 		return func() {}, nil
 	}
-	v, _ := r.cfg.hostSems.LoadOrStore(host, make(chan struct{}, HostFetchConcurrency))
+	limit := hostFetchLimit()
+	v, _ := r.cfg.hostSems.LoadOrStore(host, make(chan struct{}, limit))
 	sem := v.(chan struct{})
 	select {
 	case sem <- struct{}{}:
@@ -360,16 +370,17 @@ func (r *GoGetterResolver) commitFetchedDir(
 		}
 	}
 	if useCache {
-		if cached, storeErr := r.cfg.Cache.store(source, version, tmpDir, selectedSubdir); storeErr == nil {
+		if cached, release, storeErr := r.cfg.Cache.store(source, version, tmpDir, selectedSubdir); storeErr == nil {
 			_ = os.RemoveAll(tmpDir)
 			if ResourceBudgetFromContext(ctx) == nil {
 				r.cfg.accountedDirs.Store(filepath.Clean(cached), struct{}{})
 			}
 			resolution, err := resolutionForPackage(ctx, cached, selectedSubdir)
 			if err != nil {
+				release()
 				return Resolution{}, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 			}
-			return resolution, nil
+			return withResolutionCleanup(resolution, release), nil
 		}
 	}
 	cleanup := func() { _ = os.RemoveAll(tmpDir) }
@@ -541,7 +552,7 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 		DisableSymlinks: true,
 		Decompressors:   r.decompressors(fetchCtx),
 		Options: []getter.ClientOption{
-			getter.WithGetters(r.getters(getterSrc)),
+			getter.WithGetters(r.getters(fetchCtx, getterSrc)),
 		},
 	}
 	if err := client.Get(); err != nil {
@@ -555,15 +566,16 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 	return tmpDir, nil
 }
 
-func (r *GoGetterResolver) getters(source string) map[string]getter.Getter {
+func (r *GoGetterResolver) getters(ctx context.Context, source string) map[string]getter.Getter {
 	getters := make(map[string]getter.Getter)
 	if !isHTTPGetterSource(source) {
-		getters["file"] = getter.Getters["file"]
+		getters["file"] = &getter.FileGetter{}
 	}
 	httpGetter := &getter.HttpGetter{
 		Netrc:              true,
 		Client:             r.cfg.httpClient,
 		XTerraformGetLimit: maxHTTPRedirects,
+		MaxBytes:           r.maxPackageBytes(ctx),
 	}
 	getters["http"] = httpGetter
 	getters["https"] = httpGetter

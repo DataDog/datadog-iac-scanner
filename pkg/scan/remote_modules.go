@@ -158,17 +158,47 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 	}
 	ggCfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
 
+	cacheBytes := c.ScanParams.MaxModuleCacheBytes
+	if cacheBytes == 0 {
+		cacheBytes = DefaultRemoteModuleMaxCacheBytes
+	}
+
+	var (
+		cacheRoot string
+		budget    *tfresolver.ModuleCacheBudget
+	)
+	if !ggCfg.Disabled {
+		cacheRoot = strings.TrimSpace(c.ScanParams.RemoteModulesCacheDir)
+		if cacheRoot == "" {
+			var rootErr error
+			cacheRoot, rootErr = tfresolver.DefaultModuleCacheRoot()
+			if rootErr != nil {
+				contextLogger.Warn().Err(rootErr).Msg("Remote module cache root unavailable; cache limits will not be enforced")
+			}
+		}
+		if cacheRoot != "" {
+			var budgetErr error
+			budget, budgetErr = tfresolver.NewModuleCacheBudget(cacheRoot, cacheBytes)
+			if budgetErr != nil {
+				contextLogger.Warn().Err(budgetErr).Msg("Remote module cache budget unavailable; cache limits will not be enforced")
+			}
+		}
+	}
+
 	if c.ScanParams.EnableRemoteModules {
-		git := tfresolver.NewBareGitResolver("", c.ScanParams.RemoteModulesHostAllowlist...)
+		gitCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirGitBare)
+		localCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirGitLocal)
+		git := tfresolver.NewBareGitResolver(gitCacheDir, c.ScanParams.RemoteModulesHostAllowlist...)
+		git.Budget = budget
 		ggCfg.Git = git
-		resolvers = append(resolvers,
-			tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), ""),
-			git,
-		)
+		localGit := tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), localCacheDir)
+		localGit.Budget = budget
+		resolvers = append(resolvers, localGit, git)
 	}
 
 	if !ggCfg.Disabled {
-		cache, err := tfresolver.NewModuleCache()
+		moduleCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirModules)
+		cache, err := tfresolver.NewModuleCacheWithDir(moduleCacheDir, budget)
 		if err != nil {
 			contextLogger.Warn().Err(err).Msg("Module disk cache unavailable; fetched modules will not be cached")
 		} else {

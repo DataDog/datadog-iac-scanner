@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -140,9 +141,9 @@ func TestGoGetterUsesGraphResourceLimits(t *testing.T) {
 		MaxPackageFiles: 7,
 	}))
 
-	httpGetter, ok := resolver.getters("https://example.com/module.zip")["https"].(*getter.HttpGetter)
+	httpGetter, ok := resolver.getters(ctx, "https://example.com/module.zip")["https"].(*getter.HttpGetter)
 	require.True(t, ok)
-	require.Zero(t, httpGetter.MaxBytes)
+	require.Equal(t, int64(1234), httpGetter.MaxBytes)
 	require.Equal(t, int64(1234), resolver.maxPackageBytes(ctx))
 
 	decompressors := resolver.decompressors(ctx)
@@ -157,7 +158,7 @@ func TestGoGetterUsesGraphResourceLimits(t *testing.T) {
 func TestGoGetterDisablesUnpinnedNetworkTransports(t *testing.T) {
 	r := NewGoGetterResolver(NewGoGetterConfig())
 	for _, scheme := range []string{"s3", "gcs", "hg"} {
-		if _, ok := r.getters(scheme + "::https://modules.example/package")[scheme]; ok {
+		if _, ok := r.getters(t.Context(), scheme+"::https://modules.example/package")[scheme]; ok {
 			t.Fatalf("getter %q must be disabled", scheme)
 		}
 	}
@@ -263,13 +264,83 @@ func TestAcquireHostSlotCapsConcurrencyPerHost(t *testing.T) {
 	measure("github.com", 3)
 	measure("gitlab.com", 3)
 
-	// Disabled cap is a no-op.
 	HostFetchConcurrency = 0
-	release, err := r.acquireHostSlot(context.Background(), "github.com")
+	var inFlight, maxInFlight atomic.Int64
+	var wg sync.WaitGroup
+	for i := 0; i < 40; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			release, err := r.acquireHostSlot(context.Background(), "example.com")
+			if err != nil {
+				t.Errorf("acquireHostSlot: %v", err)
+				return
+			}
+			defer release()
+			n := inFlight.Add(1)
+			for {
+				m := maxInFlight.Load()
+				if n <= m || maxInFlight.CompareAndSwap(m, n) {
+					break
+				}
+			}
+			time.Sleep(time.Millisecond)
+			inFlight.Add(-1)
+		}()
+	}
+	wg.Wait()
+	if got := maxInFlight.Load(); got > int64(defaultHostFetchConcurrency) {
+		t.Fatalf("zero host concurrency must fall back to default cap %d, got %d", defaultHostFetchConcurrency, got)
+	}
+}
+
+func TestCachedResolutionKeepsLeaseUntilCleanup(t *testing.T) {
+	cache, budget := newTestModuleCache(t, 150)
+	source := "example/live/aws"
+	packageRoot, release, err := cache.store(source, "1.0.0", writeModuleSrc(t, 5), "")
 	if err != nil {
-		t.Fatalf("disabled cap should not error: %v", err)
+		t.Fatal(err)
 	}
 	release()
+
+	cfg := NewGoGetterConfig()
+	cfg.Cache = cache
+	resolver := NewGoGetterResolver(cfg)
+	resolution, ok, err := resolver.lookupCache(
+		t.Context(),
+		&tfmodules.ParsedModule{Source: source},
+		"1.0.0",
+		"",
+		true,
+	)
+	if err != nil || !ok {
+		t.Fatalf("lookup cache: ok=%v err=%v", ok, err)
+	}
+	if resolution.Cleanup == nil {
+		t.Fatal("cached resolution did not retain its lease")
+	}
+
+	_, newerRelease, err := cache.store("example/newer/aws", "1.0.0", writeModuleSrc(t, 5), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newerRelease()
+	if _, err := os.Stat(packageRoot); err != nil {
+		t.Fatalf("active resolution was evicted before cleanup: %v", err)
+	}
+
+	resolution.Cleanup()
+	_, finalRelease, err := cache.store("example/final/aws", "1.0.0", writeModuleSrc(t, 5), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalRelease()
+	if _, err := os.Stat(packageRoot); !os.IsNotExist(err) {
+		t.Fatalf("released resolution remained protected from eviction: %v", err)
+	}
+	if _, total := listAggregateCacheEntries(budget.Root()); total > budget.MaxBytes() {
+		t.Fatalf("cache size %d exceeds max %d", total, budget.MaxBytes())
+	}
 }
 
 func TestGoGetterResolveCoalescesConcurrentFetches(t *testing.T) {
@@ -380,5 +451,81 @@ func TestFetchAndCommitDelegatesPinnableGit(t *testing.T) {
 	}
 	if stub.last.Source != "git::https://github.com/terraform-aws-modules/terraform-aws-vpc//modules/vpc?ref=abc123" {
 		t.Fatalf("delegated source = %q", stub.last.Source)
+	}
+}
+
+func TestGoGetterUsesIsolatedGetterInstances(t *testing.T) {
+	r := NewGoGetterResolver(NewGoGetterConfig())
+	first := r.getters(t.Context(), "file:///tmp/module-a")
+	second := r.getters(t.Context(), "file:///tmp/module-b")
+	if first["file"] == getter.Getters["file"] || second["file"] == getter.Getters["file"] {
+		t.Fatal("file getter must not reuse go-getter package globals")
+	}
+	if first["file"] == second["file"] {
+		t.Fatal("each fetch must receive its own file getter")
+	}
+	if first["https"] == second["https"] {
+		t.Fatal("each fetch must receive its own HTTP getter")
+	}
+}
+
+func TestGoGetterResolveRaceWith32ConcurrentFetches(t *testing.T) {
+	var moduleArchive bytes.Buffer
+	zipWriter := zip.NewWriter(&moduleArchive)
+	file, err := zipWriter.Create("main.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write([]byte(`resource "r" "n" {}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(moduleArchive.Bytes())
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	}
+	policy.dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}
+
+	cfg := NewGoGetterConfig()
+	cfg.TmpDir = t.TempDir()
+	cfg.httpClient = newPolicyHTTPClientWithPolicy(time.Second, policy)
+	r := NewGoGetterResolver(cfg)
+
+	const n = 32
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mod := &tfmodules.ParsedModule{
+				Source:   fmt.Sprintf("http://modules.example:%s/module-%d.zip", port, i),
+				Name:     fmt.Sprintf("m%d", i),
+				FileName: "main.tf",
+			}
+			_, errs[i] = r.Resolve(context.Background(), mod)
+		}()
+	}
+	wg.Wait()
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Fatalf("resolve %d failed: %v", i, errs[i])
+		}
+	}
+	if got := cfg.fetchCount.Load(); got != int64(n) {
+		t.Fatalf("expected %d independent fetches, got %d", n, got)
 	}
 }

@@ -25,6 +25,7 @@ type LocalGitRefResolver struct {
 
 	// Defaults to <user-cache-dir>/datadog-iac-scanner/git-local.
 	CacheDir string
+	Budget   *ModuleCacheBudget
 
 	initOnce sync.Once
 	repos    []*localRepoInfo // scan roots that are git repos
@@ -229,16 +230,28 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 	// Warm-cache fast path for pinned SHA refs.
 	if looksLikeSHA(ref) {
 		if packageRoot, ok := cachedArchiveDir(info.extractBase, ref, subdir); ok {
-			return ConfineResolution(ctx, Resolution{
+			release := r.Budget.Lease(info.extractBase)
+			if err := r.Budget.EnsureEntryFits(info.extractBase); err != nil {
+				release()
+				return Resolution{}, unresolvedResourceError(err)
+			}
+			resolution, err := ConfineResolution(ctx, Resolution{
 				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 				PackageRoot: packageRoot,
 			})
+			if err != nil {
+				release()
+				return Resolution{}, err
+			}
+			return withResolutionCleanup(resolution, release), nil
 		}
 	}
 
 	contextLogger := logger.FromContext(ctx)
+	release := r.Budget.Lease(info.extractBase)
 	sha, present := resolveLocalRef(ctx, info, ref)
 	if !present {
+		release()
 		contextLogger.Debug().Msgf("LocalGitRefResolver: ref %q not in local clone %s (shallow checkout?)", ref, info.gitDir)
 		return Resolution{}, &tfmodules.UnresolvedError{
 			Reason: fmt.Sprintf("LocalGitRefResolver: ref %q not present locally", ref),
@@ -253,13 +266,26 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 		)
 	})
 	if err != nil {
+		release()
 		contextLogger.Warn().Err(err).Msgf("LocalGitRefResolver: archive %s:%s failed", sha, subdir)
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
+	if r.Budget != nil {
+		if err := r.Budget.EnsureEntryFits(info.extractBase); err != nil {
+			release()
+			return Resolution{}, unresolvedResourceError(err)
+		}
+		r.Budget.Admit(info.extractBase)
+	}
 	packageRoot := archiveCacheDir(info.extractBase, sha)
-	return ConfineResolution(ctx, Resolution{
+	resolution, err := ConfineResolution(ctx, Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
 	})
+	if err != nil {
+		release()
+		return Resolution{}, err
+	}
+	return withResolutionCleanup(resolution, release), nil
 }

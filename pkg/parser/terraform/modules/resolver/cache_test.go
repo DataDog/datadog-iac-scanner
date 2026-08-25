@@ -6,11 +6,14 @@
 package resolver
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func writeModuleSrc(t *testing.T, nFiles int) string {
@@ -55,8 +58,10 @@ func TestModuleCacheConcurrentStoreLookupNeverPartial(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := c.store(source, version, src, ""); err != nil {
+			if _, release, err := c.store(source, version, src, ""); err != nil {
 				errCh <- fmt.Errorf("store: %w", err)
+			} else {
+				release()
 			}
 		}()
 		wg.Add(1)
@@ -106,7 +111,8 @@ func TestModuleCacheSkipsSymlinks(t *testing.T) {
 	}
 
 	cache := &moduleCache{dir: t.TempDir()}
-	dir, err := cache.store("example/module/aws", "1.0.0", src, "modules/selected")
+	dir, release, err := cache.store("example/module/aws", "1.0.0", src, "modules/selected")
+	release()
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
@@ -136,15 +142,222 @@ func TestModuleCacheSharesPackageAcrossSubdirs(t *testing.T) {
 	vpcSource := "git::https://github.com/acme/modules.git//modules/vpc?ref=abc"
 	ec2Source := "git::https://github.com/acme/modules.git//modules/ec2?ref=abc"
 
-	vpcDir, err := cache.store(vpcSource, version, src, "modules/vpc")
+	vpcDir, vpcRelease, err := cache.store(vpcSource, version, src, "modules/vpc")
+	vpcRelease()
 	if err != nil {
 		t.Fatalf("store vpc: %v", err)
 	}
-	ec2Dir, err := cache.store(ec2Source, version, src, "modules/ec2")
+	ec2Dir, ec2Release, err := cache.store(ec2Source, version, src, "modules/ec2")
+	ec2Release()
 	if err != nil {
 		t.Fatalf("store ec2: %v", err)
 	}
 	if vpcDir != ec2Dir {
 		t.Fatalf("expected one shared package cache dir, got %q and %q", vpcDir, ec2Dir)
+	}
+}
+
+func TestModuleCacheKeyAliasesEquivalentSources(t *testing.T) {
+	registryA := moduleCacheKey("terraform-aws-modules/vpc/aws", "1.0.0")
+	registryB := moduleCacheKey("registry.terraform.io/terraform-aws-modules/vpc/aws", "1.0.0")
+	if registryA != registryB {
+		t.Fatalf("registry prefix aliases must share a cache key")
+	}
+	if moduleCacheKey("terraform-aws-modules/vpc/aws", "2.0.0") == registryA {
+		t.Fatal("different versions must not share a cache key")
+	}
+
+	gitA := moduleCacheKey("git::https://github.com/org/repo.git?ref=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "")
+	gitB := moduleCacheKey("git::https://github.com/org/repo?ref=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "")
+	if gitA != gitB {
+		t.Fatalf("git .git suffix aliases must share a cache key")
+	}
+	gitOther := moduleCacheKey("git::https://github.com/org/repo.git?ref=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "")
+	if gitA == gitOther {
+		t.Fatal("different git refs must not share a cache key")
+	}
+}
+
+func newTestModuleCache(t *testing.T, maxBytes int64) (*moduleCache, *ModuleCacheBudget) {
+	t.Helper()
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, maxBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache, err := NewModuleCacheWithDir(filepath.Join(root, CacheSubdirModules), budget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cache, budget
+}
+
+func TestModuleCacheEvictsOldestEntries(t *testing.T) {
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modulesDir := filepath.Join(root, CacheSubdirModules)
+	previous, err := NewModuleCacheWithDir(modulesDir, budget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string, size int) string {
+		t.Helper()
+		src := t.TempDir()
+		payload := strings.Repeat("a", size)
+		if err := os.WriteFile(filepath.Join(src, name+".tf"), []byte(payload), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return src
+	}
+
+	first, firstRelease, err := previous.store("example/one/aws", "1.0.0", write("one", 80), "")
+	firstRelease()
+	if err != nil {
+		t.Fatalf("store one: %v", err)
+	}
+	past := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(first, past, past); err != nil {
+		t.Fatal(err)
+	}
+	second, secondRelease, err := previous.store("example/two/aws", "1.0.0", write("two", 80), "")
+	secondRelease()
+	if err != nil {
+		t.Fatalf("store two: %v", err)
+	}
+	older := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(second, older, older); err != nil {
+		t.Fatal(err)
+	}
+
+	cache, err := NewModuleCacheWithDir(modulesDir, budget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, thirdRelease, err := cache.store("example/three/aws", "1.0.0", write("three", 80), "")
+	thirdRelease()
+	if err != nil {
+		t.Fatalf("store three: %v", err)
+	}
+
+	if _, err := os.Stat(first); !os.IsNotExist(err) {
+		t.Fatalf("oldest cache entry should have been evicted, stat: %v", err)
+	}
+	if _, err := os.Stat(second); !os.IsNotExist(err) {
+		t.Fatalf("second cache entry should have been evicted, stat: %v", err)
+	}
+	if _, err := os.Stat(third); err != nil {
+		t.Fatalf("kept cache entry missing: %v", err)
+	}
+	if _, total := listCacheEntries(cache.dir); total > budget.MaxBytes() {
+		t.Fatalf("cache size %d exceeds max %d", total, budget.MaxBytes())
+	}
+}
+
+func TestModuleCacheHitsDoNotEvictSiblings(t *testing.T) {
+	cache, _ := newTestModuleCache(t, 10*1024)
+	src := writeModuleSrc(t, 2)
+	first, firstRelease, err := cache.store("example/one/aws", "1.0.0", src, "")
+	firstRelease()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, secondRelease, err := cache.store("example/two/aws", "1.0.0", src, "")
+	secondRelease()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		got, release, storeErr := cache.store("example/one/aws", "1.0.0", src, "")
+		release()
+		if storeErr != nil {
+			t.Fatal(storeErr)
+		}
+		if got != first {
+			t.Fatalf("hit returned %q, want %q", got, first)
+		}
+	}
+	if _, err := os.Stat(first); err != nil {
+		t.Fatalf("cached module missing after hits: %v", err)
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatalf("sibling evicted on cache hit: %v", err)
+	}
+}
+
+func TestModuleCacheDoesNotEvictPinnedEntries(t *testing.T) {
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modulesDir := filepath.Join(root, CacheSubdirModules)
+	write := func(name string, size int) string {
+		t.Helper()
+		src := t.TempDir()
+		if err := os.WriteFile(filepath.Join(src, name+".tf"), []byte(strings.Repeat("a", size)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return src
+	}
+
+	previous, err := NewModuleCacheWithDir(modulesDir, budget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, staleRelease, err := previous.store("example/stale/aws", "1.0.0", write("stale", 80), "")
+	staleRelease()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(stale, time.Now().Add(-2*time.Hour), time.Now().Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	cache, err := NewModuleCacheWithDir(modulesDir, budget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, liveRelease, err := cache.store("example/live/aws", "1.0.0", write("live", 80), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer liveRelease()
+	_, newerRelease, storeErr := cache.store("example/newer/aws", "1.0.0", write("newer", 80), "")
+	newerRelease()
+	if storeErr != nil {
+		t.Fatal(storeErr)
+	}
+	if _, statErr := os.Stat(live); statErr != nil {
+		t.Fatalf("pinned cache entry was evicted: %v", statErr)
+	}
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("unused previous-scan entry should have been evicted, stat: %v", err)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Fatalf("pinned cache entry was evicted: %v", err)
+	}
+}
+
+func TestModuleCacheRejectsEntryLargerThanLimit(t *testing.T) {
+	cache, _ := newTestModuleCache(t, 50)
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "main.tf"), []byte(strings.Repeat("a", 80)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := cache.store("example/huge/aws", "1.0.0", src, ""); !errors.Is(err, errCacheEntryTooLarge) {
+		t.Fatalf("store oversized package: %v", err)
+	}
+	entries, err := os.ReadDir(cache.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			t.Fatalf("oversized package was published as %s", entry.Name())
+		}
 	}
 }

@@ -9,6 +9,7 @@ package resolver
 
 import (
 	"context"
+	"sync"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
@@ -18,6 +19,22 @@ type Resolution struct {
 	LocalPath   string
 	PackageRoot string
 	Cleanup     func() // optional post-scan cleanup
+}
+
+func withResolutionCleanup(res Resolution, cleanup func()) Resolution {
+	previous := res.Cleanup
+	var once sync.Once
+	res.Cleanup = func() {
+		once.Do(func() {
+			if previous != nil {
+				previous()
+			}
+			if cleanup != nil {
+				cleanup()
+			}
+		})
+	}
+	return res
 }
 
 // Resolver maps one module call to disk; errors should wrap *tfmodules.UnresolvedError when appropriate.

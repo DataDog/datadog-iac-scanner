@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
 func runGit(t *testing.T, dir string, args ...string) string {
@@ -75,6 +77,36 @@ func TestResolveLocalRefSHAAndMissing(t *testing.T) {
 	}
 	if _, ok := resolveLocalRef(context.Background(), info, "does-not-exist"); ok {
 		t.Fatal("expected missing ref to be unresolved")
+	}
+}
+
+func TestLocalGitResolverRejectsAndRemovesOversizedCacheEntry(t *testing.T) {
+	workTree, gitDir := initRepoWithRefs(t)
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repoURL := "https://example.com/acme/repo.git"
+	extractBase := filepath.Join(root, CacheSubdirGitLocal, "repo")
+	resolver := NewLocalGitRefResolver(nil, filepath.Join(root, CacheSubdirGitLocal))
+	resolver.Budget = budget
+	resolver.repos = []*localRepoInfo{{
+		gitDir:      gitDir,
+		normalURLs:  map[string]bool{normalizeGitRepoURL(repoURL): true},
+		extractBase: extractBase,
+		refSHA:      loadRefMap(t.Context(), gitDir),
+	}}
+
+	sha := runGit(t, workTree, "rev-parse", "HEAD")
+	_, err = resolver.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: "git::" + repoURL + "?ref=" + sha,
+	})
+	if !tfmodules.IsUnresolved(err) || !strings.Contains(err.Error(), errCacheEntryTooLarge.Error()) {
+		t.Fatalf("resolving oversized local git module: %v", err)
+	}
+	if _, err := os.Stat(extractBase); !os.IsNotExist(err) {
+		t.Fatalf("oversized local git cache entry remained on disk: %v", err)
 	}
 }
 

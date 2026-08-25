@@ -754,3 +754,37 @@ func TestShedToTotalLimitBreaksTiesDeterministically(t *testing.T) {
 		require.Equal(t, snapshot.budgetEvents, other.budgetEvents)
 	}
 }
+
+func TestParseModulesInDirDoesNotCacheCanceledParse(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+module "child" {
+  source = "./child"
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := &walker{
+		parseCache: moduleParseCache{entries: make(map[string]map[string]tfmodules.ParsedModule)},
+		parseSem:   make(chan struct{}, 1),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if mods := w.parseModulesInDir(ctx, dir, nil, dir); len(mods) != 0 {
+		t.Fatalf("canceled parse returned %d modules", len(mods))
+	}
+	if _, ok := w.parseCache.get(filepath.Clean(dir) + "\x00" + filepath.Clean(dir) + "\x00all"); ok {
+		t.Fatal("canceled parse must not be cached")
+	}
+	mods := w.parseModulesInDir(context.Background(), dir, nil, dir)
+	found := false
+	for _, mod := range mods {
+		if mod.Name == "child" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("live parse missing child module: %#v", mods)
+	}
+}

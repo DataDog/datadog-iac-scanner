@@ -9,10 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -490,4 +492,71 @@ func writeModulesJSONRecords(t *testing.T, records []dotTerraformModuleRecord) s
 		t.Fatalf("write modules.json: %v", err)
 	}
 	return root
+}
+
+func TestRegistryDiscoveryFailureBackoffExpires(t *testing.T) {
+	var calls atomic.Int64
+	now := time.Now()
+	cache := NewRegistryCache(time.Second)
+	cache.now = func() time.Time { return now }
+	cache.backoff = time.Second
+	cache.client = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return nil, &net.DNSError{Err: "no such host", Name: "registry.example", IsNotFound: true}
+		}),
+	}
+
+	if _, err := cache.modulesV1(context.Background(), "registry.example"); err == nil {
+		t.Fatal("expected discovery failure")
+	}
+	if _, err := cache.modulesV1(context.Background(), "registry.example"); err == nil {
+		t.Fatal("expected cached discovery failure")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("cached DNS failure retried immediately: %d calls", got)
+	}
+	now = now.Add(2 * time.Second)
+	if _, err := cache.modulesV1(context.Background(), "registry.example"); err == nil {
+		t.Fatal("expected retry to fail")
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("expired DNS failure was not retried: %d calls", got)
+	}
+}
+
+func TestRegistryDiscoveryDoesNotCacheCanceledContext(t *testing.T) {
+	var calls atomic.Int64
+	cache := NewRegistryCache(time.Second)
+	cache.client = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return nil, context.Canceled
+		}),
+	}
+	if _, err := cache.modulesV1(context.Background(), "registry.example"); err == nil {
+		t.Fatal("expected canceled discovery")
+	}
+	if _, err := cache.modulesV1(context.Background(), "registry.example"); err == nil {
+		t.Fatal("expected second canceled discovery")
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("canceled discovery must not be cached, calls=%d", got)
+	}
+}
+
+func TestRegistryCacheDoesNotWriteDeadHostFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", home)
+	cache := NewRegistryCache(time.Second)
+	cache.client = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, &net.DNSError{Err: "no such host", Name: "registry.example", IsNotFound: true}
+		}),
+	}
+	_, _ = cache.modulesV1(context.Background(), "registry.example")
+	path := filepath.Join(home, "datadog-iac-scanner", "dead-registry-hosts.json")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("dead-host file should not exist, stat: %v", err)
+	}
 }

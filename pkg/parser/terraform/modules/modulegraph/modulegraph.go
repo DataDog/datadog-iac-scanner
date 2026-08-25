@@ -132,6 +132,7 @@ type walker struct {
 	results          resultCollector
 	parseCache       moduleParseCache
 	pending          pendingTraversalCollector
+	parseSem         chan struct{}
 	sf               singleflight.Group
 	measureSF        singleflight.Group
 	resolver         resolver.Resolver
@@ -173,6 +174,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 		pending: pendingTraversalCollector{
 			entries: make(map[string]pendingTraversal),
 		},
+		parseSem:         make(chan struct{}, max(1, runtime.GOMAXPROCS(0))),
 		resolver:         request.Resolver,
 		budget:           budget,
 		measurePackages:  request.ResourceLimits.Enabled() || request.TotalParseBytes > 0,
@@ -305,20 +307,34 @@ func (w *walker) parseModulesInDir(
 	if mods, ok := w.parseCache.get(key); ok {
 		return mods
 	}
-
-	var mods map[string]tfmodules.ParsedModule
-	files, err := tfmodules.LoadTFFilesFromDir(dir, packageRoot)
-	if err == nil && len(files) > 0 {
-		withParseSlot(ctx, func() {
-			parsed, parseErr := tfmodules.ParseTerraformModulesFromFiles(ctx, w.fsys, files, allowedFiles)
-			if parseErr == nil {
-				mods = parsed
-			}
-		})
+	if err := ctx.Err(); err != nil {
+		return nil
 	}
 
-	w.parseCache.set(key, mods)
-	return mods
+	files, err := tfmodules.LoadTFFilesFromDir(dir, packageRoot)
+	if err != nil {
+		return nil
+	}
+	if len(files) == 0 {
+		empty := map[string]tfmodules.ParsedModule{}
+		w.parseCache.set(key, empty)
+		return empty
+	}
+
+	var parsed map[string]tfmodules.ParsedModule
+	parseErr := w.withParseSlot(ctx, func() error {
+		var slotErr error
+		parsed, slotErr = tfmodules.ParseTerraformModulesFromFiles(ctx, w.fsys, files, allowedFiles)
+		return slotErr
+	})
+	if parseErr != nil || ctx.Err() != nil {
+		return nil
+	}
+	if parsed == nil {
+		parsed = map[string]tfmodules.ParsedModule{}
+	}
+	w.parseCache.set(key, parsed)
+	return parsed
 }
 
 func allowedFilesCacheKey(allowed map[string]bool) string {
@@ -485,7 +501,9 @@ func (w *walker) resolveRemote(
 		if resolveErr == nil {
 			resolveErr = w.accountPackage(ctx, mod.Source, resolution)
 		}
-		w.resolutions.set(resolveID, resolvedEntry{res: resolution, err: resolveErr})
+		if ctx.Err() == nil {
+			w.resolutions.set(resolveID, resolvedEntry{res: resolution, err: resolveErr})
+		}
 		return resolution, resolveErr
 	})
 	if err != nil {
@@ -535,14 +553,13 @@ func (w *walker) measurePackage(ctx context.Context, root string) error {
 	return err
 }
 
-var parseSem = make(chan struct{}, max(1, runtime.GOMAXPROCS(0)))
-
-func withParseSlot(ctx context.Context, fn func()) {
+func (w *walker) withParseSlot(ctx context.Context, fn func() error) error {
 	select {
-	case parseSem <- struct{}{}:
-		defer func() { <-parseSem }()
-		fn()
+	case w.parseSem <- struct{}{}:
+		defer func() { <-w.parseSem }()
+		return fn()
 	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -847,11 +864,11 @@ func (w *walker) traverseRemoteModuleGroup(
 	for _, mod := range group.callers {
 		w.results.addResolvedModule(mod, resolution, group.parentPackageRoot, depth+1)
 	}
-	if !w.visited.tryAdd(resolution.LocalPath, resolution.PackageRoot) {
-		return
-	}
 	if resolution.Cleanup != nil {
 		w.results.addCleanup(resolution.Cleanup)
+	}
+	if !w.visited.tryAdd(resolution.LocalPath, resolution.PackageRoot) {
+		return
 	}
 	w.results.addPaths(flatTerraformFilePaths(ctx, resolution.LocalPath, resolution.PackageRoot)...)
 	w.results.addSourceMapping(
