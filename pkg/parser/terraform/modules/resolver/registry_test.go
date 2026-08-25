@@ -396,15 +396,14 @@ func TestDotTerraformResolverUnpinnedCallUsesModuleNameWhenPinnedRecordSharesSou
 
 func TestGoGetterCacheHitCountsTotalBytes(t *testing.T) {
 	cacheDir := t.TempDir()
-	err := os.WriteFile(filepath.Join(cacheDir, "main.tf"), []byte("0123456789"), 0o644)
-	if err != nil {
+	if err := os.WriteFile(filepath.Join(cacheDir, "main.tf"), []byte("0123456789"), 0o644); err != nil {
 		t.Fatalf("write cached module: %v", err)
 	}
 	cfg := NewGoGetterConfig()
 	cfg.MaxTotalBytes = 5
 	r := NewGoGetterResolver(cfg)
 
-	err = r.reserveDirBytes(cacheDir)
+	err := r.reserveDirBytes(t.Context(), cacheDir)
 
 	if err == nil || !strings.Contains(err.Error(), "scan-level remote module byte cap exceeded") {
 		t.Fatalf("expected total byte cap error, got %v", err)
@@ -413,18 +412,17 @@ func TestGoGetterCacheHitCountsTotalBytes(t *testing.T) {
 
 func TestGoGetterCacheHitCountsDirectoryOnce(t *testing.T) {
 	cacheDir := t.TempDir()
-	err := os.WriteFile(filepath.Join(cacheDir, "main.tf"), []byte("0123456789"), 0o644)
-	if err != nil {
+	if err := os.WriteFile(filepath.Join(cacheDir, "main.tf"), []byte("0123456789"), 0o644); err != nil {
 		t.Fatalf("write cached module: %v", err)
 	}
 	cfg := NewGoGetterConfig()
 	cfg.MaxTotalBytes = 15
 	r := NewGoGetterResolver(cfg)
 
-	if err := r.reserveDirBytes(cacheDir); err != nil {
+	if err := r.reserveDirBytes(t.Context(), cacheDir); err != nil {
 		t.Fatalf("first reserveDirBytes: %v", err)
 	}
-	if err := r.reserveDirBytes(cacheDir); err != nil {
+	if err := r.reserveDirBytes(t.Context(), cacheDir); err != nil {
 		t.Fatalf("second reserveDirBytes should not double-count: %v", err)
 	}
 }

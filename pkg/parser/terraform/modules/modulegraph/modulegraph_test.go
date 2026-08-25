@@ -2,8 +2,10 @@ package modulegraph
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -11,6 +13,46 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/stretchr/testify/require"
 )
+
+func BenchmarkShedToTotalLimit1000Modules(b *testing.B) {
+	const count = 1000
+	budget := resolver.NewResourceBudget(resolver.ResourceLimits{MaxTotalBytes: count / 2})
+	modules := make([]ResolvedModule, 0, count)
+	paths := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		root := filepath.Join("packages", fmt.Sprintf("%04d", i))
+		parent := ""
+		depth := i%benchmarkDepth + 1
+		if depth > 1 {
+			parent = filepath.Join("packages", fmt.Sprintf("%04d", i-1))
+		}
+		require.NoError(b, budget.AdmitPackage(root, resolver.PackageUsage{Bytes: 1, Files: 1}))
+		modules = append(modules, ResolvedModule{
+			Source:            fmt.Sprintf("example.com/acme/module-%04d/aws", i),
+			CanonicalSource:   fmt.Sprintf("example.com/acme/module-%04d/aws", i),
+			PackageRoot:       root,
+			ParentPackageRoot: parent,
+			Depth:             depth,
+		})
+		paths = append(paths, filepath.Join(root, "main.tf"))
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		snapshot := walkerSnapshot{
+			paths:          paths,
+			modules:        modules,
+			sourceMappings: make(map[string]string),
+		}
+		shedToTotalLimit(&snapshot, budget, count/2, true)
+		if len(snapshot.modules) != count/2 {
+			b.Fatalf("admitted %d modules", len(snapshot.modules))
+		}
+	}
+}
+
+const benchmarkDepth = 8
 
 type stubResolver struct {
 	resolution resolver.Resolution
@@ -36,6 +78,41 @@ func (r mapResolver) Resolve(
 	return res, nil
 }
 
+type errorResolver struct {
+	err error
+}
+
+func (r errorResolver) Resolve(
+	_ context.Context, _ *tfmodules.ParsedModule,
+) (resolver.Resolution, error) {
+	return resolver.Resolution{}, r.err
+}
+
+type trackingResolver struct {
+	mu       sync.Mutex
+	bySource map[string]resolver.Resolution
+	calls    map[string]int
+}
+
+func (r *trackingResolver) Resolve(
+	_ context.Context, mod *tfmodules.ParsedModule,
+) (resolver.Resolution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls[mod.Source]++
+	res, ok := r.bySource[mod.Source]
+	if !ok {
+		return resolver.Resolution{}, &tfmodules.UnresolvedError{Reason: "unknown source " + mod.Source}
+	}
+	return res, nil
+}
+
+func (r *trackingResolver) callCount(source string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls[source]
+}
+
 func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 	root, moduleDir := writeModuleGraphFixture(t)
 
@@ -59,6 +136,7 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 		Name:            "network",
 		LocalPath:       moduleDir,
 		PackageRoot:     moduleDir,
+		Depth:           1,
 		CanonicalSource: "git::https://github.com/acme/network//modules/vpc?ref=v1@1.2.3",
 	}}, result.Modules)
 }
@@ -84,6 +162,83 @@ func TestResolveCleanupIsIdempotent(t *testing.T) {
 	require.Equal(t, int32(1), cleanupCalls.Load())
 }
 
+func TestResolveRejectsOversizedPackageAndReportsBudget(t *testing.T) {
+	root, moduleDir := writeModuleGraphFixture(t)
+	var cleanupCalls atomic.Int32
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath:   moduleDir,
+			PackageRoot: moduleDir,
+			Cleanup: func() {
+				cleanupCalls.Add(1)
+			},
+		}},
+		MaxDepth: 2,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxPackageBytes: 1,
+		},
+	})
+
+	require.Empty(t, result.ScanPaths)
+	require.Empty(t, result.Modules)
+	require.Equal(t, int32(1), cleanupCalls.Load())
+	require.Len(t, result.BudgetEvents, 1)
+	event := result.BudgetEvents[0]
+	require.Equal(t, "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1", event.Source)
+	require.Equal(t, "stream", event.Gate)
+	require.Equal(t, "package_bytes", event.Limit)
+	require.Equal(t, int64(1), event.Maximum)
+	require.Greater(t, event.Measured, int64(1))
+}
+
+func TestResolveAdmitsOnDiskPackageDespitePerFileLimit(t *testing.T) {
+	root, moduleDir := writeModuleGraphFixture(t)
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath:   moduleDir,
+			PackageRoot: moduleDir,
+		}},
+		MaxDepth: 2,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxFileBytes: 1,
+		},
+	})
+
+	require.NotEmpty(t, result.ScanPaths)
+	require.Len(t, result.Modules, 1)
+	require.Empty(t, result.BudgetEvents)
+}
+
+func TestResolveReportsStreamingBudgetFailure(t *testing.T) {
+	root, _ := writeModuleGraphFixture(t)
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: errorResolver{err: &resolver.BudgetExceededError{
+			Gate:     "stream",
+			Limit:    "package_bytes",
+			Maximum:  10,
+			Measured: 11,
+		}},
+		MaxDepth: 2,
+	})
+
+	require.Equal(t, []BudgetEvent{{
+		Source:   "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1",
+		Gate:     "stream",
+		Limit:    "package_bytes",
+		Maximum:  10,
+		Measured: 11,
+	}}, result.BudgetEvents)
+}
+
 func TestResolveTraversesLocalModuleToRemoteModule(t *testing.T) {
 	root, wrapperDir, remoteDir := writeNestedModuleGraphFixture(t)
 
@@ -103,6 +258,267 @@ func TestResolveTraversesLocalModuleToRemoteModule(t *testing.T) {
 	require.Len(t, result.Modules, 1)
 	require.Equal(t, "registry.example.com/acme/network/aws", result.Modules[0].Source)
 	require.Equal(t, wrapperDir, result.Modules[0].CallerRoot)
+}
+
+func TestResolveShedsTransitiveSubtreeBeforeDirectModule(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	direct := filepath.Join(base, "direct")
+	transitive := filepath.Join(base, "transitive")
+	for _, dir := range []string{root, direct, transitive} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "direct" {
+  source = "example.com/acme/direct/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(direct, "main.tf"), []byte(`
+resource "aws_vpc" "direct" {}
+module "transitive" {
+  source = "example.com/acme/transitive/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(transitive, "main.tf"), []byte(`
+resource "aws_vpc" "transitive" {}
+`), 0o600))
+	directUsage, err := resolver.MeasurePackage(t.Context(), direct, resolver.ResourceLimits{})
+	require.NoError(t, err)
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: mapResolver{bySource: map[string]resolver.Resolution{
+			"example.com/acme/direct/aws": {
+				LocalPath: direct,
+			},
+			"example.com/acme/transitive/aws": {
+				LocalPath: transitive,
+			},
+		}},
+		MaxDepth: 3,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxTotalBytes: directUsage.Bytes,
+		},
+	})
+
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, "example.com/acme/direct/aws", result.Modules[0].Source)
+	require.Equal(t, []string{filepath.Join(direct, "main.tf")}, result.ScanPaths)
+	require.Len(t, result.BudgetEvents, 1)
+	require.Equal(t, "example.com/acme/transitive/aws", result.BudgetEvents[0].Source)
+	require.Equal(t, "pre_parse_admission", result.BudgetEvents[0].Gate)
+	require.Equal(t, 1, result.BudgetEvents[0].SheddingRank)
+}
+
+func TestResolveDoesNotTraverseDescendantsOfShedPackage(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	small := filepath.Join(base, "small")
+	large := filepath.Join(base, "large")
+	child := filepath.Join(base, "child")
+	for _, dir := range []string{root, small, large, child} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "small" {
+  source = "example.com/acme/small/aws"
+}
+module "large" {
+  source = "example.com/acme/large/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(small, "main.tf"),
+		[]byte(`resource "aws_vpc" "small" {}`),
+		0o600,
+	))
+	require.NoError(t, os.WriteFile(filepath.Join(large, "main.tf"), []byte(`
+resource "aws_vpc" "large" {
+  tags = { padding = "make this package larger than the admitted sibling" }
+}
+module "child" {
+  source = "example.com/acme/child/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(child, "main.tf"),
+		[]byte(`resource "aws_vpc" "child" {}`),
+		0o600,
+	))
+	smallUsage, err := resolver.MeasurePackage(t.Context(), small, resolver.ResourceLimits{})
+	require.NoError(t, err)
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{
+			"example.com/acme/small/aws": {LocalPath: small},
+			"example.com/acme/large/aws": {LocalPath: large},
+			"example.com/acme/child/aws": {LocalPath: child},
+		},
+		calls: make(map[string]int),
+	}
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       tracker,
+		MaxDepth:       3,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxTotalBytes: smallUsage.Bytes,
+		},
+	})
+
+	require.Zero(t, tracker.callCount("example.com/acme/child/aws"))
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, "example.com/acme/small/aws", result.Modules[0].Source)
+	require.Equal(t, []string{filepath.Join(small, "main.tf")}, result.ScanPaths)
+}
+
+func TestResolveStopsDeferredTraversalAtAcquisitionLimit(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	moduleA := filepath.Join(base, "module-a")
+	moduleB := filepath.Join(base, "module-b")
+	childA := filepath.Join(base, "child-a")
+	childB := filepath.Join(base, "child-b")
+	for _, dir := range []string{root, moduleA, moduleB, childA, childB} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "a" {
+  source = "example.com/acme/a/aws"
+}
+module "b" {
+  source = "example.com/acme/b/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleA, "main.tf"), []byte(`
+module "child_a" {
+  source = "example.com/acme/child-a/aws"
+}
+resource "aws_vpc" "padding" {
+  tags = { padding = "module a starts larger than module b" }
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleB, "main.tf"), []byte(`
+module "child_b" {
+  source = "example.com/acme/child-b/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(childA, "main.tf"),
+		[]byte(`resource "aws_vpc" "child_a" {}`),
+		0o600,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(childB, "main.tf"),
+		make([]byte, 1024),
+		0o600,
+	))
+	moduleAUsage, err := resolver.MeasurePackage(t.Context(), moduleA, resolver.ResourceLimits{})
+	require.NoError(t, err)
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{
+			"example.com/acme/a/aws":       {LocalPath: moduleA},
+			"example.com/acme/b/aws":       {LocalPath: moduleB},
+			"example.com/acme/child-a/aws": {LocalPath: childA},
+			"example.com/acme/child-b/aws": {LocalPath: childB},
+		},
+		calls: make(map[string]int),
+	}
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       tracker,
+		MaxDepth:       3,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxTotalBytes: moduleAUsage.Bytes,
+		},
+	})
+
+	require.Zero(t, tracker.callCount("example.com/acme/child-a/aws"))
+	require.Equal(t, 1, tracker.callCount("example.com/acme/child-b/aws"))
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, "example.com/acme/b/aws", result.Modules[0].Source)
+}
+
+func TestShedToTotalLimitFiltersNestedPackagePathsByOwner(t *testing.T) {
+	t.Parallel()
+
+	parent := filepath.Join("packages", "parent")
+	child := filepath.Join(parent, "nested")
+	budget := resolver.NewResourceBudget(resolver.ResourceLimits{MaxTotalBytes: 1})
+	require.NoError(t, budget.AdmitPackage(parent, resolver.PackageUsage{Bytes: 1, Files: 1}))
+	require.NoError(t, budget.AdmitPackage(child, resolver.PackageUsage{Bytes: 2, Files: 1}))
+	snapshot := walkerSnapshot{
+		paths: []string{
+			filepath.Join(parent, "main.tf"),
+			filepath.Join(child, "main.tf"),
+		},
+		modules: []ResolvedModule{
+			{
+				CanonicalSource: "example.com/acme/parent/aws",
+				PackageRoot:     parent,
+				Depth:           1,
+			},
+			{
+				CanonicalSource:   "example.com/acme/child/aws",
+				PackageRoot:       child,
+				ParentPackageRoot: parent,
+				Depth:             2,
+			},
+		},
+		sourceMappings: map[string]string{
+			parent: "example.com/acme/parent/aws",
+			child:  "example.com/acme/child/aws",
+		},
+	}
+
+	shedToTotalLimit(&snapshot, budget, 1, true)
+
+	require.Equal(t, []string{filepath.Join(parent, "main.tf")}, snapshot.paths)
+	require.Equal(t, map[string]string{parent: "example.com/acme/parent/aws"}, snapshot.sourceMappings)
+	require.Len(t, snapshot.modules, 1)
+	require.Equal(t, parent, snapshot.modules[0].PackageRoot)
+}
+
+func TestResolveDerivesModuleAdmissionFromBaseline(t *testing.T) {
+	t.Parallel()
+
+	root, moduleDir := writeModuleGraphFixture(t)
+	rootFile := filepath.Join(root, "main.tf")
+	info, err := os.Stat(rootFile)
+	require.NoError(t, err)
+
+	source := "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1"
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{
+			source: {LocalPath: moduleDir},
+		},
+		calls: make(map[string]int),
+	}
+	result := Resolve(t.Context(), &Request{
+		RootPaths:       []string{root},
+		DiscoveryPaths:  []string{rootFile},
+		BaselinePaths:   []string{rootFile},
+		TotalParseBytes: info.Size(),
+		Resolver:        tracker,
+		MaxDepth:        2,
+	})
+
+	require.Equal(t, info.Size(), result.BaselineParseBytes)
+	require.Zero(t, result.ModuleAdmissionBytes)
+	require.Empty(t, result.Modules)
+	require.Empty(t, result.ScanPaths)
+	require.Len(t, result.BudgetEvents, 1)
+	require.Equal(t, int64(0), result.BudgetEvents[0].Maximum)
+	require.Zero(t, tracker.callCount(source))
 }
 
 func TestResolveConfinesRemoteLocalModulesToPackageRoot(t *testing.T) {
@@ -258,4 +674,83 @@ module "network" {
 resource "aws_vpc" "this" {}
 `), 0o644))
 	return root, wrapperDir, remoteDir
+}
+
+func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+
+	batch := max(1, resolver.FetchConcurrency)
+	count := batch + 2
+	sources := make([]string, 0, count)
+	resolutions := make(map[string]resolver.Resolution, count)
+	calls := ""
+	for i := range count {
+		source := fmt.Sprintf("example.com/acme/m%04d/aws", i)
+		sources = append(sources, source)
+		dir := filepath.Join(base, fmt.Sprintf("m%04d", i))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), make([]byte, 100), 0o600))
+		resolutions[source] = resolver.Resolution{LocalPath: dir}
+		calls += fmt.Sprintf("module \"m%04d\" {\n  source = %q\n}\n", i, source)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(calls), 0o600))
+	tracker := &trackingResolver{bySource: resolutions, calls: make(map[string]int)}
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       tracker,
+		MaxDepth:       2,
+		ResourceLimits: resolver.ResourceLimits{MaxTotalBytes: 100},
+	})
+
+	const expectedFetched = 2
+	for index, source := range sources {
+		if index < expectedFetched {
+			require.Equal(t, 1, tracker.callCount(source), source)
+		} else {
+			require.Zero(t, tracker.callCount(source), source)
+		}
+	}
+	unacquired := 0
+	for _, event := range result.BudgetEvents {
+		if event.Gate == "acquisition" {
+			unacquired++
+			require.Equal(t, "module_bytes_total", event.Limit)
+		}
+	}
+	require.Equal(t, count-expectedFetched, unacquired)
+}
+
+func TestShedToTotalLimitBreaksTiesDeterministically(t *testing.T) {
+	t.Parallel()
+
+	build := func() (walkerSnapshot, *resolver.ResourceBudget) {
+		budget := resolver.NewResourceBudget(resolver.ResourceLimits{MaxTotalBytes: 1})
+		snapshot := walkerSnapshot{sourceMappings: make(map[string]string)}
+		for i := range 6 {
+			root := filepath.Join("packages", fmt.Sprintf("%02d", i))
+			require.NoError(t, budget.AdmitPackage(root, resolver.PackageUsage{Bytes: 1, Files: 1}))
+			snapshot.paths = append(snapshot.paths, filepath.Join(root, "main.tf"))
+			snapshot.modules = append(snapshot.modules, ResolvedModule{
+				CanonicalSource: "example.com/acme/shared/aws",
+				PackageRoot:     root,
+				Depth:           1,
+			})
+			snapshot.sourceMappings[root] = "example.com/acme/shared/aws"
+		}
+		return snapshot, budget
+	}
+
+	snapshot, budget := build()
+	shedToTotalLimit(&snapshot, budget, 2, true)
+	for range 20 {
+		other, otherBudget := build()
+		shedToTotalLimit(&other, otherBudget, 2, true)
+		require.Equal(t, snapshot.paths, other.paths)
+		require.Equal(t, snapshot.modules, other.modules)
+		require.Equal(t, snapshot.budgetEvents, other.budgetEvents)
+	}
 }

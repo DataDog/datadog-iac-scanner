@@ -102,7 +102,7 @@ func TestArchiveExtractMaterializesLocalModuleClosure(t *testing.T) {
 	gitDir := filepath.Join(workTree, ".git")
 	if err := archiveExtract(
 		t.Context(), gitDir, extractBase, sha, "modules/selected",
-		localCloneArchiveCommand(gitDir),
+		localCloneArchiveCommand(gitDir), nil,
 	); err != nil {
 		t.Fatalf("archiveExtract: %v", err)
 	}

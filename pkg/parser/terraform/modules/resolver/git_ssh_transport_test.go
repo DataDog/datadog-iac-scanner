@@ -17,6 +17,10 @@ import (
 	"testing"
 )
 
+func gitCombinedOutput(cmd *exec.Cmd) ([]byte, error) {
+	return cmd.CombinedOutput()
+}
+
 // writeKnownHosts writes content to a temporary known_hosts file and returns its path.
 func writeKnownHosts(t *testing.T, content string) string {
 	t.Helper()

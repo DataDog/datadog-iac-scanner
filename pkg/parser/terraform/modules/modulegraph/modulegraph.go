@@ -7,6 +7,8 @@ package modulegraph
 
 import (
 	"context"
+	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,28 +30,45 @@ const (
 )
 
 type Request struct {
-	RootPaths      []string
-	DiscoveryPaths []string
-	Resolver       resolver.Resolver
-	MaxDepth       int
-	FS             vfs.FS
+	RootPaths       []string
+	DiscoveryPaths  []string
+	Resolver        resolver.Resolver
+	MaxDepth        int
+	ResourceLimits  resolver.ResourceLimits
+	BaselinePaths   []string
+	TotalParseBytes int64
+	FS              vfs.FS
 }
 
 type ResolvedModule struct {
-	CallerRoot      string
-	Source          string
-	Version         string
-	Name            string
-	LocalPath       string
-	PackageRoot     string
-	CanonicalSource string
+	CallerRoot        string
+	Source            string
+	Version           string
+	Name              string
+	LocalPath         string
+	PackageRoot       string
+	ParentPackageRoot string
+	Depth             int
+	CanonicalSource   string
 }
 
 type Result struct {
-	ScanPaths      []string
-	Modules        []ResolvedModule
-	SourceMappings map[string]string
-	Cleanup        func()
+	ScanPaths            []string
+	Modules              []ResolvedModule
+	SourceMappings       map[string]string
+	BudgetEvents         []BudgetEvent
+	BaselineParseBytes   int64
+	ModuleAdmissionBytes int64
+	Cleanup              func()
+}
+
+type BudgetEvent struct {
+	Source       string
+	Gate         string
+	Limit        string
+	Maximum      int64
+	Measured     int64
+	SheddingRank int
 }
 
 type resolvedEntry struct {
@@ -58,8 +77,9 @@ type resolvedEntry struct {
 }
 
 type remoteModuleGroup struct {
-	representative *tfmodules.ParsedModule
-	callers        []*tfmodules.ParsedModule
+	representative    *tfmodules.ParsedModule
+	callers           []*tfmodules.ParsedModule
+	parentPackageRoot string
 }
 
 type walkerSnapshot struct {
@@ -67,6 +87,7 @@ type walkerSnapshot struct {
 	modules        []ResolvedModule
 	sourceMappings map[string]string
 	cleanups       []func()
+	budgetEvents   []BudgetEvent
 }
 
 type visitedSet struct {
@@ -85,6 +106,7 @@ type resultCollector struct {
 	modules        []ResolvedModule
 	sourceMappings map[string]string
 	cleanups       []func()
+	budgetEvents   []BudgetEvent
 }
 
 type moduleParseCache struct {
@@ -92,15 +114,34 @@ type moduleParseCache struct {
 	entries map[string]map[string]tfmodules.ParsedModule
 }
 
+type pendingTraversal struct {
+	seed            string
+	repoAllowedDirs map[string]map[string]bool
+	depth           int
+	packageRoot     string
+}
+
+type pendingTraversalCollector struct {
+	mu      sync.Mutex
+	entries map[string]pendingTraversal
+}
+
 type walker struct {
-	visited     visitedSet
-	resolutions resolutionCache
-	results     resultCollector
-	parseCache  moduleParseCache
-	sf          singleflight.Group
-	resolver    resolver.Resolver
-	maxDepth    int
-	fsys        vfs.FS
+	visited          visitedSet
+	resolutions      resolutionCache
+	results          resultCollector
+	parseCache       moduleParseCache
+	pending          pendingTraversalCollector
+	sf               singleflight.Group
+	measureSF        singleflight.Group
+	resolver         resolver.Resolver
+	budget           *resolver.ResourceBudget
+	measurePackages  bool
+	deferExpansion   bool
+	admissionBytes   int64
+	acquisitionBytes int64
+	maxDepth         int
+	fsys             vfs.FS
 }
 
 func Resolve(ctx context.Context, request *Request) Result {
@@ -112,6 +153,9 @@ func Resolve(ctx context.Context, request *Request) Result {
 		return result
 	}
 	ctx = resolver.WithResolvedPathCache(ctx)
+	budget := resolver.NewResourceBudget(request.ResourceLimits)
+	ctx = resolver.WithResourceBudget(ctx, budget)
+	moduleMaximum, baselineBytes, enforceAdmission := moduleAdmissionLimit(request)
 
 	w := &walker{
 		visited: visitedSet{
@@ -126,9 +170,17 @@ func Resolve(ctx context.Context, request *Request) Result {
 		parseCache: moduleParseCache{
 			entries: make(map[string]map[string]tfmodules.ParsedModule),
 		},
-		resolver: request.Resolver,
-		maxDepth: request.MaxDepth,
-		fsys:     request.FS,
+		pending: pendingTraversalCollector{
+			entries: make(map[string]pendingTraversal),
+		},
+		resolver:         request.Resolver,
+		budget:           budget,
+		measurePackages:  request.ResourceLimits.Enabled() || request.TotalParseBytes > 0,
+		deferExpansion:   enforceAdmission,
+		admissionBytes:   moduleMaximum,
+		acquisitionBytes: acquisitionAllowance(moduleMaximum),
+		maxDepth:         request.MaxDepth,
+		fsys:             request.FS,
 	}
 	seedGroups, repositoryGroups := w.seedGroups(ctx, request.RootPaths, request.DiscoveryPaths)
 
@@ -141,17 +193,32 @@ func Resolve(ctx context.Context, request *Request) Result {
 		})
 	}
 	_ = g.Wait()
+	if enforceAdmission {
+		w.expandAdmittedPackages(ctx, moduleMaximum)
+	}
 
 	snapshot := w.results.snapshot()
+	shedToTotalLimit(&snapshot, budget, moduleMaximum, enforceAdmission)
 	result.ScanPaths = snapshot.paths
 	result.Modules = snapshot.modules
 	result.SourceMappings = snapshot.sourceMappings
+	result.BudgetEvents = snapshot.budgetEvents
+	result.BaselineParseBytes = baselineBytes
+	result.ModuleAdmissionBytes = moduleMaximum
 
 	sort.Strings(result.ScanPaths)
 	sort.Slice(result.Modules, func(i, j int) bool {
 		left, right := result.Modules[i], result.Modules[j]
 		return strings.Join([]string{left.CallerRoot, left.Source, left.Version, left.Name}, "\x00") <
 			strings.Join([]string{right.CallerRoot, right.Source, right.Version, right.Name}, "\x00")
+	})
+	sort.Slice(result.BudgetEvents, func(i, j int) bool {
+		left, right := result.BudgetEvents[i], result.BudgetEvents[j]
+		if left.SheddingRank != right.SheddingRank {
+			return left.SheddingRank < right.SheddingRank
+		}
+		return strings.Join([]string{left.Source, left.Gate, left.Limit}, "\x00") <
+			strings.Join([]string{right.Source, right.Gate, right.Limit}, "\x00")
 	})
 	var once sync.Once
 	result.Cleanup = func() {
@@ -162,6 +229,72 @@ func Resolve(ctx context.Context, request *Request) Result {
 		})
 	}
 	return result
+}
+
+func (w *walker) expandAdmittedPackages(ctx context.Context, maximum int64) {
+	var deferred []pendingTraversal
+	for {
+		pending := make([]pendingTraversal, 0, len(deferred))
+		pending = append(pending, deferred...)
+		pending = append(pending, w.pending.drain()...)
+		if len(pending) == 0 {
+			return
+		}
+
+		snapshot := w.results.snapshot()
+		shedToTotalLimit(&snapshot, w.budget, maximum, true)
+		accepted := make(map[string]bool, len(snapshot.modules))
+		for i := range snapshot.modules {
+			accepted[filepath.Clean(snapshot.modules[i].PackageRoot)] = true
+		}
+		admitted, rejected := partitionPendingTraversals(pending, accepted)
+		if len(admitted) == 0 {
+			return
+		}
+		deferred = rejected
+
+		g, gCtx := errgroup.WithContext(ctx)
+		g.SetLimit(max(1, resolver.FetchConcurrency))
+		for _, traversal := range admitted {
+			g.Go(func() error {
+				w.traverse(
+					gCtx,
+					traversal.seed,
+					nil,
+					traversal.repoAllowedDirs,
+					traversal.depth,
+					traversal.packageRoot,
+				)
+				return nil
+			})
+		}
+		_ = g.Wait()
+	}
+}
+
+func partitionPendingTraversals(
+	pending []pendingTraversal, accepted map[string]bool,
+) (admitted, rejected []pendingTraversal) {
+	admitted = make([]pendingTraversal, 0, len(pending))
+	rejected = make([]pendingTraversal, 0, len(pending))
+	for _, traversal := range pending {
+		if accepted[filepath.Clean(traversal.packageRoot)] {
+			admitted = append(admitted, traversal)
+		} else {
+			rejected = append(rejected, traversal)
+		}
+	}
+	sort.Slice(admitted, func(i, j int) bool {
+		left, right := admitted[i], admitted[j]
+		if left.depth != right.depth {
+			return left.depth < right.depth
+		}
+		if left.packageRoot != right.packageRoot {
+			return left.packageRoot < right.packageRoot
+		}
+		return left.seed < right.seed
+	})
+	return admitted, rejected
 }
 
 func (w *walker) parseModulesInDir(
@@ -224,17 +357,21 @@ func (c *resultCollector) addPaths(paths ...string) {
 	c.paths = append(c.paths, paths...)
 }
 
-func (c *resultCollector) addResolvedModule(mod *tfmodules.ParsedModule, resolution resolver.Resolution) {
+func (c *resultCollector) addResolvedModule(
+	mod *tfmodules.ParsedModule, resolution resolver.Resolution, parentPackageRoot string, depth int,
+) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.modules = append(c.modules, ResolvedModule{
-		CallerRoot:      moduleCallRoot(mod),
-		Source:          mod.Source,
-		Version:         mod.Version,
-		Name:            mod.Name,
-		LocalPath:       resolution.LocalPath,
-		PackageRoot:     resolution.PackageRoot,
-		CanonicalSource: canonicalModuleURL(mod.Source, mod.Version),
+		CallerRoot:        moduleCallRoot(mod),
+		Source:            mod.Source,
+		Version:           mod.Version,
+		Name:              mod.Name,
+		LocalPath:         resolution.LocalPath,
+		PackageRoot:       resolution.PackageRoot,
+		ParentPackageRoot: parentPackageRoot,
+		Depth:             depth,
+		CanonicalSource:   canonicalModuleURL(mod.Source, mod.Version),
 	})
 }
 
@@ -250,6 +387,18 @@ func (c *resultCollector) addCleanup(cleanup func()) {
 	c.cleanups = append(c.cleanups, cleanup)
 }
 
+func (c *resultCollector) addBudgetEvent(source string, budgetErr *resolver.BudgetExceededError) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.budgetEvents = append(c.budgetEvents, BudgetEvent{
+		Source:   source,
+		Gate:     budgetErr.Gate,
+		Limit:    budgetErr.Limit,
+		Maximum:  budgetErr.Maximum,
+		Measured: budgetErr.Measured,
+	})
+}
+
 func (c *resultCollector) snapshot() walkerSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -262,6 +411,7 @@ func (c *resultCollector) snapshot() walkerSnapshot {
 		modules:        append([]ResolvedModule(nil), c.modules...),
 		sourceMappings: sourceMappings,
 		cleanups:       append([]func(){}, c.cleanups...),
+		budgetEvents:   append([]BudgetEvent(nil), c.budgetEvents...),
 	}
 }
 
@@ -291,6 +441,23 @@ func (c *moduleParseCache) set(key string, mods map[string]tfmodules.ParsedModul
 	c.entries[key] = mods
 }
 
+func (c *pendingTraversalCollector) add(traversal pendingTraversal) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries[visitKey(traversal.seed, traversal.packageRoot)] = traversal
+}
+
+func (c *pendingTraversalCollector) drain() []pendingTraversal {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entries := make([]pendingTraversal, 0, len(c.entries))
+	for _, traversal := range c.entries {
+		entries = append(entries, traversal)
+	}
+	clear(c.entries)
+	return entries
+}
+
 func (w *walker) resolveRemote(
 	ctx context.Context, mod *tfmodules.ParsedModule,
 ) (resolver.Resolution, bool, error) {
@@ -309,6 +476,15 @@ func (w *walker) resolveRemote(
 		if resolveErr == nil && resolution.PackageRoot == "" && resolution.LocalPath != "" {
 			resolution.PackageRoot = resolution.LocalPath
 		}
+		if resolveErr != nil {
+			var budgetErr *resolver.BudgetExceededError
+			if errors.As(resolveErr, &budgetErr) {
+				w.results.addBudgetEvent(mod.Source, budgetErr)
+			}
+		}
+		if resolveErr == nil {
+			resolveErr = w.accountPackage(ctx, mod.Source, resolution)
+		}
 		w.resolutions.set(resolveID, resolvedEntry{res: resolution, err: resolveErr})
 		return resolution, resolveErr
 	})
@@ -316,6 +492,47 @@ func (w *walker) resolveRemote(
 		return resolver.Resolution{}, shared, err
 	}
 	return value.(resolver.Resolution), shared, nil
+}
+
+func (w *walker) accountPackage(
+	ctx context.Context, source string, resolution resolver.Resolution,
+) error {
+	if resolution.PackageRoot == "" || !w.measurePackages {
+		return nil
+	}
+	if err := w.measurePackage(ctx, resolution.PackageRoot); err != nil {
+		if resolution.Cleanup != nil {
+			resolution.Cleanup()
+		}
+		var budgetErr *resolver.BudgetExceededError
+		if errors.As(err, &budgetErr) {
+			w.results.addBudgetEvent(source, budgetErr)
+		}
+		return &tfmodules.UnresolvedError{Reason: "module package rejected: " + err.Error()}
+	}
+	return nil
+}
+
+// measurePackage charges a package root to the budget, collapsing the walks of
+// modules that share a root. The flight is forgotten as soon as it starts, so
+// only callers whose content was already on disk when the walk began reuse its
+// result; later callers, whose extraction may still have been running, measure
+// the root again.
+func (w *walker) measurePackage(ctx context.Context, root string) error {
+	key := filepath.Clean(root)
+	_, err, _ := w.measureSF.Do(key, func() (interface{}, error) {
+		w.measureSF.Forget(key)
+		limits := w.budget.Limits()
+		if scoped := resolver.ResourceBudgetFromContext(ctx); scoped != nil {
+			limits = scoped.Limits()
+		}
+		usage, measureErr := resolver.MeasurePackage(ctx, root, limits)
+		if measureErr != nil {
+			return nil, measureErr
+		}
+		return nil, w.budget.AdmitPackage(root, usage)
+	})
+	return err
 }
 
 var parseSem = make(chan struct{}, max(1, runtime.GOMAXPROCS(0)))
@@ -452,7 +669,7 @@ func (w *walker) traverse(
 		w.traverse(ctx, localDir, childAllowedFiles, repoAllowedDirs, depth+1, packageRoot)
 	}
 
-	w.traverseRemoteModules(ctx, mods, repoAllowedDirs, depth)
+	w.traverseRemoteModules(ctx, mods, repoAllowedDirs, depth, packageRoot)
 }
 
 func (w *walker) traverseRemoteModules(
@@ -460,6 +677,7 @@ func (w *walker) traverseRemoteModules(
 	mods map[string]tfmodules.ParsedModule,
 	repoAllowedDirs map[string]map[string]bool,
 	depth int,
+	parentPackageRoot string,
 ) {
 	groups := make(map[string]*remoteModuleGroup)
 	for key := range mods {
@@ -472,7 +690,7 @@ func (w *walker) traverseRemoteModules(
 		cached, hit := w.resolutions.get(id)
 		if hit {
 			if cached.err == nil && cached.res.LocalPath != "" {
-				w.results.addResolvedModule(&mod, cached.res)
+				w.results.addResolvedModule(&mod, cached.res, parentPackageRoot, depth+1)
 			}
 			continue
 		}
@@ -481,24 +699,114 @@ func (w *walker) traverseRemoteModules(
 			group.callers = append(group.callers, &mod)
 		} else {
 			groups[id] = &remoteModuleGroup{
-				representative: &mod,
-				callers:        []*tfmodules.ParsedModule{&mod},
+				representative:    &mod,
+				callers:           []*tfmodules.ParsedModule{&mod},
+				parentPackageRoot: parentPackageRoot,
 			}
 		}
 	}
 	if len(groups) == 0 {
 		return
 	}
+	w.acquireRemoteModuleGroups(ctx, groups, repoAllowedDirs, depth)
+}
 
-	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(max(1, resolver.FetchConcurrency))
-	for _, group := range groups {
-		g.Go(func() error {
-			w.traverseRemoteModuleGroup(gCtx, group, repoAllowedDirs, depth)
-			return nil
+// acquisitionOvershootFactor bounds how far one frontier may fetch past the
+// aggregate admission limit. Package sizes are only known once the package is on
+// disk, so a frontier has to be oversampled for shedding to have anything to
+// choose between; capping the overshoot keeps a module that declares thousands
+// of remote children from materializing all of them before admission runs.
+const acquisitionOvershootFactor = 2
+
+func acquisitionAllowance(maximum int64) int64 {
+	if maximum > math.MaxInt64/acquisitionOvershootFactor {
+		return math.MaxInt64
+	}
+	return maximum * acquisitionOvershootFactor
+}
+
+// acquireRemoteModuleGroups fetches a frontier in deterministically ordered
+// batches, stopping once the frontier has fetched past its allowance. Without
+// this the whole frontier is fetched before admission gets to reject anything,
+// so the bytes on disk are bounded only by how many modules a caller declares.
+func (w *walker) acquireRemoteModuleGroups(
+	ctx context.Context,
+	groups map[string]*remoteModuleGroup,
+	repoAllowedDirs map[string]map[string]bool,
+	depth int,
+) {
+	ids := orderedGroupIDs(groups)
+	size := max(1, resolver.FetchConcurrency)
+	for start := 0; start < len(ids); {
+		type acquisition struct {
+			group       *remoteModuleGroup
+			reservation int64
+		}
+		batch := make([]acquisition, 0, size)
+		end := min(start+size, len(ids))
+		for _, id := range ids[start:end] {
+			reservation, ok := w.reserveAcquisition()
+			if !ok {
+				break
+			}
+			batch = append(batch, acquisition{group: groups[id], reservation: reservation})
+		}
+		if len(batch) == 0 {
+			w.recordUnacquiredGroups(groups, ids[start:])
+			return
+		}
+		g, gCtx := errgroup.WithContext(ctx)
+		g.SetLimit(size)
+		for _, item := range batch {
+			g.Go(func() error {
+				w.traverseRemoteModuleGroup(
+					gCtx, item.group, repoAllowedDirs, depth, item.reservation,
+				)
+				return nil
+			})
+		}
+		_ = g.Wait()
+		start += len(batch)
+	}
+}
+
+// orderedGroupIDs gives the frontier a stable order so that when acquisition
+// stops early, which modules were fetched does not depend on map iteration.
+func orderedGroupIDs(groups map[string]*remoteModuleGroup) []string {
+	ids := make([]string, 0, len(groups))
+	for id := range groups {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		left := groups[ids[i]].representative
+		right := groups[ids[j]].representative
+		if left.Source != right.Source {
+			return left.Source < right.Source
+		}
+		return ids[i] < ids[j]
+	})
+	return ids
+}
+
+func (w *walker) reserveAcquisition() (int64, bool) {
+	if !w.deferExpansion {
+		return 0, true
+	}
+	return w.budget.ReserveAcquisition(
+		w.acquisitionBytes, w.budget.Limits().MaxPackageBytes,
+	)
+}
+
+func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, ids []string) {
+	measured := w.budget.TotalUsage().Bytes
+	for _, id := range ids {
+		w.results.addBudgetEvent(groups[id].representative.Source, &resolver.BudgetExceededError{
+			Gate:     "acquisition",
+			Limit:    "module_bytes_total",
+			Maximum:  w.admissionBytes,
+			Measured: measured,
 		})
 	}
-	_ = g.Wait()
 }
 
 func (w *walker) traverseRemoteModuleGroup(
@@ -506,7 +814,14 @@ func (w *walker) traverseRemoteModuleGroup(
 	group *remoteModuleGroup,
 	repoAllowedDirs map[string]map[string]bool,
 	depth int,
+	reservation int64,
 ) {
+	if reservation > 0 {
+		defer w.budget.ReleaseAcquisition(reservation)
+		limits := w.budget.Limits()
+		limits.MaxPackageBytes = reservation
+		ctx = resolver.WithResourceBudget(ctx, resolver.NewResourceBudget(limits))
+	}
 	contextLogger := logger.FromContext(ctx)
 	representative := group.representative
 	contextLogger.Debug().Msgf("Fetching remote Terraform module %q", representative.Source)
@@ -530,7 +845,7 @@ func (w *walker) traverseRemoteModuleGroup(
 	}
 
 	for _, mod := range group.callers {
-		w.results.addResolvedModule(mod, resolution)
+		w.results.addResolvedModule(mod, resolution, group.parentPackageRoot, depth+1)
 	}
 	if !w.visited.tryAdd(resolution.LocalPath, resolution.PackageRoot) {
 		return
@@ -543,7 +858,16 @@ func (w *walker) traverseRemoteModuleGroup(
 		resolution.LocalPath,
 		canonicalModuleURL(representative.Source, representative.Version),
 	)
-	w.traverse(ctx, resolution.LocalPath, nil, repoAllowedDirs, depth+1, resolution.PackageRoot)
+	if !w.deferExpansion {
+		w.traverse(ctx, resolution.LocalPath, nil, repoAllowedDirs, depth+1, resolution.PackageRoot)
+		return
+	}
+	w.pending.add(pendingTraversal{
+		seed:            resolution.LocalPath,
+		repoAllowedDirs: repoAllowedDirs,
+		depth:           depth + 1,
+		packageRoot:     resolution.PackageRoot,
+	})
 }
 
 func moduleCallRoot(mod *tfmodules.ParsedModule) string {

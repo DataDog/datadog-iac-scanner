@@ -23,6 +23,7 @@ func (c *Client) resolveTerraformModulesForScan(
 	ctx context.Context,
 	paramsPlatforms []string,
 	extractedPaths *provider.ExtractedPath,
+	baselinePaths []string,
 ) (
 	moduleCleanup func(),
 	remoteModulePaths []string,
@@ -50,13 +51,43 @@ func (c *Client) resolveTerraformModulesForScan(
 		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
+	packageBytes := c.ScanParams.MaxModulePackageBytes
+	if packageBytes == 0 {
+		packageBytes = DefaultRemoteModuleMaxPackageBytes
+	}
+	fileBytes := c.ScanParams.MaxModuleFileBytes
+	if fileBytes == 0 {
+		fileBytes = DefaultRemoteModuleMaxFileBytes
+	}
+	packageFiles := c.ScanParams.MaxModulePackageFiles
+	if packageFiles == 0 {
+		packageFiles = DefaultRemoteModuleMaxPackageFiles
+	}
 	result := modulegraph.Resolve(ctx, &modulegraph.Request{
 		RootPaths:      extractedPaths.Path,
 		DiscoveryPaths: moduleDiscoveryPaths,
 		Resolver:       chain,
 		MaxDepth:       c.ScanParams.ModuleMaxDepth,
-		FS:             c.fsys,
+		ResourceLimits: tfresolver.ResourceLimits{
+			MaxPackageBytes: packageBytes,
+			MaxFileBytes:    fileBytes,
+			MaxPackageFiles: packageFiles,
+			MaxTotalBytes:   c.ScanParams.MaxModuleBytesTotal,
+		},
+		BaselinePaths:   baselinePaths,
+		TotalParseBytes: c.ScanParams.MaxModuleParseBytes,
+		FS:              c.fsys,
 	})
+	for _, event := range result.BudgetEvents {
+		contextLogger.Warn().
+			Str("module_source", event.Source).
+			Str("gate", event.Gate).
+			Str("limit_name", event.Limit).
+			Int64("limit", event.Maximum).
+			Int64("measured", event.Measured).
+			Int("shedding_rank", event.SheddingRank).
+			Msg("Terraform module excluded by resource budget")
+	}
 	if len(result.ScanPaths) > 0 {
 		contextLogger.Info().Msgf("Adding %d remote module file(s) to scan", len(result.ScanPaths))
 	}
@@ -67,7 +98,8 @@ func (c *Client) resolveTerraformModulesForScan(
 		}
 	}
 	remoteSourceDirs = make(map[string]engine.RemoteModuleDirectory, len(result.Modules)*3)
-	for _, module := range result.Modules {
+	for i := range result.Modules {
+		module := &result.Modules[i]
 		directory := engine.RemoteModuleDirectory{
 			Path:        module.LocalPath,
 			PackageRoot: module.PackageRoot,
@@ -124,7 +156,6 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 	if t := c.ScanParams.ModuleFetchTimeout; t > 0 {
 		ggCfg.FetchTimeout = t
 	}
-	ggCfg.MaxTotalBytes = c.ScanParams.MaxModuleBytesTotal
 	ggCfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
 
 	if c.ScanParams.EnableRemoteModules {

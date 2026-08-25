@@ -78,7 +78,16 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 
 	paramsPlatforms := c.ScanParams.GetEffectivePlatforms()
 
-	moduleCleanup, remoteModulePaths, remoteSourceDirs, err := c.resolveTerraformModulesForScan(ctx, paramsPlatforms, &extractedPaths)
+	baselinePaths := extractedPaths.Path
+	if len(filePlatform) > 0 {
+		baselinePaths = make([]string, 0, len(filePlatform))
+		for path := range filePlatform {
+			baselinePaths = append(baselinePaths, path)
+		}
+	}
+	moduleCleanup, remoteModulePaths, remoteSourceDirs, err := c.resolveTerraformModulesForScan(
+		ctx, paramsPlatforms, &extractedPaths, baselinePaths,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -11,12 +11,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -59,6 +61,7 @@ type bareRepo struct {
 	cloneOK   atomic.Bool
 	cloneMu   sync.Mutex       // serializes clone attempts against barePath
 	cloneErrs map[string]error // transport → clone failure, guarded by cloneMu
+	networkMu sync.RWMutex     // isolates transactional fetches from lazy object writes
 
 	fetchSF   singleflight.Group
 	extractSF singleflight.Group
@@ -217,7 +220,36 @@ func (rem *bareRemote) runNetworkGitWith(
 }
 
 func (rem *bareRemote) runNetworkGit(ctx context.Context, command gitNetworkCommand) ([]byte, error) {
-	return rem.runNetworkGitWith(ctx, command, gitCombinedOutput)
+	rem.networkMu.Lock()
+	defer rem.networkMu.Unlock()
+
+	var terminalBudgetErr error
+	output := func(cmd *exec.Cmd) ([]byte, error) {
+		if terminalBudgetErr != nil {
+			return nil, terminalBudgetErr
+		}
+		objectsDir := filepath.Join(rem.barePath, "objects")
+		existing, err := snapshotPackageTree(objectsDir)
+		if err != nil {
+			return nil, err
+		}
+		out, err := runGitCommandWithResourceBudget(
+			ctx, cmd, rem.barePath, ResourceBudgetFromContext(ctx),
+		)
+		if err != nil {
+			rollbackPackageTree(objectsDir, existing)
+			var budgetErr *BudgetExceededError
+			if errors.As(err, &budgetErr) {
+				terminalBudgetErr = err
+			}
+		}
+		return out, err
+	}
+	out, err := rem.runNetworkGitWith(ctx, command, output)
+	if terminalBudgetErr != nil {
+		return out, terminalBudgetErr
+	}
+	return out, err
 }
 
 func (rem *bareRemote) archiveGitCommand(ctx context.Context, remote string, extraConfig, args []string) *exec.Cmd {
@@ -337,6 +369,10 @@ func (rem *bareRemote) doClone(ctx context.Context) error {
 func gitCloneRetryable(out []byte, err error) bool {
 	if err == nil {
 		return true
+	}
+	var budgetErr *BudgetExceededError
+	if errors.As(err, &budgetErr) {
+		return false
 	}
 	blob := strings.ToLower(string(out) + "\n" + err.Error())
 	return !strings.Contains(blob, "could not read username") &&
@@ -467,6 +503,10 @@ func (rem *bareRemote) fetchNamedRef(ctx context.Context, ref string) (string, e
 			return gitInDir(ctx, rem.barePath, args...)
 		})
 		if err != nil {
+			var budgetErr *BudgetExceededError
+			if errors.As(err, &budgetErr) {
+				return "", fmt.Errorf("git fetch %s %s: %w\n%s", rem.cloneURL, ref, err, bytes.TrimSpace(out))
+			}
 			// Retry without --depth in case the server rejects shallow fetches.
 			out2, err2 := rem.runNetworkGit(ctx, func(remote string, extraConfig []string) *exec.Cmd {
 				args := append(append([]string{}, extraConfig...),
@@ -561,6 +601,7 @@ func localCloneArchiveCommand(gitDir string) archiveCommandFunc {
 // into a sparse directory whose layout matches the repository at the given SHA.
 func archiveExtract(
 	ctx context.Context, gitDir, extractBase, sha, subdir string, runArchive archiveCommandFunc,
+	objectMu *sync.RWMutex,
 ) error {
 	cleanSubdir, err := cleanArchiveSubdir(subdir)
 	if err != nil {
@@ -580,10 +621,33 @@ func archiveExtract(
 		return err
 	}
 
+	budget := ResourceBudgetFromContext(ctx)
+	usage, err := MeasurePackage(ctx, dest, budget.Limits())
+	if err != nil {
+		return err
+	}
+	existing, err := snapshotPackageTree(dest)
+	if err != nil {
+		return err
+	}
+	stateRoot := filepath.Dir(archiveMarkerPath(extractBase, sha, "."))
+	existingState, err := snapshotPackageTree(stateRoot)
+	if err != nil {
+		return err
+	}
+	guard, err := newGitObjectGuard(ctx, gitDir, budget)
+	if err != nil {
+		return err
+	}
 	extracted := int64(0)
+	counter := &PackageCounter{limits: budget.Limits(), usage: usage}
+	visited := map[string]bool{}
 	if err := materializeModuleClosure(
-		ctx, runArchive, sha, dest, extractBase, cleanSubdir, map[string]bool{}, &extracted,
+		ctx, runArchive, sha, dest, extractBase, cleanSubdir, visited, &extracted, counter,
+		objectMu, guard,
 	); err != nil {
+		rollbackPackageTree(dest, existing)
+		rollbackPackageTree(stateRoot, existingState)
 		return err
 	}
 	return nil
@@ -606,6 +670,9 @@ func materializeModuleClosure(
 	sha, packageRoot, extractBase, subdir string,
 	visited map[string]bool,
 	extracted *int64,
+	counter *PackageCounter,
+	objectMu *sync.RWMutex,
+	guard *gitObjectGuard,
 ) error {
 	if visited[subdir] {
 		return nil
@@ -616,7 +683,9 @@ func materializeModuleClosure(
 	if _, err := os.Stat(marker); err == nil {
 		return nil
 	}
-	if err := extractArchiveSubdir(ctx, runArchive, sha, packageRoot, subdir, extracted); err != nil {
+	if err := extractArchiveSubdir(
+		ctx, runArchive, sha, packageRoot, subdir, extracted, counter, objectMu, guard,
+	); err != nil {
 		return err
 	}
 
@@ -630,7 +699,8 @@ func materializeModuleClosure(
 	}
 	for _, child := range children {
 		if err := materializeModuleClosure(
-			ctx, runArchive, sha, packageRoot, extractBase, child, visited, extracted,
+			ctx, runArchive, sha, packageRoot, extractBase, child, visited, extracted, counter,
+			objectMu, guard,
 		); err != nil {
 			return err
 		}
@@ -645,7 +715,8 @@ func materializeModuleClosure(
 }
 
 func extractArchiveSubdir(
-	ctx context.Context, runArchive archiveCommandFunc, sha, dest, subdir string, extracted *int64,
+	ctx context.Context, runArchive archiveCommandFunc, sha, dest, subdir string,
+	extracted *int64, counter *PackageCounter, objectMu *sync.RWMutex, guard *gitObjectGuard,
 ) error {
 	release, err := acquireGitProc(ctx)
 	if err != nil {
@@ -667,11 +738,33 @@ func extractArchiveSubdir(
 	}
 	var lastErr error
 	for _, prep := range preps {
-		err := extractArchiveCommand(prep.cmd, dest, extracted)
+		existing, snapshotErr := snapshotPackageTree(dest)
+		if snapshotErr != nil {
+			prep.close()
+			return snapshotErr
+		}
+		usageBefore := counter.Usage()
+		extractedBefore := *extracted
+		if objectMu != nil {
+			objectMu.RLock()
+		}
+		err := extractArchiveCommandWithResourceBudget(
+			ctx, prep.cmd, dest, extracted, maxArchiveExtractBytes, counter, guard,
+		)
+		if objectMu != nil {
+			objectMu.RUnlock()
+		}
 		prep.close()
 		if err == nil {
 			return nil
 		}
+		rollbackPackageTree(dest, existing)
+		var budgetErr *BudgetExceededError
+		if errors.As(err, &budgetErr) && budgetErr.Limit == limitPackageBytes {
+			rollbackGitObjects(guard, objectMu)
+		}
+		counter.usage = usageBefore
+		*extracted = extractedBefore
 		lastErr = err
 	}
 	if lastErr == nil {
@@ -680,11 +773,24 @@ func extractArchiveSubdir(
 	return fmt.Errorf("extracting git archive %s: %w", archiveArg, lastErr)
 }
 
-func extractArchiveCommand(cmd *exec.Cmd, dest string, extracted *int64) error {
-	return extractArchiveCommandWithLimit(cmd, dest, extracted, maxArchiveExtractBytes)
+// rollbackGitObjects undoes objects fetched lazily by an aborted `git archive`.
+// It upgrades to the clone's write lock so no concurrent reader is relying on
+// the objects being removed.
+func rollbackGitObjects(guard *gitObjectGuard, objectMu *sync.RWMutex) {
+	if guard == nil {
+		return
+	}
+	if objectMu != nil {
+		objectMu.Lock()
+		defer objectMu.Unlock()
+	}
+	guard.rollback()
 }
 
-func extractArchiveCommandWithLimit(cmd *exec.Cmd, dest string, extracted *int64, maxBytes int64) error {
+func extractArchiveCommandWithResourceBudget(
+	ctx context.Context, cmd *exec.Cmd, dest string, extracted *int64, maxBytes int64,
+	counter *PackageCounter, guard *gitObjectGuard,
+) error {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("opening git archive stream: %w", err)
@@ -692,9 +798,10 @@ func extractArchiveCommandWithLimit(cmd *exec.Cmd, dest string, extracted *int64
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting git archive: %w", err)
 	}
+	stopGuard := guard.watch(ctx, func() { _ = cmd.Process.Kill() })
 
 	stream := &io.LimitedReader{R: stdout, N: maxBytes + 1}
-	extractErr := extractRegularFilesWithBudget(stream, dest, extracted)
+	extractErr := extractRegularFilesWithResourceBudget(stream, dest, extracted, counter)
 	if extractErr == nil {
 		_, extractErr = io.Copy(io.Discard, stream)
 	}
@@ -702,18 +809,68 @@ func extractArchiveCommandWithLimit(cmd *exec.Cmd, dest string, extracted *int64
 		_ = stdout.Close()
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
+		if budgetErr := stopGuard(); budgetErr != nil {
+			return budgetErr
+		}
 		if stream.N == 0 {
 			return fmt.Errorf("git archive exceeds %d byte limit", maxBytes)
 		}
 		return extractErr
 	}
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("running git archive: %w", err)
+	waitErr := cmd.Wait()
+	if budgetErr := stopGuard(); budgetErr != nil {
+		return budgetErr
+	}
+	if waitErr != nil {
+		return fmt.Errorf("running git archive: %w", waitErr)
 	}
 	return nil
 }
 
-func extractRegularFilesWithBudget(r io.Reader, dest string, extracted *int64) error {
+func snapshotPackageTree(root string) (map[string]bool, error) {
+	paths := make(map[string]bool)
+	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, walkErr error) error {
+		if errors.Is(walkErr, os.ErrNotExist) {
+			return nil
+		}
+		if walkErr != nil {
+			return walkErr
+		}
+		paths[filepath.Clean(path)] = true
+		return nil
+	})
+	return paths, err
+}
+
+func rollbackPackageTree(root string, existing map[string]bool) {
+	var added []string
+	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !existing[filepath.Clean(path)] {
+			added = append(added, path)
+		}
+		return nil
+	})
+	if err != nil {
+		_ = os.RemoveAll(root)
+		return
+	}
+	sort.Slice(added, func(i, j int) bool {
+		return len(added[i]) > len(added[j])
+	})
+	for _, path := range added {
+		if err := os.RemoveAll(path); err != nil {
+			_ = os.RemoveAll(root)
+			return
+		}
+	}
+}
+
+func extractRegularFilesWithResourceBudget(
+	r io.Reader, dest string, extracted *int64, counter *PackageCounter,
+) error {
 	tr := tar.NewReader(r)
 	for {
 		header, err := tr.Next()
@@ -727,54 +884,113 @@ func extractRegularFilesWithBudget(r io.Reader, dest string, extracted *int64) e
 			return fmt.Errorf("git archive exceeds %d byte limit", maxArchiveExtractBytes)
 		}
 		name := filepath.Clean(header.Name)
-		if name == "." || !filepath.IsLocal(name) {
+		if !filepath.IsLocal(name) {
 			return fmt.Errorf("tar entry %q is not a local path", header.Name)
 		}
-		if err := extractTarEntry(tr, header, dest, name, extracted); err != nil {
+		if err := extractTarEntry(tr, header, dest, name, extracted, counter); err != nil {
 			return err
 		}
 	}
 }
 
 func extractTarEntry(
-	tr *tar.Reader, header *tar.Header, dest, name string, extracted *int64,
+	tr *tar.Reader, header *tar.Header, dest, name string, extracted *int64, counter *PackageCounter,
 ) error {
 	switch header.Typeflag {
 	case tar.TypeXHeader, tar.TypeXGlobalHeader:
-		return nil
+		return countArchiveMetadataEntry(counter)
 	case tar.TypeDir:
-		if err := os.MkdirAll(filepath.Join(dest, name), dirPerm); err != nil {
+		path := filepath.Join(dest, name)
+		if err := countImplicitParentDirs(dest, name, counter); err != nil {
+			return err
+		}
+		if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+			if err := countArchiveMetadataEntry(counter); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(path, dirPerm); err != nil {
 			return fmt.Errorf("creating directory for tar entry %q: %w", header.Name, err)
 		}
 		return nil
 	case tar.TypeReg:
-		return extractTarRegularFile(tr, header, filepath.Join(dest, name), extracted)
+		return extractTarRegularFile(tr, header, dest, name, extracted, counter)
 	case tar.TypeSymlink, tar.TypeLink, tar.TypeChar, tar.TypeBlock, tar.TypeFifo, tar.TypeCont:
-		return nil
+		return countArchiveMetadataEntry(counter)
 	default:
 		return fmt.Errorf("tar entry %q has unsupported type %d", header.Name, header.Typeflag)
 	}
 }
 
+func countArchiveMetadataEntry(counter *PackageCounter) error {
+	if counter == nil {
+		return nil
+	}
+	return counter.AddEntry(0)
+}
+
+// countImplicitParentDirs charges directories that only exist because a nested
+// entry needs them. Archives may omit explicit directory entries, so without
+// this the file count would understate what is written to disk.
+func countImplicitParentDirs(dest, name string, counter *PackageCounter) error {
+	if counter == nil {
+		return nil
+	}
+	parent := filepath.Dir(name)
+	if parent == "." || parent == name {
+		return nil
+	}
+	if err := countImplicitParentDirs(dest, parent, counter); err != nil {
+		return err
+	}
+	_, err := os.Lstat(filepath.Join(dest, parent))
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return counter.AddEntry(0)
+}
+
 func extractTarRegularFile(
-	tr *tar.Reader, header *tar.Header, path string, extracted *int64,
+	tr *tar.Reader, header *tar.Header, dest, name string, extracted *int64, counter *PackageCounter,
 ) error {
+	path := filepath.Join(dest, name)
 	if header.Size > maxArchiveExtractBytes-*extracted {
 		return fmt.Errorf("git archive exceeds %d byte limit", maxArchiveExtractBytes)
+	}
+	if _, err := os.Lstat(path); err == nil {
+		_, discardErr := io.CopyN(io.Discard, tr, header.Size)
+		return discardErr
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := countImplicitParentDirs(dest, name, counter); err != nil {
+		return err
+	}
+	if counter != nil {
+		if err := counter.AddEntry(header.Size); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 		return fmt.Errorf("creating parent for tar entry %q: %w", header.Name, err)
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, header.FileInfo().Mode().Perm()) //nolint:gosec
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, header.FileInfo().Mode().Perm()) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("creating tar entry %q: %w", header.Name, err)
 	}
 	_, copyErr := io.CopyN(file, tr, header.Size)
 	closeErr := file.Close()
 	if copyErr != nil {
+		_ = os.Remove(path)
 		return fmt.Errorf("writing tar entry %q: %w", header.Name, copyErr)
 	}
 	if closeErr != nil {
+		_ = os.Remove(path)
 		return fmt.Errorf("closing tar entry %q: %w", header.Name, closeErr)
 	}
 	*extracted += header.Size
@@ -854,6 +1070,7 @@ func (rem *bareRemote) extract(ctx context.Context, sha, subdir string) (string,
 	_, err, _ := rem.extractSF.Do(rem.sfKey(key), func() (interface{}, error) {
 		return nil, archiveExtract(
 			ctx, rem.barePath, rem.extractBase, sha, subdir, rem.archiveCommand,
+			&rem.networkMu,
 		)
 	})
 	if err != nil {
@@ -904,19 +1121,19 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 	}
 
 	if err := remote.ensureClone(ctx); err != nil {
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
+		return Resolution{}, unresolvedResourceError(err)
 	}
 
 	sha, err := remote.fetchRef(ctx, ref)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msgf("BareGitResolver: ref %q not reachable from %s", ref, repoURL)
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
+		return Resolution{}, unresolvedResourceError(err)
 	}
 
 	packageRoot, err := remote.extract(ctx, sha, subdir)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msgf("BareGitResolver: archive %s:%s failed", sha, subdir)
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
+		return Resolution{}, unresolvedResourceError(err)
 	}
 
 	return ConfineResolution(ctx, Resolution{

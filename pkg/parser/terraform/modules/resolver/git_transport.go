@@ -22,12 +22,6 @@ type gitNetworkCommand func(remote string, extraConfig []string) *exec.Cmd
 // gitOutputFunc captures the output of a git command built by a gitNetworkCommand.
 type gitOutputFunc func(cmd *exec.Cmd) ([]byte, error)
 
-// gitCombinedOutput folds stderr into the result, which suits commands whose output is
-// only ever read for diagnostics.
-func gitCombinedOutput(cmd *exec.Cmd) ([]byte, error) {
-	return cmd.CombinedOutput()
-}
-
 // gitInheritedEnvBlockedPrefixes lists environment prefixes that let the caller
 // redirect a git subprocess to an unvalidated destination.
 var gitInheritedEnvBlockedPrefixes = []string{

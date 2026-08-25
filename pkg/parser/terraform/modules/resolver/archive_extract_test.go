@@ -26,7 +26,7 @@ type tarEntry struct {
 
 func extractTestArchive(r *bytes.Reader, dest string) error {
 	extracted := int64(0)
-	return extractRegularFilesWithBudget(r, dest, &extracted)
+	return extractRegularFilesWithResourceBudget(r, dest, &extracted, nil)
 }
 
 func tarBytes(t *testing.T, entries ...tarEntry) []byte {
@@ -96,6 +96,44 @@ func TestExtractRegularFilesRejectsEscapingPaths(t *testing.T) {
 	}
 }
 
+func TestExtractRegularFilesEnforcesResourceBudgetBeforeWrite(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		limits ResourceLimits
+	}{
+		{name: "file size", limits: ResourceLimits{MaxFileBytes: 3}},
+		{name: "package size", limits: ResourceLimits{MaxPackageBytes: 3}},
+		{name: "file count", limits: ResourceLimits{MaxPackageFiles: 0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			archive := tarBytes(t, tarEntry{name: "main.tf", typeflag: tar.TypeReg, body: "content"})
+			counter := NewResourceBudget(tt.limits).NewPackageCounter()
+			if tt.name == "file count" {
+				counter = NewResourceBudget(ResourceLimits{MaxPackageFiles: 1}).NewPackageCounter()
+				archive = tarBytes(t,
+					tarEntry{name: "one.tf", typeflag: tar.TypeReg, body: "a"},
+					tarEntry{name: "two.tf", typeflag: tar.TypeReg, body: "b"},
+				)
+			}
+			dest := t.TempDir()
+			extracted := int64(0)
+
+			err := extractRegularFilesWithResourceBudget(bytes.NewReader(archive), dest, &extracted, counter)
+
+			var budgetErr *BudgetExceededError
+			require.ErrorAs(t, err, &budgetErr)
+			if tt.name != "file count" {
+				_, statErr := os.Stat(filepath.Join(dest, "main.tf"))
+				require.ErrorIs(t, statErr, os.ErrNotExist)
+			}
+		})
+	}
+}
+
 func TestExtractArchiveCommandStreamsOutput(t *testing.T) {
 	archive := tarBytes(t, tarEntry{name: "main.tf", typeflag: tar.TypeReg, body: "content"})
 	archivePath := filepath.Join(t.TempDir(), "archive.tar")
@@ -103,8 +141,9 @@ func TestExtractArchiveCommandStreamsOutput(t *testing.T) {
 	dest := t.TempDir()
 	extracted := int64(0)
 
-	require.NoError(t, extractArchiveCommandWithLimit(
-		archiveHelperCommand(t, archivePath), dest, &extracted, int64(len(archive)),
+	require.NoError(t, extractArchiveCommandWithResourceBudget(
+		t.Context(), archiveHelperCommand(t, archivePath), dest, &extracted,
+		int64(len(archive)), nil, nil,
 	))
 	data, err := os.ReadFile(filepath.Join(dest, "main.tf"))
 	require.NoError(t, err)
@@ -117,8 +156,9 @@ func TestExtractArchiveCommandBoundsStreamBeforeExtraction(t *testing.T) {
 	require.NoError(t, os.WriteFile(archivePath, archive, 0o600))
 	extracted := int64(0)
 
-	err := extractArchiveCommandWithLimit(
-		archiveHelperCommand(t, archivePath), t.TempDir(), &extracted, int64(len(archive)-1),
+	err := extractArchiveCommandWithResourceBudget(
+		t.Context(), archiveHelperCommand(t, archivePath), t.TempDir(), &extracted,
+		int64(len(archive)-1), nil, nil,
 	)
 
 	require.ErrorContains(t, err, "git archive exceeds")
