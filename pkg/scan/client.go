@@ -16,14 +16,20 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfresolver "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog/log"
 )
 
-// DefaultRemoteModuleMaxDepth bounds network work while covering typical nested module stacks.
-const DefaultRemoteModuleMaxDepth = 8
+const (
+	DefaultRemoteModuleMaxDepth        = 8
+	DefaultRemoteModuleMaxTotalBytes   = tfresolver.DefaultMaxTotalBytes
+	DefaultRemoteModuleMaxPackageBytes = tfresolver.DefaultMaxPackageBytes
+	DefaultRemoteModuleMaxFileBytes    = tfresolver.DefaultMaxFileBytes
+	DefaultRemoteModuleMaxPackageFiles = tfresolver.DefaultMaxPackageFiles
+)
 
 // Parameters represents all available scan parameters
 type Parameters struct {
@@ -65,9 +71,13 @@ type Parameters struct {
 	RemoteModulesManifestPath   string
 	RemoteModulesHostAllowlist  []string
 	// ModuleMaxDepth caps the BFS depth of the remote-module graph walker (0 disables traversal entirely).
-	ModuleMaxDepth      int
-	ModuleFetchTimeout  time.Duration
-	MaxModuleBytesTotal int64
+	ModuleMaxDepth        int
+	ModuleFetchTimeout    time.Duration
+	MaxModuleBytesTotal   int64
+	MaxModulePackageBytes int64
+	MaxModuleFileBytes    int64
+	MaxModulePackageFiles int
+	MaxModuleParseBytes   int64
 }
 
 func (p *Parameters) GetEffectivePlatforms() []string {
@@ -170,7 +180,10 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxResolverDepth:            15,
 		ModuleMaxDepth:              DefaultRemoteModuleMaxDepth,
 		ModuleFetchTimeout:          30 * time.Second,
-		MaxModuleBytesTotal:         200 * 1024 * 1024,
+		MaxModuleBytesTotal:         DefaultRemoteModuleMaxTotalBytes,
+		MaxModulePackageBytes:       DefaultRemoteModuleMaxPackageBytes,
+		MaxModuleFileBytes:          DefaultRemoteModuleMaxFileBytes,
+		MaxModulePackageFiles:       DefaultRemoteModuleMaxPackageFiles,
 	}, logCtx
 }
 

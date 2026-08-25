@@ -128,7 +128,30 @@ var scanAction = &cli.Command{
 			Name:   "x-remote-modules-max-bytes",
 			Hidden: true,
 			Usage:  "(experimental) total download size limit across all remote modules in bytes (default 200MiB)",
-			Value:  200 * 1024 * 1024,
+			Value:  scan.DefaultRemoteModuleMaxTotalBytes,
+		},
+		&cli.Int64Flag{
+			Name:   "x-remote-modules-max-package-bytes",
+			Hidden: true,
+			Usage:  "(experimental) maximum extracted size of one remote module package in bytes (default 128MiB)",
+			Value:  scan.DefaultRemoteModuleMaxPackageBytes,
+		},
+		&cli.Int64Flag{
+			Name:   "x-remote-modules-max-file-bytes",
+			Hidden: true,
+			Usage:  "(experimental) maximum size of one file in a remote module package in bytes (default 5MiB)",
+			Value:  scan.DefaultRemoteModuleMaxFileBytes,
+		},
+		&cli.IntFlag{
+			Name:   "x-remote-modules-max-package-files",
+			Hidden: true,
+			Usage:  "(experimental) maximum number of files in one remote module package (default 10000)",
+			Value:  scan.DefaultRemoteModuleMaxPackageFiles,
+		},
+		&cli.Int64Flag{
+			Name:   "x-remote-modules-max-parse-bytes",
+			Hidden: true,
+			Usage:  "(experimental) target bytes admitted for repository and remote module parsing (default disabled)",
 		},
 		&cli.BoolFlag{
 			Name:   "x-terraform-plan",
@@ -383,6 +406,10 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		ModuleMaxDepth:              c.Int("x-remote-modules-max-depth"),
 		ModuleFetchTimeout:          c.Duration("x-remote-modules-fetch-timeout"),
 		MaxModuleBytesTotal:         c.Int64("x-remote-modules-max-bytes"),
+		MaxModulePackageBytes:       c.Int64("x-remote-modules-max-package-bytes"),
+		MaxModuleFileBytes:          c.Int64("x-remote-modules-max-file-bytes"),
+		MaxModulePackageFiles:       c.Int("x-remote-modules-max-package-files"),
+		MaxModuleParseBytes:         c.Int64("x-remote-modules-max-parse-bytes"),
 	}
 
 	var opts []scan.ClientOption
