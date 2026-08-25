@@ -9,8 +9,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
@@ -211,6 +214,59 @@ func TestSink_ParseFailureLogLevel(t *testing.T) {
 			require.Contains(t, logBuf.String(), tt.wantLevel)
 		})
 	}
+}
+
+func TestSink_IgnoreLinesWithResolvedFiles(t *testing.T) {
+	tests := []struct {
+		name              string
+		filePath          string
+		wantIgnoreLines   []int
+		wantResolvedFiles bool
+	}{
+		{
+			name:              "yaml with include keeps ignore lines on original coordinates",
+			filePath:          filepath.Join("..", "..", "test", "fixtures", "resolve_ignore_lines", "docker-compose.yaml"),
+			wantIgnoreLines:   []int{6, 7},
+			wantResolvedFiles: true,
+		},
+		{
+			name:              "yaml without include keeps parser ignore lines",
+			filePath:          filepath.Join("..", "..", "test", "fixtures", "resolve_ignore_lines", "no-include.yaml"),
+			wantIgnoreLines:   []int{4, 5},
+			wantResolvedFiles: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content, err := os.ReadFile(tt.filePath)
+			require.NoError(t, err)
+
+			file := sinkFile(t, tt.filePath, content)
+			require.Equal(t, tt.wantResolvedFiles, len(file.ResolvedFiles) > 0)
+			require.Equal(t, tt.wantIgnoreLines, file.LinesIgnore)
+		})
+	}
+}
+
+func sinkFile(t *testing.T, filename string, content []byte) *model.FileMetadata {
+	t.Helper()
+	ctx := context.Background()
+	parsers, err := parser.NewBuilder(ctx).
+		Add(&yamlParser.Parser{}).
+		Build([]string{""}, []string{""})
+	require.NoError(t, err)
+	require.NotEmpty(t, parsers)
+
+	s := &Service{
+		Parser:      parsers[0],
+		Storage:     storage.NewMemoryStorage(),
+		Tracker:     noopTracker{},
+		MaxFileSize: 5,
+	}
+	require.NoError(t, s.sink(ctx, filename, "scanID", bytes.NewReader(content), make([]byte, mbConst), false, 15))
+	require.Len(t, s.files, 1)
+	return s.files[0]
 }
 
 type noopTracker struct{}

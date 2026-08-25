@@ -6,10 +6,12 @@
 package model
 
 import (
+	"bytes"
 	"context"
 	json "encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -72,6 +74,33 @@ func isCloudFormationDocument(value *yaml.Node) bool {
 		}
 	}
 	return hasResources
+}
+
+// GetIgnoreLines recomputes YAML ignore comments from OriginalData after reference resolution shifted line numbers.
+func GetIgnoreLines(file *FileMetadata) []int {
+	ignoreLines := file.LinesIgnore
+	if !utils.Contains(filepath.Ext(file.FilePath), []string{".yml", ".yaml"}) {
+		return ignoreLines
+	}
+
+	ignore := &Ignore{}
+	dec := yaml.NewDecoder(bytes.NewReader([]byte(file.OriginalData)))
+	ctx := context.Background()
+	found := false
+	for {
+		var node yaml.Node
+		if err := dec.Decode(&node); err != nil {
+			break
+		}
+		if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
+			_ = unmarshal(ctx, node.Content[0], ignore)
+			found = true
+		}
+	}
+	if found {
+		return ignore.GetLines()
+	}
+	return ignoreLines
 }
 
 // UnmarshalYAML is a custom yaml parser that places line information in the payload

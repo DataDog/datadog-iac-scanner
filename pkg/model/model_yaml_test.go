@@ -1169,3 +1169,31 @@ enabled: true
 	require.Equal(t, 2.5, d["ratio"], "float 2.5")
 	require.Equal(t, true, d["enabled"], "bool true")
 }
+
+func TestGetIgnoreLines_usesOriginalCoordinates(t *testing.T) {
+	original := `include:
+  - included.yaml
+services:
+  foo:
+    image: alpine
+    # dd-iac-scan ignore-line
+    ports:
+      - "1111:1111"
+`
+	got := GetIgnoreLines(&FileMetadata{
+		FilePath:     "docker-compose.yaml",
+		OriginalData: original,
+		LinesIgnore:  []int{12, 13},
+	})
+	require.Equal(t, []int{6, 7}, got)
+}
+
+func TestGetIgnoreLines_leavesNonYAMLUnchanged(t *testing.T) {
+	got := GetIgnoreLines(&FileMetadata{
+		FilePath:     "main.tf",
+		OriginalData: `// dd-iac-scan ignore-line`,
+		LinesIgnore:  []int{4, 5},
+	})
+	require.Equal(t, []int{4, 5}, got)
+}
+
