@@ -6,6 +6,7 @@
 package resolver
 
 import (
+	"net/url"
 	"testing"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -115,6 +116,16 @@ func TestGitModuleResolveKeyDefaultsMissingRefToHEAD(t *testing.T) {
 	want := "https\x00github.com/org/repo\x00HEAD\x00"
 	if key != want {
 		t.Fatalf("key = %q, want %q", key, want)
+	}
+}
+
+func TestHTTPSGitTransportDoesNotRequireSSHHostKey(t *testing.T) {
+	repo, err := url.Parse("https://github.com/org/repo.git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkGitTransportAllowed(t.Context(), repo); err != nil {
+		t.Fatalf("pinned git::https must resolve without SSH host keys: %v", err)
 	}
 }
 

@@ -44,6 +44,8 @@ type ResolvedModule struct {
 	CallerRoot        string
 	Source            string
 	Version           string
+	ResolvedVersion   string
+	ResolvedRef       string
 	Name              string
 	LocalPath         string
 	PackageRoot       string
@@ -382,12 +384,14 @@ func (c *resultCollector) addResolvedModule(
 		CallerRoot:        moduleCallRoot(mod),
 		Source:            mod.Source,
 		Version:           mod.Version,
+		ResolvedVersion:   resolution.ResolvedVersion,
+		ResolvedRef:       resolution.ResolvedRef,
 		Name:              mod.Name,
 		LocalPath:         resolution.LocalPath,
 		PackageRoot:       resolution.PackageRoot,
 		ParentPackageRoot: parentPackageRoot,
 		Depth:             depth,
-		CanonicalSource:   canonicalModuleURL(mod.Source, mod.Version),
+		CanonicalSource:   canonicalModuleURL(mod.Source, resolution.ResolvedVersion),
 	})
 }
 
@@ -438,10 +442,10 @@ func (c *resolutionCache) get(resolveID string) (resolvedEntry, bool) {
 	return entry, ok
 }
 
-func (c *resolutionCache) set(resolveID string, entry resolvedEntry) {
+func (c *resolutionCache) set(resolveID string, entry *resolvedEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[resolveID] = entry
+	c.entries[resolveID] = *entry
 }
 
 func (c *moduleParseCache) get(key string) (map[string]tfmodules.ParsedModule, bool) {
@@ -502,7 +506,7 @@ func (w *walker) resolveRemote(
 			resolveErr = w.accountPackage(ctx, mod.Source, resolution)
 		}
 		if ctx.Err() == nil {
-			w.resolutions.set(resolveID, resolvedEntry{res: resolution, err: resolveErr})
+			w.resolutions.set(resolveID, &resolvedEntry{res: resolution, err: resolveErr})
 		}
 		return resolution, resolveErr
 	})
@@ -753,37 +757,39 @@ func (w *walker) acquireRemoteModuleGroups(
 	depth int,
 ) {
 	ids := orderedGroupIDs(groups)
+	if w.deferExpansion && w.acquisitionBytes <= 0 {
+		w.recordUnacquiredGroups(groups, ids)
+		return
+	}
 	size := max(1, resolver.FetchConcurrency)
+	baseline := w.budget.TotalUsage().Bytes
 	for start := 0; start < len(ids); {
-		type acquisition struct {
-			group       *remoteModuleGroup
-			reservation int64
+		if start > 0 && w.acquisitionExhausted(baseline) {
+			w.recordUnacquiredGroups(groups, ids[start:])
+			return
 		}
-		batch := make([]acquisition, 0, size)
-		end := min(start+size, len(ids))
-		for _, id := range ids[start:end] {
-			reservation, ok := w.reserveAcquisition()
-			if !ok {
+		end := start
+		for end < len(ids) && end-start < size {
+			if end > start && w.acquisitionExhausted(baseline) {
 				break
 			}
-			batch = append(batch, acquisition{group: groups[id], reservation: reservation})
+			end++
 		}
-		if len(batch) == 0 {
+		if end == start {
 			w.recordUnacquiredGroups(groups, ids[start:])
 			return
 		}
 		g, gCtx := errgroup.WithContext(ctx)
 		g.SetLimit(size)
-		for _, item := range batch {
+		for _, id := range ids[start:end] {
+			group := groups[id]
 			g.Go(func() error {
-				w.traverseRemoteModuleGroup(
-					gCtx, item.group, repoAllowedDirs, depth, item.reservation,
-				)
+				w.traverseRemoteModuleGroup(gCtx, group, repoAllowedDirs, depth)
 				return nil
 			})
 		}
 		_ = g.Wait()
-		start += len(batch)
+		start = end
 	}
 }
 
@@ -805,13 +811,11 @@ func orderedGroupIDs(groups map[string]*remoteModuleGroup) []string {
 	return ids
 }
 
-func (w *walker) reserveAcquisition() (int64, bool) {
-	if !w.deferExpansion {
-		return 0, true
+func (w *walker) acquisitionExhausted(baseline int64) bool {
+	if !w.deferExpansion || w.acquisitionBytes <= 0 {
+		return false
 	}
-	return w.budget.ReserveAcquisition(
-		w.acquisitionBytes, w.budget.Limits().MaxPackageBytes,
-	)
+	return w.budget.TotalUsage().Bytes-baseline >= w.acquisitionBytes
 }
 
 func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, ids []string) {
@@ -831,14 +835,7 @@ func (w *walker) traverseRemoteModuleGroup(
 	group *remoteModuleGroup,
 	repoAllowedDirs map[string]map[string]bool,
 	depth int,
-	reservation int64,
 ) {
-	if reservation > 0 {
-		defer w.budget.ReleaseAcquisition(reservation)
-		limits := w.budget.Limits()
-		limits.MaxPackageBytes = reservation
-		ctx = resolver.WithResourceBudget(ctx, resolver.NewResourceBudget(limits))
-	}
 	contextLogger := logger.FromContext(ctx)
 	representative := group.representative
 	contextLogger.Debug().Msgf("Fetching remote Terraform module %q", representative.Source)
@@ -873,7 +870,7 @@ func (w *walker) traverseRemoteModuleGroup(
 	w.results.addPaths(flatTerraformFilePaths(ctx, resolution.LocalPath, resolution.PackageRoot)...)
 	w.results.addSourceMapping(
 		resolution.LocalPath,
-		canonicalModuleURL(representative.Source, representative.Version),
+		canonicalModuleURL(representative.Source, resolution.ResolvedVersion),
 	)
 	if !w.deferExpansion {
 		w.traverse(ctx, resolution.LocalPath, nil, repoAllowedDirs, depth+1, resolution.PackageRoot)
@@ -942,20 +939,33 @@ func canonicalGitModuleSource(moduleSource string) string {
 	return source
 }
 
-func canonicalModuleURL(moduleSource, version string) string {
-	source := canonicalGitModuleSource(moduleSource)
-	sourceType, scope := tfmodules.DetectModuleSourceType(source)
-	if sourceType == sourceTypeRegistry && scope == "public" &&
-		!strings.HasPrefix(source, "registry.terraform.io/") {
-		source = "registry.terraform.io/" + source
+func canonicalModuleURL(moduleSource, resolvedVersion string) string {
+	source := strings.TrimSpace(moduleSource)
+	if addr, err := tfmodules.ParseRegistryModuleSource(source); err == nil {
+		canonical := addr.String()
+		if version := concreteRegistryVersion(resolvedVersion); version != "" {
+			canonical += "@" + version
+		}
+		return canonical
 	}
+	source = canonicalGitModuleSource(source)
 	if index := strings.Index(source, "@"); index != -1 {
 		if schemeEnd := strings.Index(source, "://"); schemeEnd != -1 && schemeEnd < index {
 			source = source[:schemeEnd+3] + source[index+1:]
 		}
 	}
-	if version != "" {
-		source += "@" + version
-	}
 	return source
+}
+
+func concreteRegistryVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || strings.ContainsAny(version, " \t") {
+		return ""
+	}
+	for _, c := range version {
+		if c != '.' && c != '-' && c != '+' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
+			return ""
+		}
+	}
+	return version
 }

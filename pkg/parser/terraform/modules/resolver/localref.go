@@ -238,6 +238,7 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 			resolution, err := ConfineResolution(ctx, Resolution{
 				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 				PackageRoot: packageRoot,
+				ResolvedRef: ref,
 			})
 			if err != nil {
 				release()
@@ -282,6 +283,7 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 	resolution, err := ConfineResolution(ctx, Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
+		ResolvedRef: sha,
 	})
 	if err != nil {
 		release()

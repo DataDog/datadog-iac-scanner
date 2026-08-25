@@ -166,7 +166,7 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 	if res, ok, cacheErr := r.lookupCache(ctx, mod, cacheVersion, selectedSubdir, useCache); cacheErr != nil {
 		return Resolution{}, cacheErr
 	} else if ok {
-		return res, nil
+		return stampRegistryVersion(res, st, cacheVersion), nil
 	}
 
 	// Coalesce cacheable fetches; non-cacheable results carry per-call Cleanup.
@@ -178,9 +178,20 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 		if sfErr != nil {
 			return Resolution{}, sfErr
 		}
-		return v.(Resolution), nil
+		return stampRegistryVersion(v.(Resolution), st, cacheVersion), nil
 	}
-	return r.fetchAndCommit(ctx, st, mod, cacheVersion, selectedSubdir, useCache)
+	res, err := r.fetchAndCommit(ctx, st, mod, cacheVersion, selectedSubdir, useCache)
+	if err != nil {
+		return Resolution{}, err
+	}
+	return stampRegistryVersion(res, st, cacheVersion), nil
+}
+
+func stampRegistryVersion(res Resolution, sourceType, version string) Resolution {
+	if sourceType == sourceTypeRegistry && version != "" {
+		res.ResolvedVersion = version
+	}
+	return res
 }
 
 func (r *GoGetterResolver) fetchAndCommit(

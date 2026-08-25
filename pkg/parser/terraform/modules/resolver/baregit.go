@@ -1110,6 +1110,7 @@ func (r *BareGitResolver) resolveCachedSHAArchive(
 	resolution, err := ConfineResolution(ctx, Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
+		ResolvedRef: ref,
 	})
 	if err != nil {
 		release()
@@ -1149,6 +1150,7 @@ func (r *BareGitResolver) resolveRemoteArchive(
 	resolution, err := ConfineResolution(ctx, Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
+		ResolvedRef: sha,
 	})
 	if err != nil {
 		release()

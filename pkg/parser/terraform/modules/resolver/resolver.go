@@ -16,9 +16,11 @@ import (
 
 // Resolution holds an acquired package, its selected module directory, and optional cleanup.
 type Resolution struct {
-	LocalPath   string
-	PackageRoot string
-	Cleanup     func() // optional post-scan cleanup
+	LocalPath       string
+	PackageRoot     string
+	ResolvedVersion string
+	ResolvedRef     string
+	Cleanup         func() // optional post-scan cleanup
 }
 
 func withResolutionCleanup(res Resolution, cleanup func()) Resolution {
