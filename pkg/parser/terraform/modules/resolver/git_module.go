@@ -5,31 +5,83 @@
  */
 package resolver
 
-import "strings"
+import (
+	"net/url"
+	"path/filepath"
+	"strings"
 
-// GitModuleResolveKey returns a canonical cache key for pinned git module sources.
-// Identical content folds transport spellings (https vs ssh, .git suffix) into one key.
-// Returns false when the source is not a git:: module with ref= (not BareGit-owned).
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+)
+
+const defaultGitRef = "HEAD"
+
+// GitModuleResolveKey returns a canonical cache key for pinnable git module sources.
+// Transport scheme is part of the key so HTTPS and SSH spellings cannot coalesce.
+// A missing ref is treated as HEAD so default-branch sources still share an identity.
 func GitModuleResolveKey(source, version string) (string, bool) {
 	repoURL, subdir, ref, ok := parseGitGetterSource(source)
-	if !ok || ref == "" {
+	if !ok || !pinnableGitRepoURL(repoURL) {
 		return "", false
+	}
+	if ref == "" {
+		ref = defaultGitRef
 	}
 	if v := strings.TrimSpace(version); v != "" && v != ref {
 		ref = ref + "\x00" + v
 	}
-	return normalizeGitRepoURL(repoURL) + "\x00" + ref + "\x00" + subdir, true
+	return gitModuleTransportKey(repoURL) + "\x00" + normalizeGitRepoURL(repoURL) + "\x00" + ref + "\x00" + subdir, true
 }
 
-// bareGitOwnsSource reports whether BareGitResolver handles this module source.
-func bareGitOwnsSource(source string) bool {
-	repoURL, _, ref, ok := parseGitGetterSource(source)
-	if !ok || ref == "" {
-		return false
+func gitModuleTransportKey(repoURL string) string {
+	parsed, err := url.Parse(repoURL)
+	if err != nil || parsed.Scheme == "" {
+		return "unknown"
 	}
-	// Local file:// git repos stay on go-getter (small, used in unit tests).
+	return strings.ToLower(parsed.Scheme)
+}
+
+func pinnableGitRepoURL(repoURL string) bool {
 	if strings.HasPrefix(repoURL, "file://") {
 		return false
 	}
-	return true
+	parsed, err := url.Parse(repoURL)
+	if err != nil || parsed.Hostname() == "" {
+		return false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case httpsScheme, sshScheme:
+		return true
+	default:
+		return false
+	}
+}
+
+func bareGitOwnsSource(source string) bool {
+	repoURL, _, _, ok := parseGitGetterSource(source)
+	return ok && pinnableGitRepoURL(repoURL)
+}
+
+func mutableGitRef(ref string) bool {
+	return strings.EqualFold(ref, defaultGitRef)
+}
+
+// pinnableGitModuleFromGetterSource turns a go-getter download URL into a BareGit
+// module. Registry X-Terraform-Get values and default-branch git sources land here
+// instead of an unpinned git subprocess.
+func pinnableGitModuleFromGetterSource(packageSource, selectedSubdir string) (*tfmodules.ParsedModule, bool) {
+	repoURL, subdir, ref, ok := parseGitGetterSource(packageSource)
+	if !ok || !pinnableGitRepoURL(repoURL) {
+		return nil, false
+	}
+	if selectedSubdir != "" {
+		subdir = selectedSubdir
+	}
+	if ref == "" {
+		ref = defaultGitRef
+	}
+	source := "git::" + repoURL
+	if subdir != "" && subdir != "." {
+		source += "//" + strings.TrimPrefix(filepath.ToSlash(subdir), "/")
+	}
+	return &tfmodules.ParsedModule{Source: source + "?ref=" + url.QueryEscape(ref)}, true
 }

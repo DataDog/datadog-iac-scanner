@@ -247,7 +247,10 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 
 	key := archiveCacheKey(sha) + "\x00" + filepath.Clean(subdir)
 	_, err, _ := r.extractSF.Do(key, func() (interface{}, error) {
-		return nil, archiveExtract(ctx, info.gitDir, info.extractBase, sha, subdir)
+		return nil, archiveExtract(
+			ctx, info.gitDir, info.extractBase, sha, subdir,
+			localCloneArchiveCommand(info.gitDir),
+		)
 	})
 	if err != nil {
 		contextLogger.Warn().Err(err).Msgf("LocalGitRefResolver: archive %s:%s failed", sha, subdir)

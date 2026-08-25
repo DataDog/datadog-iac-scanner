@@ -84,6 +84,13 @@ func gitInWorktree(ctx context.Context, root string, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, "git", cmdArgs...) //nolint:gosec
 }
 
-func gitCloneBare(ctx context.Context, remoteURL, dest string) *exec.Cmd {
-	return exec.CommandContext(ctx, "git", "clone", "--bare", "--filter=blob:none", remoteURL, gitSafePath(dest)) //nolint:gosec
+// cloneBareArgCount counts the fixed arguments appended after extraConfig:
+// clone, --bare, --filter, the remote and the destination.
+const cloneBareArgCount = 5
+
+func gitCloneBare(ctx context.Context, remoteURL, dest string, extraConfig []string) *exec.Cmd {
+	args := make([]string, 0, len(extraConfig)+cloneBareArgCount)
+	args = append(args, extraConfig...)
+	args = append(args, "clone", "--bare", "--filter=blob:none", remoteURL, gitSafePath(dest))
+	return exec.CommandContext(ctx, "git", args...) //nolint:gosec
 }

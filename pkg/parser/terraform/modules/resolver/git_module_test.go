@@ -11,7 +11,7 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
-func TestGitModuleResolveKeyFoldsTransport(t *testing.T) {
+func TestGitModuleResolveKeySeparatesTransport(t *testing.T) {
 	https := "git::https://github.com/org/repo.git//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
 	ssh := "git::ssh://git@github.com/org/repo//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
 	scp := "git@github.com:org/repo//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
@@ -28,12 +28,31 @@ func TestGitModuleResolveKeyFoldsTransport(t *testing.T) {
 	if !ok {
 		t.Fatal("expected scp key")
 	}
-	if keyHTTPS != keySSH || keyHTTPS != keySCP {
-		t.Fatalf("keys differ:\n  https=%q\n  ssh=%q\n  scp=%q", keyHTTPS, keySSH, keySCP)
+	if keyHTTPS == keySSH || keyHTTPS == keySCP {
+		t.Fatalf("HTTPS must not share resolve identity with SSH/SCP:\n  https=%q\n  ssh=%q\n  scp=%q", keyHTTPS, keySSH, keySCP)
 	}
-	want := "github.com/org/repo\x00aws-bucket_v7.1.2\x00terraform-modules/aws-bucket"
-	if keyHTTPS != want {
-		t.Fatalf("key = %q, want %q", keyHTTPS, want)
+	if keySSH != keySCP {
+		t.Fatalf("SSH and SCP spellings should still coalesce: %q vs %q", keySSH, keySCP)
+	}
+	wantHTTPS := "https\x00github.com/org/repo\x00aws-bucket_v7.1.2\x00terraform-modules/aws-bucket"
+	if keyHTTPS != wantHTTPS {
+		t.Fatalf("https key = %q, want %q", keyHTTPS, wantHTTPS)
+	}
+}
+
+func TestGitModuleResolveKeyFoldsEquivalentHTTPS(t *testing.T) {
+	withGit := "git::https://github.com/org/repo.git?ref=v1.0.0"
+	withoutGit := "git::https://github.com/org/repo?ref=v1.0.0"
+	keyWith, ok := GitModuleResolveKey(withGit, "")
+	if !ok {
+		t.Fatal("expected https key with .git suffix")
+	}
+	keyWithout, ok := GitModuleResolveKey(withoutGit, "")
+	if !ok {
+		t.Fatal("expected https key without .git suffix")
+	}
+	if keyWith != keyWithout {
+		t.Fatalf("equivalent HTTPS spellings should share a key: %q vs %q", keyWith, keyWithout)
 	}
 }
 
@@ -55,11 +74,47 @@ func TestBareGitOwnsSource(t *testing.T) {
 	if !bareGitOwnsSource("git::https://github.com/org/repo//sub?ref=v1") {
 		t.Fatal("git:: with ref should be bare-git owned")
 	}
-	if bareGitOwnsSource("git::https://github.com/org/repo//sub") {
-		t.Fatal("git:: without ref is not bare-git owned")
+	if !bareGitOwnsSource("git::https://github.com/org/repo//sub") {
+		t.Fatal("default-branch git::https should be bare-git owned")
 	}
 	if bareGitOwnsSource("registry.terraform.io/org/name/aws") {
 		t.Fatal("registry source is not bare-git owned")
+	}
+	if bareGitOwnsSource("git::file:///tmp/repository") {
+		t.Fatal("file:// git sources stay on go-getter")
+	}
+}
+
+func TestPinnableGitModuleFromGetterSource(t *testing.T) {
+	mod, ok := pinnableGitModuleFromGetterSource("git::https://github.com/org/repo.git?ref=abc123", "modules/vpc")
+	if !ok {
+		t.Fatal("expected registry-style HTTPS git download to be pinnable")
+	}
+	if mod.Source != "git::https://github.com/org/repo.git//modules/vpc?ref=abc123" {
+		t.Fatalf("got %q", mod.Source)
+	}
+
+	mod, ok = pinnableGitModuleFromGetterSource("git::https://github.com/org/repo.git", "")
+	if !ok {
+		t.Fatal("expected default-branch HTTPS git to be pinnable")
+	}
+	if mod.Source != "git::https://github.com/org/repo.git?ref=HEAD" {
+		t.Fatalf("got %q", mod.Source)
+	}
+
+	if _, ok := pinnableGitModuleFromGetterSource("git::file:///tmp/repository", ""); ok {
+		t.Fatal("file:// git must not be treated as pinnable")
+	}
+}
+
+func TestGitModuleResolveKeyDefaultsMissingRefToHEAD(t *testing.T) {
+	key, ok := GitModuleResolveKey("git::https://github.com/org/repo.git", "")
+	if !ok {
+		t.Fatal("expected default-branch source to have a resolve key")
+	}
+	want := "https\x00github.com/org/repo\x00HEAD\x00"
+	if key != want {
+		t.Fatalf("key = %q, want %q", key, want)
 	}
 }
 

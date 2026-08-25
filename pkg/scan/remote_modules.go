@@ -119,13 +119,6 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 		}
 	}
 
-	if c.ScanParams.EnableRemoteModules {
-		resolvers = append(resolvers,
-			tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), ""),
-			tfresolver.NewBareGitResolver("", c.ScanParams.RemoteModulesHostAllowlist...),
-		)
-	}
-
 	ggCfg := tfresolver.NewGoGetterConfig()
 	ggCfg.Disabled = !c.ScanParams.EnableRemoteModules
 	if t := c.ScanParams.ModuleFetchTimeout; t > 0 {
@@ -133,6 +126,15 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 	}
 	ggCfg.MaxTotalBytes = c.ScanParams.MaxModuleBytesTotal
 	ggCfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
+
+	if c.ScanParams.EnableRemoteModules {
+		git := tfresolver.NewBareGitResolver("", c.ScanParams.RemoteModulesHostAllowlist...)
+		ggCfg.Git = git
+		resolvers = append(resolvers,
+			tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), ""),
+			git,
+		)
+	}
 
 	if !ggCfg.Disabled {
 		cache, err := tfresolver.NewModuleCache()

@@ -6,14 +6,14 @@
 package resolver
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -127,6 +127,37 @@ func TestGetterSourceForPreservesHTTPSGit(t *testing.T) {
 	}
 }
 
+func TestGoGetterDisablesUnpinnedNetworkTransports(t *testing.T) {
+	r := NewGoGetterResolver(NewGoGetterConfig())
+	for _, scheme := range []string{"s3", "gcs", "hg"} {
+		if _, ok := r.getters(scheme + "::https://modules.example/package")[scheme]; ok {
+			t.Fatalf("getter %q must be disabled", scheme)
+		}
+	}
+
+	tests := []struct {
+		source string
+		want   string
+	}{
+		{"s3::https://s3.amazonaws.com/bucket/module", `module transport "s3" is disabled`},
+		{"gcs::https://www.googleapis.com/storage/v1/bucket/module", `module transport "gcs" is disabled`},
+		{"hg::https://modules.example/repository", `module transport "hg" is disabled`},
+		{"git::ssh://git@modules.example/repository", `network git transport "ssh" is disabled`},
+		{"git::https://modules.example/repository", `network git transport "https" is disabled`},
+	}
+	for _, test := range tests {
+		t.Run(test.source, func(t *testing.T) {
+			err := validateGetterSourceTransport(test.source)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected %q, got %v", test.want, err)
+			}
+		})
+	}
+	if err := validateGetterSourceTransport("git::file:///tmp/repository"); err == nil {
+		t.Fatal("git subprocess transport must be disabled even for file sources")
+	}
+}
+
 func TestCacheableModuleRegistrySubdir(t *testing.T) {
 	if !cacheableModule("terraform-aws-modules/eks/aws//modules/karpenter", "1.0.0") {
 		t.Fatal("expected pinned registry subdir module to be cacheable")
@@ -215,31 +246,45 @@ func TestAcquireHostSlotCapsConcurrencyPerHost(t *testing.T) {
 }
 
 func TestGoGetterResolveCoalescesConcurrentFetches(t *testing.T) {
-	repo := t.TempDir()
+	var moduleArchive bytes.Buffer
+	zipWriter := zip.NewWriter(&moduleArchive)
 	for i := 0; i < 5; i++ {
-		f := filepath.Join(repo, fmt.Sprintf("m%d.tf", i))
-		if err := os.WriteFile(f, []byte(fmt.Sprintf("resource \"r\" \"n%d\" {}\n", i)), 0o644); err != nil {
-			t.Fatalf("write tf: %v", err)
+		file, err := zipWriter.Create(fmt.Sprintf("m%d.tf", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(fmt.Sprintf("resource \"r\" \"n%d\" {}\n", i))); err != nil {
+			t.Fatal(err)
 		}
 	}
-	runGit(t, repo, "init")
-	runGit(t, repo, "add", ".")
-	runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init")
-	sha := runGit(t, repo, "rev-parse", "HEAD")
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(moduleArchive.Bytes())
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	}
+	policy.dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}
 
 	cacheRoot := t.TempDir()
 	cfg := NewGoGetterConfig()
 	cfg.Cache = &moduleCache{dir: cacheRoot}
 	cfg.TmpDir = t.TempDir()
+	cfg.httpClient = newPolicyHTTPClientWithPolicy(time.Second, policy)
 	r := NewGoGetterResolver(cfg)
 
-	// Build a valid file URL: forward slashes required, and Windows absolute
-	// paths need a leading "/" before the drive letter (file:///C:/...).
-	slashPath := filepath.ToSlash(repo)
-	if !strings.HasPrefix(slashPath, "/") {
-		slashPath = "/" + slashPath
-	}
-	source := fmt.Sprintf("git::file://%s?ref=%s", slashPath, sha)
+	source := "http://modules.example:" + port + "/module.zip?ref=" + strings.Repeat("a", gitSHALength)
 	if !cacheableModule(source, "") {
 		t.Fatalf("test setup: source %q is not cacheable", source)
 	}
@@ -268,5 +313,45 @@ func TestGoGetterResolveCoalescesConcurrentFetches(t *testing.T) {
 	}
 	if got := cfg.fetchCount.Load(); got != 1 {
 		t.Fatalf("expected exactly 1 fetch for %d concurrent identical resolves, got %d", n, got)
+	}
+}
+
+type stubGitResolver struct {
+	last *tfmodules.ParsedModule
+	res  Resolution
+}
+
+func (s *stubGitResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	s.last = mod
+	return s.res, nil
+}
+
+func TestFetchAndCommitDelegatesPinnableGit(t *testing.T) {
+	stub := &stubGitResolver{
+		res: Resolution{LocalPath: "/tmp/mod", PackageRoot: "/tmp/mod"},
+	}
+	cfg := NewGoGetterConfig()
+	cfg.Git = stub
+	r := NewGoGetterResolver(cfg)
+
+	mod := &tfmodules.ParsedModule{Source: "git::https://github.com/org/repo.git"}
+	res, err := r.fetchAndCommit(context.Background(), sourceTypeGit, mod, "", "", false)
+	if err != nil {
+		t.Fatalf("fetchAndCommit: %v", err)
+	}
+	if res.LocalPath != stub.res.LocalPath {
+		t.Fatalf("LocalPath = %q, want delegated result", res.LocalPath)
+	}
+	if stub.last == nil || stub.last.Source != "git::https://github.com/org/repo.git?ref=HEAD" {
+		t.Fatalf("delegated source = %v, want git::https with ref=HEAD", stub.last)
+	}
+
+	mod = &tfmodules.ParsedModule{Source: "git::https://github.com/terraform-aws-modules/terraform-aws-vpc?ref=abc123"}
+	_, err = r.fetchAndCommit(context.Background(), sourceTypeGit, mod, "", "modules/vpc", false)
+	if err != nil {
+		t.Fatalf("fetchAndCommit registry-style: %v", err)
+	}
+	if stub.last.Source != "git::https://github.com/terraform-aws-modules/terraform-aws-vpc//modules/vpc?ref=abc123" {
+		t.Fatalf("delegated source = %q", stub.last.Source)
 	}
 }
