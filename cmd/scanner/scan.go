@@ -153,6 +153,17 @@ var scanAction = &cli.Command{
 			Hidden: true,
 			Usage:  "(experimental) target bytes admitted for repository and remote module parsing (default disabled)",
 		},
+		&cli.StringFlag{
+			Name:   "x-remote-modules-cache-dir",
+			Hidden: true,
+			Usage:  "(experimental) directory for fetched Terraform module caches",
+		},
+		&cli.Int64Flag{
+			Name:   "x-remote-modules-cache-max-bytes",
+			Hidden: true,
+			Usage:  "(experimental) maximum on-disk size of the fetched Terraform module cache (default 2GiB)",
+			Value:  scan.DefaultRemoteModuleMaxCacheBytes,
+		},
 		&cli.BoolFlag{
 			Name:   "x-terraform-plan",
 			Hidden: true,
@@ -348,7 +359,8 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	}
 	if !c.Bool("x-remote-modules") &&
 		(c.String("x-remote-modules-manifest") != "" ||
-			len(c.StringSlice("x-remote-modules-allowed-host")) > 0) {
+			len(c.StringSlice("x-remote-modules-allowed-host")) > 0 ||
+			c.String("x-remote-modules-cache-dir") != "") {
 		return errorWithExitCode(
 			errors.New("remote module resolver options require --x-remote-modules"),
 			constants.InvalidConfigErrorCode,
@@ -410,6 +422,8 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		MaxModuleFileBytes:          c.Int64("x-remote-modules-max-file-bytes"),
 		MaxModulePackageFiles:       c.Int("x-remote-modules-max-package-files"),
 		MaxModuleParseBytes:         c.Int64("x-remote-modules-max-parse-bytes"),
+		RemoteModulesCacheDir:       c.String("x-remote-modules-cache-dir"),
+		MaxModuleCacheBytes:         c.Int64("x-remote-modules-cache-max-bytes"),
 	}
 
 	var opts []scan.ClientOption

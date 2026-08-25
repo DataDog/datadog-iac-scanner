@@ -29,6 +29,7 @@ const (
 	DefaultRemoteModuleMaxPackageBytes = tfresolver.DefaultMaxPackageBytes
 	DefaultRemoteModuleMaxFileBytes    = tfresolver.DefaultMaxFileBytes
 	DefaultRemoteModuleMaxPackageFiles = tfresolver.DefaultMaxPackageFiles
+	DefaultRemoteModuleMaxCacheBytes   = tfresolver.DefaultMaxCacheBytes
 )
 
 // Parameters represents all available scan parameters
@@ -78,6 +79,8 @@ type Parameters struct {
 	MaxModuleFileBytes    int64
 	MaxModulePackageFiles int
 	MaxModuleParseBytes   int64
+	RemoteModulesCacheDir string
+	MaxModuleCacheBytes   int64
 }
 
 func (p *Parameters) GetEffectivePlatforms() []string {
@@ -184,6 +187,7 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxModulePackageBytes:       DefaultRemoteModuleMaxPackageBytes,
 		MaxModuleFileBytes:          DefaultRemoteModuleMaxFileBytes,
 		MaxModulePackageFiles:       DefaultRemoteModuleMaxPackageFiles,
+		MaxModuleCacheBytes:         DefaultRemoteModuleMaxCacheBytes,
 	}, logCtx
 }
 
