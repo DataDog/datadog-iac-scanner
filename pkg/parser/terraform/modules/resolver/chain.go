@@ -31,6 +31,10 @@ func (c *ChainResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule
 		if err == nil {
 			return res, nil
 		}
+		var budgetErr *BudgetExceededError
+		if errors.As(err, &budgetErr) {
+			return Resolution{}, budgetErr
+		}
 		errs = append(errs, err)
 	}
 	return Resolution{}, &tfmodules.UnresolvedError{Reason: errors.Join(errs...).Error()}
