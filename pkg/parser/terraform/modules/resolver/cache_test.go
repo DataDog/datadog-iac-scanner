@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func writeModuleSrc(t *testing.T, nFiles int) string {
@@ -146,5 +148,107 @@ func TestModuleCacheSharesPackageAcrossSubdirs(t *testing.T) {
 	}
 	if vpcDir != ec2Dir {
 		t.Fatalf("expected one shared package cache dir, got %q and %q", vpcDir, ec2Dir)
+	}
+}
+
+func TestModuleCacheKeyAliasesEquivalentSources(t *testing.T) {
+	registryA := moduleCacheKey("terraform-aws-modules/vpc/aws", "1.0.0")
+	registryB := moduleCacheKey("registry.terraform.io/terraform-aws-modules/vpc/aws", "1.0.0")
+	if registryA != registryB {
+		t.Fatalf("registry prefix aliases must share a cache key")
+	}
+	if moduleCacheKey("terraform-aws-modules/vpc/aws", "2.0.0") == registryA {
+		t.Fatal("different versions must not share a cache key")
+	}
+
+	gitA := moduleCacheKey("git::https://github.com/org/repo.git?ref=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "")
+	gitB := moduleCacheKey("git::https://github.com/org/repo?ref=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "")
+	if gitA != gitB {
+		t.Fatalf("git .git suffix aliases must share a cache key")
+	}
+	gitOther := moduleCacheKey("git::https://github.com/org/repo.git?ref=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "")
+	if gitA == gitOther {
+		t.Fatal("different git refs must not share a cache key")
+	}
+}
+
+func TestModuleCacheEvictsOldestEntries(t *testing.T) {
+	cache, err := NewModuleCacheWithDir(t.TempDir(), 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string, size int) string {
+		t.Helper()
+		src := t.TempDir()
+		payload := strings.Repeat("a", size)
+		if err := os.WriteFile(filepath.Join(src, name+".tf"), []byte(payload), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return src
+	}
+
+	first, err := cache.store("example/one/aws", "1.0.0", write("one", 80), "")
+	if err != nil {
+		t.Fatalf("store one: %v", err)
+	}
+	past := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(first, past, past); err != nil {
+		t.Fatal(err)
+	}
+	second, err := cache.store("example/two/aws", "1.0.0", write("two", 80), "")
+	if err != nil {
+		t.Fatalf("store two: %v", err)
+	}
+	older := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(second, older, older); err != nil {
+		t.Fatal(err)
+	}
+	third, err := cache.store("example/three/aws", "1.0.0", write("three", 80), "")
+	if err != nil {
+		t.Fatalf("store three: %v", err)
+	}
+
+	if _, err := os.Stat(first); !os.IsNotExist(err) {
+		t.Fatalf("oldest cache entry should have been evicted, stat: %v", err)
+	}
+	if _, err := os.Stat(second); !os.IsNotExist(err) {
+		t.Fatalf("second cache entry should have been evicted, stat: %v", err)
+	}
+	if _, err := os.Stat(third); err != nil {
+		t.Fatalf("kept cache entry missing: %v", err)
+	}
+	if _, total := listCacheEntries(cache.dir); total > cache.maxBytes {
+		t.Fatalf("cache size %d exceeds max %d", total, cache.maxBytes)
+	}
+}
+
+func TestModuleCacheHitsDoNotEvictSiblings(t *testing.T) {
+	cache, err := NewModuleCacheWithDir(t.TempDir(), 10*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := writeModuleSrc(t, 2)
+	first, err := cache.store("example/one/aws", "1.0.0", src, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := cache.store("example/two/aws", "1.0.0", src, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		got, storeErr := cache.store("example/one/aws", "1.0.0", src, "")
+		if storeErr != nil {
+			t.Fatal(storeErr)
+		}
+		if got != first {
+			t.Fatalf("hit returned %q, want %q", got, first)
+		}
+	}
+	if _, err := os.Stat(first); err != nil {
+		t.Fatalf("cached module missing after hits: %v", err)
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatalf("sibling evicted on cache hit: %v", err)
 	}
 }

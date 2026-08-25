@@ -7,13 +7,9 @@ package resolver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -23,123 +19,87 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
-// deadHostTTL is how long a registry discovery failure is remembered across runs.
-const deadHostTTL = 24 * time.Hour
+const defaultRegistryFailureBackoff = 30 * time.Second
 
-// isNetworkUnreachable reports whether err represents a genuine network-level
-// failure (DNS, connection refused, timeout) as opposed to an HTTP-level error
-// like 401/403/500, which means the host is reachable and should not be cached
-// as dead across runs.
-func isNetworkUnreachable(err error) bool {
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return true
-	}
-	var dnsErr *net.DNSError
-	return errors.As(err, &dnsErr)
+type cachedFailure struct {
+	err    error
+	expiry time.Time
 }
 
-func deadHostsFilePath() string {
-	base := os.Getenv("XDG_CACHE_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		base = filepath.Join(home, ".cache")
-	}
-	return filepath.Join(base, "datadog-iac-scanner", "dead-registry-hosts.json")
-}
-
-// loadDeadHosts reads hosts whose registry discovery has previously failed.
-// Entries older than deadHostTTL are ignored.
-func loadDeadHosts() map[string]int64 {
-	p := deadHostsFilePath()
-	if p == "" {
-		return nil
-	}
-	data, err := os.ReadFile(filepath.Clean(p)) //nolint:gosec
-	if err != nil {
-		return nil
-	}
-	var m map[string]int64
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil
-	}
-	return m
-}
-
-// persistDeadHost records host as unreachable, pruning entries older than deadHostTTL.
-// Runs in a goroutine so it never blocks the hot path.
-func persistDeadHost(host string) {
-	p := deadHostsFilePath()
-	if p == "" {
-		return
-	}
-	p = filepath.Clean(p)
-	existing := make(map[string]int64)
-	if data, err := os.ReadFile(p); err == nil { //nolint:gosec
-		_ = json.Unmarshal(data, &existing)
-	}
-	now := time.Now().Unix()
-	cutoff := now - int64(deadHostTTL.Seconds())
-	for h, ts := range existing {
-		if ts < cutoff {
-			delete(existing, h)
-		}
-	}
-	existing[host] = now
-	data, err := json.Marshal(existing)
-	if err != nil {
-		return
-	}
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, data, cacheFilePerms); err != nil {
-		return
-	}
-	_ = os.Rename(tmp, p)
-}
-
-// registryCache caches per-scan registry API calls (including failures).
 type registryCache struct {
 	client *http.Client
 
+	now     func() time.Time
+	backoff time.Duration
+
 	discMu     sync.RWMutex
-	discMap    map[string]string // host → modulesV1 URL
-	discErrMap map[string]error  // host → discovery failure
+	discMap    map[string]string
+	discErrMap map[string]cachedFailure
 	discSF     singleflight.Group
 
 	verMu     sync.RWMutex
-	verMap    map[string]string // cacheKey(source, constraint) → resolved bare version
-	verErrMap map[string]error  // cacheKey(source, constraint) → resolution failure
+	verMap    map[string]string
+	verErrMap map[string]cachedFailure
 	verSF     singleflight.Group
 
 	dlMu     sync.RWMutex
-	dlMap    map[string]string // cacheKey(source, version) → X-Terraform-Get getter URL
-	dlErrMap map[string]error  // cacheKey(source, version) → download failure
+	dlMap    map[string]string
+	dlErrMap map[string]cachedFailure
 	dlSF     singleflight.Group
 }
 
 func NewRegistryCache(timeout time.Duration, hostAllowlist ...string) *registryCache {
-	c := &registryCache{
+	return &registryCache{
 		client:     newPolicyHTTPClient(timeout, hostAllowlist),
 		discMap:    make(map[string]string),
-		discErrMap: make(map[string]error),
+		discErrMap: make(map[string]cachedFailure),
 		verMap:     make(map[string]string),
-		verErrMap:  make(map[string]error),
+		verErrMap:  make(map[string]cachedFailure),
 		dlMap:      make(map[string]string),
-		dlErrMap:   make(map[string]error),
+		dlErrMap:   make(map[string]cachedFailure),
+		backoff:    defaultRegistryFailureBackoff,
 	}
-	// Pre-populate known-dead hosts from previous runs so we skip DNS lookups
-	// for registries that were unreachable last time (within deadHostTTL).
-	now := time.Now().Unix()
-	cutoff := now - int64(deadHostTTL.Seconds())
-	for host, ts := range loadDeadHosts() {
-		if ts >= cutoff {
-			c.discErrMap[host] = fmt.Errorf("registry host unreachable (cached from previous run; clear %s to retry)", deadHostsFilePath())
+}
+
+func (c *registryCache) clock() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return time.Now()
+}
+
+func (c *registryCache) failureBackoff() time.Duration {
+	if c.backoff > 0 {
+		return c.backoff
+	}
+	return defaultRegistryFailureBackoff
+}
+
+func (c *registryCache) lookupFailure(mu *sync.RWMutex, failures map[string]cachedFailure, key string) (error, bool) {
+	mu.RLock()
+	cached, ok := failures[key]
+	mu.RUnlock()
+	if !ok {
+		return nil, false
+	}
+	if c.clock().After(cached.expiry) {
+		mu.Lock()
+		if current, still := failures[key]; still && current.expiry.Equal(cached.expiry) {
+			delete(failures, key)
 		}
+		mu.Unlock()
+		return nil, false
 	}
-	return c
+	return cached.err, true
+}
+
+func (c *registryCache) rememberFailure(mu *sync.RWMutex, failures map[string]cachedFailure, key string, err error) {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return
+	}
+	mu.Lock()
+	failures[key] = cachedFailure{err: err, expiry: c.clock().Add(c.failureBackoff())}
+	mu.Unlock()
 }
 
 func (c *registryCache) modulesV1(ctx context.Context, host string) (string, error) {
@@ -148,29 +108,20 @@ func (c *registryCache) modulesV1(ctx context.Context, host string) (string, err
 		c.discMu.RUnlock()
 		return ep, nil
 	}
-	if cachedErr, ok := c.discErrMap[host]; ok {
-		c.discMu.RUnlock()
+	c.discMu.RUnlock()
+	if cachedErr, ok := c.lookupFailure(&c.discMu, c.discErrMap, host); ok {
 		return "", cachedErr
 	}
-	c.discMu.RUnlock()
 
 	v, err, _ := c.discSF.Do(host, func() (interface{}, error) {
 		ep, err := discoverModulesEndpoint(ctx, c.client, "https://"+host)
 		if err != nil {
-			c.discMu.Lock()
-			c.discErrMap[host] = err
-			c.discMu.Unlock()
-			// Only persist hosts that are network-unreachable (DNS failures, connection
-			// refused, timeouts). HTTP-level errors (401, 500, etc.) mean the host is
-			// reachable — persisting those would ban the registry for 24 h even after
-			// fixing credentials or waiting for a recovery.
-			if isNetworkUnreachable(err) {
-				go persistDeadHost(host)
-			}
+			c.rememberFailure(&c.discMu, c.discErrMap, host, err)
 			return "", err
 		}
 		c.discMu.Lock()
 		c.discMap[host] = ep
+		delete(c.discErrMap, host)
 		c.discMu.Unlock()
 		return ep, nil
 	})
@@ -188,22 +139,20 @@ func (c *registryCache) resolvedVersion(ctx context.Context, ep, host, namespace
 		c.verMu.RUnlock()
 		return v, nil
 	}
-	if cachedErr, ok := c.verErrMap[key]; ok {
-		c.verMu.RUnlock()
+	c.verMu.RUnlock()
+	if cachedErr, ok := c.lookupFailure(&c.verMu, c.verErrMap, key); ok {
 		return "", cachedErr
 	}
-	c.verMu.RUnlock()
 
 	v, err, _ := c.verSF.Do(key, func() (interface{}, error) {
 		resolved, err := resolveRegistryVersion(ctx, c.client, ep, namespace, name, provider, constraint)
 		if err != nil {
-			c.verMu.Lock()
-			c.verErrMap[key] = err
-			c.verMu.Unlock()
+			c.rememberFailure(&c.verMu, c.verErrMap, key, err)
 			return "", err
 		}
 		c.verMu.Lock()
 		c.verMap[key] = resolved
+		delete(c.verErrMap, key)
 		c.verMu.Unlock()
 		return resolved, nil
 	})
@@ -221,22 +170,20 @@ func (c *registryCache) downloadURL(ctx context.Context, ep, host, namespace, na
 		c.dlMu.RUnlock()
 		return v, nil
 	}
-	if cachedErr, ok := c.dlErrMap[key]; ok {
-		c.dlMu.RUnlock()
+	c.dlMu.RUnlock()
+	if cachedErr, ok := c.lookupFailure(&c.dlMu, c.dlErrMap, key); ok {
 		return "", cachedErr
 	}
-	c.dlMu.RUnlock()
 
 	v, err, _ := c.dlSF.Do(key, func() (interface{}, error) {
 		dlURL, err := registryDownloadURL(ctx, c.client, ep, namespace, name, provider, version, host)
 		if err != nil {
-			c.dlMu.Lock()
-			c.dlErrMap[key] = err
-			c.dlMu.Unlock()
+			c.rememberFailure(&c.dlMu, c.dlErrMap, key, err)
 			return "", err
 		}
 		c.dlMu.Lock()
 		c.dlMap[key] = dlURL
+		delete(c.dlErrMap, key)
 		c.dlMu.Unlock()
 		return dlURL, nil
 	})
