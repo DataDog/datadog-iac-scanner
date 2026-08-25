@@ -54,11 +54,14 @@ ENTRYPOINT ["kubectl"]`
 func TestPrepareDockerFileLinesLongMultiLineRun(t *testing.T) {
 	t.Parallel()
 
-	const continuationLines = 200
+	// Each continuation must end with `\` so merged segments contain embedded
+	// whitespace-backslash sequences; the old regex replaced every match, not
+	// just the terminal continuation marker, causing exponential growth.
+	const continuationLines = 25
 	var dockerfile strings.Builder
 	dockerfile.WriteString("FROM alpine:3.7\nRUN true")
 	for range continuationLines {
-		dockerfile.WriteString(" \\\n\t&& echo step")
+		dockerfile.WriteString(" \\\n\t&& echo step \\")
 	}
 	dockerfile.WriteString("\n")
 
