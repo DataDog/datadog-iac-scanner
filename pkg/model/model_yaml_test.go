@@ -1197,3 +1197,15 @@ func TestGetIgnoreLines_leavesNonYAMLUnchanged(t *testing.T) {
 	require.Equal(t, []int{4, 5}, got)
 }
 
+func TestGetIgnoreLines_scalarReferenceWithIgnoreBlock(t *testing.T) {
+	original := `# dd-iac-scan ignore-block
+./included.yaml
+`
+	got := GetIgnoreLines(&FileMetadata{
+		FilePath:     "ref.yaml",
+		OriginalData: original,
+		LinesIgnore:  []int{99},
+	})
+	require.ElementsMatch(t, []int{1, 2}, got)
+}
+

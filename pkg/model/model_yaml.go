@@ -85,22 +85,36 @@ func GetIgnoreLines(file *FileMetadata) []int {
 
 	ignore := &Ignore{}
 	dec := yaml.NewDecoder(bytes.NewReader([]byte(file.OriginalData)))
-	ctx := context.Background()
 	found := false
 	for {
 		var node yaml.Node
 		if err := dec.Decode(&node); err != nil {
 			break
 		}
-		if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
-			_ = unmarshal(ctx, node.Content[0], ignore)
-			found = true
-		}
+		walkIgnoreCommentsYAML(&node, ignore)
+		found = true
 	}
 	if found {
 		return ignore.GetLines()
 	}
 	return ignoreLines
+}
+
+func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore) {
+	if node == nil {
+		return
+	}
+	ignore.ignoreCommentsYAML(node)
+	switch node.Kind {
+	case yaml.DocumentNode, yaml.MappingNode, yaml.SequenceNode:
+		for _, child := range node.Content {
+			walkIgnoreCommentsYAML(child, ignore)
+		}
+	case yaml.AliasNode:
+		if node.Alias != nil {
+			walkIgnoreCommentsYAML(node.Alias, ignore)
+		}
+	}
 }
 
 // UnmarshalYAML is a custom yaml parser that places line information in the payload
