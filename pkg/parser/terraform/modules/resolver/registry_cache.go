@@ -145,7 +145,7 @@ func (c *registryCache) resolvedVersion(ctx context.Context, ep, host, namespace
 	}
 
 	v, err, _ := c.verSF.Do(key, func() (interface{}, error) {
-		resolved, err := resolveRegistryVersion(ctx, c.client, ep, namespace, name, provider, constraint)
+		resolved, err := resolveRegistryVersion(ctx, c.client, ep, namespace, name, provider, constraint, host)
 		if err != nil {
 			c.rememberFailure(&c.verMu, c.verErrMap, key, err)
 			return "", err

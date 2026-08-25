@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,9 +26,6 @@ const (
 
 	discoveryResponseLimit = 64 * 1024
 	versionsResponseLimit  = 128 * 1024
-
-	publicRegistrySourceParts  = 3 // namespace/name/provider
-	privateRegistrySourceParts = 4 // host/namespace/name/provider
 )
 
 func appendGetterSubdir(getterURL, subdir string) string {
@@ -63,24 +61,19 @@ func splitGetterSubdir(getterURL string) (packageURL, subdir string) {
 
 // parseRegistrySource splits public (ns/name/provider) or private (host/ns/name/provider) sources.
 func parseRegistrySource(source string) (host, namespace, name, provider string, err error) {
-	source, _, _ = strings.Cut(source, "//")
-	parts := strings.Split(source, "/")
-	switch len(parts) {
-	case publicRegistrySourceParts:
-		return defaultRegistryHost, parts[0], parts[1], parts[2], nil
-	case privateRegistrySourceParts:
-		return parts[0], parts[1], parts[2], parts[3], nil
-	default:
-		return "", "", "", "", fmt.Errorf("invalid registry source %q: expected namespace/name/provider", source)
+	addr, err := tfmodules.ParseRegistryModuleSource(source)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("invalid registry source %q: %w", source, err)
 	}
+	return addr.Host, addr.Namespace, addr.Name, addr.Provider, nil
 }
 
 func registrySubdir(source string) string {
-	_, subdir, ok := strings.Cut(source, "//")
-	if !ok {
+	addr, err := tfmodules.ParseRegistryModuleSource(source)
+	if err != nil {
 		return ""
 	}
-	return strings.TrimPrefix(subdir, "/")
+	return addr.Subdir
 }
 
 type serviceDiscovery struct {
@@ -135,14 +128,14 @@ type versionsResponse struct {
 // resolveRegistryVersion picks the highest published version satisfying constraint (empty → latest).
 func resolveRegistryVersion(
 	ctx context.Context, client *http.Client,
-	modulesV1, namespace, name, provider, constraint string,
+	modulesV1, namespace, name, provider, constraint, registryHost string,
 ) (string, error) {
 	rawURL := fmt.Sprintf("%s%s/%s/%s/versions", modulesV1, namespace, name, provider)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
 		return "", err
 	}
-	addRegistryToken(req, req.URL.Hostname())
+	addRegistryToken(req, registryHost)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -163,8 +156,9 @@ func resolveRegistryVersion(
 		return "", fmt.Errorf("no versions published")
 	}
 
+	allowPrerelease := constraintAllowsPrerelease(constraint)
 	if constraint == "" {
-		best, ok := selectBestVersion(vr, nil)
+		best, ok := selectBestVersion(vr, nil, allowPrerelease)
 		if !ok {
 			return "", fmt.Errorf("no parseable versions published")
 		}
@@ -175,20 +169,27 @@ func resolveRegistryVersion(
 	if err != nil {
 		return "", fmt.Errorf("invalid version constraint %q: %w", constraint, err)
 	}
-	best, ok := selectBestVersion(vr, cs)
+	best, ok := selectBestVersion(vr, cs, allowPrerelease)
 	if !ok {
 		return "", fmt.Errorf("no published version satisfies constraint %q", constraint)
 	}
 	return best.Original(), nil
 }
 
+func constraintAllowsPrerelease(constraint string) bool {
+	return strings.Contains(constraint, "-")
+}
+
 // selectBestVersion returns the highest published version satisfying cs (nil = any parseable version).
-func selectBestVersion(vr versionsResponse, cs goversion.Constraints) (*goversion.Version, bool) {
+func selectBestVersion(vr versionsResponse, cs goversion.Constraints, allowPrerelease bool) (*goversion.Version, bool) {
 	var best *goversion.Version
 	for _, mod := range vr.Modules {
 		for _, v := range mod.Versions {
 			sv, err := goversion.NewVersion(v.Version)
 			if err != nil || (cs != nil && !cs.Check(sv)) {
+				continue
+			}
+			if sv.Prerelease() != "" && !allowPrerelease {
 				continue
 			}
 			if best == nil || sv.GreaterThan(best) {
@@ -242,9 +243,16 @@ func isBareVersion(s string) bool {
 	return s != ""
 }
 
+func registryCredentialHost(rawHost string) string {
+	if host, _, err := net.SplitHostPort(rawHost); err == nil {
+		return host
+	}
+	return rawHost
+}
+
 // addRegistryToken sets Authorization from TF_TOKEN_<host> (dots/hyphens → underscores).
 func addRegistryToken(req *http.Request, rawHost string) {
-	envKey := "TF_TOKEN_" + strings.NewReplacer(".", "_", "-", "_").Replace(rawHost)
+	envKey := "TF_TOKEN_" + strings.NewReplacer(".", "_", "-", "_").Replace(registryCredentialHost(rawHost))
 	if tok := os.Getenv(envKey); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}

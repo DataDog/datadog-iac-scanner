@@ -75,6 +75,7 @@ func TestResolveRegistryVersionInvalidConstraint(t *testing.T) {
 		"vpc",
 		"aws",
 		"var.module_version",
+		defaultRegistryHost,
 	)
 
 	if err == nil || !strings.Contains(err.Error(), "invalid version constraint") {
@@ -102,6 +103,7 @@ func TestResolveRegistryVersionEmptyConstraintUsesHighestSemver(t *testing.T) {
 		"vpc",
 		"aws",
 		"",
+		defaultRegistryHost,
 	)
 
 	if err != nil {
@@ -134,6 +136,110 @@ func TestResolveConcreteVersionBareVersionSkipsDiscovery(t *testing.T) {
 	}
 }
 
+func TestResolveRegistryVersionSkipsUnrequestedPrerelease(t *testing.T) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(
+					`{"modules":[{"versions":[{"version":"2.0.0"},{"version":"3.0.0-beta.1"}]}]}`,
+				)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	}
+
+	got, err := resolveRegistryVersion(
+		context.Background(),
+		client,
+		"https://registry.terraform.io/v1/modules/",
+		"terraform-aws-modules",
+		"vpc",
+		"aws",
+		"",
+		defaultRegistryHost,
+	)
+	if err != nil {
+		t.Fatalf("resolveRegistryVersion: %v", err)
+	}
+	if got != "2.0.0" {
+		t.Fatalf("version = %q, want 2.0.0", got)
+	}
+}
+
+func TestResolveRegistryVersionConstraintCanSelectPrerelease(t *testing.T) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(
+					`{"modules":[{"versions":[{"version":"2.0.0"},{"version":"3.0.0-beta.1"}]}]}`,
+				)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	}
+
+	got, err := resolveRegistryVersion(
+		context.Background(),
+		client,
+		"https://registry.terraform.io/v1/modules/",
+		"terraform-aws-modules",
+		"vpc",
+		"aws",
+		">= 3.0.0-beta.1",
+		defaultRegistryHost,
+	)
+	if err != nil {
+		t.Fatalf("resolveRegistryVersion: %v", err)
+	}
+	if got != "3.0.0-beta.1" {
+		t.Fatalf("version = %q, want 3.0.0-beta.1", got)
+	}
+}
+
+func TestResolveRegistryVersionUsesRegistryHostToken(t *testing.T) {
+	t.Setenv("TF_TOKEN_registry_example_com", "secret-token")
+	var auth, requestHost string
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			auth = req.Header.Get("Authorization")
+			requestHost = req.URL.Hostname()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"modules":[{"versions":[{"version":"1.0.0"}]}]}`)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	}
+
+	got, err := resolveRegistryVersion(
+		context.Background(),
+		client,
+		"https://modules.other.example/v1/modules/",
+		"ns",
+		"name",
+		"aws",
+		"1.0.0",
+		"registry.example.com:8443",
+	)
+	if err != nil {
+		t.Fatalf("resolveRegistryVersion: %v", err)
+	}
+	if got != "1.0.0" {
+		t.Fatalf("version = %q, want 1.0.0", got)
+	}
+	if requestHost != "modules.other.example" {
+		t.Fatalf("request host = %q, want modules.other.example", requestHost)
+	}
+	if auth != "Bearer secret-token" {
+		t.Fatalf("authorization = %q, want registry-host token", auth)
+	}
+}
+
 func TestParseRegistrySourceWithSubdir(t *testing.T) {
 	host, namespace, name, provider, err := parseRegistrySource("terraform-aws-modules/eks/aws//modules/karpenter")
 	if err != nil {
@@ -144,6 +250,19 @@ func TestParseRegistrySourceWithSubdir(t *testing.T) {
 	}
 	if got := registrySubdir("terraform-aws-modules/eks/aws//modules/karpenter"); got != "modules/karpenter" {
 		t.Fatalf("subdir = %q, want modules/karpenter", got)
+	}
+}
+
+func TestParseRegistrySourceWithHostPort(t *testing.T) {
+	host, namespace, name, provider, err := parseRegistrySource("registry.example.com:8443/ns/name/aws//modules/child")
+	if err != nil {
+		t.Fatalf("parseRegistrySource: %v", err)
+	}
+	if host != "registry.example.com:8443" || namespace != "ns" || name != "name" || provider != "aws" {
+		t.Fatalf("unexpected source parts: %q %q %q %q", host, namespace, name, provider)
+	}
+	if got := registrySubdir("registry.example.com:8443/ns/name/aws//modules/child"); got != "modules/child" {
+		t.Fatalf("subdir = %q, want modules/child", got)
 	}
 }
 
