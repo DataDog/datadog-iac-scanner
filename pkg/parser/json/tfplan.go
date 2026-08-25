@@ -8,8 +8,11 @@ package json
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcl_plan "github.com/hashicorp/terraform-json"
 	"github.com/tidwall/gjson"
 )
@@ -17,49 +20,326 @@ import (
 // TFPlan is an auxiliary structure for parsing tfplans as a scanner Document
 type TFPlan struct {
 	Resource map[string]TFPlanResource `json:"resource"`
+
+	ResourceChanges any `json:"resource_changes,omitempty"`
+	Configuration   any `json:"configuration,omitempty"`
+
+	// TfplanMeta is a reserved top-level map, parallel to Resource (not
+	// nested inside it), keyed exactly like Resource[type][flattened-key].
+	TfplanMeta map[string]map[string]tfplanResourceMeta `json:"_dd_tfplan_meta,omitempty"`
 }
 
-// TFPlanResource is an auxiliary structure for parsing tfplans as a scanner Document.
-// Values are either a TFPlanNamedResource (keyed by resource name) or, under the
-// reserved "_dd_lines" key, a map[string]*model.LineObject holding each sibling
-// resource's header line (see readModule).
+// TFPlanResource is keyed by resource name, plus a reserved "_dd_lines" key
+// holding each resource's header line (see readModule).
 type TFPlanResource map[string]any
 
-// TFPlanNamedResource is an auxiliary structure for parsing tfplans as a scanner Document
 type TFPlanNamedResource map[string]any
 
-// parseTFPlan unmarshals Document as a plan so it can be rebuilt with only
-// the required information
+// tfplanResourceMeta is the payload stored under
+// _dd_tfplan_meta.<type>.<flattened-key>.
+type tfplanResourceMeta struct {
+	Address                  string `json:"address"`
+	AfterUnknown             any    `json:"after_unknown,omitempty"`
+	ConfigurationExpressions any    `json:"configuration_expressions,omitempty"`
+	Provisioners             any    `json:"provisioners,omitempty"`
+}
+
+type resourceChangeCorrelation struct {
+	afterUnknownByAddress map[string]any
+	expressionsByAddress  map[string]any
+	provisionersByAddress map[string]any
+}
+
+func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
+	c := resourceChangeCorrelation{
+		afterUnknownByAddress: make(map[string]any),
+		expressionsByAddress:  make(map[string]any),
+		provisionersByAddress: make(map[string]any),
+	}
+
+	gjson.GetBytes(rawPlan, "resource_changes").ForEach(func(_, change gjson.Result) bool {
+		address := change.Get("address").String()
+		if address == "" {
+			return true
+		}
+		if afterUnknown := change.Get("change.after_unknown"); afterUnknown.Exists() {
+			c.afterUnknownByAddress[address] = afterUnknown.Value()
+		}
+		return true
+	})
+
+	rootConfigModule := gjson.GetBytes(rawPlan, "configuration.root_module")
+	walkConfigModule(&rootConfigModule, "", nil, &c)
+
+	return c
+}
+
+// callSiteIdentity is a call site's stable identity: the module_calls block
+// and argument name it was declared at. expression itself isn't part of the
+// identity since a decoded JSON value (a map or slice) isn't comparable.
+type callSiteIdentity struct {
+	moduleAddress string
+	argumentName  string
+}
+
+// callSiteRecord is one entry in a call_site_expressions chain.
+type callSiteRecord struct {
+	callSiteIdentity
+	expression any
+}
+
+// callArgument is a call-site expression, never asserted as a resolved
+// value (Terraform serializes var.x and base64encode(var.x) alike).
+type callArgument struct {
+	callSiteIdentity
+	raw   gjson.Result
+	chain []callSiteRecord
+}
+
+// record returns arg's own call site as a callSiteRecord.
+func (arg *callArgument) record() callSiteRecord {
+	return callSiteRecord{callSiteIdentity: arg.callSiteIdentity, expression: arg.raw.Value()}
+}
+
+// walkConfigModule indexes each resource's expressions/provisioners by
+// absolute address, using callArgs to attach call-site provenance.
+func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[string]callArgument, c *resourceChangeCorrelation) {
+	module.Get("resources").ForEach(func(_, resource gjson.Result) bool {
+		relativeAddress := resource.Get("address").String()
+		if relativeAddress == "" {
+			return true
+		}
+		absoluteAddress := relativeAddress
+		if modulePath != "" {
+			absoluteAddress = modulePath + "." + relativeAddress
+		}
+		if expressions := resource.Get("expressions"); expressions.Exists() {
+			c.expressionsByAddress[absoluteAddress] = qualifyExpressionTree(&expressions, callArgs)
+		}
+		if provisioners := resource.Get("provisioners"); provisioners.Exists() {
+			c.provisionersByAddress[absoluteAddress] = qualifyExpressionTree(&provisioners, callArgs)
+		}
+		return true
+	})
+
+	module.Get("module_calls").ForEach(func(callName, call gjson.Result) bool {
+		childModule := call.Get("module")
+		if !childModule.Exists() {
+			return true
+		}
+		childPath := "module." + callName.String()
+		if modulePath != "" {
+			childPath = modulePath + "." + childPath
+		}
+		childArgs := make(map[string]callArgument)
+		call.Get("expressions").ForEach(func(argName, argExpr gjson.Result) bool {
+			// Resolve this call's own args against the parent so a chain of
+			// var.x indirections resolves transitively, not just one hop.
+			childArgs[argName.String()] = callArgument{
+				callSiteIdentity: callSiteIdentity{moduleAddress: modulePath, argumentName: argName.String()},
+				raw:              argExpr,
+				chain:            callArgumentChain(&argExpr, callArgs),
+			}
+			return true
+		})
+		walkConfigModule(&childModule, childPath, childArgs, c)
+		return true
+	})
+}
+
+// qualifyExpressionTree walks an expressions/provisioners tree, attaching
+// call-site provenance to reference leaves without modifying any field.
+func qualifyExpressionTree(value *gjson.Result, callArgs map[string]callArgument) any {
+	if len(callArgs) == 0 || !value.IsObject() && !value.IsArray() {
+		return value.Value()
+	}
+
+	if value.Get("references").Exists() {
+		return attachCallSiteExpressions(value, callArgs)
+	}
+
+	if value.IsArray() {
+		items := value.Array()
+		resolved := make([]any, len(items))
+		for i, item := range items {
+			resolved[i] = qualifyExpressionTree(&item, callArgs)
+		}
+		return resolved
+	}
+
+	resolved := make(map[string]any)
+	value.ForEach(func(key, item gjson.Result) bool {
+		resolved[key.String()] = qualifyExpressionTree(&item, callArgs)
+		return true
+	})
+	return resolved
+}
+
+// attachCallSiteExpressions adds a "call_site_expressions" sidecar listing
+// each matched var.<name> reference's call-site chain, never modifying expr.
+func attachCallSiteExpressions(expr *gjson.Result, callArgs map[string]callArgument) any {
+	chain := referencedArgumentChain(expr, callArgs)
+	if len(chain) == 0 {
+		return expr.Value()
+	}
+
+	value, ok := expr.Value().(map[string]any)
+	if !ok {
+		return expr.Value()
+	}
+	expressions := make([]any, len(chain))
+	for i, rec := range chain {
+		expressions[i] = rec.expression
+	}
+	value["call_site_expressions"] = expressions
+	return value
+}
+
+// callArgumentChain builds expr's own provenance for a child call to use.
+// Returns nil when callArgs is empty (see referencedArgumentChain).
+func callArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []callSiteRecord {
+	if len(callArgs) == 0 {
+		return nil
+	}
+	return referencedArgumentChain(expr, callArgs)
+}
+
+// referencedArgumentChain flattens every ancestor call site a var.<name>
+// reference resolves to, deduplicated by (module, argument) identity.
+func referencedArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []callSiteRecord {
+	refs := expr.Get("references")
+	if !refs.IsArray() || len(refs.Array()) == 0 {
+		return nil
+	}
+
+	rawRefs := make([]string, len(refs.Array()))
+	for i, ref := range refs.Array() {
+		rawRefs[i] = ref.String()
+	}
+
+	seen := make(map[callSiteIdentity]bool)
+	var chain []callSiteRecord
+	for i, ref := range refs.Array() {
+		name, ok := varReferenceName(ref.String())
+		if !ok {
+			continue
+		}
+		if hasMoreSpecificTraversal(rawRefs, i, name) {
+			continue
+		}
+		arg, ok := callArgs[name]
+		if !ok {
+			continue
+		}
+		chain = appendDedupRecord(chain, seen, arg.chain...)
+		chain = appendDedupRecord(chain, seen, arg.record())
+	}
+	return chain
+}
+
+// appendDedupRecord appends each of recs to chain, skipping any whose
+// identity is already in seen, and marks every appended identity as seen.
+func appendDedupRecord(chain []callSiteRecord, seen map[callSiteIdentity]bool, recs ...callSiteRecord) []callSiteRecord {
+	for _, rec := range recs {
+		if seen[rec.callSiteIdentity] {
+			continue
+		}
+		seen[rec.callSiteIdentity] = true
+		chain = append(chain, rec)
+	}
+	return chain
+}
+
+// hasMoreSpecificTraversal reports whether rawRefs also contains a
+// traversal into "var.<name>" (e.g. "var.settings.selected") at another index.
+func hasMoreSpecificTraversal(rawRefs []string, self int, name string) bool {
+	prefix := "var." + name
+	for i, ref := range rawRefs {
+		if i == self {
+			continue
+		}
+		if !strings.HasPrefix(ref, prefix) {
+			continue
+		}
+		rest := ref[len(prefix):]
+		if strings.HasPrefix(rest, ".") || strings.HasPrefix(rest, "[") {
+			return true
+		}
+	}
+	return false
+}
+
+// varReferenceName reports whether ref is exactly a bare "var.<name>" root
+// (not "var.settings.metric_name") and, if so, returns <name>.
+func varReferenceName(ref string) (string, bool) {
+	if !strings.HasPrefix(ref, "var.") {
+		return "", false
+	}
+	name := strings.TrimPrefix(ref, "var.")
+	if name == "" || strings.ContainsAny(name, ".[") {
+		return "", false
+	}
+	return name, true
+}
+
+// canonicalConfigAddress strips "[...]" instance-key suffixes, e.g.
+// "module.staging[\"prod\"].aws_instance.web[2]" -> "module.staging.aws_instance.web".
+func canonicalConfigAddress(address string) string {
+	traversal, diags := hclsyntax.ParseTraversalAbs([]byte(address), "", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return address
+	}
+
+	canonical := ""
+	for _, step := range traversal {
+		switch t := step.(type) {
+		case hcl.TraverseRoot:
+			canonical = t.Name
+		case hcl.TraverseAttr:
+			canonical += "." + t.Name
+		case hcl.TraverseIndex:
+		}
+	}
+	return canonical
+}
+
+func resourceMetaFor(address string, c *resourceChangeCorrelation) tfplanResourceMeta {
+	meta := tfplanResourceMeta{Address: address}
+	if afterUnknown, ok := c.afterUnknownByAddress[address]; ok {
+		meta.AfterUnknown = afterUnknown
+	}
+	configAddress := canonicalConfigAddress(address)
+	if expressions, ok := c.expressionsByAddress[configAddress]; ok {
+		meta.ConfigurationExpressions = expressions
+	}
+	if provisioners, ok := c.provisionersByAddress[configAddress]; ok {
+		meta.Provisioners = provisioners
+	}
+	return meta
+}
+
 func parseTFPlan(doc model.Document) (model.Document, error) {
 	var plan *hcl_plan.Plan
 	b, err := json.Marshal(doc)
 	if err != nil {
 		return model.Document{}, err
 	}
-	// Unmarshal our Document as a plan so we are able retrieve planned_values
-	// in a easier way
 	err = json.Unmarshal(b, &plan)
 	if err != nil {
-		// Consider as regular JSON and not tfplan
 		return model.Document{}, err
 	}
 
-	// hcl_plan.Plan is a typed struct so unmarshaling drops the injected
-	// _dd_lines keys along with each resource's "values" attribute line. Read
-	// those lines back out of the raw bytes (via gjson, keyed by resource
-	// address) before that information is lost.
+	// hcl_plan.Plan is typed and drops the injected _dd_lines keys, so read
+	// them back from the raw bytes before that information is lost.
 	resourceLines := extractResourceHeaderLines(b)
+	correlation := buildResourceChangeCorrelation(b)
 
-	parsedPlan := readPlan(plan, resourceLines)
+	parsedPlan := readPlan(plan, doc["resource_changes"], doc["configuration"], resourceLines, &correlation)
 	return parsedPlan, nil
 }
 
-// extractResourceHeaderLines walks the raw plan JSON and returns, for every
-// planned resource, the _dd_line of its "values" attribute (i.e. where the
-// resource's own attribute block starts), keyed by resource address. Array
-// elements don't carry their own _dd_lines sibling (see setSeqLines in
-// json_line.go) — that information lives positionally in the parent module's
-// "_dd_lines._dd_resources._dd_arr" instead.
+// extractResourceHeaderLines returns each resource's "values" attribute
+// line, keyed by resource address.
 func extractResourceHeaderLines(rawPlan []byte) map[string]int {
 	lines := make(map[string]int)
 	root_module := gjson.GetBytes(rawPlan, "planned_values.root_module")
@@ -85,13 +365,19 @@ func walkModule(module *gjson.Result, lines map[string]int) {
 	})
 }
 
-// readPlan extracts the information needed from a Terraform plan and converts it to a scanner Document
-func readPlan(plan *hcl_plan.Plan, resourceLines map[string]int) model.Document {
+func readPlan(
+	plan *hcl_plan.Plan,
+	resourceChanges, configuration any,
+	resourceLines map[string]int,
+	correlation *resourceChangeCorrelation,
+) model.Document {
 	kp := TFPlan{
-		Resource: make(map[string]TFPlanResource),
+		Resource:        make(map[string]TFPlanResource),
+		ResourceChanges: resourceChanges,
+		Configuration:   configuration,
 	}
 
-	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines)
+	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, correlation)
 
 	doc := model.Document{}
 
@@ -107,40 +393,33 @@ func readPlan(plan *hcl_plan.Plan, resourceLines map[string]int) model.Document 
 	return doc
 }
 
-// readModule recursively processes a module and its children, accumulating
-// resources from every module into the same flat resource.<type>.<name> map
-// without losing data across modules. moduleAddress is the full address of
-// module (e.g. "module.staging"), or "" for the root module.
-func (kp *TFPlan) readModule(module *hcl_plan.StateModule, moduleAddress string, resourceLines map[string]int) {
-	// Process all resources in this module
+// readModule recursively accumulates resources from every module into the
+// same flat resource.<type>.<name> map. moduleAddress is "" for the root module.
+func (kp *TFPlan) readModule(
+	module *hcl_plan.StateModule,
+	moduleAddress string,
+	resourceLines map[string]int,
+	correlation *resourceChangeCorrelation,
+) {
 	for _, resource := range module.Resources {
-		// Ensure the resource type map exists - accumulate, don't reinitialize!
 		if kp.Resource[resource.Type] == nil {
 			kp.Resource[resource.Type] = make(TFPlanResource)
 		}
 		typeRes := kp.Resource[resource.Type]
 
-		// Root-module resources keep their plain name. Child-module resources
-		// get their module address prefixed, so same-type-same-name resources
-		// in different modules don't collide into one map entry (which would
-		// silently drop a resource from evaluation).
+		// Module-prefixed so same-type-same-name resources in different
+		// modules don't collide.
 		resourceKey := resource.Name
 		if moduleAddress != "" {
 			resourceKey = moduleAddress + "." + resource.Name
 		}
 
-		// Handle count and for_each: append the index to the resource key
-		// This ensures each instance gets a unique key
 		if resource.Index != nil {
 			resourceKey = formatResourceKeyWithIndex(resourceKey, resource.Index)
 		}
 
-		// Accumulate the resource into the existing type map
 		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
 
-		// Inject the resource's "values" attribute line as a sibling _dd_lines
-		// entry at resource.<type>._dd_lines._dd_<name>._dd_line, matching the
-		// gjson path GetLineBySearchLine builds for a bare resource searchKey.
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeRes["_dd_lines"].(map[string]*model.LineObject)
 			if !isMap {
@@ -149,33 +428,31 @@ func (kp *TFPlan) readModule(module *hcl_plan.StateModule, moduleAddress string,
 			}
 			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
 		}
+
+		if kp.TfplanMeta[resource.Type] == nil {
+			if kp.TfplanMeta == nil {
+				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
+			}
+			kp.TfplanMeta[resource.Type] = make(map[string]tfplanResourceMeta)
+		}
+		kp.TfplanMeta[resource.Type][resourceKey] = resourceMetaFor(resource.Address, correlation)
 	}
 
-	// Recursively process child modules, accumulating into the same map
 	for _, childModule := range module.ChildModules {
-		kp.readModule(childModule, childModule.Address, resourceLines)
+		kp.readModule(childModule, childModule.Address, resourceLines, correlation)
 	}
 }
 
-// formatResourceKeyWithIndex formats a resource key to include count/for_each index
-// Examples:
-//   - count: "web" + 0 -> "web[0]"
-//   - count: "web" + 2 -> "web[2]"
-//   - for_each: "bucket" + "prod" -> "bucket[\"prod\"]"
-//   - for_each: "bucket" + "staging" -> "bucket[\"staging\"]"
-func formatResourceKeyWithIndex(baseName string, index interface{}) string {
+// formatResourceKeyWithIndex appends a count/for_each index, e.g. "web[0]" or "bucket[\"prod\"]".
+func formatResourceKeyWithIndex(baseName string, index any) string {
 	switch idx := index.(type) {
 	case float64:
-		// Count index (JSON numbers are float64)
 		return fmt.Sprintf("%s[%d]", baseName, int(idx))
 	case int:
-		// Count index (in case it's already an int)
 		return fmt.Sprintf("%s[%d]", baseName, idx)
 	case string:
-		// For_each index with string key
 		return fmt.Sprintf("%s[%q]", baseName, idx)
 	default:
-		// Fallback: just use the base name if we don't recognize the index type
 		return baseName
 	}
 }

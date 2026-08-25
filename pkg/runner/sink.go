@@ -25,9 +25,10 @@ import (
 
 var (
 	lines = map[model.FileKind][]string{
-		"TF":   {"pattern"},
-		"JSON": {"FilterPattern"},
-		"YAML": {"filter_pattern", "FilterPattern"},
+		"TF":     {"pattern"},
+		"TFPLAN": {"pattern"},
+		"JSON":   {"FilterPattern"},
+		"YAML":   {"filter_pattern", "FilterPattern"},
 	}
 )
 

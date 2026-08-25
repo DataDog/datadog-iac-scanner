@@ -351,29 +351,41 @@ func prepareScanDocument(body map[string]interface{}, kind model.FileKind) (map[
 }
 
 func prepareScanDocumentRoot(body interface{}, kind model.FileKind) {
+	prepareScanDocumentNode(body, kind, true, true)
+}
+
+// For Terraform-plan documents, pattern rewriting is scoped to the top-level
+// "resource" subtree, so resource_changes/configuration stay byte-identical to the raw plan.
+func prepareScanDocumentNode(body interface{}, kind model.FileKind, resolveFilters, atDocumentRoot bool) {
 	switch bodyType := body.(type) {
 	case map[string]interface{}:
-		prepareScanDocumentValue(bodyType, kind)
+		prepareScanDocumentValue(bodyType, kind, resolveFilters, atDocumentRoot)
 	case []interface{}:
 		for _, indx := range bodyType {
-			prepareScanDocumentRoot(indx, kind)
+			prepareScanDocumentNode(indx, kind, resolveFilters, false)
 		}
 	}
 }
 
-func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKind) {
+func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKind, resolveFilters, atDocumentRoot bool) {
 	delete(bodyType, "_dd_lines")
 	for key, v := range bodyType {
+		childResolveFilters := resolveFilters
+		if kind == model.KindTerraformPlan && atDocumentRoot {
+			childResolveFilters = key == "resource"
+		}
 		switch value := v.(type) {
 		case map[string]interface{}:
-			prepareScanDocumentRoot(value, kind)
+			prepareScanDocumentNode(value, kind, childResolveFilters, false)
 		case []interface{}:
 			for _, indx := range value {
-				prepareScanDocumentRoot(indx, kind)
+				prepareScanDocumentNode(indx, kind, childResolveFilters, false)
 			}
 		case string:
-			if field, ok := lines[kind]; ok && utils.Contains(key, field) {
-				bodyType[key] = resolveJSONFilter(value)
+			if resolveFilters {
+				if field, ok := lines[kind]; ok && utils.Contains(key, field) {
+					bodyType[key] = resolveJSONFilter(value)
+				}
 			}
 		}
 	}
