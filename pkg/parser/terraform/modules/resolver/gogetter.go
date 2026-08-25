@@ -270,20 +270,22 @@ func (r *GoGetterResolver) lookupCache(
 	if !useCache {
 		return Resolution{}, false, nil
 	}
-	packageRoot, ok := r.cfg.Cache.lookup(mod.Source, cacheVersion)
+	packageRoot, release, ok := r.cfg.Cache.lookupLease(mod.Source, cacheVersion)
 	if !ok {
 		return Resolution{}, false, nil
 	}
 	if ResourceBudgetFromContext(ctx) == nil {
 		if err := r.reserveDirBytes(ctx, packageRoot); err != nil {
+			release()
 			return Resolution{}, false, err
 		}
 	}
 	resolution, err := resolutionForPackage(ctx, packageRoot, selectedSubdir)
 	if err != nil {
+		release()
 		return Resolution{}, false, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 	}
-	return resolution, true, nil
+	return withResolutionCleanup(resolution, release), true, nil
 }
 
 func (r *GoGetterResolver) checkByteLimits(size int64) error {
@@ -368,16 +370,17 @@ func (r *GoGetterResolver) commitFetchedDir(
 		}
 	}
 	if useCache {
-		if cached, storeErr := r.cfg.Cache.store(source, version, tmpDir, selectedSubdir); storeErr == nil {
+		if cached, release, storeErr := r.cfg.Cache.store(source, version, tmpDir, selectedSubdir); storeErr == nil {
 			_ = os.RemoveAll(tmpDir)
 			if ResourceBudgetFromContext(ctx) == nil {
 				r.cfg.accountedDirs.Store(filepath.Clean(cached), struct{}{})
 			}
 			resolution, err := resolutionForPackage(ctx, cached, selectedSubdir)
 			if err != nil {
+				release()
 				return Resolution{}, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 			}
-			return resolution, nil
+			return withResolutionCleanup(resolution, release), nil
 		}
 	}
 	cleanup := func() { _ = os.RemoveAll(tmpDir) }

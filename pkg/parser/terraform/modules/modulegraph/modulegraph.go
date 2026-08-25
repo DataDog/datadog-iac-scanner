@@ -864,11 +864,11 @@ func (w *walker) traverseRemoteModuleGroup(
 	for _, mod := range group.callers {
 		w.results.addResolvedModule(mod, resolution, group.parentPackageRoot, depth+1)
 	}
-	if !w.visited.tryAdd(resolution.LocalPath, resolution.PackageRoot) {
-		return
-	}
 	if resolution.Cleanup != nil {
 		w.results.addCleanup(resolution.Cleanup)
+	}
+	if !w.visited.tryAdd(resolution.LocalPath, resolution.PackageRoot) {
+		return
 	}
 	w.results.addPaths(flatTerraformFilePaths(ctx, resolution.LocalPath, resolution.PackageRoot)...)
 	w.results.addSourceMapping(

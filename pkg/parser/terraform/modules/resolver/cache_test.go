@@ -58,8 +58,10 @@ func TestModuleCacheConcurrentStoreLookupNeverPartial(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := c.store(source, version, src, ""); err != nil {
+			if _, release, err := c.store(source, version, src, ""); err != nil {
 				errCh <- fmt.Errorf("store: %w", err)
+			} else {
+				release()
 			}
 		}()
 		wg.Add(1)
@@ -109,7 +111,8 @@ func TestModuleCacheSkipsSymlinks(t *testing.T) {
 	}
 
 	cache := &moduleCache{dir: t.TempDir()}
-	dir, err := cache.store("example/module/aws", "1.0.0", src, "modules/selected")
+	dir, release, err := cache.store("example/module/aws", "1.0.0", src, "modules/selected")
+	release()
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
@@ -139,11 +142,13 @@ func TestModuleCacheSharesPackageAcrossSubdirs(t *testing.T) {
 	vpcSource := "git::https://github.com/acme/modules.git//modules/vpc?ref=abc"
 	ec2Source := "git::https://github.com/acme/modules.git//modules/ec2?ref=abc"
 
-	vpcDir, err := cache.store(vpcSource, version, src, "modules/vpc")
+	vpcDir, vpcRelease, err := cache.store(vpcSource, version, src, "modules/vpc")
+	vpcRelease()
 	if err != nil {
 		t.Fatalf("store vpc: %v", err)
 	}
-	ec2Dir, err := cache.store(ec2Source, version, src, "modules/ec2")
+	ec2Dir, ec2Release, err := cache.store(ec2Source, version, src, "modules/ec2")
+	ec2Release()
 	if err != nil {
 		t.Fatalf("store ec2: %v", err)
 	}
@@ -173,9 +178,28 @@ func TestModuleCacheKeyAliasesEquivalentSources(t *testing.T) {
 	}
 }
 
+func newTestModuleCache(t *testing.T, maxBytes int64) (*moduleCache, *ModuleCacheBudget) {
+	t.Helper()
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, maxBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache, err := NewModuleCacheWithDir(filepath.Join(root, CacheSubdirModules), budget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cache, budget
+}
+
 func TestModuleCacheEvictsOldestEntries(t *testing.T) {
-	dir := t.TempDir()
-	previous, err := NewModuleCacheWithDir(dir, 150)
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modulesDir := filepath.Join(root, CacheSubdirModules)
+	previous, err := NewModuleCacheWithDir(modulesDir, budget)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +213,8 @@ func TestModuleCacheEvictsOldestEntries(t *testing.T) {
 		return src
 	}
 
-	first, err := previous.store("example/one/aws", "1.0.0", write("one", 80), "")
+	first, firstRelease, err := previous.store("example/one/aws", "1.0.0", write("one", 80), "")
+	firstRelease()
 	if err != nil {
 		t.Fatalf("store one: %v", err)
 	}
@@ -197,7 +222,8 @@ func TestModuleCacheEvictsOldestEntries(t *testing.T) {
 	if err := os.Chtimes(first, past, past); err != nil {
 		t.Fatal(err)
 	}
-	second, err := previous.store("example/two/aws", "1.0.0", write("two", 80), "")
+	second, secondRelease, err := previous.store("example/two/aws", "1.0.0", write("two", 80), "")
+	secondRelease()
 	if err != nil {
 		t.Fatalf("store two: %v", err)
 	}
@@ -206,11 +232,12 @@ func TestModuleCacheEvictsOldestEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cache, err := NewModuleCacheWithDir(dir, 150)
+	cache, err := NewModuleCacheWithDir(modulesDir, budget)
 	if err != nil {
 		t.Fatal(err)
 	}
-	third, err := cache.store("example/three/aws", "1.0.0", write("three", 80), "")
+	third, thirdRelease, err := cache.store("example/three/aws", "1.0.0", write("three", 80), "")
+	thirdRelease()
 	if err != nil {
 		t.Fatalf("store three: %v", err)
 	}
@@ -224,27 +251,27 @@ func TestModuleCacheEvictsOldestEntries(t *testing.T) {
 	if _, err := os.Stat(third); err != nil {
 		t.Fatalf("kept cache entry missing: %v", err)
 	}
-	if _, total := listCacheEntries(cache.dir); total > cache.maxBytes {
-		t.Fatalf("cache size %d exceeds max %d", total, cache.maxBytes)
+	if _, total := listCacheEntries(cache.dir); total > budget.MaxBytes() {
+		t.Fatalf("cache size %d exceeds max %d", total, budget.MaxBytes())
 	}
 }
 
 func TestModuleCacheHitsDoNotEvictSiblings(t *testing.T) {
-	cache, err := NewModuleCacheWithDir(t.TempDir(), 10*1024)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cache, _ := newTestModuleCache(t, 10*1024)
 	src := writeModuleSrc(t, 2)
-	first, err := cache.store("example/one/aws", "1.0.0", src, "")
+	first, firstRelease, err := cache.store("example/one/aws", "1.0.0", src, "")
+	firstRelease()
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := cache.store("example/two/aws", "1.0.0", src, "")
+	second, secondRelease, err := cache.store("example/two/aws", "1.0.0", src, "")
+	secondRelease()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		got, storeErr := cache.store("example/one/aws", "1.0.0", src, "")
+		got, release, storeErr := cache.store("example/one/aws", "1.0.0", src, "")
+		release()
 		if storeErr != nil {
 			t.Fatal(storeErr)
 		}
@@ -260,8 +287,13 @@ func TestModuleCacheHitsDoNotEvictSiblings(t *testing.T) {
 	}
 }
 
-func TestModuleCacheDoesNotEvictInUseEntries(t *testing.T) {
-	dir := t.TempDir()
+func TestModuleCacheDoesNotEvictPinnedEntries(t *testing.T) {
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modulesDir := filepath.Join(root, CacheSubdirModules)
 	write := func(name string, size int) string {
 		t.Helper()
 		src := t.TempDir()
@@ -271,11 +303,12 @@ func TestModuleCacheDoesNotEvictInUseEntries(t *testing.T) {
 		return src
 	}
 
-	previous, err := NewModuleCacheWithDir(dir, 150)
+	previous, err := NewModuleCacheWithDir(modulesDir, budget)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stale, err := previous.store("example/stale/aws", "1.0.0", write("stale", 80), "")
+	stale, staleRelease, err := previous.store("example/stale/aws", "1.0.0", write("stale", 80), "")
+	staleRelease()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,39 +316,39 @@ func TestModuleCacheDoesNotEvictInUseEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cache, err := NewModuleCacheWithDir(dir, 150)
+	cache, err := NewModuleCacheWithDir(modulesDir, budget)
 	if err != nil {
 		t.Fatal(err)
 	}
-	live, err := cache.store("example/live/aws", "1.0.0", write("live", 80), "")
+	live, liveRelease, err := cache.store("example/live/aws", "1.0.0", write("live", 80), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := cache.lookup("example/live/aws", "1.0.0"); !ok {
-		t.Fatal("expected live cache hit")
+	defer liveRelease()
+	_, newerRelease, storeErr := cache.store("example/newer/aws", "1.0.0", write("newer", 80), "")
+	newerRelease()
+	if storeErr != nil {
+		t.Fatal(storeErr)
 	}
-	if _, err := cache.store("example/newer/aws", "1.0.0", write("newer", 80), ""); err != nil {
-		t.Fatal(err)
+	if _, statErr := os.Stat(live); statErr != nil {
+		t.Fatalf("pinned cache entry was evicted: %v", statErr)
 	}
 
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Fatalf("unused previous-scan entry should have been evicted, stat: %v", err)
 	}
 	if _, err := os.Stat(live); err != nil {
-		t.Fatalf("in-use cache entry was evicted: %v", err)
+		t.Fatalf("pinned cache entry was evicted: %v", err)
 	}
 }
 
 func TestModuleCacheRejectsEntryLargerThanLimit(t *testing.T) {
-	cache, err := NewModuleCacheWithDir(t.TempDir(), 50)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cache, _ := newTestModuleCache(t, 50)
 	src := t.TempDir()
 	if err := os.WriteFile(filepath.Join(src, "main.tf"), []byte(strings.Repeat("a", 80)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cache.store("example/huge/aws", "1.0.0", src, ""); !errors.Is(err, errCacheEntryTooLarge) {
+	if _, _, err := cache.store("example/huge/aws", "1.0.0", src, ""); !errors.Is(err, errCacheEntryTooLarge) {
 		t.Fatalf("store oversized package: %v", err)
 	}
 	entries, err := os.ReadDir(cache.dir)
@@ -326,33 +359,5 @@ func TestModuleCacheRejectsEntryLargerThanLimit(t *testing.T) {
 		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
 			t.Fatalf("oversized package was published as %s", entry.Name())
 		}
-	}
-}
-
-func TestEvictUnretainedDirsSkipsRetained(t *testing.T) {
-	root := t.TempDir()
-	writeDir := func(name string, size int, age time.Duration) string {
-		t.Helper()
-		dir := filepath.Join(root, name)
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "blob"), []byte(strings.Repeat("a", size)), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		when := time.Now().Add(-age)
-		if err := os.Chtimes(dir, when, when); err != nil {
-			t.Fatal(err)
-		}
-		return dir
-	}
-	stale := writeDir("stale", 80, 2*time.Hour)
-	live := writeDir("live", 80, time.Hour)
-	evictUnretainedDirs(root, 100, map[string]bool{filepath.Clean(live): true})
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Fatalf("unretained dir should have been evicted, stat: %v", err)
-	}
-	if _, err := os.Stat(live); err != nil {
-		t.Fatalf("retained dir was evicted: %v", err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -290,6 +291,55 @@ func TestAcquireHostSlotCapsConcurrencyPerHost(t *testing.T) {
 	wg.Wait()
 	if got := maxInFlight.Load(); got > int64(defaultHostFetchConcurrency) {
 		t.Fatalf("zero host concurrency must fall back to default cap %d, got %d", defaultHostFetchConcurrency, got)
+	}
+}
+
+func TestCachedResolutionKeepsLeaseUntilCleanup(t *testing.T) {
+	cache, budget := newTestModuleCache(t, 150)
+	source := "example/live/aws"
+	packageRoot, release, err := cache.store(source, "1.0.0", writeModuleSrc(t, 5), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+
+	cfg := NewGoGetterConfig()
+	cfg.Cache = cache
+	resolver := NewGoGetterResolver(cfg)
+	resolution, ok, err := resolver.lookupCache(
+		t.Context(),
+		&tfmodules.ParsedModule{Source: source},
+		"1.0.0",
+		"",
+		true,
+	)
+	if err != nil || !ok {
+		t.Fatalf("lookup cache: ok=%v err=%v", ok, err)
+	}
+	if resolution.Cleanup == nil {
+		t.Fatal("cached resolution did not retain its lease")
+	}
+
+	_, newerRelease, err := cache.store("example/newer/aws", "1.0.0", writeModuleSrc(t, 5), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newerRelease()
+	if _, err := os.Stat(packageRoot); err != nil {
+		t.Fatalf("active resolution was evicted before cleanup: %v", err)
+	}
+
+	resolution.Cleanup()
+	_, finalRelease, err := cache.store("example/final/aws", "1.0.0", writeModuleSrc(t, 5), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalRelease()
+	if _, err := os.Stat(packageRoot); !os.IsNotExist(err) {
+		t.Fatalf("released resolution remained protected from eviction: %v", err)
+	}
+	if _, total := listAggregateCacheEntries(budget.Root()); total > budget.MaxBytes() {
+		t.Fatalf("cache size %d exceeds max %d", total, budget.MaxBytes())
 	}
 }
 

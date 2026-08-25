@@ -43,7 +43,7 @@ const maxArchiveExtractBytes = 200 * 1024 * 1024
 type BareGitResolver struct {
 	// Defaults to <user-cache-dir>/datadog-iac-scanner/git-bare.
 	CacheDir string
-	MaxBytes int64
+	Budget   *ModuleCacheBudget
 
 	hostAllowlist []string
 	policy        *httpDestinationPolicy
@@ -1081,17 +1081,80 @@ func (rem *bareRemote) extract(ctx context.Context, sha, subdir string) (string,
 	return dest, nil
 }
 
-func (r *BareGitResolver) evictGitCache() {
-	if r == nil || r.MaxBytes <= 0 {
-		return
+func (r *BareGitResolver) admitGitEntry(repoEntry string) error {
+	if r == nil || r.Budget == nil {
+		return nil
 	}
-	r.mu.Lock()
-	retained := make(map[string]bool, len(r.repos))
-	for _, repo := range r.repos {
-		retained[filepath.Clean(filepath.Dir(repo.barePath))] = true
+	if err := r.Budget.EnsureEntryFits(repoEntry); err != nil {
+		return err
 	}
-	r.mu.Unlock()
-	evictUnretainedDirs(r.effectiveCacheDir(), r.MaxBytes, retained)
+	r.Budget.Admit(repoEntry)
+	return nil
+}
+
+func (r *BareGitResolver) resolveCachedSHAArchive(
+	ctx context.Context, remote *bareRemote, repoEntry, ref, subdir string,
+) (Resolution, bool, error) {
+	if !looksLikeSHA(ref) {
+		return Resolution{}, false, nil
+	}
+	packageRoot, ok := cachedArchiveDir(remote.extractBase, ref, subdir)
+	if !ok {
+		return Resolution{}, false, nil
+	}
+	release := r.Budget.Lease(repoEntry)
+	if err := r.Budget.EnsureEntryFits(repoEntry); err != nil {
+		release()
+		return Resolution{}, true, unresolvedResourceError(err)
+	}
+	resolution, err := ConfineResolution(ctx, Resolution{
+		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
+		PackageRoot: packageRoot,
+	})
+	if err != nil {
+		release()
+		return Resolution{}, true, err
+	}
+	return withResolutionCleanup(resolution, release), true, nil
+}
+
+func (r *BareGitResolver) resolveRemoteArchive(
+	ctx context.Context, remote *bareRemote, repoEntry, repoURL, ref, subdir string,
+) (Resolution, error) {
+	contextLogger := logger.FromContext(ctx)
+	release := r.Budget.Lease(repoEntry)
+	if err := remote.ensureClone(ctx); err != nil {
+		release()
+		return Resolution{}, unresolvedResourceError(err)
+	}
+
+	sha, err := remote.fetchRef(ctx, ref)
+	if err != nil {
+		release()
+		contextLogger.Warn().Err(err).Msgf("BareGitResolver: ref %q not reachable from %s", ref, repoURL)
+		return Resolution{}, unresolvedResourceError(err)
+	}
+
+	packageRoot, err := remote.extract(ctx, sha, subdir)
+	if err != nil {
+		release()
+		contextLogger.Warn().Err(err).Msgf("BareGitResolver: archive %s:%s failed", sha, subdir)
+		return Resolution{}, unresolvedResourceError(err)
+	}
+	if err := r.admitGitEntry(repoEntry); err != nil {
+		release()
+		return Resolution{}, unresolvedResourceError(err)
+	}
+
+	resolution, err := ConfineResolution(ctx, Resolution{
+		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
+		PackageRoot: packageRoot,
+	})
+	if err != nil {
+		release()
+		return Resolution{}, err
+	}
+	return withResolutionCleanup(resolution, release), nil
 }
 
 // Resolve implements Resolver for pinnable git:: sources. A missing ref uses HEAD.
@@ -1118,44 +1181,18 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 		return Resolution{}, err
 	}
 
-	contextLogger := logger.FromContext(ctx)
 	remote := r.getOrInitRemote(repoURL)
+	repoEntry := filepath.Dir(remote.barePath)
 
-	// SHA refs have stable extraction keys; branch/tag refs must be re-resolved.
-	if looksLikeSHA(ref) {
-		if packageRoot, ok := cachedArchiveDir(remote.extractBase, ref, subdir); ok {
-			return ConfineResolution(ctx, Resolution{
-				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
-				PackageRoot: packageRoot,
-			})
-		}
+	if resolution, ok, err := r.resolveCachedSHAArchive(ctx, remote, repoEntry, ref, subdir); ok {
+		return resolution, err
 	}
 
 	if _, err := r.policy.resolveHost(ctx, parsedRepo.Hostname()); err != nil {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
-	if err := remote.ensureClone(ctx); err != nil {
-		return Resolution{}, unresolvedResourceError(err)
-	}
-	defer r.evictGitCache()
-
-	sha, err := remote.fetchRef(ctx, ref)
-	if err != nil {
-		contextLogger.Warn().Err(err).Msgf("BareGitResolver: ref %q not reachable from %s", ref, repoURL)
-		return Resolution{}, unresolvedResourceError(err)
-	}
-
-	packageRoot, err := remote.extract(ctx, sha, subdir)
-	if err != nil {
-		contextLogger.Warn().Err(err).Msgf("BareGitResolver: archive %s:%s failed", sha, subdir)
-		return Resolution{}, unresolvedResourceError(err)
-	}
-
-	return ConfineResolution(ctx, Resolution{
-		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
-		PackageRoot: packageRoot,
-	})
+	return r.resolveRemoteArchive(ctx, remote, repoEntry, repoURL, ref, subdir)
 }
 
 // checkGitTransportAllowed accepts only the transports whose destination the

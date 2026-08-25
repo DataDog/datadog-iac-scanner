@@ -14,10 +14,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -36,42 +34,54 @@ const (
 	CacheSubdirGitLocal = "git-local"
 )
 
-var errCacheEntryTooLarge = errors.New("module package exceeds cache size limit")
+var errCacheEntryTooLarge = errors.New("cache entry exceeds cache size limit")
 
 // moduleCache is a content-addressed on-disk module store.
 type moduleCache struct {
-	dir      string
-	maxBytes int64
-	sf       singleflight.Group
-	evictMu  sync.Mutex
-	total    int64
-	sized    bool
-	inUse    map[string]bool
+	dir    string
+	budget *ModuleCacheBudget
+	sf     singleflight.Group
 }
 
 func NewModuleCache() (*moduleCache, error) {
-	return NewModuleCacheWithDir("", DefaultMaxCacheBytes)
+	root, err := DefaultModuleCacheRoot()
+	if err != nil {
+		return nil, err
+	}
+	budget, err := NewModuleCacheBudget(root, DefaultMaxCacheBytes)
+	if err != nil {
+		return nil, err
+	}
+	return NewModuleCacheWithDir("", budget)
 }
 
-func NewModuleCacheWithDir(dir string, maxBytes int64) (*moduleCache, error) {
+func NewModuleCacheWithDir(dir string, budget *ModuleCacheBudget) (*moduleCache, error) {
 	if dir == "" {
-		root, err := defaultModuleCacheRoot()
-		if err != nil {
-			return nil, err
+		if budget != nil && budget.Root() != "" {
+			dir = filepath.Join(budget.Root(), CacheSubdirModules)
+		} else {
+			root, err := DefaultModuleCacheRoot()
+			if err != nil {
+				return nil, err
+			}
+			dir = filepath.Join(root, CacheSubdirModules)
+			if budget == nil {
+				var budgetErr error
+				budget, budgetErr = NewModuleCacheBudget(root, DefaultMaxCacheBytes)
+				if budgetErr != nil {
+					return nil, budgetErr
+				}
+			}
 		}
-		dir = filepath.Join(root, CacheSubdirModules)
-	}
-	if maxBytes <= 0 {
-		maxBytes = DefaultMaxCacheBytes
 	}
 	dir = filepath.Clean(dir)
 	if err := os.MkdirAll(dir, cacheDirPerms); err != nil {
 		return nil, fmt.Errorf("creating module cache: %w", err)
 	}
-	return &moduleCache{dir: dir, maxBytes: maxBytes}, nil
+	return &moduleCache{dir: dir, budget: budget}, nil
 }
 
-func defaultModuleCacheRoot() (string, error) {
+func DefaultModuleCacheRoot() (string, error) {
 	base := os.Getenv("XDG_CACHE_HOME")
 	if base == "" {
 		home, err := os.UserHomeDir()
@@ -125,18 +135,46 @@ func (c *moduleCache) lookup(source, version string) (packageRoot string, ok boo
 	if _, err := os.ReadFile(filepath.Join(dir, cacheSelectionFile)); err != nil { //nolint:gosec
 		return "", false
 	}
-	c.retain(dir)
 	return dir, true
 }
 
-func (c *moduleCache) store(source, version, srcDir, subdir string) (string, error) {
+func (c *moduleCache) lookupLease(source, version string) (packageRoot string, release func(), ok bool) {
+	path := filepath.Join(c.dir, moduleCacheKey(source, version))
+	release = c.lease(path)
+	packageRoot, ok = c.lookup(source, version)
+	if !ok {
+		release()
+		return "", func() {}, false
+	}
+	return packageRoot, release, true
+}
+
+func (c *moduleCache) lease(path string) func() {
+	if c == nil || c.budget == nil || path == "" {
+		return func() {}
+	}
+	return c.budget.Lease(path)
+}
+
+func (c *moduleCache) admitStored(path string) error {
+	if c == nil || c.budget == nil {
+		return nil
+	}
+	if err := c.budget.EnsureEntryFits(path); err != nil {
+		return err
+	}
+	c.budget.Admit(path)
+	return nil
+}
+
+func (c *moduleCache) store(source, version, srcDir, subdir string) (stored string, release func(), err error) {
 	key := moduleCacheKey(source, version)
 	dst := filepath.Join(c.dir, key)
+	release = c.lease(dst)
 	if cached, ok := c.lookup(source, version); ok {
-		return cached, nil
+		return cached, release, nil
 	}
 	var published bool
-	var added int64
 	v, err, _ := c.sf.Do(key, func() (interface{}, error) {
 		if cached, ok := c.lookup(source, version); ok {
 			return cached, nil
@@ -158,7 +196,7 @@ func (c *moduleCache) store(source, version, srcDir, subdir string) (string, err
 			return "", fmt.Errorf("writing cache selection: %w", err)
 		}
 		size := copied + int64(len(subdir))
-		if c.maxBytes > 0 && size > c.maxBytes {
+		if c.budget != nil && size > c.budget.MaxBytes() {
 			_ = os.RemoveAll(tmp)
 			return "", errCacheEntryTooLarge
 		}
@@ -174,71 +212,20 @@ func (c *moduleCache) store(source, version, srcDir, subdir string) (string, err
 			return "", fmt.Errorf("publishing cache entry: %w", err)
 		}
 		published = true
-		added = size
 		return dst, nil
 	})
 	if err != nil {
-		return "", err
+		release()
+		return "", func() {}, err
 	}
-	stored := v.(string)
-	c.retain(stored)
+	stored = v.(string)
 	if published {
-		c.accountAndEvict(stored, added)
-	}
-	return stored, nil
-}
-
-func (c *moduleCache) retain(path string) {
-	if c == nil || path == "" {
-		return
-	}
-	c.evictMu.Lock()
-	defer c.evictMu.Unlock()
-	if c.inUse == nil {
-		c.inUse = make(map[string]bool)
-	}
-	c.inUse[filepath.Clean(path)] = true
-}
-
-func (c *moduleCache) accountAndEvict(keep string, added int64) {
-	if c == nil || c.maxBytes <= 0 {
-		return
-	}
-	c.evictMu.Lock()
-	defer c.evictMu.Unlock()
-
-	if !c.sized {
-		_, c.total = listCacheEntries(c.dir)
-		c.sized = true
-	} else {
-		c.total += added
-	}
-	if c.total <= c.maxBytes {
-		return
-	}
-
-	entries, total := listCacheEntries(c.dir)
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].modTime.Equal(entries[j].modTime) {
-			return entries[i].path < entries[j].path
+		if fitErr := c.admitStored(stored); fitErr != nil {
+			release()
+			return "", func() {}, fitErr
 		}
-		return entries[i].modTime.Before(entries[j].modTime)
-	})
-	keep = filepath.Clean(keep)
-	for _, entry := range entries {
-		if total <= c.maxBytes {
-			break
-		}
-		path := filepath.Clean(entry.path)
-		if path == keep || c.inUse[path] {
-			continue
-		}
-		if err := os.RemoveAll(entry.path); err != nil {
-			continue
-		}
-		total -= entry.size
 	}
-	c.total = max(total, 0)
+	return stored, release, nil
 }
 
 type cacheEntry struct {
@@ -273,35 +260,6 @@ func listCacheEntries(dir string) (entries []cacheEntry, total int64) {
 		entries = append(entries, cacheEntry{path: path, size: size, modTime: info.ModTime()})
 	}
 	return entries, total
-}
-
-func evictUnretainedDirs(dir string, maxBytes int64, retained map[string]bool) {
-	if maxBytes <= 0 || dir == "" {
-		return
-	}
-	entries, total := listCacheEntries(dir)
-	if total <= maxBytes {
-		return
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].modTime.Equal(entries[j].modTime) {
-			return entries[i].path < entries[j].path
-		}
-		return entries[i].modTime.Before(entries[j].modTime)
-	})
-	for _, entry := range entries {
-		if total <= maxBytes {
-			return
-		}
-		path := filepath.Clean(entry.path)
-		if retained[path] {
-			continue
-		}
-		if err := os.RemoveAll(entry.path); err != nil {
-			continue
-		}
-		total -= entry.size
-	}
 }
 
 func readCacheSize(dir string) (int64, bool) {
