@@ -77,6 +77,14 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	}
 	s.Tracker.TrackFileFoundCountLines(linesResolved)
 
+	if len(documents.ResolvedFiles) > 0 {
+		documents.IgnoreLines = model.GetIgnoreLines(&model.FileMetadata{
+			FilePath:     filename,
+			OriginalData: documents.Content,
+			LinesIgnore:  documents.IgnoreLines,
+		})
+	}
+
 	fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
 
 	// Computed once per file and shared (same pointer) across every document's

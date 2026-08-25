@@ -6,10 +6,12 @@
 package model
 
 import (
+	"bytes"
 	"context"
 	json "encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -72,6 +74,53 @@ func isCloudFormationDocument(value *yaml.Node) bool {
 		}
 	}
 	return hasResources
+}
+
+// GetIgnoreLines recomputes YAML ignore comments from OriginalData after reference resolution shifted line numbers.
+func GetIgnoreLines(file *FileMetadata) []int {
+	ignoreLines := file.LinesIgnore
+	if !utils.Contains(filepath.Ext(file.FilePath), []string{".yml", ".yaml"}) {
+		return ignoreLines
+	}
+
+	ignore := &Ignore{}
+	dec := yaml.NewDecoder(bytes.NewReader([]byte(file.OriginalData)))
+	found := false
+	for {
+		var node yaml.Node
+		if err := dec.Decode(&node); err != nil {
+			break
+		}
+		walkIgnoreCommentsYAML(&node, ignore, make(map[*yaml.Node]bool))
+		found = true
+	}
+	if found {
+		return ignore.GetLines()
+	}
+	return ignoreLines
+}
+
+func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore, visited map[*yaml.Node]bool) {
+	if node == nil {
+		return
+	}
+	if visited[node] {
+		return
+	}
+	visited[node] = true
+	defer delete(visited, node)
+
+	ignore.ignoreCommentsYAML(node)
+	switch node.Kind {
+	case yaml.DocumentNode, yaml.MappingNode, yaml.SequenceNode:
+		for _, child := range node.Content {
+			walkIgnoreCommentsYAML(child, ignore, visited)
+		}
+	case yaml.AliasNode:
+		if node.Alias != nil {
+			walkIgnoreCommentsYAML(node.Alias, ignore, visited)
+		}
+	}
 }
 
 // UnmarshalYAML is a custom yaml parser that places line information in the payload

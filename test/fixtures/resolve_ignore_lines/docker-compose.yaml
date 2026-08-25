@@ -1,0 +1,12 @@
+include:
+  - included.yaml
+services:
+  foo:
+    image: alpine
+    # dd-iac-scan ignore-line
+    ports:
+      - "1111:1111"
+  bar:
+    image: alpine
+    ports:
+      - "2222:2222"

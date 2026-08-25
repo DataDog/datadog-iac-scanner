@@ -1169,3 +1169,62 @@ enabled: true
 	require.Equal(t, 2.5, d["ratio"], "float 2.5")
 	require.Equal(t, true, d["enabled"], "bool true")
 }
+
+func TestGetIgnoreLines_usesOriginalCoordinates(t *testing.T) {
+	original := `include:
+  - included.yaml
+services:
+  foo:
+    image: alpine
+    # dd-iac-scan ignore-line
+    ports:
+      - "1111:1111"
+`
+	got := GetIgnoreLines(&FileMetadata{
+		FilePath:     "docker-compose.yaml",
+		OriginalData: original,
+		LinesIgnore:  []int{12, 13},
+	})
+	require.Equal(t, []int{6, 7}, got)
+}
+
+func TestGetIgnoreLines_leavesNonYAMLUnchanged(t *testing.T) {
+	got := GetIgnoreLines(&FileMetadata{
+		FilePath:     "main.tf",
+		OriginalData: `// dd-iac-scan ignore-line`,
+		LinesIgnore:  []int{4, 5},
+	})
+	require.Equal(t, []int{4, 5}, got)
+}
+
+func TestGetIgnoreLines_scalarReferenceWithIgnoreBlock(t *testing.T) {
+	original := `# dd-iac-scan ignore-block
+./included.yaml
+`
+	got := GetIgnoreLines(&FileMetadata{
+		FilePath:     "ref.yaml",
+		OriginalData: original,
+		LinesIgnore:  []int{99},
+	})
+	require.ElementsMatch(t, []int{1, 2}, got)
+}
+
+func TestGetIgnoreLines_anchorCycle(t *testing.T) {
+	original := `cycle: &cycle
+  self: *cycle
+include:
+  - included.yaml
+services:
+  foo:
+    # dd-iac-scan ignore-line
+    ports:
+      - "1111:1111"
+`
+	got := GetIgnoreLines(&FileMetadata{
+		FilePath:     "docker-compose.yaml",
+		OriginalData: original,
+		LinesIgnore:  []int{99},
+	})
+	require.Equal(t, []int{7, 8}, got)
+}
+

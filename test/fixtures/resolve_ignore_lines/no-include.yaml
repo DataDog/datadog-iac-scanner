@@ -1,0 +1,6 @@
+services:
+  foo:
+    image: alpine
+    # dd-iac-scan ignore-line
+    ports:
+      - "1111:1111"

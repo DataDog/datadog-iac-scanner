@@ -61,7 +61,11 @@ func processCommentYAML(comment *comment, position int, content *yaml.Node, kind
 	case IgnoreLine:
 		linesIgnore = append(linesIgnore, processLine(kind, content, position)...)
 	case IgnoreBlock:
-		linesIgnore = append(linesIgnore, processBlock(kind, content.Content, position)...)
+		if kind == yaml.ScalarNode {
+			linesIgnore = append(linesIgnore, processLine(kind, content, position)...)
+		} else {
+			linesIgnore = append(linesIgnore, processBlock(kind, content.Content, position)...)
+		}
 	default:
 		linesIgnore = append(linesIgnore, processRegularLine(string(*comment), content, position, isFooter)...)
 	}
@@ -157,6 +161,13 @@ func processBlock(kind yaml.Kind, content []*yaml.Node, position int) (linesIgno
 		contentToIgnore = content
 	} else {
 		contentToIgnore = content[position+1].Content
+	}
+
+	if len(contentToIgnore) == 0 {
+		if len(content) > position {
+			linesIgnore = append(linesIgnore, content[position].Line, content[position].Line-1)
+		}
+		return linesIgnore
 	}
 
 	linesIgnore = append(linesIgnore, content[position].Line, content[position].Line-1)
