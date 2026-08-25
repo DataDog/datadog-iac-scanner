@@ -249,7 +249,7 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 	_, err, _ := r.extractSF.Do(key, func() (interface{}, error) {
 		return nil, archiveExtract(
 			ctx, info.gitDir, info.extractBase, sha, subdir,
-			localCloneArchiveCommand(info.gitDir),
+			localCloneArchiveCommand(info.gitDir), nil,
 		)
 	})
 	if err != nil {

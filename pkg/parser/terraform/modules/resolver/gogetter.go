@@ -7,8 +7,8 @@ package resolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io/fs"
 	"math/rand"
 	"net"
 	"net/http"
@@ -30,8 +30,8 @@ import (
 
 const (
 	DefaultFetchTimeout   = 30 * time.Second
-	DefaultMaxModuleBytes = 0                 // no per-module cap; use MaxTotalBytes only
-	DefaultMaxTotalBytes  = 200 * 1024 * 1024 // 200 MiB
+	DefaultMaxModuleBytes = 0
+	DefaultMaxTotalBytes  = 200 * 1024 * 1024
 	mib                   = 1024 * 1024
 
 	sourceTypeRegistry = "registry"
@@ -71,10 +71,10 @@ type GoGetterConfig struct {
 	Disabled bool
 
 	FetchTimeout time.Duration
-	// MaxModuleBytes caps each individual module fetch (programmatic knob; not exposed via CLI).
-	// Defaults to 0 (no per-module cap); the scan-level cap MaxTotalBytes applies instead.
+	// MaxModuleBytes caps each individual module fetch when no graph budget is attached.
 	MaxModuleBytes int64
-	MaxTotalBytes  int64
+	// MaxTotalBytes is retained for standalone resolver compatibility.
+	MaxTotalBytes int64
 
 	HostAllowlist []string
 	Cache         *moduleCache
@@ -114,6 +114,7 @@ func NewGoGetterResolver(cfg *GoGetterConfig) *GoGetterResolver {
 	if cfg.httpClient == nil {
 		cfg.httpClient = newPolicyHTTPClient(cfg.FetchTimeout, cfg.HostAllowlist)
 	}
+	cfg.httpClient = withResourceBudgetTransport(cfg.httpClient, cfg.MaxModuleBytes)
 	if cfg.RegistryCache == nil {
 		cfg.RegistryCache = NewRegistryCache(cfg.FetchTimeout, cfg.HostAllowlist...)
 	}
@@ -266,14 +267,48 @@ func (r *GoGetterResolver) lookupCache(
 	if !ok {
 		return Resolution{}, false, nil
 	}
-	if err := r.reserveDirBytes(packageRoot); err != nil {
-		return Resolution{}, false, err
+	if ResourceBudgetFromContext(ctx) == nil {
+		if err := r.reserveDirBytes(ctx, packageRoot); err != nil {
+			return Resolution{}, false, err
+		}
 	}
 	resolution, err := resolutionForPackage(ctx, packageRoot, selectedSubdir)
 	if err != nil {
 		return Resolution{}, false, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 	}
 	return resolution, true, nil
+}
+
+func (r *GoGetterResolver) checkByteLimits(size int64) error {
+	if r.cfg.MaxModuleBytes > 0 && size > r.cfg.MaxModuleBytes {
+		return &tfmodules.UnresolvedError{
+			Reason: fmt.Sprintf("module exceeds per-module limit of %d MiB", r.cfg.MaxModuleBytes/mib),
+		}
+	}
+	if r.cfg.MaxTotalBytes > 0 {
+		if used := r.cfg.totalBytesUsed.Add(size); used > r.cfg.MaxTotalBytes {
+			r.cfg.totalBytesUsed.Add(-size)
+			return &tfmodules.UnresolvedError{Reason: "scan-level remote module byte cap exceeded"}
+		}
+	}
+	return nil
+}
+
+func (r *GoGetterResolver) reserveDirBytes(ctx context.Context, dir string) error {
+	cleanDir := filepath.Clean(dir)
+	if _, loaded := r.cfg.accountedDirs.LoadOrStore(cleanDir, struct{}{}); loaded {
+		return nil
+	}
+	usage, err := MeasurePackage(ctx, dir, ResourceLimits{})
+	if err != nil {
+		r.cfg.accountedDirs.Delete(cleanDir)
+		return &tfmodules.UnresolvedError{Reason: "measuring cached module: " + err.Error()}
+	}
+	if err := r.checkByteLimits(usage.Bytes); err != nil {
+		r.cfg.accountedDirs.Delete(cleanDir)
+		return err
+	}
+	return nil
 }
 
 func (r *GoGetterResolver) acquireFetchSlot(ctx context.Context) error {
@@ -309,57 +344,27 @@ func (r *GoGetterResolver) acquireHostSlot(ctx context.Context, host string) (fu
 	}
 }
 
-// checkByteLimits returns an error if size exceeds per-module or scan-level caps.
-// On a total-bytes overflow it rolls back the atomic counter before returning.
-func (r *GoGetterResolver) checkByteLimits(size int64) error {
-	if r.cfg.MaxModuleBytes > 0 && size > r.cfg.MaxModuleBytes {
-		return &tfmodules.UnresolvedError{
-			Reason: fmt.Sprintf("module exceeds per-module limit of %d MiB", r.cfg.MaxModuleBytes/mib),
-		}
-	}
-	if r.cfg.MaxTotalBytes > 0 {
-		if n := r.cfg.totalBytesUsed.Add(size); n > r.cfg.MaxTotalBytes {
-			r.cfg.totalBytesUsed.Add(-size)
-			return &tfmodules.UnresolvedError{Reason: "scan-level remote module byte cap exceeded"}
-		}
-	}
-	return nil
-}
-
-func (r *GoGetterResolver) reserveDirBytes(dir string) error {
-	cleanDir := filepath.Clean(dir)
-	if _, loaded := r.cfg.accountedDirs.LoadOrStore(cleanDir, struct{}{}); loaded {
-		return nil
-	}
-	size, err := measureDir(dir)
-	if err != nil {
-		r.cfg.accountedDirs.Delete(cleanDir)
-		return &tfmodules.UnresolvedError{Reason: "measuring cached module: " + err.Error()}
-	}
-	if err := r.checkByteLimits(size); err != nil {
-		r.cfg.accountedDirs.Delete(cleanDir)
-		return err
-	}
-	return nil
-}
-
-// commitFetchedDir enforces size limits, caches, returns Resolution.
+// commitFetchedDir caches the fetched package and returns its selected module.
 func (r *GoGetterResolver) commitFetchedDir(
 	ctx context.Context, source, version, tmpDir, selectedSubdir string, useCache bool,
 ) (Resolution, error) {
-	size, err := measureDir(tmpDir)
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: "measuring module size: " + err.Error()}
-	}
-	if err := r.checkByteLimits(size); err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return Resolution{}, err
+	if ResourceBudgetFromContext(ctx) == nil {
+		usage, err := MeasurePackage(ctx, tmpDir, ResourceLimits{})
+		if err != nil {
+			_ = os.RemoveAll(tmpDir)
+			return Resolution{}, &tfmodules.UnresolvedError{Reason: "measuring module size: " + err.Error()}
+		}
+		if err := r.checkByteLimits(usage.Bytes); err != nil {
+			_ = os.RemoveAll(tmpDir)
+			return Resolution{}, err
+		}
 	}
 	if useCache {
 		if cached, storeErr := r.cfg.Cache.store(source, version, tmpDir, selectedSubdir); storeErr == nil {
 			_ = os.RemoveAll(tmpDir)
-			r.cfg.accountedDirs.Store(filepath.Clean(cached), struct{}{})
+			if ResourceBudgetFromContext(ctx) == nil {
+				r.cfg.accountedDirs.Store(filepath.Clean(cached), struct{}{})
+			}
 			resolution, err := resolutionForPackage(ctx, cached, selectedSubdir)
 			if err != nil {
 				return Resolution{}, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
@@ -528,17 +533,23 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 	defer cancel()
 
 	client := &getter.Client{
-		Ctx:  fetchCtx,
-		Src:  getterSrc,
-		Dst:  tmpDir,
-		Pwd:  tmpDir,
-		Mode: getter.ClientModeDir,
+		Ctx:             fetchCtx,
+		Src:             getterSrc,
+		Dst:             tmpDir,
+		Pwd:             tmpDir,
+		Mode:            getter.ClientModeDir,
+		DisableSymlinks: true,
+		Decompressors:   r.decompressors(fetchCtx),
 		Options: []getter.ClientOption{
 			getter.WithGetters(r.getters(getterSrc)),
 		},
 	}
 	if err := client.Get(); err != nil {
 		_ = os.RemoveAll(tmpDir)
+		var budgetErr *BudgetExceededError
+		if errors.As(err, &budgetErr) {
+			return "", budgetErr
+		}
 		return "", &tfmodules.UnresolvedError{Reason: "fetch failed: " + err.Error()}
 	}
 	return tmpDir, nil
@@ -557,6 +568,20 @@ func (r *GoGetterResolver) getters(source string) map[string]getter.Getter {
 	getters["http"] = httpGetter
 	getters["https"] = httpGetter
 	return getters
+}
+
+func (r *GoGetterResolver) decompressors(ctx context.Context) map[string]getter.Decompressor {
+	limits := ResourceBudgetFromContext(ctx).Limits()
+	return limitedDecompressors(limits, r.maxPackageBytes(ctx))
+}
+
+func (r *GoGetterResolver) maxPackageBytes(ctx context.Context) int64 {
+	maxBytes := r.cfg.MaxModuleBytes
+	if budgetMax := ResourceBudgetFromContext(ctx).Limits().MaxPackageBytes; budgetMax > 0 &&
+		(maxBytes <= 0 || budgetMax < maxBytes) {
+		maxBytes = budgetMax
+	}
+	return maxBytes
 }
 
 func validateGetterSourceTransport(source string) error {
@@ -693,28 +718,4 @@ func stripPort(host string) string {
 		return h
 	}
 	return host
-}
-
-func measureDir(path string) (int64, error) {
-	root, err := os.OpenRoot(path)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = root.Close() }()
-	var total int64
-	err = fs.WalkDir(root.FS(), ".", func(_ string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() {
-			return walkErr
-		}
-		info, infoErr := d.Info()
-		if infoErr != nil {
-			return infoErr
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		total += info.Size()
-		return nil
-	})
-	return total, err
 }

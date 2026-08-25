@@ -6,6 +6,8 @@
 package resolver
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -16,6 +18,61 @@ import (
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
+
+func TestSparseArchiveAcceptsRootDirectoryEntry(t *testing.T) {
+	var archive bytes.Buffer
+	tw := tar.NewWriter(&archive)
+	if err := tw.WriteHeader(&tar.Header{Name: "./", Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("resource \"test\" \"example\" {}")
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "main.tf", Typeflag: tar.TypeReg, Mode: 0o600, Size: int64(len(content)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := t.TempDir()
+	var extracted int64
+	counter := NewResourceBudget(ResourceLimits{MaxPackageFiles: 2}).NewPackageCounter()
+	if err := extractRegularFilesWithResourceBudget(&archive, dest, &extracted, counter); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "main.tf")); err != nil {
+		t.Fatal(err)
+	}
+	if counter.Usage().Files != 1 {
+		t.Fatalf("expected only the materialized file to be counted, got %+v", counter.Usage())
+	}
+}
+
+func TestSparseArchiveCountsIgnoredEntryTypes(t *testing.T) {
+	var archive bytes.Buffer
+	tw := tar.NewWriter(&archive)
+	if err := tw.WriteHeader(&tar.Header{Name: "ignored", Typeflag: tar.TypeSymlink, Linkname: "target"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "also-ignored", Typeflag: tar.TypeSymlink, Linkname: "target"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var extracted int64
+	counter := NewResourceBudget(ResourceLimits{MaxPackageFiles: 1}).NewPackageCounter()
+	err := extractRegularFilesWithResourceBudget(&archive, t.TempDir(), &extracted, counter)
+	var budgetErr *BudgetExceededError
+	if !errors.As(err, &budgetErr) || budgetErr.Limit != "package_file_count" {
+		t.Fatalf("expected package file-count error, got %v", err)
+	}
+}
 
 func TestResolveUsesCachedSHAArchiveWithoutDNS(t *testing.T) {
 	const sha = "0123456789abcdef0123456789abcdef01234567"

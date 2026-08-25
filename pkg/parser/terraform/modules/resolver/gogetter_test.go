@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	getter "github.com/hashicorp/go-getter"
+	"github.com/stretchr/testify/require"
+
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
@@ -125,6 +128,30 @@ func TestGetterSourceForPreservesHTTPSGit(t *testing.T) {
 	if strings.Contains(got, "ssh://") {
 		t.Fatalf("getter source must not rewrite to SSH, got %q", got)
 	}
+}
+
+func TestGoGetterUsesGraphResourceLimits(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewGoGetterConfig()
+	resolver := NewGoGetterResolver(cfg)
+	ctx := WithResourceBudget(t.Context(), NewResourceBudget(ResourceLimits{
+		MaxPackageBytes: 1234,
+		MaxPackageFiles: 7,
+	}))
+
+	httpGetter, ok := resolver.getters("https://example.com/module.zip")["https"].(*getter.HttpGetter)
+	require.True(t, ok)
+	require.Zero(t, httpGetter.MaxBytes)
+	require.Equal(t, int64(1234), resolver.maxPackageBytes(ctx))
+
+	decompressors := resolver.decompressors(ctx)
+	budgeted, ok := decompressors["zip"].(*zipBudgetDecompressor)
+	require.True(t, ok)
+	zipper, ok := budgeted.inner.(*getter.ZipDecompressor)
+	require.True(t, ok)
+	require.Equal(t, int64(1234), zipper.FileSizeLimit)
+	require.Equal(t, 7, zipper.FilesLimit)
 }
 
 func TestGoGetterDisablesUnpinnedNetworkTransports(t *testing.T) {
