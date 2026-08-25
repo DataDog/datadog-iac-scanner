@@ -21,7 +21,6 @@ const (
 var (
 	nameRegexDockerFileML = regexp.MustCompile(`.+\s+\\$`)
 	commentRegex          = regexp.MustCompile(`^\s*#.*`)
-	splitRegex            = regexp.MustCompile(`\s\\`)
 )
 
 // DetectLine searches vulnerability line in docker files
@@ -92,23 +91,46 @@ func prepareDockerFileLines(text []string) []string {
 }
 
 func multiLineSpliter(textSplit []string, key string, idx int) string {
-	if nameRegexDockerFileML.MatchString(key) {
-		i := idx + 1
-		if i >= len(textSplit) {
-			return textSplit[idx]
-		}
-		for textSplit[i] == "" {
-			i++
-			if i >= len(textSplit) {
-				return textSplit[idx]
-			}
-		}
-		if commentRegex.MatchString(textSplit[i]) {
-			textSplit[i] += " \\"
-		}
-		textSplit[idx] = splitRegex.ReplaceAllLiteralString(textSplit[idx], " "+textSplit[i])
-		textSplit[i] = ""
-		textSplit[idx] = multiLineSpliter(textSplit, textSplit[idx], idx)
+	if !nameRegexDockerFileML.MatchString(key) {
+		return textSplit[idx]
 	}
-	return textSplit[idx]
+
+	i := idx + 1
+	for i < len(textSplit) && textSplit[i] == "" {
+		i++
+	}
+	if i >= len(textSplit) {
+		return textSplit[idx]
+	}
+
+	var b strings.Builder
+	line := textSplit[idx]
+	b.WriteString(line[:len(line)-1])
+
+	for {
+		next := textSplit[i]
+		if commentRegex.MatchString(next) {
+			next += " \\"
+		}
+		if nameRegexDockerFileML.MatchString(next) {
+			b.WriteString(next[:len(next)-1])
+		} else {
+			b.WriteString(next)
+		}
+		textSplit[i] = ""
+		if !nameRegexDockerFileML.MatchString(next) {
+			break
+		}
+		i++
+		for i < len(textSplit) && textSplit[i] == "" {
+			i++
+		}
+		if i >= len(textSplit) {
+			break
+		}
+	}
+
+	result := b.String()
+	textSplit[idx] = result
+	return result
 }

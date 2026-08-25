@@ -3,7 +3,9 @@ package docker
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -48,6 +50,46 @@ RUN apk update \
 	&& apk add kubectl=1.20.0-r0 \
 	&& rm -rf /var/cache/apk/*
 ENTRYPOINT ["kubectl"]`
+
+func TestPrepareDockerFileLinesLongMultiLineRun(t *testing.T) {
+	t.Parallel()
+
+	// Each continuation must end with `\` so merged segments contain embedded
+	// whitespace-backslash sequences; the old regex replaced every match, not
+	// just the terminal continuation marker, causing exponential growth.
+	const continuationLines = 25
+	var dockerfile strings.Builder
+	dockerfile.WriteString("FROM alpine:3.7\nRUN true")
+	for range continuationLines {
+		dockerfile.WriteString(" \\\n\t&& echo step \\")
+	}
+	dockerfile.WriteString("\n")
+
+	linesPtr := utils.SplitLines(dockerfile.String())
+	lines := make([]string, len(*linesPtr))
+	copy(lines, *linesPtr)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		result := prepareDockerFileLines(lines)
+		var runLine string
+		for _, line := range result {
+			if strings.Contains(line, "RUN true") {
+				runLine = line
+				break
+			}
+		}
+		require.NotEmpty(t, runLine)
+		require.Contains(t, runLine, "echo step")
+		require.Less(t, len(runLine), continuationLines*20)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prepareDockerFileLines did not finish within 2s; likely exponential string growth")
+	}
+}
 
 // TestDetectDockerLine tests the functions [DetectDockerLine()] and all the methods called by them
 func TestDetectDockerLine(t *testing.T) { //nolint
