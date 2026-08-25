@@ -467,6 +467,7 @@ core,github.com/hashicorp/hcl/v2/hcldec,MPL-2.0,"Copyright © 2014-2018 HashiCor
 core,github.com/hashicorp/hcl/v2/hclsyntax,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/hcl/v2/hclwrite,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/terraform-json,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
+core,github.com/hashicorp/terraform-svchost,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/huandu/xstrings,MIT,Copyright (c) 2015 Huan Du
 core,github.com/inconshreveable/mousetrap,Apache-2.0,Copyright 2022 Alan Shreve (@inconshreveable)
 core,github.com/jbenet/go-context/io,MIT,Copyright (c) 2014 Juan Batiz-Benet
@@ -666,6 +667,7 @@ core,github.com/open-policy-agent/regal/pkg/rules,Apache-2.0,Copyright The Regal
 core,github.com/opencontainers/go-digest,Apache-2.0,"Copyright 2016 Docker, Inc | Copyright 2019, 2020 OCI Contributors | Copyright © 2016 Docker, Inc | Copyright © 2019, 2020 OCI Contributors"
 core,github.com/opencontainers/image-spec/specs-go,Apache-2.0,Copyright 2016 The Linux Foundation
 core,github.com/opencontainers/image-spec/specs-go/v1,Apache-2.0,Copyright 2016 The Linux Foundation
+core,github.com/opentofu/registry-address,MPL-2.0,"Copyright (c) 2021 HashiCorp, Inc | copyright doctrines of fair use, fair dealing, or other equivalents"
 core,github.com/pelletier/go-toml/v2,MIT,Copyright (c) 2021 - 2023 Thomas Pelletier
 core,github.com/pelletier/go-toml/v2/internal/characters,MIT,Copyright (c) 2021 - 2023 Thomas Pelletier
 core,github.com/pelletier/go-toml/v2/internal/danger,MIT,Copyright (c) 2021 - 2023 Thomas Pelletier
