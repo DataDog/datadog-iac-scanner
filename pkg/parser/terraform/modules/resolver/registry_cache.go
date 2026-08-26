@@ -102,95 +102,60 @@ func (c *registryCache) rememberFailure(mu *sync.RWMutex, failures map[string]ca
 	mu.Unlock()
 }
 
-func (c *registryCache) modulesV1(ctx context.Context, host string) (string, error) {
-	c.discMu.RLock()
-	if ep, ok := c.discMap[host]; ok {
-		c.discMu.RUnlock()
-		return ep, nil
+func (c *registryCache) cachedString(
+	mu *sync.RWMutex,
+	values map[string]string,
+	failures map[string]cachedFailure,
+	sf *singleflight.Group,
+	key string,
+	fetch func() (string, error),
+) (string, error) {
+	mu.RLock()
+	if v, ok := values[key]; ok {
+		mu.RUnlock()
+		return v, nil
 	}
-	c.discMu.RUnlock()
-	if cachedErr, ok := c.lookupFailure(&c.discMu, c.discErrMap, host); ok {
+	mu.RUnlock()
+	if cachedErr, ok := c.lookupFailure(mu, failures, key); ok {
 		return "", cachedErr
 	}
 
-	v, err, _ := c.discSF.Do(host, func() (interface{}, error) {
-		ep, err := discoverModulesEndpoint(ctx, c.client, "https://"+host)
+	v, err, _ := sf.Do(key, func() (interface{}, error) {
+		value, err := fetch()
 		if err != nil {
-			c.rememberFailure(&c.discMu, c.discErrMap, host, err)
+			c.rememberFailure(mu, failures, key, err)
 			return "", err
 		}
-		c.discMu.Lock()
-		c.discMap[host] = ep
-		delete(c.discErrMap, host)
-		c.discMu.Unlock()
-		return ep, nil
+		mu.Lock()
+		values[key] = value
+		delete(failures, key)
+		mu.Unlock()
+		return value, nil
 	})
 	if err != nil {
 		return "", err
 	}
 	return v.(string), nil
+}
+
+func (c *registryCache) modulesV1(ctx context.Context, host string) (string, error) {
+	return c.cachedString(&c.discMu, c.discMap, c.discErrMap, &c.discSF, host, func() (string, error) {
+		return discoverModulesEndpoint(ctx, c.client, "https://"+host)
+	})
 }
 
 func (c *registryCache) resolvedVersion(ctx context.Context, ep, host, namespace, name, provider, constraint string) (string, error) {
 	key := host + "\x00" + namespace + "/" + name + "/" + provider + "\x00" + constraint
-
-	c.verMu.RLock()
-	if v, ok := c.verMap[key]; ok {
-		c.verMu.RUnlock()
-		return v, nil
-	}
-	c.verMu.RUnlock()
-	if cachedErr, ok := c.lookupFailure(&c.verMu, c.verErrMap, key); ok {
-		return "", cachedErr
-	}
-
-	v, err, _ := c.verSF.Do(key, func() (interface{}, error) {
-		resolved, err := resolveRegistryVersion(ctx, c.client, ep, namespace, name, provider, constraint, host)
-		if err != nil {
-			c.rememberFailure(&c.verMu, c.verErrMap, key, err)
-			return "", err
-		}
-		c.verMu.Lock()
-		c.verMap[key] = resolved
-		delete(c.verErrMap, key)
-		c.verMu.Unlock()
-		return resolved, nil
+	return c.cachedString(&c.verMu, c.verMap, c.verErrMap, &c.verSF, key, func() (string, error) {
+		return resolveRegistryVersion(ctx, c.client, ep, namespace, name, provider, constraint, host)
 	})
-	if err != nil {
-		return "", err
-	}
-	return v.(string), nil
 }
 
 func (c *registryCache) downloadURL(ctx context.Context, ep, host, namespace, name, provider, version string) (string, error) {
 	key := host + "\x00" + namespace + "/" + name + "/" + provider + "@" + version
-
-	c.dlMu.RLock()
-	if v, ok := c.dlMap[key]; ok {
-		c.dlMu.RUnlock()
-		return v, nil
-	}
-	c.dlMu.RUnlock()
-	if cachedErr, ok := c.lookupFailure(&c.dlMu, c.dlErrMap, key); ok {
-		return "", cachedErr
-	}
-
-	v, err, _ := c.dlSF.Do(key, func() (interface{}, error) {
-		dlURL, err := registryDownloadURL(ctx, c.client, ep, namespace, name, provider, version, host)
-		if err != nil {
-			c.rememberFailure(&c.dlMu, c.dlErrMap, key, err)
-			return "", err
-		}
-		c.dlMu.Lock()
-		c.dlMap[key] = dlURL
-		delete(c.dlErrMap, key)
-		c.dlMu.Unlock()
-		return dlURL, nil
+	return c.cachedString(&c.dlMu, c.dlMap, c.dlErrMap, &c.dlSF, key, func() (string, error) {
+		return registryDownloadURL(ctx, c.client, ep, namespace, name, provider, version, host)
 	})
-	if err != nil {
-		return "", err
-	}
-	return v.(string), nil
 }
 
 func (c *registryCache) resolveConcreteVersion(ctx context.Context, source, version string) (string, error) {

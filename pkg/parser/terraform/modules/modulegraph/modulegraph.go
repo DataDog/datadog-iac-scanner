@@ -143,6 +143,8 @@ type walker struct {
 	deferExpansion   bool
 	admissionBytes   int64
 	acquisitionBytes int64
+	acquisitionBase  int64
+	acquisitionMu    sync.Mutex
 	maxDepth         int
 	fsys             vfs.FS
 }
@@ -185,6 +187,9 @@ func Resolve(ctx context.Context, request *Request) Result {
 		acquisitionBytes: acquisitionAllowance(moduleMaximum),
 		maxDepth:         request.MaxDepth,
 		fsys:             request.FS,
+	}
+	if enforceAdmission {
+		w.acquisitionBase = budget.TotalUsage().Bytes
 	}
 	seedGroups, repositoryGroups := w.seedGroups(ctx, request.RootPaths, request.DiscoveryPaths)
 
@@ -762,26 +767,31 @@ func (w *walker) acquireRemoteModuleGroups(
 		return
 	}
 	size := max(1, resolver.FetchConcurrency)
-	baseline := w.budget.TotalUsage().Bytes
 	for start := 0; start < len(ids); {
-		if start > 0 && w.acquisitionExhausted(baseline) {
+		w.acquisitionMu.Lock()
+		if start > 0 && w.acquisitionExhausted() {
+			w.acquisitionMu.Unlock()
 			w.recordUnacquiredGroups(groups, ids[start:])
 			return
 		}
 		end := start
 		for end < len(ids) && end-start < size {
-			if end > start && w.acquisitionExhausted(baseline) {
+			if end > start && w.acquisitionExhausted() {
 				break
 			}
 			end++
 		}
 		if end == start {
+			w.acquisitionMu.Unlock()
 			w.recordUnacquiredGroups(groups, ids[start:])
 			return
 		}
+		batchIDs := ids[start:end]
+		w.acquisitionMu.Unlock()
+
 		g, gCtx := errgroup.WithContext(ctx)
 		g.SetLimit(size)
-		for _, id := range ids[start:end] {
+		for _, id := range batchIDs {
 			group := groups[id]
 			g.Go(func() error {
 				w.traverseRemoteModuleGroup(gCtx, group, repoAllowedDirs, depth)
@@ -811,11 +821,11 @@ func orderedGroupIDs(groups map[string]*remoteModuleGroup) []string {
 	return ids
 }
 
-func (w *walker) acquisitionExhausted(baseline int64) bool {
+func (w *walker) acquisitionExhausted() bool {
 	if !w.deferExpansion || w.acquisitionBytes <= 0 {
 		return false
 	}
-	return w.budget.TotalUsage().Bytes-baseline >= w.acquisitionBytes
+	return w.budget.TotalUsage().Bytes-w.acquisitionBase >= w.acquisitionBytes
 }
 
 func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, ids []string) {
@@ -836,6 +846,16 @@ func (w *walker) traverseRemoteModuleGroup(
 	repoAllowedDirs map[string]map[string]bool,
 	depth int,
 ) {
+	if w.deferExpansion && w.acquisitionBytes > 0 {
+		limits := w.budget.Limits()
+		remaining := w.acquisitionBytes - (w.budget.TotalUsage().Bytes - w.acquisitionBase)
+		if remaining > 0 {
+			if limits.MaxPackageBytes <= 0 || remaining < limits.MaxPackageBytes {
+				limits.MaxPackageBytes = remaining
+			}
+			ctx = resolver.WithResourceBudget(ctx, resolver.NewResourceBudget(limits))
+		}
+	}
 	contextLogger := logger.FromContext(ctx)
 	representative := group.representative
 	contextLogger.Debug().Msgf("Fetching remote Terraform module %q", representative.Source)

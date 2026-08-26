@@ -40,6 +40,25 @@ func TestParseRegistryModuleSource(t *testing.T) {
 				Provider:  "aws",
 			},
 		},
+		{
+			source: "registry.opentofu.org/org/module/aws",
+			want: RegistryModuleSource{
+				Host:      "registry.opentofu.org",
+				Namespace: "org",
+				Name:      "module",
+				Provider:  "aws",
+			},
+		},
+		{
+			source: "registry.opentofu.org/org/module/aws//modules/child",
+			want: RegistryModuleSource{
+				Host:      "registry.opentofu.org",
+				Namespace: "org",
+				Name:      "module",
+				Provider:  "aws",
+				Subdir:    "modules/child",
+			},
+		},
 	}
 	for _, tt := range tests {
 		got, err := ParseRegistryModuleSource(tt.source)

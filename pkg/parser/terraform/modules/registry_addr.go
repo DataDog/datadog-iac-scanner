@@ -26,13 +26,15 @@ type RegistryModuleSource struct {
 
 // ParseRegistryModuleSource parses a registry module source, including hosts
 // with ports and //subdir selections. Implicit three-part addresses use
-// registry.terraform.io rather than the OpenTofu default host.
+// registry.terraform.io rather than the OpenTofu default host; explicit
+// registry.opentofu.org sources keep their declared host.
 func ParseRegistryModuleSource(source string) (RegistryModuleSource, error) {
-	addr, err := tfaddr.ParseModuleSource(strings.TrimSpace(source))
+	source = strings.TrimSpace(source)
+	addr, err := tfaddr.ParseModuleSource(source)
 	if err != nil {
 		return RegistryModuleSource{}, err
 	}
-	if addr.Package.Host == tfaddr.DefaultModuleRegistryHost {
+	if addr.Package.Host == tfaddr.DefaultModuleRegistryHost && implicitRegistryModuleSource(source) {
 		addr.Package.Host = terraformRegistryHost
 	}
 	return RegistryModuleSource{
@@ -58,4 +60,15 @@ func (s *RegistryModuleSource) String() string {
 		src += "//" + s.Subdir
 	}
 	return src
+}
+
+func implicitRegistryModuleSource(source string) bool {
+	raw := source
+	if idx := strings.Index(raw, "?"); idx >= 0 {
+		raw = raw[:idx]
+	}
+	if idx := strings.Index(raw, "//"); idx >= 0 {
+		raw = raw[:idx]
+	}
+	return len(strings.Split(raw, "/")) == 3
 }
