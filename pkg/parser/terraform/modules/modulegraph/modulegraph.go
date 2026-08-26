@@ -44,6 +44,8 @@ type ResolvedModule struct {
 	CallerRoot        string
 	Source            string
 	Version           string
+	ResolvedVersion   string
+	ResolvedRef       string
 	Name              string
 	LocalPath         string
 	PackageRoot       string
@@ -141,6 +143,7 @@ type walker struct {
 	deferExpansion   bool
 	admissionBytes   int64
 	acquisitionBytes int64
+	acquisitionBase  int64
 	maxDepth         int
 	fsys             vfs.FS
 }
@@ -183,6 +186,9 @@ func Resolve(ctx context.Context, request *Request) Result {
 		acquisitionBytes: acquisitionAllowance(moduleMaximum),
 		maxDepth:         request.MaxDepth,
 		fsys:             request.FS,
+	}
+	if enforceAdmission {
+		w.acquisitionBase = budget.TotalUsage().Bytes
 	}
 	seedGroups, repositoryGroups := w.seedGroups(ctx, request.RootPaths, request.DiscoveryPaths)
 
@@ -382,12 +388,14 @@ func (c *resultCollector) addResolvedModule(
 		CallerRoot:        moduleCallRoot(mod),
 		Source:            mod.Source,
 		Version:           mod.Version,
+		ResolvedVersion:   resolution.ResolvedVersion,
+		ResolvedRef:       resolution.ResolvedRef,
 		Name:              mod.Name,
 		LocalPath:         resolution.LocalPath,
 		PackageRoot:       resolution.PackageRoot,
 		ParentPackageRoot: parentPackageRoot,
 		Depth:             depth,
-		CanonicalSource:   canonicalModuleURL(mod.Source, mod.Version),
+		CanonicalSource:   canonicalModuleURL(mod.Source, resolution.ResolvedVersion),
 	})
 }
 
@@ -438,10 +446,10 @@ func (c *resolutionCache) get(resolveID string) (resolvedEntry, bool) {
 	return entry, ok
 }
 
-func (c *resolutionCache) set(resolveID string, entry resolvedEntry) {
+func (c *resolutionCache) set(resolveID string, entry *resolvedEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[resolveID] = entry
+	c.entries[resolveID] = *entry
 }
 
 func (c *moduleParseCache) get(key string) (map[string]tfmodules.ParsedModule, bool) {
@@ -502,7 +510,7 @@ func (w *walker) resolveRemote(
 			resolveErr = w.accountPackage(ctx, mod.Source, resolution)
 		}
 		if ctx.Err() == nil {
-			w.resolutions.set(resolveID, resolvedEntry{res: resolution, err: resolveErr})
+			w.resolutions.set(resolveID, &resolvedEntry{res: resolution, err: resolveErr})
 		}
 		return resolution, resolveErr
 	})
@@ -753,31 +761,39 @@ func (w *walker) acquireRemoteModuleGroups(
 	depth int,
 ) {
 	ids := orderedGroupIDs(groups)
+	if w.deferExpansion && w.acquisitionBytes <= 0 {
+		w.recordUnacquiredGroups(groups, ids)
+		return
+	}
 	size := max(1, resolver.FetchConcurrency)
 	for start := 0; start < len(ids); {
 		type acquisition struct {
-			group       *remoteModuleGroup
-			reservation int64
+			group *remoteModuleGroup
+			lease *resolver.AcquisitionLease
 		}
 		batch := make([]acquisition, 0, size)
 		end := min(start+size, len(ids))
 		for _, id := range ids[start:end] {
-			reservation, ok := w.reserveAcquisition()
+			lease, ok := w.acquireAcquisition(ctx, len(batch) == 0)
 			if !ok {
 				break
 			}
-			batch = append(batch, acquisition{group: groups[id], reservation: reservation})
+			batch = append(batch, acquisition{group: groups[id], lease: lease})
 		}
 		if len(batch) == 0 {
-			w.recordUnacquiredGroups(groups, ids[start:])
+			if ctx.Err() == nil {
+				w.recordUnacquiredGroups(groups, ids[start:])
+			}
 			return
 		}
+
 		g, gCtx := errgroup.WithContext(ctx)
 		g.SetLimit(size)
 		for _, item := range batch {
 			g.Go(func() error {
+				defer item.lease.Release()
 				w.traverseRemoteModuleGroup(
-					gCtx, item.group, repoAllowedDirs, depth, item.reservation,
+					gCtx, item.group, repoAllowedDirs, depth, item.lease,
 				)
 				return nil
 			})
@@ -805,13 +821,21 @@ func orderedGroupIDs(groups map[string]*remoteModuleGroup) []string {
 	return ids
 }
 
-func (w *walker) reserveAcquisition() (int64, bool) {
+func (w *walker) acquireAcquisition(
+	ctx context.Context, wait bool,
+) (*resolver.AcquisitionLease, bool) {
 	if !w.deferExpansion {
-		return 0, true
+		return nil, true
 	}
-	return w.budget.ReserveAcquisition(
-		w.acquisitionBytes, w.budget.Limits().MaxPackageBytes,
-	)
+	requested := w.budget.Limits().MaxPackageBytes
+	maximum := w.acquisitionBase + w.acquisitionBytes
+	if maximum < w.acquisitionBase {
+		maximum = math.MaxInt64
+	}
+	if wait {
+		return w.budget.AcquireAcquisition(ctx, maximum, requested)
+	}
+	return w.budget.TryAcquireAcquisition(maximum, requested)
 }
 
 func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, ids []string) {
@@ -831,12 +855,13 @@ func (w *walker) traverseRemoteModuleGroup(
 	group *remoteModuleGroup,
 	repoAllowedDirs map[string]map[string]bool,
 	depth int,
-	reservation int64,
+	lease *resolver.AcquisitionLease,
 ) {
-	if reservation > 0 {
-		defer w.budget.ReleaseAcquisition(reservation)
+	if lease != nil {
 		limits := w.budget.Limits()
-		limits.MaxPackageBytes = reservation
+		if limits.MaxPackageBytes <= 0 || lease.Bytes() < limits.MaxPackageBytes {
+			limits.MaxPackageBytes = lease.Bytes()
+		}
 		ctx = resolver.WithResourceBudget(ctx, resolver.NewResourceBudget(limits))
 	}
 	contextLogger := logger.FromContext(ctx)
@@ -873,7 +898,7 @@ func (w *walker) traverseRemoteModuleGroup(
 	w.results.addPaths(flatTerraformFilePaths(ctx, resolution.LocalPath, resolution.PackageRoot)...)
 	w.results.addSourceMapping(
 		resolution.LocalPath,
-		canonicalModuleURL(representative.Source, representative.Version),
+		canonicalModuleURL(representative.Source, resolution.ResolvedVersion),
 	)
 	if !w.deferExpansion {
 		w.traverse(ctx, resolution.LocalPath, nil, repoAllowedDirs, depth+1, resolution.PackageRoot)
@@ -942,20 +967,33 @@ func canonicalGitModuleSource(moduleSource string) string {
 	return source
 }
 
-func canonicalModuleURL(moduleSource, version string) string {
-	source := canonicalGitModuleSource(moduleSource)
-	sourceType, scope := tfmodules.DetectModuleSourceType(source)
-	if sourceType == sourceTypeRegistry && scope == "public" &&
-		!strings.HasPrefix(source, "registry.terraform.io/") {
-		source = "registry.terraform.io/" + source
+func canonicalModuleURL(moduleSource, resolvedVersion string) string {
+	source := strings.TrimSpace(moduleSource)
+	if addr, err := tfmodules.ParseRegistryModuleSource(source); err == nil {
+		canonical := addr.String()
+		if version := concreteRegistryVersion(resolvedVersion); version != "" {
+			canonical += "@" + version
+		}
+		return canonical
 	}
+	source = canonicalGitModuleSource(source)
 	if index := strings.Index(source, "@"); index != -1 {
 		if schemeEnd := strings.Index(source, "://"); schemeEnd != -1 && schemeEnd < index {
 			source = source[:schemeEnd+3] + source[index+1:]
 		}
 	}
-	if version != "" {
-		source += "@" + version
-	}
 	return source
+}
+
+func concreteRegistryVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || strings.ContainsAny(version, " \t") {
+		return ""
+	}
+	for _, c := range version {
+		if c != '.' && c != '-' && c != '+' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
+			return ""
+		}
+	}
+	return version
 }

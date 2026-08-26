@@ -72,13 +72,37 @@ type ResourceBudget struct {
 	packages            map[string]PackageUsage
 	total               PackageUsage
 	acquisitionReserved int64
+	acquisitionChanged  chan struct{}
 }
 
 func NewResourceBudget(limits ResourceLimits) *ResourceBudget {
 	return &ResourceBudget{
-		limits:   limits,
-		packages: make(map[string]PackageUsage),
+		limits:             limits,
+		packages:           make(map[string]PackageUsage),
+		acquisitionChanged: make(chan struct{}),
 	}
+}
+
+type AcquisitionLease struct {
+	budget *ResourceBudget
+	bytes  int64
+	once   sync.Once
+}
+
+func (l *AcquisitionLease) Bytes() int64 {
+	if l == nil {
+		return 0
+	}
+	return l.bytes
+}
+
+func (l *AcquisitionLease) Release() {
+	if l == nil {
+		return
+	}
+	l.once.Do(func() {
+		l.budget.releaseAcquisition(l.bytes)
+	})
 }
 
 func WithResourceBudget(ctx context.Context, budget *ResourceBudget) context.Context {
@@ -127,33 +151,80 @@ func (b *ResourceBudget) AdmitPackage(identity string, usage PackageUsage) error
 	b.packages[identity] = usage
 	b.total.Bytes += usage.Bytes
 	b.total.Files += usage.Files
+	b.notifyAcquisitionChangedLocked()
 	return nil
 }
 
-func (b *ResourceBudget) ReserveAcquisition(maximum, requested int64) (int64, bool) {
+func (b *ResourceBudget) TryAcquireAcquisition(maximum, requested int64) (*AcquisitionLease, bool) {
 	if b == nil || maximum <= 0 {
-		return 0, false
+		return nil, false
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.tryAcquireAcquisitionLocked(maximum, requested)
+}
+
+func (b *ResourceBudget) AcquireAcquisition(
+	ctx context.Context, maximum, requested int64,
+) (*AcquisitionLease, bool) {
+	if b == nil || maximum <= 0 {
+		return nil, false
+	}
+	for {
+		b.mu.Lock()
+		if lease, ok := b.tryAcquireAcquisitionLocked(maximum, requested); ok {
+			b.mu.Unlock()
+			return lease, true
+		}
+		if b.total.Bytes >= maximum {
+			b.mu.Unlock()
+			return nil, false
+		}
+		if b.acquisitionChanged == nil {
+			b.acquisitionChanged = make(chan struct{})
+		}
+		changed := b.acquisitionChanged
+		b.mu.Unlock()
+
+		select {
+		case <-ctx.Done():
+			return nil, false
+		case <-changed:
+		}
+	}
+}
+
+func (b *ResourceBudget) tryAcquireAcquisitionLocked(
+	maximum, requested int64,
+) (*AcquisitionLease, bool) {
 	available := maximum - b.total.Bytes - b.acquisitionReserved
 	if available <= 0 {
-		return 0, false
+		return nil, false
 	}
 	if requested <= 0 || requested > available {
 		requested = available
 	}
 	b.acquisitionReserved += requested
-	return requested, true
+	return &AcquisitionLease{budget: b, bytes: requested}, true
 }
 
-func (b *ResourceBudget) ReleaseAcquisition(reserved int64) {
+func (b *ResourceBudget) releaseAcquisition(reserved int64) {
 	if b == nil || reserved <= 0 {
 		return
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.acquisitionReserved -= reserved
+	b.notifyAcquisitionChangedLocked()
+}
+
+func (b *ResourceBudget) notifyAcquisitionChangedLocked() {
+	if b.acquisitionChanged == nil {
+		b.acquisitionChanged = make(chan struct{})
+		return
+	}
+	close(b.acquisitionChanged)
+	b.acquisitionChanged = make(chan struct{})
 }
 
 func (b *ResourceBudget) Usage(identity string) (PackageUsage, bool) {

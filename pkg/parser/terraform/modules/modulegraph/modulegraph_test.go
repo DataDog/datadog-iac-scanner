@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
@@ -113,6 +114,42 @@ func (r *trackingResolver) callCount(source string) int {
 	return r.calls[source]
 }
 
+type acquisitionTrackingResolver struct {
+	bySource     map[string]resolver.Resolution
+	release      chan struct{}
+	releaseOnce  sync.Once
+	entered      atomic.Int64
+	activeBytes  atomic.Int64
+	maximumBytes atomic.Int64
+}
+
+func (r *acquisitionTrackingResolver) Resolve(
+	ctx context.Context, mod *tfmodules.ParsedModule,
+) (resolver.Resolution, error) {
+	res, ok := r.bySource[mod.Source]
+	if !ok {
+		return resolver.Resolution{}, &tfmodules.UnresolvedError{Reason: "unknown source " + mod.Source}
+	}
+	reserved := resolver.ResourceBudgetFromContext(ctx).Limits().MaxPackageBytes
+	active := r.activeBytes.Add(reserved)
+	defer r.activeBytes.Add(-reserved)
+	for {
+		maximum := r.maximumBytes.Load()
+		if active <= maximum || r.maximumBytes.CompareAndSwap(maximum, active) {
+			break
+		}
+	}
+	if r.entered.Add(1) == 2 {
+		r.releaseOnce.Do(func() { close(r.release) })
+	}
+	select {
+	case <-ctx.Done():
+		return resolver.Resolution{}, ctx.Err()
+	case <-r.release:
+		return res, nil
+	}
+}
+
 func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 	root, moduleDir := writeModuleGraphFixture(t)
 
@@ -127,7 +164,7 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 
 	require.Equal(t, []string{filepath.Join(moduleDir, "main.tf")}, result.ScanPaths)
 	require.Equal(t, map[string]string{
-		moduleDir: "git::https://github.com/acme/network//modules/vpc?ref=v1@1.2.3",
+		moduleDir: "git::https://github.com/acme/network//modules/vpc?ref=v1",
 	}, result.SourceMappings)
 	require.Equal(t, []ResolvedModule{{
 		CallerRoot:      root,
@@ -137,8 +174,84 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 		LocalPath:       moduleDir,
 		PackageRoot:     moduleDir,
 		Depth:           1,
-		CanonicalSource: "git::https://github.com/acme/network//modules/vpc?ref=v1@1.2.3",
+		CanonicalSource: "git::https://github.com/acme/network//modules/vpc?ref=v1",
 	}}, result.Modules)
+}
+
+func TestResolveThreadsRegistryIdentity(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	moduleDir := filepath.Join(base, "module")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "bucket" {
+  source  = "cloud-inventory/bucket/aws"
+  version = "~> 9.0"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`
+resource "aws_s3_bucket" "this" {}
+`), 0o644))
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath:       moduleDir,
+			ResolvedVersion: "9.1.0",
+		}},
+		MaxDepth: 2,
+	})
+
+	require.Equal(t, map[string]string{
+		moduleDir: "registry.terraform.io/cloud-inventory/bucket/aws@9.1.0",
+	}, result.SourceMappings)
+	require.Equal(t, []ResolvedModule{{
+		CallerRoot:      root,
+		Source:          "cloud-inventory/bucket/aws",
+		Version:         "~> 9.0",
+		ResolvedVersion: "9.1.0",
+		Name:            "bucket",
+		LocalPath:       moduleDir,
+		PackageRoot:     moduleDir,
+		Depth:           1,
+		CanonicalSource: "registry.terraform.io/cloud-inventory/bucket/aws@9.1.0",
+	}}, result.Modules)
+}
+
+func TestCanonicalModuleURL(t *testing.T) {
+	tests := []struct {
+		source  string
+		version string
+		want    string
+	}{
+		{
+			source:  "cloud-inventory/bucket/aws",
+			version: "9.1.0",
+			want:    "registry.terraform.io/cloud-inventory/bucket/aws@9.1.0",
+		},
+		{
+			source:  "cloud-inventory/bucket/aws",
+			version: "~> 9.0",
+			want:    "registry.terraform.io/cloud-inventory/bucket/aws",
+		},
+		{
+			source:  "registry.example.com:8443/ns/name/aws//modules/child",
+			version: "1.2.3",
+			want:    "registry.example.com:8443/ns/name/aws//modules/child@1.2.3",
+		},
+		{
+			source:  "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1",
+			version: "1.2.3",
+			want:    "git::https://github.com/acme/network//modules/vpc?ref=v1",
+		},
+	}
+	for _, tt := range tests {
+		if got := canonicalModuleURL(tt.source, tt.version); got != tt.want {
+			t.Errorf("canonicalModuleURL(%q, %q) = %q, want %q", tt.source, tt.version, got, tt.want)
+		}
+	}
 }
 
 func TestResolveCleanupIsIdempotent(t *testing.T) {
@@ -377,6 +490,64 @@ module "child" {
 	require.Equal(t, []string{filepath.Join(small, "main.tf")}, result.ScanPaths)
 }
 
+func TestResolveAcquiresRemoteModulesFromParallelSeeds(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	seedA := filepath.Join(base, "seed-a")
+	seedB := filepath.Join(base, "seed-b")
+	moduleA := filepath.Join(base, "module-a")
+	moduleB := filepath.Join(base, "module-b")
+	for _, dir := range []string{seedA, seedB, moduleA, moduleB} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(seedA, "main.tf"), []byte(`
+module "a" {
+  source = "example.com/acme/a/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(seedB, "main.tf"), []byte(`
+module "b" {
+  source = "example.com/acme/b/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(moduleA, "main.tf"),
+		[]byte(`resource "aws_vpc" "a" {}`),
+		0o600,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(moduleB, "main.tf"),
+		[]byte(`resource "aws_vpc" "b" {}`),
+		0o600,
+	))
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{
+			"example.com/acme/a/aws": {LocalPath: moduleA},
+			"example.com/acme/b/aws": {LocalPath: moduleB},
+		},
+		calls: make(map[string]int),
+	}
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths: []string{base},
+		DiscoveryPaths: []string{
+			filepath.Join(seedA, "main.tf"),
+			filepath.Join(seedB, "main.tf"),
+		},
+		Resolver: tracker,
+		MaxDepth: 2,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxTotalBytes: 200 * 1024 * 1024,
+		},
+	})
+
+	require.Equal(t, 1, tracker.callCount("example.com/acme/a/aws"))
+	require.Equal(t, 1, tracker.callCount("example.com/acme/b/aws"))
+	require.Contains(t, result.ScanPaths, filepath.Join(moduleA, "main.tf"))
+	require.Contains(t, result.ScanPaths, filepath.Join(moduleB, "main.tf"))
+}
+
 func TestResolveStopsDeferredTraversalAtAcquisitionLimit(t *testing.T) {
 	t.Parallel()
 
@@ -446,6 +617,62 @@ module "child_b" {
 	require.Equal(t, 1, tracker.callCount("example.com/acme/child-b/aws"))
 	require.Len(t, result.Modules, 1)
 	require.Equal(t, "example.com/acme/b/aws", result.Modules[0].Source)
+}
+
+func TestResolveReservesAcquisitionAcrossConcurrentFrontiers(t *testing.T) {
+	t.Parallel()
+
+	const (
+		seedCount        = 4
+		maximumBytes     = int64(200)
+		acquisitionBytes = maximumBytes * acquisitionOvershootFactor
+	)
+	base := t.TempDir()
+	discoveryPaths := make([]string, 0, seedCount)
+	resolutions := make(map[string]resolver.Resolution, seedCount)
+	for i := range seedCount {
+		seed := filepath.Join(base, fmt.Sprintf("seed-%d", i))
+		module := filepath.Join(base, fmt.Sprintf("module-%d", i))
+		require.NoError(t, os.MkdirAll(seed, 0o755))
+		require.NoError(t, os.MkdirAll(module, 0o755))
+		source := fmt.Sprintf("example.com/acme/module-%d/aws", i)
+		require.NoError(t, os.WriteFile(
+			filepath.Join(seed, "main.tf"),
+			[]byte(fmt.Sprintf("module \"m\" {\n  source = %q\n}\n", source)),
+			0o600,
+		))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(module, "main.tf"),
+			[]byte(`resource "test" "example" {}`),
+			0o600,
+		))
+		discoveryPaths = append(discoveryPaths, filepath.Join(seed, "main.tf"))
+		resolutions[source] = resolver.Resolution{LocalPath: module}
+	}
+	tracker := &acquisitionTrackingResolver{
+		bySource: resolutions,
+		release:  make(chan struct{}),
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	result := Resolve(ctx, &Request{
+		RootPaths:      []string{base},
+		DiscoveryPaths: discoveryPaths,
+		Resolver:       tracker,
+		MaxDepth:       2,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxPackageBytes: 300,
+			MaxTotalBytes:   maximumBytes,
+		},
+	})
+
+	require.NoError(t, ctx.Err())
+	require.Equal(t, int64(seedCount), tracker.entered.Load())
+	require.LessOrEqual(t, tracker.maximumBytes.Load(), acquisitionBytes)
+	for _, event := range result.BudgetEvents {
+		require.NotEqual(t, "acquisition", event.Gate)
+	}
 }
 
 func TestShedToTotalLimitFiltersNestedPackagePathsByOwner(t *testing.T) {
@@ -706,14 +933,12 @@ func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
 		ResourceLimits: resolver.ResourceLimits{MaxTotalBytes: 100},
 	})
 
-	const expectedFetched = 2
-	for index, source := range sources {
-		if index < expectedFetched {
-			require.Equal(t, 1, tracker.callCount(source), source)
-		} else {
-			require.Zero(t, tracker.callCount(source), source)
-		}
+	acquired := 0
+	for _, source := range sources {
+		acquired += tracker.callCount(source)
 	}
+	require.Equal(t, 2, acquired)
+	require.Equal(t, 1, tracker.callCount(sources[0]))
 	unacquired := 0
 	for _, event := range result.BudgetEvents {
 		if event.Gate == "acquisition" {
@@ -721,7 +946,7 @@ func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
 			require.Equal(t, "module_bytes_total", event.Limit)
 		}
 	}
-	require.Equal(t, count-expectedFetched, unacquired)
+	require.Equal(t, count-acquired, unacquired)
 }
 
 func TestShedToTotalLimitBreaksTiesDeterministically(t *testing.T) {

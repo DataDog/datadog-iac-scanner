@@ -6,10 +6,12 @@
 package resolver
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -78,17 +80,62 @@ func TestResourceBudgetReservesAcquisitionAgainstUsage(t *testing.T) {
 	budget := NewResourceBudget(ResourceLimits{})
 	require.NoError(t, budget.AdmitPackage("/tmp/a", PackageUsage{Bytes: 4}))
 
-	reserved, ok := budget.ReserveAcquisition(10, 8)
+	lease, ok := budget.TryAcquireAcquisition(10, 8)
 	require.True(t, ok)
-	require.Equal(t, int64(6), reserved)
+	require.Equal(t, int64(6), lease.Bytes())
 
-	_, ok = budget.ReserveAcquisition(10, 1)
+	_, ok = budget.TryAcquireAcquisition(10, 1)
 	require.False(t, ok)
-	budget.ReleaseAcquisition(reserved)
+	lease.Release()
+	lease.Release()
 
-	reserved, ok = budget.ReserveAcquisition(10, 3)
+	lease, ok = budget.TryAcquireAcquisition(10, 3)
 	require.True(t, ok)
-	require.Equal(t, int64(3), reserved)
+	require.Equal(t, int64(3), lease.Bytes())
+}
+
+func TestResourceBudgetWaitsForAcquisitionCapacity(t *testing.T) {
+	t.Parallel()
+
+	budget := NewResourceBudget(ResourceLimits{})
+	first, ok := budget.TryAcquireAcquisition(10, 10)
+	require.True(t, ok)
+
+	type result struct {
+		lease *AcquisitionLease
+		ok    bool
+	}
+	acquired := make(chan result, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	go func() {
+		lease, acquiredOK := budget.AcquireAcquisition(ctx, 10, 5)
+		acquired <- result{lease: lease, ok: acquiredOK}
+	}()
+
+	first.Release()
+	second := <-acquired
+	require.True(t, second.ok)
+	require.Equal(t, int64(5), second.lease.Bytes())
+	second.lease.Release()
+}
+
+func TestResourceBudgetStopsWaitingWhenUsageExhaustsAcquisition(t *testing.T) {
+	t.Parallel()
+
+	budget := NewResourceBudget(ResourceLimits{})
+	first, ok := budget.TryAcquireAcquisition(10, 10)
+	require.True(t, ok)
+
+	acquired := make(chan bool, 1)
+	go func() {
+		_, acquiredOK := budget.AcquireAcquisition(t.Context(), 10, 1)
+		acquired <- acquiredOK
+	}()
+
+	require.NoError(t, budget.AdmitPackage("/tmp/a", PackageUsage{Bytes: 10}))
+	first.Release()
+	require.False(t, <-acquired)
 }
 
 func TestMeasurePackageStopsAtConfiguredLimit(t *testing.T) {
