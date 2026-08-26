@@ -335,6 +335,7 @@ func evaluateRootModules(
 ) {
 	contextLogger := logger.FromContext(ctx)
 	for _, dir := range roots {
+		evaluator.ResetInstantiationBudget()
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir))
 		if err != nil {
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
@@ -355,6 +356,12 @@ func evaluateRootModules(
 		*extra = append(*extra, docs...)
 		*syntheticFiles = append(*syntheticFiles, syn...)
 		*resourceCount += count
+		// instantiatedDocs has copied everything this root needs into plain
+		// documents, so the evaluator's cty values are dead here. Another root
+		// could in principle reuse them, but each root passes its own values to
+		// the modules it shares, so the hit rate does not pay for a peak that
+		// grows with the whole repository rather than the largest single root.
+		evaluator.ReleaseEvalCache()
 	}
 }
 
