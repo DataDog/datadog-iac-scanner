@@ -101,6 +101,13 @@ type Evaluator struct {
 	instantiated    int
 	budgetExceeded  bool
 
+	// notEvaluatedDirs holds every module directory this evaluator declined to
+	// evaluate for depth, cycle or budget. It accumulates for the whole scan
+	// because suppression is decided per directory over all call sites at once:
+	// one skipped instance means the directory is only partially resolved, so
+	// its body must stay in the scan even though other instances did resolve.
+	notEvaluatedDirs map[string]bool
+
 	parseMu  sync.Mutex
 	dirCache map[string]dirParse
 }
@@ -112,12 +119,31 @@ type dirParse struct {
 
 func New() *Evaluator {
 	return &Evaluator{
-		funcs:           tffunctions.TerraformFuncs,
-		maxDepth:        defaultMaxDepth,
-		maxInstantiated: defaultMaxInstantiated,
-		cache:           make(map[evalCacheKey]*evalCacheEntry),
-		dirCache:        make(map[string]dirParse),
+		funcs:            tffunctions.TerraformFuncs,
+		maxDepth:         defaultMaxDepth,
+		maxInstantiated:  defaultMaxInstantiated,
+		cache:            make(map[evalCacheKey]*evalCacheEntry),
+		dirCache:         make(map[string]dirParse),
+		notEvaluatedDirs: make(map[string]bool),
 	}
+}
+
+// skipEvaluation records dir as not evaluated and returns ErrModuleNotEvaluated.
+func (e *Evaluator) skipEvaluation(dir string) error {
+	e.notEvaluatedDirs[filepath.Clean(dir)] = true
+	return ErrModuleNotEvaluated
+}
+
+// NotEvaluatedDirs returns the module directories that were skipped rather than
+// evaluated. Callers must keep the content of these directories in the scan: a
+// directory can have both resolved and skipped call sites, and the skipped ones
+// have no synthetic document standing in for them.
+func (e *Evaluator) NotEvaluatedDirs() []string {
+	dirs := make([]string, 0, len(e.notEvaluatedDirs))
+	for dir := range e.notEvaluatedDirs {
+		dirs = append(dirs, dir)
+	}
+	return dirs
 }
 
 // SetMaxInstantiated overrides the instantiation budget. A value of zero or less
@@ -205,17 +231,19 @@ func (e *Evaluator) evaluate(
 	// empty result is indistinguishable from a module that legitimately declares
 	// no resources, and the caller would record the directory as evaluated — which
 	// suppresses its body from the scan with no synthetic document to replace it.
-	// Reporting "not evaluated" keeps the module scanned as written instead.
+	// Reporting "not evaluated" keeps the module scanned as written instead, and
+	// recording the directory keeps it scanned even when another call site of the
+	// same directory did resolve.
 	if depth > e.maxDepth {
 		contextLogger.Warn().Msgf("tfeval: max module depth %d exceeded at %s", e.maxDepth, dir)
-		return nil, nil, ErrModuleNotEvaluated
+		return nil, nil, e.skipEvaluation(dir)
 	}
 	if visiting[dir] {
 		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
-		return nil, nil, ErrModuleNotEvaluated
+		return nil, nil, e.skipEvaluation(dir)
 	}
 	if e.instantiationBudgetExhausted() {
-		return nil, nil, ErrModuleNotEvaluated
+		return nil, nil, e.skipEvaluation(dir)
 	}
 
 	// Keyed on inputs only, so every path to the same module with the same inputs

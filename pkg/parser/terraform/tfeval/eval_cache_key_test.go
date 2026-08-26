@@ -241,3 +241,44 @@ func TestResetInstantiationBudget_FreshQuotaPerRoot(t *testing.T) {
 		t.Fatal("budget should exceed once a single root passes 100 resources")
 	}
 }
+
+// Whether a module was resolved is decided per directory by the caller, but the
+// stops are per call site: the same directory can be resolved on one path and
+// skipped on another. Every skipped directory has to be reported, or the caller
+// suppresses a body whose skipped instances nothing replaces.
+func TestNotEvaluatedDirs_ReportsSkippedDirectories(t *testing.T) {
+	stack := writeNestedFanOut(t, 10, 3)
+
+	unbounded := New()
+	unbounded.SetMaxInstantiated(0)
+	if _, _, _, err := unbounded.EvaluateModule(context.Background(), stack, nil); err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	if dirs := unbounded.NotEvaluatedDirs(); len(dirs) != 0 {
+		t.Errorf("nothing was skipped, yet %d directories are reported as not evaluated: %v",
+			len(dirs), dirs)
+	}
+
+	bounded := New()
+	bounded.SetMaxInstantiated(4)
+	if _, _, _, err := bounded.EvaluateModule(context.Background(), stack, nil); err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	skipped := bounded.NotEvaluatedDirs()
+	if len(skipped) == 0 {
+		t.Fatal("the budget stopped the recursion but no directory is reported as not evaluated")
+	}
+	for _, dir := range skipped {
+		if !strings.HasPrefix(dir, filepath.Dir(stack)) {
+			t.Errorf("reported directory %s is outside the fixture", dir)
+		}
+	}
+
+	// The budget resets per root, but a skipped directory stays skipped: the
+	// caller's suppression decision spans every root.
+	bounded.ResetInstantiationBudget()
+	if got := len(bounded.NotEvaluatedDirs()); got != len(skipped) {
+		t.Errorf("resetting the budget changed the skipped set from %d to %d directories",
+			len(skipped), got)
+	}
+}

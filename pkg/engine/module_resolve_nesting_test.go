@@ -127,3 +127,78 @@ func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testi
 	t.Logf("instantiated=%d documents=%d suppressed_files=%d",
 		res.resourceCount, len(res.docs), len(res.suppressed))
 }
+
+// writePartiallyResolvedShare lays down a module directory reached twice: once
+// directly from the root, and once at the bottom of a chain long enough that the
+// evaluator's depth cap stops before it. The direct call resolves, the deep one
+// never does, so the directory ends the scan only partially resolved.
+func writePartiallyResolvedShare(t *testing.T, levels int) (string, model.FileMetadatas) {
+	t.Helper()
+	root := t.TempDir()
+
+	shared := filepath.Join(root, "shared")
+	writeFile(t, shared, "main.tf",
+		"variable \"name\" { type = string }\nresource \"aws_s3_bucket\" \"b\" { bucket = var.name }\n")
+	files := model.FileMetadatas{fileMeta("shared", filepath.Join(shared, "main.tf"))}
+
+	for i := 0; i < levels; i++ {
+		body := "variable \"name\" { type = string }\n"
+		if i == levels-1 {
+			body += "module \"shared\" {\n  source = \"../shared\"\n  name = var.name\n}\n"
+		} else {
+			body += fmt.Sprintf("module \"next\" {\n  source = \"../lvl%02d\"\n  name = var.name\n}\n", i+1)
+		}
+		dir := filepath.Join(root, fmt.Sprintf("lvl%02d", i))
+		writeFile(t, dir, "main.tf", body)
+		files = append(files, fileMeta(fmt.Sprintf("lvl-%02d", i), filepath.Join(dir, "main.tf")))
+	}
+
+	stack := filepath.Join(root, "stack")
+	writeFile(t, stack, "main.tf", `
+module "shallow" {
+  source = "../shared"
+  name   = "shallow"
+}
+module "deep" {
+  source = "../lvl00"
+  name   = "deep"
+}
+`)
+	files = append(files, fileMeta("stack", filepath.Join(stack, "main.tf")))
+	return root, files
+}
+
+// A directory is suppressed for the whole scan at once, but depth, cycle and
+// budget stops apply to a single call site. So a directory can finish the scan
+// with one instance resolved and another skipped, and suppressing it then leaves
+// the skipped instance represented by nothing: not by a synthetic document, since
+// it was never evaluated, and not by its own body, since that was removed. The
+// body has to stay.
+func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T) {
+	// Comfortably past the evaluator's depth cap, so the chain is cut short.
+	root, files := writePartiallyResolvedShare(t, 25)
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+
+	if !res.ok {
+		t.Fatal("expected module resolution to succeed for the shallow call")
+	}
+	if res.resourceCount == 0 {
+		t.Fatal("expected the shallow call to instantiate the shared module")
+	}
+
+	sharedFile := filepath.Join(root, "shared", "main.tf")
+	if !res.unresolvedModuleDirs[filepath.Dir(sharedFile)] {
+		t.Error("the shared module has a call site that was never evaluated but is not " +
+			"marked unresolved, so its body will be suppressed with nothing standing in")
+	}
+	for _, f := range files {
+		if f.FilePath != sharedFile {
+			continue
+		}
+		if blocks := res.suppressed[f.ID]; len(blocks) > 0 {
+			t.Errorf("shared module body is suppressed (%v) even though one of its call "+
+				"sites was never resolved; that instance is now scanned by nothing", blocks)
+		}
+	}
+}
