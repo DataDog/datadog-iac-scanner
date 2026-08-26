@@ -176,6 +176,15 @@ func (e *Engine) expToStringLiteralValue(t *hclsyntax.LiteralValueExpr) (string,
 	if err != nil {
 		return "", err
 	}
+	// Converting to string succeeds for null and unknown values but AsString
+	// panics on both, so a literal `null` in a body would take down the whole
+	// enclosing resolve rather than this one expression.
+	if s.IsNull() {
+		return "", fmt.Errorf("can't convert null literal to string")
+	}
+	if !s.IsKnown() {
+		return "", fmt.Errorf("can't convert unknown literal to string")
+	}
 	return s.AsString(), nil
 }
 
