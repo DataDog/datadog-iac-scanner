@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
@@ -111,6 +112,42 @@ func (r *trackingResolver) callCount(source string) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.calls[source]
+}
+
+type acquisitionTrackingResolver struct {
+	bySource     map[string]resolver.Resolution
+	release      chan struct{}
+	releaseOnce  sync.Once
+	entered      atomic.Int64
+	activeBytes  atomic.Int64
+	maximumBytes atomic.Int64
+}
+
+func (r *acquisitionTrackingResolver) Resolve(
+	ctx context.Context, mod *tfmodules.ParsedModule,
+) (resolver.Resolution, error) {
+	res, ok := r.bySource[mod.Source]
+	if !ok {
+		return resolver.Resolution{}, &tfmodules.UnresolvedError{Reason: "unknown source " + mod.Source}
+	}
+	reserved := resolver.ResourceBudgetFromContext(ctx).Limits().MaxPackageBytes
+	active := r.activeBytes.Add(reserved)
+	defer r.activeBytes.Add(-reserved)
+	for {
+		maximum := r.maximumBytes.Load()
+		if active <= maximum || r.maximumBytes.CompareAndSwap(maximum, active) {
+			break
+		}
+	}
+	if r.entered.Add(1) == 2 {
+		r.releaseOnce.Do(func() { close(r.release) })
+	}
+	select {
+	case <-ctx.Done():
+		return resolver.Resolution{}, ctx.Err()
+	case <-r.release:
+		return res, nil
+	}
 }
 
 func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
@@ -511,6 +548,133 @@ module "b" {
 	require.Contains(t, result.ScanPaths, filepath.Join(moduleB, "main.tf"))
 }
 
+func TestResolveStopsDeferredTraversalAtAcquisitionLimit(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	moduleA := filepath.Join(base, "module-a")
+	moduleB := filepath.Join(base, "module-b")
+	childA := filepath.Join(base, "child-a")
+	childB := filepath.Join(base, "child-b")
+	for _, dir := range []string{root, moduleA, moduleB, childA, childB} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "a" {
+  source = "example.com/acme/a/aws"
+}
+module "b" {
+  source = "example.com/acme/b/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleA, "main.tf"), []byte(`
+module "child_a" {
+  source = "example.com/acme/child-a/aws"
+}
+resource "aws_vpc" "padding" {
+  tags = { padding = "module a starts larger than module b" }
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleB, "main.tf"), []byte(`
+module "child_b" {
+  source = "example.com/acme/child-b/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(childA, "main.tf"),
+		[]byte(`resource "aws_vpc" "child_a" {}`),
+		0o600,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(childB, "main.tf"),
+		make([]byte, 1024),
+		0o600,
+	))
+	moduleAUsage, err := resolver.MeasurePackage(t.Context(), moduleA, resolver.ResourceLimits{})
+	require.NoError(t, err)
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{
+			"example.com/acme/a/aws":       {LocalPath: moduleA},
+			"example.com/acme/b/aws":       {LocalPath: moduleB},
+			"example.com/acme/child-a/aws": {LocalPath: childA},
+			"example.com/acme/child-b/aws": {LocalPath: childB},
+		},
+		calls: make(map[string]int),
+	}
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       tracker,
+		MaxDepth:       3,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxTotalBytes: moduleAUsage.Bytes,
+		},
+	})
+
+	require.Zero(t, tracker.callCount("example.com/acme/child-a/aws"))
+	require.Equal(t, 1, tracker.callCount("example.com/acme/child-b/aws"))
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, "example.com/acme/b/aws", result.Modules[0].Source)
+}
+
+func TestResolveReservesAcquisitionAcrossConcurrentFrontiers(t *testing.T) {
+	t.Parallel()
+
+	const (
+		seedCount        = 4
+		maximumBytes     = int64(200)
+		acquisitionBytes = maximumBytes * acquisitionOvershootFactor
+	)
+	base := t.TempDir()
+	discoveryPaths := make([]string, 0, seedCount)
+	resolutions := make(map[string]resolver.Resolution, seedCount)
+	for i := range seedCount {
+		seed := filepath.Join(base, fmt.Sprintf("seed-%d", i))
+		module := filepath.Join(base, fmt.Sprintf("module-%d", i))
+		require.NoError(t, os.MkdirAll(seed, 0o755))
+		require.NoError(t, os.MkdirAll(module, 0o755))
+		source := fmt.Sprintf("example.com/acme/module-%d/aws", i)
+		require.NoError(t, os.WriteFile(
+			filepath.Join(seed, "main.tf"),
+			[]byte(fmt.Sprintf("module \"m\" {\n  source = %q\n}\n", source)),
+			0o600,
+		))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(module, "main.tf"),
+			[]byte(`resource "test" "example" {}`),
+			0o600,
+		))
+		discoveryPaths = append(discoveryPaths, filepath.Join(seed, "main.tf"))
+		resolutions[source] = resolver.Resolution{LocalPath: module}
+	}
+	tracker := &acquisitionTrackingResolver{
+		bySource: resolutions,
+		release:  make(chan struct{}),
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	result := Resolve(ctx, &Request{
+		RootPaths:      []string{base},
+		DiscoveryPaths: discoveryPaths,
+		Resolver:       tracker,
+		MaxDepth:       2,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxPackageBytes: 300,
+			MaxTotalBytes:   maximumBytes,
+		},
+	})
+
+	require.NoError(t, ctx.Err())
+	require.Equal(t, int64(seedCount), tracker.entered.Load())
+	require.LessOrEqual(t, tracker.maximumBytes.Load(), acquisitionBytes)
+	for _, event := range result.BudgetEvents {
+		require.NotEqual(t, "acquisition", event.Gate)
+	}
+}
+
 func TestShedToTotalLimitFiltersNestedPackagePathsByOwner(t *testing.T) {
 	t.Parallel()
 
@@ -761,8 +925,6 @@ func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(calls), 0o600))
 	tracker := &trackingResolver{bySource: resolutions, calls: make(map[string]int)}
 
-	// One batch alone overshoots the allowance, so the trailing sources are
-	// never fetched.
 	result := Resolve(t.Context(), &Request{
 		RootPaths:      []string{root},
 		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
@@ -771,9 +933,11 @@ func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
 		ResourceLimits: resolver.ResourceLimits{MaxTotalBytes: 100},
 	})
 
-	for _, source := range sources[batch:] {
-		require.Zero(t, tracker.callCount(source), source)
+	acquired := 0
+	for _, source := range sources {
+		acquired += tracker.callCount(source)
 	}
+	require.Equal(t, 2, acquired)
 	require.Equal(t, 1, tracker.callCount(sources[0]))
 	unacquired := 0
 	for _, event := range result.BudgetEvents {
@@ -782,7 +946,7 @@ func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
 			require.Equal(t, "module_bytes_total", event.Limit)
 		}
 	}
-	require.Equal(t, count-batch, unacquired)
+	require.Equal(t, count-acquired, unacquired)
 }
 
 func TestShedToTotalLimitBreaksTiesDeterministically(t *testing.T) {
