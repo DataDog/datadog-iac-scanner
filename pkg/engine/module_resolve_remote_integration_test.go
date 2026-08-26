@@ -213,6 +213,8 @@ module "bucket" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1, "only the public-read caller should produce a finding")
+	require.Equal(t, "stack-b/main.tf|module.bucket", vulns[0].ModuleCallChain,
+		"finding must be attributed to the vulnerable caller, not the secure one")
 }
 
 func TestInspect_RemoteModule_TwoCallersGetDistinctCallChains(t *testing.T) {
