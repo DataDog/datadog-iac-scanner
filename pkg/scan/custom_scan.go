@@ -32,7 +32,7 @@ var platformExtensions = map[string]string{
 	"CloudFormation": scanTargetJSON,
 	"Kubernetes":     "scan-target.yaml",
 	"Ansible":        "scan-target.yaml",
-	"CICD":           "scan-target.yaml",
+	"CICD":           ".github/scan-target.yaml",
 	"Dockerfile":     "Dockerfile",
 }
 
@@ -62,6 +62,10 @@ func RunCustomRegoQuery(
 
 	const ownerReadWritePerm = 0600
 	tmpFile := filepath.Join(tmpDir, platformTempFileName(platform))
+	if err := os.MkdirAll(filepath.Dir(tmpFile), 0700); err != nil {
+		return nil, nil, fmt.Errorf("creating temp file dir: %w", err)
+	}
+
 	if err := os.WriteFile(tmpFile, fileContent, ownerReadWritePerm); err != nil {
 		return nil, nil, fmt.Errorf("writing temp file: %w", err)
 	}
