@@ -11,6 +11,7 @@ package tfeval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -38,7 +39,19 @@ const (
 	resourceRefPasses = 3
 	// maxCountExpansion caps instances per count/for_each block.
 	maxCountExpansion = 10
+	// defaultMaxInstantiated is the last-resort cap on resources one scan may
+	// instantiate. Memoizing on inputs removes the exponential path that made a
+	// small repository able to exhaust any limit, so this exists only for shapes
+	// that are genuinely, and not just redundantly, that large. Reaching it costs
+	// resolved values for the modules beyond it, which are still scanned as
+	// written — strictly better than the scan dying and reporting nothing.
+	defaultMaxInstantiated = 200000
 )
+
+// ErrModuleNotEvaluated reports that a module was skipped rather than evaluated,
+// so callers must leave it to be scanned as written instead of treating it as a
+// module that resolved to nothing.
+var ErrModuleNotEvaluated = errors.New("tfeval: module not evaluated")
 
 // ResolvedResource is a resource block after evaluation with attributes
 // resolved to concrete cty values where possible, unknown otherwise.
@@ -73,13 +86,20 @@ type CallSite struct {
 type Evaluator struct {
 	funcs    map[string]function.Function
 	maxDepth int
-	// cache memoizes completed module evaluations keyed by (dir, addr, canonical-inputs).
-	// A single Evaluator is used for an entire scan, so the cache is shared across root
-	// module calls — entries with the same key represent the same module called with the
-	// same resolved inputs from the same structural position in the module tree.
+	// cache memoizes completed module evaluations keyed by (dir, packageRoot,
+	// canonical-inputs). A single Evaluator is used for an entire scan, so entries
+	// with the same key represent the same module reached with the same resolved
+	// inputs, whatever path led there.
 	cache map[evalCacheKey]*evalCacheEntry
 	// When set, non-local module sources resolve here and recurse with caller inputs.
 	remoteResolver RemoteResolver
+
+	// Aggregate cap on resources this evaluator will instantiate, enforced inside
+	// the recursion rather than between root modules: a single root can expand
+	// without bound, so a check that only runs at root boundaries never fires.
+	maxInstantiated int
+	instantiated    int
+	budgetExceeded  bool
 
 	parseMu  sync.Mutex
 	dirCache map[string]dirParse
@@ -92,12 +112,17 @@ type dirParse struct {
 
 func New() *Evaluator {
 	return &Evaluator{
-		funcs:    tffunctions.TerraformFuncs,
-		maxDepth: defaultMaxDepth,
-		cache:    make(map[evalCacheKey]*evalCacheEntry),
-		dirCache: make(map[string]dirParse),
+		funcs:           tffunctions.TerraformFuncs,
+		maxDepth:        defaultMaxDepth,
+		maxInstantiated: defaultMaxInstantiated,
+		cache:           make(map[evalCacheKey]*evalCacheEntry),
+		dirCache:        make(map[string]dirParse),
 	}
 }
+
+// SetMaxInstantiated overrides the instantiation budget. A value of zero or less
+// disables it.
+func (e *Evaluator) SetMaxInstantiated(n int) { e.maxInstantiated = n }
 
 func (e *Evaluator) parseDir(dir, packageRoot string) ([]*hclsyntax.Body, error) {
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
@@ -122,10 +147,21 @@ func (e *Evaluator) SetRemoteResolver(r RemoteResolver) {
 }
 
 func (e *Evaluator) ReleaseCaches() {
-	e.cache = make(map[evalCacheKey]*evalCacheEntry)
+	e.ReleaseEvalCache()
 	e.parseMu.Lock()
 	e.dirCache = make(map[string]dirParse)
 	e.parseMu.Unlock()
+}
+
+// ReleaseEvalCache drops memoized module evaluations while keeping parsed HCL
+// bodies. Every entry holds the resolved resources of its whole subtree, so
+// retaining entries for a whole repository scales peak memory with the number of
+// roots. Entries are reusable across roots now that the key is the inputs alone,
+// but in practice each root passes its own values to the shared modules it calls,
+// so the hit rate across roots is low and not worth that peak. The parse cache is
+// keyed by directory alone, genuinely is shared by every root, and is kept.
+func (e *Evaluator) ReleaseEvalCache() {
+	e.cache = make(map[evalCacheKey]*evalCacheEntry)
 }
 
 // EvaluateModule evaluates the module rooted at dir with the given inputs and
@@ -165,28 +201,37 @@ func (e *Evaluator) evaluate(
 ) ([]ResolvedResource, map[string]cty.Value, error) {
 	contextLogger := logger.FromContext(ctx)
 
+	// These three return ErrModuleNotEvaluated rather than an empty result. An
+	// empty result is indistinguishable from a module that legitimately declares
+	// no resources, and the caller would record the directory as evaluated — which
+	// suppresses its body from the scan with no synthetic document to replace it.
+	// Reporting "not evaluated" keeps the module scanned as written instead.
 	if depth > e.maxDepth {
 		contextLogger.Warn().Msgf("tfeval: max module depth %d exceeded at %s", e.maxDepth, dir)
-		return nil, map[string]cty.Value{}, nil
+		return nil, nil, ErrModuleNotEvaluated
 	}
 	if visiting[dir] {
 		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
-		return nil, map[string]cty.Value{}, nil
+		return nil, nil, ErrModuleNotEvaluated
+	}
+	if e.instantiationBudgetExhausted() {
+		return nil, nil, ErrModuleNotEvaluated
 	}
 
-	// Pre-pass and main loop share (dir, addr, inputs, chain); distinct callers differ in chain only.
+	// Keyed on inputs only, so every path to the same module with the same inputs
+	// shares one evaluation and is re-stamped for its own position.
 	cacheKey := evalCacheKey{
 		dir:         dir,
 		packageRoot: packageRoot,
-		addr:        addr,
 		inputs:      canonicalInputsKey(inputs),
-		chain:       chainKey(chain),
 	}
 	if entry, ok := e.cache[cacheKey]; ok {
 		for _, d := range entry.visitedDirs {
 			allVisited[d] = true
 		}
-		return entry.resources, entry.outputs, nil
+		reused := entry.rebase(addr, chain)
+		e.chargeInstantiationBudget(ctx, len(reused))
+		return reused, entry.outputs, nil
 	}
 
 	visiting[dir] = true
@@ -266,12 +311,51 @@ func (e *Evaluator) evaluate(
 		}
 	}
 	e.cache[cacheKey] = &evalCacheEntry{
-		resources:   resources,
-		outputs:     outputs,
-		visitedDirs: visitedDirs,
+		resources:    resources,
+		outputs:      outputs,
+		visitedDirs:  visitedDirs,
+		baseAddr:     addr,
+		baseChainLen: len(chain),
 	}
+	e.chargeInstantiationBudget(ctx, len(resources))
 
 	return resources, outputs, nil
+}
+
+// chargeInstantiationBudget counts resources as they are handed to a caller,
+// including reused ones. Memoizing removes the repeated *evaluation* of a shared
+// subtree but not the repeated materialization of its resources: every caller gets
+// its own copies, attributed to its own path. Those copies are the memory the
+// budget exists to bound, so counting evaluations instead would never fire.
+func (e *Evaluator) chargeInstantiationBudget(ctx context.Context, n int) {
+	if e.maxInstantiated <= 0 {
+		return
+	}
+	e.instantiated += n
+	if e.instantiated >= e.maxInstantiated && !e.budgetExceeded {
+		e.budgetExceeded = true
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Warn().
+			Int("resources_instantiated", e.instantiated).
+			Int("resource_budget", e.maxInstantiated).
+			Msg("tfeval: module instantiation budget exhausted; " +
+				"stopping recursion, remaining modules are scanned as written")
+	}
+}
+
+func (e *Evaluator) instantiationBudgetExhausted() bool {
+	return e.maxInstantiated > 0 && e.instantiated >= e.maxInstantiated
+}
+
+// BudgetExceeded reports whether evaluation stopped early for budget, so callers
+// can leave the modules it did not reach to be scanned as written.
+func (e *Evaluator) BudgetExceeded() bool { return e.budgetExceeded }
+
+// ResetInstantiationBudget clears per-root instantiation counters so one large
+// root cannot consume the quota for every subsequent root in a monorepo.
+func (e *Evaluator) ResetInstantiationBudget() {
+	e.instantiated = 0
+	e.budgetExceeded = false
 }
 
 func (e *Evaluator) applySiblingModulePrepass(
@@ -361,7 +445,11 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			append(cloneChain(chain), site), depth+1, visiting, allVisited,
 		)
 		if cErr != nil {
-			contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", label, childDir, cErr)
+			if !errors.Is(cErr, ErrModuleNotEvaluated) {
+				contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", label, childDir, cErr)
+			}
+			// Deliberately not added to allVisited: the module was not resolved, so
+			// it must keep being scanned where it is written.
 			continue
 		}
 		allVisited[childDir] = true
