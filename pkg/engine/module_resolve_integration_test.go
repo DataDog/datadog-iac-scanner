@@ -6,10 +6,12 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
@@ -17,6 +19,7 @@ import (
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -138,6 +141,53 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, "modules/bucket", v.ModuleAttribution.Source)
 	require.Equal(t, "main.tf", v.ModuleAttribution.ModuleCodeLocation.Filename)
 	require.Empty(t, v.ModuleAttribution.ModulePath)
+}
+
+func TestModuleInstantiationSummary_LoggedAtWarnLevel(t *testing.T) {
+	root := t.TempDir()
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "bucket")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(rootDir, "main.tf"), []byte(`
+module "bucket" {
+  source = "../modules/bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(modDir, "main.tf"), []byte(`
+variable "acl" { type = string }
+resource "aws_s3_bucket" "this" { acl = var.acl }
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, filepath.Join(rootDir, "main.tf"))...)
+	files = append(files, parseTerraform(t, filepath.Join(modDir, "main.tf"))...)
+
+	queries := []model.QueryMetadata{{
+		Query: aclRule, InputData: "{}", Platform: "terraform",
+		Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+	}}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder,
+		flagEvaluator: moduleEvalEnabled(),
+	})
+
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...))
+
+	out := logs.String()
+	if !strings.Contains(out, "tfeval: module instantiation summary") {
+		t.Fatalf("expected warn-level summary for agents to grep, got %q", out)
+	}
+	if !strings.Contains(out, `"module_resources_instantiated":`) {
+		t.Fatalf("expected structured instantiation count, got %q", out)
+	}
+	if !strings.Contains(out, `"module_root_count":`) {
+		t.Fatalf("expected root count in summary, got %q", out)
+	}
 }
 
 // Two roots call the same module with the same inputs: expect two findings and two distinct ModuleCallChain values.

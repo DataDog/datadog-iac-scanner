@@ -40,12 +40,12 @@ const (
 	// maxCountExpansion caps instances per count/for_each block.
 	maxCountExpansion = 10
 	// defaultMaxInstantiated is the last-resort cap on resources one scan may
-	// instantiate. Memoizing on inputs removes the exponential path that made a
-	// small repository able to exhaust any limit, so this exists only for shapes
-	// that are genuinely, and not just redundantly, that large. Reaching it costs
-	// resolved values for the modules beyond it, which are still scanned as
-	// written — strictly better than the scan dying and reporting nothing.
-	defaultMaxInstantiated = 200000
+	// instantiate, counted over the whole scan rather than per root: the documents
+	// an instantiated resource turns into are retained until the scan ends. A cap
+	// that resets per root bounds no total at all, because a repository can hold
+	// any number of roots and a pod runs several scans concurrently (four by
+	// default), each with its own evaluator.
+	defaultMaxInstantiated = 150000
 )
 
 // ErrModuleNotEvaluated reports that a module was skipped rather than evaluated,
@@ -162,6 +162,20 @@ func (e *Evaluator) NotEvaluatedDirs() []string {
 // disables it.
 func (e *Evaluator) SetMaxInstantiated(n int) { e.maxInstantiated = n }
 
+// MaxInstantiated reports the per-scan instantiation budget.
+func MaxInstantiated() int { return defaultMaxInstantiated }
+
+// InstantiatedCount reports how many module resources have been charged against
+// the scan-wide retained-document budget.
+func (e *Evaluator) InstantiatedCount() int { return e.instantiated }
+
+// RestoreInstantiatedCount rolls back charges from a root whose evaluation failed
+// after descendants were counted but before any documents were emitted.
+func (e *Evaluator) RestoreInstantiatedCount(n int) {
+	e.instantiated = n
+	e.budgetExceeded = e.maxInstantiated > 0 && e.instantiated >= e.maxInstantiated
+}
+
 func (e *Evaluator) parseDir(dir, packageRoot string) ([]*hclsyntax.Body, error) {
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
 
@@ -220,7 +234,11 @@ func (e *Evaluator) EvaluateModule(
 	}
 	visiting := map[string]bool{}
 	allVisited := map[string]bool{}
+	instantiatedBefore := e.instantiated
 	resources, outputs, err = e.evaluate(ctx, abs, "", inputs, "", nil, 0, visiting, allVisited)
+	if err != nil {
+		e.RestoreInstantiatedCount(instantiatedBefore)
+	}
 	return resources, outputs, allVisited, err
 }
 
@@ -247,7 +265,7 @@ func (e *Evaluator) evaluate(
 		inputs:      canonicalInputsKey(inputs),
 	}
 	if resources, outputs, hit, err := e.reuseCachedEvaluation(
-		ctx, cacheKey, dir, addr, chain, allVisited,
+		ctx, cacheKey, dir, addr, chain, depth, allVisited,
 	); hit {
 		return resources, outputs, err
 	}
@@ -327,7 +345,7 @@ func (e *Evaluator) evaluate(
 		}
 	}
 	e.cacheCompletedEvaluation(
-		cacheKey, skippedBefore, resources, outputs, visitedDirs, addr, len(chain),
+		cacheKey, skippedBefore, resources, outputs, visitedDirs, addr, len(chain), depth,
 	)
 
 	return resources, outputs, nil
@@ -349,6 +367,7 @@ func (e *Evaluator) evaluationStop(
 		return e.skipEvaluation(dir)
 	}
 	if e.instantiationBudgetExhausted() {
+		e.reportInstantiationBudgetExceeded(ctx, *e.currentInstantiationCount())
 		return e.skipEvaluation(dir)
 	}
 	return nil
@@ -359,6 +378,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 	key evalCacheKey,
 	dir, addr string,
 	chain []CallSite,
+	depth int,
 	allVisited map[string]bool,
 ) (
 	resources []ResolvedResource,
@@ -370,9 +390,14 @@ func (e *Evaluator) reuseCachedEvaluation(
 	if !ok {
 		return nil, nil, false, nil
 	}
+	if entry.evalDepth > depth {
+		return nil, nil, false, nil
+	}
 	if e.prepassDepth == 0 || entry.baseAddr != addr || entry.baseChainLen != len(chain) {
-		if !e.chargeInstantiationBudget(ctx, len(entry.resources)) {
-			return nil, nil, true, e.skipEvaluation(dir)
+		if charge := moduleResourceCount(entry.resources); charge > 0 {
+			if !e.chargeInstantiationBudget(ctx, charge) {
+				return nil, nil, true, e.skipEvaluation(dir)
+			}
 		}
 	}
 	for _, visited := range entry.visitedDirs {
@@ -414,7 +439,10 @@ func (e *Evaluator) evaluateRootResources(
 	resources, complete := e.rootResourcesWithRefPasses(
 		resourceBlocks, localExprs, evalCtx, addr, chain,
 	)
-	if !complete || !e.chargeInstantiationBudget(ctx, len(resources)) {
+	if !complete {
+		return nil, e.skipEvaluation(dir)
+	}
+	if addr != "" && !e.chargeInstantiationBudget(ctx, len(resources)) {
 		return nil, e.skipEvaluation(dir)
 	}
 	return resources, nil
@@ -428,9 +456,15 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	visitedDirs []string,
 	addr string,
 	chainLen int,
+	depth int,
 ) {
 	if e.skipped != skippedBefore {
 		return
+	}
+	for i := range resources {
+		if resources[i].ExpansionTruncated {
+			return
+		}
 	}
 	e.cache[key] = &evalCacheEntry{
 		resources:    resources,
@@ -438,7 +472,18 @@ func (e *Evaluator) cacheCompletedEvaluation(
 		visitedDirs:  visitedDirs,
 		baseAddr:     addr,
 		baseChainLen: chainLen,
+		evalDepth:    depth,
 	}
+}
+
+func moduleResourceCount(resources []ResolvedResource) int {
+	n := 0
+	for i := range resources {
+		if resources[i].ModuleAddress != "" {
+			n++
+		}
+	}
+	return n
 }
 
 func (e *Evaluator) chargeInstantiationBudget(ctx context.Context, n int) bool {
@@ -496,12 +541,15 @@ func (e *Evaluator) instantiationBudgetExhausted() bool {
 // can leave the modules it did not reach to be scanned as written.
 func (e *Evaluator) BudgetExceeded() bool { return e.budgetExceeded }
 
-// ResetInstantiationBudget clears per-root instantiation counters so one large
-// root cannot consume the quota for every subsequent root in a monorepo.
-func (e *Evaluator) ResetInstantiationBudget() {
-	e.instantiated = 0
+// ResetSpeculativeBudget clears the counter for speculative sibling evaluation at
+// a root boundary. That work is discarded once the root it belongs to is done.
+//
+// The count of resources actually instantiated is deliberately not reset. Those
+// become documents that live until the scan ends, so their bound has to span the
+// scan; resetting it per root is what left the total unbounded when several scans
+// ran concurrently on one pod.
+func (e *Evaluator) ResetSpeculativeBudget() {
 	e.prepassInstantiated = 0
-	e.budgetExceeded = false
 }
 
 func (e *Evaluator) applySiblingModulePrepass(
