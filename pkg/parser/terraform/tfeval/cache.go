@@ -45,6 +45,10 @@ type evalCacheEntry struct {
 	visitedDirs  []string
 	baseAddr     string
 	baseChainLen int
+	// evalDepth is the nesting depth this entry was evaluated at. A module cached
+	// from a deeper call may have truncated descendants; shallower callers need a
+	// fresh evaluation with more depth remaining.
+	evalDepth int
 }
 
 // rebase returns the cached resources as they would have been recorded had the

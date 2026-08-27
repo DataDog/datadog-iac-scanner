@@ -21,6 +21,7 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/cespare/xxhash/v2"
+	"github.com/rs/zerolog"
 )
 
 // extraCallerInfo records a deduplicated module caller so its findings can be
@@ -42,6 +43,8 @@ type moduleResolutionResult struct {
 	unresolvedModuleDirs map[string]bool
 	extras               map[string][]extraCallerInfo
 	resourceCount        int
+	rootCount            int
+	budgetExceeded       bool
 	ok                   bool
 }
 
@@ -76,6 +79,7 @@ func (c *Inspector) instantiateLocalModules(
 			len(res.docs),
 			deduplicatedCallerCount(&res),
 		)
+	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
 		return nil, nil, nil
 	}
@@ -106,6 +110,23 @@ func (c *Inspector) instantiateLocalModules(
 		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver)
 	}
 	return res.docs, res.syntheticFiles, res.extras
+}
+
+// logModuleInstantiationSummary emits the fields an on-call search needs at warn
+// level. Production runs at warn, so the info-level count above is invisible there;
+// without this, a scan on its way to OOM looks identical to one that never ran
+// module evaluation.
+func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionResult) {
+	if res.resourceCount == 0 && !res.budgetExceeded {
+		return
+	}
+	log.Warn().
+		Int("module_resources_instantiated", res.resourceCount).
+		Int("module_root_count", res.rootCount).
+		Int("module_documents", len(res.docs)).
+		Int("resource_budget", tfeval.MaxInstantiated()).
+		Bool("resource_budget_exhausted", res.budgetExceeded).
+		Msg("tfeval: module instantiation summary")
 }
 
 // declaresTargetedResource reports whether any scanned Terraform file declares
@@ -337,7 +358,7 @@ func evaluateRootModules(
 ) {
 	contextLogger := logger.FromContext(ctx)
 	for _, dir := range roots {
-		evaluator.ResetInstantiationBudget()
+		evaluator.ResetSpeculativeBudget()
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir))
 		if err != nil {
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
@@ -539,6 +560,8 @@ func resolveModuleDocuments(
 		unresolvedModuleDirs: unresolvedModuleDirs,
 		extras:               extras,
 		resourceCount:        resourceCount,
+		rootCount:            len(roots),
+		budgetExceeded:       evaluator.BudgetExceeded(),
 		ok:                   true,
 	}
 }
