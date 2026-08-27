@@ -557,6 +557,40 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				artifactPath = ""
 			}
 
+			primaryURI := artifactPath
+			primaryStart := resourceStartLocation
+			primaryEnd := resourceEndLocation
+			resultProperties := sarifProperties{"tags": resultTags}
+			moduleAttribution := vulnerability.ModuleAttribution
+			if moduleAttribution != nil && moduleAttribution.CodeLocation.Filename != "" {
+				primaryURI = moduleAttribution.CodeLocation.Filename
+				primaryStart = model.SarifResourceLocation{
+					Line: moduleAttribution.CodeLocation.LineStart,
+					Col:  moduleAttribution.CodeLocation.ColumnStart,
+				}
+				primaryEnd = model.SarifResourceLocation{
+					Line: moduleAttribution.CodeLocation.LineEnd,
+					Col:  moduleAttribution.CodeLocation.ColumnEnd,
+				}
+				if primaryStart.Col <= 0 {
+					primaryStart.Col = 1
+				}
+				if primaryEnd.Line < primaryStart.Line {
+					primaryEnd.Line = primaryStart.Line
+				}
+				if primaryEnd.Col <= 0 {
+					primaryEnd.Col = 1
+				}
+				if primaryEnd.Line == primaryStart.Line && primaryEnd.Col <= primaryStart.Col {
+					primaryEnd.Col = primaryStart.Col + 1
+				}
+				if modulePayload := model.ModuleAttributionForSARIF(moduleAttribution); modulePayload != nil {
+					resultProperties["module"] = modulePayload
+				}
+			}
+
+			primaryURI = filepath.ToSlash(primaryURI)
+
 			result := sarifResult{
 				ResultRuleID:    issue.QueryName,
 				ResultRuleIndex: ruleIndex,
@@ -567,25 +601,24 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				ResultLocations: []SarifLocation{
 					{
 						PhysicalLocation: sarifPhysicalLocation{
-							ArtifactLocation: sarifArtifactLocation{ArtifactURI: artifactPath},
+							ArtifactLocation: sarifArtifactLocation{ArtifactURI: primaryURI},
 							Region: model.SarifRegion{
-								StartLine:   resourceStartLocation.Line,
-								EndLine:     resourceEndLocation.Line,
-								StartColumn: resourceStartLocation.Col,
-								EndColumn:   resourceEndLocation.Col,
+								StartLine:   primaryStart.Line,
+								EndLine:     primaryEnd.Line,
+								StartColumn: primaryStart.Col,
+								EndColumn:   primaryEnd.Col,
 							},
 						},
 					},
 				},
-				ResultProperties: sarifProperties{
-					"tags": resultTags,
-				},
+				ResultProperties: resultProperties,
 				PartialFingerprints: SarifPartialFingerprints{
 					DatadogFingerprint: vulnerability.Fingerprint,
 				},
 				Suppressions: buildSarifSuppressions(ctx, &vulnerability),
 			}
-			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" {
+			remediationAllowed := moduleAttribution == nil || moduleAttribution.ModuleCodeOwned
+			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" && remediationAllowed {
 				sarifFix, err := remediationsHelper.TransformToSarifFix(
 					ctx,
 					vulnerability,
@@ -593,10 +626,11 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 					remediationEndLocation,
 				)
 				if err == nil {
-					// we want the location displayed in the UI to properly highlight the remediation
-					result.ResultLocations[0].PhysicalLocation.Region.StartLine = remediationStartLocation.Line
-					result.ResultLocations[0].PhysicalLocation.Region.EndLine = remediationEndLocation.Line
-
+					if moduleAttribution == nil {
+						// we want the location displayed in the UI to properly highlight the remediation
+						result.ResultLocations[0].PhysicalLocation.Region.StartLine = remediationStartLocation.Line
+						result.ResultLocations[0].PhysicalLocation.Region.EndLine = remediationEndLocation.Line
+					}
 					result.ResultFixes = append(result.ResultFixes, sarifFix)
 				}
 			}
