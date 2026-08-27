@@ -112,7 +112,7 @@ func allCodes(errs []RegoValidationError) []string {
 func TestPlatformTempFileName_CoversAllSupportedPlatforms(t *testing.T) {
 	expected := map[string]string{
 		"Ansible":        "scan-target.yaml",
-		"CICD":           "scan-target.yaml",
+		"CICD":           ".github/scan-target.yaml",
 		"CloudFormation": scanTargetJSON,
 		"Dockerfile":     "Dockerfile",
 		"Kubernetes":     "scan-target.yaml",

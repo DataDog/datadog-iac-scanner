@@ -32,7 +32,7 @@ var platformExtensions = map[string]string{
 	"CloudFormation": scanTargetJSON,
 	"Kubernetes":     "scan-target.yaml",
 	"Ansible":        "scan-target.yaml",
-	"CICD":           "scan-target.yaml",
+	"CICD":           ".github/scan-target.yaml",
 	"Dockerfile":     "Dockerfile",
 }
 
@@ -60,16 +60,24 @@ func RunCustomRegoQuery(
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	const ownerReadWritePerm = 0600
+	const (
+		ownerReadWritePerm = 0600
+		ownerReadWriteExec = 0700
+	)
 	tmpFile := filepath.Join(tmpDir, platformTempFileName(platform))
+	if err := os.MkdirAll(filepath.Dir(tmpFile), ownerReadWriteExec); err != nil {
+		return nil, nil, fmt.Errorf("creating temp file dir: %w", err)
+	}
+
 	if err := os.WriteFile(tmpFile, fileContent, ownerReadWritePerm); err != nil {
 		return nil, nil, fmt.Errorf("writing temp file: %w", err)
 	}
+	scanTargetPath := filepath.ToSlash(tmpFile)
 
 	// LibrariesDefaultBasePath ("./assets/libraries") is CWD-relative; the CLI is
 	// always invoked from the repo root so this resolves correctly.
 	params := &Parameters{
-		Path:                    []string{tmpFile},
+		Path:                    []string{scanTargetPath},
 		QueriesPath:             []string{"."},
 		LibrariesPath:           source.LibrariesDefaultBasePath,
 		PreviewLines:            3,
