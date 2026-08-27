@@ -16,7 +16,11 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
-const ManifestSchemaVersion = 1
+const (
+	ManifestSchemaVersion    = 1
+	manifestStatusResolved   = "resolved"
+	manifestStatusUnresolved = "unresolved"
+)
 
 type ManifestEntry struct {
 	LocalPath        string `json:"local_path"`
@@ -101,10 +105,11 @@ func loadLegacyManifest(envelope manifestEnvelope) (*Manifest, error) {
 	if err := json.Unmarshal(envelope.Modules, &modules); err != nil {
 		return nil, fmt.Errorf("parsing legacy modules: %w", err)
 	}
-	for key, entry := range modules {
+	for key := range modules {
+		entry := modules[key]
 		entry.RequestedVersion = entry.Version
 		entry.ResolvedVersion = entry.Version
-		entry.Status = "resolved"
+		entry.Status = manifestStatusResolved
 		modules[key] = entry
 	}
 	return &Manifest{Dir: envelope.Dir, Modules: modules}, nil
@@ -166,7 +171,7 @@ func (m *Manifest) addV1Entry(module *ManifestModule) error {
 		Origin:           module.SourceType,
 	}
 	switch module.Status {
-	case "resolved":
+	case manifestStatusResolved:
 		if err := m.resolveV1Paths(module, &entry); err != nil {
 			return err
 		}
@@ -180,7 +185,7 @@ func (m *Manifest) addV1Entry(module *ManifestModule) error {
 		if !strings.EqualFold(module.ContentDigest, digest) {
 			return fmt.Errorf("content_digest mismatch: got %q, computed %q", module.ContentDigest, digest)
 		}
-	case "unresolved":
+	case manifestStatusUnresolved:
 		if strings.TrimSpace(module.Failure) == "" {
 			return fmt.Errorf("failure is required for an unresolved module")
 		}
@@ -232,8 +237,9 @@ func validateManifestDeclarations(declarations []ManifestDeclaration) error {
 }
 
 func (m *Manifest) validate() error {
-	for src, entry := range m.Modules {
-		if entry.Status == "unresolved" {
+	for src := range m.Modules {
+		entry := m.Modules[src]
+		if entry.Status == manifestStatusUnresolved {
 			continue
 		}
 		if !filepath.IsAbs(entry.LocalPath) {
@@ -299,7 +305,7 @@ func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 			Reason: fmt.Sprintf("module %q not found in manifest", mod.Source),
 		}
 	}
-	if entry.Status == "unresolved" {
+	if entry.Status == manifestStatusUnresolved {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: entry.Failure}
 	}
 	if entry.RequestedVersion != "" && mod.Version != "" && entry.RequestedVersion != mod.Version {

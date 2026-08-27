@@ -64,40 +64,7 @@ func (c *Client) resolveTerraformModulesForScan(
 		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
-	packageBytes := c.ScanParams.MaxModulePackageBytes
-	if packageBytes == 0 {
-		packageBytes = DefaultRemoteModuleMaxPackageBytes
-	}
-	fileBytes := c.ScanParams.MaxModuleFileBytes
-	if fileBytes == 0 {
-		fileBytes = DefaultRemoteModuleMaxFileBytes
-	}
-	packageFiles := c.ScanParams.MaxModulePackageFiles
-	if packageFiles == 0 {
-		packageFiles = DefaultRemoteModuleMaxPackageFiles
-	}
-	resolveCtx := ctx
-	cancel := func() {}
-	if timeout := c.ScanParams.ModuleResolutionTimeout; timeout > 0 {
-		resolveCtx, cancel = context.WithTimeout(ctx, timeout)
-	}
-	defer cancel()
-
-	result := modulegraph.Resolve(resolveCtx, &modulegraph.Request{
-		RootPaths:      extractedPaths.Path,
-		DiscoveryPaths: moduleDiscoveryPaths,
-		Resolver:       chain,
-		MaxDepth:       c.ScanParams.ModuleMaxDepth,
-		ResourceLimits: tfresolver.ResourceLimits{
-			MaxPackageBytes: packageBytes,
-			MaxFileBytes:    fileBytes,
-			MaxPackageFiles: packageFiles,
-			MaxTotalBytes:   c.ScanParams.MaxModuleBytesTotal,
-		},
-		BaselinePaths:   baselinePaths,
-		TotalParseBytes: c.ScanParams.MaxModuleParseBytes,
-		FS:              c.fsys,
-	})
+	result := c.resolveTerraformModuleGraph(ctx, extractedPaths.Path, moduleDiscoveryPaths, baselinePaths, chain)
 	if result.TimedOut {
 		contextLogger.Warn().Dur("timeout", c.ScanParams.ModuleResolutionTimeout).
 			Msg("Terraform module resolution timed out; scanning modules resolved before the deadline")
@@ -148,6 +115,46 @@ func (c *Client) resolveTerraformModulesForScan(
 		}
 	}
 	return result.Cleanup, result.ScanPaths, remoteSourceDirs, remoteModuleProvenance, nil
+}
+
+func (c *Client) resolveTerraformModuleGraph(
+	ctx context.Context,
+	rootPaths, discoveryPaths, baselinePaths []string,
+	moduleResolver tfresolver.Resolver,
+) modulegraph.Result {
+	packageBytes := c.ScanParams.MaxModulePackageBytes
+	if packageBytes == 0 {
+		packageBytes = DefaultRemoteModuleMaxPackageBytes
+	}
+	fileBytes := c.ScanParams.MaxModuleFileBytes
+	if fileBytes == 0 {
+		fileBytes = DefaultRemoteModuleMaxFileBytes
+	}
+	packageFiles := c.ScanParams.MaxModulePackageFiles
+	if packageFiles == 0 {
+		packageFiles = DefaultRemoteModuleMaxPackageFiles
+	}
+	resolveCtx := ctx
+	cancel := func() {}
+	if timeout := c.ScanParams.ModuleResolutionTimeout; timeout > 0 {
+		resolveCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
+	defer cancel()
+	return modulegraph.Resolve(resolveCtx, &modulegraph.Request{
+		RootPaths:      rootPaths,
+		DiscoveryPaths: discoveryPaths,
+		Resolver:       moduleResolver,
+		MaxDepth:       c.ScanParams.ModuleMaxDepth,
+		ResourceLimits: tfresolver.ResourceLimits{
+			MaxPackageBytes: packageBytes,
+			MaxFileBytes:    fileBytes,
+			MaxPackageFiles: packageFiles,
+			MaxTotalBytes:   c.ScanParams.MaxModuleBytesTotal,
+		},
+		BaselinePaths:   baselinePaths,
+		TotalParseBytes: c.ScanParams.MaxModuleParseBytes,
+		FS:              c.fsys,
+	})
 }
 
 // resolvedModuleSourceType keeps the type detected from the declared source. A resolved Git ref only

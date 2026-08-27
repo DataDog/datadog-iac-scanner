@@ -353,7 +353,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 			len(c.StringSlice("terraform-modules-allowed-host")) > 0 ||
 			c.String("terraform-modules-cache-dir") != "") {
 		return errorWithExitCode(
-			errors.New("Terraform module resolver options require --terraform-modules-mode=offline or fetch"),
+			errors.New("terraform module resolver options require --terraform-modules-mode=offline or fetch"),
 			constants.InvalidConfigErrorCode,
 		)
 	}
