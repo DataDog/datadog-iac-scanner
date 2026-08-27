@@ -89,6 +89,15 @@ func (r errorResolver) Resolve(
 	return resolver.Resolution{}, r.err
 }
 
+type contextBlockingResolver struct{}
+
+func (contextBlockingResolver) Resolve(
+	ctx context.Context, _ *tfmodules.ParsedModule,
+) (resolver.Resolution, error) {
+	<-ctx.Done()
+	return resolver.Resolution{}, ctx.Err()
+}
+
 type trackingResolver struct {
 	mu       sync.Mutex
 	bySource map[string]resolver.Resolution
@@ -857,6 +866,21 @@ module "extra" {
 	require.Contains(t, result.ScanPaths, filepath.Join(selected, "main.tf"))
 	require.Contains(t, result.ScanPaths, filepath.Join(shared, "main.tf"))
 	require.Contains(t, result.ScanPaths, filepath.Join(extra, "main.tf"))
+}
+
+func TestResolveReturnsPartialResultWhenPhaseDeadlineExpires(t *testing.T) {
+	root, _ := writeModuleGraphFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+
+	result := Resolve(ctx, &Request{
+		RootPaths: []string{root},
+		Resolver:  contextBlockingResolver{},
+		MaxDepth:  2,
+	})
+
+	require.True(t, result.TimedOut)
+	require.Empty(t, result.Modules)
 }
 
 func writeModuleGraphFixture(t *testing.T) (string, string) {

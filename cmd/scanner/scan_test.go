@@ -174,6 +174,32 @@ func TestTerraformPlanFlag(t *testing.T) {
 	}
 }
 
+func TestTerraformModuleFlagsUseAuthoritativeMode(t *testing.T) {
+	names := make(map[string]bool)
+	for _, flag := range scanAction.Flags {
+		switch typed := flag.(type) {
+		case *cli.StringFlag:
+			names[typed.Name] = true
+		case *cli.StringSliceFlag:
+			names[typed.Name] = true
+		case *cli.IntFlag:
+			names[typed.Name] = true
+		case *cli.Int64Flag:
+			names[typed.Name] = true
+		case *cli.DurationFlag:
+			names[typed.Name] = true
+		case *cli.BoolFlag:
+			names[typed.Name] = true
+		}
+	}
+
+	require.True(t, names["terraform-modules-mode"])
+	require.True(t, names["terraform-modules-manifest"])
+	require.True(t, names["terraform-modules-resolution-timeout"])
+	require.False(t, names["x-remote-modules"])
+	require.False(t, names["x-local-module-eval"])
+}
+
 func TestValidateQueriesPaths(t *testing.T) {
 	tmp := t.TempDir()
 

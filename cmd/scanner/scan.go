@@ -89,80 +89,67 @@ var scanAction = &cli.Command{
 			Usage:  "(experimental, will be removed soon) parse files in parallel",
 			Value:  true,
 		},
-		&cli.BoolFlag{
-			Name:   "x-local-module-eval",
-			Hidden: true,
-			Usage:  "(experimental) resolve Terraform local module variables before scanning",
-			Value:  false,
-		},
-		&cli.BoolFlag{
-			Name:   "x-remote-modules",
-			Hidden: true,
-			Usage:  "(experimental) resolve Terraform remote modules before scanning",
-			Value:  false,
+		&cli.StringFlag{
+			Name:  "terraform-modules-mode",
+			Usage: "Terraform module resolution mode: off, offline, or fetch",
+			Value: string(scan.TerraformModulesModeOff),
 		},
 		&cli.StringFlag{
-			Name:   "x-remote-modules-manifest",
-			Hidden: true,
-			Usage:  "(experimental) JSON manifest mapping Terraform module sources to local directories",
+			Name:  "terraform-modules-manifest",
+			Usage: "path to a Terraform modules manifest",
 		},
 		&cli.StringSliceFlag{
-			Name:   "x-remote-modules-allowed-host",
-			Hidden: true,
-			Usage:  "(experimental) host allowed for Terraform remote module downloads",
-			Value:  []string{},
+			Name:  "terraform-modules-allowed-host",
+			Usage: "host allowed for Terraform module downloads in fetch mode",
+			Value: []string{},
 		},
 		&cli.IntFlag{
-			Name:   "x-remote-modules-max-depth",
-			Hidden: true,
-			Usage:  "(experimental) maximum BFS depth for the remote module graph walker (default 8)",
-			Value:  scan.DefaultRemoteModuleMaxDepth,
+			Name:  "terraform-modules-max-depth",
+			Usage: "maximum traversal depth for the Terraform module graph",
+			Value: scan.DefaultRemoteModuleMaxDepth,
 		},
 		&cli.DurationFlag{
-			Name:   "x-remote-modules-fetch-timeout",
-			Hidden: true,
-			Usage:  "(experimental) per-module fetch timeout (default 30s)",
-			Value:  30 * time.Second,
+			Name:  "terraform-modules-fetch-timeout",
+			Usage: "per-module fetch timeout",
+			Value: 30 * time.Second,
+		},
+		&cli.DurationFlag{
+			Name:  "terraform-modules-resolution-timeout",
+			Usage: "whole-phase Terraform module resolution timeout",
+			Value: scan.DefaultModuleResolutionTimeout,
 		},
 		&cli.Int64Flag{
-			Name:   "x-remote-modules-max-bytes",
-			Hidden: true,
-			Usage:  "(experimental) total download size limit across all remote modules in bytes (default 200MiB)",
-			Value:  scan.DefaultRemoteModuleMaxTotalBytes,
+			Name:  "terraform-modules-max-bytes",
+			Usage: "total size limit across all resolved Terraform modules in bytes",
+			Value: scan.DefaultRemoteModuleMaxTotalBytes,
 		},
 		&cli.Int64Flag{
-			Name:   "x-remote-modules-max-package-bytes",
-			Hidden: true,
-			Usage:  "(experimental) maximum extracted size of one remote module package in bytes (default 128MiB)",
-			Value:  scan.DefaultRemoteModuleMaxPackageBytes,
+			Name:  "terraform-modules-max-package-bytes",
+			Usage: "maximum extracted size of one Terraform module package in bytes",
+			Value: scan.DefaultRemoteModuleMaxPackageBytes,
 		},
 		&cli.Int64Flag{
-			Name:   "x-remote-modules-max-file-bytes",
-			Hidden: true,
-			Usage:  "(experimental) maximum size of one file in a remote module package in bytes (default 5MiB)",
-			Value:  scan.DefaultRemoteModuleMaxFileBytes,
+			Name:  "terraform-modules-max-file-bytes",
+			Usage: "maximum size of one file in a Terraform module package in bytes",
+			Value: scan.DefaultRemoteModuleMaxFileBytes,
 		},
 		&cli.IntFlag{
-			Name:   "x-remote-modules-max-package-files",
-			Hidden: true,
-			Usage:  "(experimental) maximum number of files in one remote module package (default 10000)",
-			Value:  scan.DefaultRemoteModuleMaxPackageFiles,
+			Name:  "terraform-modules-max-package-files",
+			Usage: "maximum number of files in one Terraform module package",
+			Value: scan.DefaultRemoteModuleMaxPackageFiles,
 		},
 		&cli.Int64Flag{
-			Name:   "x-remote-modules-max-parse-bytes",
-			Hidden: true,
-			Usage:  "(experimental) target bytes admitted for repository and remote module parsing (default disabled)",
+			Name:  "terraform-modules-max-parse-bytes",
+			Usage: "target bytes admitted for repository and Terraform module parsing",
 		},
 		&cli.StringFlag{
-			Name:   "x-remote-modules-cache-dir",
-			Hidden: true,
-			Usage:  "(experimental) directory for fetched Terraform module caches",
+			Name:  "terraform-modules-cache-dir",
+			Usage: "directory for fetched Terraform module caches",
 		},
 		&cli.Int64Flag{
-			Name:   "x-remote-modules-cache-max-bytes",
-			Hidden: true,
-			Usage:  "(experimental) maximum on-disk size of the fetched Terraform module cache (default 2GiB)",
-			Value:  scan.DefaultRemoteModuleMaxCacheBytes,
+			Name:  "terraform-modules-cache-max-bytes",
+			Usage: "maximum on-disk size of the fetched Terraform module cache",
+			Value: scan.DefaultRemoteModuleMaxCacheBytes,
 		},
 		&cli.BoolFlag{
 			Name:   "x-terraform-plan",
@@ -357,12 +344,24 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err := validateReportFormats(reportFormats); err != nil {
 		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
 	}
-	if !c.Bool("x-remote-modules") &&
-		(c.String("x-remote-modules-manifest") != "" ||
-			len(c.StringSlice("x-remote-modules-allowed-host")) > 0 ||
-			c.String("x-remote-modules-cache-dir") != "") {
+	moduleMode, err := scan.ParseTerraformModulesMode(c.String("terraform-modules-mode"))
+	if err != nil {
+		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
+	}
+	if moduleMode == scan.TerraformModulesModeOff &&
+		(c.String("terraform-modules-manifest") != "" ||
+			len(c.StringSlice("terraform-modules-allowed-host")) > 0 ||
+			c.String("terraform-modules-cache-dir") != "") {
 		return errorWithExitCode(
-			errors.New("remote module resolver options require --x-remote-modules"),
+			errors.New("Terraform module resolver options require --terraform-modules-mode=offline or fetch"),
+			constants.InvalidConfigErrorCode,
+		)
+	}
+	if moduleMode == scan.TerraformModulesModeOffline &&
+		(len(c.StringSlice("terraform-modules-allowed-host")) > 0 ||
+			c.String("terraform-modules-cache-dir") != "") {
+		return errorWithExitCode(
+			errors.New("network and cache options require --terraform-modules-mode=fetch"),
 			constants.InvalidConfigErrorCode,
 		)
 	}
@@ -412,18 +411,19 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
-		EnableRemoteModules:         c.Bool("x-remote-modules"),
-		RemoteModulesManifestPath:   c.String("x-remote-modules-manifest"),
-		RemoteModulesHostAllowlist:  c.StringSlice("x-remote-modules-allowed-host"),
-		ModuleMaxDepth:              c.Int("x-remote-modules-max-depth"),
-		ModuleFetchTimeout:          c.Duration("x-remote-modules-fetch-timeout"),
-		MaxModuleBytesTotal:         c.Int64("x-remote-modules-max-bytes"),
-		MaxModulePackageBytes:       c.Int64("x-remote-modules-max-package-bytes"),
-		MaxModuleFileBytes:          c.Int64("x-remote-modules-max-file-bytes"),
-		MaxModulePackageFiles:       c.Int("x-remote-modules-max-package-files"),
-		MaxModuleParseBytes:         c.Int64("x-remote-modules-max-parse-bytes"),
-		RemoteModulesCacheDir:       c.String("x-remote-modules-cache-dir"),
-		MaxModuleCacheBytes:         c.Int64("x-remote-modules-cache-max-bytes"),
+		TerraformModulesMode:        moduleMode,
+		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),
+		RemoteModulesHostAllowlist:  c.StringSlice("terraform-modules-allowed-host"),
+		ModuleMaxDepth:              c.Int("terraform-modules-max-depth"),
+		ModuleFetchTimeout:          c.Duration("terraform-modules-fetch-timeout"),
+		ModuleResolutionTimeout:     c.Duration("terraform-modules-resolution-timeout"),
+		MaxModuleBytesTotal:         c.Int64("terraform-modules-max-bytes"),
+		MaxModulePackageBytes:       c.Int64("terraform-modules-max-package-bytes"),
+		MaxModuleFileBytes:          c.Int64("terraform-modules-max-file-bytes"),
+		MaxModulePackageFiles:       c.Int("terraform-modules-max-package-files"),
+		MaxModuleParseBytes:         c.Int64("terraform-modules-max-parse-bytes"),
+		RemoteModulesCacheDir:       c.String("terraform-modules-cache-dir"),
+		MaxModuleCacheBytes:         c.Int64("terraform-modules-cache-max-bytes"),
 	}
 
 	var opts []scan.ClientOption
@@ -740,9 +740,10 @@ func selectPlatforms(platforms []string) []string {
 }
 
 func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
+	moduleMode, _ := scan.ParseTerraformModulesMode(c.String("terraform-modules-mode"))
 	overrides := map[string]bool{
 		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
-		featureflags.IacEnableLocalModuleEval:         c.Bool("x-local-module-eval") || c.Bool("x-remote-modules"),
+		featureflags.IacEnableLocalModuleEval:         moduleMode != scan.TerraformModulesModeOff,
 	}
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }

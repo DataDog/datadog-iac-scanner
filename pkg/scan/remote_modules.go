@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -23,6 +24,8 @@ import (
 const (
 	moduleSourceTypeGit     = "git"
 	moduleSourceTypeUnknown = "unknown"
+
+	DefaultModuleResolutionTimeout = 5 * time.Minute
 )
 
 func (c *Client) resolveTerraformModulesForScan(
@@ -50,9 +53,12 @@ func (c *Client) resolveTerraformModulesForScan(
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	chain := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
+	chain, err := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 
-	if c.ScanParams.EnableRemoteModules {
+	if c.ScanParams.TerraformModulesMode == TerraformModulesModeFetch {
 		contextLogger.Info().Msg("Resolving remote Terraform modules...")
 	} else {
 		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
@@ -70,7 +76,14 @@ func (c *Client) resolveTerraformModulesForScan(
 	if packageFiles == 0 {
 		packageFiles = DefaultRemoteModuleMaxPackageFiles
 	}
-	result := modulegraph.Resolve(ctx, &modulegraph.Request{
+	resolveCtx := ctx
+	cancel := func() {}
+	if timeout := c.ScanParams.ModuleResolutionTimeout; timeout > 0 {
+		resolveCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
+	defer cancel()
+
+	result := modulegraph.Resolve(resolveCtx, &modulegraph.Request{
 		RootPaths:      extractedPaths.Path,
 		DiscoveryPaths: moduleDiscoveryPaths,
 		Resolver:       chain,
@@ -85,6 +98,10 @@ func (c *Client) resolveTerraformModulesForScan(
 		TotalParseBytes: c.ScanParams.MaxModuleParseBytes,
 		FS:              c.fsys,
 	})
+	if result.TimedOut {
+		contextLogger.Warn().Dur("timeout", c.ScanParams.ModuleResolutionTimeout).
+			Msg("Terraform module resolution timed out; scanning modules resolved before the deadline")
+	}
 	for _, event := range result.BudgetEvents {
 		contextLogger.Warn().
 			Str("module_source", event.Source).
@@ -144,22 +161,14 @@ func resolvedModuleSourceType(module *modulegraph.ResolvedModule) string {
 	return sourceType
 }
 
-func (c *Client) shouldPreScanTerraformModules(scanPaths []string) bool {
-	if !c.ScanParams.EnableRemoteModules {
-		return false
-	}
-	if c.ScanParams.RemoteModulesManifestPath != "" {
-		return true
-	}
-	for _, root := range dotTerraformRootDirs(scanPaths) {
-		if hasTerraformModulesManifest(root) {
-			return true
-		}
-	}
-	return true
+func (c *Client) shouldPreScanTerraformModules(_ []string) bool {
+	mode := c.ScanParams.TerraformModulesMode
+	return mode == TerraformModulesModeOffline || mode == TerraformModulesModeFetch
 }
 
-func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPaths []string) *tfresolver.ChainResolver {
+func (c *Client) buildModuleResolverChain(
+	ctx context.Context, moduleDiscoveryPaths []string,
+) (*tfresolver.ChainResolver, error) {
 	contextLogger := logger.FromContext(ctx)
 
 	resolvers := []tfresolver.Resolver{
@@ -170,16 +179,16 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 	if c.ScanParams.RemoteModulesManifestPath != "" {
 		manifest, err := tfresolver.LoadManifest(c.ScanParams.RemoteModulesManifestPath)
 		if err != nil {
-			contextLogger.Warn().Err(err).
-				Msgf("Failed to load modules manifest %q; remote modules from manifest will be unresolved",
-					c.ScanParams.RemoteModulesManifestPath)
-		} else {
-			resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
+			return nil, err
 		}
+		resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
+	}
+
+	if c.ScanParams.TerraformModulesMode != TerraformModulesModeFetch {
+		return tfresolver.NewChainResolver(resolvers...), nil
 	}
 
 	ggCfg := tfresolver.NewGoGetterConfig()
-	ggCfg.Disabled = !c.ScanParams.EnableRemoteModules
 	if t := c.ScanParams.ModuleFetchTimeout; t > 0 {
 		ggCfg.FetchTimeout = t
 	}
@@ -194,47 +203,41 @@ func (c *Client) buildModuleResolverChain(ctx context.Context, moduleDiscoveryPa
 		cacheRoot string
 		budget    *tfresolver.ModuleCacheBudget
 	)
-	if !ggCfg.Disabled {
-		cacheRoot = strings.TrimSpace(c.ScanParams.RemoteModulesCacheDir)
-		if cacheRoot == "" {
-			var rootErr error
-			cacheRoot, rootErr = tfresolver.DefaultModuleCacheRoot()
-			if rootErr != nil {
-				contextLogger.Warn().Err(rootErr).Msg("Remote module cache root unavailable; cache limits will not be enforced")
-			}
+	cacheRoot = strings.TrimSpace(c.ScanParams.RemoteModulesCacheDir)
+	if cacheRoot == "" {
+		var rootErr error
+		cacheRoot, rootErr = tfresolver.DefaultModuleCacheRoot()
+		if rootErr != nil {
+			contextLogger.Warn().Err(rootErr).Msg("Remote module cache root unavailable; cache limits will not be enforced")
 		}
-		if cacheRoot != "" {
-			var budgetErr error
-			budget, budgetErr = tfresolver.NewModuleCacheBudget(cacheRoot, cacheBytes)
-			if budgetErr != nil {
-				contextLogger.Warn().Err(budgetErr).Msg("Remote module cache budget unavailable; cache limits will not be enforced")
-			}
+	}
+	if cacheRoot != "" {
+		var budgetErr error
+		budget, budgetErr = tfresolver.NewModuleCacheBudget(cacheRoot, cacheBytes)
+		if budgetErr != nil {
+			contextLogger.Warn().Err(budgetErr).Msg("Remote module cache budget unavailable; cache limits will not be enforced")
 		}
 	}
 
-	if c.ScanParams.EnableRemoteModules {
-		gitCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirGitBare)
-		localCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirGitLocal)
-		git := tfresolver.NewBareGitResolver(gitCacheDir, c.ScanParams.RemoteModulesHostAllowlist...)
-		git.Budget = budget
-		ggCfg.Git = git
-		localGit := tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), localCacheDir)
-		localGit.Budget = budget
-		resolvers = append(resolvers, localGit, git)
-	}
+	gitCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirGitBare)
+	localCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirGitLocal)
+	git := tfresolver.NewBareGitResolver(gitCacheDir, c.ScanParams.RemoteModulesHostAllowlist...)
+	git.Budget = budget
+	ggCfg.Git = git
+	localGit := tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), localCacheDir)
+	localGit.Budget = budget
+	resolvers = append(resolvers, localGit, git)
 
-	if !ggCfg.Disabled {
-		moduleCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirModules)
-		cache, err := tfresolver.NewModuleCacheWithDir(moduleCacheDir, budget)
-		if err != nil {
-			contextLogger.Warn().Err(err).Msg("Module disk cache unavailable; fetched modules will not be cached")
-		} else {
-			ggCfg.Cache = cache
-		}
+	moduleCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirModules)
+	cache, err := tfresolver.NewModuleCacheWithDir(moduleCacheDir, budget)
+	if err != nil {
+		contextLogger.Warn().Err(err).Msg("Module disk cache unavailable; fetched modules will not be cached")
+	} else {
+		ggCfg.Cache = cache
 	}
 
 	resolvers = append(resolvers, tfresolver.NewGoGetterResolver(ggCfg))
-	return tfresolver.NewChainResolver(resolvers...)
+	return tfresolver.NewChainResolver(resolvers...), nil
 }
 
 func dotTerraformRootDirs(paths []string) []string {

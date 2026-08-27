@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	engineprovider "github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -42,10 +43,38 @@ func TestRemoteModulesDisabledByDefault(t *testing.T) {
 
 	params := remoteModuleScanParams(root)
 	params.RemoteModulesManifestPath = manifestPath
-	params.EnableRemoteModules = false
+	params.TerraformModulesMode = TerraformModulesModeOff
 
 	results := executeRemoteModuleScan(t, params)
 	require.Empty(t, results.Results)
+}
+
+func TestOfflineModeBuildsOnlyDiskResolvers(t *testing.T) {
+	client := &Client{ScanParams: &Parameters{TerraformModulesMode: TerraformModulesModeOffline}}
+
+	chain, err := client.buildModuleResolverChain(t.Context(), []string{t.TempDir()})
+	require.NoError(t, err)
+
+	resolvers := reflect.ValueOf(chain).Elem().FieldByName("resolvers")
+	require.Equal(t, 2, resolvers.Len())
+	for i := 0; i < resolvers.Len(); i++ {
+		resolverType := resolvers.Index(i).Elem().Type().String()
+		require.NotContains(t, resolverType, "GoGetter")
+		require.NotContains(t, resolverType, "BareGit")
+		require.NotContains(t, resolverType, "LocalGitRef")
+	}
+}
+
+func TestOfflineModeRejectsMalformedManifest(t *testing.T) {
+	manifestPath := filepath.Join(t.TempDir(), "modules.json")
+	require.NoError(t, os.WriteFile(manifestPath, []byte(`{"schema_version":1}`), 0o644))
+	client := &Client{ScanParams: &Parameters{
+		TerraformModulesMode:      TerraformModulesModeOffline,
+		RemoteModulesManifestPath: manifestPath,
+	}}
+
+	_, err := client.buildModuleResolverChain(t.Context(), []string{t.TempDir()})
+	require.ErrorContains(t, err, "root must be a non-empty relative path")
 }
 
 func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
@@ -53,7 +82,7 @@ func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
 	moduleDir, manifestPath := writeRemoteModuleFixture(t, root)
 
 	params := remoteModuleScanParams(root)
-	params.EnableRemoteModules = true
+	params.TerraformModulesMode = TerraformModulesModeOffline
 	params.RemoteModulesManifestPath = manifestPath
 
 	results := executeRemoteModuleScan(t, params)
@@ -66,7 +95,7 @@ func TestRemoteModuleMaxDepthZeroDisablesTraversal(t *testing.T) {
 	_, manifestPath := writeRemoteModuleFixture(t, root)
 
 	params := remoteModuleScanParams(root)
-	params.EnableRemoteModules = true
+	params.TerraformModulesMode = TerraformModulesModeOffline
 	params.RemoteModulesManifestPath = manifestPath
 	params.ModuleMaxDepth = 0
 

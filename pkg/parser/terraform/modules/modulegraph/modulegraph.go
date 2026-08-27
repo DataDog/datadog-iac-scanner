@@ -61,6 +61,7 @@ type Result struct {
 	BudgetEvents         []BudgetEvent
 	BaselineParseBytes   int64
 	ModuleAdmissionBytes int64
+	TimedOut             bool
 	Cleanup              func()
 }
 
@@ -213,6 +214,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	result.BudgetEvents = snapshot.budgetEvents
 	result.BaselineParseBytes = baselineBytes
 	result.ModuleAdmissionBytes = moduleMaximum
+	result.TimedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
 
 	sort.Strings(result.ScanPaths)
 	sort.Slice(result.Modules, func(i, j int) bool {

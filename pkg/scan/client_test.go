@@ -8,6 +8,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParseTerraformModulesMode(t *testing.T) {
+	for _, value := range []string{"off", "offline", "fetch"} {
+		mode, err := ParseTerraformModulesMode(value)
+		require.NoError(t, err)
+		require.Equal(t, TerraformModulesMode(value), mode)
+	}
+
+	_, err := ParseTerraformModulesMode("online")
+	require.ErrorContains(t, err, "expected off, offline, or fetch")
+}
+
 func Test_Client(t *testing.T) {
 	ctx := context.Background()
 	params := &Parameters{
