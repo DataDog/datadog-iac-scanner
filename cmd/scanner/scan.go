@@ -89,6 +89,13 @@ var scanAction = &cli.Command{
 			Usage:  "(experimental, will be removed soon) parse files in parallel",
 			Value:  true,
 		},
+		&cli.BoolFlag{
+			Name:   "x-local-module-eval",
+			Hidden: true,
+			Usage: "(deprecated, will be removed after hosted worker migration) resolve Terraform local " +
+				"module variables before scanning; independent of --terraform-modules-mode",
+			Value: false,
+		},
 		&cli.StringFlag{
 			Name:  "terraform-modules-mode",
 			Usage: "Terraform module resolution mode: off, offline, or fetch",
@@ -739,11 +746,18 @@ func selectPlatforms(platforms []string) []string {
 	return out
 }
 
+func localModuleEvalEnabled(legacyLocalModuleEval bool, modulesMode scan.TerraformModulesMode) bool {
+	return legacyLocalModuleEval || modulesMode != scan.TerraformModulesModeOff
+}
+
 func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
 	moduleMode, _ := scan.ParseTerraformModulesMode(c.String("terraform-modules-mode"))
 	overrides := map[string]bool{
 		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
-		featureflags.IacEnableLocalModuleEval:         moduleMode != scan.TerraformModulesModeOff,
+		featureflags.IacEnableLocalModuleEval: localModuleEvalEnabled(
+			c.Bool("x-local-module-eval"),
+			moduleMode,
+		),
 	}
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
 }
