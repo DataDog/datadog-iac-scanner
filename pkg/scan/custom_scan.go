@@ -60,9 +60,12 @@ func RunCustomRegoQuery(
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	const ownerReadWritePerm = 0600
+	const (
+		ownerReadWritePerm = 0600
+		ownerReadWriteExec = 0700
+	)
 	tmpFile := filepath.Join(tmpDir, platformTempFileName(platform))
-	if err := os.MkdirAll(filepath.Dir(tmpFile), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(tmpFile), ownerReadWriteExec); err != nil {
 		return nil, nil, fmt.Errorf("creating temp file dir: %w", err)
 	}
 
