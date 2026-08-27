@@ -69,11 +69,12 @@ func RunCustomRegoQuery(
 	if err := os.WriteFile(tmpFile, fileContent, ownerReadWritePerm); err != nil {
 		return nil, nil, fmt.Errorf("writing temp file: %w", err)
 	}
+	scanTargetPath := filepath.ToSlash(tmpFile)
 
 	// LibrariesDefaultBasePath ("./assets/libraries") is CWD-relative; the CLI is
 	// always invoked from the repo root so this resolves correctly.
 	params := &Parameters{
-		Path:                    []string{tmpFile},
+		Path:                    []string{scanTargetPath},
 		QueriesPath:             []string{"."},
 		LibrariesPath:           source.LibrariesDefaultBasePath,
 		PreviewLines:            3,
