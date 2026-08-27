@@ -8,42 +8,94 @@ package tfeval
 
 import (
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
-// evalCacheKey: dir + package root + addr + inputs + call chain.
-// Chain splits identical-input callers; pre-pass and main loop share the same chain and hit the same entry.
+// evalCacheKey identifies a module evaluation by its inputs alone: dir + package
+// root + resolved inputs.
+//
+// The module address and call chain are deliberately absent. They describe where
+// a module was called from, not what it evaluates to, so including them made a
+// module reached by N distinct paths evaluate N times for identical results. With
+// branching factor B and depth D that is B^D evaluations where only D+1 distinct
+// ones exist — a nesting depth of 15 with two calls per level reaches 65k
+// evaluations, and enough depth exhausts any memory limit from a handful of
+// files. Callers re-stamp the address and chain onto a cached result instead,
+// which is a per-resource string rewrite rather than a re-evaluation.
 type evalCacheKey struct {
 	dir         string
 	packageRoot string
-	addr        string
 	inputs      string // canonical encoding of the resolved input map
-	chain       string // canonical encoding of the module call chain
-}
-
-// chainKey encodes each hop as calledFrom#line#module.name; joined by "/".
-func chainKey(chain []CallSite) string {
-	if len(chain) == 0 {
-		return ""
-	}
-	parts := make([]string, len(chain))
-	for i, s := range chain {
-		parts[i] = s.CalledFrom + "#" + strconv.Itoa(s.CalledLine) + "#module." + s.ModuleName
-	}
-	return strings.Join(parts, "/")
 }
 
 // evalCacheEntry holds the result of a completed module evaluation.
 // visitedDirs is the set of child dirs that were added to allVisited *inside* this
 // evaluation (not including the module dir itself, which is tracked by the caller).
+//
+// baseAddr and baseChainLen record the position the entry was first evaluated at,
+// so a caller reaching the same module by another path can rewrite the recorded
+// address and chain onto the result. Outputs need no rewrite: they are values, and
+// values do not depend on the path taken to reach them.
 type evalCacheEntry struct {
-	resources   []ResolvedResource
-	outputs     map[string]cty.Value
-	visitedDirs []string
+	resources    []ResolvedResource
+	outputs      map[string]cty.Value
+	visitedDirs  []string
+	baseAddr     string
+	baseChainLen int
+}
+
+// rebase returns the cached resources as they would have been recorded had the
+// module been evaluated at addr/chain instead of the position it was first
+// evaluated at.
+//
+// Attributes and Body are shared rather than copied. They are the expensive part
+// of a resolved resource and they are identical for identical inputs, so sharing
+// them is what makes reuse cheap; both are treated as read-only after evaluation.
+func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedResource {
+	if entry.baseAddr == addr && entry.baseChainLen == len(chain) {
+		return entry.resources
+	}
+	out := make([]ResolvedResource, len(entry.resources))
+	for i := range entry.resources {
+		r := entry.resources[i]
+		r.ModuleAddress = rebaseAddr(r.ModuleAddress, entry.baseAddr, addr)
+		r.CallChain = rebaseChain(r.CallChain, entry.baseChainLen, chain)
+		out[i] = r
+	}
+	return out
+}
+
+// rebaseAddr swaps the prefix a cached address was recorded under for the current
+// one, keeping the part that describes position *within* the cached subtree.
+func rebaseAddr(recorded, baseAddr, addr string) string {
+	suffix := recorded
+	if baseAddr != "" {
+		suffix = strings.TrimPrefix(recorded, baseAddr)
+		suffix = strings.TrimPrefix(suffix, ".")
+	}
+	if suffix == "" {
+		return addr
+	}
+	return joinAddr(addr, suffix)
+}
+
+// rebaseChain replaces the leading hops a cached chain was recorded under with the
+// current caller's hops, preserving the hops taken inside the cached subtree.
+func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite {
+	if baseLen > len(recorded) {
+		baseLen = len(recorded)
+	}
+	inner := recorded[baseLen:]
+	if len(inner) == 0 {
+		return cloneChain(chain)
+	}
+	out := make([]CallSite, 0, len(chain)+len(inner))
+	out = append(out, chain...)
+	out = append(out, inner...)
+	return out
 }
 
 // canonicalInputsKey returns a stable string for a set of resolved module inputs.

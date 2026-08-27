@@ -38,7 +38,7 @@ type moduleResolutionResult struct {
 	calledDirs           map[string]bool
 	successfulRoots      map[string]bool
 	rootDirs             []string
-	failedRootModuleDirs map[string]bool
+	unresolvedModuleDirs map[string]bool
 	extras               map[string][]extraCallerInfo
 	resourceCount        int
 	ok                   bool
@@ -84,7 +84,7 @@ func (c *Inspector) instantiateLocalModules(
 			continue
 		}
 		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
-			if res.failedRootModuleDirs[moduleFileDir(f.FilePath, c.repoPath)] {
+			if res.unresolvedModuleDirs[moduleFileDir(f.FilePath, c.repoPath)] {
 				continue
 			}
 			// Only the blocks that came back as instantiated documents are
@@ -326,7 +326,7 @@ func evaluateRootModules(
 	extras map[string][]extraCallerInfo,
 	instantiated instantiatedIndex,
 	successfulRoots map[string]bool,
-	failedRootModuleDirs map[string]bool,
+	unresolvedModuleDirs map[string]bool,
 	actualCalledDirs map[string]bool,
 	extra *[]model.Document,
 	syntheticFiles *[]*model.FileMetadata,
@@ -335,13 +335,14 @@ func evaluateRootModules(
 ) {
 	contextLogger := logger.FromContext(ctx)
 	for _, dir := range roots {
+		evaluator.ResetInstantiationBudget()
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir))
 		if err != nil {
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
 			for _, called := range discoverCalledModuleClosure(
 				ctx, evaluator, filesByDir, repoPath, resolver, dir,
 			) {
-				failedRootModuleDirs[called] = true
+				unresolvedModuleDirs[called] = true
 			}
 			continue
 		}
@@ -355,20 +356,72 @@ func evaluateRootModules(
 		*extra = append(*extra, docs...)
 		*syntheticFiles = append(*syntheticFiles, syn...)
 		*resourceCount += count
+		// instantiatedDocs has copied everything this root needs into plain
+		// documents, so the evaluator's cty values are dead here. Another root
+		// could in principle reuse them, but each root passes its own values to
+		// the modules it shares, so the hit rate does not pay for a peak that
+		// grows with the whole repository rather than the largest single root.
+		evaluator.ReleaseEvalCache()
 	}
 }
 
-func scrubInstantiatedForFailedRoots(
+// collectNotEvaluatedDirs marks the directories the evaluator skipped, and
+// everything they call, as unresolved.
+//
+// A directory is reached from several call sites, and depth, cycle and budget
+// stops apply to one call site at a time, so a directory can come out of a scan
+// with some instances resolved and others skipped. Suppression is decided per
+// directory, so without this the resolved instances would suppress the body and
+// the skipped ones would be represented by nothing at all — a silent false
+// negative for exactly the inputs that were never evaluated. Keeping the body
+// costs a finding that also appears on a resolved instance, which is the safe
+// side of that trade. The subtree is included because a skipped call site did
+// not materialize any of the modules underneath it either.
+func collectNotEvaluatedDirs(
+	ctx context.Context,
+	evaluator *tfeval.Evaluator,
+	filesByDir map[string][]*model.FileMetadata,
+	repoPath string,
+	resolver tfeval.RemoteResolver,
+	unresolvedModuleDirs map[string]bool,
+) {
+	// One walk over every skipped directory at once, using the result set as the
+	// visited set: the subtrees overlap heavily, and dirs marked by a failed root
+	// already had their own subtree walked.
+	var queue []string
+	for _, dir := range evaluator.NotEvaluatedDirs() {
+		if unresolvedModuleDirs[dir] {
+			continue
+		}
+		unresolvedModuleDirs[dir] = true
+		queue = append(queue, dir)
+	}
+	for len(queue) > 0 {
+		dir := queue[0]
+		queue = queue[1:]
+		for _, called := range discoverCalledModuleDirs(
+			ctx, evaluator, filesByDir[dir], repoPath, resolver, dir,
+		) {
+			if unresolvedModuleDirs[called] {
+				continue
+			}
+			unresolvedModuleDirs[called] = true
+			queue = append(queue, called)
+		}
+	}
+}
+
+func scrubInstantiatedForUnresolvedDirs(
 	instantiated instantiatedIndex,
 	files model.FileMetadatas,
-	failedRootModuleDirs map[string]bool,
+	unresolvedModuleDirs map[string]bool,
 	repoPath string,
 ) {
 	for _, f := range files {
 		if f == nil {
 			continue
 		}
-		if failedRootModuleDirs[moduleFileDir(f.FilePath, repoPath)] {
+		if unresolvedModuleDirs[moduleFileDir(f.FilePath, repoPath)] {
 			delete(instantiated, f.ID)
 		}
 	}
@@ -415,7 +468,7 @@ func resolveModuleDocuments(
 	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
 	successfulRoots := make(map[string]bool)
-	failedRootModuleDirs := make(map[string]bool)
+	unresolvedModuleDirs := make(map[string]bool)
 	var extra []model.Document
 	var syntheticFiles []*model.FileMetadata
 	var resourceCount int
@@ -435,8 +488,11 @@ func resolveModuleDocuments(
 	evaluateRootModules(
 		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets,
 		byAbsPath, seen, extras, instantiated,
-		successfulRoots, failedRootModuleDirs, actualCalledDirs,
+		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK,
+	)
+	collectNotEvaluatedDirs(
+		ctx, evaluator, filesByDir, repoPath, resolver, unresolvedModuleDirs,
 	)
 	evaluator.ReleaseCaches()
 
@@ -453,6 +509,13 @@ func resolveModuleDocuments(
 	// their place.
 	strippedDirs := make(map[string]bool, len(actualCalledDirs))
 	for dir := range actualCalledDirs {
+		// A directory with any unevaluated call site keeps its call sites too. The
+		// resolved instances no longer stand in for the whole directory, so removing
+		// the call-site blocks would drop the rules that match them for an instance
+		// that has nothing else representing it.
+		if unresolvedModuleDirs[dir] {
+			continue
+		}
 		for _, f := range filesByDir[dir] {
 			if len(instantiated[f.ID]) > 0 {
 				strippedDirs[dir] = true
@@ -461,7 +524,7 @@ func resolveModuleDocuments(
 		}
 	}
 
-	scrubInstantiatedForFailedRoots(instantiated, files, failedRootModuleDirs, repoPath)
+	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
 
 	return moduleResolutionResult{
 		docs:                 extra,
@@ -470,7 +533,7 @@ func resolveModuleDocuments(
 		calledDirs:           strippedDirs,
 		successfulRoots:      successfulRoots,
 		rootDirs:             roots,
-		failedRootModuleDirs: failedRootModuleDirs,
+		unresolvedModuleDirs: unresolvedModuleDirs,
 		extras:               extras,
 		resourceCount:        resourceCount,
 		ok:                   true,
@@ -820,8 +883,8 @@ func discoverCalledModuleDirs(
 }
 
 // discoverCalledModuleClosure returns every module transitively reachable from
-// dir. It is used only after root evaluation fails, when suppression must be
-// conservative because no synthetic documents exist for that call chain.
+// dir. It is used when a call chain was not evaluated and suppression must be
+// conservative, because no synthetic documents exist for anything under it.
 func discoverCalledModuleClosure(
 	ctx context.Context,
 	evaluator *tfeval.Evaluator,
