@@ -99,7 +99,7 @@ var scanAction = &cli.Command{
 			Usage: "path to a Terraform modules manifest",
 		},
 		&cli.StringSliceFlag{
-			Name:  "terraform-modules-allowed-host",
+			Name:  "module-allowed-hosts",
 			Usage: "host allowed for Terraform module downloads in fetch mode",
 			Value: []string{},
 		},
@@ -114,7 +114,7 @@ var scanAction = &cli.Command{
 			Value: 30 * time.Second,
 		},
 		&cli.DurationFlag{
-			Name:  "terraform-modules-resolution-timeout",
+			Name:  "module-resolution-timeout",
 			Usage: "whole-phase Terraform module resolution timeout",
 			Value: scan.DefaultModuleResolutionTimeout,
 		},
@@ -143,11 +143,11 @@ var scanAction = &cli.Command{
 			Usage: "target bytes admitted for repository and Terraform module parsing",
 		},
 		&cli.StringFlag{
-			Name:  "terraform-modules-cache-dir",
+			Name:  "module-cache-dir",
 			Usage: "directory for fetched Terraform module caches",
 		},
 		&cli.Int64Flag{
-			Name:  "terraform-modules-cache-max-bytes",
+			Name:  "module-cache-max-bytes",
 			Usage: "maximum on-disk size of the fetched Terraform module cache",
 			Value: scan.DefaultRemoteModuleMaxCacheBytes,
 		},
@@ -350,16 +350,16 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	}
 	if moduleMode == scan.TerraformModulesModeOff &&
 		(c.String("terraform-modules-manifest") != "" ||
-			len(c.StringSlice("terraform-modules-allowed-host")) > 0 ||
-			c.String("terraform-modules-cache-dir") != "") {
+			len(c.StringSlice("module-allowed-hosts")) > 0 ||
+			c.String("module-cache-dir") != "") {
 		return errorWithExitCode(
 			errors.New("terraform module resolver options require --terraform-modules-mode=offline or fetch"),
 			constants.InvalidConfigErrorCode,
 		)
 	}
 	if moduleMode == scan.TerraformModulesModeOffline &&
-		(len(c.StringSlice("terraform-modules-allowed-host")) > 0 ||
-			c.String("terraform-modules-cache-dir") != "") {
+		(len(c.StringSlice("module-allowed-hosts")) > 0 ||
+			c.String("module-cache-dir") != "") {
 		return errorWithExitCode(
 			errors.New("network and cache options require --terraform-modules-mode=fetch"),
 			constants.InvalidConfigErrorCode,
@@ -413,17 +413,17 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 		TerraformModulesMode:        moduleMode,
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),
-		RemoteModulesHostAllowlist:  c.StringSlice("terraform-modules-allowed-host"),
+		RemoteModulesHostAllowlist:  c.StringSlice("module-allowed-hosts"),
 		ModuleMaxDepth:              c.Int("terraform-modules-max-depth"),
 		ModuleFetchTimeout:          c.Duration("terraform-modules-fetch-timeout"),
-		ModuleResolutionTimeout:     c.Duration("terraform-modules-resolution-timeout"),
+		ModuleResolutionTimeout:     c.Duration("module-resolution-timeout"),
 		MaxModuleBytesTotal:         c.Int64("terraform-modules-max-bytes"),
 		MaxModulePackageBytes:       c.Int64("terraform-modules-max-package-bytes"),
 		MaxModuleFileBytes:          c.Int64("terraform-modules-max-file-bytes"),
 		MaxModulePackageFiles:       c.Int("terraform-modules-max-package-files"),
 		MaxModuleParseBytes:         c.Int64("terraform-modules-max-parse-bytes"),
-		RemoteModulesCacheDir:       c.String("terraform-modules-cache-dir"),
-		MaxModuleCacheBytes:         c.Int64("terraform-modules-cache-max-bytes"),
+		RemoteModulesCacheDir:       c.String("module-cache-dir"),
+		MaxModuleCacheBytes:         c.Int64("module-cache-max-bytes"),
 	}
 
 	var opts []scan.ClientOption

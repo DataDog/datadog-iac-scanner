@@ -90,6 +90,92 @@ func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
 	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
 }
 
+func TestManifestV1PreservesLegacyFindingOutput(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "repo")
+	moduleDir := filepath.Join(base, "modules", "vpc")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.0.0"
+  cidr    = "10.0.0.0/16"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`
+variable "cidr" {}
+resource "aws_vpc" "this" {
+  cidr_block = var.cidr
+}
+`), 0o644))
+
+	legacyPath := filepath.Join(base, "legacy.json")
+	writeJSONFile(t, legacyPath, resolver.Manifest{
+		Dir: base,
+		Modules: map[string]resolver.ManifestEntry{
+			"terraform-aws-modules/vpc/aws@5.0.0": {
+				LocalPath: moduleDir,
+				Version:   "5.0.0",
+			},
+		},
+	})
+	digest, err := resolver.ComputePackageDigest(moduleDir)
+	require.NoError(t, err)
+	v1Path := filepath.Join(base, "v1.json")
+	writeJSONFile(t, v1Path, map[string]any{
+		"schema_version": resolver.ManifestSchemaVersion,
+		"root":           "modules",
+		"modules": []map[string]any{{
+			"source":            "terraform-aws-modules/vpc/aws",
+			"requested_version": "5.0.0",
+			"resolved_version":  "5.0.0",
+			"source_type":       "registry",
+			"local_path":        "vpc",
+			"content_digest":    digest,
+			"status":            "resolved",
+			"declarations": []map[string]any{{
+				"filename":    "main.tf",
+				"line_start":  2,
+				"line_end":    6,
+				"module_name": "vpc",
+			}},
+		}},
+	})
+
+	legacyParams := remoteModuleScanParams(root)
+	legacyParams.TerraformModulesMode = TerraformModulesModeOffline
+	legacyParams.RemoteModulesManifestPath = legacyPath
+	v1Params := remoteModuleScanParams(root)
+	v1Params.TerraformModulesMode = TerraformModulesModeOffline
+	v1Params.RemoteModulesManifestPath = v1Path
+
+	legacy := executeRemoteModuleScan(t, legacyParams)
+	v1 := executeRemoteModuleScan(t, v1Params)
+	legacySummary := model.CreateSummary(
+		t.Context(),
+		model.Counters{},
+		legacy.Results,
+		legacyParams.ScanID,
+		legacy.ExtractedPaths.ExtractionMap,
+		root,
+		model.SCIInfo{},
+	)
+	v1Summary := model.CreateSummary(
+		t.Context(),
+		model.Counters{},
+		v1.Results,
+		v1Params.ScanID,
+		v1.ExtractedPaths.ExtractionMap,
+		root,
+		model.SCIInfo{},
+	)
+	require.Len(t, legacySummary.Queries, 1)
+	require.Len(t, v1Summary.Queries, 1)
+	require.Equal(t, legacySummary.Queries[0].Files[0].Fingerprint, v1Summary.Queries[0].Files[0].Fingerprint)
+	require.Equal(t, legacySummary.Queries[0].Files[0].ModuleAttribution, v1Summary.Queries[0].Files[0].ModuleAttribution)
+}
+
 func TestRemoteModuleMaxDepthZeroDisablesTraversal(t *testing.T) {
 	root := t.TempDir()
 	_, manifestPath := writeRemoteModuleFixture(t, root)
@@ -167,6 +253,13 @@ module "vpc" {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(manifestPath, data, 0o644))
 	return moduleDir, manifestPath
+}
+
+func writeJSONFile(t *testing.T, path string, value any) {
+	t.Helper()
+	data, err := json.Marshal(value)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
 }
 
 func remoteModuleScanParams(root string) *Parameters {

@@ -195,7 +195,10 @@ func TestTerraformModuleFlagsUseAuthoritativeMode(t *testing.T) {
 
 	require.True(t, names["terraform-modules-mode"])
 	require.True(t, names["terraform-modules-manifest"])
-	require.True(t, names["terraform-modules-resolution-timeout"])
+	require.True(t, names["module-resolution-timeout"])
+	require.True(t, names["module-cache-dir"])
+	require.True(t, names["module-cache-max-bytes"])
+	require.True(t, names["module-allowed-hosts"])
 	require.False(t, names["x-remote-modules"])
 	require.False(t, names["x-local-module-eval"])
 }

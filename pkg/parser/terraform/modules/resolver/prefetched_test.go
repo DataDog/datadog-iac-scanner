@@ -107,12 +107,8 @@ func TestLoadManifestV1ResolvesRelativePackageAndVerifiesDigest(t *testing.T) {
 		Version: "~> 5.0",
 	})
 	require.NoError(t, err)
-	resolvedModuleDir, err := filepath.EvalSymlinks(moduleDir)
-	require.NoError(t, err)
-	resolvedPackageRoot, err := filepath.EvalSymlinks(packageRoot)
-	require.NoError(t, err)
-	require.Equal(t, resolvedModuleDir, resolution.LocalPath)
-	require.Equal(t, resolvedPackageRoot, resolution.PackageRoot)
+	require.Equal(t, moduleDir, resolution.LocalPath)
+	require.Equal(t, packageRoot, resolution.PackageRoot)
 	require.Equal(t, "5.4.0", resolution.ResolvedVersion)
 }
 

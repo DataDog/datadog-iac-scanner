@@ -124,8 +124,7 @@ func loadManifestV1(manifestPath string, envelope manifestEnvelope) (*Manifest, 
 	if err != nil {
 		return nil, fmt.Errorf("resolving root: %w", err)
 	}
-	root, err = resolveDirectory(context.Background(), root)
-	if err != nil {
+	if _, err = resolveDirectory(context.Background(), root); err != nil {
 		return nil, fmt.Errorf("resolving root: %w", err)
 	}
 	var entries []ManifestModule
