@@ -11,10 +11,30 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/stretchr/testify/require"
 )
+
+func TestResolvedModuleSourceTypeUsesResolvedGitRef(t *testing.T) {
+	module := &modulegraph.ResolvedModule{
+		Source:      "https://github.com/acme/network.git//modules/vpc",
+		ResolvedRef: "45ea6a143c2d",
+	}
+
+	require.Equal(t, "git", resolvedModuleSourceType(module))
+}
+
+func TestResolvedModuleSourceTypeKeepsRegistryForGitBackedDownload(t *testing.T) {
+	module := &modulegraph.ResolvedModule{
+		Source:          "terraform-aws-modules/vpc/aws",
+		ResolvedRef:     "45ea6a143c2d",
+		ResolvedVersion: "5.0.0",
+	}
+
+	require.Equal(t, "registry", resolvedModuleSourceType(module))
+}
 
 func TestRemoteModulesDisabledByDefault(t *testing.T) {
 	root := t.TempDir()

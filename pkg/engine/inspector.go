@@ -229,13 +229,46 @@ type Inspector struct {
 	// fsys is the filesystem used for Terraform module resolution. Defaults to
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
 	// content.
-	fsys              vfs.FS
-	remoteModuleDirs  map[string]RemoteModuleDirectory
-	externalPathRoots map[string]bool
+	fsys                   vfs.FS
+	remoteModuleDirs       map[string]RemoteModuleDirectory
+	remoteModuleProvenance map[string]RemoteModuleProvenance
+	externalPathRoots      map[string]bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
 	c.remoteModuleDirs = sourceToDir
+}
+
+func (c *Inspector) SetRemoteModuleProvenance(sourceToProvenance map[string]RemoteModuleProvenance) {
+	c.remoteModuleProvenance = sourceToProvenance
+}
+
+func (c *Inspector) buildModuleProvenanceLookup() moduleProvenanceLookup {
+	return func(callerRoot, source, version, moduleName string) (RemoteModuleProvenance, bool) {
+		if c.remoteModuleProvenance != nil {
+			for _, key := range []string{
+				RemoteModuleCallKey(callerRoot, source, version, moduleName),
+				RemoteModuleCallKey(callerRoot, source, "", moduleName),
+				RemoteModuleKey(callerRoot, source, version),
+				RemoteModuleKey(callerRoot, source, ""),
+			} {
+				if prov, ok := c.remoteModuleProvenance[key]; ok {
+					return prov, true
+				}
+			}
+		}
+		if c.remoteModuleDirs != nil {
+			if directory, ok := lookupRemoteDir(c.remoteModuleDirs, callerRoot, source, version, moduleName); ok {
+				sourceType, _ := tfmodules.DetectModuleSourceType(source)
+				return RemoteModuleProvenance{
+					Source:     source,
+					SourceType: sourceType,
+					ModuleRoot: directory.Path,
+				}, true
+			}
+		}
+		return RemoteModuleProvenance{}, false
+	}
 }
 
 func (c *Inspector) SetExternalModulePaths(paths []string) {
@@ -608,6 +641,12 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy := vulns[i]
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
+			vCopy.ModuleAttribution = moduleAttributionForResource(
+				ex.attributions,
+				vCopy.ResourceType,
+				vCopy.BlockLocation.Start.Line,
+				vCopy.BlockLocation.Start.Col,
+			)
 			expanded = append(expanded, vCopy)
 		}
 	}
@@ -1025,7 +1064,8 @@ func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
 func (c *Inspector) isExternalModulePath(filePath string) bool {
 	for root := range c.externalPathRoots {
 		rel, err := filepath.Rel(root, filepath.Clean(filePath))
-		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		if err == nil && rel != parentDirectoryPath &&
+			!strings.HasPrefix(rel, parentDirectoryPath+string(os.PathSeparator)) {
 			return true
 		}
 	}

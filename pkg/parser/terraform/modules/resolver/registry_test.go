@@ -471,6 +471,9 @@ func TestDotTerraformResolverUnpinnedUsesInitializedVersion(t *testing.T) {
 	if res.LocalPath != filepath.Join(root, "v2") {
 		t.Fatalf("LocalPath = %q, want %q", res.LocalPath, filepath.Join(root, "v2"))
 	}
+	if res.ResolvedVersion != "2.0.0" {
+		t.Fatalf("ResolvedVersion = %q, want %q", res.ResolvedVersion, "2.0.0")
+	}
 }
 
 func TestDotTerraformResolverUnversionedDuplicateSourceUsesModuleName(t *testing.T) {

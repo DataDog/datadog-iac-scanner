@@ -7,12 +7,25 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestModuleAttributionIsNotPartOfJSONReports(t *testing.T) {
+	attribution := &ModuleAttribution{Name: "bucket"}
+
+	vulnerabilityJSON, err := json.Marshal(Vulnerability{ModuleAttribution: attribution})
+	require.NoError(t, err)
+	require.NotContains(t, string(vulnerabilityJSON), "moduleAttribution")
+
+	summaryFileJSON, err := json.Marshal(VulnerableFile{ModuleAttribution: attribution})
+	require.NoError(t, err)
+	require.NotContains(t, string(summaryFileJSON), "module_attribution")
+}
 
 // TestCreateSummary tests the functions [CreateSummary()] and all the methods called by them
 func TestCreateSummary(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
@@ -116,8 +117,9 @@ func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 		}
 	}
 	return ConfineResolution(ctx, Resolution{
-		LocalPath:   entry.LocalPath,
-		PackageRoot: entry.PackageRoot,
+		LocalPath:       entry.LocalPath,
+		PackageRoot:     entry.PackageRoot,
+		ResolvedVersion: strings.TrimSpace(entry.Version),
 	})
 }
 

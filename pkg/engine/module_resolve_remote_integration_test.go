@@ -82,9 +82,27 @@ func remoteModuleKey(callerRoot string) string {
 }
 
 func registerRemoteBucket(ins *Inspector, callerRoot, cacheDir string) {
-	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{
-		remoteModuleKey(callerRoot): {Path: cacheDir, PackageRoot: cacheDir},
-	})
+	directory := RemoteModuleDirectory{Path: cacheDir, PackageRoot: cacheDir}
+	provenance := RemoteModuleProvenance{
+		Source:          remoteBucketSource,
+		ResolvedVersion: remoteBucketVersion,
+		CanonicalSource: remoteBucketSource,
+		SourceType:      "registry",
+		ModuleRoot:      cacheDir,
+	}
+	keys := []string{
+		RemoteModuleKey(callerRoot, remoteBucketSource, remoteBucketVersion),
+		RemoteModuleCallKey(callerRoot, remoteBucketSource, remoteBucketVersion, "bucket"),
+		RemoteModuleCallKey(callerRoot, remoteBucketSource, "", "bucket"),
+	}
+	dirs := make(map[string]RemoteModuleDirectory, len(keys))
+	provs := make(map[string]RemoteModuleProvenance, len(keys))
+	for _, key := range keys {
+		dirs[key] = directory
+		provs[key] = provenance
+	}
+	ins.SetRemoteModuleDirectories(dirs)
+	ins.SetRemoteModuleProvenance(provs)
 }
 
 func inspectRemoteBucket(t *testing.T, fx remoteBucketFixture, callerPaths []string, rule string) []model.Vulnerability {
@@ -124,6 +142,11 @@ module "bucket" {
 	require.Len(t, vulns, 1)
 	require.Equal(t, fx.modPath, vulns[0].FileName)
 	require.NotEmpty(t, vulns[0].ModuleCallChain)
+	require.NotNil(t, vulns[0].ModuleAttribution)
+	require.Equal(t, "stack/main.tf", vulns[0].ModuleAttribution.CodeLocation.Filename)
+	require.Equal(t, remoteBucketSource, vulns[0].ModuleAttribution.Source)
+	require.Equal(t, remoteBucketVersion, vulns[0].ModuleAttribution.Version)
+	require.Equal(t, "main.tf", vulns[0].ModuleAttribution.ModuleCodeLocation.Filename)
 }
 
 func TestInspect_RemoteModule_SecureCallerOverridesInsecureDefault(t *testing.T) {

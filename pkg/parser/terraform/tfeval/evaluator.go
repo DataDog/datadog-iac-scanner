@@ -67,6 +67,9 @@ type ResolvedResource struct {
 	// Source location and module address for finding attribution.
 	DefinedIn     string
 	DefLine       int
+	DefEndLine    int
+	DefColumn     int
+	DefEndColumn  int
 	ModuleAddress string // "" for root module resources
 	CallChain     []CallSite
 	// ExpansionTruncated is set when count/for_each produced more instances than
@@ -76,10 +79,14 @@ type ResolvedResource struct {
 
 // CallSite records one hop in a module call chain.
 type CallSite struct {
-	ModuleName string
-	Source     string
-	CalledFrom string
-	CalledLine int
+	ModuleName      string
+	Source          string
+	Version         string
+	CalledFrom      string
+	CalledLine      int
+	CalledEndLine   int
+	CalledColumn    int
+	CalledEndColumn int
 }
 
 // Evaluator evaluates local Terraform modules.
@@ -572,10 +579,14 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
 
 		site := CallSite{
-			ModuleName: label,
-			Source:     source,
-			CalledFrom: mb.TypeRange.Filename,
-			CalledLine: mb.TypeRange.Start.Line,
+			ModuleName:      label,
+			Source:          source,
+			Version:         version,
+			CalledFrom:      mb.TypeRange.Filename,
+			CalledLine:      mb.TypeRange.Start.Line,
+			CalledEndLine:   mb.Range().End.Line,
+			CalledColumn:    mb.TypeRange.Start.Column,
+			CalledEndColumn: mb.Range().End.Column,
 		}
 		childAddr := joinAddr(addr, "module."+label)
 
@@ -696,6 +707,9 @@ func (e *Evaluator) expandResourceBlock(
 			Body:          rb.Body,
 			DefinedIn:     rb.TypeRange.Filename,
 			DefLine:       rb.TypeRange.Start.Line,
+			DefEndLine:    rb.Range().End.Line,
+			DefColumn:     rb.TypeRange.Start.Column,
+			DefEndColumn:  rb.Range().End.Column,
 			ModuleAddress: addr,
 			CallChain:     cloneChain(chain),
 		}
@@ -819,7 +833,8 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 		expanded bool // true when any instance has brackets (count or for_each)
 	}
 	byType := make(map[string]map[string]*instBucket)
-	for _, r := range resources {
+	for i := range resources {
+		r := &resources[i]
 		base, key, isCount, expanded := parseResourceInstanceKey(r.Name)
 		if byType[r.Type] == nil {
 			byType[r.Type] = make(map[string]*instBucket)
@@ -1041,10 +1056,14 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		}
 		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
 		site := CallSite{
-			ModuleName: label,
-			Source:     source,
-			CalledFrom: mb.TypeRange.Filename,
-			CalledLine: mb.TypeRange.Start.Line,
+			ModuleName:      label,
+			Source:          source,
+			Version:         version,
+			CalledFrom:      mb.TypeRange.Filename,
+			CalledLine:      mb.TypeRange.Start.Line,
+			CalledEndLine:   mb.Range().End.Line,
+			CalledColumn:    mb.TypeRange.Start.Column,
+			CalledEndColumn: mb.Range().End.Column,
 		}
 		childAddr := joinAddr(addr, "module."+label)
 		childChain := append(cloneChain(chain), site)

@@ -81,7 +81,7 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 	const depth, branch = 12, 2
 	root, files := writeDeepFanOut(t, depth, branch)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 
 	if res.resourceCount == 0 {
 		t.Fatal("expected the nested module tree to instantiate resources, got none")
@@ -106,7 +106,7 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testing.T) {
 	root, files := writeBudgetFanOut(t, 6, 4)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 
 	if res.resourceCount == 0 {
 		t.Fatal("expected resources to be instantiated")
@@ -178,7 +178,7 @@ func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T
 	// Comfortably past the evaluator's depth cap, so the chain is cut short.
 	root, files := writePartiallyResolvedShare(t, 25)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed for the shallow call")
