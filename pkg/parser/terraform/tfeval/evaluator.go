@@ -99,7 +99,11 @@ type Evaluator struct {
 	// without bound, so a check that only runs at root boundaries never fires.
 	maxInstantiated int
 	instantiated    int
-	budgetExceeded  bool
+	// Speculative sibling evaluation is bounded separately from final instances.
+	prepassInstantiated int
+	prepassDepth        int
+	budgetExceeded      bool
+	skipped             uint64
 
 	// notEvaluatedDirs holds every module directory this evaluator declined to
 	// evaluate for depth, cycle or budget. It accumulates for the whole scan
@@ -130,6 +134,7 @@ func New() *Evaluator {
 
 // skipEvaluation records dir as not evaluated and returns ErrModuleNotEvaluated.
 func (e *Evaluator) skipEvaluation(dir string) error {
+	e.skipped++
 	e.notEvaluatedDirs[filepath.Clean(dir)] = true
 	return ErrModuleNotEvaluated
 }
@@ -225,45 +230,24 @@ func (e *Evaluator) evaluate(
 	visiting map[string]bool,
 	allVisited map[string]bool,
 ) ([]ResolvedResource, map[string]cty.Value, error) {
-	contextLogger := logger.FromContext(ctx)
-
-	// These three return ErrModuleNotEvaluated rather than an empty result. An
-	// empty result is indistinguishable from a module that legitimately declares
-	// no resources, and the caller would record the directory as evaluated — which
-	// suppresses its body from the scan with no synthetic document to replace it.
-	// Reporting "not evaluated" keeps the module scanned as written instead, and
-	// recording the directory keeps it scanned even when another call site of the
-	// same directory did resolve.
-	if depth > e.maxDepth {
-		contextLogger.Warn().Msgf("tfeval: max module depth %d exceeded at %s", e.maxDepth, dir)
-		return nil, nil, e.skipEvaluation(dir)
-	}
-	if visiting[dir] {
-		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
-		return nil, nil, e.skipEvaluation(dir)
-	}
-	if e.instantiationBudgetExhausted() {
-		return nil, nil, e.skipEvaluation(dir)
+	if err := e.evaluationStop(ctx, dir, depth, visiting); err != nil {
+		return nil, nil, err
 	}
 
-	// Keyed on inputs only, so every path to the same module with the same inputs
-	// shares one evaluation and is re-stamped for its own position.
 	cacheKey := evalCacheKey{
 		dir:         dir,
 		packageRoot: packageRoot,
 		inputs:      canonicalInputsKey(inputs),
 	}
-	if entry, ok := e.cache[cacheKey]; ok {
-		for _, d := range entry.visitedDirs {
-			allVisited[d] = true
-		}
-		reused := entry.rebase(addr, chain)
-		e.chargeInstantiationBudget(ctx, len(reused))
-		return reused, entry.outputs, nil
+	if resources, outputs, hit, err := e.reuseCachedEvaluation(
+		ctx, cacheKey, dir, addr, chain, allVisited,
+	); hit {
+		return resources, outputs, err
 	}
 
 	visiting[dir] = true
 	defer delete(visiting, dir)
+	skippedBefore := e.skipped
 
 	// Snapshot allVisited so we can determine which dirs this subtree adds.
 	prevAllVisited := make(map[string]bool, len(allVisited))
@@ -287,16 +271,10 @@ func (e *Evaluator) evaluate(
 		Functions: e.funcs,
 	}
 
-	localVals := e.resolveLocals(localExprs, evalCtx)
-	evalCtx.Variables["local"] = objectOrEmpty(localVals)
+	evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
 
-	// Pre-inject sibling resource attrs so module inputs that reference them
-	// (e.g. module "x" { val = aws_resource.y.attr }) resolve on first evaluation.
-	if len(resourceBlocks) > 0 && len(moduleBlocks) > 0 {
-		earlyRes := e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
-		injectResourceRefs(evalCtx, earlyRes)
-		localVals = e.resolveLocals(localExprs, evalCtx)
-		evalCtx.Variables["local"] = objectOrEmpty(localVals)
+	if !e.preinjectResourceRefs(resourceBlocks, moduleBlocks, localExprs, evalCtx, addr, chain) {
+		return nil, nil, e.skipEvaluation(dir)
 	}
 
 	e.applySiblingModulePrepass(ctx, moduleBlocks, evalCtx, localExprs, dir, packageRoot, addr, chain, depth, visiting)
@@ -307,19 +285,22 @@ func (e *Evaluator) evaluate(
 
 	if len(moduleOutputs) > 0 {
 		evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
-		localVals = e.resolveLocals(localExprs, evalCtx)
-		evalCtx.Variables["local"] = objectOrEmpty(localVals)
+		evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
 	}
 
-	rootResources := e.rootResourcesWithRefPasses(resourceBlocks, localExprs, evalCtx, addr, chain)
+	rootResources, err := e.evaluateRootResources(
+		ctx, dir, resourceBlocks, localExprs, evalCtx, addr, chain,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// Re-inject the final-pass resource values so that outputs and locals that
 	// reference the Nth hop of an N-hop chain can resolve. For chains shorter
 	// than resourceRefPasses hops all resources were already injected inside the
 	// loop, so injectResourceRefs returns false and the locals refresh is skipped.
 	if injectResourceRefs(evalCtx, rootResources) {
-		localVals = e.resolveLocals(localExprs, evalCtx)
-		evalCtx.Variables["local"] = objectOrEmpty(localVals)
+		evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
 	}
 
 	resources := make([]ResolvedResource, 0, len(rootResources)+len(childResources))
@@ -338,41 +319,170 @@ func (e *Evaluator) evaluate(
 			visitedDirs = append(visitedDirs, d)
 		}
 	}
-	e.cache[cacheKey] = &evalCacheEntry{
-		resources:    resources,
-		outputs:      outputs,
-		visitedDirs:  visitedDirs,
-		baseAddr:     addr,
-		baseChainLen: len(chain),
-	}
-	e.chargeInstantiationBudget(ctx, len(resources))
+	e.cacheCompletedEvaluation(
+		cacheKey, skippedBefore, resources, outputs, visitedDirs, addr, len(chain),
+	)
 
 	return resources, outputs, nil
 }
 
-// chargeInstantiationBudget counts resources as they are handed to a caller,
-// including reused ones. Memoizing removes the repeated *evaluation* of a shared
-// subtree but not the repeated materialization of its resources: every caller gets
-// its own copies, attributed to its own path. Those copies are the memory the
-// budget exists to bound, so counting evaluations instead would never fire.
-func (e *Evaluator) chargeInstantiationBudget(ctx context.Context, n int) {
-	if e.maxInstantiated <= 0 {
+func (e *Evaluator) evaluationStop(
+	ctx context.Context,
+	dir string,
+	depth int,
+	visiting map[string]bool,
+) error {
+	contextLogger := logger.FromContext(ctx)
+	if depth > e.maxDepth {
+		contextLogger.Warn().Msgf("tfeval: max module depth %d exceeded at %s", e.maxDepth, dir)
+		return e.skipEvaluation(dir)
+	}
+	if visiting[dir] {
+		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
+		return e.skipEvaluation(dir)
+	}
+	if e.instantiationBudgetExhausted() {
+		return e.skipEvaluation(dir)
+	}
+	return nil
+}
+
+func (e *Evaluator) reuseCachedEvaluation(
+	ctx context.Context,
+	key evalCacheKey,
+	dir, addr string,
+	chain []CallSite,
+	allVisited map[string]bool,
+) (
+	resources []ResolvedResource,
+	outputs map[string]cty.Value,
+	hit bool,
+	err error,
+) {
+	entry, ok := e.cache[key]
+	if !ok {
+		return nil, nil, false, nil
+	}
+	if e.prepassDepth == 0 || entry.baseAddr != addr || entry.baseChainLen != len(chain) {
+		if !e.chargeInstantiationBudget(ctx, len(entry.resources)) {
+			return nil, nil, true, e.skipEvaluation(dir)
+		}
+	}
+	for _, visited := range entry.visitedDirs {
+		allVisited[visited] = true
+	}
+	return entry.rebase(addr, chain), entry.outputs, true, nil
+}
+
+func (e *Evaluator) preinjectResourceRefs(
+	resourceBlocks, moduleBlocks []*hclsyntax.Block,
+	localExprs map[string]hclsyntax.Expression,
+	evalCtx *hcl.EvalContext,
+	addr string,
+	chain []CallSite,
+) bool {
+	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 {
+		return true
+	}
+	resources, complete := e.evalResourceBlocks(
+		resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+	)
+	if !complete {
+		return false
+	}
+	injectResourceRefs(evalCtx, resources)
+	evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
+	return true
+}
+
+func (e *Evaluator) evaluateRootResources(
+	ctx context.Context,
+	dir string,
+	resourceBlocks []*hclsyntax.Block,
+	localExprs map[string]hclsyntax.Expression,
+	evalCtx *hcl.EvalContext,
+	addr string,
+	chain []CallSite,
+) ([]ResolvedResource, error) {
+	resources, complete := e.rootResourcesWithRefPasses(
+		resourceBlocks, localExprs, evalCtx, addr, chain,
+	)
+	if !complete || !e.chargeInstantiationBudget(ctx, len(resources)) {
+		return nil, e.skipEvaluation(dir)
+	}
+	return resources, nil
+}
+
+func (e *Evaluator) cacheCompletedEvaluation(
+	key evalCacheKey,
+	skippedBefore uint64,
+	resources []ResolvedResource,
+	outputs map[string]cty.Value,
+	visitedDirs []string,
+	addr string,
+	chainLen int,
+) {
+	if e.skipped != skippedBefore {
 		return
 	}
-	e.instantiated += n
-	if e.instantiated >= e.maxInstantiated && !e.budgetExceeded {
-		e.budgetExceeded = true
-		contextLogger := logger.FromContext(ctx)
-		contextLogger.Warn().
-			Int("resources_instantiated", e.instantiated).
-			Int("resource_budget", e.maxInstantiated).
-			Msg("tfeval: module instantiation budget exhausted; " +
-				"stopping recursion, remaining modules are scanned as written")
+	e.cache[key] = &evalCacheEntry{
+		resources:    resources,
+		outputs:      outputs,
+		visitedDirs:  visitedDirs,
+		baseAddr:     addr,
+		baseChainLen: chainLen,
 	}
 }
 
+func (e *Evaluator) chargeInstantiationBudget(ctx context.Context, n int) bool {
+	if n == 0 || e.maxInstantiated <= 0 {
+		return true
+	}
+	instantiated := e.currentInstantiationCount()
+	if n <= e.maxInstantiated-*instantiated {
+		*instantiated += n
+		if *instantiated == e.maxInstantiated {
+			e.reportInstantiationBudgetExceeded(ctx, *instantiated)
+		}
+		return true
+	}
+	e.reportInstantiationBudgetExceeded(ctx, *instantiated)
+	return false
+}
+
+func (e *Evaluator) reportInstantiationBudgetExceeded(ctx context.Context, instantiated int) {
+	if e.prepassDepth > 0 {
+		return
+	}
+	if e.budgetExceeded {
+		return
+	}
+	e.budgetExceeded = true
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Warn().
+		Int("resources_instantiated", instantiated).
+		Int("resource_budget", e.maxInstantiated).
+		Msg("tfeval: module instantiation budget exhausted; " +
+			"stopping recursion, remaining modules are scanned as written")
+}
+
+func (e *Evaluator) remainingInstantiationBudget() int {
+	if e.maxInstantiated <= 0 {
+		return -1
+	}
+	return e.maxInstantiated - *e.currentInstantiationCount()
+}
+
+func (e *Evaluator) currentInstantiationCount() *int {
+	if e.prepassDepth > 0 {
+		return &e.prepassInstantiated
+	}
+	return &e.instantiated
+}
+
 func (e *Evaluator) instantiationBudgetExhausted() bool {
-	return e.maxInstantiated > 0 && e.instantiated >= e.maxInstantiated
+	return e.maxInstantiated > 0 &&
+		*e.currentInstantiationCount() >= e.maxInstantiated
 }
 
 // BudgetExceeded reports whether evaluation stopped early for budget, so callers
@@ -383,6 +493,7 @@ func (e *Evaluator) BudgetExceeded() bool { return e.budgetExceeded }
 // root cannot consume the quota for every subsequent root in a monorepo.
 func (e *Evaluator) ResetInstantiationBudget() {
 	e.instantiated = 0
+	e.prepassInstantiated = 0
 	e.budgetExceeded = false
 }
 
@@ -514,10 +625,16 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain []CallSite,
-) []ResolvedResource {
+) ([]ResolvedResource, bool) {
 	var rootResources []ResolvedResource
 	for pass := 0; pass < resourceRefPasses; pass++ {
-		rootResources = e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+		var complete bool
+		rootResources, complete = e.evalResourceBlocks(
+			resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+		)
+		if !complete {
+			return nil, false
+		}
 		// Always inject so resolved attrs reach evalCtx on every pass including the last.
 		changed := injectResourceRefs(evalCtx, rootResources)
 		if !changed {
@@ -534,7 +651,9 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	// One final evaluation picks up attrs that were only injected on the last pass
 	// (e.g. the Nth resource in an A→B→C→D chain whose evalCtx was updated after the
 	// last evalResourceBlocks call).
-	return e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+	return e.evalResourceBlocks(
+		resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+	)
 }
 
 // evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
@@ -543,12 +662,17 @@ func (e *Evaluator) evalResourceBlocks(
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain []CallSite,
-) []ResolvedResource {
+	limit int,
+) ([]ResolvedResource, bool) {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
-		resources = append(resources, e.expandResourceBlock(rb, evalCtx, addr, chain)...)
+		expanded := e.expandResourceBlock(rb, evalCtx, addr, chain)
+		if limit >= 0 && len(resources)+len(expanded) > limit {
+			return resources, false
+		}
+		resources = append(resources, expanded...)
 	}
-	return resources
+	return resources, true
 }
 
 // expandResourceBlock emits zero, one, or N instances per block; known count/for_each
@@ -885,6 +1009,9 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	depth int,
 	visiting map[string]bool,
 ) map[string]cty.Value {
+	e.prepassDepth++
+	defer func() { e.prepassDepth-- }()
+
 	out := map[string]cty.Value{}
 	tmpVisiting := make(map[string]bool, len(visiting))
 	for k, v := range visiting {

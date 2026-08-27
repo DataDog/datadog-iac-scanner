@@ -78,9 +78,9 @@ func TestProbe_OOMReproBeforeAfter(t *testing.T) {
 	}
 
 	stack := writeNestedFanOutForProbe(t, depth, branch)
-	theoretical := powInt(branch, depth)
+	theoretical := powInt(branch, depth-1)
 
-	t.Logf("fixture: depth=%d branch=%d files=%d theoretical_instances=branch^depth=%d",
+	t.Logf("fixture: depth=%d branch=%d files=%d theoretical_resources=branch^(depth-1)=%d",
 		depth, branch, depth+1, theoretical)
 
 	run := func(label string) (resources, cacheEntries int, peakMiB float64, elapsed time.Duration, oom bool) {
@@ -125,6 +125,10 @@ func TestProbe_OOMReproBeforeAfter(t *testing.T) {
 
 	if cache > depth+2 {
 		t.Errorf("WITH FIX: cache has %d entries, expected ~%d", cache, depth+1)
+	}
+	if theoretical <= defaultMaxInstantiated && res != theoretical {
+		t.Errorf("resolved %d resources, want %d below the instantiation budget",
+			res, theoretical)
 	}
 }
 

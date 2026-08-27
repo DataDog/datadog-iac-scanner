@@ -220,6 +220,30 @@ func TestInstantiationBudget_StopsRecursion(t *testing.T) {
 	}
 }
 
+func TestInstantiationBudget_CountsFinalInstancesOnce(t *testing.T) {
+	stack := writeNestedFanOut(t, 12, 3)
+
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+
+	const want = 177147
+	if got := len(resources); got != want {
+		t.Fatalf("resolved %d resources after counting %d, want %d below the %d-resource budget",
+			got, e.instantiated, want, defaultMaxInstantiated)
+	}
+	if e.BudgetExceeded() {
+		t.Fatalf("budget was exhausted after resolving %d resources below its %d limit",
+			len(resources), defaultMaxInstantiated)
+	}
+	if e.instantiated != len(resources) {
+		t.Fatalf("budget counted %d instances for %d returned resources",
+			e.instantiated, len(resources))
+	}
+}
+
 func TestResetInstantiationBudget_FreshQuotaPerRoot(t *testing.T) {
 	e := New()
 	e.SetMaxInstantiated(100)
@@ -239,6 +263,61 @@ func TestResetInstantiationBudget_FreshQuotaPerRoot(t *testing.T) {
 	e.chargeInstantiationBudget(ctx, 25)
 	if !e.BudgetExceeded() {
 		t.Fatal("budget should exceed once a single root passes 100 resources")
+	}
+}
+
+func TestEvalCache_DoesNotReuseDepthTruncatedResult(t *testing.T) {
+	root := t.TempDir()
+	leaf := filepath.Join(root, "leaf")
+	target := filepath.Join(root, "target")
+	for _, dir := range []string{leaf, target} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(leaf, "main.tf"), []byte(`
+variable "in" { type = string }
+resource "aws_s3_bucket" "leaf" { bucket = var.in }
+`), 0o644); err != nil {
+		t.Fatalf("write leaf: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "main.tf"), []byte(`
+variable "in" { type = string }
+resource "aws_s3_bucket" "target" { bucket = var.in }
+module "leaf" {
+  source = "../leaf"
+  in     = var.in
+}
+`), 0o644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	e := New()
+	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
+	partial, _, err := e.evaluate(
+		context.Background(), target, "", inputs, "module.deep", nil,
+		e.maxDepth, map[string]bool{}, map[string]bool{},
+	)
+	if err != nil {
+		t.Fatalf("deep evaluate: %v", err)
+	}
+	if len(partial) != 1 {
+		t.Fatalf("deep evaluate returned %d resources, want the target resource only", len(partial))
+	}
+	key := evalCacheKey{dir: target, inputs: canonicalInputsKey(inputs)}
+	if _, ok := e.cache[key]; ok {
+		t.Fatal("depth-truncated evaluation was cached as complete")
+	}
+
+	complete, _, err := e.evaluate(
+		context.Background(), target, "", inputs, "module.shallow", nil,
+		0, map[string]bool{}, map[string]bool{},
+	)
+	if err != nil {
+		t.Fatalf("shallow evaluate: %v", err)
+	}
+	if len(complete) != 2 {
+		t.Fatalf("shallow evaluate returned %d resources, want target and leaf", len(complete))
 	}
 }
 
