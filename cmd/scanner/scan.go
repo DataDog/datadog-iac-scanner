@@ -92,8 +92,8 @@ var scanAction = &cli.Command{
 		&cli.BoolFlag{
 			Name:   "x-local-module-eval",
 			Hidden: true,
-			Usage: "(deprecated, will be removed after hosted worker migration) resolve Terraform local " +
-				"module variables before scanning; independent of --terraform-modules-mode",
+			Usage: "(experimental) resolve Terraform local module variables before scanning; " +
+				"independent of --terraform-modules-mode",
 			Value: false,
 		},
 		&cli.StringFlag{
