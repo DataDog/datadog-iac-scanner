@@ -194,6 +194,7 @@ resource "aws_s3_bucket" "replica" {
 		make(map[docContentKey]string),
 		make(map[string][]extraCallerInfo),
 		make(instantiatedIndex),
+		nil,
 	)
 
 	if len(docs) != 2 {
@@ -267,7 +268,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		t.Fatalf("remove stack-b: %v", err)
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("expected partial module resolution to succeed")
 	}
@@ -322,7 +323,7 @@ resource "aws_s3_bucket" "this" {
 		t.Fatalf("remove failed root: %v", err)
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("expected the other root to evaluate successfully")
 	}
@@ -353,7 +354,7 @@ resource "aws_s3_bucket" "replica" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed")
 	}
@@ -392,7 +393,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -532,7 +533,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", filepath.Join("modules", "bucket", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -603,7 +604,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 
 	for _, roots := range []int{1, 4, 32} {
 		repo, files := writeFanOut(t, roots, false)
-		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil)
 		if !res.ok {
 			t.Fatalf("roots=%d: resolveModuleDocuments ok = false", roots)
 		}
@@ -622,7 +623,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 
 	// Different inputs genuinely produce different content, so those do scale.
 	repo, files := writeFanOut(t, 8, true)
-	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil)
 	if len(res.docs) != 8*modFiles {
 		t.Fatalf("%d documents for 8 differing roots, want %d", len(res.docs), 8*modFiles)
 	}
@@ -632,7 +633,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 // document holding that file's resources, and nothing else.
 func TestResolveModuleDocuments_DocumentMirrorsItsFile(t *testing.T) {
 	repo, files := writeFanOut(t, 1, false)
-	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("resolveModuleDocuments ok = false")
 	}
@@ -671,7 +672,7 @@ func TestResolveModuleDocuments_DocumentIDsAreStable(t *testing.T) {
 	repo, files := writeFanOut(t, 8, false)
 
 	snapshot := func() ([]string, map[string][]string) {
-		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil)
+		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil)
 		ids := make([]string, 0, len(res.docs))
 		for _, doc := range res.docs {
 			ids = append(ids, doc["id"].(string))
@@ -739,7 +740,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -822,7 +823,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -867,7 +868,7 @@ func TestNewInstanceFileMetadata_LineInfoDocumentNotAliased(t *testing.T) {
 			},
 		},
 	}
-	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x")
+	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x", nil)
 	delete(fm.LineInfoDocument, "resource")
 	if _, ok := synth.LineInfoDocument["resource"]; !ok {
 		t.Fatal("synthetic LineInfoDocument must keep resource after suppression on parent")
@@ -919,7 +920,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		fileMeta("mod-b", modBFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -957,7 +958,7 @@ module "bucket" {
 		fileMeta("root-id", filepath.Join("stack", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if res.ok {
 		t.Fatalf("resolveModuleDocuments ok = true, want false when all roots fail")
 	}
@@ -984,7 +985,7 @@ resource "aws_s3_bucket" "this" {
 
 	files := model.FileMetadatas{fileMeta("orphan-id", orphanFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
@@ -1027,7 +1028,7 @@ resource "aws_s3_bucket" "leaf" {
 		fileMeta("leaf-id", leafFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}

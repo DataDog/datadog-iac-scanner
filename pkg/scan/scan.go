@@ -85,7 +85,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 			baselinePaths = append(baselinePaths, path)
 		}
 	}
-	moduleCleanup, remoteModulePaths, remoteSourceDirs, err := c.resolveTerraformModulesForScan(
+	moduleCleanup, remoteModulePaths, remoteSourceDirs, remoteModuleProvenance, err := c.resolveTerraformModulesForScan(
 		ctx, paramsPlatforms, &extractedPaths, baselinePaths,
 	)
 	if err != nil {
@@ -135,6 +135,9 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 
 	if len(remoteSourceDirs) > 0 {
 		inspector.SetRemoteModuleDirectories(remoteSourceDirs)
+	}
+	if len(remoteModuleProvenance) > 0 {
+		inspector.SetRemoteModuleProvenance(remoteModuleProvenance)
 	}
 	inspector.SetExternalModulePaths(remoteModulePaths)
 

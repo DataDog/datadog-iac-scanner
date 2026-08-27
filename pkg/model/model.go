@@ -167,6 +167,9 @@ type FileMetadata struct {
 	IsMinified        bool
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
+	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
+	// document groups multiple module resources from the same file.
+	ModuleAttributions map[string]*ModuleAttribution
 	// Platform is the lowercased platform the file was classified as (e.g.
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
@@ -292,6 +295,8 @@ type Vulnerability struct {
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
+	// ModuleAttribution: declaration and body locations for instantiated module findings.
+	ModuleAttribution *ModuleAttribution `json:"-"`
 }
 
 // Framework represents a framework mapping for a query

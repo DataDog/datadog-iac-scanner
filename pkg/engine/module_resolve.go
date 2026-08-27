@@ -26,8 +26,9 @@ import (
 // extraCallerInfo records a deduplicated module caller so its findings can be
 // cloned from the primary OPA doc after eval without adding a separate doc to input.document.
 type extraCallerInfo struct {
-	callChain string
-	docID     string
+	callChain    string
+	docID        string
+	attributions map[string]*model.ModuleAttribution
 }
 
 // moduleResolutionResult bundles all outputs of resolveModuleDocuments.
@@ -301,7 +302,7 @@ func (c *Inspector) resolveModulesSafely(
 			res = moduleResolutionResult{}
 		}
 	}()
-	return resolveModuleDocuments(ctx, files, c.repoPath, resolver, targets)
+	return resolveModuleDocuments(ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup())
 }
 
 // resolveModuleDocuments instantiates all local modules referenced by the
@@ -321,6 +322,7 @@ func evaluateRootModules(
 	repoPath string,
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
+	lookup moduleProvenanceLookup,
 	byAbsPath map[string]*model.FileMetadata,
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
@@ -352,7 +354,7 @@ func evaluateRootModules(
 			actualCalledDirs[d] = true
 		}
 		docs, syn, count := instantiatedDocs(
-			resources, byAbsPath, repoPath, targets, seen, extras, instantiated)
+			resources, byAbsPath, repoPath, targets, seen, extras, instantiated, lookup)
 		*extra = append(*extra, docs...)
 		*syntheticFiles = append(*syntheticFiles, syn...)
 		*resourceCount += count
@@ -433,6 +435,7 @@ func resolveModuleDocuments(
 	repoPath string,
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
+	lookup moduleProvenanceLookup,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -486,7 +489,7 @@ func resolveModuleDocuments(
 	sort.Strings(roots)
 
 	evaluateRootModules(
-		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets,
+		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK,
@@ -557,6 +560,7 @@ type docGroup struct {
 	moduleAddress string
 	layer         int
 	entries       []instantiatedResource
+	attributions  map[string]*model.ModuleAttribution
 }
 
 // docContentKey identifies a document by its content. Two independent digests
@@ -593,6 +597,7 @@ func instantiatedDocs(
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
 	instantiated instantiatedIndex,
+	lookup moduleProvenanceLookup,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -636,10 +641,16 @@ func instantiatedDocs(
 		key := cck + "\x00" + fm.ID + "\x00" + strconv.Itoa(layer)
 		g, exists := groups[key]
 		if !exists {
-			g = &docGroup{fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer}
+			g = &docGroup{
+				fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer,
+				attributions: make(map[string]*model.ModuleAttribution),
+			}
 			groups[key] = g
 			order = append(order, key)
 		}
+		moduleRoot := moduleRootForResource(r, repoPath, lookup)
+		g.attributions[moduleAttributionKey(r.Type, r.DefLine, r.DefColumn)] =
+			buildModuleAttribution(r, repoPath, moduleRoot, lookup)
 		g.entries = append(g.entries, entry)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
@@ -656,8 +667,9 @@ func instantiatedDocs(
 		contentKey := groupContentKey(g)
 		if primaryDocID, dup := seen[contentKey]; dup {
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
-				callChain: g.callChain,
-				docID:     docID,
+				callChain:    g.callChain,
+				docID:        docID,
+				attributions: cloneModuleAttributions(g.attributions),
 			})
 			continue
 		}
@@ -679,7 +691,7 @@ func instantiatedDocs(
 			"file":     g.fm.FilePath,
 			"resource": resource,
 		})
-		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain))
+		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
 }
@@ -759,11 +771,14 @@ func (h contentHasher) key() docContentKey {
 }
 
 // newInstanceFileMetadata clones fm for a synthetic doc (empty Document so Combine skips it).
-func newInstanceFileMetadata(fm *model.FileMetadata, id, callChain string) *model.FileMetadata {
+func newInstanceFileMetadata(
+	fm *model.FileMetadata, id, callChain string, attributions map[string]*model.ModuleAttribution,
+) *model.FileMetadata {
 	clone := fm.ShallowCopy()
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
+	clone.ModuleAttributions = cloneModuleAttributions(attributions)
 	if fm.LineInfoDocument != nil {
 		// Already materialized: shallow-clone so later mutations on the
 		// parent (e.g. deleting a suppressed "resource" key) don't alias

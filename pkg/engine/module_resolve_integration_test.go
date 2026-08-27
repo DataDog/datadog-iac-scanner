@@ -131,6 +131,13 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, "main.tf", filepath.Base(v.FileName))
 	require.Equal(t, modPath, v.FileName, "finding should be reported at the module resource definition")
 	require.Greater(t, v.Line, 0, "line should be detected in the module file")
+	require.NotNil(t, v.ModuleAttribution)
+	require.Equal(t, "stack/main.tf", v.ModuleAttribution.CodeLocation.Filename)
+	require.Equal(t, "direct", v.ModuleAttribution.DependencyType)
+	require.Equal(t, "bucket", v.ModuleAttribution.Name)
+	require.Equal(t, "modules/bucket", v.ModuleAttribution.Source)
+	require.Equal(t, "main.tf", v.ModuleAttribution.ModuleCodeLocation.Filename)
+	require.Empty(t, v.ModuleAttribution.ModulePath)
 }
 
 // Two roots call the same module with the same inputs: expect two findings and two distinct ModuleCallChain values.

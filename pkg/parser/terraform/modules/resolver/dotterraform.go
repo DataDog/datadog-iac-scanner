@@ -35,6 +35,7 @@ type installedModulePath struct {
 	localPath   string
 	packageRoot string
 	scanRoot    string
+	version     string
 }
 
 // DotTerraformResolver reads terraform init output: .terraform/modules/modules.json.
@@ -70,6 +71,7 @@ func (r *DotTerraformResolver) load() {
 			if !ok {
 				continue
 			}
+			resolvedPath.version = strings.TrimSpace(rec.Version)
 			r.index[dotTerraformKey(root, rec.Source, rec.Version)] = resolvedPath
 			if rec.Key != "" {
 				for _, key := range dotTerraformLoadCallKeys(root, rec.Source, rec.Version, moduleNameFromKey(rec.Key)) {
@@ -132,8 +134,9 @@ func (r *DotTerraformResolver) Resolve(ctx context.Context, mod *tfmodules.Parse
 		}
 	}
 	resolution, err := ConfineResolution(ctx, Resolution{
-		LocalPath:   path.localPath,
-		PackageRoot: packageRoot,
+		LocalPath:       path.localPath,
+		PackageRoot:     packageRoot,
+		ResolvedVersion: path.version,
 	})
 	if err != nil {
 		return Resolution{}, &tfmodules.UnresolvedError{

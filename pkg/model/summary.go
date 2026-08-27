@@ -51,6 +51,8 @@ type VulnerableFile struct {
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
 	// ModuleCallChain: local-module call path; empty for root; included in fingerprint.
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
+	// ModuleAttribution: declaration and body locations for instantiated module findings.
+	ModuleAttribution *ModuleAttribution `json:"-"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -231,6 +233,17 @@ func removeURLCredentials(url string) string {
 	return strings.Replace(url, authGroup, "", 1)
 }
 
+func cloneModuleAttributionSummary(attr *ModuleAttribution) *ModuleAttribution {
+	if attr == nil {
+		return nil
+	}
+	clone := *attr
+	if len(attr.ModulePath) > 0 {
+		clone.ModulePath = append([]ModulePathHop(nil), attr.ModulePath...)
+	}
+	return &clone
+}
+
 func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) string {
 	var returnPath string
 	returnPath = replaceIfTemporaryPath(filepath.FromSlash(filePath), pathExtractionMap)
@@ -313,6 +326,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionKind:          item.SuppressionKind,
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
+			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
 		})
 
 		filePaths[resolvedPath] = item.FileName

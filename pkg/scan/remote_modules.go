@@ -15,8 +15,14 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	tfresolver "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+)
+
+const (
+	moduleSourceTypeGit     = "git"
+	moduleSourceTypeUnknown = "unknown"
 )
 
 func (c *Client) resolveTerraformModulesForScan(
@@ -28,20 +34,21 @@ func (c *Client) resolveTerraformModulesForScan(
 	moduleCleanup func(),
 	remoteModulePaths []string,
 	remoteSourceDirs map[string]engine.RemoteModuleDirectory,
+	remoteModuleProvenance map[string]engine.RemoteModuleProvenance,
 	err error,
 ) {
 	if !platformsIncludeTerraform(paramsPlatforms) || !c.shouldPreScanTerraformModules(extractedPaths.Path) {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
 	contextLogger := logger.FromContext(ctx)
 	filteredFilesSource, err := c.getFileSystemSourceProvider(ctx, extractedPaths.Path)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	moduleDiscoveryPaths, err := filteredFilesSource.TerraformFiles(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	chain := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
 
@@ -98,23 +105,43 @@ func (c *Client) resolveTerraformModulesForScan(
 		}
 	}
 	remoteSourceDirs = make(map[string]engine.RemoteModuleDirectory, len(result.Modules)*3)
+	remoteModuleProvenance = make(map[string]engine.RemoteModuleProvenance, len(result.Modules)*3)
 	for i := range result.Modules {
 		module := &result.Modules[i]
 		directory := engine.RemoteModuleDirectory{
 			Path:        module.LocalPath,
 			PackageRoot: module.PackageRoot,
 		}
-		remoteSourceDirs[engine.RemoteModuleKey(
-			module.CallerRoot, module.Source, module.Version,
-		)] = directory
-		remoteSourceDirs[engine.RemoteModuleCallKey(
-			module.CallerRoot, module.Source, module.Version, module.Name,
-		)] = directory
-		remoteSourceDirs[engine.RemoteModuleCallKey(
-			module.CallerRoot, module.Source, "", module.Name,
-		)] = directory
+		sourceType := resolvedModuleSourceType(module)
+		provenance := engine.RemoteModuleProvenance{
+			Source:          module.Source,
+			ResolvedVersion: module.ResolvedVersion,
+			ResolvedRef:     module.ResolvedRef,
+			CanonicalSource: module.CanonicalSource,
+			SourceType:      sourceType,
+			ModuleRoot:      module.LocalPath,
+		}
+		for _, key := range []string{
+			engine.RemoteModuleKey(module.CallerRoot, module.Source, module.Version),
+			engine.RemoteModuleCallKey(module.CallerRoot, module.Source, module.Version, module.Name),
+			engine.RemoteModuleCallKey(module.CallerRoot, module.Source, "", module.Name),
+		} {
+			remoteSourceDirs[key] = directory
+			remoteModuleProvenance[key] = provenance
+		}
 	}
-	return result.Cleanup, result.ScanPaths, remoteSourceDirs, nil
+	return result.Cleanup, result.ScanPaths, remoteSourceDirs, remoteModuleProvenance, nil
+}
+
+// resolvedModuleSourceType keeps the type detected from the declared source. A resolved Git ref only
+// classifies otherwise unknown sources, since registry downloads may be Git-backed and must stay
+// registry modules so their semver, not the commit SHA, is reported.
+func resolvedModuleSourceType(module *modulegraph.ResolvedModule) string {
+	sourceType, _ := tfmodules.DetectModuleSourceType(module.Source)
+	if sourceType == moduleSourceTypeUnknown && module.ResolvedRef != "" {
+		return moduleSourceTypeGit
+	}
+	return sourceType
 }
 
 func (c *Client) shouldPreScanTerraformModules(scanPaths []string) bool {

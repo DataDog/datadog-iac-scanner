@@ -66,6 +66,7 @@ func TestPrefetchedResolverUsesManifest(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, moduleDir, got.LocalPath)
+	require.Equal(t, "5.0.0", got.ResolvedVersion)
 }
 
 func TestLoadManifestPreservesPackageRootForSiblingModules(t *testing.T) {
