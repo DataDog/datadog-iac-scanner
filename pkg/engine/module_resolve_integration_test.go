@@ -824,9 +824,9 @@ resource "aws_s3_bucket" "this" {
 	require.Len(t, vulns, numQueries)
 }
 
-// TestInspect_LocalModuleEvalWithFlagEnabled confirms that local module evaluation
-// runs when the feature flag is on and synthetic docs are injected for resolved modules.
-func TestInspect_LocalModuleEvalWithFlagEnabled(t *testing.T) {
+// TestInspect_LocalModuleEvalAlwaysRuns confirms that local module evaluation
+// runs unconditionally and synthetic docs are injected for resolved modules.
+func TestInspect_LocalModuleEvalAlwaysRuns(t *testing.T) {
 	root := t.TempDir()
 	rootPath := filepath.Join(root, "main.tf")
 	modDir := filepath.Join(root, "modules", "s3")
