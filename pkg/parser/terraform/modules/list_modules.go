@@ -15,6 +15,7 @@ type ListModuleEntry struct {
 	RegistryScope string `json:"registry_scope,omitempty"`
 	FileName      string `json:"file_name"`
 	DefLine       int    `json:"def_line"`
+	DefEndLine    int    `json:"def_end_line"`
 }
 
 // ListModuleEntries converts parsed modules to list-modules JSON rows.
@@ -36,6 +37,7 @@ func ListModuleEntries(modules map[string]ParsedModule, includeLocal bool) []Lis
 			RegistryScope: mod.RegistryScope,
 			FileName:      mod.FileName,
 			DefLine:       mod.DefLine,
+			DefEndLine:    mod.DefEndLine,
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool {

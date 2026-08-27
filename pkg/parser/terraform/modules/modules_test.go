@@ -493,6 +493,7 @@ module "three" {
 			for i := range got {
 				got[i].FileName = ""
 				got[i].DefLine = 0
+				got[i].DefEndLine = 0
 			}
 			sort.Slice(got, func(i, j int) bool {
 				return got[i].Name < got[j].Name

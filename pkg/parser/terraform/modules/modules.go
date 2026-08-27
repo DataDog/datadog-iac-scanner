@@ -38,6 +38,7 @@ type ParsedModule struct {
 	AttributesData map[string]ModuleAttributesInfo
 	FileName       string
 	DefLine        int
+	DefEndLine     int
 }
 
 type UnresolvedError struct {
@@ -121,10 +122,11 @@ type fileExtract struct {
 // and vars of every file in the directory, which is only known once all of them
 // have been extracted. A nil expression means the argument is absent.
 type moduleBlockExtract struct {
-	name    string
-	defLine int
-	source  hclsyntax.Expression
-	version hclsyntax.Expression
+	name       string
+	defLine    int
+	defEndLine int
+	source     hclsyntax.Expression
+	version    hclsyntax.Expression
 }
 
 func extractFile(body *hclsyntax.Body) *fileExtract {
@@ -158,7 +160,11 @@ func extractFile(body *hclsyntax.Body) *fileExtract {
 			if len(block.Labels) == 0 {
 				continue
 			}
-			mod := moduleBlockExtract{name: block.Labels[0], defLine: block.TypeRange.Start.Line}
+			mod := moduleBlockExtract{
+				name:       block.Labels[0],
+				defLine:    block.TypeRange.Start.Line,
+				defEndLine: block.Range().End.Line,
+			}
 			if attr, ok := block.Body.Attributes["source"]; ok {
 				mod.source = attr.Expr
 			}
@@ -355,9 +361,10 @@ func resolveModuleBlocks(
 ) {
 	for i := range blocks {
 		mod := ParsedModule{
-			Name:     blocks[i].name,
-			FileName: filePath,
-			DefLine:  blocks[i].defLine,
+			Name:       blocks[i].name,
+			FileName:   filePath,
+			DefLine:    blocks[i].defLine,
+			DefEndLine: blocks[i].defEndLine,
 		}
 		fillModuleAttrs(ctx, fsys, &mod, &blocks[i], baseDir, localsMap, varsMap)
 		key := moduleIdentityKey(&mod)
