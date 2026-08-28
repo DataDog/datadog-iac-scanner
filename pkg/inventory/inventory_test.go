@@ -41,9 +41,10 @@ func parseTF(t *testing.T, name, content string) *model.FileMetadata {
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
 	return &model.FileMetadata{
-		FilePath: name,
-		Kind:     model.KindTerraform,
-		Document: docs[0],
+		FilePath:     name,
+		Kind:         model.KindTerraform,
+		Document:     docs[0],
+		OriginalData: content,
 	}
 }
 
@@ -114,7 +115,7 @@ func findResource(resources []Resource, blockType BlockType, name string) (Resou
 
 func TestWalkFiles_Terraform(t *testing.T) {
 	files := model.FileMetadatas{parseTF(t, "main.tf", sampleTF)}
-	resources := WalkFiles(files, nil)
+	resources := WalkFiles(files, nil, nil)
 
 	require.Len(t, resources, 3)
 
@@ -145,12 +146,12 @@ func TestWalkFiles_SkipsNonTerraform(t *testing.T) {
 		{FilePath: "k8s.yaml", Kind: model.KindYAML, Document: model.Document{"kind": "Pod"}},
 		{FilePath: "empty.tf", Kind: model.KindTerraform, Document: model.Document{}},
 	}
-	require.Empty(t, WalkFiles(files, nil))
+	require.Empty(t, WalkFiles(files, nil, nil))
 }
 
 func TestBuildInventory(t *testing.T) {
 	files := model.FileMetadatas{parseTF(t, "main.tf", sampleTF)}
-	inv := BuildInventory(WalkFiles(files, nil), "my-repo")
+	inv := BuildInventory(WalkFiles(files, nil, nil), "my-repo")
 
 	require.Equal(t, SchemaVersion, inv.SchemaVersion)
 	require.Equal(t, "Datadog", inv.Tool.Vendor)
@@ -224,7 +225,7 @@ func TestResourceAddress(t *testing.T) {
 }
 
 func TestWalkFiles_Kubernetes(t *testing.T) {
-	resources := WalkFiles(parseYAML(t, "deploy.yaml", sampleK8s), nil)
+	resources := WalkFiles(parseYAML(t, "deploy.yaml", sampleK8s), nil, nil)
 	require.Len(t, resources, 2)
 
 	dep, ok := findResource(resources, BlockManifest, "my-app")
@@ -255,7 +256,7 @@ func TestWalkFiles_Kubernetes(t *testing.T) {
 }
 
 func TestBuildInventory_Kubernetes(t *testing.T) {
-	inv := BuildInventory(WalkFiles(parseYAML(t, "deploy.yaml", sampleK8s), nil), "my-repo")
+	inv := BuildInventory(WalkFiles(parseYAML(t, "deploy.yaml", sampleK8s), nil, nil), "my-repo")
 	require.Equal(t, 2, inv.ResourceCount)
 
 	var dep *InventoryEntry
@@ -279,7 +280,7 @@ func TestWalkFiles_SkipsNonKubernetesYAML(t *testing.T) {
 	files := model.FileMetadatas{
 		{FilePath: "vars.yaml", Kind: model.KindYAML, Document: model.Document{"foo": "bar"}, LineInfoDocument: map[string]interface{}{"foo": "bar"}},
 	}
-	require.Empty(t, WalkFiles(files, nil))
+	require.Empty(t, WalkFiles(files, nil, nil))
 }
 
 const sampleCFN = `AWSTemplateFormatVersion: "2010-09-09"
@@ -295,7 +296,7 @@ Resources:
 `
 
 func TestWalkFiles_CloudFormation(t *testing.T) {
-	resources := WalkFiles(parseYAML(t, "template.yaml", sampleCFN), nil)
+	resources := WalkFiles(parseYAML(t, "template.yaml", sampleCFN), nil, nil)
 	require.Len(t, resources, 2)
 
 	bucket, ok := findResource(resources, BlockResource, "MyBucket")
@@ -336,7 +337,7 @@ const sampleAnsible = `---
 `
 
 func TestWalkFiles_Ansible(t *testing.T) {
-	resources := WalkFiles(parseYAML(t, "playbook.yaml", sampleAnsible), nil)
+	resources := WalkFiles(parseYAML(t, "playbook.yaml", sampleAnsible), nil, nil)
 	require.Len(t, resources, 3, "two top-level tasks plus one inside the block")
 
 	install, ok := findResource(resources, BlockTask, "install nginx")
@@ -361,7 +362,7 @@ ENTRYPOINT ["/app"]
 `
 
 func TestWalkFiles_Dockerfile(t *testing.T) {
-	resources := WalkFiles(parseDockerfile(t, "Dockerfile", sampleDockerfile), nil)
+	resources := WalkFiles(parseDockerfile(t, "Dockerfile", sampleDockerfile), nil, nil)
 	require.Len(t, resources, 2, "two build stages")
 
 	builder, ok := findResource(resources, BlockStage, "builder")
@@ -391,7 +392,7 @@ jobs:
 `
 
 func TestWalkFiles_CICD(t *testing.T) {
-	resources := WalkFiles(parseYAML(t, ".github/workflows/ci.yaml", sampleWorkflow), nil)
+	resources := WalkFiles(parseYAML(t, ".github/workflows/ci.yaml", sampleWorkflow), nil, nil)
 	require.Len(t, resources, 2, "two jobs")
 
 	build, ok := findResource(resources, BlockJob, "build")
@@ -410,21 +411,21 @@ func TestWalkFiles_GatesOnEnabledPlatforms(t *testing.T) {
 	files := append(parseTFFiles(t, "main.tf", sampleTF), parseYAML(t, "deploy.yaml", sampleK8s)...)
 
 	// Only Terraform enabled: Kubernetes manifests are excluded.
-	tfOnly := WalkFiles(files, []string{"Terraform"})
+	tfOnly := WalkFiles(files, []string{"Terraform"}, nil)
 	require.NotEmpty(t, tfOnly)
 	for _, r := range tfOnly {
 		require.Equal(t, platformTerraform, r.Platform)
 	}
 
 	// Only Kubernetes enabled (case-insensitive): Terraform is excluded.
-	k8sOnly := WalkFiles(files, []string{"kubernetes"})
+	k8sOnly := WalkFiles(files, []string{"kubernetes"}, nil)
 	require.NotEmpty(t, k8sOnly)
 	for _, r := range k8sOnly {
 		require.Equal(t, platformKubernetes, r.Platform)
 	}
 
 	// No filter enables everything.
-	require.Equal(t, len(tfOnly)+len(k8sOnly), len(WalkFiles(files, nil)))
+	require.Equal(t, len(tfOnly)+len(k8sOnly), len(WalkFiles(files, nil, nil)))
 }
 
 const sampleDependabot = `version: 2
@@ -440,7 +441,7 @@ updates:
 `
 
 func TestWalkFiles_CICD_Dependabot(t *testing.T) {
-	resources := WalkFiles(parseYAML(t, ".github/dependabot.yaml", sampleDependabot), nil)
+	resources := WalkFiles(parseYAML(t, ".github/dependabot.yaml", sampleDependabot), nil, nil)
 	require.Len(t, resources, 2, "one resource per update entry")
 
 	var gomod, npm *Resource
@@ -471,7 +472,7 @@ runs:
 `
 
 func TestWalkFiles_CICD_CompositeAction(t *testing.T) {
-	resources := WalkFiles(parseYAML(t, "action.yaml", sampleCompositeAction), nil)
+	resources := WalkFiles(parseYAML(t, "action.yaml", sampleCompositeAction), nil, nil)
 	require.Len(t, resources, 1)
 
 	action := resources[0]

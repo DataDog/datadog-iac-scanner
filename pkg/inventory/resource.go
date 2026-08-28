@@ -8,6 +8,10 @@
 // independent of whether any rule matched it.
 package inventory
 
+import (
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+)
+
 // BlockType is the category of block a resource originates from.
 type BlockType string
 
@@ -33,6 +37,7 @@ type Resource struct {
 	EndLine       int
 	ModuleSource  string
 	ModuleVersion string
+	Module        *model.ModuleAttributionSARIF
 	APIVersion    string
 	Namespace     string
 	// Attributes contains every declared attribute; annotation keys are stripped.

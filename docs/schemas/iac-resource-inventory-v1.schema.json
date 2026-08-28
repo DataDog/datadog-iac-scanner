@@ -10,7 +10,7 @@
     "schema_version": {
       "type": "string",
       "description": "Version of this inventory document format.",
-      "const": "1.0"
+      "const": "1.1"
     },
     "tool": {
       "type": "object",
@@ -96,6 +96,10 @@
           "type": "string",
           "description": "The `version` constraint of a module block, e.g. \"~> 5.0\". Present only when block_type is \"module\" and a version is specified."
         },
+        "module": {
+          "$ref": "#/$defs/module_attribution",
+          "description": "Terraform module provenance aligned with SARIF properties.module. Present on module blocks and on resources/data declared inside instantiated modules. Direct module relationships omit module_path; transitive relationships include the ordered call chain."
+        },
         "api_version": {
           "type": "string",
           "description": "The Kubernetes manifest apiVersion, e.g. \"apps/v1\". Present only when block_type is \"manifest\"."
@@ -119,6 +123,59 @@
       "properties": {
         "start": { "type": "integer", "minimum": 0 },
         "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "source_location": {
+      "type": "object",
+      "required": ["filename"],
+      "additionalProperties": false,
+      "properties": {
+        "filename": { "type": "string" },
+        "line_start": { "type": "integer", "minimum": 0 },
+        "line_end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "module_path_hop": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "source": { "type": "string" },
+        "source_type": {
+          "type": "string",
+          "description": "Module source classification: local, registry, git, or unknown."
+        },
+        "version": {
+          "type": "string",
+          "description": "Resolved registry semver or git commit SHA when known."
+        },
+        "code_location": { "$ref": "#/$defs/source_location" }
+      }
+    },
+    "module_attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "source": {
+          "type": "string",
+          "description": "Normalized, credential-free module source."
+        },
+        "source_type": { "type": "string" },
+        "version": { "type": "string" },
+        "dependency_type": {
+          "type": "string",
+          "enum": ["direct", "transitive"]
+        },
+        "code_location": {
+          "$ref": "#/$defs/source_location",
+          "description": "Module-relative location of the resource block when this object describes a resource inside a module."
+        },
+        "module_path": {
+          "type": "array",
+          "description": "Ordered module call chain from the customer declaration to the leaf module. Omitted for direct relationships.",
+          "items": { "$ref": "#/$defs/module_path_hop" }
+        }
       }
     }
   }

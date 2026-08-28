@@ -34,7 +34,7 @@ func TestPrintIaCInventoryReport(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			err := PrintIaCInventoryReport(context.Background(), dir, tc.filename, "/repo", files, nil)
+			err := PrintIaCInventoryReport(context.Background(), dir, tc.filename, "/repo", files, nil, nil)
 			require.NoError(t, err)
 
 			outPath := filepath.Join(dir, tc.wantFilename)

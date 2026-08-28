@@ -37,7 +37,9 @@ var registry = []platformWalker{
 
 // WalkFiles enumerates IaC resources across all parsed files. Only platforms
 // present in enabledPlatforms are walked; nil or empty enables all platforms.
-func WalkFiles(files model.FileMetadatas, enabledPlatforms []string) []Resource {
+// When opts is set, Terraform module provenance is attached to module blocks and
+// to resources declared inside resolved or local module bodies.
+func WalkFiles(files model.FileMetadatas, enabledPlatforms []string, opts *WalkOptions) []Resource {
 	enabled := newPlatformSet(enabledPlatforms)
 	var resources []Resource
 	// A YAML file can produce multiple FileMetadata entries (parsed by both the
@@ -74,6 +76,8 @@ func WalkFiles(files model.FileMetadatas, enabledPlatforms []string) []Resource 
 			break
 		}
 	}
+	idx := newModuleIndex(opts, files)
+	enrichTerraformModules(resources, idx)
 	return resources
 }
 

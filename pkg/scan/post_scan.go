@@ -21,6 +21,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/report"
 )
 
@@ -60,6 +61,7 @@ func (c *Client) resolveOutputs(
 	documents model.Documents,
 	files model.FileMetadatas,
 	printer *consolePrinter.Printer,
+	extractedPaths provider.ExtractedPath,
 ) error {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("console.resolveOutputs()")
@@ -105,6 +107,13 @@ func (c *Client) resolveOutputs(
 			c.ScanParams.RepoPath,
 			files,
 			c.ScanParams.GetEffectivePlatforms(),
+			&inventory.WalkOptions{
+				Ctx:             ctx,
+				RepoPath:        c.ScanParams.RepoPath,
+				ExtractionMap:   extractedPaths.ExtractionMap,
+				ResolvedModules: c.inventoryModules,
+				ParsedModules:   c.inventoryParsedModules,
+			},
 		)
 	}
 
@@ -171,7 +180,8 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		&summary,
 		scanResults.Files.Combine(ctx, c.ScanParams.LineInfoPayload),
 		scanResults.Files,
-		c.Printer); err != nil {
+		c.Printer,
+		scanResults.ExtractedPaths); err != nil {
 		contextLogger.Err(err).Msgf("failed to resolve outputs %v", err)
 		memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 		return metadata, err

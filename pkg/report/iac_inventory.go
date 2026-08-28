@@ -23,9 +23,9 @@ import (
 // enabledPlatforms are inventoried; an empty list enables every platform.
 func PrintIaCInventoryReport(
 	ctx context.Context, path, filename, rootPath string,
-	files model.FileMetadatas, enabledPlatforms []string,
+	files model.FileMetadatas, enabledPlatforms []string, opts *inventory.WalkOptions,
 ) error {
-	resources := inventory.WalkFiles(files, enabledPlatforms)
+	resources := inventory.WalkFiles(files, enabledPlatforms, opts)
 	inv := inventory.BuildInventory(resources, rootPath)
 
 	base := strings.TrimSuffix(filename, filepath.Ext(filename))

@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
 // SchemaVersion is bumped on backward-incompatible changes.
 // The JSON Schema lives at docs/schemas/iac-resource-inventory-v1.schema.json.
-const SchemaVersion = "1.0"
+const SchemaVersion = "1.1"
 
 // Inventory is the top-level IaC resource inventory document.
 type Inventory struct {
@@ -43,9 +44,10 @@ type InventoryEntry struct {
 	Provider      string                 `json:"provider,omitempty"`
 	FilePath      string                 `json:"file_path"`
 	LineRange     LineRange              `json:"line_range"`
-	ModuleSource  string                 `json:"module_source,omitempty"`
-	ModuleVersion string                 `json:"module_version,omitempty"`
-	APIVersion    string                 `json:"api_version,omitempty"`
+	ModuleSource  string                        `json:"module_source,omitempty"`
+	ModuleVersion string                        `json:"module_version,omitempty"`
+	Module        *model.ModuleAttributionSARIF `json:"module,omitempty"`
+	APIVersion    string                        `json:"api_version,omitempty"`
 	Namespace     string                 `json:"namespace,omitempty"`
 	Attributes    map[string]interface{} `json:"attributes,omitempty"`
 }
@@ -92,6 +94,7 @@ func toEntry(r *Resource) InventoryEntry {
 		LineRange:     LineRange{Start: r.StartLine, End: r.EndLine},
 		ModuleSource:  r.ModuleSource,
 		ModuleVersion: r.ModuleVersion,
+		Module:        r.Module,
 		APIVersion:    r.APIVersion,
 		Namespace:     r.Namespace,
 		Attributes:    r.Attributes,
