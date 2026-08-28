@@ -139,7 +139,6 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 
 	handler, exitCode := consoleHelpers.ResultsExitCode(&summary)
 	if handler.ShowError("results") && exitCode != 0 {
-		memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 		os.Exit(exitCode)
 	}
 
