@@ -16,9 +16,9 @@ This project was forked from [Checkmarx KICS](https://github.com/Checkmarx/kics)
 
 Visit the [releases](https://github.com/DataDog/datadog-iac-scanner/releases) page and download the binary archive for your operating system and architecture.
 
-* For Linux, choose the latest `datadog-iac-scanner_X.Y.Z_linux_amd64.tar.gz` (x86_64) or `datadog-iac-scanner_X.Y.Z_linux_arm64.tar.gz` (ARM64) file.
-* For macOS, choose the latest `datadog-iac-scanner_X.Y.Z_darwin_arm64.tar.gz` file. Intel hardware is not supported.
-* For Windows, choose the latest `datadog-iac-scanner_X.Y.Z_windows_amd64.zip` file.
+* For Linux, choose the latest `datadog-iac-scanner_linux_amd64.tar.gz` (x86_64) or `datadog-iac-scanner_linux_arm64.tar.gz` (ARM64) file.
+* For macOS, choose the latest `datadog-iac-scanner_darwin_amd64.tar.gz` (Intel) or `datadog-iac-scanner_darwin_arm64.tar.gz` (Apple Silicon) file.
+* For Windows, choose the latest `datadog-iac-scanner_windows_amd64.zip` file.
 
 ### Building from source
 
