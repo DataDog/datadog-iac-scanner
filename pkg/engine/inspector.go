@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
@@ -488,6 +489,7 @@ func (c *Inspector) Inspect(
 		c.flagEvaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files, targets)
+		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
 
 	// Must run after module mutations (which suppress module bodies in place).

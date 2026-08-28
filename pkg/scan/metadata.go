@@ -17,6 +17,10 @@ type ScanMetadata struct {
 	Stats ScanStats
 	// RuleStats contains statistics about rules.
 	RuleStats RuleStats
+	// PeakRSSBytes is the scanner process high-water resident set size.
+	PeakRSSBytes uint64 `json:",omitempty"`
+	// PeakRSSPhase is the scan phase in which PeakRSSBytes was reached.
+	PeakRSSPhase string `json:",omitempty"`
 }
 
 type ScanStats struct {

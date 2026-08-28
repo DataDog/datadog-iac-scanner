@@ -15,6 +15,7 @@ import (
 	"time"
 
 	consoleHelpers "github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
+	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -128,6 +129,7 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		scanResults.Files.Combine(ctx, c.ScanParams.LineInfoPayload),
 		c.Printer); err != nil {
 		contextLogger.Err(err).Msgf("failed to resolve outputs %v", err)
+		memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 		return metadata, err
 	}
 
@@ -142,6 +144,7 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 
 	// generate metadata payload
 	metadata = c.generateMetadata(scanResults, c.ScanStartTime, endTime)
+	memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 
 	return metadata, nil
 }

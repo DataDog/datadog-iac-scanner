@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -252,6 +253,8 @@ func (c *Client) Scan(ctx context.Context) (*Results, error) {
 func (c *Client) PerformScan(ctx context.Context) (ScanMetadata, error) {
 	contextLogger := logger.FromContext(ctx)
 	c.ScanStartTime = time.Now()
+	ctx, watcher := memwatch.Start(ctx, &contextLogger)
+	defer watcher.Stop()
 
 	scanResults, err := c.executeScan(ctx)
 
@@ -266,6 +269,10 @@ func (c *Client) PerformScan(ctx context.Context) (ScanMetadata, error) {
 		contextLogger.Err(postScanError)
 		return ScanMetadata{}, postScanError
 	}
+
+	peakBytes, peakPhase := watcher.Peak()
+	scanMetadata.PeakRSSBytes = peakBytes
+	scanMetadata.PeakRSSPhase = peakPhase
 
 	return scanMetadata, nil
 }

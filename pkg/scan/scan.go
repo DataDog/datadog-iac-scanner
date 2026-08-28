@@ -10,6 +10,7 @@ package scan
 import (
 	"context"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
@@ -64,6 +65,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		extractedPaths = provider.ExtractedPath{Path: c.inMemoryPaths}
 	} else {
 		paths, fp, err := c.prepareAndAnalyzePaths(ctx)
+		memwatch.Sample(ctx, memwatch.PhaseAnalyzePaths)
 		if err != nil {
 			contextLogger.Err(err).Msgf("failed to prepare and analyze paths %v", err)
 			return nil, err
@@ -88,6 +90,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	moduleCleanup, remoteModulePaths, remoteSourceDirs, remoteModuleProvenance, err := c.resolveTerraformModulesForScan(
 		ctx, paramsPlatforms, &extractedPaths, baselinePaths,
 	)
+	memwatch.Sample(ctx, memwatch.PhaseModuleResolve)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +132,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		c.ScanParams.UseRulesCache,
 	)
 	metrics.Metric.Stop()
+	memwatch.Sample(ctx, memwatch.PhaseGetQueries)
 	if err != nil {
 		return nil, err
 	}
