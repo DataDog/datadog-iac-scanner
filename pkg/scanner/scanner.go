@@ -9,6 +9,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -34,6 +35,7 @@ func PrepareAndScan(
 		flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing) {
 		err := runner.PrepareSharedWalk(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth)
 		metrics.Metric.Stop()
+		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
 			return err
 		}
@@ -61,12 +63,15 @@ func PrepareAndScan(
 	select {
 	case <-ctx.Done():
 		metrics.Metric.Stop()
+		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		return ctx.Err()
 	case <-wgDone:
 		metrics.Metric.Stop()
+		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		return StartScan(ctx, scanID, services)
 	case err := <-errCh:
 		metrics.Metric.Stop()
+		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		return err
 	}
 }
@@ -74,6 +79,7 @@ func PrepareAndScan(
 // StartScan will run concurrent scans by parser
 func StartScan(ctx context.Context, scanID string, services serviceSlice) error {
 	defer metrics.Metric.Stop()
+	defer memwatch.Sample(ctx, memwatch.PhaseStartScan)
 	metrics.Metric.Start("start_scan")
 	contextLogger := logger.FromContext(ctx)
 	var wg sync.WaitGroup
