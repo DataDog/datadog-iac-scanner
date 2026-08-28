@@ -73,7 +73,10 @@ type manifestEnvelope struct {
 	Modules       json.RawMessage `json:"modules"`
 }
 
-func LoadManifest(path string) (*Manifest, error) {
+func LoadManifest(ctx context.Context, path string) (*Manifest, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	manifestPath := filepath.Clean(path)
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -87,14 +90,14 @@ func LoadManifest(path string) (*Manifest, error) {
 	if envelope.SchemaVersion == nil {
 		m, err = loadLegacyManifest(envelope)
 	} else if *envelope.SchemaVersion == ManifestSchemaVersion {
-		m, err = loadManifestV1(manifestPath, envelope)
+		m, err = loadManifestV1(ctx, manifestPath, envelope)
 	} else {
 		err = fmt.Errorf("unsupported schema_version %d", *envelope.SchemaVersion)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid manifest %q: %w", path, err)
 	}
-	if err := m.validate(); err != nil {
+	if err := m.validate(ctx); err != nil {
 		return nil, fmt.Errorf("invalid manifest %q: %w", path, err)
 	}
 	return m, nil
@@ -115,7 +118,10 @@ func loadLegacyManifest(envelope manifestEnvelope) (*Manifest, error) {
 	return &Manifest{Dir: envelope.Dir, Modules: modules}, nil
 }
 
-func loadManifestV1(manifestPath string, envelope manifestEnvelope) (*Manifest, error) {
+func loadManifestV1(ctx context.Context, manifestPath string, envelope manifestEnvelope) (*Manifest, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if envelope.Root == "" || !filepath.IsLocal(envelope.Root) {
 		return nil, fmt.Errorf("root must be a non-empty relative path")
 	}
@@ -124,7 +130,7 @@ func loadManifestV1(manifestPath string, envelope manifestEnvelope) (*Manifest, 
 	if err != nil {
 		return nil, fmt.Errorf("resolving root: %w", err)
 	}
-	if _, err = resolveDirectory(context.Background(), root); err != nil {
+	if _, err = resolveDirectory(ctx, root); err != nil {
 		return nil, fmt.Errorf("resolving root: %w", err)
 	}
 	var entries []ManifestModule
@@ -142,14 +148,17 @@ func loadManifestV1(manifestPath string, envelope manifestEnvelope) (*Manifest, 
 		Entries:       entries,
 	}
 	for i := range manifest.Entries {
-		if err := manifest.addV1Entry(&manifest.Entries[i]); err != nil {
+		if err := manifest.addV1Entry(ctx, &manifest.Entries[i]); err != nil {
 			return nil, fmt.Errorf("modules[%d]: %w", i, err)
 		}
 	}
 	return manifest, nil
 }
 
-func (m *Manifest) addV1Entry(module *ManifestModule) error {
+func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	module.Source = strings.TrimSpace(module.Source)
 	if module.Source == "" {
 		return fmt.Errorf("source is required")
@@ -171,13 +180,13 @@ func (m *Manifest) addV1Entry(module *ManifestModule) error {
 	}
 	switch module.Status {
 	case manifestStatusResolved:
-		if err := m.resolveV1Paths(module, &entry); err != nil {
+		if err := m.resolveV1Paths(ctx, module, &entry); err != nil {
 			return err
 		}
 		if module.ContentDigest == "" {
 			return fmt.Errorf("content_digest is required for a resolved module")
 		}
-		digest, err := ComputePackageDigest(entry.PackageRoot)
+		digest, err := ComputePackageDigest(ctx, entry.PackageRoot)
 		if err != nil {
 			return fmt.Errorf("computing content digest: %w", err)
 		}
@@ -195,7 +204,10 @@ func (m *Manifest) addV1Entry(module *ManifestModule) error {
 	return nil
 }
 
-func (m *Manifest) resolveV1Paths(module *ManifestModule, entry *ManifestEntry) error {
+func (m *Manifest) resolveV1Paths(ctx context.Context, module *ManifestModule, entry *ManifestEntry) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if module.LocalPath == "" || !filepath.IsLocal(module.LocalPath) {
 		return fmt.Errorf("local_path must be a non-empty relative path")
 	}
@@ -208,10 +220,10 @@ func (m *Manifest) resolveV1Paths(module *ManifestModule, entry *ManifestEntry) 
 	}
 	entry.LocalPath = filepath.Join(m.Root, filepath.FromSlash(module.LocalPath))
 	entry.PackageRoot = filepath.Join(m.Root, filepath.FromSlash(packageRoot))
-	if _, err := ResolvePathWithinRoot(context.Background(), m.Root, entry.PackageRoot); err != nil {
+	if _, err := ResolvePathWithinRoot(ctx, m.Root, entry.PackageRoot); err != nil {
 		return fmt.Errorf("package_root %q escapes root: %w", module.PackageRoot, err)
 	}
-	if _, err := ResolvePathWithinRoot(context.Background(), entry.PackageRoot, entry.LocalPath); err != nil {
+	if _, err := ResolvePathWithinRoot(ctx, entry.PackageRoot, entry.LocalPath); err != nil {
 		return fmt.Errorf("local_path %q escapes package root: %w", module.LocalPath, err)
 	}
 	return nil
@@ -235,7 +247,10 @@ func validateManifestDeclarations(declarations []ManifestDeclaration) error {
 	return nil
 }
 
-func (m *Manifest) validate() error {
+func (m *Manifest) validate(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	for src := range m.Modules {
 		entry := m.Modules[src]
 		if entry.Status == manifestStatusUnresolved {
@@ -261,7 +276,7 @@ func (m *Manifest) validate() error {
 				}
 			}
 		}
-		confined, err := ConfineResolution(context.Background(), Resolution{
+		confined, err := ConfineResolution(ctx, Resolution{
 			LocalPath:   entry.LocalPath,
 			PackageRoot: entry.PackageRoot,
 		})
@@ -273,7 +288,7 @@ func (m *Manifest) validate() error {
 				"local_path":   confined.LocalPath,
 				"package_root": confined.PackageRoot,
 			} {
-				if _, err := ResolvePathWithinRoot(context.Background(), m.Dir, path); err != nil {
+				if _, err := ResolvePathWithinRoot(ctx, m.Dir, path); err != nil {
 					return fmt.Errorf("entry %q: resolved %s %q escapes dir %q: %w", src, field, path, m.Dir, err)
 				}
 			}

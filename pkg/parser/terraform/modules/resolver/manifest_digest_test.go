@@ -19,14 +19,14 @@ func TestComputePackageDigestIsStableAndContentSensitive(t *testing.T) {
 	file := filepath.Join(root, "nested", "main.tf")
 	require.NoError(t, os.WriteFile(file, []byte("first"), 0o644))
 
-	first, err := ComputePackageDigest(root)
+	first, err := ComputePackageDigest(t.Context(), root)
 	require.NoError(t, err)
-	again, err := ComputePackageDigest(root)
+	again, err := ComputePackageDigest(t.Context(), root)
 	require.NoError(t, err)
 	require.Equal(t, first, again)
 
 	require.NoError(t, os.WriteFile(file, []byte("second"), 0o644))
-	second, err := ComputePackageDigest(root)
+	second, err := ComputePackageDigest(t.Context(), root)
 	require.NoError(t, err)
 	require.NotEqual(t, first, second)
 }

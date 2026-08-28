@@ -56,3 +56,23 @@ func TestWriteModuleEntriesEmitsJSONArray(t *testing.T) {
 	require.Len(t, entries, 1)
 	require.Equal(t, "vpc", entries[0].Name)
 }
+
+func TestModuleEntriesFromPathsFollowsSymlinkedRoot(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "repo")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+}
+`), 0o644))
+
+	link := filepath.Join(base, "repo-link")
+	require.NoError(t, os.Symlink(root, link))
+
+	entries, err := moduleEntriesFromPaths(t.Context(), []string{link}, false)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "vpc", entries[0].Name)
+	require.Equal(t, "main.tf", entries[0].FileName)
+}

@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ func TestLoadManifestJSONShape(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(manifestPath, manifestData, 0o644))
 
-	m, err := LoadManifest(manifestPath)
+	m, err := LoadManifest(t.Context(), manifestPath)
 	require.NoError(t, err)
 	require.Equal(t, resolvedDir, m.Dir)
 
@@ -75,7 +76,7 @@ func TestLoadManifestV1ResolvesRelativePackageAndVerifiesDigest(t *testing.T) {
 	moduleDir := filepath.Join(packageRoot, "modules", "vpc")
 	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`resource "x" "y" {}`), 0o644))
-	digest, err := ComputePackageDigest(packageRoot)
+	digest, err := ComputePackageDigest(t.Context(), packageRoot)
 	require.NoError(t, err)
 
 	manifestPath := filepath.Join(dir, "modules.json")
@@ -100,7 +101,7 @@ func TestLoadManifestV1ResolvesRelativePackageAndVerifiesDigest(t *testing.T) {
 		}},
 	})
 
-	manifest, err := LoadManifest(manifestPath)
+	manifest, err := LoadManifest(t.Context(), manifestPath)
 	require.NoError(t, err)
 	resolution, err := NewPrefetchedResolver(manifest).Resolve(t.Context(), &tfmodules.ParsedModule{
 		Source:  "terraform-aws-modules/vpc/aws",
@@ -133,7 +134,7 @@ func TestLoadManifestV1PreservesUnresolvedStatus(t *testing.T) {
 		}},
 	})
 
-	manifest, err := LoadManifest(manifestPath)
+	manifest, err := LoadManifest(t.Context(), manifestPath)
 	require.NoError(t, err)
 	_, err = NewPrefetchedResolver(manifest).Resolve(t.Context(), &tfmodules.ParsedModule{
 		Source: "example.invalid/module",
@@ -164,7 +165,7 @@ func TestLoadManifestV1RejectsDigestMismatch(t *testing.T) {
 		}},
 	})
 
-	_, err := LoadManifest(manifestPath)
+	_, err := LoadManifest(t.Context(), manifestPath)
 	require.ErrorContains(t, err, "content_digest mismatch")
 }
 
@@ -193,7 +194,7 @@ func TestLoadManifestV1RejectsLocalPathOutsidePackageRoot(t *testing.T) {
 		}},
 	})
 
-	_, err := LoadManifest(manifestPath)
+	_, err := LoadManifest(t.Context(), manifestPath)
 	require.ErrorContains(t, err, "escapes package root")
 }
 
@@ -225,7 +226,7 @@ func TestLoadManifestPreservesPackageRootForSiblingModules(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(manifestPath, manifestData, 0o644))
 
-	manifest, err := LoadManifest(manifestPath)
+	manifest, err := LoadManifest(t.Context(), manifestPath)
 	require.NoError(t, err)
 	resolution, err := NewPrefetchedResolver(manifest).Resolve(t.Context(), &tfmodules.ParsedModule{
 		Source: "example/module/aws",
@@ -258,6 +259,41 @@ func TestLoadManifestRejectsSymlinkEscape(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(manifestPath, manifestData, 0o644))
 
-	_, err = LoadManifest(manifestPath)
+	_, err = LoadManifest(t.Context(), manifestPath)
 	require.ErrorContains(t, err, "escapes package root")
+}
+
+func TestLoadManifestRespectsCancelledContext(t *testing.T) {
+	dir := t.TempDir()
+	packageRoot := filepath.Join(dir, "modules", "vpc-package")
+	moduleDir := filepath.Join(packageRoot, "modules", "vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`resource "x" "y" {}`), 0o644))
+	digest, err := ComputePackageDigest(t.Context(), packageRoot)
+	require.NoError(t, err)
+
+	manifestPath := filepath.Join(dir, "modules.json")
+	writeManifestJSON(t, manifestPath, map[string]any{
+		"schema_version": ManifestSchemaVersion,
+		"root":           "modules",
+		"modules": []map[string]any{{
+			"source":           "terraform-aws-modules/vpc/aws",
+			"package_root":     "vpc-package",
+			"local_path":       "vpc-package/modules/vpc",
+			"content_digest":   digest,
+			"status":           "resolved",
+			"declarations": []map[string]any{{
+				"filename":    "infra/main.tf",
+				"line_start":  12,
+				"line_end":    18,
+				"module_name": "vpc",
+			}},
+		}},
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = LoadManifest(ctx, manifestPath)
+	require.ErrorIs(t, err, context.Canceled)
 }

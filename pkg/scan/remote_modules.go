@@ -53,7 +53,10 @@ func (c *Client) resolveTerraformModulesForScan(
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	chain, err := c.buildModuleResolverChain(ctx, moduleDiscoveryPaths)
+	resolveCtx, cancel := c.moduleResolutionContext(ctx)
+	defer cancel()
+
+	chain, err := c.buildModuleResolverChain(resolveCtx, moduleDiscoveryPaths)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -64,7 +67,7 @@ func (c *Client) resolveTerraformModulesForScan(
 		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
-	result := c.resolveTerraformModuleGraph(ctx, extractedPaths.Path, moduleDiscoveryPaths, baselinePaths, chain)
+	result := c.resolveTerraformModuleGraph(resolveCtx, extractedPaths.Path, moduleDiscoveryPaths, baselinePaths, chain)
 	if result.TimedOut {
 		contextLogger.Warn().Dur("timeout", c.ScanParams.ModuleResolutionTimeout).
 			Msg("Terraform module resolution timed out; scanning modules resolved before the deadline")
@@ -134,13 +137,7 @@ func (c *Client) resolveTerraformModuleGraph(
 	if packageFiles == 0 {
 		packageFiles = DefaultRemoteModuleMaxPackageFiles
 	}
-	resolveCtx := ctx
-	cancel := func() {}
-	if timeout := c.ScanParams.ModuleResolutionTimeout; timeout > 0 {
-		resolveCtx, cancel = context.WithTimeout(ctx, timeout)
-	}
-	defer cancel()
-	return modulegraph.Resolve(resolveCtx, &modulegraph.Request{
+	return modulegraph.Resolve(ctx, &modulegraph.Request{
 		RootPaths:      rootPaths,
 		DiscoveryPaths: discoveryPaths,
 		Resolver:       moduleResolver,
@@ -168,6 +165,13 @@ func resolvedModuleSourceType(module *modulegraph.ResolvedModule) string {
 	return sourceType
 }
 
+func (c *Client) moduleResolutionContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if timeout := c.ScanParams.ModuleResolutionTimeout; timeout > 0 {
+		return context.WithTimeout(ctx, timeout)
+	}
+	return ctx, func() {}
+}
+
 func (c *Client) shouldPreScanTerraformModules(_ []string) bool {
 	mode := c.ScanParams.TerraformModulesMode
 	return mode == TerraformModulesModeOffline || mode == TerraformModulesModeFetch
@@ -184,7 +188,7 @@ func (c *Client) buildModuleResolverChain(
 	}
 
 	if c.ScanParams.RemoteModulesManifestPath != "" {
-		manifest, err := tfresolver.LoadManifest(c.ScanParams.RemoteModulesManifestPath)
+		manifest, err := tfresolver.LoadManifest(ctx, c.ScanParams.RemoteModulesManifestPath)
 		if err != nil {
 			return nil, err
 		}

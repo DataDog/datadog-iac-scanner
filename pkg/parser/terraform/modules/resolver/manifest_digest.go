@@ -6,6 +6,7 @@
 package resolver
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -17,7 +18,10 @@ import (
 )
 
 // ComputePackageDigest hashes regular files by relative path, size, and content.
-func ComputePackageDigest(root string) (string, error) {
+func ComputePackageDigest(ctx context.Context, root string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	resolvedRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return "", fmt.Errorf("resolving package root: %w", err)
@@ -26,6 +30,9 @@ func ComputePackageDigest(root string) (string, error) {
 	err = filepath.WalkDir(resolvedRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if entry.IsDir() {
 			return nil

@@ -65,52 +65,67 @@ func loadModuleDiscoveryFiles(paths []string) (model.FileMetadatas, []string, er
 	roots := make([]string, 0, len(paths))
 	seen := make(map[string]bool)
 	for _, input := range paths {
-		absolute, err := filepath.Abs(input)
+		walkRoot, root, err := resolveModuleDiscoveryRoot(input)
 		if err != nil {
-			return nil, nil, fmt.Errorf("resolving path %q: %w", input, err)
-		}
-		info, err := os.Stat(absolute)
-		if err != nil {
-			return nil, nil, fmt.Errorf("reading path %q: %w", input, err)
-		}
-		root := absolute
-		if !info.IsDir() {
-			root = filepath.Dir(absolute)
+			return nil, nil, err
 		}
 		roots = append(roots, root)
-		err = filepath.WalkDir(absolute, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if entry.IsDir() {
-				if path != absolute && (entry.Name() == ".git" || entry.Name() == ".terraform") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if entry.Type()&fs.ModeSymlink != 0 || !strings.HasSuffix(strings.ToLower(entry.Name()), ".tf") {
-				return nil
-			}
-			clean := filepath.Clean(path)
-			if seen[clean] {
-				return nil
-			}
-			data, err := os.ReadFile(clean) //nolint:gosec
-			if err != nil {
-				return err
-			}
-			seen[clean] = true
-			files = append(files, &model.FileMetadata{
-				FilePath:     clean,
-				OriginalData: string(data),
-			})
-			return nil
-		})
-		if err != nil {
+		if err := walkTerraformDiscoveryRoot(walkRoot, seen, &files); err != nil {
 			return nil, nil, fmt.Errorf("walking path %q: %w", input, err)
 		}
 	}
 	return files, roots, nil
+}
+
+func resolveModuleDiscoveryRoot(input string) (walkRoot, root string, err error) {
+	absolute, err := filepath.Abs(input)
+	if err != nil {
+		return "", "", fmt.Errorf("resolving path %q: %w", input, err)
+	}
+	walkRoot, err = filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return "", "", fmt.Errorf("resolving path %q: %w", input, err)
+	}
+	info, err := os.Stat(walkRoot)
+	if err != nil {
+		return "", "", fmt.Errorf("reading path %q: %w", input, err)
+	}
+	root = walkRoot
+	if !info.IsDir() {
+		root = filepath.Dir(walkRoot)
+	}
+	return walkRoot, root, nil
+}
+
+func walkTerraformDiscoveryRoot(walkRoot string, seen map[string]bool, files *model.FileMetadatas) error {
+	return filepath.WalkDir(walkRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if path != walkRoot && (entry.Name() == ".git" || entry.Name() == ".terraform") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type()&fs.ModeSymlink != 0 || !strings.HasSuffix(strings.ToLower(entry.Name()), ".tf") {
+			return nil
+		}
+		clean := filepath.Clean(path)
+		if seen[clean] {
+			return nil
+		}
+		data, err := os.ReadFile(clean) //nolint:gosec
+		if err != nil {
+			return err
+		}
+		seen[clean] = true
+		*files = append(*files, &model.FileMetadata{
+			FilePath:     clean,
+			OriginalData: string(data),
+		})
+		return nil
+	})
 }
 
 func modulePathRelativeToRoots(path string, roots []string) string {

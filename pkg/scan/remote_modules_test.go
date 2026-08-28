@@ -120,7 +120,7 @@ resource "aws_vpc" "this" {
 			},
 		},
 	})
-	digest, err := resolver.ComputePackageDigest(moduleDir)
+	digest, err := resolver.ComputePackageDigest(t.Context(), moduleDir)
 	require.NoError(t, err)
 	v1Path := filepath.Join(base, "v1.json")
 	writeJSONFile(t, v1Path, map[string]any{
