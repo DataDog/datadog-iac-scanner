@@ -17,6 +17,7 @@ func TestListModuleEntriesJSONShape(t *testing.T) {
 			RegistryScope: "public",
 			FileName:      "/repo/main.tf",
 			DefLine:       12,
+			DefEndLine:    18,
 		},
 	}, false)
 
@@ -36,6 +37,7 @@ func TestListModuleEntriesJSONShape(t *testing.T) {
 	require.Equal(t, "public", row["registry_scope"])
 	require.Equal(t, "/repo/main.tf", row["file_name"])
 	require.Equal(t, float64(12), row["def_line"])
+	require.Equal(t, float64(18), row["def_end_line"])
 }
 
 func TestListModuleEntriesSkipsLocalByDefault(t *testing.T) {

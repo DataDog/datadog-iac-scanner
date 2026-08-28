@@ -174,6 +174,75 @@ func TestTerraformPlanFlag(t *testing.T) {
 	}
 }
 
+func TestTerraformModuleFlagsUseAuthoritativeMode(t *testing.T) {
+	names := make(map[string]bool)
+	for _, flag := range scanAction.Flags {
+		switch typed := flag.(type) {
+		case *cli.StringFlag:
+			names[typed.Name] = true
+		case *cli.StringSliceFlag:
+			names[typed.Name] = true
+		case *cli.IntFlag:
+			names[typed.Name] = true
+		case *cli.Int64Flag:
+			names[typed.Name] = true
+		case *cli.DurationFlag:
+			names[typed.Name] = true
+		case *cli.BoolFlag:
+			names[typed.Name] = true
+		}
+	}
+
+	require.True(t, names["terraform-modules-mode"])
+	require.True(t, names["terraform-modules-manifest"])
+	require.True(t, names["module-resolution-timeout"])
+	require.True(t, names["module-cache-dir"])
+	require.True(t, names["module-cache-max-bytes"])
+	require.True(t, names["module-allowed-hosts"])
+	require.False(t, names["x-remote-modules"])
+	require.True(t, names["x-local-module-eval"])
+}
+
+func TestLocalModuleEvalEnabled(t *testing.T) {
+	tests := []struct {
+		name       string
+		legacyFlag bool
+		mode       scan.TerraformModulesMode
+		want       bool
+	}{
+		{
+			name:       "default prod path keeps local eval without module pre-scan mode",
+			legacyFlag: true,
+			mode:       scan.TerraformModulesModeOff,
+			want:       true,
+		},
+		{
+			name:       "mode off without legacy flag disables local eval",
+			legacyFlag: false,
+			mode:       scan.TerraformModulesModeOff,
+			want:       false,
+		},
+		{
+			name:       "offline mode enables local eval for remote resolution",
+			legacyFlag: false,
+			mode:       scan.TerraformModulesModeOffline,
+			want:       true,
+		},
+		{
+			name:       "fetch mode enables local eval for remote resolution",
+			legacyFlag: false,
+			mode:       scan.TerraformModulesModeFetch,
+			want:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, localModuleEvalEnabled(tt.legacyFlag, tt.mode))
+		})
+	}
+}
+
 func TestValidateQueriesPaths(t *testing.T) {
 	tmp := t.TempDir()
 
