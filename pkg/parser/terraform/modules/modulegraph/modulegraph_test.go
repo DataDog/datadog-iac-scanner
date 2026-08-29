@@ -190,6 +190,139 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 	}}, result.Modules)
 }
 
+func writeTerraformModulesManifest(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, ".terraform", "modules")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "modules.json"), []byte(`{"Modules":[]}`), 0o644))
+}
+
+func writeRegistryModuleCaller(t *testing.T, dir, moduleName, source string) string {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	path := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`
+module %q {
+  source = %q
+}
+`, moduleName, source)), 0o644))
+	return path
+}
+
+func TestRegistryResolveIdentity(t *testing.T) {
+	t.Parallel()
+
+	source := "terraform-registry.us1.ddbuild.io/cloud-inventory/iam-helper/aws"
+	base := t.TempDir()
+	workspace := filepath.Join(base, "workspace")
+	writeTerraformModulesManifest(t, workspace)
+	writeTerraformModulesManifest(t, filepath.Join(base, "other"))
+
+	sameA := &tfmodules.ParsedModule{
+		FileName: filepath.Join(workspace, "a", "main.tf"),
+		Source:   source,
+		Name:     "helper_a",
+	}
+	sameB := &tfmodules.ParsedModule{
+		FileName: filepath.Join(workspace, "b", "main.tf"),
+		Source:   source,
+		Name:     "helper_b",
+	}
+	otherWorkspace := &tfmodules.ParsedModule{
+		FileName: filepath.Join(base, "other", "main.tf"),
+		Source:   source,
+		Name:     "helper_c",
+	}
+	pinned := &tfmodules.ParsedModule{
+		FileName: sameA.FileName,
+		Source:   "cloud-inventory/bucket/aws",
+		Version:  "~> 9.0",
+		Name:     "bucket",
+	}
+	uninitA := &tfmodules.ParsedModule{
+		FileName: filepath.Join("/repo", "a", "main.tf"),
+		Source:   source,
+		Name:     "helper_a",
+	}
+	uninitB := &tfmodules.ParsedModule{
+		FileName: filepath.Join("/repo", "b", "main.tf"),
+		Source:   source,
+		Name:     "helper_b",
+	}
+
+	require.Equal(t, remoteResolveIdentity(sameA), remoteResolveIdentity(sameB))
+	require.NotEqual(t, remoteResolveIdentity(sameA), remoteResolveIdentity(otherWorkspace))
+	require.NotEqual(t, remoteResolveIdentity(sameA), remoteResolveIdentity(pinned))
+	require.NotEqual(t, remoteResolveIdentity(uninitA), remoteResolveIdentity(uninitB))
+}
+
+func TestResolveDedupesUnpinnedRegistryModulesWithinWorkspace(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	workspace := filepath.Join(base, "workspace")
+	writeTerraformModulesManifest(t, workspace)
+
+	source := "terraform-registry.us1.ddbuild.io/cloud-inventory/iam-helper/aws"
+	moduleDir := filepath.Join(base, "module")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`
+resource "aws_iam_role" "this" {}
+`), 0o644))
+
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{source: {LocalPath: moduleDir}},
+		calls:    make(map[string]int),
+	}
+	result := Resolve(t.Context(), &Request{
+		RootPaths: []string{base},
+		DiscoveryPaths: []string{
+			writeRegistryModuleCaller(t, filepath.Join(workspace, "a"), "helper_a", source),
+			writeRegistryModuleCaller(t, filepath.Join(workspace, "b"), "helper_b", source),
+		},
+		Resolver: tracker,
+		MaxDepth: 2,
+	})
+
+	require.Equal(t, 1, tracker.callCount(source))
+	require.Len(t, result.Modules, 2)
+	require.Equal(t, []string{filepath.Join(moduleDir, "main.tf")}, result.ScanPaths)
+}
+
+func TestResolveSeparatesUnpinnedRegistryModulesByWorkspace(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	workspaceA := filepath.Join(base, "a")
+	workspaceB := filepath.Join(base, "b")
+	writeTerraformModulesManifest(t, workspaceA)
+	writeTerraformModulesManifest(t, workspaceB)
+
+	source := "terraform-registry.us1.ddbuild.io/cloud-inventory/iam-helper/aws"
+	moduleDir := filepath.Join(base, "module")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`
+resource "aws_iam_role" "this" {}
+`), 0o644))
+
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{source: {LocalPath: moduleDir}},
+		calls:    make(map[string]int),
+	}
+	result := Resolve(t.Context(), &Request{
+		RootPaths: []string{base},
+		DiscoveryPaths: []string{
+			writeRegistryModuleCaller(t, workspaceA, "helper_a", source),
+			writeRegistryModuleCaller(t, workspaceB, "helper_b", source),
+		},
+		Resolver: tracker,
+		MaxDepth: 2,
+	})
+
+	require.Equal(t, 2, tracker.callCount(source))
+	require.Len(t, result.Modules, 2)
+}
+
 func TestResolveThreadsRegistryIdentity(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "root")

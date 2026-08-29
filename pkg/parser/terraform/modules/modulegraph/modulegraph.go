@@ -981,20 +981,36 @@ func moduleCallRoot(mod *tfmodules.ParsedModule) string {
 	return filepath.Clean(filepath.Dir(mod.FileName))
 }
 
+// terraformWorkspaceRoot finds the nearest ancestor directory containing
+// .terraform/modules/modules.json, matching DotTerraformResolver lookup scope.
+func terraformWorkspaceRoot(fileName string) string {
+	if fileName == "" {
+		return "."
+	}
+	clean := filepath.Clean(filepath.Dir(fileName))
+	fallback := clean
+	for {
+		if _, err := os.Stat(filepath.Join(clean, ".terraform", "modules", "modules.json")); err == nil {
+			return clean
+		}
+		parent := filepath.Dir(clean)
+		if parent == clean {
+			return fallback
+		}
+		clean = parent
+	}
+}
+
 func remoteResolveIdentity(mod *tfmodules.ParsedModule) string {
 	sourceType, _ := tfmodules.DetectModuleSourceType(mod.Source)
-	if sourceType == sourceTypeRegistry && mod.Version == "" {
-		return callKey(moduleCallRoot(mod), mod.Source, mod.Version, mod.Name)
+	if sourceType == sourceTypeRegistry {
+		return terraformWorkspaceRoot(mod.FileName) + "\x00" + strings.TrimSpace(mod.Source) + "\x00" +
+			strings.TrimSpace(mod.Version)
 	}
 	if key, ok := resolver.GitModuleResolveKey(mod.Source, mod.Version); ok {
 		return key
 	}
 	return canonicalGitModuleSource(mod.Source) + "\x00" + strings.TrimSpace(mod.Version)
-}
-
-func callKey(root, source, version, name string) string {
-	return filepath.Clean(root) + "\x00" + strings.TrimSpace(source) + "\x00" +
-		strings.TrimSpace(version) + "\x00" + strings.TrimSpace(name)
 }
 
 func flatTerraformFilePaths(ctx context.Context, dir, packageRoot string) []string {
