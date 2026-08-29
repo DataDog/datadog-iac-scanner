@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
@@ -1067,4 +1068,28 @@ func TestGetProviderFromResourceType(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenerateEquivalentMapIgnoresTerraformJSON(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+resource "aws_s3_bucket" "example" {
+  bucket = var.name
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.tf.json"), []byte(`{
+  "resource": {
+    "aws_s3_bucket": {
+      "json": {
+        "bucket": "${var.other}"
+      }
+    }
+  }
+}`), 0o600))
+
+	equivalent, err := generateEquivalentMap(ctx, vfs.DiskFS{}, dir)
+	require.NoError(t, err)
+	require.Contains(t, equivalent, "aws")
+	require.Contains(t, equivalent["aws"].Inputs, "bucket")
 }
