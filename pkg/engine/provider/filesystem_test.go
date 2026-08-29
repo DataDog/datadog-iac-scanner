@@ -802,3 +802,21 @@ func TestIsUnderChartRoot_normalizesSeparators(t *testing.T) {
 	}
 	require.False(t, isUnderChartRoot(`D:/charts/other/templates/svc.yaml`, []string{root}))
 }
+
+func TestTerraformFilesIncludesTfJSON(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`module "a" {}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf.json"), []byte(`{"module":{}}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{}`), 0o600))
+
+	provider, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+	require.NoError(t, err)
+
+	files, err := provider.TerraformFiles(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		filepath.ToSlash(filepath.Join(dir, "main.tf")),
+		filepath.ToSlash(filepath.Join(dir, "main.tf.json")),
+	}, files)
+}

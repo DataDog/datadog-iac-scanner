@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
 type resolvedPathCacheKey struct{}
@@ -116,7 +118,9 @@ func pathEscapesDir(rel string) bool {
 	return rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
-// ScannableTerraformPath reports whether a directory entry is a .tf file that can be read.
+// ScannableTerraformPath reports whether a directory entry is an HCL .tf file that
+// the main Terraform parser can scan. JSON configuration is handled separately for
+// module discovery but is not yet emitted in module scan paths.
 // Regular files are accepted. Symlinks are accepted only when their target is a regular
 // file confined within packageRoot (or dir when packageRoot is empty).
 func ScannableTerraformPath(ctx context.Context, entry fs.DirEntry, dir, packageRoot string) (path string, ok bool) {
@@ -124,7 +128,7 @@ func ScannableTerraformPath(ctx context.Context, entry fs.DirEntry, dir, package
 		return "", false
 	}
 	name := entry.Name()
-	if !strings.HasSuffix(strings.ToLower(name), ".tf") {
+	if !tfmodules.IsTerraformHCLPath(name) {
 		return "", false
 	}
 	candidate := filepath.Join(dir, name)

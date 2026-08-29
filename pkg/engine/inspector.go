@@ -619,7 +619,7 @@ func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas
 	for _, platform := range platforms {
 		if strings.EqualFold(platform, "Terraform") {
 			for _, file := range files {
-				if file != nil && isTerraformFile(file.FilePath) {
+				if file != nil && tfmodules.IsTerraformConfigPath(file.FilePath) {
 					return true
 				}
 			}

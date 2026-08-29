@@ -167,30 +167,75 @@ func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
 	}
 }
 
-// TerraformFiles returns the sorted list of .tf file paths covered by this provider,
-// used by the module graph-walker to discover module call sites before scanning.
+// TerraformFiles returns Terraform config paths used for module discovery before
+// scanning: native .tf files plus .tf.json files (still classified as .json for
+// the scan pipeline).
 func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string, error) {
-	extensions := model.Extensions{".tf": {}}
+	hclExtensions := model.Extensions{".tf": {}}
+	jsonExtensions := model.Extensions{".json": {}}
+	seen := make(map[string]struct{})
 	var files []string
+	add := func(path string) {
+		norm := filepath.ToSlash(path)
+		if _, ok := seen[norm]; ok {
+			return
+		}
+		seen[norm] = struct{}{}
+		files = append(files, norm)
+	}
+
 	for _, scanPath := range s.paths {
 		fileInfo, err := os.Stat(scanPath)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to open path")
 		}
 		if !fileInfo.IsDir() {
-			if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, extensions, scanPath, nil); shouldSkip {
-				continue
+			if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, hclExtensions, scanPath, nil); !shouldSkip {
+				add(scanPath)
 			}
-			files = append(files, filepath.ToSlash(scanPath))
+			if strings.HasSuffix(strings.ToLower(scanPath), ".tf.json") {
+				if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, jsonExtensions, scanPath, nil); !shouldSkip {
+					add(scanPath)
+				}
+			}
 			continue
 		}
-		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, extensions)
+
+		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, hclExtensions)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to collect files")
 		}
-		files = append(files, collected...)
+		for _, path := range collected {
+			add(path)
+		}
+
+		jsonCollected, err := s.collectTerraformJSONModuleFiles(ctx, scanPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to collect terraform json module files")
+		}
+		for _, path := range jsonCollected {
+			add(path)
+		}
 	}
+	sort.Strings(files)
 	return files, nil
+}
+
+func (s *FileSystemSourceProvider) collectTerraformJSONModuleFiles(ctx context.Context, scanPath string) ([]string, error) {
+	extensions := model.Extensions{".json": {}}
+	var files []string
+	err := s.walkDirectory(ctx, scanPath, extensions,
+		func(ctx context.Context, path string, resolved *[]string) error {
+			return s.resolveChartDir(ctx, path, unavailableResolverSink, resolved)
+		},
+		func(_ context.Context, path, _ string) error {
+			if !strings.HasSuffix(strings.ToLower(path), ".tf.json") {
+				return nil
+			}
+			files = append(files, strings.ReplaceAll(path, "\\", "/"))
+			return nil
+		})
+	return files, err
 }
 
 func unavailableResolverSink(context.Context, string) ([]string, error) {

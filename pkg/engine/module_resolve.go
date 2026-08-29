@@ -85,7 +85,7 @@ func (c *Inspector) instantiateLocalModules(
 	}
 	rootDirs := newRootIndex(res.rootDirs)
 	for _, f := range files {
-		if f == nil || !isTerraformFile(f.FilePath) {
+		if f == nil || !tfmodules.IsTerraformConfigPath(f.FilePath) {
 			continue
 		}
 		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
@@ -136,7 +136,7 @@ func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) b
 		return true
 	}
 	for _, f := range files {
-		if f == nil || !isTerraformFile(f.FilePath) {
+		if f == nil || !tfmodules.IsTerraformConfigPath(f.FilePath) {
 			continue
 		}
 		resources, ok := asStringMap(f.Document["resource"])
@@ -1008,7 +1008,7 @@ func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPat
 	filesByDir = make(map[string][]*model.FileMetadata)
 	dirsWithTf = make(map[string]bool)
 	for _, f := range files {
-		if f == nil || !isTerraformFile(f.FilePath) {
+		if f == nil || !tfmodules.IsTerraformConfigPath(f.FilePath) {
 			continue
 		}
 		abs := absPath(f.FilePath, repoPath)
@@ -1045,8 +1045,4 @@ func absPath(p, base string) string {
 		return filepath.Clean(p)
 	}
 	return filepath.Clean(filepath.Join(base, p))
-}
-
-func isTerraformFile(path string) bool {
-	return strings.HasSuffix(strings.ToLower(path), ".tf")
 }
