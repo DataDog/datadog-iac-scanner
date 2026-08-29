@@ -193,7 +193,7 @@ func TestTerraformModuleFlagsUseAuthoritativeMode(t *testing.T) {
 		}
 	}
 
-	require.True(t, names["terraform-modules-mode"])
+	require.True(t, names["terraform-modules"])
 	require.True(t, names["terraform-modules-manifest"])
 	require.True(t, names["module-resolution-timeout"])
 	require.True(t, names["module-cache-dir"])
@@ -207,38 +207,32 @@ func TestLocalModuleEvalEnabled(t *testing.T) {
 	tests := []struct {
 		name       string
 		legacyFlag bool
-		mode       scan.TerraformModulesMode
+		setting    scan.TerraformModulesSetting
 		want       bool
 	}{
 		{
 			name:       "default prod path keeps local eval without module pre-scan mode",
 			legacyFlag: true,
-			mode:       scan.TerraformModulesModeOff,
+			setting:    scan.TerraformModulesOff,
 			want:       true,
 		},
 		{
 			name:       "mode off without legacy flag disables local eval",
 			legacyFlag: false,
-			mode:       scan.TerraformModulesModeOff,
+			setting:    scan.TerraformModulesOff,
 			want:       false,
 		},
 		{
-			name:       "offline mode enables local eval for remote resolution",
+			name:       "on mode enables local eval for remote resolution",
 			legacyFlag: false,
-			mode:       scan.TerraformModulesModeOffline,
-			want:       true,
-		},
-		{
-			name:       "fetch mode enables local eval for remote resolution",
-			legacyFlag: false,
-			mode:       scan.TerraformModulesModeFetch,
+			setting:    scan.TerraformModulesOn,
 			want:       true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, localModuleEvalEnabled(tt.legacyFlag, tt.mode))
+			assert.Equal(t, tt.want, localModuleEvalEnabled(tt.legacyFlag, tt.setting))
 		})
 	}
 }

@@ -61,10 +61,8 @@ func (c *Client) resolveTerraformModulesForScan(
 		return nil, nil, nil, nil, err
 	}
 
-	if c.ScanParams.TerraformModulesMode == TerraformModulesModeFetch {
+	if c.ScanParams.TerraformModules == TerraformModulesOn {
 		contextLogger.Info().Msg("Resolving remote Terraform modules...")
-	} else {
-		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
 	result := c.resolveTerraformModuleGraph(resolveCtx, extractedPaths.Path, moduleDiscoveryPaths, baselinePaths, chain)
@@ -181,8 +179,7 @@ func (c *Client) moduleResolutionContext(ctx context.Context) (context.Context, 
 }
 
 func (c *Client) shouldPreScanTerraformModules(_ []string) bool {
-	mode := c.ScanParams.TerraformModulesMode
-	return mode == TerraformModulesModeOffline || mode == TerraformModulesModeFetch
+	return c.ScanParams.TerraformModules == TerraformModulesOn
 }
 
 func (c *Client) buildModuleResolverChain(
@@ -203,7 +200,7 @@ func (c *Client) buildModuleResolverChain(
 		resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
 	}
 
-	if c.ScanParams.TerraformModulesMode != TerraformModulesModeFetch {
+	if c.ScanParams.TerraformModules != TerraformModulesOn {
 		return tfresolver.NewChainResolver(resolvers...), nil
 	}
 
