@@ -82,6 +82,14 @@ func (c *Client) resolveTerraformModulesForScan(
 			Int("shedding_rank", event.SheddingRank).
 			Msg("Terraform module excluded by resource budget")
 	}
+	for _, failure := range result.Failures {
+		contextLogger.Warn().
+			Str("module_source", failure.Source).
+			Str("module_name", failure.Name).
+			Str("caller_root", failure.CallerRoot).
+			Str("reason", failure.Reason).
+			Msg("Terraform module resolution failed")
+	}
 	if len(result.ScanPaths) > 0 {
 		contextLogger.Info().Msgf("Adding %d remote module file(s) to scan", len(result.ScanPaths))
 	}

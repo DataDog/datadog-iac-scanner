@@ -177,6 +177,9 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 	}, result.SourceMappings)
 	require.Equal(t, []ResolvedModule{{
 		CallerRoot:      root,
+		CallerFile:      filepath.Join(root, "main.tf"),
+		CallerLine:      2,
+		CallerEndLine:   5,
 		Source:          "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1",
 		Version:         "1.2.3",
 		Name:            "network",
@@ -218,6 +221,9 @@ resource "aws_s3_bucket" "this" {}
 	}, result.SourceMappings)
 	require.Equal(t, []ResolvedModule{{
 		CallerRoot:      root,
+		CallerFile:      filepath.Join(root, "main.tf"),
+		CallerLine:      2,
+		CallerEndLine:   5,
 		Source:          "cloud-inventory/bucket/aws",
 		Version:         "~> 9.0",
 		ResolvedVersion: "9.1.0",
@@ -866,6 +872,20 @@ module "extra" {
 	require.Contains(t, result.ScanPaths, filepath.Join(selected, "main.tf"))
 	require.Contains(t, result.ScanPaths, filepath.Join(shared, "main.tf"))
 	require.Contains(t, result.ScanPaths, filepath.Join(extra, "main.tf"))
+}
+
+func TestResolveReportsResolutionFailure(t *testing.T) {
+	root, _ := writeModuleGraphFixture(t)
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       mapResolver{bySource: map[string]resolver.Resolution{}},
+		MaxDepth:       2,
+	})
+	require.Empty(t, result.Modules)
+	require.Len(t, result.Failures, 1)
+	require.Equal(t, "network", result.Failures[0].Name)
+	require.Contains(t, result.Failures[0].Reason, "unknown source")
 }
 
 func TestResolveReturnsPartialResultWhenPhaseDeadlineExpires(t *testing.T) {
