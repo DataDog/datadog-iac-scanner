@@ -122,6 +122,18 @@ func Test_yamlRootHasAnyKey(t *testing.T) {
 			keys:    []string{"resources"},
 			want:    true,
 		},
+		{
+			name:    "go template root is not a flow mapping",
+			content: "{{ .Rule.Name }}-publish:\n  stage: publish\n",
+			keys:    []string{"resources"},
+			want:    false,
+		},
+		{
+			name:    "helm template root is not a flow mapping",
+			content: "{{- if .Values.enabled }}\nmetadata:\n  name: demo\n",
+			keys:    []string{"resources"},
+			want:    false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -251,4 +263,49 @@ metadata:
   name: demo
 `)
 	require.Equal(t, "", checkYamlPlatform(ctx, content, "manifest.yaml"))
+}
+
+func Test_isYamlTemplatePath(t *testing.T) {
+	require.True(t, isYamlTemplatePath("domains/foo/ci.tpl.yaml"))
+	require.True(t, isYamlTemplatePath("domains/foo/ci.tpl.yml"))
+	require.True(t, isYamlTemplatePath("domains/foo/ephemera-kind-e2e-tpl.yaml"))
+	require.False(t, isYamlTemplatePath("domains/foo/pipeline.yaml"))
+}
+
+func Test_yamlHasRootTemplateSyntax(t *testing.T) {
+	require.True(t, yamlHasRootTemplateSyntax([]byte("stages:\n  - test\n\n{{ .Rule.Name }}-job:\n  script: echo hi\n")))
+	require.True(t, yamlHasRootTemplateSyntax([]byte("{{- if .Values.enabled }}\nmetadata:\n  name: demo\n")))
+	require.False(t, yamlHasRootTemplateSyntax([]byte("stages:\n  - test\njob:\n  script: echo hi\n")))
+	require.False(t, yamlHasRootTemplateSyntax([]byte("stages:\n  - test\n  {{ .Nested }}: value\n")))
+}
+
+func Test_checkYamlPlatform_skipsUnrenderedTemplates(t *testing.T) {
+	ctx := context.Background()
+
+	gitlabCI := []byte(`stages:
+  - publish
+
+{{ .Rule.Name }}-publish:
+  stage: publish
+  script:
+    - bzl run //domains/foo:target
+`)
+	require.Equal(t, "", checkYamlPlatform(ctx, gitlabCI, "domains/foo/pipeline.yaml"))
+
+	helmFabric := []byte(`{{- if .Values.fabric.egress.enabled }}
+metadata:
+  name: demo
+spec:
+  rules: []
+`)
+	require.Equal(t, "", checkYamlPlatform(ctx, helmFabric, "domains/foo/config/k8s/fabric/egress-acl.yaml"))
+}
+
+func Test_checkYamlPlatform_parseableTplYamlStillClassified(t *testing.T) {
+	content := []byte(`- name: demo
+  hosts: "{{ target_hosts }}"
+  tasks:
+    - debug: msg=hi
+`)
+	require.Equal(t, ansible, checkYamlPlatform(context.Background(), content, "playbooks/site.tpl.yaml"))
 }

@@ -118,6 +118,18 @@ type sharedQueryCacheResult struct {
 	cacheHit bool
 }
 
+// ResetCompiledQueryCachesForTest clears process-global compiled-query caches.
+func ResetCompiledQueryCachesForTest() {
+	sharedPreparedQueryCache.Lock()
+	sharedPreparedQueryCache.key = 0
+	sharedPreparedQueryCache.queries = nil
+	sharedPreparedQueryCache.Unlock()
+	preparedQueryCache.Range(func(k, _ any) bool {
+		preparedQueryCache.Delete(k)
+		return true
+	})
+}
+
 // hashFields computes a fast, non-cryptographic 64-bit hash of the given strings
 // joined by a NUL separator. The NUL separator keeps the field boundaries
 // unambiguous (so e.g. ("a","bc") and ("ab","c") hash differently).
