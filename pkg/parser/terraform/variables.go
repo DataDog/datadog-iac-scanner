@@ -180,8 +180,9 @@ func getInputVariables(
 	for _, tfFile := range tfFiles {
 		vars, locals, err := getInputVariablesAndLocalsFromFile(fsys, tfFile)
 		if err != nil {
-			contextLogger.Error().Msgf("Error getting default values and locals from %s", tfFile)
-			contextLogger.Err(err)
+			// Non-fatal: a sibling may be unreadable (broken symlink, partial
+			// MemFS push) or invalid HCL (testdata). Match getDataSourcePolicy.
+			contextLogger.Debug().Err(err).Msgf("Skipping default values and locals from %s", tfFile)
 			continue
 		}
 		mergeMaps(variablesMap, vars)
@@ -202,8 +203,7 @@ func getInputVariables(
 	for _, tfVarsFile := range tfVarsFiles {
 		vars, errInput := getInputVariablesFromFile(fsys, tfVarsFile)
 		if errInput != nil {
-			contextLogger.Error().Msgf("Error getting values from %s", tfVarsFile)
-			contextLogger.Err(errInput)
+			contextLogger.Warn().Err(errInput).Msgf("Skipping values from %s", tfVarsFile)
 			continue
 		}
 		mergeMaps(variablesMap, vars)
@@ -223,8 +223,7 @@ func getInputVariables(
 		if _, err := fsys.Stat(terraformVarsPath); err == nil {
 			vars, errInput := getInputVariablesFromFile(fsys, terraformVarsPath)
 			if errInput != nil {
-				contextLogger.Error().Msgf("Error getting values from %s", terraformVarsPath)
-				contextLogger.Err(errInput)
+				contextLogger.Error().Err(errInput).Msgf("Error getting values from %s", terraformVarsPath)
 			} else {
 				mergeMaps(variablesMap, vars)
 			}
