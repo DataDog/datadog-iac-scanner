@@ -1021,6 +1021,29 @@ func TestResolveReportsResolutionFailure(t *testing.T) {
 	require.Contains(t, result.Failures[0].Reason, "unknown source")
 }
 
+func TestResolveReportsRedactedResolutionFailureCredentials(t *testing.T) {
+	source := "git::https://user:secret@example.com/modules/vpc.git"
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(fmt.Sprintf(`
+module "vpc" {
+  source = %q
+}
+`, source)), 0o644))
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       mapResolver{bySource: map[string]resolver.Resolution{}},
+		MaxDepth:       2,
+	})
+
+	require.Len(t, result.Failures, 1)
+	require.NotContains(t, result.Failures[0].Source, "user:secret@")
+	require.Contains(t, result.Failures[0].Source, "example.com/modules/vpc.git")
+	require.NotContains(t, result.Failures[0].Reason, "user:secret@")
+	require.Contains(t, result.Failures[0].Reason, "example.com/modules/vpc.git")
+}
+
 func TestResolveReturnsPartialResultWhenPhaseDeadlineExpires(t *testing.T) {
 	root, _ := writeModuleGraphFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)

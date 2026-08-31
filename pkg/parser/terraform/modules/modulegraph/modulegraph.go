@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -470,10 +471,10 @@ func (c *resultCollector) addResolutionFailure(mod *tfmodules.ParsedModule, err 
 		CallerFile:    mod.FileName,
 		CallerLine:    mod.DefLine,
 		CallerEndLine: mod.DefEndLine,
-		Source:        mod.Source,
+		Source:        model.RedactURLCredentials(mod.Source),
 		Version:       mod.Version,
 		Name:          mod.Name,
-		Reason:        err.Error(),
+		Reason:        model.RedactURLCredentials(err.Error()),
 	})
 }
 
