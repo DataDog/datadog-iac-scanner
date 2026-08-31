@@ -79,15 +79,27 @@ func WriteResult(
 		return Response{}, err
 	}
 	response := buildResponse(entries, result, maxResponseEntries)
+	// Encode the response first so we know it's within bounds before touching the manifest.
+	responseData, err := encodeResponse(&response)
+	if err != nil {
+		return Response{}, err
+	}
 	if response.Status == StatusComplete {
 		if err := resolver.WriteManifest(ctx, manifestPath, moduleRoot, entries); err != nil {
 			return Response{}, err
 		}
 		response.ManifestPath = filepath.ToSlash(manifestPath)
+		// Re-encode with manifest path now included.
+		responseData, err = encodeResponse(&response)
+		if err != nil {
+			// Manifest was written; remove it to leave no stale artifact.
+			_ = removeStaleManifest(manifestPath)
+			return Response{}, err
+		}
 	} else if err := removeStaleManifest(manifestPath); err != nil {
 		return Response{}, err
 	}
-	if err := writeResponse(responsePath, &response); err != nil {
+	if err := writeResponseBytes(responsePath, responseData); err != nil {
 		return Response{}, err
 	}
 	return response, nil
@@ -389,15 +401,19 @@ func removeStaleManifest(path string) error {
 	return nil
 }
 
-func writeResponse(path string, response *Response) error {
+func encodeResponse(response *Response) ([]byte, error) {
 	data, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encoding module preparation response: %w", err)
+		return nil, fmt.Errorf("encoding module preparation response: %w", err)
 	}
 	data = append(data, '\n')
 	if len(data) > maxResponseBytes {
-		return fmt.Errorf("module preparation response exceeds %d bytes", maxResponseBytes)
+		return nil, fmt.Errorf("module preparation response exceeds %d bytes", maxResponseBytes)
 	}
+	return data, nil
+}
+
+func writeResponseBytes(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, privateDirectoryMode); err != nil {
 		return fmt.Errorf("creating response directory: %w", err)

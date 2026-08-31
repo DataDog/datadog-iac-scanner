@@ -31,3 +31,22 @@ func TestModuleIdentitiesSeparateCallsAndDeduplicateAcquisition(t *testing.T) {
 		ModuleAcquisitionKey(second.Source, second.Version),
 	)
 }
+
+func TestModuleCallIDStripsCredentials(t *testing.T) {
+	withCredentials := &tfmodules.ParsedModule{
+		FileName:   filepath.Join("/repo", "main.tf"),
+		DefLine:    1,
+		DefEndLine: 3,
+		Name:       "vpc",
+		Source:     "git::https://token:secret@github.com/acme/network.git?ref=v1",
+	}
+	withoutCredentials := &tfmodules.ParsedModule{
+		FileName:   withCredentials.FileName,
+		DefLine:    withCredentials.DefLine,
+		DefEndLine: withCredentials.DefEndLine,
+		Name:       withCredentials.Name,
+		Source:     "git::https://github.com/acme/network.git?ref=v1",
+	}
+
+	require.Equal(t, ParsedModuleCallID(withCredentials), ParsedModuleCallID(withoutCredentials))
+}

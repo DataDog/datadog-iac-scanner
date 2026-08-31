@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -28,7 +29,7 @@ func ModuleCallID(
 		fmt.Sprint(lineStart),
 		fmt.Sprint(lineEnd),
 		strings.TrimSpace(moduleName),
-		strings.TrimSpace(source),
+		redactSourceCredentials(source),
 		strings.TrimSpace(version),
 	)
 }
@@ -68,4 +69,26 @@ func digestIdentity(values ...string) string {
 		_, _ = hasher.Write([]byte{0})
 	}
 	return "sha256:" + hex.EncodeToString(hasher.Sum(nil))
+}
+
+// redactSourceCredentials strips embedded userinfo from git-getter source strings.
+func redactSourceCredentials(source string) string {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return ""
+	}
+	// Strip "scheme::" getter prefix so the underlying URL can be parsed.
+	stripped := source
+	if idx := strings.Index(source, "::"); idx >= 0 {
+		stripped = source[idx+2:]
+	}
+	u, err := url.Parse(stripped)
+	if err != nil || u.User == nil {
+		return source
+	}
+	u.User = nil
+	if idx := strings.Index(source, "::"); idx >= 0 {
+		return source[:idx+2] + u.String()
+	}
+	return u.String()
 }

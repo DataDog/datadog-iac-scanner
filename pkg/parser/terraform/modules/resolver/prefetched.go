@@ -401,7 +401,7 @@ func (r *PrefetchedResolver) validateEntry(mod *tfmodules.ParsedModule, entry *M
 		return &tfmodules.UnresolvedError{Reason: entry.Failure}
 	}
 	if r.manifest.SchemaVersion == ManifestSchemaVersion &&
-		strings.TrimSpace(entry.Source) != strings.TrimSpace(mod.Source) {
+		strings.TrimSpace(entry.Source) != redactSourceCredentials(mod.Source) {
 		return &tfmodules.UnresolvedError{
 			Reason: fmt.Sprintf("module %q not found in manifest", mod.Source),
 		}
