@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -108,7 +107,7 @@ func walkTerraformDiscoveryRoot(walkRoot string, seen map[string]bool, files *mo
 			}
 			return nil
 		}
-		if entry.Type()&fs.ModeSymlink != 0 || !strings.HasSuffix(strings.ToLower(entry.Name()), ".tf") {
+		if entry.Type()&fs.ModeSymlink != 0 || !tfmodules.IsTerraformConfigPath(path) {
 			return nil
 		}
 		clean := filepath.Clean(path)

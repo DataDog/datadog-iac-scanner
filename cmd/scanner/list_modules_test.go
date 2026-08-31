@@ -57,6 +57,31 @@ func TestWriteModuleEntriesEmitsJSONArray(t *testing.T) {
 	require.Equal(t, "vpc", entries[0].Name)
 }
 
+func TestModuleEntriesFromPathsListsTerraformJSONDeclarations(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf.json"), []byte(`{
+  "module": {
+    "vpc": {
+      "source": "terraform-aws-modules/vpc/aws",
+      "version": "5.0.0"
+    }
+  }
+}`), 0o644))
+
+	entries, err := moduleEntriesFromPaths(t.Context(), []string{root}, false)
+	require.NoError(t, err)
+	require.Equal(t, []tfmodules.ListModuleEntry{{
+		Name:          "vpc",
+		Source:        "terraform-aws-modules/vpc/aws",
+		Version:       "5.0.0",
+		SourceType:    "registry",
+		RegistryScope: "public",
+		FileName:      "main.tf.json",
+		DefLine:       1,
+		DefEndLine:    1,
+	}}, entries)
+}
+
 func TestModuleEntriesFromPathsFollowsSymlinkedRoot(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "repo")
