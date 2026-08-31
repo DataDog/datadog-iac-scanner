@@ -95,7 +95,7 @@ func encodeManifest(relativeRoot string, entries []ManifestModule) ([]byte, erro
 		if a.RequestedVersion != b.RequestedVersion {
 			return a.RequestedVersion < b.RequestedVersion
 		}
-		return a.ID < b.ID
+		return a.RequestID < b.RequestID
 	})
 
 	data, err := json.MarshalIndent(struct {

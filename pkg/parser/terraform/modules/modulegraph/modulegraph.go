@@ -43,6 +43,7 @@ type Request struct {
 }
 
 type ResolvedModule struct {
+	RequestID         string
 	CallerRoot        string
 	CallerFile        string
 	CallerLine        int
@@ -82,6 +83,7 @@ type BudgetEvent struct {
 }
 
 type ResolutionFailure struct {
+	RequestID     string
 	CallerRoot    string
 	CallerFile    string
 	CallerLine    int
@@ -461,6 +463,7 @@ func (c *resultCollector) addResolvedModule(
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.modules = append(c.modules, ResolvedModule{
+		RequestID:         resolver.ParsedModuleCallID(mod),
 		CallerRoot:        moduleCallRoot(mod),
 		CallerFile:        mod.FileName,
 		CallerLine:        mod.DefLine,
@@ -509,6 +512,7 @@ func (c *resultCollector) addResolutionFailure(mod *tfmodules.ParsedModule, err 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.failures = append(c.failures, ResolutionFailure{
+		RequestID:     resolver.ParsedModuleCallID(mod),
 		CallerRoot:    moduleCallRoot(mod),
 		CallerFile:    mod.FileName,
 		CallerLine:    mod.DefLine,

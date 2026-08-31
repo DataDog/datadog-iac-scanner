@@ -142,6 +142,86 @@ func TestLoadManifestV1PreservesUnresolvedStatus(t *testing.T) {
 	require.ErrorContains(t, err, "credentials_unavailable")
 }
 
+func TestPrefetchedResolverRequiresExactVersionForV1Entry(t *testing.T) {
+	dir := t.TempDir()
+	moduleDir := filepath.Join(dir, "modules", "vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte("resource"), 0o600))
+	digest, err := ComputePackageDigest(t.Context(), moduleDir)
+	require.NoError(t, err)
+	caller := filepath.Join(dir, "repo", "main.tf")
+	versioned := &tfmodules.ParsedModule{
+		FileName:   caller,
+		DefLine:    1,
+		DefEndLine: 3,
+		Name:       "vpc",
+		Source:     "terraform-aws-modules/vpc/aws",
+		Version:    "5.0.0",
+	}
+	manifestPath := filepath.Join(dir, "manifest.json")
+	writeManifestJSON(t, manifestPath, map[string]any{
+		"schema_version": ManifestSchemaVersion,
+		"root":           "modules",
+		"modules": []map[string]any{{
+			"request_id":     ParsedModuleCallID(versioned),
+			"source":         versioned.Source,
+			"local_path":     "vpc",
+			"content_digest": digest,
+			"status":         ManifestStatusResolved,
+			"declarations": []map[string]any{{
+				"filename":    "main.tf",
+				"line_start":  1,
+				"line_end":    3,
+				"module_name": "vpc",
+			}},
+		}},
+	})
+	manifest, err := LoadManifest(t.Context(), manifestPath)
+	require.NoError(t, err)
+
+	_, err = NewPrefetchedResolver(manifest).Resolve(t.Context(), versioned)
+	require.ErrorContains(t, err, "version")
+}
+
+func TestPrefetchedResolverMatchesCallAfterWorkspaceMoves(t *testing.T) {
+	dir := t.TempDir()
+	moduleDir := filepath.Join(dir, "modules", "vpc")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte("resource"), 0o600))
+	digest, err := ComputePackageDigest(t.Context(), moduleDir)
+	require.NoError(t, err)
+	source := "terraform-aws-modules/vpc/aws"
+	manifestPath := filepath.Join(dir, "manifest.json")
+	writeManifestJSON(t, manifestPath, map[string]any{
+		"schema_version": ManifestSchemaVersion,
+		"root":           "modules",
+		"modules": []map[string]any{{
+			"request_id":     ModuleCallID("/old/repo/main.tf", 1, 3, "vpc", source, ""),
+			"source":         source,
+			"local_path":     "vpc",
+			"content_digest": digest,
+			"status":         ManifestStatusResolved,
+			"declarations": []map[string]any{{
+				"filename":    "repo/main.tf",
+				"line_start":  1,
+				"line_end":    3,
+				"module_name": "vpc",
+			}},
+		}},
+	})
+	manifest, err := LoadManifest(t.Context(), manifestPath)
+	require.NoError(t, err)
+
+	_, err = NewPrefetchedResolver(manifest).Resolve(t.Context(), &tfmodules.ParsedModule{
+		FileName:   "/new/repo/main.tf",
+		DefLine:    1,
+		DefEndLine: 3,
+		Name:       "vpc",
+		Source:     source,
+	})
+	require.NoError(t, err)
+}
+
 func TestLoadManifestV1RejectsDigestMismatch(t *testing.T) {
 	dir := t.TempDir()
 	moduleDir := filepath.Join(dir, "modules", "vpc")

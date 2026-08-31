@@ -176,6 +176,14 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 		moduleDir: "git::https://github.com/acme/network//modules/vpc?ref=v1",
 	}, result.SourceMappings)
 	require.Equal(t, []ResolvedModule{{
+		RequestID: resolver.ModuleCallID(
+			filepath.Join(root, "main.tf"),
+			2,
+			5,
+			"network",
+			"git::https://git@github.com/acme/network.git//modules/vpc?ref=v1",
+			"1.2.3",
+		),
 		CallerRoot:      root,
 		CallerFile:      filepath.Join(root, "main.tf"),
 		CallerLine:      2,
@@ -400,6 +408,14 @@ resource "aws_s3_bucket" "this" {}
 		moduleDir: "registry.terraform.io/cloud-inventory/bucket/aws@9.1.0",
 	}, result.SourceMappings)
 	require.Equal(t, []ResolvedModule{{
+		RequestID: resolver.ModuleCallID(
+			filepath.Join(root, "main.tf"),
+			2,
+			5,
+			"bucket",
+			"cloud-inventory/bucket/aws",
+			"~> 9.0",
+		),
 		CallerRoot:      root,
 		CallerFile:      filepath.Join(root, "main.tf"),
 		CallerLine:      2,

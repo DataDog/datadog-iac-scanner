@@ -80,7 +80,8 @@ func (c *Client) resolveTerraformModulesForScan(
 			Int("shedding_rank", event.SheddingRank).
 			Msg("Terraform module excluded by resource budget")
 	}
-	for _, failure := range result.Failures {
+	for index := range result.Failures {
+		failure := &result.Failures[index]
 		contextLogger.Warn().
 			Str("module_source", failure.Source).
 			Str("module_name", failure.Name).

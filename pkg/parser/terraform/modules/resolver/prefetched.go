@@ -23,6 +23,7 @@ const (
 )
 
 type ManifestEntry struct {
+	Source           string `json:"source,omitempty"`
 	LocalPath        string `json:"local_path"`
 	PackageRoot      string `json:"package_root,omitempty"`
 	Version          string `json:"version,omitempty"`
@@ -43,7 +44,8 @@ type Manifest struct {
 }
 
 type ManifestModule struct {
-	ID               string                `json:"id,omitempty"`
+	RequestID        string                `json:"request_id,omitempty"`
+	AcquisitionKey   string                `json:"acquisition_key,omitempty"`
 	Source           string                `json:"source"`
 	NormalizedSource string                `json:"normalized_source,omitempty"`
 	CanonicalSource  string                `json:"canonical_source,omitempty"`
@@ -58,7 +60,6 @@ type ManifestModule struct {
 	ContentDigest    string                `json:"content_digest,omitempty"`
 	PackageRoot      string                `json:"package_root,omitempty"`
 	LocalPath        string                `json:"local_path,omitempty"`
-	StagingRoute     string                `json:"staging_route,omitempty"`
 	Status           string                `json:"status"`
 	Failure          string                `json:"failure,omitempty"`
 	Declarations     []ManifestDeclaration `json:"declarations"`
@@ -172,11 +173,15 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error
 	if err := validateManifestDeclarations(module.Declarations); err != nil {
 		return err
 	}
-	key := manifestModuleKey(module.Source, strings.TrimSpace(module.RequestedVersion))
+	key := strings.TrimSpace(module.RequestID)
+	if key == "" {
+		key = manifestModuleKey(module.Source, strings.TrimSpace(module.RequestedVersion))
+	}
 	if _, exists := m.Modules[key]; exists {
 		return fmt.Errorf("duplicate module %q", key)
 	}
 	entry := ManifestEntry{
+		Source:           module.Source,
 		RequestedVersion: strings.TrimSpace(module.RequestedVersion),
 		ResolvedVersion:  strings.TrimSpace(module.ResolvedVersion),
 		ResolvedRef:      strings.TrimSpace(module.ResolvedRef),
@@ -316,22 +321,14 @@ func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 	if mod.IsLocal {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
 	}
-	entry, ok := r.manifest.Modules[manifestModuleKey(mod.Source, mod.Version)]
-	if !ok {
-		entry, ok = r.manifest.Modules[mod.Source]
-	}
+	entry, ok := r.entryForModule(mod)
 	if !ok {
 		return Resolution{}, &tfmodules.UnresolvedError{
 			Reason: fmt.Sprintf("module %q not found in manifest", mod.Source),
 		}
 	}
-	if entry.Status == ManifestStatusUnresolved {
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: entry.Failure}
-	}
-	if entry.RequestedVersion != "" && mod.Version != "" && entry.RequestedVersion != mod.Version {
-		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: fmt.Sprintf("module %q version %q not found in manifest", mod.Source, mod.Version),
-		}
+	if err := r.validateEntry(mod, &entry); err != nil {
+		return Resolution{}, err
 	}
 	return ConfineResolution(ctx, Resolution{
 		LocalPath:       entry.LocalPath,
@@ -339,6 +336,89 @@ func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 		ResolvedVersion: firstNonEmpty(entry.ResolvedVersion, entry.Version),
 		ResolvedRef:     entry.ResolvedRef,
 	})
+}
+
+func (r *PrefetchedResolver) entryForModule(mod *tfmodules.ParsedModule) (ManifestEntry, bool) {
+	var entry ManifestEntry
+	var ok bool
+	if r.manifest.SchemaVersion == ManifestSchemaVersion {
+		entry, ok = r.manifest.Modules[ParsedModuleCallID(mod)]
+		if !ok {
+			entry, ok = r.portableV1Entry(mod)
+		}
+		if !ok {
+			entry, ok = r.manifest.Modules[manifestModuleKey(mod.Source, mod.Version)]
+		}
+	} else {
+		entry, ok = r.manifest.Modules[manifestModuleKey(mod.Source, mod.Version)]
+	}
+	if !ok && r.manifest.SchemaVersion != ManifestSchemaVersion {
+		entry, ok = r.manifest.Modules[mod.Source]
+	}
+	return entry, ok
+}
+
+func (r *PrefetchedResolver) portableV1Entry(mod *tfmodules.ParsedModule) (ManifestEntry, bool) {
+	var matched ManifestEntry
+	matchCount := 0
+	for index := range r.manifest.Entries {
+		module := &r.manifest.Entries[index]
+		if strings.TrimSpace(module.Source) != strings.TrimSpace(mod.Source) ||
+			strings.TrimSpace(module.RequestedVersion) != strings.TrimSpace(mod.Version) ||
+			!declarationMatchesModule(module.Declarations, mod) {
+			continue
+		}
+		key := strings.TrimSpace(module.RequestID)
+		if key == "" {
+			key = manifestModuleKey(module.Source, module.RequestedVersion)
+		}
+		entry, exists := r.manifest.Modules[key]
+		if !exists {
+			continue
+		}
+		matched = entry
+		matchCount++
+	}
+	return matched, matchCount == 1
+}
+
+func declarationMatchesModule(declarations []ManifestDeclaration, mod *tfmodules.ParsedModule) bool {
+	filename := filepath.ToSlash(filepath.Clean(mod.FileName))
+	for _, declaration := range declarations {
+		declarationPath := filepath.ToSlash(filepath.Clean(declaration.Filename))
+		if declaration.ModuleName == mod.Name &&
+			declaration.LineStart == mod.DefLine &&
+			declaration.LineEnd == mod.DefEndLine &&
+			(filename == declarationPath || strings.HasSuffix(filename, "/"+declarationPath)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *PrefetchedResolver) validateEntry(mod *tfmodules.ParsedModule, entry *ManifestEntry) error {
+	if entry.Status == ManifestStatusUnresolved {
+		return &tfmodules.UnresolvedError{Reason: entry.Failure}
+	}
+	if r.manifest.SchemaVersion == ManifestSchemaVersion &&
+		strings.TrimSpace(entry.Source) != strings.TrimSpace(mod.Source) {
+		return &tfmodules.UnresolvedError{
+			Reason: fmt.Sprintf("module %q not found in manifest", mod.Source),
+		}
+	}
+	if r.manifest.SchemaVersion == ManifestSchemaVersion &&
+		strings.TrimSpace(entry.RequestedVersion) != strings.TrimSpace(mod.Version) {
+		return &tfmodules.UnresolvedError{
+			Reason: fmt.Sprintf("module %q version %q not found in manifest", mod.Source, mod.Version),
+		}
+	}
+	if r.manifest.SchemaVersion != ManifestSchemaVersion &&
+		entry.RequestedVersion != "" && mod.Version != "" && entry.RequestedVersion != mod.Version {
+		return &tfmodules.UnresolvedError{
+			Reason: fmt.Sprintf("module %q version %q not found in manifest", mod.Source, mod.Version),
+		}
+	}
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {
