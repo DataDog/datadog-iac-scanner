@@ -70,6 +70,25 @@ func TestOnModeBuildsNetworkResolvers(t *testing.T) {
 	require.True(t, foundNetwork)
 }
 
+func TestOnModeSkipsNetworkResolversWhenNetworkIsolated(t *testing.T) {
+	client := &Client{ScanParams: &Parameters{
+		TerraformModules: TerraformModulesOn,
+		NetworkIsolation: true,
+	}}
+
+	chain, err := client.buildModuleResolverChain(t.Context(), []string{t.TempDir()})
+	require.NoError(t, err)
+
+	resolvers := reflect.ValueOf(chain).Elem().FieldByName("resolvers")
+	require.Equal(t, 2, resolvers.Len())
+	for i := 0; i < resolvers.Len(); i++ {
+		resolverType := resolvers.Index(i).Elem().Type().String()
+		require.NotContains(t, resolverType, "GoGetter")
+		require.NotContains(t, resolverType, "BareGit")
+		require.NotContains(t, resolverType, "LocalGitRef")
+	}
+}
+
 func TestOnModeRejectsMalformedManifest(t *testing.T) {
 	manifestPath := filepath.Join(t.TempDir(), "modules.json")
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`{"schema_version":1}`), 0o644))

@@ -200,7 +200,7 @@ func (c *Client) buildModuleResolverChain(
 		resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
 	}
 
-	if c.ScanParams.TerraformModules != TerraformModulesOn {
+	if c.ScanParams.TerraformModules != TerraformModulesOn || c.ScanParams.NetworkIsolation {
 		return tfresolver.NewChainResolver(resolvers...), nil
 	}
 

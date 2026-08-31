@@ -411,6 +411,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 		TerraformModules:            modulesSetting,
+		NetworkIsolation:            offlineBundlePath != "",
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),
 		RemoteModulesHostAllowlist:  c.StringSlice("module-allowed-hosts"),
 		ModuleMaxDepth:              c.Int("terraform-modules-max-depth"),

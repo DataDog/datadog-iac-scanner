@@ -1004,8 +1004,12 @@ func terraformWorkspaceRoot(fileName string) string {
 func remoteResolveIdentity(mod *tfmodules.ParsedModule) string {
 	sourceType, _ := tfmodules.DetectModuleSourceType(mod.Source)
 	if sourceType == sourceTypeRegistry {
-		return terraformWorkspaceRoot(mod.FileName) + "\x00" + strings.TrimSpace(mod.Source) + "\x00" +
+		identity := terraformWorkspaceRoot(mod.FileName) + "\x00" + strings.TrimSpace(mod.Source) + "\x00" +
 			strings.TrimSpace(mod.Version)
+		if strings.TrimSpace(mod.Version) == "" {
+			identity += "\x00" + strings.TrimSpace(mod.Name)
+		}
+		return identity
 	}
 	if key, ok := resolver.GitModuleResolveKey(mod.Source, mod.Version); ok {
 		return key

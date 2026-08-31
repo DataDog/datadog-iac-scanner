@@ -87,8 +87,10 @@ type Parameters struct {
 	DisableRuleIsolation        bool
 	UseRulesCache               bool
 	TerraformModules            TerraformModulesSetting
-	RemoteModulesManifestPath   string
-	RemoteModulesHostAllowlist  []string
+	// NetworkIsolation disables outbound module fetchers so scans stay offline.
+	NetworkIsolation           bool
+	RemoteModulesManifestPath  string
+	RemoteModulesHostAllowlist []string
 	// ModuleMaxDepth caps the BFS depth of the remote-module graph walker (0 disables traversal entirely).
 	ModuleMaxDepth          int
 	ModuleFetchTimeout      time.Duration

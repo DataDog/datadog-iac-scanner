@@ -250,13 +250,13 @@ func TestRegistryResolveIdentity(t *testing.T) {
 		Name:     "helper_b",
 	}
 
-	require.Equal(t, remoteResolveIdentity(sameA), remoteResolveIdentity(sameB))
+	require.NotEqual(t, remoteResolveIdentity(sameA), remoteResolveIdentity(sameB))
 	require.NotEqual(t, remoteResolveIdentity(sameA), remoteResolveIdentity(otherWorkspace))
 	require.NotEqual(t, remoteResolveIdentity(sameA), remoteResolveIdentity(pinned))
 	require.NotEqual(t, remoteResolveIdentity(uninitA), remoteResolveIdentity(uninitB))
 }
 
-func TestResolveDedupesUnpinnedRegistryModulesWithinWorkspace(t *testing.T) {
+func TestResolveResolvesUnpinnedRegistryModulesSeparatelyByCallName(t *testing.T) {
 	t.Parallel()
 
 	base := t.TempDir()
@@ -284,7 +284,7 @@ resource "aws_iam_role" "this" {}
 		MaxDepth: 2,
 	})
 
-	require.Equal(t, 1, tracker.callCount(source))
+	require.Equal(t, 2, tracker.callCount(source))
 	require.Len(t, result.Modules, 2)
 	require.Equal(t, []string{filepath.Join(moduleDir, "main.tf")}, result.ScanPaths)
 }
