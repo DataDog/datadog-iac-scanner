@@ -190,6 +190,53 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 	}}, result.Modules)
 }
 
+func TestResolveAppliesModuleCountLimitDeterministically(t *testing.T) {
+	root := t.TempDir()
+	sources := []string{
+		"example.com/acme/a/aws",
+		"example.com/acme/b/aws",
+		"example.com/acme/c/aws",
+	}
+	caller := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(caller, []byte(`
+module "c" { source = "example.com/acme/c/aws" }
+module "a" { source = "example.com/acme/a/aws" }
+module "b" { source = "example.com/acme/b/aws" }
+`), 0o644))
+	resolutions := make(map[string]resolver.Resolution, len(sources))
+	for _, source := range sources {
+		dir := filepath.Join(root, filepath.Base(filepath.Dir(source)))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "outputs.tf"), []byte("output \"x\" {}"), 0o644))
+		resolutions[source] = resolver.Resolution{LocalPath: dir, PackageRoot: dir}
+	}
+
+	for range 5 {
+		result := Resolve(t.Context(), &Request{
+			RootPaths:      []string{root},
+			DiscoveryPaths: []string{caller},
+			Resolver:       mapResolver{bySource: resolutions},
+			MaxDepth:       2,
+			MaxModules:     2,
+			ResourceLimits: resolver.ResourceLimits{
+				MaxPackageBytes: 10_000,
+				MaxFileBytes:    1_000,
+				MaxPackageFiles: 10,
+				MaxTotalBytes:   100_000,
+			},
+		})
+
+		require.True(t, result.ModuleLimitReached)
+		require.Equal(t, []string{sources[0], sources[1]}, []string{
+			result.Modules[0].Source,
+			result.Modules[1].Source,
+		})
+		require.Len(t, result.BudgetEvents, 1)
+		require.Equal(t, "module_count", result.BudgetEvents[0].Limit)
+		require.Equal(t, sources[2], result.BudgetEvents[0].Source)
+	}
+}
+
 func writeTerraformModulesManifest(t *testing.T, root string) {
 	t.Helper()
 	dir := filepath.Join(root, ".terraform", "modules")

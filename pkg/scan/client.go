@@ -44,6 +44,7 @@ func ParseTerraformModules(value string) (TerraformModulesSetting, error) {
 
 const (
 	DefaultRemoteModuleMaxDepth        = 8
+	DefaultRemoteModuleMaxModules      = 1024
 	DefaultRemoteModuleMaxTotalBytes   = tfresolver.DefaultMaxTotalBytes
 	DefaultRemoteModuleMaxPackageBytes = tfresolver.DefaultMaxPackageBytes
 	DefaultRemoteModuleMaxFileBytes    = tfresolver.DefaultMaxFileBytes
@@ -94,6 +95,7 @@ type Parameters struct {
 	RemoteModulesHostAllowlist []string
 	// ModuleMaxDepth caps the BFS depth of the remote-module graph walker (0 disables traversal entirely).
 	ModuleMaxDepth          int
+	ModuleMaxModules        int
 	ModuleFetchTimeout      time.Duration
 	MaxModuleBytesTotal     int64
 	MaxModulePackageBytes   int64

@@ -35,6 +35,7 @@ type Request struct {
 	DiscoveryPaths  []string
 	Resolver        resolver.Resolver
 	MaxDepth        int
+	MaxModules      int
 	ResourceLimits  resolver.ResourceLimits
 	BaselinePaths   []string
 	TotalParseBytes int64
@@ -66,6 +67,7 @@ type Result struct {
 	BudgetEvents         []BudgetEvent
 	BaselineParseBytes   int64
 	ModuleAdmissionBytes int64
+	ModuleLimitReached   bool
 	TimedOut             bool
 	Cleanup              func()
 }
@@ -164,6 +166,8 @@ type walker struct {
 	acquisitionBytes int64
 	acquisitionBase  int64
 	maxDepth         int
+	maxModules       int
+	moduleCount      int
 	fsys             vfs.FS
 }
 
@@ -204,22 +208,14 @@ func Resolve(ctx context.Context, request *Request) Result {
 		admissionBytes:   moduleMaximum,
 		acquisitionBytes: acquisitionAllowance(moduleMaximum),
 		maxDepth:         request.MaxDepth,
+		maxModules:       request.MaxModules,
 		fsys:             request.FS,
 	}
 	if enforceAdmission {
 		w.acquisitionBase = budget.TotalUsage().Bytes
 	}
 	seedGroups, repositoryGroups := w.seedGroups(ctx, request.RootPaths, request.DiscoveryPaths)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(max(1, runtime.GOMAXPROCS(0)*seedGroupConcurrencyFactor))
-	for seedDir, allowedFiles := range seedGroups {
-		g.Go(func() error {
-			w.traverse(gCtx, seedDir, allowedFiles, repositoryGroups, 0, "")
-			return nil
-		})
-	}
-	_ = g.Wait()
+	w.traverseSeedGroups(ctx, seedGroups, repositoryGroups)
 	if enforceAdmission {
 		w.expandAdmittedPackages(ctx, moduleMaximum)
 	}
@@ -233,6 +229,12 @@ func Resolve(ctx context.Context, request *Request) Result {
 	result.BudgetEvents = snapshot.budgetEvents
 	result.BaselineParseBytes = baselineBytes
 	result.ModuleAdmissionBytes = moduleMaximum
+	for _, event := range result.BudgetEvents {
+		if event.Limit == "module_count" {
+			result.ModuleLimitReached = true
+			break
+		}
+	}
 	result.TimedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
 
 	sort.Strings(result.ScanPaths)
@@ -273,6 +275,33 @@ func Resolve(ctx context.Context, request *Request) Result {
 	return result
 }
 
+func (w *walker) traverseSeedGroups(
+	ctx context.Context,
+	seedGroups map[string]map[string]bool,
+	repositoryGroups map[string]map[string]bool,
+) {
+	if w.maxModules > 0 {
+		seedDirs := make([]string, 0, len(seedGroups))
+		for seedDir := range seedGroups {
+			seedDirs = append(seedDirs, seedDir)
+		}
+		sort.Strings(seedDirs)
+		for _, seedDir := range seedDirs {
+			w.traverse(ctx, seedDir, seedGroups[seedDir], repositoryGroups, 0, "")
+		}
+		return
+	}
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(max(1, runtime.GOMAXPROCS(0)*seedGroupConcurrencyFactor))
+	for seedDir, allowedFiles := range seedGroups {
+		g.Go(func() error {
+			w.traverse(gCtx, seedDir, allowedFiles, repositoryGroups, 0, "")
+			return nil
+		})
+	}
+	_ = g.Wait()
+}
+
 func (w *walker) expandAdmittedPackages(ctx context.Context, maximum int64) {
 	var deferred []pendingTraversal
 	for {
@@ -295,22 +324,35 @@ func (w *walker) expandAdmittedPackages(ctx context.Context, maximum int64) {
 		}
 		deferred = rejected
 
-		g, gCtx := errgroup.WithContext(ctx)
-		g.SetLimit(max(1, resolver.FetchConcurrency))
-		for _, traversal := range admitted {
-			g.Go(func() error {
+		if w.maxModules > 0 {
+			for _, traversal := range admitted {
 				w.traverse(
-					gCtx,
+					ctx,
 					traversal.seed,
 					nil,
 					traversal.repoAllowedDirs,
 					traversal.depth,
 					traversal.packageRoot,
 				)
-				return nil
-			})
+			}
+		} else {
+			g, gCtx := errgroup.WithContext(ctx)
+			g.SetLimit(max(1, resolver.FetchConcurrency))
+			for _, traversal := range admitted {
+				g.Go(func() error {
+					w.traverse(
+						gCtx,
+						traversal.seed,
+						nil,
+						traversal.repoAllowedDirs,
+						traversal.depth,
+						traversal.packageRoot,
+					)
+					return nil
+				})
+			}
+			_ = g.Wait()
 		}
-		_ = g.Wait()
 	}
 }
 
@@ -717,7 +759,7 @@ func (w *walker) traverse(
 		return
 	}
 
-	for key := range mods {
+	for _, key := range orderedModuleKeys(mods) {
 		mod := mods[key]
 		if !mod.IsLocal || mod.AbsSource == "" {
 			continue
@@ -808,6 +850,59 @@ func acquisitionAllowance(maximum int64) int64 {
 	return maximum * acquisitionOvershootFactor
 }
 
+type remoteAcquisition struct {
+	group *remoteModuleGroup
+	lease *resolver.AcquisitionLease
+}
+
+func (w *walker) remoteAcquisitionBatchSize() int {
+	if w.maxModules > 0 && !w.deferExpansion {
+		return 1
+	}
+	return max(1, resolver.FetchConcurrency)
+}
+
+func (w *walker) collectRemoteAcquisitionBatch(
+	ctx context.Context,
+	groups map[string]*remoteModuleGroup,
+	ids []string,
+	start, size int,
+) []remoteAcquisition {
+	batch := make([]remoteAcquisition, 0, size)
+	for _, id := range ids[start:min(start+size, len(ids))] {
+		if w.maxModules > 0 && w.moduleCount >= w.maxModules {
+			break
+		}
+		lease, ok := w.acquireAcquisition(ctx, len(batch) == 0)
+		if !ok {
+			break
+		}
+		batch = append(batch, remoteAcquisition{group: groups[id], lease: lease})
+		if w.maxModules > 0 {
+			w.moduleCount++
+		}
+	}
+	return batch
+}
+
+func (w *walker) runRemoteAcquisitionBatch(
+	ctx context.Context,
+	batch []remoteAcquisition,
+	repoAllowedDirs map[string]map[string]bool,
+	depth, limit int,
+) {
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(limit)
+	for _, item := range batch {
+		g.Go(func() error {
+			defer item.lease.Release()
+			w.traverseRemoteModuleGroup(gCtx, item.group, repoAllowedDirs, depth, item.lease)
+			return nil
+		})
+	}
+	_ = g.Wait()
+}
+
 // acquireRemoteModuleGroups fetches a frontier in deterministically ordered
 // batches, stopping once the frontier has fetched past its allowance. Without
 // this the whole frontier is fetched before admission gets to reject anything,
@@ -823,42 +918,31 @@ func (w *walker) acquireRemoteModuleGroups(
 		w.recordUnacquiredGroups(groups, ids)
 		return
 	}
-	size := max(1, resolver.FetchConcurrency)
+	size := w.remoteAcquisitionBatchSize()
 	for start := 0; start < len(ids); {
-		type acquisition struct {
-			group *remoteModuleGroup
-			lease *resolver.AcquisitionLease
+		if w.maxModules > 0 && w.moduleCount >= w.maxModules {
+			w.recordModuleLimit(groups, ids[start:])
+			return
 		}
-		batch := make([]acquisition, 0, size)
-		end := min(start+size, len(ids))
-		for _, id := range ids[start:end] {
-			lease, ok := w.acquireAcquisition(ctx, len(batch) == 0)
-			if !ok {
-				break
-			}
-			batch = append(batch, acquisition{group: groups[id], lease: lease})
-		}
+		batch := w.collectRemoteAcquisitionBatch(ctx, groups, ids, start, size)
 		if len(batch) == 0 {
 			if ctx.Err() == nil {
 				w.recordUnacquiredGroups(groups, ids[start:])
 			}
 			return
 		}
-
-		g, gCtx := errgroup.WithContext(ctx)
-		g.SetLimit(size)
-		for _, item := range batch {
-			g.Go(func() error {
-				defer item.lease.Release()
-				w.traverseRemoteModuleGroup(
-					gCtx, item.group, repoAllowedDirs, depth, item.lease,
-				)
-				return nil
-			})
-		}
-		_ = g.Wait()
+		w.runRemoteAcquisitionBatch(ctx, batch, repoAllowedDirs, depth, size)
 		start += len(batch)
 	}
+}
+
+func orderedModuleKeys(modules map[string]tfmodules.ParsedModule) []string {
+	keys := make([]string, 0, len(modules))
+	for key := range modules {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // orderedGroupIDs gives the frontier a stable order so that when acquisition
@@ -904,6 +988,17 @@ func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, id
 			Limit:    "module_bytes_total",
 			Maximum:  w.admissionBytes,
 			Measured: measured,
+		})
+	}
+}
+
+func (w *walker) recordModuleLimit(groups map[string]*remoteModuleGroup, ids []string) {
+	for _, id := range ids {
+		w.results.addBudgetEvent(groups[id].representative.Source, &resolver.BudgetExceededError{
+			Gate:     "graph",
+			Limit:    "module_count",
+			Maximum:  int64(w.maxModules),
+			Measured: int64(w.moduleCount + len(ids)),
 		})
 	}
 }

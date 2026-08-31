@@ -148,6 +148,7 @@ func (c *Client) resolveTerraformModuleGraph(
 		DiscoveryPaths: discoveryPaths,
 		Resolver:       moduleResolver,
 		MaxDepth:       c.ScanParams.ModuleMaxDepth,
+		MaxModules:     c.ScanParams.ModuleMaxModules,
 		ResourceLimits: tfresolver.ResourceLimits{
 			MaxPackageBytes: packageBytes,
 			MaxFileBytes:    fileBytes,
