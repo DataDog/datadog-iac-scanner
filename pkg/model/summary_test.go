@@ -225,6 +225,13 @@ func TestRemoveURLCredentials(t *testing.T) {
 			},
 			want: "https://test.git.com:8080/test",
 		},
+		{
+			name: "test_redacts_credentials_in_error_message",
+			args: args{
+				url: "clone failed for git::https://user:secret@example.com/repo.git",
+			},
+			want: "clone failed for git::https://example.com/repo.git",
+		},
 	}
 	for _, tt := range tests {
 		require.Equal(t, tt.want, removeURLCredentials(tt.args.url))

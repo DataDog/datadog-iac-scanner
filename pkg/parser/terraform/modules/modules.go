@@ -86,10 +86,6 @@ func resolveModulePath(source, rootDir string) string {
 	return filepath.Clean(filepath.Join(rootDir, clean))
 }
 
-func isTerraformFile(filePath string) bool {
-	return strings.HasSuffix(strings.ToLower(filePath), ".tf")
-}
-
 const (
 	stringLocal                 = "local"
 	stringUnknown               = "unknown"
@@ -196,6 +192,17 @@ func extractForContent(cache *sync.Map, content, filePath string) (*fileExtract,
 	if cached, ok := cache.Load(key); ok {
 		return cached.(*fileExtract), nil
 	}
+	if IsTerraformJSONPath(filePath) {
+		extract, err := extractJSONFile([]byte(content))
+		if err != nil {
+			return nil, hcl.Diagnostics{{
+				Severity: hcl.DiagError,
+				Summary:  err.Error(),
+			}}
+		}
+		cache.Store(key, extract)
+		return extract, nil
+	}
 	hclFile, diags := hclsyntax.ParseConfig([]byte(content), filePath, hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
 		return nil, diags
@@ -222,7 +229,7 @@ func groupTerraformFilesByDir(files model.FileMetadatas) []dirFiles {
 	var groups []dirFiles
 	indexByDir := make(map[string]int)
 	for _, file := range files {
-		if file == nil || !isTerraformFile(file.FilePath) {
+		if file == nil || !IsTerraformConfigPath(file.FilePath) {
 			continue
 		}
 		dir := filepath.Dir(file.FilePath)
@@ -320,7 +327,7 @@ func parseDirModules(
 		}
 		extract, diags := extractForContent(extracts, getFileContent(file), file.FilePath)
 		if diags.HasErrors() {
-			contextLogger.Warn().Msgf("Skipping file %s due to HCL parse errors: %s", file.FilePath, diags.Error())
+			contextLogger.Warn().Msgf("Skipping file %s due to parse errors: %s", file.FilePath, diags.Error())
 			continue
 		}
 		if extract == nil {
@@ -923,7 +930,7 @@ func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) 
 		if entry.IsDir() {
 			continue
 		}
-		if !isTerraformFile(entry.Name()) {
+		if !IsTerraformHCLPath(entry.Name()) {
 			continue
 		}
 		path := filepath.Join(modulePath, entry.Name())
@@ -1043,9 +1050,10 @@ func ParseTerraformModulesFromFiles(
 	return parseModulesByDir(ctx, fsys, files, allowedFiles, 0)
 }
 
-// LoadTFFilesFromDir returns FileMetadata for top-level .tf files in dir (no recursion —
-// a Terraform module is a single directory). When packageRoot is non-empty, symlinked .tf
-// files are included only when their targets stay within the package root.
+// LoadTFFilesFromDir returns FileMetadata for top-level Terraform configuration
+// files (.tf and .tf.json) in dir (no recursion — a Terraform module is a single
+// directory). When packageRoot is non-empty, symlinked config files are included
+// only when their targets stay within the package root.
 func LoadTFFilesFromDir(dir, packageRoot string) (model.FileMetadatas, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -1078,7 +1086,7 @@ func ScannableTerraformPath(entry fs.DirEntry, dir, packageRoot string) (string,
 		return "", false
 	}
 	name := entry.Name()
-	if !strings.HasSuffix(strings.ToLower(name), ".tf") {
+	if !IsTerraformConfigPath(name) {
 		return "", false
 	}
 	candidate := filepath.Join(dir, name)

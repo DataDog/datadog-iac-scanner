@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -42,6 +43,9 @@ type Request struct {
 
 type ResolvedModule struct {
 	CallerRoot        string
+	CallerFile        string
+	CallerLine        int
+	CallerEndLine     int
 	Source            string
 	Version           string
 	ResolvedVersion   string
@@ -57,6 +61,7 @@ type ResolvedModule struct {
 type Result struct {
 	ScanPaths            []string
 	Modules              []ResolvedModule
+	Failures             []ResolutionFailure
 	SourceMappings       map[string]string
 	BudgetEvents         []BudgetEvent
 	BaselineParseBytes   int64
@@ -72,6 +77,17 @@ type BudgetEvent struct {
 	Maximum      int64
 	Measured     int64
 	SheddingRank int
+}
+
+type ResolutionFailure struct {
+	CallerRoot    string
+	CallerFile    string
+	CallerLine    int
+	CallerEndLine int
+	Source        string
+	Version       string
+	Name          string
+	Reason        string
 }
 
 type resolvedEntry struct {
@@ -91,6 +107,7 @@ type walkerSnapshot struct {
 	sourceMappings map[string]string
 	cleanups       []func()
 	budgetEvents   []BudgetEvent
+	failures       []ResolutionFailure
 }
 
 type visitedSet struct {
@@ -110,6 +127,7 @@ type resultCollector struct {
 	sourceMappings map[string]string
 	cleanups       []func()
 	budgetEvents   []BudgetEvent
+	failures       []ResolutionFailure
 }
 
 type moduleParseCache struct {
@@ -210,6 +228,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	shedToTotalLimit(&snapshot, budget, moduleMaximum, enforceAdmission)
 	result.ScanPaths = snapshot.paths
 	result.Modules = snapshot.modules
+	result.Failures = snapshot.failures
 	result.SourceMappings = snapshot.sourceMappings
 	result.BudgetEvents = snapshot.budgetEvents
 	result.BaselineParseBytes = baselineBytes
@@ -221,6 +240,19 @@ func Resolve(ctx context.Context, request *Request) Result {
 		left, right := result.Modules[i], result.Modules[j]
 		return strings.Join([]string{left.CallerRoot, left.Source, left.Version, left.Name}, "\x00") <
 			strings.Join([]string{right.CallerRoot, right.Source, right.Version, right.Name}, "\x00")
+	})
+	sort.Slice(result.Failures, func(i, j int) bool {
+		left, right := result.Failures[i], result.Failures[j]
+		if left.CallerFile != right.CallerFile {
+			return left.CallerFile < right.CallerFile
+		}
+		if left.CallerLine != right.CallerLine {
+			return left.CallerLine < right.CallerLine
+		}
+		if left.Source != right.Source {
+			return left.Source < right.Source
+		}
+		return left.Name < right.Name
 	})
 	sort.Slice(result.BudgetEvents, func(i, j int) bool {
 		left, right := result.BudgetEvents[i], result.BudgetEvents[j]
@@ -388,6 +420,9 @@ func (c *resultCollector) addResolvedModule(
 	defer c.mu.Unlock()
 	c.modules = append(c.modules, ResolvedModule{
 		CallerRoot:        moduleCallRoot(mod),
+		CallerFile:        mod.FileName,
+		CallerLine:        mod.DefLine,
+		CallerEndLine:     mod.DefEndLine,
 		Source:            mod.Source,
 		Version:           mod.Version,
 		ResolvedVersion:   resolution.ResolvedVersion,
@@ -425,6 +460,24 @@ func (c *resultCollector) addBudgetEvent(source string, budgetErr *resolver.Budg
 	})
 }
 
+func (c *resultCollector) addResolutionFailure(mod *tfmodules.ParsedModule, err error) {
+	if mod == nil || err == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.failures = append(c.failures, ResolutionFailure{
+		CallerRoot:    moduleCallRoot(mod),
+		CallerFile:    mod.FileName,
+		CallerLine:    mod.DefLine,
+		CallerEndLine: mod.DefEndLine,
+		Source:        model.RedactURLCredentials(mod.Source),
+		Version:       mod.Version,
+		Name:          mod.Name,
+		Reason:        model.RedactURLCredentials(err.Error()),
+	})
+}
+
 func (c *resultCollector) snapshot() walkerSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -438,6 +491,7 @@ func (c *resultCollector) snapshot() walkerSnapshot {
 		sourceMappings: sourceMappings,
 		cleanups:       append([]func(){}, c.cleanups...),
 		budgetEvents:   append([]BudgetEvent(nil), c.budgetEvents...),
+		failures:       append([]ResolutionFailure(nil), c.failures...),
 	}
 }
 
@@ -578,7 +632,7 @@ func (w *walker) seedGroups(
 ) (seedGroups, repositoryGroups map[string]map[string]bool) {
 	allowedByDir := make(map[string]map[string]bool)
 	for _, path := range discoveryPaths {
-		if !isTerraformFile(path) {
+		if !tfmodules.IsTerraformConfigPath(path) {
 			continue
 		}
 		path = filepath.Clean(path)
@@ -596,7 +650,7 @@ func (w *walker) seedGroups(
 			continue
 		}
 		if !info.IsDir() {
-			if !isTerraformFile(path) {
+			if !tfmodules.IsTerraformConfigPath(path) {
 				continue
 			}
 			dir := filepath.Dir(path)
@@ -718,6 +772,8 @@ func (w *walker) traverseRemoteModules(
 		if hit {
 			if cached.err == nil && cached.res.LocalPath != "" {
 				w.results.addResolvedModule(&mod, cached.res, parentPackageRoot, depth+1)
+			} else if cached.err != nil && ctx.Err() == nil {
+				w.results.addResolutionFailure(&mod, cached.err)
 			}
 			continue
 		}
@@ -871,6 +927,11 @@ func (w *walker) traverseRemoteModuleGroup(
 	contextLogger.Debug().Msgf("Fetching remote Terraform module %q", representative.Source)
 	resolution, shared, err := w.resolveRemote(ctx, representative)
 	if err != nil {
+		if ctx.Err() == nil {
+			for _, mod := range group.callers {
+				w.results.addResolutionFailure(mod, err)
+			}
+		}
 		if !shared {
 			contextLogger.Debug().Err(err).
 				Msgf("Failed to resolve remote Terraform module %q", representative.Source)
@@ -921,20 +982,40 @@ func moduleCallRoot(mod *tfmodules.ParsedModule) string {
 	return filepath.Clean(filepath.Dir(mod.FileName))
 }
 
+// terraformWorkspaceRoot finds the nearest ancestor directory containing
+// .terraform/modules/modules.json, matching DotTerraformResolver lookup scope.
+func terraformWorkspaceRoot(fileName string) string {
+	if fileName == "" {
+		return "."
+	}
+	clean := filepath.Clean(filepath.Dir(fileName))
+	fallback := clean
+	for {
+		if _, err := os.Stat(filepath.Join(clean, ".terraform", "modules", "modules.json")); err == nil {
+			return clean
+		}
+		parent := filepath.Dir(clean)
+		if parent == clean {
+			return fallback
+		}
+		clean = parent
+	}
+}
+
 func remoteResolveIdentity(mod *tfmodules.ParsedModule) string {
 	sourceType, _ := tfmodules.DetectModuleSourceType(mod.Source)
-	if sourceType == sourceTypeRegistry && mod.Version == "" {
-		return callKey(moduleCallRoot(mod), mod.Source, mod.Version, mod.Name)
+	if sourceType == sourceTypeRegistry {
+		identity := terraformWorkspaceRoot(mod.FileName) + "\x00" + strings.TrimSpace(mod.Source) + "\x00" +
+			strings.TrimSpace(mod.Version)
+		if strings.TrimSpace(mod.Version) == "" {
+			identity += "\x00" + strings.TrimSpace(mod.Name)
+		}
+		return identity
 	}
 	if key, ok := resolver.GitModuleResolveKey(mod.Source, mod.Version); ok {
 		return key
 	}
 	return canonicalGitModuleSource(mod.Source) + "\x00" + strings.TrimSpace(mod.Version)
-}
-
-func callKey(root, source, version, name string) string {
-	return filepath.Clean(root) + "\x00" + strings.TrimSpace(source) + "\x00" +
-		strings.TrimSpace(version) + "\x00" + strings.TrimSpace(name)
 }
 
 func flatTerraformFilePaths(ctx context.Context, dir, packageRoot string) []string {
@@ -949,10 +1030,6 @@ func flatTerraformFilePaths(ctx context.Context, dir, packageRoot string) []stri
 		}
 	}
 	return paths
-}
-
-func isTerraformFile(path string) bool {
-	return strings.HasSuffix(strings.ToLower(path), ".tf")
 }
 
 func canonicalGitModuleSource(moduleSource string) string {

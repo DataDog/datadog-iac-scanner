@@ -93,13 +93,13 @@ var scanAction = &cli.Command{
 			Name:   "x-local-module-eval",
 			Hidden: true,
 			Usage: "(experimental) resolve Terraform local module variables before scanning; " +
-				"independent of --terraform-modules-mode",
+				"independent of --terraform-modules",
 			Value: false,
 		},
 		&cli.StringFlag{
-			Name:  "terraform-modules-mode",
-			Usage: "Terraform module resolution mode: off, offline, or fetch",
-			Value: string(scan.TerraformModulesModeOff),
+			Name:  "terraform-modules",
+			Usage: "enable remote Terraform module resolution: off or on",
+			Value: string(scan.TerraformModulesOff),
 		},
 		&cli.StringFlag{
 			Name:  "terraform-modules-manifest",
@@ -107,7 +107,7 @@ var scanAction = &cli.Command{
 		},
 		&cli.StringSliceFlag{
 			Name:  "module-allowed-hosts",
-			Usage: "host allowed for Terraform module downloads in fetch mode",
+			Usage: "host allowed for Terraform module downloads when --terraform-modules=on",
 			Value: []string{},
 		},
 		&cli.IntFlag{
@@ -351,24 +351,16 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err := validateReportFormats(reportFormats); err != nil {
 		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
 	}
-	moduleMode, err := scan.ParseTerraformModulesMode(c.String("terraform-modules-mode"))
+	modulesSetting, err := scan.ParseTerraformModules(c.String("terraform-modules"))
 	if err != nil {
 		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
 	}
-	if moduleMode == scan.TerraformModulesModeOff &&
+	if modulesSetting == scan.TerraformModulesOff &&
 		(c.String("terraform-modules-manifest") != "" ||
 			len(c.StringSlice("module-allowed-hosts")) > 0 ||
 			c.String("module-cache-dir") != "") {
 		return errorWithExitCode(
-			errors.New("terraform module resolver options require --terraform-modules-mode=offline or fetch"),
-			constants.InvalidConfigErrorCode,
-		)
-	}
-	if moduleMode == scan.TerraformModulesModeOffline &&
-		(len(c.StringSlice("module-allowed-hosts")) > 0 ||
-			c.String("module-cache-dir") != "") {
-		return errorWithExitCode(
-			errors.New("network and cache options require --terraform-modules-mode=fetch"),
+			errors.New("terraform module resolver options require --terraform-modules=on"),
 			constants.InvalidConfigErrorCode,
 		)
 	}
@@ -418,7 +410,8 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
-		TerraformModulesMode:        moduleMode,
+		TerraformModules:            modulesSetting,
+		NetworkIsolation:            offlineBundlePath != "",
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),
 		RemoteModulesHostAllowlist:  c.StringSlice("module-allowed-hosts"),
 		ModuleMaxDepth:              c.Int("terraform-modules-max-depth"),
@@ -746,17 +739,17 @@ func selectPlatforms(platforms []string) []string {
 	return out
 }
 
-func localModuleEvalEnabled(legacyLocalModuleEval bool, modulesMode scan.TerraformModulesMode) bool {
-	return legacyLocalModuleEval || modulesMode != scan.TerraformModulesModeOff
+func localModuleEvalEnabled(legacyLocalModuleEval bool, modulesSetting scan.TerraformModulesSetting) bool {
+	return legacyLocalModuleEval || modulesSetting != scan.TerraformModulesOff
 }
 
 func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
-	moduleMode, _ := scan.ParseTerraformModulesMode(c.String("terraform-modules-mode"))
+	modulesSetting, _ := scan.ParseTerraformModules(c.String("terraform-modules"))
 	overrides := map[string]bool{
 		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
 		featureflags.IacEnableLocalModuleEval: localModuleEvalEnabled(
 			c.Bool("x-local-module-eval"),
-			moduleMode,
+			modulesSetting,
 		),
 	}
 	return featureflags.NewLocalEvaluatorWithOverrides(overrides)

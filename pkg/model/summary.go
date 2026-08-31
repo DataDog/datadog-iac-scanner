@@ -123,11 +123,9 @@ type PathParameters struct {
 }
 
 var (
-	queryRegex   = regexp.MustCompile(`\?([\w-]+(=[\w-]*)?(&[\w-]+(=[\w-]*)?)*)?`)
-	urlAuthRegex = regexp.MustCompile(`((ssh|https?)://)(\S+(:\S*)?@).*`)
+	queryRegex         = regexp.MustCompile(`\?([\w-]+(=[\w-]*)?(&[\w-]+(=[\w-]*)?)*)?`)
+	urlAuthRedactRegex = regexp.MustCompile(`((?:ssh|https?)://)(?:\S+(?::\S*)?@)`)
 )
-
-const authGroupPosition = 3
 
 // countNotSuppressed returns the number of non-suppressed files.
 func countNotSuppressed(files []VulnerableFile) int {
@@ -223,14 +221,16 @@ func removeAllURLCredentials(pathExtractionMap map[string]ExtractedPathObject) [
 	return sanitizedScannedPaths
 }
 
-func removeURLCredentials(url string) string {
-	authGroup := ""
-	groups := urlAuthRegex.FindStringSubmatch(url)
-	// credentials are present in the URL
-	if len(groups) > authGroupPosition {
-		authGroup = groups[authGroupPosition]
+// RedactURLCredentials strips embedded userinfo from every ssh/http(s) URL in s.
+func RedactURLCredentials(s string) string {
+	if s == "" {
+		return ""
 	}
-	return strings.Replace(url, authGroup, "", 1)
+	return urlAuthRedactRegex.ReplaceAllString(s, "${1}")
+}
+
+func removeURLCredentials(url string) string {
+	return RedactURLCredentials(url)
 }
 
 func cloneModuleAttributionSummary(attr *ModuleAttribution) *ModuleAttribution {

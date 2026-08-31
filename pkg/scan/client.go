@@ -25,21 +25,20 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type TerraformModulesMode string
+type TerraformModulesSetting string
 
 const (
-	TerraformModulesModeOff     TerraformModulesMode = "off"
-	TerraformModulesModeOffline TerraformModulesMode = "offline"
-	TerraformModulesModeFetch   TerraformModulesMode = "fetch"
+	TerraformModulesOff TerraformModulesSetting = "off"
+	TerraformModulesOn  TerraformModulesSetting = "on"
 )
 
-func ParseTerraformModulesMode(value string) (TerraformModulesMode, error) {
-	mode := TerraformModulesMode(value)
-	switch mode {
-	case TerraformModulesModeOff, TerraformModulesModeOffline, TerraformModulesModeFetch:
-		return mode, nil
+func ParseTerraformModules(value string) (TerraformModulesSetting, error) {
+	setting := TerraformModulesSetting(value)
+	switch setting {
+	case TerraformModulesOff, TerraformModulesOn:
+		return setting, nil
 	default:
-		return "", fmt.Errorf("invalid Terraform modules mode %q: expected off, offline, or fetch", value)
+		return "", fmt.Errorf("invalid --terraform-modules value %q: expected off or on", value)
 	}
 }
 
@@ -88,9 +87,11 @@ type Parameters struct {
 	ShouldScanTfPlans           bool
 	DisableRuleIsolation        bool
 	UseRulesCache               bool
-	TerraformModulesMode        TerraformModulesMode
-	RemoteModulesManifestPath   string
-	RemoteModulesHostAllowlist  []string
+	TerraformModules            TerraformModulesSetting
+	// NetworkIsolation disables outbound module fetchers so scans stay offline.
+	NetworkIsolation           bool
+	RemoteModulesManifestPath  string
+	RemoteModulesHostAllowlist []string
 	// ModuleMaxDepth caps the BFS depth of the remote-module graph walker (0 disables traversal entirely).
 	ModuleMaxDepth          int
 	ModuleFetchTimeout      time.Duration
@@ -202,7 +203,7 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxFileSizeFlag:             5,
 		UseOldSeverities:            false,
 		MaxResolverDepth:            15,
-		TerraformModulesMode:        TerraformModulesModeOff,
+		TerraformModules:            TerraformModulesOff,
 		ModuleMaxDepth:              DefaultRemoteModuleMaxDepth,
 		ModuleFetchTimeout:          30 * time.Second,
 		MaxModuleBytesTotal:         DefaultRemoteModuleMaxTotalBytes,

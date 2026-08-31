@@ -177,6 +177,9 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 	}, result.SourceMappings)
 	require.Equal(t, []ResolvedModule{{
 		CallerRoot:      root,
+		CallerFile:      filepath.Join(root, "main.tf"),
+		CallerLine:      2,
+		CallerEndLine:   5,
 		Source:          "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1",
 		Version:         "1.2.3",
 		Name:            "network",
@@ -185,6 +188,139 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 		Depth:           1,
 		CanonicalSource: "git::https://github.com/acme/network//modules/vpc?ref=v1",
 	}}, result.Modules)
+}
+
+func writeTerraformModulesManifest(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, ".terraform", "modules")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "modules.json"), []byte(`{"Modules":[]}`), 0o644))
+}
+
+func writeRegistryModuleCaller(t *testing.T, dir, moduleName, source string) string {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	path := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`
+module %q {
+  source = %q
+}
+`, moduleName, source)), 0o644))
+	return path
+}
+
+func TestRegistryResolveIdentity(t *testing.T) {
+	t.Parallel()
+
+	source := "terraform-registry.us1.ddbuild.io/cloud-inventory/iam-helper/aws"
+	base := t.TempDir()
+	workspace := filepath.Join(base, "workspace")
+	writeTerraformModulesManifest(t, workspace)
+	writeTerraformModulesManifest(t, filepath.Join(base, "other"))
+
+	sameA := &tfmodules.ParsedModule{
+		FileName: filepath.Join(workspace, "a", "main.tf"),
+		Source:   source,
+		Name:     "helper_a",
+	}
+	sameB := &tfmodules.ParsedModule{
+		FileName: filepath.Join(workspace, "b", "main.tf"),
+		Source:   source,
+		Name:     "helper_b",
+	}
+	otherWorkspace := &tfmodules.ParsedModule{
+		FileName: filepath.Join(base, "other", "main.tf"),
+		Source:   source,
+		Name:     "helper_c",
+	}
+	pinned := &tfmodules.ParsedModule{
+		FileName: sameA.FileName,
+		Source:   "cloud-inventory/bucket/aws",
+		Version:  "~> 9.0",
+		Name:     "bucket",
+	}
+	uninitA := &tfmodules.ParsedModule{
+		FileName: filepath.Join("/repo", "a", "main.tf"),
+		Source:   source,
+		Name:     "helper_a",
+	}
+	uninitB := &tfmodules.ParsedModule{
+		FileName: filepath.Join("/repo", "b", "main.tf"),
+		Source:   source,
+		Name:     "helper_b",
+	}
+
+	require.NotEqual(t, remoteResolveIdentity(sameA), remoteResolveIdentity(sameB))
+	require.NotEqual(t, remoteResolveIdentity(sameA), remoteResolveIdentity(otherWorkspace))
+	require.NotEqual(t, remoteResolveIdentity(sameA), remoteResolveIdentity(pinned))
+	require.NotEqual(t, remoteResolveIdentity(uninitA), remoteResolveIdentity(uninitB))
+}
+
+func TestResolveResolvesUnpinnedRegistryModulesSeparatelyByCallName(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	workspace := filepath.Join(base, "workspace")
+	writeTerraformModulesManifest(t, workspace)
+
+	source := "terraform-registry.us1.ddbuild.io/cloud-inventory/iam-helper/aws"
+	moduleDir := filepath.Join(base, "module")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`
+resource "aws_iam_role" "this" {}
+`), 0o644))
+
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{source: {LocalPath: moduleDir}},
+		calls:    make(map[string]int),
+	}
+	result := Resolve(t.Context(), &Request{
+		RootPaths: []string{base},
+		DiscoveryPaths: []string{
+			writeRegistryModuleCaller(t, filepath.Join(workspace, "a"), "helper_a", source),
+			writeRegistryModuleCaller(t, filepath.Join(workspace, "b"), "helper_b", source),
+		},
+		Resolver: tracker,
+		MaxDepth: 2,
+	})
+
+	require.Equal(t, 2, tracker.callCount(source))
+	require.Len(t, result.Modules, 2)
+	require.Equal(t, []string{filepath.Join(moduleDir, "main.tf")}, result.ScanPaths)
+}
+
+func TestResolveSeparatesUnpinnedRegistryModulesByWorkspace(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	workspaceA := filepath.Join(base, "a")
+	workspaceB := filepath.Join(base, "b")
+	writeTerraformModulesManifest(t, workspaceA)
+	writeTerraformModulesManifest(t, workspaceB)
+
+	source := "terraform-registry.us1.ddbuild.io/cloud-inventory/iam-helper/aws"
+	moduleDir := filepath.Join(base, "module")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`
+resource "aws_iam_role" "this" {}
+`), 0o644))
+
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{source: {LocalPath: moduleDir}},
+		calls:    make(map[string]int),
+	}
+	result := Resolve(t.Context(), &Request{
+		RootPaths: []string{base},
+		DiscoveryPaths: []string{
+			writeRegistryModuleCaller(t, workspaceA, "helper_a", source),
+			writeRegistryModuleCaller(t, workspaceB, "helper_b", source),
+		},
+		Resolver: tracker,
+		MaxDepth: 2,
+	})
+
+	require.Equal(t, 2, tracker.callCount(source))
+	require.Len(t, result.Modules, 2)
 }
 
 func TestResolveThreadsRegistryIdentity(t *testing.T) {
@@ -218,6 +354,9 @@ resource "aws_s3_bucket" "this" {}
 	}, result.SourceMappings)
 	require.Equal(t, []ResolvedModule{{
 		CallerRoot:      root,
+		CallerFile:      filepath.Join(root, "main.tf"),
+		CallerLine:      2,
+		CallerEndLine:   5,
 		Source:          "cloud-inventory/bucket/aws",
 		Version:         "~> 9.0",
 		ResolvedVersion: "9.1.0",
@@ -866,6 +1005,43 @@ module "extra" {
 	require.Contains(t, result.ScanPaths, filepath.Join(selected, "main.tf"))
 	require.Contains(t, result.ScanPaths, filepath.Join(shared, "main.tf"))
 	require.Contains(t, result.ScanPaths, filepath.Join(extra, "main.tf"))
+}
+
+func TestResolveReportsResolutionFailure(t *testing.T) {
+	root, _ := writeModuleGraphFixture(t)
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       mapResolver{bySource: map[string]resolver.Resolution{}},
+		MaxDepth:       2,
+	})
+	require.Empty(t, result.Modules)
+	require.Len(t, result.Failures, 1)
+	require.Equal(t, "network", result.Failures[0].Name)
+	require.Contains(t, result.Failures[0].Reason, "unknown source")
+}
+
+func TestResolveReportsRedactedResolutionFailureCredentials(t *testing.T) {
+	source := "git::https://user:secret@example.com/modules/vpc.git"
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(fmt.Sprintf(`
+module "vpc" {
+  source = %q
+}
+`, source)), 0o644))
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       mapResolver{bySource: map[string]resolver.Resolution{}},
+		MaxDepth:       2,
+	})
+
+	require.Len(t, result.Failures, 1)
+	require.NotContains(t, result.Failures[0].Source, "user:secret@")
+	require.Contains(t, result.Failures[0].Source, "example.com/modules/vpc.git")
+	require.NotContains(t, result.Failures[0].Reason, "user:secret@")
+	require.Contains(t, result.Failures[0].Reason, "example.com/modules/vpc.git")
 }
 
 func TestResolveReturnsPartialResultWhenPhaseDeadlineExpires(t *testing.T) {

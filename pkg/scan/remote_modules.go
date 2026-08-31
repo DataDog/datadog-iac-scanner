@@ -61,10 +61,8 @@ func (c *Client) resolveTerraformModulesForScan(
 		return nil, nil, nil, nil, err
 	}
 
-	if c.ScanParams.TerraformModulesMode == TerraformModulesModeFetch {
+	if c.ScanParams.TerraformModules == TerraformModulesOn {
 		contextLogger.Info().Msg("Resolving remote Terraform modules...")
-	} else {
-		contextLogger.Debug().Msg("Resolving Terraform modules from local, manifest, or .terraform/modules sources only")
 	}
 
 	result := c.resolveTerraformModuleGraph(resolveCtx, extractedPaths.Path, moduleDiscoveryPaths, baselinePaths, chain)
@@ -81,6 +79,14 @@ func (c *Client) resolveTerraformModulesForScan(
 			Int64("measured", event.Measured).
 			Int("shedding_rank", event.SheddingRank).
 			Msg("Terraform module excluded by resource budget")
+	}
+	for _, failure := range result.Failures {
+		contextLogger.Warn().
+			Str("module_source", failure.Source).
+			Str("module_name", failure.Name).
+			Str("caller_root", failure.CallerRoot).
+			Str("reason", failure.Reason).
+			Msg("Terraform module resolution failed")
 	}
 	if len(result.ScanPaths) > 0 {
 		contextLogger.Info().Msgf("Adding %d remote module file(s) to scan", len(result.ScanPaths))
@@ -173,8 +179,7 @@ func (c *Client) moduleResolutionContext(ctx context.Context) (context.Context, 
 }
 
 func (c *Client) shouldPreScanTerraformModules(_ []string) bool {
-	mode := c.ScanParams.TerraformModulesMode
-	return mode == TerraformModulesModeOffline || mode == TerraformModulesModeFetch
+	return c.ScanParams.TerraformModules == TerraformModulesOn
 }
 
 func (c *Client) buildModuleResolverChain(
@@ -195,7 +200,7 @@ func (c *Client) buildModuleResolverChain(
 		resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
 	}
 
-	if c.ScanParams.TerraformModulesMode != TerraformModulesModeFetch {
+	if c.ScanParams.TerraformModules != TerraformModulesOn || c.ScanParams.NetworkIsolation {
 		return tfresolver.NewChainResolver(resolvers...), nil
 	}
 
