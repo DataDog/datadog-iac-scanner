@@ -18,8 +18,8 @@ import (
 
 const (
 	ManifestSchemaVersion    = 1
-	manifestStatusResolved   = "resolved"
-	manifestStatusUnresolved = "unresolved"
+	ManifestStatusResolved   = "resolved"
+	ManifestStatusUnresolved = "unresolved"
 )
 
 type ManifestEntry struct {
@@ -45,25 +45,31 @@ type Manifest struct {
 type ManifestModule struct {
 	ID               string                `json:"id,omitempty"`
 	Source           string                `json:"source"`
+	NormalizedSource string                `json:"normalized_source,omitempty"`
 	CanonicalSource  string                `json:"canonical_source,omitempty"`
 	SourceType       string                `json:"source_type,omitempty"`
+	SourceCategory   string                `json:"source_category,omitempty"`
 	RegistryScope    string                `json:"registry_scope,omitempty"`
 	RequestedVersion string                `json:"requested_version,omitempty"`
+	RequestedRef     string                `json:"requested_ref,omitempty"`
+	Subdirectory     string                `json:"subdirectory,omitempty"`
 	ResolvedVersion  string                `json:"resolved_version,omitempty"`
 	ResolvedRef      string                `json:"resolved_ref,omitempty"`
 	ContentDigest    string                `json:"content_digest,omitempty"`
 	PackageRoot      string                `json:"package_root,omitempty"`
 	LocalPath        string                `json:"local_path,omitempty"`
+	StagingRoute     string                `json:"staging_route,omitempty"`
 	Status           string                `json:"status"`
 	Failure          string                `json:"failure,omitempty"`
 	Declarations     []ManifestDeclaration `json:"declarations"`
 }
 
 type ManifestDeclaration struct {
-	Filename   string `json:"filename"`
-	LineStart  int    `json:"line_start"`
-	LineEnd    int    `json:"line_end"`
-	ModuleName string `json:"module_name"`
+	Filename     string `json:"filename"`
+	LineStart    int    `json:"line_start"`
+	LineEnd      int    `json:"line_end"`
+	ModuleName   string `json:"module_name"`
+	CallerModule string `json:"caller_module,omitempty"`
 }
 
 type manifestEnvelope struct {
@@ -112,7 +118,7 @@ func loadLegacyManifest(envelope manifestEnvelope) (*Manifest, error) {
 		entry := modules[key]
 		entry.RequestedVersion = entry.Version
 		entry.ResolvedVersion = entry.Version
-		entry.Status = manifestStatusResolved
+		entry.Status = ManifestStatusResolved
 		modules[key] = entry
 	}
 	return &Manifest{Dir: envelope.Dir, Modules: modules}, nil
@@ -179,7 +185,7 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error
 		Origin:           module.SourceType,
 	}
 	switch module.Status {
-	case manifestStatusResolved:
+	case ManifestStatusResolved:
 		if err := m.resolveV1Paths(ctx, module, &entry); err != nil {
 			return err
 		}
@@ -193,7 +199,7 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error
 		if !strings.EqualFold(module.ContentDigest, digest) {
 			return fmt.Errorf("content_digest mismatch: got %q, computed %q", module.ContentDigest, digest)
 		}
-	case manifestStatusUnresolved:
+	case ManifestStatusUnresolved:
 		if strings.TrimSpace(module.Failure) == "" {
 			return fmt.Errorf("failure is required for an unresolved module")
 		}
@@ -253,7 +259,7 @@ func (m *Manifest) validate(ctx context.Context) error {
 	}
 	for src := range m.Modules {
 		entry := m.Modules[src]
-		if entry.Status == manifestStatusUnresolved {
+		if entry.Status == ManifestStatusUnresolved {
 			continue
 		}
 		if !filepath.IsAbs(entry.LocalPath) {
@@ -319,7 +325,7 @@ func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 			Reason: fmt.Sprintf("module %q not found in manifest", mod.Source),
 		}
 	}
-	if entry.Status == manifestStatusUnresolved {
+	if entry.Status == ManifestStatusUnresolved {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: entry.Failure}
 	}
 	if entry.RequestedVersion != "" && mod.Version != "" && entry.RequestedVersion != mod.Version {

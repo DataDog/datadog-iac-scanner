@@ -632,7 +632,7 @@ func validateGetterSourceTransport(source string) error {
 	switch scheme {
 	case httpScheme, httpsScheme, "file":
 		return nil
-	case "ssh", "git", "s3", "gcs", "hg":
+	case "ssh", sourceTypeGit, "s3", "gcs", "hg":
 		return &tfmodules.UnresolvedError{
 			Reason: fmt.Sprintf("module transport %q is disabled because destination policy cannot be enforced", scheme),
 		}
