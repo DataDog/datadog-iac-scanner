@@ -11,6 +11,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestModuleAttributionForSARIF_IncludesCodeLocationColumns(t *testing.T) {
+	attr := &ModuleAttribution{
+		ModuleCodeLocation: SourceLocation{
+			Filename:    "main.tf",
+			LineStart:   24,
+			LineEnd:     31,
+			ColumnStart: 3,
+			ColumnEnd:   12,
+		},
+		ModulePath: []ModulePathHop{{
+			Name: "wrapper",
+			CodeLocation: SourceLocation{
+				Filename:    "stack/main.tf",
+				LineStart:   2,
+				LineEnd:     4,
+				ColumnStart: 1,
+				ColumnEnd:   2,
+			},
+		}},
+	}
+
+	payload := ModuleAttributionForSARIF(attr)
+	require.Equal(t, 3, payload.ModuleCodeLocation.ColumnStart)
+	require.Equal(t, 12, payload.ModuleCodeLocation.ColumnEnd)
+	require.Equal(t, 1, payload.ModulePath[0].CodeLocation.ColumnStart)
+	require.Equal(t, 2, payload.ModulePath[0].CodeLocation.ColumnEnd)
+}
+
 func TestModuleAttributionForSARIF_RedactsCredentials(t *testing.T) {
 	attr := &ModuleAttribution{
 		Source: "https://user:token@example.com/modules/bucket",
