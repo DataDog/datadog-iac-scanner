@@ -572,6 +572,9 @@ resource "aws_vpc" "transitive" {}
 	require.Equal(t, "example.com/acme/transitive/aws", result.BudgetEvents[0].Source)
 	require.Equal(t, "pre_parse_admission", result.BudgetEvents[0].Gate)
 	require.Equal(t, 1, result.BudgetEvents[0].SheddingRank)
+	require.Len(t, result.Failures, 1)
+	require.Equal(t, "example.com/acme/transitive/aws", result.Failures[0].Source)
+	require.Contains(t, result.Failures[0].Reason, "pre-parse admission")
 }
 
 func TestResolveDoesNotTraverseDescendantsOfShedPackage(t *testing.T) {
@@ -1147,6 +1150,10 @@ func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
 		}
 	}
 	require.Equal(t, count-acquired, unacquired)
+	require.Len(t, result.Failures, count-len(result.Modules))
+	for _, failure := range result.Failures {
+		require.Contains(t, failure.Reason, "module_bytes_total")
+	}
 }
 
 func TestShedToTotalLimitBreaksTiesDeterministically(t *testing.T) {

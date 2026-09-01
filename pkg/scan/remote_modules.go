@@ -7,8 +7,6 @@ package scan
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -80,7 +78,8 @@ func (c *Client) resolveTerraformModulesForScan(
 			Int("shedding_rank", event.SheddingRank).
 			Msg("Terraform module excluded by resource budget")
 	}
-	for _, failure := range result.Failures {
+	for i := range result.Failures {
+		failure := &result.Failures[i]
 		contextLogger.Warn().
 			Str("module_source", failure.Source).
 			Str("module_name", failure.Name).
@@ -185,112 +184,29 @@ func (c *Client) shouldPreScanTerraformModules(_ []string) bool {
 func (c *Client) buildModuleResolverChain(
 	ctx context.Context, moduleDiscoveryPaths []string,
 ) (*tfresolver.ChainResolver, error) {
-	contextLogger := logger.FromContext(ctx)
-
-	resolvers := []tfresolver.Resolver{
-		tfresolver.LocalResolver{},
-		&tfresolver.DotTerraformResolver{RootDirs: dotTerraformRootDirs(moduleDiscoveryPaths)},
-	}
-
+	var manifest *tfresolver.Manifest
 	if c.ScanParams.RemoteModulesManifestPath != "" {
-		manifest, err := tfresolver.LoadManifest(ctx, c.ScanParams.RemoteModulesManifestPath)
+		var err error
+		manifest, err = tfresolver.LoadManifest(ctx, c.ScanParams.RemoteModulesManifestPath)
 		if err != nil {
 			return nil, err
 		}
-		resolvers = append(resolvers, tfresolver.NewPrefetchedResolver(manifest))
 	}
-
-	if c.ScanParams.TerraformModules != TerraformModulesOn || c.ScanParams.NetworkIsolation {
-		return tfresolver.NewChainResolver(resolvers...), nil
-	}
-
-	ggCfg := tfresolver.NewGoGetterConfig()
-	if t := c.ScanParams.ModuleFetchTimeout; t > 0 {
-		ggCfg.FetchTimeout = t
-	}
-	ggCfg.HostAllowlist = c.ScanParams.RemoteModulesHostAllowlist
 
 	cacheBytes := c.ScanParams.MaxModuleCacheBytes
 	if cacheBytes == 0 {
 		cacheBytes = DefaultRemoteModuleMaxCacheBytes
 	}
-
-	var (
-		cacheRoot string
-		budget    *tfresolver.ModuleCacheBudget
-	)
-	cacheRoot = strings.TrimSpace(c.ScanParams.RemoteModulesCacheDir)
-	if cacheRoot == "" {
-		var rootErr error
-		cacheRoot, rootErr = tfresolver.DefaultModuleCacheRoot()
-		if rootErr != nil {
-			contextLogger.Warn().Err(rootErr).Msg("Remote module cache root unavailable; cache limits will not be enforced")
-		}
-	}
-	if cacheRoot != "" {
-		var budgetErr error
-		budget, budgetErr = tfresolver.NewModuleCacheBudget(cacheRoot, cacheBytes)
-		if budgetErr != nil {
-			contextLogger.Warn().Err(budgetErr).Msg("Remote module cache budget unavailable; cache limits will not be enforced")
-		}
-	}
-
-	gitCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirGitBare)
-	localCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirGitLocal)
-	git := tfresolver.NewBareGitResolver(gitCacheDir, c.ScanParams.RemoteModulesHostAllowlist...)
-	git.Budget = budget
-	ggCfg.Git = git
-	localGit := tfresolver.NewLocalGitRefResolver(dotTerraformRootDirs(moduleDiscoveryPaths), localCacheDir)
-	localGit.Budget = budget
-	resolvers = append(resolvers, localGit, git)
-
-	moduleCacheDir := tfresolver.ModuleCacheSubdir(cacheRoot, tfresolver.CacheSubdirModules)
-	cache, err := tfresolver.NewModuleCacheWithDir(moduleCacheDir, budget)
-	if err != nil {
-		contextLogger.Warn().Err(err).Msg("Module disk cache unavailable; fetched modules will not be cached")
-	} else {
-		ggCfg.Cache = cache
-	}
-
-	resolvers = append(resolvers, tfresolver.NewGoGetterResolver(ggCfg))
-	return tfresolver.NewChainResolver(resolvers...), nil
-}
-
-func dotTerraformRootDirs(paths []string) []string {
-	seen := make(map[string]bool, len(paths))
-	roots := make([]string, 0, len(paths))
-	for _, p := range paths {
-		root := terraformRootDir(p)
-		if root == "" || seen[root] {
-			continue
-		}
-		seen[root] = true
-		roots = append(roots, root)
-	}
-	return roots
-}
-
-func terraformRootDir(path string) string {
-	info, err := os.Stat(path)
-	if err == nil && !info.IsDir() {
-		path = filepath.Dir(path)
-	}
-	clean := filepath.Clean(path)
-	for {
-		if hasTerraformModulesManifest(clean) {
-			return clean
-		}
-		parent := filepath.Dir(clean)
-		if parent == clean {
-			return filepath.Clean(path)
-		}
-		clean = parent
-	}
-}
-
-func hasTerraformModulesManifest(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, ".terraform", "modules", "modules.json"))
-	return err == nil
+	return tfresolver.NewDefaultChain(ctx, &tfresolver.DefaultChainConfig{
+		DiscoveryPaths: moduleDiscoveryPaths,
+		Manifest:       manifest,
+		FetchRemote: c.ScanParams.TerraformModules == TerraformModulesOn &&
+			!c.ScanParams.NetworkIsolation,
+		FetchTimeout:  c.ScanParams.ModuleFetchTimeout,
+		HostAllowlist: c.ScanParams.RemoteModulesHostAllowlist,
+		CacheRoot:     c.ScanParams.RemoteModulesCacheDir,
+		MaxCacheBytes: cacheBytes,
+	})
 }
 
 func platformsIncludeTerraform(platforms []string) bool {
