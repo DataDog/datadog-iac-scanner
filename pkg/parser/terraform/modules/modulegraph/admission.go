@@ -6,10 +6,12 @@
 package modulegraph
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -101,6 +103,26 @@ func shedToTotalLimit(
 
 	roots := packageRootsBySpecificity(nodes)
 	snapshot.paths = filterPathsByPackages(snapshot.paths, roots, accepted)
+	for i := range snapshot.modules {
+		module := &snapshot.modules[i]
+		if accepted[filepath.Clean(module.PackageRoot)] {
+			continue
+		}
+		snapshot.failures = append(snapshot.failures, ResolutionFailure{
+			CallerRoot:        module.CallerRoot,
+			CallerFile:        module.CallerFile,
+			CallerPackageRoot: module.ParentPackageRoot,
+			CallerLine:        module.CallerLine,
+			CallerEndLine:     module.CallerEndLine,
+			Source:            model.RedactURLCredentials(module.Source),
+			Version:           module.Version,
+			Name:              module.Name,
+			Reason: fmt.Sprintf(
+				"module package rejected: pre-parse admission exceeds module_bytes_total limit %d",
+				maximum,
+			),
+		})
+	}
 	snapshot.modules = filterModulesByPackages(snapshot.modules, accepted)
 	for localPath := range snapshot.sourceMappings {
 		if !pathOwnedByAcceptedPackage(localPath, roots, accepted) {
