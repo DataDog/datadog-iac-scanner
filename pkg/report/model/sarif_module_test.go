@@ -85,7 +85,9 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 		"code_location": {
 			"filename": "main.tf",
 			"line_start": 2,
-			"line_end": 4
+			"line_end": 4,
+			"column_start": 1,
+			"column_end": 2
 		}
 	}`, string(payload))
 }
