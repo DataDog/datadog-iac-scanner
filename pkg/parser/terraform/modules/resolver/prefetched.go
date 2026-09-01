@@ -13,13 +13,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
 const (
 	ManifestSchemaVersion    = 1
-	manifestStatusResolved   = "resolved"
-	manifestStatusUnresolved = "unresolved"
+	ManifestStatusResolved   = "resolved"
+	ManifestStatusUnresolved = "unresolved"
 )
 
 type ManifestEntry struct {
@@ -35,11 +36,18 @@ type ManifestEntry struct {
 }
 
 type Manifest struct {
-	SchemaVersion int                      `json:"schema_version,omitempty"`
-	Root          string                   `json:"root,omitempty"`
-	Dir           string                   `json:"dir,omitempty"`
-	Modules       map[string]ManifestEntry `json:"modules,omitempty"`
-	Entries       []ManifestModule         `json:"-"`
+	SchemaVersion   int                      `json:"schema_version,omitempty"`
+	Root            string                   `json:"root,omitempty"`
+	Dir             string                   `json:"dir,omitempty"`
+	Modules         map[string]ManifestEntry `json:"modules,omitempty"`
+	Entries         []ManifestModule         `json:"-"`
+	candidates      map[string][]manifestCandidate
+	verifiedDigests map[string]string
+}
+
+type manifestCandidate struct {
+	entry        ManifestEntry
+	declarations []ManifestDeclaration
 }
 
 type ManifestModule struct {
@@ -112,7 +120,7 @@ func loadLegacyManifest(envelope manifestEnvelope) (*Manifest, error) {
 		entry := modules[key]
 		entry.RequestedVersion = entry.Version
 		entry.ResolvedVersion = entry.Version
-		entry.Status = manifestStatusResolved
+		entry.Status = ManifestStatusResolved
 		modules[key] = entry
 	}
 	return &Manifest{Dir: envelope.Dir, Modules: modules}, nil
@@ -141,11 +149,13 @@ func loadManifestV1(ctx context.Context, manifestPath string, envelope manifestE
 		return nil, fmt.Errorf("modules must be an array")
 	}
 	manifest := &Manifest{
-		SchemaVersion: ManifestSchemaVersion,
-		Root:          root,
-		Dir:           root,
-		Modules:       make(map[string]ManifestEntry, len(entries)),
-		Entries:       entries,
+		SchemaVersion:   ManifestSchemaVersion,
+		Root:            root,
+		Dir:             root,
+		Modules:         make(map[string]ManifestEntry, len(entries)),
+		Entries:         entries,
+		candidates:      make(map[string][]manifestCandidate, len(entries)),
+		verifiedDigests: make(map[string]string),
 	}
 	for i := range manifest.Entries {
 		if err := manifest.addV1Entry(ctx, &manifest.Entries[i]); err != nil {
@@ -167,9 +177,6 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error
 		return err
 	}
 	key := manifestModuleKey(module.Source, strings.TrimSpace(module.RequestedVersion))
-	if _, exists := m.Modules[key]; exists {
-		return fmt.Errorf("duplicate module %q", key)
-	}
 	entry := ManifestEntry{
 		RequestedVersion: strings.TrimSpace(module.RequestedVersion),
 		ResolvedVersion:  strings.TrimSpace(module.ResolvedVersion),
@@ -179,29 +186,58 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error
 		Origin:           module.SourceType,
 	}
 	switch module.Status {
-	case manifestStatusResolved:
+	case ManifestStatusResolved:
 		if err := m.resolveV1Paths(ctx, module, &entry); err != nil {
 			return err
 		}
 		if module.ContentDigest == "" {
 			return fmt.Errorf("content_digest is required for a resolved module")
 		}
-		digest, err := ComputePackageDigest(ctx, entry.PackageRoot)
-		if err != nil {
-			return fmt.Errorf("computing content digest: %w", err)
+		digest, verified := m.verifiedDigests[entry.PackageRoot]
+		if !verified {
+			var err error
+			digest, err = ComputePackageDigest(ctx, entry.PackageRoot)
+			if err != nil {
+				return fmt.Errorf("computing content digest: %w", err)
+			}
+			m.verifiedDigests[entry.PackageRoot] = digest
 		}
 		if !strings.EqualFold(module.ContentDigest, digest) {
 			return fmt.Errorf("content_digest mismatch: got %q, computed %q", module.ContentDigest, digest)
 		}
-	case manifestStatusUnresolved:
+	case ManifestStatusUnresolved:
 		if strings.TrimSpace(module.Failure) == "" {
 			return fmt.Errorf("failure is required for an unresolved module")
 		}
 	default:
 		return fmt.Errorf("status must be resolved or unresolved")
 	}
-	m.Modules[key] = entry
+	for i := range m.candidates[key] {
+		if declarationsOverlap(m.candidates[key][i].declarations, module.Declarations) {
+			return fmt.Errorf("duplicate module declaration for %q", key)
+		}
+	}
+	m.candidates[key] = append(m.candidates[key], manifestCandidate{
+		entry:        entry,
+		declarations: append([]ManifestDeclaration(nil), module.Declarations...),
+	})
+	if _, exists := m.Modules[key]; !exists {
+		m.Modules[key] = entry
+	}
 	return nil
+}
+
+func declarationsOverlap(left, right []ManifestDeclaration) bool {
+	for _, first := range left {
+		for _, second := range right {
+			if first.Filename == second.Filename &&
+				first.ModuleName == second.ModuleName &&
+				first.LineStart == second.LineStart {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (m *Manifest) resolveV1Paths(ctx context.Context, module *ManifestModule, entry *ManifestEntry) error {
@@ -253,7 +289,7 @@ func (m *Manifest) validate(ctx context.Context) error {
 	}
 	for src := range m.Modules {
 		entry := m.Modules[src]
-		if entry.Status == manifestStatusUnresolved {
+		if entry.Status == ManifestStatusUnresolved {
 			continue
 		}
 		if !filepath.IsAbs(entry.LocalPath) {
@@ -310,7 +346,18 @@ func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 	if mod.IsLocal {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
 	}
-	entry, ok := r.manifest.Modules[manifestModuleKey(mod.Source, mod.Version)]
+	key := manifestModuleKey(mod.Source, mod.Version)
+	if candidates := r.manifest.candidates[key]; len(candidates) > 0 {
+		entry, err := selectManifestCandidate(mod, candidates)
+		if err != nil {
+			return Resolution{}, err
+		}
+		return resolveManifestEntry(ctx, mod, entry)
+	}
+	entry, ok := r.manifest.Modules[key]
+	if !ok {
+		entry, ok = r.manifest.Modules[legacyManifestModuleKey(mod.Source, mod.Version)]
+	}
 	if !ok {
 		entry, ok = r.manifest.Modules[mod.Source]
 	}
@@ -319,7 +366,58 @@ func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 			Reason: fmt.Sprintf("module %q not found in manifest", mod.Source),
 		}
 	}
-	if entry.Status == manifestStatusUnresolved {
+	return resolveManifestEntry(ctx, mod, &entry)
+}
+
+func selectManifestCandidate(
+	mod *tfmodules.ParsedModule, candidates []manifestCandidate,
+) (*ManifestEntry, error) {
+	if len(candidates) == 1 {
+		return &candidates[0].entry, nil
+	}
+	matches := make([]*ManifestEntry, 0, len(candidates))
+	bestSpecificity := -1
+	for i := range candidates {
+		candidateSpecificity := -1
+		for _, declaration := range candidates[i].declarations {
+			if declarationMatchesModule(declaration, mod) {
+				candidateSpecificity = max(candidateSpecificity, len(filepath.Clean(declaration.Filename)))
+			}
+		}
+		switch {
+		case candidateSpecificity > bestSpecificity:
+			bestSpecificity = candidateSpecificity
+			matches = []*ManifestEntry{&candidates[i].entry}
+		case candidateSpecificity >= 0 && candidateSpecificity == bestSpecificity:
+			matches = append(matches, &candidates[i].entry)
+		}
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	reason := fmt.Sprintf("module %q declaration not found in manifest", mod.Source)
+	if len(matches) > 1 {
+		reason = fmt.Sprintf("module %q declaration is ambiguous in manifest", mod.Source)
+	}
+	return nil, &tfmodules.UnresolvedError{Reason: reason}
+}
+
+func declarationMatchesModule(declaration ManifestDeclaration, mod *tfmodules.ParsedModule) bool {
+	if declaration.ModuleName != mod.Name {
+		return false
+	}
+	if mod.DefLine > 0 && declaration.LineStart != mod.DefLine {
+		return false
+	}
+	filename := filepath.ToSlash(filepath.Clean(mod.FileName))
+	declared := filepath.ToSlash(filepath.Clean(declaration.Filename))
+	return filename == declared || strings.HasSuffix(filename, "/"+declared)
+}
+
+func resolveManifestEntry(
+	ctx context.Context, mod *tfmodules.ParsedModule, entry *ManifestEntry,
+) (Resolution, error) {
+	if entry.Status == ManifestStatusUnresolved {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: entry.Failure}
 	}
 	if entry.RequestedVersion != "" && mod.Version != "" && entry.RequestedVersion != mod.Version {
@@ -345,6 +443,11 @@ func firstNonEmpty(values ...string) string {
 }
 
 func manifestModuleKey(source, version string) string {
+	source = model.RedactURLCredentials(source)
+	return legacyManifestModuleKey(source, version)
+}
+
+func legacyManifestModuleKey(source, version string) string {
 	if version == "" {
 		return source
 	}

@@ -93,7 +93,7 @@ func TestOnModeRejectsMalformedManifest(t *testing.T) {
 	manifestPath := filepath.Join(t.TempDir(), "modules.json")
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`{"schema_version":1}`), 0o644))
 	client := &Client{ScanParams: &Parameters{
-		TerraformModules:      TerraformModulesOn,
+		TerraformModules:          TerraformModulesOn,
 		RemoteModulesManifestPath: manifestPath,
 	}}
 
@@ -218,7 +218,7 @@ func TestDotTerraformRootDirsUsesFileParent(t *testing.T) {
 	file := filepath.Join(root, "main.tf")
 	require.NoError(t, os.WriteFile(file, nil, 0o644))
 
-	require.Equal(t, []string{root}, dotTerraformRootDirs([]string{file}))
+	require.Equal(t, []string{root}, resolver.TerraformRootDirs([]string{file}))
 }
 
 func TestRemoteModuleFilesBypassPrebuiltInventoryFilters(t *testing.T) {

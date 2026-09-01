@@ -142,6 +142,68 @@ func TestLoadManifestV1PreservesUnresolvedStatus(t *testing.T) {
 	require.ErrorContains(t, err, "credentials_unavailable")
 }
 
+func TestPrefetchedResolverChoosesMostSpecificDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	packageRoot := filepath.Join(dir, "modules", "package")
+	rootSelection := filepath.Join(packageRoot, "root")
+	nestedSelection := filepath.Join(packageRoot, "nested")
+	require.NoError(t, os.MkdirAll(rootSelection, 0o755))
+	require.NoError(t, os.MkdirAll(nestedSelection, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(rootSelection, "main.tf"), []byte("root"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(nestedSelection, "main.tf"), []byte("nested"), 0o644))
+	digest, err := ComputePackageDigest(t.Context(), packageRoot)
+	require.NoError(t, err)
+
+	source := "registry.example.com/acme/shared/aws"
+	manifestPath := filepath.Join(dir, "modules.json")
+	writeManifestJSON(t, manifestPath, map[string]any{
+		"schema_version": ManifestSchemaVersion,
+		"root":           "modules",
+		"modules": []map[string]any{
+			{
+				"source":         source,
+				"package_root":   "package",
+				"local_path":     "package/root",
+				"content_digest": digest,
+				"status":         ManifestStatusResolved,
+				"declarations": []map[string]any{{
+					"filename":    "main.tf",
+					"line_start":  1,
+					"line_end":    3,
+					"module_name": "shared",
+				}},
+			},
+			{
+				"source":         source,
+				"package_root":   "package",
+				"local_path":     "package/nested",
+				"content_digest": digest,
+				"status":         ManifestStatusResolved,
+				"declarations": []map[string]any{{
+					"filename":    "parent/main.tf",
+					"line_start":  1,
+					"line_end":    3,
+					"module_name": "shared",
+				}},
+			},
+		},
+	})
+
+	manifest, err := LoadManifest(t.Context(), manifestPath)
+	require.NoError(t, err)
+	prefetched := NewPrefetchedResolver(manifest)
+	rootResult, err := prefetched.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: source, Name: "shared", FileName: "/repo/main.tf", DefLine: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, rootSelection, rootResult.LocalPath)
+	nestedResult, err := prefetched.Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: source, Name: "shared", FileName: "/repo/parent/main.tf", DefLine: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, nestedSelection, nestedResult.LocalPath)
+}
+
 func TestLoadManifestV1RejectsDigestMismatch(t *testing.T) {
 	dir := t.TempDir()
 	moduleDir := filepath.Join(dir, "modules", "vpc")
@@ -277,11 +339,11 @@ func TestLoadManifestRespectsCancelledContext(t *testing.T) {
 		"schema_version": ManifestSchemaVersion,
 		"root":           "modules",
 		"modules": []map[string]any{{
-			"source":           "terraform-aws-modules/vpc/aws",
-			"package_root":     "vpc-package",
-			"local_path":       "vpc-package/modules/vpc",
-			"content_digest":   digest,
-			"status":           "resolved",
+			"source":         "terraform-aws-modules/vpc/aws",
+			"package_root":   "vpc-package",
+			"local_path":     "vpc-package/modules/vpc",
+			"content_digest": digest,
+			"status":         "resolved",
 			"declarations": []map[string]any{{
 				"filename":    "infra/main.tf",
 				"line_start":  12,
