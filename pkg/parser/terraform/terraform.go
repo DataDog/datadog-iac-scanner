@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pkg/errors"
+	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 	"golang.org/x/sync/singleflight"
 )
@@ -141,6 +142,9 @@ func processElements(ctx context.Context, elements model.Document, path string) 
 			content := utils.CheckCertificate(value)
 			processContent(ctx, elements, content, path)
 		case ctyjson.SimpleJSONValue:
+			if value.Type() != cty.String {
+				continue
+			}
 			content := utils.CheckCertificate(value.AsString())
 			processContent(ctx, elements, content, path)
 		}
