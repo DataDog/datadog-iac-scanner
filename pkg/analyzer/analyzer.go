@@ -950,10 +950,17 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 	if !ansibleVarsPath && !yamlRootHasAnyKey(content, yamlPlatformRootKeys...) {
 		return ""
 	}
+	if yamlHasRootTemplateSyntax(content) {
+		return ""
+	}
 
 	root, err := yamlDocumentRoot(content)
 	if err != nil {
-		contextLogger.Warn().Msgf("failed to parse yaml file (%s): %s", path, err)
+		if isYamlTemplatePath(path) {
+			contextLogger.Debug().Msgf("failed to parse yaml file (%s): %s", path, err)
+		} else {
+			contextLogger.Warn().Msgf("failed to parse yaml file (%s): %s", path, err)
+		}
 		return ""
 	}
 	if root == nil {

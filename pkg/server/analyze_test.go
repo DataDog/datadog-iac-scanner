@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	engineSource "github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/rs/zerolog"
@@ -674,6 +675,9 @@ func TestAnalyze_MissingPlatformLibraryReportedAsFailedQuery(t *testing.T) {
 }
 
 func TestAnalyze_RequestLibrariesInvalidateSharedRuleCache(t *testing.T) {
+	engine.ResetCompiledQueryCachesForTest()
+	t.Cleanup(engine.ResetCompiledQueryCachesForTest)
+
 	s := New(&Config{UseRulesCache: true, DisableRuleIsolation: true})
 	req := analyzeRequest{
 		Files: []analyzeFile{{
@@ -687,7 +691,7 @@ func TestAnalyze_RequestLibrariesInvalidateSharedRuleCache(t *testing.T) {
 
 	enabled, _ := postAnalyze(t, s, req)
 	if len(enabled.Findings) == 0 {
-		t.Fatal("expected a finding when pushed library input enables the rule")
+		t.Fatalf("expected a finding when pushed library input enables the rule; failed queries: %v", enabled.FailedQueries)
 	}
 
 	req.Libraries = testLibraries(false)

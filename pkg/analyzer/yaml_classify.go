@@ -2,6 +2,8 @@ package analyzer
 
 import (
 	"bytes"
+	"path/filepath"
+	"strings"
 
 	yamlParser "gopkg.in/yaml.v3"
 )
@@ -45,6 +47,10 @@ func yamlRootContentHasAnyKey(trimmed []byte, keys ...string) bool {
 		return true
 	}
 	if trimmed[0] == '{' || trimmed[0] == '[' {
+		// Go/Helm templates ({-{, {{) are not YAML flow mappings.
+		if trimmed[0] == '{' && len(trimmed) > 1 && trimmed[1] == '{' {
+			return false
+		}
 		return true
 	}
 	if quote := trimmed[0]; quote == '"' || quote == '\'' {
@@ -103,6 +109,46 @@ func quotedRootKeyIsAny(trimmed []byte, quote byte, keys ...string) bool {
 	name := rest[:end]
 	for _, key := range keys {
 		if string(name) == key {
+			return true
+		}
+	}
+	return false
+}
+
+// isYamlTemplatePath reports whether path uses a common unrendered-template
+// suffix. Used only to quiet parse-failure logs, not to skip classification.
+func isYamlTemplatePath(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	switch {
+	case strings.HasSuffix(base, ".tpl.yaml"), strings.HasSuffix(base, ".tpl.yml"):
+		return true
+	case strings.HasSuffix(base, "-tpl.yaml"), strings.HasSuffix(base, "-tpl.yml"):
+		return true
+	default:
+		return false
+	}
+}
+
+// yamlHasRootTemplateSyntax reports whether any document-root line starts with
+// Go or Helm template directives ({{, {{-).
+func yamlHasRootTemplateSyntax(content []byte) bool {
+	if len(content) == 0 {
+		return false
+	}
+	content = bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})
+	rootIndent := -1
+	for _, line := range bytes.Split(content, []byte("\n")) {
+		indent, trimmed := yamlLineContent(line)
+		if len(trimmed) == 0 {
+			continue
+		}
+		if rootIndent < 0 || indent < rootIndent {
+			rootIndent = indent
+		}
+		if indent != rootIndent {
+			continue
+		}
+		if bytes.HasPrefix(trimmed, []byte("{{")) {
 			return true
 		}
 	}
