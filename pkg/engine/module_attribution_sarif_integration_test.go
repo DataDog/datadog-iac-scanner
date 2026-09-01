@@ -130,5 +130,7 @@ resource "aws_s3_bucket" "this" {
 	require.Contains(t, string(moduleRaw), `"name":"bucket"`)
 	require.Contains(t, string(moduleRaw), `"source":"modules/bucket"`)
 	require.Contains(t, string(moduleRaw), `"code_location"`)
+	require.Contains(t, string(moduleRaw), `"column_start"`)
+	require.Contains(t, string(moduleRaw), `"column_end"`)
 	require.NotContains(t, string(moduleRaw), `"module_path"`)
 }

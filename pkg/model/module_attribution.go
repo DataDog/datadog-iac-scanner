@@ -5,13 +5,13 @@
  */
 package model
 
-// SourceLocation is a filename plus an inclusive line range.
+// SourceLocation is a filename plus an inclusive line/column range.
 type SourceLocation struct {
 	Filename    string `json:"filename,omitempty"`
 	LineStart   int    `json:"line_start,omitempty"`
 	LineEnd     int    `json:"line_end,omitempty"`
-	ColumnStart int    `json:"-"`
-	ColumnEnd   int    `json:"-"`
+	ColumnStart int    `json:"column_start,omitempty"`
+	ColumnEnd   int    `json:"column_end,omitempty"`
 }
 
 // ModulePathHop is one module call on the path to a finding.
