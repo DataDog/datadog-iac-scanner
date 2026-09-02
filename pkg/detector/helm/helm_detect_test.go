@@ -291,3 +291,29 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 		})
 	}
 }
+
+func TestDetectLine_JSONCRD(t *testing.T) {
+	original := `{
+  "apiVersion": "apiextensions.k8s.io/v1",
+  "kind": "CustomResourceDefinition",
+  "metadata": {
+    "name": "gadgets.example.com"
+  }
+}`
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "crds/gadget.json",
+		OriginalData:      original,
+		LinesOriginalData: utils.SplitLines(original),
+		IDInfo:            map[int]interface{}{-1: map[int]int{}},
+	}
+
+	got := (DetectKindLine{}).DetectLine(context.Background(), file, "metadata.name", 1)
+
+	if got.Line != 5 {
+		t.Fatalf("DetectLine() line = %d, want 5", got.Line)
+	}
+	if got.LineWithVulnerability != `    "name"` {
+		t.Fatalf("DetectLine() vulnerable line = %q, want JSON name key", got.LineWithVulnerability)
+	}
+}

@@ -70,6 +70,28 @@ func TestParser_Empty(t *testing.T) {
 	}
 }
 
+func TestParser_ParseContentIgnoresExtension(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := NewBuilder(ctx).
+		Add(&yamlParser.Parser{}).
+		Build([]string{"kubernetes"}, nil)
+	require.NoError(t, err)
+	require.Len(t, parsers, 1)
+
+	documents, err := parsers[0].ParseContent(
+		ctx,
+		"chart/crds/widget.json",
+		[]byte(`{"apiVersion":"v1","kind":"ConfigMap"}`),
+		false,
+		false,
+		15,
+	)
+	require.NoError(t, err)
+	require.Len(t, documents.Docs, 1)
+	require.Equal(t, "chart/crds/widget.json", documents.Docs[0]["_path"])
+	require.Equal(t, "ConfigMap", documents.Docs[0]["kind"])
+}
+
 // TestParser_SupportedExtensions tests the functions [SupportedExtensions()] and all the methods called by them
 func TestParser_SupportedExtensions(t *testing.T) {
 	p := initilizeBuilder()

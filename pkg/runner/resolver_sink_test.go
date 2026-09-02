@@ -6,11 +6,162 @@
 package runner
 
 import (
+	"context"
 	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/storage"
+	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
+
+	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
+	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 )
+
+func newYAMLResolverSinkService(
+	t *testing.T, ctx context.Context,
+) (*Service, *storage.MemoryStorage) {
+	t.Helper()
+	parsers, err := parser.NewBuilder(ctx).
+		WithFS(vfs.DiskFS{}).
+		Add(&yamlParser.Parser{}).
+		Build([]string{"kubernetes"}, nil)
+	require.NoError(t, err)
+	require.Len(t, parsers, 1)
+
+	trk, err := tracker.NewTracker(1)
+	require.NoError(t, err)
+	store := storage.NewMemoryStorage()
+	service := &Service{
+		Storage:   store,
+		Parser:    parsers[0],
+		Tracker:   trk,
+		Platforms: []string{"kubernetes"},
+	}
+	return service, store
+}
+
+func TestStoreResolvedFilesParsesHelmJSONWithYAMLParser(t *testing.T) {
+	ctx := context.Background()
+	chartPath, err := filepath.Abs("../../test/fixtures/test_helm_with_crds")
+	require.NoError(t, err)
+	resolved, err := (&helm.Resolver{}).Resolve(ctx, chartPath)
+	require.NoError(t, err)
+
+	service, store := newYAMLResolverSinkService(t, ctx)
+
+	service.storeResolvedFiles(ctx, resolved, model.KindHELM, "helm-crds", false, 15)
+
+	files, err := store.GetFiles(ctx, "helm-crds")
+	require.NoError(t, err)
+	require.Len(t, files, 6)
+
+	expectedPaths := map[string]int{
+		"crds/gadget.json":        1,
+		"crds/multi.yaml":         2,
+		"crds/nested/device.yaml": 1,
+		"crds/widget.yaml":        1,
+		"templates/service.yaml":  1,
+	}
+	for _, file := range files {
+		normalized := filepath.ToSlash(file.FilePath)
+		for suffix, remaining := range expectedPaths {
+			if remaining > 0 && strings.HasSuffix(normalized, suffix) {
+				expectedPaths[suffix]--
+				if suffix == "crds/gadget.json" {
+					require.Equal(t, "CustomResourceDefinition", file.Document["kind"])
+					metadata, ok := file.Document["metadata"].(map[string]interface{})
+					require.True(t, ok)
+					require.Equal(t, "gadgets.example.com", metadata["name"])
+				}
+				break
+			}
+		}
+	}
+	for suffix, remaining := range expectedPaths {
+		require.Zero(t, remaining, "missing stored Helm document for %s", suffix)
+	}
+}
+
+func TestStoreResolvedFilesContinuesAfterUnsupportedFile(t *testing.T) {
+	ctx := context.Background()
+	service, store := newYAMLResolverSinkService(t, ctx)
+	resolved := model.ResolvedFiles{
+		File: []model.ResolvedHelm{
+			{FileName: "chart/notes.txt", Content: []byte("unsupported")},
+			{
+				FileName:     "chart/templates/service.yaml",
+				Content:      []byte("apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n"),
+				OriginalData: []byte("apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n"),
+			},
+		},
+	}
+
+	service.storeResolvedFiles(ctx, resolved, model.KindHELM, "unsupported-sibling", false, 15)
+
+	files, err := store.GetFiles(ctx, "unsupported-sibling")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, "chart/templates/service.yaml", files[0].FilePath)
+}
+
+func TestStoreResolvedFilesContinuesAfterMalformedFile(t *testing.T) {
+	ctx := context.Background()
+	service, store := newYAMLResolverSinkService(t, ctx)
+	resolved := model.ResolvedFiles{
+		File: []model.ResolvedHelm{
+			{FileName: "chart/crds/broken.yaml", Content: []byte("spec: [")},
+			{
+				FileName:     "chart/templates/service.yaml",
+				Content:      []byte("apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n"),
+				OriginalData: []byte("apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n"),
+			},
+		},
+	}
+
+	service.storeResolvedFiles(ctx, resolved, model.KindHELM, "malformed-sibling", false, 15)
+
+	files, err := store.GetFiles(ctx, "malformed-sibling")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, "chart/templates/service.yaml", files[0].FilePath)
+}
+
+func TestStoreResolvedFilesSkipsHelmJSONOnJSONParser(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := parser.NewBuilder(ctx).
+		Add(&jsonParser.Parser{}).
+		Build([]string{"kubernetes"}, nil)
+	require.NoError(t, err)
+	require.Len(t, parsers, 1)
+
+	trk, err := tracker.NewTracker(1)
+	require.NoError(t, err)
+	store := storage.NewMemoryStorage()
+	service := &Service{
+		Storage: store,
+		Parser:  parsers[0],
+		Tracker: trk,
+	}
+	resolved := model.ResolvedFiles{
+		File: []model.ResolvedHelm{{
+			FileName: "chart/crds/gadget.json",
+			Content:  []byte(`{"apiVersion":"v1","kind":"ConfigMap"}`),
+		}},
+	}
+
+	service.storeResolvedFiles(ctx, resolved, model.KindHELM, "json-parser", false, 15)
+
+	files, err := store.GetFiles(ctx, "json-parser")
+	require.NoError(t, err)
+	require.Empty(t, files)
+}
 
 func TestIsExpectedHelmRenderError(t *testing.T) {
 	tests := []struct {
