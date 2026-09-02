@@ -167,44 +167,66 @@ func (c *Parser) Parse(
 	fileContent []byte,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ParsedDocument, error) {
+	if !c.isValidExtension(ctx, filePath) {
+		return unsupportedDocument(), ErrNotSupportedFile
+	}
+	return c.parseContent(ctx, filePath, fileContent, openAPIResolveReferences, isMinified, maxResolverDepth)
+}
+
+// ParseContent uses the selected parser regardless of the file extension.
+func (c *Parser) ParseContent(
+	ctx context.Context,
+	filePath string,
+	fileContent []byte,
+	openAPIResolveReferences, isMinified bool,
+	maxResolverDepth int) (ParsedDocument, error) {
+	return c.parseContent(ctx, filePath, fileContent, openAPIResolveReferences, isMinified, maxResolverDepth)
+}
+
+func (c *Parser) parseContent(
+	ctx context.Context,
+	filePath string,
+	fileContent []byte,
+	openAPIResolveReferences, isMinified bool,
+	maxResolverDepth int) (ParsedDocument, error) {
 	contextLogger := logger.FromContext(ctx)
 	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, utils.GetVaultPassword())
 
-	if c.isValidExtension(ctx, filePath) {
-		resolved, obj, igLines, resolvedFiles, err := c.Parsers.Parse(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
-		if err != nil {
-			return ParsedDocument{}, err
-		}
-
-		cont, err := c.Parsers.StringifyContent(fileContent)
-		if err != nil {
-			contextLogger.Error().Msgf("failed to stringify original content: %s", err)
-			cont = string(fileContent)
-		}
-
-		kind := c.Parsers.GetKind()
-		if ck, ok := c.Parsers.(contentKindParser); ok {
-			if refined, override := ck.KindForContent(resolved); override {
-				kind = refined
-			}
-		}
-
-		return ParsedDocument{
-			Docs:          obj,
-			Kind:          kind,
-			Content:       cont,
-			IgnoreLines:   igLines,
-			CountLines:    bytes.Count(resolved, []byte{'\n'}) + 1,
-			ResolvedFiles: resolvedFiles,
-			IsMinified:    isMinified,
-		}, nil
+	resolved, obj, igLines, resolvedFiles, err := c.Parsers.Parse(
+		ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+	if err != nil {
+		return ParsedDocument{}, err
 	}
+
+	cont, err := c.Parsers.StringifyContent(fileContent)
+	if err != nil {
+		contextLogger.Error().Msgf("failed to stringify original content: %s", err)
+		cont = string(fileContent)
+	}
+
+	kind := c.Parsers.GetKind()
+	if ck, ok := c.Parsers.(contentKindParser); ok {
+		if refined, override := ck.KindForContent(resolved); override {
+			kind = refined
+		}
+	}
+
 	return ParsedDocument{
-		Docs:        nil,
+		Docs:          obj,
+		Kind:          kind,
+		Content:       cont,
+		IgnoreLines:   igLines,
+		CountLines:    bytes.Count(resolved, []byte{'\n'}) + 1,
+		ResolvedFiles: resolvedFiles,
+		IsMinified:    isMinified,
+	}, nil
+}
+
+func unsupportedDocument() ParsedDocument {
+	return ParsedDocument{
 		Kind:        "break",
-		Content:     "",
 		IgnoreLines: []int{},
-	}, ErrNotSupportedFile
+	}
 }
 
 // SupportedExtensions returns extensions supported by the scanner

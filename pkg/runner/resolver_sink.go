@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 )
@@ -60,13 +62,17 @@ func (s *Service) storeResolvedFiles(
 	maxResolverDepth int) {
 	contextLogger := logger.FromContext(ctx)
 	for _, rfile := range resFiles.File {
+		if isHelmJSONFile(kind, rfile.FileName) && s.Parser.Parsers.GetKind() != model.KindYAML {
+			continue
+		}
 		s.Tracker.TrackFileFound(rfile.FileName)
 
 		isMinified := minified.IsMinified(rfile.FileName, rfile.Content)
-		documents, err := s.Parser.Parse(ctx, rfile.FileName, rfile.Content, openAPIResolveReferences, isMinified, maxResolverDepth)
+		documents, err := s.parseResolvedFile(
+			ctx, rfile.FileName, rfile.Content, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
 		if err != nil {
 			if documents.Kind == "break" {
-				return
+				continue
 			}
 			// A Helm template may render to only comments when all range iterations are
 			// conditionally skipped (e.g. a service disabled in prod). That's expected;
@@ -75,13 +81,13 @@ func (s *Service) storeResolvedFiles(
 				continue
 			}
 			contextLogger.Error().Err(err).Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
-			return
+			continue
 		}
 
 		if kind == model.KindHELM {
 			ignoreList, errorIL := s.getOriginalIgnoreLines(ctx,
 				rfile.FileName, rfile.OriginalData,
-				openAPIResolveReferences, isMinified, maxResolverDepth)
+				kind, openAPIResolveReferences, isMinified, maxResolverDepth)
 			if errorIL == nil {
 				documents.IgnoreLines = ignoreList
 
@@ -150,6 +156,26 @@ func (s *Service) storeResolvedFiles(
 	}
 }
 
+func (s *Service) parseResolvedFile(
+	ctx context.Context,
+	filename string,
+	content []byte,
+	kind model.FileKind,
+	openAPIResolveReferences, isMinified bool,
+	maxResolverDepth int,
+) (parser.ParsedDocument, error) {
+	if isHelmJSONFile(kind, filename) && s.Parser.Parsers.GetKind() == model.KindYAML {
+		return s.Parser.ParseContent(
+			ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
+	}
+	return s.Parser.Parse(
+		ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
+}
+
+func isHelmJSONFile(kind model.FileKind, filename string) bool {
+	return kind == model.KindHELM && strings.EqualFold(filepath.Ext(filename), ".json")
+}
+
 // logResolverResolveError logs a Helm resolve/render failure as debug when it
 // matches missing deploy-time values (expected at scan time), otherwise as error.
 // Both paths fall back to raw-file scanning; only expected failures call
@@ -206,12 +232,14 @@ func isCommentOnlyContent(content []byte) bool {
 
 func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	originalFile []uint8,
+	kind model.FileKind,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ignoreLines []int, err error) {
 	refactor := regexp.MustCompile(`.*\n?.*KICS_HELM_ID.+\n`).ReplaceAll(originalFile, []uint8{})
 	refactor = regexp.MustCompile(`{{-\s*(.*?)\s*}}`).ReplaceAll(refactor, []uint8{})
 
-	documentsOriginal, err := s.Parser.Parse(ctx, filename, refactor, openAPIResolveReferences, isMinified, maxResolverDepth)
+	documentsOriginal, err := s.parseResolvedFile(
+		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
 	if err == nil {
 		ignoreLines = documentsOriginal.IgnoreLines
 	}

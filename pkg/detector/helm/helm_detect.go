@@ -45,7 +45,9 @@ const (
 func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata, searchKey string,
 	outputLines int) model.VulnerabilityLines {
 	contextLogger := logger.FromContext(ctx)
-	searchKey = fmt.Sprintf("%s.%s", strings.TrimRight(strings.TrimLeft(file.HelmID, "# "), ":"), searchKey)
+	if file.HelmID != "" {
+		searchKey = fmt.Sprintf("%s.%s", strings.TrimRight(strings.TrimLeft(file.HelmID, "# "), ":"), searchKey)
+	}
 
 	lines := make([]string, len(*file.LinesOriginalData))
 	copy(lines, *file.LinesOriginalData)
@@ -142,6 +144,14 @@ func removeLines(current int, lineRemove map[int]int) int {
 	return current
 }
 
+func containsHelmKey(line, key string) bool {
+	if strings.Contains(line, key) {
+		return true
+	}
+	key = strings.TrimSuffix(key, ":")
+	return strings.Contains(line, `"`+key+`":`) || strings.Contains(line, `'`+key+`':`)
+}
+
 // nolint:gocritic
 func (d detectCurlLine) detectCurrentLine(lines []string, str1,
 	str2 string, byKey bool, idInfo map[int]interface{}, id int) (detectCurlLine, model.ResourceLine, model.ResourceLine) {
@@ -155,7 +165,7 @@ func (d detectCurlLine) detectCurrentLine(lines []string, str1,
 				ends[i] = model.ResourceLine{Line: i + 1, Col: len(lines[i])}
 			}
 		} else if str1 != "" {
-			if strings.Contains(lines[i], str1) {
+			if containsHelmKey(lines[i], str1) {
 				distances[i] = levenshtein.ComputeDistance(
 					detector.ExtractLineFragment(strings.TrimSpace(lines[i]), str1, byKey), str1)
 				starts[i] = model.ResourceLine{Line: i + 1, Col: 0}
