@@ -1268,6 +1268,29 @@ resource "aws_security_group" "repeated" {
     from_port = 443
   }
 }
+
+resource "google_sql_database_instance" "dynamic" {
+  dynamic "ip_configuration" {
+    for_each = ["private"]
+    content {
+      private_network = var.private_network
+    }
+  }
+
+  dynamic "ip_configuration" {
+    for_each = ["psc"]
+    content {
+      ipv4_enabled = false
+    }
+  }
+
+  dynamic "backup_configuration" {
+    for_each = ["enabled"]
+    content {
+      enabled = true
+    }
+  }
+}
 `,
 	})
 
@@ -1289,6 +1312,29 @@ resource "aws_security_group" "repeated" {
 	if !ingress.Type().IsTupleType() || ingress.LengthInt() != 2 {
 		t.Fatalf("ingress = %s (len %d), want a 2-tuple for a repeated block",
 			ingress.Type().FriendlyName(), ingress.LengthInt())
+	}
+
+	dynamicResource := findResource(t, resources, "google_sql_database_instance", "dynamic")
+	dynamic := dynamicResource.Attributes["dynamic"]
+	if !dynamic.Type().IsObjectType() {
+		t.Fatalf("dynamic = %s, want an object", dynamic.Type().FriendlyName())
+	}
+	ipConfiguration := dynamic.GetAttr("ip_configuration")
+	if !ipConfiguration.Type().IsTupleType() || ipConfiguration.LengthInt() != 2 {
+		t.Fatalf("dynamic.ip_configuration = %s (len %d), want a 2-tuple",
+			ipConfiguration.Type().FriendlyName(), ipConfiguration.LengthInt())
+	}
+	if !dynamic.GetAttr("backup_configuration").Type().IsObjectType() {
+		t.Fatalf("dynamic.backup_configuration = %s, want an object",
+			dynamic.GetAttr("backup_configuration").Type().FriendlyName())
+	}
+
+	doc := AttributesToDocument(&dynamicResource)
+	dynamicDoc := doc["dynamic"].(map[string]interface{})
+	ipConfigurationDoc := dynamicDoc["ip_configuration"].([]interface{})
+	firstContent := ipConfigurationDoc[0].(map[string]interface{})["content"].(map[string]interface{})
+	if got := firstContent["private_network"]; got != "${var.private_network}" {
+		t.Fatalf("private_network = %#v, want source reference", got)
 	}
 }
 

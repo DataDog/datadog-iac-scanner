@@ -48,6 +48,22 @@ DatadogPolicy contains result if {
 }
 `
 
+const dynamicBlockRule = `package datadog
+
+DatadogPolicy contains result if {
+	some name, i
+	instance := input.document[i].resource.google_sql_database_instance[name]
+	instance.settings.dynamic.ip_configuration.content.private_network == "projects/test/global/networks/private"
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "google_sql_database_instance",
+		"resourceName": name,
+		"searchKey": sprintf("google_sql_database_instance[%s].settings.dynamic.ip_configuration", [name]),
+	}
+}
+`
+
 func parseTerraform(t *testing.T, path string) model.FileMetadatas {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Clean(path))
@@ -141,6 +157,63 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, "modules/bucket", v.ModuleAttribution.Source)
 	require.Equal(t, "main.tf", v.ModuleAttribution.ModuleCodeLocation.Filename)
 	require.Empty(t, v.ModuleAttribution.ModulePath)
+}
+
+func TestInspect_ModuleEvaluationPreservesDynamicBlockLabels(t *testing.T) {
+	root := t.TempDir()
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "sql")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+
+	rootPath := filepath.Join(rootDir, "main.tf")
+	modPath := filepath.Join(modDir, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+module "sql" {
+  source          = "../modules/sql"
+  private_network = "projects/test/global/networks/private"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(modPath, []byte(`
+variable "private_network" {
+  type = string
+}
+
+resource "google_sql_database_instance" "this" {
+  settings {
+    dynamic "ip_configuration" {
+      for_each = ["enabled"]
+      content {
+        private_network = var.private_network
+      }
+    }
+  }
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootPath)...)
+	files = append(files, parseTerraform(t, modPath)...)
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query:       "dynamic_block_rule",
+			Content:     dynamicBlockRule,
+			InputData:   "{}",
+			Platform:    "terraform",
+			Metadata:    map[string]interface{}{"id": "dynamic-block-rule"},
+			Aggregation: 1,
+		}},
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: moduleEvalEnabled(),
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Len(t, vulns, 1)
+	require.Equal(t, modPath, vulns[0].FileName)
+	require.NotNil(t, vulns[0].ModuleAttribution)
 }
 
 func TestModuleInstantiationSummary_LoggedAtWarnLevel(t *testing.T) {
