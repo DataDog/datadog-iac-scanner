@@ -466,6 +466,7 @@ core,github.com/hashicorp/hcl/v2/ext/customdecode,MPL-2.0,"Copyright © 2014-201
 core,github.com/hashicorp/hcl/v2/hcldec,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/hcl/v2/hclsyntax,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/hcl/v2/hclwrite,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
+core,github.com/hashicorp/hcl/v2/json,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/terraform-json,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/terraform-svchost,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/huandu/xstrings,MIT,Copyright (c) 2015 Huan Du
