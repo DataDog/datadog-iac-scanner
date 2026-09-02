@@ -15,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
@@ -29,12 +30,19 @@ import (
 
 // Fixed dry-run cluster version for Helm scan rendering.
 const defaultDryRunKubeVersion = "v1.30.0"
+const helmIDNumberBase = 10
 
 // Search bounds when the default does not satisfy a chart's kubeVersion.
 const (
 	maxCandidateMinor = 40
 	minCandidateMinor = 0
 	maxCandidatePatch = 30
+
+	crdDirPrefix = "crds/"
+	extYAML      = ".yaml"
+	extYML       = ".yml"
+	extJSON      = ".json"
+	crdDirName   = "crds"
 )
 
 var (
@@ -91,7 +99,7 @@ func chartKubeVersionConstraint(ch *chart.Chart) string {
 }
 
 func runInstall(ctx context.Context, args []string, client *action.Install,
-	valueOpts *values.Options) (*release.Release, []string, error) {
+	valueOpts *values.Options) (*release.Release, *chart.Chart, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	log.SetOutput(io.Discard)
 	defer log.SetOutput(os.Stderr)
@@ -105,21 +113,21 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 
 	name, charts, err := client.NameAndChart(args)
 	if err != nil {
-		return nil, []string{}, err
+		return nil, nil, []string{}, err
 	}
 	contextLogger.Debug().Msgf("Parsed chart name: '%s', chart path: '%s'", name, charts)
 	client.ReleaseName = name
 
 	cp, err := client.LocateChart(charts, settings)
 	if err != nil {
-		return nil, []string{}, err
+		return nil, nil, []string{}, err
 	}
 	contextLogger.Debug().Msgf("Located chart at path: '%s'", cp)
 
 	p := getter.All(settings)
 	vals, err := valueOpts.MergeValues(p)
 	if err != nil {
-		return nil, []string{}, err
+		return nil, nil, []string{}, err
 	}
 	contextLogger.Debug().Msgf("Merged helm values successfully, values count: %d", len(vals))
 
@@ -127,7 +135,7 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	contextLogger.Debug().Msgf("Loading chart from path: '%s'", cp)
 	chartRequested, err := loader.Load(cp)
 	if err != nil {
-		return nil, []string{}, err
+		return nil, nil, []string{}, err
 	}
 
 	// Set KubeVersion; clear the constraint only when unsatisfiable.
@@ -143,7 +151,7 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	chartRequested = setID(chartRequested)
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {
-		return nil, []string{}, instErr
+		return nil, nil, []string{}, instErr
 	}
 	contextLogger.Debug().Msg("Chart installability check passed")
 
@@ -151,12 +159,12 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, client.ReleaseName)
 	helmRelease, err := client.Run(chartRequested, vals)
 	if err != nil {
-		return nil, []string{}, err
+		return nil, nil, []string{}, err
 	}
 
 	contextLogger.Debug().Msgf("Successfully rendered helm chart '%s', manifest length: %d bytes",
 		chartRequested.Metadata.Name, len(helmRelease.Manifest))
-	return helmRelease, excluded, nil
+	return helmRelease, chartRequested, excluded, nil
 }
 
 // checkIfInstallable validates if a chart can be installed
@@ -182,7 +190,7 @@ func newClient(ctx context.Context) *action.Install {
 	client.Replace = true // Skip the name check
 	client.ClientOnly = true
 	client.APIVersions = chartutil.VersionSet([]string{})
-	client.IncludeCRDs = false
+	client.IncludeCRDs = true
 
 	contextLogger.Debug().Msgf("Configured helm client - DryRun: %t, ClientOnly: %t, IncludeCRDs: %t, ReleaseName: '%s'",
 		client.DryRun, client.ClientOnly, client.IncludeCRDs, client.ReleaseName)
@@ -404,6 +412,12 @@ func setID(chartReq *chart.Chart) *chart.Chart {
 			continue
 		}
 	}
+	// Stamp YAML CRDs for line mapping; JSON CRDs are skipped (YAML comments corrupt JSON).
+	for _, f := range localCRDFiles(chartReq) {
+		if isYAMLCRD(f.Name) {
+			addID(f)
+		}
+	}
 	for _, dep := range chartReq.Dependencies() {
 		dep = setID(dep)
 		if dep != nil {
@@ -414,19 +428,206 @@ func setID(chartReq *chart.Chart) *chart.Chart {
 }
 
 // addID will add auxiliary lines used to detect line
-// one for each "apiVersion:" where the id will be the line
+// one for each top-level "apiVersion:" where the id is the source line index.
 func addID(file *chart.File) *chart.File {
 	split := strings.Split(string(file.Data), "\n")
-	for i := 0; i < len(split); i++ {
-		if strings.Contains(split[i], "apiVersion:") {
-			split = append(split, "")
-			copy(split[i+1:], split[i:])
-			split[i] = fmt.Sprintf("# KICS_HELM_ID_%d:", i)
-			i++
+	apiVersionLines := topLevelAPIVersionLines(split, isYAMLCRD(file.Name))
+
+	stamped := make([]byte, 0, len(file.Data)+len(apiVersionLines)*24)
+	nextAPIVersion := 0
+	for i, line := range split {
+		if nextAPIVersion < len(apiVersionLines) && apiVersionLines[nextAPIVersion] == i {
+			stamped = append(stamped, "# KICS_HELM_ID_"...)
+			stamped = strconv.AppendInt(stamped, int64(i), helmIDNumberBase)
+			stamped = append(stamped, ':', '\n')
+			nextAPIVersion++
+		}
+		stamped = append(stamped, line...)
+		if i+1 < len(split) {
+			stamped = append(stamped, '\n')
 		}
 	}
-	file.Data = []byte(strings.Join(split, "\n"))
+	file.Data = stamped
 	return file
+}
+
+func topLevelAPIVersionLines(lines []string, exhaustive bool) []int {
+	var result []int
+	for documentStart := 0; documentStart < len(lines); {
+		documentEnd := documentStart
+		for documentEnd < len(lines) && !isYAMLDocumentBoundary(lines[documentEnd]) {
+			documentEnd++
+		}
+		result = appendDocumentAPIVersionLine(result, lines, documentStart, documentEnd, exhaustive)
+
+		documentStart = documentEnd + 1
+		if documentEnd == len(lines) {
+			break
+		}
+	}
+	return result
+}
+
+func appendDocumentAPIVersionLine(
+	result []int, lines []string, documentStart, documentEnd int, exhaustive bool,
+) []int {
+	minIndent := -1
+	for lineNumber := documentStart; lineNumber < documentEnd; lineNumber++ {
+		line := lines[lineNumber]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "%") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if minIndent < 0 || indent < minIndent {
+			minIndent = indent
+		}
+	}
+
+	resultStart := len(result)
+	mayNeedFallback := false
+	for lineNumber := documentStart; lineNumber < documentEnd; lineNumber++ {
+		line := lines[lineNumber]
+		mayNeedFallback = mayNeedFallback || strings.Contains(line, "apiVersion")
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent == minIndent && isAPIVersionKey(line[indent:]) {
+			result = append(result, lineNumber)
+		}
+	}
+	if len(result) == resultStart && (exhaustive || mayNeedFallback) {
+		if lineNumber, ok := parsedAPIVersionLine(lines[documentStart:documentEnd]); ok {
+			result = append(result, documentStart+lineNumber)
+		}
+	}
+	return result
+}
+
+func parsedAPIVersionLine(lines []string) (int, bool) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(strings.Join(lines, "\n")), &document); err != nil ||
+		len(document.Content) == 0 {
+		return 0, false
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return 0, false
+	}
+	for index := 0; index+1 < len(root.Content); index += 2 {
+		key := root.Content[index]
+		if key.Value == "apiVersion" {
+			return key.Line - 1, true
+		}
+	}
+	return 0, false
+}
+
+func isYAMLDocumentBoundary(line string) bool {
+	line = strings.TrimRight(line, " \t\r")
+	if len(line) < 3 || (line[:3] != "---" && line[:3] != "...") {
+		return false
+	}
+	return len(line) == 3 || strings.HasPrefix(strings.TrimSpace(line[3:]), "#")
+}
+
+func isAPIVersionKey(line string) bool {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "{") {
+		line = strings.TrimSpace(line[1:])
+	}
+	explicitKey := strings.HasPrefix(line, "?")
+	if explicitKey {
+		line = strings.TrimSpace(line[1:])
+	}
+
+	var remainder string
+	switch {
+	case strings.HasPrefix(line, "'apiVersion'"):
+		remainder = line[len("'apiVersion'"):]
+	case strings.HasPrefix(line, `"apiVersion"`):
+		remainder = line[len(`"apiVersion"`):]
+	case strings.HasPrefix(line, "apiVersion"):
+		remainder = line[len("apiVersion"):]
+	default:
+		return false
+	}
+	remainder = strings.TrimSpace(remainder)
+	if explicitKey {
+		return remainder == "" || strings.HasPrefix(remainder, "#")
+	}
+	return strings.HasPrefix(remainder, ":")
+}
+
+// normalizeChartPath converts a chart file path to forward-slash form.
+func normalizeChartPath(name string) string {
+	return strings.ReplaceAll(filepath.ToSlash(name), "\\", "/")
+}
+
+// isCRDManifest reports whether a chart file is a CRD manifest under crds/.
+func isCRDManifest(name string) bool {
+	name = normalizeChartPath(name)
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext != extYAML && ext != extYML && ext != extJSON {
+		return false
+	}
+	return strings.HasPrefix(name, crdDirPrefix)
+}
+
+// isYAMLCRD reports whether a raw chart file is a YAML CRD. JSON is excluded
+// because addID stamps files with YAML comments that would corrupt JSON content.
+func isYAMLCRD(name string) bool {
+	name = normalizeChartPath(name)
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext != extYAML && ext != extYML {
+		return false
+	}
+	return strings.HasPrefix(name, crdDirPrefix)
+}
+
+// crdChartRelativePath returns the chart-relative crds/ path for a CRD file name.
+func crdChartRelativePath(name string) string {
+	name = normalizeChartPath(name)
+	if strings.HasPrefix(name, crdDirPrefix) {
+		return name
+	}
+	if idx := strings.Index(name, "/crds/"); idx >= 0 {
+		return name[idx+1:]
+	}
+	parts := strings.Split(name, "/")
+	for i, part := range parts {
+		if part == crdDirName && i+1 < len(parts) {
+			return strings.Join(parts[i:], "/")
+		}
+	}
+	return name
+}
+
+// resolvedChartFilePath maps a chart-relative path to an on-disk path beside chartPath.
+func resolvedChartFilePath(chartPath, chartRelative string) string {
+	subFolder := filepath.Base(chartPath)
+	return filepath.Join(filepath.Dir(chartPath), subFolder, filepath.FromSlash(chartRelative))
+}
+
+func localCRDFiles(ch *chart.Chart) []*chart.File {
+	if ch == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]*chart.File, 0)
+	add := func(f *chart.File) {
+		if f == nil || !isCRDManifest(f.Name) {
+			return
+		}
+		key := chartSourceKey(crdChartRelativePath(f.Name))
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, f)
+	}
+	for _, f := range ch.Files {
+		add(f)
+	}
+	return out
 }
 
 // getExcluded will return all files rendered to be excluded from scan

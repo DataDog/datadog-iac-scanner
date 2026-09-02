@@ -135,6 +135,12 @@ type ExtractedPathObject struct {
 // CommentsCommands list of commands on a file that will be parsed
 type CommentsCommands map[string]string
 
+// HelmIDLineRange is the inclusive source-line range owned by a Helm marker.
+type HelmIDLineRange struct {
+	Start int
+	End   int
+}
+
 // lineInfoState holds lazy line-info state behind a pointer so FileMetadata
 // copies stay copylocks-clean (sync.Mutex must not be struct-copied).
 type lineInfoState struct {
@@ -321,11 +327,13 @@ type ResolvedFiles struct {
 
 // ResolvedHelm keeps the information of a file/template resolved
 type ResolvedHelm struct {
-	FileName     string
-	Content      []byte
-	OriginalData []byte
-	SplitID      string
-	IDInfo       map[int]interface{}
+	FileName            string
+	Content             []byte
+	OriginalData        []byte
+	SplitID             string
+	SourceDocumentIndex int
+	IDInfo              map[int]interface{}
+	IsCRD               bool
 }
 
 // Extensions represents a list of supported extensions

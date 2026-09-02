@@ -8,7 +8,7 @@ package runner
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 )
@@ -59,14 +60,19 @@ func (s *Service) storeResolvedFiles(
 	openAPIResolveReferences bool,
 	maxResolverDepth int) {
 	contextLogger := logger.FromContext(ctx)
+	sourceCache := make(map[string]*resolvedSourceData)
 	for _, rfile := range resFiles.File {
+		if isHelmJSONFile(kind, rfile.FileName) && s.Parser.Parsers.GetKind() != model.KindYAML {
+			continue
+		}
 		s.Tracker.TrackFileFound(rfile.FileName)
 
 		isMinified := minified.IsMinified(rfile.FileName, rfile.Content)
-		documents, err := s.Parser.Parse(ctx, rfile.FileName, rfile.Content, openAPIResolveReferences, isMinified, maxResolverDepth)
+		documents, err := s.parseResolvedFile(
+			ctx, rfile.FileName, rfile.Content, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
 		if err != nil {
 			if documents.Kind == "break" {
-				return
+				continue
 			}
 			// A Helm template may render to only comments when all range iterations are
 			// conditionally skipped (e.g. a service disabled in prod). That's expected;
@@ -75,66 +81,51 @@ func (s *Service) storeResolvedFiles(
 				continue
 			}
 			contextLogger.Error().Err(err).Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
-			return
+			continue
 		}
 
-		if kind == model.KindHELM {
-			ignoreList, errorIL := s.getOriginalIgnoreLines(ctx,
-				rfile.FileName, rfile.OriginalData,
-				openAPIResolveReferences, isMinified, maxResolverDepth)
-			if errorIL == nil {
-				documents.IgnoreLines = ignoreList
+		s.setResolvedLineMetadata(ctx, &documents, &rfile, sourceCache, kind,
+			openAPIResolveReferences, isMinified, maxResolverDepth)
 
-				// Need to ignore #KICS_HELM_ID Line
-				documents.CountLines = bytes.Count(rfile.OriginalData, []byte{'\n'})
-			} else {
-				// Parsing the original template failed (e.g. unstrippable {{ }} expressions),
-				// so IgnoreLines came from the rendered YAML. Strip scanner-injected header
-				// lines (# Source: / # KICS_HELM_ID_N:) that would otherwise cause false
-				// suppression when the Helm detector resolves vulnerability.Line to them.
-				documents.IgnoreLines = filterHelmGeneratedLines(rfile.Content, documents.IgnoreLines)
-			}
-		} else {
-			documents.CountLines = bytes.Count(rfile.OriginalData, []byte{'\n'}) + 1
+		cached := sourceCache[rfile.FileName]
+		if len(documents.IgnoreLines) > 0 {
+			sort.Ints(documents.IgnoreLines)
 		}
+		platform := s.classifyPlatform(ctx, kind, rfile.FileName, rfile.Content)
+		ownedRenderedContent := ownedHelmRenderedContent(kind, rfile.IsCRD, rfile.Content)
 
-		fileCommands := s.Parser.CommentsCommands(ctx, rfile.FileName, rfile.OriginalData)
-		originalData := string(rfile.OriginalData)
-		// Computed once per rendered file and shared (same pointer) across every
-		// document's FileMetadata below; see the equivalent comment in sink.go.
-		linesOriginalData := utils.SplitLines(originalData)
-
-		for _, document := range documents.Docs {
-			_, err = json.Marshal(document)
+		for docIdx, document := range documents.Docs {
+			preparedDocument, prepareErr := prepareResolvedScanDocument(document, kind)
+			err = prepareErr
 			if err != nil {
 				continue
 			}
 
-			if len(documents.IgnoreLines) > 0 {
-				sort.Ints(documents.IgnoreLines)
+			lineInfoDocument := document
+			if kind == model.KindHELM {
+				lineInfoDocument = nil
 			}
-
 			file := model.FileMetadata{
-				ID:           uuid.New().String(),
-				ScanID:       scanID,
-				Document:     PrepareScanDocument(ctx, document, kind),
-				OriginalData: originalData,
-				// Not lazily loaded here (unlike sink.go): OriginalData is the
-				// unrendered Helm/OpenAPI source, but parsing (and thus a
-				// reconstructed LineInfoDocument) needs rfile.Content, the
-				// resolved/rendered text. Keeping it eager avoids the risk of
-				// silently re-parsing the wrong content.
-				LineInfoDocument:  document,
+				ID:                uuid.New().String(),
+				ScanID:            scanID,
+				Document:          preparedDocument,
+				OriginalData:      cached.originalData,
+				LineInfoDocument:  lineInfoDocument,
 				Kind:              kind,
 				FilePath:          rfile.FileName,
 				HelmID:            rfile.SplitID,
-				Commands:          fileCommands,
+				Commands:          cached.commands,
 				IDInfo:            rfile.IDInfo,
 				LinesIgnore:       documents.IgnoreLines,
 				ResolvedFiles:     documents.ResolvedFiles,
-				LinesOriginalData: linesOriginalData,
+				LinesOriginalData: cached.linesOriginalData,
 				IsMinified:        documents.IsMinified,
-				Platform:          s.classifyPlatform(ctx, kind, rfile.FileName, rfile.Content),
+				Platform:          platform,
+			}
+			if kind == model.KindHELM {
+				file.SetLineInfoLoader(newHelmLineInfoLoader(
+					s.Parser, &rfile, ownedRenderedContent, docIdx,
+					openAPIResolveReferences, isMinified, maxResolverDepth))
 			}
 			s.saveToFile(ctx, &file)
 		}
@@ -148,6 +139,167 @@ func (s *Service) storeResolvedFiles(
 			s.Tracker.TrackFileFoundCountResources(resourceCount)
 		}
 	}
+}
+
+func ownedHelmRenderedContent(kind model.FileKind, isCRD bool, content []byte) string {
+	if kind != model.KindHELM || isCRD {
+		return ""
+	}
+	return string(content)
+}
+
+// Helm line info is reparsed lazily, so its parsed tree is exclusively owned
+// by the scan document and can be sanitized without a JSON round-trip.
+func prepareResolvedScanDocument(
+	document map[string]interface{},
+	kind model.FileKind,
+) (map[string]interface{}, error) {
+	if kind == model.KindHELM {
+		prepareScanDocumentRoot(document, kind)
+		return document, nil
+	}
+	return prepareScanDocument(document, kind)
+}
+
+type resolvedSourceData struct {
+	originalData      string
+	linesOriginalData *[]string
+	commands          model.CommentsCommands
+	countLines        int
+	ignoreLines       []int
+	ignoreErr         error
+	ignorePrepared    bool
+}
+
+func (s *Service) setResolvedLineMetadata(
+	ctx context.Context,
+	documents *parser.ParsedDocument,
+	rfile *model.ResolvedHelm,
+	sourceCache map[string]*resolvedSourceData,
+	kind model.FileKind,
+	openAPIResolveReferences, isMinified bool,
+	maxResolverDepth int,
+) {
+	cached := sourceCache[rfile.FileName]
+	if cached == nil {
+		cached = newResolvedSourceData(ctx, s, rfile)
+		sourceCache[rfile.FileName] = cached
+	}
+	if kind != model.KindHELM {
+		documents.CountLines = cached.countLines + 1
+		return
+	}
+
+	if rfile.IsCRD && !bytes.Contains(rfile.OriginalData, []byte("dd-iac-scan")) {
+		documents.IgnoreLines = nil
+		documents.CountLines = cached.countLines
+		return
+	}
+	if !cached.ignorePrepared {
+		cached.ignoreLines, cached.ignoreErr = s.getOriginalIgnoreLines(ctx,
+			rfile.FileName, rfile.OriginalData,
+			kind, openAPIResolveReferences, isMinified, maxResolverDepth)
+		cached.ignorePrepared = true
+	}
+	if cached.ignoreErr == nil {
+		documents.IgnoreLines = cached.ignoreLines
+	} else {
+		documents.IgnoreLines = filterHelmGeneratedLines(rfile.Content, documents.IgnoreLines)
+	}
+	documents.CountLines = cached.countLines
+}
+
+func newResolvedSourceData(
+	ctx context.Context,
+	s *Service,
+	rfile *model.ResolvedHelm,
+) *resolvedSourceData {
+	originalData := string(rfile.OriginalData)
+	return &resolvedSourceData{
+		originalData:      originalData,
+		linesOriginalData: utils.SplitLines(originalData),
+		commands:          s.Parser.CommentsCommands(ctx, rfile.FileName, rfile.OriginalData),
+		countLines:        bytes.Count(rfile.OriginalData, []byte{'\n'}),
+	}
+}
+
+func (s *Service) parseResolvedFile(
+	ctx context.Context,
+	filename string,
+	content []byte,
+	kind model.FileKind,
+	openAPIResolveReferences, isMinified bool,
+	maxResolverDepth int,
+) (parser.ParsedDocument, error) {
+	if isHelmJSONFile(kind, filename) && s.Parser.Parsers.GetKind() == model.KindYAML {
+		return s.Parser.ParseContent(
+			ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
+	}
+	return s.Parser.Parse(
+		ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
+}
+
+func isHelmJSONFile(kind model.FileKind, filename string) bool {
+	return kind == model.KindHELM && strings.EqualFold(filepath.Ext(filename), ".json")
+}
+
+func newHelmLineInfoLoader(
+	p *parser.Parser,
+	rfile *model.ResolvedHelm,
+	renderedContent string,
+	renderedDocumentIndex int,
+	openAPIResolveReferences bool,
+	isMinified bool,
+	maxResolverDepth int,
+) func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
+	if rfile.IsCRD {
+		return newOriginalResolvedLineInfoLoader(
+			p, rfile.FileName, rfile.SourceDocumentIndex,
+			openAPIResolveReferences, isMinified, maxResolverDepth)
+	}
+	return newResolvedLineInfoLoader(
+		p, rfile.FileName, renderedContent, renderedDocumentIndex,
+		openAPIResolveReferences, isMinified, maxResolverDepth)
+}
+
+func newResolvedLineInfoLoader(
+	p *parser.Parser,
+	filename, renderedContent string,
+	docIdx int,
+	openAPIResolveReferences bool,
+	isMinified bool,
+	maxResolverDepth int,
+) func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
+	return newLineInfoLoaderWithReparser(filename, docIdx,
+		func(ctx context.Context, _ *model.FileMetadata) (parser.ParsedDocument, error) {
+			content := []byte(renderedContent)
+			if isHelmJSONFile(model.KindHELM, filename) && p.Parsers.GetKind() == model.KindYAML {
+				return p.ParseContent(
+					ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
+			}
+			return p.Parse(
+				ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
+		})
+}
+
+func newOriginalResolvedLineInfoLoader(
+	p *parser.Parser,
+	filename string,
+	sourceDocumentIndex int,
+	openAPIResolveReferences bool,
+	isMinified bool,
+	maxResolverDepth int,
+) func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
+	return newLineInfoLoaderWithReparser(filename, sourceDocumentIndex,
+		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
+			content := []byte(f.OriginalData)
+			if isHelmJSONFile(model.KindHELM, filename) && p.Parsers.GetKind() == model.KindYAML {
+				return p.ParseContent(
+					ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
+			}
+			return p.Parse(
+				ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
+		})
 }
 
 // logResolverResolveError logs a Helm resolve/render failure as debug when it
@@ -204,14 +356,21 @@ func isCommentOnlyContent(content []byte) bool {
 	return true
 }
 
+var (
+	helmIDLinePattern         = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+:[^\r\n]*(?:\r?\n|$)`)
+	helmTemplateActionPattern = regexp.MustCompile(`{{-\s*(.*?)\s*}}`)
+)
+
 func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	originalFile []uint8,
+	kind model.FileKind,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ignoreLines []int, err error) {
-	refactor := regexp.MustCompile(`.*\n?.*KICS_HELM_ID.+\n`).ReplaceAll(originalFile, []uint8{})
-	refactor = regexp.MustCompile(`{{-\s*(.*?)\s*}}`).ReplaceAll(refactor, []uint8{})
+	refactor := helmIDLinePattern.ReplaceAll(originalFile, nil)
+	refactor = helmTemplateActionPattern.ReplaceAll(refactor, nil)
 
-	documentsOriginal, err := s.Parser.Parse(ctx, filename, refactor, openAPIResolveReferences, isMinified, maxResolverDepth)
+	documentsOriginal, err := s.parseResolvedFile(
+		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
 	if err == nil {
 		ignoreLines = documentsOriginal.IgnoreLines
 	}
