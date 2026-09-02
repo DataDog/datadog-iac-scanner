@@ -768,6 +768,58 @@ func TestJson_parseTFPlan(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "test - resolved data source in prior_state merged under data.<type>.<name>",
+			args: args{
+				doc: model.Document{
+					"format_version":    "0.2",
+					"terraform_version": "1.0.5",
+					"variables":         map[string]any{},
+					"planned_values": map[string]any{
+						"root_module": map[string]any{
+							"resources": []map[string]any{},
+						},
+					},
+					"prior_state": map[string]any{
+						"format_version": "1.0",
+						"values": map[string]any{
+							"root_module": map[string]any{
+								"resources": []map[string]any{
+									{
+										"address": "data.aws_kms_key.by_alias",
+										"mode":    "data",
+										"type":    "aws_kms_key",
+										"name":    "by_alias",
+										"values": map[string]any{
+											"key_id": "alias/aws/s3",
+											"arn":    "arn:aws:kms:us-east-1:123456789012:key/abc",
+											"id":     "abc",
+										},
+									},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]any{},
+					"configuration":    map[string]any{},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]any{},
+				"data": map[string]any{
+					"aws_kms_key": map[string]any{
+						"by_alias": map[string]any{
+							"key_id": "alias/aws/s3",
+							"arn":    "arn:aws:kms:us-east-1:123456789012:key/abc",
+							"id":     "abc",
+						},
+					},
+				},
+				"resource_changes": []any{},
+				"configuration":    map[string]any{},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

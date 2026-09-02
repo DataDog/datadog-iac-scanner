@@ -21,6 +21,9 @@ import (
 type TFPlan struct {
 	Resource map[string]TFPlanResource `json:"resource"`
 
+	// Data mirrors the HCL parser's data.<type>.<name> shape for data sources.
+	Data map[string]map[string]any `json:"data,omitempty"`
+
 	ResourceChanges any `json:"resource_changes,omitempty"`
 	Configuration   any `json:"configuration,omitempty"`
 
@@ -379,6 +382,10 @@ func readPlan(
 
 	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, correlation)
 
+	if plan.PriorState != nil && plan.PriorState.Values != nil {
+		kp.readPriorStateData(plan.PriorState.Values.RootModule)
+	}
+
 	doc := model.Document{}
 
 	tmpDocBytes, err := json.Marshal(kp)
@@ -440,6 +447,31 @@ func (kp *TFPlan) readModule(
 
 	for _, childModule := range module.ChildModules {
 		kp.readModule(childModule, childModule.Address, resourceLines, correlation)
+	}
+}
+
+// readPriorStateData recursively merges resolved data sources into data.<type>.<name>.
+func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule) {
+	if module == nil {
+		return
+	}
+
+	for _, resource := range module.Resources {
+		if resource.Mode != hcl_plan.DataResourceMode {
+			continue
+		}
+
+		if kp.Data == nil {
+			kp.Data = make(map[string]map[string]any)
+		}
+		if kp.Data[resource.Type] == nil {
+			kp.Data[resource.Type] = make(map[string]any)
+		}
+		kp.Data[resource.Type][resource.Name] = resource.AttributeValues
+	}
+
+	for _, childModule := range module.ChildModules {
+		kp.readPriorStateData(childModule)
 	}
 }
 
