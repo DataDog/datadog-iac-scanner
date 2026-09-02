@@ -877,7 +877,7 @@ func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.
 			// Check if the string starts with jsonencode or ${jsonencode after trimming
 			trimmed := strings.TrimSpace(str)
 			if strings.HasPrefix(trimmed, "jsonencode(") || strings.HasPrefix(trimmed, "${jsonencode(") {
-				parsed, err := parseJsonencodeHCL(ctx, str)
+				parsed, err := parseJsonencodeHCL(str)
 				if err == nil {
 					return parsed
 				} else {
@@ -1681,41 +1681,28 @@ func (q *QueryLoader) loadSharedQueriesCached(ctx context.Context, queries []mod
 	}
 }
 
-func parseJsonencodeHCL(ctx context.Context, input string) (ast.Value, error) {
-	contextLogger := logger.FromContext(ctx)
+func parseJsonencodeHCL(input string) (ast.Value, error) {
 	input = strings.TrimSpace(input)
 
-	// Remove Terraform interpolation
-	if strings.HasPrefix(input, "${") && strings.HasSuffix(input, "}") {
-		input = strings.TrimPrefix(input, "${")
-		input = strings.TrimSuffix(input, "}")
+	if strings.HasPrefix(input, "${") {
+		if !strings.HasSuffix(input, "}") {
+			return nil, fmt.Errorf("invalid interpolated expression")
+		}
+		input = strings.TrimSuffix(strings.TrimPrefix(input, "${"), "}")
 	}
 
-	// Validate jsonencode(...) format
-	const prefix = "jsonencode("
-	const suffix = ")"
-
-	if !strings.HasPrefix(input, prefix) || !strings.HasSuffix(input, suffix) {
-		err := fmt.Errorf("expected jsonencode(...) format, got: %s", input)
-		contextLogger.Error().Msg(err.Error())
-		return nil, err
-	}
-
-	// Extract inner expression
-	inner := strings.TrimSuffix(strings.TrimPrefix(input, prefix), suffix)
-
-	expr, diags := hclsyntax.ParseExpression([]byte(inner), "inline_expr.hcl", hcl.Pos{Line: 1, Column: 1})
+	expr, diags := hclsyntax.ParseExpression([]byte(input), "inline_expr.hcl", hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
-		err := fmt.Errorf("HCL parse error: %s", diags.Error())
-		contextLogger.Error().Msg(err.Error())
-		return nil, err
+		return nil, fmt.Errorf("HCL parse error: %s", diags.Error())
+	}
+	call, ok := expr.(*hclsyntax.FunctionCallExpr)
+	if !ok || call.Name != "jsonencode" || len(call.Args) != 1 {
+		return nil, fmt.Errorf("expected a standalone jsonencode call")
 	}
 
-	val, err := expressionToAST(expr)
+	val, err := expressionToAST(call.Args[0])
 	if err != nil {
-		err = fmt.Errorf("expression to AST failed: %w", err)
-		contextLogger.Error().Msg(err.Error())
-		return nil, err
+		return nil, fmt.Errorf("expression to AST failed: %w", err)
 	}
 
 	return val, nil

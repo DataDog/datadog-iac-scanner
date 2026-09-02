@@ -6,6 +6,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -404,6 +405,17 @@ func TestInterfaceToPayloadValueMatchesExistingTransformation(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, want.String(), got.String())
+}
+
+func TestTransformJsonencodeInPayloadLeavesSuffixExpressionUnchanged(t *testing.T) {
+	input := ast.String(`${jsonencode(each.value.role_name_patterns)}.exists(r, attribute.aws_role.matches(r))`)
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+
+	got := (&Inspector{}).TransformJsonencodeInPayload(ctx, input)
+
+	require.Equal(t, input, got)
+	require.Empty(t, logs.String())
 }
 
 func TestBuildPlatformPayloadsReusesEquivalentFullPayload(t *testing.T) {
