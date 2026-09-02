@@ -34,9 +34,10 @@ func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
 // back to their reference text. Exactly one field is set, or none when the value
 // cannot be traced back to a specific expression or block.
 type attrSource struct {
-	expr   hclsyntax.Expression // attribute value expression
-	body   *hclsyntax.Body      // body of a single nested block
-	blocks []*hclsyntax.Block   // nested blocks sharing one type
+	expr       hclsyntax.Expression // attribute value expression
+	body       *hclsyntax.Body      // body of a single nested block
+	blocks     []*hclsyntax.Block   // nested blocks sharing one type
+	labelDepth int
 }
 
 func attributesToDocument(attrs map[string]cty.Value, body *hclsyntax.Body) map[string]interface{} {
@@ -117,7 +118,11 @@ func seqElementSources(src attrSource, n int) []attrSource {
 	if len(src.blocks) == n {
 		out := make([]attrSource, n)
 		for i, b := range src.blocks {
-			out[i] = attrSource{body: b.Body}
+			if src.labelDepth >= len(b.Labels) {
+				out[i] = attrSource{body: b.Body}
+			} else {
+				out[i] = attrSource{blocks: []*hclsyntax.Block{b}, labelDepth: src.labelDepth}
+			}
 		}
 		return out
 	}
@@ -135,7 +140,7 @@ func seqElementSources(src attrSource, n int) []attrSource {
 // keys are skipped (keys are always strings in well-formed Terraform).
 func ctyMapToDocument(v cty.Value, src attrSource) map[string]interface{} {
 	body := src.body
-	if body == nil && len(src.blocks) == 1 {
+	if body == nil && len(src.blocks) == 1 && src.labelDepth >= len(src.blocks[0].Labels) {
 		body = src.blocks[0].Body
 	}
 	items := objectConsSources(src.expr)
@@ -153,10 +158,22 @@ func ctyMapToDocument(v cty.Value, src attrSource) map[string]interface{} {
 			es = sourceFor(body, name)
 		case items[name] != nil:
 			es = attrSource{expr: items[name]}
+		case len(src.blocks) > 0:
+			es = labeledBlockSource(src, name)
 		}
 		obj[name] = ctyValueToDocument(ev, es)
 	}
 	return obj
+}
+
+func labeledBlockSource(src attrSource, label string) attrSource {
+	blocks := make([]*hclsyntax.Block, 0, len(src.blocks))
+	for _, block := range src.blocks {
+		if src.labelDepth < len(block.Labels) && block.Labels[src.labelDepth] == label {
+			blocks = append(blocks, block)
+		}
+	}
+	return attrSource{blocks: blocks, labelDepth: src.labelDepth + 1}
 }
 
 // objectConsSources maps the statically known keys of an object constructor to

@@ -729,8 +729,13 @@ func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
 }
 
 func TestAnalyze_LogsFailedQueryCount(t *testing.T) {
+	engine.ResetCompiledQueryCachesForTest()
+	t.Cleanup(engine.ResetCompiledQueryCachesForTest)
+
 	s := newTestServer(t)
 	rule := syntheticRule()
+	rule.ID = "test-terraform-invalid-result"
+	rule.Name = rule.ID
 	rule.RegoQuery = []byte(`package datadog
 
 import rego.v1
@@ -747,7 +752,7 @@ DatadogPolicy contains "invalid-result"`)
 	}
 
 	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).WithContext(t.Context())
+	ctx := zerolog.New(&logs).WithContext(context.Background())
 	out, err := s.analyze(ctx, &req)
 	if err != nil {
 		t.Fatalf("analyze: %v", err)

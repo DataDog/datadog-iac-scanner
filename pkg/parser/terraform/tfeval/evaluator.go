@@ -1010,9 +1010,7 @@ func (e *Evaluator) resolveLocals(
 	return resolved
 }
 
-// evalBody evaluates an HCL body into an attribute map. Attributes in skip are
-// omitted. Nested blocks of the same type are always encoded as tuples (including
-// a single block) so the shape matches the canonical Terraform parser output rules expect.
+// evalBody evaluates an HCL body into the shape produced by the Terraform parser.
 func (e *Evaluator) evalBody(
 	body *hclsyntax.Body,
 	ctx *hcl.EvalContext,
@@ -1027,28 +1025,34 @@ func (e *Evaluator) evalBody(
 		out[name] = e.evalExpr(attr.Expr, ctx)
 	}
 
-	grouped := map[string][]cty.Value{}
-	order := make([]string, 0, len(body.Blocks))
 	for _, b := range body.Blocks {
-		if _, seen := grouped[b.Type]; !seen {
-			order = append(order, b.Type)
-		}
-		grouped[b.Type] = append(grouped[b.Type], objectOrEmpty(e.evalBody(b.Body, ctx, nil)))
-	}
-	for _, t := range order {
-		list := grouped[t]
-		// Match how a parsed Terraform file represents nested blocks: a block
-		// written once is an object, and only a repeated one becomes a list.
-		// Rules are written against that shape — `resource.ingress.cidr_blocks`
-		// reads straight through a single block — so a list here would make a
-		// rule quietly stop matching resources that came from a module.
-		if len(list) == 1 {
-			out[t] = list[0]
-			continue
-		}
-		out[t] = cty.TupleVal(list)
+		path := append([]string{b.Type}, b.Labels...)
+		addNestedBlock(out, path, objectOrEmpty(e.evalBody(b.Body, ctx, nil)))
 	}
 	return out
+}
+
+func addNestedBlock(out map[string]cty.Value, path []string, value cty.Value) {
+	key := path[0]
+	if len(path) == 1 {
+		if current, ok := out[key]; ok {
+			if current.Type().IsTupleType() {
+				out[key] = cty.TupleVal(append(current.AsValueSlice(), value))
+			} else {
+				out[key] = cty.TupleVal([]cty.Value{current, value})
+			}
+		} else {
+			out[key] = value
+		}
+		return
+	}
+
+	nested := map[string]cty.Value{}
+	if current, ok := out[key]; ok && current.Type().IsObjectType() {
+		nested = current.AsValueMap()
+	}
+	addNestedBlock(nested, path[1:], value)
+	out[key] = objectOrEmpty(nested)
 }
 
 // evalExpr evaluates an expression, returning unknown on any resolution failure.
