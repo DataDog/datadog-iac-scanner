@@ -25,15 +25,15 @@ func TestTransformToSarifFixE2E(t *testing.T) { //nolint
 					Start: model.ResourceLine{Line: 1, Col: 1},
 					End:   model.ResourceLine{Line: 9, Col: 2},
 				},
-				VulnLines:        nil,
-				ResourceType:     "n/a",
-				ResourceName:     "n/a",
-				SearchKey:        "module[s3_bucket]",
-				SearchLine:       1,
-				SearchValue:      "",
-				Value:            nil,
-				Remediation:      "block_public_acls = true",
-				RemediationType:  "addition",
+				VulnLines:       nil,
+				ResourceType:    "n/a",
+				ResourceName:    "n/a",
+				SearchKey:       "module[s3_bucket]",
+				SearchLine:      1,
+				SearchValue:     "",
+				Value:           nil,
+				Remediation:     "block_public_acls = true",
+				RemediationType: "addition",
 				RemediationLocation: model.ResourceLocation{
 					Start: model.ResourceLine{Line: 8, Col: 2},
 					End:   model.ResourceLine{Line: 8, Col: 2},
@@ -121,6 +121,41 @@ func TestTransformToSarifFix_Removal(t *testing.T) {
 	fix, err := TransformToSarifFix(ctx, vuln, start, end)
 	require.NoError(t, err)
 	require.Equal(t, "", fix.ArtifactChanges[0].Replacements[0].InsertedContent.Text)
+}
+
+func TestTransformToSarifFix_ReplacementFindsAttributeInsideBlock(t *testing.T) {
+	vuln := model.VulnerableFile{
+		FileName:              "main.tf",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "enabled = true", "after": "false"}`,
+		LineWithVulnerability: `module "generic_region" {`,
+		Line:                  1,
+		FileSource: []string{
+			`module "generic_region" {`,
+			"  enabled = true",
+			"}",
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 3, Col: 2},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: 1},
+		},
+	}
+
+	fix, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: 26},
+	)
+
+	require.NoError(t, err)
+	replacement := fix.ArtifactChanges[0].Replacements[0]
+	require.Equal(t, 2, replacement.DeletedRegion.StartLine)
+	require.Equal(t, "  enabled = false", replacement.InsertedContent.Text)
 }
 
 func TestTransformToSarifFix_Replacement(t *testing.T) {
