@@ -21,6 +21,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
@@ -95,6 +96,25 @@ func documentFingerprint(t *testing.T, store *storage.MemoryStorage) map[string]
 	return fp
 }
 
+func requireSharedDocumentParity(
+	t *testing.T,
+	perService, shared map[string]int,
+	routeClassifiedYAML bool,
+) {
+	t.Helper()
+	require.Equal(t, keysSorted(perService), keysSorted(shared),
+		"shared walk and per-service walk must prepare the same documents")
+	for key, expectedCount := range perService {
+		isHelm := strings.Contains(key, "|HELM|")
+		isClassifiedYAML := strings.Contains(key, "|YAML|") && !strings.HasPrefix(key, "|")
+		if isHelm || routeClassifiedYAML && isClassifiedYAML {
+			require.Equal(t, 1, shared[key], "shared walk must route each classified document once")
+			continue
+		}
+		require.Equal(t, expectedCount, shared[key], "non-Helm document count changed for %s", key)
+	}
+}
+
 func TestPrepareSharedWalk_MatchesPerService(t *testing.T) {
 	ctx := context.Background()
 
@@ -147,10 +167,7 @@ func TestPrepareSharedWalk_MatchesPerService(t *testing.T) {
 	shared := documentFingerprint(t, sharedStore)
 	perService := documentFingerprint(t, perServiceStore)
 
-	require.Equal(t, keysSorted(perService), keysSorted(shared),
-		"shared walk and per-service walk must prepare the same documents")
-	require.Equal(t, perService, shared,
-		"shared walk and per-service walk must prepare the same document multiset")
+	requireSharedDocumentParity(t, perService, shared, false)
 }
 
 // TestPrepareSharedWalk_PrebuiltWalk_MatchesPerService drives the CLI hot path:
@@ -221,10 +238,7 @@ func TestPrepareSharedWalk_PrebuiltWalk_MatchesPerService(t *testing.T) {
 	shared := documentFingerprint(t, sharedStore)
 	perService := documentFingerprint(t, perServiceStore)
 
-	require.Equal(t, keysSorted(perService), keysSorted(shared),
-		"prebuilt shared walk and per-service walk must prepare the same documents")
-	require.Equal(t, perService, shared,
-		"prebuilt shared walk and per-service walk must prepare the same document multiset")
+	requireSharedDocumentParity(t, perService, shared, true)
 
 	tfvarsPrepared := false
 	for key := range shared {
@@ -234,6 +248,94 @@ func TestPrepareSharedWalk_PrebuiltWalk_MatchesPerService(t *testing.T) {
 		}
 	}
 	require.True(t, tfvarsPrepared, "tfvars document should be prepared by the shared walk")
+}
+
+func TestPrepareSharedWalk_RoutesHelmToKubernetesParser(t *testing.T) {
+	ctx := context.Background()
+	chartPath, err := filepath.Abs("../../test/fixtures/test_helm_with_crds")
+	require.NoError(t, err)
+	services, _ := buildParityServices(t, ctx, []string{chartPath})
+	fsp, ok := SharedWalkProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "helm-routing", false, 5))
+
+	for _, service := range services {
+		helmDocs := 0
+		crdDocs := 0
+		for _, file := range service.files {
+			if file.Kind != model.KindHELM {
+				continue
+			}
+			helmDocs++
+			if file.Document["kind"] == "CustomResourceDefinition" {
+				crdDocs++
+			}
+		}
+		switch service.Parser.Parsers.(type) {
+		case *cicdParser.Parser:
+			require.Zero(t, helmDocs)
+		case *yamlParser.Parser:
+			require.Equal(t, 7, helmDocs)
+			require.Equal(t, 6, crdDocs)
+		}
+	}
+}
+
+func TestPrepareSharedWalk_RoutesKnownYAMLPlatforms(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	deployPath := filepath.Join(dir, "deploy.yaml")
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeFile(t, deployPath, "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n")
+	writeFile(t, workflowPath, "name: ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n")
+
+	services, _ := buildParityServices(t, ctx, []string{dir})
+	filePlatforms := map[string]string{
+		filepath.ToSlash(deployPath):   "kubernetes",
+		filepath.ToSlash(workflowPath): "cicd",
+	}
+	for _, service := range services {
+		service.FilePlatform = filePlatforms
+	}
+	fsp, ok := SharedWalkProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "routing", false, 5))
+
+	for _, service := range services {
+		paths := make([]string, 0, len(service.files))
+		for _, file := range service.files {
+			paths = append(paths, filepath.ToSlash(file.FilePath))
+		}
+		switch service.Parser.Parsers.(type) {
+		case *cicdParser.Parser:
+			require.Equal(t, []string{filepath.ToSlash(workflowPath)}, paths)
+		case *yamlParser.Parser:
+			require.Equal(t, []string{filepath.ToSlash(deployPath)}, paths)
+		}
+	}
+}
+
+func TestServicesForPlatformAndParserKindFallsBackWhenUnmatched(t *testing.T) {
+	ctx := context.Background()
+	services, _ := buildParityServices(t, ctx, []string{t.TempDir()})
+
+	routed := servicesForPlatformAndParserKind(services, "kubernetes", model.KindYAML)
+	require.Len(t, routed, 1)
+	_, ok := routed[0].Parser.Parsers.(*yamlParser.Parser)
+	require.True(t, ok)
+
+	cicdServices := make([]*Service, 0, 1)
+	for _, service := range services {
+		if _, ok := service.Parser.Parsers.(*cicdParser.Parser); ok {
+			cicdServices = append(cicdServices, service)
+		}
+	}
+	require.Equal(t, cicdServices,
+		servicesForPlatformAndParserKind(cicdServices, "kubernetes", model.KindYAML))
+
+	yamlServices := buildExtensionRouting(services)[".yaml"]
+	require.Equal(t, yamlServices, servicesForPlatform(yamlServices, ""))
+	require.Equal(t, yamlServices, servicesForPlatform(yamlServices, "unknown"))
 }
 
 func TestPrepareSharedWalk_DanglingChartYamlSymlinkStillScansTerraform(t *testing.T) {

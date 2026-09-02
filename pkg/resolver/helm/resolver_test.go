@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	helmdetector "github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
@@ -83,6 +85,7 @@ func TestHelm_Resolve_WithCRDs(t *testing.T) {
 		{suffix: "crds/widget.yaml", kind: "CustomResourceDefinition", name: "widgets.example.com", fullLineMap: true},
 		{suffix: "crds/gadget.json", kind: "CustomResourceDefinition", name: "gadgets.example.com", fullLineMap: false},
 		{suffix: "crds/nested/device.yaml", kind: "CustomResourceDefinition", name: "devices.example.com", fullLineMap: true},
+		{suffix: "crds/nested/crds/repeated.yaml", kind: "CustomResourceDefinition", name: "repeated.example.com", fullLineMap: true},
 	}
 
 	for _, want := range wantCRDs {
@@ -96,9 +99,9 @@ func TestHelm_Resolve_WithCRDs(t *testing.T) {
 			require.Contains(t, string(f.OriginalData), kicsHelmID, "stamped original required for detector")
 			require.Contains(t, string(f.OriginalData), want.kind)
 			require.Contains(t, string(f.OriginalData), want.name)
-			idInfo, ok := f.IDInfo[0].(map[int]int)
+			idInfo, ok := f.IDInfo[0].(model.HelmIDLineRange)
 			require.True(t, ok, "IDInfo must map helm id 0 to source lines for YAML CRDs")
-			require.NotEmpty(t, idInfo, "IDInfo line map must not be empty for YAML CRDs")
+			require.GreaterOrEqual(t, idInfo.End, idInfo.Start, "IDInfo line range must not be empty for YAML CRDs")
 		} else {
 			require.Empty(t, f.SplitID, "JSON CRD has no inline stamp; SplitID must be empty")
 		}
@@ -248,6 +251,7 @@ func TestIsCRDManifest(t *testing.T) {
 func TestCrdChartRelativePath(t *testing.T) {
 	require.Equal(t, "crds/widget.yaml", crdChartRelativePath(`D:/a/repo/crds/widget.yaml`))
 	require.Equal(t, "crds/widget.yaml", crdChartRelativePath(`charts/subchart/crds/widget.yaml`))
+	require.Equal(t, "crds/zsub/crds/widget.yaml", crdChartRelativePath(`crds/zsub/crds/widget.yaml`))
 }
 
 func TestChartRelativeFromSource(t *testing.T) {
@@ -262,6 +266,25 @@ func TestChartRelativeFromSource(t *testing.T) {
 	rel, ok = chartRelativeFromSource("test_helm_subchart/charts/subchart/crds/widget.yaml")
 	require.True(t, ok)
 	require.Equal(t, "charts/subchart/crds/widget.yaml", rel)
+}
+
+func TestIsCRDSourcePath(t *testing.T) {
+	tests := map[string]bool{
+		"chart/crds/widget.yaml":                               true,
+		`chart\crds\nested\widget.yaml`:                        true,
+		"chart/charts/subchart/crds/widget.yaml":               true,
+		"chart/charts/subchart/charts/nested/crds/widget.yaml": true,
+		"crds/crds/widget.yaml":                                true,
+		"crds/templates/widget.yaml":                           false,
+		"chart/templates/widget.yaml":                          false,
+		"chart/templates/crds/widget.yaml":                     false,
+		"chart/files/crds/widget.yaml":                         false,
+	}
+	for path, expected := range tests {
+		t.Run(path, func(t *testing.T) {
+			require.Equal(t, expected, isCRDSourcePath(path))
+		})
+	}
 }
 
 func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
@@ -282,9 +305,10 @@ func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
+	require.True(t, (*splits)[0].isCRD)
 }
 
-func TestSplitManifestYAML_userSourceCommentInLaterDocument(t *testing.T) {
+func TestSplitManifestYAML_dropsUnknownSourceHeader(t *testing.T) {
 	ch, err := loader.Load(helmFixturePath(t, "test_helm_with_crds"))
 	require.NoError(t, err)
 	setID(ch)
@@ -298,19 +322,59 @@ func TestSplitManifestYAML_userSourceCommentInLaterDocument(t *testing.T) {
 		"# Source: user-authored",
 		"apiVersion: apiextensions.k8s.io/v1",
 		"kind: CustomResourceDefinition",
+		"---",
+		"apiVersion: apiextensions.k8s.io/v1",
+		"kind: CustomResourceDefinition",
 	}, "\n")
 
 	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch)
 	require.NoError(t, err)
-	require.Len(t, *splits, 2)
+	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
-	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[1].path)
+}
+
+func TestSplitManifestYAML_emptyCRDDocumentDoesNotShiftSourceIndex(t *testing.T) {
+	crd := &chart.File{
+		Name: "crds/leading-empty.yaml",
+		Data: []byte(strings.Join([]string{
+			"# comment-only document",
+			"---",
+			"apiVersion: apiextensions.k8s.io/v1",
+			"kind: CustomResourceDefinition",
+			"metadata:",
+			"  name: widgets.example.com",
+		}, "\n")),
+	}
+	ch := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "test"},
+		Files:    []*chart.File{crd},
+	}
+	setID(ch)
+
+	manifest := strings.Join([]string{
+		"---",
+		"# Source: test/crds/leading-empty.yaml",
+		string(crd.Data),
+	}, "\n")
+	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch)
+	require.NoError(t, err)
+	require.NotEmpty(t, *splits)
+
+	var resourceSplit *splitManifest
+	for i := range *splits {
+		if (*splits)[i].splitID != "" {
+			resourceSplit = &(*splits)[i]
+			break
+		}
+	}
+	require.NotNil(t, resourceSplit)
+	require.Zero(t, resourceSplit.sourceDocumentIndex)
 }
 
 func TestLocalCRDFiles_fromLoadedFixture(t *testing.T) {
 	ch, err := loader.Load(helmFixturePath(t, "test_helm_with_crds"))
 	require.NoError(t, err)
-	require.Len(t, localCRDFiles(ch), 4)
+	require.Len(t, localCRDFiles(ch), 5)
 }
 
 func TestLocalCRDFiles_keepsDependencyCRDsOnDependency(t *testing.T) {
@@ -331,9 +395,99 @@ func TestLocalCRDFiles_windowsSeparators(t *testing.T) {
 	require.Len(t, localCRDFiles(ch), 1)
 }
 
+func TestLocalCRDFiles_keepsDistinctNestedCRDPaths(t *testing.T) {
+	ch := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "test"},
+		Files: []*chart.File{
+			{Name: "crds/widget.yaml", Data: []byte("apiVersion: v1\n")},
+			{Name: "crds/nested/crds/widget.yaml", Data: []byte("apiVersion: v1\n")},
+		},
+	}
+
+	files := localCRDFiles(ch)
+	require.Len(t, files, 2)
+	require.Equal(t, "crds/widget.yaml", crdChartRelativePath(files[0].Name))
+	require.Equal(t, "crds/nested/crds/widget.yaml", crdChartRelativePath(files[1].Name))
+}
+
+func TestAddID_multiDocumentUsesSourceLineIDs(t *testing.T) {
+	original := strings.Join([]string{
+		"apiVersion: v1",
+		"kind: Service",
+		"metadata:",
+		"  name: nested-one",
+		"spec:",
+		"  ports:",
+		"  - name: nested-one",
+		"---",
+		"apiVersion: v1",
+		"kind: Service",
+		"metadata:",
+		"  name: nested-two",
+		"spec:",
+		"  ports:",
+		"  - name: nested-two",
+	}, "\n")
+	file := addID(&chart.File{Name: "templates/nested.yaml", Data: []byte(original)})
+
+	require.Contains(t, string(file.Data), "# KICS_HELM_ID_0:\napiVersion: v1")
+	require.Contains(t, string(file.Data), "# KICS_HELM_ID_8:\napiVersion: v1")
+}
+
+func TestDetectLine_MultiDocumentTemplateUsesSourceLines(t *testing.T) {
+	original := strings.Join([]string{
+		"apiVersion: v1",
+		"kind: Service",
+		"metadata:",
+		"  name: nested-one",
+		"spec:",
+		"  ports:",
+		"  - name: nested-one",
+		"---",
+		"apiVersion: v1",
+		"kind: Service",
+		"metadata:",
+		"  name: nested-two",
+		"spec:",
+		"  ports:",
+		"  - name: nested-two",
+	}, "\n")
+	file := addID(&chart.File{Name: "templates/nested.yaml", Data: []byte(original)})
+	idMap, err := getIDMap(file.Data)
+	require.NoError(t, err)
+
+	got := (helmdetector.DetectKindLine{}).DetectLine(context.Background(), &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/nested.yaml",
+		HelmID:            "# KICS_HELM_ID_8:",
+		OriginalData:      string(file.Data),
+		LinesOriginalData: utils.SplitLines(string(file.Data)),
+		IDInfo:            idMap,
+	}, "KICS_HELM_ID_8.spec", 1)
+
+	require.Equal(t, 13, got.Line)
+	require.Equal(t, 13, got.VulnerablilityLocation.Start.Line)
+	require.Equal(t, 13, got.VulnerablilityLocation.End.Line)
+
+	got = (helmdetector.DetectKindLine{}).DetectLine(context.Background(), &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/nested.yaml",
+		HelmID:            "# KICS_HELM_ID_8:",
+		OriginalData:      string(file.Data),
+		LinesOriginalData: utils.SplitLines(string(file.Data)),
+		IDInfo:            idMap,
+	}, "KICS_HELM_ID_8.spec.ports", 1)
+
+	require.Equal(t, 14, got.Line)
+	require.Equal(t, 14, got.VulnerablilityLocation.Start.Line)
+	require.Equal(t, 14, got.VulnerablilityLocation.End.Line)
+}
+
 func TestAddID_ignoresIndentedAPIVersion(t *testing.T) {
 	original := `description: |
   apiVersion: v1
+  ---
+  apiVersion: v2
   kind: Pod
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -354,6 +508,39 @@ func TestAddID_stampsIndentedRootAPIVersion(t *testing.T) {
 	require.Contains(t, string(file.Data), "# KICS_HELM_ID_0:\n  apiVersion: v1")
 }
 
+func TestAddID_stampsValidAPIVersionKeyStyles(t *testing.T) {
+	file := &chart.File{Data: []byte(`"apiVersion": v1
+kind: ConfigMap
+---
+'apiVersion' : v1
+kind: Secret
+---
+{apiVersion: v1, kind: Service}
+---
+? apiVersion
+: v1
+kind: Pod
+---
+{
+  apiVersion: v1,
+  kind: ConfigMap
+}
+---
+!tag apiVersion: v1
+kind: Secret
+---
+&key apiVersion: v1
+kind: Service
+---
+"api\u0056ersion": v1
+kind: Pod
+`)}
+	file.Name = "crds/keys.yaml"
+	addID(file)
+
+	require.Equal(t, 8, strings.Count(string(file.Data), kicsHelmID))
+}
+
 func TestHelm_SupportedTypes(t *testing.T) {
 	res := &Resolver{}
 	want := []model.FileKind{model.KindHELM}
@@ -371,10 +558,12 @@ func TestHelm_Resolve(t *testing.T) { //nolint
 		filePath string
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    model.ResolvedFiles
-		wantErr bool
+		name            string
+		args            args
+		fixture         string
+		compareBySuffix bool
+		want            model.ResolvedFiles
+		wantErr         bool
 	}{
 		{
 			name: "test_resolve_helm",
@@ -386,8 +575,7 @@ func TestHelm_Resolve(t *testing.T) { //nolint
 					{
 						SplitID:  "# KICS_HELM_ID_0:",
 						FileName: filepath.FromSlash("../../../test/fixtures/test_helm/templates/service.yaml"),
-						IDInfo: map[int]interface{}{0: map[int]int{0: 0, 1: 1, 2: 2, 3: 3, 4: 4,
-							5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14, 15: 15, 16: 16}},
+						IDInfo:   map[int]interface{}{0: model.HelmIDLineRange{Start: 0, End: 16}},
 						Content: []byte(`
 # Source: test_helm/templates/service.yaml
 # KICS_HELM_ID_0:
@@ -443,17 +631,15 @@ spec:
 			wantErr: true,
 		},
 		{
-			name: "test_with_dependencies",
-			args: args{
-				filePath: filepath.FromSlash("../../../test/fixtures/test_helm_subchart"),
-			},
+			name:            "test_with_dependencies",
+			fixture:         "test_helm_subchart",
+			compareBySuffix: true,
 			want: model.ResolvedFiles{
 				File: []model.ResolvedHelm{
 					{
 						FileName: filepath.FromSlash("../../../test/fixtures/test_helm_subchart/templates/serviceaccount.yaml"),
 						SplitID:  "# KICS_HELM_ID_1:",
-						IDInfo: map[int]interface{}{1: map[int]int{1: 1, 2: 2, 3: 3, 4: 4,
-							5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12, 13: 13}},
+						IDInfo:   map[int]interface{}{1: model.HelmIDLineRange{Start: 1, End: 13}},
 						Content: []byte(`
 # Source: test_helm_subchart/templates/serviceaccount.yaml
 # KICS_HELM_ID_1:
@@ -486,8 +672,7 @@ metadata:
 					{
 						FileName: filepath.FromSlash("../../../test/fixtures/test_helm_subchart/charts/subchart/templates/service.yaml"),
 						SplitID:  "# KICS_HELM_ID_0:",
-						IDInfo: map[int]interface{}{0: map[int]int{0: 0, 1: 1, 2: 2, 3: 3, 4: 4,
-							5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14, 15: 15, 16: 16}},
+						IDInfo:   map[int]interface{}{0: model.HelmIDLineRange{Start: 0, End: 16}},
 						Content: []byte(`
 # Source: test_helm_subchart/charts/subchart/templates/service.yaml
 # KICS_HELM_ID_0:
@@ -540,14 +725,14 @@ spec:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			filePath := tt.args.filePath
-			if tt.name == "test_with_dependencies" {
-				filePath = helmFixturePath(t, "test_helm_subchart")
+			if tt.fixture != "" {
+				filePath = helmFixturePath(t, tt.fixture)
 			}
 			got, err := res.Resolve(ctx, filePath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Resolve() = %v, wantErr = %v", err, tt.wantErr)
 			}
-			if tt.name == "test_with_dependencies" {
+			if tt.compareBySuffix {
 				require.NoError(t, err)
 				require.NotEmpty(t, got.Excluded)
 				for _, want := range tt.want.File {

@@ -307,9 +307,20 @@ func newLineInfoLoader(
 	isMinified bool,
 	maxResolverDepth int,
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
+	return newLineInfoLoaderWithReparser(filename, docIdx,
+		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
+			return p.Parse(
+				ctx, filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
+		})
+}
+
+func newLineInfoLoaderWithReparser(
+	filename string,
+	docIdx int,
+	reparse func(context.Context, *model.FileMetadata) (parser.ParsedDocument, error),
+) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
-		reparsed, err := p.Parse(
-			ctx, filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
+		reparsed, err := reparse(ctx, f)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)
 		}

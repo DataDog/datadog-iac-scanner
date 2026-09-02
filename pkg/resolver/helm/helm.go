@@ -1,7 +1,6 @@
 package helm
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -31,6 +30,7 @@ import (
 
 // Fixed dry-run cluster version for Helm scan rendering.
 const defaultDryRunKubeVersion = "v1.30.0"
+const helmIDNumberBase = 10
 
 // Search bounds when the default does not satisfy a chart's kubeVersion.
 const (
@@ -428,53 +428,133 @@ func setID(chartReq *chart.Chart) *chart.Chart {
 }
 
 // addID will add auxiliary lines used to detect line
-// one for each top-level "apiVersion:" where the id will be the line
+// one for each top-level "apiVersion:" where the id is the source line index.
 func addID(file *chart.File) *chart.File {
 	split := strings.Split(string(file.Data), "\n")
-	apiVersionLines, parsed := topLevelAPIVersionLines(file.Data)
-	if !parsed {
-		apiVersionLines = make(map[int]struct{})
-		for i, line := range split {
-			if strings.HasPrefix(line, "apiVersion:") {
-				apiVersionLines[i] = struct{}{}
-			}
-		}
-	}
+	apiVersionLines := topLevelAPIVersionLines(split, isYAMLCRD(file.Name))
 
-	stamped := make([]string, 0, len(split)+len(apiVersionLines))
+	stamped := make([]byte, 0, len(file.Data)+len(apiVersionLines)*24)
+	nextAPIVersion := 0
 	for i, line := range split {
-		if _, ok := apiVersionLines[i]; ok {
-			stamped = append(stamped, fmt.Sprintf("# KICS_HELM_ID_%d:", len(stamped)))
+		if nextAPIVersion < len(apiVersionLines) && apiVersionLines[nextAPIVersion] == i {
+			stamped = append(stamped, "# KICS_HELM_ID_"...)
+			stamped = strconv.AppendInt(stamped, int64(i), helmIDNumberBase)
+			stamped = append(stamped, ':', '\n')
+			nextAPIVersion++
 		}
-		stamped = append(stamped, line)
+		stamped = append(stamped, line...)
+		if i+1 < len(split) {
+			stamped = append(stamped, '\n')
+		}
 	}
-	file.Data = []byte(strings.Join(stamped, "\n"))
+	file.Data = stamped
 	return file
 }
 
-func topLevelAPIVersionLines(data []byte) (map[int]struct{}, bool) {
-	lines := make(map[int]struct{})
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	for {
-		var document yaml.Node
-		if err := decoder.Decode(&document); err != nil {
-			return lines, err == io.EOF
+func topLevelAPIVersionLines(lines []string, exhaustive bool) []int {
+	var result []int
+	for documentStart := 0; documentStart < len(lines); {
+		documentEnd := documentStart
+		for documentEnd < len(lines) && !isYAMLDocumentBoundary(lines[documentEnd]) {
+			documentEnd++
 		}
-		if len(document.Content) == 0 {
-			continue
-		}
-		root := document.Content[0]
-		if root.Kind != yaml.MappingNode {
-			continue
-		}
-		for i := 0; i+1 < len(root.Content); i += 2 {
-			key := root.Content[i]
-			if key.Value == "apiVersion" {
-				lines[key.Line-1] = struct{}{}
-				break
-			}
+		result = appendDocumentAPIVersionLine(result, lines, documentStart, documentEnd, exhaustive)
+
+		documentStart = documentEnd + 1
+		if documentEnd == len(lines) {
+			break
 		}
 	}
+	return result
+}
+
+func appendDocumentAPIVersionLine(
+	result []int, lines []string, documentStart, documentEnd int, exhaustive bool,
+) []int {
+	minIndent := -1
+	for lineNumber := documentStart; lineNumber < documentEnd; lineNumber++ {
+		line := lines[lineNumber]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "%") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if minIndent < 0 || indent < minIndent {
+			minIndent = indent
+		}
+	}
+
+	resultStart := len(result)
+	mayNeedFallback := false
+	for lineNumber := documentStart; lineNumber < documentEnd; lineNumber++ {
+		line := lines[lineNumber]
+		mayNeedFallback = mayNeedFallback || strings.Contains(line, "apiVersion")
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent == minIndent && isAPIVersionKey(line[indent:]) {
+			result = append(result, lineNumber)
+		}
+	}
+	if len(result) == resultStart && (exhaustive || mayNeedFallback) {
+		if lineNumber, ok := parsedAPIVersionLine(lines[documentStart:documentEnd]); ok {
+			result = append(result, documentStart+lineNumber)
+		}
+	}
+	return result
+}
+
+func parsedAPIVersionLine(lines []string) (int, bool) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(strings.Join(lines, "\n")), &document); err != nil ||
+		len(document.Content) == 0 {
+		return 0, false
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return 0, false
+	}
+	for index := 0; index+1 < len(root.Content); index += 2 {
+		key := root.Content[index]
+		if key.Value == "apiVersion" {
+			return key.Line - 1, true
+		}
+	}
+	return 0, false
+}
+
+func isYAMLDocumentBoundary(line string) bool {
+	line = strings.TrimRight(line, " \t\r")
+	if len(line) < 3 || (line[:3] != "---" && line[:3] != "...") {
+		return false
+	}
+	return len(line) == 3 || strings.HasPrefix(strings.TrimSpace(line[3:]), "#")
+}
+
+func isAPIVersionKey(line string) bool {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "{") {
+		line = strings.TrimSpace(line[1:])
+	}
+	explicitKey := strings.HasPrefix(line, "?")
+	if explicitKey {
+		line = strings.TrimSpace(line[1:])
+	}
+
+	var remainder string
+	switch {
+	case strings.HasPrefix(line, "'apiVersion'"):
+		remainder = line[len("'apiVersion'"):]
+	case strings.HasPrefix(line, `"apiVersion"`):
+		remainder = line[len(`"apiVersion"`):]
+	case strings.HasPrefix(line, "apiVersion"):
+		remainder = line[len("apiVersion"):]
+	default:
+		return false
+	}
+	remainder = strings.TrimSpace(remainder)
+	if explicitKey {
+		return remainder == "" || strings.HasPrefix(remainder, "#")
+	}
+	return strings.HasPrefix(remainder, ":")
 }
 
 // normalizeChartPath converts a chart file path to forward-slash form.
@@ -506,11 +586,11 @@ func isYAMLCRD(name string) bool {
 // crdChartRelativePath returns the chart-relative crds/ path for a CRD file name.
 func crdChartRelativePath(name string) string {
 	name = normalizeChartPath(name)
-	if idx := strings.Index(name, "/crds/"); idx >= 0 {
-		return name[idx+1:]
-	}
 	if strings.HasPrefix(name, crdDirPrefix) {
 		return name
+	}
+	if idx := strings.Index(name, "/crds/"); idx >= 0 {
+		return name[idx+1:]
 	}
 	parts := strings.Split(name, "/")
 	for i, part := range parts {

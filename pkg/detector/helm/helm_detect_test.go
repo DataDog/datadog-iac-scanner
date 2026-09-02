@@ -148,11 +148,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 				ResolvedFile:          "test-connection.yaml",
 				VulnerablilityLocation: model.ResourceLocation{
 					Start: model.ResourceLine{
-						Line: 11,
+						Line: 10,
 						Col:  0,
 					},
 					End: model.ResourceLine{
-						Line: 11,
+						Line: 10,
 						Col:  13,
 					},
 				},
@@ -190,11 +190,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 				ResolvedFile:          "test-dup_values.yaml",
 				VulnerablilityLocation: model.ResourceLocation{
 					Start: model.ResourceLine{
-						Line: 11,
+						Line: 9,
 						Col:  0,
 					},
 					End: model.ResourceLine{
-						Line: 11,
+						Line: 9,
 						Col:  13,
 					},
 				},
@@ -229,11 +229,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 				ResolvedFile:          "test-dups.yaml",
 				VulnerablilityLocation: model.ResourceLocation{
 					Start: model.ResourceLine{
-						Line: 28,
+						Line: 26,
 						Col:  0,
 					},
 					End: model.ResourceLine{
-						Line: 28,
+						Line: 26,
 						Col:  13,
 					},
 				},
@@ -268,11 +268,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 				ResolvedFile:          "deployment.yaml",
 				VulnerablilityLocation: model.ResourceLocation{
 					Start: model.ResourceLine{
-						Line: 11,
+						Line: 10,
 						Col:  0,
 					},
 					End: model.ResourceLine{
-						Line: 11,
+						Line: 10,
 						Col:  29,
 					},
 				},
@@ -289,6 +289,30 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 				t.Errorf("detectHelmLine() = %v, want = %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDetectLastSingleMissingHelmID(t *testing.T) {
+	distances := map[int]int{2: 1, 5: 1}
+	idInfo := map[int]interface{}{0: map[int]int{2: 2}}
+
+	if !detectLastSingle(2, distances, idInfo, -1) {
+		t.Fatal("missing Helm ID mapping should not mark the line as a duplicate")
+	}
+}
+
+func TestDetectLastSingleUsesHelmIDLineRange(t *testing.T) {
+	distances := map[int]int{2: 1, 5: 1}
+	idInfo := map[int]interface{}{
+		0: model.HelmIDLineRange{Start: 0, End: 3},
+		1: model.HelmIDLineRange{Start: 4, End: 7},
+	}
+
+	if !detectLastSingle(2, distances, idInfo, 0) {
+		t.Fatal("duplicate outside the selected Helm range must remain unique")
+	}
+	if detectLastSingle(2, map[int]int{2: 1, 3: 1}, idInfo, 0) {
+		t.Fatal("duplicate inside the selected Helm range must not be unique")
 	}
 }
 

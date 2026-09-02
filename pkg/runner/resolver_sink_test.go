@@ -7,6 +7,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
@@ -47,6 +49,31 @@ func newYAMLResolverSinkService(
 	return service, store
 }
 
+func TestPrepareResolvedScanDocumentPreparesHelmInPlace(t *testing.T) {
+	nested := map[string]interface{}{
+		"_dd_lines": map[string]interface{}{"name": 2},
+		"name":      "widget",
+	}
+	document := map[string]interface{}{
+		"_dd_lines": map[string]interface{}{"metadata": 1},
+		"metadata":  nested,
+		"versions": []interface{}{
+			map[string]interface{}{
+				"_dd_lines": map[string]interface{}{"name": 5},
+				"name":      "v1",
+			},
+		},
+	}
+
+	prepared, err := prepareResolvedScanDocument(document, model.KindHELM)
+	require.NoError(t, err)
+	require.NotContains(t, prepared, "_dd_lines")
+	require.NotContains(t, nested, "_dd_lines")
+	require.NotContains(t, prepared["versions"].([]interface{})[0], "_dd_lines")
+	prepared["prepared-only"] = true
+	require.True(t, document["prepared-only"].(bool))
+}
+
 func TestStoreResolvedFilesParsesHelmJSONWithYAMLParser(t *testing.T) {
 	ctx := context.Background()
 	chartPath, err := filepath.Abs("../../test/fixtures/test_helm_with_crds")
@@ -60,14 +87,15 @@ func TestStoreResolvedFilesParsesHelmJSONWithYAMLParser(t *testing.T) {
 
 	files, err := store.GetFiles(ctx, "helm-crds")
 	require.NoError(t, err)
-	require.Len(t, files, 6)
+	require.Len(t, files, 7)
 
 	expectedPaths := map[string]int{
-		"crds/gadget.json":        1,
-		"crds/multi.yaml":         2,
-		"crds/nested/device.yaml": 1,
-		"crds/widget.yaml":        1,
-		"templates/service.yaml":  1,
+		"crds/gadget.json":               1,
+		"crds/multi.yaml":                2,
+		"crds/nested/device.yaml":        1,
+		"crds/nested/crds/repeated.yaml": 1,
+		"crds/widget.yaml":               1,
+		"templates/service.yaml":         1,
 	}
 	for _, file := range files {
 		normalized := filepath.ToSlash(file.FilePath)
@@ -87,6 +115,106 @@ func TestStoreResolvedFilesParsesHelmJSONWithYAMLParser(t *testing.T) {
 	for suffix, remaining := range expectedPaths {
 		require.Zero(t, remaining, "missing stored Helm document for %s", suffix)
 	}
+}
+
+func TestStoreResolvedFilesLazilyReconstructsHelmCRDLineInfo(t *testing.T) {
+	ctx := context.Background()
+	chartPath, err := filepath.Abs("../../test/fixtures/test_helm_with_crds")
+	require.NoError(t, err)
+	resolved, err := (&helm.Resolver{}).Resolve(ctx, chartPath)
+	require.NoError(t, err)
+
+	service, store := newYAMLResolverSinkService(t, ctx)
+	expectedByName := make(map[string]map[string]interface{})
+	for _, rfile := range resolved.File {
+		if !rfile.IsCRD {
+			continue
+		}
+		parsed, parseErr := service.parseResolvedFile(
+			ctx, rfile.FileName, rfile.OriginalData, model.KindHELM, false, false, 15)
+		require.NoError(t, parseErr)
+		require.Greater(t, len(parsed.Docs), rfile.SourceDocumentIndex)
+		expectedDocument := parsed.Docs[rfile.SourceDocumentIndex]
+		metadata, ok := expectedDocument["metadata"].(map[string]interface{})
+		require.True(t, ok)
+		name, ok := metadata["name"].(string)
+		require.True(t, ok)
+		expectedByName[name] = expectedDocument
+	}
+	require.Len(t, expectedByName, 6)
+
+	service.storeResolvedFiles(ctx, resolved, model.KindHELM, "lazy-crd-line-info", false, 15)
+	files, err := store.GetFiles(ctx, "lazy-crd-line-info")
+	require.NoError(t, err)
+
+	actualCRDs := 0
+	for _, file := range files {
+		if file.Document["kind"] != "CustomResourceDefinition" {
+			continue
+		}
+		actualCRDs++
+		metadata, ok := file.Document["metadata"].(map[string]interface{})
+		require.True(t, ok)
+		name, ok := metadata["name"].(string)
+		require.True(t, ok)
+
+		require.Nil(t, file.LineInfoDocument)
+		lineBeforeLoad := detector.NewDetectLine(1).DetectLine(ctx, file, "metadata.name")
+		require.Greater(t, lineBeforeLoad.Line, 0)
+		originalData := file.OriginalData
+		require.NoError(t, file.EnsureLineInfoDocument(ctx))
+		require.Equal(t, originalData, file.OriginalData)
+
+		eagerJSON, marshalErr := json.Marshal(expectedByName[name])
+		require.NoError(t, marshalErr)
+		lazyJSON, marshalErr := json.Marshal(file.LineInfoDocument)
+		require.NoError(t, marshalErr)
+		require.JSONEq(t, string(eagerJSON), string(lazyJSON))
+
+		lineAfterLoad := detector.NewDetectLine(1).DetectLine(ctx, file, "metadata.name")
+		require.Equal(t, lineBeforeLoad, lineAfterLoad, name)
+	}
+	require.Equal(t, len(expectedByName), actualCRDs)
+}
+
+func TestStoreResolvedFilesKeepsRenderedLineInfoForHelmTemplates(t *testing.T) {
+	ctx := context.Background()
+	service, store := newYAMLResolverSinkService(t, ctx)
+	service.storeResolvedFiles(ctx, model.ResolvedFiles{
+		File: []model.ResolvedHelm{{
+			FileName:     "chart/templates/service.yaml",
+			Content:      []byte("apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n"),
+			OriginalData: []byte("apiVersion: v1\nkind: Service\nmetadata:\n  name: {{ .Values.name }}\n"),
+		}},
+	}, model.KindHELM, "rendered-template-line-info", false, 15)
+
+	files, err := store.GetFiles(ctx, "rendered-template-line-info")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.NoError(t, files[0].EnsureLineInfoDocument(ctx))
+	metadata, ok := files[0].LineInfoDocument["metadata"].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "api", metadata["name"])
+}
+
+func TestStoreResolvedFilesKeepsCRDSuppressionLines(t *testing.T) {
+	ctx := context.Background()
+	service, store := newYAMLResolverSinkService(t, ctx)
+	original := []byte("# dd-iac-scan ignore-block\n# KICS_HELM_ID_1:\napiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n")
+	content := []byte("\n# Source: chart/crds/widget.yaml\n" + string(original))
+	service.storeResolvedFiles(ctx, model.ResolvedFiles{
+		File: []model.ResolvedHelm{{
+			FileName:     "chart/crds/widget.yaml",
+			Content:      content,
+			OriginalData: original,
+			IsCRD:        true,
+		}},
+	}, model.KindHELM, "crd-suppression", false, 15)
+
+	files, err := store.GetFiles(ctx, "crd-suppression")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, []int{1, 2, 3}, files[0].LinesIgnore)
 }
 
 func TestStoreResolvedFilesContinuesAfterUnsupportedFile(t *testing.T) {

@@ -40,6 +40,8 @@ func newTestServer(t *testing.T) *Server {
 
 const syntheticRuleID = "test-terraform-resource-missing-owner"
 
+var analyzeCompiledQueryCacheTestMu sync.Mutex
+
 // syntheticRule imports both test-only pushed libraries. Its identifiers and
 // behavior are deliberately unrelated to the production rule corpus.
 func syntheticRule() datadog.Rule {
@@ -675,6 +677,9 @@ func TestAnalyze_MissingPlatformLibraryReportedAsFailedQuery(t *testing.T) {
 }
 
 func TestAnalyze_RequestLibrariesInvalidateSharedRuleCache(t *testing.T) {
+	analyzeCompiledQueryCacheTestMu.Lock()
+	t.Cleanup(analyzeCompiledQueryCacheTestMu.Unlock)
+
 	engine.ResetCompiledQueryCachesForTest()
 	t.Cleanup(engine.ResetCompiledQueryCachesForTest)
 
@@ -729,6 +734,9 @@ func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
 }
 
 func TestAnalyze_LogsFailedQueryCount(t *testing.T) {
+	analyzeCompiledQueryCacheTestMu.Lock()
+	t.Cleanup(analyzeCompiledQueryCacheTestMu.Unlock)
+
 	engine.ResetCompiledQueryCachesForTest()
 	t.Cleanup(engine.ResetCompiledQueryCachesForTest)
 
@@ -740,7 +748,9 @@ func TestAnalyze_LogsFailedQueryCount(t *testing.T) {
 
 import rego.v1
 
-DatadogPolicy contains "invalid-result"`)
+DatadogPolicy contains result if {
+	undefined_reference
+}`)
 	req := analyzeRequest{
 		Files: []analyzeFile{{
 			Path:    "infra/main.tf",

@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
 	"sort"
@@ -23,11 +24,13 @@ type Resolver struct {
 
 // splitManifest keeps the information of the manifest splitted by source
 type splitManifest struct {
-	path       string
-	content    []byte
-	original   []byte
-	splitID    string
-	splitIDMap map[int]interface{}
+	path                string
+	content             []byte
+	original            []byte
+	splitID             string
+	sourceDocumentIndex int
+	splitIDMap          map[int]interface{}
+	isCRD               bool
 }
 
 const (
@@ -45,7 +48,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 			masterUtils.HandlePanic(ctx, r, errMessage)
 		}
 	}()
-	splits, excluded, loadedChart, err := renderHelm(ctx, filePath)
+	splits, excluded, err := renderHelm(ctx, filePath)
 	if err != nil {
 		return model.ResolvedFiles{}, errors.Wrap(err, "failed to render helm chart")
 	}
@@ -53,25 +56,22 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 		Excluded: excluded,
 	}
 	contextLogger.Debug().Msgf("Processing %d helm manifest splits from chart '%s'", len(*splits), filePath)
-	seenCRDs := make(map[string]struct{}, len(*splits))
 	for _, split := range *splits {
 		sourceKey := chartSourceKey(split.path)
-		seenCRDs[sourceKey] = struct{}{}
 		chartRelative, ok := chartRelativeFromSource(sourceKey)
 		if !ok {
 			continue
 		}
 		origpath := resolvedChartFilePath(filePath, chartRelative)
 		rfiles.File = append(rfiles.File, model.ResolvedHelm{
-			FileName:     origpath,
-			Content:      split.content,
-			OriginalData: split.original,
-			SplitID:      split.splitID,
-			IDInfo:       split.splitIDMap,
+			FileName:            origpath,
+			Content:             split.content,
+			OriginalData:        split.original,
+			SplitID:             split.splitID,
+			SourceDocumentIndex: split.sourceDocumentIndex,
+			IDInfo:              split.splitIDMap,
+			IsCRD:               split.isCRD,
 		})
-	}
-	if err := appendDirectCRDFiles(&rfiles, filePath, loadedChart, seenCRDs); err != nil {
-		return model.ResolvedFiles{}, err
 	}
 	contextLogger.Debug().Msgf("Successfully processed %d helm files from chart '%s'", len(rfiles.File), filePath)
 	return rfiles, nil
@@ -83,19 +83,19 @@ func (r *Resolver) SupportedTypes() []model.FileKind {
 }
 
 // renderHelm will use helm library to render helm charts
-func renderHelm(ctx context.Context, path string) (*[]splitManifest, []string, *chart.Chart, error) {
+func renderHelm(ctx context.Context, path string) (*[]splitManifest, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	client := newClient(ctx)
 	contextLogger.Debug().Msg("Running helm install")
 	manifest, loadedChart, excluded, err := runInstall(ctx, []string{path}, client, &values.Options{})
 	if err != nil {
-		return nil, []string{}, nil, err
+		return nil, []string{}, err
 	}
 	splitted, err := splitManifestYAML(manifest, loadedChart)
 	if err != nil {
-		return nil, []string{}, nil, err
+		return nil, []string{}, err
 	}
-	return splitted, excluded, loadedChart, nil
+	return splitted, excluded, nil
 }
 
 // splitManifestYAML will split the rendered file and return its content by template as well as the template path
@@ -108,29 +108,17 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 	sources = updateName(sources, sourceChart, sourceChart.Name())
 	var splitedManifest []splitManifest
 	splitedSource := splitHelmManifest(template.Manifest)
-	origData := toMap(sources)
-	// crdSplitCount and markersBySource support multi-document CRD files: Helm renders
-	// each document as a separate split without repeating the Source header, and omits
-	// KICS_HELM_ID markers. We attribute sourceless splits to lastSource and pick the
-	// Nth cached marker for the Nth occurrence of a given source path.
-	crdSplitCount := make(map[string]int)
-	markersBySource := make(map[string][]string)
+	sourceData := indexSources(sources)
+	sourceDocumentIndices := make(map[string]int)
 	var lastSource string
 	for _, splited := range splitedSource {
 		splited = strings.ReplaceAll(splited, "\r", "")
-		var lineID string
-		for _, line := range strings.Split(splited, "\n") {
-			if strings.Contains(line, kicsHelmID) {
-				lineID = line // get auxiliary line id
-				break
-			}
-		}
-
 		sourcePath, hasSource := parseManifestSource(splited)
 		if hasSource {
 			sourcePath = chartSourceKey(sourcePath)
-			if origData[sourcePath] == nil {
-				hasSource = false
+			if sourceData[sourcePath] == nil {
+				lastSource = ""
+				continue
 			}
 		}
 		if !hasSource {
@@ -146,33 +134,26 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 
 		sourcePath = chartSourceKey(sourcePath)
 		sourceKey := sourcePath
-		if origData[sourceKey] == nil {
+		source := sourceData[sourceKey]
+		if source == nil {
 			continue
 		}
-		original := origData[sourceKey]
-		idMap, err := getIDMap(original)
-		if err != nil {
+		if err := source.ensureIDMap(); err != nil {
 			return nil, err
 		}
-		// CRDs have no inline markers in the rendered output; use the Nth stamped marker.
-		if lineID == "" {
-			markers, ok := markersBySource[sourcePath]
-			if !ok {
-				markers = extractHelmMarkers(original)
-				markersBySource[sourcePath] = markers
-			}
-			n := crdSplitCount[sourcePath]
-			if n < len(markers) {
-				lineID = markers[n]
-			}
-			crdSplitCount[sourcePath]++
+		splitID := firstHelmMarker(splited)
+		sourceDocumentIndex := sourceDocumentIndices[sourceKey]
+		if !source.isCRD || splitID != "" || strings.EqualFold(filepath.Ext(sourcePath), ".json") {
+			sourceDocumentIndices[sourceKey]++
 		}
 		splitedManifest = append(splitedManifest, splitManifest{
-			path:       sourcePath,
-			content:    []byte(strings.ReplaceAll(splited, "\r", "")),
-			original:   original,
-			splitID:    lineID,
-			splitIDMap: idMap,
+			path:                sourcePath,
+			content:             []byte(splited),
+			original:            source.original,
+			splitID:             splitID,
+			sourceDocumentIndex: sourceDocumentIndex,
+			splitIDMap:          source.idMap,
+			isCRD:               source.isCRD,
 		})
 	}
 	return &splitedManifest, nil
@@ -195,7 +176,15 @@ func splitHelmManifest(manifest string) []string {
 
 // parseManifestSource extracts the Helm # Source header from a manifest split.
 func parseManifestSource(split string) (source string, ok bool) {
-	for _, line := range strings.Split(split, "\n") {
+	for split != "" {
+		lineEnd := strings.IndexByte(split, '\n')
+		line := split
+		if lineEnd >= 0 {
+			line = split[:lineEnd]
+			split = split[lineEnd+1:]
+		} else {
+			split = ""
+		}
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -207,20 +196,21 @@ func parseManifestSource(split string) (source string, ok bool) {
 	return "", false
 }
 
-func looksLikeManifest(split string) bool {
-	apiVersionLines, parsed := topLevelAPIVersionLines([]byte(split))
-	return parsed && len(apiVersionLines) > 0
+func firstHelmMarker(content string) string {
+	index := strings.Index(content, kicsHelmID)
+	if index < 0 {
+		return ""
+	}
+	lineStart := strings.LastIndexByte(content[:index], '\n') + 1
+	lineEnd := strings.IndexByte(content[index:], '\n')
+	if lineEnd < 0 {
+		return content[lineStart:]
+	}
+	return content[lineStart : index+lineEnd]
 }
 
-// extractHelmMarkers returns all KICS_HELM_ID lines from content in order.
-func extractHelmMarkers(data []byte) []string {
-	var markers []string
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.Contains(line, kicsHelmID) {
-			markers = append(markers, strings.TrimSpace(line))
-		}
-	}
-	return markers
+func looksLikeManifest(split string) bool {
+	return len(topLevelAPIVersionLines(strings.Split(split, "\n"), true)) > 0
 }
 
 // chartSourceKey normalizes Helm source paths for cross-platform lookup.
@@ -253,13 +243,58 @@ func helmChartPath(parts ...string) string {
 	return strings.Join(elems, "/")
 }
 
-// toMap will convert to map original data having the path as it's key
-func toMap(files []*chart.File) map[string][]byte {
-	mapFiles := make(map[string][]byte)
-	for _, file := range files {
-		mapFiles[chartSourceKey(file.Name)] = []byte(strings.ReplaceAll(string(file.Data), "\r", ""))
+type sourceMetadata struct {
+	original      []byte
+	idMap         map[int]interface{}
+	isCRD         bool
+	idMapPrepared bool
+}
+
+func (s *sourceMetadata) ensureIDMap() error {
+	if s.idMapPrepared {
+		return nil
 	}
-	return mapFiles
+	idMap, err := getIDMap(s.original)
+	if err != nil {
+		return err
+	}
+	s.idMap = idMap
+	s.idMapPrepared = true
+	return nil
+}
+
+func indexSources(files []*chart.File) map[string]*sourceMetadata {
+	sources := make(map[string]*sourceMetadata, len(files))
+	for _, file := range files {
+		original := file.Data
+		if bytes.IndexByte(original, '\r') >= 0 {
+			original = bytes.ReplaceAll(original, []byte{'\r'}, nil)
+		}
+		sources[chartSourceKey(file.Name)] = &sourceMetadata{
+			original: original,
+			isCRD:    isCRDSourcePath(file.Name),
+		}
+	}
+	return sources
+}
+
+func isCRDSourcePath(name string) bool {
+	parts := strings.Split(chartSourceKey(name), "/")
+	if len(parts) == 0 {
+		return false
+	}
+	index := 1
+	for index < len(parts) {
+		switch parts[index] {
+		case crdDirName:
+			return index+1 < len(parts)
+		case "charts":
+			index += 2
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // updateName will update the templates name as well as its dependencies
@@ -285,99 +320,29 @@ func updateName(template []*chart.File, charts *chart.Chart, name string) []*cha
 	return template
 }
 
-func crdDocuments(data []byte) [][]byte {
-	text := strings.ReplaceAll(string(data), "\r", "")
-	parts := splitHelmManifest(text)
-	docs := make([][]byte, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		docs = append(docs, []byte(part))
-	}
-	return docs
-}
-
-func appendDirectCRDFiles(
-	rfiles *model.ResolvedFiles, chartPath string, ch *chart.Chart, seen map[string]struct{},
-) error {
-	if ch == nil {
-		return nil
-	}
-	rootKey := chartSourceKey(ch.Name())
-	var walk func(prefix string, chart *chart.Chart) error
-	walk = func(prefix string, chart *chart.Chart) error {
-		chartPrefix := helmChartPath(prefix, chart.Name())
-		for _, f := range localCRDFiles(chart) {
-			rel := crdChartRelativePath(f.Name)
-			sourceKey := chartSourceKey(helmChartPath(chartPrefix, rel))
-			if _, ok := seen[sourceKey]; ok {
-				continue
-			}
-			chartRelative := strings.TrimPrefix(sourceKey, rootKey+"/")
-			if chartRelative == sourceKey {
-				continue
-			}
-			origpath := resolvedChartFilePath(chartPath, chartRelative)
-			original := append([]byte(nil), f.Data...)
-			idMap, err := getIDMap(original)
-			if err != nil {
-				return err
-			}
-			markers := extractHelmMarkers(original)
-			docs := crdDocuments(original)
-			for i, doc := range docs {
-				lineID := ""
-				if i < len(markers) {
-					lineID = markers[i]
-				}
-				rfiles.File = append(rfiles.File, model.ResolvedHelm{
-					FileName:     origpath,
-					Content:      append([]byte(nil), doc...),
-					OriginalData: original,
-					SplitID:      lineID,
-					IDInfo:       idMap,
-				})
-			}
-			seen[sourceKey] = struct{}{}
-		}
-		for _, dep := range chart.Dependencies() {
-			if err := walk(helmChartPath(chartPrefix, "charts"), dep); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return walk("", ch)
-}
-
 // getIdMap will construct a map with ids with the corresponding lines as keys
 // for use in detector
 func getIDMap(originalData []byte) (map[int]interface{}, error) {
 	ids := make(map[int]interface{})
-	mapLines := make(map[int]int)
 	idHelm := -1
+	lineRange := model.HelmIDLineRange{Start: 1, End: 0}
 	for line, stringLine := range strings.Split(string(originalData), "\n") {
 		if strings.Contains(stringLine, kicsHelmID) {
 			id, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(stringLine, kicsHelmID), ":"))
 			if err != nil {
 				return nil, err
 			}
-			if idHelm == -1 {
-				idHelm = id
-				mapLines[line] = line
-			} else {
-				ids[idHelm] = mapLines
-				mapLines = make(map[int]int)
-				idHelm = id
-				mapLines[line] = line
+			if idHelm != -1 {
+				lineRange.End = line - 1
+				ids[idHelm] = lineRange
 			}
+			idHelm = id
+			lineRange = model.HelmIDLineRange{Start: line, End: line}
 		} else if idHelm != -1 {
-			mapLines[line] = line
+			lineRange.End = line
 		}
 	}
-	ids[idHelm] = mapLines
+	ids[idHelm] = lineRange
 
 	return ids, nil
 }

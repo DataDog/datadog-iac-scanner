@@ -101,14 +101,15 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		}
 		// Update found line
 		curLineRes.lineRes = removeLines(curLineRes.lineRes, lineRemove)
+		adjustedLine := curLineRes.lineRes + 1
 		return model.VulnerabilityLines{
-			Line:                  curLineRes.lineRes + 1,
+			Line:                  adjustedLine,
 			VulnLines:             detector.GetAdjacentVulnLines(curLineRes.lineRes, outputLines, lines),
 			LineWithVulnerability: strings.Split(lines[curLineRes.lineRes], ": ")[0],
 			ResolvedFile:          file.FilePath,
 			VulnerablilityLocation: model.ResourceLocation{
-				Start: start,
-				End:   end,
+				Start: model.ResourceLine{Line: adjustedLine, Col: start.Col},
+				End:   model.ResourceLine{Line: adjustedLine, Col: end.Col},
 			},
 		}
 	}
@@ -213,10 +214,24 @@ func detectLastSingle(line int, dis map[int]int, idInfo map[int]interface{}, id 
 	if idInfo == nil {
 		return true
 	}
+	var containsLine func(int) bool
+	switch originalLines := idInfo[id].(type) {
+	case model.HelmIDLineRange:
+		containsLine = func(line int) bool {
+			return line >= originalLines.Start && line <= originalLines.End
+		}
+	case map[int]int:
+		containsLine = func(line int) bool {
+			_, ok := originalLines[line]
+			return ok
+		}
+	default:
+		return true
+	}
 	for key, value := range dis {
 		if value == dis[line] && key != line {
 			// check if we are only looking at original data equivalent to the vulnerability
-			if ok := idInfo[id].(map[int]int)[key]; ok != 0 {
+			if containsLine(key) {
 				return false
 			}
 		}

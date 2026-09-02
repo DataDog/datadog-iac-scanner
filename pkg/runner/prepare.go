@@ -9,7 +9,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -84,7 +86,13 @@ func dispatchChart(ctx context.Context,
 	if err := fsp.ExcludePaths(ctx, resFiles.Excluded); err != nil {
 		contextLogger.Err(err).Msgf("could not exclude rendered chart files: %s", chartPath)
 	}
-	for _, s := range services {
+	routed := services
+	if kind == model.KindHELM {
+		if platform, ok := analyzer.PlatformForKind(kind); ok {
+			routed = servicesForPlatformAndParserKind(services, platform, model.KindYAML)
+		}
+	}
+	for _, s := range routed {
 		s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
 	}
 	return true
@@ -99,6 +107,7 @@ func dispatchFile(ctx context.Context,
 	if len(services) == 0 {
 		return nil
 	}
+	services = servicesForPlatform(services, sharedFilePlatform(services, filePath))
 
 	var c *Content
 	var getErr error
@@ -134,6 +143,38 @@ func dispatchFile(ctx context.Context,
 	return nil
 }
 
+func sharedFilePlatform(services []*Service, filePath string) string {
+	path := filepath.ToSlash(filePath)
+	platform := ""
+	for _, service := range services {
+		candidate, ok := service.FilePlatform[path]
+		if !ok {
+			continue
+		}
+		if platform != "" && !strings.EqualFold(platform, candidate) {
+			return ""
+		}
+		platform = candidate
+	}
+	return platform
+}
+
+func servicesForPlatform(services []*Service, platform string) []*Service {
+	if platform == "" {
+		return services
+	}
+	routed := make([]*Service, 0, len(services))
+	for _, service := range services {
+		if containsPlatformFold(service.Parser.Platform, platform) {
+			routed = append(routed, service)
+		}
+	}
+	if len(routed) == 0 {
+		return services
+	}
+	return routed
+}
+
 func cloneContent(c *Content) *Content {
 	if c == nil {
 		return nil
@@ -148,6 +189,33 @@ func cloneContent(c *Content) *Content {
 		IsMinified:     c.IsMinified,
 		CountResources: c.CountResources,
 	}
+}
+
+func servicesForPlatformAndParserKind(
+	services []*Service,
+	platform string,
+	kind model.FileKind,
+) []*Service {
+	routed := make([]*Service, 0, len(services))
+	for _, service := range services {
+		if service.Parser.Parsers.GetKind() == kind &&
+			containsPlatformFold(service.Parser.Platform, platform) {
+			routed = append(routed, service)
+		}
+	}
+	if len(routed) == 0 {
+		return services
+	}
+	return routed
+}
+
+func containsPlatformFold(platforms []string, wanted string) bool {
+	for _, platform := range platforms {
+		if strings.EqualFold(platform, wanted) {
+			return true
+		}
+	}
+	return false
 }
 
 func unionExtensions(services []*Service) model.Extensions {
