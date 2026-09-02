@@ -6,6 +6,7 @@
 package terraform
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -13,10 +14,32 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 )
+
+func TestResolveTuplePreservesNullValues(t *testing.T) {
+	expr, diagnostics := hclsyntax.ParseExpression(
+		[]byte(`[null, "arn:aws:s3:::example"]`),
+		"policy.tf",
+		hcl.InitialPos,
+	)
+	require.False(t, diagnostics.HasErrors())
+	tuple := expr.(*hclsyntax.TupleConsExpr)
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+
+	resolveTuple(ctx, tuple)
+
+	nullExpr := tuple.Exprs[0].(*hclsyntax.LiteralValueExpr)
+	require.True(t, nullExpr.Val.IsNull())
+	require.Equal(t, "arn:aws:s3:::example", tuple.Exprs[1].(*hclsyntax.LiteralValueExpr).Val.AsString())
+	require.Empty(t, logs.String())
+}
 
 func Test_getDataSourcePolicy(t *testing.T) {
 	type args struct {

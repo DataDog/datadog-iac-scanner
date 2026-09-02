@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -920,6 +921,24 @@ func TestCanonicalInputsKey_NullTypeDistinct(t *testing.T) {
 	k2 := canonicalInputsKey(map[string]cty.Value{"x": cty.NullVal(cty.Number)})
 	if k1 == k2 {
 		t.Errorf("null(string) and null(number) produced the same cache key: %q", k1)
+	}
+}
+
+func TestEvaluateLocalModuleBlocksIgnoresNullPreliminaryOutputs(t *testing.T) {
+	evalCtx := &hcl.EvalContext{Variables: map[string]cty.Value{
+		"module": cty.NullVal(cty.EmptyObject),
+	}}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("evaluateLocalModuleBlocks panicked: %v", recovered)
+		}
+	}()
+
+	_, outputs := New().evaluateLocalModuleBlocks(
+		context.Background(), nil, evalCtx, "", "", "", nil, 0, nil, nil,
+	)
+	if len(outputs) != 0 {
+		t.Fatalf("outputs = %#v, want empty", outputs)
 	}
 }
 
