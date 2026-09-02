@@ -115,12 +115,10 @@ func (s *FileSystemSourceProvider) addExcluded(ctx context.Context, excludePaths
 }
 
 // GetExcludePaths gets all the files that should be excluded
-func GetExcludePaths(ctx context.Context, pathExpressions string) ([]string, error) {
-	contextLogger := logger.FromContext(ctx)
+func GetExcludePaths(_ context.Context, pathExpressions string) ([]string, error) {
 	if strings.ContainsAny(pathExpressions, "*?[") {
 		info, err := filepathx.Glob(pathExpressions)
 		if err != nil {
-			contextLogger.Error().Msgf("failed to get exclude path %s: %s", pathExpressions, err)
 			return []string{pathExpressions}, nil
 		}
 		return info, nil
