@@ -821,6 +821,66 @@ func TestJson_parseTFPlan(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "test - injects data source values line from _dd_lines under prior_state",
+			args: args{
+				doc: model.Document{
+					"format_version":    "1.2",
+					"terraform_version": "1.5.0",
+					"planned_values": map[string]any{
+						"root_module": map[string]any{
+							"resources": []map[string]any{},
+						},
+					},
+					"prior_state": map[string]any{
+						"format_version": "1.0",
+						"values": map[string]any{
+							"root_module": map[string]any{
+								"_dd_lines": map[string]any{
+									"_dd_resources": map[string]any{
+										"_dd_arr": []map[string]any{
+											{
+												"_dd__default": map[string]any{"_dd_line": 5},
+												"_dd_values":   map[string]any{"_dd_line": 14},
+											},
+										},
+									},
+								},
+								"resources": []map[string]any{
+									{
+										"address": "data.aws_kms_key.by_alias",
+										"mode":    "data",
+										"type":    "aws_kms_key",
+										"name":    "by_alias",
+										"values": map[string]any{
+											"key_id": "alias/aws/s3",
+										},
+									},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]any{},
+					"configuration":    map[string]any{},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]any{},
+				"data": map[string]any{
+					"aws_kms_key": map[string]any{
+						"_dd_lines": map[string]any{
+							"_dd_by_alias": map[string]any{"_dd_line": (float64)(14)},
+						},
+						"by_alias": map[string]any{
+							"key_id": "alias/aws/s3",
+						},
+					},
+				},
+				"resource_changes": []any{},
+				"configuration":    map[string]any{},
+			},
+			wantErr: false,
+		},
+		{
 			name: "test - data source scheduled for deletion in resource_changes is excluded from prior_state merge",
 			args: args{
 				doc: model.Document{

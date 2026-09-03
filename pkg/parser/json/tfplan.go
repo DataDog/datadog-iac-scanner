@@ -342,11 +342,14 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 }
 
 // extractResourceHeaderLines returns each resource's "values" attribute
-// line, keyed by resource address.
+// line, keyed by resource address. Addresses are unique across the whole
+// plan, so planned_values and prior_state (resolved data sources) share one map.
 func extractResourceHeaderLines(rawPlan []byte) map[string]int {
 	lines := make(map[string]int)
-	root_module := gjson.GetBytes(rawPlan, "planned_values.root_module")
-	walkModule(&root_module, lines)
+	plannedRootModule := gjson.GetBytes(rawPlan, "planned_values.root_module")
+	walkModule(&plannedRootModule, lines)
+	priorStateRootModule := gjson.GetBytes(rawPlan, "prior_state.values.root_module")
+	walkModule(&priorStateRootModule, lines)
 	return lines
 }
 
@@ -383,7 +386,7 @@ func readPlan(
 	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, correlation)
 
 	if plan.PriorState != nil && plan.PriorState.Values != nil {
-		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", deletedAddresses(plan.ResourceChanges))
+		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", resourceLines, deletedAddresses(plan.ResourceChanges))
 	}
 
 	doc := model.Document{}
@@ -466,7 +469,12 @@ func deletedAddresses(resourceChanges []*hcl_plan.ResourceChange) map[string]boo
 // moduleAddress is "" for the root module. prior_state predates the plan's
 // diff, so a data source being deleted by this plan is skipped rather than
 // republished as if it were still part of the proposed infrastructure.
-func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule, moduleAddress string, deleted map[string]bool) {
+func (kp *TFPlan) readPriorStateData(
+	module *hcl_plan.StateModule,
+	moduleAddress string,
+	resourceLines map[string]int,
+	deleted map[string]bool,
+) {
 	if module == nil {
 		return
 	}
@@ -497,11 +505,21 @@ func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule, moduleAddress
 			dataKey = formatResourceKeyWithIndex(dataKey, resource.Index)
 		}
 
-		kp.Data[resource.Type][dataKey] = resource.AttributeValues
+		typeData := kp.Data[resource.Type]
+		typeData[dataKey] = resource.AttributeValues
+
+		if line, ok := resourceLines[resource.Address]; ok {
+			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
+			if !isMap {
+				ddLines = make(map[string]*model.LineObject)
+				typeData["_dd_lines"] = ddLines
+			}
+			ddLines["_dd_"+dataKey] = &model.LineObject{Line: line}
+		}
 	}
 
 	for _, childModule := range module.ChildModules {
-		kp.readPriorStateData(childModule, childModule.Address, deleted)
+		kp.readPriorStateData(childModule, childModule.Address, resourceLines, deleted)
 	}
 }
 
