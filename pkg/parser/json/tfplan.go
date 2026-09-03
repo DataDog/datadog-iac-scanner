@@ -383,7 +383,7 @@ func readPlan(
 	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, correlation)
 
 	if plan.PriorState != nil && plan.PriorState.Values != nil {
-		kp.readPriorStateData(plan.PriorState.Values.RootModule)
+		kp.readPriorStateData(plan.PriorState.Values.RootModule, "")
 	}
 
 	doc := model.Document{}
@@ -451,7 +451,8 @@ func (kp *TFPlan) readModule(
 }
 
 // readPriorStateData recursively merges resolved data sources into data.<type>.<name>.
-func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule) {
+// moduleAddress is "" for the root module.
+func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule, moduleAddress string) {
 	if module == nil {
 		return
 	}
@@ -467,11 +468,23 @@ func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule) {
 		if kp.Data[resource.Type] == nil {
 			kp.Data[resource.Type] = make(map[string]any)
 		}
-		kp.Data[resource.Type][resource.Name] = resource.AttributeValues
+
+		// Module-prefixed and index-suffixed so same-type-same-name data
+		// sources in different modules or for_each/count instances don't
+		// collide, mirroring readModule's resourceKey construction.
+		dataKey := resource.Name
+		if moduleAddress != "" {
+			dataKey = moduleAddress + "." + resource.Name
+		}
+		if resource.Index != nil {
+			dataKey = formatResourceKeyWithIndex(dataKey, resource.Index)
+		}
+
+		kp.Data[resource.Type][dataKey] = resource.AttributeValues
 	}
 
 	for _, childModule := range module.ChildModules {
-		kp.readPriorStateData(childModule)
+		kp.readPriorStateData(childModule, childModule.Address)
 	}
 }
 
