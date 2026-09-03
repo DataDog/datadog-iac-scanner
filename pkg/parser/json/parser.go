@@ -12,10 +12,21 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfplan"
 )
 
 // Parser defines a parser type
-type Parser struct{}
+type Parser struct {
+	scanTfPlans bool
+}
+
+// NewDefaultWithParams creates a Parser. scanTfPlans controls whether this
+// parser treats "terraform" as a supported type and detects Terraform-plan
+// JSON content; other supported types (cloudformation, kubernetes, ...) are
+// unaffected.
+func NewDefaultWithParams(scanTfPlans bool) *Parser {
+	return &Parser{scanTfPlans: scanTfPlans}
+}
 
 // Resolve - replace or modifies in-memory content before parsing
 func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
@@ -56,8 +67,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	jLine := initializeJSONLine(resolved)
 	jsonDoc := jLine.setLineInfo(r)
 
-	if !looksLikeTerraformPlan(fileContent) {
-		// JSON is not a tf plan
+	if !p.scanTfPlans || !tfplan.IsTerraformPlanJSON(fileContent) {
+		// JSON is not a tf plan, or tf-plan detection is disabled
 		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
 	}
 
@@ -84,22 +95,27 @@ func (p *Parser) GetKind() model.FileKind {
 // KindForContent overrides the static kind for Terraform plan JSON so line
 // detection can resolve plan resources structurally instead of by text match.
 func (p *Parser) KindForContent(content []byte) (model.FileKind, bool) {
-	if looksLikeTerraformPlan(content) {
+	if p.scanTfPlans && tfplan.IsTerraformPlanJSON(content) {
 		return model.KindTerraformPlan, true
 	}
 	return "", false
 }
 
-// SupportedTypes returns types supported by this parser, which are cloudFormation
+// SupportedTypes returns the types supported by this parser. "terraform" is
+// only included when scanTfPlans is enabled, since Terraform-plan detection
+// is the only reason this parser handles that platform.
 func (p *Parser) SupportedTypes() map[string]bool {
-	return map[string]bool{
+	types := map[string]bool{
 		"ansible":              true,
 		"cloudformation":       true,
 		"openapi":              true,
 		"azureresourcemanager": true,
-		"terraform":            true,
 		"kubernetes":           true,
 	}
+	if p.scanTfPlans {
+		types["terraform"] = true
+	}
+	return types
 }
 
 // GetCommentToken return an empty string, since JSON does not have comment token
@@ -109,7 +125,7 @@ func (p *Parser) GetCommentToken() string {
 
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
-	if looksLikeTerraformPlan(content) {
+	if tfplan.IsTerraformPlanJSON(content) {
 		var out bytes.Buffer
 		if err := json.Indent(&out, content, "", "  "); err != nil {
 			return "", err
@@ -117,13 +133,4 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 		return out.String(), nil
 	}
 	return string(content), nil
-}
-
-// looksLikeTerraformPlan is a fast byte-level heuristic that avoids a full
-// JSON parse. Both keys are required by the Terraform plan JSON spec, so their
-// co-presence is a reliable signal. Used by KindForContent and StringifyContent
-// where a full parseTFPlan call would be redundant (Parse already does it).
-func looksLikeTerraformPlan(content []byte) bool {
-	return bytes.Contains(content, []byte(`"format_version"`)) &&
-		bytes.Contains(content, []byte(`"planned_values"`))
 }

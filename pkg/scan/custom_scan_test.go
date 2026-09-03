@@ -3,6 +3,8 @@ package scan
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -722,4 +724,40 @@ func TestValidate_ConcurrentUseIsSafe(t *testing.T) {
 	for i := range results {
 		assert.Equal(t, results[i%len(inputs)], results[i], "result %d diverged for the same input", i)
 	}
+}
+
+// ── RunCustomRegoQuery integration ────────────────────────────────────────────
+
+const cloudFormationJSONRego = `
+package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	doc := input.document[i]
+	doc.Resources[name].Type == "AWS::S3::Bucket"
+	doc.Resources[name].Properties.AccessControl == "PublicRead"
+	result := {
+		"documentId":   doc.id,
+		"resourceType": "AWS::S3::Bucket",
+		"resourceName": name,
+		"searchKey":    sprintf("Resources[%s].Properties.AccessControl", [name]),
+	}
+}
+`
+
+func TestRunCustomRegoQuery_CloudFormationJSON(t *testing.T) {
+	fixture := filepath.FromSlash("../../test/fixtures/tfplan_flag_test/cloudformation.json")
+	content, err := os.ReadFile(fixture)
+	require.NoError(t, err)
+
+	vulns, failedQueries, err := RunCustomRegoQuery(
+		context.Background(),
+		"cloudformation",
+		cloudFormationJSONRego,
+		content,
+	)
+	require.NoError(t, err)
+	require.Empty(t, failedQueries, "custom rule should compile and run")
+	require.NotEmpty(t, vulns, "CloudFormation JSON should be classified and scanned via custom evaluate")
 }
