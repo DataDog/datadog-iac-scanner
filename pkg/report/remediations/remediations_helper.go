@@ -189,6 +189,10 @@ func findReplacementTarget(
 	alternatives := parseAlternatives(before)
 	for lineNumber := start; lineNumber <= end; lineNumber++ {
 		line := vuln.FileSource[lineNumber-1]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
 		matches := keyValRegex.FindStringSubmatch(line)
 		if len(matches) < 3 || normalize(matches[1]) != expectedKey {
 			continue

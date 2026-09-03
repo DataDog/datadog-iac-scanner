@@ -158,6 +158,42 @@ func TestTransformToSarifFix_ReplacementFindsAttributeInsideBlock(t *testing.T) 
 	require.Equal(t, "  enabled = false", replacement.InsertedContent.Text)
 }
 
+func TestTransformToSarifFix_ReplacementFindsAttributeInsideBlockSkipsComments(t *testing.T) {
+	vuln := model.VulnerableFile{
+		FileName:              "main.tf",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "enabled = true", "after": "false"}`,
+		LineWithVulnerability: `module "generic_region" {`,
+		Line:                  1,
+		FileSource: []string{
+			`module "generic_region" {`,
+			"  # enabled = true",
+			"  enabled = true",
+			"}",
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 4, Col: 2},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: 1},
+		},
+	}
+
+	fix, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: 26},
+	)
+
+	require.NoError(t, err)
+	replacement := fix.ArtifactChanges[0].Replacements[0]
+	require.Equal(t, 3, replacement.DeletedRegion.StartLine)
+	require.Equal(t, "  enabled = false", replacement.InsertedContent.Text)
+}
+
 func TestTransformToSarifFix_Replacement(t *testing.T) {
 	tests := []struct {
 		name     string
