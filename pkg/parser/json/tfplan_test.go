@@ -821,6 +821,58 @@ func TestJson_parseTFPlan(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "test - data source scheduled for deletion in resource_changes is excluded from prior_state merge",
+			args: args{
+				doc: model.Document{
+					"format_version":    "1.2",
+					"terraform_version": "1.5.0",
+					"planned_values": map[string]any{
+						"root_module": map[string]any{
+							"resources": []map[string]any{},
+						},
+					},
+					"prior_state": map[string]any{
+						"format_version": "1.0",
+						"values": map[string]any{
+							"root_module": map[string]any{
+								"resources": []map[string]any{
+									{
+										"address": "data.aws_kms_key.by_alias",
+										"mode":    "data",
+										"type":    "aws_kms_key",
+										"name":    "by_alias",
+										"values": map[string]any{
+											"key_id": "alias/aws/s3",
+										},
+									},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]any{
+						{
+							"address": "data.aws_kms_key.by_alias",
+							"mode":    "data",
+							"type":    "aws_kms_key",
+							"name":    "by_alias",
+							"change": map[string]any{
+								"actions": []any{"delete"},
+								"before":  map[string]any{"key_id": "alias/aws/s3"},
+								"after":   nil,
+							},
+						},
+					},
+					"configuration": map[string]any{},
+				},
+			},
+			want: model.Document{
+				"resource":         map[string]any{},
+				"resource_changes": []any{map[string]any{"address": "data.aws_kms_key.by_alias", "mode": "data", "type": "aws_kms_key", "name": "by_alias", "change": map[string]any{"actions": []any{"delete"}, "before": map[string]any{"key_id": "alias/aws/s3"}, "after": nil}}},
+				"configuration":    map[string]any{},
+			},
+			wantErr: false,
+		},
+		{
 			name: "test - for_each data source instances in prior_state keep distinct keys",
 			args: args{
 				doc: model.Document{

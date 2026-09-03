@@ -383,7 +383,7 @@ func readPlan(
 	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, correlation)
 
 	if plan.PriorState != nil && plan.PriorState.Values != nil {
-		kp.readPriorStateData(plan.PriorState.Values.RootModule, "")
+		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", deletedAddresses(plan.ResourceChanges))
 	}
 
 	doc := model.Document{}
@@ -450,15 +450,32 @@ func (kp *TFPlan) readModule(
 	}
 }
 
+// deletedAddresses returns the set of addresses whose only planned action is
+// deletion, e.g. a data source removed from config or dropped by count/for_each.
+func deletedAddresses(resourceChanges []*hcl_plan.ResourceChange) map[string]bool {
+	deleted := make(map[string]bool)
+	for _, rc := range resourceChanges {
+		if rc.Change != nil && rc.Change.Actions.Delete() {
+			deleted[rc.Address] = true
+		}
+	}
+	return deleted
+}
+
 // readPriorStateData recursively merges resolved data sources into data.<type>.<name>.
-// moduleAddress is "" for the root module.
-func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule, moduleAddress string) {
+// moduleAddress is "" for the root module. prior_state predates the plan's
+// diff, so a data source being deleted by this plan is skipped rather than
+// republished as if it were still part of the proposed infrastructure.
+func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule, moduleAddress string, deleted map[string]bool) {
 	if module == nil {
 		return
 	}
 
 	for _, resource := range module.Resources {
 		if resource.Mode != hcl_plan.DataResourceMode {
+			continue
+		}
+		if deleted[resource.Address] {
 			continue
 		}
 
@@ -484,7 +501,7 @@ func (kp *TFPlan) readPriorStateData(module *hcl_plan.StateModule, moduleAddress
 	}
 
 	for _, childModule := range module.ChildModules {
-		kp.readPriorStateData(childModule, childModule.Address)
+		kp.readPriorStateData(childModule, childModule.Address, deleted)
 	}
 }
 
