@@ -21,6 +21,9 @@ import (
 type TFPlan struct {
 	Resource map[string]TFPlanResource `json:"resource"`
 
+	// Data mirrors the HCL parser's data.<type>.<name> shape for data sources.
+	Data map[string]map[string]any `json:"data,omitempty"`
+
 	ResourceChanges any `json:"resource_changes,omitempty"`
 	Configuration   any `json:"configuration,omitempty"`
 
@@ -339,11 +342,14 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 }
 
 // extractResourceHeaderLines returns each resource's "values" attribute
-// line, keyed by resource address.
+// line, keyed by resource address. Addresses are unique across the whole
+// plan, so planned_values and prior_state (resolved data sources) share one map.
 func extractResourceHeaderLines(rawPlan []byte) map[string]int {
 	lines := make(map[string]int)
-	root_module := gjson.GetBytes(rawPlan, "planned_values.root_module")
-	walkModule(&root_module, lines)
+	plannedRootModule := gjson.GetBytes(rawPlan, "planned_values.root_module")
+	walkModule(&plannedRootModule, lines)
+	priorStateRootModule := gjson.GetBytes(rawPlan, "prior_state.values.root_module")
+	walkModule(&priorStateRootModule, lines)
 	return lines
 }
 
@@ -378,6 +384,10 @@ func readPlan(
 	}
 
 	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, correlation)
+
+	if plan.PriorState != nil && plan.PriorState.Values != nil {
+		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", resourceLines, deletedAddresses(plan.ResourceChanges))
+	}
 
 	doc := model.Document{}
 
@@ -440,6 +450,76 @@ func (kp *TFPlan) readModule(
 
 	for _, childModule := range module.ChildModules {
 		kp.readModule(childModule, childModule.Address, resourceLines, correlation)
+	}
+}
+
+// deletedAddresses returns the set of addresses whose only planned action is
+// deletion, e.g. a data source removed from config or dropped by count/for_each.
+func deletedAddresses(resourceChanges []*hcl_plan.ResourceChange) map[string]bool {
+	deleted := make(map[string]bool)
+	for _, rc := range resourceChanges {
+		if rc.Change != nil && rc.Change.Actions.Delete() {
+			deleted[rc.Address] = true
+		}
+	}
+	return deleted
+}
+
+// readPriorStateData recursively merges resolved data sources into data.<type>.<name>.
+// moduleAddress is "" for the root module. prior_state predates the plan's
+// diff, so a data source being deleted by this plan is skipped rather than
+// republished as if it were still part of the proposed infrastructure.
+func (kp *TFPlan) readPriorStateData(
+	module *hcl_plan.StateModule,
+	moduleAddress string,
+	resourceLines map[string]int,
+	deleted map[string]bool,
+) {
+	if module == nil {
+		return
+	}
+
+	for _, resource := range module.Resources {
+		if resource.Mode != hcl_plan.DataResourceMode {
+			continue
+		}
+		if deleted[resource.Address] {
+			continue
+		}
+
+		if kp.Data == nil {
+			kp.Data = make(map[string]map[string]any)
+		}
+		if kp.Data[resource.Type] == nil {
+			kp.Data[resource.Type] = make(map[string]any)
+		}
+
+		// Module-prefixed and index-suffixed so same-type-same-name data
+		// sources in different modules or for_each/count instances don't
+		// collide, mirroring readModule's resourceKey construction.
+		dataKey := resource.Name
+		if moduleAddress != "" {
+			dataKey = moduleAddress + "." + resource.Name
+		}
+		if resource.Index != nil {
+			dataKey = formatResourceKeyWithIndex(dataKey, resource.Index)
+		}
+
+		typeData := kp.Data[resource.Type]
+		typeData[dataKey] = resource.AttributeValues
+
+		if line, ok := resourceLines[resource.Address]; ok {
+			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
+			if !isMap {
+				ddLines = make(map[string]*model.LineObject)
+				typeData["_dd_lines"] = ddLines
+			}
+			ddLines["_dd_"+dataKey] = &model.LineObject{Line: line}
+		}
+	}
+
+	for _, childModule := range module.ChildModules {
+		kp.readPriorStateData(childModule, childModule.Address, resourceLines, deleted)
 	}
 }
 

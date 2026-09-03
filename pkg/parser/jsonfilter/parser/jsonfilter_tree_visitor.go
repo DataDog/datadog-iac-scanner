@@ -94,7 +94,7 @@ func (v *JSONFilterTreeVisitor) VisitFilter_expr_or(ctx *Filter_expr_orContext) 
 }
 
 func (v *JSONFilterTreeVisitor) VisitQualifiedidentifier(ctx *QualifiedidentifierContext) interface{} {
-	return v.VisitChildren(ctx)
+	return ctx.GetText()
 }
 
 func (v *JSONFilterTreeVisitor) VisitExp(ctx *ExpContext) interface{} {

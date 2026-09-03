@@ -336,6 +336,18 @@ var inputs = []struct {
 		},
 	},
 	{
+		name:  "selector_unquoted_multi_segment_identifier",
+		input: `{ $.eventSource = ec2.amazonaws.com }`,
+		expected: parser.AWSJSONFilter{
+			FilterExpression: parser.FilterSelector{
+				Selector: "$.eventSource",
+				Op:       "=",
+				Value:    "ec2.amazonaws.com",
+			},
+		},
+		wantErr: false,
+	},
+	{
 		name:  "expr_two_selectors_and_with_parenthesis_unquoted_unquoted_strings",
 		input: `{ ($.eventSource = "kms.amazonaws.com") && (($.eventName = DisableKey) || ($.eventName = ScheduleKeyDeletion)) }`,
 		expected: parser.AWSJSONFilter{
