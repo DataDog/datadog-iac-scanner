@@ -413,6 +413,14 @@ func Test_terraformPlanPath(t *testing.T) {
 			searchKey: "aws_s3_bucket_object[{{module.s3_object.this[0]}}]",
 			want:      []string{"resource", "aws_s3_bucket_object", "module.s3_object.this[0]"},
 		},
+		{
+			// A for_each key is an arbitrary quoted HCL string that may itself
+			// contain a literal "]", which must not be mistaken for the group's
+			// own closing bracket.
+			name:      "for_each_key_containing_literal_bracket",
+			searchKey: `aws_secretsmanager_secret[module.secrets["prod]eu"].test].kms_key_id`,
+			want:      []string{"resource", "aws_secretsmanager_secret", `module.secrets["prod]eu"].test`, "kms_key_id"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

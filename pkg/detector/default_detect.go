@@ -166,7 +166,8 @@ func detectTerraformPlanLine(
 // "type[module.foo.name]") and/or a count/for_each suffix bracket (e.g.
 // "type[this[0]]"), so the top-level dot-split ignores dots inside an
 // unclosed "[...]" (see splitTopLevelDots), and a group's closing bracket is
-// its LAST "]", not the first one found after "[".
+// found by findMatchingBracket, which is quote- and nesting-aware since a
+// for_each key can itself contain a literal "]" (e.g. module.secrets["prod]eu"]).
 func terraformPlanPath(searchKey string) ([]string, bool) {
 	// Drop the value anchor (key=value) up front; the value may contain dots.
 	if eq := strings.Index(searchKey, "="); eq >= 0 {
@@ -189,8 +190,8 @@ func terraformPlanPath(searchKey string) ([]string, bool) {
 			if head := seg[:open]; head != "" {
 				comps = append(comps, head)
 			}
-			closeIdx := strings.LastIndex(seg, "]")
-			if closeIdx < 0 || closeIdx < open {
+			closeIdx := findMatchingBracket(seg, open)
+			if closeIdx < 0 {
 				break
 			}
 			inner := seg[open+1 : closeIdx]
@@ -209,22 +210,64 @@ func terraformPlanPath(searchKey string) ([]string, bool) {
 	return append([]string{"resource"}, comps...), explicitResourcePath
 }
 
+// findMatchingBracket finds the "]" closing the "[" at open in s, tracking
+// nested brackets and quoting so a quoted for_each key's own "]" isn't mistaken
+// for the group's close.
+func findMatchingBracket(s string, open int) int {
+	inQuotes := false
+	depth := 0
+	for i := open + 1; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			if inQuotes {
+				i++ // skip the escaped character
+			}
+		case '"':
+			inQuotes = !inQuotes
+		case '[':
+			if !inQuotes {
+				depth++
+			}
+		case ']':
+			if inQuotes {
+				continue
+			}
+			if depth == 0 {
+				return i
+			}
+			depth--
+		}
+	}
+	return -1
+}
+
 // splitTopLevelDots splits s on "." like strings.Split, except dots inside an
 // unclosed "[...]" group aren't treated as separators, e.g.
 // "type[module.foo.name].attr" splits into ["type[module.foo.name]", "attr"].
+// Quote-aware like findMatchingBracket.
 func splitTopLevelDots(s string) []string {
 	var segs []string
 	depth, start := 0, 0
-	for i, c := range s {
+	inQuotes := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
 		switch c {
+		case '\\':
+			if inQuotes {
+				i++
+			}
+		case '"':
+			inQuotes = !inQuotes
 		case '[':
-			depth++
+			if !inQuotes {
+				depth++
+			}
 		case ']':
-			if depth > 0 {
+			if !inQuotes && depth > 0 {
 				depth--
 			}
 		case '.':
-			if depth == 0 {
+			if depth == 0 && !inQuotes {
 				segs = append(segs, s[start:i])
 				start = i + 1
 			}
