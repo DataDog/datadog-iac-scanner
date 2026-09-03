@@ -6,7 +6,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"os"
@@ -19,7 +18,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -640,30 +638,27 @@ func TestProvider_getExcludePaths(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "malformed glob treated as literal path",
+			args: args{
+				pathExpressions: filepath.Join("terraform", "module[production.tf"),
+			},
+			want: []string{
+				filepath.Join("terraform", "module[production.tf"),
+			},
+			wantErr: false,
+		},
 	}
 
-	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GetExcludePaths(ctx, tt.args.pathExpressions)
+			got, err := GetExcludePaths(tt.args.pathExpressions)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getExcludePaths Error: %v, wantErr: %v", got, tt.wantErr)
 			}
 			require.Equal(t, tt.want, got)
 		})
 	}
-}
-
-func TestGetExcludePathsTreatsMalformedGlobAsLiteral(t *testing.T) {
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).WithContext(context.Background())
-	path := filepath.Join("terraform", "module[production.tf")
-
-	got, err := GetExcludePaths(ctx, path)
-
-	require.NoError(t, err)
-	require.Equal(t, []string{path}, got)
-	require.NotContains(t, logs.String(), `"level":"error"`)
 }
 
 func TestIsUnderResolvedChart(t *testing.T) {

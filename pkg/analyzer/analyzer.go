@@ -367,10 +367,10 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	ignoreFiles := make([]string, 0)
 	projectConfigFiles := make([]string, 0)
 	hasGitIgnoreFile, gitIgnore := shouldConsiderGitIgnoreFile(ctx, a.RepoPath, a.GitIgnoreFileName, a.ExcludeGitIgnore)
-	if a.Exc, err = expandPaths(ctx, a.Exc); err != nil {
+	if a.Exc, err = expandPaths(a.Exc); err != nil {
 		return returnAnalyzedPaths, fmt.Errorf("failed to expand ignore-paths: %w", err)
 	}
-	if a.Only, err = expandPaths(ctx, a.Only); err != nil {
+	if a.Only, err = expandPaths(a.Only); err != nil {
 		return returnAnalyzedPaths, fmt.Errorf("failed to expand only-paths: %w", err)
 	}
 	// get all the files inside the given paths
@@ -1068,13 +1068,13 @@ func getKeysFromTypesFlag(typesFlag []string) []string {
 //   - non-empty input → non-nil output (possibly []string{}): signals "restriction is in
 //     effect", even if all glob patterns matched nothing. Callers must treat a non-nil
 //     empty result as "restrict to zero files", not as "no restriction".
-func expandPaths(ctx context.Context, paths []string) ([]string, error) {
+func expandPaths(paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
 	expanded := make([]string, 0, len(paths))
 	for _, p := range paths {
-		exp, err := provider.GetExcludePaths(ctx, p)
+		exp, err := provider.GetExcludePaths(p)
 		if err != nil {
 			return nil, err
 		}
