@@ -310,6 +310,35 @@ block "label_one" {
 	}
 }
 
+func TestUnknownValuesRemainSerializable(t *testing.T) {
+	input := `
+block "test" {
+	conditional = var.enabled ? "enabled" : "disabled"
+	function    = upper(var.name)
+	template    = "prefix-${var.name}"
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(input), "testFileName", hcl.Pos{Byte: 0, Line: 1, Column: 1})
+	require.False(t, diags.HasErrors(), "parse error: %v", diags)
+
+	body, err := DefaultConverted(context.Background(), file, VariableMap{
+		"var": cty.ObjectVal(map[string]cty.Value{
+			"enabled": cty.UnknownVal(cty.Bool),
+			"name":    cty.UnknownVal(cty.String),
+		}),
+	})
+	require.NoError(t, err)
+	require.NotPanics(t, func() {
+		_, err = json.Marshal(body)
+	})
+	require.NoError(t, err)
+
+	block := body["block"].(model.Document)["test"].(model.Document)
+	require.Equal(t, `${var.enabled ? "enabled" : "disabled"}`, block["conditional"])
+	require.Equal(t, "${upper(var.name)}", block["function"])
+	require.Equal(t, "prefix-${var.name}", block["template"])
+}
+
 func TestRelativeTraversalExpr(t *testing.T) {
 	t.Run("jsondecode_with_traversal_resolves", func(t *testing.T) {
 		input := `

@@ -47,9 +47,18 @@ func buildReplacementFix(ctx context.Context, vuln model.VulnerableFile,
 	keyValRegex := regexp.MustCompile(`(?m)["']?(\w+)["']?\s*[:=]\s*(\[.*?\]|".*?"|[^#]+)`)
 	matches := keyValRegex.FindStringSubmatch(vuln.LineWithVulnerability)
 	if len(matches) < 3 {
-		err := fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
-		contextLogger.Error().Msg(err.Error())
-		return model.SarifFix{}, err
+		line, lineNumber, found := findReplacementTarget(&vuln, before, keyValRegex)
+		if !found {
+			err := fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
+			contextLogger.Error().Msg(err.Error())
+			return model.SarifFix{}, err
+		}
+		vuln.LineWithVulnerability = line
+		vuln.Line = lineNumber
+		vuln.RemediationLocation.Start.Line = lineNumber
+		vuln.RemediationLocation.End.Line = lineNumber
+		startLocation.Line = lineNumber
+		matches = keyValRegex.FindStringSubmatch(line)
 	}
 
 	key := strings.TrimSpace(matches[1])
@@ -162,6 +171,40 @@ func buildReplacementFix(ctx context.Context, vuln model.VulnerableFile,
 		Line: vuln.Line,
 		Col:  len(vuln.LineWithVulnerability) + 1,
 	}), nil
+}
+
+func findReplacementTarget(
+	vuln *model.VulnerableFile,
+	before string,
+	keyValRegex *regexp.Regexp,
+) (line string, lineNumber int, found bool) {
+	firstAlternative := strings.Split(before, " or ")[0]
+	expectedKey, _ := splitKeyValue(firstAlternative)
+	if expectedKey == "" {
+		return "", 0, false
+	}
+
+	start := max(vuln.BlockLocation.Start.Line, 1)
+	end := min(vuln.BlockLocation.End.Line, len(vuln.FileSource))
+	alternatives := parseAlternatives(before)
+	for lineNumber := start; lineNumber <= end; lineNumber++ {
+		line := vuln.FileSource[lineNumber-1]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		matches := keyValRegex.FindStringSubmatch(line)
+		if len(matches) < 3 || normalize(matches[1]) != expectedKey {
+			continue
+		}
+		value := normalize(matches[2])
+		for _, alternative := range alternatives {
+			if strings.Contains(value, alternative) {
+				return line, lineNumber, true
+			}
+		}
+	}
+	return "", 0, false
 }
 
 // nolint:gocritic

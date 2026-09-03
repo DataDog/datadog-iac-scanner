@@ -419,7 +419,10 @@ func resolveTuple(ctx context.Context, expr hclsyntax.Expression) {
 			striExpr, err := e.ExpToString(ctx, ex)
 
 			if err != nil {
-				contextLogger.Error().Msgf("Error trying to ExpToString: %s", err)
+				if literal, ok := ex.(*hclsyntax.LiteralValueExpr); !ok || !literal.Val.IsNull() {
+					contextLogger.Error().Msgf("Error trying to ExpToString: %s", err)
+				}
+				continue
 			}
 
 			v.Exprs[i] = &hclsyntax.LiteralValueExpr{

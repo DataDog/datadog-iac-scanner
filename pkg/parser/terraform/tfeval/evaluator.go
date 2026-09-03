@@ -592,7 +592,10 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	// (module B referencing module C where C appears later in file order) survive the
 	// first iteration's evalCtx.Variables["module"] update.
 	moduleOutputs = map[string]cty.Value{}
-	if existing, ok := evalCtx.Variables["module"]; ok && existing.Type().IsObjectType() {
+	if existing, ok := evalCtx.Variables["module"]; ok &&
+		existing.IsKnown() &&
+		!existing.IsNull() &&
+		existing.Type().IsObjectType() {
 		for it := existing.ElementIterator(); it.Next(); {
 			k, v := it.Element()
 			moduleOutputs[k.AsString()] = v

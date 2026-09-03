@@ -236,7 +236,7 @@ func (v *converterExprVisitor) VisitConditional(e *hclsyntax.ConditionalExpr) (i
 		Variables: v.c.inputVars,
 		Functions: functions.TerraformFuncs,
 	})
-	if err != nil {
+	if err != nil || !val.IsWhollyKnown() {
 		return v.c.wrapExpr(e)
 	}
 	return ctyjson.SimpleJSONValue{Value: val}, nil
@@ -426,7 +426,7 @@ func (v *converterStringPartVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSynta
 }
 func (v *converterStringPartVisitor) VisitDefault(e hclsyntax.Expression) (string, error) {
 	val, _ := e.Value(&hcl.EvalContext{Variables: v.c.inputVars})
-	if val.Type().FriendlyName() == ctyFriendlyNameString {
+	if val.IsWhollyKnown() && val.Type().FriendlyName() == ctyFriendlyNameString {
 		return val.AsString(), nil
 	}
 	return v.c.wrapExpr(e)
@@ -490,7 +490,7 @@ func (c *converter) tryEvalExpression(expr hclsyntax.Expression) (interface{}, e
 		Variables: c.inputVars,
 		Functions: functions.TerraformFuncs,
 	})
-	if !checkDynamicKnownTypes(val) {
+	if val.IsWhollyKnown() && !checkDynamicKnownTypes(val) {
 		return ctyjson.SimpleJSONValue{Value: val}, nil
 	}
 	return c.wrapExpr(expr)
@@ -501,7 +501,7 @@ func (c *converter) tryEvalToString(expr hclsyntax.Expression) (string, error) {
 		Variables: c.inputVars,
 		Functions: functions.TerraformFuncs,
 	})
-	if val.Type().FriendlyName() == ctyFriendlyNameString {
+	if val.IsWhollyKnown() && val.Type().FriendlyName() == ctyFriendlyNameString {
 		return val.AsString(), nil
 	}
 	return c.wrapExpr(expr)
@@ -549,10 +549,7 @@ func (c *converter) evalFunction(expression hclsyntax.Expression) (interface{}, 
 			return c.wrapExpr(expression)
 		}
 	}
-	if !expressionEvaluated.HasWhollyKnownType() {
-		// in some cases, the expression is evaluated with no error but the type is unknown.
-		// this causes the json marshaling of the Document later on to fail with an error, and the entire scan fails.
-		// Therefore, we prefer to wrap it as a string and continue the scan.
+	if !expressionEvaluated.IsWhollyKnown() {
 		return c.wrapExpr(expression)
 	}
 	return ctyjson.SimpleJSONValue{Value: expressionEvaluated}, nil

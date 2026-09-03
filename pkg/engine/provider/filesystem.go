@@ -59,7 +59,7 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes, onlyPaths
 	}
 
 	for _, exclude := range excludes {
-		excludePaths, err := GetExcludePaths(ctx, exclude)
+		excludePaths, err := GetExcludePaths(exclude)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes, onlyPaths
 	if len(onlyPaths) > 0 {
 		fs.onlyPaths = make([]string, 0)
 		for _, only := range onlyPaths {
-			expanded, err := GetExcludePaths(ctx, only)
+			expanded, err := GetExcludePaths(only)
 			if err != nil {
 				return nil, err
 			}
@@ -115,12 +115,10 @@ func (s *FileSystemSourceProvider) addExcluded(ctx context.Context, excludePaths
 }
 
 // GetExcludePaths gets all the files that should be excluded
-func GetExcludePaths(ctx context.Context, pathExpressions string) ([]string, error) {
-	contextLogger := logger.FromContext(ctx)
+func GetExcludePaths(pathExpressions string) ([]string, error) {
 	if strings.ContainsAny(pathExpressions, "*?[") {
 		info, err := filepathx.Glob(pathExpressions)
 		if err != nil {
-			contextLogger.Error().Msgf("failed to get exclude path %s: %s", pathExpressions, err)
 			return []string{pathExpressions}, nil
 		}
 		return info, nil

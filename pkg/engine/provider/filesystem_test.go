@@ -638,12 +638,21 @@ func TestProvider_getExcludePaths(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "malformed glob treated as literal path",
+			args: args{
+				pathExpressions: filepath.Join("terraform", "module[production.tf"),
+			},
+			want: []string{
+				filepath.Join("terraform", "module[production.tf"),
+			},
+			wantErr: false,
+		},
 	}
 
-	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GetExcludePaths(ctx, tt.args.pathExpressions)
+			got, err := GetExcludePaths(tt.args.pathExpressions)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getExcludePaths Error: %v, wantErr: %v", got, tt.wantErr)
 			}
