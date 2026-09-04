@@ -16,74 +16,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 )
 
-func TestExtractResourceAddress(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "simple resource",
-			input:    "aws_instance.web.ami",
-			expected: "aws_instance.web",
-		},
-		{
-			name:     "resource with prefix",
-			input:    "resource.aws_instance.web.ami",
-			expected: "aws_instance.web",
-		},
-		{
-			name:     "module resource",
-			input:    "resource.module.vpc.aws_vpc.main.cidr_block",
-			expected: "module.vpc.aws_vpc.main",
-		},
-		{
-			name:     "nested module resource",
-			input:    "resource.module.network.module.subnet.aws_subnet.private.cidr_block",
-			expected: "module.network.module.subnet.aws_subnet.private",
-		},
-		{
-			name:     "resource with index",
-			input:    "aws_instance.web[0].ami",
-			expected: "aws_instance.web",
-		},
-		{
-			name:     "module with index",
-			input:    "module.vpc[0].aws_vpc.main.cidr_block",
-			expected: "module.vpc.aws_vpc.main",
-		},
-		{
-			name:     "no resource prefix",
-			input:    "module.vpc.aws_vpc.main.enable_dns_hostnames",
-			expected: "module.vpc.aws_vpc.main",
-		},
-		{
-			name:     "complex nested attribute",
-			input:    "aws_instance.web.root_block_device.volume_size",
-			expected: "aws_instance.web",
-		},
-		{
-			name:     "empty input",
-			input:    "",
-			expected: "",
-		},
-		{
-			name:     "single part",
-			input:    "aws_instance",
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := extractResourceAddress(tt.input)
-			if result != tt.expected {
-				t.Errorf("extractResourceAddress(%q) = %q, want %q", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestTFPlanDetectLine(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir := t.TempDir()
@@ -990,8 +922,8 @@ func TestOriginBranch_AbsentAttribute(t *testing.T) {
 						},
 						// "vpc_security_group_ids" is set by the call
 						"vpc_security_group_ids": map[string]interface{}{
-							"origin":   "call",
-							"variable": "security_group_id",
+							"origin":    "call",
+							"variable":  "security_group_id",
 							"moduleDir": "./modules/asg",
 						},
 						// "tags" is intentionally absent — not in module expressions at all

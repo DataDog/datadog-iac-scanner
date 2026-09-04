@@ -12,6 +12,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// moduleKeyword is the "module" path segment in a dotted Terraform address.
+const moduleKeyword = "module"
+
 // Location represents a location in a source file
 type Location struct {
 	FilePath string
@@ -85,7 +88,7 @@ func (r *AddressRegistry) Lookup(address string) (Location, bool) {
 // LookupWithScope retrieves the best location for a given address based on the scope file path
 // When multiple locations exist (e.g., module "vpc" in different directories), chooses the one
 // in the same directory or closest common ancestor to the scope file
-func (r *AddressRegistry) LookupWithScope(address string, scopeFilePath string) (Location, bool) {
+func (r *AddressRegistry) LookupWithScope(address, scopeFilePath string) (Location, bool) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
@@ -246,7 +249,7 @@ func ExtractModuleAddress(address string) string {
 	parts := strings.Split(normalized, ".")
 
 	// If we only have module.name (2 parts), this is just a module reference, not a resource in a module
-	if len(parts) == 2 && parts[0] == "module" {
+	if len(parts) == 2 && parts[0] == moduleKeyword {
 		return ""
 	}
 
@@ -254,7 +257,7 @@ func ExtractModuleAddress(address string) string {
 	var moduleParts []string
 	i := 0
 	for i < len(parts)-1 {
-		if parts[i] == "module" {
+		if parts[i] == moduleKeyword {
 			// Found a module declaration, add module and its name
 			moduleParts = append(moduleParts, parts[i], parts[i+1])
 			i += 2 // Skip both "module" and the name

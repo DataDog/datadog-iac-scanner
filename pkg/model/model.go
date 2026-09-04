@@ -96,7 +96,9 @@ type VulnerabilityLines struct {
 	ResourceSource         string
 	FileSource             []string
 	BlockLocation          ResourceLocation
-	TransformedSearchKey   string // For TFPlan: the transformed searchKey after module mapping (e.g., "module.vpc.resource_tags" instead of "module.vpc.aws_instance.web.tags")
+	// TransformedSearchKey is set for TFPlan: the transformed searchKey after module mapping
+	// (e.g., "module.vpc.resource_tags" instead of "module.vpc.aws_instance.web.tags").
+	TransformedSearchKey string
 	// SecondaryLines is set for module_default findings where the insecure default was not
 	// overridden by the module call. Both locations are independently actionable:
 	// the primary points at the variable default in variables.tf, the secondary at the call block.

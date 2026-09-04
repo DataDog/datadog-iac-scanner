@@ -18,6 +18,15 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/rs/zerolog"
+)
+
+// Origin hint values for a TFPlan attribute, as attached by tfplan.go's
+// annotateOriginsFromConfig: where the offending value was actually set.
+const (
+	originModuleHardcoded = "module_hardcoded"
+	originModuleDefault   = "module_default"
+	originCall            = "call"
 )
 
 // TFPlanDetectLine is a detector for Terraform Plan files that maps findings back to HCL source
@@ -61,8 +70,65 @@ func NewTFPlanDetectLine(reg *registry.AddressRegistry, modules map[string]inter
 	}
 }
 
+// resolveRootResourceLocation builds the finding for an exact root-resource address match.
+//
+// CRITICAL: Canonicalize the searchKey for similarity ID deduplication
+// Root resources with count/for_each (e.g., aws_instance.web[0], aws_instance.web[1])
+// must use the same normalized key to deduplicate to a single finding.
+//
+// COUNT CONTRACT FOR ATTRIBUTE-LEVEL FINDINGS:
+//   - Attribute-level findings (e.g., "aws_instance.web[0].tags") are canonicalized
+//     to "aws_instance.web.tags" for deduplication across count/for_each instances
+//   - Result: N instances → 1 finding (pointing to HCL resource definition)
+//
+// COUNT CONTRACT FOR RESOURCE-LEVEL FINDINGS:
+//   - Resource-level findings (e.g., "aws_instance.web[0]" with no attribute) currently
+//     keep the full address including indices for similarity computation
+//   - This is ACCEPTABLE because:
+//     1. Most rules target specific attributes, not entire resources
+//     2. Resource-level findings often represent different violations per instance
+//     3. The HCL mapping still works correctly (all point to .tf files)
+//   - Future enhancement: If resource-level deduplication is desired, apply the same
+//     canonicalization by removing the index check below
+func resolveRootResourceLocation(
+	ctx context.Context, location registry.Location, searchKey string, outputLines int,
+) model.VulnerabilityLines {
+	contextLogger := logger.FromContext(ctx)
+
+	// Parse the searchKey to extract the normalized address (indices stripped)
+	parsed, err := ParseSearchKey(searchKey)
+	if err != nil || parsed.NormalizedAddr == "" {
+		// Fallback if parsing fails (shouldn't happen for valid searchKeys)
+		return buildVulnerabilityLinesFromLocation(location, outputLines)
+	}
+
+	if !parsed.HasAttribute || len(parsed.AttributePath) == 0 {
+		// Resource-level finding (no attribute)
+		// Currently using full address to preserve per-instance findings
+		// This is the documented behavior per COUNT CONTRACT above
+		contextLogger.Debug().
+			Str("searchKey", searchKey).
+			Msg("TFPlan: Resource-level finding, using full address (no canonicalization)")
+		return buildVulnerabilityLinesFromLocation(location, outputLines)
+	}
+
+	// Use the normalized address as the canonical key for similarity ID
+	// This ensures aws_instance.web[0].tags and aws_instance.web[1].tags
+	// both use "aws_instance.web.tags" for similarity computation
+	canonicalKey := parsed.NormalizedAddr + "." + strings.Join(parsed.AttributePath, ".")
+
+	contextLogger.Debug().
+		Str("originalSearchKey", searchKey).
+		Str("canonicalKey", canonicalKey).
+		Msg("TFPlan: Using canonical searchKey for root resource deduplication")
+
+	return buildVulnerabilityLinesFromLocation(location, outputLines, canonicalKey)
+}
+
 // DetectLine searches for vulnerabilities in tfplan files by mapping addresses back to HCL source
-func (t *TFPlanDetectLine) DetectLine(ctx context.Context, file *model.FileMetadata, searchKey string, outputLines int) model.VulnerabilityLines {
+func (t *TFPlanDetectLine) DetectLine(
+	ctx context.Context, file *model.FileMetadata, searchKey string, outputLines int,
+) model.VulnerabilityLines {
 	contextLogger := logger.FromContext(ctx)
 
 	// Registry is required - if nil, this is a programming error
@@ -103,56 +169,7 @@ func (t *TFPlanDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 			Str("tfplanFile", file.FilePath).
 			Msg("TFPlan: Found exact address match in registry")
 
-		// CRITICAL: Canonicalize the searchKey for similarity ID deduplication
-		// Root resources with count/for_each (e.g., aws_instance.web[0], aws_instance.web[1])
-		// must use the same normalized key to deduplicate to a single finding.
-		//
-		// COUNT CONTRACT FOR ATTRIBUTE-LEVEL FINDINGS:
-		// - Attribute-level findings (e.g., "aws_instance.web[0].tags") are canonicalized
-		//   to "aws_instance.web.tags" for deduplication across count/for_each instances
-		// - Result: N instances → 1 finding (pointing to HCL resource definition)
-		//
-		// COUNT CONTRACT FOR RESOURCE-LEVEL FINDINGS:
-		// - Resource-level findings (e.g., "aws_instance.web[0]" with no attribute) currently
-		//   keep the full address including indices for similarity computation
-		// - This is ACCEPTABLE because:
-		//   1. Most rules target specific attributes, not entire resources
-		//   2. Resource-level findings often represent different violations per instance
-		//   3. The HCL mapping still works correctly (all point to .tf files)
-		// - Future enhancement: If resource-level deduplication is desired, apply the same
-		//   canonicalization by removing the index check below
-		//
-		// Parse the searchKey to extract the normalized address (indices stripped)
-		parsed, err := ParseSearchKey(searchKey)
-		if err == nil && parsed.NormalizedAddr != "" {
-			// Use the normalized address as the canonical key for similarity ID
-			// This ensures aws_instance.web[0].tags and aws_instance.web[1].tags
-			// both use "aws_instance.web.tags" for similarity computation
-			canonicalKey := parsed.NormalizedAddr
-			if parsed.HasAttribute && len(parsed.AttributePath) > 0 {
-				// Reconstruct full canonical key with attribute
-				canonicalKey = parsed.NormalizedAddr + "." + strings.Join(parsed.AttributePath, ".")
-			} else {
-				// Resource-level finding (no attribute)
-				// Currently using full address to preserve per-instance findings
-				// This is the documented behavior per COUNT CONTRACT above
-				contextLogger.Debug().
-					Str("searchKey", searchKey).
-					Msg("TFPlan: Resource-level finding, using full address (no canonicalization)")
-				// Keep original searchKey for resource-level findings
-				return buildVulnerabilityLinesFromLocation(location, outputLines)
-			}
-
-			contextLogger.Debug().
-				Str("originalSearchKey", searchKey).
-				Str("canonicalKey", canonicalKey).
-				Msg("TFPlan: Using canonical searchKey for root resource deduplication")
-
-			return buildVulnerabilityLinesFromLocation(location, outputLines, canonicalKey)
-		}
-
-		// Fallback if parsing fails (shouldn't happen for valid searchKeys)
-		return buildVulnerabilityLinesFromLocation(location, outputLines)
+		return resolveRootResourceLocation(ctx, location, searchKey, outputLines)
 	}
 
 	contextLogger.Debug().
@@ -178,88 +195,7 @@ func (t *TFPlanDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 				Str("tfplanFile", file.FilePath).
 				Msg("TFPlan: Found module call match in registry")
 
-			// Determine the target attribute name from the searchKey
-			var attrName string
-			if parsedKey, err := ParseSearchKey(searchKey); err == nil && len(parsedKey.AttributePath) > 0 {
-				attrName = parsedKey.AttributePath[0]
-			}
-
-			// Read the origin hint for this attribute to decide call vs definition blame
-			origin, varName, moduleDir := extractOriginFromDocument(ctx, file, searchKey, attrName)
-
-			contextLogger.Debug().
-				Str("origin", origin).
-				Str("varName", varName).
-				Str("moduleDir", moduleDir).
-				Str("attrName", attrName).
-				Msg("TFPlan: Origin hint for attribute")
-
-			// Derive the scan root from the file path of the module call
-			scanRoot := filepath.Dir(location.FilePath)
-
-			switch origin {
-			case "module_hardcoded":
-				// Blame the module definition: find the resource attribute line inside modules/X/main.tf
-				parsed, err := ParseSearchKey(searchKey)
-				if err == nil {
-					bareAddr := parsed.ResourceType + "." + parsed.ResourceName
-					return t.resolveModuleDefinitionLocation(ctx, bareAddr, attrName, moduleDir, scanRoot, outputLines, location)
-				}
-				// ParseSearchKey failed — fall through to default call-site behavior
-
-			case "module_default":
-				// Blame BOTH the variable default AND the module call block (two findings)
-				primary, secondary := t.resolveVariableDefaultLocation(ctx, varName, moduleDir, scanRoot, outputLines, location)
-				if secondary.ResolvedFile != "" {
-					// Attach secondary so the engine fan-out can emit a second finding
-					primary.SecondaryLines = &secondary
-				}
-				return primary
-			}
-
-			// origin == "call", "", or unrecognized: existing call-site path
-			// Try to transform searchKey using module mappings to find the specific attribute
-			// Build full searchKey by combining address with the original searchKey's attribute part
-			fullSearchKey := t.buildFullSearchKey(address, searchKey)
-			transformedSearchKey, transformedAttrName := t.transformSearchKeyForModule(ctx, moduleAddress, fullSearchKey)
-
-			// Decouple transformation from line lookup:
-			// - If transformation succeeds, use the transformed key even if line lookup fails
-			// - Only if transformation also succeeds, attempt to find the specific attribute line
-			if transformedSearchKey != "" && transformedAttrName != "" {
-				contextLogger.Debug().
-					Str("originalSearchKey", searchKey).
-					Str("transformedSearchKey", transformedSearchKey).
-					Str("attributeName", transformedAttrName).
-					Msg("TFPlan: Successfully transformed searchKey using module mappings")
-
-				// Try to find the specific attribute line in the module block
-				attributeLine := findAttributeLineInFile(location.FilePath, location.Line, transformedAttrName, outputLines, "module")
-				if attributeLine > 0 {
-					contextLogger.Debug().
-						Int("attributeLine", attributeLine).
-						Msg("TFPlan: Found specific attribute line in module block")
-
-					// Return the attribute line with transformed search key
-					attributeLocation := registry.Location{
-						FilePath: location.FilePath,
-						Line:     attributeLine,
-						Column:   location.Column,
-					}
-					return buildVulnerabilityLinesFromLocation(attributeLocation, outputLines, transformedSearchKey)
-				}
-
-				// Line lookup failed, but transformation succeeded
-				// Return module declaration line with transformed search key
-				contextLogger.Debug().
-					Msg("TFPlan: Could not find specific attribute line, using module declaration line with transformed key")
-				return buildVulnerabilityLinesFromLocation(location, outputLines, transformedSearchKey)
-			}
-
-			// Transformation failed - return module declaration line without transformed key
-			contextLogger.Debug().
-				Msg("TFPlan: Could not transform searchKey, using module declaration line")
-			return buildVulnerabilityLinesFromLocation(location, outputLines)
+			return t.resolveModuleCallLocation(ctx, file, address, moduleAddress, searchKey, outputLines, location)
 		}
 
 		// Nested module not found, try parent modules iteratively
@@ -268,35 +204,14 @@ func (t *TFPlanDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 			Str("moduleAddress", moduleAddress).
 			Msg("TFPlan: Full nested module not found, trying parent modules")
 
-		parts := strings.Split(moduleAddress, ".")
-		for len(parts) >= 2 {
-			// Look for the last "module" keyword
-			if len(parts) >= 2 && parts[len(parts)-2] == "module" {
-				// Remove the last module.name pair
-				parts = parts[:len(parts)-2]
-				if len(parts) == 0 {
-					break
-				}
-				parentModule := strings.Join(parts, ".")
-
-				contextLogger.Debug().
-					Str("parentModule", parentModule).
-					Msg("TFPlan: Trying parent module")
-
-				// Use LookupWithScope to handle duplicate parent modules
-				if location, found := t.registry.LookupWithScope(parentModule, file.FilePath); found {
-					contextLogger.Debug().
-						Str("address", address).
-						Str("parentModule", parentModule).
-						Str("hclFile", location.FilePath).
-						Int("line", location.Line).
-						Str("tfplanFile", file.FilePath).
-						Msg("TFPlan: Found parent module call match in registry")
-					return buildVulnerabilityLinesFromLocation(location, outputLines)
-				}
-			} else {
-				break
-			}
+		if location, found := t.findParentModuleLocation(ctx, file, moduleAddress); found {
+			contextLogger.Debug().
+				Str("address", address).
+				Str("hclFile", location.FilePath).
+				Int("line", location.Line).
+				Str("tfplanFile", file.FilePath).
+				Msg("TFPlan: Found parent module call match in registry")
+			return buildVulnerabilityLinesFromLocation(location, outputLines)
 		}
 
 		contextLogger.Warn().
@@ -312,6 +227,127 @@ func (t *TFPlanDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		Str("tfplanFile", file.FilePath).
 		Msg("TFPlan: No address mapping found, falling back to default detection")
 	return t.defaultDetector.DetectLine(ctx, file, searchKey, outputLines)
+}
+
+// resolveModuleCallLocation builds the finding for a searchKey whose address resolved to a
+// module call (rather than a root resource): it decides call-site vs. module-definition blame
+// using the origin hint, then falls back to module-mapping-based searchKey transformation.
+func (t *TFPlanDetectLine) resolveModuleCallLocation(
+	ctx context.Context, file *model.FileMetadata, address, moduleAddress, searchKey string, outputLines int,
+	location registry.Location,
+) model.VulnerabilityLines {
+	contextLogger := logger.FromContext(ctx)
+
+	// Determine the target attribute name from the searchKey
+	var attrName string
+	if parsedKey, err := ParseSearchKey(searchKey); err == nil && len(parsedKey.AttributePath) > 0 {
+		attrName = parsedKey.AttributePath[0]
+	}
+
+	// Read the origin hint for this attribute to decide call vs definition blame
+	origin, varName, moduleDir := extractOriginFromDocument(ctx, file, searchKey, attrName)
+
+	contextLogger.Debug().
+		Str("origin", origin).
+		Str("varName", varName).
+		Str("moduleDir", moduleDir).
+		Str("attrName", attrName).
+		Msg("TFPlan: Origin hint for attribute")
+
+	// Derive the scan root from the file path of the module call
+	scanRoot := filepath.Dir(location.FilePath)
+
+	switch origin {
+	case originModuleHardcoded:
+		// Blame the module definition: find the resource attribute line inside modules/X/main.tf
+		parsed, err := ParseSearchKey(searchKey)
+		if err == nil {
+			bareAddr := parsed.ResourceType + "." + parsed.ResourceName
+			return t.resolveModuleDefinitionLocation(ctx, bareAddr, attrName, moduleDir, scanRoot, outputLines, location)
+		}
+		// ParseSearchKey failed — fall through to default call-site behavior
+
+	case originModuleDefault:
+		// Blame BOTH the variable default AND the module call block (two findings)
+		primary, secondary := t.resolveVariableDefaultLocation(ctx, varName, moduleDir, scanRoot, outputLines, location)
+		if secondary.ResolvedFile != "" {
+			// Attach secondary so the engine fan-out can emit a second finding
+			primary.SecondaryLines = &secondary
+		}
+		return primary
+	}
+
+	// origin == "call", "", or unrecognized: existing call-site path
+	// Try to transform searchKey using module mappings to find the specific attribute
+	// Build full searchKey by combining address with the original searchKey's attribute part
+	fullSearchKey := t.buildFullSearchKey(address, searchKey)
+	transformedSearchKey, transformedAttrName := t.transformSearchKeyForModule(ctx, moduleAddress, fullSearchKey)
+
+	// Decouple transformation from line lookup:
+	// - If transformation succeeds, use the transformed key even if line lookup fails
+	// - Only if transformation also succeeds, attempt to find the specific attribute line
+	if transformedSearchKey == "" || transformedAttrName == "" {
+		// Transformation failed - return module declaration line without transformed key
+		contextLogger.Debug().
+			Msg("TFPlan: Could not transform searchKey, using module declaration line")
+		return buildVulnerabilityLinesFromLocation(location, outputLines)
+	}
+
+	contextLogger.Debug().
+		Str("originalSearchKey", searchKey).
+		Str("transformedSearchKey", transformedSearchKey).
+		Str("attributeName", transformedAttrName).
+		Msg("TFPlan: Successfully transformed searchKey using module mappings")
+
+	// Try to find the specific attribute line in the module block
+	attributeLine := findAttributeLineInFile(location.FilePath, location.Line, transformedAttrName, outputLines, moduleKeyword)
+	if attributeLine <= 0 {
+		// Line lookup failed, but transformation succeeded
+		// Return module declaration line with transformed search key
+		contextLogger.Debug().
+			Msg("TFPlan: Could not find specific attribute line, using module declaration line with transformed key")
+		return buildVulnerabilityLinesFromLocation(location, outputLines, transformedSearchKey)
+	}
+
+	contextLogger.Debug().
+		Int("attributeLine", attributeLine).
+		Msg("TFPlan: Found specific attribute line in module block")
+
+	// Return the attribute line with transformed search key
+	attributeLocation := registry.Location{
+		FilePath: location.FilePath,
+		Line:     attributeLine,
+		Column:   location.Column,
+	}
+	return buildVulnerabilityLinesFromLocation(attributeLocation, outputLines, transformedSearchKey)
+}
+
+// findParentModuleLocation walks moduleAddress up to successive parent modules (stripping the
+// last "module.<name>" pair each time) until one resolves in the registry.
+// Example: "module.vpc.module.subnet" → "module.vpc"
+func (t *TFPlanDetectLine) findParentModuleLocation(
+	ctx context.Context, file *model.FileMetadata, moduleAddress string,
+) (registry.Location, bool) {
+	contextLogger := logger.FromContext(ctx)
+
+	parts := strings.Split(moduleAddress, ".")
+	for len(parts) >= 2 && parts[len(parts)-2] == moduleKeyword {
+		parts = parts[:len(parts)-2]
+		if len(parts) == 0 {
+			break
+		}
+		parentModule := strings.Join(parts, ".")
+
+		contextLogger.Debug().
+			Str("parentModule", parentModule).
+			Msg("TFPlan: Trying parent module")
+
+		if location, found := t.registry.LookupWithScope(parentModule, file.FilePath); found {
+			return location, true
+		}
+	}
+
+	return registry.Location{}, false
 }
 
 // extractAddressFromModulePath attempts to find a resource address by searching through all
@@ -427,7 +463,7 @@ func extractAddressFromDocument(ctx context.Context, file *model.FileMetadata, s
 			Msg("Failed to parse searchKey, will try legacy fallback")
 
 		// Fall back to extractAddressFromModulePath for module resources
-		if strings.Contains(searchKey, "module") {
+		if strings.Contains(searchKey, moduleKeyword) {
 			return extractAddressFromModulePath(ctx, file, searchKey)
 		}
 		return ""
@@ -473,6 +509,14 @@ func extractAddressFromDocument(ctx context.Context, file *model.FileMetadata, s
 		return ""
 	}
 
+	return lookupResourceAddress(ctx, resourceMap, resourceType, resourceKey, searchKey)
+}
+
+// lookupResourceAddress navigates resourceMap[resourceType][resourceKey] (falling back to a scan
+// by normalized _dd_tf_address for indexed resources) and returns that resource's _dd_tf_address.
+func lookupResourceAddress(ctx context.Context, resourceMap map[string]interface{}, resourceType, resourceKey, searchKey string) string {
+	contextLogger := logger.FromContext(ctx)
+
 	// Navigate to resource type
 	typeSection, ok := resourceMap[resourceType]
 	if !ok {
@@ -503,20 +547,7 @@ func extractAddressFromDocument(ctx context.Context, file *model.FileMetadata, s
 			Msg("Direct lookup failed, scanning for normalized _dd_tf_address")
 
 		normalizedTarget := fmt.Sprintf("%s.%s", resourceType, resourceKey)
-		for key, attrs := range typeMap {
-			if attrsMap, ok := attrs.(map[string]interface{}); ok {
-				if addr, ok := attrsMap["_dd_tf_address"].(string); ok {
-					if addr == normalizedTarget {
-						contextLogger.Debug().
-							Str("foundKey", key).
-							Str("address", addr).
-							Msg("Found resource by _dd_tf_address scan")
-						resourceAttrs = attrs
-						break
-					}
-				}
-			}
-		}
+		resourceAttrs = findResourceByNormalizedAddress(typeMap, normalizedTarget, &contextLogger)
 
 		// If still not found, return empty
 		if resourceAttrs == nil {
@@ -562,6 +593,27 @@ func extractAddressFromDocument(ctx context.Context, file *model.FileMetadata, s
 	return addressStr
 }
 
+// findResourceByNormalizedAddress scans typeMap for a resource whose _dd_tf_address matches
+// normalizedTarget, used when the map key itself is index-suffixed (e.g. "web[0]").
+func findResourceByNormalizedAddress(typeMap map[string]interface{}, normalizedTarget string, contextLogger *zerolog.Logger) interface{} {
+	for key, attrs := range typeMap {
+		attrsMap, ok := attrs.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		addr, ok := attrsMap["_dd_tf_address"].(string)
+		if !ok || addr != normalizedTarget {
+			continue
+		}
+		contextLogger.Debug().
+			Str("foundKey", key).
+			Str("address", addr).
+			Msg("Found resource by _dd_tf_address scan")
+		return attrs
+	}
+	return nil
+}
+
 // extractOriginFromDocument reads the _dd_tf_origin hint for a specific attribute from the document.
 // It locates the same resource node as extractAddressFromDocument but reads _dd_tf_origin instead.
 // Returns (origin, varName, moduleDir) where origin is "call", "module_default", or "module_hardcoded".
@@ -569,69 +621,12 @@ func extractAddressFromDocument(ctx context.Context, file *model.FileMetadata, s
 // When attrName is empty (resource-level finding), it scans ALL attribute hints and returns
 // the "most significant" origin: module_hardcoded > module_default > call.
 // This handles resource-level Rego queries that flag the entire resource without naming an attribute.
-func extractOriginFromDocument(ctx context.Context, file *model.FileMetadata, searchKey string, attrName string) (origin string, varName string, moduleDir string) {
+func extractOriginFromDocument(
+	ctx context.Context, file *model.FileMetadata, searchKey, attrName string,
+) (origin, varName, moduleDir string) {
 	contextLogger := logger.FromContext(ctx)
 
-	parsed, err := ParseSearchKey(searchKey)
-	if err != nil {
-		return "", "", ""
-	}
-
-	// Navigate to the resource's attributes map in the document
-	resourceSection, ok := file.LineInfoDocument["resource"]
-	if !ok {
-		return "", "", ""
-	}
-	resourceMap, ok := resourceSection.(map[string]interface{})
-	if !ok {
-		return "", "", ""
-	}
-
-	var attrsMap map[string]interface{}
-
-	if parsed.IsModuleResource {
-		// Search all resources for a matching _dd_tf_address
-		normalizedAddr := parsed.NormalizedAddr
-		for _, typeSection := range resourceMap {
-			typeMap, ok := typeSection.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			for _, resourceAttrs := range typeMap {
-				am, ok := resourceAttrs.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				addr, _ := am["_dd_tf_address"].(string)
-				if addr == normalizedAddr || strings.HasPrefix(normalizedAddr, addr+".") {
-					attrsMap = am
-					break
-				}
-			}
-			if attrsMap != nil {
-				break
-			}
-		}
-	} else {
-		// Simple resource: direct lookup
-		typeSection, ok := resourceMap[parsed.ResourceType]
-		if !ok {
-			return "", "", ""
-		}
-		typeMap, ok := typeSection.(map[string]interface{})
-		if !ok {
-			return "", "", ""
-		}
-		resourceAttrs, ok := typeMap[parsed.ResourceName]
-		if !ok {
-			return "", "", ""
-		}
-		attrsMap, ok = resourceAttrs.(map[string]interface{})
-		if !ok {
-			return "", "", ""
-		}
-	}
-
+	attrsMap := findResourceAttrsMap(file, searchKey)
 	if attrsMap == nil {
 		return "", "", ""
 	}
@@ -647,59 +642,135 @@ func extractOriginFromDocument(ctx context.Context, file *model.FileMetadata, se
 		return "", "", ""
 	}
 
-	// For a specific attribute: look it up directly (also try dotted prefix matches for nested)
 	if attrName != "" {
-		hint, found := originMapTyped[attrName]
-		if !found {
-			// Try prefix match for nested attributes (e.g. attrName="metadata_options" matches
-			// "metadata_options.http_endpoint")
-			for key, h := range originMapTyped {
-				if strings.HasPrefix(key, attrName+".") {
-					hint = h
-					found = true
+		return resolveAttributeOrigin(ctx, originMapTyped, attrName)
+	}
+	return resolveResourceLevelOrigin(ctx, originMapTyped)
+}
+
+// findResourceAttrsMap locates the resource's attributes map in the document by parsing
+// searchKey, mirroring extractAddressFromDocument's navigation but returning the raw map
+// (needed here to read _dd_tf_origin rather than _dd_tf_address).
+func findResourceAttrsMap(file *model.FileMetadata, searchKey string) map[string]interface{} {
+	parsed, err := ParseSearchKey(searchKey)
+	if err != nil {
+		return nil
+	}
+
+	resourceSection, ok := file.LineInfoDocument["resource"]
+	if !ok {
+		return nil
+	}
+	resourceMap, ok := resourceSection.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	if parsed.IsModuleResource {
+		return findResourceAttrsByAddress(resourceMap, parsed.NormalizedAddr)
+	}
+
+	typeSection, ok := resourceMap[parsed.ResourceType]
+	if !ok {
+		return nil
+	}
+	typeMap, ok := typeSection.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	resourceAttrs, ok := typeMap[parsed.ResourceName]
+	if !ok {
+		return nil
+	}
+	attrsMap, ok := resourceAttrs.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	return attrsMap
+}
+
+// findResourceAttrsByAddress searches every resource in resourceMap for one whose
+// _dd_tf_address equals or is a parent path of normalizedAddr (module resources).
+func findResourceAttrsByAddress(resourceMap map[string]interface{}, normalizedAddr string) map[string]interface{} {
+	for _, typeSection := range resourceMap {
+		typeMap, ok := typeSection.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for _, resourceAttrs := range typeMap {
+			am, ok := resourceAttrs.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			addr, _ := am["_dd_tf_address"].(string)
+			if addr == normalizedAddr || strings.HasPrefix(normalizedAddr, addr+".") {
+				return am
+			}
+		}
+	}
+	return nil
+}
+
+// resolveAttributeOrigin looks up the origin hint for one specific attribute, including a
+// dotted-prefix match for nested attributes and a module_hardcoded fallback when the module
+// never declared the attribute at all.
+func resolveAttributeOrigin(
+	ctx context.Context, originMapTyped map[string]interface{}, attrName string,
+) (origin, varName, moduleDir string) {
+	contextLogger := logger.FromContext(ctx)
+
+	hint, found := originMapTyped[attrName]
+	if !found {
+		// Try prefix match for nested attributes (e.g. attrName="metadata_options" matches
+		// "metadata_options.http_endpoint")
+		for key, h := range originMapTyped {
+			if strings.HasPrefix(key, attrName+".") {
+				hint = h
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		// The attribute is completely absent from the module resource's expressions — the module
+		// never declared it and the call cannot add it. This is module_hardcoded (hardcoded absence).
+		// Derive moduleDir from any sibling hint (they all share the same module directory).
+		derivedModuleDir := ""
+		for _, h := range originMapTyped {
+			if hm, ok := h.(map[string]interface{}); ok {
+				if d, ok := hm["moduleDir"].(string); ok && d != "" {
+					derivedModuleDir = d
 					break
 				}
 			}
 		}
-		if !found {
-			// The attribute is completely absent from the module resource's expressions — the module
-			// never declared it and the call cannot add it. This is module_hardcoded (hardcoded absence).
-			// Derive moduleDir from any sibling hint (they all share the same module directory).
-			derivedModuleDir := ""
-			for _, h := range originMapTyped {
-				if hm, ok := h.(map[string]interface{}); ok {
-					if d, ok := hm["moduleDir"].(string); ok && d != "" {
-						derivedModuleDir = d
-						break
-					}
-				}
-			}
-			if derivedModuleDir != "" {
-				contextLogger.Debug().
-					Str("attrName", attrName).
-					Str("moduleDir", derivedModuleDir).
-					Msg("TFPlan: Attribute absent from module resource expressions — treating as module_hardcoded")
-				return "module_hardcoded", "", derivedModuleDir
-			}
+		if derivedModuleDir == "" {
 			return "", "", ""
 		}
-		hintMap, ok := hint.(map[string]interface{})
-		if !ok {
-			return "", "", ""
-		}
-		origin, _ = hintMap["origin"].(string)
-		varName, _ = hintMap["variable"].(string)
-		moduleDir, _ = hintMap["moduleDir"].(string)
-		return origin, varName, moduleDir
+		contextLogger.Debug().
+			Str("attrName", attrName).
+			Str("moduleDir", derivedModuleDir).
+			Msg("TFPlan: Attribute absent from module resource expressions — treating as module_hardcoded")
+		return originModuleHardcoded, "", derivedModuleDir
 	}
 
-	// Resource-level finding (attrName == ""): scan all hints and return the most significant.
-	// Priority: module_hardcoded > module_default > call
-	// This handles resource-level Rego queries that flag an entire resource without naming an attribute.
-	bestOrigin := ""
-	bestVarName := ""
-	bestModuleDir := ""
-	originPriority := map[string]int{"module_hardcoded": 3, "module_default": 2, "call": 1}
+	hintMap, ok := hint.(map[string]interface{})
+	if !ok {
+		return "", "", ""
+	}
+	origin, _ = hintMap["origin"].(string)
+	varName, _ = hintMap["variable"].(string)
+	moduleDir, _ = hintMap["moduleDir"].(string)
+	return origin, varName, moduleDir
+}
+
+// resolveResourceLevelOrigin scans every attribute hint on a resource and returns the most
+// significant origin (module_hardcoded > module_default > call), for resource-level Rego
+// queries that flag an entire resource without naming an attribute.
+func resolveResourceLevelOrigin(ctx context.Context, originMapTyped map[string]interface{}) (origin, varName, moduleDir string) {
+	contextLogger := logger.FromContext(ctx)
+
+	originPriority := map[string]int{originModuleHardcoded: 3, originModuleDefault: 2, originCall: 1}
 
 	for _, h := range originMapTyped {
 		hintMap, ok := h.(map[string]interface{})
@@ -707,20 +778,20 @@ func extractOriginFromDocument(ctx context.Context, file *model.FileMetadata, se
 			continue
 		}
 		o, _ := hintMap["origin"].(string)
-		if originPriority[o] > originPriority[bestOrigin] {
-			bestOrigin = o
-			bestVarName, _ = hintMap["variable"].(string)
-			bestModuleDir, _ = hintMap["moduleDir"].(string)
+		if originPriority[o] > originPriority[origin] {
+			origin = o
+			varName, _ = hintMap["variable"].(string)
+			moduleDir, _ = hintMap["moduleDir"].(string)
 		}
 	}
 
 	contextLogger.Debug().
-		Str("bestOrigin", bestOrigin).
-		Str("bestModuleDir", bestModuleDir).
+		Str("bestOrigin", origin).
+		Str("bestModuleDir", moduleDir).
 		Int("hintCount", len(originMapTyped)).
 		Msg("TFPlan: Resource-level origin scan result")
 
-	return bestOrigin, bestVarName, bestModuleDir
+	return origin, varName, moduleDir
 }
 
 // resolveModuleDefinitionLocation resolves a MODULE_HARDCODED finding to the resource attribute
@@ -788,7 +859,7 @@ func (t *TFPlanDetectLine) resolveVariableDefaultLocation(
 	scanRoot string,
 	outputLines int,
 	callLocation registry.Location, // used as fallback AND as secondary location
-) (primary model.VulnerabilityLines, secondary model.VulnerabilityLines) {
+) (primary, secondary model.VulnerabilityLines) {
 	contextLogger := logger.FromContext(ctx)
 
 	// Build scope path for scoped registry lookup
@@ -839,60 +910,10 @@ func (t *TFPlanDetectLine) resolveVariableDefaultLocation(
 	return primaryLines, secondaryLines
 }
 
-// extractResourceAddress extracts the Terraform resource address from a searchKey (DEPRECATED)
-// This function is no longer used but kept for reference
-// Examples:
-//   - "resource.aws_instance.web.ami" -> "aws_instance.web"
-//   - "resource.module.vpc.aws_vpc.main.cidr_block" -> "module.vpc.aws_vpc.main"
-//   - "aws_instance.web[0].ami" -> "aws_instance.web"
-func extractResourceAddress(searchKey string) string {
-	// First, normalize the searchKey by removing any indices
-	normalized := NormalizeTFPlanAddress(searchKey)
-
-	// Handle different searchKey formats
-	parts := strings.Split(normalized, ".")
-
-	// Skip leading "resource" if present
-	startIdx := 0
-	if len(parts) > 0 && parts[0] == "resource" {
-		startIdx = 1
-	}
-
-	// Build the address from the remaining parts
-	// Stop before attribute names (usually the last part or two)
-	var addressParts []string
-	for i := startIdx; i < len(parts); i++ {
-		part := parts[i]
-
-		// Check if this looks like a resource type or name
-		if i < len(parts)-1 {
-			// Add module prefixes and resource types/names
-			if part == "module" || (i > 0 && parts[i-1] == "module") {
-				addressParts = append(addressParts, part)
-			} else if i == startIdx || i == startIdx+1 {
-				// First two parts after "resource" are type and name
-				addressParts = append(addressParts, part)
-			} else if len(addressParts) > 0 && strings.HasPrefix(addressParts[0], "module") {
-				// This is part of a module path or a resource within a module
-				addressParts = append(addressParts, part)
-				// Stop after we have module.name.type.name pattern
-				if len(addressParts) >= 4 && addressParts[len(addressParts)-3] != "module" {
-					break
-				}
-			}
-		}
-	}
-
-	if len(addressParts) < 2 {
-		// Need at least type.name for a valid address
-		return ""
-	}
-
-	return strings.Join(addressParts, ".")
-}
-
 // buildVulnerabilityLinesFromLocation creates VulnerabilityLines from a registry Location
-func buildVulnerabilityLinesFromLocation(location registry.Location, outputLines int, transformedSearchKey ...string) model.VulnerabilityLines {
+func buildVulnerabilityLinesFromLocation(
+	location registry.Location, outputLines int, transformedSearchKey ...string,
+) model.VulnerabilityLines {
 	// Read the file content to get the actual lines
 	var lines []string
 	if content, err := os.ReadFile(location.FilePath); err == nil {
@@ -955,7 +976,7 @@ func NormalizeTFPlanAddress(address string) string {
 // For example: address="module.vpc.aws_instance.web", searchKey="aws_instance.web.tags"
 // or: address="module.vpc.aws_instance.web", searchKey="module.vpc.aws_instance.web.tags"
 // Returns: "module.vpc.aws_instance.web.tags"
-func (t *TFPlanDetectLine) buildFullSearchKey(address string, searchKey string) string {
+func (t *TFPlanDetectLine) buildFullSearchKey(address, searchKey string) string {
 	// Use the typed parser to extract attribute information
 	parsed, err := ParseSearchKey(searchKey)
 	if err != nil {
@@ -977,7 +998,9 @@ func (t *TFPlanDetectLine) buildFullSearchKey(address string, searchKey string) 
 // transformSearchKeyForModule attempts to transform a searchKey using module mappings
 // For example: "module.vpc.aws_instance.web.tags" → "module.vpc.resource_tags" (if tags maps to resource_tags)
 // Returns: (transformedSearchKey, attributeName) where attributeName is the module input variable name
-func (t *TFPlanDetectLine) transformSearchKeyForModule(ctx context.Context, moduleAddress string, searchKey string) (string, string) {
+func (t *TFPlanDetectLine) transformSearchKeyForModule(
+	ctx context.Context, moduleAddress, searchKey string,
+) (transformedSearchKey, attributeName string) {
 	contextLogger := logger.FromContext(ctx)
 
 	// No module mappings available
@@ -1012,12 +1035,12 @@ func (t *TFPlanDetectLine) transformSearchKeyForModule(ctx context.Context, modu
 		return "", ""
 	}
 
-	attributeName := parsed.AttributePath[0]
+	attributeName = parsed.AttributePath[0]
 
 	// Extract module name from moduleAddress (e.g., "module.vpc" → "vpc")
 	// Handle indexed modules: "module.app_servers[0]" → "app_servers"
 	moduleParts := strings.Split(moduleAddress, ".")
-	if len(moduleParts) < 2 || moduleParts[0] != "module" {
+	if len(moduleParts) < 2 || moduleParts[0] != moduleKeyword {
 		contextLogger.Debug().
 			Str("moduleAddress", moduleAddress).
 			Msg("Invalid module address format")
@@ -1030,15 +1053,57 @@ func (t *TFPlanDetectLine) transformSearchKeyForModule(ctx context.Context, modu
 		moduleName = moduleName[:bracketIdx]
 	}
 
-	// Look up module in mappings
-	// The mapping keys can be:
-	// - Just the module name (for local modules)
-	// - source::name (for non-local modules to avoid collisions)
-	// We try the simple name first, then check all keys that end with ::name
+	moduleMap, ok := t.lookupModuleMapping(ctx, moduleName)
+	if !ok {
+		return "", ""
+	}
+
+	variableNameStr, status := lookupModuleInputVariable(ctx, moduleMap, parsed.ResourceType, attributeName)
+	switch status {
+	case moduleInputNotFound:
+		// AttributesData/provider/inputs navigation failed outright (non-local module or
+		// unexpected shape): fall back to the normalized searchKey to preserve the full
+		// resource path and still enable deduplication.
+		return searchKey, attributeName
+	case moduleInputNonString:
+		// The attribute mapping's variable name wasn't a string: fall back to module address + attribute.
+		return moduleAddress + "." + attributeName, attributeName
+	}
+
+	// Build the transformed searchKey: moduleAddress + variableName
+	transformedSearchKey = moduleAddress + "." + variableNameStr
+
+	contextLogger.Debug().
+		Str("originalSearchKey", searchKey).
+		Str("transformedSearchKey", transformedSearchKey).
+		Str("attributeName", attributeName).
+		Str("variableName", variableNameStr).
+		Msg("Successfully transformed searchKey using module mappings")
+
+	return transformedSearchKey, variableNameStr
+}
+
+// moduleInputLookupStatus is the outcome of lookupModuleInputVariable.
+type moduleInputLookupStatus int
+
+const (
+	moduleInputFound moduleInputLookupStatus = iota
+	moduleInputNotFound
+	moduleInputNonString
+)
+
+// lookupModuleMapping finds moduleName's entry in t.moduleMappings.
+// The mapping keys can be:
+//   - Just the module name (for local modules)
+//   - source::name (for non-local modules to avoid collisions)
+//
+// It tries the simple name first, then checks all keys that end with ::name (handling the
+// same remote module being called multiple times).
+func (t *TFPlanDetectLine) lookupModuleMapping(ctx context.Context, moduleName string) (map[string]interface{}, bool) {
+	contextLogger := logger.FromContext(ctx)
+
 	moduleData, ok := t.moduleMappings[moduleName]
 	if !ok {
-		// Try finding by source::name pattern
-		// This handles cases where the same remote module is called multiple times
 		for key, data := range t.moduleMappings {
 			if strings.HasSuffix(key, "::"+moduleName) {
 				moduleData = data
@@ -1051,138 +1116,99 @@ func (t *TFPlanDetectLine) transformSearchKeyForModule(ctx context.Context, modu
 			}
 		}
 	}
-
 	if !ok {
 		contextLogger.Debug().
 			Str("moduleName", moduleName).
 			Msg("Module not found in mappings")
-		return "", ""
+		return nil, false
 	}
 
-	// Cast to map[string]interface{} to access fields
 	moduleMap, ok := moduleData.(map[string]interface{})
 	if !ok {
 		contextLogger.Debug().
 			Str("moduleName", moduleName).
 			Str("type", fmt.Sprintf("%T", moduleData)).
 			Msg("Module data is not a map")
-		return "", ""
+		return nil, false
 	}
+	return moduleMap, true
+}
 
-	// Get AttributesData field
+// lookupModuleInputVariable navigates moduleMap["AttributesData"][provider]["inputs"][attributeName]
+// (provider derived from resourceType's "_"-prefix) to find the module input variable name that
+// attributeName maps to. The status return distinguishes "navigation failed" (caller falls back
+// to the normalized searchKey) from "found but not a string" (caller falls back differently).
+func lookupModuleInputVariable(
+	ctx context.Context, moduleMap map[string]interface{}, resourceType, attributeName string,
+) (string, moduleInputLookupStatus) {
+	contextLogger := logger.FromContext(ctx)
+	providerPrefix := strings.Split(resourceType, "_")[0]
+
 	attributesData, ok := moduleMap["AttributesData"]
 	if !ok {
-		// No AttributesData (non-local module) - use fallback transformation
-		// Return the normalized searchKey (with indices removed but full resource path preserved)
-		// For example: module.app[0].aws_instance.web.tags → module.app.aws_instance.web.tags
-		// This enables deduplication across count instances without over-collapsing different resources
+		// No AttributesData (non-local module). For example:
+		// module.app[0].aws_instance.web.tags → module.app.aws_instance.web.tags
 		contextLogger.Debug().
-			Str("moduleName", moduleName).
 			Str("attributeName", attributeName).
-			Str("searchKey", searchKey).
 			Msg("No AttributesData in module (likely non-local), using fallback transformation")
-
-		// Fallback: use the normalized searchKey (indices already removed by caller)
-		// This preserves the full resource path to prevent over-collapsing
-		return searchKey, attributeName
+		return "", moduleInputNotFound
 	}
-
 	attributesMap, ok := attributesData.(map[string]interface{})
 	if !ok {
 		contextLogger.Debug().
-			Str("moduleName", moduleName).
 			Str("type", fmt.Sprintf("%T", attributesData)).
 			Msg("AttributesData is not a map, using fallback transformation")
-
-		// Fallback: use the normalized searchKey to preserve full resource path
-		return searchKey, attributeName
+		return "", moduleInputNotFound
 	}
 
-	// Extract resource type from parsed search key
-	resourceType := parsed.ResourceType
-
-	// Find the provider from resource type (e.g., "aws_instance" → "aws")
-	providerPrefix := strings.Split(resourceType, "_")[0]
-
-	// Look up provider in AttributesData
 	providerData, ok := attributesMap[providerPrefix]
 	if !ok {
 		contextLogger.Debug().
 			Str("provider", providerPrefix).
 			Msg("Provider not found in module AttributesData, using fallback transformation")
-
-		// Fallback: use the normalized searchKey to preserve full resource path
-		return searchKey, attributeName
+		return "", moduleInputNotFound
 	}
-
 	providerMap, ok := providerData.(map[string]interface{})
 	if !ok {
 		contextLogger.Debug().
 			Str("provider", providerPrefix).
 			Str("type", fmt.Sprintf("%T", providerData)).
 			Msg("Provider data is not a map, using fallback transformation")
-
-		// Fallback: use the normalized searchKey to preserve full resource path
-		return searchKey, attributeName
+		return "", moduleInputNotFound
 	}
 
-	// Get Inputs field
 	inputs, ok := providerMap["inputs"]
 	if !ok {
 		contextLogger.Debug().
 			Str("provider", providerPrefix).
 			Msg("No inputs in provider data, using fallback transformation")
-
-		// Fallback: use the normalized searchKey to preserve full resource path
-		return searchKey, attributeName
+		return "", moduleInputNotFound
 	}
-
 	inputsMap, ok := inputs.(map[string]interface{})
 	if !ok {
 		contextLogger.Debug().
 			Str("provider", providerPrefix).
 			Str("type", fmt.Sprintf("%T", inputs)).
 			Msg("Inputs is not a map, using fallback transformation")
-
-		// Fallback: use the normalized searchKey to preserve full resource path
-		return searchKey, attributeName
+		return "", moduleInputNotFound
 	}
 
-	// Look up the attribute mapping
 	variableName, ok := inputsMap[attributeName]
 	if !ok {
 		contextLogger.Debug().
 			Str("attributeName", attributeName).
 			Msg("Attribute not found in module inputs, using fallback transformation")
-
-		// Fallback: use the normalized searchKey to preserve full resource path
-		// This is better than returning empty, as it still enables deduplication
-		return searchKey, attributeName
+		return "", moduleInputNotFound
 	}
-
 	variableNameStr, ok := variableName.(string)
 	if !ok {
 		contextLogger.Debug().
 			Str("attributeName", attributeName).
 			Str("type", fmt.Sprintf("%T", variableName)).
 			Msg("Variable name is not a string, using fallback transformation")
-
-		// Fallback: use normalized module address + attribute
-		fallbackKey := moduleAddress + "." + attributeName
-		return fallbackKey, attributeName
+		return "", moduleInputNonString
 	}
-
-	// Build the transformed searchKey: moduleAddress + variableName
-	transformedSearchKey := moduleAddress + "." + variableNameStr
-
-	contextLogger.Debug().
-		Str("originalSearchKey", searchKey).
-		Str("transformedSearchKey", transformedSearchKey).
-		Str("attributeName", attributeName).
-		Str("variableName", variableNameStr).
-		Msg("Successfully transformed searchKey using module mappings")
-
-	return transformedSearchKey, variableNameStr
+	return variableNameStr, moduleInputFound
 }
 
 // findAttributeLineInFile searches for an attribute assignment in a block of the given blockType
@@ -1190,7 +1216,7 @@ func (t *TFPlanDetectLine) transformSearchKeyForModule(ctx context.Context, modu
 // the respective type name. Returns the line number where the attribute is found, or -1 if not found.
 func findAttributeLineInFile(filePath string, startLine int, attributeName string, searchRange int, blockType string) int {
 	// Read and parse the HCL file
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filePath) //nolint:gosec // filePath comes from the address registry, scoped to the scan root
 	if err != nil {
 		return -1
 	}
@@ -1236,7 +1262,7 @@ func findAttributeLineInFile(filePath string, startLine int, attributeName strin
 // findAttributeLineInFileRegex is the fallback regex-based search
 // Used when HCL parsing fails or as a last resort
 func findAttributeLineInFileRegex(filePath string, startLine int, attributeName string, searchRange int) int {
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filePath) //nolint:gosec // filePath comes from the address registry, scoped to the scan root
 	if err != nil {
 		return -1
 	}

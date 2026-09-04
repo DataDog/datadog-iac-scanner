@@ -61,7 +61,8 @@ type Parser struct {
 }
 
 // NewDefault initializes a parser with Parser default values
-// DEPRECATED: Use New() with a registry instance instead
+//
+// Deprecated: use New() with a registry instance instead
 func NewDefault() *Parser {
 	return &Parser{
 		numOfRetries: RetriesDefaultValue,
@@ -94,14 +95,14 @@ func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.S
 }
 
 // NewWithParams creates a parser with registry, vars path, and sci info
-func NewWithParams(fsys vfs.FS, reg *registry.AddressRegistry, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
+func NewWithParams(fsys vfs.FS, reg *registry.AddressRegistry, terraformVarsPath string, sciInfo *model.SCIInfo) *Parser {
 	p := &Parser{
 		numOfRetries:      RetriesDefaultValue,
 		convertFunc:       converter.DefaultConverted,
 		fsys:              vfs.DiskFS{},
 		registry:          reg,
 		terraformVarsPath: terraformVarsPath,
-		sciInfo:           sciInfo,
+		sciInfo:           *sciInfo,
 	}
 	if fsys != nil {
 		p.fsys = fsys

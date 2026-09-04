@@ -12,6 +12,13 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 )
 
+// minModulePathParts is the minimum component count for a module search key:
+// module, name, resource type, resource name.
+const minModulePathParts = 4
+
+// moduleKeyword is the "module" path segment in a dotted Terraform address.
+const moduleKeyword = "module"
+
 // ParsedSearchKey represents the structured result of parsing a Terraform search key
 // This provides all the information needed to properly map TFPlan findings to HCL source
 type ParsedSearchKey struct {
@@ -52,10 +59,7 @@ func ParseSearchKey(searchKey string) (*ParsedSearchKey, error) {
 	}
 
 	// Step 1: Preprocess - strip "resource." prefix
-	workingKey := searchKey
-	if strings.HasPrefix(workingKey, "resource.") {
-		workingKey = strings.TrimPrefix(workingKey, "resource.")
-	}
+	workingKey := strings.TrimPrefix(searchKey, "resource.")
 
 	// Step 2: Handle template syntax {{...}}
 	// Handles both "{{module.app.resource}}" and "type.{{module.app.resource}}"
@@ -75,13 +79,9 @@ func ParseSearchKey(searchKey string) (*ParsedSearchKey, error) {
 		if openBrace > 0 {
 			// Format: type.{{module.app.resource}}
 			// Combine prefix + template content
-			prefix := workingKey[:openBrace]
-			if strings.HasSuffix(prefix, ".") {
-				prefix = prefix[:len(prefix)-1]
-			}
+			prefix := strings.TrimSuffix(workingKey[:openBrace], ".")
 			workingKey = prefix + "." + templateContent
 		} else {
-			// Format: {{module.app.resource}}
 			workingKey = templateContent
 		}
 	}
@@ -147,7 +147,7 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 
 		// Parse modules: module.name[index]...
 		for i < len(parts)-1 { // -1 because last part is resource name
-			if parts[i] == "module" {
+			if parts[i] == moduleKeyword {
 				modulePath = append(modulePath, parts[i])
 				i++
 				if i < len(parts) {
@@ -176,10 +176,7 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 		// Extract any attributes after the bracket
 		remainder := ""
 		if closeBracketIdx+1 < len(workingKey) {
-			remainder = workingKey[closeBracketIdx+1:]
-			if strings.HasPrefix(remainder, ".") {
-				remainder = remainder[1:]
-			}
+			remainder = strings.TrimPrefix(workingKey[closeBracketIdx+1:], ".")
 		}
 
 		var attributePath []string
@@ -214,10 +211,7 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 	var attributePath []string
 	remainder := ""
 	if closeBracketIdx+1 < len(workingKey) {
-		remainder = workingKey[closeBracketIdx+1:]
-		if strings.HasPrefix(remainder, ".") {
-			remainder = remainder[1:]
-		}
+		remainder = strings.TrimPrefix(workingKey[closeBracketIdx+1:], ".")
 	}
 
 	if remainder != "" {
@@ -241,11 +235,11 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 //   - module.vpc.aws_instance.bastion.tags
 //   - module.app_servers[0].aws_instance.app.tags
 //   - module.network.module.subnet.aws_subnet.private.cidr_block
-func parseModulePath(workingKey string, originalKey string) (*ParsedSearchKey, error) {
+func parseModulePath(workingKey, originalKey string) (*ParsedSearchKey, error) {
 	// Parse module path and find where the resource starts
 	parts := splitPreservingBrackets(workingKey)
 
-	if len(parts) < 4 {
+	if len(parts) < minModulePathParts {
 		// Need at least: module, name, type, resource_name
 		return nil, fmt.Errorf("module path too short: %s", originalKey)
 	}
@@ -256,7 +250,7 @@ func parseModulePath(workingKey string, originalKey string) (*ParsedSearchKey, e
 
 	// Parse nested modules: module.name.module.name...
 	for i < len(parts)-2 {
-		if parts[i] == "module" {
+		if parts[i] == moduleKeyword {
 			// Add "module"
 			modulePath = append(modulePath, parts[i])
 			i++
@@ -324,11 +318,11 @@ func parseModulePath(workingKey string, originalKey string) (*ParsedSearchKey, e
 //
 // Where "module" appears after the resource type
 // Format: type.module.module_name[index].resource_name[.attributes...]
-func parseMixedNotation(workingKey string, originalKey string) (*ParsedSearchKey, error) {
+func parseMixedNotation(workingKey, originalKey string) (*ParsedSearchKey, error) {
 	// Use splitPreservingBrackets to handle indices correctly
 	parts := splitPreservingBrackets(workingKey)
 
-	if len(parts) < 4 {
+	if len(parts) < minModulePathParts {
 		// Need: type, module, module_name, resource_name
 		return nil, fmt.Errorf("mixed notation too short: %s (need at least type.module.name.resource)", originalKey)
 	}
@@ -339,7 +333,7 @@ func parseMixedNotation(workingKey string, originalKey string) (*ParsedSearchKey
 	// Find where "module" appears
 	moduleIdx := -1
 	for i, part := range parts {
-		if part == "module" {
+		if part == moduleKeyword {
 			moduleIdx = i
 			break
 		}
@@ -356,7 +350,7 @@ func parseMixedNotation(workingKey string, originalKey string) (*ParsedSearchKey
 
 	// Parse nested modules
 	for i < len(parts)-1 { // -1 because last part might be resource name
-		if parts[i] == "module" {
+		if parts[i] == moduleKeyword {
 			modulePath = append(modulePath, parts[i])
 			i++
 			if i < len(parts) {
@@ -409,7 +403,7 @@ func parseMixedNotation(workingKey string, originalKey string) (*ParsedSearchKey
 //   - aws_instance.web
 //   - aws_instance.web.tags
 //   - aws_instance.web.root_block_device.volume_size
-func parseSimpleDotNotation(workingKey string, originalKey string) (*ParsedSearchKey, error) {
+func parseSimpleDotNotation(workingKey, originalKey string) (*ParsedSearchKey, error) {
 	// Validate no unmatched brackets
 	if strings.Contains(workingKey, "]") && !strings.Contains(workingKey, "[") {
 		return nil, fmt.Errorf("unmatched closing bracket in searchKey: %s", originalKey)
@@ -449,9 +443,10 @@ func parseSimpleDotNotation(workingKey string, originalKey string) (*ParsedSearc
 func findMatchingBracketSimple(s string, startIdx int) int {
 	depth := 0
 	for i := startIdx; i < len(s); i++ {
-		if s[i] == '[' {
+		switch s[i] {
+		case '[':
 			depth++
-		} else if s[i] == ']' {
+		case ']':
 			depth--
 			if depth == 0 {
 				return i
@@ -497,21 +492,19 @@ func splitPreservingBrackets(s string) []string {
 //   - "app[0]" → ("app", "0")
 //   - "web" → ("web", "")
 //   - "vpc[\"prod\"]" → ("vpc", "prod")
-func extractNameAndIndex(nameWithIndex string) (string, string) {
+func extractNameAndIndex(nameWithIndex string) (name, index string) {
 	bracketIdx := strings.Index(nameWithIndex, "[")
 	if bracketIdx == -1 {
 		return nameWithIndex, ""
 	}
 
-	name := nameWithIndex[:bracketIdx]
+	name = nameWithIndex[:bracketIdx]
 	closeBracketIdx := findMatchingBracketSimple(nameWithIndex, bracketIdx)
 	if closeBracketIdx == -1 {
 		return nameWithIndex, ""
 	}
 
-	index := nameWithIndex[bracketIdx+1 : closeBracketIdx]
-	// Remove quotes if present
-	index = strings.Trim(index, `"'`)
+	index = strings.Trim(nameWithIndex[bracketIdx+1:closeBracketIdx], `"'`)
 
 	return name, index
 }
@@ -525,13 +518,13 @@ func buildFullAddress(modulePath []string, resourceType, resourceName string) st
 
 	// Add module path with proper indexing
 	for i := 0; i < len(modulePath); i++ {
-		if modulePath[i] == "module" {
+		if modulePath[i] == moduleKeyword {
 			// Add "module"
 			if i+1 < len(modulePath) {
 				moduleName := modulePath[i+1]
 
 				// Check if next element is an index
-				if i+2 < len(modulePath) && modulePath[i+2] != "module" {
+				if i+2 < len(modulePath) && modulePath[i+2] != moduleKeyword {
 					// It's an index
 					index := modulePath[i+2]
 					parts = append(parts, fmt.Sprintf("module.%s[%s]", moduleName, index))

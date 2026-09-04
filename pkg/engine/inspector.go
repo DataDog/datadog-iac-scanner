@@ -781,7 +781,8 @@ func convertModuleMappings(enrichedModules []tfmodules.ParsedModule) map[string]
 	// Track which keys we've seen to detect actual collisions
 	seen := make(map[string]string) // key -> module name for debugging
 
-	for _, module := range enrichedModules {
+	for i := range enrichedModules {
+		module := &enrichedModules[i]
 		// Convert AttributesData from map[string]ModuleAttributesInfo to map[string]interface{}
 		attributesData := make(map[string]interface{})
 
@@ -1111,8 +1112,7 @@ decodeLoop:
 					secondaryVuln.SecondaryVulnerabilityLines = nil
 
 					vulnerability.SecondaryVulnerabilityLines = nil
-					vulnerabilities = append(vulnerabilities, *vulnerability)
-					vulnerabilities = append(vulnerabilities, secondaryVuln)
+					vulnerabilities = append(vulnerabilities, *vulnerability, secondaryVuln)
 				} else {
 					vulnerabilities = append(vulnerabilities, *vulnerability)
 				}
@@ -2140,7 +2140,7 @@ func normalizeKeyExpr(expr hclsyntax.Expression) hclsyntax.Expression {
 	expr = hclexpr.Unwrap(expr)
 
 	v := reflect.ValueOf(expr)
-	if v.Kind() == reflect.Ptr && !v.IsNil() {
+	if v.Kind() == reflect.Pointer && !v.IsNil() {
 		elem := v.Elem()
 		if elem.Kind() == reflect.Struct {
 			field := elem.FieldByName("KeyExpr")

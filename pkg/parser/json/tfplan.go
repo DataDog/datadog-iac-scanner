@@ -512,7 +512,7 @@ func classifyResourceExpressions(
 // Returns ("", "") if the expression cannot be classified (computed/unknown).
 // NOTE: References must be checked before ConstantValue because when References is non-empty
 // the terraform-json library sets ConstantValue = UnknownConstantValue.
-func classifyExpression(expr *hcl_plan.Expression, mc *hcl_plan.ModuleCall) (origin string, varName string) {
+func classifyExpression(expr *hcl_plan.Expression, mc *hcl_plan.ModuleCall) (origin, varName string) {
 	if expr == nil || expr.ExpressionData == nil {
 		return "", ""
 	}

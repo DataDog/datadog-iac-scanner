@@ -355,7 +355,7 @@ func (c *Client) createService(
 	combinedParserBuilder := parser.NewBuilder(ctx).
 		WithFS(c.fsys).
 		Add(&yamlParser.Parser{}).
-		Add(terraformParser.NewWithParams(c.fsys, reg, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
+		Add(terraformParser.NewWithParams(c.fsys, reg, c.ScanParams.TerraformVarsPath, &c.ScanParams.SCIInfo)).
 		Add(&bicepParser.Parser{}).
 		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).
