@@ -34,6 +34,7 @@ const (
 	// RetriesDefaultValue is default number of times a parser will retry to execute
 	RetriesDefaultValue     = 50
 	terraformDataIdentifier = "data"
+	terraformVariableBlock  = "variable"
 )
 
 // Converter returns content json, error line, error
@@ -352,7 +353,7 @@ func extractAndRegisterAddresses(ctx context.Context, file *hcl.File, filePath s
 				moduleCount++
 			}
 
-		case "variable":
+		case terraformVariableBlock:
 			// Variable blocks have format: variable "name"
 			// Register as "var.<name>" so the tfplan detector can resolve module_default
 			// findings to the variable's default = ... line in variables.tf
