@@ -247,6 +247,9 @@ type Inspector struct {
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
 	moduleMappings         map[string]interface{} // Stored after Inspect() for use by tracker
+	// moduleMappingsMu guards moduleMappings for the same reason failedQueriesMu
+	// guards failedQueries: concurrent Inspect() calls can share this Inspector.
+	moduleMappingsMu sync.Mutex
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -531,19 +534,22 @@ func (c *Inspector) Inspect(
 	}
 
 	// Step 3: Convert module mappings to format expected by TFPlanDetectLine and store in inspector
-	c.moduleMappings = convertModuleMappings(enrichedModules)
+	moduleMappings := convertModuleMappings(enrichedModules)
+	c.moduleMappingsMu.Lock()
+	c.moduleMappings = moduleMappings
+	c.moduleMappingsMu.Unlock()
 	contextLogger.Info().
-		Int("moduleCount", len(c.moduleMappings)).
+		Int("moduleCount", len(moduleMappings)).
 		Msg("Converted and stored module mappings")
 
 	// Step 4: Set module mappings on tracker so they're available to vulnerability builder
 	// Check if tracker supports module mappings (TFPlanDetectorRegistry interface)
 	if trackerWithMappings, ok := c.tracker.(interface {
 		SetModuleMappings(map[string]interface{})
-	}); ok && len(c.moduleMappings) > 0 {
-		trackerWithMappings.SetModuleMappings(c.moduleMappings)
+	}); ok && len(moduleMappings) > 0 {
+		trackerWithMappings.SetModuleMappings(moduleMappings)
 		contextLogger.Info().
-			Int("moduleCount", len(c.moduleMappings)).
+			Int("moduleCount", len(moduleMappings)).
 			Msg("Set module mappings on tracker for use by vulnerability builder")
 	}
 
@@ -754,9 +760,13 @@ func (c *Inspector) GetFailedQueries() map[string]error {
 	return maps.Clone(c.failedQueries)
 }
 
-// GetModuleMappings returns the module mappings computed during Inspect()
+// GetModuleMappings returns the module mappings computed during Inspect().
+// It returns a copy taken under moduleMappingsMu so callers can read the
+// result safely even if a scan is still writing to the underlying map.
 func (c *Inspector) GetModuleMappings() map[string]interface{} {
-	return c.moduleMappings
+	c.moduleMappingsMu.Lock()
+	defer c.moduleMappingsMu.Unlock()
+	return maps.Clone(c.moduleMappings)
 }
 
 // convertModuleMappings converts []ParsedModule to the map format expected by TFPlanDetectLine
