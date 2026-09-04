@@ -38,6 +38,8 @@ type FileSystemSourceProvider struct {
 	unfiltered    map[string]struct{}
 }
 
+const jsonExtension = ".json"
+
 var (
 	queryRegexExcludeTerraCache = regexp.MustCompile(fmt.Sprintf(`^(.*?%s)?\.terra.*`, regexp.QuoteMeta(string(os.PathSeparator))))
 	// ErrNotSupportedFile - error representing when a file format is not supported by the scanner
@@ -170,7 +172,7 @@ func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
 // the scan pipeline).
 func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string, error) {
 	hclExtensions := model.Extensions{".tf": {}}
-	jsonExtensions := model.Extensions{".json": {}}
+	jsonExtensions := model.Extensions{jsonExtension: {}}
 	seen := make(map[string]struct{})
 	var files []string
 	add := func(path string) {
@@ -220,7 +222,7 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 }
 
 func (s *FileSystemSourceProvider) collectTerraformJSONModuleFiles(ctx context.Context, scanPath string) ([]string, error) {
-	extensions := model.Extensions{".json": {}}
+	extensions := model.Extensions{jsonExtension: {}}
 	var files []string
 	err := s.walkDirectory(ctx, scanPath, extensions,
 		func(ctx context.Context, path string, resolved *[]string) error {

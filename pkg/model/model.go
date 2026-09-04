@@ -96,6 +96,13 @@ type VulnerabilityLines struct {
 	ResourceSource         string
 	FileSource             []string
 	BlockLocation          ResourceLocation
+	// TransformedSearchKey is set for TFPlan: the transformed searchKey after module mapping
+	// (e.g., "module.vpc.resource_tags" instead of "module.vpc.aws_instance.web.tags").
+	TransformedSearchKey string
+	// SecondaryLines is set for module_default findings where the insecure default was not
+	// overridden by the module call. Both locations are independently actionable:
+	// the primary points at the variable default in variables.tf, the secondary at the call block.
+	SecondaryLines *VulnerabilityLines
 }
 
 // CommentCommand represents a command given from a comment
@@ -303,6 +310,10 @@ type Vulnerability struct {
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
+	// SecondaryVulnerabilityLines is set transiently when a module_default finding has two
+	// independently actionable locations (variable default + module call block). The engine
+	// decode loop emits a second Vulnerability from this field. Not persisted to DB/JSON.
+	SecondaryVulnerabilityLines *VulnerabilityLines `json:"-" db:"-"`
 }
 
 // Framework represents a framework mapping for a query

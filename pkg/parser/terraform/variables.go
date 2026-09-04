@@ -84,7 +84,7 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 	// Case 2: .tf variable "x" { default = ... }
 	hasVariableBlock := false
 	for _, block := range body.Blocks {
-		if block.Type == "variable" && len(block.Labels) == 1 && block.Labels[0] != "" {
+		if block.Type == terraformVariableBlock && len(block.Labels) == 1 && block.Labels[0] != "" {
 			hasVariableBlock = true
 			varName := block.Labels[0]
 			if defaultAttr, exists := block.Body.Attributes["default"]; exists {

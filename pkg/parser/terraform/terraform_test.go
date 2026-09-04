@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/stretchr/testify/require"
@@ -477,4 +478,44 @@ resource "aws_s3_bucket" "b%d" {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// TestExtractAndRegisterAddresses_VariableBlocks verifies that variable blocks in .tf files
+// are registered under the "var.<name>" key so the tfplan detector can resolve module_default
+// findings to the variable's default line.
+func TestExtractAndRegisterAddresses_VariableBlocks(t *testing.T) {
+	tmpDir := t.TempDir()
+	variablesTF := filepath.Join(tmpDir, "variables.tf")
+	content := `variable "publicly_accessible" {
+  description = "Whether publicly accessible."
+  type        = bool
+  default     = true
+}
+
+variable "storage_encrypted" {
+  type    = bool
+  default = false
+}
+`
+	err := os.WriteFile(variablesTF, []byte(content), 0644)
+	require.NoError(t, err)
+
+	reg := registry.New()
+	ctx := context.Background()
+	parser := New(reg)
+
+	_, _, _, _, parseErr := parser.Parse(ctx, []byte(content), variablesTF, false, 1)
+	require.NoError(t, parseErr)
+
+	// var.publicly_accessible should be registered at line 1
+	loc, found := reg.LookupWithScope("var.publicly_accessible", variablesTF)
+	require.True(t, found, "var.publicly_accessible should be in the registry")
+	require.Equal(t, variablesTF, loc.FilePath)
+	require.Equal(t, 1, loc.Line)
+
+	// var.storage_encrypted should be registered at line 7
+	loc2, found2 := reg.LookupWithScope("var.storage_encrypted", variablesTF)
+	require.True(t, found2, "var.storage_encrypted should be in the registry")
+	require.Equal(t, variablesTF, loc2.FilePath)
+	require.Equal(t, 7, loc2.Line)
 }
