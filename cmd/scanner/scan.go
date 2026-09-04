@@ -77,6 +77,10 @@ var scanAction = &cli.Command{
 			Usage: "ids of queries to exclude",
 			Value: []string{},
 		},
+		&cli.BoolFlag{
+			Name:  "resource-inventory",
+			Usage: "also emit a JSON inventory of all scanned IaC resources",
+		},
 		&cli.StringSliceFlag{
 			Name:    "type",
 			Aliases: []string{"t"},
@@ -351,6 +355,9 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err := validateReportFormats(reportFormats); err != nil {
 		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
 	}
+	if c.Bool("resource-inventory") {
+		reportFormats = appendReportFormatIfMissing(reportFormats, "iac-inventory")
+	}
 	modulesSetting, err := scan.ParseTerraformModules(c.String("terraform-modules"))
 	if err != nil {
 		return errorWithExitCode(err, constants.InvalidConfigErrorCode)
@@ -457,6 +464,15 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	}
 
 	return getExitCode(&metadata)
+}
+
+func appendReportFormatIfMissing(formats []string, format string) []string {
+	for _, f := range formats {
+		if strings.EqualFold(strings.TrimSpace(f), format) {
+			return formats
+		}
+	}
+	return append(formats, format)
 }
 
 func getCommonDir(paths []string) (string, error) {

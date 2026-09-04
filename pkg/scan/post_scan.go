@@ -8,6 +8,7 @@ package scan
 import (
 	"context"
 	_ "embed" // Embed scanner CLI img and scan-flags
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +21,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/report"
 )
 
@@ -57,7 +59,9 @@ func (c *Client) resolveOutputs(
 	ctx context.Context,
 	summary *model.Summary,
 	documents model.Documents,
+	files model.FileMetadatas,
 	printer *consolePrinter.Printer,
+	extractedPaths provider.ExtractedPath,
 ) error {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("console.resolveOutputs()")
@@ -77,13 +81,61 @@ func (c *Client) resolveOutputs(
 		}
 	}
 
-	return printOutput(
+	// The IaC resource inventory is built from the parsed files rather than the
+	// finding summary, so it is handled separately from the generic report
+	// formats that consume the Summary.
+	formats, wantInventory := extractInventoryFormat(c.ScanParams.ReportFormats)
+
+	if err := printOutput(
 		ctx,
 		c.ScanParams.OutputPath,
 		c.ScanParams.OutputName,
-		summary, c.ScanParams.ReportFormats,
+		summary, formats,
 		&c.ScanParams.SCIInfo,
-	)
+	); err != nil {
+		return err
+	}
+
+	if wantInventory {
+		if c.ScanParams.OutputPath == "" {
+			return errors.New("--resource-inventory requires --output-path to be set")
+		}
+		return report.PrintIaCInventoryReport(
+			ctx,
+			c.ScanParams.OutputPath,
+			c.ScanParams.OutputName,
+			c.ScanParams.RepoPath,
+			files,
+			c.ScanParams.GetEffectivePlatforms(),
+			&inventory.WalkOptions{
+				Ctx:             ctx,
+				RepoPath:        c.ScanParams.RepoPath,
+				ExtractionMap:   extractedPaths.ExtractionMap,
+				ResolvedModules: c.inventoryModules,
+				ParsedModules:   c.inventoryParsedModules,
+			},
+		)
+	}
+
+	return nil
+}
+
+// inventoryReportFormat is the report format name that triggers the IaC
+// resource inventory output.
+const inventoryReportFormat = "iac-inventory"
+
+// extractInventoryFormat removes the inventory format from the list of generic
+// report formats and reports whether it was requested.
+func extractInventoryFormat(formats []string) (remaining []string, wantInventory bool) {
+	remaining = make([]string, 0, len(formats))
+	for _, f := range formats {
+		if strings.EqualFold(strings.TrimSpace(f), inventoryReportFormat) {
+			wantInventory = true
+			continue
+		}
+		remaining = append(remaining, f)
+	}
+	return remaining, wantInventory
 }
 
 func printOutput(ctx context.Context, outputPath, filename string, body interface{}, formats []string, sciInfo *model.SCIInfo) error {
@@ -127,7 +179,9 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		ctx,
 		&summary,
 		scanResults.Files.Combine(ctx, c.ScanParams.LineInfoPayload),
-		c.Printer); err != nil {
+		scanResults.Files,
+		c.Printer,
+		scanResults.ExtractedPaths); err != nil {
 		contextLogger.Err(err).Msgf("failed to resolve outputs %v", err)
 		memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 		return metadata, err

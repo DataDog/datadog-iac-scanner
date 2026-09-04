@@ -36,27 +36,28 @@ func (c *Client) resolveTerraformModulesForScan(
 	remoteModulePaths []string,
 	remoteSourceDirs map[string]engine.RemoteModuleDirectory,
 	remoteModuleProvenance map[string]engine.RemoteModuleProvenance,
+	resolvedModules []modulegraph.ResolvedModule,
 	err error,
 ) {
 	if !platformsIncludeTerraform(paramsPlatforms) || !c.shouldPreScanTerraformModules(extractedPaths.Path) {
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 
 	contextLogger := logger.FromContext(ctx)
 	filteredFilesSource, err := c.getFileSystemSourceProvider(ctx, extractedPaths.Path)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	moduleDiscoveryPaths, err := filteredFilesSource.TerraformFiles(ctx)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	resolveCtx, cancel := c.moduleResolutionContext(ctx)
 	defer cancel()
 
 	chain, err := c.buildModuleResolverChain(resolveCtx, moduleDiscoveryPaths)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 
 	if c.ScanParams.TerraformModules == TerraformModulesOn {
@@ -122,7 +123,7 @@ func (c *Client) resolveTerraformModulesForScan(
 			remoteModuleProvenance[key] = provenance
 		}
 	}
-	return result.Cleanup, result.ScanPaths, remoteSourceDirs, remoteModuleProvenance, nil
+	return result.Cleanup, result.ScanPaths, remoteSourceDirs, remoteModuleProvenance, result.Modules, nil
 }
 
 func (c *Client) resolveTerraformModuleGraph(

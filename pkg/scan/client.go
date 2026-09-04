@@ -18,6 +18,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	tfresolver "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
@@ -133,7 +135,9 @@ type Client struct {
 	inMemoryPaths []string
 	walkInventory []string
 	chartRoots    []string
-	contentCache  map[string][]byte
+	contentCache     map[string][]byte
+	inventoryModules       []modulegraph.ResolvedModule
+	inventoryParsedModules map[string]tfmodules.ParsedModule
 }
 
 // ClientOption customizes a Client at construction time.
