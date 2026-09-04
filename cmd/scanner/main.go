@@ -60,8 +60,9 @@ func main() {
 		},
 		Before: applyGlobalOptions,
 	}
+	applyUsageErrorHandlers(cmd)
 
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
+	if err := runCLI(context.Background(), cmd, os.Args); err != nil {
 		code := defaultFailCode
 		if exitCode := (*withExitCodeError)(nil); errors.As(err, &exitCode) {
 			code = exitCode.code
