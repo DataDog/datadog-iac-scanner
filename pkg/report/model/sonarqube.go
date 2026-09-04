@@ -29,6 +29,7 @@ var categorySonarQubeEquivalence = map[string]string{
 	"Encryption":              "VULNERABILITY",
 	"Insecure Configurations": "CODE_SMELL",
 	"Insecure Defaults":       "CODE_SMELL",
+	"Least Privilege":         "VULNERABILITY",
 	"Networking and Firewall": "VULNERABILITY",
 	"Observability":           "VULNERABILITY",
 	"Resource Management":     "VULNERABILITY",

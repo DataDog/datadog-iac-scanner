@@ -61,6 +61,7 @@ The following top-level entries are supported:
 - `Encryption`
 - `Insecure Configurations`
 - `Insecure Defaults`
+- `Least Privilege`
 - `Networking and Firewall`
 - `Observability`
 - `Resource Management`
