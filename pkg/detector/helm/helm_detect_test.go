@@ -292,6 +292,40 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 	}
 }
 
+func TestDetectLineFallsBackToIncludeInvocation(t *testing.T) {
+	original := `{{- include "quickwit.metastore.deployment" (dict
+  "root" .
+  "component" "metastore"
+) }}`
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/metastore-deployment.yaml",
+		OriginalData:      original,
+		LinesOriginalData: utils.SplitLines(original),
+	}
+
+	got := (DetectKindLine{}).DetectLine(
+		context.Background(), file, "apiVersion=apps/v1.kind=Deployment.spec.template.spec.containers", 1,
+	)
+	want := model.VulnerabilityLines{
+		Line: 1,
+		VulnLines: &[]model.CodeLine{{
+			Position: 1,
+			Line:     `{{- include "quickwit.metastore.deployment" (dict`,
+		}},
+		LineWithVulnerability: `{{- include "quickwit.metastore.deployment" (dict`,
+		ResolvedFile:          "templates/metastore-deployment.yaml",
+		VulnerablilityLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 0},
+			End:   model.ResourceLine{Line: 1, Col: 49},
+		},
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("DetectLine() = %#v, want %#v", got, want)
+	}
+}
+
 func TestDetectLastSingleMissingHelmID(t *testing.T) {
 	distances := map[int]int{2: 1, 5: 1}
 	idInfo := map[int]interface{}{0: map[int]int{2: 2}}

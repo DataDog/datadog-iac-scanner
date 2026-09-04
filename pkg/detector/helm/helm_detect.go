@@ -114,6 +114,26 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		}
 	}
 
+	// Helm attributes output from a named template to the file that invoked it.
+	// Include-only wrapper files therefore contain no rendered YAML keys for the
+	// search path to match. Anchor those findings to the invocation that emitted
+	// the resource instead of returning an undetected line.
+	if file.HelmID == "" {
+		if line, col, ok := findHelmTemplateInvocation(lines); ok {
+			adjustedLine := line + 1
+			return model.VulnerabilityLines{
+				Line:                  adjustedLine,
+				VulnLines:             detector.GetAdjacentVulnLines(line, outputLines, lines),
+				LineWithVulnerability: lines[line],
+				ResolvedFile:          file.FilePath,
+				VulnerablilityLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: adjustedLine, Col: col},
+					End:   model.ResourceLine{Line: adjustedLine, Col: len(lines[line])},
+				},
+			}
+		}
+	}
+
 	var filePathSplit = strings.Split(file.FilePath, "/")
 	contextLogger.Warn().Msgf("Failed to detect line associated with identified result in file %s", filePathSplit[len(filePathSplit)-1])
 
@@ -122,6 +142,22 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		VulnLines:    &[]model.CodeLine{},
 		ResolvedFile: file.FilePath,
 	}
+}
+
+func findHelmTemplateInvocation(lines []string) (line, col int, ok bool) {
+	for line, sourceLine := range lines {
+		col = strings.Index(sourceLine, "{{")
+		if col < 0 {
+			continue
+		}
+		action := strings.TrimLeft(sourceLine[col+2:], "- \t")
+		if strings.HasPrefix(action, "include ") ||
+			strings.HasPrefix(action, "template ") ||
+			strings.HasPrefix(action, "tpl ") {
+			return line, col, true
+		}
+	}
+	return 0, 0, false
 }
 
 // removeLines is used to update the vulnerability line after removing the "# KICS_HELM_ID_"
