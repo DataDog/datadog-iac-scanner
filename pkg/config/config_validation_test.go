@@ -52,7 +52,7 @@ func TestParseSeverityValues(t *testing.T) {
 }
 
 func TestParseCategoryValues(t *testing.T) {
-	for _, cat := range []string{"Access Control", "Encryption", "Best Practices"} {
+	for _, cat := range []string{"Access Control", "Encryption", "Best Practices", "Least Privilege"} {
 		require.Contains(t, constants.AvailableCategories, cat, "fixture references removed category")
 	}
 
@@ -63,6 +63,7 @@ func TestParseCategoryValues(t *testing.T) {
 		{"lowercase", "encryption", "Encryption"},
 		{"whitespace and case", `"  access control  "`, "Access Control"},
 		{"multi-word exact", `"Best Practices"`, "Best Practices"},
+		{"least privilege", `"Least Privilege"`, "Least Privilege"},
 	}
 	invalid := []struct {
 		name, input, errFragment string
