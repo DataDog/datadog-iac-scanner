@@ -79,3 +79,26 @@ func TestPrintJSONReport(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintJSONReportDoesNotMutateSummary(t *testing.T) {
+	summary := model.Summary{
+		Queries: model.QueryResultSlice{{
+			CISBenchmarkName:    "CIS AWS",
+			CISBenchmarkVersion: "1.0",
+			CISDescriptionID:    "1.2.3",
+			CISDescriptionText:  "description",
+			CISRationaleText:    "rationale",
+		}},
+	}
+
+	require.NoError(t, PrintJSONReport(
+		context.Background(), t.TempDir(), "summary", &summary, &model.SCIInfo{},
+	))
+
+	query := summary.Queries[0]
+	require.Equal(t, "CIS AWS", query.CISBenchmarkName)
+	require.Equal(t, "1.0", query.CISBenchmarkVersion)
+	require.Equal(t, "1.2.3", query.CISDescriptionID)
+	require.Equal(t, "description", query.CISDescriptionText)
+	require.Equal(t, "rationale", query.CISRationaleText)
+}

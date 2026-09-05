@@ -113,6 +113,16 @@ func ExportJSONReport(ctx context.Context, path, filename string, body interface
 }
 
 func getSummary(body interface{}) (sum model.Summary, err error) {
+	switch summary := body.(type) {
+	case model.Summary:
+		return summary, nil
+	case *model.Summary:
+		if summary == nil {
+			return model.Summary{}, nil
+		}
+		return *summary, nil
+	}
+
 	var summary model.Summary
 	result, err := json.Marshal(body)
 	if err != nil {
