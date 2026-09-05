@@ -70,11 +70,9 @@ DatadogPolicy contains result if {
 }
 `
 
-// TestInspect_SharedCompiler_MatchesIsolated runs the same files + rules through
-// both the isolated path (default) and the shared-compiler path
-// (disableRuleIsolation), and asserts the findings are identical — the opt-in
-// flag must never change results, only memory/compilation.
-func TestInspect_SharedCompiler_MatchesIsolated(t *testing.T) {
+// TestInspect_SharedCompiler runs multiple rules through the shared compiler
+// and asserts the expected findings are produced.
+func TestInspect_SharedCompiler(t *testing.T) {
 	root := t.TempDir()
 	stackDir := filepath.Join(root, "stack")
 	require.NoError(t, os.MkdirAll(stackDir, 0o755))
@@ -96,26 +94,16 @@ resource "aws_s3_bucket" "plain" {
 			Metadata: map[string]interface{}{"id": "versioning-rule"}, Aggregation: 1},
 	}
 
-	run := func(disableRuleIsolation bool) []model.Vulnerability {
-		files := parseTerraform(t, mainPath)
-		ins := newTestInspector(t, inspectorOpts{
-			queries:              queries,
-			repoPath:             root,
-			vb:                   DefaultVulnerabilityBuilder,
-			disableRuleIsolation: disableRuleIsolation,
-		})
-		vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
-		require.NoError(t, err)
-		require.Empty(t, ins.GetFailedQueries(), "no query should fail")
-		return vulns
-	}
-
-	isolated := run(false)
-	shared := run(true)
-
-	require.NotEmpty(t, isolated, "the crafted file should trigger findings")
-	require.Equal(t, summarize(isolated), summarize(shared),
-		"shared-compiler mode must produce the same findings as isolated mode")
+	files := parseTerraform(t, mainPath)
+	ins := newTestInspector(t, inspectorOpts{
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries(), "no query should fail")
+	require.NotEmpty(t, vulns, "the crafted file should trigger findings")
 }
 
 // customInputRule fires only when its result references data read from the
@@ -140,10 +128,9 @@ DatadogPolicy contains result if {
 `
 
 // TestInspect_SharedCompiler_CustomInputData is the regression guard for the
-// review finding: a rule whose Rego reads its custom InputData must produce the
-// SAME findings in shared mode as in isolated mode. Shared mode must fall back
-// to the isolated per-query store for such rules instead of running them against
-// the input-data-less base store.
+// review finding: a rule whose Rego reads its custom InputData must produce
+// findings in shared mode. Shared mode must fall back to the per-query store
+// for such rules instead of running them against the input-data-less base store.
 func TestInspect_SharedCompiler_CustomInputData(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.tf")
@@ -160,26 +147,16 @@ resource "aws_s3_bucket" "b" {
 			Platform: "terraform", Metadata: map[string]interface{}{"id": "custom-input-rule"}, Aggregation: 1},
 	}
 
-	run := func(disableRuleIsolation bool) []model.Vulnerability {
-		files := parseTerraform(t, mainPath)
-		ins := newTestInspector(t, inspectorOpts{
-			queries:              queries,
-			repoPath:             root,
-			vb:                   DefaultVulnerabilityBuilder,
-			disableRuleIsolation: disableRuleIsolation,
-		})
-		vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
-		require.NoError(t, err)
-		require.Empty(t, ins.GetFailedQueries(), "no query should fail")
-		return vulns
-	}
-
-	isolated := run(false)
-	shared := run(true)
-
-	require.NotEmpty(t, isolated, "the rule should fire when its custom InputData is present")
-	require.Equal(t, summarize(isolated), summarize(shared),
-		"a custom-InputData rule must yield identical findings in shared mode (no false negative)")
+	files := parseTerraform(t, mainPath)
+	ins := newTestInspector(t, inspectorOpts{
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries(), "no query should fail")
+	require.NotEmpty(t, vulns, "the rule should fire when its custom InputData is present")
 }
 
 // TestLoadSharedQueries_ExcludesCustomInput pins the guard directly: a rule with
@@ -387,16 +364,4 @@ func TestLoadSharedQueriesCache_ActiveWaiterRetriesCanceledLeader(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("active waiter did not retry after its singleflight leader was canceled")
 	}
-}
-
-// summarize reduces findings to a comparable, order-independent multiset of the
-// fields a caller/SARIF actually consumes, so the comparison is robust to
-// worker ordering.
-func summarize(vulns []model.Vulnerability) map[string]int {
-	m := make(map[string]int)
-	for _, v := range vulns {
-		key := v.QueryID + "|" + v.QueryName + "|" + v.ResourceType + "|" + v.ResourceName
-		m[key]++
-	}
-	return m
 }

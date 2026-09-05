@@ -65,9 +65,8 @@ type inspectorOpts struct {
 	numWorkers           int
 	vb                   VulnerabilityBuilder
 	tracker              Tracker
-	flagEvaluator        featureflags.FlagEvaluator
-	disableRuleIsolation bool
-	useRulesCache        bool
+	flagEvaluator featureflags.FlagEvaluator
+	useRulesCache bool
 }
 
 // newTestInspector runs the real [NewInspector] against a configurable
@@ -114,7 +113,6 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.numWorkers,
 		opts.flagEvaluator,
 		vfs.DiskFS{},
-		opts.disableRuleIsolation,
 		opts.useRulesCache,
 	)
 	require.NoError(t, err)

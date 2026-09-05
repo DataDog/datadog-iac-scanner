@@ -330,19 +330,18 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	}
 
 	params := &scan.Parameters{
-		CloudProvider:        []string{""},
-		Path:                 memfs.Paths(),
-		RepoPath:             "", // no git in server mode
-		PreviewLines:         3,
-		Platform:             plats,
-		DisableSecrets:       true,
-		ScanID:               "serve",
-		MaxFileSizeFlag:      100,
-		MaxResolverDepth:     15,
-		FlagEvaluator:        serverFlagEvaluator(s.cfg.ParallelParsing),
-		Config:               cfg,
-		DisableRuleIsolation: s.cfg.DisableRuleIsolation,
-		UseRulesCache:        s.cfg.UseRulesCache,
+		CloudProvider:    []string{""},
+		Path:             memfs.Paths(),
+		RepoPath:         "", // no git in server mode
+		PreviewLines:     3,
+		Platform:         plats,
+		DisableSecrets:   true,
+		ScanID:           "serve",
+		MaxFileSizeFlag:  100,
+		MaxResolverDepth: 15,
+		FlagEvaluator:    serverFlagEvaluator(s.cfg.ParallelParsing),
+		Config:           cfg,
+		UseRulesCache:    s.cfg.UseRulesCache,
 	}
 
 	client, err := scan.NewClient(ctx, params, &consolePrinter.Printer{},

@@ -85,7 +85,6 @@ type Parameters struct {
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
 	ShouldScanTfPlans           bool
-	DisableRuleIsolation        bool
 	UseRulesCache               bool
 	TerraformModules            TerraformModulesSetting
 	// NetworkIsolation disables outbound module fetchers so scans stay offline.
