@@ -128,7 +128,6 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		c.ScanParams.ParallelScanFlag,
 		c.ScanParams.FlagEvaluator,
 		c.fsys,
-		c.ScanParams.DisableRuleIsolation,
 		c.ScanParams.UseRulesCache,
 	)
 	metrics.Metric.Stop()

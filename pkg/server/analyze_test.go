@@ -683,7 +683,7 @@ func TestAnalyze_RequestLibrariesInvalidateSharedRuleCache(t *testing.T) {
 	engine.ResetCompiledQueryCachesForTest()
 	t.Cleanup(engine.ResetCompiledQueryCachesForTest)
 
-	s := New(&Config{UseRulesCache: true, DisableRuleIsolation: true})
+	s := New(&Config{UseRulesCache: true})
 	req := analyzeRequest{
 		Files: []analyzeFile{{
 			Path:    "infra/main.tf",

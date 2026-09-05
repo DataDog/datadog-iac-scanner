@@ -164,14 +164,6 @@ var scanAction = &cli.Command{
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
 			Value:  false,
 		},
-		&cli.BoolFlag{
-			Name:   "x-disable-rule-isolation",
-			Hidden: true,
-			Usage: "(experimental, will be removed soon) co-compile all rules and libraries into a " +
-				"shared compiler instead of isolating each rule; greatly reduces memory at the cost " +
-				"of per-rule compile-failure isolation",
-			Value: false,
-		},
 		&cli.StringSliceFlag{
 			Name:    "queries-path",
 			Aliases: []string{"q"},
@@ -409,7 +401,6 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		FlagEvaluator:               getFeatureFlagEvaluator(c),
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
-		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 		TerraformModules:            modulesSetting,
 		NetworkIsolation:            offlineBundlePath != "",
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),
