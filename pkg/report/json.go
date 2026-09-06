@@ -7,6 +7,7 @@ package report
 
 import (
 	"context"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -21,6 +22,7 @@ func PrintJSONReport(ctx context.Context, path, filename string, body interface{
 		if err != nil {
 			return err
 		}
+		summary.Queries = slices.Clone(summary.Queries)
 		for idx := range summary.Queries {
 			summary.Queries[idx].CISBenchmarkName = ""
 			summary.Queries[idx].CISBenchmarkVersion = ""
