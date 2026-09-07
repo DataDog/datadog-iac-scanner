@@ -171,6 +171,9 @@ type FileMetadata struct {
 	ResolvedFiles     map[string]ResolvedFile
 	LinesOriginalData *[]string
 	IsMinified        bool
+	// HelmInvocation identifies the source action that emitted a rendered Helm
+	// resource whose YAML lives in a named template.
+	HelmInvocation ResourceLine
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -332,6 +335,7 @@ type ResolvedHelm struct {
 	OriginalData        []byte
 	SplitID             string
 	SourceDocumentIndex int
+	HelmInvocation      ResourceLine
 	IDInfo              map[int]interface{}
 	IsCRD               bool
 }

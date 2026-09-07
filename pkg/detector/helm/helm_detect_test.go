@@ -292,6 +292,82 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 	}
 }
 
+func TestDetectLineFallsBackToIncludeInvocation(t *testing.T) {
+	original := `{{- include "quickwit.metastore.deployment" (dict
+  "root" .
+  "component" "metastore"
+) }}`
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/metastore-deployment.yaml",
+		OriginalData:      original,
+		LinesOriginalData: utils.SplitLines(original),
+		HelmInvocation:    model.ResourceLine{Line: 1, Col: 0},
+	}
+
+	got := (DetectKindLine{}).DetectLine(
+		context.Background(), file, "apiVersion=apps/v1.kind=Deployment.spec.template.spec.containers", 1,
+	)
+	want := model.VulnerabilityLines{
+		Line: 1,
+		VulnLines: &[]model.CodeLine{{
+			Position: 1,
+			Line:     `{{- include "quickwit.metastore.deployment" (dict`,
+		}},
+		LineWithVulnerability: `{{- include "quickwit.metastore.deployment" (dict`,
+		ResolvedFile:          "templates/metastore-deployment.yaml",
+		VulnerablilityLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 0},
+			End:   model.ResourceLine{Line: 1, Col: 49},
+		},
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("DetectLine() = %#v, want %#v", got, want)
+	}
+}
+
+func TestDetectLineUsesExecutedInvocation(t *testing.T) {
+	original := `{{- include "first.resource" . }}
+{{- include "second.resource" . }}`
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/resources.yaml",
+		OriginalData:      original,
+		LinesOriginalData: utils.SplitLines(original),
+		HelmInvocation:    model.ResourceLine{Line: 2, Col: 0},
+	}
+
+	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
+
+	if got.Line != 2 {
+		t.Fatalf("DetectLine() line = %d, want second invocation on line 2", got.Line)
+	}
+	if got.LineWithVulnerability != `{{- include "second.resource" . }}` {
+		t.Fatalf("DetectLine() vulnerable line = %q, want second invocation", got.LineWithVulnerability)
+	}
+}
+
+func TestDetectLineInspectsEveryActionOnLine(t *testing.T) {
+	original := `{{- if .Values.enabled }}{{ include "resource" . }}{{- end }}`
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/resource.yaml",
+		OriginalData:      original,
+		LinesOriginalData: utils.SplitLines(original),
+		HelmInvocation:    model.ResourceLine{Line: 1, Col: 25},
+	}
+
+	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
+
+	if got.Line != 1 {
+		t.Fatalf("DetectLine() line = %d, want 1", got.Line)
+	}
+	if got.VulnerablilityLocation.Start.Col != 25 {
+		t.Fatalf("DetectLine() column = %d, want include action at column 25", got.VulnerablilityLocation.Start.Col)
+	}
+}
+
 func TestDetectLastSingleMissingHelmID(t *testing.T) {
 	distances := map[int]int{2: 1, 5: 1}
 	idInfo := map[int]interface{}{0: map[int]int{2: 2}}

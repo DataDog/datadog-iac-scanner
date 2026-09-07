@@ -114,6 +114,24 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		}
 	}
 
+	// Helm attributes named-template output to the file that invoked it. The
+	// resolver records the action that actually executed, so wrappers with
+	// conditional or repeated invocations can still point to the right source.
+	invocation := file.HelmInvocation
+	invocationLine := invocation.Line - 1
+	if invocation.Line > 0 && invocationLine < len(lines) {
+		return model.VulnerabilityLines{
+			Line:                  invocation.Line,
+			VulnLines:             detector.GetAdjacentVulnLines(invocationLine, outputLines, lines),
+			LineWithVulnerability: lines[invocationLine],
+			ResolvedFile:          file.FilePath,
+			VulnerablilityLocation: model.ResourceLocation{
+				Start: invocation,
+				End:   model.ResourceLine{Line: invocation.Line, Col: len(lines[invocationLine])},
+			},
+		}
+	}
+
 	var filePathSplit = strings.Split(file.FilePath, "/")
 	contextLogger.Warn().Msgf("Failed to detect line associated with identified result in file %s", filePathSplit[len(filePathSplit)-1])
 
