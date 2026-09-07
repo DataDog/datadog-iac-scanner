@@ -439,14 +439,21 @@ func parseSimpleDotNotation(workingKey, originalKey string) (*ParsedSearchKey, e
 
 // Helper functions
 
-// findMatchingBracketSimple finds the closing bracket matching the opening bracket at startIdx
+// findMatchingBracketSimple finds the closing bracket matching the opening bracket at startIdx.
+// Quote- and escape-aware, since a for_each string key can itself contain a literal "]" or "["
+// (e.g. aws_instance.web[module.secrets["prod]eu"].name]).
 func findMatchingBracketSimple(s string, startIdx int) int {
 	depth := 0
+	inQuotes := false
 	for i := startIdx; i < len(s); i++ {
-		switch s[i] {
-		case '[':
+		switch {
+		case s[i] == '\\' && inQuotes:
+			i++ // skip the escaped character entirely
+		case s[i] == '"':
+			inQuotes = !inQuotes
+		case s[i] == '[' && !inQuotes:
 			depth++
-		case ']':
+		case s[i] == ']' && !inQuotes:
 			depth--
 			if depth == 0 {
 				return i
@@ -456,27 +463,43 @@ func findMatchingBracketSimple(s string, startIdx int) int {
 	return -1
 }
 
-// splitPreservingBrackets splits a string by dots, but keeps bracket contents together
+// splitPreservingBrackets splits a string by dots, but keeps bracket contents together.
+// Quote- and escape-aware, since a for_each string key can itself contain a literal "]",
+// "[", or "." (e.g. module.secrets["prod].eu"].aws_instance.web).
 // Example: "module.app[0].aws_instance.web" → ["module", "app[0]", "aws_instance", "web"]
 func splitPreservingBrackets(s string) []string {
 	var parts []string
 	var current strings.Builder
-	inBracket := false
+	depth := 0
+	inQuotes := false
 
-	for _, ch := range s {
-		if ch == '[' {
-			inBracket = true
-			current.WriteRune(ch)
-		} else if ch == ']' {
-			inBracket = false
-			current.WriteRune(ch)
-		} else if ch == '.' && !inBracket {
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		switch {
+		case ch == '\\' && inQuotes:
+			current.WriteByte(ch)
+			i++
+			if i < len(s) {
+				current.WriteByte(s[i]) // keep the escaped character verbatim
+			}
+		case ch == '"':
+			inQuotes = !inQuotes
+			current.WriteByte(ch)
+		case ch == '[' && !inQuotes:
+			depth++
+			current.WriteByte(ch)
+		case ch == ']' && !inQuotes:
+			if depth > 0 {
+				depth--
+			}
+			current.WriteByte(ch)
+		case ch == '.' && depth == 0 && !inQuotes:
 			if current.Len() > 0 {
 				parts = append(parts, current.String())
 				current.Reset()
 			}
-		} else {
-			current.WriteRune(ch)
+		default:
+			current.WriteByte(ch)
 		}
 	}
 
