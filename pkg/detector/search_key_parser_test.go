@@ -369,3 +369,72 @@ func TestParseSearchKey_InvalidFormats(t *testing.T) {
 		})
 	}
 }
+
+// TestFindMatchingBracketSimple_QuotedForEachKey verifies bracket matching is quote-aware,
+// since a for_each string key can itself contain a literal "]" or "[".
+func TestFindMatchingBracketSimple_QuotedForEachKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		s         string
+		startIdx  int
+		wantClose int
+	}{
+		{
+			name:      "plain count index",
+			s:         `web[0].ami`,
+			startIdx:  3,
+			wantClose: 5,
+		},
+		{
+			name:      "quoted key with literal closing bracket",
+			s:         `module.secrets["prod]eu"].aws_instance.web`,
+			startIdx:  14,
+			wantClose: 24,
+		},
+		{
+			name:      "quoted key with literal opening bracket",
+			s:         `module.secrets["prod[eu"].aws_instance.web`,
+			startIdx:  14,
+			wantClose: 24,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := findMatchingBracketSimple(tt.s, tt.startIdx)
+			if got != tt.wantClose {
+				t.Errorf("findMatchingBracketSimple(%q, %d) = %d, want %d", tt.s, tt.startIdx, got, tt.wantClose)
+			}
+		})
+	}
+}
+
+// TestSplitPreservingBrackets_QuotedForEachKey verifies dot-splitting is quote-aware,
+// since a for_each string key can itself contain a literal "]", "[", or ".".
+func TestSplitPreservingBrackets_QuotedForEachKey(t *testing.T) {
+	tests := []struct {
+		name string
+		s    string
+		want []string
+	}{
+		{
+			name: "plain module path with count index",
+			s:    "module.app[0].aws_instance.web",
+			want: []string{"module", "app[0]", "aws_instance", "web"},
+		},
+		{
+			name: "for_each key containing both a bracket and a dot",
+			s:    `module.secrets["prod].eu"].aws_instance.web`,
+			want: []string{"module", `secrets["prod].eu"]`, "aws_instance", "web"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := splitPreservingBrackets(tt.s)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("splitPreservingBrackets(%q) = %#v, want %#v", tt.s, got, tt.want)
+			}
+		})
+	}
+}
