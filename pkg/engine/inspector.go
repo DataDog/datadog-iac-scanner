@@ -246,6 +246,9 @@ type Inspector struct {
 	remoteModuleDirs       map[string]RemoteModuleDirectory
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
+	// skipLocalModuleEval is set for content-push scans. tfeval reads directories
+	// off the real disk, which is unsafe when paths come from pushed content.
+	skipLocalModuleEval bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -282,6 +285,10 @@ func (c *Inspector) buildModuleProvenanceLookup() moduleProvenanceLookup {
 		}
 		return RemoteModuleProvenance{}, false
 	}
+}
+
+func (c *Inspector) SkipLocalModuleEval() {
+	c.skipLocalModuleEval = true
 }
 
 func (c *Inspector) SetExternalModulePaths(paths []string) {
@@ -490,15 +497,12 @@ func (c *Inspector) Inspect(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
 
-	// Terraform local-module instantiation is gated so it can be disabled remotely.
 	queries := c.getQueriesByPlat(platforms)
 
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var syntheticFiles []*model.FileMetadata
-	if shouldInstantiateLocalModules(platforms, files) &&
-		c.flagEvaluator != nil &&
-		c.flagEvaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
+	if shouldInstantiateLocalModules(platforms, files) && !c.skipLocalModuleEval {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files, targets)
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)

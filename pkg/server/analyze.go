@@ -246,8 +246,8 @@ func ruleLibraryKey(platform string) (string, error) {
 // (the CLI absolutizes all of its input before running the same pipeline).
 //
 // The disk read this check used to stand in for is Terraform local-module
-// evaluation, pinned off for server mode in serverFlagEvaluator. That pin, not
-// this check, is what bounds it. It is not the only read that escapes the
+// evaluation, which content-push mode skips because tfeval reads the real disk.
+// That skip, not this check, is what bounds it. It is not the only read that escapes the
 // in-memory FS: the YAML/JSON file resolver opens paths taken from pushed
 // content. That one predates this change and is reachable with a relative path
 // as well, so path shape does not bound it either; it is tracked separately in
@@ -278,20 +278,11 @@ func validateFilePath(p string) error {
 // Helm rendering shells out to a chart on disk, which content-push mode has no
 // way to materialize, so the resolver is off.
 //
-// Terraform local-module evaluation is off because it reads directories derived
-// from pushed paths off the real disk: tfeval's LoadRootVars and parseDir call
-// os.ReadDir directly instead of going through the request's in-memory FS.
-// Pushed paths may be absolute, so do not rely on the flag's default staying
-// safe: pinning it here ensures server mode never enables an arbitrary-directory
-// read via local-module evaluation, and is what lets validateFilePath accept
-// absolute paths.
-//
 // Parallel file parsing fans the per-file parse across CPUs; enabled by default
 // and can be disabled with --x-parallelparsing=false.
 func serverFlagEvaluator(parallelParsing bool) featureflags.FlagEvaluator {
 	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
 		featureflags.IacEnableKicsHelmResolver:        false,
-		featureflags.IacEnableLocalModuleEval:         false,
 		featureflags.IaCEnableKicsParallelFileParsing: parallelParsing,
 	})
 }

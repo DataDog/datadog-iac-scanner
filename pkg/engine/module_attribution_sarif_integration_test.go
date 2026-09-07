@@ -75,10 +75,9 @@ resource "aws_s3_bucket" "this" {
 	}}
 
 	ins := newTestInspector(t, inspectorOpts{
-		queries:       queries,
-		repoPath:      root,
-		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})

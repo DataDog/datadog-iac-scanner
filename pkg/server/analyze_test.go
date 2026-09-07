@@ -348,19 +348,9 @@ func TestAnalyze_MixedAbsoluteAndRelativePaths(t *testing.T) {
 	}
 }
 
-// TestServerFlagEvaluator pins the flags server mode depends on. The
-// local-module-eval pin is what makes accepting absolute paths defensible: it is
-// the only thing keeping tfeval's direct os.ReadDir off directories derived from
-// pushed paths, which would otherwise be an arbitrary-directory read on a server
-// reachable cross-origin. If this test fails, validateFilePath's acceptance of
-// absolute paths is no longer safe.
 func TestServerFlagEvaluator(t *testing.T) {
 	evaluator := serverFlagEvaluator(false)
 
-	if evaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
-		t.Error("IacEnableLocalModuleEval must be pinned false in server mode: " +
-			"local module evaluation reads directories derived from pushed paths off the real disk")
-	}
 	if evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
 		t.Error("IacEnableKicsHelmResolver must be pinned false in server mode: " +
 			"Helm rendering needs a chart on disk, which content-push mode cannot materialize")

@@ -200,41 +200,7 @@ func TestTerraformModuleFlagsUseAuthoritativeMode(t *testing.T) {
 	require.True(t, names["module-cache-max-bytes"])
 	require.True(t, names["module-allowed-hosts"])
 	require.False(t, names["x-remote-modules"])
-	require.True(t, names["x-local-module-eval"])
-}
-
-func TestLocalModuleEvalEnabled(t *testing.T) {
-	tests := []struct {
-		name       string
-		legacyFlag bool
-		setting    scan.TerraformModulesSetting
-		want       bool
-	}{
-		{
-			name:       "default prod path keeps local eval without module pre-scan mode",
-			legacyFlag: true,
-			setting:    scan.TerraformModulesOff,
-			want:       true,
-		},
-		{
-			name:       "mode off without legacy flag disables local eval",
-			legacyFlag: false,
-			setting:    scan.TerraformModulesOff,
-			want:       false,
-		},
-		{
-			name:       "on mode enables local eval for remote resolution",
-			legacyFlag: false,
-			setting:    scan.TerraformModulesOn,
-			want:       true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, localModuleEvalEnabled(tt.legacyFlag, tt.setting))
-		})
-	}
+	require.False(t, names["x-local-module-eval"])
 }
 
 func TestValidateQueriesPaths(t *testing.T) {

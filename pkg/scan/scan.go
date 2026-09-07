@@ -137,6 +137,9 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		return nil, err
 	}
 
+	if c.inMemory {
+		inspector.SkipLocalModuleEval()
+	}
 	if len(remoteSourceDirs) > 0 {
 		inspector.SetRemoteModuleDirectories(remoteSourceDirs)
 	}

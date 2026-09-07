@@ -299,9 +299,7 @@ func remoteModuleScanParams(root string) *Parameters {
 		MaxFileSizeFlag:         100,
 		MaxResolverDepth:        15,
 		ModuleMaxDepth:          DefaultRemoteModuleMaxDepth,
-		FlagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
-			featureflags.IacEnableLocalModuleEval: true,
-		}),
+		FlagEvaluator:           featureflags.NewLocalEvaluator(),
 	}
 }
 

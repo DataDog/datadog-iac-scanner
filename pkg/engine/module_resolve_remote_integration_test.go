@@ -118,7 +118,7 @@ func inspectRemoteBucket(t *testing.T, fx remoteBucketFixture, callerPaths []str
 			Query: "acl_rule", Content: rule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder,
 	})
 	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
 
@@ -225,7 +225,7 @@ module "bucket" {
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder,
 	})
 	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{
 		RemoteModuleKey(aRoot, remoteBucketSource, remoteBucketVersion): {Path: fx.cacheDir, PackageRoot: fx.cacheDir},
@@ -269,7 +269,7 @@ module "bucket" {
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder,
 	})
 	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{
 		RemoteModuleKey(aRoot, remoteBucketSource, remoteBucketVersion): {Path: fx.cacheDir, PackageRoot: fx.cacheDir},
@@ -342,7 +342,7 @@ module "bucket" {
 			Query: "variable_type_rule", Content: variableTypeRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "variable-type-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder,
 	})
 	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
 
@@ -385,7 +385,7 @@ module "bucket" {
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder,
 	})
 	// Deliberately omit SetRemoteModuleDirectories.
 
