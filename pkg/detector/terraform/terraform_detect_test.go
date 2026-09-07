@@ -1006,3 +1006,27 @@ func TestDetectLinePolicyStatementPrincipalHeredocJSON(t *testing.T) {
 	got := (&DetectKindLine{}).DetectLine(ctx, file, `aws_ecr_repository_policy[x].policy.Statement[0].Principal`, 3)
 	require.Equal(t, 9, got.Line)
 }
+
+func TestLocateTerraformBlockUsesNearestBlockForHeaderComments(t *testing.T) {
+	source := "# license\n# owner\n\nresource \"aws_s3_bucket\" \"helm\" {\n  bucket = \"x\"\n}\n"
+	lines := strings.Split(source, "\n")
+	body, err := (&DetectKindLine{}).cachedParseBody([]byte(source), "helm_bucket.tf")
+	require.NoError(t, err)
+
+	got, err := locateTerraformBlock(context.Background(), body, 2, lines)
+	require.NoError(t, err)
+	require.Equal(t, 4, got.BlockLocation.Start.Line)
+	require.Equal(t, "# owner", got.LineWithVulnerability)
+}
+
+func TestCalculateInsertionPointClampsFunctionWrapperAtEndOfFile(t *testing.T) {
+	source := "variable \"name\" {\n  default = merge({\n  })\n}"
+	lines := strings.Split(source, "\n")[:3]
+	body, err := (&DetectKindLine{}).cachedParseBody([]byte(source), "variable.tf")
+	require.NoError(t, err)
+	require.Len(t, body.Blocks, 1)
+
+	line, _ := calculateInsertionPoint(body.Blocks[0], len(lines), lines)
+
+	require.Equal(t, len(lines), line)
+}
