@@ -59,7 +59,10 @@ func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 	for i := range m.vulnerabilities {
 		v := m.vulnerabilities[i]
 		// SCIInfo is constant within a scan; an empty value yields the same grouping.
-		key := model.GetDatadogFingerprintHash(
+		// Include FileID so that HCL and TFPlan findings for the same resource
+		// are not collapsed: both resolve to the same FileName (the .tf file) but
+		// originate from different source files (FileID differs).
+		key := v.FileID + "|" + model.GetDatadogFingerprintHash(
 			model.SCIInfo{},
 			v.FileName,
 			v.Platform,
