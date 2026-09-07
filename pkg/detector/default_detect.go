@@ -21,6 +21,8 @@ const (
 	// injected into the remapped plan document (see pkg/parser/json/tfplan.go),
 	// so a bare resource-level searchKey can resolve structurally too.
 	tfPlanMinAttributePathLen = 3
+	// resourceKeyword is the top-level "resource" key tfplan documents are remapped under.
+	resourceKeyword = "resource"
 )
 
 type defaultDetectLine struct {
@@ -203,11 +205,11 @@ func terraformPlanPath(searchKey string) ([]string, bool) {
 			seg = seg[closeIdx+1:]
 		}
 	}
-	explicitResourcePath := len(comps) > 0 && comps[0] == "resource"
+	explicitResourcePath := len(comps) > 0 && comps[0] == resourceKeyword
 	if explicitResourcePath {
 		comps = comps[1:]
 	}
-	return append([]string{"resource"}, comps...), explicitResourcePath
+	return append([]string{resourceKeyword}, comps...), explicitResourcePath
 }
 
 // findMatchingBracket finds the "]" closing the "[" at open in s, tracking
