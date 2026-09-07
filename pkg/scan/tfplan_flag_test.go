@@ -8,6 +8,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,6 +60,7 @@ func TestJSONParserRegistration(t *testing.T) {
 			cloudProviders := []string{""}
 
 			// Call createService which contains the conditional JSON parser registration
+			reg := registry.New()
 			services, err := client.createService(
 				ctx,
 				nil, // inspector - not needed for this test
@@ -70,6 +72,7 @@ func TestJSONParserRegistration(t *testing.T) {
 				cloudProviders,
 				client.FlagEvaluator,
 				nil,
+				reg,
 			)
 
 			require.NoError(t, err)
@@ -122,6 +125,7 @@ func TestJSONParserBuilder(t *testing.T) {
 	platforms := []string{"terraform", "kubernetes", "cloudformation"}
 	cloudProviders := []string{""}
 
+	reg1 := registry.New()
 	servicesWithoutFlag, err := clientWithoutFlag.createService(
 		ctx,
 		nil,
@@ -133,6 +137,7 @@ func TestJSONParserBuilder(t *testing.T) {
 		cloudProviders,
 		clientWithoutFlag.FlagEvaluator,
 		nil,
+		reg1,
 	)
 
 	require.NoError(t, err)
@@ -168,6 +173,7 @@ func TestJSONParserBuilder(t *testing.T) {
 		FlagEvaluator: featureflags.NewLocalEvaluator(),
 	}
 
+	reg2 := registry.New()
 	servicesWithFlag, err := clientWithFlag.createService(
 		ctx,
 		nil,
@@ -179,6 +185,7 @@ func TestJSONParserBuilder(t *testing.T) {
 		cloudProviders,
 		clientWithFlag.FlagEvaluator,
 		nil,
+		reg2,
 	)
 
 	require.NoError(t, err)
@@ -223,6 +230,7 @@ func TestCreateServiceWithTfPlanFlag(t *testing.T) {
 			FlagEvaluator: featureflags.NewLocalEvaluator(),
 		}
 
+		reg := registry.New()
 		services, err := client.createService(
 			ctx,
 			nil,
@@ -234,6 +242,7 @@ func TestCreateServiceWithTfPlanFlag(t *testing.T) {
 			[]string{""},
 			client.FlagEvaluator,
 			nil,
+			reg,
 		)
 
 		require.NoError(t, err)
@@ -258,6 +267,7 @@ func TestCreateServiceWithTfPlanFlag(t *testing.T) {
 			FlagEvaluator: featureflags.NewLocalEvaluator(),
 		}
 
+		reg := registry.New()
 		services, err := client.createService(
 			ctx,
 			nil,
@@ -269,6 +279,7 @@ func TestCreateServiceWithTfPlanFlag(t *testing.T) {
 			[]string{""},
 			client.FlagEvaluator,
 			nil,
+			reg,
 		)
 
 		require.NoError(t, err)
@@ -312,6 +323,7 @@ func TestJSONParserNotDoubleRegistered(t *testing.T) {
 
 	// Call createService multiple times
 	for i := 0; i < 3; i++ {
+		reg := registry.New()
 		services, err := client.createService(
 			ctx,
 			nil,
@@ -323,6 +335,7 @@ func TestJSONParserNotDoubleRegistered(t *testing.T) {
 			[]string{""},
 			client.FlagEvaluator,
 			nil,
+			reg,
 		)
 
 		require.NoError(t, err)

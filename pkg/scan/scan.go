@@ -28,6 +28,7 @@ import (
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
@@ -50,6 +51,7 @@ type executeScanParameters struct {
 	extractedPaths    provider.ExtractedPath
 	moduleCleanup     func()
 	remoteModulePaths []string
+	registry          *registry.AddressRegistry
 }
 
 func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
@@ -77,6 +79,14 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	if len(extractedPaths.Path) == 0 {
 		return nil, nil
 	}
+
+	// Create a fresh registry instance for this scan to avoid cross-scan pollution
+	addressRegistry := registry.New()
+	contextLogger.Info().Msg("Created new address registry for this scan")
+
+	// Inject the registry into the tracker so the vulnerability builder can access it
+	c.Tracker.SetTFPlanRegistry(addressRegistry)
+	contextLogger.Info().Msg("Injected registry into tracker")
 
 	paramsPlatforms := c.ScanParams.GetEffectivePlatforms()
 
@@ -158,6 +168,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		c.ScanParams.CloudProvider,
 		c.FlagEvaluator,
 		filePlatform,
+		addressRegistry,
 	)
 	if err != nil {
 		contextLogger.Err(err).Msgf("failed to create service %v", err)
@@ -171,6 +182,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		extractedPaths:    extractedPaths,
 		moduleCleanup:     moduleCleanup,
 		remoteModulePaths: remoteModulePaths,
+		registry:          addressRegistry,
 	}, nil
 }
 
@@ -212,6 +224,10 @@ func (c *Client) createQuerySource(ctx context.Context, paramsPlatforms []string
 
 func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	contextLogger := logger.FromContext(ctx)
+
+	// Note: We now create a fresh registry instance per scan in initScan()
+	// instead of clearing a global registry, which prevents race conditions
+
 	executeScanParameters, err := c.initScan(ctx)
 
 	if err != nil {
@@ -317,7 +333,8 @@ func (c *Client) createService(
 	types []string,
 	cloudProviders []string,
 	flagEvaluator featureflags.FlagEvaluator,
-	filePlatform map[string]string) ([]*runner.Service, error) {
+	filePlatform map[string]string,
+	reg *registry.AddressRegistry) ([]*runner.Service, error) {
 	var filesSource provider.SourceProvider
 	if c.inMemory {
 		allPaths := append([]string{}, paths...)
@@ -335,11 +352,10 @@ func (c *Client) createService(
 		fsSource.AddUnfilteredPaths(remoteModulePaths)
 		filesSource = fsSource
 	}
-
 	combinedParserBuilder := parser.NewBuilder(ctx).
 		WithFS(c.fsys).
 		Add(&yamlParser.Parser{}).
-		Add(terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
+		Add(terraformParser.NewWithParams(c.fsys, reg, c.ScanParams.TerraformVarsPath, &c.ScanParams.SCIInfo)).
 		Add(&bicepParser.Parser{}).
 		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).

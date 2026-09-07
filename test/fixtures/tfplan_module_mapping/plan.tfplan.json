@@ -1,0 +1,126 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.5.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [],
+      "child_modules": [
+        {
+          "address": "module.vpc",
+          "resources": [
+            {
+              "address": "module.vpc.aws_vpc.main",
+              "mode": "managed",
+              "type": "aws_vpc",
+              "name": "main",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "cidr_block": "10.0.0.0/16",
+                "enable_dns_hostnames": true,
+                "tags": {
+                  "Environment": "production",
+                  "Team": "platform"
+                }
+              }
+            },
+            {
+              "address": "module.vpc.aws_subnet.public",
+              "mode": "managed",
+              "type": "aws_subnet",
+              "name": "public",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "vpc_id": "vpc-12345",
+                "cidr_block": "10.0.1.0/24",
+                "tags": {
+                  "Environment": "production",
+                  "Team": "platform"
+                }
+              }
+            },
+            {
+              "address": "module.vpc.aws_instance.bastion",
+              "mode": "managed",
+              "type": "aws_instance",
+              "name": "bastion",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "ami": "ami-12345678",
+                "instance_type": "t2.micro",
+                "subnet_id": "subnet-12345",
+                "tags": {
+                  "Environment": "production",
+                  "Team": "platform"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "address": "module.app_servers[0]",
+          "resources": [
+            {
+              "address": "module.app_servers[0].aws_instance.app",
+              "mode": "managed",
+              "type": "aws_instance",
+              "name": "app",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "ami": "ami-87654321",
+                "instance_type": "t2.micro",
+                "tags": {
+                  "Environment": "staging",
+                  "Application": "web"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "address": "module.app_servers[1]",
+          "resources": [
+            {
+              "address": "module.app_servers[1].aws_instance.app",
+              "mode": "managed",
+              "type": "aws_instance",
+              "name": "app",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "ami": "ami-87654321",
+                "instance_type": "t2.micro",
+                "tags": {
+                  "Environment": "staging",
+                  "Application": "web"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "address": "module.app_servers[2]",
+          "resources": [
+            {
+              "address": "module.app_servers[2].aws_instance.app",
+              "mode": "managed",
+              "type": "aws_instance",
+              "name": "app",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "ami": "ami-87654321",
+                "instance_type": "t2.micro",
+                "tags": {
+                  "Environment": "staging",
+                  "Application": "web"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "resource_changes": [],
+  "configuration": {
+    "root_module": {}
+  }
+}
