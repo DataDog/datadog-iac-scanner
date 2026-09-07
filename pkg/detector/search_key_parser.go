@@ -477,11 +477,7 @@ func splitPreservingBrackets(s string) []string {
 		ch := s[i]
 		switch {
 		case ch == '\\' && inQuotes:
-			current.WriteByte(ch)
-			i++
-			if i < len(s) {
-				current.WriteByte(s[i]) // keep the escaped character verbatim
-			}
+			i = writeEscapedByte(&current, s, i)
 		case ch == '"':
 			inQuotes = !inQuotes
 			current.WriteByte(ch)
@@ -508,6 +504,17 @@ func splitPreservingBrackets(s string) []string {
 	}
 
 	return parts
+}
+
+// writeEscapedByte writes the backslash at s[i] and the character it escapes (if any) to dst
+// verbatim, returning the index of the last byte consumed.
+func writeEscapedByte(dst *strings.Builder, s string, i int) int {
+	dst.WriteByte(s[i])
+	if i+1 < len(s) {
+		i++
+		dst.WriteByte(s[i])
+	}
+	return i
 }
 
 // extractNameAndIndex separates a name with optional index
