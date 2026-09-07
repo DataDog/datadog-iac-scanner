@@ -7,6 +7,7 @@ package terraform
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -33,6 +35,7 @@ const (
 	// RetriesDefaultValue is default number of times a parser will retry to execute
 	RetriesDefaultValue     = 50
 	terraformDataIdentifier = "data"
+	terraformVariableBlock  = "variable"
 )
 
 // Converter returns content json, error line, error
@@ -59,6 +62,9 @@ type Parser struct {
 	// mergeAllow, when set, limits OpenTofu twin-shadowing to these paths.
 	mergeAllow    map[string]struct{}
 	shadowedFiles map[string]struct{}
+
+	// Registry keeps track of the plan addresses and links them to files
+	registry *registry.AddressRegistry
 }
 
 // SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
@@ -73,15 +79,29 @@ func (p *Parser) SetMergeAllow(paths []string) {
 }
 
 // NewDefault initializes a parser with Parser default values
+//
+// Deprecated: use New() with a registry instance instead
 func NewDefault() *Parser {
 	return &Parser{
 		numOfRetries: RetriesDefaultValue,
 		convertFunc:  converter.DefaultConverted,
 		fsys:         vfs.DiskFS{},
+		registry:     nil, // No registry - will log error if used
+	}
+}
+
+// New creates a new parser with an instance registry
+func New(reg *registry.AddressRegistry) *Parser {
+	return &Parser{
+		numOfRetries: RetriesDefaultValue,
+		convertFunc:  converter.DefaultConverted,
+		fsys:         vfs.DiskFS{},
+		registry:     reg,
 	}
 }
 
 // nolint:gocritic
+// DEPRECATED: Use NewWithParams() with a registry instance instead
 func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
 	parser := NewDefault()
 	if fsys != nil {
@@ -90,6 +110,22 @@ func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.S
 	parser.terraformVarsPath = terraformVarsPath
 	parser.sciInfo = sciInfo
 	return parser
+}
+
+// NewWithParams creates a parser with registry, vars path, and sci info
+func NewWithParams(fsys vfs.FS, reg *registry.AddressRegistry, terraformVarsPath string, sciInfo *model.SCIInfo) *Parser {
+	p := &Parser{
+		numOfRetries:      RetriesDefaultValue,
+		convertFunc:       converter.DefaultConverted,
+		fsys:              vfs.DiskFS{},
+		registry:          reg,
+		terraformVarsPath: terraformVarsPath,
+		sciInfo:           *sciInfo,
+	}
+	if fsys != nil {
+		p.fsys = fsys
+	}
+	return p
 }
 
 // Resolve - replace or modifies in-memory content before parsing
@@ -277,6 +313,98 @@ func quoteDataSourceTraversals(source []byte, file *hcl.File) []byte {
 	return source
 }
 
+// extractAndRegisterAddresses extracts Terraform resource and module addresses from the parsed HCL file
+// and registers them in the address registry for later tfplan mapping
+func extractAndRegisterAddresses(ctx context.Context, file *hcl.File, filePath string, reg *registry.AddressRegistry) {
+	// If no registry provided, silently skip address registration
+	// This allows NewDefault() to be used for non-scan scenarios (e.g., unit tests)
+	if reg == nil {
+		return
+	}
+
+	contextLogger := logger.FromContext(ctx)
+
+	// Get the body as hclsyntax.Body
+	body, ok := file.Body.(*hclsyntax.Body)
+	if !ok {
+		contextLogger.Debug().Str("file", filePath).Msg("Could not cast HCL body to hclsyntax.Body")
+		return
+	}
+
+	resourceCount := 0
+	moduleCount := 0
+
+	// Iterate through all blocks in the file
+	for _, block := range body.Blocks {
+		switch block.Type {
+		case "resource":
+			// Resource blocks have format: resource "type" "name"
+			if len(block.Labels) >= 2 {
+				address := fmt.Sprintf("%s.%s", block.Labels[0], block.Labels[1])
+				defRange := block.DefRange()
+				location := registry.Location{
+					FilePath: filePath,
+					Line:     defRange.Start.Line,
+					Column:   defRange.Start.Column,
+				}
+				reg.Register(address, location)
+				contextLogger.Info().
+					Str("address", address).
+					Str("file", filePath).
+					Int("line", location.Line).
+					Msg("HCL: Registered resource address")
+				resourceCount++
+			}
+
+		case "module":
+			// Module blocks have format: module "name"
+			if len(block.Labels) >= 1 {
+				address := fmt.Sprintf("module.%s", block.Labels[0])
+				defRange := block.DefRange()
+				location := registry.Location{
+					FilePath: filePath,
+					Line:     defRange.Start.Line,
+					Column:   defRange.Start.Column,
+				}
+				reg.Register(address, location)
+				contextLogger.Info().
+					Str("address", address).
+					Str("file", filePath).
+					Int("line", location.Line).
+					Msg("HCL: Registered module address")
+				moduleCount++
+			}
+
+		case terraformVariableBlock:
+			// Variable blocks have format: variable "name"
+			// Register as "var.<name>" so the tfplan detector can resolve module_default
+			// findings to the variable's default = ... line in variables.tf
+			if len(block.Labels) >= 1 {
+				address := fmt.Sprintf("var.%s", block.Labels[0])
+				defRange := block.DefRange()
+				location := registry.Location{
+					FilePath: filePath,
+					Line:     defRange.Start.Line,
+					Column:   defRange.Start.Column,
+				}
+				reg.Register(address, location)
+				contextLogger.Debug().
+					Str("address", address).
+					Str("file", filePath).
+					Int("line", location.Line).
+					Msg("HCL: Registered variable address")
+			}
+		}
+	}
+
+	contextLogger.Info().
+		Str("file", filePath).
+		Int("resources", resourceCount).
+		Int("modules", moduleCount).
+		Int("totalRegistry", reg.GetMappingCount()).
+		Msg("HCL: Completed address registration for file")
+}
+
 // Parse execute parser for the content in a file
 func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	resolveReferences bool, maxResolverDepth int) (
@@ -311,6 +439,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		err := diagnostics.Errs()[0]
 		return nil, nil, nil, nil, err
 	}
+
+	// Extract and register Terraform addresses for tfplan mapping
+	extractAndRegisterAddresses(ctx, file, path, p.registry)
 
 	ignore, err := comment.ParseComments(resolved, path)
 	if err != nil {
