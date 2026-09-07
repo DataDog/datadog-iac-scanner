@@ -458,7 +458,7 @@ func getFixtureParsers(ctx context.Context) ([]*parser.Parser, error) {
 			Add(&jsonParser.Parser{}).
 			Add(&yamlParser.Parser{}).
 			Add(dockerComposeParser.NewDefaultWithFS(nil)).
-			Add(terraformParser.NewDefault()).
+			Add(terraformParser.NewDefault()). //nolint:staticcheck // no registry needed for fixture parsing
 			Add(&bicepParser.Parser{}).
 			Add(&cicdParser.Parser{}).
 			Add(&dockerParser.Parser{}).
