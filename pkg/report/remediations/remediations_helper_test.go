@@ -86,6 +86,38 @@ func TestTransformToSarifFixE2E(t *testing.T) { //nolint
 	}
 }
 
+func TestTransformToSarifFix_ResourceHeaderFallsBackToAddition(t *testing.T) {
+	vuln := model.VulnerableFile{
+		FileName:              "main.tf",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "associate_public_ip_address = true", "after": "false"}`,
+		LineWithVulnerability: `resource "aws_instance" "ec2" {`,
+		Line:                  1,
+		FileSource: []string{
+			`resource "aws_instance" "ec2" {`,
+			`  ami = "ami-123"`,
+			`}`,
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 3, Col: 2},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: 1},
+		},
+	}
+
+	fix, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: 32},
+	)
+	require.NoError(t, err)
+	require.Contains(t, fix.ArtifactChanges[0].Replacements[0].InsertedContent.Text, "associate_public_ip_address")
+}
+
 func TestTransformToSarifFix_Addition(t *testing.T) {
 	ctx := context.Background()
 	vuln := model.VulnerableFile{

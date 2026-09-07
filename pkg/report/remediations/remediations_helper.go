@@ -46,12 +46,10 @@ func buildReplacementFix(ctx context.Context, vuln model.VulnerableFile,
 	// Regex for key and value (list/quoted/unquoted)
 	keyValRegex := regexp.MustCompile(`(?m)["']?(\w+)["']?\s*[:=]\s*(\[.*?\]|".*?"|[^#]+)`)
 	matches := keyValRegex.FindStringSubmatch(vuln.LineWithVulnerability)
-	if len(matches) < 3 {
+	if isBlockHeader(vuln.LineWithVulnerability) || len(matches) < 3 {
 		line, lineNumber, found := findReplacementTarget(&vuln, before, keyValRegex)
 		if !found {
-			err := fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
-			contextLogger.Error().Msg(err.Error())
-			return model.SarifFix{}, err
+			return fallbackReplacementToAddition(&vuln, before, after, startLocation)
 		}
 		vuln.LineWithVulnerability = line
 		vuln.Line = lineNumber
@@ -186,9 +184,27 @@ func findReplacementTarget(
 
 	start := max(vuln.BlockLocation.Start.Line, 1)
 	end := min(vuln.BlockLocation.End.Line, len(vuln.FileSource))
+	if line, lineNumber, found := scanReplacementRange(vuln.FileSource, start, end, expectedKey, before, keyValRegex); found {
+		return line, lineNumber, true
+	}
+	return scanReplacementRange(vuln.FileSource, 1, len(vuln.FileSource), expectedKey, before, keyValRegex)
+}
+
+func scanReplacementRange(
+	fileSource []string,
+	start, end int,
+	expectedKey, before string,
+	keyValRegex *regexp.Regexp,
+) (line string, lineNumber int, found bool) {
+	if start < 1 {
+		start = 1
+	}
+	if end > len(fileSource) {
+		end = len(fileSource)
+	}
 	alternatives := parseAlternatives(before)
 	for lineNumber := start; lineNumber <= end; lineNumber++ {
-		line := vuln.FileSource[lineNumber-1]
+		line := fileSource[lineNumber-1]
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
 			continue
@@ -198,13 +214,46 @@ func findReplacementTarget(
 			continue
 		}
 		value := normalize(matches[2])
+		if len(alternatives) == 0 {
+			return line, lineNumber, true
+		}
 		for _, alternative := range alternatives {
-			if strings.Contains(value, alternative) {
+			if alternative == "" || strings.Contains(value, alternative) {
 				return line, lineNumber, true
 			}
 		}
+		return line, lineNumber, true
 	}
 	return "", 0, false
+}
+
+func isBlockHeader(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	for _, prefix := range []string{"resource ", "module ", "variable ", "data ", "output ", "locals ", "provider ", "terraform "} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func fallbackReplacementToAddition(
+	vuln *model.VulnerableFile,
+	before, after string,
+	startLocation model.SarifResourceLocation,
+) (model.SarifFix, error) {
+	addition := strings.TrimSpace(after)
+	if addition == "" {
+		return model.SarifFix{}, fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
+	}
+	if !strings.Contains(addition, "=") {
+		if key, _ := splitKeyValue(before); key != "" {
+			addition = key + " = " + addition
+		}
+	}
+	updated := *vuln
+	updated.Remediation = addition
+	return buildAdditionFix(updated, startLocation)
 }
 
 // nolint:gocritic
