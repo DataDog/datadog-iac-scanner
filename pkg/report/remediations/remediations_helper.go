@@ -184,10 +184,7 @@ func findReplacementTarget(
 
 	start := max(vuln.BlockLocation.Start.Line, 1)
 	end := min(vuln.BlockLocation.End.Line, len(vuln.FileSource))
-	if line, lineNumber, found := scanReplacementRange(vuln.FileSource, start, end, expectedKey, before, keyValRegex); found {
-		return line, lineNumber, true
-	}
-	return scanReplacementRange(vuln.FileSource, 1, len(vuln.FileSource), expectedKey, before, keyValRegex)
+	return scanReplacementRange(vuln.FileSource, start, end, expectedKey, before, keyValRegex)
 }
 
 func scanReplacementRange(
@@ -214,15 +211,11 @@ func scanReplacementRange(
 			continue
 		}
 		value := normalize(matches[2])
-		if len(alternatives) == 0 {
-			return line, lineNumber, true
-		}
 		for _, alternative := range alternatives {
-			if alternative == "" || strings.Contains(value, alternative) {
+			if alternative != "" && strings.Contains(value, alternative) {
 				return line, lineNumber, true
 			}
 		}
-		return line, lineNumber, true
 	}
 	return "", 0, false
 }
@@ -247,9 +240,11 @@ func fallbackReplacementToAddition(
 		return model.SarifFix{}, fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
 	}
 	if !strings.Contains(addition, "=") {
-		if key, _ := splitKeyValue(before); key != "" {
-			addition = key + " = " + addition
+		key, _ := splitKeyValue(before)
+		if key == "" {
+			return model.SarifFix{}, fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
 		}
+		addition = key + " = " + addition
 	}
 	updated := *vuln
 	updated.Remediation = addition
