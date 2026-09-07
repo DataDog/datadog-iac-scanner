@@ -114,6 +114,7 @@ func (s *Service) storeResolvedFiles(
 				Kind:              kind,
 				FilePath:          rfile.FileName,
 				HelmID:            rfile.SplitID,
+				HelmDocIndex:      rfile.SourceDocumentIndex,
 				Commands:          cached.commands,
 				IDInfo:            rfile.IDInfo,
 				LinesIgnore:       documents.IgnoreLines,

@@ -119,7 +119,7 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	// search path to match. Anchor those findings to the invocation that emitted
 	// the resource instead of returning an undetected line.
 	if file.HelmID == "" {
-		if line, col, ok := findHelmTemplateInvocation(lines); ok {
+		if line, col, ok := findHelmTemplateInvocation(lines, file.HelmDocIndex); ok {
 			adjustedLine := line + 1
 			return model.VulnerabilityLines{
 				Line:                  adjustedLine,
@@ -144,17 +144,34 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	}
 }
 
-func findHelmTemplateInvocation(lines []string) (line, col int, ok bool) {
+func findHelmTemplateInvocation(lines []string, documentIndex int) (line, col int, ok bool) {
+	invocationIndex := 0
 	for line, sourceLine := range lines {
-		col = strings.Index(sourceLine, "{{")
-		if col < 0 {
-			continue
-		}
-		action := strings.TrimLeft(sourceLine[col+2:], "- \t")
-		if strings.HasPrefix(action, "include ") ||
-			strings.HasPrefix(action, "template ") ||
-			strings.HasPrefix(action, "tpl ") {
-			return line, col, true
+		for offset := 0; offset < len(sourceLine); {
+			relativeCol := strings.Index(sourceLine[offset:], "{{")
+			if relativeCol < 0 {
+				break
+			}
+			col = offset + relativeCol
+			actionStart := col + len("{{")
+			actionEnd := strings.Index(sourceLine[actionStart:], "}}")
+			if actionEnd < 0 {
+				actionEnd = len(sourceLine)
+				offset = len(sourceLine)
+			} else {
+				actionEnd += actionStart
+				offset = actionEnd + len("}}")
+			}
+
+			action := strings.TrimLeft(sourceLine[actionStart:actionEnd], "- \t")
+			if strings.HasPrefix(action, "include ") ||
+				strings.HasPrefix(action, "template ") ||
+				strings.HasPrefix(action, "tpl ") {
+				if invocationIndex == documentIndex {
+					return line, col, true
+				}
+				invocationIndex++
+			}
 		}
 	}
 	return 0, 0, false

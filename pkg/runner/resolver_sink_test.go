@@ -197,6 +197,34 @@ func TestStoreResolvedFilesKeepsRenderedLineInfoForHelmTemplates(t *testing.T) {
 	require.Equal(t, "api", metadata["name"])
 }
 
+func TestStoreResolvedFilesKeepsHelmSourceDocumentIndex(t *testing.T) {
+	ctx := context.Background()
+	service, store := newYAMLResolverSinkService(t, ctx)
+	original := []byte("{{- include \"first.resource\" . }}\n{{- include \"second.resource\" . }}\n")
+	service.storeResolvedFiles(ctx, model.ResolvedFiles{
+		File: []model.ResolvedHelm{
+			{
+				FileName:            "chart/templates/resources.yaml",
+				Content:             []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: first\n"),
+				OriginalData:        original,
+				SourceDocumentIndex: 0,
+			},
+			{
+				FileName:            "chart/templates/resources.yaml",
+				Content:             []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: second\n"),
+				OriginalData:        original,
+				SourceDocumentIndex: 1,
+			},
+		},
+	}, model.KindHELM, "helm-source-document-index", false, 15)
+
+	files, err := store.GetFiles(ctx, "helm-source-document-index")
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	require.Equal(t, 0, files[0].HelmDocIndex)
+	require.Equal(t, 1, files[1].HelmDocIndex)
+}
+
 func TestStoreResolvedFilesKeepsCRDSuppressionLines(t *testing.T) {
 	ctx := context.Background()
 	service, store := newYAMLResolverSinkService(t, ctx)

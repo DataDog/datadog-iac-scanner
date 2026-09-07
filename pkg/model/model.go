@@ -171,6 +171,7 @@ type FileMetadata struct {
 	ResolvedFiles     map[string]ResolvedFile
 	LinesOriginalData *[]string
 	IsMinified        bool
+	HelmDocIndex      int // rendered document order within a Helm source file
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
