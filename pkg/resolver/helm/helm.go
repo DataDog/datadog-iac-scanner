@@ -408,6 +408,7 @@ func makeDeterministic(ch *chart.Chart) *chart.Chart {
 func setID(chartReq *chart.Chart) *chart.Chart {
 	for _, temp := range chartReq.Templates {
 		temp = addID(temp)
+		temp = addHelmInvocationMarkers(temp)
 		if temp != nil {
 			continue
 		}
@@ -425,6 +426,60 @@ func setID(chartReq *chart.Chart) *chart.Chart {
 		}
 	}
 	return chartReq
+}
+
+// addHelmInvocationMarkers instruments action-only wrapper templates so the
+// rendered output retains the source position of the invocation that actually
+// ran. The marker action is inserted immediately before include/template/tpl,
+// which keeps it under the same Helm control flow as the invocation.
+func addHelmInvocationMarkers(file *chart.File) *chart.File {
+	source := string(file.Data)
+	if strings.Contains(source, kicsHelmInvocation) || !isHelmInvocationWrapper(source) {
+		return file
+	}
+
+	var markers []replacement
+	for _, span := range templateActionSpans(source) {
+		actionText := strings.Trim(source[span[0]+len("{{"):span[1]-len("}}")], "- \t\r\n")
+		fields := strings.Fields(actionText)
+		if len(fields) == 0 || !isHelmOutputInvocation(fields[0]) {
+			continue
+		}
+
+		line := strings.Count(source[:span[0]], "\n") + 1
+		lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
+		col := span[0] - lineStart
+		marker := fmt.Sprintf("%s%d_%d:\n", kicsHelmInvocation, line, col)
+		markers = append(markers, replacement{
+			start: span[0],
+			end:   span[0],
+			text:  fmt.Sprintf("{{ print %q }}", marker),
+		})
+	}
+
+	sort.Slice(markers, func(i, j int) bool {
+		return markers[i].start > markers[j].start
+	})
+	for _, marker := range markers {
+		source = source[:marker.start] + marker.text + source[marker.end:]
+	}
+	file.Data = []byte(source)
+	return file
+}
+
+func isHelmInvocationWrapper(source string) bool {
+	withoutActions := templateActionRE.ReplaceAllString(source, "")
+	for _, line := range strings.Split(withoutActions, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") && !isYAMLDocumentBoundary(trimmed) {
+			return false
+		}
+	}
+	return true
+}
+
+func isHelmOutputInvocation(name string) bool {
+	return name == "include" || name == "template" || name == "tpl"
 }
 
 // addID will add auxiliary lines used to detect line

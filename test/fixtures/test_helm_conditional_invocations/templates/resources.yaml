@@ -1,0 +1,5 @@
+{{- if .Values.deployA }}
+{{- include "resource.a" . }}
+{{- end }}
+
+{{- include "resource.b" . }}

@@ -302,6 +302,7 @@ func TestDetectLineFallsBackToIncludeInvocation(t *testing.T) {
 		FilePath:          "templates/metastore-deployment.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
+		HelmInvocation:    model.ResourceLine{Line: 1, Col: 0},
 	}
 
 	got := (DetectKindLine{}).DetectLine(
@@ -326,7 +327,7 @@ func TestDetectLineFallsBackToIncludeInvocation(t *testing.T) {
 	}
 }
 
-func TestDetectLineSelectsRenderedDocumentInvocation(t *testing.T) {
+func TestDetectLineUsesExecutedInvocation(t *testing.T) {
 	original := `{{- include "first.resource" . }}
 {{- include "second.resource" . }}`
 	file := &model.FileMetadata{
@@ -334,7 +335,7 @@ func TestDetectLineSelectsRenderedDocumentInvocation(t *testing.T) {
 		FilePath:          "templates/resources.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmDocIndex:      1,
+		HelmInvocation:    model.ResourceLine{Line: 2, Col: 0},
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
@@ -354,6 +355,7 @@ func TestDetectLineInspectsEveryActionOnLine(t *testing.T) {
 		FilePath:          "templates/resource.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
+		HelmInvocation:    model.ResourceLine{Line: 1, Col: 25},
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)

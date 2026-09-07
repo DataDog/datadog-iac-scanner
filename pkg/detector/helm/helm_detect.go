@@ -114,23 +114,21 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		}
 	}
 
-	// Helm attributes output from a named template to the file that invoked it.
-	// Include-only wrapper files therefore contain no rendered YAML keys for the
-	// search path to match. Anchor those findings to the invocation that emitted
-	// the resource instead of returning an undetected line.
-	if file.HelmID == "" {
-		if line, col, ok := findHelmTemplateInvocation(lines, file.HelmDocIndex); ok {
-			adjustedLine := line + 1
-			return model.VulnerabilityLines{
-				Line:                  adjustedLine,
-				VulnLines:             detector.GetAdjacentVulnLines(line, outputLines, lines),
-				LineWithVulnerability: lines[line],
-				ResolvedFile:          file.FilePath,
-				VulnerablilityLocation: model.ResourceLocation{
-					Start: model.ResourceLine{Line: adjustedLine, Col: col},
-					End:   model.ResourceLine{Line: adjustedLine, Col: len(lines[line])},
-				},
-			}
+	// Helm attributes named-template output to the file that invoked it. The
+	// resolver records the action that actually executed, so wrappers with
+	// conditional or repeated invocations can still point to the right source.
+	invocation := file.HelmInvocation
+	invocationLine := invocation.Line - 1
+	if invocation.Line > 0 && invocationLine < len(lines) {
+		return model.VulnerabilityLines{
+			Line:                  invocation.Line,
+			VulnLines:             detector.GetAdjacentVulnLines(invocationLine, outputLines, lines),
+			LineWithVulnerability: lines[invocationLine],
+			ResolvedFile:          file.FilePath,
+			VulnerablilityLocation: model.ResourceLocation{
+				Start: invocation,
+				End:   model.ResourceLine{Line: invocation.Line, Col: len(lines[invocationLine])},
+			},
 		}
 	}
 
@@ -142,39 +140,6 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		VulnLines:    &[]model.CodeLine{},
 		ResolvedFile: file.FilePath,
 	}
-}
-
-func findHelmTemplateInvocation(lines []string, documentIndex int) (line, col int, ok bool) {
-	invocationIndex := 0
-	for line, sourceLine := range lines {
-		for offset := 0; offset < len(sourceLine); {
-			relativeCol := strings.Index(sourceLine[offset:], "{{")
-			if relativeCol < 0 {
-				break
-			}
-			col = offset + relativeCol
-			actionStart := col + len("{{")
-			actionEnd := strings.Index(sourceLine[actionStart:], "}}")
-			if actionEnd < 0 {
-				actionEnd = len(sourceLine)
-				offset = len(sourceLine)
-			} else {
-				actionEnd += actionStart
-				offset = actionEnd + len("}}")
-			}
-
-			action := strings.TrimLeft(sourceLine[actionStart:actionEnd], "- \t")
-			if strings.HasPrefix(action, "include ") ||
-				strings.HasPrefix(action, "template ") ||
-				strings.HasPrefix(action, "tpl ") {
-				if invocationIndex == documentIndex {
-					return line, col, true
-				}
-				invocationIndex++
-			}
-		}
-	}
-	return 0, 0, false
 }
 
 // removeLines is used to update the vulnerability line after removing the "# KICS_HELM_ID_"

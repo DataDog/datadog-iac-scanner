@@ -195,6 +195,28 @@ kind: ConfigMap
 	require.Contains(t, splits[1], "literal --- separator")
 }
 
+func TestSplitHelmManifestPropagatesInvocationAcrossDocuments(t *testing.T) {
+	manifest := `---
+# Source: chart/templates/resources.yaml
+# KICS_HELM_INVOCATION_5_0:
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: first
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: second
+`
+
+	splits := splitHelmManifest(manifest)
+	require.Len(t, splits, 2)
+	for _, split := range splits {
+		require.Contains(t, split, "# KICS_HELM_INVOCATION_5_0:")
+	}
+}
+
 func Test_parseManifestSource(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -432,6 +454,28 @@ func TestAddID_multiDocumentUsesSourceLineIDs(t *testing.T) {
 
 	require.Contains(t, string(file.Data), "# KICS_HELM_ID_0:\napiVersion: v1")
 	require.Contains(t, string(file.Data), "# KICS_HELM_ID_8:\napiVersion: v1")
+}
+
+func TestAddHelmInvocationMarkersInspectsEveryAction(t *testing.T) {
+	file := &chart.File{Data: []byte(`{{- if .Values.enabled }}{{ include "resource" . }}{{- end }}`)}
+	addHelmInvocationMarkers(file)
+
+	require.Equal(t, 1, strings.Count(string(file.Data), kicsHelmInvocation))
+	require.Contains(t, string(file.Data), "# KICS_HELM_INVOCATION_1_25:")
+}
+
+func TestHelmResolveTracksExecutedConditionalInvocation(t *testing.T) {
+	got, err := (&Resolver{}).Resolve(
+		context.Background(), helmFixturePath(t, "test_helm_conditional_invocations"),
+	)
+	require.NoError(t, err)
+
+	resolved := findResolvedBySuffix(t, got.File, "templates/resources.yaml")
+	require.Contains(t, string(resolved.Content), "resource-b")
+	require.NotContains(t, string(resolved.Content), "resource-a")
+	require.Equal(t, model.ResourceLine{Line: 5, Col: 0}, resolved.HelmInvocation)
+	require.NotContains(t, string(resolved.Content), kicsHelmInvocation)
+	require.NotContains(t, string(resolved.OriginalData), kicsHelmInvocation)
 }
 
 func TestDetectLine_MultiDocumentTemplateUsesSourceLines(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,12 +30,19 @@ type splitManifest struct {
 	original            []byte
 	splitID             string
 	sourceDocumentIndex int
+	helmInvocation      model.ResourceLine
 	splitIDMap          map[int]interface{}
 	isCRD               bool
 }
 
 const (
-	kicsHelmID = "# KICS_HELM_ID_"
+	kicsHelmID         = "# KICS_HELM_ID_"
+	kicsHelmInvocation = "# KICS_HELM_INVOCATION_"
+)
+
+var (
+	helmInvocationMarkerPattern = regexp.MustCompile(`^# KICS_HELM_INVOCATION_(\d+)_(\d+):$`)
+	helmInvocationLinePattern   = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_INVOCATION_\d+_\d+:[^\r\n]*(?:\r?\n|$)`)
 )
 
 // Resolve will render the passed helm chart and return its content ready for parsing
@@ -69,6 +77,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 			OriginalData:        split.original,
 			SplitID:             split.splitID,
 			SourceDocumentIndex: split.sourceDocumentIndex,
+			HelmInvocation:      split.helmInvocation,
 			IDInfo:              split.splitIDMap,
 			IsCRD:               split.isCRD,
 		})
@@ -138,6 +147,8 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 		if source == nil {
 			continue
 		}
+		helmInvocation, _ := parseHelmInvocation(splited)
+		splited = helmInvocationLinePattern.ReplaceAllString(splited, "")
 		if err := source.ensureIDMap(); err != nil {
 			return nil, err
 		}
@@ -152,6 +163,7 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 			original:            source.original,
 			splitID:             splitID,
 			sourceDocumentIndex: sourceDocumentIndex,
+			helmInvocation:      helmInvocation,
 			splitIDMap:          source.idMap,
 			isCRD:               source.isCRD,
 		})
@@ -160,6 +172,7 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 }
 
 func splitHelmManifest(manifest string) []string {
+	manifest = propagateHelmInvocationMarkers(manifest)
 	manifests := releaseutil.SplitManifests(manifest)
 	keys := make([]string, 0, len(manifests))
 	for key := range manifests {
@@ -172,6 +185,43 @@ func splitHelmManifest(manifest string) []string {
 		splits = append(splits, "\n"+manifests[key]+"\n")
 	}
 	return splits
+}
+
+// propagateHelmInvocationMarkers keeps the executed invocation attached when a
+// single include emits multiple YAML documents. A new Helm source header or a
+// new invocation marker ends the previous marker's scope.
+func propagateHelmInvocationMarkers(manifest string) string {
+	lines := strings.Split(manifest, "\n")
+	result := make([]string, 0, len(lines))
+	activeMarker := ""
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# Source: ") {
+			activeMarker = ""
+		}
+		if helmInvocationMarkerPattern.MatchString(trimmed) {
+			activeMarker = trimmed
+		}
+
+		result = append(result, line)
+		if activeMarker != "" && isYAMLDocumentBoundary(trimmed) &&
+			shouldPropagateHelmInvocation(lines[index+1:]) {
+			result = append(result, activeMarker)
+		}
+	}
+	return strings.Join(result, "\n")
+}
+
+func shouldPropagateHelmInvocation(lines []string) bool {
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		return !strings.HasPrefix(trimmed, "# Source: ") &&
+			!helmInvocationMarkerPattern.MatchString(trimmed)
+	}
+	return false
 }
 
 // parseManifestSource extracts the Helm # Source header from a manifest split.
@@ -207,6 +257,22 @@ func firstHelmMarker(content string) string {
 		return content[lineStart:]
 	}
 	return content[lineStart : index+lineEnd]
+}
+
+func parseHelmInvocation(content string) (model.ResourceLine, bool) {
+	for _, line := range strings.Split(content, "\n") {
+		match := helmInvocationMarkerPattern.FindStringSubmatch(strings.TrimSpace(line))
+		if match == nil {
+			continue
+		}
+		lineNumber, lineErr := strconv.Atoi(match[1])
+		col, colErr := strconv.Atoi(match[2])
+		if lineErr != nil || colErr != nil {
+			return model.ResourceLine{}, false
+		}
+		return model.ResourceLine{Line: lineNumber, Col: col}, true
+	}
+	return model.ResourceLine{}, false
 }
 
 func looksLikeManifest(split string) bool {
@@ -266,7 +332,7 @@ func (s *sourceMetadata) ensureIDMap() error {
 func indexSources(files []*chart.File) map[string]*sourceMetadata {
 	sources := make(map[string]*sourceMetadata, len(files))
 	for _, file := range files {
-		original := file.Data
+		original := stripHelmInvocationActions(file.Data)
 		if bytes.IndexByte(original, '\r') >= 0 {
 			original = bytes.ReplaceAll(original, []byte{'\r'}, nil)
 		}
@@ -276,6 +342,15 @@ func indexSources(files []*chart.File) map[string]*sourceMetadata {
 		}
 	}
 	return sources
+}
+
+func stripHelmInvocationActions(source []byte) []byte {
+	return templateActionRE.ReplaceAllFunc(source, func(action []byte) []byte {
+		if bytes.Contains(action, []byte(kicsHelmInvocation)) {
+			return nil
+		}
+		return action
+	})
 }
 
 func isCRDSourcePath(name string) bool {
