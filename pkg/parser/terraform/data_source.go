@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 
@@ -419,7 +420,7 @@ func resolveTuple(ctx context.Context, expr hclsyntax.Expression) {
 			striExpr, err := e.ExpToString(ctx, ex)
 
 			if err != nil {
-				if literal, ok := ex.(*hclsyntax.LiteralValueExpr); !ok || !literal.Val.IsNull() {
+				if !errors.Is(err, engine.ErrNullLiteral) {
 					contextLogger.Error().Msgf("Error trying to ExpToString: %s", err)
 				}
 				continue

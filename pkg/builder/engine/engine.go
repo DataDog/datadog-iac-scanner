@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	ctyConvert "github.com/zclconf/go-cty/cty/convert"
 )
+
+var ErrNullLiteral = errors.New("can't convert null literal to string")
 
 // Engine contains the conditions of rules and comments positions
 type Engine struct {
@@ -180,7 +183,7 @@ func (e *Engine) expToStringLiteralValue(t *hclsyntax.LiteralValueExpr) (string,
 	// panics on both, so a literal `null` in a body would take down the whole
 	// enclosing resolve rather than this one expression.
 	if s.IsNull() {
-		return "", fmt.Errorf("can't convert null literal to string")
+		return "", ErrNullLiteral
 	}
 	if !s.IsKnown() {
 		return "", fmt.Errorf("can't convert unknown literal to string")

@@ -41,6 +41,24 @@ func TestResolveTuplePreservesNullValues(t *testing.T) {
 	require.Empty(t, logs.String())
 }
 
+func TestResolveTupleDoesNotLogNestedNullLiterals(t *testing.T) {
+	expr, diagnostics := hclsyntax.ParseExpression(
+		[]byte(`[var.enabled ? "enabled" : null]`),
+		"policy.tf",
+		hcl.InitialPos,
+	)
+	require.False(t, diagnostics.HasErrors())
+	tuple := expr.(*hclsyntax.TupleConsExpr)
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+
+	resolveTuple(ctx, tuple)
+
+	_, isConditional := tuple.Exprs[0].(*hclsyntax.ConditionalExpr)
+	require.True(t, isConditional)
+	require.Empty(t, logs.String())
+}
+
 func Test_getDataSourcePolicy(t *testing.T) {
 	type args struct {
 		currentPath  string
