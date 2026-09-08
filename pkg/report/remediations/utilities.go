@@ -1,10 +1,13 @@
 package model
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
+
+var topLevelAttributeRegex = regexp.MustCompile(`(?s)^["']?[A-Za-z_][\w-]*["']?\s*[:=]\s*\S`)
 
 func parseAlternatives(before string) []string {
 	if strings.Contains(before, " or ") {
@@ -39,6 +42,32 @@ func splitKeyValue(expr string) (string, string) {
 		return normalize(strings.TrimSpace(parts[0])), normalize(strings.TrimSpace(parts[1]))
 	}
 	return "", normalize(expr)
+}
+
+func isTopLevelAttribute(s string) bool {
+	return topLevelAttributeRegex.MatchString(strings.TrimSpace(s))
+}
+
+func lineIndent(fileLines []string, line int) string {
+	if line < 1 || line > len(fileLines) {
+		return ""
+	}
+	content := fileLines[line-1]
+	return content[:len(content)-len(strings.TrimLeft(content, " \t"))]
+}
+
+func blockBodyIndent(fileLines []string, blockStartLine, blockEndLine int) string {
+	headerIndent := lineIndent(fileLines, blockStartLine)
+	start := max(blockStartLine+1, 1)
+	end := min(blockEndLine, len(fileLines))
+	for line := start; line <= end; line++ {
+		trimmed := strings.TrimSpace(fileLines[line-1])
+		if trimmed == "" || trimmed == "}" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		return lineIndent(fileLines, line)
+	}
+	return headerIndent + "  "
 }
 
 func determineActualBaseIndent(fileLines []string, startLine, blockStartLine int) string {

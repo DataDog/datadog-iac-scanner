@@ -115,7 +115,9 @@ func TestTransformToSarifFix_ResourceHeaderFallsBackToAddition(t *testing.T) {
 		model.SarifResourceLocation{Line: 1, Col: 32},
 	)
 	require.NoError(t, err)
-	require.Contains(t, fix.ArtifactChanges[0].Replacements[0].InsertedContent.Text, "associate_public_ip_address")
+	replacement := fix.ArtifactChanges[0].Replacements[0]
+	require.Equal(t, 3, replacement.DeletedRegion.StartLine)
+	require.Contains(t, replacement.InsertedContent.Text, "associate_public_ip_address = false")
 }
 
 func TestTransformToSarifFix_ResourceHeaderRejectsValueOnlyFallback(t *testing.T) {
@@ -181,9 +183,138 @@ func TestTransformToSarifFix_ReplacementDoesNotSearchOutsideBlock(t *testing.T) 
 	)
 	require.NoError(t, err)
 	replacement := fix.ArtifactChanges[0].Replacements[0]
-	require.Equal(t, 1, replacement.DeletedRegion.StartLine)
+	require.Equal(t, 2, replacement.DeletedRegion.StartLine)
 	require.Contains(t, replacement.InsertedContent.Text, "enabled = false")
 	require.NotEqual(t, 4, replacement.DeletedRegion.StartLine)
+}
+
+func TestTransformToSarifFix_DoesNotAddDuplicateAttribute(t *testing.T) {
+	vuln := model.VulnerableFile{
+		FileName:              "main.tf",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "enabled = true", "after": "false"}`,
+		LineWithVulnerability: `module "target" {`,
+		Line:                  1,
+		FileSource: []string{
+			`module "target" {`,
+			`  enabled = var.enabled`,
+			`}`,
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 3, Col: 2},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: 1},
+		},
+	}
+
+	_, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: 18},
+	)
+	require.Error(t, err)
+}
+
+func TestTransformToSarifFix_RejectsNonAttributeAddition(t *testing.T) {
+	vuln := model.VulnerableFile{
+		FileName:              "main.tf",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "{}", "after": "{ Environment = \"prod\" }"}`,
+		LineWithVulnerability: `resource "aws_s3_bucket" "bucket" {`,
+		Line:                  1,
+		FileSource: []string{
+			`resource "aws_s3_bucket" "bucket" {`,
+			`}`,
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 2, Col: 2},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: 1},
+		},
+	}
+
+	_, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: 36},
+	)
+	require.Error(t, err)
+}
+
+func TestTransformToSarifFix_WrapsObjectValueWithKeyFromBefore(t *testing.T) {
+	vuln := model.VulnerableFile{
+		FileName:              "main.tf",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "tags = {}", "after": "{ Environment = \"prod\" }"}`,
+		LineWithVulnerability: `resource "aws_s3_bucket" "bucket" {`,
+		Line:                  1,
+		FileSource: []string{
+			`resource "aws_s3_bucket" "bucket" {`,
+			`  bucket = "example"`,
+			`}`,
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 3, Col: 2},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: 1},
+		},
+	}
+
+	fix, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: 36},
+	)
+	require.NoError(t, err)
+	replacement := fix.ArtifactChanges[0].Replacements[0]
+	require.Equal(t, 3, replacement.DeletedRegion.StartLine)
+	require.Contains(t, replacement.InsertedContent.Text, `tags = { Environment = "prod" }`)
+}
+
+func TestTransformToSarifFix_EmptyBlockAddsInsideClosingBrace(t *testing.T) {
+	vuln := model.VulnerableFile{
+		FileName:              "main.tf",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "associate_public_ip_address = true", "after": "false"}`,
+		LineWithVulnerability: `resource "aws_instance" "ec2" {`,
+		Line:                  1,
+		FileSource: []string{
+			`resource "aws_instance" "ec2" {`,
+			`}`,
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 2, Col: 2},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: 1},
+		},
+	}
+
+	fix, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: 32},
+	)
+	require.NoError(t, err)
+	replacement := fix.ArtifactChanges[0].Replacements[0]
+	require.Equal(t, 2, replacement.DeletedRegion.StartLine)
+	require.Equal(t, 1, replacement.DeletedRegion.StartColumn)
+	require.Contains(t, replacement.InsertedContent.Text, "  associate_public_ip_address = false")
 }
 
 func TestTransformToSarifFix_ReplacementFindsMatchingRepeatedKey(t *testing.T) {

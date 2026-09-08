@@ -707,6 +707,12 @@ func TestAnalyze_RequestLibrariesInvalidateSharedRuleCache(t *testing.T) {
 }
 
 func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
+	analyzeCompiledQueryCacheTestMu.Lock()
+	t.Cleanup(analyzeCompiledQueryCacheTestMu.Unlock)
+
+	engine.ResetCompiledQueryCachesForTest()
+	t.Cleanup(engine.ResetCompiledQueryCachesForTest)
+
 	originalClient := http.DefaultClient
 	var requests atomic.Int64
 	http.DefaultClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -726,7 +732,7 @@ func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
 		Platform:  []string{"terraform"},
 	})
 	if len(out.Findings) == 0 {
-		t.Fatal("expected request-supplied rules and libraries to produce a finding")
+		t.Fatalf("expected request-supplied rules and libraries to produce a finding; failed queries: %v", out.FailedQueries)
 	}
 	if got := requests.Load(); got != 0 {
 		t.Fatalf("server mode made %d outbound HTTP requests, want 0", got)
