@@ -101,3 +101,19 @@ func TestRetiredFlagsAreHidden(t *testing.T) {
 	assert.Empty(t, (&cli.Command{Flags: retiredScanFlags()}).VisibleFlags())
 	assert.Empty(t, (&cli.Command{Flags: retiredServeFlags()}).VisibleFlags())
 }
+
+func TestUnknownXFlagFailsAtParseTime(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cli.Command{
+		Name:  "scan",
+		Flags: append([]cli.Flag{&cli.StringSliceFlag{Name: "path"}}, retiredScanFlags()...),
+		Action: func(_ context.Context, _ *cli.Command) error {
+			return nil
+		},
+	}
+
+	err := cmd.Run(context.Background(), []string{"scan", "--x-blabla", "1234", "--path", "."})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "flag provided but not defined")
+}

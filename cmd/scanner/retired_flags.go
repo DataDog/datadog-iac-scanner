@@ -14,11 +14,15 @@ func sharedRetiredFlags() []cli.Flag {
 
 func retiredScanOnlyFlags() []cli.Flag {
 	return []cli.Flag{
-		&cli.IntFlag{
-			Name:   "timeout",
-			Hidden: true,
-			Action: retiredFlagAction[int]("timeout"),
-		},
+		retiredInt("timeout"),
+	}
+}
+
+func retiredInt(name string) *cli.IntFlag {
+	return &cli.IntFlag{
+		Name:   name,
+		Hidden: true,
+		Action: retiredFlagAction[int](name),
 	}
 }
 
