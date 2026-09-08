@@ -61,8 +61,10 @@ func ParseSearchKey(searchKey string) (*ParsedSearchKey, error) {
 	// Step 1: Preprocess - strip "resource." prefix
 	workingKey := strings.TrimPrefix(searchKey, "resource.")
 
-	// Step 2: Handle template syntax {{...}}
-	// Handles both "{{module.app.resource}}" and "type.{{module.app.resource}}"
+	// Step 2: Handle template syntax {{...}}. Unwrap the braces in place, keeping
+	// both the prefix before "{{" and the suffix after "}}" intact, so bracket
+	// notation like "aws_s3_bucket_object[{{this[0]}}]" or an attribute suffix
+	// like "{{module.app.resource}}.tags" survive unwrapping unchanged.
 	if strings.Contains(workingKey, "{{") {
 		openBrace := strings.Index(workingKey, "{{")
 		closeBrace := strings.Index(workingKey, "}}")
@@ -72,17 +74,17 @@ func ParseSearchKey(searchKey string) (*ParsedSearchKey, error) {
 			return nil, fmt.Errorf("unmatched template braces in searchKey: %s", searchKey)
 		}
 
-		// Extract template content
+		prefix := workingKey[:openBrace]
 		templateContent := workingKey[openBrace+2 : closeBrace]
+		suffix := workingKey[closeBrace+2:]
 
-		// Check if there's a prefix before the template
-		if openBrace > 0 {
-			// Format: type.{{module.app.resource}}
-			// Combine prefix + template content
-			prefix := strings.TrimSuffix(workingKey[:openBrace], ".")
-			workingKey = prefix + "." + templateContent
+		// A dot-notation prefix like "type." needs its own trailing dot merged
+		// with the template content; bracket notation like "type[" doesn't.
+		if strings.HasSuffix(prefix, ".") {
+			prefix = strings.TrimSuffix(prefix, ".")
+			workingKey = prefix + "." + templateContent + suffix
 		} else {
-			workingKey = templateContent
+			workingKey = prefix + templateContent + suffix
 		}
 	}
 
