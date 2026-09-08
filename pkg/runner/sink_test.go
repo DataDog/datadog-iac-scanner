@@ -430,38 +430,61 @@ func TestSink_ParseFailureLogLevel(t *testing.T) {
 // ("bad key=value pair supplied: postgres://user:pass@host/db"), which is how
 // customer database credentials used to leak into the scanner's error logs.
 func TestSink_ParseFailureRedactsCredentials(t *testing.T) {
-	ctx := context.Background()
-
-	parsers, err := parser.NewBuilder(ctx).
-		Add(&iniHostsParser.Parser{}).
-		Build([]string{"ansible"}, []string{""})
-	require.NoError(t, err)
-	require.NotEmpty(t, parsers)
-
-	// A postgres connection string is not valid Ansible inventory syntax, so
-	// aini.Parse fails with "bad key=value pair supplied: <the whole URL>".
-	const content = "[main]\ndogdata_url = postgres://user:sup3rs3cret@localhost:5432/dogdata\n"
-
-	var logBuf bytes.Buffer
-	testCtx := zerolog.New(&logBuf).WithContext(ctx)
-
-	svc := &Service{
-		Parser:      parsers[0],
-		Tracker:     noopTracker{},
-		MaxFileSize: 1,
+	tests := []struct {
+		name     string
+		url      string
+		wantKept string
+	}{
+		{
+			name:     "plain scheme",
+			url:      "postgres://user:sup3rs3cret@localhost:5432/dogdata",
+			wantKept: "postgres://localhost:5432/dogdata",
+		},
+		{
+			// Driver-qualified schemes are the common spelling in .ini/.env
+			// config and put `+driver` before `://`.
+			name:     "driver qualified scheme",
+			url:      "postgresql+psycopg2://user:sup3rs3cret@localhost:5432/dogdata",
+			wantKept: "postgresql+psycopg2://localhost:5432/dogdata",
+		},
 	}
 
-	rc := bytes.NewReader([]byte(content))
-	buf := make([]byte, 1024)
-	require.NoError(t, svc.sink(testCtx, "/repo/test/etc/test.ini", "scan1", rc, buf, false, 1))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
 
-	logged := logBuf.String()
-	// The failure is still reported, with the offending scheme/host kept for triage.
-	require.Contains(t, logged, "failed to parse file content")
-	require.Contains(t, logged, "postgres://localhost:5432/dogdata")
-	// ... but without the credentials that were embedded in the scanned file.
-	require.NotContains(t, logged, "sup3rs3cret")
-	require.NotContains(t, logged, "user:sup3rs3cret")
+			parsers, err := parser.NewBuilder(ctx).
+				Add(&iniHostsParser.Parser{}).
+				Build([]string{"ansible"}, []string{""})
+			require.NoError(t, err)
+			require.NotEmpty(t, parsers)
+
+			// A connection string is not valid Ansible inventory syntax, so
+			// aini.Parse fails with "bad key=value pair supplied: <the URL>".
+			content := "[main]\ndogdata_url = " + tt.url + "\n"
+
+			var logBuf bytes.Buffer
+			testCtx := zerolog.New(&logBuf).WithContext(ctx)
+
+			svc := &Service{
+				Parser:      parsers[0],
+				Tracker:     noopTracker{},
+				MaxFileSize: 1,
+			}
+
+			rc := bytes.NewReader([]byte(content))
+			buf := make([]byte, 1024)
+			require.NoError(t, svc.sink(testCtx, "/repo/test/etc/test.ini", "scan1", rc, buf, false, 1))
+
+			logged := logBuf.String()
+			// The failure is still reported, with the offending scheme/host kept for triage.
+			require.Contains(t, logged, "failed to parse file content")
+			require.Contains(t, logged, tt.wantKept)
+			// ... but without the credentials that were embedded in the scanned file.
+			require.NotContains(t, logged, "sup3rs3cret")
+			require.NotContains(t, logged, "user:sup3rs3cret")
+		})
+	}
 }
 
 func TestRedactErrorForLog(t *testing.T) {

@@ -240,7 +240,7 @@ func TestRemoveURLCredentials(t *testing.T) {
 			want: "ssh://test.git.com/test.git",
 		},
 		{
-			// The failure mode that motivated broadening the scheme list: the
+			// The failure mode that motivated redacting logged errors: the
 			// Ansible INI parser quotes the offending line of the scanned file.
 			name: "test_postgres_credentials_in_parse_error",
 			args: args{
@@ -311,6 +311,46 @@ func TestRemoveURLCredentials(t *testing.T) {
 			},
 			want: "Postgres://localhost:5432/dogdata",
 		},
+		// A driver-qualified scheme puts `+driver` before `://`, which no
+		// enumeration of bare scheme names can match. These are the canonical
+		// SQLAlchemy/JDBC spellings and are exactly what a .ini or .env holds.
+		{
+			name: "test_driver_qualified_postgres_scheme",
+			args: args{
+				url: "postgresql+psycopg2://user:secret@db/app",
+			},
+			want: "postgresql+psycopg2://db/app",
+		},
+		{
+			name: "test_driver_qualified_mysql_scheme",
+			args: args{
+				url: "mysql+pymysql://user:secret@db/app",
+			},
+			want: "mysql+pymysql://db/app",
+		},
+		{
+			name: "test_jdbc_prefixed_scheme",
+			args: args{
+				url: "jdbc:postgresql://user:secret@db:5432/app",
+			},
+			want: "jdbc:postgresql://db:5432/app",
+		},
+		// Schemes nobody enumerated: userinfo is a credential whatever the
+		// scheme, so redaction must not depend on a curated list.
+		{
+			name: "test_unenumerated_scheme",
+			args: args{
+				url: "clickhouse://user:secret@ch:9000/default",
+			},
+			want: "clickhouse://ch:9000/default",
+		},
+		{
+			name: "test_unenumerated_scheme_with_query",
+			args: args{
+				url: "sqlserver://sa:secret@mssql:1433?database=app",
+			},
+			want: "sqlserver://mssql:1433?database=app",
+		},
 		{
 			name: "test_multiple_urls_in_one_message",
 			args: args{
@@ -331,6 +371,55 @@ func TestRemoveURLCredentials(t *testing.T) {
 				url: "bad key=value pair supplied: user:pass@localhost",
 			},
 			want: "bad key=value pair supplied: user:pass@localhost",
+		},
+		// An `@` past the authority is not userinfo. Matching userinfo as
+		// `\S+@` would swallow host and path up to the last `@` on the line
+		// and corrupt these credential-free values.
+		{
+			name: "test_at_in_path_is_not_userinfo",
+			args: args{
+				url: "postgres://db.internal/app@tenant",
+			},
+			want: "postgres://db.internal/app@tenant",
+		},
+		{
+			name: "test_git_ref_suffix_is_not_userinfo",
+			args: args{
+				url: "https://github.com/org/repo.git@main",
+			},
+			want: "https://github.com/org/repo.git@main",
+		},
+		{
+			name: "test_at_in_query_is_not_userinfo",
+			args: args{
+				url: "postgres://db:5432/app?user=a@b",
+			},
+			want: "postgres://db:5432/app?user=a@b",
+		},
+		{
+			name: "test_trailing_email_after_url_untouched",
+			args: args{
+				url: "see https://docs.example.com/x then mail admin@corp.com",
+			},
+			want: "see https://docs.example.com/x then mail admin@corp.com",
+		},
+		{
+			// Authority with no path, so nothing bounds the scan but
+			// whitespace: the email must still survive.
+			name: "test_bare_authority_then_email_untouched",
+			args: args{
+				url: "redis://cache and admin@corp.com",
+			},
+			want: "redis://cache and admin@corp.com",
+		},
+		{
+			// Malformed authority: redact through the last `@` of the
+			// authority. Over-redacting is the safe direction.
+			name: "test_multiple_at_in_authority_over_redacts",
+			args: args{
+				url: "postgres://a@b@c/d",
+			},
+			want: "postgres://c/d",
 		},
 		{
 			name: "test_empty_string",
