@@ -44,7 +44,7 @@ func buildReplacementFix(ctx context.Context, vuln model.VulnerableFile,
 	after := strings.TrimSpace(patch["after"])
 
 	// Regex for key and value (list/quoted/unquoted)
-	keyValRegex := regexp.MustCompile(`(?m)["']?(\w+)["']?\s*[:=]\s*(\[.*?\]|".*?"|[^#]+)`)
+	keyValRegex := regexp.MustCompile(`(?m)["']?(\w+)["']?\s*=\s*(\[.*?\]|".*?"|[^#=][^#]*)`)
 	matches := keyValRegex.FindStringSubmatch(vuln.LineWithVulnerability)
 	if isBlockHeader(vuln.LineWithVulnerability) || len(matches) < 3 {
 		line, lineNumber, found, keyPresent := findReplacementTarget(&vuln, before, keyValRegex)
@@ -246,6 +246,9 @@ func fallbackReplacementToAddition(
 		return model.SarifFix{}, fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
 	}
 	if !isTopLevelAttribute(addition) {
+		if isNonAssignmentExpression(addition) {
+			return model.SarifFix{}, fmt.Errorf("remediation is not a top-level attribute: %s", addition)
+		}
 		key, _ := splitKeyValue(before)
 		if key == "" {
 			return model.SarifFix{}, fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
@@ -260,23 +263,41 @@ func fallbackReplacementToAddition(
 	return buildAdditionFix(updated, additionInsertLocation(vuln, startLocation))
 }
 
+func additionBaseIndent(vuln *model.VulnerableFile, startLocation model.SarifResourceLocation) string {
+	baseIndent := determineActualBaseIndent(vuln.FileSource, startLocation.Line, vuln.BlockLocation.Start.Line)
+	if startLocation.Line < 1 || startLocation.Line > len(vuln.FileSource) {
+		return baseIndent
+	}
+	line := vuln.FileSource[startLocation.Line-1]
+	brace := strings.LastIndex(line, "}")
+	if brace < 0 {
+		return baseIndent
+	}
+	if strings.TrimSpace(line[:brace]) == "" {
+		return blockBodyIndent(vuln.FileSource, vuln.BlockLocation.Start.Line, vuln.BlockLocation.End.Line)
+	}
+	return lineIndent(vuln.FileSource, startLocation.Line) + "  "
+}
+
 func additionInsertLocation(vuln *model.VulnerableFile, startLocation model.SarifResourceLocation) model.SarifResourceLocation {
-	end := vuln.BlockLocation.End.Line
-	if end < 1 || end > len(vuln.FileSource) {
+	start := max(vuln.BlockLocation.Start.Line, 1)
+	end := min(vuln.BlockLocation.End.Line, len(vuln.FileSource))
+	if end < start {
 		return startLocation
 	}
-	return model.SarifResourceLocation{Line: end, Col: 1}
+	for line := end; line >= start; line-- {
+		if col := strings.LastIndex(vuln.FileSource[line-1], "}"); col >= 0 {
+			return model.SarifResourceLocation{Line: line, Col: col + 1}
+		}
+	}
+	return startLocation
 }
 
 // nolint:gocritic
 func buildAdditionFix(vuln model.VulnerableFile, startLocation model.SarifResourceLocation) (model.SarifFix, error) {
 	normalized := normalizeIndentation(vuln.Remediation, 2)
 	lines := strings.Split(normalized, "\n")
-	baseIndent := determineActualBaseIndent(vuln.FileSource, startLocation.Line, vuln.BlockLocation.Start.Line)
-	if startLocation.Line >= 1 && startLocation.Line <= len(vuln.FileSource) &&
-		strings.TrimSpace(vuln.FileSource[startLocation.Line-1]) == "}" {
-		baseIndent = blockBodyIndent(vuln.FileSource, vuln.BlockLocation.Start.Line, vuln.BlockLocation.End.Line)
-	}
+	baseIndent := additionBaseIndent(&vuln, startLocation)
 	nested := isInsertingInsideNestedBlock(vuln.FileSource, startLocation, vuln.BlockLocation.Start.Line, vuln.BlockLocation.End.Line)
 
 	var result []string

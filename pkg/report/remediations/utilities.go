@@ -7,7 +7,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
-var topLevelAttributeRegex = regexp.MustCompile(`(?s)^["']?[A-Za-z_][\w-]*["']?\s*[:=]\s*\S`)
+var topLevelAttributeRegex = regexp.MustCompile(`(?s)^["']?[A-Za-z_][\w-]*["']?\s*=\s*[^=\s]`)
 
 func parseAlternatives(before string) []string {
 	if strings.Contains(before, " or ") {
@@ -45,7 +45,27 @@ func splitKeyValue(expr string) (string, string) {
 }
 
 func isTopLevelAttribute(s string) bool {
-	return topLevelAttributeRegex.MatchString(strings.TrimSpace(s))
+	trimmed := strings.TrimSpace(s)
+	if !topLevelAttributeRegex.MatchString(trimmed) {
+		return false
+	}
+	return !isNonAssignmentExpression(trimmed)
+}
+
+func isNonAssignmentExpression(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	if strings.Contains(trimmed, "==") {
+		return true
+	}
+	for _, r := range trimmed {
+		if r == '=' {
+			return false
+		}
+		if r == ':' {
+			return true
+		}
+	}
+	return false
 }
 
 func lineIndent(fileLines []string, line int) string {
