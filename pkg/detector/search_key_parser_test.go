@@ -72,6 +72,43 @@ func TestParseSearchKey_FailingPatterns(t *testing.T) {
 			description: "Template syntax containing module path",
 		},
 		{
+			// Regression: template unwrapping used to discard the closing "]" suffix
+			// and insert a spurious "." right after "[", producing an unmatched-bracket
+			// error for this exact shape (see pkg/detector/default_detect_test.go's
+			// "curly_brace_wrapped_name" case for the equivalent terraformPlanPath test).
+			name:      "template syntax wrapped in bracket notation",
+			searchKey: "aws_s3_bucket_object[{{this[0]}}]",
+			expected: &ParsedSearchKey{
+				ResourceType:     "aws_s3_bucket_object",
+				ResourceName:     "this",
+				ModulePath:       nil,
+				FullResourceAddr: "aws_s3_bucket_object.this",
+				NormalizedAddr:   "aws_s3_bucket_object.this",
+				AttributePath:    nil,
+				HasAttribute:     false,
+				IsResourceLevel:  true,
+				IsModuleResource: false,
+			},
+			description: "Template syntax wrapped in bracket notation must keep the closing bracket suffix",
+		},
+		{
+			// Same shape as above, but the template content itself is a module path.
+			name:      "template syntax wrapped in bracket notation with module path",
+			searchKey: "aws_s3_bucket_object[{{module.s3_object.this[0]}}]",
+			expected: &ParsedSearchKey{
+				ResourceType:     "aws_s3_bucket_object",
+				ResourceName:     "this",
+				ModulePath:       []string{"module", "s3_object"},
+				FullResourceAddr: "module.s3_object.aws_s3_bucket_object.this[0]",
+				NormalizedAddr:   "module.s3_object.aws_s3_bucket_object.this",
+				AttributePath:    nil,
+				HasAttribute:     false,
+				IsResourceLevel:  true,
+				IsModuleResource: true,
+			},
+			description: "Template syntax wrapped in bracket notation with a module-prefixed name",
+		},
+		{
 			name:      "resource name that looks like module path",
 			searchKey: "aws_vpc[module.vpc.main]",
 			expected: &ParsedSearchKey{
