@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
@@ -192,7 +192,7 @@ func extractForContent(cache *sync.Map, content, filePath string) (*fileExtract,
 	if cached, ok := cache.Load(key); ok {
 		return cached.(*fileExtract), nil
 	}
-	if IsTerraformJSONPath(filePath) {
+	if tfpath.IsJSONConfig(filePath) {
 		extract, err := extractJSONFile([]byte(content))
 		if err != nil {
 			return nil, hcl.Diagnostics{{
@@ -229,7 +229,7 @@ func groupTerraformFilesByDir(files model.FileMetadatas) []dirFiles {
 	var groups []dirFiles
 	indexByDir := make(map[string]int)
 	for _, file := range files {
-		if file == nil || !IsTerraformConfigPath(file.FilePath) {
+		if file == nil || !tfpath.IsConfig(file.FilePath) {
 			continue
 		}
 		dir := filepath.Dir(file.FilePath)
@@ -317,11 +317,12 @@ func parseDirModules(
 	allowedFiles map[string]bool,
 ) (map[string]ParsedModule, error) {
 	contextLogger := logger.FromContext(ctx)
-	fileExtracts := make([]*fileExtract, len(group.files))
+	files, _ := tfpath.Partition(group.files, func(f *model.FileMetadata) string { return f.FilePath })
+	fileExtracts := make([]*fileExtract, len(files))
 	localsMap := make(map[string]string)
 	varsMap := make(map[string]string)
 
-	for i, file := range group.files {
+	for i, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -340,7 +341,7 @@ func parseDirModules(
 	}
 
 	modules := make(map[string]ParsedModule)
-	for i, file := range group.files {
+	for i, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -431,14 +432,14 @@ func validateModuleSource(ctx context.Context, fsys vfs.FS, absPath string) erro
 
 	valid := false
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".tf") {
+		if !entry.IsDir() && tfpath.IsConfig(entry.Name()) {
 			valid = true
 			break
 		}
 	}
 
 	if !valid {
-		wrn := fmt.Errorf("module at %s does not contain any .tf files", absPath)
+		wrn := fmt.Errorf("module at %s does not contain any Terraform or OpenTofu configuration files", absPath)
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Warn().Msg(wrn.Error())
 		return wrn
@@ -749,17 +750,18 @@ func resolveModuleToLocalPath(
 
 // moduleEnrichCache shares equivalent-map parsing across call sites of the same directory.
 type moduleEnrichCache struct {
-	fsys vfs.FS
-	sf   singleflight.Group
-	mu   sync.Mutex
-	m    map[string]map[string]ModuleAttributesInfo
+	fsys  vfs.FS
+	allow map[string]struct{}
+	sf    singleflight.Group
+	mu    sync.Mutex
+	m     map[string]map[string]ModuleAttributesInfo
 }
 
-func newModuleEnrichCache(fsys vfs.FS) *moduleEnrichCache {
+func newModuleEnrichCache(fsys vfs.FS, allow map[string]struct{}) *moduleEnrichCache {
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}
-	return &moduleEnrichCache{fsys: fsys, m: make(map[string]map[string]ModuleAttributesInfo)}
+	return &moduleEnrichCache{fsys: fsys, allow: allow, m: make(map[string]map[string]ModuleAttributesInfo)}
 }
 
 func (c *moduleEnrichCache) attributesFor(ctx context.Context, modulePath string) (map[string]ModuleAttributesInfo, error) {
@@ -771,7 +773,7 @@ func (c *moduleEnrichCache) attributesFor(ctx context.Context, modulePath string
 	c.mu.Unlock()
 
 	v, err, _ := c.sf.Do(modulePath, func() (interface{}, error) {
-		res, genErr := generateEquivalentMap(ctx, c.fsys, modulePath)
+		res, genErr := generateEquivalentMap(ctx, c.fsys, modulePath, c.allow)
 		if genErr != nil {
 			return nil, genErr
 		}
@@ -815,6 +817,7 @@ const minParseWorkers = 4
 // context cancellation returns an error.
 func ParseAllModuleVariables(
 	ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string, resolver RemoteResolver,
+	mergeAllow map[string]struct{},
 ) ([]ParsedModule, error) {
 	numWorkers := runtime.GOMAXPROCS(0)
 	if numWorkers < minParseWorkers {
@@ -829,7 +832,7 @@ func ParseAllModuleVariables(
 
 	input := make(chan moduleWorkItem)
 	output := make(chan ModuleParseResult)
-	enrichCache := newModuleEnrichCache(fsys)
+	enrichCache := newModuleEnrichCache(fsys, mergeAllow)
 
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
@@ -911,7 +914,9 @@ func collectModuleResults(
 	}
 }
 
-func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) (map[string]ModuleAttributesInfo, error) {
+func generateEquivalentMap(
+	ctx context.Context, fsys vfs.FS, modulePath string, allow map[string]struct{},
+) (map[string]ModuleAttributesInfo, error) {
 	contextLogger := logger.FromContext(ctx)
 	equivalentMap := make(map[string]ModuleAttributesInfo)
 	resourceTypesMap := make(map[string]map[string]bool)
@@ -926,14 +931,8 @@ func generateEquivalentMap(ctx context.Context, fsys vfs.FS, modulePath string) 
 		return nil, err
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		if !IsTerraformHCLPath(entry.Name()) {
-			continue
-		}
-		path := filepath.Join(modulePath, entry.Name())
+	for _, name := range SelectHCLConfigNames(entries, modulePath, allow, "") {
+		path := filepath.Join(modulePath, name)
 		if err := processEquivalentMapFile(ctx, fsys, path, equivalentMap, resourceTypesMap); err != nil {
 			return nil, err
 		}
@@ -1050,11 +1049,12 @@ func ParseTerraformModulesFromFiles(
 	return parseModulesByDir(ctx, fsys, files, allowedFiles, 0)
 }
 
-// LoadTFFilesFromDir returns FileMetadata for top-level Terraform configuration
-// files (.tf and .tf.json) in dir (no recursion — a Terraform module is a single
-// directory). When packageRoot is non-empty, symlinked config files are included
-// only when their targets stay within the package root.
-func LoadTFFilesFromDir(dir, packageRoot string) (model.FileMetadatas, error) {
+// LoadTFFilesFromDir returns FileMetadata for top-level Terraform/OpenTofu
+// configuration files (.tf, .tofu, .tf.json, .tofu.json) in dir (no recursion —
+// a Terraform module is a single directory). When packageRoot is non-empty,
+// symlinked config files are included only when their targets stay within the
+// package root.
+func LoadTFFilesFromDir(ctx context.Context, dir, packageRoot string) (model.FileMetadatas, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving module dir %q: %w", dir, err)
@@ -1064,8 +1064,8 @@ func LoadTFFilesFromDir(dir, packageRoot string) (model.FileMetadatas, error) {
 		return nil, fmt.Errorf("reading module dir %q: %w", absDir, err)
 	}
 	var files model.FileMetadatas
-	for _, entry := range entries {
-		path, ok := ScannableTerraformPath(entry, absDir, packageRoot)
+	for _, entry := range ConfigEntries(entries, tfpath.IsConfig) {
+		path, ok := ConfinedFilePath(ctx, entry, absDir, packageRoot)
 		if !ok {
 			continue
 		}
@@ -1079,49 +1079,6 @@ func LoadTFFilesFromDir(dir, packageRoot string) (model.FileMetadatas, error) {
 		})
 	}
 	return files, nil
-}
-
-func ScannableTerraformPath(entry fs.DirEntry, dir, packageRoot string) (string, bool) {
-	if entry.IsDir() {
-		return "", false
-	}
-	name := entry.Name()
-	if !IsTerraformConfigPath(name) {
-		return "", false
-	}
-	candidate := filepath.Join(dir, name)
-	entryType := entry.Type()
-	if entryType.IsRegular() {
-		return candidate, true
-	}
-	if entryType&fs.ModeSymlink == 0 && entryType != 0 {
-		return "", false
-	}
-	resolved, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return "", false
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() {
-		return "", false
-	}
-	confineRoot := packageRoot
-	if confineRoot == "" {
-		confineRoot = dir
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(filepath.Clean(confineRoot))
-	if err != nil {
-		return "", false
-	}
-	resolvedTarget, err := filepath.EvalSymlinks(filepath.Clean(resolved))
-	if err != nil {
-		return "", false
-	}
-	rel, err := filepath.Rel(resolvedRoot, resolvedTarget)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", false
-	}
-	return candidate, true
 }
 
 // GetProviderFromResourceType extracts the provider name from a Terraform resource type.

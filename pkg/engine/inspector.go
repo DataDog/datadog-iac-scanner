@@ -35,6 +35,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
@@ -246,6 +247,7 @@ type Inspector struct {
 	remoteModuleDirs       map[string]RemoteModuleDirectory
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
+	mergeAllow             map[string]struct{}
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -294,6 +296,11 @@ func (c *Inspector) SetExternalModulePaths(paths []string) {
 		roots[filepath.Clean(p)] = true
 	}
 	c.externalPathRoots = roots
+}
+
+// SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
+func (c *Inspector) SetMergeAllow(paths []string) {
+	c.mergeAllow = tfpath.AllowSet(paths)
 }
 
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
@@ -524,7 +531,7 @@ func (c *Inspector) Inspect(
 	// data; per-module parse failures are non-fatal and handled internally.
 	rootDir := c.repoPath
 	enrichedModules, err := tfmodules.ParseAllModuleVariables(
-		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver())
+		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver(), c.mergeAllow)
 	if err != nil {
 		return nil, err
 	}
@@ -633,7 +640,7 @@ func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas
 	for _, platform := range platforms {
 		if strings.EqualFold(platform, "Terraform") {
 			for _, file := range files {
-				if file != nil && tfmodules.IsTerraformConfigPath(file.FilePath) {
+				if file != nil && tfpath.IsConfig(file.FilePath) {
 					return true
 				}
 			}

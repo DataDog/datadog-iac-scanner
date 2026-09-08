@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -166,17 +167,15 @@ func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {
 
 func getInputVariables(
 	ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string,
+	allow map[string]struct{}, keep string,
 ) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
 	variablesMap := make(converter.VariableMap)
 	localsMap := make(converter.VariableMap)
 
-	tfFiles, err := fsys.Glob(filepath.Join(currentPath, "*.tf"))
-	if err != nil {
-		contextLogger.Error().Msg("Error getting .tf files")
-	}
+	tfFiles := hclConfigFiles(ctx, fsys, currentPath, allow, keep)
 
-	// Parse all .tf files for variables and locals
+	// Parse all .tf/.tofu files for variables and locals
 	for _, tfFile := range tfFiles {
 		vars, locals, err := getInputVariablesAndLocalsFromFile(fsys, tfFile)
 		if err != nil {
@@ -240,4 +239,19 @@ func getInputVariables(
 	result["var"] = cty.ObjectVal(cleanVars)
 	result["local"] = cty.ObjectVal(cleanLocals)
 	return result
+}
+
+func hclConfigFiles(ctx context.Context, fsys vfs.FS, dir string, allow map[string]struct{}, keep string) []string {
+	contextLogger := logger.FromContext(ctx)
+	entries, err := fsys.ReadDir(dir)
+	if err != nil {
+		contextLogger.Error().Msg("Error listing Terraform configuration files")
+		return nil
+	}
+	names := tfmodules.SelectHCLConfigNames(entries, dir, allow, keep)
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = filepath.Join(dir, name)
+	}
+	return out
 }

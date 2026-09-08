@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -50,9 +51,25 @@ type Parser struct {
 	fsys vfs.FS
 
 	// dirVarsCache memoizes per-directory variable/locals resolution (O(N²) without
-	// it). Scoped to the Parser instance, which is created once per scan.
-	dirVarsCache sync.Map // dir -> converter.VariableMap
+	// it). A scanned .tf file shadowed by an inventoried .tofu twin gets its own
+	// entry. Scoped to the Parser instance, which is created once per scan.
+	dirVarsCache sync.Map // directory selection -> converter.VariableMap
 	dirVarsSF    singleflight.Group
+
+	// mergeAllow, when set, limits OpenTofu twin-shadowing to these paths.
+	mergeAllow    map[string]struct{}
+	shadowedFiles map[string]struct{}
+}
+
+// SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
+func (p *Parser) SetMergeAllow(paths []string) {
+	p.mergeAllow = tfpath.AllowSet(paths)
+	shadowed := tfpath.ShadowedByTofu(paths)
+	shadowedPaths := make([]string, 0, len(shadowed))
+	for path := range shadowed {
+		shadowedPaths = append(shadowedPaths, path)
+	}
+	p.shadowedFiles = tfpath.AllowSet(shadowedPaths)
 }
 
 // NewDefault initializes a parser with Parser default values
@@ -86,26 +103,31 @@ func (p *Parser) Resolve(ctx context.Context,
 			masterUtils.HandlePanic(ctx, r, errMessage)
 		}
 	}()
-	vars = p.resolveDirVars(ctx, filepath.Dir(filename), fileContent)
+	vars = p.resolveDirVars(ctx, filepath.Dir(filename), filename, fileContent)
 	return fileContent, vars, nil
 }
 
 // resolveDirVars returns the variable/locals/data-source map for a directory,
-// memoized per directory. Files carrying an inline terraform vars path directive
-// are resolved per-file (uncached) because their result depends on file content.
-func (p *Parser) resolveDirVars(ctx context.Context, dir string, fileContent []byte) converter.VariableMap {
+// memoized per effective directory selection. Files carrying an inline Terraform
+// vars path directive are resolved per-file because their result depends on file
+// content.
+func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileContent []byte) converter.VariableMap {
 	if p.terraformVarsPath == "" && strings.Contains(string(fileContent), terraformVarsPathDirective) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath)
-		return getDataSourcePolicy(ctx, p.fsys, dir, inputVars)
+		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
+		return getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
 	}
 
-	if v, ok := p.dirVarsCache.Load(dir); ok {
+	cacheKey := filepath.Clean(dir)
+	if _, ok := p.shadowedFiles[filepath.ToSlash(filepath.Clean(filename))]; ok {
+		cacheKey += "\x00" + filepath.Base(filename)
+	}
+	if v, ok := p.dirVarsCache.Load(cacheKey); ok {
 		return cloneVariableMap(v.(converter.VariableMap))
 	}
-	v, _, _ := p.dirVarsSF.Do(dir, func() (interface{}, error) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath)
-		vars := getDataSourcePolicy(ctx, p.fsys, dir, inputVars)
-		p.dirVarsCache.Store(dir, vars)
+	v, _, _ := p.dirVarsSF.Do(cacheKey, func() (interface{}, error) {
+		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
+		vars := getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
+		p.dirVarsCache.Store(cacheKey, vars)
 		return vars, nil
 	})
 	// Return a shallow clone: the converter adds per-file top-level keys to the
@@ -297,9 +319,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	return resolved, json, linesToIgnore, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
 }
 
-// SupportedExtensions returns Terraform extensions
+// SupportedExtensions returns Terraform/OpenTofu extensions.
 func (p *Parser) SupportedExtensions() []string {
-	return []string{".tf", ".tfvars"}
+	return []string{tfpath.ExtTF, tfpath.ExtTofu, tfpath.ExtTFVars}
 }
 
 // SupportedTypes returns types supported by this parser, which are terraform

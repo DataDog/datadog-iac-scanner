@@ -16,10 +16,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
@@ -176,7 +178,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	if request == nil || request.MaxDepth <= 0 || request.Resolver == nil {
 		return result
 	}
-	ctx = resolver.WithResolvedPathCache(ctx)
+	ctx = pathutil.WithResolvedPathCache(ctx)
 	budget := resolver.NewResourceBudget(request.ResourceLimits)
 	ctx = resolver.WithResourceBudget(ctx, budget)
 	moduleMaximum, baselineBytes, enforceAdmission := moduleAdmissionLimit(request)
@@ -352,10 +354,39 @@ func (w *walker) parseModulesInDir(
 		return nil
 	}
 
-	files, err := tfmodules.LoadTFFilesFromDir(dir, packageRoot)
+	files, err := tfmodules.LoadTFFilesFromDir(ctx, dir, packageRoot)
 	if err != nil {
 		return nil
 	}
+	parseAllowed := allowedFiles
+	var preferTofu func(string) bool
+	if allowedFiles != nil {
+		allowed := make(map[string]bool, len(allowedFiles))
+		for p, ok := range allowedFiles {
+			if ok {
+				allowed[filepath.Clean(p)] = true
+			}
+		}
+		hasAllowed := false
+		for _, f := range files {
+			if allowed[filepath.Clean(f.FilePath)] {
+				hasAllowed = true
+				break
+			}
+		}
+		if hasAllowed {
+			preferTofu = func(path string) bool {
+				return allowed[filepath.Clean(path)]
+			}
+		} else {
+			parseAllowed = nil
+		}
+	}
+	files, _ = tfpath.PartitionWithTofuPrecedence(
+		files,
+		func(f *model.FileMetadata) string { return f.FilePath },
+		preferTofu,
+	)
 	if len(files) == 0 {
 		empty := map[string]tfmodules.ParsedModule{}
 		w.parseCache.set(key, empty)
@@ -365,7 +396,7 @@ func (w *walker) parseModulesInDir(
 	var parsed map[string]tfmodules.ParsedModule
 	parseErr := w.withParseSlot(ctx, func() error {
 		var slotErr error
-		parsed, slotErr = tfmodules.ParseTerraformModulesFromFiles(ctx, w.fsys, files, allowedFiles)
+		parsed, slotErr = tfmodules.ParseTerraformModulesFromFiles(ctx, w.fsys, files, parseAllowed)
 		return slotErr
 	})
 	if parseErr != nil || ctx.Err() != nil {
@@ -636,7 +667,7 @@ func (w *walker) seedGroups(
 ) (seedGroups, repositoryGroups map[string]map[string]bool) {
 	allowedByDir := make(map[string]map[string]bool)
 	for _, path := range discoveryPaths {
-		if !tfmodules.IsTerraformConfigPath(path) {
+		if !tfpath.IsConfig(path) {
 			continue
 		}
 		path = filepath.Clean(path)
@@ -654,7 +685,7 @@ func (w *walker) seedGroups(
 			continue
 		}
 		if !info.IsDir() {
-			if !tfmodules.IsTerraformConfigPath(path) {
+			if !tfpath.IsConfig(path) {
 				continue
 			}
 			dir := filepath.Dir(path)
@@ -1043,8 +1074,8 @@ func flatTerraformFilePaths(ctx context.Context, dir, packageRoot string) []stri
 		return nil
 	}
 	var paths []string
-	for _, entry := range entries {
-		if path, ok := resolver.ScannableTerraformPath(ctx, entry, dir, packageRoot); ok {
+	for _, entry := range tfmodules.ConfigEntries(entries, tfpath.IsHCLConfig) {
+		if path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot); ok {
 			paths = append(paths, path)
 		}
 	}

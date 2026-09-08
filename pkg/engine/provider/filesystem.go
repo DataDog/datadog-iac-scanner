@@ -19,6 +19,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
 	"github.com/yargevad/filepathx"
@@ -165,11 +166,11 @@ func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
 	}
 }
 
-// TerraformFiles returns Terraform config paths used for module discovery before
-// scanning: native .tf files plus .tf.json files (still classified as .json for
-// the scan pipeline).
+// TerraformFiles returns Terraform/OpenTofu config paths used for module discovery
+// before scanning: native .tf/.tofu files plus .tf.json/.tofu.json files (still
+// classified as .json for the scan pipeline).
 func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string, error) {
-	hclExtensions := model.Extensions{".tf": {}}
+	hclExtensions := model.Extensions{tfpath.ExtTF: {}, tfpath.ExtTofu: {}}
 	jsonExtensions := model.Extensions{".json": {}}
 	seen := make(map[string]struct{})
 	var files []string
@@ -191,7 +192,7 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 			if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, hclExtensions, scanPath, nil); !shouldSkip {
 				add(scanPath)
 			}
-			if strings.HasSuffix(strings.ToLower(scanPath), ".tf.json") {
+			if tfpath.IsJSONConfig(scanPath) {
 				if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, jsonExtensions, scanPath, nil); !shouldSkip {
 					add(scanPath)
 				}
@@ -227,7 +228,7 @@ func (s *FileSystemSourceProvider) collectTerraformJSONModuleFiles(ctx context.C
 			return s.resolveChartDir(ctx, path, unavailableResolverSink, resolved)
 		},
 		func(_ context.Context, path, _ string) error {
-			if !strings.HasSuffix(strings.ToLower(path), ".tf.json") {
+			if !tfpath.IsJSONConfig(path) {
 				return nil
 			}
 			files = append(files, strings.ReplaceAll(path, "\\", "/"))
@@ -262,36 +263,14 @@ func ignoreDamagedFiles(ctx context.Context, path string) bool {
 // GetSources tries to open file or directory and execute sink function on it
 func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 	extensions model.Extensions, sink Sink, resolverSink ResolverSink) error {
-	for _, scanPath := range s.paths {
-		fileInfo, err := os.Stat(scanPath)
-		if err != nil {
-			return errors.Wrap(err, "failed to open path")
+	files, err := s.collectScanFiles(ctx, extensions, resolverSink)
+	if err != nil {
+		return err
+	}
+	for _, filePath := range files {
+		if err := s.processFile(ctx, filePath, sink); err != nil {
+			return err
 		}
-
-		if !fileInfo.IsDir() {
-			c, openFileErr := openScanFile(ctx, scanPath, extensions)
-			if openFileErr != nil {
-				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
-					continue
-				}
-				return openFileErr
-			}
-			sinkErr := sink(ctx, scanPath, c)
-			closeErr := c.Close()
-			if sinkErr != nil {
-				return sinkErr
-			}
-			if closeErr != nil {
-				return errors.Wrap(closeErr, "failed to close path")
-			}
-			continue
-		}
-
-		err = s.walkDir(ctx, scanPath, sink, resolverSink, extensions)
-		if err != nil {
-			return errors.Wrap(err, "failed to walk directory")
-		}
-		continue
 	}
 	return nil
 }
@@ -299,17 +278,26 @@ func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
 // GetParallelSources is an alternative to GetSources, parallelising the task
 func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 	extensions model.Extensions, sink Sink, resolverSink ResolverSink) error {
+	filesToProcess, err := s.collectScanFiles(ctx, extensions, resolverSink)
+	if err != nil {
+		return err
+	}
 	contextLogger := logger.FromContext(ctx)
+	contextLogger.Info().Msgf("Collected %d files to process", len(filesToProcess))
 
+	// Phase 2: Process files in parallel
+	return s.processFilesParallel(ctx, filesToProcess, sink)
+}
+
+func (s *FileSystemSourceProvider) collectScanFiles(ctx context.Context,
+	extensions model.Extensions, resolverSink ResolverSink) ([]string, error) {
 	// Phase 1: Collect all file paths to process
 	var filesToProcess []string
-
 	for _, scanPath := range s.paths {
 		fileInfo, err := os.Stat(scanPath)
 		if err != nil {
-			return errors.Wrap(err, "failed to open path")
+			return nil, errors.Wrap(err, "failed to open path")
 		}
-
 		if !fileInfo.IsDir() {
 			// Single file - validate and add to queue
 			openFileErr := validateScanFile(ctx, scanPath, extensions)
@@ -317,7 +305,7 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
 					continue
 				}
-				return openFileErr
+				return nil, openFileErr
 			}
 			filesToProcess = append(filesToProcess, scanPath)
 			continue
@@ -326,15 +314,11 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 		// Directory - collect all files first
 		files, err := s.collectFiles(ctx, scanPath, resolverSink, extensions)
 		if err != nil {
-			return errors.Wrap(err, "failed to collect files")
+			return nil, errors.Wrap(err, "failed to collect files")
 		}
 		filesToProcess = append(filesToProcess, files...)
 	}
-
-	contextLogger.Info().Msgf("Collected %d files to process", len(filesToProcess))
-
-	// Phase 2: Process files in parallel
-	return s.processFilesParallel(ctx, filesToProcess, sink)
+	return filesToProcess, nil
 }
 
 // InventoryFile is a discovered file and its matched extension token.
@@ -549,7 +533,7 @@ func (s *FileSystemSourceProvider) processFilesParallel(ctx context.Context, fil
 
 // processFile opens and processes a single file
 func (s *FileSystemSourceProvider) processFile(ctx context.Context, filePath string, sink Sink) error {
-	c, err := os.Open(filepath.Clean(filePath))
+	c, err := os.Open(filepath.Clean(filePath)) // nolint:gosec
 	if err != nil {
 		if ignoreDamagedFiles(ctx, filepath.Clean(filePath)) {
 			return nil
@@ -559,28 +543,6 @@ func (s *FileSystemSourceProvider) processFile(ctx context.Context, filePath str
 	defer c.Close() //nolint:all
 
 	return sink(ctx, filePath, c)
-}
-
-func (s *FileSystemSourceProvider) walkDir(ctx context.Context, scanPath string,
-	sink Sink, resolverSink ResolverSink, extensions model.Extensions) error {
-	return s.walkDirectory(ctx, scanPath, extensions,
-		func(ctx context.Context, path string, resolved *[]string) error {
-			return s.resolveChartDir(ctx, path, resolverSink, resolved)
-		},
-		func(ctx context.Context, path, _ string) error {
-			c, err := os.Open(filepath.Clean(path)) // nolint:gosec
-			if err != nil {
-				if ignoreDamagedFiles(ctx, filepath.Clean(path)) {
-					return nil
-				}
-				return errors.Wrap(err, "failed to open file")
-			}
-			defer func(c *os.File) {
-				_ = c.Close()
-			}(c)
-
-			return sink(ctx, strings.ReplaceAll(path, "\\", "/"), c)
-		})
 }
 
 func openScanFile(ctx context.Context, scanPath string, extensions model.Extensions) (*os.File, error) {

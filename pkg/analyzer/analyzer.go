@@ -22,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
@@ -91,6 +92,7 @@ var (
 		extDebian:      true,
 		extUbi8:        true,
 		extTf:          true,
+		extTofu:        true,
 		extTfvars:      true,
 		extProto:       true,
 		extCfg:         true,
@@ -156,8 +158,9 @@ const (
 	extPossibleDockerfile = "possibleDockerfile"
 	extUbi8               = ".ubi8"
 	extDebian             = ".debian"
-	extTf                 = ".tf"
-	extTfvars             = ".tfvars"
+	extTf                 = tfpath.ExtTF
+	extTofu               = tfpath.ExtTofu
+	extTfvars             = tfpath.ExtTFVars
 	extBicepFile          = ".bicep"
 	extProto              = ".proto"
 	extCfg                = ".cfg"
@@ -804,7 +807,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 			return dockerfile
 		}
 		return ""
-	case extTf, extTfvars:
+	case extTf, extTofu, extTfvars:
 		return terraform
 	case extBicepFile:
 		return bicep

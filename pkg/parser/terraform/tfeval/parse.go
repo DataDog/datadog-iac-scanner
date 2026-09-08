@@ -7,6 +7,8 @@
 package tfeval
 
 import (
+	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,25 +34,33 @@ var reservedModuleAttrs = map[string]bool{
 	"depends_on": true,
 }
 
-// parseDir parses all .tf files in dir (non-recursively) and returns their bodies.
-// Files that fail to parse are skipped.
-func parseDir(dir, packageRoot string) ([]*hclsyntax.Body, error) {
+// parseDir parses all HCL config in dir (non-recursively) and returns their
+// bodies. Files that fail to parse are skipped. JSON config is not evaluated here.
+func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]struct{}) ([]*hclsyntax.Body, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	names := make([]string, 0, len(entries))
+	byName := make(map[string]fs.DirEntry, len(entries))
 	for _, entry := range entries {
-		if path, ok := tfmodules.ScannableTerraformPath(entry, dir, packageRoot); ok {
-			names = append(names, filepath.Base(path))
+		if !entry.IsDir() {
+			byName[entry.Name()] = entry
 		}
 	}
+	names := tfmodules.SelectHCLConfigNames(entries, dir, allow, "")
 	sort.Strings(names)
 
 	bodies := make([]*hclsyntax.Body, 0, len(names))
 	for _, name := range names {
-		path := filepath.Join(dir, name)
+		entry, ok := byName[name]
+		if !ok {
+			continue
+		}
+		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot)
+		if !ok {
+			continue
+		}
 		src, rErr := os.ReadFile(filepath.Clean(path))
 		if rErr != nil {
 			continue
