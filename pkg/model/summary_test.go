@@ -232,9 +232,118 @@ func TestRemoveURLCredentials(t *testing.T) {
 			},
 			want: "clone failed for git::https://example.com/repo.git",
 		},
+		{
+			name: "test_ssh_with_url_credentials",
+			args: args{
+				url: "ssh://git:secret@test.git.com/test.git",
+			},
+			want: "ssh://test.git.com/test.git",
+		},
+		{
+			// The failure mode that motivated broadening the scheme list: the
+			// Ansible INI parser quotes the offending line of the scanned file.
+			name: "test_postgres_credentials_in_parse_error",
+			args: args{
+				url: "bad key=value pair supplied: postgres://user:pass@localhost:5432/dogdata",
+			},
+			want: "bad key=value pair supplied: postgres://localhost:5432/dogdata",
+		},
+		{
+			name: "test_postgresql_with_url_credentials",
+			args: args{
+				url: "postgresql://user:pass@db.internal:5432/app?sslmode=require",
+			},
+			want: "postgresql://db.internal:5432/app?sslmode=require",
+		},
+		{
+			name: "test_mysql_with_url_credentials",
+			args: args{
+				url: "mysql://root:hunter2@127.0.0.1:3306/app",
+			},
+			want: "mysql://127.0.0.1:3306/app",
+		},
+		{
+			name: "test_mongodb_with_url_credentials",
+			args: args{
+				url: "mongodb://admin:secret@mongo:27017/admin",
+			},
+			want: "mongodb://mongo:27017/admin",
+		},
+		{
+			name: "test_mongodb_srv_with_url_credentials",
+			args: args{
+				url: "mongodb+srv://admin:secret@cluster0.example.mongodb.net/db",
+			},
+			want: "mongodb+srv://cluster0.example.mongodb.net/db",
+		},
+		{
+			name: "test_redis_with_url_credentials",
+			args: args{
+				url: "redis://:secret@redis:6379/0",
+			},
+			want: "redis://redis:6379/0",
+		},
+		{
+			name: "test_rediss_with_url_credentials",
+			args: args{
+				url: "rediss://user:secret@redis:6380/0",
+			},
+			want: "rediss://redis:6380/0",
+		},
+		{
+			name: "test_amqp_with_url_credentials",
+			args: args{
+				url: "amqp://guest:guest@rabbit:5672/vhost",
+			},
+			want: "amqp://rabbit:5672/vhost",
+		},
+		{
+			name: "test_amqps_with_url_credentials",
+			args: args{
+				url: "amqps://guest:guest@rabbit:5671/vhost",
+			},
+			want: "amqps://rabbit:5671/vhost",
+		},
+		{
+			name: "test_scheme_matching_is_case_insensitive",
+			args: args{
+				url: "Postgres://user:pass@localhost:5432/dogdata",
+			},
+			want: "Postgres://localhost:5432/dogdata",
+		},
+		{
+			name: "test_multiple_urls_in_one_message",
+			args: args{
+				url: "failed: postgres://u:p@db:5432/x and redis://u:p@cache:6379",
+			},
+			want: "failed: postgres://db:5432/x and redis://cache:6379",
+		},
+		{
+			name: "test_database_url_without_credentials_untouched",
+			args: args{
+				url: "postgres://localhost:5432/dogdata",
+			},
+			want: "postgres://localhost:5432/dogdata",
+		},
+		{
+			name: "test_unrelated_text_untouched",
+			args: args{
+				url: "bad key=value pair supplied: user:pass@localhost",
+			},
+			want: "bad key=value pair supplied: user:pass@localhost",
+		},
+		{
+			name: "test_empty_string",
+			args: args{
+				url: "",
+			},
+			want: "",
+		},
 	}
 	for _, tt := range tests {
-		require.Equal(t, tt.want, removeURLCredentials(tt.args.url))
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, removeURLCredentials(tt.args.url))
+		})
 	}
 }
 

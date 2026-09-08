@@ -122,9 +122,17 @@ type PathParameters struct {
 	PathExtractionMap map[string]ExtractedPathObject
 }
 
+// redactableURLSchemes lists the URL schemes whose embedded userinfo is
+// stripped by RedactURLCredentials. Besides the VCS/transport schemes used by
+// module sources (ssh, http, https), it covers the database and message-broker
+// schemes that commonly appear in scanned files (connection strings in .ini,
+// .env, values.yaml, …) and can therefore end up inside third-party parser
+// errors that we log.
+const redactableURLSchemes = `ssh|https?|postgres(?:ql)?|mysql|mongodb(?:\+srv)?|rediss?|amqps?`
+
 var (
 	queryRegex         = regexp.MustCompile(`\?([\w-]+(=[\w-]*)?(&[\w-]+(=[\w-]*)?)*)?`)
-	urlAuthRedactRegex = regexp.MustCompile(`((?:ssh|https?)://)(?:\S+(?::\S*)?@)`)
+	urlAuthRedactRegex = regexp.MustCompile(`(?i)((?:` + redactableURLSchemes + `)://)(?:\S+(?::\S*)?@)`)
 )
 
 // countNotSuppressed returns the number of non-suppressed files.
@@ -221,7 +229,10 @@ func removeAllURLCredentials(pathExtractionMap map[string]ExtractedPathObject) [
 	return sanitizedScannedPaths
 }
 
-// RedactURLCredentials strips embedded userinfo from every ssh/http(s) URL in s.
+// RedactURLCredentials strips embedded userinfo (`user`, `user:password`) from
+// every URL in s whose scheme is listed in redactableURLSchemes, leaving the
+// rest of the string — including the scheme, host and path — untouched. It is
+// safe to call on arbitrary text such as error messages, not just bare URLs.
 func RedactURLCredentials(s string) string {
 	if s == "" {
 		return ""

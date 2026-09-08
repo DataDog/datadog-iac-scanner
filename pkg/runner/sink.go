@@ -21,6 +21,7 @@ import (
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -31,6 +32,23 @@ var (
 		"YAML":   {"filter_pattern", "FilterPattern"},
 	}
 )
+
+// redactErrorForLog renders err for logging with URL credentials stripped.
+//
+// Parse/render errors are produced by third-party libraries that routinely
+// quote the offending fragment of the file being scanned: e.g. the Ansible INI
+// parser reports `bad key=value pair supplied: postgres://user:pass@host/db`.
+// Since scanned files belong to customer repositories, logging such an error
+// verbatim copies whatever credentials it happens to embed into our logs. The
+// message is still needed for triage, so redact the credentials rather than
+// dropping the error, and log the result under the same field `.Err()` would
+// have used so downstream log consumers keep working.
+func redactErrorForLog(err error) string {
+	if err == nil {
+		return ""
+	}
+	return model.RedactURLCredentials(err.Error())
+}
 
 func (s *Service) sink(ctx context.Context, filename, scanID string,
 	rc io.Reader, data []byte,
@@ -62,9 +80,11 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if err != nil {
 		// Raw templates inside a failed chart are not valid YAML; parse failures there are expected.
 		if s.isUnderFailedHelmChart(filename) {
-			contextLogger.Debug().Err(err).Msgf("skipping unparseable raw Helm template: %s", filename)
+			contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+				Msgf("skipping unparseable raw Helm template: %s", filename)
 		} else {
-			contextLogger.Error().Err(err).Msgf("failed to parse file content: %s", filename)
+			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+				Msgf("failed to parse file content: %s", filename)
 		}
 		return nil
 	}
