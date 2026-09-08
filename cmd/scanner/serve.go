@@ -13,7 +13,7 @@ import (
 var serveAction = &cli.Command{
 	Name:  "serve",
 	Usage: "Runs a long-lived HTTP server that analyzes IaC files on demand",
-	Flags: []cli.Flag{
+	Flags: append([]cli.Flag{
 		&cli.IntFlag{
 			Name:  "port",
 			Value: 8000,
@@ -69,7 +69,7 @@ var serveAction = &cli.Command{
 			Usage:  "(experimental, will be removed soon) parse pushed files in parallel across CPUs",
 			Value:  true,
 		},
-	},
+	}, retiredServeFlags()...),
 	Action: serve,
 }
 

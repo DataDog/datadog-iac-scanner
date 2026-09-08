@@ -30,7 +30,7 @@ import (
 var scanAction = &cli.Command{
 	Name:  "scan",
 	Usage: "Analyzes the content of a repository",
-	Flags: []cli.Flag{
+	Flags: append([]cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "path",
 			Aliases:  []string{"p"},
@@ -65,12 +65,6 @@ var scanAction = &cli.Command{
 			Name:  "max-resolver-depth",
 			Usage: "maximum depth that the scanner will resolve files in",
 			Value: 15,
-		},
-		&cli.IntFlag{
-			Name:   "timeout",
-			Usage:  "(DEPRECATED) no longer has any effect; queries run to completion and slow rules are logged instead. This flag will be removed.",
-			Value:  60,
-			Hidden: true,
 		},
 		&cli.StringSliceFlag{
 			Name:  "exclude-queries",
@@ -191,7 +185,7 @@ var scanAction = &cli.Command{
 			Usage: "output report formats (valid: sarif, simple-json)",
 			Value: []string{"sarif"},
 		},
-	},
+	}, retiredScanFlags()...),
 	Action: runScan,
 }
 
@@ -258,11 +252,6 @@ func validateQueriesPaths(paths []string) ([]string, error) {
 
 // nolint:gocyclo
 func runScan(ctx context.Context, c *cli.Command) error {
-	if c.IsSet("timeout") {
-		contextLogger := logger.FromContext(ctx)
-		contextLogger.Warn().Msg(
-			"the --timeout flag is deprecated and no longer has any effect; queries run to completion and slow rules are logged instead")
-	}
 	if c.Args().Len() > 0 {
 		return fmt.Errorf("unexpected arguments: %v", c.Args().Slice())
 	}
