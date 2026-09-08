@@ -122,7 +122,7 @@ func TestParser_SupportedTypes(t *testing.T) {
 // TestParser_SupportedExtensions tests the functions [SupportedExtensions()] and all the methods called by them
 func TestParser_SupportedExtensions(t *testing.T) {
 	p := &Parser{}
-	require.Equal(t, []string{".tf", ".tfvars"}, p.SupportedExtensions())
+	require.Equal(t, []string{".tf", ".tofu", ".tfvars"}, p.SupportedExtensions())
 }
 
 // Test_Parser tests the functions [Parser()] and all the methods called by them
@@ -186,6 +186,82 @@ func Test_namelessResource(t *testing.T) {
 		"test-lb-tf-1")
 	require.Equal(t, document[0]["resource"].(model.Document)["aws_lb"].([]interface{})[1].(model.Document)["name"],
 		"test-lb-tf-2")
+}
+
+func Test_Parser_Tofu(t *testing.T) {
+	ctx := context.Background()
+	parser := NewDefault()
+	require.Equal(t, model.KindTerraform, parser.GetKind())
+	require.Contains(t, parser.SupportedExtensions(), ".tofu")
+
+	_, document, _, _, err := parser.Parse(ctx, []byte(have), "test.tofu", true, 15)
+	require.NoError(t, err)
+	require.Len(t, document, 1)
+	require.Contains(t, document[0], "resource")
+	require.Contains(t, document[0]["resource"], "aws_s3_bucket")
+}
+
+func Test_Parser_InventoriedTwinsKeepOwnVars(t *testing.T) {
+	dir := t.TempDir()
+	tf := filepath.Join(dir, "main.tf")
+	tofu := filepath.Join(dir, "main.tofu")
+	require.NoError(t, os.WriteFile(tf, []byte(`
+variable "name" { default = "from-tf" }
+resource "aws_s3_bucket" "b" { bucket = var.name }
+`), 0o600))
+	require.NoError(t, os.WriteFile(tofu, []byte(`
+variable "name" { default = "from-tofu" }
+resource "aws_s3_bucket" "b" { bucket = var.name }
+`), 0o600))
+
+	parser := NewDefault()
+	parser.SetMergeAllow([]string{tf, tofu})
+
+	_, tfDoc, _, _, err := parser.Parse(context.Background(), []byte(`
+variable "name" { default = "from-tf" }
+resource "aws_s3_bucket" "b" { bucket = var.name }
+`), tf, true, 15)
+	require.NoError(t, err)
+	tfBucket := fmt.Sprint(tfDoc[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)["bucket"])
+	require.Contains(t, tfBucket, "from-tf")
+	require.NotContains(t, tfBucket, "from-tofu")
+
+	_, tofuDoc, _, _, err := parser.Parse(context.Background(), []byte(`
+variable "name" { default = "from-tofu" }
+resource "aws_s3_bucket" "b" { bucket = var.name }
+`), tofu, true, 15)
+	require.NoError(t, err)
+	tofuBucket := fmt.Sprint(tofuDoc[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)["bucket"])
+	require.Contains(t, tofuBucket, "from-tofu")
+	require.NotContains(t, tofuBucket, "from-tf")
+}
+
+func Test_Parser_SharesDirectoryVarsCacheAcrossSiblingFiles(t *testing.T) {
+	dir := t.TempDir()
+	paths := []string{
+		filepath.Join(dir, "main.tf"),
+		filepath.Join(dir, "variables.tf"),
+		filepath.Join(dir, "outputs.tf"),
+	}
+	for _, path := range paths {
+		require.NoError(t, os.WriteFile(path, []byte(`variable "name" { default = "shared" }`), 0o600))
+	}
+
+	parser := NewDefault()
+	parser.SetMergeAllow(paths)
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		require.NoError(t, err)
+		_, _, _, _, err = parser.Parse(t.Context(), content, path, true, 15)
+		require.NoError(t, err)
+	}
+
+	cacheEntries := 0
+	parser.dirVarsCache.Range(func(_, _ any) bool {
+		cacheEntries++
+		return true
+	})
+	require.Equal(t, 1, cacheEntries)
 }
 
 // Test_Resolve tests the functions [Resolve()] and all the methods called by them

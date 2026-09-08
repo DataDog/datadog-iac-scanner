@@ -100,7 +100,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			if inputVars == nil {
 				inputVars = make(converter.VariableMap)
 			}
-			result := getDataSourcePolicy(ctx, vfs.DiskFS{}, tt.args.currentPath, inputVars)
+			result := getDataSourcePolicy(ctx, vfs.DiskFS{}, tt.args.currentPath, inputVars, nil, "")
 			data, ok := result["data"]
 			if !ok {
 				t.FailNow()
@@ -117,6 +117,99 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_getDataSourcePolicy_TofuShadowsTf(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf"), []byte(`
+data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::from-tf/*"]
+  }
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tofu"), []byte(`
+data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::from-tofu/*"]
+  }
+}
+`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	data, ok := result["data"]
+	require.True(t, ok)
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tofu")
+	require.NotContains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tf")
+}
+
+func Test_getDataSourcePolicy_ExcludedTofuTwinKept(t *testing.T) {
+	dir := t.TempDir()
+	tf := filepath.Join(dir, "policy.tf")
+	tofu := filepath.Join(dir, "policy.tofu")
+	require.NoError(t, os.WriteFile(tf, []byte(`
+data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::from-tf/*"]
+  }
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(tofu, []byte(`
+data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::from-tofu/*"]
+  }
+}
+`), 0o600))
+
+	allow := map[string]struct{}{filepath.ToSlash(tf): {}}
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), allow, "")
+	data, ok := result["data"]
+	require.True(t, ok)
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tf")
+	require.NotContains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tofu")
+}
+
+func Test_getDataSourcePolicy_InventoriedTwinKeepsOwnPolicy(t *testing.T) {
+	dir := t.TempDir()
+	tf := filepath.Join(dir, "policy.tf")
+	tofu := filepath.Join(dir, "policy.tofu")
+	require.NoError(t, os.WriteFile(tf, []byte(`
+data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::from-tf/*"]
+  }
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(tofu, []byte(`
+data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::from-tofu/*"]
+  }
+}
+`), 0o600))
+
+	allow := map[string]struct{}{
+		filepath.ToSlash(tf):   {},
+		filepath.ToSlash(tofu): {},
+	}
+	fromTF := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), allow, tf)
+	data, ok := fromTF["data"]
+	require.True(t, ok)
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tf")
+	require.NotContains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tofu")
 }
 
 func Test_getDataSourcePolicy_ignoresFilesWithoutPolicyDocuments(t *testing.T) {
@@ -140,7 +233,7 @@ data "aws_iam_policy_document" "doc" {
 }
 `)
 
-	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	data, ok := result["data"]
 	require.True(t, ok, "expected a data entry in the variable map")
 
@@ -163,7 +256,7 @@ resource "aws_s3_bucket" "bucket" {
 }
 `), 0o600))
 
-	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	data, ok := result["data"]
 	require.True(t, ok, "expected a data entry even when no policies are declared")
 
@@ -191,7 +284,7 @@ resource "aws_glue_resource_policy" "example" {
 }
 `), 0o600))
 
-	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	data, ok := result["data"]
 	require.True(t, ok)
 
@@ -214,7 +307,7 @@ data	"aws_iam_policy_document"	"doc" {
 }
 `), 0o600))
 
-	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	data, ok := result["data"]
 	require.True(t, ok)
 
@@ -236,7 +329,7 @@ func Test_getDataSourcePolicy_escapedLabelInBlockHeader(t *testing.T) {
 }
 `), 0o600))
 
-	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap))
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	data, ok := result["data"]
 	require.True(t, ok)
 

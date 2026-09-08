@@ -499,3 +499,18 @@ func writeFile(t *testing.T, path, content string) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 }
+
+func TestDiscoverTerraformFilesTofuShadowsTf(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "main.tf"), `resource "x" "shadowed" {}`)
+	writeFile(t, filepath.Join(root, "main.tofu"), `resource "x" "live" {}`)
+	writeFile(t, filepath.Join(root, "other.tf"), `resource "x" "other" {}`)
+
+	got, err := discoverTerraformFiles(context.Background(), root, "")
+	require.NoError(t, err)
+	bases := make([]string, 0, len(got))
+	for _, p := range got {
+		bases = append(bases, filepath.Base(p))
+	}
+	require.ElementsMatch(t, []string{"main.tf", "main.tofu", "other.tf"}, bases)
+}

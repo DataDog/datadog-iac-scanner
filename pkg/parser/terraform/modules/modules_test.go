@@ -160,7 +160,7 @@ func TestParseAllModuleVariables_CanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // canceled scan
 
-	got, err := ParseAllModuleVariables(ctx, nil, modules, t.TempDir(), nil)
+	got, err := ParseAllModuleVariables(ctx, nil, modules, t.TempDir(), nil, nil)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, got)
 }
@@ -229,6 +229,32 @@ func TestParseTerraformModules_MissingSourceLeavesSourceTypeUnset(t *testing.T) 
 		require.Empty(t, mod.SourceType, "an absent source must not be classified")
 		require.False(t, mod.IsLocal)
 	}
+}
+
+func TestParseTerraformModules_TofuShadowsTf(t *testing.T) {
+	dir := t.TempDir()
+	files := model.FileMetadatas{
+		&model.FileMetadata{
+			FilePath:     filepath.Join(dir, "main.tf"),
+			OriginalData: `module "from_tf" { source = "./tf-mod" }`,
+		},
+		&model.FileMetadata{
+			FilePath:     filepath.Join(dir, "main.tofu"),
+			OriginalData: `module "from_tofu" { source = "./tofu-mod" }`,
+		},
+		&model.FileMetadata{
+			FilePath:     filepath.Join(dir, "other.tf"),
+			OriginalData: `module "other" { source = "./other-mod" }`,
+		},
+	}
+
+	modules, err := ParseTerraformModules(context.Background(), nil, files, 0)
+	require.NoError(t, err)
+	names := make([]string, 0, len(modules))
+	for _, mod := range modules {
+		names = append(names, mod.Name)
+	}
+	require.ElementsMatch(t, []string{"from_tofu", "other"}, names)
 }
 
 func TestParseTerraformModules(t *testing.T) {
@@ -1088,8 +1114,33 @@ resource "aws_s3_bucket" "example" {
   }
 }`), 0o600))
 
-	equivalent, err := generateEquivalentMap(ctx, vfs.DiskFS{}, dir)
+	equivalent, err := generateEquivalentMap(ctx, vfs.DiskFS{}, dir, nil)
 	require.NoError(t, err)
 	require.Contains(t, equivalent, "aws")
 	require.Contains(t, equivalent["aws"].Inputs, "bucket")
+}
+
+func TestGenerateEquivalentMap_TofuShadowsTf(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+resource "aws_s3_bucket" "shadowed" {
+  bucket = var.from_tf
+}
+resource "aws_instance" "only_tf" {
+  ami = var.ami
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu"), []byte(`
+resource "aws_s3_bucket" "live" {
+  bucket = var.from_tofu
+}
+`), 0o600))
+
+	equivalent, err := generateEquivalentMap(ctx, vfs.DiskFS{}, dir, nil)
+	require.NoError(t, err)
+	require.Contains(t, equivalent, "aws")
+	require.Equal(t, []string{"aws_s3_bucket"}, equivalent["aws"].Resources)
+	require.Equal(t, "from_tofu", equivalent["aws"].Inputs["bucket"])
+	require.NotContains(t, equivalent["aws"].Inputs, "ami")
 }

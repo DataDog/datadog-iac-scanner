@@ -17,14 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsTerraformConfigPath(t *testing.T) {
-	require.True(t, IsTerraformConfigPath("main.tf"))
-	require.True(t, IsTerraformConfigPath("stack/main.tf.json"))
-	require.False(t, IsTerraformConfigPath("terraform.tfvars"))
-	require.False(t, IsTerraformConfigPath("prod.auto.tfvars"))
-	require.False(t, IsTerraformConfigPath("README.md"))
-}
-
 func TestParseTerraformModules_TFJSON(t *testing.T) {
 	files := model.FileMetadatas{{
 		FilePath: "main.tf.json",
@@ -83,7 +75,7 @@ func TestLoadTFFilesFromDir_IncludesTFJSON(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "main.tf.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"module":{"bucket":{"source":"x"}}}`), 0o600))
-	files, err := LoadTFFilesFromDir(root, "")
+	files, err := LoadTFFilesFromDir(t.Context(), root, "")
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, filepath.Clean(path), files[0].FilePath)
@@ -100,7 +92,7 @@ func TestParseTerraformModulesFromFiles_TFJSONOnDisk(t *testing.T) {
     }
   }
 }`), 0o600))
-	files, err := LoadTFFilesFromDir(root, "")
+	files, err := LoadTFFilesFromDir(t.Context(), root, "")
 	require.NoError(t, err)
 	allowed := map[string]bool{files[0].FilePath: true}
 	modules, err := ParseTerraformModulesFromFiles(context.Background(), nil, files, allowed)

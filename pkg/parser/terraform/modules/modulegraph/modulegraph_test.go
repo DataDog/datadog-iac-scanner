@@ -952,6 +952,18 @@ func TestFlatTerraformFilePathsSkipsSymlinks(t *testing.T) {
 	require.Equal(t, []string{mainPath}, flatTerraformFilePaths(t.Context(), dir, dir))
 }
 
+func TestFlatTerraformFilePathsTofuShadowsTf(t *testing.T) {
+	dir := t.TempDir()
+	tofu := filepath.Join(dir, "main.tofu")
+	twin := filepath.Join(dir, "main.tf")
+	other := filepath.Join(dir, "other.tf")
+	require.NoError(t, os.WriteFile(tofu, []byte(`resource "x" "live" {}`), 0o644))
+	require.NoError(t, os.WriteFile(twin, []byte(`resource "x" "shadowed" {}`), 0o644))
+	require.NoError(t, os.WriteFile(other, []byte(`resource "x" "other" {}`), 0o644))
+
+	require.ElementsMatch(t, []string{tofu, twin, other}, flatTerraformFilePaths(t.Context(), dir, dir))
+}
+
 func TestResolveRevisitsSamePathWhenPackageRootDiffers(t *testing.T) {
 	root := t.TempDir()
 	base := t.TempDir()
@@ -1218,5 +1230,31 @@ module "child" {
 	}
 	if !found {
 		t.Fatalf("live parse missing child module: %#v", mods)
+	}
+}
+
+func TestParseModulesInDirUsesUnselectedSiblingValues(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(mainPath, []byte(`
+module "child" {
+  source = local.module_source
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "locals.tf"), []byte(`
+locals {
+  module_source = "./child"
+}
+`), 0o644))
+
+	w := &walker{
+		parseCache: moduleParseCache{entries: make(map[string]map[string]tfmodules.ParsedModule)},
+		parseSem:   make(chan struct{}, 1),
+	}
+	mods := w.parseModulesInDir(t.Context(), dir, map[string]bool{mainPath: true}, dir)
+
+	require.Len(t, mods, 1)
+	for _, mod := range mods {
+		require.Equal(t, "./child", mod.Source)
 	}
 }
