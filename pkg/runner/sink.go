@@ -141,7 +141,7 @@ func (s *Service) classifyPlatform(ctx context.Context, kind model.FileKind, fil
 	if platform, ok := s.FilePlatform[filepath.ToSlash(filename)]; ok {
 		return platform
 	}
-	return analyzer.ClassifyParsedFile(ctx, s.Parser.FS(), s.Platforms, kind, filename, content)
+	return analyzer.ClassifyParsedFile(ctx, s.Parser.FS(), s.Platforms, s.ScanTfPlans, kind, filename, content)
 }
 
 func resolveCRLFFile(fileContent []byte) []byte {
