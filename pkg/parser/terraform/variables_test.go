@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -186,6 +187,14 @@ func TestGetInputVariablesFromFile(t *testing.T) {
 	}
 }
 
+func TestExtractInputVariablesUnsetRequiredIsUnknown(t *testing.T) {
+	src := []byte(`variable "required" { type = string }`)
+	file, diags := hclsyntax.ParseConfig(src, "variables.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags)
+	got := extractInputVariables(file.Body.(*hclsyntax.Body), "variables.tf")
+	require.True(t, got["required"].RawEquals(cty.UnknownVal(cty.DynamicPseudoType)))
+}
+
 func TestGetInputVariables(t *testing.T) {
 	tests := []inputVarTest{
 		{
@@ -207,6 +216,7 @@ func TestGetInputVariables(t *testing.T) {
 					"test_terraform":    cty.StringVal("terraform.tfvars"),
 					"default_var_file":  cty.StringVal("default_var_file"),
 					"local_default_var": cty.StringVal("local_default"),
+					"invalid_attr":      cty.UnknownVal(cty.DynamicPseudoType),
 				}),
 				"local": cty.EmptyObjectVal,
 			},

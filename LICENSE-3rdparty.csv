@@ -463,6 +463,7 @@ core,github.com/hashicorp/hcl/json/scanner,MPL-2.0,"Copyright © 2014-2018 Hashi
 core,github.com/hashicorp/hcl/json/token,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/hcl/v2,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/hcl/v2/ext/customdecode,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
+core,github.com/hashicorp/hcl/v2/ext/tryfunc,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/hcl/v2/hcldec,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/hcl/v2/hclsyntax,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
 core,github.com/hashicorp/hcl/v2/hclwrite,MPL-2.0,"Copyright © 2014-2018 HashiCorp, Inc"
@@ -791,6 +792,7 @@ core,github.com/xlab/treeprint,MIT,Copyright © 2016 Maxim Kupriianov <max@kc.vc
 core,github.com/xo/terminfo,MIT,Copyright (c) 2016 Anmol Sethi
 core,github.com/yargevad/filepathx,MIT,Copyright 2016 The filepathx Authors
 core,github.com/yashtewari/glob-intersection,Apache-2.0,Copyright (c) 2018 Yash Tewari (yashtewari)
+core,github.com/zclconf/go-cty-yaml,Apache-2.0,Copyright 2011-2016 Canonical Ltd. | Copyright 2019 Martin Atkins
 core,github.com/zclconf/go-cty/cty,MIT,Copyright (c) 2017-2026 Martin Atkins and various other contributors
 core,github.com/zclconf/go-cty/cty/convert,MIT,Copyright (c) 2017-2026 Martin Atkins and various other contributors
 core,github.com/zclconf/go-cty/cty/ctymarks,MIT,Copyright (c) 2017-2026 Martin Atkins and various other contributors

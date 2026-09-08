@@ -91,8 +91,11 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 				val, diags := defaultAttr.Expr.Value(&hcl.EvalContext{})
 				if !diags.HasErrors() && val.IsKnown() {
 					variables[varName] = val
+					continue
 				}
 			}
+			// Declared but unset: keep the attribute so try/can see unknown, not a missing key.
+			variables[varName] = cty.UnknownVal(cty.DynamicPseudoType)
 		}
 	}
 
@@ -154,8 +157,7 @@ func extractLocals(body *hclsyntax.Body) converter.VariableMap {
 func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {
 	out := make(map[string]cty.Value)
 	for k, v := range in {
-		if !v.IsKnown() || v.IsNull() {
-			// default to empty string or another valid fallback
+		if v.IsNull() {
 			out[k] = cty.NullVal(v.Type())
 			continue
 		}
