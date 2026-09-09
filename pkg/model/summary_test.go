@@ -232,9 +232,207 @@ func TestRemoveURLCredentials(t *testing.T) {
 			},
 			want: "clone failed for git::https://example.com/repo.git",
 		},
+		{
+			name: "test_ssh_with_url_credentials",
+			args: args{
+				url: "ssh://git:secret@test.git.com/test.git",
+			},
+			want: "ssh://test.git.com/test.git",
+		},
+		{
+			// The failure mode that motivated redacting logged errors: the
+			// Ansible INI parser quotes the offending line of the scanned file.
+			name: "test_postgres_credentials_in_parse_error",
+			args: args{
+				url: "bad key=value pair supplied: postgres://user:pass@localhost:5432/dogdata",
+			},
+			want: "bad key=value pair supplied: postgres://localhost:5432/dogdata",
+		},
+		{
+			name: "test_postgresql_with_url_credentials",
+			args: args{
+				url: "postgresql://user:pass@db.internal:5432/app?sslmode=require",
+			},
+			want: "postgresql://db.internal:5432/app?sslmode=require",
+		},
+		{
+			name: "test_mysql_with_url_credentials",
+			args: args{
+				url: "mysql://root:hunter2@127.0.0.1:3306/app",
+			},
+			want: "mysql://127.0.0.1:3306/app",
+		},
+		{
+			name: "test_mongodb_with_url_credentials",
+			args: args{
+				url: "mongodb://admin:secret@mongo:27017/admin",
+			},
+			want: "mongodb://mongo:27017/admin",
+		},
+		{
+			name: "test_mongodb_srv_with_url_credentials",
+			args: args{
+				url: "mongodb+srv://admin:secret@cluster0.example.mongodb.net/db",
+			},
+			want: "mongodb+srv://cluster0.example.mongodb.net/db",
+		},
+		{
+			name: "test_redis_with_url_credentials",
+			args: args{
+				url: "redis://:secret@redis:6379/0",
+			},
+			want: "redis://redis:6379/0",
+		},
+		{
+			name: "test_rediss_with_url_credentials",
+			args: args{
+				url: "rediss://user:secret@redis:6380/0",
+			},
+			want: "rediss://redis:6380/0",
+		},
+		{
+			name: "test_amqp_with_url_credentials",
+			args: args{
+				url: "amqp://guest:guest@rabbit:5672/vhost",
+			},
+			want: "amqp://rabbit:5672/vhost",
+		},
+		{
+			name: "test_amqps_with_url_credentials",
+			args: args{
+				url: "amqps://guest:guest@rabbit:5671/vhost",
+			},
+			want: "amqps://rabbit:5671/vhost",
+		},
+		{
+			name: "test_scheme_matching_is_case_insensitive",
+			args: args{
+				url: "Postgres://user:pass@localhost:5432/dogdata",
+			},
+			want: "Postgres://localhost:5432/dogdata",
+		},
+		// A driver-qualified scheme puts `+driver` before `://`, which no
+		// enumeration of bare scheme names can match. These are the canonical
+		// SQLAlchemy/JDBC spellings and are exactly what a .ini or .env holds.
+		{
+			name: "test_driver_qualified_postgres_scheme",
+			args: args{
+				url: "postgresql+psycopg2://user:secret@db/app",
+			},
+			want: "postgresql+psycopg2://db/app",
+		},
+		{
+			name: "test_driver_qualified_mysql_scheme",
+			args: args{
+				url: "mysql+pymysql://user:secret@db/app",
+			},
+			want: "mysql+pymysql://db/app",
+		},
+		{
+			name: "test_jdbc_prefixed_scheme",
+			args: args{
+				url: "jdbc:postgresql://user:secret@db:5432/app",
+			},
+			want: "jdbc:postgresql://db:5432/app",
+		},
+		// Schemes nobody enumerated: userinfo is a credential whatever the
+		// scheme, so redaction must not depend on a curated list.
+		{
+			name: "test_unenumerated_scheme",
+			args: args{
+				url: "clickhouse://user:secret@ch:9000/default",
+			},
+			want: "clickhouse://ch:9000/default",
+		},
+		{
+			name: "test_unenumerated_scheme_with_query",
+			args: args{
+				url: "sqlserver://sa:secret@mssql:1433?database=app",
+			},
+			want: "sqlserver://mssql:1433?database=app",
+		},
+		{
+			name: "test_multiple_urls_in_one_message",
+			args: args{
+				url: "failed: postgres://u:p@db:5432/x and redis://u:p@cache:6379",
+			},
+			want: "failed: postgres://db:5432/x and redis://cache:6379",
+		},
+		{
+			name: "test_database_url_without_credentials_untouched",
+			args: args{
+				url: "postgres://localhost:5432/dogdata",
+			},
+			want: "postgres://localhost:5432/dogdata",
+		},
+		{
+			name: "test_unrelated_text_untouched",
+			args: args{
+				url: "bad key=value pair supplied: user:pass@localhost",
+			},
+			want: "bad key=value pair supplied: user:pass@localhost",
+		},
+		// An `@` past the authority is not userinfo. Matching userinfo as
+		// `\S+@` would swallow host and path up to the last `@` on the line
+		// and corrupt these credential-free values.
+		{
+			name: "test_at_in_path_is_not_userinfo",
+			args: args{
+				url: "postgres://db.internal/app@tenant",
+			},
+			want: "postgres://db.internal/app@tenant",
+		},
+		{
+			name: "test_git_ref_suffix_is_not_userinfo",
+			args: args{
+				url: "https://github.com/org/repo.git@main",
+			},
+			want: "https://github.com/org/repo.git@main",
+		},
+		{
+			name: "test_at_in_query_is_not_userinfo",
+			args: args{
+				url: "postgres://db:5432/app?user=a@b",
+			},
+			want: "postgres://db:5432/app?user=a@b",
+		},
+		{
+			name: "test_trailing_email_after_url_untouched",
+			args: args{
+				url: "see https://docs.example.com/x then mail admin@corp.com",
+			},
+			want: "see https://docs.example.com/x then mail admin@corp.com",
+		},
+		{
+			// Authority with no path, so nothing bounds the scan but
+			// whitespace: the email must still survive.
+			name: "test_bare_authority_then_email_untouched",
+			args: args{
+				url: "redis://cache and admin@corp.com",
+			},
+			want: "redis://cache and admin@corp.com",
+		},
+		{
+			// Malformed authority: redact through the last `@` of the
+			// authority. Over-redacting is the safe direction.
+			name: "test_multiple_at_in_authority_over_redacts",
+			args: args{
+				url: "postgres://a@b@c/d",
+			},
+			want: "postgres://c/d",
+		},
+		{
+			name: "test_empty_string",
+			args: args{
+				url: "",
+			},
+			want: "",
+		},
 	}
 	for _, tt := range tests {
-		require.Equal(t, tt.want, removeURLCredentials(tt.args.url))
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, removeURLCredentials(tt.args.url))
+		})
 	}
 }
 

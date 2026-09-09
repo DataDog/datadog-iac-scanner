@@ -6,6 +6,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
@@ -317,6 +319,45 @@ func TestStoreResolvedFilesSkipsHelmJSONOnJSONParser(t *testing.T) {
 	files, err := store.GetFiles(ctx, "json-parser")
 	require.NoError(t, err)
 	require.Empty(t, files)
+}
+
+// TestLogResolverResolveError_RedactsCredentials verifies that render failures
+// are logged with URL credentials stripped. Helm surfaces the offending
+// template/values fragment inside its error, so a chart whose values embed a
+// database connection string would otherwise copy those credentials into the
+// scanner's logs.
+func TestLogResolverResolveError_RedactsCredentials(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantLevel string
+	}{
+		{
+			name:      "unexpected render error logs at error",
+			err:       errors.New(`template: chart/templates/a.yaml:3: mysql://svc:sup3rs3cret@db:3306/app`),
+			wantLevel: `"level":"error"`,
+		},
+		{
+			name:      "expected missing-values render error logs at debug",
+			err:       errors.New(`nil pointer evaluating interface {}.url: mysql://svc:sup3rs3cret@db:3306/app`),
+			wantLevel: `"level":"debug"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			ctx := zerolog.New(&logBuf).WithContext(context.Background())
+
+			service := &Service{}
+			service.logResolverResolveError(ctx, model.KindHELM, "chart", tt.err)
+
+			logged := logBuf.String()
+			require.Contains(t, logged, tt.wantLevel)
+			require.Contains(t, logged, "mysql://db:3306/app")
+			require.NotContains(t, logged, "sup3rs3cret")
+		})
+	}
 }
 
 func TestIsExpectedHelmRenderError(t *testing.T) {

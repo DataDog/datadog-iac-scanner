@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	iniHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/rs/zerolog"
@@ -420,6 +422,78 @@ func TestSink_ParseFailureLogLevel(t *testing.T) {
 			require.Contains(t, logBuf.String(), tt.wantLevel)
 		})
 	}
+}
+
+// TestSink_ParseFailureRedactsCredentials verifies that the credentials a
+// third-party parser echoes back from the scanned file never reach the logs.
+// The Ansible INI parser quotes the offending line verbatim
+// ("bad key=value pair supplied: postgres://user:pass@host/db"), which is how
+// customer database credentials used to leak into the scanner's error logs.
+func TestSink_ParseFailureRedactsCredentials(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		wantKept string
+	}{
+		{
+			name:     "plain scheme",
+			url:      "postgres://user:sup3rs3cret@localhost:5432/dogdata",
+			wantKept: "postgres://localhost:5432/dogdata",
+		},
+		{
+			// Driver-qualified schemes are the common spelling in .ini/.env
+			// config and put `+driver` before `://`.
+			name:     "driver qualified scheme",
+			url:      "postgresql+psycopg2://user:sup3rs3cret@localhost:5432/dogdata",
+			wantKept: "postgresql+psycopg2://localhost:5432/dogdata",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			parsers, err := parser.NewBuilder(ctx).
+				Add(&iniHostsParser.Parser{}).
+				Build([]string{"ansible"}, []string{""})
+			require.NoError(t, err)
+			require.NotEmpty(t, parsers)
+
+			// A connection string is not valid Ansible inventory syntax, so
+			// aini.Parse fails with "bad key=value pair supplied: <the URL>".
+			content := "[main]\ndogdata_url = " + tt.url + "\n"
+
+			var logBuf bytes.Buffer
+			testCtx := zerolog.New(&logBuf).WithContext(ctx)
+
+			svc := &Service{
+				Parser:      parsers[0],
+				Tracker:     noopTracker{},
+				MaxFileSize: 1,
+			}
+
+			rc := bytes.NewReader([]byte(content))
+			buf := make([]byte, 1024)
+			require.NoError(t, svc.sink(testCtx, "/repo/test/etc/test.ini", "scan1", rc, buf, false, 1))
+
+			logged := logBuf.String()
+			// The failure is still reported, with the offending scheme/host kept for triage.
+			require.Contains(t, logged, "failed to parse file content")
+			require.Contains(t, logged, tt.wantKept)
+			// ... but without the credentials that were embedded in the scanned file.
+			require.NotContains(t, logged, "sup3rs3cret")
+			require.NotContains(t, logged, "user:sup3rs3cret")
+		})
+	}
+}
+
+func TestRedactErrorForLog(t *testing.T) {
+	require.Equal(t, "", redactErrorForLog(nil))
+	require.Equal(t,
+		"bad key=value pair supplied: postgres://localhost:5432/dogdata",
+		redactErrorForLog(errors.New("bad key=value pair supplied: postgres://u:p@localhost:5432/dogdata")))
+	require.Equal(t, "yaml: line 1: did not find expected node content",
+		redactErrorForLog(errors.New("yaml: line 1: did not find expected node content")))
 }
 
 func TestSink_IgnoreLinesWithResolvedFiles(t *testing.T) {

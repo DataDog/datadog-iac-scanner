@@ -19,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 )
 
 func (s *Service) resolverSink(
@@ -80,7 +81,8 @@ func (s *Service) storeResolvedFiles(
 			if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
 				continue
 			}
-			contextLogger.Error().Err(err).Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
+			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+				Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
 			continue
 		}
 
@@ -311,10 +313,14 @@ func (s *Service) logResolverResolveError(ctx context.Context, kind model.FileKi
 	contextLogger := logger.FromContext(ctx)
 	if kind == model.KindHELM && isExpectedHelmRenderError(err) {
 		s.recordFailedHelmChart(filename)
-		contextLogger.Debug().Err(err).Msgf("helm chart '%s' could not be rendered with available values", filename)
+		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+			Msgf("helm chart '%s' could not be rendered with available values", filename)
 		return
 	}
-	contextLogger.Error().Err(err).Msgf("failed to render file content '%s' with fileType '%s'", filename, kind)
+	// Render errors quote the offending template/values fragment, so they are
+	// redacted for the same reason parse errors are — see redactErrorForLog.
+	contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+		Msgf("failed to render file content '%s' with fileType '%s'", filename, kind)
 }
 
 // expectedHelmRenderErrorSignatures matches Go template execution errors caused

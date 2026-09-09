@@ -123,8 +123,31 @@ type PathParameters struct {
 }
 
 var (
-	queryRegex         = regexp.MustCompile(`\?([\w-]+(=[\w-]*)?(&[\w-]+(=[\w-]*)?)*)?`)
-	urlAuthRedactRegex = regexp.MustCompile(`((?:ssh|https?)://)(?:\S+(?::\S*)?@)`)
+	queryRegex = regexp.MustCompile(`\?([\w-]+(=[\w-]*)?(&[\w-]+(=[\w-]*)?)*)?`)
+
+	// urlAuthRedactRegex captures the scheme of any URL carrying embedded
+	// userinfo, so RedactURLCredentials can drop the userinfo and keep the
+	// rest. Both halves are deliberately shaped after RFC 3986:
+	//
+	//   - The scheme is matched generically (`ALPHA *( ALPHA / DIGIT / "+" /
+	//     "-" / "." )`) rather than from a fixed list of schemes. A list has
+	//     to be exhaustive to be safe, and it never is: it misses
+	//     driver-qualified schemes (postgresql+psycopg2, mysql+pymysql) and
+	//     every database or broker not yet enumerated (clickhouse, sqlserver,
+	//     cassandra, kafka, …). `user:password@` in an authority is a
+	//     credential whatever the scheme, and there is no scheme for which we
+	//     would want to keep it, so matching all of them is both simpler and
+	//     strictly safer.
+	//
+	//   - Userinfo is `[^\s/?#]+`, i.e. confined to the authority. Anything
+	//     matching `\S+@` instead would swallow the host and path up to an
+	//     unrelated later `@` and corrupt credential-free URLs:
+	//     `postgres://db.internal/app@tenant` would collapse to
+	//     `postgres://tenant`.
+	//
+	// A malformed authority holding several `@` is redacted up to the last of
+	// them, which over-redacts rather than leaking.
+	urlAuthRedactRegex = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^\s/?#]+@`)
 )
 
 // countNotSuppressed returns the number of non-suppressed files.
@@ -221,7 +244,12 @@ func removeAllURLCredentials(pathExtractionMap map[string]ExtractedPathObject) [
 	return sanitizedScannedPaths
 }
 
-// RedactURLCredentials strips embedded userinfo from every ssh/http(s) URL in s.
+// RedactURLCredentials strips embedded userinfo (`user`, `user:password`,
+// `:password`) from the authority of every URL in s, whatever its scheme,
+// leaving the rest of the string — scheme, host, port, path and query —
+// untouched. An `@` outside the authority (`.../repo@ref`, `?user=a@b`) is not
+// userinfo and is preserved. It is safe to call on arbitrary text such as error
+// messages, not just on bare URLs.
 func RedactURLCredentials(s string) string {
 	if s == "" {
 		return ""
