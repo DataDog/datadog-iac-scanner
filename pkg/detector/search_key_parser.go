@@ -204,10 +204,11 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 	}
 
 	// Simple bracket notation: aws_instance[web].tags or aws_instance["example"].tags
-	// Remove any indices and quotes from the resource name
-	resourceName := registry.NormalizeAddress(bracketContent)
-	// Strip surrounding quotes if present (for string keys like ["example"])
-	resourceName = strings.Trim(resourceName, `"'`)
+	// bracketContent may itself carry a count/for_each index (e.g. "this[0]", a
+	// module resource's instance key) - keep it as-is (indices and quotes) in
+	// FullResourceAddr, matching parseModulePath's convention and the documented
+	// "retains indices" behavior, and only strip it for the normalized address.
+	resourceName := strings.Trim(registry.NormalizeAddress(bracketContent), `"'`)
 
 	// Extract attributes after bracket
 	var attributePath []string
@@ -224,7 +225,7 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 		ResourceType:     resourceType,
 		ResourceName:     resourceName,
 		ModulePath:       nil,
-		FullResourceAddr: fmt.Sprintf("%s.%s", resourceType, resourceName),
+		FullResourceAddr: fmt.Sprintf("%s.%s", resourceType, bracketContent),
 		NormalizedAddr:   fmt.Sprintf("%s.%s", resourceType, resourceName),
 		AttributePath:    attributePath,
 		HasAttribute:     len(attributePath) > 0,
