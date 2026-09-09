@@ -82,7 +82,7 @@ func TestParseSearchKey_FailingPatterns(t *testing.T) {
 				ResourceType:     "aws_s3_bucket_object",
 				ResourceName:     "this",
 				ModulePath:       nil,
-				FullResourceAddr: "aws_s3_bucket_object.this",
+				FullResourceAddr: "aws_s3_bucket_object.this[0]",
 				NormalizedAddr:   "aws_s3_bucket_object.this",
 				AttributePath:    nil,
 				HasAttribute:     false,
@@ -293,12 +293,14 @@ func TestParseSearchKey_FailingPatterns(t *testing.T) {
 			description: "Module index inside bracket notation",
 		},
 		{
+			// FullResourceAddr keeps the raw quoted key, matching parseModulePath's
+			// convention of retaining a for_each/count selector as-is.
 			name:      "bracket notation with string key",
 			searchKey: `aws_instance["example"].tags`,
 			expected: &ParsedSearchKey{
 				ResourceType:     "aws_instance",
 				ResourceName:     "example",
-				FullResourceAddr: "aws_instance.example",
+				FullResourceAddr: `aws_instance."example"`,
 				NormalizedAddr:   "aws_instance.example",
 				AttributePath:    []string{"tags"},
 				HasAttribute:     true,
@@ -306,6 +308,26 @@ func TestParseSearchKey_FailingPatterns(t *testing.T) {
 				IsModuleResource: false,
 			},
 			description: "Bracket notation with quoted string key",
+		},
+		{
+			// Regression: FullResourceAddr must retain the count/for_each index
+			// inside the bracket selector itself (a module resource instance key
+			// like "this[0]"), not just indices outside the brackets. See
+			// pkg/detector/default_detect_test.go's "module_resource_with_count_index"
+			// case for the equivalent terraformPlanPath test.
+			name:      "bracket notation with nested instance index",
+			searchKey: "aws_dynamodb_table[this[0]].server_side_encryption",
+			expected: &ParsedSearchKey{
+				ResourceType:     "aws_dynamodb_table",
+				ResourceName:     "this",
+				FullResourceAddr: "aws_dynamodb_table.this[0]",
+				NormalizedAddr:   "aws_dynamodb_table.this",
+				AttributePath:    []string{"server_side_encryption"},
+				HasAttribute:     true,
+				IsResourceLevel:  false,
+				IsModuleResource: false,
+			},
+			description: "Bracket notation must keep the nested instance index in FullResourceAddr",
 		},
 	}
 
