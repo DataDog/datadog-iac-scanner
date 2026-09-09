@@ -7,6 +7,10 @@ import (
 	cli "github.com/urfave/cli/v3"
 )
 
+const retiredTimeoutUsage = "(DEPRECATED) no longer has any effect; " +
+	"queries run to completion and slow rules are logged instead. " +
+	"This flag will be removed."
+
 // Shared retired flags must be removed from both scan and serve in the same change.
 func sharedRetiredFlags() []cli.Flag {
 	return nil
@@ -14,14 +18,15 @@ func sharedRetiredFlags() []cli.Flag {
 
 func retiredScanOnlyFlags() []cli.Flag {
 	return []cli.Flag{
-		retiredInt("timeout"),
+		retiredInt("timeout", retiredTimeoutUsage),
 	}
 }
 
-func retiredInt(name string) *cli.IntFlag {
+func retiredInt(name, usage string) *cli.IntFlag {
 	return &cli.IntFlag{
 		Name:   name,
 		Hidden: true,
+		Usage:  usage,
 		Action: retiredFlagAction[int](name),
 	}
 }
