@@ -44,7 +44,7 @@ func buildReplacementFix(ctx context.Context, vuln model.VulnerableFile,
 	after := strings.TrimSpace(patch["after"])
 
 	// Regex for key and value (list/quoted/unquoted)
-	keyValRegex := regexp.MustCompile(`(?m)["']?(\w+)["']?\s*=\s*(\[.*?\]|".*?"|[^#=][^#]*)`)
+	keyValRegex := regexp.MustCompile(`(?m)["']?(\w+)["']?\s*(?::|=)\s*(\[.*?\]|".*?"|[^#=][^#]*)`)
 	matches := keyValRegex.FindStringSubmatch(vuln.LineWithVulnerability)
 	if isBlockHeader(vuln.LineWithVulnerability) || len(matches) < 3 {
 		line, lineNumber, found, keyPresent := findReplacementTarget(&vuln, before, keyValRegex)
@@ -269,7 +269,7 @@ func additionBaseIndent(vuln *model.VulnerableFile, startLocation model.SarifRes
 		return baseIndent
 	}
 	line := vuln.FileSource[startLocation.Line-1]
-	brace := strings.LastIndex(line, "}")
+	brace := structuralClosingBrace(line)
 	if brace < 0 {
 		return baseIndent
 	}
@@ -286,7 +286,7 @@ func additionInsertLocation(vuln *model.VulnerableFile, startLocation model.Sari
 		return startLocation
 	}
 	for line := end; line >= start; line-- {
-		if col := strings.LastIndex(vuln.FileSource[line-1], "}"); col >= 0 {
+		if col := structuralClosingBrace(vuln.FileSource[line-1]); col >= 0 {
 			return model.SarifResourceLocation{Line: line, Col: col + 1}
 		}
 	}

@@ -360,7 +360,7 @@ func TestTransformToSarifFix_RejectsColonAndEqualityAfter(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestTransformToSarifFix_InsertsInsideSingleLineNestedBlock(t *testing.T) {
+func TestTransformToSarifFix_AddsAtOuterResourceWhenNestedBlockPresent(t *testing.T) {
 	vuln := model.VulnerableFile{
 		FileName:              "main.tf",
 		RemediationType:       "replacement",
@@ -374,25 +374,25 @@ func TestTransformToSarifFix_InsertsInsideSingleLineNestedBlock(t *testing.T) {
 			`}`,
 		},
 		BlockLocation: model.ResourceLocation{
-			Start: model.ResourceLine{Line: 3, Col: 5},
-			End:   model.ResourceLine{Line: 3, Col: 15},
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 4, Col: 2},
 		},
 		RemediationLocation: model.ResourceLocation{
-			Start: model.ResourceLine{Line: 3, Col: 5},
-			End:   model.ResourceLine{Line: 3, Col: 5},
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: 1},
 		},
 	}
 
 	fix, err := TransformToSarifFix(
 		context.Background(),
 		vuln,
-		model.SarifResourceLocation{Line: 3, Col: 5},
-		model.SarifResourceLocation{Line: 3, Col: 15},
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: 31},
 	)
 	require.NoError(t, err)
 	replacement := fix.ArtifactChanges[0].Replacements[0]
-	require.Equal(t, 3, replacement.DeletedRegion.StartLine)
-	require.Equal(t, strings.LastIndex(vuln.FileSource[2], "}")+1, replacement.DeletedRegion.StartColumn)
+	require.Equal(t, 4, replacement.DeletedRegion.StartLine)
+	require.Equal(t, 1, replacement.DeletedRegion.StartColumn)
 	require.Contains(t, replacement.InsertedContent.Text, "enabled = false")
 }
 
@@ -419,8 +419,76 @@ func TestTransformToSarifFix_InsertsInsideSingleLineResource(t *testing.T) {
 	require.NoError(t, err)
 	replacement := fix.ArtifactChanges[0].Replacements[0]
 	require.Equal(t, 1, replacement.DeletedRegion.StartLine)
-	require.Equal(t, strings.LastIndex(vuln.FileSource[0], "}")+1, replacement.DeletedRegion.StartColumn)
+	require.Equal(t, structuralClosingBrace(vuln.FileSource[0])+1, replacement.DeletedRegion.StartColumn)
 	require.Contains(t, replacement.InsertedContent.Text, "associate_public_ip_address = false")
+}
+
+func TestTransformToSarifFix_ReplacesColonDelimitedYAMLAttribute(t *testing.T) {
+	vuln := model.VulnerableFile{
+		FileName:              "resource.yaml",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "enabled = true", "after": "false"}`,
+		LineWithVulnerability: `  enabled: true`,
+		Line:                  2,
+		FileSource: []string{
+			`spec:`,
+			`  enabled: true`,
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 2, Col: 16},
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 2, Col: 3},
+			End:   model.ResourceLine{Line: 2, Col: 16},
+		},
+	}
+
+	fix, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 2, Col: 3},
+		model.SarifResourceLocation{Line: 2, Col: 16},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "  enabled: false", fix.ArtifactChanges[0].Replacements[0].InsertedContent.Text)
+}
+
+func TestTransformToSarifFix_IgnoresClosingBraceInComment(t *testing.T) {
+	line := `resource "google_project_iam_binding" "project3" { ami = "x" } // trap }`
+	vuln := model.VulnerableFile{
+		FileName:              "main.tf",
+		RemediationType:       "replacement",
+		Remediation:           `{"before": "associate_public_ip_address = true", "after": "false"}`,
+		LineWithVulnerability: line,
+		Line:                  1,
+		FileSource:            []string{line},
+		BlockLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 1, Col: 1},
+			End:   model.ResourceLine{Line: 1, Col: len(line)},
+		},
+	}
+
+	fix, err := TransformToSarifFix(
+		context.Background(),
+		vuln,
+		model.SarifResourceLocation{Line: 1, Col: 1},
+		model.SarifResourceLocation{Line: 1, Col: len(line)},
+	)
+	require.NoError(t, err)
+	replacement := fix.ArtifactChanges[0].Replacements[0]
+	require.Equal(t, structuralClosingBrace(line)+1, replacement.DeletedRegion.StartColumn)
+	require.Less(t, replacement.DeletedRegion.StartColumn, strings.LastIndex(line, "}")+1)
+	require.Contains(t, replacement.InsertedContent.Text, "associate_public_ip_address = false")
+}
+
+func TestStructuralClosingBraceIgnoresCommentsAndStrings(t *testing.T) {
+	require.Equal(t, strings.LastIndex(`resource "x" "y" { ami = "x" }`, "}"), structuralClosingBrace(`resource "x" "y" { ami = "x" }`))
+	require.Equal(t, strings.Index(`resource "x" "y" { ami = "x" } // }`, "}"), structuralClosingBrace(`resource "x" "y" { ami = "x" } // }`))
+	require.Equal(t, -1, structuralClosingBrace(`resource "x" "y" { // I add this just to break the code }`))
+	line := `resource "x" "y" { name = "}" } // }`
+	require.Equal(t, strings.Index(line, `} //`), structuralClosingBrace(line))
+	require.Equal(t, strings.LastIndex(`resource "x" "y" { ami = "x" /* } */ }`, "}"), structuralClosingBrace(`resource "x" "y" { ami = "x" /* } */ }`))
 }
 
 func TestTransformToSarifFix_ReplacementFindsMatchingRepeatedKey(t *testing.T) {

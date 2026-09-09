@@ -68,6 +68,79 @@ func isNonAssignmentExpression(s string) bool {
 	return false
 }
 
+type lineScanState struct {
+	inDouble, inSingle, inBlockComment bool
+}
+
+func (s *lineScanState) skipNonCode(line string, i int) (next int, skip, done bool) {
+	if s.inBlockComment {
+		return s.skipBlockComment(line, i)
+	}
+	if s.inDouble || s.inSingle {
+		return s.skipQuoted(line, i)
+	}
+	return s.startNonCode(line, i)
+}
+
+func (s *lineScanState) skipBlockComment(line string, i int) (next int, skip, done bool) {
+	if line[i] == '*' && i+1 < len(line) && line[i+1] == '/' {
+		s.inBlockComment = false
+		return i + 1, true, false
+	}
+	return i, true, false
+}
+
+func (s *lineScanState) skipQuoted(line string, i int) (next int, skip, done bool) {
+	c := line[i]
+	if c == '\\' && i+1 < len(line) {
+		return i + 1, true, false
+	}
+	if (s.inDouble && c == '"') || (s.inSingle && c == '\'') {
+		s.inDouble = false
+		s.inSingle = false
+	}
+	return i, true, false
+}
+
+func (s *lineScanState) startNonCode(line string, i int) (next int, skip, done bool) {
+	switch c := line[i]; {
+	case c == '"':
+		s.inDouble = true
+		return i, true, false
+	case c == '\'':
+		s.inSingle = true
+		return i, true, false
+	case c == '#':
+		return i, true, true
+	case c == '/' && i+1 < len(line) && line[i+1] == '/':
+		return i, true, true
+	case c == '/' && i+1 < len(line) && line[i+1] == '*':
+		s.inBlockComment = true
+		return i + 1, true, false
+	default:
+		return i, false, false
+	}
+}
+
+func structuralClosingBrace(line string) int {
+	last := -1
+	var state lineScanState
+	for i := 0; i < len(line); i++ {
+		next, skip, done := state.skipNonCode(line, i)
+		if done {
+			break
+		}
+		if skip {
+			i = next
+			continue
+		}
+		if line[i] == '}' {
+			last = i
+		}
+	}
+	return last
+}
+
 func lineIndent(fileLines []string, line int) string {
 	if line < 1 || line > len(fileLines) {
 		return ""
