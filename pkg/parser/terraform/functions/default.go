@@ -8,6 +8,8 @@ package functions
 import (
 	"encoding/base64"
 
+	"github.com/hashicorp/hcl/v2/ext/tryfunc"
+	ctyyaml "github.com/zclconf/go-cty-yaml"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 	"github.com/zclconf/go-cty/cty/function/stdlib"
@@ -48,8 +50,10 @@ var Base64EncodeFunc = function.New(&function.Spec{
 var TerraformFuncs = map[string]function.Function{
 	"abs":             stdlib.AbsoluteFunc,
 	"base64encode":    Base64EncodeFunc,
+	"can":             tryfunc.CanFunc,
 	"ceil":            stdlib.CeilFunc,
 	"chomp":           stdlib.ChompFunc,
+	"coalesce":        CoalesceFunc,
 	"coalescelist":    stdlib.CoalesceListFunc,
 	"compact":         stdlib.CompactFunc,
 	"concat":          stdlib.ConcatFunc,
@@ -64,11 +68,14 @@ var TerraformFuncs = map[string]function.Function{
 	"formatdate":      stdlib.FormatDateFunc,
 	"formatlist":      stdlib.FormatListFunc,
 	"indent":          stdlib.IndentFunc,
+	"index":           IndexFunc,
 	"join":            stdlib.JoinFunc,
 	"jsondecode":      stdlib.JSONDecodeFunc,
 	"jsonencode":      stdlib.JSONEncodeFunc,
 	"keys":            stdlib.KeysFunc,
+	"length":          LengthFunc,
 	"log":             stdlib.LogFunc,
+	"lookup":          LookupFunc,
 	"lower":           stdlib.LowerFunc,
 	"max":             stdlib.MaxFunc,
 	"merge":           stdlib.MergeFunc,
@@ -78,6 +85,7 @@ var TerraformFuncs = map[string]function.Function{
 	"range":           stdlib.RangeFunc,
 	"regex":           stdlib.RegexFunc,
 	"regexall":        stdlib.RegexAllFunc,
+	"replace":         ReplaceFunc,
 	"reverse":         stdlib.ReverseListFunc,
 	"setintersection": stdlib.SetIntersectionFunc,
 	"setproduct":      stdlib.SetProductFunc,
@@ -91,14 +99,20 @@ var TerraformFuncs = map[string]function.Function{
 	"substr":          stdlib.SubstrFunc,
 	"timeadd":         stdlib.TimeAddFunc,
 	"title":           stdlib.TitleFunc,
+	"tobool":          stdlib.MakeToFunc(cty.Bool),
 	"tolist":          ToListFunc,
 	"tomap":           ToMapFunc,
+	"tonumber":        stdlib.MakeToFunc(cty.Number),
 	"toset":           ToSetFunc,
+	"tostring":        stdlib.MakeToFunc(cty.String),
 	"trim":            stdlib.TrimFunc,
 	"trimprefix":      stdlib.TrimPrefixFunc,
 	"trimspace":       stdlib.TrimSpaceFunc,
 	"trimsuffix":      stdlib.TrimSuffixFunc,
+	"try":             tryfunc.TryFunc,
 	"upper":           stdlib.UpperFunc,
 	"values":          stdlib.ValuesFunc,
+	"yamldecode":      ctyyaml.YAMLDecodeFunc,
+	"yamlencode":      ctyyaml.YAMLEncodeFunc,
 	"zipmap":          stdlib.ZipmapFunc,
 }

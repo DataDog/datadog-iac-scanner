@@ -748,9 +748,7 @@ func TestAnalyze_LogsFailedQueryCount(t *testing.T) {
 
 import rego.v1
 
-DatadogPolicy contains result if {
-	undefined_reference
-}`)
+DatadogPolicy contains result if {`)
 	req := analyzeRequest{
 		Files: []analyzeFile{{
 			Path:    "infra/main.tf",
