@@ -126,7 +126,7 @@ func AllowSet(paths []string) map[string]struct{} {
 func configPathEqual(a, b string) bool {
 	ad, ab := splitDirBase(a)
 	bd, bb := splitDirBase(b)
-	return ad == bd && strings.EqualFold(ab, bb)
+	return ad == bd && ab == bb
 }
 
 // ShadowedByTofu reports paths OpenTofu ignores: foo.tf next to foo.tofu,
@@ -220,11 +220,11 @@ func PartitionWithTofuPrecedence[T any](
 func shadowKey(path, jsonExt, hclExt string) (string, bool) {
 	dir, base := splitDirBase(path)
 	lowerBase := strings.ToLower(base)
-	if name, ok := strings.CutSuffix(lowerBase, jsonExt); ok {
-		return dir + name + "\x00json", true
+	if strings.HasSuffix(lowerBase, jsonExt) {
+		return dir + base[:len(base)-len(jsonExt)] + "\x00json", true
 	}
-	if name, ok := strings.CutSuffix(lowerBase, hclExt); ok {
-		return dir + name + "\x00hcl", true
+	if strings.HasSuffix(lowerBase, hclExt) {
+		return dir + base[:len(base)-len(hclExt)] + "\x00hcl", true
 	}
 	return "", false
 }
@@ -236,8 +236,6 @@ func configKey(path string) (string, bool) {
 	return shadowKey(path, ExtTofuJSON, ExtTofu)
 }
 
-// Directory case is kept so modules/VPC and modules/vpc stay distinct on
-// case-sensitive filesystems; only the basename is folded.
 func splitDirBase(path string) (dir, base string) {
 	sep := strings.LastIndexAny(path, `/\`)
 	if sep < 0 {

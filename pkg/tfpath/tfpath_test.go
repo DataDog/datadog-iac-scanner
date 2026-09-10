@@ -134,9 +134,9 @@ func TestShadowedByTofu(t *testing.T) {
 			want:  nil,
 		},
 		{
-			name:  "basename shadowing is case-insensitive",
+			name:  "basename shadowing is case-sensitive",
 			paths: []string{"dir/foo.tf", "dir/Foo.TOFU"},
-			want:  []string{"dir/foo.tf"},
+			want:  nil,
 		},
 		{
 			name:  "empty input returns nil",
@@ -223,6 +223,11 @@ func TestSelectKeeping(t *testing.T) {
 	got = SelectKeepingWithTofuPrecedence(in, IsHCLConfig, "dir/foo.tofu", preferTF)
 	if !slices.Equal(got, []string{"dir/other.tf", "dir/foo.tofu"}) {
 		t.Errorf("SelectKeepingWithTofuPrecedence(foo.tofu) = %v", got)
+	}
+
+	got = SelectKeeping([]string{"main.tf", "variable.tofu"}, IsHCLConfig, "main.tf")
+	if !slices.Equal(got, []string{"main.tf", "variable.tofu"}) {
+		t.Errorf("SelectKeeping(unrelated tofu file) = %v", got)
 	}
 }
 
