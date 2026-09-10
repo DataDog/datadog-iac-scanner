@@ -1,0 +1,96 @@
+name: deprecation-watch
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: deprecation-watch
+  cancel-in-progress: true
+
+jobs:
+  check-deprecations:
+    runs-on: ubuntu-latest
+    environment: deprecation-watch
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Setup Python
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
+        with:
+          python-version: "3.12"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+        with:
+          path: scripts/deprecation_watch/providers/.terraform
+          key: tf-providers-${{ runner.os }}-${{ hashFiles('scripts/deprecation_watch/providers/main.tf', 'scripts/deprecation_watch/providers/.terraform.lock.hcl') }}
+
+      - name: Install Python dependencies
+        run: pip3 install -r scripts/deprecation_watch/requirements.txt
+
+      - name: Extract rule targets
+        run: python3 scripts/deprecation_watch/extract_rule_targets.py
+
+      - name: Fetch deprecation data
+        run: python3 scripts/deprecation_watch/fetch_deprecations.py --platforms terraform,cloudformation,k8s,ansible,cicd
+
+      - name: Cross-reference
+        id: cross-ref
+        run: python3 scripts/deprecation_watch/cross_reference.py
+
+      - name: Create Jira tickets
+        if: steps.cross-ref.outputs.has_new_deprecations == 'true'
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: python3 scripts/deprecation_watch/create_jira_tickets.py
+
+      - name: Rotate CFN snapshot and open PR
+        if: hashFiles('scripts/deprecation_watch/out/cloudformation_fetched.json') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -c "
+          import json, pathlib
+          src = json.loads(pathlib.Path('scripts/deprecation_watch/out/cloudformation_fetched.json').read_text())
+          out = {'resource_type_names': src.get('resource_type_names', []), 'count': src.get('count', 0)}
+          pathlib.Path('deprecation_snapshots/cloudformation/resource_type_names.json').write_text(
+              json.dumps(out, indent=2, sort_keys=True) + '\n')
+          "
+          if git diff --quiet deprecation_snapshots/; then
+            echo "CFN snapshot unchanged, nothing to do"
+            exit 0
+          fi
+          BRANCH="chore/deprecation-watch-cfn-snapshot"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add deprecation_snapshots/cloudformation/resource_type_names.json
+          git commit -m "chore: rotate CloudFormation deprecation snapshot"
+          git push -f origin "$BRANCH"
+          if gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' | grep -q .; then
+            echo "PR already exists for $BRANCH"
+          else
+            gh pr create \
+              --title "chore: rotate CloudFormation deprecation snapshot" \
+              --body "**Automated by deprecation-watch**
+          Updated \`deprecation_snapshots/cloudformation/resource_type_names.json\`
+          to match the latest AWS CloudFormation Resource Specification." \
+              --base main \
+              --head "$BRANCH" \
+              --label maintenance
+          fi
