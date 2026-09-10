@@ -740,29 +740,17 @@ func TestAnalyze_RequestLibrariesDoNotCallBackend(t *testing.T) {
 }
 
 func TestAnalyze_LogsFailedQueryCount(t *testing.T) {
-	analyzeCompiledQueryCacheTestMu.Lock()
-	t.Cleanup(analyzeCompiledQueryCacheTestMu.Unlock)
-
-	engine.ResetCompiledQueryCachesForTest()
-	t.Cleanup(engine.ResetCompiledQueryCachesForTest)
-
 	s := newTestServer(t)
-	rule := syntheticRule()
-	rule.ID = "test-terraform-invalid-result"
-	rule.Name = rule.ID
-	rule.RegoQuery = []byte(`package datadog
-
-import rego.v1
-
-DatadogPolicy contains result if {`)
 	req := analyzeRequest{
 		Files: []analyzeFile{{
 			Path:    "infra/main.tf",
 			Content: `resource "test_widget" "example" {}`,
 		}},
-		Ruleset:   ruleset(rule),
-		Libraries: testLibraries(true),
-		Platform:  []string{"terraform"},
+		Ruleset: ruleset(syntheticRule()),
+		Libraries: []datadog.Library{
+			{ID: "common", RegoCode: "package generic.common\nimport rego.v1"},
+		},
+		Platform: []string{"terraform"},
 	}
 
 	var logs bytes.Buffer
