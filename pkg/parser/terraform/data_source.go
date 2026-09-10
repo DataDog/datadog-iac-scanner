@@ -29,6 +29,9 @@ import (
 // still matches the block type exactly below.
 const iamPolicyDocumentType = "aws_iam_policy_document"
 
+// specFieldType is the hcldec object-spec key/attribute name for a principal's "type" field.
+const specFieldType = "type"
+
 var iamPolicyDocumentTypeMarker = []byte(iamPolicyDocumentType)
 
 // iamPolicyDocumentTypePrefix catches HCL unicode-escaped spellings such as
@@ -227,8 +230,8 @@ func decodeDataSourcePolicy(ctx context.Context, value cty.Value) dataSourcePoli
 
 func getPrincipalSpec() *hcldec.ObjectSpec {
 	return &hcldec.ObjectSpec{
-		"type": &hcldec.AttrSpec{
-			Name:     "type",
+		specFieldType: &hcldec.AttrSpec{
+			Name:     specFieldType,
 			Type:     cty.String,
 			Required: false,
 		},

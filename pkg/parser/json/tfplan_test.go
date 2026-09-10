@@ -57,8 +57,9 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"fakewebservices_database": map[string]interface{}{
 						"prod_db": map[string]interface{}{
-							"name": "Production DB",
-							"size": (float64)(256),
+							"_dd_tf_address": "fakewebservices_database.prod_db",
+							"name":           "Production DB",
+							"size":           (float64)(256),
 						},
 					},
 				},
@@ -137,7 +138,8 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"main": map[string]interface{}{
-							"bucket": "main-bucket",
+							"bucket":         "main-bucket",
+							"_dd_tf_address": "aws_s3_bucket.main",
 						},
 					},
 				},
@@ -262,17 +264,20 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"main": map[string]interface{}{
-							"bucket": "main-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "aws_s3_bucket.main",
+							"bucket":         "main-bucket",
+							"acl":            "private",
 						},
 						"module.storage.backup": map[string]interface{}{
-							"bucket": "backup-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "module.storage.aws_s3_bucket.backup",
+							"bucket":         "backup-bucket",
+							"acl":            "private",
 						},
 					},
 					"aws_instance": map[string]interface{}{
 						"web": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.micro",
 						},
 					},
 				},
@@ -343,13 +348,15 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_instance": map[string]interface{}{
 						"web": map[string]interface{}{
-							"instance_type": "t2.large",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.large",
 							"tags": map[string]interface{}{
 								"Environment": "production",
 							},
 						},
 						"module.staging.web": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "module.staging.aws_instance.web",
+							"instance_type":  "t2.micro",
 							"tags": map[string]interface{}{
 								"Environment": "staging",
 							},
@@ -428,17 +435,20 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_vpc": map[string]interface{}{
 						"main": map[string]interface{}{
-							"cidr_block": "10.0.0.0/16",
+							"_dd_tf_address": "aws_vpc.main",
+							"cidr_block":     "10.0.0.0/16",
 						},
 					},
 					"aws_subnet": map[string]interface{}{
 						"module.networking.public": map[string]interface{}{
-							"cidr_block": "10.0.1.0/24",
+							"_dd_tf_address": "module.networking.aws_subnet.public",
+							"cidr_block":     "10.0.1.0/24",
 						},
 					},
 					"aws_security_group": map[string]interface{}{
 						"module.networking.module.security.web": map[string]interface{}{
-							"description": "Web traffic",
+							"_dd_tf_address": "module.networking.module.security.aws_security_group.web",
+							"description":    "Web traffic",
 						},
 					},
 				},
@@ -509,10 +519,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"module.app1.data": map[string]interface{}{
-							"bucket": "app1-data",
+							"_dd_tf_address": "module.app1.aws_s3_bucket.data",
+							"bucket":         "app1-data",
 						},
 						"module.app2.data": map[string]interface{}{
-							"bucket": "app2-data",
+							"_dd_tf_address": "module.app2.aws_s3_bucket.data",
+							"bucket":         "app2-data",
 						},
 					},
 				},
@@ -589,21 +601,24 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_instance": map[string]interface{}{
 						"web[0]": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.micro",
 							"tags": map[string]interface{}{
 								"Name":  "web-0",
 								"Index": float64(0),
 							},
 						},
 						"web[1]": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.micro",
 							"tags": map[string]interface{}{
 								"Name":  "web-1",
 								"Index": float64(1),
 							},
 						},
 						"web[2]": map[string]interface{}{
-							"instance_type": "t2.micro",
+							"_dd_tf_address": "aws_instance.web",
+							"instance_type":  "t2.micro",
 							"tags": map[string]interface{}{
 								"Name":  "web-2",
 								"Index": float64(2),
@@ -678,16 +693,19 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"data[\"prod\"]": map[string]interface{}{
-							"bucket": "prod-data-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "aws_s3_bucket.data",
+							"bucket":         "prod-data-bucket",
+							"acl":            "private",
 						},
 						"data[\"staging\"]": map[string]interface{}{
-							"bucket": "staging-data-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "aws_s3_bucket.data",
+							"bucket":         "staging-data-bucket",
+							"acl":            "private",
 						},
 						"data[\"dev\"]": map[string]interface{}{
-							"bucket": "dev-data-bucket",
-							"acl":    "private",
+							"_dd_tf_address": "aws_s3_bucket.data",
+							"bucket":         "dev-data-bucket",
+							"acl":            "private",
 						},
 					},
 				},
@@ -751,8 +769,9 @@ func TestJson_parseTFPlan(t *testing.T) {
 							"_dd_prod_db": map[string]any{"_dd_line": (float64)(7)},
 						},
 						"prod_db": map[string]any{
-							"name": "Production DB",
-							"size": (float64)(256),
+							"name":           "Production DB",
+							"size":           (float64)(256),
+							"_dd_tf_address": "fakewebservices_database.prod_db",
 						},
 					},
 				},
@@ -2060,4 +2079,335 @@ func TestJson_parseTFPlan_dd_tfplan_meta_call_site_chain_grows_linearly_not_expo
 		depth, full, depth/2, half)
 	require.Less(t, full, 100,
 		"call_site_expressions should stay proportional to the number of real call sites (depth=%d), not explode to %d", depth, full)
+}
+
+// TestOriginHints_FromPlanConfig verifies that _dd_tf_origin is correctly derived from
+// the plan's configuration section and embedded alongside _dd_tf_address.
+func TestOriginHints_FromPlanConfig(t *testing.T) {
+	// Build a minimal plan document that exercises all three origin cases:
+	// 1. module_hardcoded: attribute has a constant value in the module resource
+	// 2. call: attribute references a variable that the call site sets
+	// 3. module_default: attribute references a variable that the call site omits
+	doc := model.Document{
+		"format_version":    "1.0",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"child_modules": []interface{}{
+					map[string]interface{}{
+						"address": "module.rds",
+						"resources": []interface{}{
+							map[string]interface{}{
+								"address": "module.rds.aws_db_instance.this",
+								"mode":    "managed",
+								"type":    "aws_db_instance",
+								"name":    "this",
+								"values": map[string]interface{}{
+									"publicly_accessible": false,
+									"storage_encrypted":   true,
+									"identifier":          "app-db",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"module_calls": map[string]interface{}{
+					"rds": map[string]interface{}{
+						"source": "./modules/rds",
+						// Call sets storage_encrypted but omits publicly_accessible
+						"expressions": map[string]interface{}{
+							"storage_encrypted": map[string]interface{}{
+								"constant_value": true,
+							},
+						},
+						"module": map[string]interface{}{
+							"resources": []interface{}{
+								map[string]interface{}{
+									"address": "aws_db_instance.this",
+									"type":    "aws_db_instance",
+									"name":    "this",
+									"expressions": map[string]interface{}{
+										// module_hardcoded: literal constant, no variable reference
+										"identifier": map[string]interface{}{
+											"constant_value": "hardcoded-db",
+										},
+										// call: references a variable that the call sets
+										"storage_encrypted": map[string]interface{}{
+											"references": []interface{}{"var.storage_encrypted"},
+										},
+										// module_default: references a variable the call does NOT set
+										"publicly_accessible": map[string]interface{}{
+											"references": []interface{}{"var.publicly_accessible"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	// Navigate to the resource
+	resourceSection, ok := got["resource"]
+	require.True(t, ok, "expected 'resource' key in document")
+	resourceMap, ok := resourceSection.(map[string]interface{})
+	require.True(t, ok)
+	dbSection, ok := resourceMap["aws_db_instance"]
+	require.True(t, ok, "expected aws_db_instance in resource map")
+	dbMap, ok := dbSection.(map[string]interface{})
+	require.True(t, ok)
+
+	// Find the module.rds instance (stored under a key containing the module path)
+	var attrs map[string]interface{}
+	for _, v := range dbMap {
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if addr, _ := m["_dd_tf_address"].(string); addr == "module.rds.aws_db_instance.this" {
+			attrs = m
+			break
+		}
+	}
+	require.NotNil(t, attrs, "could not find module.rds.aws_db_instance.this in resource map")
+
+	// _dd_tf_origin must be present
+	originRaw, ok := attrs["_dd_tf_origin"]
+	require.True(t, ok, "_dd_tf_origin should be attached to the resource")
+	originMap, ok := originRaw.(map[string]interface{})
+	require.True(t, ok)
+
+	getHint := func(attr string) map[string]interface{} {
+		h, ok := originMap[attr]
+		require.True(t, ok, "origin hint missing for attribute %q", attr)
+		m, ok := h.(map[string]interface{})
+		require.True(t, ok)
+		return m
+	}
+
+	// 1. identifier: hardcoded constant in module resource
+	identHint := getHint("identifier")
+	require.Equal(t, "module_hardcoded", identHint["origin"])
+	require.Equal(t, "./modules/rds", identHint["moduleDir"])
+
+	// 2. storage_encrypted: variable reference, call sets it
+	encHint := getHint("storage_encrypted")
+	require.Equal(t, "call", encHint["origin"])
+
+	// 3. publicly_accessible: variable reference, call omits it
+	pubHint := getHint("publicly_accessible")
+	require.Equal(t, "module_default", pubHint["origin"])
+	require.Equal(t, "publicly_accessible", pubHint["variable"])
+	require.Equal(t, "./modules/rds", pubHint["moduleDir"])
+}
+
+// TestOriginHints_AbsentAttribute verifies that when a module resource has no "tags" attribute
+// in its expressions, the parser still populates _dd_tf_origin for the attributes it does know
+// about (so the detector can detect the absent-attribute case at query time).
+func TestOriginHints_AbsentAttribute(t *testing.T) {
+	doc := model.Document{
+		"format_version":    "1.0",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"child_modules": []interface{}{
+					map[string]interface{}{
+						"address": "module.asg",
+						"resources": []interface{}{
+							map[string]interface{}{
+								"address": "module.asg.aws_launch_template.this",
+								"mode":    "managed",
+								"type":    "aws_launch_template",
+								"name":    "this",
+								"values": map[string]interface{}{
+									"name":                   "web",
+									"vpc_security_group_ids": []interface{}{"sg-123"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"module_calls": map[string]interface{}{
+					"asg": map[string]interface{}{
+						"source": "./modules/asg",
+						"expressions": map[string]interface{}{
+							"security_group_id": map[string]interface{}{
+								"constant_value": []interface{}{"sg-123"},
+							},
+						},
+						"module": map[string]interface{}{
+							"resources": []interface{}{
+								map[string]interface{}{
+									"address": "aws_launch_template.this",
+									"type":    "aws_launch_template",
+									"name":    "this",
+									"expressions": map[string]interface{}{
+										// "name" is hardcoded — no variable
+										"name": map[string]interface{}{
+											"constant_value": "web",
+										},
+										// "vpc_security_group_ids" is driven by a variable the call sets
+										"vpc_security_group_ids": map[string]interface{}{
+											"references": []interface{}{"var.security_group_id"},
+										},
+										// "tags" is intentionally absent — the module resource never declares it
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	// Navigate to the resource
+	resourceSection := got["resource"].(map[string]interface{})
+	ltSection := resourceSection["aws_launch_template"].(map[string]interface{})
+
+	var attrs map[string]interface{}
+	for _, v := range ltSection {
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if addr, _ := m["_dd_tf_address"].(string); addr == "module.asg.aws_launch_template.this" {
+			attrs = m
+			break
+		}
+	}
+	require.NotNil(t, attrs)
+
+	// _dd_tf_origin must be present (populated for the attributes that ARE declared)
+	originRaw, ok := attrs["_dd_tf_origin"]
+	require.True(t, ok, "_dd_tf_origin should be present")
+	originMap := originRaw.(map[string]interface{})
+
+	// "name" should be module_hardcoded (constant in module resource)
+	nameHint := originMap["name"].(map[string]interface{})
+	require.Equal(t, "module_hardcoded", nameHint["origin"])
+	require.Equal(t, "./modules/asg", nameHint["moduleDir"])
+
+	// "vpc_security_group_ids" should be call (call sets security_group_id)
+	sgHint := originMap["vpc_security_group_ids"].(map[string]interface{})
+	require.Equal(t, "call", sgHint["origin"])
+
+	// "tags" must NOT appear in the origin map — its absence is what the detector checks at query time
+	_, tagsPresent := originMap["tags"]
+	require.False(t, tagsPresent, "tags should be absent from _dd_tf_origin since it is not declared in the module resource")
+}
+
+// TestOriginHints_NestedBlocks verifies that hardcoded attributes inside nested blocks
+// (e.g. metadata_options { http_endpoint = "enabled" }) are classified correctly.
+func TestOriginHints_NestedBlocks(t *testing.T) {
+	doc := model.Document{
+		"format_version":    "1.0",
+		"terraform_version": "1.5.0",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"child_modules": []interface{}{
+					map[string]interface{}{
+						"address": "module.ec2",
+						"resources": []interface{}{
+							map[string]interface{}{
+								"address": "module.ec2.aws_instance.this",
+								"mode":    "managed",
+								"type":    "aws_instance",
+								"name":    "this",
+								"values":  map[string]interface{}{"ami": "ami-123"},
+							},
+						},
+					},
+				},
+			},
+		},
+		"configuration": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"module_calls": map[string]interface{}{
+					"ec2": map[string]interface{}{
+						"source": "./modules/ec2",
+						"expressions": map[string]interface{}{
+							"ami":         map[string]interface{}{"constant_value": "ami-123"},
+							"http_tokens": map[string]interface{}{"constant_value": "required"},
+						},
+						"module": map[string]interface{}{
+							"resources": []interface{}{
+								map[string]interface{}{
+									"address": "aws_instance.this",
+									"type":    "aws_instance",
+									"name":    "this",
+									"expressions": map[string]interface{}{
+										"ami": map[string]interface{}{
+											"references": []interface{}{"var.ami"},
+										},
+										// metadata_options is a nested block — expressed as a list of maps
+										"metadata_options": []interface{}{
+											map[string]interface{}{
+												"http_endpoint": map[string]interface{}{
+													"constant_value": "enabled",
+												},
+												"http_tokens": map[string]interface{}{
+													"references": []interface{}{"var.http_tokens"},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+
+	resourceSection := got["resource"].(map[string]interface{})
+	instanceSection := resourceSection["aws_instance"].(map[string]interface{})
+
+	var attrs map[string]interface{}
+	for _, v := range instanceSection {
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if addr, _ := m["_dd_tf_address"].(string); addr == "module.ec2.aws_instance.this" {
+			attrs = m
+			break
+		}
+	}
+	require.NotNil(t, attrs)
+
+	originMap := attrs["_dd_tf_origin"].(map[string]interface{})
+
+	// ami is set by call
+	amiHint := originMap["ami"].(map[string]interface{})
+	require.Equal(t, "call", amiHint["origin"])
+
+	// metadata_options.http_endpoint is hardcoded in the module
+	httpEndpointHint := originMap["metadata_options.http_endpoint"].(map[string]interface{})
+	require.Equal(t, "module_hardcoded", httpEndpointHint["origin"])
+	require.Equal(t, "./modules/ec2", httpEndpointHint["moduleDir"])
+
+	// metadata_options.http_tokens is set by call
+	httpTokensHint := originMap["metadata_options.http_tokens"].(map[string]interface{})
+	require.Equal(t, "call", httpTokensHint["origin"])
 }
