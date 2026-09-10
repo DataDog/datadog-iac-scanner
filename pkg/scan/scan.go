@@ -87,13 +87,14 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 			baselinePaths = append(baselinePaths, path)
 		}
 	}
-	moduleCleanup, remoteModulePaths, remoteSourceDirs, remoteModuleProvenance, err := c.resolveTerraformModulesForScan(
+	moduleCleanup, remoteModulePaths, remoteSourceDirs, remoteModuleProvenance, inventoryModules, err := c.resolveTerraformModulesForScan(
 		ctx, paramsPlatforms, &extractedPaths, baselinePaths,
 	)
 	memwatch.Sample(ctx, memwatch.PhaseModuleResolve)
 	if err != nil {
 		return nil, err
 	}
+	c.inventoryModules = inventoryModules
 	initSucceeded := false
 	defer func() {
 		if initSucceeded {
@@ -242,6 +243,7 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	contextLogger.Info().Msg("Scan finished")
 
 	failedQueries := executeScanParameters.inspector.GetFailedQueries()
+	c.inventoryParsedModules = executeScanParameters.inspector.ParsedTerraformModules()
 
 	results, err := c.Storage.GetVulnerabilities(ctx, c.ScanParams.ScanID)
 	if err != nil {

@@ -246,6 +246,7 @@ type Inspector struct {
 	remoteModuleDirs       map[string]RemoteModuleDirectory
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
+	parsedTerraformModules map[string]tfmodules.ParsedModule
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -517,6 +518,7 @@ func (c *Inspector) Inspect(
 		}
 		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
 	}
+	c.parsedTerraformModules = parsedModules
 	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
 
 	// Step 2: Enrich modules with parsed variables. As with Step 1, a context
@@ -734,6 +736,12 @@ func (c *Inspector) GetFailedQueries() map[string]error {
 	c.failedQueriesMu.Lock()
 	defer c.failedQueriesMu.Unlock()
 	return maps.Clone(c.failedQueries)
+}
+
+// ParsedTerraformModules returns the module index built during the last Inspect
+// call. The map is read-only for callers and is reused by inventory export.
+func (c *Inspector) ParsedTerraformModules() map[string]tfmodules.ParsedModule {
+	return c.parsedTerraformModules
 }
 
 func ruleArgumentsValue(rc config.IacRuleConfig) (ast.Value, bool, error) {
