@@ -76,3 +76,23 @@ module "vpc" {
 	require.Equal(t, "vpc", entries[0].Name)
 	require.Equal(t, "main.tf", entries[0].FileName)
 }
+
+func TestModuleEntriesFromPathsTofuShadowsTf(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "from_tf" {
+  source = "terraform-aws-modules/vpc/aws"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tofu"), []byte(`
+module "from_tofu" {
+  source = "terraform-aws-modules/vpc/aws"
+}
+`), 0o644))
+
+	entries, err := moduleEntriesFromPaths(t.Context(), []string{root}, false)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "from_tofu", entries[0].Name)
+	require.Equal(t, "main.tofu", entries[0].FileName)
+}

@@ -818,6 +818,10 @@ func TestTerraformFilesIncludesTfJSON(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`module "a" {}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf.json"), []byte(`{"module":{}}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu"), []byte(`module "b" {}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu.json"), []byte(`{"module":{}}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "foo.tf"), []byte(`module "c" {}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "foo.tofu.json"), []byte(`{"module":{}}`), 0o600))
 
 	provider, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
 	require.NoError(t, err)
@@ -825,7 +829,143 @@ func TestTerraformFilesIncludesTfJSON(t *testing.T) {
 	files, err := provider.TerraformFiles(ctx)
 	require.NoError(t, err)
 	require.Equal(t, []string{
+		filepath.ToSlash(filepath.Join(dir, "foo.tf")),
+		filepath.ToSlash(filepath.Join(dir, "foo.tofu.json")),
 		filepath.ToSlash(filepath.Join(dir, "main.tf")),
 		filepath.ToSlash(filepath.Join(dir, "main.tf.json")),
+		filepath.ToSlash(filepath.Join(dir, "main.tofu")),
+		filepath.ToSlash(filepath.Join(dir, "main.tofu.json")),
 	}, files)
+}
+
+func TestWalkInventoryTofuShadowing(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	tofu := filepath.Join(dir, "main.tofu")
+	twin := filepath.Join(dir, "main.tf")
+	tofuJSON := filepath.Join(dir, "main.tofu.json")
+	twinJSON := filepath.Join(dir, "main.tf.json")
+	require.NoError(t, os.WriteFile(tofu, []byte(`resource "aws_s3_bucket" "b" {}`), 0o600))
+	require.NoError(t, os.WriteFile(twin, []byte(`resource "aws_s3_bucket" "shadowed" {}`), 0o600))
+	require.NoError(t, os.WriteFile(tofuJSON, []byte(`{}`), 0o600))
+	require.NoError(t, os.WriteFile(twinJSON, []byte(`{}`), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+	require.NoError(t, err)
+
+	noChart := func(context.Context, string) bool { return false }
+	extensions := model.Extensions{".tf": {}, ".tofu": {}, ".json": {}}
+	files, err := fs.WalkInventory(ctx, extensions, noChart)
+	require.NoError(t, err)
+
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.Path)
+	}
+	require.ElementsMatch(t, []string{
+		filepath.ToSlash(tofu),
+		filepath.ToSlash(twin),
+		filepath.ToSlash(tofuJSON),
+		filepath.ToSlash(twinJSON),
+	}, paths)
+}
+
+func TestWalkInventoryPrebuiltTofuShadowing(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	tofu := filepath.Join(dir, "main.tofu")
+	twin := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(tofu, []byte(`resource "aws_s3_bucket" "b" {}`), 0o600))
+	require.NoError(t, os.WriteFile(twin, []byte(`resource "aws_s3_bucket" "shadowed" {}`), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+	require.NoError(t, err)
+	fs.SetPrebuiltWalk([]string{
+		filepath.ToSlash(twin),
+		filepath.ToSlash(tofu),
+	}, nil, nil)
+
+	noChart := func(context.Context, string) bool { return false }
+	extensions := model.Extensions{".tf": {}, ".tofu": {}}
+	files, err := fs.WalkInventory(ctx, extensions, noChart)
+	require.NoError(t, err)
+
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.Path)
+	}
+	require.ElementsMatch(t, []string{filepath.ToSlash(twin), filepath.ToSlash(tofu)}, paths)
+}
+
+func TestGetSourcesTofuShadowing(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	tofu := filepath.Join(dir, "main.tofu")
+	twin := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(tofu, []byte(`resource "aws_s3_bucket" "b" {}`), 0o600))
+	require.NoError(t, os.WriteFile(twin, []byte(`resource "aws_s3_bucket" "shadowed" {}`), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+	require.NoError(t, err)
+	exts := model.Extensions{".tf": {}, ".tofu": {}}
+	noop := func(context.Context, string) ([]string, error) { return nil, nil }
+
+	collect := func(parallel bool) []string {
+		var got []string
+		var mu sync.Mutex
+		sink := func(_ context.Context, filename string, content io.ReadCloser) error {
+			_ = content.Close()
+			mu.Lock()
+			got = append(got, filepath.Base(filename))
+			mu.Unlock()
+			return nil
+		}
+		var runErr error
+		if parallel {
+			runErr = fs.GetParallelSources(ctx, exts, sink, noop)
+		} else {
+			runErr = fs.GetSources(ctx, exts, sink, noop)
+		}
+		require.NoError(t, runErr)
+		return got
+	}
+
+	for _, parallel := range []bool{false, true} {
+		got := collect(parallel)
+		require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got, "parallel=%v", parallel)
+	}
+}
+
+func TestGetSourcesTofuShadowingExplicitFiles(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	tofu := filepath.Join(dir, "main.tofu")
+	twin := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(tofu, []byte(`resource "aws_s3_bucket" "b" {}`), 0o600))
+	require.NoError(t, os.WriteFile(twin, []byte(`resource "aws_s3_bucket" "shadowed" {}`), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{twin, tofu}, nil, nil)
+	require.NoError(t, err)
+	exts := model.Extensions{".tf": {}, ".tofu": {}}
+	noop := func(context.Context, string) ([]string, error) { return nil, nil }
+
+	for _, parallel := range []bool{false, true} {
+		var got []string
+		var mu sync.Mutex
+		sink := func(_ context.Context, filename string, content io.ReadCloser) error {
+			_ = content.Close()
+			mu.Lock()
+			got = append(got, filepath.Base(filename))
+			mu.Unlock()
+			return nil
+		}
+		var runErr error
+		if parallel {
+			runErr = fs.GetParallelSources(ctx, exts, sink, noop)
+		} else {
+			runErr = fs.GetSources(ctx, exts, sink, noop)
+		}
+		require.NoError(t, runErr)
+		require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got, "parallel=%v", parallel)
+	}
 }

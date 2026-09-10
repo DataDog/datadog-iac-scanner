@@ -144,6 +144,11 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		inspector.SetRemoteModuleProvenance(remoteModuleProvenance)
 	}
 	inspector.SetExternalModulePaths(remoteModulePaths)
+	if c.inMemory {
+		inspector.SetMergeAllow(append(append([]string{}, c.inMemoryPaths...), remoteModulePaths...))
+	} else {
+		inspector.SetMergeAllow(append(append([]string{}, c.walkInventory...), remoteModulePaths...))
+	}
 
 	contextLogger.Info().Msgf("Finished inspect query source %v", querySource)
 
@@ -336,10 +341,17 @@ func (c *Client) createService(
 		filesSource = fsSource
 	}
 
+	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)
+	if c.inMemory {
+		tfParser.SetMergeAllow(append(append([]string{}, paths...), remoteModulePaths...))
+	} else {
+		tfParser.SetMergeAllow(append(append([]string{}, c.walkInventory...), remoteModulePaths...))
+	}
+
 	combinedParserBuilder := parser.NewBuilder(ctx).
 		WithFS(c.fsys).
 		Add(&yamlParser.Parser{}).
-		Add(terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)).
+		Add(tfParser).
 		Add(&bicepParser.Parser{}).
 		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).

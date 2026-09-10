@@ -477,6 +477,51 @@ func TestAnalyze_ValidSymlink(t *testing.T) {
 	require.Empty(t, got.Exc)
 }
 
+func TestAnalyze_TofuClassifiesAsTerraform(t *testing.T) {
+	dir := t.TempDir()
+	tofu := filepath.Join(dir, "main.tofu")
+	require.NoError(t, os.WriteFile(tofu, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{tofu},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{terraform}, got.Types)
+	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(tofu)])
+	require.Equal(t, []string{filepath.ToSlash(tofu)}, got.Inventory)
+	require.Empty(t, got.Exc)
+}
+
+func TestAnalyze_TofuKeepsTfTwin(t *testing.T) {
+	dir := t.TempDir()
+	tofu := filepath.Join(dir, "main.tofu")
+	twin := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(tofu, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+	require.NoError(t, os.WriteFile(twin, []byte("resource \"aws_s3_bucket\" \"shadowed\" {}\n"), 0o600))
+	independent := filepath.Join(dir, "other.tf")
+	require.NoError(t, os.WriteFile(independent, []byte("resource \"aws_s3_bucket\" \"c\" {}\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{terraform}, got.Types)
+	require.ElementsMatch(t, []string{
+		filepath.ToSlash(tofu),
+		filepath.ToSlash(twin),
+		filepath.ToSlash(independent),
+	}, got.Inventory)
+	require.NotContains(t, got.Exc, filepath.ToSlash(twin))
+}
+
 func Test_checkHelm_memoizesEveryWalkedDirectory(t *testing.T) {
 	dir := t.TempDir()
 	chart := filepath.Join(dir, "mychart")

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,7 +66,7 @@ func TestResolvedPathCacheDoesNotLeakAcrossScans(t *testing.T) {
 	link := filepath.Join(packageRoot, "linked")
 	require.NoError(t, os.Symlink(inside, link))
 
-	first := WithResolvedPathCache(t.Context())
+	first := pathutil.WithResolvedPathCache(t.Context())
 	resolution, err := ConfineResolution(first, Resolution{
 		LocalPath:   link,
 		PackageRoot: packageRoot,
@@ -82,7 +83,7 @@ func TestResolvedPathCacheDoesNotLeakAcrossScans(t *testing.T) {
 	})
 	require.NoError(t, err, "the same scan still uses the cached in-package target")
 
-	second := WithResolvedPathCache(t.Context())
+	second := pathutil.WithResolvedPathCache(t.Context())
 	_, err = ConfineResolution(second, Resolution{
 		LocalPath:   link,
 		PackageRoot: packageRoot,

@@ -41,6 +41,7 @@ type SupportedFileEntry struct {
 // analyzer.PossibleFileTypes() entry so a newly supported type can't be missed.
 var strategyByPattern = map[string]fileStrategy{
 	".tf":         strategyDirectory,
+	".tofu":       strategyDirectory,
 	".tfvars":     strategyDirectory,
 	".yaml":       strategyDirectory,
 	".yml":        strategyDirectory,

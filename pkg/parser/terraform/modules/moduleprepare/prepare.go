@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
@@ -266,7 +266,7 @@ func discoverTerraformFiles(ctx context.Context, root, excludedDir string) ([]st
 			}
 			return nil
 		}
-		if entry.Type().IsRegular() && tfmodules.IsTerraformConfigPath(path) {
+		if entry.Type().IsRegular() && tfpath.IsConfig(path) {
 			paths = append(paths, path)
 		}
 		return nil
@@ -302,7 +302,7 @@ func normalizeDiscoveryPaths(root string, paths []string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("checking discovery path %q: %w", path, err)
 		}
-		if !info.Mode().IsRegular() || !tfmodules.IsTerraformConfigPath(resolved) {
+		if !info.Mode().IsRegular() || !tfpath.IsConfig(resolved) {
 			return nil, fmt.Errorf("discovery path %q is not a Terraform configuration file", path)
 		}
 		if _, ok := seen[resolved]; ok {

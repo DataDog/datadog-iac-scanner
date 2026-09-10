@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
@@ -307,7 +308,7 @@ func (m *Manifest) validate(ctx context.Context) error {
 				"package_root": entry.PackageRoot,
 			} {
 				rel, err := filepath.Rel(m.Dir, path)
-				if err != nil || pathEscapesDir(rel) {
+				if err != nil || pathutil.PathEscapesDir(rel) {
 					return fmt.Errorf("entry %q: %s %q is not confined to dir %q", src, field, path, m.Dir)
 				}
 			}

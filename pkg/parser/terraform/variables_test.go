@@ -241,8 +241,79 @@ func TestGetInputVariables(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fileContent, _ := os.ReadFile(tt.filename)
-			result := getInputVariables(ctx, vfs.DiskFS{}, tt.filename, string(fileContent), "../../../test/fixtures/test_terraform_variables/varsToUse/varsToUse.tf")
+			result := getInputVariables(ctx, vfs.DiskFS{}, tt.filename, string(fileContent), "../../../test/fixtures/test_terraform_variables/varsToUse/varsToUse.tf", nil, "")
 			require.Equal(t, tt.want, result)
 		})
 	}
+}
+
+func TestGetInputVariables_TofuShadowsTf(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "variables.tf"), []byte(`
+variable "bucket" { default = "from-tf" }
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "variables.tofu"), []byte(`
+variable "bucket" { default = "from-tofu" }
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "other.tf"), []byte(`
+variable "other" { default = "kept" }
+`), 0o600))
+
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", nil, "")
+	vars := got["var"].AsValueMap()
+	require.Equal(t, "from-tofu", vars["bucket"].AsString())
+	require.Equal(t, "kept", vars["other"].AsString())
+}
+
+func TestGetInputVariables_ExcludedTofuTwinKept(t *testing.T) {
+	dir := t.TempDir()
+	tf := filepath.Join(dir, "variables.tf")
+	tofu := filepath.Join(dir, "variables.tofu")
+	require.NoError(t, os.WriteFile(tf, []byte(`
+variable "bucket" { default = "from-tf" }
+`), 0o600))
+	require.NoError(t, os.WriteFile(tofu, []byte(`
+variable "bucket" { default = "from-tofu" }
+`), 0o600))
+
+	allow := map[string]struct{}{filepath.ToSlash(tf): {}}
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, "")
+	vars := got["var"].AsValueMap()
+	require.Equal(t, "from-tf", vars["bucket"].AsString())
+}
+
+func TestGetInputVariables_InventoriedTwinKeepsOwnVars(t *testing.T) {
+	dir := t.TempDir()
+	tf := filepath.Join(dir, "variables.tf")
+	tofu := filepath.Join(dir, "variables.tofu")
+	require.NoError(t, os.WriteFile(tf, []byte(`
+variable "bucket" { default = "from-tf" }
+`), 0o600))
+	require.NoError(t, os.WriteFile(tofu, []byte(`
+variable "bucket" { default = "from-tofu" }
+`), 0o600))
+
+	allow := map[string]struct{}{
+		filepath.ToSlash(tf):   {},
+		filepath.ToSlash(tofu): {},
+	}
+	fromTF := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tf)
+	require.Equal(t, "from-tf", fromTF["var"].AsValueMap()["bucket"].AsString())
+	fromTofu := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tofu)
+	require.Equal(t, "from-tofu", fromTofu["var"].AsValueMap()["bucket"].AsString())
+}
+
+func TestGetInputVariables_AllowMissFallsBackToDir(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "variables.tf"), []byte(`
+variable "bucket" { default = "from-tf" }
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "variables.tofu"), []byte(`
+variable "bucket" { default = "from-tofu" }
+`), 0o600))
+
+	allow := map[string]struct{}{filepath.ToSlash(filepath.Join(t.TempDir(), "other.tf")): {}}
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, "")
+	vars := got["var"].AsValueMap()
+	require.Equal(t, "from-tofu", vars["bucket"].AsString())
 }

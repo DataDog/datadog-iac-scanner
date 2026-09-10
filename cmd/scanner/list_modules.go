@@ -8,10 +8,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	cli "github.com/urfave/cli/v3"
 )
@@ -49,6 +49,7 @@ func moduleEntriesFromPaths(
 	if err != nil {
 		return nil, err
 	}
+	files, _ = tfpath.Partition(files, func(f *model.FileMetadata) string { return f.FilePath })
 	modules, err := tfmodules.ParseTerraformModules(ctx, vfs.DiskFS{}, files, 0)
 	if err != nil {
 		return nil, fmt.Errorf("parsing Terraform modules: %w", err)
@@ -108,7 +109,7 @@ func walkTerraformDiscoveryRoot(walkRoot string, seen map[string]bool, files *mo
 			}
 			return nil
 		}
-		if entry.Type()&fs.ModeSymlink != 0 || !strings.HasSuffix(strings.ToLower(entry.Name()), ".tf") {
+		if entry.Type()&fs.ModeSymlink != 0 || !tfpath.IsConfig(entry.Name()) {
 			return nil
 		}
 		clean := filepath.Clean(path)

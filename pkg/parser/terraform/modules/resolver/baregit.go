@@ -29,8 +29,10 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
 
 // dirPerm is the permission mode used for all directories created by resolvers.
@@ -1005,11 +1007,14 @@ func localModuleArchiveSubdirs(moduleDir, packageRoot string) ([]string, error) 
 	}
 	seen := make(map[string]bool)
 	var children []string
+	var names []string
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".tf") {
-			continue
+		if !entry.IsDir() {
+			names = append(names, entry.Name())
 		}
-		path := filepath.Join(moduleDir, entry.Name())
+	}
+	for _, name := range tfpath.Select(names, tfpath.IsHCLConfig) {
+		path := filepath.Join(moduleDir, name)
 		src, readErr := os.ReadFile(filepath.Clean(path))
 		if readErr != nil {
 			continue
@@ -1060,7 +1065,7 @@ func localArchiveSubdir(moduleDir, packageRoot, source string) (string, bool) {
 	}
 	childPath := filepath.Clean(filepath.Join(moduleDir, filepath.FromSlash(source)))
 	rel, err := filepath.Rel(packageRoot, childPath)
-	if err != nil || pathEscapesDir(rel) || rel == "." {
+	if err != nil || pathutil.PathEscapesDir(rel) || rel == "." {
 		return "", false
 	}
 	return rel, true

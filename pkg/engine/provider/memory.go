@@ -55,11 +55,8 @@ func NewMemorySourceProvider(fsys vfs.FS, paths, ignorePaths, onlyPaths []string
 // file names against a base path.
 func (m *MemorySourceProvider) GetBasePaths() []string { return []string{"."} }
 
-// GetSources feeds each pushed file whose extension a parser supports into the
-// sink, reading its content through the vfs.FS.
-func (m *MemorySourceProvider) GetSources(ctx context.Context,
-	extensions model.Extensions, sink Sink, _ ResolverSink) error {
-	contextLogger := logger.FromContext(ctx)
+func (m *MemorySourceProvider) eligibleFiles(extensions model.Extensions) []string {
+	eligible := make([]string, 0, len(m.paths))
 	for _, p := range m.paths {
 		if !extensions.Include(memExtension(p)) {
 			continue
@@ -67,6 +64,17 @@ func (m *MemorySourceProvider) GetSources(ctx context.Context,
 		if pathutil.Excluded(p, m.ignorePaths, m.onlyPaths) {
 			continue
 		}
+		eligible = append(eligible, p)
+	}
+	return eligible
+}
+
+// GetSources feeds each pushed file whose extension a parser supports into the
+// sink, reading its content through the vfs.FS.
+func (m *MemorySourceProvider) GetSources(ctx context.Context,
+	extensions model.Extensions, sink Sink, _ ResolverSink) error {
+	contextLogger := logger.FromContext(ctx)
+	for _, p := range m.eligibleFiles(extensions) {
 		content, err := m.fsys.ReadFile(p)
 		if err != nil {
 			contextLogger.Warn().Msgf("memory source provider: could not read pushed file %s: %v", p, err)
@@ -92,16 +100,7 @@ func (m *MemorySourceProvider) GetParallelSources(ctx context.Context,
 	contextLogger := logger.FromContext(ctx)
 
 	// Select the eligible files first (cheap; no parsing yet).
-	eligible := make([]string, 0, len(m.paths))
-	for _, p := range m.paths {
-		if !extensions.Include(memExtension(p)) {
-			continue
-		}
-		if pathutil.Excluded(p, m.ignorePaths, m.onlyPaths) {
-			continue
-		}
-		eligible = append(eligible, p)
-	}
+	eligible := m.eligibleFiles(extensions)
 
 	// Parse the eligible files in parallel. A file that cannot be read is logged
 	// and skipped (not an error); the first sink error cancels the rest.

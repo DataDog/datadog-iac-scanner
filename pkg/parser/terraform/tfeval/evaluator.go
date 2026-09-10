@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -121,6 +122,9 @@ type Evaluator struct {
 
 	parseMu  sync.Mutex
 	dirCache map[string]dirParse
+
+	// mergeAllow, when set, limits OpenTofu twin-shadowing to inventory paths.
+	mergeAllow map[string]struct{}
 }
 
 type dirParse struct {
@@ -176,7 +180,7 @@ func (e *Evaluator) RestoreInstantiatedCount(n int) {
 	e.budgetExceeded = e.maxInstantiated > 0 && e.instantiated >= e.maxInstantiated
 }
 
-func (e *Evaluator) parseDir(dir, packageRoot string) ([]*hclsyntax.Body, error) {
+func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) ([]*hclsyntax.Body, error) {
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
 
 	e.parseMu.Lock()
@@ -186,7 +190,7 @@ func (e *Evaluator) parseDir(dir, packageRoot string) ([]*hclsyntax.Body, error)
 	}
 	e.parseMu.Unlock()
 
-	bodies, err := parseDir(dir, packageRoot)
+	bodies, err := parseDir(ctx, dir, packageRoot, e.mergeAllow)
 
 	e.parseMu.Lock()
 	e.dirCache[key] = dirParse{bodies: bodies, err: err}
@@ -196,6 +200,11 @@ func (e *Evaluator) parseDir(dir, packageRoot string) ([]*hclsyntax.Body, error)
 
 func (e *Evaluator) SetRemoteResolver(r RemoteResolver) {
 	e.remoteResolver = r
+}
+
+// SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
+func (e *Evaluator) SetMergeAllow(allow map[string]struct{}) {
+	e.mergeAllow = allow
 }
 
 func (e *Evaluator) ReleaseCaches() {
@@ -225,7 +234,7 @@ func (e *Evaluator) EvaluateModule(
 	dir string,
 	inputs map[string]cty.Value,
 ) (resources []ResolvedResource, outputs map[string]cty.Value, visitedChildDirs map[string]bool, err error) {
-	ctx = resolver.WithResolvedPathCache(ctx)
+	ctx = pathutil.WithResolvedPathCache(ctx)
 	abs, absErr := filepath.Abs(dir)
 	if absErr != nil {
 		contextLogger := logger.FromContext(ctx)
@@ -280,7 +289,7 @@ func (e *Evaluator) evaluate(
 		prevAllVisited[k] = true
 	}
 
-	bodies, err := e.parseDir(dir, packageRoot)
+	bodies, err := e.parseDir(ctx, dir, packageRoot)
 	if err != nil {
 		return nil, nil, err
 	}

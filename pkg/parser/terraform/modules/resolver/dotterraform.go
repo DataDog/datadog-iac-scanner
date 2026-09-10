@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
@@ -90,12 +91,12 @@ func installedModulePaths(scanRoot, installRoot, localPath string) (installedMod
 	installRoot = filepath.Clean(installRoot)
 	localPath = filepath.Clean(localPath)
 	scanRel, err := filepath.Rel(scanRoot, localPath)
-	if err != nil || scanRel == "." || pathEscapesDir(scanRel) {
+	if err != nil || scanRel == "." || pathutil.PathEscapesDir(scanRel) {
 		return installedModulePath{}, false
 	}
 	packageRoot := localPath
 	if installRel, relErr := filepath.Rel(installRoot, localPath); relErr == nil &&
-		installRel != "." && !pathEscapesDir(installRel) {
+		installRel != "." && !pathutil.PathEscapesDir(installRel) {
 		first, _, _ := strings.Cut(installRel, string(os.PathSeparator))
 		packageRoot = filepath.Join(installRoot, first)
 	}
@@ -154,7 +155,7 @@ func (r *DotTerraformResolver) rootsFor(fileName string) []string {
 	roots := make([]string, 0, len(r.RootDirs))
 	for _, root := range r.RootDirs {
 		cleanRoot := filepath.Clean(root)
-		if rel, err := filepath.Rel(cleanRoot, fileDir); err == nil && !pathEscapesDir(rel) {
+		if rel, err := filepath.Rel(cleanRoot, fileDir); err == nil && !pathutil.PathEscapesDir(rel) {
 			roots = append(roots, cleanRoot)
 		}
 	}

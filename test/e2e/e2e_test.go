@@ -113,6 +113,22 @@ func violationDiff(a, b map[string]map[string]int) map[string]int {
 	return diff
 }
 
+func Test_E2ETofuScannedAsTerraform(t *testing.T) {
+	queriesPaths := []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform"))}
+
+	stats := runScan(t, filepath.Join("fixtures", "positive.tofu"), queriesPaths)
+
+	require.Equal(t, 1, stats.Files, "the .tofu fixture must be scanned")
+	require.NotEmpty(t, stats.ViolationBreakdowns, "no violations on the .tofu fixture: check queriesPaths")
+	fired := false
+	for _, slugs := range stats.ViolationBreakdowns {
+		if _, ok := slugs["terraform-aws-team-tag-not-present"]; ok {
+			fired = true
+		}
+	}
+	require.True(t, fired, "terraform-aws-team-tag-not-present must fire on a .tofu file")
+}
+
 // Test_E2ETerraformPlanFlag verifies that:
 // 1. Terraform plan JSON files are scanned when the flag is enabled
 // 2. CloudFormation JSON files are NOT scanned (even though they are JSON)

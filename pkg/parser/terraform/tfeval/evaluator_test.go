@@ -98,6 +98,71 @@ resource "aws_s3_bucket" "this" {
 	requireString(t, r.Attributes, "bucket", "my-bucket")
 }
 
+func TestEvaluateModule_TofuShadowsTf(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_s3_bucket" "shadowed" {
+  bucket = "from-tf"
+}
+`,
+		"main.tofu": `
+resource "aws_s3_bucket" "live" {
+  bucket = "from-tofu"
+}
+`,
+		"other.tf": `
+resource "aws_s3_bucket" "other" {
+  bucket = "from-other"
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	if len(resources) != 2 {
+		t.Fatalf("got %d resources, want 2 (shadowed twin dropped): %#v", len(resources), resources)
+	}
+	requireString(t, findResource(t, resources, "aws_s3_bucket", "live").Attributes, "bucket", "from-tofu")
+	requireString(t, findResource(t, resources, "aws_s3_bucket", "other").Attributes, "bucket", "from-other")
+	for _, r := range resources {
+		if r.Name == "shadowed" {
+			t.Fatal("main.tf resource must not be evaluated next to main.tofu")
+		}
+	}
+}
+
+func TestEvaluateModule_ExcludedTofuTwinKept(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_s3_bucket" "tf" {
+  bucket = "from-tf"
+}
+`,
+		"main.tofu": `
+resource "aws_s3_bucket" "tofu" {
+  bucket = "from-tofu"
+}
+`,
+	})
+
+	e := New()
+	e.SetMergeAllow(map[string]struct{}{
+		filepath.ToSlash(filepath.Join(dir, "main.tf")): {},
+	})
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	if len(resources) != 1 {
+		t.Fatalf("got %d resources, want 1: %#v", len(resources), resources)
+	}
+	requireString(t, findResource(t, resources, "aws_s3_bucket", "tf").Attributes, "bucket", "from-tf")
+}
+
 func TestEvaluateModule_DefaultAppliedWhenInputOmitted(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{

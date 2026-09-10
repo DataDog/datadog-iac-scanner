@@ -20,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/cespare/xxhash/v2"
 	"github.com/rs/zerolog"
 )
@@ -85,7 +86,7 @@ func (c *Inspector) instantiateLocalModules(
 	}
 	rootDirs := newRootIndex(res.rootDirs)
 	for _, f := range files {
-		if f == nil || !tfmodules.IsTerraformConfigPath(f.FilePath) {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
 		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
@@ -136,7 +137,7 @@ func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) b
 		return true
 	}
 	for _, f := range files {
-		if f == nil || !tfmodules.IsTerraformConfigPath(f.FilePath) {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
 		resources, ok := asStringMap(f.Document["resource"])
@@ -323,7 +324,7 @@ func (c *Inspector) resolveModulesSafely(
 			res = moduleResolutionResult{}
 		}
 	}()
-	return resolveModuleDocuments(ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup())
+	return resolveModuleDocuments(ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow)
 }
 
 // resolveModuleDocuments instantiates all local modules referenced by the
@@ -457,6 +458,7 @@ func resolveModuleDocuments(
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
 	lookup moduleProvenanceLookup,
+	mergeAllow map[string]struct{},
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -470,6 +472,7 @@ func resolveModuleDocuments(
 	}
 
 	evaluator := tfeval.New()
+	evaluator.SetMergeAllow(mergeAllow)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
@@ -1008,7 +1011,7 @@ func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPat
 	filesByDir = make(map[string][]*model.FileMetadata)
 	dirsWithTf = make(map[string]bool)
 	for _, f := range files {
-		if f == nil || !tfmodules.IsTerraformConfigPath(f.FilePath) {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
 		abs := absPath(f.FilePath, repoPath)

@@ -90,13 +90,11 @@ type convertedPolicy struct {
 	Version   string                     `json:"Version,omitempty"`
 }
 
-func getDataSourcePolicy(ctx context.Context, fsys vfs.FS, currentPath string, inputVariables converter.VariableMap) converter.VariableMap {
+func getDataSourcePolicy(
+	ctx context.Context, fsys vfs.FS, currentPath string, inputVariables converter.VariableMap, allow map[string]struct{}, keep string,
+) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
-	tfFiles, err := fsys.Glob(filepath.Join(currentPath, "*.tf"))
-	if err != nil {
-		contextLogger.Error().Msg("Error getting .tf files to parse data source")
-		return inputVariables
-	}
+	tfFiles := hclConfigFiles(ctx, fsys, currentPath, allow, keep)
 	if len(tfFiles) == 0 {
 		return inputVariables
 	}

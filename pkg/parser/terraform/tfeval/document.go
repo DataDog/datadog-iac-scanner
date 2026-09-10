@@ -7,6 +7,7 @@
 package tfeval
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -280,7 +281,7 @@ type RemoteResolver func(
 ) (dir, packageRoot string, ok bool)
 
 func CalledModuleDirs(dir string, resolver RemoteResolver) []string {
-	bodies, err := parseDir(dir, "")
+	bodies, err := parseDir(context.Background(), dir, "", nil)
 	if err != nil {
 		return nil
 	}
@@ -288,7 +289,7 @@ func CalledModuleDirs(dir string, resolver RemoteResolver) []string {
 }
 
 func (e *Evaluator) CalledModuleDirs(dir string) []string {
-	bodies, err := e.parseDir(dir, "")
+	bodies, err := e.parseDir(context.Background(), dir, "")
 	if err != nil {
 		return nil
 	}
