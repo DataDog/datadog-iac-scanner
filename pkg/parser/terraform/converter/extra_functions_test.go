@@ -31,6 +31,11 @@ func TestExtraFunctionEvaluation(t *testing.T) {
 		{name: "cidrnetmask", input: `block "t" { n = cidrnetmask("10.0.0.0/16") }`, want: cty.StringVal("255.255.0.0")},
 		{name: "urlencode", input: `block "t" { n = urlencode("a b") }`, want: cty.StringVal("a+b")},
 		{name: "md5", input: `block "t" { n = md5("hello") }`, want: cty.StringVal("5d41402abc4b2a76b9719d911017c592")},
+		{name: "basename", input: `block "t" { n = basename("/foo/bar.txt") }`, want: cty.StringVal("bar.txt")},
+		{name: "timecmp", input: `block "t" { n = timecmp("2017-11-22T00:00:00Z", "2017-11-22T00:00:00Z") }`, want: cty.NumberIntVal(0)},
+		{name: "uuidv5", input: `block "t" { n = uuidv5("dns", "www.terraform.io") }`, want: cty.StringVal("a5008fae-b28c-5ba5-96cd-82b4c53552d6")},
+		{name: "templatestring", input: `block "t" { n = templatestring("hello $${name}", { name = "world" }) }`, want: cty.StringVal("hello world")},
+		{name: "textencodebase64", input: `block "t" { n = textencodebase64("hello!", "UTF-16LE") }`, want: cty.StringVal("aABlAGwAbABvACEA")},
 	}
 
 	ctx := context.Background()

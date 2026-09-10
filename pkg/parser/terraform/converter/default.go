@@ -15,10 +15,12 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 	ctyconvert "github.com/zclconf/go-cty/cty/convert"
+	"github.com/zclconf/go-cty/cty/function"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
@@ -28,10 +30,20 @@ type VariableMap map[string]cty.Value
 // This file is attributed to https://github.com/tmccombs/hcl2json.
 // convertBlock() is manipulated for combining the both blocks and labels for one given resource.
 
-// DefaultConverted an hcl File to a toJson serializable object
-// This assumes that the body is a hclsyntax.Body
-var DefaultConverted = func(ctx context.Context, file *hcl.File, inputVariables VariableMap) (model.Document, error) {
-	c := converter{bytes: file.Bytes, inputVars: inputVariables}
+// Options controls filesystem-backed function evaluation during conversion.
+type Options struct {
+	BaseDir string
+	FS      vfs.FS
+}
+
+// Convert an hcl File to a toJson serializable object.
+// This assumes that the body is a hclsyntax.Body.
+func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, opts Options) (model.Document, error) {
+	c := converter{
+		bytes:     file.Bytes,
+		inputVars: inputVariables,
+		funcs:     functions.EvalFuncs(opts.BaseDir, opts.FS),
+	}
 	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 
 	if err != nil {
@@ -45,9 +57,27 @@ var DefaultConverted = func(ctx context.Context, file *hcl.File, inputVariables 
 	return body, nil
 }
 
+// DefaultConverted an hcl File to a toJson serializable object
+// This assumes that the body is a hclsyntax.Body
+var DefaultConverted = func(ctx context.Context, file *hcl.File, inputVariables VariableMap) (model.Document, error) {
+	return Convert(ctx, file, inputVariables, Options{})
+}
+
 type converter struct {
 	bytes     []byte
 	inputVars VariableMap
+	funcs     map[string]function.Function
+}
+
+func (c *converter) evalContext() *hcl.EvalContext {
+	funcs := c.funcs
+	if funcs == nil {
+		funcs = functions.TerraformFuncs
+	}
+	return &hcl.EvalContext{
+		Variables: c.inputVars,
+		Functions: funcs,
+	}
 }
 
 const (
@@ -232,10 +262,7 @@ func (v *converterExprVisitor) VisitFunctionCall(e *hclsyntax.FunctionCallExpr) 
 	return v.c.evalFunction(e)
 }
 func (v *converterExprVisitor) VisitConditional(e *hclsyntax.ConditionalExpr) (interface{}, error) {
-	val, err := e.Value(&hcl.EvalContext{
-		Variables: v.c.inputVars,
-		Functions: functions.TerraformFuncs,
-	})
+	val, err := e.Value(v.c.evalContext())
 	if err != nil || !val.IsWhollyKnown() {
 		return v.c.wrapExpr(e)
 	}
@@ -486,10 +513,7 @@ func (c *converter) convertTemplateFor(expr *hclsyntax.ForExpr) (string, error) 
 }
 
 func (c *converter) tryEvalExpression(expr hclsyntax.Expression) (interface{}, error) {
-	val, _ := expr.Value(&hcl.EvalContext{
-		Variables: c.inputVars,
-		Functions: functions.TerraformFuncs,
-	})
+	val, _ := expr.Value(c.evalContext())
 	if val.IsWhollyKnown() && !checkDynamicKnownTypes(val) {
 		return ctyjson.SimpleJSONValue{Value: val}, nil
 	}
@@ -497,10 +521,7 @@ func (c *converter) tryEvalExpression(expr hclsyntax.Expression) (interface{}, e
 }
 
 func (c *converter) tryEvalToString(expr hclsyntax.Expression) (string, error) {
-	val, _ := expr.Value(&hcl.EvalContext{
-		Variables: c.inputVars,
-		Functions: functions.TerraformFuncs,
-	})
+	val, _ := expr.Value(c.evalContext())
 	if val.IsWhollyKnown() && val.Type().FriendlyName() == ctyFriendlyNameString {
 		return val.AsString(), nil
 	}
@@ -513,10 +534,7 @@ func (c *converter) wrapExpr(expr hclsyntax.Expression) (string, error) {
 }
 
 func (c *converter) evalFunction(expression hclsyntax.Expression) (interface{}, error) {
-	expressionEvaluated, err := expression.Value(&hcl.EvalContext{
-		Variables: c.inputVars,
-		Functions: functions.TerraformFuncs,
-	})
+	expressionEvaluated, err := expression.Value(c.evalContext())
 
 	if err != nil {
 		// Initialize inputVars if nil
@@ -540,10 +558,7 @@ func (c *converter) evalFunction(expression hclsyntax.Expression) (interface{}, 
 		}
 
 		// Retry evaluation with updated variables
-		expressionEvaluated, err = expression.Value(&hcl.EvalContext{
-			Variables: c.inputVars,
-			Functions: functions.TerraformFuncs,
-		})
+		expressionEvaluated, err = expression.Value(c.evalContext())
 
 		if err != nil {
 			return c.wrapExpr(expression)
