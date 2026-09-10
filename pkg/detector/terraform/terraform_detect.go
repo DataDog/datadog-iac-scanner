@@ -153,41 +153,96 @@ func locateTerraformBlock(
 ) (model.VulnerabilityLines, error) {
 	contextLogger := logger.FromContext(ctx)
 
-	if identifyingLine <= 0 || identifyingLine > len(strLines) {
+	if len(strLines) == 0 {
 		err := fmt.Errorf("line %d is out of range", identifyingLine)
 		contextLogger.Error().Msg(err.Error())
 		return model.VulnerabilityLines{}, err
 	}
-
-	for _, block := range body.Blocks {
-		start := block.TypeRange.Start
-		end := block.Body.SrcRange.End
-		if identifyingLine >= start.Line && identifyingLine <= end.Line {
-			blockSrc := extractBlockSource(strLines, start.Line, end.Line)
-
-			insertionLine, insertionCol := calculateInsertionPoint(block, identifyingLine, strLines)
-			return model.VulnerabilityLines{
-				VulnerablilityLocation: model.ResourceLocation{
-					Start: toResourceLine(start),
-					End:   toResourceLine(end),
-				},
-				RemediationLocation: model.ResourceLocation{
-					Start: model.ResourceLine{Line: insertionLine, Col: insertionCol},
-					End:   model.ResourceLine{Line: insertionLine, Col: insertionCol},
-				},
-				BlockLocation: model.ResourceLocation{
-					Start: toResourceLine(start),
-					End:   toResourceLine(end),
-				},
-				LineWithVulnerability: (strLines[identifyingLine-1]),
-				ResourceSource:        blockSrc,
-			}, nil
-		}
+	if identifyingLine <= 0 || identifyingLine > len(strLines) {
+		identifyingLine = min(max(identifyingLine, 1), len(strLines))
 	}
 
-	err := fmt.Errorf("failed to locate block for line %d", identifyingLine)
-	contextLogger.Error().Msg(err.Error())
-	return model.VulnerabilityLines{}, err
+	if block := blockContainingLine(body.Blocks, identifyingLine); block != nil {
+		return vulnerabilityLinesFromBlock(block, identifyingLine, strLines), nil
+	}
+	if block := nearestBlock(body.Blocks, identifyingLine); block != nil {
+		return vulnerabilityLinesFromBlock(block, identifyingLine, strLines), nil
+	}
+
+	contextLogger.Warn().Msgf("using line %d as location because no HCL block was found", identifyingLine)
+	return syntheticVulnerabilityLines(identifyingLine, strLines), nil
+}
+
+func blockContainingLine(blocks hclsyntax.Blocks, line int) *hclsyntax.Block {
+	for _, block := range blocks {
+		if line >= block.TypeRange.Start.Line && line <= block.Body.SrcRange.End.Line {
+			return block
+		}
+	}
+	return nil
+}
+
+func nearestBlock(blocks hclsyntax.Blocks, line int) *hclsyntax.Block {
+	var nearest *hclsyntax.Block
+	best := -1
+	for _, block := range blocks {
+		dist := lineDistance(line, block.TypeRange.Start.Line, block.Body.SrcRange.End.Line)
+		if nearest == nil || dist < best {
+			nearest = block
+			best = dist
+		}
+	}
+	return nearest
+}
+
+func lineDistance(line, start, end int) int {
+	if line < start {
+		return start - line
+	}
+	if line > end {
+		return line - end
+	}
+	return 0
+}
+
+func vulnerabilityLinesFromBlock(block *hclsyntax.Block, identifyingLine int, strLines []string) model.VulnerabilityLines {
+	start := block.TypeRange.Start
+	end := block.Body.SrcRange.End
+	anchor := identifyingLine
+	if identifyingLine < start.Line || identifyingLine > end.Line {
+		anchor = start.Line
+	}
+	insertionLine, insertionCol := calculateInsertionPoint(block, anchor, strLines)
+	return model.VulnerabilityLines{
+		VulnerablilityLocation: model.ResourceLocation{
+			Start: toResourceLine(start),
+			End:   toResourceLine(end),
+		},
+		RemediationLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: insertionLine, Col: insertionCol},
+			End:   model.ResourceLine{Line: insertionLine, Col: insertionCol},
+		},
+		BlockLocation: model.ResourceLocation{
+			Start: toResourceLine(start),
+			End:   toResourceLine(end),
+		},
+		LineWithVulnerability: strLines[identifyingLine-1],
+		ResourceSource:        extractBlockSource(strLines, start.Line, end.Line),
+	}
+}
+
+func syntheticVulnerabilityLines(line int, strLines []string) model.VulnerabilityLines {
+	loc := model.ResourceLocation{
+		Start: model.ResourceLine{Line: line, Col: 1},
+		End:   model.ResourceLine{Line: line, Col: len(strLines[line-1]) + 1},
+	}
+	return model.VulnerabilityLines{
+		VulnerablilityLocation: loc,
+		RemediationLocation:    loc,
+		BlockLocation:          loc,
+		LineWithVulnerability:  strLines[line-1],
+		ResourceSource:         strLines[line-1] + "\n",
+	}
 }
 
 func toResourceLine(pos hcl.Pos) model.ResourceLine {
@@ -246,6 +301,7 @@ func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (
 		caseType = strBlockBody
 	}
 
+	insertionLine = min(max(insertionLine, 1), len(lines))
 	col = determineInsertionIndent(lines, insertionLine, caseType, nestedStart.Line, nestedEnd.Line) + 1
 	trimmed := strings.TrimSpace(lines[insertionLine-1])
 	if caseType == "block-start" && (strings.Contains(trimmed, "}") || isHeredocTerminator(trimmed, lines, insertionLine-1)) {

@@ -45,7 +45,7 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	ignore := &model.Ignore{}
 
-	// Parse all documents as nodes
+	contextLogger := logger.FromContext(ctx)
 	dec := yaml.NewDecoder(bytes.NewReader(resolved))
 	for {
 		var node yaml.Node
@@ -53,19 +53,22 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 			break
 		}
 
-		// Process each document node
-		if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
-			// Get the actual content (not the document wrapper)
-			contentNode := node.Content[0]
-			doc := model.Document{}
-			if err := doc.UnmarshalYAML(ctx, contentNode, ignore); err != nil {
-				return []byte{}, nil, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed to unmarshal yaml")
-			}
+		if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
+			continue
+		}
+		contentNode := node.Content[0]
+		if isEmptyYAMLDocument(contentNode) {
+			continue
+		}
+		doc := model.Document{}
+		if err := doc.UnmarshalYAML(ctx, contentNode, ignore); err != nil {
+			contextLogger.Warn().Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
+			continue
+		}
 
-			if len(doc) > 0 {
-				doc["_path"] = filePath
-				documents = append(documents, doc)
-			}
+		if len(doc) > 0 {
+			doc["_path"] = filePath
+			documents = append(documents, doc)
 		}
 	}
 
@@ -76,6 +79,16 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 	linesToIgnore := ignore.GetLines()
 
 	return resolved, documents, linesToIgnore, resolvedFiles, nil
+}
+
+func isEmptyYAMLDocument(node *yaml.Node) bool {
+	if node == nil {
+		return true
+	}
+	if node.Kind == yaml.ScalarNode {
+		return node.Value == "" || node.Tag == "!!null"
+	}
+	return false
 }
 
 // convertKeysToString goes through every document to convert map[interface{}]interface{}

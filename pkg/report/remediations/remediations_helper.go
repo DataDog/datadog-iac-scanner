@@ -44,14 +44,17 @@ func buildReplacementFix(ctx context.Context, vuln model.VulnerableFile,
 	after := strings.TrimSpace(patch["after"])
 
 	// Regex for key and value (list/quoted/unquoted)
-	keyValRegex := regexp.MustCompile(`(?m)["']?(\w+)["']?\s*[:=]\s*(\[.*?\]|".*?"|[^#]+)`)
+	keyValRegex := regexp.MustCompile(`(?m)["']?(\w+)["']?\s*(?::|=)\s*(\[.*?\]|".*?"|[^#=][^#]*)`)
 	matches := keyValRegex.FindStringSubmatch(vuln.LineWithVulnerability)
-	if len(matches) < 3 {
-		line, lineNumber, found := findReplacementTarget(&vuln, before, keyValRegex)
+	if isBlockHeader(vuln.LineWithVulnerability) || len(matches) < 3 {
+		line, lineNumber, found, keyPresent := findReplacementTarget(&vuln, before, keyValRegex)
 		if !found {
-			err := fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
-			contextLogger.Error().Msg(err.Error())
-			return model.SarifFix{}, err
+			if keyPresent {
+				err := fmt.Errorf("attribute already present with a different value in %s", vuln.FileName)
+				contextLogger.Warn().Msg(err.Error())
+				return model.SarifFix{}, err
+			}
+			return fallbackReplacementToAddition(&vuln, before, after, startLocation)
 		}
 		vuln.LineWithVulnerability = line
 		vuln.Line = lineNumber
@@ -177,18 +180,33 @@ func findReplacementTarget(
 	vuln *model.VulnerableFile,
 	before string,
 	keyValRegex *regexp.Regexp,
-) (line string, lineNumber int, found bool) {
+) (line string, lineNumber int, found, keyPresent bool) {
 	firstAlternative := strings.Split(before, " or ")[0]
 	expectedKey, _ := splitKeyValue(firstAlternative)
 	if expectedKey == "" {
-		return "", 0, false
+		return "", 0, false, false
 	}
 
 	start := max(vuln.BlockLocation.Start.Line, 1)
 	end := min(vuln.BlockLocation.End.Line, len(vuln.FileSource))
+	return scanReplacementRange(vuln.FileSource, start, end, expectedKey, before, keyValRegex)
+}
+
+func scanReplacementRange(
+	fileSource []string,
+	start, end int,
+	expectedKey, before string,
+	keyValRegex *regexp.Regexp,
+) (line string, lineNumber int, found, keyPresent bool) {
+	if start < 1 {
+		start = 1
+	}
+	if end > len(fileSource) {
+		end = len(fileSource)
+	}
 	alternatives := parseAlternatives(before)
 	for lineNumber := start; lineNumber <= end; lineNumber++ {
-		line := vuln.FileSource[lineNumber-1]
+		line := fileSource[lineNumber-1]
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
 			continue
@@ -197,21 +215,89 @@ func findReplacementTarget(
 		if len(matches) < 3 || normalize(matches[1]) != expectedKey {
 			continue
 		}
+		keyPresent = true
 		value := normalize(matches[2])
 		for _, alternative := range alternatives {
-			if strings.Contains(value, alternative) {
-				return line, lineNumber, true
+			if alternative != "" && strings.Contains(value, alternative) {
+				return line, lineNumber, true, true
 			}
 		}
 	}
-	return "", 0, false
+	return "", 0, false, keyPresent
+}
+
+func isBlockHeader(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	for _, prefix := range []string{"resource ", "module ", "variable ", "data ", "output ", "locals ", "provider ", "terraform "} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func fallbackReplacementToAddition(
+	vuln *model.VulnerableFile,
+	before, after string,
+	startLocation model.SarifResourceLocation,
+) (model.SarifFix, error) {
+	addition := strings.TrimSpace(after)
+	if addition == "" {
+		return model.SarifFix{}, fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
+	}
+	if !isTopLevelAttribute(addition) {
+		if isNonAssignmentExpression(addition) {
+			return model.SarifFix{}, fmt.Errorf("remediation is not a top-level attribute: %s", addition)
+		}
+		key, _ := splitKeyValue(before)
+		if key == "" {
+			return model.SarifFix{}, fmt.Errorf("could not parse key-value from line: %s", vuln.LineWithVulnerability)
+		}
+		addition = key + " = " + addition
+	}
+	if !isTopLevelAttribute(addition) {
+		return model.SarifFix{}, fmt.Errorf("remediation is not a top-level attribute: %s", addition)
+	}
+	updated := *vuln
+	updated.Remediation = addition
+	return buildAdditionFix(updated, additionInsertLocation(vuln, startLocation))
+}
+
+func additionBaseIndent(vuln *model.VulnerableFile, startLocation model.SarifResourceLocation) string {
+	baseIndent := determineActualBaseIndent(vuln.FileSource, startLocation.Line, vuln.BlockLocation.Start.Line)
+	if startLocation.Line < 1 || startLocation.Line > len(vuln.FileSource) {
+		return baseIndent
+	}
+	line := vuln.FileSource[startLocation.Line-1]
+	brace := structuralClosingBrace(line)
+	if brace < 0 {
+		return baseIndent
+	}
+	if strings.TrimSpace(line[:brace]) == "" {
+		return blockBodyIndent(vuln.FileSource, vuln.BlockLocation.Start.Line, vuln.BlockLocation.End.Line)
+	}
+	return lineIndent(vuln.FileSource, startLocation.Line) + "  "
+}
+
+func additionInsertLocation(vuln *model.VulnerableFile, startLocation model.SarifResourceLocation) model.SarifResourceLocation {
+	start := max(vuln.BlockLocation.Start.Line, 1)
+	end := min(vuln.BlockLocation.End.Line, len(vuln.FileSource))
+	if end < start {
+		return startLocation
+	}
+	for line := end; line >= start; line-- {
+		if col := structuralClosingBrace(vuln.FileSource[line-1]); col >= 0 {
+			return model.SarifResourceLocation{Line: line, Col: col + 1}
+		}
+	}
+	return startLocation
 }
 
 // nolint:gocritic
 func buildAdditionFix(vuln model.VulnerableFile, startLocation model.SarifResourceLocation) (model.SarifFix, error) {
 	normalized := normalizeIndentation(vuln.Remediation, 2)
 	lines := strings.Split(normalized, "\n")
-	baseIndent := determineActualBaseIndent(vuln.FileSource, startLocation.Line, vuln.BlockLocation.Start.Line)
+	baseIndent := additionBaseIndent(&vuln, startLocation)
 	nested := isInsertingInsideNestedBlock(vuln.FileSource, startLocation, vuln.BlockLocation.Start.Line, vuln.BlockLocation.End.Line)
 
 	var result []string

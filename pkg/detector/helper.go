@@ -21,7 +21,7 @@ import (
 
 var (
 	nameRegex          = regexp.MustCompile(`^([A-Za-z\d-_]+)\[([A-Za-z\d-_{}]+)]$`)
-	nameRegexDocker    = regexp.MustCompile(`{{(.*?)}}`)
+	nameRegexDocker    = regexp.MustCompile(`{{(\d+)}}`)
 	indentRegex        = regexp.MustCompile(`^\s+`)
 	whitespacesRegex   = regexp.MustCompile(`\s+`)
 	yamlMultilineRegex = regexp.MustCompile(
@@ -233,7 +233,13 @@ func ExtractLineFragment(line, substr string, key bool) string {
 	if key && idx >= 0 {
 		return line[:idx]
 	}
+	if line == "" {
+		return ""
+	}
 	start := strings.Index(line, substr)
+	if start < 0 {
+		return line
+	}
 	end := start + len(substr)
 
 	for start >= 0 {
@@ -256,6 +262,10 @@ func ExtractLineFragment(line, substr string, key bool) string {
 }
 
 func removeExtras(result string, start, end int) string {
+	if result == "" || end <= 0 || start+1 >= len(result) {
+		return result
+	}
+
 	// workaround for selecting yaml keys
 	if result[end-1] == ':' {
 		end--

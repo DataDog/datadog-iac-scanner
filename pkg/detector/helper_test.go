@@ -6,12 +6,15 @@
 package detector
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/test"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -428,4 +431,25 @@ func TestDetectCurrentLine(t *testing.T) {
 		})
 	}
 
+}
+
+func TestExtractLineFragmentMissingSubstring(t *testing.T) {
+	line := `"http://www.example.com"`
+
+	require.Equal(t, line, ExtractLineFragment(line, "unrelated multiline content", false))
+}
+
+func TestExtractLineFragmentEmptyInput(t *testing.T) {
+	require.Empty(t, ExtractLineFragment("", "", false))
+}
+
+func TestGenerateSubstringsDoesNotTreatTemplateSyntaxAsPlaceholder(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+
+	first, second := GenerateSubstrings(ctx, `${{ github.ref }}`, nil, nil, 0)
+
+	require.Equal(t, `${{ github.ref }}`, first)
+	require.Empty(t, second)
+	require.Empty(t, logs.String())
 }

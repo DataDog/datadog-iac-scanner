@@ -449,3 +449,18 @@ func TestModel_TestYamlParser(t *testing.T) {
 		})
 	}
 }
+
+func TestParseIgnoresTrailingDocumentSeparator(t *testing.T) {
+	content := []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n---\n")
+	_, docs, _, _, err := Parse(context.Background(), content, "crds.yaml", false, 15)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	require.Equal(t, "ConfigMap", docs[0]["kind"])
+}
+
+func TestParseSkipsUnparseableDocumentAndKeepsOthers(t *testing.T) {
+	content := []byte("kind: ConfigMap\n---\njust a scalar\n---\nkind: Secret\n")
+	_, docs, _, _, err := Parse(context.Background(), content, "mixed.yaml", false, 15)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(docs), 1)
+}
