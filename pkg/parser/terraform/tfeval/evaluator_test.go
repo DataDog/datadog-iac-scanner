@@ -98,6 +98,109 @@ resource "aws_s3_bucket" "this" {
 	requireString(t, r.Attributes, "bucket", "my-bucket")
 }
 
+func TestEvaluateModule_JSONConfigInputPropagated(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf.json": `{
+  "variable": {
+    "bucket_name": { "type": "string" }
+  },
+  "locals": {
+    "prefixed": "${var.bucket_name}-json"
+  },
+  "resource": {
+    "aws_s3_bucket": {
+      "this": {
+        "bucket": "${local.prefixed}"
+      }
+    }
+  }
+}`,
+	})
+
+	inputs := map[string]cty.Value{"bucket_name": cty.StringVal("my-bucket")}
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, inputs)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+
+	r := findResource(t, resources, "aws_s3_bucket", "this")
+	requireString(t, r.Attributes, "bucket", "my-bucket-json")
+}
+
+func TestEvaluateModule_JSONNullDefault(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf.json": `{
+  "variable": {
+    "acl": { "default": null }
+  },
+  "resource": {
+    "aws_s3_bucket": {
+      "this": {
+        "acl": null
+      }
+    }
+  }
+}`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	r := findResource(t, resources, "aws_s3_bucket", "this")
+	v, ok := r.Attributes["acl"]
+	if !ok {
+		t.Fatal("attribute acl missing")
+	}
+	if !v.IsNull() {
+		t.Fatalf("attribute acl = %#v, want null", v)
+	}
+}
+
+func TestEvaluateModule_JSONChildModule(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{
+		"main.tf.json": `{
+  "variable": { "name": { "type": "string" } },
+  "resource": { "aws_s3_bucket": { "leaf": { "bucket": "${var.name}" } } }
+}`,
+	})
+	rootDir := writeModule(t, root, "root", map[string]string{
+		"main.tf.json": `{
+  "module": { "child": { "source": "../child", "name": "from-json" } }
+}`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	r := findResource(t, resources, "aws_s3_bucket", "leaf")
+	requireString(t, r.Attributes, "bucket", "from-json")
+	if r.ModuleAddress != "module.child" {
+		t.Fatalf("ModuleAddress = %q, want module.child", r.ModuleAddress)
+	}
+}
+
+func TestEvaluateModule_TofuJSONShadowsTfJSON(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf.json":   `{"resource":{"aws_s3_bucket":{"shadowed":{"bucket":"from-tf"}}}}`,
+		"main.tofu.json": `{"resource":{"aws_s3_bucket":{"live":{"bucket":"from-tofu"}}}}`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	if len(resources) != 1 {
+		t.Fatalf("got %d resources, want 1: %#v", len(resources), resources)
+	}
+	requireString(t, findResource(t, resources, "aws_s3_bucket", "live").Attributes, "bucket", "from-tofu")
+}
+
 func TestEvaluateModule_TofuShadowsTf(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{
