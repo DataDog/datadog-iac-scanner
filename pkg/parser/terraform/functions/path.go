@@ -42,6 +42,24 @@ var AbsPathFunc = function.New(&function.Spec{
 	},
 })
 
+func MakeAbsPathFunc(baseDir string) function.Function {
+	root := filepath.Clean(baseDir)
+	if root == "" {
+		return AbsPathFunc
+	}
+	return function.New(&function.Spec{
+		Params: []function.Parameter{{Name: "path", Type: cty.String}},
+		Type:   function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			p := args[0].AsString()
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(root, p)
+			}
+			return cty.StringVal(filepath.ToSlash(filepath.Clean(p))), nil
+		},
+	})
+}
+
 var PathExpandFunc = function.New(&function.Spec{
 	Params: []function.Parameter{{Name: "path", Type: cty.String}},
 	Type:   function.StaticReturnType(cty.String),

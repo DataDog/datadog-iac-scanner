@@ -6,6 +6,7 @@
 package functions
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/zclconf/go-cty/cty"
@@ -203,6 +204,15 @@ func TestEncodeAndHash(t *testing.T) {
 	}
 	if !decoded.RawEquals(cty.StringVal("hello!")) {
 		t.Fatalf("textdecodebase64 = %#v", decoded)
+	}
+
+	replacement := base64.StdEncoding.EncodeToString([]byte("\uFFFD"))
+	decoded, err = TextDecodeBase64Func.Call([]cty.Value{cty.StringVal(replacement), cty.StringVal("UTF-8")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.RawEquals(cty.StringVal("\uFFFD")) {
+		t.Fatalf("textdecodebase64 U+FFFD = %#v", decoded)
 	}
 
 	gzipped, err := Base64GzipFunc.Call([]cty.Value{cty.StringVal("hello")})

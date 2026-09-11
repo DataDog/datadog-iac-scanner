@@ -176,6 +176,7 @@ func EvalFuncs(baseDir string, fsys vfs.FS) map[string]function.Function {
 	for name, fn := range fileHashFuncs(baseDir, fsys) {
 		funcs[name] = fn
 	}
+	funcs["abspath"] = MakeAbsPathFunc(baseDir)
 	funcs["templatefile"] = makeTemplateFileFunc(baseDir, fsys, funcsCb)
 	funcs["templatestring"] = makeTemplateStringFunc(funcsCb)
 	return funcs

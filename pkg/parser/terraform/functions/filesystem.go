@@ -149,16 +149,58 @@ func confinePath(baseDir, rel string) (string, error) {
 	if root == "" {
 		root = "."
 	}
-	joined := rel
-	if !filepath.IsAbs(rel) {
-		joined = filepath.Join(root, rel)
-	}
-	joined = filepath.Clean(joined)
+	joined := joinUnderRoot(root, rel)
 	relToRoot, err := filepath.Rel(root, joined)
 	if err != nil || !confinedRel(relToRoot) {
 		return "", fmt.Errorf("path %q is outside the configuration directory", rel)
 	}
+	if err := verifyResolvedConfined(root, joined); err != nil {
+		return "", err
+	}
 	return joined, nil
+}
+
+func joinUnderRoot(root, rel string) string {
+	if filepath.IsAbs(rel) {
+		return filepath.Clean(rel)
+	}
+	cleaned := filepath.Clean(rel)
+	if relToRoot, err := filepath.Rel(root, cleaned); err == nil && confinedRel(relToRoot) {
+		if cleaned == root || strings.HasPrefix(cleaned, root+string(filepath.Separator)) {
+			return cleaned
+		}
+	}
+	return filepath.Clean(filepath.Join(root, rel))
+}
+
+func verifyResolvedConfined(root, joined string) error {
+	realRoot := root
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		realRoot = resolved
+	}
+	candidate := filepath.Clean(joined)
+	rootClean := filepath.Clean(root)
+	for {
+		if resolved, err := filepath.EvalSymlinks(candidate); err == nil {
+			rel, err := filepath.Rel(realRoot, resolved)
+			if err != nil || !confinedRel(rel) {
+				return fmt.Errorf("path %q is outside the configuration directory", joined)
+			}
+			return nil
+		}
+		if candidate == rootClean {
+			return nil
+		}
+		relToRoot, err := filepath.Rel(rootClean, candidate)
+		if err != nil || !confinedRel(relToRoot) {
+			return nil
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return nil
+		}
+		candidate = parent
+	}
 }
 
 func confinedRel(rel string) bool {
@@ -229,12 +271,53 @@ func globToRegexp(pattern string) (*regexp.Regexp, error) {
 			b.WriteString("[^/]*")
 		case pattern[i] == '?':
 			b.WriteString("[^/]")
+		case pattern[i] == '[':
+			end := indexGlobClassEnd(pattern[i+1:])
+			if end < 0 {
+				return nil, path.ErrBadPattern
+			}
+			appendGlobClass(&b, pattern[i+1:i+1+end])
+			i += 1 + end
 		default:
 			b.WriteString(regexp.QuoteMeta(string(pattern[i])))
 		}
 	}
 	b.WriteByte('$')
 	return regexp.Compile(b.String())
+}
+
+func indexGlobClassEnd(rest string) int {
+	if rest == "" {
+		return -1
+	}
+	start := 0
+	if rest[0] == '^' || rest[0] == '!' {
+		start = 1
+	}
+	if start < len(rest) && rest[start] == ']' {
+		start++
+	}
+	for j := start; j < len(rest); j++ {
+		if rest[j] == ']' {
+			return j
+		}
+	}
+	return -1
+}
+
+func appendGlobClass(b *strings.Builder, class string) {
+	b.WriteByte('[')
+	if strings.HasPrefix(class, "!") || strings.HasPrefix(class, "^") {
+		b.WriteByte('^')
+		class = class[1:]
+	}
+	for i := 0; i < len(class); i++ {
+		if class[i] == '\\' || class[i] == ']' {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(class[i])
+	}
+	b.WriteByte(']')
 }
 
 func fileHashFuncs(baseDir string, fsys vfs.FS) map[string]function.Function {

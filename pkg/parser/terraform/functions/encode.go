@@ -148,7 +148,7 @@ var TextDecodeBase64Func = function.New(&function.Spec{
 			return cty.NilVal, function.NewArgErrorf(0, "invalid base64: %s", err)
 		}
 		decoded, err := enc.NewDecoder().Bytes(raw)
-		if err != nil || bytes.ContainsRune(decoded, '�') {
+		if err != nil {
 			return cty.NilVal, function.NewArgErrorf(0, "the given string contains symbols that are not defined for %s", args[1].AsString())
 		}
 		return cty.StringVal(string(decoded)), nil

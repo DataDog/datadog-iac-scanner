@@ -20,6 +20,8 @@ func TestFileFunctionsConfined(t *testing.T) {
 	root := "mod"
 	fsys := vfs.NewMemFS(map[string][]byte{
 		"mod/note.txt":   []byte("hello"),
+		"mod/a.txt":      []byte("a"),
+		"mod/b.txt":      []byte("b"),
 		"mod/sub/a.txt":  []byte("inner"),
 		"mod/tmpl.tftpl": []byte("hi ${name}"),
 		"outside/secret": []byte("nope"),
@@ -88,6 +90,32 @@ func TestFileFunctionsConfined(t *testing.T) {
 		t.Fatalf("fileset **/*.txt = %#v", got)
 	}
 
+	got, err = funcs["fileset"].Call([]cty.Value{cty.StringVal("."), cty.StringVal("**/[ab].txt")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !setHas(got, "a.txt") || !setHas(got, "b.txt") || !setHas(got, "sub/a.txt") {
+		t.Fatalf("fileset **/[ab].txt = %#v", got)
+	}
+	if setHas(got, "note.txt") {
+		t.Fatalf("fileset **/[ab].txt should not include note.txt: %#v", got)
+	}
+
+	got, err = funcs["abspath"].Call([]cty.Value{cty.StringVal("note.txt")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AsString() != "mod/note.txt" {
+		t.Fatalf("abspath = %q", got.AsString())
+	}
+	got, err = funcs["file"].Call([]cty.Value{got})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.StringVal("hello")) {
+		t.Fatalf("file(abspath) = %#v", got)
+	}
+
 	got, err = funcs["filemd5"].Call([]cty.Value{cty.StringVal("note.txt")})
 	if err != nil {
 		t.Fatal(err)
@@ -123,6 +151,64 @@ func TestConfinePath(t *testing.T) {
 	}
 	if _, err = confinePath("mod", filepath.Join(os.TempDir(), "passwd")); err == nil {
 		t.Fatal("expected absolute escape error")
+	}
+}
+
+func TestFileRejectsSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("nope"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link.txt")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	funcs := EvalFuncs(root, vfs.DiskFS{})
+	if _, err := funcs["file"].Call([]cty.Value{cty.StringVal("link.txt")}); err == nil {
+		t.Fatal("file symlink escape: expected error")
+	}
+	if _, err := funcs["fileexists"].Call([]cty.Value{cty.StringVal("link.txt")}); err == nil {
+		t.Fatal("fileexists symlink escape: expected error")
+	}
+}
+
+func TestFileFollowsInternalSymlink(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "note.txt"), filepath.Join(root, "link.txt")); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	funcs := EvalFuncs(root, vfs.DiskFS{})
+	got, err := funcs["file"].Call([]cty.Value{cty.StringVal("link.txt")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.StringVal("hello")) {
+		t.Fatalf("file internal symlink = %#v", got)
+	}
+}
+
+func TestMatchGlobCharacterClass(t *testing.T) {
+	t.Parallel()
+
+	ok, err := matchGlob("**/[ab].txt", "sub/a.txt")
+	if err != nil || !ok {
+		t.Fatalf("**/[ab].txt vs sub/a.txt: ok=%v err=%v", ok, err)
+	}
+	ok, err = matchGlob("**/[ab].txt", "note.txt")
+	if err != nil || ok {
+		t.Fatalf("**/[ab].txt vs note.txt: ok=%v err=%v", ok, err)
+	}
+	ok, err = matchGlob("[ab].txt", "a.txt")
+	if err != nil || !ok {
+		t.Fatalf("[ab].txt vs a.txt: ok=%v err=%v", ok, err)
 	}
 }
 
