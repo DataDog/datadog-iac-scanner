@@ -477,6 +477,33 @@ func TestAnalyze_ValidSymlink(t *testing.T) {
 	require.Empty(t, got.Exc)
 }
 
+func TestAnalyze_JSONConfigClassifiesAsTerraform(t *testing.T) {
+	dir := t.TempDir()
+	tfJSON := filepath.Join(dir, "main.tf.json")
+	tofuJSON := filepath.Join(dir, "main.tofu.json")
+	plainJSON := filepath.Join(dir, "data.json")
+	require.NoError(t, os.WriteFile(tfJSON, []byte(`{"resource":{"aws_s3_bucket":{"b":{"acl":"public-read"}}}}`), 0o600))
+	require.NoError(t, os.WriteFile(tofuJSON, []byte(`{"resource":{"aws_s3_bucket":{"c":{"acl":"private"}}}}`), 0o600))
+	require.NoError(t, os.WriteFile(plainJSON, []byte(`{"hello":"world"}`), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{terraform}, got.Types)
+	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(tfJSON)])
+	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(tofuJSON)])
+	require.ElementsMatch(t, []string{
+		filepath.ToSlash(tfJSON),
+		filepath.ToSlash(tofuJSON),
+	}, got.Inventory)
+	require.NotContains(t, got.Inventory, filepath.ToSlash(plainJSON))
+}
+
 func TestAnalyze_TofuClassifiesAsTerraform(t *testing.T) {
 	dir := t.TempDir()
 	tofu := filepath.Join(dir, "main.tofu")

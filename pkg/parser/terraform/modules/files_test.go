@@ -82,3 +82,16 @@ func TestSelectHCLConfigNamesRespectsMergeAllow(t *testing.T) {
 	require.Equal(t, []string{"main.tofu", "variables.tf"}, SelectHCLConfigNames(entries, dir, both, "main.tofu"))
 	require.Equal(t, []string{"main.tofu", "variables.tf"}, SelectHCLConfigNames(entries, dir, both, ""))
 }
+
+func TestSelectConfigNamesIncludesJSON(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "x" "tf" {}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu"), []byte(`resource "x" "tofu" {}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.tf.json"), []byte(`{"resource":{}}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.tofu.json"), []byte(`{"resource":{}}`), 0o644))
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	got := SelectConfigNames(entries, dir, nil, "")
+	require.ElementsMatch(t, []string{"main.tofu", "extra.tofu.json"}, got)
+}

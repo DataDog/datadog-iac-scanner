@@ -167,11 +167,11 @@ func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
 }
 
 // TerraformFiles returns Terraform/OpenTofu config paths used for module discovery
-// before scanning: native .tf/.tofu files plus .tf.json/.tofu.json files (still
-// classified as .json for the scan pipeline).
+// before scanning: native .tf/.tofu files plus .tf.json/.tofu.json files.
 func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string, error) {
-	hclExtensions := model.Extensions{tfpath.ExtTF: {}, tfpath.ExtTofu: {}}
-	jsonExtensions := model.Extensions{".json": {}}
+	configExtensions := model.Extensions{
+		tfpath.ExtTF: {}, tfpath.ExtTofu: {}, tfpath.ExtTFJSON: {}, tfpath.ExtTofuJSON: {},
+	}
 	seen := make(map[string]struct{})
 	var files []string
 	add := func(path string) {
@@ -189,52 +189,22 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 			return nil, errors.Wrap(err, "failed to open path")
 		}
 		if !fileInfo.IsDir() {
-			if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, hclExtensions, scanPath, nil); !shouldSkip {
+			if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, configExtensions, scanPath, nil); !shouldSkip {
 				add(scanPath)
-			}
-			if tfpath.IsJSONConfig(scanPath) {
-				if shouldSkip, _, _ := s.checkConditions(ctx, fileInfo, jsonExtensions, scanPath, nil); !shouldSkip {
-					add(scanPath)
-				}
 			}
 			continue
 		}
 
-		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, hclExtensions)
+		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, configExtensions)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to collect files")
 		}
 		for _, path := range collected {
 			add(path)
 		}
-
-		jsonCollected, err := s.collectTerraformJSONModuleFiles(ctx, scanPath)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to collect terraform json module files")
-		}
-		for _, path := range jsonCollected {
-			add(path)
-		}
 	}
 	sort.Strings(files)
 	return files, nil
-}
-
-func (s *FileSystemSourceProvider) collectTerraformJSONModuleFiles(ctx context.Context, scanPath string) ([]string, error) {
-	extensions := model.Extensions{".json": {}}
-	var files []string
-	err := s.walkDirectory(ctx, scanPath, extensions,
-		func(ctx context.Context, path string, resolved *[]string) error {
-			return s.resolveChartDir(ctx, path, unavailableResolverSink, resolved)
-		},
-		func(_ context.Context, path, _ string) error {
-			if !tfpath.IsJSONConfig(path) {
-				return nil
-			}
-			files = append(files, strings.ReplaceAll(path, "\\", "/"))
-			return nil
-		})
-	return files, err
 }
 
 func unavailableResolverSink(context.Context, string) ([]string, error) {

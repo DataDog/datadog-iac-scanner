@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"golang.org/x/tools/godoc/util"
 )
@@ -21,7 +22,7 @@ var extensionNameTargets = []string{"tfvars", "Dockerfile", "possibleDockerfile"
 
 // ExtensionFromPath returns the extension from path alone (no stat/read).
 func ExtensionFromPath(path string) string {
-	ext := filepath.Ext(path)
+	ext := tfpath.Extension(path)
 	if ext != "" {
 		return ext
 	}
@@ -61,7 +62,7 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 		return "", err
 	}
 
-	ext := filepath.Ext(path)
+	ext := tfpath.Extension(path)
 	if ext == "" {
 		base := filepath.Base(path)
 

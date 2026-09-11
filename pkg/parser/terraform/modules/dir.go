@@ -53,6 +53,17 @@ func mergeAllowed(allow map[string]struct{}, dir, name string) bool {
 // limited to allow and then OpenTofu-shadowed within that set. keep, when set,
 // is never dropped from a scan-set merge.
 func SelectHCLConfigNames(entries []fs.DirEntry, dir string, allow map[string]struct{}, keep string) []string {
+	return selectConfigNames(entries, dir, allow, keep, tfpath.IsHCLConfig)
+}
+
+// SelectConfigNames is SelectHCLConfigNames plus JSON config files.
+func SelectConfigNames(entries []fs.DirEntry, dir string, allow map[string]struct{}, keep string) []string {
+	return selectConfigNames(entries, dir, allow, keep, tfpath.IsConfig)
+}
+
+func selectConfigNames(
+	entries []fs.DirEntry, dir string, allow map[string]struct{}, keep string, pred func(string) bool,
+) []string {
 	all := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -76,17 +87,16 @@ func SelectHCLConfigNames(entries []fs.DirEntry, dir string, allow map[string]st
 	}
 	if keep != "" {
 		return tfpath.SelectKeepingWithTofuPrecedence(
-			all, tfpath.IsHCLConfig, filepath.Base(keep), preferTofu,
+			all, pred, filepath.Base(keep), preferTofu,
 		)
 	}
-	return tfpath.SelectWithTofuPrecedence(all, tfpath.IsHCLConfig, preferTofu)
+	return tfpath.SelectWithTofuPrecedence(all, pred, preferTofu)
 }
 
 // ConfinedFilePath reports whether a directory entry is a regular file the
-// Terraform parser can scan. JSON configuration is handled separately for
-// module discovery but is not emitted in HCL-only scan paths.
-// Regular files are accepted. Symlinks are accepted only when their target is a
-// regular file confined within packageRoot (or dir when packageRoot is empty).
+// Terraform parser can scan. Regular files are accepted. Symlinks are accepted
+// only when their target is a regular file confined within packageRoot (or dir
+// when packageRoot is empty).
 func ConfinedFilePath(ctx context.Context, entry fs.DirEntry, dir, packageRoot string) (string, bool) {
 	if entry.IsDir() {
 		return "", false

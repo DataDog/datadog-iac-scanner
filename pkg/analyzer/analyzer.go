@@ -93,6 +93,8 @@ var (
 		extUbi8:        true,
 		extTf:          true,
 		extTofu:        true,
+		extTfJSON:      true,
+		extTofuJSON:    true,
 		extTfvars:      true,
 		extProto:       true,
 		extCfg:         true,
@@ -160,6 +162,8 @@ const (
 	extDebian             = ".debian"
 	extTf                 = tfpath.ExtTF
 	extTofu               = tfpath.ExtTofu
+	extTfJSON             = tfpath.ExtTFJSON
+	extTofuJSON           = tfpath.ExtTofuJSON
 	extTfvars             = tfpath.ExtTFVars
 	extBicepFile          = ".bicep"
 	extProto              = ".proto"
@@ -807,7 +811,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 			return dockerfile
 		}
 		return ""
-	case extTf, extTofu, extTfvars:
+	case extTf, extTofu, extTfJSON, extTofuJSON, extTfvars:
 		return terraform
 	case extBicepFile:
 		return bicep

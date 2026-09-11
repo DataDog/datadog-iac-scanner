@@ -42,6 +42,8 @@ type SupportedFileEntry struct {
 var strategyByPattern = map[string]fileStrategy{
 	".tf":         strategyDirectory,
 	".tofu":       strategyDirectory,
+	".tf.json":    strategyDirectory,
+	".tofu.json":  strategyDirectory,
 	".tfvars":     strategyDirectory,
 	".yaml":       strategyDirectory,
 	".yml":        strategyDirectory,
