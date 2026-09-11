@@ -288,6 +288,12 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 	if len(rule.CustomFrameworks) > 0 {
 		out.Metadata["customFrameworks"] = frameworksToMeta(rule.CustomFrameworks)
 	}
+	// Preserve published:false explicitly so the verify roundtrip stays clean.
+	// Rules that don't set this field default to published:true; we only emit
+	// the key when it is false to avoid adding noise to all existing rules.
+	if !rule.IsPublished {
+		out.Metadata["published"] = false
+	}
 	return out
 }
 

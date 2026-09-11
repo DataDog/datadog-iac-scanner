@@ -457,6 +457,43 @@ func TestClassifyFile_SwaggerOpenAPI(t *testing.T) {
 	require.Equal(t, "openapi", got)
 }
 
+func TestClassifyFile_DockerCompose(t *testing.T) {
+	content := []byte("services:\n  web:\n    image: nginx:latest\n")
+	path := filepath.Join(t.TempDir(), "compose.yaml")
+	require.NoError(t, os.WriteFile(path, content, 0o600))
+
+	require.Equal(t, dockercompose,
+		ClassifyFile(context.Background(), nil, path, content, []string{"DockerCompose"}))
+	require.Equal(t, dockercompose,
+		ClassifyFile(context.Background(), nil, path, content, []string{""}))
+}
+
+func TestAnalyze_DockerComposeExcludedWhenNotRequested(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "compose.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("services:\n  web:\n    image: nginx:latest\n"), 0o600))
+
+	enabled, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{path},
+		Types:       []string{"DockerCompose"},
+		MaxFileSize: -1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{dockercompose}, enabled.Types)
+	require.Equal(t, dockercompose, enabled.FilePlatform[filepath.ToSlash(path)])
+
+	disabled, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{path},
+		Types:       []string{"Terraform"},
+		MaxFileSize: -1,
+	})
+	require.NoError(t, err)
+	require.Empty(t, disabled.Types)
+	require.Contains(t, disabled.Exc, filepath.ToSlash(path))
+}
+
 func TestAnalyze_ValidSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target.tf")

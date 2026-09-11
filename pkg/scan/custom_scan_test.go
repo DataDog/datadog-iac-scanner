@@ -114,6 +114,7 @@ func TestPlatformTempFileName_CoversAllSupportedPlatforms(t *testing.T) {
 		"Ansible":        "scan-target.yaml",
 		"CICD":           ".github/scan-target.yaml",
 		"CloudFormation": scanTargetJSON,
+		"DockerCompose":  "compose.yaml",
 		"Dockerfile":     "Dockerfile",
 		"Kubernetes":     "scan-target.yaml",
 		"Terraform":      "scan-target.tf",

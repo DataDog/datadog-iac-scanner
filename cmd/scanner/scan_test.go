@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	iacplatforms "github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -135,6 +136,11 @@ func TestApplyPlatformFilters(t *testing.T) {
 			assert.ElementsMatch(t, tt.want, got)
 		})
 	}
+}
+
+func TestSelectPlatformsDockerCompose(t *testing.T) {
+	assert.Equal(t, []string{"DockerCompose"}, selectPlatforms([]string{"dockercompose"}))
+	assert.Contains(t, iacplatforms.Supported, "DockerCompose")
 }
 
 func TestTerraformPlanFlag(t *testing.T) {
