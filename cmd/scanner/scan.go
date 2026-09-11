@@ -171,6 +171,10 @@ var scanAction = &cli.Command{
 			Aliases: []string{"q"},
 			Usage:   "a list of query directories paths",
 		},
+		&cli.BoolFlag{
+			Name:  "include-unpublished",
+			Usage: "include rules whose metadata sets published to false when loading local rules",
+		},
 		&cli.StringFlag{
 			Name:  "libraries-path",
 			Usage: "path to local Rego support libraries (default: fetch from backend when using local queries-path)",
@@ -387,6 +391,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		ChangedDefaultQueryPath:     changedDefaultQueryPath,
 		LibrariesPath:               librariesPath,
 		ChangedDefaultLibrariesPath: changedDefaultLibrariesPath,
+		IncludeUnpublishedQueries:   c.Bool("include-unpublished"),
 		ReportFormats:               reportFormats,
 		Platform:                    selectPlatforms(c.StringSlice("type")),
 		DisableSecrets:              true,

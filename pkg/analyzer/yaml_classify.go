@@ -12,6 +12,7 @@ import (
 // when no regex-based type matched during classification.
 var yamlPlatformRootKeys = []string{
 	listKeywordsGoogleDeployment[0], // resources
+	"services",                      // Docker Compose
 	playBooks,                       // playbooks
 	ansibleHost[0],                  // all
 	ansibleHost[1],                  // ungrouped
@@ -183,6 +184,35 @@ func yamlResolveAlias(n *yamlParser.Node) *yamlParser.Node {
 
 func yamlMapKeyNode(m *yamlParser.Node, key string) *yamlParser.Node {
 	return yamlMapKeyNodeSeen(m, key, nil)
+}
+
+func dockerComposeFromYAMLNode(root *yamlParser.Node, path string) bool {
+	if !yamlRootIsMapping(root) {
+		return false
+	}
+	services := yamlResolveAlias(yamlMapKeyNode(root, "services"))
+	if services == nil || services.Kind != yamlParser.MappingNode || len(services.Content) == 0 {
+		return false
+	}
+	for i := 1; i < len(services.Content); i += 2 {
+		service := yamlResolveAlias(services.Content[i])
+		if service == nil || service.Kind != yamlParser.MappingNode {
+			continue
+		}
+		for _, key := range []string{"image", "build", "extends"} {
+			if yamlMapKeyNode(service, key) != nil {
+				return true
+			}
+		}
+	}
+	return isDockerComposeFileName(path)
+}
+
+func isDockerComposeFileName(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	return base == "compose.yaml" || base == "compose.yml" ||
+		base == "docker-compose.yaml" || base == "docker-compose.yml" ||
+		strings.HasPrefix(base, "compose.") || strings.HasPrefix(base, "docker-compose.")
 }
 
 // yamlMapKeyNodeSeen looks key up in m, following merge keys into the mappings

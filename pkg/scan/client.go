@@ -55,6 +55,7 @@ const (
 type Parameters struct {
 	CloudProvider               []string
 	ExperimentalQueries         bool
+	IncludeUnpublishedQueries   bool
 	InputData                   string
 	OutputName                  string
 	OutputPath                  string

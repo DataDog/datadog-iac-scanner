@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,6 +80,13 @@ func Test_getPlatform(t *testing.T) {
 				PlatformInMetadata: "CICD",
 			},
 			want: "cicd",
+		},
+		{
+			name: "get_platform_docker_compose",
+			args: args{
+				PlatformInMetadata: "DockerCompose",
+			},
+			want: "dockerCompose",
 		},
 		{
 			name: "get_platform_k8s",
@@ -184,6 +192,66 @@ func TestSource_getLibraryInDir(t *testing.T) {
 		got := getLibraryInDir(ctx, "", libDir)
 		require.Equal(t, "", got)
 	})
+}
+
+func Test_getPublished(t *testing.T) {
+	t.Parallel()
+	assert.True(t, getPublished(map[string]any{}))
+	assert.True(t, getPublished(map[string]any{"published": true}))
+	assert.False(t, getPublished(map[string]any{"published": false}))
+	assert.True(t, getPublished(map[string]any{"published": "false"}))
+}
+
+func TestFilesystemSource_GetQueries_respectsPublished(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := t.TempDir()
+	queriesRoot := filepath.Join(root, "queries", "terraform", "aws")
+	require.NoError(t, os.MkdirAll(queriesRoot, 0o700))
+
+	writeQuery := func(name, metadata string) {
+		dir := filepath.Join(queriesRoot, name)
+		require.NoError(t, os.Mkdir(dir, 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "metadata.json"), []byte(metadata), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "query.rego"), []byte("package test\n"), 0o600))
+	}
+
+	writeQuery("published_rule", `{
+  "id": "terraform-aws-published-rule",
+  "platform": "Terraform",
+  "cloudProvider": "aws"
+}`)
+	writeQuery("unpublished_rule", `{
+  "id": "terraform-aws-unpublished-rule",
+  "platform": "Terraform",
+  "cloudProvider": "aws",
+  "published": false
+}`)
+
+	source := NewFilesystemSource(ctx, []string{filepath.Join(root, "queries")}, []string{"terraform"}, []string{"aws"}, "", false)
+
+	defaultQueries, err := source.GetQueries(ctx, &QueryInspectorParameters{})
+	require.NoError(t, err)
+	require.Len(t, defaultQueries, 1)
+	assert.Equal(t, "terraform-aws-published-rule", defaultQueries[0].Metadata["id"])
+
+	allQueries, err := source.GetQueries(ctx, &QueryInspectorParameters{IncludeUnpublishedQueries: true})
+	require.NoError(t, err)
+	require.Len(t, allQueries, 2)
+}
+
+func TestFilterQueries_respectsPublished(t *testing.T) {
+	t.Parallel()
+	queries := []model.QueryMetadata{
+		{Metadata: map[string]any{"id": "published", "published": true}},
+		{Metadata: map[string]any{"id": "unpublished", "published": false}},
+	}
+	filtered := FilterQueries(context.Background(), queries, &QueryInspectorParameters{})
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "published", filtered[0].Metadata["id"])
+
+	all := FilterQueries(context.Background(), queries, &QueryInspectorParameters{IncludeUnpublishedQueries: true})
+	require.Len(t, all, 2)
 }
 
 func TestFilesystemSource_ReadLocalFile(t *testing.T) {

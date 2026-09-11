@@ -301,12 +301,13 @@ func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
 	}
 
 	queryFilter := source.QueryInspectorParameters{
-		ExcludeQueries:      excludeQueries,
-		IncludeQueries:      includeQueries,
-		ExperimentalQueries: c.ScanParams.ExperimentalQueries,
-		InputDataPath:       c.ScanParams.InputData,
-		BomQueries:          c.ScanParams.BillOfMaterials,
-		FlagEvaluator:       c.FlagEvaluator,
+		ExcludeQueries:            excludeQueries,
+		IncludeQueries:            includeQueries,
+		ExperimentalQueries:       c.ScanParams.ExperimentalQueries,
+		IncludeUnpublishedQueries: c.ScanParams.IncludeUnpublishedQueries,
+		InputDataPath:             c.ScanParams.InputData,
+		BomQueries:                c.ScanParams.BillOfMaterials,
+		FlagEvaluator:             c.FlagEvaluator,
 	}
 
 	return &queryFilter

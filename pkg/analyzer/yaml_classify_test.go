@@ -265,6 +265,89 @@ metadata:
 	require.Equal(t, "", checkYamlPlatform(ctx, content, "manifest.yaml"))
 }
 
+func Test_checkYamlPlatform_dockerCompose(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		content string
+		want    string
+	}{
+		{
+			name: "versionless image service",
+			path: "stack.yaml",
+			content: `services:
+  web:
+    image: nginx:latest
+`,
+			want: dockercompose,
+		},
+		{
+			name: "build service",
+			path: "compose.yml",
+			content: `services:
+  api:
+    build:
+      context: .
+`,
+			want: dockercompose,
+		},
+		{
+			name: "extends service",
+			path: "compose.override.yaml",
+			content: `services:
+  worker:
+    extends:
+      file: compose.yaml
+      service: base
+`,
+			want: dockercompose,
+		},
+		{
+			name: "canonical filename supports partial override",
+			path: "docker-compose.override.yml",
+			content: `services:
+  web:
+    ports:
+      - "8080:80"
+`,
+			want: dockercompose,
+		},
+		{
+			name: "generic services mapping",
+			path: "application.yaml",
+			content: `services:
+  billing:
+    endpoint: https://example.test
+`,
+		},
+		{
+			name: "nested services mapping",
+			path: "application.yaml",
+			content: `application:
+  services:
+    web:
+      image: nginx
+`,
+		},
+		{
+			name: "services must be a mapping",
+			path: "compose.yaml",
+			content: `services:
+  - web
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, checkYamlPlatform(
+				context.Background(),
+				[]byte(tt.content),
+				tt.path,
+			))
+		})
+	}
+}
+
 func Test_isYamlTemplatePath(t *testing.T) {
 	require.True(t, isYamlTemplatePath("domains/foo/ci.tpl.yaml"))
 	require.True(t, isYamlTemplatePath("domains/foo/ci.tpl.yml"))

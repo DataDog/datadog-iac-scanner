@@ -146,6 +146,7 @@ const (
 	gdm                   = "googledeploymentmanager"
 	ansible               = "ansible"
 	grpc                  = "grpc"
+	dockercompose         = "dockercompose"
 	dockerfile            = "dockerfile"
 	crossplane            = "crossplane"
 	knative               = "knative"
@@ -976,6 +977,9 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 		return ""
 	}
 
+	if dockerComposeFromYAMLNode(root, path) {
+		return dockercompose
+	}
 	if yamlMapKeyNode(root, listKeywordsGoogleDeployment[0]) != nil {
 		return gdm
 	}

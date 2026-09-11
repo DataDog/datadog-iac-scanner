@@ -297,6 +297,9 @@ func FilterQueries(ctx context.Context, queries []model.QueryMetadata,
 		if query.Experimental && !queryParameters.ExperimentalQueries {
 			continue
 		}
+		if !getPublished(query.Metadata) && !queryParameters.IncludeUnpublishedQueries {
+			continue
+		}
 		if !checkQueryInclude(ctx, query.Metadata, queryParameters) ||
 			checkQueryExclude(ctx, query.Metadata, queryParameters) {
 			continue
@@ -372,6 +375,9 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 		}
 
 		if query.Experimental && !queryParameters.ExperimentalQueries {
+			continue
+		}
+		if !getPublished(query.Metadata) && (queryParameters == nil || !queryParameters.IncludeUnpublishedQueries) {
 			continue
 		}
 
@@ -463,4 +469,15 @@ func getExperimental(experimental any) bool {
 	} else {
 		return false
 	}
+}
+
+func getPublished(metadata map[string]any) bool {
+	v, ok := metadata["published"]
+	if !ok {
+		return true
+	}
+	if published, ok := v.(bool); ok {
+		return published
+	}
+	return true
 }

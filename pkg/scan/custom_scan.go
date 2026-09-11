@@ -33,6 +33,7 @@ var platformExtensions = map[string]string{
 	"Kubernetes":     "scan-target.yaml",
 	"Ansible":        "scan-target.yaml",
 	"CICD":           ".github/scan-target.yaml",
+	"DockerCompose":  "compose.yaml",
 	"Dockerfile":     "Dockerfile",
 }
 

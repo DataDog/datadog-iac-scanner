@@ -24,9 +24,11 @@ type QueryInspectorParameters struct {
 	// ExcludeQueries specifies the queries that will not be used
 	ExcludeQueries      QueryFilter
 	ExperimentalQueries bool
-	InputDataPath       string
-	BomQueries          bool
-	FlagEvaluator       featureflags.FlagEvaluator
+	// IncludeUnpublishedQueries loads rules whose metadata sets published to false.
+	IncludeUnpublishedQueries bool
+	InputDataPath             string
+	BomQueries                bool
+	FlagEvaluator             featureflags.FlagEvaluator
 }
 
 // QueryFilter is a struct that represents the option to exclude queries by ids or by categories
