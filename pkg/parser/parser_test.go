@@ -171,3 +171,31 @@ func TestParser_Contains(t *testing.T) {
 		})
 	}
 }
+
+// TestBuild_PlatformIsIntersectedWithRequestedTypes verifies that Parser.Platform
+// contains only the platforms that were explicitly requested, not every platform
+// the underlying parser supports. This prevents Docker Compose (or any other
+// opt-in platform) queries from executing when a different YAML platform is
+// requested — the regression described in datadog-iac-scanner#363.
+func TestBuild_PlatformIsIntersectedWithRequestedTypes(t *testing.T) {
+	ctx := context.Background()
+
+	// Request only Kubernetes; the default YAML parser also supports dockercompose,
+	// ansible, cloudformation, and several others.
+	parsers, err := NewBuilder(ctx).
+		Add(&yamlParser.Parser{}).
+		Build([]string{"kubernetes"}, nil)
+	require.NoError(t, err)
+	require.Len(t, parsers, 1)
+	require.Equal(t, []string{"kubernetes"}, parsers[0].Platform,
+		"Parser.Platform must contain only the requested platform, not all supported types")
+
+	// The wildcard request ("") must still include every supported type.
+	allParsers, err := NewBuilder(ctx).
+		Add(&yamlParser.Parser{}).
+		Build([]string{""}, nil)
+	require.NoError(t, err)
+	require.Len(t, allParsers, 1)
+	require.Greater(t, len(allParsers[0].Platform), 1,
+		"wildcard Build should include all supported types")
+}

@@ -81,6 +81,13 @@ func Test_getPlatform(t *testing.T) {
 			want: "cicd",
 		},
 		{
+			name: "get_platform_docker_compose",
+			args: args{
+				PlatformInMetadata: "DockerCompose",
+			},
+			want: "dockerCompose",
+		},
+		{
 			name: "get_platform_k8s",
 			args: args{
 				PlatformInMetadata: "Kubernetes",

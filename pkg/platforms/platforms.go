@@ -6,4 +6,12 @@
 package platforms
 
 // Supported is the list of IaC platforms with published rules available to customers.
-var Supported = []string{"Ansible", "CICD", "CloudFormation", "Dockerfile", "Kubernetes", "Terraform"}
+var Supported = []string{
+	"Ansible",
+	"CICD",
+	"CloudFormation",
+	"DockerCompose",
+	"Dockerfile",
+	"Kubernetes",
+	"Terraform",
+}

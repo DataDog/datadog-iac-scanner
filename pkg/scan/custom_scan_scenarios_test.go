@@ -37,6 +37,7 @@ func (s *multiPlatformLibSource) GetQueryLibrary(_ context.Context, platform str
 		"cloudFormation": {pkg: "generic.cloudformation", body: "get_name(resource, name) := name\n"},
 		"ansible":        {pkg: "generic.ansible", body: "get_name(resource, name) := name\n"},
 		"k8s":            {pkg: "generic.k8s", body: "get_name(resource, name) := name\n"},
+		"dockerCompose":  {pkg: "generic.dockercompose", body: "get_name(resource, name) := name\n"},
 		"dockerfile":     {pkg: "generic.dockerfile", body: "get_name(resource, name) := name\n"},
 		"cicd":           {pkg: "generic.cicd", body: "get_name(resource, name) := name\n"},
 	}[platform]
@@ -75,7 +76,7 @@ DatadogPolicy contains result if {
 // Calling a platform library without importing it is reported on every platform.
 func TestScenario_MissingLibraryImportIsReportedOnEveryPlatform(t *testing.T) {
 	for _, platform := range []string{
-		"Terraform", "CloudFormation", "Ansible", "Kubernetes", "Dockerfile", "CICD",
+		"Terraform", "CloudFormation", "Ansible", "Kubernetes", "DockerCompose", "Dockerfile", "CICD",
 	} {
 		t.Run(platform, func(t *testing.T) {
 			rego := ruleFor("", "\tname := lib.get_name({}, \"n\")")

@@ -13,6 +13,7 @@ var supPlatforms = &supportedPlatforms{
 	"CloudFormation":          "cloudFormation",
 	"Common":                  "common",
 	"Crossplane":              "crossplane",
+	"DockerCompose":           "dockerCompose",
 	"Dockerfile":              "dockerfile",
 	"Knative":                 "knative",
 	"Kubernetes":              "k8s",
