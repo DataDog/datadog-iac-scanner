@@ -36,7 +36,12 @@ const (
 )
 
 // Converter returns content json, error line, error
-type Converter func(ctx context.Context, file *hcl.File, inputVariables converter.VariableMap) (model.Document, error)
+type Converter func(
+	ctx context.Context,
+	file *hcl.File,
+	inputVariables converter.VariableMap,
+	opts converter.Options,
+) (model.Document, error)
 
 // Parser struct that contains the function to parse file and the number of retries if something goes wrong
 type Parser struct {
@@ -76,7 +81,7 @@ func (p *Parser) SetMergeAllow(paths []string) {
 func NewDefault() *Parser {
 	return &Parser{
 		numOfRetries: RetriesDefaultValue,
-		convertFunc:  converter.DefaultConverted,
+		convertFunc:  converter.Convert,
 		fsys:         vfs.DiskFS{},
 	}
 }
@@ -310,7 +315,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 
 	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
 
-	fc, parseErr := p.convertFunc(ctx, file, inputVariables)
+	fc, parseErr := p.convertFunc(ctx, file, inputVariables, converter.Options{
+		BaseDir: filepath.Dir(path),
+		FS:      p.fsys,
+	})
 	json, err := addExtraInfo(ctx, []model.Document{fc}, path)
 	if err != nil {
 		return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed terraform parse")

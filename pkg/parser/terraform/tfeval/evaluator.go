@@ -23,6 +23,7 @@ import (
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -302,7 +303,7 @@ func (e *Evaluator) evaluate(
 		Variables: map[string]cty.Value{
 			"var": objectOrEmpty(varVals),
 		},
-		Functions: e.funcs,
+		Functions: tffunctions.EvalFuncs(dir, vfs.DiskFS{}),
 	}
 
 	evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
