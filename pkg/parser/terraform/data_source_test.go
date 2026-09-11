@@ -137,6 +137,70 @@ func Test_getDataSourcePolicy(t *testing.T) {
 	}
 }
 
+func Test_getDataSourcePolicy_JSONConfig(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf.json"), []byte(`{
+  "data": {
+    "aws_iam_policy_document": {
+      "doc": {
+        "statement": [{
+          "actions": ["s3:GetObject"],
+          "resources": ["arn:aws:s3:::from-json/*"]
+        }]
+      }
+    }
+  }
+}`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	data, ok := result["data"]
+	require.True(t, ok)
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-json")
+}
+
+func Test_getDataSourcePolicy_JSONConfigResourceTraversal(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf.json"), []byte(`{
+  "data": {
+    "aws_iam_policy_document": {
+      "doc": {
+        "statement": [{
+          "actions": ["s3:GetObject"],
+          "resources": ["${aws_s3_bucket.b.arn}"]
+        }]
+      }
+    }
+  }
+}`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	data, ok := result["data"]
+	require.True(t, ok)
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "aws_s3_bucket.b.arn")
+}
+
+func Test_getDataSourcePolicy_TofuJSONShadowsTfJSON(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf.json"), []byte(`{
+  "data": {"aws_iam_policy_document": {"doc": {"statement": [{"resources": ["arn:aws:s3:::from-tf/*"]}]}}}
+}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tofu.json"), []byte(`{
+  "data": {"aws_iam_policy_document": {"doc": {"statement": [{"resources": ["arn:aws:s3:::from-tofu/*"]}]}}}
+}`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	data, ok := result["data"]
+	require.True(t, ok)
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tofu")
+	require.NotContains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tf")
+}
+
 func Test_getDataSourcePolicy_TofuShadowsTf(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf"), []byte(`

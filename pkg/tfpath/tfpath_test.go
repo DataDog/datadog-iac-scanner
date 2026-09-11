@@ -12,6 +12,26 @@ import (
 	"testing"
 )
 
+func TestExtension(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "main.tf", want: ".tf"},
+		{path: "main.tofu", want: ".tofu"},
+		{path: "main.tf.json", want: ".tf.json"},
+		{path: "main.tofu.json", want: ".tofu.json"},
+		{path: "dir/MAIN.TOFU.JSON", want: ".tofu.json"},
+		{path: "data.json", want: ".json"},
+		{path: "vars.tfvars", want: ".tfvars"},
+	}
+	for _, tt := range tests {
+		if got := Extension(tt.path); got != tt.want {
+			t.Errorf("Extension(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
 func TestIsJSONConfig(t *testing.T) {
 	tests := []struct {
 		path string
