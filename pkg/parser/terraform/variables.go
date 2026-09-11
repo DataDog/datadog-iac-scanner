@@ -14,14 +14,20 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/zclconf/go-cty/cty"
 )
 
-// terraformVarsPathDirective is the inline comment prefix that overrides the tfvars path for a file.
-const terraformVarsPathDirective = "kics_terraform_vars"
+const (
+	// terraformVarsPathDirective is the inline comment prefix that overrides the tfvars path for a file.
+	terraformVarsPathDirective = "kics_terraform_vars"
+	blockTypeVariable          = "variable"
+	blockTypeLocals            = "locals"
+)
 
 var terraformVarsPathRegex = regexp.MustCompile(`(?m)^\s*// ` + terraformVarsPathDirective + `: ([\w/\\.:-]+)\r?\n`)
 
@@ -57,6 +63,9 @@ func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.Variable
 func getInputVariablesAndLocalsFromFile(
 	fsys vfs.FS, filename string,
 ) (vars, locals converter.VariableMap, err error) {
+	if tfpath.IsJSONConfig(filename) {
+		return extractVarsAndLocalsFromJSON(fsys, filename)
+	}
 	body, err := parseHCLBody(fsys, filename)
 	if err != nil {
 		return nil, nil, err
@@ -85,7 +94,7 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 	// Case 2: .tf variable "x" { default = ... }
 	hasVariableBlock := false
 	for _, block := range body.Blocks {
-		if block.Type == "variable" && len(block.Labels) == 1 && block.Labels[0] != "" {
+		if block.Type == blockTypeVariable && len(block.Labels) == 1 && block.Labels[0] != "" {
 			hasVariableBlock = true
 			varName := block.Labels[0]
 			if defaultAttr, exists := block.Body.Attributes["default"]; exists {
@@ -113,6 +122,71 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 	return variables
 }
 
+func extractVarsAndLocalsFromJSON(fsys vfs.FS, filename string) (vars, locals converter.VariableMap, err error) {
+	src, err := fsys.ReadFile(filepath.Clean(filename))
+	if err != nil {
+		return nil, nil, err
+	}
+	parsed, diags := hcljson.Parse(src, filename)
+	if diags.HasErrors() {
+		return nil, nil, diags
+	}
+	content, _, diags := parsed.Body.PartialContent(jsonConfigSchema)
+	if diags.HasErrors() && content == nil {
+		return nil, nil, diags
+	}
+
+	vars, locals = varsAndLocalsFromJSONBlocks(content.Blocks)
+	return vars, locals, nil
+}
+
+func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (vars, locals converter.VariableMap) {
+	vars = make(converter.VariableMap)
+	locals = make(converter.VariableMap)
+	evalCtx := &hcl.EvalContext{}
+	for _, block := range blocks {
+		switch block.Type {
+		case blockTypeVariable:
+			if len(block.Labels) != 1 || block.Labels[0] == "" {
+				continue
+			}
+			vars[block.Labels[0]] = knownAttrOrUnknown(block.Body, "default", evalCtx)
+		case blockTypeLocals:
+			mergeKnownAttributes(locals, block.Body)
+		}
+	}
+	return vars, locals
+}
+
+func knownAttrOrUnknown(body hcl.Body, name string, evalCtx *hcl.EvalContext) cty.Value {
+	attrs, _ := body.JustAttributes()
+	if def, ok := attrs[name]; ok {
+		val, diags := def.Expr.Value(evalCtx)
+		if !diags.HasErrors() && val.IsKnown() {
+			return val
+		}
+	}
+	return cty.UnknownVal(cty.DynamicPseudoType)
+}
+
+func mergeKnownAttributes(dst converter.VariableMap, body hcl.Body) {
+	attrs, _ := body.JustAttributes()
+	for pass := 0; pass < 3; pass++ {
+		evalCtx := &hcl.EvalContext{
+			Variables: map[string]cty.Value{"local": cty.ObjectVal(dst)},
+		}
+		for name, attr := range attrs {
+			if _, ok := dst[name]; ok {
+				continue
+			}
+			val, diags := attr.Expr.Value(evalCtx)
+			if !diags.HasErrors() && val.IsKnown() {
+				dst[name] = val
+			}
+		}
+	}
+}
+
 func extractLocals(body *hclsyntax.Body) converter.VariableMap {
 	locals := make(converter.VariableMap)
 	if body == nil {
@@ -127,7 +201,7 @@ func extractLocals(body *hclsyntax.Body) converter.VariableMap {
 
 	// Collect all locals
 	for _, block := range body.Blocks {
-		if block.Type != "locals" {
+		if block.Type != blockTypeLocals {
 			continue
 		}
 		for name, attr := range block.Body.Attributes {
@@ -250,7 +324,7 @@ func hclConfigFiles(ctx context.Context, fsys vfs.FS, dir string, allow map[stri
 		contextLogger.Error().Msg("Error listing Terraform configuration files")
 		return nil
 	}
-	names := tfmodules.SelectHCLConfigNames(entries, dir, allow, keep)
+	names := tfmodules.SelectConfigNames(entries, dir, allow, keep)
 	out := make([]string, len(names))
 	for i, name := range names {
 		out[i] = filepath.Join(dir, name)
