@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
@@ -89,6 +90,10 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 
 	lines := *file.LinesOriginalData
 
+	if tfpath.IsJSONConfig(file.FilePath) {
+		return detectJSONConfigLine(ctx, file, keyParts, extracted, outputLines)
+	}
+
 	for _, part := range keyParts {
 		// Parse the entire file in case of array detection, thus the file.OriginalData
 		s1, s2, idx := GenerateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, []byte(file.OriginalData))
@@ -125,6 +130,74 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 
 	contextLogger.Warn().Msgf("Failed to detect Terraform line, query response %s", normalizedKey)
 	return buildEmptyVulnerabilityLines(file)
+}
+
+func detectJSONConfigLine(
+	ctx context.Context, file *model.FileMetadata, keyParts []string, extracted [][]string, outputLines int,
+) model.VulnerabilityLines {
+	lines := *file.LinesOriginalData
+	current := 0
+	found := false
+	for _, part := range keyParts {
+		s1, s2, idx := GenerateSubstrings(ctx, part, extracted, lines, current, []byte(file.OriginalData))
+		if idx != 0 {
+			current = idx
+			found = true
+			continue
+		}
+		if line, ok := findJSONKeyLine(lines, current, s1); ok {
+			current = line
+			found = true
+		}
+		if s2 != "" {
+			if line, ok := findJSONKeyLine(lines, current, s2); ok {
+				current = line
+				found = true
+			}
+		}
+	}
+	if !found {
+		return buildEmptyVulnerabilityLines(file)
+	}
+	line := current + 1
+	if line < 1 || line > len(lines) {
+		return buildEmptyVulnerabilityLines(file)
+	}
+	got := syntheticVulnerabilityLines(line, lines)
+	got.Line = line
+	got.VulnLines = detector.GetAdjacentVulnLines(current, outputLines, lines)
+	got.ResolvedFile = file.FilePath
+	got.FileSource = lines
+	return got
+}
+
+func findJSONKeyLine(lines []string, from int, key string) (int, bool) {
+	if key == "" {
+		return from, false
+	}
+	quoted := `"` + key + `"`
+	for i := from; i < len(lines); i++ {
+		if jsonLineDeclaresKey(lines[i], quoted) {
+			return i, true
+		}
+	}
+	return from, false
+}
+
+func jsonLineDeclaresKey(line, quoted string) bool {
+	start := 0
+	for {
+		rel := strings.Index(line[start:], quoted)
+		if rel < 0 {
+			return false
+		}
+		idx := start + rel
+		rest := strings.TrimLeft(line[idx+len(quoted):], " \t")
+		if strings.HasPrefix(rest, ":") {
+			return true
+		}
+		start = idx + len(quoted)
+	}
 }
 
 func buildEmptyVulnerabilityLines(file *model.FileMetadata) model.VulnerabilityLines {
