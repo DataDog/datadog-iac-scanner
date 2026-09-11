@@ -17,10 +17,12 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
@@ -108,29 +110,11 @@ func getDataSourcePolicy(
 		if !fileMayDeclareIAMPolicyDocument(content) {
 			continue
 		}
-		parsedFile, diags := parseFileContent(content, tfFile, true)
-		if diags != nil && diags.HasErrors() {
-			contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
+		if tfpath.IsJSONConfig(tfFile) {
+			collectJSONDataSourcePolicies(ctx, content, tfFile, inputVariables, jsonMap)
 			continue
 		}
-		if parsedFile == nil {
-			contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
-			continue
-		}
-		body, ok := parsedFile.Body.(*hclsyntax.Body)
-		if !ok {
-			continue
-		}
-		for _, block := range body.Blocks {
-			if block.Type == terraformDataIdentifier &&
-				len(block.Labels) > 1 &&
-				block.Labels[0] == iamPolicyDocumentType {
-				policyJSON := parseDataSourceBody(ctx, block.Body, inputVariables)
-				jsonMap[block.Labels[1]] = map[string]string{
-					"json": policyJSON,
-				}
-			}
-		}
+		collectHCLDataSourcePolicies(ctx, content, tfFile, inputVariables, jsonMap)
 	}
 	policyResource := map[string]map[string]map[string]string{
 		"aws_iam_policy_document": jsonMap,
@@ -143,6 +127,58 @@ func getDataSourcePolicy(
 
 	inputVariables["data"] = data
 	return inputVariables
+}
+
+func collectHCLDataSourcePolicies(
+	ctx context.Context, content []byte, tfFile string, inputVariables converter.VariableMap, jsonMap map[string]map[string]string,
+) {
+	contextLogger := logger.FromContext(ctx)
+	parsedFile, diags := parseFileContent(content, tfFile, true)
+	if diags != nil && diags.HasErrors() {
+		contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
+		return
+	}
+	if parsedFile == nil {
+		contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
+		return
+	}
+	body, ok := parsedFile.Body.(*hclsyntax.Body)
+	if !ok {
+		return
+	}
+	for _, block := range body.Blocks {
+		if block.Type == terraformDataIdentifier &&
+			len(block.Labels) > 1 &&
+			block.Labels[0] == iamPolicyDocumentType {
+			jsonMap[block.Labels[1]] = map[string]string{
+				"json": parseDataSourceBody(ctx, block.Body, inputVariables, nil),
+			}
+		}
+	}
+}
+
+func collectJSONDataSourcePolicies(
+	ctx context.Context, src []byte, filename string, inputVariables converter.VariableMap, jsonMap map[string]map[string]string,
+) {
+	parsed, diags := hcljson.Parse(src, filename)
+	if diags.HasErrors() {
+		return
+	}
+	content, _, _ := parsed.Body.PartialContent(jsonConfigSchema)
+	if content == nil {
+		return
+	}
+	for _, block := range content.Blocks {
+		if block.Type != terraformDataIdentifier || len(block.Labels) < 2 {
+			continue
+		}
+		if block.Labels[0] != iamPolicyDocumentType {
+			continue
+		}
+		jsonMap[block.Labels[1]] = map[string]string{
+			"json": parseDataSourceBody(ctx, block.Body, inputVariables, src),
+		}
+	}
 }
 
 // fileMayDeclareIAMPolicyDocument is a fast precheck before parseFileContent.
@@ -309,7 +345,10 @@ func getStatementSpec() *hcldec.BlockListSpec {
 	}
 }
 
-func parseDataSourceBody(ctx context.Context, body *hclsyntax.Body, inputVariables converter.VariableMap) string {
+func parseDataSourceBody(ctx context.Context, body hcl.Body, inputVariables converter.VariableMap, src []byte) string {
+	if syn, ok := body.(*hclsyntax.Body); ok {
+		resolveDataResources(ctx, syn)
+	}
 	contextLogger := logger.FromContext(ctx)
 	dataSourceSpec := &hcldec.ObjectSpec{
 		"id": &hcldec.AttrSpec{
@@ -324,8 +363,6 @@ func parseDataSourceBody(ctx context.Context, body *hclsyntax.Body, inputVariabl
 		},
 		"statement": getStatementSpec(),
 	}
-
-	resolveDataResources(ctx, body)
 
 	target, decodeErrs := hcldec.Decode(body, dataSourceSpec, &hcl.EvalContext{
 		Variables: inputVariables,
@@ -348,6 +385,9 @@ func parseDataSourceBody(ctx context.Context, body *hclsyntax.Body, inputVariabl
 	}
 
 	dataSourceJSON := decodeDataSourcePolicy(ctx, target)
+	if len(src) > 0 {
+		fillJSONPolicyResources(dataSourceJSON.Statement, body, src)
+	}
 	convertedDataSource := convertedPolicy{
 		ID:      dataSourceJSON.ID,
 		Version: dataSourceJSON.Version,
@@ -398,6 +438,122 @@ func parseDataSourceBody(ctx context.Context, body *hclsyntax.Body, inputVariabl
 		return ""
 	}
 	return buffer.String()
+}
+
+func fillJSONPolicyResources(statements []dataSourcePolicyStatement, body hcl.Body, src []byte) {
+	lists := jsonPolicyResourceLists(body, src)
+	for i := range statements {
+		if i >= len(lists) {
+			return
+		}
+		if jsonPolicyResourcesMissing(statements[i].Resources) && len(lists[i]) > 0 {
+			statements[i].Resources = lists[i]
+		}
+	}
+}
+
+func jsonPolicyResourcesMissing(resources []string) bool {
+	if len(resources) == 0 {
+		return true
+	}
+	for _, resource := range resources {
+		if resource != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func jsonPolicyResourceLists(body hcl.Body, src []byte) [][]string {
+	if lists := jsonPolicyResourceListsFromBlocks(body, src); len(lists) > 0 {
+		return lists
+	}
+	return jsonPolicyResourceListsFromAttr(body, src)
+}
+
+func jsonPolicyResourceListsFromBlocks(body hcl.Body, src []byte) [][]string {
+	content, _, _ := body.PartialContent(&hcl.BodySchema{
+		Blocks: []hcl.BlockHeaderSchema{{Type: "statement"}},
+	})
+	if content == nil {
+		return nil
+	}
+	out := make([][]string, 0, len(content.Blocks))
+	for _, block := range content.Blocks {
+		attrs, _ := block.Body.JustAttributes()
+		out = append(out, jsonPolicyResourcesFromAttr(attrs["resources"], src))
+	}
+	return out
+}
+
+func jsonPolicyResourceListsFromAttr(body hcl.Body, src []byte) [][]string {
+	attrs, _ := body.JustAttributes()
+	attr, ok := attrs["statement"]
+	if !ok {
+		return nil
+	}
+	statements, diags := hcl.ExprList(attr.Expr)
+	if diags.HasErrors() {
+		return nil
+	}
+	out := make([][]string, 0, len(statements))
+	for _, statement := range statements {
+		pairs, pairDiags := hcl.ExprMap(statement)
+		if pairDiags.HasErrors() {
+			out = append(out, nil)
+			continue
+		}
+		var resources hcl.Expression
+		for _, pair := range pairs {
+			key, keyDiags := pair.Key.Value(&hcl.EvalContext{})
+			if keyDiags.HasErrors() || !key.IsKnown() || key.Type() != cty.String || key.AsString() != "resources" {
+				continue
+			}
+			resources = pair.Value
+			break
+		}
+		out = append(out, jsonPolicyResourcesFromExpr(resources, src))
+	}
+	return out
+}
+
+func jsonPolicyResourcesFromAttr(attr *hcl.Attribute, src []byte) []string {
+	if attr == nil {
+		return nil
+	}
+	return jsonPolicyResourcesFromExpr(attr.Expr, src)
+}
+
+func jsonPolicyResourcesFromExpr(expr hcl.Expression, src []byte) []string {
+	if expr == nil {
+		return nil
+	}
+	items, diags := hcl.ExprList(expr)
+	if diags.HasErrors() {
+		return nil
+	}
+	resources := make([]string, 0, len(items))
+	for _, item := range items {
+		if s := jsonPolicyResourceString(item, src); s != "" {
+			resources = append(resources, s)
+		}
+	}
+	return resources
+}
+
+func jsonPolicyResourceString(expr hcl.Expression, src []byte) string {
+	val, diags := expr.Value(&hcl.EvalContext{})
+	if !diags.HasErrors() && val.IsWhollyKnown() && !val.IsNull() && val.Type() == cty.String {
+		return val.AsString()
+	}
+	s := wrapJSONRange(expr.Range(), "", src)
+	if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") {
+		inner := s[2 : len(s)-1]
+		if !strings.Contains(inner, "${") {
+			return inner
+		}
+	}
+	return s
 }
 
 // resolveDataResources resolves the data resources expressions into LiteralValueExpr
