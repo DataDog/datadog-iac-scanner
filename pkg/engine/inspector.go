@@ -776,17 +776,17 @@ func (c *Inspector) GetModuleMappings() map[string]interface{} {
 	return maps.Clone(c.moduleMappings)
 }
 
+// moduleMappingKey builds a call-site-unique key for a parsed module block: FileName and DefLine
+// together identify the exact "module" block, so this can never collide across scopes (unlike
+// keying by Name alone) or across same-source-different-version remote calls (unlike Source+Name).
+func moduleMappingKey(module *tfmodules.ParsedModule) string {
+	return module.FileName + ":" + strconv.Itoa(module.DefLine) + "::" + module.Name
+}
+
 // convertModuleMappings converts []ParsedModule to the map format expected by TFPlanDetectLine
 // Expected format: map[moduleKey]->AttributesData->provider->inputs->map[attr]variableName
-//
-// Module key format: For local modules, use just the name since they have unique content per call site.
-// For non-local modules (registry, git), use source+name to handle multiple calls to the same module.
-// This handles collisions where the same module source is called with different names.
 func convertModuleMappings(enrichedModules []tfmodules.ParsedModule) map[string]interface{} {
 	result := make(map[string]interface{})
-
-	// Track which keys we've seen to detect actual collisions
-	seen := make(map[string]string) // key -> module name for debugging
 
 	for i := range enrichedModules {
 		module := &enrichedModules[i]
@@ -819,33 +819,10 @@ func convertModuleMappings(enrichedModules []tfmodules.ParsedModule) map[string]
 		moduleEntry["AttributesData"] = attributesData
 		moduleEntry["Source"] = module.Source       // Store source for reference
 		moduleEntry["AbsSource"] = module.AbsSource // Store absolute source
+		moduleEntry["Version"] = module.Version
+		moduleEntry["Name"] = module.Name
 
-		// Determine the key to use:
-		// - For local modules: use name (each call site typically has unique local path)
-		// - For non-local: use source to handle cases where the same registry/git module
-		//   is called multiple times with different names
-		// NOTE: This still has a limitation - if the same local module is called twice
-		// with the same name but in different scopes, they will collide. However, local
-		// modules are typically designed to be called once per scope, and module instances
-		// (count/for_each) share the same variable schema.
-		var key string
-		if module.IsLocal {
-			key = module.Name
-		} else {
-			// For remote modules, use source+name to distinguish different call sites
-			// Using the same remote module source with different names
-			key = module.Source + "::" + module.Name
-		}
-
-		// Check for collisions (primarily for debugging/awareness)
-		if existingName, exists := seen[key]; exists {
-			// This is expected for module instances (count/for_each) which share the schema
-			// but could indicate a real problem for truly different modules
-			_ = existingName // Will be used for logging if needed
-		}
-
-		seen[key] = module.Name
-		result[key] = moduleEntry
+		result[moduleMappingKey(module)] = moduleEntry
 	}
 
 	return result

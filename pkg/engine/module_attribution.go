@@ -169,19 +169,13 @@ func normalizedModuleSource(source, sourceType, callerRoot, repoPath string) str
 		}
 		return filepath.Base(filepath.Clean(target))
 	}
-	source = strings.TrimPrefix(source, "git::")
-	source = strings.SplitN(source, "?", 2)[0]
-	if parsed, err := url.Parse(source); err == nil && parsed.Scheme != "" {
-		if parsed.Scheme == moduleSourceSchemeFile {
-			return normalizedFileModuleSource(parsed.Path)
-		}
-		parsed.User = nil
-		source = parsed.String()
-	} else if at := strings.Index(source, "@"); at > 0 && strings.Contains(source[at+1:], ":") {
-		source = source[at+1:]
+	// file:// git sources need repo-relative treatment that the shared canonicalizer doesn't do.
+	trimmed := strings.TrimPrefix(source, "git::")
+	trimmed = strings.SplitN(trimmed, "?", 2)[0]
+	if parsed, err := url.Parse(trimmed); err == nil && parsed.Scheme == moduleSourceSchemeFile {
+		return normalizedFileModuleSource(parsed.Path)
 	}
-	source = strings.Replace(source, ".git//", "//", 1)
-	return strings.TrimSuffix(source, ".git")
+	return tfmodules.CanonicalizeRemoteModuleSourceWithType(source, sourceType)
 }
 
 func normalizedFileModuleSource(path string) string {
