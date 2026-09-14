@@ -612,7 +612,7 @@ func TestTransformSearchKeyForModuleEdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			detector := NewTFPlanDetectLine(nil, tt.moduleMappings)
-			transformedKey, attribute := detector.transformSearchKeyForModule(ctx, tt.moduleAddress, tt.searchKey)
+			transformedKey, attribute := detector.transformSearchKeyForModule(ctx, tt.moduleAddress, "", tt.searchKey)
 
 			if transformedKey != tt.expectedSearchKey {
 				t.Errorf("%s: Expected searchKey %q, got %q", tt.description, tt.expectedSearchKey, transformedKey)
@@ -714,64 +714,6 @@ func TestOriginBranch_ModuleHardcoded(t *testing.T) {
 	// No secondary finding for hardcoded
 	if result.SecondaryLines != nil {
 		t.Error("expected no SecondaryLines for module_hardcoded")
-	}
-}
-
-// TestOriginBranch_ModuleHardcoded_RemoteModuleFallsBackToCallSite verifies that a remote module
-// source (git:: URL, registry short-form, ...) is explicitly NOT treated as a filesystem path to
-// join onto scanRoot - it isn't one, and doing so risks the registry silently resolving against
-// whatever nonsense path results. Until remote module resolution is supported, this must fall
-// back to the call site rather than guess.
-func TestOriginBranch_ModuleHardcoded_RemoteModuleFallsBackToCallSite(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	mainTF := filepath.Join(tmpDir, "main.tf")
-	err := os.WriteFile(mainTF, []byte(`module "rds" {
-  source = "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0"
-}
-`), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	reg := registry.New()
-	reg.Register("module.rds", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
-
-	ctx := context.Background()
-	detector := NewTFPlanDetectLine(reg, nil)
-
-	rawDoc := model.Document{
-		"resource": map[string]interface{}{
-			"aws_db_instance": map[string]interface{}{
-				"module.rds.this": map[string]interface{}{
-					"_dd_tf_address": "module.rds.aws_db_instance.this",
-					"_dd_tf_origin": map[string]interface{}{
-						"publicly_accessible": map[string]interface{}{
-							"origin":    "module_hardcoded",
-							"moduleDir": "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0",
-						},
-					},
-					"publicly_accessible": true,
-				},
-			},
-		},
-	}
-	roundTripped := roundTripDocument(rawDoc)
-
-	fileMetadata := &model.FileMetadata{
-		ID:               "plan",
-		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
-		Kind:             model.KindJSON,
-		Document:         roundTripped,
-		LineInfoDocument: roundTripped,
-	}
-
-	result := detector.DetectLine(ctx, fileMetadata, "module.rds.aws_db_instance.this.publicly_accessible", 3)
-
-	// Honest fallback: the call site, never a path guessed by joining the remote source
-	// string onto scanRoot.
-	if result.ResolvedFile != mainTF {
-		t.Errorf("expected fallback to call site %q for remote module, got %q", mainTF, result.ResolvedFile)
 	}
 }
 
@@ -1109,5 +1051,216 @@ func TestOriginBranch_NestedBlockHardcoded(t *testing.T) {
 	}
 	if result.SecondaryLines != nil {
 		t.Error("expected no SecondaryLines for module_hardcoded resource-level finding")
+	}
+}
+
+// TestOriginBranch_ModuleHardcoded_RemoteModule verifies that a module_hardcoded origin for a
+// remote module source (a git:: URL, not filesystem-joinable) resolves using the module
+// mapping's resolver-verified AbsSource rather than blindly joining moduleDir onto scanRoot.
+func TestOriginBranch_ModuleHardcoded_RemoteModule(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mainTF := filepath.Join(tmpDir, "main.tf")
+	err := os.WriteFile(mainTF, []byte(`module "rds" {
+  source = "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0"
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate the fetched-to-disk location of the remote module, elsewhere on disk.
+	fetchedDir := filepath.Join(t.TempDir(), "fetched", "rds")
+	if err := os.MkdirAll(fetchedDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	moduleMainTF := filepath.Join(fetchedDir, "main.tf")
+	err = os.WriteFile(moduleMainTF, []byte(`resource "aws_db_instance" "this" {
+  identifier          = "app-db"
+  publicly_accessible = true
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := registry.New()
+	reg.Register("module.rds", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
+	reg.Register("aws_db_instance.this", registry.Location{FilePath: moduleMainTF, Line: 1, Column: 1})
+
+	moduleMappings := map[string]interface{}{
+		mainTF + ":1::rds": map[string]interface{}{
+			"Source":    "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0",
+			"AbsSource": fetchedDir,
+		},
+	}
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, moduleMappings)
+
+	rawDoc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_db_instance": map[string]interface{}{
+				"module.rds.this": map[string]interface{}{
+					"_dd_tf_address": "module.rds.aws_db_instance.this",
+					"_dd_tf_origin": map[string]interface{}{
+						"publicly_accessible": map[string]interface{}{
+							"origin":    "module_hardcoded",
+							"moduleDir": "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0",
+						},
+					},
+					"publicly_accessible": true,
+				},
+			},
+		},
+	}
+	roundTripped := roundTripDocument(rawDoc)
+
+	fileMetadata := &model.FileMetadata{
+		ID:               "plan",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTripped,
+		LineInfoDocument: roundTripped,
+	}
+
+	result := detector.DetectLine(ctx, fileMetadata, "module.rds.aws_db_instance.this.publicly_accessible", 3)
+
+	if result.ResolvedFile != moduleMainTF {
+		t.Errorf("expected fetched module file %q, got %q", moduleMainTF, result.ResolvedFile)
+	}
+	if result.Line != 3 {
+		t.Errorf("expected attribute line 3, got %d", result.Line)
+	}
+}
+
+// TestOriginBranch_ModuleHardcoded_RemoteModuleNoMapping verifies that when a remote module has
+// no matching module mapping entry (so AbsSource can't be resolved), resolution falls back
+// honestly to the call site instead of joining the remote source string onto scanRoot and
+// resolving against whatever the registry happens to find there.
+func TestOriginBranch_ModuleHardcoded_RemoteModuleNoMapping(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mainTF := filepath.Join(tmpDir, "main.tf")
+	err := os.WriteFile(mainTF, []byte(`module "rds" {
+  source = "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0"
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := registry.New()
+	reg.Register("module.rds", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, nil) // no module mappings
+
+	rawDoc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_db_instance": map[string]interface{}{
+				"module.rds.this": map[string]interface{}{
+					"_dd_tf_address": "module.rds.aws_db_instance.this",
+					"_dd_tf_origin": map[string]interface{}{
+						"publicly_accessible": map[string]interface{}{
+							"origin":    "module_hardcoded",
+							"moduleDir": "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0",
+						},
+					},
+					"publicly_accessible": true,
+				},
+			},
+		},
+	}
+	roundTripped := roundTripDocument(rawDoc)
+
+	fileMetadata := &model.FileMetadata{
+		ID:               "plan",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTripped,
+		LineInfoDocument: roundTripped,
+	}
+
+	result := detector.DetectLine(ctx, fileMetadata, "module.rds.aws_db_instance.this.publicly_accessible", 3)
+
+	// Honest fallback: the call site, not a guessed (and wrong) path under scanRoot.
+	if result.ResolvedFile != mainTF {
+		t.Errorf("expected honest fallback to call site %q, got %q", mainTF, result.ResolvedFile)
+	}
+}
+
+// TestLookupModuleMapping_DisambiguatesBySource verifies that when two module mapping entries
+// share a call-site name, lookupModuleMapping picks the one whose Source canonically matches
+// moduleDir rather than an arbitrary one.
+func TestLookupModuleMapping_DisambiguatesBySource(t *testing.T) {
+	moduleMappings := map[string]interface{}{
+		"/scope/a/main.tf:1::db": map[string]interface{}{
+			"Source": "git::https://github.com/foo/vendor-a.git",
+			"marker": "a",
+		},
+		"/scope/b/main.tf:5::db": map[string]interface{}{
+			"Source": "git::https://github.com/foo/vendor-b.git",
+			"marker": "b",
+		},
+	}
+
+	detector := NewTFPlanDetectLine(nil, moduleMappings)
+	ctx := context.Background()
+
+	got, ok := detector.lookupModuleMapping(ctx, "db", "https://github.com/foo/vendor-b.git")
+	if !ok {
+		t.Fatal("expected a match")
+	}
+	if got["marker"] != "b" {
+		t.Errorf("expected candidate 'b' (source match), got %v", got["marker"])
+	}
+
+	got, ok = detector.lookupModuleMapping(ctx, "db", "git::https://github.com/foo/vendor-a.git?ref=v2.0.0")
+	if !ok {
+		t.Fatal("expected a match")
+	}
+	if got["marker"] != "a" {
+		t.Errorf("expected candidate 'a' (source match tolerating ref/git::), got %v", got["marker"])
+	}
+}
+
+// TestLookupModuleMapping_FallsBackToFirstWhenNoSourceMatches verifies the fallback: when
+// moduleDir doesn't canonically match any candidate's Source, a candidate is still returned
+// (best-effort, same nondeterminism as pre-disambiguation) rather than failing outright.
+func TestLookupModuleMapping_FallsBackToFirstWhenNoSourceMatches(t *testing.T) {
+	moduleMappings := map[string]interface{}{
+		"/scope/a/main.tf:1::db": map[string]interface{}{
+			"Source": "git::https://github.com/foo/vendor-a.git",
+		},
+		"/scope/b/main.tf:5::db": map[string]interface{}{
+			"Source": "git::https://github.com/foo/vendor-b.git",
+		},
+	}
+
+	detector := NewTFPlanDetectLine(nil, moduleMappings)
+	ctx := context.Background()
+
+	_, ok := detector.lookupModuleMapping(ctx, "db", "git::https://github.com/foo/vendor-c.git")
+	if !ok {
+		t.Error("expected a best-effort fallback match, got none")
+	}
+}
+
+// TestLookupModuleMapping_EmptyModuleDirUsesFirstCandidate verifies that an empty moduleDir
+// (no origin hint available) skips disambiguation and returns a candidate directly.
+func TestLookupModuleMapping_EmptyModuleDirUsesFirstCandidate(t *testing.T) {
+	moduleMappings := map[string]interface{}{
+		"/scope/a/main.tf:1::db": map[string]interface{}{
+			"Source": "git::https://github.com/foo/vendor-a.git",
+		},
+	}
+
+	detector := NewTFPlanDetectLine(nil, moduleMappings)
+	ctx := context.Background()
+
+	_, ok := detector.lookupModuleMapping(ctx, "db", "")
+	if !ok {
+		t.Error("expected a match even with empty moduleDir")
 	}
 }

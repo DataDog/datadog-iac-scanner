@@ -32,30 +32,11 @@ const (
 
 // TFPlanDetectLine is a detector for Terraform Plan files that maps findings back to HCL source
 //
-// ARCHITECTURE NOTE - Module Mapping Scope Limitations:
-//
-// The current implementation has a scope limitation with module mappings:
-//
-// 1. Module deduplication (pkg/parser/terraform/modules/modules.go:172):
-//   - Modules are deduplicated by SOURCE at parse time
-//   - Same source called multiple times = single module entry
-//
-// 2. Module mapping conversion (pkg/engine/inspector.go:502):
-//   - Local modules: keyed by NAME only (not source)
-//   - Remote modules: keyed by SOURCE::NAME
-//
-// 3. Impact:
-//   - Can lose call-site identity when same source is called under different names
-//   - Can lose call-site identity when same local module name appears in different scopes
-//
-// This is ACCEPTABLE for v1 because:
-//   - The address registry (which handles resource location lookup) is scope-aware
-//   - Most real-world scenarios don't hit this edge case
-//   - The transformation logic has fallback paths that preserve resource identity
-//
-// Future enhancement:
-//   - Make module mapping scope-aware to match address registry's approach
-//   - Use call-site location + source as key instead of just source/name
+// Module mappings (pkg/engine/inspector.go's convertModuleMappings) are keyed by call-site
+// identity (FileName+DefLine+Name, see moduleMappingKey), so two module blocks never collide even
+// when they share a name across scopes or the same remote source at different versions.
+// lookupModuleMapping disambiguates same-name matches by comparing the plan's module source
+// against each candidate's canonicalized Source (see canonicalModuleSourcesMatch).
 type TFPlanDetectLine struct {
 	registry        *registry.AddressRegistry
 	moduleMappings  map[string]interface{}
@@ -257,6 +238,7 @@ func (t *TFPlanDetectLine) resolveModuleCallLocation(
 
 	// Derive the scan root from the file path of the module call
 	scanRoot := filepath.Dir(location.FilePath)
+	moduleName := moduleNameFromAddress(moduleAddress)
 
 	switch origin {
 	case originModuleHardcoded:
@@ -264,13 +246,13 @@ func (t *TFPlanDetectLine) resolveModuleCallLocation(
 		parsed, err := ParseSearchKey(searchKey)
 		if err == nil {
 			bareAddr := parsed.ResourceType + "." + parsed.ResourceName
-			return t.resolveModuleDefinitionLocation(ctx, bareAddr, attrName, moduleDir, scanRoot, outputLines, location)
+			return t.resolveModuleDefinitionLocation(ctx, bareAddr, attrName, moduleName, moduleDir, scanRoot, outputLines, location)
 		}
 		// ParseSearchKey failed — fall through to default call-site behavior
 
 	case originModuleDefault:
 		// Blame BOTH the variable default AND the module call block (two findings)
-		primary, secondary := t.resolveVariableDefaultLocation(ctx, varName, moduleDir, scanRoot, outputLines, location)
+		primary, secondary := t.resolveVariableDefaultLocation(ctx, varName, moduleName, moduleDir, scanRoot, outputLines, location)
 		if secondary.ResolvedFile != "" {
 			// Attach secondary so the engine fan-out can emit a second finding
 			primary.SecondaryLines = &secondary
@@ -282,7 +264,7 @@ func (t *TFPlanDetectLine) resolveModuleCallLocation(
 	// Try to transform searchKey using module mappings to find the specific attribute
 	// Build full searchKey by combining address with the original searchKey's attribute part
 	fullSearchKey := t.buildFullSearchKey(address, searchKey)
-	transformedSearchKey, transformedAttrName := t.transformSearchKeyForModule(ctx, moduleAddress, fullSearchKey)
+	transformedSearchKey, transformedAttrName := t.transformSearchKeyForModule(ctx, moduleAddress, moduleDir, fullSearchKey)
 
 	// Decouple transformation from line lookup:
 	// - If transformation succeeds, use the transformed key even if line lookup fails
@@ -795,15 +777,45 @@ func resolveResourceLevelOrigin(ctx context.Context, originMapTyped map[string]i
 	return origin, varName, moduleDir
 }
 
-// moduleDirIsResolvableLocalPath reports whether moduleDir (the raw plan-JSON module source
-// string) looks like a local filesystem path that filepath.Join(scanRoot/callFileDir, moduleDir)
-// can meaningfully resolve. Remote sources (git::..., registry short-form like
-// "terraform-aws-modules/rds/aws") are NOT filesystem-joinable this way - joining them onto
-// scanRoot produces a nonsense path that the registry has no way to detect as invalid, so callers
-// must treat a remote moduleDir as "unresolvable" here and fall back to the call site instead of
-// silently resolving against whatever chooseBestLocation happens to pick for that bogus path.
-func moduleDirIsResolvableLocalPath(moduleDir string) bool {
-	return moduleDir != "" && tfmodules.LooksLikeLocalModuleSource(moduleDir)
+// moduleNameFromAddress extracts the module call name from a module address, e.g.
+// "module.vpc" -> "vpc", "module.app_servers[0]" -> "app_servers". Returns "" if moduleAddress
+// isn't a module address.
+func moduleNameFromAddress(moduleAddress string) string {
+	moduleParts := strings.Split(moduleAddress, ".")
+	if len(moduleParts) < 2 || moduleParts[0] != moduleKeyword {
+		return ""
+	}
+	moduleName := moduleParts[1]
+	if bracketIdx := strings.Index(moduleName, "["); bracketIdx > 0 {
+		moduleName = moduleName[:bracketIdx]
+	}
+	return moduleName
+}
+
+// resolveModuleScopeDir picks the directory to scope a MODULE_HARDCODED/MODULE_DEFAULT registry
+// lookup to. Prefers the resolver-verified AbsSource from the module mapping (correct for both
+// local and remote modules, since enrichModule sets it for any module with a resolved local
+// path) over joining the raw plan-JSON source string onto scanRoot, which only produces a valid
+// path for local sources — joining a remote source string there produces a nonsense path that
+// chooseBestLocation cannot detect as invalid and will still resolve against.
+func (t *TFPlanDetectLine) resolveModuleScopeDir(ctx context.Context, moduleName, moduleDir, scanRoot, callFileDir string) string {
+	if moduleName != "" {
+		if moduleMap, ok := t.lookupModuleMapping(ctx, moduleName, moduleDir); ok {
+			if abs, ok := moduleMap["AbsSource"].(string); ok && abs != "" {
+				return abs
+			}
+		}
+	}
+	if moduleDir == "" || !tfmodules.LooksLikeLocalModuleSource(moduleDir) {
+		return ""
+	}
+	if scanRoot != "" {
+		return filepath.Join(scanRoot, moduleDir)
+	}
+	if callFileDir != "" {
+		return filepath.Join(callFileDir, moduleDir)
+	}
+	return ""
 }
 
 // resolveModuleDefinitionLocation resolves a MODULE_HARDCODED finding to the resource attribute
@@ -812,26 +824,18 @@ func (t *TFPlanDetectLine) resolveModuleDefinitionLocation(
 	ctx context.Context,
 	bareAddr string, // e.g. "aws_db_instance.this"
 	attrName string,
-	moduleDir string, // relative source path, e.g. "./modules/rds"
-	scanRoot string, // absolute path to scan root for resolving moduleDir
+	moduleName string, // module call name, e.g. "rds"
+	moduleDir string, // raw plan-JSON module source, e.g. "./modules/rds" or a remote URL
+	scanRoot string, // absolute path to scan root for resolving a local moduleDir
 	outputLines int,
 	callLocation registry.Location, // fallback
 ) model.VulnerabilityLines {
 	contextLogger := logger.FromContext(ctx)
 
-	// Resolve module dir to an absolute path for scoped registry lookup. Remote module sources
-	// (git::, registry short-form, ...) are explicitly excluded here: they aren't filesystem
-	// paths, so scopePath stays the call site and this falls through to the "not found" branch
-	// below rather than joining a remote source string onto scanRoot.
+	// Resolve module dir to an absolute path for scoped registry lookup.
 	scopePath := callLocation.FilePath
-	if moduleDirIsResolvableLocalPath(moduleDir) && scanRoot != "" {
-		abs := filepath.Join(scanRoot, moduleDir)
-		scopePath = filepath.Join(abs, "main.tf") // best-effort scope
-	} else if moduleDirIsResolvableLocalPath(moduleDir) && callLocation.FilePath != "" {
-		// Resolve relative to the call file's directory
-		callFileDir := filepath.Dir(callLocation.FilePath)
-		abs := filepath.Join(callFileDir, moduleDir)
-		scopePath = filepath.Join(abs, "main.tf")
+	if moduleScopeDir := t.resolveModuleScopeDir(ctx, moduleName, moduleDir, scanRoot, filepath.Dir(callLocation.FilePath)); moduleScopeDir != "" {
+		scopePath = filepath.Join(moduleScopeDir, "main.tf") // best-effort scope
 	}
 
 	defLocation, found := t.registry.LookupWithScope(bareAddr, scopePath)
@@ -870,6 +874,7 @@ func (t *TFPlanDetectLine) resolveModuleDefinitionLocation(
 func (t *TFPlanDetectLine) resolveVariableDefaultLocation(
 	ctx context.Context,
 	varName string,
+	moduleName string,
 	moduleDir string,
 	scanRoot string,
 	outputLines int,
@@ -877,16 +882,10 @@ func (t *TFPlanDetectLine) resolveVariableDefaultLocation(
 ) (primary, secondary model.VulnerabilityLines) {
 	contextLogger := logger.FromContext(ctx)
 
-	// Build scope path for scoped registry lookup. Remote module sources are excluded the same
-	// way as resolveModuleDefinitionLocation - see moduleDirIsResolvableLocalPath.
+	// Build scope path for scoped registry lookup.
 	scopePath := callLocation.FilePath
-	if moduleDirIsResolvableLocalPath(moduleDir) && scanRoot != "" {
-		abs := filepath.Join(scanRoot, moduleDir)
-		scopePath = filepath.Join(abs, "variables.tf")
-	} else if moduleDirIsResolvableLocalPath(moduleDir) && callLocation.FilePath != "" {
-		callFileDir := filepath.Dir(callLocation.FilePath)
-		abs := filepath.Join(callFileDir, moduleDir)
-		scopePath = filepath.Join(abs, "variables.tf")
+	if moduleScopeDir := t.resolveModuleScopeDir(ctx, moduleName, moduleDir, scanRoot, filepath.Dir(callLocation.FilePath)); moduleScopeDir != "" {
+		scopePath = filepath.Join(moduleScopeDir, "variables.tf")
 	}
 
 	varAddr := "var." + varName
@@ -1015,7 +1014,7 @@ func (t *TFPlanDetectLine) buildFullSearchKey(address, searchKey string) string 
 // For example: "module.vpc.aws_instance.web.tags" → "module.vpc.resource_tags" (if tags maps to resource_tags)
 // Returns: (transformedSearchKey, attributeName) where attributeName is the module input variable name
 func (t *TFPlanDetectLine) transformSearchKeyForModule(
-	ctx context.Context, moduleAddress, searchKey string,
+	ctx context.Context, moduleAddress, moduleDir, searchKey string,
 ) (transformedSearchKey, attributeName string) {
 	contextLogger := logger.FromContext(ctx)
 
@@ -1069,7 +1068,7 @@ func (t *TFPlanDetectLine) transformSearchKeyForModule(
 		moduleName = moduleName[:bracketIdx]
 	}
 
-	moduleMap, ok := t.lookupModuleMapping(ctx, moduleName)
+	moduleMap, ok := t.lookupModuleMapping(ctx, moduleName, moduleDir)
 	if !ok {
 		return "", ""
 	}
@@ -1108,46 +1107,69 @@ const (
 	moduleInputNonString
 )
 
-// lookupModuleMapping finds moduleName's entry in t.moduleMappings.
-// The mapping keys can be:
-//   - Just the module name (for local modules)
-//   - source::name (for non-local modules to avoid collisions)
-//
-// It tries the simple name first, then checks all keys that end with ::name (handling the
-// same remote module being called multiple times).
-func (t *TFPlanDetectLine) lookupModuleMapping(ctx context.Context, moduleName string) (map[string]interface{}, bool) {
+// canonicalModuleSourcesMatch reports whether moduleDir (the raw plan-JSON module source) and
+// candidateSource (a module mapping entry's "Source" field) refer to the same module, tolerating
+// textual differences that don't change identity (git:: prefix, ?ref=, .git suffix, userinfo,
+// registry short-form vs. explicit host).
+func canonicalModuleSourcesMatch(moduleDir, candidateSource string) bool {
+	if moduleDir == "" || candidateSource == "" {
+		return false
+	}
+	return tfmodules.CanonicalizeRemoteModuleSource(moduleDir) == tfmodules.CanonicalizeRemoteModuleSource(candidateSource)
+}
+
+// lookupModuleMapping finds moduleName's entry in t.moduleMappings. Mapping keys are normally
+// "<FileName>:<DefLine>::<Name>" (see moduleMappingKey in pkg/engine/inspector.go), but a bare
+// moduleName key is also accepted (used by callers/tests that build moduleMappings directly). It
+// collects every key equal to moduleName or ending in "::"+moduleName (each distinct module block
+// sharing that call-site name) and, when there's more than one candidate, disambiguates by
+// comparing moduleDir against each candidate's canonicalized Source. Falls back to the first
+// candidate when moduleDir is empty or no candidate's source matches - the same best-effort
+// behavior as before disambiguation existed.
+func (t *TFPlanDetectLine) lookupModuleMapping(ctx context.Context, moduleName, moduleDir string) (map[string]interface{}, bool) {
 	contextLogger := logger.FromContext(ctx)
 
-	moduleData, ok := t.moduleMappings[moduleName]
-	if !ok {
-		for key, data := range t.moduleMappings {
-			if strings.HasSuffix(key, "::"+moduleName) {
-				moduleData = data
-				ok = true
-				contextLogger.Debug().
-					Str("moduleName", moduleName).
-					Str("matchedKey", key).
-					Msg("Found module by source::name key")
-				break
-			}
+	suffix := "::" + moduleName
+	var candidates []map[string]interface{}
+	for key, data := range t.moduleMappings {
+		if key != moduleName && !strings.HasSuffix(key, suffix) {
+			continue
 		}
+		moduleMap, ok := data.(map[string]interface{})
+		if !ok {
+			contextLogger.Debug().
+				Str("moduleName", moduleName).
+				Str("matchedKey", key).
+				Str("type", fmt.Sprintf("%T", data)).
+				Msg("Module data is not a map")
+			continue
+		}
+		candidates = append(candidates, moduleMap)
 	}
-	if !ok {
+
+	if len(candidates) == 0 {
 		contextLogger.Debug().
 			Str("moduleName", moduleName).
 			Msg("Module not found in mappings")
 		return nil, false
 	}
-
-	moduleMap, ok := moduleData.(map[string]interface{})
-	if !ok {
-		contextLogger.Debug().
-			Str("moduleName", moduleName).
-			Str("type", fmt.Sprintf("%T", moduleData)).
-			Msg("Module data is not a map")
-		return nil, false
+	if len(candidates) == 1 || moduleDir == "" {
+		return candidates[0], true
 	}
-	return moduleMap, true
+
+	for _, candidate := range candidates {
+		candidateSource, _ := candidate["Source"].(string)
+		if canonicalModuleSourcesMatch(moduleDir, candidateSource) {
+			return candidate, true
+		}
+	}
+
+	contextLogger.Debug().
+		Str("moduleName", moduleName).
+		Str("moduleDir", moduleDir).
+		Int("candidateCount", len(candidates)).
+		Msg("Multiple module mapping candidates but none matched moduleDir; using first candidate")
+	return candidates[0], true
 }
 
 // lookupModuleInputVariable navigates moduleMap["AttributesData"][provider]["inputs"][attributeName]
