@@ -20,10 +20,26 @@ const (
 	ExtTFVars   = ".tfvars"
 )
 
+// Extension returns the Terraform/OpenTofu config suffix, including compound
+// JSON suffixes that filepath.Ext would truncate to ".json".
+func Extension(path string) string {
+	switch {
+	case hasExtSuffix(path, ExtTofuJSON):
+		return ExtTofuJSON
+	case hasExtSuffix(path, ExtTFJSON):
+		return ExtTFJSON
+	default:
+		return filepath.Ext(path)
+	}
+}
+
 // IsJSONConfig reports whether path uses Terraform/OpenTofu JSON configuration syntax.
 func IsJSONConfig(path string) bool {
-	lower := strings.ToLower(path)
-	return strings.HasSuffix(lower, ExtTFJSON) || strings.HasSuffix(lower, ExtTofuJSON)
+	return hasExtSuffix(path, ExtTofuJSON) || hasExtSuffix(path, ExtTFJSON)
+}
+
+func hasExtSuffix(path, ext string) bool {
+	return len(path) >= len(ext) && strings.EqualFold(path[len(path)-len(ext):], ext)
 }
 
 // IsHCLConfig reports whether path is a native Terraform/OpenTofu HCL configuration file.

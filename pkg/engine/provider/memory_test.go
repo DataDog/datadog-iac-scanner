@@ -101,7 +101,7 @@ func TestMemorySourceProvider_TofuShadowing(t *testing.T) {
 		"infra/other.tf":     []byte("other"),
 	})
 	p := NewMemorySourceProvider(mem, mem.Paths(), nil, nil)
-	exts := model.Extensions{".tf": {}, ".tofu": {}, ".json": {}}
+	exts := model.Extensions{".tf": {}, ".tofu": {}, ".tf.json": {}}
 
 	collectConc := func(parallel bool) map[string]string {
 		var mu sync.Mutex

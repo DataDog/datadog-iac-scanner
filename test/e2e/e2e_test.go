@@ -129,6 +129,28 @@ func Test_E2ETofuScannedAsTerraform(t *testing.T) {
 	require.True(t, fired, "terraform-aws-team-tag-not-present must fire on a .tofu file")
 }
 
+func Test_E2EJSONConfigScannedAsTerraform(t *testing.T) {
+	queriesPaths := []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform"))}
+
+	for _, fixture := range []string{
+		filepath.Join("fixtures", "positive.tf.json"),
+		filepath.Join("fixtures", "positive.tofu.json"),
+	} {
+		t.Run(filepath.Base(fixture), func(t *testing.T) {
+			stats := runScan(t, fixture, queriesPaths)
+			require.Equal(t, 1, stats.Files, "%s must be scanned", fixture)
+			require.NotEmpty(t, stats.ViolationBreakdowns, "no violations on %s: check queriesPaths", fixture)
+			fired := false
+			for _, slugs := range stats.ViolationBreakdowns {
+				if _, ok := slugs["terraform-aws-team-tag-not-present"]; ok {
+					fired = true
+				}
+			}
+			require.True(t, fired, "terraform-aws-team-tag-not-present must fire on %s", fixture)
+		})
+	}
+}
+
 // Test_E2ETerraformPlanFlag verifies that:
 // 1. Terraform plan JSON files are scanned when the flag is enabled
 // 2. CloudFormation JSON files are NOT scanned (even though they are JSON)

@@ -1030,3 +1030,95 @@ func TestCalculateInsertionPointClampsFunctionWrapperAtEndOfFile(t *testing.T) {
 
 	require.Equal(t, len(lines), line)
 }
+
+func TestDetectLineJSONConfig(t *testing.T) {
+	src := `{
+  "resource": {
+    "aws_s3_bucket": {
+      "b": {
+        "acl": "public-read"
+      }
+    }
+  }
+}`
+	file := &model.FileMetadata{
+		FilePath:          "main.tf.json",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file, "aws_s3_bucket[b].acl", 3)
+	require.Equal(t, 5, got.Line)
+	require.Equal(t, "main.tf.json", got.ResolvedFile)
+	require.Equal(t, 5, got.VulnerablilityLocation.Start.Line)
+	require.Equal(t, 5, got.VulnerablilityLocation.End.Line)
+	require.Equal(t, 5, got.RemediationLocation.Start.Line)
+	require.Equal(t, 5, got.BlockLocation.Start.Line)
+}
+
+func TestDetectLineJSONConfigArrayIndex(t *testing.T) {
+	src := `{
+  "resource": {
+    "aws_security_group": {
+      "sg": {
+        "ingress": [
+          {
+            "cidr_blocks": ["0.0.0.0/0"]
+          },
+          {
+            "cidr_blocks": ["10.0.0.0/8"]
+          }
+        ]
+      }
+    }
+  }
+}`
+	file := &model.FileMetadata{
+		FilePath:          "main.tf.json",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file, "aws_security_group[sg].ingress[1].cidr_blocks", 3)
+	require.Equal(t, 10, got.Line)
+}
+
+func TestDetectLineJSONConfigIgnoresQuotedValue(t *testing.T) {
+	src := `{
+  "resource": {
+    "aws_s3_bucket": {
+      "prod": {
+        "bucket": "acl"
+      }
+    }
+  }
+}`
+	file := &model.FileMetadata{
+		FilePath:          "main.tf.json",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file, "acl", 3)
+	require.Equal(t, -1, got.Line)
+}
+
+func TestDetectLineJSONConfigIgnoresUnquotedSubstring(t *testing.T) {
+	src := `{
+  "resource": {
+    "aws_s3_bucket": {
+      "prod": {
+        "bucket": "mentions-acl-in-value"
+      }
+    }
+  }
+}`
+	file := &model.FileMetadata{
+		FilePath:          "main.tf.json",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file, "acl", 3)
+	require.Equal(t, -1, got.Line)
+}

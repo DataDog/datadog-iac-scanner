@@ -20,6 +20,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
 
 const blockTypeModule = "module"
@@ -34,8 +35,8 @@ var reservedModuleAttrs = map[string]bool{
 	"depends_on": true,
 }
 
-// parseDir parses all HCL config in dir (non-recursively) and returns their
-// bodies. Files that fail to parse are skipped. JSON config is not evaluated here.
+// parseDir parses HCL and JSON config in dir (non-recursively) and returns
+// their bodies. Files that fail to parse are skipped.
 func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]struct{}) ([]*hclsyntax.Body, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -48,7 +49,7 @@ func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]str
 			byName[entry.Name()] = entry
 		}
 	}
-	names := tfmodules.SelectHCLConfigNames(entries, dir, allow, "")
+	names := tfmodules.SelectConfigNames(entries, dir, allow, "")
 	sort.Strings(names)
 
 	bodies := make([]*hclsyntax.Body, 0, len(names))
@@ -65,15 +66,23 @@ func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]str
 		if rErr != nil {
 			continue
 		}
-		f, diags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
-		if diags.HasErrors() {
-			continue
-		}
-		if body, ok := f.Body.(*hclsyntax.Body); ok {
+		if body, ok := parseConfigBody(src, path); ok {
 			bodies = append(bodies, body)
 		}
 	}
 	return bodies, nil
+}
+
+func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
+	if tfpath.IsJSONConfig(path) {
+		return parseJSONAsHCLBody(src, path)
+	}
+	f, diags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return nil, false
+	}
+	body, ok := f.Body.(*hclsyntax.Body)
+	return body, ok
 }
 
 // collectBlocks partitions blocks across all bodies into variables, locals,

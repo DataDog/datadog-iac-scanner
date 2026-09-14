@@ -123,7 +123,7 @@ func (m *MemorySourceProvider) GetParallelSources(ctx context.Context,
 // utils.GetExtension it never stats the file, since pushed content has no
 // on-disk presence.
 func memExtension(p string) string {
-	if ext := filepath.Ext(p); ext != "" {
+	if ext := utils.ExtensionFromPath(p); ext != "" {
 		return ext
 	}
 	return filepath.Base(p)

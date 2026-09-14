@@ -365,7 +365,7 @@ func (e Extensions) MatchedFilesRegex() string {
 
 	var parts []string
 	for ext := range e {
-		parts = append(parts, "\\"+ext)
+		parts = append(parts, regexp.QuoteMeta(ext))
 	}
 
 	sort.Strings(parts)

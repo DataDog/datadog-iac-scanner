@@ -291,6 +291,15 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		return nil, nil, nil, nil, err
 	}
 
+	if tfpath.IsJSONConfig(path) {
+		fc, parseErr := parseJSONConfig(resolved, path, inputVariables)
+		json, extraErr := addExtraInfo(ctx, []model.Document{fc}, path)
+		if extraErr != nil {
+			return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(extraErr, "failed terraform parse")
+		}
+		return resolved, json, nil, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
+	}
+
 	file, diagnostics := hclsyntax.ParseConfig(resolved, filepath.Base(path), hcl.Pos{Byte: 0, Line: 1, Column: 1})
 	defer func() {
 		if r := recover(); r != nil {
@@ -321,7 +330,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 
 // SupportedExtensions returns Terraform/OpenTofu extensions.
 func (p *Parser) SupportedExtensions() []string {
-	return []string{tfpath.ExtTF, tfpath.ExtTofu, tfpath.ExtTFVars}
+	return []string{tfpath.ExtTF, tfpath.ExtTofu, tfpath.ExtTFJSON, tfpath.ExtTofuJSON, tfpath.ExtTFVars}
 }
 
 // SupportedTypes returns types supported by this parser, which are terraform

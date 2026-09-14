@@ -854,7 +854,7 @@ func TestWalkInventoryTofuShadowing(t *testing.T) {
 	require.NoError(t, err)
 
 	noChart := func(context.Context, string) bool { return false }
-	extensions := model.Extensions{".tf": {}, ".tofu": {}, ".json": {}}
+	extensions := model.Extensions{".tf": {}, ".tofu": {}, ".tf.json": {}, ".tofu.json": {}}
 	files, err := fs.WalkInventory(ctx, extensions, noChart)
 	require.NoError(t, err)
 

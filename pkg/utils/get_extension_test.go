@@ -20,6 +20,10 @@ func TestExtensionFromPath(t *testing.T) {
 		want string
 	}{
 		{path: "/repo/main.tf", want: ".tf"},
+		{path: "/repo/main.tf.json", want: ".tf.json"},
+		{path: "/repo/main.tofu.json", want: ".tofu.json"},
+		{path: "/repo/MAIN.TF.JSON", want: ".tf.json"},
+		{path: "/repo/data.json", want: ".json"},
 		{path: "/repo/Dockerfile", want: "Dockerfile"},
 		{path: "/repo/vars.tfvars", want: ".tfvars"},
 		{path: "/repo/terraform.tfvars", want: ".tfvars"},
