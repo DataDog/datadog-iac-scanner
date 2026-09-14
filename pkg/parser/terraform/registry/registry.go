@@ -61,9 +61,11 @@ func (r *AddressRegistry) Register(address string, location Location) {
 	}
 }
 
-// LookupWithScope retrieves the best location for a given address based on the scope file path
+// LookupWithScope retrieves the best location for a given address based on the scope file path.
 // When multiple locations exist (e.g., module "vpc" in different directories), chooses the one
-// in the same directory or closest common ancestor to the scope file
+// in the same directory or closest common ancestor to the scope file. Callers commonly pass the
+// tfplan JSON file's own path as scopeFilePath (see chooseBestLocation for why that's a weaker
+// signal than it looks and how ties are handled deterministically).
 func (r *AddressRegistry) LookupWithScope(address, scopeFilePath string) (Location, bool) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -99,8 +101,16 @@ func (r *AddressRegistry) HasDuplicates(address string) bool {
 	return len(r.mappings[normalizedAddr]) > 1
 }
 
-// chooseBestLocation selects the best location from multiple candidates based on scope
-// Prefers locations in the same directory as scopeFilePath, then closest common ancestor
+// chooseBestLocation selects the best location from multiple candidates based on scope.
+// Prefers locations in the same directory as scopeFilePath, then closest common ancestor.
+//
+// scopeFilePath is frequently the tfplan JSON file's own path, not an HCL file - it has no
+// necessary relationship to any candidate's Terraform root (e.g. a plan under a shared plans/
+// directory is equidistant from sibling roots env/a and env/b). When that leaves two or more
+// candidates tied for the top score, path-based scoring has no further signal to offer, so ties
+// are broken deterministically (lexicographically smallest FilePath, then Line) rather than by
+// insertion order, which depends on goroutine scheduling during concurrent parsing and would
+// otherwise make the choice vary between runs on identical input.
 func chooseBestLocation(locations []Location, scopeFilePath string) Location {
 	if len(locations) == 0 {
 		return Location{}
@@ -109,21 +119,31 @@ func chooseBestLocation(locations []Location, scopeFilePath string) Location {
 		return locations[0]
 	}
 
-	// Strategy: Choose the location with the longest common path prefix with scope
-	// This prefers files in the same directory over files in different directories
+	// Strategy: Choose the location with the longest common path prefix with scope.
+	// This prefers files in the same directory over files in different directories.
 
 	bestLocation := locations[0]
 	bestScore := commonPathLength(bestLocation.FilePath, scopeFilePath)
 
 	for _, loc := range locations[1:] {
 		score := commonPathLength(loc.FilePath, scopeFilePath)
-		if score > bestScore {
+		if score > bestScore || (score == bestScore && locationLess(loc, bestLocation)) {
 			bestScore = score
 			bestLocation = loc
 		}
 	}
 
 	return bestLocation
+}
+
+// locationLess orders locations deterministically for tie-breaking: lexicographically smallest
+// FilePath first, then smallest Line. Independent of registration order, so the same set of
+// candidate locations always resolves the same way regardless of concurrent parsing order.
+func locationLess(a, b Location) bool {
+	if a.FilePath != b.FilePath {
+		return a.FilePath < b.FilePath
+	}
+	return a.Line < b.Line
 }
 
 // commonPathLength scores how well path1's directory matches path2's (the scope file), comparing

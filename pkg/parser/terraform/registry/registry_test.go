@@ -381,6 +381,54 @@ func TestScopeBasedDisambiguation_SiblingDirectoryNameDoesNotOutrankSameDirector
 	}
 }
 
+// TestScopeBasedDisambiguation_TiedScoreIsDeterministic reproduces the scenario where a tfplan
+// lives in a directory (e.g. a shared plans/) that is equidistant from two sibling Terraform
+// roots (env/a, env/b) containing the same duplicate address. Neither candidate shares any path
+// component with the scope beyond the common ancestor, so both score identically and
+// chooseBestLocation has no directory-closeness signal to break the tie with. The result must
+// still be picked the same way every time (lexicographically smallest FilePath), regardless of
+// registration order - which, for concurrent parsing, is not guaranteed to be stable.
+func TestScopeBasedDisambiguation_TiedScoreIsDeterministic(t *testing.T) {
+	locationA := Location{FilePath: "/project/env/a/main.tf", Line: 3, Column: 1}
+	locationB := Location{FilePath: "/project/env/b/main.tf", Line: 3, Column: 1}
+	scopeFilePath := "/project/plans/plan.tfplan.json"
+
+	// commonPathLength(locationA, scope) and commonPathLength(locationB, scope) must both be
+	// scored on the shared ancestor "/project" only - this is the tie precondition, not the
+	// behavior under test.
+	scoreA := commonPathLength(locationA.FilePath, scopeFilePath)
+	scoreB := commonPathLength(locationB.FilePath, scopeFilePath)
+	if scoreA != scoreB {
+		t.Fatalf("test precondition violated: expected a tie, got scores %d and %d", scoreA, scoreB)
+	}
+
+	// Registration order A-then-B and B-then-A must resolve to the identical location.
+	regAB := New()
+	regAB.Register("aws_instance.web", locationA)
+	regAB.Register("aws_instance.web", locationB)
+	foundAB, ok := regAB.LookupWithScope("aws_instance.web", scopeFilePath)
+	if !ok {
+		t.Fatal("LookupWithScope should find aws_instance.web")
+	}
+
+	regBA := New()
+	regBA.Register("aws_instance.web", locationB)
+	regBA.Register("aws_instance.web", locationA)
+	foundBA, ok := regBA.LookupWithScope("aws_instance.web", scopeFilePath)
+	if !ok {
+		t.Fatal("LookupWithScope should find aws_instance.web")
+	}
+
+	if foundAB.FilePath != foundBA.FilePath {
+		t.Errorf("tie-break result depends on registration order: A-then-B chose %s, B-then-A chose %s",
+			foundAB.FilePath, foundBA.FilePath)
+	}
+	// The deterministic tie-break is lexicographically smallest FilePath: "a/main.tf" < "b/main.tf".
+	if foundAB.FilePath != locationA.FilePath {
+		t.Errorf("expected lexicographically smallest path %s, got %s", locationA.FilePath, foundAB.FilePath)
+	}
+}
+
 // TestCommonPathLength verifies the path similarity calculation
 func TestCommonPathLength(t *testing.T) {
 	tests := []struct {
