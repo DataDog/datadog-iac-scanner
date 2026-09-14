@@ -12,7 +12,6 @@ import (
 // when no regex-based type matched during classification.
 var yamlPlatformRootKeys = []string{
 	listKeywordsGoogleDeployment[0], // resources
-	"services",                      // Docker Compose
 	playBooks,                       // playbooks
 	ansibleHost[0],                  // all
 	ansibleHost[1],                  // ungrouped

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/stretchr/testify/require"
 )
 
@@ -483,6 +484,10 @@ func TestClassifyFile_DockerComposeExplicitOverrideFile(t *testing.T) {
 		ClassifyFile(context.Background(), nil, path, content, []string{"DockerCompose"}))
 	require.Equal(t, "",
 		ClassifyFile(context.Background(), nil, path, content, []string{""}))
+	require.Equal(t, "",
+		ClassifyFile(context.Background(), nil, path, content, platforms.Supported))
+	require.Equal(t, "",
+		ClassifyFile(context.Background(), nil, path, content, []string{"Terraform", "DockerCompose"}))
 }
 
 func TestAnalyze_DockerComposeExcludedWhenNotRequested(t *testing.T) {

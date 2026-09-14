@@ -935,10 +935,7 @@ func storeHelmResults(hc *sync.Map, dirs []string, result bool) bool {
 }
 
 func dockerComposeExplicitlyRequested(typesFlag []string) bool {
-	if len(typesFlag) == 0 || (len(typesFlag) == 1 && typesFlag[0] == "") {
-		return false
-	}
-	return utils.Contains(dockercompose, typesFlag)
+	return len(typesFlag) == 1 && strings.EqualFold(typesFlag[0], dockercompose)
 }
 
 func checkYamlPlatform(ctx context.Context, content []byte, path string, typesFlag []string) string {
@@ -957,10 +954,10 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string, typesFl
 		return ""
 	}
 
-	ansibleVarsPath := checkForAnsibleByPaths(path)
-	if !ansibleVarsPath && !yamlRootHasAnyKey(content, yamlPlatformRootKeys...) {
+	if !yamlShouldParsePlatform(path, content) {
 		return ""
 	}
+	ansibleVarsPath := checkForAnsibleByPaths(path)
 	if yamlHasRootTemplateSyntax(content) {
 		return ""
 	}
@@ -994,6 +991,16 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string, typesFl
 		return ansible
 	}
 	return ""
+}
+
+func yamlShouldParsePlatform(path string, content []byte) bool {
+	if checkForAnsibleByPaths(path) {
+		return true
+	}
+	if isDockerComposeFileName(path) || yamlRootHasAnyKey(content, "services") {
+		return true
+	}
+	return yamlRootHasAnyKey(content, yamlPlatformRootKeys...)
 }
 
 func checkForAnsibleByPaths(path string) bool {

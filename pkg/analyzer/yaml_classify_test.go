@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/stretchr/testify/require"
 )
 
@@ -328,12 +329,25 @@ func Test_checkYamlPlatform_dockerCompose(t *testing.T) {
 			want:      dockercompose,
 		},
 		{
+			name: "default supported types keep strict override matching",
+			path: "prod.yaml",
+			content: `services:
+  web:
+    ports:
+      - "8080:80"
+    environment:
+      APP_ENV: production
+`,
+			typesFlag: platforms.Supported,
+		},
+		{
 			name: "generic services mapping",
 			path: "application.yaml",
 			content: `services:
   billing:
     endpoint: https://example.test
 `,
+			typesFlag: platforms.Supported,
 		},
 		{
 			name: "nested services mapping",
