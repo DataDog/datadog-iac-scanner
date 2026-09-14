@@ -27,6 +27,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -1451,4 +1452,40 @@ func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
 	require.True(t, rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
 	require.False(t, !ins.isExternalModulePath("/tmp/remote-module/main.tf") &&
 		rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
+}
+
+func TestConvertModuleMappingsKeysBySameNameLocalModulesInDifferentScopes(t *testing.T) {
+	modules := []tfmodules.ParsedModule{
+		{Name: "db", IsLocal: true, Source: "./modules/db", FileName: "/repo/scope-a/main.tf", DefLine: 5},
+		{Name: "db", IsLocal: true, Source: "./modules/db", FileName: "/repo/scope-b/main.tf", DefLine: 12},
+	}
+
+	result := convertModuleMappings(modules)
+
+	require.Len(t, result, 2, "same-name local modules in different scopes must not collide")
+	require.Contains(t, result, "/repo/scope-a/main.tf:5::db")
+	require.Contains(t, result, "/repo/scope-b/main.tf:12::db")
+}
+
+func TestConvertModuleMappingsKeysBySameSourceDifferentVersionRemoteCalls(t *testing.T) {
+	modules := []tfmodules.ParsedModule{
+		{
+			Name: "rds", IsLocal: false, Source: "terraform-aws-modules/rds/aws", Version: "5.0.0",
+			FileName: "/repo/main.tf", DefLine: 3,
+		},
+		{
+			Name: "rds", IsLocal: false, Source: "terraform-aws-modules/rds/aws", Version: "6.0.0",
+			FileName: "/repo/main.tf", DefLine: 10,
+		},
+	}
+
+	result := convertModuleMappings(modules)
+
+	require.Len(t, result, 2, "same-source different-version remote calls must not collide")
+	entry5, ok := result["/repo/main.tf:3::rds"].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "5.0.0", entry5["Version"])
+	entry6, ok := result["/repo/main.tf:10::rds"].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "6.0.0", entry6["Version"])
 }
