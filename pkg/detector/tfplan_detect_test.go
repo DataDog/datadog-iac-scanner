@@ -717,6 +717,64 @@ func TestOriginBranch_ModuleHardcoded(t *testing.T) {
 	}
 }
 
+// TestOriginBranch_ModuleHardcoded_RemoteModuleFallsBackToCallSite verifies that a remote module
+// source (git:: URL, registry short-form, ...) is explicitly NOT treated as a filesystem path to
+// join onto scanRoot - it isn't one, and doing so risks the registry silently resolving against
+// whatever nonsense path results. Until remote module resolution is supported, this must fall
+// back to the call site rather than guess.
+func TestOriginBranch_ModuleHardcoded_RemoteModuleFallsBackToCallSite(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mainTF := filepath.Join(tmpDir, "main.tf")
+	err := os.WriteFile(mainTF, []byte(`module "rds" {
+  source = "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0"
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := registry.New()
+	reg.Register("module.rds", registry.Location{FilePath: mainTF, Line: 1, Column: 1})
+
+	ctx := context.Background()
+	detector := NewTFPlanDetectLine(reg, nil)
+
+	rawDoc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_db_instance": map[string]interface{}{
+				"module.rds.this": map[string]interface{}{
+					"_dd_tf_address": "module.rds.aws_db_instance.this",
+					"_dd_tf_origin": map[string]interface{}{
+						"publicly_accessible": map[string]interface{}{
+							"origin":    "module_hardcoded",
+							"moduleDir": "git::https://github.com/foo/bar.git//modules/rds?ref=v1.0.0",
+						},
+					},
+					"publicly_accessible": true,
+				},
+			},
+		},
+	}
+	roundTripped := roundTripDocument(rawDoc)
+
+	fileMetadata := &model.FileMetadata{
+		ID:               "plan",
+		FilePath:         filepath.Join(tmpDir, "plan.tfplan.json"),
+		Kind:             model.KindJSON,
+		Document:         roundTripped,
+		LineInfoDocument: roundTripped,
+	}
+
+	result := detector.DetectLine(ctx, fileMetadata, "module.rds.aws_db_instance.this.publicly_accessible", 3)
+
+	// Honest fallback: the call site, never a path guessed by joining the remote source
+	// string onto scanRoot.
+	if result.ResolvedFile != mainTF {
+		t.Errorf("expected fallback to call site %q for remote module, got %q", mainTF, result.ResolvedFile)
+	}
+}
+
 // TestOriginBranch_ModuleDefault verifies that a module_default origin produces TWO findings:
 // primary at the variable default line and secondary at the module call block.
 func TestOriginBranch_ModuleDefault(t *testing.T) {
