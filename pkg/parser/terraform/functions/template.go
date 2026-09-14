@@ -45,11 +45,16 @@ func makeTemplateStringFuncDepth(funcsCb func() map[string]function.Function, de
 	})
 }
 
-func makeTemplateFileFunc(baseDir string, fsys vfs.FS, funcsCb func() map[string]function.Function) function.Function {
-	return makeTemplateFileFuncDepth(baseDir, fsys, funcsCb, 0)
+func makeTemplateFileFunc(baseDir, rootDir string, fsys vfs.FS, funcsCb func() map[string]function.Function) function.Function {
+	return makeTemplateFileFuncDepth(baseDir, rootDir, fsys, funcsCb, 0)
 }
 
-func makeTemplateFileFuncDepth(baseDir string, fsys vfs.FS, funcsCb func() map[string]function.Function, depth int) function.Function {
+func makeTemplateFileFuncDepth(
+	baseDir, rootDir string,
+	fsys vfs.FS,
+	funcsCb func() map[string]function.Function,
+	depth int,
+) function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{
 			{Name: "path", Type: cty.String},
@@ -59,27 +64,27 @@ func makeTemplateFileFuncDepth(baseDir string, fsys vfs.FS, funcsCb func() map[s
 			if len(args) < 2 || !args[0].IsWhollyKnown() || !args[1].IsWhollyKnown() {
 				return cty.DynamicPseudoType, nil
 			}
-			val, err := renderTemplateFile(baseDir, fsys, args[0].AsString(), args[1], funcsCb, depth)
+			val, err := renderTemplateFile(baseDir, rootDir, fsys, args[0].AsString(), args[1], funcsCb, depth)
 			if err != nil {
 				return cty.DynamicPseudoType, err
 			}
 			return val.Type(), nil
 		},
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			return renderTemplateFile(baseDir, fsys, args[0].AsString(), args[1], funcsCb, depth)
+			return renderTemplateFile(baseDir, rootDir, fsys, args[0].AsString(), args[1], funcsCb, depth)
 		},
 	})
 }
 
 func renderTemplateFile(
-	baseDir string,
+	baseDir, rootDir string,
 	fsys vfs.FS,
 	rel string,
 	vars cty.Value,
 	funcsCb func() map[string]function.Function,
 	depth int,
 ) (cty.Value, error) {
-	src, err := readConfinedFile(baseDir, fsys, rel)
+	src, err := readConfinedFile(baseDir, rootDir, fsys, rel)
 	if err != nil {
 		return cty.NilVal, err
 	}
@@ -87,7 +92,7 @@ func renderTemplateFile(
 		return cty.NilVal, fmt.Errorf("contents of %s are not valid UTF-8", rel)
 	}
 	return renderTemplateString(string(src), vars, func() map[string]function.Function {
-		return nestTemplateFuncs(baseDir, fsys, funcsCb, depth)
+		return nestTemplateFuncs(baseDir, rootDir, fsys, funcsCb, depth)
 	}, depth)
 }
 
@@ -102,9 +107,14 @@ func renderTemplateString(src string, vars cty.Value, funcsCb func() map[string]
 	return evalTemplate(expr, vars, nestTemplateStringFuncs(funcsCb, depth))
 }
 
-func nestTemplateFuncs(baseDir string, fsys vfs.FS, funcsCb func() map[string]function.Function, depth int) map[string]function.Function {
+func nestTemplateFuncs(
+	baseDir, rootDir string,
+	fsys vfs.FS,
+	funcsCb func() map[string]function.Function,
+	depth int,
+) map[string]function.Function {
 	funcs := maps.Clone(funcsCb())
-	funcs["templatefile"] = makeTemplateFileFuncDepth(baseDir, fsys, funcsCb, depth+1)
+	funcs["templatefile"] = makeTemplateFileFuncDepth(baseDir, rootDir, fsys, funcsCb, depth+1)
 	funcs["templatestring"] = makeTemplateStringFuncDepth(funcsCb, depth+1)
 	return funcs
 }

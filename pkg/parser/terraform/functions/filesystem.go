@@ -28,12 +28,12 @@ import (
 	"github.com/zclconf/go-cty/cty/function"
 )
 
-func makeFileFunc(baseDir string, fsys vfs.FS, encBase64 bool) function.Function {
+func makeFileFunc(baseDir, rootDir string, fsys vfs.FS, encBase64 bool) function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{{Name: "path", Type: cty.String}},
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			src, err := readConfinedFile(baseDir, fsys, args[0].AsString())
+			src, err := readConfinedFile(baseDir, rootDir, fsys, args[0].AsString())
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
@@ -48,12 +48,12 @@ func makeFileFunc(baseDir string, fsys vfs.FS, encBase64 bool) function.Function
 	})
 }
 
-func makeFileExistsFunc(baseDir string, fsys vfs.FS) function.Function {
+func makeFileExistsFunc(baseDir, rootDir string, fsys vfs.FS) function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{{Name: "path", Type: cty.String}},
 		Type:   function.StaticReturnType(cty.Bool),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			full, err := confinePath(baseDir, args[0].AsString())
+			full, err := confinePath(baseDir, rootDir, fsys, args[0].AsString())
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
@@ -72,7 +72,7 @@ func makeFileExistsFunc(baseDir string, fsys vfs.FS) function.Function {
 	})
 }
 
-func makeFileSetFunc(baseDir string, fsys vfs.FS) function.Function {
+func makeFileSetFunc(baseDir, rootDir string, fsys vfs.FS) function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{
 			{Name: "path", Type: cty.String},
@@ -80,7 +80,7 @@ func makeFileSetFunc(baseDir string, fsys vfs.FS) function.Function {
 		},
 		Type: function.StaticReturnType(cty.Set(cty.String)),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			root, err := confinePath(baseDir, args[0].AsString())
+			root, err := confinePath(baseDir, rootDir, fsys, args[0].AsString())
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
@@ -115,12 +115,12 @@ func makeFileSetFunc(baseDir string, fsys vfs.FS) function.Function {
 	})
 }
 
-func makeFileHashFunc(baseDir string, fsys vfs.FS, newHash func() hash.Hash, asBase64 bool) function.Function {
+func makeFileHashFunc(baseDir, rootDir string, fsys vfs.FS, newHash func() hash.Hash, asBase64 bool) function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{{Name: "path", Type: cty.String}},
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			src, err := readConfinedFile(baseDir, fsys, args[0].AsString())
+			src, err := readConfinedFile(baseDir, rootDir, fsys, args[0].AsString())
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
@@ -135,8 +135,8 @@ func makeFileHashFunc(baseDir string, fsys vfs.FS, newHash func() hash.Hash, asB
 	})
 }
 
-func readConfinedFile(baseDir string, fsys vfs.FS, rel string) ([]byte, error) {
-	full, err := confinePath(baseDir, rel)
+func readConfinedFile(baseDir, rootDir string, fsys vfs.FS, rel string) ([]byte, error) {
+	full, err := confinePath(baseDir, rootDir, fsys, rel)
 	if err != nil {
 		return nil, err
 	}
@@ -144,36 +144,42 @@ func readConfinedFile(baseDir string, fsys vfs.FS, rel string) ([]byte, error) {
 }
 
 // confinePath resolves rel against baseDir and rejects any result that leaves that tree.
-func confinePath(baseDir, rel string) (string, error) {
-	root := filepath.Clean(baseDir)
+func confinePath(baseDir, rootDir string, fsys vfs.FS, rel string) (string, error) {
+	base := filepath.Clean(baseDir)
+	if base == "" {
+		base = "."
+	}
+	root := filepath.Clean(rootDir)
 	if root == "" {
-		root = "."
+		root = base
 	}
-	joined := joinUnderRoot(root, rel)
-	relToRoot, err := filepath.Rel(root, joined)
-	if err != nil || !confinedRel(relToRoot) {
-		return "", fmt.Errorf("path %q is outside the configuration directory", rel)
+	joined := joinUnderRoots(base, root, rel)
+	for _, allowed := range []string{base, root} {
+		relToRoot, err := filepath.Rel(allowed, joined)
+		if err == nil && confinedRel(relToRoot) && verifyResolvedConfined(fsys, allowed, joined) == nil {
+			return joined, nil
+		}
 	}
-	if err := verifyResolvedConfined(root, joined); err != nil {
-		return "", err
-	}
-	return joined, nil
+	return "", fmt.Errorf("path %q is outside the configuration directory", rel)
 }
 
-func joinUnderRoot(root, rel string) string {
+func joinUnderRoots(base, root, rel string) string {
 	if filepath.IsAbs(rel) {
 		return filepath.Clean(rel)
 	}
 	cleaned := filepath.Clean(rel)
-	if relToRoot, err := filepath.Rel(root, cleaned); err == nil && confinedRel(relToRoot) {
-		if cleaned == root || strings.HasPrefix(cleaned, root+string(filepath.Separator)) {
+	for _, allowed := range []string{base, root} {
+		if cleaned == allowed || strings.HasPrefix(cleaned, allowed+string(filepath.Separator)) {
 			return cleaned
 		}
 	}
-	return filepath.Clean(filepath.Join(root, rel))
+	return filepath.Clean(filepath.Join(base, rel))
 }
 
-func verifyResolvedConfined(root, joined string) error {
+func verifyResolvedConfined(fsys vfs.FS, root, joined string) error {
+	if _, ok := fsys.(*vfs.MemFS); ok {
+		return nil
+	}
 	realRoot := root
 	if resolved, err := filepath.EvalSymlinks(root); err == nil {
 		realRoot = resolved
@@ -244,6 +250,19 @@ func walkRegularFiles(fsys vfs.FS, root string) ([]string, error) {
 func matchGlob(pattern, name string) (bool, error) {
 	pattern = filepath.ToSlash(pattern)
 	name = filepath.ToSlash(name)
+	for _, alt := range expandBraces(pattern) {
+		ok, err := matchGlobOne(alt, name)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func matchGlobOne(pattern, name string) (bool, error) {
 	if !strings.Contains(pattern, "**") {
 		return path.Match(pattern, name)
 	}
@@ -254,17 +273,75 @@ func matchGlob(pattern, name string) (bool, error) {
 	return re.MatchString(name), nil
 }
 
+func expandBraces(pattern string) []string {
+	start, end, ok := findBraceGroup(pattern)
+	if !ok {
+		return []string{pattern}
+	}
+	prefix := pattern[:start]
+	suffix := pattern[end+1:]
+	var out []string
+	for _, alt := range splitBraceAlts(pattern[start+1 : end]) {
+		out = append(out, expandBraces(prefix+alt+suffix)...)
+	}
+	return out
+}
+
+func findBraceGroup(pattern string) (start, end int, ok bool) {
+	start = strings.IndexByte(pattern, '{')
+	if start < 0 {
+		return 0, 0, false
+	}
+	depth := 0
+	for i := start; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return start, i, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func splitBraceAlts(inner string) []string {
+	var alts []string
+	depth, start := 0, 0
+	for i := 0; i < len(inner); i++ {
+		switch inner[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				alts = append(alts, inner[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(alts, inner[start:])
+}
+
 func globToRegexp(pattern string) (*regexp.Regexp, error) {
 	var b strings.Builder
 	b.WriteByte('^')
 	for i := 0; i < len(pattern); i++ {
 		switch {
 		case i+1 < len(pattern) && pattern[i] == '*' && pattern[i+1] == '*':
-			if i+2 < len(pattern) && pattern[i+2] == '/' {
-				b.WriteString("(?:.*/)?")
-				i += 2
+			if doublestarComponent(pattern, i) {
+				if i+2 < len(pattern) && pattern[i+2] == '/' {
+					b.WriteString("(?:.*/)?")
+					i += 2
+				} else {
+					b.WriteString(".*")
+					i++
+				}
 			} else {
-				b.WriteString(".*")
+				b.WriteString("[^/]*")
 				i++
 			}
 		case pattern[i] == '*':
@@ -284,6 +361,12 @@ func globToRegexp(pattern string) (*regexp.Regexp, error) {
 	}
 	b.WriteByte('$')
 	return regexp.Compile(b.String())
+}
+
+func doublestarComponent(pattern string, i int) bool {
+	prevOK := i == 0 || pattern[i-1] == '/'
+	nextOK := i+2 == len(pattern) || pattern[i+2] == '/'
+	return prevOK && nextOK
 }
 
 func indexGlobClassEnd(rest string) int {
@@ -320,13 +403,13 @@ func appendGlobClass(b *strings.Builder, class string) {
 	b.WriteByte(']')
 }
 
-func fileHashFuncs(baseDir string, fsys vfs.FS) map[string]function.Function {
+func fileHashFuncs(baseDir, rootDir string, fsys vfs.FS) map[string]function.Function {
 	return map[string]function.Function{
-		"filemd5":          makeFileHashFunc(baseDir, fsys, md5.New, false),
-		"filesha1":         makeFileHashFunc(baseDir, fsys, sha1.New, false),
-		"filesha256":       makeFileHashFunc(baseDir, fsys, sha256.New, false),
-		"filesha512":       makeFileHashFunc(baseDir, fsys, sha512.New, false),
-		"filebase64sha256": makeFileHashFunc(baseDir, fsys, sha256.New, true),
-		"filebase64sha512": makeFileHashFunc(baseDir, fsys, sha512.New, true),
+		"filemd5":          makeFileHashFunc(baseDir, rootDir, fsys, md5.New, false),
+		"filesha1":         makeFileHashFunc(baseDir, rootDir, fsys, sha1.New, false),
+		"filesha256":       makeFileHashFunc(baseDir, rootDir, fsys, sha256.New, false),
+		"filesha512":       makeFileHashFunc(baseDir, rootDir, fsys, sha512.New, false),
+		"filebase64sha256": makeFileHashFunc(baseDir, rootDir, fsys, sha256.New, true),
+		"filebase64sha512": makeFileHashFunc(baseDir, rootDir, fsys, sha512.New, true),
 	}
 }

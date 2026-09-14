@@ -158,6 +158,10 @@ var TerraformFuncs = func() map[string]function.Function {
 // EvalFuncs returns TerraformFuncs plus filesystem functions rooted at baseDir.
 // When fsys is nil and baseDir is empty the static map is returned unchanged.
 func EvalFuncs(baseDir string, fsys vfs.FS) map[string]function.Function {
+	return EvalFuncsWithRoot(baseDir, baseDir, fsys)
+}
+
+func EvalFuncsWithRoot(baseDir, rootDir string, fsys vfs.FS) map[string]function.Function {
 	if fsys == nil && baseDir == "" {
 		return TerraformFuncs
 	}
@@ -167,17 +171,20 @@ func EvalFuncs(baseDir string, fsys vfs.FS) map[string]function.Function {
 	if baseDir == "" {
 		baseDir = "."
 	}
+	if rootDir == "" {
+		rootDir = baseDir
+	}
 	funcs := maps.Clone(TerraformFuncs)
-	funcsCb := func() map[string]function.Function { return funcs }
-	funcs["file"] = makeFileFunc(baseDir, fsys, false)
-	funcs["fileexists"] = makeFileExistsFunc(baseDir, fsys)
-	funcs["fileset"] = makeFileSetFunc(baseDir, fsys)
-	funcs["filebase64"] = makeFileFunc(baseDir, fsys, true)
-	for name, fn := range fileHashFuncs(baseDir, fsys) {
+	funcsCb := func() map[string]function.Function { return maps.Clone(funcs) }
+	funcs["file"] = makeFileFunc(baseDir, rootDir, fsys, false)
+	funcs["fileexists"] = makeFileExistsFunc(baseDir, rootDir, fsys)
+	funcs["fileset"] = makeFileSetFunc(baseDir, rootDir, fsys)
+	funcs["filebase64"] = makeFileFunc(baseDir, rootDir, fsys, true)
+	for name, fn := range fileHashFuncs(baseDir, rootDir, fsys) {
 		funcs[name] = fn
 	}
 	funcs["abspath"] = MakeAbsPathFunc(baseDir)
-	funcs["templatefile"] = makeTemplateFileFunc(baseDir, fsys, funcsCb)
+	funcs["templatefile"] = makeTemplateFileFunc(baseDir, rootDir, fsys, funcsCb)
 	funcs["templatestring"] = makeTemplateStringFunc(funcsCb)
 	return funcs
 }

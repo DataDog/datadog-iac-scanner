@@ -19,13 +19,15 @@ func TestFileFunctionsConfined(t *testing.T) {
 
 	root := "mod"
 	fsys := vfs.NewMemFS(map[string][]byte{
-		"mod/note.txt":   []byte("hello"),
-		"mod/a.txt":      []byte("a"),
-		"mod/b.txt":      []byte("b"),
-		"mod/sub/a.txt":  []byte("inner"),
-		"mod/tmpl.tftpl": []byte("hi ${name}"),
-		"outside/secret": []byte("nope"),
-		"mod/bin.dat":    {0xff, 0xfe},
+		"mod/note.txt":        []byte("hello"),
+		"mod/a.txt":           []byte("a"),
+		"mod/b.txt":           []byte("b"),
+		"mod/sub/a.txt":       []byte("inner"),
+		"mod/tmpl.tftpl":      []byte("hi ${name}"),
+		"mod/files/hello.txt": []byte("h"),
+		"mod/files/world.txt": []byte("w"),
+		"outside/secret":      []byte("nope"),
+		"mod/bin.dat":         {0xff, 0xfe},
 	})
 	funcs := EvalFuncs(root, fsys)
 
@@ -101,6 +103,14 @@ func TestFileFunctionsConfined(t *testing.T) {
 		t.Fatalf("fileset **/[ab].txt should not include note.txt: %#v", got)
 	}
 
+	got, err = funcs["fileset"].Call([]cty.Value{cty.StringVal("."), cty.StringVal("files/{hello,world}.txt")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !setHas(got, "files/hello.txt") || !setHas(got, "files/world.txt") {
+		t.Fatalf("fileset files/{hello,world}.txt = %#v", got)
+	}
+
 	got, err = funcs["abspath"].Call([]cty.Value{cty.StringVal("note.txt")})
 	if err != nil {
 		t.Fatal(err)
@@ -139,17 +149,18 @@ func TestFileFunctionsConfined(t *testing.T) {
 func TestConfinePath(t *testing.T) {
 	t.Parallel()
 
-	got, err := confinePath("mod", "note.txt")
+	fsys := vfs.NewMemFS(map[string][]byte{"mod/note.txt": []byte("x")})
+	got, err := confinePath("mod", "mod", fsys, "note.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if filepath.ToSlash(got) != "mod/note.txt" {
 		t.Fatalf("confinePath = %q", got)
 	}
-	if _, err = confinePath("mod", "../outside"); err == nil {
+	if _, err = confinePath("mod", "mod", fsys, "../outside"); err == nil {
 		t.Fatal("expected escape error")
 	}
-	if _, err = confinePath("mod", filepath.Join(os.TempDir(), "passwd")); err == nil {
+	if _, err = confinePath("mod", "mod", fsys, filepath.Join(os.TempDir(), "passwd")); err == nil {
 		t.Fatal("expected absolute escape error")
 	}
 }
@@ -209,6 +220,18 @@ func TestMatchGlobCharacterClass(t *testing.T) {
 	ok, err = matchGlob("[ab].txt", "a.txt")
 	if err != nil || !ok {
 		t.Fatalf("[ab].txt vs a.txt: ok=%v err=%v", ok, err)
+	}
+	ok, err = matchGlob("files/{hello,world}.txt", "files/hello.txt")
+	if err != nil || !ok {
+		t.Fatalf("{hello,world} vs hello: ok=%v err=%v", ok, err)
+	}
+	ok, err = matchGlob("example/path**/file.tf", "example/pathX/file.tf")
+	if err != nil || !ok {
+		t.Fatalf("path** should behave like path*: ok=%v err=%v", ok, err)
+	}
+	ok, err = matchGlob("example/path**/file.tf", "example/pathX/nested/file.tf")
+	if err != nil || ok {
+		t.Fatalf("path** should not recurse: ok=%v err=%v", ok, err)
 	}
 }
 

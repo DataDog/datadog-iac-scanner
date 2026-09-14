@@ -14,19 +14,16 @@ import (
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
-// evalCacheKey identifies a module evaluation by its inputs alone: dir + package
-// root + resolved inputs.
+// evalCacheKey identifies a module evaluation by its filesystem context and inputs.
 //
 // The module address and call chain are deliberately absent. They describe where
 // a module was called from, not what it evaluates to, so including them made a
-// module reached by N distinct paths evaluate N times for identical results. With
-// branching factor B and depth D that is B^D evaluations where only D+1 distinct
-// ones exist — a nesting depth of 15 with two calls per level reaches 65k
-// evaluations, and enough depth exhausts any memory limit from a handful of
-// files. Callers re-stamp the address and chain onto a cached result instead,
-// which is a per-resource string rewrite rather than a re-evaluation.
+// module reached by N distinct paths evaluate N times for identical results.
+// rootDir remains because path.root can affect evaluated values. Callers re-stamp
+// the address and chain onto cached results.
 type evalCacheKey struct {
 	dir         string
+	rootDir     string
 	packageRoot string
 	inputs      string // canonical encoding of the resolved input map
 }
@@ -37,8 +34,8 @@ type evalCacheKey struct {
 //
 // baseAddr and baseChainLen record the position the entry was first evaluated at,
 // so a caller reaching the same module by another path can rewrite the recorded
-// address and chain onto the result. Outputs need no rewrite: they are values, and
-// values do not depend on the path taken to reach them.
+// address and chain onto the result. Outputs need no rewrite because rootDir is
+// part of the cache key.
 type evalCacheEntry struct {
 	resources    []ResolvedResource
 	outputs      map[string]cty.Value

@@ -40,6 +40,45 @@ func TestFileFunctionEvaluation(t *testing.T) {
 	}
 }
 
+func TestFilesystemContextValues(t *testing.T) {
+	t.Parallel()
+
+	fsys := vfs.NewMemFS(map[string][]byte{
+		"root/root.txt":              []byte("root"),
+		"root/modules/child/mod.txt": []byte("module"),
+	})
+	input := `block "t" {
+  module_file = file("${path.module}/mod.txt")
+  root_file   = file("${path.root}/root.txt")
+  cwd         = path.cwd
+  workspace   = terraform.workspace
+}`
+	file, diags := hclsyntax.ParseConfig([]byte(input), "main.tf", hcl.Pos{Byte: 0, Line: 1, Column: 1})
+	if diags.HasErrors() {
+		t.Fatalf("parse: %v", diags)
+	}
+	doc, err := converter.Convert(context.Background(), file, converter.VariableMap{}, converter.Options{
+		BaseDir: "root/modules/child",
+		RootDir: "root",
+		FS:      fsys,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attrs := doc["block"].(model.Document)["t"].(model.Document)
+	for name, want := range map[string]string{
+		"module_file": "module",
+		"root_file":   "root",
+		"cwd":         "root",
+		"workspace":   "default",
+	} {
+		got, ok := attrs[name].(ctyjson.SimpleJSONValue)
+		if !ok || !got.Value.RawEquals(cty.StringVal(want)) {
+			t.Errorf("%s = %#v, want %q", name, attrs[name], want)
+		}
+	}
+}
+
 func TestFileFunctionEscapeWraps(t *testing.T) {
 	t.Parallel()
 

@@ -33,16 +33,24 @@ type VariableMap map[string]cty.Value
 // Options controls filesystem-backed function evaluation during conversion.
 type Options struct {
 	BaseDir string
+	RootDir string
 	FS      vfs.FS
 }
 
 // Convert an hcl File to a toJson serializable object.
 // This assumes that the body is a hclsyntax.Body.
 func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, opts Options) (model.Document, error) {
+	variables := make(VariableMap, len(inputVariables)+2)
+	for name, value := range inputVariables {
+		variables[name] = value
+	}
+	for name, value := range functions.ContextVariables(opts.BaseDir, opts.RootDir) {
+		variables[name] = value
+	}
 	c := converter{
 		bytes:     file.Bytes,
-		inputVars: inputVariables,
-		funcs:     functions.EvalFuncs(opts.BaseDir, opts.FS),
+		inputVars: variables,
+		funcs:     functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS),
 	}
 	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 

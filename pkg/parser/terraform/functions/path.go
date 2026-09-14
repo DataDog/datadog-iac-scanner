@@ -78,3 +78,27 @@ var PathExpandFunc = function.New(&function.Spec{
 		return cty.StringVal(p), nil
 	},
 })
+
+func ContextVariables(moduleDir, rootDir string) map[string]cty.Value {
+	if moduleDir == "" {
+		return nil
+	}
+	moduleDir = filepath.Clean(moduleDir)
+	if rootDir == "" {
+		rootDir = moduleDir
+	} else {
+		rootDir = filepath.Clean(rootDir)
+	}
+	moduleDir = filepath.ToSlash(moduleDir)
+	rootDir = filepath.ToSlash(rootDir)
+	return map[string]cty.Value{
+		"path": cty.ObjectVal(map[string]cty.Value{
+			"cwd":    cty.StringVal(rootDir),
+			"module": cty.StringVal(moduleDir),
+			"root":   cty.StringVal(rootDir),
+		}),
+		"terraform": cty.ObjectVal(map[string]cty.Value{
+			"workspace": cty.StringVal("default"),
+		}),
+	}
+}
