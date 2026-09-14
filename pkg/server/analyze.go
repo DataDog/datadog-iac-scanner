@@ -245,13 +245,11 @@ func ruleLibraryKey(platform string) (string, error) {
 // reads from the in-memory FS, and the engine has always been absolute-path clean
 // (the CLI absolutizes all of its input before running the same pipeline).
 //
-// The disk read this check used to stand in for is Terraform local-module
-// evaluation, pinned off for server mode in serverFlagEvaluator. That pin, not
-// this check, is what bounds it. It is not the only read that escapes the
-// in-memory FS: the YAML/JSON file resolver opens paths taken from pushed
-// content. That one predates this change and is reachable with a relative path
-// as well, so path shape does not bound it either; it is tracked separately in
-// K9CODESEC-4924.
+// Terraform local-module evaluation, the disk read this check once stood in
+// for, now reads through the request's in-memory FS, so there is no disk read
+// to bound. The YAML/JSON file resolver still opens paths taken from pushed
+// content; it predates this change, is reachable with a relative path too, and
+// is tracked in K9CODESEC-4924.
 //
 // Known gap: config path filters (ignore-paths/only-paths) are workspace-rooted
 // patterns, so an absolute path matches none of them except a leading-"**" one.
@@ -275,23 +273,23 @@ func validateFilePath(p string) error {
 
 // serverFlagEvaluator pins the feature flags content-push mode depends on.
 //
-// Helm rendering shells out to a chart on disk, which content-push mode has no
-// way to materialize, so the resolver is off.
+// Helm rendering loads the chart from the real filesystem, which content-push
+// mode has no way to materialize, so the resolver is off.
 //
-// Terraform local-module evaluation is off because it reads directories derived
-// from pushed paths off the real disk: tfeval's LoadRootVars and parseDir call
-// os.ReadDir directly instead of going through the request's in-memory FS.
-// Pushed paths may be absolute, so do not rely on the flag's default staying
-// safe: pinning it here ensures server mode never enables an arbitrary-directory
-// read via local-module evaluation, and is what lets validateFilePath accept
-// absolute paths.
+// Terraform local-module evaluation is on: tfeval reads module and tfvars
+// files through the request's in-memory FS, so an unpushed module directory is
+// a missing file reported for escalation, never a disk read. Pinned rather than
+// left to the flag's default so the guarantee does not depend on backend state.
+// The guarantee also rests on the remote-module pre-scan staying off (the
+// analyze params never set TerraformModules): moduleprepare and modulegraph
+// still read the real disk.
 //
 // Parallel file parsing fans the per-file parse across CPUs; enabled by default
 // and can be disabled with --x-parallelparsing=false.
 func serverFlagEvaluator(parallelParsing bool) featureflags.FlagEvaluator {
 	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
 		featureflags.IacEnableKicsHelmResolver:        false,
-		featureflags.IacEnableLocalModuleEval:         false,
+		featureflags.IacEnableLocalModuleEval:         true,
 		featureflags.IaCEnableKicsParallelFileParsing: parallelParsing,
 	})
 }

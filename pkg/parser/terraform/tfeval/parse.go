@@ -9,7 +9,6 @@ package tfeval
 import (
 	"context"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -21,6 +20,7 @@ import (
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 const blockTypeModule = "module"
@@ -36,9 +36,13 @@ var reservedModuleAttrs = map[string]bool{
 }
 
 // parseDir parses HCL and JSON config in dir (non-recursively) and returns
-// their bodies. Files that fail to parse are skipped.
-func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]struct{}) ([]*hclsyntax.Body, error) {
-	entries, err := os.ReadDir(dir)
+// their bodies. Files that fail to parse are skipped. Reads go through fsys so
+// content-push scans only ever see pushed files.
+func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS) ([]*hclsyntax.Body, error) {
+	if fsys == nil {
+		fsys = vfs.Default()
+	}
+	entries, err := fsys.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +66,7 @@ func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]str
 		if !ok {
 			continue
 		}
-		src, rErr := os.ReadFile(filepath.Clean(path))
+		src, rErr := fsys.ReadFile(filepath.Clean(path))
 		if rErr != nil {
 			continue
 		}
@@ -199,9 +203,16 @@ func isEmptyCollection(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) bool {
 // variable map for use as root-module inputs. Terraform loads terraform.tfvars
 // first, then *.auto.tfvars in lexicographic order; later files override earlier
 // ones. Files that fail to read or parse are silently skipped.
-func LoadRootVars(dir string) map[string]cty.Value {
+//
+// Candidates are Stat-probed before reading: MemFS records ReadFile misses as
+// escalation signals but not Stat misses, so the always-probed terraform.tfvars
+// must not surface as a missing file for a workspace that has none.
+func LoadRootVars(dir string, fsys vfs.FS) map[string]cty.Value {
+	if fsys == nil {
+		fsys = vfs.Default()
+	}
 	candidates := []string{filepath.Join(dir, "terraform.tfvars")}
-	entries, _ := os.ReadDir(dir)
+	entries, _ := fsys.ReadDir(dir)
 	var autoFiles []string
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".auto.tfvars") {
@@ -216,7 +227,10 @@ func LoadRootVars(dir string) map[string]cty.Value {
 	out := map[string]cty.Value{}
 	emptyCtx := &hcl.EvalContext{}
 	for _, p := range candidates {
-		src, err := os.ReadFile(filepath.Clean(p))
+		if _, err := fsys.Stat(filepath.Clean(p)); err != nil {
+			continue
+		}
+		src, err := fsys.ReadFile(filepath.Clean(p))
 		if err != nil {
 			continue
 		}

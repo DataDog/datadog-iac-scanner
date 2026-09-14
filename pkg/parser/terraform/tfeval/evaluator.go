@@ -95,6 +95,9 @@ type CallSite struct {
 type Evaluator struct {
 	funcs    map[string]function.Function
 	maxDepth int
+	// fsys serves the evaluator's directory reads (module and tfvars files).
+	// Defaults to the real disk; content-push scans inject an in-memory FS.
+	fsys vfs.FS
 	// cache memoizes completed module evaluations keyed by (dir, packageRoot,
 	// canonical-inputs). A single Evaluator is used for an entire scan, so entries
 	// with the same key represent the same module reached with the same resolved
@@ -134,6 +137,15 @@ type dirParse struct {
 }
 
 func New() *Evaluator {
+	return NewWithFS(vfs.DiskFS{})
+}
+
+// NewWithFS builds an Evaluator that reads module and tfvars files through
+// fsys. A nil fsys falls back to the real disk.
+func NewWithFS(fsys vfs.FS) *Evaluator {
+	if fsys == nil {
+		fsys = vfs.Default()
+	}
 	return &Evaluator{
 		funcs:            tffunctions.TerraformFuncs,
 		maxDepth:         defaultMaxDepth,
@@ -141,6 +153,7 @@ func New() *Evaluator {
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		dirCache:         make(map[string]dirParse),
 		notEvaluatedDirs: make(map[string]bool),
+		fsys:             fsys,
 	}
 }
 
@@ -191,7 +204,7 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) ([]*h
 	}
 	e.parseMu.Unlock()
 
-	bodies, err := parseDir(ctx, dir, packageRoot, e.mergeAllow)
+	bodies, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
 
 	e.parseMu.Lock()
 	e.dirCache[key] = dirParse{bodies: bodies, err: err}
@@ -236,10 +249,13 @@ func (e *Evaluator) EvaluateModule(
 	inputs map[string]cty.Value,
 ) (resources []ResolvedResource, outputs map[string]cty.Value, visitedChildDirs map[string]bool, err error) {
 	ctx = pathutil.WithResolvedPathCache(ctx)
-	abs, absErr := filepath.Abs(dir)
+	// fsys.Abs, not filepath.Abs: a content-push FS keeps the pushed path shape,
+	// and resolving against the process CWD would break key matching against
+	// the pushed file set. DiskFS.Abs is filepath.Abs, so the CLI is unchanged.
+	abs, absErr := e.fsys.Abs(dir)
 	if absErr != nil {
 		contextLogger := logger.FromContext(ctx)
-		contextLogger.Warn().Err(absErr).Msgf("tfeval: filepath.Abs failed for %s, falling back to Clean", dir)
+		contextLogger.Warn().Err(absErr).Msgf("tfeval: resolving module dir %s failed, falling back to Clean", dir)
 		abs = filepath.Clean(dir)
 	}
 	visiting := map[string]bool{}

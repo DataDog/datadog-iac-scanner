@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -280,8 +281,8 @@ type RemoteResolver func(
 	source, version, callerFile, moduleName string,
 ) (dir, packageRoot string, ok bool)
 
-func CalledModuleDirs(dir string, resolver RemoteResolver) []string {
-	bodies, err := parseDir(context.Background(), dir, "", nil)
+func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string {
+	bodies, err := parseDir(context.Background(), dir, "", nil, fsys)
 	if err != nil {
 		return nil
 	}
@@ -323,6 +324,6 @@ func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResol
 
 // CalledLocalDirs returns the resolved directories of every local module called
 // from dir. Remote/registry sources are ignored.
-func CalledLocalDirs(dir string) []string {
-	return CalledModuleDirs(dir, nil)
+func CalledLocalDirs(dir string, fsys vfs.FS) []string {
+	return CalledModuleDirs(dir, nil, fsys)
 }

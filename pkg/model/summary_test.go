@@ -15,13 +15,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestModuleAttributionIsNotPartOfJSONReports(t *testing.T) {
-	attribution := &ModuleAttribution{Name: "bucket"}
+func TestModuleAttributionSerializationContract(t *testing.T) {
+	attribution := &ModuleAttribution{
+		Name:         "bucket",
+		CodeLocation: SourceLocation{Filename: "infra/main.tf", LineStart: 1, LineEnd: 4},
+	}
 
+	// Vulnerability is the content-push wire type: the IDE anchors instantiated
+	// findings on the call-site declaration, so the attribution must serialize.
 	vulnerabilityJSON, err := json.Marshal(Vulnerability{ModuleAttribution: attribution})
 	require.NoError(t, err)
-	require.NotContains(t, string(vulnerabilityJSON), "moduleAttribution")
+	require.Contains(t, string(vulnerabilityJSON), "moduleAttribution")
+	require.Contains(t, string(vulnerabilityJSON), "call_site")
 
+	// VulnerableFile is the report-side type: SARIF exposes the attribution as a
+	// dedicated properties payload (ModuleAttributionForSARIF), never inline.
 	summaryFileJSON, err := json.Marshal(VulnerableFile{ModuleAttribution: attribution})
 	require.NoError(t, err)
 	require.NotContains(t, string(summaryFileJSON), "module_attribution")
@@ -31,17 +39,17 @@ func TestModuleAttributionIsNotPartOfJSONReports(t *testing.T) {
 func TestCreateSummary(t *testing.T) {
 	vulnerabilities := []Vulnerability{
 		{
-			ID:               1,
-			ScanID:           "scanID",
-			FileID:           "fileId",
-			FileName:         "fileName",
-			QueryID:          "QueryID",
-			CWE:              "22",
-			QueryName:        "query_name",
-			Severity:         SeverityHigh,
-			Line:             1,
-			SearchKey:        "searchKey",
-			Output:           "-",
+			ID:        1,
+			ScanID:    "scanID",
+			FileID:    "fileId",
+			FileName:  "fileName",
+			QueryID:   "QueryID",
+			CWE:       "22",
+			QueryName: "query_name",
+			Severity:  SeverityHigh,
+			Line:      1,
+			SearchKey: "searchKey",
+			Output:    "-",
 		},
 	}
 
@@ -105,11 +113,11 @@ func TestCreateSummary(t *testing.T) {
 					CWE:       "22",
 					Files: []VulnerableFile{
 						{
-							FileName:         "fileName",
-							Fingerprint:      GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", ""),
-							Line:             1,
-							SearchKey:        "searchKey",
-							Value:            nil,
+							FileName:    "fileName",
+							Fingerprint: GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", ""),
+							Line:        1,
+							SearchKey:   "searchKey",
+							Value:       nil,
 						},
 					},
 				},
