@@ -15,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -794,6 +795,17 @@ func resolveResourceLevelOrigin(ctx context.Context, originMapTyped map[string]i
 	return origin, varName, moduleDir
 }
 
+// moduleDirIsResolvableLocalPath reports whether moduleDir (the raw plan-JSON module source
+// string) looks like a local filesystem path that filepath.Join(scanRoot/callFileDir, moduleDir)
+// can meaningfully resolve. Remote sources (git::..., registry short-form like
+// "terraform-aws-modules/rds/aws") are NOT filesystem-joinable this way - joining them onto
+// scanRoot produces a nonsense path that the registry has no way to detect as invalid, so callers
+// must treat a remote moduleDir as "unresolvable" here and fall back to the call site instead of
+// silently resolving against whatever chooseBestLocation happens to pick for that bogus path.
+func moduleDirIsResolvableLocalPath(moduleDir string) bool {
+	return moduleDir != "" && tfmodules.LooksLikeLocalModuleSource(moduleDir)
+}
+
 // resolveModuleDefinitionLocation resolves a MODULE_HARDCODED finding to the resource attribute
 // line inside the module's own .tf file. Falls back to the module call line on failure.
 func (t *TFPlanDetectLine) resolveModuleDefinitionLocation(
@@ -807,12 +819,15 @@ func (t *TFPlanDetectLine) resolveModuleDefinitionLocation(
 ) model.VulnerabilityLines {
 	contextLogger := logger.FromContext(ctx)
 
-	// Resolve module dir to an absolute path for scoped registry lookup
+	// Resolve module dir to an absolute path for scoped registry lookup. Remote module sources
+	// (git::, registry short-form, ...) are explicitly excluded here: they aren't filesystem
+	// paths, so scopePath stays the call site and this falls through to the "not found" branch
+	// below rather than joining a remote source string onto scanRoot.
 	scopePath := callLocation.FilePath
-	if moduleDir != "" && scanRoot != "" {
+	if moduleDirIsResolvableLocalPath(moduleDir) && scanRoot != "" {
 		abs := filepath.Join(scanRoot, moduleDir)
 		scopePath = filepath.Join(abs, "main.tf") // best-effort scope
-	} else if moduleDir != "" && callLocation.FilePath != "" {
+	} else if moduleDirIsResolvableLocalPath(moduleDir) && callLocation.FilePath != "" {
 		// Resolve relative to the call file's directory
 		callFileDir := filepath.Dir(callLocation.FilePath)
 		abs := filepath.Join(callFileDir, moduleDir)
@@ -862,12 +877,13 @@ func (t *TFPlanDetectLine) resolveVariableDefaultLocation(
 ) (primary, secondary model.VulnerabilityLines) {
 	contextLogger := logger.FromContext(ctx)
 
-	// Build scope path for scoped registry lookup
+	// Build scope path for scoped registry lookup. Remote module sources are excluded the same
+	// way as resolveModuleDefinitionLocation - see moduleDirIsResolvableLocalPath.
 	scopePath := callLocation.FilePath
-	if moduleDir != "" && scanRoot != "" {
+	if moduleDirIsResolvableLocalPath(moduleDir) && scanRoot != "" {
 		abs := filepath.Join(scanRoot, moduleDir)
 		scopePath = filepath.Join(abs, "variables.tf")
-	} else if moduleDir != "" && callLocation.FilePath != "" {
+	} else if moduleDirIsResolvableLocalPath(moduleDir) && callLocation.FilePath != "" {
 		callFileDir := filepath.Dir(callLocation.FilePath)
 		abs := filepath.Join(callFileDir, moduleDir)
 		scopePath = filepath.Join(abs, "variables.tf")
