@@ -114,14 +114,14 @@ func NewWithoutRegistryAndParams(fsys vfs.FS, terraformVarsPath string, sciInfo 
 }
 
 // NewWithParams creates a parser with registry, vars path, and sci info
-func NewWithParams(fsys vfs.FS, reg *registry.AddressRegistry, terraformVarsPath string, sciInfo *model.SCIInfo) *Parser {
+func NewWithParams(fsys vfs.FS, reg *registry.AddressRegistry, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
 	p := &Parser{
 		numOfRetries:      RetriesDefaultValue,
 		convertFunc:       converter.DefaultConverted,
 		fsys:              vfs.DiskFS{},
 		registry:          reg,
 		terraformVarsPath: terraformVarsPath,
-		sciInfo:           *sciInfo,
+		sciInfo:           sciInfo,
 	}
 	if fsys != nil {
 		p.fsys = fsys

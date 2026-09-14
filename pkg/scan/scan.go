@@ -80,7 +80,8 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		return nil, nil
 	}
 
-	// Create a fresh registry instance for this scan to avoid cross-scan pollution
+	// Fresh registry per scan; must be the same instance passed to both
+	// SetTFPlanRegistry below and NewWithParams in createService, or tfplan lookups miss silently.
 	addressRegistry := registry.New()
 	contextLogger.Info().Msg("Created new address registry for this scan")
 
@@ -358,7 +359,7 @@ func (c *Client) createService(
 		filesSource = fsSource
 	}
 
-	tfParser := terraformParser.NewWithParams(c.fsys, reg, c.ScanParams.TerraformVarsPath, &c.ScanParams.SCIInfo)
+	tfParser := terraformParser.NewWithParams(c.fsys, reg, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)
 	if c.inMemory {
 		tfParser.SetMergeAllow(append(append([]string{}, paths...), remoteModulePaths...))
 	} else {
