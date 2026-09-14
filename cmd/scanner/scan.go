@@ -88,7 +88,7 @@ var scanAction = &cli.Command{
 			Hidden: true,
 			Usage: "(experimental) resolve Terraform local module variables before scanning; " +
 				"independent of --terraform-modules",
-			Value: false,
+			Value: true,
 		},
 		&cli.StringFlag{
 			Name:  "terraform-modules",
