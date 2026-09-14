@@ -148,6 +148,7 @@ const (
 	gdm                   = "googledeploymentmanager"
 	ansible               = "ansible"
 	grpc                  = "grpc"
+	dockercompose         = "dockercompose"
 	dockerfile            = "dockerfile"
 	crossplane            = "crossplane"
 	knative               = "knative"
@@ -758,7 +759,7 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 		}
 	}
 
-	endReturnType := checkReturnType(ctx, path, returnType, ext, content, hc)
+	endReturnType := checkReturnType(ctx, path, returnType, ext, content, typesFlag, hc)
 
 	// Only process JSON files if they are Terraform plans
 	// This will be the case until other platforms support json scanning
@@ -861,7 +862,7 @@ func PlatformForKind(kind model.FileKind) (string, bool) {
 	}
 }
 
-func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte, hc *sync.Map) string {
+func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte, typesFlag []string, hc *sync.Map) string {
 	if returnType != "" {
 		switch returnType {
 		case cdkTf:
@@ -878,7 +879,7 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 		if checkHelm(ctx, path, hc) {
 			return kubernetes
 		}
-		platform := checkYamlPlatform(ctx, content, path)
+		platform := checkYamlPlatform(ctx, content, path, typesFlag)
 		if platform != "" {
 			return platform
 		}
@@ -937,7 +938,11 @@ func storeHelmResults(hc *sync.Map, dirs []string, result bool) bool {
 	return result
 }
 
-func checkYamlPlatform(ctx context.Context, content []byte, path string) string {
+func dockerComposeExplicitlyRequested(typesFlag []string) bool {
+	return len(typesFlag) == 1 && strings.EqualFold(typesFlag[0], dockercompose)
+}
+
+func checkYamlPlatform(ctx context.Context, content []byte, path string, typesFlag []string) string {
 	// Ansible 'templates/' directories contain Jinja2 files; {{ }} syntax is invalid YAML.
 	if isInsideAnsibleTemplatesDir(path) {
 		return ""
@@ -953,10 +958,10 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 		return ""
 	}
 
-	ansibleVarsPath := checkForAnsibleByPaths(path)
-	if !ansibleVarsPath && !yamlRootHasAnyKey(content, yamlPlatformRootKeys...) {
+	if !yamlShouldParsePlatform(path, content) {
 		return ""
 	}
+	ansibleVarsPath := checkForAnsibleByPaths(path)
 	if yamlHasRootTemplateSyntax(content) {
 		return ""
 	}
@@ -980,6 +985,9 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 		return ""
 	}
 
+	if dockerComposeFromYAMLNode(root, path, dockerComposeExplicitlyRequested(typesFlag)) {
+		return dockercompose
+	}
 	if yamlMapKeyNode(root, listKeywordsGoogleDeployment[0]) != nil {
 		return gdm
 	}
@@ -987,6 +995,16 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string) string 
 		return ansible
 	}
 	return ""
+}
+
+func yamlShouldParsePlatform(path string, content []byte) bool {
+	if checkForAnsibleByPaths(path) {
+		return true
+	}
+	if isDockerComposeFileName(path) || yamlRootHasAnyKey(content, "services") {
+		return true
+	}
+	return yamlRootHasAnyKey(content, yamlPlatformRootKeys...)
 }
 
 func checkForAnsibleByPaths(path string) bool {

@@ -185,6 +185,38 @@ func yamlMapKeyNode(m *yamlParser.Node, key string) *yamlParser.Node {
 	return yamlMapKeyNodeSeen(m, key, nil)
 }
 
+func dockerComposeFromYAMLNode(root *yamlParser.Node, path string, explicitSelection bool) bool {
+	if !yamlRootIsMapping(root) {
+		return false
+	}
+	services := yamlResolveAlias(yamlMapKeyNode(root, "services"))
+	if services == nil || services.Kind != yamlParser.MappingNode || len(services.Content) == 0 {
+		return false
+	}
+	for i := 1; i < len(services.Content); i += 2 {
+		service := yamlResolveAlias(services.Content[i])
+		if service == nil || service.Kind != yamlParser.MappingNode {
+			continue
+		}
+		for _, key := range []string{"image", "build", "extends"} {
+			if yamlMapKeyNode(service, key) != nil {
+				return true
+			}
+		}
+	}
+	if explicitSelection {
+		return true
+	}
+	return isDockerComposeFileName(path)
+}
+
+func isDockerComposeFileName(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	return base == "compose.yaml" || base == "compose.yml" ||
+		base == "docker-compose.yaml" || base == "docker-compose.yml" ||
+		strings.HasPrefix(base, "compose.") || strings.HasPrefix(base, "docker-compose.")
+}
+
 // yamlMapKeyNodeSeen looks key up in m, following merge keys into the mappings
 // they pull in. seen guards against alias cycles and may be nil; it is only
 // allocated once a merge key is actually found, since the overwhelmingly common

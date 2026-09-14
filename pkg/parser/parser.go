@@ -65,17 +65,28 @@ func (b *Builder) Add(p kindParser) *Builder {
 
 // Build prepares parsers and associates a parser to its extension and returns it
 func (b *Builder) Build(types, cloudProviders []string) ([]*Parser, error) {
+	// When types[0] == "" the caller requests all platforms; otherwise restrict
+	// Parser.Platform to the intersection so that the engine only runs queries
+	// for the platforms that were explicitly selected.
+	allTypes := len(types) > 0 && types[0] == ""
+	requestedSet := make(map[string]bool, len(types))
+	for _, t := range types {
+		requestedSet[strings.ToLower(t)] = true
+	}
+
 	parserSlice := make([]*Parser, 0, len(b.parsers))
 	for _, parser := range b.parsers {
 		supportedTypes := parser.SupportedTypes()
 		if contains(types, supportedTypes) {
 			extensions := make(model.Extensions, len(b.parsers))
-			var platforms []string
 			for _, ext := range parser.SupportedExtensions() {
 				extensions[ext] = struct{}{}
 			}
+			var platforms []string
 			for key := range supportedTypes {
-				platforms = append(platforms, key)
+				if allTypes || requestedSet[key] {
+					platforms = append(platforms, key)
+				}
 			}
 			parserSlice = append(parserSlice, &Parser{
 				Parsers:    parser,

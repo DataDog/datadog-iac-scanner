@@ -106,6 +106,7 @@ func TestParsePlatformValues(t *testing.T) {
 		{"mixed case", "cloudFormation", "CloudFormation"},
 		{"ansible", "ansible", "Ansible"},
 		{"cicd", "cicd", "CICD"},
+		{"docker compose", "dockercompose", "DockerCompose"},
 		{"dockerfile", "Dockerfile", "Dockerfile"},
 	}
 	invalid := []struct {
