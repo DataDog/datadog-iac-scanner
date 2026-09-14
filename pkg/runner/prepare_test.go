@@ -57,7 +57,7 @@ func buildServices(t *testing.T, ctx context.Context, fsys vfs.FS, src provider.
 	combinedParser, err := parser.NewBuilder(ctx).
 		WithFS(fsys).
 		Add(&yamlParser.Parser{}).
-		Add(terraformParser.NewDefault()).
+		Add(terraformParser.NewWithoutRegistry()).
 		Add(&bicepParser.Parser{}).
 		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).
