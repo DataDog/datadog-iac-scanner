@@ -41,6 +41,7 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/yargevad/filepathx v1.0.0
 	github.com/zclconf/go-cty v1.18.0
+	github.com/zclconf/go-cty-yaml v1.2.0
 	golang.org/x/net v0.58.0
 	golang.org/x/text v0.41.0
 	golang.org/x/tools/godoc v0.1.0-deprecated
