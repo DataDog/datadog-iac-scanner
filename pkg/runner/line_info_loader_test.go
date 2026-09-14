@@ -35,7 +35,7 @@ func TestEnsureLineInfoDocument_matchesEagerParse(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, content, 0o600))
 
 	p := buildTestParser(t, ctx, func(b *parser.Builder) *parser.Builder {
-		return b.Add(terraformParser.NewDefault())
+		return b.Add(terraformParser.NewWithoutRegistry())
 	})
 	parsed, err := p.Parse(ctx, path, content, false, false, 15)
 	require.NoError(t, err)
