@@ -79,6 +79,13 @@ var (
 	dependabotPackageEcosystemRegex                 = regexp.MustCompile(`\s*package-ecosystem:\s*`)
 )
 
+// k8sAPIVersionValueRegex captures the value of an apiVersion entry so a
+// Kubernetes classification can be validated. Files that merely reuse the
+// apiVersion/kind document shape without being Kubernetes manifests (e.g.
+// Backstage or Datadog Software Catalog entities such as catalog-info.yaml)
+// must not be scanned with Kubernetes rules.
+var k8sAPIVersionValueRegex = regexp.MustCompile(`"?apiVersion"?\s*:\s*"?([A-Za-z0-9][A-Za-z0-9.\-]*(?:/[A-Za-z0-9][A-Za-z0-9.\-]*)?)"?`)
+
 var (
 	listKeywordsGoogleDeployment = []string{"resources"}
 	armRegexTypes                = []string{"blueprint", "templateArtifact", "roleAssignmentArtifact", "policyAssignmentArtifact"}
@@ -710,6 +717,34 @@ func isDockerfile(ctx context.Context, path string) bool {
 	return check
 }
 
+// nonKubernetesAPIVersionGroups lists apiVersion groups that reuse the
+// apiVersion/kind document shape but are not Kubernetes APIs: Backstage
+// catalog entities (backstage.io) and Datadog Software Catalog entities
+// (datadog.com; the Datadog operator CRDs live under datadoghq.com).
+var nonKubernetesAPIVersionGroups = []string{"backstage.io", "datadog.com"}
+
+// hasKubernetesAPIVersion reports whether content declares at least one
+// apiVersion value that is not from a known non-Kubernetes schema. Values from
+// other groups (CRD manifests such as cert-manager.io or argoproj.io) keep
+// classifying the file as Kubernetes; only the known non-Kubernetes groups are
+// excluded.
+func hasKubernetesAPIVersion(content []byte) bool {
+	if !k8sAPIVersionValueRegex.Match(content) {
+		return false
+	}
+	for _, match := range k8sAPIVersionValueRegex.FindAllSubmatch(content, -1) {
+		value := string(match[1])
+		group := value
+		if i := strings.Index(value, "/"); i >= 0 {
+			group = value[:i]
+		}
+		if !utils.Contains(group, nonKubernetesAPIVersionGroups) {
+			return true
+		}
+	}
+	return false
+}
+
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
 func needsOverride(check bool, returnType, key, ext string) bool {
 	if check && returnType == kubernetes && key == arm && ext == json {
@@ -863,6 +898,14 @@ func PlatformForKind(kind model.FileKind) (string, bool) {
 }
 
 func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte, typesFlag []string, hc *sync.Map) string {
+	// A file that reuses the apiVersion/kind document shape without declaring
+	// any Kubernetes apiVersion (e.g. a Backstage/Datadog Software Catalog
+	// catalog-info.yaml) is not a Kubernetes manifest and must not be scanned
+	// with Kubernetes rules. Clearing the type early lets it fall through the
+	// regular yaml fallbacks below.
+	if returnType == kubernetes && !hasKubernetesAPIVersion(content) {
+		returnType = ""
+	}
 	if returnType != "" {
 		switch returnType {
 		case cdkTf:
