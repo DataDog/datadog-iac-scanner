@@ -709,7 +709,7 @@ func (c *Inspector) executeQueries(
 	// garbage to accumulate; on small repos eval finishes in seconds and the
 	// ticker would just cause unnecessary scavenging and heap fragmentation.
 	if len(filesMap) > preEvalGcFileThreshold {
-		const evalGcInterval = 15 * time.Second
+		const evalGcInterval = 30 * time.Second
 		gcCtx, gcCancel := context.WithCancel(ctx)
 		defer gcCancel()
 		go func() {
