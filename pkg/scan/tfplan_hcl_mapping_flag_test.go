@@ -117,7 +117,7 @@ func writeTFPlanHCLMappingFixture(t *testing.T) string {
 // runTFPlanHCLMappingScan scans the fixture directory (which holds both main.tf and
 // plan.tfplan.json for the same resource) with ShouldScanTfPlans always on and
 // ShouldMapTfPlanToHCL set per mapToHCL, returning the tfplan-sourced finding.
-func runTFPlanHCLMappingScan(t *testing.T, mapToHCL bool) model.Vulnerability {
+func runTFPlanHCLMappingScan(t *testing.T, mapToHCL bool) []model.Vulnerability {
 	t.Helper()
 
 	scanParams := Parameters{
@@ -146,40 +146,46 @@ func runTFPlanHCLMappingScan(t *testing.T, mapToHCL bool) model.Vulnerability {
 	r, err := c.executeScan(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	return r.Results
+}
 
-	filesByID := make(map[string]*model.FileMetadata, len(r.Files))
-	for _, f := range r.Files {
-		filesByID[f.ID] = f
-	}
-
-	var tfplanFinding *model.Vulnerability
-	for i := range r.Results {
-		f, ok := filesByID[r.Results[i].FileID]
-		if ok && f.Kind == model.KindTerraformPlan {
-			finding := r.Results[i]
-			tfplanFinding = &finding
+func findTFPlanFinding(t *testing.T, results []model.Vulnerability) model.Vulnerability {
+	t.Helper()
+	for i := range results {
+		if results[i].IsFromTFPlan {
+			return results[i]
 		}
 	}
-	require.NotNil(t, tfplanFinding, "expected a finding sourced from the tfplan JSON file; got %d results total", len(r.Results))
-	return *tfplanFinding
+	t.Fatalf("expected a finding sourced from the tfplan JSON file; got %d results total", len(results))
+	return model.Vulnerability{}
 }
 
 // TestShouldMapTfPlanToHCL_MapsToHCLFileWhenEnabled verifies that with ShouldMapTfPlanToHCL on,
-// a finding raised against the tfplan JSON is reported against the resolved HCL file/line rather
-// than the plan JSON itself.
+// the HCL-sourced and TFPlan-sourced findings for the same resource merge into a single result
+// (internal/storage's getUniqueVulnerabilities) rather than being reported twice, that the
+// surviving finding is the TFPlan-sourced one (tagged IsFromTFPlan), and that it's reported
+// against the resolved HCL file/line rather than the plan JSON itself.
 func TestShouldMapTfPlanToHCL_MapsToHCLFileWhenEnabled(t *testing.T) {
-	finding := runTFPlanHCLMappingScan(t, true)
+	results := runTFPlanHCLMappingScan(t, true)
 
+	require.Len(t, results, 1,
+		"expected the HCL-sourced and TFPlan-sourced findings to merge into one when ShouldMapTfPlanToHCL is true")
+	finding := findTFPlanFinding(t, results)
 	require.Equal(t, "main.tf", filepath.Base(finding.FileName),
-		"expected the tfplan finding to be resolved to the HCL file when ShouldMapTfPlanToHCL is true")
+		"expected the surviving finding to be resolved to the HCL file")
 }
 
 // TestShouldMapTfPlanToHCL_ReportsAgainstPlanFileWhenDisabled verifies that with
-// ShouldMapTfPlanToHCL off (the default), a tfplan finding is still reported against the plan
-// JSON file itself - the pre-mapping behavior - even though ShouldScanTfPlans is on.
+// ShouldMapTfPlanToHCL off (the default), the HCL-sourced and TFPlan-sourced findings remain
+// distinct (different FileName, so they don't share a fingerprint) - the pre-mapping behavior -
+// even though ShouldScanTfPlans is on, and the tfplan one is still reported against the plan
+// JSON file itself.
 func TestShouldMapTfPlanToHCL_ReportsAgainstPlanFileWhenDisabled(t *testing.T) {
-	finding := runTFPlanHCLMappingScan(t, false)
+	results := runTFPlanHCLMappingScan(t, false)
 
+	require.Len(t, results, 2,
+		"expected the HCL-sourced and TFPlan-sourced findings to remain distinct when ShouldMapTfPlanToHCL is false")
+	finding := findTFPlanFinding(t, results)
 	require.Equal(t, "plan.tfplan.json", filepath.Base(finding.FileName),
 		"expected the tfplan finding to remain against the plan JSON when ShouldMapTfPlanToHCL is false")
 }

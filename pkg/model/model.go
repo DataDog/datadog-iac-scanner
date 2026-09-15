@@ -311,6 +311,13 @@ type Vulnerability struct {
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
+	// IsFromTFPlan marks a finding raised against a Terraform plan JSON document (as opposed to
+	// static HCL). Set regardless of whether the finding was resolved back to an HCL source line
+	// (see pkg/detector/tfplan_detect.go) - it reflects which document produced the finding, not
+	// where it's reported as pointing. When an HCL-sourced and a TFPlan-sourced finding for the
+	// same resource collapse into one during dedup (internal/storage's getUniqueVulnerabilities),
+	// the TFPlan-sourced one is kept, so this stays true on the surviving record.
+	IsFromTFPlan bool `db:"is_from_tfplan" json:"isFromTFPlan,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
 	// SecondaryVulnerabilityLines is set transiently when a module_default finding has two
