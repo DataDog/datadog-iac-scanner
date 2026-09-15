@@ -604,9 +604,12 @@ func (c *Inspector) Inspect(
 		// here both coexist and drive the process peak RSS. One explicit GC
 		// before the CPU-bound phase reclaims ~the Document heap now, and the
 		// smaller live set also reduces GC pauses during eval. This is a
-		// one-time collection, not a GOGC change.
+		// one-time collection, not a GOGC change. We deliberately do NOT call
+		// debug.FreeOSMemory() here: the OPA payload is about to allocate a
+		// similar amount, and returning pages to the OS only to re-fault them
+		// back in causes heap fragmentation and a higher peak RSS on
+		// memory-intensive repos.
 		runtime.GC()
-		debug.FreeOSMemory()
 	}
 
 	// Pre-build one inmem.Store per platform so LoadQuery does not re-parse the

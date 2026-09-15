@@ -533,12 +533,16 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 // JSON round-trip in UnmarshalYAML produced, so downstream consumers (the
 // engine, rules, and the JSON payload export) see identical types without
 // that round-trip: numbers become float64 (json.Unmarshal always yields
-// float64) and timestamp scalars — decoded by yaml.v3 to time.Time — become
-// RFC3339 strings (json.Marshal of time.Time).
+// float64), timestamp scalars — decoded by yaml.v3 to time.Time — become
+// RFC3339 strings (json.Marshal of time.Time), and binary scalars (decoded
+// to []byte) become base64 strings (json.Marshal of []byte).
 func normalizeScalar(resolved interface{}) interface{} {
 	switch v := resolved.(type) {
 	case time.Time:
 		return v.Format(time.RFC3339Nano)
+	case []byte:
+		// json.Marshal encodes []byte as base64; json.Unmarshal yields a string.
+		return string(v)
 	case int:
 		return float64(v)
 	case int8:
