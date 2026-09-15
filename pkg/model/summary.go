@@ -51,6 +51,8 @@ type VulnerableFile struct {
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
 	// ModuleCallChain: local-module call path; empty for root; included in fingerprint.
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
+	// IsFromTFPlan mirrors Vulnerability.IsFromTFPlan.
+	IsFromTFPlan bool `json:"is_from_tfplan,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
 }
@@ -354,6 +356,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionKind:          item.SuppressionKind,
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
+			IsFromTFPlan:             item.IsFromTFPlan,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
 		})
 
