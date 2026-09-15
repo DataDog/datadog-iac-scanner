@@ -171,7 +171,7 @@ module "remote" {
 `,
 	})
 
-	got := CalledLocalDirs(rootDir)
+	got := CalledLocalDirs(rootDir, nil)
 	want := []string{filepath.Join(root, "child")}
 	sort.Strings(got)
 	if !reflect.DeepEqual(got, want) {
@@ -184,7 +184,7 @@ func TestCalledLocalDirs_NoModules(t *testing.T) {
 	dir := writeModule(t, root, "mod", map[string]string{
 		"main.tf": `resource "aws_s3_bucket" "this" { bucket = "x" }`,
 	})
-	if got := CalledLocalDirs(dir); got != nil {
+	if got := CalledLocalDirs(dir, nil); got != nil {
 		t.Fatalf("CalledLocalDirs = %#v, want nil", got)
 	}
 }

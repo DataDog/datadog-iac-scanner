@@ -354,18 +354,275 @@ func TestAnalyze_MixedAbsoluteAndRelativePaths(t *testing.T) {
 	}
 }
 
+// syntheticBucketRule matches only an aws_s3_bucket whose bucket attribute
+// resolved to a concrete value, so it can only fire on an instantiated module
+// resource: the module body holds the unresolved `var.name` reference, and the
+// call-site file has no resource at all.
+const syntheticBucketRuleID = "test-terraform-resolved-bucket-value"
+
+func syntheticBucketRule(wantBucket string) datadog.Rule {
+	return datadog.Rule{
+		ID:               syntheticBucketRuleID,
+		Name:             syntheticBucketRuleID,
+		ShortDescription: "Synthetic resolved bucket value",
+		Platform:         "Terraform",
+		Severity:         "INFO",
+		Category:         "Test",
+		IsPublished:      true,
+		RegoQuery: []byte(`package datadog
+
+import rego.v1
+
+import data.generic.common as common_lib
+import data.generic.terraform as tf_lib
+
+DatadogPolicy contains result if {
+	common_lib.library_enabled
+	resource := input.document[i].resource["aws_s3_bucket"][name]
+	resource.bucket == "` + wantBucket + `"
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": tf_lib.display_name("aws_s3_bucket", name),
+		"searchKey": sprintf("aws_s3_bucket[%s].bucket", [name]),
+	}
+}`),
+	}
+}
+
+// moduleCallerFixture is a root module calling a sibling module whose resource
+// derives its bucket from the call site's `name` input.
+const (
+	moduleCallerMainTF = `module "net" {
+  source = "../modules/networking"
+  name   = %s
+}
+`
+	moduleChildMainTF = `variable "name" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  bucket = var.name
+}
+`
+)
+
+// TestAnalyze_LocalModuleInstantiation proves the full content-push module
+// path: the module tree is evaluated against the request's in-memory FS, the
+// caller's input binds into the module resource, and the instantiated document
+// is attributed to the module's defining file. Everything being pushed, no
+// missing files are reported.
+func TestAnalyze_LocalModuleInstantiation(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticBucketRule("resolved-bucket-name")
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/main.tf", Content: fmt.Sprintf(moduleCallerMainTF, "\"resolved-bucket-name\"")},
+			{Path: "modules/networking/main.tf", Content: moduleChildMainTF},
+		},
+		Ruleset:  ruleset(rule),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var sawResolved bool
+	for _, f := range out.Findings {
+		if f.QueryID != syntheticBucketRuleID {
+			continue
+		}
+		sawResolved = true
+		if f.FileName != "modules/networking/main.tf" {
+			t.Errorf("finding fileName = %q, want modules/networking/main.tf (the defining file)", f.FileName)
+		}
+		// The finding anchors on the call-site declaration (the SARIF report's
+		// convention); fileName keeps the defining file so code_location stays
+		// meaningful.
+		attr := f.ModuleAttribution
+		if attr == nil {
+			t.Errorf("expected moduleAttribution on the instantiated finding")
+			continue
+		}
+		if attr.CallSite.Filename != "infra/main.tf" {
+			t.Errorf("call_site filename = %q, want infra/main.tf", attr.CallSite.Filename)
+		}
+		if attr.CallSite.LineStart != 1 || attr.CallSite.LineEnd != 4 {
+			t.Errorf("call_site lines = %d-%d, want the module block 1-4",
+				attr.CallSite.LineStart, attr.CallSite.LineEnd)
+		}
+		if attr.ModuleCodeLocation.Filename != "main.tf" {
+			t.Errorf("code_location filename = %q, want module-relative main.tf", attr.ModuleCodeLocation.Filename)
+		}
+		// Workspace-relative, like the CLI's repo-relative shape — not the
+		// basename the no-repo-root path would otherwise collapse to.
+		if attr.Source != "modules/networking" {
+			t.Errorf("source = %q, want modules/networking", attr.Source)
+		}
+	}
+	if !sawResolved {
+		t.Errorf("expected an instantiated finding with the resolved bucket value; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files for a fully pushed module tree, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_LocalModuleRootVariableBinding chains three resolution steps
+// through the in-memory FS: the root's variable default (pushed variables.tf),
+// the module call-site input, and the module resource attribute. Only the
+// instantiated document carries the final concrete value, so a finding proves
+// all three ran.
+func TestAnalyze_LocalModuleRootVariableBinding(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticBucketRule("root-default-bucket")
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/main.tf", Content: fmt.Sprintf(moduleCallerMainTF, "var.bucket_name")},
+			{Path: "infra/variables.tf", Content: `variable "bucket_name" {
+  type    = string
+  default = "root-default-bucket"
+}
+`},
+			{Path: "modules/networking/main.tf", Content: moduleChildMainTF},
+		},
+		Ruleset:  ruleset(rule),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var sawResolved bool
+	for _, f := range out.Findings {
+		if f.QueryID == syntheticBucketRuleID {
+			sawResolved = true
+		}
+	}
+	if !sawResolved {
+		t.Errorf("expected the root variable default to bind into the module input; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_LocalModuleTfvarsOverrideBinding proves the root-module inputs
+// come from the pushed terraform.tfvars (read through the in-memory FS by
+// LoadRootVars), overriding the declared variable default.
+func TestAnalyze_LocalModuleTfvarsOverrideBinding(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticBucketRule("tfvars-bucket")
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/main.tf", Content: fmt.Sprintf(moduleCallerMainTF, "var.bucket_name")},
+			{Path: "infra/variables.tf", Content: `variable "bucket_name" {
+  type    = string
+  default = "root-default-bucket"
+}
+`},
+			{Path: "infra/terraform.tfvars", Content: `bucket_name = "tfvars-bucket"
+`},
+			{Path: "modules/networking/main.tf", Content: moduleChildMainTF},
+		},
+		Ruleset:  ruleset(rule),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var sawOverride bool
+	for _, f := range out.Findings {
+		if f.QueryID == syntheticBucketRuleID {
+			sawOverride = true
+		}
+	}
+	if !sawOverride {
+		t.Errorf("expected the tfvars value to override the default and bind into the module input; "+
+			"findings = %+v; failed queries: %v", out.Findings, out.FailedQueries)
+	}
+}
+
+// TestAnalyze_LocalModuleAbsentTfvarsNotReported pins the speculative tfvars
+// probe: LoadRootVars always tries terraform.tfvars, and MemFS records ReadFile
+// misses but not Stat misses, so an absent terraform.tfvars (the common case)
+// must not surface as a missing file.
+func TestAnalyze_LocalModuleAbsentTfvarsNotReported(t *testing.T) {
+	s := newTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/main.tf", Content: fmt.Sprintf(moduleCallerMainTF, "\"resolved-bucket-name\"")},
+			{Path: "modules/networking/main.tf", Content: moduleChildMainTF},
+		},
+		Ruleset:  ruleset(syntheticRule()),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	for _, m := range out.MissingFiles {
+		if strings.HasSuffix(m, "terraform.tfvars") {
+			t.Errorf("absent terraform.tfvars must not be reported missing (speculative probe), got %q", m)
+		}
+	}
+}
+
+// TestAnalyze_LocalModuleAbsolutePathShape pins module attribution for a
+// file pushed as an absolute path (outside every workspace folder): every path
+// the response echoes keeps the pushed shape — the call site stays absolute
+// rather than collapsing to a basename, the same convention missing_files
+// follow (TestAnalyze_AbsolutePathMissingModuleEscalation).
+func TestAnalyze_LocalModuleAbsolutePathShape(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticBucketRule("resolved-bucket-name")
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "/tmp/ws/infra/main.tf", Content: fmt.Sprintf(moduleCallerMainTF, "\"resolved-bucket-name\"")},
+			{Path: "/tmp/ws/modules/networking/main.tf", Content: moduleChildMainTF},
+		},
+		Ruleset:  ruleset(rule),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var sawCallSite bool
+	for _, f := range out.Findings {
+		if f.QueryID != syntheticBucketRuleID || f.ModuleAttribution == nil {
+			continue
+		}
+		sawCallSite = true
+		if got := f.ModuleAttribution.CallSite.Filename; got != "/tmp/ws/infra/main.tf" {
+			t.Errorf("call_site filename = %q, want the pushed absolute shape /tmp/ws/infra/main.tf", got)
+		}
+		if got := f.FileName; got != "/tmp/ws/modules/networking/main.tf" {
+			t.Errorf("fileName = %q, want the pushed absolute shape /tmp/ws/modules/networking/main.tf", got)
+		}
+	}
+	if !sawCallSite {
+		t.Errorf("expected an instantiated finding carrying call-site attribution; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+}
+
 // TestServerFlagEvaluator pins the flags server mode depends on. The
-// local-module-eval pin is what makes accepting absolute paths defensible: it is
-// the only thing keeping tfeval's direct os.ReadDir off directories derived from
-// pushed paths, which would otherwise be an arbitrary-directory read on a server
-// reachable cross-origin. If this test fails, validateFilePath's acceptance of
-// absolute paths is no longer safe.
+// local-module-eval pin is on: tfeval reads module and tfvars files through the
+// request's in-memory FS, so evaluation can only see pushed content and an
+// unpushed module directory is reported as a missing file for escalation,
+// never read off the real disk. Helm stays pinned off until its chart loader
+// can load from the in-memory FS.
 func TestServerFlagEvaluator(t *testing.T) {
 	evaluator := serverFlagEvaluator(false)
 
-	if evaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
-		t.Error("IacEnableLocalModuleEval must be pinned false in server mode: " +
-			"local module evaluation reads directories derived from pushed paths off the real disk")
+	if !evaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
+		t.Error("IacEnableLocalModuleEval must be pinned true in server mode: " +
+			"tfeval evaluates local modules against the request's in-memory FS")
 	}
 	if evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
 		t.Error("IacEnableKicsHelmResolver must be pinned false in server mode: " +

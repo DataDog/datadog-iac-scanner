@@ -21,6 +21,7 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
 	"github.com/rs/zerolog"
 )
@@ -324,7 +325,7 @@ func (c *Inspector) resolveModulesSafely(
 			res = moduleResolutionResult{}
 		}
 	}()
-	return resolveModuleDocuments(ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow)
+	return resolveModuleDocuments(ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys)
 }
 
 // resolveModuleDocuments instantiates all local modules referenced by the
@@ -360,7 +361,7 @@ func evaluateRootModules(
 	contextLogger := logger.FromContext(ctx)
 	for _, dir := range roots {
 		evaluator.ResetSpeculativeBudget()
-		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir))
+		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVars(dir))
 		if err != nil {
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
 			for _, called := range discoverCalledModuleClosure(
@@ -459,6 +460,7 @@ func resolveModuleDocuments(
 	targets *ruleTargets,
 	lookup moduleProvenanceLookup,
 	mergeAllow map[string]struct{},
+	fsys vfs.FS,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -471,7 +473,7 @@ func resolveModuleDocuments(
 		return moduleResolutionResult{}
 	}
 
-	evaluator := tfeval.New()
+	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)

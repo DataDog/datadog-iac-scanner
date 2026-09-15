@@ -151,7 +151,7 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, modPath, v.FileName, "finding should be reported at the module resource definition")
 	require.Greater(t, v.Line, 0, "line should be detected in the module file")
 	require.NotNil(t, v.ModuleAttribution)
-	require.Equal(t, "stack/main.tf", v.ModuleAttribution.CodeLocation.Filename)
+	require.Equal(t, "stack/main.tf", v.ModuleAttribution.CallSite.Filename)
 	require.Equal(t, "direct", v.ModuleAttribution.DependencyType)
 	require.Equal(t, "bucket", v.ModuleAttribution.Name)
 	require.Equal(t, "modules/bucket", v.ModuleAttribution.Source)

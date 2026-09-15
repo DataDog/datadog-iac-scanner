@@ -562,15 +562,15 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 			primaryEnd := resourceEndLocation
 			resultProperties := sarifProperties{"tags": resultTags}
 			moduleAttribution := vulnerability.ModuleAttribution
-			if moduleAttribution != nil && moduleAttribution.CodeLocation.Filename != "" {
-				primaryURI = moduleAttribution.CodeLocation.Filename
+			if moduleAttribution != nil && moduleAttribution.CallSite.Filename != "" {
+				primaryURI = moduleAttribution.CallSite.Filename
 				primaryStart = model.SarifResourceLocation{
-					Line: moduleAttribution.CodeLocation.LineStart,
-					Col:  moduleAttribution.CodeLocation.ColumnStart,
+					Line: moduleAttribution.CallSite.LineStart,
+					Col:  moduleAttribution.CallSite.ColumnStart,
 				}
 				primaryEnd = model.SarifResourceLocation{
-					Line: moduleAttribution.CodeLocation.LineEnd,
-					Col:  moduleAttribution.CodeLocation.ColumnEnd,
+					Line: moduleAttribution.CallSite.LineEnd,
+					Col:  moduleAttribution.CallSite.ColumnEnd,
 				}
 				if primaryStart.Col <= 0 {
 					primaryStart.Col = 1

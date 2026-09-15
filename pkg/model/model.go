@@ -304,8 +304,9 @@ type Vulnerability struct {
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
-	// ModuleAttribution: declaration and body locations for instantiated module findings.
-	ModuleAttribution *ModuleAttribution `json:"-"`
+	// ModuleAttribution: provenance for instantiated module findings, serialized
+	// so content-push consumers can anchor them on the call site like SARIF does.
+	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
 }
 
 // Framework represents a framework mapping for a query

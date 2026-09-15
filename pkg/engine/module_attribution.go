@@ -76,7 +76,7 @@ func buildModuleAttribution(
 		SourceType:     leaf.SourceType,
 		Version:        leaf.Version,
 		DependencyType: dependencyType,
-		CodeLocation:   path[0].CodeLocation,
+		CallSite:       path[0].CodeLocation,
 		ModuleCodeLocation: model.SourceLocation{
 			Filename:    bodyFile,
 			LineStart:   r.DefLine,
@@ -163,6 +163,11 @@ func normalizedModuleSource(source, sourceType, callerRoot, repoPath string) str
 			return portablePathBase(localSource)
 		}
 		target := absPath(localSource, callerRoot)
+		// No repo root in content-push mode: keep the pushed shape rather than
+		// collapsing to a basename (same convention as repoRelativeFile).
+		if repoPath == "" {
+			return filepath.ToSlash(filepath.Clean(target))
+		}
 		if pathWithinRoot(target, repoPath) {
 			rel, _ := filepath.Rel(filepath.Clean(repoPath), target)
 			return filepath.ToSlash(rel)
@@ -242,6 +247,12 @@ func pathWithinRoot(path, root string) bool {
 }
 
 func repoRelativeFile(filePath, repoPath string) string {
+	// No repo root in content-push mode: the pushed path's shape is self-locating,
+	// and relativizing against the process CWD would corrupt it (an absolute path
+	// would collapse to its basename).
+	if repoPath == "" {
+		return filepath.ToSlash(filepath.Clean(filePath))
+	}
 	abs := absPath(filePath, repoPath)
 	rel, err := filepath.Rel(filepath.Clean(repoPath), abs)
 	if err != nil {
