@@ -88,7 +88,7 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 		}
 	}
 
-	lines := *file.LinesOriginalData
+	lines := file.Lines()
 
 	if tfpath.IsJSONConfig(file.FilePath) {
 		return detectJSONConfigLine(ctx, file, keyParts, extracted, outputLines)
@@ -135,7 +135,7 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 func detectJSONConfigLine(
 	ctx context.Context, file *model.FileMetadata, keyParts []string, extracted [][]string, outputLines int,
 ) model.VulnerabilityLines {
-	lines := *file.LinesOriginalData
+	lines := file.Lines()
 	current := 0
 	found := false
 	for _, part := range keyParts {
@@ -206,7 +206,7 @@ func buildEmptyVulnerabilityLines(file *model.FileMetadata) model.VulnerabilityL
 		VulnLines:      &[]model.CodeLine{},
 		ResolvedFile:   file.FilePath,
 		ResourceSource: "",
-		FileSource:     *file.LinesOriginalData,
+		FileSource:     file.Lines(),
 	}
 }
 

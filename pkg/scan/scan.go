@@ -228,6 +228,18 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 		return nil, nil
 	}
 
+	// The file Document maps are only needed after eval when exporting a JSON
+	// payload without line-info mode (Combine with lineInfo=false feeds
+	// ExportJSONReport). In every other case — SARIF output, line-info payload,
+	// or the in-memory server path — they can be dropped once the OPA payload is
+	// built, halving the document data held through the eval phase.
+	executeScanParameters.inspector.SetReleaseDocumentsAfterPayload(
+		c.ScanParams.PayloadPath == "" || c.ScanParams.LineInfoPayload)
+	// OriginalData is needed after eval only when the report reparses it for
+	// line-info documents (line-info payload mode). In every other case it can
+	// be dropped once all detectors and line-info reparses have completed.
+	executeScanParameters.inspector.SetReleasePostEvalData(!c.ScanParams.LineInfoPayload)
+
 	if executeScanParameters.moduleCleanup != nil {
 		defer executeScanParameters.moduleCleanup()
 	}

@@ -38,7 +38,7 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		ResolvedFiles:   d.prepareResolvedFiles(file.ResolvedFiles),
 	}
 
-	lines := *file.LinesOriginalData
+	lines := file.Lines()
 
 	// Terraform plan JSON is remapped under a top-level "resource" key, so the
 	// resource block has no source text to match. Resolve the searchKey path
