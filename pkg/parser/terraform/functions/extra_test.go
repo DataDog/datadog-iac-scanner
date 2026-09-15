@@ -6,6 +6,7 @@
 package functions
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/zclconf/go-cty/cty"
@@ -181,6 +182,53 @@ func TestEncodeAndHash(t *testing.T) {
 	if !got.RawEquals(cty.StringVal("5d41402abc4b2a76b9719d911017c592")) {
 		t.Fatalf("md5 = %#v", got)
 	}
+
+	got, err = Base64Sha256Func.Call([]cty.Value{cty.StringVal("hello")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.StringVal("LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ=")) {
+		t.Fatalf("base64sha256 = %#v", got)
+	}
+
+	encoded, err = TextEncodeBase64Func.Call([]cty.Value{cty.StringVal("hello!"), cty.StringVal("UTF-16LE")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !encoded.RawEquals(cty.StringVal("aABlAGwAbABvACEA")) {
+		t.Fatalf("textencodebase64 = %#v", encoded)
+	}
+	decoded, err = TextDecodeBase64Func.Call([]cty.Value{encoded, cty.StringVal("UTF-16LE")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.RawEquals(cty.StringVal("hello!")) {
+		t.Fatalf("textdecodebase64 = %#v", decoded)
+	}
+
+	replacement := base64.StdEncoding.EncodeToString([]byte("\uFFFD"))
+	decoded, err = TextDecodeBase64Func.Call([]cty.Value{cty.StringVal(replacement), cty.StringVal("UTF-8")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.RawEquals(cty.StringVal("\uFFFD")) {
+		t.Fatalf("textdecodebase64 U+FFFD = %#v", decoded)
+	}
+
+	gzipped, err := Base64GzipFunc.Call([]cty.Value{cty.StringVal("hello")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gzipped.AsString() == "" {
+		t.Fatal("base64gzip empty")
+	}
+	again, err := Base64GzipFunc.Call([]cty.Value{cty.StringVal("hello")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gzipped.RawEquals(again) {
+		t.Fatal("base64gzip is not deterministic")
+	}
 }
 
 func TestCidrFunctions(t *testing.T) {
@@ -252,5 +300,78 @@ func TestCidrFunctions(t *testing.T) {
 	}
 	if !got.RawEquals(cty.StringVal("8000::/64")) {
 		t.Fatalf("cidrsubnet ipv6 = %#v", got)
+	}
+}
+
+func TestPathTimeUUID(t *testing.T) {
+	t.Parallel()
+
+	got, err := BasenameFunc.Call([]cty.Value{cty.StringVal("/foo/bar.txt")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.StringVal("bar.txt")) {
+		t.Fatalf("basename = %#v", got)
+	}
+
+	got, err = DirnameFunc.Call([]cty.Value{cty.StringVal("/foo/bar.txt")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AsString() == "" {
+		t.Fatal("dirname empty")
+	}
+
+	got, err = PathExpandFunc.Call([]cty.Value{cty.StringVal("relative")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.StringVal("relative")) {
+		t.Fatalf("pathexpand relative = %#v", got)
+	}
+
+	got, err = TimeCmpFunc.Call([]cty.Value{
+		cty.StringVal("2017-11-22T00:00:00Z"),
+		cty.StringVal("2017-11-22T00:00:00Z"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.NumberIntVal(0)) {
+		t.Fatalf("timecmp equal = %#v", got)
+	}
+
+	got, err = TimeCmpFunc.Call([]cty.Value{
+		cty.StringVal("2017-11-22T00:00:00Z"),
+		cty.StringVal("2017-11-23T00:00:00Z"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.NumberIntVal(-1)) {
+		t.Fatalf("timecmp before = %#v", got)
+	}
+
+	got, err = UUIDV5Func.Call([]cty.Value{cty.StringVal("dns"), cty.StringVal("www.terraform.io")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.StringVal("a5008fae-b28c-5ba5-96cd-82b4c53552d6")) {
+		t.Fatalf("uuidv5 = %#v", got)
+	}
+}
+
+func TestTemplateString(t *testing.T) {
+	t.Parallel()
+
+	got, err := TerraformFuncs["templatestring"].Call([]cty.Value{
+		cty.StringVal("hello ${name}"),
+		cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("world")}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RawEquals(cty.StringVal("hello world")) {
+		t.Fatalf("templatestring = %#v", got)
 	}
 }

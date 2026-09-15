@@ -911,8 +911,14 @@ core,golang.org/x/sys/windows/registry,BSD-3-Clause,Copyright 2009 The Go Author
 core,golang.org/x/term,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/cases,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/encoding,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/encoding/charmap,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/encoding/ianaindex,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/encoding/internal,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/encoding/internal/identifier,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/encoding/japanese,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/encoding/korean,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/encoding/simplifiedchinese,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/encoding/traditionalchinese,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/encoding/unicode,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/feature/plural,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/internal,BSD-3-Clause,Copyright 2009 The Go Authors

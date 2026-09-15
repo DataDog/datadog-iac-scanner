@@ -23,6 +23,7 @@ import (
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -244,7 +245,7 @@ func (e *Evaluator) EvaluateModule(
 	visiting := map[string]bool{}
 	allVisited := map[string]bool{}
 	instantiatedBefore := e.instantiated
-	resources, outputs, err = e.evaluate(ctx, abs, "", inputs, "", nil, 0, visiting, allVisited)
+	resources, outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err != nil {
 		e.RestoreInstantiatedCount(instantiatedBefore)
 	}
@@ -255,7 +256,7 @@ func (e *Evaluator) EvaluateModule(
 // detection; allVisited accumulates every child dir successfully evaluated as a module.
 func (e *Evaluator) evaluate(
 	ctx context.Context,
-	dir string,
+	dir, rootDir string,
 	packageRoot string,
 	inputs map[string]cty.Value,
 	addr string,
@@ -270,6 +271,7 @@ func (e *Evaluator) evaluate(
 
 	cacheKey := evalCacheKey{
 		dir:         dir,
+		rootDir:     rootDir,
 		packageRoot: packageRoot,
 		inputs:      canonicalInputsKey(inputs),
 	}
@@ -302,7 +304,10 @@ func (e *Evaluator) evaluate(
 		Variables: map[string]cty.Value{
 			"var": objectOrEmpty(varVals),
 		},
-		Functions: e.funcs,
+		Functions: tffunctions.EvalFuncsWithRoot(dir, rootDir, vfs.DiskFS{}),
+	}
+	for name, value := range tffunctions.ContextVariables(dir, rootDir) {
+		evalCtx.Variables[name] = value
 	}
 
 	evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
@@ -311,10 +316,12 @@ func (e *Evaluator) evaluate(
 		return nil, nil, e.skipEvaluation(dir)
 	}
 
-	e.applySiblingModulePrepass(ctx, moduleBlocks, evalCtx, localExprs, dir, packageRoot, addr, chain, depth, visiting)
+	e.applySiblingModulePrepass(
+		ctx, moduleBlocks, evalCtx, localExprs, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, evalCtx, dir, packageRoot, addr, chain, depth, visiting, allVisited,
+		ctx, moduleBlocks, evalCtx, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
 	)
 
 	if len(moduleOutputs) > 0 {
@@ -566,7 +573,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	localExprs map[string]hclsyntax.Expression,
-	dir, packageRoot, addr string,
+	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
 	visiting map[string]bool,
@@ -575,7 +582,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 		return
 	}
 	prelimOutputs := e.preliminaryModuleOutputs(
-		ctx, moduleBlocks, evalCtx, dir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, evalCtx, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 	if len(prelimOutputs) == 0 {
 		return
@@ -589,7 +596,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
-	dir, packageRoot, addr string,
+	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
 	visiting map[string]bool,
@@ -651,7 +658,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		childAddr := joinAddr(addr, "module."+label)
 
 		childRes, childOuts, cErr := e.evaluate(
-			ctx, childDir, childPackageRoot, modInputs, childAddr,
+			ctx, childDir, rootDir, childPackageRoot, modInputs, childAddr,
 			append(cloneChain(chain), site), depth+1, visiting, allVisited,
 		)
 		if cErr != nil {
@@ -1083,7 +1090,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
-	dir, packageRoot, addr string,
+	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
 	visiting map[string]bool,
@@ -1132,7 +1139,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		childAddr := joinAddr(addr, "module."+label)
 		childChain := append(cloneChain(chain), site)
 		_, childOuts, _ := e.evaluate(
-			ctx, childDir, childPackageRoot, modInputs, childAddr, childChain,
+			ctx, childDir, rootDir, childPackageRoot, modInputs, childAddr, childChain,
 			depth+1, tmpVisiting, map[string]bool{},
 		)
 		if len(childOuts) > 0 {

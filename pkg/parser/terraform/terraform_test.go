@@ -18,6 +18,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
 var (
@@ -553,4 +555,29 @@ resource "aws_s3_bucket" "b%d" {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestParser_EvaluatesFileFunction(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("hello"), 0o644))
+	src := []byte(`resource "t" "x" { n = file("note.txt") }`)
+	tf := filepath.Join(dir, "main.tf")
+	parser := NewDefault()
+	_, docs, _, _, err := parser.Parse(context.Background(), src, tf, false, 0)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	n := docs[0]["resource"].(model.Document)["t"].(model.Document)["x"].(model.Document)["n"].(ctyjson.SimpleJSONValue)
+	require.True(t, n.Value.RawEquals(cty.StringVal("hello")))
+}
+
+func TestParser_WrapsEscapingFileFunction(t *testing.T) {
+	dir := t.TempDir()
+	src := []byte(`resource "t" "x" { n = file("../secret") }`)
+	tf := filepath.Join(dir, "main.tf")
+	parser := NewDefault()
+	_, docs, _, _, err := parser.Parse(context.Background(), src, tf, false, 0)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	n := docs[0]["resource"].(model.Document)["t"].(model.Document)["x"].(model.Document)["n"]
+	require.Equal(t, `${file("../secret")}`, n)
 }

@@ -40,7 +40,10 @@ func newTestServer(t *testing.T) *Server {
 
 const syntheticRuleID = "test-terraform-resource-missing-owner"
 
-var analyzeCompiledQueryCacheTestMu sync.Mutex
+var (
+	analyzeCompiledQueryCacheTestMu sync.Mutex
+	analyzeProcessCwdMu               sync.Mutex
+)
 
 // syntheticRule imports both test-only pushed libraries. Its identifiers and
 // behavior are deliberately unrelated to the production rule corpus.
@@ -207,6 +210,9 @@ resource "aws_s3_bucket" "b" { bucket = "x" }`},
 // result must not depend on where the binary was launched. CWD-independence is
 // the property this pins; the relative shape just follows the input's.
 func TestAnalyze_MissingFilesCWDIndependent(t *testing.T) {
+	analyzeProcessCwdMu.Lock()
+	t.Cleanup(analyzeProcessCwdMu.Unlock)
+
 	s := newTestServer(t)
 	rule := syntheticRule()
 	req := analyzeRequest{

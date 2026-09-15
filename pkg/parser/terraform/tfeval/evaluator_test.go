@@ -468,6 +468,39 @@ resource "aws_s3_bucket" "this" {
 	requireString(t, r.Attributes, "bucket", "hello-out")
 }
 
+func TestEvaluateModule_FilesystemContextValues(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{
+		"mod.txt": "module",
+		"main.tf": `
+resource "test_resource" "paths" {
+  module_file = file("${path.module}/mod.txt")
+  root_file   = file("${path.root}/root.txt")
+  cwd         = path.cwd
+  workspace   = terraform.workspace
+}
+`,
+	})
+	rootDir := writeModule(t, root, "root", map[string]string{
+		"root.txt": "root",
+		"main.tf": `
+module "child" {
+  source = "../child"
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	r := findResource(t, resources, "test_resource", "paths")
+	requireString(t, r.Attributes, "module_file", "module")
+	requireString(t, r.Attributes, "root_file", "root")
+	requireString(t, r.Attributes, "cwd", filepath.ToSlash(rootDir))
+	requireString(t, r.Attributes, "workspace", "default")
+}
+
 func TestEvaluateModule_TopLevelOutputsReturned(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{
@@ -1103,7 +1136,7 @@ func TestEvaluateLocalModuleBlocksIgnoresNullPreliminaryOutputs(t *testing.T) {
 	}()
 
 	_, outputs := New().evaluateLocalModuleBlocks(
-		context.Background(), nil, evalCtx, "", "", "", nil, 0, nil, nil,
+		context.Background(), nil, evalCtx, "", "", "", "", nil, 0, nil, nil,
 	)
 	if len(outputs) != 0 {
 		t.Fatalf("outputs = %#v, want empty", outputs)

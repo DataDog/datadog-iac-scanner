@@ -183,6 +183,26 @@ func TestMemFS_ReadDirAbsoluteKeys(t *testing.T) {
 	}
 }
 
+func TestMemFS_AbsIndependentOfProcessCWD(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	m := NewMemFS(map[string][]byte{
+		"infra/main.tf": []byte(`resource "aws_s3_bucket" "b" {}`),
+	})
+	for _, path := range []string{"infra/main.tf", "modules/networking"} {
+		got, err := m.Abs(path)
+		if err != nil {
+			t.Fatalf("Abs(%q): %v", path, err)
+		}
+		if filepath.IsAbs(got) {
+			t.Fatalf("Abs(%q) = %q, want workspace-relative path", path, got)
+		}
+		if got != path {
+			t.Fatalf("Abs(%q) = %q, want %q", path, got, path)
+		}
+	}
+}
+
 func TestMemFS_Paths(t *testing.T) {
 	m := newTestMemFS()
 	want := []string{"infra/main.tf", "infra/modules/net/main.tf", "infra/prod.auto.tfvars", "infra/variables.tf", "root.tf"}

@@ -312,6 +312,39 @@ func TestInstantiationBudget_BoundsTotalAcrossManyRoots(t *testing.T) {
 	}
 }
 
+func TestEvalCache_SeparatesPathRootValues(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "shared", map[string]string{
+		"main.tf": `
+output "root" {
+  value = path.root
+}
+`,
+	})
+	rootBody := `
+module "shared" {
+  source = "../shared"
+}
+
+resource "test_resource" "root" {
+  value = module.shared.root
+}
+`
+	rootA := writeModule(t, root, "root-a", map[string]string{"main.tf": rootBody})
+	rootB := writeModule(t, root, "root-b", map[string]string{"main.tf": rootBody})
+
+	e := New()
+	if _, _, _, err := e.EvaluateModule(context.Background(), rootA, nil); err != nil {
+		t.Fatalf("EvaluateModule(root-a): %v", err)
+	}
+	resources, _, _, err := e.EvaluateModule(context.Background(), rootB, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule(root-b): %v", err)
+	}
+	r := findResource(t, resources, "test_resource", "root")
+	requireString(t, r.Attributes, "value", filepath.ToSlash(rootB))
+}
+
 func TestEvalCache_DoesNotReuseDepthTruncatedResult(t *testing.T) {
 	root := t.TempDir()
 	leaf := filepath.Join(root, "leaf")
@@ -341,7 +374,7 @@ module "leaf" {
 	e := New()
 	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
 	partial, _, err := e.evaluate(
-		context.Background(), target, "", inputs, "module.deep", nil,
+		context.Background(), target, target, "", inputs, "module.deep", nil,
 		e.maxDepth, map[string]bool{}, map[string]bool{},
 	)
 	if err != nil {
@@ -350,13 +383,13 @@ module "leaf" {
 	if len(partial) != 1 {
 		t.Fatalf("deep evaluate returned %d resources, want the target resource only", len(partial))
 	}
-	key := evalCacheKey{dir: target, inputs: canonicalInputsKey(inputs)}
+	key := evalCacheKey{dir: target, rootDir: target, inputs: canonicalInputsKey(inputs)}
 	if _, ok := e.cache[key]; ok {
 		t.Fatal("depth-truncated evaluation was cached as complete")
 	}
 
 	complete, _, err := e.evaluate(
-		context.Background(), target, "", inputs, "module.shallow", nil,
+		context.Background(), target, target, "", inputs, "module.shallow", nil,
 		0, map[string]bool{}, map[string]bool{},
 	)
 	if err != nil {
@@ -407,7 +440,7 @@ module "mid" {
 	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
 	deepDepth := e.maxDepth - 1
 	deep, _, err := e.evaluate(
-		context.Background(), mid, "", inputs, "module.deep", nil,
+		context.Background(), mid, mid, "", inputs, "module.deep", nil,
 		deepDepth, map[string]bool{}, map[string]bool{},
 	)
 	if err != nil {
@@ -416,7 +449,7 @@ module "mid" {
 	if len(deep) != 2 {
 		t.Fatalf("deep evaluate returned %d resources, want mid and leaf", len(deep))
 	}
-	key := evalCacheKey{dir: mid, inputs: canonicalInputsKey(inputs)}
+	key := evalCacheKey{dir: mid, rootDir: mid, inputs: canonicalInputsKey(inputs)}
 	entry, ok := e.cache[key]
 	if !ok {
 		t.Fatal("expected mid module to cache its partial deep evaluation")
@@ -426,7 +459,7 @@ module "mid" {
 	}
 
 	shallow, _, err := e.evaluate(
-		context.Background(), mid, "", inputs, "module.shallow", nil,
+		context.Background(), mid, mid, "", inputs, "module.shallow", nil,
 		0, map[string]bool{}, map[string]bool{},
 	)
 	if err != nil {
