@@ -174,6 +174,24 @@ func TestTerraformPlanFlag(t *testing.T) {
 	}
 }
 
+// TestTerraformPlanHCLMappingFlag verifies the narrower x-terraform-plan-hcl-mapping flag is
+// defined, hidden, and defaults to false - mapping to HCL is opt-in even when x-terraform-plan
+// (tfplan scanning itself) is enabled.
+func TestTerraformPlanHCLMappingFlag(t *testing.T) {
+	var foundFlag *cli.BoolFlag
+	for _, flag := range scanAction.Flags {
+		if boolFlag, ok := flag.(*cli.BoolFlag); ok && boolFlag.Name == "x-terraform-plan-hcl-mapping" {
+			foundFlag = boolFlag
+			break
+		}
+	}
+
+	assert.NotNil(t, foundFlag, "x-terraform-plan-hcl-mapping flag should be defined")
+	assert.True(t, foundFlag.Hidden, "x-terraform-plan-hcl-mapping flag should be hidden")
+	assert.Equal(t, false, foundFlag.Value, "x-terraform-plan-hcl-mapping flag should default to false")
+	assert.Contains(t, foundFlag.Usage, "experimental", "flag usage should indicate experimental status")
+}
+
 func TestTerraformModuleFlagsUseAuthoritativeMode(t *testing.T) {
 	names := make(map[string]bool)
 	for _, flag := range scanAction.Flags {

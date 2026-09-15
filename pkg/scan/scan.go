@@ -82,8 +82,16 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 
 	// Fresh registry per scan; must be the same instance passed to both
 	// SetTFPlanRegistry below and NewWithParams in createService, or tfplan lookups miss silently.
-	addressRegistry := registry.New()
-	contextLogger.Info().Msg("Created new address registry for this scan")
+	//
+	// Left nil when ShouldMapTfPlanToHCL is off: the HCL parser skips address registration for a
+	// nil registry, and the TFPlan detector falls back to reporting findings against the plan JSON
+	// itself (its pre-mapping behavior) when the tracker's registry is nil - see
+	// resolveTFPlanSearchKeyAndLines in pkg/engine/vulnerability_builder.go.
+	var addressRegistry *registry.AddressRegistry
+	if c.ScanParams.ShouldMapTfPlanToHCL {
+		addressRegistry = registry.New()
+		contextLogger.Info().Msg("Created new address registry for this scan")
+	}
 
 	// Inject the registry into the tracker so the vulnerability builder can access it
 	c.Tracker.SetTFPlanRegistry(addressRegistry)

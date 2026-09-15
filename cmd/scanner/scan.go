@@ -159,6 +159,14 @@ var scanAction = &cli.Command{
 			Value:  false,
 		},
 		&cli.BoolFlag{
+			Name:   "x-terraform-plan-hcl-mapping",
+			Hidden: true,
+			Usage: "(experimental, will be removed soon) map terraform plan findings back to their HCL " +
+				"source line instead of reporting them against the plan JSON file; has no effect unless " +
+				"x-terraform-plan is also set",
+			Value: false,
+		},
+		&cli.BoolFlag{
 			Name:   "x-disable-rule-isolation",
 			Hidden: true,
 			Usage: "(experimental, will be removed soon) co-compile all rules and libraries into a " +
@@ -398,6 +406,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		FlagEvaluator:               getFeatureFlagEvaluator(c),
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
+		ShouldMapTfPlanToHCL:        c.Bool("x-terraform-plan-hcl-mapping"),
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 		TerraformModules:            modulesSetting,
 		NetworkIsolation:            offlineBundlePath != "",
