@@ -206,6 +206,14 @@ func TestFileFollowsInternalSymlink(t *testing.T) {
 	}
 }
 
+func matchGlob(pattern, name string) (bool, error) {
+	matchers, err := compileGlob(pattern)
+	if err != nil {
+		return false, err
+	}
+	return matchCompiledGlob(matchers, name)
+}
+
 func TestMatchGlobCharacterClass(t *testing.T) {
 	t.Parallel()
 
@@ -232,6 +240,77 @@ func TestMatchGlobCharacterClass(t *testing.T) {
 	ok, err = matchGlob("example/path**/file.tf", "example/pathX/nested/file.tf")
 	if err != nil || ok {
 		t.Fatalf("path** should not recurse: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestMatchGlobBraceContext(t *testing.T) {
+	t.Parallel()
+
+	// Escaped braces are literals, not alternation groups.
+	ok, err := matchGlob(`\{a}.txt`, `{a}.txt`)
+	if err != nil || !ok {
+		t.Fatalf(`\{a}.txt vs {a}.txt: ok=%v err=%v`, ok, err)
+	}
+	ok, err = matchGlob(`\{a}.txt`, `a.txt`)
+	if err != nil || ok {
+		t.Fatalf(`\{a}.txt should not match a.txt: ok=%v err=%v`, ok, err)
+	}
+	// Braces and commas inside a bracket class are literals.
+	ok, err = matchGlob(`[{a]bc}.txt`, `abc}.txt`)
+	if err != nil || !ok {
+		t.Fatalf(`[{a]bc}.txt vs abc}.txt: ok=%v err=%v`, ok, err)
+	}
+	ok, err = matchGlob(`[{a]bc}.txt`, `{bc}.txt`)
+	if err != nil || !ok {
+		t.Fatalf(`[{a]bc}.txt vs {bc}.txt: ok=%v err=%v`, ok, err)
+	}
+	ok, err = matchGlob(`[{,}].txt`, `,.txt`)
+	if err != nil || !ok {
+		t.Fatalf(`[{,}].txt vs ,.txt: ok=%v err=%v`, ok, err)
+	}
+	// Unmatched braces are literals.
+	ok, err = matchGlob(`{a.txt`, `{a.txt`)
+	if err != nil || !ok {
+		t.Fatalf(`{a.txt vs {a.txt: ok=%v err=%v`, ok, err)
+	}
+	// Escaped commas do not split alternation.
+	ok, err = matchGlob(`{a\,b,c}.txt`, `a,b.txt`)
+	if err != nil || !ok {
+		t.Fatalf(`{a\,b,c}.txt vs a,b.txt: ok=%v err=%v`, ok, err)
+	}
+	ok, err = matchGlob(`{a\,b,c}.txt`, `c.txt`)
+	if err != nil || !ok {
+		t.Fatalf(`{a\,b,c}.txt vs c.txt: ok=%v err=%v`, ok, err)
+	}
+	// Escapes still work in double-star patterns.
+	ok, err = matchGlob(`**/\{a}.txt`, `sub/{a}.txt`)
+	if err != nil || !ok {
+		t.Fatalf(`**/\{a}.txt vs sub/{a}.txt: ok=%v err=%v`, ok, err)
+	}
+}
+
+func TestCompileGlobIsPrecomputed(t *testing.T) {
+	t.Parallel()
+
+	matchers, err := compileGlob(`files/{hello,world}/**/*.txt`)
+	if err != nil {
+		t.Fatalf("compileGlob: %v", err)
+	}
+	if len(matchers) != 2 {
+		t.Fatalf("expected 2 expanded alternatives, got %d", len(matchers))
+	}
+	for _, m := range matchers {
+		if m.re == nil {
+			t.Fatalf("double-star alternative %q should be precompiled", m.pattern)
+		}
+	}
+	ok, err := matchCompiledGlob(matchers, "files/hello/sub/note.txt")
+	if err != nil || !ok {
+		t.Fatalf("precompiled matchers vs files/hello/sub/note.txt: ok=%v err=%v", ok, err)
+	}
+	ok, err = matchCompiledGlob(matchers, "files/other/note.txt")
+	if err != nil || ok {
+		t.Fatalf("precompiled matchers should not match files/other: ok=%v err=%v", ok, err)
 	}
 }
 

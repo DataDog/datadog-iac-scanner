@@ -92,6 +92,10 @@ func makeFileSetFunc(baseDir, rootDir string, fsys vfs.FS) function.Function {
 				}
 				return cty.NilVal, err
 			}
+			matchers, err := compileGlob(pattern)
+			if err != nil {
+				return cty.NilVal, function.NewArgError(1, err)
+			}
 			var matches []cty.Value
 			for _, full := range files {
 				rel, err := filepath.Rel(root, full)
@@ -99,7 +103,7 @@ func makeFileSetFunc(baseDir, rootDir string, fsys vfs.FS) function.Function {
 					continue
 				}
 				rel = filepath.ToSlash(rel)
-				ok, err := matchGlob(pattern, rel)
+				ok, err := matchCompiledGlob(matchers, rel)
 				if err != nil {
 					return cty.NilVal, function.NewArgError(1, err)
 				}
@@ -247,11 +251,44 @@ func walkRegularFiles(fsys vfs.FS, root string) ([]string, error) {
 	return out, nil
 }
 
-func matchGlob(pattern, name string) (bool, error) {
+// globMatcher is a single brace-expanded alternative of a fileset pattern,
+// precompiled so repeated matches against many files stay cheap.
+type globMatcher struct {
+	// pattern is set for alternatives handled by path.Match (no double-star).
+	pattern string
+	// re is set for double-star alternatives, which path.Match cannot express.
+	re *regexp.Regexp
+}
+
+// compileGlob expands brace alternations once and precompiles matchers, so the
+// per-file match step does not redo the expansion or regexp compilation.
+func compileGlob(pattern string) ([]globMatcher, error) {
 	pattern = filepath.ToSlash(pattern)
-	name = filepath.ToSlash(name)
+	var matchers []globMatcher
 	for _, alt := range expandBraces(pattern) {
-		ok, err := matchGlobOne(alt, name)
+		if !strings.Contains(alt, "**") {
+			matchers = append(matchers, globMatcher{pattern: alt})
+			continue
+		}
+		re, err := globToRegexp(alt)
+		if err != nil {
+			return nil, err
+		}
+		matchers = append(matchers, globMatcher{re: re})
+	}
+	return matchers, nil
+}
+
+func matchCompiledGlob(matchers []globMatcher, name string) (bool, error) {
+	name = filepath.ToSlash(name)
+	for _, m := range matchers {
+		if m.re != nil {
+			if m.re.MatchString(name) {
+				return true, nil
+			}
+			continue
+		}
+		ok, err := path.Match(m.pattern, name)
 		if err != nil {
 			return false, err
 		}
@@ -260,17 +297,6 @@ func matchGlob(pattern, name string) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-func matchGlobOne(pattern, name string) (bool, error) {
-	if !strings.Contains(pattern, "**") {
-		return path.Match(pattern, name)
-	}
-	re, err := globToRegexp(pattern)
-	if err != nil {
-		return false, err
-	}
-	return re.MatchString(name), nil
 }
 
 func expandBraces(pattern string) []string {
@@ -287,15 +313,51 @@ func expandBraces(pattern string) []string {
 	return out
 }
 
-func findBraceGroup(pattern string) (start, end int, ok bool) {
-	start = strings.IndexByte(pattern, '{')
-	if start < 0 {
-		return 0, 0, false
+// braceScanner tracks pattern context — backslash escapes and [...] classes —
+// so brace alternation syntax is only recognized where the glob syntax treats
+// it as special.
+type braceScanner struct {
+	inClass bool
+	escaped bool
+}
+
+// at returns true if pattern[i] is a literal character, i.e. not an escape
+// sequence and not inside a bracket class.
+func (s *braceScanner) at(pattern string, i int) bool {
+	if s.escaped {
+		s.escaped = false
+		return false
 	}
+	c := pattern[i]
+	switch {
+	case c == '\\':
+		s.escaped = true
+		return false
+	case s.inClass:
+		if c == ']' {
+			s.inClass = false
+		}
+		return false
+	case c == '[':
+		s.inClass = true
+		return false
+	default:
+		return true
+	}
+}
+
+func findBraceGroup(pattern string) (start, end int, ok bool) {
+	var s braceScanner
 	depth := 0
-	for i := start; i < len(pattern); i++ {
+	for i := 0; i < len(pattern); i++ {
+		if !s.at(pattern, i) {
+			continue
+		}
 		switch pattern[i] {
 		case '{':
+			if depth == 0 {
+				start = i
+			}
 			depth++
 		case '}':
 			depth--
@@ -309,8 +371,12 @@ func findBraceGroup(pattern string) (start, end int, ok bool) {
 
 func splitBraceAlts(inner string) []string {
 	var alts []string
+	var s braceScanner
 	depth, start := 0, 0
 	for i := 0; i < len(inner); i++ {
+		if !s.at(inner, i) {
+			continue
+		}
 		switch inner[i] {
 		case '{':
 			depth++
@@ -355,6 +421,9 @@ func globToRegexp(pattern string) (*regexp.Regexp, error) {
 			}
 			appendGlobClass(&b, pattern[i+1:i+1+end])
 			i += 1 + end
+		case pattern[i] == '\\' && i+1 < len(pattern):
+			b.WriteString(regexp.QuoteMeta(string(pattern[i+1])))
+			i++
 		default:
 			b.WriteString(regexp.QuoteMeta(string(pattern[i])))
 		}
