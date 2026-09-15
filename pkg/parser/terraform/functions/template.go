@@ -29,15 +29,10 @@ func makeTemplateStringFuncDepth(funcsCb func() map[string]function.Function, de
 			{Name: "str", Type: cty.String},
 			{Name: "vars", Type: cty.DynamicPseudoType},
 		},
-		Type: func(args []cty.Value) (cty.Type, error) {
-			if len(args) < 2 || !args[0].IsWhollyKnown() || !args[1].IsWhollyKnown() {
-				return cty.DynamicPseudoType, nil
-			}
-			val, err := renderTemplateString(args[0].AsString(), args[1], funcsCb, depth)
-			if err != nil {
-				return cty.DynamicPseudoType, err
-			}
-			return val.Type(), nil
+		// Render only in Impl: go-cty always calls Type before Impl, so
+		// rendering here as well would parse and evaluate every template twice.
+		Type: func([]cty.Value) (cty.Type, error) {
+			return cty.DynamicPseudoType, nil
 		},
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			return renderTemplateString(args[0].AsString(), args[1], funcsCb, depth)
@@ -60,15 +55,10 @@ func makeTemplateFileFuncDepth(
 			{Name: "path", Type: cty.String},
 			{Name: "vars", Type: cty.DynamicPseudoType},
 		},
-		Type: func(args []cty.Value) (cty.Type, error) {
-			if len(args) < 2 || !args[0].IsWhollyKnown() || !args[1].IsWhollyKnown() {
-				return cty.DynamicPseudoType, nil
-			}
-			val, err := renderTemplateFile(baseDir, rootDir, fsys, args[0].AsString(), args[1], funcsCb, depth)
-			if err != nil {
-				return cty.DynamicPseudoType, err
-			}
-			return val.Type(), nil
+		// Render only in Impl: go-cty always calls Type before Impl, so
+		// rendering here as well would read and parse every template twice.
+		Type: func([]cty.Value) (cty.Type, error) {
+			return cty.DynamicPseudoType, nil
 		},
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			return renderTemplateFile(baseDir, rootDir, fsys, args[0].AsString(), args[1], funcsCb, depth)

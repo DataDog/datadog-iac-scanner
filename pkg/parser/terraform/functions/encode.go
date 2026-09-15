@@ -106,6 +106,9 @@ var Base64GzipFunc = function.New(&function.Spec{
 		if _, err := gz.Write([]byte(args[0].AsString())); err != nil {
 			return cty.NilVal, err
 		}
+		if err := gz.Flush(); err != nil {
+			return cty.NilVal, err
+		}
 		if err := gz.Close(); err != nil {
 			return cty.NilVal, err
 		}
