@@ -222,6 +222,10 @@ const (
 	platformTag              = "DATADOG_PLATFORM:%s"
 	providerTag              = "DATADOG_PROVIDER:%s"
 	scannedFileCountTag      = "DATADOG_SCANNED_FILE_COUNT:%d"
+	// tfPlanSourceTag marks a finding that originated from a Terraform plan JSON document
+	// (Vulnerability.IsFromTFPlan), regardless of whether it's now reported against the
+	// resolved HCL file (see pkg/detector/tfplan_detect.go) or the plan file itself.
+	tfPlanSourceTag = "DATADOG_IAC_SOURCE:tfplan"
 
 	DOCKERFILE = "Dockerfile"
 )
@@ -488,6 +492,9 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 
 			// nolint:gocritic
 			resultTags := append(tags, resourceTypeTag, resourceNameTag)
+			if vulnerability.IsFromTFPlan {
+				resultTags = append(resultTags, tfPlanSourceTag)
+			}
 
 			resourceLocation := vulnerability.ResourceLocation
 
