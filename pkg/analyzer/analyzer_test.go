@@ -448,6 +448,90 @@ func Test_checkYamlPlatform_emptyFile(t *testing.T) {
 	}
 }
 
+func TestClassifyFile_SoftwareCatalogNotKubernetes(t *testing.T) {
+	// Shape of the customer-reported catalog-info.yaml: Backstage and Datadog
+	// Software Catalog entities reuse the apiVersion/kind document shape, but
+	// they are not Kubernetes manifests and must not be scanned as such.
+	catalog := []byte(`apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: scp-gena-py-tests
+spec:
+  type: service
+---
+apiVersion: datadog.com/v3
+kind: Service
+metadata:
+  name: scp-gena-py-tests
+  links:
+    - name: repo
+      url: https://github.com/org/repo
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: artifact
+spec:
+  type: openapi
+`)
+	path := filepath.Join(t.TempDir(), "catalog-info.yaml")
+	require.NoError(t, os.WriteFile(path, catalog, 0o600))
+
+	require.Equal(t, "",
+		ClassifyFile(context.Background(), nil, path, catalog, []string{""}))
+	require.Equal(t, "",
+		ClassifyFile(context.Background(), nil, path, catalog, platforms.Supported))
+}
+
+func TestClassifyFile_CatalogFileWithKubernetesDocStillScanned(t *testing.T) {
+	// A multi-document file mixing catalog entities with a real Kubernetes
+	// manifest still classifies as Kubernetes: only the apiVersion values are
+	// validated, never the file as a whole.
+	content := []byte(`apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: component
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: real-service
+`)
+	path := filepath.Join(t.TempDir(), "catalog-info.yaml")
+	require.NoError(t, os.WriteFile(path, content, 0o600))
+
+	require.Equal(t, "kubernetes",
+		ClassifyFile(context.Background(), nil, path, content, []string{""}))
+}
+
+func TestClassifyFile_CRDManifestStillKubernetes(t *testing.T) {
+	// Manifests of third-party CRDs (cert-manager, Argo, Datadog operator)
+	// reuse the apiVersion/kind shape with foreign groups; they remain
+	// Kubernetes files. The Datadog operator uses datadoghq.com, which is not
+	// part of the non-Kubernetes denylist.
+	tests := []struct {
+		name       string
+		apiVersion string
+	}{
+		{"core", "v1"},
+		{"grouped", "apps/v1"},
+		{"cert-manager", "cert-manager.io/v1"},
+		{"argo", "argoproj.io/v1alpha1"},
+		{"datadog operator", "datadoghq.com/v1alpha1"},
+		{"quoted json-style", `"apps/v1"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := []byte("apiVersion: " + tt.apiVersion + "\nkind: Deployment\nmetadata:\n  name: d\n")
+			path := filepath.Join(t.TempDir(), "manifest.yaml")
+			require.NoError(t, os.WriteFile(path, content, 0o600))
+
+			require.Equal(t, "kubernetes",
+				ClassifyFile(context.Background(), nil, path, content, []string{""}))
+		})
+	}
+}
+
 func TestClassifyFile_SwaggerOpenAPI(t *testing.T) {
 	content := []byte("swagger: \"2.0\"\ninfo:\n  title: api\n  version: v1\npaths: {}\n")
 	path := filepath.Join(t.TempDir(), "swagger.yaml")
