@@ -76,7 +76,7 @@ func buildModuleAttribution(
 		SourceType:     leaf.SourceType,
 		Version:        leaf.Version,
 		DependencyType: dependencyType,
-		CodeLocation:   path[0].CodeLocation,
+		CallSite:       path[0].CodeLocation,
 		ModuleCodeLocation: model.SourceLocation{
 			Filename:    bodyFile,
 			LineStart:   r.DefLine,

@@ -200,17 +200,16 @@ func isEmptyCollection(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) bool {
 }
 
 // LoadRootVars reads terraform.tfvars and *.auto.tfvars from dir and returns a
-// variable map for use as root-module inputs. Terraform loads terraform.tfvars
-// first, then *.auto.tfvars in lexicographic order; later files override earlier
-// ones. Files that fail to read or parse are silently skipped.
+// variable map for use as root-module inputs, reading through the evaluator's
+// filesystem. Terraform loads terraform.tfvars first, then *.auto.tfvars in
+// lexicographic order; later files override earlier ones. Files that fail to
+// read or parse are silently skipped.
 //
 // Candidates are Stat-probed before reading: MemFS records ReadFile misses as
 // escalation signals but not Stat misses, so the always-probed terraform.tfvars
 // must not surface as a missing file for a workspace that has none.
-func LoadRootVars(dir string, fsys vfs.FS) map[string]cty.Value {
-	if fsys == nil {
-		fsys = vfs.Default()
-	}
+func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
+	fsys := e.fsys
 	candidates := []string{filepath.Join(dir, "terraform.tfvars")}
 	entries, _ := fsys.ReadDir(dir)
 	var autoFiles []string

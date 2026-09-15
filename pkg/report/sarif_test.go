@@ -80,7 +80,7 @@ func TestPrintSarifReportPreservesModuleAttribution(t *testing.T) {
 				Source:         "modules/network",
 				SourceType:     "local",
 				DependencyType: "direct",
-				CodeLocation: model.SourceLocation{
+				CallSite: model.SourceLocation{
 					Filename: "stack/main.tf", LineStart: 2, LineEnd: 5, ColumnStart: 1, ColumnEnd: 2,
 				},
 				ModuleCodeLocation: model.SourceLocation{
@@ -97,7 +97,7 @@ func TestPrintSarifReportPreservesModuleAttribution(t *testing.T) {
 				SourceType:     "registry",
 				Version:        "1.2.3",
 				DependencyType: "transitive",
-				CodeLocation: model.SourceLocation{
+				CallSite: model.SourceLocation{
 					Filename: "stack/main.tf", LineStart: 2, LineEnd: 5, ColumnStart: 1, ColumnEnd: 2,
 				},
 				ModuleCodeLocation: model.SourceLocation{

@@ -17,8 +17,8 @@ import (
 
 func TestModuleAttributionSerializationContract(t *testing.T) {
 	attribution := &ModuleAttribution{
-		Name:         "bucket",
-		CodeLocation: SourceLocation{Filename: "infra/main.tf", LineStart: 1, LineEnd: 4},
+		Name:     "bucket",
+		CallSite: SourceLocation{Filename: "infra/main.tf", LineStart: 1, LineEnd: 4},
 	}
 
 	// Vulnerability is the content-push wire type: the IDE anchors instantiated

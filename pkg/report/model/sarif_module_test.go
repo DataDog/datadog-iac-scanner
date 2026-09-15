@@ -40,7 +40,7 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 				Source:         "modules/bucket",
 				SourceType:     "local",
 				DependencyType: "direct",
-				CodeLocation: model.SourceLocation{
+				CallSite: model.SourceLocation{
 					Filename:    "stack/main.tf",
 					LineStart:   2,
 					LineEnd:     2,
@@ -113,7 +113,7 @@ func TestBuildSarifIssue_RemoteModuleOmitsFix(t *testing.T) {
 				Source:         "registry.terraform.io/acme/bucket/aws",
 				SourceType:     "registry",
 				DependencyType: "direct",
-				CodeLocation: model.SourceLocation{
+				CallSite: model.SourceLocation{
 					Filename:  "stack/main.tf",
 					LineStart: 2,
 					LineEnd:   5,

@@ -24,7 +24,7 @@ type ModulePathHop struct {
 }
 
 // ModuleAttribution carries module provenance for instantiated Terraform
-// findings. CodeLocation is the call-site declaration the finding anchors on
+// findings. CallSite is the call-site declaration the finding anchors on
 // (SARIF primary location, IDE code bit); ModuleCodeLocation is the defining
 // location inside the module, relative to the module root.
 type ModuleAttribution struct {
@@ -33,7 +33,7 @@ type ModuleAttribution struct {
 	SourceType         string          `json:"source_type,omitempty"`
 	Version            string          `json:"version,omitempty"`
 	DependencyType     string          `json:"dependency_type,omitempty"`
-	CodeLocation       SourceLocation  `json:"call_site,omitempty"`
+	CallSite           SourceLocation  `json:"call_site,omitempty"`
 	ModuleCodeLocation SourceLocation  `json:"code_location,omitempty"`
 	ModulePath         []ModulePathHop `json:"module_path,omitempty"`
 	ModuleCodeOwned    bool            `json:"-"`

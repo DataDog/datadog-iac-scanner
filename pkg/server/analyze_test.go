@@ -445,12 +445,12 @@ func TestAnalyze_LocalModuleInstantiation(t *testing.T) {
 			t.Errorf("expected moduleAttribution on the instantiated finding")
 			continue
 		}
-		if attr.CodeLocation.Filename != "infra/main.tf" {
-			t.Errorf("call_site filename = %q, want infra/main.tf", attr.CodeLocation.Filename)
+		if attr.CallSite.Filename != "infra/main.tf" {
+			t.Errorf("call_site filename = %q, want infra/main.tf", attr.CallSite.Filename)
 		}
-		if attr.CodeLocation.LineStart != 1 || attr.CodeLocation.LineEnd != 4 {
+		if attr.CallSite.LineStart != 1 || attr.CallSite.LineEnd != 4 {
 			t.Errorf("call_site lines = %d-%d, want the module block 1-4",
-				attr.CodeLocation.LineStart, attr.CodeLocation.LineEnd)
+				attr.CallSite.LineStart, attr.CallSite.LineEnd)
 		}
 		if attr.ModuleCodeLocation.Filename != "main.tf" {
 			t.Errorf("code_location filename = %q, want module-relative main.tf", attr.ModuleCodeLocation.Filename)
@@ -598,7 +598,7 @@ func TestAnalyze_LocalModuleAbsolutePathShape(t *testing.T) {
 			continue
 		}
 		sawCallSite = true
-		if got := f.ModuleAttribution.CodeLocation.Filename; got != "/tmp/ws/infra/main.tf" {
+		if got := f.ModuleAttribution.CallSite.Filename; got != "/tmp/ws/infra/main.tf" {
 			t.Errorf("call_site filename = %q, want the pushed absolute shape /tmp/ws/infra/main.tf", got)
 		}
 		if got := f.FileName; got != "/tmp/ws/modules/networking/main.tf" {

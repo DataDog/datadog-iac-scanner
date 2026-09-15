@@ -346,7 +346,6 @@ func evaluateRootModules(
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
 	lookup moduleProvenanceLookup,
-	fsys vfs.FS,
 	byAbsPath map[string]*model.FileMetadata,
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
@@ -362,7 +361,7 @@ func evaluateRootModules(
 	contextLogger := logger.FromContext(ctx)
 	for _, dir := range roots {
 		evaluator.ResetSpeculativeBudget()
-		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, tfeval.LoadRootVars(dir, fsys))
+		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVars(dir))
 		if err != nil {
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
 			for _, called := range discoverCalledModuleClosure(
@@ -516,7 +515,7 @@ func resolveModuleDocuments(
 	sort.Strings(roots)
 
 	evaluateRootModules(
-		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets, lookup, fsys,
+		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK,
