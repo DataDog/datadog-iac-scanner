@@ -91,6 +91,54 @@ type Service struct {
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
 	// so their raw template files are not mistaken for parse bugs in sink.
 	failedHelmChartDirs map[string]struct{}
+	// contentInterner dedups OriginalData strings across files with identical
+	// content. Large repositories (e.g. community-operators) ship the same
+	// CRD/manifest across many operator versions, so 47%+ of files can be exact
+	// duplicates; sharing one string backing array cuts the retained content
+	// roughly in half. Guarded by contentInternerMu.
+	contentInternerMu sync.Mutex
+	contentInterner   map[string]string
+}
+
+// contentInternerMaxBytes caps the size of content eligible for interning.
+// Above this, a single map key's string copy costs more than the duplication
+// it would save, and huge files are rarely duplicated.
+const contentInternerMaxBytes = 1 << 20 // 1 MiB
+
+// internContent returns a shared copy of content. Identical content strings
+// map to the same backing array, so duplicate files retain a single copy of
+// OriginalData instead of one per file. The map key is the content itself; for
+// interned entries the key string shares storage with the value, so the
+// overhead is one map slot per unique file.
+//
+// ClearContentInterner drops the interner map after the prepare phase so its
+// map entries (which pin the shared strings) don't defeat the post-eval
+// OriginalData release. The shared strings stay alive via FileMetadata until
+// those are released.
+func (s *Service) internContent(content string) string {
+	if content == "" || len(content) > contentInternerMaxBytes {
+		return content
+	}
+	s.contentInternerMu.Lock()
+	defer s.contentInternerMu.Unlock()
+	if s.contentInterner == nil {
+		s.contentInterner = make(map[string]string)
+	}
+	if existing, ok := s.contentInterner[content]; ok {
+		return existing
+	}
+	s.contentInterner[content] = content
+	return content
+}
+
+// ClearContentInterner drops the content interner map. Call after the prepare
+// phase: the map's keys pin the shared content strings, which would otherwise
+// defeat the post-eval OriginalData release. The strings remain alive via
+// FileMetadata.OriginalData until those are released.
+func (s *Service) ClearContentInterner() {
+	s.contentInternerMu.Lock()
+	s.contentInterner = nil
+	s.contentInternerMu.Unlock()
 }
 
 func (s *Service) recordFailedHelmChart(chartDir string) {

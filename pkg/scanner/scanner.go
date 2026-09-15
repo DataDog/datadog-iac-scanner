@@ -44,6 +44,9 @@ func PrepareAndScan(
 		// of the scan. Release the cache before eval so it isn't held through
 		// the memory-intensive query phase.
 		fsp.ReleaseContentCache()
+		for _, s := range services {
+			s.ClearContentInterner()
+		}
 		return StartScan(ctx, scanID, services)
 	}
 
@@ -75,6 +78,9 @@ func PrepareAndScan(
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if fsp, ok := runner.SharedWalkProvider(services); ok {
 			fsp.ReleaseContentCache()
+		}
+		for _, s := range services {
+			s.ClearContentInterner()
 		}
 		return StartScan(ctx, scanID, services)
 	case err := <-errCh:
