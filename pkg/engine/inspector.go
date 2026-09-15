@@ -71,6 +71,15 @@ const (
 // may take before it is logged as slow. We surface slow rules so they can be optimized later.
 const slowQueryWarnThreshold = 60 * time.Second
 
+// preEvalGcFileThreshold is the minimum number of parsed files at which an
+// explicit GC before OPA evaluation pays off. Below this, the Document heap
+// is small enough that the natural GC collects it before the OPA payload grows
+// the heap, and an explicit GC would just trigger the scavenger to return
+// pages to the OS prematurely (causing fragmentation when the payload is
+// allocated). Above this, the Document heap is large enough that without an
+// explicit collection it coexists with the OPA payload and drives the peak RSS.
+const preEvalGcFileThreshold = 10000
+
 // ErrNoResult - error representing when a query didn't return a result
 var ErrNoResult = errors.New("query: not result")
 
@@ -603,13 +612,17 @@ func (c *Inspector) Inspect(
 		// payload (a second full copy of the same data); without a collection
 		// here both coexist and drive the process peak RSS. One explicit GC
 		// before the CPU-bound phase reclaims ~the Document heap now, and the
-		// smaller live set also reduces GC pauses during eval. This is a
-		// one-time collection, not a GOGC change. We deliberately do NOT call
-		// debug.FreeOSMemory() here: the OPA payload is about to allocate a
-		// similar amount, and returning pages to the OS only to re-fault them
-		// back in causes heap fragmentation and a higher peak RSS on
-		// memory-intensive repos.
-		runtime.GC()
+		// smaller live set also reduces GC pauses during eval.
+		//
+		// Only do this for large file sets: on small repos the explicit GC
+		// triggers the Go scavenger to return pages to the OS right before the
+		// OPA payload allocation grows the heap with fresh pages, causing
+		// fragmentation and a higher peak RSS. For small repos the natural GC
+		// collects the Document maps quickly enough that the peak is lower
+		// without the explicit collection.
+		if len(filesMap) > preEvalGcFileThreshold {
+			runtime.GC()
+		}
 	}
 
 	// Pre-build one inmem.Store per platform so LoadQuery does not re-parse the
@@ -691,21 +704,27 @@ func (c *Inspector) executeQueries(
 	// the live set. A background ticker forces a collection during eval to
 	// reclaim that garbage promptly. This does not change GOGC; the STW cost is
 	// a handful of ~tens-of-ms pauses spread across a multi-minute eval.
-	const evalGcInterval = 15 * time.Second
-	gcCtx, gcCancel := context.WithCancel(ctx)
-	defer gcCancel()
-	go func() {
-		ticker := time.NewTicker(evalGcInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				runtime.GC()
-			case <-gcCtx.Done():
-				return
+	//
+	// Only run the ticker for large file sets where eval is long enough for
+	// garbage to accumulate; on small repos eval finishes in seconds and the
+	// ticker would just cause unnecessary scavenging and heap fragmentation.
+	if len(filesMap) > preEvalGcFileThreshold {
+		const evalGcInterval = 15 * time.Second
+		gcCtx, gcCancel := context.WithCancel(ctx)
+		defer gcCancel()
+		go func() {
+			ticker := time.NewTicker(evalGcInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					runtime.GC()
+				case <-gcCtx.Done():
+					return
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	// Evaluate each query in parallel. Eval is CPU-bound (Rego), so the pool
 	// draws from the process-wide CPU budget: when this scan runs as one of N
