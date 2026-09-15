@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -248,6 +249,23 @@ type Inspector struct {
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
 	mergeAllow             map[string]struct{}
+	// releaseDocumentsAfterPayload drops each file's Document map once the
+	// per-platform OPA payload has been built from it. The Document (the
+	// clean, _dd_lines-stripped parsed tree) is only consumed again by the
+	// report's Combine when a JSON payload export is requested without
+	// line-info mode; in every other case (SARIF output, line-info payload,
+	// or the in-memory server path) it is dead weight through the entire eval
+	// phase, where it roughly doubles the document data held alongside the
+	// OPA ast.Value representation. Dropping it cuts the eval-time peak heap
+	// on large repositories without affecting results.
+	releaseDocumentsAfterPayload bool
+	// releasePostEvalData drops OriginalData and LinesOriginalData after all
+	// queries have been evaluated. By that point every detector has run and
+	// every finding's LineInfoDocument has been lazily reparsed, so the raw
+	// file content and its line split are no longer referenced. This is only
+	// safe when the report will not need to reparse OriginalData for line
+	// info (i.e. line-info payload mode is off); the caller gates it.
+	releasePostEvalData bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -284,6 +302,22 @@ func (c *Inspector) buildModuleProvenanceLookup() moduleProvenanceLookup {
 		}
 		return RemoteModuleProvenance{}, false
 	}
+}
+
+// SetReleaseDocumentsAfterPayload configures whether Inspect drops each
+// file's Document map after building the OPA payloads. Callers should set this
+// to true unless they will later consume Combine's output with lineInfo=false
+// (i.e. a JSON payload export without line-info mode).
+func (c *Inspector) SetReleaseDocumentsAfterPayload(release bool) {
+	c.releaseDocumentsAfterPayload = release
+}
+
+// SetReleasePostEvalData configures whether Inspect drops OriginalData and
+// LinesOriginalData after all queries have been evaluated. Callers should set
+// this to true unless the report will later need to reparse OriginalData for
+// line-info documents (i.e. line-info payload mode is on).
+func (c *Inspector) SetReleasePostEvalData(release bool) {
+	c.releasePostEvalData = release
 }
 
 func (c *Inspector) SetExternalModulePaths(paths []string) {
@@ -552,6 +586,29 @@ func (c *Inspector) Inspect(
 		return nil, err
 	}
 
+	// The OPA payload is a self-contained deep copy into ast.Value; the file
+	// Document maps it was built from are no longer referenced by the engine
+	// (result decoding uses LineInfoDocument, reparsed lazily from OriginalData,
+	// plus LinesOriginalData/OriginalData via detectors). Drop them now so the
+	// eval phase doesn't carry ~2x the document data. The report only needs
+	// Document for a JSON payload export without line-info, which the caller
+	// signals by leaving releaseDocumentsAfterPayload unset.
+	if c.releaseDocumentsAfterPayload {
+		for _, f := range filesMap {
+			f.Document = nil
+			f.SetReleaseOriginalDataAfterLineInfo(c.releasePostEvalData)
+		}
+		// The Document maps are now unreachable but the runtime won't reclaim
+		// them until the next GC. Eval is about to allocate the OPA ast.Value
+		// payload (a second full copy of the same data); without a collection
+		// here both coexist and drive the process peak RSS. One explicit GC
+		// before the CPU-bound phase reclaims ~the Document heap now, and the
+		// smaller live set also reduces GC pauses during eval. This is a
+		// one-time collection, not a GOGC change.
+		runtime.GC()
+		debug.FreeOSMemory()
+	}
+
 	// Pre-build one inmem.Store per platform so LoadQuery does not re-parse the
 	// same payload for every PrepareForEval call. The per-platform data hash is
 	// folded into each compiled-query cache key so a compiled query is only
@@ -587,7 +644,27 @@ func (c *Inspector) Inspect(
 	if err != nil {
 		return nil, err
 	}
+
+	c.releasePostEvalFileData(filesMap)
+
 	return expandModuleFindings(vulnerabilities, moduleExtras), nil
+}
+
+// releasePostEvalFileData drops OriginalData and LinesOriginalData after all
+// queries have been evaluated. By that point every detector has run and every
+// finding's LineInfoDocument has been lazily reparsed, so the raw file content
+// and its line split are no longer referenced. Reclaiming them here (plus one
+// GC) drops ~the raw input content from the live set before the report phase.
+// Only called when releasePostEvalData is set (gated by the caller).
+func (c *Inspector) releasePostEvalFileData(filesMap map[string]*model.FileMetadata) {
+	if !c.releasePostEvalData {
+		return
+	}
+	for _, f := range filesMap {
+		f.ReleasePostEvalData()
+	}
+	runtime.GC()
+	debug.FreeOSMemory()
 }
 
 // executeQueries runs all prepared queries concurrently and collects vulnerabilities.
@@ -604,6 +681,28 @@ func (c *Inspector) executeQueries(
 ) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
+
+	// OPA evaluation generates massive transient allocations (bindings, result
+	// sets, intermediate ast.Values) that the default GC pace can't keep up
+	// with, so garbage accumulates and drives the process peak RSS well above
+	// the live set. A background ticker forces a collection during eval to
+	// reclaim that garbage promptly. This does not change GOGC; the STW cost is
+	// a handful of ~tens-of-ms pauses spread across a multi-minute eval.
+	const evalGcInterval = 15 * time.Second
+	gcCtx, gcCancel := context.WithCancel(ctx)
+	defer gcCancel()
+	go func() {
+		ticker := time.NewTicker(evalGcInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				runtime.GC()
+			case <-gcCtx.Done():
+				return
+			}
+		}
+	}()
 
 	// Evaluate each query in parallel. Eval is CPU-bound (Rego), so the pool
 	// draws from the process-wide CPU budget: when this scan runs as one of N

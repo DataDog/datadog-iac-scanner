@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"io"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -29,6 +30,9 @@ import (
 
 const (
 	mbConst = 1048576
+	// terraformPlanResourceKey is the top-level subtree whose pattern
+	// rewriting is preserved verbatim in Terraform-plan documents.
+	terraformPlanResourceKey = "resource"
 )
 
 // scanReadBufferPool reuses the 1 MiB read buffers handed to getContent so we
@@ -345,6 +349,93 @@ func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind 
 	return bodyMap
 }
 
+// errCyclicDocument is returned by sanitizeScanDocumentInPlace when a YAML
+// anchor/alias cycle is detected. The JSON round-trip path rejects such
+// documents via json.Marshal and skips them; this sentinel preserves that
+// behavior for the in-place path.
+var errCyclicDocument = errors.New("cyclic document tree")
+
+// sanitizeScanDocumentInPlace strips _dd_lines and resolves JSON filters
+// directly on body, avoiding the JSON round-trip deep copy that
+// prepareScanDocument performs. The deep copy duplicates the entire document
+// tree in memory for every file and is the dominant heap/CPU cost on large
+// repositories; it is only needed when body is shared with the line-info
+// document (so it must not be mutated). After the lazy line-info refactor the
+// main file sink reconstructs LineInfoDocument by reparsing OriginalData, so
+// body is exclusively owned and can be sanitized in place — exactly as the
+// Helm resolved path already does.
+//
+// YAML anchors/aliases can form cycles, which json.Marshal rejects; we detect
+// cycles with a pointer-identity recursion stack and return errCyclicDocument
+// so the caller skips the document, preserving the round-trip path's behavior.
+func sanitizeScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
+	stack := make(map[uintptr]bool)
+	if err := sanitizeScanDocumentNodeInPlace(body, kind, true, true, stack); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func sanitizeScanDocumentNodeInPlace(
+	body interface{},
+	kind model.FileKind,
+	resolveFilters, atDocumentRoot bool,
+	stack map[uintptr]bool,
+) error {
+	switch bodyType := body.(type) {
+	case map[string]interface{}:
+		return sanitizeScanDocumentValueInPlace(bodyType, kind, resolveFilters, atDocumentRoot, stack)
+	case []interface{}:
+		for _, indx := range bodyType {
+			if err := sanitizeScanDocumentNodeInPlace(indx, kind, resolveFilters, false, stack); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func sanitizeScanDocumentValueInPlace(
+	bodyType map[string]interface{},
+	kind model.FileKind,
+	resolveFilters, atDocumentRoot bool,
+	stack map[uintptr]bool,
+) error {
+	ptr := reflect.ValueOf(bodyType).Pointer()
+	if stack[ptr] {
+		return errCyclicDocument
+	}
+	stack[ptr] = true
+	defer delete(stack, ptr)
+
+	delete(bodyType, "_dd_lines")
+	for key, v := range bodyType {
+		childResolveFilters := resolveFilters
+		if kind == model.KindTerraformPlan && atDocumentRoot {
+			childResolveFilters = key == terraformPlanResourceKey
+		}
+		switch value := v.(type) {
+		case map[string]interface{}:
+			if err := sanitizeScanDocumentNodeInPlace(value, kind, childResolveFilters, false, stack); err != nil {
+				return err
+			}
+		case []interface{}:
+			for _, indx := range value {
+				if err := sanitizeScanDocumentNodeInPlace(indx, kind, childResolveFilters, false, stack); err != nil {
+					return err
+				}
+			}
+		case string:
+			if resolveFilters {
+				if field, ok := lines[kind]; ok && utils.Contains(key, field) {
+					bodyType[key] = resolveJSONFilter(value)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // prepareScanDocument deep-copies body (via a single JSON round-trip), strips
 // _dd_lines and resolves json filters. Returning the error lets callers that
 // already gate on marshalability skip the document instead of double-marshaling.
@@ -383,7 +474,7 @@ func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKi
 	for key, v := range bodyType {
 		childResolveFilters := resolveFilters
 		if kind == model.KindTerraformPlan && atDocumentRoot {
-			childResolveFilters = key == "resource"
+			childResolveFilters = key == terraformPlanResourceKey
 		}
 		switch value := v.(type) {
 		case map[string]interface{}:

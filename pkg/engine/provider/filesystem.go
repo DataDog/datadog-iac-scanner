@@ -309,6 +309,21 @@ func (s *FileSystemSourceProvider) ContentCache() map[string][]byte {
 	return s.contentCache
 }
 
+// ReleaseContentCache drops the analyzer's cached file bytes. The cache is only
+// needed during the prepare/sink phase so dispatchFile can reuse the bytes the
+// analyzer already read instead of re-reading from disk; once files are parsed
+// their content lives on in each FileMetadata.OriginalData, so holding the
+// raw-byte cache through the eval phase duplicates ~the entire input set. The
+// map is shared with the scan Client, so clearing entries here releases the
+// bytes for both references.
+func (s *FileSystemSourceProvider) ReleaseContentCache() {
+	if s.contentCache != nil {
+		for k := range s.contentCache {
+			delete(s.contentCache, k)
+		}
+	}
+}
+
 // BuildInventoryFromPrebuilt renders Helm charts and filters pre-collected paths.
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
 	extensions model.Extensions,

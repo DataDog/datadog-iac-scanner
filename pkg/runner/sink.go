@@ -17,7 +17,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
-	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -105,23 +104,22 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		})
 	}
 
+	// LinesOriginalData is computed lazily from OriginalData on first access
+	// (see FileMetadata.Lines). Most files never produce a finding, so deferring
+	// the SplitLines allocation avoids retaining a full line-slice copy of every
+	// file for the entire scan.
 	fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
 
-	// Computed once per file and shared (same pointer) across every document's
-	// FileMetadata below: documents.Content is identical for every document of
-	// a file, so splitting it inside the loop re-split (and separately
-	// retained) the whole file once per document — a multi-document YAML file
-	// (e.g. "---"-separated Kubernetes manifests) with N documents paid N
-	// times the memory and CPU for the exact same line slice.
-	linesOriginalData := utils.SplitLines(documents.Content)
-
 	for docIdx, document := range documents.Docs {
-		// Deep-copy + sanitize the document with a single marshal. A marshal
-		// failure means the document can't be scanned, so skip it (preserving
-		// the previous skip-on-unmarshalable-document behavior).
-		preparedDocument, err := prepareScanDocument(document, documents.Kind)
+		// Sanitize in place: line info is reconstructed lazily by reparsing
+		// OriginalData (see SetLineInfoLoader below), so this document tree
+		// is exclusively owned and can be mutated without corrupting the
+		// line-info document. This avoids the JSON round-trip deep copy that
+		// prepareScanDocument performs, which was the dominant heap/CPU cost.
+		// A cyclic YAML anchor/alias tree is rejected (as json.Marshal would).
+		preparedDocument, err := sanitizeScanDocumentInPlace(document, documents.Kind)
 		if err != nil {
-			contextLogger.Err(err).Msgf("failed to marshal document for file: %s", filename)
+			contextLogger.Err(err).Msgf("failed to sanitize document for file: %s", filename)
 			continue
 		}
 
@@ -130,21 +128,21 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		}
 
 		file := model.FileMetadata{
-			ID:                uuid.New().String(),
-			ScanID:            scanID,
-			Document:          preparedDocument,
-			OriginalData:      documents.Content,
-			Kind:              documents.Kind,
-			FilePath:          filename,
-			Commands:          fileCommands,
-			LinesIgnore:       documents.IgnoreLines,
-			ResolvedFiles:     documents.ResolvedFiles,
-			LinesOriginalData: linesOriginalData,
-			IsMinified:        documents.IsMinified,
-			Platform:          s.classifyPlatform(ctx, documents.Kind, filename, *content),
+			ID:            uuid.New().String(),
+			ScanID:        scanID,
+			Document:      preparedDocument,
+			OriginalData:  documents.Content,
+			Kind:          documents.Kind,
+			FilePath:      filename,
+			Commands:      fileCommands,
+			LinesIgnore:   documents.IgnoreLines,
+			ResolvedFiles: documents.ResolvedFiles,
+			IsMinified:    documents.IsMinified,
+			Platform:      s.classifyPlatform(ctx, documents.Kind, filename, *content),
 		}
 		file.SetLineInfoLoader(newLineInfoLoader(
 			s.Parser, filename, docIdx, openAPIResolveReferences, c.IsMinified, maxResolverDepth))
+		file.SetLazyLines()
 
 		s.saveToFile(ctx, &file)
 	}

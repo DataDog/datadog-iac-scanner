@@ -8,11 +8,11 @@ package model
 import (
 	"bytes"
 	"context"
-	json "encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -134,9 +134,13 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 		// set line information for root level objects
 		mapDcp["_dd_lines"] = getLines(value, 0)
 
-		// place the payload in the Document struct
-		tmp, _ := json.Marshal(mapDcp)
-		_ = json.Unmarshal(tmp, m)
+		// Place the payload in the Document struct. mapDcp is freshly built by
+		// unmarshal above and exclusively owned, so assign it directly instead
+		// of deep-copying via a JSON round-trip. That round-trip was the dominant
+		// allocation/CPU cost of YAML parsing (marshal buffer + full re-decode of
+		// every document); scalarNodeResolver already normalizes timestamp
+		// scalars the way json.Marshal did, so downstream sees the same value types.
+		*m = mapDcp
 		return nil
 	}
 	return errors.New("failed to parse yaml content")
@@ -522,7 +526,46 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 		contextLogger.Error().Msgf("failed to decode scalar in yaml parser: %q", val.Value)
 		return val.Value
 	}
-	return resolved
+	return normalizeScalar(resolved)
+}
+
+// normalizeScalar maps a decoded YAML scalar to the value type the previous
+// JSON round-trip in UnmarshalYAML produced, so downstream consumers (the
+// engine, rules, and the JSON payload export) see identical types without
+// that round-trip: numbers become float64 (json.Unmarshal always yields
+// float64) and timestamp scalars — decoded by yaml.v3 to time.Time — become
+// RFC3339 strings (json.Marshal of time.Time).
+func normalizeScalar(resolved interface{}) interface{} {
+	switch v := resolved.(type) {
+	case time.Time:
+		return v.Format(time.RFC3339Nano)
+	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case int16:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint:
+		return float64(v)
+	case uint8:
+		return float64(v)
+	case uint16:
+		return float64(v)
+	case uint32:
+		return float64(v)
+	case uint64:
+		return float64(v)
+	case float32:
+		return float64(v)
+	case float64:
+		return v
+	default:
+		return resolved
+	}
 }
 
 // rewriteCFNShortFormIntrinsic converts a short-form CFN intrinsic to its long-form map.
