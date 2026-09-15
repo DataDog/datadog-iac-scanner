@@ -84,7 +84,7 @@ func makeFileSetFunc(baseDir, rootDir string, fsys vfs.FS) function.Function {
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
-			pattern := filepath.ToSlash(args[1].AsString())
+			pattern := args[1].AsString()
 			files, err := walkRegularFiles(fsys, root)
 			if err != nil {
 				if isNotExist(err) {
@@ -263,7 +263,12 @@ type globMatcher struct {
 // compileGlob expands brace alternations once and precompiles matchers, so the
 // per-file match step does not redo the expansion or regexp compilation.
 func compileGlob(pattern string) ([]globMatcher, error) {
-	pattern = filepath.ToSlash(pattern)
+	// The pattern is deliberately NOT passed through filepath.ToSlash: on
+	// Windows that would rewrite the glob escape character (backslash) into a
+	// path separator, breaking escapes like `\{a}.txt`. Terraform fileset
+	// patterns always use `/` as the path separator on every OS, so the
+	// pattern is used as-is; only candidate names are normalized to `/` in
+	// matchCompiledGlob.
 	var matchers []globMatcher
 	for _, alt := range expandBraces(pattern) {
 		if !strings.Contains(alt, "**") {
