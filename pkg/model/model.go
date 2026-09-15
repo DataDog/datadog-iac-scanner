@@ -96,6 +96,13 @@ type VulnerabilityLines struct {
 	ResourceSource         string
 	FileSource             []string
 	BlockLocation          ResourceLocation
+	// TransformedSearchKey is set for TFPlan: the transformed searchKey after module mapping
+	// (e.g., "module.vpc.resource_tags" instead of "module.vpc.aws_instance.web.tags").
+	TransformedSearchKey string
+	// SecondaryLines is set for module_default findings where the insecure default was not
+	// overridden by the module call. Both locations are independently actionable:
+	// the primary points at the variable default in variables.tf, the secondary at the call block.
+	SecondaryLines *VulnerabilityLines
 }
 
 // CommentCommand represents a command given from a comment
@@ -304,8 +311,19 @@ type Vulnerability struct {
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
+	// IsFromTFPlan marks a finding raised against a Terraform plan JSON document (as opposed to
+	// static HCL). Set regardless of whether the finding was resolved back to an HCL source line
+	// (see pkg/detector/tfplan_detect.go) - it reflects which document produced the finding, not
+	// where it's reported as pointing. When an HCL-sourced and a TFPlan-sourced finding for the
+	// same resource collapse into one during dedup (internal/storage's getUniqueVulnerabilities),
+	// the TFPlan-sourced one is kept, so this stays true on the surviving record.
+	IsFromTFPlan bool `db:"is_from_tfplan" json:"isFromTFPlan,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
+	// SecondaryVulnerabilityLines is set transiently when a module_default finding has two
+	// independently actionable locations (variable default + module call block). The engine
+	// decode loop emits a second Vulnerability from this field. Not persisted to DB/JSON.
+	SecondaryVulnerabilityLines *VulnerabilityLines `json:"-" db:"-"`
 }
 
 // Framework represents a framework mapping for a query

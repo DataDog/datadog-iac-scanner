@@ -69,7 +69,7 @@ func parseTerraform(t *testing.T, path string) model.FileMetadatas {
 	content, err := os.ReadFile(filepath.Clean(path))
 	require.NoError(t, err)
 
-	_, docs, ignore, resolved, err := terraformParser.NewDefault().Parse(context.Background(), content, path, true, 15)
+	_, docs, ignore, resolved, err := terraformParser.NewWithoutRegistry().Parse(context.Background(), content, path, true, 15)
 	require.NoError(t, err)
 
 	var out model.FileMetadatas

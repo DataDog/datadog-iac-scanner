@@ -39,7 +39,7 @@ resource "aws_acm_certificate" "example" {
 
 		var logBuf bytes.Buffer
 		ctx := zerolog.New(&logBuf).WithContext(context.Background())
-		parser := NewDefaultWithParams(vfs.DiskFS{}, "", model.SCIInfo{})
+		parser := NewWithoutRegistryAndParams(vfs.DiskFS{}, "", model.SCIInfo{})
 		path := filepath.Join(dir, "main.tf")
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -61,7 +61,7 @@ func assertNoRecoveredPanic(t *testing.T, content, path string) {
 
 	var logBuf bytes.Buffer
 	ctx := zerolog.New(&logBuf).WithContext(context.Background())
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 
 	_, _, _, _, err := parser.Parse(ctx, []byte(content), path, true, 15)
 	if err != nil {

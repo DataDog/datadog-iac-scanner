@@ -114,7 +114,7 @@ func initilizeBuilder() []*Parser {
 	bd, _ := NewBuilder(ctx).
 		Add(&jsonParser.Parser{}).
 		Add(&yamlParser.Parser{}).
-		Add(terraformParser.NewDefault()).
+		Add(terraformParser.NewWithoutRegistry()).
 		Build([]string{""}, []string{""})
 	return bd
 }

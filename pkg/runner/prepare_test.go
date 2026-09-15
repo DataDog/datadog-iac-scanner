@@ -52,7 +52,7 @@ func buildParityServices(t *testing.T, ctx context.Context, paths []string) ([]*
 	combinedParser, err := parser.NewBuilder(ctx).
 		WithFS(vfs.DiskFS{}).
 		Add(&yamlParser.Parser{}).
-		Add(terraformParser.NewDefault()).
+		Add(terraformParser.NewWithoutRegistry()).
 		Add(&bicepParser.Parser{}).
 		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).
