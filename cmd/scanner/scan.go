@@ -153,12 +153,6 @@ var scanAction = &cli.Command{
 			Value: scan.DefaultRemoteModuleMaxCacheBytes,
 		},
 		&cli.BoolFlag{
-			Name:   "x-terraform-plan",
-			Hidden: true,
-			Usage:  "(experimental, will be removed soon) scan terraform plans",
-			Value:  false,
-		},
-		&cli.BoolFlag{
 			Name:   "x-disable-rule-isolation",
 			Hidden: true,
 			Usage: "(experimental, will be removed soon) co-compile all rules and libraries into a " +
@@ -397,7 +391,6 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		SCIInfo:                     model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:               getFeatureFlagEvaluator(c),
 		Config:                      *cfg,
-		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
 		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 		TerraformModules:            modulesSetting,
 		NetworkIsolation:            offlineBundlePath != "",
