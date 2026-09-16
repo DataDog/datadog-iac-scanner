@@ -95,10 +95,7 @@ type Service struct {
 	// so their raw template files are not mistaken for parse bugs in sink.
 	failedHelmChartDirs map[string]struct{}
 	// contentInterner dedups OriginalData strings across files with identical
-	// content. Large repositories (e.g. community-operators) ship the same
-	// CRD/manifest across many operator versions, so 47%+ of files can be exact
-	// duplicates; sharing one string backing array cuts the retained content
-	// roughly in half. Guarded by contentInternerMu.
+	// content (47%+ on community-operators); guarded by contentInternerMu.
 	contentInternerMu sync.Mutex
 	contentInterner   map[string]string
 	// parsedShareMu guards parsedShares, the content-keyed cache of parse results
@@ -122,17 +119,9 @@ func (s *Service) consTreeChildren(doc map[string]interface{}) map[string]interf
 	return s.treeCons.consChildren(doc)
 }
 
-// sharedParse holds everything about parsing one file content that is a pure
-// function of that content: the sanitized document trees (with all children
-// shared), kind, ignore lines and line counts. community-operators-class
-// repositories ship the same manifest for many operator versions, so a large
-// fraction of files are exact duplicates; sharing one parse per unique content
-// cuts both the parsed-tree heap and (through the payload build's pointer
-// memo) the OPA payload proportionally.
-//
-// The cached top-level document maps are never handed out directly: callers
-// take a shallow per-file copy (same children, fresh top-level map) because
-// Combine inserts each file's id/file into its Document top level.
+// sharedParse is the parse result of one unique content: sanitized docs
+// (children shared), kind, ignore lines and counts. Callers shallow-copy the
+// top-level maps, which Combine augments with per-file id/file entries.
 type sharedParse struct {
 	docs        []model.Document
 	kind        model.FileKind
@@ -141,21 +130,13 @@ type sharedParse struct {
 	isMinified  bool
 }
 
-// contentInternerMaxBytes caps the size of content eligible for interning.
-// Above this, a single map key's string copy costs more than the duplication
-// it would save, and huge files are rarely duplicated.
+// contentInternerMaxBytes caps internable content: above it the key copy costs
+// more than the dedup win.
 const contentInternerMaxBytes = 1 << 20 // 1 MiB
 
-// internContent returns a shared copy of content. Identical content strings
-// map to the same backing array, so duplicate files retain a single copy of
-// OriginalData instead of one per file. The map key is the content itself; for
-// interned entries the key string shares storage with the value, so the
-// overhead is one map slot per unique file.
-//
-// ClearContentInterner drops the interner map after the prepare phase so its
-// map entries (which pin the shared strings) don't defeat the post-eval
-// OriginalData release. The shared strings stay alive via FileMetadata until
-// those are released.
+// internContent returns a shared copy of content so duplicate files retain one
+// OriginalData. The interner is dropped after prepare (ClearContentInterner) so
+// it cannot defeat the post-eval OriginalData release.
 func (s *Service) internContent(content string) string {
 	if content == "" || len(content) > contentInternerMaxBytes {
 		return content
@@ -172,23 +153,17 @@ func (s *Service) internContent(content string) string {
 	return content
 }
 
-// ClearContentInterner drops the content interner map. Call after the prepare
-// phase: the map's keys pin the shared content strings, which would otherwise
-// defeat the post-eval OriginalData release. The strings remain alive via
-// FileMetadata.OriginalData until those are released.
+// ClearContentInterner drops the interner after the prepare phase; the shared
+// strings stay alive via FileMetadata.OriginalData.
 func (s *Service) ClearContentInterner() {
 	s.contentInternerMu.Lock()
 	s.contentInterner = nil
 	s.contentInternerMu.Unlock()
 }
 
-// lookupSharedParse interns the raw (CRLF-normalized) file content and returns
-// the interned key plus the cached shared parse for it, or a nil sharedParse
-// when this content has not been cached yet (or is not cacheable by size).
-// The key/content match is exact: every parse is a pure function of its
-// content, so a hit is a faithful shortcut for files with identical bytes.
-// The returned sharedParse is read-only; callers must copy the top-level
-// document maps before attaching per-file entries (see Combine).
+// lookupSharedParse interns the content and returns its key plus the cached
+// shared parse, if any. A hit is exact (parses are pure functions of content);
+// the result is read-only — copy top-level maps before per-file use.
 func (s *Service) lookupSharedParse(content []byte) (string, *sharedParse) {
 	if len(content) == 0 || len(content) > contentInternerMaxBytes {
 		return "", nil
@@ -231,26 +206,19 @@ func (s *Service) ClearParsedShares() {
 	s.parsedShareMu.Unlock()
 }
 
-// ClearTreeCons drops the tree hash-cons interner's bookkeeping. Call after
-// the prepare phase alongside the other interning caches: the interner maps
-// can hold tens of MB of pure map overhead on corpora with hundreds of
-// thousands of distinct subtrees, and nothing is consed after prepare. The
-// shared trees themselves stay alive via each FileMetadata's document copy,
-// so only the interner maps are dropped.
+// ClearTreeCons drops the interner bookkeeping after prepare — up to tens of MB
+// of map overhead on large corpora. The shared trees stay alive via FileMetadata.
 func (s *Service) ClearTreeCons() {
 	s.treeConsMu.Lock()
 	s.treeCons = nil
 	s.treeConsMu.Unlock()
 }
 
-// shareableParse reports whether a parse result is a pure function of its
-// content and safe to share between files. Excluded are:
-//   - Terraform and Terraform-plan documents (local-module instantiation later
-//     mutates module bodies in place per caller)
-//   - parses that resolved external references (their ResolvedFiles and
-//     ignore lines are filename-relative)
-//   - Ansible playbooks (AddExtraInfo rewrites them per file path)
-//   - empty or oversized content (the dedup win never pays for the key)
+// shareableParse reports whether a parse is a pure function of its content:
+//   - Terraform/TF-plan (module instantiation mutates bodies in place per caller)
+//   - parses that resolved references (filename-relative ResolvedFiles/ignore lines)
+//   - Ansible playbooks (AddExtraInfo rewrites per file path)
+//   - empty or oversized content
 func shareableParse(documents *parser.ParsedDocument) bool {
 	if documents.Content == "" || len(documents.Content) > contentInternerMaxBytes {
 		return false
@@ -270,10 +238,8 @@ func shareableParse(documents *parser.ParsedDocument) bool {
 	return true
 }
 
-// cloneDocumentTopLevel returns a shallow copy of a document's top-level map:
-// a fresh map with the same key/value pairs, so children (the bulk of the
-// tree) remain shared while the copy can carry per-file entries such as the
-// id/file keys Combine inserts.
+// cloneDocumentTopLevel returns a shallow copy of the top-level map: fresh map,
+// shared children (the bulk of the tree).
 func cloneDocumentTopLevel(d model.Document) model.Document {
 	clone := make(model.Document, len(d)+2)
 	for k, v := range d {
@@ -547,25 +513,14 @@ func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind 
 	return bodyMap
 }
 
-// errCyclicDocument is returned by sanitizeScanDocumentInPlace when a YAML
-// anchor/alias cycle is detected. The JSON round-trip path rejects such
-// documents via json.Marshal and skips them; this sentinel preserves that
-// behavior for the in-place path.
+// errCyclicDocument rejects YAML anchor/alias cycles, as the json.Marshal
+// round-trip path did.
 var errCyclicDocument = errors.New("cyclic document tree")
 
-// sanitizeScanDocumentInPlace strips _dd_lines and resolves JSON filters
-// directly on body, avoiding the JSON round-trip deep copy that
-// prepareScanDocument performs. The deep copy duplicates the entire document
-// tree in memory for every file and is the dominant heap/CPU cost on large
-// repositories; it is only needed when body is shared with the line-info
-// document (so it must not be mutated). After the lazy line-info refactor the
-// main file sink reconstructs LineInfoDocument by reparsing OriginalData, so
-// body is exclusively owned and can be sanitized in place — exactly as the
-// Helm resolved path already does.
-//
-// YAML anchors/aliases can form cycles, which json.Marshal rejects; we detect
-// cycles with a pointer-identity recursion stack and return errCyclicDocument
-// so the caller skips the document, preserving the round-trip path's behavior.
+// sanitizeScanDocumentInPlace strips _dd_lines and resolves JSON filters in
+// place, avoiding prepareScanDocument's JSON round-trip deep copy (the dominant
+// heap/CPU cost) — the lazy line-info refactor leaves body exclusively owned.
+// Cycles are rejected with errCyclicDocument, as json.Marshal would.
 func sanitizeScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
 	stack := make(map[uintptr]bool)
 	if err := sanitizeScanDocumentNodeInPlace(body, kind, true, true, stack); err != nil {
@@ -643,15 +598,10 @@ func sanitizeScanDocumentValueInPlace(
 	return nil
 }
 
-// sanitizeNormalizedValueInPlace handles a map entry whose value is of a
-// non-canonical Go type (e.g. map[string]string produced by the Terraform
-// aws_iam_policy_document data-source path, []string, int, json.Number).
-// prepareScanDocument's JSON round-trip used to canonicalize these; without
-// it they reach interfaceToPayloadValue's default branch, which bypasses the
-// shared pointer memo and re-builds every converted object through
-// TransformJsonencodeInPayload — inflating the OPA payload several-fold on
-// Terraform-heavy repositories. The value is normalized in place and the
-// walk continues into the normalized container so nested exotics are covered.
+// sanitizeNormalizedValueInPlace normalizes a non-canonical map entry
+// (map[string]string, []string, int, json.Number…) in place, as the JSON round
+// trip used to; otherwise such objects bypass the shared memo and inflate the
+// payload on Terraform-heavy repositories.
 func sanitizeNormalizedValueInPlace(
 	bodyType map[string]interface{},
 	key string,
@@ -686,14 +636,9 @@ func isCanonicalDocumentValue(v interface{}) bool {
 	return false
 }
 
-// normalizeDocumentValue converts a non-canonical document value to the
-// representation the old prepareScanDocument JSON round-trip produced, in
-// place of that round-trip: nested maps become map[string]interface{},
-// slices become []interface{}, numbers become float64, []byte becomes a
-// base64 string, and json.Number becomes the float64 json.Unmarshal yields.
-// It returns the replacement value and whether anything changed. Canonical
-// values (including whole canonical subtrees) are returned unchanged at zero
-// cost, so YAML repositories with already-canonical trees pay nothing.
+// normalizeDocumentValue converts a non-canonical value to what the JSON round
+// trip produced: canonical maps/slices, float64 numbers, base64 []byte. Already
+// canonical subtrees pass through unchanged at zero cost.
 func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 	if isCanonicalDocumentValue(v) {
 		return v, false

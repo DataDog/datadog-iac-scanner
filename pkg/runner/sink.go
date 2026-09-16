@@ -76,17 +76,13 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if err != nil {
 		return errors.Wrapf(err, "failed to get file content: %s", filename)
 	}
-	// LinesOriginalData is computed lazily from OriginalData on first access
-	// (see FileMetadata.Lines). Most files never produce a finding, so deferring
-	// the SplitLines allocation avoids retaining a full line-slice copy of every
-	// file for the entire scan.
+	// LinesOriginalData is lazy (see FileMetadata.Lines): most files never produce
+	// a finding, so the SplitLines copy is not retained for the whole scan.
 	fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
 
-	// Fast path: this content was already parsed and sanitized in this scan
-	// (duplicate file). Reuse the shared trees, give each file its own top-level
-	// document map, and skip the parse entirely. The interned key is kept for
-	// the slow path below — lookupSharedParse is a pure function of the
-	// content, so a single call covers both paths.
+	// Fast path: duplicate content already parsed and sanitized — reuse the shared
+	// trees with a per-file top-level map and skip parsing. The interned key also
+	// serves the slow path below (pure function of content).
 	shareKey, shared := s.lookupSharedParse(*c.Content)
 	if shared != nil {
 		return s.sinkSharedParse(ctx, filename, scanID, shareKey, shared,
@@ -165,12 +161,8 @@ func (s *Service) sinkDocument(
 	contextLogger := logger.FromContext(ctx)
 	document := documents.Docs[docIdx]
 
-	// Sanitize in place: line info is reconstructed lazily by reparsing
-	// OriginalData (see SetLineInfoLoader below), so this document tree
-	// is exclusively owned and can be mutated without corrupting the
-	// line-info document. This avoids the JSON round-trip deep copy that
-	// prepareScanDocument performs, which was the dominant heap/CPU cost.
-	// A cyclic YAML anchor/alias tree is rejected (as json.Marshal would).
+	// Sanitize in place — safe because the tree is exclusively owned (line info is
+	// lazily reparsed) — and reject cycles, as json.Marshal would.
 	preparedDocument, err := sanitizeScanDocumentInPlace(document, documents.Kind)
 	if err != nil {
 		contextLogger.Err(err).Msgf("failed to sanitize document for file: %s", filename)
@@ -178,10 +170,8 @@ func (s *Service) sinkDocument(
 	}
 
 	if shareable {
-		// Canonicalize structurally identical subtrees (label blocks,
-		// container specs and CRD skeletons repeat across nearly every
-		// manifest); the top-level map stays per-file because Combine
-		// inserts the file's id/file into it.
+		// Canonicalize structurally identical subtrees; the top-level map stays
+		// per-file (Combine inserts id/file into it).
 		preparedDocument = s.consTreeChildren(preparedDocument)
 	}
 
@@ -200,10 +190,7 @@ func (s *Service) sinkDocument(
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
 		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
-	// LinesOriginalData is computed lazily from OriginalData on first access
-	// (see FileMetadata.Lines): most files never produce a finding, so deferring
-	// the SplitLines allocation avoids retaining a full line-slice copy of
-	// every file for the entire scan.
+	// Lazy lines, as in sinkContent.
 	file.SetLazyLines()
 
 	s.saveToFile(ctx, &file)
@@ -213,10 +200,8 @@ func (s *Service) sinkDocument(
 	return preparedDocument
 }
 
-// sinkSharedParse emits the FileMetadata entries for a file whose content hit
-// the shared-parse cache: each document gets a shallow copy of the cached
-// top-level map (children stay shared), a per-file id and line-info loader, and
-// the tracker counts recorded from the original parse.
+// sinkSharedParse emits FileMetadata for a shared-parse cache hit: shallow
+// top-level copies, per-file id and loader, cached tracker counts.
 func (s *Service) sinkSharedParse(
 	ctx context.Context,
 	filename, scanID, key string,

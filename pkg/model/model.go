@@ -182,11 +182,9 @@ type FileMetadata struct {
 	// (or intentionally left unset).
 	linesLazy  *linesLazyState `json:"-"`
 	IsMinified bool
-	// releaseOriginalDataAfterLineInfo instructs EnsureLineInfoDocument to
-	// release OriginalData after populating LineInfoDocument and
-	// LinesOriginalData, for non-Terraform kinds. This progressively reclaims
-	// ~the raw input content during eval (as each file's line info is resolved)
-	// rather than holding all of it until eval completes.
+	// releaseOriginalDataAfterLineInfo makes EnsureLineInfoDocument release
+	// OriginalData once line info is populated, progressively reclaiming the raw
+	// input content during eval.
 	releaseOriginalDataAfterLineInfo bool
 	// HelmInvocation identifies the source action that emitted a rendered Helm
 	// resource whose YAML lives in a named template.
@@ -252,11 +250,9 @@ func (f *FileMetadata) Lines() []string {
 	return *f.LinesOriginalData
 }
 
-// ReleasePostEvalData drops OriginalData and LinesOriginalData. After all
-// queries have been evaluated every detector has run and every finding's
-// LineInfoDocument has been lazily reparsed, so the raw file content and its
-// line split are no longer referenced. Reclaiming them here drops ~the raw
-// input content from the live set before the report phase.
+// ReleasePostEvalData drops OriginalData and LinesOriginalData after eval —
+// detectors have run and line-info documents are lazily reparsed — reclaiming
+// the raw input content before the report phase.
 func (f *FileMetadata) ReleasePostEvalData() {
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
@@ -311,11 +307,8 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 	if f.LinesOriginalData == nil {
 		f.LinesOriginalData = utils.SplitLines(f.OriginalData)
 	}
-	// For non-Terraform kinds, OriginalData is only needed by the line-info
-	// loader (now nil'd) and by Lines() (which uses the now-populated
-	// LinesOriginalData). Detectors for these kinds don't read OriginalData
-	// directly, so release it to progressively reclaim ~the raw input content
-	// as each file's line info is resolved during eval.
+	// Non-Terraform detectors never read OriginalData directly, so it can be
+	// released here.
 	if f.releaseOriginalDataAfterLineInfo &&
 		f.Kind != KindTerraform && f.Kind != KindTerraformPlan {
 		f.OriginalData = ""

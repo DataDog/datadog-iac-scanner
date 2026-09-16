@@ -41,10 +41,8 @@ func PrepareAndScan(
 		if err != nil {
 			return err
 		}
-		// The analyzer's cached file bytes were only needed during the shared
-		// walk above; OriginalData now holds each file's content for the rest
-		// of the scan. Release the cache before eval so it isn't held through
-		// the memory-intensive query phase.
+		// The cached file bytes were only needed during the shared walk; release them
+		// before eval so they are not held through the query phase.
 		fsp.ReleaseContentCache()
 		for _, s := range services {
 			s.ClearContentInterner()
@@ -96,35 +94,23 @@ func PrepareAndScan(
 	}
 }
 
-// evalGcFileThreshold is the minimum number of collected files at which
-// StartScan considers GC pressure relief (reduced GC percent plus the eval
-// forced-GC ticker) for the payload-build and eval phases; below it the
-// check itself (a full GC) is not worth running. This is the single
-// definition shared by both mechanisms (the Inspector consumes the decision
-// via SetEvalGcRelief, not its own file count).
+// evalGcFileThreshold is the minimum file count at which StartScan measures the
+// live heap for GC relief; below it the check (a full GC) is not worth running.
 const evalGcFileThreshold = 10000
 
 // evalGcHeapBytes is the live-heap size, measured after prepare, above which
-// StartScan enables GC pressure relief (reduced GC percent plus the eval
-// forced-GC ticker) for payload build and eval. The gate is the scan's actual
-// memory need, not a proxy like file count: mid-size corpora (30k+ files,
-// ~1-1.5 GiB live entering eval) never need GC pressure relief, and the
-// extra GC marking CPU only slows them down (measured +30% user CPU on such
-// a corpus with the previous file-count gate). Multi-GiB scans like
-// community-operators (~5 GiB live entering eval) would otherwise double
-// that as GC headroom before every collection, driving the peak RSS.
+// StartScan enables GC pressure relief (reduced GC percent plus the eval ticker)
+// for payload build and eval. Heap, not file count: mid-size corpora never need
+// the relief and pay +30% CPU for it; multi-GiB scans would otherwise carry it
+// as headroom before every collection, driving peak RSS.
 const evalGcHeapBytes = 3 << 30 // 3 GiB
 
-// reducedEvalGCPercent is the GC percent used during payload build and eval
-// on scans whose live heap exceeds evalGcHeapBytes: a substantially lower
-// peak in exchange for more frequent collections over a multi-GiB live set.
-// Smaller scans keep the default GOGC pacing.
+// reducedEvalGCPercent is the GC percent used on heap-gated scans: lower peak
+// for more frequent collections over a multi-GiB live set.
 const reducedEvalGCPercent = 30
 
-// liveHeapAfterGC returns the live heap size after a full collection, so the
-// GC-percent decision is made on real live data rather than heap-plus-garbage.
-// The collection itself is not wasted work: it drains the prepare phase's
-// parse garbage before eval starts.
+// liveHeapAfterGC returns the live heap after a full collection (which also
+// drains the prepare phase's parse garbage).
 func liveHeapAfterGC() uint64 {
 	runtime.GC()
 	var ms runtime.MemStats
@@ -147,9 +133,7 @@ func StartScan(ctx context.Context, scanID string, services serviceSlice) error 
 	total := services.GetQueriesLength()
 	contextLogger.Info().Msgf("Got %d queries", total)
 
-	// GC pressure relief for large scans: lower the GC percent and run the
-	// eval forced-GC ticker — both gated on the same measured live heap, so
-	// mid-size corpora keep the default pacing and no forced collections.
+	// GC pressure relief for large scans, gated on measured live heap.
 	if services.TotalFiles() > evalGcFileThreshold && liveHeapAfterGC() > evalGcHeapBytes {
 		previous := debug.SetGCPercent(reducedEvalGCPercent)
 		defer debug.SetGCPercent(previous)

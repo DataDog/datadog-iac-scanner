@@ -47,38 +47,22 @@ func (k treeConsKey) mixScalar(v interface{}) treeConsKey {
 		// normalizeDocumentValue).
 		return k.mixString(strconv.FormatFloat(t, 'g', -1, 64))
 	default:
-		// Non-canonical types (e.g. the CICD parser's ParsedExpression
-		// structs) contribute only their type to the key: their values may be
-		// uncomparable, so they are never shared — parents containing distinct
-		// values of such a type compare as unequal in sameCanonicalValue and
-		// stay unshared, which is safe, merely less deduplication.
+		// Non-canonical types contribute only their type: values may be uncomparable,
+		// so they are never shared — safe, merely less deduplication.
 		return k.mixString("\xff" + reflect.TypeOf(v).String())
 	}
 }
 
 // treeHashCons canonicalizes structurally identical subtrees of sanitized
-// documents. Parsed manifest corpora repeat the same label blocks, container
-// specs and CRD skeletons across nearly every file — 92% of container nodes
-// on community-operators are structural duplicates — so building each unique
-// subtree once and sharing it collapses the retained tree heap several-fold.
-//
-// Children are consed bottom-up and each parent's content key is mixed from
-// its children's canonical keys, so hashing is linear. Because children are
-// canonical, equality of a candidate against a stored entry can be verified
-// by comparing child pointers (shallow), never by deep traversal.
-//
-// The consed trees are read-only downstream: they flow into FileMetadata
-// documents, the shared-parse cache and the OPA payload, none of which
-// mutate nested children (module instantiation, the one in-place mutator,
-// only runs on Terraform documents, which are never consed). The top-level
-// document map is deliberately NOT interned because Combine inserts each
-// file's id/file into it.
-//
-// The interner is per-Service and capped; it is cleared after the prepare
-// phase (Service.ClearTreeCons) — nothing is consed afterwards, and dropping
-// the maps keeps their overhead (which can reach tens of MB on large
-// corpora) out of the memory-intensive eval phase. The shared trees stay
-// alive via each FileMetadata's document copy.
+// documents: manifest corpora repeat the same label blocks, container specs and
+// CRD skeletons across nearly every file (92% of container nodes on
+// community-operators), so sharing each unique subtree collapses the tree heap.
+// Children are consed bottom-up with the parent key mixed from the children's
+// canonical keys (linear hashing); equality is verified shallowly by child
+// pointers. Consed trees are read-only downstream — the one in-place mutator
+// (module instantiation) only runs on Terraform, which is never consed — and the
+// top-level map is not interned (Combine inserts id/file). Per-Service, capped,
+// cleared after prepare (ClearTreeCons).
 type treeHashCons struct {
 	byContent map[treeConsKey][]interface{}
 	hashes    map[uintptr]treeConsKey
@@ -237,10 +221,7 @@ func sameCanonicalValue(a, b interface{}) bool {
 	case nil:
 		return b == nil
 	default:
-		// Non-canonical types are never equal here: comparing arbitrary
-		// values with == panics on uncomparable types (structs holding
-		// slices), and the type-only content key means parents holding them
-		// simply do not share.
+		// Non-canonical types never share: == can panic on uncomparable types.
 		return false
 	}
 }

@@ -136,12 +136,9 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 		// set line information for root level objects
 		mapDcp["_dd_lines"] = getLines(value, 0)
 
-		// Place the payload in the Document struct. mapDcp is freshly built by
-		// unmarshal above and exclusively owned, so assign it directly instead
-		// of deep-copying via a JSON round-trip. That round-trip was the dominant
-		// allocation/CPU cost of YAML parsing (marshal buffer + full re-decode of
-		// every document); scalarNodeResolver already normalizes timestamp
-		// scalars the way json.Marshal did, so downstream sees the same value types.
+		// mapDcp is freshly built and exclusively owned: assign it directly instead of
+		// deep-copying via a JSON round-trip (the dominant YAML parse cost);
+		// scalarNodeResolver already normalizes types the way json.Marshal did.
 		*m = mapDcp
 		return nil
 	}
@@ -524,23 +521,17 @@ var (
 	yamlScalarInterner   = make(map[string]string)
 )
 
-// Interning limits. Values above internMaxScalarLen are rarely duplicated
-// (the long unique blobs in CRD descriptions) and not worth hashing; the
-// entry cap bounds the process-lifetime retention of the interner map for
-// adversarial inputs with millions of distinct short strings.
+// Interning limits: long scalars are rarely duplicated; the entry cap bounds
+// interner retention for adversarial inputs.
 const (
 	internMaxScalarLen = 256
 	internMaxEntries   = 1 << 20
 )
 
-// internYAMLScalar returns the canonical instance of a short YAML scalar
-// string. Parsed YAML repeats the same small strings (keys like "spec",
-// "containers", values like "v1", image names) millions of times across a
-// large corpus: on community-operators, 29M scalar occurrences collapse to
-// ~178k distinct values, so sharing one backing array per distinct value
-// removes several hundred MiB from the live set through the whole scan — the
-// parsed trees, the lazily reparsed line-info documents and the OPA payload's
-// string data all reference the same backings.
+// internYAMLScalar returns the canonical instance of a short scalar string:
+// Parsed YAML repeats the same small strings millions of times (on
+// community-operators, 29M occurrences collapse to ~178k distinct values), so
+// sharing one backing per value removes hundreds of MiB from the live set.
 func internYAMLScalar(s string) string {
 	if s == "" || len(s) > internMaxScalarLen {
 		return s
@@ -566,11 +557,9 @@ func internYAMLScalar(s string) string {
 	return s
 }
 
-// internedScalarNodeResolver is scalarNodeResolver with string interning: the
-// decoded string is canonicalized so the millions of repeated YAML scalar
-// values across a corpus share one backing array. String-tagged scalars skip
-// the per-scalar yaml decoder construction entirely: Decode returns the
-// node's own string for them, so the fast path is equivalent.
+// internedScalarNodeResolver is scalarNodeResolver with interning; string-tagged
+// scalars skip the per-scalar decoder construction (Decode returns the node's
+// own string, so the fast path is equivalent).
 func internedScalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 	if val.Tag == "!!str" {
 		return internYAMLScalar(val.Value)
@@ -596,13 +585,8 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 	return normalizeScalar(resolved)
 }
 
-// normalizeScalar maps a decoded YAML scalar to the value type the previous
-// JSON round-trip in UnmarshalYAML produced, so downstream consumers (the
-// engine, rules, and the JSON payload export) see identical types without
-// that round-trip: numbers become float64 (json.Unmarshal always yields
-// float64), timestamp scalars — decoded by yaml.v3 to time.Time — become
-// RFC3339 strings (json.Marshal of time.Time), and binary scalars (decoded
-// to []byte) become base64 strings (json.Marshal of []byte).
+// normalizeScalar maps a decoded scalar to what the old JSON round-trip produced:
+// float64 numbers, RFC3339 timestamp strings, base64 []byte.
 func normalizeScalar(resolved interface{}) interface{} {
 	switch v := resolved.(type) {
 	case time.Time:

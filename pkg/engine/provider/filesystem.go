@@ -309,13 +309,9 @@ func (s *FileSystemSourceProvider) ContentCache() map[string][]byte {
 	return s.contentCache
 }
 
-// ReleaseContentCache drops the analyzer's cached file bytes. The cache is only
-// needed during the prepare/sink phase so dispatchFile can reuse the bytes the
-// analyzer already read instead of re-reading from disk; once files are parsed
-// their content lives on in each FileMetadata.OriginalData, so holding the
-// raw-byte cache through the eval phase duplicates ~the entire input set. The
-// map is shared with the scan Client, so clearing entries here releases the
-// bytes for both references.
+// ReleaseContentCache drops the cached file bytes: only needed during the sink
+// phase (parsed files keep their content in OriginalData), and the map is shared
+// with the scan Client, so clearing here releases both references.
 func (s *FileSystemSourceProvider) ReleaseContentCache() {
 	if s.contentCache != nil {
 		for k := range s.contentCache {

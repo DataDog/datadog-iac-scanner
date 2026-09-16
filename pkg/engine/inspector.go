@@ -250,27 +250,15 @@ type Inspector struct {
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
 	mergeAllow             map[string]struct{}
-	// releaseDocumentsAfterPayload drops each file's Document map once the
-	// per-platform OPA payload has been built from it. The Document (the
-	// clean, _dd_lines-stripped parsed tree) is only consumed again by the
-	// report's Combine when a JSON payload export is requested without
-	// line-info mode; in every other case (SARIF output, line-info payload,
-	// or the in-memory server path) it is dead weight through the entire eval
-	// phase, where it roughly doubles the document data held alongside the
-	// OPA ast.Value representation. Dropping it cuts the eval-time peak heap
-	// on large repositories without affecting results.
+	// releaseDocumentsAfterPayload drops each file's Document map once the OPA
+	// payload is built; only a JSON payload export without line-info mode reads it
+	// afterwards (see SetReleaseDocumentsAfterPayload).
 	releaseDocumentsAfterPayload bool
-	// releasePostEvalData drops OriginalData and LinesOriginalData after all
-	// queries have been evaluated. By that point every detector has run and
-	// every finding's LineInfoDocument has been lazily reparsed, so the raw
-	// file content and its line split are no longer referenced. This is only
-	// safe when the report will not need to reparse OriginalData for line
-	// info (i.e. line-info payload mode is off); the caller gates it.
+	// releasePostEvalData drops OriginalData and LinesOriginalData after eval,
+	// once detectors and lazy line-info reparses no longer need them.
 	releasePostEvalData bool
-	// evalGcRelief enables the eval-phase forced-GC ticker and mirrors the
-	// scanner's live-heap gate (see SetEvalGcRelief): only scans whose live
-	// heap entering eval is large enough to need GC pressure relief run
-	// forced collections during evaluation.
+	// evalGcRelief enables the eval-phase forced-GC ticker; the scanner sets it
+	// from its live-heap gate (see SetEvalGcRelief).
 	evalGcRelief bool
 }
 
@@ -310,27 +298,20 @@ func (c *Inspector) buildModuleProvenanceLookup() moduleProvenanceLookup {
 	}
 }
 
-// SetReleaseDocumentsAfterPayload configures whether Inspect drops each
-// file's Document map after building the OPA payloads. Callers should set this
-// to true unless they will later consume Combine's output with lineInfo=false
-// (i.e. a JSON payload export without line-info mode).
+// SetReleaseDocumentsAfterPayload: set unless the report later consumes
+// Combine output with lineInfo=false (JSON payload export without line info).
 func (c *Inspector) SetReleaseDocumentsAfterPayload(release bool) {
 	c.releaseDocumentsAfterPayload = release
 }
 
-// SetReleasePostEvalData configures whether Inspect drops OriginalData and
-// LinesOriginalData after all queries have been evaluated. Callers should set
-// this to true unless the report will later need to reparse OriginalData for
-// line-info documents (i.e. line-info payload mode is on).
+// SetReleasePostEvalData: set unless line-info payload mode will reparse
+// OriginalData for line-info documents.
 func (c *Inspector) SetReleasePostEvalData(release bool) {
 	c.releasePostEvalData = release
 }
 
-// SetEvalGcRelief enables the eval-phase GC pressure relief (forced-GC
-// ticker, see executeQueries). The scanner sets it from the same live-heap
-// measurement that gates the reduced GC percent, so both mechanisms apply
-// to the same scans: those whose live heap entering eval exceeds
-// scanner.EvalGcHeapBytes.
+// SetEvalGcRelief enables the eval GC ticker; the scanner sets it from the
+// same live-heap measurement that gates the reduced GC percent.
 func (c *Inspector) SetEvalGcRelief(relief bool) {
 	c.evalGcRelief = relief
 }
@@ -601,24 +582,14 @@ func (c *Inspector) Inspect(
 		return nil, err
 	}
 
-	// Collect the document trees released during the payload conversion (plus
-	// the conversion memo and per-file top-level copies) and recompute the heap
-	// goal from the smaller live set, so eval's garbage headroom is sized against
-	// the payload alone rather than against the documents+payload overlap. A
-	// plain GC only: no FreeOSMemory here, since returning pages right before
-	// eval's allocations would just re-fault them and fragment the heap.
+	// Collect the trees released during conversion and recompute the heap goal
+	// from the smaller live set before eval.
 	if c.releaseDocumentsAfterPayload {
 		runtime.GC()
 	}
 
-	// The OPA payload is a self-contained deep copy into ast.Value; the file
-	// Document maps it was built from are no longer referenced by the engine
-	// (result decoding uses LineInfoDocument, reparsed lazily from OriginalData,
-	// plus LinesOriginalData/OriginalData via detectors). buildPlatformPayloads
-	// releases each tree as soon as it is converted, so nothing is left to drop
-	// here; only the line-info release flag still needs to be configured. The
-	// report needs Document only for a JSON payload export without line-info,
-	// which the caller signals by leaving releaseDocumentsAfterPayload unset.
+	// The payload is a self-contained ast.Value copy; only the line-info release
+	// flag still needs configuring.
 	if c.releaseDocumentsAfterPayload {
 		for _, f := range filesMap {
 			f.SetReleaseOriginalDataAfterLineInfo(c.releasePostEvalData)
@@ -666,12 +637,9 @@ func (c *Inspector) Inspect(
 	return expandModuleFindings(vulnerabilities, moduleExtras), nil
 }
 
-// releasePostEvalFileData drops OriginalData and LinesOriginalData after all
-// queries have been evaluated. By that point every detector has run and every
-// finding's LineInfoDocument has been lazily reparsed, so the raw file content
-// and its line split are no longer referenced. Reclaiming them here (plus one
-// GC) drops ~the raw input content from the live set before the report phase.
-// Only called when releasePostEvalData is set (gated by the caller).
+// releasePostEvalFileData drops OriginalData and LinesOriginalData after eval
+// (detectors have run, line-info documents are lazily reparsed), reclaiming the
+// raw input content before the report phase.
 func (c *Inspector) releasePostEvalFileData(filesMap map[string]*model.FileMetadata) {
 	if !c.releasePostEvalData {
 		return
@@ -699,19 +667,10 @@ func (c *Inspector) executeQueries(
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
 
-	// OPA evaluation generates massive transient allocations (bindings, result
-	// sets, intermediate ast.Values) that the default GC pace can't keep up
-	// with, so garbage accumulates and drives the process peak RSS well above
-	// the live set. A background ticker forces a collection during eval to
-	// reclaim that garbage promptly. This does not change GOGC; the STW cost is
-	// a handful of ~tens-of-ms pauses spread across a multi-minute eval.
-	//
-	// Only run the ticker on scans whose live heap entering eval was large
-	// enough to need GC pressure relief (see SetEvalGcRelief): the scanner
-	// gates it on the measured live heap exactly like the reduced GC percent,
-	// so mid-size corpora — which never need the relief and pay for it in
-	// extra marking CPU — keep the default GC pacing and no forced
-	// collections.
+	// OPA eval generates massive transient allocations that outpace the default GC,
+	// driving peak RSS well above the live set; a background ticker forces a
+	// collection every 30s. Only for heap-gated scans (c.evalGcRelief): mid-size
+	// corpora keep the default pacing.
 	if c.evalGcRelief {
 		const evalGcInterval = 30 * time.Second
 		gcCtx, gcCancel := context.WithCancel(ctx)
@@ -1034,10 +993,8 @@ func (c *Inspector) interfaceToPayloadValue(
 	return c.interfaceToPayloadValueDepth(ctx, value, cons, 0)
 }
 
-// payloadMaxDepth bounds the conversion recursion. Sanitized documents are
-// acyclic, but this keeps a pathological cyclic tree from exhausting the
-// stack: the document is skipped with an error like any other unconvertible
-// input, instead of crashing the scan.
+// payloadMaxDepth bounds conversion recursion: a pathological cyclic tree is
+// skipped with an error instead of exhausting the stack.
 const payloadMaxDepth = 1000
 
 func (c *Inspector) interfaceToPayloadValueDepth(
@@ -1107,11 +1064,8 @@ func (c *Inspector) interfaceToPayloadValueDepth(
 	}
 }
 
-// mapToPayloadValue converts a map node, hash-consing the result: children
-// are converted first so the content key can be mixed from their canonical
-// keys, then the node is either shared with its canonical twin or registered.
-// payloadChildPair is one converted key/value pair of a source map node,
-// ordered by key to build the node's content key.
+// mapToPayloadValue converts a map node, hash-consing the result: children are
+// converted first so the content key can mix their canonical keys.
 type payloadChildPair struct {
 	key  string
 	term *ast.Term
@@ -1175,14 +1129,12 @@ func (c *Inspector) mapToPayloadValue(
 	return object, nil
 }
 
-// hashConsKey is a 128-bit content key. Hash collisions are resolved by deep
-// comparison of the source values on lookup, so a collision can only cost
-// sharing, never correctness.
+// hashConsKey is a 128-bit content key; lookups verify shallowly against the
+// stored canonical value, so a collision only costs sharing, never correctness.
 type hashConsKey [2]uint64
 
-// hashConsBase seeds every content key; the combiners below are FNV-1a-style
-// mixes, sufficient because keys are compared within a single build and
-// verified against the source trees.
+// hashConsBase seeds every content key; the combiners are FNV-1a-style mixes,
+// sufficient because keys are verified shallowly against canonical children.
 var hashConsBase = hashConsKey{1469598103934665603, 2166136261}
 
 func (k hashConsKey) mix(x hashConsKey) hashConsKey {
@@ -1217,24 +1169,13 @@ func hashConsScalarKey(v ast.Value) hashConsKey {
 	return k.mixString(v.String())
 }
 
-// payloadHashCons is the per-payload-build interning state for
-// interfaceToPayloadValue. byPointer preserves the previous memo semantics
-// (same node converted once); byContent additionally dedups structurally
-// identical subtrees that live at different addresses. On large manifest
-// corpora the same label blocks, container specs and CRD skeletons repeat
-// across nearly every file (92% of container nodes on community-operators
-// are structural duplicates), so content-sharing collapses the ast
-// representation several-fold with zero effect on the evaluated values.
-// terms/strTerms share the Term wrappers of repeated canonical values and
-// keys.
-//
-// Neither table retains the source trees: byContent stores only the
-// canonical ast.Value (hits are verified shallowly against its canonical
-// children), and byPointer keys are addresses validated by a fingerprint of
-// the node's own keys and children — see pointerMemo. Source trees can
-// therefore be released progressively while the build is still running
-// (releaseDocumentsAfterPayload) without being pinned here or being
-// confused with a later allocation that reuses a freed address.
+// payloadHashCons is the per-payload-build interning state: byPointer memoizes
+// conversions by source-node address, byContent dedups structurally identical
+// subtrees at different addresses (label blocks and CRD skeletons repeat across
+// nearly every manifest), and terms/strTerms share Term wrappers. Neither
+// table retains source trees — byContent stores only the canonical ast.Value
+// and byPointer hits are fingerprint-validated — so trees can be released
+// progressively mid-build.
 type payloadHashCons struct {
 	byPointer map[uintptr]pointerMemo
 	valHash   map[ast.Value]hashConsKey
@@ -1246,14 +1187,10 @@ type payloadHashCons struct {
 	jsonencodeCache map[ast.Value]ast.Value
 }
 
-// pointerMemo is a byPointer entry: the converted payload value plus the
-// fingerprint of the source node it was built from. The progressive document
-// release frees source trees mid-build and a later allocation can reuse a
-// recorded address, so a hit is only trusted when the candidate's
-// fingerprint still matches. The fingerprint mixes the node's key strings
-// with its children's identities — address for containers, value for
-// scalars — so a match means the two nodes are content-equal and sharing the
-// recorded payload value is exact.
+// pointerMemo is a byPointer entry: the converted value plus a fingerprint of
+// the source node. Trees freed mid-build can have their addresses reused, so a
+// hit is trusted only when the fingerprint still matches — equal fingerprints
+// mean content-equal nodes.
 type pointerMemo struct {
 	val ast.Value
 	fp  hashConsKey
@@ -1279,20 +1216,15 @@ func (cons *payloadHashCons) setPointerMemo(pointer uintptr, v interface{}, val 
 	}
 }
 
-// pointerMemoMatches validates a byPointer hit: the node currently at the
-// recorded address must have the same fingerprint as the one the memo was
-// built from. Nodes holding values of non-canonical types have no
-// fingerprint, so their memos can never validate (they are simply never
-// recorded).
+// pointerMemoMatches validates a byPointer hit by fingerprint; non-canonical
+// types have no fingerprint and never validate.
 func (cons *payloadHashCons) pointerMemoMatches(memo pointerMemo, v interface{}) bool {
 	fp, ok := nodeFingerprintOf(v)
 	return ok && fp == memo.fp
 }
 
-// nodeFingerprintOf computes the identity fingerprint of a source map or
-// slice node from its key strings and children's identities. Two nodes with
-// equal fingerprints are content-equal: identical keys each mapping to the
-// identical child object or identical scalar.
+// nodeFingerprintOf computes a node's identity fingerprint from its key
+// strings and children's identities; equal fingerprints mean content-equal.
 func nodeFingerprintOf(v interface{}) (hashConsKey, bool) {
 	switch t := v.(type) {
 	case map[string]interface{}:
@@ -1325,11 +1257,8 @@ func nodeFingerprintOf(v interface{}) (hashConsKey, bool) {
 	}
 }
 
-// childIdentity returns the identity contribution of a direct child: the
-// address for containers (equal content is canonically shared, so a
-// distinct address implies distinct content) and the value for scalars.
-// Non-canonical types have no identity and disable memoization for their
-// parents.
+// childIdentity returns a child's identity: address for containers, value for
+// scalars; non-canonical types disable memoization for their parents.
 func childIdentity(v interface{}) (hashConsKey, bool) {
 	switch t := v.(type) {
 	case map[string]interface{}:
@@ -1356,13 +1285,9 @@ func childIdentity(v interface{}) (hashConsKey, bool) {
 	}
 }
 
-// lookupCanonicalObject returns the stored canonical object for a content
-// key when the candidate — whose children are already canonical — matches it
-// shallowly: same number of keys and the pointer-identical canonical value
-// for each key. Because children are canonicalized by the build, matching
-// child values are the same object, so this check is exact equality of the
-// whole subtree, at the cost of one hash lookup per key instead of a deep
-// traversal. A hash collision on the 128-bit key falls through as a miss.
+// lookupCanonicalObject returns the stored object for a content key when the
+// candidate matches shallowly (same key count, pointer-identical canonical
+// value per key). A 128-bit collision falls through as a miss.
 func (cons *payloadHashCons) lookupCanonicalObject(key hashConsKey, pairs []payloadChildPair) (ast.Value, bool) {
 	stored, ok := cons.byContent[key].(ast.Object)
 	if !ok || stored.Len() != len(pairs) {
@@ -1601,10 +1526,8 @@ type platformPayloads struct {
 // partitionDocsByPlatform groups parsed documents by their file's platform
 // bucket(s); multi-platform files (Knative, Serverless Framework) land in both
 // their own and their parent platform's bucket via platformBucketKeys.
-// It returns the flat document list (combined file docs first, then module
-// docs), the per-document bucket keys (nil for docs with an undetermined
-// platform) and the indexes of those unknown docs, which are later merged into
-// every platform's payload so no rule loses coverage.
+// Returns the flat doc list, per-doc bucket keys (nil when undetermined) and
+// the unknown doc indexes, merged into every platform's payload.
 func partitionDocsByPlatform(
 	filesMap map[string]*model.FileMetadata,
 	combinedDocs, moduleDocs []model.Document,
@@ -1639,17 +1562,11 @@ func partitionDocsByPlatform(
 // payload per queried platform. Common-platform queries receive the full
 // cross-platform payload.
 //
-// Every document is converted to ast.Value exactly once, through a memo shared
-// across the whole build: identical subtrees (e.g. parse trees shared between
-// files with identical content) map to a single ast.Value, and a document that
-// feeds several payloads (its platform bucket plus the full payload) is
-// converted once and its term reused, where the previous per-payload builds
-// re-converted it for each payload.
-//
-// When releaseDocumentsAfterPayload is set, each document's source tree is
-// released as soon as it has been converted, so the Go document trees and the
-// ast.Value payload never coexist in full: the conversion peak is bounded by
-// the larger of the two instead of their sum.
+// Every document is converted to ast.Value exactly once through a memo shared
+// across the whole build; a document feeding several payloads converts once
+// and its term is reused. With releaseDocumentsAfterPayload each source tree
+// is dropped once converted, so document trees and payload never coexist in
+// full.
 func (c *Inspector) buildPlatformPayloads(
 	ctx context.Context,
 	filesMap map[string]*model.FileMetadata,
@@ -1686,11 +1603,8 @@ func (c *Inspector) buildPlatformPayloads(
 	return payloads, nil
 }
 
-// assemblePlatformPayloads wraps the converted document terms into the per-
-// platform payloads (each platform's docs followed by the unknown-platform
-// docs, as before) plus the full payload for common rules. When a single
-// needed platform already covers every document, the full payload is that
-// same value instead of a second copy.
+// assemblePlatformPayloads wraps the converted terms into per-platform payloads
+// plus the full payload (shared when one platform covers all docs).
 func assemblePlatformPayloads(
 	terms []*ast.Term,
 	bucketsPerDoc [][]string,
@@ -1744,10 +1658,8 @@ func assembleDocumentPayload(list []*ast.Term) ast.Value {
 	return obj
 }
 
-// releaseDocumentTree drops the references to document i's source tree (the
-// owning file's Document field plus the combined/module slices that pin it)
-// once the OPA payload term has been built from it, so the tree can be
-// collected while the rest of the payload is still being converted.
+// releaseDocumentTree drops the references to document i's source tree once
+// its payload term is built, so it can be collected mid-build.
 func releaseDocumentTree(
 	i int,
 	filesMap map[string]*model.FileMetadata,

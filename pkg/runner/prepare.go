@@ -123,10 +123,8 @@ func dispatchFile(ctx context.Context,
 		contentCacheMu.Unlock()
 		if ok {
 			c, getErr = contentFromBytes(cached, services[0].MaxFileSize, filePath)
-			// contentFromBytes copies the bytes, so the cache entry is no longer
-			// needed. Delete it so the 3+ GiB raw-byte cache drains during the
-			// prepare walk instead of being held in full until ReleaseContentCache.
-			// dispatchFile runs concurrently, so guard the map write.
+			// contentFromBytes copies the bytes: delete the cache entry so the raw-byte
+			// cache drains during the walk (concurrent, so guard the write).
 			contentCacheMu.Lock()
 			delete(contentCache, norm)
 			contentCacheMu.Unlock()
