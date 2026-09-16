@@ -89,6 +89,19 @@ func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	}
 
 	if utils.Contains(filepath.Ext(path), []string{".yml", ".yaml"}) {
+		// A YAML document can only be modified by the resolution below when
+		// it holds a $ref/include_vars key or a scalar naming an external
+		// .yaml/.yml file (findFilePath requires the extension in the value;
+		// the serverless ${file(...)} form embeds it too) — each of those
+		// leaves a literal in the file bytes. Without any of them the resolve
+		// is a full parse + walk + re-marshal that returns an equivalent
+		// document, so return the original bytes and skip it entirely.
+		if !bytes.Contains(fileContent, []byte("$ref")) &&
+			!bytes.Contains(fileContent, []byte("include_vars")) &&
+			!bytes.Contains(fileContent, []byte(".yaml")) &&
+			!bytes.Contains(fileContent, []byte(".yml")) {
+			return fileContent
+		}
 		return r.yamlResolve(ctx, fileContent, path, resolveCount, maxResolverDepth, resolvedFilesCache, resolveReferences)
 	}
 	var obj any
