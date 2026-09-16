@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -1176,10 +1177,11 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 	require.Equal(t, "main.tf", result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
 }
 
-// TestBuildSarifIssue_TFPlanSourceTag verifies that a finding whose VulnerableFile.IsFromTFPlan
-// is set gets the DATADOG_IAC_SOURCE:tfplan tag in the SARIF result's properties, and that a finding
-// without it does not.
-func TestBuildSarifIssue_TFPlanSourceTag(t *testing.T) {
+// TestBuildSarifIssue_TerraformSourceTag verifies that a finding's SARIF tags carry
+// DATADOG_TERRAFORM_SOURCE with the matching VulnerableFile.TerraformSource value (TFPLAN, HCL,
+// or TFPLAN_HCL), and that a finding with no TerraformSource (e.g. a non-Terraform platform)
+// carries no such tag at all.
+func TestBuildSarifIssue_TerraformSourceTag(t *testing.T) {
 	ctx := context.Background()
 
 	issue := model.QueryResult{
@@ -1200,7 +1202,7 @@ func TestBuildSarifIssue_TFPlanSourceTag(t *testing.T) {
 					Start: model.ResourceLine{Line: 1, Col: 1},
 					End:   model.ResourceLine{Line: 1, Col: 10},
 				},
-				IsFromTFPlan: true,
+				TerraformSource: model.TerraformSourceTFPlan,
 			},
 			{
 				FileName:     "main.tf",
@@ -1211,7 +1213,28 @@ func TestBuildSarifIssue_TFPlanSourceTag(t *testing.T) {
 					Start: model.ResourceLine{Line: 5, Col: 1},
 					End:   model.ResourceLine{Line: 5, Col: 10},
 				},
-				IsFromTFPlan: false,
+				TerraformSource: model.TerraformSourceHCL,
+			},
+			{
+				FileName:     "main.tf",
+				Line:         9,
+				ResourceType: "aws_instance",
+				ResourceName: "merged",
+				ResourceLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: 9, Col: 1},
+					End:   model.ResourceLine{Line: 9, Col: 10},
+				},
+				TerraformSource: model.TerraformSourceTFPlanHCL,
+			},
+			{
+				FileName:     "main.tf",
+				Line:         13,
+				ResourceType: "aws_instance",
+				ResourceName: "untagged",
+				ResourceLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: 13, Col: 1},
+					End:   model.ResourceLine{Line: 13, Col: 10},
+				},
 			},
 		},
 	}
@@ -1220,15 +1243,23 @@ func TestBuildSarifIssue_TFPlanSourceTag(t *testing.T) {
 	report := NewSarifReport().(*sarifReport)
 	_, err := report.BuildSarifIssue(ctx, &issue, model.SCIInfo{})
 	require.NoError(t, err)
-	require.Len(t, report.Runs[0].Results, 2)
+	require.Len(t, report.Runs[0].Results, 4)
 
-	tfplanResult := report.Runs[0].Results[0]
-	tags, ok := tfplanResult.ResultProperties["tags"].([]string)
-	require.True(t, ok)
-	require.Contains(t, tags, tfPlanSourceTag, "expected the IsFromTFPlan finding to carry the tfplan source tag")
+	wantTag := func(source string) string {
+		if source == "" {
+			return ""
+		}
+		return fmt.Sprintf(terraformSourceTag, source)
+	}
 
-	hclResult := report.Runs[0].Results[1]
-	hclTags, ok := hclResult.ResultProperties["tags"].([]string)
-	require.True(t, ok)
-	require.NotContains(t, hclTags, tfPlanSourceTag, "expected the non-tfplan finding to not carry the tfplan source tag")
+	for i, file := range issue.Files {
+		tags, ok := report.Runs[0].Results[i].ResultProperties["tags"].([]string)
+		require.True(t, ok)
+		want := wantTag(file.TerraformSource)
+		if want == "" {
+			require.NotContains(t, tags, "DATADOG_TERRAFORM_SOURCE:", "resource %q should carry no terraform source tag", file.ResourceName)
+			continue
+		}
+		require.Contains(t, tags, want, "resource %q should carry %q", file.ResourceName, want)
+	}
 }

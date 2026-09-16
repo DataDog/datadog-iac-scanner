@@ -152,7 +152,8 @@ func runTFPlanHCLMappingScan(t *testing.T, mapToHCL bool) []model.Vulnerability 
 func findTFPlanFinding(t *testing.T, results []model.Vulnerability) model.Vulnerability {
 	t.Helper()
 	for i := range results {
-		if results[i].IsFromTFPlan {
+		if results[i].TerraformSource == model.TerraformSourceTFPlan ||
+			results[i].TerraformSource == model.TerraformSourceTFPlanHCL {
 			return results[i]
 		}
 	}
@@ -163,8 +164,8 @@ func findTFPlanFinding(t *testing.T, results []model.Vulnerability) model.Vulner
 // TestShouldMapTfPlanToHCL_MapsToHCLFileWhenEnabled verifies that with ShouldMapTfPlanToHCL on,
 // the HCL-sourced and TFPlan-sourced findings for the same resource merge into a single result
 // (internal/storage's getUniqueVulnerabilities) rather than being reported twice, that the
-// surviving finding is the TFPlan-sourced one (tagged IsFromTFPlan), and that it's reported
-// against the resolved HCL file/line rather than the plan JSON itself.
+// surviving finding is retagged TerraformSourceTFPlanHCL, and that it's reported against the
+// resolved HCL file/line rather than the plan JSON itself.
 func TestShouldMapTfPlanToHCL_MapsToHCLFileWhenEnabled(t *testing.T) {
 	results := runTFPlanHCLMappingScan(t, true)
 
@@ -173,6 +174,8 @@ func TestShouldMapTfPlanToHCL_MapsToHCLFileWhenEnabled(t *testing.T) {
 	finding := findTFPlanFinding(t, results)
 	require.Equal(t, "main.tf", filepath.Base(finding.FileName),
 		"expected the surviving finding to be resolved to the HCL file")
+	require.Equal(t, model.TerraformSourceTFPlanHCL, finding.TerraformSource,
+		"expected the merged finding to be tagged TFPLAN_HCL")
 }
 
 // TestShouldMapTfPlanToHCL_ReportsAgainstPlanFileWhenDisabled verifies that with
@@ -188,4 +191,15 @@ func TestShouldMapTfPlanToHCL_ReportsAgainstPlanFileWhenDisabled(t *testing.T) {
 	finding := findTFPlanFinding(t, results)
 	require.Equal(t, "plan.tfplan.json", filepath.Base(finding.FileName),
 		"expected the tfplan finding to remain against the plan JSON when ShouldMapTfPlanToHCL is false")
+	require.Equal(t, model.TerraformSourceTFPlan, finding.TerraformSource,
+		"expected the unmerged tfplan finding to stay tagged TFPLAN, not TFPLAN_HCL")
+
+	for i := range results {
+		if results[i].TerraformSource == model.TerraformSourceHCL {
+			require.Equal(t, "main.tf", filepath.Base(results[i].FileName),
+				"expected the HCL-sourced finding to be tagged HCL")
+			return
+		}
+	}
+	t.Fatal("expected an HCL-sourced finding tagged TerraformSourceHCL among the results")
 }
