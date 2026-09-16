@@ -16,7 +16,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -248,6 +250,23 @@ type Inspector struct {
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
 	mergeAllow             map[string]struct{}
+	// releaseDocumentsAfterPayload drops each file's Document map once the
+	// per-platform OPA payload has been built from it. The Document (the
+	// clean, _dd_lines-stripped parsed tree) is only consumed again by the
+	// report's Combine when a JSON payload export is requested without
+	// line-info mode; in every other case (SARIF output, line-info payload,
+	// or the in-memory server path) it is dead weight through the entire eval
+	// phase, where it roughly doubles the document data held alongside the
+	// OPA ast.Value representation. Dropping it cuts the eval-time peak heap
+	// on large repositories without affecting results.
+	releaseDocumentsAfterPayload bool
+	// releasePostEvalData drops OriginalData and LinesOriginalData after all
+	// queries have been evaluated. By that point every detector has run and
+	// every finding's LineInfoDocument has been lazily reparsed, so the raw
+	// file content and its line split are no longer referenced. This is only
+	// safe when the report will not need to reparse OriginalData for line
+	// info (i.e. line-info payload mode is off); the caller gates it.
+	releasePostEvalData bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -284,6 +303,22 @@ func (c *Inspector) buildModuleProvenanceLookup() moduleProvenanceLookup {
 		}
 		return RemoteModuleProvenance{}, false
 	}
+}
+
+// SetReleaseDocumentsAfterPayload configures whether Inspect drops each
+// file's Document map after building the OPA payloads. Callers should set this
+// to true unless they will later consume Combine's output with lineInfo=false
+// (i.e. a JSON payload export without line-info mode).
+func (c *Inspector) SetReleaseDocumentsAfterPayload(release bool) {
+	c.releaseDocumentsAfterPayload = release
+}
+
+// SetReleasePostEvalData configures whether Inspect drops OriginalData and
+// LinesOriginalData after all queries have been evaluated. Callers should set
+// this to true unless the report will later need to reparse OriginalData for
+// line-info documents (i.e. line-info payload mode is on).
+func (c *Inspector) SetReleasePostEvalData(release bool) {
+	c.releasePostEvalData = release
 }
 
 func (c *Inspector) SetExternalModulePaths(paths []string) {
@@ -552,6 +587,30 @@ func (c *Inspector) Inspect(
 		return nil, err
 	}
 
+	// Collect the document trees released during the payload conversion (plus
+	// the conversion memo and per-file top-level copies) and recompute the heap
+	// goal from the smaller live set, so eval's garbage headroom is sized against
+	// the payload alone rather than against the documents+payload overlap. A
+	// plain GC only: no FreeOSMemory here, since returning pages right before
+	// eval's allocations would just re-fault them and fragment the heap.
+	if c.releaseDocumentsAfterPayload {
+		runtime.GC()
+	}
+
+	// The OPA payload is a self-contained deep copy into ast.Value; the file
+	// Document maps it was built from are no longer referenced by the engine
+	// (result decoding uses LineInfoDocument, reparsed lazily from OriginalData,
+	// plus LinesOriginalData/OriginalData via detectors). buildPlatformPayloads
+	// releases each tree as soon as it is converted, so nothing is left to drop
+	// here; only the line-info release flag still needs to be configured. The
+	// report needs Document only for a JSON payload export without line-info,
+	// which the caller signals by leaving releaseDocumentsAfterPayload unset.
+	if c.releaseDocumentsAfterPayload {
+		for _, f := range filesMap {
+			f.SetReleaseOriginalDataAfterLineInfo(c.releasePostEvalData)
+		}
+	}
+
 	// Pre-build one inmem.Store per platform so LoadQuery does not re-parse the
 	// same payload for every PrepareForEval call. The per-platform data hash is
 	// folded into each compiled-query cache key so a compiled query is only
@@ -587,7 +646,28 @@ func (c *Inspector) Inspect(
 	if err != nil {
 		return nil, err
 	}
+
+	c.releasePostEvalFileData(filesMap)
+
 	return expandModuleFindings(vulnerabilities, moduleExtras), nil
+}
+
+// releasePostEvalFileData drops OriginalData and LinesOriginalData after all
+// queries have been evaluated. By that point every detector has run and every
+// finding's LineInfoDocument has been lazily reparsed, so the raw file content
+// and its line split are no longer referenced. Reclaiming them here (plus one
+// GC) drops ~the raw input content from the live set before the report phase.
+// Only called when releasePostEvalData is set (gated by the caller).
+func (c *Inspector) releasePostEvalFileData(filesMap map[string]*model.FileMetadata) {
+	if !c.releasePostEvalData {
+		return
+	}
+	for _, f := range filesMap {
+		f.ReleasePostEvalData()
+	}
+	// FreeOSMemory runs a full collection before returning pages, so no
+	// separate runtime.GC() is needed here.
+	debug.FreeOSMemory()
 }
 
 // executeQueries runs all prepared queries concurrently and collects vulnerabilities.
@@ -605,6 +685,13 @@ func (c *Inspector) executeQueries(
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
 
+	// OPA evaluation generates massive transient allocations (bindings, result
+	// sets, intermediate ast.Values) that the default GC pace can't keep up
+	// with, so garbage accumulates and drives the process peak RSS well above
+	// the live set. A background ticker forces a collection during eval to
+	// reclaim that garbage promptly. This does not change GOGC; the STW cost is
+	// a handful of ~tens-of-ms pauses spread across a multi-minute eval.
+	//
 	// Evaluate each query in parallel. Eval is CPU-bound (Rego), so the pool
 	// draws from the process-wide CPU budget: when this scan runs as one of N
 	// concurrent per-platform services, all their query pools share the same
@@ -904,45 +991,386 @@ func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.
 func (c *Inspector) interfaceToPayloadValue(
 	ctx context.Context,
 	value interface{},
-	objects map[uintptr]ast.Value,
+	cons *payloadHashCons,
 ) (ast.Value, error) {
+	return c.interfaceToPayloadValueDepth(ctx, value, cons, 0)
+}
+
+// payloadMaxDepth bounds the conversion recursion. Sanitized documents are
+// acyclic, but this keeps a pathological cyclic tree from exhausting the
+// stack: the document is skipped with an error like any other unconvertible
+// input, instead of crashing the scan.
+const payloadMaxDepth = 1000
+
+func (c *Inspector) interfaceToPayloadValueDepth(
+	ctx context.Context,
+	value interface{},
+	cons *payloadHashCons,
+	depth int,
+) (ast.Value, error) {
+	if depth > payloadMaxDepth {
+		return nil, fmt.Errorf("document nesting exceeds %d levels", payloadMaxDepth)
+	}
 	switch v := value.(type) {
 	case map[string]interface{}:
+		return c.mapToPayloadValue(ctx, v, cons, depth)
+	case []interface{}:
 		pointer := reflect.ValueOf(v).Pointer()
 		if pointer != 0 {
-			if converted, ok := objects[pointer]; ok {
-				return converted, nil
+			if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
+				return memo.val, nil
 			}
 		}
-		object := ast.NewObject()
-		if pointer != 0 {
-			objects[pointer] = object
-		}
-		for key, raw := range v {
-			converted, err := c.interfaceToPayloadValue(ctx, raw, objects)
-			if err != nil {
-				return nil, err
-			}
-			object.Insert(ast.StringTerm(key), ast.NewTerm(converted))
-		}
-		return object, nil
-	case []interface{}:
 		terms := make([]*ast.Term, 0, len(v))
+		contentKey := hashConsBase
 		for _, raw := range v {
-			converted, err := c.interfaceToPayloadValue(ctx, raw, objects)
+			converted, err := c.interfaceToPayloadValueDepth(ctx, raw, cons, depth+1)
 			if err != nil {
 				return nil, err
 			}
-			terms = append(terms, ast.NewTerm(converted))
+			h, ok := cons.valHash[converted]
+			if !ok {
+				h = hashConsScalarKey(converted)
+				cons.valHash[converted] = h
+			}
+			contentKey = contentKey.mix(h)
+			terms = append(terms, cons.valueTerm(converted))
 		}
-		return ast.NewArray(terms...), nil
+		array := ast.NewArray(terms...)
+		// Same shallow verification as maps: a content-key hit requires the
+		// pointer-identical canonical element value at every index (see
+		// mapToPayloadValue).
+		if existing, ok := cons.lookupCanonicalArray(contentKey, terms); ok {
+			if pointer != 0 {
+				cons.setPointerMemo(pointer, v, existing)
+			}
+			return existing, nil
+		}
+		cons.valHash[array] = contentKey
+		cons.byContent[contentKey] = array
+		if pointer != 0 {
+			cons.setPointerMemo(pointer, v, array)
+		}
+		return array, nil
 	default:
 		converted, err := ast.InterfaceToValue(value)
 		if err != nil {
 			return nil, err
 		}
-		return c.TransformJsonencodeInPayload(ctx, converted), nil
+		// The jsonencode transform can return whole parsed objects; cache the
+		// result per input value so repeated strings convert once (the input
+		// scalars are content-deduplicated, so the cache key is cheap).
+		if transformed, ok := cons.jsonencodeCache[converted]; ok {
+			return transformed, nil
+		}
+		transformed := c.TransformJsonencodeInPayload(ctx, converted)
+		cons.jsonencodeCache[converted] = transformed
+		return transformed, nil
 	}
+}
+
+// mapToPayloadValue converts a map node, hash-consing the result: children
+// are converted first so the content key can be mixed from their canonical
+// keys, then the node is either shared with its canonical twin or registered.
+// payloadChildPair is one converted key/value pair of a source map node,
+// ordered by key to build the node's content key.
+type payloadChildPair struct {
+	key  string
+	term *ast.Term
+	hash hashConsKey
+}
+
+func (c *Inspector) mapToPayloadValue(
+	ctx context.Context,
+	v map[string]interface{},
+	cons *payloadHashCons,
+	depth int,
+) (ast.Value, error) {
+	pointer := reflect.ValueOf(v).Pointer()
+	if pointer != 0 {
+		if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
+			return memo.val, nil
+		}
+	}
+	pairs := make([]payloadChildPair, 0, len(v))
+	for key, raw := range v {
+		converted, err := c.interfaceToPayloadValueDepth(ctx, raw, cons, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		h, ok := cons.valHash[converted]
+		if !ok {
+			h = hashConsScalarKey(converted)
+			cons.valHash[converted] = h
+		}
+		pairs = append(pairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
+	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].key < pairs[j].key })
+
+	contentKey := hashConsBase
+	for _, p := range pairs {
+		contentKey = contentKey.mixString(p.key).mix(p.hash)
+	}
+
+	// A content-key hit is verified shallowly against the stored canonical
+	// object: same key count, and the pointer-identical canonical value for
+	// every key. Children are canonicalized by the build, so pointer equality
+	// of the child values implies equality of the whole subtree — no deep
+	// comparison of the source trees (which would both cost CPU on the hot
+	// conversion path and pin them, defeating the progressive document
+	// release).
+	if existing, ok := cons.lookupCanonicalObject(contentKey, pairs); ok {
+		if pointer != 0 {
+			cons.setPointerMemo(pointer, v, existing)
+		}
+		return existing, nil
+	}
+	object := ast.NewObject()
+	for _, p := range pairs {
+		object.Insert(cons.stringTerm(p.key), p.term)
+	}
+	cons.valHash[object] = contentKey
+	cons.byContent[contentKey] = object
+	if pointer != 0 {
+		cons.setPointerMemo(pointer, v, object)
+	}
+	return object, nil
+}
+
+// hashConsKey is a 128-bit content key. Hash collisions are resolved by deep
+// comparison of the source values on lookup, so a collision can only cost
+// sharing, never correctness.
+type hashConsKey [2]uint64
+
+// hashConsBase seeds every content key; the combiners below are FNV-1a-style
+// mixes, sufficient because keys are compared within a single build and
+// verified against the source trees.
+var hashConsBase = hashConsKey{1469598103934665603, 2166136261}
+
+func (k hashConsKey) mix(x hashConsKey) hashConsKey {
+	k[0] = (k[0] ^ x[0]) * 1099511628211
+	k[1] = (k[1]<<7 ^ x[1]>>57) + x[0]*0x9E3779B97F4A7C15
+	return k
+}
+
+func (k hashConsKey) mixString(s string) hashConsKey {
+	for i := 0; i < len(s); i++ {
+		k[0] = (k[0] ^ uint64(s[i])) * 1099511628211
+		k[1] = (k[1] ^ uint64(s[i])) * 309485009
+	}
+	return k
+}
+
+func hashConsScalarKey(v ast.Value) hashConsKey {
+	k := hashConsBase
+	switch t := v.(type) {
+	case ast.String:
+		return k.mixString(string(t))
+	case ast.Number:
+		return k.mixString(string(t))
+	case ast.Boolean:
+		if t {
+			return k.mixString("\u0001")
+		}
+		return k.mixString("\u0000")
+	case ast.Null:
+		return k.mixString("\u0002")
+	}
+	return k.mixString(v.String())
+}
+
+// payloadHashCons is the per-payload-build interning state for
+// interfaceToPayloadValue. byPointer preserves the previous memo semantics
+// (same node converted once); byContent additionally dedups structurally
+// identical subtrees that live at different addresses. On large manifest
+// corpora the same label blocks, container specs and CRD skeletons repeat
+// across nearly every file (92% of container nodes on community-operators
+// are structural duplicates), so content-sharing collapses the ast
+// representation several-fold with zero effect on the evaluated values.
+// terms/strTerms share the Term wrappers of repeated canonical values and
+// keys.
+//
+// Neither table retains the source trees: byContent stores only the
+// canonical ast.Value (hits are verified shallowly against its canonical
+// children), and byPointer keys are addresses validated by a fingerprint of
+// the node's own keys and children — see pointerMemo. Source trees can
+// therefore be released progressively while the build is still running
+// (releaseDocumentsAfterPayload) without being pinned here or being
+// confused with a later allocation that reuses a freed address.
+type payloadHashCons struct {
+	byPointer map[uintptr]pointerMemo
+	valHash   map[ast.Value]hashConsKey
+	byContent map[hashConsKey]ast.Value
+	terms     map[ast.Value]*ast.Term
+	strTerms  map[string]*ast.Term
+	// jsonencodeCache memoizes TransformJsonencodeInPayload results per
+	// input scalar value.
+	jsonencodeCache map[ast.Value]ast.Value
+}
+
+// pointerMemo is a byPointer entry: the converted payload value plus the
+// fingerprint of the source node it was built from. The progressive document
+// release frees source trees mid-build and a later allocation can reuse a
+// recorded address, so a hit is only trusted when the candidate's
+// fingerprint still matches. The fingerprint mixes the node's key strings
+// with its children's identities — address for containers, value for
+// scalars — so a match means the two nodes are content-equal and sharing the
+// recorded payload value is exact.
+type pointerMemo struct {
+	val ast.Value
+	fp  hashConsKey
+}
+
+func newPayloadHashCons() *payloadHashCons {
+	return &payloadHashCons{
+		byPointer:       make(map[uintptr]pointerMemo),
+		valHash:         make(map[ast.Value]hashConsKey),
+		byContent:       make(map[hashConsKey]ast.Value),
+		terms:           make(map[ast.Value]*ast.Term),
+		strTerms:        make(map[string]*ast.Term),
+		jsonencodeCache: make(map[ast.Value]ast.Value),
+	}
+}
+
+// setPointerMemo records the conversion of the source node at the given
+// address, keyed by a fingerprint that can be re-checked on every later
+// lookup of that address.
+func (cons *payloadHashCons) setPointerMemo(pointer uintptr, v interface{}, val ast.Value) {
+	if fp, ok := nodeFingerprintOf(v); ok {
+		cons.byPointer[pointer] = pointerMemo{val: val, fp: fp}
+	}
+}
+
+// pointerMemoMatches validates a byPointer hit: the node currently at the
+// recorded address must have the same fingerprint as the one the memo was
+// built from. Nodes holding values of non-canonical types have no
+// fingerprint, so their memos can never validate (they are simply never
+// recorded).
+func (cons *payloadHashCons) pointerMemoMatches(memo pointerMemo, v interface{}) bool {
+	fp, ok := nodeFingerprintOf(v)
+	return ok && fp == memo.fp
+}
+
+// nodeFingerprintOf computes the identity fingerprint of a source map or
+// slice node from its key strings and children's identities. Two nodes with
+// equal fingerprints are content-equal: identical keys each mapping to the
+// identical child object or identical scalar.
+func nodeFingerprintOf(v interface{}) (hashConsKey, bool) {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		keys := make([]string, 0, len(t))
+		for key := range t {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		fp := hashConsBase
+		for _, key := range keys {
+			id, ok := childIdentity(t[key])
+			if !ok {
+				return hashConsKey{}, false
+			}
+			fp = fp.mixString(key).mix(id)
+		}
+		return fp, true
+	case []interface{}:
+		fp := hashConsBase
+		for _, elem := range t {
+			id, ok := childIdentity(elem)
+			if !ok {
+				return hashConsKey{}, false
+			}
+			fp = fp.mix(id)
+		}
+		return fp, true
+	default:
+		return hashConsKey{}, false
+	}
+}
+
+// childIdentity returns the identity contribution of a direct child: the
+// address for containers (equal content is canonically shared, so a
+// distinct address implies distinct content) and the value for scalars.
+// Non-canonical types have no identity and disable memoization for their
+// parents.
+func childIdentity(v interface{}) (hashConsKey, bool) {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		p := reflect.ValueOf(t).Pointer()
+		return hashConsKey{uint64(p), ^uint64(p)}, true
+	case []interface{}:
+		p := reflect.ValueOf(t).Pointer()
+		return hashConsKey{uint64(p), ^uint64(p)}, true
+	case string:
+		return hashConsBase.mixString(t), true
+	case bool:
+		if t {
+			return hashConsBase.mixString("\u0001"), true
+		}
+		return hashConsBase.mixString("\u0000"), true
+	case float64:
+		// float64 is the only other scalar in sanitized documents (see
+		// normalizeScalar in model_yaml.go).
+		return hashConsBase.mixString(strconv.FormatFloat(t, 'g', -1, 64)), true
+	case nil:
+		return hashConsBase.mixString("\u0002"), true
+	default:
+		return hashConsKey{}, false
+	}
+}
+
+// lookupCanonicalObject returns the stored canonical object for a content
+// key when the candidate — whose children are already canonical — matches it
+// shallowly: same number of keys and the pointer-identical canonical value
+// for each key. Because children are canonicalized by the build, matching
+// child values are the same object, so this check is exact equality of the
+// whole subtree, at the cost of one hash lookup per key instead of a deep
+// traversal. A hash collision on the 128-bit key falls through as a miss.
+func (cons *payloadHashCons) lookupCanonicalObject(key hashConsKey, pairs []payloadChildPair) (ast.Value, bool) {
+	stored, ok := cons.byContent[key].(ast.Object)
+	if !ok || stored.Len() != len(pairs) {
+		return nil, false
+	}
+	for _, p := range pairs {
+		if sv := stored.Get(cons.stringTerm(p.key)); sv == nil || sv.Value != p.term.Value {
+			return nil, false
+		}
+	}
+	return stored, true
+}
+
+// lookupCanonicalArray is lookupCanonicalObject for arrays: same length and
+// the pointer-identical canonical element value at every index.
+func (cons *payloadHashCons) lookupCanonicalArray(key hashConsKey, terms []*ast.Term) (ast.Value, bool) {
+	stored, ok := cons.byContent[key].(*ast.Array)
+	if !ok || stored.Len() != len(terms) {
+		return nil, false
+	}
+	for i := range terms {
+		if stored.Elem(i).Value != terms[i].Value {
+			return nil, false
+		}
+	}
+	return stored, true
+}
+
+// valueTerm returns a shared Term wrapper for a canonical value.
+func (cons *payloadHashCons) valueTerm(v ast.Value) *ast.Term {
+	if t, ok := cons.terms[v]; ok {
+		return t
+	}
+	t := ast.NewTerm(v)
+	cons.terms[v] = t
+	return t
+}
+
+// stringTerm returns a shared StringTerm for a map key.
+func (cons *payloadHashCons) stringTerm(s string) *ast.Term {
+	if t, ok := cons.strTerms[s]; ok {
+		return t
+	}
+	t := ast.StringTerm(s)
+	cons.strTerms[s] = t
+	return t
 }
 
 // DecodeQueryResults decodes the results into []model.Vulnerability
@@ -1135,30 +1563,30 @@ type platformPayloads struct {
 // partitionDocsByPlatform groups parsed documents by their file's platform
 // bucket(s); multi-platform files (Knative, Serverless Framework) land in both
 // their own and their parent platform's bucket via platformBucketKeys.
-// Documents with an undetermined platform are collected separately and later
-// merged into every platform's payload so no rule loses coverage.
+// It returns the flat document list (combined file docs first, then module
+// docs), the per-document bucket keys (nil for docs with an undetermined
+// platform) and the indexes of those unknown docs, which are later merged into
+// every platform's payload so no rule loses coverage.
 func partitionDocsByPlatform(
 	filesMap map[string]*model.FileMetadata,
 	combinedDocs, moduleDocs []model.Document,
-) (byPlatform map[string][]interface{}, unknown, all []interface{}) {
-	byPlatform = make(map[string][]interface{})
+) (all []interface{}, bucketsPerDoc [][]string, unknown []int) {
 	all = make([]interface{}, 0, len(combinedDocs)+len(moduleDocs))
 	addDoc := func(d model.Document) {
 		m := map[string]interface{}(d)
-		all = append(all, m)
 		id, _ := d["id"].(string)
 		var platform string
 		if fm := filesMap[id]; fm != nil {
 			platform = fm.Platform
 		}
 		keys := platformBucketKeys(platform)
+		all = append(all, m)
 		if len(keys) == 0 {
-			unknown = append(unknown, m)
+			bucketsPerDoc = append(bucketsPerDoc, nil)
+			unknown = append(unknown, len(all)-1)
 			return
 		}
-		for _, key := range keys {
-			byPlatform[key] = append(byPlatform[key], m)
-		}
+		bucketsPerDoc = append(bucketsPerDoc, keys)
 	}
 	for _, d := range combinedDocs {
 		addDoc(d)
@@ -1166,27 +1594,31 @@ func partitionDocsByPlatform(
 	for _, d := range moduleDocs {
 		addDoc(d)
 	}
-	return byPlatform, unknown, all
+	return all, bucketsPerDoc, unknown
 }
 
 // buildPlatformPayloads partitions documents by platform and builds one OPA
 // payload per queried platform. Common-platform queries receive the full
 // cross-platform payload.
+//
+// Every document is converted to ast.Value exactly once, through a memo shared
+// across the whole build: identical subtrees (e.g. parse trees shared between
+// files with identical content) map to a single ast.Value, and a document that
+// feeds several payloads (its platform bucket plus the full payload) is
+// converted once and its term reused, where the previous per-payload builds
+// re-converted it for each payload.
+//
+// When releaseDocumentsAfterPayload is set, each document's source tree is
+// released as soon as it has been converted, so the Go document trees and the
+// ast.Value payload never coexist in full: the conversion peak is bounded by
+// the larger of the two instead of their sum.
 func (c *Inspector) buildPlatformPayloads(
 	ctx context.Context,
 	filesMap map[string]*model.FileMetadata,
 	combinedDocs, moduleDocs []model.Document,
 	queries []model.QueryMetadata,
 ) (platformPayloads, error) {
-	docsByPlatform, unknownDocs, allDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
-
-	makePayload := func(ds []interface{}) (ast.Value, error) {
-		return c.interfaceToPayloadValue(
-			ctx,
-			map[string]interface{}{"document": ds},
-			make(map[uintptr]ast.Value),
-		)
-	}
+	allDocs, bucketsPerDoc, unknownDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
 
 	needFullPayload := false
 	neededPlatforms := make(map[string]bool)
@@ -1199,41 +1631,100 @@ func (c *Inspector) buildPlatformPayloads(
 		neededPlatforms[key] = true
 	}
 
-	out := platformPayloads{
-		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
-	}
-	fullPayloadBuilt := false
-	for key := range neededPlatforms {
-		ds := docsByPlatform[key]
-		if len(unknownDocs) > 0 {
-			combined := make([]interface{}, 0, len(ds)+len(unknownDocs))
-			combined = append(combined, ds...)
-			combined = append(combined, unknownDocs...)
-			ds = combined
-		}
-		pv, err := makePayload(ds)
+	terms := make([]*ast.Term, len(allDocs))
+	cons := newPayloadHashCons()
+	for i, doc := range allDocs {
+		v, err := c.interfaceToPayloadValue(ctx, doc, cons)
 		if err != nil {
 			return platformPayloads{}, err
 		}
+		terms[i] = ast.NewTerm(v)
+		if c.releaseDocumentsAfterPayload {
+			releaseDocumentTree(i, filesMap, combinedDocs, moduleDocs)
+		}
+	}
+
+	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
+	return payloads, nil
+}
+
+// assemblePlatformPayloads wraps the converted document terms into the per-
+// platform payloads (each platform's docs followed by the unknown-platform
+// docs, as before) plus the full payload for common rules. When a single
+// needed platform already covers every document, the full payload is that
+// same value instead of a second copy.
+func assemblePlatformPayloads(
+	terms []*ast.Term,
+	bucketsPerDoc [][]string,
+	unknownDocs []int,
+	neededPlatforms map[string]bool,
+	needFullPayload bool,
+) platformPayloads {
+	platformLists := make(map[string][]*ast.Term, len(neededPlatforms))
+	for i, keys := range bucketsPerDoc {
+		for _, key := range keys {
+			if neededPlatforms[key] {
+				platformLists[key] = append(platformLists[key], terms[i])
+			}
+		}
+	}
+	out := platformPayloads{
+		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
+	}
+	for key := range neededPlatforms {
+		list := platformLists[key]
+		if len(unknownDocs) > 0 {
+			combined := make([]*ast.Term, 0, len(list)+len(unknownDocs))
+			combined = append(combined, list...)
+			for _, idx := range unknownDocs {
+				combined = append(combined, terms[idx])
+			}
+			list = combined
+		}
+		pv := assembleDocumentPayload(list)
 		out.byPlatform[key] = pv
 		if needFullPayload &&
 			len(neededPlatforms) == 1 &&
 			len(unknownDocs) == 0 &&
-			len(ds) == len(allDocs) {
+			len(list) == len(terms) {
 			out.full = pv
-			fullPayloadBuilt = true
 		}
 	}
 
-	if needFullPayload && !fullPayloadBuilt {
-		pv, err := makePayload(allDocs)
-		if err != nil {
-			return platformPayloads{}, err
-		}
-		out.full = pv
+	if needFullPayload && out.full == nil {
+		out.full = assembleDocumentPayload(terms)
 	}
 
-	return out, nil
+	return out
+}
+
+// assembleDocumentPayload wraps a document term list in the
+// {"document": [...]} object handed to OPA as input.
+func assembleDocumentPayload(list []*ast.Term) ast.Value {
+	obj := ast.NewObject()
+	obj.Insert(ast.StringTerm("document"), ast.NewTerm(ast.NewArray(list...)))
+	return obj
+}
+
+// releaseDocumentTree drops the references to document i's source tree (the
+// owning file's Document field plus the combined/module slices that pin it)
+// once the OPA payload term has been built from it, so the tree can be
+// collected while the rest of the payload is still being converted.
+func releaseDocumentTree(
+	i int,
+	filesMap map[string]*model.FileMetadata,
+	combinedDocs, moduleDocs []model.Document,
+) {
+	if i < len(combinedDocs) {
+		if id, ok := combinedDocs[i]["id"].(string); ok {
+			if fm := filesMap[id]; fm != nil {
+				fm.Document = nil
+			}
+		}
+		combinedDocs[i] = nil
+		return
+	}
+	moduleDocs[i-len(combinedDocs)] = nil
 }
 
 // canonicalPlatformKey maps a query- or file-level platform name to the single

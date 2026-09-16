@@ -362,23 +362,30 @@ func Test_partitionDocsByPlatform(t *testing.T) {
 		{"id": "serverlessfw-id", "service": "my-svc", "provider": map[string]interface{}{}},
 	}
 
-	byPlatform, unknown, all := partitionDocsByPlatform(filesMap, combined, nil)
+	all, bucketsPerDoc, unknown := partitionDocsByPlatform(filesMap, combined, nil)
 
 	require.Len(t, all, 7)
 	require.Len(t, unknown, 1)
-	require.Equal(t, "unknown-id", unknown[0].(map[string]interface{})["id"])
-	require.Len(t, byPlatform["ansible"], 1)
-	require.Equal(t, "ansible-id", byPlatform["ansible"][0].(map[string]interface{})["id"])
+	require.Equal(t, "unknown-id", all[unknown[0]].(map[string]interface{})["id"])
+	bucketOf := func(id string) []string {
+		for i, doc := range all {
+			if doc.(map[string]interface{})["id"] == id {
+				return bucketsPerDoc[i]
+			}
+		}
+		return nil
+	}
+	require.Equal(t, []string{"ansible"}, bucketOf("ansible-id"))
 	// Knative docs are also scanned by Kubernetes rules; the kubernetes bucket
 	// holds the two k8s docs plus the knative one.
-	require.Len(t, byPlatform["knative"], 1)
-	require.Len(t, byPlatform["kubernetes"], 3)
+	require.Equal(t, []string{"knative", "kubernetes"}, bucketOf("knative-id"))
+	require.Equal(t, []string{"kubernetes"}, bucketOf("k8s-id"))
 	// Crossplane is classified consistently and has its own queries, so it maps
 	// to a single bucket and is not mirrored into kubernetes.
-	require.Len(t, byPlatform["crossplane"], 1)
+	require.Equal(t, []string{"crossplane"}, bucketOf("crossplane-id"))
 	// Serverless Framework docs are scanned by both ServerlessFW and CloudFormation rules.
-	require.Len(t, byPlatform["serverlessfw"], 1)
-	require.Len(t, byPlatform["cloudformation"], 1)
+	require.Equal(t, []string{"serverlessfw", "cloudformation"}, bucketOf("serverlessfw-id"))
+	require.Nil(t, bucketOf("unknown-id"))
 }
 
 func TestInterfaceToPayloadValueMatchesExistingTransformation(t *testing.T) {
@@ -400,7 +407,7 @@ func TestInterfaceToPayloadValueMatchesExistingTransformation(t *testing.T) {
 	got, err := inspector.interfaceToPayloadValue(
 		context.Background(),
 		input,
-		make(map[uintptr]ast.Value),
+		newPayloadHashCons(),
 	)
 
 	require.NoError(t, err)
@@ -444,6 +451,42 @@ func TestBuildPlatformPayloadsReusesEquivalentFullPayload(t *testing.T) {
 		reflect.ValueOf(payloads.full).Pointer(),
 		reflect.ValueOf(payloads.byPlatform["terraform"]).Pointer(),
 	)
+}
+
+func TestBuildPlatformPayloadsSharesSubtreesAndReleases(t *testing.T) {
+	// Two kubernetes files with identical content share every child map (the
+	// shared-parse cache hands each file a fresh top-level map), exactly like
+	// duplicate files in community-operators.
+	sharedChild := map[string]interface{}{"spec": map[string]interface{}{"paused": false}}
+	filesMap := map[string]*model.FileMetadata{
+		"k8s-1": {ID: "k8s-1", Platform: "kubernetes", Document: model.Document{
+			"id": "k8s-1", "file": "a.yaml", "kind": "Pod", "metadata": sharedChild}},
+		"k8s-2": {ID: "k8s-2", Platform: "kubernetes", Document: model.Document{
+			"id": "k8s-2", "file": "b.yaml", "kind": "Pod", "metadata": sharedChild}},
+	}
+	combined := []model.Document{filesMap["k8s-1"].Document, filesMap["k8s-2"].Document}
+	queries := []model.QueryMetadata{{Platform: "k8s"}}
+
+	inspector := &Inspector{releaseDocumentsAfterPayload: true}
+	payloads, err := inspector.buildPlatformPayloads(
+		context.Background(), filesMap, combined, nil, queries)
+	require.NoError(t, err)
+
+	// Progressive release: every source document is dropped after conversion.
+	for id, f := range filesMap {
+		require.Nil(t, f.Document, "document for %s should be released", id)
+	}
+
+	// The shared child subtree converts to a single ast.Value: both payload
+	// entries hold the same metadata object.
+	obj := payloads.byPlatform["kubernetes"].(ast.Object)
+	docs := obj.Get(ast.StringTerm("document"))
+	arr := docs.Value.(*ast.Array)
+	require.Equal(t, 2, arr.Len())
+	meta1 := arr.Elem(0).Value.(ast.Object).Get(ast.StringTerm("metadata")).Value
+	meta2 := arr.Elem(1).Value.(ast.Object).Get(ast.StringTerm("metadata")).Value
+	require.Equal(t, reflect.ValueOf(meta1).Pointer(), reflect.ValueOf(meta2).Pointer(),
+		"shared child subtrees must map to one ast.Value")
 }
 
 func TestEngine_selectPlatformPayload(t *testing.T) {
@@ -1451,4 +1494,83 @@ func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
 	require.True(t, rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
 	require.False(t, !ins.isExternalModulePath("/tmp/remote-module/main.tf") &&
 		rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
+}
+
+// TestNodeFingerprintOf verifies the fingerprint used to validate byPointer
+// hits: equal-content nodes at different addresses share a fingerprint,
+// different-content nodes do not, and nodes holding non-canonical types have
+// no fingerprint at all (their memos can never validate).
+func TestNodeFingerprintOf(t *testing.T) {
+	child := map[string]interface{}{"a": float64(1)}
+	equalA := map[string]interface{}{"k": child, "s": "v", "b": true}
+	equalB := map[string]interface{}{"s": "v", "k": child, "b": true}
+	fpA, okA := nodeFingerprintOf(equalA)
+	fpB, okB := nodeFingerprintOf(equalB)
+	assert.True(t, okA)
+	assert.True(t, okB)
+	assert.Equal(t, fpA, fpB, "same content (shared child) must share a fingerprint regardless of key order")
+
+	different := map[string]interface{}{"k": child, "s": "other", "b": true}
+	fpD, okD := nodeFingerprintOf(different)
+	assert.True(t, okD)
+	assert.NotEqual(t, fpA, fpD, "a different scalar must change the fingerprint")
+
+	otherChild := map[string]interface{}{"a": float64(2)}
+	differentChild := map[string]interface{}{"k": otherChild, "s": "v", "b": true}
+	fpC, okC := nodeFingerprintOf(differentChild)
+	assert.True(t, okC)
+	assert.NotEqual(t, fpA, fpC, "a different child object must change the fingerprint")
+
+	// A node sharing the same child objects but with one extra key is a
+	// different node and must not validate against the first memo.
+	extraKey := map[string]interface{}{"k": child, "s": "v", "b": true, "x": nil}
+	fpX, okX := nodeFingerprintOf(extraKey)
+	assert.True(t, okX)
+	assert.NotEqual(t, fpA, fpX)
+
+	fpArrA, ok := nodeFingerprintOf([]interface{}{child, "x"})
+	assert.True(t, ok)
+	fpArrB, ok := nodeFingerprintOf([]interface{}{child, "x"})
+	assert.True(t, ok)
+	assert.Equal(t, fpArrA, fpArrB, "slices of equal content share a fingerprint")
+
+	// Non-canonical child types disable memoization for their parents.
+	unmemoizable := map[string]interface{}{"k": struct{ X int }{1}}
+	_, ok = nodeFingerprintOf(unmemoizable)
+	assert.False(t, ok, "non-canonical child type must yield no fingerprint")
+}
+
+// TestPayloadHashConsPointerMemoValidation covers the address-reuse safety of
+// byPointer: a memo recorded for one node must not be served for a different
+// node that happens to sit at the same address.
+func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
+	cons := newPayloadHashCons()
+	child := map[string]interface{}{"a": float64(1)}
+	node := map[string]interface{}{"k": child, "s": "v"}
+	// Record a memo for the node (val is irrelevant to validation).
+	cons.setPointerMemo(0x1234, node, ast.String("first"))
+	if memo, ok := cons.byPointer[0x1234]; ok && cons.pointerMemoMatches(memo, node) {
+		// sanity: the fresh memo validates
+	} else {
+		t.Fatal("expected fresh memo to validate")
+	}
+
+	// A different node "reusing" the address must not match the memo.
+	impostor := map[string]interface{}{"k": child, "s": "other"}
+	memo, ok := cons.byPointer[0x1234]
+	assert.True(t, ok)
+	assert.False(t, cons.pointerMemoMatches(memo, impostor),
+		"a different node at a recorded address must not be served the stale memo")
+
+	// Content-equal but built from distinct child objects: by the runner-side
+	// canonicalization guarantee such twins are the same object in practice;
+	// at the engine boundary only same-child-pointer twins validate, which is
+	// the conservative direction (a miss is safe, a stale hit is not).
+	twinChild := map[string]interface{}{"a": float64(1)}
+	distinct := map[string]interface{}{"k": twinChild, "s": "v"}
+	assert.False(t, cons.pointerMemoMatches(memo, distinct),
+		"a node with distinct child objects must not validate (conservative miss)")
+
+	// Non-canizable nodes never validate.
+	assert.False(t, cons.pointerMemoMatches(memo, map[string]interface{}{"k": struct{ X int }{}}))
 }
