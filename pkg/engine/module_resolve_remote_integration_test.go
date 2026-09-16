@@ -143,7 +143,7 @@ module "bucket" {
 	require.Equal(t, fx.modPath, vulns[0].FileName)
 	require.NotEmpty(t, vulns[0].ModuleCallChain)
 	require.NotNil(t, vulns[0].ModuleAttribution)
-	require.Equal(t, "stack/main.tf", vulns[0].ModuleAttribution.CodeLocation.Filename)
+	require.Equal(t, "stack/main.tf", vulns[0].ModuleAttribution.CallSite.Filename)
 	require.Equal(t, remoteBucketSource, vulns[0].ModuleAttribution.Source)
 	require.Equal(t, remoteBucketVersion, vulns[0].ModuleAttribution.Version)
 	require.Equal(t, "main.tf", vulns[0].ModuleAttribution.ModuleCodeLocation.Filename)
