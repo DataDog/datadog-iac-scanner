@@ -85,6 +85,9 @@ type Parameters struct {
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
 	ShouldScanTfPlans           bool
+	// ShouldMapTfPlanToHCL maps a tfplan finding back to its HCL source line/file instead of
+	// reporting it against the plan JSON. No effect unless ShouldScanTfPlans is also set.
+	ShouldMapTfPlanToHCL bool
 	DisableRuleIsolation        bool
 	UseRulesCache               bool
 	TerraformModules            TerraformModulesSetting

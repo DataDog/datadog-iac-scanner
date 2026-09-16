@@ -25,8 +25,9 @@ type Location struct {
 // AddressRegistry stores mappings from Terraform addresses to source locations
 // Multiple locations can exist for the same address (e.g., module "vpc" in different directories)
 type AddressRegistry struct {
-	mutex    sync.RWMutex
-	mappings map[string][]Location // Stores ALL locations per address
+	mutex               sync.RWMutex
+	mappings            map[string][]Location // Stores ALL locations per address
+	warnEmptyLookupOnce sync.Once
 }
 
 func New() *AddressRegistry {
@@ -200,6 +201,17 @@ func (r *AddressRegistry) GetMappingCount() int {
 	defer r.mutex.RUnlock()
 
 	return len(r.mappings)
+}
+
+// WarnIfNeverPopulated invokes warn exactly once per registry instance, the
+// first time it is checked while still empty. Used to detect a parser and
+// tracker that ended up with different registry instances: every lookup
+// misses silently, and this is the only place that failure is observable.
+func (r *AddressRegistry) WarnIfNeverPopulated(warn func()) {
+	if r.GetMappingCount() > 0 {
+		return
+	}
+	r.warnEmptyLookupOnce.Do(warn)
 }
 
 func (r *AddressRegistry) GetDuplicateCount() int {

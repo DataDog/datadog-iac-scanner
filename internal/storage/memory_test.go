@@ -225,6 +225,54 @@ func TestMemoryStorage_SaveVulnerabilities(t *testing.T) {
 	}
 }
 
+// TestMemoryStorage_GetVulnerabilities_MergesHCLAndTFPlanFindings verifies that an HCL-sourced
+// and a TFPlan-sourced finding for the same resource (same fingerprint inputs, different FileID
+// and Value, since TFPlan-to-HCL mapping resolves both to the same FileName/line) collapse into
+// one finding, that the TFPlan-sourced one's fields survive regardless of which was saved first,
+// and that the surviving record is retagged TerraformSourceTFPlanHCL to mark the merge.
+func TestMemoryStorage_GetVulnerabilities_MergesHCLAndTFPlanFindings(t *testing.T) {
+	hclValue := "static-hcl-value"
+	tfplanValue := "computed-plan-value"
+	hclFinding := model.Vulnerability{
+		FileID:          "hcl-file-id",
+		FileName:        "main.tf",
+		Platform:        "terraform",
+		ResourceType:    "aws_instance",
+		ResourceName:    "web",
+		QueryID:         "query_id",
+		Value:           &hclValue,
+		TerraformSource: model.TerraformSourceHCL,
+	}
+	tfplanFinding := model.Vulnerability{
+		FileID:          "tfplan-file-id",
+		FileName:        "main.tf",
+		Platform:        "terraform",
+		ResourceType:    "aws_instance",
+		ResourceName:    "web",
+		QueryID:         "query_id",
+		Value:           &tfplanValue,
+		TerraformSource: model.TerraformSourceTFPlan,
+	}
+	wantMerged := tfplanFinding
+	wantMerged.TerraformSource = model.TerraformSourceTFPlanHCL
+
+	t.Run("HCL saved first", func(t *testing.T) {
+		m := &MemoryStorage{vulnerabilities: []model.Vulnerability{hclFinding, tfplanFinding}}
+		got, err := m.GetVulnerabilities(context.Background(), "")
+		require.NoError(t, err)
+		require.Len(t, got, 1, "expected the two findings to merge into one")
+		require.Equal(t, wantMerged, got[0], "expected the TFPlan-sourced finding to survive, retagged TFPLAN_HCL")
+	})
+
+	t.Run("TFPlan saved first", func(t *testing.T) {
+		m := &MemoryStorage{vulnerabilities: []model.Vulnerability{tfplanFinding, hclFinding}}
+		got, err := m.GetVulnerabilities(context.Background(), "")
+		require.NoError(t, err)
+		require.Len(t, got, 1, "expected the two findings to merge into one")
+		require.Equal(t, wantMerged, got[0], "expected the TFPlan-sourced finding to survive regardless of save order")
+	})
+}
+
 // TestNewMemoryStorage tests the functions [NewMemoryStorage()]
 func TestNewMemoryStorage(t *testing.T) {
 	tests := []struct {

@@ -129,7 +129,7 @@ func TestParser_SupportedExtensions(t *testing.T) {
 // Test_Parser tests the functions [Parser()] and all the methods called by them
 func Test_Parser(t *testing.T) {
 	ctx := context.Background()
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	_, document, linesToIgnore, _, err := parser.Parse(ctx, []byte(have), "test.tf", true, 15)
 
 	require.Equal(t, []int{8, 9, 10, 11, 5, 4, 6}, linesToIgnore)
@@ -149,7 +149,7 @@ func Test_Parser(t *testing.T) {
 // Test_Count tests resources with count set to 0
 func Test_Count(t *testing.T) {
 	ctx := context.Background()
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	_, document, _, _, err := parser.Parse(ctx, []byte(count), "count.tf", true, 15)
 	require.NoError(t, err)
 	require.Len(t, document, 1)
@@ -161,7 +161,7 @@ func Test_Count(t *testing.T) {
 // Test_Parentheses_Expr tests if parentheses expr is well parsed
 func Test_Parentheses_Expr(t *testing.T) {
 	ctx := context.Background()
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	// Call Resolve first to set up input variables
 	fullPath := filepath.FromSlash("../../../test/fixtures/test-tf-parentheses/parentheses.tf")
 	_, _, err := parser.Resolve(ctx, []byte(parentheses), fullPath, false, 0)
@@ -177,7 +177,7 @@ func Test_Parentheses_Expr(t *testing.T) {
 // Test_namelessResource tests the case of the nameless resource where the resource name is not specified and model.Document resource is a list
 func Test_namelessResource(t *testing.T) {
 	ctx := context.Background()
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	_, document, _, _, err := parser.Parse(ctx, []byte(namelessResource), "namelessResource.tf", true, 15)
 	require.NoError(t, err)
 	require.Len(t, document, 1)
@@ -191,7 +191,7 @@ func Test_namelessResource(t *testing.T) {
 
 func Test_Parser_Tofu(t *testing.T) {
 	ctx := context.Background()
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	require.Equal(t, model.KindTerraform, parser.GetKind())
 	require.Contains(t, parser.SupportedExtensions(), ".tofu")
 
@@ -215,7 +215,7 @@ variable "name" { default = "from-tofu" }
 resource "aws_s3_bucket" "b" { bucket = var.name }
 `), 0o600))
 
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	parser.SetMergeAllow([]string{tf, tofu})
 
 	_, tfDoc, _, _, err := parser.Parse(context.Background(), []byte(`
@@ -248,7 +248,7 @@ func Test_Parser_SharesDirectoryVarsCacheAcrossSiblingFiles(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte(`variable "name" { default = "shared" }`), 0o600))
 	}
 
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	parser.SetMergeAllow(paths)
 	for _, path := range paths {
 		content, err := os.ReadFile(path)
@@ -268,7 +268,7 @@ func Test_Parser_SharesDirectoryVarsCacheAcrossSiblingFiles(t *testing.T) {
 // Test_Resolve tests the functions [Resolve()] and all the methods called by them
 func Test_Resolve(t *testing.T) {
 	ctx := context.Background()
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 
 	resolved, _, err := parser.Resolve(ctx, []byte(have), "test.tf", true, 15)
 	require.NoError(t, err)
@@ -538,7 +538,7 @@ resource "aws_s3_bucket" "b%d" {
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
 
-	p := NewDefault()
+	p := NewWithoutRegistry()
 	ctx := context.Background()
 
 	var wg sync.WaitGroup

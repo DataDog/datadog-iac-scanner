@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -1174,4 +1175,91 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 	require.Equal(t, "AMI shared with multiple accounts", result.ResultRuleID)
 	require.Equal(t, "note", result.ResultLevel) // MEDIUM maps to "note"
 	require.Equal(t, "main.tf", result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
+}
+
+// TestBuildSarifIssue_TerraformSourceTag verifies that a finding's SARIF tags carry
+// DATADOG_TERRAFORM_SOURCE with the matching VulnerableFile.TerraformSource value (TFPLAN, HCL,
+// or TFPLAN_HCL), and that a finding with no TerraformSource (e.g. a non-Terraform platform)
+// carries no such tag at all.
+func TestBuildSarifIssue_TerraformSourceTag(t *testing.T) {
+	ctx := context.Background()
+
+	issue := model.QueryResult{
+		QueryName:     "test-tfplan-tag-rule",
+		QueryID:       "1",
+		LegacyQueryID: "Undefined",
+		Description:   "test description",
+		QueryURI:      "https://www.test.com",
+		Severity:      model.SeverityHigh,
+		Platform:      "terraform",
+		Files: []model.VulnerableFile{
+			{
+				FileName:     "main.tf",
+				Line:         1,
+				ResourceType: "aws_instance",
+				ResourceName: "web",
+				ResourceLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: 1, Col: 1},
+					End:   model.ResourceLine{Line: 1, Col: 10},
+				},
+				TerraformSource: model.TerraformSourceTFPlan,
+			},
+			{
+				FileName:     "main.tf",
+				Line:         5,
+				ResourceType: "aws_instance",
+				ResourceName: "other",
+				ResourceLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: 5, Col: 1},
+					End:   model.ResourceLine{Line: 5, Col: 10},
+				},
+				TerraformSource: model.TerraformSourceHCL,
+			},
+			{
+				FileName:     "main.tf",
+				Line:         9,
+				ResourceType: "aws_instance",
+				ResourceName: "merged",
+				ResourceLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: 9, Col: 1},
+					End:   model.ResourceLine{Line: 9, Col: 10},
+				},
+				TerraformSource: model.TerraformSourceTFPlanHCL,
+			},
+			{
+				FileName:     "main.tf",
+				Line:         13,
+				ResourceType: "aws_instance",
+				ResourceName: "untagged",
+				ResourceLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: 13, Col: 1},
+					End:   model.ResourceLine{Line: 13, Col: 10},
+				},
+			},
+		},
+	}
+	stampFingerprints(&issue)
+
+	report := NewSarifReport().(*sarifReport)
+	_, err := report.BuildSarifIssue(ctx, &issue, model.SCIInfo{})
+	require.NoError(t, err)
+	require.Len(t, report.Runs[0].Results, 4)
+
+	wantTag := func(source string) string {
+		if source == "" {
+			return ""
+		}
+		return fmt.Sprintf(terraformSourceTag, source)
+	}
+
+	for i, file := range issue.Files {
+		tags, ok := report.Runs[0].Results[i].ResultProperties["tags"].([]string)
+		require.True(t, ok)
+		want := wantTag(file.TerraformSource)
+		if want == "" {
+			require.NotContains(t, tags, "DATADOG_TERRAFORM_SOURCE:", "resource %q should carry no terraform source tag", file.ResourceName)
+			continue
+		}
+		require.Contains(t, tags, want, "resource %q should carry %q", file.ResourceName, want)
+	}
 }

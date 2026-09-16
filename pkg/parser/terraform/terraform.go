@@ -78,15 +78,14 @@ func (p *Parser) SetMergeAllow(paths []string) {
 	p.shadowedFiles = tfpath.AllowSet(shadowedPaths)
 }
 
-// NewDefault initializes a parser with Parser default values
-//
-// Deprecated: use New() with a registry instance instead
-func NewDefault() *Parser {
+// NewWithoutRegistry builds a parser that performs no address registration.
+// For fixture parsing and unit tests that never map tfplan findings to HCL.
+func NewWithoutRegistry() *Parser {
 	return &Parser{
 		numOfRetries: RetriesDefaultValue,
 		convertFunc:  converter.DefaultConverted,
 		fsys:         vfs.DiskFS{},
-		registry:     nil, // No registry - will log error if used
+		registry:     nil,
 	}
 }
 
@@ -100,10 +99,12 @@ func New(reg *registry.AddressRegistry) *Parser {
 	}
 }
 
-// nolint:gocritic
-// DEPRECATED: Use NewWithParams() with a registry instance instead
-func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
-	parser := NewDefault()
+// NewWithoutRegistryAndParams builds a parser with no address registration
+// but with a custom filesystem, vars path, and SCI info. For tests that need
+// those knobs without HCL-to-tfplan mapping.
+// nolint:gocritic // sciInfo kept by value to match the existing test callers
+func NewWithoutRegistryAndParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
+	parser := NewWithoutRegistry()
 	if fsys != nil {
 		parser.fsys = fsys
 	}
@@ -113,14 +114,14 @@ func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.S
 }
 
 // NewWithParams creates a parser with registry, vars path, and sci info
-func NewWithParams(fsys vfs.FS, reg *registry.AddressRegistry, terraformVarsPath string, sciInfo *model.SCIInfo) *Parser {
+func NewWithParams(fsys vfs.FS, reg *registry.AddressRegistry, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
 	p := &Parser{
 		numOfRetries:      RetriesDefaultValue,
 		convertFunc:       converter.DefaultConverted,
 		fsys:              vfs.DiskFS{},
 		registry:          reg,
 		terraformVarsPath: terraformVarsPath,
-		sciInfo:           *sciInfo,
+		sciInfo:           sciInfo,
 	}
 	if fsys != nil {
 		p.fsys = fsys
@@ -317,7 +318,7 @@ func quoteDataSourceTraversals(source []byte, file *hcl.File) []byte {
 // and registers them in the address registry for later tfplan mapping
 func extractAndRegisterAddresses(ctx context.Context, file *hcl.File, filePath string, reg *registry.AddressRegistry) {
 	// If no registry provided, silently skip address registration
-	// This allows NewDefault() to be used for non-scan scenarios (e.g., unit tests)
+	// This allows NewWithoutRegistry() to be used for non-scan scenarios (e.g., unit tests)
 	if reg == nil {
 		return
 	}

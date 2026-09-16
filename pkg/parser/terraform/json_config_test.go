@@ -62,7 +62,7 @@ func TestParseJSONConfigCountZeroSkipped(t *testing.T) {
 
 func TestParser_JSONConfigAndTofuJSON(t *testing.T) {
 	ctx := context.Background()
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	src := []byte(`{"resource":{"aws_s3_bucket":{"b":{"acl":"public-read"}}}}`)
 
 	for _, name := range []string{"main.tf.json", "main.tofu.json"} {
@@ -99,7 +99,7 @@ func TestParser_JSONConfigUsesIAMPolicyDocument(t *testing.T) {
 }`)
 	require.NoError(t, os.WriteFile(main, src, 0o600))
 
-	_, document, _, _, err := NewDefault().Parse(context.Background(), src, main, true, 15)
+	_, document, _, _, err := NewWithoutRegistry().Parse(context.Background(), src, main, true, 15)
 	require.NoError(t, err)
 	policy := document[0]["resource"].(model.Document)["aws_iam_policy"].(model.Document)["p"].(model.Document)["policy"]
 	require.Contains(t, stringifyValue(policy), "s3:GetObject")
@@ -116,7 +116,7 @@ variable "acl" { default = "public-read" }
 	src := []byte(`{"resource":{"aws_s3_bucket":{"b":{"acl":"${var.acl}"}}}}`)
 	require.NoError(t, os.WriteFile(main, src, 0o600))
 
-	_, document, _, _, err := NewDefault().Parse(context.Background(), src, main, true, 15)
+	_, document, _, _, err := NewWithoutRegistry().Parse(context.Background(), src, main, true, 15)
 	require.NoError(t, err)
 	bucket := document[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)
 	require.Equal(t, "public-read", bucket["acl"].(ctyjson.SimpleJSONValue).AsString())
@@ -130,7 +130,7 @@ func TestParser_JSONConfigUsesSiblingJSONVariables(t *testing.T) {
 	src := []byte(`{"resource":{"aws_s3_bucket":{"b":{"acl":"${var.acl}"}}}}`)
 	require.NoError(t, os.WriteFile(main, src, 0o600))
 
-	_, document, _, _, err := NewDefault().Parse(context.Background(), src, main, true, 15)
+	_, document, _, _, err := NewWithoutRegistry().Parse(context.Background(), src, main, true, 15)
 	require.NoError(t, err)
 	bucket := document[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)
 	require.Equal(t, "public-read", bucket["acl"].(ctyjson.SimpleJSONValue).AsString())
@@ -196,7 +196,7 @@ func TestParser_JSONConfigDoesNotTreatResourcesAsVars(t *testing.T) {
 	src := []byte(`{"resource":{"aws_s3_bucket":{"b":{"bucket":"${var.resource}"}}}}`)
 	require.NoError(t, os.WriteFile(main, src, 0o600))
 
-	_, document, _, _, err := NewDefault().Parse(context.Background(), src, main, true, 15)
+	_, document, _, _, err := NewWithoutRegistry().Parse(context.Background(), src, main, true, 15)
 	require.NoError(t, err)
 	bucket := document[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)
 	require.Equal(t, "from-var", bucket["bucket"].(ctyjson.SimpleJSONValue).AsString())
@@ -218,7 +218,7 @@ func TestParser_JSONLocalsResolveAcrossPasses(t *testing.T) {
 }`)
 	require.NoError(t, os.WriteFile(main, src, 0o600))
 
-	_, document, _, _, err := NewDefault().Parse(context.Background(), src, main, true, 15)
+	_, document, _, _, err := NewWithoutRegistry().Parse(context.Background(), src, main, true, 15)
 	require.NoError(t, err)
 	bucket := document[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)
 	require.Equal(t, "resolved", bucket["bucket"].(ctyjson.SimpleJSONValue).AsString())
@@ -233,7 +233,7 @@ func TestParser_JSONTwinsKeepOwnVars(t *testing.T) {
 	require.NoError(t, os.WriteFile(tfJSON, tfSrc, 0o600))
 	require.NoError(t, os.WriteFile(tofuJSON, tofuSrc, 0o600))
 
-	parser := NewDefault()
+	parser := NewWithoutRegistry()
 	parser.SetMergeAllow([]string{tfJSON, tofuJSON})
 
 	_, tfDoc, _, _, err := parser.Parse(context.Background(), tfSrc, tfJSON, true, 15)

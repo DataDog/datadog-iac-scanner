@@ -222,6 +222,11 @@ const (
 	platformTag              = "DATADOG_PLATFORM:%s"
 	providerTag              = "DATADOG_PROVIDER:%s"
 	scannedFileCountTag      = "DATADOG_SCANNED_FILE_COUNT:%d"
+	// terraformSourceTag reports which document(s) produced a Terraform finding
+	// (Vulnerability.TerraformSource: TFPLAN, HCL, or TFPLAN_HCL), regardless of whether a TFPlan
+	// finding is now reported against the resolved HCL file (see pkg/detector/tfplan_detect.go)
+	// or the plan file itself.
+	terraformSourceTag = "DATADOG_TERRAFORM_SOURCE:%s"
 
 	DOCKERFILE = "Dockerfile"
 )
@@ -488,6 +493,9 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 
 			// nolint:gocritic
 			resultTags := append(tags, resourceTypeTag, resourceNameTag)
+			if vulnerability.TerraformSource != "" {
+				resultTags = append(resultTags, fmt.Sprintf(terraformSourceTag, vulnerability.TerraformSource))
+			}
 
 			resourceLocation := vulnerability.ResourceLocation
 
