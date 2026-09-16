@@ -267,6 +267,11 @@ type Inspector struct {
 	// safe when the report will not need to reparse OriginalData for line
 	// info (i.e. line-info payload mode is off); the caller gates it.
 	releasePostEvalData bool
+	// evalGcRelief enables the eval-phase forced-GC ticker and mirrors the
+	// scanner's live-heap gate (see SetEvalGcRelief): only scans whose live
+	// heap entering eval is large enough to need GC pressure relief run
+	// forced collections during evaluation.
+	evalGcRelief bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -319,6 +324,15 @@ func (c *Inspector) SetReleaseDocumentsAfterPayload(release bool) {
 // line-info documents (i.e. line-info payload mode is on).
 func (c *Inspector) SetReleasePostEvalData(release bool) {
 	c.releasePostEvalData = release
+}
+
+// SetEvalGcRelief enables the eval-phase GC pressure relief (forced-GC
+// ticker, see executeQueries). The scanner sets it from the same live-heap
+// measurement that gates the reduced GC percent, so both mechanisms apply
+// to the same scans: those whose live heap entering eval exceeds
+// scanner.EvalGcHeapBytes.
+func (c *Inspector) SetEvalGcRelief(relief bool) {
+	c.evalGcRelief = relief
 }
 
 func (c *Inspector) SetExternalModulePaths(paths []string) {
@@ -692,6 +706,30 @@ func (c *Inspector) executeQueries(
 	// reclaim that garbage promptly. This does not change GOGC; the STW cost is
 	// a handful of ~tens-of-ms pauses spread across a multi-minute eval.
 	//
+	// Only run the ticker on scans whose live heap entering eval was large
+	// enough to need GC pressure relief (see SetEvalGcRelief): the scanner
+	// gates it on the measured live heap exactly like the reduced GC percent,
+	// so mid-size corpora — which never need the relief and pay for it in
+	// extra marking CPU — keep the default GC pacing and no forced
+	// collections.
+	if c.evalGcRelief {
+		const evalGcInterval = 30 * time.Second
+		gcCtx, gcCancel := context.WithCancel(ctx)
+		defer gcCancel()
+		go func() {
+			ticker := time.NewTicker(evalGcInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					runtime.GC()
+				case <-gcCtx.Done():
+					return
+				}
+			}
+		}()
+	}
+
 	// Evaluate each query in parallel. Eval is CPU-bound (Rego), so the pool
 	// draws from the process-wide CPU budget: when this scan runs as one of N
 	// concurrent per-platform services, all their query pools share the same

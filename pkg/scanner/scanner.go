@@ -7,6 +7,8 @@ package scanner
 
 import (
 	"context"
+	"runtime"
+	"runtime/debug"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
@@ -94,6 +96,42 @@ func PrepareAndScan(
 	}
 }
 
+// evalGcFileThreshold is the minimum number of collected files at which
+// StartScan considers GC pressure relief (reduced GC percent plus the eval
+// forced-GC ticker) for the payload-build and eval phases; below it the
+// check itself (a full GC) is not worth running. This is the single
+// definition shared by both mechanisms (the Inspector consumes the decision
+// via SetEvalGcRelief, not its own file count).
+const evalGcFileThreshold = 10000
+
+// evalGcHeapBytes is the live-heap size, measured after prepare, above which
+// StartScan enables GC pressure relief (reduced GC percent plus the eval
+// forced-GC ticker) for payload build and eval. The gate is the scan's actual
+// memory need, not a proxy like file count: mid-size corpora (30k+ files,
+// ~1-1.5 GiB live entering eval) never need GC pressure relief, and the
+// extra GC marking CPU only slows them down (measured +30% user CPU on such
+// a corpus with the previous file-count gate). Multi-GiB scans like
+// community-operators (~5 GiB live entering eval) would otherwise double
+// that as GC headroom before every collection, driving the peak RSS.
+const evalGcHeapBytes = 3 << 30 // 3 GiB
+
+// reducedEvalGCPercent is the GC percent used during payload build and eval
+// on scans whose live heap exceeds evalGcHeapBytes: a substantially lower
+// peak in exchange for more frequent collections over a multi-GiB live set.
+// Smaller scans keep the default GOGC pacing.
+const reducedEvalGCPercent = 30
+
+// liveHeapAfterGC returns the live heap size after a full collection, so the
+// GC-percent decision is made on real live data rather than heap-plus-garbage.
+// The collection itself is not wasted work: it drains the prepare phase's
+// parse garbage before eval starts.
+func liveHeapAfterGC() uint64 {
+	runtime.GC()
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	return ms.HeapAlloc
+}
+
 // StartScan will run concurrent scans by parser
 func StartScan(ctx context.Context, scanID string, services serviceSlice) error {
 	defer metrics.Metric.Stop()
@@ -108,6 +146,17 @@ func StartScan(ctx context.Context, scanID string, services serviceSlice) error 
 
 	total := services.GetQueriesLength()
 	contextLogger.Info().Msgf("Got %d queries", total)
+
+	// GC pressure relief for large scans: lower the GC percent and run the
+	// eval forced-GC ticker — both gated on the same measured live heap, so
+	// mid-size corpora keep the default pacing and no forced collections.
+	if services.TotalFiles() > evalGcFileThreshold && liveHeapAfterGC() > evalGcHeapBytes {
+		previous := debug.SetGCPercent(reducedEvalGCPercent)
+		defer debug.SetGCPercent(previous)
+		for _, service := range services {
+			service.Inspector.SetEvalGcRelief(true)
+		}
+	}
 
 	workersCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -140,4 +189,13 @@ func (s serviceSlice) GetQueriesLength() int {
 		count += service.Inspector.LenQueriesByPlat(service.Parser.Platform)
 	}
 	return count
+}
+
+// TotalFiles returns the number of files collected across services.
+func (s serviceSlice) TotalFiles() int {
+	total := 0
+	for _, service := range s {
+		total += service.FileCount()
+	}
+	return total
 }
