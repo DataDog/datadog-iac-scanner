@@ -98,17 +98,19 @@ func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 // resource - which happens once TFPlan-to-HCL mapping resolves both to the same file/line - where
 // the TFPlan-sourced finding wins: its Value reflects the actually-computed plan value rather
 // than the static HCL text, which is strictly more informative when the two differ (e.g. the
-// value depends on a variable or interpolation the HCL-only path can't evaluate). That specific
-// case is logged so the drop is traceable rather than silent.
+// value depends on a variable or interpolation the HCL-only path can't evaluate). The surviving
+// record is marked TerraformSourceTFPlanHCL so it's traceable as a merge, not a plain TFPlan
+// finding. That specific case is also logged so the drop is traceable rather than silent.
 func mergeVulnerability(existing, incoming model.Vulnerability) model.Vulnerability {
-	if existing.IsFromTFPlan == incoming.IsFromTFPlan {
+	if existing.TerraformSource == incoming.TerraformSource {
 		return incoming
 	}
 
 	kept, dropped := existing, incoming
-	if incoming.IsFromTFPlan {
+	if incoming.TerraformSource == model.TerraformSourceTFPlan {
 		kept, dropped = incoming, existing
 	}
+	kept.TerraformSource = model.TerraformSourceTFPlanHCL
 	log.Debug().
 		Str("resourceType", kept.ResourceType).
 		Str("resourceName", kept.ResourceName).

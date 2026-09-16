@@ -267,6 +267,15 @@ type QueryMetadata struct {
 
 // Vulnerability is a representation of a detected vulnerability in scanned files
 // after running a query
+// TerraformSource values identify which document(s) produced a Terraform finding, surfaced in
+// SARIF as DATADOG_TERRAFORM_SOURCE. Only meaningful when Platform is "terraform"; empty for
+// every other platform.
+const (
+	TerraformSourceTFPlan    = "TFPLAN"
+	TerraformSourceHCL       = "HCL"
+	TerraformSourceTFPlanHCL = "TFPLAN_HCL"
+)
+
 type Vulnerability struct {
 	ID                    int              `json:"id"`
 	ScanID                string           `db:"scan_id" json:"-"`
@@ -311,13 +320,14 @@ type Vulnerability struct {
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
-	// IsFromTFPlan marks a finding raised against a Terraform plan JSON document (as opposed to
-	// static HCL). Set regardless of whether the finding was resolved back to an HCL source line
-	// (see pkg/detector/tfplan_detect.go) - it reflects which document produced the finding, not
-	// where it's reported as pointing. When an HCL-sourced and a TFPlan-sourced finding for the
-	// same resource collapse into one during dedup (internal/storage's getUniqueVulnerabilities),
-	// the TFPlan-sourced one is kept, so this stays true on the surviving record.
-	IsFromTFPlan bool `db:"is_from_tfplan" json:"isFromTFPlan,omitempty"`
+	// TerraformSource marks which document(s) produced a Terraform finding (TerraformSourceTFPlan,
+	// TerraformSourceHCL, or TerraformSourceTFPlanHCL). Set regardless of whether a TFPlan finding
+	// was resolved back to an HCL source line (see pkg/detector/tfplan_detect.go) - it reflects
+	// which document(s) produced the finding, not where it's reported as pointing. When an
+	// HCL-sourced and a TFPlan-sourced finding for the same resource collapse into one during
+	// dedup (internal/storage's getUniqueVulnerabilities), the surviving record is marked
+	// TerraformSourceTFPlanHCL.
+	TerraformSource string `db:"terraform_source" json:"terraformSource,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
 	// SecondaryVulnerabilityLines is set transiently when a module_default finding has two
