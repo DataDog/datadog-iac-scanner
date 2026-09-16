@@ -39,6 +39,15 @@ func PrepareAndScan(
 		if err != nil {
 			return err
 		}
+		// The analyzer's cached file bytes were only needed during the shared
+		// walk above; OriginalData now holds each file's content for the rest
+		// of the scan. Release the cache before eval so it isn't held through
+		// the memory-intensive query phase.
+		fsp.ReleaseContentCache()
+		for _, s := range services {
+			s.ClearContentInterner()
+			s.ClearParsedShares()
+		}
 		return StartScan(ctx, scanID, services)
 	}
 
@@ -68,6 +77,13 @@ func PrepareAndScan(
 	case <-wgDone:
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
+		if fsp, ok := runner.SharedWalkProvider(services); ok {
+			fsp.ReleaseContentCache()
+		}
+		for _, s := range services {
+			s.ClearContentInterner()
+			s.ClearParsedShares()
+		}
 		return StartScan(ctx, scanID, services)
 	case err := <-errCh:
 		metrics.Metric.Stop()
