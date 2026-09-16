@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 // Constants to describe what kind of file refers
@@ -149,6 +150,12 @@ type lineInfoState struct {
 	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
 }
 
+// linesLazyState guards the one-time computation of LinesOriginalData from
+// OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
+type linesLazyState struct {
+	once sync.Once
+}
+
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
 	ID               string `db:"id"`
@@ -170,7 +177,17 @@ type FileMetadata struct {
 	LinesIgnore       []int
 	ResolvedFiles     map[string]ResolvedFile
 	LinesOriginalData *[]string
-	IsMinified        bool
+	// linesLazy, when set, defers the SplitLines(OriginalData) computation to
+	// first access via Lines(). nil means LinesOriginalData is already populated
+	// (or intentionally left unset).
+	linesLazy  *linesLazyState `json:"-"`
+	IsMinified bool
+	// releaseOriginalDataAfterLineInfo instructs EnsureLineInfoDocument to
+	// release OriginalData after populating LineInfoDocument and
+	// LinesOriginalData, for non-Terraform kinds. This progressively reclaims
+	// ~the raw input content during eval (as each file's line info is resolved)
+	// rather than holding all of it until eval completes.
+	releaseOriginalDataAfterLineInfo bool
 	// HelmInvocation identifies the source action that emitted a rendered Helm
 	// resource whose YAML lives in a named template.
 	HelmInvocation ResourceLine
@@ -204,6 +221,48 @@ func cloneLineInfoState(src *lineInfoState) *lineInfoState {
 	return &lineInfoState{loader: src.loader}
 }
 
+// SetLazyLines configures on-demand computation of LinesOriginalData from
+// OriginalData on first access via Lines().
+func (f *FileMetadata) SetLazyLines() {
+	f.linesLazy = &linesLazyState{}
+}
+
+// SetReleaseOriginalDataAfterLineInfo instructs EnsureLineInfoDocument to
+// release OriginalData after populating LineInfoDocument and
+// LinesOriginalData (for non-Terraform kinds).
+func (f *FileMetadata) SetReleaseOriginalDataAfterLineInfo(release bool) {
+	f.releaseOriginalDataAfterLineInfo = release
+}
+
+// Lines returns the file's content split into lines, computing it lazily from
+// OriginalData on first access when SetLazyLines was configured. Safe for
+// concurrent callers.
+func (f *FileMetadata) Lines() []string {
+	if f.linesLazy != nil {
+		f.linesLazy.once.Do(func() {
+			if f.LinesOriginalData == nil {
+				f.LinesOriginalData = utils.SplitLines(f.OriginalData)
+			}
+		})
+	}
+	if f.LinesOriginalData == nil {
+		// No lazy state (e.g. test fixtures); compute directly.
+		f.LinesOriginalData = utils.SplitLines(f.OriginalData)
+	}
+	return *f.LinesOriginalData
+}
+
+// ReleasePostEvalData drops OriginalData and LinesOriginalData. After all
+// queries have been evaluated every detector has run and every finding's
+// LineInfoDocument has been lazily reparsed, so the raw file content and its
+// line split are no longer referenced. Reclaiming them here drops ~the raw
+// input content from the live set before the report phase.
+func (f *FileMetadata) ReleasePostEvalData() {
+	f.OriginalData = ""
+	f.LinesOriginalData = nil
+	f.linesLazy = nil
+}
+
 // ShallowCopy returns a copy of f with independent lazy line-info memoization.
 func (f *FileMetadata) ShallowCopy() *FileMetadata {
 	clone := *f
@@ -211,6 +270,11 @@ func (f *FileMetadata) ShallowCopy() *FileMetadata {
 		clone.lineInfo = nil
 	} else {
 		clone.lineInfo = cloneLineInfoState(f.lineInfo)
+	}
+	// LinesOriginalData is shared (same pointer); keep the lazy guard so a copy
+	// that hasn't materialized lines yet still computes them on demand.
+	if f.linesLazy != nil && f.LinesOriginalData == nil {
+		clone.linesLazy = &linesLazyState{}
 	}
 	return &clone
 }
@@ -241,6 +305,21 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 	}
 	f.LineInfoDocument = doc
 	st.loader = nil
+	// Materialize the line split from OriginalData before potentially
+	// releasing it, so the detector's Lines() call (which runs after this)
+	// gets the pre-computed slice without needing OriginalData.
+	if f.LinesOriginalData == nil {
+		f.LinesOriginalData = utils.SplitLines(f.OriginalData)
+	}
+	// For non-Terraform kinds, OriginalData is only needed by the line-info
+	// loader (now nil'd) and by Lines() (which uses the now-populated
+	// LinesOriginalData). Detectors for these kinds don't read OriginalData
+	// directly, so release it to progressively reclaim ~the raw input content
+	// as each file's line info is resolved during eval.
+	if f.releaseOriginalDataAfterLineInfo &&
+		f.Kind != KindTerraform && f.Kind != KindTerraformPlan {
+		f.OriginalData = ""
+	}
 	return nil
 }
 

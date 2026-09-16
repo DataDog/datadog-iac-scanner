@@ -31,17 +31,17 @@ func TestModuleAttributionIsNotPartOfJSONReports(t *testing.T) {
 func TestCreateSummary(t *testing.T) {
 	vulnerabilities := []Vulnerability{
 		{
-			ID:               1,
-			ScanID:           "scanID",
-			FileID:           "fileId",
-			FileName:         "fileName",
-			QueryID:          "QueryID",
-			CWE:              "22",
-			QueryName:        "query_name",
-			Severity:         SeverityHigh,
-			Line:             1,
-			SearchKey:        "searchKey",
-			Output:           "-",
+			ID:        1,
+			ScanID:    "scanID",
+			FileID:    "fileId",
+			FileName:  "fileName",
+			QueryID:   "QueryID",
+			CWE:       "22",
+			QueryName: "query_name",
+			Severity:  SeverityHigh,
+			Line:      1,
+			SearchKey: "searchKey",
+			Output:    "-",
 		},
 	}
 
@@ -105,11 +105,11 @@ func TestCreateSummary(t *testing.T) {
 					CWE:       "22",
 					Files: []VulnerableFile{
 						{
-							FileName:         "fileName",
-							Fingerprint:      GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", ""),
-							Line:             1,
-							SearchKey:        "searchKey",
-							Value:            nil,
+							FileName:    "fileName",
+							Fingerprint: GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", ""),
+							Line:        1,
+							SearchKey:   "searchKey",
+							Value:       nil,
 						},
 					},
 				},

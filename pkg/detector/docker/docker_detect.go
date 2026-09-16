@@ -41,13 +41,13 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		sKey = strings.ReplaceAll(sKey, str[0], `{{`+strconv.Itoa(idx)+`}}`)
 	}
 
-	unchangedText := make([]string, len(*file.LinesOriginalData))
-	copy(unchangedText, *file.LinesOriginalData)
+	unchangedText := make([]string, len(file.Lines()))
+	copy(unchangedText, file.Lines())
 
 	// prepareDockerFileLines mutates this slice in place (multi-line continuation
 	// rewriting). It must operate on a private copy.
-	lines := make([]string, len(*file.LinesOriginalData))
-	copy(lines, *file.LinesOriginalData)
+	lines := make([]string, len(file.Lines()))
+	copy(lines, file.Lines())
 
 	start, end := model.ResourceLine{}, model.ResourceLine{}
 	for _, key := range strings.Split(sKey, ".") {
