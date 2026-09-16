@@ -8,11 +8,13 @@ package model
 import (
 	"bytes"
 	"context"
-	json "encoding/json"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -134,9 +136,13 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 		// set line information for root level objects
 		mapDcp["_dd_lines"] = getLines(value, 0)
 
-		// place the payload in the Document struct
-		tmp, _ := json.Marshal(mapDcp)
-		_ = json.Unmarshal(tmp, m)
+		// Place the payload in the Document struct. mapDcp is freshly built by
+		// unmarshal above and exclusively owned, so assign it directly instead
+		// of deep-copying via a JSON round-trip. That round-trip was the dominant
+		// allocation/CPU cost of YAML parsing (marshal buffer + full re-decode of
+		// every document); scalarNodeResolver already normalizes timestamp
+		// scalars the way json.Marshal did, so downstream sees the same value types.
+		*m = mapDcp
 		return nil
 	}
 	return errors.New("failed to parse yaml content")
@@ -399,7 +405,7 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 		}
 		tmp["playbooks"] = contentArray
 	} else if val.Kind == yaml.ScalarNode {
-		return scalarNodeResolver(ctx, val)
+		return internedScalarNodeResolver(ctx, val)
 	} else {
 		// iterate two by two, since first iteration is the key and the second is the value
 		for i := 0; i < len(val.Content); i += 2 {
@@ -408,21 +414,21 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 					if m, ok := rewritten.(map[string]interface{}); ok {
 						m["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
 					}
-					tmp[val.Content[i].Value] = rewritten
+					tmp[internYAMLScalar(val.Content[i].Value)] = rewritten
 					continue
 				}
 				switch val.Content[i+1].Kind {
 				case yaml.ScalarNode:
-					tmp[val.Content[i].Value] = scalarNodeResolver(ctx, val.Content[i+1])
+					tmp[internYAMLScalar(val.Content[i].Value)] = internedScalarNodeResolver(ctx, val.Content[i+1])
 				// in case value iteration is a map
 				case yaml.MappingNode:
 					// unmarshall map value and get its line information
 					result := unmarshalWithDepth(ctx, val.Content[i+1], visited, ignore)
 					if tt, ok := result.(map[string]interface{}); ok {
 						tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
-						tmp[val.Content[i].Value] = tt
+						tmp[internYAMLScalar(val.Content[i].Value)] = tt
 					} else {
-						tmp[val.Content[i].Value] = result
+						tmp[internYAMLScalar(val.Content[i].Value)] = result
 					}
 				// in case value iteration is an array
 				case yaml.SequenceNode:
@@ -431,7 +437,7 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 					for _, contentEntry := range val.Content[i+1].Content {
 						contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, ignore))
 					}
-					tmp[val.Content[i].Value] = contentArray
+					tmp[internYAMLScalar(val.Content[i].Value)] = contentArray
 				case yaml.AliasNode:
 					if val.Content[i+1].Alias != nil {
 						result := unmarshalWithDepth(ctx, val.Content[i+1].Alias, visited, ignore)
@@ -440,7 +446,7 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 							utils.MergeMaps(tmp, tt)
 						}
 						if v, ok := result.(string); ok {
-							tmp[val.Content[i].Value] = v
+							tmp[internYAMLScalar(val.Content[i].Value)] = v
 						}
 					}
 				}
@@ -511,6 +517,71 @@ func getSeqLines(val *yaml.Node, def int) map[string]*LineObject {
 	return lineMap
 }
 
+// yamlScalarInterner canonicalizes short YAML scalar strings so that the
+// millions of repeated values across a corpus share one backing array.
+var (
+	yamlScalarInternerMu sync.RWMutex
+	yamlScalarInterner   = make(map[string]string)
+)
+
+// Interning limits. Values above internMaxScalarLen are rarely duplicated
+// (the long unique blobs in CRD descriptions) and not worth hashing; the
+// entry cap bounds the process-lifetime retention of the interner map for
+// adversarial inputs with millions of distinct short strings.
+const (
+	internMaxScalarLen = 256
+	internMaxEntries   = 1 << 20
+)
+
+// internYAMLScalar returns the canonical instance of a short YAML scalar
+// string. Parsed YAML repeats the same small strings (keys like "spec",
+// "containers", values like "v1", image names) millions of times across a
+// large corpus: on community-operators, 29M scalar occurrences collapse to
+// ~178k distinct values, so sharing one backing array per distinct value
+// removes several hundred MiB from the live set through the whole scan — the
+// parsed trees, the lazily reparsed line-info documents and the OPA payload's
+// string data all reference the same backings.
+func internYAMLScalar(s string) string {
+	if s == "" || len(s) > internMaxScalarLen {
+		return s
+	}
+	yamlScalarInternerMu.RLock()
+	canonical, ok := yamlScalarInterner[s]
+	yamlScalarInternerMu.RUnlock()
+	if ok {
+		return canonical
+	}
+
+	yamlScalarInternerMu.Lock()
+	if existing, ok := yamlScalarInterner[s]; ok {
+		yamlScalarInternerMu.Unlock()
+		return existing
+	}
+	if len(yamlScalarInterner) >= internMaxEntries {
+		yamlScalarInternerMu.Unlock()
+		return s
+	}
+	yamlScalarInterner[s] = s
+	yamlScalarInternerMu.Unlock()
+	return s
+}
+
+// internedScalarNodeResolver is scalarNodeResolver with string interning: the
+// decoded string is canonicalized so the millions of repeated YAML scalar
+// values across a corpus share one backing array. String-tagged scalars skip
+// the per-scalar yaml decoder construction entirely: Decode returns the
+// node's own string for them, so the fast path is equivalent.
+func internedScalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
+	if val.Tag == "!!str" {
+		return internYAMLScalar(val.Value)
+	}
+	resolved := scalarNodeResolver(ctx, val)
+	if s, ok := resolved.(string); ok {
+		return internYAMLScalar(s)
+	}
+	return resolved
+}
+
 // scalarNodeResolver transforms a ScalarNode value in its correct type
 func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, nil, nil); ok {
@@ -522,7 +593,52 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 		contextLogger.Error().Msgf("failed to decode scalar in yaml parser: %q", val.Value)
 		return val.Value
 	}
-	return resolved
+	return normalizeScalar(resolved)
+}
+
+// normalizeScalar maps a decoded YAML scalar to the value type the previous
+// JSON round-trip in UnmarshalYAML produced, so downstream consumers (the
+// engine, rules, and the JSON payload export) see identical types without
+// that round-trip: numbers become float64 (json.Unmarshal always yields
+// float64), timestamp scalars — decoded by yaml.v3 to time.Time — become
+// RFC3339 strings (json.Marshal of time.Time), and binary scalars (decoded
+// to []byte) become base64 strings (json.Marshal of []byte).
+func normalizeScalar(resolved interface{}) interface{} {
+	switch v := resolved.(type) {
+	case time.Time:
+		return v.Format(time.RFC3339Nano)
+	case []byte:
+		// json.Marshal encodes []byte as a base64 string; the JSON round-trip
+		// this replaces fed that string to json.Unmarshal, so downstream saw
+		// (and rules expect) the base64 text, not the raw bytes.
+		return base64.StdEncoding.EncodeToString(v)
+	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case int16:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint:
+		return float64(v)
+	case uint8:
+		return float64(v)
+	case uint16:
+		return float64(v)
+	case uint32:
+		return float64(v)
+	case uint64:
+		return float64(v)
+	case float32:
+		return float64(v)
+	case float64:
+		return v
+	default:
+		return resolved
+	}
 }
 
 // rewriteCFNShortFormIntrinsic converts a short-form CFN intrinsic to its long-form map.
@@ -577,7 +693,7 @@ func decodeIntrinsicChild(ctx context.Context, val *yaml.Node, visited map[*yaml
 	}
 	switch val.Kind {
 	case yaml.ScalarNode:
-		return scalarNodeResolver(ctx, val)
+		return internedScalarNodeResolver(ctx, val)
 	case yaml.MappingNode:
 		return unmarshalWithDepth(ctx, val, v, ignore)
 	case yaml.SequenceNode:
