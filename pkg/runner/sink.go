@@ -177,6 +177,14 @@ func (s *Service) sinkDocument(
 		return nil
 	}
 
+	if shareable {
+		// Canonicalize structurally identical subtrees (label blocks,
+		// container specs and CRD skeletons repeat across nearly every
+		// manifest); the top-level map stays per-file because Combine
+		// inserts the file's id/file into it.
+		preparedDocument = s.consTreeChildren(preparedDocument)
+	}
+
 	file := model.FileMetadata{
 		ID:            uuid.New().String(),
 		ScanID:        scanID,

@@ -105,6 +105,21 @@ type Service struct {
 	// shared between files with identical content (see sharedParse).
 	parsedShareMu sync.Mutex
 	parsedShares  map[string]*sharedParse
+	// treeCons canonicalizes structurally identical subtrees of sanitized
+	// shareable documents (see treeHashCons); guarded by treeConsMu.
+	treeConsMu sync.Mutex
+	treeCons   *treeHashCons
+}
+
+// consTreeChildren canonicalizes a sanitized shareable document's subtrees
+// through the service-wide tree interner.
+func (s *Service) consTreeChildren(doc map[string]interface{}) map[string]interface{} {
+	s.treeConsMu.Lock()
+	defer s.treeConsMu.Unlock()
+	if s.treeCons == nil {
+		s.treeCons = newTreeHashCons()
+	}
+	return s.treeCons.consChildren(doc)
 }
 
 // sharedParse holds everything about parsing one file content that is a pure
@@ -214,6 +229,18 @@ func (s *Service) ClearParsedShares() {
 	s.parsedShareMu.Lock()
 	s.parsedShares = nil
 	s.parsedShareMu.Unlock()
+}
+
+// ClearTreeCons drops the tree hash-cons interner's bookkeeping. Call after
+// the prepare phase alongside the other interning caches: the interner maps
+// can hold tens of MB of pure map overhead on corpora with hundreds of
+// thousands of distinct subtrees, and nothing is consed after prepare. The
+// shared trees themselves stay alive via each FileMetadata's document copy,
+// so only the interner maps are dropped.
+func (s *Service) ClearTreeCons() {
+	s.treeConsMu.Lock()
+	s.treeCons = nil
+	s.treeConsMu.Unlock()
 }
 
 // shareableParse reports whether a parse result is a pure function of its

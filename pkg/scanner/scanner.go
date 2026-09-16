@@ -47,6 +47,7 @@ func PrepareAndScan(
 		for _, s := range services {
 			s.ClearContentInterner()
 			s.ClearParsedShares()
+			s.ClearTreeCons()
 		}
 		return StartScan(ctx, scanID, services)
 	}
@@ -83,6 +84,7 @@ func PrepareAndScan(
 		for _, s := range services {
 			s.ClearContentInterner()
 			s.ClearParsedShares()
+			s.ClearTreeCons()
 		}
 		return StartScan(ctx, scanID, services)
 	case err := <-errCh:
