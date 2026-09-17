@@ -130,15 +130,11 @@ type sharedParse struct {
 	isMinified  bool
 }
 
-// contentInternerMaxBytes caps internable content: above it the key copy costs
-// more than the dedup win.
-const contentInternerMaxBytes = 1 << 20 // 1 MiB
-
 // internContent returns a shared copy of content so duplicate files retain one
 // OriginalData. The interner is dropped after prepare (ClearContentInterner) so
 // it cannot defeat the post-eval OriginalData release.
 func (s *Service) internContent(content string) string {
-	if content == "" || len(content) > contentInternerMaxBytes {
+	if content == "" {
 		return content
 	}
 	s.contentInternerMu.Lock()
@@ -165,7 +161,7 @@ func (s *Service) ClearContentInterner() {
 // shared parse, if any. A hit is exact (parses are pure functions of content);
 // the result is read-only — copy top-level maps before per-file use.
 func (s *Service) lookupSharedParse(content []byte) (string, *sharedParse) {
-	if len(content) == 0 || len(content) > contentInternerMaxBytes {
+	if len(content) == 0 {
 		return "", nil
 	}
 	key := s.internContent(string(content))
@@ -218,9 +214,9 @@ func (s *Service) ClearTreeCons() {
 //   - Terraform/TF-plan (module instantiation mutates bodies in place per caller)
 //   - parses that resolved references (filename-relative ResolvedFiles/ignore lines)
 //   - Ansible playbooks (AddExtraInfo rewrites per file path)
-//   - empty or oversized content
+//   - empty content
 func shareableParse(documents *parser.ParsedDocument) bool {
-	if documents.Content == "" || len(documents.Content) > contentInternerMaxBytes {
+	if documents.Content == "" {
 		return false
 	}
 	switch documents.Kind {
@@ -241,7 +237,7 @@ func shareableParse(documents *parser.ParsedDocument) bool {
 // cloneDocumentTopLevel returns a shallow copy of the top-level map: fresh map,
 // shared children (the bulk of the tree).
 func cloneDocumentTopLevel(d model.Document) model.Document {
-	clone := make(model.Document, len(d)+2)
+	clone := make(model.Document, len(d))
 	for k, v := range d {
 		clone[k] = v
 	}

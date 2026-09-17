@@ -990,25 +990,9 @@ func (c *Inspector) interfaceToPayloadValue(
 	value interface{},
 	cons *payloadHashCons,
 ) (ast.Value, error) {
-	return c.interfaceToPayloadValueDepth(ctx, value, cons, 0)
-}
-
-// payloadMaxDepth bounds conversion recursion: a pathological cyclic tree is
-// skipped with an error instead of exhausting the stack.
-const payloadMaxDepth = 1000
-
-func (c *Inspector) interfaceToPayloadValueDepth(
-	ctx context.Context,
-	value interface{},
-	cons *payloadHashCons,
-	depth int,
-) (ast.Value, error) {
-	if depth > payloadMaxDepth {
-		return nil, fmt.Errorf("document nesting exceeds %d levels", payloadMaxDepth)
-	}
 	switch v := value.(type) {
 	case map[string]interface{}:
-		return c.mapToPayloadValue(ctx, v, cons, depth)
+		return c.mapToPayloadValue(ctx, v, cons)
 	case []interface{}:
 		pointer := reflect.ValueOf(v).Pointer()
 		if pointer != 0 {
@@ -1019,7 +1003,7 @@ func (c *Inspector) interfaceToPayloadValueDepth(
 		terms := make([]*ast.Term, 0, len(v))
 		contentKey := hashConsBase
 		for _, raw := range v {
-			converted, err := c.interfaceToPayloadValueDepth(ctx, raw, cons, depth+1)
+			converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
 			if err != nil {
 				return nil, err
 			}
@@ -1076,7 +1060,6 @@ func (c *Inspector) mapToPayloadValue(
 	ctx context.Context,
 	v map[string]interface{},
 	cons *payloadHashCons,
-	depth int,
 ) (ast.Value, error) {
 	pointer := reflect.ValueOf(v).Pointer()
 	if pointer != 0 {
@@ -1086,7 +1069,7 @@ func (c *Inspector) mapToPayloadValue(
 	}
 	pairs := make([]payloadChildPair, 0, len(v))
 	for key, raw := range v {
-		converted, err := c.interfaceToPayloadValueDepth(ctx, raw, cons, depth+1)
+		converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
 		if err != nil {
 			return nil, err
 		}

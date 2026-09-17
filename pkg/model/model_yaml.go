@@ -514,26 +514,15 @@ func getSeqLines(val *yaml.Node, def int) map[string]*LineObject {
 	return lineMap
 }
 
-// yamlScalarInterner canonicalizes short YAML scalar strings so that the
-// millions of repeated values across a corpus share one backing array.
+// yamlScalarInterner canonicalizes YAML scalar strings so repeated values
+// across a corpus share one backing array.
 var (
 	yamlScalarInternerMu sync.RWMutex
 	yamlScalarInterner   = make(map[string]string)
 )
 
-// Interning limits: long scalars are rarely duplicated; the entry cap bounds
-// interner retention for adversarial inputs.
-const (
-	internMaxScalarLen = 256
-	internMaxEntries   = 1 << 20
-)
-
-// internYAMLScalar returns the canonical instance of a short scalar string:
-// Parsed YAML repeats the same small strings millions of times (on
-// community-operators, 29M occurrences collapse to ~178k distinct values), so
-// sharing one backing per value removes hundreds of MiB from the live set.
 func internYAMLScalar(s string) string {
-	if s == "" || len(s) > internMaxScalarLen {
+	if s == "" {
 		return s
 	}
 	yamlScalarInternerMu.RLock()
@@ -547,10 +536,6 @@ func internYAMLScalar(s string) string {
 	if existing, ok := yamlScalarInterner[s]; ok {
 		yamlScalarInternerMu.Unlock()
 		return existing
-	}
-	if len(yamlScalarInterner) >= internMaxEntries {
-		yamlScalarInternerMu.Unlock()
-		return s
 	}
 	yamlScalarInterner[s] = s
 	yamlScalarInternerMu.Unlock()

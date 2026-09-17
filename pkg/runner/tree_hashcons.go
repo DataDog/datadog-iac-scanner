@@ -61,17 +61,12 @@ func (k treeConsKey) mixScalar(v interface{}) treeConsKey {
 // canonical keys (linear hashing); equality is verified shallowly by child
 // pointers. Consed trees are read-only downstream — the one in-place mutator
 // (module instantiation) only runs on Terraform, which is never consed — and the
-// top-level map is not interned (Combine inserts id/file). Per-Service, capped,
+// top-level map is not interned (Combine inserts id/file). Per-Service,
 // cleared after prepare (ClearTreeCons).
 type treeHashCons struct {
 	byContent map[treeConsKey][]interface{}
 	hashes    map[uintptr]treeConsKey
-	entries   int
 }
-
-// treeConsMaxEntries bounds the interner for adversarial inputs; above the
-// cap, consing stops and subtrees stay unshared.
-const treeConsMaxEntries = 4 << 20 // ~4M distinct containers
 
 func newTreeHashCons() *treeHashCons {
 	return &treeHashCons{
@@ -93,9 +88,6 @@ func (cons *treeHashCons) consChildren(doc map[string]interface{}) map[string]in
 // cons canonicalizes a sanitized document subtree bottom-up, mutating the
 // source to reference canonical children, and returns the canonical instance.
 func (cons *treeHashCons) cons(v interface{}) interface{} {
-	if cons.entries >= treeConsMaxEntries {
-		return v
-	}
 	switch t := v.(type) {
 	case map[string]interface{}:
 		ptr := reflect.ValueOf(t).Pointer()
@@ -152,11 +144,8 @@ func (cons *treeHashCons) canonicalizeMap(key treeConsKey, v map[string]interfac
 			return e
 		}
 	}
-	if cons.entries < treeConsMaxEntries {
-		cons.byContent[key] = append(cons.byContent[key], v)
-		cons.entries++
-		cons.hashes[reflect.ValueOf(v).Pointer()] = key
-	}
+	cons.byContent[key] = append(cons.byContent[key], v)
+	cons.hashes[reflect.ValueOf(v).Pointer()] = key
 	return v
 }
 
@@ -166,11 +155,8 @@ func (cons *treeHashCons) canonicalizeSlice(key treeConsKey, v []interface{}) in
 			return e
 		}
 	}
-	if cons.entries < treeConsMaxEntries {
-		cons.byContent[key] = append(cons.byContent[key], v)
-		cons.entries++
-		cons.hashes[reflect.ValueOf(v).Pointer()] = key
-	}
+	cons.byContent[key] = append(cons.byContent[key], v)
+	cons.hashes[reflect.ValueOf(v).Pointer()] = key
 	return v
 }
 

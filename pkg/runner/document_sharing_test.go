@@ -166,9 +166,6 @@ func TestShareableParse(t *testing.T) {
 		Content: "", Kind: model.KindYAML, Docs: []model.Document{doc},
 	}), "empty content")
 	require.False(t, shareableParse(&parser.ParsedDocument{
-		Content: string(make([]byte, contentInternerMaxBytes+1)), Kind: model.KindYAML, Docs: []model.Document{doc},
-	}), "oversized content")
-	require.False(t, shareableParse(&parser.ParsedDocument{
 		Content: "a: 1\n", Kind: model.KindYAML,
 	}), "no documents")
 }
