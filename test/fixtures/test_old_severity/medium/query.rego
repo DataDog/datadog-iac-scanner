@@ -20,6 +20,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -39,6 +40,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -59,6 +61,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -78,6 +81,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -98,6 +102,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -121,6 +126,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -140,6 +146,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,

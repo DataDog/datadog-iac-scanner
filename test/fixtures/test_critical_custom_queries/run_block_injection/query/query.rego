@@ -2,8 +2,6 @@ package datadog
 
 import rego.v1
 
-import data.generic.common as common_lib
-
 DatadogPolicy contains result if {
 	input.document[i].on.pull_request_target
 	run := input.document[i].jobs[j].steps[k].run
@@ -20,6 +18,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -39,6 +38,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -59,6 +59,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -78,6 +79,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -98,6 +100,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -121,6 +124,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
@@ -140,6 +144,7 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
