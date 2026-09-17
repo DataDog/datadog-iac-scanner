@@ -1007,6 +1007,31 @@ func TestDetectLinePolicyStatementPrincipalHeredocJSON(t *testing.T) {
 	require.Equal(t, 9, got.Line)
 }
 
+const policyFromFileFunction = `resource "aws_iam_role" "DatadogAWSIntegration" {
+  name               = "DatadogAWSIntegration"
+  assume_role_policy = file("policies/assume/DatadogAWSIntegration.json")
+  tags = {
+    team = "iac"
+  }
+}
+`
+
+func TestDetectLineFileFunctionKeepsAttributeLine(t *testing.T) {
+	ctx := context.Background()
+	file := &model.FileMetadata{
+		ScanID:            "t",
+		ID:                "t",
+		Kind:              model.KindTerraform,
+		OriginalData:      policyFromFileFunction,
+		LinesOriginalData: utils.SplitLines(policyFromFileFunction),
+	}
+	got := (&DetectKindLine{}).DetectLine(ctx, file, `aws_iam_role[DatadogAWSIntegration].assume_role_policy.Statement[0].Principal`, 3)
+	require.Equal(t, 3, got.Line)
+	require.Equal(t, 3, got.RemediationLocation.Start.Line)
+	require.Equal(t, 3, got.RemediationLocation.End.Line)
+	require.Contains(t, got.LineWithVulnerability, "assume_role_policy")
+}
+
 func TestLocateTerraformBlockUsesNearestBlockForHeaderComments(t *testing.T) {
 	source := "# license\n# owner\n\nresource \"aws_s3_bucket\" \"helm\" {\n  bucket = \"x\"\n}\n"
 	lines := strings.Split(source, "\n")

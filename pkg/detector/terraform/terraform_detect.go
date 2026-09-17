@@ -339,12 +339,17 @@ func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (
 		// otherwise injected HCL could corrupt a single-line wrapped expression. For every
 		// other case the identifying line lies inside the wrapped body, which is where both
 		// SARIF regions and attribute-level remediations should anchor.
+		// file("...") and other single-line calls share start and end; do not
+		// treat that as a closing brace and walk back a line.
 		lineText := strings.TrimSpace(lines[nestedStart.Line-1])
 		isFunctionCallWrapper := isAttr && strings.Contains(lineText, "(") && strings.Contains(lineText, "{")
 		switch {
 		case line == nestedEnd.Line && isFunctionCallWrapper:
 			insertionLine = nestedEnd.Line + 1
 			caseType = strBlockBody
+		case nestedStart.Line == nestedEnd.Line:
+			insertionLine = line
+			caseType = strNestedBody
 		case line == nestedEnd.Line:
 			insertionLine = nestedEnd.Line - 1
 			caseType = strNestedEnd
