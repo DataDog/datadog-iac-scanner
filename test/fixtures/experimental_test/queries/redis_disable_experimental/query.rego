@@ -11,12 +11,6 @@ DatadogPolicy contains result if {
 		"resourceType": "aws_elasticache_cluster",
 		"resourceName": get_specific_resource_name(resource, "aws_elasticache_cluster", name),
 		"searchKey": sprintf("resource.aws_elasticache_cluster[%s].engine", [name]),
-		"searchLine": build_search_line(["resource", "aws_elasticache_cluster", name, "engine"], []),
-		"remediation": json.marshal({
-			"before": "memcached",
-			"after": "redis",
-		}),
-		"remediationType": "replacement",
 	}
 }
 
@@ -40,19 +34,6 @@ get_resource_name(resource, resourceDefinitionName) := name if {
 	name := get_tag_name_if_exists(resource)
 } else := name if {
 	name := resourceDefinitionName
-}
-
-build_search_line(path, obj) := resolvedPath if {
-	resolveArray := [x | pathItem := path[n]; x := convert_path_item(pathItem)]
-	resolvedObj := [x | objItem := obj[n]; x := convert_path_item(objItem)]
-	resolvedPath = array.concat(resolveArray, resolvedObj)
-}
-
-convert_path_item(pathItem) := convertedPath if {
-	is_number(pathItem)
-	convertedPath := sprintf("%d", [pathItem])
-} else := convertedPath if {
-	convertedPath := sprintf("%s", [pathItem])
 }
 
 get_tag_name_if_exists(resource) := name if {
