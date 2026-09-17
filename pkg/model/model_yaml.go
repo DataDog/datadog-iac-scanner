@@ -521,6 +521,15 @@ var (
 	yamlScalarInterner   = make(map[string]string)
 )
 
+// ClearYAMLScalarInterner drops the intern lookup after prepare. Live
+// documents still share the interned strings; the table is not retained
+// across scans in a long-lived process.
+func ClearYAMLScalarInterner() {
+	yamlScalarInternerMu.Lock()
+	yamlScalarInterner = make(map[string]string)
+	yamlScalarInternerMu.Unlock()
+}
+
 func internYAMLScalar(s string) string {
 	if s == "" {
 		return s

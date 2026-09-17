@@ -1228,3 +1228,21 @@ services:
 	require.Equal(t, []int{7, 8}, got)
 }
 
+func TestClearYAMLScalarInterner(t *testing.T) {
+	t.Cleanup(ClearYAMLScalarInterner)
+	ClearYAMLScalarInterner()
+
+	internYAMLScalar("apiVersion")
+	yamlScalarInternerMu.RLock()
+	require.Equal(t, 1, len(yamlScalarInterner))
+	yamlScalarInternerMu.RUnlock()
+
+	ClearYAMLScalarInterner()
+	yamlScalarInternerMu.RLock()
+	require.Empty(t, yamlScalarInterner)
+	yamlScalarInternerMu.RUnlock()
+
+	got := internYAMLScalar("apiVersion")
+	require.Equal(t, "apiVersion", got)
+}
+

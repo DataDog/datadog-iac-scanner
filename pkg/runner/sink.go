@@ -215,7 +215,7 @@ func (s *Service) sinkSharedParse(
 		file := model.FileMetadata{
 			ID:           uuid.New().String(),
 			ScanID:       scanID,
-			Document:     cloneDocumentTopLevel(sharedDoc),
+			Document:     cloneSharedParseDocument(sharedDoc, filename),
 			OriginalData: key,
 			Kind:         shared.kind,
 			FilePath:     filename,

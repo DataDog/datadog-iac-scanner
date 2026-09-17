@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 )
 
@@ -49,6 +50,7 @@ func PrepareAndScan(
 			s.ClearParsedShares()
 			s.ClearTreeCons()
 		}
+		model.ClearYAMLScalarInterner()
 		return StartScan(ctx, scanID, services)
 	}
 
@@ -86,6 +88,7 @@ func PrepareAndScan(
 			s.ClearParsedShares()
 			s.ClearTreeCons()
 		}
+		model.ClearYAMLScalarInterner()
 		return StartScan(ctx, scanID, services)
 	case err := <-errCh:
 		metrics.Metric.Stop()

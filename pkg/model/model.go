@@ -471,9 +471,6 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 	documents := Documents{Documents: make([]Document, 0, len(m))}
 	for _, f := range m {
 		_, ignore := f.Commands["ignore"]
-		if len(f.Document) == 0 {
-			continue
-		}
 		if ignore {
 			contextLogger.Debug().Msgf("Ignoring file %s", f.FilePath)
 			continue
@@ -481,19 +478,28 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 		if lineInfo {
 			if err := f.EnsureLineInfoDocument(ctx); err != nil {
 				contextLogger.Err(err).Msgf("failed to build line-info document for file %s", f.FilePath)
+				if len(f.Document) == 0 {
+					continue
+				}
 				f.Document["id"] = f.ID
 				f.Document["file"] = f.FilePath
 				documents.Documents = append(documents.Documents, f.Document)
 				continue
 			}
+			if f.LineInfoDocument == nil {
+				continue
+			}
 			f.LineInfoDocument["id"] = f.ID
 			f.LineInfoDocument["file"] = f.FilePath
 			documents.Documents = append(documents.Documents, f.LineInfoDocument)
-		} else {
-			f.Document["id"] = f.ID
-			f.Document["file"] = f.FilePath
-			documents.Documents = append(documents.Documents, f.Document)
+			continue
 		}
+		if len(f.Document) == 0 {
+			continue
+		}
+		f.Document["id"] = f.ID
+		f.Document["file"] = f.FilePath
+		documents.Documents = append(documents.Documents, f.Document)
 	}
 	return documents
 }

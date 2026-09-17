@@ -244,6 +244,17 @@ func cloneDocumentTopLevel(d model.Document) model.Document {
 	return clone
 }
 
+// cloneSharedParseDocument is cloneDocumentTopLevel plus a per-file _path:
+// the YAML parser stamps the first parse filename, which must not leak onto
+// later files that reuse the cached tree.
+func cloneSharedParseDocument(d model.Document, filename string) model.Document {
+	clone := cloneDocumentTopLevel(d)
+	if _, ok := clone["_path"]; ok {
+		clone["_path"] = filename
+	}
+	return clone
+}
+
 func (s *Service) recordFailedHelmChart(chartDir string) {
 	// Absolutize so that relative roots (e.g. ".") match correctly when
 	// isUnderFailedHelmChart receives the children reported by filepath.Walk.

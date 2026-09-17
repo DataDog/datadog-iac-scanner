@@ -190,3 +190,13 @@ func TestCloneDocumentTopLevelSharedChildren(t *testing.T) {
 	require.NotContains(t, doc, "id")
 	require.Equal(t, child, doc["metadata"])
 }
+
+func TestCloneSharedParseDocumentRefreshesPath(t *testing.T) {
+	child := map[string]interface{}{"spec": "value"}
+	cached := model.Document{"_path": "first.yaml", "metadata": child}
+	clone := cloneSharedParseDocument(cached, "second.yaml")
+
+	require.Equal(t, "second.yaml", clone["_path"])
+	require.Equal(t, "first.yaml", cached["_path"])
+	require.Equal(t, reflect.ValueOf(child).Pointer(), reflect.ValueOf(clone["metadata"]).Pointer())
+}
