@@ -20,12 +20,13 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
-		"searchValue": matched[m],
+		"resourceType": "github_action",
+		"resourceName": object.get(input.document[i].jobs[j].steps[k], "name", sprintf("step-%d", [k])),
 	}
 }
 
@@ -39,12 +40,13 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
-		"searchValue": matched[m],
+		"resourceType": "github_action",
+		"resourceName": object.get(input.document[i].jobs[j].steps[k], "name", sprintf("step-%d", [k])),
 	}
 }
 
@@ -59,12 +61,13 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
-		"searchValue": matched[m],
+		"resourceType": "github_action",
+		"resourceName": object.get(input.document[i].jobs[j].steps[k], "name", sprintf("step-%d", [k])),
 	}
 }
 
@@ -78,12 +81,13 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
-		"searchValue": matched[m],
+		"resourceType": "github_action",
+		"resourceName": object.get(input.document[i].jobs[j].steps[k], "name", sprintf("step-%d", [k])),
 	}
 }
 
@@ -98,12 +102,13 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
-		"searchValue": matched[m],
+		"resourceType": "github_action",
+		"resourceName": object.get(input.document[i].jobs[j].steps[k], "name", sprintf("step-%d", [k])),
 	}
 }
 
@@ -121,12 +126,13 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
-		"searchValue": matched[m],
+		"resourceType": "github_action",
+		"resourceName": object.get(input.document[i].jobs[j].steps[k], "name", sprintf("step-%d", [k])),
 	}
 }
 
@@ -140,12 +146,13 @@ DatadogPolicy contains result if {
 	]
 
 	matched = containsPatterns(run, patterns)
+	count(matched) > 0
 
 	result := {
 		"documentId": input.document[i].id,
 		"searchKey": sprintf("run={{%s}}", [run]),
-		"searchLine": common_lib.build_search_line(["jobs", j, "steps", k, "run"], []),
-		"searchValue": matched[m],
+		"resourceType": "github_action",
+		"resourceName": object.get(input.document[i].jobs[j].steps[k], "name", sprintf("step-%d", [k])),
 	}
 }
 

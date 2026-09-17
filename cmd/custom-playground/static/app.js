@@ -13,7 +13,6 @@ DatadogPolicy contains result if {
 \t\t"resourceType": "aws_s3_bucket",
 \t\t"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
 \t\t"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
-\t\t"searchLine": common_lib.build_search_line(["resource", "aws_s3_bucket", name, "acl"], []),
 \t}
 }
 `;
