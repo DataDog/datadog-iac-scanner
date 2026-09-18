@@ -23,13 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// moduleEvalEnabled returns a FlagEvaluator with local module evaluation turned on.
-func moduleEvalEnabled() featureflags.FlagEvaluator {
-	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
-		featureflags.IacEnableLocalModuleEval: true,
-	})
-}
-
 // aclRule fires when an aws_s3_bucket has acl == "public-read". It only matches
 // after a module is instantiated with that concrete value.
 const aclRule = `package datadog
@@ -137,7 +130,7 @@ resource "aws_s3_bucket" "this" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -206,7 +199,7 @@ resource "google_sql_database_instance" "this" {
 		}},
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -244,7 +237,7 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 
 	ins := newTestInspector(t, inspectorOpts{
 		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	var logs bytes.Buffer
@@ -316,7 +309,7 @@ resource "aws_s3_bucket" "this" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -403,7 +396,7 @@ resource "aws_s3_bucket" "this" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -478,7 +471,7 @@ resource "aws_s3_bucket" "this" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -573,7 +566,7 @@ resource "aws_s3_bucket" "this" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -671,7 +664,7 @@ resource "aws_instance" "app" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -720,7 +713,7 @@ resource "aws_instance" "app" {
 		}},
 		repoPath:      dir,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -777,7 +770,7 @@ resource "aws_instance" "app" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -844,7 +837,7 @@ resource "aws_instance" "server" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -905,7 +898,7 @@ resource "aws_s3_bucket" "replica" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
@@ -988,16 +981,14 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 	}}
 
 	ins := newTestInspector(t, inspectorOpts{
-		queries:  queries,
-		repoPath: root,
-		vb:       DefaultVulnerabilityBuilder,
-		flagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
-			featureflags.IacEnableLocalModuleEval: true,
-		}),
+		queries:       queries,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
-	require.NotEmpty(t, vulns, "module eval with flag enabled: rule should fire on resolved module resource")
+	require.NotEmpty(t, vulns, "rule should fire on resolved module resource")
 }

@@ -276,20 +276,11 @@ func validateFilePath(p string) error {
 // Helm rendering loads the chart from the real filesystem, which content-push
 // mode has no way to materialize, so the resolver is off.
 //
-// Terraform local-module evaluation is on: tfeval reads module and tfvars
-// files through the request's in-memory FS, so an unpushed module directory is
-// a missing file reported for escalation, never a disk read. Pinned rather than
-// left to the flag's default so the guarantee does not depend on backend state.
-// The guarantee also rests on the remote-module pre-scan staying off (the
-// analyze params never set TerraformModules): moduleprepare and modulegraph
-// still read the real disk.
-//
 // Parallel file parsing fans the per-file parse across CPUs; enabled by default
 // and can be disabled with --x-parallelparsing=false.
 func serverFlagEvaluator(parallelParsing bool) featureflags.FlagEvaluator {
 	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
 		featureflags.IacEnableKicsHelmResolver:        false,
-		featureflags.IacEnableLocalModuleEval:         true,
 		featureflags.IaCEnableKicsParallelFileParsing: parallelParsing,
 	})
 }

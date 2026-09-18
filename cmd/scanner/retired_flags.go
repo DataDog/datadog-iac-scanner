@@ -19,6 +19,9 @@ func sharedRetiredFlags() []cli.Flag {
 func retiredScanOnlyFlags() []cli.Flag {
 	return []cli.Flag{
 		retiredInt("timeout", retiredTimeoutUsage),
+		retiredBool("x-local-module-eval",
+			"(DEPRECATED) Terraform local module evaluation is now always enabled; "+
+				"this flag no longer has any effect. It will be removed."),
 	}
 }
 
@@ -28,6 +31,15 @@ func retiredInt(name, usage string) *cli.IntFlag {
 		Hidden: true,
 		Usage:  usage,
 		Action: retiredFlagAction[int](name),
+	}
+}
+
+func retiredBool(name, usage string) *cli.BoolFlag {
+	return &cli.BoolFlag{
+		Name:   name,
+		Hidden: true,
+		Usage:  usage,
+		Action: retiredFlagAction[bool](name),
 	}
 }
 

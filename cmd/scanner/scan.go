@@ -83,13 +83,6 @@ var scanAction = &cli.Command{
 			Usage:  "(experimental, will be removed soon) parse files in parallel",
 			Value:  true,
 		},
-		&cli.BoolFlag{
-			Name:   "x-local-module-eval",
-			Hidden: true,
-			Usage: "(experimental) resolve Terraform local module variables before scanning; " +
-				"independent of --terraform-modules",
-			Value: true,
-		},
 		&cli.StringFlag{
 			Name:  "terraform-modules",
 			Usage: "enable remote Terraform module resolution: off or on",
@@ -728,20 +721,10 @@ func selectPlatforms(platforms []string) []string {
 	return out
 }
 
-func localModuleEvalEnabled(legacyLocalModuleEval bool, modulesSetting scan.TerraformModulesSetting) bool {
-	return legacyLocalModuleEval || modulesSetting != scan.TerraformModulesOff
-}
-
 func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
-	modulesSetting, _ := scan.ParseTerraformModules(c.String("terraform-modules"))
-	overrides := map[string]bool{
+	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
 		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
-		featureflags.IacEnableLocalModuleEval: localModuleEvalEnabled(
-			c.Bool("x-local-module-eval"),
-			modulesSetting,
-		),
-	}
-	return featureflags.NewLocalEvaluatorWithOverrides(overrides)
+	})
 }
 
 func getAbsolutePath(path string) (string, error) {

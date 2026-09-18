@@ -620,10 +620,6 @@ func TestAnalyze_LocalModuleAbsolutePathShape(t *testing.T) {
 func TestServerFlagEvaluator(t *testing.T) {
 	evaluator := serverFlagEvaluator(false)
 
-	if !evaluator.EvaluateWithOrg(featureflags.IacEnableLocalModuleEval) {
-		t.Error("IacEnableLocalModuleEval must be pinned true in server mode: " +
-			"tfeval evaluates local modules against the request's in-memory FS")
-	}
 	if evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
 		t.Error("IacEnableKicsHelmResolver must be pinned false in server mode: " +
 			"Helm rendering needs a chart on disk, which content-push mode cannot materialize")
