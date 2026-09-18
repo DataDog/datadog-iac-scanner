@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -63,6 +64,7 @@ type ResolvedModule struct {
 type Result struct {
 	ScanPaths            []string
 	Modules              []ResolvedModule
+	Stats                []ModuleStat
 	Failures             []ResolutionFailure
 	SourceMappings       map[string]string
 	BudgetEvents         []BudgetEvent
@@ -93,6 +95,75 @@ type ResolutionFailure struct {
 	Reason            string
 }
 
+// Terminal outcomes for ModuleStat. One sample is recorded per unique module
+// identity: a module declared by several callers, or reached again in a deeper
+// frontier, is counted exactly once (K9CODESEC-5303).
+const (
+	ModuleOutcomeResolved   = "resolved"
+	ModuleOutcomeUnresolved = "unresolved"
+	ModuleOutcomeUnfetched  = "unfetched"
+)
+
+// ModuleStat is one terminal telemetry sample for a unique remote module
+// identity. Source carries the resolver origin (registry, git, git_http,
+// git_local, prefetched, ...) and never the raw module source; FailureCode
+// carries the bounded resolver.ClassifyFailure taxonomy, never error text.
+type ModuleStat struct {
+	Source      string `json:"source_type"`
+	Outcome     string `json:"outcome"`
+	Cache       string `json:"cache,omitempty"`
+	DurationMS  int64  `json:"duration_ms"`
+	FailureCode string `json:"failure_code,omitempty"`
+}
+
+// moduleStatFor builds the terminal sample for one module identity from the
+// outcome of its single resolution attempt. The detected source type is the
+// fallback attribution; a resolver-provided origin wins because it names the
+// concrete transport that produced the package.
+func moduleStatFor(mod *tfmodules.ParsedModule, resolution *resolver.Resolution, err error, duration time.Duration) ModuleStat {
+	stat := ModuleStat{DurationMS: duration.Milliseconds()}
+	if st, _ := tfmodules.DetectModuleSourceType(mod.Source); st != "" {
+		stat.Source = st
+	}
+	if resolution.Origin != "" {
+		stat.Source = resolution.Origin
+	}
+	stat.Cache = resolution.Cache
+	if err == nil {
+		stat.Outcome = ModuleOutcomeResolved
+		return stat
+	}
+	stat.Outcome = ModuleOutcomeUnresolved
+	stat.FailureCode = resolver.ClassifyFailure(err)
+	return stat
+}
+
+// moduleStatShed builds the sample for a module identity that was never
+// fetched because the acquisition budget was already exhausted.
+func moduleStatShed(mod *tfmodules.ParsedModule) ModuleStat {
+	stat := ModuleStat{
+		Outcome:     ModuleOutcomeUnfetched,
+		FailureCode: resolver.FailureBudgetExceeded,
+	}
+	if st, _ := tfmodules.DetectModuleSourceType(mod.Source); st != "" {
+		stat.Source = st
+	}
+	return stat
+}
+
+// moduleStatAborted builds the sample for a module identity whose acquisition
+// never started because the resolution context expired mid-frontier.
+func moduleStatAborted(mod *tfmodules.ParsedModule, err error) ModuleStat {
+	stat := ModuleStat{
+		Outcome:     ModuleOutcomeUnresolved,
+		FailureCode: resolver.ClassifyFailure(err),
+	}
+	if st, _ := tfmodules.DetectModuleSourceType(mod.Source); st != "" {
+		stat.Source = st
+	}
+	return stat
+}
+
 type resolvedEntry struct {
 	res resolver.Resolution
 	err error
@@ -111,6 +182,7 @@ type walkerSnapshot struct {
 	cleanups       []func()
 	budgetEvents   []BudgetEvent
 	failures       []ResolutionFailure
+	stats          []ModuleStat
 }
 
 type visitedSet struct {
@@ -131,6 +203,7 @@ type resultCollector struct {
 	cleanups       []func()
 	budgetEvents   []BudgetEvent
 	failures       []ResolutionFailure
+	stats          []ModuleStat
 }
 
 type moduleParseCache struct {
@@ -231,6 +304,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	shedToTotalLimit(&snapshot, budget, moduleMaximum, enforceAdmission)
 	result.ScanPaths = snapshot.paths
 	result.Modules = snapshot.modules
+	result.Stats = snapshot.stats
 	result.Failures = snapshot.failures
 	result.SourceMappings = snapshot.sourceMappings
 	result.BudgetEvents = snapshot.budgetEvents
@@ -238,6 +312,22 @@ func Resolve(ctx context.Context, request *Request) Result {
 	result.ModuleAdmissionBytes = moduleMaximum
 	result.TimedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
 
+	sortResult(&result)
+	var once sync.Once
+	result.Cleanup = func() {
+		once.Do(func() {
+			for _, cleanup := range snapshot.cleanups {
+				cleanup()
+			}
+		})
+	}
+	return result
+}
+
+// sortResult imposes the deterministic ordering Resolve guarantees: paths,
+// then each per-module collection, under a fixed comparison key so concurrent
+// walkers always produce byte-identical results (K9CODESEC-5292).
+func sortResult(result *Result) {
 	sort.Strings(result.ScanPaths)
 	sort.Slice(result.Modules, func(i, j int) bool {
 		left, right := result.Modules[i], result.Modules[j]
@@ -257,6 +347,22 @@ func Resolve(ctx context.Context, request *Request) Result {
 		}
 		return left.Name < right.Name
 	})
+	sort.Slice(result.Stats, func(i, j int) bool {
+		left, right := result.Stats[i], result.Stats[j]
+		if left.Source != right.Source {
+			return left.Source < right.Source
+		}
+		if left.Outcome != right.Outcome {
+			return left.Outcome < right.Outcome
+		}
+		if left.FailureCode != right.FailureCode {
+			return left.FailureCode < right.FailureCode
+		}
+		if left.Cache != right.Cache {
+			return left.Cache < right.Cache
+		}
+		return left.DurationMS < right.DurationMS
+	})
 	sort.Slice(result.BudgetEvents, func(i, j int) bool {
 		left, right := result.BudgetEvents[i], result.BudgetEvents[j]
 		if left.SheddingRank != right.SheddingRank {
@@ -265,15 +371,6 @@ func Resolve(ctx context.Context, request *Request) Result {
 		return strings.Join([]string{left.Source, left.Gate, left.Limit}, "\x00") <
 			strings.Join([]string{right.Source, right.Gate, right.Limit}, "\x00")
 	})
-	var once sync.Once
-	result.Cleanup = func() {
-		once.Do(func() {
-			for _, cleanup := range snapshot.cleanups {
-				cleanup()
-			}
-		})
-	}
-	return result
 }
 
 func (w *walker) expandAdmittedPackages(ctx context.Context, maximum int64) {
@@ -446,7 +543,7 @@ func (c *resultCollector) addPaths(paths ...string) {
 }
 
 func (c *resultCollector) addResolvedModule(
-	mod *tfmodules.ParsedModule, resolution resolver.Resolution, parentPackageRoot string, depth int,
+	mod *tfmodules.ParsedModule, resolution *resolver.Resolution, parentPackageRoot string, depth int,
 ) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -492,6 +589,12 @@ func (c *resultCollector) addBudgetEvent(source string, budgetErr *resolver.Budg
 	})
 }
 
+func (c *resultCollector) addModuleStat(stat ModuleStat) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stats = append(c.stats, stat)
+}
+
 func (c *resultCollector) addResolutionFailure(
 	mod *tfmodules.ParsedModule, callerPackageRoot string, err error,
 ) {
@@ -527,6 +630,7 @@ func (c *resultCollector) snapshot() walkerSnapshot {
 		cleanups:       append([]func(){}, c.cleanups...),
 		budgetEvents:   append([]BudgetEvent(nil), c.budgetEvents...),
 		failures:       append([]ResolutionFailure(nil), c.failures...),
+		stats:          append([]ModuleStat(nil), c.stats...),
 	}
 }
 
@@ -587,7 +691,9 @@ func (w *walker) resolveRemote(
 			return entry.res, entry.err
 		}
 
+		started := time.Now()
 		resolution, resolveErr := w.resolver.Resolve(ctx, mod)
+		resolveDuration := time.Since(started)
 		if resolveErr == nil && resolution.PackageRoot == "" && resolution.LocalPath != "" {
 			resolution.PackageRoot = resolution.LocalPath
 		}
@@ -598,11 +704,13 @@ func (w *walker) resolveRemote(
 			}
 		}
 		if resolveErr == nil {
-			resolveErr = w.accountPackage(ctx, mod.Source, resolution)
+			resolveErr = w.accountPackage(ctx, mod.Source, &resolution)
 		}
-		if ctx.Err() == nil {
-			w.resolutions.set(resolveID, &resolvedEntry{res: resolution, err: resolveErr})
-		}
+		w.results.addModuleStat(moduleStatFor(mod, &resolution, resolveErr, resolveDuration))
+		// Cache unconditionally, including under an expired context: the entry
+		// carries its error, and skipping the cache would let a later frontier
+		// re-resolve the same identity and emit a duplicate telemetry sample.
+		w.resolutions.set(resolveID, &resolvedEntry{res: resolution, err: resolveErr})
 		return resolution, resolveErr
 	})
 	if err != nil {
@@ -612,7 +720,7 @@ func (w *walker) resolveRemote(
 }
 
 func (w *walker) accountPackage(
-	ctx context.Context, source string, resolution resolver.Resolution,
+	ctx context.Context, source string, resolution *resolver.Resolution,
 ) error {
 	if resolution.PackageRoot == "" || !w.measurePackages {
 		return nil
@@ -806,7 +914,7 @@ func (w *walker) traverseRemoteModules(
 		cached, hit := w.resolutions.get(id)
 		if hit {
 			if cached.err == nil && cached.res.LocalPath != "" {
-				w.results.addResolvedModule(&mod, cached.res, parentPackageRoot, depth+1)
+				w.results.addResolvedModule(&mod, &cached.res, parentPackageRoot, depth+1)
 			} else if cached.err != nil && ctx.Err() == nil {
 				w.results.addResolutionFailure(&mod, parentPackageRoot, cached.err)
 			}
@@ -900,8 +1008,10 @@ func (w *walker) acquireRemoteModuleGroups(
 
 func (w *walker) recordFailedGroups(groups map[string]*remoteModuleGroup, ids []string, err error) {
 	for _, id := range ids {
-		for _, mod := range groups[id].callers {
-			w.results.addResolutionFailure(mod, groups[id].parentPackageRoot, err)
+		group := groups[id]
+		w.results.addModuleStat(moduleStatAborted(group.representative, err))
+		for _, mod := range group.callers {
+			w.results.addResolutionFailure(mod, group.parentPackageRoot, err)
 		}
 	}
 }
@@ -945,6 +1055,7 @@ func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, id
 	measured := w.budget.TotalUsage().Bytes
 	for _, id := range ids {
 		group := groups[id]
+		w.results.addModuleStat(moduleStatShed(group.representative))
 		budgetErr := &resolver.BudgetExceededError{
 			Gate:     "acquisition",
 			Limit:    "module_bytes_total",
@@ -1000,7 +1111,7 @@ func (w *walker) traverseRemoteModuleGroup(
 	}
 
 	for _, mod := range group.callers {
-		w.results.addResolvedModule(mod, resolution, group.parentPackageRoot, depth+1)
+		w.results.addResolvedModule(mod, &resolution, group.parentPackageRoot, depth+1)
 	}
 	if resolution.Cleanup != nil {
 		w.results.addCleanup(resolution.Cleanup)

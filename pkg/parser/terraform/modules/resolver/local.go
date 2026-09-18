@@ -21,5 +21,5 @@ func (LocalResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (Re
 	if mod.AbsSource == "" {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local module has no resolved absolute path"}
 	}
-	return Resolution{LocalPath: mod.AbsSource}, nil
+	return Resolution{LocalPath: mod.AbsSource, Origin: "local"}, nil
 }

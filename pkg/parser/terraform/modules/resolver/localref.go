@@ -235,8 +235,9 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 				release()
 				return Resolution{}, unresolvedResourceError(err)
 			}
-			resolution, err := ConfineResolution(ctx, Resolution{
+			resolution, err := ConfineResolution(ctx, &Resolution{
 				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
+				Origin:      "git_local",
 				PackageRoot: packageRoot,
 				ResolvedRef: ref,
 			})
@@ -244,7 +245,7 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 				release()
 				return Resolution{}, err
 			}
-			return withResolutionCleanup(resolution, release), nil
+			return withResolutionCleanup(&resolution, release), nil
 		}
 	}
 
@@ -280,14 +281,15 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 		r.Budget.Admit(info.extractBase)
 	}
 	packageRoot := archiveCacheDir(info.extractBase, sha)
-	resolution, err := ConfineResolution(ctx, Resolution{
+	resolution, err := ConfineResolution(ctx, &Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
 		ResolvedRef: sha,
+		Origin:      "git_local",
 	})
 	if err != nil {
 		release()
 		return Resolution{}, err
 	}
-	return withResolutionCleanup(resolution, release), nil
+	return withResolutionCleanup(&resolution, release), nil
 }

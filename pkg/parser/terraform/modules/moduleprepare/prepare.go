@@ -56,6 +56,7 @@ type Config struct {
 type Result struct {
 	ManifestPath string
 	Modules      []resolver.ManifestModule
+	Stats        []modulegraph.ModuleStat
 	Failures     []modulegraph.ResolutionFailure
 	BudgetEvents []modulegraph.BudgetEvent
 	TimedOut     bool
@@ -112,6 +113,7 @@ func Prepare(ctx context.Context, config *Config) (Result, error) {
 	defer graphResult.Cleanup()
 
 	output.Failures = graphResult.Failures
+	output.Stats = graphResult.Stats
 	output.BudgetEvents = redactedBudgetEvents(graphResult.BudgetEvents)
 	output.TimedOut = graphResult.TimedOut
 	if err := ctx.Err(); err != nil {

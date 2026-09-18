@@ -20,10 +20,28 @@ type Resolution struct {
 	PackageRoot     string
 	ResolvedVersion string
 	ResolvedRef     string
-	Cleanup         func() // optional post-scan cleanup
+	// Origin identifies which resolver produced this resolution (e.g. "local",
+	// "dot_terraform", "prefetched", "git", "registry"). It is telemetry-only:
+	// resolution behavior must never depend on it.
+	Origin string
+	// Cache reports how the bytes were obtained where the resolver knows it
+	// ("hit" or "miss" for the on-disk module cache). Empty means unknown.
+	Cache   string
+	Cleanup func() // optional post-scan cleanup
 }
 
-func withResolutionCleanup(res Resolution, cleanup func()) Resolution {
+// Cache-state labels recorded on Resolution.Cache for telemetry.
+const (
+	CacheStateHit  = "hit"
+	CacheStateMiss = "miss"
+)
+
+// OriginUnknown is the origin label for a resolution whose source type could
+// not be determined. It is distinct from the failure-taxonomy codes: origins
+// and outcomes are different enums and must not drift together.
+const OriginUnknown = "unknown"
+
+func withResolutionCleanup(res *Resolution, cleanup func()) Resolution {
 	previous := res.Cleanup
 	var once sync.Once
 	res.Cleanup = func() {
@@ -36,7 +54,7 @@ func withResolutionCleanup(res Resolution, cleanup func()) Resolution {
 			}
 		})
 	}
-	return res
+	return *res
 }
 
 // Resolver maps one module call to disk; errors should wrap *tfmodules.UnresolvedError when appropriate.
