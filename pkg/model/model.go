@@ -303,10 +303,10 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 	st.loader = nil
 	// Materialize the line split from OriginalData before potentially
 	// releasing it, so the detector's Lines() call (which runs after this)
-	// gets the pre-computed slice without needing OriginalData.
-	if f.LinesOriginalData == nil {
-		f.LinesOriginalData = utils.SplitLines(f.OriginalData)
-	}
+	// gets the pre-computed slice without needing OriginalData. Route through
+	// Lines() so the write shares linesLazy.once with concurrent Lines()
+	// callers instead of racing on the LinesOriginalData field.
+	f.Lines()
 	// Non-Terraform detectors never read OriginalData directly, so it can be
 	// released here.
 	if f.releaseOriginalDataAfterLineInfo &&
