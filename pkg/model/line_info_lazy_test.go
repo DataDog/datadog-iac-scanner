@@ -41,6 +41,24 @@ func TestCombine_lineInfoFallbackOnEnsureFailure(t *testing.T) {
 	require.NotNil(t, out.Documents[0]["resource"])
 }
 
+func TestCombine_lineInfoAfterDocumentRelease(t *testing.T) {
+	ctx := context.Background()
+	fm := &FileMetadata{
+		ID:       "id",
+		FilePath: "pod.yaml",
+		Document: nil,
+	}
+	fm.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+		return Document{"kind": "Pod"}, nil
+	})
+
+	out := FileMetadatas{fm}.Combine(ctx, true)
+	require.Len(t, out.Documents, 1)
+	require.Equal(t, "id", out.Documents[0]["id"])
+	require.Equal(t, "pod.yaml", out.Documents[0]["file"])
+	require.Equal(t, "Pod", out.Documents[0]["kind"])
+}
+
 func TestEnsureLineInfoDocument_concurrent(t *testing.T) {
 	ctx := context.Background()
 	var loads atomic.Int32

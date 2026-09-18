@@ -49,8 +49,8 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		searchKey = fmt.Sprintf("%s.%s", strings.TrimRight(strings.TrimLeft(file.HelmID, "# "), ":"), searchKey)
 	}
 
-	lines := make([]string, len(*file.LinesOriginalData))
-	copy(lines, *file.LinesOriginalData)
+	lines := make([]string, len(file.Lines()))
+	copy(lines, file.Lines())
 
 	curLineRes := detectCurlLine{
 		foundRes: false,

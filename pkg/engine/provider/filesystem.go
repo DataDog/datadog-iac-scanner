@@ -309,6 +309,17 @@ func (s *FileSystemSourceProvider) ContentCache() map[string][]byte {
 	return s.contentCache
 }
 
+// ReleaseContentCache drops the cached file bytes: only needed during the sink
+// phase (parsed files keep their content in OriginalData), and the map is shared
+// with the scan Client, so clearing here releases both references.
+func (s *FileSystemSourceProvider) ReleaseContentCache() {
+	if s.contentCache != nil {
+		for k := range s.contentCache {
+			delete(s.contentCache, k)
+		}
+	}
+}
+
 // BuildInventoryFromPrebuilt renders Helm charts and filters pre-collected paths.
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
 	extensions model.Extensions,

@@ -16,8 +16,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
-	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -76,6 +76,19 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if err != nil {
 		return errors.Wrapf(err, "failed to get file content: %s", filename)
 	}
+	// LinesOriginalData is lazy (see FileMetadata.Lines): most files never produce
+	// a finding, so the SplitLines copy is not retained for the whole scan.
+	fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
+
+	// Fast path: duplicate content already parsed and sanitized — reuse the shared
+	// trees with a per-file top-level map and skip parsing. The interned key also
+	// serves the slow path below (pure function of content).
+	shareKey, shared := s.lookupSharedParse(*c.Content)
+	if shared != nil {
+		return s.sinkSharedParse(ctx, filename, scanID, shareKey, shared,
+			fileCommands, c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content)
+	}
+
 	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
 		// Raw templates inside a failed chart are not valid YAML; parse failures there are expected.
@@ -104,55 +117,121 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 			LinesIgnore:  documents.IgnoreLines,
 		})
 	}
+	// The ignore-lines slice is shared by every document of this file; sort
+	// it once here instead of once per document in sinkDocument.
+	if len(documents.IgnoreLines) > 0 {
+		sort.Ints(documents.IgnoreLines)
+	}
 
-	fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
+	shareable := shareKey != "" && shareableParse(&documents)
+	var sharedDocs []model.Document
 
-	// Computed once per file and shared (same pointer) across every document's
-	// FileMetadata below: documents.Content is identical for every document of
-	// a file, so splitting it inside the loop re-split (and separately
-	// retained) the whole file once per document — a multi-document YAML file
-	// (e.g. "---"-separated Kubernetes manifests) with N documents paid N
-	// times the memory and CPU for the exact same line slice.
-	linesOriginalData := utils.SplitLines(documents.Content)
-
-	for docIdx, document := range documents.Docs {
-		// Deep-copy + sanitize the document with a single marshal. A marshal
-		// failure means the document can't be scanned, so skip it (preserving
-		// the previous skip-on-unmarshalable-document behavior).
-		preparedDocument, err := prepareScanDocument(document, documents.Kind)
-		if err != nil {
-			contextLogger.Err(err).Msgf("failed to marshal document for file: %s", filename)
-			continue
+	for docIdx := range documents.Docs {
+		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, shareable,
+			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands); doc != nil {
+			sharedDocs = append(sharedDocs, doc)
 		}
-
-		if len(documents.IgnoreLines) > 0 {
-			sort.Ints(documents.IgnoreLines)
-		}
-
-		file := model.FileMetadata{
-			ID:                uuid.New().String(),
-			ScanID:            scanID,
-			Document:          preparedDocument,
-			OriginalData:      documents.Content,
-			Kind:              documents.Kind,
-			FilePath:          filename,
-			Commands:          fileCommands,
-			LinesIgnore:       documents.IgnoreLines,
-			ResolvedFiles:     documents.ResolvedFiles,
-			LinesOriginalData: linesOriginalData,
-			IsMinified:        documents.IsMinified,
-			Platform:          s.classifyPlatform(ctx, documents.Kind, filename, *content),
-		}
-		file.SetLineInfoLoader(newLineInfoLoader(
-			s.Parser, filename, docIdx, openAPIResolveReferences, c.IsMinified, maxResolverDepth))
-
-		s.saveToFile(ctx, &file)
+	}
+	if shareable && len(sharedDocs) == len(documents.Docs) {
+		// Every document sanitized cleanly: cache the sanitized trees for later
+		// files with identical content (top-level copies, children shared).
+		s.storeSharedParse(shareKey, &documents, sharedDocs)
 	}
 	s.Tracker.TrackFileParse(filename)
 
 	s.Tracker.TrackFileParseCountLines(documents.CountLines - len(documents.IgnoreLines))
 	s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))
 
+	return nil
+}
+
+// sinkDocument sanitizes, canonicalizes and registers one parsed document of
+// a freshly parsed file, returning its top-level map for the shared-parse
+// cache (nil when the document was skipped or the parse is not shareable).
+func (s *Service) sinkDocument(
+	ctx context.Context,
+	filename, scanID string,
+	documents *iacparser.ParsedDocument,
+	docIdx int,
+	shareable, isMinified, openAPIResolveReferences bool,
+	maxResolverDepth int,
+	content []byte,
+	fileCommands model.CommentsCommands,
+) model.Document {
+	contextLogger := logger.FromContext(ctx)
+	document := documents.Docs[docIdx]
+
+	// Sanitize in place — safe because the tree is exclusively owned (line info is
+	// lazily reparsed) — and reject cycles, as json.Marshal would.
+	preparedDocument, err := sanitizeScanDocumentInPlace(document, documents.Kind)
+	if err != nil {
+		contextLogger.Err(err).Msgf("failed to sanitize document for file: %s", filename)
+		return nil
+	}
+
+	if shareable {
+		// Canonicalize structurally identical subtrees; the top-level map stays
+		// per-file (Combine inserts id/file into it).
+		preparedDocument = s.consTreeChildren(preparedDocument)
+	}
+
+	file := model.FileMetadata{
+		ID:            uuid.New().String(),
+		ScanID:        scanID,
+		Document:      preparedDocument,
+		OriginalData:  s.internContent(documents.Content),
+		Kind:          documents.Kind,
+		FilePath:      filename,
+		Commands:      fileCommands,
+		LinesIgnore:   documents.IgnoreLines,
+		ResolvedFiles: documents.ResolvedFiles,
+		IsMinified:    documents.IsMinified,
+		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
+	}
+	file.SetLineInfoLoader(newLineInfoLoader(
+		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
+	// Lazy lines, as in sinkContent.
+	file.SetLazyLines()
+
+	s.saveToFile(ctx, &file)
+	if !shareable {
+		return nil
+	}
+	return preparedDocument
+}
+
+// sinkSharedParse emits FileMetadata for a shared-parse cache hit: shallow
+// top-level copies, per-file id and loader, cached tracker counts.
+func (s *Service) sinkSharedParse(
+	ctx context.Context,
+	filename, scanID, key string,
+	shared *sharedParse,
+	fileCommands model.CommentsCommands,
+	isMinified, openAPIResolveReferences bool,
+	maxResolverDepth int,
+	content []byte,
+) error {
+	for docIdx, sharedDoc := range shared.docs {
+		file := model.FileMetadata{
+			ID:           uuid.New().String(),
+			ScanID:       scanID,
+			Document:     cloneSharedParseDocument(sharedDoc, filename),
+			OriginalData: key,
+			Kind:         shared.kind,
+			FilePath:     filename,
+			Commands:     fileCommands,
+			LinesIgnore:  shared.ignoreLines,
+			IsMinified:   shared.isMinified,
+			Platform:     s.classifyPlatform(ctx, shared.kind, filename, content),
+		}
+		file.SetLineInfoLoader(newLineInfoLoader(
+			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
+		file.SetLazyLines()
+		s.saveToFile(ctx, &file)
+	}
+	s.Tracker.TrackFileParse(filename)
+	s.Tracker.TrackFileParseCountLines(shared.countLines - len(shared.ignoreLines))
+	s.Tracker.TrackFileIgnoreCountLines(len(shared.ignoreLines))
 	return nil
 }
 

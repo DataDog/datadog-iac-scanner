@@ -8,11 +8,15 @@ package runner
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -29,6 +33,9 @@ import (
 
 const (
 	mbConst = 1048576
+	// terraformPlanResourceKey is the top-level subtree whose pattern
+	// rewriting is preserved verbatim in Terraform-plan documents.
+	terraformPlanResourceKey = "resource"
 )
 
 // scanReadBufferPool reuses the 1 MiB read buffers handed to getContent so we
@@ -87,6 +94,165 @@ type Service struct {
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
 	// so their raw template files are not mistaken for parse bugs in sink.
 	failedHelmChartDirs map[string]struct{}
+	// contentInterner dedups OriginalData strings across files with identical
+	// content (47%+ on community-operators); guarded by contentInternerMu.
+	contentInternerMu sync.Mutex
+	contentInterner   map[string]string
+	// parsedShareMu guards parsedShares, the content-keyed cache of parse results
+	// shared between files with identical content (see sharedParse).
+	parsedShareMu sync.Mutex
+	parsedShares  map[string]*sharedParse
+	// treeCons canonicalizes structurally identical subtrees of sanitized
+	// shareable documents (see treeHashCons); guarded by treeConsMu.
+	treeConsMu sync.Mutex
+	treeCons   *treeHashCons
+}
+
+// consTreeChildren canonicalizes a sanitized shareable document's subtrees
+// through the service-wide tree interner.
+func (s *Service) consTreeChildren(doc map[string]interface{}) map[string]interface{} {
+	s.treeConsMu.Lock()
+	defer s.treeConsMu.Unlock()
+	if s.treeCons == nil {
+		s.treeCons = newTreeHashCons()
+	}
+	return s.treeCons.consChildren(doc)
+}
+
+// sharedParse is the parse result of one unique content: sanitized docs
+// (children shared), kind, ignore lines and counts. Callers shallow-copy the
+// top-level maps, which Combine augments with per-file id/file entries.
+type sharedParse struct {
+	docs        []model.Document
+	kind        model.FileKind
+	ignoreLines []int
+	countLines  int
+	isMinified  bool
+}
+
+// internContent returns a shared copy of content so duplicate files retain one
+// OriginalData. The interner is dropped after prepare (ClearContentInterner) so
+// it cannot defeat the post-eval OriginalData release.
+func (s *Service) internContent(content string) string {
+	if content == "" {
+		return content
+	}
+	s.contentInternerMu.Lock()
+	defer s.contentInternerMu.Unlock()
+	if s.contentInterner == nil {
+		s.contentInterner = make(map[string]string)
+	}
+	if existing, ok := s.contentInterner[content]; ok {
+		return existing
+	}
+	s.contentInterner[content] = content
+	return content
+}
+
+// ClearContentInterner drops the interner after the prepare phase; the shared
+// strings stay alive via FileMetadata.OriginalData.
+func (s *Service) ClearContentInterner() {
+	s.contentInternerMu.Lock()
+	s.contentInterner = nil
+	s.contentInternerMu.Unlock()
+}
+
+// lookupSharedParse interns the content and returns its key plus the cached
+// shared parse, if any. A hit is exact (parses are pure functions of content);
+// the result is read-only — copy top-level maps before per-file use.
+func (s *Service) lookupSharedParse(content []byte) (string, *sharedParse) {
+	if len(content) == 0 {
+		return "", nil
+	}
+	key := s.internContent(string(content))
+	s.parsedShareMu.Lock()
+	shared := s.parsedShares[key]
+	s.parsedShareMu.Unlock()
+	return key, shared
+}
+
+// storeSharedParse caches a sanitized parse result for later files with the
+// same content. docs are the sanitized top-level maps; each is shallow-copied
+// so Combine's per-file id/file insertion cannot touch the cached entries.
+func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument, docs []model.Document) {
+	cached := make([]model.Document, len(docs))
+	for i, d := range docs {
+		cached[i] = cloneDocumentTopLevel(d)
+	}
+	s.parsedShareMu.Lock()
+	if s.parsedShares == nil {
+		s.parsedShares = make(map[string]*sharedParse)
+	}
+	s.parsedShares[key] = &sharedParse{
+		docs:        cached,
+		kind:        documents.Kind,
+		ignoreLines: documents.IgnoreLines,
+		countLines:  documents.CountLines,
+		isMinified:  documents.IsMinified,
+	}
+	s.parsedShareMu.Unlock()
+}
+
+// ClearParsedShares drops the shared parse cache. Call after the prepare
+// phase: the map pins both the content keys and the shared trees; the trees
+// stay alive via each FileMetadata's document copy.
+func (s *Service) ClearParsedShares() {
+	s.parsedShareMu.Lock()
+	s.parsedShares = nil
+	s.parsedShareMu.Unlock()
+}
+
+// ClearTreeCons drops the interner bookkeeping after prepare — up to tens of MB
+// of map overhead on large corpora. The shared trees stay alive via FileMetadata.
+func (s *Service) ClearTreeCons() {
+	s.treeConsMu.Lock()
+	s.treeCons = nil
+	s.treeConsMu.Unlock()
+}
+
+// shareableParse reports whether a parse is a pure function of its content:
+//   - Terraform/TF-plan (module instantiation mutates bodies in place per caller)
+//   - parses that resolved references (filename-relative ResolvedFiles/ignore lines)
+//   - Ansible playbooks (AddExtraInfo rewrites per file path)
+//   - empty content
+func shareableParse(documents *parser.ParsedDocument) bool {
+	if documents.Content == "" {
+		return false
+	}
+	switch documents.Kind {
+	case model.KindTerraform, model.KindTerraformPlan:
+		return false
+	}
+	if len(documents.ResolvedFiles) > 0 || len(documents.Docs) == 0 {
+		return false
+	}
+	for _, doc := range documents.Docs {
+		if _, ok := doc["playbooks"]; ok {
+			return false
+		}
+	}
+	return true
+}
+
+// cloneDocumentTopLevel returns a shallow copy of the top-level map: fresh map,
+// shared children (the bulk of the tree).
+func cloneDocumentTopLevel(d model.Document) model.Document {
+	clone := make(model.Document, len(d))
+	for k, v := range d {
+		clone[k] = v
+	}
+	return clone
+}
+
+// cloneSharedParseDocument is cloneDocumentTopLevel plus a per-file _path:
+// the YAML parser stamps the first parse filename, which must not leak onto
+// later files that reuse the cached tree.
+func cloneSharedParseDocument(d model.Document, filename string) model.Document {
+	clone := cloneDocumentTopLevel(d)
+	if _, ok := clone["_path"]; ok {
+		clone["_path"] = filename
+	}
+	return clone
 }
 
 func (s *Service) recordFailedHelmChart(chartDir string) {
@@ -288,6 +454,15 @@ func (s *Service) GetVulnerabilities(ctx context.Context, scanID string) ([]mode
 	return s.Storage.GetVulnerabilities(ctx, scanID)
 }
 
+// FileCount returns the number of files this service has collected so far.
+// Used to size scan-phase GC tuning; the mutex makes it safe to call while
+// prepare is still running.
+func (s *Service) FileCount() int {
+	s.filesMu.Lock()
+	defer s.filesMu.Unlock()
+	return len(s.files)
+}
+
 func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	err := s.Storage.SaveFile(ctx, file)
 	if err == nil {
@@ -345,6 +520,282 @@ func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind 
 	return bodyMap
 }
 
+// errCyclicDocument rejects YAML anchor/alias cycles, as the json.Marshal
+// round-trip path did.
+var errCyclicDocument = errors.New("cyclic document tree")
+
+// sanitizeScanDocumentInPlace strips _dd_lines and resolves JSON filters in
+// place, avoiding prepareScanDocument's JSON round-trip deep copy (the dominant
+// heap/CPU cost) — the lazy line-info refactor leaves body exclusively owned.
+// Cycles are rejected with errCyclicDocument, as json.Marshal would.
+func sanitizeScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
+	stack := make(map[uintptr]bool)
+	if err := sanitizeScanDocumentNodeInPlace(body, kind, true, true, stack); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func sanitizeScanDocumentNodeInPlace(
+	body interface{},
+	kind model.FileKind,
+	resolveFilters, atDocumentRoot bool,
+	stack map[uintptr]bool,
+) error {
+	switch bodyType := body.(type) {
+	case map[string]interface{}:
+		return sanitizeScanDocumentValueInPlace(bodyType, kind, resolveFilters, atDocumentRoot, stack)
+	case []interface{}:
+		for i, indx := range bodyType {
+			if !isCanonicalDocumentValue(indx) {
+				if normalized, changed := normalizeDocumentValue(indx); changed {
+					bodyType[i] = normalized
+				}
+			}
+			if err := sanitizeScanDocumentNodeInPlace(bodyType[i], kind, resolveFilters, false, stack); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func sanitizeScanDocumentValueInPlace(
+	bodyType map[string]interface{},
+	kind model.FileKind,
+	resolveFilters, atDocumentRoot bool,
+	stack map[uintptr]bool,
+) error {
+	ptr := reflect.ValueOf(bodyType).Pointer()
+	if stack[ptr] {
+		return errCyclicDocument
+	}
+	stack[ptr] = true
+	defer delete(stack, ptr)
+
+	delete(bodyType, "_dd_lines")
+	for key, v := range bodyType {
+		childResolveFilters := resolveFilters
+		if kind == model.KindTerraformPlan && atDocumentRoot {
+			childResolveFilters = key == terraformPlanResourceKey
+		}
+		switch value := v.(type) {
+		case map[string]interface{}:
+			if err := sanitizeScanDocumentNodeInPlace(value, kind, childResolveFilters, false, stack); err != nil {
+				return err
+			}
+		case []interface{}:
+			for _, indx := range value {
+				if err := sanitizeScanDocumentNodeInPlace(indx, kind, childResolveFilters, false, stack); err != nil {
+					return err
+				}
+			}
+		case string:
+			if resolveFilters {
+				if field, ok := lines[kind]; ok && utils.Contains(key, field) {
+					bodyType[key] = resolveJSONFilter(value)
+				}
+			}
+		default:
+			if err := sanitizeNormalizedValueInPlace(bodyType, key, kind, childResolveFilters, stack); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// sanitizeNormalizedValueInPlace normalizes a non-canonical map entry
+// (map[string]string, []string, int, json.Number…) in place, as the JSON round
+// trip used to; otherwise such objects bypass the shared memo and inflate the
+// payload on Terraform-heavy repositories.
+func sanitizeNormalizedValueInPlace(
+	bodyType map[string]interface{},
+	key string,
+	kind model.FileKind,
+	resolveFilters bool,
+	stack map[uintptr]bool,
+) error {
+	if normalized, changed := normalizeDocumentValue(bodyType[key]); changed {
+		bodyType[key] = normalized
+	}
+	switch value := bodyType[key].(type) {
+	case map[string]interface{}:
+		return sanitizeScanDocumentNodeInPlace(value, kind, resolveFilters, false, stack)
+	case []interface{}:
+		for _, indx := range value {
+			if err := sanitizeScanDocumentNodeInPlace(indx, kind, resolveFilters, false, stack); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// isCanonicalDocumentValue reports whether v is one of the value types the
+// removed JSON round-trip produced and every consumer downstream of the sink
+// (OPA payload conversion, detectors, JSON payload export) expects.
+func isCanonicalDocumentValue(v interface{}) bool {
+	switch v.(type) {
+	case nil, bool, string, float64, map[string]interface{}, []interface{}:
+		return true
+	}
+	return false
+}
+
+// normalizeDocumentValue converts a non-canonical value to what the JSON round
+// trip produced: canonical maps/slices, float64 numbers, base64 []byte. Already
+// canonical subtrees pass through unchanged at zero cost.
+func normalizeDocumentValue(v interface{}) (interface{}, bool) {
+	if isCanonicalDocumentValue(v) {
+		return v, false
+	}
+	if normalized, handled := normalizeScalarDocumentValue(v); handled {
+		return normalized, true
+	}
+	switch t := v.(type) {
+	case []string:
+		out := make([]interface{}, len(t))
+		for i, e := range t {
+			out[i] = e
+		}
+		return out, true
+	case map[string]string:
+		out := make(map[string]interface{}, len(t))
+		for k, e := range t {
+			out[k] = e
+		}
+		return out, true
+	case map[interface{}]interface{}:
+		// yaml.v3 produces these only for non-string keys; string keys convert
+		// exactly as the JSON round-trip did (values included).
+		return normalizeInterfaceKeyedMap(t), true
+	}
+
+	// Reflect fallback for the remaining container shapes seen in parsed
+	// documents (map[string]T with non-scalar T, []map[string]string, ...).
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Map:
+		if rv.Type().Key().Kind() == reflect.String {
+			return normalizeReflectedStringMap(rv), true
+		}
+	case reflect.Slice, reflect.Array:
+		return normalizeSliceDocumentValue(rv), true
+	}
+	return v, false
+}
+
+// normalizeInterfaceKeyedMap converts a map[interface{}]interface{} (yaml.v3
+// produces these only for non-string keys) to a map[string]interface{},
+// normalizing each value exactly as the JSON round-trip did.
+func normalizeInterfaceKeyedMap(t map[interface{}]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(t))
+	for k, e := range t {
+		if ks, ok := k.(string); ok {
+			if normalized, changed := normalizeDocumentValue(e); changed {
+				out[ks] = normalized
+			} else {
+				out[ks] = e
+			}
+		}
+	}
+	return out
+}
+
+// normalizeReflectedStringMap converts any reflect-visible map with string
+// keys to map[string]interface{}, normalizing each value.
+func normalizeReflectedStringMap(rv reflect.Value) map[string]interface{} {
+	out := make(map[string]interface{}, rv.Len())
+	iter := rv.MapRange()
+	for iter.Next() {
+		mk := iter.Key().String()
+		mv := iter.Value().Interface()
+		if normalized, changed := normalizeDocumentValue(mv); changed {
+			out[mk] = normalized
+		} else {
+			out[mk] = mv
+		}
+	}
+	return out
+}
+
+// normalizeIntegerDocumentValue widens every integer width to the float64
+// that json.Unmarshal produced for any JSON number.
+func normalizeIntegerDocumentValue(v interface{}) (float64, bool) {
+	switch t := v.(type) {
+	case int:
+		return float64(t), true
+	case int8:
+		return float64(t), true
+	case int16:
+		return float64(t), true
+	case int32:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case uint:
+		return float64(t), true
+	case uint8:
+		return float64(t), true
+	case uint16:
+		return float64(t), true
+	case uint32:
+		return float64(t), true
+	case uint64:
+		return float64(t), true
+	}
+	return 0, false
+}
+
+// normalizeScalarDocumentValue converts the scalar types the removed JSON
+// round-trip re-emitted as float64 / string. It reports whether v was one of
+// them (the second return is the replacement, valid only when handled).
+func normalizeScalarDocumentValue(v interface{}) (interface{}, bool) {
+	if normalized, handled := normalizeIntegerDocumentValue(v); handled {
+		return normalized, true
+	}
+	switch t := v.(type) {
+	case float32:
+		// Match json.Marshal's shortest float32 representation, which the old
+		// round-trip then re-read as float64 (a direct float64(t) conversion
+		// would widen 0.1 to 0.10000000149011612 and change rule-visible values).
+		s := strconv.FormatFloat(float64(t), 'g', -1, 32)
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return float64(t), true
+		}
+		return f, true
+	case json.Number:
+		f, err := t.Float64()
+		if err != nil {
+			return nil, false
+		}
+		return f, true
+	case []byte:
+		// json.Marshal encodes []byte as a base64 string.
+		return base64.StdEncoding.EncodeToString(t), true
+	case time.Time:
+		return t.Format(time.RFC3339Nano), true
+	}
+	return nil, false
+}
+
+// normalizeSliceDocumentValue converts an arbitrary-typed slice or array to
+// []interface{}, normalizing each element.
+func normalizeSliceDocumentValue(rv reflect.Value) []interface{} {
+	out := make([]interface{}, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		ev := rv.Index(i).Interface()
+		if normalized, changed := normalizeDocumentValue(ev); changed {
+			out[i] = normalized
+		} else {
+			out[i] = ev
+		}
+	}
+	return out
+}
+
 // prepareScanDocument deep-copies body (via a single JSON round-trip), strips
 // _dd_lines and resolves json filters. Returning the error lets callers that
 // already gate on marshalability skip the document instead of double-marshaling.
@@ -383,7 +834,7 @@ func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKi
 	for key, v := range bodyType {
 		childResolveFilters := resolveFilters
 		if kind == model.KindTerraformPlan && atDocumentRoot {
-			childResolveFilters = key == "resource"
+			childResolveFilters = key == terraformPlanResourceKey
 		}
 		switch value := v.(type) {
 		case map[string]interface{}:

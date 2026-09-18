@@ -228,6 +228,16 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 		return nil, nil
 	}
 
+	// Drop document maps after the OPA payload is built except for a JSON
+	// payload export that is not in line-info mode. Line-info export reparses
+	// from OriginalData even when Document has been released.
+	executeScanParameters.inspector.SetReleaseDocumentsAfterPayload(
+		c.ScanParams.PayloadPath == "" || c.ScanParams.LineInfoPayload)
+	// OriginalData is needed after eval only when the report reparses it for
+	// line-info documents (line-info payload mode). In every other case it can
+	// be dropped once all detectors and line-info reparses have completed.
+	executeScanParameters.inspector.SetReleasePostEvalData(!c.ScanParams.LineInfoPayload)
+
 	if executeScanParameters.moduleCleanup != nil {
 		defer executeScanParameters.moduleCleanup()
 	}

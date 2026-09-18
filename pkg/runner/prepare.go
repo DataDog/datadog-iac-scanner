@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -18,6 +19,10 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
 )
+
+// contentCacheMu guards concurrent deletes from the shared contentCache map
+// during parallel dispatchFile calls.
+var contentCacheMu sync.Mutex
 
 // SharedWalkProvider returns the disk provider when every service shares one.
 func SharedWalkProvider(services []*Service) (*provider.FileSystemSourceProvider, bool) {
@@ -113,8 +118,22 @@ func dispatchFile(ctx context.Context,
 	var getErr error
 	if contentCache != nil {
 		norm := filepath.ToSlash(filePath)
-		if cached, ok := contentCache[norm]; ok {
+		contentCacheMu.Lock()
+		cached, ok := contentCache[norm]
+		contentCacheMu.Unlock()
+		if ok {
 			c, getErr = contentFromBytes(cached, services[0].MaxFileSize, filePath)
+			// contentFromBytes copies the bytes: delete the cache entry so the raw-byte
+			// cache drains during the walk (concurrent, so guard the write).
+			contentCacheMu.Lock()
+			delete(contentCache, norm)
+			contentCacheMu.Unlock()
+			if getErr != nil {
+				// The cached content was rejected (e.g. over the size limit);
+				// re-reading the file from disk would only fail the same way,
+				// so surface the error directly.
+				return errors.Wrapf(getErr, "failed to get file content: %s", filePath)
+			}
 		}
 	}
 	if c == nil {
