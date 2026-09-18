@@ -14,7 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 )
 
-func ConfineResolution(ctx context.Context, res Resolution) (Resolution, error) {
+func ConfineResolution(ctx context.Context, res *Resolution) (Resolution, error) {
 	if res.LocalPath == "" {
 		return Resolution{}, fmt.Errorf("resolved module has no local path")
 	}
@@ -31,7 +31,7 @@ func ConfineResolution(ctx context.Context, res Resolution) (Resolution, error) 
 	}
 	res.PackageRoot = filepath.Clean(res.PackageRoot)
 	res.LocalPath = filepath.Clean(localPath)
-	return res, nil
+	return *res, nil
 }
 
 func ResolvePathWithinRoot(ctx context.Context, root, target string) (string, error) {

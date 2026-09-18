@@ -21,7 +21,7 @@ func TestConfineResolutionPreservesSiblingModulesInPackage(t *testing.T) {
 	require.NoError(t, os.MkdirAll(selected, 0o755))
 	require.NoError(t, os.MkdirAll(sibling, 0o755))
 
-	resolution, err := ConfineResolution(t.Context(), Resolution{
+	resolution, err := ConfineResolution(t.Context(), &Resolution{
 		LocalPath:   selected,
 		PackageRoot: packageRoot,
 	})
@@ -38,7 +38,7 @@ func TestConfineResolutionRejectsPathOutsidePackage(t *testing.T) {
 	packageRoot := t.TempDir()
 	outside := t.TempDir()
 
-	_, err := ConfineResolution(t.Context(), Resolution{
+	_, err := ConfineResolution(t.Context(), &Resolution{
 		LocalPath:   outside,
 		PackageRoot: packageRoot,
 	})
@@ -51,7 +51,7 @@ func TestConfineResolutionRejectsSymlinkEscape(t *testing.T) {
 	link := filepath.Join(packageRoot, "linked")
 	require.NoError(t, os.Symlink(outside, link))
 
-	_, err := ConfineResolution(t.Context(), Resolution{
+	_, err := ConfineResolution(t.Context(), &Resolution{
 		LocalPath:   link,
 		PackageRoot: packageRoot,
 	})
@@ -67,7 +67,7 @@ func TestResolvedPathCacheDoesNotLeakAcrossScans(t *testing.T) {
 	require.NoError(t, os.Symlink(inside, link))
 
 	first := pathutil.WithResolvedPathCache(t.Context())
-	resolution, err := ConfineResolution(first, Resolution{
+	resolution, err := ConfineResolution(first, &Resolution{
 		LocalPath:   link,
 		PackageRoot: packageRoot,
 	})
@@ -77,14 +77,14 @@ func TestResolvedPathCacheDoesNotLeakAcrossScans(t *testing.T) {
 	require.NoError(t, os.Remove(link))
 	require.NoError(t, os.Symlink(outside, link))
 
-	_, err = ConfineResolution(first, Resolution{
+	_, err = ConfineResolution(first, &Resolution{
 		LocalPath:   link,
 		PackageRoot: packageRoot,
 	})
 	require.NoError(t, err, "the same scan still uses the cached in-package target")
 
 	second := pathutil.WithResolvedPathCache(t.Context())
-	_, err = ConfineResolution(second, Resolution{
+	_, err = ConfineResolution(second, &Resolution{
 		LocalPath:   link,
 		PackageRoot: packageRoot,
 	})

@@ -166,7 +166,8 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 	if res, ok, cacheErr := r.lookupCache(ctx, mod, cacheVersion, selectedSubdir, useCache); cacheErr != nil {
 		return Resolution{}, cacheErr
 	} else if ok {
-		return stampRegistryVersion(res, st, cacheVersion), nil
+		labelResolution(&res, st, CacheStateHit)
+		return stampRegistryVersion(&res, st, cacheVersion), nil
 	}
 
 	// Coalesce cacheable fetches; non-cacheable results carry per-call Cleanup.
@@ -178,20 +179,57 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 		if sfErr != nil {
 			return Resolution{}, sfErr
 		}
-		return stampRegistryVersion(v.(Resolution), st, cacheVersion), nil
+		fetched := v.(Resolution)
+		labelResolution(&fetched, st, CacheStateMiss)
+		return stampRegistryVersion(&fetched, st, cacheVersion), nil
 	}
-	res, err := r.fetchAndCommit(ctx, st, mod, cacheVersion, selectedSubdir, useCache)
+	return r.resolveUncached(ctx, st, mod, cacheVersion, selectedSubdir)
+}
+
+// resolveUncached fetches without the on-disk module cache. The cache state
+// stays unknown (empty): this path also serves uncacheable sources and
+// configurations where the module cache failed to initialize, where no cache
+// lookup was attempted — those scans must not appear as cache misses.
+func (r *GoGetterResolver) resolveUncached(
+	ctx context.Context, sourceType string, mod *tfmodules.ParsedModule, cacheVersion, selectedSubdir string,
+) (Resolution, error) {
+	res, err := r.fetchAndCommit(ctx, sourceType, mod, cacheVersion, selectedSubdir, false)
 	if err != nil {
 		return Resolution{}, err
 	}
-	return stampRegistryVersion(res, st, cacheVersion), nil
+	labelResolution(&res, sourceType, "")
+	return stampRegistryVersion(&res, sourceType, cacheVersion), nil
 }
 
-func stampRegistryVersion(res Resolution, sourceType, version string) Resolution {
+// labelResolution stamps the telemetry origin and cache state on a resolution
+// go-getter produced. Git:: sources that delegated to BareGit inside
+// fetchAndCommit keep the origin the delegating resolver set.
+func labelResolution(res *Resolution, sourceType, cacheState string) {
+	if res.Origin == "" {
+		res.Origin = originForSourceType(sourceType)
+	}
+	res.Cache = cacheState
+}
+
+// originForSourceType maps a detected module source type to a telemetry
+// origin label. Git sources resolved here are http zip fetches; pinnable
+// git:: sources delegate to BareGitResolver, which labels itself "git".
+func originForSourceType(st string) string {
+	switch st {
+	case "":
+		return OriginUnknown
+	case sourceTypeGit:
+		return "git_http"
+	default:
+		return st
+	}
+}
+
+func stampRegistryVersion(res *Resolution, sourceType, version string) Resolution {
 	if sourceType == sourceTypeRegistry && version != "" {
 		res.ResolvedVersion = version
 	}
-	return res
+	return *res
 }
 
 func (r *GoGetterResolver) fetchAndCommit(
@@ -296,7 +334,7 @@ func (r *GoGetterResolver) lookupCache(
 		release()
 		return Resolution{}, false, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 	}
-	return withResolutionCleanup(resolution, release), true, nil
+	return withResolutionCleanup(&resolution, release), true, nil
 }
 
 func (r *GoGetterResolver) checkByteLimits(size int64) error {
@@ -391,7 +429,7 @@ func (r *GoGetterResolver) commitFetchedDir(
 				release()
 				return Resolution{}, &tfmodules.UnresolvedError{Reason: "invalid cached module package: " + err.Error()}
 			}
-			return withResolutionCleanup(resolution, release), nil
+			return withResolutionCleanup(&resolution, release), nil
 		}
 	}
 	cleanup := func() { _ = os.RemoveAll(tmpDir) }
@@ -409,7 +447,7 @@ func resolutionForPackage(ctx context.Context, packageRoot, selectedSubdir strin
 	if selectedSubdir != "" {
 		localPath = filepath.Join(packageRoot, filepath.FromSlash(selectedSubdir))
 	}
-	return ConfineResolution(ctx, Resolution{
+	return ConfineResolution(ctx, &Resolution{
 		LocalPath:   localPath,
 		PackageRoot: packageRoot,
 	})
