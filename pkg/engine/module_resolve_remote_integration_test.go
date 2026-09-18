@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
@@ -118,7 +119,7 @@ func inspectRemoteBucket(t *testing.T, fx remoteBucketFixture, callerPaths []str
 			Query: "acl_rule", Content: rule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
 
@@ -225,7 +226,7 @@ module "bucket" {
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{
 		RemoteModuleKey(aRoot, remoteBucketSource, remoteBucketVersion): {Path: fx.cacheDir, PackageRoot: fx.cacheDir},
@@ -269,7 +270,7 @@ module "bucket" {
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{
 		RemoteModuleKey(aRoot, remoteBucketSource, remoteBucketVersion): {Path: fx.cacheDir, PackageRoot: fx.cacheDir},
@@ -342,7 +343,7 @@ module "bucket" {
 			Query: "variable_type_rule", Content: variableTypeRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "variable-type-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
 
@@ -385,7 +386,7 @@ module "bucket" {
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
 		}},
-		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: moduleEvalEnabled(),
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 	// Deliberately omit SetRemoteModuleDirectories.
 

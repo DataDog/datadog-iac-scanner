@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	reportModel "github.com/DataDog/datadog-iac-scanner/pkg/report/model"
 	"github.com/stretchr/testify/require"
@@ -78,7 +79,7 @@ resource "aws_s3_bucket" "this" {
 		queries:       queries,
 		repoPath:      root,
 		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: moduleEvalEnabled(),
+		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
