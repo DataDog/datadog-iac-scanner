@@ -329,7 +329,7 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 	chartRoots := chartRootsShallowFirst(s.chartRoots)
 	for _, root := range chartRoots {
 		normRoot := strings.ReplaceAll(root, "\\", "/")
-		if isUnderChartRoot(normRoot, renderedRoots) {
+		if IsUnderChartRoot(normRoot, renderedRoots) {
 			continue
 		}
 		if chartFn(ctx, normRoot) {
@@ -340,7 +340,7 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
 	for _, path := range s.prebuiltPaths {
 		norm := strings.ReplaceAll(path, "\\", "/")
-		if isUnderChartRoot(norm, renderedRoots) {
+		if IsUnderChartRoot(norm, renderedRoots) {
 			continue
 		}
 		if _, ok := s.unfiltered[norm]; !ok {
@@ -363,11 +363,13 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 	return files, nil
 }
 
-func isUnderChartRoot(path string, chartRoots []string) bool {
+// IsUnderChartRoot reports whether path lies at or below one of chartRoots.
+// A "." root covers everything: a chart at the workspace (or scan) root.
+func IsUnderChartRoot(path string, chartRoots []string) bool {
 	path = filepath.ToSlash(path)
 	for _, root := range chartRoots {
 		root = filepath.ToSlash(root)
-		if path == root || strings.HasPrefix(path, root+"/") {
+		if root == "." || path == root || strings.HasPrefix(path, root+"/") {
 			return true
 		}
 	}

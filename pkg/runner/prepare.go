@@ -88,20 +88,6 @@ func PrepareSharedWalk(ctx context.Context,
 		})
 }
 
-// isUnderAnyRoot reports whether path lies at or below one of roots. The
-// "." root covers everything: a chart pushed at the workspace root excludes
-// the whole request's raw files.
-func isUnderAnyRoot(path string, roots []string) bool {
-	path = filepath.ToSlash(path)
-	for _, root := range roots {
-		root = filepath.ToSlash(root)
-		if root == "." || path == root || strings.HasPrefix(path, root+"/") {
-			return true
-		}
-	}
-	return false
-}
-
 // PrepareMemorySources renders each pushed Helm chart once and dispatches the
 // remaining pushed files to the parsers — the content-push analog of
 // PrepareSharedWalk, and the path every server scan takes. Nested chart roots
@@ -124,7 +110,7 @@ func PrepareMemorySources(ctx context.Context,
 
 	renderedRoots := make([]string, 0)
 	for _, root := range mp.ChartRoots(union) {
-		if isUnderAnyRoot(root, renderedRoots) {
+		if provider.IsUnderChartRoot(root, renderedRoots) {
 			continue
 		}
 		if dispatchMemoryChart(ctx, mp, services, root, scanID, openAPIResolveReferences, maxResolverDepth) {
@@ -143,7 +129,7 @@ func PrepareMemorySources(ctx context.Context,
 	return utils.ForEach(ctx, files,
 		pool,
 		func(ctx context.Context, filePath string, _ int) error {
-			if isUnderAnyRoot(filePath, renderedRoots) {
+			if provider.IsUnderChartRoot(filePath, renderedRoots) {
 				return nil
 			}
 			return dispatchMemoryFile(ctx, mp, routing[memRoutingKey(filePath)], filePath, scanID, openAPIResolveReferences, maxResolverDepth)
@@ -159,16 +145,41 @@ func memRoutingKey(path string) string {
 	return filepath.Base(path)
 }
 
-// dispatchMemoryChart renders one pushed chart and stores its resolved files,
-// mirroring dispatchChart: a library chart still excludes its raw subtree; a
-// render error escalates the chart directory for the IDE to push and reports
-// failure so the caller falls back to raw files.
 func dispatchMemoryChart(ctx context.Context,
 	mp *provider.MemorySourceProvider,
 	services []*Service,
 	chartPath, scanID string,
 	openAPIResolveReferences bool,
 	maxResolverDepth int) bool {
+	return resolveAndStoreChart(ctx, services, chartPath, scanID, openAPIResolveReferences, maxResolverDepth,
+		func() { mp.RecordMissing(chartPath) }, nil)
+}
+
+func dispatchChart(ctx context.Context,
+	fsp *provider.FileSystemSourceProvider,
+	services []*Service,
+	chartPath, scanID string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int) bool {
+	return resolveAndStoreChart(ctx, services, chartPath, scanID, openAPIResolveReferences, maxResolverDepth,
+		nil,
+		func(resFiles model.ResolvedFiles) {
+			if err := fsp.ExcludePaths(ctx, resFiles.Excluded); err != nil {
+				contextLogger := logger.FromContext(ctx)
+				contextLogger.Err(err).Msgf("could not exclude rendered chart files: %s", chartPath)
+			}
+		})
+}
+
+func resolveAndStoreChart(
+	ctx context.Context,
+	services []*Service,
+	chartPath, scanID string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int,
+	onErr func(),
+	afterResolve func(model.ResolvedFiles),
+) bool {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
 		return true
@@ -177,9 +188,13 @@ func dispatchMemoryChart(ctx context.Context,
 		for _, s := range services {
 			s.logResolverResolveError(ctx, kind, chartPath, err)
 		}
-		// The push may be incomplete; ask for the whole chart directory.
-		mp.RecordMissing(chartPath)
+		if onErr != nil {
+			onErr()
+		}
 		return false
+	}
+	if afterResolve != nil {
+		afterResolve(resFiles)
 	}
 	routed := services
 	if kind == model.KindHELM {
@@ -226,38 +241,6 @@ func dispatchMemoryFile(ctx context.Context,
 		}
 	}
 	return nil
-}
-
-func dispatchChart(ctx context.Context,
-	fsp *provider.FileSystemSourceProvider,
-	services []*Service,
-	chartPath, scanID string,
-	openAPIResolveReferences bool,
-	maxResolverDepth int) bool {
-	contextLogger := logger.FromContext(ctx)
-	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
-	if kind == model.KindCOMMON {
-		return true
-	}
-	if err != nil {
-		for _, s := range services {
-			s.logResolverResolveError(ctx, kind, chartPath, err)
-		}
-		return false
-	}
-	if err := fsp.ExcludePaths(ctx, resFiles.Excluded); err != nil {
-		contextLogger.Err(err).Msgf("could not exclude rendered chart files: %s", chartPath)
-	}
-	routed := services
-	if kind == model.KindHELM {
-		if platform, ok := analyzer.PlatformForKind(kind); ok {
-			routed = servicesForPlatformAndParserKind(services, platform, model.KindYAML)
-		}
-	}
-	for _, s := range routed {
-		s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
-	}
-	return true
 }
 
 func dispatchFile(ctx context.Context,

@@ -412,6 +412,37 @@ metadata:
 	}
 }
 
+func TestAnalyze_HelmChartRenderFailureEscalatesWorkspaceRoot(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+			{Path: "templates/deployment.yaml", Content: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "e2e.labels" . | nindent 4 }}
+`},
+		},
+		Ruleset:  ruleset(syntheticK8sRule()),
+		Platform: []string{"kubernetes"},
+	}
+
+	out, _ := postAnalyzeK8s(t, s, req)
+
+	found := false
+	for _, p := range out.MissingFiles {
+		if p == "." {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("missing files = %v, want the workspace-root chart escalated as %q", out.MissingFiles, ".")
+	}
+}
+
 // TestAnalyze_ContentPush_ParallelDispatchFinding runs the terraform
 // content-push case through the shared memory dispatch (parallel parsing on,
 // the serve binary's default) to pin that the dispatch path behaves like the

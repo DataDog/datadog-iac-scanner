@@ -805,11 +805,13 @@ func TestGetSources_helmChartSkipsRawTemplates(t *testing.T) {
 
 func TestIsUnderChartRoot_normalizesSeparators(t *testing.T) {
 	root := `D:/charts/app`
-	require.True(t, isUnderChartRoot(`D:/charts/app/templates/svc.yaml`, []string{root}))
+	require.True(t, IsUnderChartRoot(`D:/charts/app/templates/svc.yaml`, []string{root}))
 	if runtime.GOOS == "windows" {
-		require.True(t, isUnderChartRoot(`D:\charts\app\templates\svc.yaml`, []string{root}))
+		require.True(t, IsUnderChartRoot(`D:\charts\app\templates\svc.yaml`, []string{root}))
 	}
-	require.False(t, isUnderChartRoot(`D:/charts/other/templates/svc.yaml`, []string{root}))
+	require.False(t, IsUnderChartRoot(`D:/charts/other/templates/svc.yaml`, []string{root}))
+	require.True(t, IsUnderChartRoot(`templates/svc.yaml`, []string{"."}))
+	require.True(t, IsUnderChartRoot(`infra/main.tf`, []string{"."}))
 }
 
 func TestTerraformFilesIncludesTfJSON(t *testing.T) {

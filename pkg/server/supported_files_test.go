@@ -57,4 +57,7 @@ func TestSupportedFiles_Entries(t *testing.T) {
 	if got["Dockerfile"] != strategySingleFile {
 		t.Errorf("Dockerfile should be %q, got %q", strategySingleFile, got["Dockerfile"])
 	}
+	if got["Chart.yaml"] != strategyChart {
+		t.Errorf("Chart.yaml should be %q, got %q", strategyChart, got["Chart.yaml"])
+	}
 }
