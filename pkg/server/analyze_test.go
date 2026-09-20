@@ -7,8 +7,11 @@
 package server
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -24,6 +27,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	engineSource "github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/rs/zerolog"
 )
 
@@ -40,9 +44,11 @@ func newTestServer(t *testing.T) *Server {
 
 const syntheticRuleID = "test-terraform-resource-missing-owner"
 
+const syntheticK8sRuleID = "test-k8s-deployment-missing-owner"
+
 var (
 	analyzeCompiledQueryCacheTestMu sync.Mutex
-	analyzeProcessCwdMu               sync.Mutex
+	analyzeProcessCwdMu             sync.Mutex
 )
 
 // syntheticRule imports both test-only pushed libraries. Its identifiers and
@@ -110,6 +116,64 @@ func ruleset(rules ...datadog.Rule) datadog.Ruleset {
 	return datadog.Ruleset{Rules: ptrs}
 }
 
+// newParallelTestServer is newTestServer with parallel parsing on — the serve
+// binary's default, and the path that runs the shared memory dispatch (Helm
+// chart rendering included).
+func newParallelTestServer(t *testing.T) *Server {
+	t.Helper()
+	return New(&Config{ParallelParsing: true})
+}
+
+// syntheticK8sRule is the pushed-rules counterpart of syntheticRule for the
+// Kubernetes platform: it fires on any Deployment whose metadata carries no
+// owner label, which a pushed Helm chart renders.
+func syntheticK8sRule() datadog.Rule {
+	return datadog.Rule{
+		ID:               syntheticK8sRuleID,
+		Name:             syntheticK8sRuleID,
+		ShortDescription: "Synthetic missing owner label",
+		Platform:         "Kubernetes",
+		Severity:         "INFO",
+		Category:         "Test",
+		IsPublished:      true,
+		RegoQuery: []byte(`package datadog
+
+import rego.v1
+
+import data.generic.common as common_lib
+
+DatadogPolicy contains result if {
+	common_lib.library_enabled
+	doc := input.document[i]
+	doc.kind == "Deployment"
+	not common_lib.has_owner(doc.metadata)
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "Deployment",
+		"resourceName": doc.metadata.name,
+		"searchKey": sprintf("%s.metadata.labels.owner", [doc.metadata.name]),
+	}
+}`),
+	}
+}
+
+func k8sTestLibraries() []datadog.Library {
+	return []datadog.Library{
+		testLibraries(true)[0],
+		{
+			ID:       "k8s",
+			RegoCode: "package generic.k8s\n\nimport rego.v1\n\nplaceholder := true",
+		},
+	}
+}
+
+// postAnalyzeK8s is postAnalyze with the Kubernetes library set.
+func postAnalyzeK8s(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse, int) {
+	t.Helper()
+	req.Libraries = k8sTestLibraries()
+	return postAnalyze(t, s, req)
+}
+
 func postAnalyze(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse, int) {
 	t.Helper()
 	if len(req.Libraries) == 0 {
@@ -162,6 +226,227 @@ func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 	// reported missing.
 	if len(out.MissingFiles) != 0 {
 		t.Errorf("expected no missing files for same-dir siblings, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_ContentPush_HelmChartFinding verifies the full content-push helm
+// path: a chart pushed as plain files renders through the in-memory FS, its
+// manifests are scanned with the Kubernetes rules, and the finding anchors on
+// the pushed template path.
+func TestAnalyze_ContentPush_HelmChartFinding(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+			{Path: "chart/values.yaml", Content: "replicas: 1\n"},
+			{Path: "chart/templates/deployment.yaml", Content: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: e2e
+spec:
+  replicas: {{ .Values.replicas }}
+`},
+		},
+		Ruleset:  ruleset(syntheticK8sRule()),
+		Platform: []string{"kubernetes"},
+	}
+
+	out, _ := postAnalyzeK8s(t, s, req)
+
+	var found *model.Vulnerability
+	for i := range out.Findings {
+		if out.Findings[i].QueryID == syntheticK8sRuleID {
+			found = &out.Findings[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected the synthetic k8s rule to fire on the rendered chart; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+	if found.FileName != "chart/templates/deployment.yaml" {
+		t.Errorf("finding fileName = %q, want chart/templates/deployment.yaml", found.FileName)
+	}
+	if found.Line <= 0 {
+		t.Errorf("finding line = %d, want a line mapped back to the template", found.Line)
+	}
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files for a fully pushed chart, got %v", out.MissingFiles)
+	}
+}
+
+// chartTgzBytes packages files (name → content) as a gzipped tar chart
+// archive, the shape `helm package` produces: each entry is named under a
+// single leading directory that helm's archive loader strips.
+func chartTgzBytes(t *testing.T, leading string, files [][2]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, f := range files {
+		if err := tw.WriteHeader(&tar.Header{
+			Name: leading + "/" + f[0],
+			Mode: 0o644,
+			Size: int64(len(f[1])),
+		}); err != nil {
+			t.Fatalf("writing tar header: %v", err)
+		}
+		if _, err := tw.Write([]byte(f[1])); err != nil {
+			t.Fatalf("writing tar entry: %v", err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("closing tar: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("closing gzip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// TestAnalyze_ContentPush_PackagedSubchart verifies that a binary chart
+// dependency pushed base64-encoded (charts/*.tgz, which cannot ride the wire
+// as text) is decoded, assembled and rendered: the subchart's template yields
+// a finding anchored on its path inside the pushed chart.
+func TestAnalyze_ContentPush_PackagedSubchart(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	subchart := chartTgzBytes(t, "sub", [][2]string{
+		{"Chart.yaml", "apiVersion: v2\nname: sub\nversion: 0.1.0\n"},
+		{"templates/service.yaml", "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Release.Name }}\n  labels:\n    app: sub\n"},
+	})
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+			{Path: "chart/values.yaml", Content: "replicas: 1\n"},
+			{Path: "chart/charts/sub.tgz", Content: base64.StdEncoding.EncodeToString(subchart), Encoding: "base64"},
+		},
+		Ruleset:  ruleset(syntheticK8sRule()),
+		Platform: []string{"kubernetes"},
+	}
+
+	out, _ := postAnalyzeK8s(t, s, req)
+
+	var found bool
+	for _, f := range out.Findings {
+		if f.QueryID == syntheticK8sRuleID && f.FileName == "chart/charts/sub/templates/service.yaml" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a finding on the packaged subchart's template; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files, got %v", out.MissingFiles)
+	}
+}
+
+// TestValidateAnalyzeRequest_Encoding pins the base64 wire contract: only
+// text and base64 are accepted, and malformed base64 is rejected up front with
+// the offending path.
+func TestValidateAnalyzeRequest_Encoding(t *testing.T) {
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "a.tf", Content: "x"},
+			{Path: "b.tgz", Content: "not base64!!", Encoding: "base64"},
+		},
+		Ruleset: ruleset(datadog.Rule{ID: "tf-rule", Name: "tf-rule", Platform: "Terraform", RegoQuery: []byte("package datadog")}),
+		Libraries: []datadog.Library{
+			{ID: "common", RegoCode: "package generic.common"},
+			{ID: "terraform", RegoCode: "package generic.terraform"},
+		},
+	}
+	err := validateAnalyzeRequest(&req, 10)
+	if err == nil || !strings.Contains(err.Error(), "b.tgz") {
+		t.Fatalf("expected malformed base64 to be rejected with the file path, got %v", err)
+	}
+
+	req.Files[1].Content = base64.StdEncoding.EncodeToString([]byte("gzip bytes"))
+	if err := validateAnalyzeRequest(&req, 10); err != nil {
+		t.Fatalf("valid base64 should pass validation: %v", err)
+	}
+
+	req.Files[1].Encoding = "rot13"
+	if err := validateAnalyzeRequest(&req, 10); err == nil || !strings.Contains(err.Error(), "rot13") {
+		t.Fatalf("expected an unknown encoding to be rejected, got %v", err)
+	}
+}
+
+// TestAnalyze_HelmChartRenderFailureEscalates verifies that a chart that
+// cannot render from the pushed content (here: a template including a helper
+// whose _helpers.tpl was never pushed) escalates its directory in missing_files
+// so the IDE pushes the rest of the chart.
+func TestAnalyze_HelmChartRenderFailureEscalates(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+			{Path: "chart/templates/deployment.yaml", Content: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "e2e.labels" . | nindent 4 }}
+`},
+		},
+		Ruleset:  ruleset(syntheticK8sRule()),
+		Platform: []string{"kubernetes"},
+	}
+
+	out, _ := postAnalyzeK8s(t, s, req)
+
+	found := false
+	for _, p := range out.MissingFiles {
+		if p == "chart" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("missing files = %v, want the chart directory escalated", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_ContentPush_ParallelDispatchFinding runs the terraform
+// content-push case through the shared memory dispatch (parallel parsing on,
+// the serve binary's default) to pin that the dispatch path behaves like the
+// per-service one for plain files.
+func TestAnalyze_ContentPush_ParallelDispatchFinding(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" {
+  bucket = var.bucket_name
+}`},
+			{Path: "infra/variables.tf", Content: `variable "bucket_name" { default = "my-bucket" }`},
+		},
+		Ruleset:  ruleset(syntheticRule()),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var found bool
+	for _, f := range out.Findings {
+		if f.QueryID == syntheticRuleID {
+			found = true
+			if f.FileName != "infra/main.tf" {
+				t.Errorf("finding fileName = %q, want infra/main.tf", f.FileName)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected the synthetic rule to fire through the shared dispatch; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files, got %v", out.MissingFiles)
 	}
 }
 
@@ -615,14 +900,15 @@ func TestAnalyze_LocalModuleAbsolutePathShape(t *testing.T) {
 // local-module-eval pin is on: tfeval reads module and tfvars files through the
 // request's in-memory FS, so evaluation can only see pushed content and an
 // unpushed module directory is reported as a missing file for escalation,
-// never read off the real disk. Helm stays pinned off until its chart loader
-// can load from the in-memory FS.
+// never read off the real disk. Helm is on too: the chart loader reads from
+// the same in-memory FS, and a chart that fails to render escalates its
+// directory.
 func TestServerFlagEvaluator(t *testing.T) {
 	evaluator := serverFlagEvaluator(false)
 
-	if evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
-		t.Error("IacEnableKicsHelmResolver must be pinned false in server mode: " +
-			"Helm rendering needs a chart on disk, which content-push mode cannot materialize")
+	if !evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
+		t.Error("IacEnableKicsHelmResolver must be pinned true in server mode: " +
+			"the chart loader reads pushed content through the in-memory FS")
 	}
 	// Each flag is read through the same method its production call site uses,
 	// so this keeps holding if server mode ever gets an evaluator whose methods

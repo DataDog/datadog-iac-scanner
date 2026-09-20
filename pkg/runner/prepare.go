@@ -41,6 +41,23 @@ func SharedWalkProvider(services []*Service) (*provider.FileSystemSourceProvider
 	return fsp, true
 }
 
+// SharedMemoryProvider returns the memory provider when every service shares one.
+func SharedMemoryProvider(services []*Service) (*provider.MemorySourceProvider, bool) {
+	if len(services) == 0 {
+		return nil, false
+	}
+	mp, ok := services[0].SourceProvider.(*provider.MemorySourceProvider)
+	if !ok {
+		return nil, false
+	}
+	for _, s := range services[1:] {
+		if other, ok := s.SourceProvider.(*provider.MemorySourceProvider); !ok || other != mp {
+			return nil, false
+		}
+	}
+	return mp, true
+}
+
 // PrepareSharedWalk walks once, renders each chart once, and dispatches files to parsers.
 func PrepareSharedWalk(ctx context.Context,
 	fsp *provider.FileSystemSourceProvider,
@@ -69,6 +86,146 @@ func PrepareSharedWalk(ctx context.Context,
 		func(ctx context.Context, f provider.InventoryFile, _ int) error {
 			return dispatchFile(ctx, routing[f.Ext], f.Path, scanID, openAPIResolveReferences, maxResolverDepth, fsp.ContentCache())
 		})
+}
+
+// isUnderAnyRoot reports whether path lies at or below one of roots. The
+// "." root covers everything: a chart pushed at the workspace root excludes
+// the whole request's raw files.
+func isUnderAnyRoot(path string, roots []string) bool {
+	path = filepath.ToSlash(path)
+	for _, root := range roots {
+		root = filepath.ToSlash(root)
+		if root == "." || path == root || strings.HasPrefix(path, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// PrepareMemorySources renders each pushed Helm chart once and dispatches the
+// remaining pushed files to the parsers — the content-push analog of
+// PrepareSharedWalk, and the path every server scan takes. Nested chart roots
+// under an already rendered chart are skipped (the parent rendered them); a
+// chart that fails to render escalates its directory via the missing set and
+// falls back to raw scanning, as the disk walk does. parallel controls only the
+// file-dispatch concurrency (the --x-parallelparsing flag); charts render in
+// both modes.
+func PrepareMemorySources(ctx context.Context,
+	mp *provider.MemorySourceProvider,
+	services []*Service,
+	scanID string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int,
+	parallel bool) error {
+	contextLogger := logger.FromContext(ctx)
+
+	union := unionExtensions(services)
+	files := mp.EligibleFiles(union)
+
+	renderedRoots := make([]string, 0)
+	for _, root := range mp.ChartRoots(union) {
+		if isUnderAnyRoot(root, renderedRoots) {
+			continue
+		}
+		if dispatchMemoryChart(ctx, mp, services, root, scanID, openAPIResolveReferences, maxResolverDepth) {
+			renderedRoots = append(renderedRoots, root)
+		}
+	}
+
+	contextLogger.Info().Msgf("Collected %d pushed files to process across %d parsers", len(files), len(services))
+
+	routing := buildExtensionRouting(services)
+	pool := utils.PoolOptions{CPUBound: true}
+	if !parallel {
+		// The flag is off: sequential dispatch, as the legacy per-service path was.
+		pool = utils.PoolOptions{Workers: 1}
+	}
+	return utils.ForEach(ctx, files,
+		pool,
+		func(ctx context.Context, filePath string, _ int) error {
+			if isUnderAnyRoot(filePath, renderedRoots) {
+				return nil
+			}
+			return dispatchMemoryFile(ctx, mp, routing[memRoutingKey(filePath)], filePath, scanID, openAPIResolveReferences, maxResolverDepth)
+		})
+}
+
+// memRoutingKey returns the extension key the routing map is built with — the
+// same form the memory provider uses to filter eligible files.
+func memRoutingKey(path string) string {
+	if ext := utils.ExtensionFromPath(path); ext != "" {
+		return ext
+	}
+	return filepath.Base(path)
+}
+
+// dispatchMemoryChart renders one pushed chart and stores its resolved files,
+// mirroring dispatchChart: a library chart still excludes its raw subtree; a
+// render error escalates the chart directory for the IDE to push and reports
+// failure so the caller falls back to raw files.
+func dispatchMemoryChart(ctx context.Context,
+	mp *provider.MemorySourceProvider,
+	services []*Service,
+	chartPath, scanID string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int) bool {
+	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
+	if kind == model.KindCOMMON {
+		return true
+	}
+	if err != nil {
+		for _, s := range services {
+			s.logResolverResolveError(ctx, kind, chartPath, err)
+		}
+		// The push may be incomplete; ask for the whole chart directory.
+		mp.RecordMissing(chartPath)
+		return false
+	}
+	routed := services
+	if kind == model.KindHELM {
+		if platform, ok := analyzer.PlatformForKind(kind); ok {
+			routed = servicesForPlatformAndParserKind(services, platform, model.KindYAML)
+		}
+	}
+	for _, s := range routed {
+		s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
+	}
+	return true
+}
+
+// dispatchMemoryFile feeds one pushed file's content to every service whose
+// parser supports its extension — dispatchFile's in-memory counterpart.
+func dispatchMemoryFile(ctx context.Context,
+	mp *provider.MemorySourceProvider,
+	services []*Service,
+	filePath, scanID string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int) error {
+	if len(services) == 0 {
+		return nil
+	}
+	content, err := mp.ReadFile(filePath)
+	if err != nil {
+		// Pushed files always read; a miss means the file was withdrawn after
+		// the provider snapshot — skip rather than fail the scan.
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Warn().Msgf("memory dispatch: could not read pushed file %s: %v", filePath, err)
+		return nil
+	}
+	c, getErr := contentFromBytes(content, services[0].MaxFileSize, filePath)
+	if getErr != nil {
+		return errors.Wrapf(getErr, "failed to get file content: %s", filePath)
+	}
+	for i, s := range services {
+		content := c
+		if i > 0 {
+			content = cloneContent(c)
+		}
+		if err := s.sinkContent(ctx, filePath, scanID, content, getErr, openAPIResolveReferences, maxResolverDepth); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func dispatchChart(ctx context.Context,

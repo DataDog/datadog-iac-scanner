@@ -196,6 +196,15 @@ func (m *MemFS) Paths() []string {
 	return out
 }
 
+// RecordMissing adds path to the missing set. Read misses record themselves;
+// this is for escalation signals that cannot be expressed as a plain read miss
+// (a Helm chart that failed to render from pushed content).
+func (m *MemFS) RecordMissing(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.missing[normalize(name)] = struct{}{}
+}
+
 // MissingFiles returns the sorted set of paths the scan referenced but that were
 // not pushed — the escalation list returned to the IDE.
 func (m *MemFS) MissingFiles() []string {

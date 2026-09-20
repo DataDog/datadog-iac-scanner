@@ -23,13 +23,13 @@ import (
 // MemorySourceProvider serves a fixed set of files (pushed over HTTP) to the
 // scan pipeline, reading their content through a vfs.FS. It replaces the
 // disk-walking FileSystemSourceProvider in the server's content-push path, so
-// there is no filesystem walk, no symlink/SameFile handling, and no Helm chart
-// discovery.
+// there is no filesystem walk and no symlink/SameFile handling.
 //
-// The resolverSink (used by FileSystemSourceProvider to render Helm charts) is
-// intentionally never invoked: Helm rendering needs a real on-disk chart path
-// and is unsupported in content-push mode. Pushed Helm templates fall through to
-// raw-YAML scanning.
+// Helm charts pushed as plain files are rendered by the shared memory dispatch
+// (runner.PrepareMemorySources) before this provider's per-file sinks would
+// run; the ResolverSink parameter is unused here, and GetSources/
+// GetParallelSources are kept only for SourceProvider completeness — the
+// dispatch path reads the provider's files directly.
 type MemorySourceProvider struct {
 	fsys        vfs.FS
 	paths       []string
@@ -67,6 +67,37 @@ func (m *MemorySourceProvider) eligibleFiles(extensions model.Extensions) []stri
 		eligible = append(eligible, p)
 	}
 	return eligible
+}
+
+// EligibleFiles returns the pushed files whose extension is in extensions and
+// that pass the path filters — the set a shared dispatch feeds to the parsers.
+func (m *MemorySourceProvider) EligibleFiles(extensions model.Extensions) []string {
+	return m.eligibleFiles(extensions)
+}
+
+// ReadFile reads a pushed file through the provider's FS.
+func (m *MemorySourceProvider) ReadFile(p string) ([]byte, error) {
+	return m.fsys.ReadFile(p)
+}
+
+// RecordMissing records an escalation request when the provider's FS tracks
+// missing paths (the in-memory one does; the real disk cannot).
+func (m *MemorySourceProvider) RecordMissing(path string) {
+	if r, ok := m.fsys.(interface{ RecordMissing(string) }); ok {
+		r.RecordMissing(path)
+	}
+}
+
+// ChartRoots returns the pushed Helm chart directories, shallow-first so a
+// caller can render parents before their nested subcharts and skip the latter.
+func (m *MemorySourceProvider) ChartRoots(extensions model.Extensions) []string {
+	roots := make([]string, 0)
+	for _, p := range m.eligibleFiles(extensions) {
+		if filepath.Base(p) == "Chart.yaml" {
+			roots = append(roots, filepath.ToSlash(filepath.Dir(p)))
+		}
+	}
+	return chartRootsShallowFirst(roots)
 }
 
 // GetSources feeds each pushed file whose extension a parser supports into the

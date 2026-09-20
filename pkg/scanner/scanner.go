@@ -54,6 +54,27 @@ func PrepareAndScan(
 		return StartScan(ctx, scanID, services)
 	}
 
+	// The in-memory (server) dispatch: one pass over the pushed files, rendering
+	// each pushed Helm chart once. It runs regardless of the parallel-parsing
+	// flag — the flag only fans the file dispatch out — so charts never silently
+	// fall back to raw-template scanning.
+	if mp, ok := runner.SharedMemoryProvider(services); ok {
+		err := runner.PrepareMemorySources(ctx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth,
+			flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing))
+		metrics.Metric.Stop()
+		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
+		if err != nil {
+			return err
+		}
+		for _, s := range services {
+			s.ClearContentInterner()
+			s.ClearParsedShares()
+			s.ClearTreeCons()
+		}
+		model.ClearYAMLScalarInterner()
+		return StartScan(ctx, scanID, services)
+	}
+
 	var wg sync.WaitGroup
 	wgDone := make(chan bool)
 	errCh := make(chan error)
