@@ -379,10 +379,11 @@ func (c *Client) createService(
 		return nil, err
 	}
 
-	// combinedResolver to be used to resolve files and templates
-	builder := resolver.NewBuilder()
+	// The helm resolver reads chart files through the scan FS, so server-mode
+	// requests render pushed chart content without disk access.
+	builder := resolver.NewBuilder().WithFS(c.fsys)
 	if flagEvaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
-		builder = builder.Add(ctx, &helm.Resolver{})
+		builder = builder.Add(ctx, helm.NewResolver(c.fsys))
 	}
 	combinedResolver, err := builder.
 		Build(ctx)

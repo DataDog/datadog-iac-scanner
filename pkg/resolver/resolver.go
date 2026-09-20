@@ -7,12 +7,11 @@ package resolver
 
 import (
 	"context"
-	"io/fs"
-	"os"
 	"path/filepath"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,16 +26,26 @@ type kindResolver interface {
 // Resolver is a struct containing the resolvers by file kind
 type Resolver struct {
 	resolvers map[model.FileKind]kindResolver
+	// fsys reads resolver inputs (Chart.yaml); nil means the real disk.
+	fsys vfs.FS
 }
 
 // Builder is a struct used to create a new resolver
 type Builder struct {
 	resolvers []kindResolver
+	fsys      vfs.FS
 }
 
 // NewBuilder creates a new Builder's reference
 func NewBuilder() *Builder {
 	return &Builder{}
+}
+
+// WithFS sets the filesystem the built resolver reads its inputs from; the
+// server passes the request's in-memory FS.
+func (b *Builder) WithFS(fsys vfs.FS) *Builder {
+	b.fsys = fsys
+	return b
 }
 
 // Add will add kindResolvers for building the resolver
@@ -61,6 +70,7 @@ func (b *Builder) Build(ctx context.Context) (*Resolver, error) {
 
 	return &Resolver{
 		resolvers: resolvers,
+		fsys:      b.fsys,
 	}, nil
 }
 
@@ -81,8 +91,11 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string, kind model.File
 
 // GetType will analyze the filepath to determine which resolver to use
 func (r *Resolver) GetType(filePath string) model.FileKind {
-	chartFS := os.DirFS(filepath.Clean(filepath.FromSlash(filePath)))
-	data, err := fs.ReadFile(chartFS, "Chart.yaml")
+	fsys := r.fsys
+	if fsys == nil {
+		fsys = vfs.Default()
+	}
+	data, err := fsys.ReadFile(filepath.Join(filepath.FromSlash(filePath), "Chart.yaml"))
 	if err != nil {
 		return model.KindCOMMON
 	}

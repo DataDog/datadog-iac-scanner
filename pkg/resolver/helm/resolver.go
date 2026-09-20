@@ -12,6 +12,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/cli/values"
@@ -19,8 +20,15 @@ import (
 	"helm.sh/helm/v3/pkg/releaseutil"
 )
 
-// Resolver is an instance of the helm resolver
+// Resolver is an instance of the helm resolver. A nil fsys falls back to the
+// real filesystem; the server passes the request's in-memory FS.
 type Resolver struct {
+	fsys vfs.FS
+}
+
+// NewResolver builds a helm resolver reading chart files from fsys.
+func NewResolver(fsys vfs.FS) *Resolver {
+	return &Resolver{fsys: fsys}
 }
 
 // splitManifest keeps the information of the manifest splitted by source
@@ -56,7 +64,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 			masterUtils.HandlePanic(ctx, r, errMessage)
 		}
 	}()
-	splits, excluded, err := renderHelm(ctx, filePath)
+	splits, excluded, err := renderHelm(ctx, r.filesystem(), filePath)
 	if err != nil {
 		return model.ResolvedFiles{}, errors.Wrap(err, "failed to render helm chart")
 	}
@@ -92,11 +100,11 @@ func (r *Resolver) SupportedTypes() []model.FileKind {
 }
 
 // renderHelm will use helm library to render helm charts
-func renderHelm(ctx context.Context, path string) (*[]splitManifest, []string, error) {
+func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	client := newClient(ctx)
 	contextLogger.Debug().Msg("Running helm install")
-	manifest, loadedChart, excluded, err := runInstall(ctx, []string{path}, client, &values.Options{})
+	manifest, loadedChart, excluded, err := runInstall(ctx, path, fsys, client, &values.Options{})
 	if err != nil {
 		return nil, []string{}, err
 	}
