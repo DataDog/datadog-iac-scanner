@@ -432,7 +432,8 @@ func NewInspector(
 	lineDetector := detector.NewDetectLine(tracker.GetOutputLines()).
 		Add(helm.DetectKindLine{}, model.KindHELM).
 		Add(docker.DetectKindLine{}, model.KindDOCKER).
-		Add(&terraform.DetectKindLine{}, model.KindTerraform)
+		Add(&terraform.DetectKindLine{}, model.KindTerraform).
+		Add(detector.DockerComposeDetectLine{}, model.KindYAML)
 
 	return &Inspector{
 		QueryLoader:          &queryLoader,
