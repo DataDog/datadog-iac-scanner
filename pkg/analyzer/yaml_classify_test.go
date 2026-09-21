@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -151,7 +152,7 @@ func Test_checkYamlPlatform_playbookSequenceRoot(t *testing.T) {
   roles:
     - common
 `)
-	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "playbook.yml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, nil, content, "playbook.yml", nil))
 }
 
 func Test_checkYamlPlatform_ansibleWithoutFullDocumentUnmarshal(t *testing.T) {
@@ -162,7 +163,7 @@ func Test_checkYamlPlatform_ansibleWithoutFullDocumentUnmarshal(t *testing.T) {
     tasks:
       - debug: msg=hi
 `)
-	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "site.yml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, nil, content, "site.yml", nil))
 }
 
 func Test_checkYamlPlatform_ansibleInventoryMergeAlias(t *testing.T) {
@@ -173,7 +174,7 @@ func Test_checkYamlPlatform_ansibleInventoryMergeAlias(t *testing.T) {
 all:
   <<: *inventory
 `)
-	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "inventory.yml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, nil, content, "inventory.yml", nil))
 }
 
 func Test_checkYamlPlatform_aliasBackedInventory(t *testing.T) {
@@ -183,7 +184,7 @@ func Test_checkYamlPlatform_aliasBackedInventory(t *testing.T) {
     web: {}
 all: *inventory
 `)
-	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "inventory.yml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, nil, content, "inventory.yml", nil))
 }
 
 func Test_checkYamlPlatform_aliasBackedPlaybooks(t *testing.T) {
@@ -192,13 +193,13 @@ func Test_checkYamlPlatform_aliasBackedPlaybooks(t *testing.T) {
   - hosts: all
 playbooks: *plays
 `)
-	require.Equal(t, ansible, checkYamlPlatform(ctx, content, "playbook.yaml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, nil, content, "playbook.yaml", nil))
 }
 
 func Test_checkYamlPlatform_quotedRootKeys(t *testing.T) {
 	ctx := context.Background()
-	require.Equal(t, gdm, checkYamlPlatform(ctx, []byte(`"resources": []`), "deployment.yaml", nil))
-	require.Equal(t, ansible, checkYamlPlatform(ctx, []byte(`'all':
+	require.Equal(t, gdm, checkYamlPlatform(ctx, nil, []byte(`"resources": []`), "deployment.yaml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, nil, []byte(`'all':
   hosts:
     web: {}
 `), "inventory.yaml", nil))
@@ -206,8 +207,8 @@ func Test_checkYamlPlatform_quotedRootKeys(t *testing.T) {
 
 func Test_checkYamlPlatform_flowStyleRoots(t *testing.T) {
 	ctx := context.Background()
-	require.Equal(t, gdm, checkYamlPlatform(ctx, []byte(`{resources: []}`), "deployment.yaml", nil))
-	require.Equal(t, ansible, checkYamlPlatform(ctx, []byte(`[{hosts: all}]`), "playbook.yaml", nil))
+	require.Equal(t, gdm, checkYamlPlatform(ctx, nil, []byte(`{resources: []}`), "deployment.yaml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, nil, []byte(`[{hosts: all}]`), "playbook.yaml", nil))
 }
 
 func Test_checkYamlPlatform_rootMerge(t *testing.T) {
@@ -215,20 +216,20 @@ func Test_checkYamlPlatform_rootMerge(t *testing.T) {
   resources: []
 <<: *defaults
 `)
-	require.Equal(t, gdm, checkYamlPlatform(context.Background(), content, "deployment.yaml", nil))
+	require.Equal(t, gdm, checkYamlPlatform(context.Background(), nil, content, "deployment.yaml", nil))
 }
 
 func Test_checkYamlPlatform_indentedRoots(t *testing.T) {
 	ctx := context.Background()
-	require.Equal(t, gdm, checkYamlPlatform(ctx, []byte(`  resources: []`), "deployment.yaml", nil))
-	require.Equal(t, ansible, checkYamlPlatform(ctx, []byte(`  playbooks:
+	require.Equal(t, gdm, checkYamlPlatform(ctx, nil, []byte(`  resources: []`), "deployment.yaml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(ctx, nil, []byte(`  playbooks:
     - hosts: all
 `), "playbook.yaml", nil))
 }
 
 func Test_checkYamlPlatform_encryptedGroupVars(t *testing.T) {
 	content := []byte("$ANSIBLE_VAULT;1.1;AES256\ninvalid\n")
-	require.Equal(t, "", checkYamlPlatform(context.Background(), content, "ansible/group_vars/all/vault.yml", nil))
+	require.Equal(t, "", checkYamlPlatform(context.Background(), nil, content, "ansible/group_vars/all/vault.yml", nil))
 }
 
 func Test_checkYamlPlatform_pathVarsRequireMappingRoot(t *testing.T) {
@@ -248,6 +249,7 @@ func Test_checkYamlPlatform_pathVarsRequireMappingRoot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := checkYamlPlatform(
 				context.Background(),
+				nil,
 				[]byte(tt.content),
 				"ansible/group_vars/all/main.yml",
 				nil,
@@ -264,7 +266,7 @@ kind: ConfigMap
 metadata:
   name: demo
 `)
-	require.Equal(t, "", checkYamlPlatform(ctx, content, "manifest.yaml", nil))
+	require.Equal(t, "", checkYamlPlatform(ctx, nil, content, "manifest.yaml", nil))
 }
 
 func Test_checkYamlPlatform_dockerCompose(t *testing.T) {
@@ -273,7 +275,10 @@ func Test_checkYamlPlatform_dockerCompose(t *testing.T) {
 		path      string
 		content   string
 		typesFlag []string
-		want      string
+		// files populates the FS the classifier sees; used for the override
+		// guard's sibling-base check.
+		files map[string][]byte
+		want  string
 	}{
 		{
 			name: "versionless image service",
@@ -295,7 +300,7 @@ func Test_checkYamlPlatform_dockerCompose(t *testing.T) {
 			want: dockercompose,
 		},
 		{
-			name: "extends service",
+			name: "override file with base sibling not classified standalone",
 			path: "compose.override.yaml",
 			content: `services:
   worker:
@@ -303,17 +308,29 @@ func Test_checkYamlPlatform_dockerCompose(t *testing.T) {
       file: compose.yaml
       service: base
 `,
+			files: map[string][]byte{"compose.yaml": []byte("services: {}\n")},
+			want:  "",
+		},
+		{
+			name: "override file without base scans standalone",
+			path: "compose.override.yaml",
+			content: `services:
+  web:
+    image: nginx:1.27
+`,
 			want: dockercompose,
 		},
 		{
-			name: "canonical filename supports partial override",
+			name: "override with base not classified even with explicit selection",
 			path: "docker-compose.override.yml",
 			content: `services:
   web:
     ports:
       - "8080:80"
 `,
-			want: dockercompose,
+			typesFlag: []string{"dockercompose"},
+			files:     map[string][]byte{"docker-compose.yml": []byte("services: {}\n")},
+			want:      "",
 		},
 		{
 			name: "explicit selection accepts non canonical override",
@@ -370,6 +387,7 @@ func Test_checkYamlPlatform_dockerCompose(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, checkYamlPlatform(
 				context.Background(),
+				vfs.NewMemFS(tt.files),
 				[]byte(tt.content),
 				tt.path,
 				tt.typesFlag,
@@ -403,7 +421,7 @@ func Test_checkYamlPlatform_skipsUnrenderedTemplates(t *testing.T) {
   script:
     - bzl run //domains/foo:target
 `)
-	require.Equal(t, "", checkYamlPlatform(ctx, gitlabCI, "domains/foo/pipeline.yaml", nil))
+	require.Equal(t, "", checkYamlPlatform(ctx, nil, gitlabCI, "domains/foo/pipeline.yaml", nil))
 
 	helmFabric := []byte(`{{- if .Values.fabric.egress.enabled }}
 metadata:
@@ -411,7 +429,7 @@ metadata:
 spec:
   rules: []
 `)
-	require.Equal(t, "", checkYamlPlatform(ctx, helmFabric, "domains/foo/config/k8s/fabric/egress-acl.yaml", nil))
+	require.Equal(t, "", checkYamlPlatform(ctx, nil, helmFabric, "domains/foo/config/k8s/fabric/egress-acl.yaml", nil))
 }
 
 func Test_checkYamlPlatform_parseableTplYamlStillClassified(t *testing.T) {
@@ -420,5 +438,5 @@ func Test_checkYamlPlatform_parseableTplYamlStillClassified(t *testing.T) {
   tasks:
     - debug: msg=hi
 `)
-	require.Equal(t, ansible, checkYamlPlatform(context.Background(), content, "playbooks/site.tpl.yaml", nil))
+	require.Equal(t, ansible, checkYamlPlatform(context.Background(), nil, content, "playbooks/site.tpl.yaml", nil))
 }

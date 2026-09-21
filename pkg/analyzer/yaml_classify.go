@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose/names"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+
 	yamlParser "gopkg.in/yaml.v3"
 )
 
@@ -185,7 +188,14 @@ func yamlMapKeyNode(m *yamlParser.Node, key string) *yamlParser.Node {
 	return yamlMapKeyNodeSeen(m, key, nil)
 }
 
-func dockerComposeFromYAMLNode(root *yamlParser.Node, path string, explicitSelection bool) bool {
+func dockerComposeFromYAMLNode(root *yamlParser.Node, fsys vfs.FS, path string, explicitSelection bool) bool {
+	// A default override file merges into its base compose file at parse time
+	// and must not be classified standalone (findings would be duplicated);
+	// without a base sibling next to it nothing consumes it, so it scans
+	// standalone — Compose's own discovery rule.
+	if names.IsOverrideFileName(path) && composeBaseSiblingExists(fsys, path) {
+		return false
+	}
 	if !yamlRootIsMapping(root) {
 		return false
 	}
@@ -215,6 +225,21 @@ func isDockerComposeFileName(path string) bool {
 	return base == "compose.yaml" || base == "compose.yml" ||
 		base == "docker-compose.yaml" || base == "docker-compose.yml" ||
 		strings.HasPrefix(base, "compose.") || strings.HasPrefix(base, "docker-compose.")
+}
+
+// composeBaseSiblingExists reports whether one of the default base compose
+// file names sits next to path.
+func composeBaseSiblingExists(fsys vfs.FS, path string) bool {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
+	dir := filepath.Dir(path)
+	for _, name := range names.FileNames {
+		if _, err := fsys.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // yamlMapKeyNodeSeen looks key up in m, following merge keys into the mappings

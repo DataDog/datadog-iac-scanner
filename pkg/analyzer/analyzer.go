@@ -725,7 +725,7 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 // checkReturnType. It returns the platform string (lowercased) or "" when none
 // matches or the file is a non-Terraform JSON (which the scanner does not scan).
 // typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
-func classifyByContent(ctx context.Context, path string, content []byte, ext string, typesFlag []string, hc *sync.Map) string {
+func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []byte, ext string, typesFlag []string, hc *sync.Map) string {
 	returnType := ""
 
 	// Sort map so that CloudFormation (type that as less requireds) goes last
@@ -759,7 +759,7 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 		}
 	}
 
-	endReturnType := checkReturnType(ctx, path, returnType, ext, content, typesFlag, hc)
+	endReturnType := checkReturnType(ctx, fsys, path, returnType, ext, content, typesFlag, hc)
 
 	// Only process JSON files if they are Terraform plans
 	// This will be the case until other platforms support json scanning
@@ -821,7 +821,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	case extCfg, extConf, extIni:
 		return ansible
 	case yaml, yml, json, sh:
-		return classifyByContent(ctx, path, content, ext, typesFlag, hc)
+		return classifyByContent(ctx, fsys, path, content, ext, typesFlag, hc)
 	}
 	return ""
 }
@@ -862,7 +862,8 @@ func PlatformForKind(kind model.FileKind) (string, bool) {
 	}
 }
 
-func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte, typesFlag []string, hc *sync.Map) string {
+func checkReturnType(ctx context.Context, fsys vfs.FS, path, returnType, ext string,
+	content []byte, typesFlag []string, hc *sync.Map) string {
 	if returnType != "" {
 		switch returnType {
 		case cdkTf:
@@ -879,7 +880,7 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 		if checkHelm(ctx, path, hc) {
 			return kubernetes
 		}
-		platform := checkYamlPlatform(ctx, content, path, typesFlag)
+		platform := checkYamlPlatform(ctx, fsys, content, path, typesFlag)
 		if platform != "" {
 			return platform
 		}
@@ -942,7 +943,7 @@ func dockerComposeExplicitlyRequested(typesFlag []string) bool {
 	return len(typesFlag) == 1 && strings.EqualFold(typesFlag[0], dockercompose)
 }
 
-func checkYamlPlatform(ctx context.Context, content []byte, path string, typesFlag []string) string {
+func checkYamlPlatform(ctx context.Context, fsys vfs.FS, content []byte, path string, typesFlag []string) string {
 	// Ansible 'templates/' directories contain Jinja2 files; {{ }} syntax is invalid YAML.
 	if isInsideAnsibleTemplatesDir(path) {
 		return ""
@@ -985,7 +986,7 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string, typesFl
 		return ""
 	}
 
-	if dockerComposeFromYAMLNode(root, path, dockerComposeExplicitlyRequested(typesFlag)) {
+	if dockerComposeFromYAMLNode(root, fsys, path, dockerComposeExplicitlyRequested(typesFlag)) {
 		return dockercompose
 	}
 	if yamlMapKeyNode(root, listKeywordsGoogleDeployment[0]) != nil {

@@ -8,11 +8,14 @@ package dockercompose
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io/fs"
 	"path/filepath"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"gopkg.in/yaml.v3"
 )
@@ -48,27 +51,44 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	// Interpolation only pays off when a '$' is present; skip the .env read
-	// and the node walk entirely otherwise.
-	var env map[string]string
-	if bytes.IndexByte(fileContent, '$') >= 0 {
-		env = p.loadEnv(ctx, filePath)
+	// Cheap byte scans decide whether the semantic path (sibling reads) pays
+	// off; deliberately loose: a false positive only costs the extra work.
+	needsEnv := bytes.IndexByte(fileContent, '$') >= 0 || bytes.Contains(fileContent, []byte("env_file"))
+	needsSiblings := needsEnv || bytes.Contains(fileContent, []byte("extends")) ||
+		names.IsDefaultBaseFileName(filePath)
+	if !needsSiblings {
+		resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(
+			ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		return resolved, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, nil
+	}
+
+	t := &transformer{
+		ctx:    ctx,
+		fsys:   p.fsys,
+		dir:    filepath.Dir(filePath),
+		self:   filePath,
+		logger: logger.FromContext(ctx),
+	}
+	if needsEnv {
+		t.env = p.loadEnv(ctx, filePath)
+	}
+	if names.IsDefaultBaseFileName(filePath) {
+		t.overrideContent = p.loadOverride(ctx, filePath)
 	}
 
 	transform := func(node *yaml.Node) {
-		interpolateNode(node, func(name string) (string, bool) {
-			v, ok := env[name]
-			return v, ok
-		})
+		t.transform(node)
 	}
 
-	resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.ParseWithNodeTransform(
-		ctx, fileContent, filePath, resolveReferences, maxResolverDepth, transform)
+	documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(
+		ctx, fileContent, filePath, transform)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-
-	return resolved, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, nil
+	return fileContent, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, nil
 }
 
 // loadEnv reads the .env file next to the compose file, returning nil when it
@@ -81,6 +101,23 @@ func (p *Parser) loadEnv(ctx context.Context, filePath string) map[string]string
 		return nil
 	}
 	return ParseEnvFile(content)
+}
+
+// loadOverride reads the sibling Compose override file when one exists,
+// returning nil content otherwise. Only the default names are auto-merged.
+func (p *Parser) loadOverride(ctx context.Context, filePath string) []byte {
+	contextLogger := logger.FromContext(ctx)
+	dir := filepath.Dir(filePath)
+	for _, name := range names.OverrideFileNames {
+		content, err := p.fsys.ReadFile(filepath.Join(dir, name))
+		if err == nil {
+			return content
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			contextLogger.Debug().Msgf("dockercompose: could not read override %s: %s", name, err)
+		}
+	}
+	return nil
 }
 
 // SupportedExtensions returns extensions supported by this parser, which are yaml and yml extension
