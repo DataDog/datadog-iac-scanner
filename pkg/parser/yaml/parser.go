@@ -41,8 +41,45 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	resolved, resolvedFiles = resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	return ParseWithNodeTransform(ctx, fileContent, filePath, resolveReferences, maxResolverDepth, nil)
+}
 
+// ParseWithNodeTransform parses like Parse, but applies fn to each
+// document's root mapping node before it is converted to a model.Document.
+// The transform sees the same nodes that line tracking is built from, so
+// in-place value rewrites keep their original line numbers. A nil fn is
+// equivalent to Parse.
+func ParseWithNodeTransform(ctx context.Context, fileContent []byte, filePath string,
+	resolveReferences bool, maxResolverDepth int, fn func(node *yaml.Node)) (
+	resolved []byte,
+	documents []model.Document,
+	ignoreLines []int,
+	resolvedFiles map[string]model.ResolvedFile,
+	err error) {
+	resolved, resolvedFiles = resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	documents, ignoreLines, err = parseNodes(ctx, resolved, filePath, fn)
+	return resolved, documents, ignoreLines, resolvedFiles, err
+}
+
+// ParseWithNodeTransformNoResolve is ParseWithNodeTransform without the
+// generic file-reference resolution pass. Platforms with their own
+// sibling-file semantics (Docker Compose extends/env_file) resolve those
+// references themselves; the generic resolver would otherwise inline any
+// .yaml-valued scalar as a reference target.
+func ParseWithNodeTransformNoResolve(ctx context.Context, fileContent []byte, filePath string,
+	fn func(node *yaml.Node)) (
+	documents []model.Document,
+	ignoreLines []int,
+	err error) {
+	return parseNodes(ctx, fileContent, filePath, fn)
+}
+
+// parseNodes decodes the (already resolved) YAML bytes into documents,
+// applying fn to each document's root node before conversion.
+func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(node *yaml.Node)) (
+	documents []model.Document,
+	ignoreLines []int,
+	err error) {
 	ignore := &model.Ignore{}
 
 	contextLogger := logger.FromContext(ctx)
@@ -60,6 +97,9 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 		if isEmptyYAMLDocument(contentNode) {
 			continue
 		}
+		if fn != nil {
+			fn(contentNode)
+		}
 		doc := model.Document{}
 		if err := doc.UnmarshalYAML(ctx, contentNode, ignore); err != nil {
 			contextLogger.Warn().Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
@@ -73,12 +113,12 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 	}
 
 	if len(documents) == 0 {
-		return []byte{}, nil, []int{}, map[string]model.ResolvedFile{}, errors.New("no documents found in yaml file")
+		return nil, []int{}, errors.New("no documents found in yaml file")
 	}
 
 	linesToIgnore := ignore.GetLines()
 
-	return resolved, documents, linesToIgnore, resolvedFiles, nil
+	return documents, linesToIgnore, nil
 }
 
 func isEmptyYAMLDocument(node *yaml.Node) bool {
