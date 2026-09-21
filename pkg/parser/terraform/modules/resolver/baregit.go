@@ -1112,16 +1112,17 @@ func (r *BareGitResolver) resolveCachedSHAArchive(
 		release()
 		return Resolution{}, true, unresolvedResourceError(err)
 	}
-	resolution, err := ConfineResolution(ctx, Resolution{
+	resolution, err := ConfineResolution(ctx, &Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
 		ResolvedRef: ref,
+		Origin:      "git",
 	})
 	if err != nil {
 		release()
 		return Resolution{}, true, err
 	}
-	return withResolutionCleanup(resolution, release), true, nil
+	return withResolutionCleanup(&resolution, release), true, nil
 }
 
 func (r *BareGitResolver) resolveRemoteArchive(
@@ -1152,16 +1153,17 @@ func (r *BareGitResolver) resolveRemoteArchive(
 		return Resolution{}, unresolvedResourceError(err)
 	}
 
-	resolution, err := ConfineResolution(ctx, Resolution{
+	resolution, err := ConfineResolution(ctx, &Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
 		ResolvedRef: sha,
+		Origin:      "git",
 	})
 	if err != nil {
 		release()
 		return Resolution{}, err
 	}
-	return withResolutionCleanup(resolution, release), nil
+	return withResolutionCleanup(&resolution, release), nil
 }
 
 // Resolve implements Resolver for pinnable git:: sources. A missing ref uses HEAD.

@@ -134,10 +134,11 @@ func (r *DotTerraformResolver) Resolve(ctx context.Context, mod *tfmodules.Parse
 			Reason: fmt.Sprintf("module %q has unsafe .terraform/modules package root %q: %v", mod.Source, path.packageRoot, err),
 		}
 	}
-	resolution, err := ConfineResolution(ctx, Resolution{
+	resolution, err := ConfineResolution(ctx, &Resolution{
 		LocalPath:       path.localPath,
 		PackageRoot:     packageRoot,
 		ResolvedVersion: path.version,
+		Origin:          "dot_terraform",
 	})
 	if err != nil {
 		return Resolution{}, &tfmodules.UnresolvedError{

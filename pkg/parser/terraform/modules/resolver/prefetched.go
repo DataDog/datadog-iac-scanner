@@ -313,7 +313,7 @@ func (m *Manifest) validate(ctx context.Context) error {
 				}
 			}
 		}
-		confined, err := ConfineResolution(ctx, Resolution{
+		confined, err := ConfineResolution(ctx, &Resolution{
 			LocalPath:   entry.LocalPath,
 			PackageRoot: entry.PackageRoot,
 		})
@@ -426,11 +426,12 @@ func resolveManifestEntry(
 			Reason: fmt.Sprintf("module %q version %q not found in manifest", mod.Source, mod.Version),
 		}
 	}
-	return ConfineResolution(ctx, Resolution{
+	return ConfineResolution(ctx, &Resolution{
 		LocalPath:       entry.LocalPath,
 		PackageRoot:     entry.PackageRoot,
 		ResolvedVersion: firstNonEmpty(entry.ResolvedVersion, entry.Version),
 		ResolvedRef:     entry.ResolvedRef,
+		Origin:          "prefetched",
 	})
 }
 
