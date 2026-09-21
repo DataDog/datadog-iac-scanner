@@ -28,6 +28,7 @@ import (
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
+	dockerComposeParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -456,6 +457,7 @@ func getFixtureParsers(ctx context.Context) ([]*parser.Parser, error) {
 		fixtureParsers, fixtureParsersErr = parser.NewBuilder(ctx).
 			Add(&jsonParser.Parser{}).
 			Add(&yamlParser.Parser{}).
+			Add(dockerComposeParser.NewDefaultWithFS(nil)).
 			Add(terraformParser.NewDefault()).
 			Add(&bicepParser.Parser{}).
 			Add(&cicdParser.Parser{}).
