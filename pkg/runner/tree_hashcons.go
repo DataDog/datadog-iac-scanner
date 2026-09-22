@@ -31,25 +31,24 @@ func (k treeConsKey) mixString(s string) treeConsKey {
 	return k
 }
 
-func (k treeConsKey) mixScalar(v interface{}) treeConsKey {
+// mixScalar mixes a canonical scalar into k; ok is false for any other type.
+func (k treeConsKey) mixScalar(v interface{}) (key treeConsKey, ok bool) {
 	switch t := v.(type) {
 	case string:
-		return k.mixString(t)
+		return k.mixString(t), true
 	case bool:
 		if t {
-			return k.mixString("\x01")
+			return k.mixString("\x01"), true
 		}
-		return k.mixString("\x00")
+		return k.mixString("\x00"), true
 	case nil:
-		return k.mixString("\x02")
+		return k.mixString("\x02"), true
 	case float64:
 		// float64 is the only other scalar in canonical documents (see
 		// normalizeDocumentValue).
-		return k.mixString(strconv.FormatFloat(t, 'g', -1, 64))
+		return k.mixString(strconv.FormatFloat(t, 'g', -1, 64)), true
 	default:
-		// Non-canonical types contribute only their type: values may be uncomparable,
-		// so they are never shared — safe, merely less deduplication.
-		return k.mixString("\xff" + reflect.TypeOf(v).String())
+		return k, false
 	}
 }
 
@@ -63,16 +62,32 @@ func (k treeConsKey) mixScalar(v interface{}) treeConsKey {
 // (module instantiation) only runs on Terraform, which is never consed — and the
 // top-level map is not interned (Combine inserts id/file). Per-Service,
 // cleared after prepare (ClearTreeCons).
+//
+// Subtrees holding a non-canonical value (e.g. parser-attached structs) can
+// never compare equal, so they are recorded in opaque instead of a content
+// bucket: registering them would pile every same-shaped subtree into one
+// bucket that each insert scans linearly.
 type treeHashCons struct {
 	byContent map[treeConsKey][]interface{}
 	hashes    map[uintptr]treeConsKey
+	opaque    map[uintptr]struct{}
 }
 
 func newTreeHashCons() *treeHashCons {
 	return &treeHashCons{
 		byContent: make(map[treeConsKey][]interface{}),
 		hashes:    make(map[uintptr]treeConsKey),
+		opaque:    make(map[uintptr]struct{}),
 	}
+}
+
+// visited reports whether the container at ptr was already consed.
+func (cons *treeHashCons) visited(ptr uintptr) bool {
+	if _, ok := cons.hashes[ptr]; ok {
+		return true
+	}
+	_, ok := cons.opaque[ptr]
+	return ok
 }
 
 // consChildren canonicalizes every child of the document's top-level map and
@@ -91,8 +106,8 @@ func (cons *treeHashCons) cons(v interface{}) interface{} {
 	switch t := v.(type) {
 	case map[string]interface{}:
 		ptr := reflect.ValueOf(t).Pointer()
-		if _, ok := cons.hashes[ptr]; ok {
-			return t // already canonical
+		if cons.visited(ptr) {
+			return t
 		}
 		keys := make([]string, 0, len(t))
 		for k := range t {
@@ -100,22 +115,36 @@ func (cons *treeHashCons) cons(v interface{}) interface{} {
 		}
 		sort.Strings(keys)
 		key := treeConsBase
+		shareable := true
 		for _, k := range keys {
 			consed := cons.cons(t[k])
 			t[k] = consed
-			key = key.mixString(k).mix(cons.hashOf(consed))
+			h, ok := cons.hashOf(consed)
+			shareable = shareable && ok
+			key = key.mixString(k).mix(h)
+		}
+		if !shareable {
+			cons.opaque[ptr] = struct{}{}
+			return t
 		}
 		return cons.canonicalizeMap(key, t)
 	case []interface{}:
 		ptr := reflect.ValueOf(t).Pointer()
-		if _, ok := cons.hashes[ptr]; ok {
+		if cons.visited(ptr) {
 			return t
 		}
 		key := treeConsBase
+		shareable := true
 		for i := range t {
 			consed := cons.cons(t[i])
 			t[i] = consed
-			key = key.mix(cons.hashOf(consed))
+			h, ok := cons.hashOf(consed)
+			shareable = shareable && ok
+			key = key.mix(h)
+		}
+		if !shareable {
+			cons.opaque[ptr] = struct{}{}
+			return t
 		}
 		return cons.canonicalizeSlice(key, t)
 	default:
@@ -123,13 +152,16 @@ func (cons *treeHashCons) cons(v interface{}) interface{} {
 	}
 }
 
-// hashOf returns the content key of an already-consed value.
-func (cons *treeHashCons) hashOf(v interface{}) treeConsKey {
+// hashOf returns the content key of an already-consed value; ok is false when
+// the value is (or contains) a non-canonical value and so is never shared.
+func (cons *treeHashCons) hashOf(v interface{}) (treeConsKey, bool) {
 	switch t := v.(type) {
 	case map[string]interface{}:
-		return cons.hashes[reflect.ValueOf(t).Pointer()]
+		h, ok := cons.hashes[reflect.ValueOf(t).Pointer()]
+		return h, ok
 	case []interface{}:
-		return cons.hashes[reflect.ValueOf(t).Pointer()]
+		h, ok := cons.hashes[reflect.ValueOf(t).Pointer()]
+		return h, ok
 	default:
 		return treeConsBase.mixScalar(v)
 	}

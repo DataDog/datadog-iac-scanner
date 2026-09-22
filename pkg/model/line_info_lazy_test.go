@@ -59,6 +59,41 @@ func TestCombine_lineInfoAfterDocumentRelease(t *testing.T) {
 	require.Equal(t, "Pod", out.Documents[0]["kind"])
 }
 
+func TestUseLineInfoDocument_discardReloads(t *testing.T) {
+	ctx := context.Background()
+	var loads atomic.Int32
+	fm := &FileMetadata{FilePath: "workflow.yaml"}
+	fm.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+		loads.Add(1)
+		return Document{"_dd_lines": map[string]interface{}{"k": 1}}, nil
+	})
+
+	require.NoError(t, fm.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+		require.NotNil(t, doc)
+		return nil
+	}))
+	fm.DiscardLineInfoDocument()
+	require.Nil(t, fm.LineInfoDocument)
+	require.NoError(t, fm.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+		require.NotNil(t, doc)
+		return nil
+	}))
+	require.Equal(t, int32(2), loads.Load())
+}
+
+// TestDiscardLineInfoDocumentWithoutLoader verifies the no-op guard: without
+// a lazy loader the tree can never be rebuilt, so discarding is refused
+// rather than writing the field outside the state mutex (which would race
+// concurrent readers).
+func TestDiscardLineInfoDocumentWithoutLoader(t *testing.T) {
+	fm := &FileMetadata{
+		FilePath:         "doc.json",
+		LineInfoDocument: Document{"_dd_lines": map[string]interface{}{"k": 1}},
+	}
+	fm.DiscardLineInfoDocument()
+	require.NotNil(t, fm.LineInfoDocument, "tree without a loader must not be discarded")
+}
+
 func TestEnsureLineInfoDocument_concurrent(t *testing.T) {
 	ctx := context.Background()
 	var loads atomic.Int32

@@ -257,6 +257,10 @@ type Inspector struct {
 	// releasePostEvalData drops OriginalData and LinesOriginalData after eval,
 	// once detectors and lazy line-info reparses no longer need them.
 	releasePostEvalData bool
+	// discardLineInfoAfterUse drops each file's line-info tree after line
+	// detection when releasePostEvalData is enabled (OriginalData stays until
+	// post-eval so the loader can rebuild).
+	discardLineInfoAfterUse bool
 	// evalGcRelief enables the eval-phase forced-GC ticker; the scanner sets it
 	// from its live-heap gate (see SetEvalGcRelief).
 	evalGcRelief bool
@@ -304,10 +308,13 @@ func (c *Inspector) SetReleaseDocumentsAfterPayload(release bool) {
 	c.releaseDocumentsAfterPayload = release
 }
 
-// SetReleasePostEvalData: set unless line-info payload mode will reparse
-// OriginalData for line-info documents.
+// SetReleasePostEvalData drops OriginalData and LinesOriginalData after the
+// eval+decode phases (see releasePostEvalFileData) and enables per-file
+// line-info tree discarding during decode. OriginalData must stay live
+// through decode so discarded line-info trees can be rebuilt by reparse.
 func (c *Inspector) SetReleasePostEvalData(release bool) {
 	c.releasePostEvalData = release
+	c.discardLineInfoAfterUse = release
 }
 
 // SetEvalGcRelief enables the eval GC ticker; the scanner sets it from the
@@ -342,6 +349,9 @@ type QueryContext struct {
 	Query         *PreparedQuery
 	payload       *ast.Value
 	FlagEvaluator featureflags.FlagEvaluator
+	// discardLineInfoAfterUse drops each file's line-info tree after line
+	// detection for a finding (loader kept for reuse) when post-eval release is on.
+	discardLineInfoAfterUse bool
 }
 
 var (
@@ -500,12 +510,13 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	// is safe.
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
 	queryContext := &QueryContext{
-		Ctx:           ctx,
-		scanID:        scanID,
-		Files:         filesMap,
-		Query:         query,
-		payload:       &payload,
-		FlagEvaluator: c.flagEvaluator,
+		Ctx:                     ctx,
+		scanID:                  scanID,
+		Files:                   filesMap,
+		Query:                   query,
+		payload:                 &payload,
+		FlagEvaluator:           c.flagEvaluator,
+		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
 	}
 
 	evalStart := time.Now()
@@ -589,7 +600,10 @@ func (c *Inspector) Inspect(
 	// flag still needs configuring.
 	if c.releaseDocumentsAfterPayload {
 		for _, f := range filesMap {
-			f.SetReleaseOriginalDataAfterLineInfo(c.releasePostEvalData)
+			// Never release OriginalData at line-info load time: when line-info
+			// trees are discarded during decode they are rebuilt by reparsing
+			// OriginalData, so it must stay live until releasePostEvalFileData.
+			f.SetReleaseOriginalDataAfterLineInfo(false)
 		}
 	}
 
@@ -1324,25 +1338,24 @@ func (c *Inspector) DecodeQueryResults(
 	results rego.ResultSet,
 	queryDuration time.Duration) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
-	if len(results) == 0 {
-		return nil, ErrNoResult
+	queryResultItems, err := resultItems(results)
+	if err != nil {
+		return nil, err
 	}
-
-	result := results[0].Bindings
-
-	queryResult, ok := result["result"]
-	if !ok {
-		return nil, ErrNoResult
-	}
-
-	queryResultItems, ok := queryResult.([]interface{})
-	if !ok {
-		return nil, ErrInvalidResult
+	if qCtx.discardLineInfoAfterUse {
+		// Group findings by file so each file's line-info tree is built once and
+		// discarded on its last finding (advanceLineInfoFile); without grouping,
+		// interleaved documentIds would discard and reparse per transition.
+		// Stable keeps the per-file ordering the query produced.
+		sort.SliceStable(queryResultItems, func(i, j int) bool {
+			return resultDocumentID(queryResultItems[i]) < resultDocumentID(queryResultItems[j])
+		})
 	}
 
 	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
 	failedDetectLine := false
 	canceled := false
+	var activeLineInfoFile string
 decodeLoop:
 	for _, queryResultItem := range queryResultItems {
 		select {
@@ -1352,6 +1365,7 @@ decodeLoop:
 			canceled = true
 			break decodeLoop
 		default:
+			activeLineInfoFile = advanceLineInfoFile(qCtx, activeLineInfoFile, resultDocumentID(queryResultItem))
 			vulnerability, aux := getVulnerabilitiesFromQuery(ctx, qCtx, c, queryResultItem, queryDuration)
 			if aux {
 				failedDetectLine = aux
@@ -1373,7 +1387,51 @@ decodeLoop:
 		c.tracker.FailedDetectLine()
 	}
 
+	if qCtx.discardLineInfoAfterUse && activeLineInfoFile != "" {
+		if fm := qCtx.Files[activeLineInfoFile]; fm != nil {
+			fm.DiscardLineInfoDocument()
+		}
+	}
+
 	return vulnerabilities, nil
+}
+
+func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
+	if !qCtx.discardLineInfoAfterUse || nextID == "" || nextID == active {
+		return active
+	}
+	if active != "" {
+		if fm := qCtx.Files[active]; fm != nil {
+			fm.DiscardLineInfoDocument()
+		}
+	}
+	return nextID
+}
+
+// resultDocumentID returns the file id a result item points at.
+func resultDocumentID(item interface{}) string {
+	if m, ok := item.(map[string]interface{}); ok {
+		if id, ok := m["documentId"].(string); ok {
+			return id
+		}
+	}
+	return ""
+}
+
+// resultItems extracts the finding objects bound to "result" by a query.
+func resultItems(results rego.ResultSet) ([]interface{}, error) {
+	if len(results) == 0 {
+		return nil, ErrNoResult
+	}
+	queryResult, ok := results[0].Bindings["result"]
+	if !ok {
+		return nil, ErrNoResult
+	}
+	items, ok := queryResult.([]interface{})
+	if !ok {
+		return nil, ErrInvalidResult
+	}
+	return items, nil
 }
 
 func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Inspector,

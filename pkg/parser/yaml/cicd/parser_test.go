@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/stretchr/testify/require"
 )
 
@@ -470,4 +471,31 @@ martin2:
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestParser_ParseLineInfoOnly verifies that a line-info reparse skips the
+// run-block and expression enrichment while keeping the line markers.
+func TestParser_ParseLineInfoOnly(t *testing.T) {
+	p := &Parser{}
+	content := []byte(`on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ${{ github.event.issue.title }}
+`)
+
+	_, full, _, _, err := p.Parse(context.Background(), content, "workflow.yml", false, 15)
+	require.NoError(t, err)
+	fullStep := full[0]["jobs"].(map[string]interface{})["build"].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+	require.Contains(t, fullStep, "_parsed_run")
+	require.Contains(t, fullStep, "_parsed_expressions_run")
+
+	_, lineOnly, _, _, err := p.Parse(parser.WithLineInfoOnly(context.Background()), content, "workflow.yml", false, 15)
+	require.NoError(t, err)
+	build := lineOnly[0]["jobs"].(map[string]interface{})["build"].(map[string]interface{})
+	step := build["steps"].([]interface{})[0].(map[string]interface{})
+	require.NotContains(t, step, "_parsed_run")
+	require.NotContains(t, step, "_parsed_expressions_run")
+	require.Contains(t, build, "_dd_lines")
 }

@@ -138,11 +138,11 @@ func detectTerraformPlanLine(
 	if len(path) < tfPlanMinAttributePathLen && !explicitResourcePath {
 		return nil
 	}
-	lineNr, err := GetLineBySearchLine(path, file)
+	lineNr := GetLineBySearchLine(path, file)
 	// lineNr == 1 means _dd_lines were computed from minified (single-line) JSON;
 	// the plan opening "{" sits on line 1 so that value is never a real attribute
 	// line. Fall through to text matching, which runs on the pretty-printed content.
-	if err != nil || lineNr <= 1 || lineNr > len(lines) {
+	if lineNr <= 1 || lineNr > len(lines) {
 		return nil
 	}
 	return &model.VulnerabilityLines{
@@ -305,7 +305,7 @@ func handleArrayIndex(
 		// Paths with mid-path anchors (e.g. "meta.name={{pod}}.spec...") resolve to a
 		// nonexistent gjson path and return -1, falling through to the text-matcher.
 		structPath := extractStructuralPath(splitSanitized, extractedString)
-		if lineNr, err := GetLineBySearchLine(structPath, file); err == nil && lineNr > 0 && lineNr <= len(lines) {
+		if lineNr := GetLineBySearchLine(structPath, file); lineNr > 0 && lineNr <= len(lines) {
 			result := model.VulnerabilityLines{
 				Line:         lineNr,
 				VulnLines:    GetAdjacentVulnLines(lineNr-1, outputLines, lines),
