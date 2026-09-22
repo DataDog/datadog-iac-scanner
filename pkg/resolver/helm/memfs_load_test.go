@@ -148,6 +148,6 @@ func TestResolveMemFSPartialChartRendersWithoutSpuriousEscalation(t *testing.T) 
 // filepath.Join would otherwise produce backslashed findings that no longer
 // match the pushed path shape.
 func TestResolvedChartFilePathPushedShape(t *testing.T) {
-	got := resolvedChartFilePath("chart", "templates/deployment.yaml")
+	got := resolvedChartFilePath("chart", "templates/deployment.yaml", true)
 	require.Equal(t, "chart/templates/deployment.yaml", got)
 }

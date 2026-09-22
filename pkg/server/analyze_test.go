@@ -341,8 +341,76 @@ func TestAnalyze_ContentPush_PackagedSubchart(t *testing.T) {
 		t.Errorf("expected a finding on the packaged subchart's template; findings = %+v; failed queries: %v",
 			out.Findings, out.FailedQueries)
 	}
+	if got := out.ArchiveFiles["chart/charts/sub/templates/service.yaml"]; got != "chart/charts/sub.tgz" {
+		t.Errorf("archive_files = %v, want the subchart template mapped to chart/charts/sub.tgz", out.ArchiveFiles)
+	}
 	if len(out.MissingFiles) != 0 {
 		t.Errorf("expected no missing files, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_ContentPush_PackagedSubchartVersionedArchive pins that the
+// archive is found by the chart name it declares, not by its file name.
+func TestAnalyze_ContentPush_PackagedSubchartVersionedArchive(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	subchart := chartTgzBytes(t, "nginx", [][2]string{
+		{"Chart.yaml", "apiVersion: v2\nname: nginx\nversion: 1.2.3\n"},
+		{"templates/deployment.yaml", "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Release.Name }}\n  labels:\n    app: nginx\n"},
+	})
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+			{Path: "chart/charts/nginx-1.2.3.tgz", Content: base64.StdEncoding.EncodeToString(subchart), Encoding: "base64"},
+		},
+		Ruleset:  ruleset(syntheticK8sRule()),
+		Platform: []string{"kubernetes"},
+	}
+
+	out, _ := postAnalyzeK8s(t, s, req)
+
+	if got := out.ArchiveFiles["chart/charts/nginx/templates/deployment.yaml"]; got != "chart/charts/nginx-1.2.3.tgz" {
+		t.Errorf("archive_files = %v, want the template mapped to chart/charts/nginx-1.2.3.tgz; findings = %+v",
+			out.ArchiveFiles, out.Findings)
+	}
+}
+
+// TestAnalyze_ContentPush_RootChartKeepsOtherFiles pins that a chart at the
+// workspace root withholds only its Helm files from the parsers: Terraform
+// beside it is still scanned, and so is a standalone chart elsewhere in the tree
+// (Helm only loads subcharts from charts/).
+func TestAnalyze_ContentPush_RootChartKeepsOtherFiles(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	deployment := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Release.Name }}\n  labels:\n    app: e2e\n"
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "Chart.yaml", Content: "apiVersion: v2\nname: root\nversion: 0.1.0\n"},
+			{Path: "templates/deployment.yaml", Content: deployment},
+			{Path: "infra/main.tf", Content: "resource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n"},
+			{Path: "deploy/app/Chart.yaml", Content: "apiVersion: v2\nname: app\nversion: 0.1.0\n"},
+			{Path: "deploy/app/templates/deployment.yaml", Content: deployment},
+		},
+		Ruleset:   ruleset(syntheticRule(), syntheticK8sRule()),
+		Libraries: append(testLibraries(true), k8sTestLibraries()[1]),
+		Platform:  []string{"terraform", "kubernetes"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	want := map[string]string{
+		"infra/main.tf":                        syntheticRuleID,
+		"templates/deployment.yaml":            syntheticK8sRuleID,
+		"deploy/app/templates/deployment.yaml": syntheticK8sRuleID,
+	}
+	for _, f := range out.Findings {
+		if want[f.FileName] == f.QueryID {
+			delete(want, f.FileName)
+		}
+	}
+	if len(want) != 0 {
+		t.Errorf("missing findings for %v; findings = %+v; failed queries: %v", want, out.Findings, out.FailedQueries)
 	}
 }
 

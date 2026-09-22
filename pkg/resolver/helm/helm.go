@@ -169,10 +169,21 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 // from the CLI); any other FS (the server's in-memory one) is walked via the
 // vfs and assembled with helm's in-memory loader.
 func loadChart(fsys vfs.FS, dir string) (*chart.Chart, error) {
-	if _, ok := fsys.(vfs.DiskFS); ok {
+	if vfs.IsDisk(fsys) {
 		return loader.LoadDir(dir)
 	}
 	return loadChartFromFS(fsys, dir)
+}
+
+// ArchiveChartName returns the name a packaged chart (charts/*.tgz) declares:
+// the directory its templates render under, which need not match the archive's
+// file name (nginx-1.2.3.tgz renders under charts/nginx/).
+func ArchiveChartName(data []byte) (string, error) {
+	ch, err := loader.LoadArchive(bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	return ch.Name(), nil
 }
 
 // utf8bom mirrors loader's BOM handling for files read through the vfs.
@@ -744,14 +755,13 @@ func crdChartRelativePath(name string) string {
 }
 
 // resolvedChartFilePath maps a chart-relative path to a path beside chartPath.
-// The output keeps the chart path's separator style: a pushed (content-push)
-// chart path is forward-slash, and its resolved files must be too so findings
-// match the pushed path shape on every platform; a native disk chart path
-// (the CLI on Windows) keeps its native separators.
-func resolvedChartFilePath(chartPath, chartRelative string) string {
+// slashPaths forces forward slashes, so a pushed chart's findings match the
+// pushed path shape on every platform; otherwise (the CLI on disk) the OS
+// separator is kept.
+func resolvedChartFilePath(chartPath, chartRelative string, slashPaths bool) string {
 	subFolder := filepath.Base(chartPath)
 	joined := filepath.Join(filepath.Dir(chartPath), subFolder, filepath.FromSlash(chartRelative))
-	if !strings.Contains(chartPath, `\`) {
+	if slashPaths {
 		joined = filepath.ToSlash(joined)
 	}
 	return joined

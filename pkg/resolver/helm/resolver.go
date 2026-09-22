@@ -14,6 +14,7 @@ import (
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/cli/values"
 	"helm.sh/helm/v3/pkg/release"
@@ -64,10 +65,14 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 			masterUtils.HandlePanic(ctx, r, errMessage)
 		}
 	}()
-	splits, excluded, err := renderHelm(ctx, r.filesystem(), filePath)
+	fsys := r.filesystem()
+	splits, excluded, err := renderHelm(ctx, fsys, filePath)
 	if err != nil {
 		return model.ResolvedFiles{}, errors.Wrap(err, "failed to render helm chart")
 	}
+	// Pushed charts are addressed with "/" on every OS, so their resolved files
+	// must be too; disk charts keep the OS separator.
+	slashPaths := !vfs.IsDisk(fsys)
 	var rfiles = model.ResolvedFiles{
 		Excluded: excluded,
 	}
@@ -78,7 +83,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 		if !ok {
 			continue
 		}
-		origpath := resolvedChartFilePath(filePath, chartRelative)
+		origpath := resolvedChartFilePath(filePath, chartRelative, slashPaths)
 		rfiles.File = append(rfiles.File, model.ResolvedHelm{
 			FileName:            origpath,
 			Content:             split.content,
@@ -97,6 +102,28 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 // SupportedTypes returns the supported fileKinds for this resolver
 func (r *Resolver) SupportedTypes() []model.FileKind {
 	return []model.FileKind{model.KindHELM}
+}
+
+// GetType reports KindHELM when dir is the root of an application chart, read
+// through the same filesystem the chart is rendered from. A library chart
+// (type: library) renders no manifests, so it is KindCOMMON.
+func (r *Resolver) GetType(dir string) model.FileKind {
+	data, err := r.filesystem().ReadFile(filepath.Join(filepath.FromSlash(dir), "Chart.yaml"))
+	if err != nil || chartYAMLDeclaresLibrary(data) {
+		return model.KindCOMMON
+	}
+	return model.KindHELM
+}
+
+// chartYAMLDeclaresLibrary reports whether Chart.yaml content declares type: library.
+func chartYAMLDeclaresLibrary(data []byte) bool {
+	var meta struct {
+		Type string `yaml:"type"`
+	}
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return false
+	}
+	return meta.Type == "library"
 }
 
 // renderHelm will use helm library to render helm charts

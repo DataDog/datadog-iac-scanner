@@ -661,58 +661,28 @@ func TestProvider_getExcludePaths(t *testing.T) {
 	}
 }
 
-func TestIsUnderResolvedChart(t *testing.T) {
+func TestIsNestedRenderedChart(t *testing.T) {
 	tests := []struct {
-		name               string
-		path               string
-		resolvedChartPaths []string
-		want               bool
+		name          string
+		root          string
+		renderedRoots []string
+		want          bool
 	}{
-		{
-			name:               "empty resolved list",
-			path:               filepath.FromSlash("k8s/chart-a/templates"),
-			resolvedChartPaths: nil,
-			want:               false,
-		},
-		{
-			name:               "subdirectory of resolved chart is skipped",
-			path:               filepath.FromSlash("k8s/chart-a/templates"),
-			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
-			want:               true,
-		},
-		{
-			name:               "sibling chart is not skipped",
-			path:               filepath.FromSlash("k8s/chart-b"),
-			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
-			want:               false,
-		},
-		{
-			name:               "chart root itself is not considered under itself",
-			path:               filepath.FromSlash("k8s/chart-a"),
-			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
-			want:               false,
-		},
-		{
-			name:               "path sharing a prefix but different directory is not skipped",
-			path:               filepath.FromSlash("k8s/chart"),
-			resolvedChartPaths: []string{filepath.FromSlash("k8s/chart-a")},
-			want:               false,
-		},
-		{
-			name: "subdirectory matched against multiple resolved charts",
-			path: filepath.FromSlash("k8s/chart-b/templates"),
-			resolvedChartPaths: []string{
-				filepath.FromSlash("k8s/chart-a"),
-				filepath.FromSlash("k8s/chart-b"),
-			},
-			want: true,
-		},
+		{name: "nothing rendered", root: "k8s/chart-a/charts/sub", want: false},
+		{name: "subchart under charts/", root: "k8s/chart-a/charts/sub", renderedRoots: []string{"k8s/chart-a"}, want: true},
+		{name: "deep subchart", root: "chart/charts/a/charts/b", renderedRoots: []string{"chart"}, want: true},
+		{name: "sibling chart", root: "k8s/chart-b", renderedRoots: []string{"k8s/chart-a"}, want: false},
+		{name: "chart root itself", root: "k8s/chart-a", renderedRoots: []string{"k8s/chart-a"}, want: false},
+		{name: "shared name prefix", root: "k8s/chart-ab/charts/x", renderedRoots: []string{"k8s/chart-a"}, want: false},
+		{name: "standalone chart under a root chart", root: "deploy/app", renderedRoots: []string{"."}, want: false},
+		{name: "subchart of a root chart", root: "charts/sub", renderedRoots: []string{"."}, want: true},
+		{name: "native separators", root: filepath.FromSlash("k8s/chart-a/charts/sub"),
+			renderedRoots: []string{filepath.FromSlash("k8s/chart-a")}, want: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isUnderResolvedChart(tt.path, tt.resolvedChartPaths)
-			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want, IsNestedRenderedChart(tt.root, tt.renderedRoots))
 		})
 	}
 }
@@ -803,15 +773,54 @@ func TestGetSources_helmChartSkipsRawTemplates(t *testing.T) {
 	})
 }
 
-func TestIsUnderChartRoot_normalizesSeparators(t *testing.T) {
+func TestIsHelmChartFile_normalizesSeparators(t *testing.T) {
 	root := `D:/charts/app`
-	require.True(t, IsUnderChartRoot(`D:/charts/app/templates/svc.yaml`, []string{root}))
+	require.True(t, IsHelmChartFile(`D:/charts/app/templates/svc.yaml`, []string{root}))
 	if runtime.GOOS == "windows" {
-		require.True(t, IsUnderChartRoot(`D:\charts\app\templates\svc.yaml`, []string{root}))
+		require.True(t, IsHelmChartFile(`D:\charts\app\templates\svc.yaml`, []string{root}))
 	}
-	require.False(t, IsUnderChartRoot(`D:/charts/other/templates/svc.yaml`, []string{root}))
-	require.True(t, IsUnderChartRoot(`templates/svc.yaml`, []string{"."}))
-	require.True(t, IsUnderChartRoot(`infra/main.tf`, []string{"."}))
+	require.False(t, IsHelmChartFile(`D:/charts/other/templates/svc.yaml`, []string{root}))
+}
+
+func TestIsHelmChartDir(t *testing.T) {
+	require.True(t, isHelmChartDir("chart/templates", []string{"chart"}))
+	require.True(t, isHelmChartDir("chart/charts/sub/templates", []string{"chart"}))
+	require.True(t, isHelmChartDir(filepath.FromSlash("chart/crds"), []string{filepath.FromSlash("chart")}))
+	require.True(t, isHelmChartDir("templates", []string{"."}))
+	require.False(t, isHelmChartDir("chart", []string{"chart"}))
+	require.False(t, isHelmChartDir("chart/infra", []string{"chart"}))
+	require.False(t, isHelmChartDir("chartx/templates", []string{"chart"}))
+}
+
+func TestIsHelmChartFile(t *testing.T) {
+	tests := []struct {
+		path string
+		root string
+		want bool
+	}{
+		{"chart/Chart.yaml", "chart", true},
+		{"chart/Chart.lock", "chart", true},
+		{"chart/values.yaml", "chart", true},
+		{"chart/values-prod.yml", "chart", true},
+		{"chart/values.schema.json", "chart", true},
+		{"chart/templates/deployment.yaml", "chart", true},
+		{"chart/crds/crd.yaml", "chart", true},
+		{"chart/charts/sub/templates/svc.yaml", "chart", true},
+		{"chart/main.tf", "chart", false},
+		{"chart/ci/test-values.yaml", "chart", false},
+		{"chart/templates", "chart", false},
+		{"chartx/templates/deployment.yaml", "chart", false},
+		{"templates/deployment.yaml", ".", true},
+		{"Chart.yaml", ".", true},
+		{"infra/main.tf", ".", false},
+		{".github/workflows/ci.yml", ".", false},
+		{"deploy/app/templates/deployment.yaml", ".", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path+"@"+tt.root, func(t *testing.T) {
+			require.Equal(t, tt.want, IsHelmChartFile(tt.path, []string{tt.root}))
+		})
+	}
 }
 
 func TestTerraformFilesIncludesTfJSON(t *testing.T) {

@@ -7,45 +7,37 @@ package resolver
 
 import (
 	"context"
-	"path/filepath"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"gopkg.in/yaml.v3"
 )
 
 // kindResolver is a type of resolver interface (ex: helm resolver)
 // Resolve will render file/template
 // SupportedTypes will return the file kinds that the resolver supports
+// GetType reports which of those kinds a path is, or KindCOMMON when it is none
+// of them; each resolver reads the path through its own filesystem
 type kindResolver interface {
 	Resolve(ctx context.Context, filePath string) (model.ResolvedFiles, error)
 	SupportedTypes() []model.FileKind
+	GetType(filePath string) model.FileKind
 }
 
 // Resolver is a struct containing the resolvers by file kind
 type Resolver struct {
 	resolvers map[model.FileKind]kindResolver
-	// fsys reads resolver inputs (Chart.yaml); nil means the real disk.
-	fsys vfs.FS
+	// ordered keeps registration order so GetType asks resolvers deterministically.
+	ordered []kindResolver
 }
 
 // Builder is a struct used to create a new resolver
 type Builder struct {
 	resolvers []kindResolver
-	fsys      vfs.FS
 }
 
 // NewBuilder creates a new Builder's reference
 func NewBuilder() *Builder {
 	return &Builder{}
-}
-
-// WithFS sets the filesystem the built resolver reads its inputs from; the
-// server passes the request's in-memory FS.
-func (b *Builder) WithFS(fsys vfs.FS) *Builder {
-	b.fsys = fsys
-	return b
 }
 
 // Add will add kindResolvers for building the resolver
@@ -70,7 +62,7 @@ func (b *Builder) Build(ctx context.Context) (*Resolver, error) {
 
 	return &Resolver{
 		resolvers: resolvers,
-		fsys:      b.fsys,
+		ordered:   append([]kindResolver(nil), b.resolvers...),
 	}, nil
 }
 
@@ -89,29 +81,14 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string, kind model.File
 	return model.ResolvedFiles{}, nil
 }
 
-// GetType will analyze the filepath to determine which resolver to use
+// GetType returns the kind of the first registered resolver that claims
+// filePath, or KindCOMMON when none does (including when no resolver for that
+// kind is registered, e.g. the Helm resolver behind its feature flag).
 func (r *Resolver) GetType(filePath string) model.FileKind {
-	fsys := r.fsys
-	if fsys == nil {
-		fsys = vfs.Default()
+	for _, resolver := range r.ordered {
+		if kind := resolver.GetType(filePath); kind != model.KindCOMMON {
+			return kind
+		}
 	}
-	data, err := fsys.ReadFile(filepath.Join(filepath.FromSlash(filePath), "Chart.yaml"))
-	if err != nil {
-		return model.KindCOMMON
-	}
-	if chartYAMLDeclaresLibrary(data) {
-		return model.KindCOMMON
-	}
-	return model.KindHELM
-}
-
-// chartYAMLDeclaresLibrary reports whether Chart.yaml content declares type: library.
-func chartYAMLDeclaresLibrary(data []byte) bool {
-	var meta struct {
-		Type string `yaml:"type"`
-	}
-	if err := yaml.Unmarshal(data, &meta); err != nil {
-		return false
-	}
-	return meta.Type == "library"
+	return model.KindCOMMON
 }

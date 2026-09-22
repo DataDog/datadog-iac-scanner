@@ -196,6 +196,12 @@ func (m *MemFS) Paths() []string {
 	return out
 }
 
+// MissingRecorder is an FS that collects escalation requests for paths the scan
+// needed but was not given. MemFS is one; the real disk is not.
+type MissingRecorder interface {
+	RecordMissing(name string)
+}
+
 // RecordMissing adds path to the missing set. Read misses record themselves;
 // this is for escalation signals that cannot be expressed as a plain read miss
 // (a Helm chart that failed to render from pushed content).

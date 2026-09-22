@@ -60,4 +60,10 @@ func (DiskFS) Abs(name string) (string, error) { return filepath.Abs(name) }
 // Default returns the filesystem used when none is injected (the real disk).
 func Default() FS { return DiskFS{} }
 
+// IsDisk reports whether fsys is the real filesystem.
+func IsDisk(fsys FS) bool {
+	_, ok := fsys.(DiskFS)
+	return ok
+}
+
 var _ FS = DiskFS{}

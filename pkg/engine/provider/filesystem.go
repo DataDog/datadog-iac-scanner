@@ -324,23 +324,12 @@ func (s *FileSystemSourceProvider) ReleaseContentCache() {
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
 	extensions model.Extensions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	// Shallow-first; skip nested roots after parent chart renders.
-	renderedRoots := make([]string, 0, len(s.chartRoots))
-	chartRoots := chartRootsShallowFirst(s.chartRoots)
-	for _, root := range chartRoots {
-		normRoot := strings.ReplaceAll(root, "\\", "/")
-		if IsUnderChartRoot(normRoot, renderedRoots) {
-			continue
-		}
-		if chartFn(ctx, normRoot) {
-			renderedRoots = append(renderedRoots, normRoot)
-		}
-	}
+	renderedRoots := renderChartsShallowFirst(ctx, s.chartRoots, chartFn)
 
 	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
 	for _, path := range s.prebuiltPaths {
-		norm := strings.ReplaceAll(path, "\\", "/")
-		if IsUnderChartRoot(norm, renderedRoots) {
+		norm := toSlash(path)
+		if IsHelmChartFile(norm, renderedRoots) {
 			continue
 		}
 		if _, ok := s.unfiltered[norm]; !ok {
@@ -363,17 +352,136 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 	return files, nil
 }
 
-// IsUnderChartRoot reports whether path lies at or below one of chartRoots.
-// A "." root covers everything: a chart at the workspace (or scan) root.
-func IsUnderChartRoot(path string, chartRoots []string) bool {
-	path = filepath.ToSlash(path)
+// helmRootFiles are the files Helm itself reads at a chart root; values*.yaml
+// alternates are matched separately.
+var helmRootFiles = map[string]struct{}{
+	"Chart.yaml":         {},
+	"Chart.lock":         {},
+	"requirements.yaml":  {},
+	"requirements.lock":  {},
+	"values.schema.json": {},
+}
+
+// helmChartDirs are the chart-root subdirectories Helm renders or loads as
+// dependencies.
+var helmChartDirs = map[string]struct{}{
+	"templates": {},
+	"crds":      {},
+	"charts":    {},
+}
+
+// IsHelmChartFile reports whether path is part of the Helm structure of one of
+// chartRoots: a file Helm reads at the root (Chart.yaml, values*.yaml, ...) or
+// anything under its templates/, crds/ or charts/. Other files that merely sit
+// under a chart root (Terraform, plain manifests, CI workflows) are not, so a
+// rendered chart does not hide them from their own parsers. A nested chart root
+// is covered only when it sits under a parent's charts/, the one place Helm
+// loads subcharts from. A "." root is a chart at the workspace (or scan) root.
+func IsHelmChartFile(path string, chartRoots []string) bool {
+	return isHelmChartFileOf(toSlash(path), chartRoots, "")
+}
+
+// isHelmChartFileOf is IsHelmChartFile over a slash path, ignoring the root skip.
+func isHelmChartFileOf(path string, chartRoots []string, skip string) bool {
 	for _, root := range chartRoots {
-		root = filepath.ToSlash(root)
-		if root == "." || path == root || strings.HasPrefix(path, root+"/") {
+		root = toSlash(root)
+		if root == skip {
+			continue
+		}
+		if rel, ok := chartRelative(path, root); ok && isHelmChartRelative(rel) {
 			return true
 		}
 	}
 	return false
+}
+
+// toSlash normalizes both separators, whatever the host OS: pushed and analyzer
+// paths may carry either.
+func toSlash(p string) string {
+	return strings.ReplaceAll(p, "\\", "/")
+}
+
+// chartRelative returns path relative to the slash chart root root, where "."
+// is the workspace (or scan) root, and whether path lies under it.
+func chartRelative(path, root string) (string, bool) {
+	if root == "." {
+		return path, true
+	}
+	if !strings.HasPrefix(path, root+"/") {
+		return "", false
+	}
+	return path[len(root)+1:], true
+}
+
+func isHelmChartRelative(rel string) bool {
+	if first, rest, nested := strings.Cut(rel, "/"); nested {
+		_, ok := helmChartDirs[first]
+		return ok && rest != ""
+	}
+	if _, ok := helmRootFiles[rel]; ok {
+		return true
+	}
+	ext := filepath.Ext(rel)
+	return strings.HasPrefix(rel, "values") && (ext == ".yaml" || ext == ".yml")
+}
+
+// isHelmChartDir reports whether dir is one of chartRoots' templates/, crds/ or
+// charts/ directories, or lies under one.
+func isHelmChartDir(dir string, chartRoots []string) bool {
+	dir = toSlash(dir)
+	for _, root := range chartRoots {
+		rel, ok := chartRelative(dir, toSlash(root))
+		if !ok {
+			continue
+		}
+		first, _, _ := strings.Cut(rel, "/")
+		if _, ok := helmChartDirs[first]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// HelmChartFiles keeps the paths of files that are part of the Helm structure
+// of chartRoot (see IsHelmChartFile).
+func HelmChartFiles(paths []string, chartRoot string) []string {
+	roots := []string{chartRoot}
+	kept := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if IsHelmChartFile(p, roots) {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// IsNestedRenderedChart reports whether root is a subchart of an already
+// rendered chart, which rendered it as part of its own tree.
+func IsNestedRenderedChart(root string, renderedRoots []string) bool {
+	root = toSlash(root)
+	if root == "." {
+		return false
+	}
+	return isHelmChartFileOf(root+"/Chart.yaml", renderedRoots, root)
+}
+
+// renderChartsShallowFirst calls chartFn for each chart root, parents before
+// their subcharts, skipping a subchart once its parent rendered it. It returns
+// the roots chartFn reported as rendered, the set whose Helm files are then
+// withheld from the parsers (see IsHelmChartFile).
+func renderChartsShallowFirst(ctx context.Context, roots []string,
+	chartFn func(ctx context.Context, chartPath string) (rendered bool)) []string {
+	renderedRoots := make([]string, 0, len(roots))
+	for _, root := range chartRootsShallowFirst(roots) {
+		normRoot := toSlash(root)
+		if IsNestedRenderedChart(normRoot, renderedRoots) {
+			continue
+		}
+		if chartFn(ctx, normRoot) {
+			renderedRoots = append(renderedRoots, normRoot)
+		}
+	}
+	return renderedRoots
 }
 
 func chartRootsShallowFirst(roots []string) []string {
@@ -438,20 +546,19 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 				return nil, openFileErr
 			}
 			ext, _ := utils.GetExtension(ctx, scanPath)
-			files = append(files, InventoryFile{Path: strings.ReplaceAll(scanPath, "\\", "/"), Ext: ext})
+			files = append(files, InventoryFile{Path: toSlash(scanPath), Ext: ext})
 			continue
 		}
 
 		walkErr := s.walkDirectory(ctx, scanPath, extensions,
 			func(ctx context.Context, path string, resolved *[]string) error {
-				if chartFn(ctx, strings.ReplaceAll(path, "\\", "/")) {
+				if chartFn(ctx, toSlash(path)) {
 					*resolved = append(*resolved, path)
-					return filepath.SkipDir
 				}
 				return nil
 			},
 			func(_ context.Context, path, ext string) error {
-				files = append(files, InventoryFile{Path: strings.ReplaceAll(path, "\\", "/"), Ext: ext})
+				files = append(files, InventoryFile{Path: toSlash(path), Ext: ext})
 				return nil
 			})
 		if walkErr != nil {
@@ -491,7 +598,7 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 			return s.resolveChartDir(ctx, path, resolverSink, resolved)
 		},
 		func(_ context.Context, path, _ string) error {
-			files = append(files, strings.ReplaceAll(path, "\\", "/"))
+			files = append(files, toSlash(path))
 			return nil
 		})
 	return files, err
@@ -572,14 +679,22 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 			contextLogger.Info().Msgf("Directory ignored: %s", path)
 			return true, "", filepath.SkipDir
 		}
+		// Everything under a rendered chart's templates/, crds/ or charts/ is a
+		// Helm file, so the subtree is pruned rather than walked file by file.
+		if isHelmChartDir(path, resolvedChartPaths) {
+			return true, "", filepath.SkipDir
+		}
 		_, err := os.Stat(filepath.Join(path, "Chart.yaml"))
-		if err != nil || isUnderResolvedChart(path, resolvedChartPaths) {
+		if err != nil || IsNestedRenderedChart(path, resolvedChartPaths) {
 			return true, "", nil
 		}
 		return false, "", nil
 	}
 
 	if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
+		return true, "", nil
+	}
+	if IsHelmChartFile(path, resolvedChartPaths) {
 		return true, "", nil
 	}
 	if s.onlyPaths != nil {
@@ -607,33 +722,26 @@ func pathWithinBase(base, path string) bool {
 }
 
 // resolveChartDir renders a Helm chart directory through the resolver. On success
-// it returns filepath.SkipDir so the chart subtree is not walked again as raw,
-// unrendered templates (which would yield bogus names like name: {{ .Release.Revision }}).
+// the chart's Helm files are skipped for the rest of the walk so they are not
+// scanned again as raw, unrendered templates (which would yield bogus names like
+// name: {{ .Release.Revision }}); other files under the chart root still are.
 // On failure it returns nil to fall back to scanning the raw files.
 func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path string,
 	resolverSink ResolverSink, resolvedChartPaths *[]string) error {
 	contextLogger := logger.FromContext(ctx)
-	excluded, errRes := resolverSink(ctx, strings.ReplaceAll(path, "\\", "/"))
+	normPath := toSlash(path)
+	excluded, errRes := resolverSink(ctx, normPath)
 	if errRes != nil {
 		// The render failure is already logged by the resolver sink; this is
 		// just the fallback announcement, so keep it at Debug.
 		contextLogger.Debug().Msgf("Scanning raw files of Helm chart '%s' as a fallback after render failure", path)
 		return nil
 	}
-	if errAdd := s.ExcludePaths(ctx, excluded); errAdd != nil {
+	if errAdd := s.ExcludePaths(ctx, HelmChartFiles(excluded, normPath)); errAdd != nil {
 		contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", filepath.Base(path))
 	}
 	*resolvedChartPaths = append(*resolvedChartPaths, path)
-	return filepath.SkipDir
-}
-
-func isUnderResolvedChart(path string, resolvedChartPaths []string) bool {
-	for _, chartRoot := range resolvedChartPaths {
-		if strings.HasPrefix(path, chartRoot+string(os.PathSeparator)) {
-			return true
-		}
-	}
-	return false
+	return nil
 }
 
 func containsFile(fileList []os.FileInfo, target os.FileInfo) bool {
