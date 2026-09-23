@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -23,7 +24,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -177,10 +177,10 @@ func extractFile(body *hclsyntax.Body) *fileExtract {
 // constant templates resolve; anything referencing a variable is skipped.
 func constantString(expr hclsyntax.Expression) (string, bool) {
 	val, diags := expr.Value(nil)
-	if diags.HasErrors() || val.IsNull() || !val.IsKnown() || !val.Type().Equals(cty.String) {
+	if diags.HasErrors() {
 		return "", false
 	}
-	return val.AsString(), true
+	return ctyutil.ConcreteString(val)
 }
 
 // extractForContent returns the extract for content, parsing it only the first
@@ -552,8 +552,8 @@ func (v *resolveExprVisitor) VisitDefault(e hclsyntax.Expression) (string, error
 }
 
 func resolveLiteralValueExpr(e *hclsyntax.LiteralValueExpr) string {
-	if e.Val.Type().Equals(cty.String) {
-		return e.Val.AsString()
+	if s, ok := ctyutil.ConcreteString(e.Val); ok {
+		return s
 	}
 	return "__NON_STRING_LITERAL__"
 }
@@ -576,12 +576,11 @@ func resolveRelativeTraversalExpr(e *hclsyntax.RelativeTraversalExpr, locals, va
 		case hcl.TraverseAttr:
 			sourceStr += "." + s.Name
 		case hcl.TraverseIndex:
-			switch s.Key.Type() {
-			case cty.Number:
-				sourceStr += "[" + s.Key.AsBigFloat().String() + "]"
-			case cty.String:
-				sourceStr += "[" + s.Key.AsString() + "]"
+			formatted, ok := ctyutil.FormatIndexKey(s.Key)
+			if !ok {
+				return unresolvedPlaceholder
 			}
+			sourceStr += formatted
 		}
 	}
 	return sourceStr
@@ -589,10 +588,10 @@ func resolveRelativeTraversalExpr(e *hclsyntax.RelativeTraversalExpr, locals, va
 
 func resolveExprDefault(expr hclsyntax.Expression) string {
 	val, diag := expr.Value(nil)
-	if !diag.HasErrors() &&
-		val.Type().Equals(cty.String) &&
-		!val.IsNull() {
-		return val.AsString()
+	if !diag.HasErrors() {
+		if s, ok := ctyutil.ConcreteString(val); ok {
+			return s
+		}
 	}
 	return unresolvedPlaceholder
 }

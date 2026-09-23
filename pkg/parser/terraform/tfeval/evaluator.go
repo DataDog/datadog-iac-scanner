@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -630,7 +631,11 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		existing.Type().IsObjectType() {
 		for it := existing.ElementIterator(); it.Next(); {
 			k, v := it.Element()
-			moduleOutputs[k.AsString()] = v
+			name, ok := ctyutil.ConcreteString(k)
+			if !ok {
+				continue
+			}
+			moduleOutputs[name] = v
 		}
 	}
 
@@ -639,12 +644,12 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		if label == "" {
 			continue
 		}
-		source := knownString(mb.Body.Attributes["source"], evalCtx)
+		source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], evalCtx)
 		if source == "" {
 			continue
 		}
 
-		version := knownString(mb.Body.Attributes["version"], evalCtx)
+		version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], evalCtx)
 		childDir, childPackageRoot, ok := e.resolveModuleDir(
 			ctx, dir, packageRoot, source, version, mb.TypeRange.Filename, label,
 		)
@@ -878,8 +883,8 @@ func (e *Evaluator) expandForEachInstances(
 			for it := fv.ElementIterator(); it.Next() && i < maxCountExpansion; i++ {
 				k, kv := it.Element()
 				keyStr := "__"
-				if k.Type() == cty.String && k.IsKnown() {
-					keyStr = k.AsString()
+				if s, ok := ctyutil.ConcreteString(k); ok {
+					keyStr = s
 				}
 				child := evalCtx.NewChild()
 				child.Variables = map[string]cty.Value{
@@ -1124,11 +1129,11 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		if label == "" {
 			continue
 		}
-		source := knownString(mb.Body.Attributes["source"], evalCtx)
+		source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], evalCtx)
 		if source == "" {
 			continue
 		}
-		version := knownString(mb.Body.Attributes["version"], evalCtx)
+		version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], evalCtx)
 		childDir, childPackageRoot, ok := e.resolveModuleDir(
 			ctx, dir, packageRoot, source, version, mb.TypeRange.Filename, label,
 		)

@@ -978,3 +978,24 @@ variable "region" {
 	require.NoError(t, err)
 	compareJSONLine(t, body, expected)
 }
+
+func TestNullStringDoesNotPanic(t *testing.T) {
+	input := `
+resource "aws_ssm_parameter" "db" {
+  name  = "prefix-${var.password}"
+  value = "${null}"
+  count = null
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(input), "ssm.tf", hcl.Pos{Line: 1, Column: 1})
+	require.False(t, diags.HasErrors())
+
+	require.NotPanics(t, func() {
+		_, err := DefaultConverted(context.Background(), file, VariableMap{
+			"var": cty.ObjectVal(map[string]cty.Value{
+				"password": cty.NullVal(cty.String),
+			}),
+		})
+		require.NoError(t, err)
+	})
+}

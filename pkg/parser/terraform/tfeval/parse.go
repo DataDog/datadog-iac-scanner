@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -147,18 +148,6 @@ func collectModuleBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 	return modules
 }
 
-// knownString evaluates attr and returns its string value, or "" if unknown/unset.
-func knownString(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) string {
-	if attr == nil {
-		return ""
-	}
-	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() || !v.IsKnown() || v.IsNull() || v.Type() != cty.String {
-		return ""
-	}
-	return v.AsString()
-}
-
 // resolveLocalDir resolves a local module source path relative to callerDir.
 func resolveLocalDir(callerDir, source string) string {
 	clean := StripGetterPrefix(source)
@@ -189,7 +178,7 @@ func isEmptyCollection(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) bool {
 		return false
 	}
 	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() || !v.IsKnown() || v.IsNull() {
+	if diags.HasErrors() || !ctyutil.Materialized(v) {
 		return false
 	}
 	t := v.Type()
@@ -305,14 +294,11 @@ func isLiteralZero(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) bool {
 		return false
 	}
 	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() || !v.IsKnown() || v.IsNull() {
+	if diags.HasErrors() {
 		return false
 	}
-	if v.Type() == cty.Number {
-		f, _ := v.AsBigFloat().Float64()
-		return f == 0
-	}
-	return false
+	n, ok := ctyutil.LiteralInt(v)
+	return ok && n == 0
 }
 
 // objectOrEmpty wraps m as a cty object; cty.ObjectVal panics on empty maps.

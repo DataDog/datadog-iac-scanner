@@ -24,9 +24,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
@@ -1050,10 +1050,14 @@ func localModuleSources(src []byte, path string) []string {
 			continue
 		}
 		value, valueDiags := attr.Expr.Value(nil)
-		if valueDiags.HasErrors() || !value.IsKnown() || value.IsNull() || value.Type() != cty.String {
+		if valueDiags.HasErrors() {
 			continue
 		}
-		sources = append(sources, strings.TrimSpace(value.AsString()))
+		source, ok := ctyutil.ConcreteString(value)
+		if !ok {
+			continue
+		}
+		sources = append(sources, strings.TrimSpace(source))
 	}
 	return sources
 }
