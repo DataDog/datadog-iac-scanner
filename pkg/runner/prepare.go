@@ -65,8 +65,6 @@ func SharedMemoryProvider(services []*Service) (*provider.MemorySourceProvider, 
 type preparedSource interface {
 	WalkInventory(ctx context.Context, extensions model.Extensions,
 		chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]provider.InventoryFile, error)
-	// chartRendered runs after a chart renders, before its manifests are stored.
-	chartRendered(ctx context.Context, chartPath string, resFiles model.ResolvedFiles)
 	// chartFailed runs when a chart fails to render; its raw files are scanned instead.
 	chartFailed(chartPath string)
 	// readContent returns nil content and a nil contentErr to skip the file.
@@ -155,7 +153,6 @@ func resolveAndStoreChart(
 		src.chartFailed(chartPath)
 		return false
 	}
-	src.chartRendered(ctx, chartPath, resFiles)
 	routed := services
 	if kind == model.KindHELM {
 		if platform, ok := analyzer.PlatformForKind(kind); ok {
@@ -209,13 +206,6 @@ type diskSource struct {
 	*provider.FileSystemSourceProvider
 }
 
-func (d diskSource) chartRendered(ctx context.Context, chartPath string, resFiles model.ResolvedFiles) {
-	if err := d.ExcludePaths(ctx, provider.HelmChartFiles(resFiles.Excluded, chartPath)); err != nil {
-		contextLogger := logger.FromContext(ctx)
-		contextLogger.Err(err).Msgf("could not exclude rendered chart files: %s", chartPath)
-	}
-}
-
 func (diskSource) chartFailed(string) {}
 
 func (d diskSource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
@@ -265,8 +255,6 @@ func (diskSource) platform(_ context.Context, services []*Service, filePath stri
 type memorySource struct {
 	*provider.MemorySourceProvider
 }
-
-func (memorySource) chartRendered(context.Context, string, model.ResolvedFiles) {}
 
 func (m memorySource) chartFailed(chartPath string) {
 	m.RecordMissing(chartPath)

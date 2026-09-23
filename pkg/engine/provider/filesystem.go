@@ -442,19 +442,6 @@ func isHelmChartDir(dir string, chartRoots []string) bool {
 	return false
 }
 
-// HelmChartFiles keeps the paths of files that are part of the Helm structure
-// of chartRoot (see IsHelmChartFile).
-func HelmChartFiles(paths []string, chartRoot string) []string {
-	roots := []string{chartRoot}
-	kept := make([]string, 0, len(paths))
-	for _, p := range paths {
-		if IsHelmChartFile(p, roots) {
-			kept = append(kept, p)
-		}
-	}
-	return kept
-}
-
 // IsNestedRenderedChart reports whether root is a subchart of an already
 // rendered chart, which rendered it as part of its own tree.
 func IsNestedRenderedChart(root string, renderedRoots []string) bool {
@@ -730,16 +717,15 @@ func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path str
 	resolverSink ResolverSink, resolvedChartPaths *[]string) error {
 	contextLogger := logger.FromContext(ctx)
 	normPath := toSlash(path)
-	excluded, errRes := resolverSink(ctx, normPath)
+	_, errRes := resolverSink(ctx, normPath)
 	if errRes != nil {
 		// The render failure is already logged by the resolver sink; this is
 		// just the fallback announcement, so keep it at Debug.
 		contextLogger.Debug().Msgf("Scanning raw files of Helm chart '%s' as a fallback after render failure", path)
 		return nil
 	}
-	if errAdd := s.ExcludePaths(ctx, HelmChartFiles(excluded, normPath)); errAdd != nil {
-		contextLogger.Err(errAdd).Msgf("Filesystem files provider couldn't exclude rendered Chart files, Chart=%s", filepath.Base(path))
-	}
+	// The walk skips this chart's Helm files through IsHelmChartFile once the
+	// root is recorded. The excludes map is for configured ignore paths.
 	*resolvedChartPaths = append(*resolvedChartPaths, path)
 	return nil
 }

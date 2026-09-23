@@ -175,15 +175,20 @@ func loadChart(fsys vfs.FS, dir string) (*chart.Chart, error) {
 	return loadChartFromFS(fsys, dir)
 }
 
-// ArchiveChartName returns the name a packaged chart (charts/*.tgz) declares:
-// the directory its templates render under, which need not match the archive's
-// file name (nginx-1.2.3.tgz renders under charts/nginx/).
-func ArchiveChartName(data []byte) (string, error) {
+// ArchiveChartIdentity returns the name and version a packaged chart declares.
+// The name is the directory it renders under when the parent does not alias it
+// (nginx-1.2.3.tgz renders under charts/nginx/). An alias in the parent's
+// dependencies replaces that directory.
+func ArchiveChartIdentity(data []byte) (name, version string, err error) {
 	ch, err := loader.LoadArchive(bytes.NewReader(data))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return ch.Name(), nil
+	version = ""
+	if ch.Metadata != nil {
+		version = ch.Metadata.Version
+	}
+	return ch.Name(), version, nil
 }
 
 // utf8bom mirrors loader's BOM handling for files read through the vfs.

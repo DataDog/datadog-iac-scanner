@@ -16,6 +16,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"gopkg.in/yaml.v3"
+	"helm.sh/helm/v3/pkg/chartutil"
 )
 
 // chartsDirName is the chart subdirectory Helm loads subcharts from.
@@ -35,24 +37,7 @@ func archiveSources(ctx context.Context, findings []model.Vulnerability, memfs *
 		return nil
 	}
 	pushed, dirs := pushedIndex(paths)
-
-	chartNames := make(map[string]string)
-	chartName := func(archive string) string {
-		if name, ok := chartNames[archive]; ok {
-			return name
-		}
-		name := ""
-		if data, err := memfs.ReadFile(archive); err == nil {
-			if n, loadErr := helm.ArchiveChartName(data); loadErr == nil {
-				name = n
-			} else {
-				contextLogger := logger.FromContext(ctx)
-				contextLogger.Debug().Msgf("could not read chart name from pushed archive %s: %v", archive, loadErr)
-			}
-		}
-		chartNames[archive] = name
-		return name
-	}
+	byRendered := renderedArchives(ctx, memfs, archivesByDir)
 
 	out := make(map[string]string)
 	for i := range findings {
@@ -63,7 +48,7 @@ func archiveSources(ctx context.Context, findings []model.Vulnerability, memfs *
 		if _, ok := out[p]; ok {
 			continue
 		}
-		if archive := sourceArchive(p, dirs, archivesByDir, chartName); archive != "" {
+		if archive := sourceArchive(p, dirs, byRendered); archive != "" {
 			out[p] = archive
 		}
 	}
@@ -89,11 +74,82 @@ func pushedIndex(paths []string) (pushed, dirs map[string]struct{}) {
 	return pushed, dirs
 }
 
+type chartDependency struct {
+	Name    string `yaml:"name"`
+	Alias   string `yaml:"alias"`
+	Version string `yaml:"version"`
+}
+
+// renderedArchives maps "<chart>/charts/<rendered name>" to the pushed archive
+// Helm loaded for it. The rendered name is the dependency alias when the parent
+// sets one, and the archive's own chart name otherwise.
+func renderedArchives(ctx context.Context, memfs *vfs.MemFS, archivesByDir map[string][]string) map[string]string {
+	out := make(map[string]string)
+	depsOf := make(map[string][]chartDependency)
+	for chartsDir, archives := range archivesByDir {
+		parent := path.Dir(chartsDir)
+		deps, ok := depsOf[parent]
+		if !ok {
+			deps = chartDependencies(memfs, parent)
+			depsOf[parent] = deps
+		}
+		for _, archive := range archives {
+			data, err := memfs.ReadFile(archive)
+			if err != nil {
+				continue
+			}
+			name, version, loadErr := helm.ArchiveChartIdentity(data)
+			if loadErr != nil {
+				contextLogger := logger.FromContext(ctx)
+				contextLogger.Debug().Msgf("could not read chart name from pushed archive %s: %v", archive, loadErr)
+				continue
+			}
+			out[chartsDir+"/"+renderedChartName(name, version, deps)] = archive
+		}
+	}
+	return out
+}
+
+func chartDependencies(memfs *vfs.MemFS, parent string) []chartDependency {
+	chartYAML := "Chart.yaml"
+	if parent != "." && parent != "" {
+		chartYAML = parent + "/Chart.yaml"
+	}
+	data, err := memfs.ReadFile(chartYAML)
+	if err != nil {
+		return nil
+	}
+	var meta struct {
+		Dependencies []chartDependency `yaml:"dependencies"`
+	}
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return nil
+	}
+	return meta.Dependencies
+}
+
+// renderedChartName is the directory Helm emits under charts/. A dependency
+// alias replaces the archive's chart name; with no matching dependency the
+// archive's own name is that directory.
+func renderedChartName(name, version string, deps []chartDependency) string {
+	for _, dep := range deps {
+		if dep.Name != name {
+			continue
+		}
+		if dep.Version != "" && version != "" && !chartutil.IsCompatibleRange(dep.Version, version) {
+			continue
+		}
+		if dep.Alias != "" {
+			return dep.Alias
+		}
+		return dep.Name
+	}
+	return name
+}
+
 // sourceArchive finds the outermost charts/<name> segment of p that was not
-// pushed as a directory, and returns the pushed archive in that charts/ whose
-// chart is named <name>.
-func sourceArchive(p string, dirs map[string]struct{}, archivesByDir map[string][]string,
-	chartName func(string) string) string {
+// pushed as a directory, and returns the archive Helm rendered under that name.
+func sourceArchive(p string, dirs map[string]struct{}, byRendered map[string]string) string {
 	segs := strings.Split(p, "/")
 	for i := 0; i+2 < len(segs); i++ {
 		if segs[i] != chartsDirName {
@@ -103,10 +159,8 @@ func sourceArchive(p string, dirs map[string]struct{}, archivesByDir map[string]
 			continue
 		}
 		chartsDir := strings.Join(segs[:i+1], "/")
-		for _, archive := range archivesByDir[chartsDir] {
-			if chartName(archive) == segs[i+1] {
-				return archive
-			}
+		if archive := byRendered[chartsDir+"/"+segs[i+1]]; archive != "" {
+			return archive
 		}
 		return ""
 	}
