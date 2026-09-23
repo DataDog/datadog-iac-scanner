@@ -484,8 +484,8 @@ func newLineInfoLoader(
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return newLineInfoLoaderWithReparser(filename, docIdx,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
-			return p.Parse(
-				ctx, filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
+			return p.Parse(parser.WithLineInfoOnly(ctx),
+				filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
 		})
 }
 
@@ -682,8 +682,24 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 		}
 	case reflect.Slice, reflect.Array:
 		return normalizeSliceDocumentValue(rv), true
+	case reflect.Struct, reflect.Pointer:
+		// Parser enrichments (e.g. CI/CD parsed runs) attach typed structs; left
+		// as-is they are opaque to hash-consing and OPA re-converts every copy.
+		return normalizeViaJSON(v)
 	}
 	return v, false
+}
+
+func normalizeViaJSON(v interface{}) (interface{}, bool) {
+	j, err := json.Marshal(v)
+	if err != nil {
+		return v, false
+	}
+	var out interface{}
+	if err := json.Unmarshal(j, &out); err != nil {
+		return v, false
+	}
+	return out, true
 }
 
 // normalizeInterfaceKeyedMap converts a map[interface{}]interface{} (yaml.v3

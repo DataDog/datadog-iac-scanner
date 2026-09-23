@@ -98,6 +98,31 @@ func TestNormalizeDocumentValueFloat32NoWidening(t *testing.T) {
 	require.False(t, math.IsNaN(f))
 }
 
+// TestNormalizeDocumentValueStructs guards the struct fallback: parser
+// enrichments must become the same canonical maps the JSON round-trip yields
+// (json tags, omitempty, nil pointers), so hash-consing can share them.
+func TestNormalizeDocumentValueStructs(t *testing.T) {
+	type node struct {
+		Type     string  `json:"type"`
+		Start    int     `json:"start"`
+		Children []*node `json:"children,omitempty"`
+		Hidden   string  `json:"-"`
+	}
+	got, changed := normalizeDocumentValue(node{Type: "call", Start: 3, Children: []*node{{Type: "id", Start: 4}}, Hidden: "x"})
+	require.True(t, changed)
+	require.Equal(t, map[string]interface{}{
+		"type":  "call",
+		"start": float64(3),
+		"children": []interface{}{
+			map[string]interface{}{"type": "id", "start": float64(4)},
+		},
+	}, got)
+
+	got, changed = normalizeDocumentValue((*node)(nil))
+	require.True(t, changed)
+	require.Nil(t, got)
+}
+
 // TestSanitizeScanDocumentInPlaceNormalizesExoticTypes runs a Terraform-style
 // document containing non-canonical nested types through the in-place
 // sanitizer and verifies the tree that reaches the payload builder is

@@ -259,6 +259,21 @@ func (f *FileMetadata) ReleasePostEvalData() {
 	f.linesLazy = nil
 }
 
+// DiscardLineInfoDocument drops a memoized line-info tree while keeping the
+// loader so a later decode pass can rebuild it. No-op when line info was
+// never lazily loaded: without a loader the tree could not be rebuilt, and
+// writing the field outside the state mutex would race concurrent readers
+// (UseLineInfoDocument reads it unlocked when no loader is configured).
+func (f *FileMetadata) DiscardLineInfoDocument() {
+	st := f.lineInfo
+	if st == nil {
+		return
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	f.LineInfoDocument = nil
+}
+
 // ShallowCopy returns a copy of f with independent lazy line-info memoization.
 func (f *FileMetadata) ShallowCopy() *FileMetadata {
 	clone := *f
@@ -285,7 +300,35 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
+	return f.ensureLineInfoDocumentLocked(ctx)
+}
+
+// UseLineInfoDocument loads line info (when configured) and runs fn against
+// it while holding the file's line-info lock, so concurrent decoders
+// serialize on the file. The decode loop owns discarding trees between
+// files (see DiscardLineInfoDocument); fn must not retain the map.
+func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[string]interface{}) error) error {
+	st := f.lineInfo
+	if st == nil {
+		// No lazy loader configured: the document (if any) was populated at
+		// parse time and is never mutated afterwards; read it once.
+		doc := f.LineInfoDocument
+		return fn(doc)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if err := f.ensureLineInfoDocumentLocked(ctx); err != nil {
+		return err
+	}
+	return fn(f.LineInfoDocument)
+}
+
+func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
 	if f.LineInfoDocument != nil {
+		return nil
+	}
+	st := f.lineInfo
+	if st == nil {
 		return nil
 	}
 	if st.err != nil {
@@ -300,7 +343,6 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 		return err
 	}
 	f.LineInfoDocument = doc
-	st.loader = nil
 	// Materialize the line split from OriginalData before potentially
 	// releasing it, so the detector's Lines() call (which runs after this)
 	// gets the pre-computed slice without needing OriginalData. Route through

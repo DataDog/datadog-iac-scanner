@@ -17,10 +17,9 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 		file           *model.FileMetadata
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    int
-		wantErr bool
+		name string
+		args args
+		want int
 	}{
 		{ //nolint
 			name: "test simple search line",
@@ -60,8 +59,7 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 					},
 				},
 			},
-			want:    5,
-			wantErr: false,
+			want: 5,
 		},
 		{
 			name: "test with similar array elements",
@@ -116,8 +114,7 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 					},
 				},
 			},
-			want:    7,
-			wantErr: false,
+			want: 7,
 		},
 		{ //nolint
 			name: "test with dots on keys",
@@ -157,8 +154,7 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 					},
 				},
 			},
-			want:    4,
-			wantErr: false,
+			want: 4,
 		},
 		{ //nolint
 			name: "test number issue with key",
@@ -198,8 +194,7 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 					},
 				},
 			},
-			want:    4,
-			wantErr: false,
+			want: 4,
 		},
 		{ //nolint
 			// The final path component (targetObj) must be dot-escaped too, or
@@ -233,8 +228,7 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 					},
 				},
 			},
-			want:    3,
-			wantErr: false,
+			want: 3,
 		},
 		{
 			name: "test number issue with array",
@@ -288,17 +282,12 @@ func TestGetLineBySearchLine(t *testing.T) { //nolint
 					},
 				},
 			},
-			want:    7,
-			wantErr: false,
+			want: 7,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GetLineBySearchLine(tt.args.pathComponents, tt.args.file)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetLineBySearchLine() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			got := GetLineBySearchLine(tt.args.pathComponents, tt.args.file)
 			if got != tt.want {
 				t.Errorf("GetLineBySearchLine() = %v, want %v", got, tt.want)
 			}

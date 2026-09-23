@@ -90,3 +90,35 @@ func TestTreeHashConsSkipsUncomparableValues(t *testing.T) {
 	require.Equal(t, uncomparable{data: []int{1}}, a["x"])
 	require.Equal(t, uncomparable{data: []int{2}}, b["x"])
 }
+
+// TestTreeHashConsKeepsOpaqueSubtreesOutOfBuckets guards the quadratic prepare
+// seen on CI/CD corpora: subtrees holding non-canonical values (the parser's
+// attached structs) must not accumulate in a content bucket, while their
+// canonical siblings are still shared.
+func TestTreeHashConsKeepsOpaqueSubtreesOutOfBuckets(t *testing.T) {
+	type parsedExpr struct{ raw string }
+	cons := newTreeHashCons()
+
+	docs := make([]map[string]interface{}, 0, 100)
+	for i := 0; i < 100; i++ {
+		docs = append(docs, cons.consChildren(map[string]interface{}{
+			"step": map[string]interface{}{
+				"run":                  "echo hi",
+				"_parsed_expressions_": []interface{}{parsedExpr{raw: "x"}},
+			},
+			"labels": map[string]interface{}{"app": "web"},
+		}))
+	}
+
+	for key, bucket := range cons.byContent {
+		require.LessOrEqual(t, len(bucket), 1, "bucket %v must not accumulate unshareable subtrees", key)
+	}
+	require.NotEmpty(t, cons.opaque)
+	require.Equal(t,
+		reflect.ValueOf(docs[0]["labels"]).Pointer(),
+		reflect.ValueOf(docs[99]["labels"]).Pointer(),
+		"canonical siblings of opaque subtrees must still be shared")
+	require.NotEqual(t,
+		reflect.ValueOf(docs[0]["step"]).Pointer(),
+		reflect.ValueOf(docs[99]["step"]).Pointer())
+}

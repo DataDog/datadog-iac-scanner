@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 )
 
@@ -105,6 +106,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	// Convert keys to string format
 	documents = yamlParser.ConvertKeysToString(documents)
+
+	if parser.IsLineInfoOnly(ctx) {
+		return resolved, documents, ignoreLines, resolvedFiles, nil
+	}
 
 	// Enhance documents with parsed run blocks
 	p.enhanceWithParsedRuns(ctx, documents)
