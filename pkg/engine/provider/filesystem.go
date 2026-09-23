@@ -143,13 +143,6 @@ func IsTerraformCacheDir(path string) bool {
 	return queryRegexExcludeTerraCache.MatchString(path)
 }
 
-// ExcludePaths registers paths to skip during later walks (e.g. rendered Helm templates).
-func (s *FileSystemSourceProvider) ExcludePaths(ctx context.Context, paths []string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.addExcluded(ctx, paths)
-}
-
 func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

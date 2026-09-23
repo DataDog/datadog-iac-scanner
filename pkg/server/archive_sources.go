@@ -124,6 +124,9 @@ func chartDependencies(memfs *vfs.MemFS, parent string) []chartDependency {
 	if parent != "." && parent != "" {
 		chartYAML = parent + "/Chart.yaml"
 	}
+	if _, statErr := memfs.Stat(chartYAML); statErr != nil {
+		return nil
+	}
 	data, err := memfs.ReadFile(chartYAML)
 	if err != nil {
 		return nil
