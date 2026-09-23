@@ -576,3 +576,67 @@ func TestNewDefaultWithFS_MemFS(t *testing.T) {
 	web := asMap(asMap(docs[0]["services"])["web"])
 	require.Equal(t, "nginx:1.27", web["image"])
 }
+
+func TestParse_CyclicAliasSelfReference(t *testing.T) {
+	// A self-referential anchor parses into a cyclic node tree; extending the
+	// service must not recurse forever (copyNode/interpolation guards).
+	compose := `
+services:
+  common: &base
+    image: alpine
+    self: *base
+  web:
+    extends: common
+`
+	require.NotPanics(t, func() {
+		got := parseCompose(t, "compose.yaml", compose, nil)
+		require.Len(t, got, 1)
+		require.JSONEq(t, `{"services":{"common":{"image":"alpine"},"web":{"image":"alpine"}}}`, got[0])
+	})
+}
+
+func TestParse_CyclicAliasInterpolation(t *testing.T) {
+	// The semantic path runs even without extends (a `$` triggers it), so the
+	// cycle must be cut before interpolation walks the document.
+	compose := `
+services:
+  common: &base
+    image: alpine:${TAG}
+    self: *base
+`
+	require.NotPanics(t, func() {
+		got := parseCompose(t, "compose.yaml", compose, nil)
+		require.Len(t, got, 1)
+		require.JSONEq(t, `{"services":{"common":{"image":"alpine:${TAG}"}}}`, got[0])
+	})
+}
+
+func TestParse_AliasReuseIsNotACycle(t *testing.T) {
+	// Two references to the same anchor are sharing, not a cycle: the cycle
+	// breaker must leave them intact and copyNode must copy both.
+	compose := `
+x-opts: &opts
+  log_level: info
+  verbose: true
+services:
+  common:
+    image: alpine
+    first: *opts
+    second: *opts
+  web:
+    extends: common
+`
+	got := parseCompose(t, "compose.yaml", compose, nil)
+	require.Len(t, got, 1)
+	// The model flattens alias-to-mapping values into their parent (pre-existing
+	// behavior, identical to the plain YAML path); what matters here is that
+	// the shared anchor's content survives the cycle breaker and copyNode into
+	// the extending service.
+	require.JSONEq(t, `{
+	  "services": {
+	    "common": {"image": "alpine", "log_level": "info", "verbose": true},
+	    "web": {"image": "alpine", "log_level": "info", "verbose": true}
+	  },
+	  "x-opts": {"log_level": "info", "verbose": true}
+	}`, got[0])
+}

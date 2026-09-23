@@ -53,6 +53,10 @@ func (t *transformer) transform(doc *yaml.Node) {
 	if doc == nil || doc.Kind != yaml.MappingNode {
 		return
 	}
+	// Self-referential anchors parse into cyclic node trees; every walk
+	// below (merge, extends, env_file, interpolation) would recurse forever,
+	// so cut back-edges up front. Non-cyclic sharing is left intact.
+	breakAliasCycles(doc)
 
 	// Compose merges the override file before resolving extends.
 	if t.overrideContent != nil {
@@ -96,6 +100,30 @@ func rewriteLines(n *yaml.Node, line int) {
 	n.Line = line
 	for _, child := range n.Content {
 		rewriteLines(child, line)
+	}
+}
+
+// breakAliasCycles replaces alias back-edges (a node referenced from inside
+// its own subtree) with null nodes, in place.
+func breakAliasCycles(root *yaml.Node) {
+	inProgress := map[*yaml.Node]struct{}{}
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		inProgress[n] = struct{}{}
+		for i, child := range n.Content {
+			if child == nil {
+				continue
+			}
+			if _, gray := inProgress[child]; gray {
+				n.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: nullTag, Line: child.Line, Column: child.Column}
+				continue
+			}
+			walk(child)
+		}
+		delete(inProgress, n)
+	}
+	if root != nil {
+		walk(root)
 	}
 }
 
@@ -441,6 +469,8 @@ func firstMappingDoc(content []byte) *yaml.Node {
 		}
 		root := node.Content[0]
 		if root.Kind == yaml.MappingNode {
+			// Cut alias cycles so later walks terminate.
+			breakAliasCycles(root)
 			return root
 		}
 		return nil

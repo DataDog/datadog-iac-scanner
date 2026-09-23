@@ -251,17 +251,27 @@ func removeMappingKey(m *yaml.Node, key string) {
 // copyNode deep-copies n with positions intact, so shared cached trees are
 // never mutated by merging. Alias edges are followed, not preserved: the
 // copy gets a copy of the alias target, never an alias into the original.
+// Cyclic back-edges are dropped (the caller breaks cycles first; this is a
+// defensive guard).
 func copyNode(n *yaml.Node) *yaml.Node {
+	return copyNodeGuarded(n, map[*yaml.Node]struct{}{})
+}
+
+func copyNodeGuarded(n *yaml.Node, inProgress map[*yaml.Node]struct{}) *yaml.Node {
 	if n == nil {
 		return nil
 	}
+	if _, gray := inProgress[n]; gray {
+		return nil
+	}
+	inProgress[n] = struct{}{}
 	out := &yaml.Node{
 		Kind:        n.Kind,
 		Style:       n.Style,
 		Tag:         n.Tag,
 		Value:       n.Value,
 		Anchor:      n.Anchor,
-		Alias:       copyNode(n.Alias),
+		Alias:       copyNodeGuarded(n.Alias, inProgress),
 		Content:     make([]*yaml.Node, len(n.Content)),
 		HeadComment: n.HeadComment,
 		LineComment: n.LineComment,
@@ -270,7 +280,8 @@ func copyNode(n *yaml.Node) *yaml.Node {
 		Column:      n.Column,
 	}
 	for i, child := range n.Content {
-		out.Content[i] = copyNode(child)
+		out.Content[i] = copyNodeGuarded(child, inProgress)
 	}
+	delete(inProgress, n)
 	return out
 }
