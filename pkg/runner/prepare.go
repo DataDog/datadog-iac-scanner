@@ -150,7 +150,11 @@ func resolveAndStoreChart(
 		for _, s := range services {
 			s.logResolverResolveError(ctx, kind, chartPath, err)
 		}
-		src.chartFailed(chartPath)
+		// A missing deploy-time value is not a file the IDE can push. Re-requesting
+		// the chart directory cannot supply it; the raw templates are still scanned.
+		if kind != model.KindHELM || !helmRenderNeedsNoFiles(err) {
+			src.chartFailed(chartPath)
+		}
 		return false
 	}
 	routed := services

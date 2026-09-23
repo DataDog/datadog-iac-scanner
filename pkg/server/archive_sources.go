@@ -104,7 +104,16 @@ func renderedArchives(ctx context.Context, memfs *vfs.MemFS, archivesByDir map[s
 				contextLogger.Debug().Msgf("could not read chart name from pushed archive %s: %v", archive, loadErr)
 				continue
 			}
-			out[chartsDir+"/"+renderedChartName(name, version, deps)] = archive
+			rendered, matched := renderedChartName(name, version, deps)
+			key := chartsDir + "/" + rendered
+			// An archive that does not satisfy the dependency still names the same
+			// directory. It must not replace the one Helm actually rendered.
+			if !matched {
+				if _, exists := out[key]; exists {
+					continue
+				}
+			}
+			out[key] = archive
 		}
 	}
 	return out
@@ -129,9 +138,9 @@ func chartDependencies(memfs *vfs.MemFS, parent string) []chartDependency {
 }
 
 // renderedChartName is the directory Helm emits under charts/. A dependency
-// alias replaces the archive's chart name; with no matching dependency the
-// archive's own name is that directory.
-func renderedChartName(name, version string, deps []chartDependency) string {
+// alias replaces the archive's chart name. matched is false when no dependency
+// accepts this archive, in which case the directory is the archive's own name.
+func renderedChartName(name, version string, deps []chartDependency) (rendered string, matched bool) {
 	for _, dep := range deps {
 		if dep.Name != name {
 			continue
@@ -140,11 +149,11 @@ func renderedChartName(name, version string, deps []chartDependency) string {
 			continue
 		}
 		if dep.Alias != "" {
-			return dep.Alias
+			return dep.Alias, true
 		}
-		return dep.Name
+		return dep.Name, true
 	}
-	return name
+	return name, false
 }
 
 // sourceArchive finds the outermost charts/<name> segment of p that was not

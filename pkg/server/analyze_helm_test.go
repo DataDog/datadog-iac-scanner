@@ -244,6 +244,38 @@ func TestAnalyze_ContentPush_PackagedSubchartAlias(t *testing.T) {
 	}
 }
 
+// TestAnalyze_ContentPush_PackagedSubchartIgnoresIncompatibleArchive pins that a
+// leftover tarball of the same chart does not replace the version the parent depends on.
+func TestAnalyze_ContentPush_PackagedSubchartIgnoresIncompatibleArchive(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	rendered := chartTgzBytes(t, "nginx", [][2]string{
+		{"Chart.yaml", "apiVersion: v2\nname: nginx\nversion: 1.16.0\n"},
+		{"templates/deployment.yaml", "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Release.Name }}\n  labels:\n    app: nginx\n"},
+	})
+	leftover := chartTgzBytes(t, "nginx", [][2]string{
+		{"Chart.yaml", "apiVersion: v2\nname: nginx\nversion: 1.2.3\n"},
+		{"templates/deployment.yaml", "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Release.Name }}\n  labels:\n    app: old\n"},
+	})
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\ndependencies:\n  - name: nginx\n    version: 1.16.0\n"},
+			{Path: "chart/charts/nginx-1.16.0.tgz", Content: base64.StdEncoding.EncodeToString(rendered), Encoding: "base64"},
+			{Path: "chart/charts/nginx-1.2.3.tgz", Content: base64.StdEncoding.EncodeToString(leftover), Encoding: "base64"},
+		},
+		Ruleset:  ruleset(syntheticK8sRule()),
+		Platform: []string{"kubernetes"},
+	}
+
+	out, _ := postAnalyzeK8s(t, s, req)
+
+	if got := out.ArchiveFiles["chart/charts/nginx/templates/deployment.yaml"]; got != "chart/charts/nginx-1.16.0.tgz" {
+		t.Errorf("archive_files = %v, want the compatible archive, not the leftover; findings = %+v",
+			out.ArchiveFiles, out.Findings)
+	}
+}
+
 // TestAnalyze_ContentPush_RootChartKeepsOtherFiles pins that a chart at the
 // workspace root withholds only its Helm files from the parsers: Terraform
 // beside it is still scanned, and so is a standalone chart elsewhere in the tree
@@ -376,5 +408,29 @@ metadata:
 	}
 	if !found {
 		t.Errorf("missing files = %v, want the workspace-root chart escalated as %q", out.MissingFiles, ".")
+	}
+}
+
+// TestAnalyze_HelmChartMissingValueDoesNotEscalate verifies that a render
+// failure caused by an absent deploy-time value does not ask the IDE to push
+// the chart again. The files are already there.
+func TestAnalyze_HelmChartMissingValueDoesNotEscalate(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+			{Path: "chart/templates/deployment.yaml", Content: "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ required \"replicas\" .Values.replicas }}\n"},
+		},
+		Ruleset:  ruleset(syntheticK8sRule()),
+		Platform: []string{"kubernetes"},
+	}
+
+	out, _ := postAnalyzeK8s(t, s, req)
+
+	for _, p := range out.MissingFiles {
+		if p == "chart" || p == "." {
+			t.Errorf("missing files = %v, a missing value must not escalate the chart", out.MissingFiles)
+		}
 	}
 }
