@@ -7,7 +7,6 @@ package dockercompose
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -26,15 +25,10 @@ const (
 	boolTag = "!!bool"
 )
 
-// maxExtendsDepth bounds service extends chains, guarding against cycles that
-// slip past the visited set (e.g. through different files).
-const maxExtendsDepth = 10
-
 // transformer holds the per-file resolution state: interpolation variables,
 // sibling-file access, and the override file's raw bytes (raw, because merging
 // mutates nodes and each document needs a fresh copy).
 type transformer struct {
-	ctx    context.Context
 	fsys   vfs.FS
 	dir    string
 	self   string
@@ -42,39 +36,48 @@ type transformer struct {
 	logger zerolog.Logger
 	// overrideContent is the raw sibling override file content, nil when absent.
 	overrideContent []byte
+	// overrideName is the sibling override file's name relative to dir, set
+	// alongside overrideContent; identifies the override document for extends
+	// chain keys.
+	overrideName string
 	// fileContent caches sibling compose file reads for extends resolution.
 	fileContent map[string][]byte
+	// parsedRoots caches the parsed first-document mapping roots of sibling
+	// files by resolved path (nil entries cache unreadable files). Extends
+	// resolutions only read from — and copy out of — these roots, so N
+	// services extending the same file parse it once.
+	parsedRoots map[string]*yaml.Node
 }
 
 // transform applies the Compose semantic pipeline to one document root:
-// override merge (before extends, per Compose), extends inheritance,
-// env_file materialization, then interpolation on all string values.
+// per Compose (compose-go), each file's extends is resolved before files are
+// merged, so the override document's own extends resolve against its own
+// services before it is merged into the scanned file (override winning); then
+// env_file materialization and interpolation run on the merged tree.
 func (t *transformer) transform(doc *yaml.Node) {
 	if doc == nil || doc.Kind != yaml.MappingNode {
 		return
 	}
-	// Self-referential anchors parse into cyclic node trees; every walk
-	// below (merge, extends, env_file, interpolation) would recurse forever,
-	// so cut back-edges up front. Non-cyclic sharing is left intact.
+	// Self-referential anchors parse into cyclic node trees; every walk below
+	// (merge, extends, env_file, interpolation) would risk unbounded recursion
+	// following them, so cut back-edges up front. Non-cyclic sharing is left
+	// intact.
 	breakAliasCycles(doc)
 
-	// Compose merges the override file before resolving extends.
+	var overrideRoot *yaml.Node
 	if t.overrideContent != nil {
-		if overrideRoot := firstMappingDoc(t.overrideContent); overrideRoot != nil {
-			mergeMappings(doc, overrideRoot, true, fileMergePolicy)
+		if overrideRoot = firstMappingDoc(t.overrideContent); overrideRoot != nil {
+			t.resolveExtendsInDoc(overrideRoot, filepath.Join(t.dir, t.overrideName))
 		}
 	}
+	t.resolveExtendsInDoc(doc, t.self)
 
-	services := mappingValue(doc, "services")
-	if isServiceMapping(services) {
-		for i := 0; i+1 < len(services.Content); i += 2 {
-			if svc := services.Content[i+1]; isServiceMapping(svc) {
-				t.resolveExtends(services, svc, t.self, 0, map[string]struct{}{})
-			}
-		}
+	// Compose merges the override file after each file's extends is resolved.
+	if overrideRoot != nil {
+		mergeMappings(doc, overrideRoot, true, fileMergePolicy)
 	}
 
-	if isServiceMapping(services) {
+	if services := mappingValue(doc, "services"); isServiceMapping(services) {
 		for i := 0; i+1 < len(services.Content); i += 2 {
 			if svc := services.Content[i+1]; isServiceMapping(svc) {
 				t.mergeEnvFiles(svc)
@@ -83,6 +86,21 @@ func (t *transformer) transform(doc *yaml.Node) {
 	}
 
 	interpolateNode(doc, t.lookupVar)
+}
+
+// resolveExtendsInDoc resolves every service's extends within one document
+// root, looking targets up in that document's own services mapping (per-file
+// extends resolution). file names the document for cycle keys.
+func (t *transformer) resolveExtendsInDoc(doc *yaml.Node, file string) {
+	services := mappingValue(doc, "services")
+	if !isServiceMapping(services) {
+		return
+	}
+	for i := 0; i+1 < len(services.Content); i += 2 {
+		if svc := services.Content[i+1]; isServiceMapping(svc) {
+			t.resolveExtends(services, svc, file, map[string]struct{}{})
+		}
+	}
 }
 
 // isServiceMapping reports whether n is a usable service/config mapping node.
@@ -103,13 +121,35 @@ func rewriteLines(n *yaml.Node, line int) {
 	}
 }
 
-// breakAliasCycles replaces alias back-edges (a node referenced from inside
-// its own subtree) with null nodes, in place.
+// breakAliasCycles cuts alias back-edges in place: any alias whose target is
+// an ancestor of the alias occurrence is replaced with a null node. In yaml.v3
+// an alias node carries no Content — the back-edge runs through its .Alias
+// pointer — so the walk follows both Content children and alias targets.
+// Fully-walked (black) nodes are skipped on later visits: without that, an
+// anchor block referenced k times per level over d levels is walked k^d times.
+// Cycles are safe to miss on later visits because they are cut the first time
+// their target is on the walk's path (standard white/gray/black DFS). Plain
+// sharing is left intact.
 func breakAliasCycles(root *yaml.Node) {
 	inProgress := map[*yaml.Node]struct{}{}
+	done := map[*yaml.Node]struct{}{}
 	var walk func(n *yaml.Node)
 	walk = func(n *yaml.Node) {
+		if n == nil {
+			return
+		}
+		if _, black := done[n]; black {
+			return
+		}
 		inProgress[n] = struct{}{}
+		if a := n.Alias; a != nil {
+			if _, gray := inProgress[a]; gray {
+				line, column := n.Line, n.Column
+				*n = yaml.Node{Kind: yaml.ScalarNode, Tag: nullTag, Line: line, Column: column}
+			} else {
+				walk(a)
+			}
+		}
 		for i, child := range n.Content {
 			if child == nil {
 				continue
@@ -121,10 +161,9 @@ func breakAliasCycles(root *yaml.Node) {
 			walk(child)
 		}
 		delete(inProgress, n)
+		done[n] = struct{}{}
 	}
-	if root != nil {
-		walk(root)
-	}
+	walk(root)
 }
 
 // lookupVar resolves a variable from the .env file only, never the host
@@ -158,6 +197,27 @@ func (t *transformer) readSibling(path string) []byte {
 	}
 	t.fileContent[full] = content
 	return content
+}
+
+// siblingRoot returns the parsed first-document mapping root of a sibling
+// compose file, nil when unreadable or not a mapping document. Roots are
+// cached per resolved path (including nil results, so an unreadable file is
+// only probed once): extends resolution never mutates them, it copies targets
+// out before merging.
+func (t *transformer) siblingRoot(path string) *yaml.Node {
+	full := t.siblingPath(path)
+	if root, ok := t.parsedRoots[full]; ok {
+		return root
+	}
+	var root *yaml.Node
+	if content := t.readSibling(path); content != nil {
+		root = firstMappingDoc(content)
+	}
+	if t.parsedRoots == nil {
+		t.parsedRoots = map[string]*yaml.Node{}
+	}
+	t.parsedRoots[full] = root
+	return root
 }
 
 // removeExtends deletes the resolved extends declaration from a service node.
@@ -194,11 +254,7 @@ func (t *transformer) extendsTargetNode(services *yaml.Node, targetService, targ
 		}
 		return nil, nil
 	}
-	content := t.readSibling(targetFile)
-	if content == nil {
-		return nil, nil
-	}
-	targetRoot := firstMappingDoc(content)
+	targetRoot := t.siblingRoot(targetFile)
 	if targetRoot == nil {
 		return nil, nil
 	}
@@ -209,7 +265,10 @@ func (t *transformer) extendsTargetNode(services *yaml.Node, targetService, targ
 // services is the mapping the target lookup starts from (live mapping of the
 // file being transformed, or the sibling's for cross-file targets); file names
 // that mapping's file for cycle detection via visited "file:service" keys.
-func (t *transformer) resolveExtends(services, svc *yaml.Node, file string, depth int, visited map[string]struct{}) {
+// Compose (compose-go) imposes no depth limit on extends chains, so chains
+// resolve fully and only cycles are cut — with a warning, since inherited
+// values otherwise silently disappear from the merged document.
+func (t *transformer) resolveExtends(services, svc *yaml.Node, file string, visited map[string]struct{}) {
 	extendsNode := mappingValue(svc, "extends")
 	if extendsNode == nil {
 		return
@@ -232,8 +291,8 @@ func (t *transformer) resolveExtends(services, svc *yaml.Node, file string, dept
 		contentKey = t.siblingPath(targetFile)
 	}
 	chainKey := fmt.Sprintf("%s:%s", contentKey, targetService)
-	if _, cyc := visited[chainKey]; cyc || depth >= maxExtendsDepth {
-		t.logger.Debug().Msgf("dockercompose: extends cycle or depth limit at %s", chainKey)
+	if _, cyc := visited[chainKey]; cyc {
+		t.logger.Warn().Msgf("dockercompose: extends cycle at %s; the service is merged without the cycle target", chainKey)
 		return
 	}
 	visited[chainKey] = struct{}{}
@@ -253,7 +312,7 @@ func (t *transformer) resolveExtends(services, svc *yaml.Node, file string, dept
 
 	// The target may itself extend another service; resolve against the
 	// mapping it lives in.
-	t.resolveExtends(targetServices, targetCopy, contentKey, depth+1, visited)
+	t.resolveExtends(targetServices, targetCopy, contentKey, visited)
 
 	// Values inherited from a sibling file are attributed to the extends
 	// declaration's line, which is in this file.

@@ -15,21 +15,36 @@ import (
 // of Compose merge: the file merge and the extends merge follow different
 // rule sets in the Compose Specification.
 type mergePolicy struct {
+	// defaultUnion: sequences union (with duplicate removal) unless the key
+	// is in replace (file merge: compose-go appends override entries to the
+	// base sequence, skipping identical ones, except command, entrypoint and
+	// healthcheck.test, which the latest file overrides).
+	defaultUnion bool
+	// replace: keys whose sequences are replaced even under defaultUnion
+	// (matched by leaf name, so healthcheck.test is covered by "test").
+	replace map[string]struct{}
 	// unionDedup: keys unioned with duplicates removed ("unique key" lists).
 	unionDedup map[string]struct{}
 	// unionKeepDupes: keys unioned without duplicate removal (extends
 	// list-syntax dns/dns_search/env_file/tmpfs).
 	unionKeepDupes map[string]struct{}
 	// entryMerge: "KEY=VALUE" sequences merged by key, overriding side wins
-	// (extends environment in list syntax).
+	// (environment in list syntax, for both merge kinds).
 	entryMerge map[string]struct{}
 }
 
-// fileMergePolicy merges multiple compose files: ports, expose, dns,
-// dns_search and tmpfs are unioned; other sequences are replaced.
+// fileMergePolicy merges multiple compose files (compose-go override/merge):
+// mappings merge recursively, environment entries merge by key, every other
+// sequence is appended (identical entries skipped) — including ports/expose,
+// which later dedup by their uniqueness keys — except command, entrypoint and
+// healthcheck.test, which the overriding file replaces.
 var fileMergePolicy = mergePolicy{
-	unionDedup: map[string]struct{}{
-		"ports": {}, "expose": {}, "dns": {}, "dns_search": {}, "tmpfs": {},
+	defaultUnion: true,
+	replace: map[string]struct{}{
+		"command": {}, "entrypoint": {}, "test": {},
+	},
+	entryMerge: map[string]struct{}{
+		"environment": {},
 	},
 }
 
@@ -37,7 +52,8 @@ var fileMergePolicy = mergePolicy{
 // cap_drop, configs, device_cgroup_rules, expose, external_links, ports,
 // secrets, security_opt (plus deploy.placement sequences, matched by leaf
 // name) are unioned with dedup; list-syntax dns, dns_search, env_file, tmpfs
-// union without dedup; environment entries merge by key.
+// union without dedup; environment entries merge by key; every other
+// sequence is replaced (compose-go extends defaults to replacement).
 var extendsMergePolicy = mergePolicy{
 	unionDedup: map[string]struct{}{
 		"cap_add": {}, "cap_drop": {}, "configs": {}, "constraints": {},
@@ -80,19 +96,29 @@ func mergeMappings(base, override *yaml.Node, crossFile bool, policy mergePolicy
 		case baseVal.Kind == yaml.MappingNode && valNode.Kind == yaml.MappingNode:
 			mergeMappings(baseVal, valNode, crossFile, policy)
 		case baseVal.Kind == yaml.SequenceNode && valNode.Kind == yaml.SequenceNode:
-			switch {
-			case hasKey(policy.unionDedup, key):
-				unionSequences(baseVal, valNode, crossFile, true)
-			case hasKey(policy.unionKeepDupes, key):
-				unionSequences(baseVal, valNode, crossFile, false)
-			case hasKey(policy.entryMerge, key):
-				mergeEnvEntries(baseVal, valNode)
-			default:
-				replaceWithPosition(baseVal, valNode, crossFile)
-			}
+			mergeSequenceValues(baseVal, valNode, key, crossFile, policy)
 		default:
 			replaceWithPosition(baseVal, valNode, crossFile)
 		}
+	}
+}
+
+// mergeSequenceValues combines two sequences under the policy's rules for
+// key (see mergePolicy for the rule sets).
+func mergeSequenceValues(baseVal, valNode *yaml.Node, key string, crossFile bool, policy mergePolicy) {
+	switch {
+	case hasKey(policy.entryMerge, key):
+		mergeEnvEntries(baseVal, valNode)
+	case hasKey(policy.replace, key):
+		replaceWithPosition(baseVal, valNode, crossFile)
+	case policy.defaultUnion:
+		unionSequences(baseVal, valNode, crossFile, true)
+	case hasKey(policy.unionDedup, key):
+		unionSequences(baseVal, valNode, crossFile, true)
+	case hasKey(policy.unionKeepDupes, key):
+		unionSequences(baseVal, valNode, crossFile, false)
+	default:
+		replaceWithPosition(baseVal, valNode, crossFile)
 	}
 }
 
@@ -251,18 +277,28 @@ func removeMappingKey(m *yaml.Node, key string) {
 // copyNode deep-copies n with positions intact, so shared cached trees are
 // never mutated by merging. Alias edges are followed, not preserved: the
 // copy gets a copy of the alias target, never an alias into the original.
-// Cyclic back-edges are dropped (the caller breaks cycles first; this is a
-// defensive guard).
+// Completed copies are memoized within each call, so a shared anchor block is
+// copied once and reused: without the memo, stacked anchor reuse (a block
+// referenced k times per level over d levels) costs k^d copies — exponential
+// in practice (a 6-references-per-level, 9-level file was measured at 19 GB
+// of copies) — instead of linear. Cyclic back-edges are dropped (the caller
+// breaks cycles first; this is a defensive guard).
 func copyNode(n *yaml.Node) *yaml.Node {
-	return copyNodeGuarded(n, map[*yaml.Node]struct{}{})
+	return copyNodeGuarded(n, map[*yaml.Node]struct{}{}, map[*yaml.Node]*yaml.Node{})
 }
 
-func copyNodeGuarded(n *yaml.Node, inProgress map[*yaml.Node]struct{}) *yaml.Node {
+func copyNodeGuarded(n *yaml.Node, inProgress map[*yaml.Node]struct{}, memo map[*yaml.Node]*yaml.Node) *yaml.Node {
 	if n == nil {
 		return nil
 	}
+	// The gray check must precede the memo lookup: memo[n] is set while n is
+	// still being copied, and a back-edge must be dropped rather than handed
+	// the incomplete copy.
 	if _, gray := inProgress[n]; gray {
 		return nil
+	}
+	if out, ok := memo[n]; ok {
+		return out
 	}
 	inProgress[n] = struct{}{}
 	out := &yaml.Node{
@@ -271,7 +307,7 @@ func copyNodeGuarded(n *yaml.Node, inProgress map[*yaml.Node]struct{}) *yaml.Nod
 		Tag:         n.Tag,
 		Value:       n.Value,
 		Anchor:      n.Anchor,
-		Alias:       copyNodeGuarded(n.Alias, inProgress),
+		Alias:       copyNodeGuarded(n.Alias, inProgress, memo),
 		Content:     make([]*yaml.Node, len(n.Content)),
 		HeadComment: n.HeadComment,
 		LineComment: n.LineComment,
@@ -279,8 +315,9 @@ func copyNodeGuarded(n *yaml.Node, inProgress map[*yaml.Node]struct{}) *yaml.Nod
 		Line:        n.Line,
 		Column:      n.Column,
 	}
+	memo[n] = out
 	for i, child := range n.Content {
-		out.Content[i] = copyNodeGuarded(child, inProgress)
+		out.Content[i] = copyNodeGuarded(child, inProgress, memo)
 	}
 	delete(inProgress, n)
 	return out

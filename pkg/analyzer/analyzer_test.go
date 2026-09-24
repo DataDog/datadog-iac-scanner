@@ -442,7 +442,7 @@ func Test_checkYamlPlatform_emptyFile(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := checkYamlPlatform(ctx, nil, tt.content, "ansible/roles/sshd/vars/main.yml", nil)
+			got := checkYamlPlatform(ctx, nil, tt.content, "ansible/roles/sshd/vars/main.yml", nil, nil)
 			require.Equal(t, "", got)
 		})
 	}

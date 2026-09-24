@@ -8,15 +8,18 @@ package dockercompose
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // parseCompose writes the files into a temp dir, parses the compose file with
@@ -102,10 +105,11 @@ func TestParse_OverrideNotAppliedToNonDefaultName(t *testing.T) {
 	require.JSONEq(t, `{"services":{"web":{"image":"nginx:latest"}}}`, got[0])
 }
 
-func TestParse_OverrideMergeAppliesBeforeExtends(t *testing.T) {
-	// Compose merges the override file into the base configuration before
-	// resolving extends, so a service extending `base` must inherit the
-	// overridden (safe) value, not the base file's original one.
+func TestParse_ExtendsResolvedBeforeOverrideMerge(t *testing.T) {
+	// Per Compose (compose-go), each file's extends is resolved before files
+	// are merged: web inherits the base file's privileged:true when its extends
+	// resolves, and the override's later change to `base` does not retroactively
+	// affect the already-resolved web (matches docker compose config).
 	base := `
 services:
   base:
@@ -126,9 +130,52 @@ services:
 	require.JSONEq(t, `{
 	  "services": {
 	    "base": {"image": "nginx:1.27", "privileged": false},
-	    "web": {"image": "nginx:1.27", "privileged": false}
+	    "web": {"image": "nginx:1.27", "privileged": true}
 	  }
 	}`, got[0])
+}
+
+func TestParse_OverrideExtendsResolveWithinOverrideFile(t *testing.T) {
+	// The override file's own extends resolves against the override file's
+	// own services before merging (compose-go resolves extends per file); the
+	// base file's `base` service is not a same-file target for it.
+	base := `
+services:
+  base:
+    image: nginx:1.27
+  web:
+    image: alpine:3.20
+`
+	override := `
+services:
+  web:
+    extends: local
+  local:
+    image: nginx:1.28
+`
+	got := parseCompose(t, "compose.yaml", base, map[string]string{
+		"compose.override.yaml": override,
+	})
+	require.Len(t, got, 1)
+	require.JSONEq(t, `{
+	  "services": {
+	    "base": {"image": "nginx:1.27"},
+	    "web": {"image": "nginx:1.28"},
+	    "local": {"image": "nginx:1.28"}
+	  }
+	}`, got[0])
+}
+
+func TestParse_OverrideNotMergedAcrossVariants(t *testing.T) {
+	// Compose pairs each default base name with its own override variant:
+	// compose.yaml never auto-merges docker-compose.override.yaml.
+	base := "services:\n  web:\n    image: nginx:latest\n"
+	crossVariantOverride := "services:\n  web:\n    image: nginx:1.27\n"
+	got := parseCompose(t, "compose.yaml", base, map[string]string{
+		"docker-compose.override.yaml": crossVariantOverride,
+	})
+	require.Len(t, got, 1)
+	require.JSONEq(t, `{"services":{"web":{"image":"nginx:latest"}}}`, got[0])
 }
 
 func TestParse_ExtendsSameFile(t *testing.T) {
@@ -578,8 +625,9 @@ func TestNewDefaultWithFS_MemFS(t *testing.T) {
 }
 
 func TestParse_CyclicAliasSelfReference(t *testing.T) {
-	// A self-referential anchor parses into a cyclic node tree; extending the
-	// service must not recurse forever (copyNode/interpolation guards).
+	// A self-referential anchor parses into a cyclic node tree (the back-edge
+	// runs through the alias node's .Alias pointer); the cycle breaker cuts the
+	// back-edge to a null, and extending the service must not recurse forever.
 	compose := `
 services:
   common: &base
@@ -591,7 +639,7 @@ services:
 	require.NotPanics(t, func() {
 		got := parseCompose(t, "compose.yaml", compose, nil)
 		require.Len(t, got, 1)
-		require.JSONEq(t, `{"services":{"common":{"image":"alpine"},"web":{"image":"alpine"}}}`, got[0])
+		require.JSONEq(t, `{"services":{"common":{"image":"alpine","self":null},"web":{"image":"alpine","self":null}}}`, got[0])
 	})
 }
 
@@ -607,7 +655,7 @@ services:
 	require.NotPanics(t, func() {
 		got := parseCompose(t, "compose.yaml", compose, nil)
 		require.Len(t, got, 1)
-		require.JSONEq(t, `{"services":{"common":{"image":"alpine:${TAG}"}}}`, got[0])
+		require.JSONEq(t, `{"services":{"common":{"image":"alpine:${TAG}","self":null}}}`, got[0])
 	})
 }
 
@@ -639,4 +687,189 @@ services:
 	  },
 	  "x-opts": {"log_level": "info", "verbose": true}
 	}`, got[0])
+}
+
+func TestBreakAliasCycles_CutsAliasBackEdge(t *testing.T) {
+	// yaml.v3 alias nodes carry no Content — the cycle runs through the .Alias
+	// pointer — so the cycle breaker must follow alias targets to see (and cut)
+	// a self-referential anchor.
+	var doc yaml.Node
+	src := "a: &x\n  b: *x\n"
+	require.NoError(t, yaml.Unmarshal([]byte(src), &doc))
+	root := doc.Content[0]
+	breakAliasCycles(root)
+
+	val := root.Content[1] // mapping value of "a"
+	require.Equal(t, yaml.MappingNode, val.Kind)
+	self := val.Content[1] // value of "b"
+	require.Equal(t, yaml.ScalarNode, self.Kind, "the cyclic alias must be replaced with a null scalar")
+	require.Equal(t, "!!null", self.Tag)
+	require.Nil(t, self.Alias)
+}
+
+func TestBreakAliasCycles_KeepsPlainAliases(t *testing.T) {
+	var doc yaml.Node
+	src := "opts: &o {k: v}\nservices:\n  a: *o\n"
+	require.NoError(t, yaml.Unmarshal([]byte(src), &doc))
+	root := doc.Content[0]
+	breakAliasCycles(root)
+
+	svc := root.Content[3] // services value
+	alias := svc.Content[1]
+	require.Equal(t, yaml.AliasNode, alias.Kind, "a non-cyclic alias must survive")
+	require.NotNil(t, alias.Alias)
+}
+
+func TestParse_MultipleExtendsSameSiblingFile(t *testing.T) {
+	// Several services extending the same sibling file must all resolve
+	// against its (cached) root, each getting an independent copy.
+	base := `
+services:
+  one:
+    extends:
+      file: ./common.yaml
+      service: shared
+  two:
+    extends:
+      file: ./common.yaml
+      service: shared
+    image: alpine:3.20
+`
+	common := `
+services:
+  shared:
+    image: nginx:1.27
+    privileged: true
+`
+	got := parseCompose(t, "compose.yaml", base, map[string]string{"common.yaml": common})
+	require.Len(t, got, 1)
+	require.JSONEq(t, `{
+	  "services": {
+	    "one": {"image": "nginx:1.27", "privileged": true},
+	    "two": {"image": "alpine:3.20", "privileged": true}
+	  }
+	}`, got[0])
+}
+
+func TestOverrideNameFor(t *testing.T) {
+	require.Equal(t, "compose.override.yaml", names.OverrideNameFor("compose.yaml"))
+	require.Equal(t, "compose.override.yml", names.OverrideNameFor("compose.yml"))
+	require.Equal(t, "docker-compose.override.yaml", names.OverrideNameFor("docker-compose.yaml"))
+	require.Equal(t, "docker-compose.override.yml", names.OverrideNameFor("docker-compose.yml"))
+	require.Equal(t, "compose.override.yaml", names.OverrideNameFor("/a/b/Compose.YAML"),
+		"pairing follows the default base name matching")
+	require.Equal(t, "", names.OverrideNameFor("compose.prod.yaml"))
+	require.Equal(t, "", names.OverrideNameFor("compose.override.yaml"))
+}
+
+func TestParse_OverrideMergeUnionsServiceSequences(t *testing.T) {
+	// Per the Compose merge rules (compose-go override/merge), file merge
+	// appends sequences — security_opt, cap_add, etc. keep the base file's
+	// entries — instead of replacing them; only command, entrypoint and
+	// healthcheck.test are overridden.
+	base := `
+services:
+  web:
+    security_opt:
+      - seccomp=unconfined
+    cap_add:
+      - NET_ADMIN
+    command:
+      - sh
+      - -c
+      - echo base
+    ports:
+      - "8080:80"
+`
+	override := `
+services:
+  web:
+    security_opt:
+      - no-new-privileges:true
+    cap_add:
+      - SYS_PTRACE
+    command:
+      - sh
+      - -c
+      - echo override
+    ports:
+      - "8443:443"
+`
+	got := parseCompose(t, "compose.yaml", base, map[string]string{
+		"compose.override.yaml": override,
+	})
+	require.Len(t, got, 1)
+	require.JSONEq(t, `{
+	  "services": {
+	    "web": {
+	      "security_opt": ["seccomp=unconfined", "no-new-privileges:true"],
+	      "cap_add": ["NET_ADMIN", "SYS_PTRACE"],
+	      "command": ["sh", "-c", "echo override"],
+	      "ports": ["8080:80", "8443:443"]
+	    }
+	  }
+	}`, got[0])
+}
+
+func TestParse_DeepExtendsChainResolvesFully(t *testing.T) {
+	// Compose (compose-go) imposes no extends depth limit, only cycle
+	// detection: a legitimate chain longer than any fixed cap must resolve
+	// completely, or settings inherited from the chain head silently
+	// disappear from the merged document.
+	depth := 15
+	var sb strings.Builder
+	sb.WriteString("services:\n  svc0:\n    image: nginx:1.27\n    privileged: true\n")
+	for i := 1; i <= depth; i++ {
+		sb.WriteString(fmt.Sprintf("  svc%d:\n    extends: svc%d\n", i, i-1))
+	}
+	got := parseCompose(t, "compose.yaml", sb.String(), nil)
+	require.Len(t, got, 1)
+	var doc map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(got[0]), &doc))
+	last := fmt.Sprintf("svc%d", depth)
+	web := asMap(asMap(doc["services"])[last])
+	require.Equal(t, "nginx:1.27", web["image"], "the full chain must resolve")
+	require.Equal(t, true, web["privileged"], "deep inheritance must not be truncated")
+}
+
+func TestCopyNode_MemoizesSharedAnchors(t *testing.T) {
+	// Stacked anchor reuse (a block referenced k times per level over d
+	// levels) used to cost k^d physical node copies in copyNode — the shape
+	// measured at 19 GB before being killed. The memo copies each shared
+	// anchor block once, so this exact shape must copy in linear time.
+	levels, refs := 9, 6
+	var sb strings.Builder
+	sb.WriteString("x-l0: &l0\n  image: alpine\n")
+	for l := 1; l <= levels; l++ {
+		sb.WriteString(fmt.Sprintf("x-l%d: &l%d\n", l, l))
+		for r := 0; r < refs; r++ {
+			sb.WriteString(fmt.Sprintf("  f%d: *l%d\n", r, l-1))
+		}
+	}
+	sb.WriteString("services:\n  base:\n")
+	for r := 0; r < refs; r++ {
+		sb.WriteString(fmt.Sprintf("    k%d: *l%d\n", r, levels))
+	}
+	var doc yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(sb.String()), &doc))
+	base := serviceNode(doc.Content[0], "base")
+	require.NotNil(t, base)
+
+	done := make(chan *yaml.Node)
+	go func() {
+		done <- copyNode(base)
+	}()
+	var copied *yaml.Node
+	select {
+	case copied = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("copyNode did not complete in 5s: shared-anchor memoization regressed")
+	}
+	// The copy preserves the anchor content and shares it across references:
+	// every k alias resolves to the same copied subtree.
+	require.Equal(t, yaml.AliasNode, copied.Content[1].Kind)
+	require.Equal(t, copied.Content[1].Alias, copied.Content[3].Alias,
+		"two references to the same anchor must share one copied subtree")
+	require.Equal(t, "l9", copied.Content[1].Alias.Anchor,
+		"the shared copy keeps the anchor's identity")
 }

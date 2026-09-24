@@ -50,3 +50,23 @@ func IsDefaultBaseFileName(path string) bool {
 	}
 	return false
 }
+
+// OverrideNameFor returns the default override file name paired with the given
+// path ("", when path is not a default base file name). Compose merges each
+// base only with its own override variant: compose.yaml with
+// compose.override.yaml, docker-compose.yaml with docker-compose.override.yaml
+// — never across variants.
+func OverrideNameFor(path string) string {
+	base := strings.ToLower(filepath.Base(path))
+	switch base {
+	case "compose.yaml":
+		return "compose.override.yaml"
+	case "compose.yml":
+		return "compose.override.yml"
+	case "docker-compose.yaml":
+		return "docker-compose.override.yaml"
+	case "docker-compose.yml":
+		return "docker-compose.override.yml"
+	}
+	return ""
+}

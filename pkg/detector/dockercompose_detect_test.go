@@ -91,3 +91,10 @@ func TestDockerComposeDetectLine_FallbackOnMissingMarker(t *testing.T) {
 func lineInfo(line int) model.Document {
 	return model.Document{"_dd__default": &model.LineObject{Line: line}}
 }
+
+func TestComposeSearchPath_SkipsEmptyComponents(t *testing.T) {
+	// Empty path components (trailing/consecutive dots in a search key) must
+	// not survive expansion: they never match a document path.
+	require.Equal(t, []string{"services", "image"}, ComposeSearchPath("services..image"))
+	require.Equal(t, []string{"services"}, ComposeSearchPath("services."))
+}

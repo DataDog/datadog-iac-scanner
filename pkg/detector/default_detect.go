@@ -181,7 +181,9 @@ func expandSearchKeyPath(searchKey string) []string {
 		for seg != "" {
 			open := strings.Index(seg, "[")
 			if open < 0 {
-				comps = append(comps, seg)
+				if seg != "" {
+					comps = append(comps, seg)
+				}
 				break
 			}
 			if head := seg[:open]; head != "" {

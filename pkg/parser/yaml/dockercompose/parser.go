@@ -66,7 +66,6 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	}
 
 	t := &transformer{
-		ctx:    ctx,
 		fsys:   p.fsys,
 		dir:    filepath.Dir(filePath),
 		self:   filePath,
@@ -76,7 +75,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		t.env = p.loadEnv(ctx, filePath)
 	}
 	if names.IsDefaultBaseFileName(filePath) {
-		t.overrideContent = p.loadOverride(ctx, filePath)
+		t.overrideContent, t.overrideName = p.loadOverride(ctx, filePath)
 	}
 
 	transform := func(node *yaml.Node) {
@@ -103,21 +102,25 @@ func (p *Parser) loadEnv(ctx context.Context, filePath string) map[string]string
 	return ParseEnvFile(content)
 }
 
-// loadOverride reads the sibling Compose override file when one exists,
-// returning nil content otherwise. Only the default names are auto-merged.
-func (p *Parser) loadOverride(ctx context.Context, filePath string) []byte {
+// loadOverride reads the sibling Compose override file paired with this base
+// file's name (compose.yaml with compose.override.yaml, docker-compose.yaml
+// with docker-compose.override.yaml), returning its content and name, or nil
+// content when no paired override exists. Only the paired default name is
+// auto-merged, mirroring Compose's own discovery rule.
+func (p *Parser) loadOverride(ctx context.Context, filePath string) (content []byte, name string) {
 	contextLogger := logger.FromContext(ctx)
-	dir := filepath.Dir(filePath)
-	for _, name := range names.OverrideFileNames {
-		content, err := p.fsys.ReadFile(filepath.Join(dir, name))
-		if err == nil {
-			return content
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			contextLogger.Debug().Msgf("dockercompose: could not read override %s: %s", name, err)
-		}
+	name = names.OverrideNameFor(filePath)
+	if name == "" {
+		return nil, ""
 	}
-	return nil
+	content, err := p.fsys.ReadFile(filepath.Join(filepath.Dir(filePath), name))
+	if err == nil {
+		return content, name
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		contextLogger.Debug().Msgf("dockercompose: could not read override %s: %s", name, err)
+	}
+	return nil, ""
 }
 
 // SupportedExtensions returns extensions supported by this parser, which are yaml and yml extension
@@ -145,4 +148,13 @@ func (p *Parser) GetCommentToken() string {
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
+}
+
+// DirectoryDependent reports that this parser's output can depend on files
+// other than the one being parsed: Compose semantics resolve .env, override
+// and extends targets from the file's directory, so two files with identical
+// content in different directories can parse differently. The runner must
+// not share such parses across files with identical content.
+func (p *Parser) DirectoryDependent() bool {
+	return true
 }
