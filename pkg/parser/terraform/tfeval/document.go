@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -150,10 +151,10 @@ func ctyMapToDocument(v cty.Value, src attrSource) map[string]interface{} {
 	obj := make(map[string]interface{}, v.LengthInt())
 	for it := v.ElementIterator(); it.Next(); {
 		key, ev := it.Element()
-		if key.Type() != cty.String || !key.IsKnown() {
+		name, ok := ctyutil.ConcreteString(key)
+		if !ok {
 			continue
 		}
-		name := key.AsString()
 		var es attrSource
 		switch {
 		case body != nil:
@@ -188,10 +189,14 @@ func objectConsSources(expr hclsyntax.Expression) map[string]hclsyntax.Expressio
 	out := make(map[string]hclsyntax.Expression, len(cons.Items))
 	for _, item := range cons.Items {
 		k, diags := item.KeyExpr.Value(nil)
-		if diags.HasErrors() || !k.IsKnown() || k.IsNull() || k.Type() != cty.String {
+		if diags.HasErrors() {
 			continue
 		}
-		out[k.AsString()] = item.ValueExpr
+		key, ok := ctyutil.ConcreteString(k)
+		if !ok {
+			continue
+		}
+		out[key] = item.ValueExpr
 	}
 	return out
 }
@@ -261,14 +266,11 @@ func renderTraversal(traversal hcl.Traversal) (string, bool) {
 			sb.WriteByte('.')
 			sb.WriteString(s.Name)
 		case hcl.TraverseIndex:
-			switch s.Key.Type() {
-			case cty.String:
-				sb.WriteString(`["` + s.Key.AsString() + `"]`)
-			case cty.Number:
-				sb.WriteString("[" + s.Key.AsBigFloat().Text('f', -1) + "]")
-			default:
+			formatted, ok := ctyutil.FormatIndexKey(s.Key)
+			if !ok {
 				return "", false
 			}
+			sb.WriteString(formatted)
 		default:
 			return "", false
 		}
@@ -303,7 +305,7 @@ func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResol
 	emptyCtx := &hcl.EvalContext{}
 	var dirs []string
 	for _, mb := range moduleBlocks {
-		source := knownString(mb.Body.Attributes["source"], emptyCtx)
+		source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], emptyCtx)
 		if source == "" {
 			continue
 		}
@@ -313,7 +315,7 @@ func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResol
 			continue
 		}
 		if resolver != nil {
-			version := knownString(mb.Body.Attributes["version"], emptyCtx)
+			version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], emptyCtx)
 			if d, _, ok := resolver(source, version, mb.TypeRange.Filename, blockLabel(mb)); ok {
 				dirs = append(dirs, d)
 			}

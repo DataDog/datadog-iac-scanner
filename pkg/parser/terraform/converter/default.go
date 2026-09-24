@@ -8,9 +8,9 @@ package converter
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -88,33 +88,19 @@ func (c *converter) evalContext() *hcl.EvalContext {
 	}
 }
 
-const (
-	ddLinesKey            = "_dd_"
-	ctyFriendlyNameString = "string"
-)
-
 func (c *converter) rangeSource(r hcl.Range) string {
 	return string(c.bytes[r.Start.Byte:r.End.Byte])
 }
 
 func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLine int) (model.Document, error) {
 	var err error
-	var v string
 	countValue := body.Attributes["count"]
 	count := -1
 
 	if countValue != nil {
 		value, err := countValue.Expr.Value(nil)
 		if err == nil {
-			switch value.Type() {
-			case cty.String:
-				v = value.AsString()
-			case cty.Number:
-				v = value.AsBigFloat().String()
-			}
-
-			intValue, err := strconv.Atoi(v)
-			if err == nil {
+			if intValue, ok := ctyutil.LiteralInt(value); ok {
 				count = intValue
 			}
 		}
@@ -315,37 +301,6 @@ func (v *converterExprVisitor) VisitDefault(e hclsyntax.Expression) (interface{}
 	return v.c.tryEvalExpression(e)
 }
 
-func checkValue(val cty.Value) bool {
-	if val.Type().HasDynamicTypes() || !val.IsKnown() {
-		return true
-	}
-	if !val.Type().IsPrimitiveType() && checkDynamicKnownTypes(val) {
-		return true
-	}
-	return false
-}
-
-func checkDynamicKnownTypes(valueConverted cty.Value) bool {
-	if !valueConverted.Type().HasDynamicTypes() && valueConverted.IsKnown() {
-		if valueConverted.Type().FriendlyName() == "tuple" {
-			for _, val := range valueConverted.AsValueSlice() {
-				if checkValue(val) {
-					return true
-				}
-			}
-		}
-		if valueConverted.Type().FriendlyName() == "object" {
-			for _, val := range valueConverted.AsValueMap() {
-				if checkValue(val) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	return true
-}
-
 func (c *converter) objectConsExpr(value *hclsyntax.ObjectConsExpr) (model.Document, error) {
 	m := make(model.Document)
 	for _, item := range value.Items {
@@ -374,12 +329,14 @@ func (c *converter) convertKey(keyExpr hclsyntax.Expression) (string, error) {
 
 func (c *converter) convertTemplate(t *hclsyntax.TemplateExpr) (string, error) {
 	if t.IsStringLiteral() {
-		// safe because the value is just the string
 		v, err := t.Value(nil)
 		if err != nil {
 			return "", err
 		}
-		return v.AsString(), nil
+		if s, ok := ctyutil.ConcreteString(v); ok {
+			return s, nil
+		}
+		return c.wrapExpr(t)
 	}
 	builder := &strings.Builder{}
 	for _, part := range t.Parts {
@@ -412,7 +369,10 @@ func (v *converterStringPartVisitor) VisitLiteralValue(e *hclsyntax.LiteralValue
 	if err != nil {
 		return "", err
 	}
-	return s.AsString(), nil
+	if str, ok := ctyutil.ConcreteString(s); ok {
+		return str, nil
+	}
+	return v.c.wrapExpr(e)
 }
 func (v *converterStringPartVisitor) VisitTemplateExpr(e *hclsyntax.TemplateExpr) (string, error) {
 	return v.c.convertTemplate(e)
@@ -461,8 +421,8 @@ func (v *converterStringPartVisitor) VisitExprSyntaxError(e *hclsyntax.ExprSynta
 }
 func (v *converterStringPartVisitor) VisitDefault(e hclsyntax.Expression) (string, error) {
 	val, _ := e.Value(&hcl.EvalContext{Variables: v.c.inputVars})
-	if val.IsWhollyKnown() && val.Type().FriendlyName() == ctyFriendlyNameString {
-		return val.AsString(), nil
+	if s, ok := ctyutil.ConcreteString(val); ok {
+		return s, nil
 	}
 	return v.c.wrapExpr(e)
 }
@@ -522,7 +482,7 @@ func (c *converter) convertTemplateFor(expr *hclsyntax.ForExpr) (string, error) 
 
 func (c *converter) tryEvalExpression(expr hclsyntax.Expression) (interface{}, error) {
 	val, _ := expr.Value(c.evalContext())
-	if val.IsWhollyKnown() && !checkDynamicKnownTypes(val) {
+	if val.IsWhollyKnown() && !ctyutil.ContainsNestedUnknown(val) {
 		return ctyjson.SimpleJSONValue{Value: val}, nil
 	}
 	return c.wrapExpr(expr)
@@ -530,8 +490,8 @@ func (c *converter) tryEvalExpression(expr hclsyntax.Expression) (interface{}, e
 
 func (c *converter) tryEvalToString(expr hclsyntax.Expression) (string, error) {
 	val, _ := expr.Value(c.evalContext())
-	if val.IsWhollyKnown() && val.Type().FriendlyName() == ctyFriendlyNameString {
-		return val.AsString(), nil
+	if s, ok := ctyutil.ConcreteString(val); ok {
+		return s, nil
 	}
 	return c.wrapExpr(expr)
 }

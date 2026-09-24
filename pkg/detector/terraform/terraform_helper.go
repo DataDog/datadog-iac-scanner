@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -307,8 +308,9 @@ func getSingleLineArrayValue(line string, start, end, index int) (string, error)
 
 	// Handle string literals
 	if strLit, ok := elemExpr.(*hclsyntax.LiteralValueExpr); ok {
-		// Return the string value without quotes
-		return strLit.Val.AsString(), nil
+		if s, ok := ctyutil.ConcreteString(strLit.Val); ok {
+			return s, nil
+		}
 	}
 
 	// For other types, return the source text

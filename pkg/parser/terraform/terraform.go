@@ -7,12 +7,14 @@ package terraform
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
@@ -24,7 +26,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pkg/errors"
-	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 	"golang.org/x/sync/singleflight"
 )
@@ -169,10 +170,11 @@ func processElements(ctx context.Context, elements model.Document, path string) 
 			content := utils.CheckCertificate(value)
 			processContent(ctx, elements, content, path)
 		case ctyjson.SimpleJSONValue:
-			if value.Type() != cty.String {
+			s, ok := ctyutil.ConcreteString(value.Value)
+			if !ok {
 				continue
 			}
-			content := utils.CheckCertificate(value.AsString())
+			content := utils.CheckCertificate(s)
 			processContent(ctx, elements, content, path)
 		}
 	}
@@ -310,6 +312,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		if r := recover(); r != nil {
 			errMessage := "Recovered from panic during parsing of file " + path
 			masterUtils.HandlePanic(ctx, r, errMessage)
+			err = fmt.Errorf("%s: %v", errMessage, r)
 		}
 	}()
 	if diagnostics != nil && diagnostics.HasErrors() && len(diagnostics.Errs()) > 0 {

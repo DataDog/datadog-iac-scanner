@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/builder/engine"
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
@@ -506,7 +507,8 @@ func jsonPolicyResourceListsFromAttr(body hcl.Body, src []byte) [][]string {
 		var resources hcl.Expression
 		for _, pair := range pairs {
 			key, keyDiags := pair.Key.Value(&hcl.EvalContext{})
-			if keyDiags.HasErrors() || !key.IsKnown() || key.Type() != cty.String || key.AsString() != "resources" {
+			keyStr, keyOK := ctyutil.ConcreteString(key)
+			if keyDiags.HasErrors() || !keyOK || keyStr != "resources" {
 				continue
 			}
 			resources = pair.Value
@@ -543,8 +545,10 @@ func jsonPolicyResourcesFromExpr(expr hcl.Expression, src []byte) []string {
 
 func jsonPolicyResourceString(expr hcl.Expression, src []byte) string {
 	val, diags := expr.Value(&hcl.EvalContext{})
-	if !diags.HasErrors() && val.IsWhollyKnown() && !val.IsNull() && val.Type() == cty.String {
-		return val.AsString()
+	if !diags.HasErrors() {
+		if s, ok := ctyutil.ConcreteString(val); ok {
+			return s
+		}
 	}
 	s := wrapJSONRange(expr.Range(), "", src)
 	if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") {

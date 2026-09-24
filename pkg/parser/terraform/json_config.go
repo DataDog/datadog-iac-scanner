@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
@@ -118,19 +119,11 @@ func countZero(attrs hcl.Attributes, evalCtx *hcl.EvalContext) bool {
 		return false
 	}
 	val, diags := attr.Expr.Value(evalCtx)
-	if diags.HasErrors() || !val.IsKnown() || val.IsNull() {
+	if diags.HasErrors() {
 		return false
 	}
-	switch val.Type() {
-	case cty.Number:
-		f, _ := val.AsBigFloat().Float64()
-		return f == 0
-	case cty.String:
-		n, err := strconv.Atoi(val.AsString())
-		return err == nil && n == 0
-	default:
-		return false
-	}
+	n, ok := ctyutil.LiteralInt(val)
+	return ok && n == 0
 }
 
 func ctyToJSONDocument(v cty.Value) interface{} {
@@ -180,10 +173,10 @@ func convertJSONObjectExpr(expr hcl.Expression, evalCtx *hcl.EvalContext, src []
 	out := make(model.Document, len(pairs))
 	for _, pair := range pairs {
 		keyVal, keyDiags := pair.Key.Value(evalCtx)
-		if keyDiags.HasErrors() || !keyVal.IsKnown() || keyVal.Type() != cty.String {
+		key, ok := ctyutil.ConcreteString(keyVal)
+		if keyDiags.HasErrors() || !ok {
 			continue
 		}
-		key := keyVal.AsString()
 		out[key] = convertJSONExpr(pair.Value, evalCtx, src, key)
 	}
 	return out, true

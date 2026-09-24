@@ -139,11 +139,11 @@ func Test_Parser(t *testing.T) {
 	require.Contains(t, document[0], "resource")
 	require.Contains(t, document[0]["resource"], "aws_s3_bucket")
 
-	// case where we fail to parse the file and a fatal error is thrown caught with recover
-	_, document, linesToIgnore, _, err = parser.Parse(ctx, []byte(conditionalValResource), "test.tf", true, 15)
+	_, document, _, _, err = parser.Parse(ctx, []byte(conditionalValResource), "test.tf", true, 15)
 	require.NoError(t, err)
-	require.Len(t, document, 0)
-	require.Len(t, linesToIgnore, 0)
+	require.Len(t, document, 1)
+	secret := document[0]["resource"].(model.Document)["aws_secretsmanager_secret_version"].(model.Document)["example"].(model.Document)
+	require.Contains(t, secret["secret_string"], "${null}")
 
 }
 
