@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose/names"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+
 	yamlParser "gopkg.in/yaml.v3"
 )
 
@@ -185,7 +188,18 @@ func yamlMapKeyNode(m *yamlParser.Node, key string) *yamlParser.Node {
 	return yamlMapKeyNodeSeen(m, key, nil)
 }
 
-func dockerComposeFromYAMLNode(root *yamlParser.Node, path string, explicitSelection bool) bool {
+func dockerComposeFromYAMLNode(root *yamlParser.Node, fsys vfs.FS, path string,
+	explicitSelection bool, scanFiles map[string]struct{}) bool {
+	// A default override file merges into its base compose file at parse time
+	// and must not be classified standalone (findings would be duplicated);
+	// but only when a base sibling is part of the scan — a base that merely
+	// exists on disk but is outside the scan (targeted path, ignore-paths,
+	// only-paths) never consumes the override, so scanning the override
+	// standalone is the only way its findings surface. Without a base sibling
+	// at all, it scans standalone too — Compose's own discovery rule.
+	if names.IsOverrideFileName(path) && composeBaseSiblingInScan(scanFiles, fsys, path) {
+		return false
+	}
 	if !yamlRootIsMapping(root) {
 		return false
 	}
@@ -215,6 +229,39 @@ func isDockerComposeFileName(path string) bool {
 	return base == "compose.yaml" || base == "compose.yml" ||
 		base == "docker-compose.yaml" || base == "docker-compose.yml" ||
 		strings.HasPrefix(base, "compose.") || strings.HasPrefix(base, "docker-compose.")
+}
+
+// composeBaseSiblingInScan reports whether one of the default base compose
+// file names sits next to path within the scan. scanFiles is the analyzer's
+// walked candidate set (slash paths) and is authoritative when provided; when
+// nil (server push mode, direct classification), it falls back to checking the
+// scan FS, which for the server's in-memory FS is exactly the pushed-file set.
+func composeBaseSiblingInScan(scanFiles map[string]struct{}, fsys vfs.FS, path string) bool {
+	if scanFiles != nil {
+		dir := filepath.Dir(path)
+		for _, name := range names.FileNames {
+			if _, ok := scanFiles[filepath.ToSlash(filepath.Join(dir, name))]; ok {
+				return true
+			}
+		}
+		return false
+	}
+	return composeBaseSiblingExists(fsys, path)
+}
+
+// composeBaseSiblingExists reports whether one of the default base compose
+// file names sits next to path on the scan filesystem.
+func composeBaseSiblingExists(fsys vfs.FS, path string) bool {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
+	dir := filepath.Dir(path)
+	for _, name := range names.FileNames {
+		if _, err := fsys.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // yamlMapKeyNodeSeen looks key up in m, following merge keys into the mappings

@@ -30,6 +30,7 @@ import (
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
+	dockerComposeParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
@@ -361,6 +362,7 @@ func (c *Client) createService(
 	combinedParserBuilder := parser.NewBuilder(ctx).
 		WithFS(c.fsys).
 		Add(&yamlParser.Parser{}).
+		Add(dockerComposeParser.NewDefaultWithFS(c.fsys)).
 		Add(tfParser).
 		Add(&bicepParser.Parser{}).
 		Add(&cicdParser.Parser{}).

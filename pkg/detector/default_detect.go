@@ -156,11 +156,10 @@ func detectTerraformPlanLine(
 	}
 }
 
-// terraformPlanPath turns a plan searchKey into structural path components for
-// GetLineBySearchLine. It expands bracket groups ("type[name]" -> type, name;
-// "list[0]" -> list, 0), drops value anchors (key=value -> key), strips the
-// "{{ }}" templating some Rego rules wrap the name in, and ensures the path
-// is rooted at the plan's top-level "resource" key.
+// expandSearchKeyPath turns a search key into structural path components:
+// dropping any value anchor ("key=value"), splitting on top-level dots, and
+// expanding bracket groups ("group[name]" -> group, name), stripping the
+// "{{ }}" templating some Rego rules wrap the name in.
 //
 // Bracket contents can contain dots (module-prefixed keys, e.g.
 // "type[module.foo.name]") and/or a count/for_each suffix bracket (e.g.
@@ -168,7 +167,7 @@ func detectTerraformPlanLine(
 // unclosed "[...]" (see splitTopLevelDots), and a group's closing bracket is
 // found by findMatchingBracket, which is quote- and nesting-aware since a
 // for_each key can itself contain a literal "]" (e.g. module.secrets["prod]eu"]).
-func terraformPlanPath(searchKey string) ([]string, bool) {
+func expandSearchKeyPath(searchKey string) []string {
 	// Drop the value anchor (key=value) up front; the value may contain dots.
 	if eq := strings.Index(searchKey, "="); eq >= 0 {
 		searchKey = searchKey[:eq]
@@ -203,6 +202,14 @@ func terraformPlanPath(searchKey string) ([]string, bool) {
 			seg = seg[closeIdx+1:]
 		}
 	}
+	return comps
+}
+
+// terraformPlanPath turns a plan searchKey into structural path components for
+// GetLineBySearchLine, rooted at the plan's top-level "resource" key; see
+// expandSearchKeyPath for the expansion rules.
+func terraformPlanPath(searchKey string) ([]string, bool) {
+	comps := expandSearchKeyPath(searchKey)
 	explicitResourcePath := len(comps) > 0 && comps[0] == "resource"
 	if explicitResourcePath {
 		comps = comps[1:]

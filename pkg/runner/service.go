@@ -214,9 +214,15 @@ func (s *Service) ClearTreeCons() {
 //   - Terraform/TF-plan (module instantiation mutates bodies in place per caller)
 //   - parses that resolved references (filename-relative ResolvedFiles/ignore lines)
 //   - Ansible playbooks (AddExtraInfo rewrites per file path)
+//   - directory-dependent parses (e.g. Docker Compose: .env, override and
+//     extends siblings make identical content in different directories parse
+//     differently — sharing would cross-contaminate their documents)
 //   - empty content
 func shareableParse(documents *parser.ParsedDocument) bool {
 	if documents.Content == "" {
+		return false
+	}
+	if documents.DirectoryDependent {
 		return false
 	}
 	switch documents.Kind {

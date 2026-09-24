@@ -23,6 +23,15 @@ type contentKindParser interface {
 	KindForContent(content []byte) (model.FileKind, bool)
 }
 
+// directoryDependentParser is an optional parser capability declaring that the
+// parser's output can depend on files other than the one being parsed (e.g.
+// Docker Compose resolves .env, override and extends targets from the file's
+// directory). Parsers implementing it must not have their parses shared across
+// files with identical content in different directories.
+type directoryDependentParser interface {
+	DirectoryDependent() bool
+}
+
 type kindParser interface {
 	GetKind() model.FileKind
 	GetCommentToken() string
@@ -132,6 +141,10 @@ type ParsedDocument struct {
 	CountLines    int
 	ResolvedFiles map[string]model.ResolvedFile
 	IsMinified    bool
+	// DirectoryDependent marks parses whose output depends on sibling files
+	// (see directoryDependentParser); the runner must not share them across
+	// files with identical content.
+	DirectoryDependent bool
 }
 
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
@@ -222,14 +235,20 @@ func (c *Parser) parseContent(
 		}
 	}
 
+	directoryDependent := false
+	if dd, ok := c.Parsers.(directoryDependentParser); ok && dd.DirectoryDependent() {
+		directoryDependent = true
+	}
+
 	return ParsedDocument{
-		Docs:          obj,
-		Kind:          kind,
-		Content:       cont,
-		IgnoreLines:   igLines,
-		CountLines:    bytes.Count(resolved, []byte{'\n'}) + 1,
-		ResolvedFiles: resolvedFiles,
-		IsMinified:    isMinified,
+		Docs:               obj,
+		Kind:               kind,
+		Content:            cont,
+		IgnoreLines:        igLines,
+		CountLines:         bytes.Count(resolved, []byte{'\n'}) + 1,
+		ResolvedFiles:      resolvedFiles,
+		IsMinified:         isMinified,
+		DirectoryDependent: directoryDependent,
 	}, nil
 }
 

@@ -191,6 +191,9 @@ type analyzerInfo struct {
 	filePlatformMap *sync.Map
 	contentCache    *sync.Map
 	helmCache       *sync.Map
+	// scanFiles is the analyzer's walked candidate set (slash paths); scopes
+	// the Docker Compose override guard to bases that are part of this scan.
+	scanFiles map[string]struct{}
 }
 
 // Analyzer keeps all the relevant info for the function Analyze
@@ -489,6 +492,15 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	typesFlag := typesLower(a.Types)
 
+	// The walked candidate set: a default compose base on disk but outside the
+	// scan (targeted path, ignore-paths, only-paths) never consumes its
+	// override file, so the override must not be dropped from classification
+	// on its behalf. Workers read the set, never write it.
+	scanFiles := make(map[string]struct{}, len(files))
+	for _, f := range files {
+		scanFiles[f] = struct{}{}
+	}
+
 	var filePlatformMap sync.Map
 	var contentCache sync.Map
 	var helmCacheLocal sync.Map
@@ -515,6 +527,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					filePlatformMap: &filePlatformMap,
 					contentCache:    &contentCache,
 					helmCache:       &helmCacheLocal,
+					scanFiles:       scanFiles,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
 				return nil
@@ -599,7 +612,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache)
+	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)
 	if platform == "" {
 		unwanted <- a.filePath
 		return
@@ -725,7 +738,8 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 // checkReturnType. It returns the platform string (lowercased) or "" when none
 // matches or the file is a non-Terraform JSON (which the scanner does not scan).
 // typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
-func classifyByContent(ctx context.Context, path string, content []byte, ext string, typesFlag []string, hc *sync.Map) string {
+func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []byte, ext string,
+	typesFlag []string, hc *sync.Map, scanFiles map[string]struct{}) string {
 	returnType := ""
 
 	// Sort map so that CloudFormation (type that as less requireds) goes last
@@ -759,7 +773,7 @@ func classifyByContent(ctx context.Context, path string, content []byte, ext str
 		}
 	}
 
-	endReturnType := checkReturnType(ctx, path, returnType, ext, content, typesFlag, hc)
+	endReturnType := checkReturnType(ctx, fsys, path, returnType, ext, content, typesFlag, hc, scanFiles)
 
 	// Only process JSON files if they are Terraform plans
 	// This will be the case until other platforms support json scanning
@@ -790,12 +804,16 @@ func containsAny(content []byte, needles [][]byte) bool {
 // for extension detection; pass the in-memory FS for pushed content that never
 // touches disk, or nil to default to the real disk.
 func ClassifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string) string {
-	return classifyFile(ctx, fsys, path, content, typesFlag, nil)
+	return classifyFile(ctx, fsys, path, content, typesFlag, nil, nil)
 }
 
 // classifyFile is the internal implementation; hc is the per-scan helm cache
-// (nil disables caching, which is safe for the server/sink path).
-func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte, typesFlag []string, hc *sync.Map) string {
+// (nil disables caching, which is safe for the server/sink path). scanFiles is
+// the analyzer's walked candidate set (slash paths) when known — it scopes the
+// Docker Compose override guard to bases that are actually part of the scan;
+// nil means unknown and falls back to checking the scan FS.
+func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
+	typesFlag []string, hc *sync.Map, scanFiles map[string]struct{}) string {
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}
@@ -821,7 +839,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	case extCfg, extConf, extIni:
 		return ansible
 	case yaml, yml, json, sh:
-		return classifyByContent(ctx, path, content, ext, typesFlag, hc)
+		return classifyByContent(ctx, fsys, path, content, ext, typesFlag, hc, scanFiles)
 	}
 	return ""
 }
@@ -862,7 +880,8 @@ func PlatformForKind(kind model.FileKind) (string, bool) {
 	}
 }
 
-func checkReturnType(ctx context.Context, path, returnType, ext string, content []byte, typesFlag []string, hc *sync.Map) string {
+func checkReturnType(ctx context.Context, fsys vfs.FS, path, returnType, ext string,
+	content []byte, typesFlag []string, hc *sync.Map, scanFiles map[string]struct{}) string {
 	if returnType != "" {
 		switch returnType {
 		case cdkTf:
@@ -879,7 +898,7 @@ func checkReturnType(ctx context.Context, path, returnType, ext string, content 
 		if checkHelm(ctx, path, hc) {
 			return kubernetes
 		}
-		platform := checkYamlPlatform(ctx, content, path, typesFlag)
+		platform := checkYamlPlatform(ctx, fsys, content, path, typesFlag, scanFiles)
 		if platform != "" {
 			return platform
 		}
@@ -942,7 +961,8 @@ func dockerComposeExplicitlyRequested(typesFlag []string) bool {
 	return len(typesFlag) == 1 && strings.EqualFold(typesFlag[0], dockercompose)
 }
 
-func checkYamlPlatform(ctx context.Context, content []byte, path string, typesFlag []string) string {
+func checkYamlPlatform(ctx context.Context, fsys vfs.FS, content []byte,
+	path string, typesFlag []string, scanFiles map[string]struct{}) string {
 	// Ansible 'templates/' directories contain Jinja2 files; {{ }} syntax is invalid YAML.
 	if isInsideAnsibleTemplatesDir(path) {
 		return ""
@@ -985,7 +1005,7 @@ func checkYamlPlatform(ctx context.Context, content []byte, path string, typesFl
 		return ""
 	}
 
-	if dockerComposeFromYAMLNode(root, path, dockerComposeExplicitlyRequested(typesFlag)) {
+	if dockerComposeFromYAMLNode(root, fsys, path, dockerComposeExplicitlyRequested(typesFlag), scanFiles) {
 		return dockercompose
 	}
 	if yamlMapKeyNode(root, listKeywordsGoogleDeployment[0]) != nil {
