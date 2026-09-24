@@ -42,7 +42,7 @@ const syntheticRuleID = "test-terraform-resource-missing-owner"
 
 var (
 	analyzeCompiledQueryCacheTestMu sync.Mutex
-	analyzeProcessCwdMu               sync.Mutex
+	analyzeProcessCwdMu             sync.Mutex
 )
 
 // syntheticRule imports both test-only pushed libraries. Its identifiers and
@@ -110,6 +110,14 @@ func ruleset(rules ...datadog.Rule) datadog.Ruleset {
 	return datadog.Ruleset{Rules: ptrs}
 }
 
+// newParallelTestServer is newTestServer with parallel parsing on — the serve
+// binary's default, and the path that runs the shared memory dispatch (Helm
+// chart rendering included).
+func newParallelTestServer(t *testing.T) *Server {
+	t.Helper()
+	return New(&Config{ParallelParsing: true})
+}
+
 func postAnalyze(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse, int) {
 	t.Helper()
 	if len(req.Libraries) == 0 {
@@ -162,6 +170,44 @@ func TestAnalyze_ContentPush_TerraformFinding(t *testing.T) {
 	// reported missing.
 	if len(out.MissingFiles) != 0 {
 		t.Errorf("expected no missing files for same-dir siblings, got %v", out.MissingFiles)
+	}
+}
+
+// TestAnalyze_ContentPush_ParallelDispatchFinding runs the terraform
+// content-push case through the shared memory dispatch (parallel parsing on,
+// the serve binary's default) to pin that the dispatch path behaves like the
+// per-service one for plain files.
+func TestAnalyze_ContentPush_ParallelDispatchFinding(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "b" {
+  bucket = var.bucket_name
+}`},
+			{Path: "infra/variables.tf", Content: `variable "bucket_name" { default = "my-bucket" }`},
+		},
+		Ruleset:  ruleset(syntheticRule()),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var found bool
+	for _, f := range out.Findings {
+		if f.QueryID == syntheticRuleID {
+			found = true
+			if f.FileName != "infra/main.tf" {
+				t.Errorf("finding fileName = %q, want infra/main.tf", f.FileName)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected the synthetic rule to fire through the shared dispatch; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files, got %v", out.MissingFiles)
 	}
 }
 
@@ -615,14 +661,15 @@ func TestAnalyze_LocalModuleAbsolutePathShape(t *testing.T) {
 // local-module-eval pin is on: tfeval reads module and tfvars files through the
 // request's in-memory FS, so evaluation can only see pushed content and an
 // unpushed module directory is reported as a missing file for escalation,
-// never read off the real disk. Helm stays pinned off until its chart loader
-// can load from the in-memory FS.
+// never read off the real disk. Helm is on too: the chart loader reads from
+// the same in-memory FS, and a chart that fails to render escalates its
+// directory.
 func TestServerFlagEvaluator(t *testing.T) {
 	evaluator := serverFlagEvaluator(false)
 
-	if evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
-		t.Error("IacEnableKicsHelmResolver must be pinned false in server mode: " +
-			"Helm rendering needs a chart on disk, which content-push mode cannot materialize")
+	if !evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
+		t.Error("IacEnableKicsHelmResolver must be pinned true in server mode: " +
+			"the chart loader reads pushed content through the in-memory FS")
 	}
 	// Each flag is read through the same method its production call site uses,
 	// so this keeps holding if server mode ever gets an evaluator whose methods

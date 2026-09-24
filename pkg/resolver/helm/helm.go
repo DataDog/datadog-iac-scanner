@@ -1,9 +1,11 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
@@ -23,6 +26,7 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/cli/values"
 	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/ignore"
 	"helm.sh/helm/v3/pkg/release"
 )
 
@@ -51,6 +55,14 @@ var (
 	kubeVersionOnce   sync.Once
 	cachedKubeVersion *chartutil.KubeVersion
 )
+
+// filesystem returns the resolver's scan FS, defaulting to the real disk.
+func (r *Resolver) filesystem() vfs.FS {
+	if r.fsys != nil {
+		return r.fsys
+	}
+	return vfs.Default()
+}
 
 func dryRunKubeVersion() *chartutil.KubeVersion {
 	kubeVersionOnce.Do(func() {
@@ -98,31 +110,16 @@ func chartKubeVersionConstraint(ch *chart.Chart) string {
 	return ch.Metadata.KubeVersion
 }
 
-func runInstall(ctx context.Context, args []string, client *action.Install,
+func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *action.Install,
 	valueOpts *values.Options) (*release.Release, *chart.Chart, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	log.SetOutput(io.Discard)
 	defer log.SetOutput(os.Stderr)
 
-	contextLogger.Debug().Msgf("Starting helm install process with args: %v", args)
+	contextLogger.Debug().Msgf("Starting helm install process for chart path: %s", chartPath)
 
-	if client.Version == "" && client.Devel {
-		client.Version = ">0.0.0-0"
-		contextLogger.Debug().Msg("Set development version for helm client")
-	}
-
-	name, charts, err := client.NameAndChart(args)
-	if err != nil {
-		return nil, nil, []string{}, err
-	}
-	contextLogger.Debug().Msgf("Parsed chart name: '%s', chart path: '%s'", name, charts)
-	client.ReleaseName = name
-
-	cp, err := client.LocateChart(charts, settings)
-	if err != nil {
-		return nil, nil, []string{}, err
-	}
-	contextLogger.Debug().Msgf("Located chart at path: '%s'", cp)
+	// The release name is fixed in newClient and the chart path is local, so
+	// LocateChart's disk stat and repository resolution is unnecessary.
 
 	p := getter.All(settings)
 	vals, err := valueOpts.MergeValues(p)
@@ -132,8 +129,8 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	contextLogger.Debug().Msgf("Merged helm values successfully, values count: %d", len(vals))
 
 	// Check chart dependencies to make sure all are present in /charts
-	contextLogger.Debug().Msgf("Loading chart from path: '%s'", cp)
-	chartRequested, err := loader.Load(cp)
+	contextLogger.Debug().Msgf("Loading chart from path: '%s'", chartPath)
+	chartRequested, err := loadChart(fsys, chartPath)
 	if err != nil {
 		return nil, nil, []string{}, err
 	}
@@ -145,7 +142,7 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 		chartRequested.Metadata.KubeVersion = ""
 	}
 
-	excluded := getExcluded(ctx, chartRequested, cp)
+	excluded := getExcluded(ctx, chartRequested, chartPath)
 
 	chartRequested = makeDeterministic(chartRequested)
 	chartRequested = setID(chartRequested)
@@ -167,8 +164,114 @@ func runInstall(ctx context.Context, args []string, client *action.Install,
 	return helmRelease, chartRequested, excluded, nil
 }
 
-// checkIfInstallable validates if a chart can be installed
-//
+// loadChart loads the chart at dir from the scan FS. The real disk keeps
+// helm's own directory loader (symlink and .helmignore semantics unchanged
+// from the CLI); any other FS (the server's in-memory one) is walked via the
+// vfs and assembled with helm's in-memory loader.
+func loadChart(fsys vfs.FS, dir string) (*chart.Chart, error) {
+	if vfs.IsDisk(fsys) {
+		return loader.LoadDir(dir)
+	}
+	return loadChartFromFS(fsys, dir)
+}
+
+// ArchiveChartIdentity returns the name and version a packaged chart declares.
+// The name is the directory it renders under when the parent does not alias it
+// (nginx-1.2.3.tgz renders under charts/nginx/). An alias in the parent's
+// dependencies replaces that directory.
+func ArchiveChartIdentity(data []byte) (name, version string, err error) {
+	ch, err := loader.LoadArchive(bytes.NewReader(data))
+	if err != nil {
+		return "", "", err
+	}
+	version = ""
+	if ch.Metadata != nil {
+		version = ch.Metadata.Version
+	}
+	return ch.Name(), version, nil
+}
+
+// utf8bom mirrors loader's BOM handling for files read through the vfs.
+var utf8bom = []byte{0xEF, 0xBB, 0xBF}
+
+// loadChartFromFS mirrors loader.LoadDir over the scan FS: .helmignore rules,
+// regular files only, each capped at helm's MaxDecompressedFileSize, then
+// loader.LoadFiles (the same in-memory entry point LoadDir feeds).
+func loadChartFromFS(fsys vfs.FS, dir string) (*chart.Chart, error) {
+	rules := ignore.Empty()
+	// Stat first so a missing .helmignore is not recorded as a missing file by
+	// an in-memory FS (it would become a pointless escalation request).
+	if _, err := fsys.Stat(filepath.Join(dir, ignore.HelmIgnore)); err == nil {
+		data, err := fsys.ReadFile(filepath.Join(dir, ignore.HelmIgnore))
+		if err != nil {
+			return nil, errors.Wrapf(err, "error reading %s", ignore.HelmIgnore)
+		}
+		parsed, err := ignore.Parse(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		rules = parsed
+	}
+	rules.AddDefaults()
+
+	files := make([]*loader.BufferedFile, 0)
+	if err := walkChartFiles(fsys, rules, dir, "", &files); err != nil {
+		return nil, err
+	}
+	return loader.LoadFiles(files)
+}
+
+// walkChartFiles recursively collects dir's files into out, keyed by their
+// chart-root-relative slash path. A ReadDir miss is not an error: an absent
+// optional subdirectory must not fail the whole render.
+func walkChartFiles(fsys vfs.FS, rules *ignore.Rules, dir, rel string, out *[]*loader.BufferedFile) error {
+	entries, err := fsys.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return errors.Wrapf(err, "error reading %s", rel)
+	}
+	for _, entry := range entries {
+		entryRel := entry.Name()
+		if rel != "" {
+			entryRel = rel + "/" + entry.Name()
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return errors.Wrapf(infoErr, "error stating %s", entryRel)
+		}
+		if info.IsDir() {
+			// Directory-based ignore rules skip the entire subtree.
+			if rules.Ignore(entryRel, info) {
+				continue
+			}
+			if err := walkChartFiles(fsys, rules, filepath.Join(dir, entry.Name()), entryRel, out); err != nil {
+				return err
+			}
+			continue
+		}
+		if rules.Ignore(entryRel, info) {
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return errors.Errorf("cannot load irregular file %s as it has file mode type bits set", entryRel)
+		}
+		if info.Size() > loader.MaxDecompressedFileSize {
+			return errors.Errorf("chart file %q is larger than the maximum file size %d", entry.Name(), loader.MaxDecompressedFileSize)
+		}
+		data, err := fsys.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return errors.Wrapf(err, "error reading %s", entryRel)
+		}
+		*out = append(*out, &loader.BufferedFile{
+			Name: entryRel,
+			Data: bytes.TrimPrefix(data, utf8bom),
+		})
+	}
+	return nil
+}
+
 // Application chart type is only installable
 func checkIfInstallable(ch *chart.Chart) error {
 	switch ch.Metadata.Type {
@@ -656,10 +759,17 @@ func crdChartRelativePath(name string) string {
 	return name
 }
 
-// resolvedChartFilePath maps a chart-relative path to an on-disk path beside chartPath.
-func resolvedChartFilePath(chartPath, chartRelative string) string {
+// resolvedChartFilePath maps a chart-relative path to a path beside chartPath.
+// slashPaths forces forward slashes, so a pushed chart's findings match the
+// pushed path shape on every platform; otherwise (the CLI on disk) the OS
+// separator is kept.
+func resolvedChartFilePath(chartPath, chartRelative string, slashPaths bool) string {
 	subFolder := filepath.Base(chartPath)
-	return filepath.Join(filepath.Dir(chartPath), subFolder, filepath.FromSlash(chartRelative))
+	joined := filepath.Join(filepath.Dir(chartPath), subFolder, filepath.FromSlash(chartRelative))
+	if slashPaths {
+		joined = filepath.ToSlash(joined)
+	}
+	return joined
 }
 
 func localCRDFiles(ch *chart.Chart) []*chart.File {

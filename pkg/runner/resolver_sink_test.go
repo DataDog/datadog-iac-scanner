@@ -384,6 +384,14 @@ func TestIsExpectedHelmRenderError(t *testing.T) {
 	}
 }
 
+func TestHelmRenderNeedsNoFiles(t *testing.T) {
+	require.True(t, helmRenderNeedsNoFiles(errors.New("nil pointer evaluating interface {}.name")))
+	require.True(t, helmRenderNeedsNoFiles(errors.New("execution error at (chart/templates/deploy.yaml:3:22): replicas")))
+	require.True(t, helmRenderNeedsNoFiles(errors.New("execution error at (chart/templates/deploy.yaml:2:5): env required")))
+	require.False(t, helmRenderNeedsNoFiles(errors.New(`error calling include: template: no template "e2e.labels" associated with template "gotpl"`)))
+	require.False(t, helmRenderNeedsNoFiles(nil))
+}
+
 func TestIsUnderFailedHelmChart(t *testing.T) {
 	svc := &Service{}
 	svc.recordFailedHelmChart("/repo/charts/watchdog")

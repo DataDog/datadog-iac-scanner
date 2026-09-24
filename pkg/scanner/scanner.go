@@ -45,12 +45,23 @@ func PrepareAndScan(
 		// The cached file bytes were only needed during the shared walk; release them
 		// before eval so they are not held through the query phase.
 		fsp.ReleaseContentCache()
-		for _, s := range services {
-			s.ClearContentInterner()
-			s.ClearParsedShares()
-			s.ClearTreeCons()
+		releasePrepareState(services)
+		return StartScan(ctx, scanID, services)
+	}
+
+	// The in-memory (server) dispatch: one pass over the pushed files, rendering
+	// each pushed Helm chart once. It runs regardless of the parallel-parsing
+	// flag — the flag only fans the file dispatch out — so charts never silently
+	// fall back to raw-template scanning.
+	if mp, ok := runner.SharedMemoryProvider(services); ok {
+		err := runner.PrepareMemorySources(ctx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth,
+			flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing))
+		metrics.Metric.Stop()
+		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
+		if err != nil {
+			return err
 		}
-		model.ClearYAMLScalarInterner()
+		releasePrepareState(services)
 		return StartScan(ctx, scanID, services)
 	}
 
@@ -83,18 +94,24 @@ func PrepareAndScan(
 		if fsp, ok := runner.SharedWalkProvider(services); ok {
 			fsp.ReleaseContentCache()
 		}
-		for _, s := range services {
-			s.ClearContentInterner()
-			s.ClearParsedShares()
-			s.ClearTreeCons()
-		}
-		model.ClearYAMLScalarInterner()
+		releasePrepareState(services)
 		return StartScan(ctx, scanID, services)
 	case err := <-errCh:
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		return err
 	}
+}
+
+// releasePrepareState drops the dedup state that only the prepare phase uses,
+// so it is not held through eval.
+func releasePrepareState(services serviceSlice) {
+	for _, s := range services {
+		s.ClearContentInterner()
+		s.ClearParsedShares()
+		s.ClearTreeCons()
+	}
+	model.ClearYAMLScalarInterner()
 }
 
 // evalGcFileThreshold is the minimum file count at which StartScan measures the

@@ -45,12 +45,17 @@ func buildParityServices(t *testing.T, ctx context.Context, paths []string) ([]*
 
 	fsp, err := provider.NewFileSystemSourceProvider(ctx, paths, nil, nil)
 	require.NoError(t, err)
+	return buildServices(t, ctx, vfs.DiskFS{}, fsp)
+}
+
+func buildServices(t *testing.T, ctx context.Context, fsys vfs.FS, src provider.SourceProvider) ([]*Service, *storage.MemoryStorage) {
+	t.Helper()
 
 	trk, err := tracker.NewTracker(1)
 	require.NoError(t, err)
 
 	combinedParser, err := parser.NewBuilder(ctx).
-		WithFS(vfs.DiskFS{}).
+		WithFS(fsys).
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefault()).
 		Add(&bicepParser.Parser{}).
@@ -71,7 +76,7 @@ func buildParityServices(t *testing.T, ctx context.Context, paths []string) ([]*
 	services := make([]*Service, 0, len(combinedParser))
 	for _, p := range combinedParser {
 		services = append(services, &Service{
-			SourceProvider: fsp,
+			SourceProvider: src,
 			Storage:        store,
 			Parser:         p,
 			Tracker:        trk,
@@ -315,6 +320,34 @@ func TestPrepareSharedWalk_RoutesKnownYAMLPlatforms(t *testing.T) {
 	}
 }
 
+func TestPrepareMemorySources_RoutesPushedYAMLByContent(t *testing.T) {
+	ctx := context.Background()
+	deployPath := "k8s/deploy.yaml"
+	workflowPath := ".github/workflows/ci.yaml"
+	memfs := vfs.NewMemFS(map[string][]byte{
+		deployPath:   []byte("apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n"),
+		workflowPath: []byte("name: ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n"),
+	})
+	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
+	services, _ := buildServices(t, ctx, memfs, mp)
+	shared, ok := SharedMemoryProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "routing", false, 5, false))
+
+	for _, service := range services {
+		paths := make([]string, 0, len(service.files))
+		for _, file := range service.files {
+			paths = append(paths, filepath.ToSlash(file.FilePath))
+		}
+		switch service.Parser.Parsers.(type) {
+		case *cicdParser.Parser:
+			require.Equal(t, []string{workflowPath}, paths)
+		case *yamlParser.Parser:
+			require.Equal(t, []string{deployPath}, paths)
+		}
+	}
+}
+
 func TestServicesForPlatformAndParserKindFallsBackWhenUnmatched(t *testing.T) {
 	ctx := context.Background()
 	services, _ := buildParityServices(t, ctx, []string{t.TempDir()})
@@ -376,6 +409,43 @@ func TestPrepareSharedWalk_DanglingChartYamlSymlinkStillScansTerraform(t *testin
 		}
 	}
 	require.True(t, found, "terraform file under dangling Chart.yaml symlink must be prepared")
+}
+
+func TestPrepareSharedWalk_RenderedChartStillScansTerraform(t *testing.T) {
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Chart.yaml"), "apiVersion: v2\nname: root\nversion: 0.1.0\n")
+	writeFile(t, filepath.Join(dir, "templates", "deployment.yaml"),
+		"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Release.Name }}\n")
+	mainTF := filepath.Join(dir, "infra", "main.tf")
+	writeFile(t, mainTF, `resource "aws_s3_bucket" "b" { bucket = "my-bucket" }`)
+
+	analyzed, err := analyzer.Analyze(ctx, &analyzer.Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{""},
+		MaxFileSize: 100,
+	})
+	require.NoError(t, err)
+
+	services, store := buildParityServices(t, ctx, []string{dir})
+	fsp, ok := SharedWalkProvider(services)
+	require.True(t, ok)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	for _, s := range services {
+		s.FilePlatform = analyzed.FilePlatform
+	}
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "rendered-chart", false, 5))
+
+	found := false
+	for key := range documentFingerprint(t, store) {
+		if strings.Contains(key, "main.tf") {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "terraform beside a rendered root chart must still be prepared")
 }
 
 // TestContentLineCountParity guards that chunked reads (getContent) and cached

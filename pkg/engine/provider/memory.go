@@ -23,13 +23,13 @@ import (
 // MemorySourceProvider serves a fixed set of files (pushed over HTTP) to the
 // scan pipeline, reading their content through a vfs.FS. It replaces the
 // disk-walking FileSystemSourceProvider in the server's content-push path, so
-// there is no filesystem walk, no symlink/SameFile handling, and no Helm chart
-// discovery.
+// there is no filesystem walk and no symlink/SameFile handling.
 //
-// The resolverSink (used by FileSystemSourceProvider to render Helm charts) is
-// intentionally never invoked: Helm rendering needs a real on-disk chart path
-// and is unsupported in content-push mode. Pushed Helm templates fall through to
-// raw-YAML scanning.
+// The server's services share one provider, so their scans go through the
+// shared prepare (runner.PrepareMemorySources), which lists files and renders
+// pushed Helm charts via WalkInventory. GetSources/GetParallelSources serve only
+// services that do not share it; they ignore the ResolverSink and render no
+// charts.
 type MemorySourceProvider struct {
 	fsys        vfs.FS
 	paths       []string
@@ -67,6 +67,46 @@ func (m *MemorySourceProvider) eligibleFiles(extensions model.Extensions) []stri
 		eligible = append(eligible, p)
 	}
 	return eligible
+}
+
+// WalkInventory is the pushed-content counterpart of the disk provider's
+// WalkInventory: it calls chartFn for each pushed chart root (shallow-first,
+// subcharts skipped once their parent rendered) and returns the eligible pushed
+// files minus the Helm files of the charts that rendered.
+func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
+	extensions model.Extensions,
+	chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]InventoryFile, error) {
+	eligible := m.eligibleFiles(extensions)
+
+	roots := make([]string, 0)
+	for _, p := range eligible {
+		if filepath.Base(p) == "Chart.yaml" {
+			roots = append(roots, filepath.ToSlash(filepath.Dir(p)))
+		}
+	}
+	renderedRoots := renderChartsShallowFirst(ctx, roots, chartFn)
+
+	files := make([]InventoryFile, 0, len(eligible))
+	for _, p := range eligible {
+		if IsHelmChartFile(p, renderedRoots) {
+			continue
+		}
+		files = append(files, InventoryFile{Path: p, Ext: memExtension(p)})
+	}
+	return files, nil
+}
+
+// ReadFile reads a pushed file through the provider's FS.
+func (m *MemorySourceProvider) ReadFile(p string) ([]byte, error) {
+	return m.fsys.ReadFile(p)
+}
+
+// RecordMissing records an escalation request when the provider's FS tracks
+// missing paths (the in-memory one does; the real disk cannot).
+func (m *MemorySourceProvider) RecordMissing(path string) {
+	if r, ok := m.fsys.(vfs.MissingRecorder); ok {
+		r.RecordMissing(path)
+	}
 }
 
 // GetSources feeds each pushed file whose extension a parser supports into the

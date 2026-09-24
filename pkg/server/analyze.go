@@ -8,6 +8,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -39,14 +40,43 @@ const (
 	commonLibraryID = "common"
 )
 
+// analyzeFileEncodingBase64 is the wire encoding value for binary pushed
+// content (see analyzeFile.Encoding).
+const analyzeFileEncodingBase64 = "base64"
+
 // analyzeFile is a single pushed file: its path and its raw (possibly unsaved)
 // content. The path is workspace-relative for a file inside an IDE workspace
 // folder and absolute for one outside every folder. Both are accepted, and
 // findings and missing_files report paths in the shape they were pushed with,
-// after cleaning and forward-slashing (see vfs.MemFS).
+// after cleaning and forward-slashing (see vfs.MemFS). Encoding is empty for
+// text content and "base64" when Content holds base64-encoded bytes — binary
+// artifacts a text wire cannot carry, such as a packaged Helm subchart
+// (charts/*.tgz).
 type analyzeFile struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
+	Path     string `json:"path"`
+	Content  string `json:"content"`
+	Encoding string `json:"encoding,omitempty"`
+
+	decoded []byte
+}
+
+// bytes returns the file's raw content, decoding base64 once per request.
+func (f *analyzeFile) bytes() ([]byte, error) {
+	switch f.Encoding {
+	case "":
+		return []byte(f.Content), nil
+	case analyzeFileEncodingBase64:
+		if f.decoded == nil {
+			decoded, err := base64.StdEncoding.DecodeString(f.Content)
+			if err != nil {
+				return nil, errors.New("invalid base64 content for " + f.Path + ": " + err.Error())
+			}
+			f.decoded = decoded
+		}
+		return f.decoded, nil
+	default:
+		return nil, errors.New("unsupported file encoding " + f.Encoding + " for " + f.Path)
+	}
 }
 
 // analyzeRequest is the body of POST /ide/v1/iac/analyze. Ruleset and Libraries
@@ -63,11 +93,15 @@ type analyzeRequest struct {
 // analyzeResponse is the body of a successful analyze. Findings are the engine's
 // full vulnerability records (the extension's converter picks the fields it
 // needs). MissingFiles drives the hybrid escalation: paths the engine referenced
-// but that were not pushed.
+// but that were not pushed. ArchiveFiles maps a finding path rendered from a
+// packaged subchart (which exists only inside the archive) to the pushed
+// charts/*.tgz it came from, so the client can attach the finding to a file it
+// sent.
 type analyzeResponse struct {
 	Findings      []model.Vulnerability `json:"findings"`
 	MissingFiles  []string              `json:"missing_files"`
 	FailedQueries map[string]string     `json:"failed_queries,omitempty"`
+	ArchiveFiles  map[string]string     `json:"archive_files,omitempty"`
 }
 
 func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
@@ -131,8 +165,12 @@ func validateAnalyzeRequest(req *analyzeRequest, maxFiles int) error {
 	if err := validateLibraries(req.Libraries, nonNil); err != nil {
 		return err
 	}
-	for _, f := range req.Files {
+	for i := range req.Files {
+		f := &req.Files[i]
 		if err := validateFilePath(f.Path); err != nil {
+			return err
+		}
+		if _, err := f.bytes(); err != nil {
 			return err
 		}
 	}
@@ -273,14 +311,15 @@ func validateFilePath(p string) error {
 
 // serverFlagEvaluator pins the feature flags content-push mode depends on.
 //
-// Helm rendering loads the chart from the real filesystem, which content-push
-// mode has no way to materialize, so the resolver is off.
+// Helm rendering loads the chart from the request's in-memory FS, so the
+// resolver is on; a chart that fails to render from the pushed content
+// escalates its directory as a missing file.
 //
 // Parallel file parsing fans the per-file parse across CPUs; enabled by default
 // and can be disabled with --x-parallelparsing=false.
 func serverFlagEvaluator(parallelParsing bool) featureflags.FlagEvaluator {
 	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
-		featureflags.IacEnableKicsHelmResolver:        false,
+		featureflags.IacEnableKicsHelmResolver:        true,
 		featureflags.IaCEnableKicsParallelFileParsing: parallelParsing,
 	})
 }
@@ -292,8 +331,14 @@ func serverFlagEvaluator(parallelParsing bool) featureflags.FlagEvaluator {
 func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResponse, error) {
 	contextLogger := logger.FromContext(ctx)
 	files := make(map[string][]byte, len(req.Files))
-	for _, f := range req.Files {
-		files[f.Path] = []byte(f.Content)
+	for i := range req.Files {
+		f := &req.Files[i]
+		content, err := f.bytes()
+		if err != nil {
+			contextLogger.Warn().Msgf("dropping undecodable file %s: %v", f.Path, err)
+			continue
+		}
+		files[f.Path] = content
 	}
 	memfs := vfs.NewMemFS(files)
 
@@ -358,6 +403,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	}
 	if len(res.Results) > 0 {
 		resp.Findings = res.Results
+		resp.ArchiveFiles = archiveSources(ctx, res.Results, memfs)
 	}
 	if len(res.FailedQueries) > 0 {
 		contextLogger.Warn().

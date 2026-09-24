@@ -41,6 +41,39 @@ func SharedWalkProvider(services []*Service) (*provider.FileSystemSourceProvider
 	return fsp, true
 }
 
+// SharedMemoryProvider returns the memory provider when every service shares one.
+func SharedMemoryProvider(services []*Service) (*provider.MemorySourceProvider, bool) {
+	if len(services) == 0 {
+		return nil, false
+	}
+	mp, ok := services[0].SourceProvider.(*provider.MemorySourceProvider)
+	if !ok {
+		return nil, false
+	}
+	for _, s := range services[1:] {
+		if other, ok := s.SourceProvider.(*provider.MemorySourceProvider); !ok || other != mp {
+			return nil, false
+		}
+	}
+	return mp, true
+}
+
+// preparedSource is what the shared prepare needs from a source provider. The
+// disk walk (the CLI) and the IDE's pushed files differ only here: how files
+// are listed (with each chart rendered through chartFn), how their bytes are
+// read, how a file is routed to parsers, and what a chart's outcome records.
+type preparedSource interface {
+	WalkInventory(ctx context.Context, extensions model.Extensions,
+		chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]provider.InventoryFile, error)
+	// chartFailed runs when a chart fails to render; its raw files are scanned instead.
+	chartFailed(chartPath string)
+	// readContent returns nil content and a nil contentErr to skip the file.
+	// contentErr is handed to the sinks; err aborts the scan.
+	readContent(ctx context.Context, filePath string, maxFileSize int) (c *Content, contentErr, err error)
+	// platform is the file's platform for parser routing, "" when undetermined.
+	platform(ctx context.Context, services []*Service, filePath string, c *Content) string
+}
+
 // PrepareSharedWalk walks once, renders each chart once, and dispatches files to parsers.
 func PrepareSharedWalk(ctx context.Context,
 	fsp *provider.FileSystemSourceProvider,
@@ -48,13 +81,45 @@ func PrepareSharedWalk(ctx context.Context,
 	scanID string,
 	openAPIResolveReferences bool,
 	maxResolverDepth int) error {
+	return prepareSources(ctx, diskSource{fsp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
+		utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers})
+}
+
+// PrepareMemorySources is PrepareSharedWalk over the files the IDE pushed, and
+// the path every server scan takes. A chart that fails to render escalates its
+// directory via the missing set. parallel controls only the file-dispatch
+// concurrency (the --x-parallelparsing flag); charts render in both modes.
+func PrepareMemorySources(ctx context.Context,
+	mp *provider.MemorySourceProvider,
+	services []*Service,
+	scanID string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int,
+	parallel bool) error {
+	pool := utils.PoolOptions{CPUBound: true}
+	if !parallel {
+		// The flag is off: sequential dispatch, as the legacy per-service path was.
+		pool = utils.PoolOptions{Workers: 1}
+	}
+	return prepareSources(ctx, memorySource{mp}, services, scanID, openAPIResolveReferences, maxResolverDepth, pool)
+}
+
+// prepareSources lists src's files, rendering each Helm chart once (parents
+// before their subcharts under charts/, which the parent renders), and hands
+// every listed file to the parsers for its platform. Only a rendered chart's
+// Helm files are withheld from the parsers, never other files under its root.
+func prepareSources(ctx context.Context,
+	src preparedSource,
+	services []*Service,
+	scanID string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int,
+	pool utils.PoolOptions) error {
 	contextLogger := logger.FromContext(ctx)
 
-	union := unionExtensions(services)
-
-	files, err := fsp.WalkInventory(ctx, union,
+	files, err := src.WalkInventory(ctx, unionExtensions(services),
 		func(ctx context.Context, chartPath string) bool {
-			return dispatchChart(ctx, fsp, services, chartPath, scanID, openAPIResolveReferences, maxResolverDepth)
+			return resolveAndStoreChart(ctx, src, services, chartPath, scanID, openAPIResolveReferences, maxResolverDepth)
 		})
 	if err != nil {
 		return errors.Wrap(err, "failed to walk sources")
@@ -63,21 +128,20 @@ func PrepareSharedWalk(ctx context.Context,
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
 
 	routing := buildExtensionRouting(services)
-
-	return utils.ForEach(ctx, files,
-		utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
+	return utils.ForEach(ctx, files, pool,
 		func(ctx context.Context, f provider.InventoryFile, _ int) error {
-			return dispatchFile(ctx, routing[f.Ext], f.Path, scanID, openAPIResolveReferences, maxResolverDepth, fsp.ContentCache())
+			return dispatchFile(ctx, src, routing[f.Ext], f.Path, scanID, openAPIResolveReferences, maxResolverDepth)
 		})
 }
 
-func dispatchChart(ctx context.Context,
-	fsp *provider.FileSystemSourceProvider,
+func resolveAndStoreChart(
+	ctx context.Context,
+	src preparedSource,
 	services []*Service,
 	chartPath, scanID string,
 	openAPIResolveReferences bool,
-	maxResolverDepth int) bool {
-	contextLogger := logger.FromContext(ctx)
+	maxResolverDepth int,
+) bool {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
 		return true
@@ -86,10 +150,12 @@ func dispatchChart(ctx context.Context,
 		for _, s := range services {
 			s.logResolverResolveError(ctx, kind, chartPath, err)
 		}
+		// A missing deploy-time value is not a file the IDE can push. Re-requesting
+		// the chart directory cannot supply it; the raw templates are still scanned.
+		if kind != model.KindHELM || !helmRenderNeedsNoFiles(err) {
+			src.chartFailed(chartPath)
+		}
 		return false
-	}
-	if err := fsp.ExcludePaths(ctx, resFiles.Excluded); err != nil {
-		contextLogger.Err(err).Msgf("could not exclude rendered chart files: %s", chartPath)
 	}
 	routed := services
 	if kind == model.KindHELM {
@@ -103,26 +169,57 @@ func dispatchChart(ctx context.Context,
 	return true
 }
 
+// dispatchFile feeds one listed file's content to the services whose parser
+// supports its extension, narrowed to the parsers for its platform.
 func dispatchFile(ctx context.Context,
+	src preparedSource,
 	services []*Service,
 	filePath, scanID string,
 	openAPIResolveReferences bool,
-	maxResolverDepth int,
-	contentCache map[string][]byte) error {
+	maxResolverDepth int) error {
 	if len(services) == 0 {
 		return nil
 	}
-	services = servicesForPlatform(services, sharedFilePlatform(services, filePath))
+	c, contentErr, err := src.readContent(ctx, filePath, services[0].MaxFileSize)
+	if err != nil {
+		return err
+	}
+	if c == nil && contentErr == nil {
+		return nil
+	}
+	if len(services) > 1 {
+		services = servicesForPlatform(services, src.platform(ctx, services, filePath, c))
+	}
 
-	var c *Content
-	var getErr error
-	if contentCache != nil {
+	for i, s := range services {
+		content := c
+		if i > 0 {
+			content = cloneContent(c)
+		}
+		if err := s.sinkContent(ctx, filePath, scanID, content, contentErr, openAPIResolveReferences, maxResolverDepth); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// diskSource is the CLI's source: the walked (or analyzer-prebuilt) inventory,
+// read from disk or the analyzer's content cache, routed by the analyzer's
+// per-file platform.
+type diskSource struct {
+	*provider.FileSystemSourceProvider
+}
+
+func (diskSource) chartFailed(string) {}
+
+func (d diskSource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
+	if contentCache := d.ContentCache(); contentCache != nil {
 		norm := filepath.ToSlash(filePath)
 		contentCacheMu.Lock()
 		cached, ok := contentCache[norm]
 		contentCacheMu.Unlock()
 		if ok {
-			c, getErr = contentFromBytes(cached, services[0].MaxFileSize, filePath)
+			c, getErr := contentFromBytes(cached, maxFileSize, filePath)
 			// contentFromBytes copies the bytes: delete the cache entry so the raw-byte
 			// cache drains during the walk (concurrent, so guard the write).
 			contentCacheMu.Lock()
@@ -132,34 +229,62 @@ func dispatchFile(ctx context.Context,
 				// The cached content was rejected (e.g. over the size limit);
 				// re-reading the file from disk would only fail the same way,
 				// so surface the error directly.
-				return errors.Wrapf(getErr, "failed to get file content: %s", filePath)
+				return nil, nil, errors.Wrapf(getErr, "failed to get file content: %s", filePath)
 			}
+			return c, nil, nil
 		}
 	}
-	if c == nil {
-		f, err := os.Open(filepath.Clean(filePath))
-		if err != nil {
-			if provider.IgnoreDamagedFile(ctx, filepath.Clean(filePath)) {
-				return nil
-			}
-			return errors.Wrap(err, "failed to open file")
+	f, err := os.Open(filepath.Clean(filePath))
+	if err != nil {
+		if provider.IgnoreDamagedFile(ctx, filepath.Clean(filePath)) {
+			return nil, nil, nil
 		}
-		buf := scanReadBufferPool.Get().(*[]byte)
-		c, getErr = getContent(f, *buf, services[0].MaxFileSize, filePath)
-		scanReadBufferPool.Put(buf)
-		_ = f.Close()
+		return nil, nil, errors.Wrap(err, "failed to open file")
 	}
+	buf := scanReadBufferPool.Get().(*[]byte)
+	c, getErr := getContent(f, *buf, maxFileSize, filePath)
+	scanReadBufferPool.Put(buf)
+	_ = f.Close()
+	return c, getErr, nil
+}
 
-	for i, s := range services {
-		content := c
-		if i > 0 {
-			content = cloneContent(c)
-		}
-		if err := s.sinkContent(ctx, filePath, scanID, content, getErr, openAPIResolveReferences, maxResolverDepth); err != nil {
-			return err
-		}
+func (diskSource) platform(_ context.Context, services []*Service, filePath string, _ *Content) string {
+	return sharedFilePlatform(services, filePath)
+}
+
+// memorySource is the server's source: the pushed files, read from the
+// request's in-memory FS. The analyzer never walks pushed content, so each
+// file is classified here, from its bytes, the way the analyzer classifies a
+// file on disk.
+type memorySource struct {
+	*provider.MemorySourceProvider
+}
+
+func (m memorySource) chartFailed(chartPath string) {
+	m.RecordMissing(chartPath)
+}
+
+func (m memorySource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
+	content, err := m.ReadFile(filePath)
+	if err != nil {
+		// Pushed files always read; a miss means the file was withdrawn after
+		// the provider snapshot — skip rather than fail the scan.
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Warn().Msgf("memory dispatch: could not read pushed file %s: %v", filePath, err)
+		return nil, nil, nil
 	}
-	return nil
+	c, getErr := contentFromBytes(content, maxFileSize, filePath)
+	if getErr != nil {
+		return nil, nil, errors.Wrapf(getErr, "failed to get file content: %s", filePath)
+	}
+	return c, nil, nil
+}
+
+func (memorySource) platform(ctx context.Context, services []*Service, filePath string, c *Content) string {
+	if c == nil || c.Content == nil {
+		return ""
+	}
+	return analyzer.ClassifyFile(ctx, services[0].Parser.FS(), filePath, *c.Content, services[0].Platforms)
 }
 
 func sharedFilePlatform(services []*Service, filePath string) string {

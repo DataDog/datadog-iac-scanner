@@ -7,11 +7,13 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 )
 
 func initializeBuilder() *Resolver {
 	ctx := context.Background()
 	bd, _ := NewBuilder().
+		Add(ctx, helm.NewResolver(nil)).
 		Build(ctx)
 	return bd
 }
@@ -56,5 +58,17 @@ func TestGetType(t *testing.T) {
 				t.Errorf("GetType() = %v, want = %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestGetTypeWithoutHelmResolver pins the Helm-flag-off shape: with no Helm
+// resolver registered, nothing claims a chart directory.
+func TestGetTypeWithoutHelmResolver(t *testing.T) {
+	res, err := NewBuilder().Build(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.GetType(filepath.FromSlash("../../test/fixtures/test_helm")); got != model.KindCOMMON {
+		t.Errorf("GetType() = %v, want %v", got, model.KindCOMMON)
 	}
 }

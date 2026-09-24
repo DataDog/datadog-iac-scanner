@@ -352,6 +352,18 @@ func isExpectedHelmRenderError(err error) bool {
 	return false
 }
 
+// helmRenderNeedsNoFiles reports a render failure that re-pushing the chart
+// cannot fix: a missing deploy-time value, or Helm's rewritten required/fail
+// error. Helm strips "error calling required:" down to "execution error at
+// (<file>): <message>" before the error reaches the scan, and fail uses that
+// same shape. A missing template include does not.
+func helmRenderNeedsNoFiles(err error) bool {
+	if isExpectedHelmRenderError(err) {
+		return true
+	}
+	return err != nil && strings.Contains(err.Error(), "execution error at (")
+}
+
 // isCommentOnlyContent returns true when every non-blank line in content starts
 // with '#', meaning the Helm renderer produced no real YAML document.
 func isCommentOnlyContent(content []byte) bool {

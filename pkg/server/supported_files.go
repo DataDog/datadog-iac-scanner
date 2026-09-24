@@ -20,6 +20,9 @@ const (
 	strategyDirectory fileStrategy = "directory"
 	// strategySingleFile: the file is self-contained; push only the open file.
 	strategySingleFile fileStrategy = "single_file"
+	// strategyChart: the file is a Helm chart root; the IDE should push the
+	// chart directory recursively (templates/, values, crds/, subcharts).
+	strategyChart fileStrategy = "chart"
 )
 
 // SupportedFileEntry maps a set of file patterns to a resolution strategy. This
@@ -34,7 +37,8 @@ type SupportedFileEntry struct {
 // var/local/module context), the ambiguous .yaml/.yml/.json family (whose
 // platform is decided by server-side content heuristics, so the IDE
 // conservatively sends the directory), .bicep, and Ansible config. "single_file"
-// applies to self-contained types (Dockerfile, gRPC proto, Buildah .sh).
+// applies to self-contained types (Dockerfile, gRPC proto, Buildah .sh), and
+// "chart" to a Helm chart root (push the chart directory recursively).
 //
 // Keys are the IDE-facing patterns (dotted extensions, or full filenames like
 // "Dockerfile"). TestSupportedFiles_NoDrift asserts this covers every
@@ -54,6 +58,7 @@ var strategyByPattern = map[string]fileStrategy{
 	".ini":        strategyDirectory,
 	"Dockerfile":  strategySingleFile,
 	".dockerfile": strategySingleFile,
+	"Chart.yaml":  strategyChart,
 	".ubi8":       strategySingleFile,
 	".debian":     strategySingleFile,
 	".proto":      strategySingleFile,
