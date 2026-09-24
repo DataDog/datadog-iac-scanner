@@ -49,6 +49,14 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		}
 	}
 
+	// Deep anchored keys (e.g. Ansible's
+	// "name={{task}}.{{module}}.policy.Statement[0].Principal") are resolved
+	// structurally: the text matcher cannot advance through bracket indices.
+	// Shallow anchored keys and failures fall through to the text matcher.
+	if result := detectAnchoredLine(searchKey, file, detector.ResolvedFile, outputLines, lines); result != nil {
+		return *result
+	}
+
 	var extractedString [][]string
 	extractedString = GetBracketValues(searchKey, extractedString, "")
 	sanitizedSubstring := searchKey
