@@ -125,6 +125,23 @@ func TestResourceBudgetReservesAcquisitionAgainstUsage(t *testing.T) {
 	require.Equal(t, int64(3), lease.Bytes())
 }
 
+func TestResourceBudgetWithholdsPartialLeaseWhileOthersAreOutstanding(t *testing.T) {
+	t.Parallel()
+
+	budget := NewResourceBudget(ResourceLimits{})
+	first, ok := budget.TryAcquireAcquisition(10, 6)
+	require.True(t, ok)
+
+	_, ok = budget.TryAcquireAcquisition(10, 6)
+	require.False(t, ok, "the 4 bytes left must wait until the outstanding lease settles")
+
+	require.NoError(t, budget.AdmitPackage("/tmp/a", PackageUsage{Bytes: 5}))
+	first.Release()
+	partial, ok := budget.TryAcquireAcquisition(10, 6)
+	require.True(t, ok)
+	require.Equal(t, int64(5), partial.Bytes())
+}
+
 func TestResourceBudgetWaitsForAcquisitionCapacity(t *testing.T) {
 	t.Parallel()
 

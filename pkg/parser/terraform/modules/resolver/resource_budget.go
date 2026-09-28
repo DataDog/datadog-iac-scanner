@@ -203,7 +203,15 @@ func (b *ResourceBudget) tryAcquireAcquisitionLocked(
 	if available <= 0 {
 		return nil, false
 	}
-	if requested <= 0 || requested > available {
+	if requested > available {
+		// The remainder is only handed out once no other lease is outstanding,
+		// so which module gets it never depends on which fetches finish first.
+		if b.acquisitionReserved > 0 {
+			return nil, false
+		}
+		requested = available
+	}
+	if requested <= 0 {
 		requested = available
 	}
 	b.acquisitionReserved += requested
