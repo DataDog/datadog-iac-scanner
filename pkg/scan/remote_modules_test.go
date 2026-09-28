@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -16,8 +17,46 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
+
+func TestLogModuleResolutionFailuresWarnsOncePerReason(t *testing.T) {
+	const allowlist = `module host "registry.example.com" is not in --module-host-allowlist`
+	const denied = "Permission denied (publickey)."
+	var failures []modulegraph.ResolutionFailure
+	for i := 0; i < 7; i++ {
+		failures = append(failures, modulegraph.ResolutionFailure{
+			Source:     "registry.example.com/acme/module-" + string(rune('a'+i)) + "/aws",
+			CallerFile: "root/main.tf",
+			Reason:     allowlist,
+		})
+	}
+	for i := 0; i < 3; i++ {
+		failures = append(failures, modulegraph.ResolutionFailure{
+			Source: "git@github.com:acme/private//vpc?ref=v1", CallerFile: "root/main.tf", Reason: denied,
+		})
+	}
+
+	var buf bytes.Buffer
+	log := zerolog.New(&buf).Level(zerolog.WarnLevel)
+	logModuleResolutionFailures(&log, failures)
+
+	var warnings []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &entry))
+		warnings = append(warnings, entry)
+	}
+	require.Len(t, warnings, 2)
+	require.Equal(t, allowlist, warnings[0]["reason"])
+	require.EqualValues(t, 7, warnings[0]["module_calls"])
+	require.EqualValues(t, 7, warnings[0]["module_source_count"])
+	require.Len(t, warnings[0]["module_sources"], maxLoggedFailureSources)
+	require.Equal(t, denied, warnings[1]["reason"])
+	require.EqualValues(t, 3, warnings[1]["module_calls"])
+	require.EqualValues(t, 1, warnings[1]["module_source_count"])
+}
 
 func TestResolvedModuleSourceTypeUsesResolvedGitRef(t *testing.T) {
 	module := &modulegraph.ResolvedModule{
@@ -299,7 +338,7 @@ func remoteModuleScanParams(root string) *Parameters {
 		MaxFileSizeFlag:         100,
 		MaxResolverDepth:        15,
 		ModuleMaxDepth:          DefaultRemoteModuleMaxDepth,
-		FlagEvaluator: featureflags.NewLocalEvaluator(),
+		FlagEvaluator:           featureflags.NewLocalEvaluator(),
 	}
 }
 

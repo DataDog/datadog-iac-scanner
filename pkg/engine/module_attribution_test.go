@@ -232,9 +232,28 @@ func TestNormalizedModuleSourceDoesNotExposeExternalLocalPaths(t *testing.T) {
 	)
 	require.Equal(
 		t,
-		"github.com:acme/network",
+		"https://github.com/acme/network",
 		normalizedModuleSource("token@github.com:acme/network.git?ref=v1.0.0", "git", repo, repo),
 	)
+}
+
+func TestNormalizedModuleSourceGivesEquivalentGitSpellingsOneSource(t *testing.T) {
+	repo := t.TempDir()
+	const want = "https://github.com/DataDog/appgate//gateways/aws/instance"
+	for _, source := range []string{
+		"git::https://github.com/DataDog/appgate//gateways/aws/instance?ref=80bbe065",
+		"git::https://github.com/DataDog/appgate.git//gateways/aws/instance?ref=80bbe065",
+		"github.com/DataDog/appgate//gateways/aws/instance?ref=80bbe065",
+		"git::git@github.com:DataDog/appgate.git//gateways/aws/instance?ref=80bbe065",
+		"git@github.com:DataDog/appgate.git//gateways/aws/instance",
+		"git::ssh://git@github.com/DataDog/appgate.git//gateways/aws/instance?ref=80bbe065",
+	} {
+		require.Equal(t, want, normalizedModuleSource(source, "git", repo, repo), source)
+	}
+	require.Equal(t, "https://bitbucket.org/acme/network",
+		normalizedModuleSource("bitbucket.org/acme/network", "git", repo, repo))
+	require.Equal(t, "https://git.example.com/acme/network//vpc",
+		normalizedModuleSource("git::https://ci:token@git.example.com/acme/network.git//vpc?ref=v1", "git", repo, repo))
 }
 
 func TestBuildModuleAttributionTransitiveHopUsesCallerDirectory(t *testing.T) {

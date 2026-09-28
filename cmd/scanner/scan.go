@@ -105,7 +105,7 @@ var scanAction = &cli.Command{
 		&cli.DurationFlag{
 			Name:  "terraform-modules-fetch-timeout",
 			Usage: "per-module fetch timeout",
-			Value: 30 * time.Second,
+			Value: scan.DefaultRemoteModuleFetchTimeout,
 		},
 		&cli.DurationFlag{
 			Name:  "module-resolution-timeout",

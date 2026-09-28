@@ -88,9 +88,11 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 			baselinePaths = append(baselinePaths, path)
 		}
 	}
+	metrics.Metric.Start(memwatch.PhaseModuleResolve)
 	moduleCleanup, remoteModulePaths, remoteSourceDirs, remoteModuleProvenance, err := c.resolveTerraformModulesForScan(
 		ctx, paramsPlatforms, &extractedPaths, baselinePaths,
 	)
+	metrics.Metric.Stop()
 	memwatch.Sample(ctx, memwatch.PhaseModuleResolve)
 	if err != nil {
 		return nil, err

@@ -43,12 +43,13 @@ func ParseTerraformModules(value string) (TerraformModulesSetting, error) {
 }
 
 const (
-	DefaultRemoteModuleMaxDepth        = 8
+	DefaultRemoteModuleMaxDepth        = 16
 	DefaultRemoteModuleMaxTotalBytes   = tfresolver.DefaultMaxTotalBytes
 	DefaultRemoteModuleMaxPackageBytes = tfresolver.DefaultMaxPackageBytes
 	DefaultRemoteModuleMaxFileBytes    = tfresolver.DefaultMaxFileBytes
 	DefaultRemoteModuleMaxPackageFiles = tfresolver.DefaultMaxPackageFiles
 	DefaultRemoteModuleMaxCacheBytes   = tfresolver.DefaultMaxCacheBytes
+	DefaultRemoteModuleFetchTimeout    = tfresolver.DefaultFetchTimeout
 )
 
 // Parameters represents all available scan parameters
@@ -205,7 +206,7 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		MaxResolverDepth:            15,
 		TerraformModules:            TerraformModulesOff,
 		ModuleMaxDepth:              DefaultRemoteModuleMaxDepth,
-		ModuleFetchTimeout:          30 * time.Second,
+		ModuleFetchTimeout:          DefaultRemoteModuleFetchTimeout,
 		MaxModuleBytesTotal:         DefaultRemoteModuleMaxTotalBytes,
 		MaxModulePackageBytes:       DefaultRemoteModuleMaxPackageBytes,
 		MaxModuleFileBytes:          DefaultRemoteModuleMaxFileBytes,
