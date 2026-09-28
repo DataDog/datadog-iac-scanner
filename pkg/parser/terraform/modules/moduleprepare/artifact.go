@@ -13,13 +13,16 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -37,6 +40,7 @@ type materializer struct {
 	artifactRoot string
 	packages     map[string]stagedPackage
 	packageRoots []string
+	referenced   map[string]bool
 }
 
 type manifestGroup struct {
@@ -49,48 +53,66 @@ type manifestGroup struct {
 	declarations     []resolver.ManifestDeclaration
 }
 
+// newMaterializer stages every package into the artifact in parallel, hashing
+// each file as it is copied so a package is read once. Packages no manifest
+// entry ends up referencing are removed by prune.
 func newMaterializer(
 	ctx context.Context,
-	artifactRoot string,
+	artifactRoot, repositoryRoot string,
 	modules []modulegraph.ResolvedModule,
 	failures []modulegraph.ResolutionFailure,
+	linkFiles bool,
 ) (*materializer, error) {
-	if err := os.MkdirAll(filepath.Join(artifactRoot, manifestRoot), artifactDirectoryPermissions); err != nil {
+	packagesDir := filepath.Join(artifactRoot, manifestRoot)
+	if err := os.MkdirAll(packagesDir, artifactDirectoryPermissions); err != nil {
 		return nil, fmt.Errorf("creating module artifact root: %w", err)
 	}
 	m := &materializer{
 		artifactRoot: artifactRoot,
 		packages:     make(map[string]stagedPackage),
+		referenced:   make(map[string]bool),
 	}
-	addPackage := func(packageRoot string) error {
+	seen := make(map[string]bool)
+	addRoot := func(packageRoot string) {
 		if packageRoot == "" {
-			return nil
+			return
 		}
 		root := filepath.Clean(packageRoot)
-		if _, ok := m.packages[root]; ok {
-			return nil
+		if !seen[root] {
+			seen[root] = true
+			m.packageRoots = append(m.packageRoots, root)
 		}
-		digest, err := resolver.ComputePackageDigest(ctx, root)
-		if err != nil {
-			return fmt.Errorf("digesting module package %q: %w", root, err)
-		}
-		m.packages[root] = stagedPackage{
-			originalRoot: root,
-			digest:       digest,
-			relativeRoot: strings.TrimPrefix(digest, "sha256:"),
-		}
-		m.packageRoots = append(m.packageRoots, root)
-		return nil
 	}
 	for i := range modules {
-		if err := addPackage(modules[i].PackageRoot); err != nil {
-			return nil, err
-		}
+		addRoot(modules[i].PackageRoot)
 	}
 	for i := range failures {
-		if err := addPackage(failures[i].CallerPackageRoot); err != nil {
-			return nil, err
-		}
+		addRoot(failures[i].CallerPackageRoot)
+	}
+
+	stager := &packageStager{packagesDir: packagesDir}
+	staged := make([]stagedPackage, len(m.packageRoots))
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(max(1, runtime.GOMAXPROCS(0)))
+	for i, root := range m.packageRoots {
+		// Packages inside the scanned repository, such as .terraform/modules,
+		// belong to the user and are never linked, so their modes never change.
+		_, inRepository := relativeWithin(repositoryRoot, root)
+		link := linkFiles && !inRepository
+		g.Go(func() error {
+			pkg, err := stager.stage(gCtx, root, link)
+			if err != nil {
+				return fmt.Errorf("staging module package %q: %w", root, err)
+			}
+			staged[i] = pkg
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	for _, pkg := range staged {
+		m.packages[pkg.originalRoot] = pkg
 	}
 	sort.Slice(m.packageRoots, func(i, j int) bool {
 		if len(m.packageRoots[i]) != len(m.packageRoots[j]) {
@@ -148,7 +170,10 @@ func buildManifestModules(
 	sort.Strings(keys)
 	entries := make([]resolver.ManifestModule, 0, len(keys))
 	for _, key := range keys {
-		entry, err := materializer.buildEntry(ctx, groups[key])
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		entry, err := materializer.buildEntry(groups[key])
 		if err != nil {
 			return nil, err
 		}
@@ -180,7 +205,7 @@ func manifestGroupFor(
 	return groups[key]
 }
 
-func (m *materializer) buildEntry(ctx context.Context, group *manifestGroup) (resolver.ManifestModule, error) {
+func (m *materializer) buildEntry(group *manifestGroup) (resolver.ManifestModule, error) {
 	entry := resolver.ManifestModule{
 		Source:           group.source,
 		SourceType:       group.sourceType,
@@ -221,9 +246,7 @@ func (m *materializer) buildEntry(ctx context.Context, group *manifestGroup) (re
 			return entry, nil
 		}
 	}
-	if err := m.stagePackage(ctx, packageInfo); err != nil {
-		return resolver.ManifestModule{}, err
-	}
+	m.referenced[packageInfo.relativeRoot] = true
 
 	entry.CanonicalSource = model.RedactURLCredentials(first.CanonicalSource)
 	entry.ResolvedVersion = first.ResolvedVersion
@@ -235,28 +258,16 @@ func (m *materializer) buildEntry(ctx context.Context, group *manifestGroup) (re
 	return entry, nil
 }
 
-func (m *materializer) stagePackage(ctx context.Context, pkg stagedPackage) error {
-	destination := filepath.Join(m.artifactRoot, manifestRoot, filepath.FromSlash(pkg.relativeRoot))
-	if _, err := os.Stat(destination); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("checking staged module package: %w", err)
-	}
-	temp, err := os.MkdirTemp(filepath.Join(m.artifactRoot, manifestRoot), ".package-")
-	if err != nil {
-		return fmt.Errorf("creating temporary package directory: %w", err)
-	}
-	defer func() {
-		_ = os.RemoveAll(temp)
-	}()
-	if err := copyPackage(ctx, pkg.originalRoot, temp); err != nil {
-		return fmt.Errorf("staging module package: %w", err)
-	}
-	if err := os.Rename(temp, destination); err != nil {
-		if _, statErr := os.Stat(destination); statErr == nil {
-			return nil
+// prune removes staged packages that no resolved manifest entry references.
+func (m *materializer) prune() error {
+	for _, pkg := range m.packages {
+		if m.referenced[pkg.relativeRoot] {
+			continue
 		}
-		return fmt.Errorf("publishing module package: %w", err)
+		destination := filepath.Join(m.artifactRoot, manifestRoot, filepath.FromSlash(pkg.relativeRoot))
+		if err := os.RemoveAll(destination); err != nil {
+			return fmt.Errorf("removing unreferenced module package: %w", err)
+		}
 	}
 	return nil
 }
@@ -346,52 +357,75 @@ func joinedFailureReasons(failures []modulegraph.ResolutionFailure) string {
 	return strings.Join(ordered, "; ")
 }
 
-func copyPackage(ctx context.Context, source, destination string) error {
-	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		relative, err := filepath.Rel(source, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(destination, relative)
-		if entry.Type()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("symlink %q is not allowed in a module package", path)
-		}
-		if entry.IsDir() {
-			return os.MkdirAll(target, artifactDirectoryPermissions)
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("non-regular file %q is not allowed in a module package", path)
-		}
-		return copyRegularFile(path, target, info.Mode().Perm())
-	})
+type packageStager struct {
+	packagesDir string
+	// linkFailed stops link attempts once one fails, as they fail alike when
+	// the package cache and the artifact sit on different filesystems.
+	linkFailed atomic.Bool
 }
 
-func copyRegularFile(source, destination string, mode fs.FileMode) error {
-	input, err := os.Open(source) //nolint:gosec
+// stage writes root under a temporary name while digesting it, then renames it
+// to its digest. Roots with identical content collapse onto one directory.
+func (s *packageStager) stage(ctx context.Context, root string, link bool) (stagedPackage, error) {
+	temp, err := os.MkdirTemp(s.packagesDir, ".package-")
+	if err != nil {
+		return stagedPackage{}, fmt.Errorf("creating temporary package directory: %w", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(temp)
+	}()
+	digest, err := resolver.WalkPackageDigest(ctx, root, resolver.PackageVisitor{
+		Dir: func(relative string) error {
+			return os.MkdirAll(filepath.Join(temp, relative), artifactDirectoryPermissions)
+		},
+		File: func(relative, path string, info fs.FileInfo, content io.Reader) error {
+			return s.stageFile(path, filepath.Join(temp, relative), info.Mode(), content, link)
+		},
+	})
+	if err != nil {
+		return stagedPackage{}, err
+	}
+	pkg := stagedPackage{
+		originalRoot: root,
+		digest:       digest,
+		relativeRoot: strings.TrimPrefix(digest, "sha256:"),
+	}
+	destination := filepath.Join(s.packagesDir, filepath.FromSlash(pkg.relativeRoot))
+	if err := os.Rename(temp, destination); err != nil {
+		if _, statErr := os.Stat(destination); statErr == nil {
+			return pkg, nil
+		}
+		return stagedPackage{}, fmt.Errorf("publishing module package: %w", err)
+	}
+	return pkg, nil
+}
+
+func (s *packageStager) stageFile(source, destination string, sourceMode fs.FileMode, content io.Reader, link bool) error {
+	mode := sourceMode.Perm() & artifactFileModeMask
+	if link && !s.linkFailed.Load() {
+		if linkFile(source, destination, sourceMode.Perm(), mode) {
+			return nil
+		}
+		s.linkFailed.Store(true)
+	}
+	// destination is derived from an owned artifact root and a walked relative path.
+	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode) //nolint:gosec
 	if err != nil {
 		return err
 	}
-	// destination is derived from an owned artifact root and a walked relative path.
-	output, err := os.OpenFile( //nolint:gosec
-		destination,
-		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
-		mode&artifactFileModeMask,
-	)
-	if err != nil {
-		return errors.Join(err, input.Close())
+	_, copyErr := io.Copy(output, content)
+	return errors.Join(copyErr, output.Close())
+}
+
+// linkFile hard-links source to destination with the artifact's permissions,
+// which narrows the shared inode's mode for the source too.
+func linkFile(source, destination string, current, mode fs.FileMode) bool {
+	if os.Link(source, destination) != nil {
+		return false
 	}
-	_, copyErr := io.Copy(output, input)
-	inputCloseErr := input.Close()
-	closeErr := output.Close()
-	return errors.Join(copyErr, inputCloseErr, closeErr)
+	if current != mode && os.Chmod(destination, mode) != nil {
+		_ = os.Remove(destination)
+		return false
+	}
+	return true
 }
