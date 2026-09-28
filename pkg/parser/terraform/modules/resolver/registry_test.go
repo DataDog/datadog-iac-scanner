@@ -8,6 +8,7 @@ package resolver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -133,6 +134,53 @@ func TestResolveConcreteVersionBareVersionSkipsDiscovery(t *testing.T) {
 	}
 	if got != "1.0.0" {
 		t.Fatalf("version = %q, want 1.0.0", got)
+	}
+}
+
+func TestResolveRegistryVersionReadsLargeVersionLists(t *testing.T) {
+	var body strings.Builder
+	body.WriteString(`{"modules":[{"versions":[`)
+	for i := 0; i < 5000; i++ {
+		if i > 0 {
+			body.WriteByte(',')
+		}
+		fmt.Fprintf(&body, `{"version":"1.%d.0","submodules":[{"path":"modules/padding","providers":[{"name":"aws"}]}]}`, i)
+	}
+	body.WriteString(`]}]}`)
+	if body.Len() <= 128*1024 {
+		t.Fatalf("fixture is only %d bytes", body.Len())
+	}
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body.String())),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	}
+
+	got, err := resolveRegistryVersion(
+		context.Background(), client, "https://registry.terraform.io/v1/modules/",
+		"terraform-aws-modules", "iam", "aws", "~> 1.4000", defaultRegistryHost,
+	)
+	if err != nil {
+		t.Fatalf("resolveRegistryVersion: %v", err)
+	}
+	if got != "1.4999.0" {
+		t.Fatalf("got %q, want 1.4999.0", got)
+	}
+}
+
+func TestReadLimitedBodyRejectsOversizedResponse(t *testing.T) {
+	if _, err := readLimitedBody(strings.NewReader("12345"), 4, "versions"); err == nil ||
+		!strings.Contains(err.Error(), "exceeds 4 bytes") {
+		t.Fatalf("expected an explicit size error, got %v", err)
+	}
+	data, err := readLimitedBody(strings.NewReader("1234"), 4, "versions")
+	if err != nil || string(data) != "1234" {
+		t.Fatalf("body at the limit: %q, %v", data, err)
 	}
 }
 
@@ -294,6 +342,11 @@ func TestSplitGetterSubdirPreservesPackageSource(t *testing.T) {
 			source:        "git::https://github.com/org/mod.git?ref=v1.0.0",
 			packageSource: "git::https://github.com/org/mod.git?ref=v1.0.0",
 		},
+		{
+			source:        "https://example.com/mod.zip////modules/child?archive=zip",
+			packageSource: "https://example.com/mod.zip?archive=zip",
+			subdir:        "modules/child",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.source, func(t *testing.T) {
@@ -352,6 +405,31 @@ func TestDotTerraformResolverDoesNotOverwriteAcrossRoots(t *testing.T) {
 	}
 	if res.LocalPath != filepath.Join(root2, "v2") {
 		t.Fatalf("LocalPath = %q, want %q", res.LocalPath, filepath.Join(root2, "v2"))
+	}
+}
+
+func TestDotTerraformResolverPrefersDeepestInstallRoot(t *testing.T) {
+	outer := writeModulesJSON(t, "terraform-aws-modules/vpc/aws", "", "outer")
+	inner := filepath.Join(outer, "stacks", "app")
+	writeModulesJSONAt(t, inner, "terraform-aws-modules/vpc/aws", "", "inner")
+	plain := filepath.Join(inner, "nested")
+	if err := os.MkdirAll(plain, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := &DotTerraformResolver{RootDirs: TerraformRootDirs([]string{outer, inner, plain})}
+
+	res, err := r.Resolve(context.Background(), &tfmodules.ParsedModule{
+		Source:   "terraform-aws-modules/vpc/aws",
+		FileName: filepath.Join(plain, "main.tf"),
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if res.LocalPath != filepath.Join(inner, "inner") {
+		t.Fatalf("LocalPath = %q, want the innermost install", res.LocalPath)
+	}
+	if got := r.rootsFor(filepath.Join(plain, "main.tf")); len(got) != 2 || got[0] != inner || got[1] != outer {
+		t.Fatalf("rootsFor = %v, want [%s %s]", got, inner, outer)
 	}
 }
 
@@ -593,7 +671,16 @@ func writeModulesJSON(t *testing.T, source, version, dir string) string {
 
 func writeModulesJSONRecords(t *testing.T, records []dotTerraformModuleRecord) string {
 	t.Helper()
-	root := t.TempDir()
+	return writeModulesJSONRecordsAt(t, t.TempDir(), records)
+}
+
+func writeModulesJSONAt(t *testing.T, root, source, version, dir string) {
+	t.Helper()
+	writeModulesJSONRecordsAt(t, root, []dotTerraformModuleRecord{{Key: "m", Source: source, Version: version, Dir: dir}})
+}
+
+func writeModulesJSONRecordsAt(t *testing.T, root string, records []dotTerraformModuleRecord) string {
+	t.Helper()
 	// Create the .terraform/modules/ tree so modules.json can be written there.
 	if err := os.MkdirAll(filepath.Join(root, ".terraform", "modules"), 0o755); err != nil {
 		t.Fatalf("mkdir .terraform/modules: %v", err)
@@ -647,6 +734,33 @@ func TestRegistryDiscoveryFailureBackoffExpires(t *testing.T) {
 	}
 }
 
+func TestRegistryDiscoveryPolicyDenialDoesNotExpire(t *testing.T) {
+	var lookups atomic.Int64
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		lookups.Add(1)
+		return []net.IP{net.ParseIP(fmt.Sprintf("172.19.1.%d", lookups.Load()))}, nil
+	}
+	now := time.Now()
+	cache := NewRegistryCache(time.Second)
+	cache.client = newPolicyHTTPClientWithPolicy(time.Second, policy)
+	cache.now = func() time.Time { return now }
+	cache.backoff = time.Second
+
+	_, first := cache.modulesV1(t.Context(), "registry.internal.example")
+	if !isDestinationDenied(first) {
+		t.Fatalf("expected a policy denial, got %v", first)
+	}
+	now = now.Add(time.Hour)
+	_, second := cache.modulesV1(t.Context(), "registry.internal.example")
+	if got := lookups.Load(); got != 1 {
+		t.Fatalf("denied registry host was probed %d times", got)
+	}
+	if second == nil || second.Error() != first.Error() {
+		t.Fatalf("expected the first denial to be reused, got %v", second)
+	}
+}
+
 func TestRegistryDiscoveryDoesNotCacheCanceledContext(t *testing.T) {
 	var calls atomic.Int64
 	cache := NewRegistryCache(time.Second)
@@ -664,6 +778,53 @@ func TestRegistryDiscoveryDoesNotCacheCanceledContext(t *testing.T) {
 	}
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("canceled discovery must not be cached, calls=%d", got)
+	}
+}
+
+func TestRegistryDownloadPolicyDenialDoesNotExpire(t *testing.T) {
+	var lookups atomic.Int64
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		lookups.Add(1)
+		return []net.IP{net.ParseIP("172.19.1.1")}, nil
+	}
+	now := time.Now()
+	cache := NewRegistryCache(time.Second)
+	cache.client = newPolicyHTTPClientWithPolicy(time.Second, policy)
+	cache.now = func() time.Time { return now }
+	cache.backoff = time.Second
+
+	ep := "https://downloads.internal.example/v1/modules/"
+	_, first := cache.downloadURL(t.Context(), ep, "registry.example", "acme", "vpc", "aws", "1.0.0")
+	if !isDestinationDenied(first) {
+		t.Fatalf("expected a policy denial, got %v", first)
+	}
+	now = now.Add(time.Hour)
+	if _, second := cache.downloadURL(t.Context(), ep, "registry.example", "acme", "vpc", "aws", "1.0.0"); second == nil {
+		t.Fatal("expected the cached denial")
+	}
+	if got := lookups.Load(); got != 1 {
+		t.Fatalf("denied download host was probed %d times", got)
+	}
+}
+
+func TestRegistryDownloadDoesNotCacheCanceledContext(t *testing.T) {
+	var calls atomic.Int64
+	cache := NewRegistryCache(time.Second)
+	cache.client = &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return nil, context.Canceled
+		}),
+	}
+	ep := "https://registry.example/v1/modules/"
+	for range 2 {
+		if _, err := cache.downloadURL(t.Context(), ep, "registry.example", "acme", "vpc", "aws", "1.0.0"); err == nil {
+			t.Fatal("expected canceled download")
+		}
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("canceled download must not be cached, calls=%d", got)
 	}
 }
 

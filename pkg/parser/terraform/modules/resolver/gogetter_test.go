@@ -338,7 +338,7 @@ func TestCachedResolutionKeepsLeaseUntilCleanup(t *testing.T) {
 	if _, err := os.Stat(packageRoot); !os.IsNotExist(err) {
 		t.Fatalf("released resolution remained protected from eviction: %v", err)
 	}
-	if _, total := listAggregateCacheEntries(budget.Root()); total > budget.MaxBytes() {
+	if total := aggregateCacheBytes(budget.Root()); total > budget.MaxBytes() {
 		t.Fatalf("cache size %d exceeds max %d", total, budget.MaxBytes())
 	}
 }

@@ -251,7 +251,7 @@ func TestModuleCacheEvictsOldestEntries(t *testing.T) {
 	if _, err := os.Stat(third); err != nil {
 		t.Fatalf("kept cache entry missing: %v", err)
 	}
-	if _, total := listCacheEntries(cache.dir); total > budget.MaxBytes() {
+	if total := aggregateCacheBytes(budget.Root()); total > budget.MaxBytes() {
 		t.Fatalf("cache size %d exceeds max %d", total, budget.MaxBytes())
 	}
 }

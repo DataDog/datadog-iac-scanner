@@ -14,9 +14,16 @@ import (
 // LocalResolver resolves local filesystem module sources.
 type LocalResolver struct{}
 
-func (LocalResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+func (LocalResolver) Screen(_ context.Context, mod *tfmodules.ParsedModule) error {
 	if !mod.IsLocal {
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: "not a local module"}
+		return notApplicable("not a local module")
+	}
+	return nil
+}
+
+func (r LocalResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	if err := r.Screen(ctx, mod); err != nil {
+		return Resolution{}, err
 	}
 	if mod.AbsSource == "" {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local module has no resolved absolute path"}

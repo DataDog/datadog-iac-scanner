@@ -20,9 +20,11 @@ import (
 const limitPackageBytes = "package_bytes"
 
 const (
-	DefaultMaxPackageBytes = 128 * 1024 * 1024
-	DefaultMaxFileBytes    = 5 * 1024 * 1024
-	DefaultMaxPackageFiles = 10_000
+	DefaultMaxPackageBytes = 256 * 1024 * 1024
+	// Modules can vendor binaries, lambda zips, or docs media; a smaller file
+	// cap would reject the whole package over one such file.
+	DefaultMaxFileBytes    = DefaultMaxPackageBytes
+	DefaultMaxPackageFiles = 100_000
 )
 
 type ResourceLimits struct {
@@ -315,6 +317,37 @@ func (c *PackageCounter) Usage() PackageUsage {
 	return c.usage
 }
 
+// archiveStreamLimit bounds the bytes read from one git archive stream without
+// undercutting the package limit the archive is extracted under.
+func (c *PackageCounter) archiveStreamLimit() int64 {
+	if c != nil && c.limits.MaxPackageBytes > maxArchiveExtractBytes {
+		return c.limits.MaxPackageBytes
+	}
+	return maxArchiveExtractBytes
+}
+
+// CheckPackageUsage applies MeasurePackage's package-level limits to a usage the
+// resolver already knows, so callers holding Resolution.Usage need not walk the tree.
+func CheckPackageUsage(usage PackageUsage, limits ResourceLimits) error {
+	if limits.MaxPackageFiles > 0 && usage.Files > limits.MaxPackageFiles {
+		return &BudgetExceededError{
+			Gate:     "stream",
+			Limit:    "package_file_count",
+			Maximum:  int64(limits.MaxPackageFiles),
+			Measured: int64(usage.Files),
+		}
+	}
+	if limits.MaxPackageBytes > 0 && usage.Bytes > limits.MaxPackageBytes {
+		return &BudgetExceededError{
+			Gate:     "stream",
+			Limit:    limitPackageBytes,
+			Maximum:  limits.MaxPackageBytes,
+			Measured: usage.Bytes,
+		}
+	}
+	return nil
+}
+
 func MeasurePackage(ctx context.Context, root string, limits ResourceLimits) (PackageUsage, error) {
 	// Per-file limits apply while bytes are streaming; packages already on disk may
 	// contain large artifacts such as lambda zips or generated policies.
@@ -322,7 +355,12 @@ func MeasurePackage(ctx context.Context, root string, limits ResourceLimits) (Pa
 	measureLimits.MaxFileBytes = 0
 
 	counter := (&ResourceBudget{limits: measureLimits}).NewPackageCounter()
+	isRoot := func(path string) bool { return filepath.Clean(path) == filepath.Clean(root) }
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		// Git object stores gain and drop temporary files while being measured.
+		if walkErr != nil && !isRoot(path) && errors.Is(walkErr, fs.ErrNotExist) {
+			return nil
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -330,12 +368,15 @@ func MeasurePackage(ctx context.Context, root string, limits ResourceLimits) (Pa
 			return err
 		}
 		if entry.IsDir() {
-			if filepath.Clean(path) != filepath.Clean(root) {
+			if !isRoot(path) {
 				return counter.AddEntry(0)
 			}
 			return nil
 		}
 		info, err := entry.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}

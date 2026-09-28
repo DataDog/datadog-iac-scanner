@@ -24,6 +24,8 @@ const defaultRegistryFailureBackoff = 30 * time.Second
 type cachedFailure struct {
 	err    error
 	expiry time.Time
+	// permanent failures cannot change within one scan, so they never expire.
+	permanent bool
 }
 
 type registryCache struct {
@@ -82,7 +84,7 @@ func (c *registryCache) lookupFailure(mu *sync.RWMutex, failures map[string]cach
 	if !ok {
 		return nil, false
 	}
-	if c.clock().After(cached.expiry) {
+	if !cached.permanent && c.clock().After(cached.expiry) {
 		mu.Lock()
 		if current, still := failures[key]; still && current.expiry.Equal(cached.expiry) {
 			delete(failures, key)
@@ -98,7 +100,11 @@ func (c *registryCache) rememberFailure(mu *sync.RWMutex, failures map[string]ca
 		return
 	}
 	mu.Lock()
-	failures[key] = cachedFailure{err: err, expiry: c.clock().Add(c.failureBackoff())}
+	failures[key] = cachedFailure{
+		err:       err,
+		expiry:    c.clock().Add(c.failureBackoff()),
+		permanent: isDestinationDenied(err),
+	}
 	mu.Unlock()
 }
 
@@ -201,7 +207,7 @@ func (c *registryCache) resolveGetterURL(ctx context.Context, source, concreteVe
 
 	dlURL, err := c.downloadURL(ctx, ep, host, namespace, name, provider, concreteVersion)
 	if err != nil {
-		return "", err
+		return "", &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
 	if subdir := registrySubdir(source); subdir != "" {

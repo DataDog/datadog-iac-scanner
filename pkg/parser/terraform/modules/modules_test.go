@@ -1,6 +1,7 @@
 package tfmodules
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -145,8 +148,33 @@ func TestParseDirModules_CanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := parseDirModules(ctx, nil, &sync.Map{}, dirFiles{dir: dir, files: files}, nil)
+	_, err := parseDirModules(ctx, nil, &sync.Map{}, dirFiles{dir: dir, files: files}, moduleParseOptions{})
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestInvalidLocalModuleSourceWarnsOnlyInScanPass(t *testing.T) {
+	dir := t.TempDir()
+	files := model.FileMetadatas{{
+		FilePath:     filepath.Join(dir, "main.tf"),
+		OriginalData: `module "gone" { source = "../missing" }`,
+	}}
+	parse := func(scanPass bool) string {
+		var buf bytes.Buffer
+		ctx := zerolog.New(&buf).Level(zerolog.WarnLevel).WithContext(t.Context())
+		var err error
+		if scanPass {
+			_, err = ParseTerraformModules(ctx, nil, files, 1)
+		} else {
+			_, err = ParseTerraformModulesFromFiles(ctx, nil, files, nil)
+		}
+		require.NoError(t, err)
+		return buf.String()
+	}
+
+	scanLog := parse(true)
+	require.Equal(t, 1, strings.Count(scanLog, "\n"), "expected one warning, got %q", scanLog)
+	require.Contains(t, scanLog, `Invalid local module source \"../missing\"`)
+	require.Empty(t, parse(false), "the module graph pass must leave local source warnings to the scan pass")
 }
 
 // TestParseAllModuleVariables_CanceledContext guards the cancellation contract:

@@ -29,9 +29,9 @@ import (
 )
 
 const (
-	DefaultFetchTimeout   = 30 * time.Second
+	DefaultFetchTimeout   = 90 * time.Second
 	DefaultMaxModuleBytes = 0
-	DefaultMaxTotalBytes  = 200 * 1024 * 1024
+	DefaultMaxTotalBytes  = 2 * 1024 * 1024 * 1024
 	mib                   = 1024 * 1024
 
 	sourceTypeRegistry = "registry"
@@ -128,23 +128,27 @@ func NewGoGetterResolver(cfg *GoGetterConfig) *GoGetterResolver {
 	return &GoGetterResolver{cfg: cfg}
 }
 
-func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+func (r *GoGetterResolver) Screen(_ context.Context, mod *tfmodules.ParsedModule) error {
 	if r.cfg.Disabled {
-		return Resolution{}, &tfmodules.UnresolvedError{
+		return &tfmodules.UnresolvedError{
 			Reason: "remote module fetching is disabled; run terraform init or pass --modules-manifest",
 		}
 	}
 	if mod.IsLocal {
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
+		return notApplicable("local modules are handled by LocalResolver")
 	}
 	// BareGit owns pinnable git:: sources. Falling through after a BareGit failure
 	// would trigger a full working-tree clone of the entire repository per module.
 	if bareGitOwnsSource(mod.Source) {
-		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: "git module with ref= must be resolved by BareGitResolver (go-getter fallback disabled)",
-		}
+		return notApplicable(
+			"git module with ref= must be resolved by BareGitResolver (go-getter fallback disabled)",
+		)
 	}
-	if err := r.checkAllowlist(mod.Source); err != nil {
+	return r.checkAllowlist(mod.Source)
+}
+
+func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	if err := r.Screen(ctx, mod); err != nil {
 		return Resolution{}, err
 	}
 
@@ -567,7 +571,11 @@ func isTransientFetchError(err error) bool {
 }
 
 func isShallowUnsupportedError(err error) bool {
-	msg := strings.ToLower(err.Error())
+	return isShallowUnsupportedMessage(err.Error())
+}
+
+func isShallowUnsupportedMessage(msg string) bool {
+	msg = strings.ToLower(msg)
 	return strings.Contains(msg, "shallow") ||
 		strings.Contains(msg, "unadvertised object") ||
 		strings.Contains(msg, "not our ref") ||

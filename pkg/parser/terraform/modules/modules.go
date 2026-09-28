@@ -43,6 +43,9 @@ type ParsedModule struct {
 
 type UnresolvedError struct {
 	Reason string
+	// NotApplicable marks a resolver declining a source it does not handle, as
+	// opposed to a resolver that attempted the source and failed.
+	NotApplicable bool
 }
 
 func (e *UnresolvedError) Error() string {
@@ -249,7 +252,16 @@ func groupTerraformFilesByDir(files model.FileMetadatas) []dirFiles {
 func ParseTerraformModules(
 	ctx context.Context, fsys vfs.FS, files model.FileMetadatas, numWorkers int,
 ) (map[string]ParsedModule, error) {
-	return parseModulesByDir(ctx, fsys, files, nil, numWorkers)
+	return parseModulesByDir(ctx, fsys, files, moduleParseOptions{validateLocalSources: true}, numWorkers)
+}
+
+type moduleParseOptions struct {
+	// allowedFiles, when non-nil, restricts which files contribute module blocks;
+	// every file still contributes locals/vars so resolution stays correct.
+	allowedFiles map[string]bool
+	// validateLocalSources warns about local sources that are not a module
+	// directory. Only the pass that sees every scanned file should report them.
+	validateLocalSources bool
 }
 
 // parseModulesByDir resolves module blocks one directory at a time. Locals and
@@ -257,14 +269,11 @@ func ParseTerraformModules(
 // directory both preserves that scoping — the same name may be defined
 // differently in two directories — and bounds how much parsed Terraform is live
 // at once: the directories in flight rather than the whole repository.
-//
-// allowedFiles, when non-nil, restricts which files contribute module blocks;
-// every file still contributes locals/vars so resolution stays correct.
 func parseModulesByDir(
 	ctx context.Context,
 	fsys vfs.FS,
 	files model.FileMetadatas,
-	allowedFiles map[string]bool,
+	opts moduleParseOptions,
 	numWorkers int,
 ) (map[string]ParsedModule, error) {
 	if fsys == nil {
@@ -284,7 +293,7 @@ func parseModulesByDir(
 	// only returns an error on context cancellation, which the caller surfaces.
 	err := utils.ForEach(ctx, groups, utils.PoolOptions{Workers: numWorkers, CPUBound: true},
 		func(ctx context.Context, group dirFiles, _ int) error {
-			found, err := parseDirModules(ctx, fsys, extracts, group, allowedFiles)
+			found, err := parseDirModules(ctx, fsys, extracts, group, opts)
 			if err != nil {
 				return err
 			}
@@ -314,7 +323,7 @@ func parseDirModules(
 	fsys vfs.FS,
 	extracts *sync.Map,
 	group dirFiles,
-	allowedFiles map[string]bool,
+	opts moduleParseOptions,
 ) (map[string]ParsedModule, error) {
 	contextLogger := logger.FromContext(ctx)
 	files, _ := tfpath.Partition(group.files, func(f *model.FileMetadata) string { return f.FilePath })
@@ -349,10 +358,12 @@ func parseDirModules(
 		if extract == nil || len(extract.modules) == 0 {
 			continue
 		}
-		if allowedFiles != nil && !allowedFiles[file.FilePath] {
+		if opts.allowedFiles != nil && !opts.allowedFiles[file.FilePath] {
 			continue
 		}
-		resolveModuleBlocks(ctx, fsys, group.dir, file.FilePath, extract.modules, localsMap, varsMap, modules)
+		resolveModuleBlocks(
+			ctx, fsys, group.dir, file.FilePath, extract.modules, localsMap, varsMap, opts.validateLocalSources, modules,
+		)
 	}
 	return modules, nil
 }
@@ -365,6 +376,7 @@ func resolveModuleBlocks(
 	baseDir, filePath string,
 	blocks []moduleBlockExtract,
 	localsMap, varsMap map[string]string,
+	validateLocal bool,
 	modules map[string]ParsedModule,
 ) {
 	for i := range blocks {
@@ -374,7 +386,7 @@ func resolveModuleBlocks(
 			DefLine:    blocks[i].defLine,
 			DefEndLine: blocks[i].defEndLine,
 		}
-		fillModuleAttrs(ctx, fsys, &mod, &blocks[i], baseDir, localsMap, varsMap)
+		fillModuleAttrs(ctx, fsys, &mod, &blocks[i], baseDir, localsMap, varsMap, validateLocal)
 		key := moduleIdentityKey(&mod)
 		if _, exists := modules[key]; !exists {
 			modules[key] = mod
@@ -389,6 +401,7 @@ func fillModuleAttrs(
 	block *moduleBlockExtract,
 	baseDir string,
 	localsMap, varsMap map[string]string,
+	validateLocal bool,
 ) {
 	log := logger.FromContext(ctx)
 	if block.version != nil {
@@ -415,7 +428,10 @@ func fillModuleAttrs(
 		log.Warn().Msgf("Could not compute absolute path name for %v: %v", absPath, err)
 		mod.AbsSource = filepath.Clean(absPath)
 	}
-	if err = validateModuleSource(ctx, fsys, mod.AbsSource); err != nil {
+	if !validateLocal {
+		return
+	}
+	if err = validateModuleSource(fsys, mod.AbsSource); err != nil {
 		log.Warn().Msgf("Invalid local module source %q: %v", mod.Source, err)
 	}
 }
@@ -424,7 +440,7 @@ func moduleIdentityKey(mod *ParsedModule) string {
 	return mod.Source + "\x00" + mod.Version + "\x00" + mod.Name + "\x00" + mod.FileName
 }
 
-func validateModuleSource(ctx context.Context, fsys vfs.FS, absPath string) error {
+func validateModuleSource(fsys vfs.FS, absPath string) error {
 	entries, err := fsys.ReadDir(absPath)
 	if err != nil {
 		return fmt.Errorf("module source path %q is not accessible: %w", absPath, err)
@@ -439,10 +455,7 @@ func validateModuleSource(ctx context.Context, fsys vfs.FS, absPath string) erro
 	}
 
 	if !valid {
-		wrn := fmt.Errorf("module at %s does not contain any Terraform or OpenTofu configuration files", absPath)
-		contextLogger := logger.FromContext(ctx)
-		contextLogger.Warn().Msg(wrn.Error())
-		return wrn
+		return fmt.Errorf("module at %s does not contain any Terraform or OpenTofu configuration files", absPath)
 	}
 	return nil
 }
@@ -793,7 +806,13 @@ func enrichModule(
 	contextLogger := logger.FromContext(ctx)
 	localPath, err := resolveModuleToLocalPath(ctx, mod, rootDir, resolver)
 	if err != nil {
-		contextLogger.Warn().Msgf("Skipping module %s: %v", mod.Name, err)
+		// Unresolved modules were already reported, grouped by reason, when
+		// remote modules were resolved before the scan.
+		event := contextLogger.Warn()
+		if IsUnresolved(err) {
+			event = contextLogger.Debug()
+		}
+		event.Msgf("Skipping module %s: %v", mod.Name, err)
 		return ModuleParseResult{Module: *mod}
 	}
 	if localPath == "" {
@@ -1045,7 +1064,7 @@ func parseVariableReference(s string) string {
 func ParseTerraformModulesFromFiles(
 	ctx context.Context, fsys vfs.FS, files model.FileMetadatas, allowedFiles map[string]bool,
 ) (map[string]ParsedModule, error) {
-	return parseModulesByDir(ctx, fsys, files, allowedFiles, 0)
+	return parseModulesByDir(ctx, fsys, files, moduleParseOptions{allowedFiles: allowedFiles}, 0)
 }
 
 // LoadTFFilesFromDir returns FileMetadata for top-level Terraform/OpenTofu
@@ -1054,6 +1073,32 @@ func ParseTerraformModulesFromFiles(
 // symlinked config files are included only when their targets stay within the
 // package root.
 func LoadTFFilesFromDir(ctx context.Context, dir, packageRoot string) (model.FileMetadatas, error) {
+	return LoadTFFilesFromDirWithLimit(ctx, dir, packageRoot, 0)
+}
+
+// DefaultMaxConfigFileBytes is the largest Terraform configuration file the
+// scan parses with its default --max-file-size of 5 MB (see MaxConfigFileBytesForScan).
+const DefaultMaxConfigFileBytes int64 = 5 * bytesPerMB
+
+const bytesPerMB = 1 << 20
+
+// MaxConfigFileBytesForScan returns the largest configuration file a scan run
+// with --max-file-size maxFileSizeMB parses, or -1 when a negative value
+// disables that limit.
+func MaxConfigFileBytesForScan(maxFileSizeMB int) int64 {
+	if maxFileSizeMB < 0 {
+		return -1
+	}
+	// Zero parses empty files only; the smallest positive cap keeps it a cap.
+	return max(int64(maxFileSizeMB)*bytesPerMB, 1)
+}
+
+// LoadTFFilesFromDirWithLimit is LoadTFFilesFromDir skipping configuration
+// files larger than a positive maxBytes: the scan would not parse them, so
+// module calls they declare could never be evaluated.
+func LoadTFFilesFromDirWithLimit(
+	ctx context.Context, dir, packageRoot string, maxBytes int64,
+) (model.FileMetadatas, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving module dir %q: %w", dir, err)
@@ -1068,6 +1113,11 @@ func LoadTFFilesFromDir(ctx context.Context, dir, packageRoot string) (model.Fil
 		if !ok {
 			continue
 		}
+		if ConfigFileTooLarge(path, maxBytes) {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Debug().Msgf("Skipping module calls in %q: larger than %d bytes", path, maxBytes)
+			continue
+		}
 		data, readErr := os.ReadFile(path) //nolint:gosec
 		if readErr != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, readErr)
@@ -1078,6 +1128,30 @@ func LoadTFFilesFromDir(ctx context.Context, dir, packageRoot string) (model.Fil
 		})
 	}
 	return files, nil
+}
+
+type maxConfigFileBytesKey struct{}
+
+// WithMaxConfigFileBytes scopes the configuration file cap of
+// LoadTFFilesFromDirWithLimit to ctx, for readers deep in module resolution.
+func WithMaxConfigFileBytes(ctx context.Context, maxBytes int64) context.Context {
+	return context.WithValue(ctx, maxConfigFileBytesKey{}, maxBytes)
+}
+
+// MaxConfigFileBytesFromContext returns the cap scoped by WithMaxConfigFileBytes,
+// or zero, which reads every file, when there is none.
+func MaxConfigFileBytesFromContext(ctx context.Context) int64 {
+	maxBytes, _ := ctx.Value(maxConfigFileBytesKey{}).(int64)
+	return maxBytes
+}
+
+// ConfigFileTooLarge reports whether the file at path exceeds a positive maxBytes.
+func ConfigFileTooLarge(path string, maxBytes int64) bool {
+	if maxBytes <= 0 {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.Size() > maxBytes
 }
 
 // GetProviderFromResourceType extracts the provider name from a Terraform resource type.

@@ -63,6 +63,37 @@ func TestPackageCounterEnforcesLimitsBeforeAccounting(t *testing.T) {
 	}
 }
 
+func TestCheckPackageUsage(t *testing.T) {
+	t.Parallel()
+
+	limits := ResourceLimits{MaxPackageFiles: 2, MaxPackageBytes: 10}
+	tests := []struct {
+		name  string
+		usage PackageUsage
+		limit string
+	}{
+		{name: "within limits", usage: PackageUsage{Files: 2, Bytes: 10}},
+		{name: "file count", usage: PackageUsage{Files: 3, Bytes: 1}, limit: "package_file_count"},
+		{name: "package bytes", usage: PackageUsage{Files: 1, Bytes: 11}, limit: "package_bytes"},
+		{name: "file count reported first", usage: PackageUsage{Files: 3, Bytes: 11}, limit: "package_file_count"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := CheckPackageUsage(tt.usage, limits)
+			if tt.limit == "" {
+				require.NoError(t, err)
+				return
+			}
+			var budgetErr *BudgetExceededError
+			require.ErrorAs(t, err, &budgetErr)
+			require.Equal(t, "stream", budgetErr.Gate)
+			require.Equal(t, tt.limit, budgetErr.Limit)
+		})
+	}
+	require.NoError(t, CheckPackageUsage(PackageUsage{Files: 100, Bytes: 100}, ResourceLimits{}))
+}
+
 func TestResourceBudgetReconcilesPackages(t *testing.T) {
 	t.Parallel()
 
