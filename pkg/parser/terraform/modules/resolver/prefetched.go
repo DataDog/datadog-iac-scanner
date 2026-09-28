@@ -9,13 +9,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -37,13 +41,15 @@ type ManifestEntry struct {
 }
 
 type Manifest struct {
-	SchemaVersion   int                      `json:"schema_version,omitempty"`
-	Root            string                   `json:"root,omitempty"`
-	Dir             string                   `json:"dir,omitempty"`
-	Modules         map[string]ManifestEntry `json:"modules,omitempty"`
-	Entries         []ManifestModule         `json:"-"`
-	candidates      map[string][]manifestCandidate
-	verifiedDigests map[string]string
+	SchemaVersion int                      `json:"schema_version,omitempty"`
+	Root          string                   `json:"root,omitempty"`
+	Dir           string                   `json:"dir,omitempty"`
+	Modules       map[string]ManifestEntry `json:"modules,omitempty"`
+	Entries       []ManifestModule         `json:"-"`
+	candidates    map[string][]manifestCandidate
+	// usage is each verified package's on-disk usage, counted while its digest
+	// was checked, so admission does not walk the package again.
+	usage map[string]PackageUsage
 }
 
 type manifestCandidate struct {
@@ -150,32 +156,102 @@ func loadManifestV1(ctx context.Context, manifestPath string, envelope manifestE
 		return nil, fmt.Errorf("modules must be an array")
 	}
 	manifest := &Manifest{
-		SchemaVersion:   ManifestSchemaVersion,
-		Root:            root,
-		Dir:             root,
-		Modules:         make(map[string]ManifestEntry, len(entries)),
-		Entries:         entries,
-		candidates:      make(map[string][]manifestCandidate, len(entries)),
-		verifiedDigests: make(map[string]string),
+		SchemaVersion: ManifestSchemaVersion,
+		Root:          root,
+		Dir:           root,
+		Modules:       make(map[string]ManifestEntry, len(entries)),
+		Entries:       entries,
+		candidates:    make(map[string][]manifestCandidate, len(entries)),
 	}
+	packageRoots := make([]string, len(manifest.Entries))
 	for i := range manifest.Entries {
-		if err := manifest.addV1Entry(ctx, &manifest.Entries[i]); err != nil {
+		packageRoot, err := manifest.addV1Entry(ctx, &manifest.Entries[i])
+		if err != nil {
 			return nil, fmt.Errorf("modules[%d]: %w", i, err)
 		}
+		packageRoots[i] = packageRoot
 	}
+	usage, err := verifyContentDigests(ctx, manifest.Entries, packageRoots)
+	if err != nil {
+		return nil, err
+	}
+	manifest.usage = usage
 	return manifest, nil
 }
 
-func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error {
+// verifyContentDigests checks each resolved entry's content_digest against its
+// package, hashing every distinct package once and in parallel, and returns
+// each package's usage counted the way MeasurePackage counts it.
+func verifyContentDigests(
+	ctx context.Context, entries []ManifestModule, packageRoots []string,
+) (map[string]PackageUsage, error) {
+	slots := make(map[string]int)
+	var roots []string
+	for _, root := range packageRoots {
+		if _, seen := slots[root]; root != "" && !seen {
+			slots[root] = len(roots)
+			roots = append(roots, root)
+		}
+	}
+	digests := make([]string, len(roots))
+	usages := make([]PackageUsage, len(roots))
+	failures := make([]error, len(roots))
+	// The group only bounds concurrency: failures are kept per package and
+	// reported below in manifest order.
+	var g errgroup.Group
+	g.SetLimit(max(1, runtime.GOMAXPROCS(0)))
+	for i, root := range roots {
+		g.Go(func() error {
+			usage := &usages[i]
+			digests[i], failures[i] = WalkPackageDigest(ctx, root, PackageVisitor{
+				Dir: func(relative string) error {
+					if relative != "." {
+						usage.Files++
+					}
+					return nil
+				},
+				File: func(_, _ string, info fs.FileInfo, _ io.Reader) error {
+					usage.Files++
+					usage.Bytes += info.Size()
+					return nil
+				},
+			})
+			return nil
+		})
+	}
+	_ = g.Wait()
+	for i, root := range packageRoots {
+		if root == "" {
+			continue
+		}
+		slot := slots[root]
+		if failures[slot] != nil {
+			return nil, fmt.Errorf("modules[%d]: computing content digest: %w", i, failures[slot])
+		}
+		if !strings.EqualFold(entries[i].ContentDigest, digests[slot]) {
+			return nil, fmt.Errorf("modules[%d]: content_digest mismatch: got %q, computed %q",
+				i, entries[i].ContentDigest, digests[slot])
+		}
+	}
+	usage := make(map[string]PackageUsage, len(roots))
+	for i, root := range roots {
+		usage[root] = usages[i]
+	}
+	return usage, nil
+}
+
+// addV1Entry validates and indexes module, returning the package root whose
+// content digest loadManifestV1 still has to verify.
+func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) (string, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return "", err
 	}
 	module.Source = strings.TrimSpace(module.Source)
 	if module.Source == "" {
-		return fmt.Errorf("source is required")
+		return "", fmt.Errorf("source is required")
 	}
 	if err := validateManifestDeclarations(module.Declarations); err != nil {
-		return err
+		return "", err
 	}
 	key := manifestModuleKey(module.Source, strings.TrimSpace(module.RequestedVersion))
 	entry := ManifestEntry{
@@ -189,33 +265,21 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error
 	switch module.Status {
 	case ManifestStatusResolved:
 		if err := m.resolveV1Paths(ctx, module, &entry); err != nil {
-			return err
+			return "", err
 		}
 		if module.ContentDigest == "" {
-			return fmt.Errorf("content_digest is required for a resolved module")
-		}
-		digest, verified := m.verifiedDigests[entry.PackageRoot]
-		if !verified {
-			var err error
-			digest, err = ComputePackageDigest(ctx, entry.PackageRoot)
-			if err != nil {
-				return fmt.Errorf("computing content digest: %w", err)
-			}
-			m.verifiedDigests[entry.PackageRoot] = digest
-		}
-		if !strings.EqualFold(module.ContentDigest, digest) {
-			return fmt.Errorf("content_digest mismatch: got %q, computed %q", module.ContentDigest, digest)
+			return "", fmt.Errorf("content_digest is required for a resolved module")
 		}
 	case ManifestStatusUnresolved:
 		if strings.TrimSpace(module.Failure) == "" {
-			return fmt.Errorf("failure is required for an unresolved module")
+			return "", fmt.Errorf("failure is required for an unresolved module")
 		}
 	default:
-		return fmt.Errorf("status must be resolved or unresolved")
+		return "", fmt.Errorf("status must be resolved or unresolved")
 	}
 	for i := range m.candidates[key] {
 		if declarationsOverlap(m.candidates[key][i].declarations, module.Declarations) {
-			return fmt.Errorf("duplicate module declaration for %q", key)
+			return "", fmt.Errorf("duplicate module declaration for %q", key)
 		}
 	}
 	m.candidates[key] = append(m.candidates[key], manifestCandidate{
@@ -225,7 +289,10 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) error
 	if _, exists := m.Modules[key]; !exists {
 		m.Modules[key] = entry
 	}
-	return nil
+	if module.Status == ManifestStatusResolved {
+		return entry.PackageRoot, nil
+	}
+	return "", nil
 }
 
 func declarationsOverlap(left, right []ManifestDeclaration) bool {
@@ -343,31 +410,49 @@ func NewPrefetchedResolver(m *Manifest) *PrefetchedResolver {
 	return &PrefetchedResolver{manifest: m}
 }
 
+func (r *PrefetchedResolver) Screen(_ context.Context, mod *tfmodules.ParsedModule) error {
+	_, _, err := r.lookup(mod)
+	return err
+}
+
 func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	candidates, entry, err := r.lookup(mod)
+	if err != nil {
+		return Resolution{}, err
+	}
+	if len(candidates) > 0 {
+		selected, selectErr := selectManifestCandidate(mod, candidates)
+		if selectErr != nil {
+			return Resolution{}, selectErr
+		}
+		entry = selected
+	}
+	resolution, err := resolveManifestEntry(ctx, mod, entry)
+	if err != nil {
+		return Resolution{}, err
+	}
+	if usage, ok := r.manifest.usage[entry.PackageRoot]; ok {
+		resolution.Usage = &usage
+	}
+	return resolution, nil
+}
+
+// lookup returns the declaration-scoped candidates for mod or, for manifests
+// without them, its single entry.
+func (r *PrefetchedResolver) lookup(mod *tfmodules.ParsedModule) ([]manifestCandidate, *ManifestEntry, error) {
 	if mod.IsLocal {
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
+		return nil, nil, notApplicable("local modules are handled by LocalResolver")
 	}
 	key := manifestModuleKey(mod.Source, mod.Version)
 	if candidates := r.manifest.candidates[key]; len(candidates) > 0 {
-		entry, err := selectManifestCandidate(mod, candidates)
-		if err != nil {
-			return Resolution{}, err
-		}
-		return resolveManifestEntry(ctx, mod, entry)
+		return candidates, nil, nil
 	}
-	entry, ok := r.manifest.Modules[key]
-	if !ok {
-		entry, ok = r.manifest.Modules[legacyManifestModuleKey(mod.Source, mod.Version)]
-	}
-	if !ok {
-		entry, ok = r.manifest.Modules[mod.Source]
-	}
-	if !ok {
-		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: fmt.Sprintf("module %q not found in manifest", mod.Source),
+	for _, candidate := range []string{key, legacyManifestModuleKey(mod.Source, mod.Version), mod.Source} {
+		if entry, ok := r.manifest.Modules[candidate]; ok {
+			return nil, &entry, nil
 		}
 	}
-	return resolveManifestEntry(ctx, mod, &entry)
+	return nil, nil, notApplicable(fmt.Sprintf("module %q not found in manifest", mod.Source))
 }
 
 func selectManifestCandidate(
