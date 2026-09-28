@@ -99,7 +99,7 @@ func newGitObjectGuard(ctx context.Context, gitDir string, budget *ResourceBudge
 	if err != nil {
 		return nil, err
 	}
-	existing, err := snapshotPackageTree(monitor.objectsDir)
+	existing, err := snapshotTree(monitor.objectsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func (g *gitObjectGuard) rollback() {
 	if g == nil {
 		return
 	}
-	rollbackPackageTree(g.monitor.objectsDir, g.existing)
+	rollbackTree(g.monitor.objectsDir, g.existing)
 }
 
 func gitDirectoryBudgetError(ctx context.Context, path string, baseline, maximum int64) error {
@@ -282,6 +282,9 @@ func regularFilesBytes(ctx context.Context, path string) (int64, error) {
 			return 0, err
 		}
 		info, err := entry.Info()
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return 0, err
 		}

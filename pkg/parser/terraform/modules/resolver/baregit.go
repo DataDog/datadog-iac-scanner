@@ -38,7 +38,8 @@ import (
 // dirPerm is the permission mode used for all directories created by resolvers.
 const dirPerm = 0o750
 
-// maxArchiveExtractBytes caps cumulative bytes read from a single git archive tar stream.
+// maxArchiveExtractBytes caps cumulative bytes read from a single git archive
+// tar stream unless a larger package limit applies.
 const maxArchiveExtractBytes = 200 * 1024 * 1024
 
 // BareGitResolver keeps one bare clone per repo and extracts refs via git archive.
@@ -68,9 +69,33 @@ type bareRepo struct {
 
 	fetchSF   singleflight.Group
 	extractSF singleflight.Group
+	// writes counts operations that may have changed the clone on disk, so the
+	// resolver knows when the cache budget must measure the entry again.
+	writes atomic.Uint64
 
 	refMu    sync.RWMutex
-	refCache map[string]string // tag/branch ref → resolved SHA (warm from disk on init)
+	refCache map[string]bareRefEntry // named ref → resolved commit (warm from disk on init)
+	saveMu   sync.Mutex              // orders refs.json writes so the newest snapshot lands last
+}
+
+// movingRefTTL bounds how long a branch, or any other ref that is not a tag,
+// is served from the ref cache before it is fetched again.
+const movingRefTTL = 10 * time.Minute
+
+// bareRefEntry records the commit a named ref resolved to. Only tags are
+// immutable; a moving entry is refreshed once it is older than movingRefTTL.
+type bareRefEntry struct {
+	SHA      string    `json:"sha"`
+	Moving   bool      `json:"moving,omitempty"`
+	Resolved time.Time `json:"resolved"`
+}
+
+func (e bareRefEntry) fresh(now time.Time) bool {
+	if !looksLikeSHA(e.SHA) {
+		return false
+	}
+	age := now.Sub(e.Resolved)
+	return !e.Moving || age >= 0 && age < movingRefTTL
 }
 
 // bareRemote binds a bare clone to the transport one module source requires.
@@ -180,37 +205,74 @@ func (r *BareGitResolver) getOrInitRemote(repoURL string) *bareRemote {
 	return remote
 }
 
-// loadBareRefCache reads the persistent ref→SHA map for a bare clone.
-func loadBareRefCache(path string) map[string]string {
+// loadBareRefCache reads the persistent ref map for a bare clone. Entries from
+// the earlier ref→SHA format carry no ref kind, so they load as moving and
+// stale: the next resolution refreshes them, and an offline one still uses them.
+func loadBareRefCache(path string) map[string]bareRefEntry {
+	refs := make(map[string]bareRefEntry)
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
-		return make(map[string]string)
+		return refs
 	}
-	var m map[string]string
-	if err := json.Unmarshal(data, &m); err != nil {
-		return make(map[string]string)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return refs
 	}
-	return m
+	for ref, value := range raw {
+		var entry bareRefEntry
+		if err := json.Unmarshal(value, &entry); err != nil {
+			var legacySHA string
+			if json.Unmarshal(value, &legacySHA) != nil {
+				continue
+			}
+			entry = bareRefEntry{SHA: legacySHA, Moving: true}
+		}
+		if looksLikeSHA(entry.SHA) {
+			refs[ref] = entry
+		}
+	}
+	return refs
 }
 
-// saveBareRefCache writes the ref→SHA map atomically so concurrent runs don't corrupt it.
-func (repo *bareRepo) saveBareRefCache() {
+func (repo *bareRepo) refEntry(ref string) (bareRefEntry, bool) {
 	repo.refMu.RLock()
-	m := make(map[string]string, len(repo.refCache))
-	for k, v := range repo.refCache {
-		m[k] = v
-	}
-	repo.refMu.RUnlock()
+	defer repo.refMu.RUnlock()
+	entry, ok := repo.refCache[ref]
+	return entry, ok
+}
 
-	data, err := json.Marshal(m)
+func (repo *bareRepo) storeRef(ref string, entry bareRefEntry) {
+	repo.refMu.Lock()
+	repo.refCache[ref] = entry
+	repo.refMu.Unlock()
+	repo.saveBareRefCache()
+}
+
+// saveBareRefCache replaces refs.json through a private temporary file, so
+// concurrent writers in this process or another never interleave their bytes.
+func (repo *bareRepo) saveBareRefCache() {
+	repo.saveMu.Lock()
+	defer repo.saveMu.Unlock()
+	repo.refMu.RLock()
+	data, err := json.Marshal(repo.refCache)
+	repo.refMu.RUnlock()
 	if err != nil {
 		return
 	}
-	tmp := repo.refCachePath + ".tmp"
-	if err := os.WriteFile(tmp, data, cacheFilePerms); err != nil {
+	dir := filepath.Dir(repo.refCachePath)
+	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return
 	}
-	_ = os.Rename(tmp, repo.refCachePath)
+	tmp, err := os.CreateTemp(dir, filepath.Base(repo.refCachePath)+".*.tmp")
+	if err != nil {
+		return
+	}
+	_, writeErr := tmp.Write(data)
+	closeErr := tmp.Close()
+	if writeErr != nil || closeErr != nil || os.Chmod(tmp.Name(), cacheFilePerms) != nil ||
+		os.Rename(tmp.Name(), repo.refCachePath) != nil {
+		_ = os.Remove(tmp.Name())
+	}
 }
 
 func (rem *bareRemote) runNetworkGitWith(
@@ -223,8 +285,17 @@ func (rem *bareRemote) runNetworkGitWith(
 }
 
 func (rem *bareRemote) runNetworkGit(ctx context.Context, command gitNetworkCommand) ([]byte, error) {
+	return rem.runNetworkGitThen(ctx, command, nil)
+}
+
+// runNetworkGitThen runs after once command succeeds, while the clone is still
+// held exclusively, so another fetch cannot replace FETCH_HEAD in between.
+func (rem *bareRemote) runNetworkGitThen(
+	ctx context.Context, command gitNetworkCommand, after func() error,
+) ([]byte, error) {
 	rem.networkMu.Lock()
 	defer rem.networkMu.Unlock()
+	defer rem.writes.Add(1)
 
 	var terminalBudgetErr error
 	output := func(cmd *exec.Cmd) ([]byte, error) {
@@ -232,7 +303,7 @@ func (rem *bareRemote) runNetworkGit(ctx context.Context, command gitNetworkComm
 			return nil, terminalBudgetErr
 		}
 		objectsDir := filepath.Join(rem.barePath, "objects")
-		existing, err := snapshotPackageTree(objectsDir)
+		existing, err := snapshotTree(objectsDir)
 		if err != nil {
 			return nil, err
 		}
@@ -240,7 +311,7 @@ func (rem *bareRemote) runNetworkGit(ctx context.Context, command gitNetworkComm
 			ctx, cmd, rem.barePath, ResourceBudgetFromContext(ctx),
 		)
 		if err != nil {
-			rollbackPackageTree(objectsDir, existing)
+			rollbackTree(objectsDir, existing)
 			var budgetErr *BudgetExceededError
 			if errors.As(err, &budgetErr) {
 				terminalBudgetErr = err
@@ -251,6 +322,9 @@ func (rem *bareRemote) runNetworkGit(ctx context.Context, command gitNetworkComm
 	out, err := rem.runNetworkGitWith(ctx, command, output)
 	if terminalBudgetErr != nil {
 		return out, terminalBudgetErr
+	}
+	if err == nil && after != nil {
+		err = after()
 	}
 	return out, err
 }
@@ -362,8 +436,8 @@ func (rem *bareRemote) doClone(ctx context.Context) error {
 			break
 		}
 	}
-	log := logger.FromContext(ctx)
-	log.Warn().Err(lastErr).Msgf("BareGitResolver: failed to clone %s", rem.cloneURL)
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Debug().Err(lastErr).Msgf("BareGitResolver: failed to clone %s", rem.cloneURL)
 	return lastErr
 }
 
@@ -375,6 +449,9 @@ func gitCloneRetryable(out []byte, err error) bool {
 	}
 	var budgetErr *BudgetExceededError
 	if errors.As(err, &budgetErr) {
+		return false
+	}
+	if isSSHAuthFailure(out, err) {
 		return false
 	}
 	blob := strings.ToLower(string(out) + "\n" + err.Error())
@@ -430,18 +507,19 @@ func (rem *bareRemote) fetchRef(ctx context.Context, ref string) (string, error)
 // It checks that the object is locally present, fetching it from origin if not.
 func (rem *bareRemote) fetchSHARef(ctx context.Context, ref string) (string, error) {
 	v, err, _ := rem.fetchSF.Do(rem.sfKey(ref), func() (interface{}, error) {
+		safeRef, refErr := gitSafeArg(ref)
+		if refErr != nil {
+			return "", refErr
+		}
+		// Local-only read; acquireGitProc is taken only for the network fetch.
+		if localReadsStayLocal() && gitLocalInDir(ctx, rem.barePath, "cat-file", "-t", safeRef).Run() == nil {
+			return ref, nil // already present
+		}
 		release, acqErr := acquireGitProc(ctx)
 		if acqErr != nil {
 			return "", acqErr
 		}
 		defer release()
-		safeRef, refErr := gitSafeArg(ref)
-		if refErr != nil {
-			return "", refErr
-		}
-		if gitInDir(ctx, rem.barePath, "cat-file", "-t", safeRef).Run() == nil {
-			return ref, nil // already present
-		}
 		out, err := rem.runNetworkGit(ctx, func(remote string, extraConfig []string) *exec.Cmd {
 			args := append(append([]string{}, extraConfig...),
 				"fetch", "--filter=blob:none", remote, safeRef)
@@ -464,13 +542,14 @@ func (rem *bareRemote) fetchNamedRef(ctx context.Context, ref string) (string, e
 	// Key on "ref:<name>" so SHA keys and name keys never collide in fetchSF.
 	v, err, _ := rem.fetchSF.Do(rem.sfKey("ref:"+ref), func() (interface{}, error) {
 		// HEAD moves; do not reuse a cached or clone-time value across scans.
+		var stale bareRefEntry
 		if !mutableGitRef(ref) {
-			rem.refMu.RLock()
-			if cachedSHA, ok := rem.refCache[ref]; ok {
-				rem.refMu.RUnlock()
-				return cachedSHA, nil
+			if entry, ok := rem.refEntry(ref); ok {
+				if entry.fresh(time.Now()) {
+					return entry.SHA, nil
+				}
+				stale = entry
 			}
-			rem.refMu.RUnlock()
 		}
 
 		safeRef, refErr := gitSafeArg(ref)
@@ -478,17 +557,16 @@ func (rem *bareRemote) fetchNamedRef(ctx context.Context, ref string) (string, e
 			return "", refErr
 		}
 
-		// Local fast path: if the bare clone already contains this ref (e.g. a
-		// pre-populated clone or a prior fetch), resolve it without hitting the network.
-		// This is a local-only read so it intentionally bypasses acquireGitProc;
-		// the semaphore is acquired below only when a network fetch is needed.
-		if !mutableGitRef(ref) {
-			if out, localErr := gitInDir(ctx, rem.barePath, "rev-parse", "--verify", safeRef).Output(); localErr == nil {
+		// Local fast path: a tag or abbreviated commit already in the bare clone
+		// resolves without the network. Branch heads there are only as recent as
+		// the clone, so they are always fetched, including a branch the clone
+		// has whose name reads like an abbreviated commit. This is a local-only
+		// read so it intentionally bypasses acquireGitProc.
+		if local, ok := immutableLocalRev(ref, safeRef); ok && localReadsStayLocal() &&
+			(!abbreviatedSHA(ref) || !rem.hasLocalBranch(ctx, safeRef)) {
+			if out, localErr := gitLocalInDir(ctx, rem.barePath, "rev-parse", "--verify", local+"^{commit}").Output(); localErr == nil {
 				if resolved := strings.TrimSpace(string(out)); looksLikeSHA(resolved) {
-					rem.refMu.Lock()
-					rem.refCache[ref] = resolved
-					rem.refMu.Unlock()
-					go rem.saveBareRefCache()
+					rem.storeRef(ref, bareRefEntry{SHA: resolved, Resolved: time.Now()})
 					return resolved, nil
 				}
 			}
@@ -499,51 +577,126 @@ func (rem *bareRemote) fetchNamedRef(ctx context.Context, ref string) (string, e
 			return "", acqErr
 		}
 		defer release()
-		// Shallow fetch the named ref.
-		out, err := rem.runNetworkGit(ctx, func(remote string, extraConfig []string) *exec.Cmd {
-			args := append(append([]string{}, extraConfig...),
-				"fetch", "--filter=blob:none", "--depth=1", remote, safeRef)
-			return gitInDir(ctx, rem.barePath, args...)
-		})
+		fetched, err := rem.fetchNamedRefFromRemote(ctx, ref, safeRef)
 		if err != nil {
-			var budgetErr *BudgetExceededError
-			if errors.As(err, &budgetErr) {
-				return "", fmt.Errorf("git fetch %s %s: %w\n%s", rem.cloneURL, ref, err, bytes.TrimSpace(out))
-			}
-			// Retry without --depth in case the server rejects shallow fetches.
-			out2, err2 := rem.runNetworkGit(ctx, func(remote string, extraConfig []string) *exec.Cmd {
-				args := append(append([]string{}, extraConfig...),
-					"fetch", "--filter=blob:none", remote, safeRef)
-				return gitInDir(ctx, rem.barePath, args...)
-			})
-			if err2 != nil {
-				return "", fmt.Errorf(
-					"git fetch %s %s: %w\n%s\n%s",
-					rem.cloneURL, ref, err2, bytes.TrimSpace(out), bytes.TrimSpace(out2),
-				)
-			}
-		}
-		// Resolve FETCH_HEAD to the commit SHA.
-		sha, revErr := gitInDir(ctx, rem.barePath, "rev-parse", "FETCH_HEAD").Output()
-		if revErr != nil {
-			return "", fmt.Errorf("git rev-parse FETCH_HEAD: %w", revErr)
-		}
-		resolved := strings.TrimSpace(string(sha))
-		if !looksLikeSHA(resolved) {
-			return "", fmt.Errorf("unexpected FETCH_HEAD value %q for ref %s", resolved, ref)
+			return rem.staleRefFallback(ctx, ref, stale, err)
 		}
 		if !mutableGitRef(ref) {
-			rem.refMu.Lock()
-			rem.refCache[ref] = resolved
-			rem.refMu.Unlock()
-			go rem.saveBareRefCache()
+			rem.storeRef(ref, fetched)
 		}
-		return resolved, nil
+		return fetched.SHA, nil
 	})
 	if err != nil {
 		return "", err
 	}
 	return v.(string), nil
+}
+
+// staleRefFallback serves the commit ref last resolved to when refreshing it
+// failed for a reason that may clear up; budget and policy failures stand.
+func (rem *bareRemote) staleRefFallback(ctx context.Context, ref string, stale bareRefEntry, err error) (string, error) {
+	var budgetErr *BudgetExceededError
+	if stale.SHA == "" || ctx.Err() != nil || errors.As(err, &budgetErr) || isDestinationDenied(err) {
+		return "", err
+	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Warn().Err(err).
+		Msgf("BareGitResolver: refreshing ref %q of %s failed; using cached commit %s", ref, rem.cloneURL, stale.SHA)
+	return stale.SHA, nil
+}
+
+// immutableLocalRev names the local ref that ref can only mean when it is a tag
+// or an abbreviated commit. Branches and other refs are not served locally.
+func immutableLocalRev(ref, safeRef string) (string, bool) {
+	switch {
+	case mutableGitRef(ref):
+		return "", false
+	case strings.HasPrefix(ref, "refs/tags/"), abbreviatedSHA(ref):
+		return safeRef, true
+	case strings.HasPrefix(ref, "refs/"):
+		return "", false
+	default:
+		return "refs/tags/" + safeRef, true
+	}
+}
+
+// hasLocalBranch reports whether the bare clone has a branch named name.
+func (rem *bareRemote) hasLocalBranch(ctx context.Context, name string) bool {
+	return gitLocalInDir(ctx, rem.barePath, "show-ref", "--verify", "--quiet", "refs/heads/"+name).Run() == nil
+}
+
+func abbreviatedSHA(ref string) bool {
+	if len(ref) < 7 || len(ref) >= gitSHALength {
+		return false
+	}
+	for _, c := range ref {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+// fetchNamedRefFromRemote shallow-fetches ref, retrying without --depth only
+// when the server rejects the shallow fetch itself.
+func (rem *bareRemote) fetchNamedRefFromRemote(ctx context.Context, ref, safeRef string) (bareRefEntry, error) {
+	var fetched bareRefEntry
+	readFetchHead := func() error {
+		var err error
+		fetched, err = rem.readFetchHead(ctx, ref)
+		return err
+	}
+	out, err := rem.runNetworkGitThen(ctx, func(remote string, extraConfig []string) *exec.Cmd {
+		args := append(append([]string{}, extraConfig...),
+			"fetch", "--filter=blob:none", "--depth=1", remote, safeRef)
+		return gitInDir(ctx, rem.barePath, args...)
+	}, readFetchHead)
+	if err == nil {
+		return fetched, nil
+	}
+	var budgetErr *BudgetExceededError
+	if errors.As(err, &budgetErr) || !isShallowUnsupportedMessage(err.Error()+"\n"+string(out)) {
+		return bareRefEntry{}, fmt.Errorf("git fetch %s %s: %w\n%s", rem.cloneURL, ref, err, bytes.TrimSpace(out))
+	}
+	out2, err2 := rem.runNetworkGitThen(ctx, func(remote string, extraConfig []string) *exec.Cmd {
+		args := append(append([]string{}, extraConfig...),
+			"fetch", "--filter=blob:none", remote, safeRef)
+		return gitInDir(ctx, rem.barePath, args...)
+	}, readFetchHead)
+	if err2 != nil {
+		return bareRefEntry{}, fmt.Errorf(
+			"git fetch %s %s: %w\n%s\n%s",
+			rem.cloneURL, ref, err2, bytes.TrimSpace(out), bytes.TrimSpace(out2),
+		)
+	}
+	return fetched, nil
+}
+
+// readFetchHead resolves the commit a fetch of ref left in FETCH_HEAD, peeling
+// annotated tags, and records whether the fetched ref was a tag.
+func (rem *bareRemote) readFetchHead(ctx context.Context, ref string) (bareRefEntry, error) {
+	sha, err := gitInDir(ctx, rem.barePath, "rev-parse", "--verify", "FETCH_HEAD^{commit}").Output()
+	if err != nil {
+		return bareRefEntry{}, fmt.Errorf("git rev-parse FETCH_HEAD: %w", err)
+	}
+	resolved := strings.TrimSpace(string(sha))
+	if !looksLikeSHA(resolved) {
+		return bareRefEntry{}, fmt.Errorf("unexpected FETCH_HEAD value %q for ref %s", resolved, ref)
+	}
+	head, err := os.ReadFile(filepath.Join(rem.barePath, "FETCH_HEAD"))
+	if err != nil {
+		return bareRefEntry{}, fmt.Errorf("reading FETCH_HEAD: %w", err)
+	}
+	return bareRefEntry{SHA: resolved, Moving: !fetchedTag(head), Resolved: time.Now()}, nil
+}
+
+// fetchedTag reports whether FETCH_HEAD records a tag. Its lines read
+// "<sha>\t<not-for-merge>\t<kind> '<name>' of <url>", where kind is "branch",
+// "tag", or empty for any other ref.
+func fetchedTag(fetchHead []byte) bool {
+	line, _, _ := bytes.Cut(fetchHead, []byte("\n"))
+	fields := bytes.SplitN(line, []byte("\t"), 3)
+	return len(fields) == 3 && bytes.HasPrefix(fields[2], []byte("tag '"))
 }
 
 func archiveCacheKey(sha string) string {
@@ -594,66 +747,138 @@ func (p archivePrep) close() {
 // SSH may return one command per validated address so a dead first answer can fail over.
 type archiveCommandFunc func(ctx context.Context, args []string) ([]archivePrep, error)
 
+// localCloneArchiveCommand reads from the scanned checkout. Lazy fetches are
+// disabled so a partial checkout falls through to BareGitResolver, which applies
+// the destination policy, instead of reaching the checkout's own remote.
 func localCloneArchiveCommand(gitDir string) archiveCommandFunc {
 	return func(ctx context.Context, args []string) ([]archivePrep, error) {
-		return []archivePrep{{cmd: gitInDir(ctx, gitDir, args...)}}, nil
+		return []archivePrep{{cmd: gitLocalInDir(ctx, gitDir, args...)}}, nil
 	}
 }
 
 // archiveExtract materializes the selected module and its local-module closure
 // into a sparse directory whose layout matches the repository at the given SHA.
+// It returns the bytes it added under extractBase.
 func archiveExtract(
 	ctx context.Context, gitDir, extractBase, sha, subdir string, runArchive archiveCommandFunc,
 	objectMu *sync.RWMutex,
-) error {
+) (int64, error) {
 	cleanSubdir, err := cleanArchiveSubdir(subdir)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	// A marker is only written once its whole closure is on disk, so a hit does
+	// not have to wait behind another subdirectory being materialized.
+	if _, ok := cachedArchiveDir(extractBase, sha, cleanSubdir); ok {
+		return 0, nil
 	}
 
 	lock := archiveMaterializeLock(gitDir, sha)
 	lock.Lock()
 	defer lock.Unlock()
 
-	key := archiveCacheKey(sha)
-	dest := filepath.Join(extractBase, key)
+	dest := archiveCacheDir(extractBase, sha)
 	if _, ok := cachedArchiveDir(extractBase, sha, cleanSubdir); ok {
-		return nil
+		return 0, nil
+	}
+	if _, err := os.Stat(dest); errors.Is(err, os.ErrNotExist) {
+		forgetArchiveUsage(dest)
 	}
 	if err := os.MkdirAll(dest, dirPerm); err != nil {
-		return err
+		return 0, err
 	}
 
 	budget := ResourceBudgetFromContext(ctx)
-	usage, err := MeasurePackage(ctx, dest, budget.Limits())
+	usage, err := archiveBaselineUsage(ctx, dest, budget.Limits())
 	if err != nil {
+		return 0, err
+	}
+	// Only clones owned by the resolver fetch objects lazily; guarding any other
+	// repository would scan, and on rollback delete from, a store we do not own.
+	var guard *gitObjectGuard
+	if objectMu != nil {
+		guard, err = newGitObjectGuard(ctx, gitDir, budget)
+		if err != nil {
+			return 0, err
+		}
+	}
+	archive := &sparseArchive{
+		runArchive:  runArchive,
+		sha:         sha,
+		dest:        dest,
+		extractBase: extractBase,
+		counter:     &PackageCounter{limits: budget.Limits(), usage: usage},
+		objectMu:    objectMu,
+		guard:       guard,
+		visited:     map[string]bool{},
+	}
+	if err := archive.materialize(ctx, cleanSubdir); err != nil {
+		archive.discard()
+		return 0, err
+	}
+	storeArchiveUsage(dest, PackageUsage{
+		Bytes: usage.Bytes + archive.written.usage.Bytes,
+		Files: usage.Files + archive.written.usage.Files,
+	})
+	return archive.written.usage.Bytes + archive.markers.usage.Bytes, nil
+}
+
+func archiveBaselineUsage(ctx context.Context, dest string, limits ResourceLimits) (PackageUsage, error) {
+	if usage, ok := knownArchiveUsage(dest); ok {
+		return usage, CheckPackageUsage(usage, limits)
+	}
+	return MeasurePackage(ctx, dest, limits)
+}
+
+// sparseArchive is one archiveExtract call materializing a module closure into
+// the shared per-SHA tree. It records everything it creates so a failure undoes
+// exactly its own writes.
+type sparseArchive struct {
+	runArchive  archiveCommandFunc
+	sha         string
+	dest        string
+	extractBase string
+	counter     *PackageCounter
+	objectMu    *sync.RWMutex
+	guard       *gitObjectGuard
+	extracted   int64
+	visited     map[string]bool
+	unmarked    []string
+	written     archiveWrites
+	markers     archiveWrites
+}
+
+func (a *sparseArchive) materialize(ctx context.Context, subdir string) error {
+	if err := a.materializeClosure(ctx, subdir); err != nil {
 		return err
 	}
-	existing, err := snapshotPackageTree(dest)
-	if err != nil {
-		return err
-	}
-	stateRoot := filepath.Dir(archiveMarkerPath(extractBase, sha, "."))
-	existingState, err := snapshotPackageTree(stateRoot)
-	if err != nil {
-		return err
-	}
-	guard, err := newGitObjectGuard(ctx, gitDir, budget)
-	if err != nil {
-		return err
-	}
-	extracted := int64(0)
-	counter := &PackageCounter{limits: budget.Limits(), usage: usage}
-	visited := map[string]bool{}
-	if err := materializeModuleClosure(
-		ctx, runArchive, sha, dest, extractBase, cleanSubdir, visited, &extracted, counter,
-		objectMu, guard,
-	); err != nil {
-		rollbackPackageTree(dest, existing)
-		rollbackPackageTree(stateRoot, existingState)
-		return err
+	for _, extracted := range a.unmarked {
+		marker := archiveMarkerPath(a.extractBase, a.sha, extracted)
+		if err := a.markers.mkdirAll(filepath.Dir(marker)); err != nil {
+			return fmt.Errorf("creating sparse archive state: %w", err)
+		}
+		a.markers.addFile(marker, 0)
+		if err := os.WriteFile(marker, nil, cacheFilePerms); err != nil {
+			return fmt.Errorf("marking sparse archive path %q: %w", extracted, err)
+		}
 	}
 	return nil
+}
+
+// discard undoes this call's writes. If that fails the tree no longer matches
+// its markers, so the whole cache entry is dropped instead.
+func (a *sparseArchive) discard() {
+	// Markers go first so none outlives the files it vouches for. Files are only
+	// renamed into place complete, so whatever cannot be removed is still correct
+	// for this commit and stays for other modules sharing the tree; only the
+	// recorded usage no longer matches the disk.
+	if err := a.markers.rollback(); err != nil {
+		forgetArchiveUsage(a.dest)
+		return
+	}
+	if err := a.written.rollback(); err != nil {
+		forgetArchiveUsage(a.dest)
+	}
 }
 
 func cleanArchiveSubdir(subdir string) (string, error) {
@@ -667,67 +892,44 @@ func cleanArchiveSubdir(subdir string) (string, error) {
 	return clean, nil
 }
 
-func materializeModuleClosure(
-	ctx context.Context,
-	runArchive archiveCommandFunc,
-	sha, packageRoot, extractBase, subdir string,
-	visited map[string]bool,
-	extracted *int64,
-	counter *PackageCounter,
-	objectMu *sync.RWMutex,
-	guard *gitObjectGuard,
-) error {
-	if visited[subdir] {
+func (a *sparseArchive) materializeClosure(ctx context.Context, subdir string) error {
+	if a.visited[subdir] {
 		return nil
 	}
-	visited[subdir] = true
+	a.visited[subdir] = true
 
-	marker := archiveMarkerPath(extractBase, sha, subdir)
-	if _, err := os.Stat(marker); err == nil {
+	if _, err := os.Stat(archiveMarkerPath(a.extractBase, a.sha, subdir)); err == nil {
 		return nil
 	}
-	if err := extractArchiveSubdir(
-		ctx, runArchive, sha, packageRoot, subdir, extracted, counter, objectMu, guard,
-	); err != nil {
+	if err := a.extract(ctx, subdir); err != nil {
 		return err
 	}
+	a.unmarked = append(a.unmarked, subdir)
 
-	moduleDir := packageRoot
+	moduleDir := a.dest
 	if subdir != "." {
-		moduleDir = filepath.Join(packageRoot, subdir)
+		moduleDir = filepath.Join(a.dest, subdir)
 	}
-	children, err := localModuleArchiveSubdirs(moduleDir, packageRoot)
+	children, err := localModuleArchiveSubdirs(ctx, moduleDir, a.dest)
 	if err != nil {
 		return err
 	}
 	for _, child := range children {
-		if err := materializeModuleClosure(
-			ctx, runArchive, sha, packageRoot, extractBase, child, visited, extracted, counter,
-			objectMu, guard,
-		); err != nil {
+		if err := a.materializeClosure(ctx, child); err != nil {
 			return err
 		}
-	}
-	if err := os.MkdirAll(filepath.Dir(marker), dirPerm); err != nil {
-		return fmt.Errorf("creating sparse archive state: %w", err)
-	}
-	if err := os.WriteFile(marker, nil, cacheFilePerms); err != nil {
-		return fmt.Errorf("marking sparse archive path %q: %w", subdir, err)
 	}
 	return nil
 }
 
-func extractArchiveSubdir(
-	ctx context.Context, runArchive archiveCommandFunc, sha, dest, subdir string,
-	extracted *int64, counter *PackageCounter, objectMu *sync.RWMutex, guard *gitObjectGuard,
-) error {
+func (a *sparseArchive) extract(ctx context.Context, subdir string) error {
 	release, err := acquireGitProc(ctx)
 	if err != nil {
 		return err
 	}
 	defer release()
 
-	archiveArg, argErr := gitSafeArg(sha)
+	archiveArg, argErr := gitSafeArg(a.sha)
 	if argErr != nil {
 		return argErr
 	}
@@ -735,39 +937,42 @@ func extractArchiveSubdir(
 	if subdir != "." {
 		archiveArgs = append(archiveArgs, "--", filepath.ToSlash(subdir))
 	}
-	preps, err := runArchive(ctx, archiveArgs)
+	preps, err := a.runArchive(ctx, archiveArgs)
 	if err != nil {
 		return fmt.Errorf("git archive %s path %q: %w", archiveArg, subdir, err)
 	}
 	var lastErr error
-	for _, prep := range preps {
-		existing, snapshotErr := snapshotPackageTree(dest)
-		if snapshotErr != nil {
-			prep.close()
-			return snapshotErr
-		}
-		usageBefore := counter.Usage()
-		extractedBefore := *extracted
-		if objectMu != nil {
-			objectMu.RLock()
+	for i, prep := range preps {
+		usageBefore := a.counter.Usage()
+		extractedBefore := a.extracted
+		attempt := &archiveWrites{}
+		if a.objectMu != nil {
+			a.objectMu.RLock()
 		}
 		err := extractArchiveCommandWithResourceBudget(
-			ctx, prep.cmd, dest, extracted, maxArchiveExtractBytes, counter, guard,
+			ctx, prep.cmd, a.dest, &a.extracted, a.counter.archiveStreamLimit(), a.counter, a.guard, attempt,
 		)
-		if objectMu != nil {
-			objectMu.RUnlock()
+		if a.objectMu != nil {
+			a.objectMu.RUnlock()
 		}
 		prep.close()
 		if err == nil {
+			a.written.merge(attempt)
 			return nil
 		}
-		rollbackPackageTree(dest, existing)
 		var budgetErr *BudgetExceededError
 		if errors.As(err, &budgetErr) && budgetErr.Limit == limitPackageBytes {
-			rollbackGitObjects(guard, objectMu)
+			rollbackGitObjects(a.guard, a.objectMu)
 		}
-		counter.usage = usageBefore
-		*extracted = extractedBefore
+		if rollbackErr := attempt.rollback(); rollbackErr != nil {
+			a.written.merge(attempt)
+			for _, remaining := range preps[i+1:] {
+				remaining.close()
+			}
+			return fmt.Errorf("extracting git archive %s: %w (rollback: %v)", archiveArg, err, rollbackErr)
+		}
+		a.counter.usage = usageBefore
+		a.extracted = extractedBefore
 		lastErr = err
 	}
 	if lastErr == nil {
@@ -792,7 +997,7 @@ func rollbackGitObjects(guard *gitObjectGuard, objectMu *sync.RWMutex) {
 
 func extractArchiveCommandWithResourceBudget(
 	ctx context.Context, cmd *exec.Cmd, dest string, extracted *int64, maxBytes int64,
-	counter *PackageCounter, guard *gitObjectGuard,
+	counter *PackageCounter, guard *gitObjectGuard, written *archiveWrites,
 ) error {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -804,7 +1009,7 @@ func extractArchiveCommandWithResourceBudget(
 	stopGuard := guard.watch(ctx, func() { _ = cmd.Process.Kill() })
 
 	stream := &io.LimitedReader{R: stdout, N: maxBytes + 1}
-	extractErr := extractRegularFilesWithResourceBudget(stream, dest, extracted, counter)
+	extractErr := extractRegularFilesWithResourceBudget(stream, dest, extracted, counter, written)
 	if extractErr == nil {
 		_, extractErr = io.Copy(io.Discard, stream)
 	}
@@ -830,7 +1035,7 @@ func extractArchiveCommandWithResourceBudget(
 	return nil
 }
 
-func snapshotPackageTree(root string) (map[string]bool, error) {
+func snapshotTree(root string) (map[string]bool, error) {
 	paths := make(map[string]bool)
 	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, walkErr error) error {
 		if errors.Is(walkErr, os.ErrNotExist) {
@@ -845,9 +1050,12 @@ func snapshotPackageTree(root string) (map[string]bool, error) {
 	return paths, err
 }
 
-func rollbackPackageTree(root string, existing map[string]bool) {
+func rollbackTree(root string, existing map[string]bool) {
 	var added []string
 	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, walkErr error) error {
+		if errors.Is(walkErr, os.ErrNotExist) {
+			return nil
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -872,9 +1080,10 @@ func rollbackPackageTree(root string, existing map[string]bool) {
 }
 
 func extractRegularFilesWithResourceBudget(
-	r io.Reader, dest string, extracted *int64, counter *PackageCounter,
+	r io.Reader, dest string, extracted *int64, counter *PackageCounter, written *archiveWrites,
 ) error {
 	tr := tar.NewReader(r)
+	limit := counter.archiveStreamLimit()
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -883,14 +1092,14 @@ func extractRegularFilesWithResourceBudget(
 		if err != nil {
 			return fmt.Errorf("reading tar entry: %w", err)
 		}
-		if *extracted > maxArchiveExtractBytes {
-			return fmt.Errorf("git archive exceeds %d byte limit", maxArchiveExtractBytes)
+		if *extracted > limit {
+			return fmt.Errorf("git archive exceeds %d byte limit", limit)
 		}
 		name := filepath.Clean(header.Name)
 		if !filepath.IsLocal(name) {
 			return fmt.Errorf("tar entry %q is not a local path", header.Name)
 		}
-		if err := extractTarEntry(tr, header, dest, name, extracted, counter); err != nil {
+		if err := extractTarEntry(tr, header, dest, name, extracted, counter, written); err != nil {
 			return err
 		}
 	}
@@ -898,6 +1107,7 @@ func extractRegularFilesWithResourceBudget(
 
 func extractTarEntry(
 	tr *tar.Reader, header *tar.Header, dest, name string, extracted *int64, counter *PackageCounter,
+	written *archiveWrites,
 ) error {
 	switch header.Typeflag {
 	case tar.TypeXHeader, tar.TypeXGlobalHeader:
@@ -914,12 +1124,12 @@ func extractTarEntry(
 		} else if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(path, dirPerm); err != nil {
+		if err := written.mkdirAll(path); err != nil {
 			return fmt.Errorf("creating directory for tar entry %q: %w", header.Name, err)
 		}
 		return nil
 	case tar.TypeReg:
-		return extractTarRegularFile(tr, header, dest, name, extracted, counter)
+		return extractTarRegularFile(tr, header, dest, name, extracted, counter, written)
 	case tar.TypeSymlink, tar.TypeLink, tar.TypeChar, tar.TypeBlock, tar.TypeFifo, tar.TypeCont:
 		return countArchiveMetadataEntry(counter)
 	default:
@@ -960,10 +1170,11 @@ func countImplicitParentDirs(dest, name string, counter *PackageCounter) error {
 
 func extractTarRegularFile(
 	tr *tar.Reader, header *tar.Header, dest, name string, extracted *int64, counter *PackageCounter,
+	written *archiveWrites,
 ) error {
 	path := filepath.Join(dest, name)
-	if header.Size > maxArchiveExtractBytes-*extracted {
-		return fmt.Errorf("git archive exceeds %d byte limit", maxArchiveExtractBytes)
+	if limit := counter.archiveStreamLimit(); header.Size > limit-*extracted {
+		return fmt.Errorf("git archive exceeds %d byte limit", limit)
 	}
 	if _, err := os.Lstat(path); err == nil {
 		_, discardErr := io.CopyN(io.Discard, tr, header.Size)
@@ -979,28 +1190,33 @@ func extractTarRegularFile(
 			return err
 		}
 	}
-	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
+	if err := written.mkdirAll(filepath.Dir(path)); err != nil {
 		return fmt.Errorf("creating parent for tar entry %q: %w", header.Name, err)
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, header.FileInfo().Mode().Perm()) //nolint:gosec
+	// Other modules may read the shared tree without the lock, so an entry only
+	// appears under its name once it is complete.
+	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.partial")
 	if err != nil {
 		return fmt.Errorf("creating tar entry %q: %w", header.Name, err)
 	}
-	_, copyErr := io.CopyN(file, tr, header.Size)
-	closeErr := file.Close()
-	if copyErr != nil {
-		_ = os.Remove(path)
-		return fmt.Errorf("writing tar entry %q: %w", header.Name, copyErr)
+	_, copyErr := io.CopyN(temp, tr, header.Size)
+	writeErr := errors.Join(copyErr, temp.Close())
+	if writeErr == nil {
+		writeErr = os.Chmod(temp.Name(), header.FileInfo().Mode().Perm())
 	}
-	if closeErr != nil {
-		_ = os.Remove(path)
-		return fmt.Errorf("closing tar entry %q: %w", header.Name, closeErr)
+	if writeErr == nil {
+		writeErr = os.Rename(temp.Name(), path)
 	}
+	if writeErr != nil {
+		_ = os.Remove(temp.Name())
+		return fmt.Errorf("writing tar entry %q: %w", header.Name, writeErr)
+	}
+	written.addFile(path, header.Size)
 	*extracted += header.Size
 	return nil
 }
 
-func localModuleArchiveSubdirs(moduleDir, packageRoot string) ([]string, error) {
+func localModuleArchiveSubdirs(ctx context.Context, moduleDir, packageRoot string) ([]string, error) {
 	entries, err := os.ReadDir(moduleDir)
 	if err != nil {
 		return nil, fmt.Errorf("reading materialized module %q: %w", moduleDir, err)
@@ -1013,13 +1229,17 @@ func localModuleArchiveSubdirs(moduleDir, packageRoot string) ([]string, error) 
 			names = append(names, entry.Name())
 		}
 	}
-	for _, name := range tfpath.Select(names, tfpath.IsHCLConfig) {
+	maxConfigBytes := tfmodules.MaxConfigFileBytesFromContext(ctx)
+	for _, name := range tfpath.Select(names, tfpath.IsConfig) {
 		path := filepath.Join(moduleDir, name)
+		if tfmodules.ConfigFileTooLarge(path, maxConfigBytes) {
+			continue
+		}
 		src, readErr := os.ReadFile(filepath.Clean(path))
 		if readErr != nil {
 			continue
 		}
-		for _, source := range localModuleSources(src, path) {
+		for _, source := range configModuleSources(src, path) {
 			rel, ok := localArchiveSubdir(moduleDir, packageRoot, source)
 			if !ok || seen[rel] {
 				continue
@@ -1029,6 +1249,38 @@ func localModuleArchiveSubdirs(moduleDir, packageRoot string) ([]string, error) 
 		}
 	}
 	return children, nil
+}
+
+// configModuleSources returns the literal module sources a configuration file
+// declares, in native or JSON syntax.
+func configModuleSources(src []byte, path string) []string {
+	if tfpath.IsJSONConfig(path) {
+		return jsonModuleSources(src)
+	}
+	return localModuleSources(src, path)
+}
+
+// jsonModuleSources reads the "module" object of a JSON configuration file.
+// Sources with template sequences are not literal, as in native syntax.
+func jsonModuleSources(src []byte) []string {
+	var root struct {
+		Module map[string]json.RawMessage `json:"module"`
+	}
+	if json.Unmarshal(src, &root) != nil {
+		return nil
+	}
+	sources := make([]string, 0, len(root.Module))
+	for _, body := range root.Module {
+		var attrs struct {
+			Source string `json:"source"`
+		}
+		if json.Unmarshal(body, &attrs) != nil || attrs.Source == "" || strings.Contains(attrs.Source, "${") {
+			continue
+		}
+		sources = append(sources, strings.TrimSpace(attrs.Source))
+	}
+	sort.Strings(sources)
+	return sources
 }
 
 func localModuleSources(src []byte, path string) []string {
@@ -1078,10 +1330,16 @@ func localArchiveSubdir(moduleDir, packageRoot, source string) (string, bool) {
 func (rem *bareRemote) extract(ctx context.Context, sha, subdir string) (string, error) {
 	key := archiveCacheKey(sha) + "\x00" + filepath.Clean(subdir)
 	_, err, _ := rem.extractSF.Do(rem.sfKey(key), func() (interface{}, error) {
-		return nil, archiveExtract(
+		written, extractErr := archiveExtract(
 			ctx, rem.barePath, rem.extractBase, sha, subdir, rem.archiveCommand,
 			&rem.networkMu,
 		)
+		// Extraction can also fetch missing blobs into the clone, whose size is
+		// not reported, so any write marks the whole entry for measurement.
+		if written != 0 || extractErr != nil {
+			rem.writes.Add(1)
+		}
+		return nil, extractErr
 	})
 	if err != nil {
 		return "", err
@@ -1101,13 +1359,17 @@ func (r *BareGitResolver) admitGitEntry(repoEntry string) error {
 	return nil
 }
 
-func (r *BareGitResolver) resolveCachedSHAArchive(
-	ctx context.Context, remote *bareRemote, repoEntry, ref, subdir string,
+// resolveCachedArchive serves a pinned SHA, or a named ref already mapped to
+// one, from an extracted archive without touching the network. allowStale also
+// serves a moving ref past movingRefTTL, for when the remote is unreachable.
+func (r *BareGitResolver) resolveCachedArchive(
+	ctx context.Context, remote *bareRemote, repoEntry, ref, subdir string, allowStale bool,
 ) (Resolution, bool, error) {
-	if !looksLikeSHA(ref) {
+	sha, ok := remote.cachedSHA(ref, allowStale)
+	if !ok {
 		return Resolution{}, false, nil
 	}
-	packageRoot, ok := cachedArchiveDir(remote.extractBase, ref, subdir)
+	packageRoot, ok := cachedArchiveDir(remote.extractBase, sha, subdir)
 	if !ok {
 		return Resolution{}, false, nil
 	}
@@ -1119,7 +1381,8 @@ func (r *BareGitResolver) resolveCachedSHAArchive(
 	resolution, err := ConfineResolution(ctx, &Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
-		ResolvedRef: ref,
+		Usage:       archiveUsageHint(packageRoot),
+		ResolvedRef: sha,
 		Origin:      "git",
 	})
 	if err != nil {
@@ -1129,18 +1392,40 @@ func (r *BareGitResolver) resolveCachedSHAArchive(
 	return withResolutionCleanup(&resolution, release), true, nil
 }
 
+func (rem *bareRemote) cachedSHA(ref string, allowStale bool) (string, bool) {
+	if looksLikeSHA(ref) {
+		return ref, true
+	}
+	if mutableGitRef(ref) {
+		return "", false
+	}
+	entry, ok := rem.refEntry(ref)
+	if !ok || !looksLikeSHA(entry.SHA) {
+		return "", false
+	}
+	return entry.SHA, allowStale || entry.fresh(time.Now())
+}
+
 func (r *BareGitResolver) resolveRemoteArchive(
 	ctx context.Context, remote *bareRemote, repoEntry, repoURL, ref, subdir string,
 ) (Resolution, error) {
 	contextLogger := logger.FromContext(ctx)
 	release := r.Budget.Lease(repoEntry)
+	writes := remote.writes.Load()
+	invalidateIfWritten := func() {
+		if remote.writes.Load() != writes {
+			r.Budget.Invalidate(repoEntry)
+		}
+	}
 	if err := remote.ensureClone(ctx); err != nil {
+		invalidateIfWritten()
 		release()
 		return Resolution{}, unresolvedResourceError(err)
 	}
 
 	sha, err := remote.fetchRef(ctx, ref)
 	if err != nil {
+		invalidateIfWritten()
 		release()
 		contextLogger.Warn().Err(err).Msgf("BareGitResolver: ref %q not reachable from %s", ref, repoURL)
 		return Resolution{}, unresolvedResourceError(err)
@@ -1148,10 +1433,12 @@ func (r *BareGitResolver) resolveRemoteArchive(
 
 	packageRoot, err := remote.extract(ctx, sha, subdir)
 	if err != nil {
+		invalidateIfWritten()
 		release()
 		contextLogger.Warn().Err(err).Msgf("BareGitResolver: archive %s:%s failed", sha, subdir)
 		return Resolution{}, unresolvedResourceError(err)
 	}
+	invalidateIfWritten()
 	if err := r.admitGitEntry(repoEntry); err != nil {
 		release()
 		return Resolution{}, unresolvedResourceError(err)
@@ -1160,6 +1447,7 @@ func (r *BareGitResolver) resolveRemoteArchive(
 	resolution, err := ConfineResolution(ctx, &Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
+		Usage:       archiveUsageHint(packageRoot),
 		ResolvedRef: sha,
 		Origin:      "git",
 	})
@@ -1170,42 +1458,73 @@ func (r *BareGitResolver) resolveRemoteArchive(
 	return withResolutionCleanup(&resolution, release), nil
 }
 
-// Resolve implements Resolver for pinnable git:: sources. A missing ref uses HEAD.
-func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+// bareGitSource is a git:: source BareGitResolver has admitted: parsed, on an
+// allowed transport, and on an allowed host.
+type bareGitSource struct {
+	repoURL, subdir, ref string
+	parsed               *url.URL
+}
+
+func (r *BareGitResolver) admit(ctx context.Context, mod *tfmodules.ParsedModule) (bareGitSource, error) {
 	repoURL, subdir, ref, ok := parseGitGetterSource(mod.Source)
 	if !ok {
-		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: "BareGitResolver: not a git:: source",
-		}
+		return bareGitSource{}, notApplicable("BareGitResolver: not a git:: source")
 	}
 	if ref == "" {
 		ref = defaultGitRef
 	}
 	parsedRepo, parseErr := url.Parse(repoURL)
 	if parseErr != nil || parsedRepo.Hostname() == "" {
-		return Resolution{}, &tfmodules.UnresolvedError{
+		return bareGitSource{}, &tfmodules.UnresolvedError{
 			Reason: "git module source is not a valid remote URL",
 		}
 	}
 	if err := checkGitTransportAllowed(ctx, parsedRepo); err != nil {
-		return Resolution{}, err
+		return bareGitSource{}, err
 	}
 	if err := checkHostAllowlist(mod.Source, r.hostAllowlist); err != nil {
+		return bareGitSource{}, err
+	}
+	return bareGitSource{repoURL: repoURL, subdir: subdir, ref: ref, parsed: parsedRepo}, nil
+}
+
+func (r *BareGitResolver) Screen(ctx context.Context, mod *tfmodules.ParsedModule) error {
+	_, err := r.admit(ctx, mod)
+	return err
+}
+
+// Resolve implements Resolver for pinnable git:: sources. A missing ref uses HEAD.
+func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	source, err := r.admit(ctx, mod)
+	if err != nil {
 		return Resolution{}, err
 	}
-
-	remote := r.getOrInitRemote(repoURL)
+	remote := r.getOrInitRemote(source.repoURL)
 	repoEntry := filepath.Dir(remote.barePath)
 
-	if resolution, ok, err := r.resolveCachedSHAArchive(ctx, remote, repoEntry, ref, subdir); ok {
+	if resolution, ok, err := r.resolveCachedArchive(ctx, remote, repoEntry, source.ref, source.subdir, false); ok {
 		return resolution, err
 	}
 
-	if _, err := r.policy.resolveHost(ctx, parsedRepo.Hostname()); err != nil {
+	if _, err := r.policy.resolveHost(ctx, source.parsed.Hostname()); err != nil {
+		// A stale commit only stands in for an unreachable host; a destination
+		// the policy denies stays denied even when an older copy is cached.
+		if !isDestinationDenied(err) {
+			if resolution, ok, cachedErr := r.resolveCachedArchive(
+				ctx, remote, repoEntry, source.ref, source.subdir, true,
+			); ok {
+				contextLogger := logger.FromContext(ctx)
+				contextLogger.Warn().Err(err).Msgf(
+					"BareGitResolver: %s is unreachable; using the cached commit for ref %q",
+					source.parsed.Hostname(), source.ref,
+				)
+				return resolution, cachedErr
+			}
+		}
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
-	return r.resolveRemoteArchive(ctx, remote, repoEntry, repoURL, ref, subdir)
+	return r.resolveRemoteArchive(ctx, remote, repoEntry, source.repoURL, source.ref, source.subdir)
 }
 
 // checkGitTransportAllowed accepts only the transports whose destination the
@@ -1346,8 +1665,10 @@ func parseGitGetterSource(source string) (repoURL, subdir, ref string, ok bool) 
 
 	// go-getter separates repo URL from subdir with //. Split on u.Path so we
 	// don't accidentally match the // in the URL scheme (e.g. https://).
+	// Extra slashes after the separator ("repo///sub") still name a path under
+	// the package root, as they do for go-getter.
 	if idx := strings.Index(u.Path, "//"); idx >= 0 {
-		subdir = u.Path[idx+2:]
+		subdir = strings.TrimLeft(u.Path[idx+2:], "/")
 		u.Path = u.Path[:idx]
 	}
 

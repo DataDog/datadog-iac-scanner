@@ -48,22 +48,39 @@ func initRepoWithRefs(t *testing.T) (workTree, gitDir string) {
 	return workTree, filepath.Join(workTree, ".git")
 }
 
+func TestIsPartialCloneReadsThePromisorExtension(t *testing.T) {
+	workTree, gitDir := initRepoWithRefs(t)
+	if isPartialClone(context.Background(), gitDir) {
+		t.Fatal("a full clone is not a partial clone")
+	}
+	runGit(t, workTree, "config", "extensions.partialClone", "origin")
+	if !isPartialClone(context.Background(), gitDir) {
+		t.Fatal("a clone with a promisor remote is a partial clone")
+	}
+}
+
 func TestLoadRefMapMatchesRevParse(t *testing.T) {
 	workTree, gitDir := initRepoWithRefs(t)
 	info := &localRepoInfo{gitDir: gitDir, refSHA: loadRefMap(context.Background(), gitDir)}
+	unmapped := &localRepoInfo{gitDir: gitDir}
+	commit := runGit(t, workTree, "rev-parse", "--verify", "main")
 
 	for _, ref := range []string{"v1.0.0", "v2.0.0", "main", "feature"} {
-		want := runGit(t, workTree, "rev-parse", "--verify", ref)
 		got, ok := info.lookupRefSHA(ref)
 		if !ok {
 			t.Fatalf("ref %q not found in map", ref)
 		}
-		if got != want {
-			t.Fatalf("ref %q: map sha %q != rev-parse %q", ref, got, want)
+		if got != commit {
+			t.Fatalf("ref %q: map sha %q, want commit %q", ref, got, commit)
 		}
-		if resolved, present := resolveLocalRef(context.Background(), info, ref); !present || resolved != want {
-			t.Fatalf("resolveLocalRef(%q) = (%q,%v), want (%q,true)", ref, resolved, present, want)
+		for _, repo := range []*localRepoInfo{info, unmapped} {
+			if resolved, present := resolveLocalRef(context.Background(), repo, ref); !present || resolved != commit {
+				t.Fatalf("resolveLocalRef(%q) = (%q,%v), want (%q,true)", ref, resolved, present, commit)
+			}
 		}
+	}
+	if tagObject := runGit(t, workTree, "rev-parse", "--verify", "v2.0.0"); tagObject == commit {
+		t.Fatal("fixture must use an annotated tag")
 	}
 }
 
@@ -77,6 +94,58 @@ func TestResolveLocalRefSHAAndMissing(t *testing.T) {
 	}
 	if _, ok := resolveLocalRef(context.Background(), info, "does-not-exist"); ok {
 		t.Fatal("expected missing ref to be unresolved")
+	}
+}
+
+func TestLocalGitResolverInitReusesWorktreeAcrossRootsButNotNestedRepos(t *testing.T) {
+	outer := t.TempDir()
+	runGit(t, outer, "init", "-q", "-b", "main")
+	runGit(t, outer, "remote", "add", "origin", "https://example.com/acme/outer.git")
+	nested := filepath.Join(outer, "vendor", "nested")
+	for _, dir := range []string{filepath.Join(outer, "a", "b"), filepath.Join(nested, "x")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit(t, nested, "init", "-q", "-b", "main")
+	runGit(t, nested, "remote", "add", "origin", "https://example.com/acme/nested.git")
+
+	worktrees := []string{}
+	if top, ok := plainWorktreeTop(filepath.Join(outer, ".git")); ok {
+		worktrees = append(worktrees, top)
+	}
+	if !insideKnownWorktree(worktrees, filepath.Join(outer, "a", "b")) {
+		t.Fatal("subdirectory of a known worktree must reuse its git dir")
+	}
+	if insideKnownWorktree(worktrees, filepath.Join(nested, "x")) {
+		t.Fatal("nested repository must not reuse the outer git dir")
+	}
+
+	resolver := NewLocalGitRefResolver([]string{
+		outer, filepath.Join(outer, "a"), filepath.Join(outer, "a", "b"), filepath.Join(nested, "x"),
+	}, t.TempDir())
+	resolver.init(t.Context())
+	if len(resolver.repos) != 2 {
+		t.Fatalf("got %d repos, want outer and nested", len(resolver.repos))
+	}
+	for _, source := range []string{"https://example.com/acme/outer.git", "https://example.com/acme/nested.git"} {
+		if resolver.findRepo(normalizeGitRepoURL(source)) == nil {
+			t.Fatalf("repo %s was not registered", source)
+		}
+	}
+}
+
+func TestLocalGitResolverInitIgnoresFirstCallersCancellation(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q", "-b", "main")
+	runGit(t, root, "remote", "add", "origin", "https://example.com/acme/repo.git")
+
+	resolver := NewLocalGitRefResolver([]string{root}, t.TempDir())
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	resolver.init(cancelled)
+	if resolver.findRepo(normalizeGitRepoURL("https://example.com/acme/repo.git")) == nil {
+		t.Fatal("a cancelled first caller must not leave the shared repository list empty")
 	}
 }
 
@@ -110,6 +179,37 @@ func TestLocalGitResolverRejectsAndRemovesOversizedCacheEntry(t *testing.T) {
 	}
 }
 
+func TestLocalArchiveBudgetRejectionKeepsCheckoutObjects(t *testing.T) {
+	workTree := t.TempDir()
+	runGit(t, workTree, "init", "-q", "-b", "main")
+	dir := filepath.Join(workTree, "modules", "big")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(strings.Repeat("#", 4096)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, workTree, "add", ".")
+	runGit(t, workTree, "commit", "-q", "-m", "big")
+	sha := runGit(t, workTree, "rev-parse", "HEAD")
+	gitDir := filepath.Join(workTree, ".git")
+
+	concurrent := filepath.Join(gitDir, "objects", "pack", "concurrent-user-fetch.pack")
+	runArchive := func(ctx context.Context, args []string) ([]archivePrep, error) {
+		if err := os.WriteFile(concurrent, []byte("pack"), 0o644); err != nil {
+			return nil, err
+		}
+		return localCloneArchiveCommand(gitDir)(ctx, args)
+	}
+	ctx := WithResourceBudget(t.Context(), NewResourceBudget(ResourceLimits{MaxPackageBytes: 1024}))
+	if _, err := archiveExtract(ctx, gitDir, t.TempDir(), sha, "modules/big", runArchive, nil); err == nil {
+		t.Fatal("expected the oversized module to be rejected")
+	}
+	if _, err := os.Stat(concurrent); err != nil {
+		t.Fatalf("object written to the scanned checkout during extraction was removed: %v", err)
+	}
+}
+
 func TestArchiveExtractMaterializesLocalModuleClosure(t *testing.T) {
 	workTree := t.TempDir()
 	runGit(t, workTree, "init", "-q", "-b", "main")
@@ -132,7 +232,7 @@ func TestArchiveExtractMaterializesLocalModuleClosure(t *testing.T) {
 	extractBase := t.TempDir()
 
 	gitDir := filepath.Join(workTree, ".git")
-	if err := archiveExtract(
+	if _, err := archiveExtract(
 		t.Context(), gitDir, extractBase, sha, "modules/selected",
 		localCloneArchiveCommand(gitDir), nil,
 	); err != nil {
@@ -147,5 +247,66 @@ func TestArchiveExtractMaterializesLocalModuleClosure(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(packageRoot, "modules", "unrelated")); !os.IsNotExist(err) {
 		t.Fatalf("unrelated module was extracted: %v", err)
+	}
+}
+
+func TestLocalGitResolverPartialCheckoutFallsThroughWithoutLazyFetch(t *testing.T) {
+	upstream := t.TempDir()
+	runGit(t, upstream, "init", "-q", "-b", "main")
+	runGit(t, upstream, "config", "uploadpack.allowFilter", "true")
+	moduleFile := filepath.Join(upstream, "modules", "x", "main.tf")
+	if err := os.MkdirAll(filepath.Dir(moduleFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(moduleFile, []byte("# old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, upstream, "add", ".")
+	runGit(t, upstream, "commit", "-q", "-m", "old")
+	oldSHA := runGit(t, upstream, "rev-parse", "HEAD")
+	oldBlob := runGit(t, upstream, "rev-parse", "HEAD:modules/x/main.tf")
+	if err := os.WriteFile(moduleFile, []byte("# new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, upstream, "commit", "-q", "-am", "new")
+
+	checkout := filepath.Join(t.TempDir(), "checkout")
+	runGit(t, filepath.Dir(checkout), "clone", "-q", "--filter=blob:none", "file://"+upstream, checkout)
+	gitDir := filepath.Join(checkout, ".git")
+	blobMissing := func() bool {
+		cmd := exec.Command("git", "cat-file", "-e", oldBlob)
+		cmd.Dir = checkout
+		cmd.Env = append(os.Environ(), "GIT_NO_LAZY_FETCH=1")
+		return cmd.Run() != nil
+	}
+	if !blobMissing() {
+		t.Fatal("fixture must be a partial clone missing the old module's blob")
+	}
+
+	repoURL := "https://example.com/acme/repo.git"
+	local := NewLocalGitRefResolver(nil, t.TempDir())
+	local.repos = []*localRepoInfo{{
+		gitDir:      gitDir,
+		normalURLs:  map[string]bool{normalizeGitRepoURL(repoURL): true},
+		extractBase: filepath.Join(t.TempDir(), "repo"),
+		refSHA:      loadRefMap(t.Context(), gitDir),
+	}}
+	var nextCalled bool
+	next := fakeChainResolver(func(context.Context, *tfmodules.ParsedModule) (Resolution, error) {
+		nextCalled = true
+		return Resolution{LocalPath: "/bare", Origin: "git"}, nil
+	})
+
+	res, err := NewChainResolver(local, next).Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: "git::" + repoURL + "//modules/x?ref=" + oldSHA,
+	})
+	if err != nil {
+		t.Fatalf("chain did not fall through to the next resolver: %v", err)
+	}
+	if !nextCalled || res.Origin != "git" {
+		t.Fatalf("expected the next resolver to serve the module, got %+v", res)
+	}
+	if !blobMissing() {
+		t.Fatal("local resolver lazily fetched from the checkout's remote")
 	}
 }

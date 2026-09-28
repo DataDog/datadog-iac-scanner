@@ -26,7 +26,7 @@ type tarEntry struct {
 
 func extractTestArchive(r *bytes.Reader, dest string) error {
 	extracted := int64(0)
-	return extractRegularFilesWithResourceBudget(r, dest, &extracted, nil)
+	return extractRegularFilesWithResourceBudget(r, dest, &extracted, nil, nil)
 }
 
 func tarBytes(t *testing.T, entries ...tarEntry) []byte {
@@ -122,7 +122,7 @@ func TestExtractRegularFilesEnforcesResourceBudgetBeforeWrite(t *testing.T) {
 			dest := t.TempDir()
 			extracted := int64(0)
 
-			err := extractRegularFilesWithResourceBudget(bytes.NewReader(archive), dest, &extracted, counter)
+			err := extractRegularFilesWithResourceBudget(bytes.NewReader(archive), dest, &extracted, counter, nil)
 
 			var budgetErr *BudgetExceededError
 			require.ErrorAs(t, err, &budgetErr)
@@ -143,7 +143,7 @@ func TestExtractArchiveCommandStreamsOutput(t *testing.T) {
 
 	require.NoError(t, extractArchiveCommandWithResourceBudget(
 		t.Context(), archiveHelperCommand(t, archivePath), dest, &extracted,
-		int64(len(archive)), nil, nil,
+		int64(len(archive)), nil, nil, nil,
 	))
 	data, err := os.ReadFile(filepath.Join(dest, "main.tf"))
 	require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestExtractArchiveCommandBoundsStreamBeforeExtraction(t *testing.T) {
 
 	err := extractArchiveCommandWithResourceBudget(
 		t.Context(), archiveHelperCommand(t, archivePath), t.TempDir(), &extracted,
-		int64(len(archive)-1), nil, nil,
+		int64(len(archive)-1), nil, nil, nil,
 	)
 
 	require.ErrorContains(t, err, "git archive exceeds")

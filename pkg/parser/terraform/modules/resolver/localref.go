@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 
@@ -71,16 +72,38 @@ func (r *LocalGitRefResolver) effectiveCacheDir() string {
 	return filepath.Join(base, "datadog-iac-scanner", "git-local")
 }
 
+// localRefInitTimeout bounds the local git reads that discover the scan roots'
+// repositories.
+const localRefInitTimeout = time.Minute
+
 func (r *LocalGitRefResolver) init(ctx context.Context) {
 	r.initOnce.Do(func() {
+		// Every later caller shares this result, so it must not inherit the
+		// first caller's deadline or cancellation.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), localRefInitTimeout)
+		defer cancel()
 		contextLogger := logger.FromContext(ctx)
 		seen := make(map[string]bool) // deduplicate gitDirs
+		var worktrees []string
 		for _, root := range r.ScanRoots {
+			if insideKnownWorktree(worktrees, root) {
+				continue
+			}
 			gitDir, err := detectGitDir(ctx, root)
-			if err != nil || seen[gitDir] {
+			if err != nil {
+				continue
+			}
+			if top, ok := plainWorktreeTop(gitDir); ok {
+				worktrees = append(worktrees, top)
+			}
+			if seen[gitDir] {
 				continue
 			}
 			seen[gitDir] = true
+			if !localReadsStayLocal() && isPartialClone(ctx, gitDir) {
+				contextLogger.Debug().Msgf("LocalGitRefResolver: skipping partial clone %s, git is too old to read it without fetching", root)
+				continue
+			}
 
 			urls, err := listRemoteURLs(ctx, gitDir)
 			if err != nil {
@@ -106,19 +129,36 @@ func (r *LocalGitRefResolver) init(ctx context.Context) {
 	})
 }
 
+// isPartialClone reports whether objects missing from gitDir would be fetched
+// from a promisor remote on read.
+func isPartialClone(ctx context.Context, gitDir string) bool {
+	out, err := gitInDir(ctx, gitDir, "config", "--get", "extensions.partialClone").Output()
+	return err == nil && strings.TrimSpace(string(out)) != ""
+}
+
 func loadRefMap(ctx context.Context, gitDir string) map[string]string {
-	cmd := gitInDir(ctx, gitDir, "for-each-ref", "--format=%(objectname) %(refname)", "refs/tags", "refs/heads")
+	// %(*objectname) is the commit an annotated tag points to, so a tag and a
+	// SHA pin of the same commit share one extracted package.
+	cmd := gitInDir(ctx, gitDir, "for-each-ref",
+		"--format=%(objectname) %(*objectname) %(refname)", "refs/tags", "refs/heads")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil
 	}
 	refs := make(map[string]string)
 	for _, line := range strings.Split(string(out), "\n") {
-		sha, refName, found := strings.Cut(line, " ")
-		if !found || !looksLikeSHA(sha) {
+		fields := strings.SplitN(line, " ", 3)
+		if len(fields) != 3 {
 			continue
 		}
-		refs[refName] = sha
+		sha := fields[0]
+		if fields[1] != "" {
+			sha = fields[1]
+		}
+		if !looksLikeSHA(sha) {
+			continue
+		}
+		refs[fields[2]] = sha
 	}
 	if len(refs) == 0 {
 		return nil
@@ -137,6 +177,58 @@ func detectGitDir(ctx context.Context, root string) (string, error) {
 		gitDir = filepath.Join(root, gitDir)
 	}
 	return gitDir, nil
+}
+
+// plainWorktreeTop returns the worktree root when gitDir is a regular <top>/.git
+// directory. Bare repositories and .git files (submodules, linked worktrees) are
+// not reported so their roots keep going through detectGitDir.
+func plainWorktreeTop(gitDir string) (string, bool) {
+	if filepath.Base(gitDir) != ".git" {
+		return "", false
+	}
+	info, err := os.Lstat(gitDir)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	top, err := filepath.EvalSymlinks(filepath.Dir(gitDir))
+	if err != nil {
+		return "", false
+	}
+	return top, true
+}
+
+// insideKnownWorktree reports whether root belongs to one of worktrees without
+// crossing a nested repository boundary, so detectGitDir would return the same
+// git dir again.
+func insideKnownWorktree(worktrees []string, root string) bool {
+	if len(worktrees) == 0 {
+		return false
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return false
+	}
+	for _, top := range worktrees {
+		rel, err := filepath.Rel(top, resolved)
+		if err != nil || !filepath.IsLocal(rel) {
+			continue
+		}
+		nested := false
+		for dir := resolved; dir != top; dir = filepath.Dir(dir) {
+			if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+				nested = true
+				break
+			}
+		}
+		if !nested {
+			return true
+		}
+	}
+	return false
 }
 
 func listRemoteURLs(ctx context.Context, gitDir string) ([]string, error) {
@@ -178,17 +270,13 @@ func resolveLocalRef(ctx context.Context, info *localRepoInfo, ref string) (sha 
 		}
 	}
 
-	release, err := acquireGitProc(ctx)
-	if err != nil {
-		return "", false
-	}
-	defer release()
+	// Local-only reads, so they bypass acquireGitProc.
 	if looksLikeSHA(ref) {
 		safeRef, refErr := gitSafeArg(ref)
 		if refErr != nil {
 			return "", false
 		}
-		cmd := gitInDir(ctx, info.gitDir, "cat-file", "-t", safeRef)
+		cmd := gitLocalInDir(ctx, info.gitDir, "cat-file", "-t", safeRef)
 		if cmd.Run() == nil {
 			return ref, true
 		}
@@ -199,7 +287,7 @@ func resolveLocalRef(ctx context.Context, info *localRepoInfo, ref string) (sha 
 		return "", false
 	}
 	// Ref not in the prebuilt map (e.g. remote-tracking ref): ask git directly.
-	cmd := gitInDir(ctx, info.gitDir, "rev-parse", "--verify", safeRef)
+	cmd := gitLocalInDir(ctx, info.gitDir, "rev-parse", "--verify", safeRef+"^{commit}")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", false
@@ -208,24 +296,38 @@ func resolveLocalRef(ctx context.Context, info *localRepoInfo, ref string) (sha 
 	return resolved, looksLikeSHA(resolved)
 }
 
-// Resolve implements Resolver for git:: sources that reference the local checkout.
-func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+func (r *LocalGitRefResolver) Screen(ctx context.Context, mod *tfmodules.ParsedModule) error {
+	_, err := r.admit(ctx, mod)
+	return err
+}
+
+// localGitSource is a git:: source with a ref that points at a scanned checkout.
+type localGitSource struct {
+	info        *localRepoInfo
+	subdir, ref string
+}
+
+func (r *LocalGitRefResolver) admit(ctx context.Context, mod *tfmodules.ParsedModule) (localGitSource, error) {
 	repoURL, subdir, ref, ok := parseGitGetterSource(mod.Source)
 	if !ok || ref == "" {
-		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: "LocalGitRefResolver: not a git:: source with a ref= parameter",
-		}
+		return localGitSource{}, notApplicable("LocalGitRefResolver: not a git:: source with a ref= parameter")
 	}
-
 	r.init(ctx)
-
 	normSource := normalizeGitRepoURL(repoURL)
 	info := r.findRepo(normSource)
 	if info == nil {
-		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: fmt.Sprintf("LocalGitRefResolver: no local clone matches %q", normSource),
-		}
+		return localGitSource{}, notApplicable(fmt.Sprintf("LocalGitRefResolver: no local clone matches %q", normSource))
 	}
+	return localGitSource{info: info, subdir: subdir, ref: ref}, nil
+}
+
+// Resolve implements Resolver for git:: sources that reference the local checkout.
+func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	source, err := r.admit(ctx, mod)
+	if err != nil {
+		return Resolution{}, err
+	}
+	info, subdir, ref := source.info, source.subdir, source.ref
 
 	// Warm-cache fast path for pinned SHA refs.
 	if looksLikeSHA(ref) {
@@ -239,6 +341,7 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 				LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 				Origin:      "git_local",
 				PackageRoot: packageRoot,
+				Usage:       archiveUsageHint(packageRoot),
 				ResolvedRef: ref,
 			})
 			if err != nil {
@@ -255,17 +358,21 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 	if !present {
 		release()
 		contextLogger.Debug().Msgf("LocalGitRefResolver: ref %q not in local clone %s (shallow checkout?)", ref, info.gitDir)
-		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: fmt.Sprintf("LocalGitRefResolver: ref %q not present locally", ref),
-		}
+		return Resolution{}, notApplicable(fmt.Sprintf("LocalGitRefResolver: ref %q not present locally", ref))
 	}
 
 	key := archiveCacheKey(sha) + "\x00" + filepath.Clean(subdir)
-	_, err, _ := r.extractSF.Do(key, func() (interface{}, error) {
-		return nil, archiveExtract(
+	_, err, _ = r.extractSF.Do(key, func() (interface{}, error) {
+		written, extractErr := archiveExtract(
 			ctx, info.gitDir, info.extractBase, sha, subdir,
 			localCloneArchiveCommand(info.gitDir), nil,
 		)
+		if extractErr != nil {
+			r.Budget.Invalidate(info.extractBase)
+		} else {
+			r.Budget.Grow(info.extractBase, written)
+		}
+		return nil, extractErr
 	})
 	if err != nil {
 		release()
@@ -273,17 +380,16 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
 	}
 
-	if r.Budget != nil {
-		if err := r.Budget.EnsureEntryFits(info.extractBase); err != nil {
-			release()
-			return Resolution{}, unresolvedResourceError(err)
-		}
-		r.Budget.Admit(info.extractBase)
+	if err := r.Budget.EnsureEntryFits(info.extractBase); err != nil {
+		release()
+		return Resolution{}, unresolvedResourceError(err)
 	}
+	r.Budget.Admit(info.extractBase)
 	packageRoot := archiveCacheDir(info.extractBase, sha)
 	resolution, err := ConfineResolution(ctx, &Resolution{
 		LocalPath:   filepath.Join(packageRoot, filepath.FromSlash(subdir)),
 		PackageRoot: packageRoot,
+		Usage:       archiveUsageHint(packageRoot),
 		ResolvedRef: sha,
 		Origin:      "git_local",
 	})

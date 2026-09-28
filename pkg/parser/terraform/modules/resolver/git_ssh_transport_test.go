@@ -7,6 +7,7 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/netip"
 	"net/url"
@@ -227,6 +228,14 @@ func TestSSHGitCommandEnvKeepsAgentAndBlocksRedirection(t *testing.T) {
 	if values["GIT_TERMINAL_PROMPT"] != "0" {
 		t.Error("expected terminal prompts to be disabled")
 	}
+	config := map[string]string{}
+	for i := range 2 {
+		config[values[fmt.Sprintf("GIT_CONFIG_KEY_%d", i)]] = values[fmt.Sprintf("GIT_CONFIG_VALUE_%d", i)]
+	}
+	if values["GIT_CONFIG_COUNT"] != "2" || config["gc.auto"] != "0" || config["maintenance.auto"] != "false" {
+		t.Errorf("expected automatic gc and maintenance to be disabled, got count %q and %v",
+			values["GIT_CONFIG_COUNT"], config)
+	}
 }
 
 func TestRunGitSSHCommandRejectsPrivateAddress(t *testing.T) {
@@ -291,6 +300,45 @@ func TestRunGitSSHCommandPinsValidatedAddress(t *testing.T) {
 	}
 	if strings.Contains(remotes[0], host) {
 		t.Error("expected the hostname to be replaced so ssh cannot re-resolve it")
+	}
+}
+
+func TestRunGitSSHCommandStopsFailoverOnAuthRejection(t *testing.T) {
+	const host = "modules.example"
+	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, knownHostsLineFor(t, host)))
+
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("140.82.121.3"), net.ParseIP("140.82.121.4")}, nil
+	}
+
+	for _, tc := range []struct {
+		name     string
+		stderr   string
+		attempts int
+	}{
+		{name: "key rejected", stderr: "Permission denied (publickey).", attempts: 1},
+		{name: "connection dropped", stderr: "Connection reset by peer", attempts: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attempts := 0
+			_, err := runGitSSHCommand(
+				context.Background(),
+				policy,
+				"ssh://git@"+host+"/org/repo.git",
+				func(string, []string) *exec.Cmd {
+					attempts++
+					return exec.Command("sh", "-c", "echo '"+tc.stderr+"' >&2; exit 128")
+				},
+				gitCombinedOutput,
+			)
+			if err == nil {
+				t.Fatal("expected ssh failure")
+			}
+			if attempts != tc.attempts {
+				t.Fatalf("got %d address attempts, want %d", attempts, tc.attempts)
+			}
+		})
 	}
 }
 
