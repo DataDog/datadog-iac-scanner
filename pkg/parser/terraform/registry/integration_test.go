@@ -323,7 +323,3 @@ func TestTFPlanToHCLMapping(t *testing.T) {
 		})
 	}
 }
-
-// TestParserIntegration would test the actual terraform parser integration
-// but is commented out to avoid circular dependency
-// The integration is tested via the scan package tests instead

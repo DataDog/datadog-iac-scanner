@@ -288,10 +288,8 @@ func TestModuleWithCountAndResource(t *testing.T) {
 	}
 }
 
-// TestScopeBasedDisambiguation tests P2: Two directories with same module name
-// This is the critical test case identified in the user's feedback:
-// "I don't see a test with two directories/files both containing module "vpc" plus a tfplan beside one of them.
-// That exact case should assert the plan maps to the same-directory HCL file, not the first registered fixture and not JSON fallback."
+// TestScopeBasedDisambiguation asserts the plan maps to the same-directory
+// HCL file, not the first registered fixture and not JSON fallback.
 func TestScopeBasedDisambiguation(t *testing.T) {
 	reg := New()
 

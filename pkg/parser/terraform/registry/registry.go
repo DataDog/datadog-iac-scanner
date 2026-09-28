@@ -12,10 +12,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// moduleKeyword is the "module" path segment in a dotted Terraform address.
 const moduleKeyword = "module"
 
-// Location represents a location in a source file
 type Location struct {
 	FilePath string
 	Line     int
