@@ -40,28 +40,16 @@ type ParsedSearchKey struct {
 	IsModuleResource bool // true if resource is within a module
 }
 
-// ParseSearchKey parses a Terraform search key into its structured components
-//
-// Supported formats:
-//   - Simple resource: "aws_instance.web.tags"
-//   - Resource prefix: "resource.aws_instance.web.tags"
-//   - Bracket notation: "aws_instance[web].tags"
-//   - Module resource: "module.vpc.aws_instance.bastion.tags"
-//   - Indexed module: "module.app_servers[0].aws_instance.app.tags"
-//   - Mixed notation: "aws_instance.module.app_servers[0].app" (module in middle)
-//   - Bracket with module: "aws_instance[module.app_servers[0].app]"
-//   - Template syntax: "aws_instance.{{module.app_servers[0].app}}"
-//
-// Returns error for invalid formats (empty, single component, mismatched brackets)
+// ParseSearchKey parses a Terraform search key into its structured components.
+// Returns error for invalid formats (empty, single component, mismatched brackets).
 func ParseSearchKey(searchKey string) (*ParsedSearchKey, error) {
 	if searchKey == "" {
 		return nil, fmt.Errorf("searchKey is empty")
 	}
 
-	// Step 1: Preprocess - strip "resource." prefix
 	workingKey := strings.TrimPrefix(searchKey, "resource.")
 
-	// Step 2: Handle template syntax {{...}}. Unwrap the braces in place, keeping
+	// Handle template syntax {{...}}. Unwrap the braces in place, keeping
 	// both the prefix before "{{" and the suffix after "}}" intact, so bracket
 	// notation like "aws_s3_bucket_object[{{this[0]}}]" or an attribute suffix
 	// like "{{module.app.resource}}.tags" survive unwrapping unchanged.
@@ -69,7 +57,6 @@ func ParseSearchKey(searchKey string) (*ParsedSearchKey, error) {
 		openBrace := strings.Index(workingKey, "{{")
 		closeBrace := strings.Index(workingKey, "}}")
 
-		// Validate template syntax
 		if closeBrace == -1 || closeBrace <= openBrace+2 {
 			return nil, fmt.Errorf("unmatched template braces in searchKey: %s", searchKey)
 		}
@@ -88,35 +75,25 @@ func ParseSearchKey(searchKey string) (*ParsedSearchKey, error) {
 		}
 	}
 
-	// Step 3: Determine the format and parse accordingly
-
-	// Check for module path FIRST (starts with "module.")
-	// This must come before bracket notation check to handle module.name[index].resource correctly
+	// Module path check must come before bracket notation to handle
+	// module.name[index].resource correctly.
 	if strings.HasPrefix(workingKey, "module.") {
 		return parseModulePath(workingKey, searchKey)
 	}
 
-	// Check for bracket notation and mixed notation
 	bracketIdx := strings.Index(workingKey, "[")
 	moduleIdx := strings.Index(workingKey, ".module.")
 
-	// Determine if this is mixed notation or bracket notation:
-	// - Mixed notation: type.module.path.resource (brackets come AFTER .module.)
-	// - Bracket notation: type[module.path.resource] (brackets come BEFORE .module. or no .module.)
-
-	// Check for mixed notation: type.module.path.resource
-	// This handles: aws_instance.module.app_servers[0].app
+	// Mixed notation (type.module.path.resource) has brackets after ".module.";
+	// bracket notation (type[module.path.resource]) has them before, or no ".module." at all.
 	if moduleIdx != -1 && (bracketIdx == -1 || moduleIdx < bracketIdx) {
 		return parseMixedNotation(workingKey, searchKey)
 	}
 
-	// Check for bracket notation if brackets exist
-	// This handles: aws_subnet[module.network.module.subnet.private]
 	if bracketIdx > 0 {
 		return parseBracketNotation(workingKey, bracketIdx, searchKey)
 	}
 
-	// Simple dot notation: type.name[.attributes...]
 	return parseSimpleDotNotation(workingKey, searchKey)
 }
 
@@ -127,7 +104,6 @@ func ParseSearchKey(searchKey string) (*ParsedSearchKey, error) {
 func parseBracketNotation(workingKey string, bracketIdx int, originalKey string) (*ParsedSearchKey, error) {
 	resourceType := workingKey[:bracketIdx]
 
-	// Find matching closing bracket
 	closeBracketIdx := findMatchingBracketSimple(workingKey, bracketIdx)
 	if closeBracketIdx == -1 {
 		return nil, fmt.Errorf("unmatched opening bracket in searchKey: %s", originalKey)
@@ -135,19 +111,14 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 
 	bracketContent := workingKey[bracketIdx+1 : closeBracketIdx]
 
-	// Check if bracket content is a module path
-	// Format: aws_instance[module.app_servers[0].app]
-	// where resourceType = "aws_instance", bracketContent = "module.app_servers[0].app"
+	// e.g. aws_instance[module.app_servers[0].app]: resourceType="aws_instance",
+	// bracketContent="module.app_servers[0].app"
 	if strings.HasPrefix(bracketContent, "module.") || strings.Contains(bracketContent, ".module.") {
-		// Parse the bracket content to extract module path and resource name
-		// Split the bracket content by dots, preserving indices
 		parts := splitPreservingBrackets(bracketContent)
 
-		// Extract module path components
 		var modulePath []string
 		i := 0
 
-		// Parse modules: module.name[index]...
 		for i < len(parts)-1 { // -1 because last part is resource name
 			if parts[i] == moduleKeyword {
 				modulePath = append(modulePath, parts[i])
@@ -162,7 +133,6 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 					i++
 				}
 			} else {
-				// Not a module keyword, must be resource name
 				break
 			}
 		}
@@ -171,11 +141,9 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 			return nil, fmt.Errorf("no resource name found in bracket module path: %s", originalKey)
 		}
 
-		// Last part is resource name
 		resourceNameWithIndex := parts[i]
 		resourceName, _ := extractNameAndIndex(resourceNameWithIndex)
 
-		// Extract any attributes after the bracket
 		remainder := ""
 		if closeBracketIdx+1 < len(workingKey) {
 			remainder = strings.TrimPrefix(workingKey[closeBracketIdx+1:], ".")
@@ -186,7 +154,6 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 			attributePath = strings.Split(remainder, ".")
 		}
 
-		// Build full address
 		fullAddr := buildFullAddress(modulePath, resourceType, resourceNameWithIndex)
 		normalizedAddr := registry.NormalizeAddress(fullAddr)
 
@@ -203,14 +170,12 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 		}, nil
 	}
 
-	// Simple bracket notation: aws_instance[web].tags or aws_instance["example"].tags
 	// bracketContent may itself carry a count/for_each index (e.g. "this[0]", a
 	// module resource's instance key) - keep it as-is (indices and quotes) in
-	// FullResourceAddr, matching parseModulePath's convention and the documented
-	// "retains indices" behavior, and only strip it for the normalized address.
+	// FullResourceAddr, matching parseModulePath's convention, and only strip it
+	// for the normalized address.
 	resourceName := strings.Trim(registry.NormalizeAddress(bracketContent), `"'`)
 
-	// Extract attributes after bracket
 	var attributePath []string
 	remainder := ""
 	if closeBracketIdx+1 < len(workingKey) {
@@ -239,7 +204,6 @@ func parseBracketNotation(workingKey string, bracketIdx int, originalKey string)
 //   - module.app_servers[0].aws_instance.app.tags
 //   - module.network.module.subnet.aws_subnet.private.cidr_block
 func parseModulePath(workingKey, originalKey string) (*ParsedSearchKey, error) {
-	// Parse module path and find where the resource starts
 	parts := splitPreservingBrackets(workingKey)
 
 	if len(parts) < minModulePathParts {
@@ -247,21 +211,17 @@ func parseModulePath(workingKey, originalKey string) (*ParsedSearchKey, error) {
 		return nil, fmt.Errorf("module path too short: %s", originalKey)
 	}
 
-	// Extract module path components
 	var modulePath []string
 	i := 0
 
 	// Parse nested modules: module.name.module.name...
 	for i < len(parts)-2 {
 		if parts[i] == moduleKeyword {
-			// Add "module"
 			modulePath = append(modulePath, parts[i])
 			i++
 
-			// Next part is the module name (might have index)
 			if i < len(parts) {
 				nameWithIndex := parts[i]
-				// Extract base name and any index
 				baseName, index := extractNameAndIndex(nameWithIndex)
 				modulePath = append(modulePath, baseName)
 				if index != "" {
@@ -270,21 +230,17 @@ func parseModulePath(workingKey, originalKey string) (*ParsedSearchKey, error) {
 				i++
 			}
 		} else {
-			// Not a module keyword, must be resource type
 			break
 		}
 	}
 
 	if i >= len(parts)-1 {
-		// No resource type/name found
 		return nil, fmt.Errorf("no resource type found in module path: %s", originalKey)
 	}
 
-	// Next part is resource type
 	resourceType := parts[i]
 	i++
 
-	// Next part is resource name
 	if i >= len(parts) {
 		return nil, fmt.Errorf("no resource name found: %s", originalKey)
 	}
@@ -293,13 +249,11 @@ func parseModulePath(workingKey, originalKey string) (*ParsedSearchKey, error) {
 	resourceName, _ := extractNameAndIndex(resourceNameWithIndex)
 	i++
 
-	// Remaining parts are attributes
 	var attributePath []string
 	if i < len(parts) {
 		attributePath = parts[i:]
 	}
 
-	// Build full address with indices
 	fullAddr := buildFullAddress(modulePath, resourceType, resourceNameWithIndex)
 	normalizedAddr := registry.NormalizeAddress(fullAddr)
 
@@ -316,13 +270,11 @@ func parseModulePath(workingKey, originalKey string) (*ParsedSearchKey, error) {
 	}, nil
 }
 
-// parseMixedNotation handles the problematic format:
+// parseMixedNotation handles the format where "module" appears after the resource type:
 //   - aws_instance.module.app_servers[0].app
 //
-// Where "module" appears after the resource type
 // Format: type.module.module_name[index].resource_name[.attributes...]
 func parseMixedNotation(workingKey, originalKey string) (*ParsedSearchKey, error) {
-	// Use splitPreservingBrackets to handle indices correctly
 	parts := splitPreservingBrackets(workingKey)
 
 	if len(parts) < minModulePathParts {
@@ -330,10 +282,8 @@ func parseMixedNotation(workingKey, originalKey string) (*ParsedSearchKey, error
 		return nil, fmt.Errorf("mixed notation too short: %s (need at least type.module.name.resource)", originalKey)
 	}
 
-	// First part is resource type
 	resourceType := parts[0]
 
-	// Find where "module" appears
 	moduleIdx := -1
 	for i, part := range parts {
 		if part == moduleKeyword {
@@ -346,12 +296,9 @@ func parseMixedNotation(workingKey, originalKey string) (*ParsedSearchKey, error
 		return nil, fmt.Errorf("module keyword not found in mixed notation: %s", originalKey)
 	}
 
-	// Parse module path: from "module" keyword until the last part (which is resource name or first attribute)
-	// Format: module.name[index]....resource_name
 	var modulePath []string
 	i := moduleIdx
 
-	// Parse nested modules
 	for i < len(parts)-1 { // -1 because last part might be resource name
 		if parts[i] == moduleKeyword {
 			modulePath = append(modulePath, parts[i])
@@ -366,12 +313,10 @@ func parseMixedNotation(workingKey, originalKey string) (*ParsedSearchKey, error
 				i++
 			}
 		} else {
-			// Not "module" keyword, must be resource name or attribute
 			break
 		}
 	}
 
-	// Remaining parts: first is resource name, rest are attributes
 	if i >= len(parts) {
 		return nil, fmt.Errorf("no resource name found in mixed notation: %s", originalKey)
 	}
@@ -385,7 +330,6 @@ func parseMixedNotation(workingKey, originalKey string) (*ParsedSearchKey, error
 		attributePath = parts[i:]
 	}
 
-	// Build full address
 	fullAddr := buildFullAddress(modulePath, resourceType, resourceNameWithIndex)
 	normalizedAddr := registry.NormalizeAddress(fullAddr)
 
@@ -407,7 +351,6 @@ func parseMixedNotation(workingKey, originalKey string) (*ParsedSearchKey, error
 //   - aws_instance.web.tags
 //   - aws_instance.web.root_block_device.volume_size
 func parseSimpleDotNotation(workingKey, originalKey string) (*ParsedSearchKey, error) {
-	// Validate no unmatched brackets
 	if strings.Contains(workingKey, "]") && !strings.Contains(workingKey, "[") {
 		return nil, fmt.Errorf("unmatched closing bracket in searchKey: %s", originalKey)
 	}
@@ -549,21 +492,16 @@ func extractNameAndIndex(nameWithIndex string) (name, index string) {
 func buildFullAddress(modulePath []string, resourceType, resourceName string) string {
 	var parts []string
 
-	// Add module path with proper indexing
 	for i := 0; i < len(modulePath); i++ {
 		if modulePath[i] == moduleKeyword {
-			// Add "module"
 			if i+1 < len(modulePath) {
 				moduleName := modulePath[i+1]
 
-				// Check if next element is an index
 				if i+2 < len(modulePath) && modulePath[i+2] != moduleKeyword {
-					// It's an index
 					index := modulePath[i+2]
 					parts = append(parts, fmt.Sprintf("module.%s[%s]", moduleName, index))
 					i += 2 // Skip name and index
 				} else {
-					// No index
 					parts = append(parts, fmt.Sprintf("module.%s", moduleName))
 					i++ // Skip name
 				}
@@ -571,7 +509,6 @@ func buildFullAddress(modulePath []string, resourceType, resourceName string) st
 		}
 	}
 
-	// Add resource type and name
 	resourcePart := fmt.Sprintf("%s.%s", resourceType, resourceName)
 	parts = append(parts, resourcePart)
 
