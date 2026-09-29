@@ -123,8 +123,6 @@ type PathParameters struct {
 }
 
 var (
-	queryRegex = regexp.MustCompile(`\?([\w-]+(=[\w-]*)?(&[\w-]+(=[\w-]*)?)*)?`)
-
 	// urlAuthRedactRegex captures the scheme of any URL carrying embedded
 	// userinfo, so RedactURLCredentials can drop the userinfo and keep the
 	// rest. Both halves are deliberately shaped after RFC 3986:
@@ -212,23 +210,34 @@ func getRelativePath(basePath, filePath string) string {
 	return returnPath
 }
 
+// replaceIfTemporaryPath names a file inside an extracted directory after where
+// that directory came from. Extracted directories can nest, a module package
+// and a module within it, so the innermost one containing the file names it
+// whatever order the map yields.
 func replaceIfTemporaryPath(filePath string, pathExtractionMap map[string]ExtractedPathObject) string {
-	prettyPath := filePath
-	for key, val := range pathExtractionMap {
-		if strings.Contains(filePath, key) {
-			splittedPath := strings.Split(filePath, key)
-			if !val.LocalPath {
-				// remove authentication information from the URL
-				sanitizedURL := removeURLCredentials(val.Path)
-				// remove query parameters '?key=value&key2=value'
-				return filepath.FromSlash(queryRegex.ReplaceAllString(sanitizedURL, "") + splittedPath[1])
-			}
-			prettyPath = filepath.FromSlash(filepath.Base(val.Path) + splittedPath[1])
-		} else {
-			prettyPath = filePath
+	var dir string
+	for candidate := range pathExtractionMap {
+		if len(candidate) > len(dir) && pathWithinDir(filePath, candidate) {
+			dir = candidate
 		}
 	}
-	return prettyPath
+	if dir == "" {
+		return filePath
+	}
+	rest := filePath[len(dir):]
+	origin := pathExtractionMap[dir]
+	if origin.LocalPath {
+		return filepath.FromSlash(filepath.Base(origin.Path) + rest)
+	}
+	source := removeURLCredentials(origin.Path)
+	// Query parameters such as ?ref=v1.2.3 are not part of the file's location.
+	source, _, _ = strings.Cut(source, "?")
+	return filepath.FromSlash(source + rest)
+}
+
+func pathWithinDir(path, dir string) bool {
+	rest, ok := strings.CutPrefix(path, dir)
+	return ok && (rest == "" || rest[0] == filepath.Separator || strings.HasSuffix(dir, string(filepath.Separator)))
 }
 
 func removeAllURLCredentials(pathExtractionMap map[string]ExtractedPathObject) []string {

@@ -196,6 +196,47 @@ func TestModel_resolvePath(t *testing.T) {
 	}
 }
 
+func TestResolvePathForRemoteModuleFiles(t *testing.T) {
+	modules := map[string]ExtractedPathObject{
+		filepath.FromSlash("/cache/pkg"): {
+			Path: "git::https://github.com/org/repo?ref=0.12.4-rc.1",
+		},
+		filepath.FromSlash("/cache/pkg/azure"): {
+			Path: "git::https://github.com/org/repo//azure?ref=0.12.4-rc.1",
+		},
+		filepath.FromSlash("/cache/pk"): {
+			Path: "git::https://github.com/org/other?ref=v1",
+		},
+	}
+	tests := []struct {
+		name, file, want string
+	}{
+		{
+			name: "the most specific module directory names the file",
+			file: "/cache/pkg/azure/modules/vnet/main.tf",
+			want: "git::https://github.com/org/repo//azure/modules/vnet/main.tf",
+		},
+		{
+			name: "a ref with dots is removed whole",
+			file: "/cache/pkg/main.tf",
+			want: "git::https://github.com/org/repo/main.tf",
+		},
+		{
+			name: "a directory is not matched by a sibling sharing its prefix",
+			file: "/cache/pkgs/main.tf",
+			want: "/cache/pkgs/main.tf",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for range 200 {
+				require.Equal(t, filepath.FromSlash(tt.want), replaceIfTemporaryPath(filepath.FromSlash(tt.file), modules),
+					"the same file must always get the same name")
+			}
+		})
+	}
+}
+
 func TestRemoveURLCredentials(t *testing.T) {
 	type args struct {
 		url string
