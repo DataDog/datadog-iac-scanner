@@ -136,7 +136,7 @@ func TestGetLineBySearchLineMatchesMarshalLookup(t *testing.T) {
 		return docs, err
 	}
 	tfParse := func(ctx context.Context, content []byte, path string) ([]model.Document, error) {
-		_, docs, _, _, err := terraform.NewDefault().Parse(ctx, content, path, false, 15)
+		_, docs, _, _, err := terraform.NewWithoutRegistry().Parse(ctx, content, path, false, 15)
 		return docs, err
 	}
 
