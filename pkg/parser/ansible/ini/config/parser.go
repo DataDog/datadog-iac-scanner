@@ -89,9 +89,11 @@ func refactorConfig(config *configparser.ConfigParser) (doc *model.Document) {
 	return doc
 }
 
-// DirectoryDependent prevents sharing a path-dependent format/artifact skip
-// with an identically worded Ansible configuration at another path.
-func (p *Parser) DirectoryDependent() bool { return true }
+// CanShareParse keeps path-dependent format and artifact skips out of
+// content-only cache reuse, while ordinary configurations remain shareable.
+func (p *Parser) CanShareParse(filePath string, fileContent []byte) bool {
+	return !ini.IsKnownNonAnsible(fileContent, filePath) && !isInsideFilesDir(filePath)
+}
 
 // SupportedExtensions returns extensions supported by this parser, which are only ini extension
 func (p *Parser) SupportedExtensions() []string {

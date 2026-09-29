@@ -157,6 +157,15 @@ func (s *Service) ClearContentInterner() {
 	s.contentInternerMu.Unlock()
 }
 
+// lookupShareableParse checks per-file eligibility before any cache lookup.
+// An empty key also prevents the caller from storing this file's parse.
+func (s *Service) lookupShareableParse(filename string, content []byte) (string, *sharedParse) {
+	if !s.Parser.CanShareParse(filename, content) {
+		return "", nil
+	}
+	return s.lookupSharedParse(content)
+}
+
 // lookupSharedParse interns the content and returns its key plus the cached
 // shared parse, if any. A hit is exact (parses are pure functions of content);
 // the result is read-only — copy top-level maps before per-file use.

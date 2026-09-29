@@ -50,6 +50,13 @@ func redactErrorForLog(err error) string {
 	return model.RedactURLCredentials(err.Error())
 }
 
+func parseErrorLogLevel(err error) zerolog.Level {
+	if model.IsPartialYAMLParseError(err) {
+		return zerolog.WarnLevel
+	}
+	return zerolog.ErrorLevel
+}
+
 func (s *Service) sink(ctx context.Context, filename, scanID string,
 	rc io.Reader, data []byte,
 	openAPIResolveReferences bool,
@@ -83,7 +90,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	// Fast path: duplicate content already parsed and sanitized — reuse the shared
 	// trees with a per-file top-level map and skip parsing. The interned key also
 	// serves the slow path below (pure function of content).
-	shareKey, shared := s.lookupSharedParse(*c.Content)
+	shareKey, shared := s.lookupShareableParse(filename, *content)
 	if shared != nil {
 		return s.sinkSharedParse(ctx, filename, scanID, shareKey, shared,
 			fileCommands, c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content)
@@ -96,7 +103,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 			contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("skipping unparseable raw Helm template: %s", filename)
 		} else {
-			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+			contextLogger.WithLevel(parseErrorLogLevel(err)).Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("failed to parse file content: %s", filename)
 		}
 		if !model.IsPartialYAMLParseError(err) {

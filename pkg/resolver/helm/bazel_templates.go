@@ -23,8 +23,22 @@ func isBazelExportsFile(file *chart.File) bool {
 	}
 	var content strings.Builder
 	for _, line := range strings.Split(string(file.Data), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
+		var quote rune
+		for i, char := range line {
+			if char == '#' && quote == 0 {
+				line = line[:i]
+				break
+			}
+			// Escaped literals are outside the recognized grammar. Reject them
+			// before comment stripping can conceal an escaped quote or hash.
+			if char == '\\' {
+				return false
+			}
+			if quote == 0 && (char == '\'' || char == '"') {
+				quote = char
+			} else if char == quote {
+				quote = 0
+			}
 		}
 		content.WriteString(line)
 		content.WriteByte('\n')

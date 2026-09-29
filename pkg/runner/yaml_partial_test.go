@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -32,6 +33,16 @@ type parseCountingTracker struct {
 func (t *parseCountingTracker) TrackFileFound(path string)         { t.found = append(t.found, path) }
 func (t *parseCountingTracker) TrackFileParse(path string)         { t.parsed = append(t.parsed, path) }
 func (t *parseCountingTracker) TrackFileParseCountLines(lines int) { t.parsedLines += lines }
+
+func requireYAMLDiagnostics(t *testing.T, logs string, count int, partial bool) {
+	t.Helper()
+	warnings, failures := 0, count
+	if partial {
+		warnings, failures = count, 0
+	}
+	require.Equal(t, warnings, strings.Count(logs, `"level":"warn"`), logs)
+	require.Equal(t, failures, strings.Count(logs, `"level":"error"`), logs)
+}
 
 func TestSinkYAMLEmptyPartialAndFailedTracking(t *testing.T) {
 	const good = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n"
@@ -69,7 +80,7 @@ func TestSinkYAMLEmptyPartialAndFailedTracking(t *testing.T) {
 			require.Len(t, svc.files, tt.docs)
 			_, cached := svc.lookupSharedParse([]byte(tt.content))
 			require.Nil(t, cached)
-			require.Equal(t, tt.diagnostics, strings.Count(logs.String(), `"level":"error"`), logs.String())
+			requireYAMLDiagnostics(t, logs.String(), tt.diagnostics, tt.docs > 0)
 			for _, file := range svc.files {
 				require.Equal(t, "ConfigMap", file.Document["kind"])
 				require.NoError(t, file.EnsureLineInfoDocument(ctx))
@@ -77,8 +88,48 @@ func TestSinkYAMLEmptyPartialAndFailedTracking(t *testing.T) {
 				line := detector.NewDetectLine(1).DetectLine(ctx, file, "metadata.name")
 				require.Contains(t, []int{4, 11}, line.Line)
 			}
-			require.Equal(t, tt.diagnostics, strings.Count(logs.String(), `"level":"error"`), "lazy line reparsing must not repeat diagnostics")
+			requireYAMLDiagnostics(t, logs.String(), tt.diagnostics, tt.docs > 0) // lazy reparsing must not repeat diagnostics
 		})
+	}
+}
+
+func TestSinkEmptyStringYAMLDocuments(t *testing.T) {
+	const good = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n"
+	for _, empty := range []string{"\"\"\n", "''\n", "!!str \"\"\n", "!!str\n"} {
+		for _, mixed := range []bool{false, true} {
+			for _, mode := range []string{"raw", "resolved", "crd"} {
+				t.Run(empty+"/"+mode+"/"+strconv.FormatBool(mixed), func(t *testing.T) {
+					var logs bytes.Buffer
+					ctx := zerolog.New(&logs).WithContext(context.Background())
+					svc, _ := newYAMLResolverSinkService(t, ctx)
+					trk := &parseCountingTracker{}
+					svc.Tracker = trk
+					const filename = "chart/templates/example.yaml"
+					svc.FilePlatform = map[string]string{filename: "kubernetes"}
+					content := []byte(empty)
+					wantDocs := 0
+					if mixed {
+						content = []byte(empty + "---\n" + good + "---\n" + empty)
+						wantDocs = 1
+					}
+					if mode == "raw" {
+						require.NoError(t, svc.sinkContent(ctx, filename, "scan", &Content{Content: &content}, nil, false, 15))
+					} else {
+						svc.storeResolvedFiles(ctx, model.ResolvedFiles{File: []model.ResolvedHelm{{
+							FileName: filename, Content: content, OriginalData: content, IsCRD: mode == "crd",
+						}}}, model.KindHELM, "scan", false, 15)
+					}
+					require.Len(t, svc.files, wantDocs)
+					require.Equal(t, []string{filename}, trk.parsed)
+					for _, file := range svc.files {
+						require.Equal(t, "ConfigMap", file.Document["kind"])
+						require.NoError(t, file.EnsureLineInfoDocument(ctx))
+						require.NotEmpty(t, file.LineInfoDocument["_dd_lines"])
+					}
+					requireYAMLDiagnostics(t, logs.String(), 0, false)
+				})
+			}
+		}
 	}
 }
 
@@ -118,7 +169,7 @@ func TestInvalidRootScalarHasOneSafeDiagnostic(t *testing.T) {
 				_, cached := svc.lookupSharedParse(content)
 				require.Nil(t, cached)
 				require.NotContains(t, logs.String(), "fake-secret")
-				require.Equal(t, 1, strings.Count(logs.String(), `"level":"error"`), logs.String())
+				requireYAMLDiagnostics(t, logs.String(), 1, partial)
 			})
 		}
 	}
@@ -164,7 +215,7 @@ func TestYAMLUnknownAnchorHasOneSafeDiagnostic(t *testing.T) {
 				require.NotContains(t, logs.String(), "FakeSecret123")
 				require.Contains(t, logs.String(), "YAML document "+stream.documentIndex)
 				require.Contains(t, logs.String(), "unknown anchor")
-				require.Equal(t, 1, strings.Count(logs.String(), `"level":"error"`), "lazy reparsing must not repeat diagnostics: %s", logs.String())
+				requireYAMLDiagnostics(t, logs.String(), 1, stream.documents > 0) // lazy reparsing must not repeat diagnostics
 			})
 		}
 	}
@@ -323,6 +374,30 @@ func TestYAMLPartialConsumers(t *testing.T) {
 	}
 }
 
+func TestSinkFailedHelmPartialYAMLStaysDebug(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+	svc, _ := newYAMLResolverSinkService(t, ctx)
+	trk := &parseCountingTracker{}
+	svc.Tracker = trk
+	const filename = "chart/templates/example.yaml"
+	svc.FilePlatform = map[string]string{filename: "kubernetes"}
+	svc.recordFailedHelmChart("chart")
+	content := []byte("kind: ConfigMap\n---\npassword: *FakeSecret123\n")
+	logs.Reset()
+	require.NoError(t, svc.sinkContent(ctx, filename, "scan", &Content{Content: &content}, nil, false, 15))
+	require.Len(t, svc.files, 1)
+	require.NoError(t, svc.files[0].EnsureLineInfoDocument(ctx))
+	require.Empty(t, trk.parsed)
+	require.Zero(t, trk.parsedLines)
+	_, cached := svc.lookupSharedParse(content)
+	require.Nil(t, cached)
+	require.NotContains(t, logs.String(), "FakeSecret123")
+	require.Contains(t, logs.String(), "skipping unparseable raw Helm template")
+	require.Equal(t, 1, strings.Count(logs.String(), `"level":"debug"`), logs.String())
+	requireYAMLDiagnostics(t, logs.String(), 0, false)
+}
+
 func TestStoreResolvedPartialYAML(t *testing.T) {
 	for _, crd := range []bool{false, true} {
 		var logs bytes.Buffer
@@ -338,7 +413,7 @@ func TestStoreResolvedPartialYAML(t *testing.T) {
 		require.Len(t, svc.files, 1)
 		require.NoError(t, svc.files[0].EnsureLineInfoDocument(ctx))
 		require.NotEmpty(t, svc.files[0].LineInfoDocument["_dd_lines"])
-		require.Equal(t, 1, strings.Count(logs.String(), `"level":"error"`))
+		requireYAMLDiagnostics(t, logs.String(), 1, true)
 	}
 }
 
@@ -373,6 +448,6 @@ func TestSinkOnlyTypedPartialErrorsRetainDocuments(t *testing.T) {
 		require.Empty(t, trk.parsed)
 		require.NotContains(t, logs.String(), "user:secret")
 		require.Contains(t, logs.String(), "postgres://example.test/db")
-		require.Equal(t, 1, strings.Count(logs.String(), `"level":"error"`), logs.String())
+		requireYAMLDiagnostics(t, logs.String(), 1, partial)
 	}
 }

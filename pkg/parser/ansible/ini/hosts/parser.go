@@ -111,9 +111,10 @@ func refactorVars(vars map[string]string) *model.Document {
 	return varMap
 }
 
-// DirectoryDependent prevents content-only caching from bypassing filename and
-// inventory-directory evidence used by the non-Ansible format gate.
-func (p *Parser) DirectoryDependent() bool { return true }
+// CanShareParse keeps path-dependent skips out of content-only cache reuse.
+func (p *Parser) CanShareParse(filePath string, fileContent []byte) bool {
+	return !ini.IsKnownNonAnsible(fileContent, filePath)
+}
 
 // SupportedExtensions returns extensions supported by this parser, which is INI extension
 func (p *Parser) SupportedExtensions() []string {

@@ -14,7 +14,7 @@ import (
 	"helm.sh/helm/v3/pkg/cli/values"
 )
 
-const bazelExports = "# Build metadata, not a manifest\nexports_files([\n    \"service.yaml\",\n])\n"
+const bazelExports = "# Build metadata, not a manifest\nexports_files([ # chart inputs\n    \"service#one.yaml\", # literal hash\n    'service.yaml', # single quoted\n]) # exported files\n"
 const chartMetadata = "apiVersion: v2\nname: example\nversion: 0.1.0\n"
 const configMapManifest = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n"
 
@@ -85,6 +85,16 @@ func TestBazelTemplatesRecognitionIsNarrow(t *testing.T) {
 	}{
 		{"BUILD.bazel", bazelExports, true},
 		{"BUILD.bazel", "exports_files(['service.yaml'])\n", true},
+		{"BUILD.bazel", "exports_files([\"service.yaml\"])  # chart inputs\n", true},
+		{"BUILD.bazel", "exports_files([\"service#one.yaml\", 'other#two.yaml']) # comment\n", true},
+		{"BUILD.bazel", "exports_files([\"service'#one.yaml\", 'other\"#two.yaml']) # comment\n", true},
+		{"BUILD.bazel", "exports_files([\"service#one.yaml\" # comment\n])\n", true},
+		{"BUILD.bazel", "exports_files([\"service#one.yaml\"]) # {{ fail \"still evaluated\" }}\n", false},
+		{"BUILD.bazel", "exports_files([\"service.yaml\"]) # comment\nload(\"//:defs.bzl\", \"custom\")\n", false},
+		{"BUILD.bazel", "exports_files([\"service.yaml\", glob([\"*.yaml\"])]) # unknown syntax\n", false},
+		{"BUILD.bazel", "exports_files([\"service\\\"#one.yaml\"]) # escaped quote\n", false},
+		{"BUILD.bazel", "exports_files([\"service#unterminated.yaml]) # comment\n", false},
+		{"BUILD.bazel", "exports_files([\"\"\"service#one.yaml\"\"\"]) # triple quotes\n", false},
 		{"BUILD", bazelExports, false},
 		{"OTHER.bazel", bazelExports, false},
 		{"BUILD.bazel.yaml", bazelExports, false},

@@ -151,7 +151,13 @@ func isEmptyYAMLDocument(node *yaml.Node) bool {
 	if node == nil {
 		return true
 	}
-	if node.Kind != yaml.ScalarNode || node.Tag != "!!null" {
+	if node.Kind != yaml.ScalarNode {
+		return false
+	}
+	if node.Tag == "!!str" && node.Value == "" {
+		return true
+	}
+	if node.Tag != "!!null" {
 		return false
 	}
 	// An explicit null tag can still carry an invalid value; only genuine

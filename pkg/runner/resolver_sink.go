@@ -81,7 +81,7 @@ func (s *Service) storeResolvedFiles(
 			if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
 				continue
 			}
-			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+			contextLogger.WithLevel(parseErrorLogLevel(err)).Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
 			if !model.IsPartialYAMLParseError(err) {
 				continue
