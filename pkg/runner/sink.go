@@ -99,7 +99,9 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("failed to parse file content: %s", filename)
 		}
-		return nil
+		if !model.IsPartialYAMLParseError(err) {
+			return nil
+		}
 	}
 
 	linesResolved := 0
@@ -137,12 +139,19 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		// files with identical content (top-level copies, children shared).
 		s.storeSharedParse(shareKey, &documents, sharedDocs)
 	}
-	s.Tracker.TrackFileParse(filename)
+	s.trackParsedFile(filename, &documents)
+	return nil
+}
 
+// A partial YAML stream retains useful documents but is not a fully parsed file.
+// Apply the same accounting to raw and resolved files.
+func (s *Service) trackParsedFile(filename string, documents *iacparser.ParsedDocument) {
+	if documents.Partial {
+		return
+	}
+	s.Tracker.TrackFileParse(filename)
 	s.Tracker.TrackFileParseCountLines(documents.CountLines - len(documents.IgnoreLines))
 	s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))
-
-	return nil
 }
 
 // sinkDocument sanitizes, canonicalizes and registers one parsed document of

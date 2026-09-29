@@ -8,13 +8,16 @@ package yaml
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
-	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 )
 
@@ -33,7 +36,9 @@ func resolve(ctx context.Context, fileContent []byte, filename string,
 	return resolved, res.ResolvedFiles
 }
 
-// Parse parses yaml/yml file and returns it as a Document
+// Parse parses a YAML stream. Empty documents are a successful no-op. If some
+// documents are usable but others fail, it returns those documents alongside a
+// model.PartialYAMLParseError; callers must retain the failure diagnostic.
 func Parse(ctx context.Context, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int) (
 	resolved []byte,
@@ -82,11 +87,15 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 	err error) {
 	ignore := &model.Ignore{}
 
-	contextLogger := logger.FromContext(ctx)
 	dec := yaml.NewDecoder(bytes.NewReader(resolved))
-	for {
+	var failures []error
+	for documentIndex := 1; ; documentIndex++ {
 		var node yaml.Node
-		if err := dec.Decode(&node); err != nil {
+		if decodeErr := dec.Decode(&node); decodeErr != nil {
+			if !errors.Is(decodeErr, io.EOF) {
+				failures = append(failures, fmt.Errorf("YAML document %d: %w", documentIndex, safeNodeDecodeError(decodeErr)))
+			}
+			// A syntax error prevents reliable recovery of the rest of the stream.
 			break
 		}
 
@@ -97,12 +106,18 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 		if isEmptyYAMLDocument(contentNode) {
 			continue
 		}
+		if contentNode.Kind == yaml.ScalarNode {
+			// Scalar roots cannot represent IaC documents. Reject them before
+			// conversion, which may log their raw value while decoding a tag.
+			failures = append(failures, fmt.Errorf("YAML document %d: unsupported scalar document", documentIndex))
+			continue
+		}
 		if fn != nil {
 			fn(contentNode)
 		}
 		doc := model.Document{}
-		if err := doc.UnmarshalYAML(ctx, contentNode, ignore); err != nil {
-			contextLogger.Warn().Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
+		if conversionErr := doc.UnmarshalYAML(ctx, contentNode, ignore); conversionErr != nil {
+			failures = append(failures, fmt.Errorf("YAML document %d: %w", documentIndex, conversionErr))
 			continue
 		}
 
@@ -112,23 +127,37 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 		}
 	}
 
-	if len(documents) == 0 {
-		return nil, []int{}, errors.New("no documents found in yaml file")
+	err = errors.Join(failures...)
+	if err != nil && len(documents) > 0 {
+		err = &model.PartialYAMLParseError{Err: err}
 	}
+	// Successfully reaching EOF with only empty documents is a benign no-op.
+	// Conversion failures are not empty documents and remain errors.
+	return documents, ignore.GetLines(), err
+}
 
-	linesToIgnore := ignore.GetLines()
-
-	return documents, linesToIgnore, nil
+// Decoding into yaml.Node bypasses Go-value conversion errors. yaml.v3's
+// parser/scanner diagnostics carry syntax and location, except unknown aliases
+// quote a source-supplied anchor name. Do not retain that name in the error chain.
+func safeNodeDecodeError(err error) error {
+	message := err.Error()
+	if strings.HasPrefix(message, "yaml: unknown anchor '") && strings.HasSuffix(message, "' referenced") {
+		return errors.New("yaml: unknown anchor referenced")
+	}
+	return err
 }
 
 func isEmptyYAMLDocument(node *yaml.Node) bool {
 	if node == nil {
 		return true
 	}
-	if node.Kind == yaml.ScalarNode {
-		return node.Value == "" || node.Tag == "!!null"
+	if node.Kind != yaml.ScalarNode || node.Tag != "!!null" {
+		return false
 	}
-	return false
+	// An explicit null tag can still carry an invalid value; only genuine
+	// nulls (including the decoder's representation of an empty document) skip conversion.
+	var value interface{}
+	return node.Decode(&value) == nil && value == nil
 }
 
 // convertKeysToString goes through every document to convert map[interface{}]interface{}

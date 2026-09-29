@@ -461,6 +461,6 @@ func TestParseIgnoresTrailingDocumentSeparator(t *testing.T) {
 func TestParseSkipsUnparseableDocumentAndKeepsOthers(t *testing.T) {
 	content := []byte("kind: ConfigMap\n---\njust a scalar\n---\nkind: Secret\n")
 	_, docs, _, _, err := Parse(context.Background(), content, "mixed.yaml", false, 15)
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(docs), 1)
+	require.Error(t, err)
+	require.Len(t, docs, 2)
 }

@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/comments"
 	"github.com/bigkevmcd/go-configparser"
 )
@@ -29,6 +30,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
+	if ini.IsKnownNonAnsible(fileContent, filePath) {
+		return fileContent, nil, nil, nil, nil
+	}
 	// Files in Ansible 'files/' directories are raw host artifacts, not IaC config.
 	if isInsideFilesDir(filePath) {
 		return fileContent, []model.Document{}, []int{}, nil, nil
@@ -84,6 +88,10 @@ func refactorConfig(config *configparser.ConfigParser) (doc *model.Document) {
 
 	return doc
 }
+
+// DirectoryDependent prevents sharing a path-dependent format/artifact skip
+// with an identically worded Ansible configuration at another path.
+func (p *Parser) DirectoryDependent() bool { return true }
 
 // SupportedExtensions returns extensions supported by this parser, which are only ini extension
 func (p *Parser) SupportedExtensions() []string {

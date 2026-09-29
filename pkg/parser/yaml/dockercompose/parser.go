@@ -59,10 +59,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	if !needsSiblings {
 		resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(
 			ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
-		if err != nil {
+		if err != nil && !model.IsPartialYAMLParseError(err) {
 			return nil, nil, nil, nil, err
 		}
-		return resolved, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, nil
+		return resolved, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, err
 	}
 
 	t := &transformer{
@@ -84,10 +84,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(
 		ctx, fileContent, filePath, transform)
-	if err != nil {
+	if err != nil && !model.IsPartialYAMLParseError(err) {
 		return nil, nil, nil, nil, err
 	}
-	return fileContent, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, nil
+	return fileContent, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, err
 }
 
 // loadEnv reads the .env file next to the compose file, returning nil when it

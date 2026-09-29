@@ -144,6 +144,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 
 	excluded := getExcluded(ctx, chartRequested, chartPath)
 
+	excludeBazelTemplates(chartRequested)
 	chartRequested = makeDeterministic(chartRequested)
 	chartRequested = setID(chartRequested)
 

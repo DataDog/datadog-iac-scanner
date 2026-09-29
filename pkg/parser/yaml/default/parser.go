@@ -26,12 +26,12 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	err error) {
 	resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
 
-	if err != nil {
+	if err != nil && !model.IsPartialYAMLParseError(err) {
 		return nil, nil, nil, nil, err
 	}
 
 	// UnmarshalYAML already adds line tracking, so we can use documents directly
-	return resolved, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, nil
+	return resolved, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, err
 }
 
 // SupportedExtensions returns extensions supported by this parser, which are yaml and yml extension

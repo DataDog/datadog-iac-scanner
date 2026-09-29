@@ -83,7 +83,9 @@ func (s *Service) storeResolvedFiles(
 			}
 			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
-			continue
+			if !model.IsPartialYAMLParseError(err) {
+				continue
+			}
 		}
 
 		s.setResolvedLineMetadata(ctx, &documents, &rfile, sourceCache, kind,
@@ -132,10 +134,8 @@ func (s *Service) storeResolvedFiles(
 			}
 			s.saveToFile(ctx, &file)
 		}
-		s.Tracker.TrackFileParse(rfile.FileName)
 		s.Tracker.TrackFileFoundCountLines(documents.CountLines)
-		s.Tracker.TrackFileParseCountLines(documents.CountLines - len(documents.IgnoreLines))
-		s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))
+		s.trackParsedFile(rfile.FileName, &documents)
 
 		if kind == model.KindTerraform {
 			resourceCount := GetCountTerraformResources(rfile.Content)
@@ -204,7 +204,7 @@ func (s *Service) setResolvedLineMetadata(
 			kind, openAPIResolveReferences, isMinified, maxResolverDepth)
 		cached.ignorePrepared = true
 	}
-	if cached.ignoreErr == nil {
+	if cached.ignoreErr == nil || model.IsPartialYAMLParseError(cached.ignoreErr) {
 		documents.IgnoreLines = cached.ignoreLines
 	} else {
 		documents.IgnoreLines = filterHelmGeneratedLines(rfile.Content, documents.IgnoreLines)
@@ -390,7 +390,7 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 
 	documentsOriginal, err := s.parseResolvedFile(
 		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
-	if err == nil {
+	if err == nil || model.IsPartialYAMLParseError(err) {
 		ignoreLines = documentsOriginal.IgnoreLines
 	}
 	return
