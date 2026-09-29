@@ -25,9 +25,9 @@ import (
 )
 
 const (
-	DefaultMaxDepth          = 8
-	DefaultResolutionTimeout = 5 * time.Minute
-	DefaultFetchTimeout      = 30 * time.Second
+	DefaultMaxDepth          = 16
+	DefaultResolutionTimeout = 15 * time.Minute
+	DefaultFetchTimeout      = resolver.DefaultFetchTimeout
 	manifestFilename         = "modules.json"
 	manifestRoot             = "modules"
 )
@@ -50,7 +50,18 @@ type Config struct {
 	ResolutionTimeout time.Duration
 	ResourceLimits    resolver.ResourceLimits
 	TotalParseBytes   int64
-	FS                vfs.FS
+	// MaxConfigFileBytes skips module calls in configuration files the scan will
+	// not parse (see tfmodules.MaxConfigFileBytesForScan). Zero or negative
+	// reads every file.
+	MaxConfigFileBytes int64
+	FS                 vfs.FS
+	// LinkPackages hard-links resolved package files outside RepositoryRoot into
+	// the artifact instead of copying them, falling back to copies across
+	// filesystems. Linked files share their inode with the resolver's copy,
+	// whose permissions are narrowed to the artifact's, so enable it only when
+	// nothing rewrites resolved packages in place afterwards, as in a throwaway
+	// scan environment.
+	LinkPackages bool
 }
 
 type Result struct {
@@ -101,14 +112,15 @@ func Prepare(ctx context.Context, config *Config) (Result, error) {
 	resolveCtx, cancel := resolutionContext(ctx, config.ResolutionTimeout)
 	defer cancel()
 	graphResult := modulegraph.Resolve(resolveCtx, &modulegraph.Request{
-		RootPaths:       []string{repositoryRoot},
-		DiscoveryPaths:  discoveryPaths,
-		Resolver:        moduleResolver,
-		MaxDepth:        configuredMaxDepth(config.MaxDepth),
-		ResourceLimits:  defaultResourceLimits(config.ResourceLimits),
-		BaselinePaths:   discoveryPaths,
-		TotalParseBytes: config.TotalParseBytes,
-		FS:              config.FS,
+		RootPaths:          []string{repositoryRoot},
+		DiscoveryPaths:     discoveryPaths,
+		Resolver:           moduleResolver,
+		MaxDepth:           configuredMaxDepth(config.MaxDepth),
+		ResourceLimits:     defaultResourceLimits(config.ResourceLimits),
+		BaselinePaths:      discoveryPaths,
+		TotalParseBytes:    config.TotalParseBytes,
+		MaxConfigFileBytes: config.MaxConfigFileBytes,
+		FS:                 config.FS,
 	})
 	defer graphResult.Cleanup()
 
@@ -128,12 +140,17 @@ func Prepare(ctx context.Context, config *Config) (Result, error) {
 		_ = os.RemoveAll(tempArtifact)
 	}()
 
-	materializer, err := newMaterializer(ctx, tempArtifact, graphResult.Modules, graphResult.Failures)
+	materializer, err := newMaterializer(
+		ctx, tempArtifact, repositoryRoot, graphResult.Modules, graphResult.Failures, config.LinkPackages,
+	)
 	if err != nil {
 		return output, err
 	}
 	output.Modules, err = buildManifestModules(ctx, repositoryRoot, &graphResult, materializer)
 	if err != nil {
+		return output, err
+	}
+	if err := materializer.prune(); err != nil {
 		return output, err
 	}
 	tempManifest := filepath.Join(tempArtifact, manifestFilename)

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
@@ -41,7 +42,7 @@ func TestSparseArchiveAcceptsRootDirectoryEntry(t *testing.T) {
 	dest := t.TempDir()
 	var extracted int64
 	counter := NewResourceBudget(ResourceLimits{MaxPackageFiles: 2}).NewPackageCounter()
-	if err := extractRegularFilesWithResourceBudget(&archive, dest, &extracted, counter); err != nil {
+	if err := extractRegularFilesWithResourceBudget(&archive, dest, &extracted, counter, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "main.tf")); err != nil {
@@ -67,7 +68,7 @@ func TestSparseArchiveCountsIgnoredEntryTypes(t *testing.T) {
 
 	var extracted int64
 	counter := NewResourceBudget(ResourceLimits{MaxPackageFiles: 1}).NewPackageCounter()
-	err := extractRegularFilesWithResourceBudget(&archive, t.TempDir(), &extracted, counter)
+	err := extractRegularFilesWithResourceBudget(&archive, t.TempDir(), &extracted, counter, nil)
 	var budgetErr *BudgetExceededError
 	if !errors.As(err, &budgetErr) || budgetErr.Limit != "package_file_count" {
 		t.Fatalf("expected package file-count error, got %v", err)
@@ -103,6 +104,184 @@ func TestResolveUsesCachedSHAArchiveWithoutDNS(t *testing.T) {
 	}
 	if res.PackageRoot != dest {
 		t.Fatalf("PackageRoot = %q, want %q", res.PackageRoot, dest)
+	}
+}
+
+func TestResolveUsesCachedTagArchiveWithoutDNS(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	r := NewBareGitResolver(t.TempDir(), "github.com")
+	remote := r.getOrInitRemote("https://github.com/org/repo.git")
+	remote.refCache["v1.2.3"] = bareRefEntry{SHA: sha}
+	dest := archiveCacheDir(remote.extractBase, sha)
+	marker := archiveMarkerPath(remote.extractBase, sha, "modules/app")
+	if err := os.MkdirAll(filepath.Dir(marker), dirPerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dest, "modules", "app"), dirPerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, nil, cacheFilePerms); err != nil {
+		t.Fatal(err)
+	}
+	r.policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		t.Fatal("cached tag extract must not resolve DNS")
+		return nil, errors.New("offline")
+	}
+
+	res, err := r.Resolve(context.Background(), &tfmodules.ParsedModule{
+		Source: "git::https://github.com/org/repo.git//modules/app?ref=v1.2.3",
+	})
+	if err != nil {
+		t.Fatalf("expected a cache hit without DNS, got %v", err)
+	}
+	if res.PackageRoot != dest || res.ResolvedRef != sha {
+		t.Fatalf("resolution = %+v, want package %q at %s", res, dest, sha)
+	}
+
+	remote.refCache["HEAD"] = bareRefEntry{SHA: sha}
+	r.policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return nil, errors.New("offline")
+	}
+	if _, err := r.Resolve(context.Background(), &tfmodules.ParsedModule{
+		Source: "git::https://github.com/org/repo.git//modules/app?ref=HEAD",
+	}); err == nil {
+		t.Fatal("HEAD moves and must not be served from the ref cache")
+	}
+}
+
+func TestResolveRefreshesExpiredBranchButServesItOffline(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	r := NewBareGitResolver(t.TempDir(), "github.com")
+	remote := r.getOrInitRemote("https://github.com/org/repo.git")
+	marker := archiveMarkerPath(remote.extractBase, sha, ".")
+	if err := os.MkdirAll(filepath.Dir(marker), dirPerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(archiveCacheDir(remote.extractBase, sha), dirPerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, nil, cacheFilePerms); err != nil {
+		t.Fatal(err)
+	}
+	lookups := 0
+	r.policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		lookups++
+		return nil, errors.New("offline")
+	}
+	mod := &tfmodules.ParsedModule{Source: "git::https://github.com/org/repo.git?ref=main"}
+
+	remote.refCache["main"] = bareRefEntry{SHA: sha, Moving: true, Resolved: time.Now()}
+	if _, err := r.Resolve(t.Context(), mod); err != nil || lookups != 0 {
+		t.Fatalf("a fresh branch entry must be served without the network: err=%v lookups=%d", err, lookups)
+	}
+
+	remote.refCache["main"] = bareRefEntry{SHA: sha, Moving: true, Resolved: time.Now().Add(-2 * movingRefTTL)}
+	res, err := r.Resolve(t.Context(), mod)
+	if lookups == 0 {
+		t.Fatal("an expired branch entry must try the network before reusing the cached commit")
+	}
+	if err != nil || res.ResolvedRef != sha {
+		t.Fatalf("an unreachable remote must fall back to the cached commit: res=%+v err=%v", res, err)
+	}
+}
+
+func TestBareRefCacheRoundTripsAndReadsLegacyEntries(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	path := filepath.Join(t.TempDir(), "refs.json")
+	if err := os.WriteFile(path, []byte(`{"v1.0.0":"`+sha+`","broken":"not-a-sha"}`), cacheFilePerms); err != nil {
+		t.Fatal(err)
+	}
+	legacy := loadBareRefCache(path)
+	if len(legacy) != 1 || legacy["v1.0.0"].SHA != sha || !legacy["v1.0.0"].Moving || legacy["v1.0.0"].fresh(time.Now()) {
+		t.Fatalf("legacy entries must load as stale moving refs, got %+v", legacy)
+	}
+
+	resolved := time.Now().UTC().Truncate(time.Second)
+	repo := &bareRepo{refCachePath: path, refCache: map[string]bareRefEntry{}}
+	repo.storeRef("v2.0.0", bareRefEntry{SHA: sha, Resolved: resolved})
+	repo.storeRef("main", bareRefEntry{SHA: sha, Moving: true, Resolved: resolved})
+	reloaded := loadBareRefCache(path)
+	if !reloaded["v2.0.0"].fresh(time.Now().Add(24*time.Hour)) || reloaded["main"].fresh(resolved.Add(movingRefTTL)) {
+		t.Fatalf("tags stay fresh and branches expire after the TTL, got %+v", reloaded)
+	}
+	leftovers, err := filepath.Glob(path + ".*.tmp")
+	if err != nil || len(leftovers) != 0 {
+		t.Fatalf("temporary ref cache files left behind: %v %v", leftovers, err)
+	}
+}
+
+func TestReadFetchHeadRecordsWhetherTheRefCanMove(t *testing.T) {
+	src := t.TempDir()
+	runGit(t, src, "init", "-q", "-b", "main")
+	runGit(t, src, "commit", "-q", "--allow-empty", "-m", "initial")
+	runGit(t, src, "tag", "-a", "v1.0.0", "-m", "release")
+	commit := runGit(t, src, "rev-parse", "HEAD")
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	runGit(t, filepath.Dir(bare), "init", "-q", "--bare", bare)
+	rem := &bareRemote{bareRepo: &bareRepo{barePath: bare}}
+
+	for ref, moving := range map[string]bool{"main": true, "v1.0.0": false, "refs/tags/v1.0.0": false} {
+		runGit(t, bare, "fetch", "-q", "file://"+src, ref)
+		entry, err := rem.readFetchHead(t.Context(), ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entry.SHA != commit || entry.Moving != moving {
+			t.Fatalf("ref %s: got %+v, want commit %s moving=%v", ref, entry, commit, moving)
+		}
+	}
+}
+
+func TestImmutableLocalRevServesOnlyTagsAndCommits(t *testing.T) {
+	for ref, want := range map[string]string{
+		"v1.2.3":           "refs/tags/v1.2.3",
+		"refs/tags/v1.2.3": "refs/tags/v1.2.3",
+		"abc1234":          "abc1234",
+		"main":             "refs/tags/main",
+		"refs/heads/main":  "",
+		"refs/pull/1/head": "",
+		"HEAD":             "",
+	} {
+		got, ok := immutableLocalRev(ref, ref)
+		if got != want || ok != (want != "") {
+			t.Errorf("immutableLocalRev(%q) = %q, %v; want %q", ref, got, ok, want)
+		}
+	}
+}
+
+func TestHasLocalBranchFindsHexNamedBranchesOfTheClone(t *testing.T) {
+	src := t.TempDir()
+	runGit(t, src, "init", "-q", "-b", "main")
+	runGit(t, src, "commit", "-q", "--allow-empty", "-m", "initial")
+	runGit(t, src, "branch", "20240115")
+	runGit(t, src, "tag", "deadbeef")
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	runGit(t, filepath.Dir(bare), "clone", "-q", "--bare", src, bare)
+	rem := &bareRemote{bareRepo: &bareRepo{barePath: bare}}
+
+	if !rem.hasLocalBranch(t.Context(), "20240115") {
+		t.Fatal("a branch whose name reads like an abbreviated commit must be detected")
+	}
+	if rem.hasLocalBranch(t.Context(), "deadbeef") {
+		t.Fatal("a tag is not a branch")
+	}
+}
+
+func TestGitVersionAtLeast(t *testing.T) {
+	for output, want := range map[string]bool{
+		"git version 2.44.0\n":                   true,
+		"git version 2.53.0":                     true,
+		"git version 3.0.1":                      true,
+		"git version 2.43.5":                     false,
+		"git version 2.39.3 (Apple Git-146)":     false,
+		"git version 2.45.1.windows.1":           true,
+		"not git":                                false,
+		"git version":                            false,
+		"git version unknown.release.candidate1": false,
+	} {
+		if got := gitVersionAtLeast(output, minNoLazyFetchVersion); got != want {
+			t.Errorf("gitVersionAtLeast(%q) = %v, want %v", output, got, want)
+		}
 	}
 }
 
@@ -292,6 +471,14 @@ func TestGitCloneRetryable(t *testing.T) {
 		},
 		{name: "authentication failed", out: "fatal: Authentication failed for 'https://github.com/org/repo.git/'", err: transient, want: false},
 		{name: "invalid password", out: "remote: Invalid username or password", err: transient, want: false},
+		{
+			name: "ssh key rejected",
+			out:  "git@140.82.121.4: Permission denied (publickey).\r\nfatal: Could not read from remote repository.",
+			err:  transient,
+			want: false,
+		},
+		{name: "ssh host key mismatch", out: "Host key verification failed.", err: transient, want: false},
+		{name: "ssh connection dropped", out: "fatal: Could not read from remote repository.", err: transient, want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -315,6 +502,23 @@ func TestParseGitGetterSourcePreservesHTTPS(t *testing.T) {
 		t.Errorf("subdir = %q", subdir)
 	}
 	if ref != "v1.9.4-17" {
+		t.Errorf("ref = %q", ref)
+	}
+}
+
+func TestParseGitGetterSourceTrimsExtraSubdirSlashes(t *testing.T) {
+	in := "git::https://github.com/DataDog/cloud-inventory///terraform-modules/aws--helper?ref=aws--helper_v2.0.6"
+	repoURL, subdir, ref, ok := parseGitGetterSource(in)
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if repoURL != "https://github.com/DataDog/cloud-inventory" {
+		t.Errorf("repoURL = %q", repoURL)
+	}
+	if subdir != "terraform-modules/aws--helper" {
+		t.Errorf("subdir = %q, want a path relative to the package root", subdir)
+	}
+	if ref != "aws--helper_v2.0.6" {
 		t.Errorf("ref = %q", ref)
 	}
 }
@@ -403,5 +607,28 @@ func TestBareRepoRejectsUnsafeCachedConfig(t *testing.T) {
 	runGit(t, root, "--git-dir", barePath, "config", "http.https://modules.example.proxy", "")
 	if repo.cachedConfigIsSafe(t.Context()) {
 		t.Fatal("URL-specific proxy config must invalidate the cache")
+	}
+}
+
+func TestStaleRefFallbackOnlyCoversTransientFailures(t *testing.T) {
+	rem := &bareRemote{cloneURL: "https://github.com/org/repo"}
+	stale := bareRefEntry{SHA: strings.Repeat("a", 40)}
+
+	sha, err := rem.staleRefFallback(context.Background(), "main", stale,
+		errors.New("git fetch https://github.com/org/repo main: exit status 128\nfatal: unable to access: Connection reset by peer"))
+	if err != nil || sha != stale.SHA {
+		t.Fatalf("a dropped connection serves the cached commit, got %q, %v", sha, err)
+	}
+
+	for _, permanent := range []string{
+		"fatal: couldn't find remote ref main",
+		"remote: Repository not found.",
+		"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+		"fatal: Authentication failed for 'https://github.com/org/repo/'",
+	} {
+		refreshErr := errors.New("git fetch https://github.com/org/repo main: exit status 128\n" + permanent)
+		if sha, err := rem.staleRefFallback(context.Background(), "main", stale, refreshErr); err == nil {
+			t.Errorf("%q must not serve the cached commit %q", permanent, sha)
+		}
 	}
 }

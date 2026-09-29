@@ -26,6 +26,32 @@ func testCacheRoot(t *testing.T) string {
 	return root
 }
 
+// aggregateCacheBytes totals every cache entry on disk, independently of the
+// sizes the budget has recorded.
+func aggregateCacheBytes(root string) (total int64) {
+	for _, sub := range cacheBudgetSubdirs {
+		dir := filepath.Join(root, sub)
+		items, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, item := range items {
+			path := filepath.Join(dir, item.Name())
+			if !item.IsDir() {
+				if info, infoErr := item.Info(); infoErr == nil {
+					total += info.Size()
+				}
+				continue
+			}
+			if strings.HasPrefix(item.Name(), ".") {
+				continue
+			}
+			total += cacheEntrySize(path)
+		}
+	}
+	return total
+}
+
 func writeCacheEntry(t *testing.T, dir, name string, size int, age time.Duration) string {
 	t.Helper()
 	entry := filepath.Join(dir, name)
@@ -59,7 +85,7 @@ func TestModuleCacheBudgetEvictsAcrossSubdirs(t *testing.T) {
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Fatalf("oldest aggregate entry should have been evicted, stat: %v", err)
 	}
-	if _, total := listAggregateCacheEntries(root); total > budget.MaxBytes() {
+	if total := aggregateCacheBytes(root); total > budget.MaxBytes() {
 		t.Fatalf("aggregate cache size %d exceeds max %d", total, budget.MaxBytes())
 	}
 }
@@ -157,6 +183,74 @@ func TestModuleCacheBudgetDoesNotEvictPinnedEntries(t *testing.T) {
 	}
 }
 
+func TestModuleCacheBudgetMeasuresGitEntryOnce(t *testing.T) {
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := writeCacheEntry(t, filepath.Join(root, CacheSubdirGitLocal), "repo", 60, 0)
+	if err := budget.EnsureEntryFits(entry); err != nil {
+		t.Fatal(err)
+	}
+	addFile := func(name string, size int) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(entry, name), []byte(strings.Repeat("b", size)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	addFile("unreported", 100)
+	if err := budget.EnsureEntryFits(entry); err != nil {
+		t.Fatalf("a measured entry must not be walked again: %v", err)
+	}
+	budget.Grow(entry, 100)
+	if err := budget.EnsureEntryFits(entry); !errors.Is(err, errCacheEntryTooLarge) {
+		t.Fatalf("reported growth was not applied: %v", err)
+	}
+}
+
+func TestModuleCacheBudgetInvalidateMeasuresAgain(t *testing.T) {
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := writeCacheEntry(t, filepath.Join(root, CacheSubdirGitBare), "repo", 60, 0)
+	release := budget.Lease(entry)
+	defer release()
+	if err := budget.EnsureEntryFits(entry); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(entry, "fetched.pack"), []byte(strings.Repeat("c", 100)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	budget.Invalidate(entry)
+	if err := budget.EnsureEntryFits(entry); !errors.Is(err, errCacheEntryTooLarge) {
+		t.Fatalf("invalidated entry was not measured again: %v", err)
+	}
+}
+
+func TestModuleCacheBudgetForgetsRemovedEntries(t *testing.T) {
+	root := testCacheRoot(t)
+	budget, err := NewModuleCacheBudget(root, 150)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitDir := filepath.Join(root, CacheSubdirGitLocal)
+	removed := writeCacheEntry(t, gitDir, "removed", 100, time.Hour)
+	budget.Admit("")
+	if err := os.RemoveAll(removed); err != nil {
+		t.Fatal(err)
+	}
+	fresh := writeCacheEntry(t, gitDir, "fresh", 100, 0)
+
+	budget.Admit(fresh)
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatalf("a removed entry's recorded size still counted against the cache: %v", err)
+	}
+}
+
 func TestModuleCacheBudgetEvictsWhenLeaseEnds(t *testing.T) {
 	root := testCacheRoot(t)
 	budget, err := NewModuleCacheBudget(root, 150)
@@ -170,7 +264,7 @@ func TestModuleCacheBudgetEvictsWhenLeaseEnds(t *testing.T) {
 	releaseSecond := budget.Lease(second)
 
 	budget.Admit(second)
-	if _, total := listAggregateCacheEntries(root); total <= budget.MaxBytes() {
+	if total := aggregateCacheBytes(root); total <= budget.MaxBytes() {
 		t.Fatal("expected active leases to allow a temporary cache overage")
 	}
 
@@ -178,7 +272,7 @@ func TestModuleCacheBudgetEvictsWhenLeaseEnds(t *testing.T) {
 	if _, err := os.Stat(first); !os.IsNotExist(err) {
 		t.Fatalf("released entry should be evicted to restore the cache limit: %v", err)
 	}
-	if _, total := listAggregateCacheEntries(root); total > budget.MaxBytes() {
+	if total := aggregateCacheBytes(root); total > budget.MaxBytes() {
 		t.Fatalf("cache size %d exceeds max %d after lease release", total, budget.MaxBytes())
 	}
 	releaseSecond()

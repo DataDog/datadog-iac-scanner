@@ -7,6 +7,7 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,7 +57,15 @@ func NewDefaultChain(ctx context.Context, config *DefaultChainConfig) (*ChainRes
 	getterConfig.HostAllowlist = append([]string(nil), config.HostAllowlist...)
 
 	cacheRoot := strings.TrimSpace(config.CacheRoot)
-	if cacheRoot == "" {
+	if cacheRoot != "" {
+		// Resolved paths are later joined against the scanned repository, so a
+		// working-directory-relative root would point at the wrong tree.
+		absRoot, err := filepath.Abs(cacheRoot)
+		if err != nil {
+			return nil, fmt.Errorf("resolving module cache root %q: %w", cacheRoot, err)
+		}
+		cacheRoot = absRoot
+	} else {
 		var err error
 		cacheRoot, err = DefaultModuleCacheRoot()
 		if err != nil {
@@ -100,8 +109,9 @@ func NewDefaultChain(ctx context.Context, config *DefaultChainConfig) (*ChainRes
 func TerraformRootDirs(paths []string) []string {
 	seen := make(map[string]bool, len(paths))
 	roots := make([]string, 0, len(paths))
+	installRoots := make(map[string]string)
 	for _, path := range paths {
-		root := terraformRootDir(path)
+		root := terraformRootDir(path, installRoots)
 		if root == "" || seen[root] {
 			continue
 		}
@@ -111,20 +121,31 @@ func TerraformRootDirs(paths []string) []string {
 	return roots
 }
 
-func terraformRootDir(path string) string {
+// terraformRootDir returns the nearest enclosing directory with a modules.json,
+// or path's own directory. Discovery paths are individual files, so the lookup
+// for each directory is shared through installRoots.
+func terraformRootDir(path string, installRoots map[string]string) string {
 	info, err := os.Stat(path)
 	if err == nil && !info.IsDir() {
 		path = filepath.Dir(path)
 	}
 	clean := filepath.Clean(path)
-	for {
-		if _, err := os.Stat(filepath.Join(clean, ".terraform", "modules", "modules.json")); err == nil {
-			return clean
-		}
-		parent := filepath.Dir(clean)
-		if parent == clean {
-			return filepath.Clean(path)
-		}
-		clean = parent
+	if root := nearestInstallRoot(clean, installRoots); root != "" {
+		return root
 	}
+	return clean
+}
+
+func nearestInstallRoot(dir string, installRoots map[string]string) string {
+	if root, ok := installRoots[dir]; ok {
+		return root
+	}
+	var root string
+	if _, err := os.Stat(filepath.Join(dir, ".terraform", "modules", "modules.json")); err == nil {
+		root = dir
+	} else if parent := filepath.Dir(dir); parent != dir {
+		root = nearestInstallRoot(parent, installRoots)
+	}
+	installRoots[dir] = root
+	return root
 }

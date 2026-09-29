@@ -7,8 +7,11 @@ package scan
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -23,7 +26,7 @@ const (
 	moduleSourceTypeGit     = "git"
 	moduleSourceTypeUnknown = "unknown"
 
-	DefaultModuleResolutionTimeout = 5 * time.Minute
+	DefaultModuleResolutionTimeout = 15 * time.Minute
 )
 
 func (c *Client) resolveTerraformModulesForScan(
@@ -78,15 +81,7 @@ func (c *Client) resolveTerraformModulesForScan(
 			Int("shedding_rank", event.SheddingRank).
 			Msg("Terraform module excluded by resource budget")
 	}
-	for i := range result.Failures {
-		failure := &result.Failures[i]
-		contextLogger.Warn().
-			Str("module_source", failure.Source).
-			Str("module_name", failure.Name).
-			Str("caller_root", failure.CallerRoot).
-			Str("reason", failure.Reason).
-			Msg("Terraform module resolution failed")
-	}
+	logModuleResolutionFailures(&contextLogger, result.Failures)
 	if len(result.ScanPaths) > 0 {
 		contextLogger.Info().Msgf("Adding %d remote module file(s) to scan", len(result.ScanPaths))
 	}
@@ -125,6 +120,65 @@ func (c *Client) resolveTerraformModulesForScan(
 	return result.Cleanup, result.ScanPaths, remoteSourceDirs, remoteModuleProvenance, nil
 }
 
+// maxLoggedFailureSources caps the sources listed on one aggregated failure warning.
+const maxLoggedFailureSources = 5
+
+type moduleFailureGroup struct {
+	reason  string
+	sources []string
+	seen    map[string]bool
+	calls   int
+}
+
+// logModuleResolutionFailures warns once per distinct failure reason, since a
+// single unreachable host or repository fails every call site that uses it.
+// Per-call details stay available at debug level.
+func logModuleResolutionFailures(contextLogger *zerolog.Logger, failures []modulegraph.ResolutionFailure) {
+	groups := make(map[string]*moduleFailureGroup)
+	for i := range failures {
+		failure := &failures[i]
+		contextLogger.Debug().
+			Str("module_source", failure.Source).
+			Str("module_name", failure.Name).
+			Str("caller_file", failure.CallerFile).
+			Str("reason", failure.Reason).
+			Msg("Terraform module call unresolved")
+		group, ok := groups[failure.Reason]
+		if !ok {
+			group = &moduleFailureGroup{reason: failure.Reason, seen: make(map[string]bool)}
+			groups[failure.Reason] = group
+		}
+		group.calls++
+		if !group.seen[failure.Source] {
+			group.seen[failure.Source] = true
+			group.sources = append(group.sources, failure.Source)
+		}
+	}
+	ordered := make([]*moduleFailureGroup, 0, len(groups))
+	for _, group := range groups {
+		sort.Strings(group.sources)
+		ordered = append(ordered, group)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].calls != ordered[j].calls {
+			return ordered[i].calls > ordered[j].calls
+		}
+		return ordered[i].reason < ordered[j].reason
+	})
+	for _, group := range ordered {
+		sources := group.sources
+		if len(sources) > maxLoggedFailureSources {
+			sources = sources[:maxLoggedFailureSources]
+		}
+		contextLogger.Warn().
+			Str("reason", group.reason).
+			Strs("module_sources", sources).
+			Int("module_source_count", len(group.sources)).
+			Int("module_calls", group.calls).
+			Msg("Terraform module resolution failed")
+	}
+}
+
 func (c *Client) resolveTerraformModuleGraph(
 	ctx context.Context,
 	rootPaths, discoveryPaths, baselinePaths []string,
@@ -153,9 +207,10 @@ func (c *Client) resolveTerraformModuleGraph(
 			MaxPackageFiles: packageFiles,
 			MaxTotalBytes:   c.ScanParams.MaxModuleBytesTotal,
 		},
-		BaselinePaths:   baselinePaths,
-		TotalParseBytes: c.ScanParams.MaxModuleParseBytes,
-		FS:              c.fsys,
+		BaselinePaths:      baselinePaths,
+		TotalParseBytes:    c.ScanParams.MaxModuleParseBytes,
+		MaxConfigFileBytes: tfmodules.MaxConfigFileBytesForScan(c.ScanParams.MaxFileSizeFlag),
+		FS:                 c.fsys,
 	})
 }
 

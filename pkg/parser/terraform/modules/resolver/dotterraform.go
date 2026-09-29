@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 
@@ -45,10 +44,15 @@ type DotTerraformResolver struct {
 
 	once  sync.Once
 	index map[string]installedModulePath
+	// installRoots are the roots that have a modules.json, in RootDirs order.
+	// Only they can match, and there are usually far fewer of them than roots.
+	installRoots  []string
+	isInstallRoot map[string]bool
 }
 
 func (r *DotTerraformResolver) load() {
 	r.index = make(map[string]installedModulePath)
+	r.isInstallRoot = make(map[string]bool)
 	for _, root := range r.RootDirs {
 		installRoot := filepath.Join(root, ".terraform", "modules")
 		path := filepath.Join(installRoot, "modules.json")
@@ -59,6 +63,10 @@ func (r *DotTerraformResolver) load() {
 		var mj dotTerraformModulesJSON
 		if err := json.Unmarshal(data, &mj); err != nil {
 			continue
+		}
+		if cleanRoot := filepath.Clean(root); !r.isInstallRoot[cleanRoot] {
+			r.isInstallRoot[cleanRoot] = true
+			r.installRoots = append(r.installRoots, cleanRoot)
 		}
 		for _, rec := range mj.Modules {
 			if rec.Source == "" {
@@ -107,26 +115,33 @@ func installedModulePaths(scanRoot, installRoot, localPath string) (installedMod
 	}, true
 }
 
-func (r *DotTerraformResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+// lookup finds mod in the install roots enclosing its declaring file.
+func (r *DotTerraformResolver) lookup(mod *tfmodules.ParsedModule) (installedModulePath, error) {
 	if mod.IsLocal {
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: "local modules are handled by LocalResolver"}
+		return installedModulePath{}, notApplicable("local modules are handled by LocalResolver")
 	}
 	r.once.Do(r.load)
-	path, ok := installedModulePath{}, false
 	for _, root := range r.rootsFor(mod.FileName) {
 		for _, key := range dotTerraformResolveKeys(root, mod.Source, mod.Version, mod.Name) {
-			if path, ok = r.index[key]; ok {
-				break
+			if path, ok := r.index[key]; ok {
+				return path, nil
 			}
 		}
-		if ok {
-			break
-		}
 	}
-	if !ok {
-		return Resolution{}, &tfmodules.UnresolvedError{
-			Reason: fmt.Sprintf("module %q not found in .terraform/modules (run terraform init)", mod.Source),
-		}
+	return installedModulePath{}, notApplicable(
+		fmt.Sprintf("module %q not found in .terraform/modules (run terraform init)", mod.Source),
+	)
+}
+
+func (r *DotTerraformResolver) Screen(_ context.Context, mod *tfmodules.ParsedModule) error {
+	_, err := r.lookup(mod)
+	return err
+}
+
+func (r *DotTerraformResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	path, err := r.lookup(mod)
+	if err != nil {
+		return Resolution{}, err
 	}
 	packageRoot, err := ResolvePathWithinRoot(ctx, path.scanRoot, path.packageRoot)
 	if err != nil {
@@ -148,22 +163,22 @@ func (r *DotTerraformResolver) Resolve(ctx context.Context, mod *tfmodules.Parse
 	return resolution, nil
 }
 
+// rootsFor returns the install roots enclosing fileName, deepest first.
 func (r *DotTerraformResolver) rootsFor(fileName string) []string {
-	if fileName == "" {
-		return r.RootDirs
+	if fileName == "" || len(r.installRoots) == 0 {
+		return r.installRoots
 	}
-	fileDir := filepath.Clean(filepath.Dir(fileName))
-	roots := make([]string, 0, len(r.RootDirs))
-	for _, root := range r.RootDirs {
-		cleanRoot := filepath.Clean(root)
-		if rel, err := filepath.Rel(cleanRoot, fileDir); err == nil && !pathutil.PathEscapesDir(rel) {
-			roots = append(roots, cleanRoot)
+	var roots []string
+	for dir := filepath.Clean(filepath.Dir(fileName)); ; {
+		if r.isInstallRoot[dir] {
+			roots = append(roots, dir)
 		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return roots
+		}
+		dir = parent
 	}
-	sort.Slice(roots, func(i, j int) bool {
-		return len(roots[i]) > len(roots[j])
-	})
-	return roots
 }
 
 func dotTerraformKey(root, source, version string) string {

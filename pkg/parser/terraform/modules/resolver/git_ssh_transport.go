@@ -228,8 +228,22 @@ func runGitSSHCommand(
 			return out, nil
 		}
 		lastOut, lastErr = out, runErr
+		if isSSHAuthFailure(out, runErr) {
+			break
+		}
 	}
 	return lastOut, lastErr
+}
+
+// isSSHAuthFailure reports failures that no other address or retry can fix
+// because the server rejected the client's identity or its host key.
+func isSSHAuthFailure(out []byte, err error) bool {
+	blob := strings.ToLower(string(out))
+	if err != nil {
+		blob += "\n" + strings.ToLower(err.Error())
+	}
+	return strings.Contains(blob, "permission denied (publickey") ||
+		strings.Contains(blob, "host key verification failed")
 }
 
 func prepareGitSSHArchives(

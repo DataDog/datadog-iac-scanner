@@ -12,9 +12,11 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -358,36 +360,179 @@ func evaluateRootModules(
 	resourceCount *int,
 	rootEvalOK *bool,
 ) {
-	contextLogger := logger.FromContext(ctx)
-	for _, dir := range roots {
+	m := &rootMerge{
+		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
+		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
+		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
+		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
+		resourceCount: resourceCount, rootEvalOK: rootEvalOK,
+	}
+	next := 0
+	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
+		next = m.evaluateConcurrently(roots, workers)
+	}
+	for _, dir := range roots[next:] {
 		evaluator.ResetSpeculativeBudget()
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVars(dir))
-		if err != nil {
-			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
-			for _, called := range discoverCalledModuleClosure(
-				ctx, evaluator, filesByDir, repoPath, resolver, dir,
-			) {
-				unresolvedModuleDirs[called] = true
-			}
-			continue
+		m.merge(dir, resources, childDirs, err)
+		if err == nil {
+			// instantiatedDocs has copied everything this root needs into plain
+			// documents, so the evaluator's cty values are dead here. Another root
+			// could in principle reuse them, but each root passes its own values to
+			// the modules it shares, so the hit rate does not pay for a peak that
+			// grows with the whole repository rather than the largest single root.
+			evaluator.ReleaseEvalCache()
 		}
-		*rootEvalOK = true
-		successfulRoots[dir] = true
-		for d := range childDirs {
-			actualCalledDirs[d] = true
-		}
-		docs, syn, count := instantiatedDocs(
-			resources, byAbsPath, repoPath, targets, seen, extras, instantiated, lookup)
-		*extra = append(*extra, docs...)
-		*syntheticFiles = append(*syntheticFiles, syn...)
-		*resourceCount += count
-		// instantiatedDocs has copied everything this root needs into plain
-		// documents, so the evaluator's cty values are dead here. Another root
-		// could in principle reuse them, but each root passes its own values to
-		// the modules it shares, so the hit rate does not pay for a peak that
-		// grows with the whole repository rather than the largest single root.
-		evaluator.ReleaseEvalCache()
 	}
+}
+
+// rootEvalWorkers bounds the roots evaluated at once. Each holds its own
+// evaluation values until it is merged, so this also bounds the memory
+// concurrency adds.
+var rootEvalWorkers = 4
+
+// rootMerge folds root evaluations into the scan's documents, in root order.
+type rootMerge struct {
+	ctx                  context.Context
+	evaluator            *tfeval.Evaluator
+	filesByDir           map[string][]*model.FileMetadata
+	repoPath             string
+	resolver             tfeval.RemoteResolver
+	targets              *ruleTargets
+	lookup               moduleProvenanceLookup
+	byAbsPath            map[string]*model.FileMetadata
+	seen                 map[docContentKey]string
+	extras               map[string][]extraCallerInfo
+	instantiated         instantiatedIndex
+	successfulRoots      map[string]bool
+	unresolvedModuleDirs map[string]bool
+	actualCalledDirs     map[string]bool
+	extra                *[]model.Document
+	syntheticFiles       *[]*model.FileMetadata
+	resourceCount        *int
+	rootEvalOK           *bool
+}
+
+func (m *rootMerge) merge(dir string, resources []tfeval.ResolvedResource, childDirs map[string]bool, err error) {
+	defer m.evaluator.ForgetRootParse(dir)
+	if err != nil {
+		contextLogger := logger.FromContext(m.ctx)
+		contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
+		for _, called := range discoverCalledModuleClosure(
+			m.ctx, m.evaluator, m.filesByDir, m.repoPath, m.resolver, dir,
+		) {
+			m.unresolvedModuleDirs[called] = true
+		}
+		return
+	}
+	*m.rootEvalOK = true
+	m.successfulRoots[dir] = true
+	for d := range childDirs {
+		m.actualCalledDirs[d] = true
+	}
+	docs, syn, count := instantiatedDocs(
+		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup)
+	*m.extra = append(*m.extra, docs...)
+	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
+	*m.resourceCount += count
+}
+
+// rootResult is a root evaluated by a worker, starting from an empty budget.
+type rootResult struct {
+	resources    []tfeval.ResolvedResource
+	childDirs    map[string]bool
+	err          error
+	charged      int
+	demand       int
+	notEvaluated []string
+	panicked     any
+}
+
+// evaluateConcurrently evaluates roots on workers and merges them in order, so
+// shared documents get the same owners as when roots are evaluated one by one.
+// A root is only evaluated apart from the roots before it; the one thing they
+// share is the scan's instantiation budget, so a worker's result is merged only
+// while the budget left could not have changed it. It returns the index of the
+// first root it did not merge, from which the caller evaluates serially.
+func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
+	results := make([]chan rootResult, len(roots))
+	for i := range results {
+		results[i] = make(chan rootResult, 1)
+	}
+	// Tokens bound the roots evaluated but not yet merged. Workers take a token
+	// before an index, so the roots in flight are always the next ones to merge.
+	window := make(chan struct{}, 2*workers)
+	stop := make(chan struct{})
+	var (
+		mu       sync.Mutex
+		nextRoot int
+		wg       sync.WaitGroup
+	)
+	for range workers {
+		worker := m.evaluator.Fork()
+		wg.Go(func() {
+			for {
+				select {
+				case window <- struct{}{}:
+				case <-stop:
+					return
+				}
+				mu.Lock()
+				i := nextRoot
+				nextRoot++
+				mu.Unlock()
+				if i >= len(roots) {
+					return
+				}
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				results[i] <- evaluateRoot(m.ctx, worker, roots[i])
+			}
+		})
+	}
+	defer func() {
+		close(stop)
+		wg.Wait()
+	}()
+
+	budget := m.evaluator.InstantiationBudget()
+	charged := m.evaluator.InstantiatedCount()
+	for i, dir := range roots {
+		r := <-results[i]
+		<-window
+		if budget > 0 && charged+r.demand > budget {
+			m.evaluator.RestoreInstantiatedCount(charged)
+			return i
+		}
+		if r.panicked != nil {
+			panic(r.panicked)
+		}
+		charged += r.charged
+		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
+		m.merge(dir, r.resources, r.childDirs, r.err)
+	}
+	m.evaluator.RestoreInstantiatedCount(charged)
+	return len(roots)
+}
+
+func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r rootResult) {
+	worker.ResetSpeculativeBudget()
+	worker.RestoreInstantiatedCount(0)
+	worker.ResetBudgetDemand()
+	defer func() {
+		if p := recover(); p != nil {
+			r = rootResult{panicked: p}
+		}
+		r.demand = worker.BudgetDemand()
+		r.notEvaluated = worker.TakeNotEvaluatedDirs()
+		worker.ReleaseEvalCache()
+	}()
+	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVars(dir))
+	r.charged = worker.InstantiatedCount()
+	return r
 }
 
 // collectNotEvaluatedDirs marks the directories the evaluator skipped, and

@@ -813,7 +813,8 @@ func TestResolveReservesAcquisitionAcrossConcurrentFrontiers(t *testing.T) {
 		Resolver:       tracker,
 		MaxDepth:       2,
 		ResourceLimits: resolver.ResourceLimits{
-			MaxPackageBytes: 300,
+			// Two full leases fit in the allowance, so two frontiers overlap.
+			MaxPackageBytes: 150,
 			MaxTotalBytes:   maximumBytes,
 		},
 	})
@@ -1036,6 +1037,122 @@ func TestResolveReportsResolutionFailure(t *testing.T) {
 	require.Contains(t, result.Failures[0].Reason, "unknown source")
 }
 
+// screeningResolver screens out every source and counts Resolve calls, so a
+// test can prove screened modules never reach the resolver.
+type screeningResolver struct {
+	resolved atomic.Int64
+}
+
+func (r *screeningResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (resolver.Resolution, error) {
+	r.resolved.Add(1)
+	return resolver.Resolution{}, &tfmodules.UnresolvedError{Reason: "unknown source " + mod.Source}
+}
+
+func (r *screeningResolver) Screen(context.Context, *tfmodules.ParsedModule) error {
+	return &tfmodules.UnresolvedError{Reason: `module host "denied.example.org" is not in --module-host-allowlist`}
+}
+
+func TestResolveScreensOutModulesBeforeAcquisition(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "a" {
+  source = "git::https://denied.example.org/acme/vpc.git?ref=v1"
+}
+
+module "b" {
+  source = "git::https://denied.example.org/acme/vpc.git?ref=v1"
+}
+`), 0o644))
+	screening := &screeningResolver{}
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       screening,
+		MaxDepth:       2,
+		// An exhausted acquisition budget would shed any module that reached it.
+		ResourceLimits: resolver.ResourceLimits{MaxTotalBytes: 1, MaxPackageBytes: 1},
+	})
+
+	require.Zero(t, screening.resolved.Load())
+	require.Empty(t, result.BudgetEvents)
+	require.Len(t, result.Failures, 2)
+	for _, failure := range result.Failures {
+		require.Contains(t, failure.Reason, "is not in --module-host-allowlist")
+	}
+	require.Len(t, result.Stats, 1, "one sample per module identity")
+	require.Equal(t, resolver.FailureAllowlistDenied, result.Stats[0].FailureCode)
+}
+
+// fileScreeningResolver rules out calls declared in one file, as
+// DotTerraformResolver does for a root without an install, and resolves the rest.
+type fileScreeningResolver struct {
+	deniedFile string
+	localPath  string
+}
+
+func (r fileScreeningResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (resolver.Resolution, error) {
+	if err := r.Screen(context.Background(), mod); err != nil {
+		return resolver.Resolution{}, err
+	}
+	return resolver.Resolution{LocalPath: r.localPath}, nil
+}
+
+func (r fileScreeningResolver) Screen(_ context.Context, mod *tfmodules.ParsedModule) error {
+	if filepath.Base(mod.FileName) == r.deniedFile {
+		return &tfmodules.UnresolvedError{Reason: "not installed for " + r.deniedFile}
+	}
+	return nil
+}
+
+func TestResolveKeepsAModuleOneOfItsCallersCanResolve(t *testing.T) {
+	root := t.TempDir()
+	moduleDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.tf"), []byte(`
+module "vpc_a" {
+  source = "git::https://example.com/acme/vpc.git?ref=v1"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "b.tf"), []byte(`
+module "vpc_b" {
+  source = "git::https://example.com/acme/vpc.git?ref=v1"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`resource "aws_vpc" "this" {}`), 0o644))
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "b.tf"), filepath.Join(root, "a.tf")},
+		Resolver:       fileScreeningResolver{deniedFile: "b.tf", localPath: moduleDir},
+		MaxDepth:       2,
+	})
+
+	require.Empty(t, result.Failures, "a caller that is ruled out does not fail the group for the others")
+	require.Len(t, result.Modules, 2, "both declarations share the module the other caller resolved")
+}
+
+func TestResolveSkipsModuleCallsInConfigurationTheScanWillNotParse(t *testing.T) {
+	root, moduleDir := writeModuleGraphFixture(t)
+	resolutions := mapResolver{bySource: map[string]resolver.Resolution{
+		"git::https://git@github.com/acme/network.git//modules/vpc?ref=v1": {LocalPath: moduleDir},
+	}}
+	request := func(maxConfigBytes int64) *Request {
+		return &Request{
+			RootPaths:          []string{root},
+			DiscoveryPaths:     []string{filepath.Join(root, "main.tf")},
+			Resolver:           resolutions,
+			MaxDepth:           2,
+			MaxConfigFileBytes: maxConfigBytes,
+		}
+	}
+
+	skipped := Resolve(t.Context(), request(16))
+	require.Empty(t, skipped.Modules)
+	require.Empty(t, skipped.Failures)
+
+	read := Resolve(t.Context(), request(-1))
+	require.Len(t, read.Modules, 1)
+}
+
 func TestResolveReportsRedactedResolutionFailureCredentials(t *testing.T) {
 	source := "git::https://user:secret@example.com/modules/vpc.git"
 	root := t.TempDir()
@@ -1168,6 +1285,60 @@ func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
 	}
 }
 
+// limitRecordingResolver records the package limit each Resolve call runs under.
+type limitRecordingResolver struct {
+	mu       sync.Mutex
+	limits   []int64
+	bySource map[string]resolver.Resolution
+}
+
+func (r *limitRecordingResolver) Resolve(
+	ctx context.Context, mod *tfmodules.ParsedModule,
+) (resolver.Resolution, error) {
+	r.mu.Lock()
+	r.limits = append(r.limits, resolver.ResourceBudgetFromContext(ctx).Limits().MaxPackageBytes)
+	r.mu.Unlock()
+	return r.bySource[mod.Source], nil
+}
+
+func TestResolveGrantsRemainderOnlyAfterOutstandingLeasesSettle(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	moduleA := filepath.Join(base, "module-a")
+	moduleB := filepath.Join(base, "module-b")
+	for _, dir := range []string{root, moduleA, moduleB} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "a" {
+  source = "example.com/acme/a/aws"
+}
+module "b" {
+  source = "example.com/acme/b/aws"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleA, "main.tf"), make([]byte, 60), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleB, "main.tf"), make([]byte, 10), 0o600))
+	usageA, err := resolver.MeasurePackage(t.Context(), moduleA, resolver.ResourceLimits{})
+	require.NoError(t, err)
+	recording := &limitRecordingResolver{bySource: map[string]resolver.Resolution{
+		"example.com/acme/a/aws": {LocalPath: moduleA},
+		"example.com/acme/b/aws": {LocalPath: moduleB},
+	}}
+
+	Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       recording,
+		MaxDepth:       2,
+		// The allowance (110) holds one full lease (100) and a remainder that b
+		// only receives once a has settled, sized by what a actually used.
+		ResourceLimits: resolver.ResourceLimits{MaxPackageBytes: 100, MaxTotalBytes: 55},
+	})
+
+	require.Equal(t, []int64{100, 110 - usageA.Bytes}, recording.limits)
+}
+
 func TestShedToTotalLimitBreaksTiesDeterministically(t *testing.T) {
 	t.Parallel()
 
@@ -1257,4 +1428,174 @@ locals {
 	for _, mod := range mods {
 		require.Equal(t, "./child", mod.Source)
 	}
+}
+
+func TestResolveAcquiresRemoteCallsFromSiblingLocalModulesTogether(t *testing.T) {
+	previous := resolver.FetchConcurrency
+	resolver.FetchConcurrency = 2
+	t.Cleanup(func() { resolver.FetchConcurrency = previous })
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	files := map[string]string{
+		filepath.Join(root, "main.tf"): `
+module "a" {
+  source = "./a"
+}
+module "b" {
+  source = "./b"
+}
+`,
+		filepath.Join(root, "a", "main.tf"): "module \"x\" {\n  source = \"example.com/acme/x/aws\"\n}\n",
+		filepath.Join(root, "b", "main.tf"): "module \"y\" {\n  source = \"example.com/acme/y/aws\"\n}\n",
+		filepath.Join(base, "x", "main.tf"): `resource "aws_vpc" "x" {}`,
+		filepath.Join(base, "y", "main.tf"): `resource "aws_vpc" "y" {}`,
+	}
+	for path, content := range files {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	}
+	// Each resolution blocks until both are in flight, so fetching one local
+	// module's remote calls at a time would stall until the deadline.
+	tracker := &acquisitionTrackingResolver{
+		bySource: map[string]resolver.Resolution{
+			"example.com/acme/x/aws": {LocalPath: filepath.Join(base, "x")},
+			"example.com/acme/y/aws": {LocalPath: filepath.Join(base, "y")},
+		},
+		release: make(chan struct{}),
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	result := Resolve(ctx, &Request{
+		RootPaths: []string{root},
+		DiscoveryPaths: []string{
+			filepath.Join(root, "main.tf"),
+			filepath.Join(root, "a", "main.tf"),
+			filepath.Join(root, "b", "main.tf"),
+		},
+		Resolver: tracker,
+		MaxDepth: 3,
+	})
+
+	require.False(t, result.TimedOut)
+	require.Empty(t, result.Failures)
+	require.Len(t, result.Modules, 2)
+	for _, module := range result.Modules {
+		require.Equal(t, 2, module.Depth)
+	}
+}
+
+type headOfLineResolver struct {
+	bySource map[string]resolver.Resolution
+	slow     string
+	unblock  string
+	released chan struct{}
+	once     sync.Once
+}
+
+func (r *headOfLineResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (resolver.Resolution, error) {
+	switch mod.Source {
+	case r.unblock:
+		r.once.Do(func() { close(r.released) })
+	case r.slow:
+		select {
+		case <-r.released:
+		case <-ctx.Done():
+			return resolver.Resolution{}, ctx.Err()
+		}
+	}
+	return r.bySource[mod.Source], nil
+}
+
+func TestResolveSlowFetchDoesNotHoldBackQueuedModules(t *testing.T) {
+	previous := resolver.FetchConcurrency
+	resolver.FetchConcurrency = 2
+	t.Cleanup(func() { resolver.FetchConcurrency = previous })
+
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	resolutions := make(map[string]resolver.Resolution, 3)
+	calls := ""
+	for i := range 3 {
+		source := fmt.Sprintf("example.com/acme/m%d/aws", i)
+		dir := filepath.Join(base, fmt.Sprintf("m%d", i))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "aws_vpc" "v" {}`), 0o600))
+		resolutions[source] = resolver.Resolution{LocalPath: dir}
+		calls += fmt.Sprintf("module \"m%d\" {\n  source = %q\n}\n", i, source)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(calls), 0o600))
+
+	// The first module only finishes once the third has started, which a
+	// frontier fetched in fixed batches of two never reaches.
+	slow := &headOfLineResolver{
+		bySource: resolutions,
+		slow:     "example.com/acme/m0/aws",
+		unblock:  "example.com/acme/m2/aws",
+		released: make(chan struct{}),
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	result := Resolve(ctx, &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       slow,
+		MaxDepth:       2,
+	})
+
+	require.False(t, result.TimedOut)
+	require.Empty(t, result.Failures)
+	require.Len(t, result.Modules, 3)
+}
+
+func TestResolveChecksResolverReportedPackageUsage(t *testing.T) {
+	root, moduleDir := writeModuleGraphFixture(t)
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath:   moduleDir,
+			PackageRoot: moduleDir,
+			Usage:       &resolver.PackageUsage{Bytes: 1 << 20, Files: 1},
+		}},
+		MaxDepth: 2,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxPackageBytes: 1024,
+		},
+	})
+
+	require.Empty(t, result.Modules)
+	require.Equal(t, []BudgetEvent{{
+		Source:   "git::https://git@github.com/acme/network.git//modules/vpc?ref=v1",
+		Gate:     "stream",
+		Limit:    "package_bytes",
+		Maximum:  1024,
+		Measured: 1 << 20,
+	}}, result.BudgetEvents)
+}
+
+func TestResolveAdmitsResolverReportedPackageUsageWithoutWalking(t *testing.T) {
+	root, moduleDir := writeModuleGraphFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "padding.bin"), make([]byte, 4096), 0o600))
+
+	result := Resolve(t.Context(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver: stubResolver{resolution: resolver.Resolution{
+			LocalPath:   moduleDir,
+			PackageRoot: moduleDir,
+			Usage:       &resolver.PackageUsage{Bytes: 64, Files: 1},
+		}},
+		MaxDepth: 2,
+		ResourceLimits: resolver.ResourceLimits{
+			MaxPackageBytes: 1024,
+		},
+	})
+
+	require.Empty(t, result.BudgetEvents)
+	require.Empty(t, result.Failures)
+	require.Len(t, result.Modules, 1)
 }

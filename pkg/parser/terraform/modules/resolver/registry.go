@@ -8,6 +8,7 @@ package resolver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -25,8 +26,23 @@ const (
 	defaultRegistryHost = "registry.terraform.io"
 
 	discoveryResponseLimit = 64 * 1024
-	versionsResponseLimit  = 128 * 1024
+	// Popular public modules list every version with its submodules and
+	// providers; terraform-aws-modules/iam/aws is already over 400 KiB.
+	versionsResponseLimit = 8 * 1024 * 1024
 )
+
+// readLimitedBody reads at most limit bytes and fails, rather than returning a
+// truncated body that would only surface later as a JSON syntax error.
+func readLimitedBody(body io.Reader, limit int64, what string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%s response exceeds %d bytes", what, limit)
+	}
+	return data, nil
+}
 
 func appendGetterSubdir(getterURL, subdir string) string {
 	if q := strings.Index(getterURL, "?"); q != -1 {
@@ -52,7 +68,7 @@ func splitGetterSubdir(getterURL string) (packageURL, subdir string) {
 		return getterURL, ""
 	}
 	subdirMarker += searchStart
-	subdir = strings.TrimPrefix(getterURL[subdirMarker+2:queryStart], "/")
+	subdir = strings.TrimLeft(getterURL[subdirMarker+2:queryStart], "/")
 	if subdir == "" {
 		return getterURL, ""
 	}
@@ -91,12 +107,12 @@ func discoverModulesEndpoint(ctx context.Context, client *http.Client, baseURL s
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, discoveryResponseLimit))
-	if err != nil {
-		return "", err
-	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("discovery returned HTTP %d", resp.StatusCode)
+	}
+	body, err := readLimitedBody(resp.Body, discoveryResponseLimit, "discovery")
+	if err != nil {
+		return "", err
 	}
 	var sd serviceDiscovery
 	if err := json.Unmarshal(body, &sd); err != nil {
@@ -141,12 +157,12 @@ func resolveRegistryVersion(
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, versionsResponseLimit))
-	if err != nil {
-		return "", err
-	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("versions endpoint returned HTTP %d", resp.StatusCode)
+	}
+	body, err := readLimitedBody(resp.Body, versionsResponseLimit, "versions")
+	if err != nil {
+		return "", err
 	}
 	var vr versionsResponse
 	if err := json.Unmarshal(body, &vr); err != nil {
@@ -207,24 +223,22 @@ func registryDownloadURL(
 	rawURL := fmt.Sprintf("%s%s/%s/%s/%s/download", modulesV1, namespace, name, provider, version)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
-		return "", &tfmodules.UnresolvedError{Reason: "building download request: " + err.Error()}
+		return "", fmt.Errorf("building download request: %w", err)
 	}
 	addRegistryToken(req, host)
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", &tfmodules.UnresolvedError{Reason: "download request failed: " + err.Error()}
+		return "", fmt.Errorf("download request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	// 204/OK + X-Terraform-Get → getter URL.
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, resp.Body)
-		return "", &tfmodules.UnresolvedError{
-			Reason: fmt.Sprintf("download endpoint returned HTTP %d", resp.StatusCode),
-		}
+		return "", fmt.Errorf("download endpoint returned HTTP %d", resp.StatusCode)
 	}
 	getterURL := resp.Header.Get("X-Terraform-Get")
 	if getterURL == "" {
-		return "", &tfmodules.UnresolvedError{Reason: "registry did not return X-Terraform-Get header"}
+		return "", errors.New("registry did not return X-Terraform-Get header")
 	}
 	// Resolve relative URLs (e.g. /archives/mod.zip) against the download endpoint.
 	if ref, err := url.Parse(getterURL); err == nil && !ref.IsAbs() {

@@ -26,7 +26,10 @@ type Resolution struct {
 	Origin string
 	// Cache reports how the bytes were obtained where the resolver knows it
 	// ("hit" or "miss" for the on-disk module cache). Empty means unknown.
-	Cache   string
+	Cache string
+	// Usage is PackageRoot's exact on-disk usage when the resolver already knows
+	// it; nil means callers must measure PackageRoot themselves.
+	Usage   *PackageUsage
 	Cleanup func() // optional post-scan cleanup
 }
 
@@ -60,4 +63,11 @@ func withResolutionCleanup(res *Resolution, cleanup func()) Resolution {
 // Resolver maps one module call to disk; errors should wrap *tfmodules.UnresolvedError when appropriate.
 type Resolver interface {
 	Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error)
+}
+
+// Screener is implemented by resolvers that can rule a module out from its
+// declaration alone, without network access. Screen returns the error Resolve
+// would return for mod, or nil when the resolver might resolve it.
+type Screener interface {
+	Screen(ctx context.Context, mod *tfmodules.ParsedModule) error
 }

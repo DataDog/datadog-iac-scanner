@@ -41,7 +41,11 @@ type Request struct {
 	ResourceLimits  resolver.ResourceLimits
 	BaselinePaths   []string
 	TotalParseBytes int64
-	FS              vfs.FS
+	// MaxConfigFileBytes skips module calls in configuration files the scan will
+	// not parse (see tfmodules.MaxConfigFileBytesForScan). Zero or negative
+	// reads every file.
+	MaxConfigFileBytes int64
+	FS                 vfs.FS
 }
 
 type ResolvedModule struct {
@@ -170,8 +174,11 @@ type resolvedEntry struct {
 }
 
 type remoteModuleGroup struct {
-	representative    *tfmodules.ParsedModule
-	callers           []*tfmodules.ParsedModule
+	representative *tfmodules.ParsedModule
+	callers        []*tfmodules.ParsedModule
+	callerDepths   []int
+	// depth is the shallowest caller depth; the resolved package is walked from it.
+	depth             int
 	parentPackageRoot string
 }
 
@@ -252,6 +259,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 		return result
 	}
 	ctx = pathutil.WithResolvedPathCache(ctx)
+	ctx = tfmodules.WithMaxConfigFileBytes(ctx, request.MaxConfigFileBytes)
 	budget := resolver.NewResourceBudget(request.ResourceLimits)
 	ctx = resolver.WithResourceBudget(ctx, budget)
 	moduleMaximum, baselineBytes, enforceAdmission := moduleAdmissionLimit(request)
@@ -451,7 +459,9 @@ func (w *walker) parseModulesInDir(
 		return nil
 	}
 
-	files, err := tfmodules.LoadTFFilesFromDir(ctx, dir, packageRoot)
+	files, err := tfmodules.LoadTFFilesFromDirWithLimit(
+		ctx, dir, packageRoot, tfmodules.MaxConfigFileBytesFromContext(ctx),
+	)
 	if err != nil {
 		return nil
 	}
@@ -601,6 +611,10 @@ func (c *resultCollector) addResolutionFailure(
 	if mod == nil || err == nil {
 		return
 	}
+	reason := err.Error()
+	if unresolved, ok := err.(*tfmodules.UnresolvedError); ok { //nolint:errorlint
+		reason = unresolved.Reason
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.failures = append(c.failures, ResolutionFailure{
@@ -612,7 +626,7 @@ func (c *resultCollector) addResolutionFailure(
 		Source:            model.RedactURLCredentials(mod.Source),
 		Version:           mod.Version,
 		Name:              mod.Name,
-		Reason:            model.RedactURLCredentials(err.Error()),
+		Reason:            model.RedactURLCredentials(reason),
 	})
 }
 
@@ -645,6 +659,18 @@ func (c *resolutionCache) set(resolveID string, entry *resolvedEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[resolveID] = *entry
+}
+
+// setIfAbsent stores entry unless resolveID already has one, and reports
+// whether it did, so concurrent frontiers record an identity only once.
+func (c *resolutionCache) setIfAbsent(resolveID string, entry *resolvedEntry) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.entries[resolveID]; ok {
+		return false
+	}
+	c.entries[resolveID] = *entry
+	return true
 }
 
 func (c *moduleParseCache) get(key string) (map[string]tfmodules.ParsedModule, bool) {
@@ -725,7 +751,7 @@ func (w *walker) accountPackage(
 	if resolution.PackageRoot == "" || !w.measurePackages {
 		return nil
 	}
-	if err := w.measurePackage(ctx, resolution.PackageRoot); err != nil {
+	if err := w.measurePackage(ctx, resolution); err != nil {
 		if resolution.Cleanup != nil {
 			resolution.Cleanup()
 		}
@@ -738,26 +764,37 @@ func (w *walker) accountPackage(
 	return nil
 }
 
-// measurePackage charges a package root to the budget, collapsing the walks of
+// measurePackage charges a package root to the budget, using the usage the
+// resolver already knows when it has one and otherwise collapsing the walks of
 // modules that share a root. The flight is forgotten as soon as it starts, so
 // only callers whose content was already on disk when the walk began reuse its
 // result; later callers, whose extraction may still have been running, measure
 // the root again.
-func (w *walker) measurePackage(ctx context.Context, root string) error {
+func (w *walker) measurePackage(ctx context.Context, resolution *resolver.Resolution) error {
+	root := resolution.PackageRoot
+	if resolution.Usage != nil {
+		if err := resolver.CheckPackageUsage(*resolution.Usage, w.packageLimits(ctx)); err != nil {
+			return err
+		}
+		return w.budget.AdmitPackage(root, *resolution.Usage)
+	}
 	key := filepath.Clean(root)
 	_, err, _ := w.measureSF.Do(key, func() (interface{}, error) {
 		w.measureSF.Forget(key)
-		limits := w.budget.Limits()
-		if scoped := resolver.ResourceBudgetFromContext(ctx); scoped != nil {
-			limits = scoped.Limits()
-		}
-		usage, measureErr := resolver.MeasurePackage(ctx, root, limits)
+		usage, measureErr := resolver.MeasurePackage(ctx, root, w.packageLimits(ctx))
 		if measureErr != nil {
 			return nil, measureErr
 		}
 		return nil, w.budget.AdmitPackage(root, usage)
 	})
 	return err
+}
+
+func (w *walker) packageLimits(ctx context.Context) resolver.ResourceLimits {
+	if scoped := resolver.ResourceBudgetFromContext(ctx); scoped != nil {
+		return scoped.Limits()
+	}
+	return w.budget.Limits()
 }
 
 func (w *walker) withParseSlot(ctx context.Context, fn func() error) error {
@@ -844,6 +881,16 @@ func (w *walker) localModuleChildDirs(
 	return children
 }
 
+// remoteModuleCall is a remote module call found while walking local modules,
+// with the depth of the module that declared it.
+type remoteModuleCall struct {
+	mod   tfmodules.ParsedModule
+	depth int
+}
+
+// traverse walks seed's local module subtree first and then acquires every
+// remote call it found as one frontier, so remote calls spread across sibling
+// local modules are fetched concurrently rather than one directory at a time.
 func (w *walker) traverse(
 	ctx context.Context,
 	seed string,
@@ -851,6 +898,20 @@ func (w *walker) traverse(
 	repoAllowedDirs map[string]map[string]bool,
 	depth int,
 	packageRoot string,
+) {
+	var remote []remoteModuleCall
+	w.collectLocalModules(ctx, seed, allowedFiles, repoAllowedDirs, depth, packageRoot, &remote)
+	w.traverseRemoteModules(ctx, remote, repoAllowedDirs, packageRoot)
+}
+
+func (w *walker) collectLocalModules(
+	ctx context.Context,
+	seed string,
+	allowedFiles map[string]bool,
+	repoAllowedDirs map[string]map[string]bool,
+	depth int,
+	packageRoot string,
+	remote *[]remoteModuleCall,
 ) {
 	if depth >= w.maxDepth {
 		return
@@ -862,7 +923,11 @@ func (w *walker) traverse(
 
 	for key := range mods {
 		mod := mods[key]
-		if !mod.IsLocal || mod.AbsSource == "" {
+		if !mod.IsLocal {
+			*remote = append(*remote, remoteModuleCall{mod: mod, depth: depth})
+			continue
+		}
+		if mod.AbsSource == "" {
 			continue
 		}
 		localDir := mod.AbsSource
@@ -890,51 +955,81 @@ func (w *walker) traverse(
 		if packageRoot != "" {
 			w.results.addPaths(flatTerraformFilePaths(ctx, localDir, packageRoot)...)
 		}
-		w.traverse(ctx, localDir, childAllowedFiles, repoAllowedDirs, depth+1, packageRoot)
+		w.collectLocalModules(ctx, localDir, childAllowedFiles, repoAllowedDirs, depth+1, packageRoot, remote)
 	}
-
-	w.traverseRemoteModules(ctx, mods, repoAllowedDirs, depth, packageRoot)
 }
 
 func (w *walker) traverseRemoteModules(
 	ctx context.Context,
-	mods map[string]tfmodules.ParsedModule,
+	calls []remoteModuleCall,
 	repoAllowedDirs map[string]map[string]bool,
-	depth int,
 	parentPackageRoot string,
 ) {
 	groups := make(map[string]*remoteModuleGroup)
-	for key := range mods {
-		mod := mods[key]
-		if mod.IsLocal {
-			continue
-		}
-		id := remoteResolveIdentity(&mod)
+	for i := range calls {
+		mod, depth := &calls[i].mod, calls[i].depth
+		id := remoteResolveIdentity(mod)
 
 		cached, hit := w.resolutions.get(id)
 		if hit {
 			if cached.err == nil && cached.res.LocalPath != "" {
-				w.results.addResolvedModule(&mod, &cached.res, parentPackageRoot, depth+1)
+				w.results.addResolvedModule(mod, &cached.res, parentPackageRoot, depth+1)
 			} else if cached.err != nil && ctx.Err() == nil {
-				w.results.addResolutionFailure(&mod, parentPackageRoot, cached.err)
+				w.results.addResolutionFailure(mod, parentPackageRoot, cached.err)
 			}
 			continue
 		}
 
 		if group, ok := groups[id]; ok {
-			group.callers = append(group.callers, &mod)
+			group.callers = append(group.callers, mod)
+			group.callerDepths = append(group.callerDepths, depth)
+			group.depth = min(group.depth, depth)
 		} else {
 			groups[id] = &remoteModuleGroup{
-				representative:    &mod,
-				callers:           []*tfmodules.ParsedModule{&mod},
+				representative:    mod,
+				callers:           []*tfmodules.ParsedModule{mod},
+				callerDepths:      []int{depth},
+				depth:             depth,
 				parentPackageRoot: parentPackageRoot,
 			}
+		}
+	}
+	for id, group := range groups {
+		if w.screenOut(ctx, id, group) {
+			delete(groups, id)
 		}
 	}
 	if len(groups) == 0 {
 		return
 	}
-	w.acquireRemoteModuleGroups(ctx, groups, repoAllowedDirs, depth)
+	w.acquireRemoteModuleGroups(ctx, groups, repoAllowedDirs)
+}
+
+// screenOut hands a group to the first caller some resolver might resolve, and
+// otherwise records the failure of every caller, such as calls to a host
+// outside the allowlist, without spending a fetch slot or lease on them.
+// Resolvers such as DotTerraformResolver answer per declaring file, so one
+// caller being ruled out says nothing about the others. It reports whether
+// the group was screened out.
+func (w *walker) screenOut(ctx context.Context, id string, group *remoteModuleGroup) bool {
+	screener, ok := w.resolver.(resolver.Screener)
+	if !ok || ctx.Err() != nil {
+		return false
+	}
+	errs := make([]error, len(group.callers))
+	for i, mod := range group.callers {
+		if errs[i] = screener.Screen(ctx, mod); errs[i] == nil {
+			group.representative = mod
+			return false
+		}
+	}
+	if w.resolutions.setIfAbsent(id, &resolvedEntry{err: errs[0]}) {
+		w.results.addModuleStat(moduleStatFor(group.representative, &resolver.Resolution{}, errs[0], 0))
+	}
+	for i, mod := range group.callers {
+		w.results.addResolutionFailure(mod, group.parentPackageRoot, errs[i])
+	}
+	return true
 }
 
 // acquisitionOvershootFactor bounds how far one frontier may fetch past the
@@ -951,58 +1046,45 @@ func acquisitionAllowance(maximum int64) int64 {
 	return maximum * acquisitionOvershootFactor
 }
 
-// acquireRemoteModuleGroups fetches a frontier in deterministically ordered
-// batches, stopping once the frontier has fetched past its allowance. Without
-// this the whole frontier is fetched before admission gets to reject anything,
-// so the bytes on disk are bounded only by how many modules a caller declares.
+// acquireRemoteModuleGroups fetches a frontier in deterministic order through a
+// window of FetchConcurrency workers, stopping once the frontier has fetched past
+// its allowance. Without the allowance the whole frontier is fetched before
+// admission gets to reject anything, so the bytes on disk are bounded only by
+// how many modules a caller declares. A worker slot is taken before the lease so
+// a slow fetch holds up one slot rather than every module queued behind it.
 func (w *walker) acquireRemoteModuleGroups(
 	ctx context.Context,
 	groups map[string]*remoteModuleGroup,
 	repoAllowedDirs map[string]map[string]bool,
-	depth int,
 ) {
 	ids := orderedGroupIDs(groups)
 	if w.deferExpansion && w.acquisitionBytes <= 0 {
 		w.recordUnacquiredGroups(groups, ids)
 		return
 	}
-	size := max(1, resolver.FetchConcurrency)
-	for start := 0; start < len(ids); {
-		type acquisition struct {
-			group *remoteModuleGroup
-			lease *resolver.AcquisitionLease
-		}
-		batch := make([]acquisition, 0, size)
-		end := min(start+size, len(ids))
-		for _, id := range ids[start:end] {
-			lease, ok := w.acquireAcquisition(ctx, len(batch) == 0)
-			if !ok {
-				break
-			}
-			batch = append(batch, acquisition{group: groups[id], lease: lease})
-		}
-		if len(batch) == 0 {
+	slots := make(chan struct{}, max(1, resolver.FetchConcurrency))
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	for i, id := range ids {
+		slots <- struct{}{}
+		lease, ok := w.acquireAcquisition(ctx)
+		if !ok {
+			<-slots
 			if err := ctx.Err(); err != nil {
-				w.recordFailedGroups(groups, ids[start:], err)
+				w.recordFailedGroups(groups, ids[i:], err)
 			} else {
-				w.recordUnacquiredGroups(groups, ids[start:])
+				w.recordUnacquiredGroups(groups, ids[i:])
 			}
 			return
 		}
-
-		g, gCtx := errgroup.WithContext(ctx)
-		g.SetLimit(size)
-		for _, item := range batch {
-			g.Go(func() error {
-				defer item.lease.Release()
-				w.traverseRemoteModuleGroup(
-					gCtx, item.group, repoAllowedDirs, depth, item.lease,
-				)
-				return nil
-			})
-		}
-		_ = g.Wait()
-		start += len(batch)
+		group := groups[id]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			defer lease.Release()
+			w.traverseRemoteModuleGroup(ctx, group, repoAllowedDirs, lease)
+		}()
 	}
 }
 
@@ -1034,9 +1116,7 @@ func orderedGroupIDs(groups map[string]*remoteModuleGroup) []string {
 	return ids
 }
 
-func (w *walker) acquireAcquisition(
-	ctx context.Context, wait bool,
-) (*resolver.AcquisitionLease, bool) {
+func (w *walker) acquireAcquisition(ctx context.Context) (*resolver.AcquisitionLease, bool) {
 	if !w.deferExpansion {
 		return nil, true
 	}
@@ -1045,10 +1125,7 @@ func (w *walker) acquireAcquisition(
 	if maximum < w.acquisitionBase {
 		maximum = math.MaxInt64
 	}
-	if wait {
-		return w.budget.AcquireAcquisition(ctx, maximum, requested)
-	}
-	return w.budget.TryAcquireAcquisition(maximum, requested)
+	return w.budget.AcquireAcquisition(ctx, maximum, requested)
 }
 
 func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, ids []string) {
@@ -1071,13 +1148,17 @@ func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, id
 	}
 }
 
+// traverseRemoteModuleGroup resolves one frontier group. A package may hold no
+// more than its lease: full leases carry the configured package limit, and the
+// budget only grants a smaller remainder once no other lease is outstanding, so
+// the limit a module is fetched under never depends on fetch timing.
 func (w *walker) traverseRemoteModuleGroup(
 	ctx context.Context,
 	group *remoteModuleGroup,
 	repoAllowedDirs map[string]map[string]bool,
-	depth int,
 	lease *resolver.AcquisitionLease,
 ) {
+	depth := group.depth
 	if lease != nil {
 		limits := w.budget.Limits()
 		if limits.MaxPackageBytes <= 0 || lease.Bytes() < limits.MaxPackageBytes {
@@ -1110,8 +1191,8 @@ func (w *walker) traverseRemoteModuleGroup(
 		contextLogger.Debug().Msgf("Fetched remote Terraform module %q", representative.Source)
 	}
 
-	for _, mod := range group.callers {
-		w.results.addResolvedModule(mod, &resolution, group.parentPackageRoot, depth+1)
+	for i, mod := range group.callers {
+		w.results.addResolvedModule(mod, &resolution, group.parentPackageRoot, group.callerDepths[i]+1)
 	}
 	if resolution.Cleanup != nil {
 		w.results.addCleanup(resolution.Cleanup)

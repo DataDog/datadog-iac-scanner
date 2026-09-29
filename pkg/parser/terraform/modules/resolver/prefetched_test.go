@@ -111,6 +111,11 @@ func TestLoadManifestV1ResolvesRelativePackageAndVerifiesDigest(t *testing.T) {
 	require.Equal(t, moduleDir, resolution.LocalPath)
 	require.Equal(t, packageRoot, resolution.PackageRoot)
 	require.Equal(t, "5.4.0", resolution.ResolvedVersion)
+
+	measured, err := MeasurePackage(t.Context(), packageRoot, ResourceLimits{})
+	require.NoError(t, err)
+	require.NotNil(t, resolution.Usage, "usage counted during digest verification spares admission a walk")
+	require.Equal(t, measured, *resolution.Usage)
 }
 
 func TestLoadManifestV1PreservesUnresolvedStatus(t *testing.T) {
@@ -229,6 +234,46 @@ func TestLoadManifestV1RejectsDigestMismatch(t *testing.T) {
 
 	_, err := LoadManifest(t.Context(), manifestPath)
 	require.ErrorContains(t, err, "content_digest mismatch")
+}
+
+func TestLoadManifestV1ReportsEachEntryAgainstSharedPackageDigest(t *testing.T) {
+	dir := t.TempDir()
+	packageRoot := filepath.Join(dir, "modules", "network")
+	for _, name := range []string{"vpc", "subnet"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(packageRoot, name), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(packageRoot, name, "main.tf"), []byte(name), 0o644))
+	}
+	digest, err := ComputePackageDigest(t.Context(), packageRoot)
+	require.NoError(t, err)
+	entry := func(name, contentDigest string) map[string]any {
+		return map[string]any{
+			"source":         "example/" + name + "/aws",
+			"package_root":   "network",
+			"local_path":     "network/" + name,
+			"content_digest": contentDigest,
+			"status":         "resolved",
+			"declarations": []map[string]any{{
+				"filename": "main.tf", "line_start": 1, "line_end": 3, "module_name": name,
+			}},
+		}
+	}
+	manifestPath := filepath.Join(dir, "modules.json")
+	writeManifestJSON(t, manifestPath, map[string]any{
+		"schema_version": ManifestSchemaVersion,
+		"root":           "modules",
+		"modules":        []map[string]any{entry("vpc", digest), entry("subnet", digest)},
+	})
+	manifest, err := LoadManifest(t.Context(), manifestPath)
+	require.NoError(t, err)
+	require.Len(t, manifest.Entries, 2)
+
+	writeManifestJSON(t, manifestPath, map[string]any{
+		"schema_version": ManifestSchemaVersion,
+		"root":           "modules",
+		"modules":        []map[string]any{entry("vpc", digest), entry("subnet", "sha256:stale")},
+	})
+	_, err = LoadManifest(t.Context(), manifestPath)
+	require.ErrorContains(t, err, "modules[1]: content_digest mismatch")
 }
 
 func TestLoadManifestV1RejectsLocalPathOutsidePackageRoot(t *testing.T) {

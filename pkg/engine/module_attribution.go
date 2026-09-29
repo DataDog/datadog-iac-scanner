@@ -174,19 +174,44 @@ func normalizedModuleSource(source, sourceType, callerRoot, repoPath string) str
 		}
 		return filepath.Base(filepath.Clean(target))
 	}
+	return normalizedRemoteModuleSource(source)
+}
+
+func normalizedRemoteModuleSource(source string) string {
 	source = strings.TrimPrefix(source, "git::")
 	source = strings.SplitN(source, "?", 2)[0]
-	if parsed, err := url.Parse(source); err == nil && parsed.Scheme != "" {
+	if address, ok := httpsGitAddress(source); ok {
+		source = address
+	} else if parsed, err := url.Parse(source); err == nil && parsed.Scheme != "" {
 		if parsed.Scheme == moduleSourceSchemeFile {
 			return normalizedFileModuleSource(parsed.Path)
 		}
+		if parsed.Scheme == "ssh" && parsed.Hostname() != "" {
+			parsed = &url.URL{Scheme: "https", Host: parsed.Hostname(), Path: parsed.Path}
+		}
 		parsed.User = nil
 		source = parsed.String()
-	} else if at := strings.Index(source, "@"); at > 0 && strings.Contains(source[at+1:], ":") {
-		source = source[at+1:]
 	}
 	source = strings.Replace(source, ".git//", "//", 1)
 	return strings.TrimSuffix(source, ".git")
+}
+
+// httpsGitAddress rewrites the scp-like ("git@host:org/repo") and the GitHub
+// or Bitbucket shorthand spellings of a git module to the https address used
+// when the same repository is written in full, so a module keeps one source.
+func httpsGitAddress(source string) (string, bool) {
+	if at := strings.Index(source, "@"); at > 0 && !strings.Contains(source[:at], "/") {
+		host, path, ok := strings.Cut(source[at+1:], ":")
+		if ok && host != "" && !strings.Contains(host, "/") && !strings.HasPrefix(path, "//") {
+			return "https://" + host + "/" + strings.TrimPrefix(path, "/"), true
+		}
+	}
+	for _, prefix := range []string{"github.com/", "bitbucket.org/"} {
+		if strings.HasPrefix(strings.ToLower(source), prefix) {
+			return "https://" + source, true
+		}
+	}
+	return "", false
 }
 
 func normalizedFileModuleSource(path string) string {

@@ -136,7 +136,7 @@ func TestGitObjectGuardAbortsAndRollsBackLazyObjectFetch(t *testing.T) {
 	extracted := int64(0)
 
 	err = extractArchiveCommandWithResourceBudget(
-		t.Context(), cmd, t.TempDir(), &extracted, 1024, nil, guard,
+		t.Context(), cmd, t.TempDir(), &extracted, 1024, nil, guard, nil,
 	)
 
 	var budgetErr *BudgetExceededError

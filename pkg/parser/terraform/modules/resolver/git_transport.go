@@ -65,11 +65,18 @@ func gitBaseEnv(keep ...string) []string {
 // gitHardenedConfigEnv neutralizes system and global git configuration. Without it a
 // url.<base>.insteadOf rule would rewrite the destination after the policy validated
 // it, and a credential prompt would block the scan waiting on a terminal.
+// Automatic gc and maintenance are disabled because a detached repack would
+// delete pack files that concurrent extractions and object budget walks rely on.
 func gitHardenedConfigEnv(allowedProtocol string) []string {
 	return []string{
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL=" + os.DevNull,
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_ALLOW_PROTOCOL=" + allowedProtocol,
+		"GIT_CONFIG_COUNT=2",
+		"GIT_CONFIG_KEY_0=gc.auto",
+		"GIT_CONFIG_VALUE_0=0",
+		"GIT_CONFIG_KEY_1=maintenance.auto",
+		"GIT_CONFIG_VALUE_1=false",
 	}
 }

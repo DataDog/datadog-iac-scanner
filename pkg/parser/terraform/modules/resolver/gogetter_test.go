@@ -208,6 +208,11 @@ func TestIsTransientFetchError(t *testing.T) {
 		"module exceeds per-module limit of 10 MiB",
 		"remote module fetching is disabled",
 		"fetch failed: error downloading 'ssh://git@github.com/x?ref=v1': git exited with -1: Cloning into '/tmp/t'...",
+		"git fetch ssh://git@github.com/org/repo main: exit status 128\nfatal: couldn't find remote ref main",
+		"git fetch https://github.com/org/gone main: exit status 128\nremote: Repository not found.\nfatal: repository 'https://github.com/org/gone/' not found",
+		"git fetch git@github.com:org/repo main: exit status 128\ngit@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+		"git fetch https://github.com/org/repo main: exit status 128\nfatal: Authentication failed for 'https://github.com/org/repo/'",
+		"git fetch https://github.com/org/repo main: exit status 128\nfatal: could not read Username for 'https://github.com': terminal prompts disabled",
 	}
 	for _, m := range transient {
 		if !isTransientFetchError(errors.New(m)) {
@@ -338,7 +343,7 @@ func TestCachedResolutionKeepsLeaseUntilCleanup(t *testing.T) {
 	if _, err := os.Stat(packageRoot); !os.IsNotExist(err) {
 		t.Fatalf("released resolution remained protected from eviction: %v", err)
 	}
-	if _, total := listAggregateCacheEntries(budget.Root()); total > budget.MaxBytes() {
+	if total := aggregateCacheBytes(budget.Root()); total > budget.MaxBytes() {
 		t.Fatalf("cache size %d exceeds max %d", total, budget.MaxBytes())
 	}
 }

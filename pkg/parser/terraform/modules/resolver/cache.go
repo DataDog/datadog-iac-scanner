@@ -24,10 +24,12 @@ import (
 )
 
 const (
-	cacheDirPerms        = 0o700
-	cacheSelectionFile   = ".module-subdir"
-	cacheSizeFile        = ".module-bytes"
-	DefaultMaxCacheBytes = 2 * 1024 * 1024 * 1024
+	cacheDirPerms      = 0o700
+	cacheSelectionFile = ".module-subdir"
+	cacheSizeFile      = ".module-bytes"
+	// DefaultMaxCacheBytes leaves room above one scan's DefaultMaxTotalBytes,
+	// which bare clones share with extracted packages, for the next scan.
+	DefaultMaxCacheBytes = 2 * DefaultMaxTotalBytes
 
 	CacheSubdirModules  = "modules"
 	CacheSubdirGitBare  = "git-bare"
@@ -232,34 +234,6 @@ type cacheEntry struct {
 	path    string
 	size    int64
 	modTime time.Time
-}
-
-func listCacheEntries(dir string) (entries []cacheEntry, total int64) {
-	items, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, 0
-	}
-	entries = make([]cacheEntry, 0, len(items))
-	for _, item := range items {
-		path := filepath.Join(dir, item.Name())
-		info, infoErr := item.Info()
-		if infoErr != nil {
-			continue
-		}
-		if !item.IsDir() || strings.HasPrefix(item.Name(), ".") {
-			if !item.IsDir() {
-				total += info.Size()
-			}
-			continue
-		}
-		size, ok := readCacheSize(path)
-		if !ok {
-			size = directorySize(path)
-		}
-		total += size
-		entries = append(entries, cacheEntry{path: path, size: size, modTime: info.ModTime()})
-	}
-	return entries, total
 }
 
 func readCacheSize(dir string) (int64, bool) {

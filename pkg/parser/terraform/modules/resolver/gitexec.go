@@ -8,10 +8,13 @@ package resolver
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -19,18 +22,23 @@ const (
 
 	// cacheFilePerms is used for small auxiliary files written alongside cached git repos.
 	cacheFilePerms = 0o600
+
+	defaultGitProcConcurrency = 8 // network-bound; override via IAC_MODULE_GIT_CONCURRENCY
 )
 
-// gitProcSem caps concurrent git subprocesses across resolvers.
+// gitProcSem caps concurrent git subprocesses that may reach a remote: clones,
+// fetches, and archives, which pull blobs lazily from blob-filtered clones.
+// They mostly wait on the network, so the cap is not tied to the CPU count;
+// local metadata reads bypass it.
 var gitProcSem = make(chan struct{}, gitProcConcurrency())
 
 func gitProcConcurrency() int {
-	n := runtime.GOMAXPROCS(0)
-	const minGitProcConcurrency = 4
-	if n < minGitProcConcurrency {
-		return minGitProcConcurrency
+	if v := os.Getenv("IAC_MODULE_GIT_CONCURRENCY"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
 	}
-	return n
+	return max(defaultGitProcConcurrency, runtime.GOMAXPROCS(0))
 }
 
 func acquireGitProc(ctx context.Context) (release func(), err error) {
@@ -75,6 +83,45 @@ func gitInDir(ctx context.Context, gitDir string, args ...string) *exec.Cmd {
 	cmdArgs = append(cmdArgs, "--git-dir", gitSafePath(gitDir))
 	cmdArgs = append(cmdArgs, args...)
 	return exec.CommandContext(ctx, "git", cmdArgs...) //nolint:gosec
+}
+
+// gitLocalInDir runs a read that must stay local: in a partial clone a missing
+// object would otherwise be fetched from the remote outside acquireGitProc and
+// the destination policy that runNetworkGit applies.
+func gitLocalInDir(ctx context.Context, gitDir string, args ...string) *exec.Cmd {
+	cmd := gitInDir(ctx, gitDir, args...)
+	cmd.Env = append(os.Environ(), "GIT_NO_LAZY_FETCH=1")
+	return cmd
+}
+
+// minNoLazyFetchVersion is the first git release that honors GIT_NO_LAZY_FETCH.
+var minNoLazyFetchVersion = [2]int{2, 44}
+
+// localReadsStayLocal reports whether gitLocalInDir can keep a partial clone
+// from fetching. Older git ignores GIT_NO_LAZY_FETCH, so callers skip their
+// local fast paths and go through the policed network fetch instead.
+var localReadsStayLocal = sync.OnceValue(func() bool {
+	out, err := exec.Command("git", "version").Output()
+	return err == nil && gitVersionAtLeast(string(out), minNoLazyFetchVersion)
+})
+
+// gitVersionAtLeast parses `git version` output such as "git version 2.44.0"
+// or "git version 2.39.3 (Apple Git-146)".
+func gitVersionAtLeast(output string, minimum [2]int) bool {
+	fields := strings.Fields(output)
+	if len(fields) < 3 {
+		return false
+	}
+	parts := strings.SplitN(fields[2], ".", 3)
+	if len(parts) < 2 {
+		return false
+	}
+	major, majorErr := strconv.Atoi(parts[0])
+	minor, minorErr := strconv.Atoi(parts[1])
+	if majorErr != nil || minorErr != nil {
+		return false
+	}
+	return major > minimum[0] || major == minimum[0] && minor >= minimum[1]
 }
 
 func gitInWorktree(ctx context.Context, root string, args ...string) *exec.Cmd {

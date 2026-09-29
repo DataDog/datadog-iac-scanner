@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -236,6 +237,76 @@ module "`+name+`" {
 		content, readErr := os.ReadFile(filepath.Join(resolution.LocalPath, "main.tf"))
 		require.NoError(t, readErr)
 		require.Contains(t, string(content), `"`+name+`"`)
+	}
+}
+
+func TestPrepareStagesPackagesByCopyOrLink(t *testing.T) {
+	for _, link := range []bool{false, true} {
+		t.Run(map[bool]string{false: "copy", true: "link"}[link], func(t *testing.T) {
+			root := t.TempDir()
+			sources := []string{
+				"git::https://git.example/acme/vpc.git?ref=v1",
+				"git::https://git.example/acme/vpc-mirror.git?ref=v1",
+				"git::https://git.example/acme/dns.git?ref=v1",
+			}
+			writeFile(t, filepath.Join(root, "main.tf"), `
+module "vpc" {
+  source = "`+sources[0]+`"
+}
+module "mirror" {
+  source = "`+sources[1]+`"
+}
+module "dns" {
+  source = "`+sources[2]+`"
+}
+`)
+			packages := t.TempDir()
+			vpc := filepath.Join(packages, "vpc")
+			mirror := filepath.Join(packages, "mirror")
+			dns := filepath.Join(packages, "dns")
+			for _, dir := range []string{vpc, mirror} {
+				writeFile(t, filepath.Join(dir, "main.tf"), `resource "aws_vpc" "this" {}`)
+				writeFile(t, filepath.Join(dir, "modules", "subnet", "main.tf"), `resource "aws_subnet" "this" {}`)
+			}
+			writeFile(t, filepath.Join(dns, "main.tf"), `resource "aws_route53_zone" "this" {}`)
+
+			artifactDir := filepath.Join(t.TempDir(), "prepared")
+			result, err := Prepare(t.Context(), &Config{
+				RepositoryRoot: root,
+				ArtifactDir:    artifactDir,
+				Resolver: &fixtureResolver{packages: map[string]string{
+					sources[0]: vpc, sources[1]: mirror, sources[2]: dns,
+				}},
+				LinkPackages: link,
+			})
+			require.NoError(t, err)
+			require.Empty(t, result.Failures)
+
+			manifest, err := resolver.LoadManifest(t.Context(), result.ManifestPath)
+			require.NoError(t, err)
+			require.Len(t, manifest.Entries, 3)
+			vpcResolution, err := resolver.NewPrefetchedResolver(manifest).Resolve(
+				t.Context(), &tfmodules.ParsedModule{Source: sources[0]},
+			)
+			require.NoError(t, err)
+
+			staged, err := os.ReadDir(filepath.Join(artifactDir, manifestRoot))
+			require.NoError(t, err)
+			require.Len(t, staged, 2, "identical packages share one directory and no temporaries remain")
+
+			stagedFile := filepath.Join(vpcResolution.PackageRoot, "modules", "subnet", "main.tf")
+			stagedInfo, err := os.Stat(stagedFile)
+			require.NoError(t, err)
+			if runtime.GOOS != "windows" {
+				require.Zero(t, stagedInfo.Mode().Perm()&^artifactFileModeMask)
+			}
+			sourceInfo, err := os.Stat(filepath.Join(vpc, "modules", "subnet", "main.tf"))
+			require.NoError(t, err)
+			mirrorInfo, err := os.Stat(filepath.Join(mirror, "modules", "subnet", "main.tf"))
+			require.NoError(t, err)
+			linked := os.SameFile(stagedInfo, sourceInfo) || os.SameFile(stagedInfo, mirrorInfo)
+			require.Equal(t, link, linked)
+		})
 	}
 }
 

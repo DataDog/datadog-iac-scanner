@@ -53,6 +53,21 @@ var blockedSpecialUsePrefixes = func() []netip.Prefix {
 	return prefixes
 }()
 
+// destinationDeniedError is a policy refusal that repeats on every attempt: the
+// host is outside the allowlist or resolves to a non-public address.
+type destinationDeniedError struct {
+	err error
+}
+
+func (e *destinationDeniedError) Error() string { return e.err.Error() }
+
+func (e *destinationDeniedError) Unwrap() error { return e.err }
+
+func isDestinationDenied(err error) bool {
+	var denied *destinationDeniedError
+	return errors.As(err, &denied)
+}
+
 type lookupNetIPFunc func(context.Context, string, string) ([]net.IP, error)
 type dialContextFunc func(context.Context, string, string) (net.Conn, error)
 
@@ -164,13 +179,13 @@ func (p *httpDestinationPolicy) resolveHost(ctx context.Context, host string) ([
 		return nil, errors.New("HTTP destination host is missing")
 	}
 	if !hostMatchesAllowlist(host, p.hostAllowlist) {
-		return nil, fmt.Errorf("HTTP destination host %q is not in --module-host-allowlist", host)
+		return nil, &destinationDeniedError{fmt.Errorf("HTTP destination host %q is not in --module-host-allowlist", host)}
 	}
 
 	if literal, err := netip.ParseAddr(host); err == nil {
 		literal = literal.Unmap()
 		if err := validatePublicAddress(literal); err != nil {
-			return nil, fmt.Errorf("HTTP destination host %q: %w", host, err)
+			return nil, &destinationDeniedError{fmt.Errorf("HTTP destination host %q: %w", host, err)}
 		}
 		return []netip.Addr{literal}, nil
 	}
@@ -192,7 +207,7 @@ func (p *httpDestinationPolicy) resolveHost(ctx context.Context, host string) ([
 		}
 		addr = addr.Unmap()
 		if err := validatePublicAddress(addr); err != nil {
-			return nil, fmt.Errorf("HTTP destination host %q resolved to %s: %w", host, addr, err)
+			return nil, &destinationDeniedError{fmt.Errorf("HTTP destination host %q resolved to %s: %w", host, addr, err)}
 		}
 		if _, ok := seen[addr]; ok {
 			continue

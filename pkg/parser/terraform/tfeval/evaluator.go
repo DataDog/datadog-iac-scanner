@@ -117,6 +117,11 @@ type Evaluator struct {
 	prepassDepth        int
 	budgetExceeded      bool
 	skipped             uint64
+	// budgetDemand is the most instantiated resources any budget check since
+	// the last ResetBudgetDemand needed room for: evaluation started from an
+	// earlier count makes the same decisions while that count plus the demand
+	// stays within the budget.
+	budgetDemand int
 
 	// notEvaluatedDirs holds every module directory this evaluator declined to
 	// evaluate for depth, cycle or budget. It accumulates for the whole scan
@@ -125,8 +130,12 @@ type Evaluator struct {
 	// its body must stay in the scan even though other instances did resolve.
 	notEvaluatedDirs map[string]bool
 
-	parseMu  sync.Mutex
+	// parseMu guards dirCache, which evaluators forked from one another share.
+	parseMu  *sync.Mutex
 	dirCache map[string]dirParse
+	// funcFS serves the Terraform filesystem functions of every module this
+	// evaluator reaches, so paths confined once stay resolved for the scan.
+	funcFS *tffunctions.ScanFS
 
 	// mergeAllow, when set, limits OpenTofu twin-shadowing to inventory paths.
 	mergeAllow map[string]struct{}
@@ -152,7 +161,9 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 		maxDepth:         defaultMaxDepth,
 		maxInstantiated:  defaultMaxInstantiated,
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
+		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
+		funcFS:           tffunctions.NewScanFS(vfs.DiskFS{}),
 		notEvaluatedDirs: make(map[string]bool),
 		fsys:             fsys,
 	}
@@ -213,6 +224,72 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) ([]*h
 	return bodies, err
 }
 
+// Fork returns an evaluator that can evaluate other roots concurrently with e.
+// It shares e's settings and its parse and path caches; its evaluation cache,
+// budget counters and skipped directories are its own.
+func (e *Evaluator) Fork() *Evaluator {
+	return &Evaluator{
+		funcs:            e.funcs,
+		maxDepth:         e.maxDepth,
+		fsys:             e.fsys,
+		cache:            make(map[evalCacheKey]*evalCacheEntry),
+		remoteResolver:   e.remoteResolver,
+		maxInstantiated:  e.maxInstantiated,
+		notEvaluatedDirs: make(map[string]bool),
+		parseMu:          e.parseMu,
+		dirCache:         e.dirCache,
+		funcFS:           e.funcFS,
+		mergeAllow:       e.mergeAllow,
+	}
+}
+
+// InstantiationBudget reports the evaluator's instantiation budget; zero or less
+// means none.
+func (e *Evaluator) InstantiationBudget() int { return e.maxInstantiated }
+
+// ResetBudgetDemand starts a new BudgetDemand measurement.
+func (e *Evaluator) ResetBudgetDemand() { e.budgetDemand = 0 }
+
+// BudgetDemand reports the most instantiated resources, counted from the
+// evaluator's count at ResetBudgetDemand, any budget check has needed room for.
+func (e *Evaluator) BudgetDemand() int { return e.budgetDemand }
+
+func (e *Evaluator) noteBudgetDemand(demand int) {
+	if e.prepassDepth == 0 && demand > e.budgetDemand {
+		e.budgetDemand = demand
+	}
+}
+
+// TakeNotEvaluatedDirs returns the directories skipped since the last call and
+// forgets them.
+func (e *Evaluator) TakeNotEvaluatedDirs() []string {
+	dirs := e.NotEvaluatedDirs()
+	e.notEvaluatedDirs = make(map[string]bool)
+	return dirs
+}
+
+// AddNotEvaluatedDirs records directories another evaluator skipped.
+func (e *Evaluator) AddNotEvaluatedDirs(dirs []string) {
+	for _, dir := range dirs {
+		e.notEvaluatedDirs[dir] = true
+	}
+}
+
+// ForgetRootParse drops the parsed files of dir once it has been evaluated as a
+// root module. The parse cache pays off for modules many roots call; a root is
+// evaluated once, so keeping its files only holds memory until the scan ends.
+// Anything that reaches dir again parses it again.
+func (e *Evaluator) ForgetRootParse(dir string) {
+	abs, err := e.fsys.Abs(dir)
+	if err != nil {
+		abs = filepath.Clean(dir)
+	}
+	key := filepath.Clean(abs) + "\x00" + filepath.Clean("")
+	e.parseMu.Lock()
+	delete(e.dirCache, key)
+	e.parseMu.Unlock()
+}
+
 func (e *Evaluator) SetRemoteResolver(r RemoteResolver) {
 	e.remoteResolver = r
 }
@@ -227,6 +304,7 @@ func (e *Evaluator) ReleaseCaches() {
 	e.parseMu.Lock()
 	e.dirCache = make(map[string]dirParse)
 	e.parseMu.Unlock()
+	e.funcFS = tffunctions.NewScanFS(vfs.DiskFS{})
 }
 
 // ReleaseEvalCache drops memoized module evaluations while keeping parsed HCL
@@ -321,7 +399,7 @@ func (e *Evaluator) evaluate(
 		Variables: map[string]cty.Value{
 			"var": objectOrEmpty(varVals),
 		},
-		Functions: tffunctions.EvalFuncsWithRoot(dir, rootDir, vfs.DiskFS{}),
+		Functions: tffunctions.EvalFuncsWithRoot(dir, rootDir, e.funcFS),
 	}
 	for name, value := range tffunctions.ContextVariables(dir, rootDir) {
 		evalCtx.Variables[name] = value
@@ -524,6 +602,7 @@ func (e *Evaluator) chargeInstantiationBudget(ctx context.Context, n int) bool {
 		return true
 	}
 	instantiated := e.currentInstantiationCount()
+	e.noteBudgetDemand(*instantiated + n)
 	if n <= e.maxInstantiated-*instantiated {
 		*instantiated += n
 		if *instantiated == e.maxInstantiated {
@@ -566,8 +645,12 @@ func (e *Evaluator) currentInstantiationCount() *int {
 }
 
 func (e *Evaluator) instantiationBudgetExhausted() bool {
-	return e.maxInstantiated > 0 &&
-		*e.currentInstantiationCount() >= e.maxInstantiated
+	if e.maxInstantiated <= 0 {
+		return false
+	}
+	count := *e.currentInstantiationCount()
+	e.noteBudgetDemand(count + 1)
+	return count >= e.maxInstantiated
 }
 
 // BudgetExceeded reports whether evaluation stopped early for budget, so callers
@@ -726,6 +809,9 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	chain []CallSite,
 ) ([]ResolvedResource, bool) {
 	var rootResources []ResolvedResource
+	types := declaredResourceTypes(resourceBlocks)
+	localsReadOwn := localsReadResources(localExprs, types)
+	readsOwn := localsReadOwn || resourcesReadResources(resourceBlocks, types)
 	for pass := 0; pass < resourceRefPasses; pass++ {
 		var complete bool
 		rootResources, complete = e.evalResourceBlocks(
@@ -736,13 +822,16 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 		}
 		// Always inject so resolved attrs reach evalCtx on every pass including the last.
 		changed := injectResourceRefs(evalCtx, rootResources)
-		if !changed {
-			break
+		if !changed || !readsOwn {
+			// Nothing the resource blocks or locals read has changed, so
+			// evaluating them again would reproduce these instances.
+			return rootResources, true
 		}
 		// Refresh locals after every successful injection so that locals referencing
 		// newly-resolved resource attrs are up-to-date before outputs are computed.
-		localVals := e.resolveLocals(localExprs, evalCtx)
-		evalCtx.Variables["local"] = objectOrEmpty(localVals)
+		if localsReadOwn {
+			evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
+		}
 		if pass+1 >= resourceRefPasses {
 			break
 		}
@@ -753,6 +842,62 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	return e.evalResourceBlocks(
 		resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
 	)
+}
+
+// declaredResourceTypes returns the resource types a module declares, the
+// variables injecting its resources can change.
+func declaredResourceTypes(resourceBlocks []*hclsyntax.Block) map[string]struct{} {
+	types := make(map[string]struct{}, len(resourceBlocks))
+	for _, rb := range resourceBlocks {
+		if len(rb.Labels) >= 2 {
+			types[rb.Labels[0]] = struct{}{}
+		}
+	}
+	return types
+}
+
+func localsReadResources(localExprs map[string]hclsyntax.Expression, types map[string]struct{}) bool {
+	for _, expr := range localExprs {
+		if readsResource(expr, types) {
+			return true
+		}
+	}
+	return false
+}
+
+func resourcesReadResources(resourceBlocks []*hclsyntax.Block, types map[string]struct{}) bool {
+	for _, rb := range resourceBlocks {
+		if bodyReadsResource(rb.Body, types) {
+			return true
+		}
+	}
+	return false
+}
+
+func bodyReadsResource(body *hclsyntax.Body, types map[string]struct{}) bool {
+	for _, attr := range body.Attributes {
+		if readsResource(attr.Expr, types) {
+			return true
+		}
+	}
+	for _, block := range body.Blocks {
+		if bodyReadsResource(block.Body, types) {
+			return true
+		}
+	}
+	return false
+}
+
+func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
+	if len(types) == 0 {
+		return false
+	}
+	for _, traversal := range expr.Variables() {
+		if _, ok := types[traversal.RootName()]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
@@ -766,8 +911,11 @@ func (e *Evaluator) evalResourceBlocks(
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
 		expanded := e.expandResourceBlock(rb, evalCtx, addr, chain)
-		if limit >= 0 && len(resources)+len(expanded) > limit {
-			return resources, false
+		if limit >= 0 {
+			e.noteBudgetDemand(e.maxInstantiated - limit + len(resources) + len(expanded))
+			if len(resources)+len(expanded) > limit {
+				return resources, false
+			}
 		}
 		resources = append(resources, expanded...)
 	}
