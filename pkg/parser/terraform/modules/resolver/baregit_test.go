@@ -609,3 +609,26 @@ func TestBareRepoRejectsUnsafeCachedConfig(t *testing.T) {
 		t.Fatal("URL-specific proxy config must invalidate the cache")
 	}
 }
+
+func TestStaleRefFallbackOnlyCoversTransientFailures(t *testing.T) {
+	rem := &bareRemote{cloneURL: "https://github.com/org/repo"}
+	stale := bareRefEntry{SHA: strings.Repeat("a", 40)}
+
+	sha, err := rem.staleRefFallback(context.Background(), "main", stale,
+		errors.New("git fetch https://github.com/org/repo main: exit status 128\nfatal: unable to access: Connection reset by peer"))
+	if err != nil || sha != stale.SHA {
+		t.Fatalf("a dropped connection serves the cached commit, got %q, %v", sha, err)
+	}
+
+	for _, permanent := range []string{
+		"fatal: couldn't find remote ref main",
+		"remote: Repository not found.",
+		"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+		"fatal: Authentication failed for 'https://github.com/org/repo/'",
+	} {
+		refreshErr := errors.New("git fetch https://github.com/org/repo main: exit status 128\n" + permanent)
+		if sha, err := rem.staleRefFallback(context.Background(), "main", stale, refreshErr); err == nil {
+			t.Errorf("%q must not serve the cached commit %q", permanent, sha)
+		}
+	}
+}

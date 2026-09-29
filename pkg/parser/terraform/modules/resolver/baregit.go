@@ -593,10 +593,13 @@ func (rem *bareRemote) fetchNamedRef(ctx context.Context, ref string) (string, e
 }
 
 // staleRefFallback serves the commit ref last resolved to when refreshing it
-// failed for a reason that may clear up; budget and policy failures stand.
+// failed for a reason that may clear up, such as a dropped connection. A ref
+// or repository that is gone, or access that is refused, stands: serving the
+// old commit would scan content the source no longer has.
 func (rem *bareRemote) staleRefFallback(ctx context.Context, ref string, stale bareRefEntry, err error) (string, error) {
 	var budgetErr *BudgetExceededError
-	if stale.SHA == "" || ctx.Err() != nil || errors.As(err, &budgetErr) || isDestinationDenied(err) {
+	if stale.SHA == "" || ctx.Err() != nil || errors.As(err, &budgetErr) || isDestinationDenied(err) ||
+		!isTransientFetchError(err) {
 		return "", err
 	}
 	contextLogger := logger.FromContext(ctx)

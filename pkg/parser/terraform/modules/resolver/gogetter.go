@@ -533,9 +533,17 @@ func isTransientFetchError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
+	// Checked first: git follows a refused login or a missing repository with
+	// "could not read from remote repository", which also ends a dropped
+	// connection.
 	nonRetryable := []string{
 		"no such host",
 		"returned http",
+		"permission denied",
+		"authentication failed",
+		"could not read username",
+		"repository not found",
+		"couldn't find remote ref",
 		"exceeds per-module limit",
 		"byte cap exceeded",
 		"fetching is disabled",
