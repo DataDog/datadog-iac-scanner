@@ -217,6 +217,21 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) ([]*h
 	return bodies, err
 }
 
+// ForgetRootParse drops the parsed files of dir once it has been evaluated as a
+// root module. The parse cache pays off for modules many roots call; a root is
+// evaluated once, so keeping its files only holds memory until the scan ends.
+// Anything that reaches dir again parses it again.
+func (e *Evaluator) ForgetRootParse(dir string) {
+	abs, err := e.fsys.Abs(dir)
+	if err != nil {
+		abs = filepath.Clean(dir)
+	}
+	key := filepath.Clean(abs) + "\x00" + filepath.Clean("")
+	e.parseMu.Lock()
+	delete(e.dirCache, key)
+	e.parseMu.Unlock()
+}
+
 func (e *Evaluator) SetRemoteResolver(r RemoteResolver) {
 	e.remoteResolver = r
 }

@@ -369,6 +369,7 @@ func evaluateRootModules(
 			) {
 				unresolvedModuleDirs[called] = true
 			}
+			evaluator.ForgetRootParse(dir)
 			continue
 		}
 		*rootEvalOK = true
@@ -387,6 +388,7 @@ func evaluateRootModules(
 		// the modules it shares, so the hit rate does not pay for a peak that
 		// grows with the whole repository rather than the largest single root.
 		evaluator.ReleaseEvalCache()
+		evaluator.ForgetRootParse(dir)
 	}
 }
 
