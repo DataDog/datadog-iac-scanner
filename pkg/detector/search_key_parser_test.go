@@ -10,19 +10,15 @@ import (
 	"testing"
 )
 
-// NOTE: ParsedSearchKey and ParseSearchKey are now implemented in search_key_parser.go
-// These tests validate that implementation
-
-// TestParseSearchKey_FailingPatterns tests various search key formats including
-// previously problematic patterns that are now fully supported.
-func TestParseSearchKey_FailingPatterns(t *testing.T) {
+// TestParseSearchKey_AmbiguousPatterns tests search key formats that are ambiguous or
+// tricky to disambiguate, such as "module" appearing where a resource name is expected.
+func TestParseSearchKey_AmbiguousPatterns(t *testing.T) {
 	tests := []struct {
 		name        string
 		searchKey   string
 		expected    *ParsedSearchKey
 		description string
 	}{
-		// ====== CRITICAL FAILING PATTERNS FROM PRODUCTION ======
 		{
 			name:      "mixed notation with module as apparent resource key",
 			searchKey: "aws_instance.module.app_servers[0].app",
@@ -72,9 +68,8 @@ func TestParseSearchKey_FailingPatterns(t *testing.T) {
 			description: "Template syntax containing module path",
 		},
 		{
-			// Regression: template unwrapping used to discard the closing "]" suffix
-			// and insert a spurious "." right after "[", producing an unmatched-bracket
-			// error for this exact shape (see pkg/detector/default_detect_test.go's
+			// Template unwrapping must preserve the closing "]" suffix and not insert
+			// a spurious "." right after "[" (see pkg/detector/default_detect_test.go's
 			// "curly_brace_wrapped_name" case for the equivalent terraformPlanPath test).
 			name:      "template syntax wrapped in bracket notation",
 			searchKey: "aws_s3_bucket_object[{{this[0]}}]",
@@ -310,11 +305,10 @@ func TestParseSearchKey_FailingPatterns(t *testing.T) {
 			description: "Bracket notation with quoted string key",
 		},
 		{
-			// Regression: FullResourceAddr must retain the count/for_each index
-			// inside the bracket selector itself (a module resource instance key
-			// like "this[0]"), not just indices outside the brackets. See
-			// pkg/detector/default_detect_test.go's "module_resource_with_count_index"
-			// case for the equivalent terraformPlanPath test.
+			// FullResourceAddr must retain the count/for_each index inside the bracket
+			// selector itself (a module resource instance key like "this[0]"), not just
+			// indices outside the brackets. See pkg/detector/default_detect_test.go's
+			// "module_resource_with_count_index" case for the equivalent terraformPlanPath test.
 			name:      "bracket notation with nested instance index",
 			searchKey: "aws_dynamodb_table[this[0]].server_side_encryption",
 			expected: &ParsedSearchKey{
@@ -341,14 +335,13 @@ func TestParseSearchKey_FailingPatterns(t *testing.T) {
 			}
 
 			if result == nil {
-				t.Errorf("ParseSearchKey returned nil (expected implementation missing)")
+				t.Errorf("ParseSearchKey returned nil")
 				t.Logf("Description: %s", tt.description)
 				t.Logf("SearchKey: %s", tt.searchKey)
 				t.Logf("Expected: %+v", tt.expected)
 				return
 			}
 
-			// Detailed field-by-field comparison
 			if result.ResourceType != tt.expected.ResourceType {
 				t.Errorf("ResourceType = %q, want %q", result.ResourceType, tt.expected.ResourceType)
 			}
