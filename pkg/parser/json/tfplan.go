@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/registry"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcl_plan "github.com/hashicorp/terraform-json"
@@ -389,6 +390,15 @@ func readPlan(
 		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", resourceLines, deletedAddresses(plan.ResourceChanges))
 	}
 
+	// Derive per-attribute origin hints from the plan's configuration section.
+	// This tells the detector whether a faulty attribute came from the call site,
+	// is hardcoded in the module definition, or uses an insecure variable default.
+	if plan.Config != nil && plan.Config.RootModule != nil {
+		origins := make(map[string]map[string]interface{})
+		annotateOriginsFromConfig(plan.Config.RootModule, "", origins)
+		attachOriginHints(kp.Resource, origins)
+	}
+
 	doc := model.Document{}
 
 	tmpDocBytes, err := json.Marshal(kp)
@@ -401,6 +411,157 @@ func readPlan(
 	}
 
 	return doc
+}
+
+// annotateOriginsFromConfig recursively walks the plan's configuration module tree and builds
+// a map of normalizedResourceAddr -> attrName -> origin hint.
+// origins is keyed by the same normalized address stored in _dd_tf_address.
+func annotateOriginsFromConfig(cfg *hcl_plan.ConfigModule, moduleAddr string, origins map[string]map[string]interface{}) {
+	if cfg == nil {
+		return
+	}
+
+	for callName, mc := range cfg.ModuleCalls {
+		if mc == nil {
+			continue
+		}
+
+		// Build child module address matching the _dd_tf_address format
+		var childAddr string
+		if moduleAddr == "" {
+			childAddr = "module." + callName
+		} else {
+			childAddr = moduleAddr + ".module." + callName
+		}
+		childDir := mc.Source
+
+		if mc.Module == nil {
+			continue
+		}
+
+		// Classify each attribute on each resource in this module
+		for _, r := range mc.Module.Resources {
+			if r == nil {
+				continue
+			}
+			// Build the normalized resource address (no indices)
+			resourceAddr := registry.NormalizeAddress(childAddr + "." + r.Type + "." + r.Name)
+
+			classifyResourceExpressions(r.Expressions, mc, resourceAddr, childDir, "", origins)
+		}
+
+		// Recurse into nested modules
+		annotateOriginsFromConfig(mc.Module, childAddr, origins)
+	}
+}
+
+// classifyResourceExpressions classifies all attributes in a resource's Expressions map,
+// including recursing into NestedBlocks (e.g. metadata_options { http_endpoint = "enabled" }).
+// attrPrefix is the dotted prefix accumulated through recursion (e.g. "metadata_options").
+func classifyResourceExpressions(
+	expressions map[string]*hcl_plan.Expression,
+	mc *hcl_plan.ModuleCall,
+	resourceAddr string,
+	moduleDir string,
+	attrPrefix string,
+	origins map[string]map[string]interface{},
+) {
+	for attrName, expr := range expressions {
+		if expr == nil {
+			continue
+		}
+
+		// Build the full dotted attribute key for nested attributes
+		fullAttr := attrName
+		if attrPrefix != "" {
+			fullAttr = attrPrefix + "." + attrName
+		}
+
+		// Handle nested blocks: recurse into each block's sub-expressions
+		if len(expr.NestedBlocks) > 0 {
+			for _, block := range expr.NestedBlocks {
+				classifyResourceExpressions(block, mc, resourceAddr, moduleDir, fullAttr, origins)
+			}
+			continue
+		}
+
+		origin, varName := classifyExpression(expr, mc)
+		if origin == "" {
+			continue
+		}
+
+		if origins[resourceAddr] == nil {
+			origins[resourceAddr] = make(map[string]interface{})
+		}
+		hint := map[string]interface{}{
+			"origin":    origin,
+			"moduleDir": moduleDir,
+		}
+		if varName != "" {
+			hint["variable"] = varName
+		}
+		origins[resourceAddr][fullAttr] = hint
+	}
+}
+
+// classifyExpression determines the origin of an attribute expression:
+//   - "call" if the call site explicitly sets the variable
+//   - "module_default" if the attribute references a variable the call does not set
+//   - "module_hardcoded" if the attribute has a constant value with no variable reference
+//
+// Returns ("", "") if the expression cannot be classified (computed/unknown).
+// NOTE: References must be checked before ConstantValue because when References is non-empty
+// the terraform-json library sets ConstantValue = UnknownConstantValue.
+func classifyExpression(expr *hcl_plan.Expression, mc *hcl_plan.ModuleCall) (origin, varName string) {
+	if expr == nil || expr.ExpressionData == nil {
+		return "", ""
+	}
+
+	if len(expr.References) > 0 {
+		// Find a "var." reference — the attribute is driven by a module input variable
+		for _, ref := range expr.References {
+			if strings.HasPrefix(ref, "var.") {
+				v := strings.TrimPrefix(ref, "var.")
+				// Check whether the call site explicitly passes this variable
+				if mc.Expressions != nil {
+					if _, callSets := mc.Expressions[v]; callSets {
+						return "call", v
+					}
+				}
+				// Call omits it — insecure module default will apply
+				return "module_default", v
+			}
+		}
+		// References exist but none are var.* — computed/unknown, don't annotate
+		return "", ""
+	}
+
+	// No references: value is a constant hardcoded in the module definition
+	if expr.ConstantValue != nil {
+		return "module_hardcoded", ""
+	}
+
+	return "", ""
+}
+
+// attachOriginHints writes _dd_tf_origin onto each resource's AttributeValues by
+// matching its _dd_tf_address against the origins map built from plan.Config.
+func attachOriginHints(resources map[string]TFPlanResource, origins map[string]map[string]interface{}) {
+	for _, typeMap := range resources {
+		for _, res := range typeMap {
+			namedResource, ok := res.(TFPlanNamedResource)
+			if !ok {
+				continue
+			}
+			addr, ok := namedResource["_dd_tf_address"].(string)
+			if !ok || addr == "" {
+				continue
+			}
+			if hints, found := origins[addr]; found {
+				namedResource["_dd_tf_origin"] = hints
+			}
+		}
+	}
 }
 
 // readModule recursively accumulates resources from every module into the
@@ -427,6 +588,19 @@ func (kp *TFPlan) readModule(
 		if resource.Index != nil {
 			resourceKey = formatResourceKeyWithIndex(resourceKey, resource.Index)
 		}
+
+		// Build the full terraform address (type.name) and normalize away
+		// count/for_each indices so it matches HCL-registered addresses.
+		fullAddress := resource.Type + "." + resource.Name
+		if moduleAddress != "" {
+			fullAddress = moduleAddress + "." + resource.Type + "." + resource.Name
+		}
+		normalizedAddress := registry.NormalizeAddress(fullAddress)
+
+		if resource.AttributeValues == nil {
+			resource.AttributeValues = make(map[string]interface{})
+		}
+		resource.AttributeValues["_dd_tf_address"] = normalizedAddress
 
 		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
 
