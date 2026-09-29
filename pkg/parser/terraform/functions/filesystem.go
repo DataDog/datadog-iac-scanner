@@ -181,17 +181,17 @@ func joinUnderRoots(base, root, rel string) string {
 }
 
 func verifyResolvedConfined(fsys vfs.FS, root, joined string) error {
-	if _, ok := fsys.(*vfs.MemFS); ok {
+	if isMemFS(fsys) {
 		return nil
 	}
 	realRoot := root
-	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+	if resolved, err := evalSymlinks(fsys, root); err == nil {
 		realRoot = resolved
 	}
 	candidate := filepath.Clean(joined)
 	rootClean := filepath.Clean(root)
 	for {
-		if resolved, err := filepath.EvalSymlinks(candidate); err == nil {
+		if resolved, err := evalSymlinks(fsys, candidate); err == nil {
 			rel, err := filepath.Rel(realRoot, resolved)
 			if err != nil || !confinedRel(rel) {
 				return fmt.Errorf("path %q is outside the configuration directory", joined)
