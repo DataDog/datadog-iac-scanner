@@ -726,6 +726,9 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	chain []CallSite,
 ) ([]ResolvedResource, bool) {
 	var rootResources []ResolvedResource
+	types := declaredResourceTypes(resourceBlocks)
+	localsReadOwn := localsReadResources(localExprs, types)
+	readsOwn := localsReadOwn || resourcesReadResources(resourceBlocks, types)
 	for pass := 0; pass < resourceRefPasses; pass++ {
 		var complete bool
 		rootResources, complete = e.evalResourceBlocks(
@@ -736,13 +739,16 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 		}
 		// Always inject so resolved attrs reach evalCtx on every pass including the last.
 		changed := injectResourceRefs(evalCtx, rootResources)
-		if !changed {
-			break
+		if !changed || !readsOwn {
+			// Nothing the resource blocks or locals read has changed, so
+			// evaluating them again would reproduce these instances.
+			return rootResources, true
 		}
 		// Refresh locals after every successful injection so that locals referencing
 		// newly-resolved resource attrs are up-to-date before outputs are computed.
-		localVals := e.resolveLocals(localExprs, evalCtx)
-		evalCtx.Variables["local"] = objectOrEmpty(localVals)
+		if localsReadOwn {
+			evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
+		}
 		if pass+1 >= resourceRefPasses {
 			break
 		}
@@ -753,6 +759,62 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	return e.evalResourceBlocks(
 		resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
 	)
+}
+
+// declaredResourceTypes returns the resource types a module declares, the
+// variables injecting its resources can change.
+func declaredResourceTypes(resourceBlocks []*hclsyntax.Block) map[string]struct{} {
+	types := make(map[string]struct{}, len(resourceBlocks))
+	for _, rb := range resourceBlocks {
+		if len(rb.Labels) >= 2 {
+			types[rb.Labels[0]] = struct{}{}
+		}
+	}
+	return types
+}
+
+func localsReadResources(localExprs map[string]hclsyntax.Expression, types map[string]struct{}) bool {
+	for _, expr := range localExprs {
+		if readsResource(expr, types) {
+			return true
+		}
+	}
+	return false
+}
+
+func resourcesReadResources(resourceBlocks []*hclsyntax.Block, types map[string]struct{}) bool {
+	for _, rb := range resourceBlocks {
+		if bodyReadsResource(rb.Body, types) {
+			return true
+		}
+	}
+	return false
+}
+
+func bodyReadsResource(body *hclsyntax.Body, types map[string]struct{}) bool {
+	for _, attr := range body.Attributes {
+		if readsResource(attr.Expr, types) {
+			return true
+		}
+	}
+	for _, block := range body.Blocks {
+		if bodyReadsResource(block.Body, types) {
+			return true
+		}
+	}
+	return false
+}
+
+func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
+	if len(types) == 0 {
+		return false
+	}
+	for _, traversal := range expr.Variables() {
+		if _, ok := types[traversal.RootName()]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
