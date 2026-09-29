@@ -32,6 +32,12 @@ type directoryDependentParser interface {
 	DirectoryDependent() bool
 }
 
+// fileShareableParser can veto content-only cache lookup and storage for a file
+// whose parsing outcome depends on its path. The check runs before cache reuse.
+type fileShareableParser interface {
+	CanShareParse(filePath string, fileContent []byte) bool
+}
+
 type kindParser interface {
 	GetKind() model.FileKind
 	GetCommentToken() string
@@ -132,6 +138,23 @@ func (c *Parser) FS() vfs.FS {
 	return c.fsys
 }
 
+// CanShareParse checks whether a file may look up or populate a content-only
+// parse cache. Result-dependent restrictions still apply after parsing.
+func (c *Parser) CanShareParse(filePath string, fileContent []byte) bool {
+	if dd, ok := c.Parsers.(directoryDependentParser); ok && dd.DirectoryDependent() {
+		return false
+	}
+	if fs, ok := c.Parsers.(fileShareableParser); ok {
+		// The format gate must see the same plaintext as Parse. Do not share
+		// encrypted input, whose path-sensitive outcome is not yet known.
+		if utils.IsAnsibleVaultEncrypted(fileContent) {
+			return false
+		}
+		return fs.CanShareParse(filePath, fileContent)
+	}
+	return true
+}
+
 // ParsedDocument is a struct containing data retrieved from parsing
 type ParsedDocument struct {
 	Docs          []model.Document
@@ -145,6 +168,8 @@ type ParsedDocument struct {
 	// (see directoryDependentParser); the runner must not share them across
 	// files with identical content.
 	DirectoryDependent bool
+	// Partial means usable YAML documents were retained alongside a parse error.
+	Partial bool
 }
 
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
@@ -216,10 +241,10 @@ func (c *Parser) parseContent(
 	contextLogger := logger.FromContext(ctx)
 	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, utils.GetVaultPassword())
 
-	resolved, obj, igLines, resolvedFiles, err := c.Parsers.Parse(
+	resolved, obj, igLines, resolvedFiles, parseErr := c.Parsers.Parse(
 		ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
-	if err != nil {
-		return ParsedDocument{}, err
+	if parseErr != nil && !model.IsPartialYAMLParseError(parseErr) {
+		return ParsedDocument{}, parseErr
 	}
 
 	cont, err := c.Parsers.StringifyContent(fileContent)
@@ -249,7 +274,8 @@ func (c *Parser) parseContent(
 		ResolvedFiles:      resolvedFiles,
 		IsMinified:         isMinified,
 		DirectoryDependent: directoryDependent,
-	}, nil
+		Partial:            model.IsPartialYAMLParseError(parseErr),
+	}, parseErr
 }
 
 func unsupportedDocument() ParsedDocument {

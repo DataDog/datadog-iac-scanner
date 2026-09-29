@@ -10,11 +10,35 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	ansibleconfig "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/stretchr/testify/require"
 )
+
+func TestParserCanShareParse(t *testing.T) {
+	for _, tt := range []struct {
+		name, path, content string
+		parser              kindParser
+		want                bool
+	}{
+		{"ordinary inventory", "hosts.ini", "[web]\nexample.test\n", &hosts.Parser{}, true},
+		{"pytest skip", "pytest.ini", "[pytest]\naddopts=-v\n", &hosts.Parser{}, false},
+		{"inventory provenance", "inventory/pytest.ini", "[pytest]\naddopts=-v\n", &hosts.Parser{}, true},
+		{"ordinary config", "custom.cfg", "[defaults]\nhost_key_checking=false\n", &ansibleconfig.Parser{}, true},
+		{"files artifact", "roles/web/files/custom.cfg", "[defaults]\nhost_key_checking=false\n", &ansibleconfig.Parser{}, false},
+		{"encrypted inventory", "pytest.ini", "$ANSIBLE_VAULT;1.1;AES256\n", &hosts.Parser{}, false},
+		{"encrypted config", "custom.cfg", "  $ANSIBLE_VAULT;1.1;AES256\n", &ansibleconfig.Parser{}, false},
+		{"no per-file gate", "manifest.yaml", "kind: ConfigMap\n", &yamlParser.Parser{}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Parser{Parsers: tt.parser}
+			require.Equal(t, tt.want, p.CanShareParse(tt.path, []byte(tt.content)))
+		})
+	}
+}
 
 // TestParser_Parse tests the functions [Parse()] and all the methods called by them
 func TestParser_Parse(t *testing.T) {

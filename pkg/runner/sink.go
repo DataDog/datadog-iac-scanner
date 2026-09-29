@@ -50,6 +50,13 @@ func redactErrorForLog(err error) string {
 	return model.RedactURLCredentials(err.Error())
 }
 
+func parseErrorLogLevel(err error) zerolog.Level {
+	if model.IsPartialYAMLParseError(err) {
+		return zerolog.WarnLevel
+	}
+	return zerolog.ErrorLevel
+}
+
 func (s *Service) sink(ctx context.Context, filename, scanID string,
 	rc io.Reader, data []byte,
 	openAPIResolveReferences bool,
@@ -83,7 +90,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	// Fast path: duplicate content already parsed and sanitized — reuse the shared
 	// trees with a per-file top-level map and skip parsing. The interned key also
 	// serves the slow path below (pure function of content).
-	shareKey, shared := s.lookupSharedParse(*c.Content)
+	shareKey, shared := s.lookupShareableParse(filename, *content)
 	if shared != nil {
 		return s.sinkSharedParse(ctx, filename, scanID, shareKey, shared,
 			fileCommands, c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content)
@@ -96,10 +103,12 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 			contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("skipping unparseable raw Helm template: %s", filename)
 		} else {
-			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+			contextLogger.WithLevel(parseErrorLogLevel(err)).Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("failed to parse file content: %s", filename)
 		}
-		return nil
+		if !model.IsPartialYAMLParseError(err) {
+			return nil
+		}
 	}
 
 	linesResolved := 0
@@ -137,12 +146,19 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		// files with identical content (top-level copies, children shared).
 		s.storeSharedParse(shareKey, &documents, sharedDocs)
 	}
-	s.Tracker.TrackFileParse(filename)
+	s.trackParsedFile(filename, &documents)
+	return nil
+}
 
+// A partial YAML stream retains useful documents but is not a fully parsed file.
+// Apply the same accounting to raw and resolved files.
+func (s *Service) trackParsedFile(filename string, documents *iacparser.ParsedDocument) {
+	if documents.Partial {
+		return
+	}
+	s.Tracker.TrackFileParse(filename)
 	s.Tracker.TrackFileParseCountLines(documents.CountLines - len(documents.IgnoreLines))
 	s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))
-
-	return nil
 }
 
 // sinkDocument sanitizes, canonicalizes and registers one parsed document of

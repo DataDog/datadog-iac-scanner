@@ -157,6 +157,15 @@ func (s *Service) ClearContentInterner() {
 	s.contentInternerMu.Unlock()
 }
 
+// lookupShareableParse checks per-file eligibility before any cache lookup.
+// An empty key also prevents the caller from storing this file's parse.
+func (s *Service) lookupShareableParse(filename string, content []byte) (string, *sharedParse) {
+	if !s.Parser.CanShareParse(filename, content) {
+		return "", nil
+	}
+	return s.lookupSharedParse(content)
+}
+
 // lookupSharedParse interns the content and returns its key plus the cached
 // shared parse, if any. A hit is exact (parses are pure functions of content);
 // the result is read-only — copy top-level maps before per-file use.
@@ -222,7 +231,7 @@ func shareableParse(documents *parser.ParsedDocument) bool {
 	if documents.Content == "" {
 		return false
 	}
-	if documents.DirectoryDependent {
+	if documents.DirectoryDependent || documents.Partial {
 		return false
 	}
 	switch documents.Kind {
@@ -502,7 +511,7 @@ func newLineInfoLoaderWithReparser(
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 		reparsed, err := reparse(ctx, f)
-		if err != nil {
+		if err != nil && !model.IsPartialYAMLParseError(err) {
 			return nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)
 		}
 		if docIdx >= len(reparsed.Docs) {

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/comments"
 	"github.com/relex/aini"
 )
@@ -27,6 +28,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
+	if ini.IsKnownNonAnsible(fileContent, filePath) {
+		return fileContent, nil, nil, nil, nil
+	}
 	inventoryReader := strings.NewReader(string(fileContent))
 	inventory, err := aini.Parse(inventoryReader)
 	if err != nil {
@@ -105,6 +109,11 @@ func refactorVars(vars map[string]string) *model.Document {
 		}
 	}
 	return varMap
+}
+
+// CanShareParse keeps path-dependent skips out of content-only cache reuse.
+func (p *Parser) CanShareParse(filePath string, fileContent []byte) bool {
+	return !ini.IsKnownNonAnsible(fileContent, filePath)
 }
 
 // SupportedExtensions returns extensions supported by this parser, which is INI extension

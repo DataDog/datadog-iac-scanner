@@ -14,6 +14,7 @@ require (
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
 	github.com/golang/mock v1.6.0
 	github.com/google/pprof v0.0.0-20251007162407-5df77e3f7d1d
+	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.0
 	github.com/hashicorp/go-getter v1.8.6
@@ -244,7 +245,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/hashicorp/go-version v1.8.0
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jung-kurt/gofpdf v1.16.2 // indirect
