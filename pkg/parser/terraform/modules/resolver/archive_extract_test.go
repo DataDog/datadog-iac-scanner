@@ -8,10 +8,12 @@ package resolver
 import (
 	"archive/tar"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -162,6 +164,28 @@ func TestExtractArchiveCommandBoundsStreamBeforeExtraction(t *testing.T) {
 	)
 
 	require.ErrorContains(t, err, "git archive exceeds")
+}
+
+func TestArchiveStreamLimitCoversTarFraming(t *testing.T) {
+	counter := &PackageCounter{limits: ResourceLimits{MaxPackageBytes: 256 << 20, MaxPackageFiles: 500}}
+	require.Equal(t, int64(256<<20), counter.archiveContentLimit(), "extracted bytes stay bounded by the package limit")
+	require.Equal(t, int64(256<<20)+501*archiveEntryFraming, counter.archiveStreamLimit())
+
+	// The framing allowance holds for the worst case per entry: a one-byte
+	// file padded to a block, under a name long enough for an extended header.
+	var entries []tarEntry
+	content := 0
+	for i := range 500 {
+		entries = append(entries, tarEntry{
+			name:     fmt.Sprintf("%s/%04d.tf", strings.Repeat("deeply-nested-module-directory/", 8), i),
+			typeflag: tar.TypeReg,
+			body:     "x",
+		})
+		content++
+	}
+	stream := tarBytes(t, entries...)
+	require.LessOrEqual(t, int64(len(stream)), int64(content)+501*archiveEntryFraming)
+	require.Greater(t, len(stream), 500*1024, "the stream is far larger than its content, as tar framing makes it")
 }
 
 func archiveHelperCommand(t *testing.T, archivePath string) *exec.Cmd {

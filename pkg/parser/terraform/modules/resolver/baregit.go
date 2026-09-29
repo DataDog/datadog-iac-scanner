@@ -1083,7 +1083,7 @@ func extractRegularFilesWithResourceBudget(
 	r io.Reader, dest string, extracted *int64, counter *PackageCounter, written *archiveWrites,
 ) error {
 	tr := tar.NewReader(r)
-	limit := counter.archiveStreamLimit()
+	limit := counter.archiveContentLimit()
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -1173,7 +1173,7 @@ func extractTarRegularFile(
 	written *archiveWrites,
 ) error {
 	path := filepath.Join(dest, name)
-	if limit := counter.archiveStreamLimit(); header.Size > limit-*extracted {
+	if limit := counter.archiveContentLimit(); header.Size > limit-*extracted {
 		return fmt.Errorf("git archive exceeds %d byte limit", limit)
 	}
 	if _, err := os.Lstat(path); err == nil {

@@ -325,13 +325,29 @@ func (c *PackageCounter) Usage() PackageUsage {
 	return c.usage
 }
 
-// archiveStreamLimit bounds the bytes read from one git archive stream without
-// undercutting the package limit the archive is extracted under.
-func (c *PackageCounter) archiveStreamLimit() int64 {
+// archiveContentLimit bounds the file bytes extracted from one git archive
+// without undercutting the package limit the archive is extracted under.
+func (c *PackageCounter) archiveContentLimit() int64 {
 	if c != nil && c.limits.MaxPackageBytes > maxArchiveExtractBytes {
 		return c.limits.MaxPackageBytes
 	}
 	return maxArchiveExtractBytes
+}
+
+// archiveEntryFraming bounds the tar bytes one entry adds to its content: a
+// header block, padding to the next block, and an extended header for a long
+// name.
+const archiveEntryFraming = 2048
+
+// archiveStreamLimit bounds the raw bytes read from one git archive stream: the
+// content limit plus the framing of every entry the package may hold, so a
+// package within its limits is never cut short by tar overhead.
+func (c *PackageCounter) archiveStreamLimit() int64 {
+	entries := int64(DefaultMaxPackageFiles)
+	if c != nil && c.limits.MaxPackageFiles > 0 {
+		entries = int64(c.limits.MaxPackageFiles)
+	}
+	return c.archiveContentLimit() + (entries+1)*archiveEntryFraming
 }
 
 // CheckPackageUsage applies MeasurePackage's package-level limits to a usage the
