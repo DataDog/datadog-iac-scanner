@@ -494,17 +494,19 @@ func TestAnalyze_LocalModuleInstantiation(t *testing.T) {
 		if attr.CallSite.Filename != "infra/main.tf" {
 			t.Errorf("call_site filename = %q, want infra/main.tf", attr.CallSite.Filename)
 		}
-		if attr.CallSite.LineStart != 1 || attr.CallSite.LineEnd != 4 {
-			t.Errorf("call_site lines = %d-%d, want the module block 1-4",
-				attr.CallSite.LineStart, attr.CallSite.LineEnd)
+		if attr.ModuleCodeLocation.Filename != "modules/networking/main.tf" {
+			t.Errorf("code_location filename = %q, want modules/networking/main.tf", attr.ModuleCodeLocation.Filename)
 		}
-		if attr.ModuleCodeLocation.Filename != "main.tf" {
-			t.Errorf("code_location filename = %q, want module-relative main.tf", attr.ModuleCodeLocation.Filename)
+		// The rule matches bucket, which the module sets from var.name: the call
+		// site narrows to the caller's name argument.
+		if attr.CallSite.LineStart != 3 || attr.CallSite.LineEnd != 3 {
+			t.Errorf("call_site lines = %d-%d, want the name argument 3-3",
+				attr.CallSite.LineStart, attr.CallSite.LineEnd)
 		}
 		// Workspace-relative, like the CLI's repo-relative shape — not the
 		// basename the no-repo-root path would otherwise collapse to.
-		if attr.Source != "modules/networking" {
-			t.Errorf("source = %q, want modules/networking", attr.Source)
+		if len(attr.ModulePath) != 1 || attr.ModulePath[0].Source != "modules/networking" {
+			t.Errorf("module_path = %+v, want one hop with source modules/networking", attr.ModulePath)
 		}
 	}
 	if !sawResolved {

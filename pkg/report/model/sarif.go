@@ -617,7 +617,10 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				},
 				Suppressions: buildSarifSuppressions(ctx, &vulnerability),
 			}
-			remediationAllowed := moduleAttribution == nil || moduleAttribution.ModuleCodeOwned
+			// A value set by a call argument is fixed at the call site; a fix
+			// rewriting the module body would break the module's input for every caller.
+			remediationAllowed := moduleAttribution == nil ||
+				(moduleAttribution.ModuleCodeOwned && !moduleAttribution.CallArgument)
 			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" && remediationAllowed {
 				sarifFix, err := remediationsHelper.TransformToSarifFix(
 					ctx,

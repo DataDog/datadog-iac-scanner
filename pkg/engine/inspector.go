@@ -292,9 +292,10 @@ func (c *Inspector) buildModuleProvenanceLookup() moduleProvenanceLookup {
 			if directory, ok := lookupRemoteDir(c.remoteModuleDirs, callerRoot, source, version, moduleName); ok {
 				sourceType, _ := tfmodules.DetectModuleSourceType(source)
 				return RemoteModuleProvenance{
-					Source:     source,
-					SourceType: sourceType,
-					ModuleRoot: directory.Path,
+					Source:      source,
+					SourceType:  sourceType,
+					ModuleRoot:  directory.Path,
+					PackageRoot: directory.PackageRoot,
 				}, true
 			}
 		}
@@ -646,7 +647,83 @@ func (c *Inspector) Inspect(
 
 	c.releasePostEvalFileData(filesMap)
 
-	return expandModuleFindings(vulnerabilities, moduleExtras), nil
+	return c.applyCallSiteFilters(ctx, expandModuleFindings(vulnerabilities, moduleExtras), files), nil
+}
+
+// applyCallSiteFilters applies the root caller file's rule path filters and
+// ignore comments to module findings, which are reported at the call site.
+// The module file's own filters and comments were applied when the finding
+// was built; this runs after caller expansion so each caller is judged on its
+// own file. External module callers keep the same rule-path bypass as the
+// file-side check, so findings called from a scanned remote module are not
+// dropped by repo-only path filters.
+func (c *Inspector) applyCallSiteFilters(
+	ctx context.Context, vulns []model.Vulnerability, files model.FileMetadatas,
+) []model.Vulnerability {
+	callers := callerFileIndex(vulns, files, c.repoPath)
+	if len(callers) == 0 {
+		return vulns
+	}
+	contextLogger := logger.FromContext(ctx)
+	kept := vulns[:0]
+	for i := range vulns {
+		v := &vulns[i]
+		if attr := v.ModuleAttribution; attr != nil {
+			if caller, ok := callers[attr.CallSite.Filename]; ok {
+				if rc, found := lookupRuleConfig(c.ruleConfigs, v.QueryID, v.LegacyQueryID); found &&
+					!c.isExternalModulePath(caller.FilePath) &&
+					rulePathExcluded(caller.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+					contextLogger.Debug().Msgf("Dropping module finding called from %s for rule %s (rule path filter)",
+						caller.FilePath, v.QueryID)
+					continue
+				}
+				suppressAtCallSite(v, attr, caller)
+			}
+		}
+		kept = append(kept, *v)
+	}
+	return kept
+}
+
+// callerFileIndex maps the call-site file names of module findings to the
+// scanned files, or returns nil when no finding came from a module.
+func callerFileIndex(vulns []model.Vulnerability, files model.FileMetadatas, repoPath string) map[string]*model.FileMetadata {
+	wanted := make(map[string]*model.FileMetadata)
+	for i := range vulns {
+		if attr := vulns[i].ModuleAttribution; attr != nil && attr.CallSite.Filename != "" {
+			wanted[attr.CallSite.Filename] = nil
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+	for _, f := range files {
+		if f == nil || f.ModuleCallChain != "" {
+			continue
+		}
+		key := repoRelativeFile(f.FilePath, repoPath)
+		if existing, ok := wanted[key]; ok && existing == nil {
+			wanted[key] = f
+		}
+	}
+	for key, f := range wanted {
+		if f == nil {
+			delete(wanted, key)
+		}
+	}
+	return wanted
+}
+
+// suppressAtCallSite honors the caller file's disable command and ignore
+// comments on the reported line or on the module block's first line.
+func suppressAtCallSite(v *model.Vulnerability, attr *model.ModuleAttribution, caller *model.FileMetadata) {
+	if ShouldSkipVulnerability(caller.Commands, v.QueryID, v.LegacyQueryID) {
+		markSuppressed(v, model.SuppressionJustificationDisableInFile)
+	}
+	if checkComment(attr.CallSite.LineStart, caller.LinesIgnore) ||
+		checkComment(attr.ModulePath[0].CodeLocation.LineStart, caller.LinesIgnore) {
+		markSuppressed(v, model.SuppressionJustificationIgnoreComment)
+	}
 }
 
 // releasePostEvalFileData drops OriginalData and LinesOriginalData after eval
@@ -758,12 +835,7 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy := vulns[i]
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
-			vCopy.ModuleAttribution = moduleAttributionForResource(
-				ex.attributions,
-				vCopy.ResourceType,
-				vCopy.BlockLocation.Start.Line,
-				vCopy.BlockLocation.Start.Col,
-			)
+			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
 			expanded = append(expanded, vCopy)
 		}
 	}
@@ -1471,7 +1543,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
 		contextLogger.Debug().Msgf("Suppressing vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)
-		markSuppressed(vulnerability, model.SuppressionKindInSource, model.SuppressionJustificationDisableInFile)
+		markSuppressed(vulnerability, model.SuppressionJustificationDisableInFile)
 	}
 
 	// Detect-line failures should not be reported (or drop the finding) once
@@ -1484,7 +1556,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if checkComment(vulnerability.Line, file.LinesIgnore) {
 		contextLogger.Debug().
 			Msgf("Suppressing result by Comment at line %d", vulnerability.Line)
-		markSuppressed(vulnerability, model.SuppressionKindInSource, model.SuppressionJustificationIgnoreComment)
+		markSuppressed(vulnerability, model.SuppressionJustificationIgnoreComment)
 	}
 
 	return vulnerability, false
@@ -1525,12 +1597,12 @@ func (c *Inspector) isExternalModulePath(filePath string) bool {
 
 // markSuppressed records the first suppression decision; later gates are
 // no-ops so SARIF output stays stable.
-func markSuppressed(vulnerability *model.Vulnerability, kind, justification string) {
+func markSuppressed(vulnerability *model.Vulnerability, justification string) {
 	if vulnerability.IsSuppressed {
 		return
 	}
 	vulnerability.IsSuppressed = true
-	vulnerability.SuppressionKind = kind
+	vulnerability.SuppressionKind = model.SuppressionKindInSource
 	vulnerability.SuppressionJustification = justification
 }
 

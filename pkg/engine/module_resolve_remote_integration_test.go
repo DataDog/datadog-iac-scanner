@@ -145,9 +145,12 @@ module "bucket" {
 	require.NotEmpty(t, vulns[0].ModuleCallChain)
 	require.NotNil(t, vulns[0].ModuleAttribution)
 	require.Equal(t, "stack/main.tf", vulns[0].ModuleAttribution.CallSite.Filename)
+	require.Len(t, vulns[0].ModuleAttribution.ModulePath, 1)
+	require.Equal(t, remoteBucketSource, vulns[0].ModuleAttribution.ModulePath[0].Source)
+	require.Equal(t, remoteBucketVersion, vulns[0].ModuleAttribution.ModulePath[0].Version)
+	require.Equal(t, "main.tf", vulns[0].ModuleAttribution.ModuleCodeLocation.Filename)
 	require.Equal(t, remoteBucketSource, vulns[0].ModuleAttribution.Source)
 	require.Equal(t, remoteBucketVersion, vulns[0].ModuleAttribution.Version)
-	require.Equal(t, "main.tf", vulns[0].ModuleAttribution.ModuleCodeLocation.Filename)
 }
 
 func TestInspect_RemoteModule_SecureCallerOverridesInsecureDefault(t *testing.T) {
