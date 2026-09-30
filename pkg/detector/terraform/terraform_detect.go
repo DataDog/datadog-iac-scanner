@@ -38,11 +38,11 @@ type DetectKindLine struct {
 
 // cachedParseBody parses src as HCL and returns the body, reusing a previously
 // parsed result for the same filePath within this scan.
-func (d *DetectKindLine) cachedParseBody(src []byte, filePath string) (*hclsyntax.Body, error) {
+func (d *DetectKindLine) cachedParseBody(src, filePath string) (*hclsyntax.Body, error) {
 	if cached, ok := d.hclCache.Load(filePath); ok {
 		return cached.(*hclsyntax.Body), nil
 	}
-	hclFile, diagnostics := hclsyntax.ParseConfig(src, filePath, hcl.InitialPos)
+	hclFile, diagnostics := hclsyntax.ParseConfig([]byte(src), filePath, hcl.InitialPos)
 	if diagnostics.HasErrors() {
 		return nil, fmt.Errorf("failed to parse HCL: %v", diagnostics.Errs())
 	}
@@ -96,7 +96,7 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 
 	for _, part := range keyParts {
 		// Parse the entire file in case of array detection, thus the file.OriginalData
-		s1, s2, idx := GenerateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, []byte(file.OriginalData))
+		s1, s2, idx := GenerateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, file.OriginalData)
 
 		// Jumps to line in case of multiline Array
 		if idx != 0 {
@@ -111,7 +111,7 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 
 	if detection.FoundAtLeastOne {
 		line := detection.CurrentLine + 1
-		body, parseErr := d.cachedParseBody([]byte(file.OriginalData), file.FilePath)
+		body, parseErr := d.cachedParseBody(file.OriginalData, file.FilePath)
 		if parseErr != nil {
 			contextLogger.Error().Err(parseErr).Msgf("Failed to parse block at line %d in file %s", line, file.FilePath)
 			return buildEmptyVulnerabilityLines(file)
@@ -139,7 +139,7 @@ func detectJSONConfigLine(
 	current := 0
 	found := false
 	for _, part := range keyParts {
-		s1, s2, idx := GenerateSubstrings(ctx, part, extracted, lines, current, []byte(file.OriginalData))
+		s1, s2, idx := GenerateSubstrings(ctx, part, extracted, lines, current, file.OriginalData)
 		if idx != 0 {
 			current = idx
 			found = true

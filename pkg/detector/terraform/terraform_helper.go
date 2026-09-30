@@ -27,7 +27,7 @@ func GenerateSubstrings(
 	extracted [][]string,
 	lines []string,
 	currentLine int,
-	fileOriginalData []byte,
+	fileOriginalData string,
 ) (string, string, int) {
 	var substr1, substr2 string
 	var idx int
@@ -58,7 +58,7 @@ func GenerateSubstrings(
 			// Handle numeric index
 			if index, err := strconv.Atoi(bracketValue); err == nil {
 				substr1 = base
-				substr2, idx = resolveListIndex(ctx, base, index, currentLine, lines, fileOriginalData)
+				substr2, idx = resolveListIndex(ctx, base, index, currentLine, lines, []byte(fileOriginalData))
 				return substr1, substr2, idx
 			}
 

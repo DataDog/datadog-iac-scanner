@@ -92,7 +92,7 @@ func TestGenerateSubstrings(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fileData := []byte(strings.Join(lines, "\n"))
+			fileData := strings.Join(lines, "\n")
 			got1, got2, idx := GenerateSubstrings(ctx, tt.key, tt.extracted, lines, tt.currentLine, fileData)
 			require.Equal(t, tt.wantSubstr1, got1)
 			require.Equal(t, tt.wantSubstr2, got2)
