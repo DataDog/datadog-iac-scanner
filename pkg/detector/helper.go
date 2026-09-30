@@ -307,16 +307,21 @@ func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurse
 	return d, starts[d.CurrentLine], ends[d.CurrentLine], lines
 }
 
+// mayStartYAMLBlockScalar is a cheap necessary condition for yamlMultilineRegex:
+// a key followed by a block scalar indicator (| or >) or a backslash.
+func mayStartYAMLBlockScalar(line string) bool {
+	return strings.IndexByte(line, ':') >= 0 && strings.ContainsAny(line, "|>\\")
+}
+
 //nolint:gocyclo,gocritic
 func checkLine(str1, str2 string, distances map[int]int, starts map[int]model.ResourceLine, ends map[int]model.ResourceLine,
 	lines []string, startLine int, kind model.FileKind) (map[int]int, map[int]model.ResourceLine, map[int]model.ResourceLine) {
 	line := strings.TrimSpace(lines[startLine])
 	endLine := startLine + 1
-	if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+	if str1 == "" || !strings.Contains(line, str1) || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
 		return distances, starts, ends
 	}
 
-	line = indentRegex.ReplaceAllString(line, "")
 	currentIndent := strings.Index(lines[startLine], line)
 	if str1 != "" && str2 != "" && strings.Contains(line, str1) {
 		restLine := line[strings.Index(line, str1)+len(str1):]
@@ -325,7 +330,7 @@ func checkLine(str1, str2 string, distances map[int]int, starts map[int]model.Re
 			distances[startLine] += levenshtein.ComputeDistance(ExtractLineFragment(restLine, str2, false), str2)
 			starts[startLine] = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
 			ends[startLine] = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
-		} else if kind == model.KindYAML && yamlMultilineRegex.MatchString(line) {
+		} else if kind == model.KindYAML && mayStartYAMLBlockScalar(line) && yamlMultilineRegex.MatchString(line) {
 			s, nextLine := "", ""
 			for endLine < len(lines) {
 				nextLine = indentRegex.ReplaceAllString(lines[endLine], "")
