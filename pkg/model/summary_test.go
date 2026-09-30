@@ -17,7 +17,6 @@ import (
 
 func TestModuleAttributionSerializationContract(t *testing.T) {
 	attribution := &ModuleAttribution{
-		Name:     "bucket",
 		CallSite: SourceLocation{Filename: "infra/main.tf", LineStart: 1, LineEnd: 4},
 	}
 

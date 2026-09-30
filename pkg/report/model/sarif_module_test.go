@@ -36,8 +36,6 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 			Remediation:     "remove insecure ACL",
 			RemediationType: "removal",
 			ModuleAttribution: &model.ModuleAttribution{
-				Name:           "bucket",
-				Source:         "modules/bucket",
 				SourceType:     "local",
 				DependencyType: "direct",
 				CallSite: model.SourceLocation{
@@ -48,12 +46,20 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 					ColumnEnd:   43,
 				},
 				ModuleCodeLocation: model.SourceLocation{
-					Filename:    "main.tf",
+					Filename:    "modules/bucket/main.tf",
 					LineStart:   2,
 					LineEnd:     4,
 					ColumnStart: 1,
 					ColumnEnd:   2,
 				},
+				ModulePath: []model.ModulePathHop{{
+					Name:       "bucket",
+					Source:     "modules/bucket",
+					SourceType: "local",
+					CodeLocation: model.SourceLocation{
+						Filename: "stack/main.tf", LineStart: 1, LineEnd: 3, ColumnStart: 1, ColumnEnd: 2,
+					},
+				}},
 				ModuleCodeOwned: true,
 			},
 		}},
@@ -78,17 +84,27 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 	payload, err := json.Marshal(moduleRaw)
 	require.NoError(t, err)
 	require.JSONEq(t, `{
-		"name": "bucket",
-		"source": "modules/bucket",
 		"source_type": "local",
 		"dependency_type": "direct",
 		"code_location": {
-			"filename": "main.tf",
+			"filename": "modules/bucket/main.tf",
 			"line_start": 2,
 			"line_end": 4,
 			"column_start": 1,
 			"column_end": 2
-		}
+		},
+		"module_path": [{
+			"name": "bucket",
+			"source": "modules/bucket",
+			"source_type": "local",
+			"code_location": {
+				"filename": "stack/main.tf",
+				"line_start": 1,
+				"line_end": 3,
+				"column_start": 1,
+				"column_end": 2
+			}
+		}]
 	}`, string(payload))
 }
 
@@ -109,9 +125,6 @@ func TestBuildSarifIssue_RemoteModuleOmitsFix(t *testing.T) {
 				End:   model.ResourceLine{Line: 4, Col: 1},
 			},
 			ModuleAttribution: &model.ModuleAttribution{
-				Name:           "bucket",
-				Source:         "registry.terraform.io/acme/bucket/aws",
-				SourceType:     "registry",
 				DependencyType: "direct",
 				CallSite: model.SourceLocation{
 					Filename:  "stack/main.tf",
@@ -119,6 +132,37 @@ func TestBuildSarifIssue_RemoteModuleOmitsFix(t *testing.T) {
 					LineEnd:   5,
 				},
 				ModuleCodeLocation: model.SourceLocation{Filename: "main.tf", LineStart: 2, LineEnd: 4},
+			},
+		}},
+	}
+
+	report := NewSarifReport().(*sarifReport)
+	_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+	require.NoError(t, err)
+	require.Empty(t, report.Runs[0].Results[0].ResultFixes)
+}
+
+func TestBuildSarifIssue_CallArgumentValueOmitsFix(t *testing.T) {
+	issue := model.QueryResult{
+		QueryName: "acl_rule",
+		QueryID:   "acl-rule",
+		Severity:  model.SeverityHigh,
+		Platform:  "terraform",
+		Files: []model.VulnerableFile{{
+			FileName:        "modules/bucket/main.tf",
+			ResourceType:    "aws_s3_bucket",
+			ResourceName:    "this",
+			Remediation:     "remove insecure ACL",
+			RemediationType: "removal",
+			ResourceLocation: model.ResourceLocation{
+				Start: model.ResourceLine{Line: 2, Col: 1},
+				End:   model.ResourceLine{Line: 4, Col: 1},
+			},
+			ModuleAttribution: &model.ModuleAttribution{
+				DependencyType:  "direct",
+				CallSite:        model.SourceLocation{Filename: "stack/main.tf", LineStart: 4, LineEnd: 4},
+				ModuleCodeOwned: true,
+				CallArgument:    true,
 			},
 		}},
 	}

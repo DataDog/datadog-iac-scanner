@@ -123,15 +123,47 @@ resource "aws_s3_bucket" "this" {
 
 	result := doc.Runs[0].Results[0]
 	require.Equal(t, "stack/main.tf", result.Locations[0].PhysicalLocation.ArtifactLocation.URI)
-	require.Equal(t, 2, result.Locations[0].PhysicalLocation.Region.StartLine)
-	require.GreaterOrEqual(t, result.Locations[0].PhysicalLocation.Region.EndLine, 2)
+	require.Equal(t, 4, result.Locations[0].PhysicalLocation.Region.StartLine, "narrowed to the acl argument")
+	require.Equal(t, 4, result.Locations[0].PhysicalLocation.Region.EndLine)
 
 	moduleRaw, ok := result.Properties["module"]
 	require.True(t, ok)
-	require.Contains(t, string(moduleRaw), `"name":"bucket"`)
-	require.Contains(t, string(moduleRaw), `"source":"modules/bucket"`)
-	require.Contains(t, string(moduleRaw), `"code_location"`)
-	require.Contains(t, string(moduleRaw), `"column_start"`)
-	require.Contains(t, string(moduleRaw), `"column_end"`)
-	require.NotContains(t, string(moduleRaw), `"module_path"`)
+	var module struct {
+		Source         *string `json:"source"`
+		SourceType     string  `json:"source_type"`
+		DependencyType string  `json:"dependency_type"`
+		CodeLocation   struct {
+			Filename    string `json:"filename"`
+			LineStart   int    `json:"line_start"`
+			LineEnd     int    `json:"line_end"`
+			ColumnStart int    `json:"column_start"`
+			ColumnEnd   int    `json:"column_end"`
+		} `json:"code_location"`
+		ModulePath []struct {
+			Name         string `json:"name"`
+			Source       string `json:"source"`
+			SourceType   string `json:"source_type"`
+			CodeLocation struct {
+				Filename  string `json:"filename"`
+				LineStart int    `json:"line_start"`
+				LineEnd   int    `json:"line_end"`
+			} `json:"code_location"`
+		} `json:"module_path"`
+	}
+	require.NoError(t, json.Unmarshal(moduleRaw, &module))
+	require.Nil(t, module.Source, "local module files are named from the scanned repository")
+	require.Equal(t, "local", module.SourceType)
+	require.Equal(t, "direct", module.DependencyType)
+	require.Equal(t, "modules/bucket/main.tf", module.CodeLocation.Filename)
+	require.Equal(t, 8, module.CodeLocation.LineStart, "narrowed to the flagged attribute")
+	require.Equal(t, 8, module.CodeLocation.LineEnd)
+	require.Positive(t, module.CodeLocation.ColumnStart)
+	require.Greater(t, module.CodeLocation.ColumnEnd, module.CodeLocation.ColumnStart)
+	require.Len(t, module.ModulePath, 1)
+	require.Equal(t, "bucket", module.ModulePath[0].Name)
+	require.Equal(t, "modules/bucket", module.ModulePath[0].Source)
+	require.Equal(t, "local", module.ModulePath[0].SourceType)
+	require.Equal(t, "stack/main.tf", module.ModulePath[0].CodeLocation.Filename)
+	require.Equal(t, 2, module.ModulePath[0].CodeLocation.LineStart)
+	require.Equal(t, 5, module.ModulePath[0].CodeLocation.LineEnd)
 }

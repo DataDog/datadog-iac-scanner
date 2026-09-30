@@ -6,14 +6,16 @@
 package model
 
 // ModuleAttributionSARIF is the properties.module payload emitted for instantiated findings.
+// ModulePath lists the module calls from the root file down to the module holding the
+// flagged resource, ModuleCodeLocation is the flagged location inside that module, and
+// Source, SourceType and Version identify the repository or package holding it.
 type ModuleAttributionSARIF struct {
-	Name               string          `json:"name,omitempty"`
 	Source             string          `json:"source,omitempty"`
 	SourceType         string          `json:"source_type,omitempty"`
 	Version            string          `json:"version,omitempty"`
 	DependencyType     string          `json:"dependency_type,omitempty"`
 	ModuleCodeLocation SourceLocation  `json:"code_location,omitempty"`
-	ModulePath         []ModulePathHop `json:"module_path,omitempty"`
+	ModulePath         []ModulePathHop `json:"module_path"`
 }
 
 func ModuleAttributionForSARIF(attr *ModuleAttribution) *ModuleAttributionSARIF {
@@ -21,7 +23,6 @@ func ModuleAttributionForSARIF(attr *ModuleAttribution) *ModuleAttributionSARIF 
 		return nil
 	}
 	return &ModuleAttributionSARIF{
-		Name:               attr.Name,
 		Source:             sanitizeModuleSource(attr.Source),
 		SourceType:         attr.SourceType,
 		Version:            attr.Version,

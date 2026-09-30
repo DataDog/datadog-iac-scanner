@@ -146,10 +146,12 @@ resource "aws_s3_bucket" "this" {
 	require.NotNil(t, v.ModuleAttribution)
 	require.Equal(t, "stack/main.tf", v.ModuleAttribution.CallSite.Filename)
 	require.Equal(t, "direct", v.ModuleAttribution.DependencyType)
-	require.Equal(t, "bucket", v.ModuleAttribution.Name)
-	require.Equal(t, "modules/bucket", v.ModuleAttribution.Source)
-	require.Equal(t, "main.tf", v.ModuleAttribution.ModuleCodeLocation.Filename)
-	require.Empty(t, v.ModuleAttribution.ModulePath)
+	require.Len(t, v.ModuleAttribution.ModulePath, 1)
+	require.Equal(t, "bucket", v.ModuleAttribution.ModulePath[0].Name)
+	require.Equal(t, "modules/bucket", v.ModuleAttribution.ModulePath[0].Source)
+	require.Equal(t, "modules/bucket/main.tf", v.ModuleAttribution.ModuleCodeLocation.Filename)
+	require.Equal(t, 4, v.ModuleAttribution.CallSite.LineStart, "narrowed to the acl argument")
+	require.Equal(t, 4, v.ModuleAttribution.CallSite.LineEnd)
 }
 
 func TestInspect_ModuleEvaluationPreservesDynamicBlockLabels(t *testing.T) {
