@@ -779,6 +779,7 @@ func instantiatedDocs(
 	// resolve them against the file's HCL, so repeats spill into a further
 	// document rather than overwriting each other.
 	layers := make(map[string]int)
+	attributions := newModuleAttributionCache()
 
 	for i := range resources {
 		r := &resources[i]
@@ -821,9 +822,8 @@ func instantiatedDocs(
 			groups[key] = g
 			order = append(order, key)
 		}
-		moduleRoot := moduleRootForResource(r, repoPath, lookup)
 		g.attributions[moduleAttributionKey(r.Type, r.DefLine, r.DefColumn)] =
-			buildModuleAttribution(r, repoPath, moduleRoot, lookup)
+			attributions.attribution(r, repoPath, lookup)
 		g.entries = append(g.entries, entry)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.

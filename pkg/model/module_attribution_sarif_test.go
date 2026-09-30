@@ -41,14 +41,15 @@ func TestModuleAttributionForSARIF_IncludesCodeLocationColumns(t *testing.T) {
 
 func TestModuleAttributionForSARIF_RedactsCredentials(t *testing.T) {
 	attr := &ModuleAttribution{
-		Source: "https://user:token@example.com/modules/bucket",
+		Source: "https://user:token@example.com/modules",
 		ModulePath: []ModulePathHop{{
-			Source: "https://user:token@example.com/modules/bucket",
+			Source: "https://user:token@example.com/modules//bucket",
 		}},
 	}
 
 	payload := ModuleAttributionForSARIF(attr)
-	require.NotContains(t, payload.Source, "user:token@")
+	require.Equal(t, "https://example.com/modules", payload.Source)
 	require.NotContains(t, payload.ModulePath[0].Source, "user:token@")
-	require.Contains(t, payload.Source, "example.com/modules/bucket")
+	require.Contains(t, payload.ModulePath[0].Source, "example.com/modules//bucket")
+	require.Equal(t, "https://user:token@example.com/modules//bucket", attr.ModulePath[0].Source, "the attribution is not modified")
 }
