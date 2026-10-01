@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -544,10 +543,11 @@ func (c *Inspector) Inspect(
 
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
+	var moduleFiles map[string]*moduleFileCalls
 	var syntheticFiles []*model.FileMetadata
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras = c.instantiateLocalModules(ctx, files, targets)
+		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
 
@@ -647,7 +647,9 @@ func (c *Inspector) Inspect(
 
 	c.releasePostEvalFileData(filesMap)
 
-	return c.applyCallSiteFilters(ctx, expandModuleFindings(vulnerabilities, moduleExtras), files), nil
+	vulnerabilities = expandModuleFindings(vulnerabilities, moduleExtras)
+	vulnerabilities = attributeModuleFileFindings(vulnerabilities, moduleFiles)
+	return c.applyCallSiteFilters(ctx, vulnerabilities, files), nil
 }
 
 // applyCallSiteFilters applies the root caller file's rule path filters and
@@ -1585,14 +1587,19 @@ func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
 }
 
 func (c *Inspector) isExternalModulePath(filePath string) bool {
-	for root := range c.externalPathRoots {
-		rel, err := filepath.Rel(root, filepath.Clean(filePath))
-		if err == nil && rel != parentDirectoryPath &&
-			!strings.HasPrefix(rel, parentDirectoryPath+string(os.PathSeparator)) {
+	if len(c.externalPathRoots) == 0 {
+		return false
+	}
+	for path := filepath.Clean(filePath); ; {
+		if c.externalPathRoots[path] {
 			return true
 		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return false
+		}
+		path = parent
 	}
-	return false
 }
 
 // markSuppressed records the first suppression decision; later gates are

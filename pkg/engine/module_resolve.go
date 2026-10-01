@@ -46,10 +46,12 @@ type moduleResolutionResult struct {
 	rootDirs             []string
 	unresolvedModuleDirs map[string]bool
 	extras               map[string][]extraCallerInfo
-	resourceCount        int
-	rootCount            int
-	budgetExceeded       bool
-	ok                   bool
+	// moduleFiles holds, by file ID, the calls reaching each external module file.
+	moduleFiles    map[string]*moduleFileCalls
+	resourceCount  int
+	rootCount      int
+	budgetExceeded bool
+	ok             bool
 }
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
@@ -65,12 +67,18 @@ type moduleResolutionResult struct {
 // evaluation leaves the scan input untouched rather than removing coverage
 // without a synthetic replacement.
 // Returns synthetic docs and matching FileMetadata (call chain for fingerprints).
-// Caller must append the files before Combine/ToMap. extras lists duplicate callers for post-OPA finding expansion.
+// Caller must append the files before Combine/ToMap. extras lists duplicate callers for post-OPA finding expansion,
+// and moduleFiles the calls reaching each external module file.
 func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
 	targets *ruleTargets,
-) ([]model.Document, []*model.FileMetadata, map[string][]extraCallerInfo) {
+) (
+	docs []model.Document,
+	syntheticFiles []*model.FileMetadata,
+	extras map[string][]extraCallerInfo,
+	moduleFiles map[string]*moduleFileCalls,
+) {
 	resolver := c.buildRemoteResolver()
 	res := c.resolveModulesSafely(ctx, files, resolver, targets)
 	contextLogger := logger.FromContext(ctx)
@@ -85,7 +93,7 @@ func (c *Inspector) instantiateLocalModules(
 		)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	rootDirs := newRootIndex(res.rootDirs)
 	for _, f := range files {
@@ -113,7 +121,15 @@ func (c *Inspector) instantiateLocalModules(
 		// module blocks must remain so the corresponding Rego branches can still fire.
 		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver)
 	}
-	return res.docs, res.syntheticFiles, res.extras
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		if calls := res.moduleFiles[f.ID]; calls != nil {
+			calls.writtenResourceTypes = documentResourceTypes(f.Document)
+		}
+	}
+	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
 }
 
 // logModuleInstantiationSummary emits the fields an on-call search needs at warn
@@ -327,7 +343,14 @@ func (c *Inspector) resolveModulesSafely(
 			res = moduleResolutionResult{}
 		}
 	}()
-	return resolveModuleDocuments(ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys)
+	var externalModuleFile func(string) bool
+	if len(c.externalPathRoots) > 0 {
+		externalModuleFile = c.isExternalModulePath
+	}
+	return resolveModuleDocuments(
+		ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys,
+		externalModuleFile,
+	)
 }
 
 // resolveModuleDocuments instantiates all local modules referenced by the
@@ -359,13 +382,14 @@ func evaluateRootModules(
 	syntheticFiles *[]*model.FileMetadata,
 	resourceCount *int,
 	rootEvalOK *bool,
+	moduleCalls *moduleCallIndex,
 ) {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
-		resourceCount: resourceCount, rootEvalOK: rootEvalOK,
+		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -374,7 +398,7 @@ func evaluateRootModules(
 	for _, dir := range roots[next:] {
 		evaluator.ResetSpeculativeBudget()
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVars(dir))
-		m.merge(dir, resources, childDirs, err)
+		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
 		if err == nil {
 			// instantiatedDocs has copied everything this root needs into plain
 			// documents, so the evaluator's cty values are dead here. Another root
@@ -411,9 +435,16 @@ type rootMerge struct {
 	syntheticFiles       *[]*model.FileMetadata
 	resourceCount        *int
 	rootEvalOK           *bool
+	moduleCalls          *moduleCallIndex
 }
 
-func (m *rootMerge) merge(dir string, resources []tfeval.ResolvedResource, childDirs map[string]bool, err error) {
+func (m *rootMerge) merge(
+	dir string,
+	resources []tfeval.ResolvedResource,
+	instances []tfeval.ModuleInstance,
+	childDirs map[string]bool,
+	err error,
+) {
 	defer m.evaluator.ForgetRootParse(dir)
 	if err != nil {
 		contextLogger := logger.FromContext(m.ctx)
@@ -430,8 +461,10 @@ func (m *rootMerge) merge(dir string, resources []tfeval.ResolvedResource, child
 	for d := range childDirs {
 		m.actualCalledDirs[d] = true
 	}
+	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup)
+		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
 	*m.resourceCount += count
@@ -440,6 +473,7 @@ func (m *rootMerge) merge(dir string, resources []tfeval.ResolvedResource, child
 // rootResult is a root evaluated by a worker, starting from an empty budget.
 type rootResult struct {
 	resources    []tfeval.ResolvedResource
+	instances    []tfeval.ModuleInstance
 	childDirs    map[string]bool
 	err          error
 	charged      int
@@ -512,7 +546,7 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 		}
 		charged += r.charged
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
-		m.merge(dir, r.resources, r.childDirs, r.err)
+		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
 	}
 	m.evaluator.RestoreInstantiatedCount(charged)
 	return len(roots)
@@ -531,6 +565,7 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 		worker.ReleaseEvalCache()
 	}()
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVars(dir))
+	r.instances = worker.TakeModuleInstances()
 	r.charged = worker.InstantiatedCount()
 	return r
 }
@@ -606,6 +641,7 @@ func resolveModuleDocuments(
 	lookup moduleProvenanceLookup,
 	mergeAllow map[string]struct{},
 	fsys vfs.FS,
+	externalModuleFile func(string) bool,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -659,11 +695,12 @@ func resolveModuleDocuments(
 	}
 	sort.Strings(roots)
 
+	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
 	evaluateRootModules(
 		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
 	)
 	collectNotEvaluatedDirs(
 		ctx, evaluator, filesByDir, repoPath, resolver, unresolvedModuleDirs,
@@ -709,6 +746,7 @@ func resolveModuleDocuments(
 		rootDirs:             roots,
 		unresolvedModuleDirs: unresolvedModuleDirs,
 		extras:               extras,
+		moduleFiles:          moduleCalls.fileCalls(unresolvedModuleDirs),
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		budgetExceeded:       evaluator.BudgetExceeded(),
@@ -771,6 +809,7 @@ func instantiatedDocs(
 	extras map[string][]extraCallerInfo,
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
+	attributions *moduleAttributionCache,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -779,7 +818,6 @@ func instantiatedDocs(
 	// resolve them against the file's HCL, so repeats spill into a further
 	// document rather than overwriting each other.
 	layers := make(map[string]int)
-	attributions := newModuleAttributionCache()
 
 	for i := range resources {
 		r := &resources[i]
@@ -963,15 +1001,19 @@ func newInstanceFileMetadata(
 
 // callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).
 func callChainKey(r *tfeval.ResolvedResource, repoPath string) string {
-	if len(r.CallChain) == 0 {
-		return r.ModuleAddress
+	return moduleCallChainKey(r.CallChain, r.ModuleAddress, repoPath)
+}
+
+func moduleCallChainKey(chain []tfeval.CallSite, moduleAddress, repoPath string) string {
+	if len(chain) == 0 {
+		return moduleAddress
 	}
-	root := absPath(r.CallChain[0].CalledFrom, repoPath)
+	root := absPath(chain[0].CalledFrom, repoPath)
 	rel := root
 	if rp, err := filepath.Rel(repoPath, root); err == nil {
 		rel = rp
 	}
-	return filepath.ToSlash(rel) + "|" + r.ModuleAddress
+	return filepath.ToSlash(rel) + "|" + moduleAddress
 }
 
 // stripModuleCalls drops module blocks whose target dir is in calledDirs.
