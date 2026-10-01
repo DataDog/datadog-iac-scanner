@@ -210,9 +210,13 @@ func buildEmptyVulnerabilityLines(file *model.FileMetadata) model.VulnerabilityL
 	}
 }
 
+var formattedIntIndexRegex = regexp.MustCompile(`\[%!s\(int=(\d+)\)\]`)
+
 func sanitizeSearchKey(key string) string {
-	re := regexp.MustCompile(`\[%!s\(int=(\d+)\)\]`)
-	return re.ReplaceAllString(key, "[$1]")
+	if !strings.Contains(key, "%!s(int=") {
+		return key
+	}
+	return formattedIntIndexRegex.ReplaceAllString(key, "[$1]")
 }
 
 // locateTerraformBlock finds the block containing identifyingLine in a pre-parsed

@@ -399,7 +399,6 @@ type Vulnerability struct {
 	SearchLine            int              `db:"search_line" json:"searchLine"`
 	SearchValue           string           `db:"search_value" json:"searchValue"`
 	Value                 *string          `db:"value" json:"value"`
-	Output                string           `json:"-"`
 	CloudProvider         string           `json:"cloud_provider"`
 	Remediation           string           `db:"remediation" json:"remediation"`
 	RemediationType       string           `db:"remediation_type" json:"remediation_type"`
