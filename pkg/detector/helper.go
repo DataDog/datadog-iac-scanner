@@ -316,9 +316,12 @@ func mayStartYAMLBlockScalar(line string) bool {
 //nolint:gocyclo,gocritic
 func checkLine(str1, str2 string, distances map[int]int, starts map[int]model.ResourceLine, ends map[int]model.ResourceLine,
 	lines []string, startLine int, kind model.FileKind) (map[int]int, map[int]model.ResourceLine, map[int]model.ResourceLine) {
+	if str1 == "" || !strings.Contains(lines[startLine], str1) {
+		return distances, starts, ends
+	}
 	line := strings.TrimSpace(lines[startLine])
 	endLine := startLine + 1
-	if str1 == "" || !strings.Contains(line, str1) || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+	if !strings.Contains(line, str1) || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
 		return distances, starts, ends
 	}
 

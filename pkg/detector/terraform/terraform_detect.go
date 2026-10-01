@@ -94,9 +94,11 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 		return detectJSONConfigLine(ctx, file, keyParts, extracted, outputLines)
 	}
 
+	parse := func() (*hclsyntax.Body, error) {
+		return d.cachedParseBody(file.OriginalData, file.FilePath)
+	}
 	for _, part := range keyParts {
-		// Parse the entire file in case of array detection, thus the file.OriginalData
-		s1, s2, idx := GenerateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, file.OriginalData)
+		s1, s2, idx := generateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, parse)
 
 		// Jumps to line in case of multiline Array
 		if idx != 0 {
