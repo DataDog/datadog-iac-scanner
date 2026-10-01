@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -115,6 +116,14 @@ type ModuleScope struct {
 	Local  cty.Value
 }
 
+// ModuleInstance is one evaluated call of a module directory, whether or not
+// the module declares resources.
+type ModuleInstance struct {
+	Dir           string
+	ModuleAddress string
+	CallChain     []CallSite
+}
+
 // Evaluator evaluates local Terraform modules.
 type Evaluator struct {
 	funcs    map[string]function.Function
@@ -152,6 +161,9 @@ type Evaluator struct {
 	// one skipped instance means the directory is only partially resolved, so
 	// its body must stay in the scan even though other instances did resolve.
 	notEvaluatedDirs map[string]bool
+
+	// instances holds the module calls the running EvaluateModule evaluated.
+	instances []ModuleInstance
 
 	// parseMu guards dirCache, which evaluators forked from one another share.
 	parseMu  *sync.Mutex
@@ -296,6 +308,14 @@ func (e *Evaluator) TakeNotEvaluatedDirs() []string {
 	return dirs
 }
 
+// TakeModuleInstances returns the module calls the last EvaluateModule
+// evaluated, nothing when it failed, and forgets them.
+func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
+	instances := e.instances
+	e.instances = nil
+	return instances
+}
+
 // AddNotEvaluatedDirs records directories another evaluator skipped.
 func (e *Evaluator) AddNotEvaluatedDirs(dirs []string) {
 	for _, dir := range dirs {
@@ -368,9 +388,11 @@ func (e *Evaluator) EvaluateModule(
 	visiting := map[string]bool{}
 	allVisited := map[string]bool{}
 	instantiatedBefore := e.instantiated
+	e.instances = nil
 	resources, outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err != nil {
 		e.RestoreInstantiatedCount(instantiatedBefore)
+		e.instances = nil
 	}
 	return resources, outputs, allVisited, err
 }
@@ -407,6 +429,7 @@ func (e *Evaluator) evaluate(
 	visiting[dir] = true
 	defer delete(visiting, dir)
 	skippedBefore := e.skipped
+	instancesBefore := len(e.instances)
 
 	// Snapshot allVisited so we can determine which dirs this subtree adds.
 	prevAllVisited := make(map[string]bool, len(allVisited))
@@ -489,7 +512,7 @@ func (e *Evaluator) evaluate(
 		}
 	}
 	e.cacheCompletedEvaluation(
-		cacheKey, skippedBefore, resources, outputs, visitedDirs, addr, len(chain), depth,
+		cacheKey, skippedBefore, resources, e.instances[instancesBefore:], outputs, visitedDirs, addr, len(chain), depth,
 	)
 
 	return resources, outputs, nil
@@ -547,6 +570,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 	for _, visited := range entry.visitedDirs {
 		allVisited[visited] = true
 	}
+	e.instances = append(e.instances, entry.rebaseInstances(addr, chain)...)
 	return entry.rebase(addr, chain), entry.outputs, true, nil
 }
 
@@ -596,6 +620,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	key evalCacheKey,
 	skippedBefore uint64,
 	resources []ResolvedResource,
+	instances []ModuleInstance,
 	outputs map[string]cty.Value,
 	visitedDirs []string,
 	addr string,
@@ -612,6 +637,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	}
 	e.cache[key] = &evalCacheEntry{
 		resources:    resources,
+		instances:    slices.Clip(slices.Clone(instances)),
 		outputs:      outputs,
 		visitedDirs:  visitedDirs,
 		baseAddr:     addr,
@@ -796,10 +822,12 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			Caller:          scope,
 		}
 		childAddr := joinAddr(addr, "module."+label)
+		childChain := append(cloneChain(chain), site)
+		instancesBefore := len(e.instances)
 
 		childRes, childOuts, cErr := e.evaluate(
 			ctx, childDir, rootDir, childPackageRoot, modInputs, childAddr,
-			append(cloneChain(chain), site), depth+1, visiting, allVisited,
+			childChain, depth+1, visiting, allVisited,
 		)
 		if cErr != nil {
 			if isReportableModuleEvalError(cErr) {
@@ -807,8 +835,10 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			}
 			// Deliberately not added to allVisited: the module was not resolved, so
 			// it must keep being scanned where it is written.
+			e.instances = e.instances[:instancesBefore]
 			continue
 		}
+		e.instances = append(e.instances, ModuleInstance{Dir: childDir, ModuleAddress: childAddr, CallChain: childChain})
 		allVisited[childDir] = true
 		childResources = append(childResources, childRes...)
 		moduleOutputs[label] = objectOrEmpty(childOuts)
@@ -1315,7 +1345,12 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	visiting map[string]bool,
 ) map[string]cty.Value {
 	e.prepassDepth++
-	defer func() { e.prepassDepth-- }()
+	// The calls evaluated here are speculative; cache entries keep their own.
+	instancesBefore := len(e.instances)
+	defer func() {
+		e.prepassDepth--
+		e.instances = e.instances[:instancesBefore]
+	}()
 
 	out := map[string]cty.Value{}
 	tmpVisiting := make(map[string]bool, len(visiting))

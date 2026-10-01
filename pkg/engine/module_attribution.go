@@ -193,48 +193,56 @@ func buildModuleAttribution(
 	lookup moduleProvenanceLookup,
 	cache *moduleAttributionCache,
 ) *model.ModuleAttribution {
-	if r == nil || len(r.CallChain) == 0 {
+	if r == nil {
 		return nil
 	}
-
-	entry := cache.modulePath(r.CallChain, repoPath, lookup)
-	path := entry.path
-	if len(path) == 0 {
-		return nil
-	}
-
-	leaf := path[len(path)-1]
-	dependencyType := moduleDependencyDirect
-	if len(path) > 1 {
-		dependencyType = moduleDependencyTransitive
-	}
-
 	bodyPath := absPath(r.DefinedIn, repoPath)
-	bodyFile, pkg := moduleFileName(bodyPath, repoPath, entry.packages)
-	bodyEnd := r.DefEndLine
-	if bodyEnd < r.DefLine {
-		bodyEnd = r.DefLine
+	attr := callAttribution(r.CallChain, bodyPath, repoPath, lookup, cache)
+	if attr == nil {
+		return nil
 	}
-
-	attr := &model.ModuleAttribution{
-		SourceType:     moduleSourceTypeLocal,
-		DependencyType: dependencyType,
-		CallSite:       rootCallAnchor(&r.CallChain[0], path[0].CodeLocation),
-		ModuleCodeLocation: model.SourceLocation{
-			Filename:    bodyFile,
-			LineStart:   r.DefLine,
-			LineEnd:     bodyEnd,
-			ColumnStart: r.DefColumn,
-			ColumnEnd:   r.DefEndColumn,
-		},
-		ModulePath:      path,
-		ModuleCodeOwned: leaf.SourceType == moduleSourceTypeLocal && pathWithinRoot(filepath.Dir(bodyPath), repoPath),
-		Arguments:       cache.resourceArguments(r, path[0].CodeLocation.Filename),
-	}
+	attr.ModuleCodeLocation.LineStart = r.DefLine
+	attr.ModuleCodeLocation.LineEnd = max(r.DefEndLine, r.DefLine)
+	attr.ModuleCodeLocation.ColumnStart = r.DefColumn
+	attr.ModuleCodeLocation.ColumnEnd = r.DefEndColumn
+	leaf := attr.ModulePath[len(attr.ModulePath)-1]
+	attr.ModuleCodeOwned = leaf.SourceType == moduleSourceTypeLocal && pathWithinRoot(filepath.Dir(bodyPath), repoPath)
+	attr.Arguments = cache.resourceArguments(r, attr.ModulePath[0].CodeLocation.Filename)
 	if cache != nil && r.Body != nil {
 		// What reads no module input is set by the module; the arguments
 		// cover everything else.
 		attr.ArgumentControl = model.ArgumentControlModule
+	}
+	return attr
+}
+
+// callAttribution attributes path, a file or directory of the module the last
+// call of chain loads, to the root call of chain. ModuleCodeLocation only
+// names path.
+func callAttribution(
+	chain []tfeval.CallSite,
+	path, repoPath string,
+	lookup moduleProvenanceLookup,
+	cache *moduleAttributionCache,
+) *model.ModuleAttribution {
+	if len(chain) == 0 {
+		return nil
+	}
+	entry := cache.modulePath(chain, repoPath, lookup)
+	if len(entry.path) == 0 {
+		return nil
+	}
+	dependencyType := moduleDependencyDirect
+	if len(entry.path) > 1 {
+		dependencyType = moduleDependencyTransitive
+	}
+	name, pkg := moduleFileName(path, repoPath, entry.packages)
+	attr := &model.ModuleAttribution{
+		SourceType:         moduleSourceTypeLocal,
+		DependencyType:     dependencyType,
+		CallSite:           rootCallAnchor(&chain[0], entry.path[0].CodeLocation),
+		ModuleCodeLocation: model.SourceLocation{Filename: name},
+		ModulePath:         entry.path,
 	}
 	if pkg.root != "" {
 		attr.Source, attr.SourceType, attr.Version = pkg.address, pkg.sourceType, pkg.version
