@@ -36,6 +36,7 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		FoundAtLeastOne: false,
 		ResolvedFile:    file.FilePath,
 		ResolvedFiles:   d.prepareResolvedFiles(file.ResolvedFiles),
+		File:            file,
 	}
 
 	lines := file.Lines()

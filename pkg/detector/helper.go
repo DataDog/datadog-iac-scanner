@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -41,6 +42,9 @@ type DefaultDetectLineResponse struct {
 	FoundAtLeastOne bool
 	ResolvedFile    string
 	ResolvedFiles   map[string]model.ResolvedFileSplit
+	// File, when set, is the file whose Lines() are passed to DetectCurrentLine,
+	// letting it visit only the lines that contain the searched text.
+	File *model.FileMetadata
 }
 
 // GetBracketValues gets values inside "{{ }}" ignoring any "{{" or "}}" inside
@@ -286,53 +290,75 @@ func removeExtras(result string, start, end int) string {
 // nolint:gocritic
 func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurseCount int,
 	lines []string, kind model.FileKind) (*DefaultDetectLineResponse, model.ResourceLine, model.ResourceLine, []string) {
-	distances := make(map[int]int)
-	starts, ends := make(map[int]model.ResourceLine), make(map[int]model.ResourceLine)
+	best, bestDistance := -1, 0
+	var bestStart, bestEnd model.ResourceLine
 
-	for i := d.CurrentLine; i < len(lines); i++ {
-		distances, starts, ends = checkLine(str1, str2, distances, starts, ends, lines, i, kind)
+	visit := func(i int) {
+		distance, start, end, ok := checkLine(str1, str2, lines, i, kind)
+		if ok && (best < 0 || distance < bestDistance) {
+			best, bestDistance, bestStart, bestEnd = i, distance, start, end
+		}
+	}
+	if candidates, ok := d.candidateLines(str1); ok {
+		for _, i := range candidates[sort.SearchInts(candidates, d.CurrentLine):] {
+			visit(i)
+		}
+	} else {
+		for i := d.CurrentLine; i < len(lines); i++ {
+			visit(i)
+		}
 	}
 
-	if len(distances) == 0 {
+	if best < 0 {
 		d.IsBreak = true
 		return d, model.ResourceLine{Line: d.CurrentLine + 1, Col: 0},
 			model.ResourceLine{Line: d.CurrentLine + 1, Col: len(lines[d.CurrentLine])},
 			lines
 	}
 
-	d.CurrentLine = SelectLineWithMinimumDistance(distances, d.CurrentLine)
+	d.CurrentLine = best
 	d.IsBreak = false
 	d.FoundAtLeastOne = true
 
-	return d, starts[d.CurrentLine], ends[d.CurrentLine], lines
+	return d, bestStart, bestEnd, lines
 }
 
-// mayStartYAMLBlockScalar is a cheap necessary condition for yamlMultilineRegex:
-// a key followed by a block scalar indicator (| or >) or a backslash.
+// candidateLines returns the lines of d.File containing str1, when the file
+// can cache them. Lines without str1 never match in checkLine.
+func (d *DefaultDetectLineResponse) candidateLines(str1 string) ([]int, bool) {
+	if d.File == nil || str1 == "" {
+		return nil, false
+	}
+	return d.File.LinesContaining(str1)
+}
+
 func mayStartYAMLBlockScalar(line string) bool {
 	return strings.IndexByte(line, ':') >= 0 && strings.ContainsAny(line, "|>\\")
 }
 
+// checkLine scores lines[startLine] against str1 and str2; ok is false when the line does not match.
+//
 //nolint:gocyclo,gocritic
-func checkLine(str1, str2 string, distances map[int]int, starts map[int]model.ResourceLine, ends map[int]model.ResourceLine,
-	lines []string, startLine int, kind model.FileKind) (map[int]int, map[int]model.ResourceLine, map[int]model.ResourceLine) {
+func checkLine(str1, str2 string, lines []string, startLine int, kind model.FileKind) (
+	distance int, start, end model.ResourceLine, ok bool) {
 	if str1 == "" || !strings.Contains(lines[startLine], str1) {
-		return distances, starts, ends
+		return distance, start, end, ok
 	}
 	line := strings.TrimSpace(lines[startLine])
 	endLine := startLine + 1
 	if !strings.Contains(line, str1) || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
-		return distances, starts, ends
+		return distance, start, end, ok
 	}
 
 	currentIndent := strings.Index(lines[startLine], line)
 	if str1 != "" && str2 != "" && strings.Contains(line, str1) {
 		restLine := line[strings.Index(line, str1)+len(str1):]
 		if strings.Contains(restLine, str2) {
-			distances[startLine] = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
-			distances[startLine] += levenshtein.ComputeDistance(ExtractLineFragment(restLine, str2, false), str2)
-			starts[startLine] = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
-			ends[startLine] = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
+			distance = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
+			distance += levenshtein.ComputeDistance(ExtractLineFragment(restLine, str2, false), str2)
+			start = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
+			ok = true
+			end = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
 		} else if kind == model.KindYAML && mayStartYAMLBlockScalar(line) && yamlMultilineRegex.MatchString(line) {
 			s, nextLine := "", ""
 			for endLine < len(lines) {
@@ -349,17 +375,19 @@ func checkLine(str1, str2 string, distances map[int]int, starts map[int]model.Re
 				whitespacesRegex.ReplaceAllString(str2, ""),
 				whitespacesRegex.ReplaceAllString(s, ""),
 			) || strings.Contains(nextLine, str2) {
-				distances[startLine] = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
-				distances[startLine] += levenshtein.ComputeDistance(ExtractLineFragment(str2, s, false), s)
-				starts[startLine] = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
-				ends[startLine] = model.ResourceLine{Line: endLine, Col: len(lines[startLine])}
+				distance = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
+				distance += levenshtein.ComputeDistance(ExtractLineFragment(str2, s, false), s)
+				start = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
+				ok = true
+				end = model.ResourceLine{Line: endLine, Col: len(lines[startLine])}
 			}
 		}
 	} else if str1 != "" && strings.Contains(line, str1) {
-		distances[startLine] = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
-		starts[startLine] = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
-		ends[startLine] = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
+		distance = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
+		start = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
+		ok = true
+		end = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
 	}
 
-	return distances, starts, ends
+	return distance, start, end, ok
 }

@@ -68,6 +68,7 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 		FoundAtLeastOne: false,
 		ResolvedFile:    file.FilePath,
 		ResolvedFiles:   make(map[string]model.ResolvedFileSplit),
+		File:            file,
 	}
 
 	extracted := detector.GetBracketValues(searchKey, [][]string{}, "")
