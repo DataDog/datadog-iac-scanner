@@ -64,6 +64,10 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		// disk and mutates ScanParams.Platform). Platforms come from the request
 		// (ScanParams.Platform); content is read through c.fsys.
 		extractedPaths = provider.ExtractedPath{Path: c.inMemoryPaths}
+		// The analyzer's disk walk fills the chart index roots for CLI scans;
+		// derive them from the pushed paths so the Helm resolver also resolves
+		// cross-chart dependencies in server mode.
+		c.chartRoots = inMemoryChartRoots(c.inMemoryPaths)
 	} else {
 		paths, fp, err := c.prepareAndAnalyzePaths(ctx)
 		memwatch.Sample(ctx, memwatch.PhaseAnalyzePaths)
@@ -387,7 +391,7 @@ func (c *Client) createService(
 	// server-mode requests handle pushed chart content without disk access.
 	builder := resolver.NewBuilder()
 	if flagEvaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
-		builder = builder.Add(ctx, helm.NewResolver(c.fsys))
+		builder = builder.Add(ctx, helm.NewResolver(c.fsys).WithChartRoots(c.chartRoots))
 	}
 	combinedResolver, err := builder.
 		Build(ctx)

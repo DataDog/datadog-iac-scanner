@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -110,8 +111,8 @@ func chartKubeVersionConstraint(ch *chart.Chart) string {
 	return ch.Metadata.KubeVersion
 }
 
-func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *action.Install,
-	valueOpts *values.Options) (*release.Release, *chart.Chart, []string, error) {
+func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chartIndex, client *action.Install,
+	valueOpts *values.Options) (*release.Release, *chart.Chart, []string, fileLocator, error) {
 	contextLogger := logger.FromContext(ctx)
 	log.SetOutput(io.Discard)
 	defer log.SetOutput(os.Stderr)
@@ -124,7 +125,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	p := getter.All(settings)
 	vals, err := valueOpts.MergeValues(p)
 	if err != nil {
-		return nil, nil, []string{}, err
+		return nil, nil, []string{}, nil, err
 	}
 	contextLogger.Debug().Msgf("Merged helm values successfully, values count: %d", len(vals))
 
@@ -132,8 +133,9 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	contextLogger.Debug().Msgf("Loading chart from path: '%s'", chartPath)
 	chartRequested, err := loadChart(fsys, chartPath)
 	if err != nil {
-		return nil, nil, []string{}, err
+		return nil, nil, []string{}, nil, err
 	}
+	locator := attachMissingDependencies(ctx, fsys, index, chartRequested, chartPath, 0)
 
 	// Set KubeVersion; clear the constraint only when unsatisfiable.
 	kubeVersion, dropConstraint := resolveChartKubeVersion(chartKubeVersionConstraint(chartRequested))
@@ -148,7 +150,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	chartRequested = setID(chartRequested)
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {
-		return nil, nil, []string{}, instErr
+		return nil, nil, []string{}, nil, instErr
 	}
 	contextLogger.Debug().Msg("Chart installability check passed")
 
@@ -156,12 +158,12 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, client.ReleaseName)
 	helmRelease, err := client.Run(chartRequested, vals)
 	if err != nil {
-		return nil, nil, []string{}, err
+		return nil, nil, []string{}, nil, err
 	}
 
 	contextLogger.Debug().Msgf("Successfully rendered helm chart '%s', manifest length: %d bytes",
 		chartRequested.Metadata.Name, len(helmRelease.Manifest))
-	return helmRelease, chartRequested, excluded, nil
+	return helmRelease, chartRequested, excluded, locator, nil
 }
 
 // loadChart loads the chart at dir from the scan FS. The real disk keeps
@@ -169,10 +171,37 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 // from the CLI); any other FS (the server's in-memory one) is walked via the
 // vfs and assembled with helm's in-memory loader.
 func loadChart(fsys vfs.FS, dir string) (*chart.Chart, error) {
+	var ch *chart.Chart
+	var err error
 	if vfs.IsDisk(fsys) {
-		return loader.LoadDir(dir)
+		ch, err = loader.LoadDir(dir)
+	} else {
+		ch, err = loadChartFromFS(fsys, dir)
 	}
-	return loadChartFromFS(fsys, dir)
+	if err == nil {
+		dropNonTemplateFiles(ch)
+	}
+	return ch, err
+}
+
+// templateFileExts are the extensions of files Helm charts keep under
+// templates/ in practice. Helm renders every file there, so a build file such
+// as BUILD.bazel breaks the whole chart although no deployment ships it.
+var templateFileExts = map[string]struct{}{
+	".yaml": {}, ".yml": {}, ".tpl": {}, ".txt": {}, ".json": {},
+}
+
+func dropNonTemplateFiles(ch *chart.Chart) {
+	kept := ch.Templates[:0]
+	for _, f := range ch.Templates {
+		if _, ok := templateFileExts[strings.ToLower(filepath.Ext(f.Name))]; ok {
+			kept = append(kept, f)
+		}
+	}
+	ch.Templates = kept
+	for _, dep := range ch.Dependencies() {
+		dropNonTemplateFiles(dep)
+	}
 }
 
 // ArchiveChartIdentity returns the name and version a packaged chart declares.
@@ -306,6 +335,127 @@ var templateActionRE = regexp.MustCompile(`(?s)\{\{-?.*?-?\}\}`)
 
 // templateCommentRE matches Helm template comment blocks: {{/* ... */}} (with optional trim markers).
 var templateCommentRE = regexp.MustCompile(`(?s)\{\{-?\s*/\*.*?\*/\s*-?\}\}`)
+
+// isTemplateSpace reports whether c is whitespace allowed between template
+// markers, delimiters and comment text.
+func isTemplateSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
+}
+
+// templateCommentStart returns the index of the "/*" opening a comment
+// action's text, or -1 when the action whose "{{" starts at start is not a
+// comment.
+func templateCommentStart(s string, start int) int {
+	c := start + 2
+	if c < len(s) && s[c] == '-' {
+		c++
+	}
+	for c < len(s) && isTemplateSpace(s[c]) {
+		c++
+	}
+	if c+1 < len(s) && s[c] == '/' && s[c+1] == '*' {
+		return c
+	}
+	return -1
+}
+
+// templateCommentActionEnd returns the index just past the "}}" closing the
+// comment action whose "/*" is at start: the first "*/" ends the comment
+// text, followed by optional whitespace, a trim marker and the "}}".
+// Quoted-string tracking must not apply to comment text — an apostrophe in a
+// contraction (e.g. "don't") would open a string and make the comment appear
+// unbalanced.
+func templateCommentActionEnd(s string, start int) (end int, ok bool) {
+	closeIdx := strings.Index(s[start+2:], "*/")
+	if closeIdx < 0 {
+		return 0, false
+	}
+	c := start + 2 + closeIdx + 2
+	for c < len(s) && isTemplateSpace(s[c]) {
+		c++
+	}
+	if c < len(s) && s[c] == '-' {
+		c++
+	}
+	if c+1 < len(s) && s[c] == '}' && s[c+1] == '}' {
+		return c + 2, true
+	}
+	return 0, false
+}
+
+// templateActionEnd returns the index just past the closing "}}" of the action
+// whose "{{" starts at start, treating quoted strings (", ' and `) inside the
+// action as opaque so a "}}" within a quoted template argument does not end
+// the action. Comment actions are terminated by "*/" plus the closing "}}"
+// instead, as their text may hold quotes that would defeat that tracking.
+// ok is false when the action has no terminator outside quotes
+// (e.g. an unterminated string).
+func templateActionEnd(s string, start int) (end int, ok bool) {
+	if c := templateCommentStart(s, start); c >= 0 {
+		return templateCommentActionEnd(s, c)
+	}
+	var quote byte
+	for i := start + 2; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote == '`':
+			if c == '`' {
+				quote = 0
+			}
+		case quote != 0:
+			switch c {
+			case '\\':
+				i++ // skip the escaped character
+			case quote:
+				quote = 0
+			}
+		case c == '"' || c == '\'' || c == '`':
+			quote = c
+		case c == '}' && i+1 < len(s) && s[i+1] == '}':
+			return i + 2, true
+		}
+	}
+	return 0, false
+}
+
+// balancedTemplateActionSpans returns the [start, end) byte ranges of all {{ ... }}
+// actions in s whose delimiters are balanced with respect to quoted strings,
+// unlike templateActionRE, which stops at the first "}}" even inside a quoted
+// template argument. Comment actions are skipped by the marker loop itself (the
+// action text starts with "/*"), so they are not filtered here. Unbalanced
+// actions (unterminated quotes, no terminator) are omitted so they are never
+// rewritten.
+func balancedTemplateActionSpans(s string) [][2]int {
+	var spans [][2]int
+	for i := 0; i+1 < len(s); {
+		start := strings.Index(s[i:], "{{")
+		if start < 0 {
+			break
+		}
+		start += i
+		end, ok := templateActionEnd(s, start)
+		if !ok {
+			i = start + 2
+			continue
+		}
+		spans = append(spans, [2]int{start, end})
+		i = end
+	}
+	return spans
+}
+
+// removeBalancedActions removes every balanced {{ ... }} action, leaving quoted
+// "}}" residue intact as it is still part of an action.
+func removeBalancedActions(s string) string {
+	var b strings.Builder
+	last := 0
+	for _, span := range balancedTemplateActionSpans(s) {
+		b.WriteString(s[last:span[0]])
+		last = span[1]
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
 
 // templateActionSpans returns the [start, end) byte ranges of all {{ ... }} blocks in s,
 // excluding comment blocks ({{/* ... */}}).
@@ -510,11 +660,7 @@ func makeDeterministic(ch *chart.Chart) *chart.Chart {
 // setID will add auxiliary lines for each template as well as its dependencies
 func setID(chartReq *chart.Chart) *chart.Chart {
 	for _, temp := range chartReq.Templates {
-		temp = addID(temp)
-		temp = addHelmInvocationMarkers(temp)
-		if temp != nil {
-			continue
-		}
+		addHelmInvocationMarkers(addID(temp))
 	}
 	// Stamp YAML CRDs for line mapping; JSON CRDs are skipped (YAML comments corrupt JSON).
 	for _, f := range localCRDFiles(chartReq) {
@@ -523,29 +669,50 @@ func setID(chartReq *chart.Chart) *chart.Chart {
 		}
 	}
 	for _, dep := range chartReq.Dependencies() {
-		dep = setID(dep)
-		if dep != nil {
-			continue
-		}
+		setID(dep)
 	}
 	return chartReq
 }
 
-// addHelmInvocationMarkers instruments action-only wrapper templates so the
-// rendered output retains the source position of the invocation that actually
-// ran. The marker action is inserted immediately before include/template/tpl,
-// which keeps it under the same Helm control flow as the invocation.
+// addHelmInvocationMarkers instruments manifest templates so the rendered
+// output retains the source position of the invocation that actually ran, which
+// is what lets a finding in output produced by a named template point back to
+// the file that invoked it. The marker action is inserted immediately before
+// include/template/tpl, which keeps it under the same Helm control flow as the
+// invocation.
+//
+// Two kinds of invocation are instrumented, and nothing else:
+//   - any top-level invocation of an action-only wrapper template, whose whole
+//     output is the output of its invocations;
+//   - in other manifest templates, an invocation that stands alone on its line
+//     and is not left-trimmed, which can only emit a block of YAML. Inline
+//     uses (`name: {{ include ... }}`) and trimmed ones (`{{- include ... }}`)
+//     produce values glued to the surrounding text and are left alone.
+//
+// The body of a define or block is never instrumented: it is a named partial
+// whose result is used by its callers, often as a scalar (a label value, a
+// name), so anything added there would corrupt every value the partial returns.
+// Files that only hold partials (a leading underscore) are skipped for the same
+// reason.
 func addHelmInvocationMarkers(file *chart.File) *chart.File {
 	source := string(file.Data)
-	if strings.Contains(source, kicsHelmInvocation) || !isHelmInvocationWrapper(source) {
+	if strings.Contains(source, kicsHelmInvocation) {
+		return file
+	}
+	wrapper := isHelmInvocationWrapper(source)
+	if !wrapper && strings.HasPrefix(filepath.Base(file.Name), "_") {
 		return file
 	}
 
 	var markers []replacement
-	for _, span := range templateActionSpans(source) {
+	var blocks helmBlockStack
+	for _, span := range balancedTemplateActionSpans(source) {
 		actionText := strings.Trim(source[span[0]+len("{{"):span[1]-len("}}")], "- \t\r\n")
 		fields := strings.Fields(actionText)
-		if len(fields) == 0 || !isHelmOutputInvocation(fields[0]) {
+		if len(fields) == 0 {
+			continue
+		}
+		if blocks.track(fields[0]) || blocks.inPartial() || !isHelmOutputInvocation(fields[0]) {
 			continue
 		}
 
@@ -553,11 +720,9 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 		lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
 		col := span[0] - lineStart
 		marker := fmt.Sprintf("%s%d_%d:\n", kicsHelmInvocation, line, col)
-		markers = append(markers, replacement{
-			start: span[0],
-			end:   span[0],
-			text:  fmt.Sprintf("{{ print %q }}", marker),
-		})
+		if r, ok := invocationReplacement(source, span, actionText, marker, wrapper); ok {
+			markers = append(markers, r)
+		}
 	}
 
 	sort.Slice(markers, func(i, j int) bool {
@@ -570,8 +735,137 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 	return file
 }
 
+// invocationReplacement builds the marker edit for one include-like action.
+func invocationReplacement(source string, span [2]int, actionText, marker string, wrapper bool) (replacement, bool) {
+	prefix := fmt.Sprintf("{{ print %q }}", marker)
+	plain := replacement{start: span[0], end: span[0], text: prefix}
+	if !wrapper {
+		// Emitted before the line's indentation so the include output keeps it.
+		lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
+		plain.start, plain.end = lineStart, lineStart
+		return plain, standaloneUntrimmedAction(source, span)
+	}
+	// markEveryDocument rewrites the action, and the rewrite is later
+	// stripped/restored with the lazy templateActionRE, which stops at the
+	// first "}}" — including one inside a quoted argument. Only rewrite
+	// actions the lazy regex spans identically; a quoted "}}" falls back to
+	// the self-contained prefix marker, which the lazy regex strips whole.
+	lazy := templateActionRE.FindStringIndex(source[span[0]:])
+	if strings.HasPrefix(actionText, helmInclude) && !strings.Contains(actionText, "|") &&
+		lazy != nil && span[0]+lazy[1] == span[1] {
+		return replacement{
+			start: span[0],
+			end:   span[1],
+			text:  prefix + markEveryDocument(source[span[0]:span[1]], marker),
+		}, true
+	}
+	return plain, true
+}
+
+// standaloneUntrimmedAction reports whether the action at span is alone on its
+// line and does not trim the whitespace before it.
+func standaloneUntrimmedAction(source string, span [2]int) bool {
+	if strings.HasPrefix(source[span[0]:], "{{-") {
+		return false
+	}
+	lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
+	lineEnd := len(source)
+	if i := strings.IndexByte(source[span[1]:], '\n'); i >= 0 {
+		lineEnd = span[1] + i
+	}
+	return strings.TrimSpace(source[lineStart:span[0]]) == "" &&
+		strings.TrimSpace(source[span[1]:lineEnd]) == "" &&
+		!insideBlockScalar(source[:lineStart])
+}
+
+var blockScalarHeader = regexp.MustCompile(`[|>][+-]?\d?[+-]?\s*$`)
+
+// insideBlockScalar reports whether the text before an action may belong to a
+// YAML block scalar: walking back over indented lines reaches a "|" or ">"
+// header. A column-0 marker line would terminate such a scalar, so these
+// actions are left uninstrumented.
+func insideBlockScalar(before string) bool {
+	lines := strings.Split(before, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimRight(removeBalancedActions(lines[i]), " \t\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if blockScalarHeader.MatchString(line) {
+			return true
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			return false
+		}
+	}
+	return false
+}
+
+// helmBlockStack follows the control-flow blocks opened by template actions so
+// an action can be told apart as top-level output or part of a define body.
+type helmBlockStack []bool
+
+// track updates the stack for an action starting with keyword and reports
+// whether the action only opens or closes a block.
+func (b *helmBlockStack) track(keyword string) bool {
+	switch keyword {
+	case "define", "block":
+		*b = append(*b, true)
+	case "if", "range", "with":
+		*b = append(*b, false)
+	case "end":
+		if len(*b) > 0 {
+			*b = (*b)[:len(*b)-1]
+		}
+	default:
+		return false
+	}
+	return true
+}
+
+// inPartial reports whether the current action sits inside a define or block.
+func (b helmBlockStack) inPartial() bool {
+	for _, partial := range b {
+		if partial {
+			return true
+		}
+	}
+	return false
+}
+
+// markedIncludeRE matches an include rewritten by markEveryDocument and
+// captures what restoreMarkedInclude needs to give back the original action.
+var markedIncludeRE = regexp.MustCompile(
+	`(?s)^\{\{(-?) print "\\n" \((.*)\) \| replace "\\n---\\n" "\\n---\\n# KICS_HELM_INVOCATION_\d+_\d+:\\n" (-?)\}\}$`)
+
+// markEveryDocument makes an include repeat marker after each document
+// separator it emits. Helm splits and sorts every template's documents before
+// the resolver sees them, so a marker printed only ahead of the include never
+// reaches documents after the first separator.
+func markEveryDocument(templateAction, marker string) string {
+	inner := templateAction[len("{{") : len(templateAction)-len("}}")]
+	left, right := "", ""
+	if strings.HasPrefix(inner, "-") {
+		left, inner = "-", inner[1:]
+	}
+	if strings.HasSuffix(inner, "-") {
+		right, inner = "-", inner[:len(inner)-1]
+	}
+	return fmt.Sprintf(`{{%s print "\n" (%s) | replace "\n---\n" %q %s}}`, left, inner, "\n---\n"+marker, right)
+}
+
+func restoreMarkedInclude(templateAction []byte) ([]byte, bool) {
+	m := markedIncludeRE.FindSubmatch(templateAction)
+	if m == nil {
+		return nil, false
+	}
+	return []byte("{{" + string(m[1]) + string(m[2]) + string(m[3]) + "}}"), true
+}
+
 func isHelmInvocationWrapper(source string) bool {
-	withoutActions := templateActionRE.ReplaceAllString(source, "")
+	// Balanced action removal: the lazy regex would leave a quoted "}}" as
+	// residue and disqualify a wrapper template that is in fact action-only.
+	withoutActions := removeBalancedActions(source)
 	for _, line := range strings.Split(withoutActions, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") && !isYAMLDocumentBoundary(trimmed) {
@@ -581,8 +875,10 @@ func isHelmInvocationWrapper(source string) bool {
 	return true
 }
 
+const helmInclude = "include"
+
 func isHelmOutputInvocation(name string) bool {
-	return name == "include" || name == "template" || name == "tpl"
+	return name == helmInclude || name == "template" || name == "tpl"
 }
 
 // addID will add auxiliary lines used to detect line
@@ -805,4 +1101,140 @@ func getExcluded(ctx context.Context, charterino *chart.Chart, chartpath string)
 
 	contextLogger.Debug().Msgf("Found %d excluded files from chart", len(excluded))
 	return excluded
+}
+
+// archivedDependencyLocation says where to report a file of a dependency
+// vendored as a packaged chart (charts/name-1.2.3.tgz). Helm names its files as
+// if the archive were unpacked, which are not paths of the repository, and a
+// line inside a compressed archive cannot be opened either. The dependency is
+// reported where the repository declares it: its entry in the parent's
+// Chart.yaml or requirements.yaml. nil means the path is a real file, or its
+// archive cannot be identified.
+func archivedDependencyLocation(fsys vfs.FS, path string) *model.ReportedLocation {
+	segments := strings.Split(filepath.ToSlash(path), "/")
+	for i := 0; i+1 < len(segments); i++ {
+		if segments[i] != dependenciesDirName {
+			continue
+		}
+		if _, err := fsys.Stat(filepath.FromSlash(strings.Join(segments[:i+2], "/"))); err == nil {
+			continue
+		}
+		parent := filepath.FromSlash(strings.Join(segments[:i], "/"))
+		chartsDir := filepath.Join(parent, dependenciesDirName)
+		archive, ok := archiveOf(fsys, chartsDir, segments[i+1])
+		if !ok {
+			return nil
+		}
+		return dependencyDeclaration(fsys, parent, segments[i+1], archive)
+	}
+	return nil
+}
+
+// archiveOf finds the single archive of the dependency rendered as name.
+func archiveOf(fsys vfs.FS, chartsDir, name string) (string, bool) {
+	entries, err := fsys.ReadDir(chartsDir)
+	if err != nil {
+		return "", false
+	}
+	var archive string
+	for _, entry := range entries {
+		if isChartArchiveOf(entry.Name(), name) {
+			if archive != "" {
+				return "", false
+			}
+			archive = entry.Name()
+		}
+	}
+	if archive == "" {
+		return "", false
+	}
+	return filepath.Join(chartsDir, archive), true
+}
+
+// dependencyDeclaration locates the dependency in the parent chart's
+// Chart.yaml, then requirements.yaml. Without a declaration it reports the top
+// of the parent chart's Chart.yaml, and without one the archive itself.
+func dependencyDeclaration(fsys vfs.FS, parent, name, archive string) *model.ReportedLocation {
+	var fallback *model.ReportedLocation
+	for _, file := range []string{"Chart.yaml", "requirements.yaml"} {
+		path := filepath.Join(parent, file)
+		if _, err := fsys.Stat(path); err != nil {
+			continue
+		}
+		data, err := fsys.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if line := declaredDependencyLine(data, name); line > 0 {
+			return reportedAt(path, data, line)
+		}
+		if fallback == nil {
+			fallback = reportedAt(path, data, 1)
+		}
+	}
+	if fallback != nil {
+		return fallback
+	}
+	return &model.ReportedLocation{Path: archive, Line: 1}
+}
+
+// declaredDependencyLine returns the line of the dependencies entry rendered
+// as name (its alias when it has one), or 0.
+func declaredDependencyLine(data []byte, name string) int {
+	var doc yaml.Node
+	if yaml.Unmarshal(data, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return 0
+	}
+	root := doc.Content[0]
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value != "dependencies" || root.Content[i+1].Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, entry := range root.Content[i+1].Content {
+			var dep struct {
+				Name  string `yaml:"name"`
+				Alias string `yaml:"alias"`
+			}
+			if entry.Decode(&dep) != nil {
+				continue
+			}
+			rendered := dep.Alias
+			if rendered == "" {
+				rendered = dep.Name
+			}
+			if rendered == name {
+				return entry.Line
+			}
+		}
+	}
+	return 0
+}
+
+// reportedLines is how many lines around the reported one are kept as context.
+const reportedLines = 2
+
+func reportedAt(path string, data []byte, line int) *model.ReportedLocation {
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r", ""), "\n")
+	reported := &model.ReportedLocation{Path: path, Line: line}
+	if line < 1 || line > len(lines) {
+		return reported
+	}
+	reported.LineText = lines[line-1]
+	for n := max(1, line-reportedLines); n <= min(len(lines), line+reportedLines); n++ {
+		reported.Snippet = append(reported.Snippet, model.CodeLine{Position: n, Line: lines[n-1]})
+	}
+	return reported
+}
+
+// isChartArchiveOf reports whether file is name.tgz or name-<version>.tgz.
+func isChartArchiveOf(file, name string) bool {
+	base, ok := strings.CutSuffix(file, ".tgz")
+	if !ok {
+		return false
+	}
+	if base == name {
+		return true
+	}
+	version, ok := strings.CutPrefix(base, name+"-")
+	return ok && version != "" && version[0] >= '0' && version[0] <= '9'
 }
