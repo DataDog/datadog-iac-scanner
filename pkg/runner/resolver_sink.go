@@ -98,8 +98,9 @@ func (s *Service) storeResolvedFiles(
 
 		for docIdx, document := range documents.Docs {
 			preparedDocument, prepareErr := prepareResolvedScanDocument(document, kind)
-			err = prepareErr
-			if err != nil {
+			if prepareErr != nil {
+				contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(prepareErr)).
+					Msgf("failed to prepare scan document '%s' with fileType '%s'", rfile.FileName, kind)
 				continue
 			}
 
@@ -305,14 +306,22 @@ func newOriginalResolvedLineInfoLoader(
 		})
 }
 
-// logResolverResolveError logs a Helm resolve/render failure as debug when it
-// matches missing deploy-time values (expected at scan time), otherwise as error.
-// Both paths fall back to raw-file scanning; only expected failures call
-// recordFailedHelmChart, which suppresses subsequent parse-error noise for those files.
+// logResolverResolveError records a failed Helm chart and logs the failure.
+// Every failed chart falls back to raw-file scanning, and its raw templates are
+// never valid YAML, so recordFailedHelmChart silences their parse errors
+// whatever the render failure was.
 func (s *Service) logResolverResolveError(ctx context.Context, kind model.FileKind, filename string, err error) {
+	if kind == model.KindHELM {
+		s.recordFailedHelmChart(filename)
+	}
+	logResolveError(ctx, kind, filename, err)
+}
+
+// logResolveError logs a resolve/render failure as debug when it matches
+// missing deploy-time values (expected at scan time), otherwise as error.
+func logResolveError(ctx context.Context, kind model.FileKind, filename string, err error) {
 	contextLogger := logger.FromContext(ctx)
 	if kind == model.KindHELM && isExpectedHelmRenderError(err) {
-		s.recordFailedHelmChart(filename)
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("helm chart '%s' could not be rendered with available values", filename)
 		return
@@ -323,28 +332,50 @@ func (s *Service) logResolverResolveError(ctx context.Context, kind model.FileKi
 		Msgf("failed to render file content '%s' with fileType '%s'", filename, kind)
 }
 
-// expectedHelmRenderErrorSignatures matches Go template execution errors caused
-// by missing deploy-time values — the expected failure mode for charts that
-// require values unavailable at scan time.
-// "error calling required:" covers the Helm required helper, which exists
-// exclusively to guard absent values.
-// "error calling fail:" is intentionally excluded: fail is also used for real
-// validation logic (e.g. unsupported kube version) that can trigger even when
-// all values are present, so classifying it as expected would silence genuine
-// chart errors.
+// expectedHelmRenderErrorSignatures matches render failures caused by values
+// that only exist at deploy time, which is the expected failure mode for a
+// chart rendered at scan time with its default values alone:
+//   - Go template errors on absent values (nil pointer, missing key or field,
+//     indexing, ranging or converting nil, wrong type for an empty value);
+//   - "execution error at (": Helm rewrites the "error calling required:" and
+//     "error calling fail:" helpers to this shape before the error reaches the
+//     scan, so a required value and a deliberate fail are indistinguishable;
+//   - a named template that is "not defined" or has no "associated" template:
+//     the helper lives in a parent or library chart that is not part of the
+//     scan, so a subchart rendered alone or a chart relying on a deploy-time
+//     library cannot resolve it.
+//
+// Other chart errors such as an incompatible kubeVersion or invalid rendered
+// YAML do not match and stay at error level.
 var expectedHelmRenderErrorSignatures = []string{
 	"nil pointer evaluating",
 	"map has no entry for key",
 	"can't evaluate field",
 	"error calling required:",
+	"error calling fail:",
+	"execution error at (",
+	"interface conversion: interface {} is nil",
+	"index of untyped nil",
+	"len of nil pointer",
+	"on zero Value",
+	"wrong type for value",
+	"range can't iterate over",
 }
 
-func isExpectedHelmRenderError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	for _, sig := range expectedHelmRenderErrorSignatures {
+// unresolvableHelmTemplateSignatures matches a named template the scan cannot
+// find. It is only expected for logging: in a pushed scan the missing helper
+// may be a file that has not been sent yet, so it still asks for the files.
+//
+// A template is reported as `template "x" not defined`, a misspelled function
+// as `function "x" not defined`: only the first one is a missing helper.
+var unresolvableHelmTemplateSignatures = []string{
+	`" associated with template`,
+}
+
+var undefinedHelmTemplate = regexp.MustCompile(`template "[^"]*" not defined`)
+
+func containsAny(msg string, signatures []string) bool {
+	for _, sig := range signatures {
 		if strings.Contains(msg, sig) {
 			return true
 		}
@@ -352,16 +383,21 @@ func isExpectedHelmRenderError(err error) bool {
 	return false
 }
 
-// helmRenderNeedsNoFiles reports a render failure that re-pushing the chart
-// cannot fix: a missing deploy-time value, or Helm's rewritten required/fail
-// error. Helm strips "error calling required:" down to "execution error at
-// (<file>): <message>" before the error reaches the scan, and fail uses that
-// same shape. A missing template include does not.
-func helmRenderNeedsNoFiles(err error) bool {
-	if isExpectedHelmRenderError(err) {
-		return true
+func isExpectedHelmRenderError(err error) bool {
+	if err == nil {
+		return false
 	}
-	return err != nil && strings.Contains(err.Error(), "execution error at (")
+	msg := err.Error()
+	return containsAny(msg, expectedHelmRenderErrorSignatures) ||
+		containsAny(msg, unresolvableHelmTemplateSignatures) ||
+		undefinedHelmTemplate.MatchString(msg)
+}
+
+// helmRenderNeedsNoFiles reports a render failure that re-pushing the chart
+// cannot fix because it comes from a missing deploy-time value. A missing
+// template include does not.
+func helmRenderNeedsNoFiles(err error) bool {
+	return err != nil && containsAny(err.Error(), expectedHelmRenderErrorSignatures)
 }
 
 // isCommentOnlyContent returns true when every non-blank line in content starts
