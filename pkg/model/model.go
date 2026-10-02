@@ -97,6 +97,13 @@ type VulnerabilityLines struct {
 	ResourceSource         string
 	FileSource             []string
 	BlockLocation          ResourceLocation
+	// TransformedSearchKey is set for TFPlan: the transformed searchKey after module mapping
+	// (e.g., "module.vpc.resource_tags" instead of "module.vpc.aws_instance.web.tags").
+	TransformedSearchKey string
+	// SecondaryLines is set for module_default findings where the insecure default was not
+	// overridden by the module call. Both locations are independently actionable:
+	// the primary points at the variable default in variables.tf, the secondary at the call block.
+	SecondaryLines *VulnerabilityLines
 }
 
 // CommentCommand represents a command given from a comment
@@ -374,6 +381,15 @@ type QueryMetadata struct {
 
 // Vulnerability is a representation of a detected vulnerability in scanned files
 // after running a query
+// TerraformSource values identify which document(s) produced a Terraform finding, surfaced in
+// SARIF as DATADOG_TERRAFORM_SOURCE. Only meaningful when Platform is "terraform"; empty for
+// every other platform.
+const (
+	TerraformSourceTFPlan    = "TFPLAN"
+	TerraformSourceHCL       = "HCL"
+	TerraformSourceTFPlanHCL = "TFPLAN_HCL"
+)
+
 type Vulnerability struct {
 	ID                    int              `json:"id"`
 	ScanID                string           `db:"scan_id" json:"-"`
@@ -421,6 +437,18 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// TerraformSource marks which document(s) produced a Terraform finding (TerraformSourceTFPlan,
+	// TerraformSourceHCL, or TerraformSourceTFPlanHCL). Set regardless of whether a TFPlan finding
+	// was resolved back to an HCL source line (see pkg/detector/tfplan_detect.go) - it reflects
+	// which document(s) produced the finding, not where it's reported as pointing. When an
+	// HCL-sourced and a TFPlan-sourced finding for the same resource collapse into one during
+	// dedup (internal/storage's getUniqueVulnerabilities), the surviving record is marked
+	// TerraformSourceTFPlanHCL.
+	TerraformSource string `db:"terraform_source" json:"terraformSource,omitempty"`
+	// SecondaryVulnerabilityLines is set transiently when a module_default finding has two
+	// independently actionable locations (variable default + module call block). The engine
+	// decode loop emits a second Vulnerability from this field. Not persisted to DB/JSON.
+	SecondaryVulnerabilityLines *VulnerabilityLines `json:"-" db:"-"`
 }
 
 // Framework represents a framework mapping for a query

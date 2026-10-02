@@ -70,7 +70,7 @@ func createServices(types, cloudProviders []string) (serviceSlice, *storage.Memo
 	combinedParser, err := parser.NewBuilder(ctx).
 		Add(&jsonParser.Parser{}).
 		Add(&yamlParser.Parser{}).
-		Add(terraformParser.NewDefault()).
+		Add(terraformParser.NewWithoutRegistry()).
 		Build(types, cloudProviders)
 	if err != nil {
 		return nil, nil, err

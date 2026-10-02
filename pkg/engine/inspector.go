@@ -264,6 +264,10 @@ type Inspector struct {
 	// evalGcRelief enables the eval-phase forced-GC ticker; the scanner sets it
 	// from its live-heap gate (see SetEvalGcRelief).
 	evalGcRelief bool
+	moduleMappings         map[string]interface{} // Stored after Inspect() for use by tracker
+	// moduleMappingsMu guards moduleMappings for the same reason failedQueriesMu
+	// guards failedQueries: concurrent Inspect() calls can share this Inspector.
+	moduleMappingsMu sync.Mutex
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -575,6 +579,26 @@ func (c *Inspector) Inspect(
 		return nil, err
 	}
 
+	// Step 3: Convert module mappings to format expected by TFPlanDetectLine and store in inspector
+	moduleMappings := convertModuleMappings(enrichedModules)
+	c.moduleMappingsMu.Lock()
+	c.moduleMappings = moduleMappings
+	c.moduleMappingsMu.Unlock()
+	contextLogger.Info().
+		Int("moduleCount", len(moduleMappings)).
+		Msg("Converted and stored module mappings")
+
+	// Step 4: Set module mappings on tracker so they're available to vulnerability builder
+	// Check if tracker supports module mappings (TFPlanDetectorRegistry interface)
+	if trackerWithMappings, ok := c.tracker.(interface {
+		SetModuleMappings(map[string]interface{})
+	}); ok && len(moduleMappings) > 0 {
+		trackerWithMappings.SetModuleMappings(moduleMappings)
+		contextLogger.Info().
+			Int("moduleCount", len(moduleMappings)).
+			Msg("Set module mappings on tracker for use by vulnerability builder")
+	}
+
 	// Synthetic files stand in for module instantiations of a file that has
 	// already been read; they are only joined once findings need to be
 	// attributed back to a call site. Adding them any earlier would have every
@@ -837,6 +861,67 @@ func (c *Inspector) GetFailedQueries() map[string]error {
 	c.failedQueriesMu.Lock()
 	defer c.failedQueriesMu.Unlock()
 	return maps.Clone(c.failedQueries)
+}
+
+// GetModuleMappings returns the module mappings computed during Inspect().
+// It returns a copy taken under moduleMappingsMu so callers can read the
+// result safely even if a scan is still writing to the underlying map.
+func (c *Inspector) GetModuleMappings() map[string]interface{} {
+	c.moduleMappingsMu.Lock()
+	defer c.moduleMappingsMu.Unlock()
+	return maps.Clone(c.moduleMappings)
+}
+
+// moduleMappingKey builds a call-site-unique key for a parsed module block: FileName and DefLine
+// together identify the exact "module" block, so this can never collide across scopes (unlike
+// keying by Name alone) or across same-source-different-version remote calls (unlike Source+Name).
+func moduleMappingKey(module *tfmodules.ParsedModule) string {
+	return module.FileName + ":" + strconv.Itoa(module.DefLine) + "::" + module.Name
+}
+
+// convertModuleMappings converts []ParsedModule to the map format expected by TFPlanDetectLine
+// Expected format: map[moduleKey]->AttributesData->provider->inputs->map[attr]variableName
+func convertModuleMappings(enrichedModules []tfmodules.ParsedModule) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	for i := range enrichedModules {
+		module := &enrichedModules[i]
+		// Convert AttributesData from map[string]ModuleAttributesInfo to map[string]interface{}
+		attributesData := make(map[string]interface{})
+
+		for provider, info := range module.AttributesData {
+			// Convert ModuleAttributesInfo to map[string]interface{}
+			providerData := make(map[string]interface{})
+
+			// Convert Inputs map[string]string to map[string]interface{}
+			inputs := make(map[string]interface{})
+			for k, v := range info.Inputs {
+				inputs[k] = v
+			}
+			providerData["inputs"] = inputs
+
+			// Also include resources for completeness
+			resources := make([]interface{}, len(info.Resources))
+			for i, r := range info.Resources {
+				resources[i] = r
+			}
+			providerData["resources"] = resources
+
+			attributesData[provider] = providerData
+		}
+
+		// Build the module entry
+		moduleEntry := make(map[string]interface{})
+		moduleEntry["AttributesData"] = attributesData
+		moduleEntry["Source"] = module.Source       // Store source for reference
+		moduleEntry["AbsSource"] = module.AbsSource // Store absolute source
+		moduleEntry["Version"] = module.Version
+		moduleEntry["Name"] = module.Name
+
+		result[moduleMappingKey(module)] = moduleEntry
+	}
+
+	return result
 }
 
 func ruleArgumentsValue(rc config.IacRuleConfig) (ast.Value, bool, error) {
@@ -1372,7 +1457,35 @@ decodeLoop:
 				failedDetectLine = aux
 			}
 			if vulnerability != nil && !aux {
-				vulnerabilities = append(vulnerabilities, *vulnerability)
+				// Fan-out: if the detector produced a secondary location (module_default case),
+				// emit a second finding with the secondary location (e.g. module call block)
+				// alongside the primary (e.g. variable default line). Both are independently actionable.
+				if secondary := vulnerability.SecondaryVulnerabilityLines; secondary != nil {
+					secondaryVuln := *vulnerability
+					secondaryVuln.FileName = secondary.ResolvedFile
+					secondaryVuln.Line = secondary.Line
+					secondaryVuln.VulnerabilityLocation = model.ResourceLocation{
+						Start: secondary.VulnerablilityLocation.Start,
+						End:   secondary.VulnerablilityLocation.End,
+					}
+					secondaryVuln.RemediationLocation = model.ResourceLocation{
+						Start: secondary.RemediationLocation.Start,
+						End:   secondary.RemediationLocation.End,
+					}
+					secondaryVuln.VulnLines = secondary.VulnLines
+					secondaryVuln.ResourceSource = secondary.ResourceSource
+					secondaryVuln.FileSource = secondary.FileSource
+					secondaryVuln.BlockLocation = secondary.BlockLocation
+					if secondary.TransformedSearchKey != "" {
+						secondaryVuln.SearchKey = secondary.TransformedSearchKey
+					}
+					secondaryVuln.SecondaryVulnerabilityLines = nil
+
+					vulnerability.SecondaryVulnerabilityLines = nil
+					vulnerabilities = append(vulnerabilities, *vulnerability, secondaryVuln)
+				} else {
+					vulnerabilities = append(vulnerabilities, *vulnerability)
+				}
 			}
 		}
 	}
@@ -2491,7 +2604,7 @@ func normalizeKeyExpr(expr hclsyntax.Expression) hclsyntax.Expression {
 	expr = hclexpr.Unwrap(expr)
 
 	v := reflect.ValueOf(expr)
-	if v.Kind() == reflect.Ptr && !v.IsNil() {
+	if v.Kind() == reflect.Pointer && !v.IsNil() {
 		elem := v.Elem()
 		if elem.Kind() == reflect.Struct {
 			field := elem.FieldByName("KeyExpr")
