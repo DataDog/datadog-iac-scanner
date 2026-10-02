@@ -49,7 +49,6 @@ func TestCreateSummary(t *testing.T) {
 			Severity:  SeverityHigh,
 			Line:      1,
 			SearchKey: "searchKey",
-			Output:    "-",
 		},
 	}
 

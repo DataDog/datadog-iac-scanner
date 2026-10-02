@@ -99,7 +99,6 @@ func TestMemoryStorage(t *testing.T) { //nolint
 						QueryName:        "query_name",
 						Line:             1,
 						SearchKey:        "search_key",
-						Output:           "-",
 					},
 				},
 				allFiles: model.FileMetadatas{
@@ -136,7 +135,6 @@ func TestMemoryStorage(t *testing.T) { //nolint
 						QueryName:        "query_name",
 						Line:             1,
 						SearchKey:        "search_key",
-						Output:           "-",
 					},
 				},
 			},
@@ -204,7 +202,6 @@ func TestMemoryStorage_SaveVulnerabilities(t *testing.T) {
 						QueryName:        "query_name",
 						Line:             1,
 						SearchKey:        "search_key",
-						Output:           "-",
 					},
 				},
 			},

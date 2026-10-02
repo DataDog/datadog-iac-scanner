@@ -36,6 +36,7 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		FoundAtLeastOne: false,
 		ResolvedFile:    file.FilePath,
 		ResolvedFiles:   d.prepareResolvedFiles(file.ResolvedFiles),
+		File:            file,
 	}
 
 	lines := file.Lines()
@@ -145,6 +146,9 @@ func detectTerraformPlanLine(
 		return nil
 	}
 	lineNr := GetLineBySearchLine(path, file)
+	if lineNr < 1 {
+		lineNr = planBlockLine(file.LineInfoDocument, path)
+	}
 	// lineNr == 1 means _dd_lines were computed from minified (single-line) JSON;
 	// the plan opening "{" sits on line 1 so that value is never a real attribute
 	// line. Fall through to text matching, which runs on the pretty-printed content.
@@ -369,4 +373,80 @@ func (d defaultDetectLine) prepareResolvedFiles(resFiles map[string]model.Resolv
 		}
 	}
 	return resolvedFiles
+}
+
+// planBlockLine resolves a resource.<type>.<name>.<attr>... path through plan
+// line info. Plan JSON wraps every nested block in a one-element array, whose
+// element line info lives in the parent's _dd_<key>._dd_arr rather than in the
+// element, so it walks the document and its line map together. Blocks without
+// an explicit index resolve only when the array has a single element. Returns
+// -1 when the path does not resolve.
+func planBlockLine(doc interface{}, path []string) int {
+	const resourcePathLen = 3
+	if len(path) <= resourcePathLen {
+		return -1
+	}
+	node, ok := resolvePath(doc, path[:resourcePathLen])
+	if !ok {
+		return -1
+	}
+	lineMap, ok := childAt(node, "_dd_lines")
+	if !ok {
+		return -1
+	}
+	for i := resourcePathLen; i < len(path); i++ {
+		entry, ok := childAt(lineMap, "_dd_"+path[i])
+		if !ok {
+			return -1
+		}
+		if i == len(path)-1 {
+			return lineAtPath(entry, []string{"_dd_line"})
+		}
+		child, ok := childAt(node, path[i])
+		if !ok {
+			return -1
+		}
+		switch c := child.(type) {
+		case []interface{}:
+			element, elementLines, consumed, ok := planArrayElement(c, entry, path, i)
+			if !ok {
+				return -1
+			}
+			i += consumed
+			if i == len(path)-1 {
+				return lineAtPath(elementLines, []string{"_dd__default", "_dd_line"})
+			}
+			node, lineMap = element, elementLines
+		case map[string]interface{}:
+			node = c
+			if lineMap, ok = childAt(c, "_dd_lines"); !ok {
+				return -1
+			}
+		default:
+			return -1
+		}
+	}
+	return -1
+}
+
+// planArrayElement selects the element of a plan block array that path[i]
+// addresses. A numeric path[i+1] is the explicit index and counts as consumed;
+// without one the array must hold exactly one element. It returns the element,
+// its line info and the number of extra path segments consumed.
+func planArrayElement(arr []interface{}, entry interface{}, path []string, i int) (element, lines interface{}, consumed int, ok bool) {
+	idx := 0
+	if n, err := strconv.Atoi(path[i+1]); err == nil {
+		idx = n
+		consumed = 1
+	} else if len(arr) != 1 {
+		return nil, nil, 0, false
+	}
+	if idx < 0 || idx >= len(arr) {
+		return nil, nil, 0, false
+	}
+	lines, ok = resolvePath(entry, []string{"_dd_arr", strconv.Itoa(idx)})
+	if !ok {
+		return nil, nil, 0, false
+	}
+	return arr[idx], lines, consumed, true
 }

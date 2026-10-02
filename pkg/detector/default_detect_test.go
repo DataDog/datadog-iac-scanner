@@ -664,3 +664,78 @@ func Test_defaultDetectLine_prepareResolvedFiles(t *testing.T) {
 		})
 	}
 }
+
+func Test_detectLineTerraformPlanNestedBlocks(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [{
+        "address": "kubernetes_deployment.app",
+        "type": "kubernetes_deployment",
+        "name": "app",
+        "values": {
+          "spec": [
+            {
+              "template": [
+                {
+                  "spec": [
+                    {
+                      "container": [
+                        {
+                          "image": "nginx",
+                          "name": "first"
+                        },
+                        {
+                          "image": "redis",
+                          "name": "second"
+                        }
+                      ],
+                      "host_network": true
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }]
+    }
+  },
+  "configuration": {
+    "root_module": {
+      "resources": [{
+        "address": "kubernetes_deployment.app",
+        "expressions": {
+          "host_network": {
+            "constant_value": true
+          }
+        }
+      }]
+    }
+  }
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+	tests := []struct {
+		searchKey string
+		want      int
+	}{
+		{"kubernetes_deployment[app].spec.template.spec.host_network", 26},
+		{"kubernetes_deployment[app].spec.template.spec.container[1].image", 22},
+		{"kubernetes_deployment[app].spec.template.spec.container", 16},
+	}
+	for _, tt := range tests {
+		t.Run(tt.searchKey, func(t *testing.T) {
+			got := defaultDetectLine{}.DetectLine(context.Background(), file, tt.searchKey, 0)
+			require.Equal(t, tt.want, got.Line)
+		})
+	}
+}
