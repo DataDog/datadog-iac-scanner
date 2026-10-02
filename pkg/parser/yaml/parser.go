@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
+	fixtureutils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
@@ -102,7 +103,11 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 		}
 		doc := model.Document{}
 		if err := doc.UnmarshalYAML(ctx, contentNode, ignore); err != nil {
-			contextLogger.Warn().Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
+			event := contextLogger.Warn()
+			if fixtureutils.IsTestFixturePath(filePath) {
+				event = contextLogger.Debug()
+			}
+			event.Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
 			continue
 		}
 

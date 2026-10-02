@@ -413,15 +413,15 @@ func fillModuleAttrs(
 	resolved := resolveExpr(block.source, localsMap, varsMap)
 	mod.Source = resolved
 	mod.SourceType, mod.RegistryScope = DetectModuleSourceType(resolved)
-	mod.IsLocal = LooksLikeLocalModuleSource(strings.TrimPrefix(resolved, "git::"))
+	// Strip go-getter prefixes once (mirroring tfeval) so compound sources like
+	// "git::file://./x" are classified and resolved as the local path they
+	// denote, per ResolveLocalModuleDir's contract of a prefix-free source.
+	sourcePath := StripGetterPrefix(resolved)
+	mod.IsLocal = LooksLikeLocalModuleSource(sourcePath)
 	if !mod.IsLocal {
 		return
 	}
-	sourcePath := strings.TrimPrefix(resolved, "file://")
-	absPath := filepath.Clean(sourcePath)
-	if !filepath.IsAbs(sourcePath) {
-		absPath = filepath.Join(baseDir, sourcePath)
-	}
+	absPath := ResolveLocalModuleDir(fsys, baseDir, sourcePath)
 	var err error
 	mod.AbsSource, err = fsys.Abs(absPath)
 	if err != nil {
@@ -432,7 +432,11 @@ func fillModuleAttrs(
 		return
 	}
 	if err = validateModuleSource(fsys, mod.AbsSource); err != nil {
-		log.Warn().Msgf("Invalid local module source %q: %v", mod.Source, err)
+		event := log.Warn()
+		if utils.IsTestFixturePath(mod.AbsSource) {
+			event = log.Debug()
+		}
+		event.Msgf("Invalid local module source %q: %v", mod.Source, err)
 	}
 }
 
@@ -820,10 +824,13 @@ func enrichModule(
 	}
 	mod.AbsSource = localPath
 	attributesData, enrichErr := cache.attributesFor(ctx, localPath)
-	if enrichErr != nil {
-		contextLogger.Warn().Msg("Failed to generate equivalent map")
-	} else {
+	switch {
+	case enrichErr == nil:
 		mod.AttributesData = attributesData
+	case errors.Is(enrichErr, os.ErrNotExist):
+		// fillModuleAttrs already warns about a missing local source.
+	default:
+		contextLogger.Warn().Msgf("Failed to generate equivalent map for module %s at %s: %v", mod.Name, localPath, enrichErr)
 	}
 	return ModuleParseResult{Module: *mod, Error: enrichErr}
 }
