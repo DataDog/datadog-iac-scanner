@@ -159,16 +159,10 @@ func resolveLocalDir(callerDir, source string) string {
 
 // StripGetterPrefix removes go-getter scheme prefixes so the source can be treated as a path.
 // Compound prefixes like "git::file://./path" are fully stripped in two passes.
+// The implementation lives in tfmodules so the module parser classifies and
+// resolves sources with the same stripping.
 func StripGetterPrefix(source string) string {
-	source = strings.TrimSpace(source)
-	for _, scheme := range []string{"git::", "hg::", "http::", "https::"} {
-		if after, ok := strings.CutPrefix(source, scheme); ok {
-			source = after
-			break
-		}
-	}
-	source = strings.TrimPrefix(source, "file://")
-	return source
+	return tfmodules.StripGetterPrefix(source)
 }
 
 // isEmptyCollection returns true when attr evaluates to a known empty collection under ctx.
