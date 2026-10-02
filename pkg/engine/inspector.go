@@ -1461,9 +1461,10 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		if rc.Severity != nil {
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
-		if !c.isExternalModulePath(file.FilePath) && rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+		reportedPath := reportedFilePath(file)
+		if !c.isExternalModulePath(reportedPath) && rulePathExcluded(reportedPath, rc.IgnorePaths, rc.OnlyPaths) {
 			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
-				file.FilePath, vulnerability.QueryID)
+				reportedPath, vulnerability.QueryID)
 			return nil, false
 		}
 	}
@@ -1487,7 +1488,19 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		markSuppressed(vulnerability, model.SuppressionKindInSource, model.SuppressionJustificationIgnoreComment)
 	}
 
+	// Last, so the line checks above still use the lines of the file the
+	// finding was detected in.
+	file.Reported.Apply(vulnerability)
+
 	return vulnerability, false
+}
+
+// reportedFilePath is the file findings of the document are reported in.
+func reportedFilePath(file *model.FileMetadata) string {
+	if file.Reported != nil {
+		return file.Reported.Path
+	}
+	return file.FilePath
 }
 
 // lookupRuleConfig returns the first matching rule config for the given queryID or legacyQueryID.
