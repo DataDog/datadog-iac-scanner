@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	consoleHelpers "github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
@@ -224,6 +225,27 @@ func logLoadingQueriesType(ctx context.Context, types []string) {
 	}
 
 	contextLogger.Info().Msgf("Loading queries of type: %s", strings.Join(types, ", "))
+}
+
+// inMemoryChartRoots derives Helm chart roots from content-push scan paths:
+// the parent directories of pushed Chart.yaml files, in the same slash form
+// the analyzer produces for disk walks, so the Helm resolver's chart index
+// works in server (in-memory) scans too.
+func inMemoryChartRoots(paths []string) []string {
+	var roots []string
+	seen := make(map[string]bool)
+	for _, path := range paths {
+		if filepath.Base(path) != "Chart.yaml" {
+			continue
+		}
+		root := filepath.ToSlash(filepath.Dir(path))
+		if !seen[root] {
+			seen[root] = true
+			roots = append(roots, root)
+		}
+	}
+	sort.Strings(roots)
+	return roots
 }
 
 func extractPathType(paths []string) (regular, kuberneter []string) {

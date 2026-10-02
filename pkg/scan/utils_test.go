@@ -402,3 +402,42 @@ func Test_PreparePaths(t *testing.T) {
 		})
 	}
 }
+
+// TestInMemoryChartRoots covers the server-mode Helm chart-root derivation:
+// content-push scans do not run the analyzer's disk walk, so the roots fed to
+// the Helm resolver's chart index come from the pushed paths (the parents of
+// Chart.yaml files), in the same slash form the analyzer produces.
+func TestInMemoryChartRoots(t *testing.T) {
+	tests := []struct {
+		name  string
+		paths []string
+		want  []string
+	}{
+		{
+			name:  "no chart files",
+			paths: []string{"main.tf", "charts/app/values.yaml"},
+			want:  nil,
+		},
+		{
+			name: "chart roots among pushed files",
+			paths: []string{
+				"main.tf",
+				"charts/app/Chart.yaml",
+				"charts/app/values.yaml",
+				"charts/app/templates/cm.yaml",
+				"charts/other/Chart.yaml",
+			},
+			want: []string{"charts/app", "charts/other"},
+		},
+		{
+			name:  "duplicate roots are deduplicated",
+			paths: []string{"charts/app/Chart.yaml", "charts/app/values.yaml"},
+			want:  []string{"charts/app"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, inMemoryChartRoots(tt.paths))
+		})
+	}
+}

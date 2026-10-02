@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -62,7 +63,8 @@ func (s *Service) storeResolvedFiles(
 	maxResolverDepth int) {
 	contextLogger := logger.FromContext(ctx)
 	sourceCache := make(map[string]*resolvedSourceData)
-	for _, rfile := range resFiles.File {
+	for i := range resFiles.File {
+		rfile := &resFiles.File[i]
 		if isHelmJSONFile(kind, rfile.FileName) && s.Parser.Parsers.GetKind() != model.KindYAML {
 			continue
 		}
@@ -86,7 +88,7 @@ func (s *Service) storeResolvedFiles(
 			continue
 		}
 
-		s.setResolvedLineMetadata(ctx, &documents, &rfile, sourceCache, kind,
+		s.setResolvedLineMetadata(ctx, &documents, rfile, sourceCache, kind,
 			openAPIResolveReferences, isMinified, maxResolverDepth)
 
 		cached := sourceCache[rfile.FileName]
@@ -116,6 +118,7 @@ func (s *Service) storeResolvedFiles(
 				LineInfoDocument:  lineInfoDocument,
 				Kind:              kind,
 				FilePath:          rfile.FileName,
+				Reported:          rfile.Reported,
 				HelmID:            rfile.SplitID,
 				HelmInvocation:    rfile.HelmInvocation,
 				Commands:          cached.commands,
@@ -128,7 +131,7 @@ func (s *Service) storeResolvedFiles(
 			}
 			if kind == model.KindHELM {
 				file.SetLineInfoLoader(newHelmLineInfoLoader(
-					s.Parser, &rfile, ownedRenderedContent, docIdx,
+					s.Parser, rfile, ownedRenderedContent, docIdx,
 					openAPIResolveReferences, isMinified, maxResolverDepth))
 			}
 			s.saveToFile(ctx, &file)
@@ -411,10 +414,7 @@ func isCommentOnlyContent(content []byte) bool {
 	return true
 }
 
-var (
-	helmIDLinePattern         = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+:[^\r\n]*(?:\r?\n|$)`)
-	helmTemplateActionPattern = regexp.MustCompile(`{{-\s*(.*?)\s*}}`)
-)
+var helmIDLinePattern = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+:[^\r\n]*(?:\r?\n|$)`)
 
 func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	originalFile []uint8,
@@ -422,7 +422,7 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ignoreLines []int, err error) {
 	refactor := helmIDLinePattern.ReplaceAll(originalFile, nil)
-	refactor = helmTemplateActionPattern.ReplaceAll(refactor, nil)
+	refactor = helm.BlankTemplateActions(refactor)
 
 	documentsOriginal, err := s.parseResolvedFile(
 		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)

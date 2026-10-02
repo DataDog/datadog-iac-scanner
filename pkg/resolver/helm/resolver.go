@@ -24,12 +24,22 @@ import (
 // Resolver is an instance of the helm resolver. A nil fsys falls back to the
 // real filesystem; the server passes the request's in-memory FS.
 type Resolver struct {
-	fsys vfs.FS
+	fsys       vfs.FS
+	chartIndex *chartIndex
 }
 
 // NewResolver builds a helm resolver reading chart files from fsys.
 func NewResolver(fsys vfs.FS) *Resolver {
 	return &Resolver{fsys: fsys}
+}
+
+// WithChartRoots lets missing chart dependencies be resolved from the other
+// charts in the scan (see attachMissingDependencies).
+func (r *Resolver) WithChartRoots(roots []string) *Resolver {
+	if len(roots) > 0 {
+		r.chartIndex = newChartIndex(r.filesystem(), roots)
+	}
+	return r
 }
 
 // splitManifest keeps the information of the manifest splitted by source
@@ -42,7 +52,13 @@ type splitManifest struct {
 	helmInvocation      model.ResourceLine
 	splitIDMap          map[int]interface{}
 	isCRD               bool
+	// realPath is where the source file lives when Helm names it after the
+	// place a dependency was attached at, which is not a path of the scan.
+	realPath string
 }
+
+// dependenciesDirName is the chart subdirectory Helm loads subcharts from.
+const dependenciesDirName = "charts"
 
 const (
 	kicsHelmID         = "# KICS_HELM_ID_"
@@ -66,7 +82,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 		}
 	}()
 	fsys := r.filesystem()
-	splits, excluded, err := renderHelm(ctx, fsys, filePath)
+	splits, excluded, err := renderHelm(ctx, fsys, r.chartIndex, filePath)
 	if err != nil {
 		return model.ResolvedFiles{}, errors.Wrap(err, "failed to render helm chart")
 	}
@@ -77,15 +93,28 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 		Excluded: excluded,
 	}
 	contextLogger.Debug().Msgf("Processing %d helm manifest splits from chart '%s'", len(*splits), filePath)
-	for _, split := range *splits {
+	for i := range *splits {
+		split := &(*splits)[i]
 		sourceKey := chartSourceKey(split.path)
 		chartRelative, ok := chartRelativeFromSource(sourceKey)
 		if !ok {
 			continue
 		}
 		origpath := resolvedChartFilePath(filePath, chartRelative, slashPaths)
+		var reported *model.ReportedLocation
+		if split.realPath != "" {
+			origpath = split.realPath
+			if slashPaths {
+				origpath = filepath.ToSlash(origpath)
+			}
+		} else if !slashPaths {
+			// The server reports packaged subcharts through its archive_files map
+			// instead, so only a disk scan needs the archive named here.
+			reported = archivedDependencyLocation(fsys, origpath)
+		}
 		rfiles.File = append(rfiles.File, model.ResolvedHelm{
 			FileName:            origpath,
+			Reported:            reported,
 			Content:             split.content,
 			OriginalData:        split.original,
 			SplitID:             split.splitID,
@@ -127,15 +156,15 @@ func chartYAMLDeclaresLibrary(data []byte) bool {
 }
 
 // renderHelm will use helm library to render helm charts
-func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest, []string, error) {
+func renderHelm(ctx context.Context, fsys vfs.FS, index *chartIndex, path string) (*[]splitManifest, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	client := newClient(ctx)
 	contextLogger.Debug().Msg("Running helm install")
-	manifest, loadedChart, excluded, err := runInstall(ctx, path, fsys, client, &values.Options{})
+	manifest, loadedChart, excluded, locator, err := runInstall(ctx, path, fsys, index, client, &values.Options{})
 	if err != nil {
 		return nil, []string{}, err
 	}
-	splitted, err := splitManifestYAML(manifest, loadedChart)
+	splitted, err := splitManifestYAML(manifest, loadedChart, locator)
 	if err != nil {
 		return nil, []string{}, err
 	}
@@ -143,13 +172,19 @@ func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest
 }
 
 // splitManifestYAML will split the rendered file and return its content by template as well as the template path
-func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]splitManifest, error) {
+//
+// For files of dependencies attached from elsewhere in the scan it also reports,
+// through locator, the path they really have.
+func splitManifestYAML(
+	template *release.Release, loadedChart *chart.Chart, locator fileLocator,
+) (*[]splitManifest, error) {
 	sourceChart := loadedChart
 	if sourceChart == nil {
 		sourceChart = template.Chart
 	}
 	sources := make([]*chart.File, 0)
-	sources = updateName(sources, sourceChart, sourceChart.Name())
+	realPaths := map[string]string{}
+	sources = updateName(sources, sourceChart, sourceChart.Name(), locator, realPaths)
 	var splitedManifest []splitManifest
 	splitedSource := splitHelmManifest(template.Manifest)
 	sourceData := indexSources(sources)
@@ -201,6 +236,7 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 			helmInvocation:      helmInvocation,
 			splitIDMap:          source.idMap,
 			isCRD:               source.isCRD,
+			realPath:            realPaths[sourceKey],
 		})
 	}
 	return &splitedManifest, nil
@@ -379,12 +415,23 @@ func indexSources(files []*chart.File) map[string]*sourceMetadata {
 	return sources
 }
 
+// BlankTemplateActions removes every template action from source and keeps the
+// newlines they spanned, so the line numbers of what remains are unchanged.
+func BlankTemplateActions(source []byte) []byte {
+	return templateActionRE.ReplaceAllFunc(source, func(action []byte) []byte {
+		return bytes.Repeat([]byte{'\n'}, bytes.Count(action, []byte{'\n'}))
+	})
+}
+
 func stripHelmInvocationActions(source []byte) []byte {
 	return templateActionRE.ReplaceAllFunc(source, func(action []byte) []byte {
-		if bytes.Contains(action, []byte(kicsHelmInvocation)) {
-			return nil
+		if !bytes.Contains(action, []byte(kicsHelmInvocation)) {
+			return action
 		}
-		return action
+		if original, ok := restoreMarkedInclude(action); ok {
+			return original
+		}
+		return nil
 	})
 }
 
@@ -398,7 +445,7 @@ func isCRDSourcePath(name string) bool {
 		switch parts[index] {
 		case crdDirName:
 			return index+1 < len(parts)
-		case "charts":
+		case dependenciesDirName:
 			index += 2
 		default:
 			return false
@@ -408,24 +455,33 @@ func isCRDSourcePath(name string) bool {
 }
 
 // updateName will update the templates name as well as its dependencies
-func updateName(template []*chart.File, charts *chart.Chart, name string) []*chart.File {
+func updateName(
+	template []*chart.File, charts *chart.Chart, name string, locator fileLocator, realPaths map[string]string,
+) []*chart.File {
 	name = helmChartPath(name)
 	if name != charts.Name() {
 		name = helmChartPath(name, charts.Name())
 	}
 	for _, temp := range charts.Templates {
 		temp.Name = helmChartPath(name, temp.Name)
+		if located, ok := locator[temp]; ok {
+			realPaths[chartSourceKey(temp.Name)] = located
+		}
 	}
 	template = append(template, charts.Templates...)
 	for _, f := range localCRDFiles(charts) {
 		rel := crdChartRelativePath(f.Name)
-		template = append(template, &chart.File{
+		located := &chart.File{
 			Name: helmChartPath(name, rel),
 			Data: f.Data,
-		})
+		}
+		if source, ok := locator[f]; ok {
+			realPaths[chartSourceKey(located.Name)] = source
+		}
+		template = append(template, located)
 	}
 	for _, dep := range charts.Dependencies() {
-		template = updateName(template, dep, helmChartPath(name, "charts"))
+		template = updateName(template, dep, helmChartPath(name, dependenciesDirName), locator, realPaths)
 	}
 	return template
 }
