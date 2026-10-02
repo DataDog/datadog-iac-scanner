@@ -623,7 +623,67 @@ func Test_checkHelm_memoizesEveryWalkedDirectory(t *testing.T) {
 	for _, d := range []string{templates, chart} {
 		v, ok := cache.Load(d)
 		require.True(t, ok, d)
-		require.True(t, v.(bool), d)
+		require.Equal(t, []string{filepath.ToSlash(chart)}, v.([]string), d)
+	}
+}
+
+// Only the files Helm itself reads are forced to Kubernetes; other YAML under a
+// chart root falls through to content classification.
+func Test_checkHelm_onlyHelmChartFiles(t *testing.T) {
+	dir := t.TempDir()
+	chart := filepath.Join(dir, "k8s")
+	sub := filepath.Join(chart, "charts", "sub")
+	require.NoError(t, os.MkdirAll(filepath.Join(sub, "ci"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chart, "Chart.yaml"), []byte("name: x\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "Chart.yaml"), []byte("name: sub\n"), 0o600))
+
+	ctx := context.Background()
+	cache := &sync.Map{}
+	for _, rel := range []string{"Chart.yaml", "values.yaml", "values-prod.yaml", "templates/a/b.yaml",
+		"crds/crd.yaml", "requirements.yaml", "charts/sub/ci/values.yaml"} {
+		require.True(t, checkHelm(ctx, filepath.Join(chart, filepath.FromSlash(rel)), cache), rel)
+	}
+	for _, rel := range []string{"values/us1.yaml", "lint.yaml", "lint_values.yaml", "ci/test-values.yaml", "deploy.yaml",
+		"fabric/permission.yaml", "service.datadog.yaml", "service-catalog/x/service.datadog.yaml"} {
+		require.False(t, checkHelm(ctx, filepath.Join(chart, filepath.FromSlash(rel)), cache), rel)
+	}
+}
+
+func Test_classifyFile_emptyChartValuesIsNotKubernetes(t *testing.T) {
+	chart := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(chart, "Chart.yaml"), []byte("name: x\n"), 0o600))
+	ctx := context.Background()
+	for content, want := range map[string]string{
+		"":                            "",
+		"\n\n":                        "",
+		"# only comments\n---\n# x\n": "",
+		"replicaCount: 1\n":           kubernetes,
+	} {
+		path := filepath.Join(chart, "values.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+		require.Equal(t, want, classifyFile(ctx, nil, path, []byte(content), nil, nil, nil), "content %q", content)
+	}
+}
+
+func Test_classifyFile_catalogEntityIsNotKubernetes(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"datadog v3", "apiVersion: v3\nkind: service\nmetadata:\n  name: x\n", ""},
+		{"quoted datadog v3", "apiVersion: \"v3\"\nkind: system\n", ""},
+		{"backstage", "apiVersion: backstage.io/v1alpha1\nkind: Component\n", ""},
+		{"core v1", "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n", kubernetes},
+		{"mixed documents", "apiVersion: v3\nkind: service\n---\napiVersion: apps/v1\nkind: Deployment\n", kubernetes},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "entity.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(tt.content), 0o600))
+			require.Equal(t, tt.want, classifyFile(ctx, nil, path, []byte(tt.content), nil, nil, nil))
+		})
 	}
 }
 
@@ -643,13 +703,13 @@ func Test_checkHelm_memoizesNegativeResultForAncestors(t *testing.T) {
 	for _, d := range []string{nested, filepath.Join(dir, "a"), dir} {
 		v, ok := cache.Load(d)
 		require.True(t, ok, d)
-		require.False(t, v.(bool), d)
+		require.Empty(t, v.([]string), d)
 	}
 
 	require.False(t, checkHelm(ctx, filepath.Join(sibling, "svc.yaml"), cache))
 	v, ok := cache.Load(sibling)
 	require.True(t, ok)
-	require.False(t, v.(bool))
+	require.Empty(t, v.([]string))
 }
 
 // An ignored directory is pruned rather than expanded into its files, so the
@@ -829,5 +889,32 @@ func Test_isInsideAnsibleTemplatesDir(t *testing.T) {
 		t.Run(tt.path, func(t *testing.T) {
 			require.Equal(t, tt.want, isInsideAnsibleTemplatesDir(tt.path))
 		})
+	}
+}
+
+func Test_isCatalogEntity(t *testing.T) {
+	tests := map[string]bool{
+		"apiVersion: v3\nkind: service":                                           true,
+		"apiVersion: backstage.io/v1alpha1\nkind: Component\n---\napiVersion: v3": true,
+		"apiVersion: v3\n---\napiVersion: apps/v1\nkind: Deployment":              false,
+		"apiVersion: apps/v1\nkind: Deployment\nimage: foo:v3":                    false,
+		"kind: service\n  apiVersion: v3":                                         false,
+		"":                                                                        false,
+	}
+	for content, want := range tests {
+		require.Equal(t, want, isCatalogEntity([]byte(content)), content)
+	}
+}
+
+func Test_hasYAMLContent(t *testing.T) {
+	tests := map[string]bool{
+		"":                         false,
+		"# comment\n---\n  \n":     false,
+		"---":                      false,
+		"# c\nkey: v":              true,
+		"\n\n  key: v\n# trailing": true,
+	}
+	for content, want := range tests {
+		require.Equal(t, want, hasYAMLContent([]byte(content)), content)
 	}
 }
