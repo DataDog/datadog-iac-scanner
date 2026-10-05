@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -452,4 +454,110 @@ func TestGenerateSubstringsDoesNotTreatTemplateSyntaxAsPlaceholder(t *testing.T)
 	require.Equal(t, `${{ github.ref }}`, first)
 	require.Empty(t, second)
 	require.Empty(t, logs.String())
+}
+
+// referenceDetectCurrentLine is the unoptimized selection: score every line
+// from start, then take the minimum distance, the lowest line on ties.
+func referenceDetectCurrentLine(str1, str2 string, start int, lines []string, kind model.FileKind) (int, model.ResourceLine, model.ResourceLine, bool) {
+	distances := map[int]int{}
+	starts, ends := map[int]model.ResourceLine{}, map[int]model.ResourceLine{}
+	for i := start; i < len(lines); i++ {
+		if distance, s, e, ok := checkLine(str1, str2, lines, i, kind); ok {
+			distances[i], starts[i], ends[i] = distance, s, e
+		}
+	}
+	if len(distances) == 0 {
+		return -1, model.ResourceLine{}, model.ResourceLine{}, false
+	}
+	line := SelectLineWithMinimumDistance(distances, start)
+	return line, starts[line], ends[line], true
+}
+
+func TestDetectCurrentLineMatchesFullScan(t *testing.T) {
+	lines := []string{
+		"- name: web",
+		"  azure_rm_securitygroup:",
+		"    name: webgroup",
+		"    rules:",
+		"      - name: webrule",
+		"        destination_port_range: \"22\"",
+		"- name: web2",
+		"  azure_rm_securitygroup:",
+		"    name: web2group",
+		"    rules:",
+		"      - name: webrule2",
+		"        destination_port_range: \"2222\"",
+		"        note: |",
+		"          port 22 is open",
+		"# name: commented",
+		"  name:web",
+		"name: web",
+	}
+	keys := []struct{ str1, str2 string }{
+		{"name", ""}, {"name: web", ""}, {"web", ""}, {"name", "web2"}, {"destination_port_range", "22"},
+		{"note", "port 22"}, {"rules", ""}, {"missing", ""}, {"", ""}, {"name", "zzz"},
+	}
+	for _, kind := range []model.FileKind{model.KindYAML, model.KindJSON} {
+		for _, cached := range []bool{false, true} {
+			for _, k := range keys {
+				for start := range lines {
+					file := &model.FileMetadata{OriginalData: strings.Join(lines, "\n")}
+					file.SetLazyLines()
+					d := &DefaultDetectLineResponse{CurrentLine: start}
+					if cached {
+						d.File = file
+					}
+					got, gotStart, gotEnd, _ := d.DetectCurrentLine(k.str1, k.str2, 0, file.Lines(), kind)
+
+					wantLine, wantStart, wantEnd, found := referenceDetectCurrentLine(k.str1, k.str2, start, file.Lines(), kind)
+					name := fmt.Sprintf("kind=%s cached=%v key=%q/%q start=%d", kind, cached, k.str1, k.str2, start)
+					require.Equal(t, !found, got.IsBreak, name)
+					if !found {
+						continue
+					}
+					require.Equal(t, wantLine, got.CurrentLine, name)
+					require.Equal(t, wantStart, gotStart, name)
+					require.Equal(t, wantEnd, gotEnd, name)
+				}
+			}
+		}
+	}
+}
+
+func TestDetectCurrentLineMatchesFullScanRandomized(t *testing.T) {
+	vocab := []string{
+		"name: web", "name: db", "  name: web1", "    - name: task a", "    - name: task b",
+		"state: latest", "  state: present", "port: \"22\"", "  note: |", "    port 22 is open",
+		"  note: >-", "    web is here", "# name: web", "// name: db", "  cmd: \\", "    web", "",
+		"key: value # web", "  - name: web", "name:web",
+	}
+	keys := [][2]string{
+		{"name", ""}, {"name", "web"}, {"name", "task a"}, {"name", "db"}, {"state", "latest"},
+		{"note", "port 22"}, {"note", "web"}, {"cmd", "web"}, {"web", ""}, {"state", ""}, {"port", "22"},
+	}
+	rng := rand.New(rand.NewSource(1))
+	for iter := 0; iter < 150; iter++ {
+		lines := make([]string, 5+rng.Intn(40))
+		for i := range lines {
+			lines[i] = vocab[rng.Intn(len(vocab))]
+		}
+		file := &model.FileMetadata{OriginalData: strings.Join(lines, "\n")}
+		file.SetLazyLines()
+		fileLines := file.Lines()
+		for _, kind := range []model.FileKind{model.KindYAML, model.KindJSON} {
+			for _, k := range keys {
+				start := rng.Intn(len(fileLines))
+				d := &DefaultDetectLineResponse{CurrentLine: start, File: file}
+				got, gotStart, gotEnd, _ := d.DetectCurrentLine(k[0], k[1], 0, fileLines, kind)
+				wantLine, wantStart, wantEnd, found := referenceDetectCurrentLine(k[0], k[1], start, fileLines, kind)
+				name := fmt.Sprintf("iter=%d kind=%s key=%q start=%d lines=%q", iter, kind, k, start, fileLines)
+				require.Equal(t, !found, got.IsBreak, name)
+				if found {
+					require.Equal(t, wantLine, got.CurrentLine, name)
+					require.Equal(t, wantStart, gotStart, name)
+					require.Equal(t, wantEnd, gotEnd, name)
+				}
+			}
+		}
+	}
 }
