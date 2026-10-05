@@ -650,7 +650,9 @@ func resolveModuleDocuments(
 	// Evaluating a module tree is the expensive part, and it is pure waste when
 	// the repository declares nothing any rule can match by name. The block
 	// labels are already in the parsed documents, so this costs nothing.
-	if !declaresTargetedResource(files, targets) {
+	// External module files still need their calls, whatever they declare.
+	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
+	if moduleCalls == nil && !declaresTargetedResource(files, targets) {
 		return moduleResolutionResult{}
 	}
 
@@ -695,7 +697,6 @@ func resolveModuleDocuments(
 	}
 	sort.Strings(roots)
 
-	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
 	evaluateRootModules(
 		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,

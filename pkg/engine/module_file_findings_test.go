@@ -46,7 +46,12 @@ output "name" { value = var.name }
 	return repo, pkg, files
 }
 
-func resolveRemoteBucketPackage(t *testing.T, repo, pkg string, files model.FileMetadatas) moduleResolutionResult {
+func resolveRemoteBucketPackage(
+	t *testing.T,
+	repo, pkg string,
+	files model.FileMetadatas,
+	targets *ruleTargets,
+) moduleResolutionResult {
 	t.Helper()
 	bucket := filepath.Join(pkg, "terraform-modules", "aws-bucket")
 	resolver := func(source, _, _, _ string) (string, string, bool) {
@@ -65,12 +70,12 @@ func resolveRemoteBucketPackage(t *testing.T, repo, pkg string, files model.File
 		}, true
 	}
 	external := func(path string) bool { return pathWithinRoot(path, pkg) }
-	return resolveModuleDocuments(context.Background(), files, repo, resolver, nil, lookup, nil, nil, external)
+	return resolveModuleDocuments(context.Background(), files, repo, resolver, targets, lookup, nil, nil, external)
 }
 
 func TestResolveModuleDocuments_AttributesExternalModuleFilesToEveryCall(t *testing.T) {
 	repo, pkg, files := writeRemoteBucketPackage(t)
-	res := resolveRemoteBucketPackage(t, repo, pkg, files)
+	res := resolveRemoteBucketPackage(t, repo, pkg, files, nil)
 	require.True(t, res.ok)
 
 	require.NotContains(t, res.moduleFiles, "stack-a", "files of the scanned repository are reported where they are written")
@@ -105,6 +110,16 @@ func TestResolveModuleDocuments_AttributesExternalModuleFilesToEveryCall(t *test
 	require.Len(t, bucketInputs.calls, 2)
 	require.Equal(t, "terraform-modules/aws-bucket", bucketInputs.calls[0].attribution.ModuleCodeLocation.Filename)
 	require.Equal(t, moduleDependencyDirect, bucketInputs.calls[0].attribution.DependencyType)
+}
+
+func TestResolveModuleDocuments_AttributesExternalModuleFilesWithoutTargetedResources(t *testing.T) {
+	repo, pkg, files := writeRemoteBucketPackage(t)
+	targets := &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}}
+	res := resolveRemoteBucketPackage(t, repo, pkg, files, targets)
+	require.True(t, res.ok)
+	require.Empty(t, res.docs)
+	require.Empty(t, res.calledDirs, "nothing instantiated, so no call site is stripped")
+	require.Len(t, res.moduleFiles["helper-outputs"].calls, 2)
 }
 
 func TestResolveModuleDocuments_NoExternalFilesRecordsNoCalls(t *testing.T) {
