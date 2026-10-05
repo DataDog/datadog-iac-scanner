@@ -2,8 +2,10 @@ package helm
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -39,6 +41,15 @@ func pathSuffix(t *testing.T, path string) string {
 		return normalized[idx:]
 	}
 	return filepath.Base(normalized)
+}
+
+func writeTree(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for rel, body := range files {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+	}
 }
 
 func findResolvedBySuffix(t *testing.T, files []model.ResolvedHelm, suffix string) model.ResolvedHelm {
@@ -460,8 +471,115 @@ func TestAddHelmInvocationMarkersInspectsEveryAction(t *testing.T) {
 	file := &chart.File{Data: []byte(`{{- if .Values.enabled }}{{ include "resource" . }}{{- end }}`)}
 	addHelmInvocationMarkers(file)
 
-	require.Equal(t, 1, strings.Count(string(file.Data), kicsHelmInvocation))
-	require.Contains(t, string(file.Data), "# KICS_HELM_INVOCATION_1_25:")
+	positions := map[string]bool{}
+	for _, m := range regexp.MustCompile(`KICS_HELM_INVOCATION_\d+_\d+`).FindAllString(string(file.Data), -1) {
+		positions[m] = true
+	}
+	require.Equal(t, map[string]bool{"KICS_HELM_INVOCATION_1_25": true}, positions)
+}
+
+func TestAddHelmInvocationMarkersRestoresOriginalSource(t *testing.T) {
+	for _, source := range []string{
+		`{{ include "resource" . }}`,
+		`{{- include "resource" (dict "a" .) -}}`,
+		"{{ include \"a\" . }}\n---\n{{ template \"b\" . }}\n{{ include \"c\" . | nindent 0 }}",
+		// A quoted "}}" defeats the lazy action regex, so the marker rewrite
+		// falls back to a prefix marker; stripping must still restore this
+		// source exactly.
+		`{{ include "na}}me" . }}`,
+		`{{ include "na}}# me" . }}`,
+	} {
+		file := addHelmInvocationMarkers(&chart.File{Data: []byte(source)})
+		require.NotEqual(t, source, string(file.Data))
+		require.Equal(t, source, string(stripHelmInvocationActions(file.Data)))
+		if strings.Contains(source, `"na}}`) {
+			require.NotContains(t, string(file.Data), "| replace", "a quoted \"}}\" must not get the rewrite")
+		}
+	}
+}
+
+// restoreMarkedInclude parses what markEveryDocument prints. Every action
+// shape the rewrite accepts must come back unchanged, or the include is
+// stripped instead of restored and the ignore lines shift.
+func TestMarkEveryDocumentRoundTrip(t *testing.T) {
+	actions := []string{
+		`{{ include "a" . }}`,
+		`{{- include "a" . }}`,
+		`{{ include "a" . -}}`,
+		`{{- include "a" . -}}`,
+		`{{include "a" .}}`,
+		`{{- include "a" (dict "k" .Values.x "n" (list 1 2)) -}}`,
+		"{{ include \"a\" (dict\n  \"k\" .) }}",
+		`{{ include "a" (printf "x\n---\n") }}`,
+	}
+	for _, action := range actions {
+		for _, marker := range []string{invocationMarker(1, 0), invocationMarker(120, 37)} {
+			rewritten := markEveryDocument(action, marker)
+			require.Contains(t, rewritten, strings.TrimSuffix(marker, "\n"))
+			restored, ok := restoreMarkedInclude([]byte(rewritten))
+			require.True(t, ok, "%q is not recognized as a marked include", rewritten)
+			require.Equal(t, action, string(restored))
+			require.Equal(t, "a: 1\n"+action+"\nb: 2",
+				string(stripHelmInvocationActions([]byte("a: 1\n"+rewritten+"\nb: 2"))))
+		}
+	}
+}
+
+// TestIsHelmInvocationWrapperCommentAction covers comment actions whose text
+// holds an apostrophe (e.g. "don't"): quoted-string tracking would open a
+// string at the apostrophe and never find the comment's "}}", leaving the
+// action in place and disqualifying a genuine wrapper template (_helpers.tpl
+// comments often contain contractions). The comment must be consumed whole.
+func TestIsHelmInvocationWrapperCommentAction(t *testing.T) {
+	source := "{{/* don't render when disabled */}}\n{{ include \"mychart.labels\" . }}\n"
+	require.True(t, isHelmInvocationWrapper(source))
+
+	// Trim markers and whitespace around the comment text must not change the
+	// outcome, and the invocation marker still round-trips to the source.
+	source = "{{- /* chart's helper, not emitted when disabled */ -}}\n{{ include \"mychart.labels\" . }}\n"
+	require.True(t, isHelmInvocationWrapper(source))
+	file := addHelmInvocationMarkers(&chart.File{Data: []byte(source)})
+	require.Contains(t, string(file.Data), "KICS_HELM_INVOCATION_2_")
+	require.Equal(t, source, string(stripHelmInvocationActions(file.Data)))
+}
+
+// TestHelmResolveInvocationWithQuotedActionEnd renders a chart whose include
+// name contains "}}" end to end: the marker rewrite must not corrupt the
+// template, so the chart renders and the executed invocation is attributed.
+func TestHelmResolveInvocationWithQuotedActionEnd(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) { writeTree(t, root, map[string]string{rel: body}) }
+	write("Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n")
+	write("templates/_helpers.tpl",
+		"{{- define \"na}}# me\" -}}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: quoted\n{{- end -}}\n")
+	write("templates/cm.yaml", "{{ include \"na}}# me\" . }}\n")
+
+	got, err := (&Resolver{}).Resolve(context.Background(), root)
+	require.NoError(t, err)
+
+	resolved := findResolvedBySuffix(t, got.File, "templates/cm.yaml")
+	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, resolved.HelmInvocation)
+	require.Contains(t, string(resolved.Content), "name: quoted")
+}
+
+func TestHelmResolveMarksEveryDocumentOfAnInclude(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) { writeTree(t, root, map[string]string{rel: body}) }
+	write("Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n")
+	write("templates/_multi.tpl", "{{- define \"multi\" -}}\n{{- range list \"a\" \"b\" }}\n---\n"+
+		"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ . }}\n{{- end }}\n{{- end -}}\n")
+	write("templates/cm.yaml", "\n{{ include \"multi\" . }}\n")
+
+	got, err := (&Resolver{}).Resolve(context.Background(), root)
+	require.NoError(t, err)
+	var invocations []model.ResourceLine
+	for _, f := range findAllResolvedBySuffix(t, got.File, "templates/cm.yaml") {
+		if strings.Contains(string(f.Content), "kind: ConfigMap") {
+			invocations = append(invocations, f.HelmInvocation)
+			require.NotContains(t, string(f.Content), kicsHelmInvocation)
+		}
+	}
+	require.Equal(t, []model.ResourceLine{{Line: 2, Col: 0}, {Line: 2, Col: 0}}, invocations)
 }
 
 func TestHelmResolveTracksExecutedConditionalInvocation(t *testing.T) {
@@ -800,4 +918,139 @@ spec:
 			}
 		})
 	}
+}
+
+func TestBlankTemplateActions(t *testing.T) {
+	source := "a: {{ .Values.x }}\n{{- if .Values.y }}\nb: 1\n{{- end }}\nc: {{ include \"t\" .\n  | indent 4 }}\nd: 2\n"
+	got := string(BlankTemplateActions([]byte(source)))
+	require.Equal(t, "a: \n\nb: 1\n\nc: \n\nd: 2\n", got)
+	require.Equal(t, strings.Count(source, "\n"), strings.Count(got, "\n"), "line count must be preserved")
+}
+
+// TestHelmResolve_ActionOnlyPartialKeepsScalarValues covers a library chart
+// whose partials are action-only, as in Bitnami's common chart. Their output is
+// used as a label value and as a scalar, so the invocation instrumentation must
+// not add anything (a newline or a marker) to what they return.
+func TestHelmResolve_ActionOnlyPartialKeepsScalarValues(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) { writeTree(t, root, map[string]string{rel: body}) }
+	write("app/charts/common/Chart.yaml", "apiVersion: v2\nname: common\nversion: 1.0.0\ntype: library\n")
+	write("app/charts/common/templates/_names.tpl", "{{/* names */}}\n"+
+		"{{- define \"common.labels.value\" -}}\n{{- . | toString | trunc 63 -}}\n{{- end -}}\n"+
+		"{{- define \"common.names.chart\" -}}\n"+
+		"{{- include \"common.labels.value\" (printf \"%s-%s\" .Chart.Name .Chart.Version) -}}\n{{- end -}}\n"+
+		"{{- define \"common.names.if\" -}}\n{{- if .Values.enabled -}}\n{{ include \"common.names.chart\" . }}\n{{- end -}}\n{{- end -}}\n")
+	write("app/Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n"+
+		"dependencies:\n- name: common\n  version: 1.0.0\n")
+	write("app/values.yaml", "enabled: true\n")
+	write("app/templates/cm.yaml", "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n  labels:\n"+
+		"    helm.sh/chart: {{ include \"common.names.chart\" . | quote }}\n"+
+		"data:\n  chart: {{ include \"common.names.chart\" . }}\n  gated: {{ include \"common.names.if\" . }}\n")
+	// A manifest template that is action-only still gets its invocation tracked.
+	write("app/templates/_cm.tpl", "{{- define \"app.cm\" -}}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: wrapped\n{{- end -}}\n")
+	write("app/templates/wrapped.yaml", "{{ include \"app.cm\" . }}\n")
+
+	got, err := (&Resolver{}).Resolve(context.Background(), filepath.Join(root, "app"))
+	require.NoError(t, err)
+
+	cm := string(findResolvedBySuffix(t, got.File, "templates/cm.yaml").Content)
+	require.Contains(t, cm, `helm.sh/chart: "app-1.0.0"`)
+	require.Contains(t, cm, "chart: app-1.0.0\n")
+	require.Contains(t, cm, "gated: app-1.0.0")
+	require.NotContains(t, cm, kicsHelmInvocation)
+
+	wrapped := findResolvedBySuffix(t, got.File, "templates/wrapped.yaml")
+	require.Contains(t, string(wrapped.Content), "name: wrapped")
+	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, wrapped.HelmInvocation)
+}
+
+func TestAddHelmInvocationMarkersSkipsPartialBodies(t *testing.T) {
+	tests := []struct {
+		name       string
+		source     string
+		wantMarked int
+	}{
+		{"define body", "{{- define \"p\" -}}\n{{- include \"q\" . -}}\n{{- end -}}\n", 0},
+		{"conditional in define", "{{- define \"p\" -}}\n{{- if .a }}{{ include \"q\" . }}{{ end }}{{ template \"r\" . }}\n{{- end -}}\n", 0},
+		{"block body", "{{- block \"p\" . -}}\n{{ include \"q\" . }}\n{{- end -}}\n", 0},
+		{"top level after define", "{{- define \"p\" -}}\n{{ include \"q\" . }}\n{{- end -}}\n{{ include \"all\" . }}\n", 1},
+		{"top level conditional", "{{- if .a }}\n{{ include \"all\" . }}\n{{- end }}\n", 1},
+		{"if closed before define ends", "{{- define \"p\" -}}{{ if .a }}{{ end }}{{ include \"q\" . }}{{- end -}}{{ include \"all\" . }}", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := addHelmInvocationMarkers(&chart.File{Data: []byte(tt.source)})
+			positions := map[string]bool{}
+			for _, m := range regexp.MustCompile(`KICS_HELM_INVOCATION_\d+_\d+`).FindAllString(string(file.Data), -1) {
+				positions[m] = true
+			}
+			require.Len(t, positions, tt.wantMarked)
+			require.Equal(t, tt.source, string(stripHelmInvocationActions(file.Data)))
+		})
+	}
+}
+
+func TestAddHelmInvocationMarkersKeepsIncludeIndentation(t *testing.T) {
+	source := "kind: Service\nmetadata:\n  labels:\n    {{ include \"l\" . | nindent 4 | trim }}\n"
+	file := addHelmInvocationMarkers(&chart.File{Name: "templates/svc.yaml", Data: []byte(source)})
+	require.Contains(t, string(file.Data), "\" }}    {{ include")
+}
+
+func TestAddHelmInvocationMarkersMixedManifest(t *testing.T) {
+	tests := []struct {
+		name       string
+		file       string
+		source     string
+		wantMarked int
+	}{
+		{"standalone include", "templates/svc.yaml",
+			"kind: Service\n{{- $x := 1 }}\n{{- if .a }}\n{{ include \"svc\" . }}\n{{- end }}\n", 1},
+		{"standalone with pipe and indent", "templates/svc.yaml",
+			"kind: Service\nmetadata:\n  labels:\n  {{ include \"l\" . | nindent 4 }}\n", 1},
+		{"inline scalar", "templates/svc.yaml",
+			"kind: Service\nmetadata:\n  name: {{ include \"n\" . }}\n", 0},
+		{"trimmed include keeps gluing", "templates/svc.yaml",
+			"kind: Service\nmetadata:\n  labels: {{- include \"l\" . | nindent 4 }}\n", 0},
+		{"trimmed standalone include", "templates/svc.yaml",
+			"kind: Service\nmetadata:\n  annotations:\n  {{- include \"a\" . | nindent 4 }}\n", 0},
+		{"text after include on the line", "templates/svc.yaml",
+			"{{ include \"a\" . }}: value\n", 0},
+		{"inside block scalar", "templates/cm.yaml",
+			"kind: ConfigMap\ndata:\n  config: |\n{{ include \"c\" . | indent 4 }}\n", 0},
+		{"after block scalar content", "templates/cm.yaml",
+			"kind: ConfigMap\ndata:\n  config: |\n    a: b\n{{ include \"c\" . | indent 4 }}\n", 0},
+		{"partial file", "templates/_helpers.tpl",
+			"app: {{ .Chart.Name }}\n{{ include \"a\" . }}\n", 0},
+		{"define inside manifest", "templates/svc.yaml",
+			"{{- define \"p\" -}}\nx: 1\n{{ include \"q\" . }}\n{{- end -}}\nkind: Service\n", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := addHelmInvocationMarkers(&chart.File{Name: tt.file, Data: []byte(tt.source)})
+			require.Equal(t, tt.wantMarked, strings.Count(string(file.Data), "{{ print "))
+			require.Equal(t, tt.source, string(stripHelmInvocationActions(file.Data)))
+		})
+	}
+}
+
+// TestHelmResolve_IncludeInMixedManifestKeepsInvocation covers a manifest that
+// mixes logic with an include which emits the whole resource, as Bitnami's
+// contour does: the resource is defined in a partial, so only the invocation
+// can tell where it came from.
+func TestHelmResolve_IncludeInMixedManifestKeepsInvocation(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) { writeTree(t, root, map[string]string{rel: body}) }
+	write("Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n")
+	write("values.yaml", "enabled: true\n")
+	write("templates/_svc.tpl", "{{- define \"app.svc\" -}}\napiVersion: v1\nkind: Service\nmetadata:\n"+
+		"  name: svc\n  annotations:\n    a: b\n{{- end -}}\n")
+	write("templates/svc.yaml", "{{- $unused := \"x\" }}\n{{- if .Values.enabled }}\n"+
+		"{{ include \"app.svc\" . }}\n{{- end }}\n")
+
+	got, err := (&Resolver{}).Resolve(context.Background(), root)
+	require.NoError(t, err)
+	svc := findResolvedBySuffix(t, got.File, "templates/svc.yaml")
+	require.Equal(t, model.ResourceLine{Line: 3, Col: 0}, svc.HelmInvocation)
+	require.Contains(t, string(svc.Content), "name: svc")
+	require.NotContains(t, string(svc.Content), kicsHelmInvocation)
 }

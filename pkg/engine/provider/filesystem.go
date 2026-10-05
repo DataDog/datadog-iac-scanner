@@ -452,16 +452,79 @@ func IsNestedRenderedChart(root string, renderedRoots []string) bool {
 func renderChartsShallowFirst(ctx context.Context, roots []string,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) []string {
 	renderedRoots := make([]string, 0, len(roots))
-	for _, root := range chartRootsShallowFirst(roots) {
-		normRoot := toSlash(root)
-		if IsNestedRenderedChart(normRoot, renderedRoots) {
-			continue
+	for _, wave := range chartRootWaves(roots) {
+		pending := make([]string, 0, len(wave))
+		for _, root := range wave {
+			if !IsNestedRenderedChart(root, renderedRoots) {
+				pending = append(pending, root)
+			}
 		}
-		if chartFn(ctx, normRoot) {
-			renderedRoots = append(renderedRoots, normRoot)
+		rendered := make([]bool, len(pending))
+		_ = utils.ForEach(ctx, pending, utils.PoolOptions{CPUBound: true},
+			func(ctx context.Context, root string, i int) error {
+				rendered[i] = chartFn(ctx, root)
+				return nil
+			})
+		for i, root := range pending {
+			if rendered[i] {
+				renderedRoots = append(renderedRoots, root)
+			}
 		}
 	}
 	return renderedRoots
+}
+
+// chartRootWaves groups the slash-normalized chart roots, shallow-first, by
+// how many other roots enclose them. Roots in one wave never enclose each
+// other, so they render concurrently, and every enclosing root is in an
+// earlier wave, so whether it rendered is known before its subcharts start.
+func chartRootWaves(roots []string) [][]string {
+	sorted := make([]string, 0, len(roots))
+	seen := make(map[string]struct{}, len(roots))
+	for _, root := range chartRootsShallowFirst(roots) {
+		root = toSlash(root)
+		if _, dup := seen[root]; !dup {
+			seen[root] = struct{}{}
+			sorted = append(sorted, root)
+		}
+	}
+	depths := make(map[string]int, len(sorted))
+	var waves [][]string
+	for _, root := range sorted {
+		depth := enclosingRootDepth(root, depths) + 1
+		depths[root] = depth
+		for len(waves) <= depth {
+			waves = append(waves, nil)
+		}
+		waves[depth] = append(waves[depth], root)
+	}
+	return waves
+}
+
+// enclosingRootDepth is the wave of the nearest root enclosing root, -1 for
+// none. Enclosing roots are shorter, so they already have a depth.
+func enclosingRootDepth(root string, depths map[string]int) int {
+	if root == "." {
+		return -1
+	}
+	dir := root
+	for {
+		slash := strings.LastIndexByte(dir, '/')
+		switch {
+		case slash > 0:
+			dir = dir[:slash]
+		case slash == 0 && dir != "/":
+			dir = "/"
+		default:
+			dir = "."
+		}
+		if depth, ok := depths[dir]; ok {
+			return depth
+		}
+		if dir == "." || dir == "/" {
+			return -1
+		}
+	}
 }
 
 func chartRootsShallowFirst(roots []string) []string {
@@ -470,7 +533,10 @@ func chartRootsShallowFirst(roots []string) []string {
 	}
 	sorted := append([]string(nil), roots...)
 	sort.Slice(sorted, func(i, j int) bool {
-		return len(sorted[i]) < len(sorted[j])
+		if len(sorted[i]) != len(sorted[j]) {
+			return len(sorted[i]) < len(sorted[j])
+		}
+		return sorted[i] < sorted[j]
 	})
 	return sorted
 }

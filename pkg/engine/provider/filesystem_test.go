@@ -980,3 +980,28 @@ func TestGetSourcesTofuShadowingExplicitFiles(t *testing.T) {
 		require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got, "parallel=%v", parallel)
 	}
 }
+
+func TestChartRootWaves(t *testing.T) {
+	waves := chartRootWaves([]string{
+		"a/charts/sub/charts/leaf", "b", "a/charts/sub", "a", "c\\charts\\x", "c", "b",
+	})
+	require.Equal(t, [][]string{
+		{"a", "b", "c"},
+		{"c/charts/x", "a/charts/sub"},
+		{"a/charts/sub/charts/leaf"},
+	}, waves)
+	require.Equal(t, [][]string{{"."}, {"charts/sub", "deploy/app"}}, chartRootWaves([]string{"charts/sub", ".", "deploy/app"}))
+	require.Equal(t, [][]string{{"/r/a", "/r/b"}, {"/r/a/charts/x"}},
+		chartRootWaves([]string{"/r/a/charts/x", "/r/b", "/r/a"}))
+	require.Empty(t, chartRootWaves(nil))
+}
+
+// Charts render concurrently, yet a subchart is still skipped exactly when an
+// enclosing chart rendered it, and a failed parent leaves it to render alone.
+func TestRenderChartsShallowFirst(t *testing.T) {
+	failing := map[string]bool{"b": true}
+	rendered := renderChartsShallowFirst(context.Background(),
+		[]string{"a/charts/sub", "b/charts/sub", "a", "b", "c", "d/nested"},
+		func(_ context.Context, root string) bool { return !failing[root] })
+	require.ElementsMatch(t, []string{"a", "c", "d/nested", "b/charts/sub"}, rendered)
+}

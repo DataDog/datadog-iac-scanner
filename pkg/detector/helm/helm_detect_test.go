@@ -8,6 +8,7 @@ package helm
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -345,6 +346,34 @@ func TestDetectLineUsesExecutedInvocation(t *testing.T) {
 	}
 	if got.LineWithVulnerability != `{{- include "second.resource" . }}` {
 		t.Fatalf("DetectLine() vulnerable line = %q, want second invocation", got.LineWithVulnerability)
+	}
+}
+
+// A manifest mixing a resource with an include is stamped above the resource,
+// and the invocation's recorded position counts that stamp.
+func TestDetectLineInvocationSkipsHelmIDStamps(t *testing.T) {
+	original := "# KICS_HELM_ID_0:\napiVersion: v1\nkind: ConfigMap\n---\n{{ include \"pod\" . }}"
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/mixed.yaml",
+		OriginalData:      original,
+		LinesOriginalData: utils.SplitLines(original),
+		HelmInvocation:    model.ResourceLine{Line: 5, Col: 0},
+	}
+
+	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
+
+	if got.Line != 4 || got.VulnerablilityLocation.Start.Line != 4 {
+		t.Fatalf("DetectLine() line = %d, start %d, want the include on source line 4",
+			got.Line, got.VulnerablilityLocation.Start.Line)
+	}
+	if got.LineWithVulnerability != `{{ include "pod" . }}` {
+		t.Fatalf("DetectLine() vulnerable line = %q, want the include", got.LineWithVulnerability)
+	}
+	for _, l := range *got.VulnLines {
+		if strings.Contains(l.Line, "KICS_HELM_ID") {
+			t.Fatalf("DetectLine() snippet leaks a stamp: %q", l.Line)
+		}
 	}
 }
 

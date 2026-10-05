@@ -117,19 +117,8 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	// Helm attributes named-template output to the file that invoked it. The
 	// resolver records the action that actually executed, so wrappers with
 	// conditional or repeated invocations can still point to the right source.
-	invocation := file.HelmInvocation
-	invocationLine := invocation.Line - 1
-	if invocation.Line > 0 && invocationLine < len(lines) {
-		return model.VulnerabilityLines{
-			Line:                  invocation.Line,
-			VulnLines:             detector.GetAdjacentVulnLines(invocationLine, outputLines, lines),
-			LineWithVulnerability: lines[invocationLine],
-			ResolvedFile:          file.FilePath,
-			VulnerablilityLocation: model.ResourceLocation{
-				Start: invocation,
-				End:   model.ResourceLine{Line: invocation.Line, Col: len(lines[invocationLine])},
-			},
-		}
+	if found, ok := invocationLines(file, lines, outputLines); ok {
+		return found
 	}
 
 	var filePathSplit = strings.Split(file.FilePath, "/")
@@ -140,6 +129,38 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		VulnLines:    &[]model.CodeLine{},
 		ResolvedFile: file.FilePath,
 	}
+}
+
+// invocationLines locates a finding at the include-like action whose output
+// produced it. The recorded position counts the "# KICS_HELM_ID_" lines stamped
+// above it, which are left out of the reported line and snippet.
+func invocationLines(file *model.FileMetadata, lines []string, outputLines int) (model.VulnerabilityLines, bool) {
+	invocation := file.HelmInvocation
+	if invocation.Line < 1 || invocation.Line > len(lines) || strings.Contains(lines[invocation.Line-1], "# KICS_HELM_ID_") {
+		return model.VulnerabilityLines{}, false
+	}
+	unstamped := make([]string, 0, len(lines))
+	at := 0
+	for i, line := range lines {
+		if strings.Contains(line, "# KICS_HELM_ID_") {
+			continue
+		}
+		if i == invocation.Line-1 {
+			at = len(unstamped)
+		}
+		unstamped = append(unstamped, line)
+	}
+	reported := model.ResourceLine{Line: at + 1, Col: invocation.Col}
+	return model.VulnerabilityLines{
+		Line:                  reported.Line,
+		VulnLines:             detector.GetAdjacentVulnLines(at, outputLines, unstamped),
+		LineWithVulnerability: unstamped[at],
+		ResolvedFile:          file.FilePath,
+		VulnerablilityLocation: model.ResourceLocation{
+			Start: reported,
+			End:   model.ResourceLine{Line: reported.Line, Col: len(unstamped[at])},
+		},
+	}, true
 }
 
 // removeLines is used to update the vulnerability line after removing the "# KICS_HELM_ID_"

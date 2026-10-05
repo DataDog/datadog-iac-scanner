@@ -44,6 +44,9 @@ type splitManifest struct {
 	isCRD               bool
 }
 
+// dependenciesDirName is the chart subdirectory Helm loads subcharts from.
+const dependenciesDirName = "charts"
+
 const (
 	kicsHelmID         = "# KICS_HELM_ID_"
 	kicsHelmInvocation = "# KICS_HELM_INVOCATION_"
@@ -379,12 +382,23 @@ func indexSources(files []*chart.File) map[string]*sourceMetadata {
 	return sources
 }
 
+// BlankTemplateActions removes every template action from source and keeps the
+// newlines they spanned, so the line numbers of what remains are unchanged.
+func BlankTemplateActions(source []byte) []byte {
+	return templateActionRE.ReplaceAllFunc(source, func(action []byte) []byte {
+		return bytes.Repeat([]byte{'\n'}, bytes.Count(action, []byte{'\n'}))
+	})
+}
+
 func stripHelmInvocationActions(source []byte) []byte {
 	return templateActionRE.ReplaceAllFunc(source, func(action []byte) []byte {
-		if bytes.Contains(action, []byte(kicsHelmInvocation)) {
-			return nil
+		if !bytes.Contains(action, []byte(kicsHelmInvocation)) {
+			return action
 		}
-		return action
+		if original, ok := restoreMarkedInclude(action); ok {
+			return original
+		}
+		return nil
 	})
 }
 
@@ -398,7 +412,7 @@ func isCRDSourcePath(name string) bool {
 		switch parts[index] {
 		case crdDirName:
 			return index+1 < len(parts)
-		case "charts":
+		case dependenciesDirName:
 			index += 2
 		default:
 			return false
@@ -425,7 +439,7 @@ func updateName(template []*chart.File, charts *chart.Chart, name string) []*cha
 		})
 	}
 	for _, dep := range charts.Dependencies() {
-		template = updateName(template, dep, helmChartPath(name, "charts"))
+		template = updateName(template, dep, helmChartPath(name, dependenciesDirName))
 	}
 	return template
 }

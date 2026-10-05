@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -360,7 +361,13 @@ var deployTimeValueSignatures = []string{
 	"index of untyped nil",
 	"len of nil pointer",
 	"on zero Value",
+	"invalid value; expected ",
 }
+
+// nilValueOfWrongType is the type error Go templates raise for a key that is
+// present but empty (`tag:`): the value is a nil interface, a value left for
+// deploy time rather than one of the wrong type.
+var nilValueOfWrongType = regexp.MustCompile(`wrong type for value; expected [^;]+; got interface \{\}`)
 
 // A template is reported as `template "x" not defined`, a misspelled function
 // as `function "x" not defined`: only the first one is a missing helper.
@@ -375,7 +382,7 @@ func classifyHelmRenderError(err error) helmRenderFailure {
 	}
 	msg := err.Error()
 	switch {
-	case containsAny(msg, deployTimeValueSignatures):
+	case containsAny(msg, deployTimeValueSignatures) || nilValueOfWrongType.MatchString(msg):
 		return helmRenderDeployTimeValue
 	case strings.Contains(msg, unassociatedHelmHelper) || undefinedHelmTemplate.MatchString(msg):
 		return helmRenderMissingHelper
@@ -443,10 +450,7 @@ func isCommentOnlyContent(content []byte) bool {
 	return true
 }
 
-var (
-	helmIDLinePattern         = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+:[^\r\n]*(?:\r?\n|$)`)
-	helmTemplateActionPattern = regexp.MustCompile(`{{-\s*(.*?)\s*}}`)
-)
+var helmIDLinePattern = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+:[^\r\n]*(?:\r?\n|$)`)
 
 func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	originalFile []uint8,
@@ -454,7 +458,7 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ignoreLines []int, err error) {
 	refactor := helmIDLinePattern.ReplaceAll(originalFile, nil)
-	refactor = helmTemplateActionPattern.ReplaceAll(refactor, nil)
+	refactor = helm.BlankTemplateActions(refactor)
 
 	documentsOriginal, err := s.parseResolvedFile(
 		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)

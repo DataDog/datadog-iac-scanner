@@ -407,7 +407,12 @@ func TestIsExpectedHelmRenderError(t *testing.T) {
 		{"dig on nil values", errors.New("error calling dig: interface conversion: interface {} is nil, not map[string]interface {}"), true},
 		{"index of nil", errors.New("error calling index: index of untyped nil"), true},
 		{"len of nil", errors.New("error calling len: len of nil pointer"), true},
-		{"wrong type for value", errors.New("at <$.Values.image.tag>: wrong type for value; expected string; got interface {}"), false},
+		{"empty value of a typed argument", errors.New("at <$.Values.image.tag>: wrong type for value; expected string; got interface {}"), true},
+		{"nested in an include", errors.New(`at <include "streaming.apps.serviceAccount" $>: error calling include: template: ` +
+			`c/charts/commons/templates/_labels.tpl:7:87: executing "ep.labels" at <$.Values.image.tag>: ` +
+			`wrong type for value; expected string; got interface {}`), true},
+		{"missing value of a typed argument", errors.New("at <$.Values.port>: invalid value; expected int"), true},
+		{"wrong type for value", errors.New("at <$.Values.global.datacenter.arm_enabled>: wrong type for value; expected bool; got string"), false},
 		{"range over a non-collection", errors.New("at <$.Values.shards>: range can't iterate over REPLACE_ME"), false},
 		{"missing include", errors.New("error calling include: template: no template \"crawler.serviceAccountName\" associated with template \"gotpl\""), true},
 		{"undefined named template", errors.New("executing \"webservice/templates/tests/tests.yaml\" at <{{template \"fullname\" .}}>: template \"fullname\" not defined"), true},
@@ -428,6 +433,7 @@ func TestHelmRenderNeedsNoFiles(t *testing.T) {
 	require.True(t, helmRenderNeedsNoFiles(errors.New("execution error at (chart/templates/deploy.yaml:2:5): env required")))
 	require.False(t, helmRenderNeedsNoFiles(errors.New(`error calling include: template: no template "e2e.labels" associated with template "gotpl"`)))
 	require.True(t, helmRenderNeedsNoFiles(errors.New("error calling index: index of untyped nil")))
+	require.True(t, helmRenderNeedsNoFiles(errors.New("wrong type for value; expected string; got interface {}")))
 	require.False(t, helmRenderNeedsNoFiles(errors.New("wrong type for value; expected bool; got string")),
 		"an unexpected failure still asks for the chart's files")
 	require.False(t, helmRenderNeedsNoFiles(nil))
