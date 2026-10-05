@@ -2,6 +2,7 @@ package helm
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -75,6 +76,106 @@ func findAllResolvedBySuffix(t *testing.T, files []model.ResolvedHelm, suffix st
 		}
 	}
 	return matches
+}
+
+// A file:// dependency that was never vendored under charts/ is loaded from its
+// path, as `helm dependency build` would, so the parent's includes resolve.
+func TestHelm_Resolve_UnvendoredFileDependency(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) { writeTree(t, root, map[string]string{rel: body}) }
+	write("common/Chart.yaml", "apiVersion: v2\nname: common\nversion: 1.0.0\ntype: library\n")
+	write("common/templates/_labels.tpl", "{{- define \"common.labels\" -}}\napp: {{ .Chart.Name }}\n{{- end -}}\n")
+	write("app/Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n"+
+		"dependencies:\n- name: common\n  version: 1.0.0\n  repository: file://../common\n")
+	write("app/templates/cm.yaml", "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n  labels:\n"+
+		"    {{- include \"common.labels\" . | nindent 4 }}\n")
+
+	got, err := (&Resolver{}).Resolve(context.Background(), filepath.Join(root, "app"))
+	require.NoError(t, err)
+	cm := findResolvedBySuffix(t, got.File, "templates/cm.yaml")
+	require.Contains(t, string(cm.Content), "app: app")
+}
+
+// A dependency without a local repository, provided by the build system rather
+// than vendored, resolves from the only chart in the scan with its name and a
+// compatible version.
+func TestHelm_Resolve_DependencyFromScannedCharts(t *testing.T) {
+	const helper = "{{- define \"common.labels\" -}}\napp: {{ .Chart.Name }}\nfrom: %s\n{{- end -}}\n"
+	const app = "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n- name: common\n  version: %s\n"
+	const cm = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n  labels:\n" +
+		"    {{- include \"common.labels\" . | nindent 4 }}\n"
+	tests := []struct {
+		name        string
+		libraries   map[string]string // dir -> version
+		constraint  string
+		repeatRoots bool
+		wantFrom    string // library dir the include resolved from, "" for no render
+	}{
+		{name: "unique match", libraries: map[string]string{"libs/common": "1.2.0"}, constraint: "^1.0.0", wantFrom: "libs/common"},
+		{name: "no version constraint", libraries: map[string]string{"libs/common": "3.0.0"}, constraint: `""`, wantFrom: "libs/common"},
+		{name: "only an incompatible version", libraries: map[string]string{"libs/common": "2.0.0"}, constraint: "^1.0.0", wantFrom: "libs/common"},
+		{name: "ambiguous", libraries: map[string]string{"a/common": "1.0.0", "b/common": "1.1.0"}, constraint: "^1.0.0"},
+		{name: "ambiguity settled by version", libraries: map[string]string{"a/common": "1.0.0", "b/common": "2.0.0"},
+			constraint: "^1.0.0", wantFrom: "a/common"},
+		{name: "ambiguity settled by nearest chart", libraries: map[string]string{"dom/common": "1.0.0", "other/common": "1.0.0"},
+			constraint: "^1.0.0", wantFrom: "dom/common"},
+		{name: "incompatible versions tied", libraries: map[string]string{"a/common": "2.0.0", "b/common": "2.1.0"}, constraint: "^1.0.0"},
+		// Overlapping scan paths record a root more than once, in more than one spelling.
+		{name: "repeated chart root", libraries: map[string]string{"libs/common": "1.0.0"}, constraint: "^1.0.0",
+			repeatRoots: true, wantFrom: "libs/common"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			files := map[string]string{
+				"dom/app/Chart.yaml":        fmt.Sprintf(app, tt.constraint),
+				"dom/app/templates/cm.yaml": cm,
+			}
+			roots := []string{filepath.ToSlash(filepath.Join(root, "dom/app"))}
+			for dir, version := range tt.libraries {
+				files[dir+"/Chart.yaml"] = "apiVersion: v2\nname: common\ntype: library\nversion: " + version + "\n"
+				files[dir+"/templates/_labels.tpl"] = fmt.Sprintf(helper, dir)
+				lib := filepath.ToSlash(filepath.Join(root, dir))
+				roots = append(roots, lib)
+				if tt.repeatRoots {
+					roots = append(roots, lib+"/", lib)
+				}
+			}
+			writeTree(t, root, files)
+
+			got, err := NewResolver(nil).WithChartRoots(roots).Resolve(context.Background(), filepath.Join(root, "dom/app"))
+			if tt.wantFrom == "" {
+				require.ErrorContains(t, err, `no template "common.labels"`)
+				return
+			}
+			require.NoError(t, err)
+			content := string(findResolvedBySuffix(t, got.File, "templates/cm.yaml").Content)
+			require.Contains(t, content, "app: app")
+			require.Contains(t, content, "from: "+tt.wantFrom)
+		})
+	}
+}
+
+// A subchart unpacked under charts/ gets its own missing dependencies, here a
+// library elsewhere in the scan, as the chart that vendors it does.
+func TestHelm_Resolve_VendoredSubchartDependencyFromScannedCharts(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"libs/common/Chart.yaml":            "apiVersion: v2\nname: common\ntype: library\nversion: 1.0.0\n",
+		"libs/common/templates/_labels.tpl": "{{- define \"common.labels\" -}}\napp: {{ .Chart.Name }}\n{{- end -}}\n",
+		"app/Chart.yaml":                    "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+		"app/charts/mid-1.0/Chart.yaml": "apiVersion: v2\nname: mid\nversion: 1.0.0\n" +
+			"dependencies:\n- name: common\n  version: ^1.0.0\n",
+		"app/charts/mid-1.0/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: mid\n  labels:\n" +
+			"    {{- include \"common.labels\" . | nindent 4 }}\n",
+	})
+	roots := []string{filepath.ToSlash(filepath.Join(root, "app")), filepath.ToSlash(filepath.Join(root, "libs/common"))}
+
+	got, err := NewResolver(nil).WithChartRoots(roots).Resolve(context.Background(), filepath.Join(root, "app"))
+	require.NoError(t, err)
+	mid := findResolvedBySuffix(t, got.File, "mid-1.0/templates/cm.yaml")
+	require.Contains(t, string(mid.Content), "app: mid")
+	require.Equal(t, filepath.Join(root, "app", "charts", "mid-1.0", "templates", "cm.yaml"), mid.FileName)
 }
 
 func TestHelm_Resolve_WithCRDs(t *testing.T) {
@@ -312,7 +413,7 @@ func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 		"  name: widgets.example.com",
 	}, "\n")
 
-	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
 	require.True(t, (*splits)[0].isCRD)
@@ -337,7 +438,7 @@ func TestSplitManifestYAML_dropsUnknownSourceHeader(t *testing.T) {
 		"kind: CustomResourceDefinition",
 	}, "\n")
 
-	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
 }
@@ -365,7 +466,7 @@ func TestSplitManifestYAML_emptyCRDDocumentDoesNotShiftSourceIndex(t *testing.T)
 		"# Source: test/crds/leading-empty.yaml",
 		string(crd.Data),
 	}, "\n")
-	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
 	require.NotEmpty(t, *splits)
 
 	var resourceSplit *splitManifest

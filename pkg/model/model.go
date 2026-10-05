@@ -199,6 +199,9 @@ type FileMetadata struct {
 	// HelmAttribution says which source actions emitted a rendered Helm
 	// resource whose YAML lives in named templates; nil when none is known.
 	HelmAttribution *HelmAttribution
+	// Reported, when set, is where this file's findings are reported instead of
+	// FilePath (see ResolvedHelm.Reported).
+	Reported *ReportedLocation
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -491,6 +494,10 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// DetectedFileName is the file the finding was detected in when it is
+	// reported at another place (see ReportedLocation). It stays its identity:
+	// every file of a packaged dependency is reported at one declaration.
+	DetectedFileName string `json:"-"`
 }
 
 // Framework represents a framework mapping for a query
@@ -515,7 +522,11 @@ type ResolvedFiles struct {
 
 // ResolvedHelm keeps the information of a file/template resolved
 type ResolvedHelm struct {
-	FileName            string
+	FileName string
+	// Reported is where findings are reported when FileName is not a place in
+	// the repository: a dependency packaged as an archive renders from unpacked
+	// file names that exist only inside the archive.
+	Reported            *ReportedLocation
 	Content             []byte
 	OriginalData        []byte
 	SplitID             string
@@ -601,6 +612,46 @@ func (a *HelmAttribution) First() ResourceLine {
 		return ResourceLine{}
 	}
 	return a.Invocations.First()
+}
+
+// ReportedLocation replaces the location of the findings of a file whose own
+// path and lines cannot be pointed at, with a place in the repository that can.
+type ReportedLocation struct {
+	Path string
+	Line int
+	// LineText and Snippet are the content around Line in Path.
+	LineText string
+	Snippet  []CodeLine
+}
+
+// PathOr is the reported path, or detected when nothing is reported elsewhere.
+func (r *ReportedLocation) PathOr(detected string) string {
+	if r == nil {
+		return detected
+	}
+	return r.Path
+}
+
+// Apply moves v to the reported location. Positions that belong to the file
+// the finding was detected in no longer mean anything there and are cleared.
+func (r *ReportedLocation) Apply(v *Vulnerability) {
+	if r == nil {
+		return
+	}
+	v.DetectedFileName = v.FileName
+	v.FileName = r.Path
+	v.Line = r.Line
+	v.VulnerabilityLocation = ResourceLocation{
+		Start: ResourceLine{Line: r.Line},
+		End:   ResourceLine{Line: r.Line, Col: len(r.LineText)},
+	}
+	snippet := append([]CodeLine(nil), r.Snippet...)
+	v.VulnLines = &snippet
+	v.LineWithVulnerability = r.LineText
+	v.RemediationLocation = ResourceLocation{}
+	v.BlockLocation = ResourceLocation{}
+	v.ResourceSource = ""
+	v.FileSource = nil
 }
 
 // Extensions represents a list of supported extensions

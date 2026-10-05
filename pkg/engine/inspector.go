@@ -1533,9 +1533,10 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		if rc.Severity != nil {
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
-		if !c.isExternalModulePath(file.FilePath) && rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+		reportedPath := file.Reported.PathOr(file.FilePath)
+		if !c.isExternalModulePath(reportedPath) && rulePathExcluded(reportedPath, rc.IgnorePaths, rc.OnlyPaths) {
 			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
-				file.FilePath, vulnerability.QueryID)
+				reportedPath, vulnerability.QueryID)
 			return nil, false
 		}
 	}
@@ -1558,6 +1559,9 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 			Msgf("Suppressing result by Comment at line %d", vulnerability.Line)
 		markSuppressed(vulnerability, model.SuppressionJustificationIgnoreComment)
 	}
+
+	// Must follow the ignore-line checks, which use the detected file's lines.
+	file.Reported.Apply(vulnerability)
 
 	return vulnerability, false
 }

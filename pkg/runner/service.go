@@ -94,6 +94,10 @@ type Service struct {
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
 	// so their raw template files are not mistaken for parse bugs in sink.
 	failedHelmChartDirs map[string]struct{}
+	// storedHelmMu guards storedHelm, the keys of the rendered Helm documents
+	// already stored (see firstHelmRender).
+	storedHelmMu sync.Mutex
+	storedHelm   map[string]struct{}
 	// contentInterner dedups OriginalData strings across files with identical
 	// content (47%+ on community-operators); guarded by contentInternerMu.
 	contentInternerMu sync.Mutex

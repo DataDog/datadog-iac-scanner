@@ -11,8 +11,10 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -128,8 +130,9 @@ func silenceStdLog() func() {
 	}
 }
 
-func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *action.Install,
-	valueOpts *values.Options, marks *invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, error) {
+// nolint:gocritic
+func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chartIndex, client *action.Install,
+	valueOpts *values.Options, marks *invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, fileLocator, error) {
 	contextLogger := logger.FromContext(ctx)
 	defer silenceStdLog()()
 
@@ -141,7 +144,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	p := getter.All(settings)
 	vals, err := valueOpts.MergeValues(p)
 	if err != nil {
-		return nil, nil, nil, []string{}, err
+		return nil, nil, nil, []string{}, nil, err
 	}
 	contextLogger.Debug().Msgf("Merged helm values successfully, values count: %d", len(vals))
 
@@ -149,8 +152,9 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	contextLogger.Debug().Msgf("Loading chart from path: '%s'", chartPath)
 	chartRequested, err := loadChart(ctx, fsys, chartPath)
 	if err != nil {
-		return nil, nil, nil, []string{}, err
+		return nil, nil, nil, []string{}, nil, err
 	}
+	locator := attachMissingDependencies(ctx, fsys, index, chartRequested, chartPath, 0)
 
 	// Set KubeVersion; clear the constraint only when unsatisfiable.
 	kubeVersion, dropConstraint := resolveChartKubeVersion(chartKubeVersionConstraint(chartRequested))
@@ -165,7 +169,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	sources := setID(chartRequested, marks)
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {
-		return nil, nil, nil, []string{}, instErr
+		return nil, nil, nil, []string{}, nil, instErr
 	}
 	contextLogger.Debug().Msg("Chart installability check passed")
 
@@ -173,12 +177,12 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, client.ReleaseName)
 	helmRelease, err := client.Run(chartRequested, vals)
 	if err != nil {
-		return nil, nil, nil, []string{}, err
+		return nil, nil, nil, []string{}, nil, err
 	}
 
 	contextLogger.Debug().Msgf("Successfully rendered helm chart '%s', manifest length: %d bytes",
 		chartRequested.Metadata.Name, len(helmRelease.Manifest))
-	return helmRelease, chartRequested, sources, excluded, nil
+	return helmRelease, chartRequested, sources, excluded, locator, nil
 }
 
 // Application chart type is only installable
@@ -300,4 +304,118 @@ func getExcluded(ctx context.Context, charterino *chart.Chart, chartpath string)
 
 	contextLogger.Debug().Msgf("Found %d excluded files from chart", len(excluded))
 	return excluded
+}
+
+// archiveLocations says where to report a file of a dependency vendored as a
+// packaged chart (charts/name-1.2.3.tgz). Helm names its files as if the
+// archive were unpacked, under the name the dependency renders as (its alias
+// when it has one), which are not paths of the repository, and a line inside a
+// compressed archive cannot be opened either. The dependency is reported where
+// the repository declares it: its entry in the parent's Chart.yaml or
+// requirements.yaml. Locations are kept per dependency, as every file of one
+// archive is reported at the same place.
+type archiveLocations struct {
+	fsys  vfs.FS
+	byDep map[string]*model.ReportedLocation
+}
+
+func newArchiveLocations(fsys vfs.FS) *archiveLocations {
+	return &archiveLocations{fsys: fsys, byDep: map[string]*model.ReportedLocation{}}
+}
+
+// of returns where to report the file at path, nil when it is a real file.
+func (a *archiveLocations) of(path string) *model.ReportedLocation {
+	segments := strings.Split(filepath.ToSlash(path), "/")
+	for i := 0; i+1 < len(segments); i++ {
+		if segments[i] != dependenciesDirName {
+			continue
+		}
+		dep := strings.Join(segments[:i+2], "/")
+		location, known := a.byDep[dep]
+		if !known {
+			if _, err := a.fsys.Stat(filepath.FromSlash(dep)); err != nil {
+				location = dependencyDeclaration(a.fsys, filepath.FromSlash(strings.Join(segments[:i], "/")), segments[i+1])
+			}
+			a.byDep[dep] = location
+		}
+		if location != nil {
+			return location
+		}
+	}
+	return nil
+}
+
+// dependencyDeclaration locates the dependency rendered as name in the parent
+// chart's Chart.yaml, then requirements.yaml. The declaration does not depend
+// on which archive provides the dependency, so it is found even when several
+// versions are vendored. A dependency Helm loaded from charts/ without a
+// declaration is reported at the top of the parent's Chart.yaml. nil means the
+// parent has neither file.
+func dependencyDeclaration(fsys vfs.FS, parent, name string) *model.ReportedLocation {
+	var fallback *model.ReportedLocation
+	for _, file := range []string{"Chart.yaml", "requirements.yaml"} {
+		path := filepath.Join(parent, file)
+		if _, err := fsys.Stat(path); err != nil {
+			continue
+		}
+		data, err := fsys.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if line := declaredDependencyLine(data, name); line > 0 {
+			return reportedAt(path, data, line)
+		}
+		if fallback == nil {
+			fallback = reportedAt(path, data, 1)
+		}
+	}
+	return fallback
+}
+
+// declaredDependencyLine returns the line of the dependencies entry rendered
+// as name (its alias when it has one), or 0.
+func declaredDependencyLine(data []byte, name string) int {
+	var doc yaml.Node
+	if yaml.Unmarshal(data, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return 0
+	}
+	root := doc.Content[0]
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value != "dependencies" || root.Content[i+1].Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, entry := range root.Content[i+1].Content {
+			var dep struct {
+				Name  string `yaml:"name"`
+				Alias string `yaml:"alias"`
+			}
+			if entry.Decode(&dep) != nil {
+				continue
+			}
+			rendered := dep.Alias
+			if rendered == "" {
+				rendered = dep.Name
+			}
+			if rendered == name {
+				return entry.Line
+			}
+		}
+	}
+	return 0
+}
+
+// reportedLines is how many lines around the reported one are kept as context.
+const reportedLines = 2
+
+func reportedAt(path string, data []byte, line int) *model.ReportedLocation {
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r", ""), "\n")
+	reported := &model.ReportedLocation{Path: path, Line: line}
+	if line < 1 || line > len(lines) {
+		return reported
+	}
+	reported.LineText = lines[line-1]
+	for n := max(1, line-reportedLines); n <= min(len(lines), line+reportedLines); n++ {
+		reported.Snippet = append(reported.Snippet, model.CodeLine{Position: n, Line: lines[n-1]})
+	}
+	return reported
 }

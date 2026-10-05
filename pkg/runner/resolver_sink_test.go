@@ -639,3 +639,19 @@ func TestFilterHelmGeneratedLines_DDIacScanCommentKept(t *testing.T) {
 	// Lines 2 and 3 are generated; lines 4 and 5 are real content.
 	require.Equal(t, []int{4, 5}, got)
 }
+
+func TestFirstHelmRender(t *testing.T) {
+	s := &Service{}
+	render := func(source, body string) *model.ResolvedHelm {
+		return &model.ResolvedHelm{
+			FileName: "/repo/lib/templates/cm.yaml",
+			SplitID:  "# KICS_HELM_ID_0:",
+			Content:  []byte("\n# Source: " + source + "\n" + body),
+		}
+	}
+	require.True(t, s.firstHelmRender(render("lib/templates/cm.yaml", "name: lib\n")))
+	require.False(t, s.firstHelmRender(render("app/charts/lib/templates/cm.yaml", "name: lib\n")),
+		"the same document attached through a parent is already stored")
+	require.True(t, s.firstHelmRender(render("web/charts/lib/templates/cm.yaml", "name: overridden\n")),
+		"a parent overriding the dependency's values renders a different document")
+}

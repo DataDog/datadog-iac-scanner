@@ -325,6 +325,9 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 
 		// Stamp the fingerprint here so every report format reads one shared value.
 		fingerprintPath := resolvedPath
+		if item.DetectedFileName != "" {
+			fingerprintPath = resolvePath(item.DetectedFileName, pathExtractionMap, repoDir)
+		}
 		if fingerprintPath == "." {
 			fingerprintPath = ""
 		}

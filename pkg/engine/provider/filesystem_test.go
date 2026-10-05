@@ -7,6 +7,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -982,6 +983,89 @@ func TestGetSourcesTofuShadowingExplicitFiles(t *testing.T) {
 		require.NoError(t, runErr)
 		require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got, "parallel=%v", parallel)
 	}
+}
+
+// Path filters reach Helm charts too: an ignored or out-of-scope chart is not
+// rendered, and only-paths naming a template inside a chart still renders it.
+func TestWalkInventoryRendersOnlyChartsInScope(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	for _, chart := range []string{"app", "lib", "other"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, chart, "templates"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, chart, "Chart.yaml"), []byte("name: "+chart+"\n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, chart, "templates", "cm.yaml"), []byte("kind: ConfigMap\n"), 0o600))
+	}
+	roots := []string{
+		filepath.ToSlash(filepath.Join(dir, "app")),
+		filepath.ToSlash(filepath.Join(dir, "lib")),
+		filepath.ToSlash(filepath.Join(dir, "other")),
+	}
+	tests := []struct {
+		name           string
+		excludes, only []string
+		want           []string
+	}{
+		{"no filters", nil, nil, []string{"app", "lib", "other"}},
+		{"ignored chart", []string{filepath.Join(dir, "lib", "**")}, nil, []string{"app", "other"}},
+		{"only one chart", nil, []string{filepath.Join(dir, "app")}, []string{"app"}},
+		{"only one template", nil, []string{filepath.Join(dir, "other", "templates", "cm.yaml")}, []string{"other"}},
+	}
+	for _, prebuilt := range []bool{true, false} {
+		for _, tt := range tests {
+			t.Run(fmt.Sprintf("%s prebuilt=%v", tt.name, prebuilt), func(t *testing.T) {
+				fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, tt.excludes, tt.only)
+				require.NoError(t, err)
+				if prebuilt {
+					fs.SetPrebuiltWalk([]string{roots[0] + "/templates/cm.yaml"}, roots, nil)
+				}
+				var mu sync.Mutex
+				var rendered []string
+				_, err = fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{}, func(_ context.Context, root string) bool {
+					mu.Lock()
+					defer mu.Unlock()
+					rendered = append(rendered, filepath.Base(root))
+					return true
+				})
+				require.NoError(t, err)
+				require.ElementsMatch(t, tt.want, rendered)
+			})
+		}
+	}
+}
+
+func TestExcludesFile(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	kept := filepath.Join(dir, "app", "cm.yaml")
+	ignored := filepath.Join(dir, "lib", "cm.yaml")
+	for _, f := range []string{kept, ignored} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(f), 0o755))
+		require.NoError(t, os.WriteFile(f, []byte("kind: ConfigMap\n"), 0o600))
+	}
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, []string{ignored}, nil)
+	require.NoError(t, err)
+	require.False(t, fs.ExcludesFile(kept))
+	require.True(t, fs.ExcludesFile(ignored))
+	require.False(t, fs.ExcludesFile(filepath.Join(dir, "app", "charts", "pkg", "templates", "cm.yaml")),
+		"a path that names no file is not matched by the filters")
+
+	ignoredDir, err := NewFileSystemSourceProvider(ctx, []string{dir}, []string{filepath.Join(dir, "lib")}, nil)
+	require.NoError(t, err)
+	require.True(t, ignoredDir.ExcludesFile(ignored), "a file under an ignored directory is excluded")
+	require.True(t, ignoredDir.ExcludesFile(filepath.Join(dir, "lib", "charts", "pkg", "templates", "cm.yaml")),
+		"so is a file of an archive under it")
+	require.False(t, ignoredDir.ExcludesFile(kept))
+	require.Equal(t, []string{toSlash(filepath.Join(dir, "app"))},
+		ignoredDir.chartRootsInScope([]string{toSlash(filepath.Join(dir, "app")), toSlash(filepath.Join(dir, "lib"))}))
+
+	only, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, []string{filepath.Join(dir, "app")})
+	require.NoError(t, err)
+	require.False(t, only.ExcludesFile(kept))
+	require.True(t, only.ExcludesFile(ignored))
+
+	mem := NewMemorySourceProvider(nil, nil, []string{"lib/**"}, nil)
+	require.True(t, mem.ExcludesFile("lib/cm.yaml"))
+	require.False(t, mem.ExcludesFile("app/cm.yaml"))
 }
 
 func TestChartRootWaves(t *testing.T) {

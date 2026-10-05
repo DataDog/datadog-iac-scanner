@@ -30,6 +30,8 @@ type chartFailureRecorder struct {
 
 func (r *chartFailureRecorder) chartFailed(chartPath string) { r.failed = append(r.failed, chartPath) }
 
+func (*chartFailureRecorder) ExcludesFile(string) bool { return false }
+
 // A chart whose rendering panics goes through the same failure handling as a
 // chart that fails to render: it is recorded failed and its raw files scanned.
 // It runs the real Helm resolver, which recovers panics itself.

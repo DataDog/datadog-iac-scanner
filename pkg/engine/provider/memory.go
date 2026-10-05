@@ -78,13 +78,7 @@ func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]InventoryFile, error) {
 	eligible := m.eligibleFiles(extensions)
 
-	roots := make([]string, 0)
-	for _, p := range eligible {
-		if filepath.Base(p) == "Chart.yaml" {
-			roots = append(roots, filepath.ToSlash(filepath.Dir(p)))
-		}
-	}
-	renderedRoots := renderChartsShallowFirst(ctx, roots, chartPool, chartFn)
+	renderedRoots := renderChartsShallowFirst(ctx, ChartRoots(eligible), chartPool, chartFn)
 
 	files := make([]InventoryFile, 0, len(eligible))
 	for _, p := range eligible {
@@ -94,6 +88,32 @@ func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 		files = append(files, InventoryFile{Path: p, Ext: memExtension(p)})
 	}
 	return files, nil
+}
+
+// ChartRoots returns the sorted, slash-separated directories of the Chart.yaml
+// files among paths: the Helm chart roots of pushed content, in the form the
+// analyzer produces for a disk walk.
+func ChartRoots(paths []string) []string {
+	var roots []string
+	seen := make(map[string]bool)
+	for _, p := range paths {
+		if filepath.Base(p) != "Chart.yaml" {
+			continue
+		}
+		root := filepath.ToSlash(filepath.Dir(p))
+		if !seen[root] {
+			seen[root] = true
+			roots = append(roots, root)
+		}
+	}
+	sort.Strings(roots)
+	return roots
+}
+
+// ExcludesFile reports whether ignore-paths or only-paths leave the pushed file
+// at path out of the scan (see FileSystemSourceProvider.ExcludesFile).
+func (m *MemorySourceProvider) ExcludesFile(path string) bool {
+	return pathutil.Excluded(path, m.ignorePaths, m.onlyPaths)
 }
 
 // ReadFile reads a pushed file through the provider's FS.

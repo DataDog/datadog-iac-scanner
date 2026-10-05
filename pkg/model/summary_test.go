@@ -34,6 +34,34 @@ func TestModuleAttributionSerializationContract(t *testing.T) {
 	require.NotContains(t, string(summaryFileJSON), "module_attribution")
 }
 
+// Every file of a packaged dependency is reported at its one declaration, so
+// two dependencies naming a resource alike would share a fingerprint if it were
+// computed from where they are reported.
+func TestCreateSummary_ReportedFindingsKeepTheirIdentity(t *testing.T) {
+	declaration := &ReportedLocation{Path: "/repo/web/Chart.yaml", Line: 5, LineText: "- name: pkg"}
+	finding := func(detected string) Vulnerability {
+		v := Vulnerability{
+			FileName: detected, QueryID: "q", QueryName: "q", Severity: SeverityHigh, Platform: "Kubernetes",
+			ResourceType: "Deployment", ResourceName: "dd-helm",
+		}
+		declaration.Apply(&v)
+		return v
+	}
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{
+		finding("/repo/web/charts/pkg/templates/deploy.yaml"),
+		finding("/repo/web/charts/cache/templates/deploy.yaml"),
+	}, "scan", nil, "/repo", SCIInfo{})
+
+	files := summary.Queries[0].Files
+	require.Len(t, files, 2)
+	require.Equal(t, filepath.FromSlash("web/Chart.yaml"), files[0].FileName)
+	require.Equal(t, filepath.FromSlash("web/Chart.yaml"), files[1].FileName)
+	require.NotEqual(t, files[0].Fingerprint, files[1].Fingerprint)
+	require.Equal(t, GetDatadogFingerprintHash(SCIInfo{}, filepath.FromSlash("web/charts/pkg/templates/deploy.yaml"),
+		"Kubernetes", "Deployment", "dd-helm", "q", "- name: pkg", ""), files[0].Fingerprint,
+		"the fingerprint stays the detected file's, so it is stable across scans")
+}
+
 // TestCreateSummary tests the functions [CreateSummary()] and all the methods called by them
 func TestCreateSummary(t *testing.T) {
 	vulnerabilities := []Vulnerability{

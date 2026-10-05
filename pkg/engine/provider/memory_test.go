@@ -184,3 +184,15 @@ func TestMemorySourceProvider_ParallelMatchesSequential(t *testing.T) {
 		t.Fatalf("parallel result differs from sequential")
 	}
 }
+
+func TestChartRoots(t *testing.T) {
+	if got := ChartRoots([]string{"main.tf", "charts/app/values.yaml"}); got != nil {
+		t.Errorf("ChartRoots() = %v, want nil without Chart.yaml", got)
+	}
+	got := ChartRoots([]string{
+		"main.tf", "charts/other/Chart.yaml", "charts/app/values.yaml", "charts/app/Chart.yaml", "charts/app/Chart.yaml",
+	})
+	if want := []string{"charts/app", "charts/other"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("ChartRoots() = %v, want %v", got, want)
+	}
+}
