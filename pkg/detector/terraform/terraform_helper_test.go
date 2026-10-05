@@ -2,6 +2,7 @@ package terraform
 
 import (
 	"context"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,7 +93,7 @@ func TestGenerateSubstrings(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fileData := []byte(strings.Join(lines, "\n"))
+			fileData := strings.Join(lines, "\n")
 			got1, got2, idx := GenerateSubstrings(ctx, tt.key, tt.extracted, lines, tt.currentLine, fileData)
 			require.Equal(t, tt.wantSubstr1, got1)
 			require.Equal(t, tt.wantSubstr2, got2)
@@ -190,7 +191,7 @@ func TestResolveListIndex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fileData := []byte(strings.Join(tt.lines, "\n"))
 
-			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, fileData)
+			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) })
 			require.Equal(t, tt.wantContent, content)
 			require.Equal(t, tt.wantLine, line)
 
@@ -386,7 +387,7 @@ func TestResolveListIndexStatementInJsonencodeThirdElement(t *testing.T) {
 	lines := *linesPtr
 	ctx := context.Background()
 	// currentLine 9 = line after `policy =` (0-indexed), same as DetectLine when resolving Statement[2]
-	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, data)
+	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) })
 	require.Empty(t, sub)
 	// Third tuple element starts at `{` on file line 41 (1-based) -> index 40
 	require.Equal(t, 40, lineNum)
