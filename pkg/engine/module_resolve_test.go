@@ -19,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 )
 
@@ -134,7 +135,7 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 			return "/cache/vpc", "/cache", true
 		}
 		return "", "", false
-	})
+	}, nil)
 
 	if _, ok := doc["module"]; ok {
 		t.Fatalf("expected resolved remote module call to be stripped")
@@ -160,7 +161,7 @@ module "bucket" {
 	calledDirs := map[string]bool{filepath.Join(root, "modules", "bucket"): true}
 	successfulRoots := map[string]bool{stackA: true} // stack-b eval failed
 
-	stripModuleCalls(doc, rootFileB, root, calledDirs, successfulRoots, newRootIndex([]string{stackA, stackB}), nil)
+	stripModuleCalls(doc, rootFileB, root, calledDirs, successfulRoots, newRootIndex([]string{stackA, stackB}), nil, nil)
 
 	if _, ok := doc["module"]; !ok {
 		t.Fatal("module call under a failed root must not be stripped")
@@ -1114,12 +1115,36 @@ func TestDeduplicatedCallerCount(t *testing.T) {
 	}
 }
 
+func TestCalledModuleDirsFromDocuments_MergedEnvironmentLayout(t *testing.T) {
+	root := t.TempDir()
+	modDir := filepath.Join(root, "mod", "helpers")
+	if err := os.MkdirAll(modDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	envFile := filepath.Join(root, "mod", "environments", "prod", "main.tf")
+
+	dirs, ok := calledModuleDirsFromDocuments(vfs.DiskFS{}, model.FileMetadatas{
+		{
+			ID:       "env-id",
+			FilePath: envFile,
+			Document: model.Document{
+				"module": map[string]interface{}{
+					"helpers": map[string]interface{}{"source": "./helpers"},
+				},
+			},
+		},
+	}, root, nil)
+	if !ok || !reflect.DeepEqual(dirs, []string{modDir}) {
+		t.Fatalf("calledModuleDirsFromDocuments() = %v, %v; want [%s]", dirs, ok, modDir)
+	}
+}
+
 func TestCalledModuleDirsFromDocuments_LocalModule(t *testing.T) {
 	root := t.TempDir()
 	modDir := filepath.Join(root, "modules", "bucket")
 	rootFile := filepath.Join(root, "stack", "main.tf")
 
-	dirs, ok := calledModuleDirsFromDocuments(model.FileMetadatas{
+	dirs, ok := calledModuleDirsFromDocuments(nil, model.FileMetadatas{
 		{
 			ID:       "root-id",
 			FilePath: rootFile,
@@ -1252,5 +1277,43 @@ func TestShouldInstantiateLocalModules(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+// A build system merges environments/<name> into its module before running
+// Terraform, so a relative source in an environment file is relative to the
+// module. The called module must be instantiated from there, and its body not
+// also scanned as a standalone root.
+func TestResolveModuleDocuments_MergedEnvironmentLayout(t *testing.T) {
+	root := t.TempDir()
+	envFile := writeFile(t, filepath.Join(root, "svc", "environments", "prod"), "main.tf", `
+module "bucket" {
+  source = "./modules/bucket"
+  name   = "prod-logs"
+}
+`)
+	modFile := writeFile(t, filepath.Join(root, "svc", "modules", "bucket"), "main.tf", `
+variable "name" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  bucket = var.name
+}
+`)
+
+	files := model.FileMetadatas{fileMeta("env-id", envFile), fileMeta("mod-id", modFile)}
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, vfs.DiskFS{})
+	if !res.ok || len(res.docs) != 1 {
+		t.Fatalf("expected the module instantiated once, got ok=%v docs=%#v", res.ok, res.docs)
+	}
+	resource, _ := res.docs[0]["resource"].(map[string]interface{})
+	bucketType, _ := resource["aws_s3_bucket"].(map[string]interface{})
+	this, _ := bucketType["this"].(map[string]interface{})
+	if this["bucket"] != "prod-logs" {
+		t.Fatalf("instantiated bucket = %#v, want the caller's prod-logs", this["bucket"])
+	}
+	if len(res.suppressed["mod-id"]) == 0 {
+		t.Fatal("the called module must not also be scanned as a root")
 	}
 }

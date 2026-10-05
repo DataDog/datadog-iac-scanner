@@ -67,3 +67,18 @@ func IsDisk(fsys FS) bool {
 }
 
 var _ FS = DiskFS{}
+
+// RepositoryRoot returns the nearest directory at or above dir holding a .git
+// entry (a directory, or the file of a worktree or submodule).
+func RepositoryRoot(fsys FS, dir string) (string, bool) {
+	for dir = filepath.Clean(dir); ; {
+		if _, err := fsys.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}

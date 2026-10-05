@@ -3,6 +3,7 @@ package tfmodules
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -88,6 +89,91 @@ module "local_bucket" {
 	if mod.SourceType != "local" {
 		t.Errorf("expected SourceType=local, got %q", mod.SourceType)
 	}
+}
+
+// TestParseTerraformModules_CompoundGetterPrefixLocalSource covers compound
+// go-getter sources like "git::file://./x" through fillModuleAttrs: the
+// prefixes must be stripped before both the local-source classification and
+// the path computation (as tfeval does), so the module resolves to the local
+// directory without a spurious "Invalid local module source" warning.
+func TestParseTerraformModules_CompoundGetterPrefixLocalSource(t *testing.T) {
+	rootDir := t.TempDir()
+	moduleDir := filepath.Join(rootDir, "local-mod")
+	require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(moduleDir, "main.tf"), []byte(`resource "test" "example" {}`), 0o600))
+
+	const mainTF = `module "local" { source = "git::file://./local-mod" }`
+	var logBuf bytes.Buffer
+	ctx := zerolog.New(&logBuf).Level(zerolog.WarnLevel).WithContext(context.Background())
+	files := model.FileMetadatas{
+		&model.FileMetadata{
+			FilePath:     filepath.Join(rootDir, "main.tf"),
+			OriginalData: mainTF,
+		},
+	}
+
+	modules, err := ParseTerraformModules(ctx, nil, files, 1)
+	require.NoError(t, err)
+	require.Len(t, modules, 1)
+	for _, mod := range modules {
+		require.True(t, mod.IsLocal)
+		require.Equal(t, "git::file://./local-mod", mod.Source)
+		require.Equal(t, filepath.Clean(moduleDir), mod.AbsSource)
+	}
+	require.Empty(t, logBuf.String(), "expected no warnings, got %q", logBuf.String())
+}
+
+func TestStripGetterPrefix(t *testing.T) {
+	tests := []struct{ source, want string }{
+		{"git::file://./x", "./x"},
+		{"hg::file://../x", "../x"},
+		{"git::https://example.com/a/b.git", "https://example.com/a/b.git"},
+		{"file:///abs/path", "/abs/path"},
+		{"./plain", "./plain"},
+	}
+	for _, tt := range tests {
+		require.Equal(t, tt.want, StripGetterPrefix(tt.source), tt.source)
+	}
+}
+
+// TestEnrichModule_DowngradesUnresolvedToDebug covers the log level of the
+// "Skipping module" message in enrichModule: an UnresolvedError (the remote
+// resolver declining or failing a source) was already reported, grouped by
+// reason, before enrichment, so it is only Debug; any other resolution error
+// stays at Warn.
+func TestEnrichModule_DowngradesUnresolvedToDebug(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantLevel string
+	}{
+		{"unresolved resolver error logs at debug", &UnresolvedError{Reason: "no credentials"}, `"level":"debug"`},
+		{"plain resolver error logs at warn", errors.New("git clone failed"), `"level":"warn"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			ctx := zerolog.New(&logBuf).WithContext(t.Context())
+
+			mod := &ParsedModule{Name: "m", Source: "github.com/org/repo//mod"}
+			fake := fakeRemoteResolver{err: tt.err}
+			result := enrichModule(ctx, mod, t.TempDir(), fake, newModuleEnrichCache(vfs.DiskFS{}, nil))
+
+			require.Equal(t, ParsedModule{Name: "m", Source: "github.com/org/repo//mod"}, result.Module)
+			require.NoError(t, result.Error)
+			require.Contains(t, logBuf.String(), "Skipping module m")
+			require.Contains(t, logBuf.String(), tt.wantLevel)
+		})
+	}
+}
+
+type fakeRemoteResolver struct {
+	err error
+}
+
+func (f fakeRemoteResolver) Resolve(context.Context, *ParsedModule) (string, error) {
+	return "", f.err
 }
 
 func TestParseTerraformModules_AbsoluteLocalModule(t *testing.T) {
@@ -1171,4 +1257,48 @@ resource "aws_s3_bucket" "live" {
 	require.Equal(t, []string{"aws_s3_bucket"}, equivalent["aws"].Resources)
 	require.Equal(t, "from_tofu", equivalent["aws"].Inputs["bucket"])
 	require.NotContains(t, equivalent["aws"].Inputs, "ami")
+}
+
+// A missing local source is reported once, by fillModuleAttrs: enrichment does
+// not warn about it a second time.
+func TestEnrichModule_MissingLocalSourceIsNotReportedAgain(t *testing.T) {
+	var logBuf bytes.Buffer
+	ctx := zerolog.New(&logBuf).Level(zerolog.WarnLevel).WithContext(t.Context())
+	missing := filepath.Join(t.TempDir(), "missing")
+	mod := &ParsedModule{Name: "m", Source: "./missing", IsLocal: true, AbsSource: missing}
+
+	result := enrichModule(ctx, mod, t.TempDir(), nil, newModuleEnrichCache(vfs.DiskFS{}, nil))
+
+	require.ErrorIs(t, result.Error, os.ErrNotExist)
+	require.Empty(t, logBuf.String())
+}
+
+// The level of a missing local source depends on the file calling it: a fixture
+// may point anywhere, production code may not.
+func TestParseTerraformModules_MissingLocalSourceLevelFollowsTheCaller(t *testing.T) {
+	repo := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o755))
+	tests := []struct {
+		name, callerDir, source, wantLevel string
+	}{
+		{"production caller", "stack", "./missing", `"level":"warn"`},
+		{"fixture caller", "testdata/stack", "./missing", `"level":"debug"`},
+		{"production caller with a target under testdata", "stack", "../testdata/missing", `"level":"warn"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			ctx := zerolog.New(&logBuf).WithContext(t.Context())
+			caller := filepath.Join(repo, filepath.FromSlash(tt.callerDir), "main.tf")
+			files := model.FileMetadatas{&model.FileMetadata{
+				FilePath:     caller,
+				OriginalData: `module "m" { source = "` + tt.source + `" }`,
+			}}
+
+			_, err := ParseTerraformModules(ctx, nil, files, 1)
+			require.NoError(t, err)
+			require.Contains(t, logBuf.String(), "Invalid local module source")
+			require.Contains(t, logBuf.String(), tt.wantLevel)
+		})
+	}
 }

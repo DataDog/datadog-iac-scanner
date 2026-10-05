@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -58,12 +59,29 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 	return s.sinkContent(ctx, filename, scanID, c, err, openAPIResolveReferences, maxResolverDepth)
 }
 
+// logParseFailure logs a file that could not be parsed. Raw templates of a
+// failed Helm chart, template syntax outside a chart and deliberately invalid
+// test fixtures are expected not to parse, so they stay at debug level.
+func (s *Service) logParseFailure(ctx context.Context, filename string, content []byte, err error) {
+	contextLogger := logger.FromContext(ctx)
+	switch {
+	case s.isUnderFailedHelmChart(filename):
+		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+			Msgf("skipping unparseable raw Helm template: %s", filename)
+	case utils.IsTestFixturePath(filename) || utils.HasYAMLBreakingTemplate(content):
+		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+			Msgf("skipping unparseable templated or fixture file: %s", filename)
+	default:
+		contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+			Msgf("failed to parse file content: %s", filename)
+	}
+}
+
 // sinkContent parses already-read file content; used when one read feeds several parsers.
 func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	c *Content, getErr error,
 	openAPIResolveReferences bool,
 	maxResolverDepth int) error {
-	contextLogger := logger.FromContext(ctx)
 	s.Tracker.TrackFileFound(filename)
 
 	*c.Content = resolveCRLFFile(*c.Content)
@@ -91,14 +109,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 
 	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
-		// Raw templates inside a failed chart are not valid YAML; parse failures there are expected.
-		if s.isUnderFailedHelmChart(filename) {
-			contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
-				Msgf("skipping unparseable raw Helm template: %s", filename)
-		} else {
-			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
-				Msgf("failed to parse file content: %s", filename)
-		}
+		s.logParseFailure(ctx, filename, *content, err)
 		return nil
 	}
 

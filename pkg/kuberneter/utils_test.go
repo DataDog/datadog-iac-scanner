@@ -7,27 +7,11 @@
 package kuberneter
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-func getAPIVersion(apiVersion string) string {
-	if apiVersion == "core/v1" {
-		return "v1"
-	}
-	return apiVersion
-}
-
-func getNamespace(namespace string) string {
-	if namespace == "" {
-		return "all namespaces"
-	}
-
-	return fmt.Sprintf("the namespace %s", namespace)
-}
 
 func TestExtractK8sAPIOptions(t *testing.T) {
 	supportedKinds := buildSupportedKinds()
@@ -105,32 +89,6 @@ func TestExtractK8sAPIOptions(t *testing.T) {
 	}
 }
 
-func Test_GetAPIVersion(t *testing.T) {
-	tests := []struct {
-		name          string
-		apiName       string
-		expectedValue string
-	}{
-		{
-			name:          "core/v1 api version",
-			apiName:       "core/v1",
-			expectedValue: "v1",
-		},
-		{
-			name:          "v2 api version",
-			apiName:       "v2",
-			expectedValue: "v2",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			v := getAPIVersion(tt.apiName)
-			require.Equal(t, v, tt.expectedValue)
-		})
-	}
-
-}
-
 func Test_IsTarget(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -160,32 +118,6 @@ func Test_IsTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			v := isTarget(tt.target, tt.targetOpts)
-			require.Equal(t, v, tt.expectedValue)
-		})
-	}
-
-}
-
-func Test_GetNamespace(t *testing.T) {
-	tests := []struct {
-		name          string
-		namespace     string
-		expectedValue string
-	}{
-		{
-			name:          "empty namespace",
-			namespace:     "",
-			expectedValue: "all namespaces",
-		},
-		{
-			name:          "not empty namespace",
-			namespace:     "some",
-			expectedValue: "the namespace some",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			v := getNamespace(tt.namespace)
 			require.Equal(t, v, tt.expectedValue)
 		})
 	}

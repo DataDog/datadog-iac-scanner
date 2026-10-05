@@ -288,7 +288,7 @@ func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string
 	if err != nil {
 		return nil
 	}
-	return calledModuleDirs(dir, bodies, resolver)
+	return calledModuleDirs(dir, bodies, resolver, fsys)
 }
 
 func (e *Evaluator) CalledModuleDirs(dir string) []string {
@@ -296,10 +296,10 @@ func (e *Evaluator) CalledModuleDirs(dir string) []string {
 	if err != nil {
 		return nil
 	}
-	return calledModuleDirs(dir, bodies, e.remoteResolver)
+	return calledModuleDirs(dir, bodies, e.remoteResolver, e.fsys)
 }
 
-func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResolver) []string {
+func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResolver, fsys vfs.FS) []string {
 	moduleBlocks := collectModuleBlocks(bodies)
 
 	emptyCtx := &hcl.EvalContext{}
@@ -309,9 +309,8 @@ func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResol
 		if source == "" {
 			continue
 		}
-		cleanSource := StripGetterPrefix(source)
-		if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
-			dirs = append(dirs, resolveLocalDir(dir, source))
+		if local, ok := tfmodules.LocalModuleDir(fsys, dir, source); ok {
+			dirs = append(dirs, local)
 			continue
 		}
 		if resolver != nil {

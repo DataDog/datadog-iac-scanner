@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -148,6 +149,11 @@ type dirParse struct {
 
 func New() *Evaluator {
 	return NewWithFS(vfs.DiskFS{})
+}
+
+// FS returns the filesystem the evaluator reads module and tfvars files through.
+func (e *Evaluator) FS() vfs.FS {
+	return e.fsys
 }
 
 // NewWithFS builds an Evaluator that reads module and tfvars files through
@@ -766,7 +772,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			append(cloneChain(chain), site), depth+1, visiting, allVisited,
 		)
 		if cErr != nil {
-			if !errors.Is(cErr, ErrModuleNotEvaluated) {
+			if isReportableModuleEvalError(cErr) {
 				contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", label, childDir, cErr)
 			}
 			// Deliberately not added to allVisited: the module was not resolved, so
@@ -783,15 +789,21 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	return childResources, moduleOutputs
 }
 
+// isReportableModuleEvalError excludes a missing local source, which the module
+// parser already reports.
+func isReportableModuleEvalError(err error) bool {
+	return !errors.Is(err, ErrModuleNotEvaluated) && !errors.Is(err, fs.ErrNotExist)
+}
+
 func (e *Evaluator) resolveModuleDir(
 	ctx context.Context, callerDir, packageRoot, source, version, callerFile, moduleName string,
 ) (dir, childPackageRoot string, ok bool) {
-	cleanSource := StripGetterPrefix(source)
-	if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
-		localDir := resolveLocalDir(callerDir, source)
+	if tfmodules.LooksLikeLocalModuleSource(source) {
 		if packageRoot == "" {
-			return localDir, "", true
+			dir, _ := tfmodules.LocalModuleDir(e.fsys, callerDir, source)
+			return dir, "", true
 		}
+		localDir := resolveLocalDir(callerDir, source)
 		confined, resolveErr := resolver.ResolvePathWithinRoot(ctx, packageRoot, localDir)
 		return confined, packageRoot, resolveErr == nil
 	}

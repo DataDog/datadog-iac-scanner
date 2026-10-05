@@ -65,6 +65,8 @@ var (
 	buildahRegex                                    = regexp.MustCompile(`buildah\s*from\s*\w+`)
 	crossPlaneRegex                                 = regexp.MustCompile(`"?apiVersion"?\s*:\s*(\w+\.)+crossplane\.io/v\w+\s*`)
 	knativeRegex                                    = regexp.MustCompile(`"?apiVersion"?\s*:\s*(\w+\.)+knative\.dev/v\w+\s*`)
+	rootAPIVersionRegex                             = regexp.MustCompile(`(?m)^["']?apiVersion["']?\s*:\s*["']?([^"'\s#]+)`)
+	catalogAPIVersionRegex                          = regexp.MustCompile(`^(v3|backstage\.io/v\w+)$`)
 	pulumiNameRegex                                 = regexp.MustCompile(`name\s*:`)
 	pulumiRuntimeRegex                              = regexp.MustCompile(`runtime\s*:`)
 	pulumiResourcesRegex                            = regexp.MustCompile(`resources\s*:`)
@@ -643,7 +645,11 @@ func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {
 }
 
 func isContentClassifiedExt(ext string) bool {
-	return ext == yaml || ext == yml || ext == json || ext == sh
+	switch ext {
+	case yaml, yml, json, sh, extCfg, extConf, extIni:
+		return true
+	}
+	return false
 }
 
 func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) (content []byte, ok, tooLarge bool) {
@@ -758,13 +764,7 @@ func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []
 		if hints, ok := contentHints[key]; ok && !containsAny(content, hints) {
 			continue
 		}
-		check := true
-		for _, typeRegex := range types[key].regex {
-			if !typeRegex.Match(content) {
-				check = false
-				break
-			}
-		}
+		check := matchesType(key, content)
 		// If all regexs passed and there wasn't a type already assigned
 		if check && returnType == "" {
 			returnType = key
@@ -782,6 +782,41 @@ func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []
 	}
 
 	return endReturnType
+}
+
+func matchesType(key string, content []byte) bool {
+	for _, typeRegex := range types[key].regex {
+		if !typeRegex.Match(content) {
+			return false
+		}
+	}
+	return key != kubernetes || !isCatalogEntity(content)
+}
+
+// isCatalogEntity reports whether every root apiVersion is a service catalog
+// (Datadog v3 or Backstage) one: these share apiVersion/kind with Kubernetes
+// but are not Kubernetes resources.
+func isCatalogEntity(content []byte) bool {
+	if !bytes.Contains(content, []byte("v3")) && !bytes.Contains(content, []byte("backstage.io/")) {
+		return false
+	}
+	found := false
+	for len(content) > 0 {
+		m := rootAPIVersionRegex.FindSubmatchIndex(content)
+		if m == nil {
+			break
+		}
+		if !catalogAPIVersionRegex.Match(content[m[2]:m[3]]) {
+			return false
+		}
+		found = true
+		next := bytes.IndexByte(content[m[1]:], '\n')
+		if next < 0 {
+			break
+		}
+		content = content[m[1]+next+1:]
+	}
+	return found
 }
 
 func containsAny(content []byte, needles [][]byte) bool {
@@ -836,8 +871,16 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 		return bicep
 	case extProto:
 		return grpc
-	case extCfg, extConf, extIni:
-		return ansible
+	case extCfg, extConf:
+		if looksLikeAnsibleConfig(content) {
+			return ansible
+		}
+		return ""
+	case extIni:
+		if looksLikeAnsibleInventory(content) {
+			return ansible
+		}
+		return ""
 	case yaml, yml, json, sh:
 		return classifyByContent(ctx, fsys, path, content, ext, typesFlag, hc, scanFiles)
 	}
@@ -860,6 +903,22 @@ func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, ki
 	return ClassifyFile(ctx, fsys, path, content, platforms)
 }
 
+// ExcludedByContent reports a file whose content rules out every platform, so
+// it is not scanned at all: a .cfg, .conf or .ini that is not Ansible
+// configuration or inventory, and service catalog YAML. The analyzer leaves
+// these out of a CLI scan; pushed files skip them the same way.
+func ExcludedByContent(path string, content []byte) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case extCfg, extConf:
+		return !looksLikeAnsibleConfig(content)
+	case extIni:
+		return !looksLikeAnsibleInventory(content)
+	case yaml, yml:
+		return isCatalogEntity(content)
+	}
+	return false
+}
+
 // PlatformForKind returns the fixed platform for kind when known.
 func PlatformForKind(kind model.FileKind) (string, bool) {
 	switch kind {
@@ -873,8 +932,6 @@ func PlatformForKind(kind model.FileKind) (string, bool) {
 		return arm, true
 	case model.KindPROTO:
 		return grpc, true
-	case model.KindINI, model.KindCFG:
-		return ansible, true
 	default:
 		return "", false
 	}
@@ -895,7 +952,7 @@ func checkReturnType(ctx context.Context, fsys vfs.FS, path, returnType, ext str
 			return arm
 		}
 	} else if ext == yaml || ext == yml {
-		if checkHelm(ctx, path, hc) {
+		if hasYAMLContent(content) && checkHelm(ctx, path, hc) {
 			return kubernetes
 		}
 		platform := checkYamlPlatform(ctx, fsys, content, path, typesFlag, scanFiles)
@@ -906,55 +963,60 @@ func checkReturnType(ctx context.Context, fsys vfs.FS, path, returnType, ext str
 	return returnType
 }
 
-// checkHelm reports whether the file belongs to a Helm chart by looking for a
-// Chart.yaml in any ancestor directory, since templates can be nested below the
-// chart root (e.g. templates/sub/ or charts/<subchart>/templates/).
-// hc is the scan-scoped cache; when nil the lookup always hits the filesystem.
-func checkHelm(ctx context.Context, path string, hc *sync.Map) bool {
-	contextLogger := logger.FromContext(ctx)
-	startDir := filepath.Dir(path)
-	if hc != nil {
-		if v, ok := hc.Load(startDir); ok {
-			return v.(bool)
+// hasYAMLContent reports whether content has any line that is not blank, a
+// comment or a document separator.
+func hasYAMLContent(content []byte) bool {
+	for len(content) > 0 {
+		var line []byte
+		if i := bytes.IndexByte(content, '\n'); i >= 0 {
+			line, content = content[:i], content[i+1:]
+		} else {
+			line, content = content, nil
+		}
+		line = bytes.TrimSpace(line)
+		if len(line) > 0 && line[0] != '#' && string(line) != "---" {
+			return true
 		}
 	}
-
-	// Every directory walked before the answer is known shares that answer, so
-	// all of them are memoized. This keeps the total number of Chart.yaml probes
-	// proportional to the number of directories in the repository rather than to
-	// directories times their depth, and lets sibling subtrees reuse the walk.
-	walked := []string{startDir}
-	dir := startDir
-	for {
-		if hc != nil && dir != startDir {
-			if v, ok := hc.Load(dir); ok {
-				return storeHelmResults(hc, walked, v.(bool))
-			}
-		}
-		_, err := os.Stat(filepath.Join(dir, "Chart.yaml"))
-		if err == nil {
-			return storeHelmResults(hc, walked, true)
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			contextLogger.Error().Msgf("failed to check helm: %s", err)
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return storeHelmResults(hc, walked, false)
-		}
-		dir = parent
-		walked = append(walked, dir)
-	}
+	return false
 }
 
-func storeHelmResults(hc *sync.Map, dirs []string, result bool) bool {
-	if hc == nil {
-		return result
+// checkHelm reports whether the file is part of the Helm structure of an
+// ancestor chart (Chart.yaml, values*.yaml, templates/, crds/, charts/, ...),
+// using the same rule the renderer uses. Other YAML under a chart root (lint
+// values, ci/ values, deploy or fabric config) is classified by its content.
+// hc is the scan-scoped cache; when nil the lookup always hits the filesystem.
+func checkHelm(ctx context.Context, path string, hc *sync.Map) bool {
+	roots := helmChartRoots(ctx, filepath.Dir(path), hc)
+	return len(roots) > 0 && provider.IsHelmChartFile(path, roots)
+}
+
+// helmChartRoots returns the slash paths of every directory from dir up to the
+// filesystem root that holds a Chart.yaml. Each walked directory is memoized so
+// sibling subtrees reuse the answer and probes stay proportional to the number
+// of directories rather than directories times depth.
+func helmChartRoots(ctx context.Context, dir string, hc *sync.Map) []string {
+	if hc != nil {
+		if v, ok := hc.Load(dir); ok {
+			return v.([]string)
+		}
 	}
-	for _, dir := range dirs {
-		hc.Store(dir, result)
+	var parentRoots []string
+	if parent := filepath.Dir(dir); parent != dir {
+		parentRoots = helmChartRoots(ctx, parent, hc)
 	}
-	return result
+	roots := parentRoots
+	_, err := os.Stat(filepath.Join(dir, "Chart.yaml"))
+	if err == nil {
+		roots = append([]string{filepath.ToSlash(dir)}, parentRoots...)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Error().Msgf("failed to check helm: %s", err)
+	}
+	if hc != nil {
+		hc.Store(dir, roots)
+	}
+	return roots
 }
 
 func dockerComposeExplicitlyRequested(typesFlag []string) bool {
@@ -988,7 +1050,7 @@ func checkYamlPlatform(ctx context.Context, fsys vfs.FS, content []byte,
 
 	root, err := yamlDocumentRoot(content)
 	if err != nil {
-		if isYamlTemplatePath(path) {
+		if isYamlTemplatePath(path) || utils.IsTestFixturePath(path) || utils.HasYAMLBreakingTemplate(content) {
 			contextLogger.Debug().Msgf("failed to parse yaml file (%s): %s", path, err)
 		} else {
 			contextLogger.Warn().Msgf("failed to parse yaml file (%s): %s", path, err)

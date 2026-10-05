@@ -291,6 +291,37 @@ func TestStoreResolvedFilesContinuesAfterMalformedFile(t *testing.T) {
 	require.Equal(t, "chart/templates/service.yaml", files[0].FilePath)
 }
 
+// TestStoreResolvedFilesSkipsCommentOnlyRenderedTemplate verifies that a
+// rendered template that contains only comments (all range iterations
+// conditionally skipped) is silently skipped — not stored and without an
+// error log — while a valid sibling document of the same render is stored.
+func TestStoreResolvedFilesSkipsCommentOnlyRenderedTemplate(t *testing.T) {
+	var logBuf bytes.Buffer
+	ctx := zerolog.New(&logBuf).WithContext(context.Background())
+	service, store := newYAMLResolverSinkService(t, ctx)
+
+	service.storeResolvedFiles(ctx, model.ResolvedFiles{
+		File: []model.ResolvedHelm{
+			{
+				FileName:     "chart/templates/empty.yaml",
+				Content:      []byte("# Source: chart/templates/empty.yaml\n# all iterations disabled\n"),
+				OriginalData: []byte("{{- range .Values.items }}\napiVersion: v1\n{{- end }}\n"),
+			},
+			{
+				FileName:     "chart/templates/service.yaml",
+				Content:      []byte("apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n"),
+				OriginalData: []byte("apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n"),
+			},
+		},
+	}, model.KindHELM, "comment-only-sibling", false, 15)
+
+	files, err := store.GetFiles(ctx, "comment-only-sibling")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, "chart/templates/service.yaml", files[0].FilePath)
+	require.NotContains(t, logBuf.String(), `"level":"error"`, "comment-only output must be skipped silently, got %q", logBuf.String())
+}
+
 func TestStoreResolvedFilesSkipsHelmJSONOnJSONParser(t *testing.T) {
 	ctx := context.Background()
 	parsers, err := parser.NewBuilder(ctx).
@@ -356,6 +387,8 @@ func TestLogResolverResolveError_RedactsCredentials(t *testing.T) {
 			require.Contains(t, logged, tt.wantLevel)
 			require.Contains(t, logged, "mysql://db:3306/app")
 			require.NotContains(t, logged, "sup3rs3cret")
+			// Any render failure silences the raw templates' parse errors.
+			require.True(t, service.isUnderFailedHelmChart("chart/templates/a.yaml"))
 		})
 	}
 }
@@ -370,10 +403,15 @@ func TestIsExpectedHelmRenderError(t *testing.T) {
 		{"nil pointer evaluating", errors.New("template: chart/templates/deploy.yaml:5:14: executing \"deploy\" at <.Values.global.name>: nil pointer evaluating interface {}.name"), true},
 		{"map has no entry for key", errors.New("map has no entry for key \"datacenter\""), true},
 		{"can't evaluate field", errors.New("can't evaluate field Images in type interface {}"), true},
-		{"required helper", errors.New("template: chart/templates/deploy.yaml:3:10: executing \"deploy\" at <required \"datacenter\" .Values.datacenter>: error calling required: HELM_ERR_STARTdatacenterHELM_ERR_END"), true},
-		// fail is excluded from expected signatures — it is also used for real validation
-		// logic (e.g. unsupported kube version) that can trigger with values present.
-		{"fail helper stays at error", errors.New("template: chart/templates/deploy.yaml:2:5: executing \"deploy\" at <fail \"env required\">: error calling fail: HELM_ERR_STARTenv requiredHELM_ERR_END"), false},
+		{"required rewritten by helm", errors.New("execution error at (chart/templates/wpa.yaml:17:3): .Values.datadog.service is required"), true},
+		{"dig on nil values", errors.New("error calling dig: interface conversion: interface {} is nil, not map[string]interface {}"), true},
+		{"index of nil", errors.New("error calling index: index of untyped nil"), true},
+		{"len of nil", errors.New("error calling len: len of nil pointer"), true},
+		{"wrong type for value", errors.New("at <$.Values.image.tag>: wrong type for value; expected string; got interface {}"), false},
+		{"range over a non-collection", errors.New("at <$.Values.shards>: range can't iterate over REPLACE_ME"), false},
+		{"missing include", errors.New("error calling include: template: no template \"crawler.serviceAccountName\" associated with template \"gotpl\""), true},
+		{"undefined named template", errors.New("executing \"webservice/templates/tests/tests.yaml\" at <{{template \"fullname\" .}}>: template \"fullname\" not defined"), true},
+		{"invalid rendered yaml", errors.New("YAML parse error on chart/templates/job.yaml: error converting YAML to JSON: yaml: line 5"), false},
 		{"unrelated render failure", errors.New("chart requires kubeVersion: >=1.20.0 which is incompatible with Kubernetes v1.14.0"), false},
 		{"load error", errors.New("failed to load chart from '/repo/chart': no Chart.yaml found"), false},
 	}
@@ -389,7 +427,37 @@ func TestHelmRenderNeedsNoFiles(t *testing.T) {
 	require.True(t, helmRenderNeedsNoFiles(errors.New("execution error at (chart/templates/deploy.yaml:3:22): replicas")))
 	require.True(t, helmRenderNeedsNoFiles(errors.New("execution error at (chart/templates/deploy.yaml:2:5): env required")))
 	require.False(t, helmRenderNeedsNoFiles(errors.New(`error calling include: template: no template "e2e.labels" associated with template "gotpl"`)))
+	require.True(t, helmRenderNeedsNoFiles(errors.New("error calling index: index of untyped nil")))
+	require.False(t, helmRenderNeedsNoFiles(errors.New("wrong type for value; expected bool; got string")),
+		"an unexpected failure still asks for the chart's files")
 	require.False(t, helmRenderNeedsNoFiles(nil))
+}
+
+func TestClassifyHelmRenderError(t *testing.T) {
+	require.Equal(t, helmRenderDeployTimeValue,
+		classifyHelmRenderError(errors.New("execution error at (c/templates/a.yaml:3:5): value is required")))
+	require.Equal(t, helmRenderMissingHelper,
+		classifyHelmRenderError(errors.New(`error calling include: template: no template "common.names.fullname" associated with template "gotpl"`)))
+	require.Equal(t, helmRenderUnexpected, classifyHelmRenderError(errors.New(`template: c/templates/a.yaml:3: function "tpll" not defined`)))
+	require.Equal(t, helmRenderUnexpected, classifyHelmRenderError(nil))
+}
+
+func TestUnrenderedHelmChartsSummary(t *testing.T) {
+	var logBuf bytes.Buffer
+	ctx := zerolog.New(&logBuf).Level(zerolog.WarnLevel).WithContext(context.Background())
+	u := &unrenderedHelmCharts{}
+	u.log(ctx)
+	require.Empty(t, logBuf.String(), "nothing to report")
+
+	u.record(errors.New("nil pointer evaluating interface {}.name"))
+	u.record(errors.New("execution error at (c/templates/a.yaml:1:1): required"))
+	u.record(errors.New(`no template "lib.name" associated with template "gotpl"`))
+	u.record(errors.New("chart requires kubeVersion"))
+	u.log(ctx)
+
+	require.Contains(t, logBuf.String(), `"level":"warn"`)
+	require.Contains(t, logBuf.String(), "3 Helm charts could not be rendered")
+	require.Contains(t, logBuf.String(), "deploy-time values: 2, helpers from charts outside the scan: 1")
 }
 
 func TestIsUnderFailedHelmChart(t *testing.T) {

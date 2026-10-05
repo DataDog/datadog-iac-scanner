@@ -111,7 +111,7 @@ func (c *Inspector) instantiateLocalModules(
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
-		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver)
+		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
 	}
 	return res.docs, res.syntheticFiles, res.extras
 }
@@ -985,6 +985,7 @@ func stripModuleCalls(
 	successfulRoots map[string]bool,
 	rootDirs rootIndex,
 	resolver tfeval.RemoteResolver,
+	fsys vfs.FS,
 ) {
 	// Checked before ownership because most files declare no module calls at all,
 	// and resolving the owning root is the more expensive of the two guards.
@@ -1006,7 +1007,7 @@ func stripModuleCalls(
 			continue
 		}
 		version, _ := call["version"].(string)
-		resolvedDir, _ := resolveModuleTargetDir(fileDir, source, version, filePath, name, resolver)
+		resolvedDir, _ := resolveModuleTargetDir(fsys, fileDir, source, version, filePath, name, resolver)
 
 		if resolvedDir != "" && calledDirs[resolvedDir] {
 			delete(modules, name)
@@ -1059,7 +1060,7 @@ func discoverCalledModuleDirs(
 	resolver tfeval.RemoteResolver,
 	dir string,
 ) []string {
-	calledDirs, ok := calledModuleDirsFromDocuments(files, repoPath, resolver)
+	calledDirs, ok := calledModuleDirsFromDocuments(evaluator.FS(), files, repoPath, resolver)
 	if ok {
 		return calledDirs
 	}
@@ -1103,6 +1104,7 @@ func discoverCalledModuleClosure(
 }
 
 func calledModuleDirsFromDocuments(
+	fsys vfs.FS,
 	files []*model.FileMetadata,
 	repoPath string,
 	resolver tfeval.RemoteResolver,
@@ -1121,7 +1123,7 @@ func calledModuleDirsFromDocuments(
 				continue
 			}
 			version, _ := call["version"].(string)
-			if dir, ok := resolveModuleTargetDir(fileDir, source, version, file.FilePath, name, resolver); ok {
+			if dir, ok := resolveModuleTargetDir(fsys, fileDir, source, version, file.FilePath, name, resolver); ok {
 				dirs = append(dirs, dir)
 			}
 		}
@@ -1130,15 +1132,12 @@ func calledModuleDirsFromDocuments(
 }
 
 func resolveModuleTargetDir(
+	fsys vfs.FS,
 	callerDir, source, version, callerFile, moduleName string,
 	resolver tfeval.RemoteResolver,
 ) (string, bool) {
-	cleanSource := tfeval.StripGetterPrefix(source)
-	if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
-		if filepath.IsAbs(cleanSource) {
-			return filepath.Clean(cleanSource), true
-		}
-		return filepath.Clean(filepath.Join(callerDir, cleanSource)), true
+	if dir, ok := tfmodules.LocalModuleDir(fsys, callerDir, source); ok {
+		return dir, true
 	}
 	if resolver == nil {
 		return "", false

@@ -72,6 +72,8 @@ type preparedSource interface {
 	readContent(ctx context.Context, filePath string, maxFileSize int) (c *Content, contentErr, err error)
 	// platform is the file's platform for parser routing, "" when undetermined.
 	platform(ctx context.Context, services []*Service, filePath string, c *Content) string
+	// excluded reports a file the analyzer would leave out of the scan.
+	excluded(filePath string, content []byte) bool
 }
 
 // PrepareSharedWalk walks once, renders each chart once, and dispatches files to parsers.
@@ -117,13 +119,16 @@ func prepareSources(ctx context.Context,
 	pool utils.PoolOptions) error {
 	contextLogger := logger.FromContext(ctx)
 
+	unrendered := &unrenderedHelmCharts{}
 	files, err := src.WalkInventory(ctx, unionExtensions(services),
 		func(ctx context.Context, chartPath string) bool {
-			return resolveAndStoreChart(ctx, src, services, chartPath, scanID, openAPIResolveReferences, maxResolverDepth)
+			return resolveAndStoreChart(ctx, src, services, chartPath, scanID,
+				openAPIResolveReferences, maxResolverDepth, unrendered)
 		})
 	if err != nil {
 		return errors.Wrap(err, "failed to walk sources")
 	}
+	unrendered.log(ctx)
 
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
 
@@ -141,15 +146,20 @@ func resolveAndStoreChart(
 	chartPath, scanID string,
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
+	unrendered *unrenderedHelmCharts,
 ) bool {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
 		return true
 	}
 	if err != nil {
-		for _, s := range services {
-			s.logResolverResolveError(ctx, kind, chartPath, err)
+		if kind == model.KindHELM {
+			for _, s := range services {
+				s.recordFailedHelmChart(chartPath)
+			}
+			unrendered.record(err)
 		}
+		logResolveError(ctx, kind, chartPath, err)
 		// A missing deploy-time value is not a file the IDE can push. Re-requesting
 		// the chart directory cannot supply it; the raw templates are still scanned.
 		if kind != model.KindHELM || !helmRenderNeedsNoFiles(err) {
@@ -187,6 +197,9 @@ func dispatchFile(ctx context.Context,
 	if c == nil && contentErr == nil {
 		return nil
 	}
+	if c != nil && c.Content != nil && src.excluded(filePath, *c.Content) {
+		return nil
+	}
 	if len(services) > 1 {
 		services = servicesForPlatform(services, src.platform(ctx, services, filePath, c))
 	}
@@ -211,6 +224,9 @@ type diskSource struct {
 }
 
 func (diskSource) chartFailed(string) {}
+
+// The analyzer already left excluded files out of the inventory.
+func (diskSource) excluded(string, []byte) bool { return false }
 
 func (d diskSource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
 	if contentCache := d.ContentCache(); contentCache != nil {
@@ -262,6 +278,10 @@ type memorySource struct {
 
 func (m memorySource) chartFailed(chartPath string) {
 	m.RecordMissing(chartPath)
+}
+
+func (memorySource) excluded(filePath string, content []byte) bool {
+	return analyzer.ExcludedByContent(filePath, content)
 }
 
 func (m memorySource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {

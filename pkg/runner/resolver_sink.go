@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
@@ -98,8 +99,9 @@ func (s *Service) storeResolvedFiles(
 
 		for docIdx, document := range documents.Docs {
 			preparedDocument, prepareErr := prepareResolvedScanDocument(document, kind)
-			err = prepareErr
-			if err != nil {
+			if prepareErr != nil {
+				contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(prepareErr)).
+					Msgf("failed to prepare scan document '%s' with fileType '%s'", rfile.FileName, kind)
 				continue
 			}
 
@@ -305,14 +307,22 @@ func newOriginalResolvedLineInfoLoader(
 		})
 }
 
-// logResolverResolveError logs a Helm resolve/render failure as debug when it
-// matches missing deploy-time values (expected at scan time), otherwise as error.
-// Both paths fall back to raw-file scanning; only expected failures call
-// recordFailedHelmChart, which suppresses subsequent parse-error noise for those files.
+// logResolverResolveError records a failed Helm chart and logs the failure.
+// Every failed chart falls back to raw-file scanning, and its raw templates are
+// never valid YAML, so recordFailedHelmChart silences their parse errors
+// whatever the render failure was.
 func (s *Service) logResolverResolveError(ctx context.Context, kind model.FileKind, filename string, err error) {
+	if kind == model.KindHELM {
+		s.recordFailedHelmChart(filename)
+	}
+	logResolveError(ctx, kind, filename, err)
+}
+
+// logResolveError logs a resolve/render failure as debug when it is expected
+// at scan time (see classifyHelmRenderError), otherwise as error.
+func logResolveError(ctx context.Context, kind model.FileKind, filename string, err error) {
 	contextLogger := logger.FromContext(ctx)
 	if kind == model.KindHELM && isExpectedHelmRenderError(err) {
-		s.recordFailedHelmChart(filename)
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("helm chart '%s' could not be rendered with available values", filename)
 		return
@@ -323,28 +333,58 @@ func (s *Service) logResolverResolveError(ctx context.Context, kind model.FileKi
 		Msgf("failed to render file content '%s' with fileType '%s'", filename, kind)
 }
 
-// expectedHelmRenderErrorSignatures matches Go template execution errors caused
-// by missing deploy-time values — the expected failure mode for charts that
-// require values unavailable at scan time.
-// "error calling required:" covers the Helm required helper, which exists
-// exclusively to guard absent values.
-// "error calling fail:" is intentionally excluded: fail is also used for real
-// validation logic (e.g. unsupported kube version) that can trigger even when
-// all values are present, so classifying it as expected would silence genuine
-// chart errors.
-var expectedHelmRenderErrorSignatures = []string{
+// helmRenderFailure is why a chart could not be rendered at scan time.
+type helmRenderFailure int
+
+const (
+	// helmRenderUnexpected is a chart error worth reporting on its own.
+	helmRenderUnexpected helmRenderFailure = iota
+	// helmRenderDeployTimeValue is a value only supplied at deploy time: the
+	// chart is rendered at scan time with its default values alone.
+	helmRenderDeployTimeValue
+	// helmRenderMissingHelper is a named template that lives in a parent or
+	// library chart outside the scan.
+	helmRenderMissingHelper
+)
+
+// deployTimeValueSignatures are Go template errors on absent values, and
+// "execution error at (", the shape Helm rewrites required and fail to before
+// the error reaches the scan. Type errors such as "wrong type for value" or
+// "range can't iterate over" are not here: they are as often a chart bug.
+var deployTimeValueSignatures = []string{
 	"nil pointer evaluating",
 	"map has no entry for key",
 	"can't evaluate field",
-	"error calling required:",
+	"execution error at (",
+	"interface conversion: interface {} is nil",
+	"index of untyped nil",
+	"len of nil pointer",
+	"on zero Value",
 }
 
-func isExpectedHelmRenderError(err error) bool {
+// A template is reported as `template "x" not defined`, a misspelled function
+// as `function "x" not defined`: only the first one is a missing helper.
+var (
+	undefinedHelmTemplate  = regexp.MustCompile(`template "[^"]*" not defined`)
+	unassociatedHelmHelper = `" associated with template`
+)
+
+func classifyHelmRenderError(err error) helmRenderFailure {
 	if err == nil {
-		return false
+		return helmRenderUnexpected
 	}
 	msg := err.Error()
-	for _, sig := range expectedHelmRenderErrorSignatures {
+	switch {
+	case containsAny(msg, deployTimeValueSignatures):
+		return helmRenderDeployTimeValue
+	case strings.Contains(msg, unassociatedHelmHelper) || undefinedHelmTemplate.MatchString(msg):
+		return helmRenderMissingHelper
+	}
+	return helmRenderUnexpected
+}
+
+func containsAny(msg string, signatures []string) bool {
+	for _, sig := range signatures {
 		if strings.Contains(msg, sig) {
 			return true
 		}
@@ -352,16 +392,44 @@ func isExpectedHelmRenderError(err error) bool {
 	return false
 }
 
+func isExpectedHelmRenderError(err error) bool {
+	return classifyHelmRenderError(err) != helmRenderUnexpected
+}
+
 // helmRenderNeedsNoFiles reports a render failure that re-pushing the chart
-// cannot fix: a missing deploy-time value, or Helm's rewritten required/fail
-// error. Helm strips "error calling required:" down to "execution error at
-// (<file>): <message>" before the error reaches the scan, and fail uses that
-// same shape. A missing template include does not.
+// cannot fix because it comes from a missing deploy-time value. A missing
+// helper may come from a chart the IDE has not pushed yet, so it does not.
 func helmRenderNeedsNoFiles(err error) bool {
-	if isExpectedHelmRenderError(err) {
-		return true
+	return classifyHelmRenderError(err) == helmRenderDeployTimeValue
+}
+
+// unrenderedHelmCharts counts the charts of a scan that failed to render for an
+// expected reason. Each is only logged at debug, so the count is reported once
+// at warn: those charts were scanned from their raw templates only.
+type unrenderedHelmCharts struct {
+	deployTimeValue, missingHelper atomic.Int64
+}
+
+func (u *unrenderedHelmCharts) record(err error) {
+	switch classifyHelmRenderError(err) {
+	case helmRenderDeployTimeValue:
+		u.deployTimeValue.Add(1)
+	case helmRenderMissingHelper:
+		u.missingHelper.Add(1)
+	case helmRenderUnexpected:
 	}
-	return err != nil && strings.Contains(err.Error(), "execution error at (")
+}
+
+func (u *unrenderedHelmCharts) log(ctx context.Context) {
+	values, helpers := u.deployTimeValue.Load(), u.missingHelper.Load()
+	if values+helpers == 0 {
+		return
+	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Warn().Msgf(
+		"%d Helm charts could not be rendered and only their raw files were scanned "+
+			"(deploy-time values: %d, helpers from charts outside the scan: %d); "+
+			"run with --log-level debug to list them", values+helpers, values, helpers)
 }
 
 // isCommentOnlyContent returns true when every non-blank line in content starts
