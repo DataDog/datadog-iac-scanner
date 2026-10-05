@@ -46,16 +46,21 @@ type moduleProvenanceLookup func(callerRoot, source, version, moduleName string)
 const maxCachedChainDepth = 8
 
 // moduleAttributionCache memoizes attribution within one root evaluation.
-// Attribution depends only on the HCL blocks involved: a resource block's
-// count/for_each instances and every resource reached through the same module
-// blocks share their work. Keys are HCL nodes, so a cache must not outlive
-// the root whose parse it holds.
+// Attribution depends on the HCL blocks involved and the module scopes they
+// were evaluated in: a resource block's count/for_each instances and every
+// resource reached through the same module blocks share their work, unless
+// resolving a value read the instance's own iteration. Keys are HCL nodes, so
+// a cache must not outlive the root whose parse it holds.
 type moduleAttributionCache struct {
 	resources  map[resourceCacheKey]*model.ModuleAttribution
 	chains     map[chainCacheKey]modulePathEntry
-	attributes map[*hclsyntax.Body][]attributeVariables
-	arguments  map[*hclsyntax.Attribute][]string
-	locals     map[hclsyntax.Expression][]string
+	attributes map[bodyCacheKey]bodyReads
+	arguments  map[argumentCacheKey]inputReads
+	locals     map[localCacheKey]inputReads
+	// lastResource and lastReads hold the instance analyzed last, which an
+	// iteration-dependent instance is asked for twice in a row.
+	lastResource *tfeval.ResolvedResource
+	lastReads    bodyReads
 }
 
 type chainCacheKey struct {
@@ -65,6 +70,7 @@ type chainCacheKey struct {
 
 type resourceCacheKey struct {
 	resource *hclsyntax.Body
+	scope    *tfeval.ModuleScope
 	chain    chainCacheKey
 }
 
@@ -89,9 +95,9 @@ func newModuleAttributionCache() *moduleAttributionCache {
 	return &moduleAttributionCache{
 		resources:  make(map[resourceCacheKey]*model.ModuleAttribution),
 		chains:     make(map[chainCacheKey]modulePathEntry),
-		attributes: make(map[*hclsyntax.Body][]attributeVariables),
-		arguments:  make(map[*hclsyntax.Attribute][]string),
-		locals:     make(map[hclsyntax.Expression][]string),
+		attributes: make(map[bodyCacheKey]bodyReads),
+		arguments:  make(map[argumentCacheKey]inputReads),
+		locals:     make(map[localCacheKey]inputReads),
 	}
 }
 
@@ -111,16 +117,17 @@ func chainKey(chain []tfeval.CallSite) (chainCacheKey, bool) {
 }
 
 // attribution returns the resource's attribution, shared with every resource
-// of the same block reached through the same module blocks. Shared
-// attributions are read-only; callers clone before narrowing one.
+// of the same block reached through the same module blocks, unless its values
+// were resolved with the instance's own iteration. Shared attributions are
+// read-only; callers clone before narrowing one.
 func (c *moduleAttributionCache) attribution(
 	r *tfeval.ResolvedResource, repoPath string, lookup moduleProvenanceLookup,
 ) *model.ModuleAttribution {
 	chain, ok := chainKey(r.CallChain)
-	if !ok || r.Body == nil {
+	if !ok || r.Body == nil || c.resourceAttributes(r).iterationDependent {
 		return buildModuleAttribution(r, repoPath, lookup, c)
 	}
-	key := resourceCacheKey{resource: r.Body, chain: chain}
+	key := resourceCacheKey{resource: r.Body, scope: r.Scope, chain: chain}
 	if attr, ok := c.resources[key]; ok {
 		return attr
 	}
@@ -187,6 +194,11 @@ func buildModuleAttribution(
 		ModulePath:      path,
 		ModuleCodeOwned: leaf.SourceType == moduleSourceTypeLocal && pathWithinRoot(filepath.Dir(bodyPath), repoPath),
 		Arguments:       cache.resourceArguments(r, path[0].CodeLocation.Filename),
+	}
+	if cache != nil && r.Body != nil {
+		// What reads no module input is set by the module; the arguments
+		// cover everything else.
+		attr.ArgumentControl = model.ArgumentControlModule
 	}
 	if pkg.root != "" {
 		attr.Source, attr.SourceType, attr.Version = pkg.address, pkg.sourceType, pkg.version
@@ -615,9 +627,9 @@ func cloneModuleAttributions(attrs map[string]*model.ModuleAttribution) map[stri
 }
 
 // moduleAttributionForResource returns the attribution of the resource the
-// finding was raised on, with its call site narrowed to the argument setting
-// the flagged line when one does, and its code location narrowed to the
-// flagged region inside the module.
+// finding was raised on, with the control of the flagged line, its call site
+// narrowed to the argument setting that line when one does, and its code
+// location narrowed to the flagged region inside the module.
 func moduleAttributionForResource(
 	attrs map[string]*model.ModuleAttribution, v *model.Vulnerability,
 ) *model.ModuleAttribution {
@@ -634,8 +646,10 @@ func moduleAttributionForResource(
 	}
 	for _, arg := range clone.Arguments {
 		if v.Line >= arg.LineStart && v.Line <= arg.LineEnd {
-			clone.CallSite = arg.CallSite
-			clone.CallArgument = true
+			clone.ArgumentControl = arg.Control
+			if arg.Control == model.ArgumentControlCaller {
+				clone.CallSite = arg.CallSite
+			}
 			break
 		}
 	}

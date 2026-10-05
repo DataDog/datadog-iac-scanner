@@ -11,10 +11,12 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func parseBlockBody(t *testing.T, src string) *hclsyntax.Body {
@@ -27,13 +29,64 @@ func parseBlockBody(t *testing.T, src string) *hclsyntax.Body {
 	return body.Blocks[0].Body
 }
 
-func argumentAt(args []model.ModuleArgument, line int) (model.SourceLocation, bool) {
-	for _, arg := range args {
-		if line >= arg.LineStart && line <= arg.LineEnd {
-			return arg.CallSite, true
+func parseLocals(t *testing.T, src string) map[string]hclsyntax.Expression {
+	t.Helper()
+	body := parseBlockBody(t, src)
+	locals := make(map[string]hclsyntax.Expression, len(body.Attributes))
+	for name, attr := range body.Attributes {
+		locals[name] = attr.Expr
+	}
+	return locals
+}
+
+// evaluatedScope is a module scope with the given input values and its locals
+// evaluated from them, as the evaluator leaves it.
+func evaluatedScope(t *testing.T, vars map[string]cty.Value, localsSrc string) *tfeval.ModuleScope {
+	t.Helper()
+	scope := &tfeval.ModuleScope{Var: cty.ObjectVal(vars), Local: cty.EmptyObjectVal}
+	if localsSrc == "" {
+		return scope
+	}
+	scope.Locals = parseLocals(t, localsSrc)
+	values := map[string]cty.Value{}
+	ctx := &hcl.EvalContext{
+		Variables: map[string]cty.Value{"var": scope.Var},
+		Functions: functions.TerraformFuncs,
+	}
+	for range scope.Locals {
+		ctx.Variables["local"] = cty.ObjectVal(values)
+		for name, expr := range scope.Locals {
+			if v, diags := expr.Value(ctx); !diags.HasErrors() {
+				values[name] = v
+			}
 		}
 	}
-	return model.SourceLocation{}, false
+	scope.Local = cty.ObjectVal(values)
+	return scope
+}
+
+// controlAt returns who controls the value on line, and the argument setting
+// it when the caller does. A line no argument covers reads no module input.
+func controlAt(args []model.ModuleArgument, line int) (model.ArgumentControl, model.SourceLocation) {
+	for _, arg := range args {
+		if line >= arg.LineStart && line <= arg.LineEnd {
+			return arg.Control, arg.CallSite
+		}
+	}
+	return model.ArgumentControlModule, model.SourceLocation{}
+}
+
+func requireCallerAt(t *testing.T, args []model.ModuleArgument, line, argumentLine int) {
+	t.Helper()
+	control, location := controlAt(args, line)
+	require.Equal(t, model.ArgumentControlCaller, control, "line %d", line)
+	require.Equal(t, argumentLine, location.LineStart, "line %d", line)
+}
+
+func requireControlAt(t *testing.T, args []model.ModuleArgument, line int, want model.ArgumentControl) {
+	t.Helper()
+	control, _ := controlAt(args, line)
+	require.Equal(t, want, control, "line %d", line)
 }
 
 func TestModuleArgumentsTraceDirectCall(t *testing.T) {
@@ -44,6 +97,12 @@ func TestModuleArgumentsTraceDirectCall(t *testing.T) {
   tags   = merge(var.tags, var.extra_tags)
   acl    = var.acl
 }`),
+		Scope: evaluatedScope(t, map[string]cty.Value{
+			"local_policy": cty.StringVal(`{"Statement":[]}`),
+			"tags":         cty.EmptyObjectVal,
+			"extra_tags":   cty.EmptyObjectVal,
+			"acl":          cty.NullVal(cty.String),
+		}, ""),
 		CallChain: []tfeval.CallSite{{
 			Body: parseBlockBody(t, `module "bucket" {
   source       = "git::https://github.com/acme/modules.git//bucket"
@@ -57,18 +116,178 @@ func TestModuleArgumentsTraceDirectCall(t *testing.T) {
 
 	args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
 
-	policy, ok := argumentAt(args, 3)
-	require.True(t, ok)
+	control, policy := controlAt(args, 3)
+	require.Equal(t, model.ArgumentControlCaller, control)
 	require.Equal(t, model.SourceLocation{
 		Filename: "stack/main.tf", LineStart: 4, LineEnd: 4, ColumnStart: 3, ColumnEnd: 37,
 	}, policy)
+	requireControlAt(t, args, 2, model.ArgumentControlModule)
+	requireControlAt(t, args, 4, model.ArgumentControlUnknown)
+	requireControlAt(t, args, 5, model.ArgumentControlUnknown)
+}
 
-	_, ok = argumentAt(args, 2)
-	require.False(t, ok, "a value not read from a variable keeps the whole call site")
-	_, ok = argumentAt(args, 4)
-	require.False(t, ok, "a value set by two arguments keeps the whole call site")
-	_, ok = argumentAt(args, 5)
-	require.False(t, ok, "a variable left to its default keeps the whole call site")
+// Each case reads acl on line 2 of the resource; the call sets its argument on
+// line 3.
+func TestModuleArgumentsResolveChoicesWithEvaluatedValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		expr     string
+		vars     map[string]cty.Value
+		argument string
+		locals   string
+		want     model.ArgumentControl
+	}{
+		{
+			name:     "coalesce falls back to a module local when the caller passes null",
+			expr:     `coalesce(var.acl, local.default_acl)`,
+			vars:     map[string]cty.Value{"acl": cty.NullVal(cty.String)},
+			argument: `acl = null`,
+			locals:   "locals {\n  default_acl = \"public-read\"\n}",
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name:     "coalesce keeps the caller value it selects",
+			expr:     `coalesce(var.acl, local.default_acl)`,
+			vars:     map[string]cty.Value{"acl": cty.StringVal("public-read")},
+			argument: `acl = "public-read"`,
+			locals:   "locals {\n  default_acl = \"private\"\n}",
+			want:     model.ArgumentControlCaller,
+		},
+		{
+			name:     "coalesce skips an empty string",
+			expr:     `coalesce(var.acl, "public-read")`,
+			vars:     map[string]cty.Value{"acl": cty.StringVal("")},
+			argument: `acl = ""`,
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name:     "a conditional choosing a module default",
+			expr:     `var.policy == "" ? data.aws_iam_policy_document.default.json : var.policy`,
+			vars:     map[string]cty.Value{"policy": cty.StringVal("")},
+			argument: `policy = ""`,
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name:     "a conditional choosing the caller value",
+			expr:     `var.policy == "" ? data.aws_iam_policy_document.default.json : var.policy`,
+			vars:     map[string]cty.Value{"policy": cty.StringVal(`{"Statement":[]}`)},
+			argument: `policy = file("policy.json")`,
+			want:     model.ArgumentControlCaller,
+		},
+		{
+			name:     "a module literal chosen by a caller toggle",
+			expr:     `var.public ? "public-read" : "private"`,
+			vars:     map[string]cty.Value{"public": cty.True},
+			argument: `public = true`,
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name: "a caller value chosen by another caller value",
+			expr: `var.override != null ? var.override : var.acl`,
+			vars: map[string]cty.Value{
+				"override": cty.NullVal(cty.String),
+				"acl":      cty.StringVal("public-read"),
+			},
+			argument: `acl = "public-read"`,
+			want:     model.ArgumentControlCaller,
+		},
+		{
+			name:     "try falls back when the caller value has no such attribute",
+			expr:     `try(var.settings.acl, "public-read")`,
+			vars:     map[string]cty.Value{"settings": cty.EmptyObjectVal},
+			argument: `settings = {}`,
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name:     "try keeps the caller value it evaluates",
+			expr:     `try(var.settings.acl, "private")`,
+			vars:     map[string]cty.Value{"settings": cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public-read")})},
+			argument: `settings = { acl = "public-read" }`,
+			want:     model.ArgumentControlCaller,
+		},
+		{
+			name:     "try over a value not kept after evaluation is not resolved",
+			expr:     `try(data.aws_s3_bucket.existing.acl, var.acl)`,
+			vars:     map[string]cty.Value{"acl": cty.StringVal("public-read")},
+			argument: `acl = "public-read"`,
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name:     "lookup falls back to its default",
+			expr:     `lookup(var.acls, "logs", "public-read")`,
+			vars:     map[string]cty.Value{"acls": cty.MapValEmpty(cty.String)},
+			argument: `acls = {}`,
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name:     "lookup reads the caller map holding the key",
+			expr:     `lookup(var.acls, "logs", "private")`,
+			vars:     map[string]cty.Value{"acls": cty.MapVal(map[string]cty.Value{"logs": cty.StringVal("public-read")})},
+			argument: `acls = { logs = "public-read" }`,
+			want:     model.ArgumentControlCaller,
+		},
+		{
+			name:     "coalescelist falls back on an empty caller list",
+			expr:     `coalescelist(var.cidrs, ["0.0.0.0/0"])`,
+			vars:     map[string]cty.Value{"cidrs": cty.ListValEmpty(cty.String)},
+			argument: `cidrs = []`,
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name:     "a module map indexed by a caller key",
+			expr:     `local.acls[var.env]`,
+			vars:     map[string]cty.Value{"env": cty.StringVal("prod")},
+			argument: `env = "prod"`,
+			locals:   "locals {\n  acls = { prod = \"public-read\" }\n}",
+			want:     model.ArgumentControlUnknown,
+		},
+		{
+			name:     "a choice resolved inside a local",
+			expr:     `local.acl`,
+			vars:     map[string]cty.Value{"acl": cty.NullVal(cty.String)},
+			argument: `acl = null`,
+			locals:   "locals {\n  acl = coalesce(var.acl, \"public-read\")\n}",
+			want:     model.ArgumentControlUnknown,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := &tfeval.ResolvedResource{
+				Body:  parseBlockBody(t, "resource \"aws_s3_bucket\" \"this\" {\n  acl = "+tt.expr+"\n}"),
+				Scope: evaluatedScope(t, tt.vars, tt.locals),
+				CallChain: []tfeval.CallSite{{
+					Body: parseBlockBody(t, "module \"bucket\" {\n  source = \"../bucket\"\n  "+tt.argument+"\n}"),
+				}},
+			}
+			args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
+			control, location := controlAt(args, 2)
+			require.Equal(t, tt.want, control)
+			if tt.want == model.ArgumentControlCaller {
+				require.Equal(t, 3, location.LineStart)
+			}
+		})
+	}
+}
+
+func TestModuleArgumentsUnresolvedChoicesAreNotTraced(t *testing.T) {
+	resource := &tfeval.ResolvedResource{
+		Body: parseBlockBody(t, `resource "aws_s3_bucket" "this" {
+  acl    = coalesce(var.acl, local.default_acl)
+  bucket = var.name != "" ? var.name : var.name
+}`),
+		Scope: &tfeval.ModuleScope{Locals: parseLocals(t, "locals {\n  default_acl = \"public-read\"\n}")},
+		CallChain: []tfeval.CallSite{{
+			Body: parseBlockBody(t, `module "bucket" {
+  source = "../bucket"
+  acl    = aws_s3_bucket_acl.shared.acl
+  name   = "logs"
+}`),
+		}},
+	}
+
+	args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
+	requireControlAt(t, args, 2, model.ArgumentControlUnknown)
+	requireCallerAt(t, args, 3, 4)
 }
 
 func TestModuleArgumentsTraceThroughIntermediateModule(t *testing.T) {
@@ -89,8 +308,8 @@ func TestModuleArgumentsTraceThroughIntermediateModule(t *testing.T) {
 	}
 
 	args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
-	location, ok := argumentAt(args, 2)
-	require.True(t, ok)
+	control, location := controlAt(args, 2)
+	require.Equal(t, model.ArgumentControlCaller, control)
 	require.Equal(t, 3, location.LineStart)
 	require.Equal(t, "stack/main.tf", location.Filename)
 
@@ -99,8 +318,7 @@ func TestModuleArgumentsTraceThroughIntermediateModule(t *testing.T) {
   acl    = "private"
 }`)
 	args = newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
-	_, ok = argumentAt(args, 2)
-	require.False(t, ok, "a value fixed by an intermediate module keeps the whole call site")
+	requireControlAt(t, args, 2, model.ArgumentControlUnknown)
 }
 
 func TestModuleArgumentsTraceIterationValues(t *testing.T) {
@@ -114,6 +332,7 @@ func TestModuleArgumentsTraceIterationValues(t *testing.T) {
     iterator = rule
     content {
       cidr_blocks = rule.value.cidrs
+      protocol    = "tcp"
     }
   }
 }`),
@@ -127,43 +346,161 @@ func TestModuleArgumentsTraceIterationValues(t *testing.T) {
 	}
 
 	args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
-	name, ok := argumentAt(args, 3)
-	require.True(t, ok)
-	require.Equal(t, 3, name.LineStart)
-	cidrs, ok := argumentAt(args, 9)
-	require.True(t, ok)
-	require.Equal(t, 4, cidrs.LineStart)
+	requireCallerAt(t, args, 3, 3)
+	requireCallerAt(t, args, 9, 4)
+	for line := 5; line <= 8; line++ {
+		requireCallerAt(t, args, line, 4)
+	}
+	requireControlAt(t, args, 10, model.ArgumentControlModule)
 }
 
-func TestModuleArgumentsMixedIterationReadsAreNotTraced(t *testing.T) {
-	resource := &tfeval.ResolvedResource{
-		Body: parseBlockBody(t, `resource "aws_s3_bucket" "this" {
+func TestModuleArgumentsTraceNestedDynamicBlocks(t *testing.T) {
+	call := parseBlockBody(t, `module "sg" {
+  source        = "../sg"
+  groups        = { a = { rules = [] } }
+  ingress_rules = []
+}`)
+	t.Run("inner for_each reads the outer iterator", func(t *testing.T) {
+		resource := &tfeval.ResolvedResource{
+			Body: parseBlockBody(t, `resource "aws_security_group" "this" {
+  dynamic "ingress" {
+    for_each = var.ingress_rules
+    content {
+      protocol = ingress.value.protocol
+      dynamic "port" {
+        for_each = ingress.value.ports
+        content {
+          from_port = port.value
+        }
+      }
+    }
+  }
+}`),
+			CallChain: []tfeval.CallSite{{Body: call}},
+		}
+		args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
+		requireCallerAt(t, args, 5, 4)
+		requireCallerAt(t, args, 6, 4)
+		requireCallerAt(t, args, 9, 4)
+	})
+	t.Run("dynamic for_each reads the resource each", func(t *testing.T) {
+		resource := &tfeval.ResolvedResource{
+			Body: parseBlockBody(t, `resource "aws_security_group" "this" {
+  for_each = var.groups
+  dynamic "ingress" {
+    for_each = each.value.rules
+    content {
+      cidr_blocks = ingress.value.cidrs
+    }
+  }
+}`),
+			CallChain: []tfeval.CallSite{{Body: call}},
+		}
+		args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
+		requireCallerAt(t, args, 6, 3)
+	})
+	t.Run("an inner iterator shadows an outer one of the same name", func(t *testing.T) {
+		resource := &tfeval.ResolvedResource{
+			Body: parseBlockBody(t, `resource "aws_security_group" "this" {
+  dynamic "ingress" {
+    for_each = var.ingress_rules
+    content {
+      dynamic "ingress" {
+        for_each = ["10.0.0.0/8"]
+        content {
+          cidr_blocks = ingress.value
+        }
+      }
+    }
+  }
+}`),
+			CallChain: []tfeval.CallSite{{Body: call}},
+		}
+		args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
+		requireControlAt(t, args, 8, model.ArgumentControlModule)
+	})
+	t.Run("a choice on an iterator value is not resolved", func(t *testing.T) {
+		resource := &tfeval.ResolvedResource{
+			Body: parseBlockBody(t, `resource "aws_security_group" "this" {
+  dynamic "ingress" {
+    for_each = var.ingress_rules
+    content {
+      cidr_blocks = ingress.value.cidrs != null ? ingress.value.cidrs : ["0.0.0.0/0"]
+    }
+  }
+}`),
+			Scope:     evaluatedScope(t, map[string]cty.Value{"ingress_rules": cty.EmptyTupleVal}, ""),
+			CallChain: []tfeval.CallSite{{Body: call}},
+		}
+		args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
+		requireControlAt(t, args, 5, model.ArgumentControlUnknown)
+	})
+}
+
+func TestModuleArgumentsResolveChoicesWithInstanceIteration(t *testing.T) {
+	body := parseBlockBody(t, `resource "aws_s3_bucket" "this" {
   for_each = var.buckets
   bucket   = each.value.name
   acl      = each.value.acl == null ? var.default_acl : each.value.acl
-}`),
-		CallChain: []tfeval.CallSite{{
-			Body: parseBlockBody(t, `module "buckets" {
+}`)
+	call := parseBlockBody(t, `module "buckets" {
   source      = "../buckets"
-  buckets     = { a = { name = "a", acl = null } }
+  buckets     = { a = { name = "a", acl = null }, b = { name = "b", acl = "private" } }
   default_acl = "public-read"
-}`),
-		}},
+}`)
+	scope := evaluatedScope(t, map[string]cty.Value{"default_acl": cty.StringVal("public-read")}, "")
+	instance := func(acl cty.Value) *tfeval.ResolvedResource {
+		return &tfeval.ResolvedResource{
+			Body:  body,
+			Scope: scope,
+			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+				"key":   cty.StringVal("a"),
+				"value": cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("a"), "acl": acl}),
+			})},
+			CallChain: []tfeval.CallSite{{Body: call}},
+		}
 	}
 
-	args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
-	_, ok := argumentAt(args, 3)
-	require.True(t, ok, "a value read only through the iteration is traced")
-	_, ok = argumentAt(args, 4)
-	require.False(t, ok, "a value mixing the iteration and another variable is not traced")
+	cache := newModuleAttributionCache()
+	defaulted := instance(cty.NullVal(cty.String))
+	args := cache.resourceArguments(defaulted, "stack/main.tf")
+	requireCallerAt(t, args, 3, 3)
+	requireCallerAt(t, args, 4, 4)
+	require.True(t, cache.resourceAttributes(defaulted).iterationDependent)
+
+	args = cache.resourceArguments(instance(cty.StringVal("private")), "stack/main.tf")
+	requireCallerAt(t, args, 4, 3)
+
+	args = newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
+		Body: body, Scope: scope, CallChain: []tfeval.CallSite{{Body: call}},
+	}, "stack/main.tf")
+	requireControlAt(t, args, 4, model.ArgumentControlUnknown)
 }
 
-func TestModuleArgumentsIntermediateCallIterationIsNotTraced(t *testing.T) {
-	for name, argument := range map[string]string{
-		"for_each": `coalesce(each.value.acl, var.default_acl)`,
-		"count":    `var.acls[count.index] == null ? var.default_acl : "private"`,
-	} {
-		t.Run(name, func(t *testing.T) {
+func TestModuleArgumentsTraceIntermediateCallIteration(t *testing.T) {
+	tests := []struct {
+		name string
+		call string
+		want model.ArgumentControl
+	}{
+		{
+			name: "each value of the call's for_each",
+			call: "for_each = var.buckets\n  acl      = each.value.acl",
+			want: model.ArgumentControlCaller,
+		},
+		{
+			name: "an element picked by the call's count index",
+			call: "count = length(var.buckets)\n  acl   = var.buckets[count.index]",
+			want: model.ArgumentControlCaller,
+		},
+		{
+			name: "a choice between the iteration and another input",
+			call: "for_each = var.buckets\n  acl      = coalesce(each.value.acl, var.default_acl)",
+			want: model.ArgumentControlUnknown,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			resource := &tfeval.ResolvedResource{
 				Body: parseBlockBody(t, `resource "aws_s3_bucket" "this" {
   acl = var.acl
@@ -171,18 +508,19 @@ func TestModuleArgumentsIntermediateCallIterationIsNotTraced(t *testing.T) {
 				CallChain: []tfeval.CallSite{
 					{Body: parseBlockBody(t, `module "wrapper" {
   source      = "../wrapper"
+  buckets     = {}
   default_acl = "public-read"
 }`)},
-					{Body: parseBlockBody(t, `module "bucket" {
-  source = "../bucket"
-  acl    = `+argument+`
-}`)},
+					{Body: parseBlockBody(t, "module \"bucket\" {\n  source   = \"../bucket\"\n  "+tt.call+"\n}")},
 				},
 			}
 
 			args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
-			_, ok := argumentAt(args, 2)
-			require.False(t, ok, "a value depending on the call's iteration is not set by a single argument")
+			control, location := controlAt(args, 2)
+			require.Equal(t, tt.want, control)
+			if tt.want == model.ArgumentControlCaller {
+				require.Equal(t, 3, location.LineStart)
+			}
 		})
 	}
 }
@@ -193,9 +531,9 @@ func TestModuleArgumentsForExpressionVariablesShadowModuleReferences(t *testing.
   tags = [for var in local.objects : var.value]
   acl  = [for k, v in var.acls : v]
 }`),
-		Locals: parseLocals(t, `locals {
+		Scope: &tfeval.ModuleScope{Locals: parseLocals(t, `locals {
   objects = [{ value = "a" }]
-}`),
+}`)},
 		CallChain: []tfeval.CallSite{{
 			Body: parseBlockBody(t, `module "bucket" {
   source = "../bucket"
@@ -206,20 +544,11 @@ func TestModuleArgumentsForExpressionVariablesShadowModuleReferences(t *testing.
 	}
 
 	args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
-	_, ok := argumentAt(args, 2)
-	require.False(t, ok, "a loop variable named var is not the module input of that name")
-	acl, ok := argumentAt(args, 3)
-	require.True(t, ok, "the collection of a for expression is still read")
-	require.Equal(t, 4, acl.LineStart)
+	requireControlAt(t, args, 2, model.ArgumentControlModule)
+	requireCallerAt(t, args, 3, 4)
 }
 
 func TestModuleArgumentsTraceThroughLocals(t *testing.T) {
-	locals := parseLocals(t, `locals {
-  acl     = var.acl
-  name    = "${var.prefix}-${var.suffix}"
-  looping = local.looping
-  nested  = local.acl
-}`)
 	resource := &tfeval.ResolvedResource{
 		Body: parseBlockBody(t, `resource "aws_s3_bucket" "this" {
   acl    = local.acl
@@ -227,7 +556,12 @@ func TestModuleArgumentsTraceThroughLocals(t *testing.T) {
   tags   = local.looping
   policy = local.nested
 }`),
-		Locals: locals,
+		Scope: &tfeval.ModuleScope{Locals: parseLocals(t, `locals {
+  acl     = var.acl
+  name    = "${var.prefix}-${var.suffix}"
+  looping = local.looping
+  nested  = local.acl
+}`)},
 		CallChain: []tfeval.CallSite{{
 			Body: parseBlockBody(t, `module "bucket" {
   source = "../bucket"
@@ -239,16 +573,10 @@ func TestModuleArgumentsTraceThroughLocals(t *testing.T) {
 	}
 
 	args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
-	acl, ok := argumentAt(args, 2)
-	require.True(t, ok)
-	require.Equal(t, 3, acl.LineStart)
-	policy, ok := argumentAt(args, 5)
-	require.True(t, ok, "locals reading locals are followed")
-	require.Equal(t, 3, policy.LineStart)
-	_, ok = argumentAt(args, 3)
-	require.False(t, ok, "a local reading two variables is not traced")
-	_, ok = argumentAt(args, 4)
-	require.False(t, ok, "a self-referencing local is not traced")
+	requireCallerAt(t, args, 2, 3)
+	requireCallerAt(t, args, 5, 3)
+	requireControlAt(t, args, 3, model.ArgumentControlUnknown)
+	requireControlAt(t, args, 4, model.ArgumentControlModule)
 }
 
 func TestModuleArgumentsTraceIntermediateCallerLocals(t *testing.T) {
@@ -266,30 +594,25 @@ func TestModuleArgumentsTraceIntermediateCallerLocals(t *testing.T) {
   source = "../bucket"
   acl    = local.acl
 }`),
-				CallerLocals: parseLocals(t, `locals {
-  acl = var.bucket_acl
+				Caller: evaluatedScope(t, map[string]cty.Value{"bucket_acl": cty.StringVal("public-read")}, `locals {
+  acl = coalesce(var.bucket_acl, "private")
 }`),
 			},
 		},
 	}
 
 	args := newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
-	location, ok := argumentAt(args, 2)
-	require.True(t, ok)
-	require.Equal(t, 3, location.LineStart)
+	requireCallerAt(t, args, 2, 3)
+
+	resource.CallChain[1].Caller = evaluatedScope(t, map[string]cty.Value{"bucket_acl": cty.NullVal(cty.String)}, `locals {
+  acl = coalesce(var.bucket_acl, "public-read")
+}`)
+	args = newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
+	requireControlAt(t, args, 2, model.ArgumentControlUnknown)
 }
 
-func parseLocals(t *testing.T, src string) map[string]hclsyntax.Expression {
-	t.Helper()
-	body := parseBlockBody(t, src)
-	locals := make(map[string]hclsyntax.Expression, len(body.Attributes))
-	for name, attr := range body.Attributes {
-		locals[name] = attr.Expr
-	}
-	return locals
-}
-
-func TestExpressionReadsMatchesVariables(t *testing.T) {
+func TestValueAnalyzerReadsMatchVariables(t *testing.T) {
+	const eachInput = "each_collection"
 	for _, src := range []string{
 		`var.a`,
 		`var.a.b[var.b]`,
@@ -303,6 +626,8 @@ func TestExpressionReadsMatchesVariables(t *testing.T) {
 		`(var.a)`,
 		"<<EOT\n%{ for x in var.a }${x}-${each.value}%{ endfor }\nEOT\n",
 		`try(var.a.b, lookup(var.c, "k", null))`,
+		`coalesce(var.a, var.b, "c")`,
+		`coalescelist(var.a, [var.b])`,
 		`local.a`,
 		`"literal"`,
 	} {
@@ -310,7 +635,6 @@ func TestExpressionReadsMatchesVariables(t *testing.T) {
 		require.False(t, diags.HasErrors(), src)
 
 		var want []string
-		wantEach := false
 		for _, traversal := range expr.Variables() {
 			switch traversal.RootName() {
 			case moduleVariableRoot:
@@ -318,13 +642,15 @@ func TestExpressionReadsMatchesVariables(t *testing.T) {
 					want = append(want, step.Name)
 				}
 			case resourceEachRoot:
-				wantEach = true
+				if !slices.Contains(want, eachInput) {
+					want = append(want, eachInput)
+				}
 			}
 		}
-		w := readsWalker{root: resourceEachRoot}
-		w.walk(expr)
-		require.ElementsMatch(t, want, w.names, src)
-		require.Equal(t, wantEach, w.readsRoot, src)
+		a := newModuleAttributionCache().analyzer(nil, nil)
+		a.iterators = []iteratorReads{{name: resourceEachRoot, reads: inputReads{value: []string{eachInput}}}}
+		reads := a.reads(expr)
+		require.ElementsMatch(t, want, appendMissing(slices.Clone(reads.value), reads.selector), src)
 	}
 }
 
@@ -333,8 +659,12 @@ func TestModuleAttributionForResourceNarrowsCallSite(t *testing.T) {
 	argument := model.SourceLocation{Filename: "stack/main.tf", LineStart: 27, LineEnd: 27}
 	attrs := map[string]*model.ModuleAttribution{
 		moduleAttributionKey("aws_s3_bucket_policy", 10, 1): {
-			CallSite:  whole,
-			Arguments: []model.ModuleArgument{{LineStart: 12, LineEnd: 12, CallSite: argument}},
+			CallSite:        whole,
+			ArgumentControl: model.ArgumentControlModule,
+			Arguments: []model.ModuleArgument{
+				{LineStart: 12, LineEnd: 12, Control: model.ArgumentControlCaller, CallSite: argument},
+				{LineStart: 13, LineEnd: 14, Control: model.ArgumentControlUnknown},
+			},
 		},
 	}
 
@@ -347,10 +677,18 @@ func TestModuleAttributionForResourceNarrowsCallSite(t *testing.T) {
 	}
 	got := moduleAttributionForResource(attrs, policy(12))
 	require.Equal(t, argument, got.CallSite)
+	require.Equal(t, model.ArgumentControlCaller, got.ArgumentControl)
 	require.Nil(t, got.Arguments)
+
+	got = moduleAttributionForResource(attrs, policy(14))
+	require.Equal(t, whole, got.CallSite, "a value not traced keeps the call's source line")
+	require.Equal(t, model.ArgumentControlUnknown, got.ArgumentControl)
 
 	got = moduleAttributionForResource(attrs, policy(10))
 	require.Equal(t, whole, got.CallSite)
+	require.Equal(t, model.ArgumentControlModule, got.ArgumentControl)
+	require.Equal(t, model.ArgumentControlModule, attrs[moduleAttributionKey("aws_s3_bucket_policy", 10, 1)].ArgumentControl,
+		"narrowing works on a clone")
 
 	attrs[moduleAttributionKey("aws_s3_bucket", 1, 1)] = nil
 	require.Nil(t, moduleAttributionForResource(attrs, &model.Vulnerability{
@@ -398,7 +736,26 @@ func TestBuildModuleAttributionAnchorsOnSourceArgument(t *testing.T) {
 		},
 	)
 	require.Equal(t, 3, narrowed.CallSite.LineStart, "a finding set by an argument points at it")
-	require.True(t, narrowed.CallArgument)
+	require.Equal(t, model.ArgumentControlCaller, narrowed.ArgumentControl)
+
+	missing := moduleAttributionForResource(
+		map[string]*model.ModuleAttribution{moduleAttributionKey("aws_s3_bucket", 1, 0): attr},
+		&model.Vulnerability{
+			ResourceType:  "aws_s3_bucket",
+			BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 1}},
+			Line:          1,
+		},
+	)
+	require.Equal(t, 2, missing.CallSite.LineStart)
+	require.Equal(t, model.ArgumentControlModule, missing.ArgumentControl,
+		"a finding on no input-reading attribute is the module's own")
+
+	unanalyzed := buildModuleAttribution(&tfeval.ResolvedResource{
+		Type: resource.Type, Name: resource.Name, DefinedIn: resource.DefinedIn,
+		DefLine: resource.DefLine, CallChain: resource.CallChain,
+	}, repo, nil, newModuleAttributionCache())
+	require.Equal(t, model.ArgumentControlUnknown, unanalyzed.ArgumentControl,
+		"a resource whose body was not kept cannot be told apart from its caller")
 }
 
 // Mirrors a remote package whose root module calls a sibling directory of the

@@ -28,11 +28,29 @@ type ModulePathHop struct {
 	CodeLocation SourceLocation `json:"code_location,omitempty"`
 }
 
-// ModuleArgument binds a line range of a module resource to the root call-site
-// argument whose value sets it.
+// ArgumentControl tells which side of a module call sets the value a module
+// finding reads.
+type ArgumentControl uint8
+
+const (
+	// ArgumentControlUnknown is a value that reads module inputs without
+	// tracing back to a single argument of the root call.
+	ArgumentControlUnknown ArgumentControl = iota
+	// ArgumentControlModule is a value the module sets without reading any of
+	// its inputs, so it is changed in the module body.
+	ArgumentControlModule
+	// ArgumentControlCaller is a value set by a single argument of the root
+	// call, so it is changed at that argument.
+	ArgumentControlCaller
+)
+
+// ModuleArgument binds a line range of a module resource whose value reads
+// module inputs to who controls it. CallSite is the root call argument setting
+// it when Control is ArgumentControlCaller.
 type ModuleArgument struct {
 	LineStart int
 	LineEnd   int
+	Control   ArgumentControl
 	CallSite  SourceLocation
 }
 
@@ -56,6 +74,9 @@ type ModuleArgument struct {
 // Source and Version are empty for local modules.
 //
 // DependencyType is direct for a single call and transitive for more.
+//
+// ArgumentControl tells who sets the flagged value; only a value the module
+// sets can be fixed in the module body without changing it for every caller.
 type ModuleAttribution struct {
 	Source             string           `json:"source,omitempty"`
 	SourceType         string           `json:"source_type,omitempty"`
@@ -66,7 +87,5 @@ type ModuleAttribution struct {
 	ModulePath         []ModulePathHop  `json:"module_path,omitempty"`
 	ModuleCodeOwned    bool             `json:"-"`
 	Arguments          []ModuleArgument `json:"-"`
-	// CallArgument is set when CallSite was narrowed to the argument whose
-	// value the finding reads, so the value is set by the caller.
-	CallArgument bool `json:"-"`
+	ArgumentControl    ArgumentControl  `json:"-"`
 }
