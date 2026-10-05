@@ -1136,9 +1136,8 @@ func resolveModuleTargetDir(
 	callerDir, source, version, callerFile, moduleName string,
 	resolver tfeval.RemoteResolver,
 ) (string, bool) {
-	cleanSource := tfeval.StripGetterPrefix(source)
-	if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
-		return tfmodules.ResolveLocalModuleDir(fsys, callerDir, cleanSource), true
+	if dir, ok := tfmodules.LocalModuleDir(fsys, callerDir, source); ok {
+		return dir, true
 	}
 	if resolver == nil {
 		return "", false

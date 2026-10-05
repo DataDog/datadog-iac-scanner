@@ -1,9 +1,13 @@
 package runner
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,10 +29,30 @@ func TestIsExpectedHelmRenderError_UndefinedNames(t *testing.T) {
 	}
 }
 
-func TestHasTemplateSyntax(t *testing.T) {
-	require.True(t, hasTemplateSyntax([]byte("name: {{ .Values.name }}\n")))
-	require.True(t, hasTemplateSyntax([]byte("# header\n{{- if .Values.on }}\nkind: A\n")))
-	require.False(t, hasTemplateSyntax([]byte("# render with {{ values }}\nkind: A\n")))
-	require.False(t, hasTemplateSyntax([]byte("kind: A\n  # {{ note }}\n")))
-	require.False(t, hasTemplateSyntax([]byte("kind: A\n")))
+func TestLogParseFailure(t *testing.T) {
+	chart := t.TempDir()
+	tests := []struct {
+		name, file, content, wantLevel string
+	}{
+		{"raw template of a failed chart", filepath.Join(chart, "templates", "a.yaml"), "kind: A\n", "debug"},
+		{"other file of a failed chart", filepath.Join(chart, "values.yaml"), "kind: A\n", "error"},
+		{"test fixture", "repo/testdata/bad.yaml", "kind: A\n", "debug"},
+		{"templated YAML", "deploy.yaml", "name: {{ .Values.name }}\n", "debug"},
+		{"GitHub Actions expression", ".github/workflows/ci.yaml", "run: echo ${{ secrets.X }}\n", "error"},
+		{"quoted Ansible Jinja", "playbook.yaml", "msg: \"{{ foo }}\"\n", "error"},
+		{"CloudFormation dynamic reference", "stack.yaml", "Password: '{{resolve:ssm:/p}}'\n", "error"},
+		{"template in a trailing comment", "deploy.yaml", "kind: A # {{ x }}\n", "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			ctx := zerolog.New(&logs).WithContext(context.Background())
+			s := &Service{}
+			s.recordFailedHelmChart(chart)
+
+			s.logParseFailure(ctx, tt.file, []byte(tt.content), errors.New("bad"))
+
+			require.Contains(t, logs.String(), `"level":"`+tt.wantLevel+`"`)
+		})
+	}
 }

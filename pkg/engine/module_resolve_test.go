@@ -1279,3 +1279,41 @@ func TestShouldInstantiateLocalModules(t *testing.T) {
 		})
 	}
 }
+
+// A build system merges environments/<name> into its module before running
+// Terraform, so a relative source in an environment file is relative to the
+// module. The called module must be instantiated from there, and its body not
+// also scanned as a standalone root.
+func TestResolveModuleDocuments_MergedEnvironmentLayout(t *testing.T) {
+	root := t.TempDir()
+	envFile := writeFile(t, filepath.Join(root, "svc", "environments", "prod"), "main.tf", `
+module "bucket" {
+  source = "./modules/bucket"
+  name   = "prod-logs"
+}
+`)
+	modFile := writeFile(t, filepath.Join(root, "svc", "modules", "bucket"), "main.tf", `
+variable "name" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  bucket = var.name
+}
+`)
+
+	files := model.FileMetadatas{fileMeta("env-id", envFile), fileMeta("mod-id", modFile)}
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, vfs.DiskFS{})
+	if !res.ok || len(res.docs) != 1 {
+		t.Fatalf("expected the module instantiated once, got ok=%v docs=%#v", res.ok, res.docs)
+	}
+	resource, _ := res.docs[0]["resource"].(map[string]interface{})
+	bucketType, _ := resource["aws_s3_bucket"].(map[string]interface{})
+	this, _ := bucketType["this"].(map[string]interface{})
+	if this["bucket"] != "prod-logs" {
+		t.Fatalf("instantiated bucket = %#v, want the caller's prod-logs", this["bucket"])
+	}
+	if len(res.suppressed["mod-id"]) == 0 {
+		t.Fatal("the called module must not also be scanned as a root")
+	}
+}

@@ -26,6 +26,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	ansibleConfigParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/config"
@@ -348,6 +349,32 @@ func TestPrepareMemorySources_RoutesPushedYAMLByContent(t *testing.T) {
 	}
 }
 
+// A pushed file whose content rules out every platform is skipped, as the
+// analyzer skips it on disk, rather than handed to every parser that accepts
+// its extension.
+func TestPrepareMemorySources_SkipsFilesExcludedByContent(t *testing.T) {
+	ctx := context.Background()
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"setup.cfg":           []byte("[metadata]\nname = x\n"),
+		"pytest.ini":          []byte("[pytest]\naddopts = -p auto\n"),
+		"catalog/entity.yaml": []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: web\n"),
+		"ansible.cfg":         []byte("[defaults]\nno_log = False\n"),
+	})
+	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
+	services, _ := buildServices(t, ctx, memfs, mp)
+	shared, ok := SharedMemoryProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "excluded", false, 5, false))
+
+	var paths []string
+	for _, service := range services {
+		for _, file := range service.files {
+			paths = append(paths, filepath.ToSlash(file.FilePath))
+		}
+	}
+	require.Equal(t, []string{"ansible.cfg"}, paths)
+}
+
 func TestServicesForPlatformAndParserKindFallsBackWhenUnmatched(t *testing.T) {
 	ctx := context.Background()
 	services, _ := buildParityServices(t, ctx, []string{t.TempDir()})
@@ -485,4 +512,26 @@ func keysSorted(m map[string]int) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// A chart that fails to render for an unexpected reason is reported at error,
+// and its raw templates, which are never valid YAML, still do not each add a
+// parse error of their own.
+func TestPrepareSharedWalk_UnexpectedRenderErrorStillSilencesRawTemplates(t *testing.T) {
+	var logBuf bytes.Buffer
+	ctx := zerolog.New(&logBuf).Level(zerolog.WarnLevel).WithContext(context.Background())
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Chart.yaml"), "apiVersion: v2\nname: web\nversion: 0.1.0\nkubeVersion: \"<1.0.0\"\n")
+	writeFile(t, filepath.Join(dir, "templates", "cm.yaml"), "kind: [unclosed\n")
+
+	services, _ := buildParityServices(t, ctx, []string{dir})
+	fsp, ok := SharedWalkProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "unexpected-render", false, 5))
+
+	logged := logBuf.String()
+	require.Contains(t, logged, "failed to render file content")
+	require.Contains(t, logged, `"level":"error"`)
+	require.NotContains(t, logged, "failed to parse file content")
+	require.NotContains(t, logged, "Helm charts could not be rendered", "an unexpected failure is not summarized")
 }

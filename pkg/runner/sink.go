@@ -59,21 +59,6 @@ func (s *Service) sink(ctx context.Context, filename, scanID string,
 	return s.sinkContent(ctx, filename, scanID, c, err, openAPIResolveReferences, maxResolverDepth)
 }
 
-// hasTemplateSyntax reports template directives in the content itself. A "{{"
-// in a comment does not stop a file from parsing, so a failure there is a real
-// one and must not be mistaken for a template.
-func hasTemplateSyntax(content []byte) bool {
-	for _, line := range bytes.Split(content, []byte("\n")) {
-		if bytes.HasPrefix(bytes.TrimSpace(line), []byte("#")) {
-			continue
-		}
-		if bytes.Contains(line, []byte("{{")) {
-			return true
-		}
-	}
-	return false
-}
-
 // logParseFailure logs a file that could not be parsed. Raw templates of a
 // failed Helm chart, template syntax outside a chart and deliberately invalid
 // test fixtures are expected not to parse, so they stay at debug level.
@@ -83,7 +68,7 @@ func (s *Service) logParseFailure(ctx context.Context, filename string, content 
 	case s.isUnderFailedHelmChart(filename):
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable raw Helm template: %s", filename)
-	case utils.IsTestFixturePath(filename) || hasTemplateSyntax(content):
+	case utils.IsTestFixturePath(filename) || utils.HasYAMLBreakingTemplate(content):
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable templated or fixture file: %s", filename)
 	default:

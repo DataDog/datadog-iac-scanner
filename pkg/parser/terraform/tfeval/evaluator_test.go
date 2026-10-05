@@ -7,6 +7,9 @@ package tfeval
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -1592,4 +1595,16 @@ resource "aws_s3_bucket" "this" {
 		t.Fatalf("second eval: got %d resources, want 1", len(resources2))
 	}
 	requireString(t, resources2[0].Attributes, "bucket", "second")
+}
+
+func TestIsReportableModuleEvalError(t *testing.T) {
+	if isReportableModuleEvalError(fmt.Errorf("reading module: %w", fs.ErrNotExist)) {
+		t.Error("a missing local source is already reported by the module parser")
+	}
+	if isReportableModuleEvalError(fmt.Errorf("x: %w", ErrModuleNotEvaluated)) {
+		t.Error("a module that was not evaluated is not an evaluation error")
+	}
+	if !isReportableModuleEvalError(errors.New("invalid expression")) {
+		t.Error("other evaluation errors are reported")
+	}
 }

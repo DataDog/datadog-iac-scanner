@@ -433,7 +433,7 @@ func fillModuleAttrs(
 	}
 	if err = validateModuleSource(fsys, mod.AbsSource); err != nil {
 		event := log.Warn()
-		if utils.IsTestFixturePath(mod.AbsSource) {
+		if utils.IsTestFixturePath(baseDir) {
 			event = log.Debug()
 		}
 		event.Msgf("Invalid local module source %q: %v", mod.Source, err)
@@ -693,23 +693,12 @@ func resolveFunctionCall(expr *hclsyntax.FunctionCallExpr, locals, vars map[stri
 // LooksLikeLocalModuleSource uses heuristics to determine if the resolved source string is likely local
 func LooksLikeLocalModuleSource(source string) bool {
 	source = strings.TrimSpace(source)
-
-	if source == "" {
-		return false
-	}
-
-	// Handle file:// URL scheme (file:///path/to/module)
 	if strings.HasPrefix(source, "file://") {
 		return true
 	}
-
-	// Unwrap common go-getter schemes like git:: or hg::
-	schemes := []string{"git::", "hg::", "http::", "https::"}
-	for _, scheme := range schemes {
-		if after, ok := strings.CutPrefix(source, scheme); ok {
-			source = after
-			break
-		}
+	source = StripGetterPrefix(source)
+	if source == "" {
+		return false
 	}
 
 	// Absolute file path

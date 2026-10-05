@@ -23,6 +23,8 @@ func TestLooksLikeAnsibleInventory(t *testing.T) {
 		{"pytest", "[pytest]\naddopts = -p auto\ntestpaths = tests\n", false},
 		{"mypy", "[mypy]\npython_version = 3.12\nstrict = True\n", false},
 		{"app config without spaces", "[dd.app.kafka]\ncluster=LocalCluster\nport=9092\n", false},
+		{"only a vars section", "[all:vars]\nansible_user=deploy\n", true},
+		{"empty vars section", "[all:vars]\n", false},
 		{"only sections", "[a]\n[b]\n", false},
 		{"empty", "", false},
 	}
@@ -43,6 +45,8 @@ func TestLooksLikeAnsibleConfig(t *testing.T) {
 		{"galaxy only", "[galaxy]\ncache_dir=~/.ansible/galaxy_cache\n", true},
 		{"galaxy server", "[galaxy_server.release]\nurl=https://galaxy.ansible.com/\n", true},
 		{"utf8 bom", "\ufeff[defaults]\nforks = 5\n", true},
+		{"comment after the header", "[defaults] ; main\nno_log = False\nbecome_user = root\n", true},
+		{"become plugin only", "[sudo_become_plugin]\nflags = -H -S -n\n", true},
 		{"setup.cfg", "[metadata]\nname = x\n[options]\npackages = find:\n", false},
 		{"zoo.cfg", "tickTime=2000\ndataDir=/var/zookeeper\n", false},
 		{"modd.conf", "**/*.go {\n  daemon +sigterm: make run\n}\n", false},
@@ -52,4 +56,14 @@ func TestLooksLikeAnsibleConfig(t *testing.T) {
 			require.Equal(t, tt.want, looksLikeAnsibleConfig([]byte(tt.content)))
 		})
 	}
+}
+
+func TestExcludedByContent(t *testing.T) {
+	require.True(t, ExcludedByContent("setup.cfg", []byte("[metadata]\nname = x\n")))
+	require.True(t, ExcludedByContent("pytest.ini", []byte("[pytest]\naddopts = -p auto\n")))
+	require.False(t, ExcludedByContent("ansible.cfg", []byte("[defaults] ; main\nno_log = False\n")))
+	require.False(t, ExcludedByContent("hosts.ini", []byte("[web]\nweb1\n")))
+	require.True(t, ExcludedByContent("service.datadog.yaml", []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: x\n")))
+	require.False(t, ExcludedByContent("deploy.yaml", []byte("apiVersion: apps/v1\nkind: Deployment\n")))
+	require.False(t, ExcludedByContent("main.tf", []byte("[metadata]\n")))
 }

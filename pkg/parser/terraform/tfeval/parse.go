@@ -150,19 +150,11 @@ func collectModuleBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 
 // resolveLocalDir resolves a local module source path relative to callerDir.
 func resolveLocalDir(callerDir, source string) string {
-	clean := StripGetterPrefix(source)
+	clean := tfmodules.StripGetterPrefix(source)
 	if filepath.IsAbs(clean) {
 		return filepath.Clean(clean)
 	}
 	return filepath.Clean(filepath.Join(callerDir, clean))
-}
-
-// StripGetterPrefix removes go-getter scheme prefixes so the source can be treated as a path.
-// Compound prefixes like "git::file://./path" are fully stripped in two passes.
-// The implementation lives in tfmodules so the module parser classifies and
-// resolves sources with the same stripping.
-func StripGetterPrefix(source string) string {
-	return tfmodules.StripGetterPrefix(source)
 }
 
 // isEmptyCollection returns true when attr evaluates to a known empty collection under ctx.

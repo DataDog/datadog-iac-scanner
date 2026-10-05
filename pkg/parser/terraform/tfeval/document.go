@@ -309,9 +309,8 @@ func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResol
 		if source == "" {
 			continue
 		}
-		cleanSource := StripGetterPrefix(source)
-		if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
-			dirs = append(dirs, tfmodules.ResolveLocalModuleDir(fsys, dir, cleanSource))
+		if local, ok := tfmodules.LocalModuleDir(fsys, dir, source); ok {
+			dirs = append(dirs, local)
 			continue
 		}
 		if resolver != nil {

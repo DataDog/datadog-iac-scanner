@@ -30,12 +30,17 @@ var ansibleConfigSections = map[string]struct{}{
 
 var ansibleConfigSectionPrefixes = []string{"galaxy_server.", "callback_", "inventory_plugin_"}
 
-// iniSectionName returns the name inside a "[name]" header line.
+// ansibleConfigSectionSuffixes match plugin sections such as [sudo_become_plugin].
+var ansibleConfigSectionSuffixes = []string{"_become_plugin"}
+
+// iniSectionName returns the name inside a "[name]" header line. Like the
+// config parser, it accepts an inline comment after the header.
 func iniSectionName(line string) (string, bool) {
-	if !strings.HasPrefix(line, "[") || !strings.HasSuffix(line, "]") {
+	end := strings.IndexByte(line, ']')
+	if !strings.HasPrefix(line, "[") || end < 0 {
 		return "", false
 	}
-	return strings.TrimSpace(line[1 : len(line)-1]), true
+	return strings.TrimSpace(line[1:end]), true
 }
 
 func iniLines(content []byte, fn func(line string) bool) {
@@ -76,6 +81,12 @@ func looksLikeAnsibleConfig(content []byte) bool {
 				return false
 			}
 		}
+		for _, suffix := range ansibleConfigSectionSuffixes {
+			if strings.HasSuffix(name, suffix) {
+				found = true
+				return false
+			}
+		}
 		return true
 	})
 	return found
@@ -84,7 +95,9 @@ func looksLikeAnsibleConfig(content []byte) bool {
 // looksLikeAnsibleInventory reports whether a .ini file is an INI inventory.
 // Outside [group:vars] sections every entry starts with a host or group name,
 // which never contains "="; app config (pytest.ini, mypy.ini, dev.ini) is made
-// of "key=value" or "key = value" entries instead.
+// of "key=value" or "key = value" entries instead. A [group:vars] section with
+// entries is itself an inventory, even without hosts. A [group:vars] section with
+// entries is inventory evidence on its own.
 func looksLikeAnsibleInventory(content []byte) bool {
 	inVars := false
 	entries := 0
@@ -95,6 +108,7 @@ func looksLikeAnsibleInventory(content []byte) bool {
 			return true
 		}
 		if inVars {
+			entries++
 			return true
 		}
 		fields := strings.Fields(line)

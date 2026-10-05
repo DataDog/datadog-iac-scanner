@@ -1258,3 +1258,47 @@ resource "aws_s3_bucket" "live" {
 	require.Equal(t, "from_tofu", equivalent["aws"].Inputs["bucket"])
 	require.NotContains(t, equivalent["aws"].Inputs, "ami")
 }
+
+// A missing local source is reported once, by fillModuleAttrs: enrichment does
+// not warn about it a second time.
+func TestEnrichModule_MissingLocalSourceIsNotReportedAgain(t *testing.T) {
+	var logBuf bytes.Buffer
+	ctx := zerolog.New(&logBuf).Level(zerolog.WarnLevel).WithContext(t.Context())
+	missing := filepath.Join(t.TempDir(), "missing")
+	mod := &ParsedModule{Name: "m", Source: "./missing", IsLocal: true, AbsSource: missing}
+
+	result := enrichModule(ctx, mod, t.TempDir(), nil, newModuleEnrichCache(vfs.DiskFS{}, nil))
+
+	require.ErrorIs(t, result.Error, os.ErrNotExist)
+	require.Empty(t, logBuf.String())
+}
+
+// The level of a missing local source depends on the file calling it: a fixture
+// may point anywhere, production code may not.
+func TestParseTerraformModules_MissingLocalSourceLevelFollowsTheCaller(t *testing.T) {
+	repo := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o755))
+	tests := []struct {
+		name, callerDir, source, wantLevel string
+	}{
+		{"production caller", "stack", "./missing", `"level":"warn"`},
+		{"fixture caller", "testdata/stack", "./missing", `"level":"debug"`},
+		{"production caller with a target under testdata", "stack", "../testdata/missing", `"level":"warn"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			ctx := zerolog.New(&logBuf).WithContext(t.Context())
+			caller := filepath.Join(repo, filepath.FromSlash(tt.callerDir), "main.tf")
+			files := model.FileMetadatas{&model.FileMetadata{
+				FilePath:     caller,
+				OriginalData: `module "m" { source = "` + tt.source + `" }`,
+			}}
+
+			_, err := ParseTerraformModules(ctx, nil, files, 1)
+			require.NoError(t, err)
+			require.Contains(t, logBuf.String(), "Invalid local module source")
+			require.Contains(t, logBuf.String(), tt.wantLevel)
+		})
+	}
+}

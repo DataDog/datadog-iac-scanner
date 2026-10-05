@@ -39,7 +39,9 @@ const environmentsDir = "environments"
 //   - an absolute source points into a build container where the repository is
 //     mounted elsewhere (e.g. /cnab/app/terraform/<repo path>), so its longest
 //     suffix of at least two segments that exists under an ancestor of
-//     callerDir is used.
+//     callerDir inside the caller's repository is used. Outside a repository
+//     there is no fallback, so a module elsewhere on the machine is never
+//     attributed to the caller.
 //
 // The Terraform resolution is returned when no fallback exists, so errors
 // still name the path Terraform would use.
@@ -66,21 +68,32 @@ func ResolveLocalModuleDir(fsys vfs.FS, callerDir, source string) string {
 }
 
 func repoPathOfAbsSource(fsys vfs.FS, callerDir, source string) (string, bool) {
+	root, ok := vfs.RepositoryRoot(fsys, callerDir)
+	if !ok {
+		return "", false
+	}
 	parts := strings.Split(strings.Trim(filepath.ToSlash(source), "/"), "/")
 	for i := 0; i <= len(parts)-2; i++ {
 		suffix := filepath.FromSlash(strings.Join(parts[i:], "/"))
-		for dir := callerDir; ; {
+		for dir := filepath.Clean(callerDir); ; dir = filepath.Dir(dir) {
 			if candidate := filepath.Join(dir, suffix); isDir(fsys, candidate) {
 				return candidate, true
 			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
+			if dir == root || filepath.Dir(dir) == dir {
 				break
 			}
-			dir = parent
 		}
 	}
 	return "", false
+}
+
+// LocalModuleDir resolves source with ResolveLocalModuleDir when it is a local
+// module source, after removing its go-getter prefixes.
+func LocalModuleDir(fsys vfs.FS, callerDir, source string) (string, bool) {
+	if !LooksLikeLocalModuleSource(source) {
+		return "", false
+	}
+	return ResolveLocalModuleDir(fsys, callerDir, StripGetterPrefix(source)), true
 }
 
 func isDir(fsys vfs.FS, path string) bool {

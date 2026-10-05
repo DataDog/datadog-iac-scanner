@@ -798,10 +798,10 @@ func isReportableModuleEvalError(err error) bool {
 func (e *Evaluator) resolveModuleDir(
 	ctx context.Context, callerDir, packageRoot, source, version, callerFile, moduleName string,
 ) (dir, childPackageRoot string, ok bool) {
-	cleanSource := StripGetterPrefix(source)
-	if tfmodules.LooksLikeLocalModuleSource(cleanSource) {
+	if tfmodules.LooksLikeLocalModuleSource(source) {
 		if packageRoot == "" {
-			return tfmodules.ResolveLocalModuleDir(e.fsys, callerDir, cleanSource), "", true
+			dir, _ := tfmodules.LocalModuleDir(e.fsys, callerDir, source)
+			return dir, "", true
 		}
 		localDir := resolveLocalDir(callerDir, source)
 		confined, resolveErr := resolver.ResolvePathWithinRoot(ctx, packageRoot, localDir)

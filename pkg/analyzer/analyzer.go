@@ -903,6 +903,22 @@ func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, ki
 	return ClassifyFile(ctx, fsys, path, content, platforms)
 }
 
+// ExcludedByContent reports a file whose content rules out every platform, so
+// it is not scanned at all: a .cfg, .conf or .ini that is not Ansible
+// configuration or inventory, and service catalog YAML. The analyzer leaves
+// these out of a CLI scan; pushed files skip them the same way.
+func ExcludedByContent(path string, content []byte) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case extCfg, extConf:
+		return !looksLikeAnsibleConfig(content)
+	case extIni:
+		return !looksLikeAnsibleInventory(content)
+	case yaml, yml:
+		return isCatalogEntity(content)
+	}
+	return false
+}
+
 // PlatformForKind returns the fixed platform for kind when known.
 func PlatformForKind(kind model.FileKind) (string, bool) {
 	switch kind {
@@ -916,8 +932,6 @@ func PlatformForKind(kind model.FileKind) (string, bool) {
 		return arm, true
 	case model.KindPROTO:
 		return grpc, true
-	case model.KindINI, model.KindCFG:
-		return ansible, true
 	default:
 		return "", false
 	}
@@ -1036,7 +1050,7 @@ func checkYamlPlatform(ctx context.Context, fsys vfs.FS, content []byte,
 
 	root, err := yamlDocumentRoot(content)
 	if err != nil {
-		if isYamlTemplatePath(path) || utils.IsTestFixturePath(path) {
+		if isYamlTemplatePath(path) || utils.IsTestFixturePath(path) || utils.HasYAMLBreakingTemplate(content) {
 			contextLogger.Debug().Msgf("failed to parse yaml file (%s): %s", path, err)
 		} else {
 			contextLogger.Warn().Msgf("failed to parse yaml file (%s): %s", path, err)

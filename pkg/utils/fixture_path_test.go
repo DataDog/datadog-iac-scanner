@@ -5,7 +5,11 @@
  */
 package utils
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestIsTestFixturePath(t *testing.T) {
 	tests := map[string]bool{
@@ -20,5 +24,18 @@ func TestIsTestFixturePath(t *testing.T) {
 		if got := IsTestFixturePath(path); got != want {
 			t.Errorf("IsTestFixturePath(%q) = %v, want %v", path, got, want)
 		}
+	}
+}
+
+func TestIsTestFixturePath_OnlyInsideTheRepository(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "fixtures", "infra")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if IsTestFixturePath(filepath.Join(repo, "prod", "main.tf")) {
+		t.Error("a checkout under a fixtures directory is not a fixture")
+	}
+	if !IsTestFixturePath(filepath.Join(repo, "testdata", "main.tf")) {
+		t.Error("a fixture directory inside the checkout is a fixture")
 	}
 }

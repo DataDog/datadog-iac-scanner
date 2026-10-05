@@ -15,12 +15,15 @@ import (
 )
 
 func TestResolveLocalModuleDir(t *testing.T) {
-	repo := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "repo")
 	mkdir := func(rel string) string {
 		p := filepath.Join(repo, filepath.FromSlash(rel))
 		require.NoError(t, os.MkdirAll(p, 0o755))
 		return p
 	}
+	mkdir(".git")
+	// Outside the repository: never a fallback target.
+	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(repo), "modules", "vpc"), 0o755))
 	svc := mkdir("domains/svc/config/tf")
 	env := mkdir("domains/svc/config/tf/environments/us1.prod")
 	mkdir("domains/svc/config/tf/workflows/create")
@@ -46,6 +49,8 @@ func TestResolveLocalModuleDir(t *testing.T) {
 		{"absolute container path mapped to the repository", svc,
 			filepath.Join(container, "domains/shared/modules/slo"), filepath.Join(repo, "domains/shared/modules/slo")},
 		{"absolute path that exists", svc, filepath.Join(repo, "domains/shared"), filepath.Join(repo, "domains/shared")},
+		{"absolute path whose suffix only exists outside the repository", svc,
+			filepath.Join(container, "modules/vpc"), filepath.Join(container, "modules/vpc")},
 		{"absolute path with no repository suffix", svc,
 			filepath.Join(container, "domains/missing/mod"), filepath.Join(container, "domains/missing/mod")},
 	}
@@ -54,4 +59,23 @@ func TestResolveLocalModuleDir(t *testing.T) {
 			require.Equal(t, tt.want, ResolveLocalModuleDir(fsys, tt.callerDir, filepath.FromSlash(tt.source)))
 		})
 	}
+}
+
+func TestResolveLocalModuleDir_NoRepositoryNoFallback(t *testing.T) {
+	root := t.TempDir()
+	caller := filepath.Join(root, "stack")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "modules", "vpc"), 0o755))
+	require.NoError(t, os.MkdirAll(caller, 0o755))
+	source := filepath.Join(t.TempDir(), "cnab", "modules", "vpc")
+	require.Equal(t, source, ResolveLocalModuleDir(vfs.DiskFS{}, caller, source))
+}
+
+func TestLocalModuleDir(t *testing.T) {
+	dir, ok := LocalModuleDir(nil, "/caller", "git::file://./mod")
+	require.True(t, ok)
+	require.Equal(t, filepath.Join("/caller", "mod"), dir)
+	_, ok = LocalModuleDir(nil, "/caller", "git::https://example.com/mod.git")
+	require.False(t, ok)
+	_, ok = LocalModuleDir(nil, "/caller", "hashicorp/consul/aws")
+	require.False(t, ok)
 }
