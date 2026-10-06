@@ -377,6 +377,40 @@ func TestDetectLineInvocationSkipsHelmIDStamps(t *testing.T) {
 	}
 }
 
+// A numeric search-key segment must not match the ID of a later document's stamp.
+func TestDetectLineIndexDoesNotMatchHelmIDStamp(t *testing.T) {
+	original := "# KICS_HELM_ID_0:\napiVersion: v1\nkind: Role\nmetadata:\n  name: r\nrules:\n" +
+		"- resources:\n  - pods/exec\n---\n# KICS_HELM_ID_10:\napiVersion: v1\nkind: RoleBinding\n"
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/rbac.yaml",
+		HelmID:            "# KICS_HELM_ID_0:",
+		OriginalData:      original,
+		LinesOriginalData: utils.SplitLines(original),
+	}
+
+	got := (DetectKindLine{}).DetectLine(context.Background(), file, "metadata.name={{r}}.rules.0.resources", 1)
+
+	if got.Line != 5 {
+		t.Fatalf("DetectLine() line = %d (%q), want rules on line 5", got.Line, got.LineWithVulnerability)
+	}
+}
+
+// Adjacent stamps are all dropped, and every position maps to the kept line it
+// is, or that follows it.
+func TestUnstampedLines(t *testing.T) {
+	lines := []string{"# KICS_HELM_ID_0:", "# KICS_HELM_ID_1:", "a: 1", "b: 2", "# KICS_HELM_ID_2:", "c: 3"}
+	kept, index := unstampedLines(lines)
+	if want := []string{"a: 1", "b: 2", "c: 3"}; !reflect.DeepEqual(kept, want) {
+		t.Fatalf("unstampedLines() kept = %q, want %q", kept, want)
+	}
+	for i, want := range []int{0, 0, 0, 1, 2, 2} {
+		if got := index(i); got != want {
+			t.Fatalf("unstampedLines() index(%d) = %d, want %d", i, got, want)
+		}
+	}
+}
+
 func TestDetectLineInspectsEveryActionOnLine(t *testing.T) {
 	original := `{{- if .Values.enabled }}{{ include "resource" . }}{{- end }}`
 	file := &model.FileMetadata{

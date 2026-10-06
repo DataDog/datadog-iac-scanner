@@ -8,7 +8,6 @@ package helm
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -69,43 +68,16 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		helmID = -1
 	}
 
-	start, end := model.ResourceLine{}, model.ResourceLine{}
-	// Since we are only looking at keys we can ignore the second value passed through '=' and '[]'
-	for _, key := range strings.Split(sanitizedSubstring, ".") {
-		substr1, _ := detector.GenerateSubstrings(ctx, key, extractedString, lines, curLineRes.lineRes)
-		var iterStart, iterEnd model.ResourceLine
-		curLineRes, iterStart, iterEnd = curLineRes.detectCurrentLine(lines, fmt.Sprintf("%s:", substr1), "", true, file.IDInfo, helmID)
-
-		if curLineRes.breakRes {
-			break
-		}
-		start = iterStart
-		end = iterEnd
-	}
-
-	// Look at dupHistory to see if the last element was duplicate, if so
-	// change the line to the last unique key
-	if !curLineRes.lastUnique.unique {
-		curLineRes.lineRes = curLineRes.lastUnique.lastUniqueLine
-	}
+	curLineRes, start, end := curLineRes.walkSearchKey(ctx, lines, sanitizedSubstring, extractedString, file.IDInfo, helmID)
 
 	if curLineRes.foundRes {
-		lineRemove := make(map[int]int)
-		count := 0
-		for i, line := range lines { // Remove auxiliary lines
-			if strings.Contains(line, "# KICS_HELM_ID_") {
-				count++
-				lineRemove[i] = count
-				lines = append(lines[:i], lines[i+1:]...)
-			}
-		}
-		// Update found line
-		curLineRes.lineRes = removeLines(curLineRes.lineRes, lineRemove)
-		adjustedLine := curLineRes.lineRes + 1
+		unstamped, index := unstampedLines(lines)
+		at := index(curLineRes.lineRes)
+		adjustedLine := at + 1
 		return model.VulnerabilityLines{
 			Line:                  adjustedLine,
-			VulnLines:             detector.GetAdjacentVulnLines(curLineRes.lineRes, outputLines, lines),
-			LineWithVulnerability: strings.Split(lines[curLineRes.lineRes], ": ")[0],
+			VulnLines:             detector.GetAdjacentVulnLines(at, outputLines, unstamped),
+			LineWithVulnerability: strings.Split(unstamped[at], ": ")[0],
 			ResolvedFile:          file.FilePath,
 			VulnerablilityLocation: model.ResourceLocation{
 				Start: model.ResourceLine{Line: adjustedLine, Col: start.Col},
@@ -117,7 +89,7 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	// Helm attributes named-template output to the file that invoked it. The
 	// resolver records the action that actually executed, so wrappers with
 	// conditional or repeated invocations can still point to the right source.
-	if found, ok := invocationLines(file, lines, outputLines); ok {
+	if found, ok := invocationLines(file, file.HelmInvocation, lines, outputLines); ok {
 		return found
 	}
 
@@ -134,22 +106,14 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 // invocationLines locates a finding at the include-like action whose output
 // produced it. The recorded position counts the "# KICS_HELM_ID_" lines stamped
 // above it, which are left out of the reported line and snippet.
-func invocationLines(file *model.FileMetadata, lines []string, outputLines int) (model.VulnerabilityLines, bool) {
-	invocation := file.HelmInvocation
-	if invocation.Line < 1 || invocation.Line > len(lines) || strings.Contains(lines[invocation.Line-1], "# KICS_HELM_ID_") {
+func invocationLines(
+	file *model.FileMetadata, invocation model.ResourceLine, lines []string, outputLines int,
+) (model.VulnerabilityLines, bool) {
+	if invocation.Line < 1 || invocation.Line > len(lines) || isHelmIDLine(lines[invocation.Line-1]) {
 		return model.VulnerabilityLines{}, false
 	}
-	unstamped := make([]string, 0, len(lines))
-	at := 0
-	for i, line := range lines {
-		if strings.Contains(line, "# KICS_HELM_ID_") {
-			continue
-		}
-		if i == invocation.Line-1 {
-			at = len(unstamped)
-		}
-		unstamped = append(unstamped, line)
-	}
+	unstamped, index := unstampedLines(lines)
+	at := index(invocation.Line - 1)
 	reported := model.ResourceLine{Line: at + 1, Col: invocation.Col}
 	return model.VulnerabilityLines{
 		Line:                  reported.Line,
@@ -163,28 +127,56 @@ func invocationLines(file *model.FileMetadata, lines []string, outputLines int) 
 	}, true
 }
 
-// removeLines is used to update the vulnerability line after removing the "# KICS_HELM_ID_"
-func removeLines(current int, lineRemove map[int]int) int {
-	orderByKey := make([]int, len(lineRemove))
-	i := 0
-	for k := range lineRemove {
-		orderByKey[i] = k
-		i++
-	}
-	remove := 0
-	sort.Ints(orderByKey)
-	for _, k := range orderByKey {
-		if current > k {
-			remove = lineRemove[k]
-		} else {
+// walkSearchKey matches the keys of the sanitized search key one after the
+// other in lines, each below the previous one. Since we are only looking at
+// keys we can ignore the second value passed through '=' and '[]'.
+func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanitizedSubstring string,
+	extractedString [][]string, idInfo map[int]interface{}, helmID int,
+) (walked detectCurlLine, start, end model.ResourceLine) {
+	for _, key := range strings.Split(sanitizedSubstring, ".") {
+		substr1, _ := detector.GenerateSubstrings(ctx, key, extractedString, lines, d.lineRes)
+		var iterStart, iterEnd model.ResourceLine
+		d, iterStart, iterEnd = d.detectCurrentLine(lines, fmt.Sprintf("%s:", substr1), "", true, idInfo, helmID)
+
+		if d.breakRes {
 			break
 		}
+		start = iterStart
+		end = iterEnd
 	}
-	current -= remove
-	return current
+
+	// Look at dupHistory to see if the last element was duplicate, if so
+	// change the line to the last unique key
+	if !d.lastUnique.unique {
+		d.lineRes = d.lastUnique.lastUniqueLine
+	}
+	return d, start, end
+}
+
+func isHelmIDLine(line string) bool {
+	return strings.Contains(line, "# KICS_HELM_ID_")
+}
+
+// unstampedLines drops the "# KICS_HELM_ID_" lines the resolver stamped into
+// the rendered output. index maps a position in lines to its position in kept;
+// a stamp line maps to the line that follows it.
+func unstampedLines(lines []string) (kept []string, index func(int) int) {
+	kept = make([]string, 0, len(lines))
+	keptBefore := make([]int, len(lines))
+	for i, line := range lines {
+		keptBefore[i] = len(kept)
+		if !isHelmIDLine(line) {
+			kept = append(kept, line)
+		}
+	}
+	return kept, func(i int) int { return keptBefore[i] }
 }
 
 func containsHelmKey(line, key string) bool {
+	if isHelmIDLine(line) {
+		// A stamp only stands for its own ID; "0:" must not match "# KICS_HELM_ID_40:".
+		return strings.TrimSpace(line) == "# "+key
+	}
 	if strings.Contains(line, key) {
 		return true
 	}
