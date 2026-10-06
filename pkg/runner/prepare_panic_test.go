@@ -7,25 +7,21 @@ package runner
 
 import (
 	"context"
+	"io/fs"
 	"path/filepath"
 	"testing"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
+	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
-type panickingHelmResolver struct{}
+// panicOnReadDirFS fails while the chart's files are being loaded, after the
+// chart has been recognised as one.
+type panicOnReadDirFS struct{ vfs.FS }
 
-func (panickingHelmResolver) Resolve(context.Context, string) (model.ResolvedFiles, error) {
-	panic("boom")
-}
-
-func (panickingHelmResolver) SupportedTypes() []model.FileKind {
-	return []model.FileKind{model.KindHELM}
-}
-
-func (panickingHelmResolver) GetType(string) model.FileKind { return model.KindHELM }
+func (panicOnReadDirFS) ReadDir(string) ([]fs.DirEntry, error) { panic("boom") }
 
 type chartFailureRecorder struct {
 	preparedSource
@@ -34,19 +30,23 @@ type chartFailureRecorder struct {
 
 func (r *chartFailureRecorder) chartFailed(chartPath string) { r.failed = append(r.failed, chartPath) }
 
-// A chart whose resolution panics goes through the same failure handling as a
+// A chart whose rendering panics goes through the same failure handling as a
 // chart that fails to render: it is recorded failed and its raw files scanned.
+// It runs the real Helm resolver, which recovers panics itself.
 func TestResolveAndStoreChartHandlesResolvePanic(t *testing.T) {
 	ctx := context.Background()
-	res, err := resolver.NewBuilder().Add(ctx, panickingHelmResolver{}).Build(ctx)
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"chart/Chart.yaml":        []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"),
+		"chart/templates/cm.yaml": []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n"),
+	})
+	res, err := resolver.NewBuilder().Add(ctx, helm.NewResolver(panicOnReadDirFS{memfs})).Build(ctx)
 	require.NoError(t, err)
 	service := &Service{Resolver: res}
 	src := &chartFailureRecorder{}
-	chart := t.TempDir()
 
-	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, chart, "scan", false, 15, &unrenderedHelmCharts{})
+	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15, &unrenderedHelmCharts{})
 
 	require.False(t, rendered)
-	require.Equal(t, []string{chart}, src.failed)
-	require.True(t, service.isUnderFailedHelmChart(filepath.Join(chart, "templates", "cm.yaml")))
+	require.Equal(t, []string{"chart"}, src.failed)
+	require.True(t, service.isUnderFailedHelmChart(filepath.Join("chart", "templates", "cm.yaml")))
 }

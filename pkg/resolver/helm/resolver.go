@@ -3,6 +3,7 @@ package helm
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -39,8 +40,7 @@ type splitManifest struct {
 	original            []byte
 	splitID             string
 	sourceDocumentIndex int
-	helmInvocation      model.ResourceLine
-	helmInvocations     []model.HelmInvocationAt
+	helmInvocations     model.HelmInvocations
 	splitIDMap          map[int]interface{}
 	isCRD               bool
 }
@@ -59,14 +59,15 @@ var (
 )
 
 // Resolve will render the passed helm chart and return its content ready for parsing
-func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.ResolvedFiles, error) {
+func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model.ResolvedFiles, err error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("Resolving Helm files")
-	// handle panic during resolve process
+	// A panic is reported as an error: an empty result with no error would read
+	// as a chart that rendered to nothing, and its raw templates would be withheld.
 	defer func() {
-		if r := recover(); r != nil {
-			errMessage := "Recovered from panic during resolve of file " + filePath
-			masterUtils.HandlePanic(ctx, r, errMessage)
+		if p := recover(); p != nil {
+			masterUtils.HandlePanic(ctx, p, "Recovered from panic during resolve of file "+filePath)
+			resolved, err = model.ResolvedFiles{}, fmt.Errorf("panic during resolve of %s: %v", filePath, p)
 		}
 	}()
 	fsys := r.filesystem()
@@ -95,7 +96,6 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 			OriginalData:        split.original,
 			SplitID:             split.splitID,
 			SourceDocumentIndex: split.sourceDocumentIndex,
-			HelmInvocation:      split.helmInvocation,
 			HelmInvocations:     split.helmInvocations,
 			IDInfo:              split.splitIDMap,
 			IsCRD:               split.isCRD,
@@ -135,9 +135,16 @@ func chartYAMLDeclaresLibrary(data []byte) bool {
 // renderHelm will use helm library to render helm charts
 func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest, []string, error) {
 	contextLogger := logger.FromContext(ctx)
-	client := newClient(ctx)
 	contextLogger.Debug().Msg("Running helm install")
-	manifest, loadedChart, stamped, excluded, err := runInstall(ctx, path, fsys, client, &values.Options{})
+	manifest, loadedChart, stamped, excluded, err := runInstall(ctx, path, fsys, newClient(ctx), &values.Options{}, true)
+	if err != nil && strings.Contains(err.Error(), "YAML parse error") {
+		// An invocation marker is a comment line, which ends a plain multi-line
+		// value an include continues. A marker must never cost a chart its render,
+		// so the chart is rendered again without them, as it was before they existed.
+		contextLogger.Info().Msgf("Rendering chart '%s' again without invocation markers, "+
+			"so none of its resources get an invocation line: %v", path, err)
+		manifest, loadedChart, stamped, excluded, err = runInstall(ctx, path, fsys, newClient(ctx), &values.Options{}, false)
+	}
 	if err != nil {
 		return nil, []string{}, err
 	}
@@ -192,10 +199,6 @@ func splitManifestYAML(
 			continue
 		}
 		invocations := parseHelmInvocations(splited)
-		var helmInvocation model.ResourceLine
-		if len(invocations) > 0 {
-			helmInvocation = invocations[0].Position
-		}
 		splited = helmInvocationLinePattern.ReplaceAllString(splited, "")
 		if err := source.ensureIDMap(); err != nil {
 			return nil, err
@@ -211,7 +214,6 @@ func splitManifestYAML(
 			original:            source.original,
 			splitID:             splitID,
 			sourceDocumentIndex: sourceDocumentIndex,
-			helmInvocation:      helmInvocation,
 			helmInvocations:     invocations,
 			splitIDMap:          source.idMap,
 			isCRD:               source.isCRD,
@@ -273,11 +275,11 @@ func firstHelmMarker(content string) string {
 // parseHelmInvocations returns the invocation markers of a rendered document
 // in order, each with the line it emits once helmInvocationLinePattern has
 // removed the marker lines.
-func parseHelmInvocations(content string) []model.HelmInvocationAt {
+func parseHelmInvocations(content string) model.HelmInvocations {
 	if !strings.Contains(content, kicsHelmInvocation) {
 		return nil
 	}
-	var invocations []model.HelmInvocationAt
+	var invocations model.HelmInvocations
 	kept := 0
 	for _, line := range strings.Split(content, "\n") {
 		match := helmInvocationMarkerPattern.FindStringSubmatch(line)
@@ -369,10 +371,33 @@ func indexSources(files []*chart.File, stamped stampedSources) map[string]*sourc
 
 // BlankTemplateActions removes every template action from source and keeps the
 // newlines they spanned, so the line numbers of what remains are unchanged.
+// Actions end where templateActionEnd says, so a quoted "}}" does not end one
+// early; an unterminated action is blanked up to the next "}}" or the end.
 func BlankTemplateActions(source []byte) []byte {
-	return templateActionRE.ReplaceAllFunc(source, func(action []byte) []byte {
-		return bytes.Repeat([]byte{'\n'}, bytes.Count(action, []byte{'\n'}))
-	})
+	s := string(source)
+	var b bytes.Buffer
+	last := 0
+	for i := 0; i < len(s); {
+		start := strings.Index(s[i:], "{{")
+		if start < 0 {
+			break
+		}
+		start += i
+		end, ok := templateActionEnd(s, start)
+		if !ok {
+			// Unterminated (e.g. an unclosed quote): blank up to the next "}}", or
+			// to the end, so no "{{" is left for the YAML parser to trip on.
+			end = len(s)
+			if next := strings.Index(s[start+2:], "}}"); next >= 0 {
+				end = start + 2 + next + 2
+			}
+		}
+		b.WriteString(s[last:start])
+		b.WriteString(strings.Repeat("\n", strings.Count(s[start:end], "\n")))
+		last, i = end, end
+	}
+	b.WriteString(s[last:])
+	return b.Bytes()
 }
 
 func isCRDSourcePath(name string) bool {
