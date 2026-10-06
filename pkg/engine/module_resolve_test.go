@@ -1304,7 +1304,7 @@ resource "aws_s3_bucket" "this" {
 `)
 
 	files := model.FileMetadatas{fileMeta("env-id", envFile), fileMeta("mod-id", modFile)}
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, vfs.DiskFS{})
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, vfs.DiskFS{}, nil)
 	if !res.ok || len(res.docs) != 1 {
 		t.Fatalf("expected the module instantiated once, got ok=%v docs=%#v", res.ok, res.docs)
 	}
