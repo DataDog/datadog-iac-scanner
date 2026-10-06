@@ -9,7 +9,6 @@ package helm
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,8 +16,9 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chart/loader"
 )
 
 func TestSilenceStdLogRestoresAfterLastRender(t *testing.T) {
@@ -66,25 +66,25 @@ func TestLoadChart_DropsNonTemplateFiles(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(tpl, name), []byte(body), 0o600))
 	}
 
-	var logBuf bytes.Buffer
-	ctx := zerolog.New(&logBuf).Level(zerolog.DebugLevel).WithContext(context.Background())
-	ch, err := loadChart(ctx, vfs.DiskFS{}, dir)
-	require.NoError(t, err)
-
-	var names []string
-	for _, f := range ch.Templates {
-		names = append(names, strings.TrimPrefix(f.Name, "templates/"))
-	}
-	require.ElementsMatch(t, []string{
+	kept := []string{
 		"cm.yaml", "_helpers.tpl", "NOTES.txt", "deployment.yaml.gotmpl", "_create_buckets.sh", "_README.md",
-	}, names, "templates with any extension and partials are kept")
-	var entry struct {
-		Message string `json:"message"`
 	}
-	require.NoError(t, json.Unmarshal(logBuf.Bytes(), &entry))
-	_, listed, ok := strings.Cut(entry.Message, ": ")
-	require.True(t, ok, entry.Message)
+	templateNames := func(ch *chart.Chart) []string {
+		var names []string
+		for _, f := range ch.Templates {
+			names = append(names, strings.TrimPrefix(f.Name, "templates/"))
+		}
+		return names
+	}
+
+	raw, err := loader.LoadDir(dir)
+	require.NoError(t, err)
 	require.ElementsMatch(t, []string{
 		"templates/BUILD.bazel", "templates/BUILD", "templates/defs.bzl", "templates/OWNERS", "templates/docs/README.md",
-	}, strings.Split(listed, ", "), "dropped files are listed at debug")
+	}, dropNonTemplateFiles(raw))
+	require.ElementsMatch(t, kept, templateNames(raw), "templates with any extension and partials are kept")
+
+	ch, err := loadChart(context.Background(), vfs.DiskFS{}, dir)
+	require.NoError(t, err)
+	require.ElementsMatch(t, kept, templateNames(ch), "loadChart drops the same files")
 }
