@@ -154,7 +154,17 @@ type lineInfoState struct {
 // OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
 type linesLazyState struct {
 	once sync.Once
+
+	matchMu sync.Mutex
+	matches map[string][]int
+	// predMatches holds LinesMatching results by caller-chosen name; the set of
+	// names is small and fixed by the callers, so it is not bounded.
+	predMatches map[string][]int
 }
+
+// maxCachedLineMatches bounds how many distinct substrings LinesContaining
+// remembers per file.
+const maxCachedLineMatches = 512
 
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
@@ -248,6 +258,67 @@ func (f *FileMetadata) Lines() []string {
 		f.LinesOriginalData = utils.SplitLines(f.OriginalData)
 	}
 	return *f.LinesOriginalData
+}
+
+// LinesContaining returns the indexes of Lines() that contain sub, in
+// ascending order, memoized per file. ok is false when the file has no lazy
+// line state to cache on; callers then scan the lines themselves.
+func (f *FileMetadata) LinesContaining(sub string) (indexes []int, ok bool) {
+	st := f.linesLazy
+	if st == nil {
+		return nil, false
+	}
+	lines := f.Lines()
+	st.matchMu.Lock()
+	indexes, ok = st.matches[sub]
+	st.matchMu.Unlock()
+	if ok {
+		return indexes, true
+	}
+	for i, line := range lines {
+		if strings.Contains(line, sub) {
+			indexes = append(indexes, i)
+		}
+	}
+	st.matchMu.Lock()
+	if st.matches == nil {
+		st.matches = make(map[string][]int)
+	}
+	if len(st.matches) < maxCachedLineMatches {
+		st.matches[sub] = indexes
+	}
+	st.matchMu.Unlock()
+	return indexes, true
+}
+
+// LinesMatching returns the indexes of Lines() for which pred reports true, in
+// ascending order, memoized per file under name. pred must always give the same
+// answer for a given name. ok is false when the file has no lazy line state to
+// cache on; callers then scan the lines themselves.
+func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (indexes []int, ok bool) {
+	st := f.linesLazy
+	if st == nil {
+		return nil, false
+	}
+	lines := f.Lines()
+	st.matchMu.Lock()
+	indexes, ok = st.predMatches[name]
+	st.matchMu.Unlock()
+	if ok {
+		return indexes, true
+	}
+	for i, line := range lines {
+		if pred(line) {
+			indexes = append(indexes, i)
+		}
+	}
+	st.matchMu.Lock()
+	if st.predMatches == nil {
+		st.predMatches = make(map[string][]int)
+	}
+	st.predMatches[name] = indexes
+	st.matchMu.Unlock()
+	return indexes, true
 }
 
 // ReleasePostEvalData drops OriginalData and LinesOriginalData after eval —
@@ -399,7 +470,6 @@ type Vulnerability struct {
 	SearchLine            int              `db:"search_line" json:"searchLine"`
 	SearchValue           string           `db:"search_value" json:"searchValue"`
 	Value                 *string          `db:"value" json:"value"`
-	Output                string           `json:"-"`
 	CloudProvider         string           `json:"cloud_provider"`
 	Remediation           string           `db:"remediation" json:"remediation"`
 	RemediationType       string           `db:"remediation_type" json:"remediation_type"`

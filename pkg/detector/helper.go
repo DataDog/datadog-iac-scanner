@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -41,6 +42,9 @@ type DefaultDetectLineResponse struct {
 	FoundAtLeastOne bool
 	ResolvedFile    string
 	ResolvedFiles   map[string]model.ResolvedFileSplit
+	// File, when set, is the file whose Lines() are passed to DetectCurrentLine,
+	// letting it visit only the lines that contain the searched text.
+	File *model.FileMetadata
 }
 
 // GetBracketValues gets values inside "{{ }}" ignoring any "{{" or "}}" inside
@@ -286,46 +290,125 @@ func removeExtras(result string, start, end int) string {
 // nolint:gocritic
 func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurseCount int,
 	lines []string, kind model.FileKind) (*DefaultDetectLineResponse, model.ResourceLine, model.ResourceLine, []string) {
-	distances := make(map[int]int)
-	starts, ends := make(map[int]model.ResourceLine), make(map[int]model.ResourceLine)
+	best, bestDistance := -1, 0
+	var bestStart, bestEnd model.ResourceLine
 
-	for i := d.CurrentLine; i < len(lines); i++ {
-		distances, starts, ends = checkLine(str1, str2, distances, starts, ends, lines, i, kind)
+	// visit reports whether the scan can stop: lines are visited in ascending
+	// order, so the first exact match (distance 0) is the best and earliest one.
+	visit := func(i int) bool {
+		distance, start, end, ok := checkLine(str1, str2, lines, i, kind)
+		if ok && (best < 0 || distance < bestDistance) {
+			best, bestDistance, bestStart, bestEnd = i, distance, start, end
+		}
+		return ok && distance == 0
+	}
+	if first, second, ok := d.candidateLines(str1, str2, kind); ok {
+		walkAscending(first, second, d.CurrentLine, func(i int) bool { return visit(i) })
+	} else {
+		for i := d.CurrentLine; i < len(lines); i++ {
+			if visit(i) {
+				break
+			}
+		}
 	}
 
-	if len(distances) == 0 {
+	if best < 0 {
 		d.IsBreak = true
 		return d, model.ResourceLine{Line: d.CurrentLine + 1, Col: 0},
 			model.ResourceLine{Line: d.CurrentLine + 1, Col: len(lines[d.CurrentLine])},
 			lines
 	}
 
-	d.CurrentLine = SelectLineWithMinimumDistance(distances, d.CurrentLine)
+	d.CurrentLine = best
 	d.IsBreak = false
 	d.FoundAtLeastOne = true
 
-	return d, starts[d.CurrentLine], ends[d.CurrentLine], lines
+	return d, bestStart, bestEnd, lines
 }
 
+// candidateLines returns sorted line indexes, as one or two lists whose union
+// holds every line of d.File that checkLine can accept for str1 and str2; ok is
+// false when the file cannot cache them. Lines without str1 never match. With
+// str2, a line also needs str2 after str1, except a YAML line that starts a
+// block scalar, which matches on the lines that follow it. The shorter of the
+// str1 list and the str2 (plus block scalar) lists is used.
+func (d *DefaultDetectLineResponse) candidateLines(str1, str2 string, kind model.FileKind) (first, second []int, ok bool) {
+	if d.File == nil || str1 == "" {
+		return nil, nil, false
+	}
+	byStr1, ok := d.File.LinesContaining(str1)
+	if !ok || str2 == "" {
+		return byStr1, nil, ok
+	}
+	byStr2, ok := d.File.LinesContaining(str2)
+	if !ok {
+		return byStr1, nil, true
+	}
+	var blocks []int
+	if kind == model.KindYAML {
+		blocks, _ = d.File.LinesMatching("yamlBlockScalar", startsYAMLBlockScalar)
+	}
+	if len(byStr2)+len(blocks) < len(byStr1) {
+		return byStr2, blocks, true
+	}
+	return byStr1, nil, true
+}
+
+// walkAscending calls visit on the indexes of a and b that are >= from, in
+// ascending order and without repeats, until visit returns true.
+func walkAscending(a, b []int, from int, visit func(int) bool) {
+	a, b = a[sort.SearchInts(a, from):], b[sort.SearchInts(b, from):]
+	for len(a) > 0 || len(b) > 0 {
+		var i int
+		switch {
+		case len(b) == 0 || (len(a) > 0 && a[0] < b[0]):
+			i, a = a[0], a[1:]
+		case len(a) == 0 || b[0] < a[0]:
+			i, b = b[0], b[1:]
+		default:
+			i, a, b = a[0], a[1:], b[1:]
+		}
+		if visit(i) {
+			return
+		}
+	}
+}
+
+// startsYAMLBlockScalar reports whether checkLine would treat the line as the
+// start of a YAML block scalar.
+func startsYAMLBlockScalar(raw string) bool {
+	line := strings.TrimSpace(raw)
+	return mayStartYAMLBlockScalar(line) && yamlMultilineRegex.MatchString(line)
+}
+
+func mayStartYAMLBlockScalar(line string) bool {
+	return strings.IndexByte(line, ':') >= 0 && strings.ContainsAny(line, "|>\\")
+}
+
+// checkLine scores lines[startLine] against str1 and str2; ok is false when the line does not match.
+//
 //nolint:gocyclo,gocritic
-func checkLine(str1, str2 string, distances map[int]int, starts map[int]model.ResourceLine, ends map[int]model.ResourceLine,
-	lines []string, startLine int, kind model.FileKind) (map[int]int, map[int]model.ResourceLine, map[int]model.ResourceLine) {
+func checkLine(str1, str2 string, lines []string, startLine int, kind model.FileKind) (
+	distance int, start, end model.ResourceLine, ok bool) {
+	if str1 == "" || !strings.Contains(lines[startLine], str1) {
+		return distance, start, end, ok
+	}
 	line := strings.TrimSpace(lines[startLine])
 	endLine := startLine + 1
-	if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
-		return distances, starts, ends
+	if !strings.Contains(line, str1) || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+		return distance, start, end, ok
 	}
 
-	line = indentRegex.ReplaceAllString(line, "")
 	currentIndent := strings.Index(lines[startLine], line)
 	if str1 != "" && str2 != "" && strings.Contains(line, str1) {
 		restLine := line[strings.Index(line, str1)+len(str1):]
 		if strings.Contains(restLine, str2) {
-			distances[startLine] = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
-			distances[startLine] += levenshtein.ComputeDistance(ExtractLineFragment(restLine, str2, false), str2)
-			starts[startLine] = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
-			ends[startLine] = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
-		} else if kind == model.KindYAML && yamlMultilineRegex.MatchString(line) {
+			distance = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
+			distance += levenshtein.ComputeDistance(ExtractLineFragment(restLine, str2, false), str2)
+			start = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
+			ok = true
+			end = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
+		} else if kind == model.KindYAML && mayStartYAMLBlockScalar(line) && yamlMultilineRegex.MatchString(line) {
 			s, nextLine := "", ""
 			for endLine < len(lines) {
 				nextLine = indentRegex.ReplaceAllString(lines[endLine], "")
@@ -341,17 +424,19 @@ func checkLine(str1, str2 string, distances map[int]int, starts map[int]model.Re
 				whitespacesRegex.ReplaceAllString(str2, ""),
 				whitespacesRegex.ReplaceAllString(s, ""),
 			) || strings.Contains(nextLine, str2) {
-				distances[startLine] = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
-				distances[startLine] += levenshtein.ComputeDistance(ExtractLineFragment(str2, s, false), s)
-				starts[startLine] = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
-				ends[startLine] = model.ResourceLine{Line: endLine, Col: len(lines[startLine])}
+				distance = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
+				distance += levenshtein.ComputeDistance(ExtractLineFragment(str2, s, false), s)
+				start = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
+				ok = true
+				end = model.ResourceLine{Line: endLine, Col: len(lines[startLine])}
 			}
 		}
 	} else if str1 != "" && strings.Contains(line, str1) {
-		distances[startLine] = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
-		starts[startLine] = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
-		ends[startLine] = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
+		distance = levenshtein.ComputeDistance(ExtractLineFragment(line, str1, false), str1)
+		start = model.ResourceLine{Line: startLine + 1, Col: currentIndent}
+		ok = true
+		end = model.ResourceLine{Line: startLine + 1, Col: len(lines[startLine])}
 	}
 
-	return distances, starts, ends
+	return distance, start, end, ok
 }

@@ -27,7 +27,21 @@ func GenerateSubstrings(
 	extracted [][]string,
 	lines []string,
 	currentLine int,
-	fileOriginalData []byte,
+	fileOriginalData string,
+) (string, string, int) {
+	return generateSubstrings(ctx, key, extracted, lines, currentLine, func() (*hclsyntax.Body, error) {
+		return parseBody([]byte(fileOriginalData))
+	})
+}
+
+// nolint:gocyclo,gocritic
+func generateSubstrings(
+	ctx context.Context,
+	key string,
+	extracted [][]string,
+	lines []string,
+	currentLine int,
+	parse func() (*hclsyntax.Body, error),
 ) (string, string, int) {
 	var substr1, substr2 string
 	var idx int
@@ -58,7 +72,7 @@ func GenerateSubstrings(
 			// Handle numeric index
 			if index, err := strconv.Atoi(bracketValue); err == nil {
 				substr1 = base
-				substr2, idx = resolveListIndex(ctx, base, index, currentLine, lines, fileOriginalData)
+				substr2, idx = resolveListIndex(ctx, base, index, currentLine, lines, parse)
 				return substr1, substr2, idx
 			}
 
@@ -78,23 +92,27 @@ func GenerateSubstrings(
 	return substr1, substr2, 0
 }
 
+func parseBody(src []byte) (*hclsyntax.Body, error) {
+	hclFile, diags := hclsyntax.ParseConfig(src, "temp.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		return nil, diags
+	}
+	return hclFile.Body.(*hclsyntax.Body), nil
+}
+
 func resolveListIndex(
 	ctx context.Context,
 	attrName string,
 	index, currentLine int,
 	lines []string,
-	fullFileContent []byte,
+	parse func() (*hclsyntax.Body, error),
 ) (substr string, linenum int) {
 	contextLogger := logger.FromContext(ctx)
-	// Parse the entire file once (HCL parser handles ALL edge cases)
-	hclFile, diags := hclsyntax.ParseConfig(fullFileContent, "temp.tf", hcl.InitialPos)
-	if diags.HasErrors() {
-		// Fallback to string-based if parsing fails
+	body, err := parse()
+	if err != nil {
 		contextLogger.Warn().Msg("Array detection falling back to resolveListIndex string based")
 		return resolveListIndexStringBased(attrName, index, currentLine, lines)
 	}
-
-	body := hclFile.Body.(*hclsyntax.Body)
 
 	// Search for the attribute in the parsed tree
 	result, lineNum := findInHCLBody(body, attrName, index, currentLine)

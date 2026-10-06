@@ -1057,7 +1057,7 @@ func TestDetectLineFileFunctionKeepsAttributeLine(t *testing.T) {
 func TestLocateTerraformBlockUsesNearestBlockForHeaderComments(t *testing.T) {
 	source := "# license\n# owner\n\nresource \"aws_s3_bucket\" \"helm\" {\n  bucket = \"x\"\n}\n"
 	lines := strings.Split(source, "\n")
-	body, err := (&DetectKindLine{}).cachedParseBody([]byte(source), "helm_bucket.tf")
+	body, err := (&DetectKindLine{}).cachedParseBody(source, "helm_bucket.tf")
 	require.NoError(t, err)
 
 	got, err := locateTerraformBlock(context.Background(), body, 2, lines)
@@ -1069,7 +1069,7 @@ func TestLocateTerraformBlockUsesNearestBlockForHeaderComments(t *testing.T) {
 func TestCalculateInsertionPointClampsFunctionWrapperAtEndOfFile(t *testing.T) {
 	source := "variable \"name\" {\n  default = merge({\n  })\n}"
 	lines := strings.Split(source, "\n")[:3]
-	body, err := (&DetectKindLine{}).cachedParseBody([]byte(source), "variable.tf")
+	body, err := (&DetectKindLine{}).cachedParseBody(source, "variable.tf")
 	require.NoError(t, err)
 	require.Len(t, body.Blocks, 1)
 
