@@ -68,12 +68,20 @@ func evaluatedScope(t *testing.T, vars map[string]cty.Value, localsSrc string) *
 // controlAt returns who controls the value on line, and the argument setting
 // it when the caller does. A line no argument covers reads no module input.
 func controlAt(args []model.ModuleArgument, line int) (model.ArgumentControl, model.SourceLocation) {
-	for _, arg := range args {
-		if line >= arg.LineStart && line <= arg.LineEnd {
-			return arg.Control, arg.CallSite
+	var narrowest *model.ModuleArgument
+	for i := range args {
+		arg := &args[i]
+		if line < arg.LineStart || line > arg.LineEnd {
+			continue
+		}
+		if narrowest == nil || arg.LineEnd-arg.LineStart < narrowest.LineEnd-narrowest.LineStart {
+			narrowest = arg
 		}
 	}
-	return model.ArgumentControlModule, model.SourceLocation{}
+	if narrowest == nil {
+		return model.ArgumentControlModule, model.SourceLocation{}
+	}
+	return narrowest.Control, narrowest.CallSite
 }
 
 func requireCallerAt(t *testing.T, args []model.ModuleArgument, line, argumentLine int) {
@@ -449,26 +457,26 @@ func TestModuleArgumentsResolveChoicesWithInstanceIteration(t *testing.T) {
   default_acl = "public-read"
 }`)
 	scope := evaluatedScope(t, map[string]cty.Value{"default_acl": cty.StringVal("public-read")}, "")
-	instance := func(acl cty.Value) *tfeval.ResolvedResource {
+	instance := func(key string, acl cty.Value) *tfeval.ResolvedResource {
 		return &tfeval.ResolvedResource{
 			Body:  body,
 			Scope: scope,
 			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
-				"key":   cty.StringVal("a"),
-				"value": cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("a"), "acl": acl}),
+				"key":   cty.StringVal(key),
+				"value": cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal(key), "acl": acl}),
 			})},
 			CallChain: []tfeval.CallSite{{Body: call}},
 		}
 	}
 
 	cache := newModuleAttributionCache()
-	defaulted := instance(cty.NullVal(cty.String))
+	defaulted := instance("a", cty.NullVal(cty.String))
 	args := cache.resourceArguments(defaulted, "stack/main.tf")
 	requireCallerAt(t, args, 3, 3)
 	requireCallerAt(t, args, 4, 4)
 	require.True(t, cache.resourceAttributes(defaulted).iterationDependent)
 
-	args = cache.resourceArguments(instance(cty.StringVal("private")), "stack/main.tf")
+	args = cache.resourceArguments(instance("b", cty.StringVal("private")), "stack/main.tf")
 	requireCallerAt(t, args, 4, 3)
 
 	args = newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
@@ -648,9 +656,9 @@ func TestValueAnalyzerReadsMatchVariables(t *testing.T) {
 			}
 		}
 		a := newModuleAttributionCache().analyzer(nil, nil)
-		a.iterators = []iteratorReads{{name: resourceEachRoot, reads: inputReads{value: []string{eachInput}}}}
+		a.iterators = []iteratorReads{{name: resourceEachRoot, reads: inputReads{value: []valueRead{{name: eachInput}}}}}
 		reads := a.reads(expr)
-		require.ElementsMatch(t, want, appendMissing(slices.Clone(reads.value), reads.selector), src)
+		require.ElementsMatch(t, want, appendMissing(valueNames(reads.value), reads.selector), src)
 	}
 }
 

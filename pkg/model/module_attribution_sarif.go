@@ -40,10 +40,7 @@ func sanitizeModuleSource(source string) string {
 }
 
 func sanitizeModulePath(path []ModulePathHop) []ModulePathHop {
-	if len(path) == 0 {
-		return nil
-	}
-	out := append([]ModulePathHop(nil), path...)
+	out := append([]ModulePathHop{}, path...)
 	for i := range out {
 		out[i].Source = sanitizeModuleSource(out[i].Source)
 	}

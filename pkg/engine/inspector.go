@@ -721,7 +721,7 @@ func suppressAtCallSite(v *model.Vulnerability, attr *model.ModuleAttribution, c
 		markSuppressed(v, model.SuppressionJustificationDisableInFile)
 	}
 	if checkComment(attr.CallSite.LineStart, caller.LinesIgnore) ||
-		checkComment(attr.ModulePath[0].CodeLocation.LineStart, caller.LinesIgnore) {
+		(len(attr.ModulePath) > 0 && checkComment(attr.ModulePath[0].CodeLocation.LineStart, caller.LinesIgnore)) {
 		markSuppressed(v, model.SuppressionJustificationIgnoreComment)
 	}
 }
