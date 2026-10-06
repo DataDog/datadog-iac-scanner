@@ -97,7 +97,7 @@ func TestResolveParityDiskVersusMemFS(t *testing.T) {
 		require.Equal(t, diskFile.SplitID, memFile.SplitID, "split id mismatch for %q", rel)
 		require.Equal(t, diskFile.SourceDocumentIndex, memFile.SourceDocumentIndex,
 			"source document index mismatch for %q", rel)
-		require.Equal(t, diskFile.HelmInvocation, memFile.HelmInvocation,
+		require.Equal(t, diskFile.HelmInvocations.First(), memFile.HelmInvocations.First(),
 			"helm invocation mismatch for %q", rel)
 		require.Equal(t, diskFile.IDInfo, memFile.IDInfo, "id map mismatch for %q", rel)
 		require.Equal(t, diskFile.IsCRD, memFile.IsCRD, "CRD flag mismatch for %q", rel)

@@ -206,16 +206,16 @@ func TestStoreResolvedFilesKeepsHelmInvocation(t *testing.T) {
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{
 			{
-				FileName:       "chart/templates/resources.yaml",
-				Content:        []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: first\n"),
-				OriginalData:   original,
-				HelmInvocation: model.ResourceLine{Line: 1, Col: 0},
+				FileName:        "chart/templates/resources.yaml",
+				Content:         []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: first\n"),
+				OriginalData:    original,
+				HelmInvocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 0}}},
 			},
 			{
-				FileName:       "chart/templates/resources.yaml",
-				Content:        []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: second\n"),
-				OriginalData:   original,
-				HelmInvocation: model.ResourceLine{Line: 2, Col: 0},
+				FileName:        "chart/templates/resources.yaml",
+				Content:         []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: second\n"),
+				OriginalData:    original,
+				HelmInvocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 2, Col: 0}}},
 			},
 		},
 	}, model.KindHELM, "helm-source-document-index", false, 15)
@@ -223,8 +223,8 @@ func TestStoreResolvedFilesKeepsHelmInvocation(t *testing.T) {
 	files, err := store.GetFiles(ctx, "helm-source-document-index")
 	require.NoError(t, err)
 	require.Len(t, files, 2)
-	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, files[0].HelmInvocation)
-	require.Equal(t, model.ResourceLine{Line: 2, Col: 0}, files[1].HelmInvocation)
+	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, files[0].HelmInvocations.First())
+	require.Equal(t, model.ResourceLine{Line: 2, Col: 0}, files[1].HelmInvocations.First())
 }
 
 func TestStoreResolvedFilesKeepsCRDSuppressionLines(t *testing.T) {

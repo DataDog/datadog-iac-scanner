@@ -161,14 +161,14 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 func emittingInvocation(ctx context.Context, file *model.FileMetadata, sanitizedSubstring string,
 	extractedString [][]string, helmID int) model.ResourceLine {
 	if len(file.HelmInvocations) < 2 || file.HelmRenderedContent == "" {
-		return file.HelmInvocation
+		return file.HelmInvocations.First()
 	}
 	rendered := strings.Split(file.HelmRenderedContent, "\n")
 	found, _, _ := detectCurlLine{}.walkSearchKey(ctx, rendered, sanitizedSubstring, extractedString, nil, helmID)
 	if !found.foundRes {
-		return file.HelmInvocation
+		return file.HelmInvocations.First()
 	}
-	return model.HelmInvocationAtLine(file.HelmInvocations, found.lineRes+1)
+	return file.HelmInvocations.At(found.lineRes + 1)
 }
 
 func isHelmIDLine(line string) bool {

@@ -196,13 +196,10 @@ type FileMetadata struct {
 	// OriginalData once line info is populated, progressively reclaiming the raw
 	// input content during eval.
 	releaseOriginalDataAfterLineInfo bool
-	// HelmInvocation identifies the source action that emitted a rendered Helm
-	// resource whose YAML lives in a named template.
-	HelmInvocation ResourceLine
-	// HelmInvocations and HelmRenderedContent are set when several invocations
-	// emitted parts of one rendered document: a finding is then attributed to
-	// the one that emitted the rendered line its key is on.
-	HelmInvocations     []HelmInvocationAt
+	// HelmInvocations lists the source actions that emitted a rendered Helm
+	// resource whose YAML lives in named templates. HelmRenderedContent is set
+	// only when there are several, to tell which of them emitted a given line.
+	HelmInvocations     HelmInvocations
 	HelmRenderedContent string
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
@@ -525,10 +522,8 @@ type ResolvedHelm struct {
 	OriginalData        []byte
 	SplitID             string
 	SourceDocumentIndex int
-	HelmInvocation      ResourceLine
-	// HelmInvocations lists every invocation that emitted part of Content, in
-	// order; HelmInvocation is the first.
-	HelmInvocations []HelmInvocationAt
+	// HelmInvocations lists every invocation that emitted part of Content, in order.
+	HelmInvocations HelmInvocations
 	IDInfo          map[int]interface{}
 	IsCRD           bool
 }
@@ -541,14 +536,24 @@ type HelmInvocationAt struct {
 	Position     ResourceLine
 }
 
-// HelmInvocationAtLine returns the invocation that emitted renderedLine: the
-// last one starting at or before it, or the first when none does.
-func HelmInvocationAtLine(invocations []HelmInvocationAt, renderedLine int) ResourceLine {
-	if len(invocations) == 0 {
+// HelmInvocations are the invocations that emitted a rendered Helm document, in
+// order of the rendered lines they emitted.
+type HelmInvocations []HelmInvocationAt
+
+// First is the invocation that emitted the start of the document, or the zero
+// position when none is known.
+func (h HelmInvocations) First() ResourceLine {
+	if len(h) == 0 {
 		return ResourceLine{}
 	}
-	found := invocations[0].Position
-	for _, invocation := range invocations[1:] {
+	return h[0].Position
+}
+
+// At is the invocation that emitted renderedLine: the last one starting at or
+// before it, or the first when none does.
+func (h HelmInvocations) At(renderedLine int) ResourceLine {
+	found := h.First()
+	for _, invocation := range h[min(1, len(h)):] {
 		if invocation.RenderedLine > renderedLine {
 			break
 		}

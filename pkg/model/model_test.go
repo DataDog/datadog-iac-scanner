@@ -105,13 +105,13 @@ func TestFileMetadatas(t *testing.T) {
 	})
 }
 
-func TestHelmInvocationAtLine(t *testing.T) {
-	invocations := []HelmInvocationAt{
+func TestHelmInvocationsAt(t *testing.T) {
+	invocations := HelmInvocations{
 		{RenderedLine: 3, Position: ResourceLine{Line: 1}},
 		{RenderedLine: 8, Position: ResourceLine{Line: 2}},
 	}
 	for renderedLine, want := range map[int]int{1: 1, 3: 1, 7: 1, 8: 2, 20: 2} {
-		require.Equal(t, want, HelmInvocationAtLine(invocations, renderedLine).Line, "rendered line %d", renderedLine)
+		require.Equal(t, want, invocations.At(renderedLine).Line, "rendered line %d", renderedLine)
 	}
-	require.Equal(t, ResourceLine{}, HelmInvocationAtLine(nil, 1))
+	require.Equal(t, ResourceLine{}, HelmInvocations(nil).At(1))
 }

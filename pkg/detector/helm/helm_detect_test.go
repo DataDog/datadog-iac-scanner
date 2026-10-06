@@ -303,7 +303,7 @@ func TestDetectLineFallsBackToIncludeInvocation(t *testing.T) {
 		FilePath:          "templates/metastore-deployment.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmInvocation:    model.ResourceLine{Line: 1, Col: 0},
+		HelmInvocations:   model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 0}}},
 	}
 
 	got := (DetectKindLine{}).DetectLine(
@@ -336,7 +336,7 @@ func TestDetectLineUsesExecutedInvocation(t *testing.T) {
 		FilePath:          "templates/resources.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmInvocation:    model.ResourceLine{Line: 2, Col: 0},
+		HelmInvocations:   model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 2, Col: 0}}},
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
@@ -358,7 +358,7 @@ func TestDetectLineInvocationSkipsHelmIDStamps(t *testing.T) {
 		FilePath:          "templates/mixed.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmInvocation:    model.ResourceLine{Line: 5, Col: 0},
+		HelmInvocations:   model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 5, Col: 0}}},
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
@@ -418,7 +418,7 @@ func TestDetectLineInspectsEveryActionOnLine(t *testing.T) {
 		FilePath:          "templates/resource.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmInvocation:    model.ResourceLine{Line: 1, Col: 25},
+		HelmInvocations:   model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 25}}},
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)

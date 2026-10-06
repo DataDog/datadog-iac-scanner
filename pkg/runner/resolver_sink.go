@@ -120,7 +120,7 @@ func (s *Service) storeResolvedFiles(
 				Kind:              kind,
 				FilePath:          rfile.FileName,
 				HelmID:            rfile.SplitID,
-				HelmInvocation:    rfile.HelmInvocation,
+				HelmInvocations:   rfile.HelmInvocations,
 				Commands:          cached.commands,
 				IDInfo:            rfile.IDInfo,
 				LinesIgnore:       documents.IgnoreLines,
@@ -130,7 +130,6 @@ func (s *Service) storeResolvedFiles(
 				Platform:          platform,
 			}
 			if len(rfile.HelmInvocations) > 1 {
-				file.HelmInvocations = rfile.HelmInvocations
 				file.HelmRenderedContent = ownedRenderedContent
 			}
 			if kind == model.KindHELM {
