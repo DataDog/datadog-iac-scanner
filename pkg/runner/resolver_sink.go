@@ -64,7 +64,8 @@ func (s *Service) storeResolvedFiles(
 	maxResolverDepth int) {
 	contextLogger := logger.FromContext(ctx)
 	sourceCache := make(map[string]*resolvedSourceData)
-	for _, rfile := range resFiles.File {
+	for i := range resFiles.File {
+		rfile := &resFiles.File[i]
 		if isHelmJSONFile(kind, rfile.FileName) && s.Parser.Parsers.GetKind() != model.KindYAML {
 			continue
 		}
@@ -88,7 +89,7 @@ func (s *Service) storeResolvedFiles(
 			continue
 		}
 
-		s.setResolvedLineMetadata(ctx, &documents, &rfile, sourceCache, kind,
+		s.setResolvedLineMetadata(ctx, &documents, rfile, sourceCache, kind,
 			openAPIResolveReferences, isMinified, maxResolverDepth)
 
 		cached := sourceCache[rfile.FileName]
@@ -128,9 +129,13 @@ func (s *Service) storeResolvedFiles(
 				IsMinified:        documents.IsMinified,
 				Platform:          platform,
 			}
+			if len(rfile.HelmInvocations) > 1 {
+				file.HelmInvocations = rfile.HelmInvocations
+				file.HelmRenderedContent = ownedRenderedContent
+			}
 			if kind == model.KindHELM {
 				file.SetLineInfoLoader(newHelmLineInfoLoader(
-					s.Parser, &rfile, ownedRenderedContent, docIdx,
+					s.Parser, rfile, ownedRenderedContent, docIdx,
 					openAPIResolveReferences, isMinified, maxResolverDepth))
 			}
 			s.saveToFile(ctx, &file)

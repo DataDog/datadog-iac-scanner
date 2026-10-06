@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/release"
@@ -206,28 +206,6 @@ kind: ConfigMap
 	require.Contains(t, splits[1], "literal --- separator")
 }
 
-func TestSplitHelmManifestPropagatesInvocationAcrossDocuments(t *testing.T) {
-	manifest := `---
-# Source: chart/templates/resources.yaml
-# KICS_HELM_INVOCATION_5_0:
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: first
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: second
-`
-
-	splits := splitHelmManifest(manifest)
-	require.Len(t, splits, 2)
-	for _, split := range splits {
-		require.Contains(t, split, "# KICS_HELM_INVOCATION_5_0:")
-	}
-}
-
 func Test_parseManifestSource(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -323,7 +301,7 @@ func TestIsCRDSourcePath(t *testing.T) {
 func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 	ch, err := loader.Load(helmFixturePath(t, "test_helm_with_crds"))
 	require.NoError(t, err)
-	setID(ch)
+	stamped := setID(ch)
 
 	manifest := strings.Join([]string{
 		"---",
@@ -334,7 +312,7 @@ func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 		"  name: widgets.example.com",
 	}, "\n")
 
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch)
+	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.NoError(t, err)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
@@ -344,7 +322,7 @@ func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 func TestSplitManifestYAML_dropsUnknownSourceHeader(t *testing.T) {
 	ch, err := loader.Load(helmFixturePath(t, "test_helm_with_crds"))
 	require.NoError(t, err)
-	setID(ch)
+	stamped := setID(ch)
 
 	manifest := strings.Join([]string{
 		"---",
@@ -360,7 +338,7 @@ func TestSplitManifestYAML_dropsUnknownSourceHeader(t *testing.T) {
 		"kind: CustomResourceDefinition",
 	}, "\n")
 
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch)
+	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.NoError(t, err)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
@@ -382,14 +360,14 @@ func TestSplitManifestYAML_emptyCRDDocumentDoesNotShiftSourceIndex(t *testing.T)
 		Metadata: &chart.Metadata{Name: "test"},
 		Files:    []*chart.File{crd},
 	}
-	setID(ch)
+	stamped := setID(ch)
 
 	manifest := strings.Join([]string{
 		"---",
 		"# Source: test/crds/leading-empty.yaml",
 		string(crd.Data),
 	}, "\n")
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch)
+	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.NoError(t, err)
 	require.NotEmpty(t, *splits)
 
@@ -443,104 +421,44 @@ func TestLocalCRDFiles_keepsDistinctNestedCRDPaths(t *testing.T) {
 	require.Equal(t, "crds/nested/crds/widget.yaml", crdChartRelativePath(files[1].Name))
 }
 
-func TestAddID_multiDocumentUsesSourceLineIDs(t *testing.T) {
-	original := strings.Join([]string{
-		"apiVersion: v1",
-		"kind: Service",
-		"metadata:",
-		"  name: nested-one",
-		"spec:",
-		"  ports:",
-		"  - name: nested-one",
-		"---",
-		"apiVersion: v1",
-		"kind: Service",
-		"metadata:",
-		"  name: nested-two",
-		"spec:",
-		"  ports:",
-		"  - name: nested-two",
-	}, "\n")
-	file := addID(&chart.File{Name: "templates/nested.yaml", Data: []byte(original)})
-
-	require.Contains(t, string(file.Data), "# KICS_HELM_ID_0:\napiVersion: v1")
-	require.Contains(t, string(file.Data), "# KICS_HELM_ID_8:\napiVersion: v1")
-}
-
-func TestAddHelmInvocationMarkersInspectsEveryAction(t *testing.T) {
-	file := &chart.File{Data: []byte(`{{- if .Values.enabled }}{{ include "resource" . }}{{- end }}`)}
-	addHelmInvocationMarkers(file)
-
-	positions := map[string]bool{}
-	for _, m := range regexp.MustCompile(`KICS_HELM_INVOCATION_\d+_\d+`).FindAllString(string(file.Data), -1) {
-		positions[m] = true
-	}
-	require.Equal(t, map[string]bool{"KICS_HELM_INVOCATION_1_25": true}, positions)
-}
-
-func TestAddHelmInvocationMarkersRestoresOriginalSource(t *testing.T) {
-	for _, source := range []string{
-		`{{ include "resource" . }}`,
-		`{{- include "resource" (dict "a" .) -}}`,
-		"{{ include \"a\" . }}\n---\n{{ template \"b\" . }}\n{{ include \"c\" . | nindent 0 }}",
-		// A quoted "}}" defeats the lazy action regex, so the marker rewrite
-		// falls back to a prefix marker; stripping must still restore this
-		// source exactly.
-		`{{ include "na}}me" . }}`,
-		`{{ include "na}}# me" . }}`,
+// Every include shape markEveryDocument rewrites still renders, and each
+// document it emits carries the invocation.
+func TestHelmResolveMarkEveryDocumentShapes(t *testing.T) {
+	for _, action := range []string{
+		`{{ include "multi" . }}`,
+		`{{- include "multi" . }}`,
+		`{{ include "multi" . -}}`,
+		`{{- include "multi" . -}}`,
+		`{{include "multi" .}}`,
+		`{{- include "multi" (dict "k" .Values.x "n" (list 1 2)) -}}`,
+		"{{ include \"multi\" (dict\n  \"k\" .) }}",
+		`{{ include "multi" (dict "sep" "}}\n---\n") }}`,
+		`{{ include "multi" . | trim }}`,
+		`{{- include "multi" . | nindent 0 -}}`,
 	} {
-		file := addHelmInvocationMarkers(&chart.File{Data: []byte(source)})
-		require.NotEqual(t, source, string(file.Data))
-		require.Equal(t, source, string(stripHelmInvocationActions(file.Data)))
-		if strings.Contains(source, `"na}}`) {
-			require.NotContains(t, string(file.Data), "| replace", "a quoted \"}}\" must not get the rewrite")
-		}
+		t.Run(action, func(t *testing.T) {
+			root := t.TempDir()
+			writeTree(t, root, map[string]string{
+				"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+				"templates/_multi.tpl": "{{- define \"multi\" -}}\n{{- range list \"a\" \"b\" }}\n---\n" +
+					"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ . }}\n{{- end }}\n{{- end -}}\n",
+				"templates/cm.yaml": action + "\n",
+			})
+			got, err := (&Resolver{}).Resolve(context.Background(), root)
+			require.NoError(t, err)
+			var names []string
+			for _, f := range findAllResolvedBySuffix(t, got.File, "templates/cm.yaml") {
+				if !strings.Contains(string(f.Content), "kind: ConfigMap") {
+					continue
+				}
+				require.Equal(t, 1, f.HelmInvocation.Line, "document %q", f.Content)
+				require.NotContains(t, string(f.Content), kicsHelmInvocation)
+				require.Equal(t, action+"\n", string(f.OriginalData))
+				names = append(names, string(f.Content))
+			}
+			require.Len(t, names, 2)
+		})
 	}
-}
-
-// restoreMarkedInclude parses what markEveryDocument prints. Every action
-// shape the rewrite accepts must come back unchanged, or the include is
-// stripped instead of restored and the ignore lines shift.
-func TestMarkEveryDocumentRoundTrip(t *testing.T) {
-	actions := []string{
-		`{{ include "a" . }}`,
-		`{{- include "a" . }}`,
-		`{{ include "a" . -}}`,
-		`{{- include "a" . -}}`,
-		`{{include "a" .}}`,
-		`{{- include "a" (dict "k" .Values.x "n" (list 1 2)) -}}`,
-		"{{ include \"a\" (dict\n  \"k\" .) }}",
-		`{{ include "a" (printf "x\n---\n") }}`,
-	}
-	for _, action := range actions {
-		for _, marker := range []string{invocationMarker(1, 0), invocationMarker(120, 37)} {
-			rewritten := markEveryDocument(action, marker)
-			require.Contains(t, rewritten, strings.TrimSuffix(marker, "\n"))
-			restored, ok := restoreMarkedInclude([]byte(rewritten))
-			require.True(t, ok, "%q is not recognized as a marked include", rewritten)
-			require.Equal(t, action, string(restored))
-			require.Equal(t, "a: 1\n"+action+"\nb: 2",
-				string(stripHelmInvocationActions([]byte("a: 1\n"+rewritten+"\nb: 2"))))
-		}
-	}
-}
-
-// TestIsHelmInvocationWrapperCommentAction covers comment actions whose text
-// holds an apostrophe (e.g. "don't"): quoted-string tracking would open a
-// string at the apostrophe and never find the comment's "}}", leaving the
-// action in place and disqualifying a genuine wrapper template (_helpers.tpl
-// comments often contain contractions). The comment must be consumed whole.
-func TestIsHelmInvocationWrapperCommentAction(t *testing.T) {
-	source := "{{/* don't render when disabled */}}\n{{ include \"mychart.labels\" . }}\n"
-	require.True(t, isHelmInvocationWrapper(source))
-
-	// Trim markers and whitespace around the comment text must not change the
-	// outcome, and the invocation marker still round-trips to the source.
-	source = "{{- /* chart's helper, not emitted when disabled */ -}}\n{{ include \"mychart.labels\" . }}\n"
-	require.True(t, isHelmInvocationWrapper(source))
-	file := addHelmInvocationMarkers(&chart.File{Data: []byte(source)})
-	require.Contains(t, string(file.Data), "KICS_HELM_INVOCATION_2_")
-	require.Equal(t, source, string(stripHelmInvocationActions(file.Data)))
 }
 
 // TestHelmResolveInvocationWithQuotedActionEnd renders a chart whose include
@@ -580,6 +498,125 @@ func TestHelmResolveMarksEveryDocumentOfAnInclude(t *testing.T) {
 		}
 	}
 	require.Equal(t, []model.ResourceLine{{Line: 2, Col: 0}, {Line: 2, Col: 0}}, invocations)
+}
+
+func TestHelmResolveMarksEveryDocumentOfAnIncludeInMixedManifest(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) { writeTree(t, root, map[string]string{rel: body}) }
+	write("Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n")
+	write("templates/_multi.tpl", "{{- define \"multi\" -}}\n{{- range list \"a\" \"b\" }}\n---\n"+
+		"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ . }}\n{{- end }}\n{{- end -}}\n")
+	write("templates/cm.yaml", "apiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n"+
+		"{{- if true }}\n{{ include \"multi\" . }}\n{{- end }}\n")
+
+	got, err := (&Resolver{}).Resolve(context.Background(), root)
+	require.NoError(t, err)
+	var invocations []model.ResourceLine
+	for _, f := range findAllResolvedBySuffix(t, got.File, "templates/cm.yaml") {
+		require.NotContains(t, string(f.Content), kicsHelmInvocation)
+		if strings.Contains(string(f.Content), "kind: ConfigMap") {
+			invocations = append(invocations, f.HelmInvocation)
+		}
+	}
+	// Line 6 of the source, shifted by the ID line stamped above its apiVersion.
+	require.Equal(t, []model.ResourceLine{{Line: 7, Col: 0}, {Line: 7, Col: 0}}, invocations)
+}
+
+// Wrapper includes whose output a trim or an adjacent action glues together must
+// still render, each document attributed to its own include.
+func TestHelmResolveWrapperIncludesGluedByTrims(t *testing.T) {
+	for _, wrapper := range []string{
+		"{{- include \"a\" . -}}\n{{- include \"b\" . -}}\n",
+		"{{ include \"a\" . }}\n{{- if true -}}\n{{ include \"b\" . }}\n{{- end }}\n",
+		"{{ include \"a\" . }}{{ include \"b\" . }}\n",
+	} {
+		t.Run(wrapper, func(t *testing.T) {
+			root := t.TempDir()
+			writeTree(t, root, map[string]string{
+				"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+				"templates/_parts.tpl": "{{- define \"a\" -}}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n{{- end -}}\n" +
+					"{{- define \"b\" -}}\n\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: b\n{{- end -}}\n",
+				"templates/cm.yaml": wrapper,
+			})
+			got, err := (&Resolver{}).Resolve(context.Background(), root)
+			require.NoError(t, err)
+			kinds := map[string]int{}
+			for _, f := range findAllResolvedBySuffix(t, got.File, "templates/cm.yaml") {
+				require.NotContains(t, string(f.Content), kicsHelmInvocation)
+				for _, kind := range []string{"ConfigMap", "Secret"} {
+					if strings.Contains(string(f.Content), "kind: "+kind) {
+						kinds[kind] = f.HelmInvocation.Line
+					}
+				}
+			}
+			require.Len(t, kinds, 2, "both documents render")
+			require.NotZero(t, kinds["ConfigMap"])
+			require.NotZero(t, kinds["Secret"])
+		})
+	}
+}
+
+// Every separator form YAML accepts carries the invocation into the next
+// document, while a separator ending the include's output does not claim the
+// manifest's own document after it.
+func TestHelmResolveMarksDocumentsAfterAnySeparator(t *testing.T) {
+	for name, separator := range map[string]string{
+		"plain": "---\n", "trailing space": "--- \n", "comment": "--- # next\n", "crlf": "---\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeTree(t, root, map[string]string{
+				"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+				"templates/_multi.tpl": "{{- define \"multi\" -}}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n" +
+					separator + "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: b\n{{- end -}}\n",
+				"templates/cm.yaml": "{{ include \"multi\" . }}\n",
+			})
+			got, err := (&Resolver{}).Resolve(context.Background(), root)
+			require.NoError(t, err)
+			var invocations []model.ResourceLine
+			for _, f := range findAllResolvedBySuffix(t, got.File, "templates/cm.yaml") {
+				if strings.Contains(string(f.Content), "kind: ConfigMap") {
+					invocations = append(invocations, f.HelmInvocation)
+				}
+			}
+			require.Equal(t, []model.ResourceLine{{Line: 1, Col: 0}, {Line: 1, Col: 0}}, invocations)
+		})
+	}
+
+	t.Run("trailing separator", func(t *testing.T) {
+		root := t.TempDir()
+		writeTree(t, root, map[string]string{
+			"Chart.yaml":       "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+			"templates/_a.tpl": "{{- define \"a\" -}}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\n---\n{{ end -}}\n",
+			"templates/m.yaml": "{{ include \"a\" . }}\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n",
+		})
+		got, err := (&Resolver{}).Resolve(context.Background(), root)
+		require.NoError(t, err)
+		for _, f := range findAllResolvedBySuffix(t, got.File, "templates/m.yaml") {
+			if strings.Contains(string(f.Content), "kind: Secret") {
+				require.Zero(t, f.HelmInvocation.Line, "the Secret is written in m.yaml, not emitted by the include")
+				return
+			}
+		}
+		t.Fatal("the Secret did not render")
+	})
+}
+
+// A rewritten include must not add lines to the rendered output, which would
+// shift the line of everything rendered after it.
+func TestHelmResolveRewrittenIncludeKeepsRenderedLines(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) { writeTree(t, root, map[string]string{rel: body}) }
+	write("Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n")
+	write("templates/_helpers.tpl", "{{- define \"labels\" -}}\napp: x\ntier: y\n{{- end -}}\n")
+	write("templates/role.yaml", "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n  labels:\n"+
+		"{{ include \"labels\" . | indent 4 }}\ndata:\n  a: b\n")
+
+	got, err := (&Resolver{}).Resolve(context.Background(), root)
+	require.NoError(t, err)
+	cm := findResolvedBySuffix(t, got.File, "templates/role.yaml")
+	require.Contains(t, string(cm.Content), "  labels:\n    app: x\n    tier: y\ndata:\n")
+	require.NotContains(t, string(cm.Content), kicsHelmInvocation)
 }
 
 func TestHelmResolveTracksExecutedConditionalInvocation(t *testing.T) {
@@ -643,64 +680,6 @@ func TestDetectLine_MultiDocumentTemplateUsesSourceLines(t *testing.T) {
 	require.Equal(t, 14, got.Line)
 	require.Equal(t, 14, got.VulnerablilityLocation.Start.Line)
 	require.Equal(t, 14, got.VulnerablilityLocation.End.Line)
-}
-
-func TestAddID_ignoresIndentedAPIVersion(t *testing.T) {
-	original := `description: |
-  apiVersion: v1
-  ---
-  apiVersion: v2
-  kind: Pod
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-`
-	file := &chart.File{Data: []byte(original)}
-	addID(file)
-
-	require.Equal(t, 1, strings.Count(string(file.Data), kicsHelmID))
-	require.Contains(t, string(file.Data), "  apiVersion: v1")
-	require.Contains(t, string(file.Data), kicsHelmID)
-}
-
-func TestAddID_stampsIndentedRootAPIVersion(t *testing.T) {
-	file := &chart.File{Data: []byte("  apiVersion: v1\n  kind: ConfigMap\n")}
-	addID(file)
-
-	require.Equal(t, 1, strings.Count(string(file.Data), kicsHelmID))
-	require.Contains(t, string(file.Data), "# KICS_HELM_ID_0:\n  apiVersion: v1")
-}
-
-func TestAddID_stampsValidAPIVersionKeyStyles(t *testing.T) {
-	file := &chart.File{Data: []byte(`"apiVersion": v1
-kind: ConfigMap
----
-'apiVersion' : v1
-kind: Secret
----
-{apiVersion: v1, kind: Service}
----
-? apiVersion
-: v1
-kind: Pod
----
-{
-  apiVersion: v1,
-  kind: ConfigMap
-}
----
-!tag apiVersion: v1
-kind: Secret
----
-&key apiVersion: v1
-kind: Service
----
-"api\u0056ersion": v1
-kind: Pod
-`)}
-	file.Name = "crds/keys.yaml"
-	addID(file)
-
-	require.Equal(t, 8, strings.Count(string(file.Data), kicsHelmID))
 }
 
 func TestHelm_SupportedTypes(t *testing.T) {
@@ -964,75 +943,6 @@ func TestHelmResolve_ActionOnlyPartialKeepsScalarValues(t *testing.T) {
 	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, wrapped.HelmInvocation)
 }
 
-func TestAddHelmInvocationMarkersSkipsPartialBodies(t *testing.T) {
-	tests := []struct {
-		name       string
-		source     string
-		wantMarked int
-	}{
-		{"define body", "{{- define \"p\" -}}\n{{- include \"q\" . -}}\n{{- end -}}\n", 0},
-		{"conditional in define", "{{- define \"p\" -}}\n{{- if .a }}{{ include \"q\" . }}{{ end }}{{ template \"r\" . }}\n{{- end -}}\n", 0},
-		{"block body", "{{- block \"p\" . -}}\n{{ include \"q\" . }}\n{{- end -}}\n", 0},
-		{"top level after define", "{{- define \"p\" -}}\n{{ include \"q\" . }}\n{{- end -}}\n{{ include \"all\" . }}\n", 1},
-		{"top level conditional", "{{- if .a }}\n{{ include \"all\" . }}\n{{- end }}\n", 1},
-		{"if closed before define ends", "{{- define \"p\" -}}{{ if .a }}{{ end }}{{ include \"q\" . }}{{- end -}}{{ include \"all\" . }}", 1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			file := addHelmInvocationMarkers(&chart.File{Data: []byte(tt.source)})
-			positions := map[string]bool{}
-			for _, m := range regexp.MustCompile(`KICS_HELM_INVOCATION_\d+_\d+`).FindAllString(string(file.Data), -1) {
-				positions[m] = true
-			}
-			require.Len(t, positions, tt.wantMarked)
-			require.Equal(t, tt.source, string(stripHelmInvocationActions(file.Data)))
-		})
-	}
-}
-
-func TestAddHelmInvocationMarkersKeepsIncludeIndentation(t *testing.T) {
-	source := "kind: Service\nmetadata:\n  labels:\n    {{ include \"l\" . | nindent 4 | trim }}\n"
-	file := addHelmInvocationMarkers(&chart.File{Name: "templates/svc.yaml", Data: []byte(source)})
-	require.Contains(t, string(file.Data), "\" }}    {{ include")
-}
-
-func TestAddHelmInvocationMarkersMixedManifest(t *testing.T) {
-	tests := []struct {
-		name       string
-		file       string
-		source     string
-		wantMarked int
-	}{
-		{"standalone include", "templates/svc.yaml",
-			"kind: Service\n{{- $x := 1 }}\n{{- if .a }}\n{{ include \"svc\" . }}\n{{- end }}\n", 1},
-		{"standalone with pipe and indent", "templates/svc.yaml",
-			"kind: Service\nmetadata:\n  labels:\n  {{ include \"l\" . | nindent 4 }}\n", 1},
-		{"inline scalar", "templates/svc.yaml",
-			"kind: Service\nmetadata:\n  name: {{ include \"n\" . }}\n", 0},
-		{"trimmed include keeps gluing", "templates/svc.yaml",
-			"kind: Service\nmetadata:\n  labels: {{- include \"l\" . | nindent 4 }}\n", 0},
-		{"trimmed standalone include", "templates/svc.yaml",
-			"kind: Service\nmetadata:\n  annotations:\n  {{- include \"a\" . | nindent 4 }}\n", 0},
-		{"text after include on the line", "templates/svc.yaml",
-			"{{ include \"a\" . }}: value\n", 0},
-		{"inside block scalar", "templates/cm.yaml",
-			"kind: ConfigMap\ndata:\n  config: |\n{{ include \"c\" . | indent 4 }}\n", 0},
-		{"after block scalar content", "templates/cm.yaml",
-			"kind: ConfigMap\ndata:\n  config: |\n    a: b\n{{ include \"c\" . | indent 4 }}\n", 0},
-		{"partial file", "templates/_helpers.tpl",
-			"app: {{ .Chart.Name }}\n{{ include \"a\" . }}\n", 0},
-		{"define inside manifest", "templates/svc.yaml",
-			"{{- define \"p\" -}}\nx: 1\n{{ include \"q\" . }}\n{{- end -}}\nkind: Service\n", 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			file := addHelmInvocationMarkers(&chart.File{Name: tt.file, Data: []byte(tt.source)})
-			require.Equal(t, tt.wantMarked, strings.Count(string(file.Data), "{{ print "))
-			require.Equal(t, tt.source, string(stripHelmInvocationActions(file.Data)))
-		})
-	}
-}
-
 // TestHelmResolve_IncludeInMixedManifestKeepsInvocation covers a manifest that
 // mixes logic with an include which emits the whole resource, as Bitnami's
 // contour does: the resource is defined in a partial, so only the invocation
@@ -1053,4 +963,73 @@ func TestHelmResolve_IncludeInMixedManifestKeepsInvocation(t *testing.T) {
 	require.Equal(t, model.ResourceLine{Line: 3, Col: 0}, svc.HelmInvocation)
 	require.Contains(t, string(svc.Content), "name: svc")
 	require.NotContains(t, string(svc.Content), kicsHelmInvocation)
+}
+
+// TestHelmResolve_DocumentComposedOfSeveralIncludes covers a document whose
+// parts are emitted by different includes: a finding is attributed to the
+// include that emitted its key, not to the first one in the document.
+func TestHelmResolve_DocumentComposedOfSeveralIncludes(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+		"templates/_parts.tpl": "{{- define \"header\" -}}\napiVersion: v1\nkind: Pod\nmetadata:\n  name: p\n{{- end -}}\n" +
+			"{{- define \"spec\" -}}\nspec:\n  containers:\n  - name: c\n    image: nginx\n{{- end -}}\n",
+		"templates/pod.yaml": "{{ include \"header\" . }}\n{{ include \"spec\" . }}\n",
+	})
+
+	got, err := (&Resolver{}).Resolve(context.Background(), root)
+	require.NoError(t, err)
+	pod := findResolvedBySuffix(t, got.File, "templates/pod.yaml")
+	require.Equal(t, []model.ResourceLine{{Line: 1, Col: 0}, {Line: 2, Col: 0}},
+		[]model.ResourceLine{pod.HelmInvocations[0].Position, pod.HelmInvocations[1].Position})
+	require.NotContains(t, string(pod.Content), kicsHelmInvocation)
+
+	file := &model.FileMetadata{
+		Kind:                model.KindHELM,
+		FilePath:            pod.FileName,
+		HelmID:              pod.SplitID,
+		OriginalData:        string(pod.OriginalData),
+		LinesOriginalData:   utils.SplitLines(string(pod.OriginalData)),
+		IDInfo:              pod.IDInfo,
+		HelmInvocation:      pod.HelmInvocation,
+		HelmInvocations:     pod.HelmInvocations,
+		HelmRenderedContent: string(pod.Content),
+	}
+	detect := func(searchKey string) int {
+		return (helmdetector.DetectKindLine{}).DetectLine(context.Background(), file, searchKey, 1).Line
+	}
+	require.Equal(t, 2, detect("spec.containers.name={{c}}.image"))
+	require.Equal(t, 1, detect("metadata.name"))
+}
+
+// TestHelmResolve_IncludeAfterRightTrimmedAction covers the datadog chart's
+// idiom of a standalone include following a "-}}" action, which trims the
+// newline a marker would sit after: the chart must render with its keys intact
+// and no marker text in the output.
+func TestHelmResolve_IncludeAfterRightTrimmedAction(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"Chart.yaml":  "apiVersion: v2\nname: glue\nversion: 1.0.0\n",
+		"values.yaml": "extra: true\n",
+		"templates/_helpers.tpl": "{{- define \"base\" -}}\napp: glue\n{{- end -}}\n" +
+			"{{- define \"extra\" -}}\ntier: web\n{{- end -}}\n",
+		"templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: glue\n  labels:\n" +
+			"    {{- include \"base\" . | nindent 4 -}}\n{{ include \"extra\" . | nindent 4 }}\n" +
+			"data:\n{{- if .Values.extra -}}\n{{ include \"extra\" . | nindent 2 }}\n{{- end }}\n",
+	})
+
+	got, err := (&Resolver{}).Resolve(context.Background(), root)
+	require.NoError(t, err)
+	cm := findResolvedBySuffix(t, got.File, "templates/cm.yaml")
+	require.NotContains(t, string(cm.Content), kicsHelmInvocation)
+
+	var doc struct {
+		Metadata struct {
+			Labels map[string]string `yaml:"labels"`
+		} `yaml:"metadata"`
+		Data map[string]string `yaml:"data"`
+	}
+	require.NoError(t, yaml.Unmarshal(cm.Content, &doc))
+	require.Equal(t, map[string]string{"app": "glue", "tier": "web"}, doc.Metadata.Labels)
+	require.Equal(t, map[string]string{"tier": "web"}, doc.Data)
 }

@@ -199,6 +199,11 @@ type FileMetadata struct {
 	// HelmInvocation identifies the source action that emitted a rendered Helm
 	// resource whose YAML lives in a named template.
 	HelmInvocation ResourceLine
+	// HelmInvocations and HelmRenderedContent are set when several invocations
+	// emitted parts of one rendered document: a finding is then attributed to
+	// the one that emitted the rendered line its key is on.
+	HelmInvocations     []HelmInvocationAt
+	HelmRenderedContent string
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -521,8 +526,35 @@ type ResolvedHelm struct {
 	SplitID             string
 	SourceDocumentIndex int
 	HelmInvocation      ResourceLine
-	IDInfo              map[int]interface{}
-	IsCRD               bool
+	// HelmInvocations lists every invocation that emitted part of Content, in
+	// order; HelmInvocation is the first.
+	HelmInvocations []HelmInvocationAt
+	IDInfo          map[int]interface{}
+	IsCRD           bool
+}
+
+// HelmInvocationAt is an include-like action that emitted part of a rendered
+// Helm document: the rendered lines from RenderedLine (1-based) up to the next
+// invocation came from the action at Position in the source template.
+type HelmInvocationAt struct {
+	RenderedLine int
+	Position     ResourceLine
+}
+
+// HelmInvocationAtLine returns the invocation that emitted renderedLine: the
+// last one starting at or before it, or the first when none does.
+func HelmInvocationAtLine(invocations []HelmInvocationAt, renderedLine int) ResourceLine {
+	if len(invocations) == 0 {
+		return ResourceLine{}
+	}
+	found := invocations[0].Position
+	for _, invocation := range invocations[1:] {
+		if invocation.RenderedLine > renderedLine {
+			break
+		}
+		found = invocation.Position
+	}
+	return found
 }
 
 // Extensions represents a list of supported extensions

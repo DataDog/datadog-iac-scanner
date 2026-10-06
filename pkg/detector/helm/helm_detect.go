@@ -89,7 +89,8 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	// Helm attributes named-template output to the file that invoked it. The
 	// resolver records the action that actually executed, so wrappers with
 	// conditional or repeated invocations can still point to the right source.
-	if found, ok := invocationLines(file, file.HelmInvocation, lines, outputLines); ok {
+	invocation := emittingInvocation(ctx, file, sanitizedSubstring, extractedString, helmID)
+	if found, ok := invocationLines(file, invocation, lines, outputLines); ok {
 		return found
 	}
 
@@ -151,6 +152,23 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 		d.lineRes = d.lastUnique.lastUniqueLine
 	}
 	return d, start, end
+}
+
+// emittingInvocation returns the invocation whose output holds the finding.
+// When several invocations emitted parts of the document, the search key is
+// matched in the rendered output, where those parts are, and the invocation
+// emitting that line is chosen.
+func emittingInvocation(ctx context.Context, file *model.FileMetadata, sanitizedSubstring string,
+	extractedString [][]string, helmID int) model.ResourceLine {
+	if len(file.HelmInvocations) < 2 || file.HelmRenderedContent == "" {
+		return file.HelmInvocation
+	}
+	rendered := strings.Split(file.HelmRenderedContent, "\n")
+	found, _, _ := detectCurlLine{}.walkSearchKey(ctx, rendered, sanitizedSubstring, extractedString, nil, helmID)
+	if !found.foundRes {
+		return file.HelmInvocation
+	}
+	return model.HelmInvocationAtLine(file.HelmInvocations, found.lineRes+1)
 }
 
 func isHelmIDLine(line string) bool {
