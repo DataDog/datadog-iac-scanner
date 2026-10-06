@@ -31,7 +31,7 @@ func TestSetIDKeepsSourcesWithoutMarkers(t *testing.T) {
 		"kind: Service\n{{- if .a }}\n{{ include \"svc\" . }}\n{{- end }}\n",
 	} {
 		file := &chart.File{Name: "templates/t.yaml", Data: []byte(source)}
-		sources := setID(&chart.Chart{Metadata: &chart.Metadata{Name: "c"}, Templates: []*chart.File{file}})
+		sources := setID(&chart.Chart{Metadata: &chart.Metadata{Name: "c"}, Templates: []*chart.File{file}}, true)
 		require.Contains(t, string(file.Data), kicsHelmInvocation)
 		want := addID(&chart.File{Name: file.Name, Data: []byte(source)}).Data
 		require.Equal(t, string(want), string(sources.of(file)))
@@ -148,4 +148,14 @@ func TestAddHelmInvocationMarkersMixedManifest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The render without markers leaves templates untouched and keeps the same
+// stamped sources as the render with them.
+func TestSetIDWithoutMarkersLeavesTemplates(t *testing.T) {
+	source := "kind: Service\n{{ include \"svc\" . }}\n"
+	file := &chart.File{Name: "templates/t.yaml", Data: []byte(source)}
+	sources := setID(&chart.Chart{Metadata: &chart.Metadata{Name: "c"}, Templates: []*chart.File{file}}, false)
+	require.NotContains(t, string(file.Data), kicsHelmInvocation)
+	require.Equal(t, string(addID(&chart.File{Name: file.Name, Data: []byte(source)}).Data), string(sources.of(file)))
 }
