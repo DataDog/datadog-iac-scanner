@@ -27,16 +27,19 @@ func (s stampedSources) of(file *chart.File) []byte {
 
 // setID will add auxiliary lines for each template as well as its dependencies,
 // and returns their sources as they were before invocation markers were added.
-func setID(chartReq *chart.Chart) stampedSources {
+// Invocation markers are only added when markInvocations is set.
+func setID(chartReq *chart.Chart, markInvocations bool) stampedSources {
 	sources := stampedSources{}
-	stampChart(chartReq, sources)
+	stampChart(chartReq, sources, markInvocations)
 	return sources
 }
 
-func stampChart(chartReq *chart.Chart, sources stampedSources) {
+func stampChart(chartReq *chart.Chart, sources stampedSources, markInvocations bool) {
 	for _, temp := range chartReq.Templates {
 		sources[temp] = addID(temp).Data
-		addHelmInvocationMarkers(temp)
+		if markInvocations {
+			addHelmInvocationMarkers(temp)
+		}
 	}
 	// Stamp YAML CRDs for line mapping; JSON CRDs are skipped (YAML comments corrupt JSON).
 	for _, f := range localCRDFiles(chartReq) {
@@ -45,7 +48,7 @@ func stampChart(chartReq *chart.Chart, sources stampedSources) {
 		}
 	}
 	for _, dep := range chartReq.Dependencies() {
-		stampChart(dep, sources)
+		stampChart(dep, sources, markInvocations)
 	}
 }
 
