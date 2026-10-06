@@ -51,8 +51,8 @@ func PrepareAndScan(
 
 	// The in-memory (server) dispatch: one pass over the pushed files, rendering
 	// each pushed Helm chart once. It runs regardless of the parallel-parsing
-	// flag — the flag only fans the file dispatch out — so charts never silently
-	// fall back to raw-template scanning.
+	// flag — the flag only fans chart rendering and file dispatch out — so charts
+	// never silently fall back to raw-template scanning.
 	if mp, ok := runner.SharedMemoryProvider(services); ok {
 		err := runner.PrepareMemorySources(ctx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth,
 			flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing))

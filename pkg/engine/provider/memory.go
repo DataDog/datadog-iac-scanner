@@ -71,10 +71,10 @@ func (m *MemorySourceProvider) eligibleFiles(extensions model.Extensions) []stri
 
 // WalkInventory is the pushed-content counterpart of the disk provider's
 // WalkInventory: it calls chartFn for each pushed chart root (shallow-first,
-// subcharts skipped once their parent rendered) and returns the eligible pushed
-// files minus the Helm files of the charts that rendered.
+// subcharts skipped once their parent rendered, on chartPool) and returns the
+// eligible pushed files minus the Helm files of the charts that rendered.
 func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
-	extensions model.Extensions,
+	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]InventoryFile, error) {
 	eligible := m.eligibleFiles(extensions)
 
@@ -84,7 +84,7 @@ func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 			roots = append(roots, filepath.ToSlash(filepath.Dir(p)))
 		}
 	}
-	renderedRoots := renderChartsShallowFirst(ctx, roots, chartFn)
+	renderedRoots := renderChartsShallowFirst(ctx, roots, chartPool, chartFn)
 
 	files := make([]InventoryFile, 0, len(eligible))
 	for _, p := range eligible {

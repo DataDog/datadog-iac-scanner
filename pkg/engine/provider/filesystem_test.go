@@ -13,9 +13,12 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -866,7 +869,7 @@ func TestWalkInventoryTofuShadowing(t *testing.T) {
 
 	noChart := func(context.Context, string) bool { return false }
 	extensions := model.Extensions{".tf": {}, ".tofu": {}, ".tf.json": {}, ".tofu.json": {}}
-	files, err := fs.WalkInventory(ctx, extensions, noChart)
+	files, err := fs.WalkInventory(ctx, extensions, utils.PoolOptions{}, noChart)
 	require.NoError(t, err)
 
 	paths := make([]string, 0, len(files))
@@ -898,7 +901,7 @@ func TestWalkInventoryPrebuiltTofuShadowing(t *testing.T) {
 
 	noChart := func(context.Context, string) bool { return false }
 	extensions := model.Extensions{".tf": {}, ".tofu": {}}
-	files, err := fs.WalkInventory(ctx, extensions, noChart)
+	files, err := fs.WalkInventory(ctx, extensions, utils.PoolOptions{}, noChart)
 	require.NoError(t, err)
 
 	paths := make([]string, 0, len(files))
@@ -1001,7 +1004,43 @@ func TestChartRootWaves(t *testing.T) {
 func TestRenderChartsShallowFirst(t *testing.T) {
 	failing := map[string]bool{"b": true}
 	rendered := renderChartsShallowFirst(context.Background(),
-		[]string{"a/charts/sub", "b/charts/sub", "a", "b", "c", "d/nested"},
+		[]string{"a/charts/sub", "b/charts/sub", "a", "b", "c", "d/nested"}, utils.PoolOptions{CPUBound: true},
 		func(_ context.Context, root string) bool { return !failing[root] })
 	require.ElementsMatch(t, []string{"a", "c", "d/nested", "b/charts/sub"}, rendered)
+}
+
+// A single-worker pool renders one chart at a time, which is what turning the
+// parallel-parsing flag off asks for.
+func TestRenderChartsShallowFirstSequentialPool(t *testing.T) {
+	var running, peak atomic.Int32
+	rendered := renderChartsShallowFirst(context.Background(),
+		[]string{"a", "b", "c", "d"}, utils.PoolOptions{Workers: 1},
+		func(context.Context, string) bool {
+			n := running.Add(1)
+			for {
+				p := peak.Load()
+				if n <= p || peak.CompareAndSwap(p, n) {
+					break
+				}
+			}
+			time.Sleep(time.Millisecond)
+			running.Add(-1)
+			return true
+		})
+	require.ElementsMatch(t, []string{"a", "b", "c", "d"}, rendered)
+	require.Equal(t, int32(1), peak.Load())
+}
+
+// A chart whose render panics is left unrendered without taking down the
+// others: renders run on pool goroutines, out of reach of the caller's recover.
+func TestRenderChartsShallowFirstRecoversPanic(t *testing.T) {
+	rendered := renderChartsShallowFirst(context.Background(),
+		[]string{"a", "b", "c"}, utils.PoolOptions{CPUBound: true},
+		func(_ context.Context, root string) bool {
+			if root == "b" {
+				panic("boom")
+			}
+			return true
+		})
+	require.ElementsMatch(t, []string{"a", "c"}, rendered)
 }

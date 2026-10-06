@@ -313,11 +313,12 @@ func (s *FileSystemSourceProvider) ReleaseContentCache() {
 	}
 }
 
-// BuildInventoryFromPrebuilt renders Helm charts and filters pre-collected paths.
+// BuildInventoryFromPrebuilt renders Helm charts on chartPool and filters
+// pre-collected paths.
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
-	extensions model.Extensions,
+	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	renderedRoots := renderChartsShallowFirst(ctx, s.chartRoots, chartFn)
+	renderedRoots := renderChartsShallowFirst(ctx, s.chartRoots, chartPool, chartFn)
 
 	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
 	for _, path := range s.prebuiltPaths {
@@ -448,8 +449,11 @@ func IsNestedRenderedChart(root string, renderedRoots []string) bool {
 // renderChartsShallowFirst calls chartFn for each chart root, parents before
 // their subcharts, skipping a subchart once its parent rendered it. It returns
 // the roots chartFn reported as rendered, the set whose Helm files are then
-// withheld from the parsers (see IsHelmChartFile).
-func renderChartsShallowFirst(ctx context.Context, roots []string,
+// withheld from the parsers (see IsHelmChartFile). Charts of one wave run on
+// pool, so chartFn may be called from several goroutines at once. A panic in
+// chartFn is logged and leaves that chart unrendered: it runs outside the
+// caller's goroutine, where a recover could not catch it.
+func renderChartsShallowFirst(ctx context.Context, roots []string, pool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) []string {
 	renderedRoots := make([]string, 0, len(roots))
 	for _, wave := range chartRootWaves(roots) {
@@ -460,8 +464,13 @@ func renderChartsShallowFirst(ctx context.Context, roots []string,
 			}
 		}
 		rendered := make([]bool, len(pending))
-		_ = utils.ForEach(ctx, pending, utils.PoolOptions{CPUBound: true},
+		_ = utils.ForEach(ctx, pending, pool,
 			func(ctx context.Context, root string, i int) error {
+				defer func() {
+					if r := recover(); r != nil {
+						utils.HandlePanic(ctx, r, fmt.Sprintf("Recovered from panic while rendering Helm chart '%s'", root))
+					}
+				}()
 				rendered[i] = chartFn(ctx, root)
 				return nil
 			})
@@ -570,11 +579,13 @@ func (s *FileSystemSourceProvider) isPathExcluded(path string) (bool, error) {
 }
 
 // WalkInventory collects matching files, calling chartFn at each Helm chart root.
+// The analyzer-prebuilt inventory renders charts on chartPool (see
+// renderChartsShallowFirst); a directory walk calls chartFn as it goes.
 func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
-	extensions model.Extensions,
+	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
 	if len(s.prebuiltPaths) > 0 {
-		return s.BuildInventoryFromPrebuilt(ctx, extensions, chartFn)
+		return s.BuildInventoryFromPrebuilt(ctx, extensions, chartPool, chartFn)
 	}
 	var files []InventoryFile
 
