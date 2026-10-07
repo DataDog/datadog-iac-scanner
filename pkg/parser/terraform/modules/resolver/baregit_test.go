@@ -306,6 +306,10 @@ func TestBareGitResolverRejectsUnpinnableTransport(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "destination cannot be pinned") {
 				t.Fatalf("expected unpinnable transport rejection, got %v", err)
 			}
+			var unresolved *tfmodules.UnresolvedError
+			if !errors.As(err, &unresolved) || !unresolved.NotApplicable {
+				t.Fatalf("expected transport pre-condition failure to be not applicable, got %v", err)
+			}
 		})
 	}
 }
@@ -321,6 +325,10 @@ func TestBareGitResolverRejectsSSHWithoutPinnedHostKey(t *testing.T) {
 			_, err := r.Resolve(t.Context(), &tfmodules.ParsedModule{Source: source})
 			if err == nil || !strings.Contains(err.Error(), "is not pinned in known_hosts") {
 				t.Fatalf("expected unpinned host key rejection, got %v", err)
+			}
+			var unresolved *tfmodules.UnresolvedError
+			if !errors.As(err, &unresolved) || !unresolved.NotApplicable {
+				t.Fatalf("expected SSH pre-condition failure to be not applicable, got %v", err)
 			}
 		})
 	}
