@@ -41,10 +41,6 @@ type RemoteModuleProvenance struct {
 
 type moduleProvenanceLookup func(callerRoot, source, version, moduleName string) (RemoteModuleProvenance, bool)
 
-// maxCachedChainDepth bounds the call chains attribution is memoized for;
-// deeper chains are rare and are attributed without the cache.
-const maxCachedChainDepth = 8
-
 // moduleAttributionCache memoizes attribution within one root evaluation.
 // Attribution depends on the HCL blocks involved and the module scopes they
 // were evaluated in: a resource block's count/for_each instances and every
@@ -52,26 +48,39 @@ const maxCachedChainDepth = 8
 // resolving a value read the instance's own iteration. Keys are HCL nodes, so
 // a cache must not outlive the root whose parse it holds.
 type moduleAttributionCache struct {
-	resources  map[resourceCacheKey]*model.ModuleAttribution
-	chains     map[chainCacheKey]modulePathEntry
-	attributes map[bodyCacheKey]bodyReads
-	arguments  map[argumentCacheKey]inputReads
-	locals     map[localCacheKey]inputReads
-	// lastResource and lastReads hold the instance analyzed last, which an
-	// iteration-dependent instance is asked for twice in a row.
-	lastResource *tfeval.ResolvedResource
-	lastReads    bodyReads
+	resources      map[resourceCacheKey]*model.ModuleAttribution
+	chains         map[*chainNode]modulePathEntry
+	attributes     map[bodyCacheKey]bodyReads
+	arguments      map[argumentCacheKey]inputReads
+	locals         map[localCacheKey]inputReads
+	eachIndexes    map[localCacheKey]eachIndex
+	entryParts     map[localCacheKey]eachIndex
+	mixed          map[mixedCacheKey]bool
+	blocks         map[*tfeval.ModuleScope]map[string]*hclsyntax.Body
+	blockReads     map[blockReadKey]inputReads
+	collections    map[localCacheKey]inputReads
+	argumentValues map[argumentCacheKey]argumentValue
+	// pathChains identifies call chains by their module blocks, and
+	// scopedChains by their module blocks and the scopes calling them.
+	pathChains   chainNode
+	scopedChains chainNode
 }
 
-type chainCacheKey struct {
-	calls [maxCachedChainDepth]*hclsyntax.Body
-	depth int
+// chainNode is a call chain in a trie, so equal chains share one node
+// whatever their depth.
+type chainNode struct {
+	next map[chainEdge]*chainNode
+}
+
+type chainEdge struct {
+	call   *hclsyntax.Body
+	caller *tfeval.ModuleScope
 }
 
 type resourceCacheKey struct {
 	resource *hclsyntax.Body
 	scope    *tfeval.ModuleScope
-	chain    chainCacheKey
+	chain    *chainNode
 }
 
 type modulePathEntry struct {
@@ -93,27 +102,51 @@ type modulePackage struct {
 
 func newModuleAttributionCache() *moduleAttributionCache {
 	return &moduleAttributionCache{
-		resources:  make(map[resourceCacheKey]*model.ModuleAttribution),
-		chains:     make(map[chainCacheKey]modulePathEntry),
-		attributes: make(map[bodyCacheKey]bodyReads),
-		arguments:  make(map[argumentCacheKey]inputReads),
-		locals:     make(map[localCacheKey]inputReads),
+		resources:      make(map[resourceCacheKey]*model.ModuleAttribution),
+		chains:         make(map[*chainNode]modulePathEntry),
+		attributes:     make(map[bodyCacheKey]bodyReads),
+		arguments:      make(map[argumentCacheKey]inputReads),
+		locals:         make(map[localCacheKey]inputReads),
+		eachIndexes:    make(map[localCacheKey]eachIndex),
+		entryParts:     make(map[localCacheKey]eachIndex),
+		mixed:          make(map[mixedCacheKey]bool),
+		blocks:         make(map[*tfeval.ModuleScope]map[string]*hclsyntax.Body),
+		blockReads:     make(map[blockReadKey]inputReads),
+		collections:    make(map[localCacheKey]inputReads),
+		argumentValues: make(map[argumentCacheKey]argumentValue),
 	}
 }
 
-func chainKey(chain []tfeval.CallSite) (chainCacheKey, bool) {
-	var key chainCacheKey
-	if len(chain) == 0 || len(chain) > maxCachedChainDepth {
-		return key, false
+// chain returns the node identifying chain, or false when a call has no
+// block. With scoped, calls made from different module scopes get different
+// nodes.
+func (c *moduleAttributionCache) chain(chain []tfeval.CallSite, scoped bool) (*chainNode, bool) {
+	if len(chain) == 0 {
+		return nil, false
+	}
+	node := &c.pathChains
+	if scoped {
+		node = &c.scopedChains
 	}
 	for i := range chain {
 		if chain[i].Body == nil {
-			return key, false
+			return nil, false
 		}
-		key.calls[i] = chain[i].Body
+		edge := chainEdge{call: chain[i].Body}
+		if scoped {
+			edge.caller = chain[i].Caller
+		}
+		next, ok := node.next[edge]
+		if !ok {
+			if node.next == nil {
+				node.next = make(map[chainEdge]*chainNode)
+			}
+			next = &chainNode{}
+			node.next[edge] = next
+		}
+		node = next
 	}
-	key.depth = len(chain)
-	return key, true
+	return node, true
 }
 
 // attribution returns the resource's attribution, shared with every resource
@@ -123,7 +156,7 @@ func chainKey(chain []tfeval.CallSite) (chainCacheKey, bool) {
 func (c *moduleAttributionCache) attribution(
 	r *tfeval.ResolvedResource, repoPath string, lookup moduleProvenanceLookup,
 ) *model.ModuleAttribution {
-	chain, ok := chainKey(r.CallChain)
+	chain, ok := c.chain(r.CallChain, true)
 	if !ok || r.Body == nil || c.resourceAttributes(r).iterationDependent {
 		return buildModuleAttribution(r, repoPath, lookup, c)
 	}
@@ -139,8 +172,11 @@ func (c *moduleAttributionCache) attribution(
 func (c *moduleAttributionCache) modulePath(
 	chain []tfeval.CallSite, repoPath string, lookup moduleProvenanceLookup,
 ) modulePathEntry {
-	key, ok := chainKey(chain)
-	if c == nil || !ok {
+	if c == nil {
+		return buildModulePath(chain, repoPath, lookup)
+	}
+	key, ok := c.chain(chain, false)
+	if !ok {
 		return buildModulePath(chain, repoPath, lookup)
 	}
 	if entry, ok := c.chains[key]; ok {
@@ -644,13 +680,22 @@ func moduleAttributionForResource(
 	if clone == nil {
 		return nil
 	}
-	for _, arg := range clone.Arguments {
-		if v.Line >= arg.LineStart && v.Line <= arg.LineEnd {
-			clone.ArgumentControl = arg.Control
-			if arg.Control == model.ArgumentControlCaller {
-				clone.CallSite = arg.CallSite
-			}
-			break
+	// The narrowest range holding the line decides: an item of a multi-line
+	// value is set by what it reads, not by the rest of the value.
+	var narrowest *model.ModuleArgument
+	for i := range clone.Arguments {
+		arg := &clone.Arguments[i]
+		if v.Line < arg.LineStart || v.Line > arg.LineEnd {
+			continue
+		}
+		if narrowest == nil || arg.LineEnd-arg.LineStart < narrowest.LineEnd-narrowest.LineStart {
+			narrowest = arg
+		}
+	}
+	if narrowest != nil {
+		clone.ArgumentControl = narrowest.Control
+		if narrowest.Control == model.ArgumentControlCaller {
+			clone.CallSite = narrowest.CallSite
 		}
 	}
 	clone.Arguments = nil

@@ -53,3 +53,9 @@ func TestModuleAttributionForSARIF_RedactsCredentials(t *testing.T) {
 	require.Contains(t, payload.ModulePath[0].Source, "example.com/modules//bucket")
 	require.Equal(t, "https://user:token@example.com/modules//bucket", attr.ModulePath[0].Source, "the attribution is not modified")
 }
+
+func TestModuleAttributionForSARIFEmptyPathIsNotNull(t *testing.T) {
+	out := ModuleAttributionForSARIF(&ModuleAttribution{})
+	require.NotNil(t, out.ModulePath)
+	require.Empty(t, out.ModulePath)
+}

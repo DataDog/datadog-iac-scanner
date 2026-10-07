@@ -1658,6 +1658,9 @@ module "bucket" {
 	}
 	requireString(t, first.Scope.Var.AsValueMap(), "acl", "public-read")
 	requireString(t, first.Scope.Local.AsValueMap(), "default_acl", "private")
+	if len(first.Scope.Bodies) == 0 {
+		t.Fatalf("scope must keep the module's files so referenced blocks can be read")
+	}
 	if single.Iteration != nil {
 		t.Fatalf("a block without count or for_each has no iteration, got %#v", single.Iteration)
 	}
