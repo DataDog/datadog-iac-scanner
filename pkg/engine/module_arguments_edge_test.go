@@ -505,3 +505,60 @@ func TestModuleArgumentsNullMapMemberIsLeftToItsDefault(t *testing.T) {
 	}
 	requireControlAt(t, newModuleAttributionCache().resourceArguments(resource, "main.tf"), 2, model.ArgumentControlUnknown)
 }
+
+func TestModuleArgumentsSelfReferencingLocalsTerminate(t *testing.T) {
+	scope := evaluatedScope(t, map[string]cty.Value{"a": cty.ListVal([]cty.Value{cty.StringVal("p")})},
+		"locals {\n  l = concat(local.l, var.a, [\"x\"])\n  m = merge(local.m, { k = var.a })\n}")
+	for _, collection := range []string{"toset(local.l)", "local.m"} {
+		require.NotPanics(t, func() {
+			newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
+				Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = "+collection+"\n  name     = each.key\n}"),
+				Scope: scope,
+				Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+					"key": cty.StringVal("x"), "value": cty.StringVal("x"),
+				})},
+				CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = [\"p\"]\n}"),
+			}, "main.tf")
+		})
+	}
+}
+
+func TestModuleArgumentsBranchingLocalsStayLinear(t *testing.T) {
+	var locals strings.Builder
+	locals.WriteString("locals {\n  l0 = concat(var.a, [\"x\"])\n")
+	const depth = 40
+	for i := 1; i <= depth; i++ {
+		fmt.Fprintf(&locals, "  l%d = distinct(concat(local.l%d, local.l%d))\n", i, i-1, i-1)
+	}
+	locals.WriteString("}")
+	scope := evaluatedScope(t, map[string]cty.Value{"a": cty.ListVal([]cty.Value{cty.StringVal("p")})}, locals.String())
+	start := time.Now()
+	newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
+		Body:      parseBlockBody(t, fmt.Sprintf("resource \"t\" \"r\" {\n  for_each = toset(local.l%d)\n  name     = each.key\n}", depth)),
+		Scope:     scope,
+		CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = [\"p\"]\n}"),
+	}, "main.tf")
+	require.Less(t, time.Since(start), 2*time.Second)
+}
+
+func TestModuleArgumentsMixedForExpressionIsAmbiguous(t *testing.T) {
+	scope := evaluatedScope(t, map[string]cty.Value{
+		"a": cty.ObjectVal(map[string]cty.Value{"a": cty.StringVal("1")}),
+	}, "")
+	instance := func(key string) []model.ModuleArgument {
+		return newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
+			Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = { for k, v in merge(var.a, { z = \"1\" }) : k => v }\n  name     = each.key\n}"),
+			Scope: scope,
+			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+				"key": cty.StringVal(key), "value": cty.StringVal("1"),
+			})},
+			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = { a = \"1\" }\n}"),
+		}, "main.tf")
+	}
+	for _, key := range []string{"a", "z"} {
+		for _, arg := range instance(key) {
+			require.NotEqual(t, model.ArgumentControlCaller, arg.Control,
+				"instance %q cannot be told apart from the caller's entries", key)
+		}
+	}
+}

@@ -1062,11 +1062,28 @@ func (a *valueAnalyzer) cachedCollectionReads(expr hclsyntax.Expression) inputRe
 
 // mixedCollection reports whether the entries of a collection literal, or of
 // the literals merged into it, read module inputs for some and not others.
+// It is memoized per resolved expression, which also ends locals that refer to
+// themselves and keeps locals that reuse one another from being walked once
+// per path.
 func (a *valueAnalyzer) mixedCollection(expr hclsyntax.Expression) bool {
+	expr = a.throughLocals(expr)
+	key := localCacheKey{expr: expr, scope: a.scope}
+	if mixed, ok := a.cache.mixed[key]; ok {
+		return mixed
+	}
+	a.cache.mixed[key] = false
+	mixed := a.uncachedMixedCollection(expr)
+	a.cache.mixed[key] = mixed
+	return mixed
+}
+
+func (a *valueAnalyzer) uncachedMixedCollection(expr hclsyntax.Expression) bool {
 	var operands []hclsyntax.Expression
-	switch e := a.throughLocals(expr).(type) {
+	switch e := expr.(type) {
 	case *hclsyntax.ParenthesesExpr:
 		return a.mixedCollection(e.Expression)
+	case *hclsyntax.ForExpr:
+		return a.mixedCollection(e.CollExpr)
 	case *hclsyntax.TupleConsExpr:
 		operands = e.Exprs
 	case *hclsyntax.ObjectConsExpr:
@@ -1174,8 +1191,22 @@ func (a *valueAnalyzer) eachEntry(expr hclsyntax.Expression, key string) (eachEn
 // eachEntries indexes a for_each collection, looking through object
 // literals, merge and toset of a list literal. Any other collection is
 // indexed by its evaluated value.
+// Parts are memoized per resolved expression, which also ends locals that
+// refer to themselves.
 func (a *valueAnalyzer) eachEntries(expr hclsyntax.Expression) (map[string]eachEntry, bool) {
 	expr = a.throughLocals(expr)
+	key := localCacheKey{expr: expr, scope: a.scope}
+	if part, ok := a.cache.entryParts[key]; ok {
+		return part.entries, part.ok
+	}
+	a.cache.entryParts[key] = eachIndex{}
+	var part eachIndex
+	part.entries, part.ok = a.uncachedEachEntries(expr)
+	a.cache.entryParts[key] = part
+	return part.entries, part.ok
+}
+
+func (a *valueAnalyzer) uncachedEachEntries(expr hclsyntax.Expression) (map[string]eachEntry, bool) {
 	switch e := expr.(type) {
 	case *hclsyntax.ParenthesesExpr:
 		return a.eachEntries(e.Expression)
@@ -1261,6 +1292,9 @@ func (a *valueAnalyzer) valueEntries(expr hclsyntax.Expression) (map[string]each
 		return nil, false
 	}
 	reads := a.reads(expr).shared()
+	if a.mixedCollection(expr) {
+		reads.ambiguous = true
+	}
 	entries := make(map[string]eachEntry, len(keys))
 	for _, k := range keys {
 		entries[k] = eachEntry{key: reads, value: reads}
