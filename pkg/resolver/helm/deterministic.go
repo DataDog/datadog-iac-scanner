@@ -6,12 +6,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"helm.sh/helm/v3/pkg/chart"
 )
 
 // notPrecededByVarOrField rejects matches that are variable references ($name) or
 // field accesses (.field). Quoted-string detection is handled separately by
-// insideQuotedStringInSpan, which is more accurate than a single-byte check.
+// helmmarker.InQuote, which is more accurate than a single-byte check.
 func notPrecededByVarOrField(s string, pos int) bool {
 	if pos == 0 {
 		return true
@@ -99,18 +100,18 @@ func applyDeterministicSubstitutions(data []byte) []byte {
 
 	// Pre-compute the spans of all {{ ... }} action blocks so we only substitute
 	// inside them, not in literal text (e.g. shell scripts in ConfigMap data).
-	spans := templateActionSpans(s)
+	spans := helmmarker.Code(s)
 
 	for _, p := range patterns {
 		matches := p.re.FindAllStringIndex(s, -1)
 		for _, m := range matches {
 			// Only substitute inside {{ ... }} action blocks.
-			if !inAnySpan(m[0], spans) {
+			if !helmmarker.InAny(m[0], spans) {
 				continue
 			}
 
 			// Skip matches inside string literals within the action (e.g. printf "...now...").
-			if insideQuotedStringInSpan(s, m[0], spans) {
+			if helmmarker.InQuote(s, m[0], spans) {
 				continue
 			}
 

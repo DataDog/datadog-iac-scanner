@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/agnivade/levenshtein"
@@ -45,7 +46,7 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	outputLines int) model.VulnerabilityLines {
 	contextLogger := logger.FromContext(ctx)
 	if file.HelmID != "" {
-		searchKey = fmt.Sprintf("%s.%s", strings.TrimRight(strings.TrimLeft(file.HelmID, "# "), ":"), searchKey)
+		searchKey = fmt.Sprintf("%s.%s", helmmarker.SearchKey(file.HelmID), searchKey)
 	}
 
 	lines := make([]string, len(file.Lines()))
@@ -63,8 +64,8 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		sanitizedSubstring = strings.ReplaceAll(sanitizedSubstring, str[0], `{{`+strconv.Itoa(idx)+`}}`)
 	}
 
-	helmID, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(file.HelmID, "# KICS_HELM_ID_"), ":"))
-	if err != nil {
+	_, helmID, ok := helmmarker.ParseID(file.HelmID)
+	if !ok {
 		helmID = -1
 	}
 
@@ -105,25 +106,24 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 }
 
 // invocationLines locates a finding at the include-like action whose output
-// produced it. The recorded position counts the "# KICS_HELM_ID_" lines stamped
-// above it, which are left out of the reported line and snippet.
+// produced it. The invocation is a position in the template as written, so it
+// indexes the lines without their ID stamps, which are not reported either.
 func invocationLines(
 	file *model.FileMetadata, invocation model.ResourceLine, lines []string, outputLines int,
 ) (model.VulnerabilityLines, bool) {
-	if invocation.Line < 1 || invocation.Line > len(lines) || isHelmIDLine(lines[invocation.Line-1]) {
+	unstamped, _ := unstampedLines(lines)
+	if invocation.Line < 1 || invocation.Line > len(unstamped) {
 		return model.VulnerabilityLines{}, false
 	}
-	unstamped, index := unstampedLines(lines)
-	at := index(invocation.Line - 1)
-	reported := model.ResourceLine{Line: at + 1, Col: invocation.Col}
+	at := invocation.Line - 1
 	return model.VulnerabilityLines{
-		Line:                  reported.Line,
+		Line:                  invocation.Line,
 		VulnLines:             detector.GetAdjacentVulnLines(at, outputLines, unstamped),
 		LineWithVulnerability: unstamped[at],
 		ResolvedFile:          file.FilePath,
 		VulnerablilityLocation: model.ResourceLocation{
-			Start: reported,
-			End:   model.ResourceLine{Line: reported.Line, Col: len(unstamped[at])},
+			Start: invocation,
+			End:   model.ResourceLine{Line: invocation.Line, Col: len(unstamped[at])},
 		},
 	}, true
 }
@@ -160,22 +160,19 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 // emitting that line is chosen.
 func emittingInvocation(ctx context.Context, file *model.FileMetadata, sanitizedSubstring string,
 	extractedString [][]string, helmID int) model.ResourceLine {
-	if len(file.HelmInvocations) < 2 || file.HelmRenderedContent == "" {
-		return file.HelmInvocations.First()
+	attribution := file.HelmAttribution
+	if attribution == nil || len(attribution.Invocations) < 2 || attribution.RenderedContent == "" {
+		return attribution.First()
 	}
-	rendered := strings.Split(file.HelmRenderedContent, "\n")
+	rendered := strings.Split(attribution.RenderedContent, "\n")
 	found, _, _ := detectCurlLine{}.walkSearchKey(ctx, rendered, sanitizedSubstring, extractedString, nil, helmID)
 	if !found.foundRes {
-		return file.HelmInvocations.First()
+		return attribution.First()
 	}
-	return file.HelmInvocations.At(found.lineRes + 1)
+	return attribution.At(found.lineRes + 1)
 }
 
-func isHelmIDLine(line string) bool {
-	return strings.Contains(line, "# KICS_HELM_ID_")
-}
-
-// unstampedLines drops the "# KICS_HELM_ID_" lines the resolver stamped into
+// unstampedLines drops the ID stamp lines the resolver stamped into
 // the rendered output. index maps a position in lines to its position in kept;
 // a stamp line maps to the line that follows it.
 func unstampedLines(lines []string) (kept []string, index func(int) int) {
@@ -183,7 +180,7 @@ func unstampedLines(lines []string) (kept []string, index func(int) int) {
 	keptBefore := make([]int, len(lines))
 	for i, line := range lines {
 		keptBefore[i] = len(kept)
-		if !isHelmIDLine(line) {
+		if !helmmarker.IsIDLine(line) {
 			kept = append(kept, line)
 		}
 	}
@@ -191,9 +188,9 @@ func unstampedLines(lines []string) (kept []string, index func(int) int) {
 }
 
 func containsHelmKey(line, key string) bool {
-	if isHelmIDLine(line) {
-		// A stamp only stands for its own ID; "0:" must not match "# KICS_HELM_ID_40:".
-		return strings.TrimSpace(line) == "# "+key
+	if helmmarker.IsIDLine(line) {
+		// A stamp only stands for its own ID, never for one it is a prefix of.
+		return helmmarker.IsIDKey(line, key)
 	}
 	if strings.Contains(line, key) {
 		return true

@@ -14,11 +14,11 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
-	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -120,7 +120,7 @@ func (s *Service) storeResolvedFiles(
 				Kind:              kind,
 				FilePath:          rfile.FileName,
 				HelmID:            rfile.SplitID,
-				HelmInvocations:   rfile.HelmInvocations,
+				HelmAttribution:   model.NewHelmAttribution(rfile.HelmInvocations, ownedRenderedContent),
 				Commands:          cached.commands,
 				IDInfo:            rfile.IDInfo,
 				LinesIgnore:       documents.IgnoreLines,
@@ -128,9 +128,6 @@ func (s *Service) storeResolvedFiles(
 				LinesOriginalData: cached.linesOriginalData,
 				IsMinified:        documents.IsMinified,
 				Platform:          platform,
-			}
-			if len(rfile.HelmInvocations) > 1 {
-				file.HelmRenderedContent = ownedRenderedContent
 			}
 			if kind == model.KindHELM {
 				file.SetLineInfoLoader(newHelmLineInfoLoader(
@@ -454,15 +451,12 @@ func isCommentOnlyContent(content []byte) bool {
 	return true
 }
 
-var helmIDLinePattern = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+:[^\r\n]*(?:\r?\n|$)`)
-
 func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	originalFile []uint8,
 	kind model.FileKind,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ignoreLines []int, err error) {
-	refactor := helmIDLinePattern.ReplaceAll(originalFile, nil)
-	refactor = helm.BlankTemplateActions(refactor)
+	refactor := helmmarker.Blank(helmmarker.RemoveIDLines(originalFile))
 
 	documentsOriginal, err := s.parseResolvedFile(
 		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
@@ -474,7 +468,7 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 
 // filterHelmGeneratedLines drops entries from ignoreLines whose corresponding
 // line in content is a scanner-injected Helm header ("# Source: …" or
-// "# KICS_HELM_ID_N:"). These headers are picked up by the YAML parser as
+// "# KICS_HELM_ID_T_N:"). These headers are picked up by the YAML parser as
 // regular head comments and can coincide with vulnerability.Line, causing false
 // suppression. User-authored suppression comments are unaffected.
 func filterHelmGeneratedLines(content []byte, ignoreLines []int) []int {
@@ -484,7 +478,7 @@ func filterHelmGeneratedLines(content []byte, ignoreLines []int) []int {
 		if n >= 1 && n <= len(lines) {
 			trimmed := strings.TrimSpace(lines[n-1])
 			if strings.HasPrefix(trimmed, "# Source:") ||
-				strings.HasPrefix(trimmed, "# KICS_HELM_ID_") {
+				strings.HasPrefix(trimmed, helmmarker.IDPrefix) {
 				continue
 			}
 		}

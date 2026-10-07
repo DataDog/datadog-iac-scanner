@@ -223,14 +223,38 @@ func TestStoreResolvedFilesKeepsHelmInvocation(t *testing.T) {
 	files, err := store.GetFiles(ctx, "helm-source-document-index")
 	require.NoError(t, err)
 	require.Len(t, files, 2)
-	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, files[0].HelmInvocations.First())
-	require.Equal(t, model.ResourceLine{Line: 2, Col: 0}, files[1].HelmInvocations.First())
+	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, files[0].HelmAttribution.First())
+	require.Equal(t, model.ResourceLine{Line: 2, Col: 0}, files[1].HelmAttribution.First())
+	require.Empty(t, files[0].HelmAttribution.RenderedContent, "a single invocation needs no rendered content")
+}
+
+func TestStoreResolvedFilesKeepsRenderedContentOfSeveralInvocations(t *testing.T) {
+	ctx := context.Background()
+	service, store := newYAMLResolverSinkService(t, ctx)
+	content := []byte("apiVersion: v1\nkind: Pod\nmetadata:\n  name: p\n")
+	service.storeResolvedFiles(ctx, model.ResolvedFiles{
+		File: []model.ResolvedHelm{{
+			FileName:     "chart/templates/pod.yaml",
+			Content:      content,
+			OriginalData: []byte("{{ include \"header\" . }}\n{{ include \"spec\" . }}\n"),
+			HelmInvocations: model.HelmInvocations{
+				{RenderedLine: 1, Position: model.ResourceLine{Line: 1}},
+				{RenderedLine: 3, Position: model.ResourceLine{Line: 2}},
+			},
+		}},
+	}, model.KindHELM, "helm-several-invocations", false, 15)
+
+	files, err := store.GetFiles(ctx, "helm-several-invocations")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, string(content), files[0].HelmAttribution.RenderedContent)
+	require.Equal(t, 2, files[0].HelmAttribution.At(3).Line)
 }
 
 func TestStoreResolvedFilesKeepsCRDSuppressionLines(t *testing.T) {
 	ctx := context.Background()
 	service, store := newYAMLResolverSinkService(t, ctx)
-	original := []byte("# dd-iac-scan ignore-block\n# KICS_HELM_ID_1:\napiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n")
+	original := []byte("# dd-iac-scan ignore-block\n# KICS_HELM_ID_0_1:\napiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n")
 	content := []byte("\n# Source: chart/crds/widget.yaml\n" + string(original))
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{{
@@ -543,12 +567,12 @@ func TestFilterHelmGeneratedLines(t *testing.T) {
 	// Rendered Helm split content that resembles real scanner output.
 	// Line 1: empty
 	// Line 2: # Source: … (Helm-generated)
-	// Line 3: # KICS_HELM_ID_2: (scanner-injected)
+	// Line 3: # KICS_HELM_ID_0_2: (scanner-injected)
 	// Line 4: apiVersion: apps/v1
 	// Line 5: kind: Deployment
 	// Line 6: # some user comment
 	// Line 7: metadata:
-	renderedContent := []byte("\n# Source: dsm-demo/templates/deployment.yaml\n# KICS_HELM_ID_2:\napiVersion: apps/v1\nkind: Deployment\n# some user comment\nmetadata:\n")
+	renderedContent := []byte("\n# Source: dsm-demo/templates/deployment.yaml\n# KICS_HELM_ID_0_2:\napiVersion: apps/v1\nkind: Deployment\n# some user comment\nmetadata:\n")
 
 	tests := []struct {
 		name        string
@@ -606,10 +630,10 @@ func TestFilterHelmGeneratedLines_DDIacScanCommentKept(t *testing.T) {
 	// Content where the dd-iac-scan directive appears alongside generated headers.
 	// Line 1: empty
 	// Line 2: # Source: chart/templates/deploy.yaml
-	// Line 3: # KICS_HELM_ID_0:
+	// Line 3: # KICS_HELM_ID_0_0:
 	// Line 4: # dd-iac-scan ignore-block
 	// Line 5: apiVersion: apps/v1
-	content := []byte("\n# Source: chart/templates/deploy.yaml\n# KICS_HELM_ID_0:\n# dd-iac-scan ignore-block\napiVersion: apps/v1\n")
+	content := []byte("\n# Source: chart/templates/deploy.yaml\n# KICS_HELM_ID_0_0:\n# dd-iac-scan ignore-block\napiVersion: apps/v1\n")
 
 	// Suppose processBlock added lines 4 and 5 (not 2 and 3, since it anchors to
 	// apiVersion.Line and apiVersion.Line-1). But even if 2 and 3 were included,

@@ -115,3 +115,18 @@ func TestHelmInvocationsAt(t *testing.T) {
 	}
 	require.Equal(t, ResourceLine{}, HelmInvocations(nil).At(1))
 }
+
+func TestNewHelmAttribution(t *testing.T) {
+	one := HelmInvocations{{RenderedLine: 1, Position: ResourceLine{Line: 4}}}
+	several := append(HelmInvocations{}, one...)
+	several = append(several, HelmInvocationAt{RenderedLine: 6, Position: ResourceLine{Line: 9}})
+
+	require.Nil(t, NewHelmAttribution(nil, "rendered"))
+	require.Empty(t, NewHelmAttribution(one, "rendered").RenderedContent, "one invocation needs no rendered content")
+	require.Equal(t, "rendered", NewHelmAttribution(several, "rendered").RenderedContent)
+
+	var none *HelmAttribution
+	require.Equal(t, ResourceLine{}, none.First())
+	require.Equal(t, ResourceLine{}, none.At(3))
+	require.Equal(t, 9, NewHelmAttribution(several, "rendered").At(7).Line)
+}

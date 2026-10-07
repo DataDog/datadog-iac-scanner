@@ -2,6 +2,8 @@ package helm
 
 import (
 	"context"
+	"errors"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"io/fs"
 	"strings"
 	"testing"
@@ -45,7 +47,7 @@ func invocationsOf(t *testing.T, files []model.ResolvedHelm, suffix, substr stri
 	t.Helper()
 	var invocations []model.ResourceLine
 	for _, f := range findAllResolvedBySuffix(t, files, suffix) {
-		require.NotContains(t, string(f.Content), kicsHelmInvocation)
+		require.NotContains(t, string(f.Content), helmmarker.InvocationPrefix)
 		if strings.Contains(string(f.Content), substr) {
 			invocations = append(invocations, f.HelmInvocations.First())
 		}
@@ -80,7 +82,7 @@ func TestHelmResolveMarkEveryDocumentShapes(t *testing.T) {
 				}
 				documents++
 				require.Equal(t, 1, f.HelmInvocations.First().Line, "document %q", f.Content)
-				require.NotContains(t, string(f.Content), kicsHelmInvocation)
+				require.NotContains(t, string(f.Content), helmmarker.InvocationPrefix)
 				require.Equal(t, action+"\n", string(f.OriginalData))
 			}
 			require.Equal(t, 2, documents)
@@ -114,8 +116,8 @@ func TestHelmResolveMarksEveryDocumentOfAnIncludeInMixedManifest(t *testing.T) {
 		"templates/cm.yaml": "apiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n" +
 			"{{- if true }}\n{{ include \"multi\" . }}\n{{- end }}\n",
 	})
-	// Line 6 of the source, shifted by the ID line stamped above its apiVersion.
-	require.Equal(t, []model.ResourceLine{{Line: 7}, {Line: 7}}, invocationsOf(t, got, "templates/cm.yaml", "kind: ConfigMap"))
+	// The include is on line 6 of the template as written, not of the stamped one.
+	require.Equal(t, []model.ResourceLine{{Line: 6}, {Line: 6}}, invocationsOf(t, got, "templates/cm.yaml", "kind: ConfigMap"))
 }
 
 // Wrapper includes whose output a trim or an adjacent action glues together must
@@ -183,7 +185,7 @@ func TestHelmResolveIncludeContinuingPlainScalar(t *testing.T) {
 			cm := findResolvedBySuffix(t, got, "templates/cm.yaml")
 			require.Contains(t, string(cm.Content), "msg: hello\n")
 			require.Contains(t, string(cm.Content), "world")
-			require.NotContains(t, string(cm.Content), kicsHelmInvocation)
+			require.NotContains(t, string(cm.Content), helmmarker.InvocationPrefix)
 		})
 	}
 }
@@ -208,7 +210,7 @@ func TestHelmResolveRewrittenIncludeKeepsRenderedLines(t *testing.T) {
 	})
 	cm := findResolvedBySuffix(t, got, "templates/role.yaml")
 	require.Contains(t, string(cm.Content), "  labels:\n    app: x\n    tier: y\ndata:\n")
-	require.NotContains(t, string(cm.Content), kicsHelmInvocation)
+	require.NotContains(t, string(cm.Content), helmmarker.InvocationPrefix)
 }
 
 func TestHelmResolveTracksExecutedConditionalInvocation(t *testing.T) {
@@ -221,8 +223,8 @@ func TestHelmResolveTracksExecutedConditionalInvocation(t *testing.T) {
 	require.Contains(t, string(resolved.Content), "resource-b")
 	require.NotContains(t, string(resolved.Content), "resource-a")
 	require.Equal(t, model.ResourceLine{Line: 5, Col: 0}, resolved.HelmInvocations.First())
-	require.NotContains(t, string(resolved.Content), kicsHelmInvocation)
-	require.NotContains(t, string(resolved.OriginalData), kicsHelmInvocation)
+	require.NotContains(t, string(resolved.Content), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(resolved.OriginalData), helmmarker.InvocationPrefix)
 }
 
 // A manifest that mixes logic with an include which emits the whole resource,
@@ -239,7 +241,7 @@ func TestHelmResolve_IncludeInMixedManifestKeepsInvocation(t *testing.T) {
 	svc := findResolvedBySuffix(t, got, "templates/svc.yaml")
 	require.Equal(t, model.ResourceLine{Line: 3, Col: 0}, svc.HelmInvocations.First())
 	require.Contains(t, string(svc.Content), "name: svc")
-	require.NotContains(t, string(svc.Content), kicsHelmInvocation)
+	require.NotContains(t, string(svc.Content), helmmarker.InvocationPrefix)
 }
 
 // A document whose parts are emitted by different includes: a finding is
@@ -256,17 +258,16 @@ func TestHelmResolve_DocumentComposedOfSeveralIncludes(t *testing.T) {
 		{RenderedLine: 3, Position: model.ResourceLine{Line: 1}},
 		{RenderedLine: 9, Position: model.ResourceLine{Line: 2}},
 	}, pod.HelmInvocations)
-	require.NotContains(t, string(pod.Content), kicsHelmInvocation)
+	require.NotContains(t, string(pod.Content), helmmarker.InvocationPrefix)
 
 	file := &model.FileMetadata{
-		Kind:                model.KindHELM,
-		FilePath:            pod.FileName,
-		HelmID:              pod.SplitID,
-		OriginalData:        string(pod.OriginalData),
-		LinesOriginalData:   utils.SplitLines(string(pod.OriginalData)),
-		IDInfo:              pod.IDInfo,
-		HelmInvocations:     pod.HelmInvocations,
-		HelmRenderedContent: string(pod.Content),
+		Kind:              model.KindHELM,
+		FilePath:          pod.FileName,
+		HelmID:            pod.SplitID,
+		OriginalData:      string(pod.OriginalData),
+		LinesOriginalData: utils.SplitLines(string(pod.OriginalData)),
+		IDInfo:            pod.IDInfo,
+		HelmAttribution:   model.NewHelmAttribution(pod.HelmInvocations, string(pod.Content)),
 	}
 	detect := func(searchKey string) int {
 		return (helmdetector.DetectKindLine{}).DetectLine(context.Background(), file, searchKey, 1).Line
@@ -288,7 +289,7 @@ func TestHelmResolve_IncludeAfterRightTrimmedAction(t *testing.T) {
 			"data:\n{{- if .Values.extra -}}\n{{ include \"extra\" . | nindent 2 }}\n{{- end }}\n",
 	})
 	cm := findResolvedBySuffix(t, got, "templates/cm.yaml")
-	require.NotContains(t, string(cm.Content), kicsHelmInvocation)
+	require.NotContains(t, string(cm.Content), helmmarker.InvocationPrefix)
 
 	var doc struct {
 		Metadata struct {
@@ -301,28 +302,66 @@ func TestHelmResolve_IncludeAfterRightTrimmedAction(t *testing.T) {
 	require.Equal(t, map[string]string{"tier": "web"}, doc.Data)
 }
 
-// A chart rendered again without markers still gets its IDs and original
-// sources; only the invocation lines are given up, for every template of it.
-func TestHelmResolveRetryWithoutMarkersKeepsIDsAndSources(t *testing.T) {
-	secret := "apiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n"
+// A template whose output a marker breaks is rendered again without markers
+// and keeps its IDs and original source; the chart's other templates keep their
+// invocation lines.
+func TestHelmResolveRetryWithoutMarkersIsScopedToTheFailingTemplate(t *testing.T) {
 	got := renderChart(t, map[string]string{
 		"templates/_h.tpl":  "{{- define \"more\" -}}\nworld\n{{- end -}}\n",
-		"templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  msg: hello\n{{ include \"more\" . | indent 4 }}\n",
+		"templates/cm.yaml": brokenByMarkerTemplate,
 		"templates/s.yaml":  "{{ include \"sec\" . }}\n",
-		"templates/_s.tpl":  "{{- define \"sec\" -}}\n" + secret + "{{- end -}}\n",
+		"templates/_s.tpl":  "{{- define \"sec\" -}}\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n{{- end -}}\n",
 	})
-	for suffix, source := range map[string]string{
-		"templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  msg: hello\n{{ include \"more\" . | indent 4 }}\n",
-		"templates/s.yaml":  "{{ include \"sec\" . }}\n",
-	} {
-		f := findResolvedBySuffix(t, got, suffix)
-		require.Contains(t, string(f.OriginalData), source)
-		require.NotContains(t, string(f.Content), kicsHelmInvocation)
-		require.NotContains(t, string(f.OriginalData), kicsHelmInvocation)
-		require.NotEmpty(t, f.IDInfo, suffix)
-		require.Empty(t, f.HelmInvocations, "the retry gives up invocation lines for the whole chart")
+	cm := findResolvedBySuffix(t, got, "templates/cm.yaml")
+	require.Contains(t, string(cm.OriginalData), brokenByMarkerTemplate)
+	require.NotContains(t, string(cm.Content), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(cm.OriginalData), helmmarker.InvocationPrefix)
+	require.NotEmpty(t, cm.IDInfo)
+	require.Empty(t, cm.HelmInvocations, "the failing template gives up its invocation lines")
+
+	s := findResolvedBySuffix(t, got, "templates/s.yaml")
+	require.Contains(t, string(s.Content), "kind: Secret")
+	require.Equal(t, model.ResourceLine{Line: 1}, s.HelmInvocations.First(), "other templates keep theirs")
+}
+
+// Several templates broken by markers are each rendered again without them.
+func TestHelmResolveRetryWithoutMarkersCoversEveryFailingTemplate(t *testing.T) {
+	files := map[string]string{"templates/_h.tpl": "{{- define \"more\" -}}\nworld\n{{- end -}}\n"}
+	for _, name := range []string{"a", "b", "c"} {
+		files["templates/"+name+".yaml"] = brokenByMarkerTemplate
 	}
-	require.Contains(t, string(findResolvedBySuffix(t, got, "templates/s.yaml").Content), "kind: Secret")
+	got := renderChart(t, files)
+	for _, name := range []string{"a", "b", "c"} {
+		f := findResolvedBySuffix(t, got, "templates/"+name+".yaml")
+		require.Contains(t, string(f.Content), "world")
+		require.Empty(t, f.HelmInvocations)
+	}
+}
+
+// brokenByMarkerTemplate continues a plain multi-line scalar with an include,
+// which an invocation marker comment would end.
+const brokenByMarkerTemplate = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  msg: hello\n" +
+	"{{ include \"more\" . | indent 4 }}\n"
+
+// The retry relies on Helm's wording of a parse error; pin it against a real
+// render so a Helm upgrade that changes it fails here instead of silently
+// costing charts their render.
+func TestYAMLParseErrorTemplateMatchesHelm(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"Chart.yaml":         testChartYAML,
+		"templates/bad.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n  bad: [\n",
+	})
+	_, err := (&Resolver{}).Resolve(context.Background(), root)
+	require.Error(t, err)
+	template, ok := yamlParseErrorTemplate(err)
+	require.True(t, ok, "%v", err)
+	require.True(t, strings.HasSuffix(template, "/templates/bad.yaml"), template)
+
+	_, ok = yamlParseErrorTemplate(errors.New("some other failure"))
+	require.False(t, ok)
+	_, ok = yamlParseErrorTemplate(nil)
+	require.False(t, ok)
 }
 
 type panicOnReadDirFS struct{ vfs.FS }
@@ -339,4 +378,37 @@ func TestResolveReturnsPanicAsError(t *testing.T) {
 	got, err := NewResolver(panicOnReadDirFS{memfs}).Resolve(context.Background(), "chart")
 	require.ErrorContains(t, err, "panic during resolve of chart: boom")
 	require.Empty(t, got.File)
+}
+
+// Two documents of one template share its stamp only if stamps are numbered per
+// template: the Pod from the included partial must be located by the partial's
+// own stamp, never by the ConfigMap's identical one.
+func TestHelmResolve_IncludedPartialDoesNotShareAStampWithItsIncluder(t *testing.T) {
+	got := renderChart(t, map[string]string{
+		"values.yaml": "on: true\n",
+		"templates/_pod.tpl": "{{- define \"pod\" -}}\napiVersion: v1\nkind: Pod\nmetadata:\n  name: p\nspec:\n" +
+			"  containers:\n  - name: c\n    image: nginx\n{{- end -}}\n",
+		"templates/a.yaml": "{{- if .Values.on }}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n{{- end }}\n---\n" +
+			"{{ include \"pod\" . }}\n",
+	})
+
+	var pod *model.ResolvedHelm
+	for _, f := range findAllResolvedBySuffix(t, got, "templates/a.yaml") {
+		if strings.Contains(string(f.Content), "kind: Pod") {
+			pod = &f
+		}
+	}
+	require.NotNil(t, pod)
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          pod.FileName,
+		HelmID:            pod.SplitID,
+		OriginalData:      string(pod.OriginalData),
+		LinesOriginalData: utils.SplitLines(string(pod.OriginalData)),
+		IDInfo:            pod.IDInfo,
+		HelmAttribution:   model.NewHelmAttribution(pod.HelmInvocations, string(pod.Content)),
+	}
+	line := (helmdetector.DetectKindLine{}).DetectLine(
+		context.Background(), file, "spec.containers.name={{c}}.image", 1).Line
+	require.Equal(t, 8, line, "the Pod finding belongs to the include on line 8, not the ConfigMap on line 2")
 }

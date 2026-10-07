@@ -1,14 +1,13 @@
 package helm
 
 import (
-	"strconv"
+	"path"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/chart"
 )
-
-const helmIDNumberBase = 10
 
 // stampedSources holds each template's data once stamped with ID lines and
 // before invocation markers are added: the source findings are located in.
@@ -25,36 +24,54 @@ func (s stampedSources) of(file *chart.File) []byte {
 	return file.Data
 }
 
+// invocationMarks says whether a template gets invocation markers, given its
+// name as Helm reports it (the chart's full path joined with the template's);
+// nil marks every template.
+type invocationMarks func(template string) bool
+
+// noInvocationMarks leaves every template unmarked.
+func noInvocationMarks(string) bool { return false }
+
 // setID will add auxiliary lines for each template as well as its dependencies,
 // and returns their sources as they were before invocation markers were added.
-// Invocation markers are only added when markInvocations is set.
-func setID(chartReq *chart.Chart, markInvocations bool) stampedSources {
+// Invocation markers are only added to the templates marks allows.
+func setID(chartReq *chart.Chart, marks invocationMarks) stampedSources {
 	sources := stampedSources{}
-	stampChart(chartReq, sources, markInvocations)
+	stampChart(chartReq, sources, marks, new(int))
 	return sources
 }
 
-func stampChart(chartReq *chart.Chart, sources stampedSources, markInvocations bool) {
+// stampChart stamps each template and YAML CRD of the chart and its
+// dependencies. Every file takes the next number of templates, so a stamp is
+// unique across the whole chart: a document emitted by an include carries the
+// stamp of the partial it comes from, which must never equal one of the
+// template that includes it.
+func stampChart(chartReq *chart.Chart, sources stampedSources, marks invocationMarks, templates *int) {
+	next := func() int {
+		*templates++
+		return *templates - 1
+	}
 	for _, temp := range chartReq.Templates {
-		sources[temp] = addID(temp).Data
-		if markInvocations {
+		sources[temp] = addID(temp, next()).Data
+		if marks == nil || marks(path.Join(chartReq.ChartFullPath(), temp.Name)) {
 			addHelmInvocationMarkers(temp)
 		}
 	}
 	// Stamp YAML CRDs for line mapping; JSON CRDs are skipped (YAML comments corrupt JSON).
 	for _, f := range localCRDFiles(chartReq) {
 		if isYAMLCRD(f.Name) {
-			addID(f)
+			addID(f, next())
 		}
 	}
 	for _, dep := range chartReq.Dependencies() {
-		stampChart(dep, sources, markInvocations)
+		stampChart(dep, sources, marks, templates)
 	}
 }
 
-// addID will add auxiliary lines used to detect line
-// one for each top-level "apiVersion:" where the id is the source line index.
-func addID(file *chart.File) *chart.File {
+// addID will add auxiliary lines used to detect line: one for each top-level
+// "apiVersion:", naming the template (see helmmarker.AppendID) and the source
+// line index.
+func addID(file *chart.File, template int) *chart.File {
 	split := strings.Split(string(file.Data), "\n")
 	apiVersionLines := topLevelAPIVersionLines(split, isYAMLCRD(file.Name))
 
@@ -62,9 +79,7 @@ func addID(file *chart.File) *chart.File {
 	nextAPIVersion := 0
 	for i, line := range split {
 		if nextAPIVersion < len(apiVersionLines) && apiVersionLines[nextAPIVersion] == i {
-			stamped = append(stamped, "# KICS_HELM_ID_"...)
-			stamped = strconv.AppendInt(stamped, int64(i), helmIDNumberBase)
-			stamped = append(stamped, ':', '\n')
+			stamped = helmmarker.AppendID(stamped, template, i)
 			nextAPIVersion++
 		}
 		stamped = append(stamped, line...)

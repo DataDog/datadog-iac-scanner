@@ -16,7 +16,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-var OriginalData1 = `# KICS_HELM_ID_0:
+var OriginalData1 = `# KICS_HELM_ID_0_0:
 apiVersion: v1
 kind: Pod
 metadata:
@@ -34,7 +34,7 @@ spec:
     restartPolicy: Never
 `
 
-var OriginalData2 = `# KICS_HELM_ID_0:
+var OriginalData2 = `# KICS_HELM_ID_0_0:
 apiVersion: v1
 kind: Pod
 metadata:
@@ -58,7 +58,7 @@ spec:
     restartPolicy: Never
 `
 
-var OriginalDataPartialMatch = `# KICS_HELM_ID_0:
+var OriginalDataPartialMatch = `# KICS_HELM_ID_0_0:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -72,7 +72,7 @@ spec:
           image: nginx
 `
 
-var OriginalData3 = `# KICS_HELM_ID_0:
+var OriginalData3 = `# KICS_HELM_ID_0_0:
 apiVersion: v1
 kind: Pod
 metadata:
@@ -89,7 +89,7 @@ spec:
 	  args: ['{{ include "test_helm.fullname" . }}:{{ .Values.service.port }}']
     restartPolicy: Never
 ---
-# KICS_HELM_ID_1:
+# KICS_HELM_ID_0_1:
 apiVersion: v1
 kind: Pod
 metadata:
@@ -129,11 +129,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 					Document:          model.Document{},
 					Kind:              model.KindHELM,
 					FilePath:          "test-connection.yaml",
-					HelmID:            "# KICS_HELM_ID_0",
+					HelmID:            "# KICS_HELM_ID_0_0",
 					OriginalData:      OriginalData1,
 					LinesOriginalData: utils.SplitLines(OriginalData1),
 				},
-				searchKey:     "KICS_HELM_ID_0.metadata.name={{RELEASE-NAME-test_helm-test-connection}}.spec.containers",
+				searchKey:     "KICS_HELM_ID_0_0.metadata.name={{RELEASE-NAME-test_helm-test-connection}}.spec.containers",
 				logWithFields: &zerolog.Logger{},
 				outputLines:   1,
 			},
@@ -171,11 +171,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 					IDInfo: map[int]interface{}{0: map[int]int{0: 0, 1: 1, 2: 2, 3: 3, 4: 4,
 						5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14, 15: 15, 16: 16, 17: 17,
 						18: 18, 19: 19, 21: 21, 22: 22}},
-					HelmID:            "# KICS_HELM_ID_0",
+					HelmID:            "# KICS_HELM_ID_0_0",
 					OriginalData:      OriginalData2,
 					LinesOriginalData: utils.SplitLines(OriginalData2),
 				},
-				searchKey:     "KICS_HELM_ID_0.metadata.name={{RELEASE-NAME-test_helm-test-connection}}.spec.containers",
+				searchKey:     "KICS_HELM_ID_0_0.metadata.name={{RELEASE-NAME-test_helm-test-connection}}.spec.containers",
 				logWithFields: &zerolog.Logger{},
 				outputLines:   1,
 			},
@@ -210,11 +210,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 					Document:          model.Document{},
 					Kind:              model.KindHELM,
 					FilePath:          "test-dups.yaml",
-					HelmID:            "# KICS_HELM_ID_1",
+					HelmID:            "# KICS_HELM_ID_0_1",
 					OriginalData:      OriginalData3,
 					LinesOriginalData: utils.SplitLines(OriginalData3),
 				},
-				searchKey:     "KICS_HELM_ID_1.metadata.name={{RELEASE-NAME-test_helm-test-connection}}.spec.containers",
+				searchKey:     "KICS_HELM_ID_0_1.metadata.name={{RELEASE-NAME-test_helm-test-connection}}.spec.containers",
 				logWithFields: &zerolog.Logger{},
 				outputLines:   1,
 			},
@@ -249,11 +249,11 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 					Document:          model.Document{},
 					Kind:              model.KindHELM,
 					FilePath:          "deployment.yaml",
-					HelmID:            "# KICS_HELM_ID_0",
+					HelmID:            "# KICS_HELM_ID_0_0",
 					OriginalData:      OriginalDataPartialMatch,
 					LinesOriginalData: utils.SplitLines(OriginalDataPartialMatch),
 				},
-				searchKey:     "KICS_HELM_ID_0.spec.template.spec.containers.securityContext.runAsNonRoot",
+				searchKey:     "KICS_HELM_ID_0_0.spec.template.spec.containers.securityContext.runAsNonRoot",
 				logWithFields: &zerolog.Logger{},
 				outputLines:   1,
 			},
@@ -303,7 +303,7 @@ func TestDetectLineFallsBackToIncludeInvocation(t *testing.T) {
 		FilePath:          "templates/metastore-deployment.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmInvocations:   model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 0}}},
+		HelmAttribution:   &model.HelmAttribution{Invocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 0}}}},
 	}
 
 	got := (DetectKindLine{}).DetectLine(
@@ -336,7 +336,7 @@ func TestDetectLineUsesExecutedInvocation(t *testing.T) {
 		FilePath:          "templates/resources.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmInvocations:   model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 2, Col: 0}}},
+		HelmAttribution:   &model.HelmAttribution{Invocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 2, Col: 0}}}},
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
@@ -350,15 +350,15 @@ func TestDetectLineUsesExecutedInvocation(t *testing.T) {
 }
 
 // A manifest mixing a resource with an include is stamped above the resource,
-// and the invocation's recorded position counts that stamp.
+// and the invocation is recorded at its position in the source as written.
 func TestDetectLineInvocationSkipsHelmIDStamps(t *testing.T) {
-	original := "# KICS_HELM_ID_0:\napiVersion: v1\nkind: ConfigMap\n---\n{{ include \"pod\" . }}"
+	original := "# KICS_HELM_ID_0_0:\napiVersion: v1\nkind: ConfigMap\n---\n{{ include \"pod\" . }}"
 	file := &model.FileMetadata{
 		Kind:              model.KindHELM,
 		FilePath:          "templates/mixed.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmInvocations:   model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 5, Col: 0}}},
+		HelmAttribution:   &model.HelmAttribution{Invocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 4, Col: 0}}}},
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
@@ -379,12 +379,12 @@ func TestDetectLineInvocationSkipsHelmIDStamps(t *testing.T) {
 
 // A numeric search-key segment must not match the ID of a later document's stamp.
 func TestDetectLineIndexDoesNotMatchHelmIDStamp(t *testing.T) {
-	original := "# KICS_HELM_ID_0:\napiVersion: v1\nkind: Role\nmetadata:\n  name: r\nrules:\n" +
-		"- resources:\n  - pods/exec\n---\n# KICS_HELM_ID_10:\napiVersion: v1\nkind: RoleBinding\n"
+	original := "# KICS_HELM_ID_0_0:\napiVersion: v1\nkind: Role\nmetadata:\n  name: r\nrules:\n" +
+		"- resources:\n  - pods/exec\n---\n# KICS_HELM_ID_0_10:\napiVersion: v1\nkind: RoleBinding\n"
 	file := &model.FileMetadata{
 		Kind:              model.KindHELM,
 		FilePath:          "templates/rbac.yaml",
-		HelmID:            "# KICS_HELM_ID_0:",
+		HelmID:            "# KICS_HELM_ID_0_0:",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
 	}
@@ -399,7 +399,7 @@ func TestDetectLineIndexDoesNotMatchHelmIDStamp(t *testing.T) {
 // Adjacent stamps are all dropped, and every position maps to the kept line it
 // is, or that follows it.
 func TestUnstampedLines(t *testing.T) {
-	lines := []string{"# KICS_HELM_ID_0:", "# KICS_HELM_ID_1:", "a: 1", "b: 2", "# KICS_HELM_ID_2:", "c: 3"}
+	lines := []string{"# KICS_HELM_ID_0_0:", "# KICS_HELM_ID_0_1:", "a: 1", "b: 2", "# KICS_HELM_ID_0_2:", "c: 3"}
 	kept, index := unstampedLines(lines)
 	if want := []string{"a: 1", "b: 2", "c: 3"}; !reflect.DeepEqual(kept, want) {
 		t.Fatalf("unstampedLines() kept = %q, want %q", kept, want)
@@ -418,7 +418,7 @@ func TestDetectLineInspectsEveryActionOnLine(t *testing.T) {
 		FilePath:          "templates/resource.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmInvocations:   model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 25}}},
+		HelmAttribution:   &model.HelmAttribution{Invocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 25}}}},
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)

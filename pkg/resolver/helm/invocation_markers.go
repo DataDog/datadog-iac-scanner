@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"helm.sh/helm/v3/pkg/chart"
 )
 
@@ -32,7 +33,7 @@ import (
 // reason.
 func addHelmInvocationMarkers(file *chart.File) *chart.File {
 	source := string(file.Data)
-	if strings.Contains(source, kicsHelmInvocation) {
+	if helmmarker.HasInvocation(source) {
 		return file
 	}
 	wrapper := isHelmInvocationWrapper(source)
@@ -42,7 +43,8 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 
 	var markers []replacement
 	var blocks helmBlockStack
-	for _, span := range balancedTemplateActionSpans(source) {
+	for _, action := range helmmarker.Terminated(source) {
+		span := [2]int{action.Start, action.End}
 		actionText := strings.Trim(source[span[0]+len("{{"):span[1]-len("}}")], "- \t\r\n")
 		fields := strings.Fields(actionText)
 		if len(fields) == 0 {
@@ -55,7 +57,7 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 		line := strings.Count(source[:span[0]], "\n") + 1
 		lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
 		col := span[0] - lineStart
-		marker := invocationMarker(line, col)
+		marker := helmmarker.Invocation(line, col)
 		if r, ok := invocationReplacement(source, span, actionText, marker, wrapper); ok {
 			markers = append(markers, r)
 		}
@@ -69,12 +71,6 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 	}
 	file.Data = []byte(source)
 	return file
-}
-
-// invocationMarker is the comment line recording the source position of an
-// include-like action in its rendered output.
-func invocationMarker(line, col int) string {
-	return fmt.Sprintf("%s%d_%d:\n", kicsHelmInvocation, line, col)
 }
 
 // invocationReplacement builds the marker edit for one include-like action.
@@ -140,7 +136,7 @@ var blockScalarHeader = regexp.MustCompile(`[|>][+-]?\d?[+-]?(?:\s+#.*)?\s*$`)
 func insideBlockScalar(before string) bool {
 	lines := strings.Split(before, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimRight(removeBalancedActions(lines[i]), " \t\r")
+		line := strings.TrimRight(helmmarker.Remove(lines[i]), " \t\r")
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -210,9 +206,9 @@ func markEveryDocument(templateAction, lead, marker string) string {
 }
 
 func isHelmInvocationWrapper(source string) bool {
-	// Balanced action removal: the lazy regex would leave a quoted "}}" as
-	// residue and disqualify a wrapper template that is in fact action-only.
-	withoutActions := removeBalancedActions(source)
+	// A quoted "}}" must not end an action early and leave residue that
+	// disqualifies a wrapper template which is in fact action-only.
+	withoutActions := helmmarker.Remove(source)
 	for _, line := range strings.Split(withoutActions, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") && !isYAMLDocumentBoundary(trimmed) {

@@ -129,7 +129,7 @@ func silenceStdLog() func() {
 }
 
 func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *action.Install,
-	valueOpts *values.Options, markInvocations bool) (*release.Release, *chart.Chart, stampedSources, []string, error) {
+	valueOpts *values.Options, marks invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	defer silenceStdLog()()
 
@@ -162,7 +162,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *acti
 	excluded := getExcluded(ctx, chartRequested, chartPath)
 
 	chartRequested = makeDeterministic(chartRequested)
-	sources := setID(chartRequested, markInvocations)
+	sources := setID(chartRequested, marks)
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {
 		return nil, nil, nil, []string{}, instErr

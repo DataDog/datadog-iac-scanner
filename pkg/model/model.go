@@ -196,11 +196,9 @@ type FileMetadata struct {
 	// OriginalData once line info is populated, progressively reclaiming the raw
 	// input content during eval.
 	releaseOriginalDataAfterLineInfo bool
-	// HelmInvocations lists the source actions that emitted a rendered Helm
-	// resource whose YAML lives in named templates. HelmRenderedContent is set
-	// only when there are several, to tell which of them emitted a given line.
-	HelmInvocations     HelmInvocations
-	HelmRenderedContent string
+	// HelmAttribution says which source actions emitted a rendered Helm
+	// resource whose YAML lives in named templates; nil when none is known.
+	HelmAttribution *HelmAttribution
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -530,7 +528,8 @@ type ResolvedHelm struct {
 
 // HelmInvocationAt is an include-like action that emitted part of a rendered
 // Helm document: the rendered lines from RenderedLine (1-based) up to the next
-// invocation came from the action at Position in the source template.
+// invocation came from the action at Position, a position in the source
+// template as written (1-based line, and column).
 type HelmInvocationAt struct {
 	RenderedLine int
 	Position     ResourceLine
@@ -539,6 +538,29 @@ type HelmInvocationAt struct {
 // HelmInvocations are the invocations that emitted a rendered Helm document, in
 // order of the rendered lines they emitted.
 type HelmInvocations []HelmInvocationAt
+
+// HelmAttribution ties a rendered Helm resource back to the source actions
+// that emitted it.
+type HelmAttribution struct {
+	Invocations HelmInvocations
+	// RenderedContent is the rendered document the invocations' RenderedLine
+	// refer to. It is set only when there are several invocations, to tell
+	// which of them emitted a given line.
+	RenderedContent string
+}
+
+// NewHelmAttribution returns the attribution of a rendered document, or nil
+// when no invocation emitted it. renderedContent is kept only when it is
+// needed to choose among several invocations.
+func NewHelmAttribution(invocations HelmInvocations, renderedContent string) *HelmAttribution {
+	if len(invocations) == 0 {
+		return nil
+	}
+	if len(invocations) < 2 {
+		renderedContent = ""
+	}
+	return &HelmAttribution{Invocations: invocations, RenderedContent: renderedContent}
+}
 
 // First is the invocation that emitted the start of the document, or the zero
 // position when none is known.
@@ -560,6 +582,23 @@ func (h HelmInvocations) At(renderedLine int) ResourceLine {
 		found = invocation.Position
 	}
 	return found
+}
+
+// First is the position of the invocation that emitted the start of the
+// document, or the zero position when there is no attribution.
+func (a *HelmAttribution) First() ResourceLine {
+	if a == nil {
+		return ResourceLine{}
+	}
+	return a.Invocations.First()
+}
+
+// At is the position of the invocation that emitted renderedLine.
+func (a *HelmAttribution) At(renderedLine int) ResourceLine {
+	if a == nil {
+		return ResourceLine{}
+	}
+	return a.Invocations.At(renderedLine)
 }
 
 // Extensions represents a list of supported extensions
