@@ -23,6 +23,7 @@ const (
 	dynamicBlockType   = "dynamic"
 	dynamicContentType = "content"
 	dynamicIterator    = "iterator"
+	dynamicLabels      = "labels"
 	forEachAttribute   = "for_each"
 	moduleSourceArg    = "source"
 )
@@ -292,8 +293,13 @@ func (a *valueAnalyzer) collectDynamic(block *hclsyntax.Block, out *[]attributeR
 			headerEnd = max(headerEnd, content.OpenBraceRange.Start.Line)
 		}
 	}
-	if !reads.empty() {
-		*out = append(*out, attributeReads{lineStart: block.TypeRange.Start.Line, lineEnd: headerEnd, reads: reads})
+	// labels shape the generated block but not its iteration values.
+	header := reads.shared()
+	if attr, ok := block.Body.Attributes[dynamicLabels]; ok {
+		header.add(a.reads(attr.Expr).shared())
+	}
+	if !header.empty() {
+		*out = append(*out, attributeReads{lineStart: block.TypeRange.Start.Line, lineEnd: headerEnd, reads: header})
 	}
 	depth := len(a.iterators)
 	a.iterators = append(a.iterators, iteratorReads{name: name, reads: reads})

@@ -920,3 +920,32 @@ module "bucket" {
 	require.Equal(t, "v5", attr.Version)
 	require.Equal(t, "https://github.com/datadog/cloud-inventory//terraform-modules/aws-bucket", attr.ModulePath[0].Source)
 }
+
+func TestModuleArgumentsTraceDynamicBlockLabels(t *testing.T) {
+	call := parseBlockBody(t, `module "m" {
+  source = "../m"
+  kind   = "local-exec"
+  items  = ["a"]
+}`)
+	trace := func(forEach string) []model.ModuleArgument {
+		resource := &tfeval.ResolvedResource{
+			Body: parseBlockBody(t, `resource "null_resource" "this" {
+  dynamic "provisioner" {
+    for_each = `+forEach+`
+    labels   = [var.kind]
+    content {
+      command = "true"
+    }
+  }
+}`),
+			CallChain: []tfeval.CallSite{{Body: call}},
+		}
+		return newModuleAttributionCache().resourceArguments(resource, "stack/main.tf")
+	}
+	t.Run("labels read an input while for_each reads none", func(t *testing.T) {
+		requireCallerAt(t, trace(`["x"]`), 4, 3)
+	})
+	t.Run("labels and for_each read different inputs", func(t *testing.T) {
+		requireControlAt(t, trace(`var.items`), 4, model.ArgumentControlUnknown)
+	})
+}
