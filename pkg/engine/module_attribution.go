@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 const (
@@ -35,21 +36,126 @@ type RemoteModuleProvenance struct {
 	CanonicalSource string
 	SourceType      string
 	ModuleRoot      string
+	PackageRoot     string
 }
 
 type moduleProvenanceLookup func(callerRoot, source, version, moduleName string) (RemoteModuleProvenance, bool)
 
+// maxCachedChainDepth bounds the call chains attribution is memoized for;
+// deeper chains are rare and are attributed without the cache.
+const maxCachedChainDepth = 8
+
+// moduleAttributionCache memoizes attribution within one root evaluation.
+// Attribution depends only on the HCL blocks involved: a resource block's
+// count/for_each instances and every resource reached through the same module
+// blocks share their work. Keys are HCL nodes, so a cache must not outlive
+// the root whose parse it holds.
+type moduleAttributionCache struct {
+	resources  map[resourceCacheKey]*model.ModuleAttribution
+	chains     map[chainCacheKey]modulePathEntry
+	attributes map[*hclsyntax.Body][]attributeVariables
+	arguments  map[*hclsyntax.Attribute][]string
+	locals     map[hclsyntax.Expression][]string
+}
+
+type chainCacheKey struct {
+	calls [maxCachedChainDepth]*hclsyntax.Body
+	depth int
+}
+
+type resourceCacheKey struct {
+	resource *hclsyntax.Body
+	chain    chainCacheKey
+}
+
+type modulePathEntry struct {
+	path []model.ModulePathHop
+	// packages holds, per hop, the remote package the call resolved to, or the
+	// zero value for calls that stay in their caller's package.
+	packages []modulePackage
+}
+
+// modulePackage is the remote package a module call resolves into: address
+// names the directory root, which file names inside the package are relative
+// to.
+type modulePackage struct {
+	root       string
+	address    string
+	sourceType string
+	version    string
+}
+
+func newModuleAttributionCache() *moduleAttributionCache {
+	return &moduleAttributionCache{
+		resources:  make(map[resourceCacheKey]*model.ModuleAttribution),
+		chains:     make(map[chainCacheKey]modulePathEntry),
+		attributes: make(map[*hclsyntax.Body][]attributeVariables),
+		arguments:  make(map[*hclsyntax.Attribute][]string),
+		locals:     make(map[hclsyntax.Expression][]string),
+	}
+}
+
+func chainKey(chain []tfeval.CallSite) (chainCacheKey, bool) {
+	var key chainCacheKey
+	if len(chain) == 0 || len(chain) > maxCachedChainDepth {
+		return key, false
+	}
+	for i := range chain {
+		if chain[i].Body == nil {
+			return key, false
+		}
+		key.calls[i] = chain[i].Body
+	}
+	key.depth = len(chain)
+	return key, true
+}
+
+// attribution returns the resource's attribution, shared with every resource
+// of the same block reached through the same module blocks. Shared
+// attributions are read-only; callers clone before narrowing one.
+func (c *moduleAttributionCache) attribution(
+	r *tfeval.ResolvedResource, repoPath string, lookup moduleProvenanceLookup,
+) *model.ModuleAttribution {
+	chain, ok := chainKey(r.CallChain)
+	if !ok || r.Body == nil {
+		return buildModuleAttribution(r, repoPath, lookup, c)
+	}
+	key := resourceCacheKey{resource: r.Body, chain: chain}
+	if attr, ok := c.resources[key]; ok {
+		return attr
+	}
+	attr := buildModuleAttribution(r, repoPath, lookup, c)
+	c.resources[key] = attr
+	return attr
+}
+
+func (c *moduleAttributionCache) modulePath(
+	chain []tfeval.CallSite, repoPath string, lookup moduleProvenanceLookup,
+) modulePathEntry {
+	key, ok := chainKey(chain)
+	if c == nil || !ok {
+		return buildModulePath(chain, repoPath, lookup)
+	}
+	if entry, ok := c.chains[key]; ok {
+		return entry
+	}
+	entry := buildModulePath(chain, repoPath, lookup)
+	c.chains[key] = entry
+	return entry
+}
+
 func buildModuleAttribution(
 	r *tfeval.ResolvedResource,
 	repoPath string,
-	moduleRoot string,
 	lookup moduleProvenanceLookup,
+	cache *moduleAttributionCache,
 ) *model.ModuleAttribution {
 	if r == nil || len(r.CallChain) == 0 {
 		return nil
 	}
 
-	path := buildModulePath(r.CallChain, repoPath, lookup)
+	entry := cache.modulePath(r.CallChain, repoPath, lookup)
+	path := entry.path
 	if len(path) == 0 {
 		return nil
 	}
@@ -60,23 +166,17 @@ func buildModuleAttribution(
 		dependencyType = moduleDependencyTransitive
 	}
 
-	bodyFile := moduleRelativePath(r.DefinedIn, moduleRoot, repoPath)
+	bodyPath := absPath(r.DefinedIn, repoPath)
+	bodyFile, pkg := moduleFileName(bodyPath, repoPath, entry.packages)
 	bodyEnd := r.DefEndLine
 	if bodyEnd < r.DefLine {
 		bodyEnd = r.DefLine
 	}
 
-	var modulePath []model.ModulePathHop
-	if len(path) > 1 {
-		modulePath = path
-	}
-	return &model.ModuleAttribution{
-		Name:           leaf.Name,
-		Source:         leaf.Source,
-		SourceType:     leaf.SourceType,
-		Version:        leaf.Version,
+	attr := &model.ModuleAttribution{
+		SourceType:     moduleSourceTypeLocal,
 		DependencyType: dependencyType,
-		CallSite:       path[0].CodeLocation,
+		CallSite:       rootCallAnchor(&r.CallChain[0], path[0].CodeLocation),
 		ModuleCodeLocation: model.SourceLocation{
 			Filename:    bodyFile,
 			LineStart:   r.DefLine,
@@ -84,18 +184,44 @@ func buildModuleAttribution(
 			ColumnStart: r.DefColumn,
 			ColumnEnd:   r.DefEndColumn,
 		},
-		ModulePath:      modulePath,
-		ModuleCodeOwned: leaf.SourceType == moduleSourceTypeLocal && pathWithinRoot(moduleRoot, repoPath),
+		ModulePath:      path,
+		ModuleCodeOwned: leaf.SourceType == moduleSourceTypeLocal && pathWithinRoot(filepath.Dir(bodyPath), repoPath),
+		Arguments:       cache.resourceArguments(r, path[0].CodeLocation.Filename),
 	}
+	if pkg.root != "" {
+		attr.Source, attr.SourceType, attr.Version = pkg.address, pkg.sourceType, pkg.version
+	}
+	return attr
 }
 
+// rootCallAnchor is where a finding not set by a call argument points: the
+// root call's source argument, which names the module to change or upgrade.
+func rootCallAnchor(site *tfeval.CallSite, block model.SourceLocation) model.SourceLocation {
+	if site.Body == nil {
+		return block
+	}
+	source, ok := site.Body.Attributes[moduleSourceArg]
+	if !ok {
+		return block
+	}
+	return attributeLocation(source, block.Filename)
+}
+
+// buildModulePath returns one hop per call in chain, along with the package
+// each call resolved to. A local call inside a remote package is reported as
+// that package's subdirectory.
 func buildModulePath(
 	chain []tfeval.CallSite,
 	repoPath string,
 	lookup moduleProvenanceLookup,
-) []model.ModulePathHop {
-	path := make([]model.ModulePathHop, 0, len(chain))
-	for i, site := range chain {
+) modulePathEntry {
+	entry := modulePathEntry{
+		path:     make([]model.ModulePathHop, 0, len(chain)),
+		packages: make([]modulePackage, 0, len(chain)),
+	}
+	var pkg modulePackage
+	for i := range chain {
+		site := &chain[i]
 		location := declarationLocation(
 			site.CalledFrom,
 			site.CalledLine,
@@ -105,28 +231,96 @@ func buildModulePath(
 			repoPath,
 		)
 		if i > 0 {
-			location.Filename = filepath.ToSlash(filepath.Base(site.CalledFrom))
+			location.Filename, _ = moduleFileName(site.CalledFrom, repoPath, entry.packages)
 		}
 		hop := model.ModulePathHop{
 			Name:         site.ModuleName,
 			CodeLocation: location,
 		}
-		enrichModuleHop(&hop, moduleCallerRoot(site.CalledFrom, repoPath), repoPath, &site, lookup)
-		path = append(path, hop)
+		callerRoot := moduleCallerRoot(site.CalledFrom, repoPath)
+		root, address := enrichModuleHop(&hop, callerRoot, repoPath, site, lookup)
+		var called modulePackage
+		switch {
+		case hop.SourceType != moduleSourceTypeLocal:
+			pkg = modulePackage{
+				root:       root,
+				address:    address,
+				sourceType: hop.SourceType,
+				version:    hop.Version,
+			}
+			called = pkg
+		case pkg.root != "":
+			pkg.describe(&hop, site.Source, callerRoot)
+		}
+		entry.path = append(entry.path, hop)
+		entry.packages = append(entry.packages, called)
 	}
-	return path
+	return entry
 }
 
+// describe reports a local call resolving inside the package as the package's
+// subdirectory. Calls leaving the package keep their local identity.
+func (p *modulePackage) describe(hop *model.ModulePathHop, source, callerRoot string) {
+	dir := absPath(strings.TrimPrefix(source, "git::"), callerRoot)
+	if !pathWithinRoot(dir, p.root) {
+		return
+	}
+	rel, err := filepath.Rel(filepath.Clean(p.root), dir)
+	if err != nil {
+		return
+	}
+	hop.Source = joinModuleSubdir(p.address, filepath.ToSlash(rel))
+	hop.SourceType = p.sourceType
+	hop.Version = p.version
+}
+
+// modulePackageAddress strips the "//subdir" of a module source, leaving the
+// address of the package holding it.
+func modulePackageAddress(source string) string {
+	address, _ := splitModuleSubdir(source)
+	return address
+}
+
+func splitModuleSubdir(source string) (address, subdir string) {
+	start := 0
+	if i := strings.Index(source, "://"); i >= 0 {
+		start = i + len("://")
+	}
+	if i := strings.Index(source[start:], "//"); i >= 0 {
+		return source[:start+i], source[start+i+len("//"):]
+	}
+	return source, ""
+}
+
+// joinModuleSubdir appends rel to the subdirectory of a module address.
+func joinModuleSubdir(address, rel string) string {
+	if rel == "." || rel == "" {
+		return address
+	}
+	if _, subdir := splitModuleSubdir(address); subdir != "" {
+		return address + "/" + rel
+	}
+	return address + "//" + rel
+}
+
+// enrichModuleHop fills the hop's source identity and returns the root of a
+// resolved remote module with the address naming it, or empty values when the
+// call has no resolved package. A git module's version is the ref its source
+// declares, falling back to the resolved commit when it declares none.
 func enrichModuleHop(
 	hop *model.ModulePathHop,
 	callerRoot string,
 	repoPath string,
 	site *tfeval.CallSite,
 	lookup moduleProvenanceLookup,
-) {
+) (root, address string) {
 	sourceType, _ := tfmodules.DetectModuleSourceType(site.Source)
 	hop.SourceType = sourceType
 	hop.Source = normalizedModuleSource(site.Source, sourceType, callerRoot, repoPath)
+	declaredRef := declaredGitRef(site.Source)
+	if sourceType == moduleSourceTypeGit || isGitShorthand(site.Source) {
+		hop.Version = declaredRef
+	}
 
 	if lookup != nil {
 		if prov, ok := lookup(callerRoot, site.Source, site.Version, site.ModuleName); ok {
@@ -139,19 +333,65 @@ func enrichModuleHop(
 			case moduleSourceTypeRegistry:
 				hop.Version = strings.TrimSpace(prov.ResolvedVersion)
 			case moduleSourceTypeGit:
-				hop.Version = strings.TrimSpace(prov.ResolvedRef)
+				hop.Version = firstNonEmpty(declaredRef, prov.ResolvedRef)
 			}
-			return
+			if hop.SourceType == moduleSourceTypeLocal {
+				return "", ""
+			}
+			return moduleRootAddress(&prov, hop.Source)
 		}
 	}
+	return "", ""
 }
 
+// moduleRootAddress returns the directory module files are named from and the
+// address naming it: the package root and the source without its subdirectory
+// when the source addresses a subdirectory of that package, the module root and
+// the full source otherwise.
+func moduleRootAddress(prov *RemoteModuleProvenance, source string) (root, address string) {
+	pkgAddress := modulePackageAddress(source)
+	if prov.ModuleRoot == "" ||
+		(prov.PackageRoot != "" && pkgAddress != source && filepath.Clean(prov.PackageRoot) != filepath.Clean(prov.ModuleRoot)) {
+		return prov.PackageRoot, pkgAddress
+	}
+	return prov.ModuleRoot, source
+}
+
+// declaredGitRef returns the ref query parameter of a git module source.
+// Query parts are split by hand so a ref holding ";" is kept.
+func declaredGitRef(source string) string {
+	_, query, ok := strings.Cut(source, "?")
+	if !ok {
+		return ""
+	}
+	for _, part := range strings.Split(query, "&") {
+		if key, value, found := strings.Cut(part, "="); found && key == "ref" {
+			if unescaped, err := url.QueryUnescape(value); err == nil {
+				value = unescaped
+			}
+			value, _, _ = strings.Cut(value, "#")
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+// isGitShorthand reports whether source is a scp-like or GitHub/Bitbucket
+// shorthand git address, which module source detection leaves untyped.
+func isGitShorthand(source string) bool {
+	_, ok := httpsGitAddress(strings.SplitN(strings.TrimSpace(source), "?", 2)[0])
+	return ok
+}
+
+// normalizedModuleSource returns the reported identity of a module source.
+// Remote sources are lowercased so spellings differing only in case group as
+// one module; local sources keep their casing since they name repository paths.
 func normalizedModuleSource(source, sourceType, callerRoot, repoPath string) string {
 	source = strings.TrimSpace(source)
 	if sourceType == moduleSourceTypeRegistry {
 		source = strings.SplitN(source, "@", 2)[0]
 		if addr, err := tfmodules.ParseRegistryModuleSource(source); err == nil {
-			return addr.String()
+			return strings.ToLower(addr.String())
 		}
 	}
 	if sourceType == moduleSourceTypeLocal {
@@ -174,7 +414,31 @@ func normalizedModuleSource(source, sourceType, callerRoot, repoPath string) str
 		}
 		return filepath.Base(filepath.Clean(target))
 	}
-	return normalizedRemoteModuleSource(source)
+	return lowerRemoteSource(normalizedRemoteModuleSource(source))
+}
+
+// lowerRemoteSource lowercases the parts of a remote source that are case
+// insensitive: the host always, the owner and repository only on hosts known
+// to ignore their case. The subdirectory is a real path and keeps its casing.
+func lowerRemoteSource(source string) string {
+	scheme, rest, hasScheme := strings.Cut(source, "://")
+	if !hasScheme {
+		return source
+	}
+	pkg, subdir, hasSubdir := strings.Cut(rest, "//")
+	host, repo, _ := strings.Cut(pkg, "/")
+	host = strings.ToLower(host)
+	if host == "github.com" || host == "bitbucket.org" {
+		repo = strings.ToLower(repo)
+	}
+	out := scheme + "://" + host
+	if repo != "" {
+		out += "/" + repo
+	}
+	if hasSubdir {
+		out += "//" + subdir
+	}
+	return out
 }
 
 func normalizedRemoteModuleSource(source string) string {
@@ -187,7 +451,11 @@ func normalizedRemoteModuleSource(source string) string {
 			return normalizedFileModuleSource(parsed.Path)
 		}
 		if parsed.Scheme == "ssh" && parsed.Hostname() != "" {
-			parsed = &url.URL{Scheme: "https", Host: parsed.Hostname(), Path: parsed.Path}
+			host := parsed.Hostname()
+			if port := parsed.Port(); port != "" && port != "22" {
+				host += ":" + port
+			}
+			parsed = &url.URL{Scheme: "https", Host: host, Path: parsed.Path}
 		}
 		parsed.User = nil
 		source = parsed.String()
@@ -290,15 +558,25 @@ func moduleCallerRoot(calledFrom, repoPath string) string {
 	return filepath.Clean(filepath.Dir(absPath(calledFrom, repoPath)))
 }
 
-func moduleRelativePath(definedIn, moduleRoot, repoPath string) string {
-	absDefined := absPath(definedIn, repoPath)
-	if moduleRoot != "" {
-		rel, err := filepath.Rel(filepath.Clean(moduleRoot), absDefined)
-		if err == nil && pathWithinRoot(absDefined, moduleRoot) {
-			return filepath.ToSlash(rel)
+// moduleFileName names a module file relative to the directory holding it:
+// the innermost resolved package containing it, returned alongside, or the
+// scanned repository.
+func moduleFileName(filePath, repoPath string, packages []modulePackage) (string, modulePackage) {
+	abs := absPath(filePath, repoPath)
+	for i := len(packages) - 1; i >= 0; i-- {
+		root := packages[i].root
+		if root == "" || !pathWithinRoot(abs, root) {
+			continue
+		}
+		if rel, err := filepath.Rel(filepath.Clean(root), abs); err == nil {
+			return filepath.ToSlash(rel), packages[i]
 		}
 	}
-	return repoRelativeFile(absDefined, repoPath)
+	name := repoRelativeFile(abs, repoPath)
+	if name == parentDirectoryPath || strings.HasPrefix(name, parentDirectoryPath+"/") {
+		return pathpkg.Base(name), modulePackage{}
+	}
+	return name, modulePackage{}
 }
 
 func firstNonEmpty(values ...string) string {
@@ -336,33 +614,55 @@ func cloneModuleAttributions(attrs map[string]*model.ModuleAttribution) map[stri
 	return out
 }
 
+// moduleAttributionForResource returns the attribution of the resource the
+// finding was raised on, with its call site narrowed to the argument setting
+// the flagged line when one does, and its code location narrowed to the
+// flagged region inside the module.
 func moduleAttributionForResource(
-	attrs map[string]*model.ModuleAttribution,
-	resourceType string,
-	definitionLine, definitionColumn int,
+	attrs map[string]*model.ModuleAttribution, v *model.Vulnerability,
 ) *model.ModuleAttribution {
-	if len(attrs) > 0 {
-		if attr, ok := attrs[moduleAttributionKey(resourceType, definitionLine, definitionColumn)]; ok {
-			return cloneModuleAttribution(attr)
+	if len(attrs) == 0 {
+		return nil
+	}
+	attr, ok := attrs[moduleAttributionKey(v.ResourceType, v.BlockLocation.Start.Line, v.BlockLocation.Start.Col)]
+	if !ok {
+		return nil
+	}
+	clone := cloneModuleAttribution(attr)
+	if clone == nil {
+		return nil
+	}
+	for _, arg := range clone.Arguments {
+		if v.Line >= arg.LineStart && v.Line <= arg.LineEnd {
+			clone.CallSite = arg.CallSite
+			clone.CallArgument = true
+			break
 		}
 	}
-	return nil
+	clone.Arguments = nil
+	narrowCodeLocation(&clone.ModuleCodeLocation, v)
+	return clone
 }
 
-func moduleRootForResource(r *tfeval.ResolvedResource, repoPath string, lookup moduleProvenanceLookup) string {
-	if r == nil || len(r.CallChain) == 0 {
-		return ""
+// narrowCodeLocation narrows the module code location to the region reports
+// highlight for the finding: the remediation location when it lies within the
+// vulnerable region, the vulnerable region otherwise, with a non-empty column
+// range like the SARIF primary location. It is left as is when the finding
+// carries no region.
+func narrowCodeLocation(location *model.SourceLocation, v *model.Vulnerability) {
+	region := v.VulnerabilityLocation
+	if region.Start.Line < 1 {
+		return
 	}
-	leaf := r.CallChain[len(r.CallChain)-1]
-	callerRoot := moduleCallerRoot(leaf.CalledFrom, repoPath)
-	if lookup != nil {
-		if prov, ok := lookup(callerRoot, leaf.Source, leaf.Version, leaf.ModuleName); ok && prov.ModuleRoot != "" {
-			return prov.ModuleRoot
-		}
+	if remediation := v.RemediationLocation; remediation.Start.Line >= region.Start.Line &&
+		remediation.End.Line <= region.End.Line {
+		region = remediation
 	}
-	if len(r.CallChain) > 0 &&
-		tfmodules.LooksLikeLocalModuleSource(strings.TrimPrefix(leaf.Source, "git::")) {
-		return filepath.Dir(absPath(r.DefinedIn, repoPath))
+	location.LineStart = region.Start.Line
+	location.LineEnd = max(region.End.Line, region.Start.Line)
+	location.ColumnStart = max(region.Start.Col, 1)
+	location.ColumnEnd = region.End.Col
+	if location.LineEnd == location.LineStart && location.ColumnEnd <= location.ColumnStart {
+		location.ColumnEnd = location.ColumnStart + 1
 	}
-	return ""
 }

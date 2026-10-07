@@ -49,7 +49,7 @@ module "bucket" {
 		}},
 	}
 
-	attr := buildModuleAttribution(&resource, repo, moduleDir, nil)
+	attr := buildModuleAttribution(&resource, repo, nil, nil)
 	require.NotNil(t, attr)
 	require.Equal(t, "direct", attr.DependencyType)
 	require.Equal(t, "stack/main.tf", attr.CallSite.Filename)
@@ -57,15 +57,19 @@ module "bucket" {
 	require.Equal(t, 5, attr.CallSite.LineEnd)
 	require.Equal(t, 1, attr.CallSite.ColumnStart)
 	require.Equal(t, 2, attr.CallSite.ColumnEnd)
-	require.Equal(t, "bucket", attr.Name)
-	require.Equal(t, "modules/bucket", attr.Source)
 	require.Equal(t, "local", attr.SourceType)
-	require.Equal(t, "main.tf", attr.ModuleCodeLocation.Filename)
+	require.Empty(t, attr.Source, "files of local modules are named from the scanned repository")
+	require.Empty(t, attr.Version)
+	require.Len(t, attr.ModulePath, 1)
+	require.Equal(t, "bucket", attr.ModulePath[0].Name)
+	require.Equal(t, "modules/bucket", attr.ModulePath[0].Source)
+	require.Equal(t, "local", attr.ModulePath[0].SourceType)
+	require.Equal(t, "stack/main.tf", attr.ModulePath[0].CodeLocation.Filename)
+	require.Equal(t, "modules/bucket/main.tf", attr.ModuleCodeLocation.Filename)
 	require.Equal(t, 2, attr.ModuleCodeLocation.LineStart)
 	require.Equal(t, 1, attr.ModuleCodeLocation.ColumnStart)
 	require.Equal(t, 2, attr.ModuleCodeLocation.ColumnEnd)
 	require.True(t, attr.ModuleCodeOwned)
-	require.Empty(t, attr.ModulePath)
 }
 
 func TestBuildModuleAttributionRemoteModuleUsesProvenance(t *testing.T) {
@@ -104,15 +108,18 @@ module "bucket" {
 		}, true
 	})
 
-	attr := buildModuleAttribution(&resource, repo, filepath.Join(repo, "cache"), lookup)
+	attr := buildModuleAttribution(&resource, repo, lookup, nil)
 	require.NotNil(t, attr)
-	require.Equal(t, "bucket", attr.Name)
+	require.Len(t, attr.ModulePath, 1)
+	require.Equal(t, "bucket", attr.ModulePath[0].Name)
+	require.Equal(t, "registry.example.com/acme/bucket/aws", attr.ModulePath[0].Source)
+	require.Equal(t, "registry", attr.ModulePath[0].SourceType)
+	require.Equal(t, "1.0.0", attr.ModulePath[0].Version)
 	require.Equal(t, "registry.example.com/acme/bucket/aws", attr.Source)
 	require.Equal(t, "registry", attr.SourceType)
 	require.Equal(t, "1.0.0", attr.Version)
 	require.Equal(t, "main.tf", attr.ModuleCodeLocation.Filename)
 	require.Equal(t, "stack/main.tf", attr.CallSite.Filename)
-	require.Empty(t, attr.ModulePath)
 	require.False(t, attr.ModuleCodeOwned)
 }
 
@@ -144,11 +151,12 @@ module "vpc" {
 		}, true
 	})
 
-	attr := buildModuleAttribution(
-		&resource, repo, moduleRootForResource(&resource, repo, lookup), lookup,
-	)
+	attr := buildModuleAttribution(&resource, repo, lookup, nil)
 	require.NotNil(t, attr)
 	require.Equal(t, "main.tf", attr.ModuleCodeLocation.Filename)
+	require.Equal(t, "https://example.com/acme/network//modules/vpc", attr.Source,
+		"without a package root, files are named from the module root, which the full source names")
+	require.Equal(t, "v1.0.0", attr.Version)
 }
 
 func TestBuildModuleAttributionUsesOnlyConcreteResolvedVersion(t *testing.T) {
@@ -173,12 +181,12 @@ module "bucket" {
 		}},
 	}
 
-	attr := buildModuleAttribution(&resource, repo, filepath.Join(repo, "cache"), nil)
+	attr := buildModuleAttribution(&resource, repo, nil, nil)
 	require.NotNil(t, attr)
-	require.Empty(t, attr.Version)
+	require.Empty(t, attr.ModulePath[0].Version)
 }
 
-func TestBuildModuleAttributionUsesResolvedGitRefAsVersion(t *testing.T) {
+func TestBuildModuleAttributionUsesDeclaredGitRefAsVersion(t *testing.T) {
 	repo := t.TempDir()
 	callerPath := writeCallerFixture(t, repo, "stack/main.tf", `
 module "vpc" {
@@ -207,10 +215,15 @@ module "vpc" {
 		}, true
 	})
 
-	attr := buildModuleAttribution(&resource, repo, filepath.Join(repo, "cache"), lookup)
+	attr := buildModuleAttribution(&resource, repo, lookup, nil)
 	require.NotNil(t, attr)
-	require.Equal(t, "https://example.com/acme/network//modules/vpc", attr.Source)
-	require.Equal(t, "45ea6a143c2d", attr.Version)
+	require.Equal(t, "https://example.com/acme/network//modules/vpc", attr.ModulePath[0].Source)
+	require.Equal(t, "v3.2.0", attr.ModulePath[0].Version)
+
+	resource.CallChain[0].Source = "git::https://example.com/acme/network.git//modules/vpc"
+	attr = buildModuleAttribution(&resource, repo, lookup, nil)
+	require.NotNil(t, attr)
+	require.Equal(t, "45ea6a143c2d", attr.ModulePath[0].Version, "falls back to the resolved commit when no ref is declared")
 }
 
 func TestNormalizedModuleSourceDoesNotExposeExternalLocalPaths(t *testing.T) {
@@ -239,7 +252,7 @@ func TestNormalizedModuleSourceDoesNotExposeExternalLocalPaths(t *testing.T) {
 
 func TestNormalizedModuleSourceGivesEquivalentGitSpellingsOneSource(t *testing.T) {
 	repo := t.TempDir()
-	const want = "https://github.com/DataDog/appgate//gateways/aws/instance"
+	const want = "https://github.com/datadog/appgate//gateways/aws/instance"
 	for _, source := range []string{
 		"git::https://github.com/DataDog/appgate//gateways/aws/instance?ref=80bbe065",
 		"git::https://github.com/DataDog/appgate.git//gateways/aws/instance?ref=80bbe065",
@@ -307,7 +320,7 @@ module "bucket" {
 		},
 	}
 
-	attr := buildModuleAttribution(&resource, repo, filepath.Join(repo, "cache"), lookup)
+	attr := buildModuleAttribution(&resource, repo, lookup, nil)
 	require.NotNil(t, attr)
 	require.Equal(t, "transitive", attr.DependencyType)
 	require.Len(t, attr.ModulePath, 2)
@@ -315,26 +328,110 @@ module "bucket" {
 	require.Equal(t, "stack/main.tf", attr.ModulePath[0].CodeLocation.Filename)
 	require.Equal(t, "registry.example.com/acme/bucket/aws", attr.ModulePath[1].Source)
 	require.Equal(t, "1.0.0", attr.ModulePath[1].Version)
-	require.Equal(t, "main.tf", attr.ModulePath[1].CodeLocation.Filename)
+	require.Equal(t, "modules/wrapper/main.tf", attr.ModulePath[1].CodeLocation.Filename)
 	require.Equal(t, "main.tf", attr.ModuleCodeLocation.Filename)
+	require.Equal(t, "registry.example.com/acme/bucket/aws", attr.Source, "the package holding the resource, not the root call")
+	require.Equal(t, "registry", attr.SourceType)
+	require.Equal(t, "1.0.0", attr.Version)
 }
 
 func TestModuleAttributionForResourceSelectsMatchingResource(t *testing.T) {
 	attrs := map[string]*model.ModuleAttribution{
 		"aws_s3_bucket.5.1": {
-			Name:               "a",
+			DependencyType:     "a",
 			ModuleCodeLocation: model.SourceLocation{Filename: "a.tf", LineStart: 5},
 		},
 		"aws_s3_bucket.5.3": {
-			Name:               "b",
+			DependencyType:     "b",
 			ModuleCodeLocation: model.SourceLocation{Filename: "b.tf", LineStart: 5},
 		},
 	}
 
-	got := moduleAttributionForResource(attrs, "aws_s3_bucket", 5, 3)
+	vulnerability := &model.Vulnerability{
+		ResourceType:  "aws_s3_bucket",
+		BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 5, Col: 3}},
+	}
+	got := moduleAttributionForResource(attrs, vulnerability)
 	require.NotNil(t, got)
-	require.Equal(t, "b", got.Name)
+	require.Equal(t, "b", got.DependencyType)
 	require.Equal(t, 5, got.ModuleCodeLocation.LineStart)
+}
+
+func TestModuleAttributionForResourceNarrowsCodeLocation(t *testing.T) {
+	attrs := map[string]*model.ModuleAttribution{
+		"aws_s3_bucket.2.1": {
+			ModuleCodeLocation: model.SourceLocation{Filename: "modules/bucket/main.tf", LineStart: 2, LineEnd: 9, ColumnStart: 1, ColumnEnd: 2},
+		},
+	}
+	vulnerability := func() *model.Vulnerability {
+		return &model.Vulnerability{
+			ResourceType:          "aws_s3_bucket",
+			BlockLocation:         model.ResourceLocation{Start: model.ResourceLine{Line: 2, Col: 1}},
+			VulnerabilityLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 2, Col: 1}, End: model.ResourceLine{Line: 9, Col: 2}},
+		}
+	}
+
+	t.Run("remediation location within the vulnerable region", func(t *testing.T) {
+		v := vulnerability()
+		v.RemediationLocation = model.ResourceLocation{Start: model.ResourceLine{Line: 6, Col: 5}, End: model.ResourceLine{Line: 6, Col: 27}}
+		require.Equal(t, model.SourceLocation{
+			Filename: "modules/bucket/main.tf", LineStart: 6, LineEnd: 6, ColumnStart: 5, ColumnEnd: 27,
+		}, moduleAttributionForResource(attrs, v).ModuleCodeLocation)
+	})
+
+	t.Run("vulnerable region without a remediation location", func(t *testing.T) {
+		require.Equal(t, model.SourceLocation{
+			Filename: "modules/bucket/main.tf", LineStart: 2, LineEnd: 9, ColumnStart: 1, ColumnEnd: 2,
+		}, moduleAttributionForResource(attrs, vulnerability()).ModuleCodeLocation)
+	})
+
+	t.Run("finding without a region keeps the definition", func(t *testing.T) {
+		v := vulnerability()
+		v.VulnerabilityLocation = model.ResourceLocation{}
+		require.Equal(t, attrs["aws_s3_bucket.2.1"].ModuleCodeLocation, moduleAttributionForResource(attrs, v).ModuleCodeLocation)
+	})
+
+	t.Run("shared attribution is not modified", func(t *testing.T) {
+		v := vulnerability()
+		v.RemediationLocation = model.ResourceLocation{Start: model.ResourceLine{Line: 6, Col: 5}, End: model.ResourceLine{Line: 6, Col: 27}}
+		_ = moduleAttributionForResource(attrs, v)
+		require.Equal(t, 2, attrs["aws_s3_bucket.2.1"].ModuleCodeLocation.LineStart)
+	})
+}
+
+func TestModuleRootAddressNamesTheRootFilesAreRelativeTo(t *testing.T) {
+	const source = "https://github.com/acme/infra//modules/vpc"
+	tests := []struct {
+		name        string
+		prov        RemoteModuleProvenance
+		wantRoot    string
+		wantAddress string
+	}{
+		{"package root above the module", RemoteModuleProvenance{ModuleRoot: "/c/infra/modules/vpc", PackageRoot: "/c/infra"}, "/c/infra", "https://github.com/acme/infra"},
+		{"module root only", RemoteModuleProvenance{ModuleRoot: "/c/infra/modules/vpc"}, "/c/infra/modules/vpc", source},
+		{"package root defaulted to the module root", RemoteModuleProvenance{ModuleRoot: "/c/vpc", PackageRoot: "/c/vpc"}, "/c/vpc", source},
+		{"package root only", RemoteModuleProvenance{PackageRoot: "/c/infra"}, "/c/infra", "https://github.com/acme/infra"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, address := moduleRootAddress(&tt.prov, source)
+			require.Equal(t, tt.wantRoot, root)
+			require.Equal(t, tt.wantAddress, address)
+		})
+	}
+
+	root, address := moduleRootAddress(
+		&RemoteModuleProvenance{ModuleRoot: "/c/module", PackageRoot: "/c/package"}, "registry.example.com/acme/bucket/aws",
+	)
+	require.Equal(t, "/c/module", root, "a source without a subdirectory cannot name a larger package")
+	require.Equal(t, "registry.example.com/acme/bucket/aws", address)
+}
+
+func TestJoinModuleSubdir(t *testing.T) {
+	require.Equal(t, "https://github.com/acme/infra", joinModuleSubdir("https://github.com/acme/infra", "."))
+	require.Equal(t, "https://github.com/acme/infra//alerting", joinModuleSubdir("https://github.com/acme/infra", "alerting"))
+	require.Equal(t, "https://github.com/acme/infra//modules/vpc/alerting",
+		joinModuleSubdir("https://github.com/acme/infra//modules/vpc", "alerting"))
 }
 
 func writeLocalModuleFixture(t *testing.T, repo, relDir, body string) string {
@@ -351,4 +448,35 @@ func writeCallerFixture(t *testing.T, repo, relPath, body string) string {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
 	return path
+}
+
+func TestLowerRemoteSourceKeepsSubdirectoryCase(t *testing.T) {
+	require.Equal(t, "https://github.com/acme/infra//Modules/VPC",
+		lowerRemoteSource("https://GitHub.com/Acme/Infra//Modules/VPC"))
+	require.Equal(t, "https://git.example.com/Acme/Infra//Mod",
+		lowerRemoteSource("https://Git.Example.com/Acme/Infra//Mod"))
+}
+
+func TestDeclaredGitRefHandlesShorthandAndSemicolons(t *testing.T) {
+	cases := map[string]string{
+		"git::https://github.com/o/r//m?ref=v1":       "v1",
+		"github.com/o/r?ref=v2":                       "v2",
+		"git@github.com:o/r.git//m?ref=v3":            "v3",
+		"git::https://github.com/o/r?depth=1&ref=a;b": "a;b",
+		"git::https://github.com/o/r":                 "",
+	}
+	for source, want := range cases {
+		if got := declaredGitRef(source); got != want {
+			t.Errorf("declaredGitRef(%q) = %q, want %q", source, got, want)
+		}
+	}
+	if !isGitShorthand("github.com/o/r?ref=v2") || !isGitShorthand("git@github.com:o/r.git") || isGitShorthand("./local") {
+		t.Error("isGitShorthand misclassifies sources")
+	}
+}
+
+func TestNormalizedRemoteModuleSourceKeepsSSHPort(t *testing.T) {
+	require.Equal(t, "https://host:2222/o/r", normalizedRemoteModuleSource("git::ssh://git@host:2222/o/r.git"))
+	require.Equal(t, "https://host/o/r", normalizedRemoteModuleSource("git::ssh://git@host:22/o/r.git"))
+	require.Equal(t, "https://host/o/r", normalizedRemoteModuleSource("git::ssh://git@host/o/r.git"))
 }

@@ -76,9 +76,6 @@ func TestPrintSarifReportPreservesModuleAttribution(t *testing.T) {
 		{
 			name: "direct local",
 			attribution: &model.ModuleAttribution{
-				Name:           "network",
-				Source:         "modules/network",
-				SourceType:     "local",
 				DependencyType: "direct",
 				CallSite: model.SourceLocation{
 					Filename: "stack/main.tf", LineStart: 2, LineEnd: 5, ColumnStart: 1, ColumnEnd: 2,
@@ -86,16 +83,19 @@ func TestPrintSarifReportPreservesModuleAttribution(t *testing.T) {
 				ModuleCodeLocation: model.SourceLocation{
 					Filename: "main.tf", LineStart: 15, LineEnd: 25, ColumnStart: 1, ColumnEnd: 2,
 				},
+				ModulePath: []model.ModulePathHop{{
+					Name: "network", Source: "modules/network", SourceType: "local",
+					CodeLocation: model.SourceLocation{
+						Filename: "stack/main.tf", LineStart: 2, LineEnd: 5, ColumnStart: 1, ColumnEnd: 2,
+					},
+				}},
 				ModuleCodeOwned: true,
 			},
+			expectedModulePath: 1,
 		},
 		{
 			name: "transitive remote",
 			attribution: &model.ModuleAttribution{
-				Name:           "network",
-				Source:         "registry.example.com/acme/network/aws",
-				SourceType:     "registry",
-				Version:        "1.2.3",
 				DependencyType: "transitive",
 				CallSite: model.SourceLocation{
 					Filename: "stack/main.tf", LineStart: 2, LineEnd: 5, ColumnStart: 1, ColumnEnd: 2,
@@ -174,10 +174,6 @@ func TestPrintSarifReportPreservesModuleAttribution(t *testing.T) {
 
 			var modulePayload model.ModuleAttributionSARIF
 			require.NoError(t, json.Unmarshal(result.Properties["module"], &modulePayload))
-			require.Equal(t, tt.attribution.Name, modulePayload.Name)
-			require.Equal(t, tt.attribution.Source, modulePayload.Source)
-			require.Equal(t, tt.attribution.SourceType, modulePayload.SourceType)
-			require.Equal(t, tt.attribution.Version, modulePayload.Version)
 			require.Equal(t, tt.attribution.DependencyType, modulePayload.DependencyType)
 			require.Equal(t, tt.attribution.ModuleCodeLocation, modulePayload.ModuleCodeLocation)
 			require.Equal(t, tt.attribution.ModulePath, modulePayload.ModulePath)

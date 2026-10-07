@@ -107,6 +107,7 @@ func (c *Client) resolveTerraformModulesForScan(
 			CanonicalSource: module.CanonicalSource,
 			SourceType:      sourceType,
 			ModuleRoot:      module.LocalPath,
+			PackageRoot:     module.PackageRoot,
 		}
 		for _, key := range []string{
 			engine.RemoteModuleKey(module.CallerRoot, module.Source, module.Version),
