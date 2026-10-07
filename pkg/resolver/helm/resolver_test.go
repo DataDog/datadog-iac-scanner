@@ -2,7 +2,6 @@ package helm
 
 import (
 	"context"
-	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +10,7 @@ import (
 	"testing"
 
 	helmdetector "github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"

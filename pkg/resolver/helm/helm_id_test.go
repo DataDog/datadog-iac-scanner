@@ -1,10 +1,10 @@
 package helm
 
 import (
-	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/chart"
 )

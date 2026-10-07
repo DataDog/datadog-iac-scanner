@@ -30,7 +30,7 @@ func TestIsIDKeyMatchesOnlyItsOwnStamp(t *testing.T) {
 }
 
 func TestRemoveIDLines(t *testing.T) {
-	in := []byte("a: 1\n# KICS_HELM_ID_0_1:\n  # KICS_HELM_ID_2_5: x\r\nb: 2\n")
+	in := []byte("a: 1\n# KICS_HELM_ID_0_1:\n  # KICS_HELM_ID_2_5:\r\nb: 2\n")
 	require.Equal(t, "a: 1\nb: 2\n", string(RemoveIDLines(in)))
 }
 
@@ -44,4 +44,25 @@ func TestInvocationRoundTrip(t *testing.T) {
 	_, _, ok = ParseInvocation("# something else")
 	require.False(t, ok)
 	require.Equal(t, "a\nb\n", RemoveInvocations("a\n"+marker+"b\n"))
+}
+
+// Text that only mentions the prefix is not a stamp, so a template holding it
+// in a string does not shift lines or lose its content.
+func TestIDLineIsStrict(t *testing.T) {
+	for line, want := range map[string]bool{
+		"# KICS_HELM_ID_3_14:":          true,
+		"  # KICS_HELM_ID_3_14:":        true,
+		`  x: "# KICS_HELM_ID_"`:        false,
+		"# KICS_HELM_ID_3_14: trailing": false,
+		"# KICS_HELM_ID_3_:":            false,
+		"# KICS_HELM_ID_a_1:":           false,
+		"# KICS_HELM_ID_3_14":           false,
+		"data: # KICS_HELM_ID_3_14:":    false,
+		"":                              false,
+	} {
+		require.Equal(t, want, IsIDLine(line), line)
+	}
+	require.Equal(t, "# KICS_HELM_ID_1_2:", FirstID("a: \"# KICS_HELM_ID_\"\n# KICS_HELM_ID_1_2:\nb: 1\n"))
+	require.Empty(t, FirstID("a: \"# KICS_HELM_ID_\"\n"))
+	require.Equal(t, "a: \"# KICS_HELM_ID_\"\n", string(RemoveIDLines([]byte("a: \"# KICS_HELM_ID_\"\n# KICS_HELM_ID_1_2:\n"))))
 }

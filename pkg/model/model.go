@@ -520,7 +520,8 @@ type ResolvedHelm struct {
 	OriginalData        []byte
 	SplitID             string
 	SourceDocumentIndex int
-	// HelmInvocations lists every invocation that emitted part of Content, in order.
+	// HelmInvocations lists every invocation that emitted part of Content, in
+	// order, at their positions in the template as written.
 	HelmInvocations HelmInvocations
 	IDInfo          map[int]interface{}
 	IsCRD           bool
@@ -529,7 +530,7 @@ type ResolvedHelm struct {
 // HelmInvocationAt is an include-like action that emitted part of a rendered
 // Helm document: the rendered lines from RenderedLine (1-based) up to the next
 // invocation came from the action at Position, a position in the source
-// template as written (1-based line, and column).
+// template as written: a 1-based line and a 0-based byte column.
 type HelmInvocationAt struct {
 	RenderedLine int
 	Position     ResourceLine

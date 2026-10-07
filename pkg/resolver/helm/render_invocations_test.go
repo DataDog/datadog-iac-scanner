@@ -3,12 +3,12 @@ package helm
 import (
 	"context"
 	"errors"
-	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"io/fs"
 	"strings"
 	"testing"
 
 	helmdetector "github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -322,6 +322,23 @@ func TestHelmResolveRetryWithoutMarkersIsScopedToTheFailingTemplate(t *testing.T
 	s := findResolvedBySuffix(t, got, "templates/s.yaml")
 	require.Contains(t, string(s.Content), "kind: Secret")
 	require.Equal(t, model.ResourceLine{Line: 1}, s.HelmInvocations.First(), "other templates keep theirs")
+}
+
+// A subchart's template is matched by the name Helm reports for it, so it is
+// rendered again alone and the parent's templates keep their invocation lines.
+func TestHelmResolveRetryWithoutMarkersIsScopedToASubchartTemplate(t *testing.T) {
+	got := renderChart(t, map[string]string{
+		"templates/s.yaml":             "{{ include \"sec\" . }}\n",
+		"templates/_s.tpl":             "{{- define \"sec\" -}}\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n{{- end -}}\n",
+		"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
+		"charts/sub/templates/_h.tpl":  "{{- define \"more\" -}}\nworld\n{{- end -}}\n",
+		"charts/sub/templates/cm.yaml": brokenByMarkerTemplate,
+	})
+	cm := findResolvedBySuffix(t, got, "charts/sub/templates/cm.yaml")
+	require.Contains(t, string(cm.Content), "world")
+	require.Empty(t, cm.HelmInvocations)
+	s := findResolvedBySuffix(t, got, "templates/s.yaml")
+	require.Equal(t, model.ResourceLine{Line: 1}, s.HelmInvocations.First())
 }
 
 // Several templates broken by markers are each rendered again without them.

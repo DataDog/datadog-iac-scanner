@@ -69,8 +69,8 @@ func stampChart(chartReq *chart.Chart, sources stampedSources, marks invocationM
 }
 
 // addID will add auxiliary lines used to detect line: one for each top-level
-// "apiVersion:", naming the template (see helmmarker.AppendID) and the source
-// line index.
+// "apiVersion:", naming the template (see helmmarker.AppendID) and its 0-based
+// source line index.
 func addID(file *chart.File, template int) *chart.File {
 	split := strings.Split(string(file.Data), "\n")
 	apiVersionLines := topLevelAPIVersionLines(split, isYAMLCRD(file.Name))

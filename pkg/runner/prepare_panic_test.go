@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/storage"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -49,4 +51,36 @@ func TestResolveAndStoreChartHandlesResolvePanic(t *testing.T) {
 	require.False(t, rendered)
 	require.Equal(t, []string{"chart"}, src.failed)
 	require.True(t, service.isUnderFailedHelmChart(filepath.Join("chart", "templates", "cm.yaml")))
+}
+
+// panicOnSaveStorage fails once a rendered file is stored, after the chart has
+// rendered.
+type panicOnSaveStorage struct{ *storage.MemoryStorage }
+
+func (panicOnSaveStorage) SaveFile(context.Context, *model.FileMetadata) error { panic("boom") }
+
+// A panic while storing a rendered chart is recovered and the chart still
+// counts as rendered: part of it may be stored already, and scanning its raw
+// templates too would report it twice. This is the recover a directory walk
+// relies on, as it calls resolveAndStoreChart outside the render pool.
+func TestResolveAndStoreChartRecoversStorePanic(t *testing.T) {
+	ctx := context.Background()
+	service, _ := newYAMLResolverSinkService(t, ctx)
+	service.Storage = panicOnSaveStorage{storage.NewMemoryStorage()}
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"chart/Chart.yaml":        []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"),
+		"chart/templates/cm.yaml": []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n"),
+	})
+	res, err := resolver.NewBuilder().Add(ctx, helm.NewResolver(memfs)).Build(ctx)
+	require.NoError(t, err)
+	service.Resolver = res
+	src := &chartFailureRecorder{}
+
+	var rendered bool
+	require.NotPanics(t, func() {
+		rendered = resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15, &unrenderedHelmCharts{})
+	})
+
+	require.True(t, rendered)
+	require.Empty(t, src.failed)
 }

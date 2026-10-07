@@ -144,6 +144,11 @@ func prepareSources(ctx context.Context,
 		})
 }
 
+// resolveAndStoreChart renders a chart and stores its files. A panic while
+// rendering is returned by the Helm resolver as an error, so the chart takes
+// the failure path below. A panic while storing is recovered here, which both
+// ways of walking charts need: the pool in renderChartsShallowFirst recovers
+// only what it runs, and a directory walk calls this directly.
 func resolveAndStoreChart(
 	ctx context.Context,
 	src preparedSource,

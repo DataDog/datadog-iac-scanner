@@ -124,7 +124,7 @@ func chartYAMLDeclaresLibrary(data []byte) bool {
 
 // maxMarkerRetries bounds how many templates are rendered again without
 // invocation markers before the whole chart is.
-const maxMarkerRetries = 8
+const maxMarkerRetries = 3
 
 // yamlParseErrorRE matches Helm's report of a rendered manifest it cannot
 // parse, which names the template that produced it.
@@ -235,7 +235,7 @@ func splitManifestYAML(
 		if err := source.ensureIDMap(); err != nil {
 			return nil, err
 		}
-		splitID := firstHelmMarker(splited)
+		splitID := helmmarker.FirstID(splited)
 		sourceDocumentIndex := sourceDocumentIndices[sourceKey]
 		if !source.isCRD || splitID != "" || strings.EqualFold(filepath.Ext(sourcePath), ".json") {
 			sourceDocumentIndices[sourceKey]++
@@ -289,19 +289,6 @@ func parseManifestSource(split string) (source string, ok bool) {
 		return "", false
 	}
 	return "", false
-}
-
-func firstHelmMarker(content string) string {
-	index := strings.Index(content, helmmarker.IDPrefix)
-	if index < 0 {
-		return ""
-	}
-	lineStart := strings.LastIndexByte(content[:index], '\n') + 1
-	lineEnd := strings.IndexByte(content[index:], '\n')
-	if lineEnd < 0 {
-		return content[lineStart:]
-	}
-	return content[lineStart : index+lineEnd]
 }
 
 // parseHelmInvocations returns the invocation markers of a rendered document

@@ -15,7 +15,7 @@ const decimal = 10
 const IDPrefix = "# KICS_HELM_ID_"
 
 // idLinePattern matches a whole stamp line, with its line break.
-var idLinePattern = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+_\d+:[^\r\n]*(?:\r?\n|$)`)
+var idLinePattern = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+_\d+:[ \t]*(?:\r?\n|$)`)
 
 // AppendID appends the stamp line of the template numbered template for the
 // source line line (counted from 0).
@@ -27,9 +27,40 @@ func AppendID(dst []byte, template, line int) []byte {
 	return append(dst, ':', '\n')
 }
 
-// IsIDLine reports whether line holds a stamp.
+// IsIDLine reports whether line is a stamp, as AppendID writes it. Text that
+// merely mentions the prefix, such as a string in a template, is not one.
 func IsIDLine(line string) bool {
-	return strings.Contains(line, IDPrefix)
+	line = strings.TrimSpace(line)
+	rest, ok := strings.CutPrefix(line, IDPrefix)
+	if !ok {
+		return false
+	}
+	template, line2, ok := strings.Cut(strings.TrimSuffix(rest, ":"), "_")
+	return ok && strings.HasSuffix(rest, ":") && isDigits(template) && isDigits(line2)
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// FirstID returns the first stamp line of content, or "" when it has none.
+func FirstID(content string) string {
+	for content != "" {
+		line, rest, _ := strings.Cut(content, "\n")
+		if IsIDLine(line) {
+			return strings.TrimSpace(line)
+		}
+		content = rest
+	}
+	return ""
 }
 
 // RemoveIDLines drops every stamp line from content.

@@ -64,6 +64,9 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		sanitizedSubstring = strings.ReplaceAll(sanitizedSubstring, str[0], `{{`+strconv.Itoa(idx)+`}}`)
 	}
 
+	// Only the line is kept: idInfo is the line-range map of this file, and the
+	// walk below finds the stamp by its full text first, so a stamp of another
+	// template never reaches idInfo.
 	_, helmID, ok := helmmarker.ParseID(file.HelmID)
 	if !ok {
 		helmID = -1

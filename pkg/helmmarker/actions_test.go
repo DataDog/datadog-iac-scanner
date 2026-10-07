@@ -29,6 +29,8 @@ func TestScanEndsActionsOutsideQuotes(t *testing.T) {
 		"comment with }}":    {"{{/* }} */}}\n", []string{"{{/* }} */}}"}},
 		"comment apostrophe": {"{{/* don't */}}\na: 1\n", []string{"{{/* don't */}}"}},
 		"two actions":        {"{{ a }}{{ b }}", []string{"{{ a }}", "{{ b }}"}},
+		"char constants":     {`{{ printf "%c" '"' }}{{ b }}`, []string{`{{ printf "%c" '"' }}`, "{{ b }}"}},
+		"escaped char const": {`{{ printf "%c" '\'' }}{{ b }}`, []string{`{{ printf "%c" '\'' }}`, "{{ b }}"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.Equal(t, tc.want, texts(tc.source, Terminated(tc.source)))
