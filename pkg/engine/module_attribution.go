@@ -55,7 +55,7 @@ type moduleAttributionCache struct {
 	locals         map[localCacheKey]inputReads
 	eachIndexes    map[localCacheKey]eachIndex
 	entryParts     map[localCacheKey]eachIndex
-	mixed          map[localCacheKey]bool
+	mixed          map[mixedCacheKey]bool
 	collections    map[localCacheKey]inputReads
 	argumentValues map[argumentCacheKey]argumentValue
 	// pathChains identifies call chains by their module blocks, and
@@ -107,7 +107,7 @@ func newModuleAttributionCache() *moduleAttributionCache {
 		locals:         make(map[localCacheKey]inputReads),
 		eachIndexes:    make(map[localCacheKey]eachIndex),
 		entryParts:     make(map[localCacheKey]eachIndex),
-		mixed:          make(map[localCacheKey]bool),
+		mixed:          make(map[mixedCacheKey]bool),
 		collections:    make(map[localCacheKey]inputReads),
 		argumentValues: make(map[argumentCacheKey]argumentValue),
 	}

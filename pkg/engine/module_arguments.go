@@ -156,6 +156,12 @@ type bodyCacheKey struct {
 	iteration string
 }
 
+type mixedCacheKey struct {
+	expr      hclsyntax.Expression
+	scope     *tfeval.ModuleScope
+	iteration string
+}
+
 type argumentCacheKey struct {
 	arg   *hclsyntax.Attribute
 	scope *tfeval.ModuleScope
@@ -894,18 +900,27 @@ type evaluableWalker struct {
 	bound         []string
 	notOK         bool
 	usedIteration bool
+	// skipping is the for expression whose children were walked by Enter, so
+	// the walk reaches no node twice.
+	skipping hclsyntax.Node
 }
 
 func (w *evaluableWalker) Enter(node hclsyntax.Node) hcl.Diagnostics {
+	if w.skipping != nil {
+		return nil
+	}
 	switch n := node.(type) {
 	case *hclsyntax.ForExpr:
 		// The collection is evaluated outside the variables the expression
-		// binds, which the walk below cannot tell apart.
-		outer := evaluableWalker{a: w.a, ctx: w.ctx, bound: slices.Clone(w.bound)}
-		_ = hclsyntax.Walk(n.CollExpr, &outer)
-		w.notOK = w.notOK || outer.notOK
-		w.usedIteration = w.usedIteration || outer.usedIteration
-		w.bound = append(w.bound, n.KeyVar, n.ValVar)
+		// binds, which one walk of the children could not tell apart.
+		w.walkChild(n.CollExpr, w.bound)
+		inner := append(slices.Clone(w.bound), n.KeyVar, n.ValVar)
+		for _, child := range []hclsyntax.Expression{n.KeyExpr, n.ValExpr, n.CondExpr} {
+			if child != nil {
+				w.walkChild(child, inner)
+			}
+		}
+		w.skipping = n
 	case *hclsyntax.FunctionCallExpr:
 		if _, known := w.ctx.Functions[n.Name]; !known {
 			w.notOK = true
@@ -931,10 +946,18 @@ func (w *evaluableWalker) Enter(node hclsyntax.Node) hcl.Diagnostics {
 }
 
 func (w *evaluableWalker) Exit(node hclsyntax.Node) hcl.Diagnostics {
-	if _, isFor := node.(*hclsyntax.ForExpr); isFor {
-		w.bound = w.bound[:len(w.bound)-2]
+	if w.skipping == node {
+		w.skipping = nil
 	}
 	return nil
+}
+
+// walkChild walks a child of a for expression with the variables in bound.
+func (w *evaluableWalker) walkChild(expr hclsyntax.Expression, bound []string) {
+	child := evaluableWalker{a: w.a, ctx: w.ctx, bound: bound}
+	_ = hclsyntax.Walk(expr, &child)
+	w.notOK = w.notOK || child.notOK
+	w.usedIteration = w.usedIteration || child.usedIteration
 }
 
 // unevaluatedIterator reports whether root names an iterator in scope whose
@@ -1067,7 +1090,8 @@ func (a *valueAnalyzer) cachedCollectionReads(expr hclsyntax.Expression) inputRe
 // per path.
 func (a *valueAnalyzer) mixedCollection(expr hclsyntax.Expression) bool {
 	expr = a.throughLocals(expr)
-	key := localCacheKey{expr: expr, scope: a.scope}
+	// What an operand reads can depend on the instance, through each.
+	key := mixedCacheKey{expr: expr, scope: a.scope, iteration: iterationKey(a.iteration)}
 	if mixed, ok := a.cache.mixed[key]; ok {
 		return mixed
 	}
@@ -1083,7 +1107,7 @@ func (a *valueAnalyzer) uncachedMixedCollection(expr hclsyntax.Expression) bool 
 	case *hclsyntax.ParenthesesExpr:
 		return a.mixedCollection(e.Expression)
 	case *hclsyntax.ForExpr:
-		return a.mixedCollection(e.CollExpr)
+		return a.mixedCollection(e.CollExpr) || a.mixedForEntries(e)
 	case *hclsyntax.TupleConsExpr:
 		operands = e.Exprs
 	case *hclsyntax.ObjectConsExpr:
@@ -1111,6 +1135,31 @@ func (a *valueAnalyzer) uncachedMixedCollection(expr hclsyntax.Expression) bool 
 		}
 	}
 	return reading && other
+}
+
+// mixedForEntries reports whether the key and the value a for expression
+// builds come from different parties: one from the collection it iterates
+// or another input, the other from the module itself.
+func (a *valueAnalyzer) mixedForEntries(e *hclsyntax.ForExpr) bool {
+	if e.KeyExpr == nil {
+		return false
+	}
+	fromInput := func(expr hclsyntax.Expression) bool {
+		if reads := a.reads(expr); !reads.empty() {
+			return true
+		}
+		collection := a.reads(e.CollExpr)
+		if collection.empty() {
+			return false
+		}
+		for _, traversal := range scopeTraversals(expr) {
+			if root := traversal.RootName(); root == e.KeyVar || root == e.ValVar {
+				return true
+			}
+		}
+		return false
+	}
+	return fromInput(e.KeyExpr) != fromInput(e.ValExpr)
 }
 
 func (a *valueAnalyzer) mixedObject(e *hclsyntax.ObjectConsExpr) bool {

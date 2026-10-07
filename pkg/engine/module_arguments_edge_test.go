@@ -562,3 +562,69 @@ func TestModuleArgumentsMixedForExpressionIsAmbiguous(t *testing.T) {
 		}
 	}
 }
+
+func TestModuleArgumentsMixedResultDoesNotDependOnInstanceOrder(t *testing.T) {
+	scope := evaluatedScope(t, map[string]cty.Value{"a": cty.StringVal("s")}, "")
+	body := parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = { k1 = var.a, k2 = \"lit\" }\n"+
+		"  dynamic \"d\" {\n    for_each = [each.value, \"x\"]\n    content {\n      p = d.value\n    }\n  }\n}")
+	analyze := func(cache *moduleAttributionCache, key, value string) []model.ModuleArgument {
+		return cache.resourceArguments(&tfeval.ResolvedResource{
+			Body: body, Scope: scope,
+			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+				"key": cty.StringVal(key), "value": cty.StringVal(value),
+			})},
+			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = \"s\"\n}"),
+		}, "main.tf")
+	}
+	for _, order := range [][2]string{{"k1", "k2"}, {"k2", "k1"}} {
+		cache := newModuleAttributionCache()
+		results := map[string][]model.ModuleArgument{}
+		for _, key := range order {
+			value := "s"
+			if key == "k2" {
+				value = "lit"
+			}
+			results[key] = analyze(cache, key, value)
+		}
+		for key, args := range results {
+			for _, arg := range args {
+				require.NotEqual(t, model.ArgumentControlCaller, arg.Control, "instance %s in order %v", key, order)
+			}
+		}
+	}
+}
+
+func TestModuleArgumentsForExpressionMixesKeyAndValueOrigins(t *testing.T) {
+	scope := evaluatedScope(t, map[string]cty.Value{
+		"m": cty.ObjectVal(map[string]cty.Value{"a": cty.StringVal("1")}),
+	}, "")
+	for _, collection := range []string{
+		"{ for k, v in var.m : k => \"lit\" }",
+		"{ for x in [\"a\", \"b\"] : x => var.m }",
+	} {
+		args := newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
+			Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = "+collection+"\n  name     = each.value\n}"),
+			Scope: scope,
+			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+				"key": cty.StringVal("a"), "value": cty.StringVal("lit"),
+			})},
+			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  m      = { a = \"1\" }\n}"),
+		}, "main.tf")
+		for _, arg := range args {
+			require.NotEqual(t, model.ArgumentControlCaller, arg.Control, collection)
+		}
+	}
+}
+
+func TestValueAnalyzerEvaluableWalksNestedForExpressionsOnce(t *testing.T) {
+	expr := "var.m"
+	for i := 0; i < 24; i++ {
+		expr = "{ for k, v in " + expr + " : k => v }"
+	}
+	parsed, diags := hclsyntax.ParseExpression([]byte(expr), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+	analyzer := newModuleAttributionCache().analyzer(evaluatedScope(t, map[string]cty.Value{"m": cty.EmptyObjectVal}, ""), nil)
+	start := time.Now()
+	require.True(t, analyzer.evaluable(parsed))
+	require.Less(t, time.Since(start), 2*time.Second)
+}
