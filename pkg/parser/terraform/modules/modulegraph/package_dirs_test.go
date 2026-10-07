@@ -58,6 +58,7 @@ func TestSplitPackageAddress(t *testing.T) {
 		{"git::https://github.com/org/repo?ref=v1", ".", packageAddress{"git::https://github.com/org/repo", "?ref=v1"}, true},
 		{"git@github.com:org/repo//a", "a", packageAddress{"git@github.com:org/repo", ""}, true},
 		{"registry.terraform.io/ns/name/aws//modules/x@1.0.0", "modules/x", packageAddress{"registry.terraform.io/ns/name/aws", "@1.0.0"}, true},
+		{"git@github.com:repo.git", ".", packageAddress{"git@github.com:repo.git", ""}, true},
 		{"git::https://github.com/org/repo//a", "b", packageAddress{}, false},
 		{"git::https://github.com/org/repo//a", ".", packageAddress{}, false},
 	} {

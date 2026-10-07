@@ -122,6 +122,24 @@ func TestResolveModuleDocuments_AttributesExternalModuleFilesWithoutTargetedReso
 	require.Len(t, res.moduleFiles["helper-outputs"].calls, 2)
 }
 
+func TestResolveModuleDocuments_ExternalModuleNoScannedFileCallsIsLeftAsWritten(t *testing.T) {
+	repo, pkg, files := writeRemoteBucketPackage(t)
+	var external model.FileMetadatas
+	for _, f := range files {
+		if pathWithinRoot(f.FilePath, pkg) {
+			external = append(external, f)
+		}
+	}
+	res := resolveRemoteBucketPackage(t, repo, pkg, external, nil)
+	for id, file := range res.moduleFiles {
+		for _, call := range file.calls {
+			require.False(t, pathWithinRoot(filepath.Join(repo, call.attribution.CallSite.Filename), pkg),
+				"%s must not be attributed to a call site inside an external module", id)
+		}
+	}
+	require.Empty(t, res.moduleFiles["helper-outputs"], "no scanned file calls the package")
+}
+
 func TestResolveModuleDocuments_NoExternalFilesRecordsNoCalls(t *testing.T) {
 	repo, pkg, files := writeRemoteBucketPackage(t)
 	bucket := filepath.Join(pkg, "terraform-modules", "aws-bucket")

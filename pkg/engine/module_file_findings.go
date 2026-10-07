@@ -39,8 +39,9 @@ type moduleFileCalls struct {
 // moduleCallIndex collects the evaluated calls of the directories holding
 // external module files. A nil index collects nothing.
 type moduleCallIndex struct {
-	files map[string][]*model.FileMetadata
-	calls map[string][]moduleCall
+	external func(string) bool
+	files    map[string][]*model.FileMetadata
+	calls    map[string][]moduleCall
 }
 
 // newModuleCallIndex indexes the directories of the files external reports,
@@ -50,8 +51,9 @@ func newModuleCallIndex(filesByDir map[string][]*model.FileMetadata, external fu
 		return nil
 	}
 	idx := &moduleCallIndex{
-		files: make(map[string][]*model.FileMetadata),
-		calls: make(map[string][]moduleCall),
+		external: external,
+		files:    make(map[string][]*model.FileMetadata),
+		calls:    make(map[string][]moduleCall),
 	}
 	for dir, files := range filesByDir {
 		for _, f := range files {
@@ -81,6 +83,11 @@ func (idx *moduleCallIndex) record(
 		instance := &instances[i]
 		dir := filepath.Clean(instance.Dir)
 		if _, ok := idx.files[dir]; !ok {
+			continue
+		}
+		// A directory no scanned file calls is only reached from other
+		// external modules, so there is no call site in the scanned code.
+		if len(instance.CallChain) == 0 || idx.external(instance.CallChain[0].CalledFrom) {
 			continue
 		}
 		attr := callAttribution(instance.CallChain, dir, repoPath, lookup, cache)

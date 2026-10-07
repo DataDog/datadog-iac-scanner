@@ -110,7 +110,7 @@ func splitPackageAddress(source, subdir string) (packageAddress, bool) {
 	body, suffix := source, ""
 	if i := strings.Index(source, "?"); i >= 0 {
 		body, suffix = source[:i], source[i:]
-	} else if i := strings.LastIndex(source, "@"); i > strings.LastIndex(source, "/") {
+	} else if i := strings.LastIndex(source, "@"); i > strings.LastIndex(source, "/") && strings.Contains(source[:i], "/") {
 		body, suffix = source[:i], source[i:]
 	}
 	if subdir == "." {
