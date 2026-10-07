@@ -108,6 +108,9 @@ type CallSite struct {
 // module inputs it reads after evaluation. Read-only after evaluation.
 type ModuleScope struct {
 	Locals map[string]hclsyntax.Expression
+	// Bodies are the module's parsed files, from which the resource and data
+	// blocks a value references can be read.
+	Bodies []*hclsyntax.Body
 	Var    cty.Value
 	Local  cty.Value
 }
@@ -431,7 +434,7 @@ func (e *Evaluator) evaluate(
 	}
 
 	evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
-	scope := &ModuleScope{Locals: localExprs, Var: evalCtx.Variables["var"]}
+	scope := &ModuleScope{Locals: localExprs, Bodies: bodies, Var: evalCtx.Variables["var"]}
 
 	if !e.preinjectResourceRefs(resourceBlocks, moduleBlocks, localExprs, evalCtx, addr, chain) {
 		return nil, nil, e.skipEvaluation(dir)

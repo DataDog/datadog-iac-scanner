@@ -9,6 +9,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
@@ -160,6 +161,12 @@ type mixedCacheKey struct {
 	expr      hclsyntax.Expression
 	scope     *tfeval.ModuleScope
 	iteration string
+}
+
+type blockReadKey struct {
+	body      *hclsyntax.Body
+	scope     *tfeval.ModuleScope
+	attribute string
 }
 
 type argumentCacheKey struct {
@@ -660,17 +667,7 @@ func (a *valueAnalyzer) traversal(traversal hcl.Traversal) inputReads {
 	}
 	switch root {
 	case moduleVariableRoot:
-		name := stepName(traversal)
-		if name == "" {
-			// The whole of var, or a member chosen at run time.
-			r.ambiguous = true
-			return r
-		}
-		member := ""
-		if len(traversal) > 2 {
-			member = stepString(traversal[2])
-		}
-		r.value = []valueRead{{name: name, member: member}}
+		return variableRead(traversal)
 	case moduleLocalRoot:
 		name := stepName(traversal)
 		if name == "" {
@@ -682,8 +679,152 @@ func (a *valueAnalyzer) traversal(traversal hcl.Traversal) inputReads {
 		// An output of another module, which may be built from the caller's
 		// inputs.
 		r.ambiguous = true
+	default:
+		if !nonReferenceRoots[root] {
+			return a.blockReference(traversal)
+		}
 	}
 	return r
+}
+
+// variableRead is what a reference to var reads: one input, through one
+// member when it selects one.
+func variableRead(traversal hcl.Traversal) inputReads {
+	name := stepName(traversal)
+	if name == "" {
+		// The whole of var, or a member chosen at run time.
+		return inputReads{ambiguous: true}
+	}
+	member := ""
+	if len(traversal) > 2 {
+		member = stepString(traversal[2])
+	}
+	return inputReads{value: []valueRead{{name: name, member: member}}}
+}
+
+// nonReferenceRoots are the roots of a traversal that name neither an input
+// nor a resource or data block of the module.
+var nonReferenceRoots = map[string]bool{
+	"each": true, "count": true, "path": true, "terraform": true, "self": true,
+}
+
+const dataRoot = "data"
+
+// blockReference returns what the attribute a traversal selects from a
+// resource or data block of the module reads, since a block can set it from
+// the module's inputs. An attribute the block does not set, one it computes
+// such as an id, reads none.
+func (a *valueAnalyzer) blockReference(traversal hcl.Traversal) inputReads {
+	root, rest := traversal.RootName(), traversal[1:]
+	if root == dataRoot {
+		if len(traversal) < 3 {
+			return inputReads{}
+		}
+		root, rest = dataRoot+"."+stepString(traversal[1]), traversal[2:]
+	}
+	if len(rest) == 0 {
+		return inputReads{}
+	}
+	address := root + "." + stepString(rest[0])
+	rest = rest[1:]
+	for len(rest) > 0 {
+		if _, isIndex := rest[0].(hcl.TraverseIndex); !isIndex {
+			break
+		}
+		rest = rest[1:]
+	}
+	attribute := ""
+	if len(rest) > 0 {
+		if step, ok := rest[0].(hcl.TraverseAttr); ok {
+			attribute = step.Name
+		}
+	}
+	return a.blockReads(address, attribute)
+}
+
+// blockReads is what one attribute of a block reads, or what the whole block
+// reads when attribute is empty, together with what expands the block into
+// instances. A block reading itself or another block that reads it reads
+// nothing further.
+func (a *valueAnalyzer) blockReads(address, attribute string) inputReads {
+	body := a.blockBody(address)
+	if body == nil {
+		return inputReads{}
+	}
+	key := blockReadKey{body: body, scope: a.scope, attribute: attribute}
+	if reads, ok := a.cache.blockReads[key]; ok {
+		return reads
+	}
+	a.cache.blockReads[key] = inputReads{}
+	// A block is read outside the iterators of the expression referencing it.
+	inner := a.cache.analyzer(a.scope, nil)
+	var reads inputReads
+	for _, expansion := range []string{forEachAttribute, "count"} {
+		if attr, ok := body.Attributes[expansion]; ok {
+			reads.add(inner.reads(attr.Expr))
+		}
+	}
+	// A data source computes its attributes from its arguments, so one it
+	// does not set reads what the whole block reads. A resource's identity
+	// attributes, such as an id, are not the caller's value.
+	if attribute == "" || (!inner.addAttributeReads(body, attribute, &reads) && strings.HasPrefix(address, dataRoot+".")) {
+		inner.addBodyReads(body, &reads)
+	}
+	reads = reads.shared()
+	a.cache.blockReads[key] = reads
+	return reads
+}
+
+// addAttributeReads adds what an attribute of body reads, or what the nested
+// blocks, including dynamic ones, generating it read. It reports whether body
+// sets the attribute.
+func (a *valueAnalyzer) addAttributeReads(body *hclsyntax.Body, name string, out *inputReads) bool {
+	found := false
+	if attr, ok := body.Attributes[name]; ok {
+		out.add(a.reads(attr.Expr))
+		found = true
+	}
+	for _, block := range body.Blocks {
+		if block.Type == name || (block.Type == dynamicBlockType && len(block.Labels) > 0 && block.Labels[0] == name) {
+			a.addBodyReads(block.Body, out)
+			found = true
+		}
+	}
+	return found
+}
+
+// addBodyReads adds what every attribute of body and of its nested blocks reads.
+func (a *valueAnalyzer) addBodyReads(body *hclsyntax.Body, out *inputReads) {
+	for _, attr := range body.Attributes {
+		out.add(a.reads(attr.Expr))
+	}
+	for _, block := range body.Blocks {
+		a.addBodyReads(block.Body, out)
+	}
+}
+
+// blockBody finds the body of the resource ("type.name") or data
+// ("data.type.name") block of the module with the given address.
+func (a *valueAnalyzer) blockBody(address string) *hclsyntax.Body {
+	if a.scope == nil {
+		return nil
+	}
+	index, ok := a.cache.blocks[a.scope]
+	if !ok {
+		index = make(map[string]*hclsyntax.Body)
+		for _, body := range a.scope.Bodies {
+			for _, block := range body.Blocks {
+				switch {
+				case block.Type == "resource" && len(block.Labels) == 2:
+					index[block.Labels[0]+"."+block.Labels[1]] = block.Body
+				case block.Type == dataRoot && len(block.Labels) == 2:
+					index[dataRoot+"."+block.Labels[0]+"."+block.Labels[1]] = block.Body
+				}
+			}
+		}
+		a.cache.blocks[a.scope] = index
+	}
+	return index[address]
 }
 
 // local returns what a local value reads. A local referring back to itself

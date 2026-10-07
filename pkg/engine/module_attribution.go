@@ -56,6 +56,8 @@ type moduleAttributionCache struct {
 	eachIndexes    map[localCacheKey]eachIndex
 	entryParts     map[localCacheKey]eachIndex
 	mixed          map[mixedCacheKey]bool
+	blocks         map[*tfeval.ModuleScope]map[string]*hclsyntax.Body
+	blockReads     map[blockReadKey]inputReads
 	collections    map[localCacheKey]inputReads
 	argumentValues map[argumentCacheKey]argumentValue
 	// pathChains identifies call chains by their module blocks, and
@@ -108,6 +110,8 @@ func newModuleAttributionCache() *moduleAttributionCache {
 		eachIndexes:    make(map[localCacheKey]eachIndex),
 		entryParts:     make(map[localCacheKey]eachIndex),
 		mixed:          make(map[mixedCacheKey]bool),
+		blocks:         make(map[*tfeval.ModuleScope]map[string]*hclsyntax.Body),
+		blockReads:     make(map[blockReadKey]inputReads),
 		collections:    make(map[localCacheKey]inputReads),
 		argumentValues: make(map[argumentCacheKey]argumentValue),
 	}
