@@ -318,7 +318,7 @@ func enrichModuleHop(
 	hop.SourceType = sourceType
 	hop.Source = normalizedModuleSource(site.Source, sourceType, callerRoot, repoPath)
 	declaredRef := declaredGitRef(site.Source)
-	if sourceType == moduleSourceTypeGit {
+	if sourceType == moduleSourceTypeGit || isGitShorthand(site.Source) {
 		hop.Version = declaredRef
 	}
 
@@ -358,16 +358,28 @@ func moduleRootAddress(prov *RemoteModuleProvenance, source string) (root, addre
 }
 
 // declaredGitRef returns the ref query parameter of a git module source.
+// Query parts are split by hand so a ref holding ";" is kept.
 func declaredGitRef(source string) string {
 	_, query, ok := strings.Cut(source, "?")
 	if !ok {
 		return ""
 	}
-	values, err := url.ParseQuery(query)
-	if err != nil {
-		return ""
+	for _, part := range strings.Split(query, "&") {
+		if key, value, found := strings.Cut(part, "="); found && key == "ref" {
+			if unescaped, err := url.QueryUnescape(value); err == nil {
+				value = unescaped
+			}
+			return strings.TrimSpace(value)
+		}
 	}
-	return strings.TrimSpace(values.Get("ref"))
+	return ""
+}
+
+// isGitShorthand reports whether source is a scp-like or GitHub/Bitbucket
+// shorthand git address, which module source detection leaves untyped.
+func isGitShorthand(source string) bool {
+	_, ok := httpsGitAddress(strings.SplitN(strings.TrimSpace(source), "?", 2)[0])
+	return ok
 }
 
 // normalizedModuleSource returns the reported identity of a module source.

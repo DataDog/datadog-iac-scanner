@@ -456,3 +456,21 @@ func TestLowerRemoteSourceKeepsSubdirectoryCase(t *testing.T) {
 	require.Equal(t, "https://git.example.com/Acme/Infra//Mod",
 		lowerRemoteSource("https://Git.Example.com/Acme/Infra//Mod"))
 }
+
+func TestDeclaredGitRefHandlesShorthandAndSemicolons(t *testing.T) {
+	cases := map[string]string{
+		"git::https://github.com/o/r//m?ref=v1":       "v1",
+		"github.com/o/r?ref=v2":                       "v2",
+		"git@github.com:o/r.git//m?ref=v3":            "v3",
+		"git::https://github.com/o/r?depth=1&ref=a;b": "a;b",
+		"git::https://github.com/o/r":                 "",
+	}
+	for source, want := range cases {
+		if got := declaredGitRef(source); got != want {
+			t.Errorf("declaredGitRef(%q) = %q, want %q", source, got, want)
+		}
+	}
+	if !isGitShorthand("github.com/o/r?ref=v2") || !isGitShorthand("git@github.com:o/r.git") || isGitShorthand("./local") {
+		t.Error("isGitShorthand misclassifies sources")
+	}
+}
