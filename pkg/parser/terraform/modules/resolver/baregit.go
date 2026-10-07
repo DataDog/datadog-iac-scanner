@@ -1551,7 +1551,7 @@ func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
 			}
 		}
 		if err := checkSSHHostKeyPinned(ctx, sshHostKeyName(repo.Hostname(), repo.Port())); err != nil {
-			return &tfmodules.UnresolvedError{Reason: err.Error()}
+			return &tfmodules.UnresolvedError{Reason: err.Error(), NotApplicable: true}
 		}
 		return nil
 	default:
@@ -1560,6 +1560,7 @@ func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
 				"git module transport %q is disabled because its destination cannot be pinned",
 				repo.Scheme,
 			),
+			NotApplicable: true,
 		}
 	}
 }
