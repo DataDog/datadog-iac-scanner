@@ -153,7 +153,7 @@ func resolveAndStoreChart(
 	maxResolverDepth int,
 	unrendered *unrenderedHelmCharts,
 ) (rendered bool) {
-	resFiles, kind, err := resolveRecovering(ctx, services[0], chartPath)
+	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
 		return true
 	}
@@ -190,19 +190,6 @@ func resolveAndStoreChart(
 		s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
 	}
 	return true
-}
-
-// resolveRecovering resolves chartPath, turning a panic into an error so the
-// chart goes through the same failure handling as any other resolve error.
-func resolveRecovering(
-	ctx context.Context, s *Service, chartPath string,
-) (resFiles model.ResolvedFiles, kind model.FileKind, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			resFiles, kind, err = model.ResolvedFiles{}, s.Resolver.GetType(chartPath), fmt.Errorf("panic: %v", r)
-		}
-	}()
-	return s.resolveOnly(ctx, chartPath)
 }
 
 // dispatchFile feeds one listed file's content to the services whose parser
