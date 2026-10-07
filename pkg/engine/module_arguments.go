@@ -727,19 +727,37 @@ func (a *valueAnalyzer) blockReference(traversal hcl.Traversal) inputReads {
 	}
 	address := root + "." + stepString(rest[0])
 	rest = rest[1:]
-	for len(rest) > 0 {
-		if _, isIndex := rest[0].(hcl.TraverseIndex); !isIndex {
-			break
-		}
+	// One index selects an instance when the block expands into several or
+	// more steps follow it. A lone index on a single block names an attribute.
+	if _, isIndex := firstStep(rest).(hcl.TraverseIndex); isIndex && (len(rest) > 1 || a.expandsInstances(address)) {
 		rest = rest[1:]
 	}
 	attribute := ""
 	if len(rest) > 0 {
-		if step, ok := rest[0].(hcl.TraverseAttr); ok {
-			attribute = step.Name
+		switch rest[0].(type) {
+		case hcl.TraverseAttr, hcl.TraverseIndex:
+			attribute = stepString(rest[0])
 		}
 	}
 	return a.blockReads(address, attribute)
+}
+
+func firstStep(rest hcl.Traversal) hcl.Traverser {
+	if len(rest) == 0 {
+		return nil
+	}
+	return rest[0]
+}
+
+// expandsInstances reports whether the block at address sets count or for_each.
+func (a *valueAnalyzer) expandsInstances(address string) bool {
+	body := a.blockBody(address)
+	if body == nil {
+		return false
+	}
+	_, forEach := body.Attributes[forEachAttribute]
+	_, count := body.Attributes["count"]
+	return forEach || count
 }
 
 // blockReads is what one attribute of a block reads, or what the whole block

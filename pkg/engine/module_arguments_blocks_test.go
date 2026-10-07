@@ -131,3 +131,28 @@ resource "aws_c" "self" {
 		referencingResource(t, scope, "aws_c.self.attr", call)
 	})
 }
+
+func TestModuleArgumentsFollowBracketAttributeAccess(t *testing.T) {
+	scope := moduleWithBlocks(t,
+		map[string]cty.Value{"acl": cty.StringVal("public-read"), "n": cty.NumberIntVal(1)},
+		`resource "aws_s3_bucket" "a" {
+  acl    = var.acl
+  bucket = "fixed"
+}
+resource "aws_s3_bucket" "many" {
+  count = var.n
+  acl   = "private"
+}`)
+	const call = "  acl = \"public-read\"\n  n   = 1\n"
+
+	t.Run("a bracketed computed attribute is not the caller's", func(t *testing.T) {
+		requireControlAt(t, referencingResource(t, scope, `aws_s3_bucket.a["id"]`, call), 2, model.ArgumentControlModule)
+		requireControlAt(t, referencingResource(t, scope, `aws_s3_bucket.a[0]["id"]`, call), 2, model.ArgumentControlModule)
+	})
+	t.Run("a bracketed attribute set from an input is the caller's", func(t *testing.T) {
+		requireCallerAt(t, referencingResource(t, scope, `aws_s3_bucket.a["acl"]`, call), 2, 3)
+	})
+	t.Run("an expanded block reads what expands it", func(t *testing.T) {
+		requireCallerAt(t, referencingResource(t, scope, `aws_s3_bucket.many[0]["acl"]`, call), 2, 4)
+	})
+}
