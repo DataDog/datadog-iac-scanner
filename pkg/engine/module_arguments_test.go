@@ -807,7 +807,7 @@ module "security" {
 
 	attr := buildModuleAttribution(&resource, repo, lookup, newModuleAttributionCache())
 	require.NotNil(t, attr)
-	const leafSource = "https://github.com/datadog/cloud-inventory//terraform-modules/aws-security/security-alerting"
+	const leafSource = "https://github.com/DataDog/cloud-inventory//terraform-modules/aws-security/security-alerting"
 	require.Equal(t, "transitive", attr.DependencyType)
 	require.False(t, attr.ModuleCodeOwned)
 	require.Equal(t, "https://github.com/datadog/cloud-inventory", attr.Source, "the package the file is named from")
@@ -819,7 +819,7 @@ module "security" {
 	require.Equal(t, "git", attr.ModulePath[1].SourceType)
 	require.Equal(t, "aws-security_v2.1.2", attr.ModulePath[1].Version)
 	require.Equal(t, "aws-security_v2.1.2", attr.ModulePath[0].Version)
-	require.Equal(t, "https://github.com/datadog/cloud-inventory//terraform-modules/aws-security", attr.ModulePath[0].Source)
+	require.Equal(t, "https://github.com/DataDog/cloud-inventory//terraform-modules/aws-security", attr.ModulePath[0].Source)
 	require.Equal(t, leafSource, attr.ModulePath[1].Source)
 	require.Equal(t, "terraform-modules/aws-security/security-alerting.tf", attr.ModulePath[1].CodeLocation.Filename)
 }
@@ -926,7 +926,7 @@ module "bucket" {
 	require.Equal(t, "terraform-modules/aws-bucket/policy.tf", attr.ModuleCodeLocation.Filename)
 	require.Equal(t, "https://github.com/datadog/cloud-inventory", attr.Source)
 	require.Equal(t, "v5", attr.Version)
-	require.Equal(t, "https://github.com/datadog/cloud-inventory//terraform-modules/aws-bucket", attr.ModulePath[0].Source)
+	require.Equal(t, "https://github.com/DataDog/cloud-inventory//terraform-modules/aws-bucket", attr.ModulePath[0].Source)
 }
 
 func TestModuleArgumentsTraceDynamicBlockLabels(t *testing.T) {

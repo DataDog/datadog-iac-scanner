@@ -103,7 +103,7 @@ func TestResolveModuleDocuments_AttributesExternalModuleFilesToEveryCall(t *test
 	require.Equal(t, moduleDependencyTransitive, attr.DependencyType)
 	require.Len(t, attr.ModulePath, 2)
 	require.Equal(t, "helper", attr.ModulePath[1].Name)
-	require.Equal(t, "https://github.com/datadog/cloud-inventory//terraform-modules/aws--helper", attr.ModulePath[1].Source)
+	require.Equal(t, "https://github.com/DataDog/cloud-inventory//terraform-modules/aws--helper", attr.ModulePath[1].Source)
 
 	bucketInputs := res.moduleFiles["bucket-inputs"]
 	require.NotNil(t, bucketInputs)

@@ -480,3 +480,14 @@ func TestNormalizedRemoteModuleSourceKeepsSSHPort(t *testing.T) {
 	require.Equal(t, "https://host/o/r", normalizedRemoteModuleSource("git::ssh://git@host:22/o/r.git"))
 	require.Equal(t, "https://host/o/r", normalizedRemoteModuleSource("git::ssh://git@host/o/r.git"))
 }
+
+func TestDeclaredModuleSourceKeepsCallCasing(t *testing.T) {
+	repo := t.TempDir()
+	const source = "git::https://GitHub.com/DataDog/Infra.git//Modules/VPC?ref=v1"
+	require.Equal(t, "https://GitHub.com/DataDog/Infra//Modules/VPC", declaredModuleSource(source, "git", repo, repo))
+	require.Equal(t, "https://github.com/datadog/infra//Modules/VPC", normalizedModuleSource(source, "git", repo, repo))
+	require.Equal(t, "registry.example.com/Acme/Bucket/aws",
+		declaredModuleSource("registry.example.com/Acme/Bucket/aws@1.0.0", "registry", repo, repo))
+	require.Equal(t, "registry.example.com/acme/bucket/aws",
+		normalizedModuleSource("registry.example.com/Acme/Bucket/aws@1.0.0", "registry", repo, repo))
+}

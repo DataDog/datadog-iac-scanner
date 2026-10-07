@@ -1486,9 +1486,8 @@ func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
 }
 
 func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
-	ins := &Inspector{
-		externalPathRoots: map[string]bool{"/tmp/remote-module": true},
-	}
+	ins := &Inspector{}
+	ins.SetExternalModulePaths([]string{"/tmp/remote-module"})
 
 	require.True(t, ins.isExternalModulePath("/tmp/remote-module/main.tf"))
 	require.True(t, rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
