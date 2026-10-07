@@ -168,8 +168,11 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, path string) (
 	*release.Release, *chart.Chart, stampedSources, []string, error,
 ) {
 	contextLogger := logger.FromContext(ctx)
-	unmarked := map[string]bool{}
-	marks := func(template string) bool { return !unmarked[template] }
+	unmarked, seen := map[string]bool{}, map[string]bool{}
+	marks := func(template string) bool {
+		seen[template] = true
+		return !unmarked[template]
+	}
 	for attempt := 0; ; attempt++ {
 		manifest, loadedChart, stamped, excluded, err := runInstall(
 			ctx, path, fsys, newClient(ctx), &values.Options{}, marks)
@@ -177,7 +180,9 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, path string) (
 		if !parseErr {
 			return manifest, loadedChart, stamped, excluded, err
 		}
-		if unmarked[template] || attempt >= maxMarkerRetries {
+		// A template the stamping never saw, as when Helm names a subchart by an
+		// alias, cannot be left unmarked on its own.
+		if !seen[template] || unmarked[template] || attempt >= maxMarkerRetries {
 			break
 		}
 		unmarked[template] = true

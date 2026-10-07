@@ -3,6 +3,7 @@ package helm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"testing"
@@ -353,6 +354,33 @@ func TestHelmResolveRetryWithoutMarkersCoversEveryFailingTemplate(t *testing.T) 
 		require.Contains(t, string(f.Content), "world")
 		require.Empty(t, f.HelmInvocations)
 	}
+}
+
+// More broken templates than retries fall back to rendering the chart without
+// any marker, which still renders every one of them.
+func TestHelmResolveRetryWithoutMarkersFallsBackBeyondTheRetryBound(t *testing.T) {
+	files := map[string]string{"templates/_h.tpl": "{{- define \"more\" -}}\nworld\n{{- end -}}\n"}
+	for i := 0; i <= maxMarkerRetries; i++ {
+		files[fmt.Sprintf("templates/t%d.yaml", i)] = brokenByMarkerTemplate
+	}
+	got := renderChart(t, files)
+	for i := 0; i <= maxMarkerRetries; i++ {
+		f := findResolvedBySuffix(t, got, fmt.Sprintf("templates/t%d.yaml", i))
+		require.Contains(t, string(f.Content), "world")
+		require.Empty(t, f.HelmInvocations)
+	}
+}
+
+// A subchart under an alias is named by its alias in Helm's error, which the
+// stamping never saw: the chart still renders, without markers.
+func TestHelmResolveRetryWithoutMarkersRendersAnAliasedSubchart(t *testing.T) {
+	got := renderChart(t, map[string]string{
+		"Chart.yaml":                   "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 0.1.0\n  alias: other\n",
+		"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
+		"charts/sub/templates/_h.tpl":  "{{- define \"more\" -}}\nworld\n{{- end -}}\n",
+		"charts/sub/templates/cm.yaml": brokenByMarkerTemplate,
+	})
+	require.Contains(t, string(findResolvedBySuffix(t, got, "templates/cm.yaml").Content), "world")
 }
 
 // brokenByMarkerTemplate continues a plain multi-line scalar with an include,

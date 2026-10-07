@@ -95,6 +95,12 @@ func SearchKey(stamp string) string {
 	return strings.TrimRight(strings.TrimLeft(stamp, "# "), ":")
 }
 
+// IsIDSearchKey reports whether key, a key of a search key, names a stamp as
+// SearchKey builds it.
+func IsIDSearchKey(key string) bool {
+	return strings.HasPrefix(key, strings.TrimPrefix(IDPrefix, "# "))
+}
+
 // IsIDKey reports whether line is exactly the stamp that key stands for, as
 // SearchKey builds it. A stamp stands only for its own ID, not for one it is a
 // prefix of.

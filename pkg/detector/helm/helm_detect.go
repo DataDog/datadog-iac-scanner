@@ -191,6 +191,10 @@ func unstampedLines(lines []string) (kept []string, index func(int) int) {
 }
 
 func containsHelmKey(line, key string) bool {
+	if helmmarker.IsIDSearchKey(key) {
+		// A stamp key matches the stamp line itself, never text that mentions it.
+		return helmmarker.IsIDLine(line) && helmmarker.IsIDKey(line, key)
+	}
 	if helmmarker.IsIDLine(line) {
 		// A stamp only stands for its own ID, never for one it is a prefix of.
 		return helmmarker.IsIDKey(line, key)

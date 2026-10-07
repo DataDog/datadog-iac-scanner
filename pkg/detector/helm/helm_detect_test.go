@@ -480,3 +480,22 @@ func TestDetectLine_JSONCRD(t *testing.T) {
 		t.Fatalf("DetectLine() vulnerable line = %q, want JSON name key", got.LineWithVulnerability)
 	}
 }
+
+// A stamp key finds the stamp line, not a template string that spells it out.
+func TestDetectLineStampKeyIgnoresTextMentioningIt(t *testing.T) {
+	original := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  note: \"# KICS_HELM_ID_5_0:\"\n" +
+		"---\n# KICS_HELM_ID_0_7:\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n"
+	file := &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          "templates/mixed.yaml",
+		HelmID:            "# KICS_HELM_ID_5_0:",
+		OriginalData:      original,
+		LinesOriginalData: utils.SplitLines(original),
+	}
+
+	got := (DetectKindLine{}).DetectLine(context.Background(), file, "metadata.name", 1)
+
+	if got.Line != undetectedVulnerabilityLine {
+		t.Fatalf("DetectLine() matched text mentioning a stamp: line %d (%q), want none", got.Line, got.LineWithVulnerability)
+	}
+}
