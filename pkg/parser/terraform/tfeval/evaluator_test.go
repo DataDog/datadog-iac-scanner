@@ -1608,3 +1608,76 @@ func TestIsReportableModuleEvalError(t *testing.T) {
 		t.Error("other evaluation errors are reported")
 	}
 }
+
+func TestEvaluateModule_KeepsScopesForAttribution(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{
+		"main.tf": `
+variable "acl" {}
+
+locals {
+  default_acl = "private"
+}
+
+resource "aws_s3_bucket" "this" {
+  count = 2
+  acl   = coalesce(var.acl, local.default_acl)
+}
+
+resource "aws_s3_bucket" "single" {
+  acl = var.acl
+}
+`,
+	})
+	dir := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+locals {
+  acl = "public-read"
+}
+
+module "bucket" {
+  source = "../child"
+  acl    = local.acl
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+
+	first := findResource(t, resources, "aws_s3_bucket", "this[0]")
+	second := findResource(t, resources, "aws_s3_bucket", "this[1]")
+	single := findResource(t, resources, "aws_s3_bucket", "single")
+	if first.Scope == nil || first.Scope != single.Scope {
+		t.Fatalf("resources of one module evaluation must share its scope")
+	}
+	if _, ok := first.Scope.Locals["default_acl"]; !ok {
+		t.Fatalf("scope locals = %#v, want default_acl", first.Scope.Locals)
+	}
+	requireString(t, first.Scope.Var.AsValueMap(), "acl", "public-read")
+	requireString(t, first.Scope.Local.AsValueMap(), "default_acl", "private")
+	if single.Iteration != nil {
+		t.Fatalf("a block without count or for_each has no iteration, got %#v", single.Iteration)
+	}
+	index := func(r ResolvedResource) int64 {
+		v, _ := r.Iteration["count"].GetAttr("index").AsBigFloat().Int64()
+		return v
+	}
+	if index(first) != 0 || index(second) != 1 {
+		t.Fatalf("iteration indexes = %d, %d, want 0, 1", index(first), index(second))
+	}
+
+	if len(first.CallChain) != 1 {
+		t.Fatalf("call chain = %d hops, want 1", len(first.CallChain))
+	}
+	site := first.CallChain[0]
+	if site.Body == nil || site.Body.Attributes["acl"] == nil {
+		t.Fatalf("call site must keep the module block body")
+	}
+	if site.Caller == nil || site.Caller.Locals["acl"] == nil {
+		t.Fatalf("call site must keep the calling module's scope")
+	}
+	requireString(t, site.Caller.Local.AsValueMap(), "acl", "public-read")
+}

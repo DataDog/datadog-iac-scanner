@@ -61,6 +61,7 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 					},
 				}},
 				ModuleCodeOwned: true,
+				ArgumentControl: model.ArgumentControlModule,
 			},
 		}},
 	}
@@ -142,35 +143,42 @@ func TestBuildSarifIssue_RemoteModuleOmitsFix(t *testing.T) {
 	require.Empty(t, report.Runs[0].Results[0].ResultFixes)
 }
 
-func TestBuildSarifIssue_CallArgumentValueOmitsFix(t *testing.T) {
-	issue := model.QueryResult{
-		QueryName: "acl_rule",
-		QueryID:   "acl-rule",
-		Severity:  model.SeverityHigh,
-		Platform:  "terraform",
-		Files: []model.VulnerableFile{{
-			FileName:        "modules/bucket/main.tf",
-			ResourceType:    "aws_s3_bucket",
-			ResourceName:    "this",
-			Remediation:     "remove insecure ACL",
-			RemediationType: "removal",
-			ResourceLocation: model.ResourceLocation{
-				Start: model.ResourceLine{Line: 2, Col: 1},
-				End:   model.ResourceLine{Line: 4, Col: 1},
-			},
-			ModuleAttribution: &model.ModuleAttribution{
-				DependencyType:  "direct",
-				CallSite:        model.SourceLocation{Filename: "stack/main.tf", LineStart: 4, LineEnd: 4},
-				ModuleCodeOwned: true,
-				CallArgument:    true,
-			},
-		}},
-	}
+func TestBuildSarifIssue_ValueNotSetByModuleOmitsFix(t *testing.T) {
+	for name, control := range map[string]model.ArgumentControl{
+		"set by a call argument": model.ArgumentControlCaller,
+		"not traced":             model.ArgumentControlUnknown,
+	} {
+		t.Run(name, func(t *testing.T) {
+			issue := model.QueryResult{
+				QueryName: "acl_rule",
+				QueryID:   "acl-rule",
+				Severity:  model.SeverityHigh,
+				Platform:  "terraform",
+				Files: []model.VulnerableFile{{
+					FileName:        "modules/bucket/main.tf",
+					ResourceType:    "aws_s3_bucket",
+					ResourceName:    "this",
+					Remediation:     "remove insecure ACL",
+					RemediationType: "removal",
+					ResourceLocation: model.ResourceLocation{
+						Start: model.ResourceLine{Line: 2, Col: 1},
+						End:   model.ResourceLine{Line: 4, Col: 1},
+					},
+					ModuleAttribution: &model.ModuleAttribution{
+						DependencyType:  "direct",
+						CallSite:        model.SourceLocation{Filename: "stack/main.tf", LineStart: 4, LineEnd: 4},
+						ModuleCodeOwned: true,
+						ArgumentControl: control,
+					},
+				}},
+			}
 
-	report := NewSarifReport().(*sarifReport)
-	_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
-	require.NoError(t, err)
-	require.Empty(t, report.Runs[0].Results[0].ResultFixes)
+			report := NewSarifReport().(*sarifReport)
+			_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+			require.NoError(t, err)
+			require.Empty(t, report.Runs[0].Results[0].ResultFixes)
+		})
+	}
 }
 
 func TestBuildSarifIssue_NonModuleFindingUnchanged(t *testing.T) {

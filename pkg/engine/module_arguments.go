@@ -9,116 +9,203 @@ import (
 	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const (
 	moduleVariableRoot = "var"
 	moduleLocalRoot    = "local"
 	resourceEachRoot   = "each"
-	moduleCountRoot    = "count"
 	dynamicBlockType   = "dynamic"
 	dynamicContentType = "content"
 	dynamicIterator    = "iterator"
+	dynamicLabels      = "labels"
 	forEachAttribute   = "for_each"
 	moduleSourceArg    = "source"
 )
 
-// attributeVariables is an attribute's line range and the module variables its value reads.
-type attributeVariables struct {
-	lineStart int
-	lineEnd   int
-	names     []string
+// inputReads is what a value reads of its module's inputs. value holds the
+// inputs the value is built from and selector the inputs that only chose it
+// among alternatives. ambiguous is set when a choice between alternatives
+// reading different inputs could not be resolved from the evaluated values.
+type inputReads struct {
+	value     []string
+	selector  []string
+	ambiguous bool
 }
 
-// resourceArguments binds each attribute of a module resource to the root
-// call-site argument that sets it, following var.* and local.* references up
-// the call chain. Attributes whose value does not come from exactly one
-// argument of the root call are left out, so their findings keep the root
-// call's source line.
+func (r *inputReads) empty() bool {
+	return len(r.value) == 0 && len(r.selector) == 0
+}
+
+func (r *inputReads) add(o inputReads) {
+	r.value = appendMissing(r.value, o.value)
+	r.selector = appendMissing(r.selector, o.selector)
+	r.ambiguous = r.ambiguous || o.ambiguous
+}
+
+// addSelector records o as having only chosen the value, not built it.
+func (r *inputReads) addSelector(o inputReads) {
+	r.selector = appendMissing(appendMissing(r.selector, o.value), o.selector)
+	r.ambiguous = r.ambiguous || o.ambiguous
+}
+
+// single returns the one input the value is built from. A value reading no
+// input but chosen by one, such as a module default picked because the caller
+// passed null, is not set by that input.
+func (r *inputReads) single() (string, bool) {
+	if r.ambiguous || len(r.value) != 1 {
+		return "", false
+	}
+	return r.value[0], true
+}
+
+// shared returns r with its slices clipped, so a later append on a copy
+// never writes into a cached array.
+func (r inputReads) shared() inputReads {
+	r.value = slices.Clip(r.value)
+	r.selector = slices.Clip(r.selector)
+	return r
+}
+
+func sameReads(a, b *inputReads) bool {
+	return sameNames(a.value, b.value) && sameNames(a.selector, b.selector)
+}
+
+func sameNames(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for _, name := range a {
+		if !slices.Contains(b, name) {
+			return false
+		}
+	}
+	return true
+}
+
+// attributeReads is the line range of an attribute, or of a dynamic block's
+// header, with the module inputs its value reads.
+type attributeReads struct {
+	lineStart int
+	lineEnd   int
+	reads     inputReads
+}
+
+// bodyReads is the attributes of a resource body reading module inputs.
+// iterationDependent is set when resolving a choice read the instance's each
+// or count value, so other instances of the block may resolve differently.
+type bodyReads struct {
+	attrs              []attributeReads
+	iterationDependent bool
+}
+
+type bodyCacheKey struct {
+	body  *hclsyntax.Body
+	scope *tfeval.ModuleScope
+}
+
+type argumentCacheKey struct {
+	arg   *hclsyntax.Attribute
+	scope *tfeval.ModuleScope
+}
+
+type localCacheKey struct {
+	expr  hclsyntax.Expression
+	scope *tfeval.ModuleScope
+}
+
+// resourceArguments tells, for each attribute of a module resource reading
+// module inputs, whether a single root call argument sets it, following var.*
+// and local.* references up the call chain. Attributes reading no input are
+// left out: the module sets them.
 func (t *moduleAttributionCache) resourceArguments(r *tfeval.ResolvedResource, rootCallFile string) []model.ModuleArgument {
 	if t == nil || r.Body == nil || len(r.CallChain) == 0 {
 		return nil
 	}
-	attrs := t.resourceAttributes(r.Body, r.Locals)
+	attrs := t.resourceAttributes(r).attrs
 	if len(attrs) == 0 {
 		return nil
 	}
 	args := make([]model.ModuleArgument, 0, len(attrs))
 	for i := range attrs {
-		location, ok := t.traceCallArgument(r.CallChain, attrs[i].names, rootCallFile)
-		if !ok {
-			continue
+		arg := model.ModuleArgument{LineStart: attrs[i].lineStart, LineEnd: attrs[i].lineEnd}
+		if location, ok := t.traceCallArgument(r.CallChain, attrs[i].reads, rootCallFile); ok {
+			arg.Control = model.ArgumentControlCaller
+			arg.CallSite = location
 		}
-		args = append(args, model.ModuleArgument{
-			LineStart: attrs[i].lineStart,
-			LineEnd:   attrs[i].lineEnd,
-			CallSite:  location,
+		args = append(args, arg)
+	}
+	return args
+}
+
+func (t *moduleAttributionCache) resourceAttributes(r *tfeval.ResolvedResource) bodyReads {
+	if r == t.lastResource {
+		return t.lastReads
+	}
+	key := bodyCacheKey{body: r.Body, scope: r.Scope}
+	if cached, ok := t.attributes[key]; ok && !cached.iterationDependent {
+		return cached
+	}
+	a := t.analyzer(r.Scope, r.Iteration)
+	if attr, ok := r.Body.Attributes[forEachAttribute]; ok {
+		_, evaluated := r.Iteration[resourceEachRoot]
+		a.iterators = append(a.iterators, iteratorReads{
+			name: resourceEachRoot, reads: a.reads(attr.Expr).shared(), evaluated: evaluated,
 		})
 	}
-	if len(args) == 0 {
-		return nil
-	}
-	return slices.Clip(args)
+	var attrs []attributeReads
+	a.collectBody(r.Body, &attrs)
+	out := bodyReads{attrs: slices.Clip(attrs), iterationDependent: a.usedIteration}
+	t.attributes[key] = out
+	t.lastResource, t.lastReads = r, out
+	return out
 }
 
-func (t *moduleAttributionCache) resourceAttributes(
-	body *hclsyntax.Body, locals map[string]hclsyntax.Expression,
-) []attributeVariables {
-	if attrs, ok := t.attributes[body]; ok {
-		return attrs
-	}
-	attrs := make([]attributeVariables, 0, len(body.Attributes))
-	t.collectAttributeVariables(body, locals, resourceEachRoot, t.forEachVariables(body, locals), &attrs)
-	if len(attrs) == 0 {
-		attrs = nil
-	}
-	t.attributes[body] = attrs
-	return attrs
-}
-
-func (t *moduleAttributionCache) argumentVariables(
-	arg *hclsyntax.Attribute, locals map[string]hclsyntax.Expression,
-) []string {
-	if names, ok := t.arguments[arg]; ok {
-		return names
-	}
-	w := readsWalker{anyIterator: true}
-	w.walk(arg.Expr)
-	names := t.walkedVariables(&w, locals)
-	if w.readsRoot {
-		// The value depends on the module call's iteration, which the call
-		// chain does not follow.
-		names = nil
-	}
-	t.arguments[arg] = names
-	return names
-}
-
-// traceCallArgument follows module variable names from the leaf call up to the
-// root call and returns the location of the root argument they resolve to.
-// A value reading several variables, or one the call leaves to its default,
-// is not set by a single argument and is not traced.
+// traceCallArgument follows the input a value is built from up the call chain
+// and returns the location of the root argument setting it. A value built from
+// several inputs, one the call leaves to its default, or one an intermediate
+// module sets itself is not set by a single root argument.
 func (t *moduleAttributionCache) traceCallArgument(
-	chain []tfeval.CallSite, names []string, rootCallFile string,
+	chain []tfeval.CallSite, reads inputReads, rootCallFile string,
 ) (model.SourceLocation, bool) {
 	for level := len(chain) - 1; level >= 0; level-- {
-		body := chain[level].Body
-		if body == nil || len(names) != 1 {
+		name, ok := reads.single()
+		site := &chain[level]
+		if !ok || site.Body == nil {
 			return model.SourceLocation{}, false
 		}
-		arg, ok := body.Attributes[names[0]]
+		arg, ok := site.Body.Attributes[name]
 		if !ok {
 			return model.SourceLocation{}, false
 		}
 		if level == 0 {
 			return attributeLocation(arg, rootCallFile), true
 		}
-		names = t.argumentVariables(arg, chain[level].CallerLocals)
+		reads = t.argumentReads(site, arg)
 	}
 	return model.SourceLocation{}, false
+}
+
+// argumentReads is what a module call argument reads of the calling module's
+// inputs. The call's each value reads its for_each; its count index reads
+// nothing the caller sets.
+func (t *moduleAttributionCache) argumentReads(site *tfeval.CallSite, arg *hclsyntax.Attribute) inputReads {
+	key := argumentCacheKey{arg: arg, scope: site.Caller}
+	if reads, ok := t.arguments[key]; ok {
+		return reads
+	}
+	a := t.analyzer(site.Caller, nil)
+	if attr, ok := site.Body.Attributes[forEachAttribute]; ok {
+		a.iterators = append(a.iterators, iteratorReads{name: resourceEachRoot, reads: a.reads(attr.Expr).shared()})
+	}
+	reads := a.reads(arg.Expr).shared()
+	t.arguments[key] = reads
+	return reads
 }
 
 func attributeLocation(attr *hclsyntax.Attribute, filename string) model.SourceLocation {
@@ -131,95 +218,466 @@ func attributeLocation(attr *hclsyntax.Attribute, filename string) model.SourceL
 	}
 }
 
-// collectAttributeVariables records every attribute of body and its nested
-// blocks that reads module variables. Reading the iteration value of an
-// enclosing for_each also reads that for_each's variables.
-func (t *moduleAttributionCache) collectAttributeVariables(
-	body *hclsyntax.Body,
-	locals map[string]hclsyntax.Expression,
-	iterator string,
-	iterated []string,
-	out *[]attributeVariables,
-) {
-	if len(iterated) == 0 {
-		iterator = ""
-	}
+// iteratorReads binds an iterator in scope (each, or a dynamic block's
+// iterator) to what its collection reads. evaluated is set when the
+// instance's iteration holds its value.
+type iteratorReads struct {
+	name      string
+	reads     inputReads
+	evaluated bool
+}
+
+// valueAnalyzer finds the module inputs expressions read, resolving choices
+// between alternatives (conditionals, coalesce, try, lookup) with the values
+// the module was evaluated with. It runs once per attribute of every
+// instantiated resource block, so it walks the common expression types
+// directly: Expression.Variables and hclsyntax.VisitAll allocate for every
+// node they visit.
+type valueAnalyzer struct {
+	cache     *moduleAttributionCache
+	scope     *tfeval.ModuleScope
+	iteration map[string]cty.Value
+	// iterators holds the iterators of the enclosing for_each and dynamic
+	// blocks, innermost last.
+	iterators []iteratorReads
+	// shadowed holds the names bound by the for expressions being walked.
+	shadowed []string
+	evalCtx  *hcl.EvalContext
+	// usedIteration is set once a choice was resolved with each or count.
+	usedIteration bool
+}
+
+func (t *moduleAttributionCache) analyzer(scope *tfeval.ModuleScope, iteration map[string]cty.Value) *valueAnalyzer {
+	return &valueAnalyzer{cache: t, scope: scope, iteration: iteration}
+}
+
+// collectBody records every attribute of body and its nested blocks that
+// reads module inputs. A dynamic block's iterator reads what its for_each
+// reads, through every enclosing iterator.
+func (a *valueAnalyzer) collectBody(body *hclsyntax.Body, out *[]attributeReads) {
 	for _, attr := range body.Attributes {
-		names, readsIterator := t.expressionVariables(attr.Expr, iterator, locals)
-		if readsIterator {
-			names = appendMissing(names, iterated)
-		}
-		if len(names) > 0 {
-			*out = append(*out, attributeVariables{
+		if reads := a.reads(attr.Expr); !reads.empty() {
+			*out = append(*out, attributeReads{
 				lineStart: attr.SrcRange.Start.Line,
 				lineEnd:   attr.SrcRange.End.Line,
-				names:     names,
+				reads:     reads,
 			})
 		}
 	}
 	for _, block := range body.Blocks {
 		if block.Type != dynamicBlockType || len(block.Labels) == 0 {
-			t.collectAttributeVariables(block.Body, locals, iterator, iterated, out)
+			a.collectBody(block.Body, out)
 			continue
 		}
-		name := block.Labels[0]
-		if attr, ok := block.Body.Attributes[dynamicIterator]; ok {
-			if traversal, diags := hcl.AbsTraversalForExpr(attr.Expr); !diags.HasErrors() {
-				name = traversal.RootName()
-			}
+		a.collectDynamic(block, out)
+	}
+}
+
+// collectDynamic records a dynamic block's header, which reports reach when
+// they flag the generated block as a whole, and the attributes of its content
+// with its iterator in scope.
+func (a *valueAnalyzer) collectDynamic(block *hclsyntax.Block, out *[]attributeReads) {
+	name := block.Labels[0]
+	if attr, ok := block.Body.Attributes[dynamicIterator]; ok {
+		if traversal, diags := hcl.AbsTraversalForExpr(attr.Expr); !diags.HasErrors() {
+			name = traversal.RootName()
 		}
-		for _, content := range block.Body.Blocks {
-			if content.Type == dynamicContentType {
-				t.collectAttributeVariables(content.Body, locals, name, t.forEachVariables(block.Body, locals), out)
-			}
+	}
+	var reads inputReads
+	if attr, ok := block.Body.Attributes[forEachAttribute]; ok {
+		reads = a.reads(attr.Expr).shared()
+	}
+	headerEnd := block.OpenBraceRange.Start.Line
+	for _, content := range block.Body.Blocks {
+		if content.Type == dynamicContentType {
+			headerEnd = max(headerEnd, content.OpenBraceRange.Start.Line)
 		}
 	}
-}
-
-func (t *moduleAttributionCache) forEachVariables(
-	body *hclsyntax.Body, locals map[string]hclsyntax.Expression,
-) []string {
-	if attr, ok := body.Attributes[forEachAttribute]; ok {
-		names, _ := t.expressionVariables(attr.Expr, "", locals)
-		return names
+	// labels shape the generated block but not its iteration values.
+	header := reads.shared()
+	if attr, ok := block.Body.Attributes[dynamicLabels]; ok {
+		header.add(a.reads(attr.Expr).shared())
 	}
-	return nil
-}
-
-// expressionVariables returns the distinct module variables expr reads,
-// directly or through the module's locals, and whether it reads root.
-func (t *moduleAttributionCache) expressionVariables(
-	expr hclsyntax.Expression, root string, locals map[string]hclsyntax.Expression,
-) (names []string, readsRoot bool) {
-	w := readsWalker{root: root}
-	w.walk(expr)
-	return t.walkedVariables(&w, locals), w.readsRoot
-}
-
-// walkedVariables returns the module variables w read, directly or through
-// the module's locals.
-func (t *moduleAttributionCache) walkedVariables(w *readsWalker, locals map[string]hclsyntax.Expression) []string {
-	names := w.names
-	for _, local := range w.locals {
-		names = appendMissing(names, t.localVariables(local, locals))
+	if !header.empty() {
+		*out = append(*out, attributeReads{lineStart: block.TypeRange.Start.Line, lineEnd: headerEnd, reads: header})
 	}
-	return names
+	depth := len(a.iterators)
+	a.iterators = append(a.iterators, iteratorReads{name: name, reads: reads})
+	for _, content := range block.Body.Blocks {
+		if content.Type == dynamicContentType {
+			a.collectBody(content.Body, out)
+		}
+	}
+	a.iterators = a.iterators[:depth]
 }
 
-// localVariables returns the module variables a local value reads. A local
-// referring back to itself reads nothing further.
-func (t *moduleAttributionCache) localVariables(name string, locals map[string]hclsyntax.Expression) []string {
-	expr, ok := locals[name]
-	if !ok {
+// nolint:gocyclo
+func (a *valueAnalyzer) reads(expr hclsyntax.Expression) inputReads {
+	var r inputReads
+	switch e := expr.(type) {
+	case nil, *hclsyntax.LiteralValueExpr, *hclsyntax.AnonSymbolExpr:
+	case *hclsyntax.ScopeTraversalExpr:
+		return a.traversal(e.Traversal)
+	case *hclsyntax.RelativeTraversalExpr:
+		return a.reads(e.Source)
+	case *hclsyntax.IndexExpr:
+		r = a.reads(e.Collection)
+		r.addSelector(a.reads(e.Key))
+	case *hclsyntax.SplatExpr:
+		r = a.reads(e.Source)
+		r.add(a.reads(e.Each))
+	case *hclsyntax.FunctionCallExpr:
+		return a.call(e)
+	case *hclsyntax.ConditionalExpr:
+		return a.conditional(e)
+	case *hclsyntax.BinaryOpExpr:
+		r = a.reads(e.LHS)
+		r.add(a.reads(e.RHS))
+	case *hclsyntax.UnaryOpExpr:
+		return a.reads(e.Val)
+	case *hclsyntax.ParenthesesExpr:
+		return a.reads(e.Expression)
+	case *hclsyntax.TupleConsExpr:
+		for _, item := range e.Exprs {
+			r.add(a.reads(item))
+		}
+	case *hclsyntax.ObjectConsExpr:
+		for _, item := range e.Items {
+			r.add(a.reads(item.KeyExpr))
+			r.add(a.reads(item.ValueExpr))
+		}
+	case *hclsyntax.ObjectConsKeyExpr:
+		if !e.ForceNonLiteral && hcl.ExprAsKeyword(e.Wrapped) != "" {
+			return r
+		}
+		return a.reads(e.Wrapped)
+	case *hclsyntax.TemplateExpr:
+		for _, part := range e.Parts {
+			r.add(a.reads(part))
+		}
+	case *hclsyntax.TemplateWrapExpr:
+		return a.reads(e.Wrapped)
+	case *hclsyntax.TemplateJoinExpr:
+		return a.reads(e.Tuple)
+	case *hclsyntax.ForExpr:
+		r = a.reads(e.CollExpr)
+		scope := len(a.shadowed)
+		a.shadowed = append(a.shadowed, e.KeyVar, e.ValVar)
+		r.add(a.reads(e.KeyExpr))
+		r.add(a.reads(e.ValExpr))
+		r.addSelector(a.reads(e.CondExpr))
+		a.shadowed = a.shadowed[:scope]
+	default:
+		for _, traversal := range scopeTraversals(expr) {
+			r.add(a.traversal(traversal))
+		}
+	}
+	return r
+}
+
+// scopeTraversals covers expression types valueAnalyzer does not know. It is
+// kept apart so the analyzer itself is not captured by a closure.
+func scopeTraversals(expr hclsyntax.Expression) []hcl.Traversal {
+	var traversals []hcl.Traversal
+	_ = hclsyntax.VisitAll(expr, func(node hclsyntax.Node) hcl.Diagnostics {
+		if scope, ok := node.(*hclsyntax.ScopeTraversalExpr); ok {
+			traversals = append(traversals, scope.Traversal)
+		}
 		return nil
+	})
+	return traversals
+}
+
+func (a *valueAnalyzer) traversal(traversal hcl.Traversal) inputReads {
+	var r inputReads
+	if len(traversal) == 0 {
+		return r
 	}
-	if names, ok := t.locals[expr]; ok {
-		return names
+	root := traversal.RootName()
+	if slices.Contains(a.shadowed, root) {
+		return r
 	}
-	t.locals[expr] = nil
-	names, _ := t.expressionVariables(expr, "", locals)
-	t.locals[expr] = names
-	return names
+	for i := len(a.iterators) - 1; i >= 0; i-- {
+		if a.iterators[i].name == root {
+			return a.iterators[i].reads
+		}
+	}
+	switch root {
+	case moduleVariableRoot:
+		r.value = appendStep(r.value, traversal)
+	case moduleLocalRoot:
+		if name := stepName(traversal); name != "" {
+			return a.local(name)
+		}
+	}
+	return r
+}
+
+// local returns what a local value reads. A local referring back to itself
+// reads nothing further.
+func (a *valueAnalyzer) local(name string) inputReads {
+	if a.scope == nil {
+		return inputReads{}
+	}
+	expr, ok := a.scope.Locals[name]
+	if !ok {
+		return inputReads{}
+	}
+	key := localCacheKey{expr: expr, scope: a.scope}
+	if reads, ok := a.cache.locals[key]; ok {
+		return reads
+	}
+	a.cache.locals[key] = inputReads{}
+	// Locals cannot read iterators or for expression variables of the
+	// expression reading them, so they are walked in the module's own scope.
+	reads := a.cache.analyzer(a.scope, nil).reads(expr).shared()
+	a.cache.locals[key] = reads
+	return reads
+}
+
+func (a *valueAnalyzer) call(e *hclsyntax.FunctionCallExpr) inputReads {
+	if !e.ExpandFinal {
+		switch e.Name {
+		case "coalesce":
+			return a.firstOf(e.Args, absentForCoalesce)
+		case "coalescelist":
+			return a.firstOf(e.Args, emptyForCoalesceList)
+		case "try":
+			return a.firstEvaluated(e.Args)
+		case "lookup":
+			if len(e.Args) == 3 {
+				return a.lookup(e.Args[0], e.Args[1], e.Args[2])
+			}
+		}
+	}
+	var r inputReads
+	for _, arg := range e.Args {
+		r.add(a.reads(arg))
+	}
+	return r
+}
+
+func (a *valueAnalyzer) conditional(e *hclsyntax.ConditionalExpr) inputReads {
+	condition := a.reads(e.Condition)
+	if v, ok := a.value(e.Condition); ok && !v.IsNull() && v.Type() == cty.Bool {
+		branch := e.FalseResult
+		if v.True() {
+			branch = e.TrueResult
+		}
+		r := a.reads(branch)
+		r.addSelector(condition)
+		return r
+	}
+	return a.unresolved(condition, e.TrueResult, e.FalseResult)
+}
+
+func absentForCoalesce(v cty.Value) bool {
+	return v.IsNull() || (v.Type() == cty.String && v.AsString() == "")
+}
+
+func emptyForCoalesceList(v cty.Value) bool {
+	if v.IsNull() {
+		return true
+	}
+	ty := v.Type()
+	return (ty.IsListType() || ty.IsTupleType()) && v.LengthInt() == 0
+}
+
+// firstOf resolves coalesce-like calls: the first argument not skipped is the
+// value, the skipped ones only chose it. The last argument is the value once
+// reached, whatever it holds.
+func (a *valueAnalyzer) firstOf(args []hclsyntax.Expression, skip func(cty.Value) bool) inputReads {
+	var skipped inputReads
+	for i, arg := range args {
+		if i < len(args)-1 {
+			v, ok := a.value(arg)
+			if !ok {
+				return a.unresolved(skipped, args[i:]...)
+			}
+			if skip(v) {
+				skipped.addSelector(a.reads(arg))
+				continue
+			}
+		}
+		r := a.reads(arg)
+		r.addSelector(skipped)
+		return r
+	}
+	return skipped
+}
+
+// firstEvaluated resolves try: the first argument evaluating without error is
+// the value. Arguments whose evaluation depends on something not kept after
+// evaluation, such as a resource attribute, leave the choice unresolved.
+func (a *valueAnalyzer) firstEvaluated(args []hclsyntax.Expression) inputReads {
+	var skipped inputReads
+	for i, arg := range args {
+		if i < len(args)-1 {
+			if !a.evaluable(arg) {
+				return a.unresolved(skipped, args[i:]...)
+			}
+			v, diags := arg.Value(a.context())
+			if diags.HasErrors() {
+				skipped.addSelector(a.reads(arg))
+				continue
+			}
+			if !v.IsWhollyKnown() {
+				return a.unresolved(skipped, args[i:]...)
+			}
+		}
+		r := a.reads(arg)
+		r.addSelector(skipped)
+		return r
+	}
+	return skipped
+}
+
+func (a *valueAnalyzer) lookup(collection, key, fallback hclsyntax.Expression) inputReads {
+	keyReads := a.reads(key)
+	if found, ok := a.hasKey(collection, key); ok {
+		chosen, other := collection, fallback
+		if !found {
+			chosen, other = fallback, collection
+		}
+		r := a.reads(chosen)
+		r.addSelector(keyReads)
+		if !found {
+			r.addSelector(a.reads(other))
+		}
+		return r
+	}
+	return a.unresolved(keyReads, collection, fallback)
+}
+
+func (a *valueAnalyzer) hasKey(collection, key hclsyntax.Expression) (found, ok bool) {
+	m, ok := a.value(collection)
+	if !ok || m.IsNull() {
+		return false, false
+	}
+	k, ok := a.value(key)
+	if !ok || k.IsNull() || k.Type() != cty.String {
+		return false, false
+	}
+	ty := m.Type()
+	switch {
+	case ty.IsObjectType():
+		return ty.HasAttribute(k.AsString()), true
+	case ty.IsMapType():
+		has := m.HasIndex(k)
+		if !has.IsKnown() {
+			return false, false
+		}
+		return has.True(), true
+	}
+	return false, false
+}
+
+// unresolved is a choice among alternatives that could not be resolved: the
+// value reads all of them, and is ambiguous unless they all read the same
+// inputs.
+func (a *valueAnalyzer) unresolved(selector inputReads, alternatives ...hclsyntax.Expression) inputReads {
+	var r inputReads
+	for i, alt := range alternatives {
+		reads := a.reads(alt)
+		if i == 0 {
+			r = reads
+			continue
+		}
+		if !sameReads(&r, &reads) {
+			r.ambiguous = true
+		}
+		r.add(reads)
+	}
+	r.addSelector(selector)
+	return r
+}
+
+// value evaluates expr with the module's var and local values and the
+// instance's iteration, or reports false when expr reads anything else or
+// does not evaluate to a known value.
+func (a *valueAnalyzer) value(expr hclsyntax.Expression) (cty.Value, bool) {
+	if !a.evaluable(expr) {
+		return cty.NilVal, false
+	}
+	v, diags := expr.Value(a.context())
+	if diags.HasErrors() || !v.IsKnown() {
+		return cty.NilVal, false
+	}
+	v, _ = v.UnmarkDeep()
+	return v, true
+}
+
+// evaluable reports whether expr only reads what the analyzer can evaluate it
+// with, so an evaluation error is the expression's own and not a reference
+// the analyzer does not hold, such as a resource attribute or a dynamic
+// block's iterator.
+func (a *valueAnalyzer) evaluable(expr hclsyntax.Expression) bool {
+	ctx := a.context()
+	var bound []string
+	ok := true
+	usedIteration := false
+	_ = hclsyntax.VisitAll(expr, func(node hclsyntax.Node) hcl.Diagnostics {
+		switch n := node.(type) {
+		case *hclsyntax.ForExpr:
+			bound = append(bound, n.KeyVar, n.ValVar)
+		case *hclsyntax.FunctionCallExpr:
+			if _, known := ctx.Functions[n.Name]; !known {
+				ok = false
+			}
+		case *hclsyntax.ScopeTraversalExpr:
+			root := n.Traversal.RootName()
+			if slices.Contains(bound, root) {
+				return nil
+			}
+			if slices.Contains(a.shadowed, root) || a.unevaluatedIterator(root) {
+				ok = false
+				return nil
+			}
+			if _, known := ctx.Variables[root]; !known {
+				ok = false
+				return nil
+			}
+			if _, iterated := a.iteration[root]; iterated {
+				usedIteration = true
+			}
+		}
+		return nil
+	})
+	if ok && usedIteration {
+		a.usedIteration = true
+	}
+	return ok
+}
+
+// unevaluatedIterator reports whether root names an iterator in scope whose
+// values are not kept after evaluation, such as a dynamic block's.
+func (a *valueAnalyzer) unevaluatedIterator(root string) bool {
+	for i := len(a.iterators) - 1; i >= 0; i-- {
+		if a.iterators[i].name == root {
+			return !a.iterators[i].evaluated
+		}
+	}
+	return false
+}
+
+func (a *valueAnalyzer) context() *hcl.EvalContext {
+	if a.evalCtx != nil {
+		return a.evalCtx
+	}
+	vars := make(map[string]cty.Value, 2+len(a.iteration))
+	if a.scope != nil {
+		if a.scope.Var != cty.NilVal {
+			vars[moduleVariableRoot] = a.scope.Var
+		}
+		if a.scope.Local != cty.NilVal {
+			vars[moduleLocalRoot] = a.scope.Local
+		}
+	}
+	for name, v := range a.iteration {
+		vars[name] = v
+	}
+	a.evalCtx = &hcl.EvalContext{Variables: vars, Functions: functions.TerraformFuncs}
+	return a.evalCtx
 }
 
 // appendMissing appends the names of extra absent from names. It never
@@ -233,128 +691,19 @@ func appendMissing(names, extra []string) []string {
 	return names
 }
 
-// readsWalker finds the scope traversals of an expression. It runs once per
-// attribute of every instantiated resource block, so it walks the common
-// expression types directly: Expression.Variables and hclsyntax.VisitAll
-// allocate for every node they visit.
-type readsWalker struct {
-	root   string
-	names  []string
-	locals []string
-	// anyIterator makes reads of each and count set readsRoot, whatever root is.
-	anyIterator bool
-	readsRoot   bool
-	// shadowed holds the names bound by the for expressions being walked.
-	shadowed []string
-}
-
-// nolint:gocyclo
-func (w *readsWalker) walk(expr hclsyntax.Expression) {
-	switch e := expr.(type) {
-	case nil, *hclsyntax.LiteralValueExpr, *hclsyntax.AnonSymbolExpr:
-	case *hclsyntax.ScopeTraversalExpr:
-		w.traversal(e.Traversal)
-	case *hclsyntax.RelativeTraversalExpr:
-		w.walk(e.Source)
-	case *hclsyntax.IndexExpr:
-		w.walk(e.Collection)
-		w.walk(e.Key)
-	case *hclsyntax.SplatExpr:
-		w.walk(e.Source)
-		w.walk(e.Each)
-	case *hclsyntax.FunctionCallExpr:
-		for _, arg := range e.Args {
-			w.walk(arg)
-		}
-	case *hclsyntax.ConditionalExpr:
-		w.walk(e.Condition)
-		w.walk(e.TrueResult)
-		w.walk(e.FalseResult)
-	case *hclsyntax.BinaryOpExpr:
-		w.walk(e.LHS)
-		w.walk(e.RHS)
-	case *hclsyntax.UnaryOpExpr:
-		w.walk(e.Val)
-	case *hclsyntax.ParenthesesExpr:
-		w.walk(e.Expression)
-	case *hclsyntax.TupleConsExpr:
-		for _, item := range e.Exprs {
-			w.walk(item)
-		}
-	case *hclsyntax.ObjectConsExpr:
-		for _, item := range e.Items {
-			w.walk(item.KeyExpr)
-			w.walk(item.ValueExpr)
-		}
-	case *hclsyntax.ObjectConsKeyExpr:
-		if !e.ForceNonLiteral && hcl.ExprAsKeyword(e.Wrapped) != "" {
-			return
-		}
-		w.walk(e.Wrapped)
-	case *hclsyntax.TemplateExpr:
-		for _, part := range e.Parts {
-			w.walk(part)
-		}
-	case *hclsyntax.TemplateWrapExpr:
-		w.walk(e.Wrapped)
-	case *hclsyntax.TemplateJoinExpr:
-		w.walk(e.Tuple)
-	case *hclsyntax.ForExpr:
-		w.walk(e.CollExpr)
-		scope := len(w.shadowed)
-		w.shadowed = append(w.shadowed, e.KeyVar, e.ValVar)
-		w.walk(e.KeyExpr)
-		w.walk(e.ValExpr)
-		w.walk(e.CondExpr)
-		w.shadowed = w.shadowed[:scope]
-	default:
-		for _, traversal := range scopeTraversals(expr) {
-			w.traversal(traversal)
-		}
-	}
-}
-
-// scopeTraversals covers expression types readsWalker does not know. It is
-// kept apart so the walker itself is not captured by a closure and stays on
-// the stack.
-func scopeTraversals(expr hclsyntax.Expression) []hcl.Traversal {
-	var traversals []hcl.Traversal
-	_ = hclsyntax.VisitAll(expr, func(node hclsyntax.Node) hcl.Diagnostics {
-		if scope, ok := node.(*hclsyntax.ScopeTraversalExpr); ok {
-			traversals = append(traversals, scope.Traversal)
-		}
-		return nil
-	})
-	return traversals
-}
-
-func (w *readsWalker) traversal(traversal hcl.Traversal) {
-	if len(traversal) == 0 {
-		return
-	}
-	if len(w.shadowed) > 0 && slices.Contains(w.shadowed, traversal.RootName()) {
-		return
-	}
-	switch traversal.RootName() {
-	case moduleVariableRoot:
-		w.names = appendStep(w.names, traversal)
-	case moduleLocalRoot:
-		w.locals = appendStep(w.locals, traversal)
-	case w.root:
-		w.readsRoot = w.root != ""
-	case resourceEachRoot, moduleCountRoot:
-		if w.anyIterator {
-			w.readsRoot = true
-		}
-	}
-}
-
 func appendStep(names []string, traversal hcl.Traversal) []string {
-	if len(traversal) < 2 {
-		return names
-	}
-	if step, ok := traversal[1].(hcl.TraverseAttr); ok && !slices.Contains(names, step.Name) {
-		names = append(names, step.Name)
+	if name := stepName(traversal); name != "" && !slices.Contains(names, name) {
+		names = append(names, name)
 	}
 	return names
+}
+
+func stepName(traversal hcl.Traversal) string {
+	if len(traversal) < 2 {
+		return ""
+	}
+	if step, ok := traversal[1].(hcl.TraverseAttr); ok {
+		return step.Name
+	}
+	return ""
 }

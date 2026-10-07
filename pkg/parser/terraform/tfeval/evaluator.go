@@ -67,9 +67,11 @@ type ResolvedResource struct {
 	// attributes evaluation could not resolve. It is not consulted during
 	// evaluation, so recovered references never feed back into resolved values.
 	Body *hclsyntax.Body
-	// Locals are the local value expressions of the module declaring the
-	// resource. Read-only after evaluation.
-	Locals map[string]hclsyntax.Expression
+	// Scope is the module declaring the resource as it was evaluated.
+	Scope *ModuleScope
+	// Iteration holds the each or count value of an expanded instance, nil
+	// for a block without count or for_each.
+	Iteration map[string]cty.Value
 
 	// Source location and module address for finding attribution.
 	DefinedIn     string
@@ -97,9 +99,17 @@ type CallSite struct {
 	// Body is the module block's body, used to trace a resource attribute back
 	// to the call argument that sets it. Read-only after evaluation.
 	Body *hclsyntax.Body
-	// CallerLocals are the local value expressions of the module declaring the
-	// call. Read-only after evaluation.
-	CallerLocals map[string]hclsyntax.Expression
+	// Caller is the module declaring the call as it was evaluated.
+	Caller *ModuleScope
+}
+
+// ModuleScope is a module's local value expressions with the var and local
+// values its blocks were evaluated with, so a value can be traced back to the
+// module inputs it reads after evaluation. Read-only after evaluation.
+type ModuleScope struct {
+	Locals map[string]hclsyntax.Expression
+	Var    cty.Value
+	Local  cty.Value
 }
 
 // Evaluator evaluates local Terraform modules.
@@ -421,17 +431,18 @@ func (e *Evaluator) evaluate(
 	}
 
 	evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
+	scope := &ModuleScope{Locals: localExprs, Var: evalCtx.Variables["var"]}
 
 	if !e.preinjectResourceRefs(resourceBlocks, moduleBlocks, localExprs, evalCtx, addr, chain) {
 		return nil, nil, e.skipEvaluation(dir)
 	}
 
 	e.applySiblingModulePrepass(
-		ctx, moduleBlocks, evalCtx, localExprs, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, evalCtx, localExprs, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
+		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
 	)
 
 	if len(moduleOutputs) > 0 {
@@ -452,6 +463,10 @@ func (e *Evaluator) evaluate(
 	// loop, so injectResourceRefs returns false and the locals refresh is skipped.
 	if injectResourceRefs(evalCtx, rootResources) {
 		evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
+	}
+	scope.Local = evalCtx.Variables["local"]
+	for i := range rootResources {
+		rootResources[i].Scope = scope
 	}
 
 	resources := make([]ResolvedResource, 0, len(rootResources)+len(childResources))
@@ -543,7 +558,7 @@ func (e *Evaluator) preinjectResourceRefs(
 		return true
 	}
 	resources, complete := e.evalResourceBlocks(
-		resourceBlocks, localExprs, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+		resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
 	)
 	if !complete {
 		return false
@@ -687,7 +702,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
-	localExprs map[string]hclsyntax.Expression,
+	scope *ModuleScope,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
@@ -697,13 +712,13 @@ func (e *Evaluator) applySiblingModulePrepass(
 		return
 	}
 	prelimOutputs := e.preliminaryModuleOutputs(
-		ctx, moduleBlocks, evalCtx, localExprs, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 	if len(prelimOutputs) == 0 {
 		return
 	}
 	evalCtx.Variables["module"] = cty.ObjectVal(prelimOutputs)
-	localVals := e.resolveLocals(localExprs, evalCtx)
+	localVals := e.resolveLocals(scope.Locals, evalCtx)
 	evalCtx.Variables["local"] = objectOrEmpty(localVals)
 }
 
@@ -711,7 +726,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
-	localExprs map[string]hclsyntax.Expression,
+	scope *ModuleScope,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
@@ -775,7 +790,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			CalledColumn:    mb.TypeRange.Start.Column,
 			CalledEndColumn: mb.Range().End.Column,
 			Body:            mb.Body,
-			CallerLocals:    localExprs,
+			Caller:          scope,
 		}
 		childAddr := joinAddr(addr, "module."+label)
 
@@ -839,7 +854,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	for pass := 0; pass < resourceRefPasses; pass++ {
 		var complete bool
 		rootResources, complete = e.evalResourceBlocks(
-			resourceBlocks, localExprs, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+			resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
 		)
 		if !complete {
 			return nil, false
@@ -864,7 +879,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	// (e.g. the Nth resource in an A→B→C→D chain whose evalCtx was updated after the
 	// last evalResourceBlocks call).
 	return e.evalResourceBlocks(
-		resourceBlocks, localExprs, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+		resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
 	)
 }
 
@@ -927,7 +942,6 @@ func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
 // evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
 func (e *Evaluator) evalResourceBlocks(
 	resourceBlocks []*hclsyntax.Block,
-	localExprs map[string]hclsyntax.Expression,
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain []CallSite,
@@ -936,9 +950,6 @@ func (e *Evaluator) evalResourceBlocks(
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
 		expanded := e.expandResourceBlock(rb, evalCtx, addr, chain)
-		for i := range expanded {
-			expanded[i].Locals = localExprs
-		}
 		if limit >= 0 {
 			e.noteBudgetDemand(e.maxInstantiated - limit + len(resources) + len(expanded))
 			if len(resources)+len(expanded) > limit {
@@ -964,11 +975,18 @@ func (e *Evaluator) expandResourceBlock(
 	typeName, resName := rb.Labels[0], rb.Labels[1]
 
 	makeOne := func(name string, ctx *hcl.EvalContext) ResolvedResource {
+		// Only attribution of module resources reads the iteration, so the
+		// instances of the root module do not keep it.
+		var iteration map[string]cty.Value
+		if ctx != evalCtx && addr != "" {
+			iteration = ctx.Variables
+		}
 		return ResolvedResource{
 			Type:          typeName,
 			Name:          name,
 			Attributes:    e.evalBody(rb.Body, ctx, nil),
 			Body:          rb.Body,
+			Iteration:     iteration,
 			DefinedIn:     rb.TypeRange.Filename,
 			DefLine:       rb.TypeRange.Start.Line,
 			DefEndLine:    rb.Range().End.Line,
@@ -1287,7 +1305,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
-	localExprs map[string]hclsyntax.Expression,
+	scope *ModuleScope,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
@@ -1334,7 +1352,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			CalledColumn:    mb.TypeRange.Start.Column,
 			CalledEndColumn: mb.Range().End.Column,
 			Body:            mb.Body,
-			CallerLocals:    localExprs,
+			Caller:          scope,
 		}
 		childAddr := joinAddr(addr, "module."+label)
 		childChain := append(cloneChain(chain), site)
