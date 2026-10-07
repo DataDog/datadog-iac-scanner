@@ -369,6 +369,7 @@ func declaredGitRef(source string) string {
 			if unescaped, err := url.QueryUnescape(value); err == nil {
 				value = unescaped
 			}
+			value, _, _ = strings.Cut(value, "#")
 			return strings.TrimSpace(value)
 		}
 	}
@@ -450,7 +451,11 @@ func normalizedRemoteModuleSource(source string) string {
 			return normalizedFileModuleSource(parsed.Path)
 		}
 		if parsed.Scheme == "ssh" && parsed.Hostname() != "" {
-			parsed = &url.URL{Scheme: "https", Host: parsed.Hostname(), Path: parsed.Path}
+			host := parsed.Hostname()
+			if port := parsed.Port(); port != "" && port != "22" {
+				host += ":" + port
+			}
+			parsed = &url.URL{Scheme: "https", Host: host, Path: parsed.Path}
 		}
 		parsed.User = nil
 		source = parsed.String()

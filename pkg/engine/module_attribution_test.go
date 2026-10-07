@@ -474,3 +474,9 @@ func TestDeclaredGitRefHandlesShorthandAndSemicolons(t *testing.T) {
 		t.Error("isGitShorthand misclassifies sources")
 	}
 }
+
+func TestNormalizedRemoteModuleSourceKeepsSSHPort(t *testing.T) {
+	require.Equal(t, "https://host:2222/o/r", normalizedRemoteModuleSource("git::ssh://git@host:2222/o/r.git"))
+	require.Equal(t, "https://host/o/r", normalizedRemoteModuleSource("git::ssh://git@host:22/o/r.git"))
+	require.Equal(t, "https://host/o/r", normalizedRemoteModuleSource("git::ssh://git@host/o/r.git"))
+}
