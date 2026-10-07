@@ -215,3 +215,16 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 	unchanged := []model.Vulnerability{{FileID: "stack-a"}}
 	require.Equal(t, &unchanged[0], &attributeModuleFileFindings(unchanged, files)[0], "nothing is copied when nothing is attributed")
 }
+
+func TestRootsReachingKeepsRootsCallingTargetDirectories(t *testing.T) {
+	calls := map[string][]string{
+		"a":      {"local", "ext"},
+		"b":      {"local"},
+		"c":      nil,
+		"local":  {"nested"},
+		"nested": {"ext"},
+	}
+	targets := map[string][]*model.FileMetadata{"ext": nil}
+	require.Equal(t, []string{"a", "b"}, rootsReaching([]string{"a", "b", "c"}, calls, targets))
+	require.Empty(t, rootsReaching([]string{"c"}, calls, targets))
+}

@@ -665,8 +665,10 @@ func resolveModuleDocuments(
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
 	staticCalledDirs := make(map[string]bool)
+	staticCalls := make(map[string][]string, len(dirsWithTf))
 	for dir := range dirsWithTf {
 		calledDirs := discoverCalledModuleDirs(ctx, evaluator, filesByDir[dir], repoPath, resolver, dir)
+		staticCalls[dir] = calledDirs
 		for _, called := range calledDirs {
 			staticCalledDirs[called] = true
 		}
@@ -697,8 +699,12 @@ func resolveModuleDocuments(
 	}
 	sort.Strings(roots)
 
+	// With no resource to resolve, a root only matters for the calls it makes
+	// to external module directories, so the others are not evaluated.
+	evaluatedRoots := rootsToEvaluate(roots, staticCalls, moduleCalls, files, targets)
+
 	evaluateRootModules(
-		ctx, evaluator, roots, filesByDir, repoPath, resolver, targets, lookup,
+		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
@@ -753,6 +759,56 @@ func resolveModuleDocuments(
 		budgetExceeded:       evaluator.BudgetExceeded(),
 		ok:                   true,
 	}
+}
+
+// rootsToEvaluate returns the roots whose evaluation can change a result.
+func rootsToEvaluate(
+	roots []string,
+	calls map[string][]string,
+	moduleCalls *moduleCallIndex,
+	files model.FileMetadatas,
+	targets *ruleTargets,
+) []string {
+	if moduleCalls == nil || declaresTargetedResource(files, targets) {
+		return roots
+	}
+	return rootsReaching(roots, calls, moduleCalls.files)
+}
+
+// rootsReaching returns the roots whose module calls lead, through any depth
+// of local or remote calls, to one of the target directories.
+func rootsReaching(roots []string, calls map[string][]string, targets map[string][]*model.FileMetadata) []string {
+	reaches := make(map[string]bool, len(calls))
+	var visit func(dir string, onPath map[string]bool) bool
+	visit = func(dir string, onPath map[string]bool) bool {
+		if reached, done := reaches[dir]; done {
+			return reached
+		}
+		if _, ok := targets[dir]; ok {
+			reaches[dir] = true
+			return true
+		}
+		if onPath[dir] {
+			return false
+		}
+		onPath[dir] = true
+		defer delete(onPath, dir)
+		for _, called := range calls[dir] {
+			if visit(called, onPath) {
+				reaches[dir] = true
+				return true
+			}
+		}
+		reaches[dir] = false
+		return false
+	}
+	var out []string
+	for _, root := range roots {
+		if visit(root, map[string]bool{}) {
+			out = append(out, root)
+		}
+	}
+	return out
 }
 
 // instantiatedResource is one resolved resource as it is placed into a document.
