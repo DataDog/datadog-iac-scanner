@@ -975,8 +975,10 @@ func (e *Evaluator) expandResourceBlock(
 	typeName, resName := rb.Labels[0], rb.Labels[1]
 
 	makeOne := func(name string, ctx *hcl.EvalContext) ResolvedResource {
+		// Only attribution of module resources reads the iteration, so the
+		// instances of the root module do not keep it.
 		var iteration map[string]cty.Value
-		if ctx != evalCtx {
+		if ctx != evalCtx && addr != "" {
 			iteration = ctx.Variables
 		}
 		return ResolvedResource{
