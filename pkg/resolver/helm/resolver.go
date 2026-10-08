@@ -12,7 +12,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -52,11 +51,11 @@ const dependenciesDirName = "charts"
 func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model.ResolvedFiles, err error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("Resolving Helm files")
-	// A panic is reported as an error: an empty result with no error would read
-	// as a chart that rendered to nothing, and its raw templates would be withheld.
+	// A panic is reported as an error, which the caller logs: an empty result
+	// with no error would read as a chart that rendered to nothing, and its raw
+	// templates would be withheld.
 	defer func() {
 		if p := recover(); p != nil {
-			masterUtils.HandlePanic(ctx, p, "Recovered from panic during resolve of file "+filePath)
 			resolved, err = model.ResolvedFiles{}, fmt.Errorf("panic during resolve of %s: %v", filePath, p)
 		}
 	}()

@@ -450,9 +450,7 @@ func IsNestedRenderedChart(root string, renderedRoots []string) bool {
 // their subcharts, skipping a subchart once its parent rendered it. It returns
 // the roots chartFn reported as rendered, the set whose Helm files are then
 // withheld from the parsers (see IsHelmChartFile). Charts of one wave run on
-// pool, so chartFn may be called from several goroutines at once. A panic in
-// chartFn is logged and leaves that chart unrendered: it runs outside the
-// caller's goroutine, where a recover could not catch it.
+// pool, so chartFn may be called from several goroutines at once.
 func renderChartsShallowFirst(ctx context.Context, roots []string, pool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) []string {
 	renderedRoots := make([]string, 0, len(roots))
@@ -466,12 +464,7 @@ func renderChartsShallowFirst(ctx context.Context, roots []string, pool utils.Po
 		rendered := make([]bool, len(pending))
 		_ = utils.ForEach(ctx, pending, pool,
 			func(ctx context.Context, root string, i int) error {
-				defer func() {
-					if r := recover(); r != nil {
-						utils.HandlePanic(ctx, r, fmt.Sprintf("Recovered from panic while rendering Helm chart '%s'", root))
-					}
-				}()
-				rendered[i] = chartFn(ctx, root)
+				rendered[i] = renderChart(ctx, chartFn, root)
 				return nil
 			})
 		for i, root := range pending {
@@ -481,6 +474,21 @@ func renderChartsShallowFirst(ctx context.Context, roots []string, pool utils.Po
 		}
 	}
 	return renderedRoots
+}
+
+// renderChart calls chartFn for the chart at root. A panic in it is logged and
+// leaves the chart unrendered, so its raw files are still scanned. Every chart
+// is rendered through here, whether on a pool, where a panic would otherwise
+// escape every recover, or during a directory walk.
+func renderChart(ctx context.Context, chartFn func(ctx context.Context, chartPath string) (rendered bool),
+	root string) (rendered bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			utils.HandlePanic(ctx, r, fmt.Sprintf("Recovered from panic while rendering Helm chart '%s'", root))
+			rendered = false
+		}
+	}()
+	return chartFn(ctx, root)
 }
 
 // chartRootWaves groups the slash-normalized chart roots, shallow-first, by
@@ -609,7 +617,7 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 
 		walkErr := s.walkDirectory(ctx, scanPath, extensions,
 			func(ctx context.Context, path string, resolved *[]string) error {
-				if chartFn(ctx, toSlash(path)) {
+				if renderChart(ctx, chartFn, toSlash(path)) {
 					*resolved = append(*resolved, path)
 				}
 				return nil

@@ -1031,6 +1031,37 @@ func TestRenderChartsShallowFirstSequentialPool(t *testing.T) {
 	require.Equal(t, int32(1), peak.Load())
 }
 
+// A directory walk renders charts through the same recover as the pool: a
+// chart whose render panics is left unrendered and its raw files are listed.
+func TestWalkInventoryRecoversChartPanic(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	template := filepath.Join(dir, "chart", "templates", "cm.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(template), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "chart", "Chart.yaml"),
+		[]byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"), 0o600))
+	require.NoError(t, os.WriteFile(template, []byte("apiVersion: v1\nkind: ConfigMap\n"), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+	require.NoError(t, err)
+	charts := 0
+	var files []InventoryFile
+	require.NotPanics(t, func() {
+		files, err = fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{},
+			func(context.Context, string) bool {
+				charts++
+				panic("boom")
+			})
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, charts)
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.Path)
+	}
+	require.Contains(t, paths, filepath.ToSlash(template))
+}
+
 // A chart whose render panics is left unrendered without taking down the
 // others: renders run on pool goroutines, out of reach of the caller's recover.
 func TestRenderChartsShallowFirstRecoversPanic(t *testing.T) {

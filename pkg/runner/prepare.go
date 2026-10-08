@@ -7,7 +7,6 @@ package runner
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,11 +143,7 @@ func prepareSources(ctx context.Context,
 		})
 }
 
-// resolveAndStoreChart renders a chart and stores its files. A panic while
-// rendering is returned by the Helm resolver as an error, so the chart takes
-// the failure path below. A panic while storing is recovered here, which both
-// ways of walking charts need: the pool in renderChartsShallowFirst recovers
-// only what it runs, and a directory walk calls this directly.
+// resolveAndStoreChart renders a chart and stores its files.
 func resolveAndStoreChart(
 	ctx context.Context,
 	src preparedSource,
@@ -157,7 +152,7 @@ func resolveAndStoreChart(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	unrendered *unrenderedHelmCharts,
-) (rendered bool) {
+) bool {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
 		return true
@@ -183,14 +178,6 @@ func resolveAndStoreChart(
 			routed = servicesForPlatformAndParserKind(services, platform, model.KindYAML)
 		}
 	}
-	// Part of the chart may already be stored when a panic stops this, so it is
-	// still reported rendered: scanning its raw templates too would duplicate it.
-	defer func() {
-		if r := recover(); r != nil {
-			utils.HandlePanic(ctx, r, fmt.Sprintf("Recovered from panic while storing Helm chart '%s'", chartPath))
-			rendered = true
-		}
-	}()
 	for _, s := range routed {
 		s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
 	}
