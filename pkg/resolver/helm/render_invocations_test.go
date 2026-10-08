@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -198,7 +199,7 @@ type countingFS struct {
 }
 
 func (c *countingFS) ReadFile(name string) ([]byte, error) {
-	if name == c.name {
+	if filepath.ToSlash(name) == c.name {
 		c.reads++
 	}
 	return c.FS.ReadFile(name)
@@ -348,84 +349,78 @@ func TestHelmResolve_IncludeAfterRightTrimmedAction(t *testing.T) {
 	require.Equal(t, map[string]string{"tier": "web"}, doc.Data)
 }
 
-// A template whose output a marker breaks is rendered again without markers
-// and keeps its IDs and original source; the chart's other templates keep their
-// invocation lines.
-func TestHelmResolveRetryWithoutMarkersIsScopedToTheFailingTemplate(t *testing.T) {
-	got := renderChart(t, map[string]string{
-		"templates/_h.tpl":  "{{- define \"more\" -}}\nworld\n{{- end -}}\n",
-		"templates/cm.yaml": brokenByMarkerTemplate,
-		"templates/s.yaml":  "{{ include \"sec\" . }}\n",
-		"templates/_s.tpl":  "{{- define \"sec\" -}}\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n{{- end -}}\n",
-	})
-	cm := findResolvedBySuffix(t, got, "templates/cm.yaml")
-	require.Contains(t, string(cm.OriginalData), brokenByMarkerTemplate)
-	require.NotContains(t, string(cm.Content), invocationPrefix)
-	require.NotContains(t, string(cm.OriginalData), invocationPrefix)
-	require.NotEmpty(t, cm.IDInfo)
-	require.Empty(t, cm.HelmInvocations, "the failing template gives up its invocation lines")
-
-	s := findResolvedBySuffix(t, got, "templates/s.yaml")
-	require.Contains(t, string(s.Content), "kind: Secret")
-	require.Equal(t, model.ResourceLine{Line: 1}, s.HelmInvocations.First(), "other templates keep theirs")
-}
-
-// A subchart's template is matched by the name Helm reports for it, so it is
-// rendered again alone and the parent's templates keep their invocation lines.
-func TestHelmResolveRetryWithoutMarkersIsScopedToASubchartTemplate(t *testing.T) {
-	got := renderChart(t, map[string]string{
-		"templates/s.yaml":             "{{ include \"sec\" . }}\n",
-		"templates/_s.tpl":             "{{- define \"sec\" -}}\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n{{- end -}}\n",
-		"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
-		"charts/sub/templates/_h.tpl":  "{{- define \"more\" -}}\nworld\n{{- end -}}\n",
-		"charts/sub/templates/cm.yaml": brokenByMarkerTemplate,
-	})
-	cm := findResolvedBySuffix(t, got, "charts/sub/templates/cm.yaml")
-	require.Contains(t, string(cm.Content), "world")
-	require.Empty(t, cm.HelmInvocations)
-	s := findResolvedBySuffix(t, got, "templates/s.yaml")
-	require.Equal(t, model.ResourceLine{Line: 1}, s.HelmInvocations.First())
-}
-
-// Several templates broken by markers are each rendered again without them.
-func TestHelmResolveRetryWithoutMarkersCoversEveryFailingTemplate(t *testing.T) {
-	files := map[string]string{"templates/_h.tpl": "{{- define \"more\" -}}\nworld\n{{- end -}}\n"}
-	for _, name := range []string{"a", "b", "c"} {
-		files["templates/"+name+".yaml"] = brokenByMarkerTemplate
+// A template a marker broke is rendered again without markers, and gives up its
+// invocation lines; every other template keeps them. A subchart's template is
+// matched by the name Helm reports for it; one under an alias, which the
+// stamping never saw, renders with the chart rendered without any marker, as
+// do more broken templates than retries.
+func TestHelmResolveRetryWithoutMarkers(t *testing.T) {
+	const more = "{{- define \"more\" -}}\nworld\n{{- end -}}\n"
+	const sec = "{{- define \"sec\" -}}\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\n{{- end -}}\n"
+	manyBroken := func(names ...string) map[string]string {
+		files := map[string]string{"templates/_h.tpl": more}
+		for _, name := range names {
+			files[name] = brokenByMarkerTemplate
+		}
+		return files
 	}
-	got := renderChart(t, files)
-	for _, name := range []string{"a", "b", "c"} {
-		f := findResolvedBySuffix(t, got, "templates/"+name+".yaml")
-		require.Contains(t, string(f.Content), "world")
-		require.Empty(t, f.HelmInvocations)
-	}
-}
-
-// More broken templates than retries fall back to rendering the chart without
-// any marker, which still renders every one of them.
-func TestHelmResolveRetryWithoutMarkersFallsBackBeyondTheRetryBound(t *testing.T) {
-	files := map[string]string{"templates/_h.tpl": "{{- define \"more\" -}}\nworld\n{{- end -}}\n"}
+	beyondTheBound := make([]string, 0, maxMarkerRetries+1)
 	for i := 0; i <= maxMarkerRetries; i++ {
-		files[fmt.Sprintf("templates/t%d.yaml", i)] = brokenByMarkerTemplate
+		beyondTheBound = append(beyondTheBound, fmt.Sprintf("templates/t%d.yaml", i))
 	}
-	got := renderChart(t, files)
-	for i := 0; i <= maxMarkerRetries; i++ {
-		f := findResolvedBySuffix(t, got, fmt.Sprintf("templates/t%d.yaml", i))
-		require.Contains(t, string(f.Content), "world")
-		require.Empty(t, f.HelmInvocations)
+	for name, tt := range map[string]struct {
+		files  map[string]string
+		broken []string
+		kept   []string
+	}{
+		"only the failing template": {
+			files: map[string]string{
+				"templates/_h.tpl": more, "templates/cm.yaml": brokenByMarkerTemplate,
+				"templates/s.yaml": "{{ include \"sec\" . }}\n", "templates/_s.tpl": sec,
+			},
+			broken: []string{"templates/cm.yaml"}, kept: []string{"templates/s.yaml"},
+		},
+		"a subchart template": {
+			files: map[string]string{
+				"templates/s.yaml": "{{ include \"sec\" . }}\n", "templates/_s.tpl": sec,
+				"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
+				"charts/sub/templates/_h.tpl":  more,
+				"charts/sub/templates/cm.yaml": brokenByMarkerTemplate,
+			},
+			broken: []string{"charts/sub/templates/cm.yaml"}, kept: []string{"templates/s.yaml"},
+		},
+		"an aliased subchart template": {
+			files: map[string]string{
+				"Chart.yaml":                   "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 0.1.0\n  alias: other\n",
+				"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
+				"charts/sub/templates/_h.tpl":  more,
+				"charts/sub/templates/cm.yaml": brokenByMarkerTemplate,
+			},
+			broken: []string{"templates/cm.yaml"},
+		},
+		"every failing template": {
+			files:  manyBroken("templates/a.yaml", "templates/b.yaml", "templates/c.yaml"),
+			broken: []string{"templates/a.yaml", "templates/b.yaml", "templates/c.yaml"},
+		},
+		"more failing templates than retries": {files: manyBroken(beyondTheBound...), broken: beyondTheBound},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := renderChart(t, tt.files)
+			for _, suffix := range tt.broken {
+				f := findResolvedBySuffix(t, got, suffix)
+				require.Contains(t, string(f.Content), "world", suffix)
+				require.Contains(t, string(f.OriginalData), brokenByMarkerTemplate, suffix)
+				require.NotContains(t, string(f.Content), invocationPrefix, suffix)
+				require.NotContains(t, string(f.OriginalData), invocationPrefix, suffix)
+				require.NotEmpty(t, f.IDInfo, suffix)
+				require.Empty(t, f.HelmInvocations, suffix)
+			}
+			for _, suffix := range tt.kept {
+				f := findResolvedBySuffix(t, got, suffix)
+				require.Equal(t, model.ResourceLine{Line: 1}, f.HelmInvocations.First(), suffix)
+			}
+		})
 	}
-}
-
-// A subchart under an alias is named by its alias in Helm's error, which the
-// stamping never saw: the chart still renders, without markers.
-func TestHelmResolveRetryWithoutMarkersRendersAnAliasedSubchart(t *testing.T) {
-	got := renderChart(t, map[string]string{
-		"Chart.yaml":                   "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 0.1.0\n  alias: other\n",
-		"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
-		"charts/sub/templates/_h.tpl":  "{{- define \"more\" -}}\nworld\n{{- end -}}\n",
-		"charts/sub/templates/cm.yaml": brokenByMarkerTemplate,
-	})
-	require.Contains(t, string(findResolvedBySuffix(t, got, "templates/cm.yaml").Content), "world")
 }
 
 // brokenByMarkerTemplate continues a plain multi-line scalar with an include,

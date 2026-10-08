@@ -1,11 +1,43 @@
 package helm
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	helmdetector "github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 )
+
+// helmFileMetadata is the file the runner stores for a rendered document.
+func helmFileMetadata(f *model.ResolvedHelm) *model.FileMetadata {
+	return &model.FileMetadata{
+		Kind:              model.KindHELM,
+		FilePath:          f.FileName,
+		HelmID:            f.SplitID,
+		OriginalData:      string(f.OriginalData),
+		LinesOriginalData: utils.SplitLines(string(f.OriginalData)),
+		IDInfo:            f.IDInfo,
+		HelmAttribution:   model.NewHelmAttribution(f.HelmInvocations, string(f.Content)),
+	}
+}
+
+// findingLine renders files and returns the line DetectLine reports for
+// searchKey in the document of template that contains doc.
+func findingLine(t *testing.T, files map[string]string, template, doc, searchKey string) int {
+	t.Helper()
+	var found *model.ResolvedHelm
+	for _, f := range findAllResolvedBySuffix(t, renderChart(t, files), template) {
+		if strings.Contains(string(f.Content), doc) {
+			require.Nil(t, found, "several documents of %s contain %q", template, doc)
+			found = &f
+		}
+	}
+	require.NotNil(t, found, "no document of %s contains %q", template, doc)
+	return (helmdetector.DetectKindLine{}).DetectLine(context.Background(), helmFileMetadata(found), searchKey, 1).Line
+}
 
 func shapeLines(lines ...string) string { return strings.Join(lines, "\n") + "\n" }
 
@@ -43,9 +75,6 @@ const (
 		"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ . }}\n{{- end }}\n{{- end -}}\n"
 )
 
-var pAll = pHdr + pHdr2 + pHdrN + pCmHdr + pLabels + pExtra + pCtr + pCtr2 + pCtrs + pImg + pFrag + pEmpty +
-	pHostNet + pAppName + pPod + pSvc + pMulti + pHdrNl + pPodHdrNl + pLblBlock + pSpec + pPodSpec + pPodNl
-
 var shapeHelpers = pHdr + pHdr2 + pHdrN + pCmHdr + pLabels + pExtra + pCtr + pCtr2 + pCtrs + pImg + pFrag + pEmpty +
 	pHostNet + pAppName + pPod + pSvc + pMulti + pHdrNl + pPodHdrNl + pLblBlock + pSpec + pPodSpec + pPodNl
 
@@ -56,9 +85,18 @@ type shapeKey struct {
 	want      int
 }
 
+// shapeTemplates are the templates a shape needs besides t.yaml.
+var shapeTemplates = map[string]map[string]string{
+	"74 include of another template, which has includes of its own": {
+		"templates/u.yaml": shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: inner", `{{ include "spec" . }}`),
+	},
+}
+
 // TestHelmFindingLinesOfShapes renders t.yaml with shapeHelpers for each shape
-// and checks the line of each search key in the document containing doc. A
-// line the scanner cannot attribute with certainty is -1.
+// and checks the line of each search key in the document containing doc: the
+// line that wrote the key, or the include that emitted it. A line the scanner
+// cannot attribute with certainty is -1, as a wrong line is worse than none.
+// Add a shape for every new way attribution can go wrong.
 func TestHelmFindingLinesOfShapes(t *testing.T) {
 	shapes := []struct {
 		name   string
@@ -228,12 +266,40 @@ func TestHelmFindingLinesOfShapes(t *testing.T) {
 			"data:", "  a: b")...), "", "kind: ConfigMap", []shapeKey{{"data.a", 8}}},
 		{"65 value line followed by a left-trimmed comment", shapeLines(`{{ include "podspec" . }}`, "  hostname: {{ .Values.h }}",
 			"{{- /* c */}}", "  hostNetwork: true"), "h: a\n", "kind: Pod", []shapeKey{{"spec.hostNetwork", -1}}},
+		{"66 plain manifest", shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: p", "spec:", "  hostNetwork: true",
+			"  containers:", "  - name: c", "    image: nginx"), "", "kind: Pod",
+			[]shapeKey{{"metadata.name", 4}, {"spec.hostNetwork", 6}, {"spec.containers.name={{c}}.image", 9}}},
+		{"67 keys written after header and labels includes", shapeLines(`{{ include "header" . }}`, "  labels:",
+			`{{ include "labels" . | indent 4 }}`, "spec:", "  hostNetwork: true", "  containers:", "  - name: c", "    image: nginx"),
+			"", "kind: Pod", []shapeKey{{"metadata.name", 1}, {"metadata.labels.app", 3}, {"spec.hostNetwork", -1},
+				{"spec.containers.name={{c}}.image", -1}}},
+		{"68 keys written after a header include, then another document", shapeLines(`{{ include "header" . }}`, "spec:",
+			"  hostNetwork: false", "---", "apiVersion: v1", "kind: Pod", "metadata:", "  name: q", "spec:", "  hostNetwork: true"),
+			"", "name: p", []shapeKey{{"spec.hostNetwork", -1}}},
+		{"69 document emitted by an include after a literal one", shapeLines("{{- if .Values.on }}", "apiVersion: v1",
+			"kind: ConfigMap", "metadata:", "  name: cm", "{{- end }}", "---", `{{ include "pod" . }}`), "on: true\n", "kind: Pod",
+			[]shapeKey{{"metadata.name", 8}, {"spec.containers.name={{c}}.image", 8}}},
+		{"70 document composed of several includes", shapeLines(`{{ include "header" . }}`, `{{ include "spec" . }}`), "", "kind: Pod",
+			[]shapeKey{{"metadata.name", 1}, {"spec.hostNetwork", 2}}},
+		{"71 include after a block scalar that has ended", shapeLines(withLines(pCmHead, "data:", "  script: |", "    echo hi",
+			"  other: x", `{{ include "svc" . }}`)...), "", "kind: Service", []shapeKey{{"spec.type", 9}}},
+		{"72 include after a single-line value", shapeLines(withLines(pCmHead, "data:", "  script: hi", "  other: x",
+			`{{ include "svc" . }}`)...), "", "kind: Service", []shapeKey{{"spec.type", 8}}},
+		{"73 labels include inside a document written in the file", shapeLines(withLines(pCmHead, "  labels:",
+			`{{ include "labels" . | indent 4 }}`, "data:", "  a: b")...), "", "kind: ConfigMap",
+			[]shapeKey{{"metadata.name", 4}, {"data.a", 8}}},
+		{"74 include of another template, which has includes of its own", shapeLines(
+			`{{ include (print $.Template.BasePath "/u.yaml") . }}`, "# a", "# b", "# c", "# d", "# e"), "", "name: inner",
+			[]shapeKey{{"spec.hostNetwork", 1}, {"metadata.name", 1}}},
 	}
 	for _, s := range shapes {
 		t.Run(s.name, func(t *testing.T) {
 			files := map[string]string{"templates/_helpers.tpl": shapeHelpers, "templates/t.yaml": s.tmpl}
 			if s.values != "" {
 				files["values.yaml"] = s.values
+			}
+			for name, content := range shapeTemplates[s.name] {
+				files[name] = content
 			}
 			for _, k := range s.keys {
 				require.Equal(t, k.want, findingLine(t, files, "templates/t.yaml", s.doc, k.searchKey), k.searchKey)
