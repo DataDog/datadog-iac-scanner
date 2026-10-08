@@ -45,8 +45,9 @@ const (
 func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata, searchKey string,
 	outputLines int) model.VulnerabilityLines {
 	contextLogger := logger.FromContext(ctx)
-	if file.HelmID != "" {
-		searchKey = fmt.Sprintf("%s.%s", helmmarker.SearchKey(file.HelmID), searchKey)
+	stamp, stamped := helmmarker.ParseIDLine(file.HelmID)
+	if stamped {
+		searchKey = fmt.Sprintf("%s.%s", stamp.SearchKey(), searchKey)
 	}
 
 	lines := make([]string, len(file.Lines()))
@@ -67,9 +68,9 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	// Only the line is kept: idInfo is the line-range map of this file, and the
 	// walk below finds the stamp by its full text first, so a stamp of another
 	// template never reaches idInfo.
-	_, helmID, ok := helmmarker.ParseID(file.HelmID)
-	if !ok {
-		helmID = -1
+	helmID := -1
+	if stamped {
+		helmID = stamp.Line
 	}
 
 	curLineRes, start, end := curLineRes.walkSearchKey(ctx, lines, sanitizedSubstring, extractedString, file.IDInfo, helmID)
@@ -131,8 +132,12 @@ func ownLinesMatch(ctx context.Context, file *model.FileMetadata, lines []string
 	extractedString [][]string,
 ) (line int, start, end model.ResourceLine, ok bool) {
 	first := file.HelmAttribution.First()
-	keys, hasStamp := strings.CutPrefix(sanitizedSubstring, helmmarker.SearchKey(file.HelmID)+".")
-	if first.Line < 1 || file.HelmID == "" || !hasStamp {
+	stamp, stamped := helmmarker.ParseIDLine(file.HelmID)
+	if first.Line < 1 || !stamped {
+		return 0, start, end, false
+	}
+	keys, ok := strings.CutPrefix(sanitizedSubstring, stamp.SearchKey()+".")
+	if !ok {
 		return 0, start, end, false
 	}
 	from, to := documentLines(lines, first.Line)
@@ -151,7 +156,7 @@ func ownLinesMatch(ctx context.Context, file *model.FileMetadata, lines []string
 func documentLines(lines []string, sourceLine int) (from, to int) {
 	from, source := -1, 0
 	for i, line := range lines {
-		if helmmarker.IsIDLine(line) {
+		if isIDLine(line) {
 			continue
 		}
 		source++
@@ -244,21 +249,26 @@ func unstampedLines(lines []string) (kept []string, index func(int) int) {
 	keptBefore := make([]int, len(lines))
 	for i, line := range lines {
 		keptBefore[i] = len(kept)
-		if !helmmarker.IsIDLine(line) {
+		if !isIDLine(line) {
 			kept = append(kept, line)
 		}
 	}
 	return kept, func(i int) int { return keptBefore[i] }
 }
 
+func isIDLine(line string) bool {
+	_, ok := helmmarker.ParseIDLine(line)
+	return ok
+}
+
 func containsHelmKey(line, key string) bool {
-	if helmmarker.IsIDSearchKey(key) {
-		// A stamp key matches the stamp line itself, never text that mentions it.
-		return helmmarker.IsIDLine(line) && helmmarker.IsIDKey(line, key)
+	lineID, isStamp := helmmarker.ParseIDLine(line)
+	if keyID, isStampKey := helmmarker.ParseSearchKey(key); isStampKey {
+		// A stamp key matches its own stamp line, never text that mentions it.
+		return isStamp && lineID == keyID
 	}
-	if helmmarker.IsIDLine(line) {
-		// A stamp only stands for its own ID, never for one it is a prefix of.
-		return helmmarker.IsIDKey(line, key)
+	if isStamp {
+		return false
 	}
 	if strings.Contains(line, key) {
 		return true

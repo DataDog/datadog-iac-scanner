@@ -477,9 +477,10 @@ func filterHelmGeneratedLines(content []byte, ignoreLines []int) []int {
 	out := make([]int, 0, len(ignoreLines))
 	for _, n := range ignoreLines {
 		if n >= 1 && n <= len(lines) {
-			trimmed := strings.TrimSpace(lines[n-1])
-			if strings.HasPrefix(trimmed, "# Source:") ||
-				helmmarker.IsIDLine(trimmed) {
+			if strings.HasPrefix(strings.TrimSpace(lines[n-1]), "# Source:") {
+				continue
+			}
+			if _, stamp := helmmarker.ParseIDLine(lines[n-1]); stamp {
 				continue
 			}
 		}

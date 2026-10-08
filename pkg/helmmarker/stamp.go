@@ -1,7 +1,7 @@
 package helmmarker
 
 import (
-	"regexp"
+	"bytes"
 	"strconv"
 	"strings"
 )
@@ -9,34 +9,73 @@ import (
 // decimal is the base stamp numbers are written in.
 const decimal = 10
 
-// IDPrefix starts every ID stamp line. A stamp is added above each top-level
-// "apiVersion" of a template and names the template and the line it sits on:
+// idName starts the text of every stamp, which a stamp line comments out and a
+// search key starts with.
+const idName = "KICS_HELM_ID_"
+
+// IDPrefix starts every ID stamp line.
+const IDPrefix = "# " + idName
+
+// ID is a stamp, added above each top-level "apiVersion" of a template. It
+// names the template and the source line, counted from 0, the stamp sits on:
 // "# KICS_HELM_ID_<template>_<line>:".
-const IDPrefix = "# KICS_HELM_ID_"
+type ID struct {
+	Template, Line int
+}
 
-// idLinePattern matches a whole stamp line, with its line break.
-var idLinePattern = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+_\d+:[ \t]*(?:\r?\n|$)`)
-
-// AppendID appends the stamp line of the template numbered template for the
-// source line line (counted from 0).
-func AppendID(dst []byte, template, line int) []byte {
+// Append appends the stamp line of id, with its line break.
+func (id ID) Append(dst []byte) []byte {
 	dst = append(dst, IDPrefix...)
-	dst = strconv.AppendInt(dst, int64(template), decimal)
+	dst = strconv.AppendInt(dst, int64(id.Template), decimal)
 	dst = append(dst, '_')
-	dst = strconv.AppendInt(dst, int64(line), decimal)
+	dst = strconv.AppendInt(dst, int64(id.Line), decimal)
 	return append(dst, ':', '\n')
 }
 
-// IsIDLine reports whether line is a stamp, as AppendID writes it. Text that
-// merely mentions the prefix, such as a string in a template, is not one.
-func IsIDLine(line string) bool {
-	line = strings.TrimSpace(line)
-	rest, ok := strings.CutPrefix(line, IDPrefix)
+// String is the stamp line of id, without its line break.
+func (id ID) String() string {
+	line := id.Append(nil)
+	return string(line[:len(line)-1])
+}
+
+// SearchKey is id as the first key of a search key.
+func (id ID) SearchKey() string {
+	return strings.TrimSuffix(strings.TrimPrefix(id.String(), "# "), ":")
+}
+
+// ParseIDLine reads a stamp line, as Append writes it. Text that merely
+// mentions the prefix, such as a string in a template, is not one.
+func ParseIDLine(line string) (ID, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(line), IDPrefix)
 	if !ok {
-		return false
+		return ID{}, false
 	}
-	template, line2, ok := strings.Cut(strings.TrimSuffix(rest, ":"), "_")
-	return ok && strings.HasSuffix(rest, ":") && isDigits(template) && isDigits(line2)
+	rest, ok = strings.CutSuffix(rest, ":")
+	if !ok {
+		return ID{}, false
+	}
+	return parseNumbers(rest)
+}
+
+// ParseSearchKey reads a key of a search key that stands for a stamp, as
+// SearchKey writes it, with or without the colon a key is matched with.
+func ParseSearchKey(key string) (ID, bool) {
+	rest, ok := strings.CutPrefix(key, idName)
+	if !ok {
+		return ID{}, false
+	}
+	return parseNumbers(strings.TrimSuffix(rest, ":"))
+}
+
+// parseNumbers reads the "<template>_<line>" of a stamp.
+func parseNumbers(s string) (ID, bool) {
+	template, line, ok := strings.Cut(s, "_")
+	if !ok || !isDigits(template) || !isDigits(line) {
+		return ID{}, false
+	}
+	t, tErr := strconv.Atoi(template)
+	l, lErr := strconv.Atoi(line)
+	return ID{Template: t, Line: l}, tErr == nil && lErr == nil
 }
 
 func isDigits(s string) bool {
@@ -51,12 +90,13 @@ func isDigits(s string) bool {
 	return true
 }
 
-// FirstID returns the first stamp line of content, or "" when it has none.
+// FirstID returns the first stamp line of content, without its line break, or
+// "" when it has none.
 func FirstID(content string) string {
 	for content != "" {
 		line, rest, _ := strings.Cut(content, "\n")
-		if IsIDLine(line) {
-			return strings.TrimSpace(line)
+		if id, ok := ParseIDLine(line); ok {
+			return id.String()
 		}
 		content = rest
 	}
@@ -65,45 +105,22 @@ func FirstID(content string) string {
 
 // RemoveIDLines drops every stamp line from content.
 func RemoveIDLines(content []byte) []byte {
-	return idLinePattern.ReplaceAll(content, nil)
-}
-
-// ParseID reads the template number and source line of a stamp, given as the
-// stamp line or the text of it without the leading "# " or trailing ":".
-func ParseID(stamp string) (template, line int, ok bool) {
-	rest := strings.TrimSuffix(strings.TrimSpace(stamp), ":")
-	i := strings.Index(rest, strings.TrimPrefix(IDPrefix, "# "))
-	if i < 0 {
-		return 0, 0, false
+	if !bytes.Contains(content, []byte(IDPrefix)) {
+		return content
 	}
-	rest = rest[i+len(strings.TrimPrefix(IDPrefix, "# ")):]
-	t, l, found := strings.Cut(rest, "_")
-	if !found {
-		return 0, 0, false
+	kept := make([]byte, 0, len(content))
+	for len(content) > 0 {
+		line := content
+		if i := bytes.IndexByte(content, '\n'); i >= 0 {
+			line = content[:i+1]
+		}
+		content = content[len(line):]
+		if bytes.Contains(line, []byte(IDPrefix)) {
+			if _, ok := ParseIDLine(string(line)); ok {
+				continue
+			}
+		}
+		kept = append(kept, line...)
 	}
-	template, err := strconv.Atoi(t)
-	if err != nil {
-		return 0, 0, false
-	}
-	line, err = strconv.Atoi(l)
-	return template, line, err == nil
-}
-
-// SearchKey is the stamp as the first key of a search key: without the leading
-// "# " and the trailing ":".
-func SearchKey(stamp string) string {
-	return strings.TrimRight(strings.TrimLeft(stamp, "# "), ":")
-}
-
-// IsIDSearchKey reports whether key, a key of a search key, names a stamp as
-// SearchKey builds it.
-func IsIDSearchKey(key string) bool {
-	return strings.HasPrefix(key, strings.TrimPrefix(IDPrefix, "# "))
-}
-
-// IsIDKey reports whether line is exactly the stamp that key stands for, as
-// SearchKey builds it. A stamp stands only for its own ID, not for one it is a
-// prefix of.
-func IsIDKey(line, key string) bool {
-	return IsIDLine(line) && strings.TrimSpace(line) == "# "+strings.TrimSuffix(key, ":")+":"
+	return kept
 }

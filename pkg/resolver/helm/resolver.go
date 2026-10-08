@@ -151,11 +151,7 @@ func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest
 	if err != nil {
 		return nil, []string{}, err
 	}
-	splitted, err := splitManifestYAML(manifest, loadedChart, stamped)
-	if err != nil {
-		return nil, []string{}, err
-	}
-	return splitted, excluded, nil
+	return splitManifestYAML(manifest, loadedChart, stamped), excluded, nil
 }
 
 // renderWithMarkers renders the chart with invocation markers. A marker is a
@@ -195,7 +191,7 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, path string) (
 // stamped gives the template sources from before invocation markers were added (see setID).
 func splitManifestYAML(
 	template *release.Release, loadedChart *chart.Chart, stamped stampedSources,
-) (*[]splitManifest, error) {
+) *[]splitManifest {
 	sourceChart := loadedChart
 	if sourceChart == nil {
 		sourceChart = template.Chart
@@ -234,11 +230,9 @@ func splitManifestYAML(
 		if source == nil {
 			continue
 		}
-		invocations := parseHelmInvocations(splited, source)
+		invocations := parseHelmInvocations(splited)
 		splited = removeInvocationMarkers(splited)
-		if err := source.ensureIDMap(); err != nil {
-			return nil, err
-		}
+		source.ensureIDMap()
 		splitID := helmmarker.FirstID(splited)
 		sourceDocumentIndex := sourceDocumentIndices[sourceKey]
 		if !source.isCRD || splitID != "" || strings.EqualFold(filepath.Ext(sourcePath), ".json") {
@@ -255,7 +249,7 @@ func splitManifestYAML(
 			isCRD:               source.isCRD,
 		})
 	}
-	return &splitedManifest, nil
+	return &splitedManifest
 }
 
 func splitHelmManifest(manifest string) []string {
@@ -298,21 +292,21 @@ func parseManifestSource(split string) (source string, ok bool) {
 // parseHelmInvocations returns the invocation markers of a rendered document
 // in order, each with the line it emits once the marker lines are removed and
 // the position of its action in the source template as written.
-func parseHelmInvocations(content string, source *sourceMetadata) model.HelmInvocations {
+func parseHelmInvocations(content string) model.HelmInvocations {
 	if !hasInvocationMarker(content) {
 		return nil
 	}
 	var invocations model.HelmInvocations
 	kept := 0
 	for _, line := range strings.Split(content, "\n") {
-		lineNumber, col, ok := parseInvocationMarker(line)
+		marker, ok := parseInvocationMarker(line)
 		if !ok {
 			kept++
 			continue
 		}
 		invocations = append(invocations, model.HelmInvocationAt{
 			RenderedLine: kept + 1,
-			Position:     model.ResourceLine{Line: source.sourceLine(lineNumber), Col: col},
+			Position:     model.ResourceLine{Line: marker.Line, Col: marker.Col},
 		})
 	}
 	return invocations
@@ -357,41 +351,14 @@ type sourceMetadata struct {
 	idMap         map[int]interface{}
 	isCRD         bool
 	idMapPrepared bool
-	// stampsBefore[i] counts the ID lines above line i of original.
-	stampsBefore []int
 }
 
-// sourceLine converts a 1-based line of the stamped original into the line of
-// the template as written, which has no ID lines.
-func (s *sourceMetadata) sourceLine(stampedLine int) int {
-	if s.stampsBefore == nil {
-		lines := strings.Split(string(s.original), "\n")
-		s.stampsBefore = make([]int, len(lines))
-		stamps := 0
-		for i, line := range lines {
-			s.stampsBefore[i] = stamps
-			if helmmarker.IsIDLine(line) {
-				stamps++
-			}
-		}
-	}
-	if stampedLine < 1 || stampedLine > len(s.stampsBefore) {
-		return stampedLine
-	}
-	return stampedLine - s.stampsBefore[stampedLine-1]
-}
-
-func (s *sourceMetadata) ensureIDMap() error {
+func (s *sourceMetadata) ensureIDMap() {
 	if s.idMapPrepared {
-		return nil
+		return
 	}
-	idMap, err := getIDMap(s.original)
-	if err != nil {
-		return err
-	}
-	s.idMap = idMap
+	s.idMap = getIDMap(s.original)
 	s.idMapPrepared = true
-	return nil
 }
 
 func indexSources(files []*chart.File, stamped stampedSources) map[string]*sourceMetadata {
@@ -453,21 +420,17 @@ func updateName(template []*chart.File, charts *chart.Chart, name string) []*cha
 
 // getIdMap will construct a map with ids with the corresponding lines as keys
 // for use in detector
-func getIDMap(originalData []byte) (map[int]interface{}, error) {
+func getIDMap(originalData []byte) map[int]interface{} {
 	ids := make(map[int]interface{})
 	idHelm := -1
 	lineRange := model.HelmIDLineRange{Start: 1, End: 0}
 	for line, stringLine := range strings.Split(string(originalData), "\n") {
-		if helmmarker.IsIDLine(stringLine) {
-			_, id, ok := helmmarker.ParseID(stringLine)
-			if !ok {
-				return nil, errors.Errorf("malformed Helm ID stamp on line %d: %q", line+1, stringLine)
-			}
+		if id, ok := helmmarker.ParseIDLine(stringLine); ok {
 			if idHelm != -1 {
 				lineRange.End = line - 1
 				ids[idHelm] = lineRange
 			}
-			idHelm = id
+			idHelm = id.Line
 			lineRange = model.HelmIDLineRange{Start: line, End: line}
 		} else if idHelm != -1 {
 			lineRange.End = line
@@ -475,5 +438,5 @@ func getIDMap(originalData []byte) (map[int]interface{}, error) {
 	}
 	ids[idHelm] = lineRange
 
-	return ids, nil
+	return ids
 }

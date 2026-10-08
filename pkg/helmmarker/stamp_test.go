@@ -7,30 +7,28 @@ import (
 )
 
 func TestIDRoundTrip(t *testing.T) {
-	stamp := string(AppendID(nil, 3, 17))
-	require.Equal(t, "# KICS_HELM_ID_3_17:\n", stamp)
-	for _, form := range []string{stamp, "# KICS_HELM_ID_3_17:", "KICS_HELM_ID_3_17", SearchKey(stamp)} {
-		template, line, ok := ParseID(form)
-		require.True(t, ok, form)
-		require.Equal(t, [2]int{3, 17}, [2]int{template, line}, form)
+	id := ID{Template: 3, Line: 17}
+	require.Equal(t, "# KICS_HELM_ID_3_17:\n", string(id.Append(nil)))
+	require.Equal(t, "# KICS_HELM_ID_3_17:", id.String())
+	require.Equal(t, "KICS_HELM_ID_3_17", id.SearchKey())
+	for _, line := range []string{string(id.Append(nil)), id.String(), "  " + id.String() + " \r"} {
+		got, ok := ParseIDLine(line)
+		require.True(t, ok, line)
+		require.Equal(t, id, got, line)
 	}
-	_, _, ok := ParseID("# KICS_HELM_ID_3:")
+	for _, key := range []string{id.SearchKey(), id.SearchKey() + ":"} {
+		got, ok := ParseSearchKey(key)
+		require.True(t, ok, key)
+		require.Equal(t, id, got, key)
+	}
+	_, ok := ParseSearchKey("KICS_HELM_ID_3")
 	require.False(t, ok)
-	_, _, ok = ParseID("apiVersion: v1")
+	_, ok = ParseSearchKey("metadata:")
 	require.False(t, ok)
-}
-
-func TestIsIDKeyMatchesOnlyItsOwnStamp(t *testing.T) {
-	key := "KICS_HELM_ID_1_0:"
-	require.True(t, IsIDKey("# KICS_HELM_ID_1_0:", key))
-	require.True(t, IsIDKey("  # KICS_HELM_ID_1_0:  ", key))
-	require.False(t, IsIDKey("# KICS_HELM_ID_1_40:", key), `"0:" must not match "40:"`)
-	require.False(t, IsIDKey("# KICS_HELM_ID_11_0:", key))
-	require.False(t, IsIDKey("kind: Pod # KICS_HELM_ID_1_0:", key))
 }
 
 func TestRemoveIDLines(t *testing.T) {
-	in := []byte("a: 1\n# KICS_HELM_ID_0_1:\n  # KICS_HELM_ID_2_5:\r\nb: 2\n")
+	in := []byte("a: 1\n# KICS_HELM_ID_0_1:\n  # KICS_HELM_ID_2_5:\r\nb: 2\n# KICS_HELM_ID_0_9:")
 	require.Equal(t, "a: 1\nb: 2\n", string(RemoveIDLines(in)))
 }
 
@@ -44,11 +42,13 @@ func TestIDLineIsStrict(t *testing.T) {
 		"# KICS_HELM_ID_3_14: trailing": false,
 		"# KICS_HELM_ID_3_:":            false,
 		"# KICS_HELM_ID_a_1:":           false,
+		"# KICS_HELM_ID_-3_1:":          false,
 		"# KICS_HELM_ID_3_14":           false,
 		"data: # KICS_HELM_ID_3_14:":    false,
 		"":                              false,
 	} {
-		require.Equal(t, want, IsIDLine(line), line)
+		_, ok := ParseIDLine(line)
+		require.Equal(t, want, ok, line)
 	}
 	require.Equal(t, "# KICS_HELM_ID_1_2:", FirstID("a: \"# KICS_HELM_ID_\"\n# KICS_HELM_ID_1_2:\nb: 1\n"))
 	require.Empty(t, FirstID("a: \"# KICS_HELM_ID_\"\n"))

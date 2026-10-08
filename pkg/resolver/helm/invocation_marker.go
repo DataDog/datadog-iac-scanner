@@ -1,45 +1,65 @@
 package helm
 
 import (
-	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
 
-// invocationPrefix starts every invocation marker line. A marker is printed
-// ahead of the output of an include and records where the action is:
-// "# KICS_HELM_INVOCATION_<line>_<column>:".
+// invocationPrefix starts every invocation marker line.
 const invocationPrefix = "# KICS_HELM_INVOCATION_"
 
-var (
-	invocationLinePattern   = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_INVOCATION_\d+_\d+:[^\r\n]*(?:\r?\n|$)`)
-	invocationMarkerPattern = regexp.MustCompile(`^[ \t]*# KICS_HELM_INVOCATION_(\d+)_(\d+):`)
-)
-
-// invocationMarker is the marker line, with its line break, for the action at line
-// and column of a template source.
-func invocationMarker(line, col int) string {
-	return fmt.Sprintf("%s%d_%d:\n", invocationPrefix, line, col)
+// invocationMarker is printed ahead of the output of an include and records
+// where the action is in the template as written, without ID stamps: its
+// 1-based line and 0-based byte column. "# KICS_HELM_INVOCATION_<line>_<col>:".
+type invocationMarker struct {
+	Line, Col int
 }
 
-// hasInvocationMarker reports whether content holds a marker.
+// String is the marker line, with its line break.
+func (m invocationMarker) String() string {
+	return invocationPrefix + strconv.Itoa(m.Line) + "_" + strconv.Itoa(m.Col) + ":\n"
+}
+
+// parseInvocationMarker reads a marker line, as String writes it.
+func parseInvocationMarker(line string) (invocationMarker, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(line), invocationPrefix)
+	if !ok {
+		return invocationMarker{}, false
+	}
+	rest, ok = strings.CutSuffix(rest, ":")
+	if !ok {
+		return invocationMarker{}, false
+	}
+	lineText, colText, ok := strings.Cut(rest, "_")
+	if !ok {
+		return invocationMarker{}, false
+	}
+	l, lErr := strconv.ParseUint(lineText, 10, 31)
+	c, cErr := strconv.ParseUint(colText, 10, 31)
+	return invocationMarker{Line: int(l), Col: int(c)}, lErr == nil && cErr == nil
+}
+
+// hasInvocationMarker reports whether content may hold a marker.
 func hasInvocationMarker(content string) bool {
 	return strings.Contains(content, invocationPrefix)
 }
 
 // removeInvocationMarkers drops every marker line from content.
 func removeInvocationMarkers(content string) string {
-	return invocationLinePattern.ReplaceAllString(content, "")
-}
-
-// parseInvocationMarker reads a marker line.
-func parseInvocationMarker(line string) (srcLine, col int, ok bool) {
-	match := invocationMarkerPattern.FindStringSubmatch(line)
-	if match == nil {
-		return 0, 0, false
+	if !hasInvocationMarker(content) {
+		return content
 	}
-	srcLine, lineErr := strconv.Atoi(match[1])
-	col, colErr := strconv.Atoi(match[2])
-	return srcLine, col, lineErr == nil && colErr == nil
+	var kept strings.Builder
+	kept.Grow(len(content))
+	for content != "" {
+		line := content
+		if i := strings.IndexByte(content, '\n'); i >= 0 {
+			line = content[:i+1]
+		}
+		content = content[len(line):]
+		if _, ok := parseInvocationMarker(line); !ok {
+			kept.WriteString(line)
+		}
+	}
+	return kept.String()
 }

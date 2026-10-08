@@ -528,12 +528,15 @@ type ResolvedHelm struct {
 }
 
 // HelmInvocationAt is an include-like action that emitted part of a rendered
-// Helm document: the rendered lines from RenderedLine (1-based) up to the next
-// invocation came from the action at Position, a position in the source
-// template as written: a 1-based line and a 0-based byte column.
+// Helm document: the rendered lines from RenderedLine up to the next
+// invocation came from the action at Position.
 type HelmInvocationAt struct {
+	// RenderedLine is a 1-based line of the rendered document as stored, ID
+	// stamps included.
 	RenderedLine int
-	Position     ResourceLine
+	// Position is in the template as written, without ID stamps: a 1-based
+	// line and a 0-based byte column.
+	Position ResourceLine
 }
 
 // HelmInvocations are the invocations that emitted a rendered Helm document, in

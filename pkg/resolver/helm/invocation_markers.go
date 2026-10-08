@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmaction"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"helm.sh/helm/v3/pkg/chart"
 )
 
@@ -43,7 +44,7 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 
 	var markers []replacement
 	var blocks helmBlockStack
-	line, counted := 1, 0
+	lines := sourceLines{source: source, line: 1}
 	for _, action := range helmaction.Terminated(source) {
 		span := [2]int{action.Start, action.End}
 		actionText := strings.Trim(source[span[0]+len("{{"):span[1]-len("}}")], "- \t\r\n")
@@ -55,11 +56,8 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 			continue
 		}
 
-		line += strings.Count(source[counted:span[0]], "\n")
-		counted = span[0]
 		lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
-		col := span[0] - lineStart
-		marker := invocationMarker(line, col)
+		marker := invocationMarker{Line: lines.lineOf(span[0]), Col: span[0] - lineStart}.String()
 		if r, ok := invocationReplacement(source, span, actionText, marker, wrapper); ok {
 			markers = append(markers, r)
 		}
@@ -73,6 +71,28 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 	}
 	file.Data = []byte(source)
 	return file
+}
+
+// sourceLines numbers the lines of a stamped template as the template is
+// written, leaving its ID stamps out. Positions are asked in increasing order.
+type sourceLines struct {
+	source string
+	// at is the start of the line numbered line.
+	at, line int
+}
+
+// lineOf returns the 1-based line of the template as written that pos is on.
+func (s *sourceLines) lineOf(pos int) int {
+	for {
+		end := strings.IndexByte(s.source[s.at:pos], '\n')
+		if end < 0 {
+			return s.line
+		}
+		if _, stamp := helmmarker.ParseIDLine(s.source[s.at : s.at+end]); !stamp {
+			s.line++
+		}
+		s.at += end + 1
+	}
 }
 
 // invocationReplacement builds the marker edit for one include-like action.

@@ -312,8 +312,7 @@ func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 		"  name: widgets.example.com",
 	}, "\n")
 
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
-	require.NoError(t, err)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
 	require.True(t, (*splits)[0].isCRD)
@@ -338,8 +337,7 @@ func TestSplitManifestYAML_dropsUnknownSourceHeader(t *testing.T) {
 		"kind: CustomResourceDefinition",
 	}, "\n")
 
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
-	require.NoError(t, err)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
 }
@@ -367,8 +365,7 @@ func TestSplitManifestYAML_emptyCRDDocumentDoesNotShiftSourceIndex(t *testing.T)
 		"# Source: test/crds/leading-empty.yaml",
 		string(crd.Data),
 	}, "\n")
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
-	require.NoError(t, err)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.NotEmpty(t, *splits)
 
 	var resourceSplit *splitManifest
@@ -440,8 +437,7 @@ func TestDetectLine_MultiDocumentTemplateUsesSourceLines(t *testing.T) {
 		"  - name: nested-two",
 	}, "\n")
 	file := addID(&chart.File{Name: "templates/nested.yaml", Data: []byte(original)}, 0)
-	idMap, err := getIDMap(file.Data)
-	require.NoError(t, err)
+	idMap := getIDMap(file.Data)
 
 	got := (helmdetector.DetectKindLine{}).DetectLine(context.Background(), &model.FileMetadata{
 		Kind:              model.KindHELM,
@@ -727,7 +723,7 @@ func TestHelmResolve_ActionOnlyPartialKeepsScalarValues(t *testing.T) {
 // requireStampLine asserts that stamp is a valid ID line anchored at source line.
 func requireStampLine(t *testing.T, stamp string, line int, msg string) {
 	t.Helper()
-	_, got, ok := helmmarker.ParseID(stamp)
+	id, ok := helmmarker.ParseIDLine(stamp)
 	require.True(t, ok, "%s: %q is not an ID stamp", msg, stamp)
-	require.Equal(t, line, got, msg)
+	require.Equal(t, line, id.Line, msg)
 }
