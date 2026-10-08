@@ -108,7 +108,7 @@ func TestSetID_NumbersTemplatesUniquelyAcrossSubcharts(t *testing.T) {
 	}
 	root.AddDependency(sub)
 
-	sources := setID(root, noInvocationMarks)
+	sources := setID(root, &invocationMarks{none: true})
 
 	seen := map[string]bool{}
 	for _, file := range append(append([]*chart.File{}, root.Templates...), sub.Templates...) {

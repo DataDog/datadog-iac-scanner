@@ -129,7 +129,7 @@ func silenceStdLog() func() {
 }
 
 func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, client *action.Install,
-	valueOpts *values.Options, marks invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, error) {
+	valueOpts *values.Options, marks *invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	defer silenceStdLog()()
 

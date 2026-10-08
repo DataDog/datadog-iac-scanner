@@ -161,35 +161,34 @@ func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest
 // renderWithMarkers renders the chart with invocation markers. A marker is a
 // comment line, which ends a plain multi-line value an include continues, so
 // it can make a template's output unparseable. A marker must never cost a
-// chart its render: each template Helm fails to parse is rendered again
+// chart its render: each marked template Helm fails to parse is rendered again
 // without markers, as it was before they existed, and the chart gives up all of
-// them only when that does not settle it.
+// them only when that does not settle it. A template that had no marker is
+// broken by itself, and its error is returned at once.
 func renderWithMarkers(ctx context.Context, fsys vfs.FS, path string) (
 	*release.Release, *chart.Chart, stampedSources, []string, error,
 ) {
 	contextLogger := logger.FromContext(ctx)
-	unmarked, seen := map[string]bool{}, map[string]bool{}
-	marks := func(template string) bool {
-		seen[template] = true
-		return !unmarked[template]
-	}
+	unmarked := map[string]bool{}
 	for attempt := 0; ; attempt++ {
+		marks := newInvocationMarks()
+		marks.unmarked = unmarked
 		manifest, loadedChart, stamped, excluded, err := runInstall(
 			ctx, path, fsys, newClient(ctx), &values.Options{}, marks)
 		template, parseErr := yamlParseErrorTemplate(err)
-		if !parseErr {
+		if !parseErr || (marks.seen[template] && !marks.marked[template]) {
 			return manifest, loadedChart, stamped, excluded, err
 		}
 		// A template the stamping never saw, as when Helm names a subchart by an
 		// alias, cannot be left unmarked on its own.
-		if !seen[template] || unmarked[template] || attempt >= maxMarkerRetries {
+		if !marks.seen[template] || attempt >= maxMarkerRetries {
 			break
 		}
 		unmarked[template] = true
 		contextLogger.Debug().Msgf("Rendering chart '%s' again without invocation markers in template '%s'", path, template)
 	}
 	contextLogger.Debug().Msgf("Rendering chart '%s' again without any invocation marker", path)
-	return runInstall(ctx, path, fsys, newClient(ctx), &values.Options{}, noInvocationMarks)
+	return runInstall(ctx, path, fsys, newClient(ctx), &values.Options{}, &invocationMarks{none: true})
 }
 
 // splitManifestYAML will split the rendered file and return its content by template as well as the template path.

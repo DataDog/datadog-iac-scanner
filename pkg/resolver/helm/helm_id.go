@@ -24,18 +24,46 @@ func (s stampedSources) of(file *chart.File) []byte {
 	return file.Data
 }
 
-// invocationMarks says whether a template gets invocation markers, given its
-// name as Helm reports it (the chart's full path joined with the template's);
-// nil marks every template.
-type invocationMarks func(template string) bool
+// invocationMarks decides which templates get invocation markers and records
+// what the stamping did, by template name as Helm reports it (the chart's full
+// path joined with the template's). A nil one marks every template.
+type invocationMarks struct {
+	// none leaves every template unmarked.
+	none bool
+	// unmarked are the templates left unmarked.
+	unmarked map[string]bool
+	// seen are the templates the stamping visited, marked are those of them
+	// that received a marker.
+	seen, marked map[string]bool
+}
 
-// noInvocationMarks leaves every template unmarked.
-func noInvocationMarks(string) bool { return false }
+func newInvocationMarks() *invocationMarks {
+	return &invocationMarks{unmarked: map[string]bool{}, seen: map[string]bool{}, marked: map[string]bool{}}
+}
+
+// mark adds invocation markers to the template file named template, unless it
+// is left unmarked, and records it.
+func (m *invocationMarks) mark(template string, file *chart.File) {
+	if m == nil {
+		addHelmInvocationMarkers(file)
+		return
+	}
+	if m.seen != nil {
+		m.seen[template] = true
+	}
+	if m.none || m.unmarked[template] {
+		return
+	}
+	stamped := len(file.Data)
+	if len(addHelmInvocationMarkers(file).Data) > stamped && m.marked != nil {
+		m.marked[template] = true
+	}
+}
 
 // setID will add auxiliary lines for each template as well as its dependencies,
 // and returns their sources as they were before invocation markers were added.
 // Invocation markers are only added to the templates marks allows.
-func setID(chartReq *chart.Chart, marks invocationMarks) stampedSources {
+func setID(chartReq *chart.Chart, marks *invocationMarks) stampedSources {
 	sources := stampedSources{}
 	stampChart(chartReq, sources, marks, new(int))
 	return sources
@@ -46,16 +74,14 @@ func setID(chartReq *chart.Chart, marks invocationMarks) stampedSources {
 // unique across the whole chart: a document emitted by an include carries the
 // stamp of the partial it comes from, which must never equal one of the
 // template that includes it.
-func stampChart(chartReq *chart.Chart, sources stampedSources, marks invocationMarks, templates *int) {
+func stampChart(chartReq *chart.Chart, sources stampedSources, marks *invocationMarks, templates *int) {
 	next := func() int {
 		*templates++
 		return *templates - 1
 	}
 	for _, temp := range chartReq.Templates {
 		sources[temp] = addID(temp, next()).Data
-		if marks == nil || marks(path.Join(chartReq.ChartFullPath(), temp.Name)) {
-			addHelmInvocationMarkers(temp)
-		}
+		marks.mark(path.Join(chartReq.ChartFullPath(), temp.Name), temp)
 	}
 	// Stamp YAML CRDs for line mapping; JSON CRDs are skipped (YAML comments corrupt JSON).
 	for _, f := range localCRDFiles(chartReq) {

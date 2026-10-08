@@ -156,7 +156,7 @@ func TestAddHelmInvocationMarkersMixedManifest(t *testing.T) {
 func TestSetIDWithoutMarkersLeavesTemplates(t *testing.T) {
 	source := "kind: Service\n{{ include \"svc\" . }}\n"
 	file := &chart.File{Name: "templates/t.yaml", Data: []byte(source)}
-	sources := setID(&chart.Chart{Metadata: &chart.Metadata{Name: "c"}, Templates: []*chart.File{file}}, noInvocationMarks)
+	sources := setID(&chart.Chart{Metadata: &chart.Metadata{Name: "c"}, Templates: []*chart.File{file}}, &invocationMarks{none: true})
 	require.NotContains(t, string(file.Data), helmmarker.InvocationPrefix)
 	require.Equal(t, string(addID(&chart.File{Name: file.Name, Data: []byte(source)}, 0).Data), string(sources.of(file)))
 }

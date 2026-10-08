@@ -191,6 +191,51 @@ func TestHelmResolveIncludeContinuingPlainScalar(t *testing.T) {
 	}
 }
 
+// countingFS counts the reads of one file, once per render of a chart.
+type countingFS struct {
+	vfs.FS
+	name  string
+	reads int
+}
+
+func (c *countingFS) ReadFile(name string) ([]byte, error) {
+	if name == c.name {
+		c.reads++
+	}
+	return c.FS.ReadFile(name)
+}
+
+// A template broken by itself, with no marker to blame, fails on its first
+// render. One with a marker is rendered once more without it, which settles
+// it when the marker was the cause, and otherwise fails without a third render.
+func TestHelmResolveRetriesOnlyTemplatesAMarkerBroke(t *testing.T) {
+	for name, tt := range map[string]struct {
+		template string
+		renders  int
+	}{
+		"broken by itself": {"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: [unclosed\n", 1},
+		"broken by itself, next to an include": {
+			"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: [unclosed\n{{ include \"more\" . }}\n", 2,
+		},
+		"broken by its marker": {brokenByMarkerTemplate, 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fsys := &countingFS{FS: vfs.NewMemFS(map[string][]byte{
+				"chart/Chart.yaml":        []byte(testChartYAML),
+				"chart/templates/_h.tpl":  []byte("{{- define \"more\" -}}\nworld\n{{- end -}}\n"),
+				"chart/templates/cm.yaml": []byte(tt.template),
+			}), name: "chart/templates/cm.yaml"}
+			_, err := NewResolver(fsys).Resolve(context.Background(), "chart")
+			if tt.template != brokenByMarkerTemplate {
+				require.ErrorContains(t, err, "YAML parse error")
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.renders, fsys.reads)
+		})
+	}
+}
+
 // The render without markers is a retry, not a way to hide a chart that is
 // broken for real.
 func TestHelmResolveBrokenYAMLStillFails(t *testing.T) {
