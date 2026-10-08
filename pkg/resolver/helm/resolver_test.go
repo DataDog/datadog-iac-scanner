@@ -717,7 +717,7 @@ func TestHelmResolve_ActionOnlyPartialKeepsScalarValues(t *testing.T) {
 	require.Contains(t, cm, `helm.sh/chart: "app-1.0.0"`)
 	require.Contains(t, cm, "chart: app-1.0.0\n")
 	require.Contains(t, cm, "gated: app-1.0.0")
-	require.NotContains(t, cm, helmmarker.InvocationPrefix)
+	require.NotContains(t, cm, invocationPrefix)
 
 	wrapped := findResolvedBySuffix(t, got.File, "templates/wrapped.yaml")
 	require.Contains(t, string(wrapped.Content), "name: wrapped")

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	helmdetector "github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
-	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -48,7 +47,7 @@ func invocationsOf(t *testing.T, files []model.ResolvedHelm, suffix, substr stri
 	t.Helper()
 	var invocations []model.ResourceLine
 	for _, f := range findAllResolvedBySuffix(t, files, suffix) {
-		require.NotContains(t, string(f.Content), helmmarker.InvocationPrefix)
+		require.NotContains(t, string(f.Content), invocationPrefix)
 		if strings.Contains(string(f.Content), substr) {
 			invocations = append(invocations, f.HelmInvocations.First())
 		}
@@ -83,7 +82,7 @@ func TestHelmResolveMarkEveryDocumentShapes(t *testing.T) {
 				}
 				documents++
 				require.Equal(t, 1, f.HelmInvocations.First().Line, "document %q", f.Content)
-				require.NotContains(t, string(f.Content), helmmarker.InvocationPrefix)
+				require.NotContains(t, string(f.Content), invocationPrefix)
 				require.Equal(t, action+"\n", string(f.OriginalData))
 			}
 			require.Equal(t, 2, documents)
@@ -186,7 +185,7 @@ func TestHelmResolveIncludeContinuingPlainScalar(t *testing.T) {
 			cm := findResolvedBySuffix(t, got, "templates/cm.yaml")
 			require.Contains(t, string(cm.Content), "msg: hello\n")
 			require.Contains(t, string(cm.Content), "world")
-			require.NotContains(t, string(cm.Content), helmmarker.InvocationPrefix)
+			require.NotContains(t, string(cm.Content), invocationPrefix)
 		})
 	}
 }
@@ -256,7 +255,7 @@ func TestHelmResolveRewrittenIncludeKeepsRenderedLines(t *testing.T) {
 	})
 	cm := findResolvedBySuffix(t, got, "templates/role.yaml")
 	require.Contains(t, string(cm.Content), "  labels:\n    app: x\n    tier: y\ndata:\n")
-	require.NotContains(t, string(cm.Content), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(cm.Content), invocationPrefix)
 }
 
 func TestHelmResolveTracksExecutedConditionalInvocation(t *testing.T) {
@@ -269,8 +268,8 @@ func TestHelmResolveTracksExecutedConditionalInvocation(t *testing.T) {
 	require.Contains(t, string(resolved.Content), "resource-b")
 	require.NotContains(t, string(resolved.Content), "resource-a")
 	require.Equal(t, model.ResourceLine{Line: 5, Col: 0}, resolved.HelmInvocations.First())
-	require.NotContains(t, string(resolved.Content), helmmarker.InvocationPrefix)
-	require.NotContains(t, string(resolved.OriginalData), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(resolved.Content), invocationPrefix)
+	require.NotContains(t, string(resolved.OriginalData), invocationPrefix)
 }
 
 // A manifest that mixes logic with an include which emits the whole resource,
@@ -287,7 +286,7 @@ func TestHelmResolve_IncludeInMixedManifestKeepsInvocation(t *testing.T) {
 	svc := findResolvedBySuffix(t, got, "templates/svc.yaml")
 	require.Equal(t, model.ResourceLine{Line: 3, Col: 0}, svc.HelmInvocations.First())
 	require.Contains(t, string(svc.Content), "name: svc")
-	require.NotContains(t, string(svc.Content), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(svc.Content), invocationPrefix)
 }
 
 // A document whose parts are emitted by different includes: a finding is
@@ -304,7 +303,7 @@ func TestHelmResolve_DocumentComposedOfSeveralIncludes(t *testing.T) {
 		{RenderedLine: 3, Position: model.ResourceLine{Line: 1}},
 		{RenderedLine: 9, Position: model.ResourceLine{Line: 2}},
 	}, pod.HelmInvocations)
-	require.NotContains(t, string(pod.Content), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(pod.Content), invocationPrefix)
 
 	file := &model.FileMetadata{
 		Kind:              model.KindHELM,
@@ -335,7 +334,7 @@ func TestHelmResolve_IncludeAfterRightTrimmedAction(t *testing.T) {
 			"data:\n{{- if .Values.extra -}}\n{{ include \"extra\" . | nindent 2 }}\n{{- end }}\n",
 	})
 	cm := findResolvedBySuffix(t, got, "templates/cm.yaml")
-	require.NotContains(t, string(cm.Content), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(cm.Content), invocationPrefix)
 
 	var doc struct {
 		Metadata struct {
@@ -360,8 +359,8 @@ func TestHelmResolveRetryWithoutMarkersIsScopedToTheFailingTemplate(t *testing.T
 	})
 	cm := findResolvedBySuffix(t, got, "templates/cm.yaml")
 	require.Contains(t, string(cm.OriginalData), brokenByMarkerTemplate)
-	require.NotContains(t, string(cm.Content), helmmarker.InvocationPrefix)
-	require.NotContains(t, string(cm.OriginalData), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(cm.Content), invocationPrefix)
+	require.NotContains(t, string(cm.OriginalData), invocationPrefix)
 	require.NotEmpty(t, cm.IDInfo)
 	require.Empty(t, cm.HelmInvocations, "the failing template gives up its invocation lines")
 

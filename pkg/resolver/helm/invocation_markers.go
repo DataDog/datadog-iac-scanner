@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmaction"
 	"helm.sh/helm/v3/pkg/chart"
 )
 
@@ -33,7 +33,7 @@ import (
 // reason.
 func addHelmInvocationMarkers(file *chart.File) *chart.File {
 	source := string(file.Data)
-	if helmmarker.HasInvocation(source) {
+	if hasInvocationMarker(source) {
 		return file
 	}
 	wrapper := isHelmInvocationWrapper(source)
@@ -44,7 +44,7 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 	var markers []replacement
 	var blocks helmBlockStack
 	line, counted := 1, 0
-	for _, action := range helmmarker.Terminated(source) {
+	for _, action := range helmaction.Terminated(source) {
 		span := [2]int{action.Start, action.End}
 		actionText := strings.Trim(source[span[0]+len("{{"):span[1]-len("}}")], "- \t\r\n")
 		fields := strings.Fields(actionText)
@@ -59,7 +59,7 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 		counted = span[0]
 		lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
 		col := span[0] - lineStart
-		marker := helmmarker.Invocation(line, col)
+		marker := invocationMarker(line, col)
 		if r, ok := invocationReplacement(source, span, actionText, marker, wrapper); ok {
 			markers = append(markers, r)
 		}
@@ -140,7 +140,7 @@ func insideBlockScalar(before string) bool {
 	walked := -1 // the least indentation of the lines walked over, -1 for none
 	for end := len(before); end > 0; {
 		start := strings.LastIndexByte(before[:end-1], '\n') + 1
-		line := strings.TrimRight(helmmarker.Remove(before[start:end]), " \t\r\n")
+		line := strings.TrimRight(helmaction.Remove(before[start:end]), " \t\r\n")
 		end = start
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -217,7 +217,7 @@ func markEveryDocument(templateAction, lead, marker string) string {
 func isHelmInvocationWrapper(source string) bool {
 	// A quoted "}}" must not end an action early and leave residue that
 	// disqualifies a wrapper template which is in fact action-only.
-	withoutActions := helmmarker.Remove(source)
+	withoutActions := helmaction.Remove(source)
 	for _, line := range strings.Split(withoutActions, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") && !isYAMLDocumentBoundary(trimmed) {

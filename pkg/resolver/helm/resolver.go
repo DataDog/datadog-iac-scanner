@@ -235,7 +235,7 @@ func splitManifestYAML(
 			continue
 		}
 		invocations := parseHelmInvocations(splited, source)
-		splited = helmmarker.RemoveInvocations(splited)
+		splited = removeInvocationMarkers(splited)
 		if err := source.ensureIDMap(); err != nil {
 			return nil, err
 		}
@@ -299,13 +299,13 @@ func parseManifestSource(split string) (source string, ok bool) {
 // in order, each with the line it emits once the marker lines are removed and
 // the position of its action in the source template as written.
 func parseHelmInvocations(content string, source *sourceMetadata) model.HelmInvocations {
-	if !helmmarker.HasInvocation(content) {
+	if !hasInvocationMarker(content) {
 		return nil
 	}
 	var invocations model.HelmInvocations
 	kept := 0
 	for _, line := range strings.Split(content, "\n") {
-		lineNumber, col, ok := helmmarker.ParseInvocation(line)
+		lineNumber, col, ok := parseInvocationMarker(line)
 		if !ok {
 			kept++
 			continue

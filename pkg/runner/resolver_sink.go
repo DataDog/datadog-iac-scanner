@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmaction"
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
@@ -456,7 +457,7 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	kind model.FileKind,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ignoreLines []int, err error) {
-	refactor := helmmarker.Blank(helmmarker.RemoveIDLines(originalFile))
+	refactor := helmaction.Blank(helmmarker.RemoveIDLines(originalFile))
 
 	documentsOriginal, err := s.parseResolvedFile(
 		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)

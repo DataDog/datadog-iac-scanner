@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/chart"
 )
@@ -33,7 +32,7 @@ func TestSetIDKeepsSourcesWithoutMarkers(t *testing.T) {
 	} {
 		file := &chart.File{Name: "templates/t.yaml", Data: []byte(source)}
 		sources := setID(&chart.Chart{Metadata: &chart.Metadata{Name: "c"}, Templates: []*chart.File{file}}, nil)
-		require.Contains(t, string(file.Data), helmmarker.InvocationPrefix)
+		require.Contains(t, string(file.Data), invocationPrefix)
 		want := addID(&chart.File{Name: file.Name, Data: []byte(source)}, 0).Data
 		require.Equal(t, string(want), string(sources.of(file)))
 	}
@@ -168,6 +167,6 @@ func TestSetIDWithoutMarkersLeavesTemplates(t *testing.T) {
 	source := "kind: Service\n{{ include \"svc\" . }}\n"
 	file := &chart.File{Name: "templates/t.yaml", Data: []byte(source)}
 	sources := setID(&chart.Chart{Metadata: &chart.Metadata{Name: "c"}, Templates: []*chart.File{file}}, &invocationMarks{none: true})
-	require.NotContains(t, string(file.Data), helmmarker.InvocationPrefix)
+	require.NotContains(t, string(file.Data), invocationPrefix)
 	require.Equal(t, string(addID(&chart.File{Name: file.Name, Data: []byte(source)}, 0).Data), string(sources.of(file)))
 }

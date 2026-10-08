@@ -34,18 +34,6 @@ func TestRemoveIDLines(t *testing.T) {
 	require.Equal(t, "a: 1\nb: 2\n", string(RemoveIDLines(in)))
 }
 
-func TestInvocationRoundTrip(t *testing.T) {
-	marker := Invocation(6, 12)
-	require.Equal(t, "# KICS_HELM_INVOCATION_6_12:\n", marker)
-	require.True(t, HasInvocation("a\n"+marker))
-	line, col, ok := ParseInvocation(marker[:len(marker)-1])
-	require.True(t, ok)
-	require.Equal(t, [2]int{6, 12}, [2]int{line, col})
-	_, _, ok = ParseInvocation("# something else")
-	require.False(t, ok)
-	require.Equal(t, "a\nb\n", RemoveInvocations("a\n"+marker+"b\n"))
-}
-
 // Text that only mentions the prefix is not a stamp, so a template holding it
 // in a string does not shift lines or lose its content.
 func TestIDLineIsStrict(t *testing.T) {
