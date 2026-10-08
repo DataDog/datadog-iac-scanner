@@ -94,8 +94,10 @@ type modulePathEntry struct {
 // names the directory root, which file names inside the package are relative
 // to.
 type modulePackage struct {
-	root       string
-	address    string
+	root    string
+	address string
+	// declared is address as the call spells it.
+	declared   string
 	sourceType string
 	version    string
 }
@@ -193,48 +195,56 @@ func buildModuleAttribution(
 	lookup moduleProvenanceLookup,
 	cache *moduleAttributionCache,
 ) *model.ModuleAttribution {
-	if r == nil || len(r.CallChain) == 0 {
+	if r == nil {
 		return nil
 	}
-
-	entry := cache.modulePath(r.CallChain, repoPath, lookup)
-	path := entry.path
-	if len(path) == 0 {
-		return nil
-	}
-
-	leaf := path[len(path)-1]
-	dependencyType := moduleDependencyDirect
-	if len(path) > 1 {
-		dependencyType = moduleDependencyTransitive
-	}
-
 	bodyPath := absPath(r.DefinedIn, repoPath)
-	bodyFile, pkg := moduleFileName(bodyPath, repoPath, entry.packages)
-	bodyEnd := r.DefEndLine
-	if bodyEnd < r.DefLine {
-		bodyEnd = r.DefLine
+	attr := callAttribution(r.CallChain, bodyPath, repoPath, lookup, cache)
+	if attr == nil {
+		return nil
 	}
-
-	attr := &model.ModuleAttribution{
-		SourceType:     moduleSourceTypeLocal,
-		DependencyType: dependencyType,
-		CallSite:       rootCallAnchor(&r.CallChain[0], path[0].CodeLocation),
-		ModuleCodeLocation: model.SourceLocation{
-			Filename:    bodyFile,
-			LineStart:   r.DefLine,
-			LineEnd:     bodyEnd,
-			ColumnStart: r.DefColumn,
-			ColumnEnd:   r.DefEndColumn,
-		},
-		ModulePath:      path,
-		ModuleCodeOwned: leaf.SourceType == moduleSourceTypeLocal && pathWithinRoot(filepath.Dir(bodyPath), repoPath),
-		Arguments:       cache.resourceArguments(r, path[0].CodeLocation.Filename),
-	}
+	attr.ModuleCodeLocation.LineStart = r.DefLine
+	attr.ModuleCodeLocation.LineEnd = max(r.DefEndLine, r.DefLine)
+	attr.ModuleCodeLocation.ColumnStart = r.DefColumn
+	attr.ModuleCodeLocation.ColumnEnd = r.DefEndColumn
+	leaf := attr.ModulePath[len(attr.ModulePath)-1]
+	attr.ModuleCodeOwned = leaf.SourceType == moduleSourceTypeLocal && pathWithinRoot(filepath.Dir(bodyPath), repoPath)
+	attr.Arguments = cache.resourceArguments(r, attr.ModulePath[0].CodeLocation.Filename)
 	if cache != nil && r.Body != nil {
 		// What reads no module input is set by the module; the arguments
 		// cover everything else.
 		attr.ArgumentControl = model.ArgumentControlModule
+	}
+	return attr
+}
+
+// callAttribution attributes path, a file or directory of the module the last
+// call of chain loads, to the root call of chain. ModuleCodeLocation only
+// names path.
+func callAttribution(
+	chain []tfeval.CallSite,
+	path, repoPath string,
+	lookup moduleProvenanceLookup,
+	cache *moduleAttributionCache,
+) *model.ModuleAttribution {
+	if len(chain) == 0 {
+		return nil
+	}
+	entry := cache.modulePath(chain, repoPath, lookup)
+	if len(entry.path) == 0 {
+		return nil
+	}
+	dependencyType := moduleDependencyDirect
+	if len(entry.path) > 1 {
+		dependencyType = moduleDependencyTransitive
+	}
+	name, pkg := moduleFileName(path, repoPath, entry.packages)
+	attr := &model.ModuleAttribution{
+		SourceType:         moduleSourceTypeLocal,
+		DependencyType:     dependencyType,
+		CallSite:           rootCallAnchor(&chain[0], entry.path[0].CodeLocation),
+		ModuleCodeLocation: model.SourceLocation{Filename: name},
+		ModulePath:         entry.path,
 	}
 	if pkg.root != "" {
 		attr.Source, attr.SourceType, attr.Version = pkg.address, pkg.sourceType, pkg.version
@@ -286,13 +296,14 @@ func buildModulePath(
 			CodeLocation: location,
 		}
 		callerRoot := moduleCallerRoot(site.CalledFrom, repoPath)
-		root, address := enrichModuleHop(&hop, callerRoot, repoPath, site, lookup)
+		root, address, declared := enrichModuleHop(&hop, callerRoot, repoPath, site, lookup)
 		var called modulePackage
 		switch {
 		case hop.SourceType != moduleSourceTypeLocal:
 			pkg = modulePackage{
 				root:       root,
 				address:    address,
+				declared:   declared,
 				sourceType: hop.SourceType,
 				version:    hop.Version,
 			}
@@ -317,7 +328,7 @@ func (p *modulePackage) describe(hop *model.ModulePathHop, source, callerRoot st
 	if err != nil {
 		return
 	}
-	hop.Source = joinModuleSubdir(p.address, filepath.ToSlash(rel))
+	hop.Source = joinModuleSubdir(p.declared, filepath.ToSlash(rel))
 	hop.SourceType = p.sourceType
 	hop.Version = p.version
 }
@@ -351,9 +362,10 @@ func joinModuleSubdir(address, rel string) string {
 	return address + "//" + rel
 }
 
-// enrichModuleHop fills the hop's source identity and returns the root of a
-// resolved remote module with the address naming it, or empty values when the
-// call has no resolved package. A git module's version is the ref its source
+// enrichModuleHop fills the hop's source as the call declares it and returns
+// the root of a resolved remote module with the address naming it, in its
+// normalized and declared spellings, or empty values when the call has no
+// resolved package. A git module's version is the ref its source
 // declares, falling back to the resolved commit when it declares none.
 func enrichModuleHop(
 	hop *model.ModulePathHop,
@@ -361,10 +373,10 @@ func enrichModuleHop(
 	repoPath string,
 	site *tfeval.CallSite,
 	lookup moduleProvenanceLookup,
-) (root, address string) {
+) (root, address, declared string) {
 	sourceType, _ := tfmodules.DetectModuleSourceType(site.Source)
 	hop.SourceType = sourceType
-	hop.Source = normalizedModuleSource(site.Source, sourceType, callerRoot, repoPath)
+	hop.Source = declaredModuleSource(site.Source, sourceType, callerRoot, repoPath)
 	declaredRef := declaredGitRef(site.Source)
 	if sourceType == moduleSourceTypeGit || isGitShorthand(site.Source) {
 		hop.Version = declaredRef
@@ -375,8 +387,11 @@ func enrichModuleHop(
 			if prov.SourceType != "" {
 				hop.SourceType = prov.SourceType
 			}
+			// source only names the module's root and address, which identify the
+			// module across calls. The hop keeps the source the call declares,
+			// even when the resolver canonicalised it to another address.
 			source := firstNonEmpty(prov.CanonicalSource, prov.Source, site.Source)
-			hop.Source = normalizedModuleSource(source, hop.SourceType, callerRoot, repoPath)
+			hop.Source = declaredModuleSource(site.Source, hop.SourceType, callerRoot, repoPath)
 			switch hop.SourceType {
 			case moduleSourceTypeRegistry:
 				hop.Version = strings.TrimSpace(prov.ResolvedVersion)
@@ -384,12 +399,14 @@ func enrichModuleHop(
 				hop.Version = firstNonEmpty(declaredRef, prov.ResolvedRef)
 			}
 			if hop.SourceType == moduleSourceTypeLocal {
-				return "", ""
+				return "", "", ""
 			}
-			return moduleRootAddress(&prov, hop.Source)
+			root, address = moduleRootAddress(&prov, normalizedModuleSource(source, hop.SourceType, callerRoot, repoPath))
+			_, declared = moduleRootAddress(&prov, hop.Source)
+			return root, address, declared
 		}
 	}
-	return "", ""
+	return "", "", ""
 }
 
 // moduleRootAddress returns the directory module files are named from and the
@@ -435,11 +452,26 @@ func isGitShorthand(source string) bool {
 // Remote sources are lowercased so spellings differing only in case group as
 // one module; local sources keep their casing since they name repository paths.
 func normalizedModuleSource(source, sourceType, callerRoot, repoPath string) string {
+	normalized := declaredModuleSource(source, sourceType, callerRoot, repoPath)
+	switch sourceType {
+	case moduleSourceTypeLocal:
+		return normalized
+	case moduleSourceTypeRegistry:
+		if _, err := tfmodules.ParseRegistryModuleSource(registryModuleAddress(source)); err == nil {
+			return strings.ToLower(normalized)
+		}
+	}
+	return lowerRemoteSource(normalized)
+}
+
+// declaredModuleSource returns a module source in the shape
+// normalizedModuleSource reports it, keeping the casing the call declares.
+func declaredModuleSource(source, sourceType, callerRoot, repoPath string) string {
 	source = strings.TrimSpace(source)
 	if sourceType == moduleSourceTypeRegistry {
-		source = strings.SplitN(source, "@", 2)[0]
+		source = registryModuleAddress(source)
 		if addr, err := tfmodules.ParseRegistryModuleSource(source); err == nil {
-			return strings.ToLower(addr.String())
+			return addr.String()
 		}
 	}
 	if sourceType == moduleSourceTypeLocal {
@@ -462,7 +494,12 @@ func normalizedModuleSource(source, sourceType, callerRoot, repoPath string) str
 		}
 		return filepath.Base(filepath.Clean(target))
 	}
-	return lowerRemoteSource(normalizedRemoteModuleSource(source))
+	return normalizedRemoteModuleSource(source)
+}
+
+// registryModuleAddress strips the "@version" a registry source may carry.
+func registryModuleAddress(source string) string {
+	return strings.SplitN(strings.TrimSpace(source), "@", 2)[0]
 }
 
 // lowerRemoteSource lowercases the parts of a remote source that are case

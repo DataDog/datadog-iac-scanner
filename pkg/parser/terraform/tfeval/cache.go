@@ -37,7 +37,9 @@ type evalCacheKey struct {
 // address and chain onto the result. Outputs need no rewrite because rootDir is
 // part of the cache key.
 type evalCacheEntry struct {
-	resources    []ResolvedResource
+	resources []ResolvedResource
+	// instances are the module calls evaluated inside this evaluation.
+	instances    []ModuleInstance
 	outputs      map[string]cty.Value
 	visitedDirs  []string
 	baseAddr     string
@@ -65,6 +67,22 @@ func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedRes
 		r.ModuleAddress = rebaseAddr(r.ModuleAddress, entry.baseAddr, addr)
 		r.CallChain = rebaseChain(r.CallChain, entry.baseChainLen, chain)
 		out[i] = r
+	}
+	return out
+}
+
+// rebaseInstances returns the cached module calls as they would have been
+// recorded at addr/chain, sharing them when that is where they were recorded.
+func (entry *evalCacheEntry) rebaseInstances(addr string, chain []CallSite) []ModuleInstance {
+	if len(entry.instances) == 0 || (entry.baseAddr == addr && entry.baseChainLen == len(chain)) {
+		return entry.instances
+	}
+	out := make([]ModuleInstance, len(entry.instances))
+	for i := range entry.instances {
+		instance := entry.instances[i]
+		instance.ModuleAddress = rebaseAddr(instance.ModuleAddress, entry.baseAddr, addr)
+		instance.CallChain = rebaseChain(instance.CallChain, entry.baseChainLen, chain)
+		out[i] = instance
 	}
 	return out
 }

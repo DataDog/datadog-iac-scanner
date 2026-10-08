@@ -310,6 +310,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 
 	snapshot := w.results.snapshot()
 	shedToTotalLimit(&snapshot, budget, moduleMaximum, enforceAdmission)
+	mapPackageDirectories(&snapshot)
 	result.ScanPaths = snapshot.paths
 	result.Modules = snapshot.modules
 	result.Stats = snapshot.stats

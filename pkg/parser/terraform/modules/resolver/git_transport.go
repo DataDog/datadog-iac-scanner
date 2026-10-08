@@ -8,8 +8,10 @@ package resolver
 import (
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 )
 
 const sshScheme = "ssh"
@@ -62,6 +64,20 @@ func gitBaseEnv(keep ...string) []string {
 	return env
 }
 
+// neutralGitConfigPath is an empty gitconfig Git can open on every platform.
+// os.DevNull works on Unix but Git for Windows rejects NUL with exit status 128.
+var neutralGitConfigPath = sync.OnceValue(func() string {
+	if runtime.GOOS != "windows" {
+		return os.DevNull
+	}
+	file, err := os.CreateTemp("", "iac-neutral-gitconfig-")
+	if err != nil {
+		return "NUL"
+	}
+	_ = file.Close()
+	return file.Name()
+})
+
 // gitHardenedConfigEnv neutralizes system and global git configuration. Without it a
 // url.<base>.insteadOf rule would rewrite the destination after the policy validated
 // it, and a credential prompt would block the scan waiting on a terminal.
@@ -70,7 +86,7 @@ func gitBaseEnv(keep ...string) []string {
 func gitHardenedConfigEnv(allowedProtocol string) []string {
 	return []string{
 		"GIT_CONFIG_NOSYSTEM=1",
-		"GIT_CONFIG_GLOBAL=" + os.DevNull,
+		"GIT_CONFIG_GLOBAL=" + neutralGitConfigPath(),
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_ALLOW_PROTOCOL=" + allowedProtocol,
 		"GIT_CONFIG_COUNT=2",

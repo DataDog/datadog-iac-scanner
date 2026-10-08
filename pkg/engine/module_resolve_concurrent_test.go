@@ -27,6 +27,8 @@ type rootEvaluationOutcome struct {
 	RootEvalOK, BudgetExceeded                       bool
 	InstantiatedCount                                int
 	NotEvaluated                                     []string
+	// ModuleCalls are the evaluated calls of the module directories, by directory.
+	ModuleCalls map[string][]string
 }
 
 func evaluateRootsWith(t *testing.T, workers, budget int, root string, roots []string, files model.FileMetadatas) rootEvaluationOutcome {
@@ -38,6 +40,13 @@ func evaluateRootsWith(t *testing.T, workers, budget int, root string, roots []s
 	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, root)
 	evaluator := tfeval.New()
 	evaluator.SetMaxInstantiated(budget)
+	evaluator.SetTrackModuleInstances(true)
+	moduleCalls := newModuleCallIndex(filesByDir, func(path string) bool {
+		return pathWithinRoot(path, filepath.Join(root, "modules"))
+	})
+	if moduleCalls == nil {
+		t.Fatal("the fixture must index its module directories")
+	}
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
 	instantiated := make(instantiatedIndex)
@@ -46,7 +55,7 @@ func evaluateRootsWith(t *testing.T, workers, budget int, root string, roots []s
 	var synthetic []*model.FileMetadata
 	evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated, out.Successful, out.Unresolved, out.Called,
-		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK)
+		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls)
 
 	encode := func(v any) string {
 		b, err := json.Marshal(v)
@@ -71,6 +80,12 @@ func evaluateRootsWith(t *testing.T, workers, budget int, root string, roots []s
 	out.Instantiated = encode(instantiated)
 	out.BudgetExceeded = evaluator.BudgetExceeded()
 	out.InstantiatedCount = evaluator.InstantiatedCount()
+	out.ModuleCalls = make(map[string][]string, len(moduleCalls.calls))
+	for dir, calls := range moduleCalls.calls {
+		for _, call := range calls {
+			out.ModuleCalls[dir] = append(out.ModuleCalls[dir], call.callChain)
+		}
+	}
 	out.NotEvaluated = evaluator.NotEvaluatedDirs()
 	sort.Strings(out.NotEvaluated)
 	return out
@@ -133,6 +148,9 @@ resource "aws_s3_bucket" "own" { bucket = "own-%d" }
 			serial := evaluateRootsWith(t, 1, budget, root, roots, files)
 			if budget == 0 && serial.ResourceCount == 0 {
 				t.Fatal("the fixture must instantiate module resources")
+			}
+			if budget == 0 && len(serial.ModuleCalls) == 0 {
+				t.Fatal("the fixture must record module calls")
 			}
 			for range 10 {
 				concurrent := evaluateRootsWith(t, 4, budget, root, roots, files)
