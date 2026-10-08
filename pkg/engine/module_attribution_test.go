@@ -491,3 +491,28 @@ func TestDeclaredModuleSourceKeepsCallCasing(t *testing.T) {
 	require.Equal(t, "registry.example.com/acme/bucket/aws",
 		normalizedModuleSource("registry.example.com/Acme/Bucket/aws@1.0.0", "registry", repo, repo))
 }
+
+// The hop shows the source its call declares, while the module's address comes
+// from the source the resolver canonicalised it to, however far apart they are.
+func TestEnrichModuleHopKeepsDeclaredSourceWhenCanonicalSourceDiffers(t *testing.T) {
+	repo := t.TempDir()
+	pkg, moduleRoot := t.TempDir(), filepath.Join(t.TempDir(), "mod")
+	const (
+		declaredSource  = "git::https://mirror.example.com/Org/Repo//mod?ref=v1"
+		canonicalSource = "git::https://github.com/Upstream/Repo//mod?ref=v1"
+	)
+	lookup := func(_, source, _, _ string) (RemoteModuleProvenance, bool) {
+		return RemoteModuleProvenance{
+			Source: source, CanonicalSource: canonicalSource, SourceType: moduleSourceTypeGit,
+			ModuleRoot: moduleRoot, PackageRoot: pkg,
+		}, true
+	}
+	var hop model.ModulePathHop
+	root, address, declared := enrichModuleHop(&hop, repo, repo, &tfeval.CallSite{Source: declaredSource}, lookup)
+
+	require.Equal(t, "https://mirror.example.com/Org/Repo//mod", hop.Source)
+	require.Equal(t, "v1", hop.Version)
+	require.Equal(t, pkg, root)
+	require.Equal(t, "https://github.com/upstream/repo", address)
+	require.Equal(t, "https://mirror.example.com/Org/Repo", declared)
+}

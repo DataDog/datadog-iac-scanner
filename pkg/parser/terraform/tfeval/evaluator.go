@@ -163,7 +163,9 @@ type Evaluator struct {
 	notEvaluatedDirs map[string]bool
 
 	// instances holds the module calls the running EvaluateModule evaluated.
-	instances []ModuleInstance
+	// They are only collected when trackInstances is set.
+	instances      []ModuleInstance
+	trackInstances bool
 
 	// parseMu guards dirCache, which evaluators forked from one another share.
 	parseMu  *sync.Mutex
@@ -280,8 +282,13 @@ func (e *Evaluator) Fork() *Evaluator {
 		dirCache:         e.dirCache,
 		funcFS:           e.funcFS,
 		mergeAllow:       e.mergeAllow,
+		trackInstances:   e.trackInstances,
 	}
 }
+
+// SetTrackModuleInstances makes evaluations record the module calls they
+// evaluate, for TakeModuleInstances. Forks inherit the setting.
+func (e *Evaluator) SetTrackModuleInstances(track bool) { e.trackInstances = track }
 
 // InstantiationBudget reports the evaluator's instantiation budget; zero or less
 // means none.
@@ -314,6 +321,14 @@ func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
 	instances := e.instances
 	e.instances = nil
 	return instances
+}
+
+// recordModuleInstance notes an evaluated call when instances are tracked. The
+// chain is shared with the call's resources and must not be modified.
+func (e *Evaluator) recordModuleInstance(dir, addr string, chain []CallSite) {
+	if e.trackInstances {
+		e.instances = append(e.instances, ModuleInstance{Dir: dir, ModuleAddress: addr, CallChain: chain})
+	}
 }
 
 // AddNotEvaluatedDirs records directories another evaluator skipped.
@@ -637,7 +652,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	}
 	e.cache[key] = &evalCacheEntry{
 		resources:    resources,
-		instances:    slices.Clip(slices.Clone(instances)),
+		instances:    slices.Clone(instances),
 		outputs:      outputs,
 		visitedDirs:  visitedDirs,
 		baseAddr:     addr,
@@ -838,7 +853,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			e.instances = e.instances[:instancesBefore]
 			continue
 		}
-		e.instances = append(e.instances, ModuleInstance{Dir: childDir, ModuleAddress: childAddr, CallChain: childChain})
+		e.recordModuleInstance(childDir, childAddr, childChain)
 		allVisited[childDir] = true
 		childResources = append(childResources, childRes...)
 		moduleOutputs[label] = objectOrEmpty(childOuts)

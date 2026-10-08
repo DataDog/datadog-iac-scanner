@@ -652,27 +652,25 @@ func resolveModuleDocuments(
 	// labels are already in the parsed documents, so this costs nothing.
 	// External module files still need their calls, whatever they declare.
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
-	if moduleCalls == nil && !declaresTargetedResource(files, targets) {
+	declaresResource := declaresTargetedResource(files, targets)
+	if moduleCalls == nil && !declaresResource {
 		return moduleResolutionResult{}
 	}
+	// With no resource to resolve, a root only matters for the calls it makes
+	// to external module directories, so the others are not evaluated.
+	onlyExternalCalls := moduleCalls != nil && !declaresResource
 
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
+	evaluator.SetTrackModuleInstances(moduleCalls != nil)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
 
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
-	staticCalledDirs := make(map[string]bool)
-	staticCalls := make(map[string][]string, len(dirsWithTf))
-	for dir := range dirsWithTf {
-		calledDirs := discoverCalledModuleDirs(ctx, evaluator, filesByDir[dir], repoPath, resolver, dir)
-		staticCalls[dir] = calledDirs
-		for _, called := range calledDirs {
-			staticCalledDirs[called] = true
-		}
-	}
+	staticCalledDirs, staticCalls := discoverStaticCalls(
+		ctx, evaluator, filesByDir, dirsWithTf, repoPath, resolver, onlyExternalCalls)
 
 	// seen maps a content-based key to the primary docID so duplicate callers can
 	// be recorded in extras rather than emitted as separate OPA documents.
@@ -699,9 +697,10 @@ func resolveModuleDocuments(
 	}
 	sort.Strings(roots)
 
-	// With no resource to resolve, a root only matters for the calls it makes
-	// to external module directories, so the others are not evaluated.
-	evaluatedRoots := rootsToEvaluate(roots, staticCalls, moduleCalls, files, targets)
+	evaluatedRoots := roots
+	if onlyExternalCalls {
+		evaluatedRoots = rootsReaching(roots, staticCalls, moduleCalls.files)
+	}
 
 	evaluateRootModules(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
@@ -761,50 +760,104 @@ func resolveModuleDocuments(
 	}
 }
 
-// rootsToEvaluate returns the roots whose evaluation can change a result.
-func rootsToEvaluate(
-	roots []string,
-	calls map[string][]string,
-	moduleCalls *moduleCallIndex,
-	files model.FileMetadatas,
-	targets *ruleTargets,
-) []string {
-	if moduleCalls == nil || declaresTargetedResource(files, targets) {
-		return roots
+// discoverStaticCalls returns the directories some scanned directory calls,
+// and, when withGraph is set, the calls of each directory.
+func discoverStaticCalls(
+	ctx context.Context,
+	evaluator *tfeval.Evaluator,
+	filesByDir map[string][]*model.FileMetadata,
+	dirsWithTf map[string]bool,
+	repoPath string,
+	resolver tfeval.RemoteResolver,
+	withGraph bool,
+) (called map[string]bool, graph staticCallGraph) {
+	called = make(map[string]bool)
+	if withGraph {
+		graph = staticCallGraph{
+			calls:  make(map[string][]string, len(dirsWithTf)),
+			opaque: make(map[string]bool),
+		}
 	}
-	return rootsReaching(roots, calls, moduleCalls.files)
+	for dir := range dirsWithTf {
+		calledDirs := discoverCalledModuleDirs(ctx, evaluator, filesByDir[dir], repoPath, resolver, dir)
+		if withGraph {
+			graph.calls[dir] = calledDirs
+			graph.opaque[dir] = hasUnresolvableModuleCall(filesByDir[dir])
+		}
+		for _, calledDir := range calledDirs {
+			called[calledDir] = true
+		}
+	}
+	return called, graph
 }
 
-// rootsReaching returns the roots whose module calls lead, through any depth
-// of local or remote calls, to one of the target directories.
-func rootsReaching(roots []string, calls map[string][]string, targets map[string][]*model.FileMetadata) []string {
-	reaches := make(map[string]bool, len(calls))
-	var visit func(dir string, onPath map[string]bool) bool
-	visit = func(dir string, onPath map[string]bool) bool {
-		if reached, done := reaches[dir]; done {
-			return reached
+// staticCallGraph is the module calls readable without evaluating anything.
+type staticCallGraph struct {
+	calls map[string][]string
+	// opaque holds the directories making a call the graph cannot follow, such
+	// as a source built from a variable. What they reach is unknown.
+	opaque map[string]bool
+}
+
+// hasUnresolvableModuleCall reports whether files make a module call whose
+// source is not a literal. Files without a parsed document are unreadable here
+// and count as unresolvable.
+func hasUnresolvableModuleCall(files []*model.FileMetadata) bool {
+	for _, file := range files {
+		if file == nil {
+			continue
 		}
-		if _, ok := targets[dir]; ok {
-			reaches[dir] = true
+		if len(file.Document) == 0 {
 			return true
 		}
-		if onPath[dir] {
-			return false
-		}
-		onPath[dir] = true
-		defer delete(onPath, dir)
-		for _, called := range calls[dir] {
-			if visit(called, onPath) {
-				reaches[dir] = true
+		for _, callRaw := range docAsMap(file.Document["module"]) {
+			source, ok := docAsMap(callRaw)["source"].(string)
+			if !ok || strings.Contains(source, "${") || strings.Contains(source, "%{") {
 				return true
 			}
 		}
-		reaches[dir] = false
-		return false
+	}
+	return false
+}
+
+// rootsReaching returns the roots whose module calls lead, through any depth
+// of local or remote calls, to one of the target directories. A root reaching
+// a directory with a call the graph cannot follow is kept: it may reach them.
+func rootsReaching(roots []string, graph staticCallGraph, targets map[string][]*model.FileMetadata) []string {
+	callers := make(map[string][]string, len(graph.calls))
+	for dir, called := range graph.calls {
+		for _, c := range called {
+			callers[c] = append(callers[c], dir)
+		}
+	}
+	// Walking the calls backwards from the directories of interest is safe on
+	// cycles and does not depend on the order roots are visited in.
+	reaches := make(map[string]bool, len(graph.calls))
+	var queue []string
+	mark := func(dir string) {
+		if !reaches[dir] {
+			reaches[dir] = true
+			queue = append(queue, dir)
+		}
+	}
+	for dir := range targets {
+		mark(dir)
+	}
+	for dir, opaque := range graph.opaque {
+		if opaque {
+			mark(dir)
+		}
+	}
+	for len(queue) > 0 {
+		dir := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		for _, caller := range callers[dir] {
+			mark(caller)
+		}
 	}
 	var out []string
 	for _, root := range roots {
-		if visit(root, map[string]bool{}) {
+		if reaches[root] {
 			out = append(out, root)
 		}
 	}

@@ -387,6 +387,9 @@ func enrichModuleHop(
 			if prov.SourceType != "" {
 				hop.SourceType = prov.SourceType
 			}
+			// source only names the module's root and address, which identify the
+			// module across calls. The hop keeps the source the call declares,
+			// even when the resolver canonicalised it to another address.
 			source := firstNonEmpty(prov.CanonicalSource, prov.Source, site.Source)
 			hop.Source = declaredModuleSource(site.Source, hop.SourceType, callerRoot, repoPath)
 			switch hop.SourceType {

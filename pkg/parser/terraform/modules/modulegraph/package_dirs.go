@@ -11,7 +11,7 @@ import (
 )
 
 // packageAddress splits a mapped module source into the address of its
-// package and the suffix (ref query or registry version) following it.
+// package and the suffix (ref query, or git or registry version) following it.
 type packageAddress struct {
 	address string
 	suffix  string
@@ -110,7 +110,7 @@ func splitPackageAddress(source, subdir string) (packageAddress, bool) {
 	body, suffix := source, ""
 	if i := strings.Index(source, "?"); i >= 0 {
 		body, suffix = source[:i], source[i:]
-	} else if i := strings.LastIndex(source, "@"); i > strings.LastIndex(source, "/") && strings.Contains(source[:i], "/") {
+	} else if i := strings.LastIndex(source, "@"); i > strings.LastIndex(source, "/") && hasAddressPath(source[:i]) {
 		body, suffix = source[:i], source[i:]
 	}
 	if subdir == "." {
@@ -126,9 +126,20 @@ func splitPackageAddress(source, subdir string) (packageAddress, bool) {
 	return packageAddress{address: address, suffix: suffix}, true
 }
 
+// hasAddressPath reports whether address has a path after its host, so an "@"
+// following it starts a version and not the credentials or user of the host.
+func hasAddressPath(address string) bool {
+	return strings.Contains(stripScheme(address), "/")
+}
+
+// hasModuleSubdir reports whether address already names a subdirectory.
 func hasModuleSubdir(address string) bool {
+	return strings.Contains(stripScheme(address), "//")
+}
+
+func stripScheme(address string) string {
 	if i := strings.Index(address, "://"); i >= 0 {
-		address = address[i+len("://"):]
+		return address[i+len("://"):]
 	}
-	return strings.Contains(address, "//")
+	return address
 }

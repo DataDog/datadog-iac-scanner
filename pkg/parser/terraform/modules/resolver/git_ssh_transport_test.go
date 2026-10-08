@@ -216,7 +216,7 @@ func TestSSHGitCommandEnvKeepsAgentAndBlocksRedirection(t *testing.T) {
 	if values["GIT_SSH_COMMAND"] != "ssh -o StrictHostKeyChecking=yes" {
 		t.Errorf("expected the inherited GIT_SSH_COMMAND to be replaced, got %q", values["GIT_SSH_COMMAND"])
 	}
-	if values["GIT_CONFIG_GLOBAL"] != os.DevNull {
+	if values["GIT_CONFIG_GLOBAL"] != neutralGitConfigPath() {
 		t.Errorf("expected global git config to be neutralized, got %q", values["GIT_CONFIG_GLOBAL"])
 	}
 	if values["GIT_CONFIG_NOSYSTEM"] != "1" {

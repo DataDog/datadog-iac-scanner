@@ -58,6 +58,7 @@ module "b" {
 	})
 
 	e := New()
+	e.SetTrackModuleInstances(true)
 	_, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
 	instances := e.TakeModuleInstances()
@@ -102,6 +103,7 @@ module "loop" { source = "../loop" }
 	})
 
 	e := New()
+	e.SetTrackModuleInstances(true)
 	_, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
 
@@ -111,4 +113,28 @@ module "loop" { source = "../loop" }
 	}
 	sort.Strings(addresses)
 	require.Equal(t, []string{"module.loop", "module.loop.module.leaf", "module.ok"}, addresses)
+}
+
+// Recording is opt-in: scans with no use for module calls pay nothing for them.
+func TestEvaluateModule_RecordsNoModuleCallsByDefault(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `output "x" { value = 1 }`})
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+module "a" { source = "../leaf" }
+module "b" { source = "../leaf" }
+`,
+	})
+
+	e := New()
+	_, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Empty(t, e.TakeModuleInstances())
+	require.Empty(t, e.Fork().TakeModuleInstances())
+
+	e.SetTrackModuleInstances(true)
+	fork := e.Fork()
+	_, _, _, err = fork.EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, fork.TakeModuleInstances(), 2, "forks inherit the setting")
 }

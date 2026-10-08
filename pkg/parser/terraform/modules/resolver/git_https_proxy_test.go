@@ -151,7 +151,7 @@ func TestGitCommandEnvRemovesTransportOverrides(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"GIT_CONFIG_GLOBAL=" + os.DevNull,
+		"GIT_CONFIG_GLOBAL=" + neutralGitConfigPath(),
 		"GIT_ALLOW_PROTOCOL=https",
 		"HTTPS_PROXY=http://127.0.0.1:1234",
 		"NO_PROXY=",

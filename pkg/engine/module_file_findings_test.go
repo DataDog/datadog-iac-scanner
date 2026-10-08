@@ -8,6 +8,7 @@ package engine
 import (
 	"context"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -217,14 +218,169 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 }
 
 func TestRootsReachingKeepsRootsCallingTargetDirectories(t *testing.T) {
-	calls := map[string][]string{
-		"a":      {"local", "ext"},
-		"b":      {"local"},
-		"c":      nil,
-		"local":  {"nested"},
-		"nested": {"ext"},
+	graph := staticCallGraph{
+		calls: map[string][]string{
+			"a":      {"local", "ext"},
+			"b":      {"local"},
+			"c":      nil,
+			"d":      {"opaque"},
+			"e":      {"local", "opaque"},
+			"local":  {"nested"},
+			"nested": {"ext"},
+		},
+		opaque: map[string]bool{"opaque": true},
 	}
 	targets := map[string][]*model.FileMetadata{"ext": nil}
-	require.Equal(t, []string{"a", "b"}, rootsReaching([]string{"a", "b", "c"}, calls, targets))
-	require.Empty(t, rootsReaching([]string{"c"}, calls, targets))
+	require.Equal(t, []string{"a", "b", "d", "e"}, rootsReaching([]string{"a", "b", "c", "d", "e"}, graph, targets))
+	require.Equal(t, []string{"c"}, rootsReaching([]string{"c"}, staticCallGraph{calls: graph.calls}, map[string][]*model.FileMetadata{"c": nil}))
+	require.Empty(t, rootsReaching([]string{"c"}, graph, targets))
+}
+
+// A cycle in the static graph must not hide what a directory on it reaches.
+func TestRootsReachingIsOrderIndependentOnCycles(t *testing.T) {
+	graph := staticCallGraph{calls: map[string][]string{
+		"r1": {"a"},
+		"a":  {"b", "t"},
+		"b":  {"a"},
+		"r2": {"b"},
+	}}
+	targets := map[string][]*model.FileMetadata{"t": nil}
+	require.Equal(t, []string{"r1", "r2"}, rootsReaching([]string{"r1", "r2"}, graph, targets))
+	require.Equal(t, []string{"r2", "r1"}, rootsReaching([]string{"r2", "r1"}, graph, targets))
+}
+
+// parsedFileMeta reads path through the Terraform parser, as a scan does, so
+// call discovery works from the parsed documents.
+func parsedFileMeta(t *testing.T, id, path string) *model.FileMetadata {
+	t.Helper()
+	metas := parseTerraform(t, path)
+	require.Len(t, metas, 1)
+	metas[0].ID = id
+	return metas[0]
+}
+
+func parsedPackage(t *testing.T, files model.FileMetadatas) model.FileMetadatas {
+	t.Helper()
+	out := make(model.FileMetadatas, 0, len(files))
+	for _, f := range files {
+		out = append(out, parsedFileMeta(t, f.ID, f.FilePath))
+	}
+	return out
+}
+
+func successfulRootIDs(res moduleResolutionResult, repo string) []string {
+	var out []string
+	for dir := range res.successfulRoots {
+		rel, err := filepath.Rel(repo, dir)
+		if err == nil {
+			out = append(out, rel)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// With nothing to resolve, only the roots whose calls reach the external
+// package are evaluated, found through the parsed documents of a scan.
+func TestResolveModuleDocuments_EvaluatesOnlyRootsReachingExternalModules(t *testing.T) {
+	repo, pkg, files := writeRemoteBucketPackage(t)
+	files = append(files,
+		fileMeta("local-outputs", writeFile(t, filepath.Join(repo, "modules", "local"), "main.tf", `output "x" { value = 1 }
+`)),
+		fileMeta("stack-c", writeFile(t, filepath.Join(repo, "stack-c"), "main.tf", `module "local" {
+  source = "../modules/local"
+}
+`)),
+		fileMeta("stack-d", writeFile(t, filepath.Join(repo, "stack-d"), "main.tf", `module "bucket" {
+  source = "`+bucketSource+`"
+  name   = "stack-d"
+}
+module "local" {
+  source = "../modules/local"
+}
+`)),
+	)
+	targets := &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}}
+	res := resolveRemoteBucketPackage(t, repo, pkg, parsedPackage(t, files), targets)
+	require.True(t, res.ok)
+
+	require.Equal(t, []string{"stack-a", "stack-b", "stack-d"}, successfulRootIDs(res, repo),
+		"stack-c only calls a module of the scanned repository")
+	require.Len(t, res.moduleFiles["helper-outputs"].calls, 3)
+}
+
+// A call whose source is built at evaluation time cannot be followed without
+// evaluating it, so the roots making it, or reaching it, stay evaluated.
+func TestResolveModuleDocuments_KeepsRootsWithDynamicModuleSources(t *testing.T) {
+	repo, pkg, files := writeRemoteBucketPackage(t)
+	files = append(files,
+		fileMeta("local-dynamic", writeFile(t, filepath.Join(repo, "modules", "dynamic"), "main.tf", `variable "registry" {}
+module "inner" {
+  source = "${var.registry}/aws-bucket"
+}
+`)),
+		fileMeta("stack-c", writeFile(t, filepath.Join(repo, "stack-c"), "main.tf", `variable "registry" {}
+module "dynamic" {
+  source = "${var.registry}/aws-bucket"
+}
+`)),
+		fileMeta("stack-d", writeFile(t, filepath.Join(repo, "stack-d"), "main.tf", `module "dynamic" {
+  source = "../modules/dynamic"
+}
+`)),
+		fileMeta("stack-e", writeFile(t, filepath.Join(repo, "stack-e"), "main.tf", `module "local" {
+  source = "../modules/local"
+}
+`)),
+		fileMeta("local-outputs", writeFile(t, filepath.Join(repo, "modules", "local"), "main.tf", `output "x" { value = 1 }
+`)),
+	)
+	targets := &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}}
+	res := resolveRemoteBucketPackage(t, repo, pkg, parsedPackage(t, files), targets)
+	require.True(t, res.ok)
+
+	require.Equal(t, []string{"stack-a", "stack-b", "stack-c", "stack-d"}, successfulRootIDs(res, repo))
+}
+
+func TestNewModuleCallIndexReturnsNilWithoutExternalFiles(t *testing.T) {
+	repo := t.TempDir()
+	local := filepath.Join(repo, "stack")
+	idx := newModuleCallIndex(map[string][]*model.FileMetadata{
+		local: {fileMeta("local", writeFile(t, local, "main.tf", `module "x" { source = "../mod" }`))},
+	}, func(string) bool { return false })
+	require.Nil(t, idx)
+	require.Nil(t, newModuleCallIndex(nil, func(string) bool { return true }))
+}
+
+func TestDocumentResourceTypes(t *testing.T) {
+	require.Nil(t, documentResourceTypes(model.Document{"resource": "not-a-map"}))
+	require.Nil(t, documentResourceTypes(model.Document{}))
+	require.Equal(t, map[string]bool{"aws_s3_bucket": true}, documentResourceTypes(model.Document{
+		"resource": map[string]any{"aws_s3_bucket": map[string]any{"b": map[string]any{}}},
+	}))
+}
+
+func TestAttributeModuleFileFindingsLeavesPreAttributedUnchanged(t *testing.T) {
+	attr := &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: "stack/main.tf"}}
+	files := map[string]*moduleFileCalls{
+		"ext": {calls: []moduleCall{{callChain: "chain", attribution: &model.ModuleAttribution{}}}, name: "main.tf"},
+	}
+	v := model.Vulnerability{FileID: "ext", ResourceType: "output", ModuleAttribution: attr}
+	got := attributeModuleFileFindings([]model.Vulnerability{v}, files)
+	require.Len(t, got, 1)
+	require.Same(t, attr, got[0].ModuleAttribution)
+}
+
+func TestHasUnresolvableModuleCall(t *testing.T) {
+	call := func(source any) *model.FileMetadata {
+		return &model.FileMetadata{Document: model.Document{
+			"module": map[string]any{"m": map[string]any{"source": source}},
+		}}
+	}
+	require.False(t, hasUnresolvableModuleCall([]*model.FileMetadata{call("../local"), call("git::https://x/y?ref=v1"), nil}))
+	require.False(t, hasUnresolvableModuleCall([]*model.FileMetadata{{Document: model.Document{"resource": map[string]any{}}}}))
+	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{call("${var.registry}/mod")}))
+	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{call("%{ if x }a%{ endif }")}))
+	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{call(nil)}))
+	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{{Document: model.Document{}}}), "an unparsed file is not known to be free of them")
 }
