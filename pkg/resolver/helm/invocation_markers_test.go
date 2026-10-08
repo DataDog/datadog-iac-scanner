@@ -104,6 +104,17 @@ func TestBlockScalarHeaderWithComment(t *testing.T) {
 	require.False(t, insideBlockScalar("data:\n  cfg: a # | not a header\n"))
 }
 
+// A scalar is open only while every line after its header is indented more
+// than the header's line.
+func TestInsideBlockScalarEndsWithItsIndentation(t *testing.T) {
+	require.True(t, insideBlockScalar("data:\n  script: |\n    echo hi\n"))
+	require.True(t, insideBlockScalar("data:\n  script: |\n    echo hi\n\n      indented\n"))
+	require.False(t, insideBlockScalar("data:\n  script: |\n    echo hi\n  other: x\n"))
+	require.False(t, insideBlockScalar("data:\n  script: |\n    echo hi\nspec: x\n"))
+	require.True(t, insideBlockScalar("data:\n  a: |\n    x\n  b: >\n    y\n"))
+	require.True(t, insideBlockScalar("data:\n  a: |\n    {{ .Values.x }}\n"))
+}
+
 func TestAddHelmInvocationMarkersMixedManifest(t *testing.T) {
 	tests := []struct {
 		name       string

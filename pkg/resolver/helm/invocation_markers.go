@@ -43,6 +43,7 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 
 	var markers []replacement
 	var blocks helmBlockStack
+	line, counted := 1, 0
 	for _, action := range helmmarker.Terminated(source) {
 		span := [2]int{action.Start, action.End}
 		actionText := strings.Trim(source[span[0]+len("{{"):span[1]-len("}}")], "- \t\r\n")
@@ -54,7 +55,8 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 			continue
 		}
 
-		line := strings.Count(source[:span[0]], "\n") + 1
+		line += strings.Count(source[counted:span[0]], "\n")
+		counted = span[0]
 		lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
 		col := span[0] - lineStart
 		marker := helmmarker.Invocation(line, col)
@@ -131,20 +133,27 @@ var blockScalarHeader = regexp.MustCompile(`[|>][+-]?\d?[+-]?(?:\s+#.*)?\s*$`)
 
 // insideBlockScalar reports whether the text before an action may belong to a
 // YAML block scalar: walking back over indented lines reaches a "|" or ">"
-// header. A column-0 marker line would terminate such a scalar, so these
-// actions are left uninstrumented.
+// header whose content they all are, being indented more than it. A column-0
+// marker line would terminate such a scalar, so these actions are left
+// uninstrumented.
 func insideBlockScalar(before string) bool {
-	lines := strings.Split(before, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimRight(helmmarker.Remove(lines[i]), " \t\r")
+	walked := -1 // the least indentation of the lines walked over, -1 for none
+	for end := len(before); end > 0; {
+		start := strings.LastIndexByte(before[:end-1], '\n') + 1
+		line := strings.TrimRight(helmmarker.Remove(before[start:end]), " \t\r\n")
+		end = start
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if blockScalarHeader.MatchString(line) {
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		if blockScalarHeader.MatchString(line) && (walked < 0 || walked > indent) {
 			return true
 		}
-		if line[0] != ' ' && line[0] != '\t' {
+		if indent == 0 {
 			return false
+		}
+		if walked < 0 || indent < walked {
+			walked = indent
 		}
 	}
 	return false
