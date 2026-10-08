@@ -75,19 +75,14 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	curLineRes, start, end := curLineRes.walkSearchKey(ctx, lines, sanitizedSubstring, extractedString, file.IDInfo, helmID)
 
 	if curLineRes.foundRes {
-		unstamped, index := unstampedLines(lines)
-		at := index(curLineRes.lineRes)
-		adjustedLine := at + 1
-		return model.VulnerabilityLines{
-			Line:                  adjustedLine,
-			VulnLines:             detector.GetAdjacentVulnLines(at, outputLines, unstamped),
-			LineWithVulnerability: strings.Split(unstamped[at], ": ")[0],
-			ResolvedFile:          file.FilePath,
-			VulnerablilityLocation: model.ResourceLocation{
-				Start: model.ResourceLine{Line: adjustedLine, Col: start.Col},
-				End:   model.ResourceLine{Line: adjustedLine, Col: end.Col},
-			},
-		}
+		return foundLines(file, lines, curLineRes.lineRes, start, end, outputLines)
+	}
+
+	// A document whose header an include emits carries that partial's stamp,
+	// which is not in this template, so the keys written here after the include
+	// are searched among this document's own lines.
+	if found, start, end, ok := ownLinesMatch(ctx, file, lines, sanitizedSubstring, extractedString); ok {
+		return foundLines(file, lines, found, start, end, outputLines)
 	}
 
 	// Helm attributes named-template output to the file that invoked it. The
@@ -106,6 +101,72 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		VulnLines:    &[]model.CodeLine{},
 		ResolvedFile: file.FilePath,
 	}
+}
+
+// foundLines locates a finding at line, an index of lines.
+func foundLines(
+	file *model.FileMetadata, lines []string, line int, start, end model.ResourceLine, outputLines int,
+) model.VulnerabilityLines {
+	unstamped, index := unstampedLines(lines)
+	at := index(line)
+	adjustedLine := at + 1
+	return model.VulnerabilityLines{
+		Line:                  adjustedLine,
+		VulnLines:             detector.GetAdjacentVulnLines(at, outputLines, unstamped),
+		LineWithVulnerability: strings.Split(unstamped[at], ": ")[0],
+		ResolvedFile:          file.FilePath,
+		VulnerablilityLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: adjustedLine, Col: start.Col},
+			End:   model.ResourceLine{Line: adjustedLine, Col: end.Col},
+		},
+	}
+}
+
+// ownLinesMatch searches the search key, without its stamp, in the lines this
+// template writes for the document: from the include that emitted its start up
+// to the next document separator. Only a match of every key counts, since a
+// partial one would stop at a key the include emitted, and the include itself
+// is the better answer for those.
+func ownLinesMatch(ctx context.Context, file *model.FileMetadata, lines []string, sanitizedSubstring string,
+	extractedString [][]string,
+) (line int, start, end model.ResourceLine, ok bool) {
+	first := file.HelmAttribution.First()
+	keys, hasStamp := strings.CutPrefix(sanitizedSubstring, helmmarker.SearchKey(file.HelmID)+".")
+	if first.Line < 1 || file.HelmID == "" || !hasStamp {
+		return 0, start, end, false
+	}
+	from, to := documentLines(lines, first.Line)
+	if from < 0 {
+		return 0, start, end, false
+	}
+	walked, start, end := detectCurlLine{lineRes: from}.walkSearchKey(ctx, lines[:to], keys, extractedString, nil, -1)
+	if !walked.foundRes || walked.breakRes {
+		return 0, start, end, false
+	}
+	return walked.lineRes, start, end, true
+}
+
+// documentLines returns the range of lines, as indexes, from the source line
+// sourceLine (1-based, without stamps) up to the next document separator.
+func documentLines(lines []string, sourceLine int) (from, to int) {
+	from, source := -1, 0
+	for i, line := range lines {
+		if helmmarker.IsIDLine(line) {
+			continue
+		}
+		source++
+		if source == sourceLine {
+			from = i
+		} else if from >= 0 && isDocumentSeparator(line) {
+			return from, i
+		}
+	}
+	return from, len(lines)
+}
+
+func isDocumentSeparator(line string) bool {
+	line = strings.TrimRight(line, " \t\r")
+	return line == "---" || strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "---\t")
 }
 
 // invocationLines locates a finding at the include-like action whose output
