@@ -74,16 +74,16 @@ func TestHelmFindingLines(t *testing.T) {
 			keys: []key{{"metadata.name", 4}, {"spec.hostNetwork", 6}, {"spec.containers.name={{c}}.image", 9}},
 		},
 		{
-			name: "header include, then keys written in the file",
+			name: "keys written after a header include are not its output",
 			files: map[string]string{
 				"templates/_parts.tpl": headerAndLabelsTpl,
 				"templates/pod.yaml":   "{{ include \"header\" . }}\nspec:\n  hostNetwork: true\n",
 			},
 			template: "templates/pod.yaml", doc: "kind: Pod",
-			keys: []key{{"metadata.name", 1}, {"spec.hostNetwork", 3}},
+			keys: []key{{"metadata.name", 1}, {"spec.hostNetwork", -1}},
 		},
 		{
-			name: "header and labels includes, then keys written in the file",
+			name: "keys written after header and labels includes are not their output",
 			files: map[string]string{
 				"templates/_parts.tpl": headerAndLabelsTpl,
 				"templates/pod.yaml": "{{ include \"header\" . }}\n  labels:\n{{ include \"labels\" . | indent 4 }}\n" +
@@ -92,18 +92,18 @@ func TestHelmFindingLines(t *testing.T) {
 			template: "templates/pod.yaml", doc: "kind: Pod",
 			keys: []key{
 				{"metadata.name", 1}, {"metadata.labels.app", 3},
-				{"spec.hostNetwork", 5}, {"spec.containers.name={{c}}.image", 8},
+				{"spec.hostNetwork", -1}, {"spec.containers.name={{c}}.image", -1},
 			},
 		},
 		{
-			name: "header include, then keys written in the file, then another document",
+			name: "keys written after a header include are not its output, then another document",
 			files: map[string]string{
 				"templates/_parts.tpl": headerAndLabelsTpl,
 				"templates/pod.yaml": "{{ include \"header\" . }}\nspec:\n  hostNetwork: false\n---\n" +
 					"apiVersion: v1\nkind: Pod\nmetadata:\n  name: q\nspec:\n  hostNetwork: true\n",
 			},
 			template: "templates/pod.yaml", doc: "name: p",
-			keys: []key{{"spec.hostNetwork", 3}},
+			keys: []key{{"spec.hostNetwork", -1}},
 		},
 		{
 			name: "document emitted by an include after a literal one",
@@ -155,6 +155,16 @@ func TestHelmFindingLines(t *testing.T) {
 			},
 			template: "templates/cm.yaml", doc: "kind: ConfigMap",
 			keys: []key{{"metadata.name", 4}, {"data.a", 8}},
+		},
+		{
+			name: "include of another template, which has includes of its own",
+			files: map[string]string{
+				"templates/_spec.tpl": "{{- define \"spec\" -}}\nspec:\n  hostNetwork: true\n{{- end -}}\n",
+				"templates/u.yaml":    "apiVersion: v1\nkind: Pod\nmetadata:\n  name: inner\n{{ include \"spec\" . }}\n",
+				"templates/t.yaml":    "{{ include (print $.Template.BasePath \"/u.yaml\") . }}\n# a\n# b\n# c\n# d\n# e\n",
+			},
+			template: "templates/t.yaml", doc: "name: inner",
+			keys: []key{{"spec.hostNetwork", 1}, {"metadata.name", 1}},
 		},
 	}
 	for _, tt := range tests {

@@ -106,6 +106,9 @@ func (s *sourceLines) lineOf(pos int) int {
 // document its output holds; in a mixed manifest only an include starting its
 // line is, since the marker could not precede the indentation otherwise.
 // template is an action and tpl rarely emits documents, so neither is rewritten.
+//
+// The output is closed by an end line (see invocationEndText), and so is every
+// document it holds, which bounds the rendered lines the action emitted.
 func invocationReplacement(source string, span [2]int, actionText, marker string, wrapper bool) (replacement, bool) {
 	if !wrapper && !standaloneUntrimmedAction(source, span) {
 		return replacement{}, false
@@ -116,15 +119,40 @@ func invocationReplacement(source string, span [2]int, actionText, marker string
 	if wrapper {
 		lead = "\n" + marker
 	}
+	end := invocationEndText(source, span)
 	if strings.HasPrefix(actionText, helmInclude) && (wrapper || span[0] == lineStart) {
-		return replacement{start: span[0], end: span[1], text: markEveryDocument(action, lead, marker)}, true
+		return replacement{start: span[0], end: span[1], text: markEveryDocument(action, lead, marker, end)}, true
 	}
 	prefix := fmt.Sprintf("{{ print %q }}", lead)
+	suffix := ""
+	if end != "" {
+		suffix = fmt.Sprintf("{{ print %q }}", end)
+	}
 	if wrapper {
-		return replacement{start: span[0], end: span[1], text: prefix + action}, true
+		return replacement{start: span[0], end: span[1], text: prefix + action + suffix}, true
 	}
 	// Emitted before the line's indentation so the include output keeps it.
-	return replacement{start: lineStart, end: span[1], text: prefix + source[lineStart:span[0]] + action}, true
+	return replacement{start: lineStart, end: span[1], text: prefix + source[lineStart:span[0]] + action + suffix}, true
+}
+
+// silentTrimmedAction matches a "{{-" action that prints nothing and keeps the
+// line break after it, so it glues nothing to the output before it.
+var silentTrimmedAction = regexp.MustCompile(`^\{\{-\s+(?:(?:end|else)\b[^}]*[^-]|/\*(?:[^*]|\*[^/])*\*/\s*)\}\}`)
+
+// invocationEndText is printed after the output of the action at span to put
+// the end line after it. The line break before the end is its own, so removing
+// both restores the output as Helm prints it, along with any text that follows
+// the action on its line. When a "-}}" ends the action, or a "{{-" starts the
+// text after it that prints, that text is glued to the output on purpose, and an end in
+// between would split what Helm parses: it is left out, and the extent of the
+// action stays unknown unless its output ends a line (see markEveryDocument).
+func invocationEndText(source string, span [2]int) string {
+	after := strings.TrimLeft(source[span[1]:], " \t\r\n")
+	if after != "" && strings.HasSuffix(source[span[0]:span[1]], "-}}") ||
+		strings.HasPrefix(after, "{{-") && !silentTrimmedAction.MatchString(after) {
+		return ""
+	}
+	return "\n" + invocationEnd
 }
 
 // standaloneUntrimmedAction reports whether the action at span is alone on its
@@ -216,12 +244,14 @@ func (b helmBlockStack) inPartial() bool {
 // trailing separator is left alone: the document after it is not the include's.
 const helmDocumentSeparator = `\n(---(?:[ \t][^\n]*|\r)?\n)(\s*\S)`
 
-// markEveryDocument makes an include print lead ahead of its output and marker
-// after each document separator in it. Helm splits and sorts every template's
-// documents before the resolver sees them, so a marker printed only ahead of
-// the include never reaches documents after the first separator. lead ends
-// with a newline, so a separator opening the output is matched too.
-func markEveryDocument(templateAction, lead, marker string) string {
+// markEveryDocument makes an include print lead ahead of its output, end after
+// it, and marker after each document separator in it, preceded by an end line.
+// Helm splits and sorts every template's documents before the resolver sees
+// them, so a marker printed only ahead of the include never reaches documents
+// after the first separator. lead ends with a newline, so a separator opening
+// the output is matched too, and the end line follows the output, so a
+// separator closing it is matched as well.
+func markEveryDocument(templateAction, lead, marker, end string) string {
 	inner := templateAction[len("{{") : len(templateAction)-len("}}")]
 	left, right := "", ""
 	if strings.HasPrefix(inner, "-") {
@@ -230,8 +260,15 @@ func markEveryDocument(templateAction, lead, marker string) string {
 	if strings.HasSuffix(inner, "-") {
 		right, inner = "-", inner[:len(inner)-1]
 	}
-	return fmt.Sprintf(`{{%s regexReplaceAll %q (print %q (%s)) %q %s}}`,
-		left, helmDocumentSeparator, lead, inner, "\n${1}"+marker+"${2}", right)
+	output := fmt.Sprintf(`(print %q (%s) %q)`, lead, inner, end)
+	if end == "" {
+		// Text glued to the output is not split from it when the output ends a
+		// line: the end then fits on a line of its own.
+		output = fmt.Sprintf(`(regexReplaceAll %q (print %q (%s)) %q)`,
+			`\n\z`, lead, inner, "\n"+invocationEnd+"\n")
+	}
+	return fmt.Sprintf(`{{%s regexReplaceAll %q %s %q %s}}`,
+		left, helmDocumentSeparator, output, "\n"+invocationEnd+"\n${1}"+marker+"${2}", right)
 }
 
 func isHelmInvocationWrapper(source string) bool {

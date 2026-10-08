@@ -528,12 +528,15 @@ type ResolvedHelm struct {
 }
 
 // HelmInvocationAt is an include-like action that emitted part of a rendered
-// Helm document: the rendered lines from RenderedLine up to the next
-// invocation came from the action at Position.
+// Helm document: the rendered lines from RenderedLine up to RenderedEnd came
+// from the action at Position.
 type HelmInvocationAt struct {
 	// RenderedLine is a 1-based line of the rendered document as stored, ID
 	// stamps included.
 	RenderedLine int
+	// RenderedEnd is the rendered line after the last one the action emitted,
+	// or 0 when unknown: the output then runs up to an unknown later line.
+	RenderedEnd int
 	// Position is in the template as written, without ID stamps: a 1-based
 	// line and a 0-based byte column.
 	Position ResourceLine
@@ -547,21 +550,16 @@ type HelmInvocations []HelmInvocationAt
 // that emitted it.
 type HelmAttribution struct {
 	Invocations HelmInvocations
-	// RenderedContent is the rendered document the invocations' RenderedLine
-	// refer to. It is set only when there are several invocations, to tell
-	// which of them emitted a given line.
+	// RenderedContent is the rendered document the invocations' lines refer
+	// to, to find which rendered line a finding is on.
 	RenderedContent string
 }
 
 // NewHelmAttribution returns the attribution of a rendered document, or nil
-// when no invocation emitted it. renderedContent is kept only when it is
-// needed to choose among several invocations.
+// when no invocation emitted it.
 func NewHelmAttribution(invocations HelmInvocations, renderedContent string) *HelmAttribution {
 	if len(invocations) == 0 {
 		return nil
-	}
-	if len(invocations) < 2 {
-		renderedContent = ""
 	}
 	return &HelmAttribution{Invocations: invocations, RenderedContent: renderedContent}
 }
@@ -575,17 +573,25 @@ func (h HelmInvocations) First() ResourceLine {
 	return h[0].Position
 }
 
-// At is the invocation that emitted renderedLine: the last one starting at or
-// before it, or the first when none does.
-func (h HelmInvocations) At(renderedLine int) ResourceLine {
-	found := h.First()
-	for _, invocation := range h[min(1, len(h)):] {
-		if invocation.RenderedLine > renderedLine {
-			break
+// Containing is the invocation whose output is known to hold renderedLine.
+func (h HelmInvocations) Containing(renderedLine int) (HelmInvocationAt, bool) {
+	for _, invocation := range h {
+		if invocation.RenderedLine <= renderedLine && renderedLine < invocation.RenderedEnd {
+			return invocation, true
 		}
-		found = invocation.Position
 	}
-	return found
+	return HelmInvocationAt{}, false
+}
+
+// KnownBefore reports whether every invocation starting at or before
+// renderedLine has a known extent, so the lines up to it are all accounted for.
+func (h HelmInvocations) KnownBefore(renderedLine int) bool {
+	for _, invocation := range h {
+		if invocation.RenderedLine <= renderedLine && invocation.RenderedEnd == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // First is the position of the invocation that emitted the start of the
@@ -595,14 +601,6 @@ func (a *HelmAttribution) First() ResourceLine {
 		return ResourceLine{}
 	}
 	return a.Invocations.First()
-}
-
-// At is the position of the invocation that emitted renderedLine.
-func (a *HelmAttribution) At(renderedLine int) ResourceLine {
-	if a == nil {
-		return ResourceLine{}
-	}
-	return a.Invocations.At(renderedLine)
 }
 
 // Extensions represents a list of supported extensions

@@ -293,6 +293,15 @@ func TestEngine_detectHelmLine(t *testing.T) { //nolint
 	}
 }
 
+// includeAttribution is the attribution of a document an include at position
+// emitted entirely.
+func includeAttribution(position model.ResourceLine) *model.HelmAttribution {
+	rendered := "# KICS_HELM_ID_0_0:\napiVersion: apps/v1\nkind: Deployment\nspec:\n  template:\n    spec:\n" +
+		"      containers:\n      - name: c\n"
+	return model.NewHelmAttribution(
+		model.HelmInvocations{{RenderedLine: 2, RenderedEnd: 9, Position: position}}, rendered)
+}
+
 func TestDetectLineFallsBackToIncludeInvocation(t *testing.T) {
 	original := `{{- include "quickwit.metastore.deployment" (dict
   "root" .
@@ -303,7 +312,7 @@ func TestDetectLineFallsBackToIncludeInvocation(t *testing.T) {
 		FilePath:          "templates/metastore-deployment.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmAttribution:   &model.HelmAttribution{Invocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 0}}}},
+		HelmAttribution:   includeAttribution(model.ResourceLine{Line: 1, Col: 0}),
 	}
 
 	got := (DetectKindLine{}).DetectLine(
@@ -336,7 +345,7 @@ func TestDetectLineUsesExecutedInvocation(t *testing.T) {
 		FilePath:          "templates/resources.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmAttribution:   &model.HelmAttribution{Invocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 2, Col: 0}}}},
+		HelmAttribution:   includeAttribution(model.ResourceLine{Line: 2, Col: 0}),
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
@@ -358,7 +367,7 @@ func TestDetectLineInvocationSkipsHelmIDStamps(t *testing.T) {
 		FilePath:          "templates/mixed.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmAttribution:   &model.HelmAttribution{Invocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 4, Col: 0}}}},
+		HelmAttribution:   includeAttribution(model.ResourceLine{Line: 4, Col: 0}),
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)
@@ -418,7 +427,7 @@ func TestDetectLineInspectsEveryActionOnLine(t *testing.T) {
 		FilePath:          "templates/resource.yaml",
 		OriginalData:      original,
 		LinesOriginalData: utils.SplitLines(original),
-		HelmAttribution:   &model.HelmAttribution{Invocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 25}}}},
+		HelmAttribution:   includeAttribution(model.ResourceLine{Line: 1, Col: 25}),
 	}
 
 	got := (DetectKindLine{}).DetectLine(context.Background(), file, "spec.containers", 1)

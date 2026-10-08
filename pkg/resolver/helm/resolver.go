@@ -229,8 +229,13 @@ func splitManifestYAML(
 		if source == nil {
 			continue
 		}
+		marked := hasInvocationMarker(splited)
 		invocations := parseHelmInvocations(splited)
 		splited = removeInvocationMarkers(splited)
+		if marked && onlySourceHeader(splited) {
+			// Markers alone after a separator that ends an include's output.
+			continue
+		}
 		source.ensureIDMap()
 		splitID := helmmarker.FirstID(splited)
 		sourceDocumentIndex := sourceDocumentIndices[sourceKey]
@@ -296,19 +301,68 @@ func parseHelmInvocations(content string) model.HelmInvocations {
 		return nil
 	}
 	var invocations model.HelmInvocations
+	var open []int
+	printed := map[int]bool{}
 	kept := 0
 	for _, line := range strings.Split(content, "\n") {
+		if rest, end := strings.CutPrefix(line, invocationEnd); end {
+			// The end and the line break before it go: rest joins the line before.
+			if len(open) > 0 {
+				invocations[open[len(open)-1]].RenderedEnd = kept + 1
+				open = open[:len(open)-1]
+			}
+			if kept > 0 || rest == "" {
+				continue
+			}
+			line = rest
+		}
 		marker, ok := parseInvocationMarker(line)
 		if !ok {
 			kept++
+			if strings.TrimSpace(line) != "" {
+				for _, i := range open {
+					printed[i] = true
+				}
+			}
 			continue
 		}
+		open = append(open, len(invocations))
 		invocations = append(invocations, model.HelmInvocationAt{
 			RenderedLine: kept + 1,
 			Position:     model.ResourceLine{Line: marker.Line, Col: marker.Col},
 		})
 	}
-	return invocations
+	// An invocation that printed only blank lines emitted nothing of the
+	// document, and one inside the output of another is not in this template.
+	emitting := make(model.HelmInvocations, 0, len(invocations))
+	for i, invocation := range invocations {
+		if (printed[i] || invocation.RenderedEnd == 0) && !nestedInvocation(invocations[:i], invocation) {
+			emitting = append(emitting, invocation)
+		}
+	}
+	if len(emitting) == 0 {
+		return nil
+	}
+	return emitting
+}
+
+func nestedInvocation(before model.HelmInvocations, invocation model.HelmInvocationAt) bool {
+	for _, outer := range before {
+		if invocation.RenderedLine < outer.RenderedEnd {
+			return true
+		}
+	}
+	return false
+}
+
+func onlySourceHeader(document string) bool {
+	for _, line := range strings.Split(document, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "# Source: ") {
+			return false
+		}
+	}
+	return true
 }
 
 func looksLikeManifest(split string) bool {

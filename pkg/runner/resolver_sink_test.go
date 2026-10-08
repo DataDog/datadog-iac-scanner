@@ -225,30 +225,25 @@ func TestStoreResolvedFilesKeepsHelmInvocation(t *testing.T) {
 	require.Len(t, files, 2)
 	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, files[0].HelmAttribution.First())
 	require.Equal(t, model.ResourceLine{Line: 2, Col: 0}, files[1].HelmAttribution.First())
-	require.Empty(t, files[0].HelmAttribution.RenderedContent, "a single invocation needs no rendered content")
 }
 
-func TestStoreResolvedFilesKeepsRenderedContentOfSeveralInvocations(t *testing.T) {
+func TestStoreResolvedFilesKeepsRenderedContentOfInvocations(t *testing.T) {
 	ctx := context.Background()
 	service, store := newYAMLResolverSinkService(t, ctx)
 	content := []byte("apiVersion: v1\nkind: Pod\nmetadata:\n  name: p\n")
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{{
-			FileName:     "chart/templates/pod.yaml",
-			Content:      content,
-			OriginalData: []byte("{{ include \"header\" . }}\n{{ include \"spec\" . }}\n"),
-			HelmInvocations: model.HelmInvocations{
-				{RenderedLine: 1, Position: model.ResourceLine{Line: 1}},
-				{RenderedLine: 3, Position: model.ResourceLine{Line: 2}},
-			},
+			FileName:        "chart/templates/pod.yaml",
+			Content:         content,
+			OriginalData:    []byte("{{ include \"header\" . }}\n"),
+			HelmInvocations: model.HelmInvocations{{RenderedLine: 1, RenderedEnd: 5, Position: model.ResourceLine{Line: 1}}},
 		}},
-	}, model.KindHELM, "helm-several-invocations", false, 15)
+	}, model.KindHELM, "helm-invocations", false, 15)
 
-	files, err := store.GetFiles(ctx, "helm-several-invocations")
+	files, err := store.GetFiles(ctx, "helm-invocations")
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, string(content), files[0].HelmAttribution.RenderedContent)
-	require.Equal(t, 2, files[0].HelmAttribution.At(3).Line)
 }
 
 func TestStoreResolvedFilesKeepsCRDSuppressionLines(t *testing.T) {

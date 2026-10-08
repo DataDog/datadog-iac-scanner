@@ -35,3 +35,16 @@ func TestSourceLinesLeaveStampsOut(t *testing.T) {
 	require.Equal(t, 5, lines.lineOf(len(source)-len("{{ include \"x\" . }}\n")))
 	require.Equal(t, 5, lines.lineOf(len(source)-len(" . }}\n")))
 }
+
+// Removing an end and the line break before it restores the output as Helm
+// prints it, with any text the end was glued to.
+func TestEndLineGluedToTheNextOutput(t *testing.T) {
+	marker := invocationMarker{Line: 1}.String()
+	content := marker + "image: nginx\n" + invocationEnd + ":latest\nb: 2\n"
+	require.Equal(t, "image: nginx:latest\nb: 2\n", removeInvocationMarkers(content))
+	invocations := parseHelmInvocations(content)
+	require.Len(t, invocations, 1)
+	require.Equal(t, 1, invocations[0].RenderedLine)
+	require.Equal(t, 2, invocations[0].RenderedEnd)
+	require.Equal(t, "a\n", removeInvocationMarkers(invocationEnd+"\na\n"), "an end opening a document")
+}

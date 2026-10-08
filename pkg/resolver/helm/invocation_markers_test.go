@@ -94,7 +94,8 @@ func TestAddHelmInvocationMarkersRewritesLineStartingInclude(t *testing.T) {
 	source := "kind: Service\n{{- if .a }}\n{{ include \"docs\" . }}\n{{- end }}\n"
 	file := addHelmInvocationMarkers(&chart.File{Name: "templates/svc.yaml", Data: []byte(source)})
 	require.Contains(t, string(file.Data), "\n{{ regexReplaceAll ")
-	require.Contains(t, string(file.Data), "(print \"# KICS_HELM_INVOCATION_3_0:\\n\" ( include \"docs\" . ))")
+	require.Contains(t, string(file.Data),
+		"(print \"# KICS_HELM_INVOCATION_3_0:\\n\" ( include \"docs\" . ) \"\\n# KICS_HELM_INVOCATION_END:\")")
 }
 
 func TestBlockScalarHeaderWithComment(t *testing.T) {

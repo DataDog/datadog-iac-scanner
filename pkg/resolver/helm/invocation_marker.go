@@ -8,6 +8,10 @@ import (
 // invocationPrefix starts every invocation marker line.
 const invocationPrefix = "# KICS_HELM_INVOCATION_"
 
+// invocationEnd is the line printed after the output of a marked include, so
+// the rendered lines it emitted are known exactly.
+const invocationEnd = invocationPrefix + "END:"
+
 // invocationMarker is printed ahead of the output of an include and records
 // where the action is in the template as written, without ID stamps: its
 // 1-based line and 0-based byte column. "# KICS_HELM_INVOCATION_<line>_<col>:".
@@ -44,11 +48,17 @@ func hasInvocationMarker(content string) bool {
 	return strings.Contains(content, invocationPrefix)
 }
 
-// removeInvocationMarkers drops every marker line from content.
+// removeInvocationEnds drops every end and the line break before it.
+func removeInvocationEnds(content string) string {
+	return strings.ReplaceAll("\n"+content, "\n"+invocationEnd, "")[1:]
+}
+
+// removeInvocationMarkers drops every marker line and end from content.
 func removeInvocationMarkers(content string) string {
 	if !hasInvocationMarker(content) {
 		return content
 	}
+	content = removeInvocationEnds(content)
 	var kept strings.Builder
 	kept.Grow(len(content))
 	for content != "" {

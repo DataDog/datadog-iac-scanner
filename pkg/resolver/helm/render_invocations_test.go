@@ -298,10 +298,11 @@ func TestHelmResolve_DocumentComposedOfSeveralIncludes(t *testing.T) {
 		"templates/pod.yaml": "{{ include \"header\" . }}\n{{ include \"spec\" . }}\n",
 	})
 	pod := findResolvedBySuffix(t, got, "templates/pod.yaml")
-	// Rendered lines of the stamped content: the header starts at the ID line (3), the spec at line 9.
+	// Rendered lines of the stamped content: the header runs from the ID line (3)
+	// up to the blank line its include leaves (8), the spec from line 9 to the end.
 	require.Equal(t, model.HelmInvocations{
-		{RenderedLine: 3, Position: model.ResourceLine{Line: 1}},
-		{RenderedLine: 9, Position: model.ResourceLine{Line: 2}},
+		{RenderedLine: 3, RenderedEnd: 8, Position: model.ResourceLine{Line: 1}},
+		{RenderedLine: 9, RenderedEnd: 13, Position: model.ResourceLine{Line: 2}},
 	}, pod.HelmInvocations)
 	require.NotContains(t, string(pod.Content), invocationPrefix)
 
