@@ -236,3 +236,15 @@ func TestMemoryWalkInventoryRendersChartsInScope(t *testing.T) {
 		})
 	}
 }
+
+// A request whose platforms read no YAML renders no pushed chart.
+func TestMemoryWalkInventoryRendersNoChartWithoutYAMLPlatform(t *testing.T) {
+	m := NewMemorySourceProvider(nil, []string{"infra/main.tf", "infra/Chart.yaml", "infra/templates/cm.yaml"}, nil, nil)
+	files, err := m.WalkInventory(context.Background(), model.Extensions{".tf": {}}, utils.PoolOptions{},
+		func(_ context.Context, root string) bool {
+			t.Errorf("chart %s rendered for a Terraform-only request", root)
+			return true
+		})
+	require.NoError(t, err)
+	require.Equal(t, []InventoryFile{{Path: "infra/main.tf", Ext: ".tf"}}, files)
+}

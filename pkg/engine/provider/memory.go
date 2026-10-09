@@ -80,7 +80,15 @@ func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]InventoryFile, error) {
 	eligible := m.eligibleFiles(extensions)
 
-	inScope, outOfScope := m.partitionChartRoots(ChartRoots(m.paths))
+	// Roots come from every pushed path the request's platforms read, not only
+	// the eligible ones, so only-paths naming a template still renders its chart.
+	readable := make([]string, 0, len(m.paths))
+	for _, p := range m.paths {
+		if extensions.Include(memExtension(p)) {
+			readable = append(readable, p)
+		}
+	}
+	inScope, outOfScope := m.partitionChartRoots(ChartRoots(readable))
 	renderedRoots := renderChartsShallowFirst(ctx, inScope, chartPool, chartFn)
 
 	files := make([]InventoryFile, 0, len(eligible))

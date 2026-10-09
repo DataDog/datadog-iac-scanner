@@ -644,7 +644,8 @@ func (r *ReportedLocation) PathOr(detected string) string {
 }
 
 // Apply moves v to the reported location. Positions that belong to the file
-// the finding was detected in no longer mean anything there and are cleared.
+// the finding was detected in no longer mean anything there and are cleared,
+// and so is the remediation: it edits the detected file, not the reported one.
 func (r *ReportedLocation) Apply(v *Vulnerability) {
 	if r == nil {
 		return
@@ -661,6 +662,8 @@ func (r *ReportedLocation) Apply(v *Vulnerability) {
 	v.VulnLines = &snippet
 	v.LineWithVulnerability = r.LineText
 	v.RemediationLocation = ResourceLocation{}
+	v.Remediation = ""
+	v.RemediationType = ""
 	v.BlockLocation = ResourceLocation{}
 	v.ResourceSource = ""
 	v.FileSource = nil

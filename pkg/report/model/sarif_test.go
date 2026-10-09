@@ -1175,3 +1175,43 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 	require.Equal(t, "note", result.ResultLevel) // MEDIUM maps to "note"
 	require.Equal(t, "main.tf", result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
 }
+
+// A finding moved to its reported location, such as a packaged Helm dependency
+// reported at its Chart.yaml declaration, has no remediation line there: its
+// region keeps the reported line and no fix is offered.
+func TestBuildSarifIssue_ReportedFindingHasNoFix(t *testing.T) {
+	for _, remediationType := range []string{"addition", "removal", "replacement"} {
+		for name, remediation := range map[string]string{"cleared": "", "kept": "privileged: false"} {
+			t.Run(remediationType+"/"+name, func(t *testing.T) {
+				typ := remediationType
+				if remediation == "" {
+					typ = ""
+				}
+				issue := model.QueryResult{
+					QueryName: "privileged_container",
+					QueryID:   "privileged-container",
+					Severity:  model.SeverityHigh,
+					Platform:  "Kubernetes",
+					Files: []model.VulnerableFile{{
+						FileName:        "app/Chart.yaml",
+						ResourceType:    "Pod",
+						ResourceName:    "app",
+						Remediation:     remediation,
+						RemediationType: typ,
+						ResourceLocation: model.ResourceLocation{
+							Start: model.ResourceLine{Line: 5},
+							End:   model.ResourceLine{Line: 5, Col: 11},
+						},
+					}},
+				}
+
+				report := NewSarifReport().(*sarifReport)
+				_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+				require.NoError(t, err)
+				result := report.Runs[0].Results[0]
+				require.Empty(t, result.ResultFixes)
+				require.Equal(t, 5, result.ResultLocations[0].PhysicalLocation.Region.StartLine)
+			})
+		}
+	}
+}

@@ -168,6 +168,7 @@ func TestReportedLocation_Apply(t *testing.T) {
 		LineWithVulnerability: "template line", ResourceSource: "x", FileSource: []string{"x"},
 		BlockLocation:       model.ResourceLocation{Start: model.ResourceLine{Line: 40}},
 		RemediationLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 44}},
+		Remediation:         "privileged: false", RemediationType: "addition",
 		SearchKey:           "dd-helm.spec", ResourceName: "dd-helm",
 	}
 	(&model.ReportedLocation{
@@ -184,6 +185,8 @@ func TestReportedLocation_Apply(t *testing.T) {
 	require.Equal(t, []model.CodeLine{{Position: 6, Line: "a"}, {Position: 7, Line: "- name: pkg"}}, *v.VulnLines)
 	require.Zero(t, v.BlockLocation)
 	require.Zero(t, v.RemediationLocation)
+	require.Empty(t, v.Remediation, "a fix of the detected file cannot apply to the reported one")
+	require.Empty(t, v.RemediationType)
 	require.Empty(t, v.ResourceSource)
 	require.Nil(t, v.FileSource)
 	require.Equal(t, "dd-helm.spec", v.SearchKey, "what the finding is about must survive the move")
@@ -331,6 +334,49 @@ func TestHelm_Resolve_Aliases(t *testing.T) {
 				want[k] = v
 			}
 			require.Equal(t, want, rendered)
+		})
+	}
+}
+
+// A chart vendored under charts/ is reported, and fingerprinted, at the
+// directory holding it, not at the path Helm names after its alias or chart.
+func TestHelm_Resolve_VendoredChartKeepsItsRealPath(t *testing.T) {
+	sts := "apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: {{ .Chart.Name }}\n"
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{
+			name: "aliased",
+			files: map[string]string{
+				"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n" +
+					"- name: postgresql\n  alias: primary-db\n  version: 1.0.0\n",
+				"app/charts/postgresql/Chart.yaml": "apiVersion: v2\nname: postgresql\nversion: 1.0.0\n",
+			},
+			want: "app/charts/postgresql/templates/sts.yaml",
+		},
+		{
+			name: "in a directory named otherwise",
+			files: map[string]string{
+				"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n" +
+					"- name: postgresql\n  version: 1.0.0\n",
+				"app/charts/pg/Chart.yaml": "apiVersion: v2\nname: postgresql\nversion: 1.0.0\n",
+			},
+			want: "app/charts/pg/templates/sts.yaml",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Dir(filepath.Dir(tt.want))
+			tt.files[dir+"/templates/sts.yaml"] = sts
+			writeTree(t, root, tt.files)
+			got, err := NewResolver(nil).Resolve(context.Background(), filepath.Join(root, "app"))
+			require.NoError(t, err)
+			f := findResolvedBySuffix(t, got.File, "/templates/sts.yaml")
+			require.Equal(t, filepath.Join(root, filepath.FromSlash(tt.want)), f.FileName)
+			require.Nil(t, f.Reported, "the real path is the finding's identity, not a reported location")
 		})
 	}
 }
