@@ -33,13 +33,15 @@ func TestTosetForEachInDynamicBlock(t *testing.T) {
 	}
 	resource := doc["resource"].(model.Document)["google_sql_database_instance"].(model.Document)["x"].(model.Document)
 	settings := resource["settings"].(model.Document)
-	dynamic := settings["dynamic"].(model.Document)
-	ipConfiguration := dynamic["ip_configuration"].(model.Document)
-	forEachVal, ok := ipConfiguration["for_each"].(ctyjson.SimpleJSONValue)
-	if !ok {
-		t.Fatalf("for_each = %#v (%T), want ctyjson.SimpleJSONValue", ipConfiguration["for_each"], ipConfiguration["for_each"])
+	if _, ok := settings["dynamic"]; ok {
+		t.Fatal("dynamic block was not expanded")
 	}
-	if forEachVal.Value.LengthInt() != 1 {
-		t.Fatalf("for_each len = %d, want 1", forEachVal.Value.LengthInt())
+	ipConfiguration, ok := settings["ip_configuration"].(model.Document)
+	if !ok {
+		t.Fatalf("ip_configuration = %#v, want the single block toset([\"private\"]) generates", settings["ip_configuration"])
+	}
+	ipv4, ok := ipConfiguration["ipv4_enabled"].(ctyjson.SimpleJSONValue)
+	if !ok || ipv4.Value.True() {
+		t.Fatalf("ipv4_enabled = %#v, want false", ipConfiguration["ipv4_enabled"])
 	}
 }
