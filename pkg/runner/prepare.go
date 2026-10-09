@@ -152,7 +152,7 @@ func resolveAndStoreChart(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	unrendered *unrenderedHelmCharts,
-) bool {
+) (rendered bool) {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
 		return true
@@ -172,6 +172,15 @@ func resolveAndStoreChart(
 		}
 		return false
 	}
+	// A panic while storing leaves documents already stored: the chart still
+	// counts as rendered, so its raw templates are not scanned on top of them.
+	defer func() {
+		if r := recover(); r != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Error().Msgf("panic storing the resolved files of chart %s: %v", chartPath, r)
+			rendered = true
+		}
+	}()
 	routed := services
 	if kind == model.KindHELM {
 		if platform, ok := analyzer.PlatformForKind(kind); ok {

@@ -214,3 +214,10 @@ func TestSetIDWithoutMarkersLeavesTemplates(t *testing.T) {
 	require.NotContains(t, string(file.Data), invocationPrefix)
 	require.Equal(t, string(addID(&chart.File{Name: file.Name, Data: []byte(source)}, 0).Data), string(sources.of(file)))
 }
+
+// An include of a manifest template through "indent" indents the end lines its
+// output holds; none may stay in the rendered content.
+func TestIndentedEndLinesAreRemoved(t *testing.T) {
+	content := invocationMarker{Line: 2}.String() + "a:\n    " + invocationEnd + "\nb: 1\n"
+	require.Equal(t, "a:\nb: 1\n", removeInvocationMarkers(content))
+}

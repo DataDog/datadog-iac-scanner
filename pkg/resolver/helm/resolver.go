@@ -305,7 +305,7 @@ func parseHelmInvocations(content string) model.HelmInvocations {
 	printed := map[int]bool{}
 	kept := 0
 	for _, line := range strings.Split(content, "\n") {
-		if rest, end := strings.CutPrefix(line, invocationEnd); end {
+		if rest, end := strings.CutPrefix(strings.TrimLeft(line, " \t"), invocationEnd); end {
 			// The end and the line break before it go: rest joins the line before.
 			if len(open) > 0 {
 				invocations[open[len(open)-1]].RenderedEnd = kept + 1

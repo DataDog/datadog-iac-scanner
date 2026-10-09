@@ -56,9 +56,13 @@ func hasInvocationMarker(content string) bool {
 	return strings.Contains(content, invocationPrefix)
 }
 
+// indentedInvocationEnd matches an end, indented when an include's output
+// holding it went through "indent", and the line break before it.
+var indentedInvocationEnd = regexp.MustCompile(`\n[ \t]*` + regexp.QuoteMeta(invocationEnd))
+
 // removeInvocationEnds drops every end and the line break before it.
 func removeInvocationEnds(content string) string {
-	return strings.ReplaceAll("\n"+content, "\n"+invocationEnd, "")[1:]
+	return indentedInvocationEnd.ReplaceAllString("\n"+content, "")[1:]
 }
 
 // removeInvocationMarkers drops every marker line and end from content.

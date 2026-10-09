@@ -50,3 +50,23 @@ func TestResolveAndStoreChartHandlesResolvePanic(t *testing.T) {
 	require.Equal(t, []string{"chart"}, src.failed)
 	require.True(t, service.isUnderFailedHelmChart(filepath.Join("chart", "templates", "cm.yaml")))
 }
+
+// A panic while storing the files of a rendered chart leaves documents already
+// stored, so the chart counts as rendered and its raw templates are not
+// scanned on top of them.
+func TestResolveAndStoreChartKeepsRenderedWhenStoringPanics(t *testing.T) {
+	ctx := context.Background()
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"chart/Chart.yaml":        []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"),
+		"chart/templates/cm.yaml": []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n"),
+	})
+	res, err := resolver.NewBuilder().Add(ctx, helm.NewResolver(memfs)).Build(ctx)
+	require.NoError(t, err)
+	service := &Service{Resolver: res} // no parser: storing the files panics
+	src := &chartFailureRecorder{}
+
+	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15, &unrenderedHelmCharts{})
+
+	require.True(t, rendered)
+	require.Empty(t, src.failed)
+}
