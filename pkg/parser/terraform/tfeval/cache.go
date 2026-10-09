@@ -8,6 +8,7 @@ package tfeval
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/zclconf/go-cty/cty"
@@ -153,9 +154,39 @@ func encodeCtyForKey(v cty.Value) string {
 	if !v.IsKnown() {
 		return "?" + v.Type().FriendlyName()
 	}
+	if !v.IsWhollyKnown() {
+		// Partly known values keep their known parts in the key: two inputs
+		// differing only there evaluate differently.
+		var b strings.Builder
+		writePartialKey(&b, v)
+		return b.String()
+	}
 	data, err := ctyjson.Marshal(v, v.Type())
 	if err != nil {
 		return "?" + v.Type().FriendlyName()
 	}
 	return string(data)
+}
+
+func writePartialKey(b *strings.Builder, v cty.Value) {
+	if v.IsNull() || !v.IsKnown() || v.IsWhollyKnown() {
+		b.WriteString(encodeCtyForKey(v))
+		return
+	}
+	t := v.Type()
+	open, closing := "[", "]"
+	if t.IsObjectType() || t.IsMapType() {
+		open, closing = "{", "}"
+	}
+	b.WriteString(open)
+	for it := v.ElementIterator(); it.Next(); {
+		key, elem := it.Element()
+		if t.IsObjectType() || t.IsMapType() {
+			b.WriteString(strconv.Quote(key.AsString()))
+			b.WriteByte(':')
+		}
+		writePartialKey(b, elem)
+		b.WriteByte(',')
+	}
+	b.WriteString(closing)
 }
