@@ -309,37 +309,6 @@ func blockLabel(b *hclsyntax.Block) string {
 	return b.Labels[0]
 }
 
-// isEmptyCollection returns true when attr evaluates to a known empty collection under ctx.
-// Unknown or unevaluable for_each expressions return false (conservative: keep the block).
-func isEmptyCollection(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) bool {
-	if attr == nil {
-		return false
-	}
-	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() || !ctyutil.Materialized(v) {
-		return false
-	}
-	t := v.Type()
-	if t.IsObjectType() || t.IsMapType() || t.IsListType() || t.IsTupleType() || t.IsSetType() {
-		return v.LengthInt() == 0
-	}
-	return false
-}
-
-// isLiteralZero returns true when attr evaluates to the number zero under ctx.
-// Unknown or unevaluable count expressions return false (conservative: keep the block).
-func isLiteralZero(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) bool {
-	if attr == nil {
-		return false
-	}
-	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() {
-		return false
-	}
-	n, ok := ctyutil.LiteralInt(v)
-	return ok && n == 0
-}
-
 // objectOrEmpty wraps m as a cty object; cty.ObjectVal panics on empty maps.
 func objectOrEmpty(m map[string]cty.Value) cty.Value {
 	if len(m) == 0 {

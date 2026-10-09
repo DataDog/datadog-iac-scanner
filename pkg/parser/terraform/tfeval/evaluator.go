@@ -798,68 +798,48 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	}
 
 	for _, mb := range moduleBlocks {
-		label := blockLabel(mb)
-		if label == "" {
-			continue
-		}
-		source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], evalCtx)
-		if source == "" {
-			continue
-		}
-
-		version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], evalCtx)
-		childDir, childPackageRoot, ok := e.resolveModuleDir(
-			ctx, dir, packageRoot, source, version, mb.TypeRange.Filename, label,
-		)
+		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
 		if !ok {
 			continue
 		}
-
-		if isLiteralZero(mb.Body.Attributes["count"], evalCtx) {
-			continue
+		instances, mode, truncated := moduleInstances(mb, evalCtx)
+		if truncated {
+			// The instances left out have no synthetic document standing in
+			// for them, so the module must also be scanned as written.
+			_ = e.skipEvaluation(call.dir)
 		}
-		if isEmptyCollection(mb.Body.Attributes["for_each"], evalCtx) {
-			continue
-		}
+		site := call.site(scope)
+		outs := make([]cty.Value, len(instances))
+		for i, instance := range instances {
+			modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
+			childAddr := instance.address(addr, call.label)
+			childChain := append(cloneChain(chain), site)
+			instancesBefore := len(e.instances)
 
-		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
-
-		site := CallSite{
-			ModuleName:      label,
-			Source:          source,
-			Version:         version,
-			CalledFrom:      mb.TypeRange.Filename,
-			CalledLine:      mb.TypeRange.Start.Line,
-			CalledEndLine:   mb.Range().End.Line,
-			CalledColumn:    mb.TypeRange.Start.Column,
-			CalledEndColumn: mb.Range().End.Column,
-			Body:            mb.Body,
-			Caller:          scope,
-		}
-		childAddr := joinAddr(addr, "module."+label)
-		childChain := append(cloneChain(chain), site)
-		instancesBefore := len(e.instances)
-
-		childRes, childOuts, cErr := e.evaluate(
-			ctx, childDir, rootDir, childPackageRoot, modInputs, childAddr,
-			childChain, depth+1, visiting, allVisited,
-		)
-		if cErr != nil {
-			if isReportableModuleEvalError(cErr) {
-				contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", label, childDir, cErr)
+			childRes, childOuts, cErr := e.evaluate(
+				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
+				childChain, depth+1, visiting, allVisited,
+			)
+			if cErr != nil {
+				if isReportableModuleEvalError(cErr) {
+					contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, cErr)
+				}
+				// Deliberately not added to allVisited: the module was not resolved, so
+				// it must keep being scanned where it is written.
+				e.instances = e.instances[:instancesBefore]
+				continue
 			}
-			// Deliberately not added to allVisited: the module was not resolved, so
-			// it must keep being scanned where it is written.
-			e.instances = e.instances[:instancesBefore]
-			continue
+			e.recordModuleInstance(call.dir, childAddr, childChain)
+			allVisited[call.dir] = true
+			childResources = append(childResources, childRes...)
+			outs[i] = objectOrEmpty(childOuts)
 		}
-		e.recordModuleInstance(childDir, childAddr, childChain)
-		allVisited[childDir] = true
-		childResources = append(childResources, childRes...)
-		moduleOutputs[label] = objectOrEmpty(childOuts)
-		// Update evalCtx so the next sibling's modInputs can reference this
-		// module's now-resolved outputs (e.g. module.B.x = module.A.output).
-		evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
+		if value, ok := moduleOutputsValue(mode, instances, outs); ok {
+			moduleOutputs[call.label] = value
+			// Update evalCtx so the next sibling's modInputs can reference this
+			// module's now-resolved outputs (e.g. module.B.x = module.A.output).
+			evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
+		}
 	}
 	return childResources, moduleOutputs
 }
@@ -1384,48 +1364,26 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		tmpVisiting[k] = v
 	}
 	for _, mb := range moduleBlocks {
-		label := blockLabel(mb)
-		if label == "" {
-			continue
-		}
-		source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], evalCtx)
-		if source == "" {
-			continue
-		}
-		version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], evalCtx)
-		childDir, childPackageRoot, ok := e.resolveModuleDir(
-			ctx, dir, packageRoot, source, version, mb.TypeRange.Filename, label,
-		)
+		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
 		if !ok {
 			continue
 		}
-		if isLiteralZero(mb.Body.Attributes["count"], evalCtx) {
-			continue
+		instances, mode, _ := moduleInstances(mb, evalCtx)
+		site := call.site(scope)
+		outs := make([]cty.Value, len(instances))
+		for i, instance := range instances {
+			modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
+			childChain := append(cloneChain(chain), site)
+			_, childOuts, err := e.evaluate(
+				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
+				depth+1, tmpVisiting, map[string]bool{},
+			)
+			if err == nil {
+				outs[i] = objectOrEmpty(childOuts)
+			}
 		}
-		if isEmptyCollection(mb.Body.Attributes["for_each"], evalCtx) {
-			continue
-		}
-		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
-		site := CallSite{
-			ModuleName:      label,
-			Source:          source,
-			Version:         version,
-			CalledFrom:      mb.TypeRange.Filename,
-			CalledLine:      mb.TypeRange.Start.Line,
-			CalledEndLine:   mb.Range().End.Line,
-			CalledColumn:    mb.TypeRange.Start.Column,
-			CalledEndColumn: mb.Range().End.Column,
-			Body:            mb.Body,
-			Caller:          scope,
-		}
-		childAddr := joinAddr(addr, "module."+label)
-		childChain := append(cloneChain(chain), site)
-		_, childOuts, _ := e.evaluate(
-			ctx, childDir, rootDir, childPackageRoot, modInputs, childAddr, childChain,
-			depth+1, tmpVisiting, map[string]bool{},
-		)
-		if len(childOuts) > 0 {
-			out[label] = objectOrEmpty(childOuts)
+		if value, ok := moduleOutputsValue(mode, instances, outs); ok {
+			out[call.label] = value
 			// Make each module's outputs visible to subsequent siblings within this
 			// same pre-pass loop, so their inputs resolve to the same values that the
 			// main evaluation loop will compute — this keeps cache keys consistent.
