@@ -13,134 +13,47 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestJSONParserRegistration verifies that the JSON parser is only registered when ShouldScanTfPlans is true
+// TestJSONParserRegistration verifies that the JSON parser is always registered
 func TestJSONParserRegistration(t *testing.T) {
-	tests := []struct {
-		name                    string
-		shouldScanTfPlans       bool
-		expectJSONParserPresent bool
-	}{
-		{
-			name:                    "JSON parser registered when flag is true",
-			shouldScanTfPlans:       true,
-			expectJSONParserPresent: true,
-		},
-		{
-			name:                    "JSON parser not registered when flag is false",
-			shouldScanTfPlans:       false,
-			expectJSONParserPresent: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-
-			params := &Parameters{
-				PreviewLines:      3,
-				RepoPath:          t.TempDir(),
-				Path:              []string{t.TempDir()},
-				ShouldScanTfPlans: tt.shouldScanTfPlans,
-			}
-
-			tr, err := tracker.NewTracker(params.PreviewLines)
-			require.NoError(t, err)
-
-			client := &Client{
-				ScanParams:    params,
-				Tracker:       tr,
-				Storage:       storage.NewMemoryStorage(),
-				FlagEvaluator: featureflags.NewLocalEvaluator(),
-			}
-
-			// Create a mock inspector (we don't actually need to use it)
-			// We just need to test the parser registration logic
-			platforms := []string{"terraform"}
-			cloudProviders := []string{""}
-
-			// Call createService which contains the conditional JSON parser registration
-			services, err := client.createService(
-				ctx,
-				nil, // inspector - not needed for this test
-				[]string{params.Path[0]},
-				nil, // remoteModulePaths
-				client.Tracker,
-				client.Storage,
-				platforms,
-				cloudProviders,
-				client.FlagEvaluator,
-				nil,
-			)
-
-			require.NoError(t, err)
-			require.NotNil(t, services)
-
-			// Check if JSON parser is present in the services
-			jsonParserFound := false
-			for _, service := range services {
-				if service.Parser != nil && service.Parser.Parsers != nil {
-					if service.Parser.Parsers.GetKind() == model.KindJSON {
-						jsonParserFound = true
-						break
-					}
-				}
-			}
-
-			if tt.expectJSONParserPresent {
-				assert.True(t, jsonParserFound,
-					"JSON parser should be registered when ShouldScanTfPlans is true")
-			} else {
-				assert.False(t, jsonParserFound,
-					"JSON parser should not be registered when ShouldScanTfPlans is false")
-			}
-		})
-	}
-}
-
-// TestJSONParserBuilder verifies the parser builder correctly adds JSON parser based on flag
-func TestJSONParserBuilder(t *testing.T) {
 	ctx := context.Background()
 
-	// First, create services without the flag to get baseline count
-	paramsWithoutFlag := &Parameters{
-		PreviewLines:      3,
-		RepoPath:          t.TempDir(),
-		Path:              []string{t.TempDir()},
-		ShouldScanTfPlans: false,
+	params := &Parameters{
+		PreviewLines: 3,
+		RepoPath:     t.TempDir(),
+		Path:         []string{t.TempDir()},
 	}
 
-	tr1, err := tracker.NewTracker(paramsWithoutFlag.PreviewLines)
+	tr, err := tracker.NewTracker(params.PreviewLines)
 	require.NoError(t, err)
 
-	clientWithoutFlag := &Client{
-		ScanParams:    paramsWithoutFlag,
-		Tracker:       tr1,
+	client := &Client{
+		ScanParams:    params,
+		Tracker:       tr,
 		Storage:       storage.NewMemoryStorage(),
 		FlagEvaluator: featureflags.NewLocalEvaluator(),
 	}
 
-	platforms := []string{"terraform", "kubernetes", "cloudformation"}
+	platforms := []string{"terraform"}
 	cloudProviders := []string{""}
 
-	servicesWithoutFlag, err := clientWithoutFlag.createService(
+	services, err := client.createService(
 		ctx,
-		nil,
-		[]string{paramsWithoutFlag.Path[0]},
-		nil,
-		clientWithoutFlag.Tracker,
-		clientWithoutFlag.Storage,
+		nil, // inspector - not needed for this test
+		[]string{params.Path[0]},
+		nil, // remoteModulePaths
+		client.Tracker,
+		client.Storage,
 		platforms,
 		cloudProviders,
-		clientWithoutFlag.FlagEvaluator,
+		client.FlagEvaluator,
 		nil,
 	)
 
 	require.NoError(t, err)
-	baselineCount := len(servicesWithoutFlag)
+	require.NotNil(t, services)
 
-	// Check that JSON parser is NOT present when flag is false
 	jsonParserFound := false
-	for _, service := range servicesWithoutFlag {
+	for _, service := range services {
 		if service.Parser != nil && service.Parser.Parsers != nil {
 			if service.Parser.Parsers.GetKind() == model.KindJSON {
 				jsonParserFound = true
@@ -148,132 +61,7 @@ func TestJSONParserBuilder(t *testing.T) {
 			}
 		}
 	}
-	assert.False(t, jsonParserFound, "JSON parser should not be present when flag is false")
-
-	// Now create services with the flag enabled
-	paramsWithFlag := &Parameters{
-		PreviewLines:      3,
-		RepoPath:          t.TempDir(),
-		Path:              []string{t.TempDir()},
-		ShouldScanTfPlans: true,
-	}
-
-	tr2, err := tracker.NewTracker(paramsWithFlag.PreviewLines)
-	require.NoError(t, err)
-
-	clientWithFlag := &Client{
-		ScanParams:    paramsWithFlag,
-		Tracker:       tr2,
-		Storage:       storage.NewMemoryStorage(),
-		FlagEvaluator: featureflags.NewLocalEvaluator(),
-	}
-
-	servicesWithFlag, err := clientWithFlag.createService(
-		ctx,
-		nil,
-		[]string{paramsWithFlag.Path[0]},
-		nil,
-		clientWithFlag.Tracker,
-		clientWithFlag.Storage,
-		platforms,
-		cloudProviders,
-		clientWithFlag.FlagEvaluator,
-		nil,
-	)
-
-	require.NoError(t, err)
-	countWithFlag := len(servicesWithFlag)
-
-	// Check that JSON parser IS present when flag is true
-	jsonParserFound = false
-	for _, service := range servicesWithFlag {
-		if service.Parser != nil && service.Parser.Parsers != nil {
-			if service.Parser.Parsers.GetKind() == model.KindJSON {
-				jsonParserFound = true
-				break
-			}
-		}
-	}
-	assert.True(t, jsonParserFound, "JSON parser should be present when flag is true")
-
-	// When flag is enabled, we should have more services (JSON parser adds support for more platforms)
-	assert.GreaterOrEqual(t, countWithFlag, baselineCount,
-		"Should have at least as many parsers with flag enabled (found %d with flag vs %d without)", countWithFlag, baselineCount)
-}
-
-// TestCreateServiceWithTfPlanFlag is an integration-style test verifying the full flow
-func TestCreateServiceWithTfPlanFlag(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("services created successfully with flag enabled", func(t *testing.T) {
-		params := &Parameters{
-			PreviewLines:      3,
-			RepoPath:          t.TempDir(),
-			Path:              []string{t.TempDir()},
-			ShouldScanTfPlans: true,
-		}
-
-		tr, err := tracker.NewTracker(params.PreviewLines)
-		require.NoError(t, err)
-
-		client := &Client{
-			ScanParams:    params,
-			Tracker:       tr,
-			Storage:       storage.NewMemoryStorage(),
-			FlagEvaluator: featureflags.NewLocalEvaluator(),
-		}
-
-		services, err := client.createService(
-			ctx,
-			nil,
-			[]string{params.Path[0]},
-			nil,
-			client.Tracker,
-			client.Storage,
-			[]string{"terraform"},
-			[]string{""},
-			client.FlagEvaluator,
-			nil,
-		)
-
-		require.NoError(t, err)
-		assert.NotEmpty(t, services, "Services should be created")
-	})
-
-	t.Run("services created successfully with flag disabled", func(t *testing.T) {
-		params := &Parameters{
-			PreviewLines:      3,
-			RepoPath:          t.TempDir(),
-			Path:              []string{t.TempDir()},
-			ShouldScanTfPlans: false,
-		}
-
-		tr, err := tracker.NewTracker(params.PreviewLines)
-		require.NoError(t, err)
-
-		client := &Client{
-			ScanParams:    params,
-			Tracker:       tr,
-			Storage:       storage.NewMemoryStorage(),
-			FlagEvaluator: featureflags.NewLocalEvaluator(),
-		}
-
-		services, err := client.createService(
-			ctx,
-			nil,
-			[]string{params.Path[0]},
-			nil,
-			client.Tracker,
-			client.Storage,
-			[]string{"terraform"},
-			[]string{""},
-			client.FlagEvaluator,
-			nil,
-		)
-
-		require.NoError(t, err)
-		assert.NotEmpty(t, services, "Services should be created even without JSON parser")
-	})
+	assert.True(t, jsonParserFound, "JSON parser should always be registered")
 }
 
 // Helper function to count parsers of a specific type
@@ -294,10 +82,9 @@ func TestJSONParserNotDoubleRegistered(t *testing.T) {
 	ctx := context.Background()
 
 	params := &Parameters{
-		PreviewLines:      3,
-		RepoPath:          t.TempDir(),
-		Path:              []string{t.TempDir()},
-		ShouldScanTfPlans: true,
+		PreviewLines: 3,
+		RepoPath:     t.TempDir(),
+		Path:         []string{t.TempDir()},
 	}
 
 	tr, err := tracker.NewTracker(params.PreviewLines)
