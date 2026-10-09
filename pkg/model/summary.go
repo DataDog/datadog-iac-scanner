@@ -324,7 +324,11 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		resolvedPath := resolvePath(item.FileName, pathExtractionMap, repoDir)
 
 		// Stamp the fingerprint here so every report format reads one shared value.
+		identityFile, identityLine := item.Identity()
 		fingerprintPath := resolvedPath
+		if identityFile != item.FileName {
+			fingerprintPath = resolvePath(identityFile, pathExtractionMap, repoDir)
+		}
 		if fingerprintPath == "." {
 			fingerprintPath = ""
 		}
@@ -335,7 +339,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			item.ResourceType,
 			item.ResourceName,
 			utils.ChooseQueryID(item.QueryID, item.LegacyQueryID),
-			item.LineWithVulnerability,
+			identityLine,
 			item.ModuleCallChain,
 		)
 

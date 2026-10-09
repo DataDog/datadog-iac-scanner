@@ -1491,8 +1491,34 @@ func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
 
 	require.True(t, ins.isExternalModulePath("/tmp/remote-module/main.tf"))
 	require.True(t, rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
-	require.False(t, !ins.isExternalModulePath("/tmp/remote-module/main.tf") &&
-		rulePathExcluded("/tmp/remote-module/main.tf", nil, []string{"/repo/src"}))
+	require.False(t, ins.rulePathsExcluded([]string{"/tmp/remote-module/main.tf"}, nil, []string{"/repo/src"}))
+	require.False(t, ins.rulePathsExcluded([]string{"/tmp/remote-module/main.tf"}, []string{"/tmp/**"}, nil))
+}
+
+// A file inside a chart archive is known by its path in the archive and by the
+// declaration it is reported at; the rule's filters apply to both.
+func TestInspectorRulePathsExcludedArchiveFile(t *testing.T) {
+	ins := &Inspector{}
+	paths := []string{"app/charts/pkg/templates/pod.yaml", "app/Chart.yaml"}
+	tests := []struct {
+		name         string
+		ignore, only []string
+		want         bool
+	}{
+		{name: "no filters", want: false},
+		{name: "ignore matching the archive", ignore: []string{"app/charts/**"}, want: true},
+		{name: "ignore matching the declaration", ignore: []string{"app/Chart.yaml"}, want: true},
+		{name: "ignore matching neither", ignore: []string{"lib/**"}, want: false},
+		{name: "only matching the declaration", only: []string{"app/Chart.yaml"}, want: false},
+		{name: "only matching the archive", only: []string{"app/charts/**"}, want: false},
+		{name: "only matching neither", only: []string{"lib/**"}, want: true},
+		{name: "ignore wins over only", ignore: []string{"app/charts/**"}, only: []string{"app/Chart.yaml"}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ins.rulePathsExcluded(paths, tt.ignore, tt.only))
+		})
+	}
 }
 
 // TestNodeFingerprintOf verifies the fingerprint used to validate byPointer

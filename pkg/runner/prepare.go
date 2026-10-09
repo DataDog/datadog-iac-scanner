@@ -193,6 +193,32 @@ func resolveAndStoreChart(
 	return true
 }
 
+// withoutExcludedFiles drops the rendered files that ignore-paths or only-paths
+// leave out of the scan. A chart renders its dependencies with it, and those may
+// come from anywhere in the scan, so being in scope is decided per file, where
+// its findings are reported, rather than once for the chart.
+func withoutExcludedFiles(
+	ctx context.Context, filter provider.FileFilter, chartPath string, resFiles model.ResolvedFiles,
+) model.ResolvedFiles {
+	kept := make([]model.ResolvedHelm, 0, len(resFiles.File))
+	for i := range resFiles.File {
+		// A packaged dependency is reported at its parent's declaration, but an
+		// ignored directory holding its archive still leaves it out.
+		file := &resFiles.File[i]
+		if filter.ExcludesFile(file.FileName) || (file.Reported != nil && filter.ExcludesFile(file.Reported.Path)) {
+			continue
+		}
+		kept = append(kept, resFiles.File[i])
+	}
+	if dropped := len(resFiles.File) - len(kept); dropped > 0 {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Debug().Msgf("Dropped %d rendered files of chart '%s' excluded by the scan's path filters",
+			dropped, chartPath)
+	}
+	resFiles.File = kept
+	return resFiles
+}
+
 // dispatchFile feeds one listed file's content to the services whose parser
 // supports its extension, narrowed to the parsers for its platform.
 func dispatchFile(ctx context.Context,

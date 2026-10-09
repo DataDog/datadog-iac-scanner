@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	slashpath "path"
 	"path/filepath"
 	"sort"
 
@@ -70,30 +71,99 @@ func (m *MemorySourceProvider) eligibleFiles(extensions model.Extensions) []stri
 }
 
 // WalkInventory is the pushed-content counterpart of the disk provider's
-// WalkInventory: it calls chartFn for each pushed chart root (shallow-first,
-// subcharts skipped once their parent rendered, on chartPool) and returns the
-// eligible pushed files minus the Helm files of the charts that rendered.
+// WalkInventory: it calls chartFn for each pushed chart root the path filters
+// keep (shallow-first, subcharts skipped once their parent rendered, on
+// chartPool) and returns the eligible pushed files minus the Helm files of the
+// charts that rendered or that the filters leave out.
 func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]InventoryFile, error) {
 	eligible := m.eligibleFiles(extensions)
 
-	roots := make([]string, 0)
-	for _, p := range eligible {
-		if filepath.Base(p) == "Chart.yaml" {
-			roots = append(roots, filepath.ToSlash(filepath.Dir(p)))
+	// Roots come from every pushed path the request's platforms read, not only
+	// the eligible ones, so only-paths naming a template still renders its chart.
+	readable := make([]string, 0, len(m.paths))
+	for _, p := range m.paths {
+		if extensions.Include(memExtension(p)) {
+			readable = append(readable, p)
 		}
 	}
-	renderedRoots := renderChartsShallowFirst(ctx, roots, chartPool, chartFn)
+	inScope, outOfScope := m.partitionChartRoots(ChartRoots(readable))
+	renderedRoots := renderChartsShallowFirst(ctx, inScope, chartPool, chartFn)
 
 	files := make([]InventoryFile, 0, len(eligible))
 	for _, p := range eligible {
-		if IsHelmChartFile(p, renderedRoots) {
+		if IsHelmChartFile(p, renderedRoots) || IsHelmChartFile(p, outOfScope) {
 			continue
 		}
 		files = append(files, InventoryFile{Path: p, Ext: memExtension(p)})
 	}
 	return files, nil
+}
+
+// partitionChartRoots splits the pushed chart roots into those rendered and
+// those the path filters leave out, the way the disk provider does: a chart is
+// rendered unless its Chart.yaml is ignored, and with only-paths, when one of
+// its files is kept (only-paths naming a single template still renders its
+// chart; the files outside are dropped from the output).
+func (m *MemorySourceProvider) partitionChartRoots(roots []string) (inScope, outOfScope []string) {
+	var kept map[string]bool
+	if len(m.onlyPaths) > 0 {
+		isRoot := make(map[string]bool, len(roots))
+		for _, root := range roots {
+			isRoot[root] = true
+		}
+		kept = make(map[string]bool, len(roots))
+		for _, p := range m.paths {
+			if pathutil.Excluded(p, m.ignorePaths, m.onlyPaths) {
+				continue
+			}
+			for dir := slashpath.Dir(filepath.ToSlash(p)); ; dir = slashpath.Dir(dir) {
+				if isRoot[dir] {
+					kept[dir] = true
+				}
+				if dir == "." || dir == "/" {
+					break
+				}
+			}
+		}
+	}
+	inScope = make([]string, 0, len(roots))
+	for _, root := range roots {
+		chartFile := slashpath.Join(root, "Chart.yaml")
+		if pathutil.Excluded(chartFile, m.ignorePaths, nil) || (kept != nil && !kept[root]) {
+			outOfScope = append(outOfScope, root)
+			continue
+		}
+		inScope = append(inScope, root)
+	}
+	return inScope, outOfScope
+}
+
+// ChartRoots returns the sorted, slash-separated directories of the Chart.yaml
+// files among paths: the Helm chart roots of pushed content, in the form the
+// analyzer produces for a disk walk.
+func ChartRoots(paths []string) []string {
+	var roots []string
+	seen := make(map[string]bool)
+	for _, p := range paths {
+		if filepath.Base(p) != "Chart.yaml" {
+			continue
+		}
+		root := filepath.ToSlash(filepath.Dir(p))
+		if !seen[root] {
+			seen[root] = true
+			roots = append(roots, root)
+		}
+	}
+	sort.Strings(roots)
+	return roots
+}
+
+// ExcludesFile reports whether ignore-paths or only-paths leave the pushed file
+// at path out of the scan (see FileSystemSourceProvider.ExcludesFile).
+func (m *MemorySourceProvider) ExcludesFile(path string) bool {
+	return pathutil.Excluded(path, m.ignorePaths, m.onlyPaths)
 }
 
 // ReadFile reads a pushed file through the provider's FS.

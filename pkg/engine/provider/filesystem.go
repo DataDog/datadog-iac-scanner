@@ -31,7 +31,9 @@ type FileSystemSourceProvider struct {
 	paths     []string
 	excludes  map[string][]os.FileInfo
 	onlyPaths []string
-	mu        sync.RWMutex
+	// chartFilter decides which charts render; see SetChartFilter.
+	chartFilter *PathFilter
+	mu          sync.RWMutex
 
 	prebuiltPaths []string
 	chartRoots    []string
@@ -59,6 +61,7 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes, onlyPaths
 		excludes: ex,
 	}
 
+	var expandedExcludes []string
 	for _, exclude := range excludes {
 		excludePaths, err := GetExcludePaths(exclude)
 		if err != nil {
@@ -67,6 +70,7 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes, onlyPaths
 		if err := fs.addExcluded(ctx, excludePaths); err != nil {
 			return nil, err
 		}
+		expandedExcludes = append(expandedExcludes, excludePaths...)
 	}
 
 	// onlyPaths uses nil/non-nil to signal whether a restriction is in effect:
@@ -85,8 +89,22 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes, onlyPaths
 			fs.onlyPaths = append(fs.onlyPaths, expanded...)
 		}
 	}
+	fs.chartFilter = NewPathFilter(expandedExcludes, fs.onlyPaths)
 
 	return fs, nil
+}
+
+// SetChartFilter replaces the filter that decides which charts render, which
+// defaults to the provider's own excludes and only-paths. A scan sets the
+// user's filters when its excludes also list files kept out of the raw scan
+// only, such as JSON templates, whose rendered documents are still scanned.
+func (s *FileSystemSourceProvider) SetChartFilter(f *PathFilter) {
+	s.chartFilter = f
+}
+
+// ChartFilter returns the filter that decides which charts render.
+func (s *FileSystemSourceProvider) ChartFilter() *PathFilter {
+	return s.chartFilter
 }
 
 // AddExcluded add new excluded files to the File System Source Provider
@@ -318,12 +336,16 @@ func (s *FileSystemSourceProvider) ReleaseContentCache() {
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
 	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	renderedRoots := renderChartsShallowFirst(ctx, s.chartRoots, chartPool, chartFn)
+	inScope, outOfScope := s.partitionChartRoots(s.chartRoots)
+	renderedRoots := renderChartsShallowFirst(ctx, inScope, chartPool, chartFn)
 
 	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
 	for _, path := range s.prebuiltPaths {
 		norm := toSlash(path)
-		if IsHelmChartFile(norm, renderedRoots) {
+		// The analyzer matches ignore-paths by exact path, so the templates of a
+		// chart under an ignored directory are listed; scanned raw, they would
+		// report unrendered actions.
+		if IsHelmChartFile(norm, renderedRoots) || IsHelmChartFile(norm, outOfScope) {
 			continue
 		}
 		if _, ok := s.unfiltered[norm]; !ok {
@@ -568,22 +590,37 @@ func (s *FileSystemSourceProvider) isPathExcluded(path string) (bool, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.excludedLocked(path, info), nil
+}
+
+// excludedLocked applies ignore-paths and only-paths to path; s.mu is held.
+func (s *FileSystemSourceProvider) excludedLocked(path string, info os.FileInfo) bool {
 	if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
-		return true, nil
+		return true
 	}
 	if s.onlyPaths != nil {
-		underOnlyPath := false
 		for _, op := range s.onlyPaths {
 			if pathWithinBase(op, path) {
-				underOnlyPath = true
-				break
+				return false
 			}
 		}
-		if !underOnlyPath {
-			return true, nil
+		return true
+	}
+	return false
+}
+
+// partitionChartRoots splits roots into the charts the chart filter renders
+// and those it leaves out.
+func (s *FileSystemSourceProvider) partitionChartRoots(roots []string) (inScope, outOfScope []string) {
+	inScope = make([]string, 0, len(roots))
+	for _, root := range roots {
+		if s.chartFilter.ChartInScope(root) {
+			inScope = append(inScope, root)
+		} else {
+			outOfScope = append(outOfScope, root)
 		}
 	}
-	return false, nil
+	return inScope, outOfScope
 }
 
 // WalkInventory collects matching files, calling chartFn at each Helm chart root.
@@ -750,7 +787,7 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 			return true, "", filepath.SkipDir
 		}
 		_, err := os.Stat(filepath.Join(path, "Chart.yaml"))
-		if err != nil || IsNestedRenderedChart(path, resolvedChartPaths) {
+		if err != nil || IsNestedRenderedChart(path, resolvedChartPaths) || !s.chartFilter.ChartInScope(path) {
 			return true, "", nil
 		}
 		return false, "", nil

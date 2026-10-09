@@ -8,9 +8,12 @@ package runner
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -42,7 +45,8 @@ func (s *Service) resolverSink(
 	return resFiles.Excluded, nil
 }
 
-// resolveOnly renders a chart without parsing or storing it.
+// resolveOnly renders a chart without parsing or storing it, dropping the
+// rendered Helm files the scan's path filters leave out.
 func (s *Service) resolveOnly(ctx context.Context, filename string) (model.ResolvedFiles, model.FileKind, error) {
 	kind := s.Resolver.GetType(filename)
 	if kind == model.KindCOMMON {
@@ -51,6 +55,9 @@ func (s *Service) resolveOnly(ctx context.Context, filename string) (model.Resol
 	resFiles, err := s.Resolver.Resolve(ctx, filename, kind)
 	if err != nil {
 		return model.ResolvedFiles{}, kind, err
+	}
+	if kind == model.KindHELM && s.RenderedFileFilter != nil {
+		resFiles = withoutExcludedFiles(ctx, s.RenderedFileFilter, filename, resFiles)
 	}
 	return resFiles, kind, nil
 }
@@ -67,7 +74,7 @@ func (s *Service) storeResolvedFiles(
 	sourceCache := make(map[string]*resolvedSourceData)
 	for i := range resFiles.File {
 		rfile := &resFiles.File[i]
-		if isHelmJSONFile(kind, rfile.FileName) && s.Parser.Parsers.GetKind() != model.KindYAML {
+		if s.skipResolvedFile(kind, rfile) {
 			continue
 		}
 		s.Tracker.TrackFileFound(rfile.FileName)
@@ -120,6 +127,7 @@ func (s *Service) storeResolvedFiles(
 				LineInfoDocument:  lineInfoDocument,
 				Kind:              kind,
 				FilePath:          rfile.FileName,
+				Reported:          rfile.Reported,
 				HelmID:            rfile.SplitID,
 				HelmAttribution:   model.NewHelmAttribution(rfile.HelmInvocations, ownedRenderedContent),
 				Commands:          cached.commands,
@@ -487,4 +495,52 @@ func filterHelmGeneratedLines(content []byte, ignoreLines []int) []int {
 		out = append(out, n)
 	}
 	return out
+}
+
+// skipResolvedFile reports a rendered file this service does not store: Helm
+// JSON outside the YAML parser, or a document another chart already stored.
+func (s *Service) skipResolvedFile(kind model.FileKind, rfile *model.ResolvedHelm) bool {
+	if isHelmJSONFile(kind, rfile.FileName) && s.Parser.Parsers.GetKind() != model.KindYAML {
+		return true
+	}
+	return kind == model.KindHELM && !s.firstHelmRender(rfile)
+}
+
+// firstHelmRender reports whether rfile is the first store of its rendered
+// document. A dependency rendered on its own and through the chart attaching it
+// renders the same document twice; only Helm's "# Source:" header, naming where
+// it attached, and the stamps numbering its templates differ. The key covers everything else stored, so which render
+// stores first never changes the result, and a parent overriding the
+// dependency's values renders a different document, which is kept.
+func (s *Service) firstHelmRender(rfile *model.ResolvedHelm) bool {
+	sum := sha256.Sum256(helmmarker.RemoveIDLines(withoutHelmSourceHeader(rfile.Content)))
+	// A stamp's template number depends on the chart that rendered it, its line
+	// does not.
+	position := rfile.SplitID
+	if id, ok := helmmarker.ParseIDLine(rfile.SplitID); ok {
+		position = strconv.Itoa(id.Line)
+	}
+	key := fmt.Sprintf("%s\x00%s\x00%s\x00%d:%d\x00%x", rfile.Reported.PathOr(rfile.FileName), rfile.FileName,
+		position, rfile.HelmInvocations.First().Line, rfile.HelmInvocations.First().Col, sum)
+	s.storedHelmMu.Lock()
+	defer s.storedHelmMu.Unlock()
+	if _, seen := s.storedHelm[key]; seen {
+		return false
+	}
+	if s.storedHelm == nil {
+		s.storedHelm = make(map[string]struct{})
+	}
+	s.storedHelm[key] = struct{}{}
+	return true
+}
+
+func withoutHelmSourceHeader(content []byte) []byte {
+	trimmed := bytes.TrimLeft(content, "\n")
+	if !bytes.HasPrefix(trimmed, []byte("# Source: ")) {
+		return content
+	}
+	if end := bytes.IndexByte(trimmed, '\n'); end >= 0 {
+		return trimmed[end+1:]
+	}
+	return nil
 }

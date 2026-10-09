@@ -7,6 +7,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -45,8 +46,9 @@ func TestNewFileSystemSourceProvider(t *testing.T) {
 				},
 			},
 			want: &FileSystemSourceProvider{
-				paths:    []string{filepath.FromSlash("./test")},
-				excludes: make(map[string][]os.FileInfo, 1),
+				paths:       []string{filepath.FromSlash("./test")},
+				excludes:    make(map[string][]os.FileInfo, 1),
+				chartFilter: NewPathFilter([]string{".tf"}, nil),
 			},
 			wantErr: false,
 		},
@@ -59,8 +61,9 @@ func TestNewFileSystemSourceProvider(t *testing.T) {
 				},
 			},
 			want: &FileSystemSourceProvider{
-				paths:    []string{filepath.FromSlash("./test"), filepath.FromSlash("./test2")},
-				excludes: make(map[string][]os.FileInfo, 1),
+				paths:       []string{filepath.FromSlash("./test"), filepath.FromSlash("./test2")},
+				excludes:    make(map[string][]os.FileInfo, 1),
+				chartFilter: NewPathFilter([]string{".tf"}, nil),
 			},
 			wantErr: false,
 		},
@@ -982,6 +985,138 @@ func TestGetSourcesTofuShadowingExplicitFiles(t *testing.T) {
 		require.NoError(t, runErr)
 		require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got, "parallel=%v", parallel)
 	}
+}
+
+// Path filters reach Helm charts too: an ignored or out-of-scope chart is not
+// rendered, and only-paths naming a template inside a chart still renders it.
+func TestWalkInventoryRendersOnlyChartsInScope(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	for _, chart := range []string{"app", "lib", "other"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, chart, "templates"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, chart, "Chart.yaml"), []byte("name: "+chart+"\n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, chart, "templates", "cm.yaml"), []byte("kind: ConfigMap\n"), 0o600))
+	}
+	roots := []string{
+		filepath.ToSlash(filepath.Join(dir, "app")),
+		filepath.ToSlash(filepath.Join(dir, "lib")),
+		filepath.ToSlash(filepath.Join(dir, "other")),
+	}
+	tests := []struct {
+		name           string
+		excludes, only []string
+		want           []string
+	}{
+		{"no filters", nil, nil, []string{"app", "lib", "other"}},
+		{"ignored chart", []string{filepath.Join(dir, "lib", "**")}, nil, []string{"app", "other"}},
+		{"only one chart", nil, []string{filepath.Join(dir, "app")}, []string{"app"}},
+		{"only one template", nil, []string{filepath.Join(dir, "other", "templates", "cm.yaml")}, []string{"other"}},
+	}
+	for _, prebuilt := range []bool{true, false} {
+		for _, tt := range tests {
+			t.Run(fmt.Sprintf("%s prebuilt=%v", tt.name, prebuilt), func(t *testing.T) {
+				fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, tt.excludes, tt.only)
+				require.NoError(t, err)
+				if prebuilt {
+					fs.SetPrebuiltWalk([]string{roots[0] + "/templates/cm.yaml"}, roots, nil)
+				}
+				var mu sync.Mutex
+				var rendered []string
+				_, err = fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{}, func(_ context.Context, root string) bool {
+					mu.Lock()
+					defer mu.Unlock()
+					rendered = append(rendered, filepath.Base(root))
+					return true
+				})
+				require.NoError(t, err)
+				require.ElementsMatch(t, tt.want, rendered)
+			})
+		}
+	}
+}
+
+// The analyzer lists the files under an ignored directory, which it matches by
+// exact path only; the templates of a chart there are neither rendered nor
+// scanned raw.
+func TestBuildInventoryFromPrebuilt_IgnoredChartDirIsNotScannedRaw(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	var listed []string
+	for _, chart := range []string{"app", "lib"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, chart, "templates"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, chart, "Chart.yaml"), []byte("name: "+chart+"\n"), 0o600))
+		template := filepath.Join(dir, chart, "templates", "cm.yaml")
+		require.NoError(t, os.WriteFile(template, []byte("kind: ConfigMap\n"), 0o600))
+		listed = append(listed, filepath.ToSlash(template))
+	}
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, []string{filepath.Join(dir, "lib")}, nil)
+	require.NoError(t, err)
+	fs.SetPrebuiltWalk(listed, []string{filepath.ToSlash(filepath.Join(dir, "app")), filepath.ToSlash(filepath.Join(dir, "lib"))}, nil)
+	files, err := fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{},
+		func(_ context.Context, root string) bool {
+			require.Equal(t, "app", filepath.Base(root))
+			return false
+		})
+	require.NoError(t, err)
+	require.Equal(t, []InventoryFile{{Path: listed[0], Ext: ".yaml"}}, files,
+		"app failed to render, so its raw template is scanned; lib's is not")
+}
+
+func TestPathFilter(t *testing.T) {
+	dir := t.TempDir()
+	kept := filepath.Join(dir, "app", "cm.yaml")
+	ignored := filepath.Join(dir, "lib", "cm.yaml")
+	app, lib := toSlash(filepath.Join(dir, "app")), toSlash(filepath.Join(dir, "lib"))
+
+	var none *PathFilter
+	require.False(t, none.ExcludesFile(ignored))
+	require.True(t, none.ChartInScope(lib))
+
+	file := NewPathFilter([]string{ignored, filepath.Join(dir, "web", "Chart.yaml")}, nil)
+	require.False(t, file.ExcludesFile(kept))
+	require.True(t, file.ExcludesFile(toSlash(ignored)), "slash and OS paths match alike")
+	require.False(t, file.ExcludesFile(filepath.Join(dir, "lib", "other.yaml")))
+	require.True(t, file.ChartInScope(lib), "an ignored template does not leave its chart out")
+	require.False(t, file.ChartInScope(filepath.Join(dir, "web")), "an ignored Chart.yaml does")
+
+	ignoredDir := NewPathFilter([]string{lib + "/"}, nil)
+	require.True(t, ignoredDir.ExcludesFile(ignored), "a file under an ignored directory is excluded")
+	require.True(t, ignoredDir.ExcludesFile(filepath.Join(dir, "lib", "charts", "pkg", "templates", "cm.yaml")),
+		"so is a file of an archive under it, which names no file on disk")
+	require.False(t, ignoredDir.ExcludesFile(kept))
+	require.False(t, ignoredDir.ExcludesFile(filepath.Join(dir, "library", "cm.yaml")), "a sibling sharing the prefix is kept")
+	require.True(t, ignoredDir.ChartInScope(app))
+	require.False(t, ignoredDir.ChartInScope(lib))
+	require.False(t, ignoredDir.ChartInScope(lib+"/charts/sub"))
+
+	only := NewPathFilter(nil, []string{filepath.Join(dir, "app", "templates", "cm.yaml")})
+	require.False(t, only.ExcludesFile(filepath.Join(dir, "app", "templates", "cm.yaml")))
+	require.True(t, only.ExcludesFile(filepath.Join(dir, "app", "templates", "other.yaml")))
+	require.True(t, only.ChartInScope(app), "a chart holding an only path renders")
+	require.False(t, only.ChartInScope(lib))
+
+	require.True(t, NewPathFilter(nil, []string{}).ExcludesFile(kept), "only-paths expanding to nothing keep nothing")
+}
+
+func TestNewFileSystemSourceProviderChartFilter(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	lib := filepath.Join(dir, "lib")
+	require.NoError(t, os.MkdirAll(lib, 0o755))
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, []string{lib}, nil)
+	require.NoError(t, err)
+	inScope, outOfScope := fs.partitionChartRoots([]string{toSlash(filepath.Join(dir, "app")), toSlash(lib)})
+	require.Equal(t, []string{toSlash(filepath.Join(dir, "app"))}, inScope)
+	require.Equal(t, []string{toSlash(lib)}, outOfScope)
+
+	fs.SetChartFilter(NewPathFilter(nil, nil))
+	inScope, outOfScope = fs.partitionChartRoots([]string{toSlash(lib)})
+	require.Equal(t, []string{toSlash(lib)}, inScope)
+	require.Empty(t, outOfScope)
+
+	mem := NewMemorySourceProvider(nil, nil, []string{"lib/**"}, nil)
+	require.True(t, mem.ExcludesFile("lib/cm.yaml"))
+	require.False(t, mem.ExcludesFile("app/cm.yaml"))
 }
 
 func TestChartRootWaves(t *testing.T) {

@@ -82,11 +82,17 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 
 	contextLogger.Info().Msgf("Total files in the project: %d", pathTypes.TotalFiles)
 
+	chartFilter, err := provider.ExpandPathFilter(c.ScanParams.Config.IgnorePaths, c.ScanParams.Config.OnlyPaths)
+	if err != nil {
+		return provider.ExtractedPath{}, nil, err
+	}
+
 	c.ScanParams.Platform = pathTypes.Types
 	c.ScanParams.PreAnalysisExcludePaths = c.ScanParams.Config.IgnorePaths
 	c.ScanParams.Config.IgnorePaths = pathTypes.Exc
 	c.walkInventory = pathTypes.Inventory
 	c.chartRoots = pathTypes.ChartRoots
+	c.chartFilter = chartFilter
 	c.contentCache = pathTypes.ContentCache
 
 	return allPaths, pathTypes.FilePlatform, nil

@@ -639,3 +639,41 @@ func TestFilterHelmGeneratedLines_DDIacScanCommentKept(t *testing.T) {
 	// Lines 2 and 3 are generated; lines 4 and 5 are real content.
 	require.Equal(t, []int{4, 5}, got)
 }
+
+type excludedPaths map[string]bool
+
+func (e excludedPaths) ExcludesFile(path string) bool { return e[path] }
+
+// A rendered file is dropped when the filters leave out the file it was
+// detected in or the place it is reported at.
+func TestWithoutExcludedFiles(t *testing.T) {
+	archived := &model.ReportedLocation{Path: "app/Chart.yaml", Line: 5}
+	resFiles := model.ResolvedFiles{File: []model.ResolvedHelm{
+		{FileName: "app/templates/cm.yaml"},
+		{FileName: "lib/templates/cm.yaml"},
+		{FileName: "app/charts/pkg/templates/cm.yaml", Reported: archived},
+		{FileName: "web/charts/pkg/templates/cm.yaml", Reported: &model.ReportedLocation{Path: "web/Chart.yaml"}},
+	}}
+	got := withoutExcludedFiles(context.Background(), excludedPaths{
+		"lib/templates/cm.yaml":            true,
+		"app/charts/pkg/templates/cm.yaml": true,
+		"web/Chart.yaml":                   true,
+	}, "app", resFiles)
+	require.Equal(t, []model.ResolvedHelm{{FileName: "app/templates/cm.yaml"}}, got.File)
+}
+
+func TestFirstHelmRender(t *testing.T) {
+	s := &Service{}
+	render := func(source, body string) *model.ResolvedHelm {
+		return &model.ResolvedHelm{
+			FileName: "/repo/lib/templates/cm.yaml",
+			SplitID:  "# KICS_HELM_ID_0:",
+			Content:  []byte("\n# Source: " + source + "\n" + body),
+		}
+	}
+	require.True(t, s.firstHelmRender(render("lib/templates/cm.yaml", "name: lib\n")))
+	require.False(t, s.firstHelmRender(render("app/charts/lib/templates/cm.yaml", "name: lib\n")),
+		"the same document attached through a parent is already stored")
+	require.True(t, s.firstHelmRender(render("web/charts/lib/templates/cm.yaml", "name: overridden\n")),
+		"a parent overriding the dependency's values renders a different document")
+}

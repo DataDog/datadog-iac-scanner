@@ -199,6 +199,9 @@ type FileMetadata struct {
 	// HelmAttribution says which source actions emitted a rendered Helm
 	// resource whose YAML lives in named templates; nil when none is known.
 	HelmAttribution *HelmAttribution
+	// Reported, when set, is where this file's findings are reported instead of
+	// FilePath (see ResolvedHelm.Reported).
+	Reported *ReportedLocation
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -491,6 +494,21 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// DetectedFileName and DetectedLineWithVulnerability are where the finding
+	// was detected when it is reported at another place (see ReportedLocation).
+	// They stay its identity: every file of a packaged dependency is reported
+	// at one declaration line.
+	DetectedFileName              string `json:"-"`
+	DetectedLineWithVulnerability string `json:"-"`
+}
+
+// Identity returns the file and line text that tell v apart from other
+// findings of the same rule and resource: where it was detected.
+func (v *Vulnerability) Identity() (fileName, lineWithVulnerability string) {
+	if v.DetectedFileName != "" {
+		return v.DetectedFileName, v.DetectedLineWithVulnerability
+	}
+	return v.FileName, v.LineWithVulnerability
 }
 
 // Framework represents a framework mapping for a query
@@ -515,7 +533,11 @@ type ResolvedFiles struct {
 
 // ResolvedHelm keeps the information of a file/template resolved
 type ResolvedHelm struct {
-	FileName            string
+	FileName string
+	// Reported is where findings are reported when FileName is not a place in
+	// the repository: a dependency packaged as an archive renders from unpacked
+	// file names that exist only inside the archive.
+	Reported            *ReportedLocation
 	Content             []byte
 	OriginalData        []byte
 	SplitID             string
@@ -601,6 +623,50 @@ func (a *HelmAttribution) First() ResourceLine {
 		return ResourceLine{}
 	}
 	return a.Invocations.First()
+}
+
+// ReportedLocation replaces the location of the findings of a file whose own
+// path and lines cannot be pointed at, with a place in the repository that can.
+type ReportedLocation struct {
+	Path string
+	Line int
+	// LineText and Snippet are the content around Line in Path.
+	LineText string
+	Snippet  []CodeLine
+}
+
+// PathOr is the reported path, or detected when nothing is reported elsewhere.
+func (r *ReportedLocation) PathOr(detected string) string {
+	if r == nil {
+		return detected
+	}
+	return r.Path
+}
+
+// Apply moves v to the reported location. Positions that belong to the file
+// the finding was detected in no longer mean anything there and are cleared,
+// and so is the remediation: it edits the detected file, not the reported one.
+func (r *ReportedLocation) Apply(v *Vulnerability) {
+	if r == nil {
+		return
+	}
+	v.DetectedFileName = v.FileName
+	v.DetectedLineWithVulnerability = v.LineWithVulnerability
+	v.FileName = r.Path
+	v.Line = r.Line
+	v.VulnerabilityLocation = ResourceLocation{
+		Start: ResourceLine{Line: r.Line},
+		End:   ResourceLine{Line: r.Line, Col: len(r.LineText)},
+	}
+	snippet := append([]CodeLine(nil), r.Snippet...)
+	v.VulnLines = &snippet
+	v.LineWithVulnerability = r.LineText
+	v.RemediationLocation = ResourceLocation{}
+	v.Remediation = ""
+	v.RemediationType = ""
+	v.BlockLocation = ResourceLocation{}
+	v.ResourceSource = ""
+	v.FileSource = nil
 }
 
 // Extensions represents a list of supported extensions
