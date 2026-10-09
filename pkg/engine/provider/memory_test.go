@@ -15,7 +15,9 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMemorySourceProvider_GetSources_FiltersByExtension(t *testing.T) {
@@ -194,5 +196,43 @@ func TestChartRoots(t *testing.T) {
 	})
 	if want := []string{"charts/app", "charts/other"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("ChartRoots() = %v, want %v", got, want)
+	}
+}
+
+// Pushed charts are rendered under the same path filters as charts on disk.
+func TestMemoryWalkInventoryRendersChartsInScope(t *testing.T) {
+	pushed := []string{
+		"app/Chart.yaml", "app/templates/cm.yaml",
+		"lib/Chart.yaml", "lib/templates/cm.yaml",
+		"other/Chart.yaml", "other/templates/cm.yaml",
+	}
+	tests := []struct {
+		name         string
+		ignore, only []string
+		wantRendered []string
+	}{
+		{name: "no filters", wantRendered: []string{"app", "lib", "other"}},
+		{name: "ignored chart", ignore: []string{"lib/**"}, wantRendered: []string{"app", "other"}},
+		{name: "ignored Chart.yaml", ignore: []string{"lib/Chart.yaml"}, wantRendered: []string{"app", "other"}},
+		{name: "only one chart", only: []string{"app"}, wantRendered: []string{"app"}},
+		{name: "only one template", only: []string{"other/templates/cm.yaml"}, wantRendered: []string{"other"}},
+		{name: "only a file outside every chart", only: []string{"main.tf"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMemorySourceProvider(nil, pushed, tt.ignore, tt.only)
+			var mu sync.Mutex
+			var rendered []string
+			files, err := m.WalkInventory(context.Background(), model.Extensions{".yaml": {}}, utils.PoolOptions{},
+				func(_ context.Context, root string) bool {
+					mu.Lock()
+					defer mu.Unlock()
+					rendered = append(rendered, root)
+					return true
+				})
+			require.NoError(t, err)
+			require.ElementsMatch(t, tt.wantRendered, rendered)
+			require.Empty(t, files, "the Helm files of a chart rendered or left out are not listed raw")
+		})
 	}
 }

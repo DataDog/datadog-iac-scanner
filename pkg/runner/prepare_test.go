@@ -75,17 +75,25 @@ func buildServices(
 	combinedResolver, err := resolver.NewBuilder().Add(ctx, helm.NewResolver(fsys).WithChartRoots(chartRoots)).Build(ctx)
 	require.NoError(t, err)
 
+	var filter provider.FileFilter
+	switch s := src.(type) {
+	case *provider.FileSystemSourceProvider:
+		filter = s.ChartFilter()
+	case *provider.MemorySourceProvider:
+		filter = s
+	}
 	store := storage.NewMemoryStorage()
 	services := make([]*Service, 0, len(combinedParser))
 	for _, p := range combinedParser {
 		services = append(services, &Service{
-			SourceProvider: src,
-			Storage:        store,
-			Parser:         p,
-			Tracker:        trk,
-			Resolver:       combinedResolver,
-			MaxFileSize:    100,
-			Platforms:      []string{""},
+			SourceProvider:     src,
+			Storage:            store,
+			Parser:             p,
+			Tracker:            trk,
+			Resolver:           combinedResolver,
+			RenderedFileFilter: filter,
+			MaxFileSize:        100,
+			Platforms:          []string{""},
 		})
 	}
 	return services, store
@@ -640,4 +648,78 @@ func TestPrepareMemorySources_DependencyInIgnorePathsIsNotReported(t *testing.T)
 	require.True(t, ok)
 	require.NoError(t, PrepareMemorySources(ctx, shared, services, "ignore-paths", false, 5, false))
 	require.Equal(t, map[string]int{"app/templates/cm.yaml": 1}, storedFiles(t, services, "."))
+}
+
+// The analyzer leaves JSON templates and gitignored files out of the raw scan,
+// but their rendered documents are scanned: only the user's filters drop
+// rendered files.
+func TestPrepareSharedWalk_AnalyzerExclusionsKeepRenderedFiles(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	pod := "{\"apiVersion\": \"v1\", \"kind\": \"Pod\", \"metadata\": {\"name\": \"{{ .Release.Name }}-%s\"}}\n"
+	writeFile(t, filepath.Join(dir, ".gitignore"), "charts/\n")
+	writeFile(t, filepath.Join(dir, "app", "Chart.yaml"), "apiVersion: v2\nname: app\nversion: 0.1.0\n")
+	writeFile(t, filepath.Join(dir, "app", "templates", "pod.json"), fmt.Sprintf(pod, "json"))
+	writeFile(t, filepath.Join(dir, "app", "templates", "pod.yaml"), fmt.Sprintf(pod, "yaml"))
+	writeFile(t, filepath.Join(dir, "app", "templates", "ignored.yaml"), fmt.Sprintf(pod, "ignored"))
+	writeFile(t, filepath.Join(dir, "app", "charts", "sub", "Chart.yaml"), "apiVersion: v2\nname: sub\nversion: 0.1.0\n")
+	writeFile(t, filepath.Join(dir, "app", "charts", "sub", "templates", "pod.yaml"), fmt.Sprintf(pod, "sub"))
+
+	userIgnores := []string{filepath.Join(dir, "app", "templates", "ignored.yaml")}
+	a := &analyzer.Analyzer{
+		RepoPath:          dir,
+		Paths:             []string{dir},
+		Types:             []string{""},
+		Exc:               append([]string(nil), userIgnores...),
+		GitIgnoreFileName: ".gitignore",
+		MaxFileSize:       100,
+	}
+	analyzed, err := analyzer.Analyze(ctx, a)
+	require.NoError(t, err)
+	require.Contains(t, analyzed.Exc, toSlashPath(filepath.Join(dir, "app", "templates", "pod.json")),
+		"the analyzer leaves the JSON template out of the raw scan")
+	require.Contains(t, a.Exc, toSlashPath(filepath.Join(dir, "app", "charts")), "and the gitignored directory")
+
+	fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, append(a.Exc, analyzed.Exc...), a.Only)
+	require.NoError(t, err)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	chartFilter, err := provider.ExpandPathFilter(userIgnores, nil)
+	require.NoError(t, err)
+	fsp.SetChartFilter(chartFilter)
+	services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, analyzed.ChartRoots...)
+	for _, s := range services {
+		s.FilePlatform = analyzed.FilePlatform
+	}
+	shared, ok := SharedWalkProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5))
+	require.Equal(t, map[string]int{
+		"app/templates/pod.json":            1,
+		"app/templates/pod.yaml":            1,
+		"app/charts/sub/templates/pod.yaml": 1,
+	}, storedFiles(t, services, dir))
+}
+
+func toSlashPath(p string) string { return filepath.ToSlash(p) }
+
+// Only-paths naming one pushed template still renders its chart, as on disk.
+func TestPrepareMemorySources_OnlyPathsTemplateRendersItsChart(t *testing.T) {
+	ctx := context.Background()
+	pushed := make(map[string][]byte, len(libAppCharts))
+	for rel, body := range libAppCharts {
+		pushed[rel] = []byte(body)
+	}
+	memfs := vfs.NewMemFS(pushed)
+	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, []string{"app/templates/cm.yaml"})
+	services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
+	shared, ok := SharedMemoryProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "only-paths", false, 5, false))
+	require.Equal(t, map[string]int{"app/templates/cm.yaml": 1}, storedFiles(t, services, "."))
+	for _, service := range services {
+		for _, file := range service.files {
+			require.Equal(t, model.KindHELM, file.Kind, "the template is rendered, not scanned raw")
+			require.Contains(t, file.OriginalData, "lib.labels")
+		}
+	}
 }

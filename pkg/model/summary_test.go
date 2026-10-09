@@ -42,7 +42,7 @@ func TestCreateSummary_ReportedFindingsKeepTheirIdentity(t *testing.T) {
 	finding := func(detected string) Vulnerability {
 		v := Vulnerability{
 			FileName: detected, QueryID: "q", QueryName: "q", Severity: SeverityHigh, Platform: "Kubernetes",
-			ResourceType: "Deployment", ResourceName: "dd-helm",
+			ResourceType: "Deployment", ResourceName: "dd-helm", LineWithVulnerability: "  privileged: true",
 		}
 		declaration.Apply(&v)
 		return v
@@ -58,8 +58,9 @@ func TestCreateSummary_ReportedFindingsKeepTheirIdentity(t *testing.T) {
 	require.Equal(t, filepath.FromSlash("web/Chart.yaml"), files[1].FileName)
 	require.NotEqual(t, files[0].Fingerprint, files[1].Fingerprint)
 	require.Equal(t, GetDatadogFingerprintHash(SCIInfo{}, filepath.FromSlash("web/charts/pkg/templates/deploy.yaml"),
-		"Kubernetes", "Deployment", "dd-helm", "q", "- name: pkg", ""), files[0].Fingerprint,
-		"the fingerprint stays the detected file's, so it is stable across scans")
+		"Kubernetes", "Deployment", "dd-helm", "q", "  privileged: true", ""), files[0].Fingerprint,
+		"the fingerprint stays the detected file's and line's, so it is the one main computes")
+	require.Equal(t, "- name: pkg", files[0].LineWithVulnerability)
 }
 
 // TestCreateSummary tests the functions [CreateSummary()] and all the methods called by them

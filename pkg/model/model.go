@@ -494,10 +494,21 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
-	// DetectedFileName is the file the finding was detected in when it is
-	// reported at another place (see ReportedLocation). It stays its identity:
-	// every file of a packaged dependency is reported at one declaration.
-	DetectedFileName string `json:"-"`
+	// DetectedFileName and DetectedLineWithVulnerability are where the finding
+	// was detected when it is reported at another place (see ReportedLocation).
+	// They stay its identity: every file of a packaged dependency is reported
+	// at one declaration line.
+	DetectedFileName              string `json:"-"`
+	DetectedLineWithVulnerability string `json:"-"`
+}
+
+// Identity returns the file and line text that tell v apart from other
+// findings of the same rule and resource: where it was detected.
+func (v *Vulnerability) Identity() (fileName, lineWithVulnerability string) {
+	if v.DetectedFileName != "" {
+		return v.DetectedFileName, v.DetectedLineWithVulnerability
+	}
+	return v.FileName, v.LineWithVulnerability
 }
 
 // Framework represents a framework mapping for a query
@@ -639,6 +650,7 @@ func (r *ReportedLocation) Apply(v *Vulnerability) {
 		return
 	}
 	v.DetectedFileName = v.FileName
+	v.DetectedLineWithVulnerability = v.LineWithVulnerability
 	v.FileName = r.Path
 	v.Line = r.Line
 	v.VulnerabilityLocation = ResourceLocation{

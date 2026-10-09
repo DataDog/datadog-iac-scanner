@@ -130,9 +130,13 @@ func silenceStdLog() func() {
 	}
 }
 
+// runInstall renders the chart at chartPath. With attach false no dependency
+// is attached from outside charts/. The locator is returned with a render
+// error too, which says whether any was.
+//
 // nolint:gocritic
-func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chartIndex, client *action.Install,
-	valueOpts *values.Options, marks *invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, fileLocator, error) {
+func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chartIndex, attach bool, client *action.Install,
+	valueOpts *values.Options, marks *invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, *fileLocator, error) {
 	contextLogger := logger.FromContext(ctx)
 	defer silenceStdLog()()
 
@@ -154,7 +158,12 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chart
 	if err != nil {
 		return nil, nil, nil, []string{}, nil, err
 	}
-	locator := attachMissingDependencies(ctx, fsys, index, chartRequested, chartPath, 0)
+	var locator *fileLocator
+	if attach {
+		locator = attachMissingDependencies(ctx, fsys, index, chartRequested, chartPath)
+	} else {
+		locator = locateDependencies(ctx, fsys, chartRequested, chartPath)
+	}
 
 	// Set KubeVersion; clear the constraint only when unsatisfiable.
 	kubeVersion, dropConstraint := resolveChartKubeVersion(chartKubeVersionConstraint(chartRequested))
@@ -169,7 +178,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chart
 	sources := setID(chartRequested, marks)
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {
-		return nil, nil, nil, []string{}, nil, instErr
+		return nil, nil, nil, []string{}, locator, instErr
 	}
 	contextLogger.Debug().Msg("Chart installability check passed")
 
@@ -177,7 +186,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chart
 	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, client.ReleaseName)
 	helmRelease, err := client.Run(chartRequested, vals)
 	if err != nil {
-		return nil, nil, nil, []string{}, nil, err
+		return nil, nil, nil, []string{}, locator, err
 	}
 
 	contextLogger.Debug().Msgf("Successfully rendered helm chart '%s', manifest length: %d bytes",
@@ -308,41 +317,27 @@ func getExcluded(ctx context.Context, charterino *chart.Chart, chartpath string)
 
 // archiveLocations says where to report a file of a dependency vendored as a
 // packaged chart (charts/name-1.2.3.tgz). Helm names its files as if the
-// archive were unpacked, under the name the dependency renders as (its alias
-// when it has one), which are not paths of the repository, and a line inside a
-// compressed archive cannot be opened either. The dependency is reported where
-// the repository declares it: its entry in the parent's Chart.yaml or
-// requirements.yaml. Locations are kept per dependency, as every file of one
-// archive is reported at the same place.
+// archive were unpacked, which are not paths of the repository, and a line
+// inside a compressed archive cannot be opened either. The dependency is
+// reported where the repository declares it: its entry in the Chart.yaml or
+// requirements.yaml of the chart holding the archive. Every file of one archive
+// is reported at the same place.
 type archiveLocations struct {
 	fsys  vfs.FS
-	byDep map[string]*model.ReportedLocation
+	byDep map[*packagedDependency]*model.ReportedLocation
 }
 
 func newArchiveLocations(fsys vfs.FS) *archiveLocations {
-	return &archiveLocations{fsys: fsys, byDep: map[string]*model.ReportedLocation{}}
+	return &archiveLocations{fsys: fsys, byDep: map[*packagedDependency]*model.ReportedLocation{}}
 }
 
-// of returns where to report the file at path, nil when it is a real file.
-func (a *archiveLocations) of(path string) *model.ReportedLocation {
-	segments := strings.Split(filepath.ToSlash(path), "/")
-	for i := 0; i+1 < len(segments); i++ {
-		if segments[i] != dependenciesDirName {
-			continue
-		}
-		dep := strings.Join(segments[:i+2], "/")
-		location, known := a.byDep[dep]
-		if !known {
-			if _, err := a.fsys.Stat(filepath.FromSlash(dep)); err != nil {
-				location = dependencyDeclaration(a.fsys, filepath.FromSlash(strings.Join(segments[:i], "/")), segments[i+1])
-			}
-			a.byDep[dep] = location
-		}
-		if location != nil {
-			return location
-		}
+func (a *archiveLocations) of(dep *packagedDependency) *model.ReportedLocation {
+	location, known := a.byDep[dep]
+	if !known {
+		location = dependencyDeclaration(a.fsys, dep.parent, dep.name)
+		a.byDep[dep] = location
 	}
-	return nil
+	return location
 }
 
 // dependencyDeclaration locates the dependency rendered as name in the parent

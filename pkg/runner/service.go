@@ -80,9 +80,12 @@ type Service struct {
 	Inspector      *engine.Inspector
 	Tracker        Tracker
 	Resolver       *resolver.Resolver
-	files          model.FileMetadatas
-	filesMu        sync.Mutex
-	MaxFileSize    int
+	// RenderedFileFilter applies the scan's path filters to rendered Helm
+	// files; nil keeps them all.
+	RenderedFileFilter provider.FileFilter
+	files              model.FileMetadatas
+	filesMu            sync.Mutex
+	MaxFileSize        int
 	// Platforms is the scan's effective platform set, used to classify each
 	// parsed file's platform consistently with the analyzer so the engine can
 	// scope queries to their own platform's documents.

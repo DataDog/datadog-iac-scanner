@@ -8,6 +8,7 @@ package helm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +42,7 @@ func TestAttachMissingDependencies_LoadFailureWarns(t *testing.T) {
 
 	var logBuf strings.Builder
 	ctx := zerolog.New(&logBuf).WithContext(context.Background())
-	attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{chartDir, depDir}), ch, chartDir, 0)
+	attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{chartDir, depDir}), ch, chartDir)
 
 	require.Empty(t, ch.Dependencies(), "an unloadable dependency must not be attached")
 	var entry struct {
@@ -72,7 +73,7 @@ func TestAttachMissingDependencies_CycleTerminates(t *testing.T) {
 	require.NoError(t, err)
 
 	index := newChartIndex(vfs.DiskFS{}, []string{aDir, filepath.Join(aDir, "b")})
-	attachMissingDependencies(context.Background(), vfs.DiskFS{}, index, ch, aDir, 0)
+	attachMissingDependencies(context.Background(), vfs.DiskFS{}, index, ch, aDir)
 	require.Equal(t, 2, dependencyTreeHeight(ch, 0), "only a -> b is attached; b -> a closes the cycle")
 }
 
@@ -94,11 +95,11 @@ func TestAttachMissingDependencies_FileRepositoryOutsideScanIsNotLoaded(t *testi
 
 			var logBuf strings.Builder
 			ctx := zerolog.New(&logBuf).WithContext(context.Background())
-			attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{appDir}), ch, appDir, 0)
+			attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{appDir}), ch, appDir)
 			require.Empty(t, ch.Dependencies())
 			require.Contains(t, logBuf.String(), "not a chart of the scan")
 
-			attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{appDir, outside}), ch, appDir, 0)
+			attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{appDir, outside}), ch, appDir)
 			require.Len(t, ch.Dependencies(), 1, "the same chart is loaded once it is part of the scan")
 		})
 	}
@@ -113,9 +114,115 @@ func TestAttachMissingDependencies_UnpushedFileRepositoryIsRequested(t *testing.
 	})
 	ch, err := loadChart(context.Background(), memfs, "app")
 	require.NoError(t, err)
-	attachMissingDependencies(context.Background(), memfs, newChartIndex(memfs, []string{"app"}), ch, "app", 0)
+	attachMissingDependencies(context.Background(), memfs, newChartIndex(memfs, []string{"app"}), ch, "app")
 	require.Empty(t, ch.Dependencies())
 	require.Contains(t, memfs.MissingFiles(), "lib")
+}
+
+// The client can push only files of the workspace, so a "file://" dependency
+// outside it is not requested.
+func TestAttachMissingDependencies_FileRepositoryOutsideWorkspaceIsNotRequested(t *testing.T) {
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"apps/app/Chart.yaml": []byte("apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n" +
+			"  - name: keys\n    repository: file:///home/victim/.ssh\n    version: 1.0.0\n" +
+			"  - name: etc\n    repository: file://../../../../etc\n    version: 1.0.0\n" +
+			"  - name: up\n    repository: file://../..\n    version: 1.0.0\n" +
+			"  - name: lib\n    repository: file://../lib\n    version: 1.0.0\n"),
+	})
+	ch, err := loadChart(context.Background(), memfs, "apps/app")
+	require.NoError(t, err)
+	attachMissingDependencies(context.Background(), memfs, newChartIndex(memfs, []string{"apps/app"}), ch, "apps/app")
+	var requested []string
+	for _, p := range memfs.MissingFiles() {
+		requested = append(requested, filepath.ToSlash(p))
+	}
+	require.Equal(t, []string{"apps/lib"}, requested)
+}
+
+func TestInsideWorkspace(t *testing.T) {
+	for p, want := range map[string]bool{
+		"lib": true, "apps/lib": true, "apps/../lib": true, ".": false,
+		"..": false, "../lib": false, "apps/../../lib": false, "/etc": false,
+	} {
+		require.Equal(t, want, insideWorkspace(p), p)
+	}
+}
+
+// A dependency naming a remote repository is the chart published there: a chart
+// of the scan with the same name but another version is not used in its place.
+// Without a repository, the scan's chart is the best guess at what the build
+// links, whatever its version.
+func TestAttachMissingDependencies_IncompatibleVersionOnlyWithoutRepository(t *testing.T) {
+	for name, tt := range map[string]struct {
+		repository string
+		want       int
+	}{
+		"remote repository": {repository: "https://charts.bitnami.com/bitnami", want: 0},
+		"repository alias":  {repository: `"@bitnami"`, want: 0},
+		"no repository":     {want: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			repo := ""
+			if tt.repository != "" {
+				repo = "    repository: " + tt.repository + "\n"
+			}
+			appDir := writeChartDir(t, filepath.Join(root, "app"), "apiVersion: v2\nname: app\nversion: 1.0.0\n"+
+				"dependencies:\n  - name: redis\n    version: ~17.3.0\n"+repo)
+			devRedis := writeChartDir(t, filepath.Join(root, "tools", "dev-redis"), "apiVersion: v2\nname: redis\nversion: 0.0.1\n")
+			ch, err := loader.LoadDir(appDir)
+			require.NoError(t, err)
+			attachMissingDependencies(context.Background(), vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{appDir, devRedis}), ch, appDir)
+			require.Len(t, ch.Dependencies(), tt.want)
+		})
+	}
+}
+
+// A chart declared under two aliases at different versions renders each from
+// the chart of the scan matching its version.
+func TestAttachMissingDependencies_AliasesAtDifferentVersions(t *testing.T) {
+	root := t.TempDir()
+	appDir := writeChartDir(t, filepath.Join(root, "app"), "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n"+
+		"  - name: lib\n    alias: c1\n    version: 1.0.0\n"+
+		"  - name: lib\n    alias: c2\n    version: 2.0.0\n"+
+		"  - name: lib\n    alias: c3\n    version: 2.0.0\n")
+	lib1 := writeChartDir(t, filepath.Join(root, "lib1"), "apiVersion: v2\nname: lib\nversion: 1.0.0\n")
+	lib2 := writeChartDir(t, filepath.Join(root, "lib2"), "apiVersion: v2\nname: lib\nversion: 2.0.0\n")
+	ch, err := loader.LoadDir(appDir)
+	require.NoError(t, err)
+	attachMissingDependencies(context.Background(), vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{appDir, lib1, lib2}), ch, appDir)
+	var versions []string
+	for _, dep := range ch.Dependencies() {
+		versions = append(versions, dep.Metadata.Version)
+	}
+	require.ElementsMatch(t, []string{"1.0.0", "2.0.0"}, versions,
+		"c3 shares the chart of c2, which Helm copies per alias")
+}
+
+// Charts that each depend on every chart after them are reached through
+// exponentially many paths; one render attaches a bounded number of them.
+func TestAttachMissingDependencies_AttachedChartsAreCapped(t *testing.T) {
+	root := t.TempDir()
+	const n = 12
+	roots := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		var deps strings.Builder
+		for j := i + 1; j < n; j++ {
+			fmt.Fprintf(&deps, "  - name: c%d\n    version: 1.0.0\n", j)
+		}
+		yaml := fmt.Sprintf("apiVersion: v2\nname: c%d\nversion: 1.0.0\n", i)
+		if deps.Len() > 0 {
+			yaml += "dependencies:\n" + deps.String()
+		}
+		roots = append(roots, writeChartDir(t, filepath.Join(root, fmt.Sprintf("c%d", i)), yaml))
+	}
+	ch, err := loader.LoadDir(roots[0])
+	require.NoError(t, err)
+	var logBuf strings.Builder
+	ctx := zerolog.New(&logBuf).WithContext(context.Background())
+	locator := attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, roots), ch, roots[0])
+	require.Equal(t, maxAttachedCharts, locator.attached)
+	require.Equal(t, 1, strings.Count(logBuf.String(), "attaches more than"))
 }
 
 // dependencyTreeHeight returns the number of dependency edges on the longest

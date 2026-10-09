@@ -41,14 +41,12 @@ func (s *Service) resolverSink(
 		s.logResolverResolveError(ctx, kind, filename, err)
 		return []string{}, err
 	}
-	if excluder, ok := s.SourceProvider.(fileExcluder); ok && kind == model.KindHELM {
-		resFiles = withoutExcludedFiles(ctx, excluder, filename, resFiles)
-	}
 	s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
 	return resFiles.Excluded, nil
 }
 
-// resolveOnly renders a chart without parsing or storing it.
+// resolveOnly renders a chart without parsing or storing it, dropping the
+// rendered Helm files the scan's path filters leave out.
 func (s *Service) resolveOnly(ctx context.Context, filename string) (model.ResolvedFiles, model.FileKind, error) {
 	kind := s.Resolver.GetType(filename)
 	if kind == model.KindCOMMON {
@@ -57,6 +55,9 @@ func (s *Service) resolveOnly(ctx context.Context, filename string) (model.Resol
 	resFiles, err := s.Resolver.Resolve(ctx, filename, kind)
 	if err != nil {
 		return model.ResolvedFiles{}, kind, err
+	}
+	if kind == model.KindHELM && s.RenderedFileFilter != nil {
+		resFiles = withoutExcludedFiles(ctx, s.RenderedFileFilter, filename, resFiles)
 	}
 	return resFiles, kind, nil
 }

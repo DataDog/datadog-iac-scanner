@@ -10,13 +10,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -176,6 +177,7 @@ func TestReportedLocation_Apply(t *testing.T) {
 
 	require.Equal(t, "web/Chart.yaml", v.FileName)
 	require.Equal(t, "web/charts/pkg/templates/s.yaml", v.DetectedFileName)
+	require.Equal(t, "template line", v.DetectedLineWithVulnerability)
 	require.Equal(t, 7, v.Line)
 	require.Equal(t, 7, v.VulnerabilityLocation.Start.Line)
 	require.Equal(t, "- name: pkg", v.LineWithVulnerability)
@@ -188,49 +190,162 @@ func TestReportedLocation_Apply(t *testing.T) {
 	require.Equal(t, "dd-helm", v.ResourceName)
 }
 
-func TestArchiveLocations(t *testing.T) {
-	root := t.TempDir()
-	writeTree(t, root, map[string]string{
-		"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n- name: dep\n  version: 1.2.3\n" +
-			"- name: two\n  version: \">=1.0.0\"\n- name: redis\n  alias: cache\n  version: 1.0.0\n",
-		"app/charts/dep-1.2.3.tgz":   "x",
-		"app/charts/exact.tgz":       "x",
-		"app/charts/two-1.0.0.tgz":   "x",
-		"app/charts/two-2.0.0.tgz":   "x",
-		"app/charts/redis-1.0.0.tgz": "x",
-		"app/charts/dir/Chart.yaml":  "x",
-	})
-	chartYAML := filepath.Join(root, "app", "Chart.yaml")
+// A packaged dependency is reported at the declaration of the chart holding the
+// archive, however that chart was reached, and named after where it would be
+// unpacked there.
+func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
+	pkg := string(packChart(t, map[string]string{
+		"pkg/Chart.yaml":            "apiVersion: v2\nname: pkg\nversion: 0.1.0\n",
+		"pkg/templates/secret.yaml": locationDB,
+	}))
+	outer := string(packChart(t, map[string]string{
+		"outer/Chart.yaml": "apiVersion: v2\nname: outer\nversion: 1.0.0\n" +
+			"dependencies:\n- name: pkg\n  version: 0.1.0\n",
+		"outer/charts/pkg-0.1.0.tgz": pkg,
+	}))
+	declaresPkg := "apiVersion: v2\nname: %s\nversion: 1.0.0\ndependencies:\n- name: pkg\n  version: 0.1.0\n"
 	tests := []struct {
 		name     string
-		rel      string
-		wantLine int    // 0 when the file is reported where it is
-		wantText string // checked when set
+		files    map[string]string
+		roots    []string
+		wantFile string // where the archive's secret would be unpacked
+		wantAt   string
+		wantLine int
+		wantText string
 	}{
-		{name: "declared dependency", rel: "app/charts/dep/templates/a.yaml", wantLine: 5, wantText: "- name: dep"},
-		{name: "two vendored versions share one declaration", rel: "app/charts/two/templates/a.yaml", wantLine: 7},
-		{name: "an alias renders under its own name", rel: "app/charts/cache/templates/a.yaml", wantLine: 9,
-			wantText: "- name: redis"},
-		{name: "undeclared: top of Chart.yaml", rel: "app/charts/exact/templates/a.yaml", wantLine: 1},
-		{name: "the parent chart is still a real path", rel: "app/charts/none/templates/a.yaml", wantLine: 1},
-		{name: "no parent chart", rel: "other/charts/none/templates/a.yaml"},
-		{name: "unpacked directory exists", rel: "app/charts/dir/templates/a.yaml"},
-		{name: "no charts segment", rel: "app/templates/a.yaml"},
+		{
+			name: "archive of a sibling chart attached by file://",
+			files: map[string]string{
+				"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+					"dependencies:\n- name: db\n  version: 1.0.0\n  repository: file://../db\n",
+				"db/Chart.yaml":           fmt.Sprintf(declaresPkg, "db"),
+				"db/charts/pkg-0.1.0.tgz": pkg,
+			},
+			roots:    []string{"app", "db"},
+			wantFile: "db/charts/pkg/templates/secret.yaml", wantAt: "db/Chart.yaml", wantLine: 5, wantText: "- name: pkg",
+		},
+		{
+			name: "archive inside an archive",
+			files: map[string]string{
+				"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+					"dependencies:\n- name: outer\n  version: 1.0.0\n",
+				"app/charts/outer-1.0.0.tgz": outer,
+			},
+			wantFile: "app/charts/outer/charts/pkg/templates/secret.yaml", wantAt: "app/Chart.yaml", wantLine: 5,
+			wantText: "- name: outer",
+		},
+		{
+			name: "archive of an unpacked subchart in a directory named otherwise",
+			files: map[string]string{
+				"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+					"dependencies:\n- name: sub\n  version: 1.0.0\n",
+				"app/charts/sub-dir/Chart.yaml":           fmt.Sprintf(declaresPkg, "sub"),
+				"app/charts/sub-dir/charts/pkg-0.1.0.tgz": pkg,
+			},
+			wantFile: "app/charts/sub-dir/charts/pkg/templates/secret.yaml", wantAt: "app/charts/sub-dir/Chart.yaml", wantLine: 5,
+			wantText: "- name: pkg",
+		},
 	}
-	archives := newArchiveLocations(vfs.DiskFS{})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := archives.of(filepath.Join(root, filepath.FromSlash(tt.rel)))
-			if tt.wantLine == 0 {
-				require.Nil(t, got)
-				return
+			root := t.TempDir()
+			writeTree(t, root, tt.files)
+			roots := make([]string, 0, len(tt.roots))
+			for _, r := range tt.roots {
+				roots = append(roots, filepath.Join(root, r))
 			}
-			require.NotNil(t, got)
-			require.Equal(t, chartYAML, got.Path)
-			require.Equal(t, tt.wantLine, got.Line)
-			if tt.wantText != "" {
-				require.Equal(t, tt.wantText, got.LineText)
-			}
+			got, err := NewResolver(nil).WithChartRoots(roots).Resolve(context.Background(), filepath.Join(root, "app"))
+			require.NoError(t, err)
+			secret := findResolvedBySuffix(t, got.File, "/templates/secret.yaml")
+			require.Equal(t, filepath.Join(root, filepath.FromSlash(tt.wantFile)), secret.FileName)
+			require.NotNil(t, secret.Reported)
+			require.Equal(t, filepath.Join(root, filepath.FromSlash(tt.wantAt)), secret.Reported.Path)
+			require.Equal(t, tt.wantLine, secret.Reported.Line)
+			require.Equal(t, tt.wantText, secret.Reported.LineText)
 		})
 	}
+}
+
+// Each alias renders the chart matching its version, and aliases sharing a
+// chart each render their own copy of it.
+func TestHelm_Resolve_Aliases(t *testing.T) {
+	cm := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ .Chart.Name }}-{{ .Chart.Version }}\n"
+	tests := []struct {
+		name  string
+		files map[string]string
+		roots []string
+		want  map[string]string // rendered name -> file it is reported in
+	}{
+		{
+			name: "attached",
+			files: map[string]string{
+				"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n" +
+					"- name: lib\n  alias: c1\n  version: 1.0.0\n- name: lib\n  alias: c2\n  version: 2.0.0\n" +
+					"- name: lib\n  alias: c3\n  version: 2.0.0\n",
+				"lib1/Chart.yaml":        "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
+				"lib1/templates/cm.yaml": cm,
+				"lib2/Chart.yaml":        "apiVersion: v2\nname: lib\nversion: 2.0.0\n",
+				"lib2/templates/cm.yaml": cm,
+			},
+			roots: []string{"app", "lib1", "lib2"},
+			want: map[string]string{
+				"c1-1.0.0": "lib1/templates/cm.yaml", "c2-2.0.0": "lib2/templates/cm.yaml", "c3-2.0.0": "lib2/templates/cm.yaml",
+			},
+		},
+		{
+			name: "vendored",
+			files: map[string]string{
+				"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n" +
+					"- name: lib\n  alias: v1\n  version: 1.0.0\n- name: lib\n  alias: v2\n  version: 1.0.0\n",
+				"app/charts/lib/Chart.yaml":        "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
+				"app/charts/lib/templates/cm.yaml": cm,
+			},
+			want: map[string]string{
+				"v1-1.0.0": "app/charts/lib/templates/cm.yaml", "v2-1.0.0": "app/charts/lib/templates/cm.yaml",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			tt.files["app/templates/cm.yaml"] = cm
+			writeTree(t, root, tt.files)
+			roots := make([]string, 0, len(tt.roots))
+			for _, r := range tt.roots {
+				roots = append(roots, filepath.Join(root, r))
+			}
+			got, err := NewResolver(nil).WithChartRoots(roots).Resolve(context.Background(), filepath.Join(root, "app"))
+			require.NoError(t, err)
+			rendered := map[string]string{}
+			for _, f := range got.File {
+				for _, line := range strings.Split(string(f.Content), "\n") {
+					if name, ok := strings.CutPrefix(strings.TrimSpace(line), "name: "); ok {
+						rel, err := filepath.Rel(root, f.FileName)
+						require.NoError(t, err)
+						rendered[name] = filepath.ToSlash(rel)
+					}
+				}
+			}
+			want := map[string]string{"app-1.0.0": "app/templates/cm.yaml"}
+			for k, v := range tt.want {
+				want[k] = v
+			}
+			require.Equal(t, want, rendered)
+		})
+	}
+}
+
+// A chart the attached dependencies keep from rendering renders without them.
+func TestHelm_Resolve_RendersWithoutAttachedDependenciesThatFail(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"app/Chart.yaml":        "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n- name: lib\n  version: 1.0.0\n",
+		"app/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n",
+		"lib/Chart.yaml":        "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
+		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ required \"password\" .Values.password }}\n",
+	})
+	roots := []string{filepath.Join(root, "app"), filepath.Join(root, "lib")}
+	got, err := NewResolver(nil).WithChartRoots(roots).Resolve(context.Background(), filepath.Join(root, "app"))
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.ToSlash(filepath.Join(root, "app/templates/cm.yaml"))}, resolvedPaths(got.File))
 }

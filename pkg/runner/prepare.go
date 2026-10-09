@@ -74,7 +74,6 @@ type preparedSource interface {
 	platform(ctx context.Context, services []*Service, filePath string, c *Content) string
 	// excluded reports a file the analyzer would leave out of the scan.
 	excluded(filePath string, content []byte) bool
-	fileExcluder
 }
 
 // PrepareSharedWalk walks once, renders each chart once, and dispatches files to parsers.
@@ -187,7 +186,6 @@ func resolveAndStoreChart(
 		if platform, ok := analyzer.PlatformForKind(kind); ok {
 			routed = servicesForPlatformAndParserKind(services, platform, model.KindYAML)
 		}
-		resFiles = withoutExcludedFiles(ctx, src, chartPath, resFiles)
 	}
 	for _, s := range routed {
 		s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
@@ -195,24 +193,19 @@ func resolveAndStoreChart(
 	return true
 }
 
-// fileExcluder applies the scan's ignore-paths and only-paths to one file.
-type fileExcluder interface {
-	ExcludesFile(path string) bool
-}
-
 // withoutExcludedFiles drops the rendered files that ignore-paths or only-paths
 // leave out of the scan. A chart renders its dependencies with it, and those may
 // come from anywhere in the scan, so being in scope is decided per file, where
 // its findings are reported, rather than once for the chart.
 func withoutExcludedFiles(
-	ctx context.Context, src fileExcluder, chartPath string, resFiles model.ResolvedFiles,
+	ctx context.Context, filter provider.FileFilter, chartPath string, resFiles model.ResolvedFiles,
 ) model.ResolvedFiles {
 	kept := make([]model.ResolvedHelm, 0, len(resFiles.File))
 	for i := range resFiles.File {
 		// A packaged dependency is reported at its parent's declaration, but an
 		// ignored directory holding its archive still leaves it out.
 		file := &resFiles.File[i]
-		if src.ExcludesFile(file.FileName) || (file.Reported != nil && src.ExcludesFile(file.Reported.Path)) {
+		if filter.ExcludesFile(file.FileName) || (file.Reported != nil && filter.ExcludesFile(file.Reported.Path)) {
 			continue
 		}
 		kept = append(kept, resFiles.File[i])
