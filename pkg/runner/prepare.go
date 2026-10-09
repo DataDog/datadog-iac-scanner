@@ -209,7 +209,10 @@ func withoutExcludedFiles(
 ) model.ResolvedFiles {
 	kept := make([]model.ResolvedHelm, 0, len(resFiles.File))
 	for i := range resFiles.File {
-		if src.ExcludesFile(resFiles.File[i].Reported.PathOr(resFiles.File[i].FileName)) {
+		// A packaged dependency is reported at its parent's declaration, but an
+		// ignored directory holding its archive still leaves it out.
+		file := &resFiles.File[i]
+		if src.ExcludesFile(file.FileName) || (file.Reported != nil && src.ExcludesFile(file.Reported.Path)) {
 			continue
 		}
 		kept = append(kept, resFiles.File[i])

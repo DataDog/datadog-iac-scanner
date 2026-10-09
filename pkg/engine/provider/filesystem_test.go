@@ -1033,6 +1033,33 @@ func TestWalkInventoryRendersOnlyChartsInScope(t *testing.T) {
 	}
 }
 
+// The analyzer lists the files under an ignored directory, which it matches by
+// exact path only; the templates of a chart there are neither rendered nor
+// scanned raw.
+func TestBuildInventoryFromPrebuilt_IgnoredChartDirIsNotScannedRaw(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	var listed []string
+	for _, chart := range []string{"app", "lib"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, chart, "templates"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, chart, "Chart.yaml"), []byte("name: "+chart+"\n"), 0o600))
+		template := filepath.Join(dir, chart, "templates", "cm.yaml")
+		require.NoError(t, os.WriteFile(template, []byte("kind: ConfigMap\n"), 0o600))
+		listed = append(listed, filepath.ToSlash(template))
+	}
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, []string{filepath.Join(dir, "lib")}, nil)
+	require.NoError(t, err)
+	fs.SetPrebuiltWalk(listed, []string{filepath.ToSlash(filepath.Join(dir, "app")), filepath.ToSlash(filepath.Join(dir, "lib"))}, nil)
+	files, err := fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{},
+		func(_ context.Context, root string) bool {
+			require.Equal(t, "app", filepath.Base(root))
+			return false
+		})
+	require.NoError(t, err)
+	require.Equal(t, []InventoryFile{{Path: listed[0], Ext: ".yaml"}}, files,
+		"app failed to render, so its raw template is scanned; lib's is not")
+}
+
 func TestExcludesFile(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -1055,8 +1082,10 @@ func TestExcludesFile(t *testing.T) {
 	require.True(t, ignoredDir.ExcludesFile(filepath.Join(dir, "lib", "charts", "pkg", "templates", "cm.yaml")),
 		"so is a file of an archive under it")
 	require.False(t, ignoredDir.ExcludesFile(kept))
-	require.Equal(t, []string{toSlash(filepath.Join(dir, "app"))},
-		ignoredDir.chartRootsInScope([]string{toSlash(filepath.Join(dir, "app")), toSlash(filepath.Join(dir, "lib"))}))
+	inScope, outOfScope := ignoredDir.partitionChartRoots(
+		[]string{toSlash(filepath.Join(dir, "app")), toSlash(filepath.Join(dir, "lib"))})
+	require.Equal(t, []string{toSlash(filepath.Join(dir, "app"))}, inScope)
+	require.Equal(t, []string{toSlash(filepath.Join(dir, "lib"))}, outOfScope)
 
 	only, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, []string{filepath.Join(dir, "app")})
 	require.NoError(t, err)

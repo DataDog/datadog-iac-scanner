@@ -326,12 +326,16 @@ func (s *FileSystemSourceProvider) ReleaseContentCache() {
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
 	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	renderedRoots := renderChartsShallowFirst(ctx, s.chartRootsInScope(s.chartRoots), chartPool, chartFn)
+	inScope, outOfScope := s.partitionChartRoots(s.chartRoots)
+	renderedRoots := renderChartsShallowFirst(ctx, inScope, chartPool, chartFn)
 
 	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
 	for _, path := range s.prebuiltPaths {
 		norm := toSlash(path)
-		if IsHelmChartFile(norm, renderedRoots) {
+		// The analyzer matches ignore-paths by exact path, so the templates of a
+		// chart under an ignored directory are listed; scanned raw, they would
+		// report unrendered actions.
+		if IsHelmChartFile(norm, renderedRoots) || IsHelmChartFile(norm, outOfScope) {
 			continue
 		}
 		if _, ok := s.unfiltered[norm]; !ok {
@@ -631,16 +635,20 @@ func (s *FileSystemSourceProvider) underExcludedDirLocked(path string) bool {
 	return false
 }
 
-func (s *FileSystemSourceProvider) chartRootsInScope(roots []string) []string {
+// partitionChartRoots splits roots into the charts the path filters render and
+// those they leave out.
+func (s *FileSystemSourceProvider) partitionChartRoots(roots []string) (inScope, outOfScope []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	inScope := make([]string, 0, len(roots))
+	inScope = make([]string, 0, len(roots))
 	for _, root := range roots {
 		if s.chartRootInScopeLocked(root) {
 			inScope = append(inScope, root)
+		} else {
+			outOfScope = append(outOfScope, root)
 		}
 	}
-	return inScope
+	return inScope, outOfScope
 }
 
 // chartRootInScopeLocked reports whether the chart at root is rendered: neither

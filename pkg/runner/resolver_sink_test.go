@@ -640,6 +640,28 @@ func TestFilterHelmGeneratedLines_DDIacScanCommentKept(t *testing.T) {
 	require.Equal(t, []int{4, 5}, got)
 }
 
+type excludedPaths map[string]bool
+
+func (e excludedPaths) ExcludesFile(path string) bool { return e[path] }
+
+// A rendered file is dropped when the filters leave out the file it was
+// detected in or the place it is reported at.
+func TestWithoutExcludedFiles(t *testing.T) {
+	archived := &model.ReportedLocation{Path: "app/Chart.yaml", Line: 5}
+	resFiles := model.ResolvedFiles{File: []model.ResolvedHelm{
+		{FileName: "app/templates/cm.yaml"},
+		{FileName: "lib/templates/cm.yaml"},
+		{FileName: "app/charts/pkg/templates/cm.yaml", Reported: archived},
+		{FileName: "web/charts/pkg/templates/cm.yaml", Reported: &model.ReportedLocation{Path: "web/Chart.yaml"}},
+	}}
+	got := withoutExcludedFiles(context.Background(), excludedPaths{
+		"lib/templates/cm.yaml":            true,
+		"app/charts/pkg/templates/cm.yaml": true,
+		"web/Chart.yaml":                   true,
+	}, "app", resFiles)
+	require.Equal(t, []model.ResolvedHelm{{FileName: "app/templates/cm.yaml"}}, got.File)
+}
+
 func TestFirstHelmRender(t *testing.T) {
 	s := &Service{}
 	render := func(source, body string) *model.ResolvedHelm {

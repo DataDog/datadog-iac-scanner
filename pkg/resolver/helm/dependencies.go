@@ -23,27 +23,36 @@ type indexedChart struct {
 // chartIndex maps chart names to the chart roots of the scan that declare them.
 // It reads the roots' Chart.yaml only once a dependency is actually missing.
 type chartIndex struct {
-	fsys   vfs.FS
-	roots  []string
+	fsys vfs.FS
+	// dirs are the cleaned chart roots. Overlapping scan paths walk a chart
+	// more than once; a repeated root is the same chart, not a second candidate
+	// that would make the lookup a tie.
+	dirs   []string
+	inScan map[string]bool
 	once   sync.Once
 	byName map[string][]indexedChart
 }
 
 func newChartIndex(fsys vfs.FS, roots []string) *chartIndex {
-	return &chartIndex{fsys: fsys, roots: roots}
+	idx := &chartIndex{fsys: fsys, inScan: make(map[string]bool, len(roots))}
+	for _, root := range roots {
+		dir := filepath.Clean(filepath.FromSlash(root))
+		if !idx.inScan[dir] {
+			idx.inScan[dir] = true
+			idx.dirs = append(idx.dirs, dir)
+		}
+	}
+	return idx
+}
+
+// contains reports whether dir is a chart root of the scan.
+func (idx *chartIndex) contains(dir string) bool {
+	return idx != nil && idx.inScan[filepath.Clean(dir)]
 }
 
 func (idx *chartIndex) load() {
-	idx.byName = make(map[string][]indexedChart, len(idx.roots))
-	// Overlapping scan paths walk a chart more than once; a repeated root is
-	// the same chart, not a second candidate that would make the lookup a tie.
-	seen := make(map[string]bool, len(idx.roots))
-	for _, root := range idx.roots {
-		dir := filepath.Clean(filepath.FromSlash(root))
-		if seen[dir] {
-			continue
-		}
-		seen[dir] = true
+	idx.byName = make(map[string][]indexedChart, len(idx.dirs))
+	for _, dir := range idx.dirs {
 		data, err := idx.fsys.ReadFile(filepath.Join(dir, "Chart.yaml"))
 		if err != nil {
 			continue
@@ -119,6 +128,8 @@ func sharedDepth(a, b string) int {
 // a "file://" repository is read from its path (as `helm dependency build`
 // copies it), anything else from the single chart in the scan with the same
 // name and a compatible version (monorepos whose build system links charts).
+// On disk a "file://" path is read only when it is a chart of the scan, as it
+// may name any directory of the host.
 // Helm then matches them by name and version and applies aliases at install.
 //
 // The returned locator remembers where each attached file really lives: Helm
@@ -136,6 +147,13 @@ func attachMissingDependencies(
 // of the scan to their real paths. Keys are the chart files themselves, which
 // stay the same objects while Helm renames, instruments and aliases charts.
 type fileLocator map[*chart.File]string
+
+// readsOnlyPushedFiles reports an in-memory FS, which cannot reach the host and
+// turns a missing dependency into a request for the client to push it.
+func readsOnlyPushedFiles(fsys vfs.FS) bool {
+	_, ok := fsys.(vfs.MissingRecorder)
+	return ok
+}
 
 // record registers the files of ch under the directory it was loaded from.
 func (l fileLocator) record(ch *chart.Chart, dir string) {
@@ -168,6 +186,12 @@ func attachFrom(
 		}
 		depDir, ok := dependencyDir(dep, dir, idx)
 		if !ok || ancestors[filepath.Clean(depDir)] {
+			continue
+		}
+		if !idx.contains(depDir) && !readsOnlyPushedFiles(fsys) {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Warn().Msgf("helm dependency %q of chart '%s' is not loaded from %s, which is not a chart of the scan",
+				dep.Name, dir, depDir)
 			continue
 		}
 		sub, err := loadChart(ctx, fsys, depDir)

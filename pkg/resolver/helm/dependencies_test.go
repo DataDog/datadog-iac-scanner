@@ -41,7 +41,7 @@ func TestAttachMissingDependencies_LoadFailureWarns(t *testing.T) {
 
 	var logBuf strings.Builder
 	ctx := zerolog.New(&logBuf).WithContext(context.Background())
-	attachMissingDependencies(ctx, vfs.DiskFS{}, nil, ch, chartDir, 0)
+	attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{chartDir, depDir}), ch, chartDir, 0)
 
 	require.Empty(t, ch.Dependencies(), "an unloadable dependency must not be attached")
 	var entry struct {
@@ -71,8 +71,51 @@ func TestAttachMissingDependencies_CycleTerminates(t *testing.T) {
 	ch, err := loader.LoadDir(aDir)
 	require.NoError(t, err)
 
-	attachMissingDependencies(context.Background(), vfs.DiskFS{}, nil, ch, aDir, 0)
+	index := newChartIndex(vfs.DiskFS{}, []string{aDir, filepath.Join(aDir, "b")})
+	attachMissingDependencies(context.Background(), vfs.DiskFS{}, index, ch, aDir, 0)
 	require.Equal(t, 2, dependencyTreeHeight(ch, 0), "only a -> b is attached; b -> a closes the cycle")
+}
+
+// A "file://" repository may name any directory on the host; only charts of the
+// scan are read from it.
+func TestAttachMissingDependencies_FileRepositoryOutsideScanIsNotLoaded(t *testing.T) {
+	root := t.TempDir()
+	outside := writeChartDir(t, filepath.Join(root, "outside"), "apiVersion: v2\nname: outside\nversion: 1.0.0\n")
+	tests := map[string]string{
+		"absolute": "file://" + filepath.ToSlash(outside),
+		"relative": "file://../../outside",
+	}
+	for name, repository := range tests {
+		t.Run(name, func(t *testing.T) {
+			appDir := writeChartDir(t, filepath.Join(root, "repo", name), "apiVersion: v2\nname: app\nversion: 1.0.0\n"+
+				"dependencies:\n  - name: outside\n    repository: "+repository+"\n    version: 1.0.0\n")
+			ch, err := loader.LoadDir(appDir)
+			require.NoError(t, err)
+
+			var logBuf strings.Builder
+			ctx := zerolog.New(&logBuf).WithContext(context.Background())
+			attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{appDir}), ch, appDir, 0)
+			require.Empty(t, ch.Dependencies())
+			require.Contains(t, logBuf.String(), "not a chart of the scan")
+
+			attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, []string{appDir, outside}), ch, appDir, 0)
+			require.Len(t, ch.Dependencies(), 1, "the same chart is loaded once it is part of the scan")
+		})
+	}
+}
+
+// An in-memory FS reads only what the client pushed, so a "file://" dependency
+// it lacks is requested from the client rather than skipped.
+func TestAttachMissingDependencies_UnpushedFileRepositoryIsRequested(t *testing.T) {
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"app/Chart.yaml": []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+			"dependencies:\n  - name: lib\n    repository: file://../lib\n    version: 1.0.0\n"),
+	})
+	ch, err := loadChart(context.Background(), memfs, "app")
+	require.NoError(t, err)
+	attachMissingDependencies(context.Background(), memfs, newChartIndex(memfs, []string{"app"}), ch, "app", 0)
+	require.Empty(t, ch.Dependencies())
+	require.Contains(t, memfs.MissingFiles(), "lib")
 }
 
 // dependencyTreeHeight returns the number of dependency edges on the longest

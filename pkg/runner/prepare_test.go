@@ -49,7 +49,9 @@ func buildParityServices(t *testing.T, ctx context.Context, paths []string) ([]*
 	return buildServices(t, ctx, vfs.DiskFS{}, fsp)
 }
 
-func buildServices(t *testing.T, ctx context.Context, fsys vfs.FS, src provider.SourceProvider) ([]*Service, *storage.MemoryStorage) {
+func buildServices(
+	t *testing.T, ctx context.Context, fsys vfs.FS, src provider.SourceProvider, chartRoots ...string,
+) ([]*Service, *storage.MemoryStorage) {
 	t.Helper()
 
 	trk, err := tracker.NewTracker(1)
@@ -70,7 +72,7 @@ func buildServices(t *testing.T, ctx context.Context, fsys vfs.FS, src provider.
 		Build([]string{""}, []string{""})
 	require.NoError(t, err)
 
-	combinedResolver, err := resolver.NewBuilder().Add(ctx, helm.NewResolver(fsys)).Build(ctx)
+	combinedResolver, err := resolver.NewBuilder().Add(ctx, helm.NewResolver(fsys).WithChartRoots(chartRoots)).Build(ctx)
 	require.NoError(t, err)
 
 	store := storage.NewMemoryStorage()
@@ -600,7 +602,7 @@ func TestPrepareSharedWalk_DependencyChartFiles(t *testing.T) {
 			}
 			fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, inDir(tt.ignore), inDir(tt.only))
 			require.NoError(t, err)
-			services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp)
+			services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
 			shared, ok := SharedWalkProvider(services)
 			require.True(t, ok)
 			require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5))
@@ -633,7 +635,7 @@ func TestPrepareMemorySources_DependencyInIgnorePathsIsNotReported(t *testing.T)
 	}
 	memfs := vfs.NewMemFS(pushed)
 	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), []string{"lib/**"}, nil)
-	services, _ := buildServices(t, ctx, memfs, mp)
+	services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
 	shared, ok := SharedMemoryProvider(services)
 	require.True(t, ok)
 	require.NoError(t, PrepareMemorySources(ctx, shared, services, "ignore-paths", false, 5, false))

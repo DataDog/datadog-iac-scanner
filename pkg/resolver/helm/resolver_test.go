@@ -90,7 +90,8 @@ func TestHelm_Resolve_UnvendoredFileDependency(t *testing.T) {
 	write("app/templates/cm.yaml", "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n  labels:\n"+
 		"    {{- include \"common.labels\" . | nindent 4 }}\n")
 
-	got, err := (&Resolver{}).Resolve(context.Background(), filepath.Join(root, "app"))
+	roots := []string{filepath.Join(root, "app"), filepath.Join(root, "common")}
+	got, err := NewResolver(nil).WithChartRoots(roots).Resolve(context.Background(), filepath.Join(root, "app"))
 	require.NoError(t, err)
 	cm := findResolvedBySuffix(t, got.File, "templates/cm.yaml")
 	require.Contains(t, string(cm.Content), "app: app")
