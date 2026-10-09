@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -98,8 +99,8 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	count := -1
 
 	if countValue != nil {
-		value, err := countValue.Expr.Value(nil)
-		if err == nil {
+		value, diags := countValue.Expr.Value(c.evalContext())
+		if !diags.HasErrors() {
 			if intValue, ok := ctyutil.LiteralInt(value); ok {
 				count = intValue
 			}
@@ -132,6 +133,18 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	}
 
 	for _, block := range body.Blocks {
+		if dynamicblock.Is(block) {
+			expanded, err := c.convertDynamicBlock(ctx, block, out)
+			if err != nil {
+				return nil, err
+			}
+			if expanded {
+				ddLines["_dd_"+dynamicblock.GeneratedType(block)] = model.LineObject{
+					Line: block.TypeRange.Start.Line,
+				}
+				continue
+			}
+		}
 		// set line info for block
 		ddLines["_dd_"+block.Type] = model.LineObject{
 			Line: block.TypeRange.Start.Line,
@@ -186,24 +199,60 @@ func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.L
 }
 
 func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, out model.Document, defLine int) error {
-	contextLogger := logger.FromContext(ctx)
-	var key = block.Type
 	value, err := c.convertBody(ctx, block.Body, defLine)
-
 	if err != nil {
 		return err
 	}
+	return insertBlock(ctx, out, append([]string{block.Type}, block.Labels...), value)
+}
 
+// convertDynamicBlock adds the blocks a dynamic block generates to out, each
+// converted with the block's iterator bound to its element. It reports false,
+// adding nothing, when the block's for_each does not resolve.
+func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Block, out model.Document) (bool, error) {
+	content := dynamicblock.Content(block)
+	iterators, resolved := dynamicblock.Iterators(block, c.evalContext())
+	if content == nil || !resolved {
+		return false, nil
+	}
+	if c.inputVars == nil {
+		c.inputVars = make(VariableMap)
+	}
+	name := dynamicblock.IteratorName(block)
+	previous, hadPrevious := c.inputVars[name]
+	defer func() {
+		if hadPrevious {
+			c.inputVars[name] = previous
+		} else {
+			delete(c.inputVars, name)
+		}
+	}()
+	for _, iterator := range iterators {
+		c.inputVars[name] = iterator
+		path := append([]string{dynamicblock.GeneratedType(block)}, dynamicblock.Labels(block, c.evalContext())...)
+		value, err := c.convertBody(ctx, content, block.TypeRange.Start.Line)
+		if err != nil {
+			return true, err
+		}
+		if err := insertBlock(ctx, out, path, value); err != nil {
+			return true, err
+		}
+	}
+	return true, nil
+}
+
+func insertBlock(ctx context.Context, out model.Document, path []string, value model.Document) error {
 	if value == nil {
 		return nil
 	}
-
-	for _, label := range block.Labels {
+	key := path[0]
+	for _, label := range path[1:] {
 		if inner, exists := out[key]; exists {
 			var ok bool
 			out, ok = inner.(model.Document)
 			if !ok {
-				err = fmt.Errorf("unable to convert Block to JSON: %v.%v", block.Type, strings.Join(block.Labels, "."))
+				err := fmt.Errorf("unable to convert Block to JSON: %v", strings.Join(path, "."))
+				contextLogger := logger.FromContext(ctx)
 				contextLogger.Error().Msg(err.Error())
 				return err
 			}
