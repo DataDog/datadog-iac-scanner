@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -43,6 +44,36 @@ type attrSource struct {
 	labelDepth int
 }
 
+// generatedBlockType marks the content of a dynamic block among the blocks of
+// an attrSource; no HCL block type contains a space.
+const generatedBlockType = "dynamic content"
+
+// blocksFor returns the blocks that produced n elements: every source block when
+// the counts line up, the content of a single dynamic block for each element it
+// generated, or the static blocks alone when the dynamic ones generated none.
+func (s *attrSource) blocksFor(n int) []*hclsyntax.Block {
+	if len(s.blocks) == n {
+		return s.blocks
+	}
+	static := make([]*hclsyntax.Block, 0, len(s.blocks))
+	for _, b := range s.blocks {
+		if b.Type != generatedBlockType {
+			static = append(static, b)
+		}
+	}
+	switch {
+	case len(static) == n:
+		return static
+	case len(s.blocks) == 1 && n > 1:
+		repeated := make([]*hclsyntax.Block, n)
+		for i := range repeated {
+			repeated[i] = s.blocks[0]
+		}
+		return repeated
+	}
+	return s.blocks
+}
+
 func attributesToDocument(attrs map[string]cty.Value, body *hclsyntax.Body) map[string]interface{} {
 	out := make(map[string]interface{}, len(attrs))
 	for key, val := range attrs {
@@ -61,8 +92,13 @@ func sourceFor(body *hclsyntax.Body, key string) attrSource {
 	}
 	var blocks []*hclsyntax.Block
 	for _, b := range body.Blocks {
-		if b.Type == key {
+		switch {
+		case b.Type == key:
 			blocks = append(blocks, b)
+		case dynamicblock.Is(b) && dynamicblock.GeneratedType(b) == key:
+			if content := dynamicblock.Content(b); content != nil {
+				blocks = append(blocks, &hclsyntax.Block{Type: generatedBlockType, Body: content})
+			}
 		}
 	}
 	return attrSource{blocks: blocks}
@@ -118,9 +154,9 @@ func ctySeqToDocument(v cty.Value, src attrSource) []interface{} {
 // seqElementSources pairs sequence elements with the HCL they came from, which
 // only holds when the lengths line up (evaluation preserves element order).
 func seqElementSources(src attrSource, n int) []attrSource {
-	if len(src.blocks) == n {
+	if blocks := src.blocksFor(n); len(blocks) == n {
 		out := make([]attrSource, n)
-		for i, b := range src.blocks {
+		for i, b := range blocks {
 			if src.labelDepth >= len(b.Labels) {
 				out[i] = attrSource{body: b.Body}
 			} else {
@@ -143,8 +179,8 @@ func seqElementSources(src attrSource, n int) []attrSource {
 // keys are skipped (keys are always strings in well-formed Terraform).
 func ctyMapToDocument(v cty.Value, src attrSource) map[string]interface{} {
 	body := src.body
-	if body == nil && len(src.blocks) == 1 && src.labelDepth >= len(src.blocks[0].Labels) {
-		body = src.blocks[0].Body
+	if blocks := src.blocksFor(1); body == nil && len(blocks) == 1 && src.labelDepth >= len(blocks[0].Labels) {
+		body = blocks[0].Body
 	}
 	items := objectConsSources(src.expr)
 

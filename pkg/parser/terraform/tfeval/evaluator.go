@@ -23,6 +23,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
@@ -1299,6 +1300,10 @@ func (e *Evaluator) evalBody(
 	}
 
 	for _, b := range body.Blocks {
+		if dynamicblock.Is(b) {
+			e.addDynamicBlocks(out, b, ctx)
+			continue
+		}
 		path := append([]string{b.Type}, b.Labels...)
 		addNestedBlock(out, path, objectOrEmpty(e.evalBody(b.Body, ctx, nil)))
 	}
