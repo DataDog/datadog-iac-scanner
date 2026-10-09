@@ -174,6 +174,9 @@ func writePartialKey(b *strings.Builder, v cty.Value) {
 		return
 	}
 	t := v.Type()
+	// Prefix with the cty type so list/tuple/set (and map/object) with the same
+	// elements do not share an evalCacheKey.
+	b.WriteString(t.FriendlyName())
 	open, closing := "[", "]"
 	if t.IsObjectType() || t.IsMapType() {
 		open, closing = "{", "}"

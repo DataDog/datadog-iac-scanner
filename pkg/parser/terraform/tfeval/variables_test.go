@@ -13,7 +13,6 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-
 func resourcesByAddress(resources []ResolvedResource) map[string]ResolvedResource {
 	out := make(map[string]ResolvedResource, len(resources))
 	for _, r := range resources {
@@ -113,6 +112,20 @@ func TestCanonicalInputsKeyKeepsKnownPartsOfPartlyUnknownValues(t *testing.T) {
 		"name": cty.StringVal("b"), "arn": cty.UnknownVal(cty.String),
 	})})
 	require.NotEqual(t, a, b)
+}
+
+func TestCanonicalInputsKeyDistinguishesCollectionTypes(t *testing.T) {
+	elem := cty.UnknownVal(cty.String)
+	listKey := canonicalInputsKey(map[string]cty.Value{"v": cty.ListVal([]cty.Value{elem})})
+	tupleKey := canonicalInputsKey(map[string]cty.Value{"v": cty.TupleVal([]cty.Value{elem})})
+	setKey := canonicalInputsKey(map[string]cty.Value{"v": cty.SetVal([]cty.Value{elem})})
+	require.NotEqual(t, listKey, tupleKey)
+	require.NotEqual(t, listKey, setKey)
+	require.NotEqual(t, tupleKey, setKey)
+
+	mapKey := canonicalInputsKey(map[string]cty.Value{"v": cty.MapVal(map[string]cty.Value{"k": elem})})
+	objKey := canonicalInputsKey(map[string]cty.Value{"v": cty.ObjectVal(map[string]cty.Value{"k": elem})})
+	require.NotEqual(t, mapKey, objKey)
 }
 
 func TestLoadRootVarsReadsJSONAndAppliesTerraformPrecedence(t *testing.T) {
