@@ -9,6 +9,7 @@ package tfpath
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -18,7 +19,36 @@ const (
 	ExtTFJSON   = ".tf.json"
 	ExtTofuJSON = ".tofu.json"
 	ExtTFVars   = ".tfvars"
+
+	ExtTFVarsJSON = ".tfvars.json"
+	defaultVars   = "terraform.tfvars"
+	autoVars      = ".auto.tfvars"
 )
+
+// IsTFVarsJSON reports whether path is a variable definitions file in JSON syntax.
+func IsTFVarsJSON(path string) bool {
+	return hasExtSuffix(path, ExtTFVarsJSON)
+}
+
+// AutoloadedVarFiles picks the variable definitions files Terraform loads on
+// its own out of the names of a directory's entries, in the order Terraform
+// applies them: terraform.tfvars, terraform.tfvars.json, then *.auto.tfvars and
+// *.auto.tfvars.json in lexical order. Later files override earlier ones.
+func AutoloadedVarFiles(names []string) []string {
+	var defaults, auto []string
+	for _, name := range names {
+		switch {
+		case name == defaultVars:
+			defaults = append([]string{name}, defaults...)
+		case name == defaultVars+".json":
+			defaults = append(defaults, name)
+		case hasExtSuffix(name, autoVars) || hasExtSuffix(name, autoVars+".json"):
+			auto = append(auto, name)
+		}
+	}
+	sort.Strings(auto)
+	return append(defaults, auto...)
+}
 
 // Extension returns the Terraform/OpenTofu config suffix, including compound
 // JSON suffixes that filepath.Ext would truncate to ".json".
