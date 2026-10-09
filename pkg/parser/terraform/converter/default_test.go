@@ -979,6 +979,93 @@ variable "region" {
 	compareJSONLine(t, body, expected)
 }
 
+func convertToJSONMap(t *testing.T, input string, vars VariableMap) map[string]interface{} {
+	t.Helper()
+	file, diags := hclsyntax.ParseConfig([]byte(input), "main.tf", hcl.Pos{Line: 1, Column: 1})
+	require.False(t, diags.HasErrors())
+	body, err := DefaultConverted(context.Background(), file, vars)
+	require.NoError(t, err)
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	return out
+}
+
+func TestDynamicBlocksExpand(t *testing.T) {
+	input := `
+resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = var.rules
+    iterator = rule
+    content {
+      description = rule.key
+      from_port   = rule.value.port
+    }
+  }
+  dynamic "egress" {
+    for_each = var.unknown
+    content {
+      to_port = egress.value.port
+    }
+  }
+  dynamic "logging" {
+    for_each = []
+    content {
+      enabled = true
+    }
+  }
+  tags = { name = "${rule}" }
+}
+`
+	out := convertToJSONMap(t, input, VariableMap{
+		"var": cty.ObjectVal(map[string]cty.Value{
+			"rules": cty.ObjectVal(map[string]cty.Value{
+				"https": cty.ObjectVal(map[string]cty.Value{"port": cty.NumberIntVal(443)}),
+				"ssh":   cty.ObjectVal(map[string]cty.Value{"port": cty.NumberIntVal(22)}),
+			}),
+			"unknown": cty.DynamicVal,
+		}),
+	})
+	sg := out["resource"].(map[string]interface{})["aws_security_group"].(map[string]interface{})["sg"].(map[string]interface{})
+
+	require.NotContains(t, sg["dynamic"], "ingress")
+	require.NotContains(t, sg, "logging")
+	ingress := sg["ingress"].([]interface{})
+	require.Len(t, ingress, 2)
+	require.Equal(t, "https", ingress[0].(map[string]interface{})["description"])
+	require.Equal(t, float64(22), ingress[1].(map[string]interface{})["from_port"])
+
+	require.NotContains(t, sg, "egress", "a dynamic block over an unknown collection is kept as written")
+	content := sg["dynamic"].(map[string]interface{})["egress"].(map[string]interface{})["content"].(map[string]interface{})
+	require.Equal(t, "${egress.value.port}", content["to_port"])
+
+	require.Equal(t, "${rule}", sg["tags"].(map[string]interface{})["name"],
+		"the iterator must not stay bound after its dynamic block")
+}
+
+func TestCountResolvedFromVariables(t *testing.T) {
+	input := `
+resource "aws_s3_bucket" "disabled" {
+  count  = var.enabled ? 1 : 0
+  bucket = "a"
+}
+resource "aws_s3_bucket" "unknown" {
+  count  = var.unset ? 1 : 0
+  bucket = "b"
+}
+`
+	out := convertToJSONMap(t, input, VariableMap{
+		"var": cty.ObjectVal(map[string]cty.Value{
+			"enabled": cty.False,
+			"unset":   cty.DynamicVal,
+		}),
+	})
+	buckets := out["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})
+	require.NotContains(t, buckets, "disabled")
+	require.Contains(t, buckets, "unknown")
+}
+
 func TestNullStringDoesNotPanic(t *testing.T) {
 	input := `
 resource "aws_ssm_parameter" "db" {
