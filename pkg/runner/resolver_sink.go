@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmaction"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -63,7 +65,8 @@ func (s *Service) storeResolvedFiles(
 	maxResolverDepth int) {
 	contextLogger := logger.FromContext(ctx)
 	sourceCache := make(map[string]*resolvedSourceData)
-	for _, rfile := range resFiles.File {
+	for i := range resFiles.File {
+		rfile := &resFiles.File[i]
 		if isHelmJSONFile(kind, rfile.FileName) && s.Parser.Parsers.GetKind() != model.KindYAML {
 			continue
 		}
@@ -87,7 +90,7 @@ func (s *Service) storeResolvedFiles(
 			continue
 		}
 
-		s.setResolvedLineMetadata(ctx, &documents, &rfile, sourceCache, kind,
+		s.setResolvedLineMetadata(ctx, &documents, rfile, sourceCache, kind,
 			openAPIResolveReferences, isMinified, maxResolverDepth)
 
 		cached := sourceCache[rfile.FileName]
@@ -118,7 +121,7 @@ func (s *Service) storeResolvedFiles(
 				Kind:              kind,
 				FilePath:          rfile.FileName,
 				HelmID:            rfile.SplitID,
-				HelmInvocation:    rfile.HelmInvocation,
+				HelmAttribution:   model.NewHelmAttribution(rfile.HelmInvocations, ownedRenderedContent),
 				Commands:          cached.commands,
 				IDInfo:            rfile.IDInfo,
 				LinesIgnore:       documents.IgnoreLines,
@@ -129,7 +132,7 @@ func (s *Service) storeResolvedFiles(
 			}
 			if kind == model.KindHELM {
 				file.SetLineInfoLoader(newHelmLineInfoLoader(
-					s.Parser, &rfile, ownedRenderedContent, docIdx,
+					s.Parser, rfile, ownedRenderedContent, docIdx,
 					openAPIResolveReferences, isMinified, maxResolverDepth))
 			}
 			s.saveToFile(ctx, &file)
@@ -360,7 +363,13 @@ var deployTimeValueSignatures = []string{
 	"index of untyped nil",
 	"len of nil pointer",
 	"on zero Value",
+	"invalid value; expected ",
 }
+
+// nilValueOfWrongType is the type error Go templates raise for a key that is
+// present but empty (`tag:`): the value is a nil interface, a value left for
+// deploy time rather than one of the wrong type.
+var nilValueOfWrongType = regexp.MustCompile(`wrong type for value; expected [^;]+; got interface \{\}`)
 
 // A template is reported as `template "x" not defined`, a misspelled function
 // as `function "x" not defined`: only the first one is a missing helper.
@@ -375,7 +384,7 @@ func classifyHelmRenderError(err error) helmRenderFailure {
 	}
 	msg := err.Error()
 	switch {
-	case containsAny(msg, deployTimeValueSignatures):
+	case containsAny(msg, deployTimeValueSignatures) || nilValueOfWrongType.MatchString(msg):
 		return helmRenderDeployTimeValue
 	case strings.Contains(msg, unassociatedHelmHelper) || undefinedHelmTemplate.MatchString(msg):
 		return helmRenderMissingHelper
@@ -443,18 +452,12 @@ func isCommentOnlyContent(content []byte) bool {
 	return true
 }
 
-var (
-	helmIDLinePattern         = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_ID_\d+:[^\r\n]*(?:\r?\n|$)`)
-	helmTemplateActionPattern = regexp.MustCompile(`{{-\s*(.*?)\s*}}`)
-)
-
 func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	originalFile []uint8,
 	kind model.FileKind,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ignoreLines []int, err error) {
-	refactor := helmIDLinePattern.ReplaceAll(originalFile, nil)
-	refactor = helmTemplateActionPattern.ReplaceAll(refactor, nil)
+	refactor := helmaction.Blank(helmmarker.RemoveIDLines(originalFile))
 
 	documentsOriginal, err := s.parseResolvedFile(
 		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
@@ -466,7 +469,7 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 
 // filterHelmGeneratedLines drops entries from ignoreLines whose corresponding
 // line in content is a scanner-injected Helm header ("# Source: …" or
-// "# KICS_HELM_ID_N:"). These headers are picked up by the YAML parser as
+// "# KICS_HELM_ID_T_N:"). These headers are picked up by the YAML parser as
 // regular head comments and can coincide with vulnerability.Line, causing false
 // suppression. User-authored suppression comments are unaffected.
 func filterHelmGeneratedLines(content []byte, ignoreLines []int) []int {
@@ -474,9 +477,10 @@ func filterHelmGeneratedLines(content []byte, ignoreLines []int) []int {
 	out := make([]int, 0, len(ignoreLines))
 	for _, n := range ignoreLines {
 		if n >= 1 && n <= len(lines) {
-			trimmed := strings.TrimSpace(lines[n-1])
-			if strings.HasPrefix(trimmed, "# Source:") ||
-				strings.HasPrefix(trimmed, "# KICS_HELM_ID_") {
+			if strings.HasPrefix(strings.TrimSpace(lines[n-1]), "# Source:") {
+				continue
+			}
+			if _, stamp := helmmarker.ParseIDLine(lines[n-1]); stamp {
 				continue
 			}
 		}

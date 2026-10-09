@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -276,6 +277,7 @@ func TestRemoteModuleFilesBypassPrebuiltInventoryFilters(t *testing.T) {
 	inventory, err := files.BuildInventoryFromPrebuilt(
 		context.Background(),
 		model.Extensions{".tf": {}},
+		utils.PoolOptions{},
 		func(context.Context, string) bool { return false },
 	)
 	require.NoError(t, err)

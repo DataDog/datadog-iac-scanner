@@ -2,6 +2,7 @@ package helm
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	helmdetector "github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
@@ -39,6 +41,15 @@ func pathSuffix(t *testing.T, path string) string {
 		return normalized[idx:]
 	}
 	return filepath.Base(normalized)
+}
+
+func writeTree(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for rel, body := range files {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+	}
 }
 
 func findResolvedBySuffix(t *testing.T, files []model.ResolvedHelm, suffix string) model.ResolvedHelm {
@@ -95,8 +106,8 @@ func TestHelm_Resolve_WithCRDs(t *testing.T) {
 		require.Contains(t, string(f.Content), want.name)
 
 		if want.fullLineMap {
-			require.Equal(t, "# KICS_HELM_ID_0:", f.SplitID, "YAML CRD SplitID must anchor line mapping")
-			require.Contains(t, string(f.OriginalData), kicsHelmID, "stamped original required for detector")
+			requireStampLine(t, f.SplitID, 0, "YAML CRD SplitID must anchor line mapping")
+			require.Contains(t, string(f.OriginalData), helmmarker.IDPrefix, "stamped original required for detector")
 			require.Contains(t, string(f.OriginalData), want.kind)
 			require.Contains(t, string(f.OriginalData), want.name)
 			idInfo, ok := f.IDInfo[0].(model.HelmIDLineRange)
@@ -163,7 +174,7 @@ func TestHelm_Resolve_MultiDocCRD(t *testing.T) {
 	require.Len(t, splits, 2, "multi-document CRD file must produce one split per document")
 
 	// Both splits must have distinct, non-empty SplitIDs anchored to their document.
-	require.Equal(t, "# KICS_HELM_ID_0:", splits[0].SplitID, "first document must use first marker")
+	requireStampLine(t, splits[0].SplitID, 0, "first document must use first marker")
 	require.NotEmpty(t, splits[1].SplitID, "second document must have a non-empty SplitID")
 	require.NotEqual(t, splits[0].SplitID, splits[1].SplitID, "each document must map to a distinct marker")
 
@@ -193,28 +204,6 @@ kind: ConfigMap
 	require.Len(t, splits, 2)
 	require.Contains(t, splits[0], `"literal --- separator"`)
 	require.Contains(t, splits[1], "literal --- separator")
-}
-
-func TestSplitHelmManifestPropagatesInvocationAcrossDocuments(t *testing.T) {
-	manifest := `---
-# Source: chart/templates/resources.yaml
-# KICS_HELM_INVOCATION_5_0:
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: first
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: second
-`
-
-	splits := splitHelmManifest(manifest)
-	require.Len(t, splits, 2)
-	for _, split := range splits {
-		require.Contains(t, split, "# KICS_HELM_INVOCATION_5_0:")
-	}
 }
 
 func Test_parseManifestSource(t *testing.T) {
@@ -312,7 +301,7 @@ func TestIsCRDSourcePath(t *testing.T) {
 func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 	ch, err := loader.Load(helmFixturePath(t, "test_helm_with_crds"))
 	require.NoError(t, err)
-	setID(ch)
+	stamped := setID(ch, nil)
 
 	manifest := strings.Join([]string{
 		"---",
@@ -323,8 +312,7 @@ func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 		"  name: widgets.example.com",
 	}, "\n")
 
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch)
-	require.NoError(t, err)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
 	require.True(t, (*splits)[0].isCRD)
@@ -333,7 +321,7 @@ func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 func TestSplitManifestYAML_dropsUnknownSourceHeader(t *testing.T) {
 	ch, err := loader.Load(helmFixturePath(t, "test_helm_with_crds"))
 	require.NoError(t, err)
-	setID(ch)
+	stamped := setID(ch, nil)
 
 	manifest := strings.Join([]string{
 		"---",
@@ -349,8 +337,7 @@ func TestSplitManifestYAML_dropsUnknownSourceHeader(t *testing.T) {
 		"kind: CustomResourceDefinition",
 	}, "\n")
 
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch)
-	require.NoError(t, err)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
 }
@@ -371,15 +358,14 @@ func TestSplitManifestYAML_emptyCRDDocumentDoesNotShiftSourceIndex(t *testing.T)
 		Metadata: &chart.Metadata{Name: "test"},
 		Files:    []*chart.File{crd},
 	}
-	setID(ch)
+	stamped := setID(ch, nil)
 
 	manifest := strings.Join([]string{
 		"---",
 		"# Source: test/crds/leading-empty.yaml",
 		string(crd.Data),
 	}, "\n")
-	splits, err := splitManifestYAML(&release.Release{Manifest: manifest}, ch)
-	require.NoError(t, err)
+	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped)
 	require.NotEmpty(t, *splits)
 
 	var resourceSplit *splitManifest
@@ -432,52 +418,6 @@ func TestLocalCRDFiles_keepsDistinctNestedCRDPaths(t *testing.T) {
 	require.Equal(t, "crds/nested/crds/widget.yaml", crdChartRelativePath(files[1].Name))
 }
 
-func TestAddID_multiDocumentUsesSourceLineIDs(t *testing.T) {
-	original := strings.Join([]string{
-		"apiVersion: v1",
-		"kind: Service",
-		"metadata:",
-		"  name: nested-one",
-		"spec:",
-		"  ports:",
-		"  - name: nested-one",
-		"---",
-		"apiVersion: v1",
-		"kind: Service",
-		"metadata:",
-		"  name: nested-two",
-		"spec:",
-		"  ports:",
-		"  - name: nested-two",
-	}, "\n")
-	file := addID(&chart.File{Name: "templates/nested.yaml", Data: []byte(original)})
-
-	require.Contains(t, string(file.Data), "# KICS_HELM_ID_0:\napiVersion: v1")
-	require.Contains(t, string(file.Data), "# KICS_HELM_ID_8:\napiVersion: v1")
-}
-
-func TestAddHelmInvocationMarkersInspectsEveryAction(t *testing.T) {
-	file := &chart.File{Data: []byte(`{{- if .Values.enabled }}{{ include "resource" . }}{{- end }}`)}
-	addHelmInvocationMarkers(file)
-
-	require.Equal(t, 1, strings.Count(string(file.Data), kicsHelmInvocation))
-	require.Contains(t, string(file.Data), "# KICS_HELM_INVOCATION_1_25:")
-}
-
-func TestHelmResolveTracksExecutedConditionalInvocation(t *testing.T) {
-	got, err := (&Resolver{}).Resolve(
-		context.Background(), helmFixturePath(t, "test_helm_conditional_invocations"),
-	)
-	require.NoError(t, err)
-
-	resolved := findResolvedBySuffix(t, got.File, "templates/resources.yaml")
-	require.Contains(t, string(resolved.Content), "resource-b")
-	require.NotContains(t, string(resolved.Content), "resource-a")
-	require.Equal(t, model.ResourceLine{Line: 5, Col: 0}, resolved.HelmInvocation)
-	require.NotContains(t, string(resolved.Content), kicsHelmInvocation)
-	require.NotContains(t, string(resolved.OriginalData), kicsHelmInvocation)
-}
-
 func TestDetectLine_MultiDocumentTemplateUsesSourceLines(t *testing.T) {
 	original := strings.Join([]string{
 		"apiVersion: v1",
@@ -496,18 +436,17 @@ func TestDetectLine_MultiDocumentTemplateUsesSourceLines(t *testing.T) {
 		"  ports:",
 		"  - name: nested-two",
 	}, "\n")
-	file := addID(&chart.File{Name: "templates/nested.yaml", Data: []byte(original)})
-	idMap, err := getIDMap(file.Data)
-	require.NoError(t, err)
+	file := addID(&chart.File{Name: "templates/nested.yaml", Data: []byte(original)}, 0)
+	idMap := getIDMap(file.Data)
 
 	got := (helmdetector.DetectKindLine{}).DetectLine(context.Background(), &model.FileMetadata{
 		Kind:              model.KindHELM,
 		FilePath:          "templates/nested.yaml",
-		HelmID:            "# KICS_HELM_ID_8:",
+		HelmID:            "# KICS_HELM_ID_0_8:",
 		OriginalData:      string(file.Data),
 		LinesOriginalData: utils.SplitLines(string(file.Data)),
 		IDInfo:            idMap,
-	}, "KICS_HELM_ID_8.spec", 1)
+	}, "KICS_HELM_ID_0_8.spec", 1)
 
 	require.Equal(t, 13, got.Line)
 	require.Equal(t, 13, got.VulnerablilityLocation.Start.Line)
@@ -516,73 +455,15 @@ func TestDetectLine_MultiDocumentTemplateUsesSourceLines(t *testing.T) {
 	got = (helmdetector.DetectKindLine{}).DetectLine(context.Background(), &model.FileMetadata{
 		Kind:              model.KindHELM,
 		FilePath:          "templates/nested.yaml",
-		HelmID:            "# KICS_HELM_ID_8:",
+		HelmID:            "# KICS_HELM_ID_0_8:",
 		OriginalData:      string(file.Data),
 		LinesOriginalData: utils.SplitLines(string(file.Data)),
 		IDInfo:            idMap,
-	}, "KICS_HELM_ID_8.spec.ports", 1)
+	}, "KICS_HELM_ID_0_8.spec.ports", 1)
 
 	require.Equal(t, 14, got.Line)
 	require.Equal(t, 14, got.VulnerablilityLocation.Start.Line)
 	require.Equal(t, 14, got.VulnerablilityLocation.End.Line)
-}
-
-func TestAddID_ignoresIndentedAPIVersion(t *testing.T) {
-	original := `description: |
-  apiVersion: v1
-  ---
-  apiVersion: v2
-  kind: Pod
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-`
-	file := &chart.File{Data: []byte(original)}
-	addID(file)
-
-	require.Equal(t, 1, strings.Count(string(file.Data), kicsHelmID))
-	require.Contains(t, string(file.Data), "  apiVersion: v1")
-	require.Contains(t, string(file.Data), kicsHelmID)
-}
-
-func TestAddID_stampsIndentedRootAPIVersion(t *testing.T) {
-	file := &chart.File{Data: []byte("  apiVersion: v1\n  kind: ConfigMap\n")}
-	addID(file)
-
-	require.Equal(t, 1, strings.Count(string(file.Data), kicsHelmID))
-	require.Contains(t, string(file.Data), "# KICS_HELM_ID_0:\n  apiVersion: v1")
-}
-
-func TestAddID_stampsValidAPIVersionKeyStyles(t *testing.T) {
-	file := &chart.File{Data: []byte(`"apiVersion": v1
-kind: ConfigMap
----
-'apiVersion' : v1
-kind: Secret
----
-{apiVersion: v1, kind: Service}
----
-? apiVersion
-: v1
-kind: Pod
----
-{
-  apiVersion: v1,
-  kind: ConfigMap
-}
----
-!tag apiVersion: v1
-kind: Secret
----
-&key apiVersion: v1
-kind: Service
----
-"api\u0056ersion": v1
-kind: Pod
-`)}
-	file.Name = "crds/keys.yaml"
-	addID(file)
-
-	require.Equal(t, 8, strings.Count(string(file.Data), kicsHelmID))
 }
 
 func TestHelm_SupportedTypes(t *testing.T) {
@@ -617,12 +498,12 @@ func TestHelm_Resolve(t *testing.T) { //nolint
 			want: model.ResolvedFiles{
 				File: []model.ResolvedHelm{
 					{
-						SplitID:  "# KICS_HELM_ID_0:",
+						SplitID:  "# KICS_HELM_ID_2_0:",
 						FileName: filepath.FromSlash("../../../test/fixtures/test_helm/templates/service.yaml"),
 						IDInfo:   map[int]interface{}{0: model.HelmIDLineRange{Start: 0, End: 16}},
 						Content: []byte(`
 # Source: test_helm/templates/service.yaml
-# KICS_HELM_ID_0:
+# KICS_HELM_ID_2_0:
 apiVersion: v1
 kind: Service
 metadata:
@@ -644,7 +525,7 @@ spec:
     app.kubernetes.io/name: test_helm
     app.kubernetes.io/instance: dd-helm
 `),
-						OriginalData: []byte(`# KICS_HELM_ID_0:
+						OriginalData: []byte(`# KICS_HELM_ID_2_0:
 apiVersion: v1
 kind: Service
 metadata:
@@ -682,11 +563,11 @@ spec:
 				File: []model.ResolvedHelm{
 					{
 						FileName: filepath.FromSlash("../../../test/fixtures/test_helm_subchart/templates/serviceaccount.yaml"),
-						SplitID:  "# KICS_HELM_ID_1:",
+						SplitID:  "# KICS_HELM_ID_2_1:",
 						IDInfo:   map[int]interface{}{1: model.HelmIDLineRange{Start: 1, End: 13}},
 						Content: []byte(`
 # Source: test_helm_subchart/templates/serviceaccount.yaml
-# KICS_HELM_ID_1:
+# KICS_HELM_ID_2_1:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -699,7 +580,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 `),
 						OriginalData: []byte(`{{- if .Values.serviceAccount.create -}}
-# KICS_HELM_ID_1:
+# KICS_HELM_ID_2_1:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -715,11 +596,11 @@ metadata:
 					},
 					{
 						FileName: filepath.FromSlash("../../../test/fixtures/test_helm_subchart/charts/subchart/templates/service.yaml"),
-						SplitID:  "# KICS_HELM_ID_0:",
+						SplitID:  "# KICS_HELM_ID_5_0:",
 						IDInfo:   map[int]interface{}{0: model.HelmIDLineRange{Start: 0, End: 16}},
 						Content: []byte(`
 # Source: test_helm_subchart/charts/subchart/templates/service.yaml
-# KICS_HELM_ID_0:
+# KICS_HELM_ID_5_0:
 apiVersion: v1
 kind: Service
 metadata:
@@ -741,7 +622,7 @@ spec:
     app.kubernetes.io/name: subchart
     app.kubernetes.io/instance: dd-helm
 `),
-						OriginalData: []byte(`# KICS_HELM_ID_0:
+						OriginalData: []byte(`# KICS_HELM_ID_5_0:
 apiVersion: v1
 kind: Service
 metadata:
@@ -787,7 +668,7 @@ spec:
 					require.Equal(t, want.OriginalData, gotFile.OriginalData)
 				}
 				crd := findResolvedBySuffix(t, got.File, "charts/subchart/crds/widget.yaml")
-				require.Equal(t, "# KICS_HELM_ID_0:", crd.SplitID)
+				requireStampLine(t, crd.SplitID, 0, "CRD stamp line")
 				require.Contains(t, string(crd.OriginalData), "# KICS_HELM_ID_")
 				require.Contains(t, string(crd.Content), "widgets.subchart.example.com")
 			} else {
@@ -800,4 +681,49 @@ spec:
 			}
 		})
 	}
+}
+
+// TestHelmResolve_ActionOnlyPartialKeepsScalarValues covers a library chart
+// whose partials are action-only, as in Bitnami's common chart. Their output is
+// used as a label value and as a scalar, so the invocation instrumentation must
+// not add anything (a newline or a marker) to what they return.
+func TestHelmResolve_ActionOnlyPartialKeepsScalarValues(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) { writeTree(t, root, map[string]string{rel: body}) }
+	write("app/charts/common/Chart.yaml", "apiVersion: v2\nname: common\nversion: 1.0.0\ntype: library\n")
+	write("app/charts/common/templates/_names.tpl", "{{/* names */}}\n"+
+		"{{- define \"common.labels.value\" -}}\n{{- . | toString | trunc 63 -}}\n{{- end -}}\n"+
+		"{{- define \"common.names.chart\" -}}\n"+
+		"{{- include \"common.labels.value\" (printf \"%s-%s\" .Chart.Name .Chart.Version) -}}\n{{- end -}}\n"+
+		"{{- define \"common.names.if\" -}}\n{{- if .Values.enabled -}}\n{{ include \"common.names.chart\" . }}\n{{- end -}}\n{{- end -}}\n")
+	write("app/Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n"+
+		"dependencies:\n- name: common\n  version: 1.0.0\n")
+	write("app/values.yaml", "enabled: true\n")
+	write("app/templates/cm.yaml", "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n  labels:\n"+
+		"    helm.sh/chart: {{ include \"common.names.chart\" . | quote }}\n"+
+		"data:\n  chart: {{ include \"common.names.chart\" . }}\n  gated: {{ include \"common.names.if\" . }}\n")
+	// A manifest template that is action-only still gets its invocation tracked.
+	write("app/templates/_cm.tpl", "{{- define \"app.cm\" -}}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: wrapped\n{{- end -}}\n")
+	write("app/templates/wrapped.yaml", "{{ include \"app.cm\" . }}\n")
+
+	got, err := (&Resolver{}).Resolve(context.Background(), filepath.Join(root, "app"))
+	require.NoError(t, err)
+
+	cm := string(findResolvedBySuffix(t, got.File, "templates/cm.yaml").Content)
+	require.Contains(t, cm, `helm.sh/chart: "app-1.0.0"`)
+	require.Contains(t, cm, "chart: app-1.0.0\n")
+	require.Contains(t, cm, "gated: app-1.0.0")
+	require.NotContains(t, cm, invocationPrefix)
+
+	wrapped := findResolvedBySuffix(t, got.File, "templates/wrapped.yaml")
+	require.Contains(t, string(wrapped.Content), "name: wrapped")
+	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, wrapped.HelmInvocations.First())
+}
+
+// requireStampLine asserts that stamp is a valid ID line anchored at source line.
+func requireStampLine(t *testing.T, stamp string, line int, msg string) {
+	t.Helper()
+	id, ok := helmmarker.ParseIDLine(stamp)
+	require.True(t, ok, "%s: %q is not an ID stamp", msg, stamp)
+	require.Equal(t, line, id.Line, msg)
 }

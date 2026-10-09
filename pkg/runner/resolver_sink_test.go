@@ -206,16 +206,16 @@ func TestStoreResolvedFilesKeepsHelmInvocation(t *testing.T) {
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{
 			{
-				FileName:       "chart/templates/resources.yaml",
-				Content:        []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: first\n"),
-				OriginalData:   original,
-				HelmInvocation: model.ResourceLine{Line: 1, Col: 0},
+				FileName:        "chart/templates/resources.yaml",
+				Content:         []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: first\n"),
+				OriginalData:    original,
+				HelmInvocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 1, Col: 0}}},
 			},
 			{
-				FileName:       "chart/templates/resources.yaml",
-				Content:        []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: second\n"),
-				OriginalData:   original,
-				HelmInvocation: model.ResourceLine{Line: 2, Col: 0},
+				FileName:        "chart/templates/resources.yaml",
+				Content:         []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: second\n"),
+				OriginalData:    original,
+				HelmInvocations: model.HelmInvocations{{RenderedLine: 1, Position: model.ResourceLine{Line: 2, Col: 0}}},
 			},
 		},
 	}, model.KindHELM, "helm-source-document-index", false, 15)
@@ -223,14 +223,33 @@ func TestStoreResolvedFilesKeepsHelmInvocation(t *testing.T) {
 	files, err := store.GetFiles(ctx, "helm-source-document-index")
 	require.NoError(t, err)
 	require.Len(t, files, 2)
-	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, files[0].HelmInvocation)
-	require.Equal(t, model.ResourceLine{Line: 2, Col: 0}, files[1].HelmInvocation)
+	require.Equal(t, model.ResourceLine{Line: 1, Col: 0}, files[0].HelmAttribution.First())
+	require.Equal(t, model.ResourceLine{Line: 2, Col: 0}, files[1].HelmAttribution.First())
+}
+
+func TestStoreResolvedFilesKeepsRenderedContentOfInvocations(t *testing.T) {
+	ctx := context.Background()
+	service, store := newYAMLResolverSinkService(t, ctx)
+	content := []byte("apiVersion: v1\nkind: Pod\nmetadata:\n  name: p\n")
+	service.storeResolvedFiles(ctx, model.ResolvedFiles{
+		File: []model.ResolvedHelm{{
+			FileName:        "chart/templates/pod.yaml",
+			Content:         content,
+			OriginalData:    []byte("{{ include \"header\" . }}\n"),
+			HelmInvocations: model.HelmInvocations{{RenderedLine: 1, RenderedEnd: 5, Position: model.ResourceLine{Line: 1}}},
+		}},
+	}, model.KindHELM, "helm-invocations", false, 15)
+
+	files, err := store.GetFiles(ctx, "helm-invocations")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, string(content), files[0].HelmAttribution.RenderedContent)
 }
 
 func TestStoreResolvedFilesKeepsCRDSuppressionLines(t *testing.T) {
 	ctx := context.Background()
 	service, store := newYAMLResolverSinkService(t, ctx)
-	original := []byte("# dd-iac-scan ignore-block\n# KICS_HELM_ID_1:\napiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n")
+	original := []byte("# dd-iac-scan ignore-block\n# KICS_HELM_ID_0_1:\napiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n")
 	content := []byte("\n# Source: chart/crds/widget.yaml\n" + string(original))
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{{
@@ -407,7 +426,12 @@ func TestIsExpectedHelmRenderError(t *testing.T) {
 		{"dig on nil values", errors.New("error calling dig: interface conversion: interface {} is nil, not map[string]interface {}"), true},
 		{"index of nil", errors.New("error calling index: index of untyped nil"), true},
 		{"len of nil", errors.New("error calling len: len of nil pointer"), true},
-		{"wrong type for value", errors.New("at <$.Values.image.tag>: wrong type for value; expected string; got interface {}"), false},
+		{"empty value of a typed argument", errors.New("at <$.Values.image.tag>: wrong type for value; expected string; got interface {}"), true},
+		{"nested in an include", errors.New(`at <include "streaming.apps.serviceAccount" $>: error calling include: template: ` +
+			`c/charts/commons/templates/_labels.tpl:7:87: executing "ep.labels" at <$.Values.image.tag>: ` +
+			`wrong type for value; expected string; got interface {}`), true},
+		{"missing value of a typed argument", errors.New("at <$.Values.port>: invalid value; expected int"), true},
+		{"wrong type for value", errors.New("at <$.Values.global.datacenter.arm_enabled>: wrong type for value; expected bool; got string"), false},
 		{"range over a non-collection", errors.New("at <$.Values.shards>: range can't iterate over REPLACE_ME"), false},
 		{"missing include", errors.New("error calling include: template: no template \"crawler.serviceAccountName\" associated with template \"gotpl\""), true},
 		{"undefined named template", errors.New("executing \"webservice/templates/tests/tests.yaml\" at <{{template \"fullname\" .}}>: template \"fullname\" not defined"), true},
@@ -428,6 +452,7 @@ func TestHelmRenderNeedsNoFiles(t *testing.T) {
 	require.True(t, helmRenderNeedsNoFiles(errors.New("execution error at (chart/templates/deploy.yaml:2:5): env required")))
 	require.False(t, helmRenderNeedsNoFiles(errors.New(`error calling include: template: no template "e2e.labels" associated with template "gotpl"`)))
 	require.True(t, helmRenderNeedsNoFiles(errors.New("error calling index: index of untyped nil")))
+	require.True(t, helmRenderNeedsNoFiles(errors.New("wrong type for value; expected string; got interface {}")))
 	require.False(t, helmRenderNeedsNoFiles(errors.New("wrong type for value; expected bool; got string")),
 		"an unexpected failure still asks for the chart's files")
 	require.False(t, helmRenderNeedsNoFiles(nil))
@@ -537,12 +562,12 @@ func TestFilterHelmGeneratedLines(t *testing.T) {
 	// Rendered Helm split content that resembles real scanner output.
 	// Line 1: empty
 	// Line 2: # Source: … (Helm-generated)
-	// Line 3: # KICS_HELM_ID_2: (scanner-injected)
+	// Line 3: # KICS_HELM_ID_0_2: (scanner-injected)
 	// Line 4: apiVersion: apps/v1
 	// Line 5: kind: Deployment
 	// Line 6: # some user comment
 	// Line 7: metadata:
-	renderedContent := []byte("\n# Source: dsm-demo/templates/deployment.yaml\n# KICS_HELM_ID_2:\napiVersion: apps/v1\nkind: Deployment\n# some user comment\nmetadata:\n")
+	renderedContent := []byte("\n# Source: dsm-demo/templates/deployment.yaml\n# KICS_HELM_ID_0_2:\napiVersion: apps/v1\nkind: Deployment\n# some user comment\nmetadata:\n")
 
 	tests := []struct {
 		name        string
@@ -600,10 +625,10 @@ func TestFilterHelmGeneratedLines_DDIacScanCommentKept(t *testing.T) {
 	// Content where the dd-iac-scan directive appears alongside generated headers.
 	// Line 1: empty
 	// Line 2: # Source: chart/templates/deploy.yaml
-	// Line 3: # KICS_HELM_ID_0:
+	// Line 3: # KICS_HELM_ID_0_0:
 	// Line 4: # dd-iac-scan ignore-block
 	// Line 5: apiVersion: apps/v1
-	content := []byte("\n# Source: chart/templates/deploy.yaml\n# KICS_HELM_ID_0:\n# dd-iac-scan ignore-block\napiVersion: apps/v1\n")
+	content := []byte("\n# Source: chart/templates/deploy.yaml\n# KICS_HELM_ID_0_0:\n# dd-iac-scan ignore-block\napiVersion: apps/v1\n")
 
 	// Suppose processBlock added lines 4 and 5 (not 2 and 3, since it anchors to
 	// apiVersion.Line and apiVersion.Line-1). But even if 2 and 3 were included,

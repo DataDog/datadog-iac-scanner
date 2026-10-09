@@ -313,11 +313,12 @@ func (s *FileSystemSourceProvider) ReleaseContentCache() {
 	}
 }
 
-// BuildInventoryFromPrebuilt renders Helm charts and filters pre-collected paths.
+// BuildInventoryFromPrebuilt renders Helm charts on chartPool and filters
+// pre-collected paths.
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
-	extensions model.Extensions,
+	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	renderedRoots := renderChartsShallowFirst(ctx, s.chartRoots, chartFn)
+	renderedRoots := renderChartsShallowFirst(ctx, s.chartRoots, chartPool, chartFn)
 
 	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
 	for _, path := range s.prebuiltPaths {
@@ -448,20 +449,99 @@ func IsNestedRenderedChart(root string, renderedRoots []string) bool {
 // renderChartsShallowFirst calls chartFn for each chart root, parents before
 // their subcharts, skipping a subchart once its parent rendered it. It returns
 // the roots chartFn reported as rendered, the set whose Helm files are then
-// withheld from the parsers (see IsHelmChartFile).
-func renderChartsShallowFirst(ctx context.Context, roots []string,
+// withheld from the parsers (see IsHelmChartFile). Charts of one wave run on
+// pool, so chartFn may be called from several goroutines at once.
+func renderChartsShallowFirst(ctx context.Context, roots []string, pool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) []string {
 	renderedRoots := make([]string, 0, len(roots))
-	for _, root := range chartRootsShallowFirst(roots) {
-		normRoot := toSlash(root)
-		if IsNestedRenderedChart(normRoot, renderedRoots) {
-			continue
+	for _, wave := range chartRootWaves(roots) {
+		pending := make([]string, 0, len(wave))
+		for _, root := range wave {
+			if !IsNestedRenderedChart(root, renderedRoots) {
+				pending = append(pending, root)
+			}
 		}
-		if chartFn(ctx, normRoot) {
-			renderedRoots = append(renderedRoots, normRoot)
+		rendered := make([]bool, len(pending))
+		_ = utils.ForEach(ctx, pending, pool,
+			func(ctx context.Context, root string, i int) error {
+				rendered[i] = renderChart(ctx, chartFn, root)
+				return nil
+			})
+		for i, root := range pending {
+			if rendered[i] {
+				renderedRoots = append(renderedRoots, root)
+			}
 		}
 	}
 	return renderedRoots
+}
+
+// renderChart calls chartFn for the chart at root. A panic in it is logged and
+// leaves the chart unrendered, so its raw files are still scanned. Every chart
+// is rendered through here, whether on a pool, where a panic would otherwise
+// escape every recover, or during a directory walk.
+func renderChart(ctx context.Context, chartFn func(ctx context.Context, chartPath string) (rendered bool),
+	root string) (rendered bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			utils.HandlePanic(ctx, r, fmt.Sprintf("Recovered from panic while rendering Helm chart '%s'", root))
+			rendered = false
+		}
+	}()
+	return chartFn(ctx, root)
+}
+
+// chartRootWaves groups the slash-normalized chart roots, shallow-first, by
+// how many other roots enclose them. Roots in one wave never enclose each
+// other, so they render concurrently, and every enclosing root is in an
+// earlier wave, so whether it rendered is known before its subcharts start.
+func chartRootWaves(roots []string) [][]string {
+	sorted := make([]string, 0, len(roots))
+	seen := make(map[string]struct{}, len(roots))
+	for _, root := range chartRootsShallowFirst(roots) {
+		root = toSlash(root)
+		if _, dup := seen[root]; !dup {
+			seen[root] = struct{}{}
+			sorted = append(sorted, root)
+		}
+	}
+	depths := make(map[string]int, len(sorted))
+	var waves [][]string
+	for _, root := range sorted {
+		depth := enclosingRootDepth(root, depths) + 1
+		depths[root] = depth
+		for len(waves) <= depth {
+			waves = append(waves, nil)
+		}
+		waves[depth] = append(waves[depth], root)
+	}
+	return waves
+}
+
+// enclosingRootDepth is the wave of the nearest root enclosing root, -1 for
+// none. Enclosing roots are shorter, so they already have a depth.
+func enclosingRootDepth(root string, depths map[string]int) int {
+	if root == "." {
+		return -1
+	}
+	dir := root
+	for {
+		slash := strings.LastIndexByte(dir, '/')
+		switch {
+		case slash > 0:
+			dir = dir[:slash]
+		case slash == 0 && dir != "/":
+			dir = "/"
+		default:
+			dir = "."
+		}
+		if depth, ok := depths[dir]; ok {
+			return depth
+		}
+		if dir == "." || dir == "/" {
+			return -1
+		}
+	}
 }
 
 func chartRootsShallowFirst(roots []string) []string {
@@ -470,7 +550,10 @@ func chartRootsShallowFirst(roots []string) []string {
 	}
 	sorted := append([]string(nil), roots...)
 	sort.Slice(sorted, func(i, j int) bool {
-		return len(sorted[i]) < len(sorted[j])
+		if len(sorted[i]) != len(sorted[j]) {
+			return len(sorted[i]) < len(sorted[j])
+		}
+		return sorted[i] < sorted[j]
 	})
 	return sorted
 }
@@ -504,11 +587,13 @@ func (s *FileSystemSourceProvider) isPathExcluded(path string) (bool, error) {
 }
 
 // WalkInventory collects matching files, calling chartFn at each Helm chart root.
+// The analyzer-prebuilt inventory renders charts on chartPool (see
+// renderChartsShallowFirst); a directory walk calls chartFn as it goes.
 func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
-	extensions model.Extensions,
+	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
 	if len(s.prebuiltPaths) > 0 {
-		return s.BuildInventoryFromPrebuilt(ctx, extensions, chartFn)
+		return s.BuildInventoryFromPrebuilt(ctx, extensions, chartPool, chartFn)
 	}
 	var files []InventoryFile
 
@@ -532,7 +617,7 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 
 		walkErr := s.walkDirectory(ctx, scanPath, extensions,
 			func(ctx context.Context, path string, resolved *[]string) error {
-				if chartFn(ctx, toSlash(path)) {
+				if renderChart(ctx, chartFn, toSlash(path)) {
 					*resolved = append(*resolved, path)
 				}
 				return nil

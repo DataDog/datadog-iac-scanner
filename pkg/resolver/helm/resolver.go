@@ -3,15 +3,15 @@ package helm
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -39,30 +39,24 @@ type splitManifest struct {
 	original            []byte
 	splitID             string
 	sourceDocumentIndex int
-	helmInvocation      model.ResourceLine
+	helmInvocations     model.HelmInvocations
 	splitIDMap          map[int]interface{}
 	isCRD               bool
 }
 
-const (
-	kicsHelmID         = "# KICS_HELM_ID_"
-	kicsHelmInvocation = "# KICS_HELM_INVOCATION_"
-)
-
-var (
-	helmInvocationMarkerPattern = regexp.MustCompile(`^# KICS_HELM_INVOCATION_(\d+)_(\d+):$`)
-	helmInvocationLinePattern   = regexp.MustCompile(`(?m)^[ \t]*# KICS_HELM_INVOCATION_\d+_\d+:[^\r\n]*(?:\r?\n|$)`)
-)
+// dependenciesDirName is the chart subdirectory Helm loads subcharts from.
+const dependenciesDirName = "charts"
 
 // Resolve will render the passed helm chart and return its content ready for parsing
-func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.ResolvedFiles, error) {
+func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model.ResolvedFiles, err error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("Resolving Helm files")
-	// handle panic during resolve process
+	// A panic is reported as an error, which the caller logs: an empty result
+	// with no error would read as a chart that rendered to nothing, and its raw
+	// templates would be withheld.
 	defer func() {
-		if r := recover(); r != nil {
-			errMessage := "Recovered from panic during resolve of file " + filePath
-			masterUtils.HandlePanic(ctx, r, errMessage)
+		if p := recover(); p != nil {
+			resolved, err = model.ResolvedFiles{}, fmt.Errorf("panic during resolve of %s: %v", filePath, p)
 		}
 	}()
 	fsys := r.filesystem()
@@ -77,7 +71,8 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 		Excluded: excluded,
 	}
 	contextLogger.Debug().Msgf("Processing %d helm manifest splits from chart '%s'", len(*splits), filePath)
-	for _, split := range *splits {
+	for i := range *splits {
+		split := &(*splits)[i]
 		sourceKey := chartSourceKey(split.path)
 		chartRelative, ok := chartRelativeFromSource(sourceKey)
 		if !ok {
@@ -90,7 +85,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (model.Resolved
 			OriginalData:        split.original,
 			SplitID:             split.splitID,
 			SourceDocumentIndex: split.sourceDocumentIndex,
-			HelmInvocation:      split.helmInvocation,
+			HelmInvocations:     split.helmInvocations,
 			IDInfo:              split.splitIDMap,
 			IsCRD:               split.isCRD,
 		})
@@ -126,24 +121,76 @@ func chartYAMLDeclaresLibrary(data []byte) bool {
 	return meta.Type == "library"
 }
 
+// maxMarkerRetries bounds how many templates are rendered again without
+// invocation markers before the whole chart is.
+const maxMarkerRetries = 3
+
+// yamlParseErrorRE matches Helm's report of a rendered manifest it cannot
+// parse, which names the template that produced it.
+var yamlParseErrorRE = regexp.MustCompile(`YAML parse error on (.+?): `)
+
+// yamlParseErrorTemplate returns the template Helm could not parse the output
+// of, when err says so.
+func yamlParseErrorTemplate(err error) (template string, ok bool) {
+	if err == nil {
+		return "", false
+	}
+	m := yamlParseErrorRE.FindStringSubmatch(err.Error())
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
 // renderHelm will use helm library to render helm charts
 func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest, []string, error) {
 	contextLogger := logger.FromContext(ctx)
-	client := newClient(ctx)
 	contextLogger.Debug().Msg("Running helm install")
-	manifest, loadedChart, excluded, err := runInstall(ctx, path, fsys, client, &values.Options{})
+	manifest, loadedChart, stamped, excluded, err := renderWithMarkers(ctx, fsys, path)
 	if err != nil {
 		return nil, []string{}, err
 	}
-	splitted, err := splitManifestYAML(manifest, loadedChart)
-	if err != nil {
-		return nil, []string{}, err
-	}
-	return splitted, excluded, nil
+	return splitManifestYAML(manifest, loadedChart, stamped), excluded, nil
 }
 
-// splitManifestYAML will split the rendered file and return its content by template as well as the template path
-func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]splitManifest, error) {
+// renderWithMarkers renders the chart with invocation markers. A marker is a
+// comment line, which ends a plain multi-line value an include continues, so
+// it can make a template's output unparseable. A marker must never cost a
+// chart its render: each marked template Helm fails to parse is rendered again
+// without markers, as it was before they existed, and the chart gives up all of
+// them only when that does not settle it. A template that had no marker is
+// broken by itself, and its error is returned at once.
+func renderWithMarkers(ctx context.Context, fsys vfs.FS, path string) (
+	*release.Release, *chart.Chart, stampedSources, []string, error,
+) {
+	contextLogger := logger.FromContext(ctx)
+	unmarked := map[string]bool{}
+	for attempt := 0; ; attempt++ {
+		marks := newInvocationMarks()
+		marks.unmarked = unmarked
+		manifest, loadedChart, stamped, excluded, err := runInstall(
+			ctx, path, fsys, newClient(ctx), &values.Options{}, marks)
+		template, parseErr := yamlParseErrorTemplate(err)
+		if !parseErr || (marks.seen[template] && !marks.marked[template]) {
+			return manifest, loadedChart, stamped, excluded, err
+		}
+		// A template the stamping never saw, as when Helm names a subchart by an
+		// alias, cannot be left unmarked on its own.
+		if !marks.seen[template] || attempt >= maxMarkerRetries {
+			break
+		}
+		unmarked[template] = true
+		contextLogger.Debug().Msgf("Rendering chart '%s' again without invocation markers in template '%s'", path, template)
+	}
+	contextLogger.Debug().Msgf("Rendering chart '%s' again without any invocation marker", path)
+	return runInstall(ctx, path, fsys, newClient(ctx), &values.Options{}, &invocationMarks{none: true})
+}
+
+// splitManifestYAML will split the rendered file and return its content by template as well as the template path.
+// stamped gives the template sources from before invocation markers were added (see setID).
+func splitManifestYAML(
+	template *release.Release, loadedChart *chart.Chart, stamped stampedSources,
+) *[]splitManifest {
 	sourceChart := loadedChart
 	if sourceChart == nil {
 		sourceChart = template.Chart
@@ -152,7 +199,7 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 	sources = updateName(sources, sourceChart, sourceChart.Name())
 	var splitedManifest []splitManifest
 	splitedSource := splitHelmManifest(template.Manifest)
-	sourceData := indexSources(sources)
+	sourceData := indexSources(sources, stamped)
 	sourceDocumentIndices := make(map[string]int)
 	var lastSource string
 	for _, splited := range splitedSource {
@@ -182,12 +229,15 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 		if source == nil {
 			continue
 		}
-		helmInvocation, _ := parseHelmInvocation(splited)
-		splited = helmInvocationLinePattern.ReplaceAllString(splited, "")
-		if err := source.ensureIDMap(); err != nil {
-			return nil, err
+		marked := hasInvocationMarker(splited)
+		invocations := parseHelmInvocations(splited)
+		splited = removeInvocationMarkers(splited)
+		if marked && onlySourceHeader(splited) {
+			// Markers alone after a separator that ends an include's output.
+			continue
 		}
-		splitID := firstHelmMarker(splited)
+		source.ensureIDMap()
+		splitID := helmmarker.FirstID(splited)
 		sourceDocumentIndex := sourceDocumentIndices[sourceKey]
 		if !source.isCRD || splitID != "" || strings.EqualFold(filepath.Ext(sourcePath), ".json") {
 			sourceDocumentIndices[sourceKey]++
@@ -198,16 +248,15 @@ func splitManifestYAML(template *release.Release, loadedChart *chart.Chart) (*[]
 			original:            source.original,
 			splitID:             splitID,
 			sourceDocumentIndex: sourceDocumentIndex,
-			helmInvocation:      helmInvocation,
+			helmInvocations:     invocations,
 			splitIDMap:          source.idMap,
 			isCRD:               source.isCRD,
 		})
 	}
-	return &splitedManifest, nil
+	return &splitedManifest
 }
 
 func splitHelmManifest(manifest string) []string {
-	manifest = propagateHelmInvocationMarkers(manifest)
 	manifests := releaseutil.SplitManifests(manifest)
 	keys := make([]string, 0, len(manifests))
 	for key := range manifests {
@@ -220,43 +269,6 @@ func splitHelmManifest(manifest string) []string {
 		splits = append(splits, "\n"+manifests[key]+"\n")
 	}
 	return splits
-}
-
-// propagateHelmInvocationMarkers keeps the executed invocation attached when a
-// single include emits multiple YAML documents. A new Helm source header or a
-// new invocation marker ends the previous marker's scope.
-func propagateHelmInvocationMarkers(manifest string) string {
-	lines := strings.Split(manifest, "\n")
-	result := make([]string, 0, len(lines))
-	activeMarker := ""
-	for index, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "# Source: ") {
-			activeMarker = ""
-		}
-		if helmInvocationMarkerPattern.MatchString(trimmed) {
-			activeMarker = trimmed
-		}
-
-		result = append(result, line)
-		if activeMarker != "" && isYAMLDocumentBoundary(trimmed) &&
-			shouldPropagateHelmInvocation(lines[index+1:]) {
-			result = append(result, activeMarker)
-		}
-	}
-	return strings.Join(result, "\n")
-}
-
-func shouldPropagateHelmInvocation(lines []string) bool {
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		return !strings.HasPrefix(trimmed, "# Source: ") &&
-			!helmInvocationMarkerPattern.MatchString(trimmed)
-	}
-	return false
 }
 
 // parseManifestSource extracts the Helm # Source header from a manifest split.
@@ -281,33 +293,76 @@ func parseManifestSource(split string) (source string, ok bool) {
 	return "", false
 }
 
-func firstHelmMarker(content string) string {
-	index := strings.Index(content, kicsHelmID)
-	if index < 0 {
-		return ""
+// parseHelmInvocations returns the invocation markers of a rendered document
+// in order, each with the line it emits once the marker lines are removed and
+// the position of its action in the source template as written.
+func parseHelmInvocations(content string) model.HelmInvocations {
+	if !hasInvocationMarker(content) {
+		return nil
 	}
-	lineStart := strings.LastIndexByte(content[:index], '\n') + 1
-	lineEnd := strings.IndexByte(content[index:], '\n')
-	if lineEnd < 0 {
-		return content[lineStart:]
-	}
-	return content[lineStart : index+lineEnd]
-}
-
-func parseHelmInvocation(content string) (model.ResourceLine, bool) {
+	var invocations model.HelmInvocations
+	var open []int
+	printed := map[int]bool{}
+	kept := 0
 	for _, line := range strings.Split(content, "\n") {
-		match := helmInvocationMarkerPattern.FindStringSubmatch(strings.TrimSpace(line))
-		if match == nil {
+		if rest, end := strings.CutPrefix(strings.TrimLeft(line, " \t"), invocationEnd); end {
+			// The end and the line break before it go: rest joins the line before.
+			if len(open) > 0 {
+				invocations[open[len(open)-1]].RenderedEnd = kept + 1
+				open = open[:len(open)-1]
+			}
+			if kept > 0 || rest == "" {
+				continue
+			}
+			line = rest
+		}
+		marker, ok := parseInvocationMarker(line)
+		if !ok {
+			kept++
+			if strings.TrimSpace(line) != "" {
+				for _, i := range open {
+					printed[i] = true
+				}
+			}
 			continue
 		}
-		lineNumber, lineErr := strconv.Atoi(match[1])
-		col, colErr := strconv.Atoi(match[2])
-		if lineErr != nil || colErr != nil {
-			return model.ResourceLine{}, false
-		}
-		return model.ResourceLine{Line: lineNumber, Col: col}, true
+		open = append(open, len(invocations))
+		invocations = append(invocations, model.HelmInvocationAt{
+			RenderedLine: kept + 1,
+			Position:     model.ResourceLine{Line: marker.Line, Col: marker.Col},
+		})
 	}
-	return model.ResourceLine{}, false
+	// An invocation that printed only blank lines emitted nothing of the
+	// document, and one inside the output of another is not in this template.
+	emitting := make(model.HelmInvocations, 0, len(invocations))
+	for i, invocation := range invocations {
+		if (printed[i] || invocation.RenderedEnd == 0) && !nestedInvocation(invocations[:i], invocation) {
+			emitting = append(emitting, invocation)
+		}
+	}
+	if len(emitting) == 0 {
+		return nil
+	}
+	return emitting
+}
+
+func nestedInvocation(before model.HelmInvocations, invocation model.HelmInvocationAt) bool {
+	for _, outer := range before {
+		if invocation.RenderedLine < outer.RenderedEnd {
+			return true
+		}
+	}
+	return false
+}
+
+func onlySourceHeader(document string) bool {
+	for _, line := range strings.Split(document, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "# Source: ") {
+			return false
+		}
+	}
+	return true
 }
 
 func looksLikeManifest(split string) bool {
@@ -351,23 +406,18 @@ type sourceMetadata struct {
 	idMapPrepared bool
 }
 
-func (s *sourceMetadata) ensureIDMap() error {
+func (s *sourceMetadata) ensureIDMap() {
 	if s.idMapPrepared {
-		return nil
+		return
 	}
-	idMap, err := getIDMap(s.original)
-	if err != nil {
-		return err
-	}
-	s.idMap = idMap
+	s.idMap = getIDMap(s.original)
 	s.idMapPrepared = true
-	return nil
 }
 
-func indexSources(files []*chart.File) map[string]*sourceMetadata {
+func indexSources(files []*chart.File, stamped stampedSources) map[string]*sourceMetadata {
 	sources := make(map[string]*sourceMetadata, len(files))
 	for _, file := range files {
-		original := stripHelmInvocationActions(file.Data)
+		original := stamped.of(file)
 		if bytes.IndexByte(original, '\r') >= 0 {
 			original = bytes.ReplaceAll(original, []byte{'\r'}, nil)
 		}
@@ -377,15 +427,6 @@ func indexSources(files []*chart.File) map[string]*sourceMetadata {
 		}
 	}
 	return sources
-}
-
-func stripHelmInvocationActions(source []byte) []byte {
-	return templateActionRE.ReplaceAllFunc(source, func(action []byte) []byte {
-		if bytes.Contains(action, []byte(kicsHelmInvocation)) {
-			return nil
-		}
-		return action
-	})
 }
 
 func isCRDSourcePath(name string) bool {
@@ -398,7 +439,7 @@ func isCRDSourcePath(name string) bool {
 		switch parts[index] {
 		case crdDirName:
 			return index+1 < len(parts)
-		case "charts":
+		case dependenciesDirName:
 			index += 2
 		default:
 			return false
@@ -425,28 +466,24 @@ func updateName(template []*chart.File, charts *chart.Chart, name string) []*cha
 		})
 	}
 	for _, dep := range charts.Dependencies() {
-		template = updateName(template, dep, helmChartPath(name, "charts"))
+		template = updateName(template, dep, helmChartPath(name, dependenciesDirName))
 	}
 	return template
 }
 
 // getIdMap will construct a map with ids with the corresponding lines as keys
 // for use in detector
-func getIDMap(originalData []byte) (map[int]interface{}, error) {
+func getIDMap(originalData []byte) map[int]interface{} {
 	ids := make(map[int]interface{})
 	idHelm := -1
 	lineRange := model.HelmIDLineRange{Start: 1, End: 0}
 	for line, stringLine := range strings.Split(string(originalData), "\n") {
-		if strings.Contains(stringLine, kicsHelmID) {
-			id, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(stringLine, kicsHelmID), ":"))
-			if err != nil {
-				return nil, err
-			}
+		if id, ok := helmmarker.ParseIDLine(stringLine); ok {
 			if idHelm != -1 {
 				lineRange.End = line - 1
 				ids[idHelm] = lineRange
 			}
-			idHelm = id
+			idHelm = id.Line
 			lineRange = model.HelmIDLineRange{Start: line, End: line}
 		} else if idHelm != -1 {
 			lineRange.End = line
@@ -454,5 +491,5 @@ func getIDMap(originalData []byte) (map[int]interface{}, error) {
 	}
 	ids[idHelm] = lineRange
 
-	return ids, nil
+	return ids
 }

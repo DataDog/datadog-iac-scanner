@@ -118,6 +118,19 @@ func TestApplyDeterministicSubstitutions(t *testing.T) {
 			contains: `"ddscan0001"`,
 			absent:   "randBytes",
 		},
+		// A "}}" inside a string literal does not end the action, so what follows it is still code.
+		{
+			name:     "call after a quoted action delimiter is substituted",
+			input:    "name: {{ printf \"}}\" (randAlphaNum 8) }}\n",
+			contains: `"ddscan0001"`,
+			absent:   "randAlphaNum",
+		},
+		{
+			name:     "call inside a literal holding an action delimiter is kept",
+			input:    "name: {{ printf \"}} randAlphaNum 8\" }}\n",
+			contains: "randAlphaNum 8",
+			absent:   "ddscan",
+		},
 		// Helm template comments — must not be modified.
 		{
 			name:     "Helm comment block not substituted",

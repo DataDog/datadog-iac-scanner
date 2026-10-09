@@ -13,9 +13,12 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -866,7 +869,7 @@ func TestWalkInventoryTofuShadowing(t *testing.T) {
 
 	noChart := func(context.Context, string) bool { return false }
 	extensions := model.Extensions{".tf": {}, ".tofu": {}, ".tf.json": {}, ".tofu.json": {}}
-	files, err := fs.WalkInventory(ctx, extensions, noChart)
+	files, err := fs.WalkInventory(ctx, extensions, utils.PoolOptions{}, noChart)
 	require.NoError(t, err)
 
 	paths := make([]string, 0, len(files))
@@ -898,7 +901,7 @@ func TestWalkInventoryPrebuiltTofuShadowing(t *testing.T) {
 
 	noChart := func(context.Context, string) bool { return false }
 	extensions := model.Extensions{".tf": {}, ".tofu": {}}
-	files, err := fs.WalkInventory(ctx, extensions, noChart)
+	files, err := fs.WalkInventory(ctx, extensions, utils.PoolOptions{}, noChart)
 	require.NoError(t, err)
 
 	paths := make([]string, 0, len(files))
@@ -979,4 +982,96 @@ func TestGetSourcesTofuShadowingExplicitFiles(t *testing.T) {
 		require.NoError(t, runErr)
 		require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got, "parallel=%v", parallel)
 	}
+}
+
+func TestChartRootWaves(t *testing.T) {
+	waves := chartRootWaves([]string{
+		"a/charts/sub/charts/leaf", "b", "a/charts/sub", "a", "c\\charts\\x", "c", "b",
+	})
+	require.Equal(t, [][]string{
+		{"a", "b", "c"},
+		{"c/charts/x", "a/charts/sub"},
+		{"a/charts/sub/charts/leaf"},
+	}, waves)
+	require.Equal(t, [][]string{{"."}, {"charts/sub", "deploy/app"}}, chartRootWaves([]string{"charts/sub", ".", "deploy/app"}))
+	require.Equal(t, [][]string{{"/r/a", "/r/b"}, {"/r/a/charts/x"}},
+		chartRootWaves([]string{"/r/a/charts/x", "/r/b", "/r/a"}))
+	require.Empty(t, chartRootWaves(nil))
+}
+
+// Charts render concurrently, yet a subchart is still skipped exactly when an
+// enclosing chart rendered it, and a failed parent leaves it to render alone.
+func TestRenderChartsShallowFirst(t *testing.T) {
+	failing := map[string]bool{"b": true}
+	rendered := renderChartsShallowFirst(context.Background(),
+		[]string{"a/charts/sub", "b/charts/sub", "a", "b", "c", "d/nested"}, utils.PoolOptions{CPUBound: true},
+		func(_ context.Context, root string) bool { return !failing[root] })
+	require.ElementsMatch(t, []string{"a", "c", "d/nested", "b/charts/sub"}, rendered)
+}
+
+// A single-worker pool renders one chart at a time, which is what turning the
+// parallel-parsing flag off asks for.
+func TestRenderChartsShallowFirstSequentialPool(t *testing.T) {
+	var running, peak atomic.Int32
+	rendered := renderChartsShallowFirst(context.Background(),
+		[]string{"a", "b", "c", "d"}, utils.PoolOptions{Workers: 1},
+		func(context.Context, string) bool {
+			n := running.Add(1)
+			for {
+				p := peak.Load()
+				if n <= p || peak.CompareAndSwap(p, n) {
+					break
+				}
+			}
+			time.Sleep(time.Millisecond)
+			running.Add(-1)
+			return true
+		})
+	require.ElementsMatch(t, []string{"a", "b", "c", "d"}, rendered)
+	require.Equal(t, int32(1), peak.Load())
+}
+
+// A directory walk renders charts through the same recover as the pool: a
+// chart whose render panics is left unrendered and its raw files are listed.
+func TestWalkInventoryRecoversChartPanic(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	template := filepath.Join(dir, "chart", "templates", "cm.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(template), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "chart", "Chart.yaml"),
+		[]byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"), 0o600))
+	require.NoError(t, os.WriteFile(template, []byte("apiVersion: v1\nkind: ConfigMap\n"), 0o600))
+
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+	require.NoError(t, err)
+	charts := 0
+	var files []InventoryFile
+	require.NotPanics(t, func() {
+		files, err = fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{},
+			func(context.Context, string) bool {
+				charts++
+				panic("boom")
+			})
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, charts)
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.Path)
+	}
+	require.Contains(t, paths, filepath.ToSlash(template))
+}
+
+// A chart whose render panics is left unrendered without taking down the
+// others: renders run on pool goroutines, out of reach of the caller's recover.
+func TestRenderChartsShallowFirstRecoversPanic(t *testing.T) {
+	rendered := renderChartsShallowFirst(context.Background(),
+		[]string{"a", "b", "c"}, utils.PoolOptions{CPUBound: true},
+		func(_ context.Context, root string) bool {
+			if root == "b" {
+				panic("boom")
+			}
+			return true
+		})
+	require.ElementsMatch(t, []string{"a", "c"}, rendered)
 }

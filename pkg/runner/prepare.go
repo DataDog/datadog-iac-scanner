@@ -63,7 +63,7 @@ func SharedMemoryProvider(services []*Service) (*provider.MemorySourceProvider, 
 // are listed (with each chart rendered through chartFn), how their bytes are
 // read, how a file is routed to parsers, and what a chart's outcome records.
 type preparedSource interface {
-	WalkInventory(ctx context.Context, extensions model.Extensions,
+	WalkInventory(ctx context.Context, extensions model.Extensions, chartPool utils.PoolOptions,
 		chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]provider.InventoryFile, error)
 	// chartFailed runs when a chart fails to render; its raw files are scanned instead.
 	chartFailed(chartPath string)
@@ -84,13 +84,15 @@ func PrepareSharedWalk(ctx context.Context,
 	openAPIResolveReferences bool,
 	maxResolverDepth int) error {
 	return prepareSources(ctx, diskSource{fsp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
+		utils.PoolOptions{CPUBound: true},
 		utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers})
 }
 
 // PrepareMemorySources is PrepareSharedWalk over the files the IDE pushed, and
 // the path every server scan takes. A chart that fails to render escalates its
-// directory via the missing set. parallel controls only the file-dispatch
-// concurrency (the --x-parallelparsing flag); charts render in both modes.
+// directory via the missing set. parallel (the --x-parallelparsing flag)
+// controls the concurrency of both chart rendering and file dispatch; charts
+// render in both modes.
 func PrepareMemorySources(ctx context.Context,
 	mp *provider.MemorySourceProvider,
 	services []*Service,
@@ -100,27 +102,29 @@ func PrepareMemorySources(ctx context.Context,
 	parallel bool) error {
 	pool := utils.PoolOptions{CPUBound: true}
 	if !parallel {
-		// The flag is off: sequential dispatch, as the legacy per-service path was.
+		// The flag is off: sequential rendering and dispatch, as the legacy per-service path was.
 		pool = utils.PoolOptions{Workers: 1}
 	}
-	return prepareSources(ctx, memorySource{mp}, services, scanID, openAPIResolveReferences, maxResolverDepth, pool)
+	return prepareSources(ctx, memorySource{mp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
+		pool, pool)
 }
 
 // prepareSources lists src's files, rendering each Helm chart once (parents
 // before their subcharts under charts/, which the parent renders), and hands
 // every listed file to the parsers for its platform. Only a rendered chart's
 // Helm files are withheld from the parsers, never other files under its root.
+// Charts render on chartPool and listed files are dispatched on filePool.
 func prepareSources(ctx context.Context,
 	src preparedSource,
 	services []*Service,
 	scanID string,
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
-	pool utils.PoolOptions) error {
+	chartPool, filePool utils.PoolOptions) error {
 	contextLogger := logger.FromContext(ctx)
 
 	unrendered := &unrenderedHelmCharts{}
-	files, err := src.WalkInventory(ctx, unionExtensions(services),
+	files, err := src.WalkInventory(ctx, unionExtensions(services), chartPool,
 		func(ctx context.Context, chartPath string) bool {
 			return resolveAndStoreChart(ctx, src, services, chartPath, scanID,
 				openAPIResolveReferences, maxResolverDepth, unrendered)
@@ -133,12 +137,13 @@ func prepareSources(ctx context.Context,
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
 
 	routing := buildExtensionRouting(services)
-	return utils.ForEach(ctx, files, pool,
+	return utils.ForEach(ctx, files, filePool,
 		func(ctx context.Context, f provider.InventoryFile, _ int) error {
 			return dispatchFile(ctx, src, routing[f.Ext], f.Path, scanID, openAPIResolveReferences, maxResolverDepth)
 		})
 }
 
+// resolveAndStoreChart renders a chart and stores its files.
 func resolveAndStoreChart(
 	ctx context.Context,
 	src preparedSource,
@@ -147,7 +152,7 @@ func resolveAndStoreChart(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	unrendered *unrenderedHelmCharts,
-) bool {
+) (rendered bool) {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
 		return true
@@ -167,6 +172,15 @@ func resolveAndStoreChart(
 		}
 		return false
 	}
+	// A panic while storing leaves documents already stored: the chart still
+	// counts as rendered, so its raw templates are not scanned on top of them.
+	defer func() {
+		if r := recover(); r != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Error().Msgf("panic storing the resolved files of chart %s: %v", chartPath, r)
+			rendered = true
+		}
+	}()
 	routed := services
 	if kind == model.KindHELM {
 		if platform, ok := analyzer.PlatformForKind(kind); ok {

@@ -104,3 +104,29 @@ func TestFileMetadatas(t *testing.T) {
 		require.Equal(t, Documents{Documents: []Document{}}, result)
 	})
 }
+
+func TestHelmInvocationsContaining(t *testing.T) {
+	invocations := HelmInvocations{
+		{RenderedLine: 3, RenderedEnd: 6, Position: ResourceLine{Line: 1}},
+		{RenderedLine: 8, RenderedEnd: 9, Position: ResourceLine{Line: 2}},
+		{RenderedLine: 12, Position: ResourceLine{Line: 4}},
+	}
+	for renderedLine, want := range map[int]int{2: 0, 3: 1, 5: 1, 6: 0, 8: 2, 9: 0, 12: 0, 30: 0} {
+		invocation, ok := invocations.Containing(renderedLine)
+		require.Equal(t, want != 0, ok, "rendered line %d", renderedLine)
+		require.Equal(t, want, invocation.Position.Line, "rendered line %d", renderedLine)
+	}
+	require.True(t, invocations.KnownBefore(11))
+	require.False(t, invocations.KnownBefore(12))
+}
+
+func TestNewHelmAttribution(t *testing.T) {
+	one := HelmInvocations{{RenderedLine: 1, Position: ResourceLine{Line: 4}}}
+
+	require.Nil(t, NewHelmAttribution(nil, "rendered"))
+	require.Equal(t, "rendered", NewHelmAttribution(one, "rendered").RenderedContent)
+
+	var none *HelmAttribution
+	require.Equal(t, ResourceLine{}, none.First())
+	require.Equal(t, 4, NewHelmAttribution(one, "rendered").First().Line)
+}
