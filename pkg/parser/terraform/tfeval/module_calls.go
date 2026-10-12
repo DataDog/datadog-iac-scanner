@@ -147,25 +147,40 @@ func countInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExpan
 }
 
 func forEachInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExpansionPlan {
-	unknown := moduleExpansionPlan{
+	unknown := unknownForEachPlan(ctx)
+	v, diags := attr.Expr.Value(ctx)
+	if diags.HasErrors() || !isForEachCollection(v) {
+		return unknown
+	}
+	if v.LengthInt() == 0 {
+		return moduleExpansionPlan{mode: expansionForEach}
+	}
+	plan, ok := expandForEachPlan(ctx, v)
+	if !ok {
+		return unknown
+	}
+	return plan
+}
+
+func unknownForEachPlan(ctx *hcl.EvalContext) moduleExpansionPlan {
+	return moduleExpansionPlan{
 		instances: []moduleInstance{{ctx: iterationContext(ctx, "each", map[string]cty.Value{
 			"key":   cty.UnknownVal(cty.String),
 			"value": cty.DynamicVal,
 		})}},
 		mode: expansionUnknown,
 	}
-	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() || !ctyutil.Materialized(v) || !v.CanIterateElements() || !v.Length().IsKnown() {
-		return unknown
-	}
-	if v.LengthInt() == 0 {
-		return moduleExpansionPlan{mode: expansionForEach}
+}
+
+func isForEachCollection(v cty.Value) bool {
+	if !ctyutil.Materialized(v) || !v.CanIterateElements() || !v.Length().IsKnown() {
+		return false
 	}
 	t := v.Type()
-	if !t.IsObjectType() && !t.IsMapType() && !t.IsSetType() {
-		return unknown
-	}
+	return t.IsObjectType() || t.IsMapType() || t.IsSetType()
+}
 
+func expandForEachPlan(ctx *hcl.EvalContext, v cty.Value) (moduleExpansionPlan, bool) {
 	requested := v.LengthInt()
 	expandTo := min(requested, maxCountExpansion)
 	// Only walk the full collection when we need every key to pad a truncated shape.
@@ -178,7 +193,7 @@ func forEachInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExp
 	for it := v.ElementIterator(); it.Next(); {
 		key, value := it.Element()
 		if _, ok := ctyutil.ConcreteString(key); !ok {
-			return unknown
+			return moduleExpansionPlan{}, false
 		}
 		if keepKeys {
 			allKeys = append(allKeys, key)
@@ -188,7 +203,9 @@ func forEachInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExp
 				key: key,
 				ctx: iterationContext(ctx, "each", map[string]cty.Value{"key": key, "value": value}),
 			})
-		} else if !keepKeys {
+			continue
+		}
+		if !keepKeys {
 			break
 		}
 	}
@@ -197,7 +214,7 @@ func forEachInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExp
 		mode:        expansionForEach,
 		requested:   requested,
 		forEachKeys: allKeys,
-	}
+	}, true
 }
 
 func iterationContext(ctx *hcl.EvalContext, name string, attrs map[string]cty.Value) *hcl.EvalContext {

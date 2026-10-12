@@ -1170,60 +1170,20 @@ func (e *Evaluator) expandForEachInstances(
 		return nil, false
 	}
 	fv, diags := feAttr.Expr.Value(evalCtx)
-	if !diags.HasErrors() && fv.IsKnown() && !fv.IsNull() {
-		t := fv.Type()
-		if t.IsObjectType() || t.IsMapType() || t.IsSetType() {
-			total := fv.LengthInt()
-			if total == 0 {
-				return nil, true
-			}
-			truncated := total > maxCountExpansion
-			if truncated {
-				e.noteCountExpansionTruncated(ctx, "for_each", address, total, maxCountExpansion)
-			}
-			// Only walk the full collection when we need every key to pad a truncated shape.
-			needKeys := truncated && total <= maxExpansionShape
-			expandTo := min(total, maxCountExpansion)
-			out := make([]ResolvedResource, 0, expandTo)
-			var allKeys []string
-			if needKeys {
-				allKeys = make([]string, 0, total)
-			}
-			for it := fv.ElementIterator(); it.Next(); {
-				k, kv := it.Element()
-				keyStr := "__"
-				if s, ok := ctyutil.ConcreteString(k); ok {
-					keyStr = s
-				}
-				if needKeys {
-					allKeys = append(allKeys, keyStr)
-				}
-				if len(out) < expandTo {
-					child := evalCtx.NewChild()
-					child.Variables = map[string]cty.Value{
-						"each": cty.ObjectVal(map[string]cty.Value{
-							"key":   k,
-							"value": kv,
-						}),
-					}
-					res := makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child)
-					if truncated {
-						res.ExpansionTruncated = true
-						res.ExpansionTotal = total
-					}
-					out = append(out, res)
-				} else if !needKeys {
-					break
-				}
-			}
-			if needKeys {
-				for i := range out {
-					out[i].ExpansionKeys = allKeys
-				}
-			}
-			return out, true
-		}
+	if diags.HasErrors() || !isForEachCollection(fv) {
+		return []ResolvedResource{unknownForEachResource(resName, evalCtx, makeOne)}, true
 	}
+	if fv.LengthInt() == 0 {
+		return nil, true
+	}
+	return e.expandKnownForEachResources(ctx, fv, resName, address, evalCtx, makeOne), true
+}
+
+func unknownForEachResource(
+	resName string,
+	evalCtx *hcl.EvalContext,
+	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+) ResolvedResource {
 	child := evalCtx.NewChild()
 	child.Variables = map[string]cty.Value{
 		"each": cty.ObjectVal(map[string]cty.Value{
@@ -1231,7 +1191,75 @@ func (e *Evaluator) expandForEachInstances(
 			"value": cty.UnknownVal(cty.DynamicPseudoType),
 		}),
 	}
-	return []ResolvedResource{makeOne(resName, child)}, true
+	return makeOne(resName, child)
+}
+
+func (e *Evaluator) expandKnownForEachResources(
+	ctx context.Context,
+	fv cty.Value,
+	resName, address string,
+	evalCtx *hcl.EvalContext,
+	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+) []ResolvedResource {
+	total := fv.LengthInt()
+	truncated := total > maxCountExpansion
+	if truncated {
+		e.noteCountExpansionTruncated(ctx, "for_each", address, total, maxCountExpansion)
+	}
+	// Only walk the full collection when we need every key to pad a truncated shape.
+	needKeys := truncated && total <= maxExpansionShape
+	expandTo := min(total, maxCountExpansion)
+	out := make([]ResolvedResource, 0, expandTo)
+	var allKeys []string
+	if needKeys {
+		allKeys = make([]string, 0, total)
+	}
+	for it := fv.ElementIterator(); it.Next(); {
+		k, kv := it.Element()
+		keyStr := "__"
+		if s, ok := ctyutil.ConcreteString(k); ok {
+			keyStr = s
+		}
+		if needKeys {
+			allKeys = append(allKeys, keyStr)
+		}
+		if len(out) < expandTo {
+			out = append(out, makeForEachResource(resName, keyStr, k, kv, evalCtx, makeOne, truncated, total))
+			continue
+		}
+		if !needKeys {
+			break
+		}
+	}
+	if needKeys {
+		for i := range out {
+			out[i].ExpansionKeys = allKeys
+		}
+	}
+	return out
+}
+
+func makeForEachResource(
+	resName, keyStr string,
+	key, value cty.Value,
+	evalCtx *hcl.EvalContext,
+	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+	truncated bool,
+	total int,
+) ResolvedResource {
+	child := evalCtx.NewChild()
+	child.Variables = map[string]cty.Value{
+		"each": cty.ObjectVal(map[string]cty.Value{
+			"key":   key,
+			"value": value,
+		}),
+	}
+	res := makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child)
+	if truncated {
+		res.ExpansionTruncated = true
+		res.ExpansionTotal = total
+	}
+	return res
 }
 
 // injectResourceRefs sets evalCtx.Variables[type][name] from resources; returns true if changed.
