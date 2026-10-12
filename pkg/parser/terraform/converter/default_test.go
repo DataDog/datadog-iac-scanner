@@ -15,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
@@ -487,7 +488,7 @@ block "test" {
 		require.Contains(t, gotValue, "upper")
 	})
 
-	t.Run("function_call_returning_non_string_wraps", func(t *testing.T) {
+	t.Run("function_call_returning_non_string_interpolates", func(t *testing.T) {
 		input := `
 block "test" {
   name = "prefix-${length("hello")}"
@@ -501,12 +502,11 @@ block "test" {
 		require.NoError(t, err)
 
 		blockDoc := body["block"].(model.Document)["test"].(model.Document)
-		gotValue := fmt.Sprintf("%v", blockDoc["name"])
-		require.Contains(t, gotValue, "length")
+		require.Equal(t, "prefix-5", blockDoc["name"])
 	})
 }
 
-func TestEvalFunction(t *testing.T) { //nolint
+func TestConvertRendersUnresolved(t *testing.T) { //nolint
 	type funcTest struct {
 		name    string
 		input   string
@@ -555,7 +555,7 @@ block "label_one" {
 			wantErr: false,
 		},
 		{
-			name: "should evaluate after mocking variable",
+			name: "should render unresolved references inside jsonencode",
 			input: `
 block "label_one" {
 	policy = jsonencode({
@@ -586,7 +586,7 @@ block "label_one" {
 						"_dd_line": 6
 					  }
 					},
-					"policy": "{\"Id\":\"aws.meuId\"}",
+					"policy": "{\"Id\":\"${aws.meuId}\"}",
 					"some_number": 3
 				  }
 				}
@@ -616,7 +616,10 @@ block "label_one" {
 				  "aws_iam_policy_document": {
 					"blabla": {
 					  "statement": {
-						"resources": "${[\n\t\tfor s in [\n\t\t  \"DATABASE_READONLY_PASSWORD\",\n\t\t  \"DATABASE_DATA_PASSWORD\",\n\t\t] : \"arn:aws:secretsmanager:eu-west-1:${data.aws_caller_identity.this.account_id}:secret:/${var.env}/*/${s}-*\"\n\t  ]}",
+						"resources": [
+						  "arn:aws:secretsmanager:eu-west-1:${data.aws_caller_identity.this.account_id}:secret:/${var.env}/*/DATABASE_READONLY_PASSWORD-*",
+						  "arn:aws:secretsmanager:eu-west-1:${data.aws_caller_identity.this.account_id}:secret:/${var.env}/*/DATABASE_DATA_PASSWORD-*"
+						],
 						"actions": [
 						  "secretsmanager:GetSecretValue"
 						],
@@ -704,7 +707,7 @@ block "label_one" {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			file, _ := hclsyntax.ParseConfig([]byte(tt.input), "testFileName", hcl.Pos{Byte: 0, Line: 1, Column: 1})
-			c := converter{bytes: file.Bytes}
+			c := newConverter(file.Bytes, nil, functions.TerraformFuncs)
 			got, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 			fmt.Println(err)
 			require.True(t, (err != nil) == tt.wantErr)
@@ -861,7 +864,7 @@ variable "region" {
 				"test3": 3,
 				"test1": "hello",
 				"test2": 5,
-				"temp": "${1 + 2} %{if local.test2 \u003c 3}\"4\n\"%{endif}"
+				"temp": "3 %{if local.test2 \u003c 3}\"4\n\"%{endif}"
 			},
 			{
 				"other": {
