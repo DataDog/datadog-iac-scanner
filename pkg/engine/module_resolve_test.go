@@ -338,18 +338,19 @@ func TestResolveModuleDocuments_TruncatedCountKeepsSourceBlock(t *testing.T) {
 	root := t.TempDir()
 	rootDir := filepath.Join(root, "stack")
 	modDir := filepath.Join(root, "modules", "buckets")
+	cap := tfeval.MaxCountExpansion()
 
 	rootFile := writeFile(t, rootDir, "main.tf", `
 module "buckets" {
   source = "../modules/buckets"
 }
 `)
-	modFile := writeFile(t, modDir, "main.tf", `
+	modFile := writeFile(t, modDir, "main.tf", fmt.Sprintf(`
 resource "aws_s3_bucket" "replica" {
-  count  = 12
+  count  = %d
   bucket = "bucket-${count.index}"
 }
-`)
+`, cap+2))
 
 	files := model.FileMetadatas{
 		fileMeta("root-id", rootFile),
@@ -360,8 +361,8 @@ resource "aws_s3_bucket" "replica" {
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed")
 	}
-	if len(res.docs) != 10 {
-		t.Fatalf("expected 10 instantiated docs for truncated count, got %d", len(res.docs))
+	if len(res.docs) != cap {
+		t.Fatalf("expected %d instantiated docs for truncated count, got %d", cap, len(res.docs))
 	}
 	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
 		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)

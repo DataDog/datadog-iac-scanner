@@ -42,8 +42,12 @@ const (
 	localsMaxPasses = 10
 	// resourceRefPasses caps passes that install same-module resource attrs for refs.
 	resourceRefPasses = 3
-	// maxCountExpansion caps instances per count/for_each block.
-	maxCountExpansion = 10
+	// maxCountExpansion caps instances per count/for_each block (resources and modules).
+	maxCountExpansion = 50
+	// maxExpansionShape is the largest truncated count/for_each collection we will
+	// materialize with unknown tails so length() and missing keys stay honest.
+	// Beyond this, the whole ref becomes unknown instead of allocating a huge shape.
+	maxExpansionShape = 512
 	// defaultMaxInstantiated is the last-resort cap on resources one scan may
 	// instantiate, counted over the whole scan rather than per root: the documents
 	// an instantiated resource turns into are retained until the scan ends. A cap
@@ -85,6 +89,11 @@ type ResolvedResource struct {
 	// ExpansionTruncated is set when count/for_each produced more instances than
 	// maxCountExpansion; the source block must stay in the scan for the rest.
 	ExpansionTruncated bool
+	// ExpansionTotal is the full count/for_each size when ExpansionTruncated.
+	ExpansionTotal int
+	// ExpansionKeys is every for_each key when truncated and within
+	// maxExpansionShape, so ref injection can pad omitted keys as unknown.
+	ExpansionKeys []string
 }
 
 // CallSite records one hop in a module call chain.
@@ -236,6 +245,9 @@ func (e *Evaluator) SetMaxInstantiated(n int) { e.maxInstantiated = n }
 
 // MaxInstantiated reports the per-scan instantiation budget.
 func MaxInstantiated() int { return defaultMaxInstantiated }
+
+// MaxCountExpansion reports the per-block count/for_each instance cap.
+func MaxCountExpansion() int { return maxCountExpansion }
 
 // InstantiatedCount reports how many module resources have been charged against
 // the scan-wide retained-document budget.
@@ -474,7 +486,7 @@ func (e *Evaluator) evaluate(
 	evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
 	scope := &ModuleScope{Locals: localExprs, Bodies: bodies, Var: evalCtx.Variables["var"]}
 
-	if !e.preinjectResourceRefs(resourceBlocks, moduleBlocks, localExprs, evalCtx, addr, chain) {
+	if !e.preinjectResourceRefs(ctx, resourceBlocks, moduleBlocks, localExprs, evalCtx, addr, chain) {
 		return nil, nil, e.skipEvaluation(dir)
 	}
 
@@ -590,6 +602,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 }
 
 func (e *Evaluator) preinjectResourceRefs(
+	ctx context.Context,
 	resourceBlocks, moduleBlocks []*hclsyntax.Block,
 	localExprs map[string]hclsyntax.Expression,
 	evalCtx *hcl.EvalContext,
@@ -600,7 +613,7 @@ func (e *Evaluator) preinjectResourceRefs(
 		return true
 	}
 	resources, complete := e.evalResourceBlocks(
-		resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+		ctx, resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
 	)
 	if !complete {
 		return false
@@ -620,7 +633,7 @@ func (e *Evaluator) evaluateRootResources(
 	chain []CallSite,
 ) ([]ResolvedResource, error) {
 	resources, complete := e.rootResourcesWithRefPasses(
-		resourceBlocks, localExprs, evalCtx, addr, chain,
+		ctx, resourceBlocks, localExprs, evalCtx, addr, chain,
 	)
 	if !complete {
 		return nil, e.skipEvaluation(dir)
@@ -798,68 +811,48 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	}
 
 	for _, mb := range moduleBlocks {
-		label := blockLabel(mb)
-		if label == "" {
-			continue
-		}
-		source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], evalCtx)
-		if source == "" {
-			continue
-		}
-
-		version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], evalCtx)
-		childDir, childPackageRoot, ok := e.resolveModuleDir(
-			ctx, dir, packageRoot, source, version, mb.TypeRange.Filename, label,
-		)
+		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
 		if !ok {
 			continue
 		}
-
-		if isLiteralZero(mb.Body.Attributes["count"], evalCtx) {
-			continue
+		plan := moduleInstances(mb, evalCtx)
+		if plan.truncated() {
+			// The instances left out have no synthetic document standing in
+			// for them, so the module must also be scanned as written.
+			_ = e.skipEvaluation(call.dir)
 		}
-		if isEmptyCollection(mb.Body.Attributes["for_each"], evalCtx) {
-			continue
-		}
+		site := call.site(scope)
+		outs := make([]cty.Value, len(plan.instances))
+		for i, instance := range plan.instances {
+			modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
+			childAddr := instance.address(addr, call.label)
+			childChain := append(cloneChain(chain), site)
+			instancesBefore := len(e.instances)
 
-		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
-
-		site := CallSite{
-			ModuleName:      label,
-			Source:          source,
-			Version:         version,
-			CalledFrom:      mb.TypeRange.Filename,
-			CalledLine:      mb.TypeRange.Start.Line,
-			CalledEndLine:   mb.Range().End.Line,
-			CalledColumn:    mb.TypeRange.Start.Column,
-			CalledEndColumn: mb.Range().End.Column,
-			Body:            mb.Body,
-			Caller:          scope,
-		}
-		childAddr := joinAddr(addr, "module."+label)
-		childChain := append(cloneChain(chain), site)
-		instancesBefore := len(e.instances)
-
-		childRes, childOuts, cErr := e.evaluate(
-			ctx, childDir, rootDir, childPackageRoot, modInputs, childAddr,
-			childChain, depth+1, visiting, allVisited,
-		)
-		if cErr != nil {
-			if isReportableModuleEvalError(cErr) {
-				contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", label, childDir, cErr)
+			childRes, childOuts, cErr := e.evaluate(
+				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
+				childChain, depth+1, visiting, allVisited,
+			)
+			if cErr != nil {
+				if isReportableModuleEvalError(cErr) {
+					contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, cErr)
+				}
+				// Deliberately not added to allVisited: the module was not resolved, so
+				// it must keep being scanned where it is written.
+				e.instances = e.instances[:instancesBefore]
+				continue
 			}
-			// Deliberately not added to allVisited: the module was not resolved, so
-			// it must keep being scanned where it is written.
-			e.instances = e.instances[:instancesBefore]
-			continue
+			e.recordModuleInstance(call.dir, childAddr, childChain)
+			allVisited[call.dir] = true
+			childResources = append(childResources, childRes...)
+			outs[i] = objectOrEmpty(childOuts)
 		}
-		e.recordModuleInstance(childDir, childAddr, childChain)
-		allVisited[childDir] = true
-		childResources = append(childResources, childRes...)
-		moduleOutputs[label] = objectOrEmpty(childOuts)
-		// Update evalCtx so the next sibling's modInputs can reference this
-		// module's now-resolved outputs (e.g. module.B.x = module.A.output).
-		evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
+		if value, ok := moduleOutputsValue(plan, outs); ok {
+			moduleOutputs[call.label] = value
+			// Update evalCtx so the next sibling's modInputs can reference this
+			// module's now-resolved outputs (e.g. module.B.x = module.A.output).
+			evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
+		}
 	}
 	return childResources, moduleOutputs
 }
@@ -889,6 +882,7 @@ func (e *Evaluator) resolveModuleDir(
 }
 
 func (e *Evaluator) rootResourcesWithRefPasses(
+	ctx context.Context,
 	resourceBlocks []*hclsyntax.Block,
 	localExprs map[string]hclsyntax.Expression,
 	evalCtx *hcl.EvalContext,
@@ -902,7 +896,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	for pass := 0; pass < resourceRefPasses; pass++ {
 		var complete bool
 		rootResources, complete = e.evalResourceBlocks(
-			resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+			ctx, resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
 		)
 		if !complete {
 			return nil, false
@@ -927,7 +921,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	// (e.g. the Nth resource in an A→B→C→D chain whose evalCtx was updated after the
 	// last evalResourceBlocks call).
 	return e.evalResourceBlocks(
-		resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
+		ctx, resourceBlocks, evalCtx, addr, chain, e.remainingInstantiationBudget(),
 	)
 }
 
@@ -989,6 +983,7 @@ func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
 
 // evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
 func (e *Evaluator) evalResourceBlocks(
+	ctx context.Context,
 	resourceBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	addr string,
@@ -997,7 +992,7 @@ func (e *Evaluator) evalResourceBlocks(
 ) ([]ResolvedResource, bool) {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
-		expanded := e.expandResourceBlock(rb, evalCtx, addr, chain)
+		expanded := e.expandResourceBlock(ctx, rb, evalCtx, addr, chain)
 		if limit >= 0 {
 			e.noteBudgetDemand(e.maxInstantiated - limit + len(resources) + len(expanded))
 			if len(resources)+len(expanded) > limit {
@@ -1012,6 +1007,7 @@ func (e *Evaluator) evalResourceBlocks(
 // expandResourceBlock emits zero, one, or N instances per block; known count/for_each
 // get count.index / each.* in a child context; unknown expansion uses one placeholder instance.
 func (e *Evaluator) expandResourceBlock(
+	ctx context.Context,
 	rb *hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	addr string,
@@ -1021,18 +1017,19 @@ func (e *Evaluator) expandResourceBlock(
 		return nil
 	}
 	typeName, resName := rb.Labels[0], rb.Labels[1]
+	address := joinAddr(addr, typeName+"."+resName)
 
-	makeOne := func(name string, ctx *hcl.EvalContext) ResolvedResource {
+	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
 		// Only attribution of module resources reads the iteration, so the
 		// instances of the root module do not keep it.
 		var iteration map[string]cty.Value
-		if ctx != evalCtx && addr != "" {
-			iteration = ctx.Variables
+		if child != evalCtx && addr != "" {
+			iteration = child.Variables
 		}
 		return ResolvedResource{
 			Type:          typeName,
 			Name:          name,
-			Attributes:    e.evalBody(rb.Body, ctx, nil),
+			Attributes:    e.evalBody(rb.Body, child, nil),
 			Body:          rb.Body,
 			Iteration:     iteration,
 			DefinedIn:     rb.TypeRange.Filename,
@@ -1045,18 +1042,19 @@ func (e *Evaluator) expandResourceBlock(
 		}
 	}
 
-	if out, ok := e.expandCountInstances(rb, resName, evalCtx, makeOne); ok {
+	if out, ok := e.expandCountInstances(ctx, rb, resName, address, evalCtx, makeOne); ok {
 		return out
 	}
-	if out, ok := e.expandForEachInstances(rb, resName, evalCtx, makeOne); ok {
+	if out, ok := e.expandForEachInstances(ctx, rb, resName, address, evalCtx, makeOne); ok {
 		return out
 	}
 	return []ResolvedResource{makeOne(resName, evalCtx)}
 }
 
 func (e *Evaluator) expandCountInstances(
+	ctx context.Context,
 	rb *hclsyntax.Block,
-	resName string,
+	resName, address string,
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
 ) ([]ResolvedResource, bool) {
@@ -1073,11 +1071,8 @@ func (e *Evaluator) expandCountInstances(
 		if n <= 0 {
 			return nil, true
 		}
-		nExpand := n
+		nExpand := min(n, maxCountExpansion)
 		truncated := n > maxCountExpansion
-		if nExpand > maxCountExpansion {
-			nExpand = maxCountExpansion
-		}
 		out := make([]ResolvedResource, 0, nExpand)
 		for i := 0; i < nExpand; i++ {
 			child := evalCtx.NewChild()
@@ -1087,7 +1082,10 @@ func (e *Evaluator) expandCountInstances(
 				}),
 			}
 			res := makeOne(fmt.Sprintf("%s[%d]", resName, i), child)
-			res.ExpansionTruncated = truncated
+			if truncated {
+				res.ExpansionTruncated = true
+				res.ExpansionTotal = n
+			}
 			out = append(out, res)
 		}
 		return out, true
@@ -1102,8 +1100,9 @@ func (e *Evaluator) expandCountInstances(
 }
 
 func (e *Evaluator) expandForEachInstances(
+	ctx context.Context,
 	rb *hclsyntax.Block,
-	resName string,
+	resName, address string,
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
 ) ([]ResolvedResource, bool) {
@@ -1115,29 +1114,50 @@ func (e *Evaluator) expandForEachInstances(
 	if !diags.HasErrors() && fv.IsKnown() && !fv.IsNull() {
 		t := fv.Type()
 		if t.IsObjectType() || t.IsMapType() || t.IsSetType() {
-			if fv.LengthInt() == 0 {
+			total := fv.LengthInt()
+			if total == 0 {
 				return nil, true
 			}
-			out := make([]ResolvedResource, 0)
-			total := fv.LengthInt()
 			truncated := total > maxCountExpansion
-			i := 0
-			for it := fv.ElementIterator(); it.Next() && i < maxCountExpansion; i++ {
+			// Only walk the full collection when we need every key to pad a truncated shape.
+			needKeys := truncated && total <= maxExpansionShape
+			expandTo := min(total, maxCountExpansion)
+			out := make([]ResolvedResource, 0, expandTo)
+			var allKeys []string
+			if needKeys {
+				allKeys = make([]string, 0, total)
+			}
+			for it := fv.ElementIterator(); it.Next(); {
 				k, kv := it.Element()
 				keyStr := "__"
 				if s, ok := ctyutil.ConcreteString(k); ok {
 					keyStr = s
 				}
-				child := evalCtx.NewChild()
-				child.Variables = map[string]cty.Value{
-					"each": cty.ObjectVal(map[string]cty.Value{
-						"key":   k,
-						"value": kv,
-					}),
+				if needKeys {
+					allKeys = append(allKeys, keyStr)
 				}
-				res := makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child)
-				res.ExpansionTruncated = truncated
-				out = append(out, res)
+				if len(out) < expandTo {
+					child := evalCtx.NewChild()
+					child.Variables = map[string]cty.Value{
+						"each": cty.ObjectVal(map[string]cty.Value{
+							"key":   k,
+							"value": kv,
+						}),
+					}
+					res := makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child)
+					if truncated {
+						res.ExpansionTruncated = true
+						res.ExpansionTotal = total
+					}
+					out = append(out, res)
+				} else if !needKeys {
+					break
+				}
+			}
+			if needKeys {
+				for i := range out {
+					out[i].ExpansionKeys = allKeys
+				}
 			}
 			return out, true
 		}
@@ -1155,12 +1175,15 @@ func (e *Evaluator) expandForEachInstances(
 // injectResourceRefs sets evalCtx.Variables[type][name] from resources; returns true if changed.
 // Count-expanded resources are exposed as ordered tuples so that x[0].attr resolves correctly;
 // for_each-expanded resources as keyed objects so that x["k"].attr resolves correctly.
+// Truncated expansions keep the full requested shape with unknown values for omitted instances.
 func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) bool {
 	type instBucket struct {
 		keys     []string
 		attrs    []map[string]cty.Value
 		isCount  bool
 		expanded bool // true when any instance has brackets (count or for_each)
+		total    int
+		allKeys  []string
 	}
 	byType := make(map[string]map[string]*instBucket)
 	for i := range resources {
@@ -1178,6 +1201,10 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 		}
 		b.keys = append(b.keys, key)
 		b.attrs = append(b.attrs, r.Attributes)
+		if r.ExpansionTruncated && r.ExpansionTotal > b.total {
+			b.total = r.ExpansionTotal
+			b.allKeys = r.ExpansionKeys
+		}
 	}
 	if len(byType) == 0 {
 		return false
@@ -1186,7 +1213,7 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 	for typeName, nameMap := range byType {
 		typeAttrs := make(map[string]cty.Value, len(nameMap))
 		for baseName, b := range nameMap {
-			typeAttrs[baseName] = buildInstanceCtyVal(b.keys, b.attrs, b.isCount, b.expanded)
+			typeAttrs[baseName] = buildInstanceCtyVal(b.keys, b.attrs, b.isCount, b.expanded, b.total, b.allKeys)
 		}
 		newVal := cty.ObjectVal(typeAttrs)
 		if existing, ok := evalCtx.Variables[typeName]; !ok || !existing.RawEquals(newVal) {
@@ -1200,10 +1227,14 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 // buildInstanceCtyVal converts grouped resource instances into the cty value used for ref injection.
 // Non-expanded resources become plain objects. Count resources become ordered tuples (x[0]).
 // For_each resources become keyed objects (x["key"]), including the empty-string key case.
-func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCount, expanded bool) cty.Value {
+// When total > len(keys), omitted instances are unknown so length()/missing keys stay honest.
+func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCount, expanded bool, total int, allKeys []string) cty.Value {
 	if !expanded {
 		// Plain (non-indexed) resource: expose as a simple attribute object.
 		return objectOrEmpty(attrsSlice[0])
+	}
+	if total > maxExpansionShape {
+		return cty.DynamicVal
 	}
 	if isCount {
 		type indexed struct {
@@ -1216,15 +1247,27 @@ func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCou
 			items[i] = indexed{n, attrsSlice[i]}
 		}
 		sort.Slice(items, func(i, j int) bool { return items[i].i < items[j].i })
-		elems := make([]cty.Value, len(items))
-		for i, item := range items {
-			elems[i] = objectOrEmpty(item.attrs)
+		n := len(items)
+		if total > n {
+			n = total
+		}
+		elems := make([]cty.Value, n)
+		for i := range elems {
+			elems[i] = cty.DynamicVal
+		}
+		for _, item := range items {
+			if item.i >= 0 && item.i < len(elems) {
+				elems[item.i] = objectOrEmpty(item.attrs)
+			}
 		}
 		return cty.TupleVal(elems)
 	}
 	// for_each: expose as object keyed by string keys so x["key"].attr resolves.
 	// Empty-string keys ("") are valid Terraform for_each keys and are kept.
-	kvs := make(map[string]cty.Value, len(keys))
+	kvs := make(map[string]cty.Value, max(len(keys), len(allKeys)))
+	for _, k := range allKeys {
+		kvs[k] = cty.DynamicVal
+	}
 	for i, k := range keys {
 		kvs[k] = objectOrEmpty(attrsSlice[i])
 	}
@@ -1384,48 +1427,26 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		tmpVisiting[k] = v
 	}
 	for _, mb := range moduleBlocks {
-		label := blockLabel(mb)
-		if label == "" {
-			continue
-		}
-		source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], evalCtx)
-		if source == "" {
-			continue
-		}
-		version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], evalCtx)
-		childDir, childPackageRoot, ok := e.resolveModuleDir(
-			ctx, dir, packageRoot, source, version, mb.TypeRange.Filename, label,
-		)
+		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
 		if !ok {
 			continue
 		}
-		if isLiteralZero(mb.Body.Attributes["count"], evalCtx) {
-			continue
+		plan := moduleInstances(mb, evalCtx) // prepass: no truncation accounting
+		site := call.site(scope)
+		outs := make([]cty.Value, len(plan.instances))
+		for i, instance := range plan.instances {
+			modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
+			childChain := append(cloneChain(chain), site)
+			_, childOuts, err := e.evaluate(
+				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
+				depth+1, tmpVisiting, map[string]bool{},
+			)
+			if err == nil {
+				outs[i] = objectOrEmpty(childOuts)
+			}
 		}
-		if isEmptyCollection(mb.Body.Attributes["for_each"], evalCtx) {
-			continue
-		}
-		modInputs := e.evalBody(mb.Body, evalCtx, reservedModuleAttrs)
-		site := CallSite{
-			ModuleName:      label,
-			Source:          source,
-			Version:         version,
-			CalledFrom:      mb.TypeRange.Filename,
-			CalledLine:      mb.TypeRange.Start.Line,
-			CalledEndLine:   mb.Range().End.Line,
-			CalledColumn:    mb.TypeRange.Start.Column,
-			CalledEndColumn: mb.Range().End.Column,
-			Body:            mb.Body,
-			Caller:          scope,
-		}
-		childAddr := joinAddr(addr, "module."+label)
-		childChain := append(cloneChain(chain), site)
-		_, childOuts, _ := e.evaluate(
-			ctx, childDir, rootDir, childPackageRoot, modInputs, childAddr, childChain,
-			depth+1, tmpVisiting, map[string]bool{},
-		)
-		if len(childOuts) > 0 {
-			out[label] = objectOrEmpty(childOuts)
+		if value, ok := moduleOutputsValue(plan, outs); ok {
+			out[call.label] = value
 			// Make each module's outputs visible to subsequent siblings within this
 			// same pre-pass loop, so their inputs resolve to the same values that the
 			// main evaluation loop will compute — this keeps cache keys consistent.
