@@ -12,6 +12,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -1538,26 +1540,397 @@ resource "google_sql_database_instance" "dynamic" {
 	}
 
 	dynamicResource := findResource(t, resources, "google_sql_database_instance", "dynamic")
-	dynamic := dynamicResource.Attributes["dynamic"]
-	if !dynamic.Type().IsObjectType() {
-		t.Fatalf("dynamic = %s, want an object", dynamic.Type().FriendlyName())
+	if _, ok := dynamicResource.Attributes["dynamic"]; ok {
+		t.Fatal("dynamic blocks must be expanded into the blocks they generate")
 	}
-	ipConfiguration := dynamic.GetAttr("ip_configuration")
+	ipConfiguration := dynamicResource.Attributes["ip_configuration"]
 	if !ipConfiguration.Type().IsTupleType() || ipConfiguration.LengthInt() != 2 {
-		t.Fatalf("dynamic.ip_configuration = %s (len %d), want a 2-tuple",
+		t.Fatalf("ip_configuration = %s (len %d), want a 2-tuple",
 			ipConfiguration.Type().FriendlyName(), ipConfiguration.LengthInt())
 	}
-	if !dynamic.GetAttr("backup_configuration").Type().IsObjectType() {
-		t.Fatalf("dynamic.backup_configuration = %s, want an object",
-			dynamic.GetAttr("backup_configuration").Type().FriendlyName())
+	backup := dynamicResource.Attributes["backup_configuration"]
+	if !backup.Type().IsObjectType() || !backup.GetAttr("enabled").True() {
+		t.Fatalf("backup_configuration = %#v, want an object with enabled = true", backup)
 	}
 
 	doc := AttributesToDocument(&dynamicResource)
-	dynamicDoc := doc["dynamic"].(map[string]interface{})
-	ipConfigurationDoc := dynamicDoc["ip_configuration"].([]interface{})
-	firstContent := ipConfigurationDoc[0].(map[string]interface{})["content"].(map[string]interface{})
-	if got := firstContent["private_network"]; got != "${var.private_network}" {
+	ipConfigurationDoc := doc["ip_configuration"].([]interface{})
+	first := ipConfigurationDoc[0].(map[string]interface{})
+	if got := first["private_network"]; got != "${var.private_network}" {
 		t.Fatalf("private_network = %#v, want source reference", got)
+	}
+	if got := ipConfigurationDoc[1].(map[string]interface{})["ipv4_enabled"]; got != false {
+		t.Fatalf("ipv4_enabled = %#v, want false", got)
+	}
+}
+
+func TestEvaluateModule_DynamicBlocks(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+variable "rules" {
+  default = {
+    ssh   = { port = 22, cidr = "0.0.0.0/0" }
+    https = { port = 443, cidr = "10.0.0.0/8" }
+  }
+}
+variable "unknown_rules" {}
+
+resource "aws_security_group" "sg" {
+  ingress {
+    from_port = 80
+  }
+  dynamic "ingress" {
+    for_each = var.rules
+    iterator = rule
+    content {
+      description = rule.key
+      from_port   = rule.value.port
+      cidr_blocks = [rule.value.cidr]
+    }
+  }
+}
+
+resource "aws_s3_bucket" "nested" {
+  dynamic "lifecycle_rule" {
+    for_each = ["logs"]
+    content {
+      prefix = lifecycle_rule.value
+      dynamic "transition" {
+        for_each = [30, 60]
+        content {
+          days   = transition.value
+          prefix = lifecycle_rule.value
+        }
+      }
+    }
+  }
+  dynamic "logging" {
+    for_each = []
+    content {
+      target_bucket = "never"
+    }
+  }
+}
+
+resource "aws_security_group" "unknown" {
+  dynamic "ingress" {
+    for_each = var.unknown_rules
+    content {
+      from_port = ingress.value.port
+      to_port   = 443
+    }
+  }
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+
+	ingress := findResource(t, resources, "aws_security_group", "sg").Attributes["ingress"]
+	if !ingress.Type().IsTupleType() || ingress.LengthInt() != 3 {
+		t.Fatalf("ingress = %#v, want the static block and two generated ones", ingress)
+	}
+	elems := ingress.AsValueSlice()
+	if got := elems[0].GetAttr("from_port"); !got.RawEquals(cty.NumberIntVal(80)) {
+		t.Fatalf("static ingress from_port = %#v, want 80 first", got)
+	}
+	https := elems[1]
+	if got := https.GetAttr("description"); !got.RawEquals(cty.StringVal("https")) {
+		t.Fatalf("generated ingress description = %#v, want https (sorted key order)", got)
+	}
+	if got := https.GetAttr("cidr_blocks"); !got.RawEquals(cty.TupleVal([]cty.Value{cty.StringVal("10.0.0.0/8")})) {
+		t.Fatalf("generated ingress cidr_blocks = %#v", got)
+	}
+
+	nested := findResource(t, resources, "aws_s3_bucket", "nested")
+	if _, ok := nested.Attributes["logging"]; ok {
+		t.Fatal("a dynamic block over an empty collection must generate nothing")
+	}
+	rule := nested.Attributes["lifecycle_rule"]
+	if got := rule.GetAttr("prefix"); !got.RawEquals(cty.StringVal("logs")) {
+		t.Fatalf("lifecycle_rule.prefix = %#v, want logs", got)
+	}
+	transitions := rule.GetAttr("transition")
+	if !transitions.Type().IsTupleType() || transitions.LengthInt() != 2 {
+		t.Fatalf("transition = %#v, want two generated blocks", transitions)
+	}
+	second := transitions.AsValueSlice()[1]
+	if !second.GetAttr("days").RawEquals(cty.NumberIntVal(60)) ||
+		!second.GetAttr("prefix").RawEquals(cty.StringVal("logs")) {
+		t.Fatalf("transition[1] = %#v, want days 60 reading the outer iterator", second)
+	}
+
+	unknown := findResource(t, resources, "aws_security_group", "unknown")
+	if _, ok := unknown.Attributes["ingress"]; ok {
+		t.Fatal("a dynamic block over an unknown collection may generate nothing and must be kept as written")
+	}
+	content := unknown.Attributes["dynamic"].GetAttr("ingress").GetAttr("content")
+	if got := content.GetAttr("to_port"); !got.RawEquals(cty.NumberIntVal(443)) {
+		t.Fatalf("dynamic.ingress.content.to_port = %#v, want 443", got)
+	}
+	doc := AttributesToDocument(&unknown)
+	rawContent := doc["dynamic"].(map[string]interface{})["ingress"].(map[string]interface{})["content"]
+	if got := rawContent.(map[string]interface{})["from_port"]; got != "${ingress.value.port}" {
+		t.Fatalf("dynamic.ingress.content.from_port = %#v, want its source reference", got)
+	}
+}
+
+// A static block next to a dynamic block of the same type that generates none
+// still maps back to its own source.
+func TestAttributesToDocument_StaticBlockBesideEmptyDynamic(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_security_group" "sg" {
+  ingress {
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+  dynamic "ingress" {
+    for_each = []
+    content {
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	sg := findResource(t, resources, "aws_security_group", "sg")
+	doc := AttributesToDocument(&sg)
+	ingress, ok := doc["ingress"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("ingress = %#v, want the static block alone", doc["ingress"])
+	}
+	cidrs := ingress["cidr_blocks"].([]interface{})
+	if len(cidrs) != 1 || cidrs[0] != "${aws_vpc.main.cidr_block}" {
+		t.Fatalf("cidr_blocks = %#v, want the static block's source reference", cidrs)
+	}
+}
+
+// A static block followed by a dynamic block of the same type that generates
+// several elements maps every element back to its own source.
+func TestAttributesToDocument_StaticBlockBesideExpandedDynamic(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_security_group" "sg" {
+  ingress {
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+  dynamic "ingress" {
+    for_each = ["a", "b"]
+    content {
+      cidr_blocks = [aws_vpc.other.cidr_block]
+    }
+  }
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	sg := findResource(t, resources, "aws_security_group", "sg")
+	doc := AttributesToDocument(&sg)
+	ingress, ok := doc["ingress"].([]interface{})
+	if !ok || len(ingress) != 3 {
+		t.Fatalf("ingress = %#v, want the static block and two generated ones", doc["ingress"])
+	}
+	want := []string{"${aws_vpc.main.cidr_block}", "${aws_vpc.other.cidr_block}", "${aws_vpc.other.cidr_block}"}
+	for i, block := range ingress {
+		cidrs := block.(map[string]interface{})["cidr_blocks"].([]interface{})
+		if len(cidrs) != 1 || cidrs[0] != want[i] {
+			t.Fatalf("ingress[%d].cidr_blocks = %#v, want %q", i, cidrs, want[i])
+		}
+	}
+}
+
+// Several dynamic blocks of one type among static blocks map every element to
+// the block that generated it, even when the counts add up by coincidence.
+func TestAttributesToDocument_SeveralDynamicBlocksMapToTheirOwnSources(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_security_group" "sg" {
+  ingress {
+    cidr_blocks = [aws_vpc.static_one.cidr_block]
+  }
+  dynamic "ingress" {
+    for_each = []
+    content {
+      cidr_blocks = [aws_vpc.empty.cidr_block]
+    }
+  }
+  ingress {
+    cidr_blocks = [aws_vpc.static_two.cidr_block]
+  }
+  dynamic "ingress" {
+    for_each = ["a", "b"]
+    content {
+      cidr_blocks = [aws_vpc.generated.cidr_block]
+    }
+  }
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	sg := findResource(t, resources, "aws_security_group", "sg")
+	doc := AttributesToDocument(&sg)
+	ingress, ok := doc["ingress"].([]interface{})
+	if !ok || len(ingress) != 4 {
+		t.Fatalf("ingress = %#v, want four blocks", doc["ingress"])
+	}
+	want := []string{
+		"${aws_vpc.static_one.cidr_block}",
+		"${aws_vpc.static_two.cidr_block}",
+		"${aws_vpc.generated.cidr_block}",
+		"${aws_vpc.generated.cidr_block}",
+	}
+	for i, block := range ingress {
+		cidrs := block.(map[string]interface{})["cidr_blocks"].([]interface{})
+		if len(cidrs) != 1 || cidrs[0] != want[i] {
+			t.Fatalf("ingress[%d].cidr_blocks = %#v, want %q", i, cidrs, want[i])
+		}
+	}
+}
+
+// A nested dynamic block that generates a different number of blocks under each
+// element of its parent keeps every generated block mapped to its source.
+func TestAttributesToDocument_NestedDynamicWithVaryingCountsKeepsSources(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_s3_bucket" "b" {
+  dynamic "rule" {
+    for_each = { one = ["x"], two = ["y", "z"] }
+    content {
+      dynamic "transition" {
+        for_each = rule.value
+        content {
+          target = aws_vpc.main.id
+        }
+      }
+    }
+  }
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	b := findResource(t, resources, "aws_s3_bucket", "b")
+	doc := AttributesToDocument(&b)
+	rules, ok := doc["rule"].([]interface{})
+	if !ok || len(rules) != 2 {
+		t.Fatalf("rule = %#v, want two blocks", doc["rule"])
+	}
+	targets := 0
+	for _, r := range rules {
+		var transitions []interface{}
+		switch tr := r.(map[string]interface{})["transition"].(type) {
+		case []interface{}:
+			transitions = tr
+		case map[string]interface{}:
+			transitions = []interface{}{tr}
+		}
+		for _, tr := range transitions {
+			if got := tr.(map[string]interface{})["target"]; got != "${aws_vpc.main.id}" {
+				t.Fatalf("transition target = %#v, want its source reference", got)
+			}
+			targets++
+		}
+	}
+	if targets != 3 {
+		t.Fatalf("got %d transitions, want 3", targets)
+	}
+}
+
+// A dynamic block whose for_each generates more blocks than the expansion cap
+// is kept as written instead of silently dropping the later ones.
+func TestEvaluateModule_DynamicBlockBeyondCapStaysAsWritten(t *testing.T) {
+	items := make([]string, 101)
+	for i := range items {
+		items[i] = strconv.Itoa(i)
+	}
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": fmt.Sprintf(`
+resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = [%s]
+    content {
+      from_port = ingress.value
+    }
+  }
+}
+`, strings.Join(items, ", ")),
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	sg := findResource(t, resources, "aws_security_group", "sg")
+	if _, expanded := sg.Attributes["ingress"]; expanded {
+		t.Fatalf("ingress was expanded in part: %#v", sg.Attributes["ingress"])
+	}
+	if _, kept := sg.Attributes["dynamic"]; !kept {
+		t.Fatalf("attributes = %#v, want the dynamic block kept as written", sg.Attributes)
+	}
+}
+
+// A dynamic block with labels maps its generated blocks to their sources like a
+// labeled static block does, including when a label equals an attribute name.
+func TestAttributesToDocument_LabeledDynamicBlockKeepsSources(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
+		"main.tf": `
+resource "aws_y" "b" {
+  dynamic "setting" {
+    for_each = ["k", "other", "k"]
+    labels   = [setting.value]
+    content {
+      k    = aws_vpc.main.id
+      name = aws_vpc.other.id
+    }
+  }
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	b := findResource(t, resources, "aws_y", "b")
+	doc := AttributesToDocument(&b)
+	settings, ok := doc["setting"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("setting = %#v, want blocks keyed by label", doc["setting"])
+	}
+	check := func(block interface{}) {
+		t.Helper()
+		m := block.(map[string]interface{})
+		if m["k"] != "${aws_vpc.main.id}" || m["name"] != "${aws_vpc.other.id}" {
+			t.Fatalf("block = %#v, want its source references", m)
+		}
+	}
+	check(settings["other"])
+	switch k := settings["k"].(type) {
+	case []interface{}:
+		for _, block := range k {
+			check(block)
+		}
+	default:
+		check(k)
 	}
 }
 

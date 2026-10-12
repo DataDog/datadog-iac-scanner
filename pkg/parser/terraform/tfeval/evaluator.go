@@ -23,6 +23,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
@@ -94,6 +95,9 @@ type ResolvedResource struct {
 	// ExpansionKeys is every for_each key when truncated and within
 	// maxExpansionShape, so ref injection can pad omitted keys as unknown.
 	ExpansionKeys []string
+	// DynamicCounts is how many blocks each dynamic block of Body generated for
+	// this instance, so generated blocks can be mapped back to their sources.
+	DynamicCounts DynamicCounts
 }
 
 // CallSite records one hop in a module call chain.
@@ -1085,10 +1089,13 @@ func (e *Evaluator) expandResourceBlock(
 		if child != evalCtx && addr != "" {
 			iteration = child.Variables
 		}
+		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
+		attrs := e.evalBodyWith(rb.Body, child, nil, state)
 		return ResolvedResource{
 			Type:          typeName,
 			Name:          name,
-			Attributes:    e.evalBodyMemo(rb.Body, child, memo),
+			Attributes:    attrs,
+			DynamicCounts: state.dynamic.counts,
 			Body:          rb.Body,
 			Iteration:     iteration,
 			DefinedIn:     rb.TypeRange.Filename,
@@ -1448,15 +1455,37 @@ func (e *Evaluator) evalBody(
 	return e.evalBodyWith(body, ctx, skip, nil)
 }
 
-func (e *Evaluator) evalBodyMemo(body *hclsyntax.Body, ctx *hcl.EvalContext, memo *invariantMemo) map[string]cty.Value {
-	return e.evalBodyWith(body, ctx, nil, memo)
+// bodyState carries what evaluating a resource body shares across its nested
+// blocks: the memo of expressions that ignore the iteration, and how many
+// blocks each dynamic block generated.
+type bodyState struct {
+	memo    *invariantMemo
+	dynamic *dynamicRecorder
+}
+
+type dynamicRecorder struct{ counts DynamicCounts }
+
+// withoutMemo shares the dynamic counts but not the memo: the content of a
+// dynamic block reads its own iterator, which differs per generated block.
+func (st *bodyState) withoutMemo() *bodyState {
+	if st == nil {
+		return nil
+	}
+	return &bodyState{dynamic: st.dynamic}
+}
+
+func (st *bodyState) invariants() *invariantMemo {
+	if st == nil {
+		return nil
+	}
+	return st.memo
 }
 
 func (e *Evaluator) evalBodyWith(
 	body *hclsyntax.Body,
 	ctx *hcl.EvalContext,
 	skip map[string]bool,
-	memo *invariantMemo,
+	st *bodyState,
 ) map[string]cty.Value {
 	out := make(map[string]cty.Value, len(body.Attributes)+len(body.Blocks))
 
@@ -1464,12 +1493,16 @@ func (e *Evaluator) evalBodyWith(
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExprMemo(attr.Expr, ctx, memo)
+		out[name] = e.evalExprMemo(attr.Expr, ctx, st.invariants())
 	}
 
 	for _, b := range body.Blocks {
+		if dynamicblock.Is(b) {
+			e.addDynamicBlocks(out, b, ctx, st)
+			continue
+		}
 		path := append([]string{b.Type}, b.Labels...)
-		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, memo)))
+		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st)))
 	}
 	return out
 }
