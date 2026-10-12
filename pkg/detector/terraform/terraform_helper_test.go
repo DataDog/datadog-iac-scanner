@@ -191,7 +191,7 @@ func TestResolveListIndex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fileData := []byte(strings.Join(tt.lines, "\n"))
 
-			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) })
+			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) }, unknownTotal)
 			require.Equal(t, tt.wantContent, content)
 			require.Equal(t, tt.wantLine, line)
 
@@ -387,7 +387,7 @@ func TestResolveListIndexStatementInJsonencodeThirdElement(t *testing.T) {
 	lines := *linesPtr
 	ctx := context.Background()
 	// currentLine 9 = line after `policy =` (0-indexed), same as DetectLine when resolving Statement[2]
-	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) })
+	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) }, unknownTotal)
 	require.Empty(t, sub)
 	// Third tuple element starts at `{` on file line 41 (1-based) -> index 40
 	require.Equal(t, 40, lineNum)

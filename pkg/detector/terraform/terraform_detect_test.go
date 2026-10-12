@@ -12,8 +12,12 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 var OriginalData1 = `resource "aws_s3_bucket" "bucket" {
@@ -1254,4 +1258,100 @@ func TestDetectLineJSONConfigIgnoresUnquotedSubstring(t *testing.T) {
 	}
 	got := (&DetectKindLine{}).DetectLine(context.Background(), file, "acl", 3)
 	require.Equal(t, -1, got.Line)
+}
+
+// An indexed repeated block counts the dynamic blocks generating its type, so
+// the key lands in the block that holds the flagged element.
+func TestDetectLineIndexesDynamicBlocksOfSameType(t *testing.T) {
+	src := `resource "google_sql_database_instance" "x" {
+  settings {
+    dynamic "database_flags" {
+      for_each = ["a"]
+      content {
+        name  = "skip_show_database"
+        value = "on"
+      }
+    }
+
+    dynamic "database_flags" {
+      for_each = ["b"]
+      content {
+        name  = "skip_show_database"
+        value = "off"
+      }
+    }
+  }
+}
+`
+	file := &model.FileMetadata{
+		ScanID:            "t",
+		ID:                "t",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file,
+		`google_sql_database_instance[x].settings.database_flags[1].value`, 3)
+	require.Equal(t, 15, got.Line)
+}
+
+// A dynamic block takes as many slots as its for_each yields: none when empty or
+// unresolved, as the converter then emits no block of the type for it.
+func TestDetectLineDynamicBlockSlotsFollowForEach(t *testing.T) {
+	build := func(dynamic string) string {
+		return "resource \"aws_security_group\" \"sg\" {\n" + dynamic +
+			"  ingress {\n    cidr = \"static\"\n  }\n}\n"
+	}
+	dyn := func(forEach string) string {
+		return "  dynamic \"ingress\" {\n    for_each = " + forEach + "\n    content {\n      cidr = ingress.value\n    }\n  }\n"
+	}
+	tests := []struct {
+		name    string
+		forEach string
+		// wantLines maps the ingress index to the line of its source block.
+		wantLines map[int]int
+	}{
+		{"empty", "[]", map[int]int{0: 9}},
+		{"unresolved", "var.rules", map[int]int{0: 9}},
+		{"two elements", `["a", "b"]`, map[int]int{0: 5, 1: 5, 2: 9}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := build(dyn(tt.forEach))
+			file := &model.FileMetadata{
+				ScanID: "t", ID: "t", Kind: model.KindTerraform,
+				OriginalData: src, LinesOriginalData: utils.SplitLines(src),
+			}
+			for idx, want := range tt.wantLines {
+				key := fmt.Sprintf("aws_security_group[sg].ingress[%d].cidr", idx)
+				got := (&DetectKindLine{}).DetectLine(context.Background(), file, key, 3)
+				require.Equal(t, want, got.Line, key)
+			}
+		})
+	}
+}
+
+// A for_each only the converter could resolve, with the scan's variables, is
+// sized from the document: the dynamic block stands for the blocks it generated.
+func TestDetectLineSizesUnresolvableDynamicBlockFromDocument(t *testing.T) {
+	src := "resource \"aws_security_group\" \"sg\" {\n" +
+		"  dynamic \"ingress\" {\n    for_each = var.rules\n    content {\n      cidr = ingress.value\n    }\n  }\n" +
+		"  ingress {\n    cidr = \"static\"\n  }\n}\n"
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	vars := converter.VariableMap{"var": cty.ObjectVal(map[string]cty.Value{
+		"rules": cty.TupleVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")}),
+	})}
+	doc, err := converter.Convert(context.Background(), file, vars, converter.Options{})
+	require.NoError(t, err)
+
+	meta := &model.FileMetadata{
+		ScanID: "t", ID: "t", Kind: model.KindTerraform, Document: doc,
+		OriginalData: src, LinesOriginalData: utils.SplitLines(src),
+	}
+	for idx, want := range map[int]int{0: 5, 1: 5, 2: 9} {
+		key := fmt.Sprintf("aws_security_group[sg].ingress[%d].cidr", idx)
+		got := (&DetectKindLine{}).DetectLine(context.Background(), meta, key, 3)
+		require.Equal(t, want, got.Line, key)
+	}
 }

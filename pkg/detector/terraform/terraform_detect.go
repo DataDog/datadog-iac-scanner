@@ -100,7 +100,7 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 	parse := func() (*hclsyntax.Body, error) {
 		return d.cachedParseBody(file.OriginalData, file.FilePath)
 	}
-	detection = detectKeyParts(ctx, detection, keyParts, extracted, lines, file.Kind, parse)
+	detection = detectKeyParts(ctx, detection, keyParts, extracted, lines, file.Kind, file.Document, parse)
 
 	if detection.FoundAtLeastOne {
 		line := detection.CurrentLine + 1
@@ -136,6 +136,7 @@ func detectKeyParts(
 	extracted [][]string,
 	lines []string,
 	kind model.FileKind,
+	doc model.Document,
 	parse func() (*hclsyntax.Body, error),
 ) *detector.DefaultDetectLineResponse {
 	var scope *hclsyntax.Block
@@ -143,9 +144,11 @@ func detectKeyParts(
 		scope = searchKeyBlock(body, keyParts, extracted)
 	}
 	inScope := false
+	cursor := newDocCursor(doc, extracted)
 	for _, part := range keyParts {
 		prevLine, prevFound := detection.CurrentLine, detection.FoundAtLeastOne
-		s1, s2, idx := generateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, parse)
+		repeated := cursor.advance(part)
+		s1, s2, idx := generateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, parse, repeated)
 
 		// Jumps to line in case of multiline Array
 		if idx != 0 {
