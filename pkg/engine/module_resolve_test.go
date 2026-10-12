@@ -364,6 +364,12 @@ resource "aws_s3_bucket" "replica" {
 	if len(res.docs) != cap {
 		t.Fatalf("expected %d instantiated docs for truncated count, got %d", cap, len(res.docs))
 	}
+	if res.expansionTruncations == 0 {
+		t.Fatal("expected count expansion truncation to be recorded")
+	}
+	if res.expansionMaxRequested != cap+2 {
+		t.Fatalf("expansionMaxRequested = %d, want %d", res.expansionMaxRequested, cap+2)
+	}
 	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
 		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)
 	}

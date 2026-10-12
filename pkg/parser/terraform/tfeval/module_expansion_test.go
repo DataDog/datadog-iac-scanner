@@ -6,15 +6,18 @@
 package tfeval
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -163,10 +166,16 @@ output "first" { value = module.many[0].name }
 `, requested, requested-1),
 	})
 
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
 	e := New()
-	resources, outputs, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	resources, outputs, _, err := e.EvaluateModule(ctx, stack, nil)
 	require.NoError(t, err)
 	require.Len(t, resources, maxCountExpansion)
+	require.Equal(t, 1, e.ExpansionTruncations())
+	require.Equal(t, requested, e.ExpansionMaxRequested())
+	require.Contains(t, logs.String(), `"count_expansion_cap":`+strconv.Itoa(maxCountExpansion))
+	require.Contains(t, logs.String(), `"requested_instances":`+strconv.Itoa(requested))
 	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(int64(requested))), "length must keep the full requested size, got %#v", outputs["n"])
 	require.True(t, outputs["first"].RawEquals(cty.StringVal("b-0")), "expanded instance outputs stay known")
 	require.False(t, outputs["last"].IsKnown(), "omitted instance outputs must be unknown, got %#v", outputs["last"])

@@ -164,6 +164,11 @@ type Evaluator struct {
 	// stays within the budget.
 	budgetDemand int
 
+	// count/for_each expansion truncation observability (scan-wide on this evaluator).
+	expansionTruncations    int
+	expansionMaxRequested   int
+	expansionTruncationWarn bool
+
 	// notEvaluatedDirs holds every module directory this evaluator declined to
 	// evaluate for depth, cycle or budget. It accumulates for the whole scan
 	// because suppression is decided per directory over all call sites at once:
@@ -317,6 +322,52 @@ func (e *Evaluator) noteBudgetDemand(demand int) {
 	if e.prepassDepth == 0 && demand > e.budgetDemand {
 		e.budgetDemand = demand
 	}
+}
+
+// ExpansionTruncations reports how many count/for_each expansions hit the per-block cap.
+func (e *Evaluator) ExpansionTruncations() int { return e.expansionTruncations }
+
+// ExpansionMaxRequested reports the largest requested instance count seen when truncating.
+func (e *Evaluator) ExpansionMaxRequested() int { return e.expansionMaxRequested }
+
+// AddExpansionStats folds truncation counters from a forked evaluator into e.
+func (e *Evaluator) AddExpansionStats(hits, maxRequested int) {
+	e.expansionTruncations += hits
+	if maxRequested > e.expansionMaxRequested {
+		e.expansionMaxRequested = maxRequested
+	}
+}
+
+// TakeExpansionStats returns and clears truncation counters recorded since the last take.
+func (e *Evaluator) TakeExpansionStats() (hits, maxRequested int) {
+	hits = e.expansionTruncations
+	maxRequested = e.expansionMaxRequested
+	e.expansionTruncations = 0
+	e.expansionMaxRequested = 0
+	e.expansionTruncationWarn = false
+	return hits, maxRequested
+}
+
+func (e *Evaluator) noteCountExpansionTruncated(ctx context.Context, kind, address string, requested, expanded int) {
+	if e.prepassDepth > 0 {
+		return
+	}
+	e.expansionTruncations++
+	if requested > e.expansionMaxRequested {
+		e.expansionMaxRequested = requested
+	}
+	if e.expansionTruncationWarn {
+		return
+	}
+	e.expansionTruncationWarn = true
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Warn().
+		Str("expansion_kind", kind).
+		Str("address", address).
+		Int("requested_instances", requested).
+		Int("expanded_instances", expanded).
+		Int("count_expansion_cap", maxCountExpansion).
+		Msg("tfeval: count/for_each expansion truncated; remaining instances scanned as written")
 }
 
 // TakeNotEvaluatedDirs returns the directories skipped since the last call and
@@ -817,6 +868,11 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 		plan := moduleInstances(mb, evalCtx)
 		if plan.truncated() {
+			kind := "module_count"
+			if plan.mode == expansionForEach {
+				kind = "module_for_each"
+			}
+			e.noteCountExpansionTruncated(ctx, kind, "module."+call.label, plan.requested, len(plan.instances))
 			// The instances left out have no synthetic document standing in
 			// for them, so the module must also be scanned as written.
 			_ = e.skipEvaluation(call.dir)
@@ -1073,6 +1129,9 @@ func (e *Evaluator) expandCountInstances(
 		}
 		nExpand := min(n, maxCountExpansion)
 		truncated := n > maxCountExpansion
+		if truncated {
+			e.noteCountExpansionTruncated(ctx, "count", address, n, nExpand)
+		}
 		out := make([]ResolvedResource, 0, nExpand)
 		for i := 0; i < nExpand; i++ {
 			child := evalCtx.NewChild()
@@ -1119,6 +1178,9 @@ func (e *Evaluator) expandForEachInstances(
 				return nil, true
 			}
 			truncated := total > maxCountExpansion
+			if truncated {
+				e.noteCountExpansionTruncated(ctx, "for_each", address, total, maxCountExpansion)
+			}
 			// Only walk the full collection when we need every key to pad a truncated shape.
 			needKeys := truncated && total <= maxExpansionShape
 			expandTo := min(total, maxCountExpansion)
