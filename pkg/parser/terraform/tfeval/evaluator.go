@@ -1491,6 +1491,9 @@ func (e *Evaluator) evalBody(
 type bodyState struct {
 	memo    *invariantMemo
 	dynamic *dynamicRecorder
+	// iterators are the iterator names of the dynamic blocks enclosing the body
+	// being evaluated; expressions reading one of them vary between blocks.
+	iterators []string
 }
 
 type dynamicRecorder struct {
@@ -1499,8 +1502,9 @@ type dynamicRecorder struct {
 	overflow  []dynamicOverflow
 }
 
-// withoutMemo shares the dynamic counts but not the memo: the content of a
-// dynamic block reads its own iterator, which differs per generated block.
+// withoutMemo shares the dynamic counts but not the memo, for the as-written
+// body of a dynamic block that is not expanded: it reads an iterator that
+// nothing binds there, which is no reason to reuse its value elsewhere.
 func (st *bodyState) withoutMemo() *bodyState {
 	if st == nil {
 		return nil
@@ -1508,11 +1512,14 @@ func (st *bodyState) withoutMemo() *bodyState {
 	return &bodyState{dynamic: st.dynamic}
 }
 
-func (st *bodyState) invariants() *invariantMemo {
+// inDynamic is the state for the content of a dynamic block binding iterator.
+func (st *bodyState) inDynamic(iterator string) *bodyState {
 	if st == nil {
 		return nil
 	}
-	return st.memo
+	names := make([]string, len(st.iterators), len(st.iterators)+1)
+	copy(names, st.iterators)
+	return &bodyState{memo: st.memo, dynamic: st.dynamic, iterators: append(names, iterator)}
 }
 
 func (e *Evaluator) evalBodyWith(
@@ -1527,7 +1534,7 @@ func (e *Evaluator) evalBodyWith(
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExprMemo(attr.Expr, ctx, st.invariants())
+		out[name] = e.evalExprMemo(attr.Expr, ctx, st)
 	}
 
 	for _, b := range body.Blocks {
@@ -1541,9 +1548,9 @@ func (e *Evaluator) evalBodyWith(
 	return out
 }
 
-// invariantMemo reuses the value of expressions that do not read each or
-// count across the instances of one resource block, which share a parent
-// context.
+// invariantMemo reuses the value of expressions that do not read each, count or
+// a dynamic block's iterator across the instances of one resource block and the
+// blocks its dynamic blocks generate, which share a parent context.
 type invariantMemo struct {
 	values map[hclsyntax.Expression]cty.Value
 	varies map[hclsyntax.Expression]bool
@@ -1556,13 +1563,17 @@ func newInvariantMemo() *invariantMemo {
 	}
 }
 
-func (m *invariantMemo) readsIteration(expr hclsyntax.Expression) bool {
+// readsIteration reports whether expr reads each, count, or the iterator of an
+// enclosing dynamic block. An expression sits in one place of the body, so its
+// enclosing iterators, and with them the answer, never change.
+func (m *invariantMemo) readsIteration(expr hclsyntax.Expression, iterators []string) bool {
 	if v, ok := m.varies[expr]; ok {
 		return v
 	}
 	reads := false
 	for _, t := range expr.Variables() {
-		if root := t.RootName(); root == "each" || root == "count" {
+		root := t.RootName()
+		if root == "each" || root == "count" || slices.Contains(iterators, root) {
 			reads = true
 			break
 		}
@@ -1571,15 +1582,15 @@ func (m *invariantMemo) readsIteration(expr hclsyntax.Expression) bool {
 	return reads
 }
 
-func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, memo *invariantMemo) cty.Value {
-	if memo == nil || memo.readsIteration(expr) {
+func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, st *bodyState) cty.Value {
+	if st == nil || st.memo == nil || st.memo.readsIteration(expr, st.iterators) {
 		return e.evalExpr(expr, ctx)
 	}
-	if v, ok := memo.values[expr]; ok {
+	if v, ok := st.memo.values[expr]; ok {
 		return v
 	}
 	v := e.evalExpr(expr, ctx)
-	memo.values[expr] = v
+	st.memo.values[expr] = v
 	return v
 }
 

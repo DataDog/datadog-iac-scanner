@@ -38,7 +38,7 @@ func (e *Evaluator) addDynamicBlocks(out map[string]cty.Value, b *hclsyntax.Bloc
 		child := ctx.NewChild()
 		child.Variables = map[string]cty.Value{name: it}
 		path := append([]string{dynamicblock.GeneratedType(b)}, dynamicblock.Labels(b, child)...)
-		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(content, child, nil, st.withoutMemo())))
+		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(content, child, nil, st.inDynamic(name))))
 	}
 }
 

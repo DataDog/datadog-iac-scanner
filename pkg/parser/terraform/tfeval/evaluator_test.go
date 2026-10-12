@@ -1984,6 +1984,77 @@ func TestEvaluateModule_DynamicBlocksShareTheResourceBudget(t *testing.T) {
 	}
 }
 
+// Dynamic content reuses what does not read an iterator, but every expression
+// reading its own or an enclosing iterator, or the resource's each, still varies.
+func TestEvaluateModule_DynamicContentKeepsIterationValuesWithSharedOnes(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
+		"main.tf": `
+locals {
+  team = upper("platform")
+}
+resource "aws_s3_bucket" "b" {
+  for_each = toset(["x", "y"])
+  dynamic "rule" {
+    for_each = ["a", "b"]
+    content {
+      owner    = local.team
+      id       = "${each.key}-${rule.value}"
+      dynamic "transition" {
+        for_each = [1, 2]
+        content {
+          owner = local.team
+          label = "${rule.value}-${transition.value}"
+          who   = each.key
+        }
+      }
+    }
+  }
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	if len(resources) != 2 {
+		t.Fatalf("got %d resources, want 2", len(resources))
+	}
+	for _, r := range resources {
+		key := "x"
+		if strings.Contains(r.Name, `"y"`) {
+			key = "y"
+		}
+		rules := r.Attributes["rule"].AsValueSlice()
+		if len(rules) != 2 {
+			t.Fatalf("%s: %d rules, want 2", r.Name, len(rules))
+		}
+		for i, rule := range rules {
+			value := []string{"a", "b"}[i]
+			if got := rule.GetAttr("owner").AsString(); got != "PLATFORM" {
+				t.Fatalf("%s rule[%d].owner = %q", r.Name, i, got)
+			}
+			if got := rule.GetAttr("id").AsString(); got != key+"-"+value {
+				t.Fatalf("%s rule[%d].id = %q, want %q", r.Name, i, got, key+"-"+value)
+			}
+			transitions := rule.GetAttr("transition").AsValueSlice()
+			if len(transitions) != 2 {
+				t.Fatalf("%s rule[%d]: %d transitions, want 2", r.Name, i, len(transitions))
+			}
+			for j, tr := range transitions {
+				if got := tr.GetAttr("label").AsString(); got != fmt.Sprintf("%s-%d", value, j+1) {
+					t.Fatalf("%s rule[%d].transition[%d].label = %q", r.Name, i, j, got)
+				}
+				if got := tr.GetAttr("who").AsString(); got != key {
+					t.Fatalf("%s rule[%d].transition[%d].who = %q, want %q", r.Name, i, j, got, key)
+				}
+				if got := tr.GetAttr("owner").AsString(); got != "PLATFORM" {
+					t.Fatalf("%s transition owner = %q", r.Name, got)
+				}
+			}
+		}
+	}
+}
+
 func numberList(n int) string {
 	items := make([]string, n)
 	for i := range items {
