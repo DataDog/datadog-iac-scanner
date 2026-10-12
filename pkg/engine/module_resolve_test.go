@@ -21,6 +21,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 )
 
 // docFileID is the prefix of synthetic doc ids: fileID\x00callChain.
@@ -446,6 +447,65 @@ resource "aws_s3_bucket" "this" {
 	}
 }
 
+// Data blocks inside a module are instantiated per call like resources, so data
+// rules see the values the call passes in and their findings land on the call.
+func TestResolveModuleDocuments_InstantiatesDataBlocks(t *testing.T) {
+	root := t.TempDir()
+	rootFile := writeFile(t, filepath.Join(root, "stack"), "main.tf", `
+module "queue" {
+  source    = "../modules/queue"
+  principal = "*"
+}
+`)
+	modFile := writeFile(t, filepath.Join(root, "modules", "queue"), "main.tf", `
+variable "principal" {}
+
+data "aws_ami" "ubuntu" {
+  most_recent = true
+}
+
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = ["sqs:*"]
+    principals {
+      type        = "AWS"
+      identifiers = [var.principal]
+    }
+  }
+}
+
+resource "aws_sqs_queue_policy" "this" {
+  queue_url = "q"
+  policy    = data.aws_iam_policy_document.p.json
+}
+`)
+	files := model.FileMetadatas{fileMeta("root-id", rootFile), fileMeta("mod-id", modFile)}
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	require.Len(t, res.docs, 1)
+	doc := res.docs[0]
+
+	data, _ := doc["data"].(map[string]interface{})
+	policyDoc, _ := data["aws_iam_policy_document"].(map[string]interface{})
+	p, _ := policyDoc["p"].(map[string]interface{})
+	statement, _ := p["statement"].(map[string]interface{})
+	principals, _ := statement["principals"].(map[string]interface{})
+	require.Equal(t, []interface{}{"*"}, principals["identifiers"])
+	ami, _ := data["aws_ami"].(map[string]interface{})
+	require.Contains(t, ami, "ubuntu")
+
+	resource, _ := doc["resource"].(map[string]interface{})
+	policies, _ := resource["aws_sqs_queue_policy"].(map[string]interface{})
+	this, _ := policies["this"].(map[string]interface{})
+	require.Equal(t,
+		`{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Principals":{"AWS":["*"]}}],"Version":"2012-10-17"}`+"\n", this["policy"])
+
+	require.True(t, res.suppressed["mod-id"]["data.aws_ami"]["ubuntu"])
+	require.True(t, res.suppressed["mod-id"]["data.aws_iam_policy_document"]["p"])
+	require.Contains(t, res.syntheticFiles[0].ModuleAttributions, moduleAttributionKey("data.aws_ami", 4, 1))
+}
+
 // Only the blocks that came back instantiated may be dropped from the file they
 // are written in. Dropping the whole file would lose the coverage the scanner
 // has today for everything else in it.
@@ -498,6 +558,31 @@ func TestRemoveInstantiatedResources(t *testing.T) {
 		if _, still := doc["resource"]; still {
 			t.Fatalf("only parser line metadata was left, so resource should be gone: %#v", doc)
 		}
+	})
+
+	t.Run("removes instantiated data blocks", func(t *testing.T) {
+		doc := model.Document{
+			"data": model.Document{
+				"aws_ami": model.Document{
+					"replaced": model.Document{"most_recent": true},
+					"kept":     model.Document{"most_recent": true},
+				},
+				"aws_iam_policy_document": model.Document{"p": model.Document{}},
+			},
+			"resource": model.Document{"aws_ami": model.Document{"replaced": model.Document{}}},
+		}
+		removeInstantiatedResources(doc, map[string]map[string]bool{
+			"data.aws_ami":                 {"replaced": true},
+			"data.aws_iam_policy_document": {"p": true},
+		})
+
+		data, _ := asStringMap(doc["data"])
+		require.NotContains(t, data, "aws_iam_policy_document")
+		amis, _ := asStringMap(data["aws_ami"])
+		require.NotContains(t, amis, "replaced")
+		require.Contains(t, amis, "kept")
+		resources, _ := asStringMap(doc["resource"])
+		require.Contains(t, resources, "aws_ami", "a resource of the same type is a different block")
 	})
 
 	t.Run("drops a nameless block's whole type", func(t *testing.T) {

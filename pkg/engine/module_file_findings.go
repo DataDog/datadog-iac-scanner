@@ -119,15 +119,20 @@ func (idx *moduleCallIndex) fileCalls(unresolvedDirs map[string]bool) map[string
 	return out
 }
 
-// documentResourceTypes returns the resource types a parsed file declares.
+// documentResourceTypes returns the resource types a parsed file declares,
+// and its data types prefixed with "data.", as findings name them.
 func documentResourceTypes(doc model.Document) map[string]bool {
-	resources, ok := asStringMap(doc["resource"])
-	if !ok {
+	resources, hasResources := asStringMap(doc["resource"])
+	data, hasData := asStringMap(doc["data"])
+	if !hasResources && !hasData {
 		return nil
 	}
-	types := make(map[string]bool, len(resources))
+	types := make(map[string]bool, len(resources)+len(data))
 	for typ := range resources {
 		types[typ] = true
+	}
+	for typ := range data {
+		types[dataTypePrefix+typ] = true
 	}
 	return types
 }
