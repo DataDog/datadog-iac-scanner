@@ -51,7 +51,10 @@ type moduleResolutionResult struct {
 	resourceCount  int
 	rootCount      int
 	budgetExceeded bool
-	ok             bool
+	// count/for_each per-block expansion cap observability
+	expansionTruncations  int
+	expansionMaxRequested int
+	ok                    bool
 }
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
@@ -137,16 +140,22 @@ func (c *Inspector) instantiateLocalModules(
 // without this, a scan on its way to OOM looks identical to one that never ran
 // module evaluation.
 func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionResult) {
-	if res.resourceCount == 0 && !res.budgetExceeded {
+	if res.resourceCount == 0 && !res.budgetExceeded && res.expansionTruncations == 0 {
 		return
 	}
-	log.Warn().
+	ev := log.Warn().
 		Int("module_resources_instantiated", res.resourceCount).
 		Int("module_root_count", res.rootCount).
 		Int("module_documents", len(res.docs)).
 		Int("resource_budget", tfeval.MaxInstantiated()).
-		Bool("resource_budget_exhausted", res.budgetExceeded).
-		Msg("tfeval: module instantiation summary")
+		Bool("resource_budget_exhausted", res.budgetExceeded)
+	if res.expansionTruncations > 0 {
+		ev = ev.
+			Int("count_expansion_cap", tfeval.MaxCountExpansion()).
+			Int("count_expansion_truncated", res.expansionTruncations).
+			Int("count_expansion_max_requested", res.expansionMaxRequested)
+	}
+	ev.Msg("tfeval: module instantiation summary")
 }
 
 // declaresTargetedResource reports whether any scanned Terraform file declares
@@ -472,14 +481,16 @@ func (m *rootMerge) merge(
 
 // rootResult is a root evaluated by a worker, starting from an empty budget.
 type rootResult struct {
-	resources    []tfeval.ResolvedResource
-	instances    []tfeval.ModuleInstance
-	childDirs    map[string]bool
-	err          error
-	charged      int
-	demand       int
-	notEvaluated []string
-	panicked     any
+	resources             []tfeval.ResolvedResource
+	instances             []tfeval.ModuleInstance
+	childDirs             map[string]bool
+	err                   error
+	charged               int
+	demand                int
+	notEvaluated          []string
+	expansionTruncations  int
+	expansionMaxRequested int
+	panicked              any
 }
 
 // evaluateConcurrently evaluates roots on workers and merges them in order, so
@@ -546,6 +557,7 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 		}
 		charged += r.charged
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
+		m.evaluator.AddExpansionStats(r.expansionTruncations, r.expansionMaxRequested)
 		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
 	}
 	m.evaluator.RestoreInstantiatedCount(charged)
@@ -562,6 +574,7 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 		}
 		r.demand = worker.BudgetDemand()
 		r.notEvaluated = worker.TakeNotEvaluatedDirs()
+		r.expansionTruncations, r.expansionMaxRequested = worker.TakeExpansionStats()
 		worker.ReleaseEvalCache()
 	}()
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVars(dir))
@@ -744,19 +757,21 @@ func resolveModuleDocuments(
 	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
 
 	return moduleResolutionResult{
-		docs:                 extra,
-		syntheticFiles:       syntheticFiles,
-		suppressed:           instantiated,
-		calledDirs:           strippedDirs,
-		successfulRoots:      successfulRoots,
-		rootDirs:             roots,
-		unresolvedModuleDirs: unresolvedModuleDirs,
-		extras:               extras,
-		moduleFiles:          moduleCalls.fileCalls(unresolvedModuleDirs),
-		resourceCount:        resourceCount,
-		rootCount:            len(roots),
-		budgetExceeded:       evaluator.BudgetExceeded(),
-		ok:                   true,
+		docs:                  extra,
+		syntheticFiles:        syntheticFiles,
+		suppressed:            instantiated,
+		calledDirs:            strippedDirs,
+		successfulRoots:       successfulRoots,
+		rootDirs:              roots,
+		unresolvedModuleDirs:  unresolvedModuleDirs,
+		extras:                extras,
+		moduleFiles:           moduleCalls.fileCalls(unresolvedModuleDirs),
+		resourceCount:         resourceCount,
+		rootCount:             len(roots),
+		budgetExceeded:        evaluator.BudgetExceeded(),
+		expansionTruncations:  evaluator.ExpansionTruncations(),
+		expansionMaxRequested: evaluator.ExpansionMaxRequested(),
+		ok:                    true,
 	}
 }
 
