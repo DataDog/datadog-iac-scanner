@@ -128,6 +128,55 @@ func TestCanonicalInputsKeyDistinguishesCollectionTypes(t *testing.T) {
 	require.NotEqual(t, mapKey, objKey)
 }
 
+func TestCanonicalInputsKeyDistinguishesWhollyKnownCollections(t *testing.T) {
+	known := []cty.Value{cty.NumberIntVal(1), cty.NumberIntVal(2)}
+	require.NotEqual(t,
+		canonicalInputsKey(map[string]cty.Value{"v": cty.ListVal(known)}),
+		canonicalInputsKey(map[string]cty.Value{"v": cty.SetVal(known)}),
+	)
+	require.NotEqual(t,
+		canonicalInputsKey(map[string]cty.Value{"v": cty.ListValEmpty(cty.Number)}),
+		canonicalInputsKey(map[string]cty.Value{"v": cty.SetValEmpty(cty.Number)}),
+	)
+	require.NotEqual(t,
+		canonicalInputsKey(map[string]cty.Value{"v": cty.MapVal(map[string]cty.Value{"k": cty.StringVal("x")})}),
+		canonicalInputsKey(map[string]cty.Value{"v": cty.ObjectVal(map[string]cty.Value{"k": cty.StringVal("x")})}),
+	)
+}
+
+func TestCanonicalInputsKeyKeepsTypeOnNestedWhollyKnownCollections(t *testing.T) {
+	// Partly known parent with a wholly known nested collection: cty/json would
+	// encode both list and set as bare "[1,2]"; the typed walk must keep the type.
+	known := []cty.Value{cty.NumberIntVal(1), cty.NumberIntVal(2)}
+	listKey := encodeCtyForKey(cty.ObjectVal(map[string]cty.Value{
+		"nested": cty.ListVal(known),
+		"u":      cty.UnknownVal(cty.String),
+	}))
+	setKey := encodeCtyForKey(cty.ObjectVal(map[string]cty.Value{
+		"nested": cty.SetVal(known),
+		"u":      cty.UnknownVal(cty.String),
+	}))
+	require.NotEqual(t, listKey, setKey)
+	require.Contains(t, listKey, `nested":list of number[`)
+	require.Contains(t, setKey, `nested":set of number[`)
+	require.NotContains(t, listKey, `nested":[`)
+	require.NotContains(t, setKey, `nested":[`)
+}
+
+func TestCanonicalInputsKeyObjectAttributeOrderStable(t *testing.T) {
+	a := canonicalInputsKey(map[string]cty.Value{"v": cty.ObjectVal(map[string]cty.Value{
+		"z": cty.StringVal("z"),
+		"a": cty.StringVal("a"),
+		"m": cty.UnknownVal(cty.String),
+	})})
+	b := canonicalInputsKey(map[string]cty.Value{"v": cty.ObjectVal(map[string]cty.Value{
+		"m": cty.UnknownVal(cty.String),
+		"a": cty.StringVal("a"),
+		"z": cty.StringVal("z"),
+	})})
+	require.Equal(t, a, b)
+}
+
 func TestLoadRootVarsReadsJSONAndAppliesTerraformPrecedence(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "stack", map[string]string{
@@ -141,4 +190,19 @@ func TestLoadRootVarsReadsJSONAndAppliesTerraformPrecedence(t *testing.T) {
 	require.True(t, vars["env"].RawEquals(cty.StringVal("auto")))
 	require.True(t, vars["region"].RawEquals(cty.StringVal("eu-west-1")))
 	require.Equal(t, "sec", vars["tags"].GetAttr("team").AsString())
+}
+
+func TestLoadRootVarsIgnoresCaseMismatchedAutoTfvars(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "stack", map[string]string{
+		"terraform.tfvars":    `env = "base"`,
+		"prod.AUTO.TFVARS":    `env = "upper"`,
+		"prod.auto.TFVARS":    `env = "mixed"`,
+		"ok.auto.tfvars":      `region = "eu-west-1"`,
+		"ok.auto.TFVARS.json": `{"region": "us-east-1"}`,
+	})
+
+	vars := New().LoadRootVars(dir)
+	require.True(t, vars["env"].RawEquals(cty.StringVal("base")), "case-mismatched auto.tfvars must not override terraform.tfvars")
+	require.True(t, vars["region"].RawEquals(cty.StringVal("eu-west-1")), "case-mismatched *.auto.tfvars.json must not override")
 }

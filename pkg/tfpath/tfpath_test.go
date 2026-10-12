@@ -281,6 +281,29 @@ func TestAutoloadedVarFiles(t *testing.T) {
 	}
 }
 
+func TestAutoloadedVarFilesCaseSensitive(t *testing.T) {
+	got := AutoloadedVarFiles([]string{
+		"terraform.tfvars",
+		"prod.auto.tfvars",
+		"prod.AUTO.TFVARS",
+		"prod.auto.TFVARS",
+		"prod.auto.tfvars.json",
+		"prod.auto.TFVARS.json",
+		"prod.AUTO.tfvars.json",
+		"Terraform.tfvars",
+		"terraform.TFVARS",
+		"terraform.tfvars.JSON",
+	})
+	want := []string{
+		"terraform.tfvars",
+		"prod.auto.tfvars",
+		"prod.auto.tfvars.json",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("AutoloadedVarFiles = %v, want %v", got, want)
+	}
+}
+
 func keys(m map[string]struct{}) []string {
 	return slices.Sorted(maps.Keys(m))
 }

@@ -34,6 +34,7 @@ func IsTFVarsJSON(path string) bool {
 // its own out of the names of a directory's entries, in the order Terraform
 // applies them: terraform.tfvars, terraform.tfvars.json, then *.auto.tfvars and
 // *.auto.tfvars.json in lexical order. Later files override earlier ones.
+// Matching is case-sensitive, like Terraform's isAutoVarFile.
 func AutoloadedVarFiles(names []string) []string {
 	var defaults, auto []string
 	for _, name := range names {
@@ -42,12 +43,18 @@ func AutoloadedVarFiles(names []string) []string {
 			defaults = append([]string{name}, defaults...)
 		case name == defaultVars+".json":
 			defaults = append(defaults, name)
-		case hasExtSuffix(name, autoVars) || hasExtSuffix(name, autoVars+".json"):
+		case isAutoVarFile(name):
 			auto = append(auto, name)
 		}
 	}
 	sort.Strings(auto)
 	return append(defaults, auto...)
+}
+
+// isAutoVarFile reports whether name is a Terraform auto-loaded *.auto.tfvars
+// or *.auto.tfvars.json file. Suffix checks are case-sensitive.
+func isAutoVarFile(name string) bool {
+	return strings.HasSuffix(name, autoVars) || strings.HasSuffix(name, autoVars+".json")
 }
 
 // Extension returns the Terraform/OpenTofu config suffix, including compound
