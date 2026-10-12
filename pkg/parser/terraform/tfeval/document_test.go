@@ -43,7 +43,7 @@ func TestCtyValueToDocument(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ctyValueToDocument(tt.value, &attrSource{})
+			got := ctyValueToDocument(tt.value, &attrSource{}, nil)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("got %#v, want %#v", got, tt.want)
 			}
@@ -119,9 +119,9 @@ resource "aws_s3_bucket_logging" "this" {
 	if got := doc["indexed"]; got != "${aws_subnet.private[0].id}" {
 		t.Errorf("indexed = %#v, want ${aws_subnet.private[0].id}", got)
 	}
-	// Not a reference, so there is nothing to recover.
-	if got := doc["computed"]; got != UnknownAttributePlaceholder {
-		t.Errorf("computed = %#v, want %q", got, UnknownAttributePlaceholder)
+	// Not a reference, so it stands as its own text, as the plain parser has it.
+	if got := doc["computed"]; got != "${timestamp()}" {
+		t.Errorf("computed = %#v, want ${timestamp()}", got)
 	}
 
 	rules, ok := doc["rule"].(map[string]interface{})
