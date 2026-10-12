@@ -8,6 +8,7 @@ package tfeval
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/zclconf/go-cty/cty"
@@ -140,7 +141,6 @@ func canonicalInputsKey(inputs map[string]cty.Value) string {
 }
 
 // encodeCtyForKey encodes a cty.Value to a stable string for use inside a cache key.
-// cty/json is used because it produces sorted, deterministic output for object/map types.
 // The null check must precede the known check because null values are also considered known.
 // All DynamicPseudoType values are unknown (IsKnown()==false), so they are handled by
 // the unknown branch and the DynamicPseudoType case never needs a special guard.
@@ -153,9 +153,41 @@ func encodeCtyForKey(v cty.Value) string {
 	if !v.IsKnown() {
 		return "?" + v.Type().FriendlyName()
 	}
+	// Walk collections instead of cty/json: JSON collapses list/set and map/object
+	// to the same shape, including nested wholly-known values inside partial keys.
+	if isCollectionOrStructural(v.Type()) {
+		var b strings.Builder
+		writeCollectionKey(&b, v)
+		return b.String()
+	}
 	data, err := ctyjson.Marshal(v, v.Type())
 	if err != nil {
 		return "?" + v.Type().FriendlyName()
 	}
 	return string(data)
+}
+
+func isCollectionOrStructural(t cty.Type) bool {
+	return t.IsListType() || t.IsSetType() || t.IsTupleType() || t.IsMapType() || t.IsObjectType()
+}
+
+func writeCollectionKey(b *strings.Builder, v cty.Value) {
+	t := v.Type()
+	b.WriteString(t.FriendlyName())
+	open, closing := "[", "]"
+	if t.IsObjectType() || t.IsMapType() {
+		open, closing = "{", "}"
+	}
+	b.WriteString(open)
+	// ElementIterator sorts map/object keys, so the encoding is insertion-order stable.
+	for it := v.ElementIterator(); it.Next(); {
+		key, elem := it.Element()
+		if t.IsObjectType() || t.IsMapType() {
+			b.WriteString(strconv.Quote(key.AsString()))
+			b.WriteByte(':')
+		}
+		b.WriteString(encodeCtyForKey(elem))
+		b.WriteByte(',')
+	}
+	b.WriteString(closing)
 }

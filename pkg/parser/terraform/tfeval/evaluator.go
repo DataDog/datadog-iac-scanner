@@ -457,9 +457,9 @@ func (e *Evaluator) evaluate(
 		return nil, nil, err
 	}
 
-	varExprs, localExprs, moduleBlocks, resourceBlocks, outputExprs := collectBlocks(bodies)
+	varDecls, localExprs, moduleBlocks, resourceBlocks, outputExprs := collectBlocks(bodies)
 
-	varVals := e.resolveVariables(varExprs, inputs)
+	varVals := e.resolveVariables(varDecls, inputs)
 
 	evalCtx := &hcl.EvalContext{
 		Variables: map[string]cty.Value{
@@ -1234,29 +1234,39 @@ func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCou
 	return cty.ObjectVal(kvs)
 }
 
-// resolveVariables binds inputs to variables, falling back to the default then unknown.
+// resolveVariables binds inputs to variables, falling back to the default then
+// unknown, and conforms the value to the variable's type. A null input to a
+// non-nullable variable takes the default, as in Terraform.
 func (e *Evaluator) resolveVariables(
-	varExprs map[string]hclsyntax.Expression,
+	varDecls map[string]variableDecl,
 	inputs map[string]cty.Value,
 ) map[string]cty.Value {
-	out := make(map[string]cty.Value, len(varExprs))
-	for name, defaultExpr := range varExprs {
-		if v, ok := inputs[name]; ok {
-			out[name] = v
-			continue
+	out := make(map[string]cty.Value, len(varDecls))
+	for name, decl := range varDecls {
+		v, ok := inputs[name]
+		if ok && decl.nonNullable && v.IsNull() {
+			ok = false
 		}
-		if defaultExpr != nil {
-			if v, diags := defaultExpr.Value(&hcl.EvalContext{Functions: e.funcs}); !diags.HasErrors() {
-				out[name] = v
+		if !ok {
+			if decl.def == nil {
+				out[name] = cty.UnknownVal(cty.DynamicPseudoType)
 				continue
 			}
+			def, diags := decl.def.Value(&hcl.EvalContext{Functions: e.funcs})
+			if diags.HasErrors() {
+				out[name] = cty.UnknownVal(cty.DynamicPseudoType)
+				continue
+			}
+			v = def
 		}
-		out[name] = cty.UnknownVal(cty.DynamicPseudoType)
+		out[name] = decl.conform(v)
 	}
 	return out
 }
 
 // resolveLocals evaluates locals to a fixed point, retrying cross-references until no progress.
+// A local only partly known keeps its known parts and is re-evaluated on later
+// passes, since the locals it reads may still resolve further.
 func (e *Evaluator) resolveLocals(
 	localExprs map[string]hclsyntax.Expression,
 	base *hcl.EvalContext,
@@ -1269,11 +1279,12 @@ func (e *Evaluator) resolveLocals(
 		ctx.Variables = map[string]cty.Value{"local": objectOrEmpty(resolved)}
 
 		for name, expr := range localExprs {
-			if _, done := resolved[name]; done {
+			prev, seen := resolved[name]
+			if seen && prev.IsWhollyKnown() {
 				continue
 			}
 			v, diags := expr.Value(ctx)
-			if diags.HasErrors() || !v.IsWhollyKnown() {
+			if diags.HasErrors() || !v.IsKnown() || (seen && prev.RawEquals(v)) {
 				continue
 			}
 			resolved[name] = v

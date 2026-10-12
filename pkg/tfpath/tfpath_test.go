@@ -268,6 +268,42 @@ func TestPartition(t *testing.T) {
 	}
 }
 
+func TestAutoloadedVarFiles(t *testing.T) {
+	got := AutoloadedVarFiles([]string{
+		"b.auto.tfvars.json", "main.tf", "terraform.tfvars.json", "a.auto.tfvars",
+		"custom.tfvars", "terraform.tfvars", "c.auto.tfvars",
+	})
+	want := []string{
+		"terraform.tfvars", "terraform.tfvars.json", "a.auto.tfvars", "b.auto.tfvars.json", "c.auto.tfvars",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("AutoloadedVarFiles = %v, want %v", got, want)
+	}
+}
+
+func TestAutoloadedVarFilesCaseSensitive(t *testing.T) {
+	got := AutoloadedVarFiles([]string{
+		"terraform.tfvars",
+		"prod.auto.tfvars",
+		"prod.AUTO.TFVARS",
+		"prod.auto.TFVARS",
+		"prod.auto.tfvars.json",
+		"prod.auto.TFVARS.json",
+		"prod.AUTO.tfvars.json",
+		"Terraform.tfvars",
+		"terraform.TFVARS",
+		"terraform.tfvars.JSON",
+	})
+	want := []string{
+		"terraform.tfvars",
+		"prod.auto.tfvars",
+		"prod.auto.tfvars.json",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("AutoloadedVarFiles = %v, want %v", got, want)
+	}
+}
+
 func keys(m map[string]struct{}) []string {
 	return slices.Sorted(maps.Keys(m))
 }

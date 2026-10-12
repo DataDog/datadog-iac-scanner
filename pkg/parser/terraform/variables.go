@@ -52,11 +52,34 @@ func parseHCLBody(fsys vfs.FS, filename string) (*hclsyntax.Body, error) {
 }
 
 func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
+	if tfpath.IsTFVarsJSON(filename) {
+		return getInputVariablesFromJSONFile(fsys, filename)
+	}
 	body, err := parseHCLBody(fsys, filename)
 	if err != nil {
 		return nil, err
 	}
 	return extractInputVariables(body, filename), nil
+}
+
+func getInputVariablesFromJSONFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
+	src, err := fsys.ReadFile(filepath.Clean(filename))
+	if err != nil {
+		return nil, err
+	}
+	parsed, diags := hcljson.Parse(src, filename)
+	if diags.HasErrors() {
+		return nil, diags
+	}
+	attrs, _ := parsed.Body.JustAttributes()
+	variables := make(converter.VariableMap, len(attrs))
+	for name, attr := range attrs {
+		val, diags := attr.Expr.Value(&hcl.EvalContext{})
+		if !diags.HasErrors() && val.IsKnown() {
+			variables[name] = val
+		}
+	}
+	return variables, nil
 }
 
 // getInputVariablesAndLocalsFromFile parses filename once for both variables and locals.
@@ -264,18 +287,7 @@ func getInputVariables(
 		mergeMaps(localsMap, locals)
 	}
 
-	// Parse *.auto.tfvars files
-	tfVarsFiles, err := fsys.Glob(filepath.Join(currentPath, "*.auto.tfvars"))
-	if err != nil {
-		contextLogger.Error().Msg("Error getting .auto.tfvars files")
-	}
-
-	// Add terraform.tfvars if it exists
-	if _, err := fsys.Stat(filepath.Join(currentPath, "terraform.tfvars")); err == nil {
-		tfVarsFiles = append(tfVarsFiles, filepath.Join(currentPath, "terraform.tfvars"))
-	}
-
-	for _, tfVarsFile := range tfVarsFiles {
+	for _, tfVarsFile := range autoloadedVarFiles(ctx, fsys, currentPath) {
 		vars, errInput := getInputVariablesFromFile(fsys, tfVarsFile)
 		if errInput != nil {
 			contextLogger.Warn().Err(errInput).Msgf("Skipping values from %s", tfVarsFile)
@@ -315,6 +327,28 @@ func getInputVariables(
 	result["var"] = cty.ObjectVal(cleanVars)
 	result["local"] = cty.ObjectVal(cleanLocals)
 	return result
+}
+
+// autoloadedVarFiles lists the variable definitions files Terraform loads from
+// dir on its own, in the order it applies them.
+func autoloadedVarFiles(ctx context.Context, fsys vfs.FS, dir string) []string {
+	entries, err := fsys.ReadDir(dir)
+	if err != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Error().Msg("Error listing variable definitions files")
+		return nil
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	files := tfpath.AutoloadedVarFiles(names)
+	for i, name := range files {
+		files[i] = filepath.Join(dir, name)
+	}
+	return files
 }
 
 func hclConfigFiles(ctx context.Context, fsys vfs.FS, dir string, allow map[string]struct{}, keep string) []string {

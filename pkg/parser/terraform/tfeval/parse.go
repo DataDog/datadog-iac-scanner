@@ -15,8 +15,11 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/ext/typeexpr"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/convert"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -90,16 +93,71 @@ func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
 	return body, ok
 }
 
+// variableDecl is what a variable block declares about the values it accepts.
+type variableDecl struct {
+	def hclsyntax.Expression
+	// ty is cty.DynamicPseudoType when the variable has no type constraint.
+	ty          cty.Type
+	defaults    *typeexpr.Defaults
+	nonNullable bool
+}
+
+func newVariableDecl(body *hclsyntax.Body) variableDecl {
+	decl := variableDecl{ty: cty.DynamicPseudoType}
+	if def, ok := body.Attributes["default"]; ok {
+		decl.def = def.Expr
+	}
+	if attr, ok := body.Attributes["type"]; ok {
+		decl.ty, decl.defaults = variableType(attr)
+	}
+	if attr, ok := body.Attributes["nullable"]; ok {
+		if v, diags := attr.Expr.Value(nil); !diags.HasErrors() && v.Type() == cty.Bool && ctyutil.Materialized(v) {
+			decl.nonNullable = v.False()
+		}
+	}
+	return decl
+}
+
+func variableType(attr *hclsyntax.Attribute) (cty.Type, *typeexpr.Defaults) {
+	var expr hcl.Expression = attr.Expr
+	// JSON configuration writes the constraint as a string.
+	if lit, ok := attr.Expr.(*hclsyntax.LiteralValueExpr); ok && lit.Val.Type() == cty.String && ctyutil.Materialized(lit.Val) {
+		parsed, diags := hclsyntax.ParseExpression([]byte(lit.Val.AsString()), attr.SrcRange.Filename, attr.SrcRange.Start)
+		if diags.HasErrors() {
+			return cty.DynamicPseudoType, nil
+		}
+		expr = parsed
+	}
+	ty, defaults, diags := typeexpr.TypeConstraintWithDefaults(expr)
+	if diags.HasErrors() {
+		return cty.DynamicPseudoType, nil
+	}
+	return ty, defaults
+}
+
+// conform applies the variable's optional attribute defaults and converts v to
+// its type, leaving v as given when it does not convert.
+func (d variableDecl) conform(v cty.Value) cty.Value {
+	if d.defaults != nil {
+		v = d.defaults.Apply(v)
+	}
+	converted, err := convert.Convert(v, d.ty)
+	if err != nil {
+		return v
+	}
+	return converted
+}
+
 // collectBlocks partitions blocks across all bodies into variables, locals,
 // module calls, resources, and outputs.
 func collectBlocks(bodies []*hclsyntax.Body) (
-	varExprs map[string]hclsyntax.Expression,
+	varDecls map[string]variableDecl,
 	localExprs map[string]hclsyntax.Expression,
 	modules []*hclsyntax.Block,
 	resources []*hclsyntax.Block,
 	outputs map[string]hclsyntax.Expression,
 ) {
-	varExprs = map[string]hclsyntax.Expression{}
+	varDecls = map[string]variableDecl{}
 	localExprs = map[string]hclsyntax.Expression{}
 	outputs = map[string]hclsyntax.Expression{}
 
@@ -110,11 +168,7 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 				if len(block.Labels) != 1 {
 					continue
 				}
-				var defExpr hclsyntax.Expression
-				if def, ok := block.Body.Attributes["default"]; ok {
-					defExpr = def.Expr
-				}
-				varExprs[block.Labels[0]] = defExpr
+				varDecls[block.Labels[0]] = newVariableDecl(block.Body)
 			case "locals":
 				for name, attr := range block.Body.Attributes {
 					localExprs[name] = attr.Expr
@@ -133,7 +187,7 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 			}
 		}
 	}
-	return varExprs, localExprs, modules, resources, outputs
+	return varDecls, localExprs, modules, resources, outputs
 }
 
 func collectModuleBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
@@ -157,73 +211,55 @@ func resolveLocalDir(callerDir, source string) string {
 	return filepath.Clean(filepath.Join(callerDir, clean))
 }
 
-// isEmptyCollection returns true when attr evaluates to a known empty collection under ctx.
-// Unknown or unevaluable for_each expressions return false (conservative: keep the block).
-func isEmptyCollection(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) bool {
-	if attr == nil {
-		return false
-	}
-	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() || !ctyutil.Materialized(v) {
-		return false
-	}
-	t := v.Type()
-	if t.IsObjectType() || t.IsMapType() || t.IsListType() || t.IsTupleType() || t.IsSetType() {
-		return v.LengthInt() == 0
-	}
-	return false
-}
-
-// LoadRootVars reads terraform.tfvars and *.auto.tfvars from dir and returns a
-// variable map for use as root-module inputs, reading through the evaluator's
-// filesystem. Terraform loads terraform.tfvars first, then *.auto.tfvars in
-// lexicographic order; later files override earlier ones. Files that fail to
-// read or parse are silently skipped.
-//
-// Candidates are Stat-probed before reading: MemFS records ReadFile misses as
-// escalation signals but not Stat misses, so the always-probed terraform.tfvars
-// must not surface as a missing file for a workspace that has none.
+// LoadRootVars reads the variable definitions files Terraform loads on its own
+// from dir (see tfpath.AutoloadedVarFiles) and returns a variable map for use as
+// root-module inputs, reading through the evaluator's filesystem. Later files
+// override earlier ones. Files that fail to read or parse are silently skipped.
+// Only files listed in dir are read: MemFS records ReadFile misses as
+// escalation signals, so absent files must not be probed.
 func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
 	fsys := e.fsys
-	candidates := []string{filepath.Join(dir, "terraform.tfvars")}
 	entries, _ := fsys.ReadDir(dir)
-	var autoFiles []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".auto.tfvars") {
-			autoFiles = append(autoFiles, e.Name())
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			names = append(names, entry.Name())
 		}
-	}
-	sort.Strings(autoFiles)
-	for _, name := range autoFiles {
-		candidates = append(candidates, filepath.Join(dir, name))
 	}
 
 	out := map[string]cty.Value{}
 	emptyCtx := &hcl.EvalContext{}
-	for _, p := range candidates {
-		if _, err := fsys.Stat(filepath.Clean(p)); err != nil {
-			continue
-		}
-		src, err := fsys.ReadFile(filepath.Clean(p))
+	for _, name := range tfpath.AutoloadedVarFiles(names) {
+		p := filepath.Clean(filepath.Join(dir, name))
+		src, err := fsys.ReadFile(p)
 		if err != nil {
 			continue
 		}
-		f, diags := hclsyntax.ParseConfig(src, p, hcl.Pos{Line: 1, Column: 1})
-		if diags.HasErrors() {
-			continue
-		}
-		body, ok := f.Body.(*hclsyntax.Body)
-		if !ok {
-			continue
-		}
-		for name, attr := range body.Attributes {
+		for attrName, attr := range parseVarsFile(src, p) {
 			v, attrDiags := attr.Expr.Value(emptyCtx)
 			if !attrDiags.HasErrors() && v.IsKnown() {
-				out[name] = v
+				out[attrName] = v
 			}
 		}
 	}
 	return out
+}
+
+// parseVarsFile returns the assignments of a variable definitions file, in
+// native or JSON syntax.
+func parseVarsFile(src []byte, path string) hcl.Attributes {
+	var file *hcl.File
+	var diags hcl.Diagnostics
+	if tfpath.IsTFVarsJSON(path) {
+		file, diags = hcljson.Parse(src, path)
+	} else {
+		file, diags = hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
+	}
+	if diags.HasErrors() || file == nil {
+		return nil
+	}
+	attrs, _ := file.Body.JustAttributes()
+	return attrs
 }
 
 // parseResourceInstanceKey splits an expanded resource Name into its base label, instance key,
@@ -271,6 +307,23 @@ func blockLabel(b *hclsyntax.Block) string {
 		return ""
 	}
 	return b.Labels[0]
+}
+
+// isEmptyCollection returns true when attr evaluates to a known empty collection under ctx.
+// Unknown or unevaluable for_each expressions return false (conservative: keep the block).
+func isEmptyCollection(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) bool {
+	if attr == nil {
+		return false
+	}
+	v, diags := attr.Expr.Value(ctx)
+	if diags.HasErrors() || !ctyutil.Materialized(v) {
+		return false
+	}
+	t := v.Type()
+	if t.IsObjectType() || t.IsMapType() || t.IsListType() || t.IsTupleType() || t.IsSetType() {
+		return v.LengthInt() == 0
+	}
+	return false
 }
 
 // isLiteralZero returns true when attr evaluates to the number zero under ctx.
