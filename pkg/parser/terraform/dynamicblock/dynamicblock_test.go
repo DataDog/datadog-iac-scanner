@@ -33,16 +33,27 @@ func listOf(n int) cty.Value {
 	return cty.TupleVal(elems)
 }
 
-func TestIterators_ExpandsUpToTheCap(t *testing.T) {
-	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"items": listOf(maxExpansion)}}
-	iterators, resolved := Iterators(dynamicBlock(t, "items"), ctx)
-	require.True(t, resolved)
-	require.Len(t, iterators, maxExpansion)
+func TestExpand_UpToTheCap(t *testing.T) {
+	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"items": listOf(MaxExpansion)}}
+	got := Expand(dynamicBlock(t, "items"), ctx)
+	require.True(t, got.Resolved)
+	require.False(t, got.OverCap)
+	require.Len(t, got.Iterators, MaxExpansion)
+	require.Equal(t, MaxExpansion, got.Requested)
 }
 
-func TestIterators_BeyondTheCapStaysAsWritten(t *testing.T) {
-	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"items": listOf(maxExpansion + 1)}}
-	iterators, resolved := Iterators(dynamicBlock(t, "items"), ctx)
-	require.False(t, resolved, "a partial expansion would drop the later blocks")
-	require.Empty(t, iterators)
+func TestExpand_BeyondTheCapStaysAsWritten(t *testing.T) {
+	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"items": listOf(MaxExpansion + 1)}}
+	got := Expand(dynamicBlock(t, "items"), ctx)
+	require.False(t, got.Resolved, "a partial expansion would drop the later blocks")
+	require.True(t, got.OverCap)
+	require.Equal(t, MaxExpansion+1, got.Requested)
+	require.Empty(t, got.Iterators)
+}
+
+func TestExpand_UnresolvedIsNotOverCap(t *testing.T) {
+	got := Expand(dynamicBlock(t, "var.missing"), &hcl.EvalContext{})
+	require.False(t, got.Resolved)
+	require.False(t, got.OverCap)
+	require.Zero(t, got.Requested)
 }

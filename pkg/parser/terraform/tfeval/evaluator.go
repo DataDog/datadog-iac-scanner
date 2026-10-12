@@ -258,6 +258,16 @@ func MaxInstantiated() int { return defaultMaxInstantiated }
 // MaxCountExpansion reports the per-block count/for_each instance cap.
 func MaxCountExpansion() int { return maxCountExpansion }
 
+// MaxDynamicExpansion is the cap on the blocks one dynamic block generates.
+func MaxDynamicExpansion() int { return dynamicblock.MaxExpansion }
+
+func truncationMessage(kind string) string {
+	if kind == "dynamic" {
+		return "tfeval: dynamic block expansion cap exceeded; block scanned as written"
+	}
+	return "tfeval: count/for_each expansion truncated; remaining instances scanned as written"
+}
+
 // InstantiatedCount reports how many module resources have been charged against
 // the scan-wide retained-document budget.
 func (e *Evaluator) InstantiatedCount() int { return e.instantiated }
@@ -328,7 +338,7 @@ func (e *Evaluator) noteBudgetDemand(demand int) {
 	}
 }
 
-// ExpansionTruncations reports how many count/for_each expansions hit the per-block cap.
+// ExpansionTruncations reports how many count/for_each/dynamic expansions hit a cap.
 func (e *Evaluator) ExpansionTruncations() int { return e.expansionTruncations }
 
 // ExpansionMaxRequested reports the largest requested instance count seen when truncating.
@@ -352,7 +362,7 @@ func (e *Evaluator) TakeExpansionStats() (hits, maxRequested int) {
 	return hits, maxRequested
 }
 
-func (e *Evaluator) noteCountExpansionTruncated(ctx context.Context, kind, address string, requested, expanded int) {
+func (e *Evaluator) noteCountExpansionTruncated(ctx context.Context, kind, address string, requested, expanded, limit int) {
 	if e.prepassDepth > 0 {
 		return
 	}
@@ -370,8 +380,8 @@ func (e *Evaluator) noteCountExpansionTruncated(ctx context.Context, kind, addre
 		Str("address", address).
 		Int("requested_instances", requested).
 		Int("expanded_instances", expanded).
-		Int("count_expansion_cap", maxCountExpansion).
-		Msg("tfeval: count/for_each expansion truncated; remaining instances scanned as written")
+		Int("count_expansion_cap", limit).
+		Msg(truncationMessage(kind))
 }
 
 // TakeNotEvaluatedDirs returns the directories skipped since the last call and
@@ -876,7 +886,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			if plan.mode == expansionForEach {
 				kind = "module_for_each"
 			}
-			e.noteCountExpansionTruncated(ctx, kind, "module."+call.label, plan.requested, len(plan.instances))
+			e.noteCountExpansionTruncated(ctx, kind, "module."+call.label, plan.requested, len(plan.instances), maxCountExpansion)
 			// The instances left out have no synthetic document standing in
 			// for them, so the module must also be scanned as written.
 			_ = e.skipEvaluation(call.dir)
@@ -1082,6 +1092,21 @@ func (e *Evaluator) expandResourceBlock(
 	// Attributes that ignore each/count evaluate identically in every instance.
 	memo := newInvariantMemo()
 
+	// A dynamic block kept as written is one finding of the block, however many
+	// instances or parent blocks repeat it, so it is reported once per call.
+	overflows := make(map[string]dynamicOverflow)
+	defer func() {
+		labels := make([]string, 0, len(overflows))
+		for label := range overflows {
+			labels = append(labels, label)
+		}
+		slices.Sort(labels)
+		for _, label := range labels {
+			o := overflows[label]
+			e.noteCountExpansionTruncated(ctx, "dynamic", address+".dynamic."+label, o.requested, 0, o.limit)
+		}
+	}()
+
 	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
 		// Only attribution of module resources reads the iteration, so the
 		// instances of the root module do not keep it.
@@ -1091,6 +1116,11 @@ func (e *Evaluator) expandResourceBlock(
 		}
 		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
 		attrs := e.evalBodyWith(rb.Body, child, nil, state)
+		for _, o := range state.dynamic.overflow {
+			if prev, seen := overflows[o.label]; !seen || o.requested > prev.requested {
+				overflows[o.label] = o
+			}
+		}
 		return ResolvedResource{
 			Type:          typeName,
 			Name:          name,
@@ -1140,7 +1170,7 @@ func (e *Evaluator) expandCountInstances(
 		nExpand := min(n, maxCountExpansion)
 		truncated := n > maxCountExpansion
 		if truncated {
-			e.noteCountExpansionTruncated(ctx, "count", address, n, nExpand)
+			e.noteCountExpansionTruncated(ctx, "count", address, n, nExpand, maxCountExpansion)
 		}
 		out := make([]ResolvedResource, 0, nExpand)
 		for i := 0; i < nExpand; i++ {
@@ -1214,7 +1244,7 @@ func (e *Evaluator) expandKnownForEachResources(
 	total := fv.LengthInt()
 	truncated := total > maxCountExpansion
 	if truncated {
-		e.noteCountExpansionTruncated(ctx, "for_each", address, total, maxCountExpansion)
+		e.noteCountExpansionTruncated(ctx, "for_each", address, total, maxCountExpansion, maxCountExpansion)
 	}
 	// Only walk the full collection when we need every key to pad a truncated shape.
 	needKeys := truncated && total <= maxExpansionShape
@@ -1463,7 +1493,11 @@ type bodyState struct {
 	dynamic *dynamicRecorder
 }
 
-type dynamicRecorder struct{ counts DynamicCounts }
+type dynamicRecorder struct {
+	counts    DynamicCounts
+	generated int
+	overflow  []dynamicOverflow
+}
 
 // withoutMemo shares the dynamic counts but not the memo: the content of a
 // dynamic block reads its own iterator, which differs per generated block.

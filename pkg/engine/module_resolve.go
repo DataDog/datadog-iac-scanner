@@ -152,6 +152,7 @@ func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionRes
 	if res.expansionTruncations > 0 {
 		ev = ev.
 			Int("count_expansion_cap", tfeval.MaxCountExpansion()).
+			Int("dynamic_expansion_cap", tfeval.MaxDynamicExpansion()).
 			Int("count_expansion_truncated", res.expansionTruncations).
 			Int("count_expansion_max_requested", res.expansionMaxRequested)
 	}
