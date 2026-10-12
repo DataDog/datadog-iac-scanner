@@ -1025,6 +1025,92 @@ const policyFromFileFunctionInterpolated = `resource "aws_iam_role" "DatadogAWSI
 }
 `
 
+// A heredoc policy on one line holds every key on that line, so the search
+// must not run on into the next block that spells the same key.
+func TestDetectLineStaysInsideSearchedBlock(t *testing.T) {
+	src := `resource "aws_sqs_queue" "heredoc" {
+  name   = "heredoc"
+  policy = <<POLICY
+{"Statement":[{"Effect":"Allow","Principal":"*","Action":"sqs:*"}]}
+POLICY
+}
+
+resource "aws_sqs_queue_policy" "other" {
+  policy = jsonencode({
+    Statement = [{ Principal = "*" }]
+  })
+}
+`
+	file := &model.FileMetadata{
+		ScanID:            "t",
+		ID:                "t",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	for _, key := range []string{
+		`aws_sqs_queue[heredoc].policy.Statement[0].Principal`,
+		`aws_sqs_queue[{{heredoc}}].policy.Statement[0].Principal`,
+	} {
+		got := (&DetectKindLine{}).DetectLine(context.Background(), file, key, 3)
+		require.Equal(t, 3, got.Line, key)
+		require.Equal(t, 1, got.BlockLocation.Start.Line, key)
+	}
+}
+
+// A part found only past the named block is skipped; the parts after it still
+// search from the last line found within the block.
+func TestDetectLineSkipsPartLeavingNamedBlock(t *testing.T) {
+	src := `resource "aws_x" "b" {
+  bar = [
+    "a",
+    "b",
+  ]
+}
+
+resource "aws_x" "c" {
+  foo = 1
+}
+`
+	file := &model.FileMetadata{
+		ScanID:            "t",
+		ID:                "t",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file, `aws_x[b].foo.bar[1]`, 3)
+	require.Equal(t, 4, got.Line)
+}
+
+// A key's leading parts may match an earlier block on the way to the one it
+// names; only leaving the named block stops the search.
+func TestDetectLineReachesNamedBlockPastEarlierOnes(t *testing.T) {
+	src := `resource "aws_cloudfront_distribution" "a" {
+  ordered_cache_behavior {
+    viewer_protocol_policy = "redirect-to-https"
+  }
+}
+
+resource "aws_cloudfront_distribution" "b" {
+  ordered_cache_behavior {
+    viewer_protocol_policy = "allow-all"
+  }
+}
+`
+	file := &model.FileMetadata{
+		ScanID:            "t",
+		ID:                "t",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	key := `resource.aws_cloudfront_distribution[b].ordered_cache_behavior[0].viewer_protocol_policy`
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file, key, 3)
+	require.Equal(t, 9, got.Line)
+	require.Equal(t, 7, got.BlockLocation.Start.Line)
+}
+
 func TestDetectLineFileFunctionKeepsAttributeLine(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
