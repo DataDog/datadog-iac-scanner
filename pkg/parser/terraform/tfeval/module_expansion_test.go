@@ -333,3 +333,49 @@ func TestForEachInstances_HugeTruncationDoesNotKeepKeys(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, got.IsKnown())
 }
+
+func TestEvaluateModule_InstanceAttributesKeepIterationValuesWithSharedOnes(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+locals {
+  tags = merge({ team = "a" }, { env = "prod" })
+}
+resource "aws_s3_bucket" "b" {
+  for_each = toset(["x", "y", "z"])
+  bucket   = "b-${each.key}"
+  tags     = local.tags
+  versioning {
+    enabled = each.key == "y"
+    shared  = local.tags.team
+  }
+}
+resource "aws_s3_bucket" "c" {
+  count  = 3
+  bucket = "c-${count.index}"
+  tags   = local.tags
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 6)
+	byName := map[string]ResolvedResource{}
+	for _, r := range resources {
+		byName[r.Name] = r
+	}
+	for _, key := range []string{"x", "y", "z"} {
+		r := byName[fmt.Sprintf("b[%q]", key)]
+		require.True(t, r.Attributes["bucket"].RawEquals(cty.StringVal("b-"+key)))
+		require.True(t, r.Attributes["tags"].GetAttr("team").RawEquals(cty.StringVal("a")))
+		v := r.Attributes["versioning"]
+		require.Equal(t, key == "y", v.GetAttr("enabled").True(), key)
+		require.True(t, v.GetAttr("shared").RawEquals(cty.StringVal("a")))
+	}
+	for i := 0; i < 3; i++ {
+		r := byName[fmt.Sprintf("c[%d]", i)]
+		require.True(t, r.Attributes["bucket"].RawEquals(cty.StringVal(fmt.Sprintf("c-%d", i))))
+		require.True(t, r.Attributes["tags"].GetAttr("env").RawEquals(cty.StringVal("prod")))
+	}
+}

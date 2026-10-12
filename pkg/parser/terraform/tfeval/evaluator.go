@@ -1075,6 +1075,9 @@ func (e *Evaluator) expandResourceBlock(
 	typeName, resName := rb.Labels[0], rb.Labels[1]
 	address := joinAddr(addr, typeName+"."+resName)
 
+	// Attributes that ignore each/count evaluate identically in every instance.
+	memo := newInvariantMemo()
+
 	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
 		// Only attribution of module resources reads the iteration, so the
 		// instances of the root module do not keep it.
@@ -1085,7 +1088,7 @@ func (e *Evaluator) expandResourceBlock(
 		return ResolvedResource{
 			Type:          typeName,
 			Name:          name,
-			Attributes:    e.evalBody(rb.Body, child, nil),
+			Attributes:    e.evalBodyMemo(rb.Body, child, memo),
 			Body:          rb.Body,
 			Iteration:     iteration,
 			DefinedIn:     rb.TypeRange.Filename,
@@ -1442,20 +1445,75 @@ func (e *Evaluator) evalBody(
 	ctx *hcl.EvalContext,
 	skip map[string]bool,
 ) map[string]cty.Value {
+	return e.evalBodyWith(body, ctx, skip, nil)
+}
+
+func (e *Evaluator) evalBodyMemo(body *hclsyntax.Body, ctx *hcl.EvalContext, memo *invariantMemo) map[string]cty.Value {
+	return e.evalBodyWith(body, ctx, nil, memo)
+}
+
+func (e *Evaluator) evalBodyWith(
+	body *hclsyntax.Body,
+	ctx *hcl.EvalContext,
+	skip map[string]bool,
+	memo *invariantMemo,
+) map[string]cty.Value {
 	out := make(map[string]cty.Value, len(body.Attributes)+len(body.Blocks))
 
 	for name, attr := range body.Attributes {
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExpr(attr.Expr, ctx)
+		out[name] = e.evalExprMemo(attr.Expr, ctx, memo)
 	}
 
 	for _, b := range body.Blocks {
 		path := append([]string{b.Type}, b.Labels...)
-		addNestedBlock(out, path, objectOrEmpty(e.evalBody(b.Body, ctx, nil)))
+		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, memo)))
 	}
 	return out
+}
+
+// invariantMemo reuses the value of expressions that do not read each or
+// count across the instances of one resource block, which share a parent
+// context.
+type invariantMemo struct {
+	values map[hclsyntax.Expression]cty.Value
+	varies map[hclsyntax.Expression]bool
+}
+
+func newInvariantMemo() *invariantMemo {
+	return &invariantMemo{
+		values: make(map[hclsyntax.Expression]cty.Value),
+		varies: make(map[hclsyntax.Expression]bool),
+	}
+}
+
+func (m *invariantMemo) readsIteration(expr hclsyntax.Expression) bool {
+	if v, ok := m.varies[expr]; ok {
+		return v
+	}
+	reads := false
+	for _, t := range expr.Variables() {
+		if root := t.RootName(); root == "each" || root == "count" {
+			reads = true
+			break
+		}
+	}
+	m.varies[expr] = reads
+	return reads
+}
+
+func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, memo *invariantMemo) cty.Value {
+	if memo == nil || memo.readsIteration(expr) {
+		return e.evalExpr(expr, ctx)
+	}
+	if v, ok := memo.values[expr]; ok {
+		return v
+	}
+	v := e.evalExpr(expr, ctx)
+	memo.values[expr] = v
+	return v
 }
 
 func addNestedBlock(out map[string]cty.Value, path []string, value cty.Value) {
