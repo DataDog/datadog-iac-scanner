@@ -190,7 +190,6 @@ func (s *storedRenderPaths) withoutRaw(files []provider.InventoryFile) []provide
 	return kept
 }
 
-// resolveAndStoreChart renders a chart and stores its files.
 // reportRenderFailure logs a chart that failed to render. A failed Helm chart's
 // raw templates are never valid YAML, so its parse errors are silenced for every
 // service.
@@ -203,6 +202,7 @@ func reportRenderFailure(ctx context.Context, services []*Service, kind model.Fi
 	logResolveError(ctx, kind, chartPath, err)
 }
 
+// resolveAndStoreChart renders a chart and stores its files.
 func resolveAndStoreChart(
 	ctx context.Context,
 	src preparedSource,

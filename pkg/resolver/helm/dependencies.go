@@ -257,19 +257,22 @@ func inMemory(fsys vfs.FS) bool {
 	return ok
 }
 
-// insideWorkspace reports whether a pushed path lies below the workspace root.
-// The root itself is left out: loading it as a chart would read every pushed
-// file.
+// pushedPath normalizes a path the client pushed, the one place it is done
+// before containment is checked or the path is requested. A backslash separates
+// segments in a path sent from Windows, so it is read as a slash here.
+func pushedPath(p string) string {
+	return path.Clean(strings.ReplaceAll(p, `\`, "/"))
+}
+
+// insideWorkspace reports whether a pushed path (see pushedPath) lies below the
+// workspace root. The root itself is left out: loading it as a chart would read
+// every pushed file.
 func insideWorkspace(p string) bool {
-	if filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) ||
-		(len(p) > 1 && p[1] == ':') {
+	if filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, "/") || (len(p) > 1 && p[1] == ':') {
 		return false
 	}
-	// A backslash separates segments in a path the client pushed from Windows, as
-	// it does for the extension, so it is normalized before the check: on a
-	// server with another separator, "..\..\x" would be one segment.
-	clean := path.Clean(strings.ReplaceAll(p, `\`, "/"))
-	return clean != "." && clean != ".." && !strings.HasPrefix(clean, "../") && !strings.HasPrefix(clean, "/")
+	clean := path.Clean(p)
+	return clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
 }
 
 // attachFrom records and completes the dependencies of ch, both those under
@@ -320,8 +323,8 @@ func (a *attacher) attachDeclared(
 	}
 	if inMemory(a.fsys) {
 		// Pushed paths are slash-separated on every OS, and the client is asked
-		// for the directory as it is written here, so a backslash is a separator.
-		depDir = path.Clean(strings.ReplaceAll(depDir, `\`, "/"))
+		// for the directory as it is written here.
+		depDir = pushedPath(depDir)
 	}
 	key := filepath.Clean(depDir)
 	if a.ancestors[key] || attachedDirs[key] {

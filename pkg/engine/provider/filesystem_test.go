@@ -1097,3 +1097,32 @@ func TestRenderChartsShallowFirstRecoversPanic(t *testing.T) {
 		})
 	require.ElementsMatch(t, []string{"a", "c"}, rendered)
 }
+
+// A chart whose Chart.yaml is ignored is out of scope, so its templates are not
+// listed raw by the directory walk either, the same as the prebuilt inventory.
+func TestWalkInventoryIgnoredChartTemplatesNotListed(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	write := func(rel, body string) {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+	}
+	write("charts/app/Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n")
+	write("charts/app/templates/pod.yaml", "image: {{ .Values.img }}\n")
+	write("other/cm.yaml", "kind: ConfigMap\n")
+
+	filter, err := ExpandPathFilter([]string{filepath.Join(dir, "charts", "app", "Chart.yaml")}, nil)
+	require.NoError(t, err)
+	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+	require.NoError(t, err)
+	fs.SetChartFilter(filter)
+
+	files, err := fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{}, noChartRoots)
+	require.NoError(t, err)
+	var listed []string
+	for _, f := range files {
+		listed = append(listed, filepath.ToSlash(f.Path))
+	}
+	require.ElementsMatch(t, []string{filepath.ToSlash(filepath.Join(dir, "other", "cm.yaml"))}, listed)
+}

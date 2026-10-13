@@ -700,8 +700,12 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 			return true, "", filepath.SkipDir
 		}
 		_, err := os.Stat(filepath.Join(path, "Chart.yaml"))
-		if err != nil || IsNestedRenderedChart(path, resolvedChartPaths) || !s.chartFilter.ChartInScope(path) {
+		if err != nil || IsNestedRenderedChart(path, resolvedChartPaths) {
 			return true, "", nil
+		}
+		// An out-of-scope chart's files are left out as a whole, not listed raw.
+		if !s.chartFilter.ChartInScope(path) {
+			return true, "", filepath.SkipDir
 		}
 		return false, "", nil
 	}
