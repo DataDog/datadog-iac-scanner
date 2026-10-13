@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"maps"
 	"strings"
 	"testing"
 
@@ -273,6 +274,58 @@ func TestAnalyze_ContentPush_PackagedSubchartIgnoresIncompatibleArchive(t *testi
 	if got := out.ArchiveFiles["chart/charts/nginx/templates/deployment.yaml"]; got != "chart/charts/nginx-1.16.0.tgz" {
 		t.Errorf("archive_files = %v, want the compatible archive, not the leftover; findings = %+v",
 			out.ArchiveFiles, out.Findings)
+	}
+}
+
+// TestAnalyze_ContentPush_ChartDependencyFromPushedCharts pins the server-mode
+// wiring of cross-chart dependency resolution: the chart roots derived from the
+// pushed paths reach the Helm resolver, so an app chart whose dependency has
+// no repository is completed from the sibling lib chart pushed with it. The
+// app template uses a lib helper, so its finding proves lib was attached, and
+// lib's own manifest is rendered once, not once per chart.
+func TestAnalyze_ContentPush_ChartDependencyFromPushedCharts(t *testing.T) {
+	s := newParallelTestServer(t)
+
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "lib/Chart.yaml", Content: "apiVersion: v2\nname: lib\nversion: 1.0.0\n"},
+			{Path: "lib/templates/_labels.tpl",
+				Content: "{{- define \"lib.labels\" -}}\napp: {{ .Chart.Name }}\n{{- end -}}\n"},
+			{Path: "lib/templates/deployment.yaml", Content: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: lib
+`},
+			{Path: "app/Chart.yaml", Content: "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+				"dependencies:\n  - name: lib\n    version: 1.0.0\n"},
+			{Path: "app/templates/deployment.yaml", Content: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  labels:
+    {{- include "lib.labels" . | nindent 4 }}
+`},
+		},
+		Ruleset:  ruleset(syntheticK8sRule()),
+		Platform: []string{"kubernetes"},
+	}
+
+	out, _ := postAnalyzeK8s(t, s, req)
+
+	counts := map[string]int{}
+	for _, f := range out.Findings {
+		if f.QueryID == syntheticK8sRuleID {
+			counts[f.FileName]++
+		}
+	}
+	if want := map[string]int{"lib/templates/deployment.yaml": 1, "app/templates/deployment.yaml": 1}; !maps.Equal(counts, want) {
+		t.Errorf("finding counts = %v, want %v; findings = %+v; failed queries: %v",
+			counts, want, out.Findings, out.FailedQueries)
+	}
+	if len(out.MissingFiles) != 0 {
+		t.Errorf("expected no missing files: the app chart renders with the sibling lib chart, got %v", out.MissingFiles)
 	}
 }
 

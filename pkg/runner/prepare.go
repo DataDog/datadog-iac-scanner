@@ -124,15 +124,17 @@ func prepareSources(ctx context.Context,
 	contextLogger := logger.FromContext(ctx)
 
 	unrendered := &unrenderedHelmCharts{}
+	stored := &storedRenderPaths{}
 	files, err := src.WalkInventory(ctx, unionExtensions(services), chartPool,
 		func(ctx context.Context, chartPath string) bool {
 			return resolveAndStoreChart(ctx, src, services, chartPath, scanID,
-				openAPIResolveReferences, maxResolverDepth, unrendered)
+				openAPIResolveReferences, maxResolverDepth, unrendered, stored)
 		})
 	if err != nil {
 		return errors.Wrap(err, "failed to walk sources")
 	}
 	unrendered.log(ctx)
+	files = stored.withoutRaw(files)
 
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
 
@@ -141,6 +143,44 @@ func prepareSources(ctx context.Context,
 		func(ctx context.Context, f provider.InventoryFile, _ int) error {
 			return dispatchFile(ctx, src, routing[f.Ext], f.Path, scanID, openAPIResolveReferences, maxResolverDepth)
 		})
+}
+
+// storedRenderPaths collects the paths of the rendered Helm files that renders
+// stored. A template a render stored is not scanned raw too: the raw template
+// of a dependency that only renders with its parent's values fails to render.
+type storedRenderPaths struct {
+	mu    sync.Mutex
+	paths map[string]struct{}
+}
+
+func (s *storedRenderPaths) add(paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.paths == nil {
+		s.paths = make(map[string]struct{}, len(paths))
+	}
+	for _, p := range paths {
+		s.paths[filepath.Clean(filepath.FromSlash(p))] = struct{}{}
+	}
+}
+
+// withoutRaw drops the listed files whose path a render stored.
+func (s *storedRenderPaths) withoutRaw(files []provider.InventoryFile) []provider.InventoryFile {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.paths) == 0 {
+		return files
+	}
+	kept := files[:0]
+	for _, f := range files {
+		if _, ok := s.paths[filepath.Clean(filepath.FromSlash(f.Path))]; !ok {
+			kept = append(kept, f)
+		}
+	}
+	return kept
 }
 
 // resolveAndStoreChart renders a chart and stores its files.
@@ -152,6 +192,7 @@ func resolveAndStoreChart(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	unrendered *unrenderedHelmCharts,
+	stored *storedRenderPaths,
 ) (rendered bool) {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
@@ -188,9 +229,39 @@ func resolveAndStoreChart(
 		}
 	}
 	for _, s := range routed {
-		s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
+		stored.add(s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth))
 	}
 	return true
+}
+
+// withoutExcludedFiles drops the rendered files that ignore-paths or only-paths
+// leave out of the scan. A chart renders its dependencies with it, and those may
+// come from anywhere in the scan, so being in scope is decided per file, where
+// its findings are reported, rather than once for the chart.
+func withoutExcludedFiles(
+	ctx context.Context, filter provider.FileFilter, chartPath string, resFiles model.ResolvedFiles,
+) model.ResolvedFiles {
+	kept := make([]model.ResolvedHelm, 0, len(resFiles.File))
+	for i := range resFiles.File {
+		// A packaged dependency is reported at its parent's declaration, and its
+		// filters apply to both paths, as they do to a rule's.
+		file := &resFiles.File[i]
+		paths := []string{file.FileName}
+		if file.Reported != nil {
+			paths = append(paths, file.Reported.Path)
+		}
+		if filter.ExcludesAny(paths...) {
+			continue
+		}
+		kept = append(kept, resFiles.File[i])
+	}
+	if dropped := len(resFiles.File) - len(kept); dropped > 0 {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Debug().Msgf("Dropped %d rendered files of chart '%s' excluded by the scan's path filters",
+			dropped, chartPath)
+	}
+	resFiles.File = kept
+	return resFiles
 }
 
 // dispatchFile feeds one listed file's content to the services whose parser

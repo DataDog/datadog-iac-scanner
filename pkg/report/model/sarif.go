@@ -622,7 +622,8 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 			remediationAllowed := moduleAttribution == nil ||
 				(moduleAttribution.ModuleCodeOwned &&
 					moduleAttribution.ArgumentControl == model.ArgumentControlModule)
-			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" && remediationAllowed {
+			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" && remediationAllowed &&
+				remediationStartLocation.Line >= 1 {
 				sarifFix, err := remediationsHelper.TransformToSarifFix(
 					ctx,
 					vulnerability,

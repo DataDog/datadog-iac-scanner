@@ -24,12 +24,22 @@ import (
 // Resolver is an instance of the helm resolver. A nil fsys falls back to the
 // real filesystem; the server passes the request's in-memory FS.
 type Resolver struct {
-	fsys vfs.FS
+	fsys       vfs.FS
+	chartIndex *chartIndex
 }
 
 // NewResolver builds a helm resolver reading chart files from fsys.
 func NewResolver(fsys vfs.FS) *Resolver {
 	return &Resolver{fsys: fsys}
+}
+
+// WithChartRoots lets missing chart dependencies be resolved from the other
+// charts in the scan (see attachMissingDependencies).
+func (r *Resolver) WithChartRoots(roots []string) *Resolver {
+	if len(roots) > 0 {
+		r.chartIndex = newChartIndex(r.filesystem(), roots)
+	}
+	return r
 }
 
 // splitManifest keeps the information of the manifest splitted by source
@@ -42,6 +52,11 @@ type splitManifest struct {
 	helmInvocations     model.HelmInvocations
 	splitIDMap          map[int]interface{}
 	isCRD               bool
+	// realPath is where the source file lives when Helm names it after the
+	// place a dependency was attached at, which is not a path of the scan.
+	realPath string
+	// archive is the packaged dependency the source file comes from.
+	archive *packagedDependency
 }
 
 // dependenciesDirName is the chart subdirectory Helm loads subcharts from.
@@ -60,7 +75,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 		}
 	}()
 	fsys := r.filesystem()
-	splits, excluded, err := renderHelm(ctx, fsys, filePath)
+	splits, excluded, err := renderHelm(ctx, fsys, r.chartIndex, filePath)
 	if err != nil {
 		return model.ResolvedFiles{}, errors.Wrap(err, "failed to render helm chart")
 	}
@@ -71,6 +86,7 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 		Excluded: excluded,
 	}
 	contextLogger.Debug().Msgf("Processing %d helm manifest splits from chart '%s'", len(*splits), filePath)
+	archives := newArchiveLocations(fsys)
 	for i := range *splits {
 		split := &(*splits)[i]
 		sourceKey := chartSourceKey(split.path)
@@ -79,8 +95,21 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 			continue
 		}
 		origpath := resolvedChartFilePath(filePath, chartRelative, slashPaths)
+		if split.realPath != "" {
+			origpath = split.realPath
+			if slashPaths {
+				origpath = filepath.ToSlash(origpath)
+			}
+		}
+		var reported *model.ReportedLocation
+		if split.archive != nil && !slashPaths {
+			// The server reports packaged subcharts through its archive_files map
+			// instead, so only a disk scan needs the archive named here.
+			reported = archives.of(split.archive)
+		}
 		rfiles.File = append(rfiles.File, model.ResolvedHelm{
 			FileName:            origpath,
+			Reported:            reported,
 			Content:             split.content,
 			OriginalData:        split.original,
 			SplitID:             split.splitID,
@@ -142,15 +171,21 @@ func yamlParseErrorTemplate(err error) (template string, ok bool) {
 	return m[1], true
 }
 
-// renderHelm will use helm library to render helm charts
-func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest, []string, error) {
+// renderHelm will use helm library to render helm charts. A chart that fails
+// to render with the dependencies attached from elsewhere in the scan is
+// rendered again without them, as it was before they were attached.
+func renderHelm(ctx context.Context, fsys vfs.FS, index *chartIndex, path string) (*[]splitManifest, []string, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("Running helm install")
-	manifest, loadedChart, stamped, excluded, err := renderWithMarkers(ctx, fsys, path)
+	manifest, loadedChart, stamped, excluded, locator, err := renderWithMarkers(ctx, fsys, index, true, path)
+	if err != nil && locator.attachedAny() {
+		contextLogger.Debug().Msgf("Rendering chart '%s' again without the dependencies attached from the scan: %v", path, err)
+		manifest, loadedChart, stamped, excluded, locator, err = renderWithMarkers(ctx, fsys, index, false, path)
+	}
 	if err != nil {
 		return nil, []string{}, err
 	}
-	return splitManifestYAML(manifest, loadedChart, stamped), excluded, nil
+	return splitManifestYAML(manifest, loadedChart, stamped, locator), excluded, nil
 }
 
 // renderWithMarkers renders the chart with invocation markers. A marker is a
@@ -160,19 +195,21 @@ func renderHelm(ctx context.Context, fsys vfs.FS, path string) (*[]splitManifest
 // without markers, as it was before they existed, and the chart gives up all of
 // them only when that does not settle it. A template that had no marker is
 // broken by itself, and its error is returned at once.
-func renderWithMarkers(ctx context.Context, fsys vfs.FS, path string) (
-	*release.Release, *chart.Chart, stampedSources, []string, error,
+//
+// nolint:gocritic
+func renderWithMarkers(ctx context.Context, fsys vfs.FS, index *chartIndex, attach bool, path string) (
+	*release.Release, *chart.Chart, stampedSources, []string, *fileLocator, error,
 ) {
 	contextLogger := logger.FromContext(ctx)
 	unmarked := map[string]bool{}
 	for attempt := 0; ; attempt++ {
 		marks := newInvocationMarks()
 		marks.unmarked = unmarked
-		manifest, loadedChart, stamped, excluded, err := runInstall(
-			ctx, path, fsys, newClient(ctx), &values.Options{}, marks)
+		manifest, loadedChart, stamped, excluded, locator, err := runInstall(
+			ctx, path, fsys, index, attach, newClient(ctx), &values.Options{}, marks)
 		template, parseErr := yamlParseErrorTemplate(err)
 		if !parseErr || (marks.seen[template] && !marks.marked[template]) {
-			return manifest, loadedChart, stamped, excluded, err
+			return manifest, loadedChart, stamped, excluded, locator, err
 		}
 		// A template the stamping never saw, as when Helm names a subchart by an
 		// alias, cannot be left unmarked on its own.
@@ -183,20 +220,24 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, path string) (
 		contextLogger.Debug().Msgf("Rendering chart '%s' again without invocation markers in template '%s'", path, template)
 	}
 	contextLogger.Debug().Msgf("Rendering chart '%s' again without any invocation marker", path)
-	return runInstall(ctx, path, fsys, newClient(ctx), &values.Options{}, &invocationMarks{none: true})
+	return runInstall(ctx, path, fsys, index, attach, newClient(ctx), &values.Options{}, &invocationMarks{none: true})
 }
 
 // splitManifestYAML will split the rendered file and return its content by template as well as the template path.
 // stamped gives the template sources from before invocation markers were added (see setID).
+//
+// For files of dependencies it also reports, through locator, the path they
+// really have and the archive they come from.
 func splitManifestYAML(
-	template *release.Release, loadedChart *chart.Chart, stamped stampedSources,
+	template *release.Release, loadedChart *chart.Chart, stamped stampedSources, locator *fileLocator,
 ) *[]splitManifest {
 	sourceChart := loadedChart
 	if sourceChart == nil {
 		sourceChart = template.Chart
 	}
 	sources := make([]*chart.File, 0)
-	sources = updateName(sources, sourceChart, sourceChart.Name())
+	located := map[string]sourceLocation{}
+	sources = updateName(sources, sourceChart, sourceChart.Name(), locator, stamped, located, nil)
 	var splitedManifest []splitManifest
 	splitedSource := splitHelmManifest(template.Manifest)
 	sourceData := indexSources(sources, stamped)
@@ -251,6 +292,8 @@ func splitManifestYAML(
 			helmInvocations:     invocations,
 			splitIDMap:          source.idMap,
 			isCRD:               source.isCRD,
+			realPath:            located[sourceKey].realPath,
+			archive:             located[sourceKey].archive,
 		})
 	}
 	return &splitedManifest
@@ -448,25 +491,72 @@ func isCRDSourcePath(name string) bool {
 	return false
 }
 
-// updateName will update the templates name as well as its dependencies
-func updateName(template []*chart.File, charts *chart.Chart, name string) []*chart.File {
+// packagedDependency is a dependency rendered from a chart archive: parent is
+// the directory of the chart whose charts/ holds the archive, name what the
+// dependency renders as (its alias when it has one), and root the path Helm
+// names its files under.
+type packagedDependency struct {
+	parent, name, root string
+}
+
+// path is where the file Helm names name would be if the archive were
+// unpacked beside it.
+func (p *packagedDependency) path(name string) string {
+	rel := strings.TrimPrefix(name, p.root+"/")
+	return filepath.Join(p.parent, dependenciesDirName, p.name, filepath.FromSlash(rel))
+}
+
+// sourceLocation is where a source file of the render comes from.
+type sourceLocation struct {
+	realPath string
+	archive  *packagedDependency
+}
+
+// updateName returns the templates of charts and its dependencies named as
+// Helm reports them. They are copies: the aliases of one chart share its files,
+// each rendered under its own name. stamped gains the copies' sources. archive
+// is the packaged dependency charts belongs to, if any; the archives nested in
+// it are reported with it.
+func updateName(
+	template []*chart.File, charts *chart.Chart, name string, locator *fileLocator,
+	stamped stampedSources, located map[string]sourceLocation, archive *packagedDependency,
+) []*chart.File {
 	name = helmChartPath(name)
 	if name != charts.Name() {
 		name = helmChartPath(name, charts.Name())
 	}
-	for _, temp := range charts.Templates {
-		temp.Name = helmChartPath(name, temp.Name)
+	if archive == nil {
+		if parent, ok := locator.packagedParent(charts); ok {
+			archive = &packagedDependency{parent: parent, name: charts.Name(), root: name}
+		}
 	}
-	template = append(template, charts.Templates...)
+	locate := func(f *chart.File, sourceName string) {
+		key := chartSourceKey(sourceName)
+		if real, ok := locator.realPath(f); ok {
+			located[key] = sourceLocation{realPath: real}
+		} else if archive != nil {
+			located[key] = sourceLocation{realPath: archive.path(key), archive: archive}
+		}
+	}
+	for _, temp := range charts.Templates {
+		named := &chart.File{Name: helmChartPath(name, temp.Name), Data: temp.Data}
+		if source, ok := stamped[temp]; ok {
+			stamped[named] = source
+		}
+		locate(temp, named.Name)
+		template = append(template, named)
+	}
 	for _, f := range localCRDFiles(charts) {
 		rel := crdChartRelativePath(f.Name)
-		template = append(template, &chart.File{
+		crd := &chart.File{
 			Name: helmChartPath(name, rel),
 			Data: f.Data,
-		})
+		}
+		locate(f, crd.Name)
+		template = append(template, crd)
 	}
 	for _, dep := range charts.Dependencies() {
-		template = updateName(template, dep, helmChartPath(name, dependenciesDirName))
+		template = updateName(template, dep, helmChartPath(name, dependenciesDirName), locator, stamped, located, archive)
 	}
 	return template
 }

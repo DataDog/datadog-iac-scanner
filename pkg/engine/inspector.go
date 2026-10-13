@@ -1535,9 +1535,10 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		if rc.Severity != nil {
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
-		if !c.isExternalModulePath(file.FilePath) && rulePathExcluded(file.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+		reportedPath := file.Reported.PathOr(file.FilePath)
+		if c.rulePathsExcluded([]string{file.FilePath, reportedPath}, rc.IgnorePaths, rc.OnlyPaths) {
 			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
-				file.FilePath, vulnerability.QueryID)
+				reportedPath, vulnerability.QueryID)
 			return nil, false
 		}
 	}
@@ -1560,6 +1561,9 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 			Msgf("Suppressing result by Comment at line %d", vulnerability.Line)
 		markSuppressed(vulnerability, model.SuppressionJustificationIgnoreComment)
 	}
+
+	// Must follow the ignore-line checks, which use the detected file's lines.
+	file.Reported.Apply(vulnerability)
 
 	return vulnerability, false
 }
@@ -1584,6 +1588,27 @@ func lookupRuleConfig(ruleConfigs map[string]config.IacRuleConfig, queryID, lega
 // based on its ignore-paths and only-paths lists.
 func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
 	return pathutil.Excluded(filePath, ignorePaths, onlyPaths)
+}
+
+// rulePathsExcluded applies a rule's path filters to a finding known by
+// several paths, such as a file inside a chart archive and the declaration it
+// is reported at: an ignore matching any of them drops it, and an only path
+// matching any of them keeps it. External module paths match neither.
+func (c *Inspector) rulePathsExcluded(paths, ignorePaths, onlyPaths []string) bool {
+	kept := len(onlyPaths) == 0
+	for _, p := range paths {
+		if c.isExternalModulePath(p) {
+			kept = true
+			continue
+		}
+		if rulePathExcluded(p, ignorePaths, nil) {
+			return true
+		}
+		if !kept && !rulePathExcluded(p, nil, onlyPaths) {
+			kept = true
+		}
+	}
+	return !kept
 }
 
 func (c *Inspector) isExternalModulePath(filePath string) bool {

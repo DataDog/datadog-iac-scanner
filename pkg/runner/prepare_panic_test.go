@@ -44,7 +44,8 @@ func TestResolveAndStoreChartHandlesResolvePanic(t *testing.T) {
 	service := &Service{Resolver: res}
 	src := &chartFailureRecorder{}
 
-	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15, &unrenderedHelmCharts{})
+	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15,
+		&unrenderedHelmCharts{}, &storedRenderPaths{})
 
 	require.False(t, rendered)
 	require.Equal(t, []string{"chart"}, src.failed)
@@ -65,7 +66,8 @@ func TestResolveAndStoreChartKeepsRenderedWhenStoringPanics(t *testing.T) {
 	service := &Service{Resolver: res} // no parser: storing the files panics
 	src := &chartFailureRecorder{}
 
-	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15, &unrenderedHelmCharts{})
+	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15,
+		&unrenderedHelmCharts{}, &storedRenderPaths{})
 
 	require.True(t, rendered)
 	require.Empty(t, src.failed)

@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -134,7 +135,11 @@ type Client struct {
 	inMemoryPaths []string
 	walkInventory []string
 	chartRoots    []string
-	contentCache  map[string][]byte
+	// chartFilter holds the user's own path filters. The analyzer's exclusions
+	// also list raw templates it does not classify and gitignored files, whose
+	// rendered documents are still scanned.
+	chartFilter  *provider.PathFilter
+	contentCache map[string][]byte
 }
 
 // ClientOption customizes a Client at construction time.

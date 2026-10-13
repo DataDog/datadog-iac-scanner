@@ -80,9 +80,12 @@ type Service struct {
 	Inspector      *engine.Inspector
 	Tracker        Tracker
 	Resolver       *resolver.Resolver
-	files          model.FileMetadatas
-	filesMu        sync.Mutex
-	MaxFileSize    int
+	// RenderedFileFilter applies the scan's path filters to rendered Helm
+	// files; nil keeps them all.
+	RenderedFileFilter provider.FileFilter
+	files              model.FileMetadatas
+	filesMu            sync.Mutex
+	MaxFileSize        int
 	// Platforms is the scan's effective platform set, used to classify each
 	// parsed file's platform consistently with the analyzer so the engine can
 	// scope queries to their own platform's documents.
@@ -94,6 +97,10 @@ type Service struct {
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
 	// so their raw template files are not mistaken for parse bugs in sink.
 	failedHelmChartDirs map[string]struct{}
+	// storedHelmMu guards storedHelm, the keys of the rendered Helm documents
+	// already stored (see firstHelmRender).
+	storedHelmMu sync.Mutex
+	storedHelm   map[string]struct{}
 	// contentInterner dedups OriginalData strings across files with identical
 	// content (47%+ on community-operators); guarded by contentInternerMu.
 	contentInternerMu sync.Mutex

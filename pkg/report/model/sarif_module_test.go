@@ -31,6 +31,10 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 				Start: model.ResourceLine{Line: 2, Col: 1},
 				End:   model.ResourceLine{Line: 4, Col: 1},
 			},
+			RemediationLocation: model.ResourceLocation{
+				Start: model.ResourceLine{Line: 3, Col: 3},
+				End:   model.ResourceLine{Line: 3, Col: 22},
+			},
 			ResourceType:    "aws_s3_bucket",
 			ResourceName:    "this",
 			Remediation:     "remove insecure ACL",

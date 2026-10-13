@@ -64,6 +64,10 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		// disk and mutates ScanParams.Platform). Platforms come from the request
 		// (ScanParams.Platform); content is read through c.fsys.
 		extractedPaths = provider.ExtractedPath{Path: c.inMemoryPaths}
+		// The analyzer's disk walk fills the chart index roots for CLI scans;
+		// derive them from the pushed paths so the Helm resolver also resolves
+		// cross-chart dependencies in server mode.
+		c.chartRoots = provider.ChartRoots(c.inMemoryPaths)
 	} else {
 		paths, fp, err := c.prepareAndAnalyzePaths(ctx)
 		memwatch.Sample(ctx, memwatch.PhaseAnalyzePaths)
@@ -337,11 +341,13 @@ func (c *Client) createService(
 	flagEvaluator featureflags.FlagEvaluator,
 	filePlatform map[string]string) ([]*runner.Service, error) {
 	var filesSource provider.SourceProvider
+	var renderedFileFilter provider.FileFilter
 	if c.inMemory {
 		allPaths := append([]string{}, paths...)
 		allPaths = append(allPaths, remoteModulePaths...)
-		filesSource = provider.NewMemorySourceProvider(c.fsys, allPaths,
+		memSource := provider.NewMemorySourceProvider(c.fsys, allPaths,
 			c.ScanParams.Config.IgnorePaths, c.ScanParams.Config.OnlyPaths)
+		filesSource, renderedFileFilter = memSource, memSource
 	} else {
 		fsSource, err := c.getFileSystemSourceProvider(ctx, paths)
 		if err != nil {
@@ -350,8 +356,11 @@ func (c *Client) createService(
 		if len(c.walkInventory) > 0 {
 			fsSource.SetPrebuiltWalk(c.walkInventory, c.chartRoots, c.contentCache)
 		}
+		if c.chartFilter != nil {
+			fsSource.SetChartFilter(c.chartFilter)
+		}
 		fsSource.AddUnfilteredPaths(remoteModulePaths)
-		filesSource = fsSource
+		filesSource, renderedFileFilter = fsSource, fsSource.ChartFilter()
 	}
 
 	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)
@@ -387,7 +396,7 @@ func (c *Client) createService(
 	// server-mode requests handle pushed chart content without disk access.
 	builder := resolver.NewBuilder()
 	if flagEvaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
-		builder = builder.Add(ctx, helm.NewResolver(c.fsys))
+		builder = builder.Add(ctx, helm.NewResolver(c.fsys).WithChartRoots(c.chartRoots))
 	}
 	combinedResolver, err := builder.
 		Build(ctx)
@@ -401,15 +410,16 @@ func (c *Client) createService(
 		services = append(
 			services,
 			&runner.Service{
-				SourceProvider: filesSource,
-				Storage:        store,
-				Parser:         p,
-				Inspector:      inspector,
-				Tracker:        t,
-				Resolver:       combinedResolver,
-				MaxFileSize:    c.ScanParams.MaxFileSizeFlag,
-				Platforms:      types,
-				FilePlatform:   filePlatform,
+				SourceProvider:     filesSource,
+				Storage:            store,
+				Parser:             p,
+				Inspector:          inspector,
+				Tracker:            t,
+				Resolver:           combinedResolver,
+				RenderedFileFilter: renderedFileFilter,
+				MaxFileSize:        c.ScanParams.MaxFileSizeFlag,
+				Platforms:          types,
+				FilePlatform:       filePlatform,
 			},
 		)
 	}

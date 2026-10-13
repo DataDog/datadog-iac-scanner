@@ -58,15 +58,16 @@ func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 	vulnDictionary := make(map[string]model.Vulnerability)
 	for i := range m.vulnerabilities {
 		v := m.vulnerabilities[i]
+		fileName, line := v.Identity()
 		// SCIInfo is constant within a scan; an empty value yields the same grouping.
 		key := model.GetDatadogFingerprintHash(
 			model.SCIInfo{},
-			v.FileName,
+			fileName,
 			v.Platform,
 			v.ResourceType,
 			v.ResourceName,
 			utils.ChooseQueryID(v.QueryID, v.LegacyQueryID),
-			v.LineWithVulnerability,
+			line,
 			v.ModuleCallChain,
 		)
 		vulnDictionary[key] = v

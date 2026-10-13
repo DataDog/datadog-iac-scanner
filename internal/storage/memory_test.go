@@ -222,6 +222,31 @@ func TestMemoryStorage_SaveVulnerabilities(t *testing.T) {
 	}
 }
 
+// Findings of different files of packaged dependencies are all reported at one
+// declaration line; they stay distinct by where they were detected.
+func TestMemoryStorage_ReportedFindingsAreNotMerged(t *testing.T) {
+	declaration := &model.ReportedLocation{Path: "app/Chart.yaml", Line: 5, LineText: "- name: pkg"}
+	storage := NewMemoryStorage()
+	var saved []model.Vulnerability
+	for _, detected := range []string{"app/charts/a/templates/pod.yaml", "app/charts/b/templates/pod.yaml"} {
+		v := model.Vulnerability{
+			FileName: detected, QueryID: "q", Platform: "Kubernetes", ResourceType: "Pod",
+			ResourceName: "release", LineWithVulnerability: "privileged: true",
+		}
+		declaration.Apply(&v)
+		saved = append(saved, v)
+	}
+	require.NoError(t, storage.SaveVulnerabilities(context.Background(), saved))
+	got, err := storage.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	require.NoError(t, storage.SaveVulnerabilities(context.Background(), saved[:1]))
+	got, err = storage.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, got, 2, "the same finding saved twice is still one")
+}
+
 // TestNewMemoryStorage tests the functions [NewMemoryStorage()]
 func TestNewMemoryStorage(t *testing.T) {
 	tests := []struct {
