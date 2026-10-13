@@ -1237,3 +1237,48 @@ func TestRenderChartsShallowFirstRecoversPanic(t *testing.T) {
 		})
 	require.ElementsMatch(t, []string{"a", "c"}, rendered)
 }
+
+// A render in one scan path stores the template of a dependency another scan
+// path lists, so that raw copy is left out whatever the order of the paths. The
+// dependency's own render fails here, which walks its files raw, and a template
+// no render stored is still scanned raw.
+func TestCollectScanFilesDropsRenderedAcrossScanPaths(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	write := func(rel, body string) {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+	}
+	write("lib/Chart.yaml", "apiVersion: v2\nname: lib\nversion: 1.0.0\n")
+	write("lib/templates/cm.yaml", "name: {{ required \"name is required\" .Values.name }}\n")
+	write("lib/templates/disabled.yaml", "name: {{ .Values.other }}\n")
+	write("app/Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n")
+	write("app/templates/cm.yaml", "name: app\n")
+
+	app, lib := filepath.Join(dir, "app"), filepath.Join(dir, "lib")
+	libCM := filepath.ToSlash(filepath.Join(lib, "templates", "cm.yaml"))
+	libDisabled := filepath.ToSlash(filepath.Join(lib, "templates", "disabled.yaml"))
+	resolverSink := func(_ context.Context, chart string) ([]string, error) {
+		if filepath.ToSlash(chart) == filepath.ToSlash(app) {
+			return []string{libCM}, nil
+		}
+		return nil, fmt.Errorf("render of %s needs its parent's values", chart)
+	}
+	for _, tc := range []struct {
+		name  string
+		paths []string
+	}{
+		{name: "app first", paths: []string{app, lib}},
+		{name: "lib first", paths: []string{lib, app}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fs, err := NewFileSystemSourceProvider(ctx, tc.paths, nil, nil)
+			require.NoError(t, err)
+			files, err := fs.collectScanFiles(ctx, model.Extensions{".yaml": {}}, resolverSink)
+			require.NoError(t, err)
+			require.NotContains(t, files, libCM, "the rendered copy stands in for the raw template")
+			require.Contains(t, files, libDisabled, "no render stored it, so it is scanned raw")
+		})
+	}
+}

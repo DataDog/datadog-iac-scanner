@@ -206,7 +206,8 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 			continue
 		}
 
-		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, configExtensions)
+		var noRender []string
+		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, configExtensions, &noRender)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to collect files")
 		}
@@ -273,7 +274,7 @@ func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
 func (s *FileSystemSourceProvider) collectScanFiles(ctx context.Context,
 	extensions model.Extensions, resolverSink ResolverSink) ([]string, error) {
 	// Phase 1: Collect all file paths to process
-	var filesToProcess []string
+	var filesToProcess, rendered []string
 	for _, scanPath := range s.paths {
 		fileInfo, err := os.Stat(scanPath)
 		if err != nil {
@@ -293,13 +294,14 @@ func (s *FileSystemSourceProvider) collectScanFiles(ctx context.Context,
 		}
 
 		// Directory - collect all files first
-		files, err := s.collectFiles(ctx, scanPath, resolverSink, extensions)
+		files, err := s.collectFiles(ctx, scanPath, resolverSink, extensions, &rendered)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to collect files")
 		}
 		filesToProcess = append(filesToProcess, files...)
 	}
-	return filesToProcess, nil
+	// A render in one scan path can store a template another scan path listed.
+	return withoutStoredFiles(filesToProcess, rendered), nil
 }
 
 // InventoryFile is a discovered file and its matched extension token.
@@ -694,17 +696,16 @@ func (s *FileSystemSourceProvider) walkDirectory(ctx context.Context, scanPath s
 }
 
 func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
-	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
-	var rendered []string
+	resolverSink ResolverSink, extensions model.Extensions, rendered *[]string) (files []string, err error) {
 	err = s.walkDirectory(ctx, scanPath, extensions,
 		func(ctx context.Context, path string, resolved *[]string) error {
-			return s.resolveChartDir(ctx, path, resolverSink, resolved, &rendered)
+			return s.resolveChartDir(ctx, path, resolverSink, resolved, rendered)
 		},
 		func(_ context.Context, path, _ string) error {
 			files = append(files, toSlash(path))
 			return nil
 		})
-	return withoutStoredFiles(files, rendered), err
+	return files, err
 }
 
 // withoutStoredFiles drops the listed files whose path a render stored: the

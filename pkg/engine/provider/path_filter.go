@@ -8,6 +8,8 @@ package provider
 
 import (
 	"path/filepath"
+
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 )
 
 // FileFilter reports whether a file is left out of the scan by its path
@@ -82,23 +84,25 @@ func (f *PathFilter) ExcludesAny(paths ...string) bool {
 	if f == nil {
 		return false
 	}
-	checked, inScope := false, f.only == nil
+	abs := make([]string, 0, len(paths))
 	for _, p := range paths {
-		abs, ok := absPath(p)
-		if !ok {
-			continue
-		}
-		checked = true
-		if f.ignoredPath(abs) {
-			return true
-		}
-		for _, op := range f.only {
-			if !inScope && pathWithinBase(op, abs) {
-				inScope = true
-			}
+		if a, ok := absPath(p); ok {
+			abs = append(abs, a)
 		}
 	}
-	return checked && !inScope
+	if len(abs) == 0 {
+		return false
+	}
+	return pathutil.ExcludedAny(abs, f.ignoredPath, f.withinOnly, f.only != nil)
+}
+
+func (f *PathFilter) withinOnly(abs string) bool {
+	for _, op := range f.only {
+		if pathWithinBase(op, abs) {
+			return true
+		}
+	}
+	return false
 }
 
 // ChartInScope reports whether the chart at root is rendered: neither it nor
