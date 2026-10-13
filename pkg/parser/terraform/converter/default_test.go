@@ -6,14 +6,18 @@
 package converter
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
@@ -1085,4 +1089,115 @@ resource "aws_ssm_parameter" "db" {
 		})
 		require.NoError(t, err)
 	})
+}
+
+// A dynamic block whose labels do not resolve for one element is kept as
+// written, not expanded with that element's blocks dropped.
+func TestDynamicBlocksWithUnresolvedLabelStayAsWritten(t *testing.T) {
+	input := `
+resource "aws_y" "b" {
+  dynamic "setting" {
+    for_each = var.settings
+    labels   = [setting.value.name]
+    content {
+      value = setting.value.name
+    }
+  }
+}
+`
+	out := convertToJSONMap(t, input, VariableMap{
+		"var": cty.ObjectVal(map[string]cty.Value{
+			"settings": cty.ListVal([]cty.Value{
+				cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("a")}),
+				cty.ObjectVal(map[string]cty.Value{"name": cty.NullVal(cty.String)}),
+			}),
+		}),
+	})
+	b := out["resource"].(map[string]interface{})["aws_y"].(map[string]interface{})["b"].(map[string]interface{})
+	require.NotContains(t, b, "setting", "a partially resolved dynamic block must not be expanded")
+	require.Contains(t, b["dynamic"], "setting")
+}
+
+// Nested dynamic blocks share one budget per top-level block: once it is spent,
+// the inner blocks that do not fit stay as written, and the rest still expand.
+func TestDynamicBlocksShareTheBlockBudget(t *testing.T) {
+	input := `
+resource "aws_security_group" "sg" {
+  dynamic "outer" {
+    for_each = var.outer
+    content {
+      dynamic "inner" {
+        for_each = var.inner
+        content {
+          port = inner.value
+        }
+      }
+    }
+  }
+}
+`
+	numbers := func(n int) cty.Value {
+		vals := make([]cty.Value, n)
+		for i := range vals {
+			vals[i] = cty.NumberIntVal(int64(i))
+		}
+		return cty.ListVal(vals)
+	}
+	out := convertToJSONMap(t, input, VariableMap{
+		"var": cty.ObjectVal(map[string]cty.Value{
+			"outer": numbers(40),
+			"inner": numbers(30),
+		}),
+	})
+	sg := out["resource"].(map[string]interface{})["aws_security_group"].(map[string]interface{})["sg"].(map[string]interface{})
+	outer := sg["outer"].([]interface{})
+	require.Len(t, outer, 40)
+
+	expanded, asWritten := 0, 0
+	for _, o := range outer {
+		entry := o.(map[string]interface{})
+		if inner, ok := entry["inner"].([]interface{}); ok {
+			expanded += len(inner)
+			continue
+		}
+		asWritten++
+		require.Contains(t, entry["dynamic"], "inner")
+	}
+	require.LessOrEqual(t, 40+expanded, dynamicblock.MaxGeneratedPerResource)
+	require.Greater(t, asWritten, 0, "the budget must run out and leave some inner blocks as written")
+	require.Greater(t, expanded, 0)
+}
+
+// A dynamic block kept as written for exceeding a cap is logged, once per file.
+func TestDynamicBlockOverflowIsLoggedOnce(t *testing.T) {
+	input := `
+resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = var.big
+    content {
+      from_port = ingress.value
+    }
+  }
+  dynamic "egress" {
+    for_each = var.big
+    content {
+      to_port = egress.value
+    }
+  }
+}
+`
+	vals := make([]cty.Value, dynamicblock.MaxExpansion+1)
+	for i := range vals {
+		vals[i] = cty.NumberIntVal(int64(i))
+	}
+	file, diags := hclsyntax.ParseConfig([]byte(input), "main.tf", hcl.Pos{Line: 1, Column: 1})
+	require.False(t, diags.HasErrors())
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+	_, err := Convert(ctx, file, VariableMap{
+		"var": cty.ObjectVal(map[string]cty.Value{"big": cty.ListVal(vals)}),
+	}, Options{})
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(logs.String(), `"expansion_kind":"dynamic"`), logs.String())
+	require.Contains(t, logs.String(), `"address":"dynamic.ingress"`)
 }
