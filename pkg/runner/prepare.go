@@ -191,6 +191,18 @@ func (s *storedRenderPaths) withoutRaw(files []provider.InventoryFile) []provide
 }
 
 // resolveAndStoreChart renders a chart and stores its files.
+// reportRenderFailure logs a chart that failed to render. A failed Helm chart's
+// raw templates are never valid YAML, so its parse errors are silenced for every
+// service.
+func reportRenderFailure(ctx context.Context, services []*Service, kind model.FileKind, chartPath string, err error) {
+	if kind == model.KindHELM {
+		for _, s := range services {
+			s.recordFailedHelmChart(chartPath)
+		}
+	}
+	logResolveError(ctx, kind, chartPath, err)
+}
+
 func resolveAndStoreChart(
 	ctx context.Context,
 	src preparedSource,
@@ -207,12 +219,9 @@ func resolveAndStoreChart(
 	}
 	if err != nil {
 		if kind == model.KindHELM {
-			for _, s := range services {
-				s.recordFailedHelmChart(chartPath)
-			}
 			unrendered.record(err)
 		}
-		logResolveError(ctx, kind, chartPath, err)
+		reportRenderFailure(ctx, services, kind, chartPath, err)
 		// A missing deploy-time value is not a file the IDE can push. Re-requesting
 		// the chart directory cannot supply it; the raw templates are still scanned.
 		if kind != model.KindHELM || !helmRenderNeedsNoFiles(err) {

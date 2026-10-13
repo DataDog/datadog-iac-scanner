@@ -7,6 +7,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -64,42 +65,9 @@ func PrepareAndScan(
 		return StartScan(ctx, scanID, services)
 	}
 
-	var wg sync.WaitGroup
-	wgDone := make(chan bool)
-	errCh := make(chan error)
-
-	workersCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	for _, service := range services {
-		wg.Add(1)
-		go service.PrepareSources(workersCtx, scanID, openAPIResolveReferences, maxResolverDepth, &wg, errCh, flagEvaluator)
-	}
-
-	go func() {
-		wg.Wait()
-		close(wgDone)
-		close(errCh)
-	}()
-
-	select {
-	case <-ctx.Done():
-		metrics.Metric.Stop()
-		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
-		return ctx.Err()
-	case <-wgDone:
-		metrics.Metric.Stop()
-		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
-		if fsp, ok := runner.SharedWalkProvider(services); ok {
-			fsp.ReleaseContentCache()
-		}
-		releasePrepareState(services)
-		return StartScan(ctx, scanID, services)
-	case err := <-errCh:
-		metrics.Metric.Stop()
-		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
-		return err
-	}
+	metrics.Metric.Stop()
+	memwatch.Sample(ctx, memwatch.PhasePrepareSources)
+	return errors.New("services must share one source provider")
 }
 
 // releasePrepareState drops the dedup state that only the prepare phase uses,

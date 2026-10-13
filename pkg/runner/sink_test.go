@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -417,7 +418,7 @@ func TestSink_ParseFailureLogLevel(t *testing.T) {
 			// "{" is an unclosed YAML flow mapping — guaranteed parse error.
 			rc := bytes.NewReader([]byte("{"))
 			buf := make([]byte, 64)
-			_ = svc.sink(testCtx, tt.filename, "scan1", rc, buf, false, 1)
+			_ = sinkReader(svc, testCtx, tt.filename, "scan1", rc, buf, false, 1)
 
 			require.Contains(t, logBuf.String(), tt.wantLevel)
 		})
@@ -474,7 +475,7 @@ func TestSink_ParseFailureRedactsCredentials(t *testing.T) {
 
 			rc := bytes.NewReader([]byte(content))
 			buf := make([]byte, 1024)
-			require.NoError(t, svc.sink(testCtx, "/repo/test/etc/test.ini", "scan1", rc, buf, false, 1))
+			require.NoError(t, sinkReader(svc, testCtx, "/repo/test/etc/test.ini", "scan1", rc, buf, false, 1))
 
 			logged := logBuf.String()
 			// The failure is still reported, with the offending scheme/host kept for triage.
@@ -544,7 +545,7 @@ func sinkFile(t *testing.T, filename string, content []byte) *model.FileMetadata
 		Tracker:     noopTracker{},
 		MaxFileSize: 5,
 	}
-	require.NoError(t, s.sink(ctx, filename, "scanID", bytes.NewReader(content), make([]byte, mbConst), false, 15))
+	require.NoError(t, sinkReader(s, ctx, filename, "scanID", bytes.NewReader(content), make([]byte, mbConst), false, 15))
 	require.Len(t, s.files, 1)
 	return s.files[0]
 }
@@ -557,3 +558,10 @@ func (noopTracker) TrackFileFoundCountLines(_ int)     {}
 func (noopTracker) TrackFileParseCountLines(_ int)     {}
 func (noopTracker) TrackFileIgnoreCountLines(_ int)    {}
 func (noopTracker) TrackFileFoundCountResources(_ int) {}
+
+// sinkReader reads a file and sinks it the way the shared walk does.
+func sinkReader(s *Service, ctx context.Context, filename, scanID string,
+	rc io.Reader, data []byte, openAPIResolveReferences bool, maxResolverDepth int) error {
+	c, err := getContent(rc, data, s.MaxFileSize, filename)
+	return s.sinkContent(ctx, filename, scanID, c, err, openAPIResolveReferences, maxResolverDepth)
+}

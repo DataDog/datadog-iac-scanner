@@ -8,8 +8,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"reflect"
 	"sync"
 	"testing"
@@ -20,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMemorySourceProvider_GetSources_FiltersByExtension(t *testing.T) {
+func TestMemorySourceProvider_FiltersByExtension(t *testing.T) {
 	mem := vfs.NewMemFS(map[string][]byte{
 		"infra/main.tf":   []byte("tf-content"),
 		"infra/notes.md":  []byte("md-content"),
@@ -45,7 +43,7 @@ func TestMemorySourceProvider_GetSources_FiltersByExtension(t *testing.T) {
 	}
 }
 
-func TestMemorySourceProvider_GetSources_FiltersByPath(t *testing.T) {
+func TestMemorySourceProvider_FiltersByPath(t *testing.T) {
 	files := map[string][]byte{
 		"infra/main.tf": []byte("infra-tf"),
 		"src/main.tf":   []byte("src-tf"),
@@ -78,19 +76,18 @@ func TestMemorySourceProvider_GetBasePaths(t *testing.T) {
 	}
 }
 
-// collect runs GetSources and returns the emitted filename -> content map.
+// collect lists the files the shared prepare reads for exts and returns the
+// path -> content map.
 func collect(t *testing.T, p *MemorySourceProvider, exts model.Extensions) map[string]string {
 	t.Helper()
+	files, err := p.WalkInventory(context.Background(), exts, utils.PoolOptions{},
+		func(context.Context, string) bool { return false })
+	require.NoError(t, err)
 	got := map[string]string{}
-	sink := func(_ context.Context, filename string, content io.ReadCloser) error {
-		b, _ := io.ReadAll(content)
-		_ = content.Close()
-		got[filename] = string(b)
-		return nil
-	}
-	noopResolver := func(_ context.Context, _ string) ([]string, error) { return nil, nil }
-	if err := p.GetSources(context.Background(), exts, sink, noopResolver); err != nil {
-		t.Fatalf("GetSources: %v", err)
+	for _, f := range files {
+		b, readErr := p.ReadFile(f.Path)
+		require.NoError(t, readErr)
+		got[f.Path] = string(b)
 	}
 	return got
 }
@@ -105,85 +102,12 @@ func TestMemorySourceProvider_TofuShadowing(t *testing.T) {
 	p := NewMemorySourceProvider(mem, mem.Paths(), nil, nil)
 	exts := model.Extensions{".tf": {}, ".tofu": {}, ".tf.json": {}}
 
-	collectConc := func(parallel bool) map[string]string {
-		var mu sync.Mutex
-		got := map[string]string{}
-		sink := func(_ context.Context, filename string, content io.ReadCloser) error {
-			b, _ := io.ReadAll(content)
-			_ = content.Close()
-			mu.Lock()
-			got[filename] = string(b)
-			mu.Unlock()
-			return nil
-		}
-		noop := func(_ context.Context, _ string) ([]string, error) { return nil, nil }
-		var err error
-		if parallel {
-			err = p.GetParallelSources(context.Background(), exts, sink, noop)
-		} else {
-			err = p.GetSources(context.Background(), exts, sink, noop)
-		}
-		if err != nil {
-			t.Fatalf("get sources (parallel=%v): %v", parallel, err)
-		}
-		return got
+	got := collect(t, p, exts)
+	if len(got) != 4 {
+		t.Fatalf("emitted %d files, want 4 (both twins kept): %v", len(got), got)
 	}
-
-	for _, parallel := range []bool{false, true} {
-		got := collectConc(parallel)
-		if len(got) != 4 {
-			t.Fatalf("parallel=%v: emitted %d files, want 4 (both twins kept): %v", parallel, len(got), got)
-		}
-		if got["infra/main.tofu"] != "tofu" || got["infra/other.tf"] != "other" || got["infra/main.tf.json"] != "{}" || got["infra/main.tf"] != "tf twin" {
-			t.Errorf("parallel=%v: unexpected emitted set %v", parallel, got)
-		}
-	}
-}
-
-// TestMemorySourceProvider_ParallelMatchesSequential asserts the parallel parse
-// path emits exactly the same file set/content as the sequential path. The
-// parallel sink is mutex-guarded since it is called from multiple workers.
-func TestMemorySourceProvider_ParallelMatchesSequential(t *testing.T) {
-	files := map[string][]byte{}
-	for i := 0; i < 200; i++ {
-		files[fmt.Sprintf("dir%d/main.tf", i)] = []byte(fmt.Sprintf("content-%d", i))
-	}
-	mem := vfs.NewMemFS(files)
-	p := NewMemorySourceProvider(mem, mem.Paths(), nil, nil)
-	exts := model.Extensions{".tf": {}}
-
-	collectConc := func(parallel bool) map[string]string {
-		var mu sync.Mutex
-		got := map[string]string{}
-		sink := func(_ context.Context, filename string, content io.ReadCloser) error {
-			b, _ := io.ReadAll(content)
-			_ = content.Close()
-			mu.Lock()
-			got[filename] = string(b)
-			mu.Unlock()
-			return nil
-		}
-		noop := func(_ context.Context, _ string) ([]string, error) { return nil, nil }
-		var err error
-		if parallel {
-			err = p.GetParallelSources(context.Background(), exts, sink, noop)
-		} else {
-			err = p.GetSources(context.Background(), exts, sink, noop)
-		}
-		if err != nil {
-			t.Fatalf("get sources (parallel=%v): %v", parallel, err)
-		}
-		return got
-	}
-
-	seq := collectConc(false)
-	par := collectConc(true)
-
-	if len(par) != 200 {
-		t.Fatalf("parallel emitted %d files, want 200", len(par))
-	}
-	if !reflect.DeepEqual(seq, par) {
-		t.Fatalf("parallel result differs from sequential")
+	if got["infra/main.tofu"] != "tofu" || got["infra/other.tf"] != "other" || got["infra/main.tf.json"] != "{}" || got["infra/main.tf"] != "tf twin" {
+		t.Errorf("unexpected emitted set %v", got)
 	}
 }
 

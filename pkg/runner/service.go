@@ -20,7 +20,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
-	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -303,57 +302,6 @@ func (s *Service) isUnderFailedHelmChart(filePath string) bool {
 		}
 	}
 	return false
-}
-
-// PrepareSources will prepare the sources to be scanned
-func (s *Service) PrepareSources(ctx context.Context,
-	scanID string,
-	openAPIResolveReferences bool,
-	maxResolverDepth int,
-	wg *sync.WaitGroup,
-	errCh chan<- error, flagEvaluator featureflags.FlagEvaluator) {
-	contextLogger := logger.FromContext(ctx)
-	defer wg.Done()
-	// CxSAST query under review
-	contextLogger.Info().Msgf("Getting sources")
-	var err error
-	// TODO: Remove this if / else upon finishing dogfooding phase
-	if ok := flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing); ok {
-		err = s.SourceProvider.GetParallelSources(
-			ctx,
-			s.Parser.SupportedExtensions(),
-			func(ctx context.Context, filename string, rc io.ReadCloser) error {
-				// Buffer is reused across files via a pool; the sink runs
-				// concurrently but each call borrows its own buffer.
-				buf := scanReadBufferPool.Get().(*[]byte)
-				defer scanReadBufferPool.Put(buf)
-				return s.sink(ctx, filename, scanID, rc, *buf, openAPIResolveReferences, maxResolverDepth)
-			},
-			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
-				return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
-			},
-		)
-	} else {
-		err = s.SourceProvider.GetSources(
-			ctx,
-			s.Parser.SupportedExtensions(),
-			func(ctx context.Context, filename string, rc io.ReadCloser) error {
-				buf := scanReadBufferPool.Get().(*[]byte)
-				defer scanReadBufferPool.Put(buf)
-				return s.sink(ctx, filename, scanID, rc, *buf, openAPIResolveReferences, maxResolverDepth)
-			},
-			func(ctx context.Context, filename string) ([]string, error) { // Sink used for resolver files and templates
-				return s.resolverSink(ctx, filename, scanID, openAPIResolveReferences, maxResolverDepth)
-			},
-		)
-	}
-	if err != nil {
-		select {
-		case errCh <- errors.Wrap(err, "failed to read sources"):
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 // StartScan executes scan over the context, using the scanID as reference

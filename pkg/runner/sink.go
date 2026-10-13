@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"path/filepath"
 	"sort"
 
@@ -49,14 +48,6 @@ func redactErrorForLog(err error) string {
 		return ""
 	}
 	return model.RedactURLCredentials(err.Error())
-}
-
-func (s *Service) sink(ctx context.Context, filename, scanID string,
-	rc io.Reader, data []byte,
-	openAPIResolveReferences bool,
-	maxResolverDepth int) error {
-	c, err := getContent(rc, data, s.MaxFileSize, filename)
-	return s.sinkContent(ctx, filename, scanID, c, err, openAPIResolveReferences, maxResolverDepth)
 }
 
 // logParseFailure logs a file that could not be parsed. Raw templates of a

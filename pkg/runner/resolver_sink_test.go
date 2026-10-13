@@ -400,7 +400,7 @@ func TestLogResolverResolveError_RedactsCredentials(t *testing.T) {
 			ctx := zerolog.New(&logBuf).WithContext(context.Background())
 
 			service := &Service{}
-			service.logResolverResolveError(ctx, model.KindHELM, "chart", tt.err)
+			reportRenderFailure(ctx, []*Service{service}, model.KindHELM, "chart", tt.err)
 
 			logged := logBuf.String()
 			require.Contains(t, logged, tt.wantLevel)

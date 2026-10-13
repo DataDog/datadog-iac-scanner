@@ -210,8 +210,7 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 			continue
 		}
 
-		var noRender []string
-		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, configExtensions, &noRender)
+		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, configExtensions)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to collect files")
 		}
@@ -244,68 +243,6 @@ func ignoreDamagedFiles(ctx context.Context, path string) bool {
 	}
 
 	return shouldIgnoreFile
-}
-
-// GetSources tries to open file or directory and execute sink function on it
-func (s *FileSystemSourceProvider) GetSources(ctx context.Context,
-	extensions model.Extensions, sink Sink, resolverSink ResolverSink) error {
-	files, err := s.collectScanFiles(ctx, extensions, resolverSink)
-	if err != nil {
-		return err
-	}
-	for _, filePath := range files {
-		if err := s.processFile(ctx, filePath, sink); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// GetParallelSources is an alternative to GetSources, parallelising the task
-func (s *FileSystemSourceProvider) GetParallelSources(ctx context.Context,
-	extensions model.Extensions, sink Sink, resolverSink ResolverSink) error {
-	filesToProcess, err := s.collectScanFiles(ctx, extensions, resolverSink)
-	if err != nil {
-		return err
-	}
-	contextLogger := logger.FromContext(ctx)
-	contextLogger.Info().Msgf("Collected %d files to process", len(filesToProcess))
-
-	// Phase 2: Process files in parallel
-	return s.processFilesParallel(ctx, filesToProcess, sink)
-}
-
-func (s *FileSystemSourceProvider) collectScanFiles(ctx context.Context,
-	extensions model.Extensions, resolverSink ResolverSink) ([]string, error) {
-	// Phase 1: Collect all file paths to process
-	var filesToProcess, rendered []string
-	for _, scanPath := range s.paths {
-		fileInfo, err := os.Stat(scanPath)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to open path")
-		}
-		if !fileInfo.IsDir() {
-			// Single file - validate and add to queue
-			openFileErr := validateScanFile(ctx, scanPath, extensions)
-			if openFileErr != nil {
-				if errors.Is(openFileErr, ErrNotSupportedFile) || ignoreDamagedFiles(ctx, scanPath) {
-					continue
-				}
-				return nil, openFileErr
-			}
-			filesToProcess = append(filesToProcess, scanPath)
-			continue
-		}
-
-		// Directory - collect all files first
-		files, err := s.collectFiles(ctx, scanPath, resolverSink, extensions, &rendered)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to collect files")
-		}
-		filesToProcess = append(filesToProcess, files...)
-	}
-	// A render in one scan path can store a template another scan path listed.
-	return withoutStoredFiles(filesToProcess, rendered), nil
 }
 
 // InventoryFile is a discovered file and its matched extension token.
@@ -701,67 +638,16 @@ func (s *FileSystemSourceProvider) walkDirectory(ctx context.Context, scanPath s
 }
 
 func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
-	resolverSink ResolverSink, extensions model.Extensions, rendered *[]string) (files []string, err error) {
+	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
 	err = s.walkDirectory(ctx, scanPath, extensions,
 		func(ctx context.Context, path string, resolved *[]string) error {
-			return s.resolveChartDir(ctx, path, resolverSink, resolved, rendered)
+			return s.resolveChartDir(ctx, path, resolverSink, resolved)
 		},
 		func(_ context.Context, path, _ string) error {
 			files = append(files, toSlash(path))
 			return nil
 		})
 	return files, err
-}
-
-// withoutStoredFiles drops the listed files whose path a render stored: the
-// rendered documents of a dependency stand in for its raw template, which the
-// render of its parent may have found after the walk listed it.
-func withoutStoredFiles(files, stored []string) []string {
-	if len(stored) == 0 {
-		return files
-	}
-	paths := make(map[string]struct{}, len(stored))
-	for _, p := range stored {
-		paths[filepath.Clean(filepath.FromSlash(p))] = struct{}{}
-	}
-	kept := files[:0]
-	for _, f := range files {
-		if _, ok := paths[filepath.Clean(filepath.FromSlash(f))]; !ok {
-			kept = append(kept, f)
-		}
-	}
-	return kept
-}
-
-// processFilesParallel processes collected files using a worker pool
-func (s *FileSystemSourceProvider) processFilesParallel(ctx context.Context, files []string, sink Sink) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	// File reading is I/O-bound, so this pool does NOT draw from the shared CPU
-	// budget (it would only waste CPU slots while blocked on disk). It keeps its
-	// own wider [min,max] bound so disk parallelism is not throttled by core
-	// count. The first error cancels the rest.
-	return utils.ForEach(ctx, files,
-		utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
-		func(ctx context.Context, filePath string, _ int) error {
-			return s.processFile(ctx, filePath, sink)
-		})
-}
-
-// processFile opens and processes a single file
-func (s *FileSystemSourceProvider) processFile(ctx context.Context, filePath string, sink Sink) error {
-	c, err := os.Open(filepath.Clean(filePath)) // nolint:gosec
-	if err != nil {
-		if ignoreDamagedFiles(ctx, filepath.Clean(filePath)) {
-			return nil
-		}
-		return errors.Wrap(err, "failed to open file")
-	}
-	defer c.Close() //nolint:all
-
-	return sink(ctx, filePath, c)
 }
 
 func openScanFile(ctx context.Context, scanPath string, extensions model.Extensions) (*os.File, error) {
@@ -856,10 +742,10 @@ func pathWithinBase(base, path string) bool {
 // name: {{ .Release.Revision }}); other files under the chart root still are.
 // On failure it returns nil to fall back to scanning the raw files.
 func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path string,
-	resolverSink ResolverSink, resolvedChartPaths, rendered *[]string) error {
+	resolverSink ResolverSink, resolvedChartPaths *[]string) error {
 	contextLogger := logger.FromContext(ctx)
 	normPath := toSlash(path)
-	storedPaths, errRes := resolverSink(ctx, normPath)
+	_, errRes := resolverSink(ctx, normPath)
 	if errRes != nil {
 		// The render failure is already logged by the resolver sink; this is
 		// just the fallback announcement, so keep it at Debug.
@@ -869,7 +755,6 @@ func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path str
 	// The walk skips this chart's Helm files through IsHelmChartFile once the
 	// root is recorded. The excludes map is for configured ignore paths.
 	*resolvedChartPaths = append(*resolvedChartPaths, path)
-	*rendered = append(*rendered, storedPaths...)
 	return nil
 }
 

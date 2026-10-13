@@ -7,15 +7,12 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"io"
 	slashpath "path"
 	"path/filepath"
 	"sort"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
-	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -28,9 +25,7 @@ import (
 //
 // The server's services share one provider, so their scans go through the
 // shared prepare (runner.PrepareMemorySources), which lists files and renders
-// pushed Helm charts via WalkInventory. GetSources/GetParallelSources serve only
-// services that do not share it; they ignore the ResolverSink and render no
-// charts.
+// pushed Helm charts via WalkInventory.
 type MemorySourceProvider struct {
 	fsys        vfs.FS
 	paths       []string
@@ -180,53 +175,6 @@ func (m *MemorySourceProvider) RecordMissing(path string) {
 	if r, ok := m.fsys.(vfs.MissingRecorder); ok {
 		r.RecordMissing(path)
 	}
-}
-
-// GetSources feeds each pushed file whose extension a parser supports into the
-// sink, reading its content through the vfs.FS.
-func (m *MemorySourceProvider) GetSources(ctx context.Context,
-	extensions model.Extensions, sink Sink, _ ResolverSink) error {
-	contextLogger := logger.FromContext(ctx)
-	for _, p := range m.eligibleFiles(extensions) {
-		content, err := m.fsys.ReadFile(p)
-		if err != nil {
-			contextLogger.Warn().Msgf("memory source provider: could not read pushed file %s: %v", p, err)
-			continue
-		}
-		if err := sink(ctx, p, io.NopCloser(bytes.NewReader(content))); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// GetParallelSources fans the per-file sink (which parses the content into a
-// document tree — the CPU-heavy step) across a bounded worker pool. There is no
-// I/O to parallelize for in-memory content, but parsing is CPU-bound and a
-// non-trivial share of a warm server scan, so this can speed up large pushes.
-// It draws from the shared process-wide CPU budget (CPUBound) like the engine's
-// other CPU-heavy pools, so concurrent scans don't oversubscribe the cores. The
-// same sink is called concurrently by the disk provider, so it is safe for
-// concurrent use.
-func (m *MemorySourceProvider) GetParallelSources(ctx context.Context,
-	extensions model.Extensions, sink Sink, _ ResolverSink) error {
-	contextLogger := logger.FromContext(ctx)
-
-	// Select the eligible files first (cheap; no parsing yet).
-	eligible := m.eligibleFiles(extensions)
-
-	// Parse the eligible files in parallel. A file that cannot be read is logged
-	// and skipped (not an error); the first sink error cancels the rest.
-	return utils.ForEach(ctx, eligible,
-		utils.PoolOptions{CPUBound: true},
-		func(ctx context.Context, p string, _ int) error {
-			content, err := m.fsys.ReadFile(p)
-			if err != nil {
-				contextLogger.Warn().Msgf("memory source provider: could not read pushed file %s: %v", p, err)
-				return nil
-			}
-			return sink(ctx, p, io.NopCloser(bytes.NewReader(content)))
-		})
 }
 
 // memExtension determines a pushed file's extension token from its path alone

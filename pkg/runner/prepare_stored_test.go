@@ -9,12 +9,9 @@ package runner
 import (
 	"context"
 	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
-	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
-	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -49,34 +46,6 @@ func TestPrepareSharedWalk_TemplateNoRenderStoredIsNotReported(t *testing.T) {
 		require.True(t, ok)
 		require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
 		require.Equal(t, want, templatesStored(t, services, dir))
-	})
-
-	t.Run("per service", func(t *testing.T) {
-		ctx := context.Background()
-		dir := t.TempDir()
-		for rel, body := range files {
-			writeFile(t, filepath.Join(dir, filepath.FromSlash(rel)), body)
-		}
-		fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
-		require.NoError(t, err)
-		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
-		var wg sync.WaitGroup
-		errCh := make(chan error, len(services))
-		for _, service := range services {
-			wg.Add(1)
-			go service.PrepareSources(ctx, "scan", false, 5, &wg, errCh,
-				featureflags.NewLocalEvaluatorWithOverrides(nil))
-		}
-		wg.Wait()
-		close(errCh)
-		for err := range errCh {
-			require.NoError(t, err)
-		}
-		for _, service := range services {
-			if service.Parser.Parsers.GetKind() == model.KindYAML {
-				require.Equal(t, want, templatesStored(t, []*Service{service}, dir))
-			}
-		}
 	})
 
 	t.Run("memory", func(t *testing.T) {
@@ -138,4 +107,40 @@ func TestPrepareSharedWalk_SequentialMatchesParallel(t *testing.T) {
 		return templatesStored(t, services, dir)
 	}
 	require.Equal(t, stored(true), stored(false))
+}
+
+// Two scan paths that both hold the same Helm chart store its render once, in
+// either order: the rendered copy of lib's template is not listed twice.
+func TestPrepareSharedWalk_RenderedFileNotDuplicatedAcrossScanPaths(t *testing.T) {
+	files := map[string]string{
+		"lib/Chart.yaml": "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
+		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
+			"  name: {{ required \"name is required\" .Values.name }}\n",
+		"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+			"dependencies:\n- name: lib\n  version: 1.0.0\n  repository: file://../lib\n",
+		"app/values.yaml":       "lib:\n  name: web\n",
+		"app/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n",
+	}
+	want := map[string]int{"app/templates/cm.yaml": 1, "lib/templates/cm.yaml": 1}
+
+	for _, order := range [][]string{{"app", "lib"}, {"lib", "app"}} {
+		t.Run(order[0]+" first", func(t *testing.T) {
+			ctx := context.Background()
+			dir := t.TempDir()
+			for rel, body := range files {
+				writeFile(t, filepath.Join(dir, filepath.FromSlash(rel)), body)
+			}
+			paths := make([]string, 0, len(order))
+			for _, p := range order {
+				paths = append(paths, filepath.Join(dir, p))
+			}
+			fsp, err := provider.NewFileSystemSourceProvider(ctx, paths, nil, nil)
+			require.NoError(t, err)
+			services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, paths...)
+			shared, ok := SharedWalkProvider(services)
+			require.True(t, ok)
+			require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
+			require.Equal(t, want, templatesStored(t, services, dir))
+		})
+	}
 }

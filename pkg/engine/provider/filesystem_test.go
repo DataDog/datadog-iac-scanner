@@ -84,81 +84,32 @@ func TestNewFileSystemSourceProvider(t *testing.T) {
 	}
 }
 
-// TestFileSystemSourceProvider_GetSources tests the functions [GetSources()] and all the methods called by them
-func TestFileSystemSourceProvider_GetSources(t *testing.T) { //nolint
+// TestFileSystemSourceProvider_WalkInventoryMissingPath tests that a scan path that cannot be read is an error.
+func TestFileSystemSourceProvider_WalkInventoryMissingPath(t *testing.T) { //nolint
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatal(err)
 	}
-	type fields struct {
-		paths    []string
-		excludes map[string][]os.FileInfo
+	s := &FileSystemSourceProvider{
+		paths:    []string{"./no-path"},
+		excludes: map[string][]os.FileInfo{},
 	}
-	type args struct {
-		queryName    string
-		extensions   model.Extensions
-		sink         Sink
-		resolverSink ResolverSink
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		{
-			name: "new_filesystem_source_provider_error",
-			fields: fields{
-				paths:    []string{"./no-path"},
-				excludes: map[string][]os.FileInfo{},
-			},
-			args: args{
-				queryName:    "alb_protocol_is_http",
-				extensions:   nil,
-				sink:         mockSink,
-				resolverSink: mockResolverSink,
-			},
-			wantErr: true,
-		},
-	}
-
-	ctx := context.Background()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &FileSystemSourceProvider{
-				paths:    tt.fields.paths,
-				excludes: tt.fields.excludes,
-			}
-			if err := s.GetSources(ctx, tt.args.extensions, tt.args.sink, tt.args.resolverSink); (err != nil) != tt.wantErr {
-				t.Errorf("FileSystemSourceProvider.GetSources() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if err := s.GetParallelSources(ctx, tt.args.extensions, tt.args.sink, tt.args.resolverSink); (err != nil) != tt.wantErr {
-				t.Errorf("FileSystemSourceProvider.GetSources() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
+	_, err := s.WalkInventory(context.Background(), nil, utils.PoolOptions{}, noChartRoots)
+	require.Error(t, err)
 }
 
-func TestFileSystemSourceProvider_GetSourcesClosesSingleFile(t *testing.T) {
+func noChartRoots(context.Context, string) bool { return false }
+
+func TestWalkInventorySingleFile(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "main.tf")
 	require.NoError(t, os.WriteFile(path, []byte("resource \"test\" \"main\" {}"), 0o600))
 	source, err := NewFileSystemSourceProvider(ctx, []string{path}, nil, nil)
 	require.NoError(t, err)
 
-	var openedFile *os.File
-	err = source.GetSources(ctx, model.Extensions{".tf": {}},
-		func(_ context.Context, _ string, content io.ReadCloser) error {
-			openedFile = content.(*os.File)
-			return nil
-		},
-		func(context.Context, string) ([]string, error) {
-			return nil, nil
-		},
-	)
+	files, err := source.WalkInventory(ctx, model.Extensions{".tf": {}}, utils.PoolOptions{}, noChartRoots)
 	require.NoError(t, err)
-	require.NotNil(t, openedFile)
-	require.Error(t, openedFile.Close())
+	require.Len(t, files, 1)
+	require.Equal(t, filepath.ToSlash(path), files[0].Path)
 }
 
 func TestFileSystemSourceProvider_GetBasePath(t *testing.T) {
@@ -693,7 +644,7 @@ func TestIsNestedRenderedChart(t *testing.T) {
 	}
 }
 
-func TestGetSources_multipleHelmCharts(t *testing.T) {
+func TestWalkInventory_multipleHelmCharts(t *testing.T) {
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatalf("failed to change dir: %s", err)
 	}
@@ -703,80 +654,42 @@ func TestGetSources_multipleHelmCharts(t *testing.T) {
 		[]string{filepath.FromSlash("test/fixtures/multi_helm")}, []string{}, []string{})
 	require.NoError(t, err)
 
-	resolvedDirs := make([]string, 0)
-	countingResolverSink := func(_ context.Context, filename string) ([]string, error) {
-		info, statErr := os.Stat(filename)
-		if statErr == nil && info.IsDir() {
-			if _, chartErr := os.Stat(filepath.Join(filename, "Chart.yaml")); chartErr == nil {
-				resolvedDirs = append(resolvedDirs, filepath.Base(filename))
-			}
-		}
-		return []string{}, nil
-	}
-
-	err = fs.GetSources(ctx, model.Extensions{".yaml": {}},
-		mockSink, countingResolverSink)
+	var renderedDirs []string
+	_, err = fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{},
+		func(_ context.Context, root string) bool {
+			renderedDirs = append(renderedDirs, filepath.Base(root))
+			return true
+		})
 	require.NoError(t, err)
-
-	require.ElementsMatch(t, []string{"chart-a", "chart-b"}, resolvedDirs,
-		"both sibling Helm charts must be sent to the resolver, not just the first one")
+	require.ElementsMatch(t, []string{"chart-a", "chart-b"}, renderedDirs,
+		"both sibling Helm charts must be rendered, not just the first one")
 }
 
-// TestGetSources_helmChartSkipsRawTemplates ensures that once a Helm chart is
-// rendered by the resolver, its raw template files are not also scanned as plain YAML.
-func TestGetSources_helmChartSkipsRawTemplates(t *testing.T) {
+// TestWalkInventory_helmChartSkipsRawTemplates ensures that once a Helm chart is
+// rendered, its raw template files are not also listed as plain YAML.
+func TestWalkInventory_helmChartSkipsRawTemplates(t *testing.T) {
 	if err := test.ChangeCurrentDir("datadog-iac-scanner"); err != nil {
 		t.Fatalf("failed to change dir: %s", err)
 	}
 
 	ctx := context.Background()
 	const chartDir = "test/fixtures/test_helm"
+	fs, err := NewFileSystemSourceProvider(ctx, []string{filepath.FromSlash(chartDir)}, []string{}, []string{})
+	require.NoError(t, err)
 
-	var mu sync.Mutex
-	var sinkedFiles, resolvedDirs []string
-
-	recordingSink := func(_ context.Context, filename string, _ io.ReadCloser) error {
-		mu.Lock()
-		sinkedFiles = append(sinkedFiles, filepath.ToSlash(filename))
-		mu.Unlock()
-		return nil
-	}
-	recordingResolverSink := func(_ context.Context, filename string) ([]string, error) {
-		if _, chartErr := os.Stat(filepath.Join(filename, "Chart.yaml")); chartErr == nil {
-			mu.Lock()
-			resolvedDirs = append(resolvedDirs, filepath.ToSlash(filename))
-			mu.Unlock()
-		}
-		return []string{}, nil
-	}
-
-	run := func(t *testing.T, scan func(*FileSystemSourceProvider) error) {
-		t.Helper()
-		mu.Lock()
-		sinkedFiles, resolvedDirs = nil, nil
-		mu.Unlock()
-
-		fs, err := NewFileSystemSourceProvider(ctx, []string{filepath.FromSlash(chartDir)}, []string{}, []string{})
-		require.NoError(t, err)
-		require.NoError(t, scan(fs))
-
-		require.Contains(t, resolvedDirs, chartDir, "the Helm chart directory must be sent to the resolver")
-		for _, f := range sinkedFiles {
-			require.NotContains(t, f, chartDir+"/",
-				"raw files under a resolved Helm chart must not be scanned as plain YAML, got %q", f)
-		}
-	}
-
-	t.Run("sequential", func(t *testing.T) {
-		run(t, func(fs *FileSystemSourceProvider) error {
-			return fs.GetSources(ctx, model.Extensions{".yaml": {}}, recordingSink, recordingResolverSink)
+	var renderedRoots []string
+	files, err := fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{},
+		func(_ context.Context, root string) bool {
+			renderedRoots = append(renderedRoots, filepath.ToSlash(root))
+			return true
 		})
-	})
-	t.Run("parallel", func(t *testing.T) {
-		run(t, func(fs *FileSystemSourceProvider) error {
-			return fs.GetParallelSources(ctx, model.Extensions{".yaml": {}}, recordingSink, recordingResolverSink)
-		})
-	})
+	require.NoError(t, err)
+
+	require.Contains(t, renderedRoots, chartDir, "the Helm chart directory must be rendered")
+	for _, f := range files {
+		require.NotContains(t, f.Path, chartDir+"/",
+			"raw files under a rendered Helm chart must not be listed as plain YAML, got %q", f.Path)
+	}
 }
 
 func TestIsHelmChartFile_normalizesSeparators(t *testing.T) {
@@ -914,46 +827,7 @@ func TestWalkInventoryPrebuiltTofuShadowing(t *testing.T) {
 	require.ElementsMatch(t, []string{filepath.ToSlash(twin), filepath.ToSlash(tofu)}, paths)
 }
 
-func TestGetSourcesTofuShadowing(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
-	tofu := filepath.Join(dir, "main.tofu")
-	twin := filepath.Join(dir, "main.tf")
-	require.NoError(t, os.WriteFile(tofu, []byte(`resource "aws_s3_bucket" "b" {}`), 0o600))
-	require.NoError(t, os.WriteFile(twin, []byte(`resource "aws_s3_bucket" "shadowed" {}`), 0o600))
-
-	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
-	require.NoError(t, err)
-	exts := model.Extensions{".tf": {}, ".tofu": {}}
-	noop := func(context.Context, string) ([]string, error) { return nil, nil }
-
-	collect := func(parallel bool) []string {
-		var got []string
-		var mu sync.Mutex
-		sink := func(_ context.Context, filename string, content io.ReadCloser) error {
-			_ = content.Close()
-			mu.Lock()
-			got = append(got, filepath.Base(filename))
-			mu.Unlock()
-			return nil
-		}
-		var runErr error
-		if parallel {
-			runErr = fs.GetParallelSources(ctx, exts, sink, noop)
-		} else {
-			runErr = fs.GetSources(ctx, exts, sink, noop)
-		}
-		require.NoError(t, runErr)
-		return got
-	}
-
-	for _, parallel := range []bool{false, true} {
-		got := collect(parallel)
-		require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got, "parallel=%v", parallel)
-	}
-}
-
-func TestGetSourcesTofuShadowingExplicitFiles(t *testing.T) {
+func TestWalkInventoryTofuShadowingExplicitFiles(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	tofu := filepath.Join(dir, "main.tofu")
@@ -963,28 +837,14 @@ func TestGetSourcesTofuShadowingExplicitFiles(t *testing.T) {
 
 	fs, err := NewFileSystemSourceProvider(ctx, []string{twin, tofu}, nil, nil)
 	require.NoError(t, err)
-	exts := model.Extensions{".tf": {}, ".tofu": {}}
-	noop := func(context.Context, string) ([]string, error) { return nil, nil }
+	files, err := fs.WalkInventory(ctx, model.Extensions{".tf": {}, ".tofu": {}}, utils.PoolOptions{}, noChartRoots)
+	require.NoError(t, err)
 
-	for _, parallel := range []bool{false, true} {
-		var got []string
-		var mu sync.Mutex
-		sink := func(_ context.Context, filename string, content io.ReadCloser) error {
-			_ = content.Close()
-			mu.Lock()
-			got = append(got, filepath.Base(filename))
-			mu.Unlock()
-			return nil
-		}
-		var runErr error
-		if parallel {
-			runErr = fs.GetParallelSources(ctx, exts, sink, noop)
-		} else {
-			runErr = fs.GetSources(ctx, exts, sink, noop)
-		}
-		require.NoError(t, runErr)
-		require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got, "parallel=%v", parallel)
+	got := make([]string, 0, len(files))
+	for _, f := range files {
+		got = append(got, filepath.Base(f.Path))
 	}
+	require.ElementsMatch(t, []string{"main.tf", "main.tofu"}, got)
 }
 
 // Path filters reach Helm charts too: an ignored or out-of-scope chart is not
@@ -1236,49 +1096,4 @@ func TestRenderChartsShallowFirstRecoversPanic(t *testing.T) {
 			return true
 		})
 	require.ElementsMatch(t, []string{"a", "c"}, rendered)
-}
-
-// A render in one scan path stores the template of a dependency another scan
-// path lists, so that raw copy is left out whatever the order of the paths. The
-// dependency's own render fails here, which walks its files raw, and a template
-// no render stored is still scanned raw.
-func TestCollectScanFilesDropsRenderedAcrossScanPaths(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
-	write := func(rel, body string) {
-		p := filepath.Join(dir, filepath.FromSlash(rel))
-		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
-		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
-	}
-	write("lib/Chart.yaml", "apiVersion: v2\nname: lib\nversion: 1.0.0\n")
-	write("lib/templates/cm.yaml", "name: {{ required \"name is required\" .Values.name }}\n")
-	write("lib/templates/disabled.yaml", "name: {{ .Values.other }}\n")
-	write("app/Chart.yaml", "apiVersion: v2\nname: app\nversion: 1.0.0\n")
-	write("app/templates/cm.yaml", "name: app\n")
-
-	app, lib := filepath.Join(dir, "app"), filepath.Join(dir, "lib")
-	libCM := filepath.ToSlash(filepath.Join(lib, "templates", "cm.yaml"))
-	libDisabled := filepath.ToSlash(filepath.Join(lib, "templates", "disabled.yaml"))
-	resolverSink := func(_ context.Context, chart string) ([]string, error) {
-		if filepath.ToSlash(chart) == filepath.ToSlash(app) {
-			return []string{libCM}, nil
-		}
-		return nil, fmt.Errorf("render of %s needs its parent's values", chart)
-	}
-	for _, tc := range []struct {
-		name  string
-		paths []string
-	}{
-		{name: "app first", paths: []string{app, lib}},
-		{name: "lib first", paths: []string{lib, app}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			fs, err := NewFileSystemSourceProvider(ctx, tc.paths, nil, nil)
-			require.NoError(t, err)
-			files, err := fs.collectScanFiles(ctx, model.Extensions{".yaml": {}}, resolverSink)
-			require.NoError(t, err)
-			require.NotContains(t, files, libCM, "the rendered copy stands in for the raw template")
-			require.Contains(t, files, libDisabled, "no render stored it, so it is scanned raw")
-		})
-	}
 }
