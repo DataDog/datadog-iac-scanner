@@ -1477,6 +1477,8 @@ func (e *Evaluator) resolveLocals(
 }
 
 // evalBody evaluates an HCL body into the shape produced by the Terraform parser.
+// It keeps dynamic blocks as written: a module call cannot hold them, and there
+// is no per-resource budget here to bound their expansion.
 func (e *Evaluator) evalBody(
 	body *hclsyntax.Body,
 	ctx *hcl.EvalContext,
@@ -1538,7 +1540,7 @@ func (e *Evaluator) evalBodyWith(
 	}
 
 	for _, b := range body.Blocks {
-		if dynamicblock.Is(b) {
+		if st != nil && dynamicblock.Is(b) {
 			e.addDynamicBlocks(out, b, ctx, st)
 			continue
 		}

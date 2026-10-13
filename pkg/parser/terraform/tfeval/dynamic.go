@@ -15,12 +15,20 @@ import (
 
 // addDynamicBlocks adds the nested blocks a dynamic block generates to out, in
 // the shape a block written once per element would have. A dynamic block whose
-// for_each does not resolve, or asks for more blocks than the caps allow, is
-// kept as written.
+// for_each or labels do not resolve, or which asks for more blocks than the caps
+// allow, is kept as written. The budget is claimed per dynamic block, so a block
+// nested in the content of an expanded parent can find it spent and stay as
+// written while its siblings were expanded.
 func (e *Evaluator) addDynamicBlocks(out map[string]cty.Value, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState) {
 	content := dynamicblock.Content(b)
 	exp := dynamicblock.Expand(b, ctx)
+	name := dynamicblock.IteratorName(b)
 	resolved := content != nil && exp.Resolved
+	var scopes []*hcl.EvalContext
+	var paths [][]string
+	if resolved {
+		scopes, paths, resolved = generatedBlocks(b, exp.Iterators, name, ctx)
+	}
 	if resolved && !st.reserveDynamic(len(exp.Iterators)) {
 		st.noteDynamicOverflow(b, exp.Requested, dynamicblock.MaxGeneratedPerResource)
 		resolved = false
@@ -32,14 +40,31 @@ func (e *Evaluator) addDynamicBlocks(out map[string]cty.Value, b *hclsyntax.Bloc
 		addNestedBlock(out, append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st.withoutMemo())))
 		return
 	}
-	st.recordDynamic(b, len(exp.Iterators))
-	name := dynamicblock.IteratorName(b)
-	for _, it := range exp.Iterators {
+	st.recordDynamic(b, len(scopes))
+	for i, scope := range scopes {
+		addNestedBlock(out, paths[i], objectOrEmpty(e.evalBodyWith(content, scope, nil, st.inDynamic(name))))
+	}
+}
+
+// generatedBlocks binds each iterator in a child scope of ctx and resolves the
+// path of the block it generates. ok is false when any label does not resolve:
+// blocks generated with and without their labels would overwrite each other.
+func generatedBlocks(
+	b *hclsyntax.Block, iterators []cty.Value, name string, ctx *hcl.EvalContext,
+) (scopes []*hcl.EvalContext, paths [][]string, ok bool) {
+	scopes = make([]*hcl.EvalContext, len(iterators))
+	paths = make([][]string, len(iterators))
+	for i, it := range iterators {
 		child := ctx.NewChild()
 		child.Variables = map[string]cty.Value{name: it}
-		path := append([]string{dynamicblock.GeneratedType(b)}, dynamicblock.Labels(b, child)...)
-		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(content, child, nil, st.inDynamic(name))))
+		labels, resolved := dynamicblock.Labels(b, child)
+		if !resolved {
+			return nil, nil, false
+		}
+		scopes[i] = child
+		paths[i] = append([]string{dynamicblock.GeneratedType(b)}, labels...)
 	}
+	return scopes, paths, true
 }
 
 // dynamicOverflow is a dynamic block kept as written because it asked for more

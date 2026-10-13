@@ -20,6 +20,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -2243,4 +2244,62 @@ module "bucket" {
 		t.Fatalf("call site must keep the calling module's scope")
 	}
 	requireString(t, site.Caller.Local.AsValueMap(), "acl", "public-read")
+}
+
+// A dynamic block with a label that does not resolve for one element is kept as
+// written rather than expanded without that element's labels.
+func TestEvaluateModule_DynamicBlockWithUnresolvedLabelStaysAsWritten(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
+		"main.tf": `
+resource "aws_y" "b" {
+  dynamic "setting" {
+    for_each = [{ name = "a" }, { name = null }, { name = "c" }]
+    labels   = [setting.value.name]
+    content {
+      value = setting.value.name
+    }
+  }
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	b := findResource(t, resources, "aws_y", "b")
+	if _, expanded := b.Attributes["setting"]; expanded {
+		t.Fatalf("setting was expanded in part: %#v", b.Attributes["setting"])
+	}
+	if _, kept := b.Attributes["dynamic"]; !kept {
+		t.Fatalf("attributes = %#v, want the dynamic block kept as written", b.Attributes)
+	}
+}
+
+// A dynamic block in a module call is kept as written, however deeply nested,
+// instead of being expanded outside any budget.
+func TestEvalBody_ModuleCallKeepsNestedDynamicBlocksAsWritten(t *testing.T) {
+	src := `
+dynamic "a" {
+  for_each = [1, 2, 3]
+  content {
+    dynamic "b" {
+      for_each = [1, 2, 3]
+      content {
+        x = b.value
+      }
+    }
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "m.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatal(diags)
+	}
+	out := New().evalBody(file.Body.(*hclsyntax.Body), &hcl.EvalContext{}, nil)
+	if _, expanded := out["a"]; expanded {
+		t.Fatalf("a was expanded: %#v", out["a"])
+	}
+	if _, kept := out["dynamic"]; !kept {
+		t.Fatalf("out = %#v, want the dynamic block kept as written", out)
+	}
 }

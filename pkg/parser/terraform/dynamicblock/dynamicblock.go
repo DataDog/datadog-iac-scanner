@@ -101,28 +101,29 @@ func iterator(key, value cty.Value) cty.Value {
 }
 
 // Labels evaluates the labels of a generated block under ctx, which binds its
-// iterator; none when they cannot be resolved.
-func Labels(b *hclsyntax.Block, ctx *hcl.EvalContext) []string {
-	attr, ok := b.Body.Attributes["labels"]
-	if !ok {
-		return nil
+// iterator. ok is false when the labels attribute does not resolve to strings,
+// which is different from a block that has no labels.
+func Labels(b *hclsyntax.Block, ctx *hcl.EvalContext) (labels []string, ok bool) {
+	attr, has := b.Body.Attributes["labels"]
+	if !has {
+		return nil, true
 	}
 	v, diags := attr.Expr.Value(ctx)
 	if diags.HasErrors() || v.IsNull() || !v.IsWhollyKnown() || !v.CanIterateElements() {
-		return nil
+		return nil, false
 	}
-	labels := make([]string, 0, v.LengthInt())
+	labels = make([]string, 0, v.LengthInt())
 	for it := v.ElementIterator(); it.Next(); {
 		_, label := it.Element()
 		str, err := convert.Convert(label, cty.String)
 		if err != nil {
-			return nil
+			return nil, false
 		}
-		s, ok := ctyutil.ConcreteString(str)
-		if !ok {
-			return nil
+		s, concrete := ctyutil.ConcreteString(str)
+		if !concrete {
+			return nil, false
 		}
 		labels = append(labels, s)
 	}
-	return labels
+	return labels, true
 }

@@ -150,6 +150,8 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts) attrSour
 			blocks = append(blocks, b)
 			counts = append(counts, 1)
 		case dynamicblock.Is(b) && dynamicblock.GeneratedType(b) == key:
+			// Every dynamic block of this type stands in as one marker; counts
+			// say how many blocks it generated, none when kept as written.
 			if marker, ok := generatedMarker(b); ok {
 				blocks = append(blocks, marker)
 				counts = append(counts, generatedCount(dynamic, b))
