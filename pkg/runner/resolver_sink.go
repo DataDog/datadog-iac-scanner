@@ -28,6 +28,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// resolverSink renders a chart and stores its files. It returns the paths of
+// the rendered files stored, which the walk leaves out as raw files.
 func (s *Service) resolverSink(
 	ctx context.Context,
 	filename, scanID string,
@@ -41,8 +43,7 @@ func (s *Service) resolverSink(
 		s.logResolverResolveError(ctx, kind, filename, err)
 		return []string{}, err
 	}
-	s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth)
-	return resFiles.Excluded, nil
+	return s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth), nil
 }
 
 // resolveOnly renders a chart without parsing or storing it, dropping the
@@ -69,9 +70,10 @@ func (s *Service) storeResolvedFiles(
 	kind model.FileKind,
 	scanID string,
 	openAPIResolveReferences bool,
-	maxResolverDepth int) {
+	maxResolverDepth int) []string {
 	contextLogger := logger.FromContext(ctx)
 	sourceCache := make(map[string]*resolvedSourceData)
+	var storedPaths []string
 	for i := range resFiles.File {
 		rfile := &resFiles.File[i]
 		if s.skipResolvedFile(kind, rfile) {
@@ -144,6 +146,9 @@ func (s *Service) storeResolvedFiles(
 					openAPIResolveReferences, isMinified, maxResolverDepth))
 			}
 			s.saveToFile(ctx, &file)
+			if n := len(storedPaths); n == 0 || storedPaths[n-1] != rfile.FileName {
+				storedPaths = append(storedPaths, rfile.FileName)
+			}
 		}
 		s.Tracker.TrackFileParse(rfile.FileName)
 		s.Tracker.TrackFileFoundCountLines(documents.CountLines)
@@ -155,6 +160,7 @@ func (s *Service) storeResolvedFiles(
 			s.Tracker.TrackFileFoundCountResources(resourceCount)
 		}
 	}
+	return storedPaths
 }
 
 func ownedHelmRenderedContent(kind model.FileKind, isCRD bool, content []byte) string {

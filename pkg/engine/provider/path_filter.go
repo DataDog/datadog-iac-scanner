@@ -14,7 +14,7 @@ import (
 // filters. Rendered Helm files are checked against it because a chart renders
 // the files of dependencies from anywhere in the scan.
 type FileFilter interface {
-	ExcludesFile(path string) bool
+	ExcludesAny(paths ...string) bool
 }
 
 // PathFilter applies a scan's ignore-paths and only-paths, already expanded to
@@ -74,29 +74,31 @@ func NewPathFilter(ignorePaths, onlyPaths []string) *PathFilter {
 	return f
 }
 
-// ExcludesFile reports whether path, or a directory above it, is ignored, or
-// whether only-paths leave it out. The path need not exist, as for a file
-// inside a chart archive.
-func (f *PathFilter) ExcludesFile(path string) bool {
+// ExcludesAny reports whether the filters leave out a file known by paths, such
+// as a file inside a chart archive and the declaration it is reported at: a
+// path that is ignored, or one below an ignored directory, drops it, and with
+// only-paths, a path within one of them keeps it. Paths need not exist.
+func (f *PathFilter) ExcludesAny(paths ...string) bool {
 	if f == nil {
 		return false
 	}
-	abs, ok := absPath(path)
-	if !ok {
-		return false
-	}
-	if f.ignoredPath(abs) {
-		return true
-	}
-	if f.only == nil {
-		return false
-	}
-	for _, op := range f.only {
-		if pathWithinBase(op, abs) {
-			return false
+	checked, inScope := false, f.only == nil
+	for _, p := range paths {
+		abs, ok := absPath(p)
+		if !ok {
+			continue
+		}
+		checked = true
+		if f.ignoredPath(abs) {
+			return true
+		}
+		for _, op := range f.only {
+			if !inScope && pathWithinBase(op, abs) {
+				inScope = true
+			}
 		}
 	}
-	return true
+	return checked && !inScope
 }
 
 // ChartInScope reports whether the chart at root is rendered: neither it nor

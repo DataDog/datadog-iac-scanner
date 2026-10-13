@@ -2,6 +2,7 @@ package helm
 
 import (
 	"context"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -260,9 +261,15 @@ func inMemory(fsys vfs.FS) bool {
 // The root itself is left out: loading it as a chart would read every pushed
 // file.
 func insideWorkspace(p string) bool {
-	clean := filepath.ToSlash(filepath.Clean(p))
-	return !filepath.IsAbs(p) && !strings.HasPrefix(clean, "/") &&
-		clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+	if filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) ||
+		(len(p) > 1 && p[1] == ':') {
+		return false
+	}
+	// A backslash separates segments in a path the client pushed from Windows, as
+	// it does for the extension, so it is normalized before the check: on a
+	// server with another separator, "..\..\x" would be one segment.
+	clean := path.Clean(strings.ReplaceAll(p, `\`, "/"))
+	return clean != "." && clean != ".." && !strings.HasPrefix(clean, "../") && !strings.HasPrefix(clean, "/")
 }
 
 // attachFrom records and completes the dependencies of ch, both those under
@@ -310,6 +317,11 @@ func (a *attacher) attachDeclared(
 	depDir, ok := dependencyDir(dep, dir, a.idx, anyVersion)
 	if !ok {
 		return true
+	}
+	if inMemory(a.fsys) {
+		// Pushed paths are slash-separated on every OS, and the client is asked
+		// for the directory as it is written here, so a backslash is a separator.
+		depDir = path.Clean(strings.ReplaceAll(depDir, `\`, "/"))
 	}
 	key := filepath.Clean(depDir)
 	if a.ancestors[key] || attachedDirs[key] {

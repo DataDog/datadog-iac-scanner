@@ -723,3 +723,111 @@ func TestPrepareMemorySources_OnlyPathsTemplateRendersItsChart(t *testing.T) {
 		}
 	}
 }
+
+// A dependency whose name only its parent sets renders through the parent, and
+// its raw template, which fails to render, is not scanned on top of that
+// render: the file is stored once, as rendered.
+func TestPrepareSharedWalk_RenderedDependencyReplacesRawTemplate(t *testing.T) {
+	files := map[string]string{
+		"lib/Chart.yaml": "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
+		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
+			"  name: {{ required \"name is required\" .Values.name }}\n",
+		"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+			"dependencies:\n- name: lib\n  version: 1.0.0\n  repository: file://../lib\n",
+		"app/values.yaml":       "lib:\n  name: web\n",
+		"app/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n",
+	}
+	want := map[string]int{"app/templates/cm.yaml": 1, "lib/templates/cm.yaml": 1}
+
+	t.Run("disk", func(t *testing.T) {
+		ctx := context.Background()
+		dir := t.TempDir()
+		for rel, body := range files {
+			writeFile(t, filepath.Join(dir, filepath.FromSlash(rel)), body)
+		}
+		fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+		require.NoError(t, err)
+		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
+		shared, ok := SharedWalkProvider(services)
+		require.True(t, ok)
+		require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5))
+		require.Equal(t, want, templatesStored(t, services, dir))
+		requireRenderedOnce(t, services, dir, "lib/templates/cm.yaml")
+	})
+
+	t.Run("per service", func(t *testing.T) {
+		ctx := context.Background()
+		dir := t.TempDir()
+		for rel, body := range files {
+			writeFile(t, filepath.Join(dir, filepath.FromSlash(rel)), body)
+		}
+		fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+		require.NoError(t, err)
+		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
+		var wg sync.WaitGroup
+		errCh := make(chan error, len(services))
+		for _, service := range services {
+			wg.Add(1)
+			go service.PrepareSources(ctx, "scan", false, 5, &wg, errCh,
+				featureflags.NewLocalEvaluatorWithOverrides(nil))
+		}
+		wg.Wait()
+		close(errCh)
+		for err := range errCh {
+			require.NoError(t, err)
+		}
+		// Each service walks the tree and stores its own copy, once.
+		for _, service := range services {
+			if service.Parser.Parsers.GetKind() == model.KindYAML {
+				require.Equal(t, want, templatesStored(t, []*Service{service}, dir))
+			}
+		}
+		requireRenderedOnce(t, services, dir, "lib/templates/cm.yaml")
+	})
+
+	t.Run("memory", func(t *testing.T) {
+		ctx := context.Background()
+		pushed := make(map[string][]byte, len(files))
+		for rel, body := range files {
+			pushed[rel] = []byte(body)
+		}
+		memfs := vfs.NewMemFS(pushed)
+		mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
+		services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
+		shared, ok := SharedMemoryProvider(services)
+		require.True(t, ok)
+		require.NoError(t, PrepareMemorySources(ctx, shared, services, "scan", false, 5, false))
+		require.Equal(t, want, templatesStored(t, services, "."))
+		requireRenderedOnce(t, services, ".", "lib/templates/cm.yaml")
+	})
+}
+
+// templatesStored is storedFiles limited to the chart templates.
+func templatesStored(t *testing.T, services []*Service, dir string) map[string]int {
+	t.Helper()
+	stored := storedFiles(t, services, dir)
+	for rel := range stored {
+		if !strings.Contains(rel, "/templates/") {
+			delete(stored, rel)
+		}
+	}
+	return stored
+}
+
+// requireRenderedOnce checks that the file at rel was stored by a render, not
+// as a raw template.
+func requireRenderedOnce(t *testing.T, services []*Service, dir, rel string) {
+	t.Helper()
+	for _, service := range services {
+		if service.Parser.Parsers.GetKind() != model.KindYAML {
+			continue
+		}
+		for _, file := range service.files {
+			r, err := filepath.Rel(dir, file.FilePath)
+			require.NoError(t, err)
+			if filepath.ToSlash(r) == rel {
+				require.Equal(t, model.KindHELM, file.Kind, "%s is stored as its raw template", rel)
+			}
+		}
+	}
+}

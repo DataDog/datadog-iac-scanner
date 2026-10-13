@@ -695,15 +695,36 @@ func (s *FileSystemSourceProvider) walkDirectory(ctx context.Context, scanPath s
 
 func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
 	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
+	var rendered []string
 	err = s.walkDirectory(ctx, scanPath, extensions,
 		func(ctx context.Context, path string, resolved *[]string) error {
-			return s.resolveChartDir(ctx, path, resolverSink, resolved)
+			return s.resolveChartDir(ctx, path, resolverSink, resolved, &rendered)
 		},
 		func(_ context.Context, path, _ string) error {
 			files = append(files, toSlash(path))
 			return nil
 		})
-	return files, err
+	return withoutStoredFiles(files, rendered), err
+}
+
+// withoutStoredFiles drops the listed files whose path a render stored: the
+// rendered documents of a dependency stand in for its raw template, which the
+// render of its parent may have found after the walk listed it.
+func withoutStoredFiles(files, stored []string) []string {
+	if len(stored) == 0 {
+		return files
+	}
+	paths := make(map[string]struct{}, len(stored))
+	for _, p := range stored {
+		paths[filepath.Clean(filepath.FromSlash(p))] = struct{}{}
+	}
+	kept := files[:0]
+	for _, f := range files {
+		if _, ok := paths[filepath.Clean(filepath.FromSlash(f))]; !ok {
+			kept = append(kept, f)
+		}
+	}
+	return kept
 }
 
 // processFilesParallel processes collected files using a worker pool
@@ -829,10 +850,10 @@ func pathWithinBase(base, path string) bool {
 // name: {{ .Release.Revision }}); other files under the chart root still are.
 // On failure it returns nil to fall back to scanning the raw files.
 func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path string,
-	resolverSink ResolverSink, resolvedChartPaths *[]string) error {
+	resolverSink ResolverSink, resolvedChartPaths, rendered *[]string) error {
 	contextLogger := logger.FromContext(ctx)
 	normPath := toSlash(path)
-	_, errRes := resolverSink(ctx, normPath)
+	storedPaths, errRes := resolverSink(ctx, normPath)
 	if errRes != nil {
 		// The render failure is already logged by the resolver sink; this is
 		// just the fallback announcement, so keep it at Debug.
@@ -842,6 +863,7 @@ func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path str
 	// The walk skips this chart's Helm files through IsHelmChartFile once the
 	// root is recorded. The excludes map is for configured ignore paths.
 	*resolvedChartPaths = append(*resolvedChartPaths, path)
+	*rendered = append(*rendered, storedPaths...)
 	return nil
 }
 

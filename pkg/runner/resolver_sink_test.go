@@ -642,7 +642,14 @@ func TestFilterHelmGeneratedLines_DDIacScanCommentKept(t *testing.T) {
 
 type excludedPaths map[string]bool
 
-func (e excludedPaths) ExcludesFile(path string) bool { return e[path] }
+func (e excludedPaths) ExcludesAny(paths ...string) bool {
+	for _, p := range paths {
+		if e[p] {
+			return true
+		}
+	}
+	return false
+}
 
 // A rendered file is dropped when the filters leave out the file it was
 // detected in or the place it is reported at.

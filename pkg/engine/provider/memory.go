@@ -160,10 +160,19 @@ func ChartRoots(paths []string) []string {
 	return roots
 }
 
-// ExcludesFile reports whether ignore-paths or only-paths leave the pushed file
-// at path out of the scan (see FileSystemSourceProvider.ExcludesFile).
-func (m *MemorySourceProvider) ExcludesFile(path string) bool {
-	return pathutil.Excluded(path, m.ignorePaths, m.onlyPaths)
+// ExcludesAny reports whether ignore-paths or only-paths leave out a file known
+// by paths, as PathFilter.ExcludesAny does for the disk provider.
+func (m *MemorySourceProvider) ExcludesAny(paths ...string) bool {
+	inScope := len(m.onlyPaths) == 0
+	for _, p := range paths {
+		if pathutil.Excluded(p, m.ignorePaths, nil) {
+			return true
+		}
+		if !inScope && !pathutil.Excluded(p, nil, m.onlyPaths) {
+			inScope = true
+		}
+	}
+	return !inScope
 }
 
 // ReadFile reads a pushed file through the provider's FS.

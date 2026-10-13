@@ -143,8 +143,36 @@ func TestInsideWorkspace(t *testing.T) {
 	for p, want := range map[string]bool{
 		"lib": true, "apps/lib": true, "apps/../lib": true, ".": false,
 		"..": false, "../lib": false, "apps/../../lib": false, "/etc": false,
+		// A backslash separates segments for the client, so these are traversals too.
+		`..\lib`: false, `apps\..\..\lib`: false, `\etc`: false, `C:\secrets`: false,
+		`apps/app/..\..\..\secrets`: false, `apps/app/..\lib`: true, `apps\lib`: true,
 	} {
 		require.Equal(t, want, insideWorkspace(p), p)
+	}
+}
+
+// A dependency named by a backslash path is requested as the slash path the
+// client pushes, or not at all when it leaves the workspace.
+func TestAttachMissingDependencies_BackslashRepository(t *testing.T) {
+	for repo, want := range map[string][]string{
+		`file://..\lib`:            {"apps/lib"},
+		`file://..\..\..\secrets`:  nil,
+		`file:///home/victim/.ssh`: nil,
+	} {
+		t.Run(repo, func(t *testing.T) {
+			memfs := vfs.NewMemFS(map[string][]byte{
+				"apps/app/Chart.yaml": []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+					"dependencies:\n  - name: lib\n    repository: " + repo + "\n    version: 1.0.0\n"),
+			})
+			ch, err := loadChart(context.Background(), memfs, "apps/app")
+			require.NoError(t, err)
+			attachMissingDependencies(context.Background(), memfs, newChartIndex(memfs, []string{"apps/app"}), ch, "apps/app")
+			var requested []string
+			for _, p := range memfs.MissingFiles() {
+				requested = append(requested, filepath.ToSlash(p))
+			}
+			require.Equal(t, want, requested)
+		})
 	}
 }
 

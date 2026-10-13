@@ -169,7 +169,7 @@ func TestReportedLocation_Apply(t *testing.T) {
 		BlockLocation:       model.ResourceLocation{Start: model.ResourceLine{Line: 40}},
 		RemediationLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 44}},
 		Remediation:         "privileged: false", RemediationType: "addition",
-		SearchKey:           "dd-helm.spec", ResourceName: "dd-helm",
+		SearchKey: "dd-helm.spec", ResourceName: "dd-helm",
 	}
 	(&model.ReportedLocation{
 		Path: "web/Chart.yaml", Line: 7, LineText: "- name: pkg",

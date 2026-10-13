@@ -1069,33 +1069,60 @@ func TestPathFilter(t *testing.T) {
 	app, lib := toSlash(filepath.Join(dir, "app")), toSlash(filepath.Join(dir, "lib"))
 
 	var none *PathFilter
-	require.False(t, none.ExcludesFile(ignored))
+	require.False(t, none.ExcludesAny(ignored))
 	require.True(t, none.ChartInScope(lib))
 
 	file := NewPathFilter([]string{ignored, filepath.Join(dir, "web", "Chart.yaml")}, nil)
-	require.False(t, file.ExcludesFile(kept))
-	require.True(t, file.ExcludesFile(toSlash(ignored)), "slash and OS paths match alike")
-	require.False(t, file.ExcludesFile(filepath.Join(dir, "lib", "other.yaml")))
+	require.False(t, file.ExcludesAny(kept))
+	require.True(t, file.ExcludesAny(toSlash(ignored)), "slash and OS paths match alike")
+	require.False(t, file.ExcludesAny(filepath.Join(dir, "lib", "other.yaml")))
 	require.True(t, file.ChartInScope(lib), "an ignored template does not leave its chart out")
 	require.False(t, file.ChartInScope(filepath.Join(dir, "web")), "an ignored Chart.yaml does")
 
 	ignoredDir := NewPathFilter([]string{lib + "/"}, nil)
-	require.True(t, ignoredDir.ExcludesFile(ignored), "a file under an ignored directory is excluded")
-	require.True(t, ignoredDir.ExcludesFile(filepath.Join(dir, "lib", "charts", "pkg", "templates", "cm.yaml")),
+	require.True(t, ignoredDir.ExcludesAny(ignored), "a file under an ignored directory is excluded")
+	require.True(t, ignoredDir.ExcludesAny(filepath.Join(dir, "lib", "charts", "pkg", "templates", "cm.yaml")),
 		"so is a file of an archive under it, which names no file on disk")
-	require.False(t, ignoredDir.ExcludesFile(kept))
-	require.False(t, ignoredDir.ExcludesFile(filepath.Join(dir, "library", "cm.yaml")), "a sibling sharing the prefix is kept")
+	require.False(t, ignoredDir.ExcludesAny(kept))
+	require.False(t, ignoredDir.ExcludesAny(filepath.Join(dir, "library", "cm.yaml")), "a sibling sharing the prefix is kept")
 	require.True(t, ignoredDir.ChartInScope(app))
 	require.False(t, ignoredDir.ChartInScope(lib))
 	require.False(t, ignoredDir.ChartInScope(lib+"/charts/sub"))
 
 	only := NewPathFilter(nil, []string{filepath.Join(dir, "app", "templates", "cm.yaml")})
-	require.False(t, only.ExcludesFile(filepath.Join(dir, "app", "templates", "cm.yaml")))
-	require.True(t, only.ExcludesFile(filepath.Join(dir, "app", "templates", "other.yaml")))
+	require.False(t, only.ExcludesAny(filepath.Join(dir, "app", "templates", "cm.yaml")))
+	require.True(t, only.ExcludesAny(filepath.Join(dir, "app", "templates", "other.yaml")))
 	require.True(t, only.ChartInScope(app), "a chart holding an only path renders")
 	require.False(t, only.ChartInScope(lib))
 
-	require.True(t, NewPathFilter(nil, []string{}).ExcludesFile(kept), "only-paths expanding to nothing keep nothing")
+	require.True(t, NewPathFilter(nil, []string{}).ExcludesAny(kept), "only-paths expanding to nothing keep nothing")
+}
+
+// A packaged dependency's file names no file on disk, so only-paths, expanded
+// from globs over the disk, matches its declaration: a file known by both
+// paths is kept by either, and dropped by an ignore on either.
+func TestExcludesAnyFileKnownByTwoPaths(t *testing.T) {
+	dir := t.TempDir()
+	archived := filepath.Join(dir, "apps", "web", "charts", "pkg", "templates", "secret.yaml")
+	declared := filepath.Join(dir, "apps", "web", "Chart.yaml")
+	sibling := filepath.Join(dir, "apps", "lib", "templates", "cm.yaml")
+	siblingChart := filepath.Join(dir, "apps", "lib", "Chart.yaml")
+
+	only := NewPathFilter(nil, []string{declared})
+	require.False(t, only.ExcludesAny(archived, declared), "the declaration is in scope")
+	require.True(t, only.ExcludesAny(archived), "the archive alone names no file in scope")
+	require.True(t, only.ExcludesAny(sibling, siblingChart), "a sibling outside only-paths stays dropped")
+
+	ignored := NewPathFilter([]string{filepath.Join(dir, "apps", "web", "charts")}, nil)
+	require.True(t, ignored.ExcludesAny(archived, declared), "an archive under an ignored directory stays dropped")
+	require.False(t, ignored.ExcludesAny(sibling, siblingChart))
+
+	mem := NewMemorySourceProvider(nil, nil, nil, []string{"apps/web/Chart.yaml"})
+	require.False(t, mem.ExcludesAny("apps/web/charts/pkg/templates/secret.yaml", "apps/web/Chart.yaml"))
+	require.True(t, mem.ExcludesAny("apps/lib/templates/cm.yaml", "apps/lib/Chart.yaml"))
+
+	memIgnored := NewMemorySourceProvider(nil, nil, []string{"apps/web/charts/**"}, nil)
+	require.True(t, memIgnored.ExcludesAny("apps/web/charts/pkg/templates/secret.yaml", "apps/web/Chart.yaml"))
 }
 
 func TestNewFileSystemSourceProviderChartFilter(t *testing.T) {
@@ -1115,8 +1142,8 @@ func TestNewFileSystemSourceProviderChartFilter(t *testing.T) {
 	require.Empty(t, outOfScope)
 
 	mem := NewMemorySourceProvider(nil, nil, []string{"lib/**"}, nil)
-	require.True(t, mem.ExcludesFile("lib/cm.yaml"))
-	require.False(t, mem.ExcludesFile("app/cm.yaml"))
+	require.True(t, mem.ExcludesAny("lib/cm.yaml"))
+	require.False(t, mem.ExcludesAny("app/cm.yaml"))
 }
 
 func TestChartRootWaves(t *testing.T) {
