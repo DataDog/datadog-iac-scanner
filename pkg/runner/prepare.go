@@ -76,16 +76,23 @@ type preparedSource interface {
 	excluded(filePath string, content []byte) bool
 }
 
-// PrepareSharedWalk walks once, renders each chart once, and dispatches files to parsers.
+// PrepareSharedWalk walks once, renders each chart once, and dispatches files to
+// parsers. It serves every disk scan. parallel (the --x-parallelparsing flag)
+// sets the concurrency of chart rendering and file dispatch, as for the memory walk.
 func PrepareSharedWalk(ctx context.Context,
 	fsp *provider.FileSystemSourceProvider,
 	services []*Service,
 	scanID string,
 	openAPIResolveReferences bool,
-	maxResolverDepth int) error {
+	maxResolverDepth int,
+	parallel bool) error {
+	chartPool := utils.PoolOptions{CPUBound: true}
+	filePool := utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers}
+	if !parallel {
+		chartPool, filePool = utils.PoolOptions{Workers: 1}, utils.PoolOptions{Workers: 1}
+	}
 	return prepareSources(ctx, diskSource{fsp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
-		utils.PoolOptions{CPUBound: true},
-		utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers})
+		chartPool, filePool)
 }
 
 // PrepareMemorySources is PrepareSharedWalk over the files the IDE pushed, and

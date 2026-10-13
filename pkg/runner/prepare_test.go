@@ -165,7 +165,7 @@ func TestPrepareSharedWalk_MatchesPerService(t *testing.T) {
 	sharedServices, sharedStore := buildParityServices(t, ctx, paths)
 	fsp, ok := SharedWalkProvider(sharedServices)
 	require.True(t, ok, "shared walk provider should apply")
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, sharedServices, "parity", false, 5))
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, sharedServices, "parity", false, 5, true))
 
 	perServiceServices, perServiceStore := buildParityServices(t, ctx, paths)
 	var wg sync.WaitGroup
@@ -236,7 +236,7 @@ func TestPrepareSharedWalk_PrebuiltWalk_MatchesPerService(t *testing.T) {
 	for _, s := range sharedServices {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, sharedServices, "parity", false, 5))
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, sharedServices, "parity", false, 5, true))
 
 	perServiceServices, perServiceStore := buildParityServices(t, ctx, paths)
 	var wg sync.WaitGroup
@@ -273,7 +273,7 @@ func TestPrepareSharedWalk_RoutesHelmToKubernetesParser(t *testing.T) {
 	services, _ := buildParityServices(t, ctx, []string{chartPath})
 	fsp, ok := SharedWalkProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "helm-routing", false, 5))
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "helm-routing", false, 5, true))
 
 	for _, service := range services {
 		helmDocs := 0
@@ -315,7 +315,7 @@ func TestPrepareSharedWalk_RoutesKnownYAMLPlatforms(t *testing.T) {
 	}
 	fsp, ok := SharedWalkProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "routing", false, 5))
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "routing", false, 5, true))
 
 	for _, service := range services {
 		paths := make([]string, 0, len(service.files))
@@ -434,7 +434,7 @@ func TestPrepareSharedWalk_DanglingChartYamlSymlinkStillScansTerraform(t *testin
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "dangling-chart", false, 5))
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "dangling-chart", false, 5, true))
 
 	prepared := documentFingerprint(t, store)
 	require.NotEmpty(t, prepared)
@@ -473,7 +473,7 @@ func TestPrepareSharedWalk_RenderedChartStillScansTerraform(t *testing.T) {
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "rendered-chart", false, 5))
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "rendered-chart", false, 5, true))
 
 	found := false
 	for key := range documentFingerprint(t, store) {
@@ -537,7 +537,7 @@ func TestPrepareSharedWalk_UnexpectedRenderErrorStillSilencesRawTemplates(t *tes
 	services, _ := buildParityServices(t, ctx, []string{dir})
 	fsp, ok := SharedWalkProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "unexpected-render", false, 5))
+	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "unexpected-render", false, 5, true))
 
 	logged := logBuf.String()
 	require.Contains(t, logged, "failed to render file content")
@@ -613,7 +613,7 @@ func TestPrepareSharedWalk_DependencyChartFiles(t *testing.T) {
 			services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
 			shared, ok := SharedWalkProvider(services)
 			require.True(t, ok)
-			require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5))
+			require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
 			require.Equal(t, tt.want, storedFiles(t, services, dir))
 
 			// The per-service path, used when parallel parsing is off, where
@@ -692,7 +692,7 @@ func TestPrepareSharedWalk_AnalyzerExclusionsKeepRenderedFiles(t *testing.T) {
 	}
 	shared, ok := SharedWalkProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5))
+	require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
 	require.Equal(t, map[string]int{
 		"app/templates/pod.json":            1,
 		"app/templates/pod.yaml":            1,
@@ -750,7 +750,7 @@ func TestPrepareSharedWalk_RenderedDependencyReplacesRawTemplate(t *testing.T) {
 		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
 		shared, ok := SharedWalkProvider(services)
 		require.True(t, ok)
-		require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5))
+		require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
 		require.Equal(t, want, templatesStored(t, services, dir))
 		requireRenderedOnce(t, services, dir, "lib/templates/cm.yaml")
 	})
