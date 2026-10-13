@@ -17,8 +17,8 @@ import (
 
 // The disk filter, the in-memory filter and the rule filter apply one rule to a
 // file known by several paths, so one table of cases runs through each of them.
-// Patterns are relative to the root, and globs are expanded on disk for the
-// disk filter, so the files they name exist.
+// Patterns are absolute paths under a temporary root, and globs are expanded on
+// disk for the disk filter, so the files they name exist.
 func TestPathFiltersAgreeOnFilesKnownBySeveralPaths(t *testing.T) {
 	root := t.TempDir()
 	for _, rel := range []string{"app/charts/pkg-1.0.0.tgz", "app/Chart.yaml", "lib/Chart.yaml"} {
@@ -69,4 +69,15 @@ func TestPathFiltersAgreeOnFilesKnownBySeveralPaths(t *testing.T) {
 			require.Equal(t, tc.want, rule.rulePathsExcluded(paths, tc.ignore, tc.only), "rule filter")
 		})
 	}
+}
+
+// With no path to check, a file is excluded exactly when only-paths are set.
+func TestPathFiltersWithoutPaths(t *testing.T) {
+	only := []string{filepath.Join(t.TempDir(), "app")}
+	require.True(t, provider.NewPathFilter(nil, only).ExcludesAny(), "disk filter")
+	require.True(t, provider.NewMemorySourceProvider(nil, nil, nil, only).ExcludesAny(), "in-memory filter")
+	require.True(t, (&Inspector{}).rulePathsExcluded(nil, nil, only), "rule filter")
+	require.False(t, provider.NewPathFilter(nil, nil).ExcludesAny(), "disk filter without only-paths")
+	require.False(t, provider.NewMemorySourceProvider(nil, nil, nil, nil).ExcludesAny(), "in-memory filter without only-paths")
+	require.False(t, (&Inspector{}).rulePathsExcluded(nil, nil, nil), "rule filter without only-paths")
 }

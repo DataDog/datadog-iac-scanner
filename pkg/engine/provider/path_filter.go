@@ -90,7 +90,8 @@ func (f *PathFilter) ExcludesAny(paths ...string) bool {
 			abs = append(abs, a)
 		}
 	}
-	if len(abs) == 0 {
+	if len(abs) == 0 && len(paths) > 0 {
+		// Paths that cannot be resolved are not checked, so the file is kept.
 		return false
 	}
 	return pathutil.ExcludedAny(abs, f.ignoredPath, f.withinOnly, f.only != nil)

@@ -99,11 +99,15 @@ func NewFileSystemSourceProvider(ctx context.Context, paths, excludes, onlyPaths
 // user's filters when its excludes also list files kept out of the raw scan
 // only, such as JSON templates, whose rendered documents are still scanned.
 func (s *FileSystemSourceProvider) SetChartFilter(f *PathFilter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.chartFilter = f
 }
 
 // ChartFilter returns the filter that decides which charts render.
 func (s *FileSystemSourceProvider) ChartFilter() *PathFilter {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.chartFilter
 }
 
@@ -590,12 +594,12 @@ func (s *FileSystemSourceProvider) isPathExcluded(path string) (bool, error) {
 		}
 		return false, errors.Wrap(err, "failed to stat inventory path")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.excludedLocked(path, info), nil
 }
 
-// excludedLocked applies ignore-paths and only-paths to path; s.mu is held.
+// excludedLocked applies ignore-paths and only-paths to path; s.mu is read-held.
 func (s *FileSystemSourceProvider) excludedLocked(path string, info os.FileInfo) bool {
 	if f, ok := s.excludes[info.Name()]; ok && containsFile(f, info) {
 		return true
@@ -614,9 +618,10 @@ func (s *FileSystemSourceProvider) excludedLocked(path string, info os.FileInfo)
 // partitionChartRoots splits roots into the charts the chart filter renders
 // and those it leaves out.
 func (s *FileSystemSourceProvider) partitionChartRoots(roots []string) (inScope, outOfScope []string) {
+	filter := s.ChartFilter()
 	inScope = make([]string, 0, len(roots))
 	for _, root := range roots {
-		if s.chartFilter.ChartInScope(root) {
+		if filter.ChartInScope(root) {
 			inScope = append(inScope, root)
 		} else {
 			outOfScope = append(outOfScope, root)
