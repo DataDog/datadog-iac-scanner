@@ -23,6 +23,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
@@ -94,6 +95,9 @@ type ResolvedResource struct {
 	// ExpansionKeys is every for_each key when truncated and within
 	// maxExpansionShape, so ref injection can pad omitted keys as unknown.
 	ExpansionKeys []string
+	// DynamicCounts is how many blocks each dynamic block of Body generated for
+	// this instance, so generated blocks can be mapped back to their sources.
+	DynamicCounts DynamicCounts
 }
 
 // CallSite records one hop in a module call chain.
@@ -254,6 +258,16 @@ func MaxInstantiated() int { return defaultMaxInstantiated }
 // MaxCountExpansion reports the per-block count/for_each instance cap.
 func MaxCountExpansion() int { return maxCountExpansion }
 
+// MaxDynamicExpansion is the cap on the blocks one dynamic block generates.
+func MaxDynamicExpansion() int { return dynamicblock.MaxExpansion }
+
+func truncationMessage(kind string) string {
+	if kind == "dynamic" {
+		return "tfeval: dynamic block expansion cap exceeded; block scanned as written"
+	}
+	return "tfeval: count/for_each expansion truncated; remaining instances scanned as written"
+}
+
 // InstantiatedCount reports how many module resources have been charged against
 // the scan-wide retained-document budget.
 func (e *Evaluator) InstantiatedCount() int { return e.instantiated }
@@ -324,7 +338,7 @@ func (e *Evaluator) noteBudgetDemand(demand int) {
 	}
 }
 
-// ExpansionTruncations reports how many count/for_each expansions hit the per-block cap.
+// ExpansionTruncations reports how many count/for_each/dynamic expansions hit a cap.
 func (e *Evaluator) ExpansionTruncations() int { return e.expansionTruncations }
 
 // ExpansionMaxRequested reports the largest requested instance count seen when truncating.
@@ -348,7 +362,7 @@ func (e *Evaluator) TakeExpansionStats() (hits, maxRequested int) {
 	return hits, maxRequested
 }
 
-func (e *Evaluator) noteCountExpansionTruncated(ctx context.Context, kind, address string, requested, expanded int) {
+func (e *Evaluator) noteCountExpansionTruncated(ctx context.Context, kind, address string, requested, expanded, limit int) {
 	if e.prepassDepth > 0 {
 		return
 	}
@@ -366,8 +380,8 @@ func (e *Evaluator) noteCountExpansionTruncated(ctx context.Context, kind, addre
 		Str("address", address).
 		Int("requested_instances", requested).
 		Int("expanded_instances", expanded).
-		Int("count_expansion_cap", maxCountExpansion).
-		Msg("tfeval: count/for_each expansion truncated; remaining instances scanned as written")
+		Int("count_expansion_cap", limit).
+		Msg(truncationMessage(kind))
 }
 
 // TakeNotEvaluatedDirs returns the directories skipped since the last call and
@@ -872,7 +886,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			if plan.mode == expansionForEach {
 				kind = "module_for_each"
 			}
-			e.noteCountExpansionTruncated(ctx, kind, "module."+call.label, plan.requested, len(plan.instances))
+			e.noteCountExpansionTruncated(ctx, kind, "module."+call.label, plan.requested, len(plan.instances), maxCountExpansion)
 			// The instances left out have no synthetic document standing in
 			// for them, so the module must also be scanned as written.
 			_ = e.skipEvaluation(call.dir)
@@ -1078,6 +1092,21 @@ func (e *Evaluator) expandResourceBlock(
 	// Attributes that ignore each/count evaluate identically in every instance.
 	memo := newInvariantMemo()
 
+	// A dynamic block kept as written is one finding of the block, however many
+	// instances or parent blocks repeat it, so it is reported once per call.
+	overflows := make(map[string]dynamicOverflow)
+	defer func() {
+		labels := make([]string, 0, len(overflows))
+		for label := range overflows {
+			labels = append(labels, label)
+		}
+		slices.Sort(labels)
+		for _, label := range labels {
+			o := overflows[label]
+			e.noteCountExpansionTruncated(ctx, "dynamic", address+".dynamic."+label, o.requested, 0, o.limit)
+		}
+	}()
+
 	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
 		// Only attribution of module resources reads the iteration, so the
 		// instances of the root module do not keep it.
@@ -1085,10 +1114,18 @@ func (e *Evaluator) expandResourceBlock(
 		if child != evalCtx && addr != "" {
 			iteration = child.Variables
 		}
+		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
+		attrs := e.evalBodyWith(rb.Body, child, nil, state)
+		for _, o := range state.dynamic.overflow {
+			if prev, seen := overflows[o.label]; !seen || o.requested > prev.requested {
+				overflows[o.label] = o
+			}
+		}
 		return ResolvedResource{
 			Type:          typeName,
 			Name:          name,
-			Attributes:    e.evalBodyMemo(rb.Body, child, memo),
+			Attributes:    attrs,
+			DynamicCounts: state.dynamic.counts,
 			Body:          rb.Body,
 			Iteration:     iteration,
 			DefinedIn:     rb.TypeRange.Filename,
@@ -1133,7 +1170,7 @@ func (e *Evaluator) expandCountInstances(
 		nExpand := min(n, maxCountExpansion)
 		truncated := n > maxCountExpansion
 		if truncated {
-			e.noteCountExpansionTruncated(ctx, "count", address, n, nExpand)
+			e.noteCountExpansionTruncated(ctx, "count", address, n, nExpand, maxCountExpansion)
 		}
 		out := make([]ResolvedResource, 0, nExpand)
 		for i := 0; i < nExpand; i++ {
@@ -1207,7 +1244,7 @@ func (e *Evaluator) expandKnownForEachResources(
 	total := fv.LengthInt()
 	truncated := total > maxCountExpansion
 	if truncated {
-		e.noteCountExpansionTruncated(ctx, "for_each", address, total, maxCountExpansion)
+		e.noteCountExpansionTruncated(ctx, "for_each", address, total, maxCountExpansion, maxCountExpansion)
 	}
 	// Only walk the full collection when we need every key to pad a truncated shape.
 	needKeys := truncated && total <= maxExpansionShape
@@ -1440,6 +1477,8 @@ func (e *Evaluator) resolveLocals(
 }
 
 // evalBody evaluates an HCL body into the shape produced by the Terraform parser.
+// It keeps dynamic blocks as written: a module call cannot hold them, and there
+// is no per-resource budget here to bound their expansion.
 func (e *Evaluator) evalBody(
 	body *hclsyntax.Body,
 	ctx *hcl.EvalContext,
@@ -1448,15 +1487,48 @@ func (e *Evaluator) evalBody(
 	return e.evalBodyWith(body, ctx, skip, nil)
 }
 
-func (e *Evaluator) evalBodyMemo(body *hclsyntax.Body, ctx *hcl.EvalContext, memo *invariantMemo) map[string]cty.Value {
-	return e.evalBodyWith(body, ctx, nil, memo)
+// bodyState carries what evaluating a resource body shares across its nested
+// blocks: the memo of expressions that ignore the iteration, and how many
+// blocks each dynamic block generated.
+type bodyState struct {
+	memo    *invariantMemo
+	dynamic *dynamicRecorder
+	// iterators are the iterator names of the dynamic blocks enclosing the body
+	// being evaluated; expressions reading one of them vary between blocks.
+	iterators []string
+}
+
+type dynamicRecorder struct {
+	counts    DynamicCounts
+	generated int
+	overflow  []dynamicOverflow
+}
+
+// withoutMemo shares the dynamic counts but not the memo, for the as-written
+// body of a dynamic block that is not expanded: it reads an iterator that
+// nothing binds there, which is no reason to reuse its value elsewhere.
+func (st *bodyState) withoutMemo() *bodyState {
+	if st == nil {
+		return nil
+	}
+	return &bodyState{dynamic: st.dynamic}
+}
+
+// inDynamic is the state for the content of a dynamic block binding iterator.
+func (st *bodyState) inDynamic(iterator string) *bodyState {
+	if st == nil {
+		return nil
+	}
+	names := make([]string, len(st.iterators), len(st.iterators)+1)
+	copy(names, st.iterators)
+	return &bodyState{memo: st.memo, dynamic: st.dynamic, iterators: append(names, iterator)}
 }
 
 func (e *Evaluator) evalBodyWith(
 	body *hclsyntax.Body,
 	ctx *hcl.EvalContext,
 	skip map[string]bool,
-	memo *invariantMemo,
+	st *bodyState,
 ) map[string]cty.Value {
 	out := make(map[string]cty.Value, len(body.Attributes)+len(body.Blocks))
 
@@ -1464,19 +1536,23 @@ func (e *Evaluator) evalBodyWith(
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExprMemo(attr.Expr, ctx, memo)
+		out[name] = e.evalExprMemo(attr.Expr, ctx, st)
 	}
 
 	for _, b := range body.Blocks {
+		if st != nil && dynamicblock.Is(b) {
+			e.addDynamicBlocks(out, b, ctx, st)
+			continue
+		}
 		path := append([]string{b.Type}, b.Labels...)
-		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, memo)))
+		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st)))
 	}
 	return out
 }
 
-// invariantMemo reuses the value of expressions that do not read each or
-// count across the instances of one resource block, which share a parent
-// context.
+// invariantMemo reuses the value of expressions that do not read each, count or
+// a dynamic block's iterator across the instances of one resource block and the
+// blocks its dynamic blocks generate, which share a parent context.
 type invariantMemo struct {
 	values map[hclsyntax.Expression]cty.Value
 	varies map[hclsyntax.Expression]bool
@@ -1489,13 +1565,17 @@ func newInvariantMemo() *invariantMemo {
 	}
 }
 
-func (m *invariantMemo) readsIteration(expr hclsyntax.Expression) bool {
+// readsIteration reports whether expr reads each, count, or the iterator of an
+// enclosing dynamic block. An expression sits in one place of the body, so its
+// enclosing iterators, and with them the answer, never change.
+func (m *invariantMemo) readsIteration(expr hclsyntax.Expression, iterators []string) bool {
 	if v, ok := m.varies[expr]; ok {
 		return v
 	}
 	reads := false
 	for _, t := range expr.Variables() {
-		if root := t.RootName(); root == "each" || root == "count" {
+		root := t.RootName()
+		if root == "each" || root == "count" || slices.Contains(iterators, root) {
 			reads = true
 			break
 		}
@@ -1504,15 +1584,15 @@ func (m *invariantMemo) readsIteration(expr hclsyntax.Expression) bool {
 	return reads
 }
 
-func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, memo *invariantMemo) cty.Value {
-	if memo == nil || memo.readsIteration(expr) {
+func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, st *bodyState) cty.Value {
+	if st == nil || st.memo == nil || st.memo.readsIteration(expr, st.iterators) {
 		return e.evalExpr(expr, ctx)
 	}
-	if v, ok := memo.values[expr]; ok {
+	if v, ok := st.memo.values[expr]; ok {
 		return v
 	}
 	v := e.evalExpr(expr, ctx)
-	memo.values[expr] = v
+	st.memo.values[expr] = v
 	return v
 }
 

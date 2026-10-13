@@ -174,10 +174,12 @@ variable "private_network" {
   type = string
 }
 
+variable "ip_configurations" {}
+
 resource "google_sql_database_instance" "this" {
   settings {
     dynamic "ip_configuration" {
-      for_each = ["enabled"]
+      for_each = var.ip_configurations
       content {
         private_network = var.private_network
       }
