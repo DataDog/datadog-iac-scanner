@@ -1536,7 +1536,11 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
 		reportedPath := file.Reported.PathOr(file.FilePath)
-		if c.rulePathsExcluded([]string{file.FilePath, reportedPath}, rc.IgnorePaths, rc.OnlyPaths) {
+		paths := []string{file.FilePath, reportedPath}
+		if file.Archive != "" {
+			paths = append(paths, file.Archive)
+		}
+		if c.rulePathsExcluded(paths, rc.IgnorePaths, rc.OnlyPaths) {
 			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
 				reportedPath, vulnerability.QueryID)
 			return nil, false

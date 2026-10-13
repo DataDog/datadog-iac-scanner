@@ -620,3 +620,39 @@ func requireRenderedOnce(t *testing.T, services []*Service, dir, rel string) {
 		}
 	}
 }
+
+// excludesPath is a FileFilter that drops any file whose paths include path.
+type excludesPath string
+
+func (p excludesPath) ExcludesAny(paths ...string) bool {
+	for _, path := range paths {
+		if path == string(p) {
+			return true
+		}
+	}
+	return false
+}
+
+// An ignore-paths entry naming the archive of a packaged dependency drops the
+// files rendered from it, even though neither their names nor the declaration
+// they are reported at are inside the ignored path.
+func TestWithoutExcludedFiles_PackagedDependencyArchivePath(t *testing.T) {
+	const archive = "app/charts/lib-1.0.0.tgz"
+	packaged := model.ResolvedHelm{
+		FileName: "app/charts/lib/templates/pod.yaml",
+		Reported: &model.ReportedLocation{Path: "app/Chart.yaml", Line: 5},
+		Archive:  archive,
+	}
+	own := model.ResolvedHelm{FileName: "app/templates/cm.yaml"}
+
+	got := withoutExcludedFiles(context.Background(), excludesPath(archive), "app",
+		model.ResolvedFiles{File: []model.ResolvedHelm{packaged, own}})
+	require.Len(t, got.File, 1)
+	require.Equal(t, own.FileName, got.File[0].FileName)
+
+	withoutArchive := packaged
+	withoutArchive.Archive = ""
+	got = withoutExcludedFiles(context.Background(), excludesPath(archive), "app",
+		model.ResolvedFiles{File: []model.ResolvedHelm{withoutArchive}})
+	require.Len(t, got.File, 1, "a file without an archive is not dropped for the archive's path")
+}

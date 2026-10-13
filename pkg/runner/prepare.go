@@ -260,11 +260,14 @@ func withoutExcludedFiles(
 	kept := make([]model.ResolvedHelm, 0, len(resFiles.File))
 	for i := range resFiles.File {
 		// A packaged dependency is reported at its parent's declaration, and its
-		// filters apply to both paths, as they do to a rule's.
+		// filters apply to its archive and both paths, as they do to a rule's.
 		file := &resFiles.File[i]
 		paths := []string{file.FileName}
 		if file.Reported != nil {
 			paths = append(paths, file.Reported.Path)
+		}
+		if file.Archive != "" {
+			paths = append(paths, file.Archive)
 		}
 		if filter.ExcludesAny(paths...) {
 			continue

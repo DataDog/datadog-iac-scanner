@@ -112,6 +112,7 @@ func (s *Service) storeResolvedFiles(
 				Kind:              kind,
 				FilePath:          rfile.FileName,
 				Reported:          rfile.Reported,
+				Archive:           rfile.Archive,
 				HelmID:            rfile.SplitID,
 				HelmAttribution:   model.NewHelmAttribution(rfile.HelmInvocations, ownedRenderedContent),
 				Commands:          cached.commands,

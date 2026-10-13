@@ -1495,6 +1495,15 @@ func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
 	require.False(t, ins.rulePathsExcluded([]string{"/tmp/remote-module/main.tf"}, []string{"/tmp/**"}, nil))
 }
 
+// The archive a packaged dependency was rendered from is one more path its
+// findings are known by, so a glob naming it drops them.
+func TestInspectorRulePathsExcludedNamesArchive(t *testing.T) {
+	ins := &Inspector{}
+	paths := []string{"app/charts/lib/templates/pod.yaml", "app/Chart.yaml", "app/charts/lib-1.0.0.tgz"}
+	require.True(t, ins.rulePathsExcluded(paths, []string{"app/charts/*.tgz"}, nil))
+	require.False(t, ins.rulePathsExcluded(paths[:2], []string{"app/charts/*.tgz"}, nil))
+}
+
 // A file inside a chart archive is known by its path in the archive and by the
 // declaration it is reported at; the rule's filters apply to both.
 func TestInspectorRulePathsExcludedArchiveFile(t *testing.T) {

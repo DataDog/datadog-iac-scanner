@@ -202,6 +202,9 @@ type FileMetadata struct {
 	// Reported, when set, is where this file's findings are reported instead of
 	// FilePath (see ResolvedHelm.Reported).
 	Reported *ReportedLocation
+	// Archive is the chart archive the file was rendered from, if any (see
+	// ResolvedHelm.Archive).
+	Archive string
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -537,7 +540,10 @@ type ResolvedHelm struct {
 	// Reported is where findings are reported when FileName is not a place in
 	// the repository: a dependency packaged as an archive renders from unpacked
 	// file names that exist only inside the archive.
-	Reported            *ReportedLocation
+	Reported *ReportedLocation
+	// Archive is the chart archive in the repository the file was rendered from,
+	// when it is a packaged dependency, so that path filters can name it.
+	Archive             string
 	Content             []byte
 	OriginalData        []byte
 	SplitID             string

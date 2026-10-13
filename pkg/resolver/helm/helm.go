@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/cli/values"
@@ -324,20 +326,77 @@ func getExcluded(ctx context.Context, charterino *chart.Chart, chartpath string)
 // is reported at the same place.
 type archiveLocations struct {
 	fsys  vfs.FS
-	byDep map[*packagedDependency]*model.ReportedLocation
+	byDep map[*packagedDependency]packagedSource
+}
+
+// packagedSource is where a packaged dependency's findings are reported, and
+// the archive file they are rendered from, which ignore-paths can name.
+type packagedSource struct {
+	reported *model.ReportedLocation
+	archive  string
 }
 
 func newArchiveLocations(fsys vfs.FS) *archiveLocations {
-	return &archiveLocations{fsys: fsys, byDep: map[*packagedDependency]*model.ReportedLocation{}}
+	return &archiveLocations{fsys: fsys, byDep: map[*packagedDependency]packagedSource{}}
 }
 
-func (a *archiveLocations) of(dep *packagedDependency) *model.ReportedLocation {
-	location, known := a.byDep[dep]
+func (a *archiveLocations) of(dep *packagedDependency) packagedSource {
+	source, known := a.byDep[dep]
 	if !known {
-		location = dependencyDeclaration(a.fsys, dep.parent, dep.name)
-		a.byDep[dep] = location
+		source = packagedSource{
+			reported: dependencyDeclaration(a.fsys, dep.parent, dep.name),
+			archive:  archiveFileOf(a.fsys, dep.parent, dep.chart),
+		}
+		a.byDep[dep] = source
 	}
-	return location
+	return source
+}
+
+// archiveFileOf returns the archive under parent's charts/ that holds ch, the
+// first one with the same files when several hold them. Helm loads only archives
+// named *.tgz there. The name is not compared: an aliased dependency is renamed
+// to its alias, while its files keep the names they have in the archive. It is
+// empty when none is found.
+func archiveFileOf(fsys vfs.FS, parent string, ch *chart.Chart) string {
+	if ch == nil || ch.Metadata == nil {
+		return ""
+	}
+	chartsDir := filepath.Join(parent, dependenciesDirName)
+	entries, err := fsys.ReadDir(chartsDir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".tgz" {
+			continue
+		}
+		file := filepath.Join(chartsDir, entry.Name())
+		data, err := fsys.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		archived, err := loader.LoadArchive(bytes.NewReader(data))
+		if err != nil || archived.Metadata == nil {
+			continue
+		}
+		if archived.Metadata.Version == ch.Metadata.Version && sameRawFiles(archived.Raw, ch.Raw) {
+			return file
+		}
+	}
+	return ""
+}
+
+// sameRawFiles reports whether two charts hold the same files under the same names.
+func sameRawFiles(a, b []*chart.File) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || !bytes.Equal(a[i].Data, b[i].Data) {
+			return false
+		}
+	}
+	return true
 }
 
 // dependencyDeclaration locates the dependency rendered as name in the parent

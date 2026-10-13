@@ -156,7 +156,10 @@ func TestHelm_Resolve_PackagedDependencyReportedAtDeclaration(t *testing.T) {
 			require.Equal(t, tt.wantLine, pkg.Reported.Line)
 			require.Contains(t, pkg.Reported.LineText, tt.wantInTxt)
 			require.NotEmpty(t, pkg.Reported.Snippet)
-			require.Nil(t, findResolvedBySuffix(t, got.File, "web/templates/cm.yaml").Reported)
+			require.Equal(t, filepath.Join(web, "charts", "pkg-1.0.0.tgz"), pkg.Archive)
+			own := findResolvedBySuffix(t, got.File, "web/templates/cm.yaml")
+			require.Nil(t, own.Reported)
+			require.Empty(t, own.Archive)
 		})
 	}
 }
@@ -208,13 +211,14 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 	}))
 	declaresPkg := "apiVersion: v2\nname: %s\nversion: 1.0.0\ndependencies:\n- name: pkg\n  version: 0.1.0\n"
 	tests := []struct {
-		name     string
-		files    map[string]string
-		roots    []string
-		wantFile string // where the archive's secret would be unpacked
-		wantAt   string
-		wantLine int
-		wantText string
+		name        string
+		files       map[string]string
+		roots       []string
+		wantFile    string // where the archive's secret would be unpacked
+		wantAt      string
+		wantLine    int
+		wantText    string
+		wantArchive string // the archive file it is rendered from, the top-level one when nested
 	}{
 		{
 			name: "archive of a sibling chart attached by file://",
@@ -226,6 +230,7 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 			},
 			roots:    []string{"app", "db"},
 			wantFile: "db/charts/pkg/templates/secret.yaml", wantAt: "db/Chart.yaml", wantLine: 5, wantText: "- name: pkg",
+			wantArchive: "db/charts/pkg-0.1.0.tgz",
 		},
 		{
 			name: "archive inside an archive",
@@ -235,7 +240,7 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 				"app/charts/outer-1.0.0.tgz": outer,
 			},
 			wantFile: "app/charts/outer/charts/pkg/templates/secret.yaml", wantAt: "app/Chart.yaml", wantLine: 5,
-			wantText: "- name: outer",
+			wantText: "- name: outer", wantArchive: "app/charts/outer-1.0.0.tgz",
 		},
 		{
 			name: "archive of an unpacked subchart in a directory named otherwise",
@@ -246,7 +251,7 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 				"app/charts/sub-dir/charts/pkg-0.1.0.tgz": pkg,
 			},
 			wantFile: "app/charts/sub-dir/charts/pkg/templates/secret.yaml", wantAt: "app/charts/sub-dir/Chart.yaml", wantLine: 5,
-			wantText: "- name: pkg",
+			wantText: "- name: pkg", wantArchive: "app/charts/sub-dir/charts/pkg-0.1.0.tgz",
 		},
 	}
 	for _, tt := range tests {
@@ -265,6 +270,7 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 			require.Equal(t, filepath.Join(root, filepath.FromSlash(tt.wantAt)), secret.Reported.Path)
 			require.Equal(t, tt.wantLine, secret.Reported.Line)
 			require.Equal(t, tt.wantText, secret.Reported.LineText)
+			require.Equal(t, filepath.Join(root, filepath.FromSlash(tt.wantArchive)), secret.Archive)
 		})
 	}
 }

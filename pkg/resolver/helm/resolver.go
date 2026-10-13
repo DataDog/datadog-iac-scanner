@@ -101,15 +101,16 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 				origpath = filepath.ToSlash(origpath)
 			}
 		}
-		var reported *model.ReportedLocation
+		var source packagedSource
 		if split.archive != nil && !slashPaths {
 			// The server reports packaged subcharts through its archive_files map
 			// instead, so only a disk scan needs the archive named here.
-			reported = archives.of(split.archive)
+			source = archives.of(split.archive)
 		}
 		rfiles.File = append(rfiles.File, model.ResolvedHelm{
 			FileName:            origpath,
-			Reported:            reported,
+			Reported:            source.reported,
+			Archive:             source.archive,
 			Content:             split.content,
 			OriginalData:        split.original,
 			SplitID:             split.splitID,
@@ -497,6 +498,7 @@ func isCRDSourcePath(name string) bool {
 // names its files under.
 type packagedDependency struct {
 	parent, name, root string
+	chart              *chart.Chart
 }
 
 // path is where the file Helm names name would be if the archive were
@@ -527,7 +529,7 @@ func updateName(
 	}
 	if archive == nil {
 		if parent, ok := locator.packagedParent(charts); ok {
-			archive = &packagedDependency{parent: parent, name: charts.Name(), root: name}
+			archive = &packagedDependency{parent: parent, name: charts.Name(), root: name, chart: charts}
 		}
 	}
 	locate := func(f *chart.File, sourceName string) {
