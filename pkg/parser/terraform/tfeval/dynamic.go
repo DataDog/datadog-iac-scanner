@@ -36,7 +36,7 @@ func (e *Evaluator) addDynamicBlocks(out map[string]cty.Value, b *hclsyntax.Bloc
 		st.noteDynamicOverflow(b, exp.Requested, dynamicblock.MaxExpansion)
 	}
 	if !resolved {
-		st.recordDynamic(b, 0)
+		st.recordDynamic(b, keptAsWritten)
 		addNestedBlock(out, append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st.withoutMemo())))
 		return
 	}
@@ -102,6 +102,10 @@ func (st *bodyState) noteDynamicOverflow(b *hclsyntax.Block, requested, limit in
 type DynamicCounts map[*hclsyntax.Block]int
 
 const unknownDynamicCount = -1
+
+// keptAsWritten records a dynamic block that was not expanded; it generated no
+// blocks, but its as-written form is in the output.
+const keptAsWritten = -2
 
 func (st *bodyState) recordDynamic(b *hclsyntax.Block, n int) {
 	if st == nil || st.dynamic == nil {

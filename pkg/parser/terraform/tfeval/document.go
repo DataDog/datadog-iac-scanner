@@ -147,8 +147,10 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts) attrSour
 	for _, b := range body.Blocks {
 		switch {
 		case b.Type == key:
-			blocks = append(blocks, b)
-			counts = append(counts, 1)
+			if count, ok := asWrittenCount(dynamic, b); ok {
+				blocks = append(blocks, b)
+				counts = append(counts, count)
+			}
 		case dynamicblock.Is(b) && dynamicblock.GeneratedType(b) == key:
 			// Every dynamic block of this type stands in as one marker; counts
 			// say how many blocks it generated, none when kept as written.
@@ -195,10 +197,32 @@ func generatedMarker(b *hclsyntax.Block) (marker *hclsyntax.Block, ok bool) {
 // generatedCount is how many blocks the dynamic block b generated; a block the
 // evaluation never reached generated none.
 func generatedCount(dynamic DynamicCounts, b *hclsyntax.Block) int {
-	if n, ok := dynamic[b]; ok {
-		return n
+	n, ok := dynamic[b]
+	if !ok || n == keptAsWritten {
+		return 0
 	}
-	return 0
+	return n
+}
+
+// asWrittenCount is how many elements the source b contributes as written under
+// its own key: a static block always, a dynamic block only when kept as written.
+// An expanded dynamic block contributes nothing under the key, since its blocks
+// are generated under their own type.
+func asWrittenCount(dynamic DynamicCounts, b *hclsyntax.Block) (int, bool) {
+	if !dynamicblock.Is(b) || dynamic == nil {
+		return 1, true
+	}
+	n, seen := dynamic[b]
+	switch {
+	case !seen:
+		return 0, false
+	case n == keptAsWritten:
+		return 1, true
+	case n == unknownDynamicCount:
+		return unknownDynamicCount, true
+	default:
+		return 0, false
+	}
 }
 
 // ctyValueToDocument converts a cty.Value to a JSON-serializable value, using

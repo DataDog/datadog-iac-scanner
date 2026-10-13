@@ -8,9 +8,11 @@ package tfeval
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/zclconf/go-cty/cty"
@@ -186,5 +188,33 @@ func TestCalledLocalDirs_NoModules(t *testing.T) {
 	})
 	if got := CalledLocalDirs(dir, nil); got != nil {
 		t.Fatalf("CalledLocalDirs = %#v, want nil", got)
+	}
+}
+
+// An expanded dynamic block must not stand in for the as-written one that shares
+// its key: the as-written block's references stay unresolved, with their text.
+func TestAttributesToDocument_ExpandedSiblingDoesNotMapAsWritten(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
+		"main.tf": `
+resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = var.unknown
+    content {
+      cidr_blocks = [aws_vpc.unknown.cidr_block]
+    }
+  }
+  dynamic "ingress" {
+    for_each = ["a"]
+    content {
+      cidr_blocks = [aws_vpc.known.cidr_block]
+    }
+  }
+}
+`,
+	})
+	doc := documentFor(t, dir, "aws_security_group", "sg")
+	kept := fmt.Sprint(doc["dynamic"])
+	if !strings.Contains(kept, "${aws_vpc.unknown.cidr_block}") {
+		t.Fatalf("as-written block lost its reference text: dynamic = %v", doc["dynamic"])
 	}
 }
