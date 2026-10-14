@@ -604,6 +604,9 @@ func (e *Evaluator) evaluate(
 		rootResources[i].Scope = scope
 	}
 	dataInstances := data.resolved(scope)
+	if !e.chargeModuleCall(ctx, addr, len(dataInstances)) {
+		return nil, nil, e.skipEvaluation(dir)
+	}
 	resources := make([]ResolvedResource, 0, len(rootResources)+len(dataInstances)+len(childResources))
 	resources = append(resources, rootResources...)
 	resources = append(resources, dataInstances...)
@@ -781,15 +784,22 @@ func (e *Evaluator) cacheCompletedEvaluation(
 }
 
 // moduleResourceCount is what a cached evaluation charges the instantiation
-// budget. Data instances are not charged: the budget bounds resource fan-out.
+// budget: the resource and data instances of module calls, which are retained
+// alike.
 func moduleResourceCount(resources []ResolvedResource) int {
 	n := 0
 	for i := range resources {
-		if resources[i].ModuleAddress != "" && !resources[i].Data {
+		if resources[i].ModuleAddress != "" {
 			n++
 		}
 	}
 	return n
+}
+
+// chargeModuleCall charges n instances of a module call to the instantiation
+// budget. The root module's own instances are not charged.
+func (e *Evaluator) chargeModuleCall(ctx context.Context, addr string, n int) bool {
+	return addr == "" || e.chargeInstantiationBudget(ctx, n)
 }
 
 func (e *Evaluator) chargeInstantiationBudget(ctx context.Context, n int) bool {

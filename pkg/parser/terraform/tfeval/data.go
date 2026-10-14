@@ -270,7 +270,7 @@ func (d *moduleData) withComputedAttributes(
 	if body, ok := d.jsonBodies[b]; ok {
 		src := d.sources[b.TypeRange.Filename]
 		computed = source(body, func(expr hcl.Expression) (cty.Value, bool) {
-			return rd.Render(jsonExprToHCL(expr, src))
+			return renderJSON(rd, expr, src)
 		})
 	} else {
 		computed = source(b.Body, rd.Render)
@@ -283,6 +283,16 @@ func (d *moduleData) withComputedAttributes(
 		attrs[k] = cty.StringVal(v)
 	}
 	return attrs
+}
+
+// renderJSON renders a JSON configuration expression, in the scope of the
+// variables it was bound to when read inside a dynamic block.
+func renderJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.Value, bool) {
+	if inner, vars, ok := partial.Unbind(expr); ok {
+		scoped := &partial.Renderer{Ctx: partial.Scope(rd.Ctx, vars), Source: rd.Source}
+		return renderJSON(scoped, inner, src)
+	}
+	return rd.Render(jsonExprToHCL(expr, src))
 }
 
 // resolved returns the data instances of the module's final evaluation.
