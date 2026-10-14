@@ -99,11 +99,17 @@ func (c *Inspector) instantiateLocalModules(
 		return nil, nil, nil, nil
 	}
 	rootDirs := newRootIndex(res.rootDirs)
+	primaryIDs := primaryFileIDs(files, c.repoPath)
 	for _, f := range files {
 		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
-		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
+		// The later documents of a file are covered as the file's first is.
+		coveredID := f.ID
+		if f.ExpansionLayer > 0 {
+			coveredID = primaryIDs[absPath(f.FilePath, c.repoPath)]
+		}
+		if replaced := res.suppressed[coveredID]; len(replaced) > 0 {
 			if res.unresolvedModuleDirs[moduleFileDir(f.FilePath, c.repoPath)] {
 				continue
 			}
@@ -119,6 +125,9 @@ func (c *Inspector) instantiateLocalModules(
 			} else {
 				removeInstantiatedResources(f.LineInfoDocument, replaced)
 			}
+		}
+		if f.ExpansionLayer > 0 {
+			continue
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
@@ -1365,7 +1374,22 @@ func resolveModuleTargetDir(
 	return dir, ok
 }
 
-// indexTerraformFiles builds lookup maps from a flat FileMetadatas slice.
+// primaryFileIDs maps the path of each Terraform file to the ID of its first
+// document, the one that holds every block of the file.
+func primaryFileIDs(files model.FileMetadatas, repoPath string) map[string]string {
+	ids := make(map[string]string)
+	for _, f := range files {
+		if f == nil || f.ExpansionLayer > 0 || !tfpath.IsConfig(f.FilePath) {
+			continue
+		}
+		ids[absPath(f.FilePath, repoPath)] = f.ID
+	}
+	return ids
+}
+
+// indexTerraformFiles builds lookup maps from a flat FileMetadatas slice. Only
+// the first document of a file is indexed: the later ones carry the instances
+// of its expanded resources and share its path and content.
 func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPath string) (
 	byAbsPath map[string]*model.FileMetadata,
 	filesByDir map[string][]*model.FileMetadata,
@@ -1376,7 +1400,7 @@ func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPat
 	filesByDir = make(map[string][]*model.FileMetadata)
 	dirsWithTf = make(map[string]bool)
 	for _, f := range files {
-		if f == nil || !tfpath.IsConfig(f.FilePath) {
+		if f == nil || f.ExpansionLayer > 0 || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
 		abs := absPath(f.FilePath, repoPath)

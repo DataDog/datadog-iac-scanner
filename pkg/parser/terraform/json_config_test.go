@@ -7,12 +7,15 @@ package terraform
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
@@ -262,4 +265,80 @@ func stringifyValue(v interface{}) string {
 	default:
 		return ""
 	}
+}
+
+func jsonBucket(layer model.Document, name string) model.Document {
+	byType, _ := layer["resource"].(model.Document)["aws_s3_bucket"].(model.Document)
+	bucket, _ := byType[name].(model.Document)
+	return bucket
+}
+
+func TestParseJSONConfigExpandsCountAndForEachIntoDocuments(t *testing.T) {
+	src := []byte(`{
+  "variable": {"buckets": {"default": {"a": {"enc": false}, "b": {"enc": true}}}},
+  "resource": {
+    "aws_s3_bucket": {
+      "fe": {
+        "for_each": "${var.buckets}",
+        "bucket": "${each.key}",
+        "versioned": "${each.value.enc}"
+      },
+      "cnt": {"count": 2, "bucket": "b-${count.index}"},
+      "same": {"count": 3, "bucket": "same"},
+      "none": {"for_each": {}, "bucket": "x"},
+      "zero": {"count": 0, "bucket": "x"}
+    }
+  }
+}`)
+	vars := converter.VariableMap{"var": cty.ObjectVal(map[string]cty.Value{
+		"buckets": cty.ObjectVal(map[string]cty.Value{
+			"a": cty.ObjectVal(map[string]cty.Value{"enc": cty.False}),
+			"b": cty.ObjectVal(map[string]cty.Value{"enc": cty.True}),
+		}),
+	})}
+	layers, err := parseJSONConfigLayers(src, "main.tf.json", vars)
+	require.NoError(t, err)
+	require.Len(t, layers, 2)
+
+	require.Equal(t, "a", jsonBucket(layers[0], "fe")["bucket"].(ctyjson.SimpleJSONValue).AsString())
+	require.Equal(t, "b", jsonBucket(layers[1], "fe")["bucket"].(ctyjson.SimpleJSONValue).AsString())
+	require.False(t, jsonBucket(layers[0], "fe")["versioned"].(ctyjson.SimpleJSONValue).True())
+	require.True(t, jsonBucket(layers[1], "fe")["versioned"].(ctyjson.SimpleJSONValue).True())
+	require.Equal(t, "b-0", jsonBucket(layers[0], "cnt")["bucket"].(ctyjson.SimpleJSONValue).AsString())
+	require.Equal(t, "b-1", jsonBucket(layers[1], "cnt")["bucket"].(ctyjson.SimpleJSONValue).AsString())
+
+	require.NotNil(t, jsonBucket(layers[0], "same"))
+	require.Equal(t, jsonBucket(layers[0], "same"), jsonBucket(layers[1], "same"),
+		"instances that read the same are one instance, in every document")
+	for _, name := range []string{"none", "zero"} {
+		require.Nil(t, jsonBucket(layers[0], name), name)
+		require.Nil(t, jsonBucket(layers[1], name), name)
+	}
+}
+
+func TestParser_ParseReturnsOneDocumentPerExpandedInstance(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.tf")
+	src := []byte(`
+resource "aws_s3_bucket" "b" {
+  count  = 2
+  bucket = "b-${count.index}"
+}
+`)
+	require.NoError(t, os.WriteFile(main, src, 0o600))
+	_, documents, _, _, err := NewDefault().Parse(context.Background(), src, main, true, 15)
+	require.NoError(t, err)
+	require.Len(t, documents, 2)
+	for i, document := range documents {
+		bucket := document["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)
+		require.Equal(t, fmt.Sprintf("b-%d", i), bucket["bucket"])
+	}
+}
+
+func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMap) (model.Document, error) {
+	layers, err := parseJSONConfigLayers(src, filename, inputVars)
+	if err != nil || len(layers) == 0 {
+		return nil, err
+	}
+	return layers[0], nil
 }

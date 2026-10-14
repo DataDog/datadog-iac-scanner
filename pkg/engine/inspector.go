@@ -808,7 +808,7 @@ func (c *Inspector) executeQueries(
 		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
 	}
 
-	return vulnerabilities, nil
+	return dropRepeatedLayerFindings(vulnerabilities, filesMap), nil
 }
 
 func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas) bool {

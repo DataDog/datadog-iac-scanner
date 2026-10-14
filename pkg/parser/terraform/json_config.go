@@ -6,6 +6,7 @@
 package terraform
 
 import (
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2"
 	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/zclconf/go-cty/cty"
@@ -37,7 +39,12 @@ var jsonConfigSchema = &hcl.BodySchema{
 	},
 }
 
-func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMap) (model.Document, error) {
+// parseJSONConfigLayers converts a JSON configuration into its documents the
+// way converter.ConvertAll does for native syntax: resources and data whose
+// count or for_each expand into instances that differ from one another have
+// their first instance in the first document (see converter.BuildLayers for
+// the others).
+func parseJSONConfigLayers(src []byte, filename string, inputVars converter.VariableMap) ([]model.Document, error) {
 	file, diags := hcljson.Parse(src, filename)
 	if diags.HasErrors() {
 		return nil, diags
@@ -55,7 +62,23 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 	ddLines := map[string]model.LineObject{
 		"_dd__default": {Line: 1},
 	}
+	var expanded []converter.Expanded
+	instancesLeft := instances.MaxPerFile
 	for _, block := range content.Blocks {
+		if values, ok := expandJSONInstances(block, evalCtx, src, &instancesLeft); ok {
+			ddLines["_dd_"+block.Type] = model.LineObject{Line: block.TypeRange.Start.Line}
+			if len(values) == 0 {
+				continue
+			}
+			nestJSONBlock(out, block, values[0])
+			if len(values) > 1 {
+				expanded = append(expanded, converter.Expanded{
+					Path:   append([]string{block.Type}, block.Labels...),
+					Values: values,
+				})
+			}
+			continue
+		}
 		body, skip := convertJSONBody(block.Body, evalCtx, src, block.DefRange.Start.Line)
 		if skip {
 			continue
@@ -64,7 +87,77 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 		nestJSONBlock(out, block, body)
 	}
 	out["_dd_lines"] = ddLines
-	return out, nil
+	return converter.BuildLayers(out, expanded), nil
+}
+
+// expandJSONInstances converts a resource or data block whose count or
+// for_each yields instances that differ from one another, one result per
+// distinct instance. ok is false for every other block, which is converted as
+// written.
+func expandJSONInstances(
+	block *hcl.Block, evalCtx *hcl.EvalContext, src []byte, instancesLeft *int,
+) (values []model.Document, ok bool) {
+	if (block.Type != "resource" && block.Type != terraformDataIdentifier) || len(block.Labels) < 2 {
+		return nil, false
+	}
+	attrs, _ := block.Body.JustAttributes()
+	var count, forEach hcl.Expression
+	if attr, has := attrs[instances.KindCount]; has {
+		count = attr.Expr
+	}
+	if attr, has := attrs[instances.KindForEach]; has {
+		forEach = attr.Expr
+	}
+	plan := instances.Resolve(count, forEach, evalCtx)
+	if !plan.Expands() {
+		return nil, false
+	}
+	if len(plan.Items) == 0 {
+		return nil, true
+	}
+	exprs := make([]hcl.Expression, 0, len(attrs))
+	for _, attr := range attrs {
+		exprs = append(exprs, attr.Expr)
+	}
+	extra := len(plan.Items) - 1
+	if plan.Truncated() {
+		extra++
+	}
+	if !instances.ReadsInstanceExpr(exprs...) || extra > *instancesLeft {
+		return nil, false
+	}
+	values = distinctJSONInstances(block, plan, evalCtx, src)
+	*instancesLeft -= len(values) - 1
+	return values, true
+}
+
+// distinctJSONInstances converts each instance of a plan, plus the block as
+// written when the plan was cut short, and drops the ones equal to an earlier
+// one.
+func distinctJSONInstances(block *hcl.Block, plan instances.Plan, evalCtx *hcl.EvalContext, src []byte) []model.Document {
+	var values []model.Document
+	add := func(ctx *hcl.EvalContext) {
+		value, skip := convertJSONBody(block.Body, ctx, src, block.DefRange.Start.Line)
+		if skip {
+			return
+		}
+		for _, seen := range values {
+			if reflect.DeepEqual(seen, value) {
+				return
+			}
+		}
+		values = append(values, value)
+	}
+	for _, item := range plan.Items {
+		name, iteration := plan.Variable(item)
+		child := evalCtx.NewChild()
+		child.Variables = map[string]cty.Value{name: iteration}
+		add(child)
+	}
+	if plan.Truncated() {
+		add(evalCtx)
+	}
+	return values
 }
 
 func convertJSONBody(body hcl.Body, evalCtx *hcl.EvalContext, src []byte, defLine int) (model.Document, bool) {

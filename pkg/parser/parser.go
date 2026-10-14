@@ -147,6 +147,22 @@ type ParsedDocument struct {
 	DirectoryDependent bool
 }
 
+// ExpansionLayer is the layer (see model.FileMetadata.ExpansionLayer) of the
+// document at index docIdx: the documents of a Terraform file are its layers,
+// and no other kind of file has more than one that is a layer of another.
+func (d *ParsedDocument) ExpansionLayer(docIdx int) int {
+	return ExpansionLayer(d.Kind, docIdx)
+}
+
+// ExpansionLayer is the layer of the document at index docIdx of a file of the
+// given kind.
+func ExpansionLayer(kind model.FileKind, docIdx int) int {
+	if kind == model.KindTerraform {
+		return docIdx
+	}
+	return 0
+}
+
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
 func (c *Parser) CommentsCommands(ctx context.Context, filePath string, fileContent []byte) model.CommentsCommands {
 	if c.isValidExtension(ctx, filePath) {
