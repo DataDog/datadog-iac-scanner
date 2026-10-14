@@ -615,6 +615,11 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 		return normalized, true
 	}
 	switch t := v.(type) {
+	case model.Document:
+		// The same map under its canonical type, so the callers sanitize it in
+		// place. Copying it instead would give every document of an expanded
+		// file its own copy of the blocks the documents share.
+		return map[string]interface{}(t), true
 	case []string:
 		out := make([]interface{}, len(t))
 		for i, e := range t {
