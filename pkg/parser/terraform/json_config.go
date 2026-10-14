@@ -13,6 +13,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2"
@@ -97,7 +98,16 @@ func parseJSONConfigLayers(src []byte, filename string, inputVars converter.Vari
 func expandJSONInstances(
 	block *hcl.Block, evalCtx *hcl.EvalContext, src []byte, instancesLeft *int,
 ) (values []model.Document, ok bool) {
-	if (block.Type != "resource" && block.Type != terraformDataIdentifier) || len(block.Labels) < 2 {
+	switch block.Type {
+	case "resource", terraformDataIdentifier:
+		if len(block.Labels) < 2 {
+			return nil, false
+		}
+	case "module":
+		if len(block.Labels) < 1 {
+			return nil, false
+		}
+	default:
 		return nil, false
 	}
 	attrs, _ := block.Body.JustAttributes()
@@ -174,8 +184,124 @@ func convertJSONBody(body hcl.Body, evalCtx *hcl.EvalContext, src []byte, defLin
 		ddLines["_dd_"+name] = model.LineObject{Line: attr.NameRange.Start.Line}
 		out[name] = convertJSONExpr(attr.Expr, evalCtx, src, name)
 	}
+	if attr, ok := attrs[jsonDynamicKey]; ok {
+		expandJSONDynamic(attr, out, ddLines, evalCtx, src)
+	}
 	out["_dd_lines"] = ddLines
 	return out, false
+}
+
+const jsonDynamicKey = "dynamic"
+
+// expandJSONDynamic replaces the dynamic attribute of a JSON body with the
+// blocks it generates, each converted with its iterator bound to its element,
+// as the native syntax does. The attribute is kept as written unless every
+// block type in it resolves.
+func expandJSONDynamic(
+	attr *hcl.Attribute, out model.Document, ddLines map[string]model.LineObject,
+	evalCtx *hcl.EvalContext, src []byte,
+) {
+	types, diags := hcl.ExprMap(attr.Expr)
+	if diags.HasErrors() || len(types) == 0 {
+		return
+	}
+	generated := make(map[string][]interface{}, len(types))
+	budget := dynamicblock.MaxGeneratedPerResource
+	for _, pair := range types {
+		keyVal, keyDiags := pair.Key.Value(evalCtx)
+		blockType, ok := ctyutil.ConcreteString(keyVal)
+		if keyDiags.HasErrors() || !ok {
+			return
+		}
+		blocks, ok := generateJSONDynamic(blockType, pair.Value, evalCtx, src, &budget)
+		if !ok {
+			return
+		}
+		generated[blockType] = append(generated[blockType], blocks...)
+	}
+	delete(out, jsonDynamicKey)
+	delete(ddLines, "_dd_"+jsonDynamicKey)
+	for blockType, blocks := range generated {
+		ddLines["_dd_"+blockType] = model.LineObject{Line: attr.NameRange.Start.Line}
+		if len(blocks) == 0 {
+			continue
+		}
+		switch existing := out[blockType].(type) {
+		case nil:
+			out[blockType] = blocks
+		case []interface{}:
+			out[blockType] = append(existing, blocks...)
+		default:
+			out[blockType] = append([]interface{}{existing}, blocks...)
+		}
+	}
+}
+
+// jsonFields maps the keys of a JSON object expression to their values.
+func jsonFields(expr hcl.Expression, evalCtx *hcl.EvalContext) (map[string]hcl.Expression, bool) {
+	fields, diags := hcl.ExprMap(expr)
+	if diags.HasErrors() {
+		return nil, false
+	}
+	byName := make(map[string]hcl.Expression, len(fields))
+	for _, field := range fields {
+		keyVal, keyDiags := field.Key.Value(evalCtx)
+		name, concrete := ctyutil.ConcreteString(keyVal)
+		if keyDiags.HasErrors() || !concrete {
+			return nil, false
+		}
+		byName[name] = field.Value
+	}
+	return byName, true
+}
+
+// jsonIteratorName is the variable a dynamic block's content reads its element
+// through: the iterator argument when it is a string, else the block type.
+func jsonIteratorName(blockType string, expr hcl.Expression, evalCtx *hcl.EvalContext) string {
+	if expr == nil {
+		return blockType
+	}
+	v, diags := expr.Value(evalCtx)
+	if name, ok := ctyutil.ConcreteString(v); !diags.HasErrors() && ok {
+		return name
+	}
+	return blockType
+}
+
+// generateJSONDynamic converts the content of one dynamic block per element of
+// its for_each. ok is false when the block cannot be expanded: its for_each
+// does not resolve or asks for too many blocks, it sets labels, or it has no
+// content.
+func generateJSONDynamic(
+	blockType string, expr hcl.Expression, evalCtx *hcl.EvalContext, src []byte, budget *int,
+) (blocks []interface{}, ok bool) {
+	byName, ok := jsonFields(expr, evalCtx)
+	if !ok {
+		return nil, false
+	}
+	forEach, content := byName["for_each"], byName["content"]
+	if _, labeled := byName["labels"]; labeled || forEach == nil || content == nil {
+		return nil, false
+	}
+	collection, diags := forEach.Value(evalCtx)
+	if diags.HasErrors() || !collection.IsKnown() || collection.IsNull() ||
+		!collection.CanIterateElements() || !collection.Length().IsKnown() {
+		return nil, false
+	}
+	requested := collection.LengthInt()
+	if requested > dynamicblock.MaxExpansion || requested > *budget {
+		return nil, false
+	}
+	*budget -= requested
+	iterator := jsonIteratorName(blockType, byName["iterator"], evalCtx)
+	blocks = make([]interface{}, 0, requested)
+	for it := collection.ElementIterator(); it.Next(); {
+		key, value := it.Element()
+		child := evalCtx.NewChild()
+		child.Variables = map[string]cty.Value{iterator: cty.ObjectVal(map[string]cty.Value{"key": key, "value": value})}
+		blocks = append(blocks, convertJSONExpr(content, child, src, blockType))
+	}
+	return blocks, true
 }
 
 func nestJSONBlock(out model.Document, block *hcl.Block, body model.Document) {
