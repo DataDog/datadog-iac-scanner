@@ -6,7 +6,6 @@
 package terraform
 
 import (
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -152,7 +151,7 @@ func distinctJSONInstances(block *hcl.Block, plan instances.Plan, evalCtx *hcl.E
 			return
 		}
 		for _, seen := range values {
-			if reflect.DeepEqual(seen, value) {
+			if converter.SameInstance(seen, value) {
 				return
 			}
 		}
