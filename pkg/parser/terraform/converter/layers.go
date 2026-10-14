@@ -7,6 +7,7 @@
 package converter
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -82,4 +83,68 @@ func shallowCopy(doc model.Document) model.Document {
 		out[key] = value
 	}
 	return out
+}
+
+const linesKey = "_dd_lines"
+
+// SameInstance reports whether two converted instances of a block read the
+// same. Line information is left out: instances of one block share its source
+// lines, and only generated blocks of different counts move them, which the
+// values already show. Comparing values directly avoids reflect.DeepEqual's
+// walk over the line tables, which dominates the cost of expanding large files.
+func SameInstance(a, b model.Document) bool {
+	return sameValue(map[string]interface{}(a), map[string]interface{}(b))
+}
+
+func sameValue(a, b interface{}) bool {
+	switch x := a.(type) {
+	case string:
+		y, ok := b.(string)
+		return ok && x == y
+	case bool:
+		y, ok := b.(bool)
+		return ok && x == y
+	case model.Document:
+		return sameValue(map[string]interface{}(x), b)
+	case map[string]interface{}:
+		if d, ok := b.(model.Document); ok {
+			b = map[string]interface{}(d)
+		}
+		y, ok := b.(map[string]interface{})
+		return ok && sameMap(x, y)
+	case []interface{}:
+		y, ok := b.([]interface{})
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !sameValue(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(a, b)
+	}
+}
+
+func sameMap(x, y map[string]interface{}) bool {
+	for k, v := range x {
+		if k == linesKey {
+			continue
+		}
+		w, ok := y[k]
+		if !ok || !sameValue(v, w) {
+			return false
+		}
+	}
+	for k := range y {
+		if k == linesKey {
+			continue
+		}
+		if _, ok := x[k]; !ok {
+			return false
+		}
+	}
+	return true
 }

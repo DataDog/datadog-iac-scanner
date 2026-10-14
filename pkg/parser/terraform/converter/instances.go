@@ -8,7 +8,6 @@ package converter
 
 import (
 	"context"
-	"reflect"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -107,7 +106,7 @@ func (c *converter) convertInstances(
 	var values []model.Document
 	add := func(value model.Document) {
 		for _, seen := range values {
-			if reflect.DeepEqual(seen, value) {
+			if SameInstance(seen, value) {
 				return
 			}
 		}
