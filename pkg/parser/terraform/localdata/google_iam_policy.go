@@ -17,12 +17,12 @@ import (
 const googleIAMPolicyType = "google_iam_policy"
 
 var googlePolicySchema = &hcl.BodySchema{
-	Blocks: []hcl.BlockHeaderSchema{{Type: "binding"}, {Type: "audit_config"}},
+	Blocks: []hcl.BlockHeaderSchema{{Type: "binding"}, {Type: "audit_config"}, dynamicHeader},
 }
 
 var googleBindingSchema = &hcl.BodySchema{
 	Attributes: []hcl.AttributeSchema{{Name: "role"}, {Name: "members"}},
-	Blocks:     []hcl.BlockHeaderSchema{{Type: "condition"}},
+	Blocks:     []hcl.BlockHeaderSchema{{Type: "condition"}, dynamicHeader},
 }
 
 var googleConditionSchema = &hcl.BodySchema{
@@ -31,7 +31,7 @@ var googleConditionSchema = &hcl.BodySchema{
 
 var googleAuditConfigSchema = &hcl.BodySchema{
 	Attributes: []hcl.AttributeSchema{{Name: "service"}},
-	Blocks:     []hcl.BlockHeaderSchema{{Type: "audit_log_configs"}},
+	Blocks:     []hcl.BlockHeaderSchema{{Type: "audit_log_configs"}, dynamicHeader},
 }
 
 var googleAuditLogConfigSchema = &hcl.BodySchema{
@@ -72,15 +72,16 @@ func googleIAMPolicyAttributes(body hcl.Body, eval EvalFunc) map[string]string {
 	if content == nil {
 		return nil
 	}
-	d := decoder{eval: eval}
+	d := newDecoder(eval)
 	var policy googlePolicy
-	for _, block := range content.Blocks {
-		switch block.Type {
-		case "binding":
-			policy.Bindings = append(policy.Bindings, d.googleBinding(block.Body))
-		case "audit_config":
-			policy.AuditConfigs = append(policy.AuditConfigs, d.googleAuditConfig(block.Body))
-		}
+	for _, block := range d.blocks(content, "binding") {
+		policy.Bindings = append(policy.Bindings, block.d.googleBinding(block.body))
+	}
+	for _, block := range d.blocks(content, "audit_config") {
+		policy.AuditConfigs = append(policy.AuditConfigs, block.d.googleAuditConfig(block.body))
+	}
+	if *d.skipped && len(policy.Bindings) == 0 && len(policy.AuditConfigs) == 0 {
+		return nil
 	}
 	buf := &bytes.Buffer{}
 	encoder := json.NewEncoder(buf)
@@ -100,15 +101,15 @@ func (d decoder) googleBinding(body hcl.Body) googleBinding {
 		Role:    d.str(content.Attributes["role"]),
 		Members: d.list(content.Attributes["members"]),
 	}
-	for _, block := range content.Blocks {
-		attrs, _, _ := block.Body.PartialContent(googleConditionSchema)
+	for _, block := range d.blocks(content, "condition") {
+		attrs, _, _ := block.body.PartialContent(googleConditionSchema)
 		if attrs == nil {
 			continue
 		}
 		binding.Condition = &googleCondition{
-			Description: d.str(attrs.Attributes["description"]),
-			Expression:  d.str(attrs.Attributes["expression"]),
-			Title:       d.str(attrs.Attributes["title"]),
+			Description: block.d.str(attrs.Attributes["description"]),
+			Expression:  block.d.str(attrs.Attributes["expression"]),
+			Title:       block.d.str(attrs.Attributes["title"]),
 		}
 	}
 	return binding
@@ -120,14 +121,14 @@ func (d decoder) googleAuditConfig(body hcl.Body) googleAuditConfig {
 		return googleAuditConfig{}
 	}
 	config := googleAuditConfig{Service: d.str(content.Attributes["service"])}
-	for _, block := range content.Blocks {
-		attrs, _, _ := block.Body.PartialContent(googleAuditLogConfigSchema)
+	for _, block := range d.blocks(content, "audit_log_configs") {
+		attrs, _, _ := block.body.PartialContent(googleAuditLogConfigSchema)
 		if attrs == nil {
 			continue
 		}
 		config.AuditLogConfigs = append(config.AuditLogConfigs, googleAuditLogConfig{
-			ExemptedMembers: d.list(attrs.Attributes["exempted_members"]),
-			LogType:         d.str(attrs.Attributes["log_type"]),
+			ExemptedMembers: block.d.list(attrs.Attributes["exempted_members"]),
+			LogType:         block.d.str(attrs.Attributes["log_type"]),
 		})
 	}
 	return config

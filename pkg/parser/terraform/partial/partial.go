@@ -80,6 +80,9 @@ func (r *Renderer) ctx() *hcl.EvalContext {
 // Render returns expr's value with every unresolved part rendered as text, or
 // false when expr cannot be rendered.
 func (r *Renderer) Render(expr hcl.Expression) (cty.Value, bool) {
+	if b, ok := expr.(bound); ok {
+		return (&Renderer{Ctx: scope(r.Ctx, b.vars), Source: r.Source}).Render(b.Expression)
+	}
 	if v, diags := expr.Value(r.ctx()); !diags.HasErrors() && v.IsWhollyKnown() {
 		v, _ = v.UnmarkDeep()
 		return v, true

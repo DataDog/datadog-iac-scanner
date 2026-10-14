@@ -53,3 +53,50 @@ audit_config {
 		`"title":"expires"},"members":["allUsers","user:b@example.com"],"role":"roles/cloudkms.cryptoKeyDecrypter"},`+
 		`{"role":"roles/viewer"}]}`, got["policy_data"])
 }
+
+func TestGoogleIAMPolicyDynamicBlocks(t *testing.T) {
+	src := `
+dynamic "binding" {
+  for_each = { "roles/viewer" = ["allUsers"], "roles/editor" = ["user:a@example.com"] }
+  content {
+    role    = binding.key
+    members = binding.value
+  }
+}
+binding {
+  role    = "roles/owner"
+  members = ["user:o@example.com"]
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	source, ok := Lookup(googleIAMPolicyType)
+	require.True(t, ok)
+	got := source(file.Body, func(expr hcl.Expression) (cty.Value, bool) {
+		v, d := expr.Value(&hcl.EvalContext{})
+		return v, !d.HasErrors()
+	})
+	require.Equal(t, `{"bindings":[{"members":["user:a@example.com"],"role":"roles/editor"},`+
+		`{"members":["allUsers"],"role":"roles/viewer"},{"members":["user:o@example.com"],"role":"roles/owner"}]}`,
+		got["policy_data"])
+}
+
+func TestGoogleIAMPolicyOfUnresolvedDynamicBlocksStaysUnresolved(t *testing.T) {
+	file, diags := hclsyntax.ParseConfig([]byte(`
+dynamic "binding" {
+  for_each = var.bindings
+  content {
+    role    = binding.key
+    members = binding.value
+  }
+}
+`), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	source, ok := Lookup(googleIAMPolicyType)
+	require.True(t, ok)
+	got := source(file.Body, func(expr hcl.Expression) (cty.Value, bool) {
+		v, d := expr.Value(&hcl.EvalContext{})
+		return v, !d.HasErrors()
+	})
+	require.Nil(t, got)
+}

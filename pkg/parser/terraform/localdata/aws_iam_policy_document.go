@@ -17,6 +17,9 @@ import (
 // awsIAMPolicyDocumentType is the AWS data source that renders an IAM policy.
 const awsIAMPolicyDocumentType = "aws_iam_policy_document"
 
+// defaultPolicyVersion is the policy language version the provider defaults to.
+const defaultPolicyVersion = "2012-10-17"
+
 // policyStatement is one policy statement.
 type policyStatement struct {
 	Sid           string
@@ -35,6 +38,9 @@ type policyDocument struct {
 	ID         string
 	Version    string
 	Statements []policyStatement
+	// Incomplete is set when a dynamic block of the document could not be
+	// expanded, so Statements may lack some it declares.
+	Incomplete bool
 }
 
 var documentSchema = &hcl.BodySchema{
@@ -47,7 +53,7 @@ var documentSchema = &hcl.BodySchema{
 		{Name: "source_json"},
 		{Name: "override_json"},
 	},
-	Blocks: []hcl.BlockHeaderSchema{{Type: "statement"}},
+	Blocks: []hcl.BlockHeaderSchema{{Type: "statement"}, dynamicHeader},
 }
 
 var statementSchema = &hcl.BodySchema{
@@ -63,6 +69,7 @@ var statementSchema = &hcl.BodySchema{
 		{Type: "principals"},
 		{Type: "not_principals"},
 		{Type: "condition"},
+		dynamicHeader,
 	},
 }
 
@@ -77,7 +84,13 @@ var conditionSchema = &hcl.BodySchema{
 // policyDocumentAttributes renders the json and minified_json attributes; the
 // two only differ in whitespace, which rules do not read.
 func policyDocumentAttributes(body hcl.Body, eval EvalFunc) map[string]string {
-	out, err := decodePolicyDocument(body, eval).render()
+	policy := decodePolicyDocument(body, eval)
+	// A document read as empty only because its dynamic blocks did not resolve
+	// says nothing about the policy, so it stays unresolved.
+	if policy.Incomplete && len(policy.Statements) == 0 {
+		return nil
+	}
+	out, err := policy.render()
 	if err != nil {
 		return nil
 	}
@@ -93,7 +106,7 @@ func decodePolicyDocument(body hcl.Body, eval EvalFunc) policyDocument {
 	if content == nil {
 		return policyDocument{}
 	}
-	d := decoder{eval: eval}
+	d := newDecoder(eval)
 	own := policyDocument{
 		ID:      d.str(content.Attributes["policy_id"]),
 		Version: d.str(content.Attributes["version"]),
@@ -101,9 +114,13 @@ func decodePolicyDocument(body hcl.Body, eval EvalFunc) policyDocument {
 	if own.ID == "" {
 		own.ID = d.str(content.Attributes["id"])
 	}
-	own.Statements = make([]policyStatement, 0, len(content.Blocks))
-	for _, block := range content.Blocks {
-		own.Statements = append(own.Statements, d.statement(block.Body))
+	// The provider defaults version, so the document's own version always
+	// replaces the one of the documents it merges.
+	if own.Version == "" {
+		own.Version = defaultPolicyVersion
+	}
+	for _, block := range d.blocks(content, "statement") {
+		own.Statements = append(own.Statements, block.d.statement(block.body))
 	}
 	var policy policyDocument
 	sourceDocs := append(d.documents(content.Attributes["source_json"]), d.documents(content.Attributes["source_policy_documents"])...)
@@ -111,6 +128,7 @@ func decodePolicyDocument(body hcl.Body, eval EvalFunc) policyDocument {
 		policy.merge(src)
 	}
 	policy.merge(own)
+	policy.Incomplete = *d.skipped
 	overrideDocs := append(d.documents(content.Attributes["override_json"]), d.documents(content.Attributes["override_policy_documents"])...)
 	for _, override := range overrideDocs {
 		policy.merge(override)
@@ -124,7 +142,7 @@ func (p *policyDocument) merge(other policyDocument) {
 	if other.ID != "" {
 		p.ID = other.ID
 	}
-	if other.Version > p.Version {
+	if other.Version != "" {
 		p.Version = other.Version
 	}
 	p.Statements = overrideBySid(p.Statements, other.Statements)
@@ -165,15 +183,18 @@ func (d decoder) statement(body hcl.Body) policyStatement {
 		Resources:    d.list(content.Attributes["resources"]),
 		NotResources: d.list(content.Attributes["not_resources"]),
 	}
-	for _, block := range content.Blocks {
-		switch block.Type {
-		case "principals":
-			st.Principals = d.principal(st.Principals, block.Body)
-		case "not_principals":
-			st.NotPrincipals = d.principal(st.NotPrincipals, block.Body)
-		case "condition":
-			st.Condition = d.condition(st.Condition, block.Body)
-		}
+	// The provider's default effect applies when none is given.
+	if content.Attributes["effect"] == nil {
+		st.Effect = "Allow"
+	}
+	for _, block := range d.blocks(content, "principals") {
+		st.Principals = block.d.principal(st.Principals, block.body)
+	}
+	for _, block := range d.blocks(content, "not_principals") {
+		st.NotPrincipals = block.d.principal(st.NotPrincipals, block.body)
+	}
+	for _, block := range d.blocks(content, "condition") {
+		st.Condition = block.d.condition(st.Condition, block.body)
 	}
 	return st
 }
@@ -247,7 +268,12 @@ type renderedPolicy struct {
 // render renders the policy in the shape rules read from the data source's json
 // attribute.
 func (p policyDocument) render() (string, error) {
-	out := renderedPolicy{ID: p.ID, Version: p.Version}
+	// The provider writes its default version when none is given.
+	version := p.Version
+	if version == "" {
+		version = defaultPolicyVersion
+	}
+	out := renderedPolicy{ID: p.ID, Version: version}
 	if len(p.Statements) > 0 {
 		out.Statement = make([]renderedStatement, len(p.Statements))
 	}

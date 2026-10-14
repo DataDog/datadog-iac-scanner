@@ -51,6 +51,13 @@ func Types() []string {
 
 type decoder struct {
 	eval EvalFunc
+	// skipped is set when a dynamic block could not be expanded, so the
+	// document read may lack blocks it declares.
+	skipped *bool
+}
+
+func newDecoder(eval EvalFunc) decoder {
+	return decoder{eval: eval, skipped: new(bool)}
 }
 
 func (d decoder) value(attr *hcl.Attribute) (cty.Value, bool) {

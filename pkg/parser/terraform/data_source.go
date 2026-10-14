@@ -10,6 +10,8 @@ import (
 	"context"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -26,9 +28,10 @@ import (
 	"github.com/zclconf/go-cty/cty/gocty"
 )
 
-// localDataPasses bounds how many times data sources reading one another's
-// computed attributes are rendered, enough for a short chain of them.
-const localDataPasses = 3
+// jsonDataReference matches a read of the data namespace anywhere in JSON
+// configuration, whatever spacing or wrapping the template expression uses. A
+// false positive only costs an extra render pass.
+var jsonDataReference = regexp.MustCompile(`\bdata\s*\.`)
 
 // localDataMarkers are cheap content gates before parsing; the parser still
 // matches block types exactly.
@@ -82,7 +85,9 @@ func getDataSourcePolicy(
 		readsData = readsData || blocks[i].readsData
 	}
 	var rendered map[string]map[string]map[string]string
-	for pass := 0; pass < localDataPasses; pass++ {
+	// Each pass exposes one more link of a dependency chain, so a chain can be
+	// at most as long as the number of blocks.
+	for pass := 0; pass <= len(blocks); pass++ {
 		next := renderLocalData(blocks, inputVariables)
 		if rendered != nil && reflect.DeepEqual(rendered, next) {
 			break
@@ -129,12 +134,18 @@ func renderLocalData(
 func jsonEval(evalCtx *hcl.EvalContext, src []byte) localdata.EvalFunc {
 	var eval localdata.EvalFunc
 	eval = func(expr hcl.Expression) (cty.Value, bool) {
+		if inner, vars, ok := partial.Unbind(expr); ok {
+			return jsonEval(partial.Scope(evalCtx, vars), src)(inner)
+		}
 		v, diags := expr.Value(evalCtx)
 		if !diags.HasErrors() && v.IsWhollyKnown() {
 			return v, true
 		}
 		items, listDiags := hcl.ExprList(expr)
 		if listDiags.HasErrors() {
+			if rendered, ok := renderJSONTemplate(expr, evalCtx, src); ok {
+				return rendered, true
+			}
 			return cty.StringVal(wrapJSONRange(expr.Range(), "", src)), true
 		}
 		if len(items) == 0 {
@@ -147,6 +158,25 @@ func jsonEval(evalCtx *hcl.EvalContext, src []byte) localdata.EvalFunc {
 		return cty.TupleVal(elems), true
 	}
 	return eval
+}
+
+// renderJSONTemplate renders a JSON string holding a template, keeping the
+// parts that do not resolve as text apart from those that do.
+func renderJSONTemplate(expr hcl.Expression, evalCtx *hcl.EvalContext, src []byte) (cty.Value, bool) {
+	r := expr.Range()
+	if r.Start.Byte < 0 || r.End.Byte > len(src) || r.Start.Byte >= r.End.Byte {
+		return cty.NilVal, false
+	}
+	unquoted, err := strconv.Unquote(strings.TrimSpace(string(src[r.Start.Byte:r.End.Byte])))
+	if err != nil || !strings.Contains(unquoted, "${") {
+		return cty.NilVal, false
+	}
+	quoted := []byte(strconv.Quote(unquoted))
+	parsed, diags := hclsyntax.ParseExpression(quoted, "", hcl.InitialPos)
+	if diags.HasErrors() {
+		return cty.NilVal, false
+	}
+	return (&partial.Renderer{Ctx: evalCtx, Source: partial.BytesSource(quoted)}).Render(parsed)
 }
 
 func hclLocalDataBlocks(ctx context.Context, content []byte, tfFile string) []localDataBlock {
@@ -201,9 +231,7 @@ func jsonLocalDataBlocks(src []byte, filename string) []localDataBlock {
 	if content == nil {
 		return nil
 	}
-	// JSON configuration only references inside string templates, so a file
-	// without "${data." has no data source reading another.
-	readsData := bytes.Contains(src, []byte("${"+terraformDataIdentifier+"."))
+	readsData := jsonDataReference.Match(src)
 	var out []localDataBlock
 	for _, block := range content.Blocks {
 		if block.Type != terraformDataIdentifier || len(block.Labels) < 2 {
