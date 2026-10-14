@@ -75,32 +75,42 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 		}
 	}()
 	fsys := r.filesystem()
-	splits, excluded, err := renderHelm(ctx, fsys, r.chartIndex, filePath)
+	splits, loaded, excluded, err := renderHelm(ctx, fsys, r.chartIndex, filePath)
 	if err != nil {
 		return model.ResolvedFiles{}, errors.Wrap(err, "failed to render helm chart")
 	}
 	// Pushed charts are addressed with "/" on every OS, so their resolved files
 	// must be too; disk charts keep the OS separator.
 	slashPaths := !vfs.IsDisk(fsys)
+	// reportedPath is where a template's findings are reported: where Helm
+	// really found it, or the place it has in the scan.
+	reportedPath := func(key, realPath string) string {
+		if realPath != "" {
+			if slashPaths {
+				return filepath.ToSlash(realPath)
+			}
+			return realPath
+		}
+		chartRelative, _ := chartRelativeFromSource(key)
+		return resolvedChartFilePath(filePath, chartRelative, slashPaths)
+	}
 	var rfiles = model.ResolvedFiles{
 		Excluded: excluded,
+	}
+	for _, t := range loaded {
+		if _, ok := chartRelativeFromSource(t.key); ok {
+			rfiles.Covered = append(rfiles.Covered, reportedPath(t.key, t.realPath))
+		}
 	}
 	contextLogger.Debug().Msgf("Processing %d helm manifest splits from chart '%s'", len(*splits), filePath)
 	archives := newArchiveLocations(fsys)
 	for i := range *splits {
 		split := &(*splits)[i]
 		sourceKey := chartSourceKey(split.path)
-		chartRelative, ok := chartRelativeFromSource(sourceKey)
-		if !ok {
+		if _, ok := chartRelativeFromSource(sourceKey); !ok {
 			continue
 		}
-		origpath := resolvedChartFilePath(filePath, chartRelative, slashPaths)
-		if split.realPath != "" {
-			origpath = split.realPath
-			if slashPaths {
-				origpath = filepath.ToSlash(origpath)
-			}
-		}
+		origpath := reportedPath(sourceKey, split.realPath)
 		var source packagedSource
 		if split.archive != nil {
 			source = archives.of(split.archive, slashPaths)
@@ -173,7 +183,9 @@ func yamlParseErrorTemplate(err error) (template string, ok bool) {
 // renderHelm will use helm library to render helm charts. A chart that fails
 // to render with the dependencies attached from elsewhere in the scan is
 // rendered again without them, as it was before they were attached.
-func renderHelm(ctx context.Context, fsys vfs.FS, index *chartIndex, path string) (*[]splitManifest, []string, error) {
+func renderHelm(ctx context.Context, fsys vfs.FS, index *chartIndex, path string) (
+	*[]splitManifest, []loadedTemplate, []string, error,
+) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("Running helm install")
 	manifest, loadedChart, stamped, excluded, locator, err := renderWithMarkers(ctx, fsys, index, true, path)
@@ -182,9 +194,18 @@ func renderHelm(ctx context.Context, fsys vfs.FS, index *chartIndex, path string
 		manifest, loadedChart, stamped, excluded, locator, err = renderWithMarkers(ctx, fsys, index, false, path)
 	}
 	if err != nil {
-		return nil, []string{}, err
+		return nil, nil, []string{}, err
 	}
-	return splitManifestYAML(manifest, loadedChart, stamped, locator), excluded, nil
+	splits, loaded := splitManifestYAML(manifest, loadedChart, stamped, locator)
+	return splits, loaded, excluded, nil
+}
+
+// loadedTemplate is a template file the render loaded, whether or not it
+// rendered output. key is its chart source key, and realPath is where Helm
+// really found it when that is not the place the scan reports it.
+type loadedTemplate struct {
+	key      string
+	realPath string
 }
 
 // renderWithMarkers renders the chart with invocation markers. A marker is a
@@ -229,7 +250,7 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, index *chartIndex, atta
 // really have and the archive they come from.
 func splitManifestYAML(
 	template *release.Release, loadedChart *chart.Chart, stamped stampedSources, locator *fileLocator,
-) *[]splitManifest {
+) (*[]splitManifest, []loadedTemplate) {
 	sourceChart := loadedChart
 	if sourceChart == nil {
 		sourceChart = template.Chart
@@ -237,6 +258,11 @@ func splitManifestYAML(
 	sources := make([]*chart.File, 0)
 	located := map[string]sourceLocation{}
 	sources = updateName(sources, sourceChart, sourceChart.Name(), locator, stamped, located, nil)
+	loaded := make([]loadedTemplate, 0, len(sources))
+	for _, f := range sources {
+		key := chartSourceKey(f.Name)
+		loaded = append(loaded, loadedTemplate{key: key, realPath: located[key].realPath})
+	}
 	var splitedManifest []splitManifest
 	splitedSource := splitHelmManifest(template.Manifest)
 	sourceData := indexSources(sources, stamped)
@@ -295,7 +321,7 @@ func splitManifestYAML(
 			archive:             located[sourceKey].archive,
 		})
 	}
-	return &splitedManifest
+	return &splitedManifest, loaded
 }
 
 func splitHelmManifest(manifest string) []string {

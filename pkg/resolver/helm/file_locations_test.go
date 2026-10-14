@@ -184,6 +184,20 @@ func TestHelm_Resolve_PushedPackagedDependencyNamesArchive(t *testing.T) {
 	require.Equal(t, "web/charts/pkg-1.0.0.tgz", pkg.Archive)
 }
 
+// A template that renders to nothing is still covered by the render, so its raw
+// copy is not scanned, while a template that renders is covered as well.
+func TestHelm_Resolve_CoversTemplatesThatRenderNothing(t *testing.T) {
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"web/Chart.yaml":        []byte("apiVersion: v2\nname: web\nversion: 1.0.0\n"),
+		"web/templates/cm.yaml": []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web\n"),
+		"web/templates/off.yaml": []byte("# {{- if .Values.enabled }}\napiVersion: v1\nkind: ConfigMap\n" +
+			"metadata:\n  name: off\n# {{- end }}\n"),
+	})
+	got, err := NewResolver(memfs).Resolve(context.Background(), "web")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"web/templates/cm.yaml", "web/templates/off.yaml"}, got.Covered)
+}
+
 func TestReportedLocation_Apply(t *testing.T) {
 	v := &model.Vulnerability{
 		FileName: "web/charts/pkg/templates/s.yaml", Line: 46,

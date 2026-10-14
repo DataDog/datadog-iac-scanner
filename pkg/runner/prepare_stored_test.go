@@ -72,8 +72,8 @@ func TestPrepareDiskSources_TemplateNoRenderStoredIsNotReported(t *testing.T) {
 }
 
 // withoutRaw keeps every raw file that no render stored, and drops the others.
-func TestStoredRenderPathsWithoutRaw(t *testing.T) {
-	stored := &storedRenderPaths{}
+func TestRenderCoverageWithoutRaw(t *testing.T) {
+	stored := &renderCoverage{}
 	require.Equal(t, []provider.InventoryFile{{Path: "a.yaml"}},
 		stored.withoutRaw([]provider.InventoryFile{{Path: "a.yaml"}}), "nothing stored keeps every file")
 
@@ -129,6 +129,58 @@ func TestPrepareSequentialMatchesParallel(t *testing.T) {
 	}
 	require.Equal(t, disk(true), disk(false), "disk")
 	require.Equal(t, memory(true), memory(false), "memory")
+}
+
+// lib's template is disabled by a condition inside a YAML comment, so its raw
+// text is valid YAML and no render stores it. The app render covers it, so its
+// raw text is not scanned: lib alone does not render, and the raw copy would be
+// reported as a template that was never rendered.
+func TestPrepareSources_DisabledTemplateIsNotScannedRaw(t *testing.T) {
+	files := map[string]string{
+		"lib/Chart.yaml": "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
+		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
+			"  name: {{ required \"name is required\" .Values.name }}\n",
+		"lib/templates/off.yaml": "# {{- if .Values.enabled }}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
+			"  name: off\n# {{- end }}\n",
+		"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
+			"dependencies:\n- name: lib\n  version: 1.0.0\n  repository: file://../lib\n",
+		"app/values.yaml":       "lib:\n  name: web\n",
+		"app/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n",
+	}
+	want := map[string]int{
+		"app/templates/cm.yaml": 1,
+		"lib/templates/cm.yaml": 1,
+	}
+
+	t.Run("disk", func(t *testing.T) {
+		ctx := context.Background()
+		dir := t.TempDir()
+		for rel, body := range files {
+			writeFile(t, filepath.Join(dir, filepath.FromSlash(rel)), body)
+		}
+		fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
+		require.NoError(t, err)
+		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
+		disk, ok := DiskSourceProvider(services)
+		require.True(t, ok)
+		require.NoError(t, PrepareDiskSources(ctx, disk, services, "scan", false, 5, true))
+		require.Equal(t, want, templatesStored(t, services, dir))
+	})
+
+	t.Run("memory", func(t *testing.T) {
+		ctx := context.Background()
+		pushed := make(map[string][]byte, len(files))
+		for rel, body := range files {
+			pushed[rel] = []byte(body)
+		}
+		memfs := vfs.NewMemFS(pushed)
+		mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
+		services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
+		memory, ok := MemorySourceProvider(services)
+		require.True(t, ok)
+		require.NoError(t, PrepareMemorySources(ctx, memory, services, "scan", false, 5, false))
+		require.Equal(t, want, templatesStored(t, services, "."))
+	})
 }
 
 // Two scan paths that both hold the same Helm chart store its render once, in

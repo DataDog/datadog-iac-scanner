@@ -532,6 +532,10 @@ type QueryConfig struct {
 type ResolvedFiles struct {
 	File     []ResolvedHelm
 	Excluded []string
+	// Covered lists the Helm template files the render loaded, at the paths they
+	// are reported at, including those that rendered to nothing. A raw copy of one
+	// is not scanned: the render already covered it.
+	Covered []string
 }
 
 // ResolvedHelm keeps the information of a file/template resolved

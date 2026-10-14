@@ -131,17 +131,17 @@ func prepareSources(ctx context.Context,
 	contextLogger := logger.FromContext(ctx)
 
 	unrendered := &unrenderedHelmCharts{}
-	stored := &storedRenderPaths{}
+	coverage := &renderCoverage{}
 	files, err := src.WalkInventory(ctx, unionExtensions(services), chartPool,
 		func(ctx context.Context, chartPath string) bool {
 			return resolveAndStoreChart(ctx, src, services, chartPath, scanID,
-				openAPIResolveReferences, maxResolverDepth, unrendered, stored)
+				openAPIResolveReferences, maxResolverDepth, unrendered, coverage)
 		})
 	if err != nil {
 		return errors.Wrap(err, "failed to walk sources")
 	}
 	unrendered.log(ctx)
-	files = stored.withoutRaw(files)
+	files = coverage.withoutRaw(files)
 
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
 
@@ -152,15 +152,17 @@ func prepareSources(ctx context.Context,
 		})
 }
 
-// storedRenderPaths collects the paths of the rendered Helm files that renders
-// stored. A template a render stored is not scanned raw too: the raw template
-// of a dependency that only renders with its parent's values fails to render.
-type storedRenderPaths struct {
+// renderCoverage collects the Helm template paths that successful renders
+// cover, whether they rendered output or not. A covered template is not scanned
+// raw: the raw template of a dependency that only renders with its parent's
+// values fails to render, and a template disabled by a condition would be
+// reported although the render left it out.
+type renderCoverage struct {
 	mu    sync.Mutex
 	paths map[string]struct{}
 }
 
-func (s *storedRenderPaths) add(paths []string) {
+func (s *renderCoverage) add(paths []string) {
 	if len(paths) == 0 {
 		return
 	}
@@ -174,8 +176,8 @@ func (s *storedRenderPaths) add(paths []string) {
 	}
 }
 
-// withoutRaw drops the listed files whose path a render stored.
-func (s *storedRenderPaths) withoutRaw(files []provider.InventoryFile) []provider.InventoryFile {
+// withoutRaw drops the listed files whose path a render covered.
+func (s *renderCoverage) withoutRaw(files []provider.InventoryFile) []provider.InventoryFile {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.paths) == 0 {
@@ -211,7 +213,7 @@ func resolveAndStoreChart(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	unrendered *unrenderedHelmCharts,
-	stored *storedRenderPaths,
+	coverage *renderCoverage,
 ) (rendered bool) {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
@@ -229,6 +231,7 @@ func resolveAndStoreChart(
 		}
 		return false
 	}
+	coverage.add(resFiles.Covered)
 	// A panic while storing leaves documents already stored: the chart still
 	// counts as rendered, so its raw templates are not scanned on top of them.
 	defer func() {
@@ -245,7 +248,7 @@ func resolveAndStoreChart(
 		}
 	}
 	for _, s := range routed {
-		stored.add(s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth))
+		coverage.add(s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth))
 	}
 	return true
 }
