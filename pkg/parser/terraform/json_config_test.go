@@ -342,3 +342,52 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 	}
 	return layers[0], nil
 }
+
+func TestParseJSONConfigExpandsDynamicBlocks(t *testing.T) {
+	src := []byte(`{
+  "resource": {
+    "aws_security_group": {
+      "sg": {
+        "name": "sg",
+        "ingress": {"from_port": 22},
+        "dynamic": {
+          "ingress": {
+            "for_each": ["80", "443"],
+            "content": {"from_port": "${ingress.value}"}
+          }
+        }
+      },
+      "unresolved": {
+        "dynamic": {
+          "ingress": {
+            "for_each": "${var.ports}",
+            "content": {"from_port": "${ingress.value}"}
+          }
+        }
+      }
+    }
+  }
+}`)
+	doc, err := parseJSONConfig(src, "main.tf.json", nil)
+	require.NoError(t, err)
+
+	groups := doc["resource"].(model.Document)["aws_security_group"].(model.Document)
+	sg := groups["sg"].(model.Document)
+	require.NotContains(t, sg, "dynamic")
+	ingress := sg["ingress"].([]interface{})
+	require.Len(t, ingress, 3)
+	require.Equal(t, "443", fmt.Sprint(ingress[2].(model.Document)["from_port"].(ctyjson.SimpleJSONValue).AsString()))
+
+	require.Contains(t, groups["unresolved"].(model.Document), "dynamic")
+}
+
+func TestParseJSONConfigExpandsModuleCalls(t *testing.T) {
+	src := []byte(`{
+  "module": {
+    "m": {"for_each": {"a": "x", "b": "y"}, "source": "./mods/${each.key}"}
+  }
+}`)
+	docs, err := parseJSONConfigLayers(src, "main.tf.json", nil)
+	require.NoError(t, err)
+	require.Len(t, docs, 2)
+}

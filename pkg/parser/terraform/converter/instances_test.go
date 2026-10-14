@@ -271,3 +271,21 @@ resource "aws_security_group" "sg" {
 		require.Len(t, sg["ingress"], 2)
 	}
 }
+
+func TestModuleCallsExpandLikeResources(t *testing.T) {
+	layers := convertLayers(t, `
+module "m" {
+  for_each = toset(["a", "b"])
+  source   = "./mods/${each.key}"
+}
+module "same" {
+  count  = 2
+  source = "./mods/same"
+}
+`, nil)
+
+	require.Len(t, layers, 2)
+	require.Equal(t, "./mods/a", stringAttr(t, layers[0]["module"].(model.Document)["m"].(model.Document), "source"))
+	require.Equal(t, "./mods/b", stringAttr(t, layers[1]["module"].(model.Document)["m"].(model.Document), "source"))
+	require.NotNil(t, layers[1]["module"].(model.Document)["same"])
+}

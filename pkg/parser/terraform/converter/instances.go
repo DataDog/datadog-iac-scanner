@@ -46,6 +46,13 @@ func (c *converter) convertTopLevelInstances(
 	}
 	count, forEach := instances.Attributes(block.Body)
 	plan := instances.Resolve(count, forEach, c.renderer.Ctx)
+	if plan.Unresolved {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Debug().
+			Str("expansion_kind", plan.Kind).
+			Str("address", strings.Join(block.Labels, ".")).
+			Msg("terraform: count/for_each does not resolve; block scanned as a single instance as written")
+	}
 	if !plan.Expands() {
 		return false, nil
 	}
@@ -54,9 +61,7 @@ func (c *converter) convertTopLevelInstances(
 		ddLines["_dd_"+block.Type] = model.LineObject{Line: block.TypeRange.Start.Line}
 		return true, nil
 	}
-	// A module call is read as written: what its instances change is the
-	// arguments they pass, which the instantiated module carries.
-	if block.Type == blockTypeModule || !instances.ReadsInstance(block.Body) {
+	if !instances.ReadsInstance(block.Body) {
 		return false, nil
 	}
 	values, err := c.convertInstances(ctx, block, plan)
