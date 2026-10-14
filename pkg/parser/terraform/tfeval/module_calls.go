@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -135,15 +136,15 @@ func countInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExpan
 	}
 	requested := max(n, 0)
 	expand := min(requested, maxCountExpansion)
-	instances := make([]moduleInstance, expand)
-	for i := range instances {
+	expanded := make([]moduleInstance, expand)
+	for i := range expanded {
 		index := cty.NumberIntVal(int64(i))
-		instances[i] = moduleInstance{
+		expanded[i] = moduleInstance{
 			key: index,
 			ctx: iterationContext(ctx, "count", map[string]cty.Value{"index": index}),
 		}
 	}
-	return moduleExpansionPlan{instances: instances, mode: expansionCount, requested: requested}
+	return moduleExpansionPlan{instances: expanded, mode: expansionCount, requested: requested}
 }
 
 func forEachInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExpansionPlan {
@@ -172,20 +173,14 @@ func unknownForEachPlan(ctx *hcl.EvalContext) moduleExpansionPlan {
 	}
 }
 
-func isForEachCollection(v cty.Value) bool {
-	if !ctyutil.Materialized(v) || !v.CanIterateElements() || !v.Length().IsKnown() {
-		return false
-	}
-	t := v.Type()
-	return t.IsObjectType() || t.IsMapType() || t.IsSetType()
-}
+func isForEachCollection(v cty.Value) bool { return instances.ForEachCollection(v) }
 
 func expandForEachPlan(ctx *hcl.EvalContext, v cty.Value) (moduleExpansionPlan, bool) {
 	requested := v.LengthInt()
 	expandTo := min(requested, maxCountExpansion)
 	// Only walk the full collection when we need every key to pad a truncated shape.
 	keepKeys := requested > maxCountExpansion && requested <= maxExpansionShape
-	instances := make([]moduleInstance, 0, expandTo)
+	expanded := make([]moduleInstance, 0, expandTo)
 	var allKeys []cty.Value
 	if keepKeys {
 		allKeys = make([]cty.Value, 0, requested)
@@ -198,8 +193,8 @@ func expandForEachPlan(ctx *hcl.EvalContext, v cty.Value) (moduleExpansionPlan, 
 		if keepKeys {
 			allKeys = append(allKeys, key)
 		}
-		if len(instances) < expandTo {
-			instances = append(instances, moduleInstance{
+		if len(expanded) < expandTo {
+			expanded = append(expanded, moduleInstance{
 				key: key,
 				ctx: iterationContext(ctx, "each", map[string]cty.Value{"key": key, "value": value}),
 			})
@@ -210,7 +205,7 @@ func expandForEachPlan(ctx *hcl.EvalContext, v cty.Value) (moduleExpansionPlan, 
 		}
 	}
 	return moduleExpansionPlan{
-		instances:   instances,
+		instances:   expanded,
 		mode:        expansionForEach,
 		requested:   requested,
 		forEachKeys: allKeys,
