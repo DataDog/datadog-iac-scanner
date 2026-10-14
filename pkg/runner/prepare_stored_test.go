@@ -19,19 +19,26 @@ import (
 // A parent's render stores the rendered template of its dependency. A template
 // the parent leaves empty, here disabled by a condition, is stored by no render,
 // and its raw text is not YAML, so no copy of it is stored or reported.
-func TestPrepareSharedWalk_TemplateNoRenderStoredIsNotReported(t *testing.T) {
+// plain.yaml is valid YAML even raw, so only the raw copy being withheld keeps
+// it from being stored twice.
+func TestPrepareDiskSources_TemplateNoRenderStoredIsNotReported(t *testing.T) {
 	files := map[string]string{
 		"lib/Chart.yaml": "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
 		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
 			"  name: {{ required \"name is required\" .Values.name }}\n",
 		"lib/templates/disabled.yaml": "{{- if .Values.enabled }}\napiVersion: v1\nkind: ConfigMap\n" +
 			"metadata:\n  name: off\n{{- end }}\n",
+		"lib/templates/plain.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: plain\n",
 		"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
 			"dependencies:\n- name: lib\n  version: 1.0.0\n  repository: file://../lib\n",
 		"app/values.yaml":       "lib:\n  name: web\n",
 		"app/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n",
 	}
-	want := map[string]int{"app/templates/cm.yaml": 1, "lib/templates/cm.yaml": 1}
+	want := map[string]int{
+		"app/templates/cm.yaml":    1,
+		"lib/templates/cm.yaml":    1,
+		"lib/templates/plain.yaml": 1,
+	}
 
 	t.Run("disk", func(t *testing.T) {
 		ctx := context.Background()
@@ -42,9 +49,9 @@ func TestPrepareSharedWalk_TemplateNoRenderStoredIsNotReported(t *testing.T) {
 		fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
 		require.NoError(t, err)
 		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
-		shared, ok := SharedWalkProvider(services)
+		disk, ok := DiskSourceProvider(services)
 		require.True(t, ok)
-		require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
+		require.NoError(t, PrepareDiskSources(ctx, disk, services, "scan", false, 5, true))
 		require.Equal(t, want, templatesStored(t, services, dir))
 	})
 
@@ -57,9 +64,9 @@ func TestPrepareSharedWalk_TemplateNoRenderStoredIsNotReported(t *testing.T) {
 		memfs := vfs.NewMemFS(pushed)
 		mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
 		services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
-		shared, ok := SharedMemoryProvider(services)
+		memory, ok := MemorySourceProvider(services)
 		require.True(t, ok)
-		require.NoError(t, PrepareMemorySources(ctx, shared, services, "scan", false, 5, false))
+		require.NoError(t, PrepareMemorySources(ctx, memory, services, "scan", false, 5, false))
 		require.Equal(t, want, templatesStored(t, services, "."))
 	})
 }
@@ -82,8 +89,8 @@ func TestStoredRenderPathsWithoutRaw(t *testing.T) {
 	}, stored.withoutRaw(files))
 }
 
-// The sequential and the parallel shared walk store the same files.
-func TestPrepareSharedWalk_SequentialMatchesParallel(t *testing.T) {
+// The sequential and the parallel prepare store the same files, on disk and in memory.
+func TestPrepareSequentialMatchesParallel(t *testing.T) {
 	files := map[string]string{
 		"lib/Chart.yaml":        "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
 		"lib/templates/cm.yaml": "name: {{ required \"name is required\" .Values.name }}\n",
@@ -92,7 +99,7 @@ func TestPrepareSharedWalk_SequentialMatchesParallel(t *testing.T) {
 		"app/values.yaml":       "lib:\n  name: web\n",
 		"app/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n",
 	}
-	stored := func(parallel bool) map[string]int {
+	disk := func(parallel bool) map[string]int {
 		ctx := context.Background()
 		dir := t.TempDir()
 		for rel, body := range files {
@@ -101,17 +108,32 @@ func TestPrepareSharedWalk_SequentialMatchesParallel(t *testing.T) {
 		fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
 		require.NoError(t, err)
 		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
-		shared, ok := SharedWalkProvider(services)
+		src, ok := DiskSourceProvider(services)
 		require.True(t, ok)
-		require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, parallel))
+		require.NoError(t, PrepareDiskSources(ctx, src, services, "scan", false, 5, parallel))
 		return templatesStored(t, services, dir)
 	}
-	require.Equal(t, stored(true), stored(false))
+	memory := func(parallel bool) map[string]int {
+		ctx := context.Background()
+		pushed := make(map[string][]byte, len(files))
+		for rel, body := range files {
+			pushed[rel] = []byte(body)
+		}
+		memfs := vfs.NewMemFS(pushed)
+		mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
+		services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
+		src, ok := MemorySourceProvider(services)
+		require.True(t, ok)
+		require.NoError(t, PrepareMemorySources(ctx, src, services, "scan", false, 5, parallel))
+		return templatesStored(t, services, ".")
+	}
+	require.Equal(t, disk(true), disk(false), "disk")
+	require.Equal(t, memory(true), memory(false), "memory")
 }
 
 // Two scan paths that both hold the same Helm chart store its render once, in
 // either order: the rendered copy of lib's template is not listed twice.
-func TestPrepareSharedWalk_RenderedFileNotDuplicatedAcrossScanPaths(t *testing.T) {
+func TestPrepareDiskSources_RenderedFileNotDuplicatedAcrossScanPaths(t *testing.T) {
 	files := map[string]string{
 		"lib/Chart.yaml": "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
 		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
@@ -137,9 +159,9 @@ func TestPrepareSharedWalk_RenderedFileNotDuplicatedAcrossScanPaths(t *testing.T
 			fsp, err := provider.NewFileSystemSourceProvider(ctx, paths, nil, nil)
 			require.NoError(t, err)
 			services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, paths...)
-			shared, ok := SharedWalkProvider(services)
+			src, ok := DiskSourceProvider(services)
 			require.True(t, ok)
-			require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
+			require.NoError(t, PrepareDiskSources(ctx, src, services, "scan", false, 5, true))
 			require.Equal(t, want, templatesStored(t, services, dir))
 		})
 	}

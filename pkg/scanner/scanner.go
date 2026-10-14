@@ -30,13 +30,18 @@ func PrepareAndScan(
 	services serviceSlice,
 	flagEvaluator featureflags.FlagEvaluator,
 ) error {
+	// A config or platform filter can leave no service, which is an empty scan,
+	// not a mix of providers.
+	if len(services) == 0 {
+		return nil
+	}
 	metrics.Metric.Start("prepare_sources")
 
-	// The shared walk serves every disk scan. The parallel-parsing flag only sets
+	// The disk walk serves every disk scan. The parallel-parsing flag only sets
 	// its concurrency; when it is off the walk runs sequentially.
-	if fsp, ok := runner.SharedWalkProvider(services); ok {
+	if fsp, ok := runner.DiskSourceProvider(services); ok {
 		parallel := flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing)
-		err := runner.PrepareSharedWalk(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth, parallel)
+		err := runner.PrepareDiskSources(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth, parallel)
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
@@ -53,7 +58,7 @@ func PrepareAndScan(
 	// each pushed Helm chart once. It runs regardless of the parallel-parsing
 	// flag — the flag only fans chart rendering and file dispatch out — so charts
 	// never silently fall back to raw-template scanning.
-	if mp, ok := runner.SharedMemoryProvider(services); ok {
+	if mp, ok := runner.MemorySourceProvider(services); ok {
 		err := runner.PrepareMemorySources(ctx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth,
 			flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing))
 		metrics.Metric.Stop()

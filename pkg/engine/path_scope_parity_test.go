@@ -37,9 +37,12 @@ func TestPathFiltersAgreeOnFilesKnownBySeveralPaths(t *testing.T) {
 		}
 		return out
 	}
+	// The rendered template names no file on disk, only the archive does.
 	paths := []string{abs("app/charts/pkg/templates/pod.yaml"), abs("app/Chart.yaml")}
+	archive := []string{abs("app/charts/pkg-1.0.0.tgz"), abs("app/Chart.yaml")}
 	cases := []struct {
 		name         string
+		known        []string
 		ignore, only []string
 		want         bool
 	}{
@@ -50,23 +53,30 @@ func TestPathFiltersAgreeOnFilesKnownBySeveralPaths(t *testing.T) {
 		{name: "ignore on neither", ignore: patterns("lib"), want: false},
 		{name: "ignore on neither by glob", ignore: patterns("lib/*.yaml"), want: false},
 		{name: "ignore on a sibling sharing the prefix", ignore: patterns("app/char"), want: false},
-		{name: "ignore on the archive file by glob", ignore: patterns("app/charts/*.tgz"), want: false},
+		{name: "ignore on the archive file by glob", known: archive, ignore: patterns("app/charts/*.tgz"), want: true},
+		{name: "ignore on the archive file by glob, not the rendered template", ignore: patterns("app/charts/*.tgz"), want: false},
+		{name: "ignore on the rendered template by glob", ignore: patterns("app/charts/pkg/templates/*.yaml"), want: true},
 		{name: "only on the declaration", only: patterns("app/Chart.yaml"), want: false},
 		{name: "only on the archive's directory", only: patterns("app/charts"), want: false},
 		{name: "only on the archive's directory by glob", only: patterns("app/charts/**"), want: false},
+		{name: "only on the rendered template by glob", only: patterns("app/charts/pkg/templates/*.yaml"), want: false},
 		{name: "only on neither", only: patterns("lib"), want: true},
 		{name: "only on a sibling sharing the prefix", only: patterns("app/chart"), want: true},
 		{name: "ignore wins over only", ignore: patterns("app/charts"), only: patterns("app/Chart.yaml"), want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			known := paths
+			if tc.known != nil {
+				known = tc.known
+			}
 			disk, err := provider.ExpandPathFilter(tc.ignore, tc.only)
 			require.NoError(t, err)
 			memory := provider.NewMemorySourceProvider(nil, nil, tc.ignore, tc.only)
 			rule := &Inspector{}
-			require.Equal(t, tc.want, disk.ExcludesAny(paths...), "disk filter")
-			require.Equal(t, tc.want, memory.ExcludesAny(paths...), "in-memory filter")
-			require.Equal(t, tc.want, rule.rulePathsExcluded(paths, tc.ignore, tc.only), "rule filter")
+			require.Equal(t, tc.want, disk.ExcludesAny(known...), "disk filter")
+			require.Equal(t, tc.want, memory.ExcludesAny(known...), "in-memory filter")
+			require.Equal(t, tc.want, rule.rulePathsExcluded(known, tc.ignore, tc.only), "rule filter")
 		})
 	}
 }

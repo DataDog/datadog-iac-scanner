@@ -24,8 +24,8 @@ import (
 // during parallel dispatchFile calls.
 var contentCacheMu sync.Mutex
 
-// SharedWalkProvider returns the disk provider when every service shares one.
-func SharedWalkProvider(services []*Service) (*provider.FileSystemSourceProvider, bool) {
+// DiskSourceProvider returns the disk provider when every service shares one.
+func DiskSourceProvider(services []*Service) (*provider.FileSystemSourceProvider, bool) {
 	if len(services) == 0 {
 		return nil, false
 	}
@@ -41,8 +41,8 @@ func SharedWalkProvider(services []*Service) (*provider.FileSystemSourceProvider
 	return fsp, true
 }
 
-// SharedMemoryProvider returns the memory provider when every service shares one.
-func SharedMemoryProvider(services []*Service) (*provider.MemorySourceProvider, bool) {
+// MemorySourceProvider returns the memory provider when every service shares one.
+func MemorySourceProvider(services []*Service) (*provider.MemorySourceProvider, bool) {
 	if len(services) == 0 {
 		return nil, false
 	}
@@ -76,10 +76,10 @@ type preparedSource interface {
 	excluded(filePath string, content []byte) bool
 }
 
-// PrepareSharedWalk walks once, renders each chart once, and dispatches files to
-// parsers. It serves every disk scan. parallel (the --x-parallelparsing flag)
-// sets the concurrency of chart rendering and file dispatch, as for the memory walk.
-func PrepareSharedWalk(ctx context.Context,
+// PrepareDiskSources walks the disk once, renders each chart once, and dispatches
+// files to parsers. It serves every disk scan. parallel (the --x-parallelparsing
+// flag) sets the concurrency of chart rendering and file dispatch, as for memory.
+func PrepareDiskSources(ctx context.Context,
 	fsp *provider.FileSystemSourceProvider,
 	services []*Service,
 	scanID string,
@@ -95,7 +95,7 @@ func PrepareSharedWalk(ctx context.Context,
 		chartPool, filePool)
 }
 
-// PrepareMemorySources is PrepareSharedWalk over the files the IDE pushed, and
+// PrepareMemorySources is PrepareDiskSources over the files the IDE pushed, and
 // the path every server scan takes. A chart that fails to render escalates its
 // directory via the missing set. parallel (the --x-parallelparsing flag)
 // controls the concurrency of both chart rendering and file dispatch; charts
@@ -109,7 +109,7 @@ func PrepareMemorySources(ctx context.Context,
 	parallel bool) error {
 	pool := utils.PoolOptions{CPUBound: true}
 	if !parallel {
-		// The flag is off: sequential rendering and dispatch, as the legacy per-service path was.
+		// The flag is off: sequential rendering and dispatch.
 		pool = utils.PoolOptions{Workers: 1}
 	}
 	return prepareSources(ctx, memorySource{mp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
@@ -261,15 +261,7 @@ func withoutExcludedFiles(
 	for i := range resFiles.File {
 		// A packaged dependency is reported at its parent's declaration, and its
 		// filters apply to its archive and both paths, as they do to a rule's.
-		file := &resFiles.File[i]
-		paths := []string{file.FileName}
-		if file.Reported != nil {
-			paths = append(paths, file.Reported.Path)
-		}
-		if file.Archive != "" {
-			paths = append(paths, file.Archive)
-		}
-		if filter.ExcludesAny(paths...) {
+		if filter.ExcludesAny(resFiles.File[i].KnownPaths()...) {
 			continue
 		}
 		kept = append(kept, resFiles.File[i])

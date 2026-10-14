@@ -8,7 +8,6 @@ package provider
 
 import (
 	"context"
-	slashpath "path"
 	"path/filepath"
 	"sort"
 
@@ -97,40 +96,19 @@ func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 }
 
 // partitionChartRoots splits the pushed chart roots into those rendered and
-// those the path filters leave out, the way the disk provider does: a chart is
-// rendered unless its Chart.yaml is ignored, and with only-paths, when one of
-// its files is kept (only-paths naming a single template still renders its
-// chart; the files outside are dropped from the output).
+// those the path filters leave out, by the same rule the disk provider uses
+// (PathFilter.ChartInScope), matched as text since pushed files are not on disk.
+// A chart is rendered unless its Chart.yaml is ignored, and with only-paths,
+// when the chart lies within one, contains one, or a glob could reach it.
 func (m *MemorySourceProvider) partitionChartRoots(roots []string) (inScope, outOfScope []string) {
-	var kept map[string]bool
-	if len(m.onlyPaths) > 0 {
-		isRoot := make(map[string]bool, len(roots))
-		for _, root := range roots {
-			isRoot[root] = true
-		}
-		kept = make(map[string]bool, len(roots))
-		for _, p := range m.paths {
-			if pathutil.Excluded(p, m.ignorePaths, m.onlyPaths) {
-				continue
-			}
-			for dir := slashpath.Dir(filepath.ToSlash(p)); ; dir = slashpath.Dir(dir) {
-				if isRoot[dir] {
-					kept[dir] = true
-				}
-				if dir == "." || dir == "/" {
-					break
-				}
-			}
-		}
-	}
+	scope := NewLexicalPathFilter(m.ignorePaths, m.onlyPaths)
 	inScope = make([]string, 0, len(roots))
 	for _, root := range roots {
-		chartFile := slashpath.Join(root, "Chart.yaml")
-		if pathutil.Excluded(chartFile, m.ignorePaths, nil) || (kept != nil && !kept[root]) {
+		if scope.ChartInScope(root) {
+			inScope = append(inScope, root)
+		} else {
 			outOfScope = append(outOfScope, root)
-			continue
 		}
-		inScope = append(inScope, root)
 	}
 	return inScope, outOfScope
 }

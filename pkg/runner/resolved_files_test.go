@@ -28,7 +28,7 @@ import (
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 )
 
-func newYAMLResolverSinkService(
+func newYAMLResolvedService(
 	t *testing.T, ctx context.Context,
 ) (*Service, *storage.MemoryStorage) {
 	t.Helper()
@@ -83,7 +83,7 @@ func TestStoreResolvedFilesParsesHelmJSONWithYAMLParser(t *testing.T) {
 	resolved, err := (&helm.Resolver{}).Resolve(ctx, chartPath)
 	require.NoError(t, err)
 
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 
 	service.storeResolvedFiles(ctx, resolved, model.KindHELM, "helm-crds", false, 15)
 
@@ -126,7 +126,7 @@ func TestStoreResolvedFilesLazilyReconstructsHelmCRDLineInfo(t *testing.T) {
 	resolved, err := (&helm.Resolver{}).Resolve(ctx, chartPath)
 	require.NoError(t, err)
 
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 	expectedByName := make(map[string]map[string]interface{})
 	for _, rfile := range resolved.File {
 		if !rfile.IsCRD {
@@ -181,7 +181,7 @@ func TestStoreResolvedFilesLazilyReconstructsHelmCRDLineInfo(t *testing.T) {
 
 func TestStoreResolvedFilesKeepsRenderedLineInfoForHelmTemplates(t *testing.T) {
 	ctx := context.Background()
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{{
 			FileName:     "chart/templates/service.yaml",
@@ -201,7 +201,7 @@ func TestStoreResolvedFilesKeepsRenderedLineInfoForHelmTemplates(t *testing.T) {
 
 func TestStoreResolvedFilesKeepsHelmInvocation(t *testing.T) {
 	ctx := context.Background()
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 	original := []byte("{{- include \"first.resource\" . }}\n{{- include \"second.resource\" . }}\n")
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{
@@ -229,7 +229,7 @@ func TestStoreResolvedFilesKeepsHelmInvocation(t *testing.T) {
 
 func TestStoreResolvedFilesKeepsRenderedContentOfInvocations(t *testing.T) {
 	ctx := context.Background()
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 	content := []byte("apiVersion: v1\nkind: Pod\nmetadata:\n  name: p\n")
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{{
@@ -248,7 +248,7 @@ func TestStoreResolvedFilesKeepsRenderedContentOfInvocations(t *testing.T) {
 
 func TestStoreResolvedFilesKeepsCRDSuppressionLines(t *testing.T) {
 	ctx := context.Background()
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 	original := []byte("# dd-iac-scan ignore-block\n# KICS_HELM_ID_0_1:\napiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n")
 	content := []byte("\n# Source: chart/crds/widget.yaml\n" + string(original))
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
@@ -268,7 +268,7 @@ func TestStoreResolvedFilesKeepsCRDSuppressionLines(t *testing.T) {
 
 func TestStoreResolvedFilesContinuesAfterUnsupportedFile(t *testing.T) {
 	ctx := context.Background()
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 	resolved := model.ResolvedFiles{
 		File: []model.ResolvedHelm{
 			{FileName: "chart/notes.txt", Content: []byte("unsupported")},
@@ -290,7 +290,7 @@ func TestStoreResolvedFilesContinuesAfterUnsupportedFile(t *testing.T) {
 
 func TestStoreResolvedFilesContinuesAfterMalformedFile(t *testing.T) {
 	ctx := context.Background()
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 	resolved := model.ResolvedFiles{
 		File: []model.ResolvedHelm{
 			{FileName: "chart/crds/broken.yaml", Content: []byte("spec: [")},
@@ -317,7 +317,7 @@ func TestStoreResolvedFilesContinuesAfterMalformedFile(t *testing.T) {
 func TestStoreResolvedFilesSkipsCommentOnlyRenderedTemplate(t *testing.T) {
 	var logBuf bytes.Buffer
 	ctx := zerolog.New(&logBuf).WithContext(context.Background())
-	service, store := newYAMLResolverSinkService(t, ctx)
+	service, store := newYAMLResolvedService(t, ctx)
 
 	service.storeResolvedFiles(ctx, model.ResolvedFiles{
 		File: []model.ResolvedHelm{

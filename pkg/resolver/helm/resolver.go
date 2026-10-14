@@ -102,10 +102,8 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 			}
 		}
 		var source packagedSource
-		if split.archive != nil && !slashPaths {
-			// The server reports packaged subcharts through its archive_files map
-			// instead, so only a disk scan needs the archive named here.
-			source = archives.of(split.archive)
+		if split.archive != nil {
+			source = archives.of(split.archive, slashPaths)
 		}
 		rfiles.File = append(rfiles.File, model.ResolvedHelm{
 			FileName:            origpath,

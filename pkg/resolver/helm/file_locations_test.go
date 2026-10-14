@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -162,6 +163,25 @@ func TestHelm_Resolve_PackagedDependencyReportedAtDeclaration(t *testing.T) {
 			require.Empty(t, own.Archive)
 		})
 	}
+}
+
+// The server reports a packaged dependency through its archive_files map, so a
+// pushed chart names only the archive, which ignore-paths can match.
+func TestHelm_Resolve_PushedPackagedDependencyNamesArchive(t *testing.T) {
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"web/Chart.yaml": []byte("apiVersion: v2\nname: web\nversion: 1.0.0\n" +
+			"dependencies:\n- name: pkg\n  version: 1.0.0\n"),
+		"web/templates/cm.yaml": []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web\n"),
+		"web/charts/pkg-1.0.0.tgz": packChart(t, map[string]string{
+			"pkg/Chart.yaml":            "apiVersion: v2\nname: pkg\nversion: 1.0.0\n",
+			"pkg/templates/secret.yaml": locationDB,
+		}),
+	})
+	got, err := NewResolver(memfs).Resolve(context.Background(), "web")
+	require.NoError(t, err)
+	pkg := findResolvedBySuffix(t, got.File, "/templates/secret.yaml")
+	require.Nil(t, pkg.Reported, "the server does not name the declaration")
+	require.Equal(t, "web/charts/pkg-1.0.0.tgz", pkg.Archive)
 }
 
 func TestReportedLocation_Apply(t *testing.T) {

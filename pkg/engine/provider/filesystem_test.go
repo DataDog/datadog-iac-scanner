@@ -8,7 +8,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,7 +20,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/test"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -526,22 +524,6 @@ func TestFileSystemSourceProvider_AddExcluded(t *testing.T) {
 			}
 		})
 	}
-}
-
-var mockSink = func(ctx context.Context, filename string, content io.ReadCloser) error {
-	return nil
-}
-
-var mockErrSink = func(ctx context.Context, filename string, content io.ReadCloser) error {
-	return errors.New("")
-}
-
-var mockResolverSink = func(ctx context.Context, filename string) ([]string, error) {
-	return []string{}, nil
-}
-
-var mockErrResolverSink = func(ctx context.Context, filename string) ([]string, error) {
-	return []string{}, errors.New("")
 }
 
 func checkStatErr(t *testing.T, err error) {
@@ -1125,4 +1107,80 @@ func TestWalkInventoryIgnoredChartTemplatesNotListed(t *testing.T) {
 		listed = append(listed, filepath.ToSlash(f.Path))
 	}
 	require.ElementsMatch(t, []string{filepath.ToSlash(filepath.Join(dir, "other", "cm.yaml"))}, listed)
+}
+
+// An out-of-scope chart leaves out its Helm files only. The directory walk and
+// the prebuilt inventory agree on the Terraform, Dockerfile and plain files that
+// sit beside its Chart.yaml.
+func TestOutOfScopeChartKeepsOtherFiles(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	files := map[string]string{
+		"charts/app/Chart.yaml":           "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+		"charts/app/values.yaml":          "img: nginx\n",
+		"charts/app/templates/pod.yaml":   "image: {{ .Values.img }}\n",
+		"charts/app/charts/pkg-1.0.0.tgz": "archive",
+		"charts/app/main.tf":              "resource \"aws_s3_bucket\" \"b\" {}\n",
+		"charts/app/infra/net.tf":         "resource \"aws_vpc\" \"v\" {}\n",
+		"charts/app/Dockerfile":           "FROM alpine\n",
+		"other/cm.yaml":                   "kind: ConfigMap\n",
+	}
+	var all []string
+	for rel, body := range files {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+		all = append(all, filepath.ToSlash(p))
+	}
+	chartRoot := filepath.ToSlash(filepath.Join(dir, "charts", "app"))
+	want := []string{
+		filepath.ToSlash(filepath.Join(dir, "charts", "app", "Dockerfile")),
+		filepath.ToSlash(filepath.Join(dir, "charts", "app", "infra", "net.tf")),
+		filepath.ToSlash(filepath.Join(dir, "charts", "app", "main.tf")),
+		filepath.ToSlash(filepath.Join(dir, "other", "cm.yaml")),
+	}
+	exts := model.Extensions{".tf": {}, ".yaml": {}, "Dockerfile": {}}
+	excludes := []string{filepath.Join(dir, "charts", "app", "Chart.yaml")}
+	listedPaths := func(inv []InventoryFile) []string {
+		paths := make([]string, 0, len(inv))
+		for _, f := range inv {
+			paths = append(paths, f.Path)
+		}
+		return paths
+	}
+
+	walked, err := NewFileSystemSourceProvider(ctx, []string{dir}, excludes, nil)
+	require.NoError(t, err)
+	inventory, err := walked.WalkInventory(ctx, exts, utils.PoolOptions{}, noChartRoots)
+	require.NoError(t, err)
+	require.ElementsMatch(t, want, listedPaths(inventory), "directory walk")
+
+	prebuilt, err := NewFileSystemSourceProvider(ctx, []string{dir}, excludes, nil)
+	require.NoError(t, err)
+	prebuilt.SetPrebuiltWalk(all, []string{chartRoot}, nil)
+	inventory, err = prebuilt.WalkInventory(ctx, exts, utils.PoolOptions{}, noChartRoots)
+	require.NoError(t, err)
+	require.ElementsMatch(t, want, listedPaths(inventory), "prebuilt inventory")
+}
+
+// A glob names the templates of a packaged dependency, which exist on disk only
+// inside the archive. The glob still keeps and renders them, as the in-memory
+// and rule filters do.
+func TestPathFilterGlobMatchesRenderedFiles(t *testing.T) {
+	dir := t.TempDir()
+	pod := filepath.Join(dir, "app", "charts", "pkg", "templates", "pod.yaml")
+	other := filepath.Join(dir, "app", "cm.yaml")
+	glob := filepath.Join(dir, "app", "charts", "*", "templates", "*.yaml")
+
+	only, err := ExpandPathFilter(nil, []string{glob})
+	require.NoError(t, err)
+	require.False(t, only.ExcludesAny(pod), "a glob keeps the rendered template it names")
+	require.True(t, only.ExcludesAny(other))
+	require.True(t, only.ChartInScope(filepath.Join(dir, "app", "charts", "pkg")), "a chart the glob reaches renders")
+	require.False(t, only.ChartInScope(filepath.Join(dir, "lib")))
+
+	ignored, err := ExpandPathFilter([]string{glob}, nil)
+	require.NoError(t, err)
+	require.True(t, ignored.ExcludesAny(pod), "a glob drops the rendered template it names")
+	require.False(t, ignored.ExcludesAny(other))
 }

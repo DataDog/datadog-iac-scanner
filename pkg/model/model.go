@@ -649,6 +649,27 @@ func (r *ReportedLocation) PathOr(detected string) string {
 	return r.Path
 }
 
+// KnownPaths lists the paths a rendered file answers to in the scan's path
+// filters: the file itself, where its findings are reported, and the chart
+// archive it was rendered from. Every filter checks this same list.
+func (r *ResolvedHelm) KnownPaths() []string {
+	return knownPaths(r.FileName, r.Reported, r.Archive)
+}
+
+// KnownPaths lists the paths a file answers to in the scan's path filters; see
+// ResolvedHelm.KnownPaths.
+func (f *FileMetadata) KnownPaths() []string {
+	return knownPaths(f.FilePath, f.Reported, f.Archive)
+}
+
+func knownPaths(filePath string, reported *ReportedLocation, archive string) []string {
+	paths := []string{filePath, reported.PathOr(filePath)}
+	if archive != "" {
+		paths = append(paths, archive)
+	}
+	return paths
+}
+
 // Apply moves v to the reported location. Positions that belong to the file
 // the finding was detected in no longer mean anything there and are cleared,
 // and so is the remediation: it edits the detected file, not the reported one.

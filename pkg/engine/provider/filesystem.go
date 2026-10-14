@@ -33,7 +33,10 @@ type FileSystemSourceProvider struct {
 	onlyPaths []string
 	// chartFilter decides which charts render; see SetChartFilter.
 	chartFilter *PathFilter
-	mu          sync.RWMutex
+	// mu guards paths, excludes, unfiltered and the walk's reads of them. The
+	// setters for chartFilter, the prebuilt walk and the content cache run
+	// before a walk starts and take no lock.
+	mu sync.RWMutex
 
 	prebuiltPaths []string
 	chartRoots    []string
@@ -210,7 +213,7 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 			continue
 		}
 
-		collected, err := s.collectFiles(ctx, scanPath, unavailableResolverSink, configExtensions)
+		collected, err := s.collectFiles(ctx, scanPath, configExtensions)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to collect files")
 		}
@@ -220,10 +223,6 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 	}
 	sort.Strings(files)
 	return files, nil
-}
-
-func unavailableResolverSink(context.Context, string) ([]string, error) {
-	return nil, errors.New("resolver unavailable")
 }
 
 // ignoreDamagedFiles checks whether we should ignore a damaged file from a scan or not.
@@ -615,34 +614,42 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 	return files, nil
 }
 
+// walkDirectory walks scanPath. Each chart root it reaches is passed to onChart,
+// unless the chart is out of scope: then the root only joins the chart roots
+// whose Helm files are withheld, as a rendered chart's are, and the rest of its
+// tree is still walked.
 func (s *FileSystemSourceProvider) walkDirectory(ctx context.Context, scanPath string, extensions model.Extensions,
-	onChart func(ctx context.Context, path string, resolvedChartPaths *[]string) error,
+	onChart func(ctx context.Context, path string, chartRoots *[]string) error,
 	onFile func(ctx context.Context, path, ext string) error) error {
-	var resolvedChartPaths []string
+	var chartRoots []string
 	return filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		shouldSkip, ext, skipFolder := s.checkConditions(ctx, info, extensions, path, resolvedChartPaths)
+		shouldSkip, ext, skipFolder := s.checkConditions(ctx, info, extensions, path, chartRoots)
 		if shouldSkip {
 			return skipFolder
 		}
 
 		if info.IsDir() {
-			return onChart(ctx, path, &resolvedChartPaths)
+			if !s.ChartFilter().ChartInScope(path) {
+				chartRoots = append(chartRoots, path)
+				return nil
+			}
+			return onChart(ctx, path, &chartRoots)
 		}
 
 		return onFile(ctx, path, ext)
 	})
 }
 
+// collectFiles lists the files under scanPath without rendering any chart, so
+// only the Helm files of out-of-scope charts are left out.
 func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath string,
-	resolverSink ResolverSink, extensions model.Extensions) (files []string, err error) {
+	extensions model.Extensions) (files []string, err error) {
 	err = s.walkDirectory(ctx, scanPath, extensions,
-		func(ctx context.Context, path string, resolved *[]string) error {
-			return s.resolveChartDir(ctx, path, resolverSink, resolved)
-		},
+		func(context.Context, string, *[]string) error { return nil },
 		func(_ context.Context, path, _ string) error {
 			files = append(files, toSlash(path))
 			return nil
@@ -694,18 +701,14 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 			contextLogger.Info().Msgf("Directory ignored: %s", path)
 			return true, "", filepath.SkipDir
 		}
-		// Everything under a rendered chart's templates/, crds/ or charts/ is a
-		// Helm file, so the subtree is pruned rather than walked file by file.
+		// Everything under a chart root's templates/, crds/ or charts/ is a Helm
+		// file, so the subtree is pruned rather than walked file by file.
 		if isHelmChartDir(path, resolvedChartPaths) {
 			return true, "", filepath.SkipDir
 		}
 		_, err := os.Stat(filepath.Join(path, "Chart.yaml"))
 		if err != nil || IsNestedRenderedChart(path, resolvedChartPaths) {
 			return true, "", nil
-		}
-		// An out-of-scope chart's files are left out as a whole, not listed raw.
-		if !s.chartFilter.ChartInScope(path) {
-			return true, "", filepath.SkipDir
 		}
 		return false, "", nil
 	}
@@ -738,28 +741,6 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 func pathWithinBase(base, path string) bool {
 	rel, err := filepath.Rel(filepath.Clean(base), filepath.Clean(path))
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
-}
-
-// resolveChartDir renders a Helm chart directory through the resolver. On success
-// the chart's Helm files are skipped for the rest of the walk so they are not
-// scanned again as raw, unrendered templates (which would yield bogus names like
-// name: {{ .Release.Revision }}); other files under the chart root still are.
-// On failure it returns nil to fall back to scanning the raw files.
-func (s *FileSystemSourceProvider) resolveChartDir(ctx context.Context, path string,
-	resolverSink ResolverSink, resolvedChartPaths *[]string) error {
-	contextLogger := logger.FromContext(ctx)
-	normPath := toSlash(path)
-	_, errRes := resolverSink(ctx, normPath)
-	if errRes != nil {
-		// The render failure is already logged by the resolver sink; this is
-		// just the fallback announcement, so keep it at Debug.
-		contextLogger.Debug().Msgf("Scanning raw files of Helm chart '%s' as a fallback after render failure", path)
-		return nil
-	}
-	// The walk skips this chart's Helm files through IsHelmChartFile once the
-	// root is recorded. The excludes map is for configured ignore paths.
-	*resolvedChartPaths = append(*resolvedChartPaths, path)
-	return nil
 }
 
 func containsFile(fileList []os.FileInfo, target os.FileInfo) bool {

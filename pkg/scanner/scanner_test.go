@@ -42,6 +42,12 @@ func TestScanner_StartScan(t *testing.T) {
 	require.NotEmpty(t, &store)
 }
 
+// A config or platform filter can leave no service. That is an empty scan, which
+// must not fail as if the services used mixed source providers.
+func TestPrepareAndScanWithoutServices(t *testing.T) {
+	require.NoError(t, PrepareAndScan(context.Background(), "server", false, 5, nil, featureflags.NewLocalEvaluator()))
+}
+
 func createServices(types, cloudProviders []string) (serviceSlice, *storage.MemoryStorage, error) {
 	ctx := context.Background()
 	filesSource, err := provider.NewFileSystemSourceProvider(ctx, []string{filepath.FromSlash("../../test")}, []string{}, []string{})

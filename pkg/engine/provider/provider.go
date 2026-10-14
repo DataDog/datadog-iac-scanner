@@ -5,13 +5,6 @@
  */
 package provider
 
-import (
-	"context"
-)
-
-// ResolverSink defines a sink function to be passed as reference to functions for resolved files/templates
-type ResolverSink func(ctx context.Context, filename string) ([]string, error)
-
 // SourceProvider is the interface a service's source provider implements.
 // GetBasePaths returns the base paths of the provider.
 type SourceProvider interface {

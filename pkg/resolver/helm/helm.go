@@ -327,6 +327,9 @@ func getExcluded(ctx context.Context, charterino *chart.Chart, chartpath string)
 type archiveLocations struct {
 	fsys  vfs.FS
 	byDep map[*packagedDependency]packagedSource
+	// archives holds the packaged charts under each parent's charts/, read once
+	// for all the parent's dependencies.
+	archives map[string][]packagedArchive
 }
 
 // packagedSource is where a packaged dependency's findings are reported, and
@@ -336,42 +339,72 @@ type packagedSource struct {
 	archive  string
 }
 
-func newArchiveLocations(fsys vfs.FS) *archiveLocations {
-	return &archiveLocations{fsys: fsys, byDep: map[*packagedDependency]packagedSource{}}
+// packagedArchive is a chart archive under a parent's charts/ and the chart it holds.
+type packagedArchive struct {
+	path  string
+	chart *chart.Chart
 }
 
-func (a *archiveLocations) of(dep *packagedDependency) packagedSource {
+func newArchiveLocations(fsys vfs.FS) *archiveLocations {
+	return &archiveLocations{
+		fsys:     fsys,
+		byDep:    map[*packagedDependency]packagedSource{},
+		archives: map[string][]packagedArchive{},
+	}
+}
+
+// of returns where to report a packaged dependency. pushed is set for the
+// server, which reports packaged subcharts through its archive_files map, so
+// only the archive is named; a disk scan also names the declaration.
+func (a *archiveLocations) of(dep *packagedDependency, pushed bool) packagedSource {
 	source, known := a.byDep[dep]
 	if !known {
-		source = packagedSource{
-			reported: dependencyDeclaration(a.fsys, dep.parent, dep.name),
-			archive:  archiveFileOf(a.fsys, dep.parent, dep.chart),
+		source = packagedSource{archive: a.archiveOf(dep.parent, dep.chart)}
+		if pushed {
+			source.archive = filepath.ToSlash(source.archive)
+		} else {
+			source.reported = dependencyDeclaration(a.fsys, dep.parent, dep.name)
 		}
 		a.byDep[dep] = source
 	}
 	return source
 }
 
-// archiveFileOf returns the archive under parent's charts/ that holds ch, the
-// first one with the same files when several hold them. Helm loads only archives
-// named *.tgz there. The name is not compared: an aliased dependency is renamed
-// to its alias, while its files keep the names they have in the archive. It is
-// empty when none is found.
-func archiveFileOf(fsys vfs.FS, parent string, ch *chart.Chart) string {
+// archiveOf returns the archive under parent's charts/ that holds ch, the first
+// one with the same files when several hold them. The name is not compared: an
+// aliased dependency is renamed to its alias, while its files keep the names
+// they have in the archive. It is empty when none is found.
+func (a *archiveLocations) archiveOf(parent string, ch *chart.Chart) string {
 	if ch == nil || ch.Metadata == nil {
 		return ""
 	}
+	for _, archived := range a.packagedIn(parent) {
+		if archived.chart.Metadata.Version == ch.Metadata.Version && sameRawFiles(archived.chart.Raw, ch.Raw) {
+			return archived.path
+		}
+	}
+	return ""
+}
+
+// packagedIn returns the chart archives under parent's charts/. Helm loads only
+// archives named *.tgz there.
+func (a *archiveLocations) packagedIn(parent string) []packagedArchive {
+	if loaded, ok := a.archives[parent]; ok {
+		return loaded
+	}
+	var loaded []packagedArchive
 	chartsDir := filepath.Join(parent, dependenciesDirName)
-	entries, err := fsys.ReadDir(chartsDir)
+	entries, err := a.fsys.ReadDir(chartsDir)
 	if err != nil {
-		return ""
+		a.archives[parent] = nil
+		return nil
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".tgz" {
 			continue
 		}
 		file := filepath.Join(chartsDir, entry.Name())
-		data, err := fsys.ReadFile(file)
+		data, err := a.fsys.ReadFile(file)
 		if err != nil {
 			continue
 		}
@@ -379,11 +412,10 @@ func archiveFileOf(fsys vfs.FS, parent string, ch *chart.Chart) string {
 		if err != nil || archived.Metadata == nil {
 			continue
 		}
-		if archived.Metadata.Version == ch.Metadata.Version && sameRawFiles(archived.Raw, ch.Raw) {
-			return file
-		}
+		loaded = append(loaded, packagedArchive{path: file, chart: archived})
 	}
-	return ""
+	a.archives[parent] = loaded
+	return loaded
 }
 
 // sameRawFiles reports whether two charts hold the same files under the same names.

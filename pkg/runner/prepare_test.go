@@ -38,7 +38,7 @@ import (
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 )
 
-func buildParityServices(t *testing.T, ctx context.Context, paths []string) ([]*Service, *storage.MemoryStorage) {
+func buildDiskServices(t *testing.T, ctx context.Context, paths []string) ([]*Service, *storage.MemoryStorage) {
 	t.Helper()
 
 	fsp, err := provider.NewFileSystemSourceProvider(ctx, paths, nil, nil)
@@ -109,14 +109,14 @@ func documentFingerprint(t *testing.T, store *storage.MemoryStorage) map[string]
 	return fp
 }
 
-func TestPrepareSharedWalk_RoutesHelmToKubernetesParser(t *testing.T) {
+func TestPrepareDiskSources_RoutesHelmToKubernetesParser(t *testing.T) {
 	ctx := context.Background()
 	chartPath, err := filepath.Abs("../../test/fixtures/test_helm_with_crds")
 	require.NoError(t, err)
-	services, _ := buildParityServices(t, ctx, []string{chartPath})
-	fsp, ok := SharedWalkProvider(services)
+	services, _ := buildDiskServices(t, ctx, []string{chartPath})
+	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "helm-routing", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "helm-routing", false, 5, true))
 
 	for _, service := range services {
 		helmDocs := 0
@@ -140,7 +140,7 @@ func TestPrepareSharedWalk_RoutesHelmToKubernetesParser(t *testing.T) {
 	}
 }
 
-func TestPrepareSharedWalk_RoutesKnownYAMLPlatforms(t *testing.T) {
+func TestPrepareDiskSources_RoutesKnownYAMLPlatforms(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	deployPath := filepath.Join(dir, "deploy.yaml")
@@ -148,7 +148,7 @@ func TestPrepareSharedWalk_RoutesKnownYAMLPlatforms(t *testing.T) {
 	writeFile(t, deployPath, "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n")
 	writeFile(t, workflowPath, "name: ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n")
 
-	services, _ := buildParityServices(t, ctx, []string{dir})
+	services, _ := buildDiskServices(t, ctx, []string{dir})
 	filePlatforms := map[string]string{
 		filepath.ToSlash(deployPath):   "kubernetes",
 		filepath.ToSlash(workflowPath): "cicd",
@@ -156,9 +156,9 @@ func TestPrepareSharedWalk_RoutesKnownYAMLPlatforms(t *testing.T) {
 	for _, service := range services {
 		service.FilePlatform = filePlatforms
 	}
-	fsp, ok := SharedWalkProvider(services)
+	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "routing", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "routing", false, 5, true))
 
 	for _, service := range services {
 		paths := make([]string, 0, len(service.files))
@@ -184,7 +184,7 @@ func TestPrepareMemorySources_RoutesPushedYAMLByContent(t *testing.T) {
 	})
 	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
 	services, _ := buildServices(t, ctx, memfs, mp)
-	shared, ok := SharedMemoryProvider(services)
+	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
 	require.NoError(t, PrepareMemorySources(ctx, shared, services, "routing", false, 5, false))
 
@@ -215,7 +215,7 @@ func TestPrepareMemorySources_SkipsFilesExcludedByContent(t *testing.T) {
 	})
 	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
 	services, _ := buildServices(t, ctx, memfs, mp)
-	shared, ok := SharedMemoryProvider(services)
+	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
 	require.NoError(t, PrepareMemorySources(ctx, shared, services, "excluded", false, 5, false))
 
@@ -230,7 +230,7 @@ func TestPrepareMemorySources_SkipsFilesExcludedByContent(t *testing.T) {
 
 func TestServicesForPlatformAndParserKindFallsBackWhenUnmatched(t *testing.T) {
 	ctx := context.Background()
-	services, _ := buildParityServices(t, ctx, []string{t.TempDir()})
+	services, _ := buildDiskServices(t, ctx, []string{t.TempDir()})
 
 	routed := servicesForPlatformAndParserKind(services, "kubernetes", model.KindYAML)
 	require.Len(t, routed, 1)
@@ -251,7 +251,7 @@ func TestServicesForPlatformAndParserKindFallsBackWhenUnmatched(t *testing.T) {
 	require.Equal(t, yamlServices, servicesForPlatform(yamlServices, "unknown"))
 }
 
-func TestPrepareSharedWalk_DanglingChartYamlSymlinkStillScansTerraform(t *testing.T) {
+func TestPrepareDiskSources_DanglingChartYamlSymlinkStillScansTerraform(t *testing.T) {
 	ctx := context.Background()
 
 	dir := t.TempDir()
@@ -270,14 +270,14 @@ func TestPrepareSharedWalk_DanglingChartYamlSymlinkStillScansTerraform(t *testin
 	require.NoError(t, err)
 	require.Contains(t, analyzed.Inventory, filepath.ToSlash(mainTF))
 
-	services, store := buildParityServices(t, ctx, []string{dir})
-	fsp, ok := SharedWalkProvider(services)
+	services, store := buildDiskServices(t, ctx, []string{dir})
+	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
 	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "dangling-chart", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "dangling-chart", false, 5, true))
 
 	prepared := documentFingerprint(t, store)
 	require.NotEmpty(t, prepared)
@@ -291,7 +291,7 @@ func TestPrepareSharedWalk_DanglingChartYamlSymlinkStillScansTerraform(t *testin
 	require.True(t, found, "terraform file under dangling Chart.yaml symlink must be prepared")
 }
 
-func TestPrepareSharedWalk_RenderedChartStillScansTerraform(t *testing.T) {
+func TestPrepareDiskSources_RenderedChartStillScansTerraform(t *testing.T) {
 	ctx := context.Background()
 
 	dir := t.TempDir()
@@ -309,14 +309,14 @@ func TestPrepareSharedWalk_RenderedChartStillScansTerraform(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	services, store := buildParityServices(t, ctx, []string{dir})
-	fsp, ok := SharedWalkProvider(services)
+	services, store := buildDiskServices(t, ctx, []string{dir})
+	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
 	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "rendered-chart", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "rendered-chart", false, 5, true))
 
 	found := false
 	for key := range documentFingerprint(t, store) {
@@ -326,6 +326,44 @@ func TestPrepareSharedWalk_RenderedChartStillScansTerraform(t *testing.T) {
 		}
 	}
 	require.True(t, found, "terraform beside a rendered root chart must still be prepared")
+}
+
+// A disk scan keeps the Terraform variable files the analyzer lists and prepares
+// them beside the configs they feed.
+func TestPrepareDiskSources_PreparesTfvars(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "main.tf"), `variable "name" {}`+"\n"+
+		`resource "aws_s3_bucket" "b" { bucket = var.name }`)
+	tfvars := filepath.Join(dir, "terraform.tfvars")
+	writeFile(t, tfvars, "name = \"my-bucket\"\n")
+
+	analyzed, err := analyzer.Analyze(ctx, &analyzer.Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{"terraform"},
+		MaxFileSize: 100,
+	})
+	require.NoError(t, err)
+	require.Contains(t, analyzed.Inventory, filepath.ToSlash(tfvars))
+
+	services, store := buildDiskServices(t, ctx, []string{dir})
+	fsp, ok := DiskSourceProvider(services)
+	require.True(t, ok)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	for _, s := range services {
+		s.FilePlatform = analyzed.FilePlatform
+	}
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "tfvars", false, 5, true))
+
+	found := false
+	for key := range documentFingerprint(t, store) {
+		if strings.Contains(key, "terraform.tfvars") {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "the variable file beside a Terraform config must be prepared")
 }
 
 // TestContentLineCountParity guards that chunked reads (getContent) and cached
@@ -361,17 +399,17 @@ func writeFile(t *testing.T, path, content string) {
 // A chart that fails to render for an unexpected reason is reported at error,
 // and its raw templates, which are never valid YAML, still do not each add a
 // parse error of their own.
-func TestPrepareSharedWalk_UnexpectedRenderErrorStillSilencesRawTemplates(t *testing.T) {
+func TestPrepareDiskSources_UnexpectedRenderErrorStillSilencesRawTemplates(t *testing.T) {
 	var logBuf bytes.Buffer
 	ctx := zerolog.New(&logBuf).Level(zerolog.WarnLevel).WithContext(context.Background())
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "Chart.yaml"), "apiVersion: v2\nname: web\nversion: 0.1.0\nkubeVersion: \"<1.0.0\"\n")
 	writeFile(t, filepath.Join(dir, "templates", "cm.yaml"), "kind: [unclosed\n")
 
-	services, _ := buildParityServices(t, ctx, []string{dir})
-	fsp, ok := SharedWalkProvider(services)
+	services, _ := buildDiskServices(t, ctx, []string{dir})
+	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareSharedWalk(ctx, fsp, services, "unexpected-render", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "unexpected-render", false, 5, true))
 
 	logged := logBuf.String()
 	require.Contains(t, logged, "failed to render file content")
@@ -413,7 +451,7 @@ func storedFiles(t *testing.T, services []*Service, dir string) map[string]int {
 // A chart renders with its dependency wherever the dependency lies, but the
 // dependency's files are reported only when the scan's path filters keep them,
 // and once even when the dependency is also scanned as a chart of its own.
-func TestPrepareSharedWalk_DependencyChartFiles(t *testing.T) {
+func TestPrepareDiskSources_DependencyChartFiles(t *testing.T) {
 	tests := []struct {
 		name   string
 		ignore []string
@@ -444,9 +482,9 @@ func TestPrepareSharedWalk_DependencyChartFiles(t *testing.T) {
 			fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, inDir(tt.ignore), inDir(tt.only))
 			require.NoError(t, err)
 			services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
-			shared, ok := SharedWalkProvider(services)
+			shared, ok := DiskSourceProvider(services)
 			require.True(t, ok)
-			require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
+			require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5, true))
 			require.Equal(t, tt.want, storedFiles(t, services, dir))
 		})
 	}
@@ -463,7 +501,7 @@ func TestPrepareMemorySources_DependencyInIgnorePathsIsNotReported(t *testing.T)
 	memfs := vfs.NewMemFS(pushed)
 	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), []string{"lib/**"}, nil)
 	services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
-	shared, ok := SharedMemoryProvider(services)
+	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
 	require.NoError(t, PrepareMemorySources(ctx, shared, services, "ignore-paths", false, 5, false))
 	require.Equal(t, map[string]int{"app/templates/cm.yaml": 1}, storedFiles(t, services, "."))
@@ -472,7 +510,7 @@ func TestPrepareMemorySources_DependencyInIgnorePathsIsNotReported(t *testing.T)
 // The analyzer leaves JSON templates and gitignored files out of the raw scan,
 // but their rendered documents are scanned: only the user's filters drop
 // rendered files.
-func TestPrepareSharedWalk_AnalyzerExclusionsKeepRenderedFiles(t *testing.T) {
+func TestPrepareDiskSources_AnalyzerExclusionsKeepRenderedFiles(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	pod := "{\"apiVersion\": \"v1\", \"kind\": \"Pod\", \"metadata\": {\"name\": \"{{ .Release.Name }}-%s\"}}\n"
@@ -509,9 +547,9 @@ func TestPrepareSharedWalk_AnalyzerExclusionsKeepRenderedFiles(t *testing.T) {
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	shared, ok := SharedWalkProvider(services)
+	shared, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5, true))
 	require.Equal(t, map[string]int{
 		"app/templates/pod.json":            1,
 		"app/templates/pod.yaml":            1,
@@ -531,7 +569,7 @@ func TestPrepareMemorySources_OnlyPathsTemplateRendersItsChart(t *testing.T) {
 	memfs := vfs.NewMemFS(pushed)
 	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, []string{"app/templates/cm.yaml"})
 	services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
-	shared, ok := SharedMemoryProvider(services)
+	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
 	require.NoError(t, PrepareMemorySources(ctx, shared, services, "only-paths", false, 5, false))
 	require.Equal(t, map[string]int{"app/templates/cm.yaml": 1}, storedFiles(t, services, "."))
@@ -546,7 +584,7 @@ func TestPrepareMemorySources_OnlyPathsTemplateRendersItsChart(t *testing.T) {
 // A dependency whose name only its parent sets renders through the parent, and
 // its raw template, which fails to render, is not scanned on top of that
 // render: the file is stored once, as rendered.
-func TestPrepareSharedWalk_RenderedDependencyReplacesRawTemplate(t *testing.T) {
+func TestPrepareDiskSources_RenderedDependencyReplacesRawTemplate(t *testing.T) {
 	files := map[string]string{
 		"lib/Chart.yaml": "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
 		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
@@ -567,9 +605,9 @@ func TestPrepareSharedWalk_RenderedDependencyReplacesRawTemplate(t *testing.T) {
 		fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, nil, nil)
 		require.NoError(t, err)
 		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
-		shared, ok := SharedWalkProvider(services)
+		shared, ok := DiskSourceProvider(services)
 		require.True(t, ok)
-		require.NoError(t, PrepareSharedWalk(ctx, shared, services, "scan", false, 5, true))
+		require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5, true))
 		require.Equal(t, want, templatesStored(t, services, dir))
 		requireRenderedOnce(t, services, dir, "lib/templates/cm.yaml")
 	})
@@ -583,7 +621,7 @@ func TestPrepareSharedWalk_RenderedDependencyReplacesRawTemplate(t *testing.T) {
 		memfs := vfs.NewMemFS(pushed)
 		mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
 		services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
-		shared, ok := SharedMemoryProvider(services)
+		shared, ok := MemorySourceProvider(services)
 		require.True(t, ok)
 		require.NoError(t, PrepareMemorySources(ctx, shared, services, "scan", false, 5, false))
 		require.Equal(t, want, templatesStored(t, services, "."))
