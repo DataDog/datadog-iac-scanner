@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -917,4 +919,83 @@ func Test_hasYAMLContent(t *testing.T) {
 	for content, want := range tests {
 		require.Equal(t, want, hasYAMLContent([]byte(content)), content)
 	}
+}
+
+func TestAnalyze_DockerfileNames(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("# syntax=docker/dockerfile:1\nARG TAG=3.19\nFROM alpine:${TAG}\nCOPY . /app\n")
+	var want []string
+	for i, name := range []string{"Dockerfile", "dockerfile", "api.Dockerfile", "Dockerfile.prod", "Dockerfile.ubi8"} {
+		// Distinct directories even on case-insensitive filesystems.
+		caseDir := filepath.Join(dir, fmt.Sprintf("case_%d", i))
+		require.NoError(t, os.MkdirAll(caseDir, 0o755))
+		path := filepath.Join(caseDir, name)
+		require.NoError(t, os.WriteFile(path, content, 0o600))
+		want = append(want, filepath.ToSlash(path))
+	}
+	for name, body := range map[string]string{
+		"dockerfile.go":           "package dockerfile\n",
+		"Dockerfile.dockerignore": "node_modules\n",
+		"Dockerfile.invalid":      "not a Dockerfile\nFROM alpine\nRUN echo hi\n",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
+	}
+	got, err := Analyze(t.Context(), &Analyzer{RepoPath: dir, Paths: []string{dir}, Types: []string{""}, MaxFileSize: -1})
+	require.NoError(t, err)
+	require.ElementsMatch(t, want, got.Inventory)
+	require.Equal(t, []string{"dockerfile"}, got.Types)
+}
+
+func TestAnalyze_DockerfileCandidateFiltering(t *testing.T) {
+	for _, types := range [][]string{{""}, {"terraform"}} {
+		t.Run(fmt.Sprint(types), func(t *testing.T) {
+			dir := t.TempDir()
+			for name, body := range map[string]string{
+				"Dockerfile.prod":    "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.invalid": "not a Dockerfile\n",
+				"dockerfile.tf":      "resource \"aws_s3_bucket\" \"b\" {}\n",
+				"dockerfile.yaml":    "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test\nspec:\n  containers: []\n",
+				"dockerfile.json":    "{\"terraform_version\":\"1.5.0\",\"planned_values\":{},\"resource_changes\":[],\"configuration\":{}}",
+				"dockerfile.go":      "FROM alpine\nRUN echo should-not-be-read\n",
+			} {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
+			}
+			got, err := Analyze(t.Context(), &Analyzer{RepoPath: dir, Paths: []string{dir}, Types: types, MaxFileSize: -1})
+			require.NoError(t, err)
+			want := []string{filepath.ToSlash(filepath.Join(dir, "dockerfile.tf")), filepath.ToSlash(filepath.Join(dir, "dockerfile.json"))}
+			if types[0] == "" {
+				want = append(want, filepath.ToSlash(filepath.Join(dir, "Dockerfile.prod")),
+					filepath.ToSlash(filepath.Join(dir, "dockerfile.yaml")))
+			}
+			require.ElementsMatch(t, want, got.Inventory)
+			require.NotContains(t, got.ContentCache, filepath.ToSlash(filepath.Join(dir, "dockerfile.go")))
+		})
+	}
+}
+
+func TestClassifyFile_DockerfileContent(t *testing.T) {
+	for _, path := range []string{"Dockerfile.prod", "image.ubi8", "image.debian"} {
+		for _, tt := range []struct {
+			name, body, want string
+		}{
+			{"from without run", "FROM alpine\nCOPY . /app\n", "dockerfile"},
+			{"arg and lowercase", "\ufeff# syntax=docker/dockerfile:1\r\n\r\nARG TAG=3\r\nfrom alpine:$TAG\r\n", "dockerfile"},
+			{"invalid first instruction", "not Docker\nFROM alpine\nRUN echo hi\n", ""},
+			{"keyword prefix", "FROMAGE alpine\n", ""},
+			{"comment only", "# FROM alpine\n", ""},
+			{"empty", "", ""},
+		} {
+			t.Run(path+"/"+tt.name, func(t *testing.T) {
+				fsys := vfs.NewMemFS(map[string][]byte{path: []byte(tt.body)})
+				// Both caller-supplied bytes and reads through MemFS work without disk files.
+				require.Equal(t, tt.want, ClassifyFile(t.Context(), fsys, path, []byte(tt.body), nil))
+				require.Equal(t, tt.want, ClassifyFile(t.Context(), fsys, path, nil, nil))
+				require.Empty(t, fsys.MissingFiles())
+			})
+		}
+	}
+	path := filepath.Join(t.TempDir(), "Dockerfile.prod")
+	require.NoError(t, os.WriteFile(path, []byte("FROM disk\nRUN echo disk\n"), 0o600))
+	require.Empty(t, ClassifyFile(t.Context(), nil, path, []byte{}, nil), "provided empty content overrides disk")
+	require.Equal(t, "dockerfile", ClassifyFile(t.Context(), nil, path, nil, nil))
 }

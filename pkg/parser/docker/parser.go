@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -61,7 +61,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	for _, child := range parsed.AST.Children {
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
 		if child.Value == "from" {
-			fromValue = strings.TrimPrefix(strings.TrimSpace(child.Original), "FROM ")
+			fromValue = fromArguments(child.Original)
 		}
 
 		if ignoreStruct.getIgnoreComments(child) {
@@ -92,7 +92,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		if child.Value != "arg" {
 			cmd.Value = resolveArgsAndEnvs(cmd.Value, args)
 		} else {
-			args = saveArgs(args, cmd.Value[0])
+			// A bare ARG has no value; an ARG may also declare several names.
+			for _, argValue := range cmd.Value {
+				args = saveArgs(args, argValue)
+			}
 		}
 
 		if child.Value != "env" {
@@ -129,6 +132,12 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	return fileContent, documents, ignoreLines, resolvedFiles, nil
 }
 
+// fromArguments strips the case-insensitive FROM keyword from a stage name.
+func fromArguments(original string) string {
+	original = strings.TrimSpace(original)
+	return strings.TrimSpace(original[len("from"):])
+}
+
 // GetKind returns the kind of the parser
 func (p *Parser) GetKind() model.FileKind {
 	return model.KindDOCKER
@@ -154,14 +163,25 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
+var variableReference = regexp.MustCompile(`\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)`)
+
+// resolveArgsAndEnvs replaces whole variable names in one pass, leaving unknown
+// references intact. Map order cannot affect the result or recursively expand it.
 func resolveArgsAndEnvs(values []string, args map[string]string) []string {
+	if len(args) == 0 {
+		return values
+	}
 	for i := range values {
-		for arg := range args {
-			ref1 := fmt.Sprintf("${%s}", arg)
-			values[i] = strings.ReplaceAll(values[i], ref1, args[arg])
-			ref2 := fmt.Sprintf("$%s", arg)
-			values[i] = strings.ReplaceAll(values[i], ref2, args[arg])
-		}
+		values[i] = variableReference.ReplaceAllStringFunc(values[i], func(reference string) string {
+			name := reference[1:]
+			if name[0] == '{' {
+				name = name[1 : len(name)-1]
+			}
+			if value, ok := args[name]; ok {
+				return value
+			}
+			return reference
+		})
 	}
 
 	return values

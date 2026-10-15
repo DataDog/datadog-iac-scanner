@@ -458,7 +458,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			if ext == "" {
 				return nil
 			}
-			if _, ok := possibleFileTypes[ext]; !ok {
+			if _, ok := possibleFileTypes[ext]; !ok && ext != extPossibleDockerfile {
 				return nil
 			}
 
@@ -646,7 +646,7 @@ func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {
 
 func isContentClassifiedExt(ext string) bool {
 	switch ext {
-	case yaml, yml, json, sh, extCfg, extConf, extIni:
+	case yaml, yml, json, sh, extCfg, extConf, extIni, extPossibleDockerfile, extUbi8, extDebian:
 		return true
 	}
 	return false
@@ -704,29 +704,35 @@ func (a *analyzerInfo) persistWorkerState(content []byte, platform string) {
 	}
 }
 
-func isDockerfile(ctx context.Context, path string) bool {
-	contextLogger := logger.FromContext(ctx)
-	content, err := os.ReadFile(filepath.Clean(path))
-	if err != nil {
-		contextLogger.Error().Msgf("failed to analyze file: %s", err)
-		return false
-	}
-
-	regexes := []*regexp.Regexp{
-		regexp.MustCompile(`\s*FROM\s*`),
-		regexp.MustCompile(`\s*RUN\s*`),
-	}
-
-	check := true
-
-	for _, regex := range regexes {
-		if !regex.Match(content) {
-			check = false
-			break
+func isDockerfile(ctx context.Context, fsys vfs.FS, path string, content []byte) bool {
+	if content == nil {
+		var err error
+		content, err = fsys.ReadFile(filepath.Clean(path))
+		if err != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Error().Msgf("failed to analyze file: %s", err)
+			return false
 		}
 	}
+	return looksLikeDockerfile(content)
+}
 
-	return check
+var dockerfileFirstInstruction = regexp.MustCompile(`(?i)^(FROM|ARG)\s`)
+
+// looksLikeDockerfile checks the first instruction after comments and blank
+// lines. Dockerfiles start with FROM, optionally preceded by ARG.
+func looksLikeDockerfile(content []byte) bool {
+	content = bytes.TrimPrefix(content, []byte("\ufeff"))
+	for len(content) > 0 {
+		line, rest, _ := bytes.Cut(content, []byte("\n"))
+		content = rest
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 || line[0] == '#' {
+			continue
+		}
+		return dockerfileFirstInstruction.Match(line)
+	}
+	return false
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
@@ -861,7 +867,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	case extDockerfile, nameDockerfile:
 		return dockerfile
 	case extPossibleDockerfile, extUbi8, extDebian:
-		if isDockerfile(ctx, path) {
+		if isDockerfile(ctx, fsys, path, content) {
 			return dockerfile
 		}
 		return ""

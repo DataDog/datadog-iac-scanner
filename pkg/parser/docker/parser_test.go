@@ -273,3 +273,62 @@ func TestSaveAndResolveEnvs(t *testing.T) {
 		})
 	}
 }
+
+// Dockerfile instructions are case-insensitive: a lowercase FROM names its
+// stage after the image just like an uppercase one.
+func TestParser_Parse_LowercaseFrom(t *testing.T) {
+	p := &Parser{}
+	for _, sample := range []string{
+		"from alpine:3.19\nexpose 22\n",
+		"From  alpine:3.19\nEXPOSE 22\n",
+		"FROM\talpine:3.19\nEXPOSE 22\n",
+	} {
+		_, doc, _, _, err := p.Parse(context.Background(), []byte(sample), "Dockerfile", true, 15)
+		require.NoError(t, err)
+		require.Len(t, doc, 1)
+		require.Contains(t, doc[0]["command"], "alpine:3.19", "sample %q", sample)
+		require.Len(t, doc[0]["command"], 1, "sample %q", sample)
+	}
+}
+
+// A bare ARG has no value; parsing it must not panic, since a panic in a parser
+// worker ends the whole scan.
+func TestParser_Parse_BareArg(t *testing.T) {
+	p := &Parser{}
+	require.NotPanics(t, func() {
+		_, doc, _, _, err := p.Parse(context.Background(), []byte("FROM ubuntu:22.04\nARG\nRUN echo hi\n"), "Dockerfile", true, 15)
+		require.NoError(t, err)
+		require.Len(t, doc, 1)
+	})
+}
+
+// One ARG instruction may declare several names.
+func TestParser_Parse_ArgDeclaresSeveralNames(t *testing.T) {
+	p := &Parser{}
+	_, doc, _, _, err := p.Parse(context.Background(), []byte("ARG IMAGE=alpine TAG=3.19\nFROM ${IMAGE}:${TAG}\n"), "Dockerfile", true, 15)
+	require.NoError(t, err)
+	stage := doc[0]["command"].(map[string]interface{})["${IMAGE}:${TAG}"]
+	require.Equal(t, "alpine:3.19", stage.([]interface{})[0].(map[string]interface{})["Value"].([]interface{})[0])
+}
+
+// A variable is substituted by its whole name: with V and VERSION both
+// declared, $VERSION must not become the value of V followed by "ERSION",
+// whichever order the variables are visited in.
+func TestParser_Parse_ArgSubstitutionMatchesWholeNames(t *testing.T) {
+	src := []byte("ARG V=1\nARG VERSION=latest\nFROM ubuntu:$VERSION\nENV HOME_DIR=/home\nRUN echo ${HOME_DIR} $HOME_DIRX $UNSET\n")
+	for range 50 {
+		p := &Parser{}
+		_, doc, _, _, err := p.Parse(context.Background(), src, "Dockerfile", true, 15)
+		require.NoError(t, err)
+		stage := doc[0]["command"].(map[string]interface{})["ubuntu:$VERSION"].([]interface{})
+		require.Equal(t, "ubuntu:latest", stage[0].(map[string]interface{})["Value"].([]interface{})[0])
+		require.Equal(t, "echo /home $HOME_DIRX $UNSET", stage[2].(map[string]interface{})["Value"].([]interface{})[0])
+	}
+}
+
+func TestResolveArgsAndEnvs_WholeReferences(t *testing.T) {
+	args := map[string]string{"V": "1", "VERSION": "latest", "NESTED": "$VERSION", "EMPTY": ""}
+	values := []string{"$V $VERSION ${VERSION} $VERSION_SUFFIX ${UNKNOWN} $UNKNOWN ${EMPTY} $NESTED"}
+	require.Equal(t, []string{"1 latest latest $VERSION_SUFFIX ${UNKNOWN} $UNKNOWN  $VERSION"},
+		resolveArgsAndEnvs(values, args))
+}

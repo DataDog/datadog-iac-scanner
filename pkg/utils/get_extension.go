@@ -20,9 +20,46 @@ import (
 
 var extensionNameTargets = []string{"tfvars", "Dockerfile", "possibleDockerfile"}
 
+// dockerfileExtension recognizes Dockerfile and <name>.Dockerfile in any case.
+// Dockerfile.<name> needs a content check, unless its extension already identifies
+// another format. In particular, source files must not enter the Dockerfile workers.
+func dockerfileExtension(path, ext string) (string, bool) {
+	lower := strings.ToLower(filepath.Base(path))
+	switch {
+	case lower == "dockerfile":
+		return "Dockerfile", true
+	case strings.HasSuffix(lower, ".dockerfile"):
+		return ".dockerfile", true
+	case strings.HasPrefix(lower, "dockerfile.") && !isNonDockerfileExtension(ext):
+		return "possibleDockerfile", true
+	}
+	return "", false
+}
+
+// isNonDockerfileExtension preserves scanner formats and common source/data
+// extensions. Keep this list independent of OS MIME databases so classification
+// is the same on disk, in MemFS, and on every supported operating system.
+func isNonDockerfileExtension(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".tf", ".tofu", ".tf.json", ".tofu.json", ".tfvars", ".json", ".yaml", ".yml",
+		".sh", ".bicep", ".proto", ".cfg", ".conf", ".ini":
+		return true
+	case ".go", ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".h", ".cc", ".cpp", ".hpp",
+		".cs", ".rb", ".rs", ".php", ".swift", ".kt", ".kts", ".scala", ".lua", ".pl", ".r", ".sql", ".rego":
+		return true
+	case ".dockerignore", ".md", ".rst", ".txt", ".toml", ".xml", ".html", ".css", ".scss", ".less",
+		".csv", ".svg", ".lock", ".mod", ".sum":
+		return true
+	}
+	return false
+}
+
 // ExtensionFromPath returns the extension from path alone (no stat/read).
 func ExtensionFromPath(path string) string {
 	ext := tfpath.Extension(path)
+	if dockerExt, ok := dockerfileExtension(path, ext); ok {
+		return dockerExt
+	}
 	if ext != "" {
 		return ext
 	}
@@ -63,6 +100,9 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 	}
 
 	ext := tfpath.Extension(path)
+	if dockerExt, ok := dockerfileExtension(path, ext); ok {
+		return dockerExt, nil
+	}
 	if ext == "" {
 		base := filepath.Base(path)
 

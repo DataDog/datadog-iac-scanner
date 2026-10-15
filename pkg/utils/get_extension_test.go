@@ -11,6 +11,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,6 +36,42 @@ func TestExtensionFromPath(t *testing.T) {
 		if got := ExtensionFromPath(tt.path); got != tt.want {
 			t.Errorf("ExtensionFromPath(%q) = %q, want %q", tt.path, got, tt.want)
 		}
+	}
+}
+
+func TestDockerfileExtensions(t *testing.T) {
+	for _, tt := range []struct{ path, want string }{
+		{"Dockerfile", "Dockerfile"},
+		{"dockerfile", "Dockerfile"},
+		{"DOCKERFILE", "Dockerfile"},
+		{"api.Dockerfile", ".dockerfile"},
+		{"api.DOCKERFILE", ".dockerfile"},
+		{"Dockerfile.prod", "possibleDockerfile"},
+		{"dockerfile.dev", "possibleDockerfile"},
+		{"Dockerfile.ubi8", "possibleDockerfile"},
+		{"dockerfile.tf", ".tf"},
+		{"dockerfile.tofu", ".tofu"},
+		{"Dockerfile.tf.json", ".tf.json"},
+		{"Dockerfile.tofu.json", ".tofu.json"},
+		{"dockerfile.yaml", ".yaml"},
+		{"dockerfile.yml", ".yml"},
+		{"dockerfile.json", ".json"},
+		{"dockerfile.go", ".go"},
+		{"dockerfile.py", ".py"},
+		{"dockerfile.ts", ".ts"},
+		{"Dockerfile.bicep", ".bicep"},
+		{"Dockerfile.sh", ".sh"},
+		{"Dockerfile.dockerignore", ".dockerignore"},
+		{"api.Dockerfile.dockerignore", ".dockerignore"},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			require.Equal(t, tt.want, ExtensionFromPath(tt.path))
+			fsys := vfs.NewMemFS(map[string][]byte{tt.path: []byte("FROM alpine\n")})
+			ext, err := GetExtensionWithFS(t.Context(), fsys, tt.path)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, ext)
+			require.Empty(t, fsys.MissingFiles())
+		})
 	}
 }
 
