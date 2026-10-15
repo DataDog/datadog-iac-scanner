@@ -918,3 +918,53 @@ func Test_hasYAMLContent(t *testing.T) {
 		require.Equal(t, want, hasYAMLContent([]byte(content)), content)
 	}
 }
+
+func TestAnalyze_IgnorePathsDirectoryExcludesFilesBelow(t *testing.T) {
+	dir := t.TempDir()
+	allFiles := []string{"main.tf", "modules/main.tf", "modules/a/main.tf", "modules_other/main.tf", "modules_other.tf"}
+	for _, file := range allFiles {
+		path := filepath.Join(dir, filepath.FromSlash(file))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+	}
+	outsideModules := []string{"main.tf", "modules_other/main.tf", "modules_other.tf"}
+	outsideNested := []string{"main.tf", "modules/main.tf", "modules_other/main.tf", "modules_other.tf"}
+	tests := []struct {
+		name    string
+		pattern string
+		want    []string
+	}{
+		{"directory", "modules", outsideModules},
+		{"directory with separator", "modules/", outsideModules},
+		{"dot slash directory", "./modules", outsideModules},
+		{"nested directory", "modules/a", outsideNested},
+		{"single star", "modules/*", outsideModules},
+		{"double star", "modules/**", outsideModules},
+		{"exact file", "modules/a/main.tf", outsideNested},
+		{"partial prefix", "module", allFiles},
+		{"unmatched glob", "missing/*", allFiles},
+		{"empty entry", "", allFiles},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pattern := tt.pattern
+			if pattern != "" {
+				// Keep ./ and trailing separators intact to exercise normalization.
+				pattern = dir + string(os.PathSeparator) + filepath.FromSlash(pattern)
+			}
+			got, err := Analyze(context.Background(), &Analyzer{
+				RepoPath:    dir,
+				Paths:       []string{dir},
+				Types:       []string{""},
+				Exc:         []string{pattern},
+				MaxFileSize: -1,
+			})
+			require.NoError(t, err)
+			want := make([]string, 0, len(tt.want))
+			for _, file := range tt.want {
+				want = append(want, filepath.ToSlash(filepath.Join(dir, filepath.FromSlash(file))))
+			}
+			require.ElementsMatch(t, want, got.Inventory)
+		})
+	}
+}
