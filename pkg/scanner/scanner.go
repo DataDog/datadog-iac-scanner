@@ -7,6 +7,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -29,14 +30,18 @@ func PrepareAndScan(
 	services serviceSlice,
 	flagEvaluator featureflags.FlagEvaluator,
 ) error {
+	// A config or platform filter can leave no service, which is an empty scan,
+	// not a mix of providers.
+	if len(services) == 0 {
+		return nil
+	}
 	metrics.Metric.Start("prepare_sources")
 
-	// The shared walk parses every file concurrently, so it is gated behind the
-	// same flag as parallel per-service parsing; when the flag is off we keep the
-	// legacy per-service prepare path.
-	if fsp, ok := runner.SharedWalkProvider(services); ok &&
-		flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing) {
-		err := runner.PrepareSharedWalk(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth)
+	// The disk walk serves every disk scan. The parallel-parsing flag only sets
+	// its concurrency; when it is off the walk runs sequentially.
+	if fsp, ok := runner.DiskSourceProvider(services); ok {
+		parallel := flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing)
+		err := runner.PrepareDiskSources(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth, parallel)
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
@@ -53,7 +58,7 @@ func PrepareAndScan(
 	// each pushed Helm chart once. It runs regardless of the parallel-parsing
 	// flag — the flag only fans chart rendering and file dispatch out — so charts
 	// never silently fall back to raw-template scanning.
-	if mp, ok := runner.SharedMemoryProvider(services); ok {
+	if mp, ok := runner.MemorySourceProvider(services); ok {
 		err := runner.PrepareMemorySources(ctx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth,
 			flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing))
 		metrics.Metric.Stop()
@@ -65,42 +70,9 @@ func PrepareAndScan(
 		return StartScan(ctx, scanID, services)
 	}
 
-	var wg sync.WaitGroup
-	wgDone := make(chan bool)
-	errCh := make(chan error)
-
-	workersCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	for _, service := range services {
-		wg.Add(1)
-		go service.PrepareSources(workersCtx, scanID, openAPIResolveReferences, maxResolverDepth, &wg, errCh, flagEvaluator)
-	}
-
-	go func() {
-		wg.Wait()
-		close(wgDone)
-		close(errCh)
-	}()
-
-	select {
-	case <-ctx.Done():
-		metrics.Metric.Stop()
-		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
-		return ctx.Err()
-	case <-wgDone:
-		metrics.Metric.Stop()
-		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
-		if fsp, ok := runner.SharedWalkProvider(services); ok {
-			fsp.ReleaseContentCache()
-		}
-		releasePrepareState(services)
-		return StartScan(ctx, scanID, services)
-	case err := <-errCh:
-		metrics.Metric.Stop()
-		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
-		return err
-	}
+	metrics.Metric.Stop()
+	memwatch.Sample(ctx, memwatch.PhasePrepareSources)
+	return errors.New("services must share one source provider")
 }
 
 // releasePrepareState drops the dedup state that only the prepare phase uses,

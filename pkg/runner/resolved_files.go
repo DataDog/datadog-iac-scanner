@@ -28,24 +28,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// resolverSink renders a chart and stores its files. It returns the paths of
-// the rendered files stored, which the walk leaves out as raw files.
-func (s *Service) resolverSink(
-	ctx context.Context,
-	filename, scanID string,
-	openAPIResolveReferences bool,
-	maxResolverDepth int) ([]string, error) {
-	resFiles, kind, err := s.resolveOnly(ctx, filename)
-	if kind == model.KindCOMMON {
-		return []string{}, nil
-	}
-	if err != nil {
-		s.logResolverResolveError(ctx, kind, filename, err)
-		return []string{}, err
-	}
-	return s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth), nil
-}
-
 // resolveOnly renders a chart without parsing or storing it, dropping the
 // rendered Helm files the scan's path filters leave out.
 func (s *Service) resolveOnly(ctx context.Context, filename string) (model.ResolvedFiles, model.FileKind, error) {
@@ -130,6 +112,7 @@ func (s *Service) storeResolvedFiles(
 				Kind:              kind,
 				FilePath:          rfile.FileName,
 				Reported:          rfile.Reported,
+				Archive:           rfile.Archive,
 				HelmID:            rfile.SplitID,
 				HelmAttribution:   model.NewHelmAttribution(rfile.HelmInvocations, ownedRenderedContent),
 				Commands:          cached.commands,
@@ -322,17 +305,6 @@ func newOriginalResolvedLineInfoLoader(
 			return p.Parse(
 				ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
 		})
-}
-
-// logResolverResolveError records a failed Helm chart and logs the failure.
-// Every failed chart falls back to raw-file scanning, and its raw templates are
-// never valid YAML, so recordFailedHelmChart silences their parse errors
-// whatever the render failure was.
-func (s *Service) logResolverResolveError(ctx context.Context, kind model.FileKind, filename string, err error) {
-	if kind == model.KindHELM {
-		s.recordFailedHelmChart(filename)
-	}
-	logResolveError(ctx, kind, filename, err)
 }
 
 // logResolveError logs a resolve/render failure as debug when it is expected

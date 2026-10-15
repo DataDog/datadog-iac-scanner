@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -156,9 +157,45 @@ func TestHelm_Resolve_PackagedDependencyReportedAtDeclaration(t *testing.T) {
 			require.Equal(t, tt.wantLine, pkg.Reported.Line)
 			require.Contains(t, pkg.Reported.LineText, tt.wantInTxt)
 			require.NotEmpty(t, pkg.Reported.Snippet)
-			require.Nil(t, findResolvedBySuffix(t, got.File, "web/templates/cm.yaml").Reported)
+			require.Equal(t, filepath.Join(web, "charts", "pkg-1.0.0.tgz"), pkg.Archive)
+			own := findResolvedBySuffix(t, got.File, "web/templates/cm.yaml")
+			require.Nil(t, own.Reported)
+			require.Empty(t, own.Archive)
 		})
 	}
+}
+
+// The server reports a packaged dependency through its archive_files map, so a
+// pushed chart names only the archive, which ignore-paths can match.
+func TestHelm_Resolve_PushedPackagedDependencyNamesArchive(t *testing.T) {
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"web/Chart.yaml": []byte("apiVersion: v2\nname: web\nversion: 1.0.0\n" +
+			"dependencies:\n- name: pkg\n  version: 1.0.0\n"),
+		"web/templates/cm.yaml": []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web\n"),
+		"web/charts/pkg-1.0.0.tgz": packChart(t, map[string]string{
+			"pkg/Chart.yaml":            "apiVersion: v2\nname: pkg\nversion: 1.0.0\n",
+			"pkg/templates/secret.yaml": locationDB,
+		}),
+	})
+	got, err := NewResolver(memfs).Resolve(context.Background(), "web")
+	require.NoError(t, err)
+	pkg := findResolvedBySuffix(t, got.File, "/templates/secret.yaml")
+	require.Nil(t, pkg.Reported, "the server does not name the declaration")
+	require.Equal(t, "web/charts/pkg-1.0.0.tgz", pkg.Archive)
+}
+
+// A template that renders to nothing is still covered by the render, so its raw
+// copy is not scanned, while a template that renders is covered as well.
+func TestHelm_Resolve_CoversTemplatesThatRenderNothing(t *testing.T) {
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"web/Chart.yaml":        []byte("apiVersion: v2\nname: web\nversion: 1.0.0\n"),
+		"web/templates/cm.yaml": []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web\n"),
+		"web/templates/off.yaml": []byte("# {{- if .Values.enabled }}\napiVersion: v1\nkind: ConfigMap\n" +
+			"metadata:\n  name: off\n# {{- end }}\n"),
+	})
+	got, err := NewResolver(memfs).Resolve(context.Background(), "web")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"web/templates/cm.yaml", "web/templates/off.yaml"}, got.Covered)
 }
 
 func TestReportedLocation_Apply(t *testing.T) {
@@ -208,13 +245,14 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 	}))
 	declaresPkg := "apiVersion: v2\nname: %s\nversion: 1.0.0\ndependencies:\n- name: pkg\n  version: 0.1.0\n"
 	tests := []struct {
-		name     string
-		files    map[string]string
-		roots    []string
-		wantFile string // where the archive's secret would be unpacked
-		wantAt   string
-		wantLine int
-		wantText string
+		name        string
+		files       map[string]string
+		roots       []string
+		wantFile    string // where the archive's secret would be unpacked
+		wantAt      string
+		wantLine    int
+		wantText    string
+		wantArchive string // the archive file it is rendered from, the top-level one when nested
 	}{
 		{
 			name: "archive of a sibling chart attached by file://",
@@ -226,6 +264,7 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 			},
 			roots:    []string{"app", "db"},
 			wantFile: "db/charts/pkg/templates/secret.yaml", wantAt: "db/Chart.yaml", wantLine: 5, wantText: "- name: pkg",
+			wantArchive: "db/charts/pkg-0.1.0.tgz",
 		},
 		{
 			name: "archive inside an archive",
@@ -235,7 +274,7 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 				"app/charts/outer-1.0.0.tgz": outer,
 			},
 			wantFile: "app/charts/outer/charts/pkg/templates/secret.yaml", wantAt: "app/Chart.yaml", wantLine: 5,
-			wantText: "- name: outer",
+			wantText: "- name: outer", wantArchive: "app/charts/outer-1.0.0.tgz",
 		},
 		{
 			name: "archive of an unpacked subchart in a directory named otherwise",
@@ -246,7 +285,7 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 				"app/charts/sub-dir/charts/pkg-0.1.0.tgz": pkg,
 			},
 			wantFile: "app/charts/sub-dir/charts/pkg/templates/secret.yaml", wantAt: "app/charts/sub-dir/Chart.yaml", wantLine: 5,
-			wantText: "- name: pkg",
+			wantText: "- name: pkg", wantArchive: "app/charts/sub-dir/charts/pkg-0.1.0.tgz",
 		},
 	}
 	for _, tt := range tests {
@@ -265,6 +304,7 @@ func TestHelm_Resolve_NestedPackagedDependencies(t *testing.T) {
 			require.Equal(t, filepath.Join(root, filepath.FromSlash(tt.wantAt)), secret.Reported.Path)
 			require.Equal(t, tt.wantLine, secret.Reported.Line)
 			require.Equal(t, tt.wantText, secret.Reported.LineText)
+			require.Equal(t, filepath.Join(root, filepath.FromSlash(tt.wantArchive)), secret.Archive)
 		})
 	}
 }

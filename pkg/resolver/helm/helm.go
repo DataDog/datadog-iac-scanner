@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/cli/values"
@@ -324,20 +326,109 @@ func getExcluded(ctx context.Context, charterino *chart.Chart, chartpath string)
 // is reported at the same place.
 type archiveLocations struct {
 	fsys  vfs.FS
-	byDep map[*packagedDependency]*model.ReportedLocation
+	byDep map[*packagedDependency]packagedSource
+	// archives holds the packaged charts under each parent's charts/, read once
+	// for all the parent's dependencies.
+	archives map[string][]packagedArchive
+}
+
+// packagedSource is where a packaged dependency's findings are reported, and
+// the archive file they are rendered from, which ignore-paths can name.
+type packagedSource struct {
+	reported *model.ReportedLocation
+	archive  string
+}
+
+// packagedArchive is a chart archive under a parent's charts/ and the chart it holds.
+type packagedArchive struct {
+	path  string
+	chart *chart.Chart
 }
 
 func newArchiveLocations(fsys vfs.FS) *archiveLocations {
-	return &archiveLocations{fsys: fsys, byDep: map[*packagedDependency]*model.ReportedLocation{}}
+	return &archiveLocations{
+		fsys:     fsys,
+		byDep:    map[*packagedDependency]packagedSource{},
+		archives: map[string][]packagedArchive{},
+	}
 }
 
-func (a *archiveLocations) of(dep *packagedDependency) *model.ReportedLocation {
-	location, known := a.byDep[dep]
+// of returns where to report a packaged dependency. pushed is set for the
+// server, which reports packaged subcharts through its archive_files map, so
+// only the archive is named; a disk scan also names the declaration.
+func (a *archiveLocations) of(dep *packagedDependency, pushed bool) packagedSource {
+	source, known := a.byDep[dep]
 	if !known {
-		location = dependencyDeclaration(a.fsys, dep.parent, dep.name)
-		a.byDep[dep] = location
+		source = packagedSource{archive: a.archiveOf(dep.parent, dep.chart)}
+		if pushed {
+			source.archive = filepath.ToSlash(source.archive)
+		} else {
+			source.reported = dependencyDeclaration(a.fsys, dep.parent, dep.name)
+		}
+		a.byDep[dep] = source
 	}
-	return location
+	return source
+}
+
+// archiveOf returns the archive under parent's charts/ that holds ch, the first
+// one with the same files when several hold them. The name is not compared: an
+// aliased dependency is renamed to its alias, while its files keep the names
+// they have in the archive. It is empty when none is found.
+func (a *archiveLocations) archiveOf(parent string, ch *chart.Chart) string {
+	if ch == nil || ch.Metadata == nil {
+		return ""
+	}
+	for _, archived := range a.packagedIn(parent) {
+		if archived.chart.Metadata.Version == ch.Metadata.Version && sameRawFiles(archived.chart.Raw, ch.Raw) {
+			return archived.path
+		}
+	}
+	return ""
+}
+
+// packagedIn returns the chart archives under parent's charts/. Helm loads only
+// archives named *.tgz there.
+func (a *archiveLocations) packagedIn(parent string) []packagedArchive {
+	if loaded, ok := a.archives[parent]; ok {
+		return loaded
+	}
+	var loaded []packagedArchive
+	chartsDir := filepath.Join(parent, dependenciesDirName)
+	entries, err := a.fsys.ReadDir(chartsDir)
+	if err != nil {
+		a.archives[parent] = nil
+		return nil
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".tgz" {
+			continue
+		}
+		file := filepath.Join(chartsDir, entry.Name())
+		data, err := a.fsys.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		archived, err := loader.LoadArchive(bytes.NewReader(data))
+		if err != nil || archived.Metadata == nil {
+			continue
+		}
+		loaded = append(loaded, packagedArchive{path: file, chart: archived})
+	}
+	a.archives[parent] = loaded
+	return loaded
+}
+
+// sameRawFiles reports whether two charts hold the same files under the same names.
+func sameRawFiles(a, b []*chart.File) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || !bytes.Equal(a[i].Data, b[i].Data) {
+			return false
+		}
+	}
+	return true
 }
 
 // dependencyDeclaration locates the dependency rendered as name in the parent

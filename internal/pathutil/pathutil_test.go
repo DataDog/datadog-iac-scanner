@@ -52,6 +52,10 @@ func TestExcluded(t *testing.T) {
 		{"only-paths match", "src/main.tf", nil, []string{"src/**"}, false},
 		{"only-paths excludes others", "infra/main.tf", nil, []string{"src/**"}, true},
 		{"ignore wins over only", "src/main.tf", []string{"src/**"}, []string{"src/**"}, true},
+		{"dot-slash ignore names the directory", "app/main.tf", []string{"./app"}, nil, true},
+		{"trailing slash ignore names the directory", "app/main.tf", []string{"app/"}, nil, true},
+		{"dot-slash only path keeps the file", "app/main.tf", nil, []string{"./app"}, false},
+		{"dot-slash ignore leaves siblings", "apps/main.tf", []string{"./app"}, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

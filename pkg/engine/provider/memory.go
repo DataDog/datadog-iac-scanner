@@ -7,15 +7,11 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"io"
-	slashpath "path"
 	"path/filepath"
 	"sort"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
-	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -28,9 +24,7 @@ import (
 //
 // The server's services share one provider, so their scans go through the
 // shared prepare (runner.PrepareMemorySources), which lists files and renders
-// pushed Helm charts via WalkInventory. GetSources/GetParallelSources serve only
-// services that do not share it; they ignore the ResolverSink and render no
-// charts.
+// pushed Helm charts via WalkInventory.
 type MemorySourceProvider struct {
 	fsys        vfs.FS
 	paths       []string
@@ -102,40 +96,19 @@ func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 }
 
 // partitionChartRoots splits the pushed chart roots into those rendered and
-// those the path filters leave out, the way the disk provider does: a chart is
-// rendered unless its Chart.yaml is ignored, and with only-paths, when one of
-// its files is kept (only-paths naming a single template still renders its
-// chart; the files outside are dropped from the output).
+// those the path filters leave out, by the same rule the disk provider uses
+// (PathFilter.ChartInScope), matched as text since pushed files are not on disk.
+// A chart is rendered unless its Chart.yaml is ignored, and with only-paths,
+// when the chart lies within one, contains one, or a glob could reach it.
 func (m *MemorySourceProvider) partitionChartRoots(roots []string) (inScope, outOfScope []string) {
-	var kept map[string]bool
-	if len(m.onlyPaths) > 0 {
-		isRoot := make(map[string]bool, len(roots))
-		for _, root := range roots {
-			isRoot[root] = true
-		}
-		kept = make(map[string]bool, len(roots))
-		for _, p := range m.paths {
-			if pathutil.Excluded(p, m.ignorePaths, m.onlyPaths) {
-				continue
-			}
-			for dir := slashpath.Dir(filepath.ToSlash(p)); ; dir = slashpath.Dir(dir) {
-				if isRoot[dir] {
-					kept[dir] = true
-				}
-				if dir == "." || dir == "/" {
-					break
-				}
-			}
-		}
-	}
+	scope := NewLexicalPathFilter(m.ignorePaths, m.onlyPaths)
 	inScope = make([]string, 0, len(roots))
 	for _, root := range roots {
-		chartFile := slashpath.Join(root, "Chart.yaml")
-		if pathutil.Excluded(chartFile, m.ignorePaths, nil) || (kept != nil && !kept[root]) {
+		if scope.ChartInScope(root) {
+			inScope = append(inScope, root)
+		} else {
 			outOfScope = append(outOfScope, root)
-			continue
 		}
-		inScope = append(inScope, root)
 	}
 	return inScope, outOfScope
 }
@@ -163,16 +136,10 @@ func ChartRoots(paths []string) []string {
 // ExcludesAny reports whether ignore-paths or only-paths leave out a file known
 // by paths, as PathFilter.ExcludesAny does for the disk provider.
 func (m *MemorySourceProvider) ExcludesAny(paths ...string) bool {
-	inScope := len(m.onlyPaths) == 0
-	for _, p := range paths {
-		if pathutil.Excluded(p, m.ignorePaths, nil) {
-			return true
-		}
-		if !inScope && !pathutil.Excluded(p, nil, m.onlyPaths) {
-			inScope = true
-		}
-	}
-	return !inScope
+	return pathutil.ExcludedAny(paths,
+		func(p string) bool { return pathutil.Excluded(p, m.ignorePaths, nil) },
+		func(p string) bool { return !pathutil.Excluded(p, nil, m.onlyPaths) },
+		len(m.onlyPaths) > 0)
 }
 
 // ReadFile reads a pushed file through the provider's FS.
@@ -186,53 +153,6 @@ func (m *MemorySourceProvider) RecordMissing(path string) {
 	if r, ok := m.fsys.(vfs.MissingRecorder); ok {
 		r.RecordMissing(path)
 	}
-}
-
-// GetSources feeds each pushed file whose extension a parser supports into the
-// sink, reading its content through the vfs.FS.
-func (m *MemorySourceProvider) GetSources(ctx context.Context,
-	extensions model.Extensions, sink Sink, _ ResolverSink) error {
-	contextLogger := logger.FromContext(ctx)
-	for _, p := range m.eligibleFiles(extensions) {
-		content, err := m.fsys.ReadFile(p)
-		if err != nil {
-			contextLogger.Warn().Msgf("memory source provider: could not read pushed file %s: %v", p, err)
-			continue
-		}
-		if err := sink(ctx, p, io.NopCloser(bytes.NewReader(content))); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// GetParallelSources fans the per-file sink (which parses the content into a
-// document tree — the CPU-heavy step) across a bounded worker pool. There is no
-// I/O to parallelize for in-memory content, but parsing is CPU-bound and a
-// non-trivial share of a warm server scan, so this can speed up large pushes.
-// It draws from the shared process-wide CPU budget (CPUBound) like the engine's
-// other CPU-heavy pools, so concurrent scans don't oversubscribe the cores. The
-// same sink is called concurrently by the disk provider, so it is safe for
-// concurrent use.
-func (m *MemorySourceProvider) GetParallelSources(ctx context.Context,
-	extensions model.Extensions, sink Sink, _ ResolverSink) error {
-	contextLogger := logger.FromContext(ctx)
-
-	// Select the eligible files first (cheap; no parsing yet).
-	eligible := m.eligibleFiles(extensions)
-
-	// Parse the eligible files in parallel. A file that cannot be read is logged
-	// and skipped (not an error); the first sink error cancels the rest.
-	return utils.ForEach(ctx, eligible,
-		utils.PoolOptions{CPUBound: true},
-		func(ctx context.Context, p string, _ int) error {
-			content, err := m.fsys.ReadFile(p)
-			if err != nil {
-				contextLogger.Warn().Msgf("memory source provider: could not read pushed file %s: %v", p, err)
-				return nil
-			}
-			return sink(ctx, p, io.NopCloser(bytes.NewReader(content)))
-		})
 }
 
 // memExtension determines a pushed file's extension token from its path alone

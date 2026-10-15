@@ -202,6 +202,9 @@ type FileMetadata struct {
 	// Reported, when set, is where this file's findings are reported instead of
 	// FilePath (see ResolvedHelm.Reported).
 	Reported *ReportedLocation
+	// Archive is the chart archive the file was rendered from, if any (see
+	// ResolvedHelm.Archive).
+	Archive string
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -529,6 +532,10 @@ type QueryConfig struct {
 type ResolvedFiles struct {
 	File     []ResolvedHelm
 	Excluded []string
+	// Covered lists the Helm template files the render loaded, at the paths they
+	// are reported at, including those that rendered to nothing. A raw copy of one
+	// is not scanned: the render already covered it.
+	Covered []string
 }
 
 // ResolvedHelm keeps the information of a file/template resolved
@@ -537,7 +544,10 @@ type ResolvedHelm struct {
 	// Reported is where findings are reported when FileName is not a place in
 	// the repository: a dependency packaged as an archive renders from unpacked
 	// file names that exist only inside the archive.
-	Reported            *ReportedLocation
+	Reported *ReportedLocation
+	// Archive is the chart archive in the repository the file was rendered from,
+	// when it is a packaged dependency, so that path filters can name it.
+	Archive             string
 	Content             []byte
 	OriginalData        []byte
 	SplitID             string
@@ -641,6 +651,27 @@ func (r *ReportedLocation) PathOr(detected string) string {
 		return detected
 	}
 	return r.Path
+}
+
+// KnownPaths lists the paths a rendered file answers to in the scan's path
+// filters: the file itself, where its findings are reported, and the chart
+// archive it was rendered from. Every filter checks this same list.
+func (r *ResolvedHelm) KnownPaths() []string {
+	return knownPaths(r.FileName, r.Reported, r.Archive)
+}
+
+// KnownPaths lists the paths a file answers to in the scan's path filters; see
+// ResolvedHelm.KnownPaths.
+func (f *FileMetadata) KnownPaths() []string {
+	return knownPaths(f.FilePath, f.Reported, f.Archive)
+}
+
+func knownPaths(filePath string, reported *ReportedLocation, archive string) []string {
+	paths := []string{filePath, reported.PathOr(filePath)}
+	if archive != "" {
+		paths = append(paths, archive)
+	}
+	return paths
 }
 
 // Apply moves v to the reported location. Positions that belong to the file

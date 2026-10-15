@@ -1536,7 +1536,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
 		reportedPath := file.Reported.PathOr(file.FilePath)
-		if c.rulePathsExcluded([]string{file.FilePath, reportedPath}, rc.IgnorePaths, rc.OnlyPaths) {
+		if c.rulePathsExcluded(file.KnownPaths(), rc.IgnorePaths, rc.OnlyPaths) {
 			contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
 				reportedPath, vulnerability.QueryID)
 			return nil, false
@@ -1595,20 +1595,10 @@ func rulePathExcluded(filePath string, ignorePaths, onlyPaths []string) bool {
 // is reported at: an ignore matching any of them drops it, and an only path
 // matching any of them keeps it. External module paths match neither.
 func (c *Inspector) rulePathsExcluded(paths, ignorePaths, onlyPaths []string) bool {
-	kept := len(onlyPaths) == 0
-	for _, p := range paths {
-		if c.isExternalModulePath(p) {
-			kept = true
-			continue
-		}
-		if rulePathExcluded(p, ignorePaths, nil) {
-			return true
-		}
-		if !kept && !rulePathExcluded(p, nil, onlyPaths) {
-			kept = true
-		}
-	}
-	return !kept
+	return pathutil.ExcludedAny(paths,
+		func(p string) bool { return !c.isExternalModulePath(p) && rulePathExcluded(p, ignorePaths, nil) },
+		func(p string) bool { return c.isExternalModulePath(p) || !rulePathExcluded(p, nil, onlyPaths) },
+		len(onlyPaths) > 0)
 }
 
 func (c *Inspector) isExternalModulePath(filePath string) bool {

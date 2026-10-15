@@ -9,10 +9,11 @@ import (
 // MatchesPath reports whether filePath is covered by pattern.
 // pattern may be a literal path, a directory prefix, a single-star glob (*, ?, [...]),
 // or a double-star glob (**) where ** matches zero or more path segments.
-// Both arguments are normalized to forward slashes for OS-independent behavior.
+// Both arguments are normalized to forward slashes for OS-independent behavior,
+// and cleaned, so "./app" and "app/" name the same directory as "app".
 func MatchesPath(pattern, filePath string) bool {
-	pattern = filepath.ToSlash(pattern)
-	filePath = filepath.ToSlash(filePath)
+	pattern = cleanSlash(pattern)
+	filePath = cleanSlash(filePath)
 
 	// Exact match.
 	if pattern == filePath {
@@ -54,6 +55,23 @@ func Excluded(filePath string, ignorePaths, onlyPaths []string) bool {
 	return true
 }
 
+// ExcludedAny reports whether ignore-paths or only-paths leave out a file known
+// by several paths, such as a file inside a chart archive and the declaration it
+// is reported at: a path matched by an ignore drops the file, and when
+// restricted, a path in scope keeps it. ignored and inScope decide one path.
+func ExcludedAny(paths []string, ignored, inScope func(string) bool, restricted bool) bool {
+	kept := !restricted
+	for _, p := range paths {
+		if ignored(p) {
+			return true
+		}
+		if !kept && inScope(p) {
+			kept = true
+		}
+	}
+	return !kept
+}
+
 // matchDoublestar matches a pre-split path against a pre-split pattern where
 // "**" matches zero or more path segments.
 func matchDoublestar(pat, filePath []string) bool {
@@ -80,4 +98,13 @@ func matchDoublestar(pat, filePath []string) bool {
 		filePath = filePath[1:]
 	}
 	return len(filePath) == 0
+}
+
+// cleanSlash puts p in one spelling. An empty p is kept, as it matches nothing
+// but an absolute path.
+func cleanSlash(p string) string {
+	if p == "" {
+		return p
+	}
+	return path.Clean(filepath.ToSlash(p))
 }

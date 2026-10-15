@@ -24,8 +24,8 @@ import (
 // during parallel dispatchFile calls.
 var contentCacheMu sync.Mutex
 
-// SharedWalkProvider returns the disk provider when every service shares one.
-func SharedWalkProvider(services []*Service) (*provider.FileSystemSourceProvider, bool) {
+// DiskSourceProvider returns the disk provider when every service shares one.
+func DiskSourceProvider(services []*Service) (*provider.FileSystemSourceProvider, bool) {
 	if len(services) == 0 {
 		return nil, false
 	}
@@ -41,8 +41,8 @@ func SharedWalkProvider(services []*Service) (*provider.FileSystemSourceProvider
 	return fsp, true
 }
 
-// SharedMemoryProvider returns the memory provider when every service shares one.
-func SharedMemoryProvider(services []*Service) (*provider.MemorySourceProvider, bool) {
+// MemorySourceProvider returns the memory provider when every service shares one.
+func MemorySourceProvider(services []*Service) (*provider.MemorySourceProvider, bool) {
 	if len(services) == 0 {
 		return nil, false
 	}
@@ -76,19 +76,26 @@ type preparedSource interface {
 	excluded(filePath string, content []byte) bool
 }
 
-// PrepareSharedWalk walks once, renders each chart once, and dispatches files to parsers.
-func PrepareSharedWalk(ctx context.Context,
+// PrepareDiskSources walks the disk once, renders each chart once, and dispatches
+// files to parsers. It serves every disk scan. parallel (the --x-parallelparsing
+// flag) sets the concurrency of chart rendering and file dispatch, as for memory.
+func PrepareDiskSources(ctx context.Context,
 	fsp *provider.FileSystemSourceProvider,
 	services []*Service,
 	scanID string,
 	openAPIResolveReferences bool,
-	maxResolverDepth int) error {
+	maxResolverDepth int,
+	parallel bool) error {
+	chartPool := utils.PoolOptions{CPUBound: true}
+	filePool := utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers}
+	if !parallel {
+		chartPool, filePool = utils.PoolOptions{Workers: 1}, utils.PoolOptions{Workers: 1}
+	}
 	return prepareSources(ctx, diskSource{fsp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
-		utils.PoolOptions{CPUBound: true},
-		utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers})
+		chartPool, filePool)
 }
 
-// PrepareMemorySources is PrepareSharedWalk over the files the IDE pushed, and
+// PrepareMemorySources is PrepareDiskSources over the files the IDE pushed, and
 // the path every server scan takes. A chart that fails to render escalates its
 // directory via the missing set. parallel (the --x-parallelparsing flag)
 // controls the concurrency of both chart rendering and file dispatch; charts
@@ -102,7 +109,7 @@ func PrepareMemorySources(ctx context.Context,
 	parallel bool) error {
 	pool := utils.PoolOptions{CPUBound: true}
 	if !parallel {
-		// The flag is off: sequential rendering and dispatch, as the legacy per-service path was.
+		// The flag is off: sequential rendering and dispatch.
 		pool = utils.PoolOptions{Workers: 1}
 	}
 	return prepareSources(ctx, memorySource{mp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
@@ -124,17 +131,17 @@ func prepareSources(ctx context.Context,
 	contextLogger := logger.FromContext(ctx)
 
 	unrendered := &unrenderedHelmCharts{}
-	stored := &storedRenderPaths{}
+	coverage := &renderCoverage{}
 	files, err := src.WalkInventory(ctx, unionExtensions(services), chartPool,
 		func(ctx context.Context, chartPath string) bool {
 			return resolveAndStoreChart(ctx, src, services, chartPath, scanID,
-				openAPIResolveReferences, maxResolverDepth, unrendered, stored)
+				openAPIResolveReferences, maxResolverDepth, unrendered, coverage)
 		})
 	if err != nil {
 		return errors.Wrap(err, "failed to walk sources")
 	}
 	unrendered.log(ctx)
-	files = stored.withoutRaw(files)
+	files = coverage.withoutRaw(files)
 
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
 
@@ -145,15 +152,17 @@ func prepareSources(ctx context.Context,
 		})
 }
 
-// storedRenderPaths collects the paths of the rendered Helm files that renders
-// stored. A template a render stored is not scanned raw too: the raw template
-// of a dependency that only renders with its parent's values fails to render.
-type storedRenderPaths struct {
+// renderCoverage collects the Helm template paths that successful renders
+// cover, whether they rendered output or not. A covered template is not scanned
+// raw: the raw template of a dependency that only renders with its parent's
+// values fails to render, and a template disabled by a condition would be
+// reported although the render left it out.
+type renderCoverage struct {
 	mu    sync.Mutex
 	paths map[string]struct{}
 }
 
-func (s *storedRenderPaths) add(paths []string) {
+func (s *renderCoverage) add(paths []string) {
 	if len(paths) == 0 {
 		return
 	}
@@ -167,8 +176,8 @@ func (s *storedRenderPaths) add(paths []string) {
 	}
 }
 
-// withoutRaw drops the listed files whose path a render stored.
-func (s *storedRenderPaths) withoutRaw(files []provider.InventoryFile) []provider.InventoryFile {
+// withoutRaw drops the listed files whose path a render covered.
+func (s *renderCoverage) withoutRaw(files []provider.InventoryFile) []provider.InventoryFile {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.paths) == 0 {
@@ -183,6 +192,18 @@ func (s *storedRenderPaths) withoutRaw(files []provider.InventoryFile) []provide
 	return kept
 }
 
+// reportRenderFailure logs a chart that failed to render. A failed Helm chart's
+// raw templates are never valid YAML, so its parse errors are silenced for every
+// service.
+func reportRenderFailure(ctx context.Context, services []*Service, kind model.FileKind, chartPath string, err error) {
+	if kind == model.KindHELM {
+		for _, s := range services {
+			s.recordFailedHelmChart(chartPath)
+		}
+	}
+	logResolveError(ctx, kind, chartPath, err)
+}
+
 // resolveAndStoreChart renders a chart and stores its files.
 func resolveAndStoreChart(
 	ctx context.Context,
@@ -192,7 +213,7 @@ func resolveAndStoreChart(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	unrendered *unrenderedHelmCharts,
-	stored *storedRenderPaths,
+	coverage *renderCoverage,
 ) (rendered bool) {
 	resFiles, kind, err := services[0].resolveOnly(ctx, chartPath)
 	if kind == model.KindCOMMON {
@@ -200,12 +221,9 @@ func resolveAndStoreChart(
 	}
 	if err != nil {
 		if kind == model.KindHELM {
-			for _, s := range services {
-				s.recordFailedHelmChart(chartPath)
-			}
 			unrendered.record(err)
 		}
-		logResolveError(ctx, kind, chartPath, err)
+		reportRenderFailure(ctx, services, kind, chartPath, err)
 		// A missing deploy-time value is not a file the IDE can push. Re-requesting
 		// the chart directory cannot supply it; the raw templates are still scanned.
 		if kind != model.KindHELM || !helmRenderNeedsNoFiles(err) {
@@ -213,6 +231,7 @@ func resolveAndStoreChart(
 		}
 		return false
 	}
+	coverage.add(resFiles.Covered)
 	// A panic while storing leaves documents already stored: the chart still
 	// counts as rendered, so its raw templates are not scanned on top of them.
 	defer func() {
@@ -229,7 +248,7 @@ func resolveAndStoreChart(
 		}
 	}
 	for _, s := range routed {
-		stored.add(s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth))
+		coverage.add(s.storeResolvedFiles(ctx, resFiles, kind, scanID, openAPIResolveReferences, maxResolverDepth))
 	}
 	return true
 }
@@ -244,13 +263,8 @@ func withoutExcludedFiles(
 	kept := make([]model.ResolvedHelm, 0, len(resFiles.File))
 	for i := range resFiles.File {
 		// A packaged dependency is reported at its parent's declaration, and its
-		// filters apply to both paths, as they do to a rule's.
-		file := &resFiles.File[i]
-		paths := []string{file.FileName}
-		if file.Reported != nil {
-			paths = append(paths, file.Reported.Path)
-		}
-		if filter.ExcludesAny(paths...) {
+		// filters apply to its archive and both paths, as they do to a rule's.
+		if filter.ExcludesAny(resFiles.File[i].KnownPaths()...) {
 			continue
 		}
 		kept = append(kept, resFiles.File[i])

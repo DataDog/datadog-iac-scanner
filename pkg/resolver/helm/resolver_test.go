@@ -414,7 +414,7 @@ func TestSplitManifestYAML_windowsCRDSourcePath(t *testing.T) {
 		"  name: widgets.example.com",
 	}, "\n")
 
-	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
+	splits, _ := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
 	require.True(t, (*splits)[0].isCRD)
@@ -439,7 +439,7 @@ func TestSplitManifestYAML_dropsUnknownSourceHeader(t *testing.T) {
 		"kind: CustomResourceDefinition",
 	}, "\n")
 
-	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
+	splits, _ := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
 	require.Len(t, *splits, 1)
 	require.Equal(t, "test_helm_with_crds/crds/widget.yaml", (*splits)[0].path)
 }
@@ -467,7 +467,7 @@ func TestSplitManifestYAML_emptyCRDDocumentDoesNotShiftSourceIndex(t *testing.T)
 		"# Source: test/crds/leading-empty.yaml",
 		string(crd.Data),
 	}, "\n")
-	splits := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
+	splits, _ := splitManifestYAML(&release.Release{Manifest: manifest}, ch, stamped, nil)
 	require.NotEmpty(t, *splits)
 
 	var resourceSplit *splitManifest

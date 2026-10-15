@@ -147,7 +147,12 @@ func TestInsideWorkspace(t *testing.T) {
 		`..\lib`: false, `apps\..\..\lib`: false, `\etc`: false, `C:\secrets`: false,
 		`apps/app/..\..\..\secrets`: false, `apps/app/..\lib`: true, `apps\lib`: true,
 	} {
-		require.Equal(t, want, insideWorkspace(p), p)
+		require.Equal(t, want, insideWorkspace(pushedPath(p)), p)
+	}
+	// insideWorkspace normalizes on its own, backslashes included, so uncleaned
+	// input cannot slip past it.
+	for _, p := range []string{"a/../../etc", "./../x", "apps/../../lib", `apps/app/..\..\..\secrets`} {
+		require.False(t, insideWorkspace(p), p)
 	}
 }
 
