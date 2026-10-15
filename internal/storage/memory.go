@@ -7,6 +7,7 @@ package storage
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -70,11 +71,36 @@ func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 			line,
 			v.ModuleCallChain,
 		)
+		// Findings sharing a fingerprint collapse into one, which is only
+		// suppressed when all of them are: an ignore comment on one resource
+		// must not hide another resource's finding.
+		if kept, seen := vulnDictionary[key]; seen && !kept.IsSuppressed && v.IsSuppressed {
+			continue
+		}
 		vulnDictionary[key] = v
 	}
 
-	var uniqueVulnerabilities []model.Vulnerability
+	keys := make([]string, 0, len(vulnDictionary))
 	for key := range vulnDictionary {
+		keys = append(keys, key)
+	}
+	// Queries finish in any order, so sort to report the same scan the same way every run.
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := vulnDictionary[keys[i]], vulnDictionary[keys[j]]
+		if a.FileName != b.FileName {
+			return a.FileName < b.FileName
+		}
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		if a.QueryID != b.QueryID {
+			return a.QueryID < b.QueryID
+		}
+		return keys[i] < keys[j]
+	})
+
+	uniqueVulnerabilities := make([]model.Vulnerability, 0, len(keys))
+	for _, key := range keys {
 		uniqueVulnerabilities = append(uniqueVulnerabilities, vulnDictionary[key])
 	}
 	if len(uniqueVulnerabilities) == 0 {
