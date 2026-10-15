@@ -51,3 +51,11 @@ func TestPlainLinesStartAtTheFirstSourceLine(t *testing.T) {
 	require.Equal(t, []int{1, 2, 3}, written)
 	require.Equal(t, 4, next)
 }
+
+// uniqueLine returns the index of the template line that wrote rendered line
+// target from the whole document, by the text it holds.
+func uniqueLine(lines, rendered []string, invocations model.HelmInvocations, target, start int) (int, bool) {
+	r := newResolver(lines, rendered, invocations, start, nil, nil, "")
+	line, _, ok := r.writerIn(target, 0, len(rendered), r.from, r.to, false)
+	return line, ok
+}

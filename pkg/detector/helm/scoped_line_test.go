@@ -1,0 +1,67 @@
+package helm
+
+import (
+	"testing"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/helmaction"
+	"github.com/stretchr/testify/require"
+)
+
+func TestCannotPrint(t *testing.T) {
+	tests := []struct {
+		name, line, text string
+		want             bool
+	}{
+		{"nindent wider than the text's indent", "          lifecycle: {{- include \"x\" . | nindent 12 }}", "        - name: web", true},
+		{"nindent not wider than the text's indent", "          lifecycle: {{- include \"x\" . | nindent 12 }}", "            privileged: true", false},
+		{"indent wider than the text's indent", "  {{ toYaml .Values.a | indent 8 }}", "    key: value", true},
+		{"pipe inside parentheses is not the last stage", "  k: {{ include \"x\" (dict \"a\" (1 | quote)) . }}", "  other: x", false},
+		{"width that is not a number", "  {{ include \"x\" . | nindent .Values.w }}", "a: b", false},
+		{"quote after a key, text of another key", "  value: {{ .Values.a | quote }}", "  name: web", true},
+		{"quote after a key, text of the same key", "  value: {{ .Values.a | quote }}", "  value: \"x\"", false},
+		{"quote with no key before it", "{{ .Values.a | quote }}", "  name: web", false},
+		{"no function", "  value: {{ .Values.a }}", "  name: web", false},
+		{"two actions", "  value: {{ .Values.a | quote }}{{ .Values.b }}", "  name: web", false},
+		{"nindent then another function", "  {{ include \"x\" . | nindent 8 | trim }}", "a: b", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, cannotPrint(helmaction.Scan(tt.line), tt.line, tt.text))
+		})
+	}
+}
+
+func TestLastStage(t *testing.T) {
+	require.Equal(t, " nindent 4 ", lastStage(` include "a|b" (dict "k" (x | y)) | nindent 4 `))
+	require.Equal(t, ` include "a" `, lastStage(` include "a" `))
+}
+
+func TestLineBranches(t *testing.T) {
+	lines := []string{"a: 1", "{{- if .A }}", "b: 2", "{{- else }}", "c: 3", "{{- end }}", "d: 4", "{{- range .L }}", "e: 5", "{{- end }}"}
+	branches := lineBranches(lines)
+	require.Equal(t, 0, branches[0])
+	require.Equal(t, 0, branches[6])
+	require.NotEqual(t, branches[2], branches[4], "the branches of an if differ")
+	require.NotZero(t, branches[2])
+	require.NotZero(t, branches[8])
+}
+
+func TestListIndexKeys(t *testing.T) {
+	rendered := []string{"rules:", "  - verbs:", "      - get", "  - verbs:", "      - list"}
+	line, ok := itemLine(rendered, []keyMatch{{key: "rules", line: 0}}, "1")
+	require.True(t, ok)
+	require.Equal(t, 3, line)
+	_, ok = itemLine(rendered, []keyMatch{{key: "rules", line: 0}}, "2")
+	require.False(t, ok)
+	require.True(t, keyPathHolds(rendered, []keyMatch{{key: "rules", line: 0}, {key: "1", index: true, line: 3}, {key: "verbs", line: 3}}))
+	require.False(t, keyPathHolds(rendered, []keyMatch{{key: "rules", line: 0}, {key: "1", index: true, line: 1}}))
+}
+
+func TestSelectorMatchingSeveralItemsDoesNotHold(t *testing.T) {
+	rendered := []string{"containers:", "  - name: a", "    image: x", "  - name: a", "    image: y", "  - name: b", "    image: z"}
+	path := func(line int, name string) []keyMatch {
+		return []keyMatch{{key: "containers", line: 0}, {key: "name", selector: true, line: line}, {key: "image", line: line + 1}}
+	}
+	require.False(t, keyPathHolds(rendered, path(1, "a")), "two items are named a")
+	require.True(t, keyPathHolds(rendered, path(5, "b")))
+}
