@@ -19,6 +19,22 @@ type comment string
 type Ignore struct {
 	// Lines is the lines to ignore
 	Lines []int
+	// roots holds the root nodes of the parsed documents. An ignore-block
+	// above the first key of a document root covers the whole document (the
+	// resource); above the first key of a nested mapping it covers only that
+	// key's block.
+	roots map[*yaml.Node]bool
+}
+
+// markRoot records node as the root node of a YAML document.
+func (i *Ignore) markRoot(node *yaml.Node) {
+	if node == nil {
+		return
+	}
+	if i.roots == nil {
+		i.roots = make(map[*yaml.Node]bool)
+	}
+	i.roots[node] = true
 }
 
 // build builds the ignore struct
@@ -36,26 +52,30 @@ func (ignore *Ignore) ignoreCommentsYAML(node *yaml.Node) {
 	linesIgnore := make([]int, 0)
 	if node.HeadComment != "" {
 		// Squence Node - Head Comment comes in root node
-		linesIgnore = append(linesIgnore, processCommentYAML((*comment)(&node.HeadComment), 0, node, node.Kind, false)...)
+		linesIgnore = append(linesIgnore, processCommentYAML((*comment)(&node.HeadComment), 0, node, node.Kind, false, true)...)
 		ignore.build(linesIgnore)
 		return
 	}
 	// check if comment is in the content
 	for i, content := range node.Content {
 		if content.FootComment != "" && i+2 < len(node.Content) {
-			linesIgnore = append(linesIgnore, processCommentYAML((*comment)(&content.FootComment), i+2, node, node.Kind, true)...)
+			linesIgnore = append(linesIgnore, processCommentYAML((*comment)(&content.FootComment), i+2, node, node.Kind, true, false)...)
 		}
 		if content.HeadComment == "" {
 			continue
 		}
-		linesIgnore = append(linesIgnore, processCommentYAML((*comment)(&content.HeadComment), i, node, node.Kind, false)...)
+		onRoot := i == 0 && node.Kind == yaml.MappingNode && ignore.roots[node]
+		linesIgnore = append(linesIgnore, processCommentYAML((*comment)(&content.HeadComment), i, node, node.Kind, false, onRoot)...)
 	}
 
 	ignore.build(linesIgnore)
 }
 
-// processCommentYAML returns the lines to ignore
-func processCommentYAML(comment *comment, position int, content *yaml.Node, kind yaml.Kind, isFooter bool) (linesIgnore []int) {
+// processCommentYAML returns the lines to ignore. onNode is set when the
+// comment is the head comment of content itself rather than of one of its
+// children at position.
+func processCommentYAML(comment *comment, position int, content *yaml.Node, kind yaml.Kind,
+	isFooter, onNode bool) (linesIgnore []int) {
 	linesIgnore = make([]int, 0)
 	switch com := (*comment).value(); com {
 	case IgnoreLine:
@@ -64,7 +84,7 @@ func processCommentYAML(comment *comment, position int, content *yaml.Node, kind
 		if kind == yaml.ScalarNode {
 			linesIgnore = append(linesIgnore, processLine(kind, content, position)...)
 		} else {
-			linesIgnore = append(linesIgnore, processBlock(kind, content.Content, position)...)
+			linesIgnore = append(linesIgnore, processBlock(kind, content.Content, position, onNode)...)
 		}
 	default:
 		linesIgnore = append(linesIgnore, processRegularLine(string(*comment), content, position, isFooter)...)
@@ -152,15 +172,17 @@ func processLine(kind yaml.Kind, content *yaml.Node, position int) (linesIgnore 
 }
 
 // processBlock returns the lines to ignore for a block
-func processBlock(kind yaml.Kind, content []*yaml.Node, position int) (linesIgnore []int) {
+func processBlock(kind yaml.Kind, content []*yaml.Node, position int, onNode bool) (linesIgnore []int) {
 	linesIgnore = make([]int, 0)
 	var contentToIgnore []*yaml.Node
 	if kind == yaml.SequenceNode {
 		contentToIgnore = content[position].Content
-	} else if position == 0 {
+	} else if onNode {
+		// The comment heads the mapping itself: the whole mapping is the block.
 		contentToIgnore = content
-	} else {
-		contentToIgnore = content[position+1].Content
+	} else if position+1 < len(content) {
+		// The comment heads a key: the block is that key and its value.
+		contentToIgnore = content[position : position+2]
 	}
 
 	if len(contentToIgnore) == 0 {

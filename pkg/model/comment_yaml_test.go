@@ -704,3 +704,22 @@ func Test_value(t *testing.T) {
 		})
 	}
 }
+
+// An ignore-block comment above the first key of a nested mapping covers that
+// key's block only, as it does above any later key, not the key's siblings.
+func TestGetIgnoreLines_IgnoreBlockOnFirstNestedKey(t *testing.T) {
+	src := "apiVersion: v1\n" + // 1
+		"kind: Pod\n" + // 2
+		"metadata:\n" + // 3
+		"  name: x\n" + // 4
+		"spec:\n" + // 5
+		"  # dd-iac-scan ignore-block\n" + // 6
+		"  hostPID: true\n" + // 7
+		"  containers:\n" + // 8
+		"    - name: b\n" + // 9
+		"      securityContext:\n" + // 10
+		"        privileged: true\n" // 11
+	lines := GetIgnoreLines(&FileMetadata{FilePath: "pod.yaml", OriginalData: src})
+	sort.Ints(lines)
+	require.Equal(t, []int{6, 7}, lines)
+}
