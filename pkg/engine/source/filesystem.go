@@ -191,11 +191,23 @@ func checkQueryFilterFieldExclude(ctx context.Context, id any, queries []string)
 	return false
 }
 
+// metadataFilterSeverity returns the severity the severity filters compare for
+// a query, honoring a rule-config severity override.
+func metadataFilterSeverity(metadata map[string]any, queryParameters *QueryInspectorParameters) any {
+	id, _ := metadata["id"].(string)
+	legacyID, _ := metadata["legacyId"].(string)
+	if override, ok := queryParameters.severityOverride(id, legacyID); ok {
+		return override
+	}
+	return metadata["severity"]
+}
+
 func checkQueryExclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
 	return checkQueryFilterFieldExclude(ctx, metadata["id"], queryParameters.ExcludeQueries.ByIDs) ||
 		checkQueryFilterFieldExclude(ctx, metadata["legacyId"], queryParameters.ExcludeQueries.ByIDs) ||
 		checkQueryFilterFieldExclude(ctx, metadata["category"], queryParameters.ExcludeQueries.ByCategories) ||
-		checkQueryFilterFieldExclude(ctx, metadata["severity"], queryParameters.ExcludeQueries.BySeverities) ||
+		checkQueryFilterFieldExclude(ctx, metadataFilterSeverity(metadata, queryParameters),
+			queryParameters.ExcludeQueries.BySeverities) ||
 		(!queryParameters.BomQueries && metadata["severity"] == model.SeverityTrace) ||
 		checkQueryFeatureFlagDisabled(ctx, metadata, queryParameters)
 }
@@ -208,7 +220,8 @@ func checkQueryInclude(ctx context.Context, metadata map[string]any, queryParame
 	return (checkQueryFilterFieldInclude(ctx, metadata["id"], queryParameters.IncludeQueries.ByIDs) ||
 		checkQueryFilterFieldInclude(ctx, metadata["legacyId"], queryParameters.IncludeQueries.ByIDs)) &&
 		checkQueryFilterFieldInclude(ctx, metadata["category"], queryParameters.IncludeQueries.ByCategories) &&
-		checkQueryFilterFieldInclude(ctx, metadata["severity"], queryParameters.IncludeQueries.BySeverities)
+		checkQueryFilterFieldInclude(ctx, metadataFilterSeverity(metadata, queryParameters),
+			queryParameters.IncludeQueries.BySeverities)
 }
 
 func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {

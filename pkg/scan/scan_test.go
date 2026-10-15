@@ -93,6 +93,7 @@ DatadogPolicy contains result if {
 }
 
 func Test_CreateQueryFilter(t *testing.T) {
+	high := "high"
 	tests := []struct {
 		name           string
 		scanParams     Parameters
@@ -133,6 +134,24 @@ func Test_CreateQueryFilter(t *testing.T) {
 				},
 				InputDataPath: "",
 				BomQueries:    true,
+			},
+		},
+		{
+			name: "test query filter with rule-config severity overrides",
+			scanParams: Parameters{
+				Config: config.IacConfig{
+					OnlySeverities: []string{"high"},
+					RuleConfigs: map[string]config.IacRuleConfig{
+						"rule-a": {Severity: &high},
+						"rule-b": {IgnorePaths: []string{"modules"}},
+					},
+				},
+			},
+			expectedOutput: source.QueryInspectorParameters{
+				IncludeQueries: source.QueryFilter{
+					BySeverities: []string{"high"},
+				},
+				SeverityOverrides: map[string]string{"rule-a": "high"},
 			},
 		},
 	}

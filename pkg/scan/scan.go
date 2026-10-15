@@ -317,6 +317,16 @@ func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
 		BySeverities: c.ScanParams.Config.OnlySeverities,
 	}
 
+	var severityOverrides map[string]string
+	for ruleID, rc := range c.ScanParams.Config.RuleConfigs {
+		if rc.Severity != nil {
+			if severityOverrides == nil {
+				severityOverrides = make(map[string]string)
+			}
+			severityOverrides[ruleID] = *rc.Severity
+		}
+	}
+
 	queryFilter := source.QueryInspectorParameters{
 		ExcludeQueries:      excludeQueries,
 		IncludeQueries:      includeQueries,
@@ -324,6 +334,7 @@ func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
 		InputDataPath:       c.ScanParams.InputData,
 		BomQueries:          c.ScanParams.BillOfMaterials,
 		FlagEvaluator:       c.FlagEvaluator,
+		SeverityOverrides:   severityOverrides,
 	}
 
 	return &queryFilter

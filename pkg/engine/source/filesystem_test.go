@@ -555,3 +555,35 @@ func TestFilesystemSource_localQueryDirs(t *testing.T) {
 		})
 	}
 }
+
+// The severity filters compare the severity a rule config overrides a rule to,
+// since that is the severity its findings report.
+func TestCheckQuerySeverityFiltersUseRuleConfigOverride(t *testing.T) {
+	ctx := context.Background()
+	metadata := map[string]any{"id": "rule-a", "legacyId": "legacy-a", "category": "Networking", "severity": "INFO"}
+
+	for name, overrides := range map[string]map[string]string{
+		"by id":        {"rule-a": "HIGH"},
+		"by legacy id": {"legacy-a": "HIGH"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.False(t, checkQueryExclude(ctx, metadata, &QueryInspectorParameters{
+				ExcludeQueries:    QueryFilter{BySeverities: []string{"info"}},
+				SeverityOverrides: overrides,
+			}), "ignore-severities [info] must keep a rule overridden to HIGH")
+			require.True(t, checkQueryInclude(ctx, metadata, &QueryInspectorParameters{
+				IncludeQueries:    QueryFilter{BySeverities: []string{"high"}},
+				SeverityOverrides: overrides,
+			}), "only-severities [high] must keep a rule overridden to HIGH")
+			require.True(t, checkQueryExclude(ctx, metadata, &QueryInspectorParameters{
+				ExcludeQueries:    QueryFilter{BySeverities: []string{"high"}},
+				SeverityOverrides: overrides,
+			}), "ignore-severities [high] must drop a rule overridden to HIGH")
+		})
+	}
+
+	require.True(t, checkQueryExclude(ctx, metadata, &QueryInspectorParameters{
+		ExcludeQueries:    QueryFilter{BySeverities: []string{"info"}},
+		SeverityOverrides: map[string]string{"other-rule": "HIGH"},
+	}), "an override of another rule does not apply")
+}

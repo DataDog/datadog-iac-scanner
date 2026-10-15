@@ -27,6 +27,21 @@ type QueryInspectorParameters struct {
 	InputDataPath       string
 	BomQueries          bool
 	FlagEvaluator       featureflags.FlagEvaluator
+	// SeverityOverrides maps a rule ID or legacy ID to the severity its rule
+	// config sets; the severity filters compare it in place of the rule's own.
+	SeverityOverrides map[string]string
+}
+
+// severityOverride returns the severity the rule config of a rule sets, looked
+// up by its ID and then by its legacy ID.
+func (p *QueryInspectorParameters) severityOverride(id, legacyID string) (string, bool) {
+	if override, ok := p.SeverityOverrides[id]; ok && id != "" {
+		return override, true
+	}
+	if override, ok := p.SeverityOverrides[legacyID]; ok && legacyID != "" {
+		return override, true
+	}
+	return "", false
 }
 
 // QueryFilter is a struct that represents the option to exclude queries by ids or by categories

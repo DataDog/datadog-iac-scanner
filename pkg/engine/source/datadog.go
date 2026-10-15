@@ -177,11 +177,24 @@ func (s *DatadogSource) isWantedCloudProvider(provider *string) bool {
 	return isInCaseInsensitiveList(provider, s.wantedCloudProviders)
 }
 
+// ruleFilterSeverity returns the severity the severity filters compare for a
+// rule, honoring a rule-config severity override.
+func ruleFilterSeverity(rule *datadog.Rule, selection *QueryInspectorParameters) *string {
+	legacyID := ""
+	if rule.LegacyId != nil {
+		legacyID = *rule.LegacyId
+	}
+	if override, ok := selection.severityOverride(rule.ID, legacyID); ok {
+		return &override
+	}
+	return &rule.Severity
+}
+
 func checkExcluded(rule *datadog.Rule, selection *QueryInspectorParameters) bool {
 	return isInCaseInsensitiveList(rule.LegacyId, selection.ExcludeQueries.ByIDs) ||
 		isInCaseInsensitiveList(&rule.ID, selection.ExcludeQueries.ByIDs) ||
 		isInCaseInsensitiveList(&rule.Category, selection.ExcludeQueries.ByCategories) ||
-		isInCaseInsensitiveList(&rule.Severity, selection.ExcludeQueries.BySeverities) ||
+		isInCaseInsensitiveList(ruleFilterSeverity(rule, selection), selection.ExcludeQueries.BySeverities) ||
 		(!selection.BomQueries && strings.EqualFold(rule.Severity, model.SeverityTrace))
 }
 
@@ -189,7 +202,7 @@ func checkIncluded(rule *datadog.Rule, selection *QueryInspectorParameters) bool
 	return (isInCaseInsensitiveNotEmptyList(rule.LegacyId, selection.IncludeQueries.ByIDs) ||
 		isInCaseInsensitiveNotEmptyList(&rule.ID, selection.IncludeQueries.ByIDs)) &&
 		isInCaseInsensitiveNotEmptyList(&rule.Category, selection.IncludeQueries.ByCategories) &&
-		isInCaseInsensitiveNotEmptyList(&rule.Severity, selection.IncludeQueries.BySeverities)
+		isInCaseInsensitiveNotEmptyList(ruleFilterSeverity(rule, selection), selection.IncludeQueries.BySeverities)
 }
 
 // isInCaseInsensitiveList checks if the given item is in the given list, doing a case-insensitive search.

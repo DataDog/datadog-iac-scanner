@@ -677,3 +677,29 @@ func (f fakeDatadogClient) GetLibraries(_ context.Context) (map[string]datadog.L
 func ptr[T any](t T) *T {
 	return &t
 }
+
+// The severity filters compare the severity a rule config overrides a rule to,
+// since that is the severity its findings report.
+func TestCheckSeverityFiltersUseRuleConfigOverride(t *testing.T) {
+	legacyID := "legacy-a"
+	rule := &datadog.Rule{ID: "rule-a", LegacyId: &legacyID, Category: "Networking", Severity: "INFO"}
+	for name, overrides := range map[string]map[string]string{
+		"by id":        {"rule-a": "HIGH"},
+		"by legacy id": {"legacy-a": "HIGH"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.False(t, checkExcluded(rule, &QueryInspectorParameters{
+				ExcludeQueries:    QueryFilter{BySeverities: []string{"info"}},
+				SeverityOverrides: overrides,
+			}))
+			assert.True(t, checkIncluded(rule, &QueryInspectorParameters{
+				IncludeQueries:    QueryFilter{BySeverities: []string{"high"}},
+				SeverityOverrides: overrides,
+			}))
+			assert.True(t, checkExcluded(rule, &QueryInspectorParameters{
+				ExcludeQueries:    QueryFilter{BySeverities: []string{"high"}},
+				SeverityOverrides: overrides,
+			}))
+		})
+	}
+}
