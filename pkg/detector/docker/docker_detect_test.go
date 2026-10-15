@@ -222,3 +222,26 @@ func TestDetectDockerLine(t *testing.T) { //nolint
 		})
 	}
 }
+
+// Dockerfile instructions are case-insensitive, and search keys spell them in
+// uppercase whatever the file uses.
+func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
+	data := "from alpine:3.19\nrun apk add curl\nexpose 22\n"
+	file := &model.FileMetadata{
+		ID:                "lowercase",
+		Kind:              model.KindDOCKER,
+		OriginalData:      data,
+		LinesOriginalData: utils.SplitLines(data),
+	}
+	for searchKey, line := range map[string]int{
+		"FROM={{alpine:3.19}}":                      1,
+		"FROM={{alpine:3.19}}.RUN={{apk add curl}}": 2,
+		"FROM={{alpine:3.19}}.{{expose 22}}":        3,
+		"FROM={{alpine:3.19}}.{{EXPOSE 22}}":        3,
+	} {
+		got := DetectKindLine{}.DetectLine(context.Background(), file, searchKey, 3)
+		require.Equal(t, line, got.Line, searchKey)
+	}
+	got := DetectKindLine{}.DetectLine(context.Background(), file, "FROM={{alpine:3.19}}.{{expose 22}}", 3)
+	require.Equal(t, "expose 22", got.LineWithVulnerability, "the reported line keeps the file's spelling")
+}

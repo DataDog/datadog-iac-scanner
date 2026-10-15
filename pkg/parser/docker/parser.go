@@ -63,7 +63,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	for _, child := range parsed.AST.Children {
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
 		if child.Value == "from" {
-			fromValue = strings.TrimPrefix(strings.TrimSpace(child.Original), "FROM ")
+			fromValue = fromArguments(child.Original)
 			stage++
 		}
 
@@ -130,6 +130,17 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines = ignoreStruct.getIgnoreLines()
 
 	return fileContent, documents, ignoreLines, resolvedFiles, nil
+}
+
+// fromArguments returns what follows the instruction keyword of a FROM line.
+// Instructions are case-insensitive, so `from alpine` names the stage `alpine`
+// just like `FROM alpine` does.
+func fromArguments(original string) string {
+	original = strings.TrimSpace(original)
+	if len(original) < len("from") || !strings.EqualFold(original[:len("from")], "from") {
+		return original
+	}
+	return strings.TrimSpace(original[len("from"):])
 }
 
 // GetKind returns the kind of the parser

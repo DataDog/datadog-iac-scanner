@@ -135,6 +135,23 @@ func TestParser_Parse(t *testing.T) {
 	}
 }
 
+// Dockerfile instructions are case-insensitive: a lowercase FROM names its
+// stage after the image just like an uppercase one.
+func TestParser_Parse_LowercaseFrom(t *testing.T) {
+	p := &Parser{}
+	for _, sample := range []string{
+		"from alpine:3.19\nexpose 22\n",
+		"From  alpine:3.19\nEXPOSE 22\n",
+		"FROM\talpine:3.19\nEXPOSE 22\n",
+	} {
+		_, doc, _, _, err := p.Parse(context.Background(), []byte(sample), "Dockerfile", true, 15)
+		require.NoError(t, err)
+		require.Len(t, doc, 1)
+		require.Contains(t, doc[0]["command"], "alpine:3.19", "sample %q", sample)
+		require.Len(t, doc[0]["command"], 1, "sample %q", sample)
+	}
+}
+
 // An ignore-block comment covers only the stage it precedes, even when a later
 // stage starts from the same image.
 func TestParser_Parse_IgnoreBlockCoversOneStage(t *testing.T) {
