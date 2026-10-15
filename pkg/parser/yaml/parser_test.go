@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -463,4 +464,29 @@ func TestParseSkipsUnparseableDocumentAndKeepsOthers(t *testing.T) {
 	_, docs, _, _, err := Parse(context.Background(), content, "mixed.yaml", false, 15)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(docs), 1)
+}
+
+func TestParse_MultiDocumentSurvivesReferenceResolution(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.yaml"), []byte("foo: bar\n"), 0o600))
+	manifest := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cfg
+data:
+  path: extra.yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: priv
+`
+	path := filepath.Join(dir, "manifests.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(manifest), 0o600))
+
+	_, docs, _, resolvedFiles, err := Parse(context.Background(), []byte(manifest), path, false, 15)
+	require.NoError(t, err)
+	require.NotEmpty(t, resolvedFiles, "extra.yaml should have been resolved")
+	require.Len(t, docs, 2, "resolving a reference in the first document must not drop the others")
+	require.Equal(t, "Pod", docs[1]["kind"])
 }

@@ -194,12 +194,60 @@ func (r *Resolver) handleMap(
 func (r *Resolver) yamlResolve(ctx context.Context, fileContent []byte, path string,
 	resolveCount, maxResolverDepth int, resolvedFilesCache map[string]ResolvedFile,
 	resolveReferences bool) []byte {
-	var obj yaml.Node
-	err := r.unmarshler(fileContent, &obj)
-	if err != nil {
+	docs, err := decodeYAMLStream(fileContent)
+	if err != nil || len(docs) == 0 {
 		return fileContent
 	}
 
+	// A single document keeps the injected marshaler; a stream must keep every
+	// document, which a single Marshal call cannot express.
+	if len(docs) == 1 {
+		obj := r.yamlResolveDocument(ctx, fileContent, &docs[0], path, resolveCount, maxResolverDepth,
+			resolvedFilesCache, resolveReferences)
+		b, err := r.marshler(obj)
+		if err != nil {
+			return fileContent
+		}
+		return b
+	}
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	for i := range docs {
+		obj := r.yamlResolveDocument(ctx, fileContent, &docs[i], path, resolveCount, maxResolverDepth,
+			resolvedFilesCache, resolveReferences)
+		if err := enc.Encode(&obj); err != nil {
+			return fileContent
+		}
+	}
+	if err := enc.Close(); err != nil {
+		return fileContent
+	}
+	return buf.Bytes()
+}
+
+// decodeYAMLStream decodes every document of a YAML stream, not just the
+// first one as yaml.Unmarshal does.
+func decodeYAMLStream(content []byte) ([]yaml.Node, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(content))
+	var docs []yaml.Node
+	for {
+		var doc yaml.Node
+		if err := dec.Decode(&doc); err != nil {
+			if errors.Is(err, io.EOF) {
+				return docs, nil
+			}
+			return nil, err
+		}
+		docs = append(docs, doc)
+	}
+}
+
+// yamlResolveDocument resolves the references of one decoded document.
+func (r *Resolver) yamlResolveDocument(ctx context.Context, fileContent []byte, doc *yaml.Node, path string,
+	resolveCount, maxResolverDepth int, resolvedFilesCache map[string]ResolvedFile,
+	resolveReferences bool) yaml.Node {
+	obj := *doc
 	fullObjectCopy := obj
 
 	// resolve the paths
@@ -211,13 +259,7 @@ func (r *Resolver) yamlResolve(ctx context.Context, fileContent []byte, path str
 	if obj.Kind == 1 && len(obj.Content) == 1 {
 		obj = *obj.Content[0]
 	}
-
-	b, err := r.marshler(obj)
-	if err != nil {
-		return fileContent
-	}
-
-	return b
+	return obj
 }
 
 func (r *Resolver) yamlWalk(
