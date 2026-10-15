@@ -7,8 +7,11 @@
 package provider
 
 import (
+	"context"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,4 +30,19 @@ func TestMemoryPartitionChartRootsGlobReachesRenderedTemplates(t *testing.T) {
 	inScope, outOfScope = ignored.partitionChartRoots(roots)
 	require.Equal(t, []string{"app"}, inScope)
 	require.Equal(t, []string{"lib"}, outOfScope)
+}
+
+// A dot-slash ignore names the directory the same way on the server as on disk:
+// the chart is left out of the render, and its other files are left out too.
+func TestMemoryDotSlashIgnoreDropsChartFiles(t *testing.T) {
+	m := NewMemorySourceProvider(nil, []string{
+		"app/Chart.yaml", "app/templates/cm.yaml", "app/main.tf", "apps/main.tf",
+	}, []string{"./app"}, nil)
+	files, err := m.WalkInventory(context.Background(), model.Extensions{".tf": {}, ".yaml": {}}, utils.PoolOptions{},
+		func(_ context.Context, root string) bool {
+			t.Errorf("chart %s rendered although ./app is ignored", root)
+			return true
+		})
+	require.NoError(t, err)
+	require.Equal(t, []InventoryFile{{Path: "apps/main.tf", Ext: ".tf"}}, files)
 }

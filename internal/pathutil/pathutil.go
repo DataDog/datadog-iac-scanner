@@ -9,10 +9,11 @@ import (
 // MatchesPath reports whether filePath is covered by pattern.
 // pattern may be a literal path, a directory prefix, a single-star glob (*, ?, [...]),
 // or a double-star glob (**) where ** matches zero or more path segments.
-// Both arguments are normalized to forward slashes for OS-independent behavior.
+// Both arguments are normalized to forward slashes for OS-independent behavior,
+// and cleaned, so "./app" and "app/" name the same directory as "app".
 func MatchesPath(pattern, filePath string) bool {
-	pattern = filepath.ToSlash(pattern)
-	filePath = filepath.ToSlash(filePath)
+	pattern = cleanSlash(pattern)
+	filePath = cleanSlash(filePath)
 
 	// Exact match.
 	if pattern == filePath {
@@ -97,4 +98,13 @@ func matchDoublestar(pat, filePath []string) bool {
 		filePath = filePath[1:]
 	}
 	return len(filePath) == 0
+}
+
+// cleanSlash puts p in one spelling. An empty p is kept, as it matches nothing
+// but an absolute path.
+func cleanSlash(p string) string {
+	if p == "" {
+		return p
+	}
+	return path.Clean(filepath.ToSlash(p))
 }
