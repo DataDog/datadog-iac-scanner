@@ -118,16 +118,12 @@ func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore, visited map[*yaml.N
 		for _, child := range node.Content {
 			walkIgnoreCommentsYAML(child, ignore, visited)
 		}
-	case yaml.AliasNode:
-		if node.Alias != nil {
-			walkIgnoreCommentsYAML(node.Alias, ignore, visited)
-		}
 	}
 }
 
 // UnmarshalYAML is a custom yaml parser that places line information in the payload
 func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *Ignore) error {
-	ctx = withCloudFormation(ctx, isCloudFormationDocument(value))
+	ctx = withAliasBudget(withCloudFormation(ctx, isCloudFormationDocument(value)))
 	dpc := unmarshal(ctx, value, ignore)
 	if mapDcp, ok := dpc.(map[string]interface{}); ok {
 		if isCloudFormationContext(ctx) {
@@ -330,7 +326,7 @@ func substituteForEachBindings(v interface{}, bindings map[string]string) interf
 
 func isPureRefNode(m map[string]interface{}) bool {
 	for k := range m {
-		if k != "Ref" && k != "_dd_lines" {
+		if k != "Ref" && k != ddLinesKey {
 			return false
 		}
 	}
@@ -380,8 +376,105 @@ func unmarshal(ctx context.Context, val *yaml.Node, ignore *Ignore) interface{} 
 	return unmarshalWithDepth(ctx, val, make(map[*yaml.Node]bool), ignore)
 }
 
+// ddLinesKey is the key under which a decoded mapping keeps its line information.
+const ddLinesKey = "_dd_lines"
+
+// aliasBudgetKey carries the per-document alias expansion budget.
+type aliasBudgetKey struct{}
+
+// aliasBudget bounds how many nodes alias expansion may decode in one
+// document, so a small file of nested aliases ("billion laughs") cannot make
+// the decoder do exponential work.
+type aliasBudget struct {
+	remaining int
+	sizes     map[*yaml.Node]int
+}
+
+// maxAliasExpandedNodes is the total number of nodes alias expansion may
+// decode per document; ordinary anchor reuse stays far below it.
+const maxAliasExpandedNodes = 1_000_000
+
+func withAliasBudget(ctx context.Context) context.Context {
+	return context.WithValue(ctx, aliasBudgetKey{}, &aliasBudget{
+		remaining: maxAliasExpandedNodes,
+		sizes:     make(map[*yaml.Node]int),
+	})
+}
+
+// nodeSize counts the nodes under n without following aliases.
+func (b *aliasBudget) nodeSize(n *yaml.Node) int {
+	if size, ok := b.sizes[n]; ok {
+		return size
+	}
+	size := 1
+	for _, child := range n.Content {
+		size += b.nodeSize(child)
+	}
+	b.sizes[n] = size
+	return size
+}
+
+// resolveAlias returns the node an alias points to, or nil when it is dangling
+// or the document's alias expansion budget is exhausted. Non-alias nodes are
+// returned unchanged.
+func resolveAlias(ctx context.Context, n *yaml.Node) *yaml.Node {
+	if n == nil || n.Kind != yaml.AliasNode {
+		return n
+	}
+	if n.Alias == nil {
+		return nil
+	}
+	if b, ok := ctx.Value(aliasBudgetKey{}).(*aliasBudget); ok {
+		b.remaining -= b.nodeSize(n.Alias)
+		if b.remaining < 0 {
+			return nil
+		}
+	}
+	return n.Alias
+}
+
+// isMergeKey reports whether a mapping key is the YAML merge key "<<".
+func isMergeKey(key *yaml.Node) bool {
+	return key.Kind == yaml.ScalarNode && key.Value == "<<" && (key.Tag == "!!merge" || key.Tag == "")
+}
+
+// mergeSources decodes the value of a "<<" key: a mapping (usually via an
+// alias) or a sequence of them, in precedence order.
+func mergeSources(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, ignore *Ignore) []map[string]interface{} {
+	val = resolveAlias(ctx, val)
+	if val == nil {
+		return nil
+	}
+	switch val.Kind {
+	case yaml.MappingNode:
+		if m, ok := unmarshalWithDepth(ctx, val, visited, ignore).(map[string]interface{}); ok {
+			return []map[string]interface{}{m}
+		}
+	case yaml.SequenceNode:
+		var out []map[string]interface{}
+		for _, item := range val.Content {
+			item = resolveAlias(ctx, item)
+			if item == nil || item.Kind != yaml.MappingNode {
+				continue
+			}
+			if m, ok := unmarshalWithDepth(ctx, item, visited, ignore).(map[string]interface{}); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 // unmarshalWithDepth handles recursive unmarshaling with circular reference detection
 func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, ignore *Ignore) interface{} { //nolint:gocyclo
+	if val.Kind == yaml.AliasNode {
+		target := resolveAlias(ctx, val)
+		if target == nil {
+			return nil
+		}
+		val = target
+	}
 	if visited[val] {
 		return nil
 	}
@@ -404,48 +497,68 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 	} else if val.Kind == yaml.ScalarNode {
 		return internedScalarNodeResolver(ctx, val)
 	} else {
+		var merged []map[string]interface{}
 		// iterate two by two, since first iteration is the key and the second is the value
-		for i := 0; i < len(val.Content); i += 2 {
-			if val.Content[i].Kind == yaml.ScalarNode {
-				if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val.Content[i+1], visited, ignore); ok {
-					if m, ok := rewritten.(map[string]interface{}); ok {
-						m["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
-					}
-					tmp[internYAMLScalar(val.Content[i].Value)] = rewritten
+		for i := 0; i+1 < len(val.Content); i += 2 {
+			keyNode := val.Content[i]
+			if keyNode.Kind != yaml.ScalarNode {
+				continue
+			}
+			if isMergeKey(keyNode) {
+				merged = append(merged, mergeSources(ctx, val.Content[i+1], visited, ignore)...)
+				// keep the merge key's line as this mapping's default line, as the
+				// previous merge implementation did; parents that know a better
+				// line overwrite it
+				if _, ok := tmp["_dd_lines"]; !ok {
+					tmp["_dd_lines"] = getLines(val.Content[i+1], keyNode.Line)
+				}
+				continue
+			}
+			// an alias value decodes exactly like the anchored node it names
+			valueNode := resolveAlias(ctx, val.Content[i+1])
+			if valueNode == nil {
+				continue
+			}
+			key := internYAMLScalar(keyNode.Value)
+			if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, valueNode, visited, ignore); ok {
+				if m, ok := rewritten.(map[string]interface{}); ok {
+					m["_dd_lines"] = getLines(valueNode, keyNode.Line)
+				}
+				tmp[key] = rewritten
+				continue
+			}
+			switch valueNode.Kind {
+			case yaml.ScalarNode:
+				tmp[key] = internedScalarNodeResolver(ctx, valueNode)
+			// in case value iteration is a map
+			case yaml.MappingNode:
+				// unmarshall map value and get its line information
+				result := unmarshalWithDepth(ctx, valueNode, visited, ignore)
+				if tt, ok := result.(map[string]interface{}); ok {
+					tt["_dd_lines"] = getLines(valueNode, keyNode.Line)
+					tmp[key] = tt
+				} else {
+					tmp[key] = result
+				}
+			// in case value iteration is an array
+			case yaml.SequenceNode:
+				contentArray := make([]interface{}, 0)
+				// unmarshall each iteration of the array
+				for _, contentEntry := range valueNode.Content {
+					contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, ignore))
+				}
+				tmp[key] = contentArray
+			}
+		}
+		// merge keys ("<<") never override the mapping's own keys, and earlier
+		// merge sources take precedence over later ones
+		for _, src := range merged {
+			for k, v := range src {
+				if k == ddLinesKey {
 					continue
 				}
-				switch val.Content[i+1].Kind {
-				case yaml.ScalarNode:
-					tmp[internYAMLScalar(val.Content[i].Value)] = internedScalarNodeResolver(ctx, val.Content[i+1])
-				// in case value iteration is a map
-				case yaml.MappingNode:
-					// unmarshall map value and get its line information
-					result := unmarshalWithDepth(ctx, val.Content[i+1], visited, ignore)
-					if tt, ok := result.(map[string]interface{}); ok {
-						tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
-						tmp[internYAMLScalar(val.Content[i].Value)] = tt
-					} else {
-						tmp[internYAMLScalar(val.Content[i].Value)] = result
-					}
-				// in case value iteration is an array
-				case yaml.SequenceNode:
-					contentArray := make([]interface{}, 0)
-					// unmarshall each iteration of the array
-					for _, contentEntry := range val.Content[i+1].Content {
-						contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, ignore))
-					}
-					tmp[internYAMLScalar(val.Content[i].Value)] = contentArray
-				case yaml.AliasNode:
-					if val.Content[i+1].Alias != nil {
-						result := unmarshalWithDepth(ctx, val.Content[i+1].Alias, visited, ignore)
-						if tt, ok := result.(map[string]interface{}); ok {
-							tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
-							utils.MergeMaps(tmp, tt)
-						}
-						if v, ok := result.(string); ok {
-							tmp[internYAMLScalar(val.Content[i].Value)] = v
-						}
-					}
+				if _, exists := tmp[k]; !exists {
+					tmp[k] = v
 				}
 			}
 		}
@@ -470,8 +583,11 @@ func getLines(val *yaml.Node, def int) map[string]*LineObject {
 	}
 
 	// iterate two by two, since first iteration is the key and the second is the value
-	for i := 0; i < len(val.Content); i += 2 {
+	for i := 0; i+1 < len(val.Content); i += 2 {
 		lineArr := make([]map[string]*LineObject, 0)
+		// aliases are deliberately not followed here: getLines runs once per
+		// decoded mapping, so following them would re-walk anchored subtrees
+		// without the alias budget that bounds unmarshalWithDepth
 		// in case the value iteration is an array call getLines for each iteration of the array
 		if val.Content[i+1].Kind == yaml.SequenceNode {
 			for _, contentEntry := range val.Content[i+1].Content {

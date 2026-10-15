@@ -676,14 +676,13 @@ services:
 `
 	got := parseCompose(t, "compose.yaml", compose, nil)
 	require.Len(t, got, 1)
-	// The model flattens alias-to-mapping values into their parent (pre-existing
-	// behavior, identical to the plain YAML path); what matters here is that
-	// the shared anchor's content survives the cycle breaker and copyNode into
-	// the extending service.
+	// Each alias decodes under its own key; the shared anchor's content must
+	// survive the cycle breaker and copyNode into the extending service.
+	opts := `{"log_level": "info", "verbose": true}`
 	require.JSONEq(t, `{
 	  "services": {
-	    "common": {"image": "alpine", "log_level": "info", "verbose": true},
-	    "web": {"image": "alpine", "log_level": "info", "verbose": true}
+	    "common": {"image": "alpine", "first": `+opts+`, "second": `+opts+`},
+	    "web": {"image": "alpine", "first": `+opts+`, "second": `+opts+`}
 	  },
 	  "x-opts": {"log_level": "info", "verbose": true}
 	}`, got[0])

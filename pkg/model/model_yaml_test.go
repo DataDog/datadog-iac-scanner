@@ -8,8 +8,10 @@ package model
 import (
 	"context"
 	json "encoding/json"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -1244,4 +1246,96 @@ func TestClearYAMLScalarInterner(t *testing.T) {
 
 	got := internYAMLScalar("apiVersion")
 	require.Equal(t, "apiVersion", got)
+}
+
+// stripLineInfo drops _dd_lines so tests can compare plain values.
+func stripLineInfo(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(t))
+		for k, val := range t {
+			if k != "_dd_lines" {
+				out[k] = stripLineInfo(val)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(t))
+		for i := range t {
+			out[i] = stripLineInfo(t[i])
+		}
+		return out
+	}
+	return v
+}
+
+func TestDocument_UnmarshalYAML_Aliases(t *testing.T) {
+	src := `defaults: &defaults
+  a: 1
+  b: 2
+list: &lst
+  - x
+  - y
+num: &n 5
+other: &other
+  b: other
+  c: other
+svc:
+  labels: *defaults
+  ports: *lst
+  replicas: *n
+  items:
+    - *defaults
+merged:
+  b: explicit
+  <<: [*defaults, *other]
+`
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(src), &root))
+	doc := &Document{}
+	require.NoError(t, doc.UnmarshalYAML(context.Background(), root.Content[0], nil))
+	raw, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+	parsed = stripLineInfo(parsed).(map[string]interface{})
+
+	defaults := map[string]interface{}{"a": float64(1), "b": float64(2)}
+	require.Equal(t, map[string]interface{}{
+		"labels":   defaults,
+		"ports":    []interface{}{"x", "y"},
+		"replicas": float64(5),
+		"items":    []interface{}{defaults},
+	}, parsed["svc"])
+	// explicit keys beat merged ones; earlier merge sources beat later ones
+	require.Equal(t, map[string]interface{}{"a": float64(1), "b": "explicit", "c": "other"}, parsed["merged"])
+}
+
+func TestDocument_UnmarshalYAML_AliasBombIsBounded(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("l0: &l0 {a: lol, b: lol, c: lol, d: lol, e: lol, f: lol, g: lol, h: lol, i: lol, j: lol}\n")
+	for i := 1; i <= 12; i++ {
+		sb.WriteString("l" + strconv.Itoa(i) + ": &l" + strconv.Itoa(i) + " {")
+		for j := 0; j < 10; j++ {
+			if j > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("k" + strconv.Itoa(j) + ": *l" + strconv.Itoa(i-1))
+		}
+		sb.WriteString("}\n")
+	}
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(sb.String()), &root))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		doc := &Document{}
+		_ = doc.UnmarshalYAML(context.Background(), root.Content[0], &Ignore{})
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("decoding a 1.5KB document of nested aliases did not finish in 20s")
+	}
 }
