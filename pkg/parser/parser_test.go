@@ -223,3 +223,24 @@ func TestParser_ParseContentRecoversParserPanic(t *testing.T) {
 		require.Empty(t, documents.Docs)
 	})
 }
+
+// File-level commands may follow the document start marker in a .yml file as
+// in a .yaml one.
+func TestParser_CommentsCommandsAfterDocumentStartInYml(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := NewBuilder(ctx).Add(&yamlParser.Parser{}).Build([]string{"kubernetes"}, nil)
+	require.NoError(t, err)
+	content := []byte("---\n# dd-iac-scan ignore\napiVersion: v1\nkind: Pod\n")
+	for _, name := range []string{"pod.yaml", "pod.yml"} {
+		require.Contains(t, parsers[0].CommentsCommands(ctx, name, content), "ignore", name)
+	}
+}
+
+// Several disable= lines disable every rule they name.
+func TestParser_CommentsCommandsAccumulateDisableLines(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := NewBuilder(ctx).Add(&yamlParser.Parser{}).Build([]string{"kubernetes"}, nil)
+	require.NoError(t, err)
+	content := []byte("# dd-iac-scan disable=rule-a\n# dd-iac-scan disable=rule-b,rule-c\napiVersion: v1\n")
+	require.Equal(t, "rule-a,rule-b,rule-c", parsers[0].CommentsCommands(ctx, "pod.yaml", content)["disable"])
+}

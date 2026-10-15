@@ -161,7 +161,8 @@ func (c *Parser) CommentsCommands(ctx context.Context, filePath string, fileCont
 				if line == "" {
 					continue
 				}
-				if strings.HasSuffix(filePath, ".yaml") && strings.HasPrefix(line, "---") {
+				if (strings.HasSuffix(filePath, ".yaml") || strings.HasSuffix(filePath, ".yml")) &&
+					strings.HasPrefix(line, "---") {
 					continue
 				}
 
@@ -173,7 +174,13 @@ func (c *Parser) CommentsCommands(ctx context.Context, filePath string, fileCont
 				if len(fields) > 1 && fields[0] == "dd-iac-scan" && fields[1] != "" {
 					commandParameters := strings.SplitN(fields[1], "=", 2)
 					if len(commandParameters) > 1 {
-						commentsCommands[commandParameters[0]] = commandParameters[1]
+						// Several disable= or enable= lines add up rather than the
+						// last one replacing the others.
+						if previous := commentsCommands[commandParameters[0]]; previous != "" {
+							commentsCommands[commandParameters[0]] = previous + "," + commandParameters[1]
+						} else {
+							commentsCommands[commandParameters[0]] = commandParameters[1]
+						}
 					} else {
 						commentsCommands[commandParameters[0]] = ""
 					}
