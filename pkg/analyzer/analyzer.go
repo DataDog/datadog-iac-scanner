@@ -19,6 +19,7 @@ import (
 	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -1206,10 +1207,10 @@ func isIncludedFile(path string, onlyPaths []string) bool {
 	return false
 }
 
-// isExcludedFile verifies if the path is in the pre-expanded exclude list
+// isExcludedFile verifies if the path is in the pre-expanded exclude list or below one of its directories.
 func isExcludedFile(path string, expandedExc []string) bool {
 	for _, p := range expandedExc {
-		if p == path {
+		if p != "" && pathutil.MatchesPath(p, path) {
 			return true
 		}
 	}
