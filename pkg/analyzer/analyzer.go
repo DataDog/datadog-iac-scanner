@@ -458,7 +458,9 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			if ext == "" {
 				return nil
 			}
-			if _, ok := possibleFileTypes[ext]; !ok {
+			// A Dockerfile.<name> file has no pattern of its own: classifyFile
+			// keeps it only when its content reads as a Dockerfile.
+			if _, ok := possibleFileTypes[ext]; !ok && ext != extPossibleDockerfile {
 				return nil
 			}
 
@@ -711,22 +713,24 @@ func isDockerfile(ctx context.Context, path string) bool {
 		contextLogger.Error().Msgf("failed to analyze file: %s", err)
 		return false
 	}
+	return looksLikeDockerfile(content)
+}
 
-	regexes := []*regexp.Regexp{
-		regexp.MustCompile(`\s*FROM\s*`),
-		regexp.MustCompile(`\s*RUN\s*`),
-	}
+var dockerfileFirstInstruction = regexp.MustCompile(`(?i)^(FROM|ARG)\s`)
 
-	check := true
-
-	for _, regex := range regexes {
-		if !regex.Match(content) {
-			check = false
-			break
+// looksLikeDockerfile reports whether content reads as a Dockerfile: Docker
+// requires its first instruction, after comments and blank lines, to be FROM,
+// optionally preceded by ARG.
+func looksLikeDockerfile(content []byte) bool {
+	content = bytes.TrimPrefix(content, []byte("\ufeff"))
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
+		return dockerfileFirstInstruction.MatchString(line)
 	}
-
-	return check
+	return false
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json

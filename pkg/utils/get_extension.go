@@ -20,8 +20,30 @@ import (
 
 var extensionNameTargets = []string{"tfvars", "Dockerfile", "possibleDockerfile"}
 
+// dockerfileExtension recognizes the names Docker tooling uses for Dockerfiles,
+// in any case: Dockerfile, <name>.Dockerfile, and Dockerfile.<name>. The last
+// form, e.g. Dockerfile.prod, is returned as "possibleDockerfile" so its content
+// is checked before it is scanned; a .dockerignore file is never a Dockerfile.
+func dockerfileExtension(path string) (string, bool) {
+	lower := strings.ToLower(filepath.Base(path))
+	switch {
+	case lower == "dockerfile":
+		return "Dockerfile", true
+	case strings.HasSuffix(lower, ".dockerignore"):
+		return "", false
+	case strings.HasSuffix(lower, ".dockerfile"):
+		return ".dockerfile", true
+	case strings.HasPrefix(lower, "dockerfile."):
+		return "possibleDockerfile", true
+	}
+	return "", false
+}
+
 // ExtensionFromPath returns the extension from path alone (no stat/read).
 func ExtensionFromPath(path string) string {
+	if ext, ok := dockerfileExtension(path); ok {
+		return ext
+	}
 	ext := tfpath.Extension(path)
 	if ext != "" {
 		return ext
@@ -62,6 +84,9 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 		return "", err
 	}
 
+	if ext, ok := dockerfileExtension(path); ok {
+		return ext, nil
+	}
 	ext := tfpath.Extension(path)
 	if ext == "" {
 		base := filepath.Base(path)

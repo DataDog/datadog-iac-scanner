@@ -953,3 +953,35 @@ func TestAnalyze_IgnorePathsDirectoryExcludesFilesBelow(t *testing.T) {
 		})
 	}
 }
+
+// Dockerfiles are found under the names Docker tooling uses, in any case;
+// a Dockerfile.<name> file is scanned only when its content reads as one.
+func TestAnalyze_DockerfileNames(t *testing.T) {
+	dir := t.TempDir()
+	dockerfile := []byte("# syntax=docker/dockerfile:1\nARG TAG=3.19\nFROM alpine:${TAG}\nCOPY . /app\n")
+	for _, name := range []string{"Dockerfile", "dockerfile", "api.Dockerfile", "Dockerfile.prod", "Dockerfile.ubi8"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, name+"_dir"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name+"_dir", name), dockerfile, 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dockerfile.go"), []byte("package dockerfile\n\nconst From = \"FROM\"\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile.dockerignore"), []byte("node_modules\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	inventory := append([]string(nil), got.Inventory...)
+	sort.Strings(inventory)
+	require.Equal(t, []string{
+		filepath.ToSlash(filepath.Join(dir, "Dockerfile.prod_dir", "Dockerfile.prod")),
+		filepath.ToSlash(filepath.Join(dir, "Dockerfile.ubi8_dir", "Dockerfile.ubi8")),
+		filepath.ToSlash(filepath.Join(dir, "Dockerfile_dir", "Dockerfile")),
+		filepath.ToSlash(filepath.Join(dir, "api.Dockerfile_dir", "api.Dockerfile")),
+		filepath.ToSlash(filepath.Join(dir, "dockerfile_dir", "dockerfile")),
+	}, inventory)
+	require.Equal(t, []string{"dockerfile"}, got.Types)
+}
