@@ -107,15 +107,26 @@ func removeInvocationMarkers(content string) string {
 // Files that only hold partials (a leading underscore) are skipped for the same
 // reason.
 func addHelmInvocationMarkers(file *chart.File) *chart.File {
+	marked, _ := addHelmInvocationMarkersWith(file, false)
+	return marked
+}
+
+// addHelmInvocationMarkersWith is addHelmInvocationMarkers, leaving out the
+// markers that only hold when the include's output is not indented when
+// cautious: the ones a template Helm failed to parse is rendered again without.
+// It reports whether a marker depends on that, so that leaving them out can
+// change the template.
+func addHelmInvocationMarkersWith(file *chart.File, cautious bool) (*chart.File, bool) {
 	source := string(file.Data)
 	if hasInvocationMarker(source) {
-		return file
+		return file, false
 	}
 	wrapper := isHelmInvocationWrapper(source)
 	if !wrapper && strings.HasPrefix(filepath.Base(file.Name), "_") {
-		return file
+		return file, false
 	}
 	var markers []replacement
+	relaxed := false
 	var blocks helmBlockStack
 	lines := sourceLines{source: source, line: 1}
 	// commentsOnly holds while every action before the current one is a comment.
@@ -136,7 +147,8 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 		lineStart, _ := lineBounds(source, span[0])
 		marker := invocationMarker{Line: lines.lineOf(span[0]), Col: span[0] - lineStart}.String()
 		opensTemplate := first && startsTemplate(source, span, actionText)
-		if r, ok := invocationReplacement(source, span, actionText, marker, wrapper, opensTemplate); ok {
+		relaxed = relaxed || dependsOnIndent(source, span, wrapper, cautious)
+		if r, ok := invocationReplacement(source, span, actionText, marker, wrapper, opensTemplate, cautious); ok {
 			markers = append(markers, r)
 		}
 	}
@@ -148,7 +160,7 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 		source = source[:marker.start] + marker.text + source[marker.end:]
 	}
 	file.Data = []byte(source)
-	return file
+	return file, relaxed
 }
 
 // sourceLines numbers the lines of a stamped template as the template is
@@ -188,7 +200,7 @@ func (s *sourceLines) lineOf(pos int) int {
 // The output is closed by an end line (see invocationEndText), and so is every
 // document it holds, which bounds the rendered lines the action emitted.
 func invocationReplacement(source string, span [2]int, actionText, marker string,
-	wrapper, opensTemplate bool,
+	wrapper, opensTemplate, cautious bool,
 ) (replacement, bool) {
 	lineStart, _ := lineBounds(source, span[0])
 	action := source[span[0]:span[1]]
@@ -198,7 +210,7 @@ func invocationReplacement(source string, span [2]int, actionText, marker string
 	}
 	end := invocationEndText(source, span)
 	switch {
-	case wrapper || standaloneUntrimmedAction(source, span):
+	case wrapper || standaloneUntrimmedAction(source, span, cautious):
 	case trimmedStandaloneNindent(source, span, actionText):
 		// The "-" removed the line break before the action and nindent prints
 		// one first: the marker takes that line break, and indent keeps the
@@ -299,7 +311,7 @@ func invocationEndText(source string, span [2]int) string {
 // right-trimming action ("-}}") ending the text before its line. Either would
 // remove the newline before a marker inserted at the start of the line and
 // glue it to the previous output.
-func standaloneUntrimmedAction(source string, span [2]int) bool {
+func standaloneUntrimmedAction(source string, span [2]int, cautious bool) bool {
 	if strings.HasPrefix(source[span[0]:], "{{-") {
 		return false
 	}
@@ -309,13 +321,35 @@ func standaloneUntrimmedAction(source string, span [2]int) bool {
 	}
 	_, lineEnd := lineBounds(source, span[1])
 	// An unindented action at column 0 ends a block scalar, as its output does,
-	// unless the output is indented by "indent" or "nindent".
-	endsScalar := span[0] == lineStart && !strings.Contains(source[span[0]:span[1]], "indent")
+	// unless the output is indented by "indent" or "nindent", or by its own
+	// text, which only the render tells: a template whose render fails over it
+	// is marked cautiously.
+	endsScalar := !cautious && span[0] == lineStart && !strings.Contains(source[span[0]:span[1]], "indent")
 	// A comment after the action prints nothing, so it is not text of the line.
 	rest := strings.TrimSpace(source[span[1]:lineEnd])
 	return strings.TrimSpace(source[lineStart:span[0]]) == "" &&
-		(rest == "" || strings.HasPrefix(rest, "{{/*")) &&
+		onlyComments(rest) &&
 		(endsScalar || !insideBlockScalar(source[:lineStart]))
+}
+
+// dependsOnIndent reports whether the action is marked only because cautious
+// marking is off.
+func dependsOnIndent(source string, span [2]int, wrapper, cautious bool) bool {
+	return !cautious && !wrapper && standaloneUntrimmedAction(source, span, false) &&
+		!standaloneUntrimmedAction(source, span, true)
+}
+
+// onlyComments reports whether text is empty or holds nothing but template
+// comments, which print nothing.
+func onlyComments(text string) bool {
+	pos := 0
+	for _, action := range helmaction.Scan(text) {
+		if !action.Comment || strings.TrimSpace(text[pos:action.Start]) != "" {
+			return false
+		}
+		pos = action.End
+	}
+	return strings.TrimSpace(text[pos:]) == ""
 }
 
 var blockScalarHeader = regexp.MustCompile(`[|>][+-]?\d?[+-]?(?:\s+#.*)?\s*$`)

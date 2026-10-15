@@ -43,3 +43,11 @@ func TestUniqueLineSearchesTheDocumentBeforeItsFirstInclude(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 5, line)
 }
+
+// The first line of a document is a line of plain text like the others.
+func TestPlainLinesStartAtTheFirstSourceLine(t *testing.T) {
+	lines := []string{"# KICS_HELM_ID_0_0:", "apiVersion: v1", "kind: Pod", "spec:", "  x: {{ .V }}"}
+	written, next := plainLines(lines, nil, 1)
+	require.Equal(t, []int{1, 2, 3}, written)
+	require.Equal(t, 4, next)
+}

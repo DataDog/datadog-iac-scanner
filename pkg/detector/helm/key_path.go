@@ -15,6 +15,7 @@ import (
 type keyMatch struct {
 	key      string
 	selector bool
+	value    string // the value a selector key must hold
 	line     int
 }
 
@@ -103,6 +104,18 @@ func (t *keyTree) at(line int, key string) (keyNode, bool) {
 	return keyNode{}, false
 }
 
+// holdsValue reports whether the key has the scalar value, or a value that is
+// not a scalar and so cannot be told from it.
+func (t *keyTree) holdsValue(k keyNode, value string) bool {
+	for i := 0; i+1 < len(k.mapping.Content); i += 2 {
+		if k.mapping.Content[i] == k.key {
+			v := k.mapping.Content[i+1]
+			return v.Kind != yaml.ScalarNode || v.Value == value
+		}
+	}
+	return true
+}
+
 // within reports whether node sits inside scope.
 func (t *keyTree) within(node, scope *yaml.Node) bool {
 	for ; node != nil; node = t.parent[node] {
@@ -164,6 +177,9 @@ func keyPathHolds(lines []string, path []keyMatch) bool {
 		}
 		k, ok := tree.at(match.line, match.key)
 		if !ok {
+			return false
+		}
+		if match.selector && match.value != "" && !tree.holdsValue(k, match.value) {
 			return false
 		}
 		if scope != nil {

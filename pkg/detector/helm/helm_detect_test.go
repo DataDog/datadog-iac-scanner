@@ -7,6 +7,7 @@ package helm
 
 import (
 	"context"
+	"github.com/stretchr/testify/require"
 	"reflect"
 	"strings"
 	"testing"
@@ -520,10 +521,23 @@ func TestContradictsSelector(t *testing.T) {
 		{"    - name: {{ .Values.n }}", false},
 		{"    - name: prefix-{{ .Values.n }}", false},
 		{"    - name:", false},
+		{"    - name: web # main container", false},
+		{"    - name: other # web", true},
+		{`    - name: "web" # main`, false},
+		{`    - name: 'other' # main`, true},
+		{"    - name: [a, b]", false},
 		{"    image: nginx", false},
 	} {
 		if got := contradictsSelector(tt.line, "name", "web"); got != tt.want {
 			t.Errorf("contradictsSelector(%q) = %v, want %v", tt.line, got, tt.want)
 		}
 	}
+}
+
+// Go templates accept any whitespace between a keyword and its argument.
+func TestLineDepthsSeparatedByATab(t *testing.T) {
+	lines := []string{"{{ if\tfalse }}", "a: 1", "{{ else }}", "a: {{ .V }}", "{{ end }}", "b: 2"}
+	require.Equal(t, []int{0, 1, 1, 1, 1, 0}, lineDepths(lines))
+	require.Equal(t, lineDepths([]string{"{{ if false }}", "a: 1", "{{ else }}", "a: {{ .V }}", "{{ end }}", "b: 2"}),
+		lineDepths(lines))
 }

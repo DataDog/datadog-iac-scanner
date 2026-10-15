@@ -221,10 +221,10 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, index *chartIndex, atta
 	*release.Release, *chart.Chart, stampedSources, []string, *fileLocator, error,
 ) {
 	contextLogger := logger.FromContext(ctx)
-	unmarked := map[string]bool{}
-	for attempt := 0; ; attempt++ {
+	unmarked, cautious := map[string]bool{}, map[string]bool{}
+	for attempt := 0; ; {
 		marks := newInvocationMarks()
-		marks.unmarked = unmarked
+		marks.unmarked, marks.cautious = unmarked, cautious
 		manifest, loadedChart, stamped, excluded, locator, err := runInstall(
 			ctx, path, fsys, index, attach, newClient(ctx), &values.Options{}, marks)
 		template, parseErr := yamlParseErrorTemplate(err)
@@ -236,6 +236,12 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, index *chartIndex, atta
 		if !marks.seen[template] || attempt >= maxMarkerRetries {
 			break
 		}
+		if !cautious[template] && marks.relaxed[template] {
+			// First without the markers that assume how an include indents its output.
+			cautious[template] = true
+			continue
+		}
+		attempt++
 		unmarked[template] = true
 		contextLogger.Debug().Msgf("Rendering chart '%s' again without invocation markers in template '%s'", path, template)
 	}

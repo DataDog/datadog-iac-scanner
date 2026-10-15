@@ -453,33 +453,6 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	return
 }
 
-// blankPlainComments blanks the blocks of comment lines that hold no
-// dd-iac-scan command, keeping the line numbers. The parser marks the lines
-// above the node that follows an ordinary comment as ignored, taking them for
-// the comment's own, but in a template the lines between the comment and the
-// node may be actions, blanked for the parse: a finding on an include would be
-// suppressed by an unrelated comment above it.
-func blankPlainComments(content []byte) []byte {
-	lines := strings.Split(string(content), "\n")
-	for start := 0; start < len(lines); {
-		if !strings.HasPrefix(strings.TrimSpace(lines[start]), "#") {
-			start++
-			continue
-		}
-		end, command := start, false
-		for ; end < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[end]), "#"); end++ {
-			command = command || strings.Contains(strings.ToLower(lines[end]), "dd-iac-scan")
-		}
-		if !command {
-			for i := start; i < end; i++ {
-				lines[i] = ""
-			}
-		}
-		start = end
-	}
-	return []byte(strings.Join(lines, "\n"))
-}
-
 // filterHelmGeneratedLines drops entries from ignoreLines whose corresponding
 // line in content is a scanner-injected Helm header ("# Source: …" or
 // "# KICS_HELM_ID_T_N:"). These headers are picked up by the YAML parser as

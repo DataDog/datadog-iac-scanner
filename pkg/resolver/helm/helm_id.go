@@ -30,15 +30,21 @@ func (s stampedSources) of(file *chart.File) []byte {
 type invocationMarks struct {
 	// none leaves every template unmarked.
 	none bool
-	// unmarked are the templates left unmarked.
-	unmarked map[string]bool
+	// unmarked are the templates left unmarked, and cautious those marked
+	// without the markers that depend on how their includes indent.
+	unmarked, cautious map[string]bool
 	// seen are the templates the stamping visited, marked are those of them
 	// that received a marker.
 	seen, marked map[string]bool
+	// relaxed are the templates with a marker that cautious marking leaves out.
+	relaxed map[string]bool
 }
 
 func newInvocationMarks() *invocationMarks {
-	return &invocationMarks{unmarked: map[string]bool{}, seen: map[string]bool{}, marked: map[string]bool{}}
+	return &invocationMarks{
+		unmarked: map[string]bool{}, cautious: map[string]bool{}, relaxed: map[string]bool{},
+		seen: map[string]bool{}, marked: map[string]bool{},
+	}
 }
 
 // mark adds invocation markers to the template file named template, unless it
@@ -55,8 +61,12 @@ func (m *invocationMarks) mark(template string, file *chart.File) {
 		return
 	}
 	stamped := len(file.Data)
-	if len(addHelmInvocationMarkers(file).Data) > stamped && m.marked != nil {
+	marked, relaxed := addHelmInvocationMarkersWith(file, m.cautious[template])
+	if len(marked.Data) > stamped && m.marked != nil {
 		m.marked[template] = true
+	}
+	if relaxed {
+		m.relaxed[template] = true
 	}
 }
 

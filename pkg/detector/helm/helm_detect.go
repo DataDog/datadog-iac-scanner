@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/agnivade/levenshtein"
+	"gopkg.in/yaml.v3"
 )
 
 // DetectKindLine defines a kindDetectLine type
@@ -367,6 +368,16 @@ func lineWrites(line, text string, spanned bool) (candidate, printer bool) {
 	return false, true
 }
 
+// actionWord is the first word of an action, the keyword or function it starts
+// with, however it is separated from its arguments.
+func actionWord(action string) string {
+	inner := strings.Trim(strings.TrimSuffix(strings.TrimPrefix(action, "{{"), "}}"), "- \t\r\n")
+	if fields := strings.Fields(inner); len(fields) > 0 {
+		return fields[0]
+	}
+	return ""
+}
+
 // lineDepths returns, for each of lines, how many control blocks are open where
 // the line starts, counting the blocks opened on the lines before it.
 func lineDepths(lines []string) []int {
@@ -377,8 +388,7 @@ func lineDepths(lines []string) []int {
 			if action.Comment {
 				continue
 			}
-			word, _, _ := strings.Cut(strings.Trim(strings.TrimSuffix(strings.TrimPrefix(
-				line[action.Start:action.End], "{{"), "}}"), "- \t\r\n"), " ")
+			word := actionWord(line[action.Start:action.End])
 			switch {
 			case blockOpeners[word]:
 				depth++
@@ -397,8 +407,7 @@ func onlyControl(actions []helmaction.Action, line string) bool {
 		if action.Comment {
 			continue
 		}
-		word, _, _ := strings.Cut(strings.Trim(strings.TrimSuffix(strings.TrimPrefix(
-			line[action.Start:action.End], "{{"), "}}"), "- \t\r\n"), " ")
+		word := actionWord(line[action.Start:action.End])
 		if !blockOpeners[word] && !nonValueActions[word] {
 			return false
 		}
@@ -453,7 +462,7 @@ func plainLines(lines []string, invocations model.HelmInvocations, start int) (w
 	if inAction[from] {
 		return nil, -1
 	}
-	for i := from + 1; i < to; i++ {
+	for i := from; i < to; i++ {
 		switch {
 		case isIDLine(lines[i]):
 		case inAction[i]:
@@ -536,9 +545,7 @@ func valueLinePrefix(line string) string {
 	}
 	for _, action := range actions {
 		text := line[action.Start:action.End]
-		inner := strings.Trim(strings.TrimSuffix(strings.TrimPrefix(text, "{{"), "}}"), "- \t")
-		word, _, _ := strings.Cut(inner, " ")
-		switch word {
+		switch actionWord(text) {
 		case "if", "else", "end", "with", "range", "define", "block", "template", "include", "tpl", "break", "continue":
 			return ""
 		}
@@ -638,7 +645,7 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 			break
 		}
 		if path != nil {
-			*path = append(*path, keyMatch{key: substr1, selector: substr2 != "", line: d.lineRes})
+			*path = append(*path, keyMatch{key: substr1, selector: substr2 != "", value: substr2, line: d.lineRes})
 		}
 		start = iterStart
 		end = iterEnd
@@ -655,12 +662,23 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 // contradictsSelector reports whether line writes key with a literal value other
 // than value. A value with an action in it may print any value.
 func contradictsSelector(line, key, value string) bool {
-	_, written, ok := strings.Cut(line, key+":")
-	if !ok {
-		return false
+	written, ok := writtenScalar(line, key+":")
+	return ok && written != "" && written != value
+}
+
+// writtenScalar returns the literal scalar written after marker on line, as
+// YAML reads it: without its quotes or a trailing comment. It is false when
+// there is no marker, the value has an action in it or is not a scalar.
+func writtenScalar(line, marker string) (string, bool) {
+	_, written, ok := strings.Cut(line, marker)
+	if !ok || strings.Contains(written, "{{") {
+		return "", false
 	}
-	written = strings.Trim(strings.TrimSpace(written), `"'`)
-	return written != "" && !strings.Contains(written, "{{") && written != value
+	var node yaml.Node
+	if yaml.Unmarshal([]byte(written), &node) != nil || len(node.Content) != 1 || node.Content[0].Kind != yaml.ScalarNode {
+		return "", false
+	}
+	return node.Content[0].Value, true
 }
 
 // unstampedLines drops the ID stamp lines the resolver stamped into
@@ -721,6 +739,7 @@ func (d detectCurlLine) detectCurrentLine(lines []string, str1,
 		}
 	}
 
+	exactSelectors(lines, distances, str1, str2)
 	lastSingle := d.lastUnique.lastUniqueLine
 
 	if len(distances) == 0 {
@@ -754,6 +773,29 @@ func (d detectCurlLine) detectCurrentLine(lines []string, str1,
 		},
 		starts[lineResponse],
 		ends[lineResponse]
+}
+
+// exactSelectors keeps, among the lines that hold both str1 and the selector
+// value str2, the ones whose value is exactly str2 when there are any: a
+// selector value that only starts a longer one does not pick that item.
+func exactSelectors(lines []string, distances map[int]int, str1, str2 string) {
+	if str1 == "" || str2 == "" {
+		return
+	}
+	exact := map[int]bool{}
+	for i := range distances {
+		if value, ok := writtenScalar(lines[i], str1); ok && value == str2 {
+			exact[i] = true
+		}
+	}
+	if len(exact) == 0 {
+		return
+	}
+	for i := range distances {
+		if !exact[i] {
+			delete(distances, i)
+		}
+	}
 }
 
 // tiedInBranch reports whether a line other than line, at the same distance, is
