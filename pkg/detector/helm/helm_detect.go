@@ -84,7 +84,7 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	// has no line of its own once the stamps are dropped.
 	// A key whose candidate lines are alternative branches is first looked up in
 	// the rendered document, which says which one was written.
-	whole := curLineRes.foundRes && !curLineRes.breakRes && !curLineRes.tiedInBranch
+	whole := curLineRes.foundRes && !curLineRes.breakRes && !curLineRes.tiedInBranch && curLineRes.lastUnique.unique
 	if whole && !isIDLine(lines[curLineRes.lineRes]) {
 		return foundLines(file, lines, curLineRes.lineRes, start, end, outputLines)
 	}
@@ -205,10 +205,10 @@ func writerLines(file *model.FileMetadata, lines, rendered []string, target, out
 	if invocation, ok := invocations.Containing(target + 1); ok {
 		return invocationLines(file, invocation.Position, lines, outputLines)
 	}
-	if line, ok := alignedLine(lines, rendered, invocations, target); ok {
+	start := documentStart(lines, file.HelmID, invocations)
+	if line, ok := alignedLine(lines, rendered, invocations, target, start); ok {
 		return foundLines(file, lines, line, model.ResourceLine{}, model.ResourceLine{Col: len(lines[line])}, outputLines), true
 	}
-	start := documentStart(lines, file.HelmID, invocations)
 	if line, ok := uniqueLine(lines, rendered, invocations, target, start); ok {
 		return foundLines(file, lines, line, model.ResourceLine{}, model.ResourceLine{Col: len(lines[line])}, outputLines), true
 	}
@@ -216,19 +216,16 @@ func writerLines(file *model.FileMetadata, lines, rendered []string, target, out
 }
 
 // alignedLine returns the index of the template line that wrote rendered line
-// target, which no include emitted. From the include that emitted the start of
-// the document, a line of plain text prints once, as written, and in order, so
+// target, which no include emitted. From the start of the document, a line of
+// plain text prints once, as written, and in order, so
 // the rendered lines outside the includes' output match those lines one for
 // one. The first line with an action of its own ends that: an action may print
 // nothing, several lines, or join lines. Only that line's first rendered line
 // is known still, when the line starts with text: it is the next one.
-func alignedLine(lines, rendered []string, invocations model.HelmInvocations, target int) (int, bool) {
-	if len(invocations) == 0 {
-		return 0, false
-	}
-	written, next := plainLines(lines, invocations)
+func alignedLine(lines, rendered []string, invocations model.HelmInvocations, target, start int) (int, bool) {
+	written, next := plainLines(lines, invocations, start)
 	kept := 0
-	for r := invocations[0].RenderedLine - 1; r < len(rendered); r++ {
+	for r := renderedStart(rendered, invocations); r < len(rendered); r++ {
 		line := strings.TrimRight(rendered[r], " \t\r")
 		if _, emitted := invocations.Containing(r + 1); emitted || strings.TrimSpace(line) == "" || isIDLine(line) {
 			continue
@@ -427,13 +424,28 @@ func documentStart(lines []string, stamp string, invocations model.HelmInvocatio
 	return invocations.First().Line
 }
 
+// renderedStart is the index of the rendered line the document starts at: the
+// first include's, or the line after the document's stamp when no include
+// emitted any of it.
+func renderedStart(rendered []string, invocations model.HelmInvocations) int {
+	if len(invocations) > 0 {
+		return invocations[0].RenderedLine - 1
+	}
+	for i, line := range rendered {
+		if isIDLine(line) {
+			return i + 1
+		}
+	}
+	return 0
+}
+
 // plainLines returns the indexes of the lines of plain text of the document,
-// from the first include up to the first line with an action of its own, and
+// from its start up to the first line with an action of its own, and
 // the index of that line when it is a value line (see valueLinePrefix), or -1.
 // Actions are found in the document as a whole, as one may span lines; a line
 // inside a marked include prints nothing of its own.
-func plainLines(lines []string, invocations model.HelmInvocations) (written []int, next int) {
-	from, to := documentLines(lines, invocations.First().Line)
+func plainLines(lines []string, invocations model.HelmInvocations, start int) (written []int, next int) {
+	from, to := documentLines(lines, start)
 	if from < 0 {
 		return nil, -1
 	}
@@ -609,11 +621,18 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 ) (walked detectCurlLine, start, end model.ResourceLine) {
 	for _, key := range strings.Split(sanitizedSubstring, ".") {
 		substr1, substr2 := detector.GenerateSubstrings(ctx, key, extractedString, lines, d.lineRes)
+		selector := substr2
 		if path == nil {
 			substr2 = ""
 		}
 		var iterStart, iterEnd model.ResourceLine
+		before := d
 		d, iterStart, iterEnd = d.detectCurrentLine(lines, fmt.Sprintf("%s:", substr1), substr2, true, idInfo, helmID)
+		if path == nil && selector != "" && !d.breakRes && contradictsSelector(lines[d.lineRes], substr1, selector) {
+			// The line holds another value than the item the key picks.
+			d, iterStart, iterEnd = before, model.ResourceLine{}, model.ResourceLine{}
+			d.breakRes = true
+		}
 
 		if d.breakRes {
 			break
@@ -631,6 +650,17 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 		d.lineRes = d.lastUnique.lastUniqueLine
 	}
 	return d, start, end
+}
+
+// contradictsSelector reports whether line writes key with a literal value other
+// than value. A value with an action in it may print any value.
+func contradictsSelector(line, key, value string) bool {
+	_, written, ok := strings.Cut(line, key+":")
+	if !ok {
+		return false
+	}
+	written = strings.Trim(strings.TrimSpace(written), `"'`)
+	return written != "" && !strings.Contains(written, "{{") && written != value
 }
 
 // unstampedLines drops the ID stamp lines the resolver stamped into

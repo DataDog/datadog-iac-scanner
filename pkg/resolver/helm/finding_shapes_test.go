@@ -239,7 +239,7 @@ func TestHelmFindingLinesOfShapes(t *testing.T) {
 			[]shapeKey{{"spec.dnsPolicy", 2}, {"spec.containers", 2}}},
 		{"42 include in block scalar in sequence item", shapeLines(withLines(pCmHead, "data:", "  list:", "  - |", "    echo", "{{- if true }}", `    {{ include "frag" . }}`, "{{- end }}")...), "", "kind: ConfigMap",
 			[]shapeKey{{"data.list", 6}}},
-		{"43 trimmed include ending a line, templated same key elsewhere", shapeLines(`{{ include "hdrnl" . -}}`, "data:", "  name: {{ .Values.n }}"), "n: other\n", "kind: ConfigMap",
+		{"43 trimmed include ending a line, templated same key elsewhere", shapeLines(`{{ include "hdrnl" . -}}`, "data:", "  name: {{ .Values.cname }}"), "n: other\n", "kind: ConfigMap",
 			[]shapeKey{{"metadata.name", 1}, {"data.name", 3}}},
 		{"44 trimmed include ending a line, same text at another path", shapeLines(`{{ include "hdrnl" . -}}`, "data:", "  name: cm"), "", "kind: ConfigMap",
 			[]shapeKey{{"metadata.name", 1}, {"data.name", 3}}},
@@ -362,6 +362,16 @@ func TestHelmFindingLinesOfShapes(t *testing.T) {
 		{"86 literal spec after block scalar and column-0 include, Service doc", shapeLines("apiVersion: v1", "kind: Service", "metadata:",
 			"  name: {{ .Values.name }}", "  annotations:", "    notes: |-", "      echo hi", "", "      echo again", `{{ include "svc" . }}`), "name: web\n", "  name: svc",
 			[]shapeKey{{"spec.type", 10}}},
+		// No include is marked in the template: the keys are resolved on the rendered
+		// document, and the later name: of envFrom is not the container's.
+		{"87 action-valued container name, later name key", shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: p", "spec:",
+			"  containers:", "    - name: {{ .Values.cname }}", "      image: nginx", "      imagePullPolicy: {{ .Values.pp }}", "      envFrom:",
+			"        - configMapRef:", "            name: cm"), "cname: web\npp: Always\n", "kind: Pod",
+			[]shapeKey{{"spec.containers.name={{web}}.image", 8}, {"spec.containers.name={{web}}.imagePullPolicy", 9}}},
+		{"88 two containers, action-valued names, one pull policy each", shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: p", "spec:",
+			"  containers:", "    - name: {{ .Values.first }}", "      image: nginx", "      imagePullPolicy: {{ .Values.pp }}", "    - name: {{ .Values.second }}",
+			"      image: busybox", "      imagePullPolicy: Never"), "first: web\nsecond: side\npp: Always\n", "kind: Pod",
+			[]shapeKey{{"spec.containers.name={{web}}.imagePullPolicy", 9}, {"spec.containers.name={{side}}.imagePullPolicy", 12}}},
 		{"84 leading trimmed include, literal key after it", shapeLines(`{{- include "header" . }}`, "spec:", "  hostNetwork: true"), "", "kind: Pod",
 			[]shapeKey{{"metadata.name", 1}, {"spec.hostNetwork", 3}}},
 	}

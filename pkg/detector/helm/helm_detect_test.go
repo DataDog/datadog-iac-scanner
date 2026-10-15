@@ -508,3 +508,22 @@ func TestDetectLineStampKeyIgnoresTextMentioningIt(t *testing.T) {
 		t.Fatalf("DetectLine() matched text mentioning a stamp: line %d (%q), want none", got.Line, got.LineWithVulnerability)
 	}
 }
+
+func TestContradictsSelector(t *testing.T) {
+	for _, tt := range []struct {
+		line string
+		want bool
+	}{
+		{"    - name: web", false},
+		{"    - name: other", true},
+		{`    - name: "other"`, true},
+		{"    - name: {{ .Values.n }}", false},
+		{"    - name: prefix-{{ .Values.n }}", false},
+		{"    - name:", false},
+		{"    image: nginx", false},
+	} {
+		if got := contradictsSelector(tt.line, "name", "web"); got != tt.want {
+			t.Errorf("contradictsSelector(%q) = %v, want %v", tt.line, got, tt.want)
+		}
+	}
+}
