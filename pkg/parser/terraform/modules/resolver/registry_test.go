@@ -596,6 +596,33 @@ func TestDotTerraformResolverUnpinnedCallUsesModuleNameWhenPinnedRecordSharesSou
 	}
 }
 
+// terraform init records a registry source in modules.json with its registry
+// host, while the configuration usually omits it.
+func TestDotTerraformResolverMatchesHostQualifiedRegistrySource(t *testing.T) {
+	root := writeModulesJSONRecords(t, []dotTerraformModuleRecord{
+		{Key: "vpc", Source: "registry.terraform.io/terraform-aws-modules/vpc/aws", Version: "5.1.2", Dir: "vpc"},
+		{Key: "user", Source: "registry.terraform.io/terraform-aws-modules/iam/aws//modules/iam-user", Version: "5.0.0", Dir: "user"},
+	})
+	r := &DotTerraformResolver{RootDirs: []string{root}}
+
+	for source, dir := range map[string]string{
+		"terraform-aws-modules/vpc/aws":                       "vpc",
+		"registry.terraform.io/terraform-aws-modules/vpc/aws": "vpc",
+		"terraform-aws-modules/iam/aws//modules/iam-user":     "user",
+	} {
+		res, err := r.Resolve(context.Background(), &tfmodules.ParsedModule{
+			Source:   source,
+			FileName: filepath.Join(root, "main.tf"),
+		})
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", source, err)
+		}
+		if res.LocalPath != filepath.Join(root, dir) {
+			t.Fatalf("Resolve(%q).LocalPath = %q, want %q", source, res.LocalPath, filepath.Join(root, dir))
+		}
+	}
+}
+
 func TestGoGetterCacheHitCountsTotalBytes(t *testing.T) {
 	cacheDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(cacheDir, "main.tf"), []byte("0123456789"), 0o644); err != nil {

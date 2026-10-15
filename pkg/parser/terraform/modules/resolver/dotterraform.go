@@ -182,7 +182,18 @@ func (r *DotTerraformResolver) rootsFor(fileName string) []string {
 }
 
 func dotTerraformKey(root, source, version string) string {
-	return filepath.Clean(root) + "\x00" + strings.TrimSpace(source) + "\x00" + strings.TrimSpace(version)
+	return filepath.Clean(root) + "\x00" + dotTerraformSource(source) + "\x00" + strings.TrimSpace(version)
+}
+
+// dotTerraformSource normalizes a registry source the way terraform init
+// records it in modules.json, with its registry host, so a declared
+// "ns/name/provider" matches "registry.terraform.io/ns/name/provider".
+func dotTerraformSource(source string) string {
+	source = strings.TrimSpace(source)
+	if addr, err := tfmodules.ParseRegistryModuleSource(source); err == nil {
+		return addr.String()
+	}
+	return source
 }
 
 func dotTerraformCallKey(root, source, version, moduleName string) string {
