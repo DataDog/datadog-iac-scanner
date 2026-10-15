@@ -25,6 +25,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	dockerfileparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
 )
 
@@ -85,24 +86,25 @@ var (
 	listKeywordsGoogleDeployment = []string{"resources"}
 	armRegexTypes                = []string{"blueprint", "templateArtifact", "roleAssignmentArtifact", "policyAssignmentArtifact"}
 	possibleFileTypes            = map[string]bool{
-		yml:            true,
-		yaml:           true,
-		json:           true,
-		sh:             true,
-		extDockerfile:  true,
-		nameDockerfile: true,
-		extDebian:      true,
-		extUbi8:        true,
-		extTf:          true,
-		extTofu:        true,
-		extTfJSON:      true,
-		extTofuJSON:    true,
-		extTfvars:      true,
-		extProto:       true,
-		extCfg:         true,
-		extConf:        true,
-		extIni:         true,
-		extBicepFile:   true,
+		yml:                   true,
+		yaml:                  true,
+		json:                  true,
+		sh:                    true,
+		extDockerfile:         true,
+		nameDockerfile:        true,
+		extPossibleDockerfile: true,
+		extDebian:             true,
+		extUbi8:               true,
+		extTf:                 true,
+		extTofu:               true,
+		extTfJSON:             true,
+		extTofuJSON:           true,
+		extTfvars:             true,
+		extProto:              true,
+		extCfg:                true,
+		extConf:               true,
+		extIni:                true,
+		extBicepFile:          true,
 	}
 	supportedRegexes = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
@@ -458,7 +460,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			if ext == "" {
 				return nil
 			}
-			if _, ok := possibleFileTypes[ext]; !ok && ext != extPossibleDockerfile {
+			if _, ok := possibleFileTypes[ext]; !ok {
 				return nil
 			}
 
@@ -717,22 +719,58 @@ func isDockerfile(ctx context.Context, fsys vfs.FS, path string, content []byte)
 	return looksLikeDockerfile(content)
 }
 
-var dockerfileFirstInstruction = regexp.MustCompile(`(?i)^(FROM|ARG)\s`)
+var (
+	dockerfileFromInstruction = regexp.MustCompile(`(?i)^FROM\s`)
+	dockerfileArgInstruction  = regexp.MustCompile(`(?i)^ARG\s`)
+)
 
-// looksLikeDockerfile checks the first instruction after comments and blank
-// lines. Dockerfiles start with FROM, optionally preceded by ARG.
+// looksLikeDockerfile requires FROM after any leading ARG instructions,
+// ignoring comments and blank lines.
 func looksLikeDockerfile(content []byte) bool {
 	content = bytes.TrimPrefix(content, []byte("\ufeff"))
+	escape := byte('\\')
+	argContinuation := false
+	var directives dockerfileparser.DirectiveParser
 	for len(content) > 0 {
 		line, rest, _ := bytes.Cut(content, []byte("\n"))
 		content = rest
 		line = bytes.TrimSpace(line)
-		if len(line) == 0 || line[0] == '#' {
+		directive, err := directives.ParseLine(line)
+		if err != nil {
+			return false
+		}
+		if directive != nil && directive.Name == "escape" {
+			switch directive.Value {
+			case "\\", "`":
+				escape = directive.Value[0]
+			default:
+				return false
+			}
+		}
+		if len(line) == 0 {
 			continue
 		}
-		return dockerfileFirstInstruction.Match(line)
+		if line[0] == '#' {
+			continue
+		}
+		if argContinuation {
+			argContinuation = dockerfileArgContinues(line, escape)
+			continue
+		}
+		if dockerfileFromInstruction.Match(line) {
+			return true
+		}
+		if !dockerfileArgInstruction.Match(line) {
+			return false
+		}
+		// A continued ARG value is not a new instruction, even if it says FROM.
+		argContinuation = dockerfileArgContinues(line, escape)
 	}
 	return false
+}
+
+func dockerfileArgContinues(line []byte, escape byte) bool {
+	return line[len(line)-1] == escape && (len(line) == 1 || line[len(line)-2] != escape)
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json

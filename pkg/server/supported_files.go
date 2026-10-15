@@ -40,29 +40,30 @@ type SupportedFileEntry struct {
 // applies to self-contained types (Dockerfile, gRPC proto, Buildah .sh), and
 // "chart" to a Helm chart root (push the chart directory recursively).
 //
-// Keys are the IDE-facing patterns (dotted extensions, or full filenames like
-// "Dockerfile"). TestSupportedFiles_NoDrift asserts this covers every
+// Keys are IDE-facing extensions, filenames, or globs such as "Dockerfile.*".
+// TestSupportedFiles_NoDrift asserts this covers every
 // analyzer.PossibleFileTypes() entry so a newly supported type can't be missed.
 var strategyByPattern = map[string]fileStrategy{
-	".tf":         strategyDirectory,
-	".tofu":       strategyDirectory,
-	".tf.json":    strategyDirectory,
-	".tofu.json":  strategyDirectory,
-	".tfvars":     strategyDirectory,
-	".yaml":       strategyDirectory,
-	".yml":        strategyDirectory,
-	".json":       strategyDirectory,
-	".bicep":      strategyDirectory,
-	".cfg":        strategyDirectory,
-	".conf":       strategyDirectory,
-	".ini":        strategyDirectory,
-	"Dockerfile":  strategySingleFile,
-	".dockerfile": strategySingleFile,
-	"Chart.yaml":  strategyChart,
-	".ubi8":       strategySingleFile,
-	".debian":     strategySingleFile,
-	".proto":      strategySingleFile,
-	".sh":         strategySingleFile,
+	".tf":          strategyDirectory,
+	".tofu":        strategyDirectory,
+	".tf.json":     strategyDirectory,
+	".tofu.json":   strategyDirectory,
+	".tfvars":      strategyDirectory,
+	".yaml":        strategyDirectory,
+	".yml":         strategyDirectory,
+	".json":        strategyDirectory,
+	".bicep":       strategyDirectory,
+	".cfg":         strategyDirectory,
+	".conf":        strategyDirectory,
+	".ini":         strategyDirectory,
+	"Dockerfile":   strategySingleFile,
+	"Dockerfile.*": strategySingleFile,
+	".dockerfile":  strategySingleFile,
+	"Chart.yaml":   strategyChart,
+	".ubi8":        strategySingleFile,
+	".debian":      strategySingleFile,
+	".proto":       strategySingleFile,
+	".sh":          strategySingleFile,
 }
 
 // supportedFiles builds the supported-files response: one entry per pattern,
