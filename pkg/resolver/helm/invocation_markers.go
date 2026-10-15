@@ -58,11 +58,11 @@ func hasInvocationMarker(content string) bool {
 
 // indentedInvocationEnd matches an end, indented when an include's output
 // holding it went through "indent", and the line break before it.
-var indentedInvocationEnd = regexp.MustCompile(`\n[ \t]*` + regexp.QuoteMeta(invocationEnd))
+var indentedInvocationEnd = regexp.MustCompile(`(^|\n)[ \t]*` + regexp.QuoteMeta(invocationEnd))
 
 // removeInvocationEnds drops every end and the line break before it.
 func removeInvocationEnds(content string) string {
-	return indentedInvocationEnd.ReplaceAllString("\n"+content, "")[1:]
+	return indentedInvocationEnd.ReplaceAllString(content, "")
 }
 
 // removeInvocationMarkers drops every marker line and end from content.
@@ -115,11 +115,14 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 	if !wrapper && strings.HasPrefix(filepath.Base(file.Name), "_") {
 		return file
 	}
-
 	var markers []replacement
 	var blocks helmBlockStack
 	lines := sourceLines{source: source, line: 1}
+	// commentsOnly holds while every action before the current one is a comment.
+	commentsOnly := true
 	for _, action := range helmaction.Terminated(source) {
+		first := commentsOnly
+		commentsOnly = commentsOnly && action.Comment
 		span := [2]int{action.Start, action.End}
 		actionText := strings.Trim(source[span[0]+len("{{"):span[1]-len("}}")], "- \t\r\n")
 		fields := strings.Fields(actionText)
@@ -130,9 +133,10 @@ func addHelmInvocationMarkers(file *chart.File) *chart.File {
 			continue
 		}
 
-		lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
+		lineStart, _ := lineBounds(source, span[0])
 		marker := invocationMarker{Line: lines.lineOf(span[0]), Col: span[0] - lineStart}.String()
-		if r, ok := invocationReplacement(source, span, actionText, marker, wrapper); ok {
+		opensTemplate := first && startsTemplate(source, span, actionText)
+		if r, ok := invocationReplacement(source, span, actionText, marker, wrapper, opensTemplate); ok {
 			markers = append(markers, r)
 		}
 	}
@@ -183,18 +187,32 @@ func (s *sourceLines) lineOf(pos int) int {
 //
 // The output is closed by an end line (see invocationEndText), and so is every
 // document it holds, which bounds the rendered lines the action emitted.
-func invocationReplacement(source string, span [2]int, actionText, marker string, wrapper bool) (replacement, bool) {
-	if !wrapper && !standaloneUntrimmedAction(source, span) {
-		return replacement{}, false
-	}
-	lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
+func invocationReplacement(source string, span [2]int, actionText, marker string,
+	wrapper, opensTemplate bool,
+) (replacement, bool) {
+	lineStart, _ := lineBounds(source, span[0])
 	action := source[span[0]:span[1]]
 	lead := marker
 	if wrapper {
 		lead = "\n" + marker
 	}
 	end := invocationEndText(source, span)
-	if strings.HasPrefix(actionText, helmInclude) && (wrapper || span[0] == lineStart) {
+	switch {
+	case wrapper || standaloneUntrimmedAction(source, span):
+	case trimmedStandaloneNindent(source, span, actionText):
+		// The "-" removed the line break before the action and nindent prints
+		// one first: the marker takes that line break, and indent keeps the
+		// output as Helm prints it.
+		action = trailingNindent.ReplaceAllString(action, "| indent ${1} ${2}")
+		lead = "\n" + marker
+	case opensTemplate:
+		// The marker starts a line of its own after "---" or the start of the
+		// template, so the marker's leading line break is not needed.
+	default:
+		return replacement{}, false
+	}
+	startsLine := wrapper || span[0] == lineStart || lead != marker || opensTemplate
+	if strings.HasPrefix(actionText, helmInclude) && startsLine {
 		return replacement{start: span[0], end: span[1], text: markEveryDocument(action, lead, marker, end)}, true
 	}
 	prefix := fmt.Sprintf("{{ print %q }}", lead)
@@ -207,6 +225,53 @@ func invocationReplacement(source string, span [2]int, actionText, marker string
 	}
 	// Emitted before the line's indentation so the include output keeps it.
 	return replacement{start: lineStart, end: span[1], text: prefix + source[lineStart:span[0]] + action + suffix}, true
+}
+
+// trailingNindent matches a final "| nindent N" stage of an action.
+var trailingNindent = regexp.MustCompile(`\|\s*nindent\s+(\d+)\s*(-?\}\})$`)
+
+// trimmedStandaloneNindent reports whether the action at span is a left-trimmed
+// include alone on its line whose output goes through "nindent", outside any
+// block scalar.
+func trimmedStandaloneNindent(source string, span [2]int, actionText string) bool {
+	if !strings.HasPrefix(source[span[0]:], "{{-") || !strings.HasPrefix(actionText, helmInclude) ||
+		!trailingNindent.MatchString(source[span[0]:span[1]]) {
+		return false
+	}
+	lineStart, _ := lineBounds(source, span[0])
+	_, lineEnd := lineBounds(source, span[1])
+	return strings.TrimSpace(source[lineStart:span[0]]) == "" && strings.TrimSpace(source[span[1]:lineEnd]) == "" &&
+		!insideBlockScalar(source[:lineStart])
+}
+
+// startsTemplate reports whether the action at span is a left-trimmed include
+// that starts its template, or a document, which the "-" then trims nothing
+// but the line break before. The marker, which starts with a line break, then
+// keeps the output on a line of its own: a document starts after "---" or the
+// start of the template, with only blanks, comments and ID stamps before it.
+// Every action before span must be a comment, which the caller checks.
+func startsTemplate(source string, span [2]int, actionText string) bool {
+	if !strings.HasPrefix(source[span[0]:], "{{-") || !strings.HasPrefix(actionText, helmInclude) {
+		return false
+	}
+	content := ""
+	for _, line := range strings.Split(helmaction.Remove(source[:span[0]]), "\n") {
+		if _, stamp := helmmarker.ParseIDLine(line); !stamp && strings.TrimSpace(line) != "" {
+			content = line
+		}
+	}
+	return content == "" || isYAMLDocumentBoundary(content)
+}
+
+// startsWithNindent reports whether text starts with an action ending with a
+// "| nindent N" stage, whose output starts with a line break: nothing printed
+// before it is glued to what precedes it.
+func startsWithNindent(text string) bool {
+	if !strings.HasPrefix(text, "{{") {
+		return false
+	}
+	end := strings.Index(text, "}}")
+	return end >= 0 && trailingNindent.MatchString(text[:end+2])
 }
 
 // silentTrimmedAction matches a "{{-" action that prints nothing and keeps the
@@ -222,8 +287,8 @@ var silentTrimmedAction = regexp.MustCompile(`^\{\{-\s+(?:(?:end|else)\b[^}]*[^-
 // action stays unknown unless its output ends a line (see markEveryDocument).
 func invocationEndText(source string, span [2]int) string {
 	after := strings.TrimLeft(source[span[1]:], " \t\r\n")
-	if after != "" && strings.HasSuffix(source[span[0]:span[1]], "-}}") ||
-		strings.HasPrefix(after, "{{-") && !silentTrimmedAction.MatchString(after) {
+	if after != "" && strings.HasSuffix(source[span[0]:span[1]], "-}}") && !startsWithNindent(after) ||
+		strings.HasPrefix(after, "{{-") && !silentTrimmedAction.MatchString(after) && !startsWithNindent(after) {
 		return ""
 	}
 	return "\n" + invocationEnd
@@ -238,20 +303,33 @@ func standaloneUntrimmedAction(source string, span [2]int) bool {
 	if strings.HasPrefix(source[span[0]:], "{{-") {
 		return false
 	}
-	lineStart := strings.LastIndexByte(source[:span[0]], '\n') + 1
+	lineStart, _ := lineBounds(source, span[0])
 	if strings.HasSuffix(strings.TrimRight(source[:lineStart], " \t\r\n"), "-}}") {
 		return false
 	}
-	lineEnd := len(source)
-	if i := strings.IndexByte(source[span[1]:], '\n'); i >= 0 {
-		lineEnd = span[1] + i
-	}
+	_, lineEnd := lineBounds(source, span[1])
+	// An unindented action at column 0 ends a block scalar, as its output does,
+	// unless the output is indented by "indent" or "nindent".
+	endsScalar := span[0] == lineStart && !strings.Contains(source[span[0]:span[1]], "indent")
+	// A comment after the action prints nothing, so it is not text of the line.
+	rest := strings.TrimSpace(source[span[1]:lineEnd])
 	return strings.TrimSpace(source[lineStart:span[0]]) == "" &&
-		strings.TrimSpace(source[span[1]:lineEnd]) == "" &&
-		!insideBlockScalar(source[:lineStart])
+		(rest == "" || strings.HasPrefix(rest, "{{/*")) &&
+		(endsScalar || !insideBlockScalar(source[:lineStart]))
 }
 
 var blockScalarHeader = regexp.MustCompile(`[|>][+-]?\d?[+-]?(?:\s+#.*)?\s*$`)
+
+// lineBounds returns the start of the line holding pos and the line break that
+// ends it, or the end of the template.
+func lineBounds(source string, pos int) (start, end int) {
+	start = strings.LastIndexByte(source[:pos], '\n') + 1
+	end = len(source)
+	if i := strings.IndexByte(source[pos:], '\n'); i >= 0 {
+		end = pos + i
+	}
+	return start, end
+}
 
 // insideBlockScalar reports whether the text before an action may belong to a
 // YAML block scalar: walking back over indented lines reaches a "|" or ">"
@@ -316,7 +394,7 @@ func (b helmBlockStack) inPartial() bool {
 // helmDocumentSeparator matches a document separator in an include's output that
 // has a document after it, keeping the separator line and what follows. A
 // trailing separator is left alone: the document after it is not the include's.
-const helmDocumentSeparator = `\n(---(?:[ \t][^\n]*|\r)?\n)(\s*\S)`
+const helmDocumentSeparator = `\n((?:---(?:[ \t][^\n]*|\r)?\n)+)(\s*\S)`
 
 // markEveryDocument makes an include print lead ahead of its output, end after
 // it, and marker after each document separator in it, preceded by an end line.

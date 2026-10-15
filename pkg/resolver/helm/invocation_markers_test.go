@@ -2,7 +2,6 @@ package helm
 
 import (
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,7 +48,10 @@ func TestEndLineGluedToTheNextOutput(t *testing.T) {
 	require.Len(t, invocations, 1)
 	require.Equal(t, 1, invocations[0].RenderedLine)
 	require.Equal(t, 2, invocations[0].RenderedEnd)
-	require.Equal(t, "a\n", removeInvocationMarkers(invocationEnd+"\na\n"), "an end opening a document")
+	// A document is wrapped in a line break, which the end takes along with
+	// its own; removing the end alone must not cut a byte of the output.
+	require.Equal(t, "\na\n", removeInvocationMarkers("\n"+invocationEnd+"\na\n"), "an end opening a document")
+	require.Equal(t, "a\n", removeInvocationMarkers(invocationEnd+"a\n"), "an end glued to the output")
 }
 
 func TestAddHelmInvocationMarkersInspectsEveryAction(t *testing.T) {
@@ -158,6 +160,9 @@ func TestInsideBlockScalarEndsWithItsIndentation(t *testing.T) {
 	require.True(t, insideBlockScalar("data:\n  a: |\n    {{ .Values.x }}\n"))
 }
 
+// leadingMarker matches the marker an instrumented action prints ahead of its output.
+var leadingMarker = regexp.MustCompile(`print "(\\n)?# KICS_HELM_INVOCATION_\d`)
+
 func TestAddHelmInvocationMarkersMixedManifest(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -173,10 +178,14 @@ func TestAddHelmInvocationMarkersMixedManifest(t *testing.T) {
 			"kind: Service\nmetadata:\n  name: {{ include \"n\" . }}\n", 0},
 		{"trimmed include keeps gluing", "templates/svc.yaml",
 			"kind: Service\nmetadata:\n  labels: {{- include \"l\" . | nindent 4 }}\n", 0},
-		{"trimmed standalone include", "templates/svc.yaml",
-			"kind: Service\nmetadata:\n  annotations:\n  {{- include \"a\" . | nindent 4 }}\n", 0},
+		{"trimmed standalone nindent include", "templates/svc.yaml",
+			"kind: Service\nmetadata:\n  annotations:\n  {{- include \"a\" . | nindent 4 }}\n", 1},
+		{"trimmed standalone include without nindent", "templates/svc.yaml",
+			"kind: Service\nmetadata:\n  annotations:\n  {{- include \"a\" . }}\n", 0},
+		{"trimmed include starting the template", "templates/svc.yaml",
+			"{{- /* c */}}\n{{- include \"a\" . }}\nspec: {}\n", 1},
 		{"after right-trimmed include", "templates/cm.yaml",
-			"metadata:\n  labels:\n    {{- include \"base\" . | nindent 4 -}}\n{{ include \"extra\" . | nindent 4 }}\n", 0},
+			"metadata:\n  labels:\n    {{- include \"base\" . | nindent 4 -}}\n{{ include \"extra\" . | nindent 4 }}\n", 1},
 		{"after right-trimmed if", "templates/cm.yaml",
 			"kind: ConfigMap\ndata:\n{{- if .Values.extra -}}\n{{ include \"extra\" . | nindent 2 }}\n{{- end }}\n", 0},
 		{"after right-trimmed action and blank line", "templates/cm.yaml",
@@ -197,7 +206,7 @@ func TestAddHelmInvocationMarkersMixedManifest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			file := addHelmInvocationMarkers(&chart.File{Name: tt.file, Data: []byte(tt.source)})
-			require.Equal(t, tt.wantMarked, strings.Count(string(file.Data), "print \"# KICS_HELM_INVOCATION_"))
+			require.Equal(t, tt.wantMarked, len(leadingMarker.FindAllString(string(file.Data), -1)))
 			if tt.wantMarked == 0 {
 				require.Equal(t, tt.source, string(file.Data), "an uninstrumented template is left unchanged")
 			}
