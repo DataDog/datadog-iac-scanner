@@ -300,3 +300,23 @@ func TestSaveAndResolveEnvs(t *testing.T) {
 		})
 	}
 }
+
+// A bare ARG has no value; parsing it must not panic, since a panic in a parser
+// worker ends the whole scan.
+func TestParser_Parse_BareArg(t *testing.T) {
+	p := &Parser{}
+	require.NotPanics(t, func() {
+		_, doc, _, _, err := p.Parse(context.Background(), []byte("FROM ubuntu:22.04\nARG\nRUN echo hi\n"), "Dockerfile", true, 15)
+		require.NoError(t, err)
+		require.Len(t, doc, 1)
+	})
+}
+
+// One ARG instruction may declare several names.
+func TestParser_Parse_ArgDeclaresSeveralNames(t *testing.T) {
+	p := &Parser{}
+	_, doc, _, _, err := p.Parse(context.Background(), []byte("ARG IMAGE=alpine TAG=3.19\nFROM ${IMAGE}:${TAG}\n"), "Dockerfile", true, 15)
+	require.NoError(t, err)
+	stage := doc[0]["command"].(map[string]interface{})["${IMAGE}:${TAG}"]
+	require.Equal(t, "alpine:3.19", stage.([]interface{})[0].(map[string]interface{})["Value"].([]interface{})[0])
+}

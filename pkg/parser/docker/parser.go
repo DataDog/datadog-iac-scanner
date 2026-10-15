@@ -95,7 +95,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		if child.Value != "arg" {
 			cmd.Value = resolveArgsAndEnvs(cmd.Value, args)
 		} else {
-			args = saveArgs(args, cmd.Value[0])
+			// A bare ARG has no value, and one ARG may declare several names.
+			for _, argValue := range cmd.Value {
+				args = saveArgs(args, argValue)
+			}
 		}
 
 		if child.Value != "env" {
