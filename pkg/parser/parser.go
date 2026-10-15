@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -207,6 +209,27 @@ func (c *Parser) ParseContent(
 	return c.parseContent(ctx, filePath, fileContent, openAPIResolveReferences, isMinified, maxResolverDepth)
 }
 
+// parseRecovering runs the selected parser and turns a panic into an error:
+// parsers run in scan workers without a recover, so a panic on one malformed
+// file would otherwise end the whole scan instead of failing that file.
+func (c *Parser) parseRecovering(
+	ctx context.Context,
+	fileContent []byte,
+	filePath string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int,
+) (resolved []byte, docs []model.Document, igLines []int, resolvedFiles map[string]model.ResolvedFile, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Debug().Msgf("parser panic on %s: %v\n%s", filePath, r, debug.Stack())
+			resolved, docs, igLines, resolvedFiles = nil, nil, nil, nil
+			err = fmt.Errorf("parser panic: %v", r)
+		}
+	}()
+	return c.Parsers.Parse(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+}
+
 func (c *Parser) parseContent(
 	ctx context.Context,
 	filePath string,
@@ -216,7 +239,7 @@ func (c *Parser) parseContent(
 	contextLogger := logger.FromContext(ctx)
 	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, utils.GetVaultPassword())
 
-	resolved, obj, igLines, resolvedFiles, err := c.Parsers.Parse(
+	resolved, obj, igLines, resolvedFiles, err := c.parseRecovering(
 		ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
 	if err != nil {
 		return ParsedDocument{}, err

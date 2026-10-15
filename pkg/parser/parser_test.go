@@ -7,6 +7,7 @@ package parser
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -198,4 +199,27 @@ func TestBuild_PlatformIsIntersectedWithRequestedTypes(t *testing.T) {
 	require.Len(t, allParsers, 1)
 	require.Greater(t, len(allParsers[0].Platform), 1,
 		"wildcard Build should include all supported types")
+}
+
+// panickingParser stands in for a parser that panics on malformed input.
+type panickingParser struct{ yamlParser.Parser }
+
+func (panickingParser) Parse(context.Context, []byte, string, bool, int) (
+	[]byte, []model.Document, []int, map[string]model.ResolvedFile, error) {
+	var values []string
+	return nil, nil, nil, nil, errors.New(values[0])
+}
+
+// A parser panic fails the one file instead of ending the whole scan.
+func TestParser_ParseContentRecoversParserPanic(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := NewBuilder(ctx).Add(&panickingParser{}).Build([]string{""}, nil)
+	require.NoError(t, err)
+	require.Len(t, parsers, 1)
+
+	require.NotPanics(t, func() {
+		documents, err := parsers[0].ParseContent(ctx, "deploy.yaml", []byte("kind: Pod\n"), false, false, 15)
+		require.ErrorContains(t, err, "parser panic")
+		require.Empty(t, documents.Docs)
+	})
 }
