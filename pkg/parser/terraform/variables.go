@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -82,10 +83,15 @@ func getInputVariablesFromJSONFile(fsys vfs.FS, filename string) (converter.Vari
 	return variables, nil
 }
 
+// localExprs maps local names to their unevaluated expressions. Locals are
+// module-wide, so they are evaluated only once every file of the directory and
+// every variable value is known (see resolveLocals).
+type localExprs map[string]hcl.Expression
+
 // getInputVariablesAndLocalsFromFile parses filename once for both variables and locals.
 func getInputVariablesAndLocalsFromFile(
 	fsys vfs.FS, filename string,
-) (vars, locals converter.VariableMap, err error) {
+) (vars converter.VariableMap, locals localExprs, err error) {
 	if tfpath.IsJSONConfig(filename) {
 		return extractVarsAndLocalsFromJSON(fsys, filename)
 	}
@@ -145,7 +151,7 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 	return variables
 }
 
-func extractVarsAndLocalsFromJSON(fsys vfs.FS, filename string) (vars, locals converter.VariableMap, err error) {
+func extractVarsAndLocalsFromJSON(fsys vfs.FS, filename string) (vars converter.VariableMap, locals localExprs, err error) {
 	src, err := fsys.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		return nil, nil, err
@@ -163,9 +169,9 @@ func extractVarsAndLocalsFromJSON(fsys vfs.FS, filename string) (vars, locals co
 	return vars, locals, nil
 }
 
-func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (vars, locals converter.VariableMap) {
+func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (vars converter.VariableMap, locals localExprs) {
 	vars = make(converter.VariableMap)
-	locals = make(converter.VariableMap)
+	locals = make(localExprs)
 	evalCtx := &hcl.EvalContext{}
 	for _, block := range blocks {
 		switch block.Type {
@@ -175,7 +181,10 @@ func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (vars, locals converter.Vari
 			}
 			vars[block.Labels[0]] = knownAttrOrUnknown(block.Body, "default", evalCtx)
 		case blockTypeLocals:
-			mergeKnownAttributes(locals, block.Body)
+			attrs, _ := block.Body.JustAttributes()
+			for name, attr := range attrs {
+				locals[name] = attr.Expr
+			}
 		}
 	}
 	return vars, locals
@@ -192,63 +201,52 @@ func knownAttrOrUnknown(body hcl.Body, name string, evalCtx *hcl.EvalContext) ct
 	return cty.UnknownVal(cty.DynamicPseudoType)
 }
 
-func mergeKnownAttributes(dst converter.VariableMap, body hcl.Body) {
-	attrs, _ := body.JustAttributes()
-	for pass := 0; pass < 3; pass++ {
-		evalCtx := &hcl.EvalContext{
-			Variables: map[string]cty.Value{"local": cty.ObjectVal(dst)},
-		}
-		for name, attr := range attrs {
-			if _, ok := dst[name]; ok {
-				continue
-			}
-			val, diags := attr.Expr.Value(evalCtx)
-			if !diags.HasErrors() && val.IsKnown() {
-				dst[name] = val
-			}
-		}
-	}
-}
-
-func extractLocals(body *hclsyntax.Body) converter.VariableMap {
-	locals := make(converter.VariableMap)
+func extractLocals(body *hclsyntax.Body) localExprs {
+	locals := make(localExprs)
 	if body == nil {
 		return locals
 	}
-
-	type unresolved struct {
-		name string
-		expr hclsyntax.Expression
-	}
-	var unevaluated []unresolved
-
-	// Collect all locals
 	for _, block := range body.Blocks {
 		if block.Type != blockTypeLocals {
 			continue
 		}
 		for name, attr := range block.Body.Attributes {
-			unevaluated = append(unevaluated, unresolved{name, attr.Expr})
+			locals[name] = attr.Expr
 		}
 	}
+	return locals
+}
 
-	// Resolve locals in multiple passes
-	for pass := 0; pass < 3; pass++ {
-		for _, item := range unevaluated {
-			if _, ok := locals[item.name]; ok {
-				continue // already resolved
+// resolveLocals evaluates the locals of a whole module directory with var,
+// local, path and the Terraform functions in scope, repeating until no further
+// local resolves, so a local may use variables, functions, and locals declared
+// in any file in any order.
+func resolveLocals(
+	exprs localExprs, vars converter.VariableMap, dir string, fsys vfs.FS,
+) converter.VariableMap {
+	locals := make(converter.VariableMap, len(exprs))
+	variables := map[string]cty.Value{"var": cty.ObjectVal(vars)}
+	for name, value := range functions.ContextVariables(dir, "") {
+		variables[name] = value
+	}
+	evalCtx := &hcl.EvalContext{
+		Variables: variables,
+		Functions: functions.EvalFuncsWithRoot(dir, "", fsys),
+	}
+	for progress := true; progress && len(locals) < len(exprs); {
+		progress = false
+		variables["local"] = cty.ObjectVal(locals)
+		for name, expr := range exprs {
+			if _, ok := locals[name]; ok {
+				continue
 			}
-			val, diags := item.expr.Value(&hcl.EvalContext{
-				Variables: map[string]cty.Value{
-					"local": cty.ObjectVal(locals),
-				},
-			})
+			val, diags := expr.Value(evalCtx)
 			if !diags.HasErrors() && val.IsKnown() {
-				locals[item.name] = val
+				locals[name] = val
+				progress = true
 			}
 		}
 	}
-
 	return locals
 }
 
@@ -270,7 +268,7 @@ func getInputVariables(
 ) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
 	variablesMap := make(converter.VariableMap)
-	localsMap := make(converter.VariableMap)
+	localsExprs := make(localExprs)
 
 	tfFiles := hclConfigFiles(ctx, fsys, currentPath, allow, keep)
 
@@ -284,7 +282,9 @@ func getInputVariables(
 			continue
 		}
 		mergeMaps(variablesMap, vars)
-		mergeMaps(localsMap, locals)
+		for name, expr := range locals {
+			localsExprs[name] = expr
+		}
 	}
 
 	for _, tfVarsFile := range autoloadedVarFiles(ctx, fsys, currentPath) {
@@ -321,7 +321,7 @@ func getInputVariables(
 
 	// Final sanitized maps
 	cleanVars := sanitizeCtyMap(variablesMap)
-	cleanLocals := sanitizeCtyMap(localsMap)
+	cleanLocals := sanitizeCtyMap(resolveLocals(localsExprs, cleanVars, currentPath, fsys))
 
 	result := make(converter.VariableMap)
 	result["var"] = cty.ObjectVal(cleanVars)

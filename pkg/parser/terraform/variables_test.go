@@ -317,3 +317,32 @@ variable "bucket" { default = "from-tofu" }
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "from-tofu", vars["bucket"].AsString())
 }
+
+// Locals are module-wide: one may use variables, Terraform functions, tfvars
+// overrides and locals declared in any file of the directory, in any order.
+func TestGetInputVariables_LocalsUseVariablesFunctionsAndOtherFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.tf"), []byte(`
+locals {
+  name = "${local.prefix}-${var.env}"
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.tf"), []byte(`
+variable "env" { default = "dev" }
+variable "tags" { default = { team = "core" } }
+locals {
+  prefix   = upper("app")
+  all_tags = merge(var.tags, { name = local.name })
+  unknown  = aws_s3_bucket.b.id
+}
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "terraform.tfvars"), []byte(`env = "prod"`), 0o600))
+
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", nil, "")
+	locals := got["local"].AsValueMap()
+	require.Equal(t, "APP", locals["prefix"].AsString())
+	require.Equal(t, "APP-prod", locals["name"].AsString())
+	require.Equal(t, "core", locals["all_tags"].GetAttr("team").AsString())
+	require.Equal(t, "APP-prod", locals["all_tags"].GetAttr("name").AsString())
+	require.NotContains(t, locals, "unknown", "a local that reads a resource stays unresolved")
+}
