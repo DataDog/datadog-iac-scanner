@@ -86,7 +86,6 @@ type Parameters struct {
 	SCIInfo                     model.SCIInfo
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
-	ShouldScanTfPlans           bool
 	DisableRuleIsolation        bool
 	UseRulesCache               bool
 	TerraformModules            TerraformModulesSetting
