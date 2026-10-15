@@ -112,6 +112,9 @@ func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore, visited map[*yaml.N
 	visited[node] = true
 	defer delete(visited, node)
 
+	if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
+		ignore.root = node.Content[0]
+	}
 	ignore.ignoreCommentsYAML(node)
 	switch node.Kind {
 	case yaml.DocumentNode, yaml.MappingNode, yaml.SequenceNode:
@@ -128,6 +131,9 @@ func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore, visited map[*yaml.N
 // UnmarshalYAML is a custom yaml parser that places line information in the payload
 func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *Ignore) error {
 	ctx = withCloudFormation(ctx, isCloudFormationDocument(value))
+	if ignore != nil {
+		ignore.root = value
+	}
 	dpc := unmarshal(ctx, value, ignore)
 	if mapDcp, ok := dpc.(map[string]interface{}); ok {
 		if isCloudFormationContext(ctx) {

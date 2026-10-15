@@ -247,6 +247,84 @@ func TestMemoryStorage_ReportedFindingsAreNotMerged(t *testing.T) {
 	require.Len(t, got, 2, "the same finding saved twice is still one")
 }
 
+// Two resources that share a fingerprint collapse into one finding; an ignore
+// comment on one of them must not hide the other's.
+func TestMemoryStorage_SuppressedDuplicateDoesNotHideActiveFinding(t *testing.T) {
+	finding := func(line int, suppressed bool) model.Vulnerability {
+		return model.Vulnerability{
+			FileName: "main.tf", QueryID: "q", Platform: "Terraform", ResourceType: "aws_security_group",
+			ResourceName: "allow_tls", Line: line, IsSuppressed: suppressed,
+		}
+	}
+	for name, saved := range map[string][]model.Vulnerability{
+		"suppressed last":  {finding(4, false), finding(15, true)},
+		"suppressed first": {finding(15, true), finding(4, false)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			storage := NewMemoryStorage()
+			for _, v := range saved {
+				require.NoError(t, storage.SaveVulnerabilities(context.Background(), []model.Vulnerability{v}))
+			}
+			got, err := storage.GetVulnerabilities(context.Background(), "")
+			require.NoError(t, err)
+			require.Len(t, got, 1)
+			require.False(t, got[0].IsSuppressed)
+			require.Equal(t, 4, got[0].Line)
+		})
+	}
+
+	storage := NewMemoryStorage()
+	require.NoError(t, storage.SaveVulnerabilities(context.Background(), []model.Vulnerability{finding(4, true), finding(15, true)}))
+	got, err := storage.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.True(t, got[0].IsSuppressed, "a group whose findings are all suppressed stays suppressed")
+}
+
+// Queries save their findings in whatever order they finish; the findings
+// must come back in the same order regardless.
+func TestMemoryStorage_GetVulnerabilitiesIsOrdered(t *testing.T) {
+	var saved []model.Vulnerability
+	for _, file := range []string{"b.tf", "a.tf"} {
+		for _, query := range []string{"q2", "q1"} {
+			for _, line := range []int{9, 3} {
+				saved = append(saved, model.Vulnerability{
+					FileName: file, QueryID: query, Platform: "Terraform", ResourceType: "aws_s3_bucket",
+					ResourceName: fmt.Sprintf("%s-%d", query, line), Line: line,
+				})
+			}
+		}
+	}
+	// Equal file, line and rule values exercise the fingerprint tie breaker.
+	saved = append(saved, model.Vulnerability{
+		FileName: "a.tf", QueryID: "q1", Platform: "Terraform", ResourceType: "aws_s3_bucket",
+		ResourceName: "other", Line: 3,
+	})
+	storage := NewMemoryStorage()
+	require.NoError(t, storage.SaveVulnerabilities(context.Background(), saved))
+	first, err := storage.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, first, len(saved))
+	require.Equal(t, "a.tf", first[0].FileName)
+	require.Equal(t, 3, first[0].Line)
+	require.Equal(t, "q1", first[0].QueryID)
+	require.Equal(t, "b.tf", first[len(first)-1].FileName)
+	require.Equal(t, 9, first[len(first)-1].Line)
+	require.Equal(t, "q2", first[len(first)-1].QueryID)
+	for range 20 {
+		again, err := storage.GetVulnerabilities(context.Background(), "")
+		require.NoError(t, err)
+		require.Equal(t, first, again)
+	}
+	reversed := NewMemoryStorage()
+	for i := len(saved) - 1; i >= 0; i-- {
+		require.NoError(t, reversed.SaveVulnerabilities(context.Background(), saved[i:i+1]))
+	}
+	got, err := reversed.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Equal(t, first, got, "query completion order must not affect result order")
+}
+
 // TestNewMemoryStorage tests the functions [NewMemoryStorage()]
 func TestNewMemoryStorage(t *testing.T) {
 	tests := []struct {

@@ -6,14 +6,17 @@
 package analyzer
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -917,4 +920,47 @@ func Test_hasYAMLContent(t *testing.T) {
 	for content, want := range tests {
 		require.Equal(t, want, hasYAMLContent([]byte(content)), content)
 	}
+}
+
+// One unreadable directory must not hide the files the walk visits after it.
+func TestAnalyze_UnreadableDirectoryDoesNotEndWalk(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires Unix directory permissions and a non-root user")
+	}
+	dir := t.TempDir()
+	locked := filepath.Join(dir, "a_locked")
+	require.NoError(t, os.MkdirAll(locked, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "b_app"), 0o755))
+	tf := filepath.Join(dir, "b_app", "main.tf")
+	require.NoError(t, os.WriteFile(tf, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+	require.NoError(t, os.Chmod(locked, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	var logs bytes.Buffer
+	log := zerolog.New(&logs).Level(zerolog.WarnLevel)
+	ctx := log.WithContext(context.Background())
+	got, err := Analyze(ctx, &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.ToSlash(tf)}, got.Inventory)
+	require.Contains(t, logs.String(), `"level":"warn"`)
+	require.Contains(t, logs.String(), locked)
+}
+
+func TestAnalyze_UnreadableRootReturnsError(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires Unix directory permissions and a non-root user")
+	}
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	_, err := Analyze(context.Background(), &Analyzer{
+		RepoPath: dir, Paths: []string{dir}, Types: []string{""}, MaxFileSize: -1,
+	})
+	require.Error(t, err)
 }

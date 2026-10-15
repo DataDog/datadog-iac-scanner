@@ -704,3 +704,59 @@ func Test_value(t *testing.T) {
 		})
 	}
 }
+
+// An ignore-block comment above the first key of a nested mapping covers that
+// key's block only, as it does above any later key, not the key's siblings.
+func TestGetIgnoreLines_IgnoreBlockOnFirstNestedKey(t *testing.T) {
+	src := "apiVersion: v1\n" + // 1
+		"kind: Pod\n" + // 2
+		"metadata:\n" + // 3
+		"  name: x\n" + // 4
+		"spec:\n" + // 5
+		"  # dd-iac-scan ignore-block\n" + // 6
+		"  hostPID: true\n" + // 7
+		"  containers:\n" + // 8
+		"    - name: b\n" + // 9
+		"      securityContext:\n" + // 10
+		"        privileged: true\n" // 11
+	lines := GetIgnoreLines(&FileMetadata{FilePath: "pod.yaml", OriginalData: src})
+	sort.Ints(lines)
+	require.Equal(t, []int{6, 7}, lines)
+}
+
+func TestIgnoreBlockDocumentRootScope(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		want         []int
+	}{
+		{
+			name:   "document root",
+			source: "# dd-iac-scan ignore-block\nkind: Pod\nspec:\n  hostPID: true\n  containers: []\n",
+			want:   []int{1, 2, 3, 4, 5},
+		},
+		{
+			name:   "first nested mapping key",
+			source: "kind: Pod\nspec:\n  # dd-iac-scan ignore-block\n  securityContext:\n    runAsUser: 0\n  hostPID: true\n",
+			want:   []int{3, 4, 5},
+		},
+		{
+			name:   "later nested mapping key",
+			source: "kind: Pod\nspec:\n  hostPID: true\n  # dd-iac-scan ignore-block\n  securityContext:\n    runAsUser: 0\n  containers: []\n",
+			want:   []int{4, 5, 6},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var node yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(tt.source), &node))
+			var doc Document
+			ignore := &Ignore{}
+			require.NoError(t, doc.UnmarshalYAML(t.Context(), node.Content[0], ignore))
+			lines := ignore.GetLines()
+			sort.Ints(lines)
+			require.Equal(t, tt.want, lines, "initial parse")
+			lines = GetIgnoreLines(&FileMetadata{FilePath: "pod.yaml", OriginalData: tt.source})
+			sort.Ints(lines)
+			require.Equal(t, tt.want, lines, "recomputed ignore lines")
+		})
+	}
+}

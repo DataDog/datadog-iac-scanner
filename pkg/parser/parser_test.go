@@ -6,13 +6,17 @@
 package parser
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -198,4 +202,74 @@ func TestBuild_PlatformIsIntersectedWithRequestedTypes(t *testing.T) {
 	require.Len(t, allParsers, 1)
 	require.Greater(t, len(allParsers[0].Platform), 1,
 		"wildcard Build should include all supported types")
+}
+
+// panickingParser stands in for a parser that panics on malformed input.
+type panickingParser struct{ yamlParser.Parser }
+
+func (p panickingParser) Parse(ctx context.Context, content []byte, path string, resolve bool, depth int) (
+	[]byte, []model.Document, []int, map[string]model.ResolvedFile, error) {
+	if path == "deploy.yaml" {
+		panic(errors.New("malformed input"))
+	}
+	return p.Parser.Parse(ctx, content, path, resolve, depth)
+}
+
+// A parser panic fails the one file instead of ending the whole scan.
+func TestParser_ParseContentRecoversParserPanic(t *testing.T) {
+	var logs bytes.Buffer
+	log := zerolog.New(&logs).Level(zerolog.ErrorLevel)
+	ctx := log.WithContext(context.Background())
+	parsers, err := NewBuilder(ctx).Add(&panickingParser{}).Build([]string{""}, nil)
+	require.NoError(t, err)
+	require.Len(t, parsers, 1)
+
+	require.NotPanics(t, func() {
+		documents, err := parsers[0].ParseContent(ctx, "deploy.yaml", []byte("kind: Pod\n"), false, false, 15)
+		require.ErrorContains(t, err, "parser panic")
+		require.Empty(t, documents.Docs)
+	})
+	var event map[string]interface{}
+	require.NoError(t, json.Unmarshal(logs.Bytes(), &event), "a parser panic must be visible at the default error log level")
+	require.Equal(t, "error", event["level"])
+	require.Contains(t, event["message"], "deploy.yaml")
+	require.Contains(t, event["message"], "malformed input")
+	require.Contains(t, event["message"], "goroutine", "include the stack for diagnosis")
+
+	for _, parse := range []func(context.Context, string, []byte, bool, bool, int) (ParsedDocument, error){
+		parsers[0].Parse, parsers[0].ParseContent,
+	} {
+		var parsed ParsedDocument
+		require.NotPanics(t, func() {
+			parsed, err = parse(ctx, "deploy.yaml", []byte("kind: Pod\n"), false, false, 15)
+		})
+		require.ErrorContains(t, err, "parser panic")
+		require.Empty(t, parsed.Docs)
+		parsed, err = parse(ctx, "healthy.yaml", []byte("kind: Pod\n"), false, false, 15)
+		require.NoError(t, err)
+		require.Len(t, parsed.Docs, 1, "the worker can continue parsing healthy files")
+	}
+}
+
+// File-level commands may follow the document start marker in a .yml file as
+// in a .yaml one.
+func TestParser_CommentsCommandsAfterDocumentStartInYml(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := NewBuilder(ctx).Add(&yamlParser.Parser{}).Build([]string{"kubernetes"}, nil)
+	require.NoError(t, err)
+	content := []byte("---\n# dd-iac-scan ignore\napiVersion: v1\nkind: Pod\n")
+	for _, name := range []string{"pod.yaml", "pod.yml"} {
+		require.Contains(t, parsers[0].CommentsCommands(ctx, name, content), "ignore", name)
+	}
+}
+
+// Several disable= lines disable every rule they name.
+func TestParser_CommentsCommandsAccumulateDisableLines(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := NewBuilder(ctx).Add(&yamlParser.Parser{}).Build([]string{"kubernetes"}, nil)
+	require.NoError(t, err)
+	for _, command := range []string{"disable", "enable"} {
+		content := []byte("# dd-iac-scan " + command + "=rule-a\n# dd-iac-scan " + command + "=rule-b,rule-c\napiVersion: v1\n")
+		require.Equal(t, "rule-a,rule-b,rule-c", parsers[0].CommentsCommands(ctx, "pod.yaml", content)[command])
+	}
 }
