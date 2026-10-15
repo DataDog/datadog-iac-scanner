@@ -320,3 +320,18 @@ func TestParser_Parse_ArgDeclaresSeveralNames(t *testing.T) {
 	stage := doc[0]["command"].(map[string]interface{})["${IMAGE}:${TAG}"]
 	require.Equal(t, "alpine:3.19", stage.([]interface{})[0].(map[string]interface{})["Value"].([]interface{})[0])
 }
+
+// A variable is substituted by its whole name: with V and VERSION both
+// declared, $VERSION must not become the value of V followed by "ERSION",
+// whichever order the variables are visited in.
+func TestParser_Parse_ArgSubstitutionMatchesWholeNames(t *testing.T) {
+	src := []byte("ARG V=1\nARG VERSION=latest\nFROM ubuntu:$VERSION\nENV HOME_DIR=/home\nRUN echo ${HOME_DIR} $HOME_DIRX $UNSET\n")
+	for range 50 {
+		p := &Parser{}
+		_, doc, _, _, err := p.Parse(context.Background(), src, "Dockerfile", true, 15)
+		require.NoError(t, err)
+		stage := doc[0]["command"].(map[string]interface{})["ubuntu:$VERSION"].([]interface{})
+		require.Equal(t, "ubuntu:latest", stage[0].(map[string]interface{})["Value"].([]interface{})[0])
+		require.Equal(t, "echo /home $HOME_DIRX $UNSET", stage[2].(map[string]interface{})["Value"].([]interface{})[0])
+	}
+}

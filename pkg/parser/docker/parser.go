@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -171,14 +171,28 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
+// variableReference matches a $NAME or ${NAME} reference.
+var variableReference = regexp.MustCompile(`\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))`)
+
+// resolveArgsAndEnvs substitutes the references to known variables in one pass
+// over whole names, so that $V never rewrites the start of $VERSION. Unknown
+// references are kept as written.
 func resolveArgsAndEnvs(values []string, args map[string]string) []string {
+	if len(args) == 0 {
+		return values
+	}
 	for i := range values {
-		for arg := range args {
-			ref1 := fmt.Sprintf("${%s}", arg)
-			values[i] = strings.ReplaceAll(values[i], ref1, args[arg])
-			ref2 := fmt.Sprintf("$%s", arg)
-			values[i] = strings.ReplaceAll(values[i], ref2, args[arg])
-		}
+		values[i] = variableReference.ReplaceAllStringFunc(values[i], func(reference string) string {
+			match := variableReference.FindStringSubmatch(reference)
+			name := match[1]
+			if name == "" {
+				name = match[2]
+			}
+			if value, ok := args[name]; ok {
+				return value
+			}
+			return reference
+		})
 	}
 
 	return values
