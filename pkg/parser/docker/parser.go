@@ -51,6 +51,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	}
 
 	fromValue := ""
+	// stage counts FROM instructions; the instructions before the first FROM are stage -1.
+	stage := -1
 	from := make(map[string][]Command)
 	arguments := make([]Command, 0)
 	ignoreStruct := newIgnore()
@@ -62,13 +64,14 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
 		if child.Value == "from" {
 			fromValue = strings.TrimPrefix(strings.TrimSpace(child.Original), "FROM ")
+			stage++
 		}
 
 		if ignoreStruct.getIgnoreComments(child) {
-			ignoreStruct.setIgnore(fromValue)
+			ignoreStruct.setIgnore(stage)
 		}
 
-		ignoreStruct.ignoreBlock(child, fromValue)
+		ignoreStruct.ignoreBlock(child, stage)
 
 		cmd := Command{
 			Cmd:       child.Value,

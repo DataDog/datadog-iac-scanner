@@ -17,8 +17,8 @@ func Test_newIgnore(t *testing.T) {
 		{
 			name: "new ignore",
 			want: &ignore{
-				from:  make(map[string]bool),
-				lines: make([]int, 0),
+				stages: make(map[int]bool),
+				lines:  make([]int, 0),
 			},
 		},
 	}
@@ -34,11 +34,11 @@ func Test_newIgnore(t *testing.T) {
 // Test_ignore_setIgnore tests the setIgnore function to ensure it sets the correct values.
 func Test_ignore_setIgnore(t *testing.T) {
 	type fields struct {
-		from  map[string]bool
-		lines []int
+		stages map[int]bool
+		lines  []int
 	}
 	type args struct {
-		from string
+		stage int
 	}
 	tests := []struct {
 		name   string
@@ -48,23 +48,22 @@ func Test_ignore_setIgnore(t *testing.T) {
 		{
 			name: "set ignore",
 			fields: fields{
-				from:  make(map[string]bool),
-				lines: make([]int, 0),
+				stages: make(map[int]bool),
+				lines:  make([]int, 0),
 			},
 			args: args{
-				from: "testing_lines",
+				stage: 0,
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			i := &ignore{
-				from:  tt.fields.from,
-				lines: tt.fields.lines,
+				stages: tt.fields.stages,
+				lines:  tt.fields.lines,
 			}
-			i.setIgnore(tt.args.from)
-			_, ok := i.from[tt.args.from]
-			require.True(t, ok)
+			i.setIgnore(tt.args.stage)
+			require.True(t, i.stages[tt.args.stage])
 		})
 	}
 }
@@ -72,12 +71,12 @@ func Test_ignore_setIgnore(t *testing.T) {
 // Test_ignore_ignoreBlock tests the ignoreBlock function to ensure it sets the correct values.
 func Test_ignore_ignoreBlock(t *testing.T) {
 	type fields struct {
-		from  map[string]bool
-		lines []int
+		stages map[int]bool
+		lines  []int
 	}
 	type args struct {
-		node *parser.Node
-		from string
+		node  *parser.Node
+		stage int
 	}
 	tests := []struct {
 		name   string
@@ -88,8 +87,8 @@ func Test_ignore_ignoreBlock(t *testing.T) {
 		{
 			name: "ignore block: should add",
 			fields: fields{
-				from: map[string]bool{
-					"testing_lines": true,
+				stages: map[int]bool{
+					0: true,
 				},
 				lines: []int{1, 2, 3},
 			},
@@ -98,15 +97,15 @@ func Test_ignore_ignoreBlock(t *testing.T) {
 					StartLine: 5,
 					EndLine:   5,
 				},
-				from: "testing_lines",
+				stage: 0,
 			},
 			want: []int{1, 2, 3, 5},
 		},
 		{
 			name: "ignore block: should not add",
 			fields: fields{
-				from: map[string]bool{
-					"testing_lines": true,
+				stages: map[int]bool{
+					0: true,
 				},
 				lines: []int{1, 2, 3},
 			},
@@ -115,7 +114,7 @@ func Test_ignore_ignoreBlock(t *testing.T) {
 					StartLine: 5,
 					EndLine:   5,
 				},
-				from: "testing_not_lines",
+				stage: 1,
 			},
 			want: []int{1, 2, 3},
 		},
@@ -123,10 +122,10 @@ func Test_ignore_ignoreBlock(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			i := &ignore{
-				from:  tt.fields.from,
-				lines: tt.fields.lines,
+				stages: tt.fields.stages,
+				lines:  tt.fields.lines,
 			}
-			i.ignoreBlock(tt.args.node, tt.args.from)
+			i.ignoreBlock(tt.args.node, tt.args.stage)
 			got := i.getIgnoreLines()
 			require.Equal(t, tt.want, got)
 		})
@@ -136,8 +135,8 @@ func Test_ignore_ignoreBlock(t *testing.T) {
 // Test_ignore_getIgnoreLines tests the getIgnoreLines function to ensure it returns the correct values.
 func Test_ignore_getIgnoreLines(t *testing.T) {
 	type fields struct {
-		from  map[string]bool
-		lines []int
+		stages map[int]bool
+		lines  []int
 	}
 	tests := []struct {
 		name   string
@@ -147,16 +146,16 @@ func Test_ignore_getIgnoreLines(t *testing.T) {
 		{
 			name: "get ignore lines: with dups",
 			fields: fields{
-				from:  make(map[string]bool),
-				lines: []int{1, 1, 2, 3, 4},
+				stages: make(map[int]bool),
+				lines:  []int{1, 1, 2, 3, 4},
 			},
 			want: []int{1, 2, 3, 4},
 		},
 		{
 			name: "get ignore lines: without dups",
 			fields: fields{
-				from:  make(map[string]bool),
-				lines: []int{1, 2, 3, 4},
+				stages: make(map[int]bool),
+				lines:  []int{1, 2, 3, 4},
 			},
 			want: []int{1, 2, 3, 4},
 		},
@@ -164,8 +163,8 @@ func Test_ignore_getIgnoreLines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			i := &ignore{
-				from:  tt.fields.from,
-				lines: tt.fields.lines,
+				stages: tt.fields.stages,
+				lines:  tt.fields.lines,
 			}
 			if got := i.getIgnoreLines(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ignore.getIgnoreLines() = %v, want %v", got, tt.want)
@@ -177,8 +176,8 @@ func Test_ignore_getIgnoreLines(t *testing.T) {
 // Test_ignore_getIgnoreComments tests the getIgnoreComments function to ensure it returns the correct values.
 func Test_ignore_getIgnoreComments(t *testing.T) {
 	type fields struct {
-		from  map[string]bool
-		lines []int
+		stages map[int]bool
+		lines  []int
 	}
 	type args struct {
 		node *parser.Node
@@ -193,8 +192,8 @@ func Test_ignore_getIgnoreComments(t *testing.T) {
 		{
 			name: "get ignore comments: should ignore single line",
 			fields: fields{
-				from:  make(map[string]bool),
-				lines: make([]int, 0),
+				stages: make(map[int]bool),
+				lines:  make([]int, 0),
 			},
 			args: args{
 				node: &parser.Node{
@@ -209,8 +208,8 @@ func Test_ignore_getIgnoreComments(t *testing.T) {
 		{
 			name: "get ignore comments: should ignore multi-line",
 			fields: fields{
-				from:  make(map[string]bool),
-				lines: make([]int, 0),
+				stages: make(map[int]bool),
+				lines:  make([]int, 0),
 			},
 			args: args{
 				node: &parser.Node{
@@ -225,8 +224,8 @@ func Test_ignore_getIgnoreComments(t *testing.T) {
 		{
 			name: "get ignore comments: should ignore comment multi-line",
 			fields: fields{
-				from:  make(map[string]bool),
-				lines: make([]int, 0),
+				stages: make(map[int]bool),
+				lines:  make([]int, 0),
 			},
 			args: args{
 				node: &parser.Node{
@@ -241,8 +240,8 @@ func Test_ignore_getIgnoreComments(t *testing.T) {
 		{
 			name: "get ignore comments: should ignore regular comment",
 			fields: fields{
-				from:  make(map[string]bool),
-				lines: make([]int, 0),
+				stages: make(map[int]bool),
+				lines:  make([]int, 0),
 			},
 			args: args{
 				node: &parser.Node{
@@ -257,8 +256,8 @@ func Test_ignore_getIgnoreComments(t *testing.T) {
 		{
 			name: "get ignore comments: should return true for ignore block",
 			fields: fields{
-				from:  make(map[string]bool),
-				lines: make([]int, 0),
+				stages: make(map[int]bool),
+				lines:  make([]int, 0),
 			},
 			args: args{
 				node: &parser.Node{
@@ -274,8 +273,8 @@ func Test_ignore_getIgnoreComments(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			i := &ignore{
-				from:  tt.fields.from,
-				lines: tt.fields.lines,
+				stages: tt.fields.stages,
+				lines:  tt.fields.lines,
 			}
 			if gotIgnore := i.getIgnoreComments(tt.args.node); gotIgnore != tt.wantIgnore {
 				t.Errorf("ignore.getIgnoreComments() = %v, want %v", gotIgnore, tt.wantIgnore)

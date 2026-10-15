@@ -135,6 +135,16 @@ func TestParser_Parse(t *testing.T) {
 	}
 }
 
+// An ignore-block comment covers only the stage it precedes, even when a later
+// stage starts from the same image.
+func TestParser_Parse_IgnoreBlockCoversOneStage(t *testing.T) {
+	p := &Parser{}
+	sample := "# dd-iac-scan ignore-block\nFROM alpine:3.19\nEXPOSE 22\n\nFROM alpine:3.19\nEXPOSE 22\n"
+	_, _, igLines, _, err := p.Parse(context.Background(), []byte(sample), "Dockerfile", true, 15)
+	require.NoError(t, err)
+	require.Equal(t, []int{1, 2, 3}, igLines)
+}
+
 // Test_GetCommentToken must get the token that represents a comment
 func Test_GetCommentToken(t *testing.T) {
 	parser := &Parser{}

@@ -9,26 +9,27 @@ import (
 
 // ignore is a structure that contains information about the lines that are being ignored.
 type ignore struct {
-	from  map[string]bool
-	lines []int
+	stages map[int]bool
+	lines  []int
 }
 
 // newIgnore returns a new ignore struct.
 func newIgnore() *ignore {
 	return &ignore{
-		from:  make(map[string]bool),
-		lines: make([]int, 0),
+		stages: make(map[int]bool),
+		lines:  make([]int, 0),
 	}
 }
 
-// setIgnore adds a new entry to the ignore struct for the 'FROM' block to be ignored
-func (i *ignore) setIgnore(from string) {
-	i.from[from] = true
+// setIgnore marks the build stage to be ignored. Stages are counted by position
+// rather than named by their FROM line, which two stages can share.
+func (i *ignore) setIgnore(stage int) {
+	i.stages[stage] = true
 }
 
 // ignoreBlock adds block lines to be ignored to the ignore struct.
-func (i *ignore) ignoreBlock(node *parser.Node, from string) {
-	if _, ok := i.from[from]; ok {
+func (i *ignore) ignoreBlock(node *parser.Node, stage int) {
+	if i.stages[stage] {
 		i.lines = append(i.lines, model.Range(node.StartLine, node.EndLine)...)
 	}
 }
