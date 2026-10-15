@@ -684,3 +684,31 @@ func TestFirstHelmRender(t *testing.T) {
 	require.True(t, s.firstHelmRender(render("web/charts/lib/templates/cm.yaml", "name: overridden\n")),
 		"a parent overriding the dependency's values renders a different document")
 }
+
+func TestBlankPlainComments(t *testing.T) {
+	content := "# header\na: 1\n# dd-iac-scan ignore-line\n# note\nb: 2\n  # plain\n\n#\nc: 3 # inline\n"
+	want := "\na: 1\n# dd-iac-scan ignore-line\n# note\nb: 2\n\n\n\nc: 3 # inline\n"
+	require.Equal(t, want, string(blankPlainComments([]byte(content))))
+}
+
+func TestHelmOrdinaryCommentDoesNotSuppressTheLineBelowIt(t *testing.T) {
+	template := "kind: Pod\nspec:\n  initContainers:\n    # Wait for tracking service\n" +
+		"    {{- include \"wait\" . | nindent 4 }}\n  containers:\n    - name: a\n"
+	suppressed := "kind: Pod\nspec:\n  initContainers:\n    # dd-iac-scan ignore-line\n" +
+		"    - name: init\n  containers:\n    - name: a\n"
+	s := &Service{Parser: yamlParserOf(t)}
+	lines, err := s.getOriginalIgnoreLines(context.Background(), "t.yaml", []byte(template), model.KindHELM, false, false, 15)
+	require.NoError(t, err)
+	require.Empty(t, lines)
+	lines, err = s.getOriginalIgnoreLines(context.Background(), "t.yaml", []byte(suppressed), model.KindHELM, false, false, 15)
+	require.NoError(t, err)
+	require.Contains(t, lines, 5)
+}
+
+func yamlParserOf(t *testing.T) *parser.Parser {
+	t.Helper()
+	parsers, err := parser.NewBuilder(context.Background()).Add(&yamlParser.Parser{}).Build([]string{""}, []string{""})
+	require.NoError(t, err)
+	require.NotEmpty(t, parsers)
+	return parsers[0]
+}
