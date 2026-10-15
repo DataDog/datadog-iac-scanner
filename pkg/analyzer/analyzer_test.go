@@ -985,3 +985,28 @@ func TestAnalyze_DockerfileNames(t *testing.T) {
 	}, inventory)
 	require.Equal(t, []string{"dockerfile"}, got.Types)
 }
+
+// One unreadable directory must not hide the files the walk visits after it.
+func TestAnalyze_UnreadableDirectoryDoesNotEndWalk(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("directory permissions do not apply to root")
+	}
+	dir := t.TempDir()
+	locked := filepath.Join(dir, "a_locked")
+	require.NoError(t, os.MkdirAll(locked, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "b_app"), 0o755))
+	tf := filepath.Join(dir, "b_app", "main.tf")
+	require.NoError(t, os.WriteFile(tf, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+	require.NoError(t, os.Chmod(locked, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.ToSlash(tf)}, got.Inventory)
+}

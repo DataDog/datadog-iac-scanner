@@ -394,8 +394,19 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 		}
 		singleFilePath := !pathInfo.IsDir()
 		walkRootDirChecked := false
+		walkRoot := path
 		if err := filepath.WalkDir(path, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
+				// An unreadable entry below the root, such as a directory without
+				// read permission, must not end the walk and silently leave every
+				// file after it unscanned: skip just that entry.
+				if path != walkRoot {
+					contextLogger.Warn().Msgf("skipping unreadable path %s: %s", path, err)
+					if d != nil && d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
 				return err
 			}
 			if path == gitDir {
