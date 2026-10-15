@@ -1206,10 +1206,14 @@ func isIncludedFile(path string, onlyPaths []string) bool {
 	return false
 }
 
-// isExcludedFile verifies if the path is in the pre-expanded exclude list
+// isExcludedFile verifies if the path is in the pre-expanded exclude list or
+// below one of its directories, matching paths the way isIncludedFile does
 func isExcludedFile(path string, expandedExc []string) bool {
 	for _, p := range expandedExc {
-		if p == path {
+		if p == "" {
+			continue
+		}
+		if p == path || strings.HasPrefix(path, strings.TrimSuffix(p, string(os.PathSeparator))+string(os.PathSeparator)) {
 			return true
 		}
 	}

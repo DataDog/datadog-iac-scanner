@@ -918,3 +918,38 @@ func Test_hasYAMLContent(t *testing.T) {
 		require.Equal(t, want, hasYAMLContent([]byte(content)), content)
 	}
 }
+
+// An ignore-paths entry naming a directory excludes the files below it, as an
+// only-paths entry includes them.
+func TestAnalyze_IgnorePathsDirectoryExcludesFilesBelow(t *testing.T) {
+	body := []byte("resource \"aws_s3_bucket\" \"b\" {}\n")
+	for name, exc := range map[string]func(dir string) string{
+		"directory":                func(dir string) string { return filepath.Join(dir, "modules") },
+		"directory with separator": func(dir string) string { return filepath.Join(dir, "modules") + string(os.PathSeparator) },
+		"nested directory":         func(dir string) string { return filepath.Join(dir, "modules", "a") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, "modules", "a"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "modules", "a", "main.tf"), body, 0o600))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "modules_other.tf"), body, 0o600))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), body, 0o600))
+
+			got, err := Analyze(context.Background(), &Analyzer{
+				RepoPath:    dir,
+				Paths:       []string{dir},
+				Types:       []string{""},
+				Exc:         []string{exc(dir)},
+				MaxFileSize: -1,
+			})
+
+			require.NoError(t, err)
+			inventory := append([]string(nil), got.Inventory...)
+			sort.Strings(inventory)
+			require.Equal(t, []string{
+				filepath.ToSlash(filepath.Join(dir, "main.tf")),
+				filepath.ToSlash(filepath.Join(dir, "modules_other.tf")),
+			}, inventory)
+		})
+	}
+}
