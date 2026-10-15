@@ -33,9 +33,10 @@ type FileSystemSourceProvider struct {
 	onlyPaths []string
 	// chartFilter decides which charts render; see SetChartFilter.
 	chartFilter *PathFilter
-	// mu guards paths, excludes, unfiltered and the walk's reads of them. The
-	// setters for chartFilter, the prebuilt walk and the content cache run
-	// before a walk starts and take no lock.
+	// mu guards paths, excludes and unfiltered, which checkConditions grows during
+	// a walk and AddUnfilteredPaths extends. SetChartFilter and ChartFilter take
+	// it defensively. SetPrebuiltWalk and ReleaseContentCache take no lock and run
+	// before a walk starts.
 	mu sync.RWMutex
 
 	prebuiltPaths []string

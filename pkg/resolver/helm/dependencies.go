@@ -268,6 +268,7 @@ func pushedPath(p string) string {
 // workspace root. The root itself is left out: loading it as a chart would read
 // every pushed file.
 func insideWorkspace(p string) bool {
+	p = pushedPath(p)
 	if filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, "/") || (len(p) > 1 && p[1] == ':') {
 		return false
 	}

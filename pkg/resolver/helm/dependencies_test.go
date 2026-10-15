@@ -149,8 +149,9 @@ func TestInsideWorkspace(t *testing.T) {
 	} {
 		require.Equal(t, want, insideWorkspace(pushedPath(p)), p)
 	}
-	// insideWorkspace cleans on its own, so uncleaned input cannot slip past it.
-	for _, p := range []string{"a/../../etc", "./../x", "apps/../../lib"} {
+	// insideWorkspace normalizes on its own, backslashes included, so uncleaned
+	// input cannot slip past it.
+	for _, p := range []string{"a/../../etc", "./../x", "apps/../../lib", `apps/app/..\..\..\secrets`} {
 		require.False(t, insideWorkspace(p), p)
 	}
 }
