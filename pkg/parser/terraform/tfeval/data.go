@@ -183,11 +183,23 @@ func readsRootOrLocal(traversal hcl.Traversal, roots map[string]struct{}, locals
 	if _, ok := roots[root]; ok {
 		return true
 	}
-	if root != "local" || len(traversal) < 2 {
-		return false
+	name, ok := localTraversalName(traversal)
+	return ok && locals[name]
+}
+
+// localTraversalName returns the local name from local.name or local["name"].
+func localTraversalName(traversal hcl.Traversal) (string, bool) {
+	if _, ok := localRoot[traversal.RootName()]; !ok || len(traversal) < 2 {
+		return "", false
 	}
-	attr, ok := traversal[1].(hcl.TraverseAttr)
-	return ok && locals[attr.Name]
+	switch step := traversal[1].(type) {
+	case hcl.TraverseAttr:
+		return step.Name, true
+	case hcl.TraverseIndex:
+		return ctyutil.ConcreteString(step.Key)
+	default:
+		return "", false
+	}
 }
 
 func (d *moduleData) readsOwnResources() bool {

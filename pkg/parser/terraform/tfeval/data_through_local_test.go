@@ -112,6 +112,19 @@ module "b" { source = "../mod_b" }
 	}
 }
 
+func TestRootResourcesReevaluateWhenConsumingDataThroughIndexedLocal(t *testing.T) {
+	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": resourceViaDataFixture + `
+locals {
+  policy = data.aws_iam_policy_document.p.json
+}
+resource "aws_iam_policy" "consumer" {
+  policy = local["policy"]
+}
+`}, callChild)
+	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_policy", "consumer")))
+	require.Contains(t, doc["policy"], `arn:aws:s3:::mybucket`)
+}
+
 func TestModuleDataRefreshResolvesLongSourceChains(t *testing.T) {
 	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": `
 data "aws_iam_policy_document" "a" {
