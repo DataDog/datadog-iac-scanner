@@ -988,17 +988,26 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
 			moduleOutputs[call.label] = value
-			// Update evalCtx so the next sibling's modInputs can reference this
-			// module's now-resolved outputs (e.g. module.B.x = module.A.output),
-			// including through data.* or locals that alias it.
-			evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
-			evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
-			if data.readsModules() {
-				data.refresh(ctx, evalCtx)
-			}
+			e.installSiblingModuleOutputs(ctx, evalCtx, localExprs, data, moduleOutputs)
 		}
 	}
 	return childResources, moduleOutputs
+}
+
+// installSiblingModuleOutputs publishes module.* for later siblings and
+// refreshes locals and data that read those outputs.
+func (e *Evaluator) installSiblingModuleOutputs(
+	ctx context.Context,
+	evalCtx *hcl.EvalContext,
+	localExprs map[string]hclsyntax.Expression,
+	data *moduleData,
+	moduleOutputs map[string]cty.Value,
+) {
+	evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
+	evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
+	if data.readsModules() {
+		data.refresh(ctx, evalCtx)
+	}
 }
 
 // isReportableModuleEvalError excludes a missing local source, which the module
