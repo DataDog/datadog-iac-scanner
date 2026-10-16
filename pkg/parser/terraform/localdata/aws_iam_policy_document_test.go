@@ -22,10 +22,11 @@ func decodeJSON(t *testing.T, src string, vars map[string]cty.Value) string {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	ctx := &hcl.EvalContext{Variables: vars}
-	policy := decodePolicyDocument(file.Body, func(expr hcl.Expression) (cty.Value, bool) {
+	policy, ok := decodePolicyDocument(file.Body, func(expr hcl.Expression) (cty.Value, bool) {
 		v, d := expr.Value(ctx)
 		return v, !d.HasErrors()
 	})
+	require.True(t, ok)
 	out, err := policy.render()
 	require.NoError(t, err)
 	return out
@@ -75,6 +76,16 @@ statement {
 			want: `{"Statement":[{"Actions":["s3:*"],"Effect":"Allow","Resources":["*"]}],"Version":"2012-10-17"}` + "\n",
 		},
 		{
+			name: "null effect defaults to Allow",
+			src: `
+statement {
+  effect    = null
+  actions   = ["s3:*"]
+  resources = ["*"]
+}`,
+			want: `{"Statement":[{"Actions":["s3:*"],"Effect":"Allow","Resources":["*"]}],"Version":"2012-10-17"}` + "\n",
+		},
+		{
 			name: "dynamic blocks expand to statements, principals and conditions",
 			src: `
 dynamic "statement" {
@@ -109,20 +120,6 @@ statement {
 				`{"Actions":["s3:Put*"],"Condition":{"StringEquals":{"aws:SourceAccount":["1"]}},"Effect":"Allow",` +
 				`"Principals":{"Service":["lambda.amazonaws.com"]},"Sid":"b"},` +
 				`{"Actions":["x:y"],"Effect":"Allow"}],"Version":"2012-10-17"}` + "\n",
-		},
-		{
-			name: "dynamic block whose for_each does not resolve generates none",
-			src: `
-dynamic "statement" {
-  for_each = var.missing
-  content {
-    actions = ["s3:*"]
-  }
-}
-statement {
-  actions = ["x:y"]
-}`,
-			want: `{"Statement":[{"Actions":["x:y"],"Effect":"Allow"}],"Version":"2012-10-17"}` + "\n",
 		},
 		{
 			name: "sensitive for_each still expands",
@@ -212,7 +209,7 @@ func TestParseJSONPrincipalWildcard(t *testing.T) {
 	policy, ok := parsePolicyJSON(`{"Statement":{"Effect":"Allow","Principal":"*","Action":"s3:*","Resource":"*"}}`)
 	require.True(t, ok)
 	require.Len(t, policy.Statements, 1)
-	require.Equal(t, map[string][]string{"AWS": {"*"}}, policy.Statements[0].Principals)
+	require.Equal(t, map[string][]string{"*": {"*"}}, policy.Statements[0].Principals)
 	require.Equal(t, []string{"*"}, policy.Statements[0].Resources)
 }
 
@@ -245,7 +242,7 @@ dynamic "statement" {
     actions = ["s3:*"]
   }
 }`))
-	got := renderedAttributes(t, `
+	require.Nil(t, renderedAttributes(t, `
 dynamic "statement" {
   for_each = var.rules
   content {
@@ -254,14 +251,76 @@ dynamic "statement" {
 }
 statement {
   actions = ["x:y"]
-}`)
-	require.Contains(t, got["json"], `"x:y"`)
+}`))
+	require.Nil(t, renderedAttributes(t, `
+statement {
+  actions = ["s3:*"]
+  dynamic "principals" {
+    for_each = var.principals
+    content {
+      type        = "AWS"
+      identifiers = [principals.value]
+    }
+  }
+}`))
 }
 
-func TestLaterDocumentVersionWinsEvenWhenLexicallySmaller(t *testing.T) {
+func TestUnresolvedSourcePolicyDocumentsStayUnresolved(t *testing.T) {
+	require.Nil(t, renderedAttributes(t, `
+source_policy_documents = [var.missing]
+statement {
+  actions = ["s3:*"]
+}
+`))
+	require.Nil(t, renderedAttributes(t, `
+source_policy_documents = ["not-json"]
+statement {
+  actions = ["s3:*"]
+}
+`))
+}
+
+func TestNullOrEmptySourceDocumentsAreUnset(t *testing.T) {
+	for _, src := range []string{
+		`
+source_policy_documents = null
+statement {
+  actions = ["s3:*"]
+}
+`,
+		`
+source_policy_documents = []
+statement {
+  actions = ["s3:*"]
+}
+`,
+		`
+source_json = ""
+statement {
+  actions = ["s3:*"]
+}
+`,
+		`
+source_json = null
+statement {
+  actions = ["s3:*"]
+}
+`,
+	} {
+		got := renderedAttributes(t, src)
+		require.Contains(t, got["json"], `"s3:*"`)
+	}
+}
+
+func TestVersionUpgradesLexicographicallyLikeProvider(t *testing.T) {
 	attrs := renderedAttributes(t, `
 source_json = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"A\",\"Effect\":\"Allow\",\"Action\":\"s3:*\",\"Resource\":\"*\"}]}"
 version     = "2008-10-17"
 `)
-	require.Contains(t, attrs["json"], `"Version":"2008-10-17"`)
+	require.Contains(t, attrs["json"], `"Version":"2012-10-17"`)
+	attrs = renderedAttributes(t, `
+source_json = "{\"Version\":\"2008-10-17\",\"Statement\":[{\"Sid\":\"A\",\"Effect\":\"Allow\",\"Action\":\"s3:*\",\"Resource\":\"*\"}]}"
+version     = "2012-10-17"
+`)
+	require.Contains(t, attrs["json"], `"Version":"2012-10-17"`)
 }

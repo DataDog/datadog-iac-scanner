@@ -12,13 +12,17 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // awsIAMPolicyDocumentType is the AWS data source that renders an IAM policy.
 const awsIAMPolicyDocumentType = "aws_iam_policy_document"
 
-// defaultPolicyVersion is the policy language version the provider defaults to.
-const defaultPolicyVersion = "2012-10-17"
+const (
+	// defaultPolicyVersion is the policy language version the provider defaults to.
+	defaultPolicyVersion = "2012-10-17"
+	defaultPolicyEffect  = "Allow"
+)
 
 // policyStatement is one policy statement.
 type policyStatement struct {
@@ -84,10 +88,10 @@ var conditionSchema = &hcl.BodySchema{
 // policyDocumentAttributes renders the json and minified_json attributes; the
 // two only differ in whitespace, which rules do not read.
 func policyDocumentAttributes(body hcl.Body, eval EvalFunc) map[string]string {
-	policy := decodePolicyDocument(body, eval)
-	// A document read as empty only because its dynamic blocks did not resolve
-	// says nothing about the policy, so it stays unresolved.
-	if policy.Incomplete && len(policy.Statements) == 0 {
+	policy, ok := decodePolicyDocument(body, eval)
+	// Any unresolved dynamic or source/override leaves the document incomplete,
+	// so emitting a partial policy would mislead rules.
+	if !ok || policy.Incomplete {
 		return nil
 	}
 	out, err := policy.render()
@@ -100,11 +104,12 @@ func policyDocumentAttributes(body hcl.Body, eval EvalFunc) map[string]string {
 // decodePolicyDocument reads the policy an aws_iam_policy_document body
 // declares, merging the source and override documents it names the way
 // Terraform does. Arguments the data source does not define, and values eval
-// cannot resolve, are left out rather than discarding the document.
-func decodePolicyDocument(body hcl.Body, eval EvalFunc) policyDocument {
+// cannot resolve, are left out rather than discarding the document. ok is
+// false when a named source or override document could not be read.
+func decodePolicyDocument(body hcl.Body, eval EvalFunc) (policyDocument, bool) {
 	content, _, _ := body.PartialContent(documentSchema)
 	if content == nil {
-		return policyDocument{}
+		return policyDocument{}, true
 	}
 	d := newDecoder(eval)
 	own := policyDocument{
@@ -114,8 +119,8 @@ func decodePolicyDocument(body hcl.Body, eval EvalFunc) policyDocument {
 	if own.ID == "" {
 		own.ID = d.str(content.Attributes["id"])
 	}
-	// The provider defaults version, so the document's own version always
-	// replaces the one of the documents it merges.
+	// Match the provider schema default so an unset own version upgrades
+	// sources the same way Terraform does.
 	if own.Version == "" {
 		own.Version = defaultPolicyVersion
 	}
@@ -123,26 +128,40 @@ func decodePolicyDocument(body hcl.Body, eval EvalFunc) policyDocument {
 		own.Statements = append(own.Statements, block.d.statement(block.body))
 	}
 	var policy policyDocument
-	sourceDocs := append(d.documents(content.Attributes["source_json"]), d.documents(content.Attributes["source_policy_documents"])...)
-	for _, src := range sourceDocs {
+	sourceDocs, ok := d.documents(content.Attributes["source_json"])
+	if !ok {
+		return policyDocument{}, false
+	}
+	more, ok := d.documents(content.Attributes["source_policy_documents"])
+	if !ok {
+		return policyDocument{}, false
+	}
+	for _, src := range append(sourceDocs, more...) {
 		policy.merge(src)
 	}
 	policy.merge(own)
 	policy.Incomplete = *d.skipped
-	overrideDocs := append(d.documents(content.Attributes["override_json"]), d.documents(content.Attributes["override_policy_documents"])...)
-	for _, override := range overrideDocs {
+	overrideDocs, ok := d.documents(content.Attributes["override_json"])
+	if !ok {
+		return policyDocument{}, false
+	}
+	more, ok = d.documents(content.Attributes["override_policy_documents"])
+	if !ok {
+		return policyDocument{}, false
+	}
+	for _, override := range append(overrideDocs, more...) {
 		policy.merge(override)
 	}
-	return policy
+	return policy, true
 }
 
 // merge merges other into p as the provider does: a non-empty Id replaces p's,
-// the later Version wins and statements override by sid.
+// Version upgrades lexicographically, and statements override by sid.
 func (p *policyDocument) merge(other policyDocument) {
 	if other.ID != "" {
 		p.ID = other.ID
 	}
-	if other.Version != "" {
+	if other.Version > p.Version {
 		p.Version = other.Version
 	}
 	p.Statements = overrideBySid(p.Statements, other.Statements)
@@ -177,15 +196,21 @@ func (d decoder) statement(body hcl.Body) policyStatement {
 	}
 	st := policyStatement{
 		Sid:          d.str(content.Attributes["sid"]),
-		Effect:       d.str(content.Attributes["effect"]),
 		Actions:      d.list(content.Attributes["actions"]),
 		NotActions:   d.list(content.Attributes["not_actions"]),
 		Resources:    d.list(content.Attributes["resources"]),
 		NotResources: d.list(content.Attributes["not_resources"]),
 	}
-	// The provider's default effect applies when none is given.
-	if content.Attributes["effect"] == nil {
-		st.Effect = "Allow"
+	// The provider defaults effect when it is omitted or null.
+	if attr := content.Attributes["effect"]; attr == nil {
+		st.Effect = defaultPolicyEffect
+	} else if v, ok := d.eval(attr.Expr); ok {
+		v, _ = v.UnmarkDeep()
+		if v.IsNull() {
+			st.Effect = defaultPolicyEffect
+		} else {
+			st.Effect = toString(v)
+		}
 	}
 	for _, block := range d.blocks(content, "principals") {
 		st.Principals = block.d.principal(st.Principals, block.body)
@@ -235,16 +260,54 @@ func (d decoder) condition(into map[string]map[string][]string, body hcl.Body) m
 	return into
 }
 
-// documents reads a list of policy JSON documents, skipping any that is not a
-// known policy.
-func (d decoder) documents(attr *hcl.Attribute) []policyDocument {
-	var out []policyDocument
-	for _, raw := range d.list(attr) {
-		if policy, ok := parsePolicyJSON(raw); ok {
-			out = append(out, policy)
-		}
+// documents reads a list of policy JSON documents. Null and empty string are
+// treated as unset. ok is false when the attribute is set but an element is
+// missing or not parseable policy JSON, so the caller does not merge a partial
+// document.
+func (d decoder) documents(attr *hcl.Attribute) ([]policyDocument, bool) {
+	if attr == nil {
+		return nil, true
 	}
-	return out
+	v, ok := d.eval(attr.Expr)
+	if !ok {
+		return nil, false
+	}
+	v, _ = v.UnmarkDeep()
+	if v.IsNull() {
+		return nil, true
+	}
+	if !v.IsKnown() {
+		return nil, false
+	}
+	ty := v.Type()
+	if ty == cty.String {
+		s := toString(v)
+		if s == "" {
+			return nil, true
+		}
+		policy, ok := parsePolicyJSON(s)
+		if !ok {
+			return nil, false
+		}
+		return []policyDocument{policy}, true
+	}
+	if !ty.IsListType() && !ty.IsTupleType() && !ty.IsSetType() {
+		return nil, false
+	}
+	out := make([]policyDocument, 0, v.LengthInt())
+	for it := v.ElementIterator(); it.Next(); {
+		_, elem := it.Element()
+		s := toString(elem)
+		if s == "" {
+			return nil, false
+		}
+		policy, ok := parsePolicyJSON(s)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, policy)
+	}
+	return out, true
 }
 
 type renderedStatement struct {
@@ -391,6 +454,11 @@ func rawPrincipal(raw json.RawMessage) map[string][]string {
 		return nil
 	}
 	if s := rawString(raw); s != "" {
+		// AWS accepts only "*" as a bare string principal; match the HCL
+		// type = "*" shape rules already read.
+		if s == "*" {
+			return map[string][]string{"*": {"*"}}
+		}
 		return map[string][]string{"AWS": {s}}
 	}
 	var byType map[string]json.RawMessage

@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -215,41 +216,141 @@ func extractLocals(body *hclsyntax.Body) converter.VariableMap {
 	if body == nil {
 		return locals
 	}
-
-	type unresolved struct {
-		name string
-		expr hclsyntax.Expression
+	assignments := localAssignmentsFromBody(body)
+	// Resolve locals that do not need data/var in a few passes.
+	for pass := 0; pass < len(assignments)+1; pass++ {
+		changed := false
+		evalCtx := &hcl.EvalContext{
+			Variables: map[string]cty.Value{"local": cty.ObjectVal(locals)},
+		}
+		for _, item := range assignments {
+			if _, ok := locals[item.name]; ok {
+				continue
+			}
+			val, diags := item.expr.Value(evalCtx)
+			if !diags.HasErrors() && val.IsKnown() {
+				locals[item.name] = val
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
 	}
-	var unevaluated []unresolved
+	return locals
+}
 
-	// Collect all locals
+// localAssignment is a locals attribute to evaluate once data (or other)
+// namespaces become available.
+type localAssignment struct {
+	name string
+	expr hcl.Expression
+}
+
+func collectLocalAssignments(
+	ctx context.Context, fsys vfs.FS, currentPath string, allow map[string]struct{}, keep string,
+) []localAssignment {
+	var out []localAssignment
+	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
+		out = append(out, localAssignmentsFromFile(fsys, tfFile)...)
+	}
+	return out
+}
+
+func localAssignmentsFromFile(fsys vfs.FS, filename string) []localAssignment {
+	if tfpath.IsJSONConfig(filename) {
+		return localAssignmentsFromJSON(fsys, filename)
+	}
+	body, err := parseHCLBody(fsys, filename)
+	if err != nil || body == nil {
+		return nil
+	}
+	return localAssignmentsFromBody(body)
+}
+
+func localAssignmentsFromBody(body *hclsyntax.Body) []localAssignment {
+	var out []localAssignment
 	for _, block := range body.Blocks {
 		if block.Type != blockTypeLocals {
 			continue
 		}
 		for name, attr := range block.Body.Attributes {
-			unevaluated = append(unevaluated, unresolved{name, attr.Expr})
+			out = append(out, localAssignment{name: name, expr: attr.Expr})
 		}
 	}
+	return out
+}
 
-	// Resolve locals in multiple passes
-	for pass := 0; pass < 3; pass++ {
-		for _, item := range unevaluated {
-			if _, ok := locals[item.name]; ok {
-				continue // already resolved
-			}
-			val, diags := item.expr.Value(&hcl.EvalContext{
-				Variables: map[string]cty.Value{
-					"local": cty.ObjectVal(locals),
-				},
-			})
-			if !diags.HasErrors() && val.IsKnown() {
-				locals[item.name] = val
-			}
+func localAssignmentsFromJSON(fsys vfs.FS, filename string) []localAssignment {
+	src, err := fsys.ReadFile(filepath.Clean(filename))
+	if err != nil {
+		return nil
+	}
+	parsed, diags := hcljson.Parse(src, filename)
+	if diags.HasErrors() {
+		return nil
+	}
+	content, _, _ := parsed.Body.PartialContent(jsonConfigSchema)
+	if content == nil {
+		return nil
+	}
+	var out []localAssignment
+	for _, block := range content.Blocks {
+		if block.Type != blockTypeLocals {
+			continue
+		}
+		attrs, _ := block.Body.JustAttributes()
+		for name, attr := range attrs {
+			out = append(out, localAssignment{name: name, expr: attr.Expr})
 		}
 	}
+	return out
+}
 
-	return locals
+// refreshLocals re-evaluates locals against vars (including data) so try /
+// coalesce fallbacks that succeeded early can pick up chained data sources.
+func refreshLocals(vars converter.VariableMap, assignments []localAssignment) bool {
+	if len(assignments) == 0 {
+		return false
+	}
+	current := objectValues(vars["local"])
+	changed := false
+	for pass := 0; pass < len(assignments)+1; pass++ {
+		passChanged := false
+		evalVars := cloneVariableMap(vars)
+		evalVars["local"] = cty.ObjectVal(current)
+		evalCtx := &hcl.EvalContext{Variables: evalVars, Functions: functions.TerraformFuncs}
+		for _, item := range assignments {
+			val, diags := item.expr.Value(evalCtx)
+			if diags.HasErrors() || !val.IsKnown() || val.IsNull() {
+				continue
+			}
+			if prev, ok := current[item.name]; ok && prev.RawEquals(val) {
+				continue
+			}
+			current[item.name] = val
+			passChanged = true
+			changed = true
+		}
+		if !passChanged {
+			break
+		}
+	}
+	if changed {
+		vars["local"] = cty.ObjectVal(current)
+	}
+	return changed
+}
+
+func objectValues(v cty.Value) converter.VariableMap {
+	out := make(converter.VariableMap)
+	if !v.IsKnown() || v.IsNull() || !v.CanIterateElements() || !v.Type().IsObjectType() {
+		return out
+	}
+	for k, elem := range v.AsValueMap() {
+		out[k] = elem
+	}
+	return out
 }
 
 func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {

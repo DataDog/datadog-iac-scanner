@@ -80,7 +80,7 @@ func googleIAMPolicyAttributes(body hcl.Body, eval EvalFunc) map[string]string {
 	for _, block := range d.blocks(content, "audit_config") {
 		policy.AuditConfigs = append(policy.AuditConfigs, block.d.googleAuditConfig(block.body))
 	}
-	if *d.skipped && len(policy.Bindings) == 0 && len(policy.AuditConfigs) == 0 {
+	if *d.skipped {
 		return nil
 	}
 	buf := &bytes.Buffer{}

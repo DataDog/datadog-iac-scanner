@@ -68,6 +68,7 @@ func (d decoder) value(attr *hcl.Attribute) (cty.Value, bool) {
 	if !ok || v.IsNull() {
 		return cty.NilVal, false
 	}
+	v, _ = v.UnmarkDeep()
 	return v, true
 }
 

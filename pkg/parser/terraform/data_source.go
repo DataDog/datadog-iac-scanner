@@ -84,22 +84,26 @@ func getDataSourcePolicy(
 	for i := range blocks {
 		readsData = readsData || blocks[i].readsData
 	}
+	// Locals that alias data.*.json only resolve after a data pass, so keep
+	// their expressions and refresh them when data grows.
+	assignments := collectLocalAssignments(ctx, fsys, currentPath, allow, keep)
 	var rendered map[string]map[string]map[string]string
-	// Each pass exposes one more link of a dependency chain, so a chain can be
-	// at most as long as the number of blocks.
-	for pass := 0; pass <= len(blocks); pass++ {
+	// Each pass exposes one more link of a dependency chain through data or
+	// locals, so a chain can be at most as long as the blocks plus locals.
+	for pass := 0; pass <= len(blocks)+len(assignments); pass++ {
 		next := renderLocalData(blocks, inputVariables)
-		if rendered != nil && reflect.DeepEqual(rendered, next) {
-			break
-		}
-		rendered = next
-		data, err := gocty.ToCtyValue(rendered, cty.Map(cty.Map(cty.Map(cty.String))))
+		data, err := gocty.ToCtyValue(next, cty.Map(cty.Map(cty.Map(cty.String))))
 		if err != nil {
 			contextLogger.Error().Msgf("Error trying to convert data sources to cty value: %s", err)
 			return inputVariables
 		}
 		inputVariables["data"] = data
-		if !readsData {
+		localsChanged := refreshLocals(inputVariables, assignments)
+		if rendered != nil && reflect.DeepEqual(rendered, next) && !localsChanged {
+			break
+		}
+		rendered = next
+		if !readsData && !localsChanged {
 			break
 		}
 	}

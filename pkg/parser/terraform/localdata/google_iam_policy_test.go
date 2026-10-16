@@ -82,7 +82,14 @@ binding {
 }
 
 func TestGoogleIAMPolicyOfUnresolvedDynamicBlocksStaysUnresolved(t *testing.T) {
-	file, diags := hclsyntax.ParseConfig([]byte(`
+	source, ok := Lookup(googleIAMPolicyType)
+	require.True(t, ok)
+	eval := func(expr hcl.Expression) (cty.Value, bool) {
+		v, d := expr.Value(&hcl.EvalContext{})
+		return v, !d.HasErrors()
+	}
+	for _, src := range []string{
+		`
 dynamic "binding" {
   for_each = var.bindings
   content {
@@ -90,13 +97,36 @@ dynamic "binding" {
     members = binding.value
   }
 }
-`), "main.tf", hcl.InitialPos)
-	require.False(t, diags.HasErrors(), diags.Error())
-	source, ok := Lookup(googleIAMPolicyType)
-	require.True(t, ok)
-	got := source(file.Body, func(expr hcl.Expression) (cty.Value, bool) {
-		v, d := expr.Value(&hcl.EvalContext{})
-		return v, !d.HasErrors()
-	})
-	require.Nil(t, got)
+`,
+		`
+dynamic "binding" {
+  for_each = var.bindings
+  content {
+    role    = binding.key
+    members = binding.value
+  }
+}
+binding {
+  role    = "roles/owner"
+  members = ["user:o@example.com"]
+}
+`,
+		`
+binding {
+  role    = "roles/viewer"
+  members = ["allUsers"]
+  dynamic "condition" {
+    for_each = var.conditions
+    content {
+      title      = condition.value
+      expression = "true"
+    }
+  }
+}
+`,
+	} {
+		file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors(), diags.Error())
+		require.Nil(t, source(file.Body, eval))
+	}
 }
