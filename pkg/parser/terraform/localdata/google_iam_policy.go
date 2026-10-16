@@ -102,6 +102,7 @@ func (d decoder) googleBinding(body hcl.Body) googleBinding {
 		Members: d.list(content.Attributes["members"]),
 	}
 	for _, block := range d.blocks(content, "condition") {
+		// The provider schema allows at most one condition per binding.
 		attrs, _, _ := block.body.PartialContent(googleConditionSchema)
 		if attrs == nil {
 			continue
@@ -111,6 +112,7 @@ func (d decoder) googleBinding(body hcl.Body) googleBinding {
 			Expression:  block.d.str(attrs.Attributes["expression"]),
 			Title:       block.d.str(attrs.Attributes["title"]),
 		}
+		break
 	}
 	return binding
 }

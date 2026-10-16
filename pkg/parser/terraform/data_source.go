@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -61,21 +62,24 @@ func getDataSourcePolicy(
 	ctx context.Context, fsys vfs.FS, currentPath string, inputVariables converter.VariableMap, allow map[string]struct{}, keep string,
 ) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
-	var blocks []localDataBlock
+	var (
+		blocks []localDataBlock
+		locals []localAssignment
+	)
 	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
 		content, readErr := fsys.ReadFile(filepath.Clean(tfFile))
 		if readErr != nil {
 			contextLogger.Debug().Msgf("Error trying to read file %s for data source.", tfFile)
 			continue
 		}
-		if !fileMayDeclareLocalData(content) {
+		wantsData := fileMayDeclareLocalData(content)
+		wantsLocals := bytes.Contains(content, localsMarker)
+		if !wantsData && !wantsLocals {
 			continue
 		}
-		if tfpath.IsJSONConfig(tfFile) {
-			blocks = append(blocks, jsonLocalDataBlocks(content, tfFile)...)
-			continue
-		}
-		blocks = append(blocks, hclLocalDataBlocks(ctx, content, tfFile)...)
+		fileBlocks, fileLocals := parseLocalDataFile(ctx, content, tfFile, wantsData, wantsLocals)
+		blocks = append(blocks, fileBlocks...)
+		locals = append(locals, fileLocals...)
 	}
 	if len(blocks) == 0 {
 		return inputVariables
@@ -84,9 +88,9 @@ func getDataSourcePolicy(
 	for i := range blocks {
 		readsData = readsData || blocks[i].readsData
 	}
-	// Locals that alias data.*.json only resolve after a data pass, so keep
-	// their expressions and refresh them when data grows.
-	assignments := collectLocalAssignments(ctx, fsys, currentPath, allow, keep)
+	// Locals that read data only resolve after a data pass, so keep their
+	// expressions and refresh them when data grows.
+	assignments := dataDependentLocals(locals)
 	var rendered map[string]map[string]map[string]string
 	// Each pass exposes one more link of a dependency chain through data or
 	// locals, so a chain can be at most as long as the blocks plus locals.
@@ -183,18 +187,33 @@ func renderJSONTemplate(expr hcl.Expression, evalCtx *hcl.EvalContext, src []byt
 	return (&partial.Renderer{Ctx: evalCtx, Source: partial.BytesSource(quoted)}).Render(parsed)
 }
 
-func hclLocalDataBlocks(ctx context.Context, content []byte, tfFile string) []localDataBlock {
+// localsMarker is a cheap content gate before parsing for locals blocks.
+var localsMarker = []byte(blockTypeLocals)
+
+// parseLocalDataFile parses a configuration file once for the local data
+// blocks it declares and the locals it assigns.
+func parseLocalDataFile(
+	ctx context.Context, content []byte, tfFile string, wantsData, wantsLocals bool,
+) (blocks []localDataBlock, locals []localAssignment) {
+	if tfpath.IsJSONConfig(tfFile) {
+		return jsonLocalDataFile(ctx, content, tfFile, wantsData, wantsLocals)
+	}
 	parsedFile, diags := hclsyntax.ParseConfig(content, tfFile, hcl.InitialPos)
 	if parsedFile == nil || diags.HasErrors() {
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
-		return nil
+		return nil, nil
 	}
 	body, ok := parsedFile.Body.(*hclsyntax.Body)
 	if !ok {
-		return nil
+		return nil, nil
 	}
-	var out []localDataBlock
+	if wantsLocals {
+		locals = localAssignmentsFromBody(body)
+	}
+	if !wantsData {
+		return nil, locals
+	}
 	for _, block := range body.Blocks {
 		if block.Type != terraformDataIdentifier || len(block.Labels) < 2 {
 			continue
@@ -203,7 +222,7 @@ func hclLocalDataBlocks(ctx context.Context, content []byte, tfFile string) []lo
 		if !ok {
 			continue
 		}
-		out = append(out, localDataBlock{
+		blocks = append(blocks, localDataBlock{
 			typ:       block.Labels[0],
 			name:      block.Labels[1],
 			source:    source,
@@ -212,7 +231,7 @@ func hclLocalDataBlocks(ctx context.Context, content []byte, tfFile string) []lo
 			readsData: bodyReadsData(block.Body),
 		})
 	}
-	return out
+	return blocks, locals
 }
 
 func bodyReadsData(body *hclsyntax.Body) bool {
@@ -226,36 +245,49 @@ func bodyReadsData(body *hclsyntax.Body) bool {
 	return reads
 }
 
-func jsonLocalDataBlocks(src []byte, filename string) []localDataBlock {
+func jsonLocalDataFile(
+	ctx context.Context, src []byte, filename string, wantsData, wantsLocals bool,
+) (blocks []localDataBlock, locals []localAssignment) {
 	parsed, diags := hcljson.Parse(src, filename)
 	if diags.HasErrors() {
-		return nil
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", filename)
+		return nil, nil
 	}
 	content, _, _ := parsed.Body.PartialContent(jsonConfigSchema)
 	if content == nil {
-		return nil
+		return nil, nil
 	}
 	readsData := jsonDataReference.Match(src)
-	var out []localDataBlock
 	for _, block := range content.Blocks {
-		if block.Type != terraformDataIdentifier || len(block.Labels) < 2 {
-			continue
+		switch {
+		case block.Type == blockTypeLocals && wantsLocals:
+			attrs, _ := block.Body.JustAttributes()
+			names := make([]string, 0, len(attrs))
+			for name := range attrs {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				locals = append(locals, localAssignment{name: name, expr: attrs[name].Expr})
+			}
+		case block.Type == terraformDataIdentifier && wantsData && len(block.Labels) >= 2:
+			source, ok := localdata.Lookup(block.Labels[0])
+			if !ok {
+				continue
+			}
+			blocks = append(blocks, localDataBlock{
+				typ:       block.Labels[0],
+				name:      block.Labels[1],
+				source:    source,
+				body:      block.Body,
+				src:       src,
+				json:      true,
+				readsData: readsData,
+			})
 		}
-		source, ok := localdata.Lookup(block.Labels[0])
-		if !ok {
-			continue
-		}
-		out = append(out, localDataBlock{
-			typ:       block.Labels[0],
-			name:      block.Labels[1],
-			source:    source,
-			body:      block.Body,
-			src:       src,
-			json:      true,
-			readsData: readsData,
-		})
 	}
-	return out
+	return blocks, locals
 }
 
 // fileMayDeclareLocalData is a fast precheck before parsing. A literal

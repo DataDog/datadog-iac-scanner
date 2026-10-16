@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
@@ -141,11 +142,13 @@ func decodePolicyDocument(body hcl.Body, eval EvalFunc) (policyDocument, bool) {
 	}
 	policy.merge(own)
 	policy.Incomplete = *d.skipped
-	overrideDocs, ok := d.documents(content.Attributes["override_json"])
+	// Match the provider: override_policy_documents then override_json so the
+	// deprecated singular wins last.
+	overrideDocs, ok := d.documents(content.Attributes["override_policy_documents"])
 	if !ok {
 		return policyDocument{}, false
 	}
-	more, ok = d.documents(content.Attributes["override_policy_documents"])
+	more, ok = d.documents(content.Attributes["override_json"])
 	if !ok {
 		return policyDocument{}, false
 	}
@@ -233,10 +236,15 @@ func (d decoder) principal(into map[string][]string, body hcl.Body) map[string][
 	if typ == "" {
 		return into
 	}
+	ids := d.list(content.Attributes["identifiers"])
+	if len(ids) == 0 {
+		// An empty identifiers list is not a principal the provider would emit.
+		return into
+	}
 	if into == nil {
 		into = map[string][]string{}
 	}
-	into[typ] = append(into[typ], d.list(content.Attributes["identifiers"])...)
+	into[typ] = append(into[typ], ids...)
 	return into
 }
 
@@ -250,13 +258,22 @@ func (d decoder) condition(into map[string]map[string][]string, body hcl.Body) m
 		return into
 	}
 	test := d.str(content.Attributes["test"])
+	if test == "" {
+		return into
+	}
+	values := d.list(content.Attributes["values"])
+	if len(values) == 0 {
+		// A condition without values is not a constraint; emitting it would
+		// look gated when it is not.
+		return into
+	}
 	if into == nil {
 		into = map[string]map[string][]string{}
 	}
 	if into[test] == nil {
 		into[test] = map[string][]string{}
 	}
-	into[test][variable] = append(into[test][variable], d.list(content.Attributes["values"])...)
+	into[test][variable] = append(into[test][variable], values...)
 	return into
 }
 
@@ -364,16 +381,20 @@ func (p policyDocument) render() (string, error) {
 }
 
 // parsePolicyJSON reads a policy document given as JSON, in AWS policy grammar
-// or in the shape render produces.
+// or in the shape render produces. ok is false when the document, or any field
+// of it that is present, cannot be read, so the caller never merges a statement
+// that lost part of itself (a dropped Condition would turn a guarded Deny or
+// Allow into an unconditional one).
 func parsePolicyJSON(raw string) (policyDocument, bool) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
 		return policyDocument{}, false
 	}
-	policy := policyDocument{ID: rawString(doc["Id"]), Version: rawString(doc["Version"])}
+	r := &jsonReader{}
+	policy := policyDocument{ID: r.str(doc["Id"]), Version: r.str(doc["Version"])}
 	stmts, ok := doc["Statement"]
-	if !ok {
-		return policy, true
+	if !ok || isJSONNull(stmts) {
+		return policy, r.ok()
 	}
 	var list []map[string]json.RawMessage
 	if err := json.Unmarshal(stmts, &list); err != nil {
@@ -384,17 +405,23 @@ func parsePolicyJSON(raw string) (policyDocument, bool) {
 		list = []map[string]json.RawMessage{single}
 	}
 	for _, st := range list {
+		if st == nil {
+			return policyDocument{}, false
+		}
 		policy.Statements = append(policy.Statements, policyStatement{
-			Sid:           rawString(st["Sid"]),
-			Effect:        rawString(st["Effect"]),
-			Actions:       rawStrings(first(st, "Action", "Actions")),
-			NotActions:    rawStrings(first(st, "NotAction", "Not_actions")),
-			Resources:     rawStrings(first(st, "Resource", "Resources")),
-			NotResources:  rawStrings(first(st, "NotResource", "Not_resources")),
-			Principals:    rawPrincipal(first(st, "Principal", "Principals")),
-			NotPrincipals: rawPrincipal(first(st, "NotPrincipal", "Not_principals")),
-			Condition:     rawCondition(st["Condition"]),
+			Sid:           r.str(st["Sid"]),
+			Effect:        r.str(st["Effect"]),
+			Actions:       r.strings(first(st, "Action", "Actions")),
+			NotActions:    r.strings(first(st, "NotAction", "Not_actions")),
+			Resources:     r.strings(first(st, "Resource", "Resources")),
+			NotResources:  r.strings(first(st, "NotResource", "Not_resources")),
+			Principals:    r.principal(first(st, "Principal", "Principals")),
+			NotPrincipals: r.principal(first(st, "NotPrincipal", "Not_principals")),
+			Condition:     r.condition(st["Condition"]),
 		})
+	}
+	if !r.ok() {
+		return policyDocument{}, false
 	}
 	return policy, true
 }
@@ -408,24 +435,46 @@ func first(m map[string]json.RawMessage, keys ...string) json.RawMessage {
 	return nil
 }
 
-func rawString(raw json.RawMessage) string {
+func isJSONNull(raw json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+}
+
+// jsonReader reads the fields of a policy document and remembers whether any
+// field that is present could not be read. An absent or null field is unset,
+// not unreadable.
+type jsonReader struct {
+	failed bool
+}
+
+func (r *jsonReader) ok() bool { return !r.failed }
+
+func (r *jsonReader) str(raw json.RawMessage) string {
+	if len(raw) == 0 || isJSONNull(raw) {
+		return ""
+	}
 	var s string
-	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
+	if json.Unmarshal(raw, &s) != nil {
+		r.failed = true
+		return ""
+	}
+	if unresolvedTemplate(s) {
+		r.failed = true
 		return ""
 	}
 	return s
 }
 
-// rawStrings reads a string or a list of them. Numbers and bools, as jsonencode
+// strings reads a string or a list of them. Numbers and bools, as jsonencode
 // writes condition values, read as their text like the provider does.
-func rawStrings(raw json.RawMessage) []string {
-	if len(raw) == 0 {
+func (r *jsonReader) strings(raw json.RawMessage) []string {
+	if len(raw) == 0 || isJSONNull(raw) {
 		return nil
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var v interface{}
 	if dec.Decode(&v) != nil {
+		r.failed = true
 		return nil
 	}
 	list, ok := v.([]interface{})
@@ -436,11 +485,18 @@ func rawStrings(raw json.RawMessage) []string {
 	for _, elem := range list {
 		switch e := elem.(type) {
 		case string:
+			if unresolvedTemplate(e) {
+				r.failed = true
+				return nil
+			}
 			out = append(out, e)
 		case json.Number:
 			out = append(out, e.String())
 		case bool:
 			out = append(out, strconv.FormatBool(e))
+		default:
+			r.failed = true
+			return nil
 		}
 	}
 	if len(out) == 0 {
@@ -449,42 +505,87 @@ func rawStrings(raw json.RawMessage) []string {
 	return out
 }
 
-func rawPrincipal(raw json.RawMessage) map[string][]string {
-	if len(raw) == 0 {
+// unresolvedTemplate reports whether s is a placeholder the partial renderer
+// leaves when an expression does not resolve. A source document that still
+// holds one is incomplete.
+func unresolvedTemplate(s string) bool {
+	return strings.Contains(s, "${")
+}
+
+func (r *jsonReader) principal(raw json.RawMessage) map[string][]string {
+	if len(raw) == 0 || isJSONNull(raw) {
 		return nil
 	}
-	if s := rawString(raw); s != "" {
-		// AWS accepts only "*" as a bare string principal; match the HCL
-		// type = "*" shape rules already read.
-		if s == "*" {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		switch s {
+		case "":
+			r.failed = true
+			return nil
+		case "*":
+			// AWS accepts only "*" as a bare string principal; match the HCL
+			// type = "*" shape rules already read.
 			return map[string][]string{"*": {"*"}}
+		default:
+			return map[string][]string{"AWS": {s}}
 		}
-		return map[string][]string{"AWS": {s}}
 	}
 	var byType map[string]json.RawMessage
 	if json.Unmarshal(raw, &byType) != nil {
+		r.failed = true
 		return nil
 	}
 	out := make(map[string][]string, len(byType))
 	for typ, ids := range byType {
-		out[typ] = rawStrings(ids)
+		if typ == "" || unresolvedTemplate(typ) {
+			r.failed = true
+			return nil
+		}
+		if len(ids) == 0 || isJSONNull(ids) {
+			r.failed = true
+			return nil
+		}
+		list := r.strings(ids)
+		if len(list) == 0 {
+			r.failed = true
+			return nil
+		}
+		out[typ] = list
 	}
 	return out
 }
 
-func rawCondition(raw json.RawMessage) map[string]map[string][]string {
-	if len(raw) == 0 {
+func (r *jsonReader) condition(raw json.RawMessage) map[string]map[string][]string {
+	if len(raw) == 0 || isJSONNull(raw) {
 		return nil
 	}
 	var byTest map[string]map[string]json.RawMessage
 	if json.Unmarshal(raw, &byTest) != nil {
+		r.failed = true
 		return nil
 	}
 	out := make(map[string]map[string][]string, len(byTest))
 	for test, vars := range byTest {
+		if test == "" || unresolvedTemplate(test) {
+			r.failed = true
+			return nil
+		}
 		out[test] = make(map[string][]string, len(vars))
 		for variable, values := range vars {
-			out[test][variable] = rawStrings(values)
+			if variable == "" || unresolvedTemplate(variable) {
+				r.failed = true
+				return nil
+			}
+			if len(values) == 0 || isJSONNull(values) {
+				r.failed = true
+				return nil
+			}
+			ids := r.strings(values)
+			if len(ids) == 0 {
+				r.failed = true
+				return nil
+			}
+			out[test][variable] = ids
 		}
 	}
 	return out

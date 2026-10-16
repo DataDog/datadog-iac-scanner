@@ -9,6 +9,8 @@ package localdata
 import (
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
@@ -129,4 +131,27 @@ binding {
 		require.False(t, diags.HasErrors(), diags.Error())
 		require.Nil(t, source(file.Body, eval))
 	}
+}
+
+func TestGoogleBindingKeepsFirstCondition(t *testing.T) {
+	src := `
+binding {
+  role    = "roles/viewer"
+  members = ["user:a@example.com"]
+  condition {
+    title      = "first"
+    expression = "false"
+  }
+  condition {
+    title      = "second"
+    expression = "true"
+  }
+}`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	rd := &partial.Renderer{Ctx: &hcl.EvalContext{}, Source: partial.BytesSource([]byte(src))}
+	got := googleIAMPolicyAttributes(file.Body, rd.Render)
+	require.Contains(t, got["policy_data"], `"title":"first"`)
+	require.Contains(t, got["policy_data"], `"expression":"false"`)
+	require.NotContains(t, got["policy_data"], `"title":"second"`)
 }

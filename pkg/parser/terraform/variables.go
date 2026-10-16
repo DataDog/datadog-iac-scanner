@@ -28,6 +28,8 @@ const (
 	terraformVarsPathDirective = "kics_terraform_vars"
 	blockTypeVariable          = "variable"
 	blockTypeLocals            = "locals"
+	// blockTypeLocalReference is the root name expressions read locals through.
+	blockTypeLocalReference = "local"
 )
 
 var terraformVarsPathRegex = regexp.MustCompile(`(?m)^\s*// ` + terraformVarsPathDirective + `: ([\w/\\.:-]+)\r?\n`)
@@ -195,18 +197,29 @@ func knownAttrOrUnknown(body hcl.Body, name string, evalCtx *hcl.EvalContext) ct
 
 func mergeKnownAttributes(dst converter.VariableMap, body hcl.Body) {
 	attrs, _ := body.JustAttributes()
-	for pass := 0; pass < 3; pass++ {
+	assignments := make([]localAssignment, 0, len(attrs))
+	for name, attr := range attrs {
+		assignments = append(assignments, localAssignment{name: name, expr: attr.Expr})
+	}
+	assignments = lastLocalAssignments(assignments)
+	for pass := 0; pass < len(assignments)+1; pass++ {
 		evalCtx := &hcl.EvalContext{
 			Variables: map[string]cty.Value{"local": cty.ObjectVal(dst)},
+			Functions: functions.TerraformFuncs,
 		}
-		for name, attr := range attrs {
-			if _, ok := dst[name]; ok {
+		changed := false
+		for _, item := range assignments {
+			if _, ok := dst[item.name]; ok {
 				continue
 			}
-			val, diags := attr.Expr.Value(evalCtx)
-			if !diags.HasErrors() && val.IsKnown() {
-				dst[name] = val
+			val, diags := item.expr.Value(evalCtx)
+			if !diags.HasErrors() && val.IsKnown() && !val.IsNull() {
+				dst[item.name] = val
+				changed = true
 			}
+		}
+		if !changed {
+			break
 		}
 	}
 }
@@ -216,19 +229,20 @@ func extractLocals(body *hclsyntax.Body) converter.VariableMap {
 	if body == nil {
 		return locals
 	}
-	assignments := localAssignmentsFromBody(body)
+	assignments := lastLocalAssignments(localAssignmentsFromBody(body))
 	// Resolve locals that do not need data/var in a few passes.
 	for pass := 0; pass < len(assignments)+1; pass++ {
 		changed := false
 		evalCtx := &hcl.EvalContext{
 			Variables: map[string]cty.Value{"local": cty.ObjectVal(locals)},
+			Functions: functions.TerraformFuncs,
 		}
 		for _, item := range assignments {
 			if _, ok := locals[item.name]; ok {
 				continue
 			}
 			val, diags := item.expr.Value(evalCtx)
-			if !diags.HasErrors() && val.IsKnown() {
+			if !diags.HasErrors() && val.IsKnown() && !val.IsNull() {
 				locals[item.name] = val
 				changed = true
 			}
@@ -247,27 +261,6 @@ type localAssignment struct {
 	expr hcl.Expression
 }
 
-func collectLocalAssignments(
-	ctx context.Context, fsys vfs.FS, currentPath string, allow map[string]struct{}, keep string,
-) []localAssignment {
-	var out []localAssignment
-	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
-		out = append(out, localAssignmentsFromFile(fsys, tfFile)...)
-	}
-	return out
-}
-
-func localAssignmentsFromFile(fsys vfs.FS, filename string) []localAssignment {
-	if tfpath.IsJSONConfig(filename) {
-		return localAssignmentsFromJSON(fsys, filename)
-	}
-	body, err := parseHCLBody(fsys, filename)
-	if err != nil || body == nil {
-		return nil
-	}
-	return localAssignmentsFromBody(body)
-}
-
 func localAssignmentsFromBody(body *hclsyntax.Body) []localAssignment {
 	var out []localAssignment
 	for _, block := range body.Blocks {
@@ -281,30 +274,115 @@ func localAssignmentsFromBody(body *hclsyntax.Body) []localAssignment {
 	return out
 }
 
-func localAssignmentsFromJSON(fsys vfs.FS, filename string) []localAssignment {
-	src, err := fsys.ReadFile(filepath.Clean(filename))
-	if err != nil {
-		return nil
+// lastLocalAssignments keeps the last declaration of each local name, matching
+// Terraform's override of earlier locals blocks.
+func lastLocalAssignments(all []localAssignment) []localAssignment {
+	last := make(map[string]int, len(all))
+	for i, item := range all {
+		last[item.name] = i
 	}
-	parsed, diags := hcljson.Parse(src, filename)
-	if diags.HasErrors() {
-		return nil
-	}
-	content, _, _ := parsed.Body.PartialContent(jsonConfigSchema)
-	if content == nil {
-		return nil
-	}
-	var out []localAssignment
-	for _, block := range content.Blocks {
-		if block.Type != blockTypeLocals {
-			continue
-		}
-		attrs, _ := block.Body.JustAttributes()
-		for name, attr := range attrs {
-			out = append(out, localAssignment{name: name, expr: attr.Expr})
+	out := make([]localAssignment, 0, len(last))
+	for i, item := range all {
+		if last[item.name] == i {
+			out = append(out, item)
 		}
 	}
 	return out
+}
+
+// dataDependentLocals returns the locals that read data, directly or through
+// other locals. A local declared in several files takes its last declaration,
+// as the locals of the input variables do. Only these locals can change once
+// data is rendered, so only these are worth re-evaluating: evaluating the
+// others here, with variables and functions, would resolve them differently
+// depending on whether the directory declares a policy document.
+func dataDependentLocals(all []localAssignment) []localAssignment {
+	last := make(map[string]int, len(all))
+	for i, item := range all {
+		last[item.name] = i
+	}
+	effective := make([]localAssignment, 0, len(last))
+	reads := make([]localReads, 0, len(last))
+	for i, item := range all {
+		if last[item.name] == i {
+			effective = append(effective, item)
+			reads = append(reads, readsOf(item.expr))
+		}
+	}
+	dependent := make(map[string]bool, len(effective))
+	for changed := true; changed; {
+		changed = false
+		for i, item := range effective {
+			if !dependent[item.name] && reads[i].dependsOn(dependent) {
+				dependent[item.name] = true
+				changed = true
+			}
+		}
+	}
+	var out []localAssignment
+	for _, item := range effective {
+		if dependent[item.name] {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// localReads is what a local expression reads besides variables.
+type localReads struct {
+	data   bool
+	locals []string
+	// anyLocal is set when the expression indexes local with a key that is not
+	// a literal, so it may read any local.
+	anyLocal bool
+}
+
+func readsOf(expr hcl.Expression) localReads {
+	var r localReads
+	for _, traversal := range expr.Variables() {
+		switch traversal.RootName() {
+		case terraformDataIdentifier:
+			r.data = true
+		case blockTypeLocalReference:
+			if name, ok := localTraversalName(traversal); ok {
+				r.locals = append(r.locals, name)
+			} else {
+				r.anyLocal = true
+			}
+		}
+	}
+	return r
+}
+
+// dependsOn reports whether the expression reads data or one of the locals in
+// dependent, which read data themselves.
+func (r localReads) dependsOn(dependent map[string]bool) bool {
+	if r.data || (r.anyLocal && len(dependent) > 0) {
+		return true
+	}
+	for _, name := range r.locals {
+		if dependent[name] {
+			return true
+		}
+	}
+	return false
+}
+
+// localTraversalName returns the local a local.<name> or local["<name>"]
+// traversal reads.
+func localTraversalName(traversal hcl.Traversal) (string, bool) {
+	if len(traversal) < 2 {
+		return "", false
+	}
+	switch step := traversal[1].(type) {
+	case hcl.TraverseAttr:
+		return step.Name, true
+	case hcl.TraverseIndex:
+		if step.Key.IsKnown() && !step.Key.IsNull() && step.Key.Type() == cty.String {
+			return step.Key.AsString(), true
+		}
+	}
+	return "", false
 }
 
 // refreshLocals re-evaluates locals against vars (including data) so try /

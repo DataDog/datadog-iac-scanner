@@ -7,15 +7,14 @@
 // Package localdata renders the data sources Terraform computes from their
 // configuration alone, such as aws_iam_policy_document, into the attributes
 // resources read from them. Without them, a policy assembled by such a data
-// source is only a reference to it. The plain Terraform parser and module
-// evaluation both render through it, so a data source reads the same whether
-// or not it is declared inside a module.
+// source is only a reference to it.
 package localdata
 
 import (
 	"sort"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/convert"
@@ -54,10 +53,15 @@ type decoder struct {
 	// skipped is set when a dynamic block could not be expanded, so the
 	// document read may lack blocks it declares.
 	skipped *bool
+	// budget is how many more blocks the dynamic blocks of the document may
+	// generate, nested ones included, so nesting cannot multiply the per-block
+	// cap.
+	budget *int
 }
 
 func newDecoder(eval EvalFunc) decoder {
-	return decoder{eval: eval, skipped: new(bool)}
+	budget := dynamicblock.MaxGeneratedPerResource
+	return decoder{eval: eval, skipped: new(bool), budget: &budget}
 }
 
 func (d decoder) value(attr *hcl.Attribute) (cty.Value, bool) {
@@ -81,7 +85,8 @@ func (d decoder) str(attr *hcl.Attribute) string {
 }
 
 // list reads a list of strings, leaving an element that is not a known string
-// empty so the positions of the others hold.
+// empty so the positions of the others hold. Empty strings are kept: IAM
+// condition values use "" (for example s3:prefix for the bucket root).
 func (d decoder) list(attr *hcl.Attribute) []string {
 	v, ok := d.value(attr)
 	if !ok || !v.IsKnown() {
