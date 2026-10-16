@@ -6,7 +6,6 @@
 package terraform
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -14,50 +13,10 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 )
-
-func TestResolveTuplePreservesNullValues(t *testing.T) {
-	expr, diagnostics := hclsyntax.ParseExpression(
-		[]byte(`[null, "arn:aws:s3:::example"]`),
-		"policy.tf",
-		hcl.InitialPos,
-	)
-	require.False(t, diagnostics.HasErrors())
-	tuple := expr.(*hclsyntax.TupleConsExpr)
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).WithContext(context.Background())
-
-	resolveTuple(ctx, tuple)
-
-	nullExpr := tuple.Exprs[0].(*hclsyntax.LiteralValueExpr)
-	require.True(t, nullExpr.Val.IsNull())
-	require.Equal(t, "arn:aws:s3:::example", tuple.Exprs[1].(*hclsyntax.LiteralValueExpr).Val.AsString())
-	require.Empty(t, logs.String())
-}
-
-func TestResolveTupleDoesNotLogNestedNullLiterals(t *testing.T) {
-	expr, diagnostics := hclsyntax.ParseExpression(
-		[]byte(`[var.enabled ? "enabled" : null]`),
-		"policy.tf",
-		hcl.InitialPos,
-	)
-	require.False(t, diagnostics.HasErrors())
-	tuple := expr.(*hclsyntax.TupleConsExpr)
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).WithContext(context.Background())
-
-	resolveTuple(ctx, tuple)
-
-	_, isConditional := tuple.Exprs[0].(*hclsyntax.ConditionalExpr)
-	require.True(t, isConditional)
-	require.Empty(t, logs.String())
-}
 
 func Test_getDataSourcePolicy(t *testing.T) {
 	type args struct {
@@ -76,7 +35,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source"),
 				resourceName: "test_destination_policy",
 			},
-			want: `{"Statement":[{"Actions":["logs:*"],"Effect":"Allow","Principals":{"AWS":["data.aws_caller_identity.current.id"]}}]}
+			want: `{"Statement":[{"Actions":["logs:*"],"Effect":"Allow","Principals":{"AWS":["${data.aws_caller_identity.current.id}"]}}],"Version":"2012-10-17"}
 `,
 		},
 		{
@@ -85,7 +44,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source"),
 				resourceName: "test_example",
 			},
-			want: `{"Id":"lala","Statement":[{"Actions":["s3:ListAllMyBuckets","s3:GetBucketLocation"],"Resources":["arn:aws:s3:::*"],"Sid":"1"},{"Actions":["s3:ListBucket"],"Condition":{"StringLike":{"s3:prefix":["","home/","home/&{aws:username}/"]}},"Resources":["arn:aws:s3:::test"]},{"Actions":["s3:*"],"Resources":["arn:aws:s3:::test/home/&{aws:username}","arn:aws:s3:::test/home/&{aws:username}/*"]}]}
+			want: `{"Id":"lala","Statement":[{"Actions":["s3:ListAllMyBuckets","s3:GetBucketLocation"],"Effect":"Allow","Resources":["arn:aws:s3:::*"],"Sid":"1"},{"Actions":["s3:ListBucket"],"Condition":{"StringLike":{"s3:prefix":["","home/","home/&{aws:username}/"]}},"Effect":"Allow","Resources":["arn:aws:s3:::test"]},{"Actions":["s3:*"],"Effect":"Allow","Resources":["arn:aws:s3:::test/home/&{aws:username}","arn:aws:s3:::test/home/&{aws:username}/*"]}],"Version":"2012-10-17"}
 `,
 		},
 		{
@@ -96,7 +55,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 				resourceName: "partial_unknowns",
 				inputVars:    converter.VariableMap{"var": cty.EmptyObjectVal},
 			},
-			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"]}]}
+			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"],"Sid":"${var.sid_value}"}],"Version":"2012-10-17"}
 `,
 		},
 		{
@@ -106,7 +65,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 				currentPath:  filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source_unknown_vars"),
 				resourceName: "partial_unknowns",
 			},
-			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"]}]}
+			want: `{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["arn:aws:s3:::my-bucket/*"],"Sid":"${var.sid_value}"}],"Version":"2012-10-17"}
 `,
 		},
 	}
@@ -158,6 +117,30 @@ func Test_getDataSourcePolicy_JSONConfig(t *testing.T) {
 	var awsPolicyMap map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
 	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-json")
+}
+
+func Test_getDataSourcePolicy_JSONConfigChain(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf.json"), []byte(`{
+  "data": {
+    "aws_iam_policy_document": {
+      "combined": {
+        "source_policy_documents": ["${data.aws_iam_policy_document.base.json}"]
+      },
+      "base": {
+        "statement": [{
+          "actions": ["s3:GetObject"],
+          "resources": ["arn:aws:s3:::from-base/*"]
+        }]
+      }
+    }
+  }
+}`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(result["data"], &awsPolicyMap))
+	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["combined"]["json"], "from-base")
 }
 
 func Test_getDataSourcePolicy_JSONConfigResourceTraversal(t *testing.T) {
@@ -325,7 +308,7 @@ data "aws_iam_policy_document" "doc" {
 	policies := awsPolicyMap["aws_iam_policy_document"]
 	require.Len(t, policies, 1, "only the declared policy document should be collected")
 	require.Equal(t,
-		"{\"Statement\":[{\"Actions\":[\"s3:GetObject\"],\"Resources\":[\"arn:aws:s3:::example/*\"]}]}\n",
+		"{\"Statement\":[{\"Actions\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resources\":[\"arn:aws:s3:::example/*\"]}],\"Version\":\"2012-10-17\"}\n",
 		policies["doc"]["json"],
 	)
 }
@@ -339,12 +322,8 @@ resource "aws_s3_bucket" "bucket" {
 `), 0o600))
 
 	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
-	data, ok := result["data"]
-	require.True(t, ok, "expected a data entry even when no policies are declared")
-
-	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
-	require.Empty(t, awsPolicyMap["aws_iam_policy_document"])
+	_, ok := result["data"]
+	require.False(t, ok, "no data entry is expected when no data source is rendered")
 }
 
 func Test_getDataSourcePolicy_arnWithDataPartitionReference(t *testing.T) {
@@ -421,4 +400,122 @@ func Test_getDataSourcePolicy_escapedLabelInBlockHeader(t *testing.T) {
 	policies := awsPolicyMap["aws_iam_policy_document"]
 	require.Contains(t, policies, "doc")
 	require.Contains(t, policies["doc"]["json"], "s3:GetObject")
+}
+
+func Test_getDataSourcePolicy_googleIAMPolicyAndChains(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+data "google_iam_policy" "public" {
+  binding {
+    role    = "roles/cloudkms.cryptoKeyDecrypter"
+    members = ["allUsers", google_service_account.sa.member]
+  }
+}
+
+data "aws_iam_policy_document" "combined" {
+  source_policy_documents = [data.aws_iam_policy_document.base.json]
+  statement {
+    sid       = "Own"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.b.arn}/*"]
+  }
+}
+
+data "aws_iam_policy_document" "base" {
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	var data map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+
+	require.Equal(t,
+		`{"bindings":[{"members":["allUsers","${google_service_account.sa.member}"],"role":"roles/cloudkms.cryptoKeyDecrypter"}]}`,
+		data["google_iam_policy"]["public"]["policy_data"])
+	require.Equal(t,
+		`{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Sid":"Base"},{"Actions":["s3:GetObject"],"Effect":"Allow","Resources":["${aws_s3_bucket.b.arn}/*"],"Sid":"Own"}],"Version":"2012-10-17"}`+"\n",
+		data["aws_iam_policy_document"]["combined"]["json"])
+}
+
+func Test_getDataSourcePolicy_JSONConfigDynamicStatements(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf.json"), []byte(`{
+  "data": {
+    "aws_iam_policy_document": {
+      "doc": {
+        "dynamic": {
+          "statement": {
+            "for_each": ["a", "b"],
+            "content": {
+              "sid": "${statement.value}",
+              "actions": ["s3:GetObject", "${statement.value}:*"],
+              "resources": ["arn:aws:s3:::${statement.value}/${var.suffix}"]
+            }
+          }
+        }
+      }
+    }
+  }
+}`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	data, ok := result["data"]
+	require.True(t, ok)
+	var awsPolicyMap map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	require.Equal(t, `{"Statement":[`+
+		`{"Actions":["s3:GetObject","a:*"],"Effect":"Allow","Resources":["arn:aws:s3:::a/${var.suffix}"],"Sid":"a"},`+
+		`{"Actions":["s3:GetObject","b:*"],"Effect":"Allow","Resources":["arn:aws:s3:::b/${var.suffix}"],"Sid":"b"}],`+
+		`"Version":"2012-10-17"}`+"\n", awsPolicyMap["aws_iam_policy_document"]["doc"]["json"])
+}
+
+func Test_getDataSourcePolicy_longChainInReverseDeclarationOrder(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+data "aws_iam_policy_document" "a" {
+  source_policy_documents = [data.aws_iam_policy_document.b.json]
+}
+data "aws_iam_policy_document" "b" {
+  source_policy_documents = [data.aws_iam_policy_document.c.json]
+}
+data "aws_iam_policy_document" "c" {
+  source_policy_documents = [data.aws_iam_policy_document.d.json]
+}
+data "aws_iam_policy_document" "d" {
+  source_policy_documents = [data.aws_iam_policy_document.base.json]
+}
+data "aws_iam_policy_document" "base" {
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	var data map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	require.Contains(t, data["aws_iam_policy_document"]["a"]["json"], `"Sid":"Base"`)
+}
+
+func Test_getDataSourcePolicy_JSONConfigReadsDataThroughSpacedOrWrappedTemplates(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.tf.json"), []byte(`{
+  "data": {
+    "aws_iam_policy_document": {
+      "outer": {"source_policy_documents": ["${ data.aws_iam_policy_document.mid.json }"]},
+      "mid": {"source_policy_documents": ["${[data.aws_iam_policy_document.base.json][0]}"]},
+      "base": {"statement": [{"sid": "Base", "actions": ["sqs:*"]}]}
+    }
+  }
+}`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	var data map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	require.Contains(t, data["aws_iam_policy_document"]["outer"]["json"], `"Sid":"Base"`)
 }

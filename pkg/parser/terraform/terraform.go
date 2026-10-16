@@ -9,8 +9,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -136,9 +134,8 @@ func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileC
 		p.dirVarsCache.Store(cacheKey, vars)
 		return vars, nil
 	})
-	// Return a shallow clone: the converter adds per-file top-level keys to the
-	// variable map during evaluation, so each file must get its own map. The
-	// cty.Value entries are immutable and safe to share by reference.
+	// Callers own the returned map; the cached one must stay unmodified. The
+	// cty.Value entries are immutable and safe to share.
 	return cloneVariableMap(v.(converter.VariableMap))
 }
 
@@ -244,44 +241,6 @@ func addExtraInfo(ctx context.Context, json []model.Document, path string) ([]mo
 	}
 
 	return json, nil
-}
-
-func parseFileContent(content []byte, filename string, shouldReplaceDataSource bool) (*hcl.File, hcl.Diagnostics) {
-	parsedFile, diagnostics := hclsyntax.ParseConfig(content, filename, hcl.Pos{Line: 1, Column: 1})
-	if diagnostics.HasErrors() || !shouldReplaceDataSource {
-		return parsedFile, diagnostics
-	}
-	content = quoteDataSourceTraversals(content, parsedFile)
-	return hclsyntax.ParseConfig(content, filename, hcl.Pos{Line: 1, Column: 1})
-}
-
-func quoteDataSourceTraversals(source []byte, file *hcl.File) []byte {
-	type sourceRange struct {
-		start int
-		end   int
-	}
-	var ranges []sourceRange
-	_ = hclsyntax.VisitAll(file.Body.(*hclsyntax.Body), func(node hclsyntax.Node) hcl.Diagnostics {
-		expr, ok := node.(*hclsyntax.ScopeTraversalExpr)
-		if !ok || expr.Traversal.RootName() != terraformDataIdentifier {
-			return nil
-		}
-		exprRange := expr.Range()
-		ranges = append(ranges, sourceRange{start: exprRange.Start.Byte, end: exprRange.End.Byte})
-		return nil
-	})
-	sort.Slice(ranges, func(i, j int) bool {
-		return ranges[i].start > ranges[j].start
-	})
-	for _, sourceRange := range ranges {
-		quoted := strconv.Quote(string(source[sourceRange.start:sourceRange.end]))
-		updated := make([]byte, 0, len(source)+len(quoted))
-		updated = append(updated, source[:sourceRange.start]...)
-		updated = append(updated, quoted...)
-		updated = append(updated, source[sourceRange.end:]...)
-		source = updated
-	}
-	return source
 }
 
 // Parse execute parser for the content in a file

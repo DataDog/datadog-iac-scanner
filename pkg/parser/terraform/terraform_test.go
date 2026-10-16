@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
@@ -102,11 +103,10 @@ EOF
 )
 
 type fileTest struct {
-	name                    string
-	filename                string
-	shouldReplaceDataSource bool
-	want                    string
-	wantErr                 bool
+	name     string
+	filename string
+	want     string
+	wantErr  bool
 }
 
 // TestParser_GetKind tests the functions [GetKind()] and all the methods called by them
@@ -381,8 +381,7 @@ func TestParseFile(t *testing.T) {
 			filename: filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_variables", "terraform.tfvars"),
 			want: `test_terraform = "terraform.tfvars"
 `,
-			shouldReplaceDataSource: false,
-			wantErr:                 false,
+			wantErr: false,
 		},
 		{
 			name:     "Should parse terraform file",
@@ -414,52 +413,19 @@ resource "test" "test1" {
   test_default       = var.default_var
 }
 `,
-			shouldReplaceDataSource: false,
-			wantErr:                 false,
+			wantErr: false,
 		},
 		{
-			name:                    "Should get error when trying to parse inexistent file",
-			filename:                filepath.Join(".", "not_found.tf"),
-			shouldReplaceDataSource: false,
-			want:                    "",
-			wantErr:                 true,
-		},
-		{
-			name:     "Should parse data source file without errors",
-			filename: filepath.Join("..", "..", "..", "test", "fixtures", "test_terraform_data_source", "data_source_1.tf"),
-			want: `resource "aws_cloudwatch_log_destination_policy" "test_destination_policy" {
-  destination_name = aws_cloudwatch_log_destination.test_destination.name
-  access_policy    = "data.aws_iam_policy_document.test_destination_policy.json"
-}
-
-data "aws_iam_policy_document" "test_destination_policy" {
-  statement {
-    effect = "Allow"
-
-    principals {
-      type = "AWS"
-
-      identifiers = [
-        "data.aws_caller_identity.current.id",
-      ]
-    }
-
-    actions = [
-      "logs:*",
-    ]
-
-  }
-}
-
-`,
-			shouldReplaceDataSource: true,
-			wantErr:                 false,
+			name:     "Should get error when trying to parse inexistent file",
+			filename: filepath.Join(".", "not_found.tf"),
+			want:     "",
+			wantErr:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsedFile, err := readAndParseFile(vfs.DiskFS{}, tt.filename, tt.shouldReplaceDataSource)
+			parsedFile, err := readAndParseFile(vfs.DiskFS{}, tt.filename)
 			if tt.wantErr {
 				require.NotNil(t, err)
 				require.Nil(t, parsedFile)
@@ -471,48 +437,23 @@ data "aws_iam_policy_document" "test_destination_policy" {
 	}
 }
 
-func TestParseFileReplacesOnlyRootDataTraversals(t *testing.T) {
-	source := []byte(`
-resource "test" "test" {
-  root_data    = data.aws_s3_bucket.selected.arn
-  nested_var   = var.data.resource_arn
-  nested_local = local.data.resource_arn
-  nested_each  = each.value.data.resource_arn
-  literal      = "data.aws_s3_bucket.selected.arn"
-  template     = "arn:${data.aws_partition.current.partition}:s3:::example"
-}
-`)
-	path := filepath.Join(t.TempDir(), "data_references.tf")
-	require.NoError(t, os.WriteFile(path, source, 0o600))
-
-	parsedFile, err := readAndParseFile(vfs.DiskFS{}, path, true)
-	require.NoError(t, err)
-	got := string(parsedFile.Bytes)
-	require.Contains(t, got, `root_data    = "data.aws_s3_bucket.selected.arn"`)
-	require.Contains(t, got, `nested_var   = var.data.resource_arn`)
-	require.Contains(t, got, `nested_local = local.data.resource_arn`)
-	require.Contains(t, got, `nested_each  = each.value.data.resource_arn`)
-	require.Contains(t, got, `literal      = "data.aws_s3_bucket.selected.arn"`)
-	require.Contains(t, got, `template     = "arn:${"data.aws_partition.current.partition"}:s3:::example"`)
-}
-
 func TestParseFileReturnsDiagnostics(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "invalid.tf")
 	require.NoError(t, os.WriteFile(path, []byte(`resource "test" "test" {
   value = aws_s3_bucket.selected.
 }`), 0o600))
 
-	parsedFile, err := readAndParseFile(vfs.DiskFS{}, path, true)
+	parsedFile, err := readAndParseFile(vfs.DiskFS{}, path)
 	require.Nil(t, parsedFile)
 	require.ErrorContains(t, err, "Invalid attribute name")
 }
 
-func readAndParseFile(fsys vfs.FS, filename string, shouldReplaceDataSource bool) (*hcl.File, error) {
+func readAndParseFile(fsys vfs.FS, filename string) (*hcl.File, error) {
 	content, err := fsys.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		return nil, err
 	}
-	file, diags := parseFileContent(content, filename, shouldReplaceDataSource)
+	file, diags := hclsyntax.ParseConfig(content, filename, hcl.InitialPos)
 	if diags.HasErrors() {
 		return nil, diags
 	}
@@ -520,16 +461,14 @@ func readAndParseFile(fsys vfs.FS, filename string, shouldReplaceDataSource bool
 }
 
 // TestParser_ConcurrentSameDir guards the per-directory variable cache: the
-// converter adds per-file keys to the variable map during evaluation, so the
-// cached map must never be shared across the files parsed concurrently in the
-// same directory (doing so caused "concurrent map writes" crashes). Run under
+// cached map must never be written while the files of one directory are parsed
+// concurrently (doing so caused "concurrent map writes" crashes). Run under
 // -race to catch regressions.
 func TestParser_ConcurrentSameDir(t *testing.T) {
 	dir := t.TempDir()
 	const numFiles = 32
 	for i := 0; i < numFiles; i++ {
-		// format() over an unknown variable forces the converter's evalFunction
-		// fallback, which writes the unknown root key into the variable map.
+		// format() over unknown variables renders them as text.
 		content := fmt.Sprintf(`
 resource "aws_s3_bucket" "b%d" {
   bucket = format("%%s-%%s", unknown_input_%d, another_unknown_%d)
