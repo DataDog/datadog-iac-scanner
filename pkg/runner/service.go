@@ -439,15 +439,16 @@ func newLineInfoLoader(
 	p *parser.Parser,
 	filename string,
 	docIdx int,
+	layered bool,
 	openAPIResolveReferences bool,
 	isMinified bool,
 	maxResolverDepth int,
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
-	return newLineInfoLoaderWithReparser(filename, docIdx,
+	return newLineInfoLoaderWithReparser(filename, docIdx, sharedReparse(layered, filename,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
 			return p.Parse(parser.WithLineInfoOnly(ctx),
 				filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
-		})
+		}))
 }
 
 func newLineInfoLoaderWithReparser(
