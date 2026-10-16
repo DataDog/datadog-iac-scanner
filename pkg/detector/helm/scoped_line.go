@@ -303,8 +303,7 @@ func lineBranches(lines []string) []int {
 			if action.Comment {
 				continue
 			}
-			word, _, _ := strings.Cut(strings.Trim(strings.TrimSuffix(strings.TrimPrefix(
-				line[action.Start:action.End], "{{"), "}}"), "- \t\r\n"), " ")
+			word := actionWord(line[action.Start:action.End])
 			switch {
 			case blockOpeners[word]:
 				next++

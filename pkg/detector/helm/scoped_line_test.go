@@ -46,6 +46,14 @@ func TestLineBranches(t *testing.T) {
 	require.NotZero(t, branches[8])
 }
 
+func TestLineBranchesSeparatedByATab(t *testing.T) {
+	lines := []string{"{{ if\tfalse }}", "a: 1", "{{ else }}", "a: {{ .V }}", "{{ end }}", "b: 2"}
+	branches := lineBranches(lines)
+	require.NotZero(t, branches[1])
+	require.NotEqual(t, branches[1], branches[3])
+	require.Zero(t, branches[5])
+}
+
 func TestListIndexKeys(t *testing.T) {
 	rendered := []string{"rules:", "  - verbs:", "      - get", "  - verbs:", "      - list"}
 	line, ok := itemLine(rendered, []keyMatch{{key: "rules", line: 0}}, "1")
