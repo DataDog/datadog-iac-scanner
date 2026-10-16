@@ -588,9 +588,11 @@ type HelmAttribution struct {
 }
 
 // NewHelmAttribution returns the attribution of a rendered document, or nil
-// when no invocation emitted it.
+// when there is no rendered document to resolve keys on. A document no
+// invocation emitted is attributed too, with no invocations: its keys are
+// still resolved on the rendered document.
 func NewHelmAttribution(invocations HelmInvocations, renderedContent string) *HelmAttribution {
-	if len(invocations) == 0 {
+	if renderedContent == "" {
 		return nil
 	}
 	return &HelmAttribution{Invocations: invocations, RenderedContent: renderedContent}

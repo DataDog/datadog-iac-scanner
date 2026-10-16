@@ -7,6 +7,7 @@ package helm
 
 import (
 	"context"
+	"github.com/stretchr/testify/require"
 	"reflect"
 	"strings"
 	"testing"
@@ -507,4 +508,55 @@ func TestDetectLineStampKeyIgnoresTextMentioningIt(t *testing.T) {
 	if got.Line != undetectedVulnerabilityLine {
 		t.Fatalf("DetectLine() matched text mentioning a stamp: line %d (%q), want none", got.Line, got.LineWithVulnerability)
 	}
+}
+
+func TestContradictsSelector(t *testing.T) {
+	for _, tt := range []struct {
+		line string
+		want bool
+	}{
+		{"    - name: web", false},
+		{"    - name: other", true},
+		{`    - name: "other"`, true},
+		{"    - name: {{ .Values.n }}", false},
+		{"    - name: prefix-{{ .Values.n }}", false},
+		{"    - name:", false},
+		{"    - name: web # main container", false},
+		{"    - name: other # web", true},
+		{`    - name: "web" # main`, false},
+		{`    - name: 'other' # main`, true},
+		{"    - name: [a, b]", false},
+		{"      - hostname: other", false},
+		{"    hostname: other", false},
+		{"  - - name: other", true},
+		{`    - "name": other`, true},
+		{`    - 'name': web`, false},
+		{`    - "hostname": other`, false},
+		{"    image: nginx", false},
+	} {
+		if got := contradictsSelector(tt.line, "name", "web"); got != tt.want {
+			t.Errorf("contradictsSelector(%q) = %v, want %v", tt.line, got, tt.want)
+		}
+	}
+}
+
+// Go templates accept any whitespace between a keyword and its argument.
+func TestLineDepthsSeparatedByATab(t *testing.T) {
+	lines := []string{"{{ if\tfalse }}", "a: 1", "{{ else }}", "a: {{ .V }}", "{{ end }}", "b: 2"}
+	require.Equal(t, []int{0, 1, 1, 1, 1, 0}, lineDepths(lines))
+	require.Equal(t, lineDepths([]string{"{{ if false }}", "a: 1", "{{ else }}", "a: {{ .V }}", "{{ end }}", "b: 2"}),
+		lineDepths(lines))
+}
+
+// Only the key at the start of a line is the one a selector names: a line of
+// another key ending in the same letters is not an exact match.
+func TestExactSelectorsIgnoresKeysEndingInTheSameName(t *testing.T) {
+	lines := []string{"  - name: web2", "    env:", "      - hostname: web", "  - name: web"}
+	distances := map[int]int{0: 1, 2: 1, 3: 1}
+	exactSelectors(lines, distances, "name:", "web")
+	require.Equal(t, map[int]int{3: 1}, distances)
+
+	distances = map[int]int{0: 1, 2: 1}
+	exactSelectors(lines, distances, "name:", "web")
+	require.Equal(t, map[int]int{0: 1, 2: 1}, distances, "no line is exact: none is dropped")
 }

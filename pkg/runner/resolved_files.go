@@ -443,7 +443,7 @@ func (s *Service) getOriginalIgnoreLines(ctx context.Context, filename string,
 	kind model.FileKind,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ignoreLines []int, err error) {
-	refactor := helmaction.Blank(helmmarker.RemoveIDLines(originalFile))
+	refactor := blankPlainComments(helmaction.Blank(helmmarker.RemoveIDLines(originalFile)))
 
 	documentsOriginal, err := s.parseResolvedFile(
 		ctx, filename, refactor, kind, openAPIResolveReferences, isMinified, maxResolverDepth)

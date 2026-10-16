@@ -123,7 +123,8 @@ func TestHelmInvocationsContaining(t *testing.T) {
 func TestNewHelmAttribution(t *testing.T) {
 	one := HelmInvocations{{RenderedLine: 1, Position: ResourceLine{Line: 4}}}
 
-	require.Nil(t, NewHelmAttribution(nil, "rendered"))
+	require.Nil(t, NewHelmAttribution(nil, ""))
+	require.Empty(t, NewHelmAttribution(nil, "rendered").Invocations)
 	require.Equal(t, "rendered", NewHelmAttribution(one, "rendered").RenderedContent)
 
 	var none *HelmAttribution

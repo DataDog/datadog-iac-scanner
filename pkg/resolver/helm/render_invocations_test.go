@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"helm.sh/helm/v3/pkg/chart"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -496,4 +497,50 @@ func TestHelmResolve_IncludedPartialDoesNotShareAStampWithItsIncluder(t *testing
 	line := (helmdetector.DetectKindLine{}).DetectLine(
 		context.Background(), file, "spec.containers.name={{c}}.image", 1).Line
 	require.Equal(t, 8, line, "the Pod finding belongs to the include on line 8, not the ConfigMap on line 2")
+}
+
+// A selector must pick the item whose value it names, not one whose value
+// merely starts with it, when both items are emitted by includes.
+func TestFindingSelectorDoesNotPickAnItemWithALongerName(t *testing.T) {
+	files := map[string]string{
+		"templates/_h.tpl": "{{- define \"c2\" -}}\n- name: c2\n  image: x\n{{- end -}}\n" +
+			"{{- define \"c1\" -}}\n- name: c\n  image: y\n{{- end -}}\n",
+		"templates/t.yaml": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: p\nspec:\n  containers:\n" +
+			"  {{- include \"c2\" . | nindent 2 }}\n  {{- include \"c1\" . | nindent 2 }}\n",
+	}
+	require.Equal(t, 8, findingLine(t, files, "templates/t.yaml", "name: p", "spec.containers.name={{c}}.image"))
+	require.Equal(t, 7, findingLine(t, files, "templates/t.yaml", "name: p", "spec.containers.name={{c2}}.image"))
+}
+
+// An include at column 0 after a block scalar header may print indented text,
+// which the marker line before it would cut off from the scalar. The template
+// then keeps the markers that do not depend on it, instead of losing them all.
+func TestIndentedIncludeAfterBlockScalarKeepsTheOtherMarkers(t *testing.T) {
+	files := map[string]string{
+		"templates/_h.tpl": "{{- define \"ind\" }}\n    echo hi\n    echo again{{ end }}\n" +
+			"{{- define \"hdr\" -}}\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n{{- end -}}\n",
+		"templates/t.yaml": "{{ include \"hdr\" . }}\ndata:\n  script: |\n{{ include \"ind\" . }}\n" +
+			"  other: {{ .Values.o | default \"x\" | quote }}\n",
+	}
+	rendered := findAllResolvedBySuffix(t, renderChart(t, files), "templates/t.yaml")
+	require.Len(t, rendered, 1)
+	require.NotEmpty(t, rendered[0].HelmInvocations)
+	require.Contains(t, string(rendered[0].Content), "    echo again")
+	require.Equal(t, 5, findingLine(t, files, "templates/t.yaml", "name: cm", "data.other"))
+}
+
+// Only comments may follow a marked include on its line: any other text would
+// be glued to the end marker's comment line.
+func TestIncludeFollowedByTextAfterACommentIsNotMarked(t *testing.T) {
+	for source, marked := range map[string]bool{
+		"{{ include \"pod\" . }}\n":                           true,
+		"{{ include \"pod\" . }}{{/* c */}}\n":                true,
+		"{{ include \"pod\" . }} {{/* a */}}{{/* b */}}\n":    true,
+		"{{ include \"pod\" . }}{{/* c */}}---\n":             false,
+		"{{ include \"pod\" . }}{{/* c */}} tail\n":           false,
+		"{{ include \"pod\" . }}{{/* c */}}{{ .Values.x }}\n": false,
+	} {
+		file := addHelmInvocationMarkers(&chart.File{Name: "templates/t.yaml", Data: []byte("a: 1\n" + source)})
+		require.Equal(t, marked, hasInvocationMarker(string(file.Data)), source)
+	}
 }

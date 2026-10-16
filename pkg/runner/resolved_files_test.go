@@ -684,3 +684,90 @@ func TestFirstHelmRender(t *testing.T) {
 	require.True(t, s.firstHelmRender(render("web/charts/lib/templates/cm.yaml", "name: overridden\n")),
 		"a parent overriding the dependency's values renders a different document")
 }
+
+func TestBlankPlainComments(t *testing.T) {
+	content := "# header\na: 1\n# dd-iac-scan ignore-line\n# note\nb: 2\n  # plain\n\n#\nc: 3 # inline\n"
+	want := "\na: 1\n# dd-iac-scan ignore-line\n# note\nb: 2\n\n\n\nc: 3 # inline\n"
+	require.Equal(t, want, string(blankPlainComments([]byte(content))))
+}
+
+func TestHelmOrdinaryCommentDoesNotSuppressTheLineBelowIt(t *testing.T) {
+	template := "kind: Pod\nspec:\n  initContainers:\n    # Wait for tracking service\n" +
+		"    {{- include \"wait\" . | nindent 4 }}\n  containers:\n    - name: a\n"
+	suppressed := "kind: Pod\nspec:\n  initContainers:\n    # dd-iac-scan ignore-line\n" +
+		"    - name: init\n  containers:\n    - name: a\n"
+	s := &Service{Parser: yamlParserOf(t)}
+	lines, err := s.getOriginalIgnoreLines(context.Background(), "t.yaml", []byte(template), model.KindHELM, false, false, 15)
+	require.NoError(t, err)
+	require.Empty(t, lines)
+	lines, err = s.getOriginalIgnoreLines(context.Background(), "t.yaml", []byte(suppressed), model.KindHELM, false, false, 15)
+	require.NoError(t, err)
+	require.Contains(t, lines, 5)
+}
+
+func TestBlankPlainCommentsKeepsOnlyDirectives(t *testing.T) {
+	for _, tt := range []struct {
+		name, comment string
+		kept          bool
+	}{
+		{"mention", "# Report this init container through dd-iac-scan", false},
+		{"mention at start", "# dd-iac-scan is run in CI", false},
+		{"ignore-line", "# dd-iac-scan ignore-line", true},
+		{"ignore-block", "  #dd-iac-scan ignore-block", true},
+		{"disable rule", "# dd-iac-scan disable=Some_Rule", true},
+		{"uppercase", "# DD-IAC-SCAN ignore-line", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := string(blankPlainComments([]byte("a: 1\n" + tt.comment + "\nb: 2\n")))
+			if tt.kept {
+				require.Contains(t, got, tt.comment)
+			} else {
+				require.Equal(t, "a: 1\n\nb: 2\n", got)
+			}
+		})
+	}
+}
+
+func TestBlankPlainCommentsLeavesScalarsAlone(t *testing.T) {
+	for _, tt := range []struct{ name, content, kept string }{
+		{"double quoted", "k: \"first\n  # last\"\n# gone\nb: 2\n", "# last\""},
+		{"single quoted", "k: 'it''s\n  # last'\n# gone\nb: 2\n", "# last'"},
+		{"escaped quote", "k: \"a \\\"\n  # still\"\n# gone\nb: 2\n", "# still\""},
+		{"block scalar", "k: |\n  one\n  # two\n# gone\nb: 2\n", "# two"},
+		{"quote in a word", "k: it's\n# gone\nb: 2\n", "it's"},
+		{"quote in a note", "k: v # it's\n# gone\nb: 2\n", "# it's"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := string(blankPlainComments([]byte(tt.content)))
+			require.NotContains(t, got, "# gone")
+			require.Contains(t, got, tt.kept)
+			require.Equal(t, strings.Count(tt.content, "\n"), strings.Count(got, "\n"))
+		})
+	}
+}
+
+func TestHelmQuotedScalarEndingInHashDoesNotLoseSuppression(t *testing.T) {
+	template := "kind: ConfigMap\nmetadata:\n  annotations:\n    note: \"first\n      # last\"\n  name: x\n" +
+		"# dd-iac-scan ignore-line\ndata: {{ .V }}\n"
+	s := &Service{Parser: yamlParserOf(t)}
+	lines, err := s.getOriginalIgnoreLines(context.Background(), "t.yaml", []byte(template), model.KindHELM, false, false, 15)
+	require.NoError(t, err)
+	require.Contains(t, lines, 8)
+}
+
+func TestHelmOrdinaryMentionDoesNotSuppressTheLineBelowIt(t *testing.T) {
+	template := "kind: Pod\nspec:\n  initContainers:\n    # Report this init container through dd-iac-scan\n" +
+		"    {{- include \"wait\" . | nindent 4 }}\n  containers:\n    - name: a\n"
+	s := &Service{Parser: yamlParserOf(t)}
+	lines, err := s.getOriginalIgnoreLines(context.Background(), "t.yaml", []byte(template), model.KindHELM, false, false, 15)
+	require.NoError(t, err)
+	require.Empty(t, lines)
+}
+
+func yamlParserOf(t *testing.T) *parser.Parser {
+	t.Helper()
+	parsers, err := parser.NewBuilder(context.Background()).Add(&yamlParser.Parser{}).Build([]string{""}, []string{""})
+	require.NoError(t, err)
+	require.NotEmpty(t, parsers)
+	return parsers[0]
+}
