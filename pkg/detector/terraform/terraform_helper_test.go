@@ -2,6 +2,7 @@ package terraform
 
 import (
 	"context"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"os"
 	"path/filepath"
@@ -191,7 +192,7 @@ func TestResolveListIndex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fileData := []byte(strings.Join(tt.lines, "\n"))
 
-			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) })
+			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) }, unknownBlocks)
 			require.Equal(t, tt.wantContent, content)
 			require.Equal(t, tt.wantLine, line)
 
@@ -387,8 +388,112 @@ func TestResolveListIndexStatementInJsonencodeThirdElement(t *testing.T) {
 	lines := *linesPtr
 	ctx := context.Background()
 	// currentLine 9 = line after `policy =` (0-indexed), same as DetectLine when resolving Statement[2]
-	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) })
+	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) }, unknownBlocks)
 	require.Empty(t, sub)
 	// Third tuple element starts at `{` on file line 41 (1-based) -> index 40
 	require.Equal(t, 40, lineNum)
+}
+
+func TestRepeatedBlockSlots(t *testing.T) {
+	src := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = var.first
+    content {}
+  }
+  ingress {}
+  dynamic "ingress" {
+    for_each = ["x", "y"]
+    content {}
+  }
+  dynamic "ingress" {
+    for_each = var.second
+    content {}
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+
+	tests := []struct {
+		name     string
+		repeated repeatedBlocks
+		want     blockSlots
+	}{
+		{"document lines are used as recorded", repeatedBlocks{total: 4, lines: []int{1, 1, 5, 10}}, blockSlots{1, 1, 5, 10}},
+		{"document lines naming no source block are ignored", repeatedBlocks{total: 2, lines: []int{1, 3}}, blockSlots{5, 6, 6}},
+		{"document lines not matching its total are ignored", repeatedBlocks{total: 3, lines: []int{1, 5}}, blockSlots{5, 6, 6}},
+		{"no document: unresolved blocks stand for none", unknownBlocks, blockSlots{5, 6, 6}},
+		{"total without lines: several unresolved blocks stand for none", repeatedBlocks{total: 7}, blockSlots{5, 6, 6}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, repeatedBlockSlots(body, "ingress", tt.repeated))
+		})
+	}
+
+	single := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = var.rules
+    content {}
+  }
+  ingress {}
+}
+`
+	file, diags = hclsyntax.ParseConfig([]byte(single), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body = file.Body.(*hclsyntax.Body).Blocks[0].Body
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(body, "ingress", repeatedBlocks{total: 3}),
+		"a single unresolved block stands for what the document's total leaves")
+}
+
+func TestEnclosingFirst(t *testing.T) {
+	src := `resource "r" "x" {
+  a {
+  }
+  b {
+    inner {
+    }
+  }
+  c {
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	blocks := file.Body.(*hclsyntax.Body).Blocks[0].Body.Blocks
+	names := func(bs hclsyntax.Blocks) []string {
+		out := make([]string, 0, len(bs))
+		for _, b := range bs {
+			out = append(out, b.Type)
+		}
+		return out
+	}
+	require.Equal(t, []string{"a", "b", "c"}, names(enclosingFirst(blocks, -1)), "no context keeps source order")
+	require.Equal(t, []string{"b", "a", "c"}, names(enclosingFirst(blocks, 4)), "the block around the line comes first")
+	require.Equal(t, []string{"a", "b", "c"}, names(enclosingFirst(blocks, 1)))
+	require.Equal(t, []string{"a", "b", "c"}, names(enclosingFirst(blocks, 99)), "a line outside every block keeps source order")
+}
+
+// Below the body the blocks were counted for, the document's lines still pick the
+// blocks, but its total is not shared out between unresolved dynamic blocks.
+func TestRepeatedBlockSlotsInNestedBody(t *testing.T) {
+	src := `resource "r" "x" {
+  dynamic "flag" {
+    for_each = var.flags
+    content {}
+  }
+  flag {}
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(body, "flag", repeatedBlocks{total: 3}),
+		"in the body it was counted for, the total sizes the one unresolved block")
+	require.Equal(t, blockSlots{5}, repeatedBlockSlots(body, "flag", repeatedBlocks{total: 3}.inNestedBody()),
+		"in a nested body it is not")
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(body, "flag", repeatedBlocks{total: 3, lines: []int{1, 1, 5}}.inNestedBody()),
+		"the document's lines still apply")
 }

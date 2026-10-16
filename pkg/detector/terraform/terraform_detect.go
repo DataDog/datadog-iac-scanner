@@ -26,6 +26,8 @@ const strBlockStart = "block-start"
 const strNestedEnd = "nested-end"
 const strNestedStart = "nested-start"
 const strNestedBody = "nested-body"
+const blockTypeResource = "resource"
+const blockTypeData = "data"
 
 // DetectKindLine holds a per-scan HCL parse cache. Multiple findings in the
 // same file reuse the parsed body instead of re-running hclsyntax.ParseConfig
@@ -98,19 +100,7 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 	parse := func() (*hclsyntax.Body, error) {
 		return d.cachedParseBody(file.OriginalData, file.FilePath)
 	}
-	for _, part := range keyParts {
-		s1, s2, idx := generateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, parse)
-
-		// Jumps to line in case of multiline Array
-		if idx != 0 {
-			detection.CurrentLine = idx
-			continue
-		}
-		detection, _, _, _ = detection.DetectCurrentLine(s1, s2, 0, lines, file.Kind)
-		if detection.IsBreak {
-			break
-		}
-	}
+	detection = detectKeyParts(ctx, detection, keyParts, extracted, lines, file.Kind, file.Document, file.LineInfoDocument, parse)
 
 	if detection.FoundAtLeastOne {
 		line := detection.CurrentLine + 1
@@ -133,6 +123,53 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 
 	contextLogger.Warn().Msgf("Failed to detect Terraform line, query response %s", normalizedKey)
 	return buildEmptyVulnerabilityLines(file)
+}
+
+// detectKeyParts walks the search key part by part. A search key names one
+// block, so once the search is inside it, a part only matching text past it
+// (inside a heredoc, say) is skipped and the search goes on from the last line
+// found within it.
+func detectKeyParts(
+	ctx context.Context,
+	detection *detector.DefaultDetectLineResponse,
+	keyParts []string,
+	extracted [][]string,
+	lines []string,
+	kind model.FileKind,
+	doc, lineDoc model.Document,
+	parse func() (*hclsyntax.Body, error),
+) *detector.DefaultDetectLineResponse {
+	var scope *hclsyntax.Block
+	if body, err := parse(); err == nil {
+		scope = searchKeyBlock(body, keyParts, extracted)
+	}
+	inScope := false
+	cursor := newDocCursor(doc, extracted)
+	lineCursor := newDocCursor(lineDoc, extracted)
+	for _, part := range keyParts {
+		prevLine, prevFound := detection.CurrentLine, detection.FoundAtLeastOne
+		repeated := withSourceLines(cursor.advance(part), lineCursor.advance(part))
+		s1, s2, idx := generateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, parse, repeated)
+
+		// Jumps to line in case of multiline Array
+		if idx != 0 {
+			detection.CurrentLine = idx
+		} else {
+			detection, _, _, _ = detection.DetectCurrentLine(s1, s2, 0, lines, kind)
+		}
+		if scope != nil && detection.FoundAtLeastOne {
+			within := blockSpansLine(scope, detection.CurrentLine+1)
+			if inScope && !within {
+				detection.CurrentLine, detection.FoundAtLeastOne = prevLine, prevFound
+				continue
+			}
+			inScope = within
+		}
+		if detection.IsBreak {
+			break
+		}
+	}
+	return detection
 }
 
 func detectJSONConfigLine(
@@ -255,11 +292,70 @@ func locateTerraformBlock(
 
 func blockContainingLine(blocks hclsyntax.Blocks, line int) *hclsyntax.Block {
 	for _, block := range blocks {
-		if line >= block.TypeRange.Start.Line && line <= block.Body.SrcRange.End.Line {
+		if blockSpansLine(block, line) {
 			return block
 		}
 	}
 	return nil
+}
+
+var searchKeyBlockPart = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9_-]*)\[(.+)\]$`)
+
+var labelOnlyBlockTypes = map[string]bool{"module": true, "variable": true, "output": true}
+
+// searchKeyBlock returns the top-level block a search key names, as in
+// resource.aws_s3_bucket[name] or data.aws_ami[name], or nil when the key
+// names none unambiguously.
+func searchKeyBlock(body *hclsyntax.Body, keyParts []string, extracted [][]string) *hclsyntax.Block {
+	if len(keyParts) == 0 {
+		return nil
+	}
+	parts, blockType := keyParts, ""
+	if parts[0] == blockTypeResource || parts[0] == blockTypeData {
+		blockType, parts = parts[0], parts[1:]
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	m := searchKeyBlockPart.FindStringSubmatch(parts[0])
+	if m == nil {
+		return nil
+	}
+	typ, name := m[1], m[2]
+	if strings.HasPrefix(name, "{{") && strings.HasSuffix(name, "}}") {
+		name = name[2 : len(name)-2]
+		if i, err := strconv.Atoi(name); err == nil && i >= 0 && i < len(extracted) {
+			name = extracted[i][1]
+		}
+	}
+	var found *hclsyntax.Block
+	for _, block := range body.Blocks {
+		if !blockNamed(block, blockType, typ, name) {
+			continue
+		}
+		if found != nil {
+			return nil
+		}
+		found = block
+	}
+	return found
+}
+
+func blockNamed(block *hclsyntax.Block, blockType, typ, name string) bool {
+	if blockType == "" && labelOnlyBlockTypes[typ] {
+		return block.Type == typ && len(block.Labels) == 1 && block.Labels[0] == name
+	}
+	if blockType == "" && block.Type != blockTypeResource && block.Type != blockTypeData {
+		return false
+	}
+	if blockType != "" && block.Type != blockType {
+		return false
+	}
+	return len(block.Labels) == 2 && block.Labels[0] == typ && block.Labels[1] == name
+}
+
+func blockSpansLine(block *hclsyntax.Block, line int) bool {
+	return line >= block.TypeRange.Start.Line && line <= block.Body.SrcRange.End.Line
 }
 
 func nearestBlock(blocks hclsyntax.Blocks, line int) *hclsyntax.Block {

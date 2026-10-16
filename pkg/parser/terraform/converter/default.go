@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -48,12 +49,8 @@ func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, op
 	for name, value := range functions.ContextVariables(opts.BaseDir, opts.RootDir) {
 		variables[name] = value
 	}
-	c := converter{
-		bytes:     file.Bytes,
-		inputVars: variables,
-		funcs:     functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS),
-		file:      file.Body.(*hclsyntax.Body),
-	}
+	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS))
+	c.file = file.Body.(*hclsyntax.Body)
 	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 
 	if err != nil {
@@ -76,7 +73,7 @@ var DefaultConverted = func(ctx context.Context, file *hcl.File, inputVariables 
 type converter struct {
 	bytes     []byte
 	inputVars VariableMap
-	funcs     map[string]function.Function
+	renderer  *partial.Renderer
 	// file is the body of the whole file; its blocks each get a fresh dynamicLeft.
 	file        *hclsyntax.Body
 	dynamicLeft int
@@ -84,14 +81,14 @@ type converter struct {
 	dynamicWarned bool
 }
 
-func (c *converter) evalContext() *hcl.EvalContext {
-	funcs := c.funcs
-	if funcs == nil {
-		funcs = functions.TerraformFuncs
-	}
-	return &hcl.EvalContext{
-		Variables: c.inputVars,
-		Functions: funcs,
+func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
+	return converter{
+		bytes:     src,
+		inputVars: variables,
+		renderer: &partial.Renderer{
+			Ctx:    &hcl.EvalContext{Variables: variables, Functions: funcs},
+			Source: partial.BytesSource(src),
+		},
 	}
 }
 
@@ -105,7 +102,7 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	count := -1
 
 	if countValue != nil {
-		value, diags := countValue.Expr.Value(c.evalContext())
+		value, diags := countValue.Expr.Value(c.renderer.Ctx)
 		if !diags.HasErrors() {
 			if intValue, ok := ctyutil.LiteralInt(value); ok {
 				count = intValue
@@ -221,7 +218,7 @@ func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, ou
 // element, so the block is kept as written.
 func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Block, out model.Document) (bool, error) {
 	content := dynamicblock.Content(block)
-	expansion := dynamicblock.Expand(block, c.evalContext())
+	expansion := dynamicblock.Expand(block, c.renderer.Ctx)
 	if content != nil && expansion.OverCap {
 		c.noteDynamicOverflow(ctx, block, expansion.Requested, dynamicblock.MaxExpansion)
 	}
@@ -230,6 +227,7 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 	}
 	if c.inputVars == nil {
 		c.inputVars = make(VariableMap)
+		c.renderer.Ctx.Variables = c.inputVars
 	}
 	name := dynamicblock.IteratorName(block)
 	previous, hadPrevious := c.inputVars[name]
@@ -243,7 +241,7 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 	paths := make([][]string, 0, len(expansion.Iterators))
 	for _, iterator := range expansion.Iterators {
 		c.inputVars[name] = iterator
-		labels, ok := dynamicblock.Labels(block, c.evalContext())
+		labels, ok := dynamicblock.Labels(block, c.renderer.Ctx)
 		if !ok {
 			return false, nil
 		}
@@ -345,14 +343,10 @@ func (v *converterExprVisitor) VisitRelativeTraversal(e *hclsyntax.RelativeTrave
 	return v.c.tryEvalExpression(e)
 }
 func (v *converterExprVisitor) VisitFunctionCall(e *hclsyntax.FunctionCallExpr) (interface{}, error) {
-	return v.c.evalFunction(e)
+	return v.c.tryEvalExpression(e)
 }
 func (v *converterExprVisitor) VisitConditional(e *hclsyntax.ConditionalExpr) (interface{}, error) {
-	val, err := e.Value(v.c.evalContext())
-	if err != nil || !val.IsWhollyKnown() {
-		return v.c.wrapExpr(e)
-	}
-	return ctyjson.SimpleJSONValue{Value: val}, nil
+	return v.c.tryEvalExpression(e)
 }
 func (v *converterExprVisitor) VisitTupleCons(e *hclsyntax.TupleConsExpr) (interface{}, error) {
 	list := make([]interface{}, 0, len(e.Exprs))
@@ -572,83 +566,29 @@ func (c *converter) convertTemplateFor(expr *hclsyntax.ForExpr) (string, error) 
 	return s, nil
 }
 
+// tryEvalExpression renders expr, each unresolved part as its own "${expr}"
+// text. An unresolved string stays a plain string.
 func (c *converter) tryEvalExpression(expr hclsyntax.Expression) (interface{}, error) {
-	val, _ := expr.Value(c.evalContext())
-	if val.IsWhollyKnown() && !ctyutil.ContainsNestedUnknown(val) {
+	if val, diags := expr.Value(c.renderer.Ctx); !diags.HasErrors() && val.IsWhollyKnown() {
 		return ctyjson.SimpleJSONValue{Value: val}, nil
 	}
-	return c.wrapExpr(expr)
-}
-
-func (c *converter) tryEvalToString(expr hclsyntax.Expression) (string, error) {
-	val, _ := expr.Value(c.evalContext())
+	val, ok := c.renderer.RenderUnresolved(expr)
+	if !ok {
+		return c.wrapExpr(expr)
+	}
 	if s, ok := ctyutil.ConcreteString(val); ok {
 		return s, nil
 	}
-	return c.wrapExpr(expr)
+	return ctyjson.SimpleJSONValue{Value: val}, nil
+}
+
+func (c *converter) tryEvalToString(expr hclsyntax.Expression) (string, error) {
+	return c.renderer.StringPart(expr), nil
 }
 
 func (c *converter) wrapExpr(expr hclsyntax.Expression) (string, error) {
-	expression := c.rangeSource(expr.Range())
-	return "${" + expression + "}", nil
-}
-
-func (c *converter) evalFunction(expression hclsyntax.Expression) (interface{}, error) {
-	expressionEvaluated, err := expression.Value(c.evalContext())
-
-	if err != nil {
-		// Initialize inputVars if nil
-		if c.inputVars == nil {
-			c.inputVars = make(VariableMap)
-		}
-		for _, expressionError := range err {
-			if expressionError.Summary == "Unknown variable" || expressionError.Summary == "Variables not allowed" {
-				jsonPath := c.rangeSource(expressionError.Expression.Range())
-				rootKey := strings.Split(jsonPath, ".")[0]
-				if strings.Contains(jsonPath, ".") {
-					jsonCtyValue, convertErr := createEntryInputVar(strings.Split(jsonPath, ".")[1:], jsonPath)
-					if convertErr != nil {
-						return c.wrapExpr(expression)
-					}
-					c.inputVars[rootKey] = jsonCtyValue
-				} else {
-					c.inputVars[rootKey] = cty.StringVal(jsonPath)
-				}
-			}
-		}
-
-		// Retry evaluation with updated variables
-		expressionEvaluated, err = expression.Value(c.evalContext())
-
-		if err != nil {
-			return c.wrapExpr(expression)
-		}
+	if s, ok := c.renderer.Text(expr); ok {
+		return s, nil
 	}
-	if !expressionEvaluated.IsWhollyKnown() {
-		return c.wrapExpr(expression)
-	}
-	return ctyjson.SimpleJSONValue{Value: expressionEvaluated}, nil
-}
-
-func createEntryInputVar(path []string, defaultValue string) (cty.Value, error) {
-	mapJSON := "{"
-	closeMap := "}"
-	for idx, key := range path {
-		if idx+1 < len(path) {
-			mapJSON += fmt.Sprintf("%q:{", key)
-			closeMap += "}"
-		} else {
-			mapJSON += fmt.Sprintf("%q: %q", key, defaultValue)
-		}
-	}
-	mapJSON += closeMap
-	jsonType, err := ctyjson.ImpliedType([]byte(mapJSON))
-	if err != nil {
-		return cty.NilVal, err
-	}
-	value, err := ctyjson.Unmarshal([]byte(mapJSON), jsonType)
-	if err != nil {
-		return cty.NilVal, err
-	}
-	return value, nil
+	return "${" + c.rangeSource(expr.Range()) + "}", nil
 }
