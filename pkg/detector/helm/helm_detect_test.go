@@ -560,3 +560,13 @@ func TestExactSelectorsIgnoresKeysEndingInTheSameName(t *testing.T) {
 	exactSelectors(lines, distances, "name:", "web")
 	require.Equal(t, map[int]int{0: 1, 2: 1}, distances, "no line is exact: none is dropped")
 }
+
+// A selector picks an item whose key is quoted as it does one whose key is not.
+func TestSelectorCandidatesIncludeQuotedKeys(t *testing.T) {
+	for _, quote := range []string{"", `"`, `'`} {
+		lines := []string{"containers:", "  - " + quote + "name" + quote + ": web2", "  - " + quote + "name" + quote + ": web"}
+		got, _, _ := detectCurlLine{lineRes: 1}.detectCurrentLine(lines, "name:", "web", true, nil, -1)
+		require.False(t, got.breakRes, quote)
+		require.Equal(t, 2, got.lineRes, quote)
+	}
+}
