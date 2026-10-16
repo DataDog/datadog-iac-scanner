@@ -342,6 +342,23 @@ func itemLine(lines []string, path []keyMatch, position string) (int, bool) {
 	return item.Line - 1, true
 }
 
+// indexesList reports whether the last key of path holds a list, so that a
+// number after it is a position in that list. After a mapping, a number is a
+// key like any other.
+func indexesList(lines []string, path []keyMatch) bool {
+	tree, ok := cachedKeyTree(lines)
+	if !ok || len(path) == 0 {
+		return false
+	}
+	last := path[len(path)-1]
+	k, ok := tree.at(last.line, last.key)
+	if !ok || last.index {
+		return false
+	}
+	scope := tree.scopeOf(k, last.selector)
+	return scope != nil && scope.Kind == yaml.SequenceNode
+}
+
 // selectsOneItem reports whether no other item of the list holds the selector
 // key k with the same value: otherwise the key does not tell which item it picks.
 func (t *keyTree) selectsOneItem(k keyNode) bool {

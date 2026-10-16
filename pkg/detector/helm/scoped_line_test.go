@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"context"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmaction"
@@ -72,4 +73,20 @@ func TestSelectorMatchingSeveralItemsDoesNotHold(t *testing.T) {
 	}
 	require.False(t, keyPathHolds(rendered, path(1, "a")), "two items are named a")
 	require.True(t, keyPathHolds(rendered, path(5, "b")))
+}
+
+// A number after a mapping is one of its keys, not a position.
+func TestNumericKeyOfAMappingIsNotAListIndex(t *testing.T) {
+	rendered := []string{"# KICS_HELM_ID_0_1:", "apiVersion: v1", "kind: ConfigMap", "data:", `  "0": a`, `  "1": b`}
+	var extracted [][]string
+	var path []keyMatch
+	found, _, _ := detectCurlLine{}.walkSearchKey(context.Background(), rendered, "data.1", extracted, nil, -1, &path)
+	require.False(t, found.breakRes)
+	require.Equal(t, 5, found.lineRes)
+
+	list := []string{"rules:", "  - verbs: a", "  - verbs: b"}
+	path = nil
+	found, _, _ = detectCurlLine{}.walkSearchKey(context.Background(), list, "rules.1.verbs", extracted, nil, -1, &path)
+	require.False(t, found.breakRes)
+	require.Equal(t, 2, found.lineRes, "after a list the number is still a position")
 }

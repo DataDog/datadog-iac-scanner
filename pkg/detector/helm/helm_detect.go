@@ -666,9 +666,9 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 	extractedString [][]string, idInfo map[int]interface{}, helmID int, path *[]keyMatch,
 ) (walked detectCurlLine, start, end model.ResourceLine) {
 	for _, key := range strings.Split(sanitizedSubstring, ".") {
-		if path != nil && isListIndex(key) {
+		if path != nil && isListIndex(key) && indexesList(lines, *path) {
 			// A position in a list is no text to look for: the item is read in the
-			// parsed document.
+			// parsed document. After a mapping a number is a key, looked for as text.
 			line, ok := itemLine(lines, *path, key)
 			if !ok {
 				d.breakRes = true
