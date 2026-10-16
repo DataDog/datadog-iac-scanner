@@ -278,7 +278,8 @@ func TestHelmFindingLinesOfShapes(t *testing.T) {
 			"  {{ .Values.k }}: {{ .Values.v }}"), "h: \"x\\n  dnsPolicy: Default\"\nk: a\nv: b\n", "kind: Pod",
 			[]shapeKey{{"spec.hostname", 3}, {"spec.dnsPolicy", 2}}},
 		// The range repeats the same lines, and which iteration wrote a line is
-		// value-dependent: the container named by the selector owns the image.
+		// value-dependent: the item of the container named by the selector, the
+		// one that owns its image, is the line the finding is at.
 		{"55 range closed before literal text with the same lines", shapeLines(`{{ include "header" . }}`, "spec:", "  containers:",
 			`  {{- range list "a" "b" }}`, "  - name: {{ . }}", "    image: nginx", "  {{- end }}", "  - name: last", "    image: nginx"),
 			"", "kind: Pod", []shapeKey{{"spec.containers.name={{last}}.image", 9}, {"spec.containers.name={{a}}.image", 5}}},

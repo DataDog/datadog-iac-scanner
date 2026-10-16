@@ -363,6 +363,23 @@ var singleLineFunctions = map[string]bool{
 	"toJson": true, "toRawJson": true,
 }
 
+// indentCannotPrint reports whether an indent of width, the action at start of
+// line, cannot have printed text. Its padding is printed after the text before
+// the action; a "{{-" trims the line break before it, so the output may
+// continue the text of the line above and the text may start anywhere.
+func indentCannotPrint(line string, start int, width, text string) bool {
+	if strings.HasPrefix(line[start:], "{{-") {
+		return false
+	}
+	n, err := strconv.Atoi(width)
+	prefix := strings.TrimRight(line[:start], " \t\r")
+	if err != nil || !strings.HasPrefix(text, prefix) || strings.TrimSpace(text[len(prefix):]) == "" {
+		return false
+	}
+	rest := text[len(prefix):]
+	return n > len(rest)-len(strings.TrimLeft(rest, " "))
+}
+
 // cannotPrint reports whether the one action of line cannot print text, as
 // the last function of its pipeline bounds its output: indent and nindent
 // indent every line of it by their width, and a single-line function leaves
@@ -374,9 +391,11 @@ func cannotPrint(actions []helmaction.Action, line, text string) bool {
 	body := strings.Trim(line[actions[0].Start+2:actions[0].End-2], "- \t")
 	fields := strings.Fields(lastStage(body))
 	switch {
-	case len(fields) == 2 && (fields[0] == "indent" || fields[0] == "nindent"):
+	case len(fields) == 2 && fields[0] == "nindent":
 		width, err := strconv.Atoi(fields[1])
 		return err == nil && width > len(text)-len(strings.TrimLeft(text, " "))
+	case len(fields) == 2 && fields[0] == "indent":
+		return indentCannotPrint(line, actions[0].Start, fields[1], text)
 	case len(fields) == 1 && singleLineFunctions[fields[0]]:
 		prefix := strings.TrimRight(line[:actions[0].Start], " \t")
 		return strings.Contains(prefix, ":") && !strings.HasPrefix(text, prefix)
@@ -789,8 +808,72 @@ func containsHelmKey(line, key string) bool {
 	if strings.Contains(line, key) {
 		return true
 	}
+	return quotedKeyStarts(line, key)
+}
+
+// quotedKeyStarts reports whether line holds the key quoted as a YAML key, not
+// as text: outside any quoted scalar and any comment on the line. It covers a
+// key at the start of a line after its indentation and list dashes, and one of
+// an inline mapping, as in - {"name": web}, but not data: '{"name": web}'.
+func quotedKeyStarts(line, key string) bool {
 	key = strings.TrimSuffix(key, ":")
-	return strings.Contains(line, `"`+key+`":`) || strings.Contains(line, `'`+key+`':`)
+	for _, quoted := range []string{`"` + key + `":`, `'` + key + `':`} {
+		for at := 0; ; {
+			j := strings.Index(line[at:], quoted)
+			if j < 0 {
+				break
+			}
+			if outsideScalarsAndComments(line[:at+j]) {
+				return true
+			}
+			at += j + len(quoted)
+		}
+	}
+	return false
+}
+
+// outsideScalarsAndComments reports whether text ends outside any quoted scalar
+// and before any comment. A quote opens a scalar only where a token starts, so
+// the apostrophe of it's is text; a '#' starts a comment after a blank or at the
+// start of the line.
+func outsideScalarsAndComments(text string) bool {
+	var quote byte
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		if quote != 0 {
+			i, quote = consumeQuoted(text, i, quote)
+			continue
+		}
+		if c == '#' && (i == 0 || text[i-1] == ' ' || text[i-1] == '\t') {
+			return false
+		}
+		if (c == '"' || c == '\'') && tokenStarts(text[:i]) {
+			quote = c
+		}
+	}
+	return quote == 0
+}
+
+// consumeQuoted returns the index of the last character of text the scalar
+// quoted with quote takes at i, and the quote still open after it (0 once the
+// scalar closes).
+func consumeQuoted(text string, i int, quote byte) (next int, open byte) {
+	switch c := text[i]; {
+	case quote == '"' && c == '\\':
+		return i + 1, quote
+	case c != quote:
+		return i, quote
+	case quote == '\'' && i+1 < len(text) && text[i+1] == '\'':
+		return i + 1, quote
+	}
+	return i, 0
+}
+
+// tokenStarts reports whether a token starts after before: at the start of the
+// line, or after an indicator that opens a node.
+func tokenStarts(before string) bool {
+	before = strings.TrimRight(before, " \t")
+	return before == "" || strings.IndexByte(":-{[,?", before[len(before)-1]) >= 0
 }
 
 // nolint:gocritic

@@ -253,10 +253,23 @@ func (r *resolver) ordinal(target int) (int, bool) {
 // trimmedAround reports whether an action next to line may trim the line break
 // that ends it or starts it, which joins line to its neighbour's output.
 func (r *resolver) trimmedAround(i int) bool {
-	if i > 0 && strings.HasSuffix(strings.TrimSpace(r.lines[i-1]), "-}}") {
+	if above := r.printedNeighbour(i, -1); above >= 0 && strings.HasSuffix(strings.TrimSpace(r.lines[above]), "-}}") {
 		return true
 	}
-	return i+1 < len(r.lines) && strings.HasPrefix(strings.TrimSpace(r.lines[i+1]), "{{-")
+	below := r.printedNeighbour(i, 1)
+	return below >= 0 && strings.HasPrefix(strings.TrimSpace(r.lines[below]), "{{-")
+}
+
+// printedNeighbour returns the index of the nearest line from i in direction
+// step that is not blank or an ID stamp, or -1. A trim reaches across the blank
+// lines between it and the line it trims.
+func (r *resolver) printedNeighbour(i, step int) int {
+	for j := i + step; j >= 0 && j < len(r.lines); j += step {
+		if strings.TrimSpace(r.lines[j]) != "" && !isIDLine(r.lines[j]) {
+			return j
+		}
+	}
+	return -1
 }
 
 // onceLines reports, for each line, whether it prints exactly once when the

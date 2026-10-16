@@ -90,3 +90,58 @@ func TestNumericKeyOfAMappingIsNotAListIndex(t *testing.T) {
 	require.False(t, found.breakRes)
 	require.Equal(t, 2, found.lineRes, "after a list the number is still a position")
 }
+
+// A quoted key in the middle of a scalar is text: a selector whose item is
+// absent must not take the scalar's line for the item.
+func TestSelectorIgnoresQuotedKeyInsideAScalar(t *testing.T) {
+	absent := []string{"spec:", "  containers:", "    - name: other", "      image: x", `data: '{"name": web}'`}
+	got, _, _ := detectCurlLine{lineRes: 1}.detectCurrentLine(absent, "name:", "web", true, nil, -1)
+	require.True(t, got.breakRes, "the item is absent, so nothing is found")
+
+	present := []string{"spec:", "  containers:", "    - name: other", "      image: x", `data: '{"name": web}'`, "    - name: web"}
+	got, _, _ = detectCurlLine{lineRes: 1}.detectCurrentLine(present, "name:", "web", true, nil, -1)
+	require.Equal(t, 5, got.lineRes, "the item is the list line, not the scalar")
+}
+
+// An indent after a key or a dash prints its padding after that text, so a
+// line that holds the padded value can be its printer.
+func TestIndentAfterAPrefixCanPrint(t *testing.T) {
+	for _, tt := range []struct {
+		line, text string
+		printer    bool
+	}{
+		{"- {{ .Values.x | indent 2 }}      # x: bar", "-   bar", true},
+		{"  {{- .Values.x | indent 2 }}     # x: bar", "foo:  bar", true},
+		{"key: {{ .Values.x | indent 4 }}", "key: bar", false},
+	} {
+		_, printer := lineWrites(tt.line, tt.text, false)
+		require.Equal(t, tt.printer, printer, tt.line)
+	}
+}
+
+// A quoted key of an inline mapping is a key, as in a flow sequence item.
+func TestSelectorAcceptsQuotedKeyOfAnInlineMapping(t *testing.T) {
+	for _, line := range []string{`  - {"name": "web", "image": "nginx"}`, `    env: {"name": web}`, `"name": web`} {
+		require.True(t, quotedKeyStarts(line, "name:"), line)
+	}
+	require.False(t, quotedKeyStarts(`data: '{"name": web}'`, "name:"))
+	require.False(t, quotedKeyStarts(`# "name": web`, "name:"))
+	require.False(t, quotedKeyStarts(`hostNetwork: true # "name": web`, "name:"))
+	require.False(t, quotedKeyStarts(`data: "{\"name\": web}"`, "name:"))
+}
+
+func TestSelectorFindsItemWrittenAsInlineMapping(t *testing.T) {
+	lines := []string{"spec:", "  containers:", `  - {"name": "web", "image": "nginx"}`}
+	got, _, _ := detectCurlLine{lineRes: 1}.detectCurrentLine(lines, "name:", "web", true, nil, -1)
+	require.False(t, got.breakRes)
+	require.Equal(t, 2, got.lineRes)
+}
+
+// An apostrophe inside a plain value opens no quote, so a key after it is found;
+// a quoted scalar that holds the key does not expose it.
+func TestQuotedKeyNextToAnApostrophe(t *testing.T) {
+	require.True(t, quotedKeyStarts(`- {a: it's, "name": web}`, "name:"))
+	require.True(t, quotedKeyStarts(`- {a: it's, 'name': web}`, "name:"))
+	require.False(t, quotedKeyStarts(`data: 'it''s {"name": web}'`, "name:"))
+	require.False(t, quotedKeyStarts(`data: "a\" "name": web"`, "name:"))
+}

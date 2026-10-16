@@ -59,3 +59,13 @@ func uniqueLine(lines, rendered []string, invocations model.HelmInvocations, tar
 	line, _, ok := r.writerIn(target, 0, len(rendered), r.from, r.to, false)
 	return line, ok
 }
+
+// A trim reaches across the blank lines between it and the line it trims.
+func TestTrimmedAroundSkipsBlankLines(t *testing.T) {
+	trimmed := &resolver{lines: []string{"  a: 1", "", "", "{{- .V }}"}}
+	require.True(t, trimmed.trimmedAround(0))
+	above := &resolver{lines: []string{"{{ .V -}}", "", "  b: 2"}}
+	require.True(t, above.trimmedAround(2))
+	plain := &resolver{lines: []string{"a: 1", "", "b: 2"}}
+	require.False(t, plain.trimmedAround(0))
+}
