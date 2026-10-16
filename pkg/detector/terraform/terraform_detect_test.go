@@ -1476,3 +1476,115 @@ func TestDetectLineStrippedDocumentWithoutLineInfoFallsBack(t *testing.T) {
 	got := (&DetectKindLine{}).DetectLine(context.Background(), meta, "aws_security_group[sg].ingress[0].cidr", 3)
 	require.Equal(t, 3, got.Line)
 }
+
+// Repeated blocks nested below the resource are located like top-level ones: the
+// document gives the source of each block however deep the repeated type sits,
+// and the search starts from the nested block enclosing the position it has
+// reached rather than the first nested block of the body.
+func TestDetectLineNestedDynamicBlocksFromDocument(t *testing.T) {
+	strs := func(values ...string) cty.Value {
+		elems := make([]cty.Value, 0, len(values))
+		for _, v := range values {
+			elems = append(elems, cty.StringVal(v))
+		}
+		return cty.TupleVal(elems)
+	}
+	tests := []struct {
+		name string
+		src  string
+		vars map[string]cty.Value
+		// wantLines maps a search key to the line it must be found at.
+		wantLines map[string]int
+	}{
+		{
+			name: "dynamic block between static ones",
+			src: "resource \"g\" \"x\" {\n" + // 1
+				"  settings {\n" + // 2
+				"    database_flags {\n      name = \"static0\"\n    }\n" + // 3-5
+				"    dynamic \"database_flags\" {\n      for_each = var.flags\n      content {\n        name = database_flags.value\n      }\n    }\n" + // 6-11
+				"    database_flags {\n      name = \"static_last\"\n    }\n" + // 12-14
+				"  }\n}\n",
+			vars: map[string]cty.Value{"flags": strs("p", "q", "r")},
+			wantLines: map[string]int{
+				"g[x].settings.database_flags[0].name": 4,
+				"g[x].settings.database_flags[1].name": 9,
+				"g[x].settings.database_flags[2].name": 9,
+				"g[x].settings.database_flags[3].name": 9,
+				"g[x].settings.database_flags[4].name": 13,
+			},
+		},
+		{
+			name: "several unresolved dynamic blocks in a nested block",
+			src: "resource \"g\" \"x\" {\n" + // 1
+				"  settings {\n" + // 2
+				"    dynamic \"database_flags\" {\n      for_each = var.a\n      content {\n        name = database_flags.value\n      }\n    }\n" + // 3-8
+				"    dynamic \"database_flags\" {\n      for_each = var.b\n      content {\n        name = database_flags.value\n      }\n    }\n" + // 9-14
+				"  }\n}\n",
+			vars: map[string]cty.Value{"a": strs("p", "q"), "b": strs("r")},
+			wantLines: map[string]int{
+				"g[x].settings.database_flags[0].name": 6,
+				"g[x].settings.database_flags[1].name": 6,
+				"g[x].settings.database_flags[2].name": 12,
+			},
+		},
+		{
+			name: "same repeated type in two nested blocks",
+			src: "resource \"g\" \"x\" {\n" + // 1
+				"  first {\n" + // 2
+				"    flag {\n      name = \"first_only\"\n    }\n" + // 3-5
+				"  }\n" + // 6
+				"  second {\n" + // 7
+				"    flag {\n      name = \"second_0\"\n    }\n" + // 8-10
+				"    dynamic \"flag\" {\n      for_each = var.flags\n      content {\n        name = flag.value\n      }\n    }\n" + // 11-16
+				"  }\n}\n",
+			vars: map[string]cty.Value{"flags": strs("p", "q")},
+			wantLines: map[string]int{
+				"g[x].first.flag[0].name":  4,
+				"g[x].second.flag[0].name": 9,
+				"g[x].second.flag[1].name": 14,
+				"g[x].second.flag[2].name": 14,
+			},
+		},
+		{
+			name: "nested below a nested block",
+			src: "resource \"g\" \"x\" {\n" + // 1
+				"  outer {\n" + // 2
+				"    inner {\n" + // 3
+				"      flag {\n        name = \"s\"\n      }\n" + // 4-6
+				"      dynamic \"flag\" {\n        for_each = var.flags\n        content {\n          name = flag.value\n        }\n      }\n" + // 7-12
+				"    }\n  }\n}\n",
+			vars: map[string]cty.Value{"flags": strs("p", "q")},
+			wantLines: map[string]int{
+				"g[x].outer.inner.flag[0].name": 5,
+				"g[x].outer.inner.flag[1].name": 10,
+				"g[x].outer.inner.flag[2].name": 10,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclsyntax.ParseConfig([]byte(tt.src), "main.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			vars := converter.VariableMap{"var": cty.ObjectVal(tt.vars)}
+			doc, err := converter.Convert(context.Background(), file, vars, converter.Options{})
+			require.NoError(t, err)
+
+			scanDocs := map[string]model.Document{
+				"scan document released": nil,
+				"scan document stripped": stripLineTables(t, doc),
+			}
+			for shape, scanDoc := range scanDocs {
+				meta := &model.FileMetadata{
+					ScanID: "t", ID: "t", Kind: model.KindTerraform,
+					Document:         scanDoc,
+					LineInfoDocument: doc,
+					OriginalData:     tt.src, LinesOriginalData: utils.SplitLines(tt.src),
+				}
+				for key, want := range tt.wantLines {
+					got := (&DetectKindLine{}).DetectLine(context.Background(), meta, key, 3)
+					require.Equal(t, want, got.Line, shape+": "+key)
+				}
+			}
+		})
+	}
+}

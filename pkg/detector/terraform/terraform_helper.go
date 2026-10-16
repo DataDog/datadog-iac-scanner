@@ -201,7 +201,7 @@ func findInHCLBody(body *hclsyntax.Body, attrName string, index, contextLine int
 
 			if contextLineHCL >= start && contextLineHCL <= end {
 				// We're inside this block - search within it (without contextLine, since we've already scoped to the right block)
-				result, line := findInHCLBodyScoped(block.Body, attrName, index, repeated)
+				result, line := findInHCLBodyScoped(block.Body, attrName, index, contextLine, repeated)
 				if line > 0 || result != "" {
 					return result, line
 				}
@@ -210,7 +210,7 @@ func findInHCLBody(body *hclsyntax.Body, attrName string, index, contextLine int
 	}
 
 	// If contextLine is not provided or block not found, search globally
-	return findInHCLBodyScoped(body, attrName, index, repeated)
+	return findInHCLBodyScoped(body, attrName, index, contextLine, repeated)
 }
 
 type blockSlots []int
@@ -265,7 +265,7 @@ func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeated
 	if slots, ok := documentSlots(repeated, sourceLines); ok {
 		return slots
 	}
-	if unresolvedBlocks == 1 && repeated.total != unknownTotal && repeated.total > fixed {
+	if unresolvedBlocks == 1 && !repeated.nested && repeated.total != unknownTotal && repeated.total > fixed {
 		entries[unresolved].count = repeated.total - fixed
 	}
 	var slots blockSlots
@@ -292,11 +292,33 @@ func documentSlots(repeated repeatedBlocks, sourceLines map[int]bool) (blockSlot
 	return blockSlots(repeated.lines), true
 }
 
+// enclosingFirst orders blocks so the ones spanning contextLine (0-indexed, or
+// negative for none) come first, each group in source order.
+func enclosingFirst(blocks hclsyntax.Blocks, contextLine int) hclsyntax.Blocks {
+	if contextLine < 0 {
+		return blocks
+	}
+	ordered := make(hclsyntax.Blocks, 0, len(blocks))
+	for _, block := range blocks {
+		if blockSpansLine(block, contextLine+1) {
+			ordered = append(ordered, block)
+		}
+	}
+	for _, block := range blocks {
+		if !blockSpansLine(block, contextLine+1) {
+			ordered = append(ordered, block)
+		}
+	}
+	return ordered
+}
+
 // dynamicForEachContext evaluates a dynamic block's for_each with functions only.
 var dynamicForEachContext = &hcl.EvalContext{Functions: functions.TerraformFuncs}
 
 // findInHCLBodyScoped searches for an attribute or block in the given body without recursion beyond immediate nested blocks
-func findInHCLBodyScoped(body *hclsyntax.Body, attrName string, index int, repeated repeatedBlocks) (substr string, lineNum int) {
+func findInHCLBodyScoped(
+	body *hclsyntax.Body, attrName string, index, contextLine int, repeated repeatedBlocks,
+) (substr string, lineNum int) {
 	// Case 1: Array attribute (e.g., container = [{}, {}])
 	if attr, exists := body.Attributes[attrName]; exists {
 		if tupleExpr, ok := attr.Expr.(*hclsyntax.TupleConsExpr); ok {
@@ -324,9 +346,11 @@ func findInHCLBodyScoped(body *hclsyntax.Body, attrName string, index int, repea
 		return "", slots[index]
 	}
 
-	// Case 3: Search in nested blocks recursively (without contextLine)
-	for _, block := range body.Blocks {
-		if result, line := findInHCLBodyScoped(block.Body, attrName, index, unknownBlocks); line > 0 || result != "" {
+	// Case 3: Search in nested blocks recursively, those around contextLine first:
+	// the position the search has reached names the nested block the key is in,
+	// and the document's slots only fit the body that holds the blocks.
+	for _, block := range enclosingFirst(body.Blocks, contextLine) {
+		if result, line := findInHCLBodyScoped(block.Body, attrName, index, contextLine, repeated.inNestedBody()); line > 0 || result != "" {
 			return result, line
 		}
 	}

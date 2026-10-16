@@ -22,6 +22,17 @@ const unknownTotal = -1
 type repeatedBlocks struct {
 	total int
 	lines []int
+	// nested is set once the search has gone below the body the blocks were
+	// counted for, where the total no longer says what a body is left with.
+	nested bool
+}
+
+// inNestedBody is what is known of the blocks once the search is in a body below
+// the one it started in: the document's own lines still name each block's source
+// and are checked against the body, but the total cannot be shared out.
+func (r repeatedBlocks) inNestedBody() repeatedBlocks {
+	r.nested = true
+	return r
 }
 
 // unknownBlocks is what the document says when it says nothing.
