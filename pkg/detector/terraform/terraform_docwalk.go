@@ -27,6 +27,22 @@ type repeatedBlocks struct {
 // unknownBlocks is what the document says when it says nothing.
 var unknownBlocks = repeatedBlocks{total: unknownTotal}
 
+// withSourceLines pairs what the scan document says about a repeated block with
+// the source lines of the same block in the line-info document. The scan
+// document has its line tables stripped, so only the line-info one can name the
+// source of each block; it is used when it holds as many blocks as the scan
+// document, and the document alone is kept otherwise. A scan document that says
+// nothing is replaced by the line-info one.
+func withSourceLines(scan, lineInfo repeatedBlocks) repeatedBlocks {
+	if scan.total == unknownTotal {
+		return lineInfo
+	}
+	if lineInfo.total == scan.total && len(lineInfo.lines) == scan.total {
+		scan.lines = lineInfo.lines
+	}
+	return scan
+}
+
 // docCursor follows a search key through the converted document of the file,
 // so the number of blocks a key part indexes into is read from the document
 // rather than guessed from the source: that count includes the blocks dynamic
@@ -138,14 +154,22 @@ func blockLines(blocks []interface{}) []int {
 	return lines
 }
 
+func lineOf(def *model.LineObject) (int, bool) {
+	if def == nil {
+		return 0, false
+	}
+	return def.Line, def.Line > 0
+}
+
 // blockSourceLine is the 1-indexed line recorded in a block's line table.
 func blockSourceLine(block interface{}) (int, bool) {
-	table, ok := lookup(block, "_dd_lines").(map[string]model.LineObject)
-	if ok {
-		if def, found := table["_dd__default"]; found && def.Line > 0 {
-			return def.Line, true
-		}
-		return 0, false
+	switch table := lookup(block, "_dd_lines").(type) {
+	case map[string]model.LineObject:
+		def, found := table["_dd__default"]
+		return def.Line, found && def.Line > 0
+	case map[string]*model.LineObject:
+		def := table["_dd__default"]
+		return lineOf(def)
 	}
 	generic, ok := lookup(lookup(block, "_dd_lines"), "_dd__default").(map[string]interface{})
 	if !ok {

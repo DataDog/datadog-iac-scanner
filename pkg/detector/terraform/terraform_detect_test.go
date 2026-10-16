@@ -1406,15 +1406,73 @@ func TestDetectLineSeveralUnresolvableDynamicBlocksFromDocument(t *testing.T) {
 			doc, err := converter.Convert(context.Background(), file, vars, converter.Options{})
 			require.NoError(t, err)
 
-			meta := &model.FileMetadata{
-				ScanID: "t", ID: "t", Kind: model.KindTerraform, Document: doc,
-				OriginalData: src, LinesOriginalData: utils.SplitLines(src),
+			// As scanned: the line-info document keeps its line tables, while the
+			// scan document is either stripped of them or already released.
+			scanDocs := map[string]model.Document{
+				"scan document released": nil,
+				"scan document stripped": stripLineTables(t, doc),
 			}
-			for idx, want := range tt.wantLines {
-				key := fmt.Sprintf("aws_security_group[sg].ingress[%d].cidr", idx)
-				got := (&DetectKindLine{}).DetectLine(context.Background(), meta, key, 3)
-				require.Equal(t, want, got.Line, key)
+			for shape, scanDoc := range scanDocs {
+				meta := &model.FileMetadata{
+					ScanID: "t", ID: "t", Kind: model.KindTerraform,
+					Document:         scanDoc,
+					LineInfoDocument: doc,
+					OriginalData:     src, LinesOriginalData: utils.SplitLines(src),
+				}
+				for idx, want := range tt.wantLines {
+					key := fmt.Sprintf("aws_security_group[sg].ingress[%d].cidr", idx)
+					got := (&DetectKindLine{}).DetectLine(context.Background(), meta, key, 3)
+					require.Equal(t, want, got.Line, shape+": "+key)
+				}
 			}
 		})
 	}
+}
+
+// stripLineTables returns a deep copy of doc without any _dd_lines, as the scan
+// prepares its document.
+func stripLineTables(t *testing.T, doc model.Document) model.Document {
+	t.Helper()
+	var strip func(node interface{}) interface{}
+	strip = func(node interface{}) interface{} {
+		switch v := node.(type) {
+		case model.Document:
+			return model.Document(strip(map[string]interface{}(v)).(map[string]interface{}))
+		case map[string]interface{}:
+			out := make(map[string]interface{}, len(v))
+			for key, child := range v {
+				if key != "_dd_lines" {
+					out[key] = strip(child)
+				}
+			}
+			return out
+		case []interface{}:
+			out := make([]interface{}, len(v))
+			for i, child := range v {
+				out[i] = strip(child)
+			}
+			return out
+		}
+		return node
+	}
+	return strip(doc).(model.Document)
+}
+
+// Without the line-info document, a scan document that holds no line tables
+// cannot tell several unresolved dynamic blocks apart, and the lines it gives
+// are the ones from the body alone.
+func TestDetectLineStrippedDocumentWithoutLineInfoFallsBack(t *testing.T) {
+	src := "resource \"aws_security_group\" \"sg\" {\n" +
+		"  ingress {\n    cidr = \"static\"\n  }\n" +
+		"}\n"
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	doc, err := converter.Convert(context.Background(), file, converter.VariableMap{}, converter.Options{})
+	require.NoError(t, err)
+	meta := &model.FileMetadata{
+		ScanID: "t", ID: "t", Kind: model.KindTerraform, Document: stripLineTables(t, doc),
+		OriginalData: src, LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), meta, "aws_security_group[sg].ingress[0].cidr", 3)
+	require.Equal(t, 3, got.Line)
 }

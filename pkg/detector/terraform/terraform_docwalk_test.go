@@ -91,3 +91,24 @@ func TestDocCursorReadsSourceLinesOfRepeatedBlocks(t *testing.T) {
 		})
 	}
 }
+
+func TestWithSourceLines(t *testing.T) {
+	lines := []int{1, 1, 5}
+	tests := []struct {
+		name     string
+		scan     repeatedBlocks
+		lineInfo repeatedBlocks
+		want     repeatedBlocks
+	}{
+		{"lines of the line-info document join the scan count", repeatedBlocks{total: 3}, repeatedBlocks{total: 3, lines: lines}, repeatedBlocks{total: 3, lines: lines}},
+		{"line-info document with another count is ignored", repeatedBlocks{total: 4}, repeatedBlocks{total: 3, lines: lines}, repeatedBlocks{total: 4}},
+		{"line-info document without lines is ignored", repeatedBlocks{total: 3}, repeatedBlocks{total: 3}, repeatedBlocks{total: 3}},
+		{"scan document saying nothing defers to the line-info document", unknownBlocks, repeatedBlocks{total: 3, lines: lines}, repeatedBlocks{total: 3, lines: lines}},
+		{"scan document lines are kept when there is no line-info document", repeatedBlocks{total: 3, lines: lines}, unknownBlocks, repeatedBlocks{total: 3, lines: lines}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, withSourceLines(tt.scan, tt.lineInfo))
+		})
+	}
+}
