@@ -17,7 +17,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
-	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 func Test_getDataSourcePolicy_localAliasOfDataJSON(t *testing.T) {
@@ -43,8 +42,7 @@ data "aws_iam_policy_document" "combined" {
 	ctx := context.Background()
 	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
-	var data map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	data := decodeData(t, result["data"])
 	require.Equal(t,
 		`{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Sid":"Base"},{"Actions":["s3:GetObject"],"Effect":"Allow","Sid":"Own"}],"Version":"2012-10-17"}`+"\n",
 		data["aws_iam_policy_document"]["combined"]["json"])
@@ -86,8 +84,7 @@ data "aws_iam_policy_document" "combined" {
 	ctx := context.Background()
 	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
-	var data map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	data := decodeData(t, result["data"])
 	// base only renders on the second pass, so the first one falls back to root
 	// and the local has to be overwritten once base exists.
 	combined := data["aws_iam_policy_document"]["combined"]["json"]
@@ -332,8 +329,7 @@ data "aws_iam_policy_document" "plain" {
 	ctx := context.Background()
 	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
-	var data map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	data := decodeData(t, result["data"])
 	require.NotContains(t, data["aws_iam_policy_document"], "guarded")
 	require.Contains(t, data["aws_iam_policy_document"], "plain")
 }
