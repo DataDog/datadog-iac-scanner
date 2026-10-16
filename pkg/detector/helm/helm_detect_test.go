@@ -529,6 +529,9 @@ func TestContradictsSelector(t *testing.T) {
 		{"      - hostname: other", false},
 		{"    hostname: other", false},
 		{"  - - name: other", true},
+		{`    - "name": other`, true},
+		{`    - 'name': web`, false},
+		{`    - "hostname": other`, false},
 		{"    image: nginx", false},
 	} {
 		if got := contradictsSelector(tt.line, "name", "web"); got != tt.want {

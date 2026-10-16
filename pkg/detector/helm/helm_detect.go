@@ -666,9 +666,22 @@ func contradictsSelector(line, key, value string) bool {
 	return ok && written != "" && written != value
 }
 
+// cutKey returns what follows marker, a key and its colon, at the start of
+// text, the key being quoted or not.
+func cutKey(text, marker string) (string, bool) {
+	key := strings.TrimSuffix(marker, ":")
+	for _, prefix := range []string{marker, `"` + key + `":`, `'` + key + `':`} {
+		if rest, ok := strings.CutPrefix(text, prefix); ok {
+			return rest, true
+		}
+	}
+	return "", false
+}
+
 // writtenScalar returns the literal scalar of the key written at the start of
 // line, after its indentation and any list dashes, as YAML reads it: without
-// its quotes or a trailing comment. marker is the key and its colon. It is
+// its quotes or a trailing comment. marker is the key and its colon, which the
+// line may quote. It is
 // false when the line does not start with marker, so that "hostname:" is not
 // "name:", the value has an action in it or is not a scalar.
 func writtenScalar(line, marker string) (string, bool) {
@@ -676,7 +689,7 @@ func writtenScalar(line, marker string) (string, bool) {
 	for strings.HasPrefix(rest, "- ") {
 		rest = strings.TrimLeft(rest[len("- "):], " \t")
 	}
-	written, ok := strings.CutPrefix(rest, marker)
+	written, ok := cutKey(rest, marker)
 	if !ok || strings.Contains(written, "{{") {
 		return "", false
 	}
