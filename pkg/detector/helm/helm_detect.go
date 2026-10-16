@@ -666,11 +666,17 @@ func contradictsSelector(line, key, value string) bool {
 	return ok && written != "" && written != value
 }
 
-// writtenScalar returns the literal scalar written after marker on line, as
-// YAML reads it: without its quotes or a trailing comment. It is false when
-// there is no marker, the value has an action in it or is not a scalar.
+// writtenScalar returns the literal scalar of the key written at the start of
+// line, after its indentation and any list dashes, as YAML reads it: without
+// its quotes or a trailing comment. marker is the key and its colon. It is
+// false when the line does not start with marker, so that "hostname:" is not
+// "name:", the value has an action in it or is not a scalar.
 func writtenScalar(line, marker string) (string, bool) {
-	_, written, ok := strings.Cut(line, marker)
+	rest := strings.TrimLeft(line, " \t")
+	for strings.HasPrefix(rest, "- ") {
+		rest = strings.TrimLeft(rest[len("- "):], " \t")
+	}
+	written, ok := strings.CutPrefix(rest, marker)
 	if !ok || strings.Contains(written, "{{") {
 		return "", false
 	}
