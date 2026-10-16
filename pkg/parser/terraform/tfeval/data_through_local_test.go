@@ -111,3 +111,67 @@ module "b" { source = "../mod_b" }
 		})
 	}
 }
+
+func TestModuleDataRefreshResolvesLongSourceChains(t *testing.T) {
+	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": `
+data "aws_iam_policy_document" "a" {
+  source_policy_documents = [data.aws_iam_policy_document.b.json]
+}
+data "aws_iam_policy_document" "b" {
+  source_policy_documents = [data.aws_iam_policy_document.c.json]
+}
+data "aws_iam_policy_document" "c" {
+  source_policy_documents = [data.aws_iam_policy_document.d.json]
+}
+data "aws_iam_policy_document" "d" {
+  source_policy_documents = [data.aws_iam_policy_document.base.json]
+}
+data "aws_iam_policy_document" "base" {
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+resource "aws_iam_policy" "p" {
+  policy = data.aws_iam_policy_document.a.json
+}
+`}, callChild)
+	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_policy", "p")))
+	require.Contains(t, doc["policy"], `"Sid":"Base"`)
+}
+
+func TestSiblingModuleInputsSeeDataRefreshedFromEarlierOutputs(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "a", map[string]string{"main.tf": `
+output "arn" { value = "arn:aws:s3:::from-a" }
+`})
+	writeModule(t, root, "b", map[string]string{"main.tf": `
+variable "policy" {}
+resource "aws_iam_policy" "p" { policy = var.policy }
+`})
+	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "a" { source = "../a" }
+
+data "aws_iam_policy_document" "p" {
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = [module.a.arn]
+  }
+}
+
+locals {
+  policy = data.aws_iam_policy_document.p.json
+}
+
+module "b" {
+  source = "../b"
+  policy = local.policy
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_policy", "p")))
+	require.Contains(t, doc["policy"], `arn:aws:s3:::from-a`)
+	require.NotContains(t, doc["policy"], `${module.a.arn}`)
+}

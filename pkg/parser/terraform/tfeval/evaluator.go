@@ -580,11 +580,11 @@ func (e *Evaluator) evaluate(
 	}
 
 	e.applySiblingModulePrepass(
-		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
+		ctx, moduleBlocks, evalCtx, scope, data, localExprs, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
 	)
 
 	e.applyModuleOutputs(ctx, evalCtx, localExprs, data, moduleOutputs)
@@ -884,6 +884,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
+	data *moduleData,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
@@ -901,6 +902,9 @@ func (e *Evaluator) applySiblingModulePrepass(
 	evalCtx.Variables["module"] = cty.ObjectVal(prelimOutputs)
 	localVals := e.resolveLocals(scope.Locals, evalCtx)
 	evalCtx.Variables["local"] = objectOrEmpty(localVals)
+	if data.readsModules() {
+		data.refresh(ctx, evalCtx)
+	}
 }
 
 func (e *Evaluator) evaluateLocalModuleBlocks(
@@ -908,6 +912,8 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	moduleBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
+	data *moduleData,
+	localExprs map[string]hclsyntax.Expression,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
@@ -983,8 +989,13 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		if value, ok := moduleOutputsValue(plan, outs); ok {
 			moduleOutputs[call.label] = value
 			// Update evalCtx so the next sibling's modInputs can reference this
-			// module's now-resolved outputs (e.g. module.B.x = module.A.output).
+			// module's now-resolved outputs (e.g. module.B.x = module.A.output),
+			// including through data.* or locals that alias it.
 			evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
+			evalCtx.Variables["local"] = objectOrEmpty(e.resolveLocals(localExprs, evalCtx))
+			if data.readsModules() {
+				data.refresh(ctx, evalCtx)
+			}
 		}
 	}
 	return childResources, moduleOutputs
