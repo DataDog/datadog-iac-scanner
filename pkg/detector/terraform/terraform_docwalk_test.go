@@ -47,12 +47,47 @@ func TestDocCursorCountsRepeatedBlocks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cursor := newDocCursor(doc, nil)
-			got := unknownTotal
+			got := unknownBlocks
 			for _, part := range tt.parts {
 				got = cursor.advance(part)
 			}
-			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want, got.total)
 		})
 	}
-	require.Equal(t, unknownTotal, newDocCursor(nil, nil).advance("aws_sg[sg]"))
+	require.Equal(t, unknownBlocks, newDocCursor(nil, nil).advance("aws_sg[sg]"))
+}
+
+func TestDocCursorReadsSourceLinesOfRepeatedBlocks(t *testing.T) {
+	block := func(line int) map[string]interface{} {
+		return map[string]interface{}{
+			"_dd_lines": map[string]model.LineObject{"_dd__default": {Line: line}},
+		}
+	}
+	generic := map[string]interface{}{
+		"_dd_lines": map[string]interface{}{
+			"_dd__default": map[string]interface{}{"_dd_line": float64(12)},
+		},
+	}
+	tests := []struct {
+		name     string
+		ingress  interface{}
+		want     repeatedBlocks
+		wantNode bool
+	}{
+		{"line tables", []interface{}{block(3), block(3), block(9)}, repeatedBlocks{total: 3, lines: []int{2, 2, 8}}, true},
+		{"decoded line tables", []interface{}{generic}, repeatedBlocks{total: 1, lines: []int{11}}, true},
+		{"single block", block(5), repeatedBlocks{total: 1, lines: []int{4}}, true},
+		{"one block without a line", []interface{}{block(3), map[string]interface{}{}}, repeatedBlocks{total: 2}, true},
+		{"no line tables", []interface{}{map[string]interface{}{}}, repeatedBlocks{total: 1}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := model.Document{"resource": map[string]interface{}{
+				"aws_sg": map[string]interface{}{"sg": map[string]interface{}{"ingress": tt.ingress}},
+			}}
+			cursor := newDocCursor(doc, nil)
+			cursor.advance("aws_sg[sg]")
+			require.Equal(t, tt.want, cursor.advance("ingress[0]"))
+		})
+	}
 }

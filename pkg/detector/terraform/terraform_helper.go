@@ -33,7 +33,7 @@ func GenerateSubstrings(
 ) (string, string, int) {
 	return generateSubstrings(ctx, key, extracted, lines, currentLine, func() (*hclsyntax.Body, error) {
 		return parseBody([]byte(fileOriginalData))
-	}, unknownTotal)
+	}, unknownBlocks)
 }
 
 // nolint:gocyclo,gocritic
@@ -44,7 +44,7 @@ func generateSubstrings(
 	lines []string,
 	currentLine int,
 	parse func() (*hclsyntax.Body, error),
-	repeated int,
+	repeated repeatedBlocks,
 ) (string, string, int) {
 	var substr1, substr2 string
 	var idx int
@@ -109,7 +109,7 @@ func resolveListIndex(
 	index, currentLine int,
 	lines []string,
 	parse func() (*hclsyntax.Body, error),
-	repeated int,
+	repeated repeatedBlocks,
 ) (substr string, linenum int) {
 	contextLogger := logger.FromContext(ctx)
 	body, err := parse()
@@ -187,7 +187,7 @@ func findTupleElementLineInObject(expr hclsyntax.Expression, attrName string, in
 	return -1
 }
 
-func findInHCLBody(body *hclsyntax.Body, attrName string, index, contextLine, repeated int) (substr string, lineNum int) {
+func findInHCLBody(body *hclsyntax.Body, attrName string, index, contextLine int, repeated repeatedBlocks) (substr string, lineNum int) {
 	// If contextLine is provided (>= 0), first scope the search to the block containing that line
 	// Note: contextLine is 0-indexed, so 0 is a valid line (first line of file)
 	if contextLine >= 0 {
@@ -218,18 +218,29 @@ type blockSlots []int
 func (s blockSlots) len() int { return len(s) }
 
 // repeatedBlockSlots lists the line of the block each repeated attrName block of
-// the document stands for, in order. A dynamic block generating the type stands
-// for as many as its for_each yields without variables. When one dynamic block
-// cannot be resolved that way and the document says how many blocks attrName
-// has (repeated, unless unknownTotal), it stands for those the others leave.
-// With several unresolved ones, or no total, an unresolved block stands for
-// none, as the converter keeps it as written when it cannot expand it.
-func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated int) blockSlots {
+// the document stands for, in order.
+//
+// The document is the authority: it records, for every block it holds, the line
+// of the source block it was generated from (a dynamic block's blocks all carry
+// the dynamic block's line), which stays exact however many dynamic blocks the
+// body has and however the converter, with the scan's variables, resolved them.
+// Those lines are used when each is the line of a block of the body that can
+// generate attrName, and the count matches the document's.
+//
+// Without them (a document that records no lines, or one from another source),
+// the slots are worked out from the body alone: a dynamic block stands for as
+// many blocks as its for_each yields without variables. One dynamic block that
+// cannot be resolved that way stands for those the document's total leaves, if
+// the total is known. With several of them the total cannot be split between
+// them, so they stand for none, as the converter keeps them as written when it
+// cannot expand them.
+func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeatedBlocks) blockSlots {
 	type entry struct {
 		line  int
 		count int
 	}
 	var entries []entry
+	sourceLines := make(map[int]bool)
 	fixed, unresolved := 0, -1
 	unresolvedBlocks := 0
 	for _, block := range body.Blocks {
@@ -237,8 +248,10 @@ func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated int) blo
 		switch {
 		case block.Type == attrName:
 			entries = append(entries, entry{line, 1})
+			sourceLines[line] = true
 			fixed++
 		case dynamicblock.Is(block) && dynamicblock.GeneratedType(block) == attrName:
+			sourceLines[line] = true
 			if expansion := dynamicblock.Expand(block, dynamicForEachContext); expansion.Resolved {
 				entries = append(entries, entry{line, len(expansion.Iterators)})
 				fixed += len(expansion.Iterators)
@@ -249,8 +262,11 @@ func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated int) blo
 			}
 		}
 	}
-	if unresolvedBlocks == 1 && repeated != unknownTotal && repeated > fixed {
-		entries[unresolved].count = repeated - fixed
+	if slots, ok := documentSlots(repeated, sourceLines); ok {
+		return slots
+	}
+	if unresolvedBlocks == 1 && repeated.total != unknownTotal && repeated.total > fixed {
+		entries[unresolved].count = repeated.total - fixed
 	}
 	var slots blockSlots
 	for _, e := range entries {
@@ -261,11 +277,26 @@ func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated int) blo
 	return slots
 }
 
+// documentSlots takes the source lines the document records for its blocks, if
+// they are consistent with the body: as many as the document holds, each the
+// line of a block of the body that can generate them.
+func documentSlots(repeated repeatedBlocks, sourceLines map[int]bool) (blockSlots, bool) {
+	if len(repeated.lines) == 0 || len(repeated.lines) != repeated.total {
+		return nil, false
+	}
+	for _, line := range repeated.lines {
+		if !sourceLines[line] {
+			return nil, false
+		}
+	}
+	return blockSlots(repeated.lines), true
+}
+
 // dynamicForEachContext evaluates a dynamic block's for_each with functions only.
 var dynamicForEachContext = &hcl.EvalContext{Functions: functions.TerraformFuncs}
 
 // findInHCLBodyScoped searches for an attribute or block in the given body without recursion beyond immediate nested blocks
-func findInHCLBodyScoped(body *hclsyntax.Body, attrName string, index, repeated int) (substr string, lineNum int) {
+func findInHCLBodyScoped(body *hclsyntax.Body, attrName string, index int, repeated repeatedBlocks) (substr string, lineNum int) {
 	// Case 1: Array attribute (e.g., container = [{}, {}])
 	if attr, exists := body.Attributes[attrName]; exists {
 		if tupleExpr, ok := attr.Expr.(*hclsyntax.TupleConsExpr); ok {
@@ -289,13 +320,13 @@ func findInHCLBodyScoped(body *hclsyntax.Body, attrName string, index, repeated 
 	}
 
 	// Case 2: Repeated blocks (e.g., binding { } binding { }).
-	if index < repeatedBlockSlots(body, attrName, repeated).len() {
-		return "", repeatedBlockSlots(body, attrName, repeated)[index]
+	if slots := repeatedBlockSlots(body, attrName, repeated); index < slots.len() {
+		return "", slots[index]
 	}
 
 	// Case 3: Search in nested blocks recursively (without contextLine)
 	for _, block := range body.Blocks {
-		if result, line := findInHCLBodyScoped(block.Body, attrName, index, unknownTotal); line > 0 || result != "" {
+		if result, line := findInHCLBodyScoped(block.Body, attrName, index, unknownBlocks); line > 0 || result != "" {
 			return result, line
 		}
 	}

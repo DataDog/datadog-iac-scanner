@@ -2,6 +2,7 @@ package terraform
 
 import (
 	"context"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"os"
 	"path/filepath"
@@ -191,7 +192,7 @@ func TestResolveListIndex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fileData := []byte(strings.Join(tt.lines, "\n"))
 
-			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) }, unknownTotal)
+			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) }, unknownBlocks)
 			require.Equal(t, tt.wantContent, content)
 			require.Equal(t, tt.wantLine, line)
 
@@ -387,8 +388,61 @@ func TestResolveListIndexStatementInJsonencodeThirdElement(t *testing.T) {
 	lines := *linesPtr
 	ctx := context.Background()
 	// currentLine 9 = line after `policy =` (0-indexed), same as DetectLine when resolving Statement[2]
-	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) }, unknownTotal)
+	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) }, unknownBlocks)
 	require.Empty(t, sub)
 	// Third tuple element starts at `{` on file line 41 (1-based) -> index 40
 	require.Equal(t, 40, lineNum)
+}
+
+func TestRepeatedBlockSlots(t *testing.T) {
+	src := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = var.first
+    content {}
+  }
+  ingress {}
+  dynamic "ingress" {
+    for_each = ["x", "y"]
+    content {}
+  }
+  dynamic "ingress" {
+    for_each = var.second
+    content {}
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+
+	tests := []struct {
+		name     string
+		repeated repeatedBlocks
+		want     blockSlots
+	}{
+		{"document lines are used as recorded", repeatedBlocks{total: 4, lines: []int{1, 1, 5, 10}}, blockSlots{1, 1, 5, 10}},
+		{"document lines naming no source block are ignored", repeatedBlocks{total: 2, lines: []int{1, 3}}, blockSlots{5, 6, 6}},
+		{"document lines not matching its total are ignored", repeatedBlocks{total: 3, lines: []int{1, 5}}, blockSlots{5, 6, 6}},
+		{"no document: unresolved blocks stand for none", unknownBlocks, blockSlots{5, 6, 6}},
+		{"total without lines: several unresolved blocks stand for none", repeatedBlocks{total: 7}, blockSlots{5, 6, 6}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, repeatedBlockSlots(body, "ingress", tt.repeated))
+		})
+	}
+
+	single := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = var.rules
+    content {}
+  }
+  ingress {}
+}
+`
+	file, diags = hclsyntax.ParseConfig([]byte(single), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body = file.Body.(*hclsyntax.Body).Blocks[0].Body
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(body, "ingress", repeatedBlocks{total: 3}),
+		"a single unresolved block stands for what the document's total leaves")
 }

@@ -16,6 +16,17 @@ import (
 
 const unknownTotal = -1
 
+// repeatedBlocks describes the blocks a key part indexes into, as the converted
+// document holds them: how many there are and, when the document records it,
+// the 0-indexed source line of the block each one was generated from.
+type repeatedBlocks struct {
+	total int
+	lines []int
+}
+
+// unknownBlocks is what the document says when it says nothing.
+var unknownBlocks = repeatedBlocks{total: unknownTotal}
+
 // docCursor follows a search key through the converted document of the file,
 // so the number of blocks a key part indexes into is read from the document
 // rather than guessed from the source: that count includes the blocks dynamic
@@ -40,12 +51,12 @@ func newDocCursor(doc model.Document, extracted [][]string) *docCursor {
 	return &docCursor{node: map[string]interface{}(doc), root: doc, extracted: extracted}
 }
 
-// advance consumes the next key part. It returns how many blocks the part
-// indexes into when it is the index of a repeated block, and unknownTotal
-// when the document does not say.
-func (c *docCursor) advance(part string) int {
+// advance consumes the next key part. It returns the blocks the part indexes
+// into when it is the index of a repeated block, and unknownBlocks when the
+// document does not say.
+func (c *docCursor) advance(part string) repeatedBlocks {
 	if c.node == nil {
-		return unknownTotal
+		return unknownBlocks
 	}
 	for i, str := range c.extracted {
 		part = strings.Replace(part, fmt.Sprintf("{{%d}}", i), str[0], 1)
@@ -53,7 +64,7 @@ func (c *docCursor) advance(part string) int {
 	base, value, indexed := splitIndexedPart(part)
 	if c.stage != cursorBody {
 		c.enterBlock(base, value, indexed)
-		return unknownTotal
+		return unknownBlocks
 	}
 	return c.enterChild(lookup(c.node, base), value, indexed)
 }
@@ -83,15 +94,15 @@ func (c *docCursor) enterBlock(base, value string, indexed bool) {
 }
 
 // enterChild follows a part below a block's body.
-func (c *docCursor) enterChild(child interface{}, value string, indexed bool) int {
+func (c *docCursor) enterChild(child interface{}, value string, indexed bool) repeatedBlocks {
 	if !indexed {
 		c.node = singleBlock(child)
-		return unknownTotal
+		return unknownBlocks
 	}
 	index, err := strconv.Atoi(value)
 	if err != nil {
 		c.node = lookup(child, value)
-		return unknownTotal
+		return unknownBlocks
 	}
 	switch v := child.(type) {
 	case []interface{}:
@@ -99,17 +110,54 @@ func (c *docCursor) enterChild(child interface{}, value string, indexed bool) in
 		if index >= 0 && index < len(v) {
 			c.node = v[index]
 		}
-		return len(v)
+		return repeatedBlocks{total: len(v), lines: blockLines(v)}
 	case nil:
 		c.node = nil
-		return unknownTotal
+		return unknownBlocks
 	default:
 		c.node = nil
 		if index == 0 {
 			c.node = v
 		}
-		return 1
+		return repeatedBlocks{total: 1, lines: blockLines([]interface{}{v})}
 	}
+}
+
+// blockLines reads the source line each block of a repeated block was generated
+// from: its own line, or the line of the dynamic block that generated it. It
+// returns nil unless every block records one.
+func blockLines(blocks []interface{}) []int {
+	lines := make([]int, 0, len(blocks))
+	for _, block := range blocks {
+		line, ok := blockSourceLine(block)
+		if !ok {
+			return nil
+		}
+		lines = append(lines, line-1)
+	}
+	return lines
+}
+
+// blockSourceLine is the 1-indexed line recorded in a block's line table.
+func blockSourceLine(block interface{}) (int, bool) {
+	table, ok := lookup(block, "_dd_lines").(map[string]model.LineObject)
+	if ok {
+		if def, found := table["_dd__default"]; found && def.Line > 0 {
+			return def.Line, true
+		}
+		return 0, false
+	}
+	generic, ok := lookup(lookup(block, "_dd_lines"), "_dd__default").(map[string]interface{})
+	if !ok {
+		return 0, false
+	}
+	switch n := generic["_dd_line"].(type) {
+	case int:
+		return n, n > 0
+	case float64:
+		return int(n), n >= 1
+	}
+	return 0, false
 }
 
 func splitIndexedPart(part string) (base, value string, indexed bool) {

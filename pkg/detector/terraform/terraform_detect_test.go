@@ -1355,3 +1355,66 @@ func TestDetectLineSizesUnresolvableDynamicBlockFromDocument(t *testing.T) {
 		require.Equal(t, want, got.Line, key)
 	}
 }
+
+// Several dynamic blocks of one type the detector cannot resolve are told apart
+// by the document: each generated block records the dynamic block it came from,
+// whichever of them the converter resolved with the scan's variables.
+func TestDetectLineSeveralUnresolvableDynamicBlocksFromDocument(t *testing.T) {
+	src := "resource \"aws_security_group\" \"sg\" {\n" + // 1
+		"  dynamic \"ingress\" {\n    for_each = var.first\n    content {\n      cidr = ingress.value\n    }\n  }\n" + // 2-7
+		"  ingress {\n    cidr = \"static\"\n  }\n" + // 8-10
+		"  dynamic \"ingress\" {\n    for_each = var.second\n    content {\n      cidr = ingress.value\n    }\n  }\n" + // 11-16
+		"  dynamic \"ingress\" {\n    for_each = var.third\n    content {\n      cidr = ingress.value\n    }\n  }\n" + // 17-22
+		"}\n"
+	strs := func(values ...string) cty.Value {
+		elems := make([]cty.Value, 0, len(values))
+		for _, v := range values {
+			elems = append(elems, cty.StringVal(v))
+		}
+		return cty.TupleVal(elems)
+	}
+	tests := []struct {
+		name string
+		vars map[string]cty.Value
+		// wantLines maps the ingress index to the line of its cidr in its source block.
+		wantLines []int
+	}{
+		{
+			name: "all resolved by the converter",
+			vars: map[string]cty.Value{"first": strs("a", "b"), "second": strs("c"), "third": strs("d", "e")},
+			// first x2, static, second x1, third x2
+			wantLines: []int{5, 5, 9, 14, 20, 20},
+		},
+		{
+			name: "middle one left as written",
+			vars: map[string]cty.Value{"first": strs("a", "b"), "third": strs("d")},
+			// first x2, static, third x1
+			wantLines: []int{5, 5, 9, 20},
+		},
+		{
+			name: "first one left as written",
+			vars: map[string]cty.Value{"second": strs("c"), "third": strs("d", "e", "f")},
+			// static, second x1, third x3
+			wantLines: []int{9, 14, 20, 20, 20},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			vars := converter.VariableMap{"var": cty.ObjectVal(tt.vars)}
+			doc, err := converter.Convert(context.Background(), file, vars, converter.Options{})
+			require.NoError(t, err)
+
+			meta := &model.FileMetadata{
+				ScanID: "t", ID: "t", Kind: model.KindTerraform, Document: doc,
+				OriginalData: src, LinesOriginalData: utils.SplitLines(src),
+			}
+			for idx, want := range tt.wantLines {
+				key := fmt.Sprintf("aws_security_group[sg].ingress[%d].cidr", idx)
+				got := (&DetectKindLine{}).DetectLine(context.Background(), meta, key, 3)
+				require.Equal(t, want, got.Line, key)
+			}
+		})
+	}
+}
