@@ -863,3 +863,18 @@ type SarifRegion struct {
 	StartColumn int `json:"startColumn"`
 	EndColumn   int `json:"endColumn"`
 }
+
+type sharedLineInfoKey struct{}
+
+// WithSharedLineInfo marks a context whose line-info loads may share one
+// reparse among the documents of the same file. Callers must only read the
+// trees they get back.
+func WithSharedLineInfo(ctx context.Context) context.Context {
+	return context.WithValue(ctx, sharedLineInfoKey{}, true)
+}
+
+// SharedLineInfo reports whether ctx came from WithSharedLineInfo.
+func SharedLineInfo(ctx context.Context) bool {
+	shared, _ := ctx.Value(sharedLineInfoKey{}).(bool)
+	return shared
+}

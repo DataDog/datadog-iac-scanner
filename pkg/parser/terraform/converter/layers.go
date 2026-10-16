@@ -7,6 +7,7 @@
 package converter
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 
@@ -123,6 +124,20 @@ func sameValue(a, b interface{}) bool {
 			}
 		}
 		return true
+	case nil:
+		return b == nil
+	case float64:
+		y, ok := b.(float64)
+		return ok && x == y
+	case int:
+		y, ok := b.(int)
+		return ok && x == y
+	case int64:
+		y, ok := b.(int64)
+		return ok && x == y
+	case json.Number:
+		y, ok := b.(json.Number)
+		return ok && x == y
 	default:
 		return reflect.DeepEqual(a, b)
 	}

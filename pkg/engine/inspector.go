@@ -1419,6 +1419,7 @@ func (c *Inspector) DecodeQueryResults(
 	ctxTimeout context.Context,
 	results rego.ResultSet,
 	queryDuration time.Duration) ([]model.Vulnerability, error) {
+	ctx = model.WithSharedLineInfo(ctx)
 	contextLogger := logger.FromContext(ctx)
 	queryResultItems, err := resultItems(results)
 	if err != nil {
