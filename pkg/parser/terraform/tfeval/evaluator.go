@@ -291,6 +291,13 @@ func (e *Evaluator) RestoreInstantiatedCount(n int) {
 	e.budgetExceeded = e.maxInstantiated > 0 && e.instantiated >= e.maxInstantiated
 }
 
+// restoreInstantiationCount rolls back the active budget counter (scan-wide or
+// speculative prepass) after a nested evaluation is discarded. budgetExceeded is
+// left alone: a failed charge already recorded that the scan hit the limit.
+func (e *Evaluator) restoreInstantiationCount(n int) {
+	*e.currentInstantiationCount() = n
+}
+
 func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) ([]*hclsyntax.Body, map[string][]byte, error) {
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
 
@@ -604,7 +611,9 @@ func (e *Evaluator) evaluate(
 		rootResources[i].Scope = scope
 	}
 	dataInstances := data.resolved(scope)
-	if !e.chargeModuleCall(ctx, addr, len(dataInstances)) {
+	// Charge resources and data together so a module that fits only one of the
+	// two does not leave a partial charge when its evaluation is discarded.
+	if !e.chargeModuleCall(ctx, addr, len(rootResources)+len(dataInstances)) {
 		return nil, nil, e.skipEvaluation(dir)
 	}
 	resources := make([]ResolvedResource, 0, len(rootResources)+len(dataInstances)+len(childResources))
@@ -745,9 +754,6 @@ func (e *Evaluator) evaluateRootResources(
 		ctx, resourceBlocks, localExprs, evalCtx, data, addr, chain,
 	)
 	if !complete {
-		return nil, e.skipEvaluation(dir)
-	}
-	if addr != "" && !e.chargeInstantiationBudget(ctx, len(resources)) {
 		return nil, e.skipEvaluation(dir)
 	}
 	return resources, nil
@@ -951,6 +957,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			childAddr := instance.address(addr, call.label)
 			childChain := append(cloneChain(chain), site)
 			instancesBefore := len(e.instances)
+			instantiatedBefore := *e.currentInstantiationCount()
 
 			childRes, childOuts, cErr := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
@@ -963,6 +970,9 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				// Deliberately not added to allVisited: the module was not resolved, so
 				// it must keep being scanned where it is written.
 				e.instances = e.instances[:instancesBefore]
+				// Mirror EvaluateModule: drop charges from a child that failed after
+				// counting instances so siblings can still use the budget.
+				e.restoreInstantiationCount(instantiatedBefore)
 				continue
 			}
 			e.recordModuleInstance(call.dir, childAddr, childChain)
@@ -1017,8 +1027,14 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	types := declaredResourceTypes(resourceBlocks)
 	localsReadOwn := localsReadResources(localExprs, types)
 	dataReadsOwn := data.readsOwnResources()
+	// Resources may consume refreshed data through locals (data → local →
+	// resource) without a direct data.* traversal in the body.
+	readsDataPath := resourcesReadResources(resourceBlocks, dataRoot)
+	if data != nil {
+		readsDataPath = readsDataPath || resourcesReadNamedLocals(resourceBlocks, data.dataLocals)
+	}
 	readsOwn := localsReadOwn || resourcesReadResources(resourceBlocks, types) ||
-		(dataReadsOwn && resourcesReadResources(resourceBlocks, dataRoot))
+		(dataReadsOwn && readsDataPath)
 	for pass := 0; pass < resourceRefPasses; pass++ {
 		var complete bool
 		rootResources, complete = e.evalResourceBlocks(
@@ -1078,6 +1094,47 @@ func localsReadResources(localExprs map[string]hclsyntax.Expression, types map[s
 func resourcesReadResources(resourceBlocks []*hclsyntax.Block, types map[string]struct{}) bool {
 	for _, rb := range resourceBlocks {
 		if bodyReadsResource(rb.Body, types) {
+			return true
+		}
+	}
+	return false
+}
+
+// resourcesReadNamedLocals reports whether any resource body reads one of the
+// named locals (for example locals that alias data.*).
+func resourcesReadNamedLocals(resourceBlocks []*hclsyntax.Block, names map[string]bool) bool {
+	if len(names) == 0 {
+		return false
+	}
+	for _, rb := range resourceBlocks {
+		if bodyReadsNamedLocals(rb.Body, names) {
+			return true
+		}
+	}
+	return false
+}
+
+func bodyReadsNamedLocals(body *hclsyntax.Body, names map[string]bool) bool {
+	for _, attr := range body.Attributes {
+		if readsNamedLocals(attr.Expr, names) {
+			return true
+		}
+	}
+	for _, block := range body.Blocks {
+		if bodyReadsNamedLocals(block.Body, names) {
+			return true
+		}
+	}
+	return false
+}
+
+func readsNamedLocals(expr hclsyntax.Expression, names map[string]bool) bool {
+	for _, traversal := range expr.Variables() {
+		if _, ok := localRoot[traversal.RootName()]; !ok || len(traversal) < 2 {
+			continue
+		}
+		attr, ok := traversal[1].(hcl.TraverseAttr)
+		if ok && names[attr.Name] {
 			return true
 		}
 	}
