@@ -9,29 +9,43 @@ package tfeval
 import (
 	"context"
 	"encoding/json"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 )
 
-// UnknownAttributePlaceholder is stored for cty unknown values when converting
-// to the document shape rules consume, so keys stay present and MissingAttribute
-// checks do not treat unresolved expressions as absent (which would false-positive).
-const UnknownAttributePlaceholder = "__DD_TFEVAL_UNKNOWN__"
+// UnknownAttributePlaceholder is stored for an unresolved value that has no
+// source text to render, so keys stay present and MissingAttribute checks do not
+// treat it as absent (which would false-positive).
+const UnknownAttributePlaceholder = partial.UnknownPlaceholder
 
 // AttributesToDocument converts a resolved resource's attributes into the
 // map[string]interface{} shape the rule pipeline consumes. Every attribute is
-// always included: a value evaluation could not resolve falls back to its
-// reference text, or to UnknownAttributePlaceholder when it has none, so
-// presence-based rules do not fire false positives on unresolved expressions.
+// always included: the parts of a value evaluation could not resolve are
+// rendered as their "${expr}" text, as the plain parser does, so presence-based
+// rules do not fire false positives on unresolved expressions and a string
+// interpolating an unresolved value still carries the rest of its content.
 func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
-	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts)
+	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(r))
+}
+
+// newRenderer renders r's attributes in the context they were evaluated in.
+func newRenderer(r *ResolvedResource) *partial.Renderer {
+	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {
+		return &partial.Renderer{}
+	}
+	ctx := r.Scope.evalCtx
+	if r.Iteration != nil {
+		ctx = ctx.NewChild()
+		ctx.Variables = r.Iteration
+	}
+	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources)}
 }
 
 // attrSource locates the HCL that produced a value so unresolved values can fall
@@ -125,11 +139,13 @@ func (s *attrSource) blocksFromCounts(n int) (blocks []*hclsyntax.Block, ok bool
 	return out, true
 }
 
-func attributesToDocument(attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts) map[string]interface{} {
+func attributesToDocument(
+	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, rd *partial.Renderer,
+) map[string]interface{} {
 	out := make(map[string]interface{}, len(attrs))
 	for key, val := range attrs {
 		src := sourceFor(body, key, dynamic)
-		out[key] = ctyValueToDocument(val, &src)
+		out[key] = ctyValueToDocument(val, &src, rd)
 	}
 	return out
 }
@@ -227,9 +243,20 @@ func asWrittenCount(dynamic DynamicCounts, b *hclsyntax.Block) (int, bool) {
 
 // ctyValueToDocument converts a cty.Value to a JSON-serializable value, using
 // src to recover what an unresolved value looked like in the configuration.
-func ctyValueToDocument(v cty.Value, src *attrSource) interface{} {
+// rd renders unresolved values; it is nil once v is known to be wholly known,
+// so a resolved subtree is walked once.
+func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) interface{} {
+	if rd != nil {
+		if v.IsWhollyKnown() {
+			rd = nil
+		} else if src.expr != nil {
+			if rendered, ok := rd.RenderUnresolved(src.expr); ok {
+				return ctyValueToDocument(rendered, &attrSource{}, nil)
+			}
+		}
+	}
 	if !v.IsKnown() {
-		return unresolvedToDocument(src.expr)
+		return unresolvedToDocument(src.expr, rd)
 	}
 	if v.IsNull() {
 		return nil
@@ -248,15 +275,15 @@ func ctyValueToDocument(v cty.Value, src *attrSource) interface{} {
 
 	switch {
 	case t.IsTupleType(), t.IsListType(), t.IsSetType():
-		return ctySeqToDocument(v, src)
+		return ctySeqToDocument(v, src, rd)
 	case t.IsObjectType(), t.IsMapType():
-		return ctyMapToDocument(v, src)
+		return ctyMapToDocument(v, src, rd)
 	}
 	return UnknownAttributePlaceholder
 }
 
 // ctySeqToDocument converts a tuple/list/set to a slice.
-func ctySeqToDocument(v cty.Value, src *attrSource) []interface{} {
+func ctySeqToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) []interface{} {
 	n := v.LengthInt()
 	elemSrcs := seqElementSources(src, n)
 	list := make([]interface{}, 0, n)
@@ -267,7 +294,7 @@ func ctySeqToDocument(v cty.Value, src *attrSource) []interface{} {
 		if i < len(elemSrcs) {
 			es = elemSrcs[i]
 		}
-		list = append(list, ctyValueToDocument(ev, &es))
+		list = append(list, ctyValueToDocument(ev, &es, rd))
 	}
 	return list
 }
@@ -298,7 +325,7 @@ func seqElementSources(src *attrSource, n int) []attrSource {
 
 // ctyMapToDocument converts an object/map to a Go map; non-string or unknown
 // keys are skipped (keys are always strings in well-formed Terraform).
-func ctyMapToDocument(v cty.Value, src *attrSource) map[string]interface{} {
+func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[string]interface{} {
 	body := src.body
 	if blocks := src.blocksFor(1); body == nil && len(blocks) == 1 && src.labelDepth >= len(blocks[0].Labels) {
 		body = blocks[0].Body
@@ -321,7 +348,7 @@ func ctyMapToDocument(v cty.Value, src *attrSource) map[string]interface{} {
 		case len(src.blocks) > 0:
 			es = labeledBlockSource(src, name)
 		}
-		obj[name] = ctyValueToDocument(ev, &es)
+		obj[name] = ctyValueToDocument(ev, &es, rd)
 	}
 	return obj
 }
@@ -378,81 +405,20 @@ func objectConsSources(expr hclsyntax.Expression) map[string]hclsyntax.Expressio
 	return out
 }
 
-// unresolvedToDocument recovers whatever a value that failed to evaluate can
-// still offer rules: reference text for references, literals for parts that need
-// no context, and the same treatment element-wise for collection constructors.
-// A collection is reported as unknown as a whole when any part of it is, so it
-// has to be rebuilt from the expression rather than from the value.
-func unresolvedToDocument(expr hclsyntax.Expression) interface{} {
+// unresolvedToDocument renders a value that failed to evaluate from its
+// expression. A collection is reported as unknown as a whole when any part of
+// it is, so it has to be rebuilt from the expression rather than from the value.
+func unresolvedToDocument(expr hclsyntax.Expression, rd *partial.Renderer) interface{} {
 	if expr == nil {
 		return UnknownAttributePlaceholder
 	}
-	if ref, ok := referenceText(expr); ok {
-		return ref
+	if rd == nil {
+		rd = &partial.Renderer{}
 	}
-	if val, diags := expr.Value(nil); !diags.HasErrors() && val.IsWhollyKnown() {
-		return ctyValueToDocument(val, &attrSource{})
-	}
-	switch e := expr.(type) {
-	case *hclsyntax.TupleConsExpr:
-		list := make([]interface{}, 0, len(e.Exprs))
-		for _, elem := range e.Exprs {
-			list = append(list, unresolvedToDocument(elem))
-		}
-		return list
-	case *hclsyntax.ObjectConsExpr:
-		items := objectConsSources(e)
-		obj := make(map[string]interface{}, len(items))
-		for name, valExpr := range items {
-			obj[name] = unresolvedToDocument(valExpr)
-		}
-		return obj
+	if v, ok := rd.Render(expr); ok {
+		return ctyValueToDocument(v, &attrSource{}, nil)
 	}
 	return UnknownAttributePlaceholder
-}
-
-// referenceText renders a reference expression back to the interpolated form the
-// plain HCL parser emits for unresolved values, e.g. "${aws_s3_bucket.b.id}".
-// Rules link resources by parsing these strings, so keeping them is what lets an
-// instantiated resource still be matched against the resource it points at.
-func referenceText(expr hclsyntax.Expression) (string, bool) {
-	if expr == nil {
-		return "", false
-	}
-	traversal, diags := hcl.AbsTraversalForExpr(expr)
-	if diags.HasErrors() {
-		return "", false
-	}
-	rendered, ok := renderTraversal(traversal)
-	if !ok {
-		return "", false
-	}
-	return "${" + rendered + "}", true
-}
-
-func renderTraversal(traversal hcl.Traversal) (string, bool) {
-	if len(traversal) == 0 {
-		return "", false
-	}
-	var sb strings.Builder
-	for _, step := range traversal {
-		switch s := step.(type) {
-		case hcl.TraverseRoot:
-			sb.WriteString(s.Name)
-		case hcl.TraverseAttr:
-			sb.WriteByte('.')
-			sb.WriteString(s.Name)
-		case hcl.TraverseIndex:
-			formatted, ok := ctyutil.FormatIndexKey(s.Key)
-			if !ok {
-				return "", false
-			}
-			sb.WriteString(formatted)
-		default:
-			return "", false
-		}
-	}
-	return sb.String(), true
 }
 
 // RemoteResolver maps a non-local module call to its selected directory and acquired package root.
@@ -461,7 +427,7 @@ type RemoteResolver func(
 ) (dir, packageRoot string, ok bool)
 
 func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string {
-	bodies, err := parseDir(context.Background(), dir, "", nil, fsys)
+	bodies, _, err := parseDir(context.Background(), dir, "", nil, fsys)
 	if err != nil {
 		return nil
 	}
@@ -469,7 +435,7 @@ func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string
 }
 
 func (e *Evaluator) CalledModuleDirs(dir string) []string {
-	bodies, err := e.parseDir(context.Background(), dir, "")
+	bodies, _, err := e.parseDir(context.Background(), dir, "")
 	if err != nil {
 		return nil
 	}

@@ -160,7 +160,7 @@ func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionRes
 }
 
 // declaresTargetedResource reports whether any scanned Terraform file declares
-// a resource type some rule can match by name.
+// a resource or data type some rule can match by name.
 func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) bool {
 	if targets == nil {
 		return true
@@ -169,21 +169,35 @@ func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) b
 		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
-		resources, ok := asStringMap(f.Document["resource"])
-		if !ok {
-			continue
-		}
-		for typ := range resources {
-			if targets.matches(typ) {
-				return true
+		for _, key := range [...]string{"resource", "data"} {
+			blocks, ok := asStringMap(f.Document[key])
+			if !ok {
+				continue
+			}
+			for typ := range blocks {
+				if targets.matches(typ) {
+					return true
+				}
 			}
 		}
 	}
 	return false
 }
 
-// instantiatedIndex records which resource blocks of a file were re-emitted as
-// instantiated documents, as file ID -> resource type -> block name.
+// dataTypePrefix marks a data block's type wherever data and resource blocks
+// share a namespace, as it does in the resourceType of a finding.
+const dataTypePrefix = "data."
+
+// blockKind is the type a resolved block is indexed and attributed under.
+func blockKind(r *tfeval.ResolvedResource) string {
+	if r.Data {
+		return dataTypePrefix + r.Type
+	}
+	return r.Type
+}
+
+// instantiatedIndex records which resource and data blocks of a file were
+// re-emitted as instantiated documents, as file ID -> block kind -> block name.
 type instantiatedIndex map[string]map[string]map[string]bool
 
 func (idx instantiatedIndex) add(fileID, typ, name string) {
@@ -200,11 +214,33 @@ func (idx instantiatedIndex) add(fileID, typ, name string) {
 	names[name] = true
 }
 
-// removeInstantiatedResources deletes the named resource blocks from a parsed
-// file so they are not scanned twice, once where they are written and once
-// instantiated.
+// removeInstantiatedResources deletes the named resource and data blocks from
+// a parsed file so they are not scanned twice, once where they are written and
+// once instantiated.
 func removeInstantiatedResources(doc map[string]interface{}, replaced map[string]map[string]bool) {
-	resources, ok := asStringMap(doc["resource"])
+	var resources, data map[string]map[string]bool
+	for kind, names := range replaced {
+		if typ, ok := strings.CutPrefix(kind, dataTypePrefix); ok {
+			if data == nil {
+				data = make(map[string]map[string]bool)
+			}
+			data[typ] = names
+			continue
+		}
+		if resources == nil {
+			resources = make(map[string]map[string]bool, len(replaced))
+		}
+		resources[kind] = names
+	}
+	removeInstantiatedBlocks(doc, "resource", resources)
+	removeInstantiatedBlocks(doc, "data", data)
+}
+
+func removeInstantiatedBlocks(doc map[string]interface{}, key string, replaced map[string]map[string]bool) {
+	if len(replaced) == 0 {
+		return
+	}
+	resources, ok := asStringMap(doc[key])
 	if !ok {
 		return
 	}
@@ -224,7 +260,7 @@ func removeInstantiatedResources(doc map[string]interface{}, replaced map[string
 		}
 	}
 	if onlyMetadataKeys(resources) {
-		delete(doc, "resource")
+		delete(doc, key)
 	}
 }
 
@@ -880,8 +916,10 @@ func rootsReaching(roots []string, graph staticCallGraph, targets map[string][]*
 	return out
 }
 
-// instantiatedResource is one resolved resource as it is placed into a document.
+// instantiatedResource is one resolved resource or data block as it is placed
+// into a document.
 type instantiatedResource struct {
+	// typ is the block kind, the type prefixed with "data." for a data block.
 	typ       string
 	baseName  string
 	fullName  string
@@ -956,6 +994,7 @@ func instantiatedDocs(
 			// written, exactly as it is without module evaluation.
 			continue
 		}
+		kind := blockKind(r)
 		fm, ok := byAbsPath[absPath(r.DefinedIn, repoPath)]
 		if !ok {
 			continue
@@ -964,7 +1003,7 @@ func instantiatedDocs(
 		base := tfeval.ResourceBaseName(r.Name)
 		attrs := tfeval.AttributesToDocument(r)
 		entry := instantiatedResource{
-			typ:       r.Type,
+			typ:       kind,
 			baseName:  base,
 			fullName:  r.Name,
 			defLine:   r.DefLine,
@@ -972,7 +1011,7 @@ func instantiatedDocs(
 			attrsHash: hashAttributes(attrs),
 		}
 
-		slot := cck + "\x00" + fm.ID + "\x00" + r.Type + "\x00" + base
+		slot := cck + "\x00" + fm.ID + "\x00" + kind + "\x00" + base
 		layer := layers[slot]
 		layers[slot] = layer + 1
 
@@ -986,13 +1025,13 @@ func instantiatedDocs(
 			groups[key] = g
 			order = append(order, key)
 		}
-		g.attributions[moduleAttributionKey(r.Type, r.DefLine, r.DefColumn)] =
+		g.attributions[moduleAttributionKey(kind, r.DefLine, r.DefColumn)] =
 			attributions.attribution(r, repoPath, lookup)
 		g.entries = append(g.entries, entry)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
 		if !r.ExpansionTruncated {
-			instantiated.add(fm.ID, r.Type, base)
+			instantiated.add(fm.ID, kind, base)
 		}
 		resourceCount++
 	}
@@ -1013,21 +1052,33 @@ func instantiatedDocs(
 		seen[contentKey] = docID
 
 		resource := make(map[string]interface{})
+		var data map[string]interface{}
 		for i := range g.entries {
 			e := &g.entries[i]
-			byName, ok := resource[e.typ].(map[string]interface{})
+			blocks, typ := resource, e.typ
+			if dataType, ok := strings.CutPrefix(e.typ, dataTypePrefix); ok {
+				if data == nil {
+					data = make(map[string]interface{})
+				}
+				blocks, typ = data, dataType
+			}
+			byName, ok := blocks[typ].(map[string]interface{})
 			if !ok {
 				byName = make(map[string]interface{})
-				resource[e.typ] = byName
+				blocks[typ] = byName
 			}
 			byName[e.baseName] = e.attrs
 		}
 
-		docs = append(docs, model.Document{
+		doc := model.Document{
 			"id":       docID,
 			"file":     g.fm.FilePath,
 			"resource": resource,
-		})
+		}
+		if data != nil {
+			doc["data"] = data
+		}
+		docs = append(docs, doc)
 		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount

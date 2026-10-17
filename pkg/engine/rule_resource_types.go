@@ -13,14 +13,19 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
-// A rule names the resource types it can match, either by reading them off a
-// document (`input.document[i].resource.aws_s3_bucket[name]`) or by passing
+// A rule names the resource and data types it can match, either by reading
+// them off a document (`input.document[i].resource.aws_s3_bucket[name]`,
+// `input.document[i].data.aws_ami[name]`) or by passing
 // them to a library helper (`module_equivalent_key("aws", source,
 // "aws_s3_bucket", key)`). Both forms are picked up here.
 var (
 	resourceFieldPattern = regexp.MustCompile(`resource\.([a-z][a-z0-9_]*)`)
 	resourceIndexPattern = regexp.MustCompile(`resource\[\s*"([^"\s]+)"\s*\]`)
-	typeLiteralPattern   = regexp.MustCompile(`"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"`)
+	// Rego imports and data documents (`data.generic.terraform`) share the
+	// data. prefix; Terraform type names always hold an underscore.
+	dataFieldPattern   = regexp.MustCompile(`\bdata\.([a-z][a-z0-9]*_[a-z0-9_]*)`)
+	dataIndexPattern   = regexp.MustCompile(`\bdata\[\s*"([a-z][a-z0-9]*_[a-z0-9_]*)"\s*\]`)
+	typeLiteralPattern = regexp.MustCompile(`"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"`)
 	// Rules that apply to a whole provider select it by prefix, as in
 	// `startswith(resource_type, "aws_")`.
 	typePrefixPattern = regexp.MustCompile(`startswith\([^,]+,\s*"([a-z][a-z0-9]*_)"\s*\)`)
@@ -70,7 +75,7 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	prefixes := make(map[string]bool)
 	collect := func(source string) {
 		for _, pattern := range []*regexp.Regexp{
-			resourceFieldPattern, resourceIndexPattern, typeLiteralPattern,
+			resourceFieldPattern, resourceIndexPattern, dataFieldPattern, dataIndexPattern, typeLiteralPattern,
 		} {
 			for _, m := range pattern.FindAllStringSubmatch(source, -1) {
 				targets.types[m[1]] = true

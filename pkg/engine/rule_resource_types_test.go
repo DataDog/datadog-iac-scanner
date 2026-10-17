@@ -32,6 +32,14 @@ DatadogPolicy contains result if {
 }
 `},
 		{Content: `
+DatadogPolicy contains result if {
+	data := input.document[i].data.aws_ami[name]
+	not data.owners
+	metadata.name == "x"
+	common := data.generic.common
+}
+`},
+		{Content: `
 taggable contains resource if {
 	some resource_type, resource in doc.resource
 	startswith(resource_type, "azurerm_")
@@ -51,12 +59,13 @@ taggable contains resource if {
 		"aws_sqs_queue",           // passed to a library helper
 		"aws_instance",            // named only in a library
 		"azurerm_anything_at_all", // whole provider selected by prefix
+		"aws_ami",                 // read off a document's data blocks
 	} {
 		if !targets.matches(typ) {
 			t.Errorf("%s should be matched by some rule", typ)
 		}
 	}
-	for _, typ := range []string{"vault_identity_group", "datadog_monitor"} {
+	for _, typ := range []string{"vault_identity_group", "datadog_monitor", "name", "owners", "generic"} {
 		if targets.matches(typ) {
 			t.Errorf("%s is named by no rule and should not be matched", typ)
 		}
