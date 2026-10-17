@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -42,6 +43,18 @@ type Options struct {
 // Convert an hcl File to a toJson serializable object.
 // This assumes that the body is a hclsyntax.Body.
 func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, opts Options) (model.Document, error) {
+	layers, err := ConvertAll(ctx, file, inputVariables, opts)
+	if err != nil || len(layers) == 0 {
+		return nil, err
+	}
+	return layers[0], nil
+}
+
+// ConvertAll converts an hcl File into its documents. The first holds every
+// block of the file. Resources and data whose count or for_each expand into
+// instances that differ from one another have their first instance there; see
+// BuildLayers for the documents of the others.
+func ConvertAll(ctx context.Context, file *hcl.File, inputVariables VariableMap, opts Options) ([]model.Document, error) {
 	variables := make(VariableMap, len(inputVariables)+2)
 	for name, value := range inputVariables {
 		variables[name] = value
@@ -51,17 +64,12 @@ func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, op
 	}
 	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS))
 	c.file = file.Body.(*hclsyntax.Body)
-	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
-
+	c.instancesLeft = instances.MaxPerFile
+	body, err := c.convertBody(ctx, c.file, 0)
 	if err != nil {
-		if er, ok := err.(*hcl.Diagnostic); ok && er.Subject != nil {
-			return nil, err
-		}
-
 		return nil, err
 	}
-
-	return body, nil
+	return BuildLayers(body, c.expanded), nil
 }
 
 // DefaultConverted an hcl File to a toJson serializable object
@@ -79,6 +87,36 @@ type converter struct {
 	dynamicLeft int
 	// dynamicWarned records that an overflow was already logged for this file.
 	dynamicWarned bool
+	// expanded holds the blocks whose instances differ, for BuildLayers.
+	expanded []Expanded
+	// instancesLeft is how many instances beyond the first the file may still
+	// expand its resources and data into.
+	instancesLeft int
+	// instancesWarned records that an expansion cap was already logged for this file.
+	instancesWarned bool
+	// transientCounts holds, per name, how many instance or dynamic iterators
+	// are currently bound under it (count, each, and a dynamic block's
+	// iterator). Expressions reading a bound name convert differently per
+	// instance; the others convert identically every time.
+	transientCounts map[string]int
+	// instanceMemo caches, per expression, the conversions of the instances of
+	// an expanding block: expressions reading no bound iterator convert to the
+	// same value for every instance, so instances after the first reuse them.
+	// It is shared by every expanding block of the file — an expression belongs
+	// to one body, so its memo entry can only ever describe one block — and is
+	// created when the first block expands, so files without count and
+	// for_each never pay for it.
+	instanceMemo map[hclsyntax.Expression]*instanceMemoEntry
+}
+
+// instanceMemoEntry is the memoized conversion of one expression. varies
+// records that the expression reads a bound iterator, so its conversion is
+// re-run per instance; the verdict itself is worth remembering, because the
+// variable walk behind it would otherwise run per instance too.
+type instanceMemoEntry struct {
+	varies bool
+	val    interface{}
+	err    error
 }
 
 func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
@@ -98,22 +136,6 @@ func (c *converter) rangeSource(r hcl.Range) string {
 
 func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLine int) (model.Document, error) {
 	var err error
-	countValue := body.Attributes["count"]
-	count := -1
-
-	if countValue != nil {
-		value, diags := countValue.Expr.Value(c.renderer.Ctx)
-		if !diags.HasErrors() {
-			if intValue, ok := ctyutil.LiteralInt(value); ok {
-				count = intValue
-			}
-		}
-	}
-
-	if count == 0 {
-		return nil, nil
-	}
-
 	out := make(model.Document)
 	ddLines := make(map[string]model.LineObject)
 	// set line info for the body
@@ -138,6 +160,15 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	for _, block := range body.Blocks {
 		if body == c.file {
 			c.dynamicLeft = dynamicblock.MaxGeneratedPerResource
+		}
+		if body == c.file {
+			handled, err := c.convertTopLevelInstances(ctx, block, out, ddLines)
+			if err != nil {
+				return nil, err
+			}
+			if handled {
+				continue
+			}
 		}
 		if dynamicblock.Is(block) {
 			expanded, err := c.convertDynamicBlock(ctx, block, out)
@@ -231,7 +262,9 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 	}
 	name := dynamicblock.IteratorName(block)
 	previous, hadPrevious := c.inputVars[name]
+	restoreTransient := c.bindTransient(name)
 	defer func() {
+		restoreTransient()
 		if hadPrevious {
 			c.inputVars[name] = previous
 		} else {
@@ -414,6 +447,13 @@ func (c *converter) convertKey(keyExpr hclsyntax.Expression) (string, error) {
 }
 
 func (c *converter) convertTemplate(t *hclsyntax.TemplateExpr) (string, error) {
+	return memoizeConversion(c, t,
+		func() (string, error) { return c.convertTemplateUncached(t) },
+		func(e *instanceMemoEntry) (string, bool) { s, ok := e.val.(string); return s, ok && e.err == nil },
+	)
+}
+
+func (c *converter) convertTemplateUncached(t *hclsyntax.TemplateExpr) (string, error) {
 	if t.IsStringLiteral() {
 		v, err := t.Value(nil)
 		if err != nil {
@@ -568,7 +608,71 @@ func (c *converter) convertTemplateFor(expr *hclsyntax.ForExpr) (string, error) 
 
 // tryEvalExpression renders expr, each unresolved part as its own "${expr}"
 // text. An unresolved string stays a plain string.
+// bindTransient records that a transient variable name is bound, and returns
+// the function that restores the previous state. The count, not a flag, makes
+// nested binds of one name (a dynamic block inside an instance) restore
+// correctly.
+func (c *converter) bindTransient(name string) func() {
+	if c.transientCounts == nil {
+		c.transientCounts = make(map[string]int)
+	}
+	c.transientCounts[name]++
+	return func() {
+		c.transientCounts[name]--
+		if c.transientCounts[name] <= 0 {
+			delete(c.transientCounts, name)
+		}
+	}
+}
+
+// readsTransient reports whether expr reads a bound iterator (count, each, or
+// a dynamic iterator), so its conversion varies per instance.
+func (c *converter) readsTransient(expr hclsyntax.Expression) bool {
+	for _, t := range expr.Variables() {
+		if c.transientCounts[t.RootName()] > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// memoizeConversion wraps the conversion of one expression for the instances
+// of an expanding block: the first conversion is cached for every instance
+// that follows, unless the expression reads a bound iterator, whose value
+// changes per instance. A conversion that erred is cached like any other —
+// given the same inputs it errs the same way.
+func memoizeConversion[T any](
+	c *converter, expr hclsyntax.Expression, convert func() (T, error), cached func(*instanceMemoEntry) (T, bool),
+) (T, error) {
+	if c.instanceMemo == nil {
+		return convert()
+	}
+	entry, ok := c.instanceMemo[expr]
+	if ok {
+		if entry.varies {
+			return convert()
+		}
+		if val, ok := cached(entry); ok {
+			return val, entry.err
+		}
+		return convert()
+	}
+	varies := c.readsTransient(expr)
+	val, err := convert()
+	if !varies {
+		c.instanceMemo[expr] = &instanceMemoEntry{val: val, err: err}
+	}
+	return val, err
+}
+
 func (c *converter) tryEvalExpression(expr hclsyntax.Expression) (interface{}, error) {
+	return memoizeConversion(c, expr,
+		func() (interface{}, error) { return c.tryEvalExpressionUncached(expr) },
+		func(e *instanceMemoEntry) (interface{}, bool) { return e.val, true },
+	)
+}
+
+func (c *converter) tryEvalExpressionUncached(expr hclsyntax.Expression) (interface{}, error) {
 	if val, diags := expr.Value(c.renderer.Ctx); !diags.HasErrors() && val.IsWhollyKnown() {
 		return ctyjson.SimpleJSONValue{Value: val}, nil
 	}
@@ -583,7 +687,10 @@ func (c *converter) tryEvalExpression(expr hclsyntax.Expression) (interface{}, e
 }
 
 func (c *converter) tryEvalToString(expr hclsyntax.Expression) (string, error) {
-	return c.renderer.StringPart(expr), nil
+	return memoizeConversion(c, expr,
+		func() (string, error) { return c.renderer.StringPart(expr), nil },
+		func(e *instanceMemoEntry) (string, bool) { s, ok := e.val.(string); return s, ok && e.err == nil },
+	)
 }
 
 func (c *converter) wrapExpr(expr hclsyntax.Expression) (string, error) {

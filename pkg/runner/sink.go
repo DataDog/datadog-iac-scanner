@@ -190,8 +190,9 @@ func (s *Service) sinkDocument(
 		IsMinified:    documents.IsMinified,
 		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
 	}
+	file.ExpansionLayer = documents.ExpansionLayer(docIdx)
 	file.SetLineInfoLoader(newLineInfoLoader(
-		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
+		s.Parser, filename, docIdx, len(documents.Docs) > 1, openAPIResolveReferences, isMinified, maxResolverDepth))
 	// Lazy lines, as in sinkContent.
 	file.SetLazyLines()
 
@@ -226,8 +227,9 @@ func (s *Service) sinkSharedParse(
 			IsMinified:   shared.isMinified,
 			Platform:     s.classifyPlatform(ctx, shared.kind, filename, content),
 		}
+		file.ExpansionLayer = iacparser.ExpansionLayer(shared.kind, docIdx)
 		file.SetLineInfoLoader(newLineInfoLoader(
-			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
+			s.Parser, filename, docIdx, len(shared.docs) > 1, openAPIResolveReferences, isMinified, maxResolverDepth))
 		file.SetLazyLines()
 		s.saveToFile(ctx, &file)
 	}

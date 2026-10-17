@@ -47,7 +47,7 @@ func TestEnsureLineInfoDocument_matchesEagerParse(t *testing.T) {
 		FilePath:          path,
 		LinesOriginalData: utils.SplitLines(parsed.Content),
 	}
-	loader := newLineInfoLoader(p, path, 0, false, false, 15)
+	loader := newLineInfoLoader(p, path, 0, false, false, false, 15)
 	lazyDoc, err := loader(ctx, file)
 	require.NoError(t, err)
 
@@ -86,7 +86,7 @@ func TestEnsureLineInfoDocument_minifiedTFPlanUsesOriginalData(t *testing.T) {
 		FilePath:          path,
 		LinesOriginalData: utils.SplitLines(parsed.Content),
 	}
-	loader := newLineInfoLoader(p, path, 0, false, false, 1)
+	loader := newLineInfoLoader(p, path, 0, false, false, false, 1)
 	lazyDoc, err := loader(ctx, file)
 	require.NoError(t, err)
 	require.False(t, reflect.DeepEqual(eagerFromMinified[0], lazyDoc),

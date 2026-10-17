@@ -26,6 +26,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
@@ -46,7 +47,7 @@ const (
 	// resourceRefPasses caps passes that install same-module resource attrs for refs.
 	resourceRefPasses = 3
 	// maxCountExpansion caps instances per count/for_each block (resources and modules).
-	maxCountExpansion = 50
+	maxCountExpansion = instances.MaxPerBlock
 	// maxExpansionShape is the largest truncated count/for_each collection we will
 	// materialize with unknown tails so length() and missing keys stay honest.
 	// Beyond this, the whole ref becomes unknown instead of allocating a huge shape.
@@ -431,9 +432,9 @@ func (e *Evaluator) TakeNotEvaluatedDirs() []string {
 // TakeModuleInstances returns the module calls the last EvaluateModule
 // evaluated, nothing when it failed, and forgets them.
 func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
-	instances := e.instances
+	taken := e.instances
 	e.instances = nil
-	return instances
+	return taken
 }
 
 // recordModuleInstance notes an evaluated call when instances are tracked. The
@@ -787,7 +788,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	key evalCacheKey,
 	skippedBefore uint64,
 	resources []ResolvedResource,
-	instances []ModuleInstance,
+	moduleInstances []ModuleInstance,
 	outputs map[string]cty.Value,
 	visitedDirs []string,
 	addr string,
@@ -804,7 +805,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	}
 	e.cache[key] = &evalCacheEntry{
 		resources:    resources,
-		instances:    slices.Clone(instances),
+		instances:    slices.Clone(moduleInstances),
 		outputs:      outputs,
 		visitedDirs:  visitedDirs,
 		baseAddr:     addr,

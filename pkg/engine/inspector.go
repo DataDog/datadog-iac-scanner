@@ -221,6 +221,9 @@ type PreparedQuery struct {
 // Inspector represents a list of compiled queries, a builder for vulnerabilities, an information tracker
 // a flag to enable coverage and the coverage report if it is enabled
 type Inspector struct {
+	// layerProfiles holds what each Terraform rule can read, for choosing the
+	// documents of expanded files it is evaluated against.
+	layerProfiles layerProfiles
 	QueryLoader   *QueryLoader
 	vb            VulnerabilityBuilder
 	tracker       Tracker
@@ -510,6 +513,10 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	// payload is read-only, so sharing the per-platform ast.Value across workers
 	// is safe.
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
+	if payloads.layers != nil {
+		profile := c.layerProfiles.of(&query.Metadata, c.terraformRuleLibraries)
+		payload = payloads.layers.payload(query.Metadata.Platform, payloads.byPlatform, profile, payload)
+	}
 	queryContext := &QueryContext{
 		Ctx:                     ctx,
 		scanID:                  scanID,
@@ -808,7 +815,7 @@ func (c *Inspector) executeQueries(
 		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
 	}
 
-	return vulnerabilities, nil
+	return dropRepeatedLayerFindings(vulnerabilities, filesMap), nil
 }
 
 func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas) bool {
@@ -1412,6 +1419,7 @@ func (c *Inspector) DecodeQueryResults(
 	ctxTimeout context.Context,
 	results rego.ResultSet,
 	queryDuration time.Duration) ([]model.Vulnerability, error) {
+	ctx = model.WithSharedLineInfo(ctx)
 	contextLogger := logger.FromContext(ctx)
 	queryResultItems, err := resultItems(results)
 	if err != nil {
@@ -1654,6 +1662,9 @@ const (
 type platformPayloads struct {
 	byPlatform map[string]ast.Value
 	full       ast.Value
+	// layers picks the documents of expanded Terraform files a rule reads; nil
+	// when the scan has none.
+	layers *layerFilter
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -1706,6 +1717,11 @@ func (c *Inspector) buildPlatformPayloads(
 	combinedDocs, moduleDocs []model.Document,
 	queries []model.QueryMetadata,
 ) (platformPayloads, error) {
+	// Computed before the trees are released below.
+	var layerChanges map[string]map[string]bool
+	if layerFilterEnabled() {
+		layerChanges = changedLayerTypes(filesMap, combinedDocs)
+	}
 	allDocs, bucketsPerDoc, unknownDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
 
 	needFullPayload := false
@@ -1733,6 +1749,7 @@ func (c *Inspector) buildPlatformPayloads(
 	}
 
 	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
+	payloads.layers = newLayerFilter(terms, bucketsPerDoc, unknownDocs, allDocs, layerChanges)
 	return payloads, nil
 }
 

@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
@@ -26,7 +26,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/zclconf/go-cty/cty"
-	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 // jsonDataReference matches a read of the data namespace anywhere in JSON
@@ -91,19 +90,14 @@ func getDataSourcePolicy(
 	// Locals that read data only resolve after a data pass, so keep their
 	// expressions and refresh them when data grows.
 	assignments := dataDependentLocals(locals)
-	var rendered map[string]map[string]map[string]string
+	var rendered map[string]map[string]cty.Value
 	// Each pass exposes one more link of a dependency chain through data or
 	// locals, so a chain can be at most as long as the blocks plus locals.
 	for pass := 0; pass <= len(blocks)+len(assignments); pass++ {
 		next := renderLocalData(blocks, inputVariables)
-		data, err := gocty.ToCtyValue(next, cty.Map(cty.Map(cty.Map(cty.String))))
-		if err != nil {
-			contextLogger.Error().Msgf("Error trying to convert data sources to cty value: %s", err)
-			return inputVariables
-		}
-		inputVariables["data"] = data
+		inputVariables["data"] = localDataValue(next)
 		localsChanged := refreshLocals(inputVariables, assignments)
-		if rendered != nil && reflect.DeepEqual(rendered, next) && !localsChanged {
+		if rendered != nil && localDataEqual(rendered, next) && !localsChanged {
 			break
 		}
 		rendered = next
@@ -114,27 +108,123 @@ func getDataSourcePolicy(
 	return inputVariables
 }
 
+// localDataValue is the data variable: type, then name, then the attributes of
+// the block, or its instances by index or key when it has count or for_each.
+func localDataValue(rendered map[string]map[string]cty.Value) cty.Value {
+	types := make(map[string]cty.Value, len(rendered))
+	for typ, byName := range rendered {
+		names := make(map[string]cty.Value, len(byName))
+		for name, value := range byName {
+			names[name] = value
+		}
+		types[typ] = cty.ObjectVal(names)
+	}
+	return cty.ObjectVal(types)
+}
+
+func localDataEqual(a, b map[string]map[string]cty.Value) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for typ, byName := range a {
+		other, ok := b[typ]
+		if !ok || len(other) != len(byName) {
+			return false
+		}
+		for name, value := range byName {
+			if o, ok := other[name]; !ok || !value.RawEquals(o) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func attributesValue(attrs map[string]string) cty.Value {
+	if len(attrs) == 0 {
+		return cty.MapValEmpty(cty.String)
+	}
+	values := make(map[string]cty.Value, len(attrs))
+	for k, v := range attrs {
+		values[k] = cty.StringVal(v)
+	}
+	return cty.MapVal(values)
+}
+
 func renderLocalData(
 	blocks []localDataBlock, inputVariables converter.VariableMap,
-) map[string]map[string]map[string]string {
+) map[string]map[string]cty.Value {
 	evalCtx := &hcl.EvalContext{Variables: inputVariables, Functions: functions.TerraformFuncs}
-	out := map[string]map[string]map[string]string{}
+	out := map[string]map[string]cty.Value{}
 	for i := range blocks {
 		b := &blocks[i]
-		eval := (&partial.Renderer{Ctx: evalCtx, Source: partial.BytesSource(b.src)}).Render
-		if b.json {
-			eval = jsonEval(evalCtx, b.src)
-		}
-		attrs := b.source(b.body, eval)
-		if attrs == nil {
+		value, ok := renderLocalDataBlock(b, evalCtx)
+		if !ok {
 			continue
 		}
 		if out[b.typ] == nil {
-			out[b.typ] = map[string]map[string]string{}
+			out[b.typ] = map[string]cty.Value{}
 		}
-		out[b.typ][b.name] = attrs
+		out[b.typ][b.name] = value
 	}
 	return out
+}
+
+// renderLocalDataBlock renders one block. A block whose count or for_each
+// resolves is rendered once per instance and read as a tuple by index or an
+// object by key, as Terraform exposes it; any other block is rendered once.
+func renderLocalDataBlock(b *localDataBlock, evalCtx *hcl.EvalContext) (cty.Value, bool) {
+	render := func(ctx *hcl.EvalContext) (map[string]string, bool) {
+		eval := (&partial.Renderer{Ctx: ctx, Source: partial.BytesSource(b.src)}).Render
+		if b.json {
+			eval = jsonEval(ctx, b.src)
+		}
+		attrs := b.source(b.body, eval)
+		return attrs, attrs != nil
+	}
+	count, forEach := localDataInstanceAttributes(b)
+	plan := instances.Resolve(count, forEach, evalCtx)
+	if !plan.Expands() {
+		attrs, ok := render(evalCtx)
+		if !ok {
+			return cty.NilVal, false
+		}
+		return attributesValue(attrs), true
+	}
+	byKey := map[string]cty.Value{}
+	var list []cty.Value
+	for _, item := range plan.Items {
+		name, iteration := plan.Variable(item)
+		child := evalCtx.NewChild()
+		child.Variables = map[string]cty.Value{name: iteration}
+		attrs, ok := render(child)
+		if !ok {
+			return cty.NilVal, false
+		}
+		if plan.Kind == instances.KindCount {
+			list = append(list, attributesValue(attrs))
+		} else {
+			byKey[item.Key.AsString()] = attributesValue(attrs)
+		}
+	}
+	if plan.Kind == instances.KindCount {
+		return cty.TupleVal(list), true
+	}
+	return cty.ObjectVal(byKey), true
+}
+
+func localDataInstanceAttributes(b *localDataBlock) (count, forEach hcl.Expression) {
+	if body, ok := b.body.(*hclsyntax.Body); ok {
+		return instances.Attributes(body)
+	}
+	attrs, _ := b.body.JustAttributes()
+	if attr, ok := attrs[instances.KindCount]; ok {
+		count = attr.Expr
+	}
+	if attr, ok := attrs[instances.KindForEach]; ok {
+		forEach = attr.Expr
+	}
+	return count, forEach
 }
 
 // jsonEval evaluates JSON configuration expressions, rendering what does not

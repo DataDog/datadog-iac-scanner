@@ -205,6 +205,12 @@ type FileMetadata struct {
 	// Archive is the chart archive the file was rendered from, if any (see
 	// ResolvedHelm.Archive).
 	Archive string
+	// ExpansionLayer is the position of this document among the documents of a
+	// Terraform file whose resources or data expand into instances (see
+	// converter.ConvertAll). The first holds every block of the file and is
+	// layer zero; a later one holds only the further instances, and shares the
+	// file's path and content with it.
+	ExpansionLayer int
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -856,4 +862,19 @@ type SarifRegion struct {
 	EndLine     int `json:"endLine"`
 	StartColumn int `json:"startColumn"`
 	EndColumn   int `json:"endColumn"`
+}
+
+type sharedLineInfoKey struct{}
+
+// WithSharedLineInfo marks a context whose line-info loads may share one
+// reparse among the documents of the same file. Callers must only read the
+// trees they get back.
+func WithSharedLineInfo(ctx context.Context) context.Context {
+	return context.WithValue(ctx, sharedLineInfoKey{}, true)
+}
+
+// SharedLineInfo reports whether ctx came from WithSharedLineInfo.
+func SharedLineInfo(ctx context.Context) bool {
+	shared, _ := ctx.Value(sharedLineInfoKey{}).(bool)
+	return shared
 }

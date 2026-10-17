@@ -225,3 +225,21 @@ func TestCloneSharedParseDocumentRefreshesPath(t *testing.T) {
 	require.Equal(t, "first.yaml", cached["_path"])
 	require.Equal(t, reflect.ValueOf(child).Pointer(), reflect.ValueOf(clone["metadata"]).Pointer())
 }
+
+// The documents of an expanded Terraform file share the blocks that do not
+// differ between them; sanitizing must keep them shared and canonical.
+func TestSanitizeScanDocumentInPlaceKeepsSharedDocumentSubtreesShared(t *testing.T) {
+	shared := model.Document{"port": 22, "_dd_lines": map[string]int{":0:0": 1}}
+	first := map[string]interface{}{"resource": model.Document{"a": shared}}
+	second := map[string]interface{}{"resource": model.Document{"a": shared}}
+
+	_, err := sanitizeScanDocumentInPlace(first, model.KindTerraform)
+	require.NoError(t, err)
+	_, err = sanitizeScanDocumentInPlace(second, model.KindTerraform)
+	require.NoError(t, err)
+
+	a := first["resource"].(map[string]interface{})["a"].(map[string]interface{})
+	b := second["resource"].(map[string]interface{})["a"].(map[string]interface{})
+	require.Equal(t, map[string]interface{}{"port": float64(22)}, a)
+	require.Equal(t, reflect.ValueOf(a).Pointer(), reflect.ValueOf(b).Pointer())
+}

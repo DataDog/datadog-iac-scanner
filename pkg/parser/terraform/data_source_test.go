@@ -15,7 +15,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
-	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 func Test_getDataSourcePolicy(t *testing.T) {
@@ -82,11 +81,7 @@ func Test_getDataSourcePolicy(t *testing.T) {
 			if !ok {
 				t.FailNow()
 			}
-			var awsPolicyMap map[string]map[string]map[string]string
-			err := gocty.FromCtyValue(data, &awsPolicyMap)
-			if err != nil {
-				t.Errorf("getDataSourcePolicy() error = %v", err)
-			}
+			awsPolicyMap := decodeData(t, data)
 			got, ok := awsPolicyMap["aws_iam_policy_document"][tt.args.resourceName]["json"]
 			if !ok {
 				t.FailNow()
@@ -115,7 +110,7 @@ func Test_getDataSourcePolicy_JSONConfig(t *testing.T) {
 	data, ok := result["data"]
 	require.True(t, ok)
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-json")
 }
 
@@ -139,7 +134,7 @@ func Test_getDataSourcePolicy_JSONConfigChain(t *testing.T) {
 
 	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(result["data"], &awsPolicyMap))
+	awsPolicyMap = decodeData(t, result["data"])
 	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["combined"]["json"], "from-base")
 }
 
@@ -162,7 +157,7 @@ func Test_getDataSourcePolicy_JSONConfigResourceTraversal(t *testing.T) {
 	data, ok := result["data"]
 	require.True(t, ok)
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "aws_s3_bucket.b.arn")
 }
 
@@ -179,7 +174,7 @@ func Test_getDataSourcePolicy_TofuJSONShadowsTfJSON(t *testing.T) {
 	data, ok := result["data"]
 	require.True(t, ok)
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tofu")
 	require.NotContains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tf")
 }
@@ -207,7 +202,7 @@ data "aws_iam_policy_document" "doc" {
 	data, ok := result["data"]
 	require.True(t, ok)
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tofu")
 	require.NotContains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tf")
 }
@@ -238,7 +233,7 @@ data "aws_iam_policy_document" "doc" {
 	data, ok := result["data"]
 	require.True(t, ok)
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tf")
 	require.NotContains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tofu")
 }
@@ -272,7 +267,7 @@ data "aws_iam_policy_document" "doc" {
 	data, ok := fromTF["data"]
 	require.True(t, ok)
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 	require.Contains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tf")
 	require.NotContains(t, awsPolicyMap["aws_iam_policy_document"]["doc"]["json"], "from-tofu")
 }
@@ -303,7 +298,7 @@ data "aws_iam_policy_document" "doc" {
 	require.True(t, ok, "expected a data entry in the variable map")
 
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 
 	policies := awsPolicyMap["aws_iam_policy_document"]
 	require.Len(t, policies, 1, "only the declared policy document should be collected")
@@ -350,7 +345,7 @@ resource "aws_glue_resource_policy" "example" {
 	require.True(t, ok)
 
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 
 	policy, ok := awsPolicyMap["aws_iam_policy_document"]["glue-example-policy"]["json"]
 	require.True(t, ok, "policy document should be parsed despite data.aws_partition in ARN")
@@ -373,7 +368,7 @@ data	"aws_iam_policy_document"	"doc" {
 	require.True(t, ok)
 
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 
 	policies := awsPolicyMap["aws_iam_policy_document"]
 	require.Contains(t, policies, "doc")
@@ -395,7 +390,7 @@ func Test_getDataSourcePolicy_escapedLabelInBlockHeader(t *testing.T) {
 	require.True(t, ok)
 
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 
 	policies := awsPolicyMap["aws_iam_policy_document"]
 	require.Contains(t, policies, "doc")
@@ -431,7 +426,7 @@ data "aws_iam_policy_document" "base" {
 
 	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	var data map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	data = decodeData(t, result["data"])
 
 	require.Equal(t,
 		`{"bindings":[{"members":["allUsers","${google_service_account.sa.member}"],"role":"roles/cloudkms.cryptoKeyDecrypter"}]}`,
@@ -466,7 +461,7 @@ func Test_getDataSourcePolicy_JSONConfigDynamicStatements(t *testing.T) {
 	data, ok := result["data"]
 	require.True(t, ok)
 	var awsPolicyMap map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(data, &awsPolicyMap))
+	awsPolicyMap = decodeData(t, data)
 	require.Equal(t, `{"Statement":[`+
 		`{"Actions":["s3:GetObject","a:*"],"Effect":"Allow","Resources":["arn:aws:s3:::a/${var.suffix}"],"Sid":"a"},`+
 		`{"Actions":["s3:GetObject","b:*"],"Effect":"Allow","Resources":["arn:aws:s3:::b/${var.suffix}"],"Sid":"b"}],`+
@@ -498,7 +493,7 @@ data "aws_iam_policy_document" "base" {
 
 	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	var data map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	data = decodeData(t, result["data"])
 	require.Contains(t, data["aws_iam_policy_document"]["a"]["json"], `"Sid":"Base"`)
 }
 
@@ -516,6 +511,65 @@ func Test_getDataSourcePolicy_JSONConfigReadsDataThroughSpacedOrWrappedTemplates
 
 	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
 	var data map[string]map[string]map[string]string
-	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	data = decodeData(t, result["data"])
 	require.Contains(t, data["aws_iam_policy_document"]["outer"]["json"], `"Sid":"Base"`)
+}
+
+// decodeData reads the data variable as type, name and attribute strings.
+func decodeData(t *testing.T, v cty.Value) map[string]map[string]map[string]string {
+	t.Helper()
+	out := map[string]map[string]map[string]string{}
+	for typ, byName := range v.AsValueMap() {
+		out[typ] = map[string]map[string]string{}
+		for name, attrs := range byName.AsValueMap() {
+			out[typ][name] = map[string]string{}
+			for k, val := range attrs.AsValueMap() {
+				out[typ][name][k] = val.AsString()
+			}
+		}
+	}
+	return out
+}
+
+func Test_getDataSourcePolicy_CountAndForEachInstances(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+data "google_iam_policy" "counted" {
+  count = 2
+  binding {
+    role    = "roles/viewer"
+    members = ["user:${count.index}@example.com"]
+  }
+}
+
+data "google_iam_policy" "keyed" {
+  for_each = { a = "allUsers", b = "user:b@example.com" }
+  binding {
+    role    = "roles/viewer"
+    members = [each.value]
+  }
+}
+
+data "google_iam_policy" "none" {
+  count = 0
+  binding {
+    role    = "roles/viewer"
+    members = ["allUsers"]
+  }
+}
+`), 0o600))
+
+	result := getDataSourcePolicy(context.Background(), vfs.DiskFS{}, dir, make(converter.VariableMap), nil, "")
+	policies := result["data"].GetAttr("google_iam_policy")
+
+	counted := policies.GetAttr("counted")
+	require.Equal(t, 2, counted.LengthInt())
+	require.Contains(t, counted.Index(cty.NumberIntVal(0)).AsValueMap()["policy_data"].AsString(), "user:0@example.com")
+	require.Contains(t, counted.Index(cty.NumberIntVal(1)).AsValueMap()["policy_data"].AsString(), "user:1@example.com")
+
+	keyed := policies.GetAttr("keyed")
+	require.Contains(t, keyed.GetAttr("a").AsValueMap()["policy_data"].AsString(), "allUsers")
+	require.Contains(t, keyed.GetAttr("b").AsValueMap()["policy_data"].AsString(), "user:b@example.com")
+
+	require.Equal(t, 0, policies.GetAttr("none").LengthInt())
 }
