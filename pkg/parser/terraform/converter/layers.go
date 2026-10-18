@@ -98,13 +98,10 @@ func SameInstance(a, b model.Document) bool {
 }
 
 func sameValue(a, b interface{}) bool {
+	if same, isScalar := sameScalar(a, b); isScalar {
+		return same
+	}
 	switch x := a.(type) {
-	case string:
-		y, ok := b.(string)
-		return ok && x == y
-	case bool:
-		y, ok := b.(bool)
-		return ok && x == y
 	case model.Document:
 		return sameValue(map[string]interface{}(x), b)
 	case map[string]interface{}:
@@ -126,20 +123,36 @@ func sameValue(a, b interface{}) bool {
 		return true
 	case nil:
 		return b == nil
-	case float64:
-		y, ok := b.(float64)
-		return ok && x == y
-	case int:
-		y, ok := b.(int)
-		return ok && x == y
-	case int64:
-		y, ok := b.(int64)
-		return ok && x == y
-	case json.Number:
-		y, ok := b.(json.Number)
-		return ok && x == y
 	default:
 		return reflect.DeepEqual(a, b)
+	}
+}
+
+// sameScalar compares two values of the same scalar type, reporting whether
+// the pair was of a compared scalar kind at all and, when it was, whether the
+// values match.
+func sameScalar(a, b interface{}) (same, isScalar bool) {
+	switch x := a.(type) {
+	case string:
+		y, ok := b.(string)
+		return ok && x == y, ok
+	case bool:
+		y, ok := b.(bool)
+		return ok && x == y, ok
+	case float64:
+		y, ok := b.(float64)
+		return ok && x == y, ok
+	case int:
+		y, ok := b.(int)
+		return ok && x == y, ok
+	case int64:
+		y, ok := b.(int64)
+		return ok && x == y, ok
+	case json.Number:
+		y, ok := b.(json.Number)
+		return ok && x == y, ok
+	default:
+		return false, false
 	}
 }
 

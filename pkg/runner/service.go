@@ -134,6 +134,9 @@ type sharedParse struct {
 	ignoreLines []int
 	countLines  int
 	isMinified  bool
+	// expansions are the Terraform expansion plans the parse produced (see
+	// FileMetadata.Expansions); every document of the file shares them.
+	expansions []model.ResourceExpansion
 }
 
 // internContent returns a shared copy of content so duplicate files retain one
@@ -180,7 +183,9 @@ func (s *Service) lookupSharedParse(content []byte) (string, *sharedParse) {
 // storeSharedParse caches a sanitized parse result for later files with the
 // same content. docs are the sanitized top-level maps; each is shallow-copied
 // so Combine's per-file id/file insertion cannot touch the cached entries.
-func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument, docs []model.Document) {
+func (s *Service) storeSharedParse(
+	key string, documents *parser.ParsedDocument, docs []model.Document, expansions []model.ResourceExpansion,
+) {
 	cached := make([]model.Document, len(docs))
 	for i, d := range docs {
 		cached[i] = cloneDocumentTopLevel(d)
@@ -195,6 +200,7 @@ func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument,
 		ignoreLines: documents.IgnoreLines,
 		countLines:  documents.CountLines,
 		isMinified:  documents.IsMinified,
+		expansions:  expansions,
 	}
 	s.parsedShareMu.Unlock()
 }

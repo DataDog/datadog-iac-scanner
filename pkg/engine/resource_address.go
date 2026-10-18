@@ -77,10 +77,13 @@ func resourceAddressesFor(file *model.FileMetadata, searchKey string) (addresses
 		return []string{addr}
 	}
 	// A plain file with expansion plans: the layer this document holds picks
-	// the addresses its instance values cover. An instance-keyed search key
-	// (counted[2]) names one distinct converted instance of the block, so the
-	// record is matched on the block's bare name and the finding fans out to
-	// every address that instance's value covers.
+	// the addresses its instance values cover (see converter.BuildLayers: a
+	// later layer holds a further instance of each expanded block, or the
+	// first document's value when the block has no instance there). An
+	// instance-keyed search key (counted[2]) names one distinct converted
+	// instance of the block, so the record is matched on the block's bare
+	// name and the finding fans out to every address that instance's value
+	// covers.
 	mode, typ, name, identified := resourceIdentityFromSearchKey(searchKey)
 	if identified {
 		baseName, instanceKey := splitInstanceKey(name)
@@ -92,20 +95,24 @@ func resourceAddressesFor(file *model.FileMetadata, searchKey string) (addresses
 			if exp.Type != typ || exp.Name != lookupName || (mode != "" && (mode == address.ModeData) != exp.Data) {
 				continue
 			}
-			if instanceKey == "" {
-				// A truncated expansion keeps the block as written alongside
-				// its capped instances; that conversion stands for the block
-				// itself, not for instance [0], so it keeps the unindexed
-				// address instead of the expansion plan's.
-				if exp.Truncated {
-					break
+			if instanceKey != "" {
+				if addresses := expansionAddressesForInstanceKey(&exp, instanceKey); addresses != nil {
+					return addresses
 				}
-				return exp.AddressesFor(0)
+				break
 			}
-			if addresses := expansionAddressesForInstanceKey(&exp, instanceKey); addresses != nil {
-				return addresses
+			position := file.ExpansionLayer
+			if position < 0 || position >= len(exp.Positions) {
+				position = 0
 			}
-			break
+			if len(exp.Positions[position]) == 0 {
+				// The layer holds the block as written (a truncated expansion's
+				// as-written conversion): it stands for the block itself, not
+				// for any one planned instance, so it keeps the unindexed
+				// address.
+				break
+			}
+			return exp.AddressesFor(position)
 		}
 	}
 	// Unexpanded or unresolvable: the unindexed form Terraform uses for a

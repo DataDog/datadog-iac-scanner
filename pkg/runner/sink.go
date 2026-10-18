@@ -125,19 +125,31 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		sort.Ints(documents.IgnoreLines)
 	}
 
+	// Terraform expansion plans move from the first document into the file
+	// metadata, so the engine can report findings per instance address and
+	// rules never see them. Every layer of the file carries the same plans:
+	// a finding's layer picks the instance position it covers.
+	var expansions []model.ResourceExpansion
+	if len(documents.Docs) > 0 {
+		if raw, ok := documents.Docs[0]["_dd_expansions"]; ok {
+			expansions = model.ParseExpansions(raw)
+			delete(documents.Docs[0], "_dd_expansions")
+		}
+	}
+
 	shareable := shareKey != "" && shareableParse(&documents)
 	var sharedDocs []model.Document
 
 	for docIdx := range documents.Docs {
 		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, shareable,
-			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands); doc != nil {
+			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands, expansions); doc != nil {
 			sharedDocs = append(sharedDocs, doc)
 		}
 	}
 	if shareable && len(sharedDocs) == len(documents.Docs) {
 		// Every document sanitized cleanly: cache the sanitized trees for later
 		// files with identical content (top-level copies, children shared).
-		s.storeSharedParse(shareKey, &documents, sharedDocs)
+		s.storeSharedParse(shareKey, &documents, sharedDocs, expansions)
 	}
 	s.Tracker.TrackFileParse(filename)
 
@@ -159,6 +171,7 @@ func (s *Service) sinkDocument(
 	maxResolverDepth int,
 	content []byte,
 	fileCommands model.CommentsCommands,
+	expansions []model.ResourceExpansion,
 ) model.Document {
 	contextLogger := logger.FromContext(ctx)
 	document := documents.Docs[docIdx]
@@ -191,6 +204,7 @@ func (s *Service) sinkDocument(
 		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
 	}
 	file.ExpansionLayer = documents.ExpansionLayer(docIdx)
+	file.Expansions = expansions
 	file.SetLineInfoLoader(newLineInfoLoader(
 		s.Parser, filename, docIdx, len(documents.Docs) > 1, openAPIResolveReferences, isMinified, maxResolverDepth))
 	// Lazy lines, as in sinkContent.
@@ -228,6 +242,7 @@ func (s *Service) sinkSharedParse(
 			Platform:     s.classifyPlatform(ctx, shared.kind, filename, content),
 		}
 		file.ExpansionLayer = iacparser.ExpansionLayer(shared.kind, docIdx)
+		file.Expansions = shared.expansions
 		file.SetLineInfoLoader(newLineInfoLoader(
 			s.Parser, filename, docIdx, len(shared.docs) > 1, openAPIResolveReferences, isMinified, maxResolverDepth))
 		file.SetLazyLines()

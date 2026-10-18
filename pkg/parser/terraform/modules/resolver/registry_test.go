@@ -843,3 +843,35 @@ func TestRegistryCacheDoesNotWriteDeadHostFile(t *testing.T) {
 		t.Fatalf("dead-host file should not exist, stat: %v", err)
 	}
 }
+
+// After terraform init, modules.json records host-qualified sources while
+// configurations usually declare the short form; an offline lookup must still
+// hit. Subdir and version pins are covered too.
+func TestDotTerraformResolverCanonicalizesRegistrySources(t *testing.T) {
+	records := []dotTerraformModuleRecord{
+		{Key: "m.vpc", Source: "registry.terraform.io/terraform-aws-modules/vpc/aws", Version: "5.0.0", Dir: "vpc"},
+		{Key: "m.sub", Source: "registry.terraform.io/terraform-aws-modules/vpc/aws//modules/subnet", Version: "5.0.0", Dir: "subnet"},
+	}
+	root := writeModulesJSONRecords(t, records)
+	r := &DotTerraformResolver{RootDirs: []string{root}}
+
+	for _, tc := range []struct{ declared, version, wantDir string }{
+		{declared: "terraform-aws-modules/vpc/aws", version: "5.0.0", wantDir: "vpc"},
+		{declared: "terraform-aws-modules/vpc/aws", version: "", wantDir: "vpc"},
+		{declared: "registry.terraform.io/terraform-aws-modules/vpc/aws", version: "", wantDir: "vpc"},
+		{declared: "terraform-aws-modules/vpc/aws//modules/subnet", version: "5.0.0", wantDir: "subnet"},
+		{declared: "registry.terraform.io/terraform-aws-modules/vpc/aws//modules/subnet", version: "", wantDir: "subnet"},
+	} {
+		res, err := r.Resolve(context.Background(), &tfmodules.ParsedModule{
+			Source:   tc.declared,
+			Version:  tc.version,
+			FileName: filepath.Join(root, "main.tf"),
+		})
+		if err != nil {
+			t.Fatalf("Resolve(%q, %q): %v", tc.declared, tc.version, err)
+		}
+		if res.LocalPath != filepath.Join(root, tc.wantDir) {
+			t.Fatalf("Resolve(%q) LocalPath = %q, want %q", tc.declared, res.LocalPath, filepath.Join(root, tc.wantDir))
+		}
+	}
+}

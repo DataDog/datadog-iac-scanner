@@ -8,10 +8,12 @@ package converter
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -56,18 +58,27 @@ func (c *converter) convertTopLevelInstances(
 		return false, nil
 	}
 	if len(plan.Items) == 0 {
-		// No instance: the block declares nothing.
+		// No instance: the block declares nothing and has no address, matching
+		// a plan with no resource_changes entry for it.
 		ddLines["_dd_"+block.Type] = model.LineObject{Line: block.TypeRange.Start.Line}
+		c.expansions = append(c.expansions, c.expansionFor(block, plan, append([]string{block.Type}, block.Labels...), nil))
 		return true, nil
 	}
 	if !instances.ReadsInstance(block.Body) {
+		// The block does not read its instance context, so every planned
+		// instance converts identically: the file keeps the block as written
+		// and findings on it fan out to every planned address.
+		c.expansions = append(c.expansions, c.expansionFor(
+			block, plan, append([]string{block.Type}, block.Labels...), nil))
 		return false, nil
 	}
-	values, err := c.convertInstances(ctx, block, plan)
+	values, positions, err := c.convertInstances(ctx, block, plan)
 	if err != nil || values == nil {
 		return false, err
 	}
 	ddLines["_dd_"+block.Type] = model.LineObject{Line: block.TypeRange.Start.Line}
+	c.expansions = append(c.expansions, c.expansionFor(
+		block, plan, append([]string{block.Type}, block.Labels...), positions))
 	path := append([]string{block.Type}, block.Labels...)
 	if err := insertBlock(ctx, out, path, values[0]); err != nil {
 		return true, err
@@ -78,55 +89,144 @@ func (c *converter) convertTopLevelInstances(
 	return true, nil
 }
 
+// expansionFor builds the expansion record of one block: every instance
+// address its plan produces, and which addresses each distinct converted
+// instance covers. A nil positions list means every planned instance converts
+// identically, so the single conversion covers them all. Addresses beyond the
+// expansion cap are unknown (their keys were never evaluated) and are left
+// out; the block is also scanned as written, and findings on that conversion
+// carry no address.
+func (c *converter) expansionFor(
+	block *hclsyntax.Block, plan instances.Plan, path []string, positions [][]int,
+) model.ResourceExpansion {
+	mode := address.Mode(block.Type)
+	typ, name := "", ""
+	switch block.Type {
+	case blockTypeModule:
+		name = block.Labels[0]
+		mode = ""
+		// A module call address has no resource mode: module.<name>[key].
+		typ = blockTypeModule
+	default:
+		typ, name = block.Labels[0], block.Labels[1]
+	}
+
+	prefix := ""
+	if block.Type == blockTypeModule {
+		prefix = "module." + name
+	} else {
+		prefix = typ + "." + name
+		if mode == address.ModeData {
+			prefix = "data." + prefix
+		}
+	}
+
+	addresses := make([]string, 0, len(plan.Items))
+	known := make([]int, 0, len(plan.Items))
+	for i, item := range plan.Items {
+		key := ""
+		if plan.Kind == instances.KindCount {
+			key = "[" + strconv.Itoa(i) + "]"
+		} else if formatted, ok := address.FormatKey(item.Key); ok {
+			key = formatted
+		} else {
+			// An unformattable key cannot take part in an address; the
+			// instance still converts, but is not reported per address.
+			continue
+		}
+		addresses = append(addresses, prefix+key)
+		known = append(known, i)
+	}
+
+	if positions == nil {
+		// Every planned instance converts identically.
+		positions = make([][]int, 1)
+		positions[0] = known
+	}
+	// Renumber positions from item indexes to indexes into addresses.
+	renumber := make([]int, len(plan.Items))
+	for i := range renumber {
+		renumber[i] = -1
+	}
+	for out, in := range known {
+		renumber[in] = out
+	}
+	mapped := make([][]int, len(positions))
+	for vi, idx := range positions {
+		mapped[vi] = make([]int, 0, len(idx))
+		for _, i := range idx {
+			if i >= 0 && renumber[i] >= 0 {
+				mapped[vi] = append(mapped[vi], renumber[i])
+			}
+		}
+	}
+	return model.ResourceExpansion{
+		Path:      strings.Join(path, "."),
+		Type:      typ,
+		Name:      name,
+		Data:      mode == address.ModeData,
+		Truncated: plan.Truncated(),
+		Addresses: addresses,
+		Positions: mapped,
+	}
+}
+
 // convertInstances converts the block once per instance of plan and returns
-// the distinct results: instances that read the same under every position add
-// nothing the first does not. A block asking for more instances than are
-// expanded is also converted as written, with count and each unresolved. It
-// returns nil when the block does not fit the file's instance budget.
+// the distinct results with the planned instances that produced each: instances
+// that read the same under every position add nothing the first does not. A
+// block asking for more instances than are expanded is also converted as
+// written, with count and each unresolved. It returns nil when the block does
+// not fit the file's instance budget.
 func (c *converter) convertInstances(
 	ctx context.Context, block *hclsyntax.Block, plan instances.Plan,
-) ([]model.Document, error) {
+) ([]model.Document, [][]int, error) {
 	extra := len(plan.Items) - 1
 	if plan.Truncated() {
 		extra++
 	}
 	if extra > c.instancesLeft {
 		c.noteInstanceOverflow(ctx, block, plan, instances.MaxPerBlock)
-		return nil, nil
+		return nil, nil, nil
 	}
 	if plan.Truncated() {
 		c.noteInstanceOverflow(ctx, block, plan, instances.MaxPerBlock)
 	}
 	var values []model.Document
-	add := func(value model.Document) {
-		for _, seen := range values {
+	var positions [][]int
+	add := func(value model.Document, itemIndex int) {
+		for vi, seen := range values {
 			if SameInstance(seen, value) {
+				positions[vi] = append(positions[vi], itemIndex)
 				return
 			}
 		}
 		values = append(values, value)
+		positions = append(positions, []int{itemIndex})
 	}
-	for _, item := range plan.Items {
+	for itemIndex, item := range plan.Items {
 		name, iteration := plan.Variable(item)
 		unbind := c.bind(name, iteration)
 		c.dynamicLeft = dynamicblock.MaxGeneratedPerResource
 		value, err := c.convertBody(ctx, block.Body, block.TypeRange.Start.Line)
 		unbind()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		add(value)
+		add(value, itemIndex)
 	}
 	if plan.Truncated() {
 		c.dynamicLeft = dynamicblock.MaxGeneratedPerResource
+		// The as-written conversion stands for the block itself, not for any
+		// one planned instance; its item index is unknown, so it maps to no
+		// address (see the expansion info built by the caller).
 		value, err := c.convertBody(ctx, block.Body, block.TypeRange.Start.Line)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		add(value)
+		add(value, -1)
 	}
 	c.instancesLeft -= len(values) - 1
-	return values, nil
+	return values, positions, nil
 }
 
 // bind sets the variable name for the evaluation that follows and returns the

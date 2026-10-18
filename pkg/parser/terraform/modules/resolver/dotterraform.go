@@ -90,6 +90,17 @@ func (r *DotTerraformResolver) load() {
 			if _, exists := r.index[dotTerraformKey(root, rec.Source, "")]; !exists {
 				r.index[dotTerraformKey(root, rec.Source, "")] = resolvedPath
 			}
+			// terraform init writes host-qualified sources
+			// (registry.terraform.io/namespace/name/provider//subdir) while
+			// configurations usually declare the short form. Index the
+			// canonical form of the record too, so an offline lookup of the
+			// declared source hits without reaching the network.
+			if canonical, ok := tfmodules.CanonicalModuleSource(rec.Source); ok {
+				r.index[dotTerraformKey(root, canonical, rec.Version)] = resolvedPath
+				if _, exists := r.index[dotTerraformKey(root, canonical, "")]; !exists {
+					r.index[dotTerraformKey(root, canonical, "")] = resolvedPath
+				}
+			}
 		}
 	}
 }
@@ -125,6 +136,15 @@ func (r *DotTerraformResolver) lookup(mod *tfmodules.ParsedModule) (installedMod
 		for _, key := range dotTerraformResolveKeys(root, mod.Source, mod.Version, mod.Name) {
 			if path, ok := r.index[key]; ok {
 				return path, nil
+			}
+		}
+		// The configuration may declare a source form modules.json spells
+		// differently (host-qualified vs short); compare canonical forms.
+		if canonical, ok := tfmodules.CanonicalModuleSource(mod.Source); ok {
+			for _, key := range dotTerraformResolveKeys(root, canonical, mod.Version, mod.Name) {
+				if path, ok := r.index[key]; ok {
+					return path, nil
+				}
 			}
 		}
 	}

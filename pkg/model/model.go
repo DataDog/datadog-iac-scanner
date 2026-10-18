@@ -205,6 +205,24 @@ type FileMetadata struct {
 	// Archive is the chart archive the file was rendered from, if any (see
 	// ResolvedHelm.Archive).
 	Archive string
+	// RootModuleDir is the repo-relative directory of the Terraform root
+	// module the file belongs to, for Terraform finding identity. Empty for
+	// other platforms and when it could not be determined.
+	RootModuleDir string
+	// ModuleAddress is the full Terraform module call address a synthetic
+	// instantiated-module document belongs to
+	// (module.a["x"].module.b[0]). Synthetic module documents only.
+	ModuleAddress string
+	// TfplanResourceAddresses holds, per resource type and document key, the
+	// address the plan itself puts on the resource. Captured from a parsed
+	// terraform plan before its document is released. tfplan-parsed files
+	// only.
+	TfplanResourceAddresses map[string]map[string]string
+	// Expansions records the Terraform addresses count/for_each expansion
+	// plans produce for this file's resource, data and module blocks, so a
+	// finding can be reported once per instance address. Empty for other
+	// platforms and files without resolved expansions.
+	Expansions []ResourceExpansion
 	// ExpansionLayer is the position of this document among the documents of a
 	// Terraform file whose resources or data expand into instances (see
 	// converter.ConvertAll). The first holds every block of the file and is
@@ -457,6 +475,68 @@ type QueryMetadata struct {
 
 // Vulnerability is a representation of a detected vulnerability in scanned files
 // after running a query
+// ResourceExpansion holds the instance addresses one block's count/for_each
+// expansion plan produces. Positions holds, per distinct converted instance,
+// the indexes into Addresses of the planned instances that convert to it: a
+// block whose instances all convert identically has one position covering
+// every address, so a finding on it is reported once per address.
+type ResourceExpansion struct {
+	// Path is the document path of the block (resource.<type>.<name>,
+	// data.<type>.<name> or module.<name>): how a finding's search key names
+	// it.
+	Path string
+	// Type and Name identify the block: its resource or data type and its
+	// name.
+	Type string
+	Name string
+	// Data marks a data block: its address is data.<type>.<name>[key].
+	Data bool
+	// Addresses lists every instance address the plan produces, in plan
+	// order.
+	Addresses []string
+	// Positions maps each distinct converted instance to its indexes into
+	// Addresses.
+	Positions [][]int
+	// Truncated marks an expansion cut short by the per-block instance cap:
+	// the block is also scanned as written, and that conversion stands for
+	// the block itself, not for any one planned instance.
+	Truncated bool
+}
+
+// AddressesFor returns the addresses the position's value covers: the
+// addresses of every planned instance that converts to it. A position out of
+// range yields the first position, the value later layers repeat.
+func (r *ResourceExpansion) AddressesFor(position int) []string {
+	if len(r.Positions) == 0 {
+		return nil
+	}
+	if position < 0 || position >= len(r.Positions) {
+		position = 0
+	}
+	idx := r.Positions[position]
+	out := make([]string, 0, len(idx))
+	for _, i := range idx {
+		if i >= 0 && i < len(r.Addresses) {
+			out = append(out, r.Addresses[i])
+		}
+	}
+	return out
+}
+
+// PositionOfAddress returns the position (index into Positions) of the
+// distinct converted instance that covers the address at index i, or -1 when
+// no position does.
+func (r *ResourceExpansion) PositionOfAddress(i int) int {
+	for position, idx := range r.Positions {
+		for _, ai := range idx {
+			if ai == i {
+				return position
+			}
+		}
+	}
+	return -1
+}
+
 type Vulnerability struct {
 	ID                    int              `json:"id"`
 	ScanID                string           `db:"scan_id" json:"-"`
@@ -498,6 +578,13 @@ type Vulnerability struct {
 	IsSuppressed             bool   `json:"isSuppressed,omitempty"`
 	SuppressionKind          string `json:"suppressionKind,omitempty"`
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
+	// ResourceAddress is the Terraform address of the resource a finding is
+	// reported on, matching the string Terraform puts in a plan
+	// (resource_changes[].address). Terraform findings only.
+	ResourceAddress string `json:"resourceAddress,omitempty"`
+	// RootModuleDir is the repo-relative directory of the Terraform root
+	// module the finding's file belongs to; part of the Terraform fingerprint.
+	RootModuleDir string `json:"rootModuleDir,omitempty"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
 	// ModuleAttribution: provenance for instantiated module findings, serialized

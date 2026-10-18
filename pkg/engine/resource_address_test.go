@@ -79,26 +79,36 @@ func TestResourceAddressesFor_InstanceKeyWithoutAddress(t *testing.T) {
 }
 
 // A truncated expansion keeps the block as written alongside its capped
-// instances: the as-written conversion stands for the block itself, so a
-// finding on the plain block name keeps the unindexed address instead of
-// being misattributed to instance [0].
+// instances (the as-written conversion is the last layer): the as-written
+// layer stands for the block itself, so a finding on it keeps the unindexed
+// address instead of being misattributed to an instance, while the capped
+// instances keep their own addresses.
 func TestResourceAddressesFor_TruncatedExpansionAsWritten(t *testing.T) {
-	file := &model.FileMetadata{
-		Platform: "Terraform",
-		Expansions: []model.ResourceExpansion{{
-			Path: "resource.aws_s3_bucket.counted",
-			Type: "aws_s3_bucket", Name: "counted",
-			Truncated: true,
-			Addresses: []string{"aws_s3_bucket.counted[0]", "aws_s3_bucket.counted[1]"},
-			Positions: [][]int{{0}, {1}, {}},
-		}},
+	expansions := []model.ResourceExpansion{{
+		Path: "resource.aws_s3_bucket.counted",
+		Type: "aws_s3_bucket", Name: "counted",
+		Truncated: true,
+		Addresses: []string{"aws_s3_bucket.counted[0]", "aws_s3_bucket.counted[1]"},
+		Positions: [][]int{{0}, {1}, {}},
+	}}
+	for _, tc := range [...]struct {
+		layer int
+		want  []string
+	}{
+		{layer: 0, want: []string{"aws_s3_bucket.counted[0]"}},
+		{layer: 1, want: []string{"aws_s3_bucket.counted[1]"}},
+		{layer: 2, want: []string{"aws_s3_bucket.counted"}},
+		// A layer beyond the block's positions repeats the first document's
+		// value (see converter.BuildLayers), so it covers instance [0].
+		{layer: 3, want: []string{"aws_s3_bucket.counted[0]"}},
+	} {
+		file := &model.FileMetadata{Platform: "Terraform", ExpansionLayer: tc.layer, Expansions: expansions}
+		require.Equal(t, tc.want,
+			resourceAddressesFor(file, "aws_s3_bucket.counted.acl"), "layer %d", tc.layer)
 	}
 
-	// The as-written finding names the block without an instance suffix.
-	require.Equal(t, []string{"aws_s3_bucket.counted"},
-		resourceAddressesFor(file, "aws_s3_bucket.counted.acl"))
-
 	// The capped instances keep their own addresses.
+	file := &model.FileMetadata{Platform: "Terraform", Expansions: expansions}
 	require.Equal(t, []string{"aws_s3_bucket.counted[1]"},
 		resourceAddressesFor(file, "aws_s3_bucket.counted[1].acl"))
 }

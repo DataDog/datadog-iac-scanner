@@ -28,6 +28,7 @@ const (
 	terraformVarsPathDirective = "kics_terraform_vars"
 	blockTypeVariable          = "variable"
 	blockTypeLocals            = "locals"
+	blockTypeModule            = "module"
 	// blockTypeLocalReference is the root name expressions read locals through.
 	blockTypeLocalReference = "local"
 )

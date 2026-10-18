@@ -69,7 +69,43 @@ func ConvertAll(ctx context.Context, file *hcl.File, inputVariables VariableMap,
 	if err != nil {
 		return nil, err
 	}
-	return BuildLayers(body, c.expanded), nil
+	layers := BuildLayers(body, c.expanded)
+	if len(c.expansions) > 0 {
+		// Carried on the first document for the engine to report findings per
+		// instance address; stripped into the file metadata before rules run.
+		layers[0]["_dd_expansions"] = EncodeExpansions(c.expansions)
+	}
+	return layers, nil
+}
+
+// EncodeExpansions renders expansion records as plain maps so they can travel
+// inside a document without carrying Go types.
+func EncodeExpansions(expansions []model.ResourceExpansion) []interface{} {
+	out := make([]interface{}, 0, len(expansions))
+	for _, exp := range expansions {
+		addresses := make([]interface{}, 0, len(exp.Addresses))
+		for _, a := range exp.Addresses {
+			addresses = append(addresses, a)
+		}
+		positions := make([]interface{}, 0, len(exp.Positions))
+		for _, idx := range exp.Positions {
+			indexes := make([]interface{}, 0, len(idx))
+			for _, i := range idx {
+				indexes = append(indexes, i)
+			}
+			positions = append(positions, indexes)
+		}
+		out = append(out, map[string]interface{}{
+			"path":      exp.Path,
+			"type":      exp.Type,
+			"name":      exp.Name,
+			"data":      exp.Data,
+			"truncated": exp.Truncated,
+			"addresses": addresses,
+			"positions": positions,
+		})
+	}
+	return out
 }
 
 // DefaultConverted an hcl File to a toJson serializable object
@@ -89,6 +125,9 @@ type converter struct {
 	dynamicWarned bool
 	// expanded holds the blocks whose instances differ, for BuildLayers.
 	expanded []Expanded
+	// expansions records the instance addresses each expanded block's plan
+	// produces, for the engine to report findings per instance address.
+	expansions []model.ResourceExpansion
 	// instancesLeft is how many instances beyond the first the file may still
 	// expand its resources and data into.
 	instancesLeft int

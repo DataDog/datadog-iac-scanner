@@ -72,3 +72,21 @@ func implicitRegistryModuleSource(source string) bool {
 	}
 	return len(strings.Split(raw, "/")) == 3
 }
+
+// CanonicalModuleSource renders a registry module source in its fully
+// qualified form (host/namespace/name/provider//subdir), stripping any query.
+// Sources that are not registry module sources (local paths, git, ...) return
+// false. Two spellings of the same registry module canonicalize to the same
+// string, so a configuration's short form matches the host-qualified source
+// terraform init records in modules.json.
+func CanonicalModuleSource(source string) (string, bool) {
+	trimmed := strings.TrimSpace(source)
+	if idx := strings.Index(trimmed, "?"); idx >= 0 {
+		trimmed = trimmed[:idx]
+	}
+	addr, err := ParseRegistryModuleSource(trimmed)
+	if err != nil {
+		return "", false
+	}
+	return addr.String(), true
+}

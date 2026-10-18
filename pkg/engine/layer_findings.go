@@ -16,13 +16,18 @@ type layerFindingKey struct {
 	resourceType, resourceName          string
 	remediation, value                  string
 	line                                int
+	// resourceAddress keeps findings of different instances of one expanded
+	// block apart once they carry their Terraform addresses (a finding is
+	// reported once per instance address); unaddressed findings repeat as
+	// before.
+	resourceAddress string
 }
 
 func newLayerFindingKey(v *model.Vulnerability, file string) layerFindingKey {
 	key := layerFindingKey{
 		file: file, query: v.QueryID, searchKey: v.SearchKey, searchValue: v.SearchValue,
 		resourceType: v.ResourceType, resourceName: v.ResourceName,
-		remediation: v.Remediation, line: v.Line,
+		remediation: v.Remediation, line: v.Line, resourceAddress: v.ResourceAddress,
 	}
 	if v.Value != nil {
 		key.value = *v.Value

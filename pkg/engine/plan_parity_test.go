@@ -119,6 +119,11 @@ func parsePlanParityFile(t *testing.T, path string) model.FileMetadatas {
 	require.NoError(t, err)
 	_, docs, _, _, err := tfparser.NewDefault().Parse(context.Background(), content, path, false, 15)
 	require.NoError(t, err)
+	var expansions []model.ResourceExpansion
+	if len(docs) > 0 {
+		expansions = model.ParseExpansions(docs[0]["_dd_expansions"])
+		delete(docs[0], "_dd_expansions")
+	}
 	var out model.FileMetadatas
 	for i, doc := range docs {
 		fm := &model.FileMetadata{
@@ -130,9 +135,8 @@ func parsePlanParityFile(t *testing.T, path string) model.FileMetadatas {
 			FilePath:       path,
 			Kind:           model.KindTerraform,
 			Platform:       "Terraform",
-			Expansions:     model.ParseExpansions(doc["_dd_expansions"]),
+			Expansions:     expansions,
 		}
-		delete(doc, "_dd_expansions")
 		out = append(out, fm)
 	}
 	return out
