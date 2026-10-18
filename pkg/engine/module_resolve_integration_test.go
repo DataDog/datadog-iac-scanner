@@ -67,7 +67,7 @@ func parseTerraform(t *testing.T, path string) model.FileMetadatas {
 
 	var out model.FileMetadatas
 	for i, doc := range docs {
-		out = append(out, &model.FileMetadata{
+		fm := &model.FileMetadata{
 			ID:                uuid.NewString(),
 			ScanID:            "test",
 			ExpansionLayer:    i,
@@ -79,7 +79,11 @@ func parseTerraform(t *testing.T, path string) model.FileMetadatas {
 			LinesIgnore:       ignore,
 			ResolvedFiles:     resolved,
 			LinesOriginalData: scanUtils.SplitLines(string(content)),
-		})
+			Platform:          "Terraform",
+			Expansions:        model.ParseExpansions(doc["_dd_expansions"]),
+		}
+		delete(doc, "_dd_expansions")
+		out = append(out, fm)
 	}
 	return out
 }
@@ -301,9 +305,17 @@ resource "aws_s3_bucket" "this" {
 	files = append(files, parseTerraform(t, bPath)...)
 	files = append(files, parseTerraform(t, modPath)...)
 
+	// aclRuleWithPlatform is aclRule with the platform field production rules
+	// emit, so the finding carries the Terraform identity the fingerprint and
+	// the caller-clone expansion key off.
+	aclRuleWithPlatform := strings.Replace(aclRule,
+		`"resourceType": "aws_s3_bucket",`,
+		`"resourceType": "aws_s3_bucket",
+		"platform": "terraform",`, 1)
+
 	queries := []model.QueryMetadata{{
 		Query:       "acl_rule",
-		Content:     aclRule,
+		Content:     aclRuleWithPlatform,
 		InputData:   "{}",
 		Platform:    "terraform",
 		Metadata:    map[string]interface{}{"id": "acl-rule"},
@@ -325,12 +337,29 @@ resource "aws_s3_bucket" "this" {
 	// each attributed to the module body but with a distinct call chain.
 	require.Len(t, vulns, 2, "expected one finding per module caller")
 	chains := map[string]bool{}
+	rootDirs := map[string]string{}
 	for _, v := range vulns {
 		require.Equal(t, modPath, v.FileName, "findings should be reported at the module resource definition")
 		require.NotEmpty(t, v.ModuleCallChain, "instantiated finding must carry a module call chain")
 		chains[v.ModuleCallChain] = true
+		rootDirs[v.ModuleCallChain] = v.RootModuleDir
 	}
 	require.Len(t, chains, 2, "the two callers must produce distinct module call chains")
+	// The fingerprint's root module dir follows each call chain's root, so two
+	// roots calling the same module fingerprint apart.
+	for chain, dir := range rootDirs {
+		caller := strings.SplitN(chain, "|", 2)[0]
+		require.Equal(t, filepath.Dir(caller), dir,
+			"finding root module dir must follow the call chain's root module (%s)", chain)
+	}
+	// The Terraform fingerprint folds the root module dir and the resource
+	// address (not the call chain), so those pairs must be distinct across the
+	// two roots.
+	pairs := map[string]bool{}
+	for i := range vulns {
+		pairs[vulns[i].RootModuleDir+"\x00"+vulns[i].ResourceAddress] = true
+	}
+	require.Len(t, pairs, 2, "two roots calling the same module must fingerprint apart")
 }
 
 // aggregateCountRule fires when two or more aws_s3_bucket resources exist in the scan.

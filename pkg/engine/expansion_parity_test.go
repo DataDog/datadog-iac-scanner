@@ -97,19 +97,33 @@ func TestInspect_ExpansionFindingsMatchBetweenFlatAndModule(t *testing.T) {
 	files = append(files, parseTerraform(t, modPath)...)
 	module := expansionFindings(t, root, files)
 
-	// plain and the instances that are misconfigured; disabled and empty create nothing
+	// plain and the instances that are misconfigured; disabled and empty create nothing.
+	// With instance-address reporting, a finding is identified by its address:
+	// the plain file reports one address per instance, and the module call
+	// through its full module-prefixed address.
 	counts := func(vulns []model.Vulnerability) map[string]int {
 		out := map[string]int{}
 		for i := range vulns {
-			out[vulns[i].ResourceName]++
+			out[vulns[i].ResourceAddress]++
 		}
 		return out
 	}
-	want := map[string]int{"plain": 1, "counted": 1, "keyed": 1, "listed": 1, "constant": 1}
+	want := map[string]int{
+		"aws_s3_bucket.plain":        1,
+		"aws_s3_bucket.counted[2]":   1,
+		`aws_s3_bucket.keyed["one"]`: 1,
+		`aws_s3_bucket.listed["b"]`:  1,
+		"aws_s3_bucket.constant[0]":  1,
+		"aws_s3_bucket.constant[1]":  1,
+	}
 	require.Equal(t, want, counts(flat), "flat")
 
-	// A module call reports each instance, so two instances that do not
-	// differ report twice at the same place; a plain file reports it once.
-	want["constant"] = 2
-	require.Equal(t, want, counts(module), "module")
+	// A module call reports each instance under the call's module path. The
+	// inner file's own instantiated copies are suppressed, so the module run
+	// reports exactly the module-prefixed addresses.
+	moduleWant := map[string]int{}
+	for addr, n := range want {
+		moduleWant["module.buckets."+addr] = n
+	}
+	require.Equal(t, moduleWant, counts(module), "module")
 }

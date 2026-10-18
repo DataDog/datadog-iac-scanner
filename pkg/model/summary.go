@@ -49,6 +49,12 @@ type VulnerableFile struct {
 	IsSuppressed             bool   `json:"is_suppressed,omitempty"`
 	SuppressionKind          string `json:"suppression_kind,omitempty"`
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
+	// ResourceAddress: Terraform address of the resource (plan parity);
+	// Terraform findings only.
+	ResourceAddress string `json:"resource_address,omitempty"`
+	// RootModuleDir: repo-relative root module directory; part of the
+	// Terraform fingerprint.
+	RootModuleDir string `json:"root_module_dir,omitempty"`
 	// ModuleCallChain: local-module call path; empty for root; included in fingerprint.
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
@@ -341,6 +347,8 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			utils.ChooseQueryID(item.QueryID, item.LegacyQueryID),
 			identityLine,
 			item.ModuleCallChain,
+			item.ResourceAddress,
+			item.RootModuleDir,
 		)
 
 		qItem := q[item.QueryID]
@@ -368,6 +376,8 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
+			ResourceAddress:          item.ResourceAddress,
+			RootModuleDir:            item.RootModuleDir,
 		})
 
 		filePaths[resolvedPath] = item.FileName

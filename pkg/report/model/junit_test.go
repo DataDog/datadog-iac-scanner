@@ -59,9 +59,9 @@ var junitTests = []junitTest{
 			},
 		},
 		file: model.VulnerableFile{
-			FileName:       "test.xml",
-			Line:           1,
-			Fingerprint:    "similarity",
+			FileName:    "test.xml",
+			Line:        1,
+			Fingerprint: "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},
@@ -111,9 +111,9 @@ var junitTests = []junitTest{
 			},
 		},
 		file: model.VulnerableFile{
-			FileName:       "test.xml",
-			Line:           1,
-			Fingerprint:    "similarity",
+			FileName:    "test.xml",
+			Line:        1,
+			Fingerprint: "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},
@@ -162,9 +162,9 @@ var junitTests = []junitTest{
 			},
 		},
 		file: model.VulnerableFile{
-			FileName:       "test.xml",
-			Line:           1,
-			Fingerprint:    "similarity",
+			FileName:    "test.xml",
+			Line:        1,
+			Fingerprint: "similarity",
 		},
 		want: &junitTestSuites{
 			XMLName:  xml.Name{Space: "", Local: ""},

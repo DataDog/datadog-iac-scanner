@@ -69,6 +69,8 @@ func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 			utils.ChooseQueryID(v.QueryID, v.LegacyQueryID),
 			line,
 			v.ModuleCallChain,
+			v.ResourceAddress,
+			v.RootModuleDir,
 		)
 		vulnDictionary[key] = v
 	}

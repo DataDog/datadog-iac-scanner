@@ -845,10 +845,43 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			if strings.EqualFold(vCopy.Platform, terraformPlatformName) {
+				// The clone is reported for the extra caller, so its
+				// fingerprint's root module dir follows that caller's root
+				// module, not the primary's: the Terraform fingerprint folds
+				// the root module dir and the resource address, not the call
+				// chain, and two roots calling the same module must stay
+				// apart.
+				if root := rootModuleDirOfCallChain(ex.callChain); root != "" {
+					vCopy.RootModuleDir = root
+				}
+				if ex.moduleAddress != "" {
+					if path := moduleDocResourcePath(vCopy.SearchKey); path != "" {
+						vCopy.ResourceAddress = ex.moduleAddress + "." + path
+					}
+				}
+			}
 			expanded = append(expanded, vCopy)
 		}
 	}
 	return expanded
+}
+
+// rootModuleDirOfCallChain returns the root module dir a synthetic call
+// chain was evaluated from: the directory of the chain key's repo-relative
+// root file, the part before the module address. Empty when the chain carries
+// no root file.
+func rootModuleDirOfCallChain(callChain string) string {
+	rootFile, _, ok := strings.Cut(callChain, "|")
+	if !ok {
+		return ""
+	}
+	// The chain key's root file is slash-separated (moduleCallChainKey).
+	if i := strings.LastIndexByte(rootFile, '/'); i >= 0 {
+		return rootFile[:i]
+	}
+	// The root file sits at the repository root.
+	return "."
 }
 
 // nolint:gocritic
@@ -866,7 +899,7 @@ func processResult(ctx context.Context, result *QueryResult,
 
 	// nolint:gocritic
 	for _, vulnerability := range result.vulnerabilities {
-		if vulnerability.ResourceType == "module" {
+		if vulnerability.ResourceType == moduleCallRoot {
 			val, ok := (*moduleVulns)[vulnerability.QueryName]
 			if ok {
 				(*moduleVulns)[vulnerability.QueryName] = val + 1
@@ -1454,7 +1487,7 @@ decodeLoop:
 				failedDetectLine = aux
 			}
 			if vulnerability != nil && !aux {
-				vulnerabilities = append(vulnerabilities, *vulnerability)
+				vulnerabilities = appendAddressedFindings(vulnerabilities, vulnerability, qCtx)
 			}
 		}
 	}
@@ -1818,6 +1851,7 @@ func releaseDocumentTree(
 	if i < len(combinedDocs) {
 		if id, ok := combinedDocs[i]["id"].(string); ok {
 			if fm := filesMap[id]; fm != nil {
+				captureTfplanAddresses(fm)
 				fm.Document = nil
 			}
 		}

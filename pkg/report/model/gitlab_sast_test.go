@@ -64,9 +64,9 @@ var tests = []gitlabSASTTest{
 			CWE: "",
 		},
 		file: model.VulnerableFile{
-			FileName:       "test.json",
-			Line:           1,
-			Fingerprint:    "similarity",
+			FileName:    "test.json",
+			Line:        1,
+			Fingerprint: "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
@@ -111,9 +111,9 @@ var tests = []gitlabSASTTest{
 			CWE: "22",
 		},
 		file: model.VulnerableFile{
-			FileName:       "test.json",
-			Line:           1,
-			Fingerprint:    "similarity",
+			FileName:    "test.json",
+			Line:        1,
+			Fingerprint: "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{
@@ -157,9 +157,9 @@ var tests = []gitlabSASTTest{
 			},
 		},
 		file: model.VulnerableFile{
-			FileName:       "test.json",
-			Line:           1,
-			Fingerprint:    "similarity",
+			FileName:    "test.json",
+			Line:        1,
+			Fingerprint: "similarity",
 		},
 		want: gitlabSASTReport{
 			Vulnerabilities: []gitlabSASTVulnerability{

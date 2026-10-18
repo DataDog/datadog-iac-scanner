@@ -58,7 +58,7 @@ func TestCreateSummary_ReportedFindingsKeepTheirIdentity(t *testing.T) {
 	require.Equal(t, filepath.FromSlash("web/Chart.yaml"), files[1].FileName)
 	require.NotEqual(t, files[0].Fingerprint, files[1].Fingerprint)
 	require.Equal(t, GetDatadogFingerprintHash(SCIInfo{}, filepath.FromSlash("web/charts/pkg/templates/deploy.yaml"),
-		"Kubernetes", "Deployment", "dd-helm", "q", "  privileged: true", ""), files[0].Fingerprint,
+		"Kubernetes", "Deployment", "dd-helm", "q", "  privileged: true", "", "", ""), files[0].Fingerprint,
 		"the fingerprint stays the detected file's and line's, so it is the one main computes")
 	require.Equal(t, "- name: pkg", files[0].LineWithVulnerability)
 }
@@ -141,7 +141,7 @@ func TestCreateSummary(t *testing.T) {
 					Files: []VulnerableFile{
 						{
 							FileName:    "fileName",
-							Fingerprint: GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", ""),
+							Fingerprint: GetDatadogFingerprintHash(SCIInfo{}, "fileName", "", "", "", "QueryID", "", "", "", ""),
 							Line:        1,
 							SearchKey:   "searchKey",
 							Value:       nil,

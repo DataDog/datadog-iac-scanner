@@ -1485,6 +1485,42 @@ func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
 	require.Equal(t, got[0].QueryName, got[1].QueryName)
 }
 
+// A finding cloned onto a deduplicated caller carries that caller's module
+// address, not the primary's: rules spell the resource either type[name] or
+// resource.type.name, and both shapes must resolve.
+func TestExpandModuleFindings_CloneUsesExtraCallerModuleAddress(t *testing.T) {
+	primaryID := "primary\x00stack-a|module.app\x00this"
+	extras := map[string][]extraCallerInfo{
+		primaryID: {
+			{callChain: "stack-b/main.tf|module.app", docID: "extra-b", moduleAddress: `module.app["b"]`},
+			{callChain: "stack-c/main.tf|module.app", docID: "extra-c", moduleAddress: "module.app[0]"},
+		},
+	}
+	vulns := []model.Vulnerability{
+		{FileID: primaryID, Platform: "Terraform", SearchKey: "aws_s3_bucket[bucket].acl"},
+		{FileID: primaryID, Platform: "Terraform", SearchKey: "resource.aws_s3_bucket.bucket.acl"},
+		{FileID: primaryID, Platform: "Other", SearchKey: "aws_s3_bucket[bucket]"},
+	}
+	got := expandModuleFindings(vulns, extras)
+	require.Len(t, got, 9)
+	// Terraform clones take the extra caller's module address.
+	require.Equal(t, `module.app["b"].aws_s3_bucket.bucket`, got[1].ResourceAddress)
+	require.Equal(t, "module.app[0].aws_s3_bucket.bucket", got[2].ResourceAddress)
+	require.Equal(t, `module.app["b"].aws_s3_bucket.bucket`, got[4].ResourceAddress)
+	require.Equal(t, "module.app[0].aws_s3_bucket.bucket", got[5].ResourceAddress)
+	// ...and the extra caller's root module dir, so the fingerprint
+	// (repo|rootModuleDir|resourceAddress|ruleID) stays distinct per root.
+	require.Equal(t, "stack-b", got[1].RootModuleDir)
+	require.Equal(t, "stack-c", got[2].RootModuleDir)
+	// The primary finding's own address is untouched...
+	require.Empty(t, got[0].ResourceAddress)
+	require.Empty(t, got[3].ResourceAddress)
+	// ...and non-Terraform clones get none.
+	require.Empty(t, got[6].ResourceAddress)
+	require.Empty(t, got[7].ResourceAddress)
+	require.Empty(t, got[8].ResourceAddress)
+}
+
 func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
 	ins := &Inspector{}
 	ins.SetExternalModulePaths([]string{"/tmp/remote-module"})

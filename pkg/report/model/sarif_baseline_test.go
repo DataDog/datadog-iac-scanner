@@ -89,10 +89,10 @@ func TestSarifOutputValidation(t *testing.T) {
 			},
 			Files: []model.VulnerableFile{
 				{
-					FileName:       "main.tf",
-					Line:           10,
-					ResourceType:   "aws_s3_bucket",
-					ResourceName:   "my-bucket",
+					FileName:     "main.tf",
+					Line:         10,
+					ResourceType: "aws_s3_bucket",
+					ResourceName: "my-bucket",
 					ResourceLocation: model.ResourceLocation{
 						Start: model.ResourceLine{Line: 10, Col: 1},
 						End:   model.ResourceLine{Line: 15, Col: 5},
@@ -111,10 +111,10 @@ func TestSarifOutputValidation(t *testing.T) {
 			CloudProvider: "",
 			Files: []model.VulnerableFile{
 				{
-					FileName:       "Dockerfile",
-					Line:           5,
-					ResourceType:   "RUN",
-					ResourceName:   "install-packages",
+					FileName:     "Dockerfile",
+					Line:         5,
+					ResourceType: "RUN",
+					ResourceName: "install-packages",
 					ResourceLocation: model.ResourceLocation{
 						Start: model.ResourceLine{Line: 5, Col: 1},
 						End:   model.ResourceLine{Line: 5, Col: 50},

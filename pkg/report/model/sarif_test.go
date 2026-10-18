@@ -30,6 +30,8 @@ func stampFingerprints(issue *model.QueryResult) {
 			utils.ChooseQueryID(issue.QueryID, issue.LegacyQueryID),
 			file.LineWithVulnerability,
 			file.ModuleCallChain,
+			file.ResourceAddress,
+			file.RootModuleDir,
 		)
 	}
 }
@@ -104,10 +106,10 @@ var sarifTests = []sarifTest{
 				},
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "test.tf",
-						Line:           1,
-						ResourceType:   "aws_ami_launch_permission",
-						ResourceName:   "test_resource",
+						FileName:     "test.tf",
+						Line:         1,
+						ResourceType: "aws_ami_launch_permission",
+						ResourceName: "test_resource",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 1, Col: 10},
@@ -187,7 +189,8 @@ var sarifTests = []sarifTest{
 									"1",
 									"",
 									"",
-								),
+									"",
+									""),
 							},
 						},
 					},
@@ -207,10 +210,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "test.json",
-						Line:           1,
-						ResourceType:   "test_resource_type",
-						ResourceName:   "test_resource_name",
+						FileName:     "test.json",
+						Line:         1,
+						ResourceType: "test_resource_type",
+						ResourceName: "test_resource_name",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 1, Col: 2},
@@ -286,7 +289,8 @@ var sarifTests = []sarifTest{
 									"1",
 									"",
 									"",
-								),
+									"",
+									""),
 							},
 						},
 					},
@@ -340,10 +344,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "",
-						Line:           1,
-						ResourceType:   "test_resource_type",
-						ResourceName:   "test_resource_name",
+						FileName:     "",
+						Line:         1,
+						ResourceType: "test_resource_type",
+						ResourceName: "test_resource_name",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 1, Col: 2},
@@ -362,10 +366,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityInfo,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "",
-						Line:           1,
-						ResourceType:   "test_resource_type_2",
-						ResourceName:   "test_resource_name_2",
+						FileName:     "",
+						Line:         1,
+						ResourceType: "test_resource_type_2",
+						ResourceName: "test_resource_name_2",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 1, Col: 2},
@@ -479,7 +483,8 @@ var sarifTests = []sarifTest{
 									"test",
 									"",
 									"",
-								),
+									"",
+									""),
 							},
 						},
 						{
@@ -517,7 +522,8 @@ var sarifTests = []sarifTest{
 									"test info",
 									"",
 									"",
-								),
+									"",
+									""),
 							},
 						},
 					},
@@ -576,10 +582,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "test.json",
-						Line:           1,
-						ResourceType:   "test_resource_type",
-						ResourceName:   "test_resource_name",
+						FileName:     "test.json",
+						Line:         1,
+						ResourceType: "test_resource_type",
+						ResourceName: "test_resource_name",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 5, Col: 2},
@@ -659,7 +665,8 @@ var sarifTests = []sarifTest{
 									"1",
 									"",
 									"",
-								),
+									"",
+									""),
 							},
 						},
 					},
@@ -712,10 +719,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "test.json",
-						Line:           1,
-						ResourceType:   "test_resource_type",
-						ResourceName:   "test_resource_name",
+						FileName:     "test.json",
+						Line:         1,
+						ResourceType: "test_resource_type",
+						ResourceName: "test_resource_name",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 5, Col: 2},
@@ -795,6 +802,8 @@ var sarifTests = []sarifTest{
 									"test_resource_type",
 									"test_resource_name",
 									"1",
+									"",
+									"",
 									"",
 									"",
 								),
@@ -1120,10 +1129,10 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 		},
 		Files: []model.VulnerableFile{
 			{
-				FileName:       "main.tf",
-				Line:           5,
-				ResourceType:   "aws_ami_launch_permission",
-				ResourceName:   "test_permission",
+				FileName:     "main.tf",
+				Line:         5,
+				ResourceType: "aws_ami_launch_permission",
+				ResourceName: "test_permission",
 				ResourceLocation: model.ResourceLocation{
 					Start: model.ResourceLine{Line: 5, Col: 1},
 					End:   model.ResourceLine{Line: 8, Col: 2},

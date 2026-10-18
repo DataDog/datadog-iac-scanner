@@ -53,9 +53,10 @@ func evaluateRootsWith(t *testing.T, workers, budget int, root string, roots []s
 	out := rootEvaluationOutcome{Successful: map[string]bool{}, Unresolved: map[string]bool{}, Called: map[string]bool{}}
 	var docs []model.Document
 	var synthetic []*model.FileMetadata
+	var syntheticChainRoots []string
 	evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated, out.Successful, out.Unresolved, out.Called,
-		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls)
+		&docs, &synthetic, &syntheticChainRoots, &out.ResourceCount, &out.RootEvalOK, moduleCalls)
 
 	encode := func(v any) string {
 		b, err := json.Marshal(v)

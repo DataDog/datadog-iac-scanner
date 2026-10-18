@@ -17,6 +17,10 @@ import (
 // moduleCall is one evaluated call of a module directory.
 type moduleCall struct {
 	callChain string
+	// moduleAddress is the Terraform module call address (module.a[0] /
+	// module.a["prod"]), for stamping per-call resource addresses on cloned
+	// findings whose own address carries no module path.
+	moduleAddress string
 	// attribution names the directory in ModuleCodeLocation.Filename. It is
 	// shared by every file of the directory and read-only.
 	attribution *model.ModuleAttribution
@@ -96,8 +100,9 @@ func (idx *moduleCallIndex) record(
 			continue
 		}
 		idx.calls[dir] = append(idx.calls[dir], moduleCall{
-			callChain:   moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
-			attribution: attr,
+			callChain:     moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
+			moduleAddress: instance.ModuleAddress,
+			attribution:   attr,
 		})
 	}
 }
@@ -181,6 +186,12 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 			attributed := *v
 			attributed.ModuleCallChain = call.callChain
 			attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
+			// Findings on an external module file scanned as written carry no
+			// module-prefixed address; stamp each call's own so two roots
+			// calling the same registry module fingerprint distinctly.
+			if call.moduleAddress != "" && attributed.ResourceAddress != "" && !strings.Contains(attributed.ResourceAddress, "module.") {
+				attributed.ResourceAddress = call.moduleAddress + "." + attributed.ResourceAddress
+			}
 			out = append(out, attributed)
 		}
 	}

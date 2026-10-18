@@ -25,6 +25,7 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 			Fingerprint: model.GetDatadogFingerprintHash(
 				model.SCIInfo{}, "modules/bucket/main.tf", "terraform",
 				"aws_s3_bucket", "this", "acl-rule", "acl = public-read", "stack|module.bucket",
+				"", "",
 			),
 			Line: 3,
 			ResourceLocation: model.ResourceLocation{
@@ -196,6 +197,8 @@ func TestBuildSarifIssue_NonModuleFindingUnchanged(t *testing.T) {
 			Fingerprint: model.GetDatadogFingerprintHash(
 				model.SCIInfo{}, "main.tf", "terraform",
 				"aws_s3_bucket", "root", "root-rule", "acl = private", "",
+				"",
+				"",
 			),
 			Line: 1,
 			ResourceLocation: model.ResourceLocation{

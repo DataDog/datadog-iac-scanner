@@ -31,9 +31,10 @@ import (
 // extraCallerInfo records a deduplicated module caller so its findings can be
 // cloned from the primary OPA doc after eval without adding a separate doc to input.document.
 type extraCallerInfo struct {
-	callChain    string
-	docID        string
-	attributions map[string]*model.ModuleAttribution
+	callChain     string
+	docID         string
+	moduleAddress string
+	attributions  map[string]*model.ModuleAttribution
 }
 
 // moduleResolutionResult bundles all outputs of resolveModuleDocuments.
@@ -47,10 +48,13 @@ type moduleResolutionResult struct {
 	unresolvedModuleDirs map[string]bool
 	extras               map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
-	moduleFiles    map[string]*moduleFileCalls
-	resourceCount  int
-	rootCount      int
-	budgetExceeded bool
+	moduleFiles map[string]*moduleFileCalls
+	// syntheticChainRoots holds, parallel to syntheticFiles, the file of the
+	// root module each synthetic document's call chain was evaluated from.
+	syntheticChainRoots []string
+	resourceCount       int
+	rootCount           int
+	budgetExceeded      bool
 	// count/for_each per-block expansion cap observability
 	expansionTruncations  int
 	expansionMaxRequested int
@@ -98,6 +102,8 @@ func (c *Inspector) instantiateLocalModules(
 	if !res.ok {
 		return nil, nil, nil, nil
 	}
+	assignRootModuleDirs(files, res.calledDirs, c.repoPath)
+	assignSyntheticRootModuleDirs(res.syntheticFiles, res.syntheticChainRoots, files, c.repoPath, res.calledDirs)
 	rootDirs := newRootIndex(res.rootDirs)
 	primaryIDs := primaryFileIDs(files, c.repoPath)
 	for _, f := range files {
@@ -435,6 +441,7 @@ func evaluateRootModules(
 	actualCalledDirs map[string]bool,
 	extra *[]model.Document,
 	syntheticFiles *[]*model.FileMetadata,
+	syntheticChainRoots *[]string,
 	resourceCount *int,
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
@@ -444,7 +451,8 @@ func evaluateRootModules(
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
-		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
+		syntheticChainRoots: syntheticChainRoots,
+		resourceCount:       resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -488,6 +496,7 @@ type rootMerge struct {
 	actualCalledDirs     map[string]bool
 	extra                *[]model.Document
 	syntheticFiles       *[]*model.FileMetadata
+	syntheticChainRoots  *[]string
 	resourceCount        *int
 	rootEvalOK           *bool
 	moduleCalls          *moduleCallIndex
@@ -517,11 +526,12 @@ func (m *rootMerge) merge(
 		m.actualCalledDirs[d] = true
 	}
 	attributions := newModuleAttributionCache()
-	docs, syn, count := instantiatedDocs(
+	docs, syn, chainRoots, count := instantiatedDocs(
 		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
+	*m.syntheticChainRoots = append(*m.syntheticChainRoots, chainRoots...)
 	*m.resourceCount += count
 }
 
@@ -742,6 +752,7 @@ func resolveModuleDocuments(
 	unresolvedModuleDirs := make(map[string]bool)
 	var extra []model.Document
 	var syntheticFiles []*model.FileMetadata
+	var syntheticChainRoots []string
 	var resourceCount int
 
 	// Roots are taken in a fixed order: which of several identical callers ends
@@ -765,7 +776,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
+		&extra, &syntheticFiles, &syntheticChainRoots, &resourceCount, &rootEvalOK, moduleCalls,
 	)
 	collectNotEvaluatedDirs(
 		ctx, evaluator, filesByDir, repoPath, resolver, unresolvedModuleDirs,
@@ -805,6 +816,7 @@ func resolveModuleDocuments(
 	return moduleResolutionResult{
 		docs:                  extra,
 		syntheticFiles:        syntheticFiles,
+		syntheticChainRoots:   syntheticChainRoots,
 		suppressed:            instantiated,
 		calledDirs:            strippedDirs,
 		successfulRoots:       successfulRoots,
@@ -939,8 +951,12 @@ type instantiatedResource struct {
 
 // docGroup collects every resource one module call resolved in one defining file.
 type docGroup struct {
-	fm            *model.FileMetadata
-	callChain     string
+	fm        *model.FileMetadata
+	callChain string
+	// chainRoot is the file of the root module the call chain was evaluated
+	// from (the first hop's CalledFrom), which the synthetic file's root
+	// module dir is derived from.
+	chainRoot     string
 	moduleAddress string
 	layer         int
 	entries       []instantiatedResource
@@ -983,14 +999,14 @@ func instantiatedDocs(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
-) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
+) (docs []model.Document, synthetic []*model.FileMetadata, chainRoots []string, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
+	layers := make(map[string]int)
 	// A base name repeats within one call and file whenever count/for_each
 	// expands a block. Document keys stay base-named so line detection can
 	// resolve them against the file's HCL, so repeats spill into a further
 	// document rather than overwriting each other.
-	layers := make(map[string]int)
 
 	for i := range resources {
 		r := &resources[i]
@@ -1019,6 +1035,7 @@ func instantiatedDocs(
 			attrs:     attrs,
 			attrsHash: hashAttributes(attrs),
 		}
+		chainRoot := chainRootFile(r)
 
 		slot := cck + "\x00" + fm.ID + "\x00" + kind + "\x00" + base
 		layer := layers[slot]
@@ -1028,7 +1045,7 @@ func instantiatedDocs(
 		g, exists := groups[key]
 		if !exists {
 			g = &docGroup{
-				fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer,
+				fm: fm, callChain: cck, chainRoot: chainRoot, moduleAddress: r.ModuleAddress, layer: layer,
 				attributions: make(map[string]*model.ModuleAttribution),
 			}
 			groups[key] = g
@@ -1039,8 +1056,14 @@ func instantiatedDocs(
 		g.entries = append(g.entries, entry)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
+		// Both the base name and the instance-qualified document key are
+		// recorded: the document keys of expanded blocks carry their instance
+		// address, and the file's own copy must drop every one of them.
 		if !r.ExpansionTruncated {
 			instantiated.add(fm.ID, kind, base)
+			if entry.fullName != base {
+				instantiated.add(fm.ID, kind, entry.fullName)
+			}
 		}
 		resourceCount++
 	}
@@ -1052,9 +1075,10 @@ func instantiatedDocs(
 		contentKey := groupContentKey(g)
 		if primaryDocID, dup := seen[contentKey]; dup {
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
-				callChain:    g.callChain,
-				docID:        docID,
-				attributions: cloneModuleAttributions(g.attributions),
+				callChain:     g.callChain,
+				docID:         docID,
+				moduleAddress: g.moduleAddress,
+				attributions:  cloneModuleAttributions(g.attributions),
 			})
 			continue
 		}
@@ -1076,7 +1100,7 @@ func instantiatedDocs(
 				byName = make(map[string]interface{})
 				blocks[typ] = byName
 			}
-			byName[e.baseName] = e.attrs
+			byName[e.fullName] = e.attrs
 		}
 
 		doc := model.Document{
@@ -1088,13 +1112,21 @@ func instantiatedDocs(
 			doc["data"] = data
 		}
 		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
+		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.moduleAddress, g.attributions))
+		chainRoots = append(chainRoots, g.chainRoot)
 	}
-	return docs, synthetic, resourceCount
+	return docs, synthetic, chainRoots, resourceCount
 }
 
 // groupContentKey identifies a document by the module call address it belongs
 // to, its defining file, and the content it resolved to.
+//
+// The instance-qualified name is part of that content: every layer of a
+// counted or for-each'd module resource resolves to the same base name,
+// defining line and attributes, so only the instance address keeps their
+// documents apart — without it the layers would dedupe into the first one and
+// its instances would never be scanned. Full names are identical across
+// roots, so the intended cross-root caller dedup is unaffected.
 //
 // The module address keeps two distinct calls in one configuration apart even
 // when they resolve identically, since a rule that aggregates across documents
@@ -1106,11 +1138,11 @@ func groupContentKey(g *docGroup) docContentKey {
 	h := newContentHasher()
 	h.str(g.moduleAddress)
 	h.str(g.fm.ID)
-	h.u64(uint64(g.layer))
 	for i := range g.entries {
 		e := &g.entries[i]
 		h.str(e.typ)
 		h.str(e.baseName)
+		h.str(e.fullName)
 		h.u64(uint64(e.defLine))
 		h.u64(e.attrsHash)
 	}
@@ -1169,12 +1201,13 @@ func (h contentHasher) key() docContentKey {
 
 // newInstanceFileMetadata clones fm for a synthetic doc (empty Document so Combine skips it).
 func newInstanceFileMetadata(
-	fm *model.FileMetadata, id, callChain string, attributions map[string]*model.ModuleAttribution,
+	fm *model.FileMetadata, id, callChain, moduleAddress string, attributions map[string]*model.ModuleAttribution,
 ) *model.FileMetadata {
 	clone := fm.ShallowCopy()
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
+	clone.ModuleAddress = moduleAddress
 	clone.ModuleAttributions = cloneModuleAttributions(attributions)
 	if fm.LineInfoDocument != nil {
 		// Already materialized: shallow-clone so later mutations on the
@@ -1183,6 +1216,71 @@ func newInstanceFileMetadata(
 		clone.LineInfoDocument = maps.Clone(fm.LineInfoDocument)
 	}
 	return clone
+}
+
+// assignSyntheticRootModuleDirs stamps every synthetic instantiated-module
+// file with the root module dir its call chain was evaluated from. The clones
+// are made before assignRootModuleDirs stamps the scanned files, so they copy
+// the stamped RootModuleDir of the chain's root file — the file of the root
+// module the call was made from. When that file is not part of the scan, the
+// root is walked up from its directory through called dirs, exactly as
+// assignRootModuleDirs does.
+func assignSyntheticRootModuleDirs(
+	synthetic []*model.FileMetadata, chainRoots []string,
+	files model.FileMetadatas, repoPath string, calledDirs map[string]bool,
+) {
+	if len(synthetic) == 0 {
+		return
+	}
+	rootModuleDirs := make(map[string]string, len(files))
+	for _, f := range files {
+		if f == nil || !isTerraformFile(f) {
+			continue
+		}
+		rootModuleDirs[absPath(f.FilePath, repoPath)] = f.RootModuleDir
+	}
+	for i, f := range synthetic {
+		if f == nil {
+			continue
+		}
+		chainRoot := ""
+		if i < len(chainRoots) {
+			chainRoot = chainRoots[i]
+		}
+		if chainRoot == "" {
+			// No call chain root on record: the defining file's own stamp is
+			// the closest known root module dir.
+			if dir, ok := rootModuleDirs[absPath(f.FilePath, repoPath)]; ok {
+				f.RootModuleDir = dir
+			}
+			continue
+		}
+		if dir, ok := rootModuleDirs[absPath(chainRoot, repoPath)]; ok && dir != "" {
+			f.RootModuleDir = dir
+			continue
+		}
+		root := filepath.Dir(absPath(chainRoot, repoPath))
+		for calledDirs[filepath.Clean(root)] {
+			parent := filepath.Dir(root)
+			if parent == root {
+				break
+			}
+			root = parent
+		}
+		if rel, err := filepath.Rel(repoPath, root); err == nil {
+			f.RootModuleDir = filepath.ToSlash(rel)
+		}
+	}
+}
+
+// chainRootFile is the file of the root module a resolved resource's call
+// chain was evaluated from: the first hop's call site. Empty when the chain
+// has no hops.
+func chainRootFile(r *tfeval.ResolvedResource) string {
+	if len(r.CallChain) == 0 {
+		return ""
+	}
+	return r.CallChain[0].CalledFrom
 }
 
 // callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).

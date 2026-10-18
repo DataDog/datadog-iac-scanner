@@ -488,6 +488,9 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 
 			// nolint:gocritic
 			resultTags := append(tags, resourceTypeTag, resourceNameTag)
+			if addressTag := GetResourceAddressTag(issue.Platform, vulnerability.ResourceAddress); addressTag != "" {
+				resultTags = append(resultTags, addressTag)
+			}
 
 			resourceLocation := vulnerability.ResourceLocation
 

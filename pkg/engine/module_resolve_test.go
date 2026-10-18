@@ -188,7 +188,7 @@ resource "aws_s3_bucket" "replica" {
 		{Type: "aws_s3_bucket", Name: "replica[1]", DefinedIn: modulePath, ModuleAddress: "module.app"},
 	}
 
-	docs, _, _ := instantiatedDocs(
+	docs, _, _, _ := instantiatedDocs(
 		resources,
 		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
 		root,
@@ -201,26 +201,83 @@ resource "aws_s3_bucket" "replica" {
 	)
 
 	if len(docs) != 2 {
-		t.Fatalf("expected one document per expansion layer, got %d", len(docs))
+		t.Fatalf("expected one document per instance of the expanded call, got %d", len(docs))
 	}
-	var shared, replicas int
+	// Static resources appear once; expanded instances keep their instance
+	// keys, so findings can name the instance Terraform addresses.
+	seen := map[string]int{}
 	for _, doc := range docs {
 		byType, ok := asStringMap(docAsMap(doc["resource"])["aws_s3_bucket"])
 		if !ok {
 			t.Fatalf("resource document has unexpected shape: %#v", doc)
 		}
 		if _, ok := byType["shared"]; ok {
-			shared++
+			seen["shared"]++
 		}
-		if _, ok := byType["replica"]; ok {
-			replicas++
+		for _, want := range []string{"replica[0]", "replica[1]"} {
+			if _, ok := byType[want]; ok {
+				seen[want]++
+			}
 		}
 	}
-	if shared != 1 {
-		t.Fatalf("static resource appears %d times, want exactly once", shared)
+	if seen["shared"] != 1 {
+		t.Fatalf("static resource appears %d times, want exactly once", seen["shared"])
 	}
-	if replicas != 2 {
-		t.Fatalf("expanded resource appears %d times, want one per instance", replicas)
+	for _, want := range []string{"replica[0]", "replica[1]"} {
+		if seen[want] != 1 {
+			t.Fatalf("expanded instance %q appears %d times, want exactly once", want, seen[want])
+		}
+	}
+}
+
+func TestInstantiatedDocs_IdenticalExpandedInstancesKeepTheirLayers(t *testing.T) {
+	root := t.TempDir()
+	modulePath := writeFile(t, filepath.Join(root, "modules", "app"), "main.tf", `
+resource "aws_s3_bucket" "replica" {
+  count  = 3
+  bucket = "same"
+}
+`)
+	fm := fileMeta("mod-id", modulePath)
+	// Every instance converts to the same attributes; only the
+	// instance-qualified name tells the documents apart.
+	resources := []tfeval.ResolvedResource{
+		{Type: "aws_s3_bucket", Name: "replica[0]", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[1]", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[2]", DefinedIn: modulePath, ModuleAddress: "module.app"},
+	}
+
+	docs, _, _, _ := instantiatedDocs(
+		resources,
+		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
+		root,
+		nil,
+		make(map[docContentKey]string),
+		make(map[string][]extraCallerInfo),
+		make(instantiatedIndex),
+		nil,
+		newModuleAttributionCache(),
+	)
+
+	if len(docs) != 3 {
+		t.Fatalf("expected one document per identical instance, got %d", len(docs))
+	}
+	seen := map[string]int{}
+	for _, doc := range docs {
+		byType, ok := asStringMap(docAsMap(doc["resource"])["aws_s3_bucket"])
+		if !ok {
+			t.Fatalf("resource document has unexpected shape: %#v", doc)
+		}
+		for _, want := range []string{"replica[0]", "replica[1]", "replica[2]"} {
+			if _, ok := byType[want]; ok {
+				seen[want]++
+			}
+		}
+	}
+	for _, want := range []string{"replica[0]", "replica[1]", "replica[2]"} {
+		if seen[want] != 1 {
+			t.Fatalf("expanded instance %q appears %d times, want exactly once", want, seen[want])
+		}
 	}
 }
 
@@ -962,7 +1019,7 @@ func TestNewInstanceFileMetadata_LineInfoDocumentNotAliased(t *testing.T) {
 			},
 		},
 	}
-	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x", nil)
+	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x", "module.x", nil)
 	delete(fm.LineInfoDocument, "resource")
 	if _, ok := synth.LineInfoDocument["resource"]; !ok {
 		t.Fatal("synthetic LineInfoDocument must keep resource after suppression on parent")

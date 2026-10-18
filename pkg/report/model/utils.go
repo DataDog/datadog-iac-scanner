@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
@@ -18,6 +19,7 @@ const (
 	cweTag          = "CWE:%s"
 	resourceTypeTag = "IAC_RESOURCE_TYPE:%s"
 	resourceNameTag = "IAC_RESOURCE_NAME:%s"
+	resourceAddrTag = "IAC_RESOURCE_ADDRESS:%s"
 )
 
 // nolint:gocritic
@@ -85,4 +87,13 @@ func StringToHash(str string) string {
 	hash.Write([]byte(str))
 	hashed := hash.Sum(nil)
 	return hex.EncodeToString(hashed)
+}
+
+// GetResourceAddressTag renders the Terraform resource address tag. Only
+// Terraform findings carry it; other platforms return empty.
+func GetResourceAddressTag(platform, address string) string {
+	if !strings.EqualFold(platform, "Terraform") || address == "" {
+		return ""
+	}
+	return fmt.Sprintf(resourceAddrTag, address)
 }
