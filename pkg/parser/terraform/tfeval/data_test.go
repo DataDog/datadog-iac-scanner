@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -110,7 +111,9 @@ func TestDataPolicyDocumentResolvesInModule(t *testing.T) {
 
 // TestDataExpansionSkippedWhenBudgetExhausted evaluates a module whose child
 // exhausts the instantiation budget exactly: the module is discarded either
-// way, and only the evaluation count shows the avoided data expansion.
+// way, and only the evaluation count shows the avoided data expansion. The
+// child's charge stays once a budget refusal happened, so the siblings after it
+// stop in evaluationStop instead of redoing the refused work.
 func TestDataExpansionSkippedWhenBudgetExhausted(t *testing.T) {
 	root := t.TempDir()
 	writeModule(t, root, "heavy", map[string]string{"main.tf": `
@@ -148,11 +151,129 @@ module "consumer" {
 	// budget, and the consumer's own resource cannot fit the zero remainder.
 	require.Equal(t, 1, len(e.NotEvaluatedDirs()))
 	require.True(t, e.BudgetExceeded())
-	require.Equal(t, 0, e.InstantiatedCount(), "the discarded module's charges roll back")
+	// The refusal stands, so the consumer's discarded evaluation does not hand
+	// the budget back: heavy's charge stays and bounds what follows.
+	require.Equal(t, 2, e.InstantiatedCount())
 	require.Empty(t, resources)
 	// Only the initial expansion ran: the refresh against module.heavy.out saw
 	// the exhausted budget and skipped the data expansion.
 	require.Equal(t, 1, e.DataBlockEvaluations())
+}
+
+// TestBudgetFailureDoesNotRepeatForEverySibling pins Nathan's repro shape: a
+// leaf of two resources fed var.in, a mid with one own resource and count=50 on
+// the leaf, and a stack with count=50 on the mid, under a budget of 100. The
+// first mid's leaves fill the budget exactly and its own resource is refused;
+// restoring for that refusal would restart every remaining mid with the full
+// budget, re-evaluating 50 leaves per mid (2500 cached evaluations at two
+// wrapper levels, more at deeper fan-out). With the refusal left standing the
+// remaining instances stop in evaluationStop, so the leaf evaluations done
+// once — 50 distinct inputs, one cache entry each — are all there are.
+func TestBudgetFailureDoesNotRepeatForEverySibling(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "in" {}
+
+resource "aws_s3_bucket" "a" {
+  bucket = var.in
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.in
+}
+`})
+	writeModule(t, root, "mid", map[string]string{"main.tf": `
+variable "in" {}
+
+module "leaf" {
+  count  = 50
+  source = "../leaf"
+  in     = "${var.in}-${count.index}"
+}
+
+resource "aws_s3_bucket" "own" {
+  bucket = var.in
+}
+`})
+	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "mid" {
+  count  = 50
+  source = "../mid"
+  in     = count.index
+}
+`})
+
+	e := New()
+	e.SetMaxInstantiated(100)
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	// The leaves of the first mid were evaluated and charged before its own
+	// resource was refused; their charges stay, and nothing re-evaluates them.
+	require.Equal(t, 100, e.InstantiatedCount())
+	require.Equal(t, 50, len(e.cache))
+	require.True(t, e.BudgetExceeded())
+	require.Contains(t, e.NotEvaluatedDirs(), filepath.Join(root, "mid"))
+	require.Empty(t, resources)
+}
+
+// TestBudgetFailureDoesNotRepeatInPrepass runs the same shape through the
+// speculative sibling prepass, which shares the refusal handling through
+// currentInstantiationCount: two calls give the stack a prepass, and the
+// refusal of the first mid's own resource must stop the prepass instances
+// rather than hand the speculative budget back to each of them.
+func TestBudgetFailureDoesNotRepeatInPrepass(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "in" {}
+
+resource "aws_s3_bucket" "a" {
+  bucket = var.in
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.in
+}
+`})
+	writeModule(t, root, "mid", map[string]string{"main.tf": `
+variable "in" {}
+
+module "leaf" {
+  count  = 50
+  source = "../leaf"
+  in     = "${var.in}-${count.index}"
+}
+
+resource "aws_s3_bucket" "own" {
+  bucket = var.in
+}
+`})
+	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "mid_a" {
+  count  = 50
+  source = "../mid"
+  in     = count.index
+}
+
+module "mid_b" {
+  count  = 50
+  source = "../mid"
+  in     = count.index
+}
+`})
+
+	e := New()
+	e.SetMaxInstantiated(100)
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	// Both calls share the leaf inputs (in = count.index of each call), so the
+	// leaves of the first prepass instance are the whole eval cache: 50
+	// entries, not one batch of 50 per retried instance.
+	require.Equal(t, 100, e.InstantiatedCount())
+	require.Equal(t, 50, len(e.cache))
+	require.True(t, e.BudgetExceeded())
+	require.Empty(t, resources)
 }
 
 // TestDataDisabledBudgetStillEvaluatesData pins that a disabled instantiation
