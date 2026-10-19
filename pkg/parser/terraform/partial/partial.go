@@ -99,6 +99,12 @@ func (r *Renderer) RenderUnresolved(expr hclsyntax.Expression) (cty.Value, bool)
 	if traversal, diags := hcl.AbsTraversalForExpr(expr); !diags.HasErrors() {
 		return r.reference(traversal)
 	}
+	if f, ok := expr.(*hclsyntax.ForExpr); ok && !r.forPlacesOnly(f) {
+		// A for body that decides on its elements cannot render per element,
+		// and rendering the expression whole would discard the evaluated
+		// known elements; refuse so the caller falls back to its value.
+		return cty.NilVal, false
+	}
 	if v, diags := r.substitute(expr).Value(r.ctx()); !diags.HasErrors() && v.IsWhollyKnown() {
 		v, _ = v.UnmarkDeep()
 		return v, true

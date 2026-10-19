@@ -204,7 +204,14 @@ type Evaluator struct {
 	prepassInstantiated int
 	prepassDepth        int
 	budgetExceeded      bool
-	skipped             uint64
+	// budgetRefusals counts the budget checks that refused work: a failed
+	// chargeInstantiationBudget, an exhausted budget at evaluationStop, or a
+	// resource expansion over its remaining limit. Charges are rolled back only
+	// when no refusal happened since the snapshot: restoring after a refusal
+	// hands the full budget to the next instance or sibling, which redoes the
+	// refused work and fails the same way, once per remaining instance.
+	budgetRefusals int
+	skipped        uint64
 	// budgetDemand is the most instantiated resources any budget check since
 	// the last ResetBudgetDemand needed room for: evaluation started from an
 	// earlier count makes the same decisions while that count plus the demand
@@ -887,8 +894,13 @@ func (e *Evaluator) chargeInstantiationBudget(ctx context.Context, n int) bool {
 		return true
 	}
 	e.reportInstantiationBudgetExceeded(ctx, *instantiated)
+	e.noteBudgetRefusal()
 	return false
 }
+
+// noteBudgetRefusal records that a budget check refused work, so a rollback
+// spanning it would retry work the budget already declined.
+func (e *Evaluator) noteBudgetRefusal() { e.budgetRefusals++ }
 
 func (e *Evaluator) reportInstantiationBudgetExceeded(ctx context.Context, instantiated int) {
 	if e.prepassDepth > 0 {
@@ -926,7 +938,11 @@ func (e *Evaluator) instantiationBudgetExhausted() bool {
 	}
 	count := *e.currentInstantiationCount()
 	e.noteBudgetDemand(count + 1)
-	return count >= e.maxInstantiated
+	if count >= e.maxInstantiated {
+		e.noteBudgetRefusal()
+		return true
+	}
+	return false
 }
 
 // BudgetExceeded reports whether evaluation stopped early for budget, so callers
@@ -1021,6 +1037,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			childChain := append(cloneChain(chain), site)
 			instancesBefore := len(e.instances)
 			instantiatedBefore := *e.currentInstantiationCount()
+			refusalsBefore := e.budgetRefusals
 
 			childRes, childOuts, cErr := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
@@ -1032,10 +1049,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				}
 				// Deliberately not added to allVisited: the module was not resolved, so
 				// it must keep being scanned where it is written.
-				e.instances = e.instances[:instancesBefore]
-				// Mirror EvaluateModule: drop charges from a child that failed after
-				// counting instances so siblings can still use the budget.
-				e.restoreInstantiationCount(instantiatedBefore)
+				e.discardFailedChild(instancesBefore, instantiatedBefore, refusalsBefore)
 				continue
 			}
 			e.recordModuleInstance(call.dir, childAddr, childChain)
@@ -1049,6 +1063,18 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 	}
 	return childResources, moduleOutputs
+}
+
+// discardFailedChild drops the instances and charges a failed child left
+// behind, mirroring EvaluateModule, so siblings can still use the budget — but
+// not when the failure was the budget itself: the refusal stands, so the
+// remaining instances stop early instead of redoing the same work with a
+// budget that would refuse it again.
+func (e *Evaluator) discardFailedChild(instancesBefore, instantiatedBefore, refusalsBefore int) {
+	e.instances = e.instances[:instancesBefore]
+	if e.budgetRefusals == refusalsBefore {
+		e.restoreInstantiationCount(instantiatedBefore)
+	}
 }
 
 // installSiblingModuleOutputs publishes module.* for later siblings and
@@ -1282,6 +1308,7 @@ func (e *Evaluator) evalResourceBlocks(
 		if limit >= 0 {
 			e.noteBudgetDemand(e.maxInstantiated - limit + len(resources) + len(expanded))
 			if len(resources)+len(expanded) > limit {
+				e.noteBudgetRefusal()
 				return resources, false
 			}
 		}

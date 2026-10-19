@@ -218,3 +218,203 @@ resource "aws_security_group" "sg" {
 		t.Fatalf("as-written block lost its reference text: dynamic = %v", doc["dynamic"])
 	}
 }
+
+// A dynamic block's content is evaluated with its loop variable bound, but the
+// renderer's context binds no iterator. Rendering a partly known value through
+// that context would re-derive the parts evaluation had resolved as their text,
+// so an expression reading the iterator is walked by element instead: known
+// elements keep their values and only the unknown ones recover their reference.
+func TestAttributesToDocumentKeepsKnownValuesInDynamicContent(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "extra" {}
+
+resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = [{ cidr = "0.0.0.0/0" }]
+    content {
+      cidr_blocks = [ingress.value.cidr, var.extra]
+    }
+  }
+}
+`})
+	dir := writeModule(t, root, "root", map[string]string{"main.tf": `
+module "c" {
+  source = "../child"
+}
+`})
+
+	doc := documentFor(t, dir, "aws_security_group", "sg")
+	// One generated block collapses to an object, as a block written once would.
+	ingress, ok := doc["ingress"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("ingress = %#v, want an object", doc["ingress"])
+	}
+	cidr, ok := ingress["cidr_blocks"].([]interface{})
+	if !ok {
+		t.Fatalf("cidr_blocks = %#v, want a list", ingress["cidr_blocks"])
+	}
+	want := []interface{}{"0.0.0.0/0", "${var.extra}"}
+	if !reflect.DeepEqual(cidr, want) {
+		t.Errorf("cidr_blocks = %#v, want %#v", cidr, want)
+	}
+}
+
+// The iterator walk also reaches values under the nested blocks of generated
+// content, so a policy statement keeps the principal evaluation resolved next
+// to the reference of the one it did not.
+func TestAttributesToDocumentKeepsKnownPrincipalsInDynamicStatement(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "extra" {}
+
+data "aws_iam_policy_document" "p" {
+  dynamic "statement" {
+    for_each = [{ principal = "arn:aws:iam::123456789012:root" }]
+    content {
+      effect  = "Allow"
+      actions = ["sqs:*"]
+      principals {
+        type        = "AWS"
+        identifiers = [statement.value.principal, var.extra]
+      }
+    }
+  }
+}
+`})
+	dir := writeModule(t, root, "root", map[string]string{"main.tf": `
+module "c" {
+  source = "../child"
+}
+`})
+
+	doc := documentFor(t, dir, "aws_iam_policy_document", "p")
+	// One generated block collapses to an object, as a block written once would.
+	st, ok := doc["statement"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("statement = %#v, want an object", doc["statement"])
+	}
+	// One nested block collapses to an object, as a block written once would.
+	principals, ok := st["principals"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("principals = %#v, want an object", st["principals"])
+	}
+	identifiers, ok := principals["identifiers"].([]interface{})
+	if !ok {
+		t.Fatalf("identifiers = %#v, want a list", principals["identifiers"])
+	}
+	want := []interface{}{"arn:aws:iam::123456789012:root", "${var.extra}"}
+	if !reflect.DeepEqual(identifiers, want) {
+		t.Errorf("identifiers = %#v, want %#v", identifiers, want)
+	}
+}
+
+// Iterator names also propagate through the nested values of generated
+// content: an object or list one level under a dynamic attribute keeps its
+// known elements next to the reference of the ones it did not resolve.
+func TestAttributesToDocumentKeepsKnownValuesInNestedDynamicContent(t *testing.T) {
+	cases := map[string]string{
+		"object": `rule = { cidrs = [ingress.value.cidr, var.extra] }`,
+		"list":   `rule = [[ingress.value.cidr, var.extra]]`,
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "extra" {}
+
+resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = [{ cidr = "0.0.0.0/0" }]
+    content {
+      ` + content + `
+    }
+  }
+}
+`})
+			dir := writeModule(t, root, "root", map[string]string{"main.tf": `
+module "c" {
+  source = "../child"
+}
+`})
+
+			doc := documentFor(t, dir, "aws_security_group", "sg")
+			ingress, ok := doc["ingress"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("ingress = %#v, want an object", doc["ingress"])
+			}
+			rule, ok := ingress["rule"]
+			if !ok {
+				t.Fatalf("rule missing from %#v", ingress)
+			}
+			if name == "object" {
+				obj, ok := rule.(map[string]interface{})
+				if !ok {
+					t.Fatalf("rule = %#v, want an object", rule)
+				}
+				cidrs, ok := obj["cidrs"].([]interface{})
+				if !ok {
+					t.Fatalf("cidrs = %#v, want a list", obj["cidrs"])
+				}
+				want := []interface{}{"0.0.0.0/0", "${var.extra}"}
+				if !reflect.DeepEqual(cidrs, want) {
+					t.Errorf("cidrs = %#v, want %#v", cidrs, want)
+				}
+				return
+			}
+			outer, ok := rule.([]interface{})
+			if !ok {
+				t.Fatalf("rule = %#v, want a list", rule)
+			}
+			if len(outer) != 1 {
+				t.Fatalf("rule = %#v, want one element", rule)
+			}
+			inner, ok := outer[0].([]interface{})
+			if !ok {
+				t.Fatalf("rule[0] = %#v, want a list", outer[0])
+			}
+			want := []interface{}{"0.0.0.0/0", "${var.extra}"}
+			if !reflect.DeepEqual(inner, want) {
+				t.Errorf("rule[0] = %#v, want %#v", inner, want)
+			}
+		})
+	}
+}
+
+func TestAttributesToDocumentKeepsKnownElementsInForExpression(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "items" {
+  default = [{ k = "a" }, { k = "b" }]
+}
+
+variable "extra" {}
+
+resource "aws_security_group" "sg" {
+  ingress {
+    ids = [for it in var.items : it.k == "a" ? var.extra : it.k]
+  }
+}
+`})
+	dir := writeModule(t, root, "root", map[string]string{"main.tf": `
+module "c" {
+  source = "../child"
+}
+`})
+
+	doc := documentFor(t, dir, "aws_security_group", "sg")
+	ingress, ok := doc["ingress"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("ingress = %#v, want an object", doc["ingress"])
+	}
+	ids, ok := ingress["ids"].([]interface{})
+	if !ok {
+		t.Fatalf("ids = %#v, want a list", ingress["ids"])
+	}
+	// A for result has no per-element source expression, so the unknown element
+	// renders as the placeholder while the known one keeps its value.
+	want := []interface{}{"${__dd_unknown__}", "b"}
+	if !reflect.DeepEqual(ids, want) {
+		t.Errorf("ids = %#v, want %#v", ids, want)
+	}
+}

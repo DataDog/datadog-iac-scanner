@@ -9,6 +9,7 @@ package tfeval
 import (
 	"context"
 	"encoding/json"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
@@ -61,6 +62,12 @@ type attrSource struct {
 	counts []int
 	// dynamic is how many blocks each dynamic block of the resource generated.
 	dynamic DynamicCounts
+	// iterators are the loop variable names of the dynamic blocks whose
+	// generated content this source sits in. The renderer's context binds none
+	// of them, so an expression reading one must not render through it: parts
+	// evaluation had resolved would come back as their text. The value is
+	// walked by element instead, keeping what evaluation produced.
+	iterators []string
 }
 
 // generatedBlockType marks the content of a dynamic block among the blocks of
@@ -144,19 +151,20 @@ func attributesToDocument(
 ) map[string]interface{} {
 	out := make(map[string]interface{}, len(attrs))
 	for key, val := range attrs {
-		src := sourceFor(body, key, dynamic)
+		src := sourceFor(body, key, dynamic, nil)
 		out[key] = ctyValueToDocument(val, &src, rd)
 	}
 	return out
 }
 
-// sourceFor finds the attribute expression or nested blocks that produced key.
-func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts) attrSource {
+// sourceFor finds the attribute expression or nested blocks that produced key,
+// under the iterators of the dynamic blocks enclosing body.
+func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterators []string) attrSource {
 	if body == nil {
 		return attrSource{}
 	}
 	if attr, ok := body.Attributes[key]; ok && attr != nil {
-		return attrSource{expr: attr.Expr}
+		return attrSource{expr: attr.Expr, iterators: iterators}
 	}
 	var blocks []*hclsyntax.Block
 	var counts []int
@@ -173,13 +181,14 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts) attrSour
 			if marker, ok := generatedMarker(b); ok {
 				blocks = append(blocks, marker)
 				counts = append(counts, generatedCount(dynamic, b))
+				iterators = append(iterators, dynamicblock.IteratorName(b))
 			}
 		}
 	}
 	if dynamic == nil {
 		counts = nil
 	}
-	return attrSource{blocks: blocks, counts: counts, dynamic: dynamic}
+	return attrSource{blocks: blocks, counts: counts, dynamic: dynamic, iterators: iterators}
 }
 
 // anyLabel stands for a label of a generated block that is only known once
@@ -249,7 +258,7 @@ func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) inte
 	if rd != nil {
 		if v.IsWhollyKnown() {
 			rd = nil
-		} else if src.expr != nil {
+		} else if src.expr != nil && !readsIterator(src.expr, src.iterators) {
 			if rendered, ok := rd.RenderUnresolved(src.expr); ok {
 				return ctyValueToDocument(rendered, &attrSource{}, nil)
 			}
@@ -282,6 +291,20 @@ func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) inte
 	return UnknownAttributePlaceholder
 }
 
+// readsIterator reports whether expr reads one of the dynamic block iterators
+// in iterators, which the renderer's context does not bind.
+func readsIterator(expr hclsyntax.Expression, iterators []string) bool {
+	if len(iterators) == 0 {
+		return false
+	}
+	for _, traversal := range expr.Variables() {
+		if slices.Contains(iterators, traversal.RootName()) {
+			return true
+		}
+	}
+	return false
+}
+
 // ctySeqToDocument converts a tuple/list/set to a slice.
 func ctySeqToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) []interface{} {
 	n := v.LengthInt()
@@ -306,9 +329,12 @@ func seqElementSources(src *attrSource, n int) []attrSource {
 		out := make([]attrSource, n)
 		for i, b := range blocks {
 			if src.labelDepth >= len(b.Labels) {
-				out[i] = attrSource{body: b.Body, dynamic: src.dynamic}
+				out[i] = attrSource{body: b.Body, iterators: src.iterators, dynamic: src.dynamic}
 			} else {
-				out[i] = attrSource{blocks: []*hclsyntax.Block{b}, labelDepth: src.labelDepth, counts: singleCount(src), dynamic: src.dynamic}
+				out[i] = attrSource{
+					blocks: []*hclsyntax.Block{b}, labelDepth: src.labelDepth, counts: singleCount(src),
+					iterators: src.iterators, dynamic: src.dynamic,
+				}
 			}
 		}
 		return out
@@ -316,7 +342,7 @@ func seqElementSources(src *attrSource, n int) []attrSource {
 	if tuple, ok := src.expr.(*hclsyntax.TupleConsExpr); ok && len(tuple.Exprs) == n {
 		out := make([]attrSource, n)
 		for i, e := range tuple.Exprs {
-			out[i] = attrSource{expr: e}
+			out[i] = attrSource{expr: e, iterators: src.iterators}
 		}
 		return out
 	}
@@ -342,9 +368,9 @@ func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[st
 		var es attrSource
 		switch {
 		case body != nil:
-			es = sourceFor(body, name, src.dynamic)
+			es = sourceFor(body, name, src.dynamic, src.iterators)
 		case items[name] != nil:
-			es = attrSource{expr: items[name]}
+			es = attrSource{expr: items[name], iterators: src.iterators}
 		case len(src.blocks) > 0:
 			es = labeledBlockSource(src, name)
 		}
@@ -372,7 +398,7 @@ func labeledBlockSource(src *attrSource, label string) attrSource {
 			}
 		}
 	}
-	return attrSource{blocks: blocks, labelDepth: src.labelDepth + 1, counts: counts, dynamic: src.dynamic}
+	return attrSource{blocks: blocks, labelDepth: src.labelDepth + 1, counts: counts, iterators: src.iterators, dynamic: src.dynamic}
 }
 
 // singleCount is the counts of a source reduced to one block of its own.
