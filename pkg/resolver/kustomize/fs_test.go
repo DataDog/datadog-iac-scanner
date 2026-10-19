@@ -78,6 +78,19 @@ configMapGenerator:
 		"helm generator":   "helmChartInflationGenerator:\n  - name: foo\n",
 		"generator remote": "configMapGenerator:\n  - name: cfg\n    envs:\n      - https://x/.env\n",
 		"openapi remote":   "openapi:\n  path: https://x/schema.json\n",
+		// Kustomize decodes kustomization fields case-insensitively, so a
+		// capitalized key binds for the renderer and must not slip past
+		// validation.
+		"capitalized remote resource": "Resources:\n  - https://example.com/x.yaml\n",
+		"upper remote resource":       "RESOURCES:\n  - https://example.com/x.yaml\n",
+		"capitalized git resource":    "Resources:\n  - github.com/org/repo\n",
+		"capitalized generators":      "Generators:\n  - gen.yaml\n",
+		"capitalized helmCharts":      "HelmCharts:\n  - name: foo\n",
+		"capitalized remote patch":    "Patches:\n  - path: https://example.com/p.yaml\n",
+		// An undecodable kustomization fails closed: Kustomize would refuse
+		// it too, so the files are scanned raw instead.
+		"unknown field":  "bogusUnknownField: 1\n",
+		"duplicate keys": "resources:\n  - ok.yaml\nresources:\n  - https://example.com/x.yaml\n",
 	}
 	for name, content := range invalid {
 		if _, err := validateKustomization([]byte(content)); err == nil {
@@ -104,6 +117,46 @@ func TestKustomizationFieldClassification(t *testing.T) {
 		if !classified[name] {
 			t.Errorf("field %s of types.Kustomization is unclassified; add it to the right list so its paths are validated", name)
 		}
+	}
+}
+
+func TestConstrainedFS_RelativeFollowsFilesystemSeparator(t *testing.T) {
+	// Disk files keep the OS separator and pushed files are addressed with
+	// "/" on every OS, matching the Helm resolver. Either way the render root
+	// itself is ".", never the absolute path it resolves to.
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "overlays", "dev"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	disk, err := newConstrainedFS(vfs.DiskFS{}, root, ".", DefaultMaxFileBytes, &atomic.Int64{}, &byteCache{files: map[string][]byte{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := disk.relative(disk.confinementRoot); got != "." {
+		t.Errorf("disk relative(root) = %q, want \".\"", got)
+	}
+	// Built from the resolved root, which is what every caller holds: a
+	// temp dir can sit behind a symlink (/var -> /private/var on macOS).
+	nested := filepath.Join(disk.confinementRoot, "overlays", "dev")
+	if want, got := filepath.Join("overlays", "dev"), disk.relative(nested); got != want {
+		t.Errorf("disk relative(overlays/dev) = %q, want %q", got, want)
+	}
+	if got := disk.relative(filepath.Join("overlays", "dev")); got != filepath.Join("overlays", "dev") {
+		t.Errorf("disk relative(relative input) = %q, want %q", got, filepath.Join("overlays", "dev"))
+	}
+
+	mem, err := newConstrainedFS(
+		vfs.NewMemFS(map[string][]byte{"/repo/overlays/dev/kustomization.yaml": []byte("resources: []\n")}),
+		"/repo", ".", DefaultMaxFileBytes, &atomic.Int64{}, &byteCache{files: map[string][]byte{}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mem.relative(mem.confinementRoot); got != "." {
+		t.Errorf("mem relative(root) = %q, want \".\"", got)
+	}
+	if got := mem.relative("/repo/overlays/dev"); got != "overlays/dev" {
+		t.Errorf("mem relative(overlays/dev) = %q, want overlays/dev", got)
 	}
 }
 

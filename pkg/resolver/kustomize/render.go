@@ -8,7 +8,6 @@ package kustomize
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -90,19 +89,15 @@ func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	// ResetOpenAPI drops a custom schema so it cannot leak into later renders;
-	// it also drops the parsed builtin schema, which the next render rebuilds,
-	// so it is only worth paying for roots that set one.
-	if len(topKust.OpenAPI) > 0 {
-		openapi.ResetOpenAPI()
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	entries, failures := mapResources(r.fsys, cfs, resMap, topKust.NamePrefix, topKust.NameSuffix)
 	return &Result{
-		Root:            cfs.relative(root),
+		// The resolved render root is the single source of truth, so Root and
+		// every entry's RenderRoot agree whatever form the caller passed.
+		Root:            cfs.relative(cfs.renderRoot),
 		Entries:         entries,
 		ReadFiles:       cfs.read.sorted(),
 		MappingFailures: failures,
@@ -120,6 +115,22 @@ func (r *Renderer) run(cfs *constrainedFS) (resMap resmap.ResMap, err error) {
 	}()
 	r.runMu.Lock()
 	defer r.runMu.Unlock()
+	// A custom schema must not leak into later renders. Any kustomization the
+	// build touches can install one, not just the render root's own: a base or
+	// component calls SetSchema too, and SetSchema never clears a previous
+	// custom schema, so the next render would silently patch under it. Compare
+	// the schema version instead of the root's openapi field to catch those,
+	// and reset here, under runMu and deferred, so the success, error, and
+	// panic paths are all covered and the reset cannot race a concurrent
+	// render that reads the same process-global state. ResetOpenAPI also drops
+	// the parsed builtin schema, which the next render rebuilds, so it is
+	// still only paid for renders that actually changed the schema.
+	schemaBefore := openapi.GetSchemaVersion()
+	defer func() {
+		if openapi.GetSchemaVersion() != schemaBefore {
+			openapi.ResetOpenAPI()
+		}
+	}()
 	opts := krusty.MakeDefaultOptions()
 	opts.LoadRestrictions = types.LoadRestrictionsNone
 	resMap, err = krusty.MakeKustomizer(opts).Run(cfs, cfs.renderRoot)
@@ -129,24 +140,42 @@ func (r *Renderer) run(cfs *constrainedFS) (resMap resmap.ResMap, err error) {
 	return resMap, nil
 }
 
-// relative returns p relative to the confinement root with forward slashes.
+// relative returns p relative to the confinement root. The render root itself
+// is ".", never the absolute path it resolves to, so no machine path reaches
+// finding metadata. Separators follow the filesystem, as the Helm resolver
+// does: pushed files are reported with "/" on every OS, disk files keep the
+// OS separator. p must be relative to the confinement root or an absolute
+// path already resolved through realPath, which is what every caller holds;
+// an unresolved absolute path would not share the resolved root's prefix.
 func (c *constrainedFS) relative(p string) string {
 	abs := p
 	if !filepath.IsAbs(abs) {
 		abs = filepath.Join(c.confinementRoot, abs)
 	}
-	abs = filepath.Clean(abs)
-	rel := strings.TrimPrefix(abs, c.confinementRoot+string(filepath.Separator))
-	return filepath.ToSlash(rel)
+	rel, err := filepath.Rel(c.confinementRoot, filepath.Clean(abs))
+	if err != nil {
+		// Unreachable for a confined path: both are absolute and, having
+		// passed the confinement check, share a volume. Report no path rather
+		// than fall back to an absolute one; mapResources drops entries that
+		// have no file name to report against.
+		return ""
+	}
+	if c.slashPaths {
+		return filepath.ToSlash(rel)
+	}
+	return rel
 }
 
 // findKustomizationFile returns the render root's kustomization file, probing
-// the three names Kustomize itself recognizes, in its own probe order.
+// the three names Kustomize itself recognizes, in its own probe order. It
+// returns the resolved path, which is what ReadFile compares against to
+// recognize the top-level file: a symlinked kustomization.yaml would otherwise
+// never be annotated, and every resource would lose its source attribution.
 func findKustomizationFile(cfs *constrainedFS, renderRoot string) (string, error) {
 	for _, name := range []string{"kustomization.yaml", "kustomization.yml", "Kustomization"} {
 		path := filepath.Join(renderRoot, name)
-		if info, _, err := cfs.statExists(path); err == nil && !info.IsDir() {
-			return path, nil
+		if info, found, err := cfs.statExists(path); err == nil && !info.IsDir() {
+			return found, nil
 		}
 	}
 	return "", failf(ReasonMissingFile, "no kustomization file in render root")
