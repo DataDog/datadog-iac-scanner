@@ -38,7 +38,7 @@ type inputVarTest struct {
 }
 
 func setInputVariablesDefaultValues(filename string) (converter.VariableMap, error) {
-	parsedFile, err := readAndParseFile(vfs.DiskFS{}, filename, false)
+	parsedFile, err := readAndParseFile(vfs.DiskFS{}, filename)
 	if err != nil || parsedFile == nil {
 		return nil, err
 	}
