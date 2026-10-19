@@ -93,6 +93,9 @@ var shapeTemplates = map[string]map[string]string{
 	"77 flow sequence in an include":            {"templates/x.tpl": podDefine("fx", "spec:", "  containers: [{name: c, image: nginx}]", "  hostNetwork: true")},
 	"77b block sequence control":                {"templates/x.tpl": podDefine("fx", "spec:", "  containers:", "  - name: c", "    image: nginx", "  hostNetwork: true")},
 	"78 multi-line quoted scalar in an include": {"templates/x.tpl": podDefine("fx", "spec:", "  hostname: \"a", "    b\"", "  hostNetwork: true")},
+	"96 include after a key, printed by no other action of the container": {
+		"templates/x.tpl": "{{- define \"sc\" -}}\nprivileged: true\n{{- end -}}\n",
+	},
 	"74 include of another template, which has includes of its own": {
 		"templates/u.yaml": shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: inner", `{{ include "spec" . }}`),
 	},
@@ -275,10 +278,11 @@ func TestHelmFindingLinesOfShapes(t *testing.T) {
 			"  {{ .Values.k }}: {{ .Values.v }}"), "h: \"x\\n  dnsPolicy: Default\"\nk: a\nv: b\n", "kind: Pod",
 			[]shapeKey{{"spec.hostname", 3}, {"spec.dnsPolicy", 2}}},
 		// The range repeats the same lines, and which iteration wrote a line is
-		// value-dependent: the container named by the selector owns the image.
+		// value-dependent: the item of the container named by the selector, the
+		// one that owns its image, is the line the finding is at.
 		{"55 range closed before literal text with the same lines", shapeLines(`{{ include "header" . }}`, "spec:", "  containers:",
 			`  {{- range list "a" "b" }}`, "  - name: {{ . }}", "    image: nginx", "  {{- end }}", "  - name: last", "    image: nginx"),
-			"", "kind: Pod", []shapeKey{{"spec.containers.name={{last}}.image", 8}, {"spec.containers.name={{a}}.image", 5}}},
+			"", "kind: Pod", []shapeKey{{"spec.containers.name={{last}}.image", 9}, {"spec.containers.name={{a}}.image", 5}}},
 		{"56 include whose end line a trimmed include glues to its own output", shapeLines(`{{ include "hdrnl" . }}`,
 			`{{- include "spec" . }}`), "", "kind: ConfigMap",
 			[]shapeKey{{"metadata.name", 1}, {"spec.hostNetwork", 2}}},
@@ -372,6 +376,49 @@ func TestHelmFindingLinesOfShapes(t *testing.T) {
 			"  containers:", "    - name: {{ .Values.first }}", "      image: nginx", "      imagePullPolicy: {{ .Values.pp }}", "    - name: {{ .Values.second }}",
 			"      image: busybox", "      imagePullPolicy: Never"), "first: web\nsecond: side\npp: Always\n", "kind: Pod",
 			[]shapeKey{{"spec.containers.name={{web}}.imagePullPolicy", 9}, {"spec.containers.name={{side}}.imagePullPolicy", 12}}},
+		// The same image text is written by every container: each one is told by
+		// the container that holds it.
+		{"89 same image line in an init container and a container", shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: p", "spec:",
+			"  initContainers:", "    - name: init", "      image: {{ .Values.img }}", "  containers:", "    - name: main",
+			"      image: {{ .Values.img }}"), "img: nginx\n", "kind: Pod",
+			[]shapeKey{{"spec.initContainers.name={{init}}.image", 8}, {"spec.containers.name={{main}}.image", 11}}},
+		{"90 same image line, the init container under an if: a value may print its lines", shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: p", "spec:",
+			"  {{- if .Values.init }}", "  initContainers:", "    - name: init", "      image: {{ .Values.img }}", "  {{- end }}",
+			"  containers:", "    - name: main", "      image: {{ .Values.img }}"), "init: true\nimg: nginx\n", "kind: Pod",
+			[]shapeKey{{"spec.initContainers.name={{init}}.image", 7}, {"spec.containers.name={{main}}.image", 13}}},
+		{"91 same image line in two containers with the same name", shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: p", "spec:",
+			"  containers:", "    - name: a", "      image: {{ .Values.img }}", "    - name: a", "      image: {{ .Values.img }}"),
+			"img: nginx\n", "kind: Pod", []shapeKey{{"spec.containers.name={{a}}.image", 6}}},
+		// The rules repeat the same lines, all printed once and in order: a position in
+		// the list tells which one.
+		{"92 list positions over repeated literal lines", shapeLines("apiVersion: rbac.authorization.k8s.io/v1", "kind: ClusterRole",
+			"metadata:", "  name: {{ .Values.name }}", "rules:", "  - apiGroups:", `      - ""`, "    resources:", "      - pods", "    verbs:",
+			"      - get", "  - apiGroups:", `      - ""`, "    resources:", "      - secrets", "    verbs:", "      - get"),
+			"name: r\n", "kind: ClusterRole",
+			[]shapeKey{{"rules.0.verbs", 10}, {"rules.1.resources", 14}, {"rules.1.verbs", 16}}},
+		{"93 same, in a block the whole document is in", shapeLines("{{- if .Values.rbac }}", "apiVersion: rbac.authorization.k8s.io/v1",
+			"kind: ClusterRole", "metadata:", "  name: {{ .Values.name }}", "rules:", "  - apiGroups:", `      - ""`, "    resources:",
+			"      - pods", "    verbs:", "      - get", "  - apiGroups:", `      - ""`, "    resources:", "      - secrets", "    verbs:",
+			"      - get", "{{- end }}"), "name: r\nrbac: true\n", "kind: ClusterRole",
+			[]shapeKey{{"rules.0.verbs", 11}, {"rules.1.resources", 15}}},
+		{"94 same, one rule under an if holds the same lines: the rules own them", shapeLines("apiVersion: rbac.authorization.k8s.io/v1",
+			"kind: ClusterRole", "metadata:", "  name: {{ .Values.name }}", "rules:", "  - apiGroups:", `      - ""`, "    resources:",
+			"      - pods", "    verbs:", "      - get", "{{- if .Values.more }}", "  - apiGroups:", `      - ""`, "    resources:",
+			"      - secrets", "    verbs:", "      - get", "{{- end }}"), "name: r\nmore: true\n", "kind: ClusterRole",
+			[]shapeKey{{"rules.1.resources", 5}}},
+		{"95 same, in the second of two documents holding the same lines", shapeLines("apiVersion: rbac.authorization.k8s.io/v1", "kind: Role",
+			"metadata:", "  name: a", "rules:", "  - apiGroups:", `      - ""`, "    resources:", "      - pods", "---",
+			"apiVersion: rbac.authorization.k8s.io/v1", "kind: ClusterRole", "metadata:", "  name: {{ .Values.name }}", "rules:",
+			"  - apiGroups:", `      - ""`, "    resources:", "      - pods", "  - apiGroups:", `      - ""`, "    resources:", "      - secrets"),
+			"name: b\n", "kind: ClusterRole", []shapeKey{{"rules.0.resources", 18}, {"rules.1.resources", 22}}},
+		// The other actions print lines indented by 8 or more, or one line after their
+		// key: none prints the key the finding is under.
+		{"96 include after a key, printed by no other action of the container", shapeLines("apiVersion: v1", "kind: Pod", "metadata:", "  name: p",
+			"spec:", "  initContainers:", "    - name: init", `      securityContext: {{- include "sc" . | nindent 8 }}`, "  containers:",
+			"    - name: {{ .Values.cname }}", "      image: nginx", "      {{- if .Values.cmd }}", `      command: {{- include "sc" . | nindent 8 }}`,
+			"      {{- end }}", "      env:", "        - name: A", `          value: {{ .Values.a | quote }}`,
+			`      securityContext: {{- include "sc" . | nindent 8 }}`), "cname: web\ncmd: true\na: x\n", "kind: Pod",
+			[]shapeKey{{"spec.containers.name={{web}}.securityContext.privileged", 18}, {"spec.initContainers.name={{init}}.securityContext.privileged", 8}}},
 		{"84 leading trimmed include, literal key after it", shapeLines(`{{- include "header" . }}`, "spec:", "  hostNetwork: true"), "", "kind: Pod",
 			[]shapeKey{{"metadata.name", 1}, {"spec.hostNetwork", 3}}},
 	}

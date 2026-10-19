@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
 // keyMatch is the line a key of a search key matched; a selector key matched
@@ -16,6 +19,7 @@ type keyMatch struct {
 	key      string
 	selector bool
 	value    string // the value a selector key must hold
+	index    bool   // the key is the position of an item in the list the key before holds
 	line     int
 }
 
@@ -34,27 +38,63 @@ type keyTree struct {
 	roots  []*yaml.Node
 }
 
-// lastTree keeps the tree of the rendered document checked last: a finding
-// looks the same document up again and again, and the parse is the cost.
-var lastTree struct {
-	sync.Mutex
-	content string
-	tree    *keyTree
-	ok      bool
+// maxCachedDocuments bounds the rendered documents whose lines and key tree are
+// kept: the findings of a document are looked up one after the other, and the
+// parse is the cost.
+const maxCachedDocuments = 16
+
+type cachedDocument struct {
+	attribution *model.HelmAttribution
+	lines       []string
+	once        sync.Once
+	tree        *keyTree
+	ok          bool
 }
 
-// cachedKeyTree returns the key tree of lines, parsed once for the same content.
-// A tree is only read after it is built, so concurrent findings share it.
-func cachedKeyTree(lines []string) (*keyTree, bool) {
-	content := strings.Join(lines, "\n")
-	lastTree.Lock()
-	defer lastTree.Unlock()
-	if lastTree.tree != nil && lastTree.content == content {
-		return lastTree.tree, lastTree.ok
+var documents struct {
+	sync.Mutex
+	entries []*cachedDocument
+}
+
+// cachedDocumentOf returns the entry of the rendered document of attribution,
+// whose lines are split once.
+func cachedDocumentOf(attribution *model.HelmAttribution) *cachedDocument {
+	documents.Lock()
+	defer documents.Unlock()
+	for _, entry := range documents.entries {
+		if entry.attribution == attribution {
+			return entry
+		}
 	}
-	tree, ok := parseKeyTree(lines)
-	lastTree.content, lastTree.tree, lastTree.ok = content, tree, ok
-	return tree, ok
+	entry := &cachedDocument{attribution: attribution, lines: strings.Split(attribution.RenderedContent, "\n")}
+	if len(documents.entries) == maxCachedDocuments {
+		documents.entries = documents.entries[1:]
+	}
+	documents.entries = append(documents.entries, entry)
+	return entry
+}
+
+// cachedKeyTree returns the key tree of lines, parsed once for the same lines
+// of a cached document. A tree is only read after it is built, so concurrent
+// findings share it.
+func cachedKeyTree(lines []string) (*keyTree, bool) {
+	if len(lines) == 0 {
+		return parseKeyTree(lines)
+	}
+	documents.Lock()
+	var entry *cachedDocument
+	for _, candidate := range documents.entries {
+		if len(candidate.lines) == len(lines) && &candidate.lines[0] == &lines[0] {
+			entry = candidate
+			break
+		}
+	}
+	documents.Unlock()
+	if entry == nil {
+		return parseKeyTree(lines)
+	}
+	entry.once.Do(func() { entry.tree, entry.ok = parseKeyTree(entry.lines) })
+	return entry.tree, entry.ok
 }
 
 func parseKeyTree(lines []string) (*keyTree, bool) {
@@ -175,24 +215,18 @@ func keyPathHolds(lines []string, path []keyMatch) bool {
 		if isIDLine(lines[match.line]) {
 			continue
 		}
-		k, ok := tree.at(match.line, match.key)
-		if !ok {
-			return false
-		}
-		if match.selector && match.value != "" && !tree.holdsValue(k, match.value) {
-			return false
-		}
-		if scope != nil {
-			if !tree.within(k.key, scope) {
+		if match.index {
+			item, ok := tree.item(scope, match.key)
+			if !ok || item.Line-1 != match.line {
 				return false
 			}
-			if !match.selector && !tree.direct(k, scope) {
-				for _, other := range tree.childrenNamed(scope, match.key) {
-					if other.key != k.key {
-						return false
-					}
-				}
-			}
+			scope = item
+			continue
+		}
+		k, ok := tree.at(match.line, match.key)
+		if !ok || !tree.sits(k, match, scope) ||
+			match.selector && match.value != "" && !tree.holdsValue(k, match.value) {
+			return false
 		}
 		scope = tree.scopeOf(k, match.selector)
 	}
@@ -254,10 +288,122 @@ func pathKeys(lines []string, path []keyMatch) []string {
 		if isIDLine(lines[match.line]) {
 			continue
 		}
-		if match.selector {
+		if match.selector || match.index {
 			return nil
 		}
 		keys = append(keys, match.key)
 	}
 	return keys
+}
+
+// nextStart returns the line the node after scope starts at, or end when
+// nothing follows it: where the output of scope stops.
+func (t *keyTree) nextStart(scope *yaml.Node, end int) int {
+	for node := scope; node != nil; {
+		parent := t.parent[node]
+		if parent == nil {
+			return end
+		}
+		for i, child := range parent.Content {
+			if child == node && i+1 < len(parent.Content) {
+				return parent.Content[i+1].Line - 1
+			}
+		}
+		node = parent
+	}
+	return end
+}
+
+// item returns the item of the list scope at the position position.
+func (t *keyTree) item(scope *yaml.Node, position string) (*yaml.Node, bool) {
+	n, err := strconv.Atoi(position)
+	if scope == nil || scope.Kind != yaml.SequenceNode || err != nil || n < 0 || n >= len(scope.Content) {
+		return nil, false
+	}
+	return scope.Content[n], true
+}
+
+// itemLine returns the line of the item at position of the list the last key of
+// path holds.
+func itemLine(lines []string, path []keyMatch, position string) (int, bool) {
+	tree, ok := cachedKeyTree(lines)
+	if !ok || len(path) == 0 {
+		return 0, false
+	}
+	last := path[len(path)-1]
+	k, ok := tree.at(last.line, last.key)
+	if !ok || last.index {
+		return 0, false
+	}
+	item, ok := tree.item(tree.scopeOf(k, last.selector), position)
+	if !ok {
+		return 0, false
+	}
+	return item.Line - 1, true
+}
+
+// indexesList reports whether the last key of path holds a list, so that a
+// number after it is a position in that list. After a mapping, a number is a
+// key like any other.
+func indexesList(lines []string, path []keyMatch) bool {
+	tree, ok := cachedKeyTree(lines)
+	if !ok || len(path) == 0 {
+		return false
+	}
+	last := path[len(path)-1]
+	k, ok := tree.at(last.line, last.key)
+	if !ok || last.index {
+		return false
+	}
+	scope := tree.scopeOf(k, last.selector)
+	return scope != nil && scope.Kind == yaml.SequenceNode
+}
+
+// selectsOneItem reports whether no other item of the list holds the selector
+// key k with the same value: otherwise the key does not tell which item it picks.
+func (t *keyTree) selectsOneItem(k keyNode) bool {
+	list := t.parent[k.mapping]
+	if list == nil || list.Kind != yaml.SequenceNode {
+		return true
+	}
+	value := scalarOf(k.mapping, k.key)
+	for _, item := range list.Content {
+		if item != k.mapping && item.Kind == yaml.MappingNode && value != "" && scalarOf(item, k.key) == value {
+			return false
+		}
+	}
+	return true
+}
+
+// scalarOf returns the value of the scalar key written in mapping, named as
+// key, or "".
+func scalarOf(mapping, key *yaml.Node) string {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key.Value && mapping.Content[i+1].Kind == yaml.ScalarNode {
+			return mapping.Content[i+1].Value
+		}
+	}
+	return ""
+}
+
+// sits reports whether the key k that match found sits where a key of its path
+// does: inside scope, once, and picking one item when it is a selector.
+func (t *keyTree) sits(k keyNode, match keyMatch, scope *yaml.Node) bool {
+	if match.selector && !t.selectsOneItem(k) {
+		return false
+	}
+	if scope == nil {
+		return true
+	}
+	if !t.within(k.key, scope) {
+		return false
+	}
+	if !match.selector && !t.direct(k, scope) {
+		for _, other := range t.childrenNamed(scope, match.key) {
+			if other.key != k.key {
+				return false
+			}
+		}
+	}
+	return true
 }

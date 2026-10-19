@@ -92,18 +92,24 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 
 	// The keys are not all in this template: an include emitted some, as Helm
 	// attributes named-template output to the file invoking it.
-	if found, ok := renderedLines(ctx, file, lines, sanitizedSubstring, extractedString, helmID, outputLines); ok {
+	walk := walkRendered(ctx, file, sanitizedSubstring, extractedString, helmID)
+	if found, ok := renderedLines(file, lines, walk, outputLines); ok {
 		return found
 	}
 
-	// Otherwise the last key that is in this template, and unique, locates the
-	// finding: the node owning the offending key.
+	// Otherwise the node owning the offending key: the deepest key before it that
+	// the rendered document holds and whose line is told, or the last key that is
+	// in this template, and unique. A key nested in another is written after it,
+	// so the later line is the deeper one.
+	owner, ownerFound := ownerLines(file, lines, walk, outputLines)
 	if curLineRes.foundRes && !isIDLine(lines[curLineRes.lineRes]) {
-		return foundLines(file, lines, curLineRes.lineRes, start, end, outputLines)
+		last := foundLines(file, lines, curLineRes.lineRes, start, end, outputLines)
+		if !ownerFound || last.Line > owner.Line {
+			return last
+		}
 	}
-
-	if found, ok := ownerLines(ctx, file, lines, sanitizedSubstring, extractedString, helmID, outputLines); ok {
-		return found
+	if ownerFound {
+		return owner
 	}
 
 	var filePathSplit = strings.Split(file.FilePath, "/")
@@ -135,55 +141,66 @@ func foundLines(
 	}
 }
 
+// renderedWalk is the search key of a finding walked in the rendered document.
+type renderedWalk struct {
+	rendered []string
+	found    detectCurlLine
+	path     []keyMatch
+	resolver *resolver // shared by the lookups of the finding
+}
+
+// walkRendered walks the search key in the rendered document of the file, or
+// returns nil when the file has none.
+func walkRendered(ctx context.Context, file *model.FileMetadata, sanitizedSubstring string,
+	extractedString [][]string, helmID int,
+) *renderedWalk {
+	attribution := file.HelmAttribution
+	if attribution == nil || attribution.RenderedContent == "" {
+		return nil
+	}
+	walk := &renderedWalk{rendered: cachedDocumentOf(attribution).lines}
+	walk.found, _, _ = detectCurlLine{}.walkSearchKey(ctx, walk.rendered, sanitizedSubstring, extractedString, nil, helmID, &walk.path)
+	return walk
+}
+
 // renderedLines locates a finding by the rendered line that holds it: at the
 // include that emitted that line, or at the template line that wrote it when
 // the document aligns line for line with the template. A finding whose keys are
 // not all rendered, or whose line cannot be told, is left to ownerLines.
-func renderedLines(ctx context.Context, file *model.FileMetadata, lines []string, sanitizedSubstring string,
-	extractedString [][]string, helmID, outputLines int,
+func renderedLines(file *model.FileMetadata, lines []string, walk *renderedWalk, outputLines int,
 ) (model.VulnerabilityLines, bool) {
-	attribution := file.HelmAttribution
-	if attribution == nil || attribution.RenderedContent == "" {
+	if walk == nil || !walk.found.foundRes || walk.found.breakRes {
 		return model.VulnerabilityLines{}, false
 	}
-	rendered := strings.Split(attribution.RenderedContent, "\n")
-	var path []keyMatch
-	found, _, _ := detectCurlLine{}.walkSearchKey(ctx, rendered, sanitizedSubstring, extractedString, nil, helmID, &path)
-	if !found.foundRes || found.breakRes {
-		return model.VulnerabilityLines{}, false
-	}
+	rendered, path, line := walk.rendered, walk.path, walk.found.lineRes
 	if !keyPathHolds(rendered, path) {
 		// A nested key of the same name matched first: the direct one is the key.
-		line, ok := directKeyLine(rendered, pathKeys(rendered, path))
+		direct, ok := directKeyLine(rendered, pathKeys(rendered, path))
 		if !ok {
 			return model.VulnerabilityLines{}, false
 		}
-		found.lineRes = line
+		line = direct
 	}
-	return writerLines(file, lines, rendered, found.lineRes, outputLines)
+	return writerLines(file, lines, walk, pathOrNil(path, line), line, outputLines)
 }
 
 // ownerLines locates a finding whose key is not located, as it is absent from
 // the rendered document or its writer cannot be told, at the deepest key
 // before it that holds in the document and is located: the node owning it.
-func ownerLines(ctx context.Context, file *model.FileMetadata, lines []string, sanitizedSubstring string,
-	extractedString [][]string, helmID, outputLines int,
+func ownerLines(file *model.FileMetadata, lines []string, walk *renderedWalk, outputLines int,
 ) (model.VulnerabilityLines, bool) {
-	attribution := file.HelmAttribution
-	if attribution == nil || attribution.RenderedContent == "" {
+	if walk == nil {
 		return model.VulnerabilityLines{}, false
 	}
-	rendered := strings.Split(attribution.RenderedContent, "\n")
-	var path []keyMatch
-	found, _, _ := detectCurlLine{}.walkSearchKey(ctx, rendered, sanitizedSubstring, extractedString, nil, helmID, &path)
-	if found.foundRes && !found.breakRes && len(path) > 0 {
+	path := walk.path
+	if walk.found.foundRes && !walk.found.breakRes && len(path) > 0 {
 		path = path[:len(path)-1]
 	}
 	for i := len(path); i > 0; i-- {
-		if !keyPathHolds(rendered, path[:i]) {
+		if !keyPathHolds(walk.rendered, path[:i]) {
 			continue
 		}
-		if located, ok := writerLines(file, lines, rendered, path[i-1].line, outputLines); ok {
+		if located, ok := writerLines(file, lines, walk, path[:i], path[i-1].line, outputLines); ok {
 			return located, true
 		}
 	}
@@ -192,7 +209,7 @@ func ownerLines(ctx context.Context, file *model.FileMetadata, lines []string, s
 
 // writerLines locates rendered line target at the include that emitted it, or
 // at the template line that wrote it.
-func writerLines(file *model.FileMetadata, lines, rendered []string, target, outputLines int,
+func writerLines(file *model.FileMetadata, lines []string, walk *renderedWalk, path []keyMatch, target, outputLines int,
 ) (model.VulnerabilityLines, bool) {
 	invocations := file.HelmAttribution.Invocations
 	if !invocations.KnownBefore(target + 1) {
@@ -206,25 +223,29 @@ func writerLines(file *model.FileMetadata, lines, rendered []string, target, out
 	if invocation, ok := invocations.Containing(target + 1); ok {
 		return invocationLines(file, invocation.Position, lines, outputLines)
 	}
-	start := documentStart(lines, file.HelmID, invocations)
-	if line, ok := alignedLine(lines, rendered, invocations, target, start); ok {
-		return foundLines(file, lines, line, model.ResourceLine{}, model.ResourceLine{Col: len(lines[line])}, outputLines), true
+	if walk.resolver == nil {
+		start := documentStart(lines, file.HelmID, invocations)
+		walk.resolver = newResolver(lines, walk.rendered, invocations, start, nil, nil, file.HelmID)
+		walk.resolver.tree, _ = cachedKeyTree(walk.rendered)
 	}
-	if line, ok := uniqueLine(lines, rendered, invocations, target, start); ok {
+	r := walk.resolver
+	r.path, r.memo = path, map[int]resolved{}
+	if line, ok := r.locate(target); ok {
 		return foundLines(file, lines, line, model.ResourceLine{}, model.ResourceLine{Col: len(lines[line])}, outputLines), true
 	}
 	return model.VulnerabilityLines{}, false
 }
 
-// alignedLine returns the index of the template line that wrote rendered line
-// target, which no include emitted. From the start of the document, a line of
-// plain text prints once, as written, and in order, so
-// the rendered lines outside the includes' output match those lines one for
-// one. The first line with an action of its own ends that: an action may print
-// nothing, several lines, or join lines. Only that line's first rendered line
-// is known still, when the line starts with text: it is the next one.
-func alignedLine(lines, rendered []string, invocations model.HelmInvocations, target, start int) (int, bool) {
+// alignment maps the rendered lines that align with the template to the
+// template lines that wrote them. From the start of the document, a line of
+// plain text prints once, as written, and in order, so the rendered lines
+// outside the includes match those lines one for one. The first line with an
+// action of its own ends that: an action may print nothing, several lines, or
+// join lines. Only that line's first rendered line is known still, when the
+// line starts with text: it is the next one.
+func alignment(lines, rendered []string, invocations model.HelmInvocations, start int) map[int]int {
 	written, next := plainLines(lines, invocations, start)
+	aligned := map[int]int{}
 	kept := 0
 	for r := renderedStart(rendered, invocations); r < len(rendered); r++ {
 		line := strings.TrimRight(rendered[r], " \t\r")
@@ -233,63 +254,30 @@ func alignedLine(lines, rendered []string, invocations model.HelmInvocations, ta
 		}
 		switch {
 		case kept < len(written) && line == strings.TrimRight(lines[written[kept]], " \t\r"):
-			if r == target {
-				return written[kept], true
-			}
+			aligned[r] = written[kept]
 			kept++
-		case kept == len(written) && next >= 0 && r == target && strings.HasPrefix(line, valueLinePrefix(lines[next])):
-			return next, true
+		case kept == len(written) && next >= 0 && strings.HasPrefix(line, valueLinePrefix(lines[next])):
+			aligned[r] = next
+			return aligned
 		default:
-			return 0, false
+			return aligned
 		}
 	}
-	return 0, false
+	return aligned
 }
 
 // keywordEnd closes a control block.
 const keywordEnd = "end"
+
+// keywordElse starts the other branch of a control block.
+const keywordElse = "else"
 
 // blockOpeners are the actions that open a control block or a definition.
 var blockOpeners = map[string]bool{"if": true, "with": true, "range": true, "define": true, "block": true}
 
 // nonValueActions are the control actions that print no value of their own.
 var nonValueActions = map[string]bool{
-	"else": true, "end": true, "break": true, "continue": true,
-}
-
-// uniqueLine returns the index of the template line that wrote rendered line
-// target when alignment no longer holds. A line of plain text prints once, as
-// written. Outside every control block it always prints, so when the rendered
-// text occurs once and that line holds it, the line wrote it. Inside a block
-// that may be dead, the text may come from another line: the line is then the
-// writer only when it is the one plain line with that text and no other action
-// could print it. The rendered line must also be the only one with its text
-// that no marked include emitted. start is the source line the document starts
-// at (see documentStart).
-func uniqueLine(lines, rendered []string, invocations model.HelmInvocations, target, start int) (int, bool) {
-	text := strings.TrimRight(rendered[target], " \t\r")
-	if strings.TrimSpace(text) == "" || isIDLine(text) {
-		return 0, false
-	}
-	if !renderedOnce(rendered, invocations, target, text) {
-		return 0, false
-	}
-	from, to := documentLines(lines, start)
-	if from < 0 {
-		return 0, false
-	}
-	inInclude, inAction, spanned := actionLines(lines, invocations)
-	depths := lineDepths(lines)
-	writers := scanWriters(lines, from, to, text, inInclude, inAction, spanned, depths)
-	if writers.literal0 >= 0 && writers.literals0 == 1 {
-		return writers.literal0, true
-	}
-	// A single candidate outside every block always prints, but several candidates
-	// with a value cannot be told apart by their text.
-	if writers.count == 1 && depths[writers.found] == 0 {
-		return writers.found, true
-	}
-	return soleWriter(writers.found, writers.count, writers.printers)
+	keywordElse: true, "end": true, "break": true, "continue": true,
 }
 
 // writers are the template lines of a document that may have written a text.
@@ -337,12 +325,12 @@ func soleWriter(found, count int, printers []int) (int, bool) {
 	return 0, false
 }
 
-// renderedOnce reports whether target is the only rendered line with text that
-// no marked include emitted.
-func renderedOnce(rendered []string, invocations model.HelmInvocations, target int, text string) bool {
-	for r, line := range rendered {
+// renderedOnce reports whether target is the only line of rendered[from:to]
+// with text that no marked include emitted.
+func renderedOnce(rendered []string, invocations model.HelmInvocations, target, from, to int, text string) bool {
+	for r := from; r < to && r < len(rendered); r++ {
 		if _, emitted := invocations.Containing(r + 1); !emitted && r != target &&
-			strings.TrimRight(line, " \t\r") == text {
+			strings.TrimRight(rendered[r], " \t\r") == text {
 			return false
 		}
 	}
@@ -365,7 +353,77 @@ func lineWrites(line, text string, spanned bool) (candidate, printer bool) {
 	if strings.Contains(prefix, ":") && strings.HasPrefix(strings.TrimSpace(text), strings.TrimSpace(prefix)) {
 		return true, false
 	}
-	return false, true
+	return false, !cannotPrint(actions, line, text)
+}
+
+// singleLineFunctions end a pipeline with the text of one line: their output
+// has no line break.
+var singleLineFunctions = map[string]bool{
+	"quote": true, "int": true, "int64": true, "float64": true, "b64enc": true, "sha256sum": true,
+	"toJson": true, "toRawJson": true,
+}
+
+// indentCannotPrint reports whether an indent of width, the action at start of
+// line, cannot have printed text. Its padding is printed after the text before
+// the action; a "{{-" trims the line break before it, so the output may
+// continue the text of the line above and the text may start anywhere.
+func indentCannotPrint(line string, start int, width, text string) bool {
+	if strings.HasPrefix(line[start:], "{{-") {
+		return false
+	}
+	n, err := strconv.Atoi(width)
+	prefix := strings.TrimRight(line[:start], " \t\r")
+	if err != nil || !strings.HasPrefix(text, prefix) || strings.TrimSpace(text[len(prefix):]) == "" {
+		return false
+	}
+	rest := text[len(prefix):]
+	return n > len(rest)-len(strings.TrimLeft(rest, " "))
+}
+
+// cannotPrint reports whether the one action of line cannot print text, as
+// the last function of its pipeline bounds its output: indent and nindent
+// indent every line of it by their width, and a single-line function leaves
+// one line after the key that precedes the action.
+func cannotPrint(actions []helmaction.Action, line, text string) bool {
+	if len(actions) != 1 || actions[0].Comment || actions[0].Unterminated {
+		return false
+	}
+	body := strings.Trim(line[actions[0].Start+2:actions[0].End-2], "- \t")
+	fields := strings.Fields(lastStage(body))
+	switch {
+	case len(fields) == 2 && fields[0] == "nindent":
+		width, err := strconv.Atoi(fields[1])
+		return err == nil && width > len(text)-len(strings.TrimLeft(text, " "))
+	case len(fields) == 2 && fields[0] == "indent":
+		return indentCannotPrint(line, actions[0].Start, fields[1], text)
+	case len(fields) == 1 && singleLineFunctions[fields[0]]:
+		prefix := strings.TrimRight(line[:actions[0].Start], " \t")
+		return strings.Contains(prefix, ":") && !strings.HasPrefix(text, prefix)
+	}
+	return false
+}
+
+// lastStage returns the last stage of the pipeline body, split at the last |
+// outside parentheses and quotes.
+func lastStage(body string) string {
+	depth, quote, at := 0, rune(0), -1
+	for i, r := range body {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '`' || r == '\'':
+			quote = r
+		case r == '(':
+			depth++
+		case r == ')':
+			depth--
+		case r == '|' && depth == 0:
+			at = i
+		}
+	}
+	return body[at+1:]
 }
 
 // actionWord is the first word of an action, the keyword or function it starts
@@ -627,6 +685,18 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 	extractedString [][]string, idInfo map[int]interface{}, helmID int, path *[]keyMatch,
 ) (walked detectCurlLine, start, end model.ResourceLine) {
 	for _, key := range strings.Split(sanitizedSubstring, ".") {
+		if path != nil && isListIndex(key) && indexesList(lines, *path) {
+			// A position in a list is no text to look for: the item is read in the
+			// parsed document. After a mapping a number is a key, looked for as text.
+			line, ok := itemLine(lines, *path, key)
+			if !ok {
+				d.breakRes = true
+				break
+			}
+			d = detectCurlLine{foundRes: true, lineRes: line, lastUnique: dupHistory{unique: true, lastUniqueLine: line}}
+			*path = append(*path, keyMatch{key: key, index: true, line: line})
+			continue
+		}
 		substr1, substr2 := detector.GenerateSubstrings(ctx, key, extractedString, lines, d.lineRes)
 		selector := substr2
 		if path == nil {
@@ -657,6 +727,12 @@ func (d detectCurlLine) walkSearchKey(ctx context.Context, lines []string, sanit
 		d.lineRes = d.lastUnique.lastUniqueLine
 	}
 	return d, start, end
+}
+
+// isListIndex reports whether key is the position of a list item.
+func isListIndex(key string) bool {
+	_, err := strconv.Atoi(key)
+	return err == nil && key != ""
 }
 
 // contradictsSelector reports whether line writes key with a literal value other
@@ -732,8 +808,72 @@ func containsHelmKey(line, key string) bool {
 	if strings.Contains(line, key) {
 		return true
 	}
+	return quotedKeyStarts(line, key)
+}
+
+// quotedKeyStarts reports whether line holds the key quoted as a YAML key, not
+// as text: outside any quoted scalar and any comment on the line. It covers a
+// key at the start of a line after its indentation and list dashes, and one of
+// an inline mapping, as in - {"name": web}, but not data: '{"name": web}'.
+func quotedKeyStarts(line, key string) bool {
 	key = strings.TrimSuffix(key, ":")
-	return strings.Contains(line, `"`+key+`":`) || strings.Contains(line, `'`+key+`':`)
+	for _, quoted := range []string{`"` + key + `":`, `'` + key + `':`} {
+		for at := 0; ; {
+			j := strings.Index(line[at:], quoted)
+			if j < 0 {
+				break
+			}
+			if outsideScalarsAndComments(line[:at+j]) {
+				return true
+			}
+			at += j + len(quoted)
+		}
+	}
+	return false
+}
+
+// outsideScalarsAndComments reports whether text ends outside any quoted scalar
+// and before any comment. A quote opens a scalar only where a token starts, so
+// the apostrophe of it's is text; a '#' starts a comment after a blank or at the
+// start of the line.
+func outsideScalarsAndComments(text string) bool {
+	var quote byte
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		if quote != 0 {
+			i, quote = consumeQuoted(text, i, quote)
+			continue
+		}
+		if c == '#' && (i == 0 || text[i-1] == ' ' || text[i-1] == '\t') {
+			return false
+		}
+		if (c == '"' || c == '\'') && tokenStarts(text[:i]) {
+			quote = c
+		}
+	}
+	return quote == 0
+}
+
+// consumeQuoted returns the index of the last character of text the scalar
+// quoted with quote takes at i, and the quote still open after it (0 once the
+// scalar closes).
+func consumeQuoted(text string, i int, quote byte) (next int, open byte) {
+	switch c := text[i]; {
+	case quote == '"' && c == '\\':
+		return i + 1, quote
+	case c != quote:
+		return i, quote
+	case quote == '\'' && i+1 < len(text) && text[i+1] == '\'':
+		return i + 1, quote
+	}
+	return i, 0
+}
+
+// tokenStarts reports whether a token starts after before: at the start of the
+// line, or after an indicator that opens a node.
+func tokenStarts(before string) bool {
+	before = strings.TrimRight(before, " \t")
+	return before == "" || strings.IndexByte(":-{[,?", before[len(before)-1]) >= 0
 }
 
 // nolint:gocritic
@@ -743,7 +883,7 @@ func (d detectCurlLine) detectCurrentLine(lines []string, str1,
 	starts, ends := make(map[int]model.ResourceLine), make(map[int]model.ResourceLine)
 	for i := d.lineRes; i < len(lines); i++ {
 		if str1 != "" && str2 != "" {
-			if strings.Contains(lines[i], str1) && strings.Contains(lines[i], str2) {
+			if containsHelmKey(lines[i], str1) && strings.Contains(lines[i], str2) {
 				distances[i] = levenshtein.ComputeDistance(detector.ExtractLineFragment(lines[i], str2, byKey), str2)
 				starts[i] = model.ResourceLine{Line: i + 1, Col: 0}
 				ends[i] = model.ResourceLine{Line: i + 1, Col: len(lines[i])}
