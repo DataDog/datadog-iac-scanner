@@ -189,9 +189,23 @@ func checkForbidden(k *types.Kustomization) error {
 
 // validateKustomization decodes data as a kustomization and refuses anything
 // that could make the renderer touch the network, run git, or load a plugin.
+//
+// Kustomize's own decoder has to be the authoritative one here. It goes
+// through encoding/json (types.Kustomization.Unmarshal), which matches field
+// names case-insensitively, so "Resources:" binds for Kustomize while a
+// case-sensitive YAML decoder sees an unknown key and waves the field
+// through unvalidated. Decoding exactly as Kustomize does keeps the two views
+// of the file identical by construction, and its DisallowUnknownFields makes
+// an undecodable kustomization fail closed. The generic YAML decode runs
+// first only to reject duplicate keys, which the JSON path silently resolves
+// last-wins.
 func validateKustomization(data []byte) (*types.Kustomization, error) {
+	fields := map[string]interface{}{}
+	if err := kyamlyaml.Unmarshal(data, &fields); err != nil {
+		return nil, failf(ReasonValidation, "cannot decode kustomization")
+	}
 	k := &types.Kustomization{}
-	if err := kyamlyaml.Unmarshal(data, k); err != nil {
+	if err := k.Unmarshal(data); err != nil {
 		return nil, failf(ReasonValidation, "cannot decode kustomization")
 	}
 	k.FixKustomization()
@@ -294,14 +308,14 @@ func (r *readSet) sorted() []string {
 type constrainedFS struct {
 	fsys            vfs.FS
 	confinementRoot string // resolved real path of the workspace root
-	//nolint:unused // the renderer (stacked PR) reads it
-	renderRoot    string // absolute path of the kustomization being rendered
-	maxFileBytes  int64
-	budget        *atomic.Int64
-	cache         *byteCache
-	read          *readSet
-	topKustomFile string // absolute path of the render root's kustomization file
-	mem           *memIndex
+	renderRoot      string // absolute path of the kustomization being rendered
+	maxFileBytes    int64
+	budget          *atomic.Int64
+	cache           *byteCache
+	read            *readSet
+	topKustomFile   string // resolved real path of the render root's kustomization file
+	mem             *memIndex
+	slashPaths      bool // report resolved paths with "/" instead of the OS separator
 }
 
 var _ filesys.FileSystem = (*constrainedFS)(nil)
@@ -333,6 +347,10 @@ func newConstrainedFS(
 		budget:          budget,
 		cache:           cache,
 		read:            &readSet{files: make(map[string]fileRole)},
+		// Pushed files are addressed with "/" on every OS, so their resolved
+		// paths must be too; disk files keep the OS separator, matching the
+		// Helm resolver.
+		slashPaths: !vfs.IsDisk(fsys),
 	}
 	if m, ok := fsys.(*vfs.MemFS); ok {
 		c.mem = newMemIndex(m)
@@ -458,7 +476,11 @@ func (c *constrainedFS) ReadFile(path string) ([]byte, error) {
 		c.budget.Add(info.Size())
 		return nil, failf(ReasonSizeLimit, "cumulative size budget exceeded")
 	}
-	base := filepath.Base(found)
+	// Classify by the name Kustomize asked for, not by the name the symlink
+	// resolved to: Kustomize only ever loads a kustomization under one of the
+	// three recognized names, and a kustomization.yaml that is a symlink to a
+	// differently named file must still be validated and annotated.
+	base := filepath.Base(path)
 	data, err := c.cache.get(found, func() ([]byte, error) { return c.fsys.ReadFile(found) })
 	if err != nil {
 		return nil, failf(ReasonMissingFile, "read: cannot load file")
