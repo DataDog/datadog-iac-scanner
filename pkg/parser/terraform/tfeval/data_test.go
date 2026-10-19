@@ -255,18 +255,30 @@ resource "aws_sqs_queue_policy" "p" {
 	require.Contains(t, doc["policy"], `arn:aws:sqs:us-east-1:1:q`)
 }
 
-func TestDataInstancesDoNotChargeBudget(t *testing.T) {
-	e := New()
-	e.SetMaxInstantiated(3)
-	resources := evaluateWithChild(t, e, map[string]string{"main.tf": `
+func TestDataInstancesChargeBudget(t *testing.T) {
+	files := map[string]string{"main.tf": `
 resource "aws_s3_bucket" "a" {}
 resource "aws_s3_bucket" "b" {}
 data "aws_region" "r" {}
 data "aws_caller_identity" "c" {}
-`}, callChild)
+`}
+
+	e := New()
+	e.SetMaxInstantiated(5)
+	resources := evaluateWithChild(t, e, files, callChild)
 	findResource(t, resources, "aws_s3_bucket", "a")
-	findResource(t, resources, "aws_s3_bucket", "b")
-	require.Equal(t, 2, e.InstantiatedCount())
+	require.Equal(t, 4, e.InstantiatedCount())
+	require.False(t, e.BudgetExceeded())
+
+	// A module whose resources and data together exceed the budget is not
+	// instantiated, as one whose resources alone do.
+	e = New()
+	e.SetMaxInstantiated(3)
+	resources = evaluateWithChild(t, e, files, callChild)
+	for _, r := range resources {
+		require.NotEqual(t, "aws_s3_bucket", r.Type)
+	}
+	require.True(t, e.BudgetExceeded())
 }
 
 func findData(t *testing.T, data []ResolvedResource, typ, name string) ResolvedResource {
@@ -281,3 +293,44 @@ func findData(t *testing.T, data []ResolvedResource, typ, name string) ResolvedR
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestDataPolicyDocumentExpandsDynamicBlocksInModule(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "names" {
+  type = list(string)
+}
+
+variable "suffix" {}
+
+data "aws_iam_policy_document" "d" {
+  dynamic "statement" {
+    for_each = var.names
+    content {
+      sid       = statement.value
+      actions   = ["s3:GetObject", "${statement.value}:*"]
+      resources = ["arn:aws:s3:::${statement.value}/${var.suffix}"]
+    }
+  }
+}
+
+resource "aws_sqs_queue_policy" "p" {
+  policy = data.aws_iam_policy_document.d.json
+}
+`})
+	dir := writeModule(t, root, "root", map[string]string{"main.tf": `
+module "c" {
+  source = "../child"
+  names  = ["a", "b"]
+  suffix = "x"
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "p")))
+	require.Equal(t, `{"Statement":[`+
+		`{"Actions":["s3:GetObject","a:*"],"Effect":"Allow","Resources":["arn:aws:s3:::a/x"],"Sid":"a"},`+
+		`{"Actions":["s3:GetObject","b:*"],"Effect":"Allow","Resources":["arn:aws:s3:::b/x"],"Sid":"b"}],`+
+		`"Version":"2012-10-17"}`+"\n", doc["policy"])
+}
