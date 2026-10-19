@@ -6,6 +6,7 @@
 package resolver
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -21,20 +22,27 @@ func TestRunGitCommandStopsAtResourceBudget(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
+	start := time.Now()
 	cmd := exec.Command(os.Args[0], "-test.run=TestGitResourceBudgetHelper", "--", dir)
 	cmd.Env = append(os.Environ(), "GO_WANT_GIT_BUDGET_HELPER=1")
 	budget := NewResourceBudget(ResourceLimits{MaxPackageBytes: 512})
 
-	_, err := runGitCommandWithResourceBudget(t.Context(), cmd, dir, budget)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	_, err := runGitCommandWithResourceBudget(ctx, cmd, dir, budget)
+	elapsed := time.Since(start)
 
 	var budgetErr *BudgetExceededError
 	require.True(t, errors.As(err, &budgetErr))
 	require.Equal(t, "package_bytes", budgetErr.Limit)
 	info, statErr := os.Stat(filepath.Join(dir, "objects", "pack", "incoming.pack"))
 	require.NoError(t, statErr)
-	// Sample interval + Process.Kill latency lets the helper keep writing past the
-	// 512-byte budget; Windows kill is slower so allow a larger overshoot there.
-	maxSize := int64(1536)
+	// The helper breaches the budget within a few chunks, so the monitor must
+	// stop it well before the deadline; a monitor that stops sampling hits it.
+	require.Less(t, elapsed, 10*time.Second)
+	// Sample interval plus kill latency lets the helper write past the budget;
+	// Windows is slower so allow a larger overshoot there.
+	maxSize := int64(4096)
 	if runtime.GOOS == "windows" {
 		maxSize = 8 << 10
 	}
@@ -100,9 +108,12 @@ func TestGitResourceBudgetHelper(t *testing.T) {
 		os.Exit(1)
 	}
 	defer func() { _ = file.Close() }()
-	// Small chunks keep post-breach growth modest while the monitor waits its
-	// sample interval and the OS delivers Process.Kill.
-	chunk := make([]byte, 64)
+	// Windows is slower to sleep and kill, so it writes less per interval
+	// there to stay under the overshoot bound.
+	chunk := make([]byte, 256)
+	if runtime.GOOS == "windows" {
+		chunk = make([]byte, 64)
+	}
 	for {
 		if _, err := file.Write(chunk); err != nil {
 			os.Exit(1)

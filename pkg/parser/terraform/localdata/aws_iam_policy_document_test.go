@@ -215,6 +215,12 @@ func TestParseJSONPrincipalWildcard(t *testing.T) {
 	require.Equal(t, []string{"*"}, policy.Statements[0].Resources)
 }
 
+func TestParseJSONBareStringPrincipalIsTyped(t *testing.T) {
+	policy, ok := parsePolicyJSON(`{"Statement":[{"Effect":"Allow","Principal":"arn:aws:iam::123456789012:root","Action":"s3:*"}]}`)
+	require.True(t, ok)
+	require.Equal(t, map[string][]string{"AWS": {"arn:aws:iam::123456789012:root"}}, policy.Statements[0].Principals)
+}
+
 func renderedAttributes(t *testing.T, src string) map[string]string {
 	t.Helper()
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
@@ -574,8 +580,10 @@ dynamic "binding" {
 	require.Nil(t, googleIAMPolicyAttributes(file.Body, rd.Render))
 }
 
-func TestSourceDocumentWithPartiallyUnresolvedConditionStaysUnresolved(t *testing.T) {
-	require.Nil(t, productionAttributes(t, `
+// An unresolved condition value renders like in own statements: dropping it
+// would ungate a Deny.
+func TestSourceDocumentWithPartiallyUnresolvedConditionValueStillRenders(t *testing.T) {
+	got := productionAttributes(t, `
 source_policy_documents = [jsonencode({
   Statement = [{
     Effect = "Deny", Action = "s3:*", Resource = "*"
@@ -585,7 +593,10 @@ source_policy_documents = [jsonencode({
     }
   }]
 })]
-`))
+`)
+	require.NotNil(t, got)
+	require.Contains(t, got["json"], `"aws:SourceVpce":["${var.vpce}"]`)
+	require.Contains(t, got["json"], `"aws:SecureTransport":["false"]`)
 }
 
 func TestEmptyConditionValuesAreNotEmitted(t *testing.T) {
@@ -617,19 +628,50 @@ statement {
 
 func TestParsePolicyJSONFailsClosedOnNullAndUnresolvedTemplates(t *testing.T) {
 	for name, raw := range map[string]string{
-		"statement null":           `{"Statement":[null,{"Effect":"Allow","Action":"s3:*"}]}`,
-		"condition value null":     `{"Statement":[{"Effect":"Allow","Condition":{"StringEquals":{"a":null}}}]}`,
-		"condition value empty":    `{"Statement":[{"Effect":"Allow","Condition":{"StringEquals":{"a":[]}}}]}`,
-		"principal ids empty":      `{"Statement":[{"Effect":"Allow","Principal":{"AWS":[]}}]}`,
-		"condition template":       `{"Statement":[{"Effect":"Deny","Condition":{"StringEquals":{"aws:SourceVpce":"${var.vpce}"}}}]}`,
-		"mixed condition template": `{"Statement":[{"Effect":"Deny","Condition":{"Bool":{"aws:SecureTransport":false},"StringEquals":{"aws:SourceVpce":"${var.vpce}"}}}]}`,
-		"action template":          `{"Statement":[{"Effect":"Allow","Action":"${var.a}"}]}`,
+		"statement null":        `{"Statement":[null,{"Effect":"Allow","Action":"s3:*"}]}`,
+		"condition value null":  `{"Statement":[{"Effect":"Allow","Condition":{"StringEquals":{"a":null}}}]}`,
+		"condition value empty": `{"Statement":[{"Effect":"Allow","Condition":{"StringEquals":{"a":[]}}}]}`,
+		"principal ids empty":   `{"Statement":[{"Effect":"Allow","Principal":{"AWS":[]}}]}`,
+		"principal template":    `{"Statement":[{"Effect":"Allow","Principal":"${var.p}"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, ok := parsePolicyJSON(raw)
 			require.False(t, ok)
 		})
 	}
+}
+
+// Leaf templates of a source document read like the ones of own statements:
+// dropping the statement would hide a guard the policy has.
+func TestSourceDocumentLeafTemplatesRender(t *testing.T) {
+	got := productionAttributes(t, `
+source_policy_documents = [jsonencode({
+  Version = "2012-10-17"
+  Statement = [{
+    Sid       = "DenyHTTP"
+    Effect    = "Deny"
+    Action    = "s3:*"
+    Resource  = "${aws_s3_bucket.b.arn}/*"
+    Principal = "*"
+    Condition = { Bool = { "aws:SecureTransport" = "false" } }
+  }, {
+    Sid      = "IamVar"
+    Effect   = "Allow"
+    Action   = "iam:*"
+    Resource = "arn:aws:iam::*:user/$${aws:username}"
+    Condition = { StringEquals = { "aws:SourceVpce" = var.vpce } }
+  }]
+})]
+statement {
+  sid       = "Chained"
+  actions   = ["s3:ListBucket"]
+  resources = ["${aws_s3_bucket.b.arn}"]
+}
+`)
+	require.NotNil(t, got)
+	require.Contains(t, got["json"], `"Resources":["${aws_s3_bucket.b.arn}/*"]`)
+	require.Contains(t, got["json"], `"arn:aws:iam::*:user/${aws:username}"`)
+	require.Contains(t, got["json"], `"aws:SourceVpce":["${var.vpce}"]`)
 }
 
 func TestOverrideJSONWinsOverOverridePolicyDocuments(t *testing.T) {

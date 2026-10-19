@@ -448,16 +448,14 @@ type jsonReader struct {
 
 func (r *jsonReader) ok() bool { return !r.failed }
 
+// str reads a string field. Like Sid and Effect, Id and Version are leaf
+// text: a "${...}" placeholder passes through instead of failing the document.
 func (r *jsonReader) str(raw json.RawMessage) string {
 	if len(raw) == 0 || isJSONNull(raw) {
 		return ""
 	}
 	var s string
 	if json.Unmarshal(raw, &s) != nil {
-		r.failed = true
-		return ""
-	}
-	if unresolvedTemplate(s) {
 		r.failed = true
 		return ""
 	}
@@ -485,10 +483,6 @@ func (r *jsonReader) strings(raw json.RawMessage) []string {
 	for _, elem := range list {
 		switch e := elem.(type) {
 		case string:
-			if unresolvedTemplate(e) {
-				r.failed = true
-				return nil
-			}
 			out = append(out, e)
 		case json.Number:
 			out = append(out, e.String())
@@ -506,8 +500,7 @@ func (r *jsonReader) strings(raw json.RawMessage) []string {
 }
 
 // unresolvedTemplate reports whether s is a placeholder the partial renderer
-// leaves when an expression does not resolve. A source document that still
-// holds one is incomplete.
+// leaves when an expression does not resolve.
 func unresolvedTemplate(s string) bool {
 	return strings.Contains(s, "${")
 }
@@ -527,6 +520,12 @@ func (r *jsonReader) principal(raw json.RawMessage) map[string][]string {
 			// type = "*" shape rules already read.
 			return map[string][]string{"*": {"*"}}
 		default:
+			// The principal type gates the statement, and guessing one from an
+			// unresolved reference would not.
+			if unresolvedTemplate(s) {
+				r.failed = true
+				return nil
+			}
 			return map[string][]string{"AWS": {s}}
 		}
 	}

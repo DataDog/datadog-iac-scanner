@@ -135,6 +135,90 @@ data "aws_iam_policy_document" "x" {
 	require.NotContains(t, withDoc, "bucket")
 }
 
+func Test_getDataSourcePolicy_tryDoesNotKeepFallbackForExistingValues(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
+variable "acl" {
+  default = "public-read"
+}
+locals {
+  base = "public-read"
+  from_var  = try(var.acl, "private")
+  from_local = try(local.base, "private")
+  has_local = can(local.base)
+}
+`})
+	// var.acl exists, so the fallback must not replace it.
+	require.NotContains(t, locals, "from_var")
+	require.Equal(t, "public-read", locals["from_local"].AsString())
+	require.True(t, locals["has_local"].True())
+}
+
+// Two locals blocks pin the evaluation order: the first block is walked
+// before the second, so the pre-pass must wait for local.y.
+func Test_getDataSourcePolicy_tryWaitsForLocalFromLaterBlock(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
+locals {
+  x = try(local.y, "fb")
+}
+locals {
+  y = "real"
+}
+`})
+	require.Equal(t, "real", locals["x"].AsString())
+}
+
+func Test_getDataSourcePolicy_nullLocalsAreStored(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
+locals {
+  nothing  = lookup({}, "k", null)
+  fallback = try(local.nothing, "fb")
+}
+`})
+	// IsNull is true for a missing key too, so pin the key itself.
+	require.Contains(t, locals, "nothing")
+	require.True(t, locals["nothing"].IsNull())
+	// try sees the resolved null and returns it, not the fallback.
+	require.True(t, locals["fallback"].IsNull())
+}
+
+// A dynamic read of the whole local object resolves once the key it reads
+// does, without waiting for a data pass.
+func Test_getDataSourcePolicy_dynamicKeyLocalResolves(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
+locals {
+  k   = "env"
+  env = "production"
+  acl = local[local.k]
+}
+`})
+	require.Equal(t, "production", locals["acl"].AsString())
+}
+
+// try would keep a fallback for keys that may still appear.
+func Test_getDataSourcePolicy_tryWithWholeObjectReadStaysUnresolved(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
+locals {
+  x = try(local, "fb")
+}
+`})
+	require.NotContains(t, locals, "x")
+}
+
+func Test_getDataSourcePolicy_dataDependentNullLocalIsStored(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
+data "aws_iam_policy_document" "plain" {
+  statement {
+    actions = ["s3:*"]
+  }
+}
+locals {
+  out = try(data.aws_iam_policy_document.missing.json, null)
+}
+`})
+	require.Contains(t, locals, "out")
+	require.True(t, locals["out"].IsNull())
+}
+
 func Test_getDataSourcePolicy_localsReadingDataResolveThroughVariables(t *testing.T) {
 	_, locals := scanDataSourceDir(t, map[string]string{
 		"main.tf": unrelatedLocals + `
@@ -299,26 +383,6 @@ locals { bucket = "logs-${var.env}" }
 
 func Test_getDataSourcePolicy_JSONLocalChainFeedsSource(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf.json"), []byte(`{
-  "locals": [{
-    "a": "base",
-    "b": "${local.a}",
-    "c": "${local.b}",
-    "d": "${local.c}",
-    "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"FromJSON\",\"Effect\":\"Allow\",\"Action\":\"s3:*\",\"Resource\":\"*\"}]}"
-  }],
-  "data": {
-    "aws_iam_policy_document": {
-      "via": {
-        "source_policy_documents": ["${local.policy}"]
-      },
-      "chain": {
-        "source_policy_documents": ["${local.d}"]
-      }
-    }
-  }
-}`), 0o600))
-	// Rewrite: chain test needs d to be the policy JSON after 4 hops.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf.json"), []byte(`{
   "locals": [{
     "a": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"FromJSON\",\"Effect\":\"Allow\",\"Action\":\"s3:*\",\"Resource\":\"*\"}]}",

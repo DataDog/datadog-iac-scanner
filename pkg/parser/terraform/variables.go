@@ -202,18 +202,40 @@ func mergeKnownAttributes(dst converter.VariableMap, body hcl.Body) {
 		assignments = append(assignments, localAssignment{name: name, expr: attr.Expr})
 	}
 	assignments = lastLocalAssignments(assignments)
+	evalLocalPrePass(dst, assignments)
+}
+
+func extractLocals(body *hclsyntax.Body) converter.VariableMap {
+	locals := make(converter.VariableMap)
+	if body == nil {
+		return locals
+	}
+	assignments := lastLocalAssignments(localAssignmentsFromBody(body))
+	evalLocalPrePass(locals, assignments)
+	return locals
+}
+
+// evalLocalPrePass resolves the locals a locals-only context can compute: an
+// assignment waits until it reads only resolved locals, so try and can do not
+// keep a fallback for a value that exists. Nulls are stored like other values.
+func evalLocalPrePass(dst converter.VariableMap, assignments []localAssignment) {
 	for pass := 0; pass < len(assignments)+1; pass++ {
-		evalCtx := &hcl.EvalContext{
-			Variables: map[string]cty.Value{"local": cty.ObjectVal(dst)},
-			Functions: functions.TerraformFuncs,
-		}
 		changed := false
 		for _, item := range assignments {
 			if _, ok := dst[item.name]; ok {
 				continue
 			}
+			if !evaluableWithLocalsOnly(item.expr, dst) {
+				continue
+			}
+			// The context holds the locals resolved so far, including ones
+			// this pass resolved, so it is built per assignment.
+			evalCtx := &hcl.EvalContext{
+				Variables: map[string]cty.Value{"local": cty.ObjectVal(dst)},
+				Functions: functions.TerraformFuncs,
+			}
 			val, diags := item.expr.Value(evalCtx)
-			if !diags.HasErrors() && val.IsKnown() && !val.IsNull() {
+			if !diags.HasErrors() && val.IsKnown() {
 				dst[item.name] = val
 				changed = true
 			}
@@ -224,38 +246,51 @@ func mergeKnownAttributes(dst converter.VariableMap, body hcl.Body) {
 	}
 }
 
-func extractLocals(body *hclsyntax.Body) converter.VariableMap {
-	locals := make(converter.VariableMap)
-	if body == nil {
-		return locals
-	}
-	assignments := lastLocalAssignments(localAssignmentsFromBody(body))
-	// Resolve locals that do not need data/var in a few passes.
-	for pass := 0; pass < len(assignments)+1; pass++ {
-		changed := false
-		evalCtx := &hcl.EvalContext{
-			Variables: map[string]cty.Value{"local": cty.ObjectVal(locals)},
-			Functions: functions.TerraformFuncs,
+// evaluableWithLocalsOnly reports whether expr reads nothing but locals that
+// already hold a value in resolved. Whole-object reads (local[local.k]) may
+// evaluate once the key they read resolves, except under try or can, which
+// would keep a fallback for a key that appears later.
+func evaluableWithLocalsOnly(expr hcl.Expression, resolved converter.VariableMap) bool {
+	strict := usesTryOrCan(expr)
+	for _, traversal := range expr.Variables() {
+		if traversal.RootName() != blockTypeLocalReference {
+			return false
 		}
-		for _, item := range assignments {
-			if _, ok := locals[item.name]; ok {
-				continue
+		name, ok := localTraversalName(traversal)
+		if !ok {
+			if strict {
+				return false
 			}
-			val, diags := item.expr.Value(evalCtx)
-			if !diags.HasErrors() && val.IsKnown() && !val.IsNull() {
-				locals[item.name] = val
-				changed = true
-			}
+			continue
 		}
-		if !changed {
-			break
+		if _, done := resolved[name]; !done {
+			return false
 		}
 	}
-	return locals
+	return true
 }
 
-// localAssignment is a locals attribute to evaluate once data (or other)
-// namespaces become available.
+// usesTryOrCan reports whether expr calls try or can, which turn a missing
+// local into a value instead of an error. An expression whose syntax tree
+// cannot be inspected is treated as if it did.
+func usesTryOrCan(expr hcl.Expression) bool {
+	syntaxExpr, ok := expr.(hclsyntax.Expression)
+	if !ok {
+		return true
+	}
+	uses := false
+	_ = hclsyntax.VisitAll(syntaxExpr, func(node hclsyntax.Node) hcl.Diagnostics {
+		if call, ok := node.(*hclsyntax.FunctionCallExpr); ok && (call.Name == "try" || call.Name == "can") {
+			uses = true
+		}
+		return nil
+	})
+	return uses
+}
+
+// localAssignment is a locals attribute, held back from the locals-only
+// pre-pass while it reads more than resolved locals and evaluated again once
+// data (or other) namespaces become available.
 type localAssignment struct {
 	name string
 	expr hcl.Expression
@@ -274,8 +309,8 @@ func localAssignmentsFromBody(body *hclsyntax.Body) []localAssignment {
 	return out
 }
 
-// lastLocalAssignments keeps the last declaration of each local name, matching
-// Terraform's override of earlier locals blocks.
+// lastLocalAssignments keeps the last declaration of each local name, in
+// parse order: a later block, or a later file, wins.
 func lastLocalAssignments(all []localAssignment) []localAssignment {
 	last := make(map[string]int, len(all))
 	for i, item := range all {
@@ -400,7 +435,7 @@ func refreshLocals(vars converter.VariableMap, assignments []localAssignment) bo
 		evalCtx := &hcl.EvalContext{Variables: evalVars, Functions: functions.TerraformFuncs}
 		for _, item := range assignments {
 			val, diags := item.expr.Value(evalCtx)
-			if diags.HasErrors() || !val.IsKnown() || val.IsNull() {
+			if diags.HasErrors() || !val.IsKnown() {
 				continue
 			}
 			if prev, ok := current[item.name]; ok && prev.RawEquals(val) {
