@@ -256,7 +256,7 @@ func evaluableWithLocalsOnly(expr hcl.Expression, resolved converter.VariableMap
 		if traversal.RootName() != blockTypeLocalReference {
 			return false
 		}
-		name, ok := localTraversalName(traversal)
+		name, ok := LocalTraversalName(traversal)
 		if !ok {
 			if strict {
 				return false
@@ -379,7 +379,7 @@ func readsOf(expr hcl.Expression) localReads {
 		case terraformDataIdentifier:
 			r.data = true
 		case blockTypeLocalReference:
-			if name, ok := localTraversalName(traversal); ok {
+			if name, ok := LocalTraversalName(traversal); ok {
 				r.locals = append(r.locals, name)
 			} else {
 				r.anyLocal = true
@@ -403,10 +403,10 @@ func (r localReads) dependsOn(dependent map[string]bool) bool {
 	return false
 }
 
-// localTraversalName returns the local a local.<name> or local["<name>"]
+// LocalTraversalName returns the local a local.<name> or local["<name>"]
 // traversal reads.
-func localTraversalName(traversal hcl.Traversal) (string, bool) {
-	if len(traversal) < 2 {
+func LocalTraversalName(traversal hcl.Traversal) (string, bool) {
+	if traversal.RootName() != blockTypeLocalReference || len(traversal) < 2 {
 		return "", false
 	}
 	switch step := traversal[1].(type) {

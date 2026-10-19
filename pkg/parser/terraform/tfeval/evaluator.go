@@ -24,6 +24,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -157,6 +158,19 @@ type localDeps struct {
 	data      bool
 }
 
+// dataLocals returns the locals reading data.*, directly or through other
+// locals, per the classification resolveLocalsIncremental computed. It must
+// run after that first resolution, which is what computes the classification.
+func (s *ModuleScope) dataLocals() map[string]bool {
+	out := make(map[string]bool, len(s.localDeps))
+	for name, deps := range s.localDeps {
+		if deps.data {
+			out[name] = true
+		}
+	}
+	return out
+}
+
 // ModuleInstance is one evaluated call of a module directory, whether or not
 // the module declares resources.
 type ModuleInstance struct {
@@ -200,6 +214,10 @@ type Evaluator struct {
 	expansionTruncations    int
 	expansionMaxRequested   int
 	expansionTruncationWarn bool
+
+	// dataBlockEvals counts the data block expansions that actually ran, so
+	// tests can check what the eval cache and budget skips save.
+	dataBlockEvals int
 
 	// notEvaluatedDirs holds every module directory this evaluator declined to
 	// evaluate for depth, cycle or budget. It accumulates for the whole scan
@@ -379,6 +397,10 @@ func (e *Evaluator) ExpansionTruncations() int { return e.expansionTruncations }
 
 // ExpansionMaxRequested reports the largest requested instance count seen when truncating.
 func (e *Evaluator) ExpansionMaxRequested() int { return e.expansionMaxRequested }
+
+// DataBlockEvaluations reports how many data block expansions ran, counting
+// only evaluations the eval cache could not avoid.
+func (e *Evaluator) DataBlockEvaluations() int { return e.dataBlockEvals }
 
 // AddExpansionStats folds truncation counters from a forked evaluator into e.
 func (e *Evaluator) AddExpansionStats(hits, maxRequested int) {
@@ -588,7 +610,7 @@ func (e *Evaluator) evaluate(
 	scope := &ModuleScope{Locals: localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources}
 	evalCtx.Variables["local"] = objectOrEmpty(
 		e.resolveLocalsIncremental(scope, localExprs, resourceTypes, evalCtx, false, false))
-	data := newModuleData(e, bodies, sources, localExprs, resourceTypes, addr, chain)
+	data := newModuleData(e, bodies, sources, scope, resourceTypes, addr, chain, hasUnconditionalResourceBlock(resourceBlocks))
 	data.refresh(ctx, evalCtx)
 
 	if !e.preinjectResourceRefs(ctx, resourceBlocks, moduleBlocks, localExprs, scope, resourceTypes, evalCtx, data, addr, chain) {
@@ -657,8 +679,24 @@ func (e *Evaluator) evaluate(
 	return resources, outputs, nil
 }
 
-// applyModuleOutputs installs module.* and refreshes what reads it.
+// applyModuleOutputs installs the module.* outputs of the module calls and
+// refreshes what reads them.
 func (e *Evaluator) applyModuleOutputs(
+	ctx context.Context,
+	evalCtx *hcl.EvalContext,
+	scope *ModuleScope,
+	localExprs map[string]hclsyntax.Expression,
+	data *moduleData,
+	moduleOutputs map[string]cty.Value,
+) {
+	e.installModuleOutputs(ctx, evalCtx, scope, localExprs, data, moduleOutputs)
+}
+
+// installModuleOutputs publishes module.* and refreshes what reads it: first
+// the locals reading module outputs, then the data blocks. That locals-before-
+// data ordering is load-bearing. Republishing the module.* value the data was
+// already refreshed against skips the refresh: nothing data reads changed.
+func (e *Evaluator) installModuleOutputs(
 	ctx context.Context,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
@@ -669,12 +707,14 @@ func (e *Evaluator) applyModuleOutputs(
 	if len(moduleOutputs) == 0 {
 		return
 	}
-	evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
+	value := cty.ObjectVal(moduleOutputs)
+	evalCtx.Variables["module"] = value
 	evalCtx.Variables["local"] = objectOrEmpty(
 		e.resolveLocalsIncremental(scope, localExprs, nil, evalCtx, false, true))
-	if data.readsModules() {
-		data.refresh(ctx, evalCtx)
+	if !data.readsModules() || data.refreshedWithModule(value) {
+		return
 	}
+	data.refresh(ctx, evalCtx)
 }
 
 func (e *Evaluator) evaluationStop(
@@ -920,15 +960,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	prelimOutputs := e.preliminaryModuleOutputs(
 		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
-	if len(prelimOutputs) == 0 {
-		return
-	}
-	evalCtx.Variables["module"] = cty.ObjectVal(prelimOutputs)
-	evalCtx.Variables["local"] = objectOrEmpty(
-		e.resolveLocalsIncremental(scope, scope.Locals, nil, evalCtx, false, true))
-	if data.readsModules() {
-		data.refresh(ctx, evalCtx)
-	}
+	e.installModuleOutputs(ctx, evalCtx, scope, scope.Locals, data, prelimOutputs)
 }
 
 func (e *Evaluator) evaluateLocalModuleBlocks(
@@ -1028,12 +1060,7 @@ func (e *Evaluator) installSiblingModuleOutputs(
 	data *moduleData,
 	moduleOutputs map[string]cty.Value,
 ) {
-	evalCtx.Variables["module"] = cty.ObjectVal(moduleOutputs)
-	evalCtx.Variables["local"] = objectOrEmpty(
-		e.resolveLocalsIncremental(scope, localExprs, nil, evalCtx, false, true))
-	if data.readsModules() {
-		data.refresh(ctx, evalCtx)
-	}
+	e.installModuleOutputs(ctx, evalCtx, scope, localExprs, data, moduleOutputs)
 }
 
 // isReportableModuleEvalError excludes a missing local source, which the module
@@ -1179,7 +1206,7 @@ func bodyReadsNamedLocals(body *hclsyntax.Body, names map[string]bool) bool {
 
 func readsNamedLocals(expr hclsyntax.Expression, names map[string]bool) bool {
 	for _, traversal := range expr.Variables() {
-		name, ok := localTraversalName(traversal)
+		name, ok := terraform.LocalTraversalName(traversal)
 		if ok && names[name] {
 			return true
 		}
@@ -1211,6 +1238,32 @@ func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
 		}
 	}
 	return false
+}
+
+// hasUnconditionalResourceBlock reports whether a resource block instantiates
+// one instance regardless of context, letting an exhausted budget discard the
+// module at its resource limit.
+func hasUnconditionalResourceBlock(blocks []*hclsyntax.Block) bool {
+	for _, rb := range blocks {
+		if len(rb.Labels) >= 2 && rb.Body.Attributes["count"] == nil && rb.Body.Attributes["for_each"] == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// dataExpansionWithinBudget reports whether a module call's data blocks may
+// expand. A fully exhausted budget discards the call at its resource limit or
+// final charge either way, so the expansion would only pay for thrown-away
+// instances. Partial overruns and the exempt cases (root module, prepass, no
+// unconditional resource block, disabled budget) take the unchanged path; a
+// disabled budget reports -1 from remainingInstantiationBudget, which must not
+// read as exhausted.
+func (e *Evaluator) dataExpansionWithinBudget(addr string, hasUnconditionalResource bool) bool {
+	if addr == "" || !hasUnconditionalResource || e.prepassDepth > 0 || e.maxInstantiated <= 0 {
+		return true
+	}
+	return e.remainingInstantiationBudget() > 0
 }
 
 // evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
