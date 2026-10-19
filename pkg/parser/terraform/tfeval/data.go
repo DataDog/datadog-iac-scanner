@@ -183,11 +183,23 @@ func readsRootOrLocal(traversal hcl.Traversal, roots map[string]struct{}, locals
 	if _, ok := roots[root]; ok {
 		return true
 	}
-	if root != "local" || len(traversal) < 2 {
-		return false
+	name, ok := localTraversalName(traversal)
+	return ok && locals[name]
+}
+
+// localTraversalName returns the local name from local.name or local["name"].
+func localTraversalName(traversal hcl.Traversal) (string, bool) {
+	if _, ok := localRoot[traversal.RootName()]; !ok || len(traversal) < 2 {
+		return "", false
 	}
-	attr, ok := traversal[1].(hcl.TraverseAttr)
-	return ok && locals[attr.Name]
+	switch step := traversal[1].(type) {
+	case hcl.TraverseAttr:
+		return step.Name, true
+	case hcl.TraverseIndex:
+		return ctyutil.ConcreteString(step.Key)
+	default:
+		return "", false
+	}
 }
 
 func (d *moduleData) readsOwnResources() bool {
@@ -196,13 +208,19 @@ func (d *moduleData) readsOwnResources() bool {
 
 // refresh re-evaluates the data blocks and installs data.*, refreshing the
 // locals that read it when it changed. Blocks reading data, directly or
-// through those locals, are re-evaluated until data.* settles.
+// through those locals, are re-evaluated until data.* settles. The pass bound
+// matches a source_policy_documents chain as long as the blocks (and locals
+// that alias them), as getDataSourcePolicy does at the root.
 func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
 	if d == nil {
 		return
 	}
 	chained := d.readsData || (d.readsLocals && len(d.dataLocals) > 0)
-	for pass := 0; pass < resourceRefPasses; pass++ {
+	bound := len(d.blocks) + len(d.dataLocals)
+	if bound < 1 {
+		bound = 1
+	}
+	for pass := 0; pass <= bound; pass++ {
 		value := d.evaluate(ctx, evalCtx)
 		if existing, ok := evalCtx.Variables[blockTypeData]; ok && existing.RawEquals(value) {
 			break
