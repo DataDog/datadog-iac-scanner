@@ -23,14 +23,13 @@ import (
 	kyamlyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
-// kustomizationFileNames are the exact, case-sensitive base names Kustomize
-// recognizes as a kustomization file. Kustomize probes all three in every
-// kustomization directory it loads.
-var kustomizationFileNames = map[string]bool{
-	"kustomization.yaml": true,
-	"kustomization.yml":  true,
-	"Kustomization":      true,
-}
+var (
+	kustomizationFileNames = map[string]bool{
+		"kustomization.yaml": true,
+		"kustomization.yml":  true,
+		"Kustomization":      true,
+	}
+)
 
 // fileRole classifies a file the adapter served during a render.
 type fileRole string
@@ -190,15 +189,11 @@ func checkForbidden(k *types.Kustomization) error {
 // validateKustomization decodes data as a kustomization and refuses anything
 // that could make the renderer touch the network, run git, or load a plugin.
 //
-// Kustomize's own decoder has to be the authoritative one here. It goes
-// through encoding/json (types.Kustomization.Unmarshal), which matches field
-// names case-insensitively, so "Resources:" binds for Kustomize while a
-// case-sensitive YAML decoder sees an unknown key and waves the field
-// through unvalidated. Decoding exactly as Kustomize does keeps the two views
-// of the file identical by construction, and its DisallowUnknownFields makes
-// an undecodable kustomization fail closed. The generic YAML decode runs
-// first only to reject duplicate keys, which the JSON path silently resolves
-// last-wins.
+// Decoding must go through types.Kustomization.Unmarshal, the path Kustomize
+// itself takes: it matches field names case-insensitively, so "Resources:"
+// binds for Kustomize while a case-sensitive YAML decoder would wave it
+// through unvalidated. The generic YAML decode runs first only to reject
+// duplicate keys, which the JSON path resolves last-wins.
 func validateKustomization(data []byte) (*types.Kustomization, error) {
 	fields := map[string]interface{}{}
 	if err := kyamlyaml.Unmarshal(data, &fields); err != nil {
@@ -401,14 +396,9 @@ func underDir(p, dir string) bool {
 }
 
 // isRooted reports whether p addresses a location on its own rather than one
-// relative to some directory.
-//
-// filepath.IsAbs is the wrong test. The in-memory filesystem addresses files
-// with a leading "/", and on Windows such a path is rooted but not absolute:
-// it carries no volume name, so IsAbs reports false and the path would be
-// joined onto the confinement root a second time, duplicating its leading
-// segment. filepath.Rel has the same problem and solves it the same way,
-// testing for a separator prefix instead of calling IsAbs.
+// relative to some directory. filepath.IsAbs is the wrong test: on Windows a
+// leading "/" is rooted but not absolute, and treating it as relative would
+// join it onto the confinement root a second time.
 func isRooted(p string) bool {
 	return filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, string(filepath.Separator))
 }
@@ -494,11 +484,7 @@ func (c *constrainedFS) ReadFile(path string) ([]byte, error) {
 		c.budget.Add(info.Size())
 		return nil, failf(ReasonSizeLimit, "cumulative size budget exceeded")
 	}
-	// Classify by the name Kustomize asked for, not by the name the symlink
-	// resolved to: Kustomize only ever loads a kustomization under one of the
-	// three recognized names, and a kustomization.yaml that is a symlink to a
-	// differently named file must still be validated and annotated.
-	base := filepath.Base(path)
+	base := filepath.Base(path) // the requested name: a symlinked kustomization.yaml still validates and gets annotated
 	data, err := c.cache.get(found, func() ([]byte, error) { return c.fsys.ReadFile(found) })
 	if err != nil {
 		return nil, failf(ReasonMissingFile, "read: cannot load file")
@@ -658,12 +644,10 @@ func injectOriginAnnotations(data []byte) ([]byte, error) {
 	const field = "buildMetadata"
 	var seq *kyamlyaml.Node
 	for i := 0; i < len(mapping.Content)-1; i += 2 {
-		// Kustomize binds this key through encoding/json, which matches field
-		// names case-insensitively, so "BuildMetadata" is the same key to it.
-		// Matching exactly here would append a second buildMetadata key that
-		// wins under last-wins resolution, dropping the options the user set.
-		// The sequence values below stay exact on purpose: Kustomize compares
-		// those with ==, so only the canonical spelling has any effect.
+		// Kustomize binds keys case-insensitively, so "BuildMetadata" is the
+		// same key; matching exactly would append a duplicate that wins under
+		// last-wins and drops the options the user set. The sequence values
+		// below stay exact: Kustomize compares those with ==.
 		if strings.EqualFold(mapping.Content[i].Value, field) {
 			seq = mapping.Content[i+1]
 			break

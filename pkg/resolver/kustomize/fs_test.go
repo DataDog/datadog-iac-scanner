@@ -122,8 +122,8 @@ func TestKustomizationFieldClassification(t *testing.T) {
 
 func TestConstrainedFS_RelativeFollowsFilesystemSeparator(t *testing.T) {
 	// Disk files keep the OS separator and pushed files are addressed with
-	// "/" on every OS, matching the Helm resolver. Either way the render root
-	// itself is ".", never the absolute path it resolves to.
+	// "/" on every OS, matching the Helm resolver; the render root itself is
+	// ".", never the absolute path it resolves to.
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "overlays", "dev"), 0700); err != nil {
 		t.Fatal(err)
@@ -135,8 +135,7 @@ func TestConstrainedFS_RelativeFollowsFilesystemSeparator(t *testing.T) {
 	if got := disk.relative(disk.confinementRoot); got != "." {
 		t.Errorf("disk relative(root) = %q, want \".\"", got)
 	}
-	// Built from the resolved root, which is what every caller holds: a
-	// temp dir can sit behind a symlink (/var -> /private/var on macOS).
+	// Built from the resolved root, which is what every caller holds.
 	nested := filepath.Join(disk.confinementRoot, "overlays", "dev")
 	if want, got := filepath.Join("overlays", "dev"), disk.relative(nested); got != want {
 		t.Errorf("disk relative(overlays/dev) = %q, want %q", got, want)
@@ -164,12 +163,9 @@ func TestConstrainedFS_RelativeFollowsFilesystemSeparator(t *testing.T) {
 }
 
 func TestIsRooted(t *testing.T) {
-	// A leading "/" has to count as rooted on every OS. Windows does not: a
-	// path with no volume name is rooted but not absolute, so filepath.IsAbs
-	// reports false for the form the in-memory filesystem uses, and a caller
-	// that trusted IsAbs would join such a path onto the root a second time.
-	// These cases are written so they assert the same thing whatever the host
-	// separator is, which is what makes them meaningful on the Windows runner.
+	// A leading "/" counts as rooted on every OS, volume name or not: the
+	// in-memory filesystem addresses files that way, and Windows would treat
+	// such a path as relative.
 	rooted := []string{"/", "/repo", "/repo/overlays/dev", string(filepath.Separator) + "repo"}
 	for _, p := range rooted {
 		if !isRooted(p) {
@@ -184,9 +180,8 @@ func TestIsRooted(t *testing.T) {
 }
 
 func TestAbsUnderRoot(t *testing.T) {
-	// Expectations are built from filepath primitives rather than written as
-	// literals, so the table asserts the same contract on both separator
-	// conventions instead of encoding the host's.
+	// Expectations come from filepath primitives, so the table asserts the
+	// same contract whatever the host separator is.
 	root := filepath.Clean("/repo")
 	tests := []struct {
 		name string

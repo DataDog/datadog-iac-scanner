@@ -252,9 +252,8 @@ func TestRender_MissingKustomization(t *testing.T) {
 func TestRender_MappingFailureCounted(t *testing.T) {
 	root := t.TempDir()
 	// The base renames its resources with a suffix the root knows nothing
-	// about. One rendered name resolves through containment; the other is
-	// ambiguous (its name contains both source names) and must fail with the
-	// content still present for line-1 scanning.
+	// about: one rendered name resolves through containment, the other is
+	// ambiguous and must fail with its content still present.
 	second := strings.Replace(baseDeployment, "name: app", "name: xapp", 1)
 	writeFile(t, filepath.Join(root, "base", "kustomization.yaml"), "resources:\n  - deployments.yaml\nnameSuffix: -s\n")
 	writeFile(t, filepath.Join(root, "base", "deployments.yaml"), baseDeployment+"---\n"+second)
