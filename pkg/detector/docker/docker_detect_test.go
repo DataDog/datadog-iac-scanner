@@ -251,6 +251,18 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		name, data, key, text string
 		line                  int
 	}{
+		{"FROM whitespace matches parser", "FROM\falpine\nRUN a\nFROM\talpine\nrun b\n", "FROM={{alpine}}.RUN={{b}}", "run b", 4},
+		{"repeated FROM literal", "FROM alpine\nRUN a\nFROM alpine\nRUN b\n", "{{from alpine}}.{{RUN b}}", "RUN b", 4},
+		{"repeated aliased FROM", "FROM alpine AS build\nRUN a\nFROM alpine AS build\nrun b\n", "FROM={{alpine AS build}}.RUN={{b}}", "run b", 4},
+		{"retry earlier FROM after later selector fails", "FROM alpine\nRUN a\nFROM busybox\nRUN a\nFROM alpine\nRUN b\nFROM busybox\nRUN b\n", "FROM={{alpine}}.RUN={{b}}.FROM={{busybox}}.RUN={{b}}", "RUN b", 8},
+		{"global ARG does not select heredoc payload", "ARG X=1\nFROM alpine\nRUN <<EOF\nRUN a\nEOF\nrun a\n", "{{ARG X=1}}.{{RUN a}}", "run a", 6},
+		{"repeated base retries later stage", "FROM alpine\nRUN a\nFROM alpine\nRUN apt-get b\n", "FROM={{alpine}}.RUN={{apt-get b}}", "RUN apt-get b", 4},
+		{"repeated base after partial match", "FROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "FROM={{alpine}}.RUN={{a}}.RUN={{b}}", "RUN b", 5},
+		{"repeated base cannot stitch stages", "FROM alpine\nRUN a\nFROM alpine\nRUN b\n", "FROM={{alpine}}.RUN={{a}}.RUN={{b}}", "RUN a", 2},
+		{"repeated base skips unrelated stage", "FROM alpine\nRUN a\nFROM busybox\nRUN b\nFROM alpine\nrun b\n", "FROM={{alpine}}.RUN={{b}}", "run b", 6},
+		{"global ARG enters stage", "ARG X=1\nFROM alpine\nRUN a\n", "{{ARG X=1}}.{{RUN a}}", "RUN a", 3},
+		{"global ARG with explicit stage", "ARG X=1\nFROM alpine\nRUN a\nFROM alpine\nRUN b\n", "{{ARG X=1}}.FROM={{alpine}}.RUN={{b}}", "RUN b", 5},
+		{"global ARG then instruction stays in its stage", "ARG X=1\nFROM alpine\nRUN a\nFROM busybox\nRUN b\n", "{{ARG X=1}}.RUN={{a}}.RUN={{b}}", "RUN a", 3},
 		{"stage alias is not base reference", "FROM alpine AS base\nARG PORT=22\nFROM base\nEXPOSE $PORT\n", "FROM={{base}}.{{EXPOSE $PORT}}", "EXPOSE $PORT", 4},
 		{"stage image is not a prefix", "FROM alpine-dev\nRUN echo needle\nFROM alpine\nrun echo needle\n", "FROM={{alpine}}.RUN={{echo needle}}", "run echo needle", 4},
 		{"stage flags remain part of selector", "FROM alpine AS base\nFROM --platform=linux/amd64 alpine\nRUN echo needle\n", "FROM={{--platform=linux/amd64 alpine}}.RUN={{echo needle}}", "RUN echo needle", 3},
@@ -332,4 +344,54 @@ func TestDetectDockerLine_DocumentSchemaDoesNotControlSource(t *testing.T) {
 	got := DetectKindLine{}.DetectLine(t.Context(), file, "FROM={{alpine}}.{{EXPOSE 22}}", 3)
 	require.Equal(t, 5, got.Line, "document field names and incomplete metadata do not control source locations")
 	require.Equal(t, "expose 22", got.LineWithVulnerability)
+}
+
+// Exhaustively combine short repeated stages. The oracle works on command
+// sequences, independently of line matching, to catch stage stitching and
+// partial-prefix tie regressions.
+func TestRepeatedStagesMatchCompleteKeyOrLongestPrefix(t *testing.T) {
+	sequences := [][]string{{}, {"a"}, {"b"}, {"a", "b"}, {"b", "a"}}
+	for _, a := range sequences {
+		for _, b := range sequences {
+			for _, c := range sequences {
+				var source strings.Builder
+				best, want, line := 0, 0, 0
+				for _, commands := range [][]string{a, b, c} {
+					source.WriteString("FROM alpine\n")
+					line++
+					matched, candidate := 1, line
+					for _, cmd := range commands {
+						source.WriteString("run " + cmd + "\n")
+						line++
+						if matched == 1 && cmd == "a" || matched == 2 && cmd == "b" {
+							matched++
+							candidate = line
+						}
+					}
+					if matched > best {
+						best, want = matched, candidate
+					}
+				}
+				for _, cached := range []bool{true, false} {
+					file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source.String()}
+					if cached {
+						file.SetLazyLines()
+					} else {
+						file.LinesOriginalData = utils.SplitLines(source.String())
+					}
+					got := DetectKindLine{}.DetectLine(t.Context(), file, "FROM={{alpine}}.RUN={{a}}.RUN={{b}}", 0)
+					require.Equal(t, want, got.Line, "cached=%t source=%q", cached, source.String())
+				}
+			}
+		}
+	}
+}
+
+func TestRepeatedStageSelectorsDoNotRevisitSuffixes(t *testing.T) {
+	source := strings.Repeat("FROM alpine\nRUN a\n", 20)
+	file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source}
+	file.SetLazyLines()
+	key := strings.Repeat("FROM={{alpine}}.", 12) + "RUN={{missing}}"
+	got := DetectKindLine{}.DetectLine(t.Context(), file, key, 0)
+	require.Equal(t, 1, got.Line, "incomplete attempts keep the earliest longest prefix")
 }

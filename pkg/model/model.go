@@ -339,23 +339,26 @@ func (f *FileMetadata) LinesContaining(sub string) (indexes []int, ok bool) {
 // LinesMatching returns the indexes of Lines() for which pred reports true, in
 // ascending order, memoized per file under name. pred must always give the same
 // answer for a given name. ok is false when the file has no lazy line state to
-// cache on; callers then scan the lines themselves.
+// cache on; indexes are still computed for these callers.
 func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (indexes []int, ok bool) {
 	st := f.linesLazy
-	if st == nil {
-		return nil, false
-	}
 	lines := f.Lines()
-	st.matchMu.Lock()
-	indexes, ok = st.predMatches[name]
-	st.matchMu.Unlock()
-	if ok {
-		return indexes, true
+	if st != nil {
+		st.matchMu.Lock()
+		indexes, ok = st.predMatches[name]
+		st.matchMu.Unlock()
+		if ok {
+			return indexes, true
+		}
 	}
+
 	for i, line := range lines {
 		if pred(line) {
 			indexes = append(indexes, i)
 		}
+	}
+	if st == nil {
+		return indexes, false
 	}
 	st.matchMu.Lock()
 	if st.predMatches == nil {

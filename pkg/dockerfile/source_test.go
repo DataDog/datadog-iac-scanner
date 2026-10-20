@@ -20,3 +20,14 @@ func TestSourceLinesSharedWithParser(t *testing.T) {
 	require.Empty(t, recorded[3])
 	require.Empty(t, recorded[5], "heredoc payloads do not become instructions")
 }
+
+func TestFromArguments(t *testing.T) {
+	for _, tt := range []struct{ source, want string }{
+		{"", ""}, {"F", ""}, {"fro", ""}, {"FROM", ""}, {"RUN echo hi", ""},
+		{"FROM\falpine", "alpine"}, {"FROM\valpine", ""}, {"FROMAGE alpine", ""}, {"FROM--platform=x alpine", ""}, {"FROM --platform=linux/amd64 alpine AS build", "--platform=linux/amd64 alpine AS build"}, {"FROM alpine", "alpine"}, {"  fRoM\talpine AS build  ", "alpine AS build"},
+	} {
+		t.Run(tt.source, func(t *testing.T) {
+			require.Equal(t, tt.want, FromArguments(tt.source))
+		})
+	}
+}

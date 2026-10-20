@@ -69,7 +69,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	for _, child := range parsed.AST.Children {
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
 		if child.Value == command.From {
-			fromValue = fromArguments(child.Original)
+			fromValue = dockerfile.FromArguments(child.Original)
 			if !lineInfoOnly {
 				scope = scopeForStage(child, globalArgs, stages, lex)
 			}
@@ -132,15 +132,6 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines = ignoreStruct.getIgnoreLines()
 
 	return fileContent, documents, ignoreLines, resolvedFiles, nil
-}
-
-// fromArguments strips the case-insensitive FROM keyword from a stage name.
-func fromArguments(original string) string {
-	original = strings.TrimSpace(original)
-	if len(original) < len("from") || !strings.EqualFold(original[:len("from")], "from") {
-		return ""
-	}
-	return strings.TrimSpace(original[len("from"):])
 }
 
 // GetKind returns the kind of the parser

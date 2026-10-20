@@ -74,3 +74,14 @@ func instructionLines(parsed *parser.Result, original []string) []string {
 	}
 	return lines
 }
+
+// FromArguments returns the raw arguments of a FROM instruction, including
+// flags and an optional alias. Non-instructions and keyword prefixes return "".
+func FromArguments(original string) string {
+	original = strings.TrimSpace(original)
+	end := strings.IndexAny(original, " \t\r\n\f")
+	if end < 0 || !strings.EqualFold(original[:end], "FROM") {
+		return ""
+	}
+	return strings.TrimSpace(original[end:])
+}

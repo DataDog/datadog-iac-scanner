@@ -363,17 +363,6 @@ func TestParser_Parse_ChainedDeclarations(t *testing.T) {
 	}
 }
 
-func TestFromArguments(t *testing.T) {
-	for _, tt := range []struct{ source, want string }{
-		{"", ""}, {"F", ""}, {"fro", ""}, {"FROM", ""}, {"RUN echo hi", ""},
-		{"FROM alpine", "alpine"}, {"  fRoM\talpine AS build  ", "alpine AS build"},
-	} {
-		t.Run(tt.source, func(t *testing.T) {
-			require.Equal(t, tt.want, fromArguments(tt.source))
-		})
-	}
-}
-
 func TestParser_Parse_VariableScopes(t *testing.T) {
 	for _, tt := range []struct {
 		name, source string

@@ -8,6 +8,7 @@ package docker
 import (
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 )
@@ -104,9 +105,9 @@ func dockerInstructionWords(line string) (words [3]instructionWord, count int) {
 }
 
 func dockerWordAt(line string, pos int) instructionWord {
-	rest := strings.TrimLeft(line[pos:], " \t")
+	rest := strings.TrimLeft(line[pos:], " \t\r\n\f")
 	start := len(line) - len(rest)
-	end := strings.IndexAny(rest, " \t")
+	end := strings.IndexAny(rest, " \t\r\n\f")
 	if end < 0 {
 		end = len(rest)
 	}
@@ -115,7 +116,7 @@ func dockerWordAt(line string, pos int) instructionWord {
 
 // instructionSearch applies keyword normalization only at instruction boundaries.
 // Nested keywords have the same rule; ordinary argument values remain literal.
-func instructionSearch(view *model.FileMetadata, first, second string, current, end int) (
+func instructionSearch(view *model.FileMetadata, starts []int, first, second string, current int) (
 	str1, str2 string, accept func(int, string) bool) {
 	first, instruction := normalizeSearchText(view, first)
 	nested := false
@@ -124,9 +125,12 @@ func instructionSearch(view *model.FileMetadata, first, second string, current, 
 	}
 	// Stage keys contain the parser's complete FROM arguments. Prefer an exact
 	// stage over an image/alias substring in an earlier FROM.
-	exactStage := first == "FROM" && hasExactStage(view, second, current)
-	return first, second, func(index int, line string) bool {
-		if index >= end || exactStage && fromArguments(line) != second {
+	exactStage := first == "FROM" && hasExactStage(view.Lines(), starts, second, current)
+	if !instruction && !nested && !exactStage {
+		return first, second, nil
+	}
+	return first, second, func(_ int, line string) bool {
+		if exactStage && dockerfile.FromArguments(line) != second {
 			return false
 		}
 		return (!instruction || startsAtInstruction(line, first)) && (!nested || startsAtInstruction(line, second))
@@ -134,31 +138,18 @@ func instructionSearch(view *model.FileMetadata, first, second string, current, 
 }
 
 func stageStartLines(view *model.FileMetadata) []int {
-	starts, indexed := view.LinesMatching("docker.stages", isFromInstruction)
-	if !indexed {
-		for i, line := range view.Lines() {
-			if isFromInstruction(line) {
-				starts = append(starts, i)
-			}
-		}
-	}
+	starts, _ := view.LinesMatching("docker.stages", isFromInstruction)
 	return starts
 }
 
-func hasExactStage(view *model.FileMetadata, stage string, current int) bool {
+func hasExactStage(lines []string, starts []int, stage string, current int) bool {
 	if stage == "" {
 		return false
 	}
-	lines := view.Lines()
-	for _, index := range stageStartLines(view) {
-		if index >= current && fromArguments(lines[index]) == stage {
+	for _, index := range starts {
+		if index >= current && dockerfile.FromArguments(lines[index]) == stage {
 			return true
 		}
 	}
 	return false
-}
-
-func fromArguments(line string) string {
-	word := dockerWordAt(line, 0)
-	return strings.TrimSpace(line[word.end:])
 }
