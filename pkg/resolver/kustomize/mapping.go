@@ -42,20 +42,18 @@ func newSourceIndex(fsys vfs.FS, cache *byteCache) *sourceIndex {
 // developer edits, using the origin annotation for the file and the resource
 // id for the document. Generated resources map to the kustomization entry that
 // created them. A resource whose source document cannot be pinpointed still
-// gets an entry, with SourceDocumentIndex -1 so findings fall back to line 1.
-// A resource with no identifiable source file has nowhere to report findings
-// at all, so it is dropped rather than reported against an empty path. Both
-// count as mapping failures. rootPrefix and rootSuffix are the render root's
-// name transformations, used to reverse the most common rename before
-// matching.
+// gets an entry with SourceDocumentIndex -1, so findings fall back to line 1;
+// one with no source file at all is dropped rather than reported against an
+// empty path. Both count as mapping failures. rootPrefix and rootSuffix are
+// the render root's name transformations, used to reverse the most common
+// rename before matching.
 func mapResources(
 	fsys vfs.FS, cfs *constrainedFS, resMap resmap.ResMap, rootPrefix, rootSuffix string,
 ) (entries []model.ResolvedHelm, failures int) {
 	index := newSourceIndex(fsys, cfs.cache)
 	for _, res := range resMap.Resources() {
 		entry, matched := mapResource(cfs, index, res, rootPrefix, rootSuffix)
-		// A resource with no file name is dropped, so count it even when a
-		// document matched: a drop must never be silent.
+		// A drop must never be silent, whichever way it happened.
 		if !matched || entry.FileName == "" {
 			failures++
 		}
@@ -172,10 +170,7 @@ func (s *sourceIndex) exact(sourceAbs, kind, name, namespace string) (docRef, bo
 			candidates = append(candidates, d)
 		}
 	}
-	if len(candidates) == 1 {
-		return candidates[0], true
-	}
-	return uniqueByNamespace(candidates, namespace)
+	return pickCandidate(candidates, namespace)
 }
 
 // uniqueContained resolves a transformed name to its source document when
@@ -194,6 +189,12 @@ func (s *sourceIndex) uniqueContained(sourceAbs, kind, name, namespace string) (
 			candidates = append(candidates, d)
 		}
 	}
+	return pickCandidate(candidates, namespace)
+}
+
+// pickCandidate takes a lone candidate, or breaks a tie by the namespace the
+// rendered resource ended up in; anything else is not determinate.
+func pickCandidate(candidates []docRef, namespace string) (docRef, bool) {
 	if len(candidates) == 1 {
 		return candidates[0], true
 	}

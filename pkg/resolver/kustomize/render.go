@@ -32,11 +32,10 @@ type Result struct {
 	MappingFailures int
 }
 
-// renderMu serializes krusty builds. It is package-level, not per-Renderer,
-// because the state it protects is process-global: krusty.Run installs an
-// OpenAPI schema into a package variable of kyaml, and the readers of that
-// variable take no lock of their own. A per-Renderer lock would let one
-// renderer's reset wipe the schema another renderer's build is reading.
+// renderMu serializes krusty builds process-wide: krusty.Run installs an
+// OpenAPI schema into a package variable of kyaml, whose readers take no lock
+// of their own, so a per-Renderer lock would let one renderer's reset wipe
+// the schema another renderer's build is reading.
 var renderMu sync.Mutex
 
 // Renderer renders kustomization roots of one scan. It is scan-scoped state:
@@ -121,16 +120,12 @@ func (r *Renderer) run(cfs *constrainedFS) (resMap resmap.ResMap, err error) {
 	}()
 	renderMu.Lock()
 	defer renderMu.Unlock()
-	// A custom schema must not leak into later renders. Any kustomization the
-	// build touches can install one, not just the render root's own: a base or
-	// component calls SetSchema too, and SetSchema never clears a previous
-	// custom schema, so the next render would silently patch under it. Compare
-	// the schema version instead of the root's openapi field to catch those,
-	// and reset here, under renderMu and deferred, so the success, error, and
-	// panic paths are all covered and the reset cannot race a concurrent
-	// render that reads the same process-global state. ResetOpenAPI also drops
-	// the parsed builtin schema, which the next render rebuilds, so it is
-	// still only paid for renders that actually changed the schema.
+	// Any kustomization the build touches can install a custom schema, not
+	// just the render root, and SetSchema never clears a previous one. Reset
+	// when the version changed, deferred and under renderMu, so the error and
+	// panic paths are covered and the reset cannot race a concurrent render.
+	// ResetOpenAPI also drops the parsed builtin schema, which the next
+	// render rebuilds, so it is only paid for renders that changed the schema.
 	schemaBefore := openapi.GetSchemaVersion()
 	defer func() {
 		if openapi.GetSchemaVersion() != schemaBefore {
@@ -146,20 +141,18 @@ func (r *Renderer) run(cfs *constrainedFS) (resMap resmap.ResMap, err error) {
 	return resMap, nil
 }
 
-// relative returns p relative to the confinement root. The render root itself
-// is ".", never the absolute path it resolves to, so no machine path reaches
-// finding metadata. Separators follow the filesystem, as the Helm resolver
-// does: pushed files are reported with "/" on every OS, disk files keep the
-// OS separator. p must be relative to the confinement root or a rooted path
-// already resolved through realPath, which is what every caller holds; an
-// unresolved absolute path would not share the resolved root's prefix.
+// relative returns p relative to the confinement root, "." for the root
+// itself, so no machine path reaches finding metadata. Separators follow the
+// filesystem, as the Helm resolver does: pushed files are reported with "/"
+// on every OS, disk files keep the OS separator. p must be relative to the
+// confinement root or a rooted path already resolved through realPath, which
+// is what every caller holds.
 func (c *constrainedFS) relative(p string) string {
 	rel, err := filepath.Rel(c.confinementRoot, absUnderRoot(c.confinementRoot, p))
 	if err != nil {
-		// Unreachable for a confined path: both are absolute and, having
-		// passed the confinement check, share a volume. Report no path rather
-		// than fall back to an absolute one; mapResources drops entries that
-		// have no file name to report against.
+		// Unreachable for a confined path: both sides are absolute and share a
+		// volume. Report no path rather than an absolute one; mapResources
+		// drops entries that have no file name to report against.
 		return ""
 	}
 	if c.slashPaths {
@@ -171,8 +164,7 @@ func (c *constrainedFS) relative(p string) string {
 // findKustomizationFile returns the render root's kustomization file, probing
 // the three names Kustomize itself recognizes, in its own probe order. It
 // returns the resolved path, which is what ReadFile compares against to
-// recognize the top-level file: a symlinked kustomization.yaml would otherwise
-// never be annotated, and every resource would lose its source attribution.
+// recognize the top-level file.
 func findKustomizationFile(cfs *constrainedFS, renderRoot string) (string, error) {
 	for _, name := range []string{"kustomization.yaml", "kustomization.yml", "Kustomization"} {
 		path := filepath.Join(renderRoot, name)
