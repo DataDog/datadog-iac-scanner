@@ -228,6 +228,34 @@ func TestPrepareMemorySources_SkipsFilesExcludedByContent(t *testing.T) {
 	require.Equal(t, []string{"ansible.cfg"}, paths)
 }
 
+func TestPrepareMemorySources_DockerfileCandidates(t *testing.T) {
+	ctx := t.Context()
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"Dockerfile.prod":      []byte("ARG IMAGE=alpine\nFROM $IMAGE\n"),
+		"Dockerfile.args":      []byte("ARG IMAGE=alpine\n"),
+		"Dockerfile.arg-run":   []byte("ARG IMAGE=alpine\nRUN echo hi\nFROM $IMAGE\n"),
+		"Dockerfile.bak":       []byte("not a Dockerfile\n"),
+		"valid/Dockerfile.bak": []byte("FROM alpine\n"),
+		"Dockerfile.j2":        []byte("FROM alpine\n"),
+		"image.ubi8":           []byte("ARG IMAGE=alpine\n"),
+		"image.debian":         []byte("not a Dockerfile\n"),
+	})
+	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
+	services, _ := buildServices(t, ctx, memfs, mp)
+	shared, ok := MemorySourceProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "dockerfile-candidates", false, 5, false))
+
+	var paths []string
+	for _, service := range services {
+		for _, file := range service.files {
+			paths = append(paths, filepath.ToSlash(file.FilePath))
+		}
+	}
+	require.ElementsMatch(t, []string{"Dockerfile.prod", "Dockerfile.j2"}, paths)
+	require.Empty(t, memfs.MissingFiles())
+}
+
 func TestServicesForPlatformAndParserKindFallsBackWhenUnmatched(t *testing.T) {
 	ctx := context.Background()
 	services, _ := buildDiskServices(t, ctx, []string{t.TempDir()})

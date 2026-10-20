@@ -22,6 +22,9 @@
 //
 // IaC endpoints (GET /ide/v1/iac/supported-files, POST /ide/v1/iac/analyze) are
 // registered here and implemented in sibling files.
+// Dockerfile filenames and globs from supported-files must be matched
+// case-insensitively, including dockerfile, DOCKERFILE, and Dockerfile.<name>
+// in any case.
 package server
 
 import (

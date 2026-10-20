@@ -66,4 +66,20 @@ func TestExcludedByContent(t *testing.T) {
 	require.True(t, ExcludedByContent("service.datadog.yaml", []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: x\n")))
 	require.False(t, ExcludedByContent("deploy.yaml", []byte("apiVersion: apps/v1\nkind: Deployment\n")))
 	require.False(t, ExcludedByContent("main.tf", []byte("[metadata]\n")))
+	for _, tt := range []struct {
+		path, content string
+		excluded      bool
+	}{
+		{"Dockerfile.prod", "ARG X\n", true},
+		{"Dockerfile.prod", "ARG X\nRUN echo hi\nFROM alpine\n", true},
+		{"Dockerfile.prod", "ARG X\nFROM alpine\n", false},
+		{"image.ubi8", "ARG X\n", true},
+		{"image.ubi8", "FROM alpine\n", false},
+		{"image.debian", "not a Dockerfile\n", true},
+		{"image.debian", "ARG X\nFROM debian\n", false},
+	} {
+		t.Run(tt.path+"/"+tt.content, func(t *testing.T) {
+			require.Equal(t, tt.excluded, ExcludedByContent(tt.path, []byte(tt.content)))
+		})
+	}
 }

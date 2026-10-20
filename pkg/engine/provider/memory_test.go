@@ -172,3 +172,22 @@ func TestMemoryWalkInventoryRendersNoChartWithoutYAMLPlatform(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []InventoryFile{{Path: "infra/main.tf", Ext: ".tf"}}, files)
 }
+
+func TestMemorySourceProvider_DockerfileNames(t *testing.T) {
+	files := map[string][]byte{
+		"upper/Dockerfile": []byte("FROM alpine\n"),
+		"lower/dockerfile": []byte("FROM alpine\n"),
+		"api.Dockerfile":   []byte("FROM alpine\n"),
+		"Dockerfile.prod":  []byte("ARG TAG=3\nFROM alpine:$TAG\n"),
+		"dockerfile.go":    []byte("package dockerfile\n"),
+		"dockerfile.tf":    []byte("resource \"aws_s3_bucket\" \"b\" {}\n"),
+	}
+	mem := vfs.NewMemFS(files)
+	p := NewMemorySourceProvider(mem, mem.Paths(), nil, nil)
+	got := collect(t, p, model.Extensions{"Dockerfile": {}, ".dockerfile": {}, "possibleDockerfile": {}})
+	require.Len(t, got, 4)
+	for _, name := range []string{"upper/Dockerfile", "lower/dockerfile", "api.Dockerfile", "Dockerfile.prod"} {
+		require.Equal(t, string(files[name]), got[name])
+	}
+	require.Empty(t, mem.MissingFiles())
+}

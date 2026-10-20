@@ -7,6 +7,10 @@
 package server
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +20,9 @@ import (
 // normalizePattern converts an analyzer file-type key into the IDE-facing
 // pattern used as a strategyByPattern key.
 func normalizePattern(fileType string) string {
+	if fileType == "possibleDockerfile" {
+		return "Dockerfile.*"
+	}
 	if fileType == "" || strings.HasPrefix(fileType, ".") {
 		return fileType
 	}
@@ -23,6 +30,38 @@ func normalizePattern(fileType string) string {
 		return fileType
 	}
 	return "." + fileType
+}
+
+func TestSupportedFiles_DockerfileCandidates(t *testing.T) {
+	if !slices.Contains(analyzer.PossibleFileTypes(), "possibleDockerfile") {
+		t.Error("Dockerfile candidates must be included in the analyzer's supported types")
+	}
+	w := httptest.NewRecorder()
+	(&Server{}).handleSupportedFiles(w, httptest.NewRequest(http.MethodGet, "/ide/v1/iac/supported-files", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("supported-files status: got %d, want %d", w.Code, http.StatusOK)
+	}
+	var entries []SupportedFileEntry
+	if err := json.Unmarshal(w.Body.Bytes(), &entries); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range entries {
+		for _, pattern := range entry.Patterns {
+			if pattern == "Dockerfile.*" {
+				found = true
+				if entry.Strategy != strategySingleFile {
+					t.Errorf("Dockerfile.* strategy: got %q, want %q", entry.Strategy, strategySingleFile)
+				}
+			}
+			if strings.Contains(pattern, "possibleDockerfile") {
+				t.Errorf("internal extension token exposed as a filename pattern: %q", pattern)
+			}
+		}
+	}
+	if !found {
+		t.Error("supported-files must advertise Dockerfile.* so IDE clients push suffixed Dockerfiles")
+	}
 }
 
 // TestSupportedFiles_NoDrift ensures every file type the scanner can analyze has
