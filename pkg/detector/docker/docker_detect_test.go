@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	dockerparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 )
@@ -255,17 +256,56 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		{"lowercase FROM and uppercase RUN", "from alpine:3.19\nRUN apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "RUN apk add curl", 2},
 		{"bracket value before lowercase instruction", "FROM alpine\nRUN add user --disabled-password app\nexpose 22\n", "FROM={{alpine}}.{{add user}}.{{EXPOSE 22}}", "expose 22", 3},
 		{"lowercase instructions with bracket value", "from alpine\nrun add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "run add user --disabled-password app", 2},
+		{"healthcheck none", "FROM alpine\nhealthcheck none\n", "FROM={{alpine}}.{{HEALTHCHECK NONE}}", "healthcheck none", 2},
+		{"lowercase healthcheck", "FROM alpine\nhealthcheck cmd curl localhost\n", "FROM={{alpine}}.{{HEALTHCHECK CMD curl localhost}}", "healthcheck cmd curl localhost", 2},
+		{"healthcheck flags", "FROM alpine\nhealthcheck --interval=5s cmd curl localhost\n", "FROM={{alpine}}.HEALTHCHECK={{CMD curl localhost}}", "healthcheck --interval=5s cmd curl localhost", 2},
+		{"lowercase onbuild", "FROM alpine\nonbuild run echo hello\n", "FROM={{alpine}}.{{ONBUILD RUN echo hello}}", "onbuild run echo hello", 2},
+		{"mixed nested instruction", "FROM alpine\nOnBuIlD rUn echo hello\n", "FROM={{alpine}}.ONBUILD={{RUN echo hello}}", "OnBuIlD rUn echo hello", 2},
+		{"literal value case is significant", "FROM alpine\nrun echo CMD\nrun echo cmd\n", "FROM={{alpine}}.RUN={{echo cmd}}", "run echo cmd", 3},
+		{"lowercase heredoc", "from alpine\ncopy <<EOF /tmp/config\nEXPOSE 22\nEOF\nexpose 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "expose 22", 5},
+		{"lowercase FROM heredoc", "from alpine\nrun cat <<EOF > /x\nFROM busybox\nEOF\nfrom busybox\n", "FROM={{busybox}}", "from busybox", 5},
+		{"quoted multiple heredocs", "FROM alpine\nCOPY <<'FIRST' <<SECOND /tmp/\nEXPOSE 22\nFIRST\nEXPOSE 22\nSECOND\nexpose 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "expose 22", 7},
+		{"indented heredoc", "FROM alpine\nRUN cat <<-EOF > /x\n\tFROM busybox\n\tEOF\nfrom busybox\n", "FROM={{busybox}}", "from busybox", 5},
 		{"copy heredoc", "FROM alpine\nCOPY <<EOF /tmp/config\nexpose 22\nEOF\nEXPOSE 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "EXPOSE 22", 5},
 		{"run heredoc", "FROM alpine\nRUN cat <<EOF > /x\nfrom busybox\nEOF\nFROM busybox\n", "FROM={{busybox}}", "FROM busybox", 5},
 		{"bracket value", "FROM alpine\nRUN add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "RUN add user --disabled-password app", 2},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.data, LinesOriginalData: utils.SplitLines(tt.data)}
-			got := DetectKindLine{}.DetectLine(t.Context(), file, tt.key, 3)
-			require.Equal(t, tt.line, got.Line)
-			require.Equal(t, tt.text, got.LineWithVulnerability)
-			require.Equal(t, tt.line, got.VulnerablilityLocation.Start.Line)
-			require.Equal(t, tt.line, got.VulnerablilityLocation.End.Line)
+			_, docs, _, _, err := (&dockerparser.Parser{}).Parse(t.Context(), []byte(tt.data), "Dockerfile", false, 0)
+			require.NoError(t, err)
+			for mode, document := range map[string]model.Document{"parsed": docs[0], "line info": docs[0], "raw": nil} {
+				t.Run(mode, func(t *testing.T) {
+					file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.data, Document: document}
+					if mode == "line info" {
+						file.Document = nil
+						file.LineInfoDocument = document
+					}
+					file.SetLazyLines()
+					got := DetectKindLine{}.DetectLine(t.Context(), file, tt.key, 3)
+					require.Equal(t, tt.line, got.Line)
+					require.Equal(t, tt.text, got.LineWithVulnerability)
+					require.Equal(t, tt.line, got.VulnerablilityLocation.Start.Line)
+					require.Equal(t, tt.line, got.VulnerablilityLocation.End.Line)
+				})
+			}
 		})
 	}
+}
+
+func TestDetectDockerLine_PartialInstructionLocations(t *testing.T) {
+	data := "from alpine\nCOPY <<EOF /tmp/config\nEXPOSE 22\nEOF\nexpose 22\n"
+	file := &model.FileMetadata{
+		Kind:         model.KindDOCKER,
+		OriginalData: data,
+		Document: model.Document{"command": map[string]interface{}{
+			"alpine": []interface{}{
+				map[string]interface{}{"_dd_line": float64(3)},
+				map[string]interface{}{},
+			},
+		}},
+	}
+	file.SetLazyLines()
+	got := DetectKindLine{}.DetectLine(t.Context(), file, "FROM={{alpine}}.{{EXPOSE 22}}", 3)
+	require.Equal(t, 5, got.Line, "incomplete metadata falls back without retaining partial instruction locations")
+	require.Equal(t, "expose 22", got.LineWithVulnerability)
 }

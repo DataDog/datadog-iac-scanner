@@ -3,11 +3,13 @@ package docker
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
 
 // DetectKindLine defines a kindDetectLine type
@@ -33,47 +35,26 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		sKey = strings.ReplaceAll(sKey, str[0], `{{`+strconv.Itoa(idx)+`}}`)
 	}
 
-	unchangedText := make([]string, len(file.Lines()))
-	copy(unchangedText, file.Lines())
-
-	// prepareDockerFileLines mutates this slice in place (multi-line continuation
-	// rewriting). It must operate on a private copy.
-	lines := make([]string, len(file.Lines()))
-	copy(lines, file.Lines())
-
-	lines = prepareDockerFileLines(lines)
-	var det *detector.DefaultDetectLineResponse
+	unchangedText := file.Lines()
+	lines := file.DetectionLines(func(original []string) []string {
+		// The engine releases Document before evaluation, but loads line info
+		// under its lock before invoking a detector. Direct callers may instead
+		// supply the original parsed document.
+		document := file.LineInfoDocument
+		if document == nil {
+			document = file.Document
+		}
+		return prepareInstructionLines(original, document)
+	})
+	det := &detector.DefaultDetectLineResponse{
+		ResolvedFile:  file.FilePath,
+		ResolvedFiles: make(map[string]model.ResolvedFileSplit),
+	}
 	start, end := model.ResourceLine{}, model.ResourceLine{}
-	// Preserve exact-case matches before normalizing instructions: heredoc
-	// payloads and bracket values may themselves start with instruction words.
-	// Fall back to case-insensitive instructions when the raw key path did not
-	// match completely, even if an earlier key matched.
-	for pass := 0; pass < 2; pass++ {
-		det = &detector.DefaultDetectLineResponse{
-			ResolvedFile:  file.FilePath,
-			ResolvedFiles: make(map[string]model.ResolvedFileSplit),
-		}
-		matchLines := lines
-		if pass == 1 {
-			matchLines = upperInstructions(lines)
-		}
-		for _, key := range strings.Split(sKey, ".") {
-			substr1, substr2 := detector.GenerateSubstrings(ctx, key, extractedString, lines, det.CurrentLine)
-			normalizedSubstr1 := substr1
-			if pass == 1 {
-				normalizedSubstr1 = upperInstruction(substr1)
-			}
-			det, start, end, _ = det.DetectCurrentLine(substr1, substr2, 0, matchLines, model.KindDOCKER)
-			// Bracket values can start with instruction words but occur inside RUN.
-			if det.IsBreak && normalizedSubstr1 != substr1 {
-				det, start, end, _ = det.DetectCurrentLine(normalizedSubstr1, substr2, 0, matchLines, model.KindDOCKER)
-			}
-			if det.IsBreak {
-				break
-			}
-		}
-
-		if !det.IsBreak {
+	for _, key := range strings.Split(sKey, ".") {
+		substr1, substr2 := detector.GenerateSubstrings(ctx, key, extractedString, lines, det.CurrentLine)
+		det, start, end, _ = det.DetectCurrentLine(substr1, substr2, 0, lines, model.KindDOCKER)
+		if det.IsBreak {
 			break
 		}
 	}
@@ -99,34 +80,63 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	}
 }
 
-// dockerInstructions lists the Dockerfile instruction keywords.
-var dockerInstructions = map[string]bool{
-	"ADD": true, "ARG": true, "CMD": true, "COPY": true, "ENTRYPOINT": true, "ENV": true,
-	"EXPOSE": true, "FROM": true, "HEALTHCHECK": true, "LABEL": true, "MAINTAINER": true,
-	"ONBUILD": true, "RUN": true, "SHELL": true, "STOPSIGNAL": true, "USER": true,
-	"VOLUME": true, "WORKDIR": true,
+// prepareInstructionLines keeps only actual instruction starts searchable.
+// Parsed documents already carry source locations. BuildKit supplies the same
+// heredoc/continuation boundaries for callers without that metadata.
+func prepareInstructionLines(original []string, document model.Document) []string {
+	lines := prepareDockerFileLines(slices.Clone(original))
+	starts := make([]bool, len(lines))
+	if !documentInstructionStarts(document, starts) {
+		clear(starts)
+		parsed, err := parser.Parse(strings.NewReader(strings.Join(original, "\n")))
+		if err != nil {
+			return lines
+		}
+		for _, node := range parsed.AST.Children {
+			starts[node.StartLine-1] = true
+		}
+	}
+	for i := range lines {
+		if !starts[i] {
+			lines[i] = ""
+		}
+	}
+	return lines
 }
 
-// upperInstruction uppercases the instruction keyword s starts with, if any.
-func upperInstruction(s string) string {
-	trimmed := strings.TrimLeft(s, " \t")
-	word := trimmed
-	if end := strings.IndexAny(trimmed, " \t"); end >= 0 {
-		word = trimmed[:end]
+func documentInstructionStarts(document model.Document, starts []bool) bool {
+	stages, ok := document["command"].(map[string]interface{})
+	if !ok {
+		return false
 	}
-	upper := strings.ToUpper(word)
-	if upper == word || !dockerInstructions[upper] {
-		return s
+	for _, commands := range stages {
+		if !markInstructionStarts(commands, starts) {
+			return false
+		}
 	}
-	return s[:len(s)-len(trimmed)] + upper + trimmed[len(word):]
+	if args := document["args"]; args != nil {
+		return markInstructionStarts(args, starts)
+	}
+	return true
 }
 
-func upperInstructions(lines []string) []string {
-	upper := make([]string, len(lines))
-	for i, line := range lines {
-		upper[i] = upperInstruction(line)
+func markInstructionStarts(value interface{}, starts []bool) bool {
+	commands, ok := value.([]interface{})
+	if !ok {
+		return false
 	}
-	return upper
+	for _, value := range commands {
+		cmd, ok := value.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		line, ok := cmd["_dd_line"].(float64)
+		if !ok || line < 1 || line > float64(len(starts)) || line != float64(int(line)) {
+			return false
+		}
+		starts[int(line)-1] = true
+	}
+	return true
 }
 
 func prepareDockerFileLines(text []string) []string {

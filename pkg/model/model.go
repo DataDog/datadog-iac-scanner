@@ -153,7 +153,9 @@ type lineInfoState struct {
 // linesLazyState guards the one-time computation of LinesOriginalData from
 // OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
 type linesLazyState struct {
-	once sync.Once
+	once           sync.Once
+	detectionOnce  sync.Once
+	detectionLines []string
 
 	matchMu sync.Mutex
 	matches map[string][]int
@@ -264,6 +266,17 @@ func (f *FileMetadata) Lines() []string {
 		f.LinesOriginalData = utils.SplitLines(f.OriginalData)
 	}
 	return *f.LinesOriginalData
+}
+
+// DetectionLines prepares a read-only view for this file's kind-specific line
+// detector. Preparation is cached once per file when lazy lines are enabled;
+// prepare must not mutate the original lines. Safe for concurrent findings.
+func (f *FileMetadata) DetectionLines(prepare func([]string) []string) []string {
+	if st := f.linesLazy; st != nil {
+		st.detectionOnce.Do(func() { st.detectionLines = prepare(f.Lines()) })
+		return st.detectionLines
+	}
+	return prepare(f.Lines())
 }
 
 // LinesContaining returns the indexes of Lines() that contain sub, in
