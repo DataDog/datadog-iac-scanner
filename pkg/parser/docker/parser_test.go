@@ -379,6 +379,9 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 		name, source string
 		want         map[int][]string
 	}{
+		{"runtime parameters with defaults", "FROM alpine\nRUN test ${A:-1} -eq 1 || exit $?\n", map[int][]string{2: {"test 1 -eq 1 || exit $?"}}},
+		{"recovery with nested unknown default", "FROM alpine\nARG H=hello\nRUN echo it's ${A:-${B:-$C}} $? $H\n", map[int][]string{3: {"echo it's $C $? hello"}}},
+		{"declaration default preserves unknown references", "FROM alpine\nENV A=${MISSING:-$UNKNOWN}\nRUN echo $A\n", map[int][]string{2: {"A", "$UNKNOWN", "="}, 3: {"echo $UNKNOWN"}}},
 		{"shell quoting and defaults", "FROM alpine\nARG V=1\nRUN echo \\$V '$V' \"$V\" ${V:-d}\n", map[int][]string{3: {`echo \$V '$V' "1" 1`}}},
 		{"quoted declaration values", "FROM alpine\nARG V=1\nENV A=\"$V words\" LITERAL='$V' ESCAPED=\\$V\nRUN echo $A $LITERAL $ESCAPED\n", map[int][]string{3: {"A", "1 words", "=", "LITERAL", "$V", "=", "ESCAPED", "$V", "="}, 4: {"echo 1 words $V $V"}}},
 		{"escape directive in expansion", "# escape=`\nFROM alpine\nARG V=1\nRUN echo `$V $V\n", map[int][]string{4: {"echo `$V 1"}}},

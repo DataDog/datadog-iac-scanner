@@ -3,6 +3,8 @@ package docker
 import (
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/moby/buildkit/frontend/dockerfile/shell"
 )
@@ -31,19 +33,8 @@ func expandValues(expander *wordExpander, values []string, scopes ...map[string]
 			continue
 		}
 		env := variableEnvironment(scopes)
-		word, restore := value, (*strings.Replacer)(nil)
-		lex := expander.lex
-		if strings.Contains(value, "${") {
-			// BuildKit's SkipUnsetEnv also skips defaults. Protect only unknown plain
-			// references, then let the normal lexer evaluate all parameter operators.
-			word, restore = expander.protectUnknownReferences(value, scopes)
-			lex = expander.parameterLex
-		}
-		expanded, _, err := lex.ProcessWord(word, env)
+		expanded, err := expander.expandWord(value, env)
 		if err == nil {
-			if restore != nil {
-				expanded = restore.Replace(expanded)
-			}
 			values[i] = expanded
 			continue
 		}
@@ -52,10 +43,28 @@ func expandValues(expander *wordExpander, values []string, scopes ...map[string]
 	return values
 }
 
+// expandWord applies the same unknown-reference policy to complete values and
+// isolated expressions recovered from unsupported shell syntax.
+func (e *wordExpander) expandWord(value string, env variableEnvironment) (string, error) {
+	word, restore := value, (*strings.Replacer)(nil)
+	lex := e.lex
+	if strings.Contains(value, "${") {
+		// SkipUnsetEnv also skips defaults. Preserve unknown plain references,
+		// including runtime shell parameters, before evaluating operators.
+		word, restore = e.protectUnknownReferences(value, env)
+		lex = e.parameterLex
+	}
+	expanded, _, err := lex.ProcessWord(word, env)
+	if err == nil && restore != nil {
+		expanded = restore.Replace(expanded)
+	}
+	return expanded, err
+}
+
 // expandParts isolates references before handing them to BuildKit. This is a
 // recovery boundary, not an implementation of shell parameter operators. A bad
 // reference or unmatched quote must not discard expansion elsewhere in a value.
-func (e *wordExpander) expandParts(value string, env shell.EnvGetter, quoted bool) string {
+func (e *wordExpander) expandParts(value string, env variableEnvironment, quoted bool) string {
 	var out strings.Builder
 	for i := 0; i < len(value); {
 		ch := value[i]
@@ -76,11 +85,7 @@ func (e *wordExpander) expandParts(value string, env shell.EnvGetter, quoted boo
 			end := e.referenceEnd(value, i)
 			if end > i+1 {
 				reference := value[i:end]
-				lex := e.lex
-				if strings.HasPrefix(reference, "${") && hasParameterOperator(reference) {
-					lex = e.parameterLex
-				}
-				expanded, _, err := lex.ProcessWord(reference, env)
+				expanded, err := e.expandWord(reference, env)
 				if err == nil {
 					out.WriteString(expanded)
 				} else {
@@ -132,22 +137,11 @@ func (e *wordExpander) referenceEnd(value string, start int) int {
 		}
 		return start + 1 // Preserve malformed text, allowing later references to expand.
 	}
-	for pos < len(value) && variableNameByte(value[pos]) {
-		pos++
-	}
-	return pos
+	return referenceNameEnd(value, pos)
 }
 
 func variableNameByte(ch byte) bool {
 	return ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '_'
-}
-
-func hasParameterOperator(reference string) bool {
-	pos := 2 // skip ${
-	for pos < len(reference) && variableNameByte(reference[pos]) {
-		pos++
-	}
-	return pos > 2 && pos < len(reference)-1
 }
 
 func (e *wordExpander) escapedPart(value string, pos int, quoted bool) (part string, end int, ok bool) {
@@ -161,7 +155,13 @@ func (e *wordExpander) escapedPart(value string, pos int, quoted bool) (part str
 	return value[pos+1 : pos+2], pos + 2, true
 }
 
-func (e *wordExpander) quotedPart(value string, pos int, env shell.EnvGetter) (part string, end int, ok bool) {
+func (e *wordExpander) quotedPart(value string, pos int, env variableEnvironment) (part string, end int, ok bool) {
+	// In recovery, a contraction's apostrophe is literal rather than an opener
+	// that captures a later, unrelated quoted argument.
+	if value[pos] == '\'' && pos > 0 && pos+1 < len(value) &&
+		variableNameByte(value[pos-1]) && variableNameByte(value[pos+1]) {
+		return "", pos, false
+	}
 	end = e.quoteEnd(value, pos)
 	if end < 0 {
 		return "", pos, false
@@ -200,9 +200,10 @@ func (e *wordExpander) protectUnknownReferences(value string, scopes variableEnv
 	if len(unknown) == 0 {
 		return value, nil
 	}
-	marker := "\x00"
+	const privateMarker = "\ue000"
+	marker := privateMarker
 	for containsMarker(value, scopes, marker) {
-		marker += "\x00"
+		marker += privateMarker
 	}
 	var out strings.Builder
 	replacements := make([]string, 0, len(unknown)*2)
@@ -246,10 +247,7 @@ func plainReference(value string, pos int) (name string, end int, ok bool) {
 	if braced {
 		start++
 	}
-	end = start
-	for end < len(value) && variableNameByte(value[end]) {
-		end++
-	}
+	end = referenceNameEnd(value, start)
 	if end == start || braced && (end >= len(value) || value[end] != '}') {
 		return "", pos, false
 	}
@@ -258,4 +256,30 @@ func plainReference(value string, pos int) (name string, end int, ok bool) {
 		end++
 	}
 	return name, end, true
+}
+
+// Match BuildKit's name boundaries, including positional/special parameters and
+// Unicode names, without interpreting any parameter operators here.
+func referenceNameEnd(value string, start int) int {
+	if start == len(value) {
+		return start
+	}
+	first, size := utf8.DecodeRuneInString(value[start:])
+	if strings.ContainsRune("@*#?-$!", first) {
+		return start + size
+	}
+	numeric := unicode.IsDigit(first)
+	pos := start
+	for pos < len(value) {
+		ch, size := utf8.DecodeRuneInString(value[pos:])
+		if numeric {
+			if !unicode.IsDigit(ch) {
+				break
+			}
+		} else if !unicode.IsLetter(ch) && !unicode.IsDigit(ch) && ch != '_' {
+			break
+		}
+		pos += size
+	}
+	return pos
 }
