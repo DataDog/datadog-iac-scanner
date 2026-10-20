@@ -46,7 +46,8 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	start, end := model.ResourceLine{}, model.ResourceLine{}
 	// Preserve exact-case matches before normalizing instructions: heredoc
 	// payloads and bracket values may themselves start with instruction words.
-	// Only fall back to case-insensitive instructions when no raw key matched.
+	// Fall back to case-insensitive instructions when the raw key path did not
+	// match completely, even if an earlier key matched.
 	for pass := 0; pass < 2; pass++ {
 		det = &detector.DefaultDetectLineResponse{
 			ResolvedFile:  file.FilePath,
@@ -58,16 +59,21 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		}
 		for _, key := range strings.Split(sKey, ".") {
 			substr1, substr2 := detector.GenerateSubstrings(ctx, key, extractedString, lines, det.CurrentLine)
+			normalizedSubstr1 := substr1
 			if pass == 1 {
-				substr1 = upperInstruction(substr1)
+				normalizedSubstr1 = upperInstruction(substr1)
 			}
 			det, start, end, _ = det.DetectCurrentLine(substr1, substr2, 0, matchLines, model.KindDOCKER)
+			// Bracket values can start with instruction words but occur inside RUN.
+			if det.IsBreak && normalizedSubstr1 != substr1 {
+				det, start, end, _ = det.DetectCurrentLine(normalizedSubstr1, substr2, 0, matchLines, model.KindDOCKER)
+			}
 			if det.IsBreak {
 				break
 			}
 		}
 
-		if det.FoundAtLeastOne {
+		if !det.IsBreak {
 			break
 		}
 	}

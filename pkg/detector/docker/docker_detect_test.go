@@ -249,6 +249,12 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		name, data, key, text string
 		line                  int
 	}{
+		{"uppercase FROM and lowercase RUN", "FROM alpine:3.19\nrun apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "run apk add curl", 2},
+		{"uppercase FROM and mixed-case RUN", "FROM alpine:3.19\nRuN apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "RuN apk add curl", 2},
+		{"later lowercase instruction", "FROM alpine:3.19\nRUN apk add curl\nexpose 22\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}.{{EXPOSE 22}}", "expose 22", 3},
+		{"lowercase FROM and uppercase RUN", "from alpine:3.19\nRUN apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "RUN apk add curl", 2},
+		{"bracket value before lowercase instruction", "FROM alpine\nRUN add user --disabled-password app\nexpose 22\n", "FROM={{alpine}}.{{add user}}.{{EXPOSE 22}}", "expose 22", 3},
+		{"lowercase instructions with bracket value", "from alpine\nrun add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "run add user --disabled-password app", 2},
 		{"copy heredoc", "FROM alpine\nCOPY <<EOF /tmp/config\nexpose 22\nEOF\nEXPOSE 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "EXPOSE 22", 5},
 		{"run heredoc", "FROM alpine\nRUN cat <<EOF > /x\nfrom busybox\nEOF\nFROM busybox\n", "FROM={{busybox}}", "FROM busybox", 5},
 		{"bracket value", "FROM alpine\nRUN add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "RUN add user --disabled-password app", 2},
@@ -258,6 +264,8 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 			got := DetectKindLine{}.DetectLine(t.Context(), file, tt.key, 3)
 			require.Equal(t, tt.line, got.Line)
 			require.Equal(t, tt.text, got.LineWithVulnerability)
+			require.Equal(t, tt.line, got.VulnerablilityLocation.Start.Line)
+			require.Equal(t, tt.line, got.VulnerablilityLocation.End.Line)
 		})
 	}
 }
