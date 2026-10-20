@@ -222,3 +222,42 @@ func TestDetectDockerLine(t *testing.T) { //nolint
 		})
 	}
 }
+
+// Dockerfile instructions are case-insensitive, and search keys spell them in
+// uppercase whatever the file uses.
+func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
+	data := "from alpine:3.19\nrun apk add curl\nexpose 22\n"
+	file := &model.FileMetadata{
+		ID:                "lowercase",
+		Kind:              model.KindDOCKER,
+		OriginalData:      data,
+		LinesOriginalData: utils.SplitLines(data),
+	}
+	for searchKey, line := range map[string]int{
+		"FROM={{alpine:3.19}}":                      1,
+		"FROM={{alpine:3.19}}.RUN={{apk add curl}}": 2,
+		"FROM={{alpine:3.19}}.{{expose 22}}":        3,
+		"FROM={{alpine:3.19}}.{{EXPOSE 22}}":        3,
+	} {
+		got := DetectKindLine{}.DetectLine(context.Background(), file, searchKey, 3)
+		require.Equal(t, line, got.Line, searchKey)
+	}
+	got := DetectKindLine{}.DetectLine(context.Background(), file, "FROM={{alpine:3.19}}.{{expose 22}}", 3)
+	require.Equal(t, "expose 22", got.LineWithVulnerability, "the reported line keeps the file's spelling")
+
+	for _, tt := range []struct {
+		name, data, key, text string
+		line                  int
+	}{
+		{"copy heredoc", "FROM alpine\nCOPY <<EOF /tmp/config\nexpose 22\nEOF\nEXPOSE 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "EXPOSE 22", 5},
+		{"run heredoc", "FROM alpine\nRUN cat <<EOF > /x\nfrom busybox\nEOF\nFROM busybox\n", "FROM={{busybox}}", "FROM busybox", 5},
+		{"bracket value", "FROM alpine\nRUN add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "RUN add user --disabled-password app", 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.data, LinesOriginalData: utils.SplitLines(tt.data)}
+			got := DetectKindLine{}.DetectLine(t.Context(), file, tt.key, 3)
+			require.Equal(t, tt.line, got.Line)
+			require.Equal(t, tt.text, got.LineWithVulnerability)
+		})
+	}
+}
