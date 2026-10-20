@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -445,6 +446,11 @@ func newLineInfoLoader(
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return newLineInfoLoaderWithReparser(filename, docIdx,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
+			if p.Parsers.GetKind() == model.KindDOCKER {
+				ctx = dockerfile.WithSourceLines(ctx, f.Lines(), func(lines []string) {
+					f.DetectionLines(dockerfile.SourceViewKey, func([]string) []string { return lines })
+				})
+			}
 			return p.Parse(parser.WithLineInfoOnly(ctx),
 				filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
 		})

@@ -1,13 +1,14 @@
 package docker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"maps"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
@@ -45,8 +46,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	reader := bytes.NewReader(fileContent)
-	parsed, err := parser.Parse(reader)
+	parsed, err := dockerfile.Parse(ctx, fileContent)
 	if err != nil {
 		return nil, nil, nil, nil, errors.Wrap(err, "failed to parse Dockerfile")
 	}
@@ -56,8 +56,12 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	arguments := make([]Command, 0)
 	ignoreStruct := newIgnore()
 
-	lex := newWordExpander(parsed.EscapeToken, true)
-	declarationLex := newWordExpander(parsed.EscapeToken, false)
+	lineInfoOnly := iacparser.IsLineInfoOnly(ctx)
+	var lex, declarationLex *wordExpander
+	if !lineInfoOnly {
+		lex = newWordExpander(parsed.EscapeToken, true)
+		declarationLex = newWordExpander(parsed.EscapeToken, false)
+	}
 	globalArgs := make(map[string]string)
 	scope := variableScope{args: globalArgs, envs: make(map[string]string)}
 	stages := make(map[string]variableScope)
@@ -66,7 +70,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
 		if child.Value == command.From {
 			fromValue = fromArguments(child.Original)
-			scope = scopeForStage(child, globalArgs, stages, lex)
+			if !lineInfoOnly {
+				scope = scopeForStage(child, globalArgs, stages, lex)
+			}
 		}
 
 		if ignoreStruct.getIgnoreComments(child) {
@@ -94,7 +100,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 			cmd.Value = append(cmd.Value, n.Value)
 		}
 
-		scope.expandCommand(&cmd, globalArgs, lex, declarationLex)
+		// Source-location reparses need raw commands and line markers only.
+		// Enrichment is already present in the document evaluated by rules.
+		if !lineInfoOnly {
+			scope.expandCommand(&cmd, globalArgs, lex, declarationLex)
+		}
 
 		if fromValue == "" {
 			arguments = append(arguments, cmd)

@@ -8,8 +8,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -103,4 +105,20 @@ func TestEnsureLineInfoDocument_minifiedTFPlanUsesOriginalData(t *testing.T) {
 	file.SetLineInfoLoader(loader)
 	require.NoError(t, file.EnsureLineInfoDocument(ctx))
 	require.True(t, reflect.DeepEqual(lazyDoc, file.LineInfoDocument))
+}
+
+func TestDockerLineInfoReusesSourceParse(t *testing.T) {
+	p := buildTestParser(t, t.Context(), func(b *parser.Builder) *parser.Builder { return b.Add(&dockerParser.Parser{}) })
+	source := "FROM alpine\nCOPY <<EOF /x\nFROM busybox\nEOF\nrun echo hi\n"
+	file := &model.FileMetadata{OriginalData: source, Kind: model.KindDOCKER, FilePath: "Dockerfile"}
+	file.SetLazyLines()
+	file.SetLineInfoLoader(newLineInfoLoader(p, file.FilePath, 0, false, false, 15))
+	require.NoError(t, file.EnsureLineInfoDocument(t.Context()))
+	require.Contains(t, file.LineInfoDocument, "command", "the full document remains available")
+	lines := file.DetectionLines(dockerfile.SourceViewKey, func([]string) []string {
+		t.Fatal("line-info parsing must already have recorded the source view")
+		return nil
+	})
+	require.Equal(t, "run echo hi", lines[4])
+	require.Empty(t, lines[2], "heredoc payloads cannot become instructions")
 }

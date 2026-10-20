@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	dockerparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -72,7 +73,7 @@ func TestPrepareDockerFileLinesLongMultiLineRun(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		result := prepareInstructionLines(lines, nil)
+		result := dockersource.InstructionLines(lines)
 		var runLine string
 		for _, line := range result {
 			if strings.Contains(line, "RUN true") {
@@ -250,6 +251,9 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		name, data, key, text string
 		line                  int
 	}{
+		{"quoted instruction before real instruction", "FROM alpine\nRUN echo \"RUN apt-get update\"\nrun apt-get update\n", "{{run apt-get update}}", "run apt-get update", 3},
+		{"instruction before quoted argument", "FROM alpine\nrun apt-get update\nRUN echo \"run apt-get update\"\n", "{{run apt-get update}}", "run apt-get update", 2},
+		{"uncached uppercase with lowercase key", "FROM alpine\nRUN echo hi\n", "FROM={{alpine}}.{{run echo hi}}", "RUN echo hi", 2},
 		{"keyword inside COPY argument", "FROM alpine\ncopy ./COPYING /app\n", "FROM={{alpine}}.COPY={{./COPYING}}", "copy ./COPYING /app", 2},
 		{"keyword inside RUN argument", "FROM alpine\nrun echo RUNNING\n", "FROM={{alpine}}.RUN={{echo RUNNING}}", "run echo RUNNING", 2},
 		{"adjacent continuation", "FROM alpine\nRUN echo ok &&\\\n echo hidden\n", "FROM={{alpine}}.RUN={{echo hidden}}", "RUN echo ok && echo hidden", 2},
@@ -263,6 +267,7 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		{"lowercase instructions with bracket value", "from alpine\nrun add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "run add user --disabled-password app", 2},
 		{"healthcheck none", "FROM alpine\nhealthcheck none\n", "FROM={{alpine}}.{{HEALTHCHECK NONE}}", "healthcheck none", 2},
 		{"lowercase healthcheck", "FROM alpine\nhealthcheck cmd curl localhost\n", "FROM={{alpine}}.{{HEALTHCHECK CMD curl localhost}}", "healthcheck cmd curl localhost", 2},
+		{"quoted nested instruction before real instruction", "FROM alpine\nHEALTHCHECK CMD echo \"CMD curl localhost\"\nhealthcheck cmd curl localhost\n", "FROM={{alpine}}.HEALTHCHECK={{cmd curl localhost}}", "healthcheck cmd curl localhost", 3},
 		{"healthcheck flags", "FROM alpine\nhealthcheck --interval=5s cmd curl localhost\n", "FROM={{alpine}}.HEALTHCHECK={{CMD curl localhost}}", "healthcheck --interval=5s cmd curl localhost", 2},
 		{"lowercase onbuild", "FROM alpine\nonbuild run echo hello\n", "FROM={{alpine}}.{{ONBUILD RUN echo hello}}", "onbuild run echo hello", 2},
 		{"mixed nested instruction", "FROM alpine\nOnBuIlD rUn echo hello\n", "FROM={{alpine}}.ONBUILD={{RUN echo hello}}", "OnBuIlD rUn echo hello", 2},
@@ -280,14 +285,18 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, docs, _, _, err := (&dockerparser.Parser{}).Parse(t.Context(), []byte(tt.data), "Dockerfile", false, 0)
 			require.NoError(t, err)
-			for mode, document := range map[string]model.Document{"parsed": docs[0], "line info": docs[0], "raw": nil} {
+			for mode, document := range map[string]model.Document{"parsed": docs[0], "line info": docs[0], "raw": nil, "raw uncached": nil} {
 				t.Run(mode, func(t *testing.T) {
 					file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.data, Document: document}
 					if mode == "line info" {
 						file.Document = nil
 						file.LineInfoDocument = document
 					}
-					file.SetLazyLines()
+					if mode == "raw uncached" {
+						file.LinesOriginalData = utils.SplitLines(tt.data)
+					} else {
+						file.SetLazyLines()
+					}
 					got := DetectKindLine{}.DetectLine(t.Context(), file, tt.key, 3)
 					require.Equal(t, tt.line, got.Line)
 					require.Equal(t, tt.text, got.LineWithVulnerability)
@@ -299,7 +308,7 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 	}
 }
 
-func TestDetectDockerLine_PartialInstructionLocations(t *testing.T) {
+func TestDetectDockerLine_DocumentSchemaDoesNotControlSource(t *testing.T) {
 	data := "from alpine\nCOPY <<EOF /tmp/config\nEXPOSE 22\nEOF\nexpose 22\n"
 	file := &model.FileMetadata{
 		Kind:         model.KindDOCKER,
@@ -313,6 +322,6 @@ func TestDetectDockerLine_PartialInstructionLocations(t *testing.T) {
 	}
 	file.SetLazyLines()
 	got := DetectKindLine{}.DetectLine(t.Context(), file, "FROM={{alpine}}.{{EXPOSE 22}}", 3)
-	require.Equal(t, 5, got.Line, "incomplete metadata falls back without retaining partial instruction locations")
+	require.Equal(t, 5, got.Line, "document field names and incomplete metadata do not control source locations")
 	require.Equal(t, "expose 22", got.LineWithVulnerability)
 }

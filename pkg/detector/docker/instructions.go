@@ -39,31 +39,39 @@ func normalizeInstruction(line string) string {
 	return result.String()
 }
 
-// normalizeSearchText prefers exact literal values (e.g. {{add user}} inside
-// RUN), otherwise canonicalizing instruction spelling just as in the line view.
-func normalizeSearchText(view *model.FileMetadata, text string) string {
+// normalizeSearchText prefers instruction boundaries to occurrences inside
+// arguments. With no instruction match, keyword-looking literals keep their case.
+func normalizeSearchText(view *model.FileMetadata, text string) (string, bool) {
 	if text == "" {
-		return text
-	}
-	if indexes, _ := view.LinesContaining(text); len(indexes) > 0 {
-		return text
+		return text, false
 	}
 	normalized := normalizeInstruction(text)
-	if normalized == text {
-		return text
-	}
-	indexes, _ := view.LinesContaining(normalized)
+	indexes, indexed := view.LinesContaining(normalized)
 	lines := view.Lines()
-	for _, index := range indexes {
-		words, count := dockerInstructionWords(lines[index])
-		for _, word := range words[:count] {
-			if strings.HasPrefix(lines[index][word.start:], normalized) {
-				return normalized
+	if !indexed {
+		for _, line := range lines {
+			if startsAtInstruction(line, normalized) {
+				return normalized, true
 			}
 		}
+		return text, false
 	}
-	// A keyword-looking literal inside an argument must remain case-sensitive.
-	return text
+	for _, index := range indexes {
+		if startsAtInstruction(lines[index], normalized) {
+			return normalized, true
+		}
+	}
+	return text, false
+}
+
+func startsAtInstruction(line, text string) bool {
+	words, count := dockerInstructionWords(line)
+	for _, word := range words[:count] {
+		if strings.HasPrefix(line[word.start:], text) {
+			return true
+		}
+	}
+	return false
 }
 
 func dockerInstructionWords(line string) (words [3]instructionWord, count int) {
@@ -103,4 +111,20 @@ func dockerWordAt(line string, pos int) instructionWord {
 		end = len(rest)
 	}
 	return instructionWord{start: start, end: start + end}
+}
+
+// instructionSearch applies keyword normalization only at instruction boundaries.
+// Nested keywords have the same rule; ordinary argument values remain literal.
+func instructionSearch(view *model.FileMetadata, first, second string) (str1, str2 string, accept func(string) bool) {
+	first, instruction := normalizeSearchText(view, first)
+	nested := false
+	if strings.EqualFold(first, command.Onbuild) || strings.EqualFold(first, command.Healthcheck) {
+		second, nested = normalizeSearchText(view, second)
+	}
+	if !instruction && !nested {
+		return first, second, nil
+	}
+	return first, second, func(line string) bool {
+		return (!instruction || startsAtInstruction(line, first)) && (!nested || startsAtInstruction(line, second))
+	}
 }
