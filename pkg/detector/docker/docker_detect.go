@@ -66,8 +66,7 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		first, second := detector.GenerateSubstrings(ctx, key, extractedString, lines, 0)
 		search.keys = append(search.keys, search.prepareKey(first, second))
 	}
-	search.attempts = make(map[stageSearch]instructionMatch)
-	result := search.find(0, -1, instructionMatch{})
+	result := search.solve()
 
 	if result.matched > 0 {
 		return model.VulnerabilityLines{
@@ -105,15 +104,12 @@ type instructionMatch struct {
 	line, matched int
 	start, end    model.ResourceLine
 }
-type stageSearch struct{ key, line, stage int }
-
 type instructionKeySearch struct {
 	view        *model.FileMetadata
 	lines       []string
 	starts      []int
 	exactStages map[string][]int
 	keys        []instructionKey
-	attempts    map[stageSearch]instructionMatch
 }
 
 // prepareKey does normalization and exact-stage lookup once per key, independent
@@ -127,72 +123,128 @@ func (s *instructionKeySearch) prepareKey(first, second string) instructionKey {
 	return key
 }
 
-// find tries stage selections in source order, including selections made by
-// ordinary keys after a global ARG. Ordinary keys stay in the selected stage;
-// an explicit FROM may select a later one. Failed attempts retain the longest
-// matched prefix, with the earliest attempt winning ties.
-func (s *instructionKeySearch) find(keyIndex, stage int, result instructionMatch) (found instructionMatch) {
-	if keyIndex == len(s.keys) {
-		return result
+type instructionOption struct {
+	line, distance int
+	result         instructionMatch
+}
+type instructionOptions []instructionOption
+
+func (options instructionOptions) lookup(line int) instructionMatch {
+	i := sort.Search(len(options), func(i int) bool { return options[i].line >= line })
+	if i < len(options) {
+		return options[i].result
 	}
-	state := stageSearch{keyIndex, result.line, stage}
-	if previous, ok := s.attempts[state]; ok {
-		return previous
-	}
-	defer func() { s.attempts[state] = found }()
-	key := s.keys[keyIndex]
-	firstStage, lastStage := stage, stage
-	if key.from || stage < 0 {
-		firstStage = sort.Search(len(s.starts), func(i int) bool { return s.starts[i] >= result.line })
-		if !key.from {
-			firstStage = -1 // The preamble has not selected a build stage yet.
-		}
-		lastStage = len(s.starts) - 1
-	}
-	exact := sort.SearchInts(key.exact, firstStage)
-	useExact := key.from && exact < len(key.exact)
-	best := result
-	for candidate := firstStage; candidate <= lastStage; candidate++ {
-		if useExact {
-			if exact == len(key.exact) {
-				break
-			}
-			candidate = key.exact[exact]
-			exact++
-		}
-		match, ok := s.matchInStage(key, candidate, result)
-		if !ok {
-			continue
-		}
-		attempt := s.find(keyIndex+1, candidate, match)
-		if attempt.matched > best.matched {
-			best = attempt
-		}
-		if best.matched == len(s.keys) {
-			return best
-		}
-	}
-	return best
+	return instructionMatch{}
 }
 
-func (s *instructionKeySearch) matchInStage(key instructionKey, stage int, result instructionMatch) (instructionMatch, bool) {
-	start, end := result.line, len(s.lines)
+// bestSuffix keeps each threshold line while selecting its best reachable
+// result in one backward pass. Distance ranks alternatives within a stage;
+// stage choices retain source order when prefixes have the same length.
+func (options instructionOptions) bestSuffix(rankDistance bool) {
+	for i := len(options) - 2; i >= 0; i-- {
+		a, b := &options[i], &options[i+1]
+		longer := b.result.matched > a.result.matched
+		closer := rankDistance && b.result.matched == a.result.matched && b.distance < a.distance
+		if longer || closer {
+			a.result, a.distance = b.result, b.distance
+		}
+	}
+}
+
+type instructionLayer struct {
+	stages      []instructionOptions
+	from, exact instructionOptions
+}
+
+func (layer instructionLayer) suffix(line, stage int, from bool) instructionMatch {
+	if from {
+		if exact := layer.exact.lookup(line); exact.matched > 0 {
+			return exact
+		}
+	}
+	if from || stage < 0 {
+		return layer.from.lookup(line)
+	}
+	return layer.stages[stage+1].lookup(line)
+}
+
+// solve uses suffix dynamic programming. Each key visits candidate lines and
+// stages once; transitions use binary searches into the next key's table.
+// Cost is O(K*(L+S)*log(L+S)), space O(L+S) per retained layer. No stage
+// suffix is enumerated again for another ordinary match in the same stage.
+func (s *instructionKeySearch) solve() instructionMatch {
+	next := instructionLayer{}
+	for k := len(s.keys) - 1; k >= 0; k-- {
+		key := s.keys[k]
+		current := instructionLayer{stages: make([]instructionOptions, len(s.starts)+1)}
+		candidates := s.candidates(key.first)
+		for stage := -1; stage < len(s.starts); stage++ {
+			options := s.stageOptions(k, stage, candidates, next)
+			options.bestSuffix(true)
+			current.stages[stage+1] = options
+			current.from = append(current.from, options...)
+			if key.from && hasStage(key.exact, stage) {
+				current.exact = append(current.exact, options...)
+			}
+		}
+		current.from.bestSuffix(false)
+		current.exact.bestSuffix(false)
+		next = current
+	}
+	return next.suffix(0, -1, s.keys[0].from)
+}
+
+func (s *instructionKeySearch) candidates(first string) []int {
+	candidates, cached := s.view.LinesContaining(first)
+	if !cached {
+		for i, line := range s.lines {
+			if strings.Contains(line, first) {
+				candidates = append(candidates, i)
+			}
+		}
+	}
+	return candidates
+}
+
+func (s *instructionKeySearch) stageOptions(k, stage int, candidates []int, next instructionLayer) instructionOptions {
+	key := s.keys[k]
+	if key.from && stage < 0 {
+		return nil
+	}
+	begin, end := 0, len(s.lines)
 	if stage >= 0 {
-		start = max(start, s.starts[stage])
+		begin = s.starts[stage]
 	}
 	if stage+1 < len(s.starts) {
 		end = s.starts[stage+1]
 	}
 	if key.from {
-		end = start + 1
-	} // FROM candidates are tried in source order.
-	if start >= end {
-		return instructionMatch{}, false
+		end = min(end, begin+1)
 	}
-	det := &detector.DefaultDetectLineResponse{File: s.view, CurrentLine: start, AcceptLine: key.accept, EndLine: end}
-	_, begin, finish, _ := det.DetectCurrentLine(key.first, key.second, 0, s.lines, model.KindDOCKER)
-	if det.IsBreak {
-		return instructionMatch{}, false
+	var options instructionOptions
+	for i := sort.SearchInts(candidates, begin); i < len(candidates) && candidates[i] < end; i++ {
+		line := candidates[i]
+		if key.accept != nil && !key.accept(line, s.lines[line]) {
+			continue
+		}
+		distance, start, finish, matched := detector.MatchLine(key.first, key.second, s.lines, line, model.KindDOCKER)
+		if !matched {
+			continue
+		}
+		result := instructionMatch{line: line, matched: 1, start: start, end: finish}
+		if k+1 < len(s.keys) {
+			suffix := next.suffix(line, stage, s.keys[k+1].from)
+			if suffix.matched > 0 {
+				result = suffix
+				result.matched++
+			}
+		}
+		options = append(options, instructionOption{line: line, distance: distance, result: result})
 	}
-	return instructionMatch{line: det.CurrentLine, matched: result.matched + 1, start: begin, end: finish}, true
+	return options
+}
+
+func hasStage(stages []int, stage int) bool {
+	i := sort.SearchInts(stages, stage)
+	return i < len(stages) && stages[i] == stage
 }

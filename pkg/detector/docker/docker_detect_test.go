@@ -456,19 +456,76 @@ func TestImplicitStageSelectionOracle(t *testing.T) {
 	}
 }
 
-func BenchmarkRepeatedStageSearch(b *testing.B) {
-	for _, count := range []int{10, 100, 1000} {
-		b.Run(fmt.Sprint(count), func(b *testing.B) {
-			source := strings.Repeat("FROM alpine\nRUN a\n", count) + "RUN b\n"
-			file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source}
-			file.SetLazyLines()
-			b.ReportAllocs()
-			for b.Loop() {
-				got := DetectKindLine{}.DetectLine(b.Context(), file, "{{RUN a}}.{{RUN b}}", 0)
-				if got.Line != count*2+1 {
-					b.Fatalf("wrong line %d", got.Line)
+// Alternative matches must be retried at every key position, with the same
+// results in cached and uncached views. Complete matches beat closer prefixes.
+func TestOrderedKeyAlternatives(t *testing.T) {
+	for _, tt := range []struct {
+		name, source, key string
+		line              int
+	}{
+		{"ordinary before FROM", "FROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "{{RUN a}}.FROM={{alpine}}.{{RUN b}}", 5},
+		{"global ordinary before FROM", "ARG X=1\nFROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "{{ARG X=1}}.{{RUN a}}.FROM={{alpine}}.{{RUN b}}", 6},
+		{"ordinary before fuzzy FROM", "FROM alpine-old\nRUN a\nFROM alpine-new\nRUN b\n", "RUN={{a}}.FROM={{alpine}}.RUN={{b}}", 4},
+		{"same stage", "FROM alpine\nRUN ab\nRUN b\nRUN a\n", "{{RUN a}}.{{RUN b}}", 3},
+		{"same stage after FROM", "FROM alpine\nRUN ab\nRUN b\nRUN a\n", "FROM={{alpine}}.RUN={{a}}.{{RUN b}}", 3},
+		{"same stage second stage", "FROM busybox\nRUN a\nFROM alpine\nRUN ab\nRUN b\nRUN a\n", "FROM={{alpine}}.{{RUN a}}.{{RUN b}}", 5},
+	} {
+		for _, cached := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cached=%t", tt.name, cached), func(t *testing.T) {
+				file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.source}
+				if cached {
+					file.SetLazyLines()
+				} else {
+					file.LinesOriginalData = utils.SplitLines(tt.source)
 				}
+				got := (DetectKindLine{}).DetectLine(t.Context(), file, tt.key, 0)
+				require.Equal(t, tt.line, got.Line)
+				require.Equal(t, "RUN b", got.LineWithVulnerability)
+			})
+		}
+	}
+}
+
+func BenchmarkRepeatedStageSearch(b *testing.B) {
+	for _, count := range []int{10, 100, 1000, 4000} {
+		for _, key := range []string{"{{RUN a}}.{{RUN b}}", "{{RUN a}}.FROM={{alpine}}.{{RUN b}}", "ARG={{X=1}}.{{RUN a}}.FROM={{alpine}}.{{RUN missing}}"} {
+			for _, complete := range []bool{false, true} {
+				b.Run(fmt.Sprintf("%d/complete=%t/%s", count, complete, key), func(b *testing.B) {
+					source := "ARG X=1\n" + strings.Repeat("FROM alpine\nRUN a\n", count)
+					if complete {
+						source += "RUN b\n"
+					}
+					file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source}
+					file.SetLazyLines()
+					(DetectKindLine{}).DetectLine(b.Context(), file, key, 0)
+					b.ReportAllocs()
+					b.ResetTimer()
+					for b.Loop() {
+						(DetectKindLine{}).DetectLine(b.Context(), file, key, 0)
+					}
+				})
 			}
-		})
+		}
+	}
+}
+
+// Exploring alternatives must retain the shared matcher's closest-match rule
+// when those alternatives match the same number of key parts.
+func TestOrderedKeysPreserveDistanceRanking(t *testing.T) {
+	for _, tt := range []struct {
+		source, key string
+		line        int
+	}{
+		{"FROM alpine\nRUN abc\nRUN a\n", "{{RUN a}}", 3},
+		{"FROM alpine\nRUN abc\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", 4},
+		{"FROM busybox\nRUN a\nFROM alpine\nRUN abc\nRUN a\n", "FROM={{alpine}}.{{RUN a}}", 5},
+	} {
+		for _, cached := range []bool{false, true} {
+			file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.source}
+			if cached {
+				file.SetLazyLines()
+			}
+			require.Equal(t, tt.line, (DetectKindLine{}).DetectLine(t.Context(), file, tt.key, 0).Line)
+		}
 	}
 }
