@@ -7,7 +7,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
-	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	"github.com/stretchr/testify/require"
 )
 
@@ -231,7 +230,7 @@ func TestSaveAndResolveArgs(t *testing.T) {
 		values := make([]string, 1)
 		t.Run(tt.name, func(t *testing.T) {
 			scope := variableScope{args: args}
-			scope.declareArgs(shell.NewLex('\\'), []string{tt.value}, nil)
+			scope.declareArgs(newWordExpander('\\', false), []string{tt.value}, nil)
 			values = resolveArgsAndEnvs(tt.values, args)
 			require.Equal(t, tt.want.args, args)
 			require.Equal(t, tt.want.values, values)
@@ -383,6 +382,14 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 		{"shell quoting and defaults", "FROM alpine\nARG V=1\nRUN echo \\$V '$V' \"$V\" ${V:-d}\n", map[int][]string{3: {`echo \$V '$V' "1" 1`}}},
 		{"quoted declaration values", "FROM alpine\nARG V=1\nENV A=\"$V words\" LITERAL='$V' ESCAPED=\\$V\nRUN echo $A $LITERAL $ESCAPED\n", map[int][]string{3: {"A", "1 words", "=", "LITERAL", "$V", "=", "ESCAPED", "$V", "="}, 4: {"echo 1 words $V $V"}}},
 		{"escape directive in expansion", "# escape=`\nFROM alpine\nARG V=1\nRUN echo `$V $V\n", map[int][]string{4: {"echo `$V 1"}}},
+		{"unset FROM default", "FROM alpine:${TAG:-latest}\n", map[int][]string{1: {"alpine:latest"}}},
+		{"unset command default", "FROM alpine\nRUN echo ${TAG:-latest} $UNKNOWN\n", map[int][]string{2: {"echo latest $UNKNOWN"}}},
+		{"unsupported expansion is local", "FROM alpine\nARG H=hello\nRUN echo ${#H} $H\n", map[int][]string{3: {"echo ${#H} hello"}}},
+		{"unmatched apostrophe is literal", "FROM alpine\nARG H=hello\nRUN echo it's $H\n", map[int][]string{3: {"echo it's hello"}}},
+		{"unset declaration default", "ARG IMAGE=alpine:${TAG:-latest}\nFROM $IMAGE\n", map[int][]string{2: {"alpine:latest"}}},
+		{"nested default", "FROM alpine\nARG H=hello\nRUN echo ${MISSING:-${H}}\n", map[int][]string{3: {"echo hello"}}},
+		{"recovery preserves quoting", "FROM alpine\nARG H=hello\nRUN echo ${#H} \\$H '$H' \"$H\" ${MISSING:-d}\n", map[int][]string{3: {`echo ${#H} \$H '$H' "hello" d`}}},
+		{"unsupported reference after known reference", "FROM alpine\nARG H=hello\nRUN echo $H ${H@Q} $H\n", map[int][]string{3: {"echo hello ${H@Q} hello"}}},
 		{"empty default", "FROM alpine\nARG V=\nRUN echo ${V:-d}\n", map[int][]string{3: {"echo d"}}},
 		{"resolved declarations", "ARG V=1\nFROM alpine\nARG V\nENV A=$V\nARG B=$A\nRUN echo $B\n", map[int][]string{4: {"A", "1", "="}, 5: {"B=1"}, 6: {"echo 1"}}},
 		{"ENV overrides ARG", "FROM alpine\nARG V=1\nENV V=2\nRUN echo $V ${V}\n", map[int][]string{4: {"echo 2 2"}}},
@@ -421,7 +428,6 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 }
 
 func resolveArgsAndEnvs(values []string, scopes ...map[string]string) []string {
-	lex := shell.NewLex('\\')
-	lex.RawQuotes, lex.RawEscapes, lex.SkipUnsetEnv = true, true, true
+	lex := newWordExpander('\\', true)
 	return expandValues(lex, values, scopes...)
 }

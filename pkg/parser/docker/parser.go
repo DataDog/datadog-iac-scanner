@@ -11,7 +11,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
-	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	"github.com/pkg/errors"
 )
 
@@ -47,7 +46,6 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
 	reader := bytes.NewReader(fileContent)
-
 	parsed, err := parser.Parse(reader)
 	if err != nil {
 		return nil, nil, nil, nil, errors.Wrap(err, "failed to parse Dockerfile")
@@ -58,11 +56,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	arguments := make([]Command, 0)
 	ignoreStruct := newIgnore()
 
-	lex := shell.NewLex(parsed.EscapeToken)
-	// Retain shell spelling in executable commands; declarations store values.
-	lex.RawQuotes, lex.RawEscapes, lex.SkipUnsetEnv = true, true, true
-	declarationLex := shell.NewLex(parsed.EscapeToken)
-	declarationLex.SkipUnsetEnv = true
+	lex := newWordExpander(parsed.EscapeToken, true)
+	declarationLex := newWordExpander(parsed.EscapeToken, false)
 	globalArgs := make(map[string]string)
 	scope := variableScope{args: globalArgs, envs: make(map[string]string)}
 	stages := make(map[string]variableScope)
@@ -99,18 +94,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 			cmd.Value = append(cmd.Value, n.Value)
 		}
 
-		switch cmd.Cmd {
-		case command.From:
-			cmd.Value = expandValues(lex, cmd.Value, globalArgs)
-		case command.Arg:
-			cmd.Value = scope.declareArgs(declarationLex, cmd.Value, globalArgs)
-		case command.Env:
-			cmd.Value = scope.declareEnvs(declarationLex, cmd.Value)
-		case command.Onbuild:
-			// Triggers execute in a future child build, not in this stage.
-		default:
-			cmd.Value = expandValues(lex, cmd.Value, scope.envs, scope.args)
-		}
+		scope.expandCommand(&cmd, globalArgs, lex, declarationLex)
 
 		if fromValue == "" {
 			arguments = append(arguments, cmd)
@@ -179,7 +163,7 @@ type variableScope struct {
 	envs map[string]string
 }
 
-func scopeForStage(node *parser.Node, globals map[string]string, stages map[string]variableScope, lex *shell.Lex) variableScope {
+func scopeForStage(node *parser.Node, globals map[string]string, stages map[string]variableScope, lex *wordExpander) variableScope {
 	scope := variableScope{args: make(map[string]string), envs: make(map[string]string)}
 	if node.Next == nil {
 		return scope
@@ -195,7 +179,7 @@ func scopeForStage(node *parser.Node, globals map[string]string, stages map[stri
 	return scope
 }
 
-func (s variableScope) declareArgs(lex *shell.Lex, values []string, globals map[string]string) []string {
+func (s variableScope) declareArgs(lex *wordExpander, values []string, globals map[string]string) []string {
 	for i, value := range values {
 		name, defaultValue, hasDefault := strings.Cut(value, "=")
 		if hasDefault {
@@ -211,7 +195,7 @@ func (s variableScope) declareArgs(lex *shell.Lex, values []string, globals map[
 }
 
 // All values in one ENV instruction are expanded before updating the scope.
-func (s variableScope) declareEnvs(lex *shell.Lex, values []string) []string {
+func (s variableScope) declareEnvs(lex *wordExpander, values []string) []string {
 	for i := 1; i < len(values); i += 3 {
 		values[i] = expandValues(lex, []string{values[i]}, s.envs, s.args)[0]
 	}
@@ -245,22 +229,6 @@ func (env variableEnvironment) Keys() []string {
 	return result
 }
 
-// expandValues delegates quoting, escaping, and parameter operators to BuildKit.
-// Expansion is single-pass; values inserted from the scope are never re-expanded.
-// Unknown references and unsupported shell syntax remain available to rules.
-func expandValues(lex *shell.Lex, values []string, scopes ...map[string]string) []string {
-	for i, value := range values {
-		if !strings.ContainsAny(value, "$\\\"'`") {
-			continue
-		}
-		expanded, _, err := lex.ProcessWord(value, variableEnvironment(scopes))
-		if err == nil {
-			values[i] = expanded
-		}
-	}
-	return values
-}
-
 func saveEnvs(envs map[string]string, envValues []string) map[string]string {
 	// Multiple env variables may be defined in the same instruction
 	// Each env variable slice looks like ["name", "value", "="]
@@ -270,4 +238,19 @@ func saveEnvs(envs map[string]string, envValues []string) map[string]string {
 		}
 	}
 	return envs
+}
+
+func (s variableScope) expandCommand(cmd *Command, globalArgs map[string]string, lex, declarationLex *wordExpander) {
+	switch cmd.Cmd {
+	case command.From:
+		cmd.Value = expandValues(lex, cmd.Value, globalArgs)
+	case command.Arg:
+		cmd.Value = s.declareArgs(declarationLex, cmd.Value, globalArgs)
+	case command.Env:
+		cmd.Value = s.declareEnvs(declarationLex, cmd.Value)
+	case command.Onbuild:
+		// Triggers execute in a future child build, not in this stage.
+	default:
+		cmd.Value = expandValues(lex, cmd.Value, s.envs, s.args)
+	}
 }
