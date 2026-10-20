@@ -29,7 +29,7 @@ func newWordExpander(escape rune, raw bool) *wordExpander {
 // expanding. Inserted values are never scanned again.
 func expandValues(expander *wordExpander, values []string, scopes ...map[string]string) []string {
 	for i, value := range values {
-		if !strings.ContainsAny(value, "$\\\"'`") {
+		if !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || !strings.ContainsAny(value, "$\\\"'`") {
 			continue
 		}
 		env := variableEnvironment(scopes)
@@ -155,11 +155,31 @@ func (e *wordExpander) escapedPart(value string, pos int, quoted bool) (part str
 	return value[pos+1 : pos+2], pos + 2, true
 }
 
+// balancedQuotes checks whether the suffix can be paired as shell quotes. Only
+// an unmatched contraction is recovered as literal text; balanced quotes within
+// words retain their shell meaning, even when another expression is unsupported.
+func (e *wordExpander) balancedQuotes(value string) bool {
+	for i := 0; i < len(value); i++ {
+		switch value[i] {
+		case e.escape:
+			i++
+		case '\'', '"':
+			end := e.quoteEnd(value, i)
+			if end < 0 {
+				return false
+			}
+			i = end
+		}
+	}
+	return true
+}
+
 func (e *wordExpander) quotedPart(value string, pos int, env variableEnvironment) (part string, end int, ok bool) {
 	// In recovery, a contraction's apostrophe is literal rather than an opener
 	// that captures a later, unrelated quoted argument.
 	if value[pos] == '\'' && pos > 0 && pos+1 < len(value) &&
-		variableNameByte(value[pos-1]) && variableNameByte(value[pos+1]) {
+		variableNameByte(value[pos-1]) && variableNameByte(value[pos+1]) &&
+		!e.balancedQuotes(value[pos:]) {
 		return "", pos, false
 	}
 	end = e.quoteEnd(value, pos)
