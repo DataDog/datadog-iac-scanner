@@ -32,17 +32,23 @@ type Result struct {
 	MappingFailures int
 }
 
+// renderMu serializes krusty builds. It is package-level, not per-Renderer,
+// because the state it protects is process-global: krusty.Run installs an
+// OpenAPI schema into a package variable of kyaml, and the readers of that
+// variable take no lock of their own. A per-Renderer lock would let one
+// renderer's reset wipe the schema another renderer's build is reading.
+var renderMu sync.Mutex
+
 // Renderer renders kustomization roots of one scan. It is scan-scoped state:
 // a byte cache shared by all renders and a cumulative size budget. Renders
-// themselves are serialized because krusty.Run mutates process-global OpenAPI
-// state and is not safe for concurrent use.
+// themselves are serialized, process-wide, because krusty.Run mutates
+// process-global OpenAPI state and is not safe for concurrent use.
 type Renderer struct {
 	fsys            vfs.FS
 	confinementRoot string
 	maxFileBytes    int64
 	budget          atomic.Int64
 	cache           *byteCache
-	runMu           sync.Mutex
 }
 
 // NewRenderer returns a renderer confined to confinementRoot. maxFileBytes
@@ -113,14 +119,14 @@ func (r *Renderer) run(cfs *constrainedFS) (resMap resmap.ResMap, err error) {
 			err = failf(ReasonRenderError, "kustomize render panicked")
 		}
 	}()
-	r.runMu.Lock()
-	defer r.runMu.Unlock()
+	renderMu.Lock()
+	defer renderMu.Unlock()
 	// A custom schema must not leak into later renders. Any kustomization the
 	// build touches can install one, not just the render root's own: a base or
 	// component calls SetSchema too, and SetSchema never clears a previous
 	// custom schema, so the next render would silently patch under it. Compare
 	// the schema version instead of the root's openapi field to catch those,
-	// and reset here, under runMu and deferred, so the success, error, and
+	// and reset here, under renderMu and deferred, so the success, error, and
 	// panic paths are all covered and the reset cannot race a concurrent
 	// render that reads the same process-global state. ResetOpenAPI also drops
 	// the parsed builtin schema, which the next render rebuilds, so it is
@@ -144,15 +150,11 @@ func (r *Renderer) run(cfs *constrainedFS) (resMap resmap.ResMap, err error) {
 // is ".", never the absolute path it resolves to, so no machine path reaches
 // finding metadata. Separators follow the filesystem, as the Helm resolver
 // does: pushed files are reported with "/" on every OS, disk files keep the
-// OS separator. p must be relative to the confinement root or an absolute
-// path already resolved through realPath, which is what every caller holds;
-// an unresolved absolute path would not share the resolved root's prefix.
+// OS separator. p must be relative to the confinement root or a rooted path
+// already resolved through realPath, which is what every caller holds; an
+// unresolved absolute path would not share the resolved root's prefix.
 func (c *constrainedFS) relative(p string) string {
-	abs := p
-	if !filepath.IsAbs(abs) {
-		abs = filepath.Join(c.confinementRoot, abs)
-	}
-	rel, err := filepath.Rel(c.confinementRoot, filepath.Clean(abs))
+	rel, err := filepath.Rel(c.confinementRoot, absUnderRoot(c.confinementRoot, p))
 	if err != nil {
 		// Unreachable for a confined path: both are absolute and, having
 		// passed the confinement check, share a volume. Report no path rather
