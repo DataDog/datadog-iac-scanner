@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,7 +20,7 @@ func TestParser_GetKind(t *testing.T) {
 // TestParser_SupportedExtensions tests the functions [SupportedExtensions()] and all the methods called by them
 func TestParser_SupportedExtensions(t *testing.T) {
 	p := &Parser{}
-	require.Equal(t, []string{"Dockerfile", ".dockerfile", ".ubi8", ".debian", "possibleDockerfile"}, p.SupportedExtensions())
+	require.Equal(t, []string{"Dockerfile", ".dockerfile", ".ubi8", ".debian", utils.PossibleDockerfile}, p.SupportedExtensions())
 }
 
 // TestParser_SupportedExtensions tests the functions [SupportedTypes()] and all the methods called by them
@@ -229,7 +231,7 @@ func TestSaveAndResolveArgs(t *testing.T) {
 		values := make([]string, 1)
 		t.Run(tt.name, func(t *testing.T) {
 			scope := variableScope{args: args}
-			scope.declareArgs([]string{tt.value}, nil)
+			scope.declareArgs(shell.NewLex('\\'), []string{tt.value}, nil)
 			values = resolveArgsAndEnvs(tt.values, args)
 			require.Equal(t, tt.want.args, args)
 			require.Equal(t, tt.want.values, values)
@@ -354,7 +356,9 @@ func TestParser_Parse_ChainedDeclarations(t *testing.T) {
 			require.Equal(t, tt.want, commands[tt.command].(map[string]interface{})["Value"])
 			if tt.name == "ARG" {
 				args := docs[0]["args"].([]interface{})
-				require.Equal(t, []interface{}{"IMAGE=$BASE"}, args[1].(map[string]interface{})["Value"], "declarations retain raw source values")
+				arg := args[1].(map[string]interface{})
+				require.Equal(t, []interface{}{"IMAGE=alpine:latest"}, arg["Value"])
+				require.Equal(t, "ARG IMAGE=$BASE", arg["Original"], "source text remains available to line detection")
 			}
 		})
 	}
@@ -376,9 +380,14 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 		name, source string
 		want         map[int][]string
 	}{
+		{"shell quoting and defaults", "FROM alpine\nARG V=1\nRUN echo \\$V '$V' \"$V\" ${V:-d}\n", map[int][]string{3: {`echo \$V '$V' "1" 1`}}},
+		{"quoted declaration values", "FROM alpine\nARG V=1\nENV A=\"$V words\" LITERAL='$V' ESCAPED=\\$V\nRUN echo $A $LITERAL $ESCAPED\n", map[int][]string{3: {"A", "1 words", "=", "LITERAL", "$V", "=", "ESCAPED", "$V", "="}, 4: {"echo 1 words $V $V"}}},
+		{"escape directive in expansion", "# escape=`\nFROM alpine\nARG V=1\nRUN echo `$V $V\n", map[int][]string{4: {"echo `$V 1"}}},
+		{"empty default", "FROM alpine\nARG V=\nRUN echo ${V:-d}\n", map[int][]string{3: {"echo d"}}},
+		{"resolved declarations", "ARG V=1\nFROM alpine\nARG V\nENV A=$V\nARG B=$A\nRUN echo $B\n", map[int][]string{4: {"A", "1", "="}, 5: {"B=1"}, 6: {"echo 1"}}},
 		{"ENV overrides ARG", "FROM alpine\nARG V=1\nENV V=2\nRUN echo $V ${V}\n", map[int][]string{4: {"echo 2 2"}}},
 		{"later ARG does not override ENV", "FROM alpine\nENV V=2\nARG V=1\nRUN echo $V\n", map[int][]string{4: {"echo 2"}}},
-		{"ENV default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nENV NEXT=$V\nRUN echo $NEXT\n", map[int][]string{4: {"NEXT", "$V", "="}, 5: {"echo 2"}}},
+		{"ENV default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nENV NEXT=$V\nRUN echo $NEXT\n", map[int][]string{4: {"NEXT", "2", "="}, 5: {"echo 2"}}},
 		{"ARG default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nARG NEXT=$V\nRUN echo $NEXT\n", map[int][]string{5: {"echo 2"}}},
 		{"global ARG only in FROM", "ARG V=alpine\nFROM $V\nRUN echo $V\n", map[int][]string{2: {"alpine"}, 3: {"echo $V"}}},
 		{"global ARG redeclared", "ARG V=alpine\nFROM $V\nARG V\nRUN echo $V\n", map[int][]string{4: {"echo alpine"}}},
@@ -409,4 +418,10 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func resolveArgsAndEnvs(values []string, scopes ...map[string]string) []string {
+	lex := shell.NewLex('\\')
+	lex.RawQuotes, lex.RawEscapes, lex.SkipUnsetEnv = true, true, true
+	return expandValues(lex, values, scopes...)
 }
