@@ -21,23 +21,33 @@ import (
 
 const baseDeployment = `apiVersion: apps/v1
 
+
 kind: Deployment
+
 
 metadata:
 
+
   name: app
+
 
 spec:
 
+
   template:
+
 
     spec:
 
+
       containers:
+
 
         - name: app
 
+
           image: nginx
+
 
 `
 
@@ -643,5 +653,40 @@ func TestRender_RefusesCapitalizedRemoteReferenceWithoutEgress(t *testing.T) {
 	}
 	if re, ok := err.(*RenderError); !ok || re.Reason != ReasonValidation {
 		t.Errorf("reason = %v, want validation", err)
+	}
+}
+
+// TestRender_RefusesRemoteReferenceViaSymlinkedBaseWithoutEgress pins the
+// validation of a sub-kustomization whose kustomization.yaml is a symlink to
+// a differently named file. Classification by requested name is what makes
+// such a file validate at all; without it the remote reference inside would
+// be fetched by Kustomize's own loader, which does not travel through the
+// constrained filesystem. The render fails inside krusty, so the surfaced
+// reason is a render error; the canary is what must stay quiet.
+func TestRender_RefusesRemoteReferenceViaSymlinkedBaseWithoutEgress(t *testing.T) {
+	addr := canaryListener(t)
+	proxyToCanary(t, addr)
+	fakeGitOnPath(t)
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "base"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "app"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "base", "renamed.yaml"),
+		[]byte("resources:\n  - https://example.com/x.yaml\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("renamed.yaml", filepath.Join(root, "base", "kustomization.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "app", "kustomization.yaml"),
+		[]byte("resources:\n  - ../base\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	renderer := NewRenderer(vfs.DiskFS{}, root, 0)
+	if _, err := renderer.Render(t.Context(), "app"); err == nil {
+		t.Fatal("Render(remote ref behind symlinked base) = nil error, want error")
 	}
 }

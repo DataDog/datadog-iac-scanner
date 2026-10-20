@@ -6,6 +6,7 @@
 package kustomize
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -248,8 +249,18 @@ func parseDocuments(data []byte) []docRef {
 	decoder := kyamlyaml.NewDecoder(strings.NewReader(string(data)))
 	for i := 0; ; i++ {
 		var doc sourceDocument
-		if err := decoder.Decode(&doc); err != nil {
-			break
+		err := decoder.Decode(&doc)
+		if err != nil {
+			// A type error means the document was parsed and consumed but does
+			// not decode as a resource: it keeps its index, and the documents
+			// after it stay visible instead of being hidden by one odd
+			// document. Any other error is a stream-level failure the decoder
+			// cannot make progress past, so scanning the file stops there.
+			var typeErr *kyamlyaml.TypeError
+			if !errors.As(err, &typeErr) {
+				break
+			}
+			continue
 		}
 		if doc.Kind == "" || doc.Metadata.Name == "" {
 			continue
