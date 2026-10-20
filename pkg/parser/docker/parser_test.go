@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -227,7 +228,8 @@ func TestSaveAndResolveArgs(t *testing.T) {
 		args := make(map[string]string)
 		values := make([]string, 1)
 		t.Run(tt.name, func(t *testing.T) {
-			args = saveArgs(args, tt.value)
+			scope := variableScope{args: args}
+			scope.declareArgs([]string{tt.value}, nil)
 			values = resolveArgsAndEnvs(tt.values, args)
 			require.Equal(t, tt.want.args, args)
 			require.Equal(t, tt.want.values, values)
@@ -365,6 +367,46 @@ func TestFromArguments(t *testing.T) {
 	} {
 		t.Run(tt.source, func(t *testing.T) {
 			require.Equal(t, tt.want, fromArguments(tt.source))
+		})
+	}
+}
+
+func TestParser_Parse_VariableScopes(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		want         map[int][]string
+	}{
+		{"ENV overrides ARG", "FROM alpine\nARG V=1\nENV V=2\nRUN echo $V ${V}\n", map[int][]string{4: {"echo 2 2"}}},
+		{"later ARG does not override ENV", "FROM alpine\nENV V=2\nARG V=1\nRUN echo $V\n", map[int][]string{4: {"echo 2"}}},
+		{"ENV default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nENV NEXT=$V\nRUN echo $NEXT\n", map[int][]string{4: {"NEXT", "$V", "="}, 5: {"echo 2"}}},
+		{"ARG default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nARG NEXT=$V\nRUN echo $NEXT\n", map[int][]string{5: {"echo 2"}}},
+		{"global ARG only in FROM", "ARG V=alpine\nFROM $V\nRUN echo $V\n", map[int][]string{2: {"alpine"}, 3: {"echo $V"}}},
+		{"global ARG redeclared", "ARG V=alpine\nFROM $V\nARG V\nRUN echo $V\n", map[int][]string{4: {"echo alpine"}}},
+		{"global ARG overridden locally", "ARG V=alpine\nFROM $V\nARG V=local\nRUN echo $V\n", map[int][]string{4: {"echo local"}}},
+		{"unrelated stage resets variables", "FROM alpine AS build\nARG A=one\nENV E=two\nFROM busybox\nRUN echo $A $E\n", map[int][]string{5: {"echo $A $E"}}},
+		{"FROM only sees global ARG", "ARG IMAGE=alpine\nFROM $IMAGE AS build\nARG IMAGE=busybox\nENV IMAGE=scratch\nFROM $IMAGE\n", map[int][]string{5: {"alpine"}}},
+		{"base stage inheritance", "FROM alpine AS build\nARG A=one\nENV E=two\nFROM build\nRUN echo $A $E\n", map[int][]string{5: {"echo one two"}}},
+		{"sibling stages are isolated", "FROM alpine AS base\nENV V=base\nFROM base AS left\nENV V=left\nFROM base AS right\nRUN echo $V\n", map[int][]string{6: {"echo base"}}},
+		{"ONBUILD declaration is deferred", "FROM alpine\nENV V=local\nONBUILD ENV V=child\nRUN echo $V\n", map[int][]string{4: {"echo local"}}},
+		{"substitution stays single-pass", "FROM alpine\nARG A=$B\nENV B=expanded\nRUN echo $A\n", map[int][]string{4: {"echo $B"}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(tt.source), "Dockerfile", false, 0)
+			require.NoError(t, err)
+			data, err := json.Marshal(docs[0])
+			require.NoError(t, err)
+			var resource Resource
+			require.NoError(t, json.Unmarshal(data, &resource))
+			commands := map[int]Command{}
+			for _, stage := range resource.CommandList {
+				for _, cmd := range stage {
+					commands[cmd.StartLine] = cmd
+				}
+			}
+			for line, want := range tt.want {
+				require.Contains(t, commands, line)
+				require.Equal(t, want, commands[line].Value, "line %d", line)
+			}
 		})
 	}
 }

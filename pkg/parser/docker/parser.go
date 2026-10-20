@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"regexp"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
 )
@@ -55,13 +57,15 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	arguments := make([]Command, 0)
 	ignoreStruct := newIgnore()
 
-	args := make(map[string]string, 0)
-	envs := make(map[string]string, 0)
+	globalArgs := make(map[string]string)
+	scope := variableScope{args: globalArgs, envs: make(map[string]string)}
+	stages := make(map[string]variableScope)
 
 	for _, child := range parsed.AST.Children {
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
-		if child.Value == "from" {
+		if child.Value == command.From {
 			fromValue = fromArguments(child.Original)
+			scope = scopeForStage(child, globalArgs, stages)
 		}
 
 		if ignoreStruct.getIgnoreComments(child) {
@@ -89,21 +93,19 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 			cmd.Value = append(cmd.Value, n.Value)
 		}
 
-		if child.Value != "arg" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, args)
-		} else {
-			// A bare ARG has no value; an ARG may also declare several names.
-			for _, argValue := range cmd.Value {
-				args = saveArgs(args, resolveArgsAndEnvs([]string{argValue}, args)[0])
-			}
-		}
-
-		if child.Value != "env" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, envs)
-		} else {
-			// Resolve against the prior scope without changing declaration text.
-			envValues := append([]string(nil), cmd.Value...)
-			envs = saveEnvs(envs, resolveArgsAndEnvs(envValues, envs))
+		switch cmd.Cmd {
+		case command.From:
+			cmd.Value = resolveArgsAndEnvs(cmd.Value, globalArgs)
+		case command.Arg:
+			scope.declareArgs(cmd.Value, globalArgs)
+		case command.Env:
+			// All values use the prior scope, and declarations retain source text.
+			values := append([]string(nil), cmd.Value...)
+			scope.envs = saveEnvs(scope.envs, resolveArgsAndEnvs(values, scope.envs, scope.args))
+		case command.Onbuild:
+			// Triggers execute in a future child build, not in this stage.
+		default:
+			cmd.Value = resolveArgsAndEnvs(cmd.Value, scope.envs, scope.args)
 		}
 
 		if fromValue == "" {
@@ -170,10 +172,48 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 
 var variableReference = regexp.MustCompile(`\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)`)
 
+type variableScope struct {
+	args map[string]string
+	envs map[string]string
+}
+
+func scopeForStage(node *parser.Node, globals map[string]string, stages map[string]variableScope) variableScope {
+	scope := variableScope{args: make(map[string]string), envs: make(map[string]string)}
+	if node.Next == nil {
+		return scope
+	}
+	base := resolveArgsAndEnvs([]string{node.Next.Value}, globals)[0]
+	if parent, found := stages[strings.ToLower(base)]; found {
+		scope.args = maps.Clone(parent.args)
+		scope.envs = maps.Clone(parent.envs)
+	}
+	if as := node.Next.Next; as != nil && strings.EqualFold(as.Value, "as") && as.Next != nil {
+		stages[strings.ToLower(as.Next.Value)] = scope
+	}
+	return scope
+}
+
+func (s variableScope) declareArgs(values []string, globals map[string]string) {
+	for _, value := range values {
+		name, defaultValue, hasDefault := strings.Cut(value, "=")
+		if hasDefault {
+			s.args[name] = resolveArgsAndEnvs([]string{defaultValue}, s.envs, s.args)[0]
+		} else if global, ok := globals[name]; ok {
+			// Global ARGs become stage variables only through an ARG declaration.
+			s.args[name] = global
+		}
+	}
+}
+
 // resolveArgsAndEnvs replaces whole variable names in one pass, leaving unknown
-// references intact. Map order cannot affect the result or recursively expand it.
-func resolveArgsAndEnvs(values []string, args map[string]string) []string {
-	if len(args) == 0 {
+// references intact. Scopes are searched in priority order (ENV before ARG).
+// Map order cannot affect the result or recursively expand it.
+func resolveArgsAndEnvs(values []string, scopes ...map[string]string) []string {
+	declared := 0
+	for _, scope := range scopes {
+		declared += len(scope)
+	}
+	if declared == 0 {
 		return values
 	}
 	for i := range values {
@@ -182,27 +222,16 @@ func resolveArgsAndEnvs(values []string, args map[string]string) []string {
 			if name[0] == '{' {
 				name = name[1 : len(name)-1]
 			}
-			if value, ok := args[name]; ok {
-				return value
+			for _, scope := range scopes {
+				if value, ok := scope[name]; ok {
+					return value
+				}
 			}
 			return reference
 		})
 	}
 
 	return values
-}
-
-func saveArgs(args map[string]string, argValue string) map[string]string {
-	value := strings.Split(argValue, "=")
-	if len(value) == 2 {
-		args[value[0]] = value[1]
-	}
-	if len(value) > 2 {
-		// to handle cases like ARG VAR=erereR=E
-		args[value[0]] = strings.Join(value[1:], "=")
-	}
-
-	return args
 }
 
 func saveEnvs(envs map[string]string, envValues []string) map[string]string {
