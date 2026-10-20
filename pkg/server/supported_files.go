@@ -31,15 +31,12 @@ const (
 // SupportedFileEntry maps a set of file patterns to a resolution strategy. This
 // is the IaC analog of the static analyzer's GET /languages.
 type SupportedFileEntry struct {
-	Patterns []string     `json:"patterns"`
-	Strategy fileStrategy `json:"strategy"`
-	// Choose the matching entry with the lowest priority, independent of order.
-	Priority      int  `json:"priority"`
-	CaseSensitive bool `json:"case_sensitive"`
-	// These basename globs are always case-insensitive. They permit registered
-	// extensions to beat Dockerfile.* without changing other filenames' policy.
-	CaseInsensitiveFor   []string `json:"case_insensitive_for,omitempty"`
-	RequiresContentCheck bool     `json:"requires_content_check"`
+	Patterns             []string     `json:"patterns"`
+	Strategy             fileStrategy `json:"strategy"`
+	Priority             int          `json:"priority"`
+	CaseSensitive        bool         `json:"case_sensitive"`
+	ExcludedSuffixes     []string     `json:"excluded_suffixes,omitempty"`
+	RequiresContentCheck bool         `json:"requires_content_check"`
 }
 
 // strategyByPattern is the single source of truth for the resolution strategy of
@@ -49,17 +46,6 @@ type SupportedFileEntry struct {
 // conservatively sends the directory), .bicep, and Ansible config. "single_file"
 // applies to self-contained types (Dockerfile, gRPC proto, Buildah .sh), and
 // "chart" to a Helm chart root (push the chart directory recursively).
-//
-// Keys are IDE-facing extensions, filenames, or globs such as "Dockerfile.*".
-// Dockerfile filename and glob matching is case-insensitive: "dockerfile",
-// "DOCKERFILE", and "Dockerfile.<name>" in any case use these same patterns.
-// Matching entries are ranked by the explicit priority field (lowest wins):
-// exact filenames precede extensions (longest suffix first), then candidate globs.
-// case_sensitive and case_insensitive_for specify the filename matching policy.
-// requires_content_check identifies candidates whose content must still qualify.
-// Dockerfile.* is a fallback, not a promise that every matching file is Docker.
-// TestSupportedFiles_NoDrift asserts this covers every
-// analyzer.PossibleFileTypes() entry so a newly supported type can't be missed.
 var strategyByPattern = map[string]fileStrategy{
 	".tf":          strategyDirectory,
 	".tofu":        strategyDirectory,
@@ -83,9 +69,19 @@ var strategyByPattern = map[string]fileStrategy{
 	".sh":          strategySingleFile,
 }
 
-// supportedFiles builds the response in matching precedence order so candidate
-// globs cannot override a registered format's resolution strategy.
+// supportedFiles defines the IDE matching contract. Match dot-prefixed patterns
+// as suffixes and other patterns as basename globs. Choose the lowest priority,
+// independently of array order. CaseSensitive comes from the routing registry:
+// Dockerfile names/globs (dockerfile, DOCKERFILE, Dockerfile.<name> in any case)
+// ignore case, while other extensions retain their existing case policy.
+// ExcludedSuffixes always ignore case and veto that entry; registered formats,
+// backups, templates and archives cannot fall through to Dockerfile.*.
+// RequiresContentCheck means a filename match still needs server validation.
 func supportedFiles() []SupportedFileEntry {
+	rules := make(map[string]utils.FilePattern)
+	for _, rule := range utils.FilePatterns() {
+		rules[rule.Pattern] = rule
+	}
 	patterns := make([]string, 0, len(strategyByPattern))
 	for p := range strategyByPattern {
 		patterns = append(patterns, p)
@@ -108,20 +104,12 @@ func supportedFiles() []SupportedFileEntry {
 
 	entries := make([]SupportedFileEntry, 0, len(patterns))
 	for i, p := range patterns {
+		rule, registered := rules[p]
 		entry := SupportedFileEntry{
 			Patterns: []string{p}, Strategy: strategyByPattern[p], Priority: i + 1,
-			CaseSensitive: true, RequiresContentCheck: utils.NeedsContentCheck(p),
-		}
-		switch p {
-		case "Dockerfile", ".dockerfile", ".tf.json", ".tofu.json":
-			entry.CaseSensitive = false
-		case "Dockerfile.*":
-			entry.CaseSensitive = false
-			entry.RequiresContentCheck = utils.NeedsContentCheck(utils.PossibleDockerfile)
-		default:
-			if strings.HasPrefix(p, ".") {
-				entry.CaseInsensitiveFor = []string{"Dockerfile.*"}
-			}
+			CaseSensitive:        !registered || rule.CaseSensitive,
+			RequiresContentCheck: utils.NeedsContentCheck(rule.Token),
+			ExcludedSuffixes:     rule.ExcludedSuffixes,
 		}
 		entries = append(entries, entry)
 	}

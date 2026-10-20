@@ -20,14 +20,12 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
+	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"github.com/moby/buildkit/frontend/dockerfile/command"
-	dockerfileparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
 )
 
@@ -117,35 +115,26 @@ func PossibleFileTypes() []string {
 }
 
 const (
-	cdkTf          = "cdkTf"
-	yml            = ".yml"
-	yaml           = ".yaml"
-	json           = ".json"
-	sh             = ".sh"
-	arm            = "azureresourcemanager"
-	bicep          = "bicep"
-	kubernetes     = "kubernetes"
-	terraform      = "terraform"
-	gdm            = "googledeploymentmanager"
-	ansible        = "ansible"
-	grpc           = "grpc"
-	dockercompose  = "dockercompose"
-	dockerfile     = "dockerfile"
-	crossplane     = "crossplane"
-	knative        = "knative"
-	cicd           = "cicd"
-	dependabot     = "dependabot"
-	githubAction   = "githubAction"
-	sizeMb         = 1048576
-	extDockerfile  = ".dockerfile"
-	nameDockerfile = "Dockerfile"
-	extTf          = tfpath.ExtTF
-	extTofu        = tfpath.ExtTofu
-	extTfJSON      = tfpath.ExtTFJSON
-	extTofuJSON    = tfpath.ExtTofuJSON
-	extTfvars      = tfpath.ExtTFVars
-	extBicepFile   = ".bicep"
-	extProto       = ".proto"
+	cdkTf         = "cdkTf"
+	yml           = ".yml"
+	yaml          = ".yaml"
+	json          = ".json"
+	sh            = ".sh"
+	arm           = "azureresourcemanager"
+	bicep         = "bicep"
+	kubernetes    = "kubernetes"
+	terraform     = "terraform"
+	gdm           = "googledeploymentmanager"
+	ansible       = "ansible"
+	grpc          = "grpc"
+	dockercompose = "dockercompose"
+	dockerfile    = "dockerfile"
+	crossplane    = "crossplane"
+	knative       = "knative"
+	cicd          = "cicd"
+	dependabot    = "dependabot"
+	githubAction  = "githubAction"
+	sizeMb        = 1048576
 )
 
 type Parameters struct {
@@ -685,17 +674,7 @@ func isDockerfile(ctx context.Context, fsys vfs.FS, path string, content []byte)
 // looksLikeDockerfile uses BuildKit's instruction boundaries and directives.
 // Candidates must start with FROM after any leading ARG instructions.
 func looksLikeDockerfile(content []byte) bool {
-	parsed, err := dockerfileparser.Parse(bytes.NewReader(content))
-	if err != nil {
-		return false
-	}
-	for _, node := range parsed.AST.Children {
-		if strings.EqualFold(node.Value, command.Arg) {
-			continue
-		}
-		return strings.EqualFold(node.Value, command.From) && node.Next != nil
-	}
-	return false
+	return dockersource.HasFrom(bytes.NewReader(content))
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
@@ -845,17 +824,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	case utils.YAMLContent, utils.PlatformContent:
 		return classifyByContent(ctx, fsys, path, content, ext, typesFlag, hc, scanFiles)
 	}
-	switch ext {
-	case extDockerfile, nameDockerfile:
-		return dockerfile
-	case extTf, extTofu, extTfJSON, extTofuJSON, extTfvars:
-		return terraform
-	case extBicepFile:
-		return bicep
-	case extProto:
-		return grpc
-	}
-	return ""
+	return utils.PlatformForFileType(ext)
 }
 
 // ClassifyParsedFile attributes a parsed file to its platform for payload

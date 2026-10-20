@@ -255,7 +255,7 @@ func TestPrepareMemorySources_DockerfileCandidates(t *testing.T) {
 			paths = append(paths, filepath.ToSlash(file.FilePath))
 		}
 	}
-	require.ElementsMatch(t, []string{"Dockerfile.prod", "Dockerfile.j2", "Dockerfile.custom", "valid/Dockerfile.bak"}, paths)
+	require.ElementsMatch(t, []string{"Dockerfile.prod", "Dockerfile.custom"}, paths)
 	require.Empty(t, memfs.MissingFiles())
 }
 

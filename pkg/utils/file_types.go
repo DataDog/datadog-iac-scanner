@@ -8,6 +8,7 @@ package utils
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
@@ -34,32 +35,38 @@ const (
 )
 
 type fileType struct {
-	dockerfile   bool
-	contentCheck ContentCheck
+	dockerfile      bool
+	contentCheck    ContentCheck
+	platform        string
+	caseInsensitive bool
+	pattern         string
 }
 
 // supportedFileTypes is the scanner's routing registry. Dockerfile filename
 // candidates must not take precedence over another registered format.
 var supportedFileTypes = map[string]fileType{
-	".yml":             {contentCheck: YAMLContent},
-	".yaml":            {contentCheck: YAMLContent},
-	".json":            {contentCheck: PlatformContent},
-	".sh":              {contentCheck: PlatformContent},
-	".dockerfile":      {dockerfile: true},
-	"Dockerfile":       {dockerfile: true},
-	PossibleDockerfile: {dockerfile: true, contentCheck: DockerfileContent},
-	".debian":          {dockerfile: true, contentCheck: DockerfileContent},
-	".ubi8":            {dockerfile: true, contentCheck: DockerfileContent},
-	tfpath.ExtTF:       {},
-	tfpath.ExtTofu:     {},
-	tfpath.ExtTFJSON:   {},
-	tfpath.ExtTofuJSON: {},
-	tfpath.ExtTFVars:   {},
-	".proto":           {},
+	".yml":        {contentCheck: YAMLContent},
+	".yaml":       {contentCheck: YAMLContent},
+	".json":       {contentCheck: PlatformContent},
+	".sh":         {contentCheck: PlatformContent},
+	".dockerfile": {dockerfile: true, platform: "dockerfile", caseInsensitive: true},
+	"Dockerfile":  {dockerfile: true, platform: "dockerfile", caseInsensitive: true},
+	PossibleDockerfile: {
+		dockerfile: true, platform: "dockerfile", contentCheck: DockerfileContent,
+		caseInsensitive: true, pattern: "Dockerfile.*",
+	},
+	".debian":          {dockerfile: true, platform: "dockerfile", contentCheck: DockerfileContent},
+	".ubi8":            {dockerfile: true, platform: "dockerfile", contentCheck: DockerfileContent},
+	tfpath.ExtTF:       {platform: "terraform"},
+	tfpath.ExtTofu:     {platform: "terraform"},
+	tfpath.ExtTFJSON:   {platform: "terraform", caseInsensitive: true},
+	tfpath.ExtTofuJSON: {platform: "terraform", caseInsensitive: true},
+	tfpath.ExtTFVars:   {platform: "terraform"},
+	".proto":           {platform: "grpc"},
 	".cfg":             {contentCheck: AnsibleConfigContent},
 	".conf":            {contentCheck: AnsibleConfigContent},
 	".ini":             {contentCheck: AnsibleInventoryContent},
-	".bicep":           {},
+	".bicep":           {platform: "bicep"},
 }
 
 // SupportedFileTypes returns the sorted extension and filename tokens routed
@@ -87,4 +94,41 @@ func ContentCheckForFileType(token string) ContentCheck {
 // NeedsContentCheck reports whether routing this token requires file bytes.
 func NeedsContentCheck(token string) bool {
 	return ContentCheckForFileType(token) != NoContentCheck
+}
+
+// PlatformForFileType returns the fixed platform, or empty for content-selected types.
+func PlatformForFileType(token string) string { return supportedFileTypes[token].platform }
+
+// FilePattern describes filename matching independently of IDE resolution strategy.
+type FilePattern struct {
+	Token            string
+	Pattern          string
+	CaseSensitive    bool
+	ExcludedSuffixes []string
+}
+
+// FilePatterns derives the IDE filename rules from the scanner's routing registry.
+func FilePatterns() []FilePattern {
+	patterns := make([]FilePattern, 0, len(supportedFileTypes))
+	for _, token := range SupportedFileTypes() {
+		format := supportedFileTypes[token]
+		pattern := format.pattern
+		if pattern == "" {
+			pattern = token
+		}
+		rule := FilePattern{Token: token, Pattern: pattern, CaseSensitive: !format.caseInsensitive}
+		if token == PossibleDockerfile {
+			// Reserve registered non-Dockerfile suffixes even in a different case;
+			// that must not implicitly enable uppercase extensions for other formats.
+			for suffix, other := range supportedFileTypes {
+				if !other.dockerfile && strings.HasPrefix(suffix, ".") {
+					rule.ExcludedSuffixes = append(rule.ExcludedSuffixes, suffix)
+				}
+			}
+			rule.ExcludedSuffixes = append(rule.ExcludedSuffixes, dockerfileAuxiliarySuffixes...)
+			sort.Strings(rule.ExcludedSuffixes)
+		}
+		patterns = append(patterns, rule)
+	}
+	return patterns
 }

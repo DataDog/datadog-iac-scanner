@@ -1003,6 +1003,10 @@ func TestAnalyze_DockerfileCandidateFiltering(t *testing.T) {
 			for name, body := range map[string]string{
 				"Dockerfile.prod":    "FROM alpine\nCOPY . /app\n",
 				"Dockerfile.invalid": "not a Dockerfile\n",
+				"Dockerfile.bak":     "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.orig":    "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.j2":      "FROM {{ .Image }}\n",
+				"Dockerfile.YAML":    "apiVersion: v1\nkind: Pod\nmetadata:\n  name: x\n",
 				"Dockerfile.args":    "ARG FOO=bar\nARG TAG=latest\n",
 				"Dockerfile.arg-run": "ARG FOO\nRUN echo hi\nFROM alpine\n",
 				"dockerfile.tf":      "resource \"aws_s3_bucket\" \"b\" {}\n",
@@ -1029,7 +1033,7 @@ func TestAnalyze_DockerfileCandidateFiltering(t *testing.T) {
 }
 
 func TestClassifyFile_DockerfileContent(t *testing.T) {
-	for _, path := range []string{"Dockerfile.prod", "Dockerfile.custom-profile", "Dockerfile.go", "Dockerfile.bak", "Dockerfile.zip", "Dockerfile.j2", "image.ubi8", "image.debian"} {
+	for _, path := range []string{"Dockerfile.prod", "Dockerfile.custom-profile", "Dockerfile.go", "image.ubi8", "image.debian"} {
 		for _, tt := range []struct {
 			name, body, want string
 		}{
@@ -1039,7 +1043,7 @@ func TestClassifyFile_DockerfileContent(t *testing.T) {
 			{"blank ARG continuation", "ARG IMAGE=\\\n\n# continued value\n alpine\nFROM $IMAGE\n", "dockerfile"},
 			{"trailing escape whitespace", "ARG IMAGE=\\  \n alpine\nFROM $IMAGE\n", "dockerfile"},
 			{"invalid escape directive", "# escape=x\nFROM alpine\n", ""},
-			{"incomplete heredoc", "FROM alpine\nRUN <<EOF\necho hi\n", ""},
+			{"body syntax is validated by the parser", "FROM alpine\nRUN <<EOF\necho hi\n", "dockerfile"},
 			{"continued arg", "ARG IMAGE=\\\n# image name\n  alpine\nFROM $IMAGE\n", "dockerfile"},
 			{"continued arg with escape directive", "# escape=`\nARG IMAGE=`\n  alpine\nFROM $IMAGE\n", "dockerfile"},
 			{"escape directive after comment is ignored", "# comment\n# escape=`\nARG IMAGE=\\\n  alpine\nFROM $IMAGE\n", "dockerfile"},

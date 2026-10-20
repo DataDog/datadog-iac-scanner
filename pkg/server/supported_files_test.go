@@ -119,9 +119,9 @@ func TestSupportedFiles_MatchingPrecedence(t *testing.T) {
 		strategy      fileStrategy
 	}{
 		{"Dockerfile.yaml", ".yaml", strategyDirectory},
-		{"Dockerfile.CFG", ".cfg", strategyDirectory},
+		{"Dockerfile.CFG", "", ""},
 		{"Dockerfile.tf", ".tf", strategyDirectory},
-		{"DOCKERFILE.TF", ".tf", strategyDirectory},
+		{"DOCKERFILE.TF", "", ""},
 		{"Dockerfile.tf.json", ".tf.json", strategyDirectory},
 		{"Dockerfile.tofu.json", ".tofu.json", strategyDirectory},
 		{"Chart.yaml", "Chart.yaml", strategyChart},
@@ -129,6 +129,14 @@ func TestSupportedFiles_MatchingPrecedence(t *testing.T) {
 		{"DOCKERFILE", "Dockerfile", strategySingleFile},
 		{"dockerfile.PROD", "Dockerfile.*", strategySingleFile},
 		{"Dockerfile.md", "Dockerfile.*", strategySingleFile},
+		{"Dockerfile.YAML", "", ""},
+		{"Dockerfile.bak", "", ""},
+		{"dockerfile.prod.BAK", "", ""},
+		{"Dockerfile.prod~", "", ""},
+		{"Dockerfile.orig", "", ""},
+		{"Dockerfile.j2", "", ""},
+		{"Dockerfile.gotmpl", "", ""},
+		{"Dockerfile.tar.gz", "", ""},
 		{"api.DOCKERFILE", ".dockerfile", strategySingleFile},
 		{"main.TF", "", ""},
 		{"values.YAML", "", ""},
@@ -138,12 +146,17 @@ func TestSupportedFiles_MatchingPrecedence(t *testing.T) {
 			var selected *SupportedFileEntry
 			for i := range entries {
 				entry := &entries[i]
-				sensitive := entry.CaseSensitive
-				for _, pattern := range entry.CaseInsensitiveFor {
-					if matchFilePattern(tt.path, pattern, false) {
-						sensitive = false
+				excluded := false
+				for _, suffix := range entry.ExcludedSuffixes {
+					if strings.HasSuffix(strings.ToLower(tt.path), suffix) {
+						excluded = true
+						break
 					}
 				}
+				if excluded {
+					continue
+				}
+				sensitive := entry.CaseSensitive
 				for _, pattern := range entry.Patterns {
 					if matchFilePattern(tt.path, pattern, sensitive) && (selected == nil || entry.Priority < selected.Priority) {
 						selected = entry

@@ -79,9 +79,9 @@ func TestExcludedByContent(t *testing.T) {
 		{"Dockerfile.custom-profile", "not a Dockerfile\n", true},
 		{"Dockerfile.go", "package dockerfile\n", true},
 		{"Dockerfile.go", "FROM alpine\n", false},
-		{"Dockerfile.bak", "not a Dockerfile\n", true},
-		{"Dockerfile.bak", "FROM alpine\n", false},
-		{"Dockerfile.zip", "PK\x03\x04\x00\x00", true},
+		{"Dockerfile.bak", "not a Dockerfile\n", false},
+		{"Dockerfile.prod", "FROM alpine\n", false},
+		{"Dockerfile.zip", "PK\x03\x04\x00\x00", false},
 		{"Dockerfile.prod", "ARG X\nRUN echo hi\nFROM alpine\n", true},
 		{"Dockerfile.prod", "ARG X\nFROM alpine\n", false},
 		{"image.ubi8", "ARG X\n", true},
@@ -98,20 +98,21 @@ func TestExcludedByContent(t *testing.T) {
 func TestDockerfileExtensionCaseParity(t *testing.T) {
 	for _, tt := range []struct {
 		name, body, platform string
+		excluded             bool
 	}{
-		{"Dockerfile.CFG", "[defaults]\nno_log=False\n", "ansible"},
-		{"Dockerfile.CFG", "[metadata]\nname=x\n", ""},
-		{"Dockerfile.CONF", "[defaults]\nno_log=False\n", "ansible"},
-		{"Dockerfile.INI", "[web]\nweb1\n", "ansible"},
-		{"Dockerfile.UBI8", "ARG V\nFROM alpine\n", "dockerfile"},
-		{"Dockerfile.UBI8", "ARG V\n", ""},
-		{"Dockerfile.DEBIAN", "FROM debian\n", "dockerfile"},
-		{"Dockerfile.YAML", "apiVersion: v3\nkind: service\nmetadata:\n  name: x\n", ""},
+		{"Dockerfile.CFG", "[defaults]\nno_log=False\n", "", false},
+		{"Dockerfile.CFG", "[metadata]\nname=x\n", "", false},
+		{"Dockerfile.CONF", "[defaults]\nno_log=False\n", "", false},
+		{"Dockerfile.INI", "[web]\nweb1\n", "", false},
+		{"Dockerfile.UBI8", "ARG V\nFROM alpine\n", "dockerfile", false},
+		{"Dockerfile.UBI8", "ARG V\n", "", true},
+		{"Dockerfile.DEBIAN", "FROM debian\n", "dockerfile", false},
+		{"Dockerfile.YAML", "apiVersion: v3\nkind: service\nmetadata:\n  name: x\n", "", false},
 	} {
 		t.Run(tt.name+"/"+tt.body, func(t *testing.T) {
 			mem := vfs.NewMemFS(map[string][]byte{tt.name: []byte(tt.body)})
 			require.Equal(t, tt.platform, ClassifyFile(t.Context(), mem, tt.name, []byte(tt.body), nil))
-			require.Equal(t, tt.platform == "", ExcludedByContent(tt.name, []byte(tt.body)))
+			require.Equal(t, tt.excluded, ExcludedByContent(tt.name, []byte(tt.body)))
 			dir := t.TempDir()
 			path := filepath.Join(dir, tt.name)
 			require.NoError(t, os.WriteFile(path, []byte(tt.body), 0o600))

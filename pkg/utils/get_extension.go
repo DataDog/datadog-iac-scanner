@@ -22,7 +22,7 @@ var extensionNameTargets = []string{"tfvars", PossibleDockerfile}
 
 // dockerfileExtension recognizes Dockerfile and <name>.Dockerfile in any case.
 // Dockerfile.<name> is a content-checked candidate only after registered formats
-// have had precedence. Unregistered suffixes have the same content-based policy.
+// have had precedence. Backup, template and archive files are auxiliary inputs.
 func dockerfileExtension(path, ext string) (string, bool) {
 	lower := strings.ToLower(filepath.Base(path))
 	switch {
@@ -31,6 +31,9 @@ func dockerfileExtension(path, ext string) (string, bool) {
 	case strings.HasSuffix(lower, ".dockerfile"):
 		return ".dockerfile", true
 	case strings.HasPrefix(lower, "dockerfile."):
+		if isDockerfileAuxiliary(lower) {
+			return "", false
+		}
 		format, registered := supportedFileTypes[strings.ToLower(ext)]
 		if !registered || format.dockerfile {
 			return PossibleDockerfile, true
@@ -39,22 +42,26 @@ func dockerfileExtension(path, ext string) (string, bool) {
 	return "", false
 }
 
-// pathExtension preserves the case policy for existing formats. Dockerfile
-// candidates compare registered suffixes case-insensitively so they cannot steal
-// Dockerfile.CFG or Dockerfile.TF from the corresponding parser.
-func pathExtension(path string) string {
-	ext := tfpath.Extension(path)
-	if strings.HasPrefix(strings.ToLower(filepath.Base(path)), "dockerfile.") {
-		if lower := strings.ToLower(ext); IsSupportedFileType(lower) {
-			return lower
+// dockerfileAuxiliarySuffixes describes generated, backup and packaged inputs,
+// not scanner formats. Format precedence comes only from supportedFileTypes.
+var dockerfileAuxiliarySuffixes = []string{
+	".bak", ".orig", ".save", ".swp", ".tmp", ".rej", ".patch", ".diff",
+	".gz", ".tgz", ".tar", ".zip", ".xz", ".bz2",
+	".j2", ".tpl", ".template", ".erb", ".gotmpl", ".dockerignore", "~",
+}
+
+func isDockerfileAuxiliary(lower string) bool {
+	for _, suffix := range dockerfileAuxiliarySuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
 		}
 	}
-	return ext
+	return false
 }
 
 // ExtensionFromPath returns the extension from path alone (no stat/read).
 func ExtensionFromPath(path string) string {
-	ext := pathExtension(path)
+	ext := tfpath.Extension(path)
 	if dockerExt, ok := dockerfileExtension(path, ext); ok {
 		return dockerExt
 	}
@@ -97,7 +104,7 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 		return "", err
 	}
 
-	ext := pathExtension(path)
+	ext := tfpath.Extension(path)
 	if dockerExt, ok := dockerfileExtension(path, ext); ok {
 		return dockerExt, nil
 	}
