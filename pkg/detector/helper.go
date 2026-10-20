@@ -331,10 +331,9 @@ func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurse
 // false when the file cannot cache them. Lines without str1 never match. With
 // str2, a line also needs str2 after str1, except a YAML line that starts a
 // block scalar, which matches on the lines that follow it. The shorter of the
-// str1 list and the str2 (plus block scalar) lists is used. Docker keyword
-// matching ignores case, so raw substring indexes cannot prune its candidates.
+// str1 list and the str2 (plus block scalar) lists is used.
 func (d *DefaultDetectLineResponse) candidateLines(str1, str2 string, kind model.FileKind) (first, second []int, ok bool) {
-	if d.File == nil || str1 == "" || kind == model.KindDOCKER {
+	if d.File == nil || str1 == "" {
 		return nil, nil, false
 	}
 	byStr1, ok := d.File.LinesContaining(str1)
@@ -391,10 +390,6 @@ func mayStartYAMLBlockScalar(line string) bool {
 //nolint:gocyclo,gocritic
 func checkLine(str1, str2 string, lines []string, startLine int, kind model.FileKind) (
 	distance int, start, end model.ResourceLine, ok bool) {
-	if kind == model.KindDOCKER {
-		str1 = dockerMatchText(lines[startLine], str1)
-		str2 = dockerMatchText(lines[startLine], str2)
-	}
 	if str1 == "" || !strings.Contains(lines[startLine], str1) {
 		return distance, start, end, ok
 	}

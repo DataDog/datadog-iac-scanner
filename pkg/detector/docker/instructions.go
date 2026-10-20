@@ -3,11 +3,12 @@
  *
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
-package detector
+package docker
 
 import (
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 )
 
@@ -15,33 +16,53 @@ type instructionWord struct {
 	start, end int
 }
 
-// dockerMatchText preserves literal values, folding case only at instruction
-// keyword positions. In particular, RUN arguments are always case-sensitive.
-func dockerMatchText(line, text string) string {
-	if text == "" || strings.Contains(line, text) {
-		return text
-	}
+// normalizeInstruction uppercases only instruction keywords, including nested
+// ONBUILD and HEALTHCHECK keywords. Argument bytes and offsets stay unchanged.
+func normalizeInstruction(line string) string {
 	words, count := dockerInstructionWords(line)
-	for i := 0; i < count; i++ {
-		start := words[i].start
-		end := start + len(text)
-		if end > len(line) || end < words[i].end {
+	var result strings.Builder
+	pos := 0
+	for _, word := range words[:count] {
+		keyword := line[word.start:word.end]
+		upper := strings.ToUpper(keyword)
+		if upper == keyword {
 			continue
 		}
-		pos, matches := start, true
-		for j := i; j < count && words[j].start < end; j++ {
-			word := words[j]
-			if word.end > end || line[pos:word.start] != text[pos-start:word.start-start] ||
-				!strings.EqualFold(line[word.start:word.end], text[word.start-start:word.end-start]) {
-				matches = false
-				break
+		result.WriteString(line[pos:word.start])
+		result.WriteString(upper)
+		pos = word.end
+	}
+	if pos == 0 {
+		return line
+	}
+	result.WriteString(line[pos:])
+	return result.String()
+}
+
+// normalizeSearchText prefers exact literal values (e.g. {{add user}} inside
+// RUN), otherwise canonicalizing instruction spelling just as in the line view.
+func normalizeSearchText(view *model.FileMetadata, text string) string {
+	if text == "" {
+		return text
+	}
+	if indexes, _ := view.LinesContaining(text); len(indexes) > 0 {
+		return text
+	}
+	normalized := normalizeInstruction(text)
+	if normalized == text {
+		return text
+	}
+	indexes, _ := view.LinesContaining(normalized)
+	lines := view.Lines()
+	for _, index := range indexes {
+		words, count := dockerInstructionWords(lines[index])
+		for _, word := range words[:count] {
+			if strings.HasPrefix(lines[index][word.start:], normalized) {
+				return normalized
 			}
-			pos = word.end
-		}
-		if matches && line[pos:end] == text[pos-start:] {
-			return line[start:end]
 		}
 	}
+	// A keyword-looking literal inside an argument must remain case-sensitive.
 	return text
 }
 

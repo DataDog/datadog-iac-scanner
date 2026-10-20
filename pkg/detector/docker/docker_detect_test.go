@@ -72,7 +72,7 @@ func TestPrepareDockerFileLinesLongMultiLineRun(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		result := prepareDockerFileLines(lines)
+		result := prepareInstructionLines(lines, nil)
 		var runLine string
 		for _, line := range result {
 			if strings.Contains(line, "RUN true") {
@@ -250,6 +250,11 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		name, data, key, text string
 		line                  int
 	}{
+		{"keyword inside COPY argument", "FROM alpine\ncopy ./COPYING /app\n", "FROM={{alpine}}.COPY={{./COPYING}}", "copy ./COPYING /app", 2},
+		{"keyword inside RUN argument", "FROM alpine\nrun echo RUNNING\n", "FROM={{alpine}}.RUN={{echo RUNNING}}", "run echo RUNNING", 2},
+		{"adjacent continuation", "FROM alpine\nRUN echo ok &&\\\n echo hidden\n", "FROM={{alpine}}.RUN={{echo hidden}}", "RUN echo ok && echo hidden", 2},
+		{"trailing continuation whitespace", "FROM alpine\nrun echo ok \\  \n echo hidden\n", "FROM={{alpine}}.RUN={{echo hidden}}", "run echo ok  echo hidden", 2},
+		{"backtick continuation", "# escape=`\nFROM alpine\nrun echo ok `\n echo hidden\n", "FROM={{alpine}}.RUN={{echo hidden}}", "run echo ok  echo hidden", 3},
 		{"uppercase FROM and lowercase RUN", "FROM alpine:3.19\nrun apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "run apk add curl", 2},
 		{"uppercase FROM and mixed-case RUN", "FROM alpine:3.19\nRuN apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "RuN apk add curl", 2},
 		{"later lowercase instruction", "FROM alpine:3.19\nRUN apk add curl\nexpose 22\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}.{{EXPOSE 22}}", "expose 22", 3},
@@ -261,6 +266,7 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		{"healthcheck flags", "FROM alpine\nhealthcheck --interval=5s cmd curl localhost\n", "FROM={{alpine}}.HEALTHCHECK={{CMD curl localhost}}", "healthcheck --interval=5s cmd curl localhost", 2},
 		{"lowercase onbuild", "FROM alpine\nonbuild run echo hello\n", "FROM={{alpine}}.{{ONBUILD RUN echo hello}}", "onbuild run echo hello", 2},
 		{"mixed nested instruction", "FROM alpine\nOnBuIlD rUn echo hello\n", "FROM={{alpine}}.ONBUILD={{RUN echo hello}}", "OnBuIlD rUn echo hello", 2},
+		{"keyword-looking value is case sensitive", "FROM alpine\nrun echo RUN\n", "FROM={{alpine}}.RUN={{run}}", "FROM alpine", 1},
 		{"literal value case is significant", "FROM alpine\nrun echo CMD\nrun echo cmd\n", "FROM={{alpine}}.RUN={{echo cmd}}", "run echo cmd", 3},
 		{"lowercase heredoc", "from alpine\ncopy <<EOF /tmp/config\nEXPOSE 22\nEOF\nexpose 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "expose 22", 5},
 		{"lowercase FROM heredoc", "from alpine\nrun cat <<EOF > /x\nFROM busybox\nEOF\nfrom busybox\n", "FROM={{busybox}}", "from busybox", 5},
@@ -268,6 +274,7 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		{"indented heredoc", "FROM alpine\nRUN cat <<-EOF > /x\n\tFROM busybox\n\tEOF\nfrom busybox\n", "FROM={{busybox}}", "from busybox", 5},
 		{"copy heredoc", "FROM alpine\nCOPY <<EOF /tmp/config\nexpose 22\nEOF\nEXPOSE 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "EXPOSE 22", 5},
 		{"run heredoc", "FROM alpine\nRUN cat <<EOF > /x\nfrom busybox\nEOF\nFROM busybox\n", "FROM={{busybox}}", "FROM busybox", 5},
+		{"literal keyword value is case sensitive", "FROM alpine\nRUN ADD user\n", "FROM={{alpine}}.{{add user}}", "FROM alpine", 1},
 		{"bracket value", "FROM alpine\nRUN add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "RUN add user --disabled-password app", 2},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

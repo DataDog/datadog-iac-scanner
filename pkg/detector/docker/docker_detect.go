@@ -2,13 +2,13 @@ package docker
 
 import (
 	"context"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
 
@@ -18,11 +18,6 @@ type DetectKindLine struct {
 
 const (
 	undetectedVulnerabilityLine = -1
-)
-
-var (
-	nameRegexDockerFileML = regexp.MustCompile(`.+\s+\\$`)
-	commentRegex          = regexp.MustCompile(`^\s*#.*`)
 )
 
 // DetectLine searches vulnerability line in docker files
@@ -36,7 +31,7 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	}
 
 	unchangedText := file.Lines()
-	lines := file.DetectionLines(func(original []string) []string {
+	source := file.DetectionLines("docker.source", func(original []string) []string {
 		// The engine releases Document before evaluation, but loads line info
 		// under its lock before invoking a detector. Direct callers may instead
 		// supply the original parsed document.
@@ -46,13 +41,37 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		}
 		return prepareInstructionLines(original, document)
 	})
+	match := file.DetectionView("docker.instructions", func(_ []string) []string {
+		var lines []string
+		for i, line := range source {
+			normalized := normalizeInstruction(line)
+			if normalized != line {
+				if lines == nil {
+					lines = slices.Clone(source)
+				}
+				lines[i] = normalized
+			}
+		}
+		if lines == nil {
+			return source
+		}
+		return lines
+	})
+	lines := match.Lines()
 	det := &detector.DefaultDetectLineResponse{
+		File:          match,
 		ResolvedFile:  file.FilePath,
 		ResolvedFiles: make(map[string]model.ResolvedFileSplit),
 	}
 	start, end := model.ResourceLine{}, model.ResourceLine{}
 	for _, key := range strings.Split(sKey, ".") {
 		substr1, substr2 := detector.GenerateSubstrings(ctx, key, extractedString, lines, det.CurrentLine)
+		substr1 = normalizeSearchText(match, substr1)
+		// Only ONBUILD/HEALTHCHECK values can begin with a nested instruction.
+		// Other values, even keyword-looking ones, retain their literal case.
+		if strings.EqualFold(substr1, command.Onbuild) || strings.EqualFold(substr1, command.Healthcheck) {
+			substr2 = normalizeSearchText(match, substr2)
+		}
 		det, start, end, _ = det.DetectCurrentLine(substr1, substr2, 0, lines, model.KindDOCKER)
 		if det.IsBreak {
 			break
@@ -62,7 +81,7 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	if det.FoundAtLeastOne {
 		return model.VulnerabilityLines{
 			Line:                  det.CurrentLine + 1,
-			LineWithVulnerability: lines[det.CurrentLine],
+			LineWithVulnerability: source[det.CurrentLine],
 			VulnLines:             detector.GetAdjacentVulnLines(det.CurrentLine, outputLines, unchangedText),
 			ResolvedFile:          file.FilePath,
 			VulnerablilityLocation: model.ResourceLocation{
@@ -80,47 +99,42 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 	}
 }
 
-// prepareInstructionLines keeps only actual instruction starts searchable.
-// Parsed documents already carry source locations. BuildKit supplies the same
-// heredoc/continuation boundaries for callers without that metadata.
+// prepareInstructionLines uses BuildKit's logical instruction text, retaining
+// physical start-line offsets while excluding continuations and heredoc payloads.
+// Prefer already-loaded line-info metadata to parsing again for each finding.
 func prepareInstructionLines(original []string, document model.Document) []string {
-	lines := prepareDockerFileLines(slices.Clone(original))
-	starts := make([]bool, len(lines))
-	if !documentInstructionStarts(document, starts) {
-		clear(starts)
-		parsed, err := parser.Parse(strings.NewReader(strings.Join(original, "\n")))
-		if err != nil {
-			return lines
-		}
-		for _, node := range parsed.AST.Children {
-			starts[node.StartLine-1] = true
-		}
+	lines := make([]string, len(original))
+	if documentInstructionLines(document, lines) {
+		return lines
 	}
-	for i := range lines {
-		if !starts[i] {
-			lines[i] = ""
-		}
+	clear(lines)
+	parsed, err := parser.Parse(strings.NewReader(strings.Join(original, "\n")))
+	if err != nil {
+		return original
+	}
+	for _, node := range parsed.AST.Children {
+		lines[node.StartLine-1] = node.Original
 	}
 	return lines
 }
 
-func documentInstructionStarts(document model.Document, starts []bool) bool {
+func documentInstructionLines(document model.Document, lines []string) bool {
 	stages, ok := document["command"].(map[string]interface{})
 	if !ok {
 		return false
 	}
 	for _, commands := range stages {
-		if !markInstructionStarts(commands, starts) {
+		if !copyInstructionLines(commands, lines) {
 			return false
 		}
 	}
 	if args := document["args"]; args != nil {
-		return markInstructionStarts(args, starts)
+		return copyInstructionLines(args, lines)
 	}
 	return true
 }
 
-func markInstructionStarts(value interface{}, starts []bool) bool {
+func copyInstructionLines(value interface{}, lines []string) bool {
 	commands, ok := value.([]interface{})
 	if !ok {
 		return false
@@ -131,64 +145,14 @@ func markInstructionStarts(value interface{}, starts []bool) bool {
 			return false
 		}
 		line, ok := cmd["_dd_line"].(float64)
-		if !ok || line < 1 || line > float64(len(starts)) || line != float64(int(line)) {
+		if !ok || line < 1 || line > float64(len(lines)) || line != float64(int(line)) {
 			return false
 		}
-		starts[int(line)-1] = true
+		original, ok := cmd["Original"].(string)
+		if !ok || original == "" {
+			return false
+		}
+		lines[int(line)-1] = original
 	}
 	return true
-}
-
-func prepareDockerFileLines(text []string) []string {
-	for idx, key := range text {
-		if !commentRegex.MatchString(key) {
-			text[idx] = multiLineSpliter(text, key, idx)
-		}
-	}
-	return text
-}
-
-func multiLineSpliter(textSplit []string, key string, idx int) string {
-	if !nameRegexDockerFileML.MatchString(key) {
-		return textSplit[idx]
-	}
-
-	i := idx + 1
-	for i < len(textSplit) && textSplit[i] == "" {
-		i++
-	}
-	if i >= len(textSplit) {
-		return textSplit[idx]
-	}
-
-	var b strings.Builder
-	line := textSplit[idx]
-	b.WriteString(line[:len(line)-1])
-
-	for {
-		next := textSplit[i]
-		if commentRegex.MatchString(next) {
-			next += " \\"
-		}
-		if nameRegexDockerFileML.MatchString(next) {
-			b.WriteString(next[:len(next)-1])
-		} else {
-			b.WriteString(next)
-		}
-		textSplit[i] = ""
-		if !nameRegexDockerFileML.MatchString(next) {
-			break
-		}
-		i++
-		for i < len(textSplit) && textSplit[i] == "" {
-			i++
-		}
-		if i >= len(textSplit) {
-			break
-		}
-	}
-
-	result := b.String()
-	textSplit[idx] = result
-	return result
 }

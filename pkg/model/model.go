@@ -154,8 +154,7 @@ type lineInfoState struct {
 // OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
 type linesLazyState struct {
 	once           sync.Once
-	detectionOnce  sync.Once
-	detectionLines []string
+	detectionViews sync.Map // caller-chosen transformation key -> *detectionView
 
 	matchMu sync.Mutex
 	matches map[string][]int
@@ -268,15 +267,42 @@ func (f *FileMetadata) Lines() []string {
 	return *f.LinesOriginalData
 }
 
-// DetectionLines prepares a read-only view for this file's kind-specific line
-// detector. Preparation is cached once per file when lazy lines are enabled;
-// prepare must not mutate the original lines. Safe for concurrent findings.
-func (f *FileMetadata) DetectionLines(prepare func([]string) []string) []string {
-	if st := f.linesLazy; st != nil {
-		st.detectionOnce.Do(func() { st.detectionLines = prepare(f.Lines()) })
-		return st.detectionLines
+type detectionView struct {
+	once     sync.Once
+	lines    []string
+	viewOnce sync.Once
+	file     *FileMetadata
+}
+
+// DetectionLines caches a read-only transformation under a caller-chosen key.
+// Different preparations must use distinct keys and must not mutate source lines.
+// Safe for concurrent findings when lazy lines are enabled.
+func (f *FileMetadata) DetectionLines(key string, prepare func([]string) []string) []string {
+	return f.preparedDetection(key, prepare).lines
+}
+
+func (f *FileMetadata) preparedDetection(key string, prepare func([]string) []string) *detectionView {
+	if f.linesLazy == nil {
+		return &detectionView{lines: prepare(f.Lines())}
 	}
-	return prepare(f.Lines())
+	cached, ok := f.linesLazy.detectionViews.Load(key)
+	if !ok {
+		cached, _ = f.linesLazy.detectionViews.LoadOrStore(key, &detectionView{})
+	}
+	view := cached.(*detectionView)
+	view.once.Do(func() { view.lines = prepare(f.Lines()) })
+	return view
+}
+
+// DetectionView returns the keyed transformed lines with their own cached line
+// indexes. The view and its lines are read-only and safe for concurrent findings.
+func (f *FileMetadata) DetectionView(key string, prepare func([]string) []string) *FileMetadata {
+	view := f.preparedDetection(key, prepare)
+	view.viewOnce.Do(func() {
+		view.file = &FileMetadata{FilePath: f.FilePath, Kind: f.Kind, LinesOriginalData: &view.lines}
+		view.file.SetLazyLines()
+	})
+	return view.file
 }
 
 // LinesContaining returns the indexes of Lines() that contain sub, in
