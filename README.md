@@ -70,18 +70,6 @@ datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR -q QUERYDIR1 -q QUERYDIR2
 
 Run `datadog-iac-scanner scan --help` to see all available flags.
 
-### Dockerfile discovery
-
-Dockerfile names are matched without case sensitivity: `Dockerfile`, `app.Dockerfile`
-and `Dockerfile.prod` are recognized. For `Dockerfile.<name>`, registered formats
-such as `.yaml` and `.tf` take precedence; other suffixes require Dockerfile content
-starting with `FROM` after optional `ARG` declarations. Malformed candidates are skipped.
-
-Variant names are arbitrary. The scanner does not guess whether a suffix denotes
-an environment, a backup or a template. Use `iac.global-config.ignore-paths` to
-exclude your repository's auxiliary files, for example `"**/Dockerfile*.bak"` or
-`"**/Dockerfile*.j2"`. The same path filters apply to files pushed to the server.
-
 ### Configuring the scan
 
 Create a file named `code-security.datadog.yaml` at the root of your repository to customize scanner behavior. Use this file to choose which rules run, restrict scanning to specific paths, or filter findings by severity and category.
