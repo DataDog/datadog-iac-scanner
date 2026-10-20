@@ -143,7 +143,7 @@ func TestExpansionRecoveryAgreesWithBuildKit(t *testing.T) {
 		`pre'fix $H'post`, `pre'fix text'post`, `'a " $H' "$H"`, `"a '$H" '$H'`,
 		`one 'two $H' three "$H"`, `echo \$H '$H' "\$H" "$H"`,
 		`'a \' $H`, `"one \" $H"`, `foo'bar'qux '$H'`,
-		`echo ${H:-other} ${EMPTY:-value} ${H:+yes}`, `$? $$ $@ $# $* $!`,
+		`echo ${H:-other} ${EMPTY:-value} ${H:+yes}`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `$? $$ $@ $# $* $!`,
 	}
 	for _, raw := range []bool{true, false} {
 		for _, escape := range []rune{'\\', '`'} {
@@ -170,7 +170,7 @@ func TestExpansionRecoveryAgreesWithBuildKit(t *testing.T) {
 }
 
 func FuzzExpansionRecoveryQuotes(f *testing.F) {
-	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`} {
+	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, fragment string) {

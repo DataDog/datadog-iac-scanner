@@ -65,7 +65,11 @@ func (e *wordExpander) recoverWord(value string, env variableEnvironment) string
 			pos++
 			continue
 		}
-		if value[pos] != '$' || pos+1 == len(value) || value[pos+1] != '{' {
+		if value[pos] != '$' || pos+1 == len(value) {
+			continue
+		}
+		if value[pos+1] != '{' {
+			pos = max(pos, referenceNameEnd(value, pos+1)-1)
 			continue
 		}
 		end, found := ends[pos]
@@ -391,10 +395,9 @@ func (e *wordExpander) protectUnknownReferences(value string, scopes variableEnv
 		if !ok {
 			continue
 		}
-		if _, found := scopes.Get(name); found {
-			continue
+		if _, found := scopes.Get(name); !found {
+			unknown = append(unknown, reference{pos, end})
 		}
-		unknown = append(unknown, reference{pos, end})
 		pos = end - 1
 	}
 	if len(unknown) == 0 {
