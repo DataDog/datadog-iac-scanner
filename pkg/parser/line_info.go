@@ -5,7 +5,11 @@
  */
 package parser
 
-import "context"
+import (
+	"context"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+)
 
 type lineInfoOnlyKey struct{}
 
@@ -19,4 +23,21 @@ func WithLineInfoOnly(ctx context.Context) context.Context {
 func IsLineInfoOnly(ctx context.Context) bool {
 	v, _ := ctx.Value(lineInfoOnlyKey{}).(bool)
 	return v
+}
+
+// lineInfoContextParser is an optional capability for recording parser-specific
+// source metadata during the existing lazy reparse, without format branches in
+// the runner.
+type lineInfoContextParser interface {
+	LineInfoContext(context.Context, *model.FileMetadata) context.Context
+}
+
+// LineInfoContext prepares a source-only parse and invokes the parser's optional
+// metadata hook. Other parsers retain the same line-info behavior.
+func (c *Parser) LineInfoContext(ctx context.Context, file *model.FileMetadata) context.Context {
+	ctx = WithLineInfoOnly(ctx)
+	if hook, ok := c.Parsers.(lineInfoContextParser); ok {
+		ctx = hook.LineInfoContext(ctx, file)
+	}
+	return ctx
 }

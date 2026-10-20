@@ -122,3 +122,28 @@ func TestDockerLineInfoReusesSourceParse(t *testing.T) {
 	require.Equal(t, "run echo hi", lines[4])
 	require.Empty(t, lines[2], "heredoc payloads cannot become instructions")
 }
+
+// A non-Docker parser can participate without the runner knowing its format.
+type recordingLineInfoParser struct {
+	jsonParser.Parser
+	record func(context.Context, *model.FileMetadata)
+}
+
+func (p *recordingLineInfoParser) LineInfoContext(ctx context.Context, file *model.FileMetadata) context.Context {
+	p.record(ctx, file)
+	return ctx
+}
+
+func TestLineInfoLoaderInvokesParserHook(t *testing.T) {
+	file := &model.FileMetadata{OriginalData: `{"hello":"world"}`, Kind: model.KindJSON, FilePath: "input.json"}
+	var recorded *model.FileMetadata
+	hook := &recordingLineInfoParser{record: func(ctx context.Context, f *model.FileMetadata) {
+		require.True(t, parser.IsLineInfoOnly(ctx))
+		recorded = f
+	}}
+	p := buildTestParser(t, t.Context(), func(b *parser.Builder) *parser.Builder { return b.Add(hook) })
+	file.SetLineInfoLoader(newLineInfoLoader(p, file.FilePath, 0, false, false, 15))
+	require.NoError(t, file.EnsureLineInfoDocument(t.Context()))
+	require.Same(t, file, recorded)
+	require.NotEmpty(t, file.LineInfoDocument)
+}

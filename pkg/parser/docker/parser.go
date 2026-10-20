@@ -148,6 +148,14 @@ func (p *Parser) GetKind() model.FileKind {
 	return model.KindDOCKER
 }
 
+// LineInfoContext records logical source lines while building line info so the
+// detector can reuse the same BuildKit parse.
+func (p *Parser) LineInfoContext(ctx context.Context, file *model.FileMetadata) context.Context {
+	return dockerfile.WithSourceLines(ctx, file.Lines(), func(lines []string) {
+		file.DetectionLines(dockerfile.SourceViewKey, func([]string) []string { return lines })
+	})
+}
+
 // SupportedExtensions returns Dockerfile extensions
 func (p *Parser) SupportedExtensions() []string {
 	return []string{"Dockerfile", ".dockerfile", ".ubi8", ".debian", utils.PossibleDockerfile}
