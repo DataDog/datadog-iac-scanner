@@ -358,6 +358,17 @@ func TestDocumentResourceTypes(t *testing.T) {
 	require.Equal(t, map[string]bool{"aws_s3_bucket": true}, documentResourceTypes(model.Document{
 		"resource": map[string]any{"aws_s3_bucket": map[string]any{"b": map[string]any{}}},
 	}))
+	require.Equal(t, map[string]bool{"data.aws_iam_policy_document": true}, documentResourceTypes(model.Document{
+		"data": map[string]any{"aws_iam_policy_document": map[string]any{"p": map[string]any{}}},
+	}))
+}
+
+func TestKeptAsWrittenDataFallback(t *testing.T) {
+	f := &moduleFileCalls{writtenResourceTypes: map[string]bool{"data.aws_iam_policy_document": true}}
+	require.True(t, f.keptAsWritten("data.aws_iam_policy_document"))
+	require.True(t, f.keptAsWritten("aws_iam_policy_document"))
+	require.False(t, f.keptAsWritten("aws_s3_bucket"))
+	require.False(t, f.keptAsWritten("data.aws_s3_bucket"))
 }
 
 func TestAttributeModuleFileFindingsLeavesPreAttributedUnchanged(t *testing.T) {

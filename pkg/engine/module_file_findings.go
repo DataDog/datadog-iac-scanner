@@ -8,6 +8,7 @@ package engine
 import (
 	pathpkg "path"
 	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
@@ -119,17 +120,35 @@ func (idx *moduleCallIndex) fileCalls(unresolvedDirs map[string]bool) map[string
 	return out
 }
 
-// documentResourceTypes returns the resource types a parsed file declares.
+// documentResourceTypes returns the resource types a parsed file declares,
+// and its data types prefixed with "data.", as findings name them.
 func documentResourceTypes(doc model.Document) map[string]bool {
-	resources, ok := asStringMap(doc["resource"])
-	if !ok {
+	resources, hasResources := asStringMap(doc["resource"])
+	data, hasData := asStringMap(doc["data"])
+	if !hasResources && !hasData {
 		return nil
 	}
-	types := make(map[string]bool, len(resources))
+	types := make(map[string]bool)
 	for typ := range resources {
 		types[typ] = true
 	}
+	for typ := range data {
+		types[dataTypePrefix+typ] = true
+	}
 	return types
+}
+
+// keptAsWritten reports whether the finding's resource type is still scanned
+// where it is written. A data rule may name its type without the "data."
+// prefix, as moduleAttributionForResource allows.
+func (f *moduleFileCalls) keptAsWritten(resourceType string) bool {
+	if f.writtenResourceTypes[resourceType] {
+		return true
+	}
+	if strings.HasPrefix(resourceType, dataTypePrefix) {
+		return false
+	}
+	return f.writtenResourceTypes[dataTypePrefix+resourceType]
 }
 
 // attributeModuleFileFindings reports each finding raised on an external
@@ -144,7 +163,7 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 	for i := range vulns {
 		v := &vulns[i]
 		file := files[v.FileID]
-		if file == nil || v.ModuleAttribution != nil || file.writtenResourceTypes[v.ResourceType] {
+		if file == nil || v.ModuleAttribution != nil || file.keptAsWritten(v.ResourceType) {
 			if out != nil {
 				out = append(out, *v)
 			}

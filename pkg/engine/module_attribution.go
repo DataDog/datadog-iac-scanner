@@ -709,7 +709,13 @@ func moduleAttributionForResource(
 	if len(attrs) == 0 {
 		return nil
 	}
-	attr, ok := attrs[moduleAttributionKey(v.ResourceType, v.BlockLocation.Start.Line, v.BlockLocation.Start.Col)]
+	line, col := v.BlockLocation.Start.Line, v.BlockLocation.Start.Col
+	attr, ok := attrs[moduleAttributionKey(v.ResourceType, line, col)]
+	if !ok && !strings.HasPrefix(v.ResourceType, dataTypePrefix) {
+		// A data rule may name its type without the prefix; the block's
+		// position still identifies it.
+		attr, ok = attrs[moduleAttributionKey(dataTypePrefix+v.ResourceType, line, col)]
+	}
 	if !ok {
 		return nil
 	}

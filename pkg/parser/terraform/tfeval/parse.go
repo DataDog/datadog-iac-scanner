@@ -40,15 +40,18 @@ var reservedModuleAttrs = map[string]bool{
 }
 
 // parseDir parses HCL and JSON config in dir (non-recursively) and returns
-// their bodies. Files that fail to parse are skipped. Reads go through fsys so
+// their bodies, with the source of each parsed file by the filename its ranges
+// carry. Files that fail to parse are skipped. Reads go through fsys so
 // content-push scans only ever see pushed files.
-func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS) ([]*hclsyntax.Body, error) {
+func parseDir(
+	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
+) ([]*hclsyntax.Body, map[string][]byte, error) {
 	if fsys == nil {
 		fsys = vfs.Default()
 	}
 	entries, err := fsys.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	byName := make(map[string]fs.DirEntry, len(entries))
@@ -61,6 +64,7 @@ func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]str
 	sort.Strings(names)
 
 	bodies := make([]*hclsyntax.Body, 0, len(names))
+	sources := make(map[string][]byte, len(names))
 	for _, name := range names {
 		entry, ok := byName[name]
 		if !ok {
@@ -76,9 +80,10 @@ func parseDir(ctx context.Context, dir, packageRoot string, allow map[string]str
 		}
 		if body, ok := parseConfigBody(src, path); ok {
 			bodies = append(bodies, body)
+			sources[path] = src
 		}
 	}
-	return bodies, nil
+	return bodies, sources, nil
 }
 
 func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
