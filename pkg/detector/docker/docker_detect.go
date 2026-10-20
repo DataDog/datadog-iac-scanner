@@ -3,12 +3,14 @@ package docker
 import (
 	"context"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
 )
 
 // DetectKindLine defines a kindDetectLine type
@@ -59,13 +61,26 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		ResolvedFile:  file.FilePath,
 		ResolvedFiles: make(map[string]model.ResolvedFileSplit),
 	}
+	starts := stageStartLines(match)
+	stageEnd := len(lines)
 	start, end := model.ResourceLine{}, model.ResourceLine{}
 	for _, key := range strings.Split(sKey, ".") {
 		substr1, substr2 := detector.GenerateSubstrings(ctx, key, extractedString, lines, det.CurrentLine)
-		substr1, substr2, det.AcceptLine = instructionSearch(match, substr1, substr2)
+		limit := stageEnd
+		// An explicit FROM selector may move to another stage. All subsequent
+		// instruction and literal selectors stay inside the selected stage.
+		if isFromInstruction(substr1) {
+			limit = len(lines)
+		}
+		substr1, substr2, det.AcceptLine = instructionSearch(match, substr1, substr2, det.CurrentLine, limit)
 		det, start, end, _ = det.DetectCurrentLine(substr1, substr2, 0, lines, model.KindDOCKER)
 		if det.IsBreak {
 			break
+		}
+		if next := sort.SearchInts(starts, det.CurrentLine+1); next < len(starts) {
+			stageEnd = starts[next]
+		} else {
+			stageEnd = len(lines)
 		}
 	}
 
@@ -88,4 +103,9 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		LineWithVulnerability: "",
 		ResolvedFile:          file.FilePath,
 	}
+}
+
+func isFromInstruction(line string) bool {
+	word := dockerWordAt(line, 0)
+	return strings.EqualFold(line[word.start:word.end], command.From)
 }

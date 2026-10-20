@@ -115,16 +115,50 @@ func dockerWordAt(line string, pos int) instructionWord {
 
 // instructionSearch applies keyword normalization only at instruction boundaries.
 // Nested keywords have the same rule; ordinary argument values remain literal.
-func instructionSearch(view *model.FileMetadata, first, second string) (str1, str2 string, accept func(string) bool) {
+func instructionSearch(view *model.FileMetadata, first, second string, current, end int) (
+	str1, str2 string, accept func(int, string) bool) {
 	first, instruction := normalizeSearchText(view, first)
 	nested := false
 	if strings.EqualFold(first, command.Onbuild) || strings.EqualFold(first, command.Healthcheck) {
 		second, nested = normalizeSearchText(view, second)
 	}
-	if !instruction && !nested {
-		return first, second, nil
-	}
-	return first, second, func(line string) bool {
+	// Stage keys contain the parser's complete FROM arguments. Prefer an exact
+	// stage over an image/alias substring in an earlier FROM.
+	exactStage := first == "FROM" && hasExactStage(view, second, current)
+	return first, second, func(index int, line string) bool {
+		if index >= end || exactStage && fromArguments(line) != second {
+			return false
+		}
 		return (!instruction || startsAtInstruction(line, first)) && (!nested || startsAtInstruction(line, second))
 	}
+}
+
+func stageStartLines(view *model.FileMetadata) []int {
+	starts, indexed := view.LinesMatching("docker.stages", isFromInstruction)
+	if !indexed {
+		for i, line := range view.Lines() {
+			if isFromInstruction(line) {
+				starts = append(starts, i)
+			}
+		}
+	}
+	return starts
+}
+
+func hasExactStage(view *model.FileMetadata, stage string, current int) bool {
+	if stage == "" {
+		return false
+	}
+	lines := view.Lines()
+	for _, index := range stageStartLines(view) {
+		if index >= current && fromArguments(lines[index]) == stage {
+			return true
+		}
+	}
+	return false
+}
+
+func fromArguments(line string) string {
+	word := dockerWordAt(line, 0)
+	return strings.TrimSpace(line[word.end:])
 }

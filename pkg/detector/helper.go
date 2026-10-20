@@ -46,7 +46,7 @@ type DefaultDetectLineResponse struct {
 	// letting it visit only the lines that contain the searched text.
 	File *model.FileMetadata
 	// AcceptLine optionally restricts matches to syntax-specific positions.
-	AcceptLine func(string) bool
+	AcceptLine func(int, string) bool
 }
 
 // GetBracketValues gets values inside "{{ }}" ignoring any "{{" or "}}" inside
@@ -298,7 +298,7 @@ func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurse
 	// visit reports whether the scan can stop: lines are visited in ascending
 	// order, so the first exact match (distance 0) is the best and earliest one.
 	visit := func(i int) bool {
-		if d.AcceptLine != nil && !d.AcceptLine(lines[i]) {
+		if d.AcceptLine != nil && !d.AcceptLine(i, lines[i]) {
 			return false
 		}
 		distance, start, end, ok := checkLine(str1, str2, lines, i, kind)

@@ -251,6 +251,14 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		name, data, key, text string
 		line                  int
 	}{
+		{"stage alias is not base reference", "FROM alpine AS base\nARG PORT=22\nFROM base\nEXPOSE $PORT\n", "FROM={{base}}.{{EXPOSE $PORT}}", "EXPOSE $PORT", 4},
+		{"stage image is not a prefix", "FROM alpine-dev\nRUN echo needle\nFROM alpine\nrun echo needle\n", "FROM={{alpine}}.RUN={{echo needle}}", "run echo needle", 4},
+		{"stage flags remain part of selector", "FROM alpine AS base\nFROM --platform=linux/amd64 alpine\nRUN echo needle\n", "FROM={{--platform=linux/amd64 alpine}}.RUN={{echo needle}}", "RUN echo needle", 3},
+		{"do not cross stages", "FROM alpine\nRUN echo \"RUN apt-get update\"\nFROM busybox\nRUN apt-get update\n", "FROM={{alpine}}.{{RUN apt-get update}}", "FROM alpine", 1},
+		{"select second stage", "FROM alpine\nRUN echo hi\nFROM busybox\nrun apt-get update\n", "FROM={{busybox}}.{{RUN apt-get update}}", "run apt-get update", 4},
+		{"literal must stay in stage", "FROM alpine\nRUN echo hi\nFROM busybox\nRUN echo needle\n", "FROM={{alpine}}.{{needle}}", "FROM alpine", 1},
+		{"explicit next FROM", "FROM alpine\nRUN echo hi\nFROM busybox\nrun apt-get update\n", "FROM={{alpine}}.FROM={{busybox}}.{{RUN apt-get update}}", "run apt-get update", 4},
+		{"do not cross stage after partial match", "FROM alpine\nrun echo hi\nfrom busybox\nRUN echo hi && apt-get update\n", "FROM={{alpine}}.RUN={{echo hi}}.{{apt-get update}}", "run echo hi", 2},
 		{"quoted instruction before real instruction", "FROM alpine\nRUN echo \"RUN apt-get update\"\nrun apt-get update\n", "{{run apt-get update}}", "run apt-get update", 3},
 		{"instruction before quoted argument", "FROM alpine\nrun apt-get update\nRUN echo \"run apt-get update\"\n", "{{run apt-get update}}", "run apt-get update", 2},
 		{"uncached uppercase with lowercase key", "FROM alpine\nRUN echo hi\n", "FROM={{alpine}}.{{run echo hi}}", "RUN echo hi", 2},
