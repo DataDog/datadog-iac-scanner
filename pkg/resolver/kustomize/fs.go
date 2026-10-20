@@ -276,7 +276,6 @@ func (r *readSet) record(path string, role fileRole) {
 	r.files[path] = role
 }
 
-//nolint:unused // the renderer (stacked PR) exposes the read set
 func (r *readSet) sorted() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -307,10 +306,6 @@ type constrainedFS struct {
 
 var _ filesys.FileSystem = (*constrainedFS)(nil)
 
-// newConstrainedFS builds the adapter for one render; the renderer
-// (stacked PR) is its only caller.
-//
-//nolint:unused // the renderer (stacked PR) calls it
 func newConstrainedFS(
 	fsys vfs.FS, confinementRoot, renderRoot string,
 	maxFileBytes int64, budget *atomic.Int64, cache *byteCache,
@@ -356,7 +351,6 @@ type memIndex struct {
 	dirs  map[string]bool
 }
 
-//nolint:unused // the renderer (stacked PR) calls it
 func newMemIndex(mem *vfs.MemFS) *memIndex {
 	idx := &memIndex{files: make(map[string]bool), dirs: make(map[string]bool)}
 	for _, p := range mem.Paths() {
@@ -434,8 +428,6 @@ func (c *constrainedFS) statExists(path string) (fs.FileInfo, string, error) {
 // loadKustomization returns the validated kustomization parsed from the
 // original bytes of a kustomization file (the cache and ReadFile serve of the
 // top-level file carry injected build metadata, never stored).
-//
-//nolint:unused // the renderer (stacked PR) calls it
 func (c *constrainedFS) loadKustomization(path string) (*types.Kustomization, error) {
 	info, found, err := c.statExists(path)
 	if err != nil {

@@ -557,6 +557,12 @@ type ResolvedHelm struct {
 	HelmInvocations HelmInvocations
 	IDInfo          map[int]interface{}
 	IsCRD           bool
+	// RenderRoot is the kustomization directory the content was rendered
+	// from, relative to the repository root, for Kustomize-resolved files.
+	RenderRoot string
+	// SourceResourceName is metadata.name as written in the source document,
+	// before Kustomize name transformations.
+	SourceResourceName string
 }
 
 // HelmInvocationAt is an include-like action that emitted part of a rendered
