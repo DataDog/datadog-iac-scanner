@@ -184,7 +184,7 @@ func TestMemorySourceProvider_DockerfileNames(t *testing.T) {
 	}
 	mem := vfs.NewMemFS(files)
 	p := NewMemorySourceProvider(mem, mem.Paths(), nil, nil)
-	got := collect(t, p, model.Extensions{"Dockerfile": {}, ".dockerfile": {}, "possibleDockerfile": {}})
+	got := collect(t, p, model.Extensions{"Dockerfile": {}, ".dockerfile": {}, utils.PossibleDockerfile: {}})
 	// Inventory offers unregistered Dockerfile suffixes to the content gate in preparation.
 	require.Len(t, got, 5)
 	for _, name := range []string{"upper/Dockerfile", "lower/dockerfile", "api.Dockerfile", "Dockerfile.prod", "dockerfile.go"} {

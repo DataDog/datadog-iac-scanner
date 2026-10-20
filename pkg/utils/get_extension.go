@@ -18,7 +18,7 @@ import (
 	"golang.org/x/tools/godoc/util"
 )
 
-var extensionNameTargets = []string{"tfvars", "possibleDockerfile"}
+var extensionNameTargets = []string{"tfvars", PossibleDockerfile}
 
 // dockerfileExtension recognizes Dockerfile and <name>.Dockerfile in any case.
 // Dockerfile.<name> is a content-checked candidate only after registered formats
@@ -33,18 +33,21 @@ func dockerfileExtension(path, ext string) (string, bool) {
 	case strings.HasPrefix(lower, "dockerfile."):
 		format, registered := supportedFileTypes[strings.ToLower(ext)]
 		if !registered || format.dockerfile {
-			return "possibleDockerfile", true
+			return PossibleDockerfile, true
 		}
 	}
 	return "", false
 }
 
-// pathExtension returns the canonical token for registered extensions while
-// preserving unknown extensions. Both disk and pushed paths use this policy.
+// pathExtension preserves the case policy for existing formats. Dockerfile
+// candidates compare registered suffixes case-insensitively so they cannot steal
+// Dockerfile.CFG or Dockerfile.TF from the corresponding parser.
 func pathExtension(path string) string {
 	ext := tfpath.Extension(path)
-	if lower := strings.ToLower(ext); IsSupportedFileType(lower) {
-		return lower
+	if strings.HasPrefix(strings.ToLower(filepath.Base(path)), "dockerfile.") {
+		if lower := strings.ToLower(ext); IsSupportedFileType(lower) {
+			return lower
+		}
 	}
 	return ext
 }

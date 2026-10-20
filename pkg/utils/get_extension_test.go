@@ -20,6 +20,9 @@ func TestExtensionFromPath(t *testing.T) {
 		path string
 		want string
 	}{
+		{path: "/repo/main.TF", want: ".TF"},
+		{path: "/repo/values.YAML", want: ".YAML"},
+		{path: "/repo/config.JSON", want: ".JSON"},
 		{path: "/repo/main.tf", want: ".tf"},
 		{path: "/repo/main.tf.json", want: ".tf.json"},
 		{path: "/repo/main.tofu.json", want: ".tofu.json"},
@@ -33,6 +36,12 @@ func TestExtensionFromPath(t *testing.T) {
 		{path: "/repo/bin/aws", want: ""},
 	}
 	for _, tt := range tests {
+		fsys := vfs.NewMemFS(map[string][]byte{tt.path: []byte("FROM alpine\n")})
+		if tt.want != "" {
+			got, err := GetExtensionWithFS(t.Context(), fsys, tt.path)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got, tt.path)
+		}
 		if got := ExtensionFromPath(tt.path); got != tt.want {
 			t.Errorf("ExtensionFromPath(%q) = %q, want %q", tt.path, got, tt.want)
 		}
@@ -46,10 +55,10 @@ func TestDockerfileExtensions(t *testing.T) {
 		{"DOCKERFILE", "Dockerfile"},
 		{"api.Dockerfile", ".dockerfile"},
 		{"api.DOCKERFILE", ".dockerfile"},
-		{"Dockerfile.prod", "possibleDockerfile"},
-		{"Dockerfile.custom-profile", "possibleDockerfile"},
-		{"dockerfile.dev", "possibleDockerfile"},
-		{"Dockerfile.ubi8", "possibleDockerfile"},
+		{"Dockerfile.prod", PossibleDockerfile},
+		{"Dockerfile.custom-profile", PossibleDockerfile},
+		{"dockerfile.dev", PossibleDockerfile},
+		{"Dockerfile.ubi8", PossibleDockerfile},
 		{"dockerfile.tf", ".tf"},
 		{"dockerfile.tofu", ".tofu"},
 		{"Dockerfile.tf.json", ".tf.json"},
@@ -57,40 +66,40 @@ func TestDockerfileExtensions(t *testing.T) {
 		{"dockerfile.yaml", ".yaml"},
 		{"dockerfile.yml", ".yml"},
 		{"dockerfile.json", ".json"},
-		{"dockerfile.go", "possibleDockerfile"},
-		{"dockerfile.py", "possibleDockerfile"},
-		{"dockerfile.ts", "possibleDockerfile"},
+		{"dockerfile.go", PossibleDockerfile},
+		{"dockerfile.py", PossibleDockerfile},
+		{"dockerfile.ts", PossibleDockerfile},
 		{"Dockerfile.bicep", ".bicep"},
 		{"Dockerfile.CFG", ".cfg"},
 		{"Dockerfile.CONF", ".conf"},
 		{"Dockerfile.INI", ".ini"},
 		{"Dockerfile.YAML", ".yaml"},
 		{"Dockerfile.TF", ".tf"},
-		{"Dockerfile.UBI8", "possibleDockerfile"},
+		{"Dockerfile.UBI8", PossibleDockerfile},
 		{"Dockerfile.sh", ".sh"},
-		{"Dockerfile.dockerignore", "possibleDockerfile"},
+		{"Dockerfile.dockerignore", PossibleDockerfile},
 		{"api.Dockerfile.dockerignore", ".dockerignore"},
-		{"Dockerfile.bak", "possibleDockerfile"},
-		{"Dockerfile.orig", "possibleDockerfile"},
-		{"Dockerfile.save", "possibleDockerfile"},
-		{"Dockerfile.swp", "possibleDockerfile"},
-		{"Dockerfile.tmp", "possibleDockerfile"},
-		{"Dockerfile.rej", "possibleDockerfile"},
-		{"Dockerfile.patch", "possibleDockerfile"},
-		{"Dockerfile.diff", "possibleDockerfile"},
-		{"Dockerfile.gz", "possibleDockerfile"},
-		{"Dockerfile.tgz", "possibleDockerfile"},
-		{"Dockerfile.tar", "possibleDockerfile"},
-		{"Dockerfile.zip", "possibleDockerfile"},
-		{"Dockerfile.xz", "possibleDockerfile"},
-		{"Dockerfile.bz2", "possibleDockerfile"},
-		{"DOCKERFILE.BAK", "possibleDockerfile"},
+		{"Dockerfile.bak", PossibleDockerfile},
+		{"Dockerfile.orig", PossibleDockerfile},
+		{"Dockerfile.save", PossibleDockerfile},
+		{"Dockerfile.swp", PossibleDockerfile},
+		{"Dockerfile.tmp", PossibleDockerfile},
+		{"Dockerfile.rej", PossibleDockerfile},
+		{"Dockerfile.patch", PossibleDockerfile},
+		{"Dockerfile.diff", PossibleDockerfile},
+		{"Dockerfile.gz", PossibleDockerfile},
+		{"Dockerfile.tgz", PossibleDockerfile},
+		{"Dockerfile.tar", PossibleDockerfile},
+		{"Dockerfile.zip", PossibleDockerfile},
+		{"Dockerfile.xz", PossibleDockerfile},
+		{"Dockerfile.bz2", PossibleDockerfile},
+		{"DOCKERFILE.BAK", PossibleDockerfile},
 		// All unregistered suffixes, including templates, use the same content gate.
-		{"Dockerfile.j2", "possibleDockerfile"},
-		{"Dockerfile.tpl", "possibleDockerfile"},
-		{"Dockerfile.template", "possibleDockerfile"},
-		{"Dockerfile.erb", "possibleDockerfile"},
-		{"Dockerfile.gotmpl", "possibleDockerfile"},
+		{"Dockerfile.j2", PossibleDockerfile},
+		{"Dockerfile.tpl", PossibleDockerfile},
+		{"Dockerfile.template", PossibleDockerfile},
+		{"Dockerfile.erb", PossibleDockerfile},
+		{"Dockerfile.gotmpl", PossibleDockerfile},
 	} {
 		t.Run(tt.path, func(t *testing.T) {
 			require.Equal(t, tt.want, ExtensionFromPath(tt.path))

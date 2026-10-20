@@ -26,6 +26,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
 	dockerfileparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
 )
@@ -116,41 +117,35 @@ func PossibleFileTypes() []string {
 }
 
 const (
-	cdkTf                 = "cdkTf"
-	yml                   = ".yml"
-	yaml                  = ".yaml"
-	json                  = ".json"
-	sh                    = ".sh"
-	arm                   = "azureresourcemanager"
-	bicep                 = "bicep"
-	kubernetes            = "kubernetes"
-	terraform             = "terraform"
-	gdm                   = "googledeploymentmanager"
-	ansible               = "ansible"
-	grpc                  = "grpc"
-	dockercompose         = "dockercompose"
-	dockerfile            = "dockerfile"
-	crossplane            = "crossplane"
-	knative               = "knative"
-	cicd                  = "cicd"
-	dependabot            = "dependabot"
-	githubAction          = "githubAction"
-	sizeMb                = 1048576
-	extDockerfile         = ".dockerfile"
-	nameDockerfile        = "Dockerfile"
-	extPossibleDockerfile = "possibleDockerfile"
-	extUbi8               = ".ubi8"
-	extDebian             = ".debian"
-	extTf                 = tfpath.ExtTF
-	extTofu               = tfpath.ExtTofu
-	extTfJSON             = tfpath.ExtTFJSON
-	extTofuJSON           = tfpath.ExtTofuJSON
-	extTfvars             = tfpath.ExtTFVars
-	extBicepFile          = ".bicep"
-	extProto              = ".proto"
-	extCfg                = ".cfg"
-	extConf               = ".conf"
-	extIni                = ".ini"
+	cdkTf          = "cdkTf"
+	yml            = ".yml"
+	yaml           = ".yaml"
+	json           = ".json"
+	sh             = ".sh"
+	arm            = "azureresourcemanager"
+	bicep          = "bicep"
+	kubernetes     = "kubernetes"
+	terraform      = "terraform"
+	gdm            = "googledeploymentmanager"
+	ansible        = "ansible"
+	grpc           = "grpc"
+	dockercompose  = "dockercompose"
+	dockerfile     = "dockerfile"
+	crossplane     = "crossplane"
+	knative        = "knative"
+	cicd           = "cicd"
+	dependabot     = "dependabot"
+	githubAction   = "githubAction"
+	sizeMb         = 1048576
+	extDockerfile  = ".dockerfile"
+	nameDockerfile = "Dockerfile"
+	extTf          = tfpath.ExtTF
+	extTofu        = tfpath.ExtTofu
+	extTfJSON      = tfpath.ExtTFJSON
+	extTofuJSON    = tfpath.ExtTofuJSON
+	extTfvars      = tfpath.ExtTFVars
+	extBicepFile   = ".bicep"
+	extProto       = ".proto"
 )
 
 type Parameters struct {
@@ -571,7 +566,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	if a.maxFileSize >= 0 && !isContentClassifiedExt(ext) {
+	if a.maxFileSize >= 0 && !utils.NeedsContentCheck(ext) {
 		if info, err := os.Stat(a.filePath); err == nil {
 			if float64(info.Size())/float64(sizeMb) > float64(a.maxFileSize) {
 				contextLogger := logger.FromContext(ctx)
@@ -598,7 +593,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 	if !a.isAvailableType(platform) {
-		if isContentClassifiedExt(ext) {
+		if utils.NeedsContentCheck(ext) {
 			unwanted <- a.filePath
 		}
 		return
@@ -622,16 +617,8 @@ func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {
 	return lineCount
 }
 
-func isContentClassifiedExt(ext string) bool {
-	switch ext {
-	case yaml, yml, json, sh, extCfg, extConf, extIni, extPossibleDockerfile, extUbi8, extDebian:
-		return true
-	}
-	return false
-}
-
 func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) (content []byte, ok, tooLarge bool) {
-	if !isContentClassifiedExt(ext) {
+	if !utils.NeedsContentCheck(ext) {
 		return nil, true, false
 	}
 	file, err := os.Open(filepath.Clean(a.filePath))
@@ -695,58 +682,20 @@ func isDockerfile(ctx context.Context, fsys vfs.FS, path string, content []byte)
 	return looksLikeDockerfile(content)
 }
 
-var (
-	dockerfileFromInstruction = regexp.MustCompile(`(?i)^FROM\s`)
-	dockerfileArgInstruction  = regexp.MustCompile(`(?i)^ARG\s`)
-)
-
-// looksLikeDockerfile requires FROM after any leading ARG instructions,
-// ignoring comments and blank lines.
+// looksLikeDockerfile uses BuildKit's instruction boundaries and directives.
+// Candidates must start with FROM after any leading ARG instructions.
 func looksLikeDockerfile(content []byte) bool {
-	content = bytes.TrimPrefix(content, []byte("\ufeff"))
-	escape := byte('\\')
-	argContinuation := false
-	var directives dockerfileparser.DirectiveParser
-	for len(content) > 0 {
-		line, rest, _ := bytes.Cut(content, []byte("\n"))
-		content = rest
-		line = bytes.TrimSpace(line)
-		directive, err := directives.ParseLine(line)
-		if err != nil {
-			return false
-		}
-		if directive != nil && directive.Name == "escape" {
-			switch directive.Value {
-			case "\\", "`":
-				escape = directive.Value[0]
-			default:
-				return false
-			}
-		}
-		if len(line) == 0 {
+	parsed, err := dockerfileparser.Parse(bytes.NewReader(content))
+	if err != nil {
+		return false
+	}
+	for _, node := range parsed.AST.Children {
+		if strings.EqualFold(node.Value, command.Arg) {
 			continue
 		}
-		if line[0] == '#' {
-			continue
-		}
-		if argContinuation {
-			argContinuation = dockerfileArgContinues(line, escape)
-			continue
-		}
-		if dockerfileFromInstruction.Match(line) {
-			return true
-		}
-		if !dockerfileArgInstruction.Match(line) {
-			return false
-		}
-		// A continued ARG value is not a new instruction, even if it says FROM.
-		argContinuation = dockerfileArgContinues(line, escape)
+		return strings.EqualFold(node.Value, command.From) && node.Next != nil
 	}
 	return false
-}
-
-func dockerfileArgContinues(line []byte, escape byte) bool {
-	return line[len(line)-1] == escape && (len(line) == 1 || line[len(line)-2] != escape)
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
@@ -877,32 +826,34 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	if err != nil {
 		return ""
 	}
-	switch ext {
-	case extDockerfile, nameDockerfile:
-		return dockerfile
-	case extPossibleDockerfile, extUbi8, extDebian:
+	switch utils.ContentCheckForFileType(ext) {
+	case utils.DockerfileContent:
 		if isDockerfile(ctx, fsys, path, content) {
 			return dockerfile
 		}
 		return ""
+	case utils.AnsibleConfigContent:
+		if looksLikeAnsibleConfig(content) {
+			return ansible
+		}
+		return ""
+	case utils.AnsibleInventoryContent:
+		if looksLikeAnsibleInventory(content) {
+			return ansible
+		}
+		return ""
+	case utils.YAMLContent, utils.PlatformContent:
+		return classifyByContent(ctx, fsys, path, content, ext, typesFlag, hc, scanFiles)
+	}
+	switch ext {
+	case extDockerfile, nameDockerfile:
+		return dockerfile
 	case extTf, extTofu, extTfJSON, extTofuJSON, extTfvars:
 		return terraform
 	case extBicepFile:
 		return bicep
 	case extProto:
 		return grpc
-	case extCfg, extConf:
-		if looksLikeAnsibleConfig(content) {
-			return ansible
-		}
-		return ""
-	case extIni:
-		if looksLikeAnsibleInventory(content) {
-			return ansible
-		}
-		return ""
-	case yaml, yml, json, sh:
-		return classifyByContent(ctx, fsys, path, content, ext, typesFlag, hc, scanFiles)
 	}
 	return ""
 }
@@ -928,14 +879,14 @@ func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, ki
 // .ini that is not Ansible configuration or inventory, or service catalog YAML.
 // The analyzer leaves these out of a CLI scan; pushed files skip them the same way.
 func ExcludedByContent(path string, content []byte) bool {
-	switch utils.ExtensionFromPath(path) {
-	case extPossibleDockerfile, extUbi8, extDebian:
+	switch utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) {
+	case utils.DockerfileContent:
 		return !looksLikeDockerfile(content)
-	case extCfg, extConf:
+	case utils.AnsibleConfigContent:
 		return !looksLikeAnsibleConfig(content)
-	case extIni:
+	case utils.AnsibleInventoryContent:
 		return !looksLikeAnsibleInventory(content)
-	case yaml, yml:
+	case utils.YAMLContent:
 		return isCatalogEntity(content)
 	}
 	return false
