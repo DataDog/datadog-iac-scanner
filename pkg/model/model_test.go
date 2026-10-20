@@ -164,8 +164,18 @@ func TestReleasePostEvalDropsSourceLoader(t *testing.T) {
 		if state == "loaded" {
 			require.NoError(t, f.UseLineInfoDocument(t.Context(), func(map[string]interface{}) error { return nil }))
 		}
+		clones := []*FileMetadata{f.ShallowCopy(), f.ShallowCopy(), f.ShallowCopy()}
+		previous := f.lineInfo
 		f.ReleasePostEvalData()
-		require.Nil(t, f.lineInfo)
+		require.Same(t, previous, f.lineInfo, "state pointers stay stable for concurrent readers")
+		if f.lineInfo != nil {
+			require.Nil(t, f.lineInfo.source.loader)
+		}
+		for _, clone := range clones {
+			if clone.lineInfo != nil {
+				require.Nil(t, clone.lineInfo.source.loader, "clones release captured source too")
+			}
+		}
 		require.Nil(t, f.linesLazy)
 		require.Empty(t, f.OriginalData)
 	}

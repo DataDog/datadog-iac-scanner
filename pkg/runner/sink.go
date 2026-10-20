@@ -6,7 +6,6 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"path/filepath"
@@ -249,7 +248,7 @@ func (s *Service) classifyPlatform(ctx context.Context, kind model.FileKind, fil
 }
 
 func resolveCRLFFile(fileContent []byte) []byte {
-	return bytes.ReplaceAll(fileContent, []byte("\r\n"), []byte("\n"))
+	return utils.NormalizeSource(fileContent)
 }
 
 func resolveJSONFilter(jsonFilter string) string {

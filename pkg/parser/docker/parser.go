@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/klauspost/compress/s2"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
@@ -46,6 +48,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
+	if saved, ok := ctx.Value(sourceLocationKey{}).(*sourceLocations); ok && iacparser.IsLineInfoOnly(ctx) {
+		return saved.parse(ctx, fileContent)
+	}
 	parsed, err := dockerfile.Parse(ctx, fileContent)
 	if err != nil {
 		return nil, nil, nil, nil, errors.Wrap(err, "failed to parse Dockerfile")
@@ -62,6 +67,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		lex = newWordExpander(parsed.EscapeToken, true)
 		declarationLex = newWordExpander(parsed.EscapeToken, false)
 	}
+	source := &sourceLocations{}
 	globalArgs := make(map[string]string)
 	scope := variableScope{args: globalArgs, envs: make(map[string]string)}
 	stages := make(map[string]variableScope)
@@ -81,29 +87,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 		ignoreStruct.ignoreBlock(child, fromValue)
 
-		cmd := Command{
-			Cmd:       name,
-			Original:  strings.TrimSpace(child.Original),
-			Flags:     child.Flags,
-			StartLine: child.StartLine,
-			KicsLine:  child.StartLine,
-			EndLine:   child.EndLine,
-		}
+		cmd := commandFromNode(child)
 
-		if child.Next != nil && len(child.Next.Children) > 0 {
-			cmd.SubCmd = strings.ToLower(child.Next.Children[0].Value)
-			child = child.Next.Children[0]
-		}
-
-		cmd.JSON = child.Attributes["json"]
-		for n := child.Next; n != nil; n = n.Next {
-			cmd.Value = append(cmd.Value, n.Value)
-		}
-
-		// Source-location reparses need raw commands and line markers only.
-		// Enrichment is already present in the document evaluated by rules.
+		// Source locations keep raw commands before rule-facing enrichment.
 		if !lineInfoOnly {
-			scope.expandCommand(&cmd, globalArgs, lex, declarationLex)
+			source.expandCommand(&cmd, &scope, globalArgs, lex, declarationLex)
 		}
 
 		if fromValue == "" {
@@ -130,6 +118,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	documents = append(documents, *doc)
 
 	ignoreLines = ignoreStruct.getIgnoreLines()
+	if !lineInfoOnly {
+		source.document, source.ignore = slices.Clone(s2.Encode(nil, j)), ignoreLines
+		dockerfile.RememberSource(ctx, source)
+	}
 
 	return fileContent, documents, ignoreLines, resolvedFiles, nil
 }
@@ -139,10 +131,28 @@ func (p *Parser) PrepareContext(ctx context.Context, path string, content []byte
 	return dockerfile.PrepareSource(ctx, content, utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) == utils.DockerfileContent)
 }
 
-// SourceContext retains the prepared AST for source-location work; BuildKit
-// parsing is not repeated when a finding requests the raw document.
-func (p *Parser) SourceContext(ctx context.Context) func(context.Context) context.Context {
-	return dockerfile.SourceContext(ctx)
+// commandFromNode keeps BuildKit's nested instruction and source boundaries.
+func commandFromNode(child *parser.Node) Command {
+	cmd := Command{
+		Cmd:       strings.ToLower(strings.TrimSpace(child.Value)),
+		Original:  strings.TrimSpace(child.Original),
+		Flags:     child.Flags,
+		StartLine: child.StartLine,
+		KicsLine:  child.StartLine,
+		EndLine:   child.EndLine,
+	}
+
+	if child.Next != nil && len(child.Next.Children) > 0 {
+		cmd.SubCmd = strings.ToLower(child.Next.Children[0].Value)
+		child = child.Next.Children[0]
+	}
+
+	cmd.JSON = child.Attributes["json"]
+	for n := child.Next; n != nil; n = n.Next {
+		cmd.Value = append(cmd.Value, n.Value)
+	}
+
+	return cmd
 }
 
 // GetKind returns the kind of the parser
@@ -153,6 +163,7 @@ func (p *Parser) GetKind() model.FileKind {
 // LineInfoContext records logical source lines while building line info so the
 // detector can reuse the same BuildKit parse.
 func (p *Parser) LineInfoContext(ctx context.Context, file *model.FileMetadata) context.Context {
+	ctx = context.WithValue(ctx, locationFileKey{}, file)
 	return dockerfile.WithSourceLines(ctx, file.Lines(), func(lines []string) {
 		file.DetectionLines(dockerfile.SourceViewKey, func([]string) []string { return lines })
 	})

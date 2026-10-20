@@ -62,8 +62,9 @@ func TestPreparedSourceLifecycle(t *testing.T) {
 			require.NoError(t, err)
 			require.NotSame(t, first, parsed)
 			require.Equal(t, "busybox", parsed.AST.Children[0].Next.Value)
-			content[0] = 'X'
-			require.Nil(t, preparedSource(ctx, content), "mutated content invalidates snapshot identity")
+			changed := append([]byte(nil), content...)
+			changed[0] = 'X'
+			require.Nil(t, preparedSource(ctx, changed), "different bytes invalidate snapshot identity")
 		})
 	}
 }
@@ -103,5 +104,28 @@ func BenchmarkPreparedSourcePipeline(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+// Dispatch owns one immutable input and AST; detaching keeps only parser-owned
+// location data, independent of whether any finding later needs it.
+func TestSourceOwnershipEndsAtDispatch(t *testing.T) {
+	for _, source := range []string{
+		"FROM alpine\nRUN a\n",
+		"# escape=`\nFROM alpine\nRUN a `\n b\n",
+		"FROM alpine\nCOPY <<EOF /x\nFROM busybox\nEOF\n",
+	} {
+		content := []byte(source)
+		ctx := PrepareSource(t.Context(), content, true)
+		snapshot := preparedSource(ctx, content)
+		require.Equal(t, &content[0], &snapshot.content[0], "immutable bytes are borrowed")
+		_, err := Parse(ctx, content)
+		require.NoError(t, err)
+		compact := []int{1, 2}
+		RememberSource(ctx, compact)
+		require.Equal(t, compact, DetachSource(ctx))
+		require.Nil(t, snapshot.parsed)
+		require.Nil(t, snapshot.content)
+		require.Equal(t, compact, DetachSource(ctx), "repeat transfers keep no AST")
 	}
 }

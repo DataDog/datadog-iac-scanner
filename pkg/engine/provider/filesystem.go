@@ -35,12 +35,12 @@ type FileSystemSourceProvider struct {
 	chartFilter *PathFilter
 	// mu guards paths, excludes and unfiltered, which checkConditions grows during
 	// a walk and AddUnfilteredPaths extends. SetChartFilter and ChartFilter take
-	// it defensively. SetPrebuiltWalk and ReleaseContentCache take no lock and run
-	// before a walk starts.
+	// it defensively. Source caches have their own ownership lock.
 	mu sync.RWMutex
 
 	prebuiltPaths    []string
 	chartRoots       []string
+	cacheMu          sync.Mutex
 	contentCache     map[string][]byte
 	preparedContexts map[string]func(context.Context) context.Context
 	unfiltered       map[string]struct{}
@@ -254,34 +254,33 @@ type InventoryFile struct {
 
 // SetPrebuiltWalk reuses analyzer walk inventory to skip a second tree walk.
 func (s *FileSystemSourceProvider) SetPrebuiltWalk(paths, chartRoots []string, contentCache map[string][]byte,
-	prepared ...map[string]func(context.Context) context.Context) {
+	prepared map[string]func(context.Context) context.Context) {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
 	s.prebuiltPaths = paths
 	s.chartRoots = chartRoots
 	s.contentCache = contentCache
-	if len(prepared) > 0 {
-		s.preparedContexts = prepared[0]
-	}
+	s.preparedContexts = prepared
 }
 
-// TakePreparedContext transfers ownership of the analyzer's source preparation
-// to dispatch. Removing each entry bounds retention to files still being parsed.
-func (s *FileSystemSourceProvider) TakePreparedContext(path string) func(context.Context) context.Context {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// TakeCachedSource atomically transfers both cached bytes and preparation. Even
+// rejected bytes drain their matching preparation, and no map escapes its lock.
+func (s *FileSystemSourceProvider) TakeCachedSource(path string) (content []byte, prepare func(context.Context) context.Context, ok bool) {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	content, ok = s.contentCache[path]
 	prepared := s.preparedContexts[path]
+	delete(s.contentCache, path)
 	delete(s.preparedContexts, path)
-	return prepared
-}
-
-// ContentCache returns bytes read during analyzer classification, keyed by path.
-func (s *FileSystemSourceProvider) ContentCache() map[string][]byte {
-	return s.contentCache
+	return content, prepared, ok
 }
 
 // ReleaseContentCache drops the cached file bytes: only needed during the sink
 // phase (parsed files keep their content in OriginalData), and the map is shared
 // with the scan Client, so clearing here releases both references.
 func (s *FileSystemSourceProvider) ReleaseContentCache() {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
 	clear(s.preparedContexts)
 	if s.contentCache != nil {
 		for k := range s.contentCache {

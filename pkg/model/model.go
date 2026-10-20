@@ -142,12 +142,18 @@ type HelmIDLineRange struct {
 	End   int
 }
 
-// lineInfoState holds lazy line-info state behind a pointer so FileMetadata
-// copies stay copylocks-clean (sync.Mutex must not be struct-copied).
+// lineInfoSource owns releasable source captures shared by shallow copies.
+type lineInfoSource struct {
+	mu     sync.Mutex
+	loader func(context.Context, *FileMetadata) (map[string]interface{}, error)
+}
+
+// lineInfoState keeps independent memoization behind a pointer so FileMetadata
+// copies never copy a sync.Mutex.
 type lineInfoState struct {
 	mu     sync.Mutex
 	err    error
-	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
+	source *lineInfoSource
 }
 
 // linesLazyState guards the one-time computation of LinesOriginalData from
@@ -225,7 +231,7 @@ func (f *FileMetadata) SetLineInfoLoader(
 		f.lineInfo = nil
 		return
 	}
-	f.lineInfo = &lineInfoState{loader: loader}
+	f.lineInfo = &lineInfoState{source: &lineInfoSource{loader: loader}}
 }
 
 // cloneLineInfoState returns an independent lazy state that shares loader.
@@ -233,7 +239,7 @@ func cloneLineInfoState(src *lineInfoState) *lineInfoState {
 	if src == nil {
 		return nil
 	}
-	return &lineInfoState{loader: src.loader}
+	return &lineInfoState{source: src.source}
 }
 
 // SetLazyLines configures on-demand computation of LinesOriginalData from
@@ -373,12 +379,23 @@ func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (
 // detectors have run and line-info documents are lazily reparsed — reclaiming
 // the raw input content before the report phase.
 func (f *FileMetadata) ReleasePostEvalData() {
+	st := f.lineInfo
+	if st != nil {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+	}
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
 	f.linesLazy = nil
-	// A loader may retain immutable source preparation. No further source
-	// locations can be requested after this post-evaluation release.
-	f.lineInfo = nil
+	// The state pointer stays stable for concurrent readers. Clones share this
+	// releasable loader holder, so one release also drops their source captures.
+	if st != nil {
+		if st.source != nil {
+			st.source.mu.Lock()
+			st.source.loader = nil
+			st.source.mu.Unlock()
+		}
+	}
 }
 
 // DiscardLineInfoDocument drops a memoized line-info tree while keeping the
@@ -456,10 +473,16 @@ func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
 	if st.err != nil {
 		return st.err
 	}
-	if st.loader == nil {
+	if st.source == nil {
 		return nil
 	}
-	doc, err := st.loader(ctx, f)
+	st.source.mu.Lock()
+	loader := st.source.loader
+	st.source.mu.Unlock()
+	if loader == nil {
+		return nil
+	}
+	doc, err := loader(ctx, f)
 	if err != nil {
 		st.err = err
 		return err

@@ -7,9 +7,12 @@
 package utils
 
 import (
+	"bytes"
+	"context"
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
@@ -36,6 +39,8 @@ const (
 )
 
 type fileType struct {
+	source          func(context.Context) func(context.Context) context.Context
+	prepare         func(context.Context, []byte) context.Context
 	contentCheck    ContentCheck
 	platform        string
 	caseInsensitive bool
@@ -52,11 +57,15 @@ var supportedFileTypes = map[string]fileType{
 	".dockerfile": {platform: platforms.Dockerfile, caseInsensitive: true},
 	"Dockerfile":  {platform: platforms.Dockerfile, caseInsensitive: true},
 	PossibleDockerfile: {
-		platform: platforms.Dockerfile, contentCheck: DockerfileContent,
+		platform: platforms.Dockerfile, contentCheck: DockerfileContent, prepare: prepareDockerCandidate, source: dockerfile.SourceContext,
 		caseInsensitive: true, pattern: "Dockerfile.*",
 	},
-	".debian":          {platform: platforms.Dockerfile, contentCheck: DockerfileContent},
-	".ubi8":            {platform: platforms.Dockerfile, contentCheck: DockerfileContent},
+	".debian": {
+		platform: platforms.Dockerfile, contentCheck: DockerfileContent, prepare: prepareDockerCandidate, source: dockerfile.SourceContext,
+	},
+	".ubi8": {
+		platform: platforms.Dockerfile, contentCheck: DockerfileContent, prepare: prepareDockerCandidate, source: dockerfile.SourceContext,
+	},
 	tfpath.ExtTF:       {platform: platforms.Terraform},
 	tfpath.ExtTofu:     {platform: platforms.Terraform},
 	tfpath.ExtTFJSON:   {platform: platforms.Terraform, caseInsensitive: true},
@@ -130,4 +139,33 @@ func FilePatterns() []FilePattern {
 		patterns = append(patterns, rule)
 	}
 	return patterns
+}
+
+// NormalizeSource returns the original immutable bytes unless CRLF is present.
+func NormalizeSource(content []byte) []byte {
+	if !bytes.Contains(content, []byte("\r\n")) {
+		return content
+	}
+	return bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+}
+
+// PrepareFileContext runs the registered content preparation before routing.
+func PrepareFileContext(ctx context.Context, path string, content []byte) (prepared context.Context, normalized []byte) {
+	if hook := supportedFileTypes[ExtensionFromPath(path)].prepare; hook != nil {
+		content = NormalizeSource(content)
+		ctx = hook(ctx, content)
+	}
+	return ctx, content
+}
+
+func prepareDockerCandidate(ctx context.Context, content []byte) context.Context {
+	return dockerfile.PrepareSource(ctx, content, true)
+}
+
+// PreparedFileContext transfers registered preparation across scan phases.
+func PreparedFileContext(ctx context.Context, path string) func(context.Context) context.Context {
+	if source := supportedFileTypes[ExtensionFromPath(path)].source; source != nil {
+		return source(ctx)
+	}
+	return nil
 }

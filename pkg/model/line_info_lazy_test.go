@@ -130,3 +130,41 @@ func TestFileMetadata_ShallowCopyPreservesLazyLoader(t *testing.T) {
 	require.NoError(t, src.EnsureLineInfoDocument(context.Background()))
 	require.NotNil(t, src.LineInfoDocument)
 }
+
+// Release serializes with an in-flight lazy location request and leaves the
+// shared loader empty for every copy, without replacing synchronization state.
+func TestLineInfoReleaseSerializesWithLoading(t *testing.T) {
+	for _, mode := range []string{"original", "copy", "discarded"} {
+		t.Run(mode, func(t *testing.T) {
+			file := &FileMetadata{OriginalData: "FROM alpine"}
+			file.SetLazyLines()
+			entered, finish := make(chan struct{}), make(chan struct{})
+			file.SetLineInfoLoader(func(_ context.Context, f *FileMetadata) (map[string]interface{}, error) {
+				close(entered)
+				<-finish
+				return Document{"source": f.OriginalData}, nil
+			})
+			copy := file.ShallowCopy()
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() { defer wg.Done(); require.NoError(t, file.EnsureLineInfoDocument(t.Context())) }()
+			<-entered
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if mode == "copy" {
+					copy.ReleasePostEvalData()
+				} else {
+					file.ReleasePostEvalData()
+				}
+			}()
+			close(finish)
+			wg.Wait()
+			if mode == "discarded" {
+				file.DiscardLineInfoDocument()
+			}
+			require.Nil(t, file.lineInfo.source.loader)
+			require.Nil(t, copy.lineInfo.source.loader)
+		})
+	}
+}

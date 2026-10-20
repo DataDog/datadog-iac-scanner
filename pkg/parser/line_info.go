@@ -6,10 +6,10 @@
 package parser
 
 import (
-	"bytes"
 	"context"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 type lineInfoOnlyKey struct{}
@@ -51,9 +51,7 @@ func (c *Parser) PrepareContext(ctx context.Context, path string, content []byte
 	}); ok {
 		// Match the bytes document parsing receives. Formats without this hook
 		// retain their existing exclusion/classification input unchanged.
-		if bytes.Contains(content, []byte("\r\n")) {
-			content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
-		}
+		content = utils.NormalizeSource(content)
 		return hook.PrepareContext(ctx, path, content), content
 	}
 	return ctx, content

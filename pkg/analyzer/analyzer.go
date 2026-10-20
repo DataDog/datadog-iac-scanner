@@ -585,10 +585,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	if utils.ContentCheckForFileType(ext) == utils.DockerfileContent {
-		content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
-		ctx = dockersource.PrepareSource(ctx, content, true)
-	}
+	ctx, content = utils.PrepareFileContext(ctx, a.filePath, content)
 	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)
 	if platform == "" {
 		unwanted <- a.filePath
@@ -601,7 +598,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 	if a.preparedContexts != nil {
-		if prepared := dockersource.SourceContext(ctx); prepared != nil {
+		if prepared := utils.PreparedFileContext(ctx, a.filePath); prepared != nil {
 			a.preparedContexts.Store(a.filePath, prepared)
 		}
 	}

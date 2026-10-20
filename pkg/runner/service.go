@@ -445,12 +445,12 @@ func newLineInfoLoader(
 	openAPIResolveReferences bool,
 	isMinified bool,
 	maxResolverDepth int,
-	prepare ...func(context.Context) context.Context,
+	prepare func(context.Context) context.Context,
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return newLineInfoLoaderWithReparser(filename, docIdx,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
-			if len(prepare) > 0 && prepare[0] != nil {
-				ctx = prepare[0](ctx)
+			if prepare != nil {
+				ctx = prepare(ctx)
 			}
 			return p.Parse(p.LineInfoContext(ctx, f),
 				filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)

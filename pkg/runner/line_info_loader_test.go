@@ -49,7 +49,7 @@ func TestEnsureLineInfoDocument_matchesEagerParse(t *testing.T) {
 		FilePath:          path,
 		LinesOriginalData: utils.SplitLines(parsed.Content),
 	}
-	loader := newLineInfoLoader(p, path, 0, false, false, 15)
+	loader := newLineInfoLoader(p, path, 0, false, false, 15, nil)
 	lazyDoc, err := loader(ctx, file)
 	require.NoError(t, err)
 
@@ -88,7 +88,7 @@ func TestEnsureLineInfoDocument_minifiedTFPlanUsesOriginalData(t *testing.T) {
 		FilePath:          path,
 		LinesOriginalData: utils.SplitLines(parsed.Content),
 	}
-	loader := newLineInfoLoader(p, path, 0, false, false, 1)
+	loader := newLineInfoLoader(p, path, 0, false, false, 1, nil)
 	lazyDoc, err := loader(ctx, file)
 	require.NoError(t, err)
 	require.False(t, reflect.DeepEqual(eagerFromMinified[0], lazyDoc),
@@ -112,7 +112,7 @@ func TestDockerLineInfoReusesSourceParse(t *testing.T) {
 	source := "FROM alpine\nCOPY <<EOF /x\nFROM busybox\nEOF\nrun echo hi\n"
 	file := &model.FileMetadata{OriginalData: source, Kind: model.KindDOCKER, FilePath: "Dockerfile"}
 	file.SetLazyLines()
-	file.SetLineInfoLoader(newLineInfoLoader(p, file.FilePath, 0, false, false, 15))
+	file.SetLineInfoLoader(newLineInfoLoader(p, file.FilePath, 0, false, false, 15, nil))
 	require.NoError(t, file.EnsureLineInfoDocument(t.Context()))
 	require.Contains(t, file.LineInfoDocument, "command", "the full document remains available")
 	lines := file.DetectionLines(dockerfile.SourceViewKey, func([]string) []string {
@@ -142,8 +142,42 @@ func TestLineInfoLoaderInvokesParserHook(t *testing.T) {
 		recorded = f
 	}}
 	p := buildTestParser(t, t.Context(), func(b *parser.Builder) *parser.Builder { return b.Add(hook) })
-	file.SetLineInfoLoader(newLineInfoLoader(p, file.FilePath, 0, false, false, 15))
+	file.SetLineInfoLoader(newLineInfoLoader(p, file.FilePath, 0, false, false, 15, nil))
 	require.NoError(t, file.EnsureLineInfoDocument(t.Context()))
 	require.Same(t, file, recorded)
 	require.NotEmpty(t, file.LineInfoDocument)
+}
+
+// Cached compact locations and the uncached parse must produce the same full
+// source document and logical lines, including raw declaration values.
+func TestDockerLocationPathsAgree(t *testing.T) {
+	for _, source := range []string{
+		"FROM alpine\nRUN echo caf\xe9 $V\n",
+		"FROM alpine\nRUN echo \x00 $V\n",
+		"FROM alpine\nARG V=1\nENV A=$V\nRUN echo $A\n",
+		"# escape=`\nFROM alpine\nRUN echo `\n hi\nFROM busybox\nRUN [\"echo\", \"hi\"]\n",
+		"FROM alpine\nCOPY <<EOF /x\nFROM busybox\nEOF\nONBUILD RUN echo hi\n",
+	} {
+		t.Run(source, func(t *testing.T) {
+			p := buildTestParser(t, t.Context(), func(b *parser.Builder) *parser.Builder { return b.Add(&dockerParser.Parser{}) })
+			ctx, content := p.PrepareContext(t.Context(), "Dockerfile", []byte(source))
+			_, err := p.Parse(ctx, "Dockerfile", content, false, false, 15)
+			require.NoError(t, err)
+			bind := p.SourceContext(ctx)
+			require.NotNil(t, bind)
+			var docs []map[string]interface{}
+			var lines [][]string
+			for _, prepare := range []func(context.Context) context.Context{nil, bind} {
+				file := &model.FileMetadata{OriginalData: string(content), Kind: model.KindDOCKER, FilePath: "Dockerfile"}
+				file.SetLazyLines()
+				loader := newLineInfoLoader(p, "Dockerfile", 0, false, false, 15, prepare)
+				doc, err := loader(t.Context(), file)
+				require.NoError(t, err)
+				docs = append(docs, doc)
+				lines = append(lines, file.DetectionLines(dockerfile.SourceViewKey, dockerfile.InstructionLines))
+			}
+			require.Equal(t, docs[0], docs[1])
+			require.Equal(t, lines[0], lines[1])
+		})
+	}
 }

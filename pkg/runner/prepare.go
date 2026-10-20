@@ -20,10 +20,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// contentCacheMu guards concurrent deletes from the shared contentCache map
-// during parallel dispatchFile calls.
-var contentCacheMu sync.Mutex
-
 // DiskSourceProvider returns the disk provider when every service shares one.
 func DiskSourceProvider(services []*Service) (*provider.FileSystemSourceProvider, bool) {
 	if len(services) == 0 {
@@ -336,27 +332,13 @@ func (diskSource) chartFailed(string) {}
 func (diskSource) excluded(context.Context, string, []byte) bool { return false }
 
 func (d diskSource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
-	if contentCache := d.ContentCache(); contentCache != nil {
-		norm := filepath.ToSlash(filePath)
-		contentCacheMu.Lock()
-		cached, ok := contentCache[norm]
-		contentCacheMu.Unlock()
-		if ok {
-			c, getErr := contentFromBytes(cached, maxFileSize, filePath)
-			// contentFromBytes copies the bytes: delete the cache entry so the raw-byte
-			// cache drains during the walk (concurrent, so guard the write).
-			contentCacheMu.Lock()
-			delete(contentCache, norm)
-			contentCacheMu.Unlock()
-			if getErr != nil {
-				// The cached content was rejected (e.g. over the size limit);
-				// re-reading the file from disk would only fail the same way,
-				// so surface the error directly.
-				return nil, nil, errors.Wrapf(getErr, "failed to get file content: %s", filePath)
-			}
-			c.prepareContext = d.TakePreparedContext(norm)
-			return c, nil, nil
+	if cached, prepare, ok := d.TakeCachedSource(filepath.ToSlash(filePath)); ok {
+		c, err := contentFromBytes(cached, maxFileSize, filePath)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to get file content: %s", filePath)
 		}
+		c.prepareContext = prepare
+		return c, nil, nil
 	}
 	f, err := os.Open(filepath.Clean(filePath))
 	if err != nil {

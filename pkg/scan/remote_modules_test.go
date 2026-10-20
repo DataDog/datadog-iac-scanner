@@ -271,7 +271,7 @@ func TestRemoteModuleFilesBypassPrebuiltInventoryFilters(t *testing.T) {
 		context.Background(), []string{root}, nil, []string{root},
 	)
 	require.NoError(t, err)
-	files.SetPrebuiltWalk([]string{rootFile}, nil, nil)
+	files.SetPrebuiltWalk([]string{rootFile}, nil, nil, nil)
 	files.AddUnfilteredPaths([]string{moduleFile})
 
 	inventory, err := files.BuildInventoryFromPrebuilt(

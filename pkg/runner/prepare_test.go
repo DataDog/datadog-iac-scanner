@@ -766,6 +766,9 @@ func (p *observingDockerParser) PrepareContext(ctx context.Context, path string,
 
 func (p *observingDockerParser) Parse(ctx context.Context, content []byte, path string, resolve bool, depth int) (
 	[]byte, []model.Document, []int, map[string]model.ResolvedFile, error) {
+	if parser.IsLineInfoOnly(ctx) {
+		return p.Parser.Parse(ctx, content, path, resolve, depth)
+	}
 	p.mu.Lock()
 	previous := p.asts[path]
 	p.mu.Unlock()
@@ -870,5 +873,36 @@ func TestDockerfileVariantPathFilters(t *testing.T) {
 				require.Equal(t, want, count)
 			})
 		}
+	}
+}
+
+func TestDiskCacheTransferDrainsRejectedSources(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		bytes    []byte
+		rejected bool
+	}{
+		{"valid", []byte("FROM alpine\n"), false},
+		{"empty", []byte{}, false},
+		{"over limit", make([]byte, 2*mbConst+1), true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fs, err := provider.NewFileSystemSourceProvider(t.Context(), nil, nil, nil)
+			require.NoError(t, err)
+			cached := map[string][]byte{"Dockerfile.prod": tt.bytes}
+			prepared := map[string]func(context.Context) context.Context{"Dockerfile.prod": func(ctx context.Context) context.Context { return ctx }}
+			fs.SetPrebuiltWalk(nil, nil, cached, prepared)
+			content, readErr, err := (diskSource{fs}).readContent(t.Context(), "Dockerfile.prod", 1)
+			require.NoError(t, readErr)
+			if tt.rejected {
+				require.Error(t, err)
+				require.Nil(t, content)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, content.prepareContext)
+			}
+			require.Empty(t, cached)
+			require.Empty(t, prepared)
+		})
 	}
 }

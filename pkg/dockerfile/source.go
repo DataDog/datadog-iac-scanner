@@ -30,34 +30,44 @@ func WithSourceLines(ctx context.Context, original []string, record func([]strin
 
 type preparedSourceKey struct{}
 type sourceSnapshot struct {
+	mu        sync.Mutex
 	once      sync.Once
 	candidate bool
 	content   []byte
 	parsed    *parser.Result
 	err       error
+	data      any
 }
 
 func preparedSource(ctx context.Context, content []byte) *sourceSnapshot {
 	prepared, _ := ctx.Value(preparedSourceKey{}).(*sourceSnapshot)
-	if prepared != nil && bytes.Equal(prepared.content, content) {
-		return prepared
+	if prepared != nil {
+		prepared.mu.Lock()
+		matches := bytes.Equal(prepared.content, content)
+		prepared.mu.Unlock()
+		if matches {
+			return prepared
+		}
 	}
 	return nil
 }
 
 // PrepareSource computes an immutable, content-bound source snapshot for one
-// dispatch. Candidate headers are screened before parsing; classification and
+// dispatch. content must remain immutable until dispatch completes. Candidate
+// headers are screened before parsing; classification and
 // document parsing share the result, including parse errors. No global cache is
 // retained. Callers must treat the returned AST as read-only.
 func PrepareSource(ctx context.Context, content []byte, candidate bool) context.Context {
 	if preparedSource(ctx, content) != nil {
 		return ctx
 	}
-	prepared := &sourceSnapshot{content: bytes.Clone(content), candidate: candidate}
+	prepared := &sourceSnapshot{content: content, candidate: candidate}
 	return context.WithValue(ctx, preparedSourceKey{}, prepared)
 }
 
 func (s *sourceSnapshot) parse() (*parser.Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.once.Do(func() {
 		if s.candidate {
 			s.parsed, s.err = parseCandidate(bytes.NewReader(s.content))
@@ -70,7 +80,7 @@ func (s *sourceSnapshot) parse() (*parser.Result, error) {
 
 // SourceContext transfers only the immutable snapshot, without retaining an
 // analysis context's cancellation or other request state. The recipient can
-// reuse it for document parsing and lazy line-info generation.
+// reuse it for document parsing during dispatch.
 func SourceContext(ctx context.Context) func(context.Context) context.Context {
 	prepared, _ := ctx.Value(preparedSourceKey{}).(*sourceSnapshot)
 	if prepared == nil {
@@ -144,4 +154,27 @@ func FromArguments(original string) string {
 		return ""
 	}
 	return strings.TrimSpace(original[end:])
+}
+
+// RememberSource stores compact parser-owned location data for transfer to lazy
+// location requests. It must not retain the BuildKit tree or source byte slice.
+func RememberSource(ctx context.Context, data any) {
+	if source, _ := ctx.Value(preparedSourceKey{}).(*sourceSnapshot); source != nil {
+		source.mu.Lock()
+		defer source.mu.Unlock()
+		source.data = data
+	}
+}
+
+// DetachSource transfers compact location data and drops the dispatch-only AST
+// and bytes. Called after classification and document parsing have finished.
+func DetachSource(ctx context.Context) any {
+	source, _ := ctx.Value(preparedSourceKey{}).(*sourceSnapshot)
+	if source == nil {
+		return nil
+	}
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	source.content, source.parsed = nil, nil
+	return source.data
 }
