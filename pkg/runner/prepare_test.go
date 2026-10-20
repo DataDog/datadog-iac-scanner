@@ -235,6 +235,9 @@ func TestPrepareMemorySources_DockerfileCandidates(t *testing.T) {
 		"Dockerfile.args":      []byte("ARG IMAGE=alpine\n"),
 		"Dockerfile.arg-run":   []byte("ARG IMAGE=alpine\nRUN echo hi\nFROM $IMAGE\n"),
 		"Dockerfile.bak":       []byte("not a Dockerfile\n"),
+		"Dockerfile.go":        []byte("package dockerfile\n"),
+		"Dockerfile.zip":       []byte("PK\x03\x04\x00\x00"),
+		"Dockerfile.custom":    []byte("FROM alpine\n"),
 		"valid/Dockerfile.bak": []byte("FROM alpine\n"),
 		"Dockerfile.j2":        []byte("FROM alpine\n"),
 		"image.ubi8":           []byte("ARG IMAGE=alpine\n"),
@@ -252,7 +255,7 @@ func TestPrepareMemorySources_DockerfileCandidates(t *testing.T) {
 			paths = append(paths, filepath.ToSlash(file.FilePath))
 		}
 	}
-	require.ElementsMatch(t, []string{"Dockerfile.prod", "Dockerfile.j2"}, paths)
+	require.ElementsMatch(t, []string{"Dockerfile.prod", "Dockerfile.j2", "Dockerfile.custom", "valid/Dockerfile.bak"}, paths)
 	require.Empty(t, memfs.MissingFiles())
 }
 

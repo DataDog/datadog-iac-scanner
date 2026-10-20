@@ -71,6 +71,13 @@ func TestExcludedByContent(t *testing.T) {
 		excluded      bool
 	}{
 		{"Dockerfile.prod", "ARG X\n", true},
+		{"Dockerfile.custom-profile", "FROM alpine\n", false},
+		{"Dockerfile.custom-profile", "not a Dockerfile\n", true},
+		{"Dockerfile.go", "package dockerfile\n", true},
+		{"Dockerfile.go", "FROM alpine\n", false},
+		{"Dockerfile.bak", "not a Dockerfile\n", true},
+		{"Dockerfile.bak", "FROM alpine\n", false},
+		{"Dockerfile.zip", "PK\x03\x04\x00\x00", true},
 		{"Dockerfile.prod", "ARG X\nRUN echo hi\nFROM alpine\n", true},
 		{"Dockerfile.prod", "ARG X\nFROM alpine\n", false},
 		{"image.ubi8", "ARG X\n", true},

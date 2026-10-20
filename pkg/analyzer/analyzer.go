@@ -86,27 +86,7 @@ var (
 var (
 	listKeywordsGoogleDeployment = []string{"resources"}
 	armRegexTypes                = []string{"blueprint", "templateArtifact", "roleAssignmentArtifact", "policyAssignmentArtifact"}
-	possibleFileTypes            = map[string]bool{
-		yml:                   true,
-		yaml:                  true,
-		json:                  true,
-		sh:                    true,
-		extDockerfile:         true,
-		nameDockerfile:        true,
-		extPossibleDockerfile: true,
-		extDebian:             true,
-		extUbi8:               true,
-		extTf:                 true,
-		extTofu:               true,
-		extTfJSON:             true,
-		extTofuJSON:           true,
-		extTfvars:             true,
-		extProto:              true,
-		extCfg:                true,
-		extConf:               true,
-		extIni:                true,
-		extBicepFile:          true,
-	}
+
 	supportedRegexes = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
 		"buildah":              {"buildah"},
@@ -132,12 +112,7 @@ var (
 // scanner can analyze. Exposed so the server's supported-files endpoint can
 // stay in sync with the scanner's capabilities.
 func PossibleFileTypes() []string {
-	out := make([]string, 0, len(possibleFileTypes))
-	for k := range possibleFileTypes {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
+	return utils.SupportedFileTypes()
 }
 
 const (
@@ -461,7 +436,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			if ext == "" {
 				return nil
 			}
-			if _, ok := possibleFileTypes[ext]; !ok {
+			if !utils.IsSupportedFileType(ext) {
 				return nil
 			}
 

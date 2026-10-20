@@ -1008,7 +1008,7 @@ func TestAnalyze_DockerfileCandidateFiltering(t *testing.T) {
 				"dockerfile.tf":      "resource \"aws_s3_bucket\" \"b\" {}\n",
 				"dockerfile.yaml":    "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test\nspec:\n  containers: []\n",
 				"dockerfile.json":    "{\"terraform_version\":\"1.5.0\",\"planned_values\":{},\"resource_changes\":[],\"configuration\":{}}",
-				"dockerfile.go":      "FROM alpine\nRUN echo should-not-be-read\n",
+				"dockerfile.go":      "FROM alpine\nRUN echo dockerfile-content\n",
 			} {
 				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
 			}
@@ -1016,17 +1016,20 @@ func TestAnalyze_DockerfileCandidateFiltering(t *testing.T) {
 			require.NoError(t, err)
 			want := []string{filepath.ToSlash(filepath.Join(dir, "dockerfile.tf")), filepath.ToSlash(filepath.Join(dir, "dockerfile.json"))}
 			if types[0] == "" {
+				// An unregistered suffix uses content, even if it resembles a source extension.
 				want = append(want, filepath.ToSlash(filepath.Join(dir, "Dockerfile.prod")),
-					filepath.ToSlash(filepath.Join(dir, "dockerfile.yaml")))
+					filepath.ToSlash(filepath.Join(dir, "dockerfile.yaml")),
+					filepath.ToSlash(filepath.Join(dir, "dockerfile.go")))
+			} else {
+				require.NotContains(t, got.ContentCache, filepath.ToSlash(filepath.Join(dir, "dockerfile.go")))
 			}
 			require.ElementsMatch(t, want, got.Inventory)
-			require.NotContains(t, got.ContentCache, filepath.ToSlash(filepath.Join(dir, "dockerfile.go")))
 		})
 	}
 }
 
 func TestClassifyFile_DockerfileContent(t *testing.T) {
-	for _, path := range []string{"Dockerfile.prod", "Dockerfile.j2", "image.ubi8", "image.debian"} {
+	for _, path := range []string{"Dockerfile.prod", "Dockerfile.custom-profile", "Dockerfile.go", "Dockerfile.bak", "Dockerfile.zip", "Dockerfile.j2", "image.ubi8", "image.debian"} {
 		for _, tt := range []struct {
 			name, body, want string
 		}{

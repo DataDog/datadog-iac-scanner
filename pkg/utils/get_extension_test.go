@@ -47,6 +47,7 @@ func TestDockerfileExtensions(t *testing.T) {
 		{"api.Dockerfile", ".dockerfile"},
 		{"api.DOCKERFILE", ".dockerfile"},
 		{"Dockerfile.prod", "possibleDockerfile"},
+		{"Dockerfile.custom-profile", "possibleDockerfile"},
 		{"dockerfile.dev", "possibleDockerfile"},
 		{"Dockerfile.ubi8", "possibleDockerfile"},
 		{"dockerfile.tf", ".tf"},
@@ -56,30 +57,29 @@ func TestDockerfileExtensions(t *testing.T) {
 		{"dockerfile.yaml", ".yaml"},
 		{"dockerfile.yml", ".yml"},
 		{"dockerfile.json", ".json"},
-		{"dockerfile.go", ".go"},
-		{"dockerfile.py", ".py"},
-		{"dockerfile.ts", ".ts"},
+		{"dockerfile.go", "possibleDockerfile"},
+		{"dockerfile.py", "possibleDockerfile"},
+		{"dockerfile.ts", "possibleDockerfile"},
 		{"Dockerfile.bicep", ".bicep"},
 		{"Dockerfile.sh", ".sh"},
-		{"Dockerfile.dockerignore", ".dockerignore"},
+		{"Dockerfile.dockerignore", "possibleDockerfile"},
 		{"api.Dockerfile.dockerignore", ".dockerignore"},
-		{"Dockerfile.bak", ".bak"},
-		{"Dockerfile.orig", ".orig"},
-		{"Dockerfile.save", ".save"},
-		{"Dockerfile.swp", ".swp"},
-		{"Dockerfile.tmp", ".tmp"},
-		{"Dockerfile.rej", ".rej"},
-		{"Dockerfile.patch", ".patch"},
-		{"Dockerfile.diff", ".diff"},
-		{"Dockerfile.gz", ".gz"},
-		{"Dockerfile.tgz", ".tgz"},
-		{"Dockerfile.tar", ".tar"},
-		{"Dockerfile.zip", ".zip"},
-		{"Dockerfile.xz", ".xz"},
-		{"Dockerfile.bz2", ".bz2"},
-		{"DOCKERFILE.BAK", ".BAK"},
-		// Templates remain candidates: plain Dockerfile templates can be scanned
-		// when their content passes the ordinary Dockerfile gate.
+		{"Dockerfile.bak", "possibleDockerfile"},
+		{"Dockerfile.orig", "possibleDockerfile"},
+		{"Dockerfile.save", "possibleDockerfile"},
+		{"Dockerfile.swp", "possibleDockerfile"},
+		{"Dockerfile.tmp", "possibleDockerfile"},
+		{"Dockerfile.rej", "possibleDockerfile"},
+		{"Dockerfile.patch", "possibleDockerfile"},
+		{"Dockerfile.diff", "possibleDockerfile"},
+		{"Dockerfile.gz", "possibleDockerfile"},
+		{"Dockerfile.tgz", "possibleDockerfile"},
+		{"Dockerfile.tar", "possibleDockerfile"},
+		{"Dockerfile.zip", "possibleDockerfile"},
+		{"Dockerfile.xz", "possibleDockerfile"},
+		{"Dockerfile.bz2", "possibleDockerfile"},
+		{"DOCKERFILE.BAK", "possibleDockerfile"},
+		// All unregistered suffixes, including templates, use the same content gate.
 		{"Dockerfile.j2", "possibleDockerfile"},
 		{"Dockerfile.tpl", "possibleDockerfile"},
 		{"Dockerfile.template", "possibleDockerfile"},
@@ -95,6 +95,19 @@ func TestDockerfileExtensions(t *testing.T) {
 			require.Empty(t, fsys.MissingFiles())
 		})
 	}
+}
+
+func TestDockerfileExtensionPrefersRegisteredFormat(t *testing.T) {
+	// A newly registered format takes precedence without changing Dockerfile detection.
+	const extension = ".new-format"
+	supportedFileTypes[extension] = fileType{}
+	t.Cleanup(func() { delete(supportedFileTypes, extension) })
+	path := "Dockerfile" + extension
+	require.Equal(t, extension, ExtensionFromPath(path))
+	fsys := vfs.NewMemFS(map[string][]byte{path: []byte("FROM alpine\n")})
+	ext, err := GetExtensionWithFS(t.Context(), fsys, path)
+	require.NoError(t, err)
+	require.Equal(t, extension, ext)
 }
 
 func TestGetExtension(t *testing.T) {

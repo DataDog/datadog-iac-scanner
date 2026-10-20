@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	ansibleConfigParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/config"
 	ansibleHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
@@ -22,6 +23,7 @@ import (
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	dockerComposeParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -43,13 +45,21 @@ func TestAnalyzerFileTypesHaveParsers(t *testing.T) {
 		Add(&jsonParser.Parser{}).
 		Build([]string{""}, []string{""})
 	require.NoError(t, err)
+	tokens := analyzer.PossibleFileTypes()
 	claimed := make(map[string]bool)
 	for _, p := range parsers {
 		for _, extension := range p.Parsers.SupportedExtensions() {
 			claimed[extension] = true
+			t.Run("registered/"+extension, func(t *testing.T) {
+				require.Contains(t, tokens, extension, "registered parser extension is missing from routing")
+				if p.Parsers.GetKind() != model.KindDOCKER {
+					require.Equal(t, extension, utils.ExtensionFromPath("Dockerfile"+extension),
+						"registered formats must take precedence over Dockerfile filename candidates")
+				}
+			})
 		}
 	}
-	for _, token := range analyzer.PossibleFileTypes() {
+	for _, token := range tokens {
 		t.Run(token, func(t *testing.T) {
 			require.True(t, claimed[token], "analyzer token %q has no registered parser", token)
 		})

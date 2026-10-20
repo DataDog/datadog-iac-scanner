@@ -21,8 +21,8 @@ import (
 var extensionNameTargets = []string{"tfvars", "possibleDockerfile"}
 
 // dockerfileExtension recognizes Dockerfile and <name>.Dockerfile in any case.
-// Dockerfile.<name> needs a content check, unless its extension already identifies
-// another format. In particular, source files must not enter the Dockerfile workers.
+// Dockerfile.<name> is a content-checked candidate only after registered formats
+// have had precedence. Unregistered suffixes have the same content-based policy.
 func dockerfileExtension(path, ext string) (string, bool) {
 	lower := strings.ToLower(filepath.Base(path))
 	switch {
@@ -30,29 +30,13 @@ func dockerfileExtension(path, ext string) (string, bool) {
 		return "Dockerfile", true
 	case strings.HasSuffix(lower, ".dockerfile"):
 		return ".dockerfile", true
-	case strings.HasPrefix(lower, "dockerfile.") && !isNonDockerfileExtension(ext):
-		return "possibleDockerfile", true
+	case strings.HasPrefix(lower, "dockerfile."):
+		format, registered := supportedFileTypes[strings.ToLower(ext)]
+		if !registered || format.dockerfile {
+			return "possibleDockerfile", true
+		}
 	}
 	return "", false
-}
-
-// isNonDockerfileExtension preserves scanner formats and common source/data
-// extensions. Keep this list independent of OS MIME databases so classification
-// is the same on disk, in MemFS, and on every supported operating system.
-func isNonDockerfileExtension(ext string) bool {
-	switch strings.ToLower(ext) {
-	case ".tf", ".tofu", ".tf.json", ".tofu.json", ".tfvars", ".json", ".yaml", ".yml",
-		".sh", ".bicep", ".proto", ".cfg", ".conf", ".ini":
-		return true
-	case ".go", ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".h", ".cc", ".cpp", ".hpp",
-		".cs", ".rb", ".rs", ".php", ".swift", ".kt", ".kts", ".scala", ".lua", ".pl", ".r", ".sql", ".rego":
-		return true
-	case ".dockerignore", ".md", ".rst", ".txt", ".toml", ".xml", ".html", ".css", ".scss", ".less",
-		".csv", ".svg", ".lock", ".mod", ".sum", ".bak", ".orig", ".save", ".swp", ".tmp",
-		".rej", ".patch", ".diff", ".gz", ".tgz", ".tar", ".zip", ".xz", ".bz2":
-		return true
-	}
-	return false
 }
 
 // ExtensionFromPath returns the extension from path alone (no stat/read).
