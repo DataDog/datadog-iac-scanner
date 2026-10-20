@@ -50,6 +50,7 @@ var dockerfileAuxiliarySuffixes = []string{
 	".gz", ".tgz", ".tar", ".zip", ".xz", ".bz2",
 	".j2", ".tpl", ".template", ".erb", ".gotmpl", ".tmpl", ".in", ".jinja2", ".mustache",
 	".old", ".backup", ".example", ".swo", ".dockerignore", "~",
+	".jinja", ".sample", ".dist", ".bk", ".disabled", ".hbs", ".njk",
 }
 
 func isDockerfileAuxiliary(lower string) bool {

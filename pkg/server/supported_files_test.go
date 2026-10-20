@@ -143,6 +143,13 @@ func TestSupportedFiles_MatchingPrecedence(t *testing.T) {
 		{"Dockerfile.backup", "", ""},
 		{"Dockerfile.example", "", ""},
 		{"Dockerfile.swo", "", ""},
+		{"Dockerfile.jinja", "", ""},
+		{"Dockerfile.sample", "", ""},
+		{"Dockerfile.dist", "", ""},
+		{"Dockerfile.bk", "", ""},
+		{"Dockerfile.disabled", "", ""},
+		{"Dockerfile.hbs", "", ""},
+		{"Dockerfile.njk", "", ""},
 
 		{"Dockerfile.tar.gz", "", ""},
 		{"api.DOCKERFILE", ".dockerfile", strategySingleFile},

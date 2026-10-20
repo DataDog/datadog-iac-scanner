@@ -110,6 +110,13 @@ func TestDockerfileExtensions(t *testing.T) {
 		{"Dockerfile.backup", ".backup"},
 		{"Dockerfile.example", ".example"},
 		{"Dockerfile.swo", ".swo"},
+		{"Dockerfile.jinja", ".jinja"},
+		{"Dockerfile.sample", ".sample"},
+		{"Dockerfile.dist", ".dist"},
+		{"Dockerfile.bk", ".bk"},
+		{"Dockerfile.disabled", ".disabled"},
+		{"Dockerfile.hbs", ".hbs"},
+		{"Dockerfile.njk", ".njk"},
 	} {
 		t.Run(tt.path, func(t *testing.T) {
 			require.Equal(t, tt.want, ExtensionFromPath(tt.path))
