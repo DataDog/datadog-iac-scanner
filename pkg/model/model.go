@@ -338,17 +338,17 @@ func (f *FileMetadata) LinesContaining(sub string) (indexes []int, ok bool) {
 
 // LinesMatching returns the indexes of Lines() for which pred reports true, in
 // ascending order, memoized per file under name. pred must always give the same
-// answer for a given name. ok is false when the file has no lazy line state to
-// cache on; indexes are still computed for these callers.
-func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (indexes []int, ok bool) {
+// answer for a given name. Without lazy line state, indexes are computed directly.
+func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (indexes []int) {
 	st := f.linesLazy
 	lines := f.Lines()
 	if st != nil {
 		st.matchMu.Lock()
+		var ok bool
 		indexes, ok = st.predMatches[name]
 		st.matchMu.Unlock()
 		if ok {
-			return indexes, true
+			return indexes
 		}
 	}
 
@@ -358,7 +358,7 @@ func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (
 		}
 	}
 	if st == nil {
-		return indexes, false
+		return indexes
 	}
 	st.matchMu.Lock()
 	if st.predMatches == nil {
@@ -366,7 +366,7 @@ func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (
 	}
 	st.predMatches[name] = indexes
 	st.matchMu.Unlock()
-	return indexes, true
+	return indexes
 }
 
 // ReleasePostEvalData drops OriginalData and LinesOriginalData after eval —

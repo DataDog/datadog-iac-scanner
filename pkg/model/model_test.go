@@ -133,15 +133,22 @@ func TestNewHelmAttribution(t *testing.T) {
 }
 
 func TestLinesMatchingWithoutLazyCache(t *testing.T) {
-	for _, cached := range []bool{false, true} {
-		f := &FileMetadata{LinesOriginalData: &[]string{"FROM alpine", "RUN a", "FROM busybox"}}
-		if cached {
-			f.OriginalData = "FROM alpine\nRUN a\nFROM busybox"
-			f.SetLazyLines()
+	for _, tt := range []struct {
+		lines []string
+		want  []int
+	}{
+		{[]string{}, nil},
+		{[]string{"ARG X=1", "FROM alpine", "RUN a"}, []int{1}},
+		{[]string{"FROM alpine", "RUN a", "FROM busybox"}, []int{0, 2}},
+	} {
+		for _, cached := range []bool{false, true} {
+			f := &FileMetadata{LinesOriginalData: &tt.lines}
+			if cached {
+				f.SetLazyLines()
+			}
+			indexes := f.LinesMatching("test.stages", func(line string) bool { return len(line) >= 4 && line[:4] == "FROM" })
+			require.Equal(t, tt.want, indexes)
 		}
-		indexes, ok := f.LinesMatching("test.stages", func(line string) bool { return len(line) >= 4 && line[:4] == "FROM" })
-		require.Equal(t, []int{0, 2}, indexes)
-		require.Equal(t, cached, ok)
 	}
 }
 

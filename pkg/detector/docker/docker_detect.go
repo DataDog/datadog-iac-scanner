@@ -56,23 +56,18 @@ func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata
 		match = file.DetectionView("docker.instructions", func([]string) []string { return normalized })
 	}
 	lines := match.Lines()
-	search := instructionKeySearch{view: match, lines: lines, starts: stageStartLines(match)}
+	search := instructionKeySearch{view: match, lines: lines, starts: stageStartLines(match), exactStages: make(map[string][]int)}
+	// O(S) setup: all keys share the same stage argument index.
+	for stage, line := range search.starts {
+		args := dockerfile.FromArguments(lines[line])
+		search.exactStages[args] = append(search.exactStages[args], stage)
+	}
 	for _, key := range strings.Split(sKey, ".") {
 		first, second := detector.GenerateSubstrings(ctx, key, extractedString, lines, 0)
-		search.keys = append(search.keys, instructionKey{first, second})
+		search.keys = append(search.keys, search.prepareKey(first, second))
 	}
-	// Multiple explicit stage selectors can revisit the same suffix during
-	// backtracking. Memoize those states to avoid combinatorial searches.
-	fromKeys := 0
-	for _, key := range search.keys {
-		if isFromInstruction(key.first) {
-			fromKeys++
-		}
-	}
-	if fromKeys > 1 {
-		search.attempts = make(map[stageSearch]instructionMatch)
-	}
-	result := search.find(0, len(lines), instructionMatch{})
+	search.attempts = make(map[stageSearch]instructionMatch)
+	result := search.find(0, -1, instructionMatch{})
 
 	if result.matched > 0 {
 		return model.VulnerabilityLines{
@@ -100,74 +95,104 @@ func isFromInstruction(line string) bool {
 	return strings.EqualFold(line[word.start:word.end], command.From)
 }
 
-type instructionKey struct{ first, second string }
+type instructionKey struct {
+	first, second string
+	accept        func(int, string) bool
+	from          bool
+	exact         []int
+}
 type instructionMatch struct {
 	line, matched int
 	start, end    model.ResourceLine
 }
-type stageSearch struct{ key, line, end int }
+type stageSearch struct{ key, line, stage int }
 
 type instructionKeySearch struct {
-	view     *model.FileMetadata
-	lines    []string
-	starts   []int
-	keys     []instructionKey
-	attempts map[stageSearch]instructionMatch
+	view        *model.FileMetadata
+	lines       []string
+	starts      []int
+	exactStages map[string][]int
+	keys        []instructionKey
+	attempts    map[stageSearch]instructionMatch
 }
 
-// find retries a FROM selection when its remaining keys fail. Each attempt has
-// its own stage bound. If no attempt completes, keep the longest matched prefix
-// (and the earliest attempt on ties), preserving partial-location fallback.
-func (s *instructionKeySearch) find(keyIndex, end int, result instructionMatch) (found instructionMatch) {
-	if s.attempts != nil {
-		state := stageSearch{keyIndex, result.line, end}
-		if previous, ok := s.attempts[state]; ok {
-			return previous
-		}
-		defer func() { s.attempts[state] = found }()
+// prepareKey does normalization and exact-stage lookup once per key, independent
+// of how many candidate stages must be searched.
+func (s *instructionKeySearch) prepareKey(first, second string) instructionKey {
+	first, second, accept := instructionSearch(s.view, first, second)
+	key := instructionKey{first: first, second: second, accept: accept, from: accept != nil && isFromInstruction(first)}
+	if first == "FROM" && second != "" {
+		key.exact = s.exactStages[second]
 	}
-	for ; keyIndex < len(s.keys); keyIndex++ {
-		key := s.keys[keyIndex]
-		stage := isFromInstruction(key.first)
-		limit := end
-		if stage {
-			limit = len(s.lines)
+	return key
+}
+
+// find tries stage selections in source order, including selections made by
+// ordinary keys after a global ARG. Ordinary keys stay in the selected stage;
+// an explicit FROM may select a later one. Failed attempts retain the longest
+// matched prefix, with the earliest attempt winning ties.
+func (s *instructionKeySearch) find(keyIndex, stage int, result instructionMatch) (found instructionMatch) {
+	if keyIndex == len(s.keys) {
+		return result
+	}
+	state := stageSearch{keyIndex, result.line, stage}
+	if previous, ok := s.attempts[state]; ok {
+		return previous
+	}
+	defer func() { s.attempts[state] = found }()
+	key := s.keys[keyIndex]
+	firstStage, lastStage := stage, stage
+	if key.from || stage < 0 {
+		firstStage = sort.Search(len(s.starts), func(i int) bool { return s.starts[i] >= result.line })
+		if !key.from {
+			firstStage = -1 // The preamble has not selected a build stage yet.
 		}
-		first, second, accept := instructionSearch(s.view, s.starts, key.first, key.second, result.line)
-		det := &detector.DefaultDetectLineResponse{File: s.view, CurrentLine: result.line, AcceptLine: accept, EndLine: limit}
-		best := result
-		for det.CurrentLine < limit {
-			_, start, finish, _ := det.DetectCurrentLine(first, second, 0, s.lines, model.KindDOCKER)
-			if det.IsBreak {
-				return best
-			}
-			found := instructionMatch{line: det.CurrentLine, matched: result.matched + 1, start: start, end: finish}
-			// Global ARG selectors do not select a stage. A match at or after the
-			// first FROM selects its containing stage, including literal selectors.
-			next := sort.SearchInts(s.starts, det.CurrentLine+1)
-			bound := len(s.lines)
-			if next > 0 && next < len(s.starts) {
-				bound = s.starts[next]
-			}
-			if !stage {
-				result, end = found, bound
+		lastStage = len(s.starts) - 1
+	}
+	exact := sort.SearchInts(key.exact, firstStage)
+	useExact := key.from && exact < len(key.exact)
+	best := result
+	for candidate := firstStage; candidate <= lastStage; candidate++ {
+		if useExact {
+			if exact == len(key.exact) {
 				break
 			}
-			attempt := s.find(keyIndex+1, bound, found)
-			if attempt.matched > best.matched {
-				best = attempt
-			}
-			if best.matched == len(s.keys) {
-				return best
-			}
-			if next == len(s.starts) {
-				return best
-			}
-			det.CurrentLine = s.starts[next]
+			candidate = key.exact[exact]
+			exact++
 		}
-		if stage {
+		match, ok := s.matchInStage(key, candidate, result)
+		if !ok {
+			continue
+		}
+		attempt := s.find(keyIndex+1, candidate, match)
+		if attempt.matched > best.matched {
+			best = attempt
+		}
+		if best.matched == len(s.keys) {
 			return best
 		}
 	}
-	return result
+	return best
+}
+
+func (s *instructionKeySearch) matchInStage(key instructionKey, stage int, result instructionMatch) (instructionMatch, bool) {
+	start, end := result.line, len(s.lines)
+	if stage >= 0 {
+		start = max(start, s.starts[stage])
+	}
+	if stage+1 < len(s.starts) {
+		end = s.starts[stage+1]
+	}
+	if key.from {
+		end = start + 1
+	} // FROM candidates are tried in source order.
+	if start >= end {
+		return instructionMatch{}, false
+	}
+	det := &detector.DefaultDetectLineResponse{File: s.view, CurrentLine: start, AcceptLine: key.accept, EndLine: end}
+	_, begin, finish, _ := det.DetectCurrentLine(key.first, key.second, 0, s.lines, model.KindDOCKER)
+	if det.IsBreak {
+		return instructionMatch{}, false
+	}
+	return instructionMatch{line: det.CurrentLine, matched: result.matched + 1, start: begin, end: finish}, true
 }

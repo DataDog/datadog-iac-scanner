@@ -357,7 +357,7 @@ func (d *DefaultDetectLineResponse) candidateLines(str1, str2 string, kind model
 	}
 	var blocks []int
 	if kind == model.KindYAML {
-		blocks, _ = d.File.LinesMatching("yamlBlockScalar", startsYAMLBlockScalar)
+		blocks = d.File.LinesMatching("yamlBlockScalar", startsYAMLBlockScalar)
 	}
 	if len(byStr2)+len(blocks) < len(byStr1) {
 		return byStr2, blocks, true

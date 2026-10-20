@@ -8,7 +8,6 @@ package docker
 import (
 	"strings"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 )
@@ -105,9 +104,9 @@ func dockerInstructionWords(line string) (words [3]instructionWord, count int) {
 }
 
 func dockerWordAt(line string, pos int) instructionWord {
-	rest := strings.TrimLeft(line[pos:], " \t\r\n\f")
+	rest := strings.TrimLeft(line[pos:], " \t\r\n\v\f")
 	start := len(line) - len(rest)
-	end := strings.IndexAny(rest, " \t\r\n\f")
+	end := strings.IndexAny(rest, " \t\r\n\v\f")
 	if end < 0 {
 		end = len(rest)
 	}
@@ -116,40 +115,21 @@ func dockerWordAt(line string, pos int) instructionWord {
 
 // instructionSearch applies keyword normalization only at instruction boundaries.
 // Nested keywords have the same rule; ordinary argument values remain literal.
-func instructionSearch(view *model.FileMetadata, starts []int, first, second string, current int) (
+func instructionSearch(view *model.FileMetadata, first, second string) (
 	str1, str2 string, accept func(int, string) bool) {
 	first, instruction := normalizeSearchText(view, first)
 	nested := false
 	if strings.EqualFold(first, command.Onbuild) || strings.EqualFold(first, command.Healthcheck) {
 		second, nested = normalizeSearchText(view, second)
 	}
-	// Stage keys contain the parser's complete FROM arguments. Prefer an exact
-	// stage over an image/alias substring in an earlier FROM.
-	exactStage := first == "FROM" && hasExactStage(view.Lines(), starts, second, current)
-	if !instruction && !nested && !exactStage {
+	if !instruction && !nested {
 		return first, second, nil
 	}
 	return first, second, func(_ int, line string) bool {
-		if exactStage && dockerfile.FromArguments(line) != second {
-			return false
-		}
 		return (!instruction || startsAtInstruction(line, first)) && (!nested || startsAtInstruction(line, second))
 	}
 }
 
 func stageStartLines(view *model.FileMetadata) []int {
-	starts, _ := view.LinesMatching("docker.stages", isFromInstruction)
-	return starts
-}
-
-func hasExactStage(lines []string, starts []int, stage string, current int) bool {
-	if stage == "" {
-		return false
-	}
-	for _, index := range starts {
-		if index >= current && dockerfile.FromArguments(lines[index]) == stage {
-			return true
-		}
-	}
-	return false
+	return view.LinesMatching("docker.stages", isFromInstruction)
 }

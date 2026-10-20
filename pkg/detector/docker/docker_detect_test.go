@@ -251,6 +251,20 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		name, data, key, text string
 		line                  int
 	}{
+		{"implicit retry distinct image", "FROM busybox\nrun a\nFROM alpine\nrun a\nrun b\n", "RUN={{a}}.RUN={{b}}", "run b", 5},
+		{"implicit retry third stage", "FROM alpine\nRUN a\nFROM alpine\nRUN b\nFROM alpine\nRUN a\nRUN b\n", "{{RUN a}}.RUN={{b}}", "RUN b", 7},
+		{"global prefix third stage", "ARG X=1\nFROM alpine\nRUN a\nFROM alpine\nRUN b\nFROM alpine\nRUN a\nRUN b\n", "ARG={{X=1}}.{{RUN a}}.RUN={{b}}", "RUN b", 8},
+		{"fuzzy third stage closer", "FROM alpinex\nRUN b\nFROM alpine-build\nRUN a\nFROM alpine-dev\n", "FROM={{alpine}}.{{RUN b}}", "RUN b", 2},
+		{"fuzzy after global ARG", "ARG X=1\nFROM alpinex\nRUN b\nFROM alpine-dev\n", "{{ARG X=1}}.FROM={{alpine}}.RUN={{b}}", "RUN b", 3},
+		{"vertical tab second stage", "FROM busybox\nRUN a\nFROM\valpine AS b\nrun b\n", "FROM={{alpine AS b}}.RUN={{b}}", "run b", 4},
+		{"vertical tab flags", "FROM\v--platform=linux/amd64 alpine AS b\nRUN b\n", "FROM={{--platform=linux/amd64 alpine AS b}}.{{RUN b}}", "RUN b", 2},
+		{"FROM-looking literal value", "FROM alpine\nRUN echo from coffee\n", "{{from coffee}}", "RUN echo from coffee", 2},
+		{"FROM-looking literal after stage key", "FROM alpine\nRUN echo FROM coffee\n", "FROM={{alpine}}.{{FROM coffee}}", "RUN echo FROM coffee", 2},
+		{"FROM-looking literal after ordinary key", "FROM alpine\nRUN echo from coffee\n", "{{RUN echo}}.{{from coffee}}", "RUN echo from coffee", 2},
+		{"implicit stage retry", "FROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", "RUN b", 5},
+		{"global ARG then implicit retry", "ARG X=1\nFROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "{{ARG X=1}}.{{RUN a}}.{{RUN b}}", "RUN b", 6},
+		{"fuzzy FROM candidates stay in file order", "FROM alpinex\nRUN b\nFROM alpine-dev\n", "FROM={{alpine}}.RUN={{b}}", "RUN b", 2},
+		{"vertical tab FROM", "FROM\valpine AS b\nRUN a\n", "FROM={{alpine AS b}}.{{RUN a}}", "RUN a", 2},
 		{"FROM whitespace matches parser", "FROM\falpine\nRUN a\nFROM\talpine\nrun b\n", "FROM={{alpine}}.RUN={{b}}", "run b", 4},
 		{"repeated FROM literal", "FROM alpine\nRUN a\nFROM alpine\nRUN b\n", "{{from alpine}}.{{RUN b}}", "RUN b", 4},
 		{"repeated aliased FROM", "FROM alpine AS build\nRUN a\nFROM alpine AS build\nrun b\n", "FROM={{alpine AS build}}.RUN={{b}}", "run b", 4},
@@ -394,4 +408,67 @@ func TestRepeatedStageSelectorsDoNotRevisitSuffixes(t *testing.T) {
 	key := strings.Repeat("FROM={{alpine}}.", 12) + "RUN={{missing}}"
 	got := DetectKindLine{}.DetectLine(t.Context(), file, key, 0)
 	require.Equal(t, 1, got.Line, "incomplete attempts keep the earliest longest prefix")
+}
+
+func TestImplicitStageSelectionOracle(t *testing.T) {
+	sequences := [][]string{{}, {"a"}, {"b"}, {"a", "b"}, {"b", "a"}}
+	for _, prefix := range []string{"", "ARG X=1\n", "ARG X=1\nARG Y=2\n"} {
+		for _, a := range sequences {
+			for _, b := range sequences {
+				for _, c := range sequences {
+					var source strings.Builder
+					source.WriteString(prefix)
+					line, want, best := strings.Count(prefix, "\n"), -1, 0
+					key := "{{RUN a}}.RUN={{b}}"
+					if prefix != "" {
+						key = "ARG={{X=1}}." + key
+						want = 1
+					}
+					for _, commands := range [][]string{a, b, c} {
+						source.WriteString("FROM alpine\n")
+						line++
+						matched, candidate := 0, -1
+						for _, cmd := range commands {
+							source.WriteString("run " + cmd + "\n")
+							line++
+							if matched == 0 && cmd == "a" || matched == 1 && cmd == "b" {
+								matched++
+								candidate = line
+							}
+						}
+						if matched > best {
+							best, want = matched, candidate
+						}
+					}
+					for _, cached := range []bool{true, false} {
+						file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source.String()}
+						if cached {
+							file.SetLazyLines()
+						} else {
+							file.LinesOriginalData = utils.SplitLines(source.String())
+						}
+						got := DetectKindLine{}.DetectLine(t.Context(), file, key, 0)
+						require.Equal(t, want, got.Line, "cached=%t key=%q source=%q", cached, key, source.String())
+					}
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkRepeatedStageSearch(b *testing.B) {
+	for _, count := range []int{10, 100, 1000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			source := strings.Repeat("FROM alpine\nRUN a\n", count) + "RUN b\n"
+			file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source}
+			file.SetLazyLines()
+			b.ReportAllocs()
+			for b.Loop() {
+				got := DetectKindLine{}.DetectLine(b.Context(), file, "{{RUN a}}.{{RUN b}}", 0)
+				if got.Line != count*2+1 {
+					b.Fatalf("wrong line %d", got.Line)
+				}
+			}
+		})
+	}
 }
