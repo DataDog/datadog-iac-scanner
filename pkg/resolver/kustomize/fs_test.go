@@ -299,3 +299,59 @@ func TestInjectOriginAnnotations(t *testing.T) {
 		t.Errorf("existing buildMetadata not preserved: %s", out)
 	}
 }
+
+// TestConstrainedFS_RefusesAllMutations pins the read-only half of the
+// filesystem contract: every mutator of the kustomize FileSystem interface,
+// plus the write path of the served file handle, must refuse. The build path
+// never calls these, so without this table nothing executes them.
+func TestConstrainedFS_RefusesAllMutations(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "a.yaml")
+	if err := os.WriteFile(path, []byte("a: 1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fs, err := newConstrainedFS(vfs.DiskFS{}, root, ".", DefaultMaxFileBytes,
+		budgetWithRoom(DefaultMaxFileBytes), &byteCache{files: map[string][]byte{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutations := map[string]func() error{
+		"Create":    func() error { _, err := fs.Create(path); return err },
+		"Mkdir":     func() error { return fs.Mkdir(filepath.Join(root, "d")) },
+		"MkdirAll":  func() error { return fs.MkdirAll(filepath.Join(root, "d")) },
+		"RemoveAll": func() error { return fs.RemoveAll(path) },
+		"WriteFile": func() error { return fs.WriteFile(path, []byte("x")) },
+		"Walk":      func() error { return fs.Walk(root, func(string, os.FileInfo, error) error { return nil }) },
+	}
+	for name, mutate := range mutations {
+		if err := mutate(); err == nil {
+			t.Errorf("%s = nil error, want refusal", name)
+		}
+	}
+	// The handle Open serves must refuse writes too: Kustomize holds it as a
+	// filesys.File, and a writable handle would defeat the read-only contract
+	// even with every top-level mutator refusing.
+	f, err := fs.Open(path)
+	if err != nil {
+		t.Fatalf("Open = %v, want nil", err)
+	}
+	if n, err := f.Write([]byte("x")); err == nil || n != 0 {
+		t.Errorf("File.Write = (%d, %v), want (0, error)", n, err)
+	}
+	// And the mutations must actually not have happened.
+	if _, err := os.Stat(filepath.Join(root, "d")); !os.IsNotExist(err) {
+		t.Error("a directory was created despite the refusals")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "a: 1" {
+		t.Errorf("file changed despite the refusals: %q, %v", data, err)
+	}
+}
+
+// budgetWithRoom returns a cumulative budget that can absorb n bytes, so a
+// test that is not about the budget never trips it by accident.
+func budgetWithRoom(n int64) *atomic.Int64 {
+	b := &atomic.Int64{}
+	b.Store(n)
+	return b
+}

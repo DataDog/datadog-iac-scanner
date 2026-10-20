@@ -461,9 +461,13 @@ func newLineInfoLoaderWithReparser(
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)
 		}
-		if docIdx >= len(reparsed.Docs) {
+		// An index below zero is the kustomize renderer's sentinel for a
+		// resource whose source document could not be identified; it must
+		// fail closed here rather than index the slice with a negative
+		// number.
+		if docIdx < 0 || docIdx >= len(reparsed.Docs) {
 			return nil, errors.Errorf(
-				"reparse of %s for line info produced %d documents, expected index %d",
+				"reparse of %s for line info produced %d documents, cannot use index %d",
 				filename, len(reparsed.Docs), docIdx)
 		}
 		return reparsed.Docs[docIdx], nil
