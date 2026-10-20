@@ -137,7 +137,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if shareable && len(sharedDocs) == len(documents.Docs) {
 		// Every document sanitized cleanly: cache the sanitized trees for later
 		// files with identical content (top-level copies, children shared).
-		s.storeSharedParse(shareKey, &documents, sharedDocs)
+		s.storeSharedParse(ctx, shareKey, &documents, sharedDocs)
 	}
 	s.Tracker.TrackFileParse(filename)
 
@@ -191,7 +191,7 @@ func (s *Service) sinkDocument(
 		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
-		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
+		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.Parser.SourceContext(ctx)))
 	// Lazy lines, as in sinkContent.
 	file.SetLazyLines()
 
@@ -213,6 +213,9 @@ func (s *Service) sinkSharedParse(
 	maxResolverDepth int,
 	content []byte,
 ) error {
+	if shared.sourceContext != nil {
+		ctx = shared.sourceContext(ctx)
+	}
 	for docIdx, sharedDoc := range shared.docs {
 		file := model.FileMetadata{
 			ID:           uuid.New().String(),
@@ -227,7 +230,7 @@ func (s *Service) sinkSharedParse(
 			Platform:     s.classifyPlatform(ctx, shared.kind, filename, content),
 		}
 		file.SetLineInfoLoader(newLineInfoLoader(
-			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
+			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.Parser.SourceContext(ctx)))
 		file.SetLazyLines()
 		s.saveToFile(ctx, &file)
 	}

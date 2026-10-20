@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
@@ -422,4 +423,38 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 func resolveArgsAndEnvs(values []string, scopes ...map[string]string) []string {
 	lex := newWordExpander('\\', true)
 	return expandValues(lex, values, scopes...)
+}
+
+func TestParserVerticalTabStage(t *testing.T) {
+	source := []byte("FROM\valpine AS b\nENV H=hello\nRUN echo $H\n")
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), source, "Dockerfile", false, 0)
+	require.NoError(t, err)
+	commands := docs[0]["command"].(map[string]interface{})
+	require.Contains(t, commands, "alpine AS b")
+	require.NotContains(t, commands, "")
+	stage := commands["alpine AS b"].([]interface{})
+	require.Equal(t, []interface{}{"echo hello"}, stage[2].(map[string]interface{})["Value"])
+}
+
+func TestPreparedSourceRemainsImmutable(t *testing.T) {
+	for _, source := range []string{
+		"FROM alpine\nARG H=hello\nRUN echo $H\n",
+		"From alpine\nENV H=hello\nOnBuild RUN echo $H\n",
+		"ARG H=alpine\nfrom $H\nRUN <<EOF\necho hi\nEOF\n",
+	} {
+		content := []byte(source)
+		p := &Parser{}
+		ctx := p.PrepareContext(t.Context(), "Dockerfile.prod", content)
+		ast, err := dockerfile.Parse(ctx, content)
+		require.NoError(t, err)
+		before, err := json.Marshal(ast)
+		require.NoError(t, err)
+		for range 3 {
+			_, _, _, _, err = p.Parse(ctx, content, "Dockerfile.prod", false, 0)
+			require.NoError(t, err)
+			after, marshalErr := json.Marshal(ast)
+			require.NoError(t, marshalErr)
+			require.Equal(t, before, after)
+		}
+	}
 }

@@ -73,7 +73,7 @@ type preparedSource interface {
 	// platform is the file's platform for parser routing, "" when undetermined.
 	platform(ctx context.Context, services []*Service, filePath string, c *Content) string
 	// excluded reports a file the analyzer would leave out of the scan.
-	excluded(filePath string, content []byte) bool
+	excluded(ctx context.Context, filePath string, content []byte) bool
 }
 
 // PrepareDiskSources walks the disk once, renders each chart once, and dispatches
@@ -296,8 +296,16 @@ func dispatchFile(ctx context.Context,
 	if c == nil && contentErr == nil {
 		return nil
 	}
-	if c != nil && c.Content != nil && src.excluded(filePath, *c.Content) {
-		return nil
+	if c != nil && c.Content != nil {
+		if c.prepareContext != nil {
+			ctx = c.prepareContext(ctx)
+		}
+		for _, service := range services {
+			ctx, *c.Content = service.Parser.PrepareContext(ctx, filePath, *c.Content)
+		}
+		if src.excluded(ctx, filePath, *c.Content) {
+			return nil
+		}
 	}
 	if len(services) > 1 {
 		services = servicesForPlatform(services, src.platform(ctx, services, filePath, c))
@@ -325,7 +333,7 @@ type diskSource struct {
 func (diskSource) chartFailed(string) {}
 
 // The analyzer already left excluded files out of the inventory.
-func (diskSource) excluded(string, []byte) bool { return false }
+func (diskSource) excluded(context.Context, string, []byte) bool { return false }
 
 func (d diskSource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
 	if contentCache := d.ContentCache(); contentCache != nil {
@@ -346,6 +354,7 @@ func (d diskSource) readContent(ctx context.Context, filePath string, maxFileSiz
 				// so surface the error directly.
 				return nil, nil, errors.Wrapf(getErr, "failed to get file content: %s", filePath)
 			}
+			c.prepareContext = d.TakePreparedContext(norm)
 			return c, nil, nil
 		}
 	}
@@ -379,8 +388,8 @@ func (m memorySource) chartFailed(chartPath string) {
 	m.RecordMissing(chartPath)
 }
 
-func (memorySource) excluded(filePath string, content []byte) bool {
-	return analyzer.ExcludedByContent(filePath, content)
+func (memorySource) excluded(ctx context.Context, filePath string, content []byte) bool {
+	return analyzer.ExcludedByContentContext(ctx, filePath, content)
 }
 
 func (m memorySource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
@@ -447,6 +456,7 @@ func cloneContent(c *Content) *Content {
 		b = append(b, *c.Content...)
 	}
 	return &Content{
+		prepareContext: c.prepareContext,
 		Content:        &b,
 		CountLines:     c.CountLines,
 		IsMinified:     c.IsMinified,

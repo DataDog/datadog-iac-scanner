@@ -67,8 +67,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	stages := make(map[string]variableScope)
 
 	for _, child := range parsed.AST.Children {
-		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
-		if child.Value == command.From {
+		name := strings.ToLower(strings.TrimSpace(child.Value))
+		if name == command.From {
 			fromValue = dockerfile.FromArguments(child.Original)
 			if !lineInfoOnly {
 				scope = scopeForStage(child, globalArgs, stages, lex)
@@ -82,7 +82,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		ignoreStruct.ignoreBlock(child, fromValue)
 
 		cmd := Command{
-			Cmd:       child.Value,
+			Cmd:       name,
 			Original:  strings.TrimSpace(child.Original),
 			Flags:     child.Flags,
 			StartLine: child.StartLine,
@@ -132,6 +132,17 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines = ignoreStruct.getIgnoreLines()
 
 	return fileContent, documents, ignoreLines, resolvedFiles, nil
+}
+
+// PrepareContext shares the source parse with content gates and document parsing.
+func (p *Parser) PrepareContext(ctx context.Context, path string, content []byte) context.Context {
+	return dockerfile.PrepareSource(ctx, content, utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) == utils.DockerfileContent)
+}
+
+// SourceContext retains the prepared AST for source-location work; BuildKit
+// parsing is not repeated when a finding requests the raw document.
+func (p *Parser) SourceContext(ctx context.Context) func(context.Context) context.Context {
+	return dockerfile.SourceContext(ctx)
 }
 
 // GetKind returns the kind of the parser

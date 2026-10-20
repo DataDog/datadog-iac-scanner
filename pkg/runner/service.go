@@ -129,11 +129,12 @@ func (s *Service) consTreeChildren(doc map[string]interface{}) map[string]interf
 // (children shared), kind, ignore lines and counts. Callers shallow-copy the
 // top-level maps, which Combine augments with per-file id/file entries.
 type sharedParse struct {
-	docs        []model.Document
-	kind        model.FileKind
-	ignoreLines []int
-	countLines  int
-	isMinified  bool
+	sourceContext func(context.Context) context.Context
+	docs          []model.Document
+	kind          model.FileKind
+	ignoreLines   []int
+	countLines    int
+	isMinified    bool
 }
 
 // internContent returns a shared copy of content so duplicate files retain one
@@ -180,7 +181,7 @@ func (s *Service) lookupSharedParse(content []byte) (string, *sharedParse) {
 // storeSharedParse caches a sanitized parse result for later files with the
 // same content. docs are the sanitized top-level maps; each is shallow-copied
 // so Combine's per-file id/file insertion cannot touch the cached entries.
-func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument, docs []model.Document) {
+func (s *Service) storeSharedParse(ctx context.Context, key string, documents *parser.ParsedDocument, docs []model.Document) {
 	cached := make([]model.Document, len(docs))
 	for i, d := range docs {
 		cached[i] = cloneDocumentTopLevel(d)
@@ -190,11 +191,12 @@ func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument,
 		s.parsedShares = make(map[string]*sharedParse)
 	}
 	s.parsedShares[key] = &sharedParse{
-		docs:        cached,
-		kind:        documents.Kind,
-		ignoreLines: documents.IgnoreLines,
-		countLines:  documents.CountLines,
-		isMinified:  documents.IsMinified,
+		sourceContext: s.Parser.SourceContext(ctx),
+		docs:          cached,
+		kind:          documents.Kind,
+		ignoreLines:   documents.IgnoreLines,
+		countLines:    documents.CountLines,
+		isMinified:    documents.IsMinified,
 	}
 	s.parsedShareMu.Unlock()
 }
@@ -340,6 +342,7 @@ func (s *Service) StartScan(
 
 // Content keeps the content of the file and the number of lines
 type Content struct {
+	prepareContext func(context.Context) context.Context
 	Content        *[]byte
 	CountLines     int
 	IsMinified     bool
@@ -442,9 +445,13 @@ func newLineInfoLoader(
 	openAPIResolveReferences bool,
 	isMinified bool,
 	maxResolverDepth int,
+	prepare ...func(context.Context) context.Context,
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return newLineInfoLoaderWithReparser(filename, docIdx,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
+			if len(prepare) > 0 && prepare[0] != nil {
+				ctx = prepare[0](ctx)
+			}
 			return p.Parse(p.LineInfoContext(ctx, f),
 				filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
 		})

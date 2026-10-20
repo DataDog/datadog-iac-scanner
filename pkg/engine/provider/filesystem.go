@@ -39,10 +39,11 @@ type FileSystemSourceProvider struct {
 	// before a walk starts.
 	mu sync.RWMutex
 
-	prebuiltPaths []string
-	chartRoots    []string
-	contentCache  map[string][]byte
-	unfiltered    map[string]struct{}
+	prebuiltPaths    []string
+	chartRoots       []string
+	contentCache     map[string][]byte
+	preparedContexts map[string]func(context.Context) context.Context
+	unfiltered       map[string]struct{}
 }
 
 var (
@@ -252,10 +253,24 @@ type InventoryFile struct {
 }
 
 // SetPrebuiltWalk reuses analyzer walk inventory to skip a second tree walk.
-func (s *FileSystemSourceProvider) SetPrebuiltWalk(paths, chartRoots []string, contentCache map[string][]byte) {
+func (s *FileSystemSourceProvider) SetPrebuiltWalk(paths, chartRoots []string, contentCache map[string][]byte,
+	prepared ...map[string]func(context.Context) context.Context) {
 	s.prebuiltPaths = paths
 	s.chartRoots = chartRoots
 	s.contentCache = contentCache
+	if len(prepared) > 0 {
+		s.preparedContexts = prepared[0]
+	}
+}
+
+// TakePreparedContext transfers ownership of the analyzer's source preparation
+// to dispatch. Removing each entry bounds retention to files still being parsed.
+func (s *FileSystemSourceProvider) TakePreparedContext(path string) func(context.Context) context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prepared := s.preparedContexts[path]
+	delete(s.preparedContexts, path)
+	return prepared
 }
 
 // ContentCache returns bytes read during analyzer classification, keyed by path.
@@ -267,6 +282,7 @@ func (s *FileSystemSourceProvider) ContentCache() map[string][]byte {
 // phase (parsed files keep their content in OriginalData), and the map is shared
 // with the scan Client, so clearing here releases both references.
 func (s *FileSystemSourceProvider) ReleaseContentCache() {
+	clear(s.preparedContexts)
 	if s.contentCache != nil {
 		for k := range s.contentCache {
 			delete(s.contentCache, k)

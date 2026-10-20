@@ -6,6 +6,7 @@
 package parser
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -40,4 +41,31 @@ func (c *Parser) LineInfoContext(ctx context.Context, file *model.FileMetadata) 
 		ctx = hook.LineInfoContext(ctx, file)
 	}
 	return ctx
+}
+
+// PrepareContext invokes optional parser preparation once before routing and
+// content exclusion. The derived context belongs to this file's dispatch only.
+func (c *Parser) PrepareContext(ctx context.Context, path string, content []byte) (prepared context.Context, normalized []byte) {
+	if hook, ok := c.Parsers.(interface {
+		PrepareContext(context.Context, string, []byte) context.Context
+	}); ok {
+		// Match the bytes document parsing receives. Formats without this hook
+		// retain their existing exclusion/classification input unchanged.
+		if bytes.Contains(content, []byte("\r\n")) {
+			content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+		}
+		return hook.PrepareContext(ctx, path, content), content
+	}
+	return ctx, content
+}
+
+// SourceContext transfers optional immutable parser preparation into a later
+// line-info request, preserving that request's cancellation and tracing context.
+func (c *Parser) SourceContext(ctx context.Context) func(context.Context) context.Context {
+	if hook, ok := c.Parsers.(interface {
+		SourceContext(context.Context) func(context.Context) context.Context
+	}); ok {
+		return hook.SourceContext(ctx)
+	}
+	return nil
 }

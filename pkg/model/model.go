@@ -376,6 +376,9 @@ func (f *FileMetadata) ReleasePostEvalData() {
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
 	f.linesLazy = nil
+	// A loader may retain immutable source preparation. No further source
+	// locations can be requested after this post-evaluation release.
+	f.lineInfo = nil
 }
 
 // DiscardLineInfoDocument drops a memoized line-info tree while keeping the
@@ -846,6 +849,8 @@ type AnalyzedPaths struct {
 	ChartRoots   []string
 	TotalFiles   int
 	ContentCache map[string][]byte
+	// PreparedContexts transfer immutable source parses from analysis to dispatch.
+	PreparedContexts map[string]func(context.Context) context.Context
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file

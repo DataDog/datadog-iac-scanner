@@ -7,6 +7,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
@@ -27,9 +28,68 @@ func WithSourceLines(ctx context.Context, original []string, record func([]strin
 	return context.WithValue(ctx, sourceLinesKey{}, sourceLinesRecorder{original: original, record: record})
 }
 
+type preparedSourceKey struct{}
+type sourceSnapshot struct {
+	once      sync.Once
+	candidate bool
+	content   []byte
+	parsed    *parser.Result
+	err       error
+}
+
+func preparedSource(ctx context.Context, content []byte) *sourceSnapshot {
+	prepared, _ := ctx.Value(preparedSourceKey{}).(*sourceSnapshot)
+	if prepared != nil && bytes.Equal(prepared.content, content) {
+		return prepared
+	}
+	return nil
+}
+
+// PrepareSource computes an immutable, content-bound source snapshot for one
+// dispatch. Candidate headers are screened before parsing; classification and
+// document parsing share the result, including parse errors. No global cache is
+// retained. Callers must treat the returned AST as read-only.
+func PrepareSource(ctx context.Context, content []byte, candidate bool) context.Context {
+	if preparedSource(ctx, content) != nil {
+		return ctx
+	}
+	prepared := &sourceSnapshot{content: bytes.Clone(content), candidate: candidate}
+	return context.WithValue(ctx, preparedSourceKey{}, prepared)
+}
+
+func (s *sourceSnapshot) parse() (*parser.Result, error) {
+	s.once.Do(func() {
+		if s.candidate {
+			s.parsed, s.err = parseCandidate(bytes.NewReader(s.content))
+		} else {
+			s.parsed, s.err = parser.Parse(bytes.NewReader(s.content))
+		}
+	})
+	return s.parsed, s.err
+}
+
+// SourceContext transfers only the immutable snapshot, without retaining an
+// analysis context's cancellation or other request state. The recipient can
+// reuse it for document parsing and lazy line-info generation.
+func SourceContext(ctx context.Context) func(context.Context) context.Context {
+	prepared, _ := ctx.Value(preparedSourceKey{}).(*sourceSnapshot)
+	if prepared == nil {
+		return nil
+	}
+	return func(next context.Context) context.Context {
+		return context.WithValue(next, preparedSourceKey{}, prepared)
+	}
+}
+
 // Parse builds the source AST and optionally records its instruction view.
 func Parse(ctx context.Context, content []byte) (*parser.Result, error) {
-	parsed, err := parser.Parse(bytes.NewReader(content))
+	var parsed *parser.Result
+	var err error
+	if prepared := preparedSource(ctx, content); prepared != nil {
+		parsed, err = prepared.parse()
+	} else {
+		parsed, err = parser.Parse(bytes.NewReader(content))
+	}
 	if err == nil {
 		if recorder, ok := ctx.Value(sourceLinesKey{}).(sourceLinesRecorder); ok {
 			recorder.record(instructionLines(parsed, recorder.original))
@@ -79,7 +139,7 @@ func instructionLines(parsed *parser.Result, original []string) []string {
 // flags and an optional alias. Non-instructions and keyword prefixes return "".
 func FromArguments(original string) string {
 	original = strings.TrimSpace(original)
-	end := strings.IndexAny(original, " \t\r\n\f")
+	end := strings.IndexAny(original, " \t\r\n\v\f")
 	if end < 0 || !strings.EqualFold(original[:end], "FROM") {
 		return ""
 	}

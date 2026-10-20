@@ -12,7 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
+	buildkit "github.com/moby/buildkit/frontend/dockerfile/parser"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
@@ -317,7 +321,7 @@ func TestPrepareDiskSources_DanglingChartYamlSymlinkStillScansTerraform(t *testi
 	services, store := buildDiskServices(t, ctx, []string{dir})
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
@@ -356,7 +360,7 @@ func TestPrepareDiskSources_RenderedChartStillScansTerraform(t *testing.T) {
 	services, store := buildDiskServices(t, ctx, []string{dir})
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
@@ -394,7 +398,7 @@ func TestPrepareDiskSources_PreparesTfvars(t *testing.T) {
 	services, store := buildDiskServices(t, ctx, []string{dir})
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
@@ -583,7 +587,7 @@ func TestPrepareDiskSources_AnalyzerExclusionsKeepRenderedFiles(t *testing.T) {
 
 	fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, append(a.Exc, analyzed.Exc...), a.Only)
 	require.NoError(t, err)
-	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
 	chartFilter, err := provider.ExpandPathFilter(userIgnores, nil)
 	require.NoError(t, err)
 	fsp.SetChartFilter(chartFilter)
@@ -737,4 +741,94 @@ func TestWithoutExcludedFiles_PackagedDependencyArchivePath(t *testing.T) {
 	got = withoutExcludedFiles(context.Background(), excludesPath(archive), "app",
 		model.ResolvedFiles{File: []model.ResolvedHelm{withoutArchive}})
 	require.Len(t, got.File, 1, "a file without an archive is not dropped for the archive's path")
+}
+
+// Observe identity, not just equivalent parse output: preparation, classification,
+// enrichment and lazy source locations must see the very same BuildKit result.
+type observingDockerParser struct {
+	dockerParser.Parser
+	mu   sync.Mutex
+	asts map[string]*buildkit.Result
+}
+
+func (p *observingDockerParser) PrepareContext(ctx context.Context, path string, content []byte) context.Context {
+	ctx = p.Parser.PrepareContext(ctx, path, content)
+	ast, err := dockersource.Parse(ctx, content)
+	if err == nil {
+		p.mu.Lock()
+		p.asts[path] = ast
+		p.mu.Unlock()
+	}
+	return ctx
+}
+
+func (p *observingDockerParser) Parse(ctx context.Context, content []byte, path string, resolve bool, depth int) (
+	[]byte, []model.Document, []int, map[string]model.ResolvedFile, error) {
+	p.mu.Lock()
+	previous := p.asts[path]
+	p.mu.Unlock()
+	ast, err := dockersource.Parse(ctx, content)
+	if err != nil || ast != previous {
+		return nil, nil, nil, nil, fmt.Errorf("source parse was not reused for %s", path)
+	}
+	return p.Parser.Parse(ctx, content, path, resolve, depth)
+}
+
+func TestPreparedDockerSourceSurvivesDispatch(t *testing.T) {
+	for _, parallel := range []bool{false, true} {
+		for _, disk := range []bool{false, true} {
+			t.Run(fmt.Sprintf("disk=%t/parallel=%t", disk, parallel), func(t *testing.T) {
+				ctx := t.Context()
+				inputs := map[string][]byte{
+					"Dockerfile.prod":    []byte("FROM alpine\nRUN a\n"),
+					"Dockerfile.dev":     []byte("ARG X=alpine\r\nFROM $X\r\nRUN a\r\n"),
+					"Dockerfile.windows": []byte("# escape=`\nFROM alpine\nRUN echo `\n hi\n"),
+				}
+				var services []*Service
+				var prepare func() error
+				var analysisASTs = map[string]*buildkit.Result{}
+				if disk {
+					dir := t.TempDir()
+					for name, content := range inputs {
+						writeFile(t, filepath.Join(dir, name), string(content))
+					}
+					analyzed, err := analyzer.Analyze(ctx, &analyzer.Analyzer{RepoPath: dir, Paths: []string{dir}, Types: []string{"dockerfile"}, MaxFileSize: 100})
+					require.NoError(t, err)
+					for path, bind := range analyzed.PreparedContexts {
+						analysisASTs[path], err = dockersource.Parse(bind(ctx), analyzed.ContentCache[path])
+						require.NoError(t, err)
+					}
+					require.Len(t, analysisASTs, len(inputs))
+					services, _ = buildDiskServices(t, ctx, []string{dir})
+					fsp, ok := DiskSourceProvider(services)
+					require.True(t, ok)
+					fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
+					prepare = func() error { return PrepareDiskSources(ctx, fsp, services, "reuse", false, 5, parallel) }
+				} else {
+					fs := vfs.NewMemFS(inputs)
+					mp := provider.NewMemorySourceProvider(fs, fs.Paths(), nil, nil)
+					services, _ = buildServices(t, ctx, fs, mp)
+					prepare = func() error { return PrepareMemorySources(ctx, mp, services, "reuse", false, 5, parallel) }
+				}
+				observed := &observingDockerParser{asts: make(map[string]*buildkit.Result)}
+				for _, service := range services {
+					if service.Parser.Parsers.GetKind() == model.KindDOCKER {
+						service.Parser.Parsers = observed
+					}
+				}
+				require.NoError(t, prepare())
+				for path, ast := range analysisASTs {
+					require.Same(t, ast, observed.asts[path])
+				}
+				count := 0
+				for _, service := range services {
+					for _, file := range service.files {
+						count++
+						require.NoError(t, file.UseLineInfoDocument(ctx, func(map[string]interface{}) error { return nil }))
+					}
+				}
+				require.Equal(t, len(inputs), count)
+			})
+		}
+	}
 }

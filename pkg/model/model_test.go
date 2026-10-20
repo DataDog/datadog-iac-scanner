@@ -144,3 +144,22 @@ func TestLinesMatchingWithoutLazyCache(t *testing.T) {
 		require.Equal(t, cached, ok)
 	}
 }
+
+func TestReleasePostEvalDropsSourceLoader(t *testing.T) {
+	for _, state := range []string{"none", "lazy", "loaded"} {
+		f := &FileMetadata{OriginalData: "FROM alpine"}
+		f.SetLazyLines()
+		if state != "none" {
+			f.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+				return map[string]interface{}{}, nil
+			})
+		}
+		if state == "loaded" {
+			require.NoError(t, f.UseLineInfoDocument(t.Context(), func(map[string]interface{}) error { return nil }))
+		}
+		f.ReleasePostEvalData()
+		require.Nil(t, f.lineInfo)
+		require.Nil(t, f.linesLazy)
+		require.Empty(t, f.OriginalData)
+	}
+}

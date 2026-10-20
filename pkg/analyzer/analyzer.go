@@ -150,12 +150,13 @@ type regexSlice struct {
 }
 
 type analyzerInfo struct {
-	typesFlag       []string
-	filePath        string
-	maxFileSize     int
-	filePlatformMap *sync.Map
-	contentCache    *sync.Map
-	helmCache       *sync.Map
+	typesFlag        []string
+	filePath         string
+	maxFileSize      int
+	filePlatformMap  *sync.Map
+	contentCache     *sync.Map
+	preparedContexts *sync.Map
+	helmCache        *sync.Map
 	// scanFiles is the analyzer's walked candidate set (slash paths); scopes
 	// the Docker Compose override guard to bases that are part of this scan.
 	scanFiles map[string]struct{}
@@ -468,6 +469,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	var filePlatformMap sync.Map
 	var contentCache sync.Map
+	var preparedContexts sync.Map
 	var helmCacheLocal sync.Map
 
 	// Detect each file's type with a bounded worker pool. File-type detection
@@ -486,13 +488,14 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			utils.PoolOptions{Workers: a.NumWorkers, MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
 			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
-					typesFlag:       typesFlag,
-					filePath:        filePath,
-					maxFileSize:     a.MaxFileSize,
-					filePlatformMap: &filePlatformMap,
-					contentCache:    &contentCache,
-					helmCache:       &helmCacheLocal,
-					scanFiles:       scanFiles,
+					typesFlag:        typesFlag,
+					filePath:         filePath,
+					maxFileSize:      a.MaxFileSize,
+					filePlatformMap:  &filePlatformMap,
+					contentCache:     &contentCache,
+					preparedContexts: &preparedContexts,
+					helmCache:        &helmCacheLocal,
+					scanFiles:        scanFiles,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
 				return nil
@@ -543,6 +546,11 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 		return true
 	})
 	returnAnalyzedPaths.ContentCache = cacheOut
+	returnAnalyzedPaths.PreparedContexts = make(map[string]func(context.Context) context.Context)
+	preparedContexts.Range(func(k, v interface{}) bool {
+		returnAnalyzedPaths.PreparedContexts[k.(string)] = v.(func(context.Context) context.Context)
+		return true
+	})
 
 	return returnAnalyzedPaths, nil
 }
@@ -577,6 +585,10 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
+	if utils.ContentCheckForFileType(ext) == utils.DockerfileContent {
+		content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+		ctx = dockersource.PrepareSource(ctx, content, true)
+	}
 	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)
 	if platform == "" {
 		unwanted <- a.filePath
@@ -587,6 +599,11 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 			unwanted <- a.filePath
 		}
 		return
+	}
+	if a.preparedContexts != nil {
+		if prepared := dockersource.SourceContext(ctx); prepared != nil {
+			a.preparedContexts.Store(a.filePath, prepared)
+		}
 	}
 	a.persistWorkerState(content, platform)
 	results <- platform
@@ -669,13 +686,7 @@ func isDockerfile(ctx context.Context, fsys vfs.FS, path string, content []byte)
 			return false
 		}
 	}
-	return looksLikeDockerfile(content)
-}
-
-// looksLikeDockerfile uses BuildKit's instruction boundaries and directives.
-// Candidates must start with FROM after any leading ARG instructions.
-func looksLikeDockerfile(content []byte) bool {
-	return dockersource.HasFrom(bytes.NewReader(content))
+	return dockersource.HasFromContext(ctx, content)
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
@@ -850,9 +861,14 @@ func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, selectedPlatforms []st
 // .ini that is not Ansible configuration or inventory, or service catalog YAML.
 // The analyzer leaves these out of a CLI scan; pushed files skip them the same way.
 func ExcludedByContent(path string, content []byte) bool {
+	return ExcludedByContentContext(context.Background(), path, content)
+}
+
+// ExcludedByContentContext shares any parser preparation attached to ctx.
+func ExcludedByContentContext(ctx context.Context, path string, content []byte) bool {
 	switch utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) {
 	case utils.DockerfileContent:
-		return !looksLikeDockerfile(content)
+		return !dockersource.HasFromContext(ctx, content)
 	case utils.AnsibleConfigContent:
 		return !looksLikeAnsibleConfig(content)
 	case utils.AnsibleInventoryContent:
