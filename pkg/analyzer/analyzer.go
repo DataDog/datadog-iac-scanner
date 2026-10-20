@@ -931,8 +931,6 @@ func ExcludedByContent(path string, content []byte) bool {
 	switch utils.ExtensionFromPath(path) {
 	case extPossibleDockerfile, extUbi8, extDebian:
 		return !looksLikeDockerfile(content)
-	}
-	switch strings.ToLower(filepath.Ext(path)) {
 	case extCfg, extConf:
 		return !looksLikeAnsibleConfig(content)
 	case extIni:

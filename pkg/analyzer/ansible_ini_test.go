@@ -6,7 +6,11 @@
 package analyzer
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/stretchr/testify/require"
 )
@@ -87,6 +91,38 @@ func TestExcludedByContent(t *testing.T) {
 	} {
 		t.Run(tt.path+"/"+tt.content, func(t *testing.T) {
 			require.Equal(t, tt.excluded, ExcludedByContent(tt.path, []byte(tt.content)))
+		})
+	}
+}
+
+func TestDockerfileExtensionCaseParity(t *testing.T) {
+	for _, tt := range []struct {
+		name, body, platform string
+	}{
+		{"Dockerfile.CFG", "[defaults]\nno_log=False\n", "ansible"},
+		{"Dockerfile.CFG", "[metadata]\nname=x\n", ""},
+		{"Dockerfile.CONF", "[defaults]\nno_log=False\n", "ansible"},
+		{"Dockerfile.INI", "[web]\nweb1\n", "ansible"},
+		{"Dockerfile.UBI8", "ARG V\nFROM alpine\n", "dockerfile"},
+		{"Dockerfile.UBI8", "ARG V\n", ""},
+		{"Dockerfile.DEBIAN", "FROM debian\n", "dockerfile"},
+		{"Dockerfile.YAML", "apiVersion: v3\nkind: service\nmetadata:\n  name: x\n", ""},
+	} {
+		t.Run(tt.name+"/"+tt.body, func(t *testing.T) {
+			mem := vfs.NewMemFS(map[string][]byte{tt.name: []byte(tt.body)})
+			require.Equal(t, tt.platform, ClassifyFile(t.Context(), mem, tt.name, []byte(tt.body), nil))
+			require.Equal(t, tt.platform == "", ExcludedByContent(tt.name, []byte(tt.body)))
+			dir := t.TempDir()
+			path := filepath.Join(dir, tt.name)
+			require.NoError(t, os.WriteFile(path, []byte(tt.body), 0o600))
+			got, err := Analyze(t.Context(), &Analyzer{RepoPath: dir, Paths: []string{dir}, Types: []string{""}, MaxFileSize: -1})
+			require.NoError(t, err)
+			if tt.platform == "" {
+				require.Empty(t, got.Inventory)
+			} else {
+				require.Equal(t, []string{filepath.ToSlash(path)}, got.Inventory)
+			}
+			require.Empty(t, mem.MissingFiles())
 		})
 	}
 }

@@ -39,9 +39,19 @@ func dockerfileExtension(path, ext string) (string, bool) {
 	return "", false
 }
 
+// pathExtension returns the canonical token for registered extensions while
+// preserving unknown extensions. Both disk and pushed paths use this policy.
+func pathExtension(path string) string {
+	ext := tfpath.Extension(path)
+	if lower := strings.ToLower(ext); IsSupportedFileType(lower) {
+		return lower
+	}
+	return ext
+}
+
 // ExtensionFromPath returns the extension from path alone (no stat/read).
 func ExtensionFromPath(path string) string {
-	ext := tfpath.Extension(path)
+	ext := pathExtension(path)
 	if dockerExt, ok := dockerfileExtension(path, ext); ok {
 		return dockerExt
 	}
@@ -84,7 +94,7 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 		return "", err
 	}
 
-	ext := tfpath.Extension(path)
+	ext := pathExtension(path)
 	if dockerExt, ok := dockerfileExtension(path, ext); ok {
 		return dockerExt, nil
 	}

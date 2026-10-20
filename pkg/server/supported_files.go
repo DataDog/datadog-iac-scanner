@@ -9,6 +9,7 @@ package server
 import (
 	"net/http"
 	"sort"
+	"strings"
 )
 
 // fileStrategy tells the IDE how to assemble the scan unit for a file type.
@@ -43,6 +44,9 @@ type SupportedFileEntry struct {
 // Keys are IDE-facing extensions, filenames, or globs such as "Dockerfile.*".
 // Dockerfile filename and glob matching is case-insensitive: "dockerfile",
 // "DOCKERFILE", and "Dockerfile.<name>" in any case use these same patterns.
+// Clients use the first matching entry: exact filenames precede extensions
+// (longest suffix first, case-insensitive), followed by candidate globs. Dockerfile.* is a
+// content-checked fallback, not a promise that every matching file is Docker.
 // TestSupportedFiles_NoDrift asserts this covers every
 // analyzer.PossibleFileTypes() entry so a newly supported type can't be missed.
 var strategyByPattern = map[string]fileStrategy{
@@ -68,14 +72,28 @@ var strategyByPattern = map[string]fileStrategy{
 	".sh":          strategySingleFile,
 }
 
-// supportedFiles builds the supported-files response: one entry per pattern,
-// sorted for deterministic output.
+// supportedFiles builds the response in matching precedence order so candidate
+// globs cannot override a registered format's resolution strategy.
 func supportedFiles() []SupportedFileEntry {
 	patterns := make([]string, 0, len(strategyByPattern))
 	for p := range strategyByPattern {
 		patterns = append(patterns, p)
 	}
-	sort.Strings(patterns)
+	sort.Slice(patterns, func(i, j int) bool {
+		a, b := patterns[i], patterns[j]
+		globA, globB := strings.ContainsAny(a, "*?["), strings.ContainsAny(b, "*?[")
+		if globA != globB {
+			return !globA
+		}
+		extA, extB := strings.HasPrefix(a, "."), strings.HasPrefix(b, ".")
+		if extA != extB {
+			return !extA
+		}
+		if extA && len(a) != len(b) {
+			return len(a) > len(b)
+		}
+		return a < b
+	})
 
 	entries := make([]SupportedFileEntry, 0, len(patterns))
 	for _, p := range patterns {

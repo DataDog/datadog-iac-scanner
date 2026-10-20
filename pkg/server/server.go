@@ -25,6 +25,8 @@
 // Dockerfile filenames and globs from supported-files must be matched
 // case-insensitively, including dockerfile, DOCKERFILE, and Dockerfile.<name>
 // in any case.
+// Use the first matching supported-files entry: exact filenames, then registered
+// extensions (longest first), then candidate globs subject to content validation.
 package server
 
 import (

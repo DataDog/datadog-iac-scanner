@@ -100,3 +100,40 @@ func TestSupportedFiles_Entries(t *testing.T) {
 		t.Errorf("Chart.yaml should be %q, got %q", strategyChart, got["Chart.yaml"])
 	}
 }
+
+func TestSupportedFiles_MatchingPrecedence(t *testing.T) {
+	entries := supportedFiles()
+	for _, tt := range []struct {
+		path, pattern string
+		strategy      fileStrategy
+	}{
+		{"Dockerfile.yaml", ".yaml", strategyDirectory},
+		{"Dockerfile.CFG", ".cfg", strategyDirectory},
+		{"Dockerfile.tf", ".tf", strategyDirectory},
+		{"Dockerfile.tf.json", ".tf.json", strategyDirectory},
+		{"Dockerfile.tofu.json", ".tofu.json", strategyDirectory},
+		{"Chart.yaml", "Chart.yaml", strategyChart},
+		{"Dockerfile", "Dockerfile", strategySingleFile},
+		{"dockerfile.PROD", "Dockerfile.*", strategySingleFile},
+		{"Dockerfile.md", "Dockerfile.*", strategySingleFile},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			for _, entry := range entries {
+				pattern := entry.Patterns[0]
+				matches := strings.EqualFold(pattern, tt.path)
+				if strings.HasPrefix(pattern, ".") {
+					matches = strings.HasSuffix(strings.ToLower(tt.path), pattern)
+				} else if pattern == "Dockerfile.*" {
+					matches = strings.HasPrefix(strings.ToLower(tt.path), "dockerfile.")
+				}
+				if matches {
+					if pattern != tt.pattern || entry.Strategy != tt.strategy {
+						t.Fatalf("first match = %q/%q, want %q/%q", pattern, entry.Strategy, tt.pattern, tt.strategy)
+					}
+					return
+				}
+			}
+			t.Fatal("no matching strategy")
+		})
+	}
+}
