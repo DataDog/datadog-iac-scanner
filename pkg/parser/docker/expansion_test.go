@@ -2,11 +2,14 @@ package docker
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
+	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,6 +18,10 @@ func TestExpandValuesUnsetDefaultsAndRecovery(t *testing.T) {
 		source, want string
 		raw          bool
 	}{
+		{`pre'fix $H' it's ${#H} $H`, `pre'fix $H' it's ${#H} hello`, true},
+		{`pre'fix $H' it's ${#H} $H`, `prefix $H it's ${#H} hello`, false},
+		{`pre'fix $H' it's $H`, `pre'fix $H' it's hello`, true},
+		{`pre'fix $H' it's $H`, `prefix $H it's hello`, false},
 		{`pre'fix $H'post ${#H} $H`, `pre'fix $H'post ${#H} hello`, true},
 		{`pre'fix $H'post ${#H} $H`, `prefix $Hpost ${#H} hello`, false},
 		{`pre'fix $H' ${#H} $H`, `pre'fix $H' ${#H} hello`, true},
@@ -53,7 +60,7 @@ func TestExpandValuesNoDiagnostics(t *testing.T) {
 	if os.Getenv(child) == "1" {
 		scope := map[string]string{"MARKER": "\ue000", "OTHER": "\ue000\ue000", "BAD": "a\x00b", "LATIN": "caf\xe9"}
 		for _, raw := range []bool{true, false} {
-			for _, value := range []string{`echo ${UNKNOWN} ${A:-x}`, `$BAD $LATIN ${A:-x}`, `echo it's ${A:-$B}`, "echo \x00 $H ${A:-x}", "echo caf\xe9 $H ${A:-x}", "\ue000 ${A:-x} ${UNKNOWN}"} {
+			for _, value := range []string{`echo ${UNKNOWN} ${A:-x}`, `$BAD $LATIN ${A:-x}`, `echo it's ${A:-$B}`, "echo \x00 $H ${A:-x}", "echo caf\xe9 $H ${A:-x}", "${#H} \\\x00 $H", "${#H} \\\xe9 $H", "\ue000 ${A:-x} ${UNKNOWN}"} {
 				expandValues(newWordExpander('\\', raw), []string{value}, scope)
 			}
 		}
@@ -82,8 +89,37 @@ func TestExpansionDefaultsPreserveRuntimeReferences(t *testing.T) {
 
 func TestExpandValuesPreservesBadBytes(t *testing.T) {
 	for _, raw := range []bool{true, false} {
-		for _, source := range []string{"echo \x00 $H", "echo caf\xe9 $H", "it's \x00 ${A:-x} $H", "it's caf\xe9 ${A:-x} $H"} {
-			require.Equal(t, []string{source}, expandValues(newWordExpander('\\', raw), []string{source}, map[string]string{"H": "hello"}))
+		for _, bad := range []string{"\x00", "caf\xe9", "\xff\xc0\xaf"} {
+			for _, tt := range []struct{ source, want string }{
+				{"echo " + bad + " $H", "echo " + bad + " hello"},
+				{"it's " + bad + " ${A:-x} $H", "it's " + bad + " x hello"},
+				{"${#H} " + bad + " $H", "${#H} " + bad + " hello"},
+			} {
+				require.Equal(t, []string{tt.want}, expandValues(newWordExpander('\\', raw), []string{tt.source}, map[string]string{"H": "hello"}))
+			}
+		}
+	}
+}
+
+func TestExpansionBadBytesAdjacentToSyntax(t *testing.T) {
+	for _, bad := range []string{"\x00", "\xe9", "\xff\xc0"} {
+		for _, raw := range []bool{true, false} {
+			for _, escape := range []rune{'\\', '`'} {
+				esc := string(escape)
+				for _, recovery := range []string{"", "${#H} "} {
+					wantEscape := ""
+					if raw {
+						wantEscape = esc
+					}
+					for _, tt := range []struct{ source, want string }{
+						{esc + bad + " $H", wantEscape + bad + " hello"},
+						{bad + "$H" + bad, bad + "hello" + bad},
+						{"${A:-" + bad + "} $H", bad + " hello"},
+					} {
+						require.Equal(t, []string{recovery + tt.want}, expandValues(newWordExpander(escape, raw), []string{recovery + tt.source}, map[string]string{"H": "hello", "marker": "\ue001"}))
+					}
+				}
+			}
 		}
 	}
 }
@@ -98,3 +134,88 @@ func TestExpansionInsertedBadBytesStayLiteral(t *testing.T) {
 		}
 	}
 }
+
+// Valid shell fragments must have identical quoting and escaping behavior even
+// when an unrelated unsupported reference forces the recovery path.
+func TestExpansionRecoveryAgreesWithBuildKit(t *testing.T) {
+	fragments := []string{
+		`"${EMPTY:-"word"}"`, `"prefix ${EMPTY:-"$H"} suffix"`, `pre"${EMPTY:-"x}y"}"post`,
+		`pre'fix $H'post`, `pre'fix text'post`, `'a " $H' "$H"`, `"a '$H" '$H'`,
+		`one 'two $H' three "$H"`, `echo \$H '$H' "\$H" "$H"`,
+		`'a \' $H`, `"one \" $H"`, `foo'bar'qux '$H'`,
+		`echo ${H:-other} ${EMPTY:-value} ${H:+yes}`, `$? $$ $@ $# $* $!`,
+	}
+	for _, raw := range []bool{true, false} {
+		for _, escape := range []rune{'\\', '`'} {
+			for _, fragment := range fragments {
+				env := variableEnvironment{map[string]string{"H": "hello", "EMPTY": "", "?": "?", "$": "$", "@": "@", "#": "#", "*": "*", "!": "!"}}
+				lex := shell.NewLex(escape)
+				lex.RawQuotes, lex.RawEscapes = raw, raw
+				want, _, err := lex.ProcessWord(fragment, env)
+				if err != nil {
+					continue
+				} // Some backslash fragments are invalid with escape=`.
+				for _, suffix := range []bool{false, true} {
+					source, expected := "${#BROKEN} "+fragment, "${#BROKEN} "+want
+					if suffix {
+						source, expected = fragment+" ${#BROKEN}", want+" ${#BROKEN}"
+					}
+					t.Run(fmt.Sprintf("%t/%c/%t/%s", raw, escape, suffix, fragment), func(t *testing.T) {
+						require.Equal(t, []string{expected}, expandValues(newWordExpander(escape, raw), []string{source}, env...))
+					})
+				}
+			}
+		}
+	}
+}
+
+func FuzzExpansionRecoveryQuotes(f *testing.F) {
+	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, fragment string) {
+		if !utf8.ValidString(fragment) || strings.ContainsRune(fragment, 0) {
+			return
+		}
+		for _, raw := range []bool{true, false} {
+			env := collectingEnvironment{}
+			lex := shell.NewLex('\\')
+			lex.RawQuotes, lex.RawEscapes = raw, raw
+			want, _, err := lex.ProcessWord(fragment, env)
+			if err != nil {
+				return
+			}
+			// A newline separates a trailing escape from the unsupported token.
+			source := "${#BROKEN} " + fragment
+			require.Equal(t, []string{"${#BROKEN} " + want}, expandValues(newWordExpander('\\', raw), []string{source}, map[string]string(env)))
+		}
+	})
+}
+
+func BenchmarkExpansionRecoveryQuotes(b *testing.B) {
+	for _, count := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			value := strings.Repeat(`pre'fix $H' it's `, count) + `orphan' $H`
+			lex := newWordExpander('\\', true)
+			env := map[string]string{"H": "hello"}
+			if _, err := lex.expandWord(value, variableEnvironment{env}); err == nil {
+				b.Fatal("benchmark must exercise unmatched-quote recovery")
+			}
+			b.ReportAllocs()
+			b.SetBytes(int64(len(value)))
+			for b.Loop() {
+				expandValues(lex, []string{value}, env)
+			}
+		})
+	}
+}
+
+// Every name requested by the oracle is populated, keeping this differential
+// test independent of the scanner's intentional unknown-variable policy.
+type collectingEnvironment map[string]string
+
+func (e collectingEnvironment) Get(name string) (string, bool) {
+	e[name] = "hello"
+	return "hello", true
+}
+func (e collectingEnvironment) Keys() []string { return nil }

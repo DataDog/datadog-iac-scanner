@@ -29,18 +29,68 @@ func newWordExpander(escape rune, raw bool) *wordExpander {
 // expanding. Inserted values are never scanned again.
 func expandValues(expander *wordExpander, values []string, scopes ...map[string]string) []string {
 	for i, value := range values {
-		if !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || !strings.ContainsAny(value, "$\\\"'`") {
+		if !strings.ContainsAny(value, "$\\\"'`") {
 			continue
 		}
 		env := variableEnvironment(scopes)
-		expanded, err := expander.expandWord(value, env)
-		if err == nil {
-			values[i] = expanded
-			continue
+		word, restore := protectBadBytes(value, env)
+		expanded, err := expander.expandWord(word, env)
+		if err != nil {
+			expanded = expander.recoverWord(word, env)
 		}
-		values[i] = expander.expandParts(value, env, false)
+		if restore != nil {
+			expanded = restore.Replace(expanded)
+		}
+		values[i] = expanded
 	}
 	return values
+}
+
+// recoverWord masks unsupported parameter expressions before asking BuildKit to
+// process the complete value again. This preserves BuildKit's nested quote and
+// default semantics even when unrelated syntax is unsupported. Only malformed
+// quoting needs fragment recovery; inserted values are restored without expansion.
+func (e *wordExpander) recoverWord(value string, env variableEnvironment) string {
+	ends := e.referenceEndIndex(value)
+	const privateMarker = "\ue002"
+	marker := privateMarker
+	for containsMarker(value, env, marker) {
+		marker += privateMarker
+	}
+	var out strings.Builder
+	var replacements []string
+	copied := 0
+	for pos := 0; pos < len(value); pos++ {
+		if value[pos] == e.escape {
+			pos++
+			continue
+		}
+		if value[pos] != '$' || pos+1 == len(value) || value[pos+1] != '{' {
+			continue
+		}
+		end, found := ends[pos]
+		if !found {
+			continue
+		}
+		if _, err := e.expandWord(value[pos:end], env); err != nil {
+			token := marker + strconv.Itoa(len(replacements)/2) + marker
+			out.WriteString(value[copied:pos])
+			out.WriteString(token)
+			replacements = append(replacements, token, value[pos:end])
+			copied = end
+		}
+		pos = end - 1
+	}
+	if len(replacements) == 0 {
+		return e.expandParts(value, env, false)
+	}
+	out.WriteString(value[copied:])
+	word := out.String()
+	expanded, err := e.expandWord(word, env)
+	if err != nil {
+		expanded = e.expandParts(word, env, false)
+	}
+	return strings.NewReplacer(replacements...).Replace(expanded)
 }
 
 // expandWord applies the same unknown-reference policy to complete values and
@@ -66,9 +116,15 @@ func (e *wordExpander) expandWord(value string, env variableEnvironment) (string
 // reference or unmatched quote must not discard expansion elsewhere in a value.
 func (e *wordExpander) expandParts(value string, env variableEnvironment, quoted bool) string {
 	var out strings.Builder
+	ends := e.recoveryQuoteEnds(value)
+	references := e.referenceEndIndex(value)
 	for i := 0; i < len(value); {
 		ch := value[i]
 		switch {
+		case ch == e.escape && i+1 == len(value) && !quoted:
+			part, _ := e.expandWord(value[i:], env)
+			out.WriteString(part)
+			return out.String()
 		case ch == e.escape && i+1 < len(value):
 			if escaped, end, ok := e.escapedPart(value, i, quoted); ok {
 				out.WriteString(escaped)
@@ -76,13 +132,13 @@ func (e *wordExpander) expandParts(value string, env variableEnvironment, quoted
 				continue
 			}
 		case !quoted && (ch == '\'' || ch == '"'):
-			if part, end, ok := e.quotedPart(value, i, env); ok {
+			if part, end, ok := e.quotedPart(value, i, ends[i], env); ok {
 				out.WriteString(part)
 				i = end
 				continue
 			}
 		case ch == '$':
-			end := e.referenceEnd(value, i)
+			end := e.referenceEnd(value, i, references)
 			if end > i+1 {
 				reference := value[i:end]
 				expanded, err := e.expandWord(reference, env)
@@ -114,30 +170,49 @@ func (e *wordExpander) quoteEnd(value string, start int) int {
 	return -1
 }
 
-func (e *wordExpander) referenceEnd(value string, start int) int {
+func (e *wordExpander) referenceEnd(value string, start int, ends map[int]int) int {
 	pos := start + 1
 	if pos < len(value) && value[pos] == '{' {
-		depth := 1
-		for pos++; pos < len(value); pos++ {
-			switch value[pos] {
-			case e.escape:
-				pos++
-			case '\'', '"':
+		if end, ok := ends[start]; ok {
+			return end
+		}
+		return pos // Preserve malformed text while later references can expand.
+	}
+	return referenceNameEnd(value, pos)
+}
+
+// referenceEndIndex indexes balanced parameter spans in O(n), including nested
+// braces. It only isolates text passed to BuildKit; all operator evaluation is
+// left to shell.Lex. Unclosed prefixes don't cause repeated suffix scans.
+func (e *wordExpander) referenceEndIndex(value string) map[int]int {
+	ends := make(map[int]int)
+	var stack []int
+	for pos := 0; pos < len(value); pos++ {
+		switch value[pos] {
+		case e.escape:
+			pos++
+		case '\'', '"':
+			if len(stack) > 0 {
 				if end := e.quoteEnd(value, pos); end >= 0 {
 					pos = end
 				}
-			case '{':
-				depth++
-			case '}':
-				depth--
-				if depth == 0 {
-					return pos + 1
-				}
+			}
+		case '{':
+			if len(stack) > 0 || pos > 0 && value[pos-1] == '$' {
+				stack = append(stack, pos)
+			}
+		case '}':
+			if len(stack) == 0 {
+				continue
+			}
+			start := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if start > 0 && value[start-1] == '$' {
+				ends[start-1] = pos + 1
 			}
 		}
-		return start + 1 // Preserve malformed text, allowing later references to expand.
 	}
-	return referenceNameEnd(value, pos)
+	return ends
 }
 
 func variableNameByte(ch byte) bool {
@@ -145,26 +220,84 @@ func variableNameByte(ch byte) bool {
 }
 
 func (e *wordExpander) escapedPart(value string, pos int, quoted bool) (part string, end int, ok bool) {
-	next := value[pos+1]
-	if quoted && next != '$' && next != '"' && next != e.escape {
+	_, size := utf8.DecodeRuneInString(value[pos+1:])
+	end = pos + 1 + size
+	word := value[pos:end]
+	if quoted {
+		word = `"` + word + `"`
+	}
+	part, err := e.expandWord(word, nil)
+	if err != nil {
 		return "", pos, false
 	}
-	if e.lex.RawEscapes {
-		return value[pos : pos+2], pos + 2, true
+	if quoted && e.lex.RawQuotes {
+		part = part[1 : len(part)-1]
 	}
-	return value[pos+1 : pos+2], pos + 2, true
+	return part, end, true
 }
 
-// balancedQuotes checks whether the suffix can be paired as shell quotes. Only
-// an unmatched contraction is recovered as literal text; balanced quotes within
-// words retain their shell meaning, even when another expression is unsupported.
-func (e *wordExpander) balancedQuotes(value string) bool {
+// recoveryQuoteEnds indexes quote terminators in O(n) time. Ordinary balanced
+// fragments follow shell quoting. Only in malformed text may an embedded orphan
+// apostrophe yield to a later quote opening a new word. This recovery convention
+// is intentionally local: a later orphan cannot invalidate a closed fragment.
+// Differential tests compare balanced fragments with BuildKit, including when an
+// unsupported reference elsewhere forces recovery.
+func (e *wordExpander) recoveryQuoteEnds(value string) map[int]int {
+	ends := e.quoteEndIndexes(value)
+	if e.quotesBalanced(value, ends) {
+		return ends
+	}
+	openers := e.recoveryQuoteOpeners(value)
+	for start, end := range ends {
+		if isOrphanApostrophe(value, start, end, openers[end]) {
+			ends[start] = -1
+		}
+	}
+	return ends
+}
+
+func isOrphanApostrophe(value string, start, end int, opener bool) bool {
+	if end < 0 || value[start] != '\'' || !opener {
+		return false
+	}
+	embedded := start > 0 && start+1 < len(value) && variableNameByte(value[start-1]) && variableNameByte(value[start+1])
+	opening := end+1 < len(value) && (variableNameByte(value[end+1]) || value[end+1] == '$')
+	return embedded && opening
+}
+
+// quoteEndIndexes records the next possible terminator for each quote. A single
+// quote ignores escapes inside its span; double quotes don't. Both passes are O(n).
+func (e *wordExpander) quoteEndIndexes(value string) map[int]int {
+	ends := make(map[int]int)
+	escapedQuotes := make(map[int]bool)
 	for i := 0; i < len(value); i++ {
-		switch value[i] {
-		case e.escape:
+		if value[i] == e.escape {
 			i++
-		case '\'', '"':
-			end := e.quoteEnd(value, i)
+			escapedQuotes[i] = true
+		}
+	}
+	nextSingle, nextDouble := -1, -1
+	for i := len(value) - 1; i >= 0; i-- {
+		switch value[i] {
+		case '\'':
+			ends[i], nextSingle = nextSingle, i
+		case '"':
+			ends[i] = nextDouble
+			if !escapedQuotes[i] {
+				nextDouble = i
+			}
+		}
+	}
+	return ends
+}
+
+func (e *wordExpander) quotesBalanced(value string, ends map[int]int) bool {
+	for i := 0; i < len(value); i++ {
+		if value[i] == e.escape {
+			i++
+			continue
+		}
+		if end, quote := ends[i]; quote {
 			if end < 0 {
 				return false
 			}
@@ -174,18 +307,65 @@ func (e *wordExpander) balancedQuotes(value string) bool {
 	return true
 }
 
-func (e *wordExpander) quotedPart(value string, pos int, env variableEnvironment) (part string, end int, ok bool) {
-	// In recovery, a contraction's apostrophe is literal rather than an opener
-	// that captures a later, unrelated quoted argument.
-	if value[pos] == '\'' && pos > 0 && pos+1 < len(value) &&
-		variableNameByte(value[pos-1]) && variableNameByte(value[pos+1]) &&
-		!e.balancedQuotes(value[pos:]) {
-		return "", pos, false
+// recoveryQuoteOpeners indexes word boundaries once, rather than rescanning
+// prefixes or suffixes at each apostrophe. It is used only on malformed text.
+func (e *wordExpander) recoveryQuoteOpeners(value string) map[int]bool {
+	openers := make(map[int]bool)
+	wordStart, plainPrefix := 0, true
+	for i := 0; i < len(value); i++ {
+		ch := value[i]
+		if ch == '\'' || ch == '"' {
+			openers[i] = wordStart == i || plainPrefix
+		}
+		if ch == e.escape {
+			i++
+			plainPrefix = false
+			continue
+		}
+		if ch == ' ' || ch == '\t' || ch == '\n' {
+			wordStart, plainPrefix = i+1, true
+		} else {
+			plainPrefix = plainPrefix && variableNameByte(ch)
+		}
 	}
-	end = e.quoteEnd(value, pos)
+	return openers
+}
+
+// protectBadBytes prevents text/scanner diagnostics and preserves exact source
+// bytes while independently expanding the valid shell syntax around them.
+func protectBadBytes(value string, scopes variableEnvironment) (string, *strings.Replacer) {
+	if utf8.ValidString(value) && strings.IndexByte(value, 0) < 0 {
+		return value, nil
+	}
+	const privateMarker = "\ue001"
+	marker := privateMarker
+	for containsMarker(value, scopes, marker) {
+		marker += privateMarker
+	}
+	var out strings.Builder
+	var replacements []string
+	for i := 0; i < len(value); {
+		ch, size := utf8.DecodeRuneInString(value[i:])
+		if ch == 0 || ch == utf8.RuneError && size == 1 {
+			token := marker + strconv.Itoa(len(replacements)/2) + marker
+			out.WriteString(token)
+			replacements = append(replacements, token, value[i:i+size])
+		} else {
+			out.WriteString(value[i : i+size])
+		}
+		i += size
+	}
+	return out.String(), strings.NewReplacer(replacements...)
+}
+
+func (e *wordExpander) quotedPart(value string, pos, quoteEnd int, env variableEnvironment) (part string, end int, ok bool) {
+	end = quoteEnd
 	if end < 0 {
 		return "", pos, false
 	} // Unmatched quotes are literal during recovery.
+	if expanded, err := e.expandWord(value[pos:end+1], env); err == nil {
+		return expanded, end + 1, true
+	}
 	inner := value[pos+1 : end]
 	if value[pos] == '"' {
 		inner = e.expandParts(inner, env, true)
