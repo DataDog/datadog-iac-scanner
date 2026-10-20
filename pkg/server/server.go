@@ -25,8 +25,9 @@
 // Dockerfile filenames and globs from supported-files must be matched
 // case-insensitively, including dockerfile, DOCKERFILE, and Dockerfile.<name>
 // in any case.
-// Use the first matching supported-files entry: exact filenames, then registered
-// extensions (longest first), then candidate globs subject to content validation.
+// Select the matching supported-files entry with the lowest priority. Honor
+// case_sensitive and case_insensitive_for; requires_content_check marks candidates
+// still subject to server content validation. Priority is independent of array order.
 package server
 
 import (

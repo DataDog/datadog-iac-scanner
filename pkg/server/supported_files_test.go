@@ -8,8 +8,12 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+
+	"github.com/stretchr/testify/require"
 	"slices"
 	"strings"
 	"testing"
@@ -20,7 +24,7 @@ import (
 // normalizePattern converts an analyzer file-type key into the IDE-facing
 // pattern used as a strategyByPattern key.
 func normalizePattern(fileType string) string {
-	if fileType == "possibleDockerfile" {
+	if fileType == utils.PossibleDockerfile {
 		return "Dockerfile.*"
 	}
 	if fileType == "" || strings.HasPrefix(fileType, ".") {
@@ -33,7 +37,7 @@ func normalizePattern(fileType string) string {
 }
 
 func TestSupportedFiles_DockerfileCandidates(t *testing.T) {
-	if !slices.Contains(analyzer.PossibleFileTypes(), "possibleDockerfile") {
+	if !slices.Contains(analyzer.PossibleFileTypes(), utils.PossibleDockerfile) {
 		t.Error("Dockerfile candidates must be included in the analyzer's supported types")
 	}
 	w := httptest.NewRecorder()
@@ -54,7 +58,7 @@ func TestSupportedFiles_DockerfileCandidates(t *testing.T) {
 					t.Errorf("Dockerfile.* strategy: got %q, want %q", entry.Strategy, strategySingleFile)
 				}
 			}
-			if strings.Contains(pattern, "possibleDockerfile") {
+			if strings.Contains(pattern, utils.PossibleDockerfile) {
 				t.Errorf("internal extension token exposed as a filename pattern: %q", pattern)
 			}
 		}
@@ -101,8 +105,15 @@ func TestSupportedFiles_Entries(t *testing.T) {
 	}
 }
 
+// Interpret the wire contract, deliberately reversing entries to prove array
+// order is unnecessary. Patterns starting with a dot match suffixes; other
+// patterns match basenames as filename globs.
 func TestSupportedFiles_MatchingPrecedence(t *testing.T) {
-	entries := supportedFiles()
+	w := httptest.NewRecorder()
+	(&Server{}).handleSupportedFiles(w, httptest.NewRequest(http.MethodGet, "/ide/v1/iac/supported-files", nil))
+	var entries []SupportedFileEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
+	slices.Reverse(entries)
 	for _, tt := range []struct {
 		path, pattern string
 		strategy      fileStrategy
@@ -110,30 +121,75 @@ func TestSupportedFiles_MatchingPrecedence(t *testing.T) {
 		{"Dockerfile.yaml", ".yaml", strategyDirectory},
 		{"Dockerfile.CFG", ".cfg", strategyDirectory},
 		{"Dockerfile.tf", ".tf", strategyDirectory},
+		{"DOCKERFILE.TF", ".tf", strategyDirectory},
 		{"Dockerfile.tf.json", ".tf.json", strategyDirectory},
 		{"Dockerfile.tofu.json", ".tofu.json", strategyDirectory},
 		{"Chart.yaml", "Chart.yaml", strategyChart},
 		{"Dockerfile", "Dockerfile", strategySingleFile},
+		{"DOCKERFILE", "Dockerfile", strategySingleFile},
 		{"dockerfile.PROD", "Dockerfile.*", strategySingleFile},
 		{"Dockerfile.md", "Dockerfile.*", strategySingleFile},
+		{"api.DOCKERFILE", ".dockerfile", strategySingleFile},
+		{"main.TF", "", ""},
+		{"values.YAML", "", ""},
+		{"config.JSON", "", ""},
 	} {
 		t.Run(tt.path, func(t *testing.T) {
-			for _, entry := range entries {
-				pattern := entry.Patterns[0]
-				matches := strings.EqualFold(pattern, tt.path)
-				if strings.HasPrefix(pattern, ".") {
-					matches = strings.HasSuffix(strings.ToLower(tt.path), pattern)
-				} else if pattern == "Dockerfile.*" {
-					matches = strings.HasPrefix(strings.ToLower(tt.path), "dockerfile.")
-				}
-				if matches {
-					if pattern != tt.pattern || entry.Strategy != tt.strategy {
-						t.Fatalf("first match = %q/%q, want %q/%q", pattern, entry.Strategy, tt.pattern, tt.strategy)
+			var selected *SupportedFileEntry
+			for i := range entries {
+				entry := &entries[i]
+				sensitive := entry.CaseSensitive
+				for _, pattern := range entry.CaseInsensitiveFor {
+					if matchFilePattern(tt.path, pattern, false) {
+						sensitive = false
 					}
-					return
+				}
+				for _, pattern := range entry.Patterns {
+					if matchFilePattern(tt.path, pattern, sensitive) && (selected == nil || entry.Priority < selected.Priority) {
+						selected = entry
+					}
 				}
 			}
-			t.Fatal("no matching strategy")
+			if tt.pattern == "" {
+				require.Nil(t, selected)
+				return
+			}
+			require.NotNil(t, selected)
+			require.Equal(t, tt.pattern, selected.Patterns[0])
+			require.Equal(t, tt.strategy, selected.Strategy)
 		})
+	}
+}
+
+func matchFilePattern(path, pattern string, sensitive bool) bool {
+	if !sensitive {
+		path, pattern = strings.ToLower(path), strings.ToLower(pattern)
+	}
+	if strings.HasPrefix(pattern, ".") {
+		return strings.HasSuffix(path, pattern)
+	}
+	matched, _ := filepath.Match(pattern, filepath.Base(path))
+	return matched
+}
+
+func TestSupportedFiles_WireMatchingMetadata(t *testing.T) {
+	data, err := json.Marshal(supportedFiles())
+	require.NoError(t, err)
+	var entries []map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &entries))
+	priorities := map[float64]bool{}
+	for _, entry := range entries {
+		priority, ok := entry["priority"].(float64)
+		require.True(t, ok)
+		require.Positive(t, priority)
+		require.False(t, priorities[priority], "priorities are unique")
+		priorities[priority] = true
+		require.IsType(t, false, entry["case_sensitive"])
+		require.IsType(t, false, entry["requires_content_check"])
+		pattern := entry["patterns"].([]interface{})[0].(string)
+		if pattern == "Dockerfile.*" {
+			require.Equal(t, false, entry["case_sensitive"])
+			require.Equal(t, true, entry["requires_content_check"])
+		}
 	}
 }
