@@ -328,11 +328,7 @@ func newConstrainedFS(
 	if err != nil {
 		return nil, failf(ReasonMissingFile, "confinement root does not exist")
 	}
-	abs := renderRoot
-	if !filepath.IsAbs(abs) {
-		abs = filepath.Join(confinementRoot, abs)
-	}
-	resolved, err := realPath(fsys, abs)
+	resolved, err := realPath(fsys, absUnderRoot(confinementRoot, renderRoot))
 	if err != nil {
 		return nil, failf(ReasonMissingFile, "render root does not exist")
 	}
@@ -402,6 +398,28 @@ func realPath(fsys vfs.FS, path string) (string, error) {
 
 func underDir(p, dir string) bool {
 	return p == dir || strings.HasPrefix(p, dir+string(filepath.Separator))
+}
+
+// isRooted reports whether p addresses a location on its own rather than one
+// relative to some directory.
+//
+// filepath.IsAbs is the wrong test. The in-memory filesystem addresses files
+// with a leading "/", and on Windows such a path is rooted but not absolute:
+// it carries no volume name, so IsAbs reports false and the path would be
+// joined onto the confinement root a second time, duplicating its leading
+// segment. filepath.Rel has the same problem and solves it the same way,
+// testing for a separator prefix instead of calling IsAbs.
+func isRooted(p string) bool {
+	return filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, string(filepath.Separator))
+}
+
+// absUnderRoot interprets p as the confinement root does: a rooted path
+// stands on its own, anything else is relative to root.
+func absUnderRoot(root, p string) string {
+	if isRooted(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Join(root, p)
 }
 
 // confine checks path is inside the workspace and returns its real path.
@@ -640,7 +658,13 @@ func injectOriginAnnotations(data []byte) ([]byte, error) {
 	const field = "buildMetadata"
 	var seq *kyamlyaml.Node
 	for i := 0; i < len(mapping.Content)-1; i += 2 {
-		if mapping.Content[i].Value == field {
+		// Kustomize binds this key through encoding/json, which matches field
+		// names case-insensitively, so "BuildMetadata" is the same key to it.
+		// Matching exactly here would append a second buildMetadata key that
+		// wins under last-wins resolution, dropping the options the user set.
+		// The sequence values below stay exact on purpose: Kustomize compares
+		// those with ==, so only the canonical spelling has any effect.
+		if strings.EqualFold(mapping.Content[i].Value, field) {
 			seq = mapping.Content[i+1]
 			break
 		}

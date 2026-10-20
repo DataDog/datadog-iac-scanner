@@ -158,6 +158,56 @@ func TestConstrainedFS_RelativeFollowsFilesystemSeparator(t *testing.T) {
 	if got := mem.relative("/repo/overlays/dev"); got != "overlays/dev" {
 		t.Errorf("mem relative(overlays/dev) = %q, want overlays/dev", got)
 	}
+	if got := mem.relative("overlays/dev"); got != "overlays/dev" {
+		t.Errorf("mem relative(relative input) = %q, want overlays/dev", got)
+	}
+}
+
+func TestIsRooted(t *testing.T) {
+	// A leading "/" has to count as rooted on every OS. Windows does not: a
+	// path with no volume name is rooted but not absolute, so filepath.IsAbs
+	// reports false for the form the in-memory filesystem uses, and a caller
+	// that trusted IsAbs would join such a path onto the root a second time.
+	// These cases are written so they assert the same thing whatever the host
+	// separator is, which is what makes them meaningful on the Windows runner.
+	rooted := []string{"/", "/repo", "/repo/overlays/dev", string(filepath.Separator) + "repo"}
+	for _, p := range rooted {
+		if !isRooted(p) {
+			t.Errorf("isRooted(%q) = false, want true", p)
+		}
+	}
+	for _, p := range []string{"", ".", "repo", "overlays/dev", filepath.Join("overlays", "dev")} {
+		if isRooted(p) {
+			t.Errorf("isRooted(%q) = true, want false", p)
+		}
+	}
+}
+
+func TestAbsUnderRoot(t *testing.T) {
+	// Expectations are built from filepath primitives rather than written as
+	// literals, so the table asserts the same contract on both separator
+	// conventions instead of encoding the host's.
+	root := filepath.Clean("/repo")
+	tests := []struct {
+		name string
+		p    string
+		want string
+	}{
+		// The case that regressed on Windows: a slash-rooted path already
+		// under the root must be taken as it is, never re-joined onto it.
+		{name: "slash rooted under root", p: "/repo/overlays/dev", want: filepath.Clean("/repo/overlays/dev")},
+		{name: "root itself", p: "/repo", want: root},
+		{name: "relative", p: "overlays/dev", want: filepath.Join(root, "overlays", "dev")},
+		{name: "dot", p: ".", want: root},
+		{name: "rooted outside root", p: "/elsewhere", want: filepath.Clean("/elsewhere")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := absUnderRoot(root, tc.p); got != tc.want {
+				t.Errorf("absUnderRoot(%q, %q) = %q, want %q", root, tc.p, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestConstrainedFS_RefusesOutsideConfinement(t *testing.T) {

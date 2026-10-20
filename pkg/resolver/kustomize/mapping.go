@@ -53,7 +53,9 @@ func mapResources(
 	index := newSourceIndex(fsys, cfs.cache)
 	for _, res := range resMap.Resources() {
 		entry, matched := mapResource(cfs, index, res, rootPrefix, rootSuffix)
-		if !matched {
+		// A resource with no file name is dropped, so count it even when a
+		// document matched: a drop must never be silent.
+		if !matched || entry.FileName == "" {
 			failures++
 		}
 		if entry.FileName == "" {

@@ -142,12 +142,20 @@ func TestRender_MultiDocSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(result.Entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(result.Entries))
+	}
 	byName := map[string]int{}
 	for _, e := range result.Entries {
 		byName[e.SourceResourceName] = e.SourceDocumentIndex
 	}
-	if byName["app"] != 0 || byName["svc"] != 1 {
-		t.Errorf("document indexes = %v, want app:0 svc:1", byName)
+	// Two-value form: a missing entry must not pass by way of the zero value,
+	// which is also a valid document index.
+	if idx, ok := byName["app"]; !ok || idx != 0 {
+		t.Errorf("app index = %d (present %t), want 0", idx, ok)
+	}
+	if idx, ok := byName["svc"]; !ok || idx != 1 {
+		t.Errorf("svc index = %d (present %t), want 1", idx, ok)
 	}
 	if result.MappingFailures != 0 {
 		t.Errorf("MappingFailures = %d, want 0", result.MappingFailures)
@@ -256,6 +264,17 @@ func TestRender_MappingFailureCounted(t *testing.T) {
 		if len(e.Content) == 0 {
 			t.Error("entry has no content")
 		}
+	}
+	// The ambiguous resource keeps its entry but carries the -1 sentinel, so
+	// findings fall back to line 1 instead of a wrong document.
+	var unmapped int
+	for _, e := range result.Entries {
+		if e.SourceDocumentIndex == -1 {
+			unmapped++
+		}
+	}
+	if unmapped != 1 {
+		t.Errorf("entries with SourceDocumentIndex -1 = %d, want 1", unmapped)
 	}
 }
 
@@ -486,6 +505,9 @@ func TestRender_NamespaceDisambiguatesSameKindAndName(t *testing.T) {
 	if result.MappingFailures != 0 {
 		t.Errorf("MappingFailures = %d, want 0", result.MappingFailures)
 	}
+	if len(result.Entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(result.Entries))
+	}
 	byNamespace := map[string]int{}
 	for _, e := range result.Entries {
 		if strings.Contains(string(e.Content), "namespace: dev") {
@@ -495,8 +517,13 @@ func TestRender_NamespaceDisambiguatesSameKindAndName(t *testing.T) {
 			byNamespace["prod"] = e.SourceDocumentIndex
 		}
 	}
-	if byNamespace["dev"] != 0 || byNamespace["prod"] != 1 {
-		t.Errorf("document indexes = %v, want dev:0 prod:1", byNamespace)
+	// Two-value form: a missing entry must not pass by way of the zero value,
+	// which is also a valid document index.
+	if idx, ok := byNamespace["dev"]; !ok || idx != 0 {
+		t.Errorf("dev index = %d (present %t), want 0", idx, ok)
+	}
+	if idx, ok := byNamespace["prod"]; !ok || idx != 1 {
+		t.Errorf("prod index = %d (present %t), want 1", idx, ok)
 	}
 }
 
