@@ -23,7 +23,8 @@ var extensionNameTargets = []string{"tfvars", PossibleDockerfile}
 
 // dockerfileExtension recognizes Dockerfile and <name>.Dockerfile in any case.
 // Dockerfile.<name> is a content-checked candidate only after registered formats
-// have had precedence. Backup, template and archive files are auxiliary inputs.
+// have had precedence. Auxiliary files use the same configured path filters as
+// other scanner inputs; arbitrary variant names cannot identify their purpose.
 func dockerfileExtension(path, ext string) (string, bool) {
 	lower := strings.ToLower(filepath.Base(path))
 	switch {
@@ -32,34 +33,12 @@ func dockerfileExtension(path, ext string) (string, bool) {
 	case strings.HasSuffix(lower, ".dockerfile"):
 		return ".dockerfile", true
 	case strings.HasPrefix(lower, "dockerfile."):
-		if isDockerfileAuxiliary(lower) {
-			return "", false
-		}
 		format, registered := supportedFileTypes[strings.ToLower(ext)]
 		if !registered || format.platform == platforms.Dockerfile {
 			return PossibleDockerfile, true
 		}
 	}
 	return "", false
-}
-
-// dockerfileAuxiliarySuffixes describes generated, backup and packaged inputs,
-// not scanner formats. Format precedence comes only from supportedFileTypes.
-var dockerfileAuxiliarySuffixes = []string{
-	".bak", ".orig", ".save", ".swp", ".tmp", ".rej", ".patch", ".diff",
-	".gz", ".tgz", ".tar", ".zip", ".xz", ".bz2",
-	".j2", ".tpl", ".template", ".erb", ".gotmpl", ".tmpl", ".in", ".jinja2", ".mustache",
-	".old", ".backup", ".example", ".swo", ".dockerignore", "~",
-	".jinja", ".sample", ".dist", ".bk", ".disabled", ".hbs", ".njk",
-}
-
-func isDockerfileAuxiliary(lower string) bool {
-	for _, suffix := range dockerfileAuxiliarySuffixes {
-		if strings.HasSuffix(lower, suffix) {
-			return true
-		}
-	}
-	return false
 }
 
 // ExtensionFromPath returns the extension from path alone (no stat/read).

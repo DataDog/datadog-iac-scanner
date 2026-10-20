@@ -1019,7 +1019,12 @@ func TestAnalyze_DockerfileCandidateFiltering(t *testing.T) {
 			} {
 				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
 			}
-			got, err := Analyze(t.Context(), &Analyzer{RepoPath: dir, Paths: []string{dir}, Types: types, MaxFileSize: -1})
+			// Auxiliary paths are a user policy, rather than guessed from suffixes.
+			var excluded []string
+			for _, name := range []string{"Dockerfile.tmpl", "Dockerfile.old", "Dockerfile.bak", "Dockerfile.orig", "Dockerfile.j2"} {
+				excluded = append(excluded, filepath.Join(dir, name))
+			}
+			got, err := Analyze(t.Context(), &Analyzer{RepoPath: dir, Paths: []string{dir}, Exc: excluded, Types: types, MaxFileSize: -1})
 			require.NoError(t, err)
 			want := []string{filepath.ToSlash(filepath.Join(dir, "dockerfile.tf")), filepath.ToSlash(filepath.Join(dir, "dockerfile.json"))}
 			if types[0] == "" {

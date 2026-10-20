@@ -125,7 +125,6 @@ func FilePatterns() []FilePattern {
 					rule.ExcludedSuffixes = append(rule.ExcludedSuffixes, suffix)
 				}
 			}
-			rule.ExcludedSuffixes = append(rule.ExcludedSuffixes, dockerfileAuxiliarySuffixes...)
 			sort.Strings(rule.ExcludedSuffixes)
 		}
 		patterns = append(patterns, rule)

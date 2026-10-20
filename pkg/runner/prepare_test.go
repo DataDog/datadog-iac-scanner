@@ -257,7 +257,9 @@ func TestPrepareMemorySources_DockerfileCandidates(t *testing.T) {
 		"image.ubi8":           []byte("ARG IMAGE=alpine\n"),
 		"image.debian":         []byte("not a Dockerfile\n"),
 	})
-	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
+	// The scanner's shared path filter owns repository-specific auxiliary files.
+	ignored := []string{"valid/Dockerfile.bak", "Dockerfile.j2", "Dockerfile.tmpl", "Dockerfile.jinja", "Dockerfile.sample", "Dockerfile.dist", "Dockerfile.bk", "Dockerfile.disabled", "Dockerfile.hbs", "Dockerfile.njk", "Dockerfile.old"}
+	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), ignored, nil)
 	services, _ := buildServices(t, ctx, memfs, mp)
 	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
@@ -828,6 +830,44 @@ func TestPreparedDockerSourceSurvivesDispatch(t *testing.T) {
 					}
 				}
 				require.Equal(t, len(inputs), count)
+			})
+		}
+	}
+}
+
+// The content policy is independent of a variant's spelling. User path filters
+// are the explicit policy for auxiliary files, on disk and in pushed scans.
+func TestDockerfileVariantPathFilters(t *testing.T) {
+	for _, suffix := range []string{"copy", "bkp", "rpmnew", "custom", "log", "j2"} {
+		for _, excluded := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/excluded=%t", suffix, excluded), func(t *testing.T) {
+				name := "Dockerfile." + suffix
+				content := "FROM alpine\nRUN a\n"
+				ctx := t.Context()
+				dir := t.TempDir()
+				path := filepath.Join(dir, name)
+				writeFile(t, path, content)
+				var diskExcludes, memoryExcludes []string
+				if excluded {
+					diskExcludes = []string{path}
+					memoryExcludes = []string{name}
+				}
+				analyzed, err := analyzer.Analyze(ctx, &analyzer.Analyzer{RepoPath: dir, Paths: []string{dir}, Types: []string{"dockerfile"}, Exc: diskExcludes, MaxFileSize: 100})
+				require.NoError(t, err)
+				fs := vfs.NewMemFS(map[string][]byte{name: []byte(content)})
+				mp := provider.NewMemorySourceProvider(fs, fs.Paths(), memoryExcludes, nil)
+				services, _ := buildServices(t, ctx, fs, mp)
+				require.NoError(t, PrepareMemorySources(ctx, mp, services, "filters", false, 5, false))
+				count := 0
+				for _, service := range services {
+					count += len(service.files)
+				}
+				want := 1
+				if excluded {
+					want = 0
+				}
+				require.Len(t, analyzed.Inventory, want)
+				require.Equal(t, want, count)
 			})
 		}
 	}
