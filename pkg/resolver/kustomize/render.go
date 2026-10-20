@@ -8,7 +8,6 @@ package kustomize
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -33,17 +32,22 @@ type Result struct {
 	MappingFailures int
 }
 
+// renderMu serializes krusty builds process-wide: krusty.Run installs an
+// OpenAPI schema into a package variable of kyaml, whose readers take no lock
+// of their own, so a per-Renderer lock would let one renderer's reset wipe
+// the schema another renderer's build is reading.
+var renderMu sync.Mutex
+
 // Renderer renders kustomization roots of one scan. It is scan-scoped state:
 // a byte cache shared by all renders and a cumulative size budget. Renders
-// themselves are serialized because krusty.Run mutates process-global OpenAPI
-// state and is not safe for concurrent use.
+// themselves are serialized, process-wide, because krusty.Run mutates
+// process-global OpenAPI state and is not safe for concurrent use.
 type Renderer struct {
 	fsys            vfs.FS
 	confinementRoot string
 	maxFileBytes    int64
 	budget          atomic.Int64
 	cache           *byteCache
-	runMu           sync.Mutex
 }
 
 // NewRenderer returns a renderer confined to confinementRoot. maxFileBytes
@@ -90,19 +94,15 @@ func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	// ResetOpenAPI drops a custom schema so it cannot leak into later renders;
-	// it also drops the parsed builtin schema, which the next render rebuilds,
-	// so it is only worth paying for roots that set one.
-	if len(topKust.OpenAPI) > 0 {
-		openapi.ResetOpenAPI()
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	entries, failures := mapResources(r.fsys, cfs, resMap, topKust.NamePrefix, topKust.NameSuffix)
 	return &Result{
-		Root:            cfs.relative(root),
+		// The resolved render root is the single source of truth, so Root and
+		// every entry's RenderRoot agree whatever form the caller passed.
+		Root:            cfs.relative(cfs.renderRoot),
 		Entries:         entries,
 		ReadFiles:       cfs.read.sorted(),
 		MappingFailures: failures,
@@ -118,8 +118,20 @@ func (r *Renderer) run(cfs *constrainedFS) (resMap resmap.ResMap, err error) {
 			err = failf(ReasonRenderError, "kustomize render panicked")
 		}
 	}()
-	r.runMu.Lock()
-	defer r.runMu.Unlock()
+	renderMu.Lock()
+	defer renderMu.Unlock()
+	// Any kustomization the build touches can install a custom schema, not
+	// just the render root, and SetSchema never clears a previous one. Reset
+	// when the version changed, deferred and under renderMu, so the error and
+	// panic paths are covered and the reset cannot race a concurrent render.
+	// ResetOpenAPI also drops the parsed builtin schema, which the next
+	// render rebuilds, so it is only paid for renders that changed the schema.
+	schemaBefore := openapi.GetSchemaVersion()
+	defer func() {
+		if openapi.GetSchemaVersion() != schemaBefore {
+			openapi.ResetOpenAPI()
+		}
+	}()
 	opts := krusty.MakeDefaultOptions()
 	opts.LoadRestrictions = types.LoadRestrictionsNone
 	resMap, err = krusty.MakeKustomizer(opts).Run(cfs, cfs.renderRoot)
@@ -129,24 +141,35 @@ func (r *Renderer) run(cfs *constrainedFS) (resMap resmap.ResMap, err error) {
 	return resMap, nil
 }
 
-// relative returns p relative to the confinement root with forward slashes.
+// relative returns p relative to the confinement root, "." for the root
+// itself, so no machine path reaches finding metadata. Separators follow the
+// filesystem, as the Helm resolver does: pushed files are reported with "/"
+// on every OS, disk files keep the OS separator. p must be relative to the
+// confinement root or a rooted path already resolved through realPath, which
+// is what every caller holds.
 func (c *constrainedFS) relative(p string) string {
-	abs := p
-	if !filepath.IsAbs(abs) {
-		abs = filepath.Join(c.confinementRoot, abs)
+	rel, err := filepath.Rel(c.confinementRoot, absUnderRoot(c.confinementRoot, p))
+	if err != nil {
+		// Unreachable for a confined path: both sides are absolute and share a
+		// volume. Report no path rather than an absolute one; mapResources
+		// drops entries that have no file name to report against.
+		return ""
 	}
-	abs = filepath.Clean(abs)
-	rel := strings.TrimPrefix(abs, c.confinementRoot+string(filepath.Separator))
-	return filepath.ToSlash(rel)
+	if c.slashPaths {
+		return filepath.ToSlash(rel)
+	}
+	return rel
 }
 
 // findKustomizationFile returns the render root's kustomization file, probing
-// the three names Kustomize itself recognizes, in its own probe order.
+// the three names Kustomize itself recognizes, in its own probe order. It
+// returns the resolved path, which is what ReadFile compares against to
+// recognize the top-level file.
 func findKustomizationFile(cfs *constrainedFS, renderRoot string) (string, error) {
 	for _, name := range []string{"kustomization.yaml", "kustomization.yml", "Kustomization"} {
 		path := filepath.Join(renderRoot, name)
-		if info, _, err := cfs.statExists(path); err == nil && !info.IsDir() {
-			return path, nil
+		if info, found, err := cfs.statExists(path); err == nil && !info.IsDir() {
+			return found, nil
 		}
 	}
 	return "", failf(ReasonMissingFile, "no kustomization file in render root")

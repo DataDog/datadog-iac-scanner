@@ -23,14 +23,13 @@ import (
 	kyamlyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
-// kustomizationFileNames are the exact, case-sensitive base names Kustomize
-// recognizes as a kustomization file. Kustomize probes all three in every
-// kustomization directory it loads.
-var kustomizationFileNames = map[string]bool{
-	"kustomization.yaml": true,
-	"kustomization.yml":  true,
-	"Kustomization":      true,
-}
+var (
+	kustomizationFileNames = map[string]bool{
+		"kustomization.yaml": true,
+		"kustomization.yml":  true,
+		"Kustomization":      true,
+	}
+)
 
 // fileRole classifies a file the adapter served during a render.
 type fileRole string
@@ -189,9 +188,19 @@ func checkForbidden(k *types.Kustomization) error {
 
 // validateKustomization decodes data as a kustomization and refuses anything
 // that could make the renderer touch the network, run git, or load a plugin.
+//
+// Decoding must go through types.Kustomization.Unmarshal, the path Kustomize
+// itself takes: it matches field names case-insensitively, so "Resources:"
+// binds for Kustomize while a case-sensitive YAML decoder would wave it
+// through unvalidated. The generic YAML decode runs first only to reject
+// duplicate keys, which the JSON path resolves last-wins.
 func validateKustomization(data []byte) (*types.Kustomization, error) {
+	fields := map[string]interface{}{}
+	if err := kyamlyaml.Unmarshal(data, &fields); err != nil {
+		return nil, failf(ReasonValidation, "cannot decode kustomization")
+	}
 	k := &types.Kustomization{}
-	if err := kyamlyaml.Unmarshal(data, k); err != nil {
+	if err := k.Unmarshal(data); err != nil {
 		return nil, failf(ReasonValidation, "cannot decode kustomization")
 	}
 	k.FixKustomization()
@@ -294,14 +303,14 @@ func (r *readSet) sorted() []string {
 type constrainedFS struct {
 	fsys            vfs.FS
 	confinementRoot string // resolved real path of the workspace root
-	//nolint:unused // the renderer (stacked PR) reads it
-	renderRoot    string // absolute path of the kustomization being rendered
-	maxFileBytes  int64
-	budget        *atomic.Int64
-	cache         *byteCache
-	read          *readSet
-	topKustomFile string // absolute path of the render root's kustomization file
-	mem           *memIndex
+	renderRoot      string // absolute path of the kustomization being rendered
+	maxFileBytes    int64
+	budget          *atomic.Int64
+	cache           *byteCache
+	read            *readSet
+	topKustomFile   string // resolved real path of the render root's kustomization file
+	mem             *memIndex
+	slashPaths      bool // report resolved paths with "/" instead of the OS separator
 }
 
 var _ filesys.FileSystem = (*constrainedFS)(nil)
@@ -314,11 +323,7 @@ func newConstrainedFS(
 	if err != nil {
 		return nil, failf(ReasonMissingFile, "confinement root does not exist")
 	}
-	abs := renderRoot
-	if !filepath.IsAbs(abs) {
-		abs = filepath.Join(confinementRoot, abs)
-	}
-	resolved, err := realPath(fsys, abs)
+	resolved, err := realPath(fsys, absUnderRoot(confinementRoot, renderRoot))
 	if err != nil {
 		return nil, failf(ReasonMissingFile, "render root does not exist")
 	}
@@ -333,6 +338,10 @@ func newConstrainedFS(
 		budget:          budget,
 		cache:           cache,
 		read:            &readSet{files: make(map[string]fileRole)},
+		// Pushed files are addressed with "/" on every OS, so their resolved
+		// paths must be too; disk files keep the OS separator, matching the
+		// Helm resolver.
+		slashPaths: !vfs.IsDisk(fsys),
 	}
 	if m, ok := fsys.(*vfs.MemFS); ok {
 		c.mem = newMemIndex(m)
@@ -384,6 +393,23 @@ func realPath(fsys vfs.FS, path string) (string, error) {
 
 func underDir(p, dir string) bool {
 	return p == dir || strings.HasPrefix(p, dir+string(filepath.Separator))
+}
+
+// isRooted reports whether p addresses a location on its own rather than one
+// relative to some directory. filepath.IsAbs is the wrong test: on Windows a
+// leading "/" is rooted but not absolute, and treating it as relative would
+// join it onto the confinement root a second time.
+func isRooted(p string) bool {
+	return filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, string(filepath.Separator))
+}
+
+// absUnderRoot interprets p as the confinement root does: a rooted path
+// stands on its own, anything else is relative to root.
+func absUnderRoot(root, p string) string {
+	if isRooted(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Join(root, p)
 }
 
 // confine checks path is inside the workspace and returns its real path.
@@ -458,7 +484,7 @@ func (c *constrainedFS) ReadFile(path string) ([]byte, error) {
 		c.budget.Add(info.Size())
 		return nil, failf(ReasonSizeLimit, "cumulative size budget exceeded")
 	}
-	base := filepath.Base(found)
+	base := filepath.Base(path) // the requested name: a symlinked kustomization.yaml still validates and gets annotated
 	data, err := c.cache.get(found, func() ([]byte, error) { return c.fsys.ReadFile(found) })
 	if err != nil {
 		return nil, failf(ReasonMissingFile, "read: cannot load file")
@@ -618,7 +644,11 @@ func injectOriginAnnotations(data []byte) ([]byte, error) {
 	const field = "buildMetadata"
 	var seq *kyamlyaml.Node
 	for i := 0; i < len(mapping.Content)-1; i += 2 {
-		if mapping.Content[i].Value == field {
+		// Kustomize binds keys case-insensitively, so "BuildMetadata" is the
+		// same key; matching exactly would append a duplicate that wins under
+		// last-wins and drops the options the user set. The sequence values
+		// below stay exact: Kustomize compares those with ==.
+		if strings.EqualFold(mapping.Content[i].Value, field) {
 			seq = mapping.Content[i+1]
 			break
 		}

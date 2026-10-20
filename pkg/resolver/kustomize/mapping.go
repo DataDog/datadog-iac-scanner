@@ -6,6 +6,7 @@
 package kustomize
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -40,24 +41,33 @@ func newSourceIndex(fsys vfs.FS, cache *byteCache) *sourceIndex {
 // mapResources attributes every rendered resource to the source document a
 // developer edits, using the origin annotation for the file and the resource
 // id for the document. Generated resources map to the kustomization entry that
-// created them. A resource that cannot be attributed still gets an entry, with
-// SourceDocumentIndex -1 so findings fall back to line 1; those count as
-// mapping failures. rootPrefix and rootSuffix are the render root's name
-// transformations, used to reverse the most common rename before matching.
+// created them. A resource whose source document cannot be pinpointed still
+// gets an entry with SourceDocumentIndex -1, so findings fall back to line 1;
+// one with no source file at all is dropped rather than reported against an
+// empty path. Both count as mapping failures. rootPrefix and rootSuffix are
+// the render root's name transformations, used to reverse the most common
+// rename before matching.
 func mapResources(
 	fsys vfs.FS, cfs *constrainedFS, resMap resmap.ResMap, rootPrefix, rootSuffix string,
 ) (entries []model.ResolvedHelm, failures int) {
 	index := newSourceIndex(fsys, cfs.cache)
 	for _, res := range resMap.Resources() {
 		entry, matched := mapResource(cfs, index, res, rootPrefix, rootSuffix)
-		if !matched {
+		// A drop must never be silent, whichever way it happened.
+		if !matched || entry.FileName == "" {
 			failures++
+		}
+		if entry.FileName == "" {
+			continue
 		}
 		entries = append(entries, entry)
 	}
 	return entries, failures
 }
 
+// mapResource builds the entry for one rendered resource. An empty FileName
+// means no source file could be identified, which tells mapResources to drop
+// the resource instead of reporting it against an empty path.
 func mapResource(cfs *constrainedFS, index *sourceIndex, res *resource.Resource, rootPrefix, rootSuffix string) (model.ResolvedHelm, bool) {
 	org := res.OrgId()
 	origin, err := res.GetOrigin()
@@ -144,42 +154,67 @@ func untransformedNames(name, prefix, suffix string) []string {
 	return append(out, name)
 }
 
-// exact returns the source document matching kind and name, and namespace
-// only when the source document sets one.
+// exact returns the source document matching kind and name. Namespace is only
+// a tiebreaker: the rendered namespace is the transformed one, so a
+// kustomization-level namespace override makes it differ from every source
+// document that writes its own, and requiring it to match would lose the
+// standard base-plus-overlay layout.
 func (s *sourceIndex) exact(sourceAbs, kind, name, namespace string) (docRef, bool) {
 	docs, ok := s.docs(sourceAbs)
 	if !ok {
 		return docRef{}, false
 	}
+	var candidates []docRef
 	for _, d := range docs {
-		if d.kind == kind && d.name == name && (d.namespace == "" || d.namespace == namespace) {
-			return d, true
+		if d.kind == kind && d.name == name {
+			candidates = append(candidates, d)
 		}
 	}
-	return docRef{}, false
+	return pickCandidate(candidates, namespace)
 }
 
 // uniqueContained resolves a transformed name to its source document when
 // exactly one same-kind document name is contained in the rendered name
-// (nested name prefix, suffix, or hash suffix). Zero or several candidates
-// mean the match is not determinate and the caller counts a mapping failure.
+// (nested name prefix, suffix, or hash suffix). Zero candidates, or several
+// that the namespace cannot single out, mean the match is not determinate and
+// the caller counts a mapping failure.
 func (s *sourceIndex) uniqueContained(sourceAbs, kind, name, namespace string) (docRef, bool) {
 	docs, ok := s.docs(sourceAbs)
 	if !ok {
 		return docRef{}, false
 	}
+	var candidates []docRef
+	for _, d := range docs {
+		if d.kind == kind && strings.Contains(name, d.name) {
+			candidates = append(candidates, d)
+		}
+	}
+	return pickCandidate(candidates, namespace)
+}
+
+// pickCandidate takes a lone candidate, or breaks a tie by the namespace the
+// rendered resource ended up in; anything else is not determinate.
+func pickCandidate(candidates []docRef, namespace string) (docRef, bool) {
+	if len(candidates) == 1 {
+		return candidates[0], true
+	}
+	return uniqueByNamespace(candidates, namespace)
+}
+
+// uniqueByNamespace breaks a tie between documents that share a kind and a
+// name by the namespace the rendered resource ended up in. It reports no match
+// unless exactly one candidate claims that namespace.
+func uniqueByNamespace(candidates []docRef, namespace string) (docRef, bool) {
 	var found docRef
 	matched := false
-	for _, d := range docs {
-		if d.kind != kind || (d.namespace != "" && d.namespace != namespace) {
+	for _, d := range candidates {
+		if d.namespace != namespace {
 			continue
 		}
-		if strings.Contains(name, d.name) {
-			if matched {
-				return docRef{}, false
-			}
-			found, matched = d, true
+		if matched {
+			return docRef{}, false
 		}
+		found, matched = d, true
 	}
 	return found, matched
 }
@@ -215,8 +250,18 @@ func parseDocuments(data []byte) []docRef {
 	decoder := kyamlyaml.NewDecoder(strings.NewReader(string(data)))
 	for i := 0; ; i++ {
 		var doc sourceDocument
-		if err := decoder.Decode(&doc); err != nil {
-			break
+		err := decoder.Decode(&doc)
+		if err != nil {
+			// A type error means the document was parsed and consumed but does
+			// not decode as a resource: it keeps its index, and the documents
+			// after it stay visible instead of being hidden by one odd
+			// document. Any other error is a stream-level failure the decoder
+			// cannot make progress past, so scanning the file stops there.
+			var typeErr *kyamlyaml.TypeError
+			if !errors.As(err, &typeErr) {
+				break
+			}
+			continue
 		}
 		if doc.Kind == "" || doc.Metadata.Name == "" {
 			continue
