@@ -8,17 +8,16 @@ package server
 
 import (
 	"encoding/json"
-	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-
-	"github.com/stretchr/testify/require"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/stretchr/testify/require"
 )
 
 // normalizePattern converts an analyzer file-type key into the IDE-facing
@@ -136,6 +135,15 @@ func TestSupportedFiles_MatchingPrecedence(t *testing.T) {
 		{"Dockerfile.orig", "", ""},
 		{"Dockerfile.j2", "", ""},
 		{"Dockerfile.gotmpl", "", ""},
+		{"Dockerfile.tmpl", "", ""},
+		{"Dockerfile.in", "", ""},
+		{"Dockerfile.jinja2", "", ""},
+		{"Dockerfile.mustache", "", ""},
+		{"Dockerfile.old", "", ""},
+		{"Dockerfile.backup", "", ""},
+		{"Dockerfile.example", "", ""},
+		{"Dockerfile.swo", "", ""},
+
 		{"Dockerfile.tar.gz", "", ""},
 		{"api.DOCKERFILE", ".dockerfile", strategySingleFile},
 		{"main.TF", "", ""},

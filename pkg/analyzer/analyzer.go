@@ -24,6 +24,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
@@ -121,14 +122,14 @@ const (
 	json          = ".json"
 	sh            = ".sh"
 	arm           = "azureresourcemanager"
-	bicep         = "bicep"
+	bicep         = platforms.Bicep
 	kubernetes    = "kubernetes"
-	terraform     = "terraform"
+	terraform     = platforms.Terraform
 	gdm           = "googledeploymentmanager"
 	ansible       = "ansible"
-	grpc          = "grpc"
+	grpc          = platforms.GRPC
 	dockercompose = "dockercompose"
-	dockerfile    = "dockerfile"
+	dockerfile    = platforms.Dockerfile
 	crossplane    = "crossplane"
 	knative       = "knative"
 	cicd          = "cicd"
@@ -830,17 +831,18 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 // ClassifyParsedFile attributes a parsed file to its platform for payload
 // bucketing. FileKind overrides extension/content detection for unambiguous
 // types (Helm rendered manifests are Kubernetes, etc.). Returns "" when
-// undetermined. platforms is the scan's effective platform set, forwarded to
+// undetermined. selectedPlatforms is the scan's effective platform set, forwarded to
 // ClassifyFile so the sink classifies ambiguous files with the same candidate
 // set the analyzer used (e.g. a Crossplane file is "kubernetes" in a default
 // scan, "crossplane" only when Crossplane is enabled). fsys is forwarded for
 // extension detection so the server's in-memory pushed content (not on disk) is
 // classified correctly.
-func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, kind model.FileKind, path string, content []byte) string {
+func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, selectedPlatforms []string,
+	kind model.FileKind, path string, content []byte) string {
 	if platform, ok := PlatformForKind(kind); ok {
 		return platform
 	}
-	return ClassifyFile(ctx, fsys, path, content, platforms)
+	return ClassifyFile(ctx, fsys, path, content, selectedPlatforms)
 }
 
 // ExcludedByContent reports a file whose content rules out every platform, so

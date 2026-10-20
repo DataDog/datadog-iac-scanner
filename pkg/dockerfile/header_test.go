@@ -1,30 +1,40 @@
 package dockerfile
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-// The reader makes traversal observable, including BuildKit's buffered reads.
-type countedReader struct {
-	reader *strings.Reader
-	read   int
+func TestHasFromValidatesBody(t *testing.T) {
+	for _, source := range []string{
+		"FROM alpine\nRUN <<EOF\necho hi\n",
+		"ARG IMAGE=alpine\nFROM $IMAGE\nCOPY <<EOF /x\nhi\n",
+	} {
+		require.False(t, HasFrom(strings.NewReader(source)), "malformed candidates must be skipped")
+	}
+	require.True(t, HasFrom(strings.NewReader("FROM alpine\nRUN <<EOF\necho hi\nEOF\n")))
 }
 
-func (r *countedReader) Read(buffer []byte) (int, error) {
-	n, err := r.reader.Read(buffer)
-	r.read += n
-	return n, err
-}
-
-func TestHasFromStopsAtHeader(t *testing.T) {
-	for _, prefix := range []string{"FROM alpine\n", "ARG X=1\nFROM alpine\n", "package main\n"} {
-		source := prefix + strings.Repeat("binary\x00payload\n", 100000)
-		reader := &countedReader{reader: strings.NewReader(source)}
-		require.Equal(t, strings.Contains(prefix, "FROM"), HasFrom(reader))
-		require.Less(t, reader.read, 8192, "the body is not parsed or traversed")
+// Long headers exercise BuildKit's continuation handling without repeatedly
+// parsing every growing prefix. Both successful and failed inputs are measured.
+func BenchmarkHasFrom(b *testing.B) {
+	for _, lines := range []int{100, 1000, 10000} {
+		for _, malformed := range []bool{false, true} {
+			source := "ARG IMAGE=\\\n" + strings.Repeat(" alpine\\\n", lines) + " alpine\nFROM $IMAGE\n"
+			if malformed {
+				source += "RUN <<EOF\necho hi\n"
+			}
+			b.Run(fmt.Sprintf("lines=%d/malformed=%t", lines, malformed), func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64(len(source)))
+				for b.Loop() {
+					require.Equal(b, !malformed, HasFrom(strings.NewReader(source)))
+				}
+			})
+		}
 	}
 }
 

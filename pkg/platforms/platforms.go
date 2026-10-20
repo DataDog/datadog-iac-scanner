@@ -5,6 +5,14 @@
  */
 package platforms
 
+// Canonical routing names shared by classification and filename registration.
+const (
+	Dockerfile = "dockerfile"
+	Terraform  = "terraform"
+	GRPC       = "grpc"
+	Bicep      = "bicep"
+)
+
 // Supported is the list of IaC platforms with published rules available to customers.
 var Supported = []string{
 	"Ansible",

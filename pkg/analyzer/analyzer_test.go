@@ -1001,18 +1001,21 @@ func TestAnalyze_DockerfileCandidateFiltering(t *testing.T) {
 		t.Run(fmt.Sprint(types), func(t *testing.T) {
 			dir := t.TempDir()
 			for name, body := range map[string]string{
-				"Dockerfile.prod":    "FROM alpine\nCOPY . /app\n",
-				"Dockerfile.invalid": "not a Dockerfile\n",
-				"Dockerfile.bak":     "FROM alpine\nCOPY . /app\n",
-				"Dockerfile.orig":    "FROM alpine\nCOPY . /app\n",
-				"Dockerfile.j2":      "FROM {{ .Image }}\n",
-				"Dockerfile.YAML":    "apiVersion: v1\nkind: Pod\nmetadata:\n  name: x\n",
-				"Dockerfile.args":    "ARG FOO=bar\nARG TAG=latest\n",
-				"Dockerfile.arg-run": "ARG FOO\nRUN echo hi\nFROM alpine\n",
-				"dockerfile.tf":      "resource \"aws_s3_bucket\" \"b\" {}\n",
-				"dockerfile.yaml":    "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test\nspec:\n  containers: []\n",
-				"dockerfile.json":    "{\"terraform_version\":\"1.5.0\",\"planned_values\":{},\"resource_changes\":[],\"configuration\":{}}",
-				"dockerfile.go":      "FROM alpine\nRUN echo dockerfile-content\n",
+				"Dockerfile.prod":      "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.invalid":   "not a Dockerfile\n",
+				"Dockerfile.malformed": "FROM alpine\nRUN <<EOF\necho hi\n",
+				"Dockerfile.tmpl":      "FROM {{ .Base }}\n",
+				"Dockerfile.old":       "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.bak":       "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.orig":      "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.j2":        "FROM {{ .Image }}\n",
+				"Dockerfile.YAML":      "apiVersion: v1\nkind: Pod\nmetadata:\n  name: x\n",
+				"Dockerfile.args":      "ARG FOO=bar\nARG TAG=latest\n",
+				"Dockerfile.arg-run":   "ARG FOO\nRUN echo hi\nFROM alpine\n",
+				"dockerfile.tf":        "resource \"aws_s3_bucket\" \"b\" {}\n",
+				"dockerfile.yaml":      "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test\nspec:\n  containers: []\n",
+				"dockerfile.json":      "{\"terraform_version\":\"1.5.0\",\"planned_values\":{},\"resource_changes\":[],\"configuration\":{}}",
+				"dockerfile.go":        "FROM alpine\nRUN echo dockerfile-content\n",
 			} {
 				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
 			}
@@ -1043,7 +1046,7 @@ func TestClassifyFile_DockerfileContent(t *testing.T) {
 			{"blank ARG continuation", "ARG IMAGE=\\\n\n# continued value\n alpine\nFROM $IMAGE\n", "dockerfile"},
 			{"trailing escape whitespace", "ARG IMAGE=\\  \n alpine\nFROM $IMAGE\n", "dockerfile"},
 			{"invalid escape directive", "# escape=x\nFROM alpine\n", ""},
-			{"body syntax is validated by the parser", "FROM alpine\nRUN <<EOF\necho hi\n", "dockerfile"},
+			{"unterminated body heredoc", "FROM alpine\nRUN <<EOF\necho hi\n", ""},
 			{"continued arg", "ARG IMAGE=\\\n# image name\n  alpine\nFROM $IMAGE\n", "dockerfile"},
 			{"continued arg with escape directive", "# escape=`\nARG IMAGE=`\n  alpine\nFROM $IMAGE\n", "dockerfile"},
 			{"escape directive after comment is ignored", "# comment\n# escape=`\nARG IMAGE=\\\n  alpine\nFROM $IMAGE\n", "dockerfile"},

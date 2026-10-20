@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"golang.org/x/tools/godoc/util"
@@ -35,7 +36,7 @@ func dockerfileExtension(path, ext string) (string, bool) {
 			return "", false
 		}
 		format, registered := supportedFileTypes[strings.ToLower(ext)]
-		if !registered || format.dockerfile {
+		if !registered || format.platform == platforms.Dockerfile {
 			return PossibleDockerfile, true
 		}
 	}
@@ -47,7 +48,8 @@ func dockerfileExtension(path, ext string) (string, bool) {
 var dockerfileAuxiliarySuffixes = []string{
 	".bak", ".orig", ".save", ".swp", ".tmp", ".rej", ".patch", ".diff",
 	".gz", ".tgz", ".tar", ".zip", ".xz", ".bz2",
-	".j2", ".tpl", ".template", ".erb", ".gotmpl", ".dockerignore", "~",
+	".j2", ".tpl", ".template", ".erb", ".gotmpl", ".tmpl", ".in", ".jinja2", ".mustache",
+	".old", ".backup", ".example", ".swo", ".dockerignore", "~",
 }
 
 func isDockerfileAuxiliary(lower string) bool {

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
 
@@ -35,7 +36,6 @@ const (
 )
 
 type fileType struct {
-	dockerfile      bool
 	contentCheck    ContentCheck
 	platform        string
 	caseInsensitive bool
@@ -49,24 +49,24 @@ var supportedFileTypes = map[string]fileType{
 	".yaml":       {contentCheck: YAMLContent},
 	".json":       {contentCheck: PlatformContent},
 	".sh":         {contentCheck: PlatformContent},
-	".dockerfile": {dockerfile: true, platform: "dockerfile", caseInsensitive: true},
-	"Dockerfile":  {dockerfile: true, platform: "dockerfile", caseInsensitive: true},
+	".dockerfile": {platform: platforms.Dockerfile, caseInsensitive: true},
+	"Dockerfile":  {platform: platforms.Dockerfile, caseInsensitive: true},
 	PossibleDockerfile: {
-		dockerfile: true, platform: "dockerfile", contentCheck: DockerfileContent,
+		platform: platforms.Dockerfile, contentCheck: DockerfileContent,
 		caseInsensitive: true, pattern: "Dockerfile.*",
 	},
-	".debian":          {dockerfile: true, platform: "dockerfile", contentCheck: DockerfileContent},
-	".ubi8":            {dockerfile: true, platform: "dockerfile", contentCheck: DockerfileContent},
-	tfpath.ExtTF:       {platform: "terraform"},
-	tfpath.ExtTofu:     {platform: "terraform"},
-	tfpath.ExtTFJSON:   {platform: "terraform", caseInsensitive: true},
-	tfpath.ExtTofuJSON: {platform: "terraform", caseInsensitive: true},
-	tfpath.ExtTFVars:   {platform: "terraform"},
-	".proto":           {platform: "grpc"},
+	".debian":          {platform: platforms.Dockerfile, contentCheck: DockerfileContent},
+	".ubi8":            {platform: platforms.Dockerfile, contentCheck: DockerfileContent},
+	tfpath.ExtTF:       {platform: platforms.Terraform},
+	tfpath.ExtTofu:     {platform: platforms.Terraform},
+	tfpath.ExtTFJSON:   {platform: platforms.Terraform, caseInsensitive: true},
+	tfpath.ExtTofuJSON: {platform: platforms.Terraform, caseInsensitive: true},
+	tfpath.ExtTFVars:   {platform: platforms.Terraform},
+	".proto":           {platform: platforms.GRPC},
 	".cfg":             {contentCheck: AnsibleConfigContent},
 	".conf":            {contentCheck: AnsibleConfigContent},
 	".ini":             {contentCheck: AnsibleInventoryContent},
-	".bicep":           {platform: "bicep"},
+	".bicep":           {platform: platforms.Bicep},
 }
 
 // SupportedFileTypes returns the sorted extension and filename tokens routed
@@ -121,7 +121,7 @@ func FilePatterns() []FilePattern {
 			// Reserve registered non-Dockerfile suffixes even in a different case;
 			// that must not implicitly enable uppercase extensions for other formats.
 			for suffix, other := range supportedFileTypes {
-				if !other.dockerfile && strings.HasPrefix(suffix, ".") {
+				if other.platform != platforms.Dockerfile && strings.HasPrefix(suffix, ".") {
 					rule.ExcludedSuffixes = append(rule.ExcludedSuffixes, suffix)
 				}
 			}

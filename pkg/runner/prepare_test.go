@@ -238,8 +238,11 @@ func TestPrepareMemorySources_DockerfileCandidates(t *testing.T) {
 		"Dockerfile.go":        []byte("package dockerfile\n"),
 		"Dockerfile.zip":       []byte("PK\x03\x04\x00\x00"),
 		"Dockerfile.custom":    []byte("FROM alpine\n"),
+		"Dockerfile.malformed": []byte("FROM alpine\nRUN <<EOF\necho hi\n"),
 		"valid/Dockerfile.bak": []byte("FROM alpine\n"),
 		"Dockerfile.j2":        []byte("FROM alpine\n"),
+		"Dockerfile.tmpl":      []byte("FROM {{ .Base }}\n"),
+		"Dockerfile.old":       []byte("FROM alpine\n"),
 		"image.ubi8":           []byte("ARG IMAGE=alpine\n"),
 		"image.debian":         []byte("not a Dockerfile\n"),
 	})
@@ -256,6 +259,9 @@ func TestPrepareMemorySources_DockerfileCandidates(t *testing.T) {
 		}
 	}
 	require.ElementsMatch(t, []string{"Dockerfile.prod", "Dockerfile.custom"}, paths)
+	trk := services[0].Tracker.(*tracker.CITracker)
+	require.Equal(t, 2, trk.FoundFiles, "invalid candidates must not count as failed parses")
+	require.Equal(t, trk.FoundFiles, trk.ParsedFiles)
 	require.Empty(t, memfs.MissingFiles())
 }
 
