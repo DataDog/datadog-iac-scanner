@@ -315,6 +315,11 @@ func runFiles(
 			Line:      v.Line,
 			FileName:  filepath.Base(v.FileName),
 		}
+		// Instantiated module findings are reported at the call site, as in SARIF.
+		if attr := v.ModuleAttribution; attr != nil && attr.CallSite.Filename != "" {
+			out[i].Line = attr.CallSite.LineStart
+			out[i].FileName = filepath.Base(attr.CallSite.Filename)
+		}
 	}
 	return out, shapeErrs, nil
 }
