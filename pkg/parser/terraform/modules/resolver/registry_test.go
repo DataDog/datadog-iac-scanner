@@ -596,6 +596,58 @@ func TestDotTerraformResolverUnpinnedCallUsesModuleNameWhenPinnedRecordSharesSou
 	}
 }
 
+func TestDotTerraformResolverCanonicalizesRegistrySources(t *testing.T) {
+	const shortSource = "terraform-aws-modules/vpc/aws"
+	const qualifiedSource = "registry.terraform.io/" + shortSource
+	for _, spelling := range []struct{ name, installed, declared string }{
+		{"qualified_to_short", qualifiedSource, shortSource},
+		{"short_to_qualified", shortSource, qualifiedSource},
+		{"qualified_to_qualified", qualifiedSource, qualifiedSource},
+	} {
+		t.Run(spelling.name, func(t *testing.T) {
+			root := writeModulesJSONRecords(t, []dotTerraformModuleRecord{
+				{Key: "old", Source: spelling.installed, Version: "4.0.0", Dir: ".terraform/modules/old"},
+				{Key: "new", Source: spelling.installed, Version: "5.0.0", Dir: ".terraform/modules/new"},
+				{
+					Key: "sub", Source: spelling.installed + "//modules/subnet", Version: "5.0.0",
+					Dir: ".terraform/modules/sub/modules/subnet",
+				},
+			})
+			r := &DotTerraformResolver{RootDirs: []string{root}}
+			for _, tc := range []struct{ name, moduleName, suffix, version, wantDir, wantVersion, wantPackage string }{
+				{"pinned_old", "", "", "4.0.0", "old", "4.0.0", "old"},
+				{"pinned_new", "", "", "5.0.0", "new", "5.0.0", "new"},
+				{"unpinned", "", "", "", "old", "4.0.0", "old"},
+				{"named_unpinned", "new", "", "", "new", "5.0.0", "new"},
+				{"constraint", "new", "", "~> 5.0", "new", "5.0.0", "new"},
+				{"subdir_pinned", "sub", "//modules/subnet", "5.0.0", "sub/modules/subnet", "5.0.0", "sub"},
+				{"subdir_unpinned", "sub", "//modules/subnet", "", "sub/modules/subnet", "5.0.0", "sub"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					mod := &tfmodules.ParsedModule{
+						Name: tc.moduleName, Source: spelling.declared + tc.suffix,
+						Version: tc.version, FileName: filepath.Join(root, "main.tf"),
+					}
+					if err := r.Screen(t.Context(), mod); err != nil {
+						t.Fatalf("Screen: %v", err)
+					}
+					res, err := r.Resolve(t.Context(), mod)
+					if err != nil {
+						t.Fatalf("Resolve: %v", err)
+					}
+					wantPath := filepath.Join(root, ".terraform/modules", tc.wantDir)
+					if res.LocalPath != wantPath || res.ResolvedVersion != tc.wantVersion || res.Origin != "dot_terraform" {
+						t.Fatalf("resolution = %+v, want path %q, version %q, origin dot_terraform", res, wantPath, tc.wantVersion)
+					}
+					if want := filepath.Join(root, ".terraform/modules", tc.wantPackage); res.PackageRoot != want {
+						t.Fatalf("PackageRoot = %q, want %q", res.PackageRoot, want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestGoGetterCacheHitCountsTotalBytes(t *testing.T) {
 	cacheDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(cacheDir, "main.tf"), []byte("0123456789"), 0o644); err != nil {

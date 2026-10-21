@@ -72,3 +72,18 @@ func implicitRegistryModuleSource(source string) bool {
 	}
 	return len(strings.Split(raw, "/")) == 3
 }
+
+// CanonicalModuleSource renders a registry module source in its fully qualified
+// form (host/namespace/name/provider//subdir), stripping any query. It returns
+// false for non-registry sources, such as local paths and Git sources.
+func CanonicalModuleSource(source string) (string, bool) {
+	trimmed := strings.TrimSpace(source)
+	if idx := strings.Index(trimmed, "?"); idx >= 0 {
+		trimmed = trimmed[:idx]
+	}
+	addr, err := ParseRegistryModuleSource(trimmed)
+	if err != nil {
+		return "", false
+	}
+	return addr.String(), true
+}

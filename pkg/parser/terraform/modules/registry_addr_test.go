@@ -7,6 +7,32 @@ package tfmodules
 
 import "testing"
 
+func TestCanonicalModuleSource(t *testing.T) {
+	const qualified = "registry.terraform.io/org/vpc/aws"
+	for _, tc := range []struct{ source, want string }{
+		{"org/vpc/aws", qualified},
+		{qualified, qualified},
+		{" org/vpc/aws ", qualified},
+		{"org/vpc/aws//modules/child", qualified + "//modules/child"},
+		{qualified + "//modules/child", qualified + "//modules/child"},
+		{"org/vpc/aws//modules/child?version=1.0.0", qualified + "//modules/child"},
+		{"registry.example.com:8443/org/vpc/aws", "registry.example.com:8443/org/vpc/aws"},
+		{"registry.opentofu.org/org/vpc/aws", "registry.opentofu.org/org/vpc/aws"},
+		{"./modules/child", ""},
+		{"../modules/child", ""},
+		{"git::https://github.com/org/repo.git//modules/child?ref=v1.0.0", ""},
+		{"https://example.com/module.zip", ""},
+		{"", ""},
+	} {
+		t.Run(tc.source, func(t *testing.T) {
+			got, ok := CanonicalModuleSource(tc.source)
+			if got != tc.want || ok != (tc.want != "") {
+				t.Fatalf("CanonicalModuleSource(%q) = (%q, %t), want (%q, %t)", tc.source, got, ok, tc.want, tc.want != "")
+			}
+		})
+	}
+}
+
 func TestParseRegistryModuleSource(t *testing.T) {
 	tests := []struct {
 		source string

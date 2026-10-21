@@ -81,6 +81,11 @@ func (r *DotTerraformResolver) load() {
 				continue
 			}
 			resolvedPath.version = strings.TrimSpace(rec.Version)
+			// Match short registry sources to the host-qualified form written
+			// by terraform init, including the module-name-specific keys.
+			if canonical, ok := tfmodules.CanonicalModuleSource(rec.Source); ok {
+				rec.Source = canonical
+			}
 			r.index[dotTerraformKey(root, rec.Source, rec.Version)] = resolvedPath
 			if rec.Key != "" {
 				for _, key := range dotTerraformLoadCallKeys(root, rec.Source, rec.Version, moduleNameFromKey(rec.Key)) {
@@ -121,8 +126,12 @@ func (r *DotTerraformResolver) lookup(mod *tfmodules.ParsedModule) (installedMod
 		return installedModulePath{}, notApplicable("local modules are handled by LocalResolver")
 	}
 	r.once.Do(r.load)
+	source := mod.Source
+	if canonical, ok := tfmodules.CanonicalModuleSource(source); ok {
+		source = canonical
+	}
 	for _, root := range r.rootsFor(mod.FileName) {
-		for _, key := range dotTerraformResolveKeys(root, mod.Source, mod.Version, mod.Name) {
+		for _, key := range dotTerraformResolveKeys(root, source, mod.Version, mod.Name) {
 			if path, ok := r.index[key]; ok {
 				return path, nil
 			}
