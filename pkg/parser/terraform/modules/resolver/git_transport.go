@@ -40,7 +40,9 @@ var gitInheritedEnvBlockedPrefixes = []string{
 }
 
 // gitBaseEnv returns the parent environment with redirection-capable variables
-// removed. Variables named in keep survive even when they match a blocked prefix.
+// removed. Git installation paths are trusted like PATH: relocated installations
+// need them to find helpers and templates. Variables named in keep also survive
+// even when they match a blocked prefix.
 func gitBaseEnv(keep ...string) []string {
 	environ := os.Environ()
 	env := make([]string, 0, len(environ))
@@ -53,7 +55,7 @@ func gitBaseEnv(keep ...string) []string {
 		blocked := false
 		for _, prefix := range gitInheritedEnvBlockedPrefixes {
 			if strings.HasPrefix(variable, prefix) {
-				blocked = true
+				blocked = name != "GIT_EXEC_PATH" && name != "GIT_TEMPLATE_DIR"
 				break
 			}
 		}
