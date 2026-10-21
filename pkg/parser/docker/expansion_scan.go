@@ -29,52 +29,24 @@ func (r shellReference) name(value string) string {
 
 type shellSyntax struct {
 	references []shellReference // Opening order, including nested references.
-	quotes     map[int]int
-}
-
-// A cursor consumes ordered references once, including those skipped by a
-// complete quote or parameter span. Recovery needs no second reference map.
-type shellReferences struct {
-	items []shellReference
-	next  int
-}
-
-func (c *shellReferences) end(pos int) int {
-	for c.next < len(c.items) && c.items[c.next].start < pos {
-		c.next++
-	}
-	if c.next < len(c.items) && c.items[c.next].start == pos {
-		return c.items[c.next].end
-	}
-	return pos + 1
 }
 
 type shellFrame struct {
 	kind      shellContext
-	start     int
 	reference int
 	stop      byte // Replacement patterns stop on / before the final } operand.
 }
 
 type shellContextScanner struct {
-	value   string
-	escape  byte
-	stack   []shellFrame
-	syntax  shellSyntax
-	ignored map[int]bool
-	anchors map[int]int // Balanced quote openers from the original shell contexts.
-	orphans []int
-	plain   bool
-	escaped bool // Word-boundary bookkeeping for malformed-input recovery only.
-	repair  bool
+	value  string
+	escape byte
+	stack  []shellFrame
+	syntax shellSyntax
 }
 
-// scanShell uses the same context stack for protection and recovery. Parameters
-// push an operand context even inside double quotes; a double-quoted operand
-// pushes another context in which apostrophes are literal. Evaluation stays in
-// BuildKit. Each pass is O(n). Repair repeats only when a previously active
-// quote is ignored, so it terminates in at most q+1 passes for q quote positions;
-// the worst-case bound is O(n*q), not a fixed number of linear passes.
+// scanShell identifies references in one O(n) context-stack walk. It never
+// repairs quotes or evaluates expressions; BuildKit owns complete-word parsing.
+// The same immutable spans drive unknown-name protection and plain recovery.
 func (e *wordExpander) scanShell(value string, quoted bool) shellSyntax {
 	root := contextWord
 	if quoted {
@@ -82,64 +54,11 @@ func (e *wordExpander) scanShell(value string, quoted bool) shellSyntax {
 	}
 	var frames [8]shellFrame
 	s := shellContextScanner{value: value, escape: e.escape, stack: frames[:0]}
-	s.scan(root, false)
-	if !s.ignoreBrokenQuotes() {
-		return s.syntax
+	s.stack = append(s.stack, shellFrame{kind: root})
+	for pos := 0; pos < len(value); {
+		pos = s.step(pos)
 	}
-	// A contraction exposed by repair must yield to a quote opener already
-	// identified in the original parameter context (for example :-'word').
-	s.anchors, s.syntax.quotes = s.syntax.quotes, nil
-	for {
-		s.scan(root, true)
-		if !s.ignoreBrokenQuotes() {
-			return s.syntax
-		}
-	}
-}
-
-func (s *shellContextScanner) ignoreBrokenQuotes() bool {
-	changed := false
-	ignore := func(pos int) {
-		if s.ignored == nil {
-			s.ignored = make(map[int]bool)
-		}
-		if !s.ignored[pos] {
-			s.ignored[pos] = true
-			changed = true
-		}
-	}
-	// Fix misplaced contraction openers before ignoring unmatched quotes:
-	// those apparent unmatched quotes may close correctly on the next pass.
-	if len(s.orphans) > 0 {
-		for _, start := range s.orphans {
-			ignore(start)
-		}
-		return changed
-	}
-	for _, frame := range s.stack[1:] {
-		if frame.kind == contextSingleQuote || frame.kind == contextDoubleQuote {
-			ignore(frame.start)
-		}
-	}
-	return changed
-}
-
-func (s *shellContextScanner) scan(root shellContext, repair bool) {
-	s.stack = append(s.stack[:0], shellFrame{kind: root, start: -1})
-	s.syntax.references = s.syntax.references[:0]
-	clear(s.syntax.quotes)
-	s.orphans = s.orphans[:0]
-	s.plain, s.escaped, s.repair = true, false, repair
-	for pos := 0; pos < len(s.value); {
-		next := s.step(pos)
-		// Only malformed-input repair needs contraction bookkeeping.
-		if repair {
-			for i := pos; i < next; i++ {
-				s.wordBoundary(s.value[i])
-			}
-		}
-		pos = next
-	}
+	return s.syntax
 }
 
 func (s *shellContextScanner) step(pos int) int {
@@ -147,7 +66,7 @@ func (s *shellContextScanner) step(pos int) int {
 	ch := s.value[pos]
 	if frame.kind == contextSingleQuote {
 		if ch == '\'' {
-			s.closeQuote(pos)
+			s.closeQuote()
 		}
 		return pos + 1
 	}
@@ -158,8 +77,8 @@ func (s *shellContextScanner) step(pos int) int {
 		return s.reference(pos)
 	}
 	if frame.kind == contextDoubleQuote {
-		if ch == '"' && len(s.stack) > 1 && !s.ignored[pos] {
-			s.closeQuote(pos)
+		if ch == '"' && len(s.stack) > 1 {
+			s.closeQuote()
 		}
 		return pos + 1 // Apostrophes and braces are literal in this context.
 	}
@@ -177,12 +96,12 @@ func (s *shellContextScanner) step(pos int) int {
 
 func (s *shellContextScanner) openQuote(pos int) int {
 	ch := s.value[pos]
-	if (ch == '\'' || ch == '"') && !s.ignored[pos] {
+	if ch == '\'' || ch == '"' {
 		kind := contextSingleQuote
 		if ch == '"' {
 			kind = contextDoubleQuote
 		}
-		s.stack = append(s.stack, shellFrame{kind: kind, start: pos})
+		s.stack = append(s.stack, shellFrame{kind: kind})
 	}
 	return pos + 1
 }
@@ -224,42 +143,10 @@ func (s *shellContextScanner) reference(pos int) int {
 			}
 		}
 	}
-	s.stack = append(s.stack, shellFrame{kind: contextParameter, start: pos, reference: ref, stop: stop})
+	s.stack = append(s.stack, shellFrame{kind: contextParameter, reference: ref, stop: stop})
 	return end
 }
 
-func (s *shellContextScanner) closeQuote(pos int) {
-	frame := s.stack[len(s.stack)-1]
-	if s.syntax.quotes == nil {
-		s.syntax.quotes = make(map[int]int)
-	}
-	s.syntax.quotes[frame.start] = pos + 1
-	if s.repair && frame.kind == contextSingleQuote && (s.plain || s.anchors[pos] > pos) && embeddedApostrophe(s.value, frame.start) &&
-		pos+1 < len(s.value) && (variableNameByte(s.value[pos+1]) || s.value[pos+1] == '$') {
-		s.orphans = append(s.orphans, frame.start)
-	}
+func (s *shellContextScanner) closeQuote() {
 	s.stack = s.stack[:len(s.stack)-1]
-}
-
-func (s *shellContextScanner) wordBoundary(ch byte) {
-	if s.escaped {
-		s.escaped = false
-		return
-	}
-	switch ch {
-	case s.escape:
-		s.escaped, s.plain = true, false
-	case ' ', '\t', '\n':
-		s.plain = true
-	default:
-		s.plain = s.plain && variableNameByte(ch)
-	}
-}
-
-func embeddedApostrophe(value string, pos int) bool {
-	return pos > 0 && pos+1 < len(value) && variableNameByte(value[pos-1]) && variableNameByte(value[pos+1])
-}
-
-func variableNameByte(ch byte) bool {
-	return ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '_'
 }

@@ -7,7 +7,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/moby/buildkit/frontend/dockerfile/shell"
-	"github.com/pkg/errors"
 )
 
 type wordExpander struct {
@@ -25,9 +24,9 @@ func newWordExpander(escape rune, raw bool) *wordExpander {
 }
 
 // expandValues uses BuildKit for shell expansion. Unknown references stay
-// visible to rules; explicit defaults still apply to unset variables. Unsupported
-// syntax is preserved locally, without preventing independent references from
-// expanding. Inserted values are never scanned again.
+// visible to rules; explicit defaults still apply to unset variables in valid
+// words. Rejected words only substitute known plain references outside single
+// quotes, preserving every other byte. Inserted values are never scanned again.
 func expandValues(expander *wordExpander, values []string, scopes ...map[string]string) []string {
 	for i, value := range values {
 		if !strings.ContainsAny(value, "$\\\"'`") {
@@ -47,56 +46,40 @@ func expandValues(expander *wordExpander, values []string, scopes ...map[string]
 	return values
 }
 
-// recoverWord masks unsupported parameter expressions before asking BuildKit to
-// process the complete value again. This preserves BuildKit's nested quote and
-// default semantics even when unrelated syntax is unsupported. Only malformed
-// quoting needs fragment recovery; inserted values are restored without expansion.
+// recoverWord makes a single O(n) walk over the scanner's ordered references.
+// Only known plain names are replaced. All other source bytes, including quotes,
+// escapes and parameter operators, stay untouched. Values are never rescanned.
 func (e *wordExpander) recoverWord(value string, env variableEnvironment, syntax shellSyntax) string {
-	const privateMarker = "\ue002"
-	marker := privateMarker
-	for containsMarker(value, env, marker) {
-		marker += privateMarker
-	}
 	var out strings.Builder
-	var replacements []string
 	copied := 0
-	covered := 0
 	for _, ref := range syntax.references {
-		pos, end := ref.start, ref.end
-		if pos < covered || !ref.braced(value) || end == 0 {
+		if ref.end == 0 || ref.name(value) == "" {
 			continue
 		}
-		if _, _, err := e.expandWord(value[pos:end], env); err != nil && unsupportedModifier(err) {
-			token := marker + strconv.Itoa(len(replacements)/2) + marker
-			out.WriteString(value[copied:pos])
-			out.WriteString(token)
-			replacements = append(replacements, token, value[pos:end])
-			copied = end
+		if ref.braced(value) && ref.end != ref.nameEnd+1 {
+			continue
 		}
-		covered = end
+		name := ref.name(value)
+		first, _ := utf8.DecodeRuneInString(name)
+		if first != '_' && !unicode.IsLetter(first) {
+			continue
+		}
+		replacement, known := env.Get(name)
+		if !known {
+			continue
+		}
+		out.WriteString(value[copied:ref.start])
+		out.WriteString(replacement)
+		copied = ref.end
 	}
-	if len(replacements) == 0 {
-		return e.expandParts(value, env, false, syntax)
+	if copied == 0 {
+		return value
 	}
 	out.WriteString(value[copied:])
-	word := out.String()
-	expanded, syntax, err := e.expandWord(word, env)
-	if err != nil {
-		expanded = e.expandParts(word, env, false, syntax)
-	}
-	return strings.NewReplacer(replacements...).Replace(expanded)
+	return out.String()
 }
 
-// Brace spans only identify candidates, not shell grammar. Mask a span only
-// when BuildKit identifies an unsupported modifier; delimiter, quote and pattern
-// errors may mean the span cuts across a valid expression. The complete-word
-// parse, or fragment recovery for malformed input, handles those errors.
-func unsupportedModifier(err error) bool {
-	return strings.HasPrefix(errors.Cause(err).Error(), "unsupported modifier (")
-}
-
-// expandWord applies the same unknown-reference policy to complete values and
-// isolated expressions recovered from unsupported shell syntax. Returned spans
+// expandWord applies unknown-reference policy to complete values. Returned spans
 // belong to value (not the masked word) and are reused by malformed recovery.
 func (e *wordExpander) expandWord(value string, env variableEnvironment) (expanded string, syntax shellSyntax, err error) {
 	word, restore := value, (*strings.Replacer)(nil)
@@ -117,67 +100,6 @@ func (e *wordExpander) expandWord(value string, env variableEnvironment) (expand
 		expanded = restore.Replace(expanded)
 	}
 	return expanded, syntax, err
-}
-
-// expandParts isolates references before handing them to BuildKit. This is a
-// recovery boundary, not an implementation of shell parameter operators. A bad
-// reference or unmatched quote must not discard expansion elsewhere in a value.
-func (e *wordExpander) expandParts(value string, env variableEnvironment, quoted bool, syntax shellSyntax) string {
-	var out strings.Builder
-	references := shellReferences{items: syntax.references}
-	for i := 0; i < len(value); {
-		ch := value[i]
-		switch {
-		case ch == e.escape && i+1 == len(value) && !quoted:
-			part, _, _ := e.expandWord(value[i:], env)
-			out.WriteString(part)
-			return out.String()
-		case ch == e.escape && i+1 < len(value):
-			if escaped, end, ok := e.escapedPart(value, i, quoted); ok {
-				out.WriteString(escaped)
-				i = end
-				continue
-			}
-		case syntax.quotes[i] > i:
-			part, end := e.quotedPart(value, i, syntax.quotes[i]-1, env)
-			out.WriteString(part)
-			i = end
-			continue
-		case ch == '$':
-			end := references.end(i)
-			if end > i+1 {
-				reference := value[i:end]
-				expanded, _, err := e.expandWord(reference, env)
-				if err == nil {
-					out.WriteString(expanded)
-				} else {
-					out.WriteString(reference)
-				}
-				i = end
-				continue
-			}
-		}
-		out.WriteByte(ch)
-		i++
-	}
-	return out.String()
-}
-
-func (e *wordExpander) escapedPart(value string, pos int, quoted bool) (part string, end int, ok bool) {
-	_, size := utf8.DecodeRuneInString(value[pos+1:])
-	end = pos + 1 + size
-	word := value[pos:end]
-	if quoted {
-		word = `"` + word + `"`
-	}
-	part, _, err := e.expandWord(word, nil)
-	if err != nil {
-		return "", pos, false
-	}
-	if quoted && e.lex.RawQuotes {
-		part = part[1 : len(part)-1]
-	}
-	return part, end, true
 }
 
 // protectBadBytes prevents text/scanner diagnostics and preserves exact source
@@ -205,21 +127,6 @@ func protectBadBytes(value string, scopes variableEnvironment) (string, *strings
 		i += size
 	}
 	return out.String(), strings.NewReplacer(replacements...)
-}
-
-func (e *wordExpander) quotedPart(value string, pos, quoteEnd int, env variableEnvironment) (part string, end int) {
-	end = quoteEnd
-	if expanded, _, err := e.expandWord(value[pos:end+1], env); err == nil {
-		return expanded, end + 1
-	}
-	inner := value[pos+1 : end]
-	if value[pos] == '"' {
-		inner = e.expandParts(inner, env, true, e.scanShell(inner, true))
-	}
-	if e.lex.RawQuotes {
-		inner = value[pos:pos+1] + inner + value[end:end+1]
-	}
-	return inner, end + 1
 }
 
 // protectUnknownReferences preserves the scanner's unknown-value convention
