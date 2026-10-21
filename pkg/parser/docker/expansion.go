@@ -35,9 +35,9 @@ func expandValues(expander *wordExpander, values []string, scopes ...map[string]
 		}
 		env := variableEnvironment(scopes)
 		word, restore := protectBadBytes(value, env)
-		expanded, err := expander.expandWord(word, env)
+		expanded, syntax, err := expander.expandWord(word, env)
 		if err != nil {
-			expanded = expander.recoverWord(word, env)
+			expanded = expander.recoverWord(word, env, syntax)
 		}
 		if restore != nil {
 			expanded = restore.Replace(expanded)
@@ -51,8 +51,7 @@ func expandValues(expander *wordExpander, values []string, scopes ...map[string]
 // process the complete value again. This preserves BuildKit's nested quote and
 // default semantics even when unrelated syntax is unsupported. Only malformed
 // quoting needs fragment recovery; inserted values are restored without expansion.
-func (e *wordExpander) recoverWord(value string, env variableEnvironment) string {
-	syntax := e.scanShell(value, false)
+func (e *wordExpander) recoverWord(value string, env variableEnvironment, syntax shellSyntax) string {
 	const privateMarker = "\ue002"
 	marker := privateMarker
 	for containsMarker(value, env, marker) {
@@ -67,7 +66,7 @@ func (e *wordExpander) recoverWord(value string, env variableEnvironment) string
 		if pos < covered || !ref.braced(value) || end == 0 {
 			continue
 		}
-		if _, err := e.expandWord(value[pos:end], env); err != nil && unsupportedModifier(err) {
+		if _, _, err := e.expandWord(value[pos:end], env); err != nil && unsupportedModifier(err) {
 			token := marker + strconv.Itoa(len(replacements)/2) + marker
 			out.WriteString(value[copied:pos])
 			out.WriteString(token)
@@ -77,13 +76,13 @@ func (e *wordExpander) recoverWord(value string, env variableEnvironment) string
 		covered = end
 	}
 	if len(replacements) == 0 {
-		return e.expandParts(value, env, false)
+		return e.expandParts(value, env, false, syntax)
 	}
 	out.WriteString(value[copied:])
 	word := out.String()
-	expanded, err := e.expandWord(word, env)
+	expanded, syntax, err := e.expandWord(word, env)
 	if err != nil {
-		expanded = e.expandParts(word, env, false)
+		expanded = e.expandParts(word, env, false, syntax)
 	}
 	return strings.NewReplacer(replacements...).Replace(expanded)
 }
@@ -97,35 +96,40 @@ func unsupportedModifier(err error) bool {
 }
 
 // expandWord applies the same unknown-reference policy to complete values and
-// isolated expressions recovered from unsupported shell syntax.
-func (e *wordExpander) expandWord(value string, env variableEnvironment) (string, error) {
+// isolated expressions recovered from unsupported shell syntax. Returned spans
+// belong to value (not the masked word) and are reused by malformed recovery.
+func (e *wordExpander) expandWord(value string, env variableEnvironment) (expanded string, syntax shellSyntax, err error) {
 	word, restore := value, (*strings.Replacer)(nil)
 	lex := e.lex
-	if strings.Contains(value, "${") {
+	parameters := strings.Contains(value, "${")
+	if parameters {
 		// SkipUnsetEnv also skips defaults. Preserve unknown references and
 		// operations needing their values before evaluating explicit defaults.
-		word, restore = e.protectUnknownReferences(value, env)
+		syntax = e.scanShell(value, false)
+		word, restore = e.protectUnknownReferences(value, env, syntax)
 		lex = e.parameterLex
 	}
-	expanded, _, err := lex.ProcessWord(word, env)
+	expanded, _, err = lex.ProcessWord(word, env)
+	if err != nil && !parameters {
+		syntax = e.scanShell(value, false)
+	}
 	if err == nil && restore != nil {
 		expanded = restore.Replace(expanded)
 	}
-	return expanded, err
+	return expanded, syntax, err
 }
 
 // expandParts isolates references before handing them to BuildKit. This is a
 // recovery boundary, not an implementation of shell parameter operators. A bad
 // reference or unmatched quote must not discard expansion elsewhere in a value.
-func (e *wordExpander) expandParts(value string, env variableEnvironment, quoted bool) string {
+func (e *wordExpander) expandParts(value string, env variableEnvironment, quoted bool, syntax shellSyntax) string {
 	var out strings.Builder
-	syntax := e.scanShell(value, quoted)
 	references := shellReferences{items: syntax.references}
 	for i := 0; i < len(value); {
 		ch := value[i]
 		switch {
 		case ch == e.escape && i+1 == len(value) && !quoted:
-			part, _ := e.expandWord(value[i:], env)
+			part, _, _ := e.expandWord(value[i:], env)
 			out.WriteString(part)
 			return out.String()
 		case ch == e.escape && i+1 < len(value):
@@ -143,7 +147,7 @@ func (e *wordExpander) expandParts(value string, env variableEnvironment, quoted
 			end := references.end(i)
 			if end > i+1 {
 				reference := value[i:end]
-				expanded, err := e.expandWord(reference, env)
+				expanded, _, err := e.expandWord(reference, env)
 				if err == nil {
 					out.WriteString(expanded)
 				} else {
@@ -166,7 +170,7 @@ func (e *wordExpander) escapedPart(value string, pos int, quoted bool) (part str
 	if quoted {
 		word = `"` + word + `"`
 	}
-	part, err := e.expandWord(word, nil)
+	part, _, err := e.expandWord(word, nil)
 	if err != nil {
 		return "", pos, false
 	}
@@ -205,12 +209,12 @@ func protectBadBytes(value string, scopes variableEnvironment) (string, *strings
 
 func (e *wordExpander) quotedPart(value string, pos, quoteEnd int, env variableEnvironment) (part string, end int) {
 	end = quoteEnd
-	if expanded, err := e.expandWord(value[pos:end+1], env); err == nil {
+	if expanded, _, err := e.expandWord(value[pos:end+1], env); err == nil {
 		return expanded, end + 1
 	}
 	inner := value[pos+1 : end]
 	if value[pos] == '"' {
-		inner = e.expandParts(inner, env, true)
+		inner = e.expandParts(inner, env, true, e.scanShell(inner, true))
 	}
 	if e.lex.RawQuotes {
 		inner = value[pos:pos+1] + inner + value[end:end+1]
@@ -222,42 +226,35 @@ func (e *wordExpander) quotedPart(value string, pos, quoteEnd int, env variableE
 // without asking the lexer to disable unset-variable operators. Placeholders
 // cannot occur in source or scope values and are restored in one pass, so inserted
 // values remain literal. Quotes and escapes are still processed by BuildKit.
-// The context scan and the ordered reference walk each take O(len(value)) time.
-func (e *wordExpander) protectUnknownReferences(value string, scopes variableEnvironment) (string, *strings.Replacer) {
-	syntax := e.scanShell(value, false)
-	// Filtering in place only overwrites already visited entries.
-	unknown := syntax.references[:0]
-	covered := 0
-	for _, ref := range syntax.references {
-		if ref.start < covered || ref.name(value) == "" || ref.end == 0 {
-			continue
-		}
-		if _, found := scopes.Get(ref.name(value)); found {
-			continue
-		}
-		if !preserveUnknownReference(value, ref) {
-			continue
-		}
-		unknown = append(unknown, ref)
-		covered = ref.end
-	}
-	if len(unknown) == 0 {
-		return value, nil
-	}
+// The ordered O(len(value)) walk reuses the caller's context scan without
+// mutating its spans, so malformed recovery can use the same result.
+func (e *wordExpander) protectUnknownReferences(value string, scopes variableEnvironment, syntax shellSyntax) (string, *strings.Replacer) {
 	const privateMarker = "\ue000"
-	marker := privateMarker
-	for containsMarker(value, scopes, marker) {
-		marker += privateMarker
-	}
+	var marker string
 	var out strings.Builder
-	replacements := make([]string, 0, len(unknown)*2)
+	var replacements []string
 	pos := 0
-	for i, ref := range unknown {
-		token := marker + strconv.Itoa(i) + marker
+	for _, ref := range syntax.references {
+		if ref.start < pos || ref.name(value) == "" || ref.end == 0 {
+			continue
+		}
+		if _, found := scopes.Get(ref.name(value)); found || !preserveUnknownReference(value, ref) {
+			continue
+		}
+		if marker == "" {
+			marker = privateMarker
+			for containsMarker(value, scopes, marker) {
+				marker += privateMarker
+			}
+		}
+		token := marker + strconv.Itoa(len(replacements)/2) + marker
 		out.WriteString(value[pos:ref.start])
 		out.WriteString(token)
 		replacements = append(replacements, token, value[ref.start:ref.end])
 		pos = ref.end
+	}
+	if len(replacements) == 0 {
+		return value, nil
 	}
 	out.WriteString(value[pos:])
 	return out.String(), strings.NewReplacer(replacements...)

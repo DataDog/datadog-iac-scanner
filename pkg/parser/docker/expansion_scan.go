@@ -62,15 +62,19 @@ type shellContextScanner struct {
 	stack   []shellFrame
 	syntax  shellSyntax
 	ignored map[int]bool
+	anchors map[int]int // Balanced quote openers from the original shell contexts.
 	orphans []int
 	plain   bool
 	escaped bool // Word-boundary bookkeeping for malformed-input recovery only.
+	repair  bool
 }
 
 // scanShell uses the same context stack for protection and recovery. Parameters
 // push an operand context even inside double quotes; a double-quoted operand
 // pushes another context in which apostrophes are literal. Evaluation stays in
-// BuildKit. Each pass is O(n); unclosed quotes need at most two repair passes.
+// BuildKit. Each pass is O(n). Repair repeats only when a previously active
+// quote is ignored, so it terminates in at most q+1 passes for q quote positions;
+// the worst-case bound is O(n*q), not a fixed number of linear passes.
 func (e *wordExpander) scanShell(value string, quoted bool) shellSyntax {
 	root := contextWord
 	if quoted {
@@ -78,47 +82,61 @@ func (e *wordExpander) scanShell(value string, quoted bool) shellSyntax {
 	}
 	var frames [8]shellFrame
 	s := shellContextScanner{value: value, escape: e.escape, stack: frames[:0]}
-	s.scan(root)
-	var ignored map[int]bool
-	for _, frame := range s.stack[1:] {
-		if frame.kind == contextSingleQuote || frame.kind == contextDoubleQuote {
-			if ignored == nil {
-				ignored = make(map[int]bool)
-			}
-			ignored[frame.start] = true
-		}
-	}
-	if len(ignored) == 0 {
+	s.scan(root, false)
+	if !s.ignoreBrokenQuotes() {
 		return s.syntax
 	}
-	for _, start := range s.orphans {
-		ignored[start] = true
+	// A contraction exposed by repair must yield to a quote opener already
+	// identified in the original parameter context (for example :-'word').
+	s.anchors, s.syntax.quotes = s.syntax.quotes, nil
+	for {
+		s.scan(root, true)
+		if !s.ignoreBrokenQuotes() {
+			return s.syntax
+		}
 	}
-	s.ignored = ignored
-	s.scan(root)
-	// Ignoring an unmatched double quote can expose a final single quote.
-	// A single-quote frame consumes every byte up to the next apostrophe, so
-	// an unclosed one starts at the last apostrophe in the input. Ignoring it
-	// cannot expose another single-quote frame: one final pass is sufficient.
-	last := s.stack[len(s.stack)-1]
-	if last.kind == contextSingleQuote && last.start >= 0 {
-		s.ignored[last.start] = true
-		s.scan(root)
-	}
-	return s.syntax
 }
 
-func (s *shellContextScanner) scan(root shellContext) {
+func (s *shellContextScanner) ignoreBrokenQuotes() bool {
+	changed := false
+	ignore := func(pos int) {
+		if s.ignored == nil {
+			s.ignored = make(map[int]bool)
+		}
+		if !s.ignored[pos] {
+			s.ignored[pos] = true
+			changed = true
+		}
+	}
+	// Fix misplaced contraction openers before ignoring unmatched quotes:
+	// those apparent unmatched quotes may close correctly on the next pass.
+	if len(s.orphans) > 0 {
+		for _, start := range s.orphans {
+			ignore(start)
+		}
+		return changed
+	}
+	for _, frame := range s.stack[1:] {
+		if frame.kind == contextSingleQuote || frame.kind == contextDoubleQuote {
+			ignore(frame.start)
+		}
+	}
+	return changed
+}
+
+func (s *shellContextScanner) scan(root shellContext, repair bool) {
 	s.stack = append(s.stack[:0], shellFrame{kind: root, start: -1})
-	s.syntax = shellSyntax{}
+	s.syntax.references = s.syntax.references[:0]
+	clear(s.syntax.quotes)
 	s.orphans = s.orphans[:0]
-	s.plain, s.escaped = true, false
+	s.plain, s.escaped, s.repair = true, false, repair
 	for pos := 0; pos < len(s.value); {
 		next := s.step(pos)
-		// Keep the old recovery convention for contractions local to malformed
-		// input. This bookkeeping does not decide shell quote nesting.
-		for i := pos; i < next; i++ {
-			s.wordBoundary(s.value[i])
+		// Only malformed-input repair needs contraction bookkeeping.
+		if repair {
+			for i := pos; i < next; i++ {
+				s.wordBoundary(s.value[i])
+			}
 		}
 		pos = next
 	}
@@ -194,7 +212,9 @@ func (s *shellContextScanner) reference(pos int) int {
 		operator := s.value[end]
 		end++
 		if operator == ':' && end < len(s.value) {
-			operator = s.value[end]
+			// A colon modifier such as :/ uses a }-terminated operand,
+			// rather than the direct / modifier's pattern delimiter.
+			// BuildKit decides whether the modifier itself is supported.
 			end++
 		}
 		if operator == '/' {
@@ -214,7 +234,7 @@ func (s *shellContextScanner) closeQuote(pos int) {
 		s.syntax.quotes = make(map[int]int)
 	}
 	s.syntax.quotes[frame.start] = pos + 1
-	if frame.kind == contextSingleQuote && s.plain && embeddedApostrophe(s.value, frame.start) &&
+	if s.repair && frame.kind == contextSingleQuote && (s.plain || s.anchors[pos] > pos) && embeddedApostrophe(s.value, frame.start) &&
 		pos+1 < len(s.value) && (variableNameByte(s.value[pos+1]) || s.value[pos+1] == '$') {
 		s.orphans = append(s.orphans, frame.start)
 	}

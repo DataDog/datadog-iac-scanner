@@ -271,6 +271,79 @@ func TestExpansionMalformedQuotedTail(t *testing.T) {
 	}
 }
 
+// Removing an unmatched quote must reach a stable interpretation: contractions
+// exposed by that repair must not become quotes hiding independent expressions.
+func TestExpansionMalformedContractions(t *testing.T) {
+	for _, tt := range []struct{ source, raw, cooked string }{
+		{`"it's ${A:-x} isn't $H`, `"it's x isn't hello`, `"it's x isn't hello`},
+		{`"$H isn't ${A:-x} it's`, `"hello isn't x it's`, `"hello isn't x it's`},
+		{`before "it's ${A:-"x y"} isn't $H`, `before "it's "x y" isn't hello`, `before "it's x y isn't hello`},
+		{`"it's ${A:-x} isn't $H "`, `"it's x isn't hello "`, `it's x isn't hello `},
+		{`"it's isn't don't ${A:-x} won't $H`, `"it's isn't don't x won't hello`, `"it's isn't don't x won't hello`},
+		{`"it's ${A:-x} isn't 'held $H' $H`, `"it's x isn't 'held $H' hello`, `"it's x isn't held $H hello`},
+		{`"it's ${A:-'q'} isn't '$H' $H`, `"it's 'q' isn't '$H' hello`, `"it's q isn't $H hello`},
+		{`"it's isn't ${A:-'q'} '$H' $H`, `"it's isn't 'q' '$H' hello`, `"it's isn't q $H hello`},
+		{`"it's ${A:-'q'} isn't ${B:-'r'} $H`, `"it's 'q' isn't 'r' hello`, `"it's q isn't r hello`},
+	} {
+		for _, raw := range []bool{false, true} {
+			for _, escape := range []rune{'\\', '`'} {
+				for _, prefix := range []string{"", "${#BROKEN} "} {
+					t.Run(fmt.Sprintf("%t/%c/%s%s", raw, escape, prefix, tt.source), func(t *testing.T) {
+						want := tt.cooked
+						if raw {
+							want = tt.raw
+						}
+						source := prefix + tt.source
+						env := map[string]string{"H": "hello"}
+						expander := newWordExpander(escape, raw)
+						require.Equal(t, []string{prefix + want}, expandValues(expander, []string{source}, env))
+						require.Equal(t, prefix+want, expander.recoverWord(source, variableEnvironment{env}, expander.scanShell(source, false)))
+					})
+				}
+			}
+		}
+	}
+}
+
+// A colon modifier consumes its operand up to }, including :/; only a direct /
+// modifier uses a slash-delimited pattern. BuildKit decides modifier validity.
+func TestExpansionColonModifierBoundaries(t *testing.T) {
+	for _, expression := range []string{`${A:/x}`, `${A://x}`, `${A:/"x/y"}`} {
+		for _, raw := range []bool{false, true} {
+			for _, escape := range []rune{'\\', '`'} {
+				lex := shell.NewLex(escape)
+				lex.RawQuotes, lex.RawEscapes = raw, raw
+				_, _, err := lex.ProcessWord(expression, variableEnvironment{map[string]string{"A": "a/b"}})
+				require.ErrorContains(t, err, "unsupported modifier (:/)")
+				for _, placement := range []struct{ prefix, suffix string }{
+					{suffix: ` "$H"`}, {prefix: `"$H" `}, {prefix: `before `, suffix: ` "$H" after`},
+					{suffix: ` $H /tail} "$H"`}, {prefix: `"$H" `, suffix: ` $H /tail}`},
+					{prefix: `before `, suffix: ` $H /tail} "$H" after`},
+				} {
+					source := placement.prefix + expression + placement.suffix
+					expander := newWordExpander(escape, raw)
+					syntax := expander.scanShell(source, false)
+					var found bool
+					for _, ref := range syntax.references {
+						if ref.start == len(placement.prefix) {
+							require.Equal(t, len(placement.prefix)+len(expression), ref.end, "%s", source)
+							found = true
+						}
+					}
+					require.True(t, found)
+					before, _, err := lex.ProcessWord(placement.prefix, variableEnvironment{map[string]string{"H": "hello"}})
+					require.NoError(t, err)
+					after, _, err := lex.ProcessWord(placement.suffix, variableEnvironment{map[string]string{"H": "hello"}})
+					require.NoError(t, err)
+					want := before + expression + after
+					require.Equal(t, []string{want}, expandValues(expander, []string{source}, map[string]string{"A": "a/b", "H": "hello"}))
+					require.Equal(t, want, expander.recoverWord(source, variableEnvironment{map[string]string{"A": "a/b", "H": "hello"}}, syntax))
+				}
+			}
+		}
+	}
+}
+
 // BuildKit's parameter operands have their own quote context, even under an
 // outer double quote. Apostrophes are literal only in a double-quote frame.
 func TestExpansionContextNestingMatchesBuildKit(t *testing.T) {
@@ -312,7 +385,7 @@ func TestExpansionContextNestingMatchesBuildKit(t *testing.T) {
 }
 
 func FuzzExpansionRecoveryQuotes(f *testing.F) {
-	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `${$#}`, `${$%}`, `${$/a/b}`, `"${V//./'$1'}"`, `"${A:-"it's ${X:+a} '"}"`, "$1", "$$", "$?", "\ufeff$H"} {
+	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `${$#}`, `${$%}`, `${$/a/b}`, `"${V//./'$1'}"`, `"${A:-"it's ${X:+a} '"}"`, "$1", "$$", "$?", "\ufeff$H", `"it's ${A:-x} isn't $H`, `${A:/x} "$H"`, `"it's isn't ${A:-'q'} '$H' $H`} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, fragment string) {
@@ -322,12 +395,17 @@ func FuzzExpansionRecoveryQuotes(f *testing.F) {
 			return
 		}
 		for _, raw := range []bool{true, false} {
+			checkMalformedQuoteRecovery(t, fragment, raw)
 			env := collectingEnvironment{}
 			lex := shell.NewLex('\\')
 			lex.RawQuotes, lex.RawEscapes = raw, raw
 			want, _, err := lex.ProcessWord(fragment, env)
 			if err != nil {
-				return
+				// The leading reference cannot be enclosed by any quote or
+				// parameter in the malformed suffix. Recovery must retain it.
+				got := expandValues(newWordExpander('\\', raw), []string{"$H " + fragment}, map[string]string{"H": "hello"})
+				require.True(t, strings.HasPrefix(got[0], "hello "), "%q -> %q", fragment, got[0])
+				continue
 			}
 			// The shared context scanner must expose exactly the names BuildKit
 			// read, including references nested under quotes and parameters.
@@ -349,19 +427,63 @@ func FuzzExpansionRecoveryQuotes(f *testing.F) {
 	})
 }
 
+// Generate definitely malformed nesting around a valid BuildKit fragment.
+// Contractions exposed by repairing the outer quote must stay literal; a closed
+// single-quoted $H stays literal while its independent unquoted sibling expands.
+func checkMalformedQuoteRecovery(t *testing.T, fragment string, raw bool) {
+	t.Helper()
+	word := fmt.Sprintf("word%x", fragment[:min(len(fragment), 8)])
+	contractions := strings.Repeat(word+"'s ", 2+len(fragment)%5)
+	operand := []string{`${A:-x}`, `${A:-"x y"}`, `${A:-'q'}`}[len(fragment)%3]
+	tail := operand + ` '$H' $H`
+	for _, escape := range []rune{'\\', '`'} {
+		lex := shell.NewLex(escape)
+		lex.RawQuotes, lex.RawEscapes = raw, raw
+		env := variableEnvironment{map[string]string{"H": "hello"}}
+		want, _, err := lex.ProcessWord(tail, env)
+		require.NoError(t, err)
+		source := `"` + contractions + tail
+		_, _, err = lex.ProcessWord(source, env)
+		require.Error(t, err, "generator must exercise malformed recovery")
+		for _, prefix := range []string{"", "${#BROKEN} "} {
+			got := expandValues(newWordExpander(escape, raw), []string{prefix + source}, env...)
+			require.Equal(t, []string{prefix + `"` + contractions + want}, got)
+		}
+	}
+}
+
 func BenchmarkExpansionRecoveryQuotes(b *testing.B) {
 	for _, count := range []int{100, 1000, 10000} {
 		b.Run(fmt.Sprint(count), func(b *testing.B) {
 			value := strings.Repeat(`pre'fix $H' it's `, count) + `orphan' $H`
 			lex := newWordExpander('\\', true)
 			env := map[string]string{"H": "hello"}
-			if _, err := lex.expandWord(value, variableEnvironment{env}); err == nil {
+			if _, _, err := lex.expandWord(value, variableEnvironment{env}); err == nil {
 				b.Fatal("benchmark must exercise unmatched-quote recovery")
 			}
 			b.ReportAllocs()
 			b.SetBytes(int64(len(value)))
 			for b.Loop() {
 				expandValues(lex, []string{value}, env)
+			}
+		})
+	}
+}
+
+func BenchmarkExpansionMalformedContractions(b *testing.B) {
+	for _, count := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			prefix := `"` + strings.Repeat("it's ", count)
+			value := prefix + `${A:-'q'} '$H' $H`
+			want := prefix + `'q' '$H' hello`
+			expander := newWordExpander('\\', true)
+			env := map[string]string{"H": "hello"}
+			b.SetBytes(int64(len(value)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if got := expandValues(expander, []string{value}, env)[0]; got != want {
+					b.Fatal("repair must retain contractions and quoted references while expanding the default and final reference")
+				}
 			}
 		})
 	}
