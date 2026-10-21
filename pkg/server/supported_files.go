@@ -74,8 +74,10 @@ var strategyByPattern = map[string]fileStrategy{
 // independently of array order. CaseSensitive comes from the routing registry:
 // Dockerfile names/globs (dockerfile, DOCKERFILE, Dockerfile.<name> in any case)
 // ignore case, while other extensions retain their existing case policy.
-// ExcludedSuffixes always ignore case and veto that entry; registered formats,
-// backups, templates and archives cannot fall through to Dockerfile.*.
+// ExcludedSuffixes always ignore case and veto that entry: registered formats
+// cannot fall through to Dockerfile.*. Arbitrary variant suffixes (including
+// templates, backups and archives) remain candidates and require content validation.
+// Use ignore-paths to omit auxiliary files; a filename cannot identify their purpose.
 // RequiresContentCheck means a filename match still needs server validation.
 func supportedFiles() []SupportedFileEntry {
 	rules := make(map[string]utils.FilePattern)
