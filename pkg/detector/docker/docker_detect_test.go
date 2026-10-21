@@ -7,10 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	dockerparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
+	buildkit "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/stretchr/testify/require"
 )
 
@@ -526,6 +529,95 @@ func TestOrderedKeysPreserveDistanceRanking(t *testing.T) {
 				file.SetLazyLines()
 			}
 			require.Equal(t, tt.line, (DetectKindLine{}).DetectLine(t.Context(), file, tt.key, 0).Line)
+		}
+	}
+}
+
+// Score reuse must change row coordinates only; keys, whitespace, matches and
+// failures retain the shared matcher's behavior at every candidate position.
+func TestInstructionScoreMatchesSharedScoring(t *testing.T) {
+	for _, key := range [][2]string{{"RUN a", ""}, {"FROM", "alpine"}, {"RUN", "missing"}} {
+		lines := []string{"FROM alpine", "RUN a", "RUN a", "  RUN a ", "FROM alpine", "FROM alpine"}
+		score := instructionScore{}
+		for line := range lines {
+			distance, start, end, matched := detector.MatchLine(key[0], key[1], lines, line, model.KindDOCKER)
+			gotDistance, gotStart, gotEnd, gotMatch := score.match(key[0], key[1], lines, line)
+			require.Equal(t, distance, gotDistance)
+			require.Equal(t, matched, gotMatch)
+			if matched {
+				require.Equal(t, start, gotStart)
+				require.Equal(t, end, gotEnd)
+			}
+		}
+	}
+}
+
+// First-layer early exits must wait for a complete key and preserve exact
+// stage preference as well as distance ties and later successful alternatives.
+func TestOrderedKeyEarlyExitRanking(t *testing.T) {
+	for _, tt := range []struct {
+		name, source, key string
+		line              int
+	}{
+		{"earlier fuzzy stage", "FROM one\nRUN ab\nRUN b\nFROM two\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", 3},
+		{"earlier terminal stage", "FROM one\nRUN ab\nFROM two\nRUN a\n", "{{RUN a}}", 2},
+		{"distance within earlier stage", "FROM one\nRUN abc\nRUN ab\nFROM two\nRUN a\n", "RUN={{a}}", 3},
+		{"complete key", "FROM alpine\nRUN a\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", 4},
+		{"exact stage preference", "FROM alpine-old\nRUN b\nFROM alpine\nRUN a\n", "FROM={{alpine}}.{{RUN b}}", 3},
+		{"source order tie", "FROM alpine\nRUN a\nRUN b\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", 3},
+	} {
+		for _, cached := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cached=%t", tt.name, cached), func(t *testing.T) {
+				file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.source}
+				if cached {
+					file.SetLazyLines()
+				}
+				require.Equal(t, tt.line, (DetectKindLine{}).DetectLine(t.Context(), file, tt.key, 0).Line)
+			})
+		}
+	}
+}
+
+func BenchmarkSingleStageEarlyMatch(b *testing.B) {
+	for _, count := range []int{100, 4000, 100000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: "FROM alpine\n" + strings.Repeat("RUN a\n", count)}
+			file.SetLazyLines()
+			(DetectKindLine{}).DetectLine(b.Context(), file, "{{RUN a}}", 0)
+			b.ReportAllocs()
+			for b.Loop() {
+				(DetectKindLine{}).DetectLine(b.Context(), file, "{{RUN a}}", 0)
+			}
+		})
+	}
+}
+
+// Source display retains indentation. Keyword offsets must still follow
+// BuildKit: Unicode space is stripped at instruction edges, while separators
+// between a keyword and its arguments are ASCII whitespace.
+func TestInstructionWhitespaceAgreesWithBuildKit(t *testing.T) {
+	for _, space := range []string{" ", "\t", "\v", "\f", "\u00a0", "\u2003", "\u0085"} {
+		for _, line := range []string{space + "rUn echo hi ", "rUn" + space, "rUn" + space + "echo hi"} {
+			t.Run(line, func(t *testing.T) {
+				parsed, err := buildkit.Parse(strings.NewReader("FROM alpine\n" + line))
+				require.NoError(t, err)
+				node := parsed.AST.Children[1]
+				_, known := command.Commands[strings.ToLower(node.Value)]
+				_, count := dockerInstructionWords(line)
+				require.Equal(t, known, count > 0)
+				if known {
+					for _, cached := range []bool{false, true} {
+						file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: "FROM alpine\n" + line}
+						if cached {
+							file.SetLazyLines()
+						}
+						key := "{{RUN}}"
+						got := (DetectKindLine{}).DetectLine(t.Context(), file, key, 0)
+						require.Equal(t, 2, got.Line)
+						require.Equal(t, line, got.LineWithVulnerability)
+					}
+				}
+			})
 		}
 	}
 }

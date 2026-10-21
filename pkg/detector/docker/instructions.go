@@ -7,10 +7,13 @@ package docker
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 )
+
+const healthcheckNone = "none"
 
 type instructionWord struct {
 	start, end int
@@ -74,12 +77,31 @@ func startsAtInstruction(line, text string) bool {
 	return false
 }
 
+// Normalized source lines already contain uppercase keywords. Derive their
+// canonical names from BuildKit once instead of allocating lowercase strings
+// for every candidate and every finding. Mixed-case search keys use the fallback.
+var normalizedCommands = func() map[string]string {
+	names := make(map[string]string, len(command.Commands)+1)
+	for name := range command.Commands {
+		names[strings.ToUpper(name)] = name
+	}
+	names["NONE"] = healthcheckNone
+	return names
+}()
+
+func instructionName(word string) string {
+	if name, ok := normalizedCommands[word]; ok {
+		return name
+	}
+	return strings.ToLower(word)
+}
+
 func dockerInstructionWords(line string) (words [3]instructionWord, count int) {
 	pos, healthcheck := 0, false
 	for count < len(words) {
 		span := dockerWordAt(line, pos)
-		word := strings.ToLower(line[span.start:span.end])
-		if _, known := command.Commands[word]; !known && (!healthcheck || word != "none") {
+		word := instructionName(line[span.start:span.end])
+		if _, known := command.Commands[word]; !known && (!healthcheck || word != healthcheckNone) {
 			break
 		}
 		words[count] = span
@@ -104,11 +126,11 @@ func dockerInstructionWords(line string) (words [3]instructionWord, count int) {
 }
 
 func dockerWordAt(line string, pos int) instructionWord {
-	rest := strings.TrimLeft(line[pos:], " \t\r\n\v\f")
+	rest := strings.TrimLeftFunc(line[pos:], unicode.IsSpace)
 	start := len(line) - len(rest)
 	end := strings.IndexAny(rest, " \t\r\n\v\f")
 	if end < 0 {
-		end = len(rest)
+		end = len(strings.TrimRightFunc(rest, unicode.IsSpace))
 	}
 	return instructionWord{start: start, end: start + end}
 }

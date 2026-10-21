@@ -176,22 +176,69 @@ func (s *instructionKeySearch) solve() instructionMatch {
 	next := instructionLayer{}
 	for k := len(s.keys) - 1; k >= 0; k-- {
 		key := s.keys[k]
-		current := instructionLayer{stages: make([]instructionOptions, len(s.starts)+1)}
 		candidates := s.candidates(key.first)
-		for stage := -1; stage < len(s.starts); stage++ {
-			options := s.stageOptions(k, stage, candidates, next)
+		current, flat := s.newLayer(k, len(candidates))
+		cursor := 0
+		score := instructionScore{}
+		for stage := -1; stage < len(s.starts) && cursor < len(candidates); stage++ {
+			end := len(s.lines)
+			if stage+1 < len(s.starts) {
+				end = s.starts[stage+1]
+			}
+			start := cursor
+			if k == 0 {
+				// Root matching can finish before visiting the whole stage.
+				cursor = sort.SearchInts(candidates, end)
+			} else {
+				for cursor < len(candidates) && candidates[cursor] < end {
+					cursor++
+				}
+			}
+			if start == cursor || (key.from && stage < 0) {
+				continue
+			}
+			limit := end
+			if key.from {
+				limit = min(end, s.starts[stage]+1)
+			}
+			offset := len(flat)
+			flat = s.stageOptions(flat, k, stage, candidates[start:cursor], limit, next, &score)
+			options := flat[offset:]
 			options.bestSuffix(true)
 			current.stages[stage+1] = options
-			current.from = append(current.from, options...)
-			if key.from && hasStage(key.exact, stage) {
+			if hasStage(key.exact, stage) {
 				current.exact = append(current.exact, options...)
 			}
+			if k == 0 && s.rootComplete(key, stage, options) {
+				return options[0].result
+			}
 		}
+		current.from = slices.Clone(flat)
 		current.from.bestSuffix(false)
 		current.exact.bestSuffix(false)
 		next = current
 	}
 	return next.suffix(0, -1, s.keys[0].from)
+}
+
+// Allocate one flat stage table; the root needs only one best result per stage.
+func (s *instructionKeySearch) newLayer(k, candidates int) (instructionLayer, instructionOptions) {
+	key := s.keys[k]
+	layer := instructionLayer{stages: make([]instructionOptions, len(s.starts)+1)}
+	if key.from && len(key.exact) > 0 {
+		layer.exact = make(instructionOptions, 0, len(key.exact))
+	}
+	if k == 0 {
+		candidates = min(candidates, len(s.starts)+1)
+	}
+	return layer, make(instructionOptions, 0, candidates)
+}
+
+// Only the root has no later threshold queries. After scoring a stage, its
+// complete match beats every later stage; exact FROM stages retain preference.
+func (s *instructionKeySearch) rootComplete(key instructionKey, stage int, options instructionOptions) bool {
+	return len(options) > 0 && options[0].result.matched == len(s.keys) &&
+		(!key.from || len(key.exact) == 0 || hasStage(key.exact, stage))
 }
 
 func (s *instructionKeySearch) candidates(first string) []int {
@@ -206,28 +253,16 @@ func (s *instructionKeySearch) candidates(first string) []int {
 	return candidates
 }
 
-func (s *instructionKeySearch) stageOptions(k, stage int, candidates []int, next instructionLayer) instructionOptions {
+func (s *instructionKeySearch) stageOptions(options instructionOptions, k, stage int, candidates []int,
+	end int, next instructionLayer, score *instructionScore) instructionOptions {
 	key := s.keys[k]
-	if key.from && stage < 0 {
-		return nil
-	}
-	begin, end := 0, len(s.lines)
-	if stage >= 0 {
-		begin = s.starts[stage]
-	}
-	if stage+1 < len(s.starts) {
-		end = s.starts[stage+1]
-	}
-	if key.from {
-		end = min(end, begin+1)
-	}
-	var options instructionOptions
-	for i := sort.SearchInts(candidates, begin); i < len(candidates) && candidates[i] < end; i++ {
+	offset := len(options)
+	for i := 0; i < len(candidates) && candidates[i] < end; i++ {
 		line := candidates[i]
 		if key.accept != nil && !key.accept(line, s.lines[line]) {
 			continue
 		}
-		distance, start, finish, matched := detector.MatchLine(key.first, key.second, s.lines, line, model.KindDOCKER)
+		distance, start, finish, matched := score.match(key.first, key.second, s.lines, line)
 		if !matched {
 			continue
 		}
@@ -239,9 +274,51 @@ func (s *instructionKeySearch) stageOptions(k, stage int, candidates []int, next
 				result.matched++
 			}
 		}
-		options = append(options, instructionOption{line: line, distance: distance, result: result})
+		option := instructionOption{line: line, distance: distance, result: result}
+		options = options.add(option, offset, k == 0)
+		// The root layer has only the initial threshold query. Once its full
+		// key matches at zero distance, later lines in this stage cannot win.
+		if k == 0 && distance == 0 && result.matched == len(s.keys) {
+			break
+		}
 	}
 	return options
+}
+
+// Non-root layers retain every threshold. Root queries start at line zero, so
+// only the best result within each stage is needed; ties keep source order.
+func (options instructionOptions) add(option instructionOption, offset int, root bool) instructionOptions {
+	if !root || len(options) == offset {
+		return append(options, option)
+	}
+	best := &options[offset]
+	if option.result.matched > best.result.matched ||
+		(option.result.matched == best.result.matched && option.distance < best.distance) {
+		*best = option
+	}
+	return options
+}
+
+// Docker MatchLine scores only the current logical instruction. Repeated stage
+// lines therefore share a score; only their row coordinates differ. Keep one
+// previous score per key (O(1) space), avoiding maps on the ordinary path.
+type instructionScore struct {
+	text           string
+	line, distance int
+	start, end     model.ResourceLine
+	valid, matched bool
+}
+
+func (score *instructionScore) match(first, second string, lines []string, line int) (
+	distance int, start, end model.ResourceLine, matched bool) {
+	if !score.valid || score.text != lines[line] {
+		score.text, score.line, score.valid = lines[line], line, true
+		score.distance, score.start, score.end, score.matched = detector.MatchLine(first, second, lines, line, model.KindDOCKER)
+	}
+	start, end = score.start, score.end
+	start.Line += line - score.line
+	end.Line += line - score.line
+	return score.distance, start, end, score.matched
 }
 
 func hasStage(stages []int, stage int) bool {
