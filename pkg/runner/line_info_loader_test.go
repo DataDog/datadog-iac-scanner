@@ -153,6 +153,9 @@ func TestLineInfoLoaderInvokesParserHook(t *testing.T) {
 // source document and logical lines, including raw declaration values.
 func TestDockerLocationPathsAgree(t *testing.T) {
 	for _, source := range []string{
+		"FROM ${REG#https://}/alpine:3.9\nRUN curl ${BASE%/}/install.sh\n",
+		"FROM alpine\nARG H=hello\nRUN echo ${X/a/b} ${TAG:-latest} $H\n",
+		"FROM alpine\nENV NEXT=${BASE%/}/install.sh\nFROM busybox\nRUN echo it's ${BASE%/} ${#BROKEN}\n",
 		"FROM alpine\n\u00a0rUn echo hi ",
 		"\u2003FROM alpine\n\u0085rUn echo hi ",
 		"FROM alpine\nrUn\u00a0echo hi ",

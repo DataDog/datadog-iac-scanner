@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/moby/buildkit/frontend/dockerfile/shell"
@@ -18,6 +19,13 @@ func TestExpandValuesUnsetDefaultsAndRecovery(t *testing.T) {
 		source, want string
 		raw          bool
 	}{
+		{`${A:-"${UNSET%/}"}`, `"${UNSET%/}"`, true},
+		{`${A:-"${UNSET%/}"}`, `${UNSET%/}`, false},
+		{`${A:-"${UNSET/a/b}"}`, `"${UNSET/a/b}"`, true},
+		{`${A:-"${UNSET#prefix}"}`, `${UNSET#prefix}`, false},
+		{`${#H} ${A:-"${UNSET%/}"}`, `${#H} "${UNSET%/}"`, true},
+		{`${#H} ${A:-"${UNSET/a/b}"}`, `${#H} ${UNSET/a/b}`, false},
+		{`it's ${A:-"${UNSET#prefix}"}`, `it's "${UNSET#prefix}"`, true},
 		{`pre'fix $H' it's ${#H} $H`, `pre'fix $H' it's ${#H} hello`, true},
 		{`pre'fix $H' it's ${#H} $H`, `prefix $H it's ${#H} hello`, false},
 		{`pre'fix $H' it's $H`, `pre'fix $H' it's hello`, true},
@@ -87,6 +95,30 @@ func TestExpansionDefaultsPreserveRuntimeReferences(t *testing.T) {
 	}
 }
 
+// Operators that need an unknown value must retain the whole expression.
+// Defaults still evaluate, and unrelated references expand in every recovery path.
+func TestExpansionPreservesUnknownOperators(t *testing.T) {
+	for _, reference := range []string{
+		`${REG#https://}`, `${BASE%/}`, `${X/a/b}`, `${X##*/}`, `${X%%/*}`, `${X//a/b}`,
+		`${X#${H}}`, `${X/a/${H}}`,
+	} {
+		for _, raw := range []bool{true, false} {
+			for _, escape := range []rune{'\\', '`'} {
+				for _, tt := range []struct{ prefix, want string }{
+					{"", ""}, {`${A:-x} `, "x "}, {`${#BROKEN} `, `${#BROKEN} `}, {`it's ${A:-x} `, "it's x "},
+				} {
+					t.Run(fmt.Sprintf("%s/%t/%c/%s", reference, raw, escape, tt.prefix), func(t *testing.T) {
+						env := map[string]string{"H": "hello"}
+						source := tt.prefix + reference + " $H " + reference
+						want := tt.want + reference + " hello " + reference
+						require.Equal(t, []string{want}, expandValues(newWordExpander(escape, raw), []string{source}, env))
+					})
+				}
+			}
+		}
+	}
+}
+
 func TestExpandValuesPreservesBadBytes(t *testing.T) {
 	for _, raw := range []bool{true, false} {
 		for _, bad := range []string{"\x00", "caf\xe9", "\xff\xc0\xaf"} {
@@ -144,6 +176,12 @@ func TestExpansionRecoveryAgreesWithBuildKit(t *testing.T) {
 		`one 'two $H' three "$H"`, `echo \$H '$H' "\$H" "$H"`,
 		`'a \' $H`, `"one \" $H"`, `foo'bar'qux '$H'`,
 		`echo ${H:-other} ${EMPTY:-value} ${H:+yes}`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `$? $$ $@ $# $* $!`,
+		`${$#}`, `${$%}`, `${$/a/b}`, `${$##h} $H`, `${$%%o} ${H/h/H}`, `${$//l/L}`,
+		`${H#h} ${H##h*}`, `${H%o} ${H%%l*}`, `${H/l/L} ${H//l/L}`, `${H#${EMPTY}} ${H/${EMPTY:-h}/H}`,
+		`'${'}`, `before'${H#x'}after`, `"'${H#h}'"`,
+		`${H/}/}`, `${H/a}/b}`, `${H/}/'x'}`,
+		`'${X#''}'`, `pre'${X%''}'post`, `'${X/a/''b}'`,
+		`"${H#{}"}`, `"${H%{}"}`, `"${H/{/x}"}`,
 	}
 	for _, raw := range []bool{true, false} {
 		for _, escape := range []rune{'\\', '`'} {
@@ -170,7 +208,7 @@ func TestExpansionRecoveryAgreesWithBuildKit(t *testing.T) {
 }
 
 func FuzzExpansionRecoveryQuotes(f *testing.F) {
-	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`} {
+	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `${$#}`, `${$%}`, `${$/a/b}`} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, fragment string) {
@@ -185,7 +223,16 @@ func FuzzExpansionRecoveryQuotes(f *testing.F) {
 			if err != nil {
 				return
 			}
-			// A newline separates a trailing escape from the unsupported token.
+			// Docker declarations do not populate shell special parameters or an
+			// empty name. Those have a different intentional unknown-value policy
+			// here; compare only expressions whose names can be in scope.
+			for name := range env {
+				first, _ := utf8.DecodeRuneInString(name)
+				if first != '_' && !unicode.IsLetter(first) {
+					return
+				}
+			}
+			// Force recovery without changing the fragment's quote/escape boundaries.
 			source := "${#BROKEN} " + fragment
 			require.Equal(t, []string{"${#BROKEN} " + want}, expandValues(newWordExpander('\\', raw), []string{source}, map[string]string(env)))
 		}
@@ -207,6 +254,23 @@ func BenchmarkExpansionRecoveryQuotes(b *testing.B) {
 				expandValues(lex, []string{value}, env)
 			}
 		})
+	}
+}
+
+func BenchmarkExpansionUnknownOperators(b *testing.B) {
+	for _, count := range []int{100, 1000, 10000} {
+		for _, prefix := range []string{"", "${#BROKEN} "} {
+			b.Run(fmt.Sprintf("%d/%s", count, prefix), func(b *testing.B) {
+				value := prefix + strings.Repeat(`${MISSING%/}/$H `, count)
+				expander := newWordExpander('\\', true)
+				env := map[string]string{"H": "hello"}
+				b.ReportAllocs()
+				b.SetBytes(int64(len(value)))
+				for b.Loop() {
+					expandValues(expander, []string{value}, env)
+				}
+			})
+		}
 	}
 }
 

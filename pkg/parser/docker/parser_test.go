@@ -369,6 +369,10 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 		name, source string
 		want         map[int][]string
 	}{
+		{"unknown registry prefix", "FROM ${REG#https://}/alpine:3.9\n", map[int][]string{1: {"${REG#https://}/alpine:3.9"}}},
+		{"unknown command suffix", "FROM alpine\nARG H=hello\nRUN curl ${BASE%/}/install.sh $H\n", map[int][]string{3: {"curl ${BASE%/}/install.sh hello"}}},
+		{"unknown replacement after stage change", "FROM alpine\nARG BASE=http://one\nFROM busybox\nRUN echo ${BASE/http/https} ${TAG:-latest}\n", map[int][]string{4: {"echo ${BASE/http/https} latest"}}},
+		{"unknown declaration modifier", "FROM alpine\nENV NEXT=${BASE%/}/install.sh\nRUN echo $NEXT\n", map[int][]string{2: {"NEXT", "${BASE%/}/install.sh", "="}, 3: {"echo ${BASE%/}/install.sh"}}},
 		{"runtime parameters with defaults", "FROM alpine\nRUN test ${A:-1} -eq 1 || exit $?\n", map[int][]string{2: {"test 1 -eq 1 || exit $?"}}},
 		{"recovery with nested unknown default", "FROM alpine\nARG H=hello\nRUN echo it's ${A:-${B:-$C}} $? $H\n", map[int][]string{3: {"echo it's $C $? hello"}}},
 		{"declaration default preserves unknown references", "FROM alpine\nENV A=${MISSING:-$UNKNOWN}\nRUN echo $A\n", map[int][]string{2: {"A", "$UNKNOWN", "="}, 3: {"echo $UNKNOWN"}}},
