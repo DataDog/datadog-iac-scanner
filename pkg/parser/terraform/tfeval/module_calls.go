@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -106,122 +107,52 @@ func (p moduleExpansionPlan) truncated() bool {
 
 // moduleInstances expands a module call's count or for_each under ctx.
 func moduleInstances(mb *hclsyntax.Block, ctx *hcl.EvalContext) moduleExpansionPlan {
-	if attr, ok := mb.Body.Attributes["count"]; ok {
-		return countInstances(attr, ctx)
-	}
-	if attr, ok := mb.Body.Attributes["for_each"]; ok {
-		return forEachInstances(attr, ctx)
-	}
-	return moduleExpansionPlan{
-		instances: []moduleInstance{{ctx: ctx}},
-		mode:      expansionNone,
-		requested: 1,
-	}
+	count, forEach := tfinstances.Attributes(mb.Body)
+	plan := tfinstances.Resolve(count, forEach, ctx, maxExpansionShape)
+	return modulePlan(&plan, ctx)
 }
 
-func countInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExpansionPlan {
-	v, diags := attr.Expr.Value(ctx)
-	n, ok := 0, false
-	if !diags.HasErrors() {
-		n, ok = ctyutil.LiteralInt(v)
-	}
-	if !ok {
+// modulePlan adds caller contexts and the module-specific unresolved fallback.
+// Expansion decisions and iteration bindings come from the shared resolver;
+// output padding and instantiation budgets remain owned by the evaluator.
+func modulePlan(plan *tfinstances.Plan, ctx *hcl.EvalContext) moduleExpansionPlan {
+	if plan.Kind == "" {
 		return moduleExpansionPlan{
-			instances: []moduleInstance{{ctx: iterationContext(ctx, "count", map[string]cty.Value{
-				"index": cty.UnknownVal(cty.Number),
-			})}},
-			mode: expansionUnknown,
+			instances: []moduleInstance{{ctx: ctx}},
+			mode:      expansionNone,
+			requested: 1,
 		}
 	}
-	requested := max(n, 0)
-	expand := min(requested, maxCountExpansion)
-	instances := make([]moduleInstance, expand)
-	for i := range instances {
-		index := cty.NumberIntVal(int64(i))
-		instances[i] = moduleInstance{
-			key: index,
-			ctx: iterationContext(ctx, "count", map[string]cty.Value{"index": index}),
+	if plan.Unresolved {
+		return moduleExpansionPlan{
+			instances: []moduleInstance{{ctx: instanceContext(ctx, plan, tfinstances.Item{})}},
+			mode:      expansionUnknown,
 		}
 	}
-	return moduleExpansionPlan{instances: instances, mode: expansionCount, requested: requested}
-}
-
-func forEachInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExpansionPlan {
-	unknown := unknownForEachPlan(ctx)
-	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() || !isForEachCollection(v) {
-		return unknown
+	mode := expansionForEach
+	if plan.Kind == tfinstances.KindCount {
+		mode = expansionCount
 	}
-	if v.LengthInt() == 0 {
-		return moduleExpansionPlan{mode: expansionForEach}
-	}
-	plan, ok := expandForEachPlan(ctx, v)
-	if !ok {
-		return unknown
-	}
-	return plan
-}
-
-func unknownForEachPlan(ctx *hcl.EvalContext) moduleExpansionPlan {
-	return moduleExpansionPlan{
-		instances: []moduleInstance{{ctx: iterationContext(ctx, "each", map[string]cty.Value{
-			"key":   cty.UnknownVal(cty.String),
-			"value": cty.DynamicVal,
-		})}},
-		mode: expansionUnknown,
-	}
-}
-
-func isForEachCollection(v cty.Value) bool {
-	if !ctyutil.Materialized(v) || !v.CanIterateElements() || !v.Length().IsKnown() {
-		return false
-	}
-	t := v.Type()
-	return t.IsObjectType() || t.IsMapType() || t.IsSetType()
-}
-
-func expandForEachPlan(ctx *hcl.EvalContext, v cty.Value) (moduleExpansionPlan, bool) {
-	requested := v.LengthInt()
-	expandTo := min(requested, maxCountExpansion)
-	// Only walk the full collection when we need every key to pad a truncated shape.
-	keepKeys := requested > maxCountExpansion && requested <= maxExpansionShape
-	instances := make([]moduleInstance, 0, expandTo)
-	var allKeys []cty.Value
-	if keepKeys {
-		allKeys = make([]cty.Value, 0, requested)
-	}
-	for it := v.ElementIterator(); it.Next(); {
-		key, value := it.Element()
-		if _, ok := ctyutil.ConcreteString(key); !ok {
-			return moduleExpansionPlan{}, false
-		}
-		if keepKeys {
-			allKeys = append(allKeys, key)
-		}
-		if len(instances) < expandTo {
-			instances = append(instances, moduleInstance{
-				key: key,
-				ctx: iterationContext(ctx, "each", map[string]cty.Value{"key": key, "value": value}),
-			})
-			continue
-		}
-		if !keepKeys {
-			break
-		}
+	expanded := make([]moduleInstance, len(plan.Items))
+	for i, item := range plan.Items {
+		expanded[i] = moduleInstance{key: item.Key, ctx: instanceContext(ctx, plan, item)}
 	}
 	return moduleExpansionPlan{
-		instances:   instances,
-		mode:        expansionForEach,
-		requested:   requested,
-		forEachKeys: allKeys,
-	}, true
+		instances:   expanded,
+		mode:        mode,
+		requested:   plan.Requested,
+		forEachKeys: plan.ForEachKeys,
+	}
 }
 
-func iterationContext(ctx *hcl.EvalContext, name string, attrs map[string]cty.Value) *hcl.EvalContext {
+func instanceContext(ctx *hcl.EvalContext, plan *tfinstances.Plan, item tfinstances.Item) *hcl.EvalContext {
+	name, value := plan.Variable(item)
 	child := ctx.NewChild()
-	child.Variables = map[string]cty.Value{name: cty.ObjectVal(attrs)}
+	child.Variables = map[string]cty.Value{name: value}
 	return child
 }
+
+func isForEachCollection(v cty.Value) bool { return tfinstances.ForEachCollection(v) }
 
 // moduleOutputsValue is what module.<label> evaluates to in the caller: the
 // outputs object of a single call, a tuple of them for count and an object of

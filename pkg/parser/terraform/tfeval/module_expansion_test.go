@@ -292,9 +292,9 @@ func TestModuleOutputsValue_HugeTruncatedCountBecomesUnknown(t *testing.T) {
 }
 
 func TestForEachInstances_SmallKeepsConcreteOutputsWithoutFullKeyList(t *testing.T) {
-	expr, diags := hclsyntax.ParseExpression([]byte(`{ a = 1, b = 2 }`), "x.tf", hcl.Pos{Line: 1, Column: 1})
+	file, diags := hclsyntax.ParseConfig([]byte(`for_each = { a = 1, b = 2 }`), "x.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
-	plan := forEachInstances(&hclsyntax.Attribute{Expr: expr}, &hcl.EvalContext{})
+	plan := moduleInstances(&hclsyntax.Block{Body: file.Body.(*hclsyntax.Body)}, &hcl.EvalContext{})
 	require.Equal(t, expansionForEach, plan.mode)
 	require.Equal(t, 2, plan.requested)
 	require.Len(t, plan.instances, 2)
@@ -322,9 +322,9 @@ func TestForEachInstances_HugeTruncationDoesNotKeepKeys(t *testing.T) {
 		fmt.Fprintf(&b, `"k%04d"=true`, i)
 	}
 	b.WriteByte('}')
-	expr, diags := hclsyntax.ParseExpression([]byte(b.String()), "x.tf", hcl.Pos{Line: 1, Column: 1})
+	file, diags := hclsyntax.ParseConfig([]byte("for_each = "+b.String()), "x.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
-	plan := forEachInstances(&hclsyntax.Attribute{Expr: expr}, &hcl.EvalContext{})
+	plan := moduleInstances(&hclsyntax.Block{Body: file.Body.(*hclsyntax.Body)}, &hcl.EvalContext{})
 	require.True(t, plan.truncated())
 	require.Equal(t, n, plan.requested)
 	require.Len(t, plan.instances, maxCountExpansion)
@@ -377,5 +377,63 @@ resource "aws_s3_bucket" "c" {
 		r := byName[fmt.Sprintf("c[%d]", i)]
 		require.True(t, r.Attributes["bucket"].RawEquals(cty.StringVal(fmt.Sprintf("c-%d", i))))
 		require.True(t, r.Attributes["tags"].GetAttr("env").RawEquals(cty.StringVal("prod")))
+	}
+}
+
+// Pin the evaluator's permissive count conversion, unknown fallback, and
+// iteration bindings in child contexts.
+func TestModuleInstances_ResolutionSemantics(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		mode         moduleExpansion
+		requested    int
+		binding      string
+		want         cty.Value
+	}{
+		{"decimal string count", `count = "2"`, expansionCount, 2, "count.index", cty.NumberIntVal(0)},
+		{"negative count", `count = -2`, expansionCount, 0, "", cty.NilVal},
+		{"fractional count", `count = 1.5`, expansionUnknown, 0, "count.index", cty.UnknownVal(cty.Number)},
+		{"unknown count", `count = missing`, expansionUnknown, 0, "count.index", cty.UnknownVal(cty.Number)},
+		{"count wins", "count = 1\nfor_each = missing", expansionCount, 1, "count.index", cty.NumberIntVal(0)},
+		{"unknown each", `for_each = missing`, expansionUnknown, 0, "each.key", cty.UnknownVal(cty.String)},
+		{"invalid set", `for_each = numbers`, expansionUnknown, 0, "each.value", cty.DynamicVal},
+		{"partially known map", `for_each = values`, expansionForEach, 1, "each.value", cty.UnknownVal(cty.Number)},
+		{"marked element", `for_each = marked`, expansionForEach, 1, "each.value", cty.StringVal("secret").Mark("sensitive")},
+		{"empty each", `for_each = {}`, expansionForEach, 0, "", cty.NilVal},
+		{"no expansion", `source = "./child"`, expansionNone, 1, "", cty.NilVal},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclsyntax.ParseConfig([]byte(tt.source), "call.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			parent := &hcl.EvalContext{Variables: map[string]cty.Value{
+				"inherited": cty.StringVal("parent"),
+				"numbers":   cty.SetVal([]cty.Value{cty.NumberIntVal(1)}),
+				"values":    cty.MapVal(map[string]cty.Value{"a": cty.UnknownVal(cty.Number)}),
+				"marked":    cty.MapVal(map[string]cty.Value{"a": cty.StringVal("secret").Mark("sensitive")}),
+			}}
+			plan := moduleInstances(&hclsyntax.Block{Body: file.Body.(*hclsyntax.Body)}, parent)
+			require.Equal(t, tt.mode, plan.mode)
+			require.Equal(t, tt.requested, plan.requested)
+			if tt.mode == expansionUnknown {
+				require.Len(t, plan.instances, 1)
+				require.Equal(t, cty.NilVal, plan.instances[0].key)
+			} else {
+				require.Len(t, plan.instances, tt.requested)
+			}
+			if tt.binding != "" {
+				expr, diags := hclsyntax.ParseExpression([]byte(tt.binding), "binding.tf", hcl.InitialPos)
+				require.False(t, diags.HasErrors(), diags.Error())
+				got, diags := expr.Value(plan.instances[0].ctx)
+				require.False(t, diags.HasErrors(), diags.Error())
+				require.True(t, tt.want.RawEquals(got), "%#v", got)
+				require.Same(t, parent, plan.instances[0].ctx.Parent())
+				require.Equal(t, cty.StringVal("parent"), parent.Variables["inherited"])
+				require.NotContains(t, parent.Variables, "count")
+				require.NotContains(t, parent.Variables, "each")
+			}
+			if tt.mode == expansionNone {
+				require.Same(t, parent, plan.instances[0].ctx)
+			}
+		})
 	}
 }
