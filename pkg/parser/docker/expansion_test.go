@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/moby/buildkit/frontend/dockerfile/shell"
@@ -19,6 +18,9 @@ func TestExpandValuesUnsetDefaultsAndRecovery(t *testing.T) {
 		source, want string
 		raw          bool
 	}{
+		{`" ${A:-'q'} $H`, `" 'q' hello`, true},
+		{`${A:-'q'} " $H`, `'q' " hello`, true},
+		{`${A:-'q'} ' $H`, `'q' ' hello`, true},
 		{`${A:-"${UNSET%/}"}`, `"${UNSET%/}"`, true},
 		{`${A:-"${UNSET%/}"}`, `${UNSET%/}`, false},
 		{`${A:-"${UNSET/a/b}"}`, `"${UNSET/a/b}"`, true},
@@ -101,6 +103,8 @@ func TestExpansionPreservesUnknownOperators(t *testing.T) {
 	for _, reference := range []string{
 		`${REG#https://}`, `${BASE%/}`, `${X/a/b}`, `${X##*/}`, `${X%%/*}`, `${X//a/b}`,
 		`${X#${H}}`, `${X/a/${H}}`,
+		`${X?need}`, `${X:?need}`, `${X?}`, `${X:?}`,
+		`${X+--insecure}`, `${X:+--insecure}`, `${X+${H}}`, `${X:+${A:-x}}`,
 	} {
 		for _, raw := range []bool{true, false} {
 			for _, escape := range []rune{'\\', '`'} {
@@ -113,6 +117,48 @@ func TestExpansionPreservesUnknownOperators(t *testing.T) {
 						want := tt.want + reference + " hello " + reference
 						require.Equal(t, []string{want}, expandValues(newWordExpander(escape, raw), []string{source}, env))
 					})
+				}
+			}
+		}
+	}
+}
+
+// Unknown operands must not force unrelated valid fragments into quote recovery.
+func TestExpansionUnknownOperatorsKeepQuotedDefaults(t *testing.T) {
+	for _, reference := range []string{`${X:?need}`, `${X?need}`, `${X:+--insecure}`, `${X+--insecure}`} {
+		for _, raw := range []bool{true, false} {
+			for _, escape := range []rune{'\\', '`'} {
+				for _, fragment := range []string{`"${A:-"x y"}" $H`, `$H "${A:-'q'}"`, `${A:-"${B:-'q'}"} $H`} {
+					lex := shell.NewLex(escape)
+					lex.RawQuotes, lex.RawEscapes = raw, raw
+					env := variableEnvironment{map[string]string{"H": "hello"}}
+					want, _, err := lex.ProcessWord(fragment, env)
+					require.NoError(t, err)
+					for _, prefix := range []string{"", "${#BROKEN} "} {
+						for _, source := range []string{reference + " " + fragment, fragment + " " + reference, fragment + " " + reference + " " + fragment} {
+							expected := strings.ReplaceAll(source, fragment, want)
+							require.Equal(t, []string{prefix + expected}, expandValues(newWordExpander(escape, raw), []string{prefix + source}, env...), "raw=%t escape=%c source=%s", raw, escape, prefix+source)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// An orphan apostrophe must not change later independent, balanced fragments.
+func TestExpansionMalformedQuotesKeepIndependentDefaults(t *testing.T) {
+	for _, fragment := range []string{`pre'fix $H' ${A:-'q'} $H`, `${A:-"x y"} 'end' $H`, `pre'fix $H' ${A:-${B:-'q'}} 'end' $H`} {
+		for _, raw := range []bool{true, false} {
+			for _, escape := range []rune{'\\', '`'} {
+				lex := shell.NewLex(escape)
+				lex.RawQuotes, lex.RawEscapes = raw, raw
+				env := variableEnvironment{map[string]string{"H": "hello"}}
+				want, _, err := lex.ProcessWord(fragment, env)
+				require.NoError(t, err)
+				for _, prefix := range []string{"", "${#BROKEN} "} {
+					source := prefix + "it's " + fragment
+					require.Equal(t, []string{prefix + "it's " + want}, expandValues(newWordExpander(escape, raw), []string{source}, env...), "raw=%t escape=%c source=%s", raw, escape, source)
 				}
 			}
 		}
@@ -182,11 +228,13 @@ func TestExpansionRecoveryAgreesWithBuildKit(t *testing.T) {
 		`${H/}/}`, `${H/a}/b}`, `${H/}/'x'}`,
 		`'${X#''}'`, `pre'${X%''}'post`, `'${X/a/''b}'`,
 		`"${H#{}"}`, `"${H%{}"}`, `"${H/{/x}"}`,
+		`"${0#"$${"'${0'}"`, `"${H#"$${"'${H'}"`, `before "${H#"$${"'${H'}" after $H`,
+		`"${0#0'0"${ '0}"`, `"${H#0'0"${ '0}"`, `before "${H#0'0"${ '0}" after $H`,
 	}
 	for _, raw := range []bool{true, false} {
 		for _, escape := range []rune{'\\', '`'} {
 			for _, fragment := range fragments {
-				env := variableEnvironment{map[string]string{"H": "hello", "EMPTY": "", "?": "?", "$": "$", "@": "@", "#": "#", "*": "*", "!": "!"}}
+				env := variableEnvironment{map[string]string{"H": "hello", "EMPTY": "", "0": "hello", "?": "?", "$": "$", "@": "@", "#": "#", "*": "*", "!": "!"}}
 				lex := shell.NewLex(escape)
 				lex.RawQuotes, lex.RawEscapes = raw, raw
 				want, _, err := lex.ProcessWord(fragment, env)
@@ -208,11 +256,13 @@ func TestExpansionRecoveryAgreesWithBuildKit(t *testing.T) {
 }
 
 func FuzzExpansionRecoveryQuotes(f *testing.F) {
-	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `${$#}`, `${$%}`, `${$/a/b}`} {
+	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `${$#}`, `${$%}`, `${$/a/b}`, "$1", "$$", "$?", "\ufeff$H"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, fragment string) {
-		if !utf8.ValidString(fragment) || strings.ContainsRune(fragment, 0) {
+		// Go's scanner drops only a leading BOM. Prefixing recovery syntax would
+		// move it into the middle and give the oracle a different input.
+		if !utf8.ValidString(fragment) || strings.ContainsRune(fragment, 0) || strings.HasPrefix(fragment, "\ufeff") {
 			return
 		}
 		for _, raw := range []bool{true, false} {
@@ -222,15 +272,6 @@ func FuzzExpansionRecoveryQuotes(f *testing.F) {
 			want, _, err := lex.ProcessWord(fragment, env)
 			if err != nil {
 				return
-			}
-			// Docker declarations do not populate shell special parameters or an
-			// empty name. Those have a different intentional unknown-value policy
-			// here; compare only expressions whose names can be in scope.
-			for name := range env {
-				first, _ := utf8.DecodeRuneInString(name)
-				if first != '_' && !unicode.IsLetter(first) {
-					return
-				}
 			}
 			// Force recovery without changing the fragment's quote/escape boundaries.
 			source := "${#BROKEN} " + fragment
@@ -259,17 +300,19 @@ func BenchmarkExpansionRecoveryQuotes(b *testing.B) {
 
 func BenchmarkExpansionUnknownOperators(b *testing.B) {
 	for _, count := range []int{100, 1000, 10000} {
-		for _, prefix := range []string{"", "${#BROKEN} "} {
-			b.Run(fmt.Sprintf("%d/%s", count, prefix), func(b *testing.B) {
-				value := prefix + strings.Repeat(`${MISSING%/}/$H `, count)
-				expander := newWordExpander('\\', true)
-				env := map[string]string{"H": "hello"}
-				b.ReportAllocs()
-				b.SetBytes(int64(len(value)))
-				for b.Loop() {
-					expandValues(expander, []string{value}, env)
-				}
-			})
+		for _, reference := range []string{`${MISSING%/}`, `${MISSING:?need}`, `${MISSING:+--insecure}`} {
+			for _, prefix := range []string{"", "${#BROKEN} "} {
+				b.Run(fmt.Sprintf("%d/%s/%s", count, reference, prefix), func(b *testing.B) {
+					value := prefix + strings.Repeat(reference+`/$H `, count)
+					expander := newWordExpander('\\', true)
+					env := map[string]string{"H": "hello"}
+					b.ReportAllocs()
+					b.SetBytes(int64(len(value)))
+					for b.Loop() {
+						expandValues(expander, []string{value}, env)
+					}
+				})
+			}
 		}
 	}
 }

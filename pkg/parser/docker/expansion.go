@@ -159,7 +159,7 @@ func (e *wordExpander) expandWord(value string, env variableEnvironment) (string
 func (e *wordExpander) expandParts(value string, env variableEnvironment, quoted bool) string {
 	var out strings.Builder
 	ends := e.recoveryQuoteEnds(value)
-	references := e.referenceEndIndex(value)
+	references := e.referenceEndIndexWithQuotes(value, ends)
 	for i := 0; i < len(value); {
 		ch := value[i]
 		switch {
@@ -210,25 +210,35 @@ func (e *wordExpander) referenceEnd(value string, start int, ends map[int]int) i
 	return referenceNameEnd(value, pos)
 }
 
-// referenceEndIndex indexes balanced parameter spans in O(n), including nested
-// braces. It only isolates text passed to BuildKit; all operator evaluation is
-// left to shell.Lex. Unclosed prefixes don't cause repeated suffix scans.
+// referenceEndIndex indexes balanced parameter candidates in O(n). BuildKit
+// validates and evaluates each span; unclosed prefixes never rescan suffixes.
 func (e *wordExpander) referenceEndIndex(value string) map[int]int {
+	var quotes map[int]int
+	if strings.ContainsAny(value, "'\"") {
+		quotes = e.quoteEndIndexes(value)
+	}
+	return e.referenceEndIndexWithQuotes(value, quotes)
+}
+
+// Malformed-word recovery supplies its existing corrected quote boundaries.
+// Keep those heuristics out of complete words, where BuildKit can accept quoting
+// inside parameter patterns that appears unbalanced to a flat quote index.
+func (e *wordExpander) referenceEndIndexWithQuotes(value string, quoteEnds map[int]int) map[int]int {
 	ends := make(map[int]int)
 	var stack []int
-	quotes := parameterQuotes{}
-	if strings.ContainsAny(value, "'\"") {
-		quotes.ends = e.quoteEndIndexes(value)
-	}
+	quotes := parameterQuotes{ends: quoteEnds}
 	for pos := 0; pos < len(value); pos++ {
 		switch value[pos] {
 		case e.escape:
 			pos++
 		case '\'', '"':
 			pos = quotes.advance(value, pos, len(stack))
-		case '{':
-			if pos > 0 && value[pos-1] == '$' {
+		case '$':
+			if pos+1 < len(value) && value[pos+1] == '{' {
+				pos++
 				stack = append(stack, pos)
+			} else {
+				pos = max(pos, referenceNameEnd(value, pos+1)-1)
 			}
 		case '}':
 			if len(stack) == 0 || quotes.literal(len(stack)) {
@@ -493,8 +503,9 @@ func (e *wordExpander) protectUnknownReferences(value string, scopes variableEnv
 }
 
 // Preserve plain references and operators that require an unknown value.
-// Defaults/alternates evaluate normally; their nested operands remain visible
-// to the caller's walk. BuildKit evaluates all actual operator semantics.
+// Required-value and alternate operators depend on build arguments that may be
+// supplied at runtime. Defaults alone evaluate normally, with nested operands
+// visible to the caller's walk. BuildKit evaluates all actual operator semantics.
 func (e *wordExpander) unknownReferenceEnd(value string, begin, nameEnd int, braced bool,
 	ends map[int]int) (end int, spans map[int]int) {
 	if !braced {
@@ -503,10 +514,15 @@ func (e *wordExpander) unknownReferenceEnd(value string, begin, nameEnd int, bra
 	if nameEnd == len(value) {
 		return 0, ends
 	}
-	switch value[nameEnd] {
-	case '}':
+	if value[nameEnd] == '}' {
 		return nameEnd + 1, ends
-	case '#', '%', '/':
+	}
+	operator := value[nameEnd]
+	if operator == ':' && nameEnd+1 < len(value) {
+		operator = value[nameEnd+1]
+	}
+	switch operator {
+	case '#', '%', '/', '?', '+':
 		if ends == nil {
 			ends = e.referenceEndIndex(value)
 		}

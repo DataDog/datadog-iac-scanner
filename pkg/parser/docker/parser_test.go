@@ -369,6 +369,11 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 		name, source string
 		want         map[int][]string
 	}{
+		{"bare ARG required value", "FROM alpine\nARG VERSION\nARG H=hello\nRUN ${VERSION:?need} \"${A:-\"x y\"}\" $H\n", map[int][]string{4: {"${VERSION:?need} \"\"x y\"\" hello"}}},
+		{"bare ARG alternate", "FROM alpine\nARG INSECURE\nRUN curl ${INSECURE:+--insecure} https://x\n", map[int][]string{3: {"curl ${INSECURE:+--insecure} https://x"}}},
+		{"unknown operators after stage change", "FROM alpine\nARG X=known\nFROM busybox\nRUN ${X?need} ${X+alternate} ${A:-default}\n", map[int][]string{4: {"${X?need} ${X+alternate} default"}}},
+		{"empty declared alternate", "FROM alpine\nARG X=\nRUN ${X:+alternate} ${X+present}\n", map[int][]string{3: {" present"}}},
+		{"known required and alternate", "FROM alpine\nARG X=known\nRUN ${X:?need} ${X:+alternate}\n", map[int][]string{3: {"known alternate"}}},
 		{"unknown registry prefix", "FROM ${REG#https://}/alpine:3.9\n", map[int][]string{1: {"${REG#https://}/alpine:3.9"}}},
 		{"unknown command suffix", "FROM alpine\nARG H=hello\nRUN curl ${BASE%/}/install.sh $H\n", map[int][]string{3: {"curl ${BASE%/}/install.sh hello"}}},
 		{"unknown replacement after stage change", "FROM alpine\nARG BASE=http://one\nFROM busybox\nRUN echo ${BASE/http/https} ${TAG:-latest}\n", map[int][]string{4: {"echo ${BASE/http/https} latest"}}},
