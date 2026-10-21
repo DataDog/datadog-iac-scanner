@@ -255,8 +255,64 @@ func TestExpansionRecoveryAgreesWithBuildKit(t *testing.T) {
 	}
 }
 
+// Repairing one unmatched quote must not let a newly exposed final apostrophe
+// hide an independent known reference. Closed single quotes stay literal.
+func TestExpansionMalformedQuotedTail(t *testing.T) {
+	for _, tt := range []struct{ source, want string }{
+		{`" ${A:-"x y"} it's $H`, `" "x y" it's hello`},
+		{`" "${A:-'q'}" ' $H`, `" "'q'" ' hello`},
+		{`" "${A:-"x y"}" pre'fix $H' it's $H`, `" ""x y"" pre'fix $H' it's hello`},
+	} {
+		for _, escape := range []rune{'\\', '`'} {
+			for _, prefix := range []string{"", "${#BROKEN} "} {
+				require.Equal(t, []string{prefix + tt.want}, expandValues(newWordExpander(escape, true), []string{prefix + tt.source}, map[string]string{"H": "hello"}))
+			}
+		}
+	}
+}
+
+// BuildKit's parameter operands have their own quote context, even under an
+// outer double quote. Apostrophes are literal only in a double-quote frame.
+func TestExpansionContextNestingMatchesBuildKit(t *testing.T) {
+	for _, source := range []string{
+		`"${V//./'$1'}"`,
+		`before "${V//./'$1'}" after $H`,
+		`${A:-"${V//./'$1'}"}`,
+		`"${A:-"it's ${X:+a} '"}"`,
+		`before "${A:-"it's ${X:+a} '"}" after $H`,
+		`${B:-"${A:-"it's ${X:+a} '"}"}`,
+	} {
+		for _, raw := range []bool{false, true} {
+			for _, escape := range []rune{'\\', '`'} {
+				for _, unknown := range []bool{false, true} {
+					env := map[string]string{"V": "a.b.c", "H": "hello", "1": "must-not-expand", "X": "set"}
+					oracleSource := source
+					const marker = "scanner-unknown-alternate"
+					if unknown {
+						delete(env, "X")
+						delete(env, "1")
+						oracleSource = strings.ReplaceAll(source, "${X:+a}", marker)
+					}
+					lex := shell.NewLex(escape)
+					lex.RawQuotes, lex.RawEscapes = raw, raw
+					want, _, err := lex.ProcessWord(oracleSource, variableEnvironment{env})
+					require.NoError(t, err, "source=%s", source)
+					want = strings.ReplaceAll(want, marker, "${X:+a}")
+					for _, placement := range []struct{ prefix, suffix string }{{}, {prefix: "${#BROKEN} "}, {suffix: " ${#BROKEN}"}} {
+						input := placement.prefix + source + placement.suffix
+						expected := placement.prefix + want + placement.suffix
+						t.Run(fmt.Sprintf("%s/raw=%t/escape=%c/unknown=%t/%s%s", source, raw, escape, unknown, placement.prefix, placement.suffix), func(t *testing.T) {
+							require.Equal(t, []string{expected, expected}, expandValues(newWordExpander(escape, raw), []string{input, input}, env))
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
 func FuzzExpansionRecoveryQuotes(f *testing.F) {
-	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `${$#}`, `${$%}`, `${$/a/b}`, "$1", "$$", "$?", "\ufeff$H"} {
+	for _, s := range []string{`pre'fix $H'post`, `'a " $H' "$H"`, `"a '$H" '$H'`, `echo \$H '$H' "$H"`, `one 'two' three`, `$${H}`, `$${#H}`, `$$${H}`, `$${H:-x}`, `${$#}`, `${$%}`, `${$/a/b}`, `"${V//./'$1'}"`, `"${A:-"it's ${X:+a} '"}"`, "$1", "$$", "$?", "\ufeff$H"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, fragment string) {
@@ -273,6 +329,19 @@ func FuzzExpansionRecoveryQuotes(f *testing.F) {
 			if err != nil {
 				return
 			}
+			// The shared context scanner must expose exactly the names BuildKit
+			// read, including references nested under quotes and parameters.
+			names := map[string]bool{}
+			for _, ref := range newWordExpander('\\', raw).scanShell(fragment, false).references {
+				if (ref.name(fragment) != "" || ref.braced(fragment)) && ref.end > 0 {
+					names[ref.name(fragment)] = true
+				}
+			}
+			wantNames := map[string]bool{}
+			for name := range env {
+				wantNames[name] = true
+			}
+			require.Equal(t, wantNames, names)
 			// Force recovery without changing the fragment's quote/escape boundaries.
 			source := "${#BROKEN} " + fragment
 			require.Equal(t, []string{"${#BROKEN} " + want}, expandValues(newWordExpander('\\', raw), []string{source}, map[string]string(env)))
@@ -326,3 +395,20 @@ func (e collectingEnvironment) Get(name string) (string, bool) {
 	return "hello", true
 }
 func (e collectingEnvironment) Keys() []string { return nil }
+
+func BenchmarkShellContextScan(b *testing.B) {
+	const nested = `"${V//./'$1'}" "${A:-"it's ${X:+a} '"}"`
+	for _, size := range []int{100_000, 1_000_000, 10_000_000} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			value := strings.Repeat("plain text ", size/11) + nested
+			expander := newWordExpander('\\', true)
+			b.SetBytes(int64(len(value)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if got := len(expander.scanShell(value, false).references); got != 3 {
+					b.Fatalf("want V, A, X references, got %d", got)
+				}
+			}
+		})
+	}
+}
