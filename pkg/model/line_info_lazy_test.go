@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -139,25 +140,51 @@ func TestLineInfoReleaseSerializesWithLoading(t *testing.T) {
 			file := &FileMetadata{OriginalData: "FROM alpine"}
 			file.SetLazyLines()
 			entered, finish := make(chan struct{}), make(chan struct{})
+			t.Cleanup(func() {
+				select {
+				case <-finish:
+				default:
+					close(finish)
+				}
+			})
 			file.SetLineInfoLoader(func(_ context.Context, f *FileMetadata) (map[string]interface{}, error) {
 				close(entered)
 				<-finish
 				return Document{"source": f.OriginalData}, nil
 			})
 			copy := file.ShallowCopy()
+			require.Same(t, file.lineInfo.source, copy.lineInfo.source)
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() { defer wg.Done(); require.NoError(t, file.EnsureLineInfoDocument(t.Context())) }()
 			<-entered
+			// This lock is shared across copies. Its ownership while the loader
+			// is blocked proves release must wait, without relying on scheduling.
+			if file.lineInfo.source.mu.TryLock() {
+				file.lineInfo.source.mu.Unlock()
+				t.Fatal("in-flight loader must hold shared source ownership")
+			}
+			started, released := make(chan struct{}), make(chan struct{})
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				close(started)
 				if mode == "copy" {
 					copy.ReleasePostEvalData()
 				} else {
 					file.ReleasePostEvalData()
 				}
+				close(released)
 			}()
+			<-started
+			require.Never(t, func() bool {
+				select {
+				case <-released:
+					return true
+				default:
+					return false
+				}
+			}, 20*time.Millisecond, time.Millisecond, "release must wait for the in-flight load")
 			close(finish)
 			wg.Wait()
 			if mode == "discarded" {

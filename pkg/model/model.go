@@ -477,8 +477,10 @@ func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
 		return nil
 	}
 	st.source.mu.Lock()
+	defer st.source.mu.Unlock()
+	// Keep shared captures alive until loading finishes, including when a
+	// shallow copy concurrently releases its own independent memoization.
 	loader := st.source.loader
-	st.source.mu.Unlock()
 	if loader == nil {
 		return nil
 	}

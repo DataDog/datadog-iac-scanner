@@ -33,7 +33,7 @@ type FileSystemSourceProvider struct {
 	onlyPaths []string
 	// chartFilter decides which charts render; see SetChartFilter.
 	chartFilter *PathFilter
-	// mu guards paths, excludes and unfiltered, which checkConditions grows during
+	// mu guards paths, excludes, unfiltered, prebuiltPaths and chartRoots, which checkConditions grows during
 	// a walk and AddUnfilteredPaths extends. SetChartFilter and ChartFilter take
 	// it defensively. Source caches have their own ownership lock.
 	mu sync.RWMutex
@@ -255,10 +255,12 @@ type InventoryFile struct {
 // SetPrebuiltWalk reuses analyzer walk inventory to skip a second tree walk.
 func (s *FileSystemSourceProvider) SetPrebuiltWalk(paths, chartRoots []string, contentCache map[string][]byte,
 	prepared map[string]func(context.Context) context.Context) {
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
+	s.mu.Lock()
 	s.prebuiltPaths = paths
 	s.chartRoots = chartRoots
+	s.mu.Unlock()
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
 	s.contentCache = contentCache
 	s.preparedContexts = prepared
 }
@@ -294,11 +296,19 @@ func (s *FileSystemSourceProvider) ReleaseContentCache() {
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
 	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	inScope, outOfScope := s.partitionChartRoots(s.chartRoots)
+	s.mu.RLock()
+	paths := append([]string(nil), s.prebuiltPaths...)
+	roots := append([]string(nil), s.chartRoots...)
+	unfiltered := make(map[string]struct{}, len(s.unfiltered))
+	for path := range s.unfiltered {
+		unfiltered[path] = struct{}{}
+	}
+	s.mu.RUnlock()
+	inScope, outOfScope := s.partitionChartRoots(roots)
 	renderedRoots := renderChartsShallowFirst(ctx, inScope, chartPool, chartFn)
 
-	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
-	for _, path := range s.prebuiltPaths {
+	files := make([]InventoryFile, 0, len(paths))
+	for _, path := range paths {
 		norm := toSlash(path)
 		// The analyzer matches ignore-paths by exact path, so the templates of a
 		// chart under an ignored directory are listed; scanned raw, they would
@@ -306,7 +316,7 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 		if IsHelmChartFile(norm, renderedRoots) || IsHelmChartFile(norm, outOfScope) {
 			continue
 		}
-		if _, ok := s.unfiltered[norm]; !ok {
+		if _, ok := unfiltered[norm]; !ok {
 			excluded, err := s.isPathExcluded(norm)
 			if err != nil || excluded {
 				continue
@@ -588,7 +598,10 @@ func (s *FileSystemSourceProvider) partitionChartRoots(roots []string) (inScope,
 func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	if len(s.prebuiltPaths) > 0 {
+	s.mu.RLock()
+	prebuilt := len(s.prebuiltPaths) > 0
+	s.mu.RUnlock()
+	if prebuilt {
 		return s.BuildInventoryFromPrebuilt(ctx, extensions, chartPool, chartFn)
 	}
 	var files []InventoryFile

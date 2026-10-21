@@ -1225,3 +1225,34 @@ func TestCachedSourceOwnership(t *testing.T) {
 		})
 	}
 }
+
+// Prebuilt inventory belongs to the same lock as AddUnfilteredPaths, including
+// readers taking a snapshot while inventory and independent caches are updated.
+func TestPrebuiltInventoryConcurrentOwnership(t *testing.T) {
+	for _, count := range []int{1, 10, 100} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			fs, err := NewFileSystemSourceProvider(t.Context(), nil, nil, nil)
+			require.NoError(t, err)
+			fs.SetPrebuiltWalk([]string{"Dockerfile"}, nil, nil, nil)
+			var wg sync.WaitGroup
+			for worker := range 3 {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for range count {
+						switch worker {
+						case 0:
+							fs.SetPrebuiltWalk([]string{"Dockerfile"}, nil, nil, nil)
+						case 1:
+							fs.AddUnfilteredPaths([]string{"Dockerfile.prod"})
+						case 2:
+							_, err := fs.BuildInventoryFromPrebuilt(t.Context(), model.Extensions{"Dockerfile": {}, utils.PossibleDockerfile: {}}, utils.PoolOptions{}, noChartRoots)
+							require.NoError(t, err)
+						}
+					}
+				}()
+			}
+			wg.Wait()
+		})
+	}
+}
