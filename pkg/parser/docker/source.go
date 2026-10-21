@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
-	"unicode/utf8"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -18,10 +18,10 @@ type locationFileKey struct{}
 // parser, plus sparse raw-value overrides. This permits the scan document, AST
 // and input buffer to be released independently, even without any findings.
 type sourceLocations struct {
-	document  []byte
-	values    map[int]json.RawMessage
-	originals map[int]string
-	ignore    []int
+	document []byte
+	values   map[int]json.RawMessage
+	ignore   []int
+	lines    dockerfile.SourceLines
 }
 
 func (saved *sourceLocations) expandCommand(cmd *Command, scope *variableScope, global map[string]string, lex, declaration *wordExpander) {
@@ -34,12 +34,6 @@ func (saved *sourceLocations) expandCommand(cmd *Command, scope *variableScope, 
 		// []string always marshals; this also preserves the parser's UTF-8 policy.
 		encoded, _ := json.Marshal(raw)
 		saved.values[cmd.StartLine] = encoded
-	}
-	if !utf8.ValidString(cmd.Original) {
-		if saved.originals == nil {
-			saved.originals = make(map[int]string)
-		}
-		saved.originals[cmd.StartLine] = cmd.Original
 	}
 }
 
@@ -65,14 +59,7 @@ func (saved *sourceLocations) parse(ctx context.Context, content []byte) (
 	}
 
 	if file, ok := ctx.Value(locationFileKey{}).(*model.FileMetadata); ok {
-		file.DetectionLines(dockerfile.SourceViewKey, func(original []string) []string {
-			lines := make([]string, len(original))
-			recordCommandLines(lines, doc["args"], saved.originals)
-			for _, commands := range doc["command"].(map[string]interface{}) {
-				recordCommandLines(lines, commands, saved.originals)
-			}
-			return lines
-		})
+		file.DetectionLines(dockerfile.SourceViewKey, saved.lines.Apply)
 	}
 	return content, []model.Document{doc}, saved.ignore, nil, nil
 }
@@ -93,28 +80,34 @@ func (saved *sourceLocations) restoreCommands(value interface{}) error {
 	return nil
 }
 
-func recordCommandLines(lines []string, value interface{}, originals map[int]string) {
-	commands, _ := value.([]interface{})
-	for _, entry := range commands {
-		cmd := entry.(map[string]interface{})
-		line := int(cmd["_dd_line"].(float64))
-		text := cmd["Original"].(string)
-		if original, ok := originals[line]; ok {
-			text = original
-		}
-		lines[line-1] = text
-	}
-}
-
 // SourceContext retains compact source metadata only. Dispatch's BuildKit AST
 // and input bytes are released before evaluation, even for files without findings.
 func (p *Parser) SourceContext(ctx context.Context) func(context.Context) context.Context {
 	if saved, ok := ctx.Value(sourceLocationKey{}).(*sourceLocations); ok {
 		return func(next context.Context) context.Context { return context.WithValue(next, sourceLocationKey{}, saved) }
 	}
-	saved, ok := dockerfile.DetachSource(ctx).(*sourceLocations)
+	saved, ok := dockerfile.SavedSource(ctx).(*sourceLocations)
 	if !ok {
 		return nil
 	}
 	return func(next context.Context) context.Context { return context.WithValue(next, sourceLocationKey{}, saved) }
+}
+
+// FinishContext explicitly ends dispatch ownership after all source transfers.
+func (p *Parser) FinishContext(ctx context.Context) { dockerfile.DetachSource(ctx) }
+
+// S2 requires worst-case capacity while encoding. Pool that scratch space and
+// keep only an exactly sized result, rather than retaining uncompressed-size
+// backing arrays for every Dockerfile until evaluation finishes.
+var sourceEncodeBuffers = sync.Pool{New: func() any { return new([]byte) }}
+
+func encodeSourceDocument(document []byte) []byte {
+	buffer := sourceEncodeBuffers.Get().(*[]byte)
+	encoded := s2.Encode(*buffer, document)
+	result := slices.Clone(encoded)
+	if cap(encoded) <= 1<<20 {
+		*buffer = encoded
+		sourceEncodeBuffers.Put(buffer)
+	}
+	return result
 }

@@ -67,3 +67,11 @@ func (c *Parser) SourceContext(ctx context.Context) func(context.Context) contex
 	}
 	return nil
 }
+
+// FinishContext releases dispatch-only parser state after all source transfers,
+// including excluded files and failed parses. Saved source contexts stay valid.
+func (c *Parser) FinishContext(ctx context.Context) {
+	if hook, ok := c.Parsers.(interface{ FinishContext(context.Context) }); ok {
+		hook.FinishContext(ctx)
+	}
+}

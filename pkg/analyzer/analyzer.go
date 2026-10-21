@@ -585,7 +585,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	ctx, content = utils.PrepareFileContext(ctx, a.filePath, content)
+	ctx, content, prepare := prepareFileContext(ctx, a.filePath, content)
 	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)
 	if platform == "" {
 		unwanted <- a.filePath
@@ -597,16 +597,26 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		}
 		return
 	}
-	if a.preparedContexts != nil {
-		if prepared := utils.PreparedFileContext(ctx, a.filePath); prepared != nil {
-			a.preparedContexts.Store(a.filePath, prepared)
-		}
+	if a.preparedContexts != nil && prepare != nil {
+		a.preparedContexts.Store(a.filePath, prepare)
 	}
 	a.persistWorkerState(content, platform)
 	results <- platform
 	// Counted only once the file is known to be scanned, and from the content
 	// read for classification when there is any, so the file is opened once.
 	locCount <- a.countLines(ctx, content)
+}
+
+// Content policy determines both preparation and transfer together. The routing
+// registry contains no parser dependencies or independent per-extension hooks.
+func prepareFileContext(ctx context.Context, path string, content []byte) (
+	prepared context.Context, normalized []byte, transfer func(context.Context) context.Context) {
+	if utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) != utils.DockerfileContent {
+		return ctx, content, nil
+	}
+	content = utils.NormalizeSource(content)
+	ctx = dockersource.PrepareSource(ctx, content, true)
+	return ctx, content, dockersource.SourceContext(ctx)
 }
 
 func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {

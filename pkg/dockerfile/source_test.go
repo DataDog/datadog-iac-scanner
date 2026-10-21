@@ -3,8 +3,11 @@ package dockerfile
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/stretchr/testify/require"
 )
 
@@ -123,9 +126,134 @@ func TestSourceOwnershipEndsAtDispatch(t *testing.T) {
 		require.NoError(t, err)
 		compact := []int{1, 2}
 		RememberSource(ctx, compact)
+		for range 3 {
+			require.Equal(t, compact, SavedSource(ctx))
+			require.NotNil(t, snapshot.parsed, "reading metadata must not detach the AST")
+			require.NotNil(t, snapshot.content)
+		}
 		require.Equal(t, compact, DetachSource(ctx))
 		require.Nil(t, snapshot.parsed)
 		require.Nil(t, snapshot.content)
 		require.Equal(t, compact, DetachSource(ctx), "repeat transfers keep no AST")
+	}
+}
+
+// Cached and fresh layouts preserve untrimmed physical text where possible;
+// BuildKit determines instruction boundaries and joins actual continuations.
+func TestSourceLineViews(t *testing.T) {
+	for _, tt := range []struct {
+		source, view string
+		shared       bool
+	}{
+		{"FROM alpine\nRUN echo hi\r ", "FROM alpine\nRUN echo hi ", true},
+		{"FROM alpine\nRUN echo hi\r \\ \n there ", "FROM alpine\nRUN echo hi  there \n", false},
+		{"FROM alpine\nRUN echo hi\r \\ \n\n", "FROM alpine\nRUN echo hi \\ \n\n", true},
+		{"FROM alpine\nRUN echo hi ", "FROM alpine\nRUN echo hi ", true},
+		{"FROM alpine\t \nRUN echo hi\t", "FROM alpine\t \nRUN echo hi\t", true},
+		{"FROM alpine\nRUN echo hi \\", "FROM alpine\nRUN echo hi \\", true},
+		{"FROM alpine\nRUN echo hi \\  \n\n", "FROM alpine\nRUN echo hi \\  \n\n", true},
+		{"FROM alpine\n  RUN echo hi \t", "FROM alpine\n  RUN echo hi \t", true},
+		{"FROM alpine\nRUN echo first \nFROM busybox\nRUN echo last \t", "FROM alpine\nRUN echo first \nFROM busybox\nRUN echo last \t", true},
+		{"# escape=`\nFROM alpine\nRUN echo hi `", "\nFROM alpine\nRUN echo hi `", false},
+		{"\ufeffFROM alpine\nRUN echo hi ", "FROM alpine\nRUN echo hi ", false},
+		{"FROM alpine\nRUN echo a&&\\  \n b\t ", "FROM alpine\nRUN echo a&& b\t \n", false},
+		{"# escape=`\nFROM alpine\nRUN echo `\n hi\t ", "\nFROM alpine\nRUN echo  hi\t \n", false},
+		{"FROM alpine\nCOPY <<EOF /x\nRUN hi \nEOF\nRUN hi ", "FROM alpine\nCOPY <<EOF /x\n\n\nRUN hi ", false},
+		{"# comment\nFROM alpine\nRUN echo caf\xe9 \n", "\nFROM alpine\nRUN echo caf\xe9 \n", false},
+	} {
+		t.Run(tt.source, func(t *testing.T) {
+			parsed, err := parser.Parse(strings.NewReader(tt.source))
+			require.NoError(t, err)
+			physical := *utils.SplitLines(tt.source)
+			want := strings.Split(tt.view, "\n")
+			for _, got := range [][]string{CaptureSourceLines(parsed, []byte(tt.source)).Apply(physical), InstructionLines(physical)} {
+				require.Equal(t, want, got)
+				if tt.shared {
+					require.Same(t, &physical[0], &got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestSourceLinesIgnoreInvalidMarkers(t *testing.T) {
+	for _, starts := range [][]int{{-2, 1, 99}, {0, 1, 2, 100}, {1, 2, 999999}} {
+		physical := []string{"FROM alpine", "RUN hi "}
+		layout := SourceLines{overrides: map[int]string{99: "bad"}}
+		for _, line := range starts {
+			layout.record(line, "", "")
+		}
+		got := layout.Apply(physical)
+		require.Equal(t, "FROM alpine", got[0])
+		require.Len(t, got, len(physical))
+	}
+}
+
+func FuzzSourceLineViews(f *testing.F) {
+	for _, seed := range []string{"FROM alpine\nRUN hi ", "FROM alpine\nRUN x \\", "# escape=`\nFROM alpine\nRUN x`\n y"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, source string) {
+		parsed, err := parser.Parse(strings.NewReader(source))
+		if err != nil {
+			t.Skip()
+		}
+		physical := *utils.SplitLines(source)
+		want := make([]string, len(physical))
+		for _, node := range parsed.AST.Children {
+			if node.StartLine > 0 && node.StartLine <= len(want) {
+				text := utils.StripCarriageReturns(node.Original)
+				physicalLine := physical[node.StartLine-1]
+				// Location display preserves a physical line containing the whole
+				// instruction; only joined text and a stripped BOM differ.
+				if strings.Contains(physicalLine, text) && !strings.HasPrefix(physicalLine, "\ufeff") {
+					text = physicalLine
+				}
+				want[node.StartLine-1] = text
+			}
+		}
+		require.Equal(t, want, CaptureSourceLines(parsed, []byte(source)).Apply(physical))
+		require.Equal(t, want, instructionLines(parsed, physical))
+	})
+}
+
+func TestPreparedSourceConcurrentMemoization(t *testing.T) {
+	for _, source := range []string{"FROM alpine\nRUN a\n", "ARG X=alpine\nFROM $X\n", "FROM alpine\nRUN <<EOF\nmissing\n"} {
+		t.Run(source, func(t *testing.T) {
+			content := []byte(source)
+			ctx := PrepareSource(t.Context(), content, true)
+			first, firstErr := Parse(ctx, content)
+			var wg sync.WaitGroup
+			for range 8 {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					got, err := Parse(SourceContext(ctx)(t.Context()), content)
+					require.Equal(t, firstErr, err)
+					if firstErr == nil {
+						require.Same(t, first, got)
+					}
+				}()
+			}
+			wg.Wait()
+		})
+	}
+}
+
+// Layout retention follows gaps in instructions, not file size: a large plain
+// Dockerfile keeps one range and shares its complete physical source slice.
+func TestSourceLayoutRetention(t *testing.T) {
+	for _, count := range []int{10, 1000, 10000} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			content := "FROM alpine\n" + strings.Repeat("RUN echo hi\n", count)
+			parsed, err := parser.Parse(strings.NewReader(content))
+			require.NoError(t, err)
+			layout := CaptureSourceLines(parsed, []byte(content))
+			require.Len(t, layout.runs, 1)
+			require.Empty(t, layout.overrides)
+			physical := *utils.SplitLines(content)
+			view := layout.Apply(physical)
+			require.Same(t, &physical[0], &view[0])
+		})
 	}
 }

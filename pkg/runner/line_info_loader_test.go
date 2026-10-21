@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	dockerDetector "github.com/DataDog/datadog-iac-scanner/pkg/detector/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
@@ -152,6 +153,23 @@ func TestLineInfoLoaderInvokesParserHook(t *testing.T) {
 // source document and logical lines, including raw declaration values.
 func TestDockerLocationPathsAgree(t *testing.T) {
 	for _, source := range []string{
+		"FROM alpine\n\u00a0rUn echo hi ",
+		"\u2003FROM alpine\n\u0085rUn echo hi ",
+		"FROM alpine\nrUn\u00a0echo hi ",
+
+		"FROM alpine\nRUN echo hi\r ",
+		"FROM alpine\nRUN echo hi\r \\ \n there ",
+		"FROM alpine\nRUN echo hi\r \\ \n\n",
+
+		"FROM alpine\nRUN echo hi ",
+		"FROM alpine \t\nRUN echo hi\t \n",
+		"FROM alpine\nRUN echo hi \\",
+		"FROM alpine\nRUN echo hi \\  \n\n",
+		"# escape=`\nFROM alpine\nRUN echo hi `",
+		"FROM alpine\n  RUN echo hi \t",
+		"FROM alpine\nRUN echo hi \\   \n there \t\n",
+		"FROM alpine\nRUN echo first \nFROM busybox\nRUN echo last \t",
+
 		"FROM alpine\nRUN echo caf\xe9 $V\n",
 		"FROM alpine\nRUN echo \x00 $V\n",
 		"FROM alpine\nARG V=1\nENV A=$V\nRUN echo $A\n",
@@ -165,8 +183,12 @@ func TestDockerLocationPathsAgree(t *testing.T) {
 			require.NoError(t, err)
 			bind := p.SourceContext(ctx)
 			require.NotNil(t, bind)
+			// Getting the context is repeatable and must not end dispatch ownership.
+			require.NotNil(t, p.SourceContext(ctx))
+			p.FinishContext(ctx)
 			var docs []map[string]interface{}
 			var lines [][]string
+			var findings []model.VulnerabilityLines
 			for _, prepare := range []func(context.Context) context.Context{nil, bind} {
 				file := &model.FileMetadata{OriginalData: string(content), Kind: model.KindDOCKER, FilePath: "Dockerfile"}
 				file.SetLazyLines()
@@ -174,10 +196,18 @@ func TestDockerLocationPathsAgree(t *testing.T) {
 				doc, err := loader(t.Context(), file)
 				require.NoError(t, err)
 				docs = append(docs, doc)
-				lines = append(lines, file.DetectionLines(dockerfile.SourceViewKey, dockerfile.InstructionLines))
+				view := file.DetectionLines(dockerfile.SourceViewKey, dockerfile.InstructionLines)
+				lines = append(lines, view)
+				findings = append(findings, (dockerDetector.DetectKindLine{}).DetectLine(t.Context(), file, "{{RUN echo}}", 0))
+				physical := file.Lines()
+				oracle := dockerfile.InstructionLines(physical)
+				if len(oracle) > 0 && &oracle[0] == &physical[0] {
+					require.Same(t, &physical[0], &view[0], "unchanged physical lines must be shared")
+				}
 			}
 			require.Equal(t, docs[0], docs[1])
 			require.Equal(t, lines[0], lines[1])
+			require.Equal(t, findings[0], findings[1], "finding identity includes original text and end column")
 		})
 	}
 }

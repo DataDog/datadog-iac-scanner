@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
-	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
-	"github.com/klauspost/compress/s2"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
@@ -68,6 +66,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		declarationLex = newWordExpander(parsed.EscapeToken, false)
 	}
 	source := &sourceLocations{}
+	if !lineInfoOnly {
+		source.lines = dockerfile.CaptureSourceLines(parsed, fileContent)
+	}
 	globalArgs := make(map[string]string)
 	scope := variableScope{args: globalArgs, envs: make(map[string]string)}
 	stages := make(map[string]variableScope)
@@ -119,7 +120,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	ignoreLines = ignoreStruct.getIgnoreLines()
 	if !lineInfoOnly {
-		source.document, source.ignore = slices.Clone(s2.Encode(nil, j)), ignoreLines
+		source.document, source.ignore = encodeSourceDocument(j), ignoreLines
 		dockerfile.RememberSource(ctx, source)
 	}
 

@@ -749,9 +749,12 @@ func TestWithoutExcludedFiles_PackagedDependencyArchivePath(t *testing.T) {
 // enrichment and lazy source locations must see the very same BuildKit result.
 type observingDockerParser struct {
 	dockerParser.Parser
-	mu   sync.Mutex
-	asts map[string]*buildkit.Result
+	mu       sync.Mutex
+	asts     map[string]*buildkit.Result
+	finished map[string]bool
 }
+
+type observingPathKey struct{}
 
 func (p *observingDockerParser) PrepareContext(ctx context.Context, path string, content []byte) context.Context {
 	ctx = p.Parser.PrepareContext(ctx, path, content)
@@ -761,7 +764,18 @@ func (p *observingDockerParser) PrepareContext(ctx context.Context, path string,
 		p.asts[path] = ast
 		p.mu.Unlock()
 	}
-	return ctx
+	return context.WithValue(ctx, observingPathKey{}, path)
+}
+
+func (p *observingDockerParser) FinishContext(ctx context.Context) {
+	p.Parser.FinishContext(ctx)
+	path := ctx.Value(observingPathKey{}).(string)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.finished == nil {
+		p.finished = make(map[string]bool)
+	}
+	p.finished[path] = true
 }
 
 func (p *observingDockerParser) Parse(ctx context.Context, content []byte, path string, resolve bool, depth int) (
@@ -776,7 +790,19 @@ func (p *observingDockerParser) Parse(ctx context.Context, content []byte, path 
 	if err != nil || ast != previous {
 		return nil, nil, nil, nil, fmt.Errorf("source parse was not reused for %s", path)
 	}
-	return p.Parser.Parse(ctx, content, path, resolve, depth)
+	resolved, docs, ignore, files, parseErr := p.Parser.Parse(ctx, content, path, resolve, depth)
+	if parseErr == nil {
+		for range 3 {
+			if p.SourceContext(ctx) == nil {
+				return nil, nil, nil, nil, fmt.Errorf("missing compact source for %s", path)
+			}
+			reused, reuseErr := dockersource.Parse(ctx, content)
+			if reuseErr != nil || reused != ast {
+				return nil, nil, nil, nil, fmt.Errorf("source getter detached dispatch AST for %s", path)
+			}
+		}
+	}
+	return resolved, docs, ignore, files, parseErr
 }
 
 func TestPreparedDockerSourceSurvivesDispatch(t *testing.T) {
@@ -822,6 +848,7 @@ func TestPreparedDockerSourceSurvivesDispatch(t *testing.T) {
 					}
 				}
 				require.NoError(t, prepare())
+				require.Len(t, observed.finished, len(inputs), "every dispatch explicitly finalizes its source")
 				for path, ast := range analysisASTs {
 					require.Same(t, ast, observed.asts[path])
 				}
@@ -903,6 +930,58 @@ func TestDiskCacheTransferDrainsRejectedSources(t *testing.T) {
 			}
 			require.Empty(t, cached)
 			require.Empty(t, prepared)
+		})
+	}
+}
+
+// The optional lifecycle hook applies to every parser, and dispatch ends it on
+// success, content exclusion and parse failure, without a format-specific branch.
+type lifecycleJSONParser struct {
+	jsonParser.Parser
+	finish func(context.Context)
+}
+
+func (p *lifecycleJSONParser) PrepareContext(ctx context.Context, _ string, _ []byte) context.Context {
+	return context.WithValue(ctx, observingPathKey{}, "prepared")
+}
+
+func (p *lifecycleJSONParser) FinishContext(ctx context.Context) { p.finish(ctx) }
+
+type lifecycleSource struct {
+	memorySource
+	reject bool
+}
+
+func (s lifecycleSource) excluded(context.Context, string, []byte) bool { return s.reject }
+
+func TestDispatchFinalizesParserContext(t *testing.T) {
+	for _, tt := range []struct {
+		name, content string
+		reject        bool
+	}{
+		{"success", `{"a":1}`, false},
+		{"parse failure", `[`, false},
+		{"excluded", `{"a":1}`, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := vfs.NewMemFS(map[string][]byte{"input.json": []byte(tt.content)})
+			mp := provider.NewMemorySourceProvider(fs, fs.Paths(), nil, nil)
+			services, _ := buildServices(t, t.Context(), fs, mp)
+			for _, service := range services {
+				if service.Parser.Parsers.GetKind() != model.KindJSON {
+					continue
+				}
+				finished := 0
+				service.Parser.Parsers = &lifecycleJSONParser{finish: func(ctx context.Context) {
+					finished++
+					require.Equal(t, "prepared", ctx.Value(observingPathKey{}))
+				}}
+				source := lifecycleSource{memorySource: memorySource{mp}, reject: tt.reject}
+				require.NoError(t, dispatchFile(t.Context(), source, []*Service{service}, "input.json", "finish", false, 5))
+				require.Equal(t, 1, finished)
+				return
+			}
+			t.Fatal("missing JSON service")
 		})
 	}
 }

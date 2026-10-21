@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
 
@@ -30,13 +31,13 @@ func WithSourceLines(ctx context.Context, original []string, record func([]strin
 
 type preparedSourceKey struct{}
 type sourceSnapshot struct {
-	mu        sync.Mutex
-	once      sync.Once
-	candidate bool
-	content   []byte
-	parsed    *parser.Result
-	err       error
-	data      any
+	mu         sync.Mutex
+	parsedOnce bool
+	candidate  bool
+	content    []byte
+	parsed     *parser.Result
+	err        error
+	data       any
 }
 
 func preparedSource(ctx context.Context, content []byte) *sourceSnapshot {
@@ -68,13 +69,14 @@ func PrepareSource(ctx context.Context, content []byte, candidate bool) context.
 func (s *sourceSnapshot) parse() (*parser.Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.once.Do(func() {
+	if !s.parsedOnce {
+		s.parsedOnce = true
 		if s.candidate {
 			s.parsed, s.err = parseCandidate(bytes.NewReader(s.content))
 		} else {
 			s.parsed, s.err = parser.Parse(bytes.NewReader(s.content))
 		}
-	})
+	}
 	return s.parsed, s.err
 }
 
@@ -118,21 +120,84 @@ func InstructionLines(original []string) []string {
 	return instructionLines(parsed, original)
 }
 
-// instructionLines reuses physical source strings wherever BuildKit's logical
-// text is identical. Files without continuations, comments or heredocs can reuse
-// the entire source slice and its existing substring index.
-func instructionLines(parsed *parser.Result, original []string) []string {
+type instructionRun struct{ first, last int }
+
+// SourceLines records runs of adjacent instruction starts and only strings that
+// differ from physical source. It retains neither the AST nor the input buffer.
+// BuildKit owns continuation, escape, whitespace and heredoc interpretation.
+type SourceLines struct {
+	runs      []instructionRun
+	overrides map[int]string
+}
+
+// CaptureSourceLines makes compact location metadata in O(bytes + instructions).
+func CaptureSourceLines(parsed *parser.Result, content []byte) SourceLines {
+	layout := SourceLines{}
+	position, line := 0, 1
+	for _, node := range parsed.AST.Children {
+		for line < node.StartLine && position < len(content) {
+			end := bytes.IndexByte(content[position:], '\n')
+			if end < 0 {
+				position = len(content)
+				break
+			}
+			position += end + 1
+			line++
+		}
+		if line != node.StartLine || node.StartLine < 1 {
+			continue
+		}
+		end := bytes.IndexByte(content[position:], '\n')
+		if end < 0 {
+			end = len(content) - position
+		}
+		layout.record(node.StartLine, node.Original, string(content[position:position+end]))
+	}
+	return layout
+}
+
+func (layout *SourceLines) record(line int, logical, physical string) {
+	// Adjacent instruction starts need only one range. Plain Dockerfiles
+	// retain O(1) location metadata rather than an index per command.
+	if n := len(layout.runs); n > 0 && layout.runs[n-1].last+1 == line {
+		layout.runs[n-1].last = line
+	} else {
+		layout.runs = append(layout.runs, instructionRun{first: line, last: line})
+	}
+	logical = utils.StripCarriageReturns(logical)
+	physical = utils.StripCarriageReturns(physical)
+	// If BuildKit's complete instruction already occurs verbatim on its first
+	// source line, retain that line's indentation, trailing whitespace and EOF
+	// escape. Joined instructions still use BuildKit's logical text. A BOM is
+	// parser metadata and remains stripped as in the fresh parse path.
+	if strings.Contains(physical, logical) && !strings.HasPrefix(physical, "\ufeff") {
+		return
+	}
+	if logical != physical {
+		if layout.overrides == nil {
+			layout.overrides = make(map[int]string)
+		}
+		layout.overrides[line] = logical
+	}
+}
+
+// Apply reuses the physical slice unless masking or a logical instruction
+// changes a line. Out-of-range instruction markers are ignored. Cost is O(lines).
+func (layout SourceLines) Apply(original []string) []string {
 	var lines []string
 	child := 0
 	for i, physical := range original {
 		text := ""
-		if child < len(parsed.AST.Children) && parsed.AST.Children[child].StartLine == i+1 {
-			text = parsed.AST.Children[child].Original
+		for child < len(layout.runs) && layout.runs[child].last < i+1 {
 			child++
 		}
-		if text == physical {
+		if child < len(layout.runs) && layout.runs[child].first <= i+1 {
 			text = physical
-		} else if lines == nil {
+			if override, ok := layout.overrides[i+1]; ok {
+				text = override
+			}
+		}
+		if text != physical && lines == nil {
 			lines = slices.Clone(original)
 		}
 		if lines != nil {
@@ -143,6 +208,17 @@ func instructionLines(parsed *parser.Result, original []string) []string {
 		return original
 	}
 	return lines
+}
+
+func instructionLines(parsed *parser.Result, original []string) []string {
+	// Fresh location requests use exactly the same compact representation.
+	layout := SourceLines{}
+	for _, node := range parsed.AST.Children {
+		if node.StartLine > 0 && node.StartLine <= len(original) {
+			layout.record(node.StartLine, node.Original, original[node.StartLine-1])
+		}
+	}
+	return layout.Apply(original)
 }
 
 // FromArguments returns the raw arguments of a FROM instruction, including
@@ -166,8 +242,18 @@ func RememberSource(ctx context.Context, data any) {
 	}
 }
 
-// DetachSource transfers compact location data and drops the dispatch-only AST
-// and bytes. Called after classification and document parsing have finished.
+// SavedSource returns immutable parser-owned metadata without changing ownership.
+func SavedSource(ctx context.Context) any {
+	source, _ := ctx.Value(preparedSourceKey{}).(*sourceSnapshot)
+	if source == nil {
+		return nil
+	}
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	return source.data
+}
+
+// DetachSource drops dispatch-only state after all consumers have finished.
 func DetachSource(ctx context.Context) any {
 	source, _ := ctx.Value(preparedSourceKey{}).(*sourceSnapshot)
 	if source == nil {

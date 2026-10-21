@@ -14,7 +14,9 @@ import (
 	"sync"
 	"testing"
 
+	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -1080,4 +1082,28 @@ func TestClassifyFile_DockerfileContent(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("FROM disk\nRUN echo disk\n"), 0o600))
 	require.Empty(t, ClassifyFile(t.Context(), nil, path, []byte{}, nil), "provided empty content overrides disk")
 	require.Equal(t, "dockerfile", ClassifyFile(t.Context(), nil, path, nil, nil))
+}
+
+// Every content-checked Dockerfile type automatically gets parse sharing;
+// adding another registry entry cannot omit an independent preparation hook.
+func TestDockerfileContentPolicySharesPreparation(t *testing.T) {
+	for _, token := range utils.SupportedFileTypes() {
+		if utils.ContentCheckForFileType(token) != utils.DockerfileContent {
+			continue
+		}
+		t.Run(token, func(t *testing.T) {
+			path := "input" + token
+			if token == utils.PossibleDockerfile {
+				path = "Dockerfile.prod"
+			}
+			content := []byte("FROM alpine\r\nRUN a\r\n")
+			ctx, normalized, bind := prepareFileContext(t.Context(), path, content)
+			first, err := dockersource.Parse(ctx, normalized)
+			require.NoError(t, err)
+			require.NotNil(t, bind)
+			second, err := dockersource.Parse(bind(t.Context()), normalized)
+			require.NoError(t, err)
+			require.Same(t, first, second)
+		})
+	}
 }

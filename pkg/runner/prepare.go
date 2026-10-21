@@ -299,6 +299,7 @@ func dispatchFile(ctx context.Context,
 		for _, service := range services {
 			ctx, *c.Content = service.Parser.PrepareContext(ctx, filePath, *c.Content)
 		}
+		defer finishParserContexts(ctx, services)
 		if src.excluded(ctx, filePath, *c.Content) {
 			return nil
 		}
@@ -317,6 +318,13 @@ func dispatchFile(ctx context.Context,
 		}
 	}
 	return nil
+}
+
+// Finish the original preparation set, including services removed by routing.
+func finishParserContexts(ctx context.Context, services []*Service) {
+	for _, service := range services {
+		service.Parser.FinishContext(ctx)
+	}
 }
 
 // diskSource is the CLI's source: the walked (or analyzer-prebuilt) inventory,
