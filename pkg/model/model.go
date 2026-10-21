@@ -142,7 +142,8 @@ type HelmIDLineRange struct {
 	End   int
 }
 
-// lineInfoSource owns releasable source captures shared by shallow copies.
+// lineInfoSource owns the loader pointer shared by shallow copies. Its mutex
+// protects acquisition/detachment; an acquired closure owns its active captures.
 type lineInfoSource struct {
 	mu     sync.Mutex
 	loader func(context.Context, *FileMetadata) (map[string]interface{}, error)
@@ -387,8 +388,8 @@ func (f *FileMetadata) ReleasePostEvalData() {
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
 	f.linesLazy = nil
-	// The state pointer stays stable for concurrent readers. Clones share this
-	// releasable loader holder, so one release also drops their source captures.
+	// The state pointer stays stable for concurrent readers. Detach future loads
+	// across all copies; active loads retain their own closure and captures.
 	if st != nil {
 		if st.source != nil {
 			st.source.mu.Lock()
@@ -477,10 +478,12 @@ func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
 		return nil
 	}
 	st.source.mu.Lock()
-	defer st.source.mu.Unlock()
-	// Keep shared captures alive until loading finishes, including when a
-	// shallow copy concurrently releases its own independent memoization.
 	loader := st.source.loader
+	st.source.mu.Unlock()
+	// This local closure keeps its captures alive if another copy detaches the
+	// shared source. Only this file's memoization/source fields need to stay
+	// locked while loading; shallow copies have independent state and may load
+	// concurrently.
 	if loader == nil {
 		return nil
 	}
