@@ -89,18 +89,26 @@ func GenerateReport(ctx context.Context, path, filename string, body interface{}
 	metrics.Metric.Start("generate_report")
 	defer metrics.Metric.Stop()
 
-	nonSarifBody := body
-	if summary, ok := body.(*model.Summary); ok {
-		nonSarifBody = summary.WithoutSuppressed()
+	// The filtered copy holds every finding again, so it is only made for a
+	// format that reads it.
+	var nonSarifBody interface{}
+	withoutSuppressed := func() interface{} {
+		if nonSarifBody == nil {
+			nonSarifBody = body
+			if summary, ok := body.(*model.Summary); ok {
+				nonSarifBody = summary.WithoutSuppressed()
+			}
+		}
+		return nonSarifBody
 	}
 
 	var err error = nil
 
 	for _, format := range formats {
 		format = strings.ToLower(format)
-		target := nonSarifBody
-		if format == "sarif" {
-			target = body
+		target := body
+		if format != "sarif" {
+			target = withoutSuppressed()
 		}
 		if err = reportGenerators[format](ctx, path, filename, target, sciInfo); err != nil {
 			log.Error().Msgf("Failed to generate %s report", format)
