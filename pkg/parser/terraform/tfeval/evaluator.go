@@ -187,10 +187,11 @@ type Evaluator struct {
 	// Defaults to the real disk; content-push scans inject an in-memory FS.
 	fsys vfs.FS
 	// cache memoizes completed module evaluations keyed by (dir, packageRoot,
-	// canonical-inputs). A single Evaluator is used for an entire scan, so entries
+	// input digest). A single Evaluator is used for an entire scan, so entries
 	// with the same key represent the same module reached with the same resolved
 	// inputs, whatever path led there.
-	cache map[evalCacheKey]*evalCacheEntry
+	cache   map[evalCacheKey]*evalCacheEntry
+	keyMemo keyMemo
 	// When set, non-local module sources resolve here and recurse with caller inputs.
 	remoteResolver RemoteResolver
 
@@ -521,6 +522,7 @@ func (e *Evaluator) ReleaseCaches() {
 // keyed by directory alone, genuinely is shared by every root, and is kept.
 func (e *Evaluator) ReleaseEvalCache() {
 	e.cache = make(map[evalCacheKey]*evalCacheEntry)
+	e.keyMemo = keyMemo{}
 }
 
 // EvaluateModule evaluates the module rooted at dir with the given inputs and
@@ -575,7 +577,7 @@ func (e *Evaluator) evaluate(
 		dir:         dir,
 		rootDir:     rootDir,
 		packageRoot: packageRoot,
-		inputs:      canonicalInputsKey(inputs),
+		inputs:      e.keyMemo.inputsKey(inputs),
 	}
 	if resources, outputs, hit, err := e.reuseCachedEvaluation(
 		ctx, cacheKey, dir, addr, chain, depth, allVisited,
@@ -1925,11 +1927,38 @@ func addNestedBlock(out map[string]cty.Value, path []string, value cty.Value) {
 // evalExpr evaluates an expression, returning unknown for what it cannot
 // resolve.
 func (e *Evaluator) evalExpr(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
+	if v, ok := evalLength(expr, ctx); ok {
+		return v
+	}
 	v, diags := expr.Value(ctx)
 	if diags.HasErrors() {
 		return partial.WithUnknownRefs(expr, ctx)
 	}
 	return v
+}
+
+// evalLength evaluates a one-argument length call once. Object length comes from
+// the type, because calling the function walks the object to look for marks.
+func evalLength(expr hclsyntax.Expression, ctx *hcl.EvalContext) (cty.Value, bool) {
+	call, ok := expr.(*hclsyntax.FunctionCallExpr)
+	if !ok || call.Name != "length" || call.ExpandFinal || len(call.Args) != 1 {
+		return cty.NilVal, false
+	}
+	v, diags := call.Args[0].Value(ctx)
+	if diags.HasErrors() {
+		return partial.WithUnknownRefs(expr, ctx), true
+	}
+	if v.Type().IsObjectType() && !v.IsNull() {
+		if !v.IsKnown() {
+			return cty.UnknownVal(cty.Number), true
+		}
+		return cty.NumberIntVal(int64(len(v.Type().AttributeTypes()))), true
+	}
+	got, err := tffunctions.LengthFunc.Call([]cty.Value{v})
+	if err != nil {
+		return partial.WithUnknownRefs(expr, ctx), true
+	}
+	return got, true
 }
 
 // preliminaryModuleOutputs evaluates local modules once to fill module.* for sibling refs.
