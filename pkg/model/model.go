@@ -150,6 +150,25 @@ type lineInfoState struct {
 	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
 }
 
+// sharedLineInfo is one file's line-info document as parsed, shared by the
+// copies of the file ShallowCopySharingLineInfo makes. Every such copy reads the
+// same parse, so it is loaded once and reused until DiscardSharedLineInfo.
+type sharedLineInfo struct {
+	mu     sync.Mutex
+	doc    map[string]interface{}
+	err    error
+	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
+}
+
+func (s *sharedLineInfo) load(ctx context.Context, f *FileMetadata) (map[string]interface{}, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.doc == nil && s.err == nil {
+		s.doc, s.err = s.loader(ctx, f)
+	}
+	return s.doc, s.err
+}
+
 // linesLazyState guards the one-time computation of LinesOriginalData from
 // OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
 type linesLazyState struct {
@@ -214,6 +233,11 @@ type FileMetadata struct {
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
 	Platform string
+
+	// sharedLineInfo is the line-info document this copy shares with the other
+	// copies of its file; copiesLineInfo is the one a file hands its copies.
+	sharedLineInfo *sharedLineInfo
+	copiesLineInfo *sharedLineInfo
 }
 
 // SetLineInfoLoader configures on-demand reconstruction of LineInfoDocument.
@@ -364,7 +388,47 @@ func (f *FileMetadata) ShallowCopy() *FileMetadata {
 	if f.linesLazy != nil && f.LinesOriginalData == nil {
 		clone.linesLazy = &linesLazyState{}
 	}
+	clone.copiesLineInfo = nil
 	return &clone
+}
+
+// ShallowCopySharingLineInfo is ShallowCopy for the many copies of one file
+// that all read it as parsed, such as the documents of a module's instances.
+// The copies share the file's lines and one lazily loaded line-info document
+// instead of each splitting and parsing the file again: a module file with N
+// instances would otherwise be reparsed N times for every rule with findings
+// in it. f must not be read concurrently while copies are made.
+func (f *FileMetadata) ShallowCopySharingLineInfo() *FileMetadata {
+	if f.lineInfo == nil || f.LineInfoDocument != nil {
+		return f.ShallowCopy()
+	}
+	f.Lines()
+	clone := f.ShallowCopy()
+	if f.copiesLineInfo == nil {
+		f.copiesLineInfo = &sharedLineInfo{loader: f.lineInfo.loader}
+	}
+	clone.sharedLineInfo = f.copiesLineInfo
+	clone.lineInfo = &lineInfoState{loader: f.copiesLineInfo.load}
+	return clone
+}
+
+// SharesLineInfoWith reports whether f and other read one shared line-info
+// document.
+func (f *FileMetadata) SharesLineInfoWith(other *FileMetadata) bool {
+	return f.sharedLineInfo != nil && other != nil && f.sharedLineInfo == other.sharedLineInfo
+}
+
+// DiscardSharedLineInfo drops the line-info document f shares with the other
+// copies of its file; the next copy to need it loads it again. Copies holding
+// the document keep it until they discard their own.
+func (f *FileMetadata) DiscardSharedLineInfo() {
+	s := f.sharedLineInfo
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.doc = nil
+	s.mu.Unlock()
 }
 
 // EnsureLineInfoDocument lazily materializes LineInfoDocument on first access,

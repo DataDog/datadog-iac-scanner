@@ -716,13 +716,15 @@ func moduleAttributionForResource(
 		// position still identifies it.
 		attr, ok = attrs[moduleAttributionKey(dataTypePrefix+v.ResourceType, line, col)]
 	}
-	if !ok {
+	if !ok || attr == nil {
 		return nil
 	}
-	clone := cloneModuleAttribution(attr)
-	if clone == nil {
-		return nil
-	}
+	// Narrowing only sets fields of the attribution itself, so the finding's
+	// copy shares the module path, read-only like the rest of an attribution:
+	// a copy of the path per finding is most of what findings on deep module
+	// chains hold.
+	narrowed := *attr
+	clone := &narrowed
 	// The narrowest range holding the line decides: an item of a multi-line
 	// value is set by what it reads, not by the rest of the value.
 	var narrowest *model.ModuleArgument

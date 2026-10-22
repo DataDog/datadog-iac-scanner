@@ -1493,6 +1493,7 @@ decodeLoop:
 	if qCtx.discardLineInfoAfterUse && activeLineInfoFile != "" {
 		if fm := qCtx.Files[activeLineInfoFile]; fm != nil {
 			fm.DiscardLineInfoDocument()
+			fm.DiscardSharedLineInfo()
 		}
 	}
 
@@ -1506,6 +1507,11 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 	if active != "" {
 		if fm := qCtx.Files[active]; fm != nil {
 			fm.DiscardLineInfoDocument()
+			// The copies of one file sort together and read one shared parse,
+			// which is kept until the last of them is done.
+			if !fm.SharesLineInfoWith(qCtx.Files[nextID]) {
+				fm.DiscardSharedLineInfo()
+			}
 		}
 	}
 	return nextID

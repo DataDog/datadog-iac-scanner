@@ -130,3 +130,36 @@ func TestFileMetadata_ShallowCopyPreservesLazyLoader(t *testing.T) {
 	require.NoError(t, src.EnsureLineInfoDocument(context.Background()))
 	require.NotNil(t, src.LineInfoDocument)
 }
+
+func TestShallowCopySharingLineInfo_parsesOnceForAllCopies(t *testing.T) {
+	ctx := context.Background()
+	var loads atomic.Int32
+	fm := &FileMetadata{ID: "id", FilePath: "main.tf", OriginalData: "a\nb\n"}
+	fm.SetLazyLines()
+	fm.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+		loads.Add(1)
+		return map[string]interface{}{"resource": "as parsed"}, nil
+	})
+
+	first, second := fm.ShallowCopySharingLineInfo(), fm.ShallowCopySharingLineInfo()
+	require.True(t, first.SharesLineInfoWith(second))
+	require.False(t, first.SharesLineInfoWith(fm))
+	require.Equal(t, []string{"a", "b", ""}, second.Lines())
+
+	for _, copyFm := range []*FileMetadata{first, second, first} {
+		require.NoError(t, copyFm.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+			require.Equal(t, "as parsed", doc["resource"])
+			return nil
+		}))
+		copyFm.DiscardLineInfoDocument()
+	}
+	require.Equal(t, int32(1), loads.Load(), "copies of one file share one parse")
+
+	// Once the shared parse is dropped, the next copy to need it parses again.
+	first.DiscardSharedLineInfo()
+	require.NoError(t, second.EnsureLineInfoDocument(ctx))
+	require.Equal(t, int32(2), loads.Load())
+	// The file keeps its own line info, unaffected by its copies.
+	require.NoError(t, fm.EnsureLineInfoDocument(ctx))
+	require.Equal(t, int32(3), loads.Load())
+}

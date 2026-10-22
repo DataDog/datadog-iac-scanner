@@ -1227,7 +1227,7 @@ func (h contentHasher) key() docContentKey {
 func newInstanceFileMetadata(
 	fm *model.FileMetadata, id, callChain string, attributions map[string]*model.ModuleAttribution,
 ) *model.FileMetadata {
-	clone := fm.ShallowCopy()
+	clone := fm.ShallowCopySharingLineInfo()
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
