@@ -8,12 +8,14 @@ package tfeval
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func parsePrepassModule(t *testing.T, src string) ([]*hclsyntax.Block, map[string]hclsyntax.Expression, []*hclsyntax.Block) {
@@ -236,4 +238,68 @@ module "c" {
 	doc := AttributesToDocument(ptr(policy))
 	require.Equal(t, "svc-policy", doc["name"])
 	require.Equal(t, "${aws_iam_role.r.id}", doc["role"])
+}
+
+func TestExpandBlock_ForEachSetStoredOnceInIterationOrder(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_cloudwatch_log_group" "g" {
+  for_each = toset(["c", "a", "b"])
+  name     = each.key
+}
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "c" { source = "../child" }
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 3)
+	want := cty.TupleVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b"), cty.StringVal("c")})
+	for _, r := range resources {
+		require.True(t, want.RawEquals(r.Attributes[forEachAttr]), r.Attributes[forEachAttr].GoString())
+		require.Equal(t, []interface{}{"a", "b", "c"}, AttributesToDocument(ptr(r))[forEachAttr])
+	}
+}
+
+// A for_each collection within the earlier cap stays readable through a
+// reference to the whole object, as before; a larger one is not copied into
+// every instance of the injected object.
+func TestReferenceAttributes_LargeForEachLeftOut(t *testing.T) {
+	small := cty.SetVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")})
+	attrs := map[string]cty.Value{forEachAttr: small, "name": cty.StringVal("x")}
+	require.Contains(t, referenceAttributes(attrs), forEachAttr)
+
+	elems := make([]cty.Value, legacyCountExpansion+1)
+	for i := range elems {
+		elems[i] = cty.StringVal(fmt.Sprintf("k%d", i))
+	}
+	large := map[string]cty.Value{forEachAttr: cty.TupleVal(elems), "name": cty.StringVal("x")}
+	got := referenceAttributes(large)
+	require.NotContains(t, got, forEachAttr)
+	require.Contains(t, got, "name")
+	require.Contains(t, large, forEachAttr, "the instance's own attributes are left as they are")
+}
+
+// The documents of a block's instances share one converted for_each
+// collection, so a block of N instances does not hold N copies of it.
+func TestAttributesToDocumentCached_SharesForEach(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "c" { source = "../child" }
+`})
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_cloudwatch_log_group" "g" {
+  for_each = { for i in range(60) : "k${i}" => i }
+  name     = each.key
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 60)
+	cache := NewDocumentCache()
+	first := AttributesToDocumentCached(ptr(resources[0]), cache)
+	second := AttributesToDocumentCached(ptr(resources[1]), cache)
+	require.Equal(t, AttributesToDocument(ptr(resources[0])), first, "sharing must not change the document")
+	require.Equal(t, reflect.ValueOf(first[forEachAttr]).Pointer(), reflect.ValueOf(second[forEachAttr]).Pointer())
+	require.NotEqual(t, first["name"], second["name"])
 }

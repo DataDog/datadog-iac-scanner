@@ -36,6 +36,57 @@ func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
 	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(r))
 }
 
+// DocumentCache shares the converted for_each collection of a block among the
+// documents of its instances. Each instance holds the same collection, so
+// converting it for each one makes the documents of a block of N instances
+// hold N copies of an N-element collection. Documents are read-only once built.
+type DocumentCache struct {
+	forEach map[collectionID]forEachDocument
+}
+
+type forEachDocument struct {
+	value cty.Value
+	doc   interface{}
+}
+
+// NewDocumentCache returns a cache for the documents of one merge.
+func NewDocumentCache() *DocumentCache {
+	return &DocumentCache{forEach: make(map[collectionID]forEachDocument)}
+}
+
+// AttributesToDocumentCached is AttributesToDocument sharing the converted
+// for_each collection through c.
+func AttributesToDocumentCached(r *ResolvedResource, c *DocumentCache) map[string]interface{} {
+	fe, ok := r.Attributes[forEachAttr]
+	if c == nil || !ok {
+		return AttributesToDocument(r)
+	}
+	id, shared := collectionIdentity(fe)
+	if !shared {
+		return AttributesToDocument(r)
+	}
+	cached, hit := c.forEach[id]
+	if !hit {
+		if !fe.IsWhollyKnown() {
+			return AttributesToDocument(r)
+		}
+		// A wholly known value converts without the renderer, so the result
+		// does not depend on the instance.
+		src := sourceFor(r.Body, forEachAttr, r.DynamicCounts, nil)
+		cached = forEachDocument{value: fe, doc: ctyValueToDocument(fe, &src, nil)}
+		c.forEach[id] = cached
+	}
+	rest := make(map[string]cty.Value, len(r.Attributes)-1)
+	for k, v := range r.Attributes {
+		if k != forEachAttr {
+			rest[k] = v
+		}
+	}
+	out := attributesToDocument(rest, r.Body, r.DynamicCounts, newRenderer(r))
+	out[forEachAttr] = cached.doc
+	return out
+}
+
 // newRenderer renders r's attributes in the context they were evaluated in.
 func newRenderer(r *ResolvedResource) *partial.Renderer {
 	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {
@@ -279,7 +330,7 @@ func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) inte
 		return v.True()
 	case cty.Number:
 		// json.Number avoids float64 precision loss for large integers.
-		return json.Number(v.AsBigFloat().Text('f', -1))
+		return json.Number(ctyutil.NumberText(v))
 	}
 
 	switch {

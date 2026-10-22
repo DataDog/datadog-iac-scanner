@@ -1410,3 +1410,30 @@ resource "aws_s3_bucket" "this" {
 		t.Fatal("the called module must not also be scanned as a root")
 	}
 }
+
+// Attribute hashes follow content: equal attributes hash equally whether or
+// not they share storage, and a large shared value is hashed once.
+func TestAttributeHasher(t *testing.T) {
+	big := map[string]interface{}{}
+	for i := 0; i < minSharedHashLen; i++ {
+		big[fmt.Sprintf("k%d", i)] = i
+	}
+	copyOf := map[string]interface{}{}
+	for k, v := range big {
+		copyOf[k] = v
+	}
+	h := newAttributeHasher()
+	a := h.hash(map[string]interface{}{"for_each": big, "name": "a"})
+	b := h.hash(map[string]interface{}{"for_each": big, "name": "a"})
+	c := newAttributeHasher().hash(map[string]interface{}{"for_each": copyOf, "name": "a"})
+	d := h.hash(map[string]interface{}{"for_each": big, "name": "b"})
+	if a != b || a != c {
+		t.Fatal("equal attributes must hash equally")
+	}
+	if a == d {
+		t.Fatal("different attributes must hash differently")
+	}
+	if len(h.shared) != 1 {
+		t.Fatalf("shared hashes = %d, want 1", len(h.shared))
+	}
+}

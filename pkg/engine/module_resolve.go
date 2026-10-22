@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -977,6 +978,8 @@ func instantiatedDocs(
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
+	documents := tfeval.NewDocumentCache()
+	hashes := newAttributeHasher()
 	// A base name repeats within one call and file whenever count/for_each
 	// expands a block. Document keys stay base-named so line detection can
 	// resolve them against the file's HCL, so repeats spill into a further
@@ -1001,14 +1004,14 @@ func instantiatedDocs(
 		}
 		cck := callChainKey(r, repoPath)
 		base := tfeval.ResourceBaseName(r.Name)
-		attrs := tfeval.AttributesToDocument(r)
+		attrs := tfeval.AttributesToDocumentCached(r, documents)
 		entry := instantiatedResource{
 			typ:       kind,
 			baseName:  base,
 			fullName:  r.Name,
 			defLine:   r.DefLine,
 			attrs:     attrs,
-			attrsHash: hashAttributes(attrs),
+			attrsHash: hashes.hash(attrs),
 		}
 
 		slot := cck + "\x00" + fm.ID + "\x00" + kind + "\x00" + base
@@ -1120,12 +1123,74 @@ func sortInstantiated(entries []instantiatedResource) {
 	})
 }
 
-func hashAttributes(attrs map[string]interface{}) uint64 {
-	b, err := json.Marshal(attrs)
+// attributeHasher hashes the attributes of instantiated resources. A value is
+// hashed by its JSON encoding, which sorts map keys; the attributes of one
+// resource are hashed one by one and combined, so a large value the documents
+// of many instances share, such as a for_each collection, is encoded once.
+type attributeHasher struct {
+	shared map[sharedValueID]sharedValueHash
+}
+
+type sharedValueHash struct {
+	value interface{}
+	hash  uint64
+}
+
+// minSharedHashLen is the size from which a map's hash is memoized.
+const minSharedHashLen = 32
+
+func newAttributeHasher() *attributeHasher {
+	return &attributeHasher{shared: make(map[sharedValueID]sharedValueHash)}
+}
+
+func (h *attributeHasher) hash(attrs map[string]interface{}) uint64 {
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	d := xxhash.New()
+	var buf [8]byte
+	for _, k := range keys {
+		_, _ = d.WriteString(k)
+		_, _ = d.WriteString("\x1f")
+		binary.LittleEndian.PutUint64(buf[:], h.valueHash(attrs[k]))
+		_, _ = d.Write(buf[:])
+	}
+	return d.Sum64()
+}
+
+func (h *attributeHasher) valueHash(v interface{}) uint64 {
+	var id sharedValueID
+	switch t := v.(type) {
+	case map[string]interface{}:
+		id = sharedValueID{ptr: reflect.ValueOf(t).Pointer(), n: len(t)}
+	case []interface{}:
+		id = sharedValueID{ptr: reflect.ValueOf(t).Pointer(), n: len(t)}
+	}
+	if id.ptr == 0 || id.n < minSharedHashLen {
+		return encodedHash(v)
+	}
+	if cached, ok := h.shared[id]; ok {
+		return cached.hash
+	}
+	sum := encodedHash(v)
+	h.shared[id] = sharedValueHash{value: v, hash: sum}
+	return sum
+}
+
+// sharedValueID identifies a map or slice by its storage and length.
+type sharedValueID struct {
+	ptr uintptr
+	n   int
+}
+
+func encodedHash(v interface{}) uint64 {
+	b, err := json.Marshal(v)
 	if err != nil {
 		// Unmarshalable attributes must never collapse onto each other, so fall
 		// back to a value that cannot match another resource's content.
-		return xxhash.Sum64String(fmt.Sprintf("%v", attrs))
+		return xxhash.Sum64String(fmt.Sprintf("%v", v))
 	}
 	return xxhash.Sum64(b)
 }

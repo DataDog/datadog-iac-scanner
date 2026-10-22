@@ -1082,7 +1082,7 @@ func (c *Inspector) interfaceToPayloadValue(
 	case []interface{}:
 		pointer := reflect.ValueOf(v).Pointer()
 		if pointer != 0 {
-			if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
+			if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(pointer, memo, v) {
 				return memo.val, nil
 			}
 		}
@@ -1149,7 +1149,7 @@ func (c *Inspector) mapToPayloadValue(
 ) (ast.Value, error) {
 	pointer := reflect.ValueOf(v).Pointer()
 	if pointer != 0 {
-		if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
+		if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(pointer, memo, v) {
 			return memo.val, nil
 		}
 	}
@@ -1263,6 +1263,13 @@ type payloadHashCons struct {
 type pointerMemo struct {
 	val ast.Value
 	fp  hashConsKey
+	// pinned holds the source node once a second lookup validated it. A node
+	// reached twice is shared, so holding it costs nothing its other parents
+	// do not already hold, and while it is held its address cannot be reused:
+	// later hits need no fingerprint, which for a node shared by every instance
+	// of an expanded block would walk it once per instance.
+	pinned interface{}
+	n      int
 }
 
 func newPayloadHashCons() *payloadHashCons {
@@ -1287,9 +1294,30 @@ func (cons *payloadHashCons) setPointerMemo(pointer uintptr, v interface{}, val 
 
 // pointerMemoMatches validates a byPointer hit by fingerprint; non-canonical
 // types have no fingerprint and never validate.
-func (cons *payloadHashCons) pointerMemoMatches(memo pointerMemo, v interface{}) bool {
+func (cons *payloadHashCons) pointerMemoMatches(pointer uintptr, memo pointerMemo, v interface{}) bool {
+	n := nodeLen(v)
+	if memo.pinned != nil {
+		return n == memo.n && reflect.ValueOf(v).Pointer() == reflect.ValueOf(memo.pinned).Pointer()
+	}
 	fp, ok := nodeFingerprintOf(v)
-	return ok && fp == memo.fp
+	if !ok || fp != memo.fp {
+		return false
+	}
+	memo.pinned, memo.n = v, n
+	cons.byPointer[pointer] = memo
+	return true
+}
+
+// nodeLen is the length of a map or slice node; a slice address alone does not
+// identify a slice sharing its start with a longer one.
+func nodeLen(v interface{}) int {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		return len(t)
+	case []interface{}:
+		return len(t)
+	}
+	return -1
 }
 
 // nodeFingerprintOf computes a node's identity fingerprint from its key

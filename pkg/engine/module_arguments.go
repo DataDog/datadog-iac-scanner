@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
@@ -261,7 +262,7 @@ func valueKey(obj cty.Value, attr string) string {
 	case v.Type() == cty.String:
 		return strconv.Quote(v.AsString()) + ";"
 	case v.Type() == cty.Number:
-		return v.AsBigFloat().Text('f', -1) + ";"
+		return ctyutil.NumberText(v) + ";"
 	}
 	return "?"
 }

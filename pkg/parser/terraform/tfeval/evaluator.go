@@ -46,19 +46,22 @@ const (
 	localsMaxPasses = 10
 	// resourceRefPasses caps passes that install same-module resource attrs for refs.
 	resourceRefPasses = 3
-	// maxCountExpansion caps instances per count/for_each block (resources and modules).
-	maxCountExpansion = 50
+	// maxCountExpansion caps instances per count/for_each block (resources and
+	// modules). Instances past the cap are only scanned as the block is written,
+	// so the cap sits above every collection size seen in production; what the
+	// expansions add up to is bounded by the instantiation budget.
+	maxCountExpansion = 16384
 	// maxExpansionShape is the largest truncated count/for_each collection we will
 	// materialize with unknown tails so length() and missing keys stay honest.
 	// Beyond this, the whole ref becomes unknown instead of allocating a huge shape.
-	maxExpansionShape = 512
+	maxExpansionShape = 4 * maxCountExpansion
 	// defaultMaxInstantiated is the last-resort cap on resources one scan may
 	// instantiate, counted over the whole scan rather than per root: the documents
 	// an instantiated resource turns into are retained until the scan ends. A cap
 	// that resets per root bounds no total at all, because a repository can hold
 	// any number of roots and a pod runs several scans concurrently (four by
 	// default), each with its own evaluator.
-	defaultMaxInstantiated = 150000
+	defaultMaxInstantiated = 1000000
 )
 
 // ErrModuleNotEvaluated reports that a module was skipped rather than evaluated,
@@ -188,6 +191,43 @@ func (s *ModuleScope) keepRenderContext(vars variablesFunc, instances ...[]Resol
 // forEachAttr is the for_each meta-argument as stored among a block's
 // attributes.
 const forEachAttr = "for_each"
+
+// forEachStore converts the for_each argument of a block's instances to the
+// form they store. The argument cannot read each or count, so when it does not
+// it evaluates identically in every instance and is converted once for all.
+type forEachStore struct {
+	block *hclsyntax.Block
+	memo  *invariantMemo
+	once  *cty.Value
+}
+
+func (f *forEachStore) stored(v cty.Value) cty.Value {
+	attr := f.block.Body.Attributes[forEachAttr]
+	if attr == nil || f.memo.readsIteration(attr.Expr, nil) {
+		return setAsTuple(v)
+	}
+	if f.once == nil {
+		out := setAsTuple(v)
+		f.once = &out
+	}
+	return *f.once
+}
+
+// setAsTuple stores a known set as a tuple of its elements in the set's own
+// iteration order, which is the order a document lists them in either way.
+// cty sorts a set on every iteration, comparing elements through RawEquals,
+// and every expanded instance of a block carries its for_each collection:
+// change detection between reference passes and the conversion to a document
+// would sort it again and again for each instance.
+func setAsTuple(v cty.Value) cty.Value {
+	if !v.Type().IsSetType() || !v.IsWhollyKnown() || v.IsNull() || v.IsMarked() {
+		return v
+	}
+	if v.LengthInt() == 0 {
+		return cty.EmptyTupleVal
+	}
+	return cty.TupleVal(v.AsValueSlice())
+}
 
 func attributesWhollyKnown(r *ResolvedResource, forEachKnown map[collectionID]bool) bool {
 	for name, v := range r.Attributes {
@@ -1479,6 +1519,7 @@ func (e *Evaluator) expandBlock(
 	// recorded chain, and the capacity cap makes an append copy it. A copy per
 	// instance would be retained once per resource for the whole root.
 	sharedChain := chain[:len(chain):len(chain)]
+	forEach := forEachStore{block: rb, memo: memo}
 
 	// A dynamic block kept as written is one finding of the block, however many
 	// instances or parent blocks repeat it, so it is reported once per call.
@@ -1504,6 +1545,9 @@ func (e *Evaluator) expandBlock(
 		}
 		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
 		attrs := e.evalBodyWith(rb.Body, child, nil, state)
+		if fe, ok := attrs[forEachAttr]; ok {
+			attrs[forEachAttr] = forEach.stored(fe)
+		}
 		for _, o := range state.dynamic.overflow {
 			if prev, seen := overflows[o.label]; !seen || o.requested > prev.requested {
 				overflows[o.label] = o
@@ -1719,7 +1763,7 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 			b.expanded = true
 		}
 		b.keys = append(b.keys, key)
-		b.attrs = append(b.attrs, r.Attributes)
+		b.attrs = append(b.attrs, referenceAttributes(r.Attributes))
 		if r.ExpansionTruncated && r.ExpansionTotal > b.total {
 			b.total = r.ExpansionTotal
 			b.allKeys = r.ExpansionKeys
@@ -1741,6 +1785,33 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 		}
 	}
 	return progress
+}
+
+// legacyCountExpansion is the per-block expansion cap of earlier releases.
+// Collections no larger than it were always expanded in full, and reference
+// values keep exposing them exactly as those releases did.
+const legacyCountExpansion = 50
+
+// referenceAttributes returns the attributes a reference to an instance reads.
+// A for_each collection larger than legacyCountExpansion is left out: every
+// instance of the block holds it, so the injected object of N instances would
+// hold N copies of an N-element collection, and comparing injected objects
+// between reference passes would walk every copy. Terraform does not let a
+// reference read for_each; it only shows through a reference to the whole
+// object, such as depends_on, and earlier releases never expanded such blocks
+// past the old cap, so nothing they produced changes.
+func referenceAttributes(attrs map[string]cty.Value) map[string]cty.Value {
+	fe, ok := attrs[forEachAttr]
+	if !ok || !fe.IsKnown() || fe.IsNull() || !fe.CanIterateElements() || fe.LengthInt() <= legacyCountExpansion {
+		return attrs
+	}
+	out := make(map[string]cty.Value, len(attrs)-1)
+	for name, v := range attrs {
+		if name != forEachAttr {
+			out[name] = v
+		}
+	}
+	return out
 }
 
 // buildInstanceCtyVal converts grouped resource instances into the cty value used for ref injection.

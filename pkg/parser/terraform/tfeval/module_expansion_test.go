@@ -191,9 +191,9 @@ func TestEvaluateModule_TruncatedModuleForEachPadsMissingKeys(t *testing.T) {
 	requested := maxCountExpansion + 2
 	entries := make([]string, requested)
 	for i := range entries {
-		entries[i] = fmt.Sprintf(`    "k%02d" = true`, i)
+		entries[i] = fmt.Sprintf(`    "k%05d" = true`, i)
 	}
-	missing := fmt.Sprintf("k%02d", requested-1)
+	missing := fmt.Sprintf("k%05d", requested-1)
 	stack := writeModule(t, root, "stack", map[string]string{
 		"main.tf": fmt.Sprintf(`
 module "many" {
@@ -206,7 +206,7 @@ module "many" {
 
 output "n" { value = length(module.many) }
 output "missing" { value = module.many["%s"].name }
-output "first" { value = module.many["k00"].name }
+output "first" { value = module.many["k00000"].name }
 `, strings.Join(entries, "\n"), missing),
 	})
 
@@ -214,7 +214,7 @@ output "first" { value = module.many["k00"].name }
 	require.NoError(t, err)
 	require.Len(t, resources, maxCountExpansion)
 	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(int64(requested))), "length = %#v", outputs["n"])
-	require.True(t, outputs["first"].RawEquals(cty.StringVal("k00")))
+	require.True(t, outputs["first"].RawEquals(cty.StringVal("k00000")))
 	require.False(t, outputs["missing"].IsKnown(), "omitted for_each key must be unknown, got %#v", outputs["missing"])
 }
 
@@ -249,9 +249,9 @@ func TestEvaluateModule_TruncatedResourceForEachPadsRefs(t *testing.T) {
 	requested := maxCountExpansion + 2
 	entries := make([]string, requested)
 	for i := range entries {
-		entries[i] = fmt.Sprintf(`    "k%02d" = true`, i)
+		entries[i] = fmt.Sprintf(`    "k%05d" = true`, i)
 	}
-	missing := fmt.Sprintf("k%02d", requested-1)
+	missing := fmt.Sprintf("k%05d", requested-1)
 	stack := writeModule(t, root, "stack", map[string]string{
 		"main.tf": fmt.Sprintf(`
 resource "aws_s3_bucket" "replica" {
@@ -263,7 +263,7 @@ resource "aws_s3_bucket" "replica" {
 
 output "n" { value = length(aws_s3_bucket.replica) }
 output "missing" { value = aws_s3_bucket.replica["%s"].bucket }
-output "first" { value = aws_s3_bucket.replica["k00"].bucket }
+output "first" { value = aws_s3_bucket.replica["k00000"].bucket }
 `, strings.Join(entries, "\n"), missing),
 	})
 
@@ -273,7 +273,7 @@ output "first" { value = aws_s3_bucket.replica["k00"].bucket }
 	require.True(t, resources[0].ExpansionTruncated)
 	require.Len(t, resources[0].ExpansionKeys, requested)
 	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(int64(requested))), "length = %#v", outputs["n"])
-	require.True(t, outputs["first"].RawEquals(cty.StringVal("k00")))
+	require.True(t, outputs["first"].RawEquals(cty.StringVal("k00000")))
 	require.False(t, outputs["missing"].IsKnown(), "omitted for_each key must be unknown, got %#v", outputs["missing"])
 }
 

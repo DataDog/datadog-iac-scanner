@@ -1583,7 +1583,7 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 	node := map[string]interface{}{"k": child, "s": "v"}
 	// Record a memo for the node (val is irrelevant to validation).
 	cons.setPointerMemo(0x1234, node, ast.String("first"))
-	if memo, ok := cons.byPointer[0x1234]; ok && cons.pointerMemoMatches(memo, node) {
+	if memo, ok := cons.byPointer[0x1234]; ok && cons.pointerMemoMatches(0x1234, memo, node) {
 		// sanity: the fresh memo validates
 	} else {
 		t.Fatal("expected fresh memo to validate")
@@ -1593,7 +1593,7 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 	impostor := map[string]interface{}{"k": child, "s": "other"}
 	memo, ok := cons.byPointer[0x1234]
 	assert.True(t, ok)
-	assert.False(t, cons.pointerMemoMatches(memo, impostor),
+	assert.False(t, cons.pointerMemoMatches(0x1234, memo, impostor),
 		"a different node at a recorded address must not be served the stale memo")
 
 	// Content-equal but built from distinct child objects: by the runner-side
@@ -1602,9 +1602,22 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 	// the conservative direction (a miss is safe, a stale hit is not).
 	twinChild := map[string]interface{}{"a": float64(1)}
 	distinct := map[string]interface{}{"k": twinChild, "s": "v"}
-	assert.False(t, cons.pointerMemoMatches(memo, distinct),
+	assert.False(t, cons.pointerMemoMatches(0x1234, memo, distinct),
 		"a node with distinct child objects must not validate (conservative miss)")
 
 	// Non-canizable nodes never validate.
-	assert.False(t, cons.pointerMemoMatches(memo, map[string]interface{}{"k": struct{ X int }{}}))
+	assert.False(t, cons.pointerMemoMatches(0x1234, memo, map[string]interface{}{"k": struct{ X int }{}}))
+}
+
+// A pointer hit validated once pins the node, so later hits on the same node
+// skip the fingerprint while a different node at the address still misses.
+func TestPayloadHashConsPointerMemoPinsSharedNodes(t *testing.T) {
+	cons := newPayloadHashCons()
+	node := map[string]interface{}{"s": "v"}
+	cons.setPointerMemo(0x99, node, ast.String("x"))
+	require.True(t, cons.pointerMemoMatches(0x99, cons.byPointer[0x99], node))
+	pinned := cons.byPointer[0x99]
+	require.NotNil(t, pinned.pinned)
+	require.True(t, cons.pointerMemoMatches(0x99, pinned, node))
+	require.False(t, cons.pointerMemoMatches(0x99, pinned, map[string]interface{}{"s": "v"}))
 }
