@@ -7,10 +7,14 @@
 package tfeval
 
 import (
+	"encoding/binary"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	"github.com/cespare/xxhash/v2"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
@@ -26,7 +30,7 @@ type evalCacheKey struct {
 	dir         string
 	rootDir     string
 	packageRoot string
-	inputs      string // canonical encoding of the resolved input map
+	inputs      inputsDigest // digest of the canonical encoding of the resolved input map
 }
 
 // evalCacheEntry holds the result of a completed module evaluation.
@@ -118,76 +122,187 @@ func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite 
 	return out
 }
 
-// canonicalInputsKey returns a stable string for a set of resolved module inputs.
-// Map keys are sorted; values are JSON-encoded via cty/json (which itself sorts object
-// attribute names). Unknown or unencodable values fall back to their type name.
-func canonicalInputsKey(inputs map[string]cty.Value) string {
+// inputsDigest identifies a resolved input map by two independent 64-bit
+// digests of its canonical encoding, like docContentKey: a collision would
+// silently reuse one module's evaluation for different inputs.
+type inputsDigest struct{ a, b uint64 }
+
+// keyMemo memoizes the digests of large collections for the root being
+// evaluated. Inputs are passed down a module tree mostly unchanged, so one
+// decoded configuration reaches every instance as the very same value; each
+// entry holds that value so its storage cannot be freed and reused under the
+// same identity while the entry exists. A nil memo memoizes nothing.
+type keyMemo struct {
+	entries map[collectionID]keyMemoEntry
+}
+
+type keyMemoEntry struct {
+	value    cty.Value
+	typeName string
+	digest   inputsDigest
+}
+
+// inputsKey returns a stable digest of a set of resolved module inputs.
+// Map keys are sorted; values are encoded by writeValue. The encoding is
+// streamed into the digest rather than kept: a module input can be a large
+// object, such as a decoded configuration file passed to every instance of a
+// call, and the key of every evaluation is retained until its root is merged.
+func (m *keyMemo) inputsKey(inputs map[string]cty.Value) inputsDigest {
 	if len(inputs) == 0 {
-		return ""
+		return inputsDigest{}
 	}
 	keys := make([]string, 0, len(inputs))
 	for k := range inputs {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	var b strings.Builder
+	w := newKeyWriter()
 	for _, k := range keys {
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(encodeCtyForKey(inputs[k]))
-		b.WriteByte('\n')
+		w.WriteString(k)
+		w.WriteString("=")
+		m.writeValue(w, inputs[k])
+		w.WriteString("\n")
 	}
-	return b.String()
+	return w.digest()
 }
 
-// encodeCtyForKey encodes a cty.Value to a stable string for use inside a cache key.
-// The null check must precede the known check because null values are also considered known.
-// All DynamicPseudoType values are unknown (IsKnown()==false), so they are handled by
-// the unknown branch and the DynamicPseudoType case never needs a special guard.
-func encodeCtyForKey(v cty.Value) string {
+// keySink receives a key encoding.
+type keySink interface{ WriteString(string) }
+
+// keyWriter streams a key encoding into two independent digests.
+type keyWriter struct{ a, b *xxhash.Digest }
+
+func newKeyWriter() keyWriter {
+	w := keyWriter{a: xxhash.New(), b: xxhash.New()}
+	_, _ = w.b.WriteString("\x00tfeval-inputs\x00")
+	return w
+}
+
+func (w keyWriter) WriteString(s string) {
+	_, _ = w.a.WriteString(s)
+	_, _ = w.b.WriteString(s)
+}
+
+func (w keyWriter) digest() inputsDigest { return inputsDigest{a: w.a.Sum64(), b: w.b.Sum64()} }
+
+// digestedCollectionLen is the size from which a collection is encoded as the
+// digest of its own encoding. Equal collections still encode equally, and the
+// digest of a collection a scan passes around unchanged is computed once.
+const digestedCollectionLen = 32
+
+// writeValue encodes v for a cache key. The null check must precede the known
+// check because null values are also considered known. All DynamicPseudoType
+// values are unknown (IsKnown()==false), so they are handled by the unknown
+// branch and the DynamicPseudoType case never needs a special guard.
+func (m *keyMemo) writeValue(w keySink, v cty.Value) {
 	if v.IsNull() {
 		// Include the type so cty.NullVal(cty.String) and cty.NullVal(cty.Number)
 		// do not collide.
-		return "null(" + v.Type().FriendlyName() + ")"
+		w.WriteString("null(" + v.Type().FriendlyName() + ")")
+		return
 	}
 	if !v.IsKnown() {
-		return "?" + v.Type().FriendlyName()
+		w.WriteString("?" + v.Type().FriendlyName())
+		return
 	}
 	// Walk collections instead of cty/json: JSON collapses list/set and map/object
 	// to the same shape, including nested wholly-known values inside partial keys.
 	if isCollectionOrStructural(v.Type()) {
-		var b strings.Builder
-		writeCollectionKey(&b, v)
-		return b.String()
+		if v.LengthInt() >= digestedCollectionLen {
+			d := m.collectionDigest(v)
+			var buf [17]byte
+			binary.LittleEndian.PutUint64(buf[1:9], d.a)
+			binary.LittleEndian.PutUint64(buf[9:], d.b)
+			w.WriteString(string(buf[:]))
+			return
+		}
+		m.writeCollection(w, v)
+		return
+	}
+	if v.Type() == cty.Number {
+		w.WriteString(ctyutil.NumberText(v))
+		return
 	}
 	data, err := ctyjson.Marshal(v, v.Type())
 	if err != nil {
-		return "?" + v.Type().FriendlyName()
+		w.WriteString("?" + v.Type().FriendlyName())
+		return
 	}
-	return string(data)
+	w.WriteString(string(data))
 }
 
-func isCollectionOrStructural(t cty.Type) bool {
-	return t.IsListType() || t.IsSetType() || t.IsTupleType() || t.IsMapType() || t.IsObjectType()
-}
-
-func writeCollectionKey(b *strings.Builder, v cty.Value) {
+func (m *keyMemo) writeCollection(w keySink, v cty.Value) {
 	t := v.Type()
-	b.WriteString(t.FriendlyName())
+	w.WriteString(t.FriendlyName())
 	open, closing := "[", "]"
 	if t.IsObjectType() || t.IsMapType() {
 		open, closing = "{", "}"
 	}
-	b.WriteString(open)
+	w.WriteString(open)
 	// ElementIterator sorts map/object keys, so the encoding is insertion-order stable.
 	for it := v.ElementIterator(); it.Next(); {
 		key, elem := it.Element()
 		if t.IsObjectType() || t.IsMapType() {
-			b.WriteString(strconv.Quote(key.AsString()))
-			b.WriteByte(':')
+			w.WriteString(strconv.Quote(key.AsString()))
+			w.WriteString(":")
 		}
-		b.WriteString(encodeCtyForKey(elem))
-		b.WriteByte(',')
+		m.writeValue(w, elem)
+		w.WriteString(",")
 	}
-	b.WriteString(closing)
+	w.WriteString(closing)
+}
+
+// collectionDigest is the digest of a collection's own encoding, memoized by
+// the identity of the collection's storage.
+func (m *keyMemo) collectionDigest(v cty.Value) inputsDigest {
+	id, ok := collectionIdentity(v)
+	typeName := v.Type().FriendlyName()
+	if ok && m != nil {
+		if e, hit := m.entries[id]; hit && e.typeName == typeName {
+			return e.digest
+		}
+	}
+	w := newKeyWriter()
+	m.writeCollection(w, v)
+	d := w.digest()
+	if ok && m != nil {
+		if m.entries == nil {
+			m.entries = make(map[collectionID]keyMemoEntry)
+		}
+		m.entries[id] = keyMemoEntry{value: v, typeName: typeName, digest: d}
+	}
+	return d
+}
+
+// collectionID identifies a collection value by the storage cty keeps it in.
+type collectionID struct {
+	ptr uintptr
+	n   int
+}
+
+// collectionIdentity returns the identity of the map or slice holding a
+// collection's elements. cty values are immutable and share that storage
+// when they are copied, so the same identity means the same elements.
+func collectionIdentity(v cty.Value) (collectionID, bool) {
+	rv := reflect.ValueOf(v).FieldByName("v")
+	if !rv.IsValid() {
+		return collectionID{}, false
+	}
+	if rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return collectionID{}, false
+		}
+		rv = rv.Elem()
+	}
+	switch rv.Kind() {
+	case reflect.Map, reflect.Slice:
+		if p := rv.Pointer(); p != 0 {
+			return collectionID{ptr: p, n: rv.Len()}, true
+		}
+	}
+	return collectionID{}, false
+}
+
+func isCollectionOrStructural(t cty.Type) bool {
+	return t.IsListType() || t.IsSetType() || t.IsTupleType() || t.IsMapType() || t.IsObjectType()
 }

@@ -46,6 +46,21 @@ func StringFromAttribute(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) string
 	return s
 }
 
+// NumberText formats a known number as Text('f', -1) on its big.Float does,
+// taking a shortcut for integers that fit an int64: shortest decimal
+// formatting of a big.Float is far costlier than strconv, and documents and
+// keys format every number they hold.
+func NumberText(v cty.Value) string {
+	f := v.AsBigFloat()
+	// Negative zero formats as "-0", which int64 cannot hold.
+	if f.IsInt() && (f.Sign() != 0 || !f.Signbit()) {
+		if i, acc := f.Int64(); acc == big.Exact {
+			return strconv.FormatInt(i, 10)
+		}
+	}
+	return f.Text('f', -1)
+}
+
 // FormatIndexKey renders a materialized string or number index for HCL traversals.
 func FormatIndexKey(key cty.Value) (string, bool) {
 	if !Materialized(key) {
@@ -55,7 +70,7 @@ func FormatIndexKey(key cty.Value) (string, bool) {
 	case cty.String:
 		return `["` + key.AsString() + `"]`, true
 	case cty.Number:
-		return "[" + key.AsBigFloat().Text('f', -1) + "]", true
+		return "[" + NumberText(key) + "]", true
 	default:
 		return "", false
 	}

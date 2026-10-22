@@ -609,3 +609,40 @@ func TestNotEvaluatedDirs_ReportsSkippedDirectories(t *testing.T) {
 			len(skipped), got)
 	}
 }
+
+func bigInputsObject(n int, changed string) cty.Value {
+	attrs := make(map[string]cty.Value, n)
+	for i := 0; i < n; i++ {
+		attrs[fmt.Sprintf("k%04d", i)] = cty.ObjectVal(map[string]cty.Value{
+			"owner": cty.StringVal(fmt.Sprintf("team%d", i%7)),
+			"tier":  cty.NumberIntVal(int64(i % 3)),
+		})
+	}
+	if changed != "" {
+		attrs[changed] = cty.StringVal("changed")
+	}
+	return cty.ObjectVal(attrs)
+}
+
+// Large inputs are keyed by digest: equal values key equally whatever their
+// storage, a change anywhere changes the key, and a value passed unchanged to
+// many instances is digested once.
+func TestInputsKey_LargeCollectionsDigestedOnce(t *testing.T) {
+	memo := &keyMemo{}
+	shared := bigInputsObject(200, "")
+	first := memo.inputsKey(map[string]cty.Value{"config": shared, "name": cty.StringVal("a")})
+	again := memo.inputsKey(map[string]cty.Value{"config": shared, "name": cty.StringVal("a")})
+	copyKey := (*keyMemo)(nil).inputsKey(map[string]cty.Value{"config": bigInputsObject(200, ""), "name": cty.StringVal("a")})
+	changed := memo.inputsKey(map[string]cty.Value{"config": bigInputsObject(200, "k0100"), "name": cty.StringVal("a")})
+	other := memo.inputsKey(map[string]cty.Value{"config": shared, "name": cty.StringVal("b")})
+
+	if first != again || first != copyKey {
+		t.Fatal("equal inputs must key equally, memoized or not")
+	}
+	if first == changed || first == other {
+		t.Fatal("different inputs must key differently")
+	}
+	if got := len(memo.entries); got != 2 {
+		t.Fatalf("memo holds %d collections, want 2 (shared and changed)", got)
+	}
+}

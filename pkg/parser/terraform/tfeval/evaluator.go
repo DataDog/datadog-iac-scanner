@@ -244,6 +244,9 @@ type Evaluator struct {
 	// funcFS serves the Terraform filesystem functions of every module this
 	// evaluator reaches, so paths confined once stay resolved for the scan.
 	funcFS *tffunctions.ScanFS
+	// keys memoizes the input digests of large collections for the root being
+	// evaluated; see keyMemo. Not shared with forks, dropped with the cache.
+	keys *keyMemo
 
 	// mergeAllow, when set, limits OpenTofu twin-shadowing to inventory paths.
 	mergeAllow map[string]struct{}
@@ -275,6 +278,7 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 		maxDepth:         defaultMaxDepth,
 		maxInstantiated:  defaultMaxInstantiated,
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
+		keys:             &keyMemo{},
 		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
 		funcFS:           tffunctions.NewScanFS(vfs.DiskFS{}),
@@ -367,6 +371,7 @@ func (e *Evaluator) Fork() *Evaluator {
 		maxDepth:         e.maxDepth,
 		fsys:             e.fsys,
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
+		keys:             &keyMemo{},
 		remoteResolver:   e.remoteResolver,
 		maxInstantiated:  e.maxInstantiated,
 		notEvaluatedDirs: make(map[string]bool),
@@ -521,6 +526,7 @@ func (e *Evaluator) ReleaseCaches() {
 // keyed by directory alone, genuinely is shared by every root, and is kept.
 func (e *Evaluator) ReleaseEvalCache() {
 	e.cache = make(map[evalCacheKey]*evalCacheEntry)
+	e.keys = &keyMemo{}
 }
 
 // EvaluateModule evaluates the module rooted at dir with the given inputs and
@@ -575,7 +581,7 @@ func (e *Evaluator) evaluate(
 		dir:         dir,
 		rootDir:     rootDir,
 		packageRoot: packageRoot,
-		inputs:      canonicalInputsKey(inputs),
+		inputs:      e.keys.inputsKey(inputs),
 	}
 	if resources, outputs, hit, err := e.reuseCachedEvaluation(
 		ctx, cacheKey, dir, addr, chain, depth, allVisited,

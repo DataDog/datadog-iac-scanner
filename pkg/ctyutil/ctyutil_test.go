@@ -7,6 +7,7 @@
 package ctyutil
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,4 +38,16 @@ func TestFormatIndexKey(t *testing.T) {
 
 	_, ok = FormatIndexKey(cty.NullVal(cty.String))
 	require.False(t, ok)
+}
+
+func TestNumberText_matchesBigFloatText(t *testing.T) {
+	for _, s := range []string{
+		"0", "-0", "1", "-1", "42", "9223372036854775807", "-9223372036854775808",
+		"9223372036854775808", "1e21", "1.5", "-2.25", "0.1", "123456789.000001", "1e-7", "3.0",
+	} {
+		f, _, err := big.ParseFloat(s, 10, 512, big.ToNearestEven)
+		require.NoError(t, err)
+		v := cty.NumberVal(f)
+		require.Equal(t, v.AsBigFloat().Text('f', -1), NumberText(v), s)
+	}
 }
