@@ -9,6 +9,7 @@ package tfeval
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"runtime"
 	"strings"
 	"testing"
@@ -91,6 +92,21 @@ func TestInputsKeyNullAndUnknownStructuralTypesDoNotCollide(t *testing.T) {
 		canonicalInputsKey(map[string]cty.Value{"v": cty.NullVal(foo)}),
 		canonicalInputsKey(map[string]cty.Value{"v": cty.NullVal(cty.Object(map[string]cty.Type{"foo": cty.String}))}),
 	)
+}
+
+func TestInputsKeyNonFiniteNumbersDoNotCollideWithUnknown(t *testing.T) {
+	positiveInfinity := cty.NumberVal(new(big.Float).SetInf(false))
+	negativeInfinity := cty.NumberVal(new(big.Float).SetInf(true))
+	unknown := cty.UnknownVal(cty.Number)
+
+	keys := []inputsDigest{
+		canonicalInputsKey(map[string]cty.Value{"v": positiveInfinity}),
+		canonicalInputsKey(map[string]cty.Value{"v": negativeInfinity}),
+		canonicalInputsKey(map[string]cty.Value{"v": unknown}),
+	}
+	require.NotEqual(t, keys[0], keys[1])
+	require.NotEqual(t, keys[0], keys[2])
+	require.NotEqual(t, keys[1], keys[2])
 }
 
 func TestInputsKeyMemoizesCollectionInputsOnly(t *testing.T) {
