@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
+	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -27,6 +28,7 @@ func main() {
 	if _, ok := os.LookupEnv("GOGC"); !ok {
 		debug.SetGCPercent(gcPercent)
 	}
+	memwatch.ApplyGoMemLimit()
 	cmd := &cli.Command{
 		Name:    "datadog-iac-scanner",
 		Usage:   "Scans your Infrastructure as Code configurations",

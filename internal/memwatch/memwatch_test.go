@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -107,5 +109,28 @@ func TestUnsupportedSamplerLeavesPeakEmpty(t *testing.T) {
 	peak, phase := w.Peak()
 	if peak != 0 || phase != "" {
 		t.Fatalf("Peak() = (%d, %q), want (0, empty)", peak, phase)
+	}
+}
+
+func TestReadLimitFile(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if v, ok := readLimitFile(write("set", "17179869184\n")); !ok || v != 17179869184 {
+		t.Fatalf("limit = %d, %v", v, ok)
+	}
+	if _, ok := readLimitFile(write("max", "max\n")); ok {
+		t.Fatal("max means no limit")
+	}
+	if _, ok := readLimitFile(write("v1", "9223372036854771712\n")); ok {
+		t.Fatal("the cgroup v1 unlimited value means no limit")
+	}
+	if _, ok := readLimitFile(filepath.Join(dir, "missing")); ok {
+		t.Fatal("a missing file means no limit")
 	}
 }
