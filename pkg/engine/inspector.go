@@ -357,6 +357,21 @@ type QueryContext struct {
 	discardLineInfoAfterUse bool
 	// findings, when set, routes and collects the findings as they are decoded.
 	findings *findingSink
+	// detected remembers the lines detected in the copies of a file that share
+	// its line information, which the instances of a module raise the same
+	// findings in.
+	detected map[detectedKey]detectedLines
+}
+
+type detectedKey struct {
+	share     interface{}
+	searchKey string
+}
+
+type detectedLines struct {
+	searchKey string
+	lines     model.VulnerabilityLines
+	err       error
 }
 
 var (

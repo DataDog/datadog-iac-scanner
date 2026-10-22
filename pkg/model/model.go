@@ -412,6 +412,16 @@ func (f *FileMetadata) ShallowCopySharingLineInfo() *FileMetadata {
 	return clone
 }
 
+// LineInfoShare identifies the line-info document f shares with the other
+// copies of its file, or is nil when f does not share one. Copies sharing one
+// are the same file as parsed, so detecting a line in one detects it in all.
+func (f *FileMetadata) LineInfoShare() interface{} {
+	if f.sharedLineInfo == nil {
+		return nil
+	}
+	return f.sharedLineInfo
+}
+
 // SharesLineInfoWith reports whether f and other read one shared line-info
 // document.
 func (f *FileMetadata) SharesLineInfoWith(other *FileMetadata) bool {
