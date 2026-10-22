@@ -688,17 +688,6 @@ func moduleAttributionKey(resourceType string, definitionLine, definitionColumn 
 	return resourceType + "." + strconv.Itoa(definitionLine) + "." + strconv.Itoa(definitionColumn)
 }
 
-func cloneModuleAttributions(attrs map[string]*model.ModuleAttribution) map[string]*model.ModuleAttribution {
-	if len(attrs) == 0 {
-		return nil
-	}
-	out := make(map[string]*model.ModuleAttribution, len(attrs))
-	for key, attr := range attrs {
-		out[key] = cloneModuleAttribution(attr)
-	}
-	return out
-}
-
 // moduleAttributionForResource returns the attribution of the resource the
 // finding was raised on, with the control of the flagged line, its call site
 // narrowed to the argument setting that line when one does, and its code
