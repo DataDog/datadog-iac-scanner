@@ -91,7 +91,7 @@ resource "aws_s3_bucket" "plain" {
 
 	queries := []model.QueryMetadata{
 		{Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1},
+			Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1},
 		{Query: "versioning_rule", Content: secondRule, InputData: "{}", Platform: "terraform",
 			Metadata: map[string]interface{}{"id": "versioning-rule"}, Aggregation: 1},
 	}

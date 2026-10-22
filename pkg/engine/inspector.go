@@ -352,6 +352,8 @@ type QueryContext struct {
 	// discardLineInfoAfterUse drops each file's line-info tree after line
 	// detection for a finding (loader kept for reuse) when post-eval release is on.
 	discardLineInfoAfterUse bool
+	// findings, when set, routes and collects the findings as they are decoded.
+	findings *findingSink
 }
 
 var (
@@ -483,7 +485,7 @@ type QueryResult struct {
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
 	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery) QueryResult {
+	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
 	contextLogger := logger.FromContext(ctx)
 
 	loadStart := time.Now()
@@ -518,6 +520,9 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		payload:                 &payload,
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
+	}
+	if routing != nil {
+		queryContext.findings = newFindingSink(ctx, c, routing)
 	}
 
 	evalStart := time.Now()
@@ -639,30 +644,30 @@ func (c *Inspector) Inspect(
 			len(sharedQueries), len(queries))
 	}
 
+	// Findings are routed to the module callers they stand for as they are
+	// decoded, rather than once the whole scan is done, so that each rule holds
+	// only the findings the report keeps.
+	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries)
+		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
 	if err != nil {
 		return nil, err
 	}
 
 	c.releasePostEvalFileData(filesMap)
-
-	vulnerabilities = expandModuleFindings(vulnerabilities, moduleExtras)
-	vulnerabilities = attributeModuleFileFindings(vulnerabilities, moduleFiles)
-	return c.applyCallSiteFilters(ctx, vulnerabilities, files), nil
+	return vulnerabilities, nil
 }
 
-// applyCallSiteFilters applies the root caller file's rule path filters and
+// filterAtCallSites applies the root caller file's rule path filters and
 // ignore comments to module findings, which are reported at the call site.
 // The module file's own filters and comments were applied when the finding
 // was built; this runs after caller expansion so each caller is judged on its
 // own file. External module callers keep the same rule-path bypass as the
 // file-side check, so findings called from a scanned remote module are not
 // dropped by repo-only path filters.
-func (c *Inspector) applyCallSiteFilters(
-	ctx context.Context, vulns []model.Vulnerability, files model.FileMetadatas,
+func (c *Inspector) filterAtCallSites(
+	ctx context.Context, vulns []model.Vulnerability, callers map[string]*model.FileMetadata,
 ) []model.Vulnerability {
-	callers := callerFileIndex(vulns, files, c.repoPath)
 	if len(callers) == 0 {
 		return vulns
 	}
@@ -685,35 +690,6 @@ func (c *Inspector) applyCallSiteFilters(
 		kept = append(kept, *v)
 	}
 	return kept
-}
-
-// callerFileIndex maps the call-site file names of module findings to the
-// scanned files, or returns nil when no finding came from a module.
-func callerFileIndex(vulns []model.Vulnerability, files model.FileMetadatas, repoPath string) map[string]*model.FileMetadata {
-	wanted := make(map[string]*model.FileMetadata)
-	for i := range vulns {
-		if attr := vulns[i].ModuleAttribution; attr != nil && attr.CallSite.Filename != "" {
-			wanted[attr.CallSite.Filename] = nil
-		}
-	}
-	if len(wanted) == 0 {
-		return nil
-	}
-	for _, f := range files {
-		if f == nil || f.ModuleCallChain != "" {
-			continue
-		}
-		key := repoRelativeFile(f.FilePath, repoPath)
-		if existing, ok := wanted[key]; ok && existing == nil {
-			wanted[key] = f
-		}
-	}
-	for key, f := range wanted {
-		if f == nil {
-			delete(wanted, key)
-		}
-	}
-	return wanted
 }
 
 // suppressAtCallSite honors the caller file's disable command and ignore
@@ -754,6 +730,7 @@ func (c *Inspector) executeQueries(
 	baseStores map[string]storage.Store,
 	baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery,
+	routing *findingRouting,
 ) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
@@ -789,7 +766,8 @@ func (c *Inspector) executeQueries(
 	results := make([]QueryResult, len(queries))
 	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
 		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes, sharedQueries)
+			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
+				sharedQueries, routing)
 			return nil
 		})
 	// The closure never returns a non-nil error itself, so ForEach only reports
@@ -1455,12 +1433,15 @@ func (c *Inspector) DecodeQueryResults(
 		})
 	}
 
-	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
+	vulnerabilities := qCtx.newFindings(len(queryResultItems))
 	failedDetectLine := false
 	canceled := false
 	var activeLineInfoFile string
 decodeLoop:
-	for _, queryResultItem := range queryResultItems {
+	for i, queryResultItem := range queryResultItems {
+		// Each item is decoded once; dropping it as it is lets a rule raising
+		// many findings hold one decoded item at a time rather than all of them.
+		queryResultItems[i] = nil
 		select {
 		case <-ctxTimeout.Done():
 			// Scan canceled (shutdown/error). Stop decoding entirely. The partial
@@ -1474,7 +1455,7 @@ decodeLoop:
 				failedDetectLine = aux
 			}
 			if vulnerability != nil && !aux {
-				vulnerabilities = append(vulnerabilities, *vulnerability)
+				vulnerabilities = qCtx.collect(vulnerabilities, vulnerability)
 			}
 		}
 	}
@@ -1497,7 +1478,29 @@ decodeLoop:
 		}
 	}
 
+	if qCtx.findings != nil {
+		return qCtx.findings.out, nil
+	}
 	return vulnerabilities, nil
+}
+
+// newFindings allocates for the findings of n results when the query has no
+// sink, which holds them itself.
+func (qCtx *QueryContext) newFindings(n int) []model.Vulnerability {
+	if qCtx.findings != nil {
+		return nil
+	}
+	return make([]model.Vulnerability, 0, n)
+}
+
+// collect hands a decoded finding to the query's sink, or appends it to
+// vulnerabilities when there is none.
+func (qCtx *QueryContext) collect(vulnerabilities []model.Vulnerability, v *model.Vulnerability) []model.Vulnerability {
+	if qCtx.findings != nil {
+		qCtx.findings.add(v)
+		return vulnerabilities
+	}
+	return append(vulnerabilities, *v)
 }
 
 func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {

@@ -1451,6 +1451,7 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 		map[string]storage.Store{},
 		nil,
 		nil,
+		nil,
 	)
 
 	require.ErrorIs(t, err, context.Canceled)

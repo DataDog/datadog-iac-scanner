@@ -61,33 +61,26 @@ func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model
 	return m.getUniqueVulnerabilities(), nil
 }
 
+// getUniqueVulnerabilities keeps the last finding of each identity. The
+// findings are compacted in place, so that they are not held twice, which
+// deduplicating them again later leaves as they are.
 func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
-	vulnDictionary := make(map[string]model.Vulnerability)
+	last := make(map[string]int, len(m.vulnerabilities))
+	keys := make([]string, len(m.vulnerabilities))
 	for i := range m.vulnerabilities {
-		v := m.vulnerabilities[i]
-		fileName, line := v.Identity()
-		// SCIInfo is constant within a scan; an empty value yields the same grouping.
-		key := model.GetDatadogFingerprintHash(
-			model.SCIInfo{},
-			fileName,
-			v.Platform,
-			v.ResourceType,
-			v.ResourceName,
-			utils.ChooseQueryID(v.QueryID, v.LegacyQueryID),
-			line,
-			v.ModuleCallChain,
-		)
-		vulnDictionary[key] = v
+		v := &m.vulnerabilities[i]
+		keys[i] = model.FindingIdentity(v, utils.ChooseQueryID(v.QueryID, v.LegacyQueryID))
+		last[keys[i]] = i
 	}
-
-	var uniqueVulnerabilities []model.Vulnerability
-	for key := range vulnDictionary {
-		uniqueVulnerabilities = append(uniqueVulnerabilities, vulnDictionary[key])
+	unique := m.vulnerabilities[:0]
+	for i := range m.vulnerabilities {
+		if last[keys[i]] == i {
+			unique = append(unique, m.vulnerabilities[i])
+		}
 	}
-	if len(uniqueVulnerabilities) == 0 {
-		return m.vulnerabilities
-	}
-	return uniqueVulnerabilities
+	clear(m.vulnerabilities[len(unique):])
+	m.vulnerabilities = unique
+	return unique
 }
 
 // NewMemoryStorage creates a new MemoryStorage empty and returns it

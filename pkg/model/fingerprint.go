@@ -23,6 +23,21 @@ const (
 func GetDatadogFingerprintHash(
 	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
 ) string {
+	return stringToHash(fingerprintInput(sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain))
+}
+
+// FindingIdentity is the identity a scan reports one finding for: findings of
+// equal identity share a fingerprint, and only the last of them is reported.
+func FindingIdentity(v *Vulnerability, ruleID string) string {
+	fileName, line := v.Identity()
+	// SCIInfo is constant within a scan; an empty value yields the same grouping.
+	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.ModuleCallChain)
+}
+
+// nolint:gocritic
+func fingerprintInput(
+	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
+) string {
 	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleID}
 
 	switch platform {
@@ -35,7 +50,7 @@ func GetDatadogFingerprintHash(
 		}
 	}
 
-	return stringToHash(strings.Join(segments, "|"))
+	return strings.Join(segments, "|")
 }
 
 func stringToHash(str string) string {

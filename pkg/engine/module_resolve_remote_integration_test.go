@@ -117,7 +117,7 @@ func inspectRemoteBucket(t *testing.T, fx remoteBucketFixture, callerPaths []str
 	ins := newTestInspector(t, inspectorOpts{
 		queries: []model.QueryMetadata{{
 			Query: "acl_rule", Content: rule, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+			Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
 		}},
 		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
@@ -227,7 +227,7 @@ module "bucket" {
 	ins := newTestInspector(t, inspectorOpts{
 		queries: []model.QueryMetadata{{
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+			Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
 		}},
 		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
@@ -271,7 +271,7 @@ module "bucket" {
 	ins := newTestInspector(t, inspectorOpts{
 		queries: []model.QueryMetadata{{
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+			Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
 		}},
 		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
@@ -304,7 +304,7 @@ variable "acl" {
 resource "aws_s3_bucket" "replica" {
   count  = 2
   bucket = "bucket-${count.index}"
-  acl    = var.acl
+  acl    = count.index == 1 ? var.acl : "private"
 }
 `)
 	callerPath := writeRemoteCaller(t, fx.callerRoot, `
@@ -316,7 +316,10 @@ module "bucket" {
 `)
 
 	vulns := inspectRemoteBucket(t, fx, []string{callerPath}, aclRule)
-	require.Len(t, vulns, 2, "both count-expanded instances must produce a finding")
+	// The instances report under one identity, so only the second one, the
+	// one passing the bad value, can account for the finding.
+	require.Len(t, vulns, 1, "the second count-expanded instance must be scanned")
+	require.Equal(t, "replica", vulns[0].ResourceName)
 }
 
 func TestInspect_RemoteModule_PreservesNonResourceBlocksInModuleBody(t *testing.T) {
@@ -387,7 +390,7 @@ module "bucket" {
 	ins := newTestInspector(t, inspectorOpts{
 		queries: []model.QueryMetadata{{
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+			Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
 		}},
 		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})

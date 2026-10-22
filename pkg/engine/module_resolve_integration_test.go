@@ -122,7 +122,7 @@ resource "aws_s3_bucket" "this" {
 		Content:     aclRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -236,7 +236,7 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 
 	queries := []model.QueryMetadata{{
 		Query: aclRule, InputData: "{}", Platform: "terraform",
-		Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
 	}}
 
 	ins := newTestInspector(t, inspectorOpts{
@@ -305,7 +305,7 @@ resource "aws_s3_bucket" "this" {
 		Content:     aclRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -660,7 +660,7 @@ resource "aws_instance" "app" {
 		Content:     sgNotUsedRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "sg-not-used"},
+		Metadata:    map[string]interface{}{"id": "sg-not-used", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -712,7 +712,7 @@ resource "aws_instance" "app" {
 			Content:     rule,
 			InputData:   "{}",
 			Platform:    "terraform",
-			Metadata:    map[string]interface{}{"id": "sg-not-used"},
+			Metadata:    map[string]interface{}{"id": "sg-not-used", "platform": "Terraform"},
 			Aggregation: 1,
 		}},
 		repoPath:      dir,
@@ -766,7 +766,7 @@ resource "aws_instance" "app" {
 		Content:     sgNotUsedRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "sg-not-used"},
+		Metadata:    map[string]interface{}{"id": "sg-not-used", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -833,7 +833,7 @@ resource "aws_instance" "server" {
 		Content:     sgNotUsedRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "sg-not-used"},
+		Metadata:    map[string]interface{}{"id": "sg-not-used", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -881,7 +881,7 @@ variable "acl" {
 resource "aws_s3_bucket" "replica" {
   count  = 2
   bucket = "bucket-${count.index}"
-  acl    = var.acl
+  acl    = count.index == 1 ? var.acl : "private"
 }
 `), 0o644))
 
@@ -894,7 +894,7 @@ resource "aws_s3_bucket" "replica" {
 		Content:     aclRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -909,7 +909,10 @@ resource "aws_s3_bucket" "replica" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
-	require.Len(t, vulns, 2, "both count-expanded instances must produce a finding")
+	// The instances report under one identity, so only the second one, the
+	// one passing the bad value, can account for the finding.
+	require.Len(t, vulns, 1, "the second count-expanded instance must be scanned")
+	require.Equal(t, "replica", vulns[0].ResourceName)
 }
 
 // TestInspect_SharedBaseStoresConcurrentReads runs multiple queries on one platform
@@ -980,7 +983,7 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 		Content:     aclRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 

@@ -71,7 +71,7 @@ resource "aws_s3_bucket" "this" {
 		Content:     displayNameAclRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
