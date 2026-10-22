@@ -1130,7 +1130,7 @@ func TestCanonicalInputsKey_NullTypeDistinct(t *testing.T) {
 	k1 := canonicalInputsKey(map[string]cty.Value{"x": cty.NullVal(cty.String)})
 	k2 := canonicalInputsKey(map[string]cty.Value{"x": cty.NullVal(cty.Number)})
 	if k1 == k2 {
-		t.Errorf("null(string) and null(number) produced the same cache key: %q", k1)
+		t.Errorf("null(string) and null(number) produced the same cache key: %+v", k1)
 	}
 }
 
