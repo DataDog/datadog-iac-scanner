@@ -8,12 +8,12 @@ package tfeval
 
 import (
 	"encoding/binary"
+	"hash/maphash"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
@@ -165,14 +165,17 @@ func (m *keyMemo) inputsKey(inputs map[string]cty.Value) inputsDigest {
 // keySink receives a key encoding.
 type keySink interface{ WriteString(string) }
 
+// The seeds stay secret for the process. Inputs come from the repository, and a
+// fixed hash would let a crafted payload collide and reuse another evaluation.
+var keySeedA, keySeedB = maphash.MakeSeed(), maphash.MakeSeed()
+
 // keyWriter streams a key encoding into two independent digests.
-type keyWriter struct{ a, b xxhash.Digest }
+type keyWriter struct{ a, b maphash.Hash }
 
 func newKeyWriter() *keyWriter {
 	w := &keyWriter{}
-	w.a.Reset()
-	w.b.Reset()
-	_, _ = w.b.WriteString("\x00tfeval-inputs\x00")
+	w.a.SetSeed(keySeedA)
+	w.b.SetSeed(keySeedB)
 	return w
 }
 
