@@ -221,7 +221,15 @@ func (m *keyMemo) writeValue(w keySink, v cty.Value, digestCollection bool) {
 	}
 	data, err := ctyjson.Marshal(v, v.Type())
 	if err != nil {
-		w.WriteString("?" + v.Type().FriendlyName())
+		if v.Type() == cty.Number {
+			w.WriteString("number(")
+			w.WriteString(v.AsBigFloat().Text('g', -1))
+			w.WriteString(")")
+			return
+		}
+		w.WriteString("marshal-error(")
+		writeType(w, v.Type())
+		w.WriteString(")")
 		return
 	}
 	w.WriteString(string(data))
