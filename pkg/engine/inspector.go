@@ -263,6 +263,9 @@ type Inspector struct {
 	// evalGcRelief enables the eval-phase forced-GC ticker; the scanner sets it
 	// from its live-heap gate (see SetEvalGcRelief).
 	evalGcRelief bool
+	// disableDocumentSelection evaluates every rule against every document of
+	// its platform, see docSelector.
+	disableDocumentSelection bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -511,7 +514,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	// Evaluate each query only against documents of its own platform. The
 	// payload is read-only, so sharing the per-platform ast.Value across workers
 	// is safe.
-	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
+	payload := payloads.forQuery(query.Metadata.Platform, queryID)
 	queryContext := &QueryContext{
 		Ctx:                     ctx,
 		scanID:                  scanID,
@@ -1691,6 +1694,30 @@ const (
 type platformPayloads struct {
 	byPlatform map[string]ast.Value
 	full       ast.Value
+	// selectable hand each rule the part of a payload it reads, see
+	// docSelector; selectors are the queries' selectors, by query index.
+	selectable     map[string]*selectablePayload
+	selectableFull *selectablePayload
+	selectors      []docSelector
+}
+
+// forQuery returns the payload query i evaluates against: the documents of
+// its platform that it can read anything from.
+func (p *platformPayloads) forQuery(platform string, i int) ast.Value {
+	payload := selectPlatformPayload(platform, p.byPlatform, p.full)
+	if i >= len(p.selectors) {
+		return payload
+	}
+	set := p.selectableFull
+	if key := canonicalPlatformKey(platform); key != platformCommon {
+		if s, ok := p.selectable[key]; ok {
+			set = s
+		}
+	}
+	if set == nil || set.payload != payload {
+		return payload
+	}
+	return set.forSelector(p.selectors[i])
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -1770,6 +1797,18 @@ func (c *Inspector) buildPlatformPayloads(
 	}
 
 	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
+	if c.QueryLoader != nil && !c.disableDocumentSelection {
+		payloads.selectors = c.QueryLoader.querySelectors(queries)
+		selective := 0
+		for i := range payloads.selectors {
+			if !payloads.selectors[i].all {
+				selective++
+			}
+		}
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Info().Msgf("%d of %d rules are evaluated against the documents they can read", selective,
+			len(queries))
+	}
 	return payloads, nil
 }
 
@@ -1792,6 +1831,7 @@ func assemblePlatformPayloads(
 	}
 	out := platformPayloads{
 		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
+		selectable: make(map[string]*selectablePayload, len(neededPlatforms)),
 	}
 	for key := range neededPlatforms {
 		list := platformLists[key]
@@ -1805,16 +1845,19 @@ func assemblePlatformPayloads(
 		}
 		pv := assembleDocumentPayload(list)
 		out.byPlatform[key] = pv
+		out.selectable[key] = newSelectablePayload(pv, list)
 		if needFullPayload &&
 			len(neededPlatforms) == 1 &&
 			len(unknownDocs) == 0 &&
 			len(list) == len(terms) {
 			out.full = pv
+			out.selectableFull = out.selectable[key]
 		}
 	}
 
 	if needFullPayload && out.full == nil {
 		out.full = assembleDocumentPayload(terms)
+		out.selectableFull = newSelectablePayload(out.full, terms)
 	}
 
 	return out
