@@ -100,18 +100,19 @@ func newModuleData(
 		e: e, blocks: blocks, sources: sources, localExprs: scope.Locals, addr: addr, chain: chain,
 		dataLocals: scope.dataLocals(), hasUnconditionalResource: hasUnconditionalResource,
 	}
+	vars := e.variables
 	for _, b := range blocks {
-		d.readsData = d.readsData || bodyReadsResource(b.Body, dataRoot)
-		d.readsResources = d.readsResources || bodyReadsResource(b.Body, resourceTypes)
-		d.readsLocals = d.readsLocals || bodyReadsResource(b.Body, localRoot)
+		d.readsData = d.readsData || bodyReadsResourceWith(vars, b.Body, dataRoot)
+		d.readsResources = d.readsResources || bodyReadsResourceWith(vars, b.Body, resourceTypes)
+		d.readsLocals = d.readsLocals || bodyReadsResourceWith(vars, b.Body, localRoot)
 	}
-	if d.readsLocals && localsReadResources(scope.Locals, resourceTypes) {
+	if d.readsLocals && localsReadResourcesWith(vars, scope.Locals, resourceTypes) {
 		d.readsResources = true
 	}
 	for _, b := range blocks {
-		d.readsModuleOutputs = d.readsModuleOutputs || bodyReadsResource(b.Body, moduleRoot)
+		d.readsModuleOutputs = d.readsModuleOutputs || bodyReadsResourceWith(vars, b.Body, moduleRoot)
 	}
-	if d.readsLocals && localsReadResources(scope.Locals, moduleRoot) {
+	if d.readsLocals && localsReadResourcesWith(vars, scope.Locals, moduleRoot) {
 		d.readsModuleOutputs = true
 	}
 	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
@@ -177,9 +178,11 @@ func (d *moduleData) refreshedWithModule(value cty.Value) bool {
 	return d != nil && !d.moduleAtRefresh.IsNull() && d.moduleAtRefresh.RawEquals(value)
 }
 
-// localsReadingRoot returns the locals reading roots, directly or through
+// localsReadingRootWith returns the locals reading roots, directly or through
 // other locals.
-func localsReadingRoot(localExprs map[string]hclsyntax.Expression, roots map[string]struct{}) map[string]bool {
+func localsReadingRootWith(
+	vars variablesFunc, localExprs map[string]hclsyntax.Expression, roots map[string]struct{},
+) map[string]bool {
 	reading := map[string]bool{}
 	for changed := true; changed; {
 		changed = false
@@ -187,7 +190,7 @@ func localsReadingRoot(localExprs map[string]hclsyntax.Expression, roots map[str
 			if reading[name] {
 				continue
 			}
-			for _, traversal := range expr.Variables() {
+			for _, traversal := range vars(expr) {
 				if readsRootOrLocal(traversal, roots, reading) {
 					reading[name] = true
 					changed = true
@@ -259,7 +262,7 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 	instances := make([]ResolvedResource, 0, len(d.blocks))
 	exposed := make([]ResolvedResource, 0, len(d.blocks))
 	for _, b := range d.blocks {
-		inputs := blockEvalInputs(b, evalCtx)
+		inputs := blockEvalInputs(d.e.variables, b, evalCtx)
 		cached, ok := d.evalCache[b]
 		if !ok || !sameCtyValues(cached.inputs, inputs) {
 			cached = d.evalBlock(ctx, b, evalCtx, inputs)
@@ -317,10 +320,10 @@ func (d *moduleData) evalBlock(
 // References to data, local, var and module are tracked per name, so a block
 // is only invalidated when what it reads changes; ambiguous references fall
 // back to the whole root object.
-func blockEvalInputs(b *hclsyntax.Block, evalCtx *hcl.EvalContext) map[string]cty.Value {
+func blockEvalInputs(vars variablesFunc, b *hclsyntax.Block, evalCtx *hcl.EvalContext) map[string]cty.Value {
 	roots := map[string]struct{}{}
 	refs := rootRefs{}
-	bodyTraversalRoots(b.Body, roots, &refs)
+	bodyTraversalRoots(vars, b.Body, roots, &refs)
 	inputs := make(map[string]cty.Value, len(roots)+len(refs.named))
 	for root := range roots {
 		if _, sliced := sliceableRoots[root]; sliced && !refs.whole[root] {
@@ -435,15 +438,15 @@ func refStepName(step hcl.Traverser) (string, bool) {
 	return "", false
 }
 
-func bodyTraversalRoots(body *hclsyntax.Body, roots map[string]struct{}, refs *rootRefs) {
+func bodyTraversalRoots(vars variablesFunc, body *hclsyntax.Body, roots map[string]struct{}, refs *rootRefs) {
 	for _, attr := range body.Attributes {
-		for _, traversal := range attr.Expr.Variables() {
+		for _, traversal := range vars(attr.Expr) {
 			roots[traversal.RootName()] = struct{}{}
 			refs.note(traversal)
 		}
 	}
 	for _, block := range body.Blocks {
-		bodyTraversalRoots(block.Body, roots, refs)
+		bodyTraversalRoots(vars, block.Body, roots, refs)
 	}
 }
 

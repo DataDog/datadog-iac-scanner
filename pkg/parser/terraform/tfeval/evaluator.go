@@ -149,6 +149,66 @@ type ModuleScope struct {
 	localCache map[string]cty.Value
 }
 
+// keepRenderContext narrows the scope's evaluation context, once its blocks
+// are final, to what rendering instances can still read. The renderer only
+// runs on a value that is not wholly known, and only evaluates the variables
+// the instance's own expressions reference, so every other root (the module's
+// data.*, module.*, locals or resource types no unresolved value names) is
+// held for nothing until the root is merged. A scope whose instances are all
+// wholly known keeps no variables at all.
+func (s *ModuleScope) keepRenderContext(vars variablesFunc, instances ...[]ResolvedResource) {
+	if s.evalCtx == nil {
+		return
+	}
+	var roots map[string]struct{}
+	// The instances of one block share its for_each collection, which is
+	// checked once per block rather than walked again for every instance.
+	forEachKnown := map[collectionID]bool{}
+	for _, list := range instances {
+		for i := range list {
+			r := &list[i]
+			if r.Body == nil || attributesWhollyKnown(r, forEachKnown) {
+				continue
+			}
+			if roots == nil {
+				roots = map[string]struct{}{}
+			}
+			bodyTraversalRoots(vars, r.Body, roots, &rootRefs{})
+		}
+	}
+	kept := make(map[string]cty.Value, len(roots))
+	for root := range roots {
+		if v, ok := s.evalCtx.Variables[root]; ok {
+			kept[root] = v
+		}
+	}
+	s.evalCtx = &hcl.EvalContext{Variables: kept, Functions: s.evalCtx.Functions}
+}
+
+// forEachAttr is the for_each meta-argument as stored among a block's
+// attributes.
+const forEachAttr = "for_each"
+
+func attributesWhollyKnown(r *ResolvedResource, forEachKnown map[collectionID]bool) bool {
+	for name, v := range r.Attributes {
+		if id, shared := collectionIdentity(v); shared && name == forEachAttr {
+			known, ok := forEachKnown[id]
+			if !ok {
+				known = v.IsWhollyKnown()
+				forEachKnown[id] = known
+			}
+			if !known {
+				return false
+			}
+			continue
+		}
+		if !v.IsWhollyKnown() {
+			return false
+		}
+	}
+	return true
+}
+
 // localDeps records which changing roots a local's value follows. The
 // classification is transitive: a local reading another local that reads
 // resources is marked as reading resources too.
@@ -244,6 +304,18 @@ type Evaluator struct {
 	// funcFS serves the Terraform filesystem functions of every module this
 	// evaluator reaches, so paths confined once stay resolved for the scan.
 	funcFS *tffunctions.ScanFS
+	// funcTables holds the function table and path variables of each module
+	// directory, built once and shared by every evaluation of the directory.
+	// Scopes keep their evaluation context until the root is merged, so a
+	// table built per evaluation is retained once per module instance. Guarded
+	// by parseMu and shared with forks, like funcFS.
+	funcTables map[funcTableKey]*funcTable
+	// prepassPlans holds the sibling prepass plan of each parsed module
+	// directory, keyed like dirCache and guarded by parseMu.
+	prepassPlans map[string]siblingPrepass
+	// traversals memoizes Expression.Variables for the root being evaluated;
+	// see variables. Not shared with forks, and dropped with the eval cache.
+	traversals map[hclsyntax.Expression][]hcl.Traversal
 	// keys memoizes the input digests of large collections for the root being
 	// evaluated; see keyMemo. Not shared with forks, dropped with the cache.
 	keys *keyMemo
@@ -256,6 +328,32 @@ type dirParse struct {
 	bodies  []*hclsyntax.Body
 	sources map[string][]byte
 	err     error
+}
+
+type funcTableKey struct{ dir, rootDir string }
+
+// funcTable is what a module's evaluation context reads besides its values:
+// the functions and the path and terraform variables. Both are read-only.
+type funcTable struct {
+	funcs map[string]function.Function
+	vars  map[string]cty.Value
+}
+
+// moduleFuncTable returns the function table of the module at dir evaluated
+// under rootDir. The functions only depend on the two directories and funcFS.
+func (e *Evaluator) moduleFuncTable(dir, rootDir string) *funcTable {
+	key := funcTableKey{dir: dir, rootDir: rootDir}
+	e.parseMu.Lock()
+	defer e.parseMu.Unlock()
+	if t, ok := e.funcTables[key]; ok {
+		return t
+	}
+	t := &funcTable{
+		funcs: tffunctions.EvalFuncsWithRoot(dir, rootDir, e.funcFS),
+		vars:  tffunctions.ContextVariables(dir, rootDir),
+	}
+	e.funcTables[key] = t
+	return t
 }
 
 func New() *Evaluator {
@@ -282,6 +380,8 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
 		funcFS:           tffunctions.NewScanFS(vfs.DiskFS{}),
+		funcTables:       make(map[funcTableKey]*funcTable),
+		prepassPlans:     make(map[string]siblingPrepass),
 		notEvaluatedDirs: make(map[string]bool),
 		fsys:             fsys,
 	}
@@ -378,6 +478,8 @@ func (e *Evaluator) Fork() *Evaluator {
 		parseMu:          e.parseMu,
 		dirCache:         e.dirCache,
 		funcFS:           e.funcFS,
+		funcTables:       e.funcTables,
+		prepassPlans:     e.prepassPlans,
 		mergeAllow:       e.mergeAllow,
 		trackInstances:   e.trackInstances,
 	}
@@ -497,6 +599,7 @@ func (e *Evaluator) ForgetRootParse(dir string) {
 	key := filepath.Clean(abs) + "\x00" + filepath.Clean("")
 	e.parseMu.Lock()
 	delete(e.dirCache, key)
+	delete(e.prepassPlans, key)
 	e.parseMu.Unlock()
 }
 
@@ -513,6 +616,8 @@ func (e *Evaluator) ReleaseCaches() {
 	e.ReleaseEvalCache()
 	e.parseMu.Lock()
 	e.dirCache = make(map[string]dirParse)
+	e.funcTables = make(map[funcTableKey]*funcTable)
+	e.prepassPlans = make(map[string]siblingPrepass)
 	e.parseMu.Unlock()
 	e.funcFS = tffunctions.NewScanFS(vfs.DiskFS{})
 }
@@ -526,6 +631,7 @@ func (e *Evaluator) ReleaseCaches() {
 // keyed by directory alone, genuinely is shared by every root, and is kept.
 func (e *Evaluator) ReleaseEvalCache() {
 	e.cache = make(map[evalCacheKey]*evalCacheEntry)
+	e.traversals = nil
 	e.keys = &keyMemo{}
 }
 
@@ -609,13 +715,14 @@ func (e *Evaluator) evaluate(
 
 	varVals := e.resolveVariables(varDecls, inputs)
 
+	table := e.moduleFuncTable(dir, rootDir)
 	evalCtx := &hcl.EvalContext{
 		Variables: map[string]cty.Value{
 			"var": objectOrEmpty(varVals),
 		},
-		Functions: tffunctions.EvalFuncsWithRoot(dir, rootDir, e.funcFS),
+		Functions: table.funcs,
 	}
-	for name, value := range tffunctions.ContextVariables(dir, rootDir) {
+	for name, value := range table.vars {
 		evalCtx.Variables[name] = value
 	}
 
@@ -631,7 +738,8 @@ func (e *Evaluator) evaluate(
 	}
 
 	e.applySiblingModulePrepass(
-		ctx, moduleBlocks, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, e.siblingPrepassPlan(dir, packageRoot, bodies, moduleBlocks, localExprs),
+		evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
@@ -663,6 +771,7 @@ func (e *Evaluator) evaluate(
 		rootResources[i].Scope = scope
 	}
 	dataInstances := data.resolved(scope)
+	scope.keepRenderContext(e.variables, rootResources, dataInstances)
 	// Charge resources and data together so a module that fits only one of the
 	// two does not leave a partial charge when its evaluation is discarded.
 	if !e.chargeModuleCall(ctx, addr, len(rootResources)+len(dataInstances)) {
@@ -968,6 +1077,7 @@ func (e *Evaluator) ResetSpeculativeBudget() {
 func (e *Evaluator) applySiblingModulePrepass(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
+	plan siblingPrepass,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	data *moduleData,
@@ -976,11 +1086,11 @@ func (e *Evaluator) applySiblingModulePrepass(
 	depth int,
 	visiting map[string]bool,
 ) {
-	if len(moduleBlocks) <= 1 {
+	if !plan.any {
 		return
 	}
 	prelimOutputs := e.preliminaryModuleOutputs(
-		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, plan.members, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 	e.installModuleOutputs(ctx, evalCtx, scope, scope.Locals, data, prelimOutputs)
 }
@@ -1039,7 +1149,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		for i, instance := range plan.instances {
 			modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
 			childAddr := instance.address(addr, call.label)
-			childChain := append(cloneChain(chain), site)
+			childChain := extendChain(chain, &site)
 			instancesBefore := len(e.instances)
 			instantiatedBefore := *e.currentInstantiationCount()
 			refusalsBefore := e.budgetRefusals
@@ -1132,15 +1242,15 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 ) ([]ResolvedResource, bool) {
 	var rootResources []ResolvedResource
 	types := declaredResourceTypes(resourceBlocks)
-	localsReadOwn := localsReadResources(localExprs, types)
+	localsReadOwn := localsReadResourcesWith(e.variables, localExprs, types)
 	dataReadsOwn := data.readsOwnResources()
 	// Resources may consume refreshed data through locals (data → local →
 	// resource) without a direct data.* traversal in the body.
-	readsDataPath := resourcesReadResources(resourceBlocks, dataRoot)
+	readsDataPath := resourcesReadResourcesWith(e.variables, resourceBlocks, dataRoot)
 	if data != nil {
-		readsDataPath = readsDataPath || resourcesReadNamedLocals(resourceBlocks, data.dataLocals)
+		readsDataPath = readsDataPath || resourcesReadNamedLocalsWith(e.variables, resourceBlocks, data.dataLocals)
 	}
-	readsOwn := localsReadOwn || resourcesReadResources(resourceBlocks, types) ||
+	readsOwn := localsReadOwn || resourcesReadResourcesWith(e.variables, resourceBlocks, types) ||
 		(dataReadsOwn && readsDataPath)
 	for pass := 0; pass < resourceRefPasses; pass++ {
 		var complete bool
@@ -1190,54 +1300,78 @@ func declaredResourceTypes(resourceBlocks []*hclsyntax.Block) map[string]struct{
 	return types
 }
 
-func localsReadResources(localExprs map[string]hclsyntax.Expression, types map[string]struct{}) bool {
+// variablesFunc returns the traversals of an expression: Expression.Variables
+// itself, or the evaluator's memo of it (see Evaluator.variables).
+type variablesFunc func(hclsyntax.Expression) []hcl.Traversal
+
+func plainVariables(expr hclsyntax.Expression) []hcl.Traversal { return expr.Variables() }
+
+// variables memoizes Expression.Variables for the parsed expressions of the
+// root being evaluated. What an expression references never changes, while
+// every module instance, refresh and pass asks again: walking the expression
+// tree each time is allocation the whole scan pays for in GC.
+func (e *Evaluator) variables(expr hclsyntax.Expression) []hcl.Traversal {
+	if v, ok := e.traversals[expr]; ok {
+		return v
+	}
+	v := expr.Variables()
+	if e.traversals == nil {
+		e.traversals = make(map[hclsyntax.Expression][]hcl.Traversal)
+	}
+	e.traversals[expr] = v
+	return v
+}
+
+func localsReadResourcesWith(
+	vars variablesFunc, localExprs map[string]hclsyntax.Expression, types map[string]struct{},
+) bool {
 	for _, expr := range localExprs {
-		if readsResource(expr, types) {
+		if readsResourceWith(vars, expr, types) {
 			return true
 		}
 	}
 	return false
 }
 
-func resourcesReadResources(resourceBlocks []*hclsyntax.Block, types map[string]struct{}) bool {
+func resourcesReadResourcesWith(vars variablesFunc, resourceBlocks []*hclsyntax.Block, types map[string]struct{}) bool {
 	for _, rb := range resourceBlocks {
-		if bodyReadsResource(rb.Body, types) {
+		if bodyReadsResourceWith(vars, rb.Body, types) {
 			return true
 		}
 	}
 	return false
 }
 
-// resourcesReadNamedLocals reports whether any resource body reads one of the
-// named locals (for example locals that alias data.*).
-func resourcesReadNamedLocals(resourceBlocks []*hclsyntax.Block, names map[string]bool) bool {
+// resourcesReadNamedLocalsWith reports whether any resource body reads one of
+// the named locals (for example locals that alias data.*).
+func resourcesReadNamedLocalsWith(vars variablesFunc, resourceBlocks []*hclsyntax.Block, names map[string]bool) bool {
 	if len(names) == 0 {
 		return false
 	}
 	for _, rb := range resourceBlocks {
-		if bodyReadsNamedLocals(rb.Body, names) {
+		if bodyReadsNamedLocals(vars, rb.Body, names) {
 			return true
 		}
 	}
 	return false
 }
 
-func bodyReadsNamedLocals(body *hclsyntax.Body, names map[string]bool) bool {
+func bodyReadsNamedLocals(vars variablesFunc, body *hclsyntax.Body, names map[string]bool) bool {
 	for _, attr := range body.Attributes {
-		if readsNamedLocals(attr.Expr, names) {
+		if readsNamedLocals(vars, attr.Expr, names) {
 			return true
 		}
 	}
 	for _, block := range body.Blocks {
-		if bodyReadsNamedLocals(block.Body, names) {
+		if bodyReadsNamedLocals(vars, block.Body, names) {
 			return true
 		}
 	}
 	return false
 }
 
-func readsNamedLocals(expr hclsyntax.Expression, names map[string]bool) bool {
-	for _, traversal := range expr.Variables() {
+func readsNamedLocals(vars variablesFunc, expr hclsyntax.Expression, names map[string]bool) bool {
+	for _, traversal := range vars(expr) {
 		name, ok := terraform.LocalTraversalName(traversal)
 		if ok && names[name] {
 			return true
@@ -1246,25 +1380,25 @@ func readsNamedLocals(expr hclsyntax.Expression, names map[string]bool) bool {
 	return false
 }
 
-func bodyReadsResource(body *hclsyntax.Body, types map[string]struct{}) bool {
+func bodyReadsResourceWith(vars variablesFunc, body *hclsyntax.Body, types map[string]struct{}) bool {
 	for _, attr := range body.Attributes {
-		if readsResource(attr.Expr, types) {
+		if readsResourceWith(vars, attr.Expr, types) {
 			return true
 		}
 	}
 	for _, block := range body.Blocks {
-		if bodyReadsResource(block.Body, types) {
+		if bodyReadsResourceWith(vars, block.Body, types) {
 			return true
 		}
 	}
 	return false
 }
 
-func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
+func readsResourceWith(vars variablesFunc, expr hclsyntax.Expression, types map[string]struct{}) bool {
 	if len(types) == 0 {
 		return false
 	}
-	for _, traversal := range expr.Variables() {
+	for _, traversal := range vars(expr) {
 		if _, ok := types[traversal.RootName()]; ok {
 			return true
 		}
@@ -1341,6 +1475,10 @@ func (e *Evaluator) expandBlock(
 
 	// Attributes that ignore each/count evaluate identically in every instance.
 	memo := newInvariantMemo()
+	// Every instance of the module call shares its chain: nothing modifies a
+	// recorded chain, and the capacity cap makes an append copy it. A copy per
+	// instance would be retained once per resource for the whole root.
+	sharedChain := chain[:len(chain):len(chain)]
 
 	// A dynamic block kept as written is one finding of the block, however many
 	// instances or parent blocks repeat it, so it is reported once per call.
@@ -1384,7 +1522,7 @@ func (e *Evaluator) expandBlock(
 			DefColumn:     rb.TypeRange.Start.Column,
 			DefEndColumn:  rb.Range().End.Column,
 			ModuleAddress: addr,
-			CallChain:     cloneChain(chain),
+			CallChain:     sharedChain,
 			Data:          data,
 		}
 	}
@@ -1706,9 +1844,9 @@ func (e *Evaluator) resolveLocalsIncremental(
 	resourcesChanged, modulesChanged bool,
 ) map[string]cty.Value {
 	if scope.localDeps == nil {
-		resourceReaders := localsReadingRoot(localExprs, resourceTypes)
-		moduleReaders := localsReadingRoot(localExprs, moduleRoot)
-		dataReaders := localsReadingRoot(localExprs, dataRoot)
+		resourceReaders := localsReadingRootWith(e.variables, localExprs, resourceTypes)
+		moduleReaders := localsReadingRootWith(e.variables, localExprs, moduleRoot)
+		dataReaders := localsReadingRootWith(e.variables, localExprs, dataRoot)
 		deps := make(map[string]localDeps, len(localExprs))
 		for name := range localExprs {
 			deps[name] = localDeps{
@@ -1865,10 +2003,12 @@ func (e *Evaluator) evalBodyWith(
 type invariantMemo struct {
 	values map[hclsyntax.Expression]cty.Value
 	varies map[hclsyntax.Expression]bool
+	vars   variablesFunc
 }
 
 func newInvariantMemo() *invariantMemo {
 	return &invariantMemo{
+		vars:   plainVariables,
 		values: make(map[hclsyntax.Expression]cty.Value),
 		varies: make(map[hclsyntax.Expression]bool),
 	}
@@ -1882,7 +2022,7 @@ func (m *invariantMemo) readsIteration(expr hclsyntax.Expression, iterators []st
 		return v
 	}
 	reads := false
-	for _, t := range expr.Variables() {
+	for _, t := range m.vars(expr) {
 		root := t.RootName()
 		if root == "each" || root == "count" || slices.Contains(iterators, root) {
 			reads = true
@@ -1944,6 +2084,7 @@ func (e *Evaluator) evalExpr(expr hclsyntax.Expression, ctx *hcl.EvalContext) ct
 func (e *Evaluator) preliminaryModuleOutputs(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
+	members []bool,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	dir, rootDir, packageRoot, addr string,
@@ -1964,7 +2105,10 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	for k, v := range visiting {
 		tmpVisiting[k] = v
 	}
-	for _, mb := range moduleBlocks {
+	for i, mb := range moduleBlocks {
+		if !members[i] {
+			continue
+		}
 		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
 		if !ok {
 			continue
@@ -1974,7 +2118,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		outs := make([]cty.Value, len(plan.instances))
 		for i, instance := range plan.instances {
 			modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
-			childChain := append(cloneChain(chain), site)
+			childChain := extendChain(chain, &site)
 			_, childOuts, err := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
 				depth+1, tmpVisiting, map[string]bool{},

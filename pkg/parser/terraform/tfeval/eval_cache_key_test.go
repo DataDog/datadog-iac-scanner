@@ -7,6 +7,7 @@ package tfeval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -295,7 +296,9 @@ func TestInstantiationBudget_BoundsTotalAcrossManyRoots(t *testing.T) {
 
 		e.ResetSpeculativeBudget()
 		resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-		if err != nil {
+		// Once earlier roots fill the budget exactly, a root is refused before
+		// it starts, which is the budget bounding the scan.
+		if err != nil && !(errors.Is(err, ErrModuleNotEvaluated) && e.BudgetExceeded()) {
 			t.Fatalf("EvaluateModule root %d: %v", i, err)
 		}
 		total += len(resources)

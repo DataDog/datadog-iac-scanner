@@ -329,6 +329,16 @@ func joinAddr(parent, seg string) string {
 	return parent + "." + seg
 }
 
+// extendChain returns chain followed by site in a new slice of exactly that
+// length: the resources of the call keep it for the whole root, so the spare
+// capacity an append leaves would be retained with it.
+func extendChain(chain []CallSite, site *CallSite) []CallSite {
+	out := make([]CallSite, len(chain)+1)
+	copy(out, chain)
+	out[len(chain)] = *site
+	return out
+}
+
 // cloneChain copies the slice to avoid aliasing across sibling recursions.
 func cloneChain(chain []CallSite) []CallSite {
 	if len(chain) == 0 {

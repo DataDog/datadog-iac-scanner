@@ -74,10 +74,10 @@ resource "aws_s3_bucket" "b" {}`,
 			}
 			_, localExprs, _, resourceBlocks, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
 			types := declaredResourceTypes(resourceBlocks)
-			if got := localsReadResources(localExprs, types); got != tt.wantLocals {
+			if got := localsReadResourcesWith(plainVariables, localExprs, types); got != tt.wantLocals {
 				t.Errorf("localsReadResources = %v, want %v", got, tt.wantLocals)
 			}
-			if got := resourcesReadResources(resourceBlocks, types); got != tt.wantResources {
+			if got := resourcesReadResourcesWith(plainVariables, resourceBlocks, types); got != tt.wantResources {
 				t.Errorf("resourcesReadResources = %v, want %v", got, tt.wantResources)
 			}
 		})
