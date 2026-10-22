@@ -87,7 +87,7 @@ var TerraformFuncs = func() map[string]function.Function {
 		"indent":           stdlib.IndentFunc,
 		"index":            IndexFunc,
 		"join":             stdlib.JoinFunc,
-		"jsondecode":       stdlib.JSONDecodeFunc,
+		"jsondecode":       memoizeDecode("jsondecode", stdlib.JSONDecodeFunc),
 		"jsonencode":       stdlib.JSONEncodeFunc,
 		"keys":             stdlib.KeysFunc,
 		"length":           LengthFunc,
@@ -145,7 +145,7 @@ var TerraformFuncs = func() map[string]function.Function {
 		"urlencode":        URLEncodeFunc,
 		"uuidv5":           UUIDV5Func,
 		"values":           stdlib.ValuesFunc,
-		"yamldecode":       ctyyaml.YAMLDecodeFunc,
+		"yamldecode":       memoizeDecode("yamldecode", ctyyaml.YAMLDecodeFunc),
 		"yamlencode":       ctyyaml.YAMLEncodeFunc,
 		"zipmap":           stdlib.ZipmapFunc,
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 )
 
@@ -114,6 +115,7 @@ func liveHeapAfterGC() uint64 {
 func StartScan(ctx context.Context, scanID string, services serviceSlice) error {
 	defer metrics.Metric.Stop()
 	defer memwatch.Sample(ctx, memwatch.PhaseStartScan)
+	defer tffunctions.ReleaseDecodeMemo()
 	metrics.Metric.Start("start_scan")
 	contextLogger := logger.FromContext(ctx)
 	var wg sync.WaitGroup
