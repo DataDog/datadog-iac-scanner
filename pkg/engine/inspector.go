@@ -560,6 +560,9 @@ func (c *Inspector) Inspect(
 	var moduleFiles map[string]*moduleFileCalls
 	var syntheticFiles []*model.FileMetadata
 	if shouldInstantiateLocalModules(platforms, files) {
+		// Instantiated documents can make a scan of a few files hold a
+		// multi-GiB live set through payload build and eval.
+		defer watchLiveHeap(gcReliefLiveBytes)()
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
