@@ -1220,9 +1220,10 @@ func convertInstances(resources []tfeval.ResolvedResource, targets *ruleTargets)
 	convert := func(from, to int) {
 		for i := from; i < to; i++ {
 			r := &resources[i]
-			if r.ModuleAddress == "" && !expandedInstance(r) {
-				// A root module block without count or for_each is one resource,
-				// and the parsed file already holds it as written.
+			if r.ModuleAddress == "" {
+				// A root module block, expanded or not, is scanned where it is
+				// written: the parsed file already holds it, and its rules count
+				// it once, as written.
 				continue
 			}
 			if !targets.matches(r.Type) {
@@ -1248,12 +1249,6 @@ func convertInstances(resources []tfeval.ResolvedResource, targets *ruleTargets)
 	}
 	wg.Wait()
 	return out
-}
-
-// expandedInstance reports whether r is one instance of a block expanded by a
-// known count or for_each, which Terraform addresses with an index or key.
-func expandedInstance(r *tfeval.ResolvedResource) bool {
-	return tfeval.ResourceBaseName(r.Name) != r.Name
 }
 
 // groupContentKey identifies a document by the module call address it belongs

@@ -74,8 +74,9 @@ resource "aws_s3_bucket" "plain" {
 	for _, p := range paths {
 		files = append(files, parseTerraform(t, p)...)
 	}
-	// Per root: 2 mids x 3 leaves x 2 buckets, 2 counted and 1 plain bucket.
-	return repo, files, roots * (2*3*2 + 2 + 1)
+	// Per root: 2 mids x 3 leaves x 2 buckets, and the counted and plain
+	// buckets, each scanned once where it is written.
+	return repo, files, roots * (2*3*2 + 1 + 1)
 }
 
 func aclInspector(t *testing.T, repo string) *Inspector {
@@ -115,8 +116,9 @@ func inspectFindings(t *testing.T, workers int, repo string, files model.FileMet
 	return keys, ins
 }
 
-// Every instance is one finding: none is missing, none is reported twice, and
-// the source blocks the instances replace are not reported as written.
+// Every module instance is one finding: none is missing, none is reported
+// twice, and the module blocks the instances replace are not reported as
+// written. Root module blocks are reported once, as written.
 func TestInspect_EveryInstanceIsOneFinding(t *testing.T) {
 	for _, distinct := range []bool{false, true} {
 		t.Run(fmt.Sprintf("distinct=%t", distinct), func(t *testing.T) {
@@ -132,10 +134,11 @@ func TestInspect_EveryInstanceIsOneFinding(t *testing.T) {
 			for _, k := range keys {
 				byDir[strings.Split(k, "\t")[0]]++
 			}
-			// 36 leaf instances, and per root 2 counted instances plus the plain one.
+			// 36 leaf instances, and per root its two blocks as written: a root
+			// block with count is scanned once, as written.
 			require.Equal(t, 36, byDir["leaf"])
 			for i := range 3 {
-				require.Equal(t, 3, byDir[fmt.Sprintf("r%02d", i)])
+				require.Equal(t, 2, byDir[fmt.Sprintf("r%02d", i)])
 			}
 		})
 	}

@@ -86,7 +86,8 @@ type Expected struct {
 	// evaluator instantiates: leaf resources plus data instances.
 	ModuleResources int `json:"module_resources"`
 	// ACLFindings is how many "S3 bucket ACL allows read or write to all users"
-	// findings a complete scan reports: one per aws_s3_bucket instance.
+	// findings a complete scan reports: one per aws_s3_bucket instance in a
+	// module, and one per root aws_s3_bucket block, scanned as written.
 	ACLFindings int `json:"acl_findings"`
 	// CORSFindings is how many unsecured CORS findings a complete scan reports:
 	// one per leaf instance when Dynamic > 0.
@@ -114,9 +115,9 @@ func Expect(s *Shape) Expected {
 	if s.Data {
 		data = product * dataKeys
 	}
-	rootRes := 0
+	rootRes, rootBlocks := 0, 0
 	if s.RootResources.N > 0 || s.RootResources.Kind == Single {
-		rootRes = s.RootResources.instances()
+		rootRes, rootBlocks = s.RootResources.instances(), 1
 	}
 	e := Expected{
 		Shape:                 *s,
@@ -124,7 +125,7 @@ func Expect(s *Shape) Expected {
 		LeafInstances:         roots * leaf,
 		RootResourceInstances: roots * rootRes,
 		ModuleResources:       roots * (leaf + data),
-		ACLFindings:           roots * (leaf + rootRes),
+		ACLFindings:           roots * (leaf + rootBlocks),
 	}
 	if s.Dynamic > 0 {
 		e.CORSFindings = roots * leaf

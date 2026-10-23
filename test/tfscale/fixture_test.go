@@ -67,8 +67,16 @@ func TestGenerate_ExpectedCardinalityMatchesEvaluation(t *testing.T) {
 				ev := tfeval.New()
 				resources, _, _, err := ev.EvaluateModule(context.Background(), root, nil)
 				require.NoError(t, err)
+				rootBlocks := map[string]bool{}
 				for _, r := range resources {
 					if r.Type == "aws_s3_bucket" && !r.Data {
+						// A root block is scanned once, as written, whatever it expands to.
+						if r.ModuleAddress == "" {
+							if rootBlocks[tfeval.ResourceBaseName(r.Name)] {
+								continue
+							}
+							rootBlocks[tfeval.ResourceBaseName(r.Name)] = true
+						}
 						buckets++
 					}
 					if r.ModuleAddress != "" {
