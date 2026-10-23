@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -351,14 +352,8 @@ func (run *SarifRun) encodeJSON(bw *bufio.Writer, put func(string, interface{}) 
 		_, _ = bw.WriteString(`,"results":null`)
 	} else {
 		_, _ = bw.WriteString(`,"results":[`)
-		for i := range run.Results {
-			prefix := ","
-			if i == 0 {
-				prefix = ""
-			}
-			if err := put(prefix, &run.Results[i]); err != nil {
-				return err
-			}
+		if err := encodeResults(bw, run.Results); err != nil {
+			return err
 		}
 		_, _ = bw.WriteString("]")
 	}
@@ -369,6 +364,75 @@ func (run *SarifRun) encodeJSON(bw *bufio.Writer, put func(string, interface{}) 
 	}
 	_, err := bw.WriteString("}")
 	return err
+}
+
+// sarifEncodeBatch is how many results one worker encodes at a time.
+var sarifEncodeBatch = 2048
+
+// encodedResults is a batch of results encoded, comma-separated, as the
+// elements of the results array from its own position on.
+type encodedResults struct {
+	data []byte
+	err  error
+	done chan struct{}
+}
+
+func (b *encodedResults) encode(results []sarifResult, first bool) {
+	defer close(b.done)
+	for i := range results {
+		if i > 0 || !first {
+			b.data = append(b.data, ',')
+		}
+		data, err := json.Marshal(&results[i])
+		if err != nil {
+			b.err = err
+			return
+		}
+		b.data = append(b.data, data...)
+	}
+}
+
+// encodeResults writes the elements of the results array. A large array is
+// encoded in batches on several workers and written in order, so the output
+// is the one encoding the results one by one gives; at most one batch per
+// worker is held encoded at once.
+func encodeResults(bw *bufio.Writer, results []sarifResult) error {
+	batch := sarifEncodeBatch
+	workers := min(runtime.GOMAXPROCS(0), len(results)/batch)
+	if workers <= 1 {
+		b := &encodedResults{done: make(chan struct{})}
+		b.encode(results, true)
+		if b.err != nil {
+			return b.err
+		}
+		_, err := bw.Write(b.data)
+		return err
+	}
+	pending := make(chan *encodedResults, workers)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		defer close(pending)
+		for from := 0; from < len(results); from += batch {
+			b := &encodedResults{done: make(chan struct{})}
+			select {
+			case pending <- b:
+			case <-stop:
+				return
+			}
+			go b.encode(results[from:min(from+batch, len(results))], from == 0)
+		}
+	}()
+	for b := range pending {
+		<-b.done
+		if b.err != nil {
+			return b.err
+		}
+		if _, err := bw.Write(b.data); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewSarifReport creates and start a new sarif report with default values respecting SARIF schema 2.1.0

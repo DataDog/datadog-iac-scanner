@@ -44,6 +44,8 @@ func TestModuleAttributionForSARIF_RedactsCredentials(t *testing.T) {
 		Source: "https://user:token@example.com/modules",
 		ModulePath: []ModulePathHop{{
 			Source: "https://user:token@example.com/modules//bucket",
+		}, {
+			Source: "../local",
 		}},
 	}
 
@@ -51,7 +53,13 @@ func TestModuleAttributionForSARIF_RedactsCredentials(t *testing.T) {
 	require.Equal(t, "https://example.com/modules", payload.Source)
 	require.NotContains(t, payload.ModulePath[0].Source, "user:token@")
 	require.Contains(t, payload.ModulePath[0].Source, "example.com/modules//bucket")
+	require.Equal(t, "../local", payload.ModulePath[1].Source)
 	require.Equal(t, "https://user:token@example.com/modules//bucket", attr.ModulePath[0].Source, "the attribution is not modified")
+
+	clean := []ModulePathHop{{Source: "../local"}, {Source: "registry.example.com/ns/name/aws"}}
+	require.Equal(t, clean, ModuleAttributionForSARIF(&ModuleAttribution{ModulePath: clean}).ModulePath)
+	require.Equal(t, "git::https://example.com/m.git?ref=v1", RedactURLCredentials("git::https://example.com/m.git?ref=v1"))
+	require.Equal(t, "user@example.com", RedactURLCredentials("user@example.com"), "no scheme, nothing to redact")
 }
 
 func TestModuleAttributionForSARIFEmptyPathIsNotNull(t *testing.T) {

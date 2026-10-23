@@ -39,13 +39,21 @@ func streamedReport(t *testing.T, results int) *sarifReport {
 	return report
 }
 
-// The streamed report is byte for byte what encoding the whole report writes.
+// The streamed report is byte for byte what encoding the whole report writes,
+// whether its results are encoded in one batch or in several concurrently.
 func TestEncodeJSON_MatchesEncoder(t *testing.T) {
+	previous := sarifEncodeBatch
+	defer func() { sarifEncodeBatch = previous }()
 	for _, c := range []struct {
 		results    int
 		nilResults bool
-	}{{0, false}, {3, false}, {50, false}, {0, true}} {
+		batch      int
+	}{
+		{0, false, previous}, {3, false, previous}, {50, false, previous}, {0, true, previous},
+		{50, false, 7}, {50, false, 1}, {3, false, 1}, {0, false, 1},
+	} {
 		t.Run(fmt.Sprintf("%+v", c), func(t *testing.T) {
+			sarifEncodeBatch = c.batch
 			report := streamedReport(t, c.results)
 			if c.nilResults {
 				report.Runs[0].Results = nil
@@ -55,5 +63,17 @@ func TestEncodeJSON_MatchesEncoder(t *testing.T) {
 			require.NoError(t, report.EncodeJSON(&got))
 			require.Equal(t, want.String(), got.String())
 		})
+	}
+}
+
+// A result that cannot be encoded fails the report, encoded in batches or not.
+func TestEncodeJSON_ReturnsResultEncodingErrors(t *testing.T) {
+	previous := sarifEncodeBatch
+	defer func() { sarifEncodeBatch = previous }()
+	for _, batch := range []int{previous, 3} {
+		sarifEncodeBatch = batch
+		report := streamedReport(t, 50)
+		report.Runs[0].Results[40].ResultProperties["bad"] = func() {}
+		require.Error(t, report.EncodeJSON(&bytes.Buffer{}), "batch %d", batch)
 	}
 }

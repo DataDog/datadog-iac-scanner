@@ -39,10 +39,28 @@ func sanitizeModuleSource(source string) string {
 	return removeURLCredentials(source)
 }
 
+// sanitizeModulePath returns path with credentials removed from its sources.
+// A path with none is returned as is: it is the same for every finding of a
+// module call, and is only read.
 func sanitizeModulePath(path []ModulePathHop) []ModulePathHop {
-	out := append([]ModulePathHop{}, path...)
-	for i := range out {
-		out[i].Source = sanitizeModuleSource(out[i].Source)
+	var out []ModulePathHop
+	for i := range path {
+		source := sanitizeModuleSource(path[i].Source)
+		if source == path[i].Source {
+			continue
+		}
+		if out == nil {
+			out = append([]ModulePathHop{}, path...)
+		}
+		out[i].Source = source
 	}
-	return out
+	switch {
+	case out != nil:
+		return out
+	case path == nil:
+		// An empty path is reported as one, not as null.
+		return []ModulePathHop{}
+	default:
+		return path
+	}
 }

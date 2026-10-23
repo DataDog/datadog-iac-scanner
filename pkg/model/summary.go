@@ -260,8 +260,10 @@ func removeAllURLCredentials(pathExtractionMap map[string]ExtractedPathObject) [
 // userinfo and is preserved. It is safe to call on arbitrary text such as error
 // messages, not just on bare URLs.
 func RedactURLCredentials(s string) string {
-	if s == "" {
-		return ""
+	// Credentials sit between a scheme's "://" and an "@": without both, the
+	// expression cannot match.
+	if !strings.Contains(s, "@") || !strings.Contains(s, "://") {
+		return s
 	}
 	return urlAuthRedactRegex.ReplaceAllString(s, "${1}")
 }
