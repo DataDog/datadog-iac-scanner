@@ -689,15 +689,13 @@ func moduleAttributionKey(resourceType string, definitionLine, definitionColumn 
 	return resourceType + "." + strconv.Itoa(definitionLine) + "." + strconv.Itoa(definitionColumn)
 }
 
-// moduleAttributionForResource returns the attribution of the resource the
-// finding was raised on, with the control of the flagged line, its call site
-// narrowed to the argument setting that line when one does, and its code
-// location narrowed to the flagged region inside the module.
-func moduleAttributionForResource(
+// resourceAttribution returns the attribution of the block a finding was
+// raised on, as attrs holds it.
+func resourceAttribution(
 	attrs map[string]*model.ModuleAttribution, v *model.Vulnerability,
-) *model.ModuleAttribution {
+) (*model.ModuleAttribution, bool) {
 	if len(attrs) == 0 {
-		return nil
+		return nil, false
 	}
 	line, col := v.BlockLocation.Start.Line, v.BlockLocation.Start.Col
 	attr, ok := attrs[moduleAttributionKey(v.ResourceType, line, col)]
@@ -706,6 +704,17 @@ func moduleAttributionForResource(
 		// position still identifies it.
 		attr, ok = attrs[moduleAttributionKey(dataTypePrefix+v.ResourceType, line, col)]
 	}
+	return attr, ok
+}
+
+// moduleAttributionForResource returns the attribution of the resource the
+// finding was raised on, with the control of the flagged line, its call site
+// narrowed to the argument setting that line when one does, and its code
+// location narrowed to the flagged region inside the module.
+func moduleAttributionForResource(
+	attrs map[string]*model.ModuleAttribution, v *model.Vulnerability,
+) *model.ModuleAttribution {
+	attr, ok := resourceAttribution(attrs, v)
 	if !ok {
 		return nil
 	}

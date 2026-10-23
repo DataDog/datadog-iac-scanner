@@ -362,6 +362,8 @@ type QueryContext struct {
 	// discardLineInfoAfterUse drops each file's line-info tree after line
 	// detection for a finding (loader kept for reuse) when post-eval release is on.
 	discardLineInfoAfterUse bool
+	// findings shares what the scan's findings have in common; nil shares nothing.
+	findings *findingInterner
 }
 
 var (
@@ -493,7 +495,7 @@ type QueryResult struct {
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
 	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery) QueryResult {
+	sharedQueries map[int]*rego.PreparedEvalQuery, findings *findingInterner) QueryResult {
 	contextLogger := logger.FromContext(ctx)
 
 	loadStart := time.Now()
@@ -528,6 +530,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		payload:                 &payload,
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
+		findings:                findings,
 	}
 
 	evalStart := time.Now()
@@ -824,9 +827,11 @@ func (c *Inspector) executeQueries(
 	// index-aligned slice (no shared mutable state between workers); the actual
 	// aggregation happens serially below.
 	results := make([]QueryResult, len(queries))
+	findings := newFindingInterner()
 	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
 		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes, sharedQueries)
+			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
+				sharedQueries, findings)
 			return nil
 		})
 	// The closure never returns a non-nil error itself, so ForEach only reports
