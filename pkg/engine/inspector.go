@@ -1045,7 +1045,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			}
 		}
 	}
-	options := []rego.EvalOption{rego.EvalParsedInput(payload)}
+	options := []rego.EvalOption{rego.EvalParsedInput(payload), rego.EvalVirtualCache(newCompactVirtualCache())}
 
 	var cov *cover.Cover
 	if c.enableCoverageReport {
