@@ -1,0 +1,96 @@
+name: tf-scale-stress
+
+# Scans the generated Terraform scale fixtures (test/tfscale) with the scanner
+# at this commit and at a baseline, using one rule bundle for both. Fails when
+# this commit leaves an instance out, reports itself incomplete, or regresses
+# peak RSS or CPU time materially against a complete baseline. The results of
+# both runs are kept as artifacts.
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: "Git ref to compare against (empty = latest release tag)"
+        required: false
+        default: ""
+      shapes:
+        description: "Comma-separated fixture shapes (empty = all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    name: stress
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build scanners
+        env:
+          BASELINE_REF: ${{ inputs.baseline_ref }}
+        run: |
+          set -euo pipefail
+          ref="${BASELINE_REF:-$(git describe --tags --abbrev=0)}"
+          echo "baseline: $ref"
+          mkdir -p "$RUNNER_TEMP/baseline-src" "$RUNNER_TEMP/bin"
+          git archive "$ref" | tar -x -C "$RUNNER_TEMP/baseline-src"
+          (cd "$RUNNER_TEMP/baseline-src" && go build -o "$RUNNER_TEMP/bin/scanner-baseline" ./cmd/scanner)
+          go build -o "$RUNNER_TEMP/bin/scanner-head" ./cmd/scanner
+          go build -o "$RUNNER_TEMP/bin/tfscale" ./test/tfscale/cmd/tfscale
+
+      - name: Fetch rule bundle
+        run: |
+          "$RUNNER_TEMP/bin/scanner-head" fetch-bundle \
+            --repo-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --output-dir "$RUNNER_TEMP/bundle"
+
+      - name: Generate fixtures
+        env:
+          SHAPES: ${{ inputs.shapes }}
+        run: '"$RUNNER_TEMP/bin/tfscale" gen -out "$RUNNER_TEMP/fixtures" -shapes "${SHAPES:-all}"'
+
+      - name: Benchmark baseline
+        env:
+          SHAPES: ${{ inputs.shapes }}
+        run: |
+          mkdir -p results
+          "$RUNNER_TEMP/bin/tfscale" bench -scanner "$RUNNER_TEMP/bin/scanner-baseline" -bundle "$RUNNER_TEMP/bundle" \
+            -fixtures "$RUNNER_TEMP/fixtures" -shapes "${SHAPES:-all}" -label baseline -out results/baseline.json
+
+      - name: Benchmark head
+        env:
+          SHAPES: ${{ inputs.shapes }}
+        run: |
+          "$RUNNER_TEMP/bin/tfscale" bench -scanner "$RUNNER_TEMP/bin/scanner-head" -bundle "$RUNNER_TEMP/bundle" \
+            -fixtures "$RUNNER_TEMP/fixtures" -shapes "${SHAPES:-all}" -label head -out results/head.json
+
+      - name: Compare
+        # bash, not the default shell, so the pipe keeps compare's exit status.
+        shell: bash
+        run: |
+          "$RUNNER_TEMP/bin/tfscale" compare -base results/baseline.json -head results/head.json \
+            -max-rss-ratio 1.15 -max-cpu-ratio 1.25 | tee results/comparison.txt
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tf-scale-stress
+          path: results/
+          retention-days: 90
