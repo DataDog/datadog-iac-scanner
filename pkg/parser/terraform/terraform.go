@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -107,6 +108,10 @@ func (p *Parser) Resolve(ctx context.Context,
 			masterUtils.HandlePanic(ctx, r, errMessage)
 		}
 	}()
+	fileContent, err = tfmodules.ResolveConfigContent(ctx, p.fsys, filename, "", fileContent)
+	if err != nil {
+		return nil, nil, err
+	}
 	vars = p.resolveDirVars(ctx, filepath.Dir(filename), filename, fileContent)
 	return fileContent, vars, nil
 }
@@ -253,6 +258,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	err error) {
 	contextLogger := logger.FromContext(ctx)
 	resolved, inputVariables, err := p.Resolve(ctx, fileContent, path, resolveReferences, maxResolverDepth)
+	if errors.Is(err, tfmodules.ErrSkippedLinkPlaceholder) {
+		return nil, nil, nil, nil, nil
+	}
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

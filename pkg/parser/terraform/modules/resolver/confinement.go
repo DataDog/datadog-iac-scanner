@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 func ConfineResolution(ctx context.Context, res *Resolution) (Resolution, error) {
@@ -35,6 +37,10 @@ func ConfineResolution(ctx context.Context, res *Resolution) (Resolution, error)
 }
 
 func ResolvePathWithinRoot(ctx context.Context, root, target string) (string, error) {
+	target, err := tfmodules.ResolveModuleDir(ctx, vfs.DiskFS{}, root, target, root)
+	if err != nil {
+		return "", err
+	}
 	resolvedRoot, err := pathutil.EvalSymlinksCached(ctx, root)
 	if err != nil {
 		return "", err

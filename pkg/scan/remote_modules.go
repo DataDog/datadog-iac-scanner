@@ -121,6 +121,14 @@ func (c *Client) resolveTerraformModulesForScan(
 	return result.Cleanup, result.ScanPaths, remoteSourceDirs, remoteModuleProvenance, nil
 }
 
+func remoteModulePackageRoots(directories map[string]engine.RemoteModuleDirectory) []string {
+	roots := make([]string, 0, len(directories))
+	for _, directory := range directories {
+		roots = append(roots, directory.PackageRoot)
+	}
+	return roots
+}
+
 // maxLoggedFailureSources caps the sources listed on one aggregated failure warning.
 const maxLoggedFailureSources = 5
 

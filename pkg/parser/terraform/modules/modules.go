@@ -335,7 +335,15 @@ func parseDirModules(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		extract, diags := extractForContent(extracts, getFileContent(file), file.FilePath)
+		content := getFileContent(file)
+		if len(content) <= maxLinkPlaceholderBytes {
+			resolved, err := ResolveConfigContent(ctx, fsys, file.FilePath, "", []byte(content))
+			if err != nil {
+				continue
+			}
+			content = string(resolved)
+		}
+		extract, diags := extractForContent(extracts, content, file.FilePath)
 		if diags.HasErrors() {
 			contextLogger.Warn().Msgf("Skipping file %s due to parse errors: %s", file.FilePath, diags.Error())
 			continue
@@ -421,8 +429,10 @@ func fillModuleAttrs(
 	if !mod.IsLocal {
 		return
 	}
-	absPath := ResolveLocalModuleDir(fsys, baseDir, sourcePath)
-	var err error
+	absPath, err := resolveLocalModuleDir(ctx, fsys, baseDir, sourcePath)
+	if err != nil {
+		return
+	}
 	mod.AbsSource, err = fsys.Abs(absPath)
 	if err != nil {
 		log.Warn().Msgf("Could not compute absolute path name for %v: %v", absPath, err)
@@ -741,6 +751,9 @@ func resolveModuleToLocalPath(
 	ctx context.Context, mod *ParsedModule, rootDir string, resolver RemoteResolver,
 ) (string, error) {
 	if mod.IsLocal {
+		if mod.AbsSource == "" {
+			return "", nil
+		}
 		return resolveModulePath(mod.AbsSource, rootDir), nil
 	}
 	if resolver == nil {
@@ -816,6 +829,7 @@ func enrichModule(
 	switch {
 	case enrichErr == nil:
 		mod.AttributesData = attributesData
+	case errors.Is(enrichErr, ErrSkippedLinkPlaceholder):
 	case errors.Is(enrichErr, os.ErrNotExist):
 		// fillModuleAttrs already warns about a missing local source.
 	default:
@@ -935,6 +949,11 @@ func generateEquivalentMap(
 	equivalentMap := make(map[string]ModuleAttributesInfo)
 	resourceTypesMap := make(map[string]map[string]bool)
 
+	var err error
+	modulePath, err = ResolveModuleDir(ctx, fsys, filepath.Dir(modulePath), modulePath, "")
+	if err != nil {
+		return nil, err
+	}
 	entries, err := fsys.ReadDir(modulePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -948,6 +967,9 @@ func generateEquivalentMap(
 	for _, name := range SelectHCLConfigNames(entries, modulePath, allow, "") {
 		path := filepath.Join(modulePath, name)
 		if err := processEquivalentMapFile(ctx, fsys, path, equivalentMap, resourceTypesMap); err != nil {
+			if errors.Is(err, ErrSkippedLinkPlaceholder) {
+				continue
+			}
 			return nil, err
 		}
 	}
@@ -977,9 +999,11 @@ func processEquivalentMapFile(
 ) error {
 	contextLogger := logger.FromContext(ctx)
 
-	contents, err := fsys.ReadFile(filepath.Clean(path))
+	contents, err := ReadConfigFile(ctx, fsys, path, "")
 	if err != nil {
-		contextLogger.Error().Msgf("Failed to read file: %s", path)
+		if !errors.Is(err, ErrSkippedLinkPlaceholder) {
+			contextLogger.Error().Msgf("Failed to read file: %s", path)
+		}
 		return err
 	}
 
@@ -1095,6 +1119,7 @@ func MaxConfigFileBytesForScan(maxFileSizeMB int) int64 {
 func LoadTFFilesFromDirWithLimit(
 	ctx context.Context, dir, packageRoot string, maxBytes int64,
 ) (model.FileMetadatas, error) {
+	ctx = WithMaxConfigFileBytes(ctx, maxBytes)
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving module dir %q: %w", dir, err)
@@ -1114,8 +1139,11 @@ func LoadTFFilesFromDirWithLimit(
 			contextLogger.Debug().Msgf("Skipping module calls in %q: larger than %d bytes", path, maxBytes)
 			continue
 		}
-		data, readErr := os.ReadFile(path) //nolint:gosec
+		data, readErr := ReadConfigFile(ctx, vfs.DiskFS{}, path, packageRoot)
 		if readErr != nil {
+			if errors.Is(readErr, ErrSkippedLinkPlaceholder) {
+				continue
+			}
 			return nil, fmt.Errorf("reading %q: %w", path, readErr)
 		}
 		files = append(files, &model.FileMetadata{

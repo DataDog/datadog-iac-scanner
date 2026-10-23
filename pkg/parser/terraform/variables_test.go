@@ -176,7 +176,7 @@ func TestGetInputVariablesFromFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inputVars, err := getInputVariablesFromFile(vfs.DiskFS{}, tt.filename)
+			inputVars, err := getInputVariablesFromFile(t.Context(), vfs.DiskFS{}, tt.filename)
 			if tt.wantErr {
 				require.NotNil(t, err)
 			} else {
