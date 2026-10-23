@@ -1132,18 +1132,6 @@ func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.
 	}
 }
 
-func (c *Inspector) interfaceToPayloadValue(
-	ctx context.Context,
-	value interface{},
-	cons *payloadHashCons,
-) (ast.Value, error) {
-	term, _, err := c.payloadTerm(ctx, value, cons)
-	if err != nil {
-		return nil, err
-	}
-	return term.Value, nil
-}
-
 // payloadTerm converts a document node to its canonical payload term and
 // returns the term's content key with it, so a parent mixes its children's
 // keys without looking them up.
@@ -1169,8 +1157,8 @@ func (c *Inspector) scalarToPayloadTerm(
 	value interface{},
 	cons *payloadHashCons,
 ) (*ast.Term, hashConsKey, error) {
-	key, comparable := scalarKey(value)
-	if comparable {
+	key, cacheable := scalarKey(value)
+	if cacheable {
 		if s, ok := cons.scalars[key]; ok {
 			return s.term, s.hash, nil
 		}
@@ -1183,7 +1171,7 @@ func (c *Inspector) scalarToPayloadTerm(
 	// per distinct scalar.
 	transformed := c.TransformJsonencodeInPayload(ctx, converted)
 	s := convertedScalar{term: ast.NewTerm(transformed), hash: hashConsScalarKey(transformed)}
-	if comparable {
+	if cacheable {
 		cons.scalars[key] = s
 	}
 	return s.term, s.hash, nil

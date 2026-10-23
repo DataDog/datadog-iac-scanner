@@ -503,7 +503,7 @@ func (e *Evaluator) evaluate(
 	allVisited *visitSet,
 	out *[]ResolvedResource,
 ) (map[string]cty.Value, error) {
-	if err := e.evaluationStop(ctx, dir, addr, visiting); err != nil {
+	if err := e.evaluationStop(ctx, dir, visiting); err != nil {
 		return nil, err
 	}
 
@@ -513,8 +513,8 @@ func (e *Evaluator) evaluate(
 		packageRoot: packageRoot,
 		inputs:      e.keyMemo.inputsKey(inputs),
 	}
-	if outputs, hit, err := e.reuseCachedEvaluation(cacheKey, addr, chain, allVisited, out); hit {
-		return outputs, err
+	if outputs, hit := e.reuseCachedEvaluation(cacheKey, addr, chain, allVisited, out); hit {
+		return outputs, nil
 	}
 	if e.prepassDepth == 0 {
 		e.report.ModuleEvaluations++
@@ -704,7 +704,7 @@ func (e *Evaluator) installModuleOutputs(
 
 func (e *Evaluator) evaluationStop(
 	ctx context.Context,
-	dir, addr string,
+	dir string,
 	visiting map[string]bool,
 ) error {
 	if visiting[dir] {
@@ -729,11 +729,10 @@ func (e *Evaluator) reuseCachedEvaluation(
 ) (
 	outputs map[string]cty.Value,
 	hit bool,
-	err error,
 ) {
 	entry, ok := e.cache[key]
 	if !ok {
-		return nil, false, nil
+		return nil, false
 	}
 	if e.prepassDepth == 0 {
 		e.report.CacheHits++
@@ -743,7 +742,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 	}
 	e.instances = append(e.instances, entry.rebaseInstances(addr, chain)...)
 	entry.appendRebased(out, addr, chain)
-	return entry.outputs, true, nil
+	return entry.outputs, true
 }
 
 func (e *Evaluator) preinjectResourceRefs(
@@ -921,25 +920,10 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	allVisited *visitSet,
 	out *[]ResolvedResource,
 ) (moduleOutputs map[string]cty.Value) {
-	contextLogger := logger.FromContext(ctx)
-
 	// Seed with the pre-pass values already in evalCtx so that forward dependencies
 	// (module B referencing module C where C appears later in file order) survive the
 	// first iteration's evalCtx.Variables["module"] update.
-	moduleOutputs = map[string]cty.Value{}
-	if existing, ok := evalCtx.Variables["module"]; ok &&
-		existing.IsKnown() &&
-		!existing.IsNull() &&
-		existing.Type().IsObjectType() {
-		for it := existing.ElementIterator(); it.Next(); {
-			k, v := it.Element()
-			name, ok := ctyutil.ConcreteString(k)
-			if !ok {
-				continue
-			}
-			moduleOutputs[name] = v
-		}
-	}
+	moduleOutputs = prepassModuleOutputs(evalCtx)
 
 	for _, mb := range moduleBlocks {
 		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
@@ -952,39 +936,11 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		var keys, outs []cty.Value
 		if n := e.concurrentInstances(&plan); n > 0 {
 			keys, outs = e.evaluateCallConcurrently(ctx, mb, &call, &plan, n, rootDir, addr, childChain, visiting, allVisited, out)
-			if e.stopped() != nil {
-				return moduleOutputs
-			}
 		} else {
-			for instance := range plan.all {
-				if e.stopped() != nil {
-					return moduleOutputs
-				}
-				modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
-				childAddr := instance.address(addr, call.label)
-				instancesBefore := len(e.instances)
-				mark := e.resultMark(out)
-
-				childOuts, cErr := e.evaluate(
-					ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
-					childChain, visiting, allVisited, out,
-				)
-				keys = append(keys, instance.key)
-				if cErr != nil {
-					if isReportableModuleEvalError(cErr) {
-						contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, cErr)
-					}
-					// Deliberately not added to allVisited: the module was not resolved, so
-					// it must keep being scanned where it is written.
-					e.instances = e.instances[:instancesBefore]
-					e.discardFrom(mark)
-					outs = append(outs, cty.NilVal)
-					continue
-				}
-				e.recordModuleInstance(call.dir, childAddr, childChain)
-				allVisited.add(call.dir)
-				outs = append(outs, objectOrEmpty(childOuts))
-			}
+			keys, outs = e.evaluateCallInOrder(ctx, mb, &call, &plan, rootDir, addr, childChain, visiting, allVisited, out)
+		}
+		if e.stopped() != nil {
+			return moduleOutputs
 		}
 		if value, ok := moduleOutputsValue(&plan, keys, outs); ok {
 			moduleOutputs[call.label] = value
@@ -992,6 +948,70 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 	}
 	return moduleOutputs
+}
+
+// prepassModuleOutputs returns the module outputs the pre-pass already bound
+// in evalCtx, by call label.
+func prepassModuleOutputs(evalCtx *hcl.EvalContext) map[string]cty.Value {
+	outputs := map[string]cty.Value{}
+	existing, ok := evalCtx.Variables["module"]
+	if !ok || !existing.IsKnown() || existing.IsNull() || !existing.Type().IsObjectType() {
+		return outputs
+	}
+	for it := existing.ElementIterator(); it.Next(); {
+		k, v := it.Element()
+		if name, ok := ctyutil.ConcreteString(k); ok {
+			outputs[name] = v
+		}
+	}
+	return outputs
+}
+
+// evaluateCallInOrder evaluates the instances of a module call one by one,
+// returning the key and outputs of each, cty.NilVal for one that failed. It
+// stops at the first instance it reaches once evaluation is stopped.
+func (e *Evaluator) evaluateCallInOrder(
+	ctx context.Context,
+	mb *hclsyntax.Block,
+	call *moduleCall,
+	plan *moduleExpansionPlan,
+	rootDir, addr string,
+	childChain []CallSite,
+	visiting map[string]bool,
+	allVisited *visitSet,
+	out *[]ResolvedResource,
+) (keys, outs []cty.Value) {
+	contextLogger := logger.FromContext(ctx)
+	for instance := range plan.all {
+		if e.stopped() != nil {
+			return keys, outs
+		}
+		modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
+		childAddr := instance.address(addr, call.label)
+		instancesBefore := len(e.instances)
+		mark := e.resultMark(out)
+
+		childOuts, cErr := e.evaluate(
+			ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
+			childChain, visiting, allVisited, out,
+		)
+		keys = append(keys, instance.key)
+		if cErr != nil {
+			if isReportableModuleEvalError(cErr) {
+				contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, cErr)
+			}
+			// Deliberately not added to allVisited: the module was not resolved, so
+			// it must keep being scanned where it is written.
+			e.instances = e.instances[:instancesBefore]
+			e.discardFrom(mark)
+			outs = append(outs, cty.NilVal)
+			continue
+		}
+		e.recordModuleInstance(call.dir, childAddr, childChain)
+		allVisited.add(call.dir)
+		outs = append(outs, objectOrEmpty(childOuts))
+	}
+	return keys, outs
 }
 
 // evaluateCallConcurrently evaluates the n instances of a module call on

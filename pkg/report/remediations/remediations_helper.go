@@ -30,7 +30,7 @@ func TransformToSarifFix(ctx context.Context, vuln model.VulnerableFile, startLo
 }
 
 // keyValRegex matches a key and its value (list, quoted or unquoted).
-var keyValRegex = regexp.MustCompile(`(?m)["']?(\w+)["']?\s*(?::|=)\s*(\[.*?\]|".*?"|[^#=][^#]*)`)
+var keyValRegex = regexp.MustCompile(`(?m)["']?(\w+)["']?\s*[:=]\s*(\[.*?\]|".*?"|[^#=][^#]*)`)
 
 // nolint:gocritic,gocyclo
 func buildReplacementFix(ctx context.Context, vuln model.VulnerableFile,

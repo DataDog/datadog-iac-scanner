@@ -221,7 +221,6 @@ func (r *Run) readEntry(entry map[string]any) {
 	if v, ok := entry["resource_budget_exhausted"].(bool); ok && v {
 		r.BudgetExhausted = true
 	}
-
 }
 
 func intField(entry map[string]any, key string, dst *int) {

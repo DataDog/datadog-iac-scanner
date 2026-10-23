@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"

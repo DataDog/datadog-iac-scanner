@@ -477,3 +477,9 @@ func Test_postScanReleasesSummarizedFindings(t *testing.T) {
 	require.Equal(t, RuleTiming{Name: "slow", Time: time.Minute}, md.RuleStats.SlowestRule)
 	require.Positive(t, md.Stats.Duration)
 }
+
+// generateMetadata is the metadata postScan generates for scanResults.
+func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.Time) ScanMetadata {
+	return newMetadata(c.generateStats(scanResults, endTime.Sub(startTime)), c.generateRuleStats(scanResults),
+		startTime, endTime, c.ScanParams.SCIInfo.DiffAware.Enabled)
+}

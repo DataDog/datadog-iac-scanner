@@ -977,8 +977,16 @@ func (g *docGroup) setAttribution(key string, attr *model.ModuleAttribution) {
 // different resources into one finding.
 type docContentKey struct{ a, b uint64 }
 
-// instantiatedDocs emits one synthetic OPA document per (module call, defining
-// file), holding every resource that call resolved in that file.
+// rootDocs is what prepareRootDocs makes of one root's resources apart from
+// the roots merged before it: every document the root resolved to, keyed by
+// its content, to be deduplicated against those roots by mergeRootDocs.
+type rootDocs struct {
+	groups        []*docGroup
+	resourceCount int
+}
+
+// Instantiated resources are emitted as one synthetic OPA document per (module
+// call, defining file), holding every resource that call resolved in that file.
 //
 // This is exactly the shape an ordinary Terraform file has in the payload: one
 // document, all of the file's resources, nothing from its siblings. A rule
@@ -998,36 +1006,9 @@ type docContentKey struct{ a, b uint64 }
 // recorded in extras so their findings are cloned after evaluation, keeping
 // per-call-site attribution without re-evaluating identical input.
 //
-// synthetic holds, at each document's position, the file the document stands
-// for; documents of one call in one file share it, its ID being the first
-// one's document id.
-func instantiatedDocs(
-	resources []tfeval.ResolvedResource,
-	byAbsPath map[string]*model.FileMetadata,
-	repoPath string,
-	targets *ruleTargets,
-	seen map[docContentKey]string,
-	extras map[string][]extraCallerInfo,
-	instantiated instantiatedIndex,
-	lookup moduleProvenanceLookup,
-	attributions *moduleAttributionCache,
-	lineInfo instanceLineInfo,
-) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
-	prepared := prepareRootDocs(resources, byAbsPath, repoPath, targets, lookup, attributions)
-	docs, synthetic = mergeRootDocs(prepared, seen, extras, instantiated, lineInfo)
-	return docs, synthetic, prepared.resourceCount
-}
-
-// rootDocs is what instantiatedDocs makes of one root's resources apart from
-// the roots merged before it: every document the root resolved to, keyed by
-// its content, to be deduplicated against those roots by mergeRootDocs.
-type rootDocs struct {
-	groups        []*docGroup
-	resourceCount int
-}
-
-// prepareRootDocs groups a root's resources into documents and builds them.
-// It reads nothing another root writes, so roots are prepared concurrently.
+// prepareRootDocs groups a root's resources into those documents and builds
+// them. It reads nothing another root writes, so roots are prepared
+// concurrently.
 func prepareRootDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
@@ -1173,6 +1154,10 @@ func groupDocument(g *docGroup) model.Document {
 // mergeRootDocs adds a prepared root's documents to those of the roots merged
 // before it: a document whose content one of them already has is recorded as
 // an extra caller of that one instead.
+//
+// synthetic holds, at each document's position, the file the document stands
+// for; documents of one call in one file share it, its ID being the first
+// one's document id.
 func mergeRootDocs(
 	prepared rootDocs,
 	seen map[docContentKey]string,

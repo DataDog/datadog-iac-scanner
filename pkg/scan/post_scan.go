@@ -159,11 +159,6 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 	return metadata, nil
 }
 
-func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.Time) ScanMetadata {
-	return newMetadata(c.generateStats(scanResults, endTime.Sub(startTime)), c.generateRuleStats(scanResults),
-		startTime, endTime, c.ScanParams.SCIInfo.DiffAware.Enabled)
-}
-
 func newMetadata(stats ScanStats, ruleStats RuleStats, startTime, endTime time.Time, diffAware bool) ScanMetadata {
 	return ScanMetadata{
 		StartTime:      startTime,
