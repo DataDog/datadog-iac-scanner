@@ -174,7 +174,7 @@ func (d *moduleData) readsModules() bool {
 // refreshedWithModule reports whether the data blocks were already refreshed
 // against the given module.* value.
 func (d *moduleData) refreshedWithModule(value cty.Value) bool {
-	return d != nil && !d.moduleAtRefresh.IsNull() && d.moduleAtRefresh.RawEquals(value)
+	return d != nil && !d.moduleAtRefresh.IsNull() && equalValues(d.moduleAtRefresh, value)
 }
 
 // localsReadingRoot returns the locals reading roots, directly or through
@@ -228,7 +228,7 @@ func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
 	}
 	for pass := 0; pass <= bound; pass++ {
 		value := d.evaluate(ctx, evalCtx)
-		if existing, ok := evalCtx.Variables[blockTypeData]; ok && existing.RawEquals(value) {
+		if existing, ok := evalCtx.Variables[blockTypeData]; ok && equalValues(existing, value) {
 			break
 		}
 		evalCtx.Variables[blockTypeData] = value
@@ -455,7 +455,7 @@ func sameCtyValues(a, b map[string]cty.Value) bool {
 	}
 	for name, v := range a {
 		w, ok := b[name]
-		if !ok || !v.RawEquals(w) {
+		if !ok || !equalValues(v, w) {
 			return false
 		}
 	}
