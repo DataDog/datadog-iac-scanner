@@ -438,9 +438,13 @@ func evaluateRootModules(
 	}
 	for _, dir := range roots {
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVars(dir))
-		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
+		var prepared preparedRoot
 		if err == nil {
-			// instantiatedDocs has copied everything this root needs into plain
+			prepared = m.prepare(resources)
+		}
+		m.merge(dir, prepared, evaluator.TakeModuleInstances(), childDirs, err)
+		if err == nil {
+			// prepare has copied everything this root needs into plain
 			// documents, so the evaluator's cty values are dead here. Another root
 			// could in principle reuse them, but each root passes its own values to
 			// the modules it shares, so the hit rate does not pay for a peak that
@@ -479,9 +483,26 @@ type rootMerge struct {
 	lineInfo             instanceLineInfo
 }
 
+// preparedRoot is a root's documents prepared, with the attribution cache
+// they were prepared with.
+type preparedRoot struct {
+	docs         rootDocs
+	attributions *moduleAttributionCache
+}
+
+// prepare prepares a root's documents. It only reads what the merge shares,
+// so it runs on the worker that evaluated the root.
+func (m *rootMerge) prepare(resources []tfeval.ResolvedResource) preparedRoot {
+	attributions := newModuleAttributionCache()
+	return preparedRoot{
+		docs:         prepareRootDocs(resources, m.byAbsPath, m.repoPath, m.targets, m.lookup, attributions),
+		attributions: attributions,
+	}
+}
+
 func (m *rootMerge) merge(
 	dir string,
-	resources []tfeval.ResolvedResource,
+	prepared preparedRoot,
 	instances []tfeval.ModuleInstance,
 	childDirs map[string]bool,
 	err error,
@@ -507,21 +528,19 @@ func (m *rootMerge) merge(
 	for d := range childDirs {
 		m.actualCalledDirs[d] = true
 	}
-	attributions := newModuleAttributionCache()
 	if m.lineInfo == nil {
 		m.lineInfo = make(instanceLineInfo)
 	}
-	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions, m.lineInfo)
-	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
+	docs, syn := mergeRootDocs(prepared.docs, m.seen, m.extras, m.instantiated, m.lineInfo)
+	m.moduleCalls.record(instances, m.repoPath, m.lookup, prepared.attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
-	*m.resourceCount += count
+	*m.resourceCount += prepared.docs.resourceCount
 }
 
-// rootResult is a root evaluated by a worker.
+// rootResult is a root evaluated by a worker, its documents prepared.
 type rootResult struct {
-	resources    []tfeval.ResolvedResource
+	prepared     preparedRoot
 	instances    []tfeval.ModuleInstance
 	childDirs    map[string]bool
 	err          error
@@ -569,7 +588,7 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) {
 					return
 				default:
 				}
-				results[i] <- evaluateRoot(m.ctx, worker, roots[i])
+				results[i] <- m.evaluateRoot(worker, roots[i])
 			}
 		})
 	}
@@ -586,11 +605,13 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) {
 		}
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
 		m.evaluator.Report().Merge(&r.report)
-		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
+		m.merge(dir, r.prepared, r.instances, r.childDirs, r.err)
 	}
 }
 
-func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r rootResult) {
+// evaluateRoot evaluates a root on a worker and prepares its documents there,
+// so that merging it only adds them to those of the roots before it.
+func (m *rootMerge) evaluateRoot(worker *tfeval.Evaluator, dir string) (r rootResult) {
 	defer func() {
 		if p := recover(); p != nil {
 			r = rootResult{panicked: p}
@@ -599,8 +620,12 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 		r.report = worker.TakeReport()
 		worker.ReleaseEvalCache()
 	}()
-	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVars(dir))
+	var resources []tfeval.ResolvedResource
+	resources, _, r.childDirs, r.err = worker.EvaluateModule(m.ctx, dir, worker.LoadRootVars(dir))
 	r.instances = worker.TakeModuleInstances()
+	if r.err == nil {
+		r.prepared = m.prepare(resources)
+	}
 	return r
 }
 
@@ -926,6 +951,11 @@ type docGroup struct {
 	// ownAttributions is set once attributions is the group's own map rather
 	// than the one its call shares.
 	ownAttributions bool
+	// docID, contentKey and doc are the group's document, its id and the key
+	// of its content.
+	docID      string
+	contentKey docContentKey
+	doc        model.Document
 }
 
 // setAttribution records the attribution of a resource of the group.
@@ -983,6 +1013,30 @@ func instantiatedDocs(
 	attributions *moduleAttributionCache,
 	lineInfo instanceLineInfo,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
+	prepared := prepareRootDocs(resources, byAbsPath, repoPath, targets, lookup, attributions)
+	docs, synthetic = mergeRootDocs(prepared, seen, extras, instantiated, lineInfo)
+	return docs, synthetic, prepared.resourceCount
+}
+
+// rootDocs is what instantiatedDocs makes of one root's resources apart from
+// the roots merged before it: every document the root resolved to, keyed by
+// its content, to be deduplicated against those roots by mergeRootDocs.
+type rootDocs struct {
+	groups        []*docGroup
+	resourceCount int
+}
+
+// prepareRootDocs groups a root's resources into documents and builds them.
+// It reads nothing another root writes, so roots are prepared concurrently.
+func prepareRootDocs(
+	resources []tfeval.ResolvedResource,
+	byAbsPath map[string]*model.FileMetadata,
+	repoPath string,
+	targets *ruleTargets,
+	lookup moduleProvenanceLookup,
+	attributions *moduleAttributionCache,
+) rootDocs {
+	var resourceCount int
 	// Keys are structs of strings the resources already hold, not strings
 	// built per resource.
 	type slotKey struct{ callChain, fileID, kind, base string }
@@ -999,10 +1053,6 @@ func instantiatedDocs(
 	// the same pointer for every instance; a group meeting one that differs,
 	// because it depends on the iteration, takes its own copy of the map.
 	callAttributions := make(map[callKey]map[string]*model.ModuleAttribution)
-	// The documents of one call in one file stand for that file through one
-	// synthetic file, as they share its attributions: they only differ by
-	// document id, which their findings take as their file id.
-	callFiles := make(map[callKey]*model.FileMetadata)
 	// A base name repeats within one call and file whenever count/for_each
 	// expands a block. Document keys stay base-named so line detection can
 	// resolve them against the file's HCL, so repeats spill into a further
@@ -1075,68 +1125,94 @@ func instantiatedDocs(
 		}
 		g.setAttribution(moduleAttributionKey(kind, r.DefLine, r.DefColumn), attributions.attribution(r, repoPath, lookup))
 		g.entries = append(g.entries, entry)
-		// Recorded before deduplication: a document that dedupes away still
-		// covers its resource, through a finding cloned onto its call site.
-		instantiated.add(fm.ID, kind, base)
 		resourceCount++
 	}
 
-	docs = make([]model.Document, 0, len(order))
-	synthetic = make([]*model.FileMetadata, 0, len(order))
+	prepared := rootDocs{groups: make([]*docGroup, 0, len(order)), resourceCount: resourceCount}
 	for _, key := range order {
 		g := groups[key]
-		docID := g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
+		g.docID = g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
+		g.contentKey = groupContentKey(g)
+		g.doc = groupDocument(g)
+		prepared.groups = append(prepared.groups, g)
+	}
+	return prepared
+}
 
-		contentKey := groupContentKey(g)
-		if primaryDocID, dup := seen[contentKey]; dup {
+// groupDocument builds the document holding a group's resources.
+func groupDocument(g *docGroup) model.Document {
+	resource := make(map[string]interface{})
+	var data map[string]interface{}
+	for i := range g.entries {
+		e := &g.entries[i]
+		blocks, typ := resource, e.typ
+		if dataType, ok := strings.CutPrefix(e.typ, dataTypePrefix); ok {
+			if data == nil {
+				data = make(map[string]interface{})
+			}
+			blocks, typ = data, dataType
+		}
+		byName, ok := blocks[typ].(map[string]interface{})
+		if !ok {
+			byName = make(map[string]interface{})
+			blocks[typ] = byName
+		}
+		byName[e.baseName] = e.attrs
+	}
+	doc := model.Document{
+		"id":       g.docID,
+		"file":     g.fm.FilePath,
+		"resource": resource,
+	}
+	if data != nil {
+		doc["data"] = data
+	}
+	return doc
+}
+
+// mergeRootDocs adds a prepared root's documents to those of the roots merged
+// before it: a document whose content one of them already has is recorded as
+// an extra caller of that one instead.
+func mergeRootDocs(
+	prepared rootDocs,
+	seen map[docContentKey]string,
+	extras map[string][]extraCallerInfo,
+	instantiated instantiatedIndex,
+	lineInfo instanceLineInfo,
+) (docs []model.Document, synthetic []*model.FileMetadata) {
+	// The documents of one call in one file stand for that file through one
+	// synthetic file, as they share its attributions: they only differ by
+	// document id, which their findings take as their file id.
+	callFiles := make(map[callKey]*model.FileMetadata)
+	docs = make([]model.Document, 0, len(prepared.groups))
+	synthetic = make([]*model.FileMetadata, 0, len(prepared.groups))
+	for _, g := range prepared.groups {
+		// Recorded before deduplication: a document that dedupes away still
+		// covers its resources, through findings cloned onto its call site.
+		for i := range g.entries {
+			instantiated.add(g.fm.ID, g.entries[i].typ, g.entries[i].baseName)
+		}
+		if primaryDocID, dup := seen[g.contentKey]; dup {
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
 				callChain:    g.callChain,
-				docID:        docID,
+				docID:        g.docID,
 				attributions: g.attributions,
 			})
 			continue
 		}
-		seen[contentKey] = docID
-
-		resource := make(map[string]interface{})
-		var data map[string]interface{}
-		for i := range g.entries {
-			e := &g.entries[i]
-			blocks, typ := resource, e.typ
-			if dataType, ok := strings.CutPrefix(e.typ, dataTypePrefix); ok {
-				if data == nil {
-					data = make(map[string]interface{})
-				}
-				blocks, typ = data, dataType
-			}
-			byName, ok := blocks[typ].(map[string]interface{})
-			if !ok {
-				byName = make(map[string]interface{})
-				blocks[typ] = byName
-			}
-			byName[e.baseName] = e.attrs
-		}
-
-		doc := model.Document{
-			"id":       docID,
-			"file":     g.fm.FilePath,
-			"resource": resource,
-		}
-		if data != nil {
-			doc["data"] = data
-		}
-		docs = append(docs, doc)
+		seen[g.contentKey] = g.docID
+		docs = append(docs, g.doc)
 		// A group holding attributions of its own has a file of its own.
 		sf, ok := callFiles[g.call]
 		if !ok || g.ownAttributions {
-			sf = newInstanceFileMetadata(g.fm, lineInfo.of(g.fm), docID, g.callChain, g.attributions)
+			sf = newInstanceFileMetadata(g.fm, lineInfo.of(g.fm), g.docID, g.callChain, g.attributions)
 			if !g.ownAttributions {
 				callFiles[g.call] = sf
 			}
 		}
 		synthetic = append(synthetic, sf)
 	}
-	return docs, synthetic, resourceCount
+	return docs, synthetic
 }
 
 // convertedInstance is a resolved resource's document and its content hash;
