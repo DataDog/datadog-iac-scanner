@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -96,13 +97,16 @@ func (c *converter) convertInstances(
 		c.noteInstanceOverflow(ctx, block, plan, instances.MaxPerBlock)
 	}
 	var values []model.Document
-	add := func(value model.Document) {
-		for _, seen := range values {
+	var identities [][]string
+	add := func(value model.Document, suffix string) {
+		for i, seen := range values {
 			if reflect.DeepEqual(seen, value) {
+				identities[i] = append(identities[i], suffix)
 				return
 			}
 		}
 		values = append(values, value)
+		identities = append(identities, []string{suffix})
 	}
 	for _, item := range plan.Items {
 		name, iteration := plan.Variable(item)
@@ -113,7 +117,7 @@ func (c *converter) convertInstances(
 		if err != nil {
 			return nil, err
 		}
-		add(value)
+		add(value, address.InstanceSuffix(item.Key))
 	}
 	if plan.Truncated() {
 		c.dynamicLeft = dynamicblock.MaxGeneratedPerResource
@@ -121,7 +125,10 @@ func (c *converter) convertInstances(
 		if err != nil {
 			return nil, err
 		}
-		add(value)
+		add(value, "")
+	}
+	for i := range values {
+		values[i][InstanceAddressesKey] = identities[i]
 	}
 	c.instancesLeft -= extra
 	return values, nil

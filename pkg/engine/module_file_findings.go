@@ -16,7 +16,8 @@ import (
 
 // moduleCall is one evaluated call of a module directory.
 type moduleCall struct {
-	callChain string
+	callChain     string
+	rootModuleDir string
 	// attribution names the directory in ModuleCodeLocation.Filename. It is
 	// shared by every file of the directory and read-only.
 	attribution *model.ModuleAttribution
@@ -96,8 +97,9 @@ func (idx *moduleCallIndex) record(
 			continue
 		}
 		idx.calls[dir] = append(idx.calls[dir], moduleCall{
-			callChain:   moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
-			attribution: attr,
+			callChain:     moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
+			rootModuleDir: relativeModuleDir(moduleFileDir(instance.CallChain[0].CalledFrom, repoPath), repoPath),
+			attribution:   attr,
 		})
 	}
 }
@@ -180,6 +182,8 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 			call := &file.calls[j]
 			attributed := *v
 			attributed.ModuleCallChain = call.callChain
+			attributed.RootModuleDir = call.rootModuleDir
+			setAddressFallback(&attributed)
 			attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
 			out = append(out, attributed)
 		}

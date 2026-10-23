@@ -152,7 +152,7 @@ DatadogPolicy contains result if {
 			got, err := ins.Inspect(context.Background(), "test", parseTerraform(t, path), []string{"terraform"})
 			require.NoError(t, err)
 			require.Empty(t, ins.GetFailedQueries())
-			require.Len(t, got, 2, "identical instances collapse, distinct evidence survives")
+			require.Len(t, got, 3, "distinct instances survive even with identical evidence")
 			var values []string
 			for _, v := range got {
 				values = append(values, v.Remediation)
@@ -163,7 +163,7 @@ DatadogPolicy contains result if {
 				line := strings.Count(src[:strings.Index(src, needle)], "\n") + 1
 				require.Equal(t, line, v.Line)
 			}
-			require.ElementsMatch(t, []string{"public-read", "public-read-write"}, values)
+			require.ElementsMatch(t, []string{"public-read", "public-read", "public-read-write"}, values)
 
 			caller := filepath.Join(root, "stack", "main.tf")
 			require.NoError(t, os.MkdirAll(filepath.Dir(caller), 0o755))

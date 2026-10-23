@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
@@ -139,23 +140,29 @@ func expandJSONInstances(
 // one.
 func distinctJSONInstances(block *hcl.Block, plan *instances.Plan, evalCtx *hcl.EvalContext, src []byte) []model.Document {
 	var values []model.Document
-	add := func(ctx *hcl.EvalContext) {
+	var identities [][]string
+	add := func(ctx *hcl.EvalContext, suffix string) {
 		value := convertJSONBody(block.Body, ctx, src, block.DefRange.Start.Line)
-		for _, seen := range values {
+		for i, seen := range values {
 			if reflect.DeepEqual(seen, value) {
+				identities[i] = append(identities[i], suffix)
 				return
 			}
 		}
 		values = append(values, value)
+		identities = append(identities, []string{suffix})
 	}
 	for _, item := range plan.Items {
 		name, iteration := plan.Variable(item)
 		child := evalCtx.NewChild()
 		child.Variables = map[string]cty.Value{name: iteration}
-		add(child)
+		add(child, address.InstanceSuffix(item.Key))
 	}
 	if plan.Truncated() {
-		add(evalCtx)
+		add(evalCtx, "")
+	}
+	for i := range values {
+		values[i][converter.InstanceAddressesKey] = identities[i]
 	}
 	return values
 }

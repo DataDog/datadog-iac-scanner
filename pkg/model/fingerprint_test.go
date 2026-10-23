@@ -6,10 +6,34 @@
 package model
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestTerraformAddressFingerprint(t *testing.T) {
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
+	hash := func(file, root, addr, rule, platform string) string {
+		return GetDatadogFingerprintHash(sci, file, platform, "type", "provider-name", rule, "evidence", "caller", TerraformIdentity{RootModuleDir: root, ResourceAddress: addr})
+	}
+	addr := `module.a["x"].module.b[0].aws_s3_bucket.example["key"]`
+	want := sha256.Sum256([]byte("repo|stacks/prod|" + addr + "|rule"))
+	got := hash("old.tf", "stacks/prod", addr, "rule", "Terraform")
+	require.Equal(t, hex.EncodeToString(want[:]), got)
+	require.Equal(t, got, hash("new.tf", "stacks/prod", addr, "rule", "terraform"))
+	require.NotEqual(t, got, hash("old.tf", "stacks/dev", addr, "rule", "Terraform"))
+	require.NotEqual(t, got, hash("old.tf", "stacks/prod", addr+"[1]", "rule", "Terraform"))
+	require.NotEqual(t, got, hash("old.tf", "stacks/prod", addr, "other-rule", "Terraform"))
+	legacy := GetDatadogFingerprintHash(sci, "old.tf", "Terraform", "type", "provider-name", "rule", "evidence", "caller")
+	require.Equal(t, legacy, hash("old.tf", "stacks/prod", "", "rule", "Terraform"))
+	require.Equal(t, legacy, hash("old.tf", "", addr, "rule", "Terraform"))
+	for _, platform := range []string{"Dockerfile", "Kubernetes", "CloudFormation", "Ansible"} {
+		old := GetDatadogFingerprintHash(sci, "old.tf", platform, "type", "provider-name", "rule", "evidence", "caller")
+		require.Equal(t, old, hash("old.tf", "stacks/prod", addr, "rule", platform))
+	}
+}
 
 // Empty chain adds no segment; a chain changes the hash for Terraform and is ignored elsewhere.
 func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {

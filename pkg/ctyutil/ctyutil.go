@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -53,7 +54,7 @@ func FormatIndexKey(key cty.Value) (string, bool) {
 	}
 	switch key.Type() {
 	case cty.String:
-		return `["` + key.AsString() + `"]`, true
+		return "[" + string(hclwrite.TokensForValue(key).Bytes()) + "]", true
 	case cty.Number:
 		return "[" + key.AsBigFloat().Text('f', -1) + "]", true
 	default:

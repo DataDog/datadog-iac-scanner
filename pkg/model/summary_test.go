@@ -15,6 +15,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAddressIdentitySurvivesSummary(t *testing.T) {
+	v := Vulnerability{FileName: "/repo/stacks/main.tf", QueryID: "q", Platform: "Terraform", Severity: SeverityHigh,
+		ResourceAddress: "aws_s3_bucket.example[2]", RootModuleDir: "stacks"}
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{v}, "scan", nil, "/repo", SCIInfo{})
+	require.Len(t, summary.Queries, 1)
+	file := summary.Queries[0].Files[0]
+	require.Equal(t, v.ResourceAddress, file.ResourceAddress)
+	require.Equal(t, v.RootModuleDir, file.RootModuleDir)
+	require.Equal(t, stringToHash("|stacks|aws_s3_bucket.example[2]|q"), file.Fingerprint)
+	for _, value := range []interface{}{v, file} {
+		encoded, err := json.Marshal(value)
+		require.NoError(t, err)
+		require.Contains(t, string(encoded), v.ResourceAddress)
+	}
+}
+
 func TestModuleAttributionSerializationContract(t *testing.T) {
 	attribution := &ModuleAttribution{
 		CallSite: SourceLocation{Filename: "infra/main.tf", LineStart: 1, LineEnd: 4},

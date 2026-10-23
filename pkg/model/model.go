@@ -207,8 +207,13 @@ type FileMetadata struct {
 	Archive string
 	// ExpansionLayer is this document's position in an expanded Terraform file.
 	// Every layer holds the whole file, with different evaluated block instances.
-	// It is scan bookkeeping only; report identity remains based on the definition.
+	// It is scan bookkeeping only; resource addresses carry instance identity.
 	ExpansionLayer int
+	// ResourceAddresses maps block kind/type and document name to the actual
+	// Terraform instances represented by this layer. Empty addresses are explicit
+	// unresolved-instance fallbacks. It survives release of the document tree.
+	ResourceAddresses map[string][]string
+	RootModuleDir     string
 	// ExpansionContext marks blocks copied into a module instance layer to keep
 	// cross-resource rule context. False entries are actual instances, whose
 	// existing reporting multiplicity must be preserved.
@@ -494,13 +499,18 @@ type Vulnerability struct {
 	FileSource            []string         `json:"fileSource"`
 	BlockLocation         ResourceLocation `json:"blockLocation"`
 	Frameworks            []Framework      `json:"frameworks,omitempty"`
+	// Terraform identity is separate from provider names and source locations.
+	ResourceAddress         string `json:"resourceAddress,omitempty"`
+	ResourceAddressFallback string `json:"resourceAddressFallback,omitempty"`
+	RootModuleDir           string `json:"rootModuleDir,omitempty"`
+
 	// IsSuppressed marks a finding as kept-for-SARIF but excluded from
 	// severity counters; the kind/justification map directly to SARIF
 	// `suppressions[]`.
 	IsSuppressed             bool   `json:"isSuppressed,omitempty"`
 	SuppressionKind          string `json:"suppressionKind,omitempty"`
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
-	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
+	// ModuleCallChain: local-module instantiation path; empty for root resources; used by legacy fingerprint fallback.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.

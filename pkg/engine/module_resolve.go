@@ -31,9 +31,10 @@ import (
 // extraCallerInfo records a deduplicated module caller so its findings can be
 // cloned from the primary OPA doc after eval without adding a separate doc to input.document.
 type extraCallerInfo struct {
-	callChain    string
-	docID        string
-	attributions map[string]*model.ModuleAttribution
+	rootModuleDir string
+	callChain     string
+	docID         string
+	attributions  map[string]*model.ModuleAttribution
 }
 
 // moduleResolutionResult bundles all outputs of resolveModuleDocuments.
@@ -95,6 +96,10 @@ func (c *Inspector) instantiateLocalModules(
 			deduplicatedCallerCount(&res),
 		)
 	logModuleInstantiationSummary(&contextLogger, &res)
+	// Only actual graph roots own uninstantiated files. A called directory
+	// cannot be attributed by walking its filesystem parents: callers may live
+	// anywhere, and more than one root may reach the same directory.
+	assignGraphRootModuleDirs(files, res.rootDirs, c.repoPath)
 	if !res.ok {
 		return nil, nil, nil, nil
 	}
@@ -717,9 +722,6 @@ func resolveModuleDocuments(
 	// External module files still need their calls, whatever they declare.
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
 	declaresResource := declaresTargetedResource(files, targets)
-	if moduleCalls == nil && !declaresResource {
-		return moduleResolutionResult{}
-	}
 	// With no resource to resolve, a root only matters for the calls it makes
 	// to external module directories, so the others are not evaluated.
 	onlyExternalCalls := moduleCalls != nil && !declaresResource
@@ -760,6 +762,10 @@ func resolveModuleDocuments(
 		roots = append(roots, dir)
 	}
 	sort.Strings(roots)
+	if moduleCalls == nil && !declaresResource {
+		evaluator.ReleaseCaches()
+		return moduleResolutionResult{rootDirs: roots}
+	}
 
 	evaluatedRoots := roots
 	if onlyExternalCalls {
@@ -780,7 +786,7 @@ func resolveModuleDocuments(
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement.
 	if !rootEvalOK {
-		return moduleResolutionResult{}
+		return moduleResolutionResult{rootDirs: roots}
 	}
 
 	// A call site is only stripped once the module behind it actually produced
@@ -933,6 +939,7 @@ func rootsReaching(roots []string, graph staticCallGraph, targets map[string][]*
 // instantiatedResource is one resolved resource or data block as it is placed
 // into a document.
 type instantiatedResource struct {
+	address string
 	// typ is the block kind, the type prefixed with "data." for a data block.
 	typ       string
 	baseName  string
@@ -945,6 +952,7 @@ type instantiatedResource struct {
 
 // docGroup collects every resource one module call resolved in one defining file.
 type docGroup struct {
+	rootModuleDir string
 	fm            *model.FileMetadata
 	callChain     string
 	moduleAddress string
@@ -1021,6 +1029,7 @@ func instantiatedDocs(
 		attrs := tfeval.AttributesToDocument(r)
 		entry := instantiatedResource{
 			typ:       kind,
+			address:   resolvedResourceAddress(r),
 			baseName:  base,
 			fullName:  r.Name,
 			defLine:   r.DefLine,
@@ -1038,7 +1047,8 @@ func instantiatedDocs(
 		if !exists {
 			g = &docGroup{
 				fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer,
-				attributions: make(map[string]*model.ModuleAttribution),
+				rootModuleDir: resourceRootModuleDir(r, repoPath),
+				attributions:  make(map[string]*model.ModuleAttribution),
 			}
 			groups[key] = g
 			order = append(order, key)
@@ -1063,9 +1073,10 @@ func instantiatedDocs(
 		contentKey := groupContentKey(g)
 		if primaryDocID, dup := seen[contentKey]; dup {
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
-				callChain:    g.callChain,
-				docID:        docID,
-				attributions: cloneModuleAttributions(g.attributions),
+				callChain:     g.callChain,
+				rootModuleDir: g.rootModuleDir,
+				docID:         docID,
+				attributions:  cloneModuleAttributions(g.attributions),
 			})
 			continue
 		}
@@ -1101,6 +1112,11 @@ func instantiatedDocs(
 		docs = append(docs, doc)
 		file := newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions)
 		file.ExpansionContext = g.context
+		file.RootModuleDir = g.rootModuleDir
+		file.ResourceAddresses = make(map[string][]string)
+		for _, entry := range g.entries {
+			file.ResourceAddresses[layerBlockKey(entry.typ, entry.baseName)] = []string{entry.address}
+		}
 		synthetic = append(synthetic, file)
 	}
 	return docs, synthetic, resourceCount
@@ -1157,6 +1173,7 @@ func groupContentKey(g *docGroup) docContentKey {
 		e := &g.entries[i]
 		h.str(e.typ)
 		h.str(e.baseName)
+		h.str(e.address)
 		h.u64(uint64(e.defLine))
 		h.u64(e.attrsHash)
 	}

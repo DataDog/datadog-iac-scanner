@@ -1,0 +1,8 @@
+{
+  "resource": {
+    "terraform_data": {
+      "plain": { "input": "plain" },
+      "counted": { "count": 2, "input": "c" }
+    }
+  }
+}

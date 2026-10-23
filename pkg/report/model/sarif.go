@@ -488,6 +488,9 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 
 			// nolint:gocritic
 			resultTags := append(tags, resourceTypeTag, resourceNameTag)
+			if vulnerability.ResourceAddress != "" {
+				resultTags = append(resultTags, GetResourceAddressTag(vulnerability.ResourceAddress))
+			}
 
 			resourceLocation := vulnerability.ResourceLocation
 
@@ -561,6 +564,9 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 			primaryStart := resourceStartLocation
 			primaryEnd := resourceEndLocation
 			resultProperties := sarifProperties{"tags": resultTags}
+			if vulnerability.ResourceAddressFallback != "" {
+				resultProperties["resource_address_fallback"] = vulnerability.ResourceAddressFallback
+			}
 			moduleAttribution := vulnerability.ModuleAttribution
 			if moduleAttribution != nil && moduleAttribution.CallSite.Filename != "" {
 				primaryURI = moduleAttribution.CallSite.Filename

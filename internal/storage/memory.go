@@ -69,6 +69,7 @@ func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 			utils.ChooseQueryID(v.QueryID, v.LegacyQueryID),
 			line,
 			v.ModuleCallChain,
+			model.TerraformIdentity{RootModuleDir: v.RootModuleDir, ResourceAddress: v.ResourceAddress},
 		)
 		vulnDictionary[key] = v
 	}

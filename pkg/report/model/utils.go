@@ -86,3 +86,8 @@ func StringToHash(str string) string {
 	hashed := hash.Sum(nil)
 	return hex.EncodeToString(hashed)
 }
+
+// GetResourceAddressTag returns a Terraform instance identity tag.
+func GetResourceAddressTag(resourceAddress string) string {
+	return "IAC_RESOURCE_ADDRESS:" + resourceAddress
+}

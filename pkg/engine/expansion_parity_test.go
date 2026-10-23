@@ -126,12 +126,10 @@ func expansionParity(t *testing.T, name, source string) {
 		}
 		return out
 	}
-	want := map[string]int{"plain": 1, "counted": 1, "keyed": 1, "listed": 1, "constant": 1}
+	want := map[string]int{"plain": 1, "counted": 1, "keyed": 1, "listed": 1, "constant": 2}
 	require.Equal(t, want, counts(flat), "flat")
 
-	// A module call reports each instance, so two instances that do not
-	// differ report twice at the same place; a plain file reports it once.
-	want["constant"] = 2
+	// Both paths report each actual instance, including identical values.
 	require.Equal(t, want, counts(module), "module")
 	for _, finding := range module {
 		require.NotNil(t, finding.ModuleAttribution, "expanded findings retain module provenance")

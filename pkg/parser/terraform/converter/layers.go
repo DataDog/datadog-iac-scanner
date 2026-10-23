@@ -12,6 +12,10 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
+// InstanceAddressesKey is transient conversion metadata, removed before rule evaluation.
+// Empty suffixes stand for unresolved instances, never a fabricated index.
+const InstanceAddressesKey = "_dd_instance_addresses"
+
 // MaxExtraInstances bounds extra block conversions per file. Each block also
 // uses the shared resolver's per-block cap. Refused blocks stay as written.
 const MaxExtraInstances = 5000

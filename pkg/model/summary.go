@@ -45,11 +45,16 @@ type VulnerableFile struct {
 	ResourceSource        string           `json:"resource_source,omitempty"`
 	FileSource            []string         `json:"file_source,omitempty"`
 	BlockLocation         ResourceLocation `json:"block_location,omitempty"`
+	// Terraform instance identity and explicit legacy-fingerprint fallback.
+	ResourceAddress         string `json:"resource_address,omitempty"`
+	ResourceAddressFallback string `json:"resource_address_fallback,omitempty"`
+	RootModuleDir           string `json:"root_module_dir,omitempty"`
+
 	// Suppression metadata; see Vulnerability.IsSuppressed.
 	IsSuppressed             bool   `json:"is_suppressed,omitempty"`
 	SuppressionKind          string `json:"suppression_kind,omitempty"`
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
-	// ModuleCallChain: local-module call path; empty for root; included in fingerprint.
+	// ModuleCallChain: local-module call path; empty for root; used by legacy fingerprint fallback.
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
@@ -341,6 +346,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			utils.ChooseQueryID(item.QueryID, item.LegacyQueryID),
 			identityLine,
 			item.ModuleCallChain,
+			TerraformIdentity{RootModuleDir: item.RootModuleDir, ResourceAddress: item.ResourceAddress},
 		)
 
 		qItem := q[item.QueryID]
@@ -351,6 +357,9 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			VulnLines:                item.VulnLines,
 			ResourceType:             item.ResourceType,
 			ResourceName:             item.ResourceName,
+			ResourceAddress:          item.ResourceAddress,
+			ResourceAddressFallback:  item.ResourceAddressFallback,
+			RootModuleDir:            item.RootModuleDir,
 			SearchKey:                item.SearchKey,
 			SearchValue:              item.SearchValue,
 			SearchLine:               item.SearchLine,

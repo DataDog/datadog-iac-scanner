@@ -30,6 +30,9 @@ type TFPlan struct {
 	// TfplanMeta is a reserved top-level map, parallel to Resource (not
 	// nested inside it), keyed exactly like Resource[type][flattened-key].
 	TfplanMeta map[string]map[string]tfplanResourceMeta `json:"_dd_tfplan_meta,omitempty"`
+	// DataAddresses retains original addresses for resolved prior-state data,
+	// separate from managed resources with potentially identical type/name keys.
+	DataAddresses map[string]map[string]string `json:"_dd_tfplan_data_addresses,omitempty"`
 }
 
 // TFPlanResource is keyed by resource name, plus a reserved "_dd_lines" key
@@ -507,6 +510,13 @@ func (kp *TFPlan) readPriorStateData(
 
 		typeData := kp.Data[resource.Type]
 		typeData[dataKey] = resource.AttributeValues
+		if kp.DataAddresses == nil {
+			kp.DataAddresses = make(map[string]map[string]string)
+		}
+		if kp.DataAddresses[resource.Type] == nil {
+			kp.DataAddresses[resource.Type] = make(map[string]string)
+		}
+		kp.DataAddresses[resource.Type][dataKey] = resource.Address
 
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)

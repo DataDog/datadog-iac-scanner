@@ -30,6 +30,7 @@ func stampFingerprints(issue *model.QueryResult) {
 			utils.ChooseQueryID(issue.QueryID, issue.LegacyQueryID),
 			file.LineWithVulnerability,
 			file.ModuleCallChain,
+			model.TerraformIdentity{RootModuleDir: file.RootModuleDir, ResourceAddress: file.ResourceAddress},
 		)
 	}
 }
@@ -51,6 +52,28 @@ func TestNewSarifReport(t *testing.T) {
 	require.Equal(t, constants.URL, sarif.Runs[0].Tool.Driver.ToolURI)
 	require.Equal(t, constants.Fullname, sarif.Runs[0].Tool.Driver.ToolFullName)
 	require.Equal(t, constants.Version, sarif.Runs[0].Tool.Driver.ToolVersion)
+}
+
+func TestSarifResourceAddressTagAndFingerprint(t *testing.T) {
+	issue := model.QueryResult{QueryID: "address-rule", Platform: "Terraform", Severity: model.SeverityHigh,
+		Files: []model.VulnerableFile{{FileName: "main.tf", ResourceType: "aws_s3_bucket", ResourceName: "example",
+			ResourceAddress: `module.a["x"].aws_s3_bucket.example[2]`, RootModuleDir: "stacks/prod",
+			ResourceLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 1, Col: 1}, End: model.ResourceLine{Line: 2, Col: 2}}}}}
+	stampFingerprints(&issue)
+	report := NewSarifReport().(*sarifReport)
+	_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+	require.NoError(t, err)
+	require.Len(t, report.Runs[0].Results, 1)
+	result := report.Runs[0].Results[0]
+	require.Contains(t, result.ResultProperties["tags"], "IAC_RESOURCE_ADDRESS:"+issue.Files[0].ResourceAddress)
+	require.Equal(t, issue.Files[0].Fingerprint, result.PartialFingerprints.DatadogFingerprint)
+
+	issue.Files[0].ResourceAddress = ""
+	issue.Files[0].ResourceAddressFallback = "resource_address_unresolved"
+	report = NewSarifReport().(*sarifReport)
+	_, err = report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+	require.NoError(t, err)
+	require.Equal(t, "resource_address_unresolved", report.Runs[0].Results[0].ResultProperties["resource_address_fallback"])
 }
 
 type sarifTest struct {
