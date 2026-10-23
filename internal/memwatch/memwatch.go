@@ -10,6 +10,7 @@ package memwatch
 
 import (
 	"context"
+	"runtime"
 	"sync"
 
 	"github.com/rs/zerolog"
@@ -71,9 +72,16 @@ func (w *Watcher) Stop() {
 		return
 	}
 
+	// Cumulative allocation totals let runs be compared for churn, which peak
+	// RSS alone hides behind GC pacing.
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
 	w.logger.Info().
 		Uint64("peak_rss_bytes", w.peakBytes).
 		Str("peak_rss_phase", w.peakPhase).
+		Uint64("go_total_alloc_bytes", stats.TotalAlloc).
+		Uint64("go_mallocs", stats.Mallocs).
+		Uint32("go_num_gc", stats.NumGC).
 		Msg("memwatch: peak resident memory summary")
 }
 

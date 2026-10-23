@@ -39,8 +39,10 @@ func TestWatcherLogsSummary(t *testing.T) {
 	if !ok || phase == "" {
 		t.Fatalf("expected peak_rss_phase in summary, got %q", out)
 	}
-	if _, ok := entry["peak_rss_bytes"].(float64); !ok {
-		t.Fatalf("expected peak_rss_bytes in summary, got %q", out)
+	for _, key := range []string{"peak_rss_bytes", "go_total_alloc_bytes", "go_mallocs"} {
+		if v, ok := entry[key].(float64); !ok || v <= 0 {
+			t.Fatalf("expected positive %s in summary, got %q", key, out)
+		}
 	}
 }
 
