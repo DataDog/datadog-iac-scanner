@@ -174,3 +174,30 @@ func TestLoadQuery_CustomInputNotCached(t *testing.T) {
 	require.NoError(t, err)
 	require.NotSame(t, first, second, "custom-input queries must bypass the cache even when it is enabled")
 }
+
+// Without the cache, a query carrying no custom InputData still reads the
+// scan's shared base store rather than a store of its own parsed again; a
+// query with custom InputData reads its own merged data.
+func TestLoadQuery_UncachedQueriesReadTheBaseStore(t *testing.T) {
+	clearPreparedCache()
+	platform := "Terraform"
+	body := "DatadogPolicy contains v if { v := data.marker }\n"
+	plain := staticQuery(platform, "q1", body)
+	custom := staticQuery(platform, "q2", body)
+	custom.InputData = `{"marker":"custom"}`
+	loader := newCacheTestLoader(t, platform, []model.QueryMetadata{plain, custom})
+	stores, hashes := baseStoresFor(platform, `{"marker":"base"}`)
+	ctx := context.Background()
+
+	for _, c := range []struct {
+		query model.QueryMetadata
+		want  string
+	}{{plain, "base"}, {custom, "custom"}} {
+		prepared, err := loader.LoadQuery(ctx, &c.query, nil, stores, hashes, false)
+		require.NoError(t, err)
+		rs, err := prepared.Eval(ctx)
+		require.NoError(t, err)
+		require.Len(t, rs, 1)
+		require.Equal(t, []interface{}{c.want}, rs[0].Bindings["result"], c.query.Query)
+	}
+}

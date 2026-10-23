@@ -2125,13 +2125,15 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		hasCustomInput := !source.IsEmptyInputData(query.InputData)
 		prebuilt, hasBaseStore := baseStores[query.Platform]
 
+		// A query without custom InputData reads the shared per-platform base
+		// store: its merged input data is the store's, which is read-only and
+		// parsed once per scan instead of once per query.
+		useBaseStore := hasBaseStore && !hasCustomInput
 		// The compiled query is cacheable only when the caller enabled the cache
-		// (server mode via --use-rules-cache) AND it uses the shared per-platform
-		// base store (no custom per-query InputData, and a base store exists for
-		// the platform). The cache key folds in the base data hash so a cached
-		// query is reused only by a scan with identical base data — the store it
-		// bakes in.
-		useCache := cacheEnabled && hasBaseStore && !hasCustomInput
+		// (server mode via --use-rules-cache) AND it uses the shared base store.
+		// The cache key folds in the base data hash so a cached query is reused
+		// only by a scan with identical base data — the store it bakes in.
+		useCache := cacheEnabled && useBaseStore
 		var cacheKey uint64
 		if useCache {
 			cacheKey = preparedCacheKey(query, q.platformKeyBases[query.Platform], baseDataHashes[query.Platform])
@@ -2141,7 +2143,7 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		}
 
 		var store storage.Store
-		if useCache {
+		if useBaseStore {
 			store = prebuilt
 		} else {
 			mergedInputData, err := q.buildMergedInputData(query, modules)
