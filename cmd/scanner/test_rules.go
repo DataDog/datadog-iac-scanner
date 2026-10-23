@@ -427,10 +427,11 @@ func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (
 		// Computed once per file and shared across every document's
 		// FileMetadata below; docs.Content is identical for every document.
 		linesOriginalData := scanUtils.SplitLines(docs.Content)
-		for _, doc := range docs.Docs {
+		for docIdx, doc := range docs.Docs {
 			files = append(files, &model.FileMetadata{
 				ID:                uuid.NewString(),
 				ScanID:            "test",
+				ExpansionLayer:    docs.ExpansionLayer(docIdx),
 				Document:          runner.PrepareScanDocument(ctx, doc, docs.Kind),
 				LineInfoDocument:  doc,
 				OriginalData:      docs.Content,

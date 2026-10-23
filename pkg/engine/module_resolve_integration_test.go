@@ -66,10 +66,11 @@ func parseTerraform(t *testing.T, path string) model.FileMetadatas {
 	require.NoError(t, err)
 
 	var out model.FileMetadatas
-	for _, doc := range docs {
+	for layer, doc := range docs {
 		out = append(out, &model.FileMetadata{
 			ID:                uuid.NewString(),
 			ScanID:            "test",
+			ExpansionLayer:    layer,
 			Document:          doc,
 			LineInfoDocument:  doc,
 			OriginalData:      string(content),

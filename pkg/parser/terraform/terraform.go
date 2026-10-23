@@ -34,13 +34,13 @@ const (
 	terraformDataIdentifier = "data"
 )
 
-// Converter returns content json, error line, error
+// Converter returns the documents of a file (see converter.ConvertAll) and an error.
 type Converter func(
 	ctx context.Context,
 	file *hcl.File,
 	inputVariables converter.VariableMap,
 	opts converter.Options,
-) (model.Document, error)
+) ([]model.Document, error)
 
 // Parser struct that contains the function to parse file and the number of retries if something goes wrong
 type Parser struct {
@@ -80,7 +80,7 @@ func (p *Parser) SetMergeAllow(paths []string) {
 func NewDefault() *Parser {
 	return &Parser{
 		numOfRetries: RetriesDefaultValue,
-		convertFunc:  converter.Convert,
+		convertFunc:  converter.ConvertAll,
 		fsys:         vfs.DiskFS{},
 	}
 }
@@ -258,8 +258,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	}
 
 	if tfpath.IsJSONConfig(path) {
-		fc, parseErr := parseJSONConfig(resolved, path, inputVariables)
-		json, extraErr := addExtraInfo(ctx, []model.Document{fc}, path)
+		layers, parseErr := parseJSONConfigLayers(resolved, path, inputVariables)
+		json, extraErr := addExtraInfo(ctx, layers, path)
 		if extraErr != nil {
 			return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(extraErr, "failed terraform parse")
 		}
@@ -286,11 +286,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 
 	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
 
-	fc, parseErr := p.convertFunc(ctx, file, inputVariables, converter.Options{
+	layers, parseErr := p.convertFunc(ctx, file, inputVariables, converter.Options{
 		BaseDir: filepath.Dir(path),
 		FS:      p.fsys,
 	})
-	json, err := addExtraInfo(ctx, []model.Document{fc}, path)
+	json, err := addExtraInfo(ctx, layers, path)
 	if err != nil {
 		return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed terraform parse")
 	}

@@ -205,6 +205,14 @@ type FileMetadata struct {
 	// Archive is the chart archive the file was rendered from, if any (see
 	// ResolvedHelm.Archive).
 	Archive string
+	// ExpansionLayer is this document's position in an expanded Terraform file.
+	// Every layer holds the whole file, with different evaluated block instances.
+	// It is scan bookkeeping only; report identity remains based on the definition.
+	ExpansionLayer int
+	// ExpansionContext marks blocks copied into a module instance layer to keep
+	// cross-resource rule context. False entries are actual instances, whose
+	// existing reporting multiplicity must be preserved.
+	ExpansionContext map[string]bool
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic

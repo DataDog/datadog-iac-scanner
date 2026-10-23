@@ -19,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	hcljson "github.com/hashicorp/hcl/v2/json"
 )
 
 const strBlockBody = "block-body"
@@ -208,7 +209,52 @@ func detectJSONConfigLine(
 	got.VulnLines = detector.GetAdjacentVulnLines(current, outputLines, lines)
 	got.ResolvedFile = file.FilePath
 	got.FileSource = lines
+	if block := jsonSearchKeyBlock(file, keyParts, extracted); block != nil {
+		got.BlockLocation = model.ResourceLocation{
+			Start: toResourceLine(block.TypeRange.Start), End: toResourceLine(block.Range().End),
+		}
+	}
 	return got
+}
+
+// Match the definition, rather than the flagged attribute, for module
+// attribution. JSON block names each have their own key range even when two
+// resource definitions share a type or occupy the same line.
+func jsonSearchKeyBlock(file *model.FileMetadata, parts []string, extracted [][]string) *hclsyntax.Block {
+	parsed, diags := hcljson.Parse([]byte(file.OriginalData), file.FilePath)
+	if diags.HasErrors() {
+		return nil
+	}
+	schema := &hcl.BodySchema{Blocks: []hcl.BlockHeaderSchema{
+		{Type: blockTypeResource, LabelNames: []string{"type", "name"}},
+		{Type: blockTypeData, LabelNames: []string{"type", "name"}},
+	}}
+	for typ := range labelOnlyBlockTypes {
+		schema.Blocks = append(schema.Blocks, hcl.BlockHeaderSchema{Type: typ, LabelNames: []string{"name"}})
+	}
+	content, _, _ := parsed.Body.PartialContent(schema)
+	if content == nil {
+		return nil
+	}
+	body := &hclsyntax.Body{}
+	for _, block := range content.Blocks {
+		if len(block.LabelRanges) == 0 {
+			continue
+		}
+		header := block.LabelRanges[len(block.LabelRanges)-1]
+		end := header
+		attrs, _ := block.Body.JustAttributes()
+		for _, attr := range attrs {
+			if attr.Range.End.Byte > end.End.Byte {
+				end.End = attr.Range.End
+			}
+		}
+		body.Blocks = append(body.Blocks, &hclsyntax.Block{
+			Type: block.Type, Labels: block.Labels, TypeRange: header,
+			OpenBraceRange: header, CloseBraceRange: end,
+		})
+	}
+	return searchKeyBlock(body, parts, extracted)
 }
 
 func findJSONKeyLine(lines []string, from int, key string) (int, bool) {

@@ -42,6 +42,18 @@ type Options struct {
 // Convert an hcl File to a toJson serializable object.
 // This assumes that the body is a hclsyntax.Body.
 func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, opts Options) (model.Document, error) {
+	layers, err := ConvertAll(ctx, file, inputVariables, opts)
+	if err != nil || len(layers) == 0 {
+		return nil, err
+	}
+	return layers[0], nil
+}
+
+// ConvertAll converts an hcl File into its documents. The first holds every
+// block of the file. Resources, data and modules whose count or for_each expand into
+// instances that differ from one another have their first instance there; see
+// BuildLayers for the documents of the others.
+func ConvertAll(ctx context.Context, file *hcl.File, inputVariables VariableMap, opts Options) ([]model.Document, error) {
 	variables := make(VariableMap, len(inputVariables)+2)
 	for name, value := range inputVariables {
 		variables[name] = value
@@ -51,17 +63,12 @@ func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, op
 	}
 	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS))
 	c.file = file.Body.(*hclsyntax.Body)
-	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
-
+	c.instancesLeft = MaxExtraInstances
+	body, err := c.convertBody(ctx, c.file, 0)
 	if err != nil {
-		if er, ok := err.(*hcl.Diagnostic); ok && er.Subject != nil {
-			return nil, err
-		}
-
 		return nil, err
 	}
-
-	return body, nil
+	return BuildLayers(body, c.expanded), nil
 }
 
 // DefaultConverted an hcl File to a toJson serializable object
@@ -79,6 +86,13 @@ type converter struct {
 	dynamicLeft int
 	// dynamicWarned records that an overflow was already logged for this file.
 	dynamicWarned bool
+	// expanded holds the blocks whose instances differ, for BuildLayers.
+	expanded []Expanded
+	// instancesLeft is how many instances beyond the first the file may still
+	// expand its top-level blocks into.
+	instancesLeft int
+	// instancesWarned records that an expansion cap was already logged for this file.
+	instancesWarned bool
 }
 
 func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
@@ -98,22 +112,6 @@ func (c *converter) rangeSource(r hcl.Range) string {
 
 func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLine int) (model.Document, error) {
 	var err error
-	countValue := body.Attributes["count"]
-	count := -1
-
-	if countValue != nil {
-		value, diags := countValue.Expr.Value(c.renderer.Ctx)
-		if !diags.HasErrors() {
-			if intValue, ok := ctyutil.LiteralInt(value); ok {
-				count = intValue
-			}
-		}
-	}
-
-	if count == 0 {
-		return nil, nil
-	}
-
 	out := make(model.Document)
 	ddLines := make(map[string]model.LineObject)
 	// set line info for the body
@@ -138,6 +136,15 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	for _, block := range body.Blocks {
 		if body == c.file {
 			c.dynamicLeft = dynamicblock.MaxGeneratedPerResource
+		}
+		if body == c.file {
+			handled, err := c.convertTopLevelInstances(ctx, block, out, ddLines)
+			if err != nil {
+				return nil, err
+			}
+			if handled {
+				continue
+			}
 		}
 		if dynamicblock.Is(block) {
 			expanded, err := c.convertDynamicBlock(ctx, block, out)

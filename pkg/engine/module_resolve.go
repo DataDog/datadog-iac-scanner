@@ -99,11 +99,17 @@ func (c *Inspector) instantiateLocalModules(
 		return nil, nil, nil, nil
 	}
 	rootDirs := newRootIndex(res.rootDirs)
+	primaryIDs := primaryFileIDs(files, c.repoPath)
 	for _, f := range files {
 		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
-		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
+		// The later documents of a file are covered as the file's first is.
+		coveredID := f.ID
+		if f.ExpansionLayer > 0 {
+			coveredID = primaryIDs[absPath(f.FilePath, c.repoPath)]
+		}
+		if replaced := res.suppressed[coveredID]; len(replaced) > 0 {
 			if res.unresolvedModuleDirs[moduleFileDir(f.FilePath, c.repoPath)] {
 				continue
 			}
@@ -128,8 +134,15 @@ func (c *Inspector) instantiateLocalModules(
 		if f == nil {
 			continue
 		}
-		if calls := res.moduleFiles[f.ID]; calls != nil {
-			calls.writtenResourceTypes = documentResourceTypes(f.Document)
+		coveredID := f.ID
+		if f.ExpansionLayer > 0 {
+			coveredID = primaryIDs[absPath(f.FilePath, c.repoPath)]
+		}
+		if calls := res.moduleFiles[coveredID]; calls != nil {
+			// Each layer has its own remaining blocks but the same module callers.
+			layerCalls := *calls
+			layerCalls.writtenResourceTypes = documentResourceTypes(f.Document)
+			res.moduleFiles[f.ID] = &layerCalls
 		}
 	}
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
@@ -509,7 +522,8 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		tfeval.WithScanFallbacks(resources), m.byAbsPath, m.repoPath, m.targets, m.seen,
+		m.extras, m.instantiated, m.lookup, attributions)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -924,6 +938,7 @@ type instantiatedResource struct {
 	baseName  string
 	fullName  string
 	defLine   int
+	defColumn int
 	attrs     map[string]interface{}
 	attrsHash uint64
 }
@@ -936,6 +951,7 @@ type docGroup struct {
 	layer         int
 	entries       []instantiatedResource
 	attributions  map[string]*model.ModuleAttribution
+	context       map[string]bool
 }
 
 // docContentKey identifies a document by its content. Two independent digests
@@ -944,8 +960,9 @@ type docGroup struct {
 // different resources into one finding.
 type docContentKey struct{ a, b uint64 }
 
-// instantiatedDocs emits one synthetic OPA document per (module call, defining
-// file), holding every resource that call resolved in that file.
+// instantiatedDocs emits synthetic OPA documents per module call, defining
+// file and instance layer. Each layer retains the file's evaluated peer blocks
+// as context; copied blocks are distinguished from actual instances.
 //
 // This is exactly the shape an ordinary Terraform file has in the payload: one
 // document, all of the file's resources, nothing from its siblings. A rule
@@ -1007,6 +1024,7 @@ func instantiatedDocs(
 			baseName:  base,
 			fullName:  r.Name,
 			defLine:   r.DefLine,
+			defColumn: r.DefColumn,
 			attrs:     attrs,
 			attrsHash: hashAttributes(attrs),
 		}
@@ -1035,6 +1053,8 @@ func instantiatedDocs(
 		}
 		resourceCount++
 	}
+
+	addModuleLayerContexts(groups, order)
 
 	for _, key := range order {
 		g := groups[key]
@@ -1079,9 +1099,44 @@ func instantiatedDocs(
 			doc["data"] = data
 		}
 		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
+		file := newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions)
+		file.ExpansionContext = g.context
+		synthetic = append(synthetic, file)
 	}
 	return docs, synthetic, resourceCount
+}
+
+// addModuleLayerContexts keeps peer resources visible to rules in every
+// instance layer. Copied blocks are marked so only repeated context findings
+// are removed; actual module instances retain their existing report semantics.
+func addModuleLayerContexts(groups map[string]*docGroup, order []string) {
+	for _, key := range order {
+		g := groups[key]
+		if g.layer == 0 {
+			continue
+		}
+		first := groups[g.callChain+"\x00"+g.fm.ID+"\x000"]
+		g.context = make(map[string]bool)
+		present := make(map[string]bool)
+		for i := range g.entries {
+			e := &g.entries[i]
+			present[layerBlockKey(e.typ, e.baseName)] = true
+			g.context[moduleAttributionKey(e.typ, e.defLine, e.defColumn)] = false
+		}
+		for i := range first.entries {
+			e := &first.entries[i]
+			block := layerBlockKey(e.typ, e.baseName)
+			if !present[block] {
+				g.entries = append(g.entries, *e)
+				g.context[moduleAttributionKey(e.typ, e.defLine, e.defColumn)] = true
+			}
+		}
+		for key, attribution := range first.attributions {
+			if _, exists := g.attributions[key]; !exists {
+				g.attributions[key] = attribution
+			}
+		}
+	}
 }
 
 // groupContentKey identifies a document by the module call address it belongs
@@ -1365,7 +1420,22 @@ func resolveModuleTargetDir(
 	return dir, ok
 }
 
-// indexTerraformFiles builds lookup maps from a flat FileMetadatas slice.
+// primaryFileIDs maps the path of each Terraform file to the ID of its first
+// document, the one that holds every block of the file.
+func primaryFileIDs(files model.FileMetadatas, repoPath string) map[string]string {
+	ids := make(map[string]string)
+	for _, f := range files {
+		if f == nil || f.ExpansionLayer > 0 || !tfpath.IsConfig(f.FilePath) {
+			continue
+		}
+		ids[absPath(f.FilePath, repoPath)] = f.ID
+	}
+	return ids
+}
+
+// indexTerraformFiles builds lookup maps from a flat FileMetadatas slice. Only
+// the first document of a file is indexed: the later ones carry the instances
+// of its expanded resources and share its path and content.
 func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPath string) (
 	byAbsPath map[string]*model.FileMetadata,
 	filesByDir map[string][]*model.FileMetadata,
@@ -1376,7 +1446,7 @@ func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPat
 	filesByDir = make(map[string][]*model.FileMetadata)
 	dirsWithTf = make(map[string]bool)
 	for _, f := range files {
-		if f == nil || !tfpath.IsConfig(f.FilePath) {
+		if f == nil || f.ExpansionLayer > 0 || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
 		abs := absPath(f.FilePath, repoPath)

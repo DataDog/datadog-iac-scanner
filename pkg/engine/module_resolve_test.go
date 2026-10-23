@@ -169,7 +169,7 @@ module "bucket" {
 	}
 }
 
-func TestInstantiatedDocs_DoesNotDuplicateStaticResourcesAcrossExpansionLayers(t *testing.T) {
+func TestInstantiatedDocs_KeepsStaticContextAcrossExpansionLayers(t *testing.T) {
 	root := t.TempDir()
 	modulePath := writeFile(t, filepath.Join(root, "modules", "app"), "main.tf", `
 resource "aws_s3_bucket" "shared" {
@@ -216,8 +216,8 @@ resource "aws_s3_bucket" "replica" {
 			replicas++
 		}
 	}
-	if shared != 1 {
-		t.Fatalf("static resource appears %d times, want exactly once", shared)
+	if shared != 2 {
+		t.Fatalf("static context appears %d times, want once per layer", shared)
 	}
 	if replicas != 2 {
 		t.Fatalf("expanded resource appears %d times, want one per instance", replicas)
@@ -335,7 +335,7 @@ resource "aws_s3_bucket" "this" {
 	}
 }
 
-func TestResolveModuleDocuments_TruncatedCountKeepsSourceBlock(t *testing.T) {
+func TestResolveModuleDocuments_TruncatedCountKeepsScopedFallback(t *testing.T) {
 	root := t.TempDir()
 	rootDir := filepath.Join(root, "stack")
 	modDir := filepath.Join(root, "modules", "buckets")
@@ -362,8 +362,8 @@ resource "aws_s3_bucket" "replica" {
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed")
 	}
-	if len(res.docs) != cap {
-		t.Fatalf("expected %d instantiated docs for truncated count, got %d", cap, len(res.docs))
+	if len(res.docs) != cap+1 {
+		t.Fatalf("expected %d instance views plus an as-written tail, got %d", cap, len(res.docs))
 	}
 	if res.expansionTruncations == 0 {
 		t.Fatal("expected count expansion truncation to be recorded")
@@ -371,8 +371,12 @@ resource "aws_s3_bucket" "replica" {
 	if res.expansionMaxRequested != cap+2 {
 		t.Fatalf("expansionMaxRequested = %d, want %d", res.expansionMaxRequested, cap+2)
 	}
-	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
-		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)
+	if !res.suppressed["mod-id"]["aws_s3_bucket"]["replica"] {
+		t.Fatalf("scoped fallback covers the source block: %#v", res.suppressed)
+	}
+	tail := docAsMap(docAsMap(docAsMap(res.docs[len(res.docs)-1]["resource"])["aws_s3_bucket"])["replica"])
+	if tail["bucket"] != "bucket-${count.index}" {
+		t.Fatalf("as-written tail = %#v", tail)
 	}
 }
 
