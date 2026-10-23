@@ -122,6 +122,14 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		ScannedPaths:      c.ScanParams.Path,
 		PathExtractionMap: scanResults.ExtractedPaths.ExtractionMap,
 	})
+	// What the metadata needs of the findings is taken now, so that only the
+	// summary holds them while reports are written: a scan can have hundreds
+	// of thousands.
+	stats, ruleStats := c.generateStats(scanResults, 0), c.generateRuleStats(scanResults)
+	scanResults.Results = nil
+	if c.Storage != nil {
+		c.Storage.ReleaseVulnerabilities()
+	}
 
 	if err := c.resolveOutputs(
 		ctx,
@@ -144,26 +152,27 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 	}
 
 	// generate metadata payload
-	metadata = c.generateMetadata(scanResults, c.ScanStartTime, endTime)
+	stats.Duration = scanDuration
+	metadata = newMetadata(stats, ruleStats, c.ScanStartTime, endTime, c.ScanParams.SCIInfo.DiffAware.Enabled)
 	memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 
 	return metadata, nil
 }
 
 func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.Time) ScanMetadata {
-	stats := c.generateStats(scanResults, endTime.Sub(startTime))
-	ruleStats := c.generateRuleStats(scanResults)
+	return newMetadata(c.generateStats(scanResults, endTime.Sub(startTime)), c.generateRuleStats(scanResults),
+		startTime, endTime, c.ScanParams.SCIInfo.DiffAware.Enabled)
+}
 
-	metadata := ScanMetadata{
+func newMetadata(stats ScanStats, ruleStats RuleStats, startTime, endTime time.Time, diffAware bool) ScanMetadata {
+	return ScanMetadata{
 		StartTime:      startTime,
 		EndTime:        endTime,
 		CoresAvailable: int(consoleHelpers.GetNumCPU()),
-		DiffAware:      c.ScanParams.SCIInfo.DiffAware.Enabled,
+		DiffAware:      diffAware,
 		Stats:          stats,
 		RuleStats:      ruleStats,
 	}
-
-	return metadata
 }
 
 func (c *Client) generateStats(scanResults *Results, scanDuration time.Duration) ScanStats {

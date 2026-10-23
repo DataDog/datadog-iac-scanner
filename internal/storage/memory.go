@@ -117,6 +117,14 @@ func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 	return m.vulnerabilities[:len(keep):len(keep)]
 }
 
+// ReleaseVulnerabilities drops the findings saved, once what reads them has
+// taken what it needs.
+func (m *MemoryStorage) ReleaseVulnerabilities() {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
+	m.vulnerabilities = make([]model.Vulnerability, 0)
+}
+
 // NewMemoryStorage creates a new MemoryStorage empty and returns it
 func NewMemoryStorage() *MemoryStorage {
 	log.Debug().Msg("storage.NewMemoryStorage()")

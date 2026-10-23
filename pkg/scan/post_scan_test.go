@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/printer"
@@ -445,4 +446,34 @@ func Test_GetScanMetadata(t *testing.T) {
 			require.Equal(t, tt.expectedMetadata.Stats.ViolationBreakdowns, v.Stats.ViolationBreakdowns)
 		})
 	}
+}
+
+// Once summarized, the findings are released from the results and the
+// storage; the metadata still counts them, and times the slowest rule.
+func Test_postScanReleasesSummarizedFindings(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStorage()
+	found := []model.Vulnerability{
+		{QueryID: "q1", QueryName: "fast", Severity: model.SeverityHigh, FileName: "a.tf", ResourceName: "a", QueryDuration: time.Second},
+		{QueryID: "q2", QueryName: "slow", Severity: model.SeverityLow, FileName: "b.tf", ResourceName: "b", QueryDuration: time.Minute},
+		{QueryID: "q2", QueryName: "slow", Severity: model.SeverityLow, FileName: "c.tf", ResourceName: "c", IsSuppressed: true},
+	}
+	require.NoError(t, store.SaveVulnerabilities(ctx, found))
+	results, err := store.GetVulnerabilities(ctx, "")
+	require.NoError(t, err)
+	scanResults := &Results{Results: results, Files: model.FileMetadatas{}, FailedQueries: map[string]error{}}
+
+	c := Client{Storage: store, Tracker: &tracker.CITracker{}, Printer: printer.NewPrinter(),
+		ScanParams: &Parameters{Path: []string{filepath.Join("..", "..", "lib")}}}
+	md, err := c.postScan(ctx, scanResults)
+	require.NoError(t, err)
+
+	require.Nil(t, scanResults.Results)
+	left, err := store.GetVulnerabilities(ctx, "")
+	require.NoError(t, err)
+	require.Empty(t, left)
+	require.Equal(t, 2, md.Stats.Violations)
+	require.Equal(t, map[string]map[string]int{"HIGH": {"q1": 1}, "LOW": {"q2": 1}}, md.Stats.ViolationBreakdowns)
+	require.Equal(t, RuleTiming{Name: "slow", Time: time.Minute}, md.RuleStats.SlowestRule)
+	require.Positive(t, md.Stats.Duration)
 }
