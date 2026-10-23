@@ -35,7 +35,15 @@ const UnknownAttributePlaceholder = partial.UnknownPlaceholder
 // rules do not fire false positives on unresolved expressions and a string
 // interpolating an unresolved value still carries the rest of its content.
 func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
-	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(r))
+	// The renderer is only read for a value evaluation left partly unknown.
+	var rd *partial.Renderer
+	for _, v := range r.Attributes {
+		if !v.IsWhollyKnown() {
+			rd = newRenderer(r)
+			break
+		}
+	}
+	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, rd)
 }
 
 // newRenderer renders r's attributes in the context they were evaluated in.
