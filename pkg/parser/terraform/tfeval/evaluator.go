@@ -27,6 +27,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
@@ -47,7 +48,7 @@ const (
 	// resourceRefPasses caps passes that install same-module resource attrs for refs.
 	resourceRefPasses = 3
 	// maxCountExpansion caps instances per count/for_each block (resources and modules).
-	maxCountExpansion = 50
+	maxCountExpansion = tfinstances.MaxPerBlock
 	// maxExpansionShape is the largest truncated count/for_each collection we will
 	// materialize with unknown tails so length() and missing keys stay honest.
 	// Beyond this, the whole ref becomes unknown instead of allocating a huge shape.
