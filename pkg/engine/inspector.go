@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1088,101 +1089,160 @@ func (c *Inspector) interfaceToPayloadValue(
 	value interface{},
 	cons *payloadHashCons,
 ) (ast.Value, error) {
+	term, _, err := c.payloadTerm(ctx, value, cons)
+	if err != nil {
+		return nil, err
+	}
+	return term.Value, nil
+}
+
+// payloadTerm converts a document node to its canonical payload term and
+// returns the term's content key with it, so a parent mixes its children's
+// keys without looking them up.
+func (c *Inspector) payloadTerm(
+	ctx context.Context,
+	value interface{},
+	cons *payloadHashCons,
+) (*ast.Term, hashConsKey, error) {
 	switch v := value.(type) {
 	case map[string]interface{}:
-		return c.mapToPayloadValue(ctx, v, cons)
+		return c.mapToPayloadTerm(ctx, v, cons)
 	case []interface{}:
-		pointer := reflect.ValueOf(v).Pointer()
-		if pointer != 0 {
-			if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
-				return memo.val, nil
-			}
-		}
-		terms := make([]*ast.Term, 0, len(v))
-		contentKey := hashConsBase
-		for _, raw := range v {
-			converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
-			if err != nil {
-				return nil, err
-			}
-			h, ok := cons.valHash[converted]
-			if !ok {
-				h = hashConsScalarKey(converted)
-				cons.valHash[converted] = h
-			}
-			contentKey = contentKey.mix(h)
-			terms = append(terms, cons.valueTerm(converted))
-		}
-		array := ast.NewArray(terms...)
-		// Same shallow verification as maps: a content-key hit requires the
-		// pointer-identical canonical element value at every index (see
-		// mapToPayloadValue).
-		if existing, ok := cons.lookupCanonicalArray(contentKey, terms); ok {
-			if pointer != 0 {
-				cons.setPointerMemo(pointer, v, existing)
-			}
-			return existing, nil
-		}
-		cons.valHash[array] = contentKey
-		cons.byContent[contentKey] = array
-		if pointer != 0 {
-			cons.setPointerMemo(pointer, v, array)
-		}
-		return array, nil
+		return c.sliceToPayloadTerm(ctx, v, cons)
 	default:
-		converted, err := ast.InterfaceToValue(value)
-		if err != nil {
-			return nil, err
-		}
-		// The jsonencode transform can return whole parsed objects; cache the
-		// result per input value so repeated strings convert once (the input
-		// scalars are content-deduplicated, so the cache key is cheap).
-		if transformed, ok := cons.jsonencodeCache[converted]; ok {
-			return transformed, nil
-		}
-		transformed := c.TransformJsonencodeInPayload(ctx, converted)
-		cons.jsonencodeCache[converted] = transformed
-		return transformed, nil
+		return c.scalarToPayloadTerm(ctx, value, cons)
 	}
 }
 
-// mapToPayloadValue converts a map node, hash-consing the result: children are
-// converted first so the content key can mix their canonical keys.
-type payloadChildPair struct {
-	key  string
-	term *ast.Term
-	hash hashConsKey
+// scalarToPayloadTerm converts a scalar once per distinct value: the same
+// string, number or boolean anywhere in the payload shares one term.
+func (c *Inspector) scalarToPayloadTerm(
+	ctx context.Context,
+	value interface{},
+	cons *payloadHashCons,
+) (*ast.Term, hashConsKey, error) {
+	key, comparable := scalarKey(value)
+	if comparable {
+		if s, ok := cons.scalars[key]; ok {
+			return s.term, s.hash, nil
+		}
+	}
+	converted, err := ast.InterfaceToValue(value)
+	if err != nil {
+		return nil, hashConsKey{}, err
+	}
+	// The jsonencode transform can return whole parsed objects; it runs once
+	// per distinct scalar.
+	transformed := c.TransformJsonencodeInPayload(ctx, converted)
+	s := convertedScalar{term: ast.NewTerm(transformed), hash: hashConsScalarKey(transformed)}
+	if comparable {
+		cons.scalars[key] = s
+	}
+	return s.term, s.hash, nil
 }
 
-func (c *Inspector) mapToPayloadValue(
+// scalarKey returns the map key a scalar is converted once under, for the
+// kinds sanitized documents hold.
+func scalarKey(value interface{}) (interface{}, bool) {
+	switch value.(type) {
+	case string, bool, float64, nil, int, int64, json.Number:
+		return value, true
+	}
+	return nil, false
+}
+
+func (c *Inspector) sliceToPayloadTerm(
+	ctx context.Context,
+	v []interface{},
+	cons *payloadHashCons,
+) (*ast.Term, hashConsKey, error) {
+	var pointer uintptr
+	if cons.byAddress {
+		pointer = reflect.ValueOf(v).Pointer()
+	}
+	if pointer != 0 {
+		if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
+			return memo.term, memo.hash, nil
+		}
+	}
+	terms := make([]*ast.Term, 0, len(v))
+	contentKey := hashConsBase
+	fp, fpOK := hashConsBase, true
+	for _, raw := range v {
+		term, h, err := c.payloadTerm(ctx, raw, cons)
+		if err != nil {
+			return nil, hashConsKey{}, err
+		}
+		contentKey = contentKey.mix(h)
+		terms = append(terms, term)
+		if fpOK {
+			id, ok := childIdentity(raw)
+			fp, fpOK = fp.mix(id), ok
+		}
+	}
+	// Same shallow verification as maps: a content-key hit requires the
+	// pointer-identical canonical element value at every index (see
+	// mapToPayloadTerm).
+	term, ok := cons.lookupCanonicalArray(contentKey, terms)
+	if !ok {
+		term = ast.NewTerm(ast.NewArray(terms...))
+		cons.byContent[contentKey] = term
+	}
+	if pointer != 0 && fpOK {
+		cons.byPointer[pointer] = pointerMemo{term: term, hash: contentKey, fp: fp}
+	}
+	return term, contentKey, nil
+}
+
+// payloadChildPair is a map entry converted: its key, canonical term and
+// content key, and the identity of its source value.
+type payloadChildPair struct {
+	key      string
+	term     *ast.Term
+	hash     hashConsKey
+	identity hashConsKey
+}
+
+// mapToPayloadTerm converts a map node, hash-consing the result: children are
+// converted first so the content key can mix their canonical keys.
+func (c *Inspector) mapToPayloadTerm(
 	ctx context.Context,
 	v map[string]interface{},
 	cons *payloadHashCons,
-) (ast.Value, error) {
-	pointer := reflect.ValueOf(v).Pointer()
+) (*ast.Term, hashConsKey, error) {
+	var pointer uintptr
+	if cons.byAddress {
+		pointer = reflect.ValueOf(v).Pointer()
+	}
 	if pointer != 0 {
 		if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
-			return memo.val, nil
+			return memo.term, memo.hash, nil
 		}
 	}
-	pairs := make([]payloadChildPair, 0, len(v))
+	// The pairs are gathered on the build's scratch stack: the children's own
+	// conversions push theirs above them and pop them before returning.
+	start := len(cons.pairs)
+	defer func() { cons.pairs = cons.pairs[:start] }()
+	fpOK := true
 	for key, raw := range v {
-		converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
+		term, h, err := c.payloadTerm(ctx, raw, cons)
 		if err != nil {
-			return nil, err
+			return nil, hashConsKey{}, err
 		}
-		h, ok := cons.valHash[converted]
-		if !ok {
-			h = hashConsScalarKey(converted)
-			cons.valHash[converted] = h
+		pair := payloadChildPair{key: key, term: term, hash: h}
+		if fpOK {
+			pair.identity, fpOK = childIdentity(raw)
 		}
-		pairs = append(pairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
+		cons.pairs = append(cons.pairs, pair)
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].key < pairs[j].key })
+	pairs := cons.pairs[start:]
+	slices.SortFunc(pairs, func(a, b payloadChildPair) int { return strings.Compare(a.key, b.key) })
 
 	contentKey := hashConsBase
+	fp := hashConsBase
 	for _, p := range pairs {
 		contentKey = contentKey.mixString(p.key).mix(p.hash)
+		fp = fp.mixString(p.key).mix(p.identity)
 	}
 
 	// A content-key hit is verified shallowly against the stored canonical
@@ -1192,22 +1252,20 @@ func (c *Inspector) mapToPayloadValue(
 	// comparison of the source trees (which would both cost CPU on the hot
 	// conversion path and pin them, defeating the progressive document
 	// release).
-	if existing, ok := cons.lookupCanonicalObject(contentKey, pairs); ok {
-		if pointer != 0 {
-			cons.setPointerMemo(pointer, v, existing)
+	term, ok := cons.lookupCanonicalObject(contentKey, pairs)
+	if !ok {
+		object := ast.NewObjectWithCapacity(len(pairs))
+		for _, p := range pairs {
+			object.Insert(cons.stringTerm(p.key), p.term)
 		}
-		return existing, nil
+		term = ast.NewTerm(object)
+		cons.byContent[contentKey] = term
 	}
-	object := ast.NewObject()
-	for _, p := range pairs {
-		object.Insert(cons.stringTerm(p.key), p.term)
+	if pointer != 0 && fpOK {
+		// The fingerprint is nodeFingerprintOf(v), from the pairs at hand.
+		cons.byPointer[pointer] = pointerMemo{term: term, hash: contentKey, fp: fp}
 	}
-	cons.valHash[object] = contentKey
-	cons.byContent[contentKey] = object
-	if pointer != 0 {
-		cons.setPointerMemo(pointer, v, object)
-	}
-	return object, nil
+	return term, contentKey, nil
 }
 
 // hashConsKey is a 128-bit content key; lookups verify shallowly against the
@@ -1253,47 +1311,47 @@ func hashConsScalarKey(v ast.Value) hashConsKey {
 // payloadHashCons is the per-payload-build interning state: byPointer memoizes
 // conversions by source-node address, byContent dedups structurally identical
 // subtrees at different addresses (label blocks and CRD skeletons repeat across
-// nearly every manifest), and terms/strTerms share Term wrappers. Neither
-// table retains source trees — byContent stores only the canonical ast.Value
-// and byPointer hits are fingerprint-validated — so trees can be released
-// progressively mid-build.
+// nearly every manifest), scalars converts each distinct scalar once, and
+// strTerms shares key terms. Neither table retains source trees — byContent
+// stores only the canonical term and byPointer hits are fingerprint-validated
+// — so trees can be released progressively mid-build.
 type payloadHashCons struct {
 	byPointer map[uintptr]pointerMemo
-	valHash   map[ast.Value]hashConsKey
-	byContent map[hashConsKey]ast.Value
-	terms     map[ast.Value]*ast.Term
+	byContent map[hashConsKey]*ast.Term
+	scalars   map[interface{}]convertedScalar
 	strTerms  map[string]*ast.Term
-	// jsonencodeCache memoizes TransformJsonencodeInPayload results per
-	// input scalar value.
-	jsonencodeCache map[ast.Value]ast.Value
+	// byAddress is set while converting documents whose nodes can be shared
+	// between documents, the parsed ones; byPointer is only used for those.
+	// Instantiated module documents are each built apart, so byContent alone
+	// shares what repeats in them.
+	byAddress bool
+	// pairs is the scratch stack map conversions gather their entries on.
+	pairs []payloadChildPair
 }
 
-// pointerMemo is a byPointer entry: the converted value plus a fingerprint of
-// the source node. Trees freed mid-build can have their addresses reused, so a
-// hit is trusted only when the fingerprint still matches — equal fingerprints
-// mean content-equal nodes.
+// convertedScalar is a scalar's canonical term and content key.
+type convertedScalar struct {
+	term *ast.Term
+	hash hashConsKey
+}
+
+// pointerMemo is a byPointer entry: the converted term and its content key,
+// plus a fingerprint of the source node. Trees freed mid-build can have their
+// addresses reused, so a hit is trusted only when the fingerprint still
+// matches — equal fingerprints mean content-equal nodes.
 type pointerMemo struct {
-	val ast.Value
-	fp  hashConsKey
+	term *ast.Term
+	hash hashConsKey
+	fp   hashConsKey
 }
 
 func newPayloadHashCons() *payloadHashCons {
 	return &payloadHashCons{
-		byPointer:       make(map[uintptr]pointerMemo),
-		valHash:         make(map[ast.Value]hashConsKey),
-		byContent:       make(map[hashConsKey]ast.Value),
-		terms:           make(map[ast.Value]*ast.Term),
-		strTerms:        make(map[string]*ast.Term),
-		jsonencodeCache: make(map[ast.Value]ast.Value),
-	}
-}
-
-// setPointerMemo records the conversion of the source node at the given
-// address, keyed by a fingerprint that can be re-checked on every later
-// lookup of that address.
-func (cons *payloadHashCons) setPointerMemo(pointer uintptr, v interface{}, val ast.Value) {
-	if fp, ok := nodeFingerprintOf(v); ok {
-		cons.byPointer[pointer] = pointerMemo{val: val, fp: fp}
+		byPointer: make(map[uintptr]pointerMemo),
+		byContent: make(map[hashConsKey]*ast.Term),
+		scalars:   make(map[interface{}]convertedScalar),
+		strTerms:  make(map[string]*ast.Term),
+		byAddress: true,
 	}
 }
 
@@ -1369,13 +1427,17 @@ func childIdentity(v interface{}) (hashConsKey, bool) {
 // lookupCanonicalObject returns the stored object for a content key when the
 // candidate matches shallowly (same key count, pointer-identical canonical
 // value per key). A 128-bit collision falls through as a miss.
-func (cons *payloadHashCons) lookupCanonicalObject(key hashConsKey, pairs []payloadChildPair) (ast.Value, bool) {
-	stored, ok := cons.byContent[key].(ast.Object)
-	if !ok || stored.Len() != len(pairs) {
+func (cons *payloadHashCons) lookupCanonicalObject(key hashConsKey, pairs []payloadChildPair) (*ast.Term, bool) {
+	stored, ok := cons.byContent[key]
+	if !ok {
+		return nil, false
+	}
+	object, ok := stored.Value.(ast.Object)
+	if !ok || object.Len() != len(pairs) {
 		return nil, false
 	}
 	for _, p := range pairs {
-		if sv := stored.Get(cons.stringTerm(p.key)); sv == nil || sv.Value != p.term.Value {
+		if sv := object.Get(cons.stringTerm(p.key)); sv == nil || sv.Value != p.term.Value {
 			return nil, false
 		}
 	}
@@ -1384,27 +1446,21 @@ func (cons *payloadHashCons) lookupCanonicalObject(key hashConsKey, pairs []payl
 
 // lookupCanonicalArray is lookupCanonicalObject for arrays: same length and
 // the pointer-identical canonical element value at every index.
-func (cons *payloadHashCons) lookupCanonicalArray(key hashConsKey, terms []*ast.Term) (ast.Value, bool) {
-	stored, ok := cons.byContent[key].(*ast.Array)
-	if !ok || stored.Len() != len(terms) {
+func (cons *payloadHashCons) lookupCanonicalArray(key hashConsKey, terms []*ast.Term) (*ast.Term, bool) {
+	stored, ok := cons.byContent[key]
+	if !ok {
+		return nil, false
+	}
+	array, ok := stored.Value.(*ast.Array)
+	if !ok || array.Len() != len(terms) {
 		return nil, false
 	}
 	for i := range terms {
-		if stored.Elem(i).Value != terms[i].Value {
+		if array.Elem(i).Value != terms[i].Value {
 			return nil, false
 		}
 	}
 	return stored, true
-}
-
-// valueTerm returns a shared Term wrapper for a canonical value.
-func (cons *payloadHashCons) valueTerm(v ast.Value) *ast.Term {
-	if t, ok := cons.terms[v]; ok {
-		return t
-	}
-	t := ast.NewTerm(v)
-	cons.terms[v] = t
-	return t
 }
 
 // stringTerm returns a shared StringTerm for a map key.
@@ -1758,11 +1814,13 @@ func (c *Inspector) convertPayloadDocuments(
 	convert := func(from, to int) error {
 		cons := newPayloadHashCons()
 		for i := from; i < to; i++ {
-			v, err := c.interfaceToPayloadValue(ctx, allDocs[i], cons)
+			// allDocs holds the parsed documents, then the module ones.
+			cons.byAddress = i < len(combinedDocs)
+			term, _, err := c.payloadTerm(ctx, allDocs[i], cons)
 			if err != nil {
 				return err
 			}
-			terms[i] = ast.NewTerm(v)
+			terms[i] = term
 			allDocs[i] = nil
 			if c.releaseDocumentsAfterPayload {
 				releaseDocumentTree(i, filesMap, combinedDocs, moduleDocs)

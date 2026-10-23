@@ -1574,6 +1574,31 @@ func TestNodeFingerprintOf(t *testing.T) {
 	assert.False(t, ok, "non-canonical child type must yield no fingerprint")
 }
 
+// The fingerprint a conversion records for a node is the one its later
+// lookups are validated against.
+func TestPayloadConversionRecordsNodeFingerprints(t *testing.T) {
+	child := map[string]interface{}{"a": float64(1), "l": []interface{}{"x", true, nil}}
+	list := []interface{}{child, "y", float64(2)}
+	node := map[string]interface{}{"k": child, "s": "v", "b": true, "list": list}
+	cons := newPayloadHashCons()
+	_, err := (&Inspector{}).interfaceToPayloadValue(context.Background(), node, cons)
+	require.NoError(t, err)
+	for _, n := range []interface{}{node, child, list, child["l"]} {
+		want, ok := nodeFingerprintOf(n)
+		require.True(t, ok)
+		memo, ok := cons.byPointer[reflect.ValueOf(n).Pointer()]
+		require.True(t, ok, "%v has a memo", n)
+		require.Equal(t, want, memo.fp, "%v", n)
+		require.True(t, cons.pointerMemoMatches(memo, n))
+	}
+
+	// A node holding a type without an identity is converted but not memoized.
+	opaque := map[string]interface{}{"k": struct{ X int }{1}}
+	_, _ = (&Inspector{}).interfaceToPayloadValue(context.Background(), opaque, cons)
+	_, ok := cons.byPointer[reflect.ValueOf(opaque).Pointer()]
+	require.False(t, ok)
+}
+
 // TestPayloadHashConsPointerMemoValidation covers the address-reuse safety of
 // byPointer: a memo recorded for one node must not be served for a different
 // node that happens to sit at the same address.
@@ -1581,8 +1606,10 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 	cons := newPayloadHashCons()
 	child := map[string]interface{}{"a": float64(1)}
 	node := map[string]interface{}{"k": child, "s": "v"}
-	// Record a memo for the node (val is irrelevant to validation).
-	cons.setPointerMemo(0x1234, node, ast.String("first"))
+	// Record a memo for the node (the term is irrelevant to validation).
+	fp, ok := nodeFingerprintOf(node)
+	require.True(t, ok)
+	cons.byPointer[0x1234] = pointerMemo{term: ast.StringTerm("first"), fp: fp}
 	if memo, ok := cons.byPointer[0x1234]; ok && cons.pointerMemoMatches(memo, node) {
 		// sanity: the fresh memo validates
 	} else {

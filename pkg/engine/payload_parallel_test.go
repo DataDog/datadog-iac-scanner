@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,4 +58,43 @@ func TestConvertPayloadDocuments_ParallelMatchesSerial(t *testing.T) {
 	for i, d := range released {
 		require.Nil(t, d, "document %d not released", i)
 	}
+}
+
+// Parsed documents, whose nodes the runner shares, are memoized by address;
+// module documents are not. Either way a document converts to the term a
+// plain conversion gives.
+func TestConvertPayloadDocuments_ParsedAndModuleDocumentsConvertAlike(t *testing.T) {
+	ins := &Inspector{}
+	want := func(docs []model.Document) []string {
+		out := make([]string, len(docs))
+		for i, d := range docs {
+			raw, err := ast.InterfaceToValue(map[string]interface{}(d))
+			require.NoError(t, err)
+			out[i] = ins.TransformJsonencodeInPayload(context.Background(), raw).String()
+		}
+		return out
+	}
+	rendered := func(terms []*ast.Term) []string {
+		out := make([]string, len(terms))
+		for i, term := range terms {
+			out[i] = term.String()
+		}
+		return out
+	}
+	docs := payloadDocs(300)
+	expected := want(docs)
+	all := make([]interface{}, len(docs))
+	for i, d := range docs {
+		all[i] = map[string]interface{}(d)
+	}
+	parsed, err := ins.convertPayloadDocuments(context.Background(), all, nil, docs[:150], docs[150:])
+	require.NoError(t, err)
+	require.Equal(t, expected, rendered(parsed))
+
+	for i, d := range docs {
+		all[i] = map[string]interface{}(d)
+	}
+	modules, err := ins.convertPayloadDocuments(context.Background(), all, nil, nil, docs)
+	require.NoError(t, err)
+	require.Equal(t, expected, rendered(modules))
 }
