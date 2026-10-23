@@ -850,6 +850,12 @@ func (c *Inspector) executeQueries(
 	// several queries are gathered in one allocation, each query's released
 	// once taken; those of a single query are taken as they are.
 	if total, queriesWithFindings := countFindings(results); queriesWithFindings > 1 {
+		if c.releaseDocumentsAfterPayload {
+			// The payload and the state of evaluation are dead once every
+			// query has run: they are collected before the findings are
+			// gathered, rather than adding up with them.
+			runtime.GC()
+		}
 		vulnerabilities = make([]model.Vulnerability, 0, total)
 	}
 	moduleVulns := make(map[string]int)
