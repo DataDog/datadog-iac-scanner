@@ -589,6 +589,7 @@ func (sr *sarifReport) RebuildTaxonomies(cwes []string, guids map[string]string)
 func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryResult, sciInfo model.SCIInfo) (string, error) {
 	contextLogger := logger.FromContext(ctx)
 	if len(issue.Files) > 0 {
+		fixes := remediationsHelper.NewFixCache()
 		metadata := ruleMetadata{
 			queryID:          issue.QueryID,
 			legacyQueryID:    issue.LegacyQueryID,
@@ -764,7 +765,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 					moduleAttribution.ArgumentControl == model.ArgumentControlModule)
 			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" && remediationAllowed &&
 				remediationStartLocation.Line >= 1 {
-				sarifFix, err := remediationsHelper.TransformToSarifFix(
+				sarifFix, err := fixes.TransformToSarifFix(
 					ctx,
 					vulnerability,
 					remediationStartLocation,
