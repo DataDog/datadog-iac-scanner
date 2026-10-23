@@ -1010,6 +1010,12 @@ func (e *Evaluator) evaluateCallConcurrently(
 ) (keys, outs []cty.Value) {
 	contextLogger := logger.FromContext(ctx)
 	instances, results := e.evaluateInstancesConcurrently(ctx, mb, call, plan, n, rootDir, addr, childChain, visiting, allVisited)
+	// The result grows once for every instance rather than once per instance.
+	total := 0
+	for i := range results {
+		total += len(results[i].resources)
+	}
+	*out = slices.Grow(*out, total)
 	for i := range results {
 		r := &results[i]
 		keys = append(keys, instances[i].key)

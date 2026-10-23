@@ -982,18 +982,21 @@ func instantiatedDocs(
 		callChain, fileID string
 		layer             int
 	}
-	groups := make(map[groupKey]*docGroup)
-	var order []groupKey
+	// Sized for one document per resource, the most there can be, so they
+	// do not grow one entry at a time over hundreds of thousands of them.
+	groups := make(map[groupKey]*docGroup, len(resources))
+	order := make([]groupKey, 0, len(resources))
 	// The attributions of one call in one file are shared by the documents
 	// holding its instances. An instance's attribution is usually its block's,
 	// the same pointer for every instance; a group meeting one that differs,
 	// because it depends on the iteration, takes its own copy of the map.
-	callAttributions := make(map[string]map[string]*model.ModuleAttribution)
+	type callKey struct{ callChain, fileID string }
+	callAttributions := make(map[callKey]map[string]*model.ModuleAttribution)
 	// A base name repeats within one call and file whenever count/for_each
 	// expands a block. Document keys stay base-named so line detection can
 	// resolve them against the file's HCL, so repeats spill into a further
 	// document rather than overwriting each other.
-	layers := make(map[slotKey]int)
+	layers := make(map[slotKey]int, len(resources))
 	converted := convertInstances(resources, targets)
 	files := make(map[string]*model.FileMetadata)
 	type chainKey struct {
@@ -1046,7 +1049,7 @@ func instantiatedDocs(
 		key := groupKey{callChain: cck, fileID: fm.ID, layer: layer}
 		g, exists := groups[key]
 		if !exists {
-			call := cck + "\x00" + fm.ID
+			call := callKey{callChain: cck, fileID: fm.ID}
 			shared, ok := callAttributions[call]
 			if !ok {
 				shared = make(map[string]*model.ModuleAttribution)
@@ -1067,6 +1070,8 @@ func instantiatedDocs(
 		resourceCount++
 	}
 
+	docs = make([]model.Document, 0, len(order))
+	synthetic = make([]*model.FileMetadata, 0, len(order))
 	for _, key := range order {
 		g := groups[key]
 		docID := g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
@@ -1270,30 +1275,33 @@ func hashMap(d *xxhash.Digest, m map[string]interface{}, tag func(byte, int), st
 }
 
 // contentHasher folds fields into a 128-bit key using two independent digests.
-type contentHasher struct{ a, b *xxhash.Digest }
+// The digests are held by value so a hasher needs no allocation.
+type contentHasher struct{ a, b xxhash.Digest }
 
 func newContentHasher() contentHasher {
-	h := contentHasher{a: xxhash.New(), b: xxhash.New()}
+	var h contentHasher
+	h.a.Reset()
+	h.b.Reset()
 	_, _ = h.b.WriteString("\x00datadog-iac-scanner\x00")
 	return h
 }
 
-func (h contentHasher) str(s string) {
-	for _, d := range [...]*xxhash.Digest{h.a, h.b} {
+func (h *contentHasher) str(s string) {
+	for _, d := range [...]*xxhash.Digest{&h.a, &h.b} {
 		_, _ = d.WriteString(s)
 		_, _ = d.WriteString("\x1f")
 	}
 }
 
-func (h contentHasher) u64(v uint64) {
+func (h *contentHasher) u64(v uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], v)
-	for _, d := range [...]*xxhash.Digest{h.a, h.b} {
+	for _, d := range [...]*xxhash.Digest{&h.a, &h.b} {
 		_, _ = d.Write(buf[:])
 	}
 }
 
-func (h contentHasher) key() docContentKey {
+func (h *contentHasher) key() docContentKey {
 	return docContentKey{a: h.a.Sum64(), b: h.b.Sum64()}
 }
 
