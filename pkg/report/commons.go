@@ -11,6 +11,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"html/template"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -109,7 +110,16 @@ func ExportJSONReport(ctx context.Context, path, filename string, body interface
 
 	defer closeFile(ctx, fullPath, filename, f)
 
+	if streamed, ok := body.(jsonStreamer); ok {
+		return streamed.EncodeJSON(f)
+	}
 	return json.NewEncoder(f).Encode(body)
+}
+
+// jsonStreamer is a report that writes its own JSON, identical to what
+// json.Encoder writes, without holding the whole encoding in memory.
+type jsonStreamer interface {
+	EncodeJSON(w io.Writer) error
 }
 
 func getSummary(body interface{}) (sum model.Summary, err error) {
