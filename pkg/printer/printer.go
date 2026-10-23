@@ -52,8 +52,8 @@ func PrintResult(ctx context.Context, summary *model.Summary, printer *Printer, 
 		// Hide suppressed findings from the CLI output: they are still emitted
 		// in SARIF via `suppressions`, but the printed list and counts should
 		// reflect only the violations that survive after suppression.
-		active := activeFiles(summary.Queries[idx].Files)
-		if len(active) == 0 {
+		active := countActive(summary.Queries[idx].Files)
+		if active == 0 {
 			continue
 		}
 
@@ -61,14 +61,14 @@ func PrintResult(ctx context.Context, summary *model.Summary, printer *Printer, 
 			"%s, Severity: %s, Results: %d\n",
 			printer.PrintBySev(summary.Queries[idx].QueryName, string(summary.Queries[idx].Severity)),
 			printer.PrintBySev(string(summary.Queries[idx].Severity), string(summary.Queries[idx].Severity)),
-			len(active),
+			active,
 		)
 
 		if summary.Queries[idx].Experimental {
 			contextLogger.Info().Msgf("Note: this is an experimental query")
 		}
 
-		printFiles(ctx, summary.Queries[idx].Severity, active, printer)
+		printFiles(ctx, summary.Queries[idx].Severity, summary.Queries[idx].Files, printer)
 	}
 	contextLogger.Info().Msgf("\nResults Summary:\n")
 	printSeverityCounter(ctx, model.SeverityCritical, summary.SeverityCounters[model.SeverityCritical])
@@ -113,25 +113,30 @@ func printSeverityCounter(ctx context.Context, severity string, counter int) {
 	contextLogger.Info().Msgf("%s: %d\n", severity, counter)
 }
 
+// printFiles prints the files of findings that are not suppressed, numbered
+// in order.
 func printFiles(ctx context.Context, severity model.Severity, files []model.VulnerableFile, printer *Printer) {
 	contextLogger := logger.FromContext(ctx)
+	printed := 0
 	for fileIdx := range files {
-		contextLogger.Info().Msgf("\t%s %s:%s\n", printer.PrintBySev(fmt.Sprintf("[%d]:", fileIdx+1), string(severity)),
+		if files[fileIdx].IsSuppressed {
+			continue
+		}
+		printed++
+		contextLogger.Info().Msgf("\t%s %s:%s\n", printer.PrintBySev(fmt.Sprintf("[%d]:", printed), string(severity)),
 			files[fileIdx].FileName, printer.Success.Sprint(files[fileIdx].Line))
 	}
 }
 
-// activeFiles returns files for findings that are not suppressed.
-func activeFiles(files []model.VulnerableFile) []model.VulnerableFile {
-	out := make([]model.VulnerableFile, 0, len(files))
-	// nolint:gocritic
-	for _, f := range files {
-		if f.IsSuppressed {
-			continue
+// countActive returns how many files are of findings that are not suppressed.
+func countActive(files []model.VulnerableFile) int {
+	n := 0
+	for i := range files {
+		if !files[i].IsSuppressed {
+			n++
 		}
-		out = append(out, f)
 	}
-	return out
+	return n
 }
 
 // NewPrinter initializes a new Printer
