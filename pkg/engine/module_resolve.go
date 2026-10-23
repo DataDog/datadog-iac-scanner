@@ -452,6 +452,11 @@ func evaluateRootModules(
 			// the modules it shares, so the hit rate does not pay for a peak that
 			// grows with the whole repository rather than the largest single root.
 			evaluator.ReleaseEvalCache()
+		} else {
+			// The cache stays: a nested module this root did evaluate can still be
+			// reused. The local memo cannot, and its values are exactly the large
+			// ones a failing root would otherwise keep until the scan ends.
+			evaluator.ReleaseLocalMemo()
 		}
 	}
 }

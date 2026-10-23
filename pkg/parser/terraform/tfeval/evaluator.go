@@ -193,6 +193,11 @@ type Evaluator struct {
 	// inputs, whatever path led there.
 	cache   map[evalCacheKey]*evalCacheEntry
 	keyMemo keyMemo
+	// localMemo shares local values across the module evaluations reading the
+	// same values; localReads is what each local expression reads. Both follow
+	// the evaluation cache's lifetime.
+	localMemo  map[localMemoKey]cty.Value
+	localReads map[hclsyntax.Expression]localReads
 	// When set, non-local module sources resolve here and recurse with caller inputs.
 	remoteResolver RemoteResolver
 
@@ -524,7 +529,23 @@ func (e *Evaluator) ReleaseCaches() {
 func (e *Evaluator) ReleaseEvalCache() {
 	e.cache = make(map[evalCacheKey]*evalCacheEntry)
 	e.keyMemo = keyMemo{}
+	e.ReleaseLocalMemo()
+	e.localReads = nil
 }
+
+// ReleaseLocalMemo drops local values shared across module instances. A failed
+// root keeps its evaluation cache, so a nested module it did finish can be
+// reused, but nothing in the local memo can: every key includes path.*, which
+// the next root does not match.
+func (e *Evaluator) ReleaseLocalMemo() {
+	e.localMemo = nil
+}
+
+// LocalMemoSize and EvalCacheSize report what a root left retained.
+func (e *Evaluator) LocalMemoSize() int { return len(e.localMemo) }
+
+// EvalCacheSize reports memoized module evaluations.
+func (e *Evaluator) EvalCacheSize() int { return len(e.cache) }
 
 // EvaluateModule evaluates the module rooted at dir with the given inputs and
 // returns all resources materialized by this module and its nested modules.
@@ -1594,7 +1615,7 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 			typeAttrs[baseName] = buildInstanceCtyVal(b.keys, b.attrs, b.isCount, b.expanded, b.total, b.allKeys)
 		}
 		newVal := cty.ObjectVal(typeAttrs)
-		if existing, ok := evalCtx.Variables[typeName]; !ok || !existing.RawEquals(newVal) {
+		if existing, ok := evalCtx.Variables[typeName]; !ok || !equalValues(existing, newVal) {
 			evalCtx.Variables[typeName] = newVal
 			progress = true
 		}
@@ -1759,11 +1780,8 @@ func (e *Evaluator) resolveLocalsWith(
 			if seen && prev.IsWhollyKnown() {
 				continue
 			}
-			v, diags := expr.Value(ctx)
-			if diags.HasErrors() {
-				v = partial.WithUnknownRefs(expr, ctx)
-			}
-			if !v.IsKnown() || (seen && prev.RawEquals(v)) {
+			v := e.localValue(expr, ctx)
+			if !v.IsKnown() || (seen && equalValues(prev, v)) {
 				continue
 			}
 			resolved[name] = v

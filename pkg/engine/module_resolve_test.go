@@ -224,6 +224,68 @@ resource "aws_s3_bucket" "replica" {
 	}
 }
 
+// A root that fails after evaluating a nested module keeps that module's
+// evaluation for the next root, and drops the local memo. The memo's keys
+// include path.*, so a failed root's entries match nothing afterwards, and a
+// run of failing roots would otherwise retain every derived local.
+func TestFailedRootDropsLocalMemoAndKeepsEvalCache(t *testing.T) {
+	repo := t.TempDir()
+	child := writeFile(t, filepath.Join(repo, "modules", "child"), "main.tf", `
+resource "aws_s3_bucket" "c" { bucket = "child" }
+`)
+	var files model.FileMetadatas
+	files = append(files, fileMeta("child", child))
+	var roots []string
+	for _, name := range []string{"stack-a", "stack-b"} {
+		dir := filepath.Join(repo, name)
+		path := writeFile(t, dir, "main.tf", `
+locals {
+  derived = upper("kept")
+}
+module "child" {
+  source = "../modules/child"
+}
+resource "aws_s3_bucket" "a" { bucket = local.derived }
+`)
+		files = append(files, fileMeta(name, path))
+		roots = append(roots, dir)
+	}
+
+	previous := rootEvalWorkers
+	rootEvalWorkers = 1
+	defer func() { rootEvalWorkers = previous }()
+
+	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, repo)
+	evaluator := tfeval.New()
+	evaluator.SetMaxInstantiated(1)
+	moduleCalls := newModuleCallIndex(filesByDir, func(path string) bool {
+		return pathWithinRoot(path, filepath.Join(repo, "modules"))
+	})
+	if moduleCalls == nil {
+		t.Fatal("fixture must index the child module")
+	}
+	seen := make(map[docContentKey]string)
+	extras := make(map[string][]extraCallerInfo)
+	instantiated := make(instantiatedIndex)
+	var docs []model.Document
+	var synthetic []*model.FileMetadata
+	var resourceCount int
+	var rootEvalOK bool
+	evaluateRootModules(
+		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
+		byAbsPath, seen, extras, instantiated,
+		map[string]bool{}, map[string]bool{}, map[string]bool{},
+		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls,
+	)
+
+	if evaluator.LocalMemoSize() != 0 {
+		t.Fatalf("failed roots retained %d local values", evaluator.LocalMemoSize())
+	}
+	if evaluator.EvalCacheSize() == 0 {
+		t.Fatal("failed roots dropped the nested module evaluations they can reuse")
+	}
+}
+
 func TestResolveModuleDocuments_PartialRootFailureKeepsModuleBody(t *testing.T) {
 	root := t.TempDir()
 	stackA := filepath.Join(root, "stack-a")
