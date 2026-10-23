@@ -378,6 +378,17 @@ resource "aws_s3_bucket" "replica" {
 	if len(buckets) != n || !buckets[fmt.Sprintf("bucket-%d", n-1)] {
 		t.Fatalf("got %d distinct instances, want %d", len(buckets), n)
 	}
+	// The instances of the call in the file stand for it through one
+	// synthetic file, at every document's position.
+	require.Len(t, res.syntheticFiles, n)
+	for _, sf := range res.syntheticFiles {
+		require.Same(t, res.syntheticFiles[0], sf)
+	}
+	require.Equal(t, res.docs[0]["id"], res.syntheticFiles[0].ID)
+	filesMap := map[string]*model.FileMetadata{}
+	addModuleDocumentFiles(filesMap, res.docs, res.syntheticFiles)
+	require.Len(t, filesMap, n, "every document id maps to its file")
+	require.Len(t, appendSyntheticFiles(nil, res.syntheticFiles), 1)
 	if !res.suppressed["mod-id"]["aws_s3_bucket"]["replica"] {
 		t.Fatalf("the instances replace the source block: %#v", res.suppressed)
 	}

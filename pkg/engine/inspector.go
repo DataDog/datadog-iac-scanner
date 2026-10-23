@@ -594,11 +594,12 @@ func (c *Inspector) Inspect(
 	// attributed back to a call site. Adding them any earlier would have every
 	// pass over the scan input, module parsing above in particular, redo that
 	// file's work once per instantiation.
-	files = append(files, syntheticFiles...)
+	files = appendSyntheticFiles(files, syntheticFiles)
 
 	// Compute the file map once and share it (read-only) across all workers and
 	// payload partitioning.
 	filesMap := files.ToMap()
+	addModuleDocumentFiles(filesMap, moduleDocs, syntheticFiles)
 
 	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries)
 	if err != nil {
@@ -663,6 +664,29 @@ func (c *Inspector) Inspect(
 	vulnerabilities = expandModuleFindings(vulnerabilities, moduleExtras)
 	vulnerabilities = attributeModuleFileFindings(vulnerabilities, moduleFiles)
 	return c.applyCallSiteFilters(ctx, vulnerabilities, files), nil
+}
+
+// appendSyntheticFiles adds the files module documents stand for to files,
+// each once: the documents of one module call in one file share theirs.
+func appendSyntheticFiles(files model.FileMetadatas, synthetic []*model.FileMetadata) model.FileMetadatas {
+	added := make(map[*model.FileMetadata]bool)
+	for _, f := range synthetic {
+		if !added[f] {
+			added[f] = true
+			files = append(files, f)
+		}
+	}
+	return files
+}
+
+// addModuleDocumentFiles maps the id of each module document to the file it
+// stands for, synthetic holding that file at the document's position.
+func addModuleDocumentFiles(filesMap map[string]*model.FileMetadata, docs []model.Document, synthetic []*model.FileMetadata) {
+	for i, doc := range docs {
+		if id, ok := doc["id"].(string); ok && i < len(synthetic) {
+			filesMap[id] = synthetic[i]
+		}
+	}
 }
 
 // applyCallSiteFilters applies the root caller file's rule path filters and

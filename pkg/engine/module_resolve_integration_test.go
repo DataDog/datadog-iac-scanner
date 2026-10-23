@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -910,6 +911,17 @@ resource "aws_s3_bucket" "replica" {
 	require.Empty(t, ins.GetFailedQueries())
 
 	require.Len(t, vulns, 2, "both count-expanded instances must produce a finding")
+	// The instances share one synthetic file; each finding keeps its own
+	// document's id, so storing them merges neither away.
+	require.NotEqual(t, vulns[0].FileID, vulns[1].FileID)
+	for i := range vulns {
+		require.Contains(t, vulns[i].FileID, "\x00", "finding %d has its document's id", i)
+	}
+	stored := storage.NewMemoryStorage()
+	require.NoError(t, stored.SaveVulnerabilities(context.Background(), vulns))
+	unique, err := stored.GetVulnerabilities(context.Background(), "test")
+	require.NoError(t, err)
+	require.Len(t, unique, 2)
 }
 
 // TestInspect_SharedBaseStoresConcurrentReads runs multiple queries on one platform

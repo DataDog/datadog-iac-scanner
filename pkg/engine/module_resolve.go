@@ -912,11 +912,15 @@ type instantiatedResource struct {
 }
 
 // docGroup collects every resource one module call resolved in one defining file.
+// callKey is a module call in one of the files it instantiates.
+type callKey struct{ callChain, fileID string }
+
 type docGroup struct {
 	fm            *model.FileMetadata
 	callChain     string
 	moduleAddress string
 	layer         int
+	call          callKey
 	entries       []instantiatedResource
 	attributions  map[string]*model.ModuleAttribution
 	// ownAttributions is set once attributions is the group's own map rather
@@ -963,6 +967,10 @@ type docContentKey struct{ a, b uint64 }
 // Callers whose resolved content is identical share one document; the rest are
 // recorded in extras so their findings are cloned after evaluation, keeping
 // per-call-site attribution without re-evaluating identical input.
+//
+// synthetic holds, at each document's position, the file the document stands
+// for; documents of one call in one file share it, its ID being the first
+// one's document id.
 func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
@@ -990,8 +998,11 @@ func instantiatedDocs(
 	// holding its instances. An instance's attribution is usually its block's,
 	// the same pointer for every instance; a group meeting one that differs,
 	// because it depends on the iteration, takes its own copy of the map.
-	type callKey struct{ callChain, fileID string }
 	callAttributions := make(map[callKey]map[string]*model.ModuleAttribution)
+	// The documents of one call in one file stand for that file through one
+	// synthetic file, as they share its attributions: they only differ by
+	// document id, which their findings take as their file id.
+	callFiles := make(map[callKey]*model.FileMetadata)
 	// A base name repeats within one call and file whenever count/for_each
 	// expands a block. Document keys stay base-named so line detection can
 	// resolve them against the file's HCL, so repeats spill into a further
@@ -1057,7 +1068,7 @@ func instantiatedDocs(
 			}
 			g = &docGroup{
 				fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer,
-				attributions: shared,
+				attributions: shared, call: call,
 			}
 			groups[key] = g
 			order = append(order, key)
@@ -1115,7 +1126,15 @@ func instantiatedDocs(
 			doc["data"] = data
 		}
 		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, lineInfo.of(g.fm), docID, g.callChain, g.attributions))
+		// A group holding attributions of its own has a file of its own.
+		sf, ok := callFiles[g.call]
+		if !ok || g.ownAttributions {
+			sf = newInstanceFileMetadata(g.fm, lineInfo.of(g.fm), docID, g.callChain, g.attributions)
+			if !g.ownAttributions {
+				callFiles[g.call] = sf
+			}
+		}
+		synthetic = append(synthetic, sf)
 	}
 	return docs, synthetic, resourceCount
 }
