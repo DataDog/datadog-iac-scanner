@@ -300,6 +300,12 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		ScanID: scanID,
 	}
 	filePaths := make(map[string]string)
+	// Each query's files are allocated once: a query can have hundreds of
+	// thousands of them.
+	filesPerQuery := make(map[string]int)
+	for i := range vulnerabilities {
+		filesPerQuery[vulnerabilities[i].QueryID]++
+	}
 
 	for i := range vulnerabilities {
 		item := vulnerabilities[i]
@@ -318,6 +324,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 				Description:   item.Description,
 				DescriptionID: item.DescriptionID,
 				Frameworks:    item.Frameworks,
+				Files:         make([]VulnerableFile, 0, filesPerQuery[item.QueryID]),
 			}
 		}
 

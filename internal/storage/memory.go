@@ -63,45 +63,58 @@ func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model
 // is unique per instance of each block it holds; other documents add nothing.
 func instanceKey(v *model.Vulnerability) string {
 	if strings.Contains(v.FileID, "\x00") {
-		return "\x00" + v.FileID
+		return v.FileID
 	}
 	return ""
+}
+
+// findingKey is what tells findings apart: their fingerprint, and the
+// instance they were found in.
+type findingKey struct {
+	fingerprint [32]byte
+	instance    string
 }
 
 func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
 	// The last finding saved under a key is kept. Keys map to positions rather
 	// than to copies of the findings, which a large scan holds hundreds of
 	// thousands of.
-	last := make(map[string]int, len(m.vulnerabilities))
+	last := make(map[findingKey]int, len(m.vulnerabilities))
 	for i := range m.vulnerabilities {
 		v := &m.vulnerabilities[i]
 		fileName, line := v.Identity()
 		// SCIInfo is constant within a scan; an empty value yields the same grouping.
-		key := model.GetDatadogFingerprintHash(
-			model.SCIInfo{},
-			fileName,
-			v.Platform,
-			v.ResourceType,
-			v.ResourceName,
-			utils.ChooseQueryID(v.QueryID, v.LegacyQueryID),
-			line,
-			v.ModuleCallChain,
-		) + instanceKey(v)
+		key := findingKey{
+			fingerprint: model.FingerprintSum(
+				model.SCIInfo{},
+				fileName,
+				v.Platform,
+				v.ResourceType,
+				v.ResourceName,
+				utils.ChooseQueryID(v.QueryID, v.LegacyQueryID),
+				line,
+				v.ModuleCallChain,
+			),
+			instance: instanceKey(v),
+		}
 		last[key] = i
 	}
-	if len(last) == 0 {
-		return m.vulnerabilities
+	if len(last) == len(m.vulnerabilities) {
+		return m.vulnerabilities[:len(last):len(last)]
 	}
 	keep := make([]int, 0, len(last))
 	for _, i := range last {
 		keep = append(keep, i)
 	}
 	sort.Ints(keep)
-	uniqueVulnerabilities := make([]model.Vulnerability, len(keep))
+	// The kept findings are moved forward in place, in order: each moves to
+	// a position no later than its own, so none is overwritten before it moves.
 	for j, i := range keep {
-		uniqueVulnerabilities[j] = m.vulnerabilities[i]
+		m.vulnerabilities[j] = m.vulnerabilities[i]
 	}
-	return uniqueVulnerabilities
+	clear(m.vulnerabilities[len(keep):])
+	m.vulnerabilities = m.vulnerabilities[:len(keep)]
+	return m.vulnerabilities[:len(keep):len(keep)]
 }
 
 // NewMemoryStorage creates a new MemoryStorage empty and returns it

@@ -6,6 +6,9 @@
 package model
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -32,4 +35,27 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 	// Non-Terraform platforms must ignore the module call chain.
 	k8sWithChain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
 	require.Equal(t, base, k8sWithChain, "non-Terraform platforms must ignore the module call chain")
+}
+
+// The fingerprint is the SHA-256 of the segments joined by "|", whatever the
+// length of the segments.
+func TestGetDatadogFingerprintHash_IsTheJoinedSegmentsDigest(t *testing.T) {
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "https://example.invalid/repo.git"}}
+	long := strings.Repeat("module.m[\"k\"].", 100)
+	for _, c := range []struct {
+		platform, line, chain string
+		segments              []string
+	}{
+		{"Kubernetes", "7", "chain", nil},
+		{dockerfilePlatform, "7", "chain", []string{"7"}},
+		{terraformPlatform, "7", "", nil},
+		{terraformPlatform, "7", "root/main.tf|module.m", []string{"root/main.tf|module.m"}},
+		{terraformPlatform, "7", long, []string{long}},
+	} {
+		joined := strings.Join(append([]string{sci.RepositoryCommitInfo.RepositoryUrl,
+			"modules/bucket/main.tf", "aws_s3_bucket", "this", "rule-1"}, c.segments...), "|")
+		want := sha256.Sum256([]byte(joined))
+		got := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", c.platform, "aws_s3_bucket", "this", "rule-1", c.line, c.chain)
+		require.Equal(t, hex.EncodeToString(want[:]), got, "platform %s, chain of %d bytes", c.platform, len(c.chain))
+	}
 }

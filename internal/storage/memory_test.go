@@ -296,3 +296,36 @@ func TestMemoryStorage_TerraformInstancesAreNotMerged(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 }
+
+// Of findings saved under one key, the last is kept, and the kept findings
+// stay in the order they were saved, however often they are read.
+func TestMemoryStorage_UniqueFindingsKeepLastInOrder(t *testing.T) {
+	finding := func(name, searchKey string) model.Vulnerability {
+		return model.Vulnerability{
+			FileID: "f1", FileName: "main.tf", QueryID: "q", Platform: "Terraform",
+			ResourceName: name, Line: 3, SearchKey: searchKey,
+		}
+	}
+	storage := NewMemoryStorage()
+	require.NoError(t, storage.SaveVulnerabilities(context.Background(), []model.Vulnerability{
+		finding("a", "first"), finding("b", "only"), finding("a", "second"), finding("c", "only"), finding("a", "third"),
+	}))
+	searchKeys := func(vs []model.Vulnerability) []string {
+		var out []string
+		for i := range vs {
+			out = append(out, vs[i].ResourceName+"="+vs[i].SearchKey)
+		}
+		return out
+	}
+	want := []string{"b=only", "c=only", "a=third"}
+	for range 2 {
+		got, err := storage.GetVulnerabilities(context.Background(), "")
+		require.NoError(t, err)
+		require.Equal(t, want, searchKeys(got))
+	}
+
+	require.NoError(t, storage.SaveVulnerabilities(context.Background(), []model.Vulnerability{finding("b", "again")}))
+	got, err := storage.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Equal(t, []string{"c=only", "a=third", "b=again"}, searchKeys(got))
+}
