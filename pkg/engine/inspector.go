@@ -364,6 +364,9 @@ type QueryContext struct {
 	discardLineInfoAfterUse bool
 	// findings shares what the scan's findings have in common; nil shares nothing.
 	findings *findingInterner
+	// queryFrameworks are the frameworks of the query's findings, extracted
+	// once; nil extracts them for each finding.
+	queryFrameworks *[]model.Framework
 }
 
 var (
@@ -532,6 +535,8 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
 		findings:                findings,
 	}
+	frameworks := extractQueryFrameworks(ctx, queryContext)
+	queryContext.queryFrameworks = &frameworks
 
 	evalStart := time.Now()
 	vuls, err := c.doRun(ctx, queryContext)
