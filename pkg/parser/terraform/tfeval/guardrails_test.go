@@ -117,9 +117,19 @@ func (c *checksAfter) Err() error {
 	return nil
 }
 
+// serialInstances makes the test evaluate every module call's instances in
+// order, for counters that depend on which evaluator evaluated what.
+func serialInstances(t *testing.T) {
+	t.Helper()
+	previous := parallelInstancesMin
+	parallelInstancesMin = math.MaxInt
+	t.Cleanup(func() { parallelInstancesMin = previous })
+}
+
 // Identical inputs are evaluated once and reused at every other address;
 // distinct inputs are each evaluated, and the cache holds no copy for them.
 func TestGuardrail_CacheEntriesFollowDistinctInputs(t *testing.T) {
+	serialInstances(t)
 	const n = 200
 	for _, c := range []struct {
 		name           string

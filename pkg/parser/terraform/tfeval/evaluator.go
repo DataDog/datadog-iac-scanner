@@ -205,6 +205,10 @@ type Evaluator struct {
 	// When set, non-local module sources resolve here and recurse with caller inputs.
 	remoteResolver RemoteResolver
 
+	// inParallel is set on an evaluator evaluating instances of a module call
+	// concurrently with others, whose nested calls are evaluated in order.
+	inParallel bool
+
 	// cacheOrder is the keys of cache entries in the order they were made,
 	// so a rollback can find the entries made since a point.
 	cacheOrder []evalCacheKey
@@ -946,34 +950,41 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		// Every instance of the call shares the chain leading to it.
 		childChain := append(cloneChain(chain), call.site(scope))
 		var keys, outs []cty.Value
-		for instance := range plan.all {
+		if n := e.concurrentInstances(&plan); n > 0 {
+			keys, outs = e.evaluateCallConcurrently(ctx, mb, &call, &plan, n, rootDir, addr, childChain, visiting, allVisited, out)
 			if e.stopped() != nil {
 				return moduleOutputs
 			}
-			modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
-			childAddr := instance.address(addr, call.label)
-			instancesBefore := len(e.instances)
-			mark := e.resultMark(out)
-
-			childOuts, cErr := e.evaluate(
-				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
-				childChain, visiting, allVisited, out,
-			)
-			keys = append(keys, instance.key)
-			if cErr != nil {
-				if isReportableModuleEvalError(cErr) {
-					contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, cErr)
+		} else {
+			for instance := range plan.all {
+				if e.stopped() != nil {
+					return moduleOutputs
 				}
-				// Deliberately not added to allVisited: the module was not resolved, so
-				// it must keep being scanned where it is written.
-				e.instances = e.instances[:instancesBefore]
-				e.discardFrom(mark)
-				outs = append(outs, cty.NilVal)
-				continue
+				modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
+				childAddr := instance.address(addr, call.label)
+				instancesBefore := len(e.instances)
+				mark := e.resultMark(out)
+
+				childOuts, cErr := e.evaluate(
+					ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
+					childChain, visiting, allVisited, out,
+				)
+				keys = append(keys, instance.key)
+				if cErr != nil {
+					if isReportableModuleEvalError(cErr) {
+						contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, cErr)
+					}
+					// Deliberately not added to allVisited: the module was not resolved, so
+					// it must keep being scanned where it is written.
+					e.instances = e.instances[:instancesBefore]
+					e.discardFrom(mark)
+					outs = append(outs, cty.NilVal)
+					continue
+				}
+				e.recordModuleInstance(call.dir, childAddr, childChain)
+				allVisited.add(call.dir)
+				outs = append(outs, objectOrEmpty(childOuts))
 			}
-			e.recordModuleInstance(call.dir, childAddr, childChain)
-			allVisited.add(call.dir)
-			outs = append(outs, objectOrEmpty(childOuts))
 		}
 		if value, ok := moduleOutputsValue(&plan, keys, outs); ok {
 			moduleOutputs[call.label] = value
@@ -981,6 +992,41 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 	}
 	return moduleOutputs
+}
+
+// evaluateCallConcurrently evaluates the n instances of a module call on
+// several workers, and appends their instances to out in instance order.
+func (e *Evaluator) evaluateCallConcurrently(
+	ctx context.Context,
+	mb *hclsyntax.Block,
+	call *moduleCall,
+	plan *moduleExpansionPlan,
+	n int,
+	rootDir, addr string,
+	childChain []CallSite,
+	visiting map[string]bool,
+	allVisited *visitSet,
+	out *[]ResolvedResource,
+) (keys, outs []cty.Value) {
+	contextLogger := logger.FromContext(ctx)
+	instances, results := e.evaluateInstancesConcurrently(ctx, mb, call, plan, n, rootDir, addr, childChain, visiting, allVisited)
+	for i := range results {
+		r := &results[i]
+		keys = append(keys, instances[i].key)
+		if r.err != nil {
+			if isReportableModuleEvalError(r.err) {
+				contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, r.err)
+			}
+			outs = append(outs, cty.NilVal)
+			continue
+		}
+		*out = append(*out, r.resources...)
+		e.instances = append(e.instances, r.instances...)
+		e.recordModuleInstance(call.dir, instances[i].address(addr, call.label), childChain)
+		allVisited.add(call.dir)
+		outs = append(outs, objectOrEmpty(r.outputs))
+	}
+	return keys, outs
 }
 
 // resultMark is a point in a result to roll back to.

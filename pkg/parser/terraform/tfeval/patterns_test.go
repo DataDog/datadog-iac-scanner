@@ -7,7 +7,9 @@ package tfeval
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -120,9 +122,7 @@ func runPattern(t *testing.T, c patternCase) []ResolvedResource {
 	for dir, src := range c.modules {
 		writeModule(t, root, dir, map[string]string{"main.tf": src})
 	}
-	e := New()
-	resources, outputs, _, err := e.EvaluateModule(context.Background(), filepath.Join(root, "stack"), nil)
-	require.NoError(t, err)
+	resources, outputs := evaluateBothWays(t, filepath.Join(root, "stack"))
 	got := addresses(resources)
 	require.Equal(t, sorted(c.want), got, "instance addresses")
 	require.Len(t, got, len(c.want), "instance count")
@@ -130,6 +130,41 @@ func runPattern(t *testing.T, c patternCase) []ResolvedResource {
 		require.Equal(t, want, jsonOf(t, outputs[name]), "output %s", name)
 	}
 	return resources
+}
+
+// evaluateBothWays evaluates stack with every module call's instances in
+// order, then with every call of two instances or more evaluated
+// concurrently, and checks both give the same instances, values and outputs.
+func evaluateBothWays(t *testing.T, stack string) ([]ResolvedResource, map[string]cty.Value) {
+	t.Helper()
+	previous := parallelInstancesMin
+	defer func() { parallelInstancesMin = previous }()
+	parallelInstancesMin = math.MaxInt
+	serial, serialOutputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	parallelInstancesMin = 2
+	concurrent, concurrentOutputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Equal(t, describe(t, serial), describe(t, concurrent), "concurrent evaluation differs from serial")
+	require.Equal(t, len(serialOutputs), len(concurrentOutputs))
+	for name, v := range serialOutputs {
+		require.Equal(t, jsonOf(t, v), jsonOf(t, concurrentOutputs[name]), "output %s", name)
+	}
+	return serial, serialOutputs
+}
+
+// describe renders instances in order with their address, call chain and
+// documents, for comparing evaluations.
+func describe(t *testing.T, resources []ResolvedResource) []string {
+	t.Helper()
+	out := make([]string, len(resources))
+	for i := range resources {
+		r := &resources[i]
+		doc, err := json.Marshal(AttributesToDocument(r))
+		require.NoError(t, err)
+		out[i] = fmt.Sprintf("%s chain=%d %s", instanceAddress(r), len(r.CallChain), doc)
+	}
+	return out
 }
 
 const passthroughLeaf = `

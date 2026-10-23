@@ -123,6 +123,7 @@ func TestInputsKeyMemoizesCollectionInputsOnly(t *testing.T) {
 }
 
 func TestEvaluateModuleSharedConfigDigestedOnce(t *testing.T) {
+	serialInstances(t)
 	const keys = 64
 	root := t.TempDir()
 	stack := writeModule(t, root, "stack", map[string]string{
