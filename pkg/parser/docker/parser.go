@@ -1,13 +1,16 @@
 package docker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"maps"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
 )
@@ -43,9 +46,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	reader := bytes.NewReader(fileContent)
-
-	parsed, err := parser.Parse(reader)
+	if saved, ok := ctx.Value(sourceLocationKey{}).(*sourceLocations); ok && iacparser.IsLineInfoOnly(ctx) {
+		return saved.parse(ctx, fileContent)
+	}
+	parsed, err := dockerfile.Parse(ctx, fileContent)
 	if err != nil {
 		return nil, nil, nil, nil, errors.Wrap(err, "failed to parse Dockerfile")
 	}
@@ -55,13 +59,27 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	arguments := make([]Command, 0)
 	ignoreStruct := newIgnore()
 
-	args := make(map[string]string, 0)
-	envs := make(map[string]string, 0)
+	lineInfoOnly := iacparser.IsLineInfoOnly(ctx)
+	var lex, declarationLex *wordExpander
+	if !lineInfoOnly {
+		lex = newWordExpander(parsed.EscapeToken, true)
+		declarationLex = newWordExpander(parsed.EscapeToken, false)
+	}
+	source := &sourceLocations{}
+	if !lineInfoOnly {
+		source.lines = dockerfile.CaptureSourceLines(parsed, fileContent)
+	}
+	globalArgs := make(map[string]string)
+	scope := variableScope{args: globalArgs, envs: make(map[string]string)}
+	stages := make(map[string]variableScope)
 
 	for _, child := range parsed.AST.Children {
-		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
-		if child.Value == "from" {
-			fromValue = strings.TrimPrefix(strings.TrimSpace(child.Original), "FROM ")
+		name := strings.ToLower(strings.TrimSpace(child.Value))
+		if name == command.From {
+			fromValue = dockerfile.FromArguments(child.Original)
+			if !lineInfoOnly {
+				scope = scopeForStage(child, globalArgs, stages, lex)
+			}
 		}
 
 		if ignoreStruct.getIgnoreComments(child) {
@@ -70,35 +88,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 		ignoreStruct.ignoreBlock(child, fromValue)
 
-		cmd := Command{
-			Cmd:       child.Value,
-			Original:  strings.TrimSpace(child.Original),
-			Flags:     child.Flags,
-			StartLine: child.StartLine,
-			KicsLine:  child.StartLine,
-			EndLine:   child.EndLine,
-		}
+		cmd := commandFromNode(child)
 
-		if child.Next != nil && len(child.Next.Children) > 0 {
-			cmd.SubCmd = strings.ToLower(child.Next.Children[0].Value)
-			child = child.Next.Children[0]
-		}
-
-		cmd.JSON = child.Attributes["json"]
-		for n := child.Next; n != nil; n = n.Next {
-			cmd.Value = append(cmd.Value, n.Value)
-		}
-
-		if child.Value != "arg" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, args)
-		} else {
-			args = saveArgs(args, cmd.Value[0])
-		}
-
-		if child.Value != "env" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, envs)
-		} else {
-			envs = saveEnvs(envs, cmd.Value)
+		// Source locations keep raw commands before rule-facing enrichment.
+		if !lineInfoOnly {
+			source.expandCommand(&cmd, &scope, globalArgs, lex, declarationLex)
 		}
 
 		if fromValue == "" {
@@ -125,8 +119,41 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	documents = append(documents, *doc)
 
 	ignoreLines = ignoreStruct.getIgnoreLines()
+	if !lineInfoOnly {
+		source.document, source.ignore = encodeSourceDocument(j), ignoreLines
+		dockerfile.RememberSource(ctx, source)
+	}
 
 	return fileContent, documents, ignoreLines, resolvedFiles, nil
+}
+
+// PrepareContext shares the source parse with content gates and document parsing.
+func (p *Parser) PrepareContext(ctx context.Context, path string, content []byte) context.Context {
+	return dockerfile.PrepareSource(ctx, content, utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) == utils.DockerfileContent)
+}
+
+// commandFromNode keeps BuildKit's nested instruction and source boundaries.
+func commandFromNode(child *parser.Node) Command {
+	cmd := Command{
+		Cmd:       strings.ToLower(strings.TrimSpace(child.Value)),
+		Original:  strings.TrimSpace(child.Original),
+		Flags:     child.Flags,
+		StartLine: child.StartLine,
+		KicsLine:  child.StartLine,
+		EndLine:   child.EndLine,
+	}
+
+	if child.Next != nil && len(child.Next.Children) > 0 {
+		cmd.SubCmd = strings.ToLower(child.Next.Children[0].Value)
+		child = child.Next.Children[0]
+	}
+
+	cmd.JSON = child.Attributes["json"]
+	for n := child.Next; n != nil; n = n.Next {
+		cmd.Value = append(cmd.Value, n.Value)
+	}
+
+	return cmd
 }
 
 // GetKind returns the kind of the parser
@@ -134,9 +161,18 @@ func (p *Parser) GetKind() model.FileKind {
 	return model.KindDOCKER
 }
 
+// LineInfoContext records logical source lines while building line info so the
+// detector can reuse the same BuildKit parse.
+func (p *Parser) LineInfoContext(ctx context.Context, file *model.FileMetadata) context.Context {
+	ctx = context.WithValue(ctx, locationFileKey{}, file)
+	return dockerfile.WithSourceLines(ctx, file.Lines(), func(lines []string) {
+		file.DetectionLines(dockerfile.SourceViewKey, func([]string) []string { return lines })
+	})
+}
+
 // SupportedExtensions returns Dockerfile extensions
 func (p *Parser) SupportedExtensions() []string {
-	return []string{"Dockerfile", ".dockerfile", ".ubi8", ".debian", "possibleDockerfile"}
+	return []string{"Dockerfile", ".dockerfile", ".ubi8", ".debian", utils.PossibleDockerfile}
 }
 
 // SupportedTypes returns types supported by this parser, which are dockerfile
@@ -154,30 +190,75 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
-func resolveArgsAndEnvs(values []string, args map[string]string) []string {
-	for i := range values {
-		for arg := range args {
-			ref1 := fmt.Sprintf("${%s}", arg)
-			values[i] = strings.ReplaceAll(values[i], ref1, args[arg])
-			ref2 := fmt.Sprintf("$%s", arg)
-			values[i] = strings.ReplaceAll(values[i], ref2, args[arg])
+type variableScope struct {
+	args map[string]string
+	envs map[string]string
+}
+
+func scopeForStage(node *parser.Node, globals map[string]string, stages map[string]variableScope, lex *wordExpander) variableScope {
+	scope := variableScope{args: make(map[string]string), envs: make(map[string]string)}
+	if node.Next == nil {
+		return scope
+	}
+	base := expandValues(lex, []string{node.Next.Value}, globals)[0]
+	if parent, found := stages[strings.ToLower(base)]; found {
+		scope.args = maps.Clone(parent.args)
+		scope.envs = maps.Clone(parent.envs)
+	}
+	if as := node.Next.Next; as != nil && strings.EqualFold(as.Value, "as") && as.Next != nil {
+		stages[strings.ToLower(as.Next.Value)] = scope
+	}
+	return scope
+}
+
+func (s variableScope) declareArgs(lex *wordExpander, values []string, globals map[string]string) []string {
+	for i, value := range values {
+		name, defaultValue, hasDefault := strings.Cut(value, "=")
+		if hasDefault {
+			resolved := expandValues(lex, []string{defaultValue}, s.envs, s.args)[0]
+			s.args[name] = resolved
+			values[i] = name + "=" + resolved
+		} else if global, ok := globals[name]; ok {
+			// Global ARGs become stage variables only through an ARG declaration.
+			s.args[name] = global
 		}
 	}
-
 	return values
 }
 
-func saveArgs(args map[string]string, argValue string) map[string]string {
-	value := strings.Split(argValue, "=")
-	if len(value) == 2 {
-		args[value[0]] = value[1]
+// All values in one ENV instruction are expanded before updating the scope.
+func (s variableScope) declareEnvs(lex *wordExpander, values []string) []string {
+	for i := 1; i < len(values); i += 3 {
+		values[i] = expandValues(lex, []string{values[i]}, s.envs, s.args)[0]
 	}
-	if len(value) > 2 {
-		// to handle cases like ARG VAR=erereR=E
-		args[value[0]] = strings.Join(value[1:], "=")
-	}
+	saveEnvs(s.envs, values)
+	return values
+}
 
-	return args
+// variableEnvironment searches scopes in priority order (ENV before ARG).
+type variableEnvironment []map[string]string
+
+func (env variableEnvironment) Get(name string) (string, bool) {
+	for _, scope := range env {
+		if value, ok := scope[name]; ok {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func (env variableEnvironment) Keys() []string {
+	keys := make(map[string]struct{})
+	for _, scope := range env {
+		for key := range scope {
+			keys[key] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(keys))
+	for key := range keys {
+		result = append(result, key)
+	}
+	return result
 }
 
 func saveEnvs(envs map[string]string, envValues []string) map[string]string {
@@ -189,4 +270,19 @@ func saveEnvs(envs map[string]string, envValues []string) map[string]string {
 		}
 	}
 	return envs
+}
+
+func (s variableScope) expandCommand(cmd *Command, globalArgs map[string]string, lex, declarationLex *wordExpander) {
+	switch cmd.Cmd {
+	case command.From:
+		cmd.Value = expandValues(lex, cmd.Value, globalArgs)
+	case command.Arg:
+		cmd.Value = s.declareArgs(declarationLex, cmd.Value, globalArgs)
+	case command.Env:
+		cmd.Value = s.declareEnvs(declarationLex, cmd.Value)
+	case command.Onbuild:
+		// Triggers execute in a future child build, not in this stage.
+	default:
+		cmd.Value = expandValues(lex, cmd.Value, s.envs, s.args)
+	}
 }

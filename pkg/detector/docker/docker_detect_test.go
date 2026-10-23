@@ -7,8 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
+	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	dockerparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
+	buildkit "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,7 +76,7 @@ func TestPrepareDockerFileLinesLongMultiLineRun(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		result := prepareDockerFileLines(lines)
+		result := dockersource.InstructionLines(lines)
 		var runLine string
 		for _, line := range result {
 			if strings.Contains(line, "RUN true") {
@@ -220,5 +225,399 @@ func TestDetectDockerLine(t *testing.T) { //nolint
 			v := detector.DetectLine(ctx, testCase.file, testCase.searchKey, 3)
 			require.Equal(t, testCase.expected, v)
 		})
+	}
+}
+
+// Dockerfile instructions are case-insensitive, and search keys spell them in
+// uppercase whatever the file uses.
+func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
+	data := "from alpine:3.19\nrun apk add curl\nexpose 22\n"
+	file := &model.FileMetadata{
+		ID:                "lowercase",
+		Kind:              model.KindDOCKER,
+		OriginalData:      data,
+		LinesOriginalData: utils.SplitLines(data),
+	}
+	for searchKey, line := range map[string]int{
+		"FROM={{alpine:3.19}}":                      1,
+		"FROM={{alpine:3.19}}.RUN={{apk add curl}}": 2,
+		"FROM={{alpine:3.19}}.{{expose 22}}":        3,
+		"FROM={{alpine:3.19}}.{{EXPOSE 22}}":        3,
+	} {
+		got := DetectKindLine{}.DetectLine(context.Background(), file, searchKey, 3)
+		require.Equal(t, line, got.Line, searchKey)
+	}
+	got := DetectKindLine{}.DetectLine(context.Background(), file, "FROM={{alpine:3.19}}.{{expose 22}}", 3)
+	require.Equal(t, "expose 22", got.LineWithVulnerability, "the reported line keeps the file's spelling")
+
+	for _, tt := range []struct {
+		name, data, key, text string
+		line                  int
+	}{
+		{"implicit retry distinct image", "FROM busybox\nrun a\nFROM alpine\nrun a\nrun b\n", "RUN={{a}}.RUN={{b}}", "run b", 5},
+		{"implicit retry third stage", "FROM alpine\nRUN a\nFROM alpine\nRUN b\nFROM alpine\nRUN a\nRUN b\n", "{{RUN a}}.RUN={{b}}", "RUN b", 7},
+		{"global prefix third stage", "ARG X=1\nFROM alpine\nRUN a\nFROM alpine\nRUN b\nFROM alpine\nRUN a\nRUN b\n", "ARG={{X=1}}.{{RUN a}}.RUN={{b}}", "RUN b", 8},
+		{"fuzzy third stage closer", "FROM alpinex\nRUN b\nFROM alpine-build\nRUN a\nFROM alpine-dev\n", "FROM={{alpine}}.{{RUN b}}", "RUN b", 2},
+		{"fuzzy after global ARG", "ARG X=1\nFROM alpinex\nRUN b\nFROM alpine-dev\n", "{{ARG X=1}}.FROM={{alpine}}.RUN={{b}}", "RUN b", 3},
+		{"vertical tab second stage", "FROM busybox\nRUN a\nFROM\valpine AS b\nrun b\n", "FROM={{alpine AS b}}.RUN={{b}}", "run b", 4},
+		{"vertical tab flags", "FROM\v--platform=linux/amd64 alpine AS b\nRUN b\n", "FROM={{--platform=linux/amd64 alpine AS b}}.{{RUN b}}", "RUN b", 2},
+		{"FROM-looking literal value", "FROM alpine\nRUN echo from coffee\n", "{{from coffee}}", "RUN echo from coffee", 2},
+		{"FROM-looking literal after stage key", "FROM alpine\nRUN echo FROM coffee\n", "FROM={{alpine}}.{{FROM coffee}}", "RUN echo FROM coffee", 2},
+		{"FROM-looking literal after ordinary key", "FROM alpine\nRUN echo from coffee\n", "{{RUN echo}}.{{from coffee}}", "RUN echo from coffee", 2},
+		{"implicit stage retry", "FROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", "RUN b", 5},
+		{"global ARG then implicit retry", "ARG X=1\nFROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "{{ARG X=1}}.{{RUN a}}.{{RUN b}}", "RUN b", 6},
+		{"fuzzy FROM candidates stay in file order", "FROM alpinex\nRUN b\nFROM alpine-dev\n", "FROM={{alpine}}.RUN={{b}}", "RUN b", 2},
+		{"vertical tab FROM", "FROM\valpine AS b\nRUN a\n", "FROM={{alpine AS b}}.{{RUN a}}", "RUN a", 2},
+		{"FROM whitespace matches parser", "FROM\falpine\nRUN a\nFROM\talpine\nrun b\n", "FROM={{alpine}}.RUN={{b}}", "run b", 4},
+		{"repeated FROM literal", "FROM alpine\nRUN a\nFROM alpine\nRUN b\n", "{{from alpine}}.{{RUN b}}", "RUN b", 4},
+		{"repeated aliased FROM", "FROM alpine AS build\nRUN a\nFROM alpine AS build\nrun b\n", "FROM={{alpine AS build}}.RUN={{b}}", "run b", 4},
+		{"retry earlier FROM after later selector fails", "FROM alpine\nRUN a\nFROM busybox\nRUN a\nFROM alpine\nRUN b\nFROM busybox\nRUN b\n", "FROM={{alpine}}.RUN={{b}}.FROM={{busybox}}.RUN={{b}}", "RUN b", 8},
+		{"global ARG does not select heredoc payload", "ARG X=1\nFROM alpine\nRUN <<EOF\nRUN a\nEOF\nrun a\n", "{{ARG X=1}}.{{RUN a}}", "run a", 6},
+		{"repeated base retries later stage", "FROM alpine\nRUN a\nFROM alpine\nRUN apt-get b\n", "FROM={{alpine}}.RUN={{apt-get b}}", "RUN apt-get b", 4},
+		{"repeated base after partial match", "FROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "FROM={{alpine}}.RUN={{a}}.RUN={{b}}", "RUN b", 5},
+		{"repeated base cannot stitch stages", "FROM alpine\nRUN a\nFROM alpine\nRUN b\n", "FROM={{alpine}}.RUN={{a}}.RUN={{b}}", "RUN a", 2},
+		{"repeated base skips unrelated stage", "FROM alpine\nRUN a\nFROM busybox\nRUN b\nFROM alpine\nrun b\n", "FROM={{alpine}}.RUN={{b}}", "run b", 6},
+		{"global ARG enters stage", "ARG X=1\nFROM alpine\nRUN a\n", "{{ARG X=1}}.{{RUN a}}", "RUN a", 3},
+		{"global ARG with explicit stage", "ARG X=1\nFROM alpine\nRUN a\nFROM alpine\nRUN b\n", "{{ARG X=1}}.FROM={{alpine}}.RUN={{b}}", "RUN b", 5},
+		{"global ARG then instruction stays in its stage", "ARG X=1\nFROM alpine\nRUN a\nFROM busybox\nRUN b\n", "{{ARG X=1}}.RUN={{a}}.RUN={{b}}", "RUN a", 3},
+		{"stage alias is not base reference", "FROM alpine AS base\nARG PORT=22\nFROM base\nEXPOSE $PORT\n", "FROM={{base}}.{{EXPOSE $PORT}}", "EXPOSE $PORT", 4},
+		{"stage image is not a prefix", "FROM alpine-dev\nRUN echo needle\nFROM alpine\nrun echo needle\n", "FROM={{alpine}}.RUN={{echo needle}}", "run echo needle", 4},
+		{"stage flags remain part of selector", "FROM alpine AS base\nFROM --platform=linux/amd64 alpine\nRUN echo needle\n", "FROM={{--platform=linux/amd64 alpine}}.RUN={{echo needle}}", "RUN echo needle", 3},
+		{"do not cross stages", "FROM alpine\nRUN echo \"RUN apt-get update\"\nFROM busybox\nRUN apt-get update\n", "FROM={{alpine}}.{{RUN apt-get update}}", "FROM alpine", 1},
+		{"select second stage", "FROM alpine\nRUN echo hi\nFROM busybox\nrun apt-get update\n", "FROM={{busybox}}.{{RUN apt-get update}}", "run apt-get update", 4},
+		{"literal must stay in stage", "FROM alpine\nRUN echo hi\nFROM busybox\nRUN echo needle\n", "FROM={{alpine}}.{{needle}}", "FROM alpine", 1},
+		{"explicit next FROM", "FROM alpine\nRUN echo hi\nFROM busybox\nrun apt-get update\n", "FROM={{alpine}}.FROM={{busybox}}.{{RUN apt-get update}}", "run apt-get update", 4},
+		{"do not cross stage after partial match", "FROM alpine\nrun echo hi\nfrom busybox\nRUN echo hi && apt-get update\n", "FROM={{alpine}}.RUN={{echo hi}}.{{apt-get update}}", "run echo hi", 2},
+		{"quoted instruction before real instruction", "FROM alpine\nRUN echo \"RUN apt-get update\"\nrun apt-get update\n", "{{run apt-get update}}", "run apt-get update", 3},
+		{"instruction before quoted argument", "FROM alpine\nrun apt-get update\nRUN echo \"run apt-get update\"\n", "{{run apt-get update}}", "run apt-get update", 2},
+		{"uncached uppercase with lowercase key", "FROM alpine\nRUN echo hi\n", "FROM={{alpine}}.{{run echo hi}}", "RUN echo hi", 2},
+		{"keyword inside COPY argument", "FROM alpine\ncopy ./COPYING /app\n", "FROM={{alpine}}.COPY={{./COPYING}}", "copy ./COPYING /app", 2},
+		{"keyword inside RUN argument", "FROM alpine\nrun echo RUNNING\n", "FROM={{alpine}}.RUN={{echo RUNNING}}", "run echo RUNNING", 2},
+		{"adjacent continuation", "FROM alpine\nRUN echo ok &&\\\n echo hidden\n", "FROM={{alpine}}.RUN={{echo hidden}}", "RUN echo ok && echo hidden", 2},
+		{"trailing continuation whitespace", "FROM alpine\nrun echo ok \\  \n echo hidden\n", "FROM={{alpine}}.RUN={{echo hidden}}", "run echo ok  echo hidden", 2},
+		{"backtick continuation", "# escape=`\nFROM alpine\nrun echo ok `\n echo hidden\n", "FROM={{alpine}}.RUN={{echo hidden}}", "run echo ok  echo hidden", 3},
+		{"uppercase FROM and lowercase RUN", "FROM alpine:3.19\nrun apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "run apk add curl", 2},
+		{"uppercase FROM and mixed-case RUN", "FROM alpine:3.19\nRuN apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "RuN apk add curl", 2},
+		{"later lowercase instruction", "FROM alpine:3.19\nRUN apk add curl\nexpose 22\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}.{{EXPOSE 22}}", "expose 22", 3},
+		{"lowercase FROM and uppercase RUN", "from alpine:3.19\nRUN apk add curl\n", "FROM={{alpine:3.19}}.RUN={{apk add curl}}", "RUN apk add curl", 2},
+		{"bracket value before lowercase instruction", "FROM alpine\nRUN add user --disabled-password app\nexpose 22\n", "FROM={{alpine}}.{{add user}}.{{EXPOSE 22}}", "expose 22", 3},
+		{"lowercase instructions with bracket value", "from alpine\nrun add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "run add user --disabled-password app", 2},
+		{"healthcheck none", "FROM alpine\nhealthcheck none\n", "FROM={{alpine}}.{{HEALTHCHECK NONE}}", "healthcheck none", 2},
+		{"lowercase healthcheck", "FROM alpine\nhealthcheck cmd curl localhost\n", "FROM={{alpine}}.{{HEALTHCHECK CMD curl localhost}}", "healthcheck cmd curl localhost", 2},
+		{"quoted nested instruction before real instruction", "FROM alpine\nHEALTHCHECK CMD echo \"CMD curl localhost\"\nhealthcheck cmd curl localhost\n", "FROM={{alpine}}.HEALTHCHECK={{cmd curl localhost}}", "healthcheck cmd curl localhost", 3},
+		{"healthcheck flags", "FROM alpine\nhealthcheck --interval=5s cmd curl localhost\n", "FROM={{alpine}}.HEALTHCHECK={{CMD curl localhost}}", "healthcheck --interval=5s cmd curl localhost", 2},
+		{"lowercase onbuild", "FROM alpine\nonbuild run echo hello\n", "FROM={{alpine}}.{{ONBUILD RUN echo hello}}", "onbuild run echo hello", 2},
+		{"mixed nested instruction", "FROM alpine\nOnBuIlD rUn echo hello\n", "FROM={{alpine}}.ONBUILD={{RUN echo hello}}", "OnBuIlD rUn echo hello", 2},
+		{"keyword-looking value is case sensitive", "FROM alpine\nrun echo RUN\n", "FROM={{alpine}}.RUN={{run}}", "FROM alpine", 1},
+		{"literal value case is significant", "FROM alpine\nrun echo CMD\nrun echo cmd\n", "FROM={{alpine}}.RUN={{echo cmd}}", "run echo cmd", 3},
+		{"lowercase heredoc", "from alpine\ncopy <<EOF /tmp/config\nEXPOSE 22\nEOF\nexpose 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "expose 22", 5},
+		{"lowercase FROM heredoc", "from alpine\nrun cat <<EOF > /x\nFROM busybox\nEOF\nfrom busybox\n", "FROM={{busybox}}", "from busybox", 5},
+		{"quoted multiple heredocs", "FROM alpine\nCOPY <<'FIRST' <<SECOND /tmp/\nEXPOSE 22\nFIRST\nEXPOSE 22\nSECOND\nexpose 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "expose 22", 7},
+		{"indented heredoc", "FROM alpine\nRUN cat <<-EOF > /x\n\tFROM busybox\n\tEOF\nfrom busybox\n", "FROM={{busybox}}", "from busybox", 5},
+		{"copy heredoc", "FROM alpine\nCOPY <<EOF /tmp/config\nexpose 22\nEOF\nEXPOSE 22\n", "FROM={{alpine}}.{{EXPOSE 22}}", "EXPOSE 22", 5},
+		{"run heredoc", "FROM alpine\nRUN cat <<EOF > /x\nfrom busybox\nEOF\nFROM busybox\n", "FROM={{busybox}}", "FROM busybox", 5},
+		{"literal keyword value is case sensitive", "FROM alpine\nRUN ADD user\n", "FROM={{alpine}}.{{add user}}", "FROM alpine", 1},
+		{"bracket value", "FROM alpine\nRUN add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "RUN add user --disabled-password app", 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, docs, _, _, err := (&dockerparser.Parser{}).Parse(t.Context(), []byte(tt.data), "Dockerfile", false, 0)
+			require.NoError(t, err)
+			for mode, document := range map[string]model.Document{"parsed": docs[0], "line info": docs[0], "raw": nil, "raw uncached": nil} {
+				t.Run(mode, func(t *testing.T) {
+					file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.data, Document: document}
+					if mode == "line info" {
+						file.Document = nil
+						file.LineInfoDocument = document
+					}
+					if mode == "raw uncached" {
+						file.LinesOriginalData = utils.SplitLines(tt.data)
+					} else {
+						file.SetLazyLines()
+					}
+					got := DetectKindLine{}.DetectLine(t.Context(), file, tt.key, 3)
+					require.Equal(t, tt.line, got.Line)
+					require.Equal(t, tt.text, got.LineWithVulnerability)
+					require.Equal(t, tt.line, got.VulnerablilityLocation.Start.Line)
+					require.Equal(t, tt.line, got.VulnerablilityLocation.End.Line)
+				})
+			}
+		})
+	}
+}
+
+func TestDetectDockerLine_DocumentSchemaDoesNotControlSource(t *testing.T) {
+	data := "from alpine\nCOPY <<EOF /tmp/config\nEXPOSE 22\nEOF\nexpose 22\n"
+	file := &model.FileMetadata{
+		Kind:         model.KindDOCKER,
+		OriginalData: data,
+		Document: model.Document{"command": map[string]interface{}{
+			"alpine": []interface{}{
+				map[string]interface{}{"_dd_line": float64(3)},
+				map[string]interface{}{},
+			},
+		}},
+	}
+	file.SetLazyLines()
+	got := DetectKindLine{}.DetectLine(t.Context(), file, "FROM={{alpine}}.{{EXPOSE 22}}", 3)
+	require.Equal(t, 5, got.Line, "document field names and incomplete metadata do not control source locations")
+	require.Equal(t, "expose 22", got.LineWithVulnerability)
+}
+
+// Exhaustively combine short repeated stages. The oracle works on command
+// sequences, independently of line matching, to catch stage stitching and
+// partial-prefix tie regressions.
+func TestRepeatedStagesMatchCompleteKeyOrLongestPrefix(t *testing.T) {
+	sequences := [][]string{{}, {"a"}, {"b"}, {"a", "b"}, {"b", "a"}}
+	for _, a := range sequences {
+		for _, b := range sequences {
+			for _, c := range sequences {
+				var source strings.Builder
+				best, want, line := 0, 0, 0
+				for _, commands := range [][]string{a, b, c} {
+					source.WriteString("FROM alpine\n")
+					line++
+					matched, candidate := 1, line
+					for _, cmd := range commands {
+						source.WriteString("run " + cmd + "\n")
+						line++
+						if matched == 1 && cmd == "a" || matched == 2 && cmd == "b" {
+							matched++
+							candidate = line
+						}
+					}
+					if matched > best {
+						best, want = matched, candidate
+					}
+				}
+				for _, cached := range []bool{true, false} {
+					file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source.String()}
+					if cached {
+						file.SetLazyLines()
+					} else {
+						file.LinesOriginalData = utils.SplitLines(source.String())
+					}
+					got := DetectKindLine{}.DetectLine(t.Context(), file, "FROM={{alpine}}.RUN={{a}}.RUN={{b}}", 0)
+					require.Equal(t, want, got.Line, "cached=%t source=%q", cached, source.String())
+				}
+			}
+		}
+	}
+}
+
+func TestRepeatedStageSelectorsDoNotRevisitSuffixes(t *testing.T) {
+	source := strings.Repeat("FROM alpine\nRUN a\n", 20)
+	file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source}
+	file.SetLazyLines()
+	key := strings.Repeat("FROM={{alpine}}.", 12) + "RUN={{missing}}"
+	got := DetectKindLine{}.DetectLine(t.Context(), file, key, 0)
+	require.Equal(t, 1, got.Line, "incomplete attempts keep the earliest longest prefix")
+}
+
+func TestImplicitStageSelectionOracle(t *testing.T) {
+	sequences := [][]string{{}, {"a"}, {"b"}, {"a", "b"}, {"b", "a"}}
+	for _, prefix := range []string{"", "ARG X=1\n", "ARG X=1\nARG Y=2\n"} {
+		for _, a := range sequences {
+			for _, b := range sequences {
+				for _, c := range sequences {
+					var source strings.Builder
+					source.WriteString(prefix)
+					line, want, best := strings.Count(prefix, "\n"), -1, 0
+					key := "{{RUN a}}.RUN={{b}}"
+					if prefix != "" {
+						key = "ARG={{X=1}}." + key
+						want = 1
+					}
+					for _, commands := range [][]string{a, b, c} {
+						source.WriteString("FROM alpine\n")
+						line++
+						matched, candidate := 0, -1
+						for _, cmd := range commands {
+							source.WriteString("run " + cmd + "\n")
+							line++
+							if matched == 0 && cmd == "a" || matched == 1 && cmd == "b" {
+								matched++
+								candidate = line
+							}
+						}
+						if matched > best {
+							best, want = matched, candidate
+						}
+					}
+					for _, cached := range []bool{true, false} {
+						file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source.String()}
+						if cached {
+							file.SetLazyLines()
+						} else {
+							file.LinesOriginalData = utils.SplitLines(source.String())
+						}
+						got := DetectKindLine{}.DetectLine(t.Context(), file, key, 0)
+						require.Equal(t, want, got.Line, "cached=%t key=%q source=%q", cached, key, source.String())
+					}
+				}
+			}
+		}
+	}
+}
+
+// Alternative matches must be retried at every key position, with the same
+// results in cached and uncached views. Complete matches beat closer prefixes.
+func TestOrderedKeyAlternatives(t *testing.T) {
+	for _, tt := range []struct {
+		name, source, key string
+		line              int
+	}{
+		{"ordinary before FROM", "FROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "{{RUN a}}.FROM={{alpine}}.{{RUN b}}", 5},
+		{"global ordinary before FROM", "ARG X=1\nFROM alpine\nRUN a\nFROM alpine\nRUN a\nRUN b\n", "{{ARG X=1}}.{{RUN a}}.FROM={{alpine}}.{{RUN b}}", 6},
+		{"ordinary before fuzzy FROM", "FROM alpine-old\nRUN a\nFROM alpine-new\nRUN b\n", "RUN={{a}}.FROM={{alpine}}.RUN={{b}}", 4},
+		{"same stage", "FROM alpine\nRUN ab\nRUN b\nRUN a\n", "{{RUN a}}.{{RUN b}}", 3},
+		{"same stage after FROM", "FROM alpine\nRUN ab\nRUN b\nRUN a\n", "FROM={{alpine}}.RUN={{a}}.{{RUN b}}", 3},
+		{"same stage second stage", "FROM busybox\nRUN a\nFROM alpine\nRUN ab\nRUN b\nRUN a\n", "FROM={{alpine}}.{{RUN a}}.{{RUN b}}", 5},
+	} {
+		for _, cached := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cached=%t", tt.name, cached), func(t *testing.T) {
+				file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.source}
+				if cached {
+					file.SetLazyLines()
+				} else {
+					file.LinesOriginalData = utils.SplitLines(tt.source)
+				}
+				got := (DetectKindLine{}).DetectLine(t.Context(), file, tt.key, 0)
+				require.Equal(t, tt.line, got.Line)
+				require.Equal(t, "RUN b", got.LineWithVulnerability)
+			})
+		}
+	}
+}
+
+func BenchmarkRepeatedStageSearch(b *testing.B) {
+	for _, count := range []int{10, 100, 1000, 4000} {
+		for _, key := range []string{"{{RUN a}}.{{RUN b}}", "{{RUN a}}.FROM={{alpine}}.{{RUN b}}", "ARG={{X=1}}.{{RUN a}}.FROM={{alpine}}.{{RUN missing}}"} {
+			for _, complete := range []bool{false, true} {
+				b.Run(fmt.Sprintf("%d/complete=%t/%s", count, complete, key), func(b *testing.B) {
+					source := "ARG X=1\n" + strings.Repeat("FROM alpine\nRUN a\n", count)
+					if complete {
+						source += "RUN b\n"
+					}
+					file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: source}
+					file.SetLazyLines()
+					(DetectKindLine{}).DetectLine(b.Context(), file, key, 0)
+					b.ReportAllocs()
+					b.ResetTimer()
+					for b.Loop() {
+						(DetectKindLine{}).DetectLine(b.Context(), file, key, 0)
+					}
+				})
+			}
+		}
+	}
+}
+
+// Exploring alternatives must retain the shared matcher's closest-match rule
+// when those alternatives match the same number of key parts.
+func TestOrderedKeysPreserveDistanceRanking(t *testing.T) {
+	for _, tt := range []struct {
+		source, key string
+		line        int
+	}{
+		{"FROM alpine\nRUN abc\nRUN a\n", "{{RUN a}}", 3},
+		{"FROM alpine\nRUN abc\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", 4},
+		{"FROM busybox\nRUN a\nFROM alpine\nRUN abc\nRUN a\n", "FROM={{alpine}}.{{RUN a}}", 5},
+	} {
+		for _, cached := range []bool{false, true} {
+			file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.source}
+			if cached {
+				file.SetLazyLines()
+			}
+			require.Equal(t, tt.line, (DetectKindLine{}).DetectLine(t.Context(), file, tt.key, 0).Line)
+		}
+	}
+}
+
+// Score reuse must change row coordinates only; keys, whitespace, matches and
+// failures retain the shared matcher's behavior at every candidate position.
+func TestInstructionScoreMatchesSharedScoring(t *testing.T) {
+	for _, key := range [][2]string{{"RUN a", ""}, {"FROM", "alpine"}, {"RUN", "missing"}} {
+		lines := []string{"FROM alpine", "RUN a", "RUN a", "  RUN a ", "FROM alpine", "FROM alpine"}
+		score := instructionScore{}
+		for line := range lines {
+			distance, start, end, matched := detector.MatchLine(key[0], key[1], lines, line, model.KindDOCKER)
+			gotDistance, gotStart, gotEnd, gotMatch := score.match(key[0], key[1], lines, line)
+			require.Equal(t, distance, gotDistance)
+			require.Equal(t, matched, gotMatch)
+			if matched {
+				require.Equal(t, start, gotStart)
+				require.Equal(t, end, gotEnd)
+			}
+		}
+	}
+}
+
+// First-layer early exits must wait for a complete key and preserve exact
+// stage preference as well as distance ties and later successful alternatives.
+func TestOrderedKeyEarlyExitRanking(t *testing.T) {
+	for _, tt := range []struct {
+		name, source, key string
+		line              int
+	}{
+		{"earlier fuzzy stage", "FROM one\nRUN ab\nRUN b\nFROM two\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", 3},
+		{"earlier terminal stage", "FROM one\nRUN ab\nFROM two\nRUN a\n", "{{RUN a}}", 2},
+		{"distance within earlier stage", "FROM one\nRUN abc\nRUN ab\nFROM two\nRUN a\n", "RUN={{a}}", 3},
+		{"complete key", "FROM alpine\nRUN a\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", 4},
+		{"exact stage preference", "FROM alpine-old\nRUN b\nFROM alpine\nRUN a\n", "FROM={{alpine}}.{{RUN b}}", 3},
+		{"source order tie", "FROM alpine\nRUN a\nRUN b\nRUN a\nRUN b\n", "{{RUN a}}.{{RUN b}}", 3},
+	} {
+		for _, cached := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cached=%t", tt.name, cached), func(t *testing.T) {
+				file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: tt.source}
+				if cached {
+					file.SetLazyLines()
+				}
+				require.Equal(t, tt.line, (DetectKindLine{}).DetectLine(t.Context(), file, tt.key, 0).Line)
+			})
+		}
+	}
+}
+
+func BenchmarkSingleStageEarlyMatch(b *testing.B) {
+	for _, count := range []int{100, 4000, 100000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: "FROM alpine\n" + strings.Repeat("RUN a\n", count)}
+			file.SetLazyLines()
+			(DetectKindLine{}).DetectLine(b.Context(), file, "{{RUN a}}", 0)
+			b.ReportAllocs()
+			for b.Loop() {
+				(DetectKindLine{}).DetectLine(b.Context(), file, "{{RUN a}}", 0)
+			}
+		})
+	}
+}
+
+// Source display retains indentation. Keyword offsets must still follow
+// BuildKit: Unicode space is stripped at instruction edges, while separators
+// between a keyword and its arguments are ASCII whitespace.
+func TestInstructionWhitespaceAgreesWithBuildKit(t *testing.T) {
+	for _, space := range []string{" ", "\t", "\v", "\f", "\u00a0", "\u2003", "\u0085"} {
+		for _, line := range []string{space + "rUn echo hi ", "rUn" + space, "rUn" + space + "echo hi"} {
+			t.Run(line, func(t *testing.T) {
+				parsed, err := buildkit.Parse(strings.NewReader("FROM alpine\n" + line))
+				require.NoError(t, err)
+				node := parsed.AST.Children[1]
+				_, known := command.Commands[strings.ToLower(node.Value)]
+				_, count := dockerInstructionWords(line)
+				require.Equal(t, known, count > 0)
+				if known {
+					for _, cached := range []bool{false, true} {
+						file := &model.FileMetadata{Kind: model.KindDOCKER, OriginalData: "FROM alpine\n" + line}
+						if cached {
+							file.SetLazyLines()
+						}
+						key := "{{RUN}}"
+						got := (DetectKindLine{}).DetectLine(t.Context(), file, key, 0)
+						require.Equal(t, 2, got.Line)
+						require.Equal(t, line, got.LineWithVulnerability)
+					}
+				}
+			})
+		}
 	}
 }

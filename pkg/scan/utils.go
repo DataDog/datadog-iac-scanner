@@ -94,6 +94,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	c.chartRoots = pathTypes.ChartRoots
 	c.chartFilter = chartFilter
 	c.contentCache = pathTypes.ContentCache
+	c.preparedContexts = pathTypes.PreparedContexts
 
 	return allPaths, pathTypes.FilePlatform, nil
 }

@@ -131,3 +131,52 @@ func TestNewHelmAttribution(t *testing.T) {
 	require.Equal(t, ResourceLine{}, none.First())
 	require.Equal(t, 4, NewHelmAttribution(one, "rendered").First().Line)
 }
+
+func TestLinesMatchingWithoutLazyCache(t *testing.T) {
+	for _, tt := range []struct {
+		lines []string
+		want  []int
+	}{
+		{[]string{}, nil},
+		{[]string{"ARG X=1", "FROM alpine", "RUN a"}, []int{1}},
+		{[]string{"FROM alpine", "RUN a", "FROM busybox"}, []int{0, 2}},
+	} {
+		for _, cached := range []bool{false, true} {
+			f := &FileMetadata{LinesOriginalData: &tt.lines}
+			if cached {
+				f.SetLazyLines()
+			}
+			indexes := f.LinesMatching("test.stages", func(line string) bool { return len(line) >= 4 && line[:4] == "FROM" })
+			require.Equal(t, tt.want, indexes)
+		}
+	}
+}
+
+func TestReleasePostEvalDropsSourceLoader(t *testing.T) {
+	for _, state := range []string{"none", "lazy", "loaded"} {
+		f := &FileMetadata{OriginalData: "FROM alpine"}
+		f.SetLazyLines()
+		if state != "none" {
+			f.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+				return map[string]interface{}{}, nil
+			})
+		}
+		if state == "loaded" {
+			require.NoError(t, f.UseLineInfoDocument(t.Context(), func(map[string]interface{}) error { return nil }))
+		}
+		clones := []*FileMetadata{f.ShallowCopy(), f.ShallowCopy(), f.ShallowCopy()}
+		previous := f.lineInfo
+		f.ReleasePostEvalData()
+		require.Same(t, previous, f.lineInfo, "state pointers stay stable for concurrent readers")
+		if f.lineInfo != nil {
+			require.Nil(t, f.lineInfo.source.loader)
+		}
+		for _, clone := range clones {
+			if clone.lineInfo != nil {
+				require.Nil(t, clone.lineInfo.source.loader, "clones release captured source too")
+			}
+		}
+		require.Nil(t, f.linesLazy)
+		require.Empty(t, f.OriginalData)
+	}
+}

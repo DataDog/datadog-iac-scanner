@@ -13,16 +13,40 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"golang.org/x/tools/godoc/util"
 )
 
-var extensionNameTargets = []string{"tfvars", "Dockerfile", "possibleDockerfile"}
+var extensionNameTargets = []string{"tfvars", PossibleDockerfile}
+
+// dockerfileExtension recognizes Dockerfile and <name>.Dockerfile in any case.
+// Dockerfile.<name> is a content-checked candidate only after registered formats
+// have had precedence. Auxiliary files use the same configured path filters as
+// other scanner inputs; arbitrary variant names cannot identify their purpose.
+func dockerfileExtension(path, ext string) (string, bool) {
+	lower := strings.ToLower(filepath.Base(path))
+	switch {
+	case lower == "dockerfile":
+		return "Dockerfile", true
+	case strings.HasSuffix(lower, ".dockerfile"):
+		return ".dockerfile", true
+	case strings.HasPrefix(lower, "dockerfile."):
+		format, registered := supportedFileTypes[strings.ToLower(ext)]
+		if !registered || format.platform == platforms.Dockerfile {
+			return PossibleDockerfile, true
+		}
+	}
+	return "", false
+}
 
 // ExtensionFromPath returns the extension from path alone (no stat/read).
 func ExtensionFromPath(path string) string {
 	ext := tfpath.Extension(path)
+	if dockerExt, ok := dockerfileExtension(path, ext); ok {
+		return dockerExt
+	}
 	if ext != "" {
 		return ext
 	}
@@ -63,6 +87,9 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 	}
 
 	ext := tfpath.Extension(path)
+	if dockerExt, ok := dockerfileExtension(path, ext); ok {
+		return dockerExt, nil
+	}
 	if ext == "" {
 		base := filepath.Base(path)
 

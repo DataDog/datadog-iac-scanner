@@ -7,13 +7,17 @@ package analyzer
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 	"testing"
 
+	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -965,6 +969,141 @@ func TestAnalyze_IgnorePathsDirectoryExcludesFilesBelow(t *testing.T) {
 				want = append(want, filepath.ToSlash(filepath.Join(dir, filepath.FromSlash(file))))
 			}
 			require.ElementsMatch(t, want, got.Inventory)
+		})
+	}
+}
+
+func TestAnalyze_DockerfileNames(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("# syntax=docker/dockerfile:1\nARG TAG=3.19\nFROM alpine:${TAG}\nCOPY . /app\n")
+	var want []string
+	for i, name := range []string{"Dockerfile", "dockerfile", "api.Dockerfile", "Dockerfile.prod", "Dockerfile.ubi8"} {
+		// Distinct directories even on case-insensitive filesystems.
+		caseDir := filepath.Join(dir, fmt.Sprintf("case_%d", i))
+		require.NoError(t, os.MkdirAll(caseDir, 0o755))
+		path := filepath.Join(caseDir, name)
+		require.NoError(t, os.WriteFile(path, content, 0o600))
+		want = append(want, filepath.ToSlash(path))
+	}
+	for name, body := range map[string]string{
+		"dockerfile.go":           "package dockerfile\n",
+		"Dockerfile.dockerignore": "node_modules\n",
+		"Dockerfile.invalid":      "not a Dockerfile\nFROM alpine\nRUN echo hi\n",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
+	}
+	got, err := Analyze(t.Context(), &Analyzer{RepoPath: dir, Paths: []string{dir}, Types: []string{""}, MaxFileSize: -1})
+	require.NoError(t, err)
+	require.ElementsMatch(t, want, got.Inventory)
+	require.Equal(t, []string{"dockerfile"}, got.Types)
+}
+
+func TestAnalyze_DockerfileCandidateFiltering(t *testing.T) {
+	for _, types := range [][]string{{""}, {"terraform"}} {
+		t.Run(fmt.Sprint(types), func(t *testing.T) {
+			dir := t.TempDir()
+			for name, body := range map[string]string{
+				"Dockerfile.prod":      "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.invalid":   "not a Dockerfile\n",
+				"Dockerfile.malformed": "FROM alpine\nRUN <<EOF\necho hi\n",
+				"Dockerfile.tmpl":      "FROM {{ .Base }}\n",
+				"Dockerfile.old":       "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.bak":       "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.orig":      "FROM alpine\nCOPY . /app\n",
+				"Dockerfile.j2":        "FROM {{ .Image }}\n",
+				"Dockerfile.YAML":      "apiVersion: v1\nkind: Pod\nmetadata:\n  name: x\n",
+				"Dockerfile.args":      "ARG FOO=bar\nARG TAG=latest\n",
+				"Dockerfile.arg-run":   "ARG FOO\nRUN echo hi\nFROM alpine\n",
+				"dockerfile.tf":        "resource \"aws_s3_bucket\" \"b\" {}\n",
+				"dockerfile.yaml":      "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test\nspec:\n  containers: []\n",
+				"dockerfile.json":      "{\"terraform_version\":\"1.5.0\",\"planned_values\":{},\"resource_changes\":[],\"configuration\":{}}",
+				"dockerfile.go":        "FROM alpine\nRUN echo dockerfile-content\n",
+			} {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600))
+			}
+			// Auxiliary paths are a user policy, rather than guessed from suffixes.
+			var excluded []string
+			for _, name := range []string{"Dockerfile.tmpl", "Dockerfile.old", "Dockerfile.bak", "Dockerfile.orig", "Dockerfile.j2"} {
+				excluded = append(excluded, filepath.Join(dir, name))
+			}
+			got, err := Analyze(t.Context(), &Analyzer{RepoPath: dir, Paths: []string{dir}, Exc: excluded, Types: types, MaxFileSize: -1})
+			require.NoError(t, err)
+			want := []string{filepath.ToSlash(filepath.Join(dir, "dockerfile.tf")), filepath.ToSlash(filepath.Join(dir, "dockerfile.json"))}
+			if types[0] == "" {
+				// An unregistered suffix uses content, even if it resembles a source extension.
+				want = append(want, filepath.ToSlash(filepath.Join(dir, "Dockerfile.prod")),
+					filepath.ToSlash(filepath.Join(dir, "dockerfile.yaml")),
+					filepath.ToSlash(filepath.Join(dir, "dockerfile.go")))
+			} else {
+				require.NotContains(t, got.ContentCache, filepath.ToSlash(filepath.Join(dir, "dockerfile.go")))
+			}
+			require.ElementsMatch(t, want, got.Inventory)
+		})
+	}
+}
+
+func TestClassifyFile_DockerfileContent(t *testing.T) {
+	for _, path := range []string{"Dockerfile.prod", "Dockerfile.custom-profile", "Dockerfile.go", "image.ubi8", "image.debian"} {
+		for _, tt := range []struct {
+			name, body, want string
+		}{
+			{"from without run", "FROM alpine\nCOPY . /app\n", "dockerfile"},
+			{"arg and lowercase", "\ufeff# syntax=docker/dockerfile:1\r\n\r\nARG TAG=3\r\nfrom alpine:$TAG\r\n", "dockerfile"},
+			{"leading args and comments", "arg IMAGE=alpine\n\n# build argument\nARG TAG=3\nFrOm $IMAGE:$TAG\n", "dockerfile"},
+			{"blank ARG continuation", "ARG IMAGE=\\\n\n# continued value\n alpine\nFROM $IMAGE\n", "dockerfile"},
+			{"trailing escape whitespace", "ARG IMAGE=\\  \n alpine\nFROM $IMAGE\n", "dockerfile"},
+			{"invalid escape directive", "# escape=x\nFROM alpine\n", ""},
+			{"unterminated body heredoc", "FROM alpine\nRUN <<EOF\necho hi\n", ""},
+			{"continued arg", "ARG IMAGE=\\\n# image name\n  alpine\nFROM $IMAGE\n", "dockerfile"},
+			{"continued arg with escape directive", "# escape=`\nARG IMAGE=`\n  alpine\nFROM $IMAGE\n", "dockerfile"},
+			{"escape directive after comment is ignored", "# comment\n# escape=`\nARG IMAGE=\\\n  alpine\nFROM $IMAGE\n", "dockerfile"},
+			{"escaped escape is not continuation", "ARG PATH=foo\\\\\nFROM alpine\n", "dockerfile"},
+			{"from inside arg value", "ARG IMAGE=\\\nFROM alpine\n", ""},
+			{"arg without from", "ARG FOO\n", ""},
+			{"args without from", "ARG FOO=bar\narg TAG=latest\n# no image\n", ""},
+			{"arg before run", "ARG FOO\nRUN echo hi\nFROM alpine\n", ""},
+			{"arg before unrelated content", "ARG FOO\nnot a Dockerfile\nFROM alpine\n", ""},
+			{"invalid first instruction", "not Docker\nFROM alpine\nRUN echo hi\n", ""},
+			{"bare FROM", "FROM\n", ""},
+			{"keyword prefix", "FROMAGE alpine\n", ""},
+			{"comment only", "# FROM alpine\n", ""},
+			{"empty", "", ""},
+		} {
+			t.Run(path+"/"+tt.name, func(t *testing.T) {
+				fsys := vfs.NewMemFS(map[string][]byte{path: []byte(tt.body)})
+				// Both caller-supplied bytes and reads through MemFS work without disk files.
+				require.Equal(t, tt.want, ClassifyFile(t.Context(), fsys, path, []byte(tt.body), nil))
+				require.Equal(t, tt.want, ClassifyFile(t.Context(), fsys, path, nil, nil))
+				require.Empty(t, fsys.MissingFiles())
+			})
+		}
+	}
+	path := filepath.Join(t.TempDir(), "Dockerfile.prod")
+	require.NoError(t, os.WriteFile(path, []byte("FROM disk\nRUN echo disk\n"), 0o600))
+	require.Empty(t, ClassifyFile(t.Context(), nil, path, []byte{}, nil), "provided empty content overrides disk")
+	require.Equal(t, "dockerfile", ClassifyFile(t.Context(), nil, path, nil, nil))
+}
+
+// Every content-checked Dockerfile type automatically gets parse sharing;
+// adding another registry entry cannot omit an independent preparation hook.
+func TestDockerfileContentPolicySharesPreparation(t *testing.T) {
+	for _, token := range utils.SupportedFileTypes() {
+		if utils.ContentCheckForFileType(token) != utils.DockerfileContent {
+			continue
+		}
+		t.Run(token, func(t *testing.T) {
+			path := "input" + token
+			if token == utils.PossibleDockerfile {
+				path = "Dockerfile.prod"
+			}
+			content := []byte("FROM alpine\r\nRUN a\r\n")
+			ctx, normalized, bind := prepareFileContext(t.Context(), path, content)
+			first, err := dockersource.Parse(ctx, normalized)
+			require.NoError(t, err)
+			require.NotNil(t, bind)
+			second, err := dockersource.Parse(bind(t.Context()), normalized)
+			require.NoError(t, err)
+			require.Same(t, first, second)
 		})
 	}
 }

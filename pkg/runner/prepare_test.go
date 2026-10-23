@@ -12,7 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
+	buildkit "github.com/moby/buildkit/frontend/dockerfile/parser"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
@@ -228,6 +232,52 @@ func TestPrepareMemorySources_SkipsFilesExcludedByContent(t *testing.T) {
 	require.Equal(t, []string{"ansible.cfg"}, paths)
 }
 
+func TestPrepareMemorySources_DockerfileCandidates(t *testing.T) {
+	ctx := t.Context()
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"Dockerfile.prod":      []byte("ARG IMAGE=alpine\nFROM $IMAGE\n"),
+		"Dockerfile.args":      []byte("ARG IMAGE=alpine\n"),
+		"Dockerfile.arg-run":   []byte("ARG IMAGE=alpine\nRUN echo hi\nFROM $IMAGE\n"),
+		"Dockerfile.bak":       []byte("not a Dockerfile\n"),
+		"Dockerfile.go":        []byte("package dockerfile\n"),
+		"Dockerfile.zip":       []byte("PK\x03\x04\x00\x00"),
+		"Dockerfile.custom":    []byte("FROM alpine\n"),
+		"Dockerfile.malformed": []byte("FROM alpine\nRUN <<EOF\necho hi\n"),
+		"valid/Dockerfile.bak": []byte("FROM alpine\n"),
+		"Dockerfile.j2":        []byte("FROM alpine\n"),
+		"Dockerfile.tmpl":      []byte("FROM {{ .Base }}\n"),
+		"Dockerfile.jinja":     []byte("FROM {{ base }}\n"),
+		"Dockerfile.sample":    []byte("FROM {{ base }}\n"),
+		"Dockerfile.dist":      []byte("FROM {{ base }}\n"),
+		"Dockerfile.bk":        []byte("FROM {{ base }}\n"),
+		"Dockerfile.disabled":  []byte("FROM {{ base }}\n"),
+		"Dockerfile.hbs":       []byte("FROM {{ base }}\n"),
+		"Dockerfile.njk":       []byte("FROM {{ base }}\n"),
+		"Dockerfile.old":       []byte("FROM alpine\n"),
+		"image.ubi8":           []byte("ARG IMAGE=alpine\n"),
+		"image.debian":         []byte("not a Dockerfile\n"),
+	})
+	// The scanner's shared path filter owns repository-specific auxiliary files.
+	ignored := []string{"valid/Dockerfile.bak", "Dockerfile.j2", "Dockerfile.tmpl", "Dockerfile.jinja", "Dockerfile.sample", "Dockerfile.dist", "Dockerfile.bk", "Dockerfile.disabled", "Dockerfile.hbs", "Dockerfile.njk", "Dockerfile.old"}
+	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), ignored, nil)
+	services, _ := buildServices(t, ctx, memfs, mp)
+	shared, ok := MemorySourceProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "dockerfile-candidates", false, 5, false))
+
+	var paths []string
+	for _, service := range services {
+		for _, file := range service.files {
+			paths = append(paths, filepath.ToSlash(file.FilePath))
+		}
+	}
+	require.ElementsMatch(t, []string{"Dockerfile.prod", "Dockerfile.custom"}, paths)
+	trk := services[0].Tracker.(*tracker.CITracker)
+	require.Equal(t, 2, trk.FoundFiles, "invalid candidates must not count as failed parses")
+	require.Equal(t, trk.FoundFiles, trk.ParsedFiles)
+	require.Empty(t, memfs.MissingFiles())
+}
+
 func TestServicesForPlatformAndParserKindFallsBackWhenUnmatched(t *testing.T) {
 	ctx := context.Background()
 	services, _ := buildDiskServices(t, ctx, []string{t.TempDir()})
@@ -273,7 +323,7 @@ func TestPrepareDiskSources_DanglingChartYamlSymlinkStillScansTerraform(t *testi
 	services, store := buildDiskServices(t, ctx, []string{dir})
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
@@ -312,7 +362,7 @@ func TestPrepareDiskSources_RenderedChartStillScansTerraform(t *testing.T) {
 	services, store := buildDiskServices(t, ctx, []string{dir})
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
@@ -350,7 +400,7 @@ func TestPrepareDiskSources_PreparesTfvars(t *testing.T) {
 	services, store := buildDiskServices(t, ctx, []string{dir})
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
@@ -539,7 +589,7 @@ func TestPrepareDiskSources_AnalyzerExclusionsKeepRenderedFiles(t *testing.T) {
 
 	fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{dir}, append(a.Exc, analyzed.Exc...), a.Only)
 	require.NoError(t, err)
-	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache)
+	fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
 	chartFilter, err := provider.ExpandPathFilter(userIgnores, nil)
 	require.NoError(t, err)
 	fsp.SetChartFilter(chartFilter)
@@ -693,4 +743,245 @@ func TestWithoutExcludedFiles_PackagedDependencyArchivePath(t *testing.T) {
 	got = withoutExcludedFiles(context.Background(), excludesPath(archive), "app",
 		model.ResolvedFiles{File: []model.ResolvedHelm{withoutArchive}})
 	require.Len(t, got.File, 1, "a file without an archive is not dropped for the archive's path")
+}
+
+// Observe identity, not just equivalent parse output: preparation, classification,
+// enrichment and lazy source locations must see the very same BuildKit result.
+type observingDockerParser struct {
+	dockerParser.Parser
+	mu       sync.Mutex
+	asts     map[string]*buildkit.Result
+	finished map[string]bool
+}
+
+type observingPathKey struct{}
+
+func (p *observingDockerParser) PrepareContext(ctx context.Context, path string, content []byte) context.Context {
+	ctx = p.Parser.PrepareContext(ctx, path, content)
+	ast, err := dockersource.Parse(ctx, content)
+	if err == nil {
+		p.mu.Lock()
+		p.asts[path] = ast
+		p.mu.Unlock()
+	}
+	return context.WithValue(ctx, observingPathKey{}, path)
+}
+
+func (p *observingDockerParser) FinishContext(ctx context.Context) {
+	p.Parser.FinishContext(ctx)
+	path := ctx.Value(observingPathKey{}).(string)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.finished == nil {
+		p.finished = make(map[string]bool)
+	}
+	p.finished[path] = true
+}
+
+func (p *observingDockerParser) Parse(ctx context.Context, content []byte, path string, resolve bool, depth int) (
+	[]byte, []model.Document, []int, map[string]model.ResolvedFile, error) {
+	if parser.IsLineInfoOnly(ctx) {
+		return p.Parser.Parse(ctx, content, path, resolve, depth)
+	}
+	p.mu.Lock()
+	previous := p.asts[path]
+	p.mu.Unlock()
+	ast, err := dockersource.Parse(ctx, content)
+	if err != nil || ast != previous {
+		return nil, nil, nil, nil, fmt.Errorf("source parse was not reused for %s", path)
+	}
+	resolved, docs, ignore, files, parseErr := p.Parser.Parse(ctx, content, path, resolve, depth)
+	if parseErr == nil {
+		for range 3 {
+			if p.SourceContext(ctx) == nil {
+				return nil, nil, nil, nil, fmt.Errorf("missing compact source for %s", path)
+			}
+			reused, reuseErr := dockersource.Parse(ctx, content)
+			if reuseErr != nil || reused != ast {
+				return nil, nil, nil, nil, fmt.Errorf("source getter detached dispatch AST for %s", path)
+			}
+		}
+	}
+	return resolved, docs, ignore, files, parseErr
+}
+
+func TestPreparedDockerSourceSurvivesDispatch(t *testing.T) {
+	for _, parallel := range []bool{false, true} {
+		for _, disk := range []bool{false, true} {
+			t.Run(fmt.Sprintf("disk=%t/parallel=%t", disk, parallel), func(t *testing.T) {
+				ctx := t.Context()
+				inputs := map[string][]byte{
+					"Dockerfile.prod":    []byte("FROM alpine\nRUN a\n"),
+					"Dockerfile.dev":     []byte("ARG X=alpine\r\nFROM $X\r\nRUN a\r\n"),
+					"Dockerfile.windows": []byte("# escape=`\nFROM alpine\nRUN echo `\n hi\n"),
+				}
+				var services []*Service
+				var prepare func() error
+				var analysisASTs = map[string]*buildkit.Result{}
+				if disk {
+					dir := t.TempDir()
+					for name, content := range inputs {
+						writeFile(t, filepath.Join(dir, name), string(content))
+					}
+					analyzed, err := analyzer.Analyze(ctx, &analyzer.Analyzer{RepoPath: dir, Paths: []string{dir}, Types: []string{"dockerfile"}, MaxFileSize: 100})
+					require.NoError(t, err)
+					for path, bind := range analyzed.PreparedContexts {
+						analysisASTs[path], err = dockersource.Parse(bind(ctx), analyzed.ContentCache[path])
+						require.NoError(t, err)
+					}
+					require.Len(t, analysisASTs, len(inputs))
+					services, _ = buildDiskServices(t, ctx, []string{dir})
+					fsp, ok := DiskSourceProvider(services)
+					require.True(t, ok)
+					fsp.SetPrebuiltWalk(analyzed.Inventory, analyzed.ChartRoots, analyzed.ContentCache, analyzed.PreparedContexts)
+					prepare = func() error { return PrepareDiskSources(ctx, fsp, services, "reuse", false, 5, parallel) }
+				} else {
+					fs := vfs.NewMemFS(inputs)
+					mp := provider.NewMemorySourceProvider(fs, fs.Paths(), nil, nil)
+					services, _ = buildServices(t, ctx, fs, mp)
+					prepare = func() error { return PrepareMemorySources(ctx, mp, services, "reuse", false, 5, parallel) }
+				}
+				observed := &observingDockerParser{asts: make(map[string]*buildkit.Result)}
+				for _, service := range services {
+					if service.Parser.Parsers.GetKind() == model.KindDOCKER {
+						service.Parser.Parsers = observed
+					}
+				}
+				require.NoError(t, prepare())
+				require.Len(t, observed.finished, len(inputs), "every dispatch explicitly finalizes its source")
+				for path, ast := range analysisASTs {
+					require.Same(t, ast, observed.asts[path])
+				}
+				count := 0
+				for _, service := range services {
+					for _, file := range service.files {
+						count++
+						require.NoError(t, file.UseLineInfoDocument(ctx, func(map[string]interface{}) error { return nil }))
+					}
+				}
+				require.Equal(t, len(inputs), count)
+			})
+		}
+	}
+}
+
+// The content policy is independent of a variant's spelling. User path filters
+// are the explicit policy for auxiliary files, on disk and in pushed scans.
+func TestDockerfileVariantPathFilters(t *testing.T) {
+	for _, suffix := range []string{"copy", "bkp", "rpmnew", "custom", "log", "j2"} {
+		for _, excluded := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/excluded=%t", suffix, excluded), func(t *testing.T) {
+				name := "Dockerfile." + suffix
+				content := "FROM alpine\nRUN a\n"
+				ctx := t.Context()
+				dir := t.TempDir()
+				path := filepath.Join(dir, name)
+				writeFile(t, path, content)
+				var diskExcludes, memoryExcludes []string
+				if excluded {
+					diskExcludes = []string{path}
+					memoryExcludes = []string{name}
+				}
+				analyzed, err := analyzer.Analyze(ctx, &analyzer.Analyzer{RepoPath: dir, Paths: []string{dir}, Types: []string{"dockerfile"}, Exc: diskExcludes, MaxFileSize: 100})
+				require.NoError(t, err)
+				fs := vfs.NewMemFS(map[string][]byte{name: []byte(content)})
+				mp := provider.NewMemorySourceProvider(fs, fs.Paths(), memoryExcludes, nil)
+				services, _ := buildServices(t, ctx, fs, mp)
+				require.NoError(t, PrepareMemorySources(ctx, mp, services, "filters", false, 5, false))
+				count := 0
+				for _, service := range services {
+					count += len(service.files)
+				}
+				want := 1
+				if excluded {
+					want = 0
+				}
+				require.Len(t, analyzed.Inventory, want)
+				require.Equal(t, want, count)
+			})
+		}
+	}
+}
+
+func TestDiskCacheTransferDrainsRejectedSources(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		bytes    []byte
+		rejected bool
+	}{
+		{"valid", []byte("FROM alpine\n"), false},
+		{"empty", []byte{}, false},
+		{"over limit", make([]byte, 2*mbConst+1), true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fs, err := provider.NewFileSystemSourceProvider(t.Context(), nil, nil, nil)
+			require.NoError(t, err)
+			cached := map[string][]byte{"Dockerfile.prod": tt.bytes}
+			prepared := map[string]func(context.Context) context.Context{"Dockerfile.prod": func(ctx context.Context) context.Context { return ctx }}
+			fs.SetPrebuiltWalk(nil, nil, cached, prepared)
+			content, readErr, err := (diskSource{fs}).readContent(t.Context(), "Dockerfile.prod", 1)
+			require.NoError(t, readErr)
+			if tt.rejected {
+				require.Error(t, err)
+				require.Nil(t, content)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, content.prepareContext)
+			}
+			require.Empty(t, cached)
+			require.Empty(t, prepared)
+		})
+	}
+}
+
+// The optional lifecycle hook applies to every parser, and dispatch ends it on
+// success, content exclusion and parse failure, without a format-specific branch.
+type lifecycleJSONParser struct {
+	jsonParser.Parser
+	finish func(context.Context)
+}
+
+func (p *lifecycleJSONParser) PrepareContext(ctx context.Context, _ string, _ []byte) context.Context {
+	return context.WithValue(ctx, observingPathKey{}, "prepared")
+}
+
+func (p *lifecycleJSONParser) FinishContext(ctx context.Context) { p.finish(ctx) }
+
+type lifecycleSource struct {
+	memorySource
+	reject bool
+}
+
+func (s lifecycleSource) excluded(context.Context, string, []byte) bool { return s.reject }
+
+func TestDispatchFinalizesParserContext(t *testing.T) {
+	for _, tt := range []struct {
+		name, content string
+		reject        bool
+	}{
+		{"success", `{"a":1}`, false},
+		{"parse failure", `[`, false},
+		{"excluded", `{"a":1}`, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := vfs.NewMemFS(map[string][]byte{"input.json": []byte(tt.content)})
+			mp := provider.NewMemorySourceProvider(fs, fs.Paths(), nil, nil)
+			services, _ := buildServices(t, t.Context(), fs, mp)
+			for _, service := range services {
+				if service.Parser.Parsers.GetKind() != model.KindJSON {
+					continue
+				}
+				finished := 0
+				service.Parser.Parsers = &lifecycleJSONParser{finish: func(ctx context.Context) {
+					finished++
+					require.Equal(t, "prepared", ctx.Value(observingPathKey{}))
+				}}
+				source := lifecycleSource{memorySource: memorySource{mp}, reject: tt.reject}
+				require.NoError(t, dispatchFile(t.Context(), source, []*Service{service}, "input.json", "finish", false, 5))
+				require.Equal(t, 1, finished)
+				return
+			}
+			t.Fatal("missing JSON service")
+		})
+	}
 }

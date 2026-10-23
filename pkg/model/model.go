@@ -142,18 +142,26 @@ type HelmIDLineRange struct {
 	End   int
 }
 
-// lineInfoState holds lazy line-info state behind a pointer so FileMetadata
-// copies stay copylocks-clean (sync.Mutex must not be struct-copied).
+// lineInfoSource owns the loader pointer shared by shallow copies. Its mutex
+// protects acquisition/detachment; an acquired closure owns its active captures.
+type lineInfoSource struct {
+	mu     sync.Mutex
+	loader func(context.Context, *FileMetadata) (map[string]interface{}, error)
+}
+
+// lineInfoState keeps independent memoization behind a pointer so FileMetadata
+// copies never copy a sync.Mutex.
 type lineInfoState struct {
 	mu     sync.Mutex
 	err    error
-	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
+	source *lineInfoSource
 }
 
 // linesLazyState guards the one-time computation of LinesOriginalData from
 // OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
 type linesLazyState struct {
-	once sync.Once
+	once           sync.Once
+	detectionViews sync.Map // caller-chosen transformation key -> *detectionView
 
 	matchMu sync.Mutex
 	matches map[string][]int
@@ -224,7 +232,7 @@ func (f *FileMetadata) SetLineInfoLoader(
 		f.lineInfo = nil
 		return
 	}
-	f.lineInfo = &lineInfoState{loader: loader}
+	f.lineInfo = &lineInfoState{source: &lineInfoSource{loader: loader}}
 }
 
 // cloneLineInfoState returns an independent lazy state that shares loader.
@@ -232,7 +240,7 @@ func cloneLineInfoState(src *lineInfoState) *lineInfoState {
 	if src == nil {
 		return nil
 	}
-	return &lineInfoState{loader: src.loader}
+	return &lineInfoState{source: src.source}
 }
 
 // SetLazyLines configures on-demand computation of LinesOriginalData from
@@ -264,6 +272,44 @@ func (f *FileMetadata) Lines() []string {
 		f.LinesOriginalData = utils.SplitLines(f.OriginalData)
 	}
 	return *f.LinesOriginalData
+}
+
+type detectionView struct {
+	once     sync.Once
+	lines    []string
+	viewOnce sync.Once
+	file     *FileMetadata
+}
+
+// DetectionLines caches a read-only transformation under a caller-chosen key.
+// Different preparations must use distinct keys and must not mutate source lines.
+// Safe for concurrent findings when lazy lines are enabled.
+func (f *FileMetadata) DetectionLines(key string, prepare func([]string) []string) []string {
+	return f.preparedDetection(key, prepare).lines
+}
+
+func (f *FileMetadata) preparedDetection(key string, prepare func([]string) []string) *detectionView {
+	if f.linesLazy == nil {
+		return &detectionView{lines: prepare(f.Lines())}
+	}
+	cached, ok := f.linesLazy.detectionViews.Load(key)
+	if !ok {
+		cached, _ = f.linesLazy.detectionViews.LoadOrStore(key, &detectionView{})
+	}
+	view := cached.(*detectionView)
+	view.once.Do(func() { view.lines = prepare(f.Lines()) })
+	return view
+}
+
+// DetectionView returns the keyed transformed lines with their own cached line
+// indexes. The view and its lines are read-only and safe for concurrent findings.
+func (f *FileMetadata) DetectionView(key string, prepare func([]string) []string) *FileMetadata {
+	view := f.preparedDetection(key, prepare)
+	view.viewOnce.Do(func() {
+		view.file = &FileMetadata{FilePath: f.FilePath, Kind: f.Kind, LinesOriginalData: &view.lines}
+		view.file.SetLazyLines()
+	})
+	return view.file
 }
 
 // LinesContaining returns the indexes of Lines() that contain sub, in
@@ -299,24 +345,27 @@ func (f *FileMetadata) LinesContaining(sub string) (indexes []int, ok bool) {
 
 // LinesMatching returns the indexes of Lines() for which pred reports true, in
 // ascending order, memoized per file under name. pred must always give the same
-// answer for a given name. ok is false when the file has no lazy line state to
-// cache on; callers then scan the lines themselves.
-func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (indexes []int, ok bool) {
+// answer for a given name. Without lazy line state, indexes are computed directly.
+func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (indexes []int) {
 	st := f.linesLazy
-	if st == nil {
-		return nil, false
-	}
 	lines := f.Lines()
-	st.matchMu.Lock()
-	indexes, ok = st.predMatches[name]
-	st.matchMu.Unlock()
-	if ok {
-		return indexes, true
+	if st != nil {
+		st.matchMu.Lock()
+		var ok bool
+		indexes, ok = st.predMatches[name]
+		st.matchMu.Unlock()
+		if ok {
+			return indexes
+		}
 	}
+
 	for i, line := range lines {
 		if pred(line) {
 			indexes = append(indexes, i)
 		}
+	}
+	if st == nil {
+		return indexes
 	}
 	st.matchMu.Lock()
 	if st.predMatches == nil {
@@ -324,16 +373,30 @@ func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (
 	}
 	st.predMatches[name] = indexes
 	st.matchMu.Unlock()
-	return indexes, true
+	return indexes
 }
 
 // ReleasePostEvalData drops OriginalData and LinesOriginalData after eval —
 // detectors have run and line-info documents are lazily reparsed — reclaiming
 // the raw input content before the report phase.
 func (f *FileMetadata) ReleasePostEvalData() {
+	st := f.lineInfo
+	if st != nil {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+	}
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
 	f.linesLazy = nil
+	// The state pointer stays stable for concurrent readers. Detach future loads
+	// across all copies; active loads retain their own closure and captures.
+	if st != nil {
+		if st.source != nil {
+			st.source.mu.Lock()
+			st.source.loader = nil
+			st.source.mu.Unlock()
+		}
+	}
 }
 
 // DiscardLineInfoDocument drops a memoized line-info tree while keeping the
@@ -411,10 +474,20 @@ func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
 	if st.err != nil {
 		return st.err
 	}
-	if st.loader == nil {
+	if st.source == nil {
 		return nil
 	}
-	doc, err := st.loader(ctx, f)
+	st.source.mu.Lock()
+	loader := st.source.loader
+	st.source.mu.Unlock()
+	// This local closure keeps its captures alive if another copy detaches the
+	// shared source. Only this file's memoization/source fields need to stay
+	// locked while loading; shallow copies have independent state and may load
+	// concurrently.
+	if loader == nil {
+		return nil
+	}
+	doc, err := loader(ctx, f)
 	if err != nil {
 		st.err = err
 		return err
@@ -804,6 +877,8 @@ type AnalyzedPaths struct {
 	ChartRoots   []string
 	TotalFiles   int
 	ContentCache map[string][]byte
+	// PreparedContexts transfer immutable source parses from analysis to dispatch.
+	PreparedContexts map[string]func(context.Context) context.Context
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file

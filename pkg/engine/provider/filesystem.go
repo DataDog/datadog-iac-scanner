@@ -33,16 +33,17 @@ type FileSystemSourceProvider struct {
 	onlyPaths []string
 	// chartFilter decides which charts render; see SetChartFilter.
 	chartFilter *PathFilter
-	// mu guards paths, excludes and unfiltered, which checkConditions grows during
+	// mu guards paths, excludes, unfiltered, prebuiltPaths and chartRoots, which checkConditions grows during
 	// a walk and AddUnfilteredPaths extends. SetChartFilter and ChartFilter take
-	// it defensively. SetPrebuiltWalk and ReleaseContentCache take no lock and run
-	// before a walk starts.
+	// it defensively. Source caches have their own ownership lock.
 	mu sync.RWMutex
 
-	prebuiltPaths []string
-	chartRoots    []string
-	contentCache  map[string][]byte
-	unfiltered    map[string]struct{}
+	prebuiltPaths    []string
+	chartRoots       []string
+	cacheMu          sync.Mutex
+	contentCache     map[string][]byte
+	preparedContexts map[string]func(context.Context) context.Context
+	unfiltered       map[string]struct{}
 }
 
 var (
@@ -252,21 +253,37 @@ type InventoryFile struct {
 }
 
 // SetPrebuiltWalk reuses analyzer walk inventory to skip a second tree walk.
-func (s *FileSystemSourceProvider) SetPrebuiltWalk(paths, chartRoots []string, contentCache map[string][]byte) {
+func (s *FileSystemSourceProvider) SetPrebuiltWalk(paths, chartRoots []string, contentCache map[string][]byte,
+	prepared map[string]func(context.Context) context.Context) {
+	s.mu.Lock()
 	s.prebuiltPaths = paths
 	s.chartRoots = chartRoots
+	s.mu.Unlock()
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
 	s.contentCache = contentCache
+	s.preparedContexts = prepared
 }
 
-// ContentCache returns bytes read during analyzer classification, keyed by path.
-func (s *FileSystemSourceProvider) ContentCache() map[string][]byte {
-	return s.contentCache
+// TakeCachedSource atomically transfers both cached bytes and preparation. Even
+// rejected bytes drain their matching preparation, and no map escapes its lock.
+func (s *FileSystemSourceProvider) TakeCachedSource(path string) (content []byte, prepare func(context.Context) context.Context, ok bool) {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	content, ok = s.contentCache[path]
+	prepared := s.preparedContexts[path]
+	delete(s.contentCache, path)
+	delete(s.preparedContexts, path)
+	return content, prepared, ok
 }
 
 // ReleaseContentCache drops the cached file bytes: only needed during the sink
 // phase (parsed files keep their content in OriginalData), and the map is shared
 // with the scan Client, so clearing here releases both references.
 func (s *FileSystemSourceProvider) ReleaseContentCache() {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	clear(s.preparedContexts)
 	if s.contentCache != nil {
 		for k := range s.contentCache {
 			delete(s.contentCache, k)
@@ -279,11 +296,19 @@ func (s *FileSystemSourceProvider) ReleaseContentCache() {
 func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Context,
 	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	inScope, outOfScope := s.partitionChartRoots(s.chartRoots)
+	s.mu.RLock()
+	paths := append([]string(nil), s.prebuiltPaths...)
+	roots := append([]string(nil), s.chartRoots...)
+	unfiltered := make(map[string]struct{}, len(s.unfiltered))
+	for path := range s.unfiltered {
+		unfiltered[path] = struct{}{}
+	}
+	s.mu.RUnlock()
+	inScope, outOfScope := s.partitionChartRoots(roots)
 	renderedRoots := renderChartsShallowFirst(ctx, inScope, chartPool, chartFn)
 
-	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
-	for _, path := range s.prebuiltPaths {
+	files := make([]InventoryFile, 0, len(paths))
+	for _, path := range paths {
 		norm := toSlash(path)
 		// The analyzer matches ignore-paths by exact path, so the templates of a
 		// chart under an ignored directory are listed; scanned raw, they would
@@ -291,7 +316,7 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 		if IsHelmChartFile(norm, renderedRoots) || IsHelmChartFile(norm, outOfScope) {
 			continue
 		}
-		if _, ok := s.unfiltered[norm]; !ok {
+		if _, ok := unfiltered[norm]; !ok {
 			excluded, err := s.isPathExcluded(norm)
 			if err != nil || excluded {
 				continue
@@ -573,7 +598,10 @@ func (s *FileSystemSourceProvider) partitionChartRoots(roots []string) (inScope,
 func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (skip bool)) ([]InventoryFile, error) {
-	if len(s.prebuiltPaths) > 0 {
+	s.mu.RLock()
+	prebuilt := len(s.prebuiltPaths) > 0
+	s.mu.RUnlock()
+	if prebuilt {
 		return s.BuildInventoryFromPrebuilt(ctx, extensions, chartPool, chartFn)
 	}
 	var files []InventoryFile

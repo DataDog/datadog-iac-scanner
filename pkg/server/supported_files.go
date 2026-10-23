@@ -9,6 +9,9 @@ package server
 import (
 	"net/http"
 	"sort"
+	"strings"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 // fileStrategy tells the IDE how to assemble the scan unit for a file type.
@@ -28,8 +31,12 @@ const (
 // SupportedFileEntry maps a set of file patterns to a resolution strategy. This
 // is the IaC analog of the static analyzer's GET /languages.
 type SupportedFileEntry struct {
-	Patterns []string     `json:"patterns"`
-	Strategy fileStrategy `json:"strategy"`
+	Patterns             []string     `json:"patterns"`
+	Strategy             fileStrategy `json:"strategy"`
+	Priority             int          `json:"priority"`
+	CaseSensitive        bool         `json:"case_sensitive"`
+	ExcludedSuffixes     []string     `json:"excluded_suffixes,omitempty"`
+	RequiresContentCheck bool         `json:"requires_content_check"`
 }
 
 // strategyByPattern is the single source of truth for the resolution strategy of
@@ -39,44 +46,74 @@ type SupportedFileEntry struct {
 // conservatively sends the directory), .bicep, and Ansible config. "single_file"
 // applies to self-contained types (Dockerfile, gRPC proto, Buildah .sh), and
 // "chart" to a Helm chart root (push the chart directory recursively).
-//
-// Keys are the IDE-facing patterns (dotted extensions, or full filenames like
-// "Dockerfile"). TestSupportedFiles_NoDrift asserts this covers every
-// analyzer.PossibleFileTypes() entry so a newly supported type can't be missed.
 var strategyByPattern = map[string]fileStrategy{
-	".tf":         strategyDirectory,
-	".tofu":       strategyDirectory,
-	".tf.json":    strategyDirectory,
-	".tofu.json":  strategyDirectory,
-	".tfvars":     strategyDirectory,
-	".yaml":       strategyDirectory,
-	".yml":        strategyDirectory,
-	".json":       strategyDirectory,
-	".bicep":      strategyDirectory,
-	".cfg":        strategyDirectory,
-	".conf":       strategyDirectory,
-	".ini":        strategyDirectory,
-	"Dockerfile":  strategySingleFile,
-	".dockerfile": strategySingleFile,
-	"Chart.yaml":  strategyChart,
-	".ubi8":       strategySingleFile,
-	".debian":     strategySingleFile,
-	".proto":      strategySingleFile,
-	".sh":         strategySingleFile,
+	".tf":          strategyDirectory,
+	".tofu":        strategyDirectory,
+	".tf.json":     strategyDirectory,
+	".tofu.json":   strategyDirectory,
+	".tfvars":      strategyDirectory,
+	".yaml":        strategyDirectory,
+	".yml":         strategyDirectory,
+	".json":        strategyDirectory,
+	".bicep":       strategyDirectory,
+	".cfg":         strategyDirectory,
+	".conf":        strategyDirectory,
+	".ini":         strategyDirectory,
+	"Dockerfile":   strategySingleFile,
+	"Dockerfile.*": strategySingleFile,
+	".dockerfile":  strategySingleFile,
+	"Chart.yaml":   strategyChart,
+	".ubi8":        strategySingleFile,
+	".debian":      strategySingleFile,
+	".proto":       strategySingleFile,
+	".sh":          strategySingleFile,
 }
 
-// supportedFiles builds the supported-files response: one entry per pattern,
-// sorted for deterministic output.
+// supportedFiles defines the IDE matching contract. Match dot-prefixed patterns
+// as suffixes and other patterns as basename globs. Choose the lowest priority,
+// independently of array order. CaseSensitive comes from the routing registry:
+// Dockerfile names/globs (dockerfile, DOCKERFILE, Dockerfile.<name> in any case)
+// ignore case, while other extensions retain their existing case policy.
+// ExcludedSuffixes always ignore case and veto that entry: registered formats
+// cannot fall through to Dockerfile.*. Arbitrary variant suffixes (including
+// templates, backups and archives) remain candidates and require content validation.
+// Use ignore-paths to omit auxiliary files; a filename cannot identify their purpose.
+// RequiresContentCheck means a filename match still needs server validation.
 func supportedFiles() []SupportedFileEntry {
+	rules := make(map[string]utils.FilePattern)
+	for _, rule := range utils.FilePatterns() {
+		rules[rule.Pattern] = rule
+	}
 	patterns := make([]string, 0, len(strategyByPattern))
 	for p := range strategyByPattern {
 		patterns = append(patterns, p)
 	}
-	sort.Strings(patterns)
+	sort.Slice(patterns, func(i, j int) bool {
+		a, b := patterns[i], patterns[j]
+		globA, globB := strings.ContainsAny(a, "*?["), strings.ContainsAny(b, "*?[")
+		if globA != globB {
+			return !globA
+		}
+		extA, extB := strings.HasPrefix(a, "."), strings.HasPrefix(b, ".")
+		if extA != extB {
+			return !extA
+		}
+		if extA && len(a) != len(b) {
+			return len(a) > len(b)
+		}
+		return a < b
+	})
 
 	entries := make([]SupportedFileEntry, 0, len(patterns))
-	for _, p := range patterns {
-		entries = append(entries, SupportedFileEntry{Patterns: []string{p}, Strategy: strategyByPattern[p]})
+	for i, p := range patterns {
+		rule, registered := rules[p]
+		entry := SupportedFileEntry{
+			Patterns: []string{p}, Strategy: strategyByPattern[p], Priority: i + 1,
+			CaseSensitive:        !registered || rule.CaseSensitive,
+			RequiresContentCheck: utils.NeedsContentCheck(rule.Token),
+			ExcludedSuffixes:     rule.ExcludedSuffixes,
+		}
+		entries = append(entries, entry)
 	}
 	return entries
 }

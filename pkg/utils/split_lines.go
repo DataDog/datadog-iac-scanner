@@ -9,8 +9,13 @@ import "strings"
 
 // SplitLines splits the document by line
 func SplitLines(content string) *[]string {
-	text := strings.ReplaceAll(content, "\r", "")
+	text := StripCarriageReturns(content)
 	split := strings.Split(text, "\n")
 
 	return &split
 }
+
+// StripCarriageReturns applies the scanner's physical source-display policy.
+// Logical source views use this too so cached and fresh locations have the same
+// bytes as FileMetadata.Lines, including legacy files with lone CR characters.
+func StripCarriageReturns(content string) string { return strings.ReplaceAll(content, "\r", "") }

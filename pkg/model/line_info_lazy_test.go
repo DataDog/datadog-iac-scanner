@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -129,4 +131,119 @@ func TestFileMetadata_ShallowCopyPreservesLazyLoader(t *testing.T) {
 	require.Nil(t, src.LineInfoDocument)
 	require.NoError(t, src.EnsureLineInfoDocument(context.Background()))
 	require.NotNil(t, src.LineInfoDocument)
+}
+
+// A release waits for this file's load, but may detach the shared loader while
+// another copy is using its own local reference. The active load stays valid.
+func TestLineInfoReleasePreservesActiveLoad(t *testing.T) {
+	for _, mode := range []string{"original", "copy", "discarded"} {
+		t.Run(mode, func(t *testing.T) {
+			file := &FileMetadata{OriginalData: "FROM alpine"}
+			file.SetLazyLines()
+			entered, finish := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			t.Cleanup(func() { once.Do(func() { close(finish) }) })
+			file.SetLineInfoLoader(func(_ context.Context, f *FileMetadata) (map[string]interface{}, error) {
+				close(entered)
+				<-finish
+				return Document{"source": f.OriginalData}, nil
+			})
+			copy := file.ShallowCopy()
+			require.Same(t, file.lineInfo.source, copy.lineInfo.source)
+			loaded := make(chan error, 1)
+			go func() { loaded <- file.EnsureLineInfoDocument(t.Context()) }()
+			<-entered
+			if file.lineInfo.mu.TryLock() {
+				file.lineInfo.mu.Unlock()
+				t.Fatal("the loading file must retain its own source ownership")
+			}
+			released := make(chan struct{})
+			go func() {
+				if mode == "copy" {
+					copy.ReleasePostEvalData()
+				} else {
+					file.ReleasePostEvalData()
+				}
+				close(released)
+			}()
+			if mode == "copy" {
+				select {
+				case <-released:
+				case <-time.After(3 * time.Second):
+					t.Fatal("releasing another copy must not wait for a load")
+				}
+				require.Equal(t, "FROM alpine", file.OriginalData)
+			} else {
+				require.Never(t, func() bool {
+					select {
+					case <-released:
+						return true
+					default:
+						return false
+					}
+				}, 20*time.Millisecond, time.Millisecond, "this file's release must wait for its load")
+			}
+			once.Do(func() { close(finish) })
+			require.NoError(t, <-loaded)
+			<-released
+			require.Equal(t, "FROM alpine", file.LineInfoDocument["source"])
+			if mode == "discarded" {
+				file.DiscardLineInfoDocument()
+			}
+			require.Nil(t, file.lineInfo.source.loader)
+			require.Nil(t, copy.lineInfo.source.loader)
+		})
+	}
+}
+
+// Copies must load concurrently while per-file requests remain memoized. Once
+// detached, new loads stop; already acquired closures keep their captures alive.
+func TestShallowCopyLineInfoLoadsOverlap(t *testing.T) {
+	for _, workers := range []int{1, 3, 16} {
+		t.Run(fmt.Sprint(workers), func(t *testing.T) {
+			file := &FileMetadata{OriginalData: "source", Kind: KindTerraform}
+			file.SetLazyLines()
+			entered, finish := make(chan struct{}, workers), make(chan struct{})
+			var once sync.Once
+			t.Cleanup(func() { once.Do(func() { close(finish) }) })
+			capture := []byte("captured source")
+			file.SetLineInfoLoader(func(_ context.Context, f *FileMetadata) (map[string]interface{}, error) {
+				entered <- struct{}{}
+				<-finish
+				return Document{"source": f.OriginalData, "capture": string(capture)}, nil
+			})
+			copies := make([]*FileMetadata, workers)
+			errors := make(chan error, workers)
+			for i := range copies {
+				copies[i] = file.ShallowCopy()
+				go func(copy *FileMetadata) { errors <- copy.EnsureLineInfoDocument(t.Context()) }(copies[i])
+			}
+			for range workers {
+				select {
+				case <-entered:
+				case <-time.After(3 * time.Second):
+					t.Fatal("copies serialized behind shared loader ownership")
+				}
+			}
+			// No load holds the original file's lock, so release is immediate.
+			released := make(chan struct{})
+			go func() { file.ReleasePostEvalData(); close(released) }()
+			select {
+			case <-released:
+			case <-time.After(3 * time.Second):
+				t.Fatal("detaching shared ownership must not wait for active copies")
+			}
+			require.Nil(t, file.lineInfo.source.loader)
+			fresh := copies[0].ShallowCopy()
+			require.NoError(t, fresh.EnsureLineInfoDocument(t.Context()))
+			require.Nil(t, fresh.LineInfoDocument, "detached loaders cannot start another load")
+			once.Do(func() { close(finish) })
+			for range workers {
+				require.NoError(t, <-errors)
+			}
+			for _, copy := range copies {
+				require.Equal(t, Document{"source": "source", "capture": "captured source"}, Document(copy.LineInfoDocument))
+			}
+		})
+	}
 }

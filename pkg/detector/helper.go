@@ -45,6 +45,10 @@ type DefaultDetectLineResponse struct {
 	// File, when set, is the file whose Lines() are passed to DetectCurrentLine,
 	// letting it visit only the lines that contain the searched text.
 	File *model.FileMetadata
+	// AcceptLine optionally restricts matches to syntax-specific positions.
+	AcceptLine func(int, string) bool
+	// EndLine is an exclusive upper bound; zero means the end of the file.
+	EndLine int
 }
 
 // GetBracketValues gets values inside "{{ }}" ignoring any "{{" or "}}" inside
@@ -290,12 +294,19 @@ func removeExtras(result string, start, end int) string {
 // nolint:gocritic
 func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurseCount int,
 	lines []string, kind model.FileKind) (*DefaultDetectLineResponse, model.ResourceLine, model.ResourceLine, []string) {
+	endLine := len(lines)
+	if d.EndLine > 0 && d.EndLine < endLine {
+		endLine = d.EndLine
+	}
 	best, bestDistance := -1, 0
 	var bestStart, bestEnd model.ResourceLine
 
 	// visit reports whether the scan can stop: lines are visited in ascending
 	// order, so the first exact match (distance 0) is the best and earliest one.
 	visit := func(i int) bool {
+		if d.AcceptLine != nil && !d.AcceptLine(i, lines[i]) {
+			return false
+		}
 		distance, start, end, ok := checkLine(str1, str2, lines, i, kind)
 		if ok && (best < 0 || distance < bestDistance) {
 			best, bestDistance, bestStart, bestEnd = i, distance, start, end
@@ -303,9 +314,9 @@ func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurse
 		return ok && distance == 0
 	}
 	if first, second, ok := d.candidateLines(str1, str2, kind); ok {
-		walkAscending(first, second, d.CurrentLine, func(i int) bool { return visit(i) })
+		walkAscending(first, second, d.CurrentLine, endLine, visit)
 	} else {
-		for i := d.CurrentLine; i < len(lines); i++ {
+		for i := d.CurrentLine; i < endLine; i++ {
 			if visit(i) {
 				break
 			}
@@ -346,7 +357,7 @@ func (d *DefaultDetectLineResponse) candidateLines(str1, str2 string, kind model
 	}
 	var blocks []int
 	if kind == model.KindYAML {
-		blocks, _ = d.File.LinesMatching("yamlBlockScalar", startsYAMLBlockScalar)
+		blocks = d.File.LinesMatching("yamlBlockScalar", startsYAMLBlockScalar)
 	}
 	if len(byStr2)+len(blocks) < len(byStr1) {
 		return byStr2, blocks, true
@@ -354,9 +365,9 @@ func (d *DefaultDetectLineResponse) candidateLines(str1, str2 string, kind model
 	return byStr1, nil, true
 }
 
-// walkAscending calls visit on the indexes of a and b that are >= from, in
-// ascending order and without repeats, until visit returns true.
-func walkAscending(a, b []int, from int, visit func(int) bool) {
+// walkAscending calls visit on indexes in [from, end), in ascending order
+// and without repeats, until visit returns true.
+func walkAscending(a, b []int, from, end int, visit func(int) bool) {
 	a, b = a[sort.SearchInts(a, from):], b[sort.SearchInts(b, from):]
 	for len(a) > 0 || len(b) > 0 {
 		var i int
@@ -368,7 +379,7 @@ func walkAscending(a, b []int, from int, visit func(int) bool) {
 		default:
 			i, a, b = a[0], a[1:], b[1:]
 		}
-		if visit(i) {
+		if i >= end || visit(i) {
 			return
 		}
 	}
@@ -383,6 +394,13 @@ func startsYAMLBlockScalar(raw string) bool {
 
 func mayStartYAMLBlockScalar(line string) bool {
 	return strings.IndexByte(line, ':') >= 0 && strings.ContainsAny(line, "|>\\")
+}
+
+// MatchLine scores one physical line without selecting among alternatives.
+// Ordered detectors can use the shared scoring while exploring complete keys.
+func MatchLine(first, second string, lines []string, line int, kind model.FileKind) (
+	distance int, start, end model.ResourceLine, matched bool) {
+	return checkLine(first, second, lines, line, kind)
 }
 
 // checkLine scores lines[startLine] against str1 and str2; ok is false when the line does not match.

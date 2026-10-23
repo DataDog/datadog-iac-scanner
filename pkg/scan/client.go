@@ -138,8 +138,9 @@ type Client struct {
 	// chartFilter holds the user's own path filters. The analyzer's exclusions
 	// also list raw templates it does not classify and gitignored files, whose
 	// rendered documents are still scanned.
-	chartFilter  *provider.PathFilter
-	contentCache map[string][]byte
+	chartFilter      *provider.PathFilter
+	contentCache     map[string][]byte
+	preparedContexts map[string]func(context.Context) context.Context
 }
 
 // ClientOption customizes a Client at construction time.

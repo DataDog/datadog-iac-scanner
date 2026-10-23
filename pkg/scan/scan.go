@@ -354,7 +354,7 @@ func (c *Client) createService(
 			return nil, err
 		}
 		if len(c.walkInventory) > 0 {
-			fsSource.SetPrebuiltWalk(c.walkInventory, c.chartRoots, c.contentCache)
+			fsSource.SetPrebuiltWalk(c.walkInventory, c.chartRoots, c.contentCache, c.preparedContexts)
 		}
 		if c.chartFilter != nil {
 			fsSource.SetChartFilter(c.chartFilter)

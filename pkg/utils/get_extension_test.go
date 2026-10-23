@@ -11,6 +11,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,6 +20,9 @@ func TestExtensionFromPath(t *testing.T) {
 		path string
 		want string
 	}{
+		{path: "/repo/main.TF", want: ".TF"},
+		{path: "/repo/values.YAML", want: ".YAML"},
+		{path: "/repo/config.JSON", want: ".JSON"},
 		{path: "/repo/main.tf", want: ".tf"},
 		{path: "/repo/main.tf.json", want: ".tf.json"},
 		{path: "/repo/main.tofu.json", want: ".tofu.json"},
@@ -32,10 +36,110 @@ func TestExtensionFromPath(t *testing.T) {
 		{path: "/repo/bin/aws", want: ""},
 	}
 	for _, tt := range tests {
+		fsys := vfs.NewMemFS(map[string][]byte{tt.path: []byte("FROM alpine\n")})
+		if tt.want != "" {
+			got, err := GetExtensionWithFS(t.Context(), fsys, tt.path)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got, tt.path)
+		}
 		if got := ExtensionFromPath(tt.path); got != tt.want {
 			t.Errorf("ExtensionFromPath(%q) = %q, want %q", tt.path, got, tt.want)
 		}
 	}
+}
+
+func TestDockerfileExtensions(t *testing.T) {
+	for _, tt := range []struct{ path, want string }{
+		{"Dockerfile", "Dockerfile"},
+		{"dockerfile", "Dockerfile"},
+		{"DOCKERFILE", "Dockerfile"},
+		{"api.Dockerfile", ".dockerfile"},
+		{"api.DOCKERFILE", ".dockerfile"},
+		{"Dockerfile.prod", PossibleDockerfile},
+		{"Dockerfile.custom-profile", PossibleDockerfile},
+		{"dockerfile.dev", PossibleDockerfile},
+		{"Dockerfile.ubi8", PossibleDockerfile},
+		{"dockerfile.tf", ".tf"},
+		{"dockerfile.tofu", ".tofu"},
+		{"Dockerfile.tf.json", ".tf.json"},
+		{"Dockerfile.tofu.json", ".tofu.json"},
+		{"dockerfile.yaml", ".yaml"},
+		{"dockerfile.yml", ".yml"},
+		{"dockerfile.json", ".json"},
+		{"dockerfile.go", PossibleDockerfile},
+		{"dockerfile.py", PossibleDockerfile},
+		{"dockerfile.ts", PossibleDockerfile},
+		{"Dockerfile.bicep", ".bicep"},
+		{"Dockerfile.CFG", ".CFG"},
+		{"Dockerfile.CONF", ".CONF"},
+		{"Dockerfile.INI", ".INI"},
+		{"Dockerfile.YAML", ".YAML"},
+		{"Dockerfile.TF", ".TF"},
+		{"Dockerfile.UBI8", PossibleDockerfile},
+		{"Dockerfile.sh", ".sh"},
+		{"Dockerfile.dockerignore", PossibleDockerfile},
+		{"api.Dockerfile.dockerignore", ".dockerignore"},
+		{"Dockerfile.bak", PossibleDockerfile},
+		{"dockerfile.prod.BAK", PossibleDockerfile},
+		{"Dockerfile.prod~", PossibleDockerfile},
+		{"Dockerfile.orig", PossibleDockerfile},
+		{"Dockerfile.save", PossibleDockerfile},
+		{"Dockerfile.swp", PossibleDockerfile},
+		{"Dockerfile.tmp", PossibleDockerfile},
+		{"Dockerfile.rej", PossibleDockerfile},
+		{"Dockerfile.patch", PossibleDockerfile},
+		{"Dockerfile.diff", PossibleDockerfile},
+		{"Dockerfile.gz", PossibleDockerfile},
+		{"Dockerfile.tgz", PossibleDockerfile},
+		{"Dockerfile.tar", PossibleDockerfile},
+		{"Dockerfile.zip", PossibleDockerfile},
+		{"Dockerfile.xz", PossibleDockerfile},
+		{"Dockerfile.bz2", PossibleDockerfile},
+		{"DOCKERFILE.BAK", PossibleDockerfile},
+		// Variant suffixes do not guess a file's purpose; configured filters exclude auxiliary inputs.
+		{"Dockerfile.j2", PossibleDockerfile},
+		{"Dockerfile.tpl", PossibleDockerfile},
+		{"Dockerfile.template", PossibleDockerfile},
+		{"Dockerfile.erb", PossibleDockerfile},
+		{"Dockerfile.gotmpl", PossibleDockerfile},
+		{"Dockerfile.tmpl", PossibleDockerfile},
+		{"Dockerfile.in", PossibleDockerfile},
+		{"Dockerfile.jinja2", PossibleDockerfile},
+		{"Dockerfile.mustache", PossibleDockerfile},
+		{"Dockerfile.old", PossibleDockerfile},
+		{"Dockerfile.backup", PossibleDockerfile},
+		{"Dockerfile.example", PossibleDockerfile},
+		{"Dockerfile.swo", PossibleDockerfile},
+		{"Dockerfile.jinja", PossibleDockerfile},
+		{"Dockerfile.sample", PossibleDockerfile},
+		{"Dockerfile.dist", PossibleDockerfile},
+		{"Dockerfile.bk", PossibleDockerfile},
+		{"Dockerfile.disabled", PossibleDockerfile},
+		{"Dockerfile.hbs", PossibleDockerfile},
+		{"Dockerfile.njk", PossibleDockerfile},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			require.Equal(t, tt.want, ExtensionFromPath(tt.path))
+			fsys := vfs.NewMemFS(map[string][]byte{tt.path: []byte("FROM alpine\n")})
+			ext, err := GetExtensionWithFS(t.Context(), fsys, tt.path)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, ext)
+			require.Empty(t, fsys.MissingFiles())
+		})
+	}
+}
+
+func TestDockerfileExtensionPrefersRegisteredFormat(t *testing.T) {
+	// A newly registered format takes precedence without changing Dockerfile detection.
+	const extension = ".new-format"
+	supportedFileTypes[extension] = fileType{}
+	t.Cleanup(func() { delete(supportedFileTypes, extension) })
+	path := "Dockerfile" + extension
+	require.Equal(t, extension, ExtensionFromPath(path))
+	fsys := vfs.NewMemFS(map[string][]byte{path: []byte("FROM alpine\n")})
+	ext, err := GetExtensionWithFS(t.Context(), fsys, path)
+	require.NoError(t, err)
+	require.Equal(t, extension, ext)
 }
 
 func TestGetExtension(t *testing.T) {

@@ -795,7 +795,7 @@ func TestWalkInventoryPrebuiltTofuShadowing(t *testing.T) {
 	fs.SetPrebuiltWalk([]string{
 		filepath.ToSlash(twin),
 		filepath.ToSlash(tofu),
-	}, nil, nil)
+	}, nil, nil, nil)
 
 	noChart := func(context.Context, string) bool { return false }
 	extensions := model.Extensions{".tf": {}, ".tofu": {}}
@@ -860,7 +860,7 @@ func TestWalkInventoryRendersOnlyChartsInScope(t *testing.T) {
 				fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, tt.excludes, tt.only)
 				require.NoError(t, err)
 				if prebuilt {
-					fs.SetPrebuiltWalk([]string{roots[0] + "/templates/cm.yaml"}, roots, nil)
+					fs.SetPrebuiltWalk([]string{roots[0] + "/templates/cm.yaml"}, roots, nil, nil)
 				}
 				var mu sync.Mutex
 				var rendered []string
@@ -893,7 +893,7 @@ func TestBuildInventoryFromPrebuilt_IgnoredChartDirIsNotScannedRaw(t *testing.T)
 	}
 	fs, err := NewFileSystemSourceProvider(ctx, []string{dir}, []string{filepath.Join(dir, "lib")}, nil)
 	require.NoError(t, err)
-	fs.SetPrebuiltWalk(listed, []string{filepath.ToSlash(filepath.Join(dir, "app")), filepath.ToSlash(filepath.Join(dir, "lib"))}, nil)
+	fs.SetPrebuiltWalk(listed, []string{filepath.ToSlash(filepath.Join(dir, "app")), filepath.ToSlash(filepath.Join(dir, "lib"))}, nil, nil)
 	files, err := fs.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{},
 		func(_ context.Context, root string) bool {
 			require.Equal(t, "app", filepath.Base(root))
@@ -1157,7 +1157,7 @@ func TestOutOfScopeChartKeepsOtherFiles(t *testing.T) {
 
 	prebuilt, err := NewFileSystemSourceProvider(ctx, []string{dir}, excludes, nil)
 	require.NoError(t, err)
-	prebuilt.SetPrebuiltWalk(all, []string{chartRoot}, nil)
+	prebuilt.SetPrebuiltWalk(all, []string{chartRoot}, nil, nil)
 	inventory, err = prebuilt.WalkInventory(ctx, exts, utils.PoolOptions{}, noChartRoots)
 	require.NoError(t, err)
 	require.ElementsMatch(t, want, listedPaths(inventory), "prebuilt inventory")
@@ -1183,4 +1183,76 @@ func TestPathFilterGlobMatchesRenderedFiles(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ignored.ExcludesAny(pod), "a glob drops the rendered template it names")
 	require.False(t, ignored.ExcludesAny(other))
+}
+
+// Bytes and parser preparation have one owner and are drained together, even
+// when release races with a consumer or bytes have no matching preparation.
+func TestCachedSourceOwnership(t *testing.T) {
+	for _, mode := range []string{"take", "release", "concurrent"} {
+		t.Run(mode, func(t *testing.T) {
+			bytes := map[string][]byte{"a": []byte("a"), "b": []byte("b"), "c": []byte("c")}
+			prepared := map[string]func(context.Context) context.Context{}
+			for path := range bytes {
+				prepared[path] = func(ctx context.Context) context.Context { return ctx }
+			}
+			fs := &FileSystemSourceProvider{}
+			fs.SetPrebuiltWalk(nil, nil, bytes, prepared)
+			var wg sync.WaitGroup
+			if mode == "release" {
+				fs.ReleaseContentCache()
+			}
+			for _, path := range []string{"a", "b", "c"} {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					data, bind, ok := fs.TakeCachedSource(path)
+					if ok {
+						require.NotEmpty(t, data)
+						require.NotNil(t, bind)
+					}
+					_, _, again := fs.TakeCachedSource(path)
+					require.False(t, again)
+				}()
+			}
+			if mode == "concurrent" {
+				wg.Add(1)
+				go func() { defer wg.Done(); fs.ReleaseContentCache() }()
+			}
+			wg.Wait()
+			fs.ReleaseContentCache()
+			require.Empty(t, bytes)
+			require.Empty(t, prepared)
+		})
+	}
+}
+
+// Prebuilt inventory belongs to the same lock as AddUnfilteredPaths, including
+// readers taking a snapshot while inventory and independent caches are updated.
+func TestPrebuiltInventoryConcurrentOwnership(t *testing.T) {
+	for _, count := range []int{1, 10, 100} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			fs, err := NewFileSystemSourceProvider(t.Context(), nil, nil, nil)
+			require.NoError(t, err)
+			fs.SetPrebuiltWalk([]string{"Dockerfile"}, nil, nil, nil)
+			var wg sync.WaitGroup
+			for worker := range 3 {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for range count {
+						switch worker {
+						case 0:
+							fs.SetPrebuiltWalk([]string{"Dockerfile"}, nil, nil, nil)
+						case 1:
+							fs.AddUnfilteredPaths([]string{"Dockerfile.prod"})
+						case 2:
+							_, err := fs.BuildInventoryFromPrebuilt(t.Context(), model.Extensions{"Dockerfile": {}, utils.PossibleDockerfile: {}}, utils.PoolOptions{}, noChartRoots)
+							require.NoError(t, err)
+						}
+					}
+				}()
+			}
+			wg.Wait()
+		})
+	}
 }

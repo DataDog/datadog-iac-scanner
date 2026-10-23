@@ -20,10 +20,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// contentCacheMu guards concurrent deletes from the shared contentCache map
-// during parallel dispatchFile calls.
-var contentCacheMu sync.Mutex
-
 // DiskSourceProvider returns the disk provider when every service shares one.
 func DiskSourceProvider(services []*Service) (*provider.FileSystemSourceProvider, bool) {
 	if len(services) == 0 {
@@ -73,7 +69,7 @@ type preparedSource interface {
 	// platform is the file's platform for parser routing, "" when undetermined.
 	platform(ctx context.Context, services []*Service, filePath string, c *Content) string
 	// excluded reports a file the analyzer would leave out of the scan.
-	excluded(filePath string, content []byte) bool
+	excluded(ctx context.Context, filePath string, content []byte) bool
 }
 
 // PrepareDiskSources walks the disk once, renders each chart once, and dispatches
@@ -296,8 +292,17 @@ func dispatchFile(ctx context.Context,
 	if c == nil && contentErr == nil {
 		return nil
 	}
-	if c != nil && c.Content != nil && src.excluded(filePath, *c.Content) {
-		return nil
+	if c != nil && c.Content != nil {
+		if c.prepareContext != nil {
+			ctx = c.prepareContext(ctx)
+		}
+		for _, service := range services {
+			ctx, *c.Content = service.Parser.PrepareContext(ctx, filePath, *c.Content)
+		}
+		defer finishParserContexts(ctx, services)
+		if src.excluded(ctx, filePath, *c.Content) {
+			return nil
+		}
 	}
 	if len(services) > 1 {
 		services = servicesForPlatform(services, src.platform(ctx, services, filePath, c))
@@ -315,6 +320,13 @@ func dispatchFile(ctx context.Context,
 	return nil
 }
 
+// Finish the original preparation set, including services removed by routing.
+func finishParserContexts(ctx context.Context, services []*Service) {
+	for _, service := range services {
+		service.Parser.FinishContext(ctx)
+	}
+}
+
 // diskSource is the CLI's source: the walked (or analyzer-prebuilt) inventory,
 // read from disk or the analyzer's content cache, routed by the analyzer's
 // per-file platform.
@@ -325,29 +337,16 @@ type diskSource struct {
 func (diskSource) chartFailed(string) {}
 
 // The analyzer already left excluded files out of the inventory.
-func (diskSource) excluded(string, []byte) bool { return false }
+func (diskSource) excluded(context.Context, string, []byte) bool { return false }
 
 func (d diskSource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
-	if contentCache := d.ContentCache(); contentCache != nil {
-		norm := filepath.ToSlash(filePath)
-		contentCacheMu.Lock()
-		cached, ok := contentCache[norm]
-		contentCacheMu.Unlock()
-		if ok {
-			c, getErr := contentFromBytes(cached, maxFileSize, filePath)
-			// contentFromBytes copies the bytes: delete the cache entry so the raw-byte
-			// cache drains during the walk (concurrent, so guard the write).
-			contentCacheMu.Lock()
-			delete(contentCache, norm)
-			contentCacheMu.Unlock()
-			if getErr != nil {
-				// The cached content was rejected (e.g. over the size limit);
-				// re-reading the file from disk would only fail the same way,
-				// so surface the error directly.
-				return nil, nil, errors.Wrapf(getErr, "failed to get file content: %s", filePath)
-			}
-			return c, nil, nil
+	if cached, prepare, ok := d.TakeCachedSource(filepath.ToSlash(filePath)); ok {
+		c, err := contentFromBytes(cached, maxFileSize, filePath)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to get file content: %s", filePath)
 		}
+		c.prepareContext = prepare
+		return c, nil, nil
 	}
 	f, err := os.Open(filepath.Clean(filePath))
 	if err != nil {
@@ -379,8 +378,8 @@ func (m memorySource) chartFailed(chartPath string) {
 	m.RecordMissing(chartPath)
 }
 
-func (memorySource) excluded(filePath string, content []byte) bool {
-	return analyzer.ExcludedByContent(filePath, content)
+func (memorySource) excluded(ctx context.Context, filePath string, content []byte) bool {
+	return analyzer.ExcludedByContentContext(ctx, filePath, content)
 }
 
 func (m memorySource) readContent(ctx context.Context, filePath string, maxFileSize int) (*Content, error, error) {
@@ -447,6 +446,7 @@ func cloneContent(c *Content) *Content {
 		b = append(b, *c.Content...)
 	}
 	return &Content{
+		prepareContext: c.prepareContext,
 		Content:        &b,
 		CountLines:     c.CountLines,
 		IsMinified:     c.IsMinified,

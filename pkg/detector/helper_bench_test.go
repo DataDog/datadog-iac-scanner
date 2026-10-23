@@ -61,7 +61,7 @@ func TestCandidateSelectionVisitsFewerLines(t *testing.T) {
 			t.Fatal("expected cached candidates")
 		}
 		got := -1
-		walkAscending(first, second, 0, func(i int) bool {
+		walkAscending(first, second, 0, len(lines), func(i int) bool {
 			newVisits++
 			if _, _, _, matched := checkLine("name", str2, lines, i, model.KindYAML); matched {
 				got = i
@@ -103,4 +103,40 @@ func BenchmarkCandidateSelection(b *testing.B) {
 			}
 		}
 	})
+}
+
+func TestDetectCurrentLineStopsAtEndLine(t *testing.T) {
+	for _, cached := range []bool{false, true} {
+		lines := []string{"RUN before", "RUN wanted", "RUN after"}
+		file := &model.FileMetadata{OriginalData: strings.Join(lines, "\n"), LinesOriginalData: &lines}
+		if cached {
+			file.SetLazyLines()
+		}
+		var visits []int
+		det := &DefaultDetectLineResponse{File: file, EndLine: 1, AcceptLine: func(i int, _ string) bool { visits = append(visits, i); return true }}
+		det.DetectCurrentLine("RUN", "wanted", 0, file.Lines(), model.KindDOCKER)
+		if !det.IsBreak || det.FoundAtLeastOne {
+			t.Fatalf("matched outside end: %+v", det)
+		}
+		wantVisits := 1
+		if cached {
+			wantVisits = 0
+		} // The text index skips non-candidates entirely.
+		if len(visits) != wantVisits || len(visits) > 0 && visits[0] != 0 {
+			t.Fatalf("visited %v, cached=%t", visits, cached)
+		}
+		det.EndLine, det.AcceptLine = 0, nil
+		det.DetectCurrentLine("RUN", "wanted", 0, file.Lines(), model.KindDOCKER)
+		if det.IsBreak || det.CurrentLine != 1 {
+			t.Fatalf("unbounded match failed: %+v", det)
+		}
+	}
+}
+
+func TestWalkAscendingStopsBeforeEnd(t *testing.T) {
+	var visits []int
+	walkAscending([]int{0, 2, 4, 6}, []int{1, 2, 5}, 1, 4, func(i int) bool { visits = append(visits, i); return false })
+	if len(visits) != 2 || visits[0] != 1 || visits[1] != 2 {
+		t.Fatalf("unexpected visits: %v", visits)
+	}
 }

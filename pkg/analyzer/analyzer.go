@@ -20,10 +20,11 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
+	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/pkg/errors"
@@ -85,26 +86,7 @@ var (
 var (
 	listKeywordsGoogleDeployment = []string{"resources"}
 	armRegexTypes                = []string{"blueprint", "templateArtifact", "roleAssignmentArtifact", "policyAssignmentArtifact"}
-	possibleFileTypes            = map[string]bool{
-		yml:            true,
-		yaml:           true,
-		json:           true,
-		sh:             true,
-		extDockerfile:  true,
-		nameDockerfile: true,
-		extDebian:      true,
-		extUbi8:        true,
-		extTf:          true,
-		extTofu:        true,
-		extTfJSON:      true,
-		extTofuJSON:    true,
-		extTfvars:      true,
-		extProto:       true,
-		extCfg:         true,
-		extConf:        true,
-		extIni:         true,
-		extBicepFile:   true,
-	}
+
 	supportedRegexes = map[string][]string{
 		"azureresourcemanager": append(armRegexTypes, arm),
 		"buildah":              {"buildah"},
@@ -130,50 +112,30 @@ var (
 // scanner can analyze. Exposed so the server's supported-files endpoint can
 // stay in sync with the scanner's capabilities.
 func PossibleFileTypes() []string {
-	out := make([]string, 0, len(possibleFileTypes))
-	for k := range possibleFileTypes {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
+	return utils.SupportedFileTypes()
 }
 
 const (
-	cdkTf                 = "cdkTf"
-	yml                   = ".yml"
-	yaml                  = ".yaml"
-	json                  = ".json"
-	sh                    = ".sh"
-	arm                   = "azureresourcemanager"
-	bicep                 = "bicep"
-	kubernetes            = "kubernetes"
-	terraform             = "terraform"
-	gdm                   = "googledeploymentmanager"
-	ansible               = "ansible"
-	grpc                  = "grpc"
-	dockercompose         = "dockercompose"
-	dockerfile            = "dockerfile"
-	crossplane            = "crossplane"
-	knative               = "knative"
-	cicd                  = "cicd"
-	dependabot            = "dependabot"
-	githubAction          = "githubAction"
-	sizeMb                = 1048576
-	extDockerfile         = ".dockerfile"
-	nameDockerfile        = "Dockerfile"
-	extPossibleDockerfile = "possibleDockerfile"
-	extUbi8               = ".ubi8"
-	extDebian             = ".debian"
-	extTf                 = tfpath.ExtTF
-	extTofu               = tfpath.ExtTofu
-	extTfJSON             = tfpath.ExtTFJSON
-	extTofuJSON           = tfpath.ExtTofuJSON
-	extTfvars             = tfpath.ExtTFVars
-	extBicepFile          = ".bicep"
-	extProto              = ".proto"
-	extCfg                = ".cfg"
-	extConf               = ".conf"
-	extIni                = ".ini"
+	cdkTf         = "cdkTf"
+	yml           = ".yml"
+	yaml          = ".yaml"
+	json          = ".json"
+	sh            = ".sh"
+	arm           = "azureresourcemanager"
+	bicep         = platforms.Bicep
+	kubernetes    = "kubernetes"
+	terraform     = platforms.Terraform
+	gdm           = "googledeploymentmanager"
+	ansible       = "ansible"
+	grpc          = platforms.GRPC
+	dockercompose = "dockercompose"
+	dockerfile    = platforms.Dockerfile
+	crossplane    = "crossplane"
+	knative       = "knative"
+	cicd          = "cicd"
+	dependabot    = "dependabot"
+	githubAction  = "githubAction"
+	sizeMb        = 1048576
 )
 
 type Parameters struct {
@@ -188,12 +150,13 @@ type regexSlice struct {
 }
 
 type analyzerInfo struct {
-	typesFlag       []string
-	filePath        string
-	maxFileSize     int
-	filePlatformMap *sync.Map
-	contentCache    *sync.Map
-	helmCache       *sync.Map
+	typesFlag        []string
+	filePath         string
+	maxFileSize      int
+	filePlatformMap  *sync.Map
+	contentCache     *sync.Map
+	preparedContexts *sync.Map
+	helmCache        *sync.Map
 	// scanFiles is the analyzer's walked candidate set (slash paths); scopes
 	// the Docker Compose override guard to bases that are part of this scan.
 	scanFiles map[string]struct{}
@@ -459,7 +422,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			if ext == "" {
 				return nil
 			}
-			if _, ok := possibleFileTypes[ext]; !ok {
+			if !utils.IsSupportedFileType(ext) {
 				return nil
 			}
 
@@ -506,6 +469,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 	var filePlatformMap sync.Map
 	var contentCache sync.Map
+	var preparedContexts sync.Map
 	var helmCacheLocal sync.Map
 
 	// Detect each file's type with a bounded worker pool. File-type detection
@@ -524,13 +488,14 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			utils.PoolOptions{Workers: a.NumWorkers, MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
 			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
-					typesFlag:       typesFlag,
-					filePath:        filePath,
-					maxFileSize:     a.MaxFileSize,
-					filePlatformMap: &filePlatformMap,
-					contentCache:    &contentCache,
-					helmCache:       &helmCacheLocal,
-					scanFiles:       scanFiles,
+					typesFlag:        typesFlag,
+					filePath:         filePath,
+					maxFileSize:      a.MaxFileSize,
+					filePlatformMap:  &filePlatformMap,
+					contentCache:     &contentCache,
+					preparedContexts: &preparedContexts,
+					helmCache:        &helmCacheLocal,
+					scanFiles:        scanFiles,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
 				return nil
@@ -581,6 +546,11 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 		return true
 	})
 	returnAnalyzedPaths.ContentCache = cacheOut
+	returnAnalyzedPaths.PreparedContexts = make(map[string]func(context.Context) context.Context)
+	preparedContexts.Range(func(k, v interface{}) bool {
+		returnAnalyzedPaths.PreparedContexts[k.(string)] = v.(func(context.Context) context.Context)
+		return true
+	})
 
 	return returnAnalyzedPaths, nil
 }
@@ -594,7 +564,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	if a.maxFileSize >= 0 && !isContentClassifiedExt(ext) {
+	if a.maxFileSize >= 0 && !utils.NeedsContentCheck(ext) {
 		if info, err := os.Stat(a.filePath); err == nil {
 			if float64(info.Size())/float64(sizeMb) > float64(a.maxFileSize) {
 				contextLogger := logger.FromContext(ctx)
@@ -615,22 +585,38 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
+	ctx, content, prepare := prepareFileContext(ctx, a.filePath, content)
 	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)
 	if platform == "" {
 		unwanted <- a.filePath
 		return
 	}
 	if !a.isAvailableType(platform) {
-		if isContentClassifiedExt(ext) {
+		if utils.NeedsContentCheck(ext) {
 			unwanted <- a.filePath
 		}
 		return
+	}
+	if a.preparedContexts != nil && prepare != nil {
+		a.preparedContexts.Store(a.filePath, prepare)
 	}
 	a.persistWorkerState(content, platform)
 	results <- platform
 	// Counted only once the file is known to be scanned, and from the content
 	// read for classification when there is any, so the file is opened once.
 	locCount <- a.countLines(ctx, content)
+}
+
+// Content policy determines both preparation and transfer together. The routing
+// registry contains no parser dependencies or independent per-extension hooks.
+func prepareFileContext(ctx context.Context, path string, content []byte) (
+	prepared context.Context, normalized []byte, transfer func(context.Context) context.Context) {
+	if utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) != utils.DockerfileContent {
+		return ctx, content, nil
+	}
+	content = utils.NormalizeSource(content)
+	ctx = dockersource.PrepareSource(ctx, content, true)
+	return ctx, content, dockersource.SourceContext(ctx)
 }
 
 func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {
@@ -645,16 +631,8 @@ func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {
 	return lineCount
 }
 
-func isContentClassifiedExt(ext string) bool {
-	switch ext {
-	case yaml, yml, json, sh, extCfg, extConf, extIni:
-		return true
-	}
-	return false
-}
-
 func (a *analyzerInfo) readClassifyContent(ctx context.Context, ext string) (content []byte, ok, tooLarge bool) {
-	if !isContentClassifiedExt(ext) {
+	if !utils.NeedsContentCheck(ext) {
 		return nil, true, false
 	}
 	file, err := os.Open(filepath.Clean(a.filePath))
@@ -705,29 +683,17 @@ func (a *analyzerInfo) persistWorkerState(content []byte, platform string) {
 	}
 }
 
-func isDockerfile(ctx context.Context, path string) bool {
-	contextLogger := logger.FromContext(ctx)
-	content, err := os.ReadFile(filepath.Clean(path))
-	if err != nil {
-		contextLogger.Error().Msgf("failed to analyze file: %s", err)
-		return false
-	}
-
-	regexes := []*regexp.Regexp{
-		regexp.MustCompile(`\s*FROM\s*`),
-		regexp.MustCompile(`\s*RUN\s*`),
-	}
-
-	check := true
-
-	for _, regex := range regexes {
-		if !regex.Match(content) {
-			check = false
-			break
+func isDockerfile(ctx context.Context, fsys vfs.FS, path string, content []byte) bool {
+	if content == nil {
+		var err error
+		content, err = fsys.ReadFile(filepath.Clean(path))
+		if err != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Error().Msgf("failed to analyze file: %s", err)
+			return false
 		}
 	}
-
-	return check
+	return dockersource.HasFromContext(ctx, content)
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
@@ -858,63 +824,63 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	if err != nil {
 		return ""
 	}
-	switch ext {
-	case extDockerfile, nameDockerfile:
-		return dockerfile
-	case extPossibleDockerfile, extUbi8, extDebian:
-		if isDockerfile(ctx, path) {
+	switch utils.ContentCheckForFileType(ext) {
+	case utils.DockerfileContent:
+		if isDockerfile(ctx, fsys, path, content) {
 			return dockerfile
 		}
 		return ""
-	case extTf, extTofu, extTfJSON, extTofuJSON, extTfvars:
-		return terraform
-	case extBicepFile:
-		return bicep
-	case extProto:
-		return grpc
-	case extCfg, extConf:
+	case utils.AnsibleConfigContent:
 		if looksLikeAnsibleConfig(content) {
 			return ansible
 		}
 		return ""
-	case extIni:
+	case utils.AnsibleInventoryContent:
 		if looksLikeAnsibleInventory(content) {
 			return ansible
 		}
 		return ""
-	case yaml, yml, json, sh:
+	case utils.YAMLContent, utils.PlatformContent:
 		return classifyByContent(ctx, fsys, path, content, ext, typesFlag, hc, scanFiles)
 	}
-	return ""
+	return utils.PlatformForFileType(ext)
 }
 
 // ClassifyParsedFile attributes a parsed file to its platform for payload
 // bucketing. FileKind overrides extension/content detection for unambiguous
 // types (Helm rendered manifests are Kubernetes, etc.). Returns "" when
-// undetermined. platforms is the scan's effective platform set, forwarded to
+// undetermined. selectedPlatforms is the scan's effective platform set, forwarded to
 // ClassifyFile so the sink classifies ambiguous files with the same candidate
 // set the analyzer used (e.g. a Crossplane file is "kubernetes" in a default
 // scan, "crossplane" only when Crossplane is enabled). fsys is forwarded for
 // extension detection so the server's in-memory pushed content (not on disk) is
 // classified correctly.
-func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, kind model.FileKind, path string, content []byte) string {
+func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, selectedPlatforms []string,
+	kind model.FileKind, path string, content []byte) string {
 	if platform, ok := PlatformForKind(kind); ok {
 		return platform
 	}
-	return ClassifyFile(ctx, fsys, path, content, platforms)
+	return ClassifyFile(ctx, fsys, path, content, selectedPlatforms)
 }
 
 // ExcludedByContent reports a file whose content rules out every platform, so
-// it is not scanned at all: a .cfg, .conf or .ini that is not Ansible
-// configuration or inventory, and service catalog YAML. The analyzer leaves
-// these out of a CLI scan; pushed files skip them the same way.
+// it is not scanned at all: an invalid Dockerfile candidate, a .cfg, .conf or
+// .ini that is not Ansible configuration or inventory, or service catalog YAML.
+// The analyzer leaves these out of a CLI scan; pushed files skip them the same way.
 func ExcludedByContent(path string, content []byte) bool {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case extCfg, extConf:
+	return ExcludedByContentContext(context.Background(), path, content)
+}
+
+// ExcludedByContentContext shares any parser preparation attached to ctx.
+func ExcludedByContentContext(ctx context.Context, path string, content []byte) bool {
+	switch utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) {
+	case utils.DockerfileContent:
+		return !dockersource.HasFromContext(ctx, content)
+	case utils.AnsibleConfigContent:
 		return !looksLikeAnsibleConfig(content)
-	case extIni:
+	case utils.AnsibleInventoryContent:
 		return !looksLikeAnsibleInventory(content)
-	case yaml, yml:
+	case utils.YAMLContent:
 		return isCatalogEntity(content)
 	}
 	return false

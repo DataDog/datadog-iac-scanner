@@ -2,9 +2,12 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +20,7 @@ func TestParser_GetKind(t *testing.T) {
 // TestParser_SupportedExtensions tests the functions [SupportedExtensions()] and all the methods called by them
 func TestParser_SupportedExtensions(t *testing.T) {
 	p := &Parser{}
-	require.Equal(t, []string{"Dockerfile", ".dockerfile", ".ubi8", ".debian", "possibleDockerfile"}, p.SupportedExtensions())
+	require.Equal(t, []string{"Dockerfile", ".dockerfile", ".ubi8", ".debian", utils.PossibleDockerfile}, p.SupportedExtensions())
 }
 
 // TestParser_SupportedExtensions tests the functions [SupportedTypes()] and all the methods called by them
@@ -227,7 +230,8 @@ func TestSaveAndResolveArgs(t *testing.T) {
 		args := make(map[string]string)
 		values := make([]string, 1)
 		t.Run(tt.name, func(t *testing.T) {
-			args = saveArgs(args, tt.value)
+			scope := variableScope{args: args}
+			scope.declareArgs(newWordExpander('\\', false), []string{tt.value}, nil)
 			values = resolveArgsAndEnvs(tt.values, args)
 			require.Equal(t, tt.want.args, args)
 			require.Equal(t, tt.want.values, values)
@@ -271,5 +275,195 @@ func TestSaveAndResolveEnvs(t *testing.T) {
 			require.Equal(t, tt.want.args, args)
 			require.Equal(t, tt.want.values, values)
 		})
+	}
+}
+
+// Dockerfile instructions are case-insensitive: a lowercase FROM names its
+// stage after the image just like an uppercase one.
+func TestParser_Parse_LowercaseFrom(t *testing.T) {
+	p := &Parser{}
+	for _, sample := range []string{
+		"from alpine:3.19\nexpose 22\n",
+		"From  alpine:3.19\nEXPOSE 22\n",
+		"FROM\talpine:3.19\nEXPOSE 22\n",
+	} {
+		_, doc, _, _, err := p.Parse(context.Background(), []byte(sample), "Dockerfile", true, 15)
+		require.NoError(t, err)
+		require.Len(t, doc, 1)
+		require.Contains(t, doc[0]["command"], "alpine:3.19", "sample %q", sample)
+		require.Len(t, doc[0]["command"], 1, "sample %q", sample)
+	}
+}
+
+// A bare ARG has no value; parsing it must not panic, since a panic in a parser
+// worker ends the whole scan.
+func TestParser_Parse_BareArg(t *testing.T) {
+	p := &Parser{}
+	require.NotPanics(t, func() {
+		_, doc, _, _, err := p.Parse(context.Background(), []byte("FROM ubuntu:22.04\nARG\nRUN echo hi\n"), "Dockerfile", true, 15)
+		require.NoError(t, err)
+		require.Len(t, doc, 1)
+	})
+}
+
+// One ARG instruction may declare several names.
+func TestParser_Parse_ArgDeclaresSeveralNames(t *testing.T) {
+	p := &Parser{}
+	_, doc, _, _, err := p.Parse(context.Background(), []byte("ARG IMAGE=alpine TAG=3.19\nFROM ${IMAGE}:${TAG}\n"), "Dockerfile", true, 15)
+	require.NoError(t, err)
+	stage := doc[0]["command"].(map[string]interface{})["${IMAGE}:${TAG}"]
+	require.Equal(t, "alpine:3.19", stage.([]interface{})[0].(map[string]interface{})["Value"].([]interface{})[0])
+}
+
+// A variable is substituted by its whole name: with V and VERSION both
+// declared, $VERSION must not become the value of V followed by "ERSION",
+// whichever order the variables are visited in.
+func TestParser_Parse_ArgSubstitutionMatchesWholeNames(t *testing.T) {
+	src := []byte("ARG V=1\nARG VERSION=latest\nFROM ubuntu:$VERSION\nENV HOME_DIR=/home\nRUN echo ${HOME_DIR} $HOME_DIRX $UNSET\n")
+	for range 50 {
+		p := &Parser{}
+		_, doc, _, _, err := p.Parse(context.Background(), src, "Dockerfile", true, 15)
+		require.NoError(t, err)
+		stage := doc[0]["command"].(map[string]interface{})["ubuntu:$VERSION"].([]interface{})
+		require.Equal(t, "ubuntu:latest", stage[0].(map[string]interface{})["Value"].([]interface{})[0])
+		require.Equal(t, "echo /home $HOME_DIRX $UNSET", stage[2].(map[string]interface{})["Value"].([]interface{})[0])
+	}
+}
+
+func TestResolveArgsAndEnvs_WholeReferences(t *testing.T) {
+	args := map[string]string{"V": "1", "VERSION": "latest", "NESTED": "$VERSION", "EMPTY": ""}
+	values := []string{"$V $VERSION ${VERSION} $VERSION_SUFFIX ${UNKNOWN} $UNKNOWN ${EMPTY} $NESTED"}
+	require.Equal(t, []string{"1 latest latest $VERSION_SUFFIX ${UNKNOWN} $UNKNOWN  $VERSION"},
+		resolveArgsAndEnvs(values, args))
+}
+
+func TestParser_Parse_ChainedDeclarations(t *testing.T) {
+	for _, tt := range []struct {
+		name, source, stage string
+		command             int
+		want                []interface{}
+	}{
+		{"ARG", "ARG BASE=alpine:latest\nARG IMAGE=$BASE\nFROM $IMAGE\n", "$IMAGE", 0, []interface{}{"alpine:latest"}},
+		{"multiple ARG names", "ARG BASE=alpine:latest IMAGE=$BASE\nFROM $IMAGE\n", "$IMAGE", 0, []interface{}{"alpine:latest"}},
+		{"ENV", "FROM alpine\nENV A=1\nENV B=$A\nRUN echo $B\n", "alpine", 3, []interface{}{"echo 1"}},
+		{"ENV uses prior scope", "FROM alpine\nENV A=1\nENV A=2 B=$A\nRUN echo $A $B\n", "alpine", 3, []interface{}{"echo 2 1"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(tt.source), "Dockerfile", true, 15)
+			require.NoError(t, err)
+			require.Equal(t, tt.source, string(resolved))
+			commands := docs[0]["command"].(map[string]interface{})[tt.stage].([]interface{})
+			require.Equal(t, tt.want, commands[tt.command].(map[string]interface{})["Value"])
+			if tt.name == "ARG" {
+				args := docs[0]["args"].([]interface{})
+				arg := args[1].(map[string]interface{})
+				require.Equal(t, []interface{}{"IMAGE=alpine:latest"}, arg["Value"])
+				require.Equal(t, "ARG IMAGE=$BASE", arg["Original"], "source text remains available to line detection")
+			}
+		})
+	}
+}
+
+func TestParser_Parse_VariableScopes(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		want         map[int][]string
+	}{
+		{"bare ARG required value", "FROM alpine\nARG VERSION\nARG H=hello\nRUN ${VERSION:?need} \"${A:-\"x y\"}\" $H\n", map[int][]string{4: {"${VERSION:?need} \"\"x y\"\" hello"}}},
+		{"bare ARG alternate", "FROM alpine\nARG INSECURE\nRUN curl ${INSECURE:+--insecure} https://x\n", map[int][]string{3: {"curl ${INSECURE:+--insecure} https://x"}}},
+		{"unknown operators after stage change", "FROM alpine\nARG X=known\nFROM busybox\nRUN ${X?need} ${X+alternate} ${A:-default}\n", map[int][]string{4: {"${X?need} ${X+alternate} default"}}},
+		{"empty declared alternate", "FROM alpine\nARG X=\nRUN ${X:+alternate} ${X+present}\n", map[int][]string{3: {" present"}}},
+		{"known required and alternate", "FROM alpine\nARG X=known\nRUN ${X:?need} ${X:+alternate}\n", map[int][]string{3: {"known alternate"}}},
+		{"unknown registry prefix", "FROM ${REG#https://}/alpine:3.9\n", map[int][]string{1: {"${REG#https://}/alpine:3.9"}}},
+		{"unknown command suffix", "FROM alpine\nARG H=hello\nRUN curl ${BASE%/}/install.sh $H\n", map[int][]string{3: {"curl ${BASE%/}/install.sh hello"}}},
+		{"unknown replacement after stage change", "FROM alpine\nARG BASE=http://one\nFROM busybox\nRUN echo ${BASE/http/https} ${TAG:-latest}\n", map[int][]string{4: {"echo ${BASE/http/https} latest"}}},
+		{"unknown declaration modifier", "FROM alpine\nENV NEXT=${BASE%/}/install.sh\nRUN echo $NEXT\n", map[int][]string{2: {"NEXT", "${BASE%/}/install.sh", "="}, 3: {"echo ${BASE%/}/install.sh"}}},
+		{"runtime parameters with defaults", "FROM alpine\nRUN test ${A:-1} -eq 1 || exit $?\n", map[int][]string{2: {"test 1 -eq 1 || exit $?"}}},
+		{"recovery with nested unknown default", "FROM alpine\nARG H=hello\nRUN echo it's ${A:-${B:-$C}} $? $H\n", map[int][]string{3: {"echo it's ${A:-${B:-$C}} $? $H"}}},
+		{"declaration default preserves unknown references", "FROM alpine\nENV A=${MISSING:-$UNKNOWN}\nRUN echo $A\n", map[int][]string{2: {"A", "$UNKNOWN", "="}, 3: {"echo $UNKNOWN"}}},
+		{"shell quoting and defaults", "FROM alpine\nARG V=1\nRUN echo \\$V '$V' \"$V\" ${V:-d}\n", map[int][]string{3: {`echo \$V '$V' "1" 1`}}},
+		{"quoted declaration values", "FROM alpine\nARG V=1\nENV A=\"$V words\" LITERAL='$V' ESCAPED=\\$V\nRUN echo $A $LITERAL $ESCAPED\n", map[int][]string{3: {"A", "1 words", "=", "LITERAL", "$V", "=", "ESCAPED", "$V", "="}, 4: {"echo 1 words $V $V"}}},
+		{"escape directive in expansion", "# escape=`\nFROM alpine\nARG V=1\nRUN echo `$V $V\n", map[int][]string{4: {"echo `$V 1"}}},
+		{"unset FROM default", "FROM alpine:${TAG:-latest}\n", map[int][]string{1: {"alpine:latest"}}},
+		{"unset command default", "FROM alpine\nRUN echo ${TAG:-latest} $UNKNOWN\n", map[int][]string{2: {"echo latest $UNKNOWN"}}},
+		{"unsupported expansion is local", "FROM alpine\nARG H=hello\nRUN echo ${#H} $H\n", map[int][]string{3: {"echo ${#H} hello"}}},
+		{"unmatched apostrophe starts literal context", "FROM alpine\nARG H=hello\nRUN echo it's $H\n", map[int][]string{3: {"echo it's $H"}}},
+		{"unset declaration default", "ARG IMAGE=alpine:${TAG:-latest}\nFROM $IMAGE\n", map[int][]string{2: {"alpine:latest"}}},
+		{"nested default", "FROM alpine\nARG H=hello\nRUN echo ${MISSING:-${H}}\n", map[int][]string{3: {"echo hello"}}},
+		{"recovery preserves quoting", "FROM alpine\nARG H=hello\nRUN echo ${#H} \\$H '$H' \"$H\" ${MISSING:-d}\n", map[int][]string{3: {`echo ${#H} \$H '$H' "hello" ${MISSING:-d}`}}},
+		{"unsupported reference after known reference", "FROM alpine\nARG H=hello\nRUN echo $H ${H@Q} $H\n", map[int][]string{3: {"echo hello ${H@Q} hello"}}},
+		{"empty default", "FROM alpine\nARG V=\nRUN echo ${V:-d}\n", map[int][]string{3: {"echo d"}}},
+		{"resolved declarations", "ARG V=1\nFROM alpine\nARG V\nENV A=$V\nARG B=$A\nRUN echo $B\n", map[int][]string{4: {"A", "1", "="}, 5: {"B=1"}, 6: {"echo 1"}}},
+		{"ENV overrides ARG", "FROM alpine\nARG V=1\nENV V=2\nRUN echo $V ${V}\n", map[int][]string{4: {"echo 2 2"}}},
+		{"later ARG does not override ENV", "FROM alpine\nENV V=2\nARG V=1\nRUN echo $V\n", map[int][]string{4: {"echo 2"}}},
+		{"ENV default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nENV NEXT=$V\nRUN echo $NEXT\n", map[int][]string{4: {"NEXT", "2", "="}, 5: {"echo 2"}}},
+		{"ARG default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nARG NEXT=$V\nRUN echo $NEXT\n", map[int][]string{5: {"echo 2"}}},
+		{"global ARG only in FROM", "ARG V=alpine\nFROM $V\nRUN echo $V\n", map[int][]string{2: {"alpine"}, 3: {"echo $V"}}},
+		{"global ARG redeclared", "ARG V=alpine\nFROM $V\nARG V\nRUN echo $V\n", map[int][]string{4: {"echo alpine"}}},
+		{"global ARG overridden locally", "ARG V=alpine\nFROM $V\nARG V=local\nRUN echo $V\n", map[int][]string{4: {"echo local"}}},
+		{"unrelated stage resets variables", "FROM alpine AS build\nARG A=one\nENV E=two\nFROM busybox\nRUN echo $A $E\n", map[int][]string{5: {"echo $A $E"}}},
+		{"FROM only sees global ARG", "ARG IMAGE=alpine\nFROM $IMAGE AS build\nARG IMAGE=busybox\nENV IMAGE=scratch\nFROM $IMAGE\n", map[int][]string{5: {"alpine"}}},
+		{"base stage inheritance", "FROM alpine AS build\nARG A=one\nENV E=two\nFROM build\nRUN echo $A $E\n", map[int][]string{5: {"echo one two"}}},
+		{"sibling stages are isolated", "FROM alpine AS base\nENV V=base\nFROM base AS left\nENV V=left\nFROM base AS right\nRUN echo $V\n", map[int][]string{6: {"echo base"}}},
+		{"ONBUILD declaration is deferred", "FROM alpine\nENV V=local\nONBUILD ENV V=child\nRUN echo $V\n", map[int][]string{4: {"echo local"}}},
+		{"substitution stays single-pass", "FROM alpine\nARG A=$B\nENV B=expanded\nRUN echo $A\n", map[int][]string{4: {"echo $B"}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(tt.source), "Dockerfile", false, 0)
+			require.NoError(t, err)
+			data, err := json.Marshal(docs[0])
+			require.NoError(t, err)
+			var resource Resource
+			require.NoError(t, json.Unmarshal(data, &resource))
+			commands := map[int]Command{}
+			for _, stage := range resource.CommandList {
+				for _, cmd := range stage {
+					commands[cmd.StartLine] = cmd
+				}
+			}
+			for line, want := range tt.want {
+				require.Contains(t, commands, line)
+				require.Equal(t, want, commands[line].Value, "line %d", line)
+			}
+		})
+	}
+}
+
+func resolveArgsAndEnvs(values []string, scopes ...map[string]string) []string {
+	lex := newWordExpander('\\', true)
+	return expandValues(lex, values, scopes...)
+}
+
+func TestParserVerticalTabStage(t *testing.T) {
+	source := []byte("FROM\valpine AS b\nENV H=hello\nRUN echo $H\n")
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), source, "Dockerfile", false, 0)
+	require.NoError(t, err)
+	commands := docs[0]["command"].(map[string]interface{})
+	require.Contains(t, commands, "alpine AS b")
+	require.NotContains(t, commands, "")
+	stage := commands["alpine AS b"].([]interface{})
+	require.Equal(t, []interface{}{"echo hello"}, stage[2].(map[string]interface{})["Value"])
+}
+
+func TestPreparedSourceRemainsImmutable(t *testing.T) {
+	for _, source := range []string{
+		"FROM alpine\nARG H=hello\nRUN echo $H\n",
+		"From alpine\nENV H=hello\nOnBuild RUN echo $H\n",
+		"ARG H=alpine\nfrom $H\nRUN <<EOF\necho hi\nEOF\n",
+	} {
+		content := []byte(source)
+		p := &Parser{}
+		ctx := p.PrepareContext(t.Context(), "Dockerfile.prod", content)
+		ast, err := dockerfile.Parse(ctx, content)
+		require.NoError(t, err)
+		before, err := json.Marshal(ast)
+		require.NoError(t, err)
+		for range 3 {
+			_, _, _, _, err = p.Parse(ctx, content, "Dockerfile.prod", false, 0)
+			require.NoError(t, err)
+			after, marshalErr := json.Marshal(ast)
+			require.NoError(t, marshalErr)
+			require.Equal(t, before, after)
+		}
 	}
 }
