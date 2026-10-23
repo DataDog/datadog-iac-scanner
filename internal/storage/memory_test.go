@@ -91,14 +91,14 @@ func TestMemoryStorage(t *testing.T) { //nolint
 			fields: fields{
 				vulnerabilities: []model.Vulnerability{
 					{
-						ID:               0,
-						ScanID:           "scan_id",
-						FileID:           "file_id",
-						FileName:         "file_name",
-						QueryID:          "query_id",
-						QueryName:        "query_name",
-						Line:             1,
-						SearchKey:        "search_key",
+						ID:        0,
+						ScanID:    "scan_id",
+						FileID:    "file_id",
+						FileName:  "file_name",
+						QueryID:   "query_id",
+						QueryName: "query_name",
+						Line:      1,
+						SearchKey: "search_key",
 					},
 				},
 				allFiles: model.FileMetadatas{
@@ -127,14 +127,14 @@ func TestMemoryStorage(t *testing.T) { //nolint
 				},
 				vulnerabilities: []model.Vulnerability{
 					{
-						ID:               0,
-						ScanID:           "scan_id",
-						FileID:           "file_id",
-						FileName:         "file_name",
-						QueryID:          "query_id",
-						QueryName:        "query_name",
-						Line:             1,
-						SearchKey:        "search_key",
+						ID:        0,
+						ScanID:    "scan_id",
+						FileID:    "file_id",
+						FileName:  "file_name",
+						QueryID:   "query_id",
+						QueryName: "query_name",
+						Line:      1,
+						SearchKey: "search_key",
 					},
 				},
 			},
@@ -194,14 +194,14 @@ func TestMemoryStorage_SaveVulnerabilities(t *testing.T) {
 				in0: nil,
 				vulnerabilities: []model.Vulnerability{
 					{
-						ID:               0,
-						ScanID:           "scan_id",
-						FileID:           "file_id",
-						FileName:         "file_name",
-						QueryID:          "query_id",
-						QueryName:        "query_name",
-						Line:             1,
-						SearchKey:        "search_key",
+						ID:        0,
+						ScanID:    "scan_id",
+						FileID:    "file_id",
+						FileName:  "file_name",
+						QueryID:   "query_id",
+						QueryName: "query_name",
+						Line:      1,
+						SearchKey: "search_key",
 					},
 				},
 			},
@@ -268,4 +268,31 @@ func TestNewMemoryStorage(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Instances of one Terraform block share a file, a line, a call chain and, when
+// a rule names the block, a resource name, but they are distinct resources:
+// each is kept. The same finding of one instance saved twice is still one.
+func TestMemoryStorage_TerraformInstancesAreNotMerged(t *testing.T) {
+	storage := NewMemoryStorage()
+	var saved []model.Vulnerability
+	for _, docID := range []string{"mod\x00r/main.tf|module.m[0]\x000", "mod\x00r/main.tf|module.m[0]\x001", "root\x00\x000"} {
+		saved = append(saved, model.Vulnerability{
+			FileID: docID, FileName: "modules/m/main.tf", QueryID: "q", Platform: "Terraform",
+			ResourceType: "aws_s3_bucket", ResourceName: "b", Line: 3, ModuleCallChain: "r/main.tf|module.m[0]",
+		})
+	}
+	require.NoError(t, storage.SaveVulnerabilities(context.Background(), saved))
+	require.NoError(t, storage.SaveVulnerabilities(context.Background(), saved[:1]))
+	got, err := storage.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+
+	// Findings of a file scanned as written keep merging by fingerprint.
+	plain := NewMemoryStorage()
+	dup := model.Vulnerability{FileID: "f1", FileName: "main.tf", QueryID: "q", Platform: "Terraform", ResourceName: "b", Line: 3}
+	require.NoError(t, plain.SaveVulnerabilities(context.Background(), []model.Vulnerability{dup, dup}))
+	got, err = plain.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
 }
