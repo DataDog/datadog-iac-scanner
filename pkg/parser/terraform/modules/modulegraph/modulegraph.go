@@ -451,6 +451,7 @@ func partitionPendingTraversals(
 func (w *walker) parseModulesInDir(
 	ctx context.Context, dir string, allowedFiles map[string]bool, packageRoot string,
 ) map[string]tfmodules.ParsedModule {
+	ctx = tfmodules.WithLinkPlaceholderRoot(ctx, packageRoot)
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot) + "\x00" + allowedFilesCacheKey(allowedFiles)
 
 	if mods, ok := w.parseCache.get(key); ok {

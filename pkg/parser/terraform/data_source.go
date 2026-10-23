@@ -8,7 +8,6 @@ package terraform
 import (
 	"bytes"
 	"context"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -19,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -67,7 +67,7 @@ func getDataSourcePolicy(
 		locals []localAssignment
 	)
 	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
-		content, readErr := fsys.ReadFile(filepath.Clean(tfFile))
+		content, readErr := tfmodules.ReadConfigFile(ctx, fsys, tfFile, "")
 		if readErr != nil {
 			contextLogger.Debug().Msgf("Error trying to read file %s for data source.", tfFile)
 			continue

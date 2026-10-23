@@ -457,18 +457,24 @@ func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string
 	if err != nil {
 		return nil
 	}
-	return calledModuleDirs(dir, bodies, resolver, fsys)
+	return calledModuleDirs(context.Background(), dir, bodies, resolver, fsys)
 }
 
 func (e *Evaluator) CalledModuleDirs(dir string) []string {
-	bodies, _, err := e.parseDir(context.Background(), dir, "")
+	return e.CalledModuleDirsWithContext(context.Background(), dir)
+}
+
+// CalledModuleDirsWithContext retains the scan's root and confinement cache
+// during discovery, which shares parsed directories with module evaluation.
+func (e *Evaluator) CalledModuleDirsWithContext(ctx context.Context, dir string) []string {
+	bodies, _, err := e.parseDir(ctx, dir, "")
 	if err != nil {
 		return nil
 	}
-	return calledModuleDirs(dir, bodies, e.remoteResolver, e.fsys)
+	return calledModuleDirs(ctx, dir, bodies, e.remoteResolver, e.fsys)
 }
 
-func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResolver, fsys vfs.FS) []string {
+func calledModuleDirs(ctx context.Context, dir string, bodies []*hclsyntax.Body, resolver RemoteResolver, fsys vfs.FS) []string {
 	moduleBlocks := collectModuleBlocks(bodies)
 
 	emptyCtx := &hcl.EvalContext{}
@@ -478,7 +484,7 @@ func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResol
 		if source == "" {
 			continue
 		}
-		if local, ok := tfmodules.LocalModuleDir(fsys, dir, source); ok {
+		if local, ok := tfmodules.LocalModuleDirWithContext(ctx, fsys, dir, source); ok {
 			dirs = append(dirs, local)
 			continue
 		}

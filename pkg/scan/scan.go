@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
+	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
@@ -28,6 +29,7 @@ import (
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	dockerComposeParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose"
@@ -46,11 +48,12 @@ type Results struct {
 }
 
 type executeScanParameters struct {
-	services          []*runner.Service
-	inspector         *engine.Inspector
-	extractedPaths    provider.ExtractedPath
-	moduleCleanup     func()
-	remoteModulePaths []string
+	services           []*runner.Service
+	inspector          *engine.Inspector
+	extractedPaths     provider.ExtractedPath
+	moduleCleanup      func()
+	remoteModulePaths  []string
+	remotePackageRoots []string
 }
 
 func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
@@ -178,11 +181,12 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 
 	initSucceeded = true
 	return &executeScanParameters{
-		services:          services,
-		inspector:         inspector,
-		extractedPaths:    extractedPaths,
-		moduleCleanup:     moduleCleanup,
-		remoteModulePaths: remoteModulePaths,
+		services:           services,
+		inspector:          inspector,
+		extractedPaths:     extractedPaths,
+		moduleCleanup:      moduleCleanup,
+		remoteModulePaths:  remoteModulePaths,
+		remotePackageRoots: remoteModulePackageRoots(remoteSourceDirs),
 	}, nil
 }
 
@@ -223,6 +227,9 @@ func (c *Client) createQuerySource(ctx context.Context, paramsPlatforms []string
 }
 
 func (c *Client) executeScan(ctx context.Context) (*Results, error) {
+	ctx = pathutil.WithResolvedPathCache(ctx)
+	ctx = tfmodules.WithLinkPlaceholderRoot(ctx, c.ScanParams.RepoPath)
+	ctx = tfmodules.WithMaxConfigFileBytes(ctx, tfmodules.MaxConfigFileBytesForScan(c.ScanParams.MaxFileSizeFlag))
 	contextLogger := logger.FromContext(ctx)
 	executeScanParameters, err := c.initScan(ctx)
 
@@ -234,6 +241,7 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	if executeScanParameters == nil {
 		return nil, nil
 	}
+	ctx = tfmodules.WithLinkPlaceholderPackages(ctx, executeScanParameters.remotePackageRoots)
 
 	// Drop document maps after the OPA payload is built except for a JSON
 	// payload export that is not in line-info mode. Line-info export reparses

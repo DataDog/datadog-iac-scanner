@@ -7,6 +7,7 @@ package terraform
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -40,8 +41,8 @@ func mergeMaps(baseMap, newItems converter.VariableMap) {
 	}
 }
 
-func parseHCLBody(fsys vfs.FS, filename string) (*hclsyntax.Body, error) {
-	src, err := fsys.ReadFile(filepath.Clean(filename))
+func parseHCLBody(ctx context.Context, fsys vfs.FS, filename string) (*hclsyntax.Body, error) {
+	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
 	if err != nil {
 		return nil, err
 	}
@@ -54,19 +55,19 @@ func parseHCLBody(fsys vfs.FS, filename string) (*hclsyntax.Body, error) {
 	return body, nil
 }
 
-func getInputVariablesFromFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
+func getInputVariablesFromFile(ctx context.Context, fsys vfs.FS, filename string) (converter.VariableMap, error) {
 	if tfpath.IsTFVarsJSON(filename) {
-		return getInputVariablesFromJSONFile(fsys, filename)
+		return getInputVariablesFromJSONFile(ctx, fsys, filename)
 	}
-	body, err := parseHCLBody(fsys, filename)
+	body, err := parseHCLBody(ctx, fsys, filename)
 	if err != nil {
 		return nil, err
 	}
 	return extractInputVariables(body, filename), nil
 }
 
-func getInputVariablesFromJSONFile(fsys vfs.FS, filename string) (converter.VariableMap, error) {
-	src, err := fsys.ReadFile(filepath.Clean(filename))
+func getInputVariablesFromJSONFile(ctx context.Context, fsys vfs.FS, filename string) (converter.VariableMap, error) {
+	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
 	if err != nil {
 		return nil, err
 	}
@@ -87,12 +88,12 @@ func getInputVariablesFromJSONFile(fsys vfs.FS, filename string) (converter.Vari
 
 // getInputVariablesAndLocalsFromFile parses filename once for both variables and locals.
 func getInputVariablesAndLocalsFromFile(
-	fsys vfs.FS, filename string,
+	ctx context.Context, fsys vfs.FS, filename string,
 ) (vars, locals converter.VariableMap, err error) {
 	if tfpath.IsJSONConfig(filename) {
-		return extractVarsAndLocalsFromJSON(fsys, filename)
+		return extractVarsAndLocalsFromJSON(ctx, fsys, filename)
 	}
-	body, err := parseHCLBody(fsys, filename)
+	body, err := parseHCLBody(ctx, fsys, filename)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -148,8 +149,8 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 	return variables
 }
 
-func extractVarsAndLocalsFromJSON(fsys vfs.FS, filename string) (vars, locals converter.VariableMap, err error) {
-	src, err := fsys.ReadFile(filepath.Clean(filename))
+func extractVarsAndLocalsFromJSON(ctx context.Context, fsys vfs.FS, filename string) (vars, locals converter.VariableMap, err error) {
+	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -490,7 +491,7 @@ func getInputVariables(
 
 	// Parse all .tf/.tofu files for variables and locals
 	for _, tfFile := range tfFiles {
-		vars, locals, err := getInputVariablesAndLocalsFromFile(fsys, tfFile)
+		vars, locals, err := getInputVariablesAndLocalsFromFile(ctx, fsys, tfFile)
 		if err != nil {
 			// Non-fatal: a sibling may be unreadable (broken symlink, partial
 			// MemFS push) or invalid HCL (testdata). Match getDataSourcePolicy.
@@ -502,9 +503,13 @@ func getInputVariables(
 	}
 
 	for _, tfVarsFile := range autoloadedVarFiles(ctx, fsys, currentPath) {
-		vars, errInput := getInputVariablesFromFile(fsys, tfVarsFile)
+		vars, errInput := getInputVariablesFromFile(ctx, fsys, tfVarsFile)
 		if errInput != nil {
-			contextLogger.Warn().Err(errInput).Msgf("Skipping values from %s", tfVarsFile)
+			event := contextLogger.Warn()
+			if errors.Is(errInput, tfmodules.ErrSkippedLinkPlaceholder) {
+				event = contextLogger.Debug()
+			}
+			event.Err(errInput).Msgf("Skipping values from %s", tfVarsFile)
 			continue
 		}
 		mergeMaps(variablesMap, vars)
@@ -522,9 +527,13 @@ func getInputVariables(
 
 	if terraformVarsPath != "" {
 		if _, err := fsys.Stat(terraformVarsPath); err == nil {
-			vars, errInput := getInputVariablesFromFile(fsys, terraformVarsPath)
+			vars, errInput := getInputVariablesFromFile(ctx, fsys, terraformVarsPath)
 			if errInput != nil {
-				contextLogger.Error().Err(errInput).Msgf("Error getting values from %s", terraformVarsPath)
+				event := contextLogger.Error()
+				if errors.Is(errInput, tfmodules.ErrSkippedLinkPlaceholder) {
+					event = contextLogger.Debug()
+				}
+				event.Err(errInput).Msgf("Error getting values from %s", terraformVarsPath)
 			} else {
 				mergeMaps(variablesMap, vars)
 			}

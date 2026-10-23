@@ -122,7 +122,7 @@ func (c *Inspector) instantiateLocalModules(
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
-		stripModuleCalls(f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
+		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
 	}
 	for _, f := range files {
 		if f == nil {
@@ -443,7 +443,7 @@ func evaluateRootModules(
 	}
 	for _, dir := range roots[next:] {
 		evaluator.ResetSpeculativeBudget()
-		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVars(dir))
+		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
 		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
 		if err == nil {
 			// instantiatedDocs has copied everything this root needs into plain
@@ -614,7 +614,7 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 		r.expansionTruncations, r.expansionMaxRequested = worker.TakeExpansionStats()
 		worker.ReleaseEvalCache()
 	}()
-	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVars(dir))
+	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
 	r.instances = worker.TakeModuleInstances()
 	r.charged = worker.InstantiatedCount()
 	return r
@@ -1198,6 +1198,7 @@ func moduleCallChainKey(chain []tfeval.CallSite, moduleAddress, repoPath string)
 // Call sites under a root whose evaluation failed are left in place so a
 // failed instantiation does not remove coverage with no synthetic replacement.
 func stripModuleCalls(
+	ctx context.Context,
 	doc model.Document,
 	filePath, repoPath string,
 	calledDirs map[string]bool,
@@ -1226,7 +1227,7 @@ func stripModuleCalls(
 			continue
 		}
 		version, _ := call["version"].(string)
-		resolvedDir, _ := resolveModuleTargetDir(fsys, fileDir, source, version, filePath, name, resolver)
+		resolvedDir, _ := resolveModuleTargetDir(ctx, fsys, fileDir, repoPath, source, version, filePath, name, resolver)
 
 		if resolvedDir != "" && calledDirs[resolvedDir] {
 			delete(modules, name)
@@ -1279,7 +1280,7 @@ func discoverCalledModuleDirs(
 	resolver tfeval.RemoteResolver,
 	dir string,
 ) []string {
-	calledDirs, ok := calledModuleDirsFromDocuments(evaluator.FS(), files, repoPath, resolver)
+	calledDirs, ok := calledModuleDirsFromDocuments(ctx, evaluator.FS(), files, repoPath, resolver)
 	if ok {
 		return calledDirs
 	}
@@ -1287,7 +1288,7 @@ func discoverCalledModuleDirs(
 	contextLogger.Debug().Str("dir", dir).Msg(
 		"module resolve: falling back to directory parse for called module discovery",
 	)
-	return evaluator.CalledModuleDirs(dir)
+	return evaluator.CalledModuleDirsWithContext(ctx, dir)
 }
 
 // discoverCalledModuleClosure returns every module transitively reachable from
@@ -1323,6 +1324,7 @@ func discoverCalledModuleClosure(
 }
 
 func calledModuleDirsFromDocuments(
+	ctx context.Context,
 	fsys vfs.FS,
 	files []*model.FileMetadata,
 	repoPath string,
@@ -1342,7 +1344,7 @@ func calledModuleDirsFromDocuments(
 				continue
 			}
 			version, _ := call["version"].(string)
-			if dir, ok := resolveModuleTargetDir(fsys, fileDir, source, version, file.FilePath, name, resolver); ok {
+			if dir, ok := resolveModuleTargetDir(ctx, fsys, fileDir, repoPath, source, version, file.FilePath, name, resolver); ok {
 				dirs = append(dirs, dir)
 			}
 		}
@@ -1351,11 +1353,13 @@ func calledModuleDirsFromDocuments(
 }
 
 func resolveModuleTargetDir(
+	ctx context.Context,
 	fsys vfs.FS,
-	callerDir, source, version, callerFile, moduleName string,
+	callerDir, repoPath, source, version, callerFile, moduleName string,
 	resolver tfeval.RemoteResolver,
 ) (string, bool) {
-	if dir, ok := tfmodules.LocalModuleDir(fsys, callerDir, source); ok {
+	ctx = tfmodules.WithLinkPlaceholderRoot(ctx, repoPath)
+	if dir, ok := tfmodules.LocalModuleDirWithContext(ctx, fsys, callerDir, source); ok {
 		return dir, true
 	}
 	if resolver == nil {

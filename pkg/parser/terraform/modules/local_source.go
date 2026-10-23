@@ -6,6 +6,7 @@
 package tfmodules
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 
@@ -46,25 +47,39 @@ const environmentsDir = "environments"
 // The Terraform resolution is returned when no fallback exists, so errors
 // still name the path Terraform would use.
 func ResolveLocalModuleDir(fsys vfs.FS, callerDir, source string) string {
+	dir, _ := resolveLocalModuleDir(context.Background(), fsys, callerDir, source)
+	return dir
+}
+
+func resolveLocalModuleDir(ctx context.Context, fsys vfs.FS, callerDir, source string) (string, error) {
 	resolved := filepath.Clean(source)
 	if !filepath.IsAbs(source) {
 		resolved = filepath.Join(callerDir, source)
 	}
-	if fsys == nil || isDir(fsys, resolved) {
-		return resolved
+	if fsys == nil {
+		return resolved, nil
+	}
+	// A checkout placeholder at the original location takes precedence over
+	// build-layout fallbacks, just like a native symlink.
+	linked, err := ResolveModuleDir(ctx, fsys, callerDir, resolved, "")
+	if err != nil {
+		return "", err
+	}
+	if linked != resolved || isDir(fsys, resolved) {
+		return linked, nil
 	}
 	if !filepath.IsAbs(source) {
 		if parent := filepath.Dir(callerDir); filepath.Base(parent) == environmentsDir {
 			if merged := filepath.Join(filepath.Dir(parent), source); isDir(fsys, merged) {
-				return merged
+				return merged, nil
 			}
 		}
-		return resolved
+		return resolved, nil
 	}
 	if mounted, ok := repoPathOfAbsSource(fsys, callerDir, resolved); ok {
-		return mounted
+		return mounted, nil
 	}
-	return resolved
+	return resolved, nil
 }
 
 func repoPathOfAbsSource(fsys vfs.FS, callerDir, source string) (string, bool) {
@@ -90,10 +105,17 @@ func repoPathOfAbsSource(fsys vfs.FS, callerDir, source string) (string, bool) {
 // LocalModuleDir resolves source with ResolveLocalModuleDir when it is a local
 // module source, after removing its go-getter prefixes.
 func LocalModuleDir(fsys vfs.FS, callerDir, source string) (string, bool) {
+	return LocalModuleDirWithContext(context.Background(), fsys, callerDir, source)
+}
+
+// LocalModuleDirWithContext also retains an explicit checkout boundary and the
+// scan-scoped symlink cache while resolving placeholder module directories.
+func LocalModuleDirWithContext(ctx context.Context, fsys vfs.FS, callerDir, source string) (string, bool) {
 	if !LooksLikeLocalModuleSource(source) {
 		return "", false
 	}
-	return ResolveLocalModuleDir(fsys, callerDir, StripGetterPrefix(source)), true
+	dir, err := resolveLocalModuleDir(ctx, fsys, callerDir, StripGetterPrefix(source))
+	return dir, err == nil
 }
 
 func isDir(fsys vfs.FS, path string) bool {

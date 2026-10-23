@@ -1103,8 +1103,8 @@ func (e *Evaluator) resolveModuleDir(
 ) (dir, childPackageRoot string, ok bool) {
 	if tfmodules.LooksLikeLocalModuleSource(source) {
 		if packageRoot == "" {
-			dir, _ := tfmodules.LocalModuleDir(e.fsys, callerDir, source)
-			return dir, "", true
+			dir, ok := tfmodules.LocalModuleDirWithContext(ctx, e.fsys, callerDir, source)
+			return dir, "", ok
 		}
 		localDir := resolveLocalDir(callerDir, source)
 		confined, resolveErr := resolver.ResolvePathWithinRoot(ctx, packageRoot, localDir)

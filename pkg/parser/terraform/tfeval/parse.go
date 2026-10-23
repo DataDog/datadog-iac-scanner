@@ -74,7 +74,7 @@ func parseDir(
 		if !ok {
 			continue
 		}
-		src, rErr := fsys.ReadFile(filepath.Clean(path))
+		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, path, packageRoot)
 		if rErr != nil {
 			continue
 		}
@@ -223,6 +223,11 @@ func resolveLocalDir(callerDir, source string) string {
 // Only files listed in dir are read: MemFS records ReadFile misses as
 // escalation signals, so absent files must not be probed.
 func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
+	return e.LoadRootVarsWithContext(context.Background(), dir)
+}
+
+// LoadRootVarsWithContext preserves the scan boundary for linked variable files.
+func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map[string]cty.Value {
 	fsys := e.fsys
 	entries, _ := fsys.ReadDir(dir)
 	names := make([]string, 0, len(entries))
@@ -236,7 +241,7 @@ func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
 	emptyCtx := &hcl.EvalContext{}
 	for _, name := range tfpath.AutoloadedVarFiles(names) {
 		p := filepath.Clean(filepath.Join(dir, name))
-		src, err := fsys.ReadFile(p)
+		src, err := tfmodules.ReadConfigFile(ctx, fsys, p, "")
 		if err != nil {
 			continue
 		}

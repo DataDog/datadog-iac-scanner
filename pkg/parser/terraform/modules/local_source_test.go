@@ -28,6 +28,9 @@ func TestResolveLocalModuleDir(t *testing.T) {
 	env := mkdir("domains/svc/config/tf/environments/us1.prod")
 	mkdir("domains/svc/config/tf/workflows/create")
 	mkdir("domains/svc/config/tf/environments/us1.prod/local")
+	selected := mkdir("domains/svc/config/tf/selected")
+	mkdir("domains/svc/config/tf/linked")
+	require.NoError(t, os.WriteFile(filepath.Join(env, "linked"), []byte("../../selected"), 0o644))
 	mkdir("domains/shared/modules/slo")
 	// Build containers mount the repository at a path like /cnab/app/terraform;
 	// derive an OS-absolute equivalent so the absolute-source branch runs on
@@ -43,6 +46,7 @@ func TestResolveLocalModuleDir(t *testing.T) {
 	}{
 		{"relative source that exists", svc, "./workflows/create", filepath.Join(svc, "workflows/create")},
 		{"environment file keeps its own directory first", env, "./local", filepath.Join(env, "local")},
+		{"placeholder keeps precedence over merged fallback", env, "./linked", selected},
 		{"environment file merged into its module", env, "./workflows/create", filepath.Join(svc, "workflows/create")},
 		{"relative source missing everywhere", env, "./nope", filepath.Join(env, "nope")},
 		{"not under environments", svc, "../nope", filepath.Join(filepath.Dir(svc), "nope")},
