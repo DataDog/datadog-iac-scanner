@@ -181,7 +181,6 @@ output "first" { value = module.many[0].name }
 	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(largeExpansion)), "length = %#v", outputs["n"])
 	require.True(t, outputs["first"].RawEquals(cty.StringVal("b-0")))
 	require.True(t, outputs["last"].RawEquals(cty.StringVal(fmt.Sprintf("b-%d", largeExpansion-1))))
-	require.True(t, e.Report().Complete(), "%v", e.Report().Incomplete())
 	require.NotContains(t, logs.String(), "truncat")
 
 	abs, err := filepath.Abs(bucket)

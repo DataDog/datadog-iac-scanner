@@ -81,16 +81,7 @@ type ResolvedResource struct {
 
 	// Data marks an instance of a data block rather than a resource.
 	Data bool
-
-	// unexpanded is set on the one instance of a block whose count or
-	// for_each did not resolve to known instances: expansionUnknownNote, or
-	// why Terraform rejects it.
-	unexpanded string
 }
-
-// expansionUnknownNote marks an instance standing for an expansion not known
-// before apply.
-const expansionUnknownNote = "unknown"
 
 // CallSite records one hop in a module call chain.
 type CallSite struct {
@@ -218,30 +209,22 @@ type Evaluator struct {
 	// so a rollback can find the entries made since a point.
 	cacheOrder []evalCacheKey
 
-	// guard is the scan's explicit operational boundary, shared by forks. It
-	// never truncates an expansion: once it trips, the evaluation in progress
-	// fails as a whole and the scan reports itself incomplete.
-	guard *Guard
-	// steps counts guarded steps since the last cancellation and memory check.
-	steps uint32
-	// report records what this evaluator evaluated and anything it could not
-	// evaluate completely.
+	// steps counts evaluation steps since the last cancellation check, and
+	// canceled is the scan's cancellation once a check saw it.
+	steps    uint32
+	canceled error
+	// report counts what this evaluator evaluated.
 	report Report
-	// notes are the unknown expansions and incompleteness of the evaluation
-	// in progress, folded into report when it ends. A cached evaluation keeps
-	// the notes made inside it and replays them when it is reused, and a
-	// speculative one drops its own, so each instance is noted exactly once.
-	notes []evalNote
 
 	prepassDepth int
 	skipped      uint64
 
 	// dataBlockEvals counts the data block expansions that actually ran, so
-	// tests can check what the eval cache and budget skips save.
+	// tests can check what the eval cache saves.
 	dataBlockEvals int
 
 	// notEvaluatedDirs holds every module directory this evaluator declined to
-	// evaluate for a cycle, an invalid configuration or a tripped guard. It accumulates for the whole scan
+	// evaluate for a cycle or an invalid configuration. It accumulates for the whole scan
 	// because suppression is decided per directory over all call sites at once:
 	// one skipped instance means the directory is only partially resolved, so
 	// its body must stay in the scan even though other instances did resolve.
@@ -286,7 +269,6 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 	}
 	return &Evaluator{
 		funcs:            tffunctions.TerraformFuncs,
-		guard:            NewGuard(Limits{}),
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
@@ -314,9 +296,6 @@ func (e *Evaluator) NotEvaluatedDirs() []string {
 	}
 	return dirs
 }
-
-// SetGuard makes the evaluator stop at g's boundary. Forks share their parent's guard.
-func (e *Evaluator) SetGuard(g *Guard) { e.guard = g }
 
 // Report returns what the evaluator evaluated since it was created or its
 // report was last taken.
@@ -348,12 +327,11 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) ([]*h
 }
 
 // Fork returns an evaluator that can evaluate other roots concurrently with e.
-// It shares e's settings, guard, and parse and path caches; its evaluation
+// It shares e's settings and its parse and path caches; its evaluation
 // cache, report and skipped directories are its own.
 func (e *Evaluator) Fork() *Evaluator {
 	return &Evaluator{
 		funcs:            e.funcs,
-		guard:            e.guard,
 		fsys:             e.fsys,
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		remoteResolver:   e.remoteResolver,
@@ -472,15 +450,13 @@ func (e *Evaluator) EvaluateModule(
 	visiting := map[string]bool{}
 	allVisited := newVisitSet()
 	e.instances = nil
-	if !e.guard.check(ctx) {
+	if e.canceled = ctx.Err(); e.canceled != nil {
 		return nil, nil, allVisited.dirs, ErrEvaluationStopped
 	}
-	e.notes = e.notes[:0]
 	outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, visiting, allVisited, &resources)
 	if err == nil {
 		err = e.stopped()
 	}
-	e.foldNotes()
 	if err != nil {
 		resources, outputs = nil, nil
 		e.instances = nil
@@ -546,7 +522,6 @@ func (e *Evaluator) evaluate(
 
 	bodies, sources, err := e.parseDir(ctx, dir, packageRoot)
 	if err != nil {
-		e.noteParseFailure(addr, err)
 		return nil, err
 	}
 
@@ -640,28 +615,16 @@ func (e *Evaluator) publishFinalResources(
 // evaluationMark is where a module evaluation began in the records the
 // evaluator keeps while evaluating a root.
 type evaluationMark struct {
-	skipped                   uint64
-	instances, notes, visited int
-	start                     int
+	skipped            uint64
+	instances, visited int
+	start              int
 }
 
 func (e *Evaluator) markEvaluation(allVisited *visitSet, out *[]ResolvedResource) evaluationMark {
 	return evaluationMark{
-		skipped: e.skipped, instances: len(e.instances), notes: len(e.notes),
+		skipped: e.skipped, instances: len(e.instances),
 		visited: len(allVisited.order), start: len(*out),
 	}
-}
-
-// noteParseFailure records a called module whose directory could not be read.
-func (e *Evaluator) noteParseFailure(addr string, err error) {
-	if addr == "" {
-		return
-	}
-	reason := ReasonModuleFailed
-	if errors.Is(err, fs.ErrNotExist) {
-		reason = ReasonModuleUnresolved
-	}
-	e.noteIncomplete(reason, addr)
 }
 
 // completeEvaluation appends the module's own instances to out after those of
@@ -680,11 +643,6 @@ func (e *Evaluator) completeEvaluation(
 	if err := e.stopped(); err != nil {
 		return nil, err
 	}
-	if !e.emit(len(rootResources) + len(dataInstances)) {
-		return nil, ErrEvaluationStopped
-	}
-	e.noteUnexpanded(rootResources)
-	e.noteUnexpanded(dataInstances)
 	*out = append(*out, rootResources...)
 	*out = append(*out, dataInstances...)
 
@@ -696,7 +654,7 @@ func (e *Evaluator) completeEvaluation(
 	// The dirs added to allVisited during this evaluation, for the cache entry.
 	visitedDirs := slices.Clone(allVisited.order[mark.visited:])
 	e.cacheCompletedEvaluation(
-		key, mark.skipped, out, mark.start, e.instances[mark.instances:], e.notes[mark.notes:], outputs, visitedDirs,
+		key, mark.skipped, out, mark.start, e.instances[mark.instances:], outputs, visitedDirs,
 		addr, chainLen,
 	)
 	return outputs, nil
@@ -747,10 +705,9 @@ func (e *Evaluator) evaluationStop(
 ) error {
 	if visiting[dir] {
 		// Terraform rejects a module that calls itself, so there is no
-		// instance to evaluate; the call is reported and left as written.
+		// instance to evaluate; the call is left as written.
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
-		e.noteIncomplete(ReasonModuleCycle, addr)
 		return e.skipEvaluation(dir)
 	}
 	if !e.step(ctx) {
@@ -776,16 +733,10 @@ func (e *Evaluator) reuseCachedEvaluation(
 	}
 	if e.prepassDepth == 0 {
 		e.report.CacheHits++
-		// A reused evaluation emits every instance of its subtree again, at
-		// this caller's address.
-		if !e.emit(entry.size()) {
-			return nil, true, ErrEvaluationStopped
-		}
 	}
 	for _, visited := range entry.visitedDirs {
 		allVisited.add(visited)
 	}
-	e.notes = append(e.notes, entry.notes...)
 	e.instances = append(e.instances, entry.rebaseInstances(addr, chain)...)
 	entry.appendRebased(out, addr, chain)
 	return entry.outputs, true, nil
@@ -852,7 +803,6 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	result *[]ResolvedResource,
 	start int,
 	instances []ModuleInstance,
-	notes []evalNote,
 	outputs map[string]cty.Value,
 	visitedDirs []string,
 	addr string,
@@ -866,7 +816,6 @@ func (e *Evaluator) cacheCompletedEvaluation(
 		result:       result,
 		start:        start,
 		end:          len(*result),
-		notes:        slices.Clone(notes),
 		instances:    slices.Clone(instances),
 		outputs:      outputs,
 		visitedDirs:  visitedDirs,
@@ -991,13 +940,9 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	for _, mb := range moduleBlocks {
 		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
 		if !ok {
-			if label := blockLabel(mb); label != "" {
-				e.noteIncomplete(ReasonModuleUnresolved, joinAddr(addr, "module."+label))
-			}
 			continue
 		}
 		plan := moduleInstances(mb, evalCtx)
-		e.noteExpansion(plan.mode == expansionUnknown, plan.invalid, joinAddr(addr, "module."+call.label))
 		// Every instance of the call shares the chain leading to it.
 		childChain := append(cloneChain(chain), call.site(scope))
 		var keys, outs []cty.Value
@@ -1068,62 +1013,6 @@ func (e *Evaluator) discardFrom(m resultMark) {
 
 // localRootName is the root of local value references.
 const localRootName = "local"
-
-// evalNote is an unknown expansion, when reason is empty, or a reason the
-// evaluation is incomplete.
-type evalNote struct{ reason, example string }
-
-func (e *Evaluator) noteIncomplete(reason, example string) {
-	e.notes = append(e.notes, evalNote{reason: reason, example: example})
-}
-
-// noteExpansion records a count or for_each that did not resolve to known
-// instances: an unknown one is evaluated as Terraform plans it, an invalid one
-// leaves the scan incomplete.
-func (e *Evaluator) noteExpansion(unknown bool, invalid, address string) {
-	switch {
-	case invalid != "":
-		e.noteIncomplete(ReasonInvalidExpansion, address+": "+invalid)
-	case unknown:
-		e.notes = append(e.notes, evalNote{})
-	}
-}
-
-// noteUnexpanded records the instances standing for an expansion that did
-// not resolve, once they are part of the result.
-func (e *Evaluator) noteUnexpanded(resources []ResolvedResource) {
-	for i := range resources {
-		r := &resources[i]
-		switch r.unexpanded {
-		case "":
-		case expansionUnknownNote:
-			e.noteExpansion(true, "", "")
-		default:
-			e.noteExpansion(false, r.unexpanded, instanceAddress(r))
-		}
-	}
-}
-
-// foldNotes adds the notes of the evaluation that ended to the report.
-func (e *Evaluator) foldNotes() {
-	for _, n := range e.notes {
-		if n.reason == "" {
-			e.report.UnknownExpansions++
-		} else {
-			e.report.note(n.reason, n.example)
-		}
-	}
-	e.notes = e.notes[:0]
-}
-
-// instanceAddress is the Terraform address of a resolved instance.
-func instanceAddress(r *ResolvedResource) string {
-	local := r.Type + "." + r.Name
-	if r.Data {
-		local = "data." + local
-	}
-	return joinAddr(r.ModuleAddress, local)
-}
 
 // installSiblingModuleOutputs publishes module.* for later siblings and
 // refreshes locals and data that read those outputs.
@@ -1347,7 +1236,7 @@ func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
 }
 
 // evalResourceBlocks evaluates resource blocks, count/for_each expanded when
-// known. It reports false when the guard stopped the evaluation, in which
+// known. It reports false when the scan was canceled, in which
 // case the instances are not a complete result.
 func (e *Evaluator) evalResourceBlocks(
 	ctx context.Context,
@@ -1370,7 +1259,7 @@ func (e *Evaluator) evalResourceBlocks(
 // expandBlock appends to out the zero, one or N instances of a resource or
 // data block: known count/for_each get count.index / each.* in a child
 // context, an unknown one a single instance with an unknown iteration. It
-// reports false when the guard stopped it.
+// reports false when the scan was canceled.
 func (e *Evaluator) expandBlock(
 	ctx context.Context,
 	rb *hclsyntax.Block,
@@ -1418,7 +1307,6 @@ type blockExpansion struct {
 	data    bool
 	out     []ResolvedResource
 	memo    *invariantMemo
-	emitted int
 	// skip and forEachOf replace the for_each argument of each instance by
 	// the instance's own element.
 	skip      map[string]bool
@@ -1428,7 +1316,7 @@ type blockExpansion struct {
 func (x *blockExpansion) count(name string, attr *hclsyntax.Attribute) bool {
 	n, state := countValue(attr.Expr, x.evalCtx)
 	if state != expansionKnown {
-		return x.unexpanded(name, iterCount, expansionNote(state, iterCount))
+		return x.add(name, unknownIterationContext(x.evalCtx, iterCount), cty.NilVal, cty.NilVal)
 	}
 	for i := range n {
 		index := cty.NumberIntVal(int64(i))
@@ -1442,7 +1330,7 @@ func (x *blockExpansion) count(name string, attr *hclsyntax.Attribute) bool {
 func (x *blockExpansion) forEach(name string, attr *hclsyntax.Attribute) bool {
 	fv, state := forEachValue(attr.Expr, x.evalCtx)
 	if state != expansionKnown {
-		return x.unexpanded(name, iterEach, expansionNote(state, forEachArg))
+		return x.add(name, unknownIterationContext(x.evalCtx, iterEach), cty.NilVal, cty.NilVal)
 	}
 	// Each instance holds the element it was created for rather than the
 	// whole collection, which would make every instance as large as the
@@ -1460,21 +1348,10 @@ func (x *blockExpansion) forEach(name string, attr *hclsyntax.Attribute) bool {
 	return true
 }
 
-// unexpanded adds the single instance standing for an expansion that did not
-// resolve, evaluated with an unknown iteration.
-func (x *blockExpansion) unexpanded(name, iterator, note string) bool {
-	ok := x.add(name, unknownIterationContext(x.evalCtx, iterator), cty.NilVal, cty.NilVal)
-	if ok {
-		x.out[len(x.out)-1].unexpanded = note
-	}
-	return ok
-}
-
 // add evaluates one instance under child and reports whether evaluation may go on.
 func (x *blockExpansion) add(name string, child *hcl.EvalContext, key, value cty.Value) bool {
 	e := x.e
-	x.emitted++
-	if !e.step(x.ctx) || !e.admit(x.emitted) {
+	if !e.step(x.ctx) {
 		return false
 	}
 	if e.prepassDepth == 0 {
@@ -1509,15 +1386,6 @@ func (x *blockExpansion) add(name string, child *hcl.EvalContext, key, value cty
 		Data:          x.data,
 	})
 	return e.stopped() == nil
-}
-
-// expansionNote is what an instance standing for an unresolved expansion
-// records: why Terraform rejects it, or that it is not known before apply.
-func expansionNote(state expansionState, arg string) string {
-	if reason := invalidReason(state, arg); reason != "" {
-		return reason
-	}
-	return expansionUnknownNote
 }
 
 // instanceForEach returns the for_each attribute of one instance of a block
@@ -1798,8 +1666,7 @@ func (e *Evaluator) resolveLocalsWith(
 }
 
 // evalBody evaluates an HCL body into the shape produced by the Terraform parser.
-// It keeps dynamic blocks as written: a module call cannot hold them, and there
-// is no per-resource budget here to bound their expansion.
+// It keeps dynamic blocks as written: a module call cannot hold them.
 func (e *Evaluator) evalBody(
 	body *hclsyntax.Body,
 	ctx *hcl.EvalContext,
@@ -2065,11 +1932,9 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	// The calls evaluated here are speculative; cache entries keep their own
 	// instances and notes.
 	instancesBefore := len(e.instances)
-	notesBefore := len(e.notes)
 	defer func() {
 		e.prepassDepth--
 		e.instances = e.instances[:instancesBefore]
-		e.notes = e.notes[:notesBefore]
 	}()
 
 	out := map[string]cty.Value{}

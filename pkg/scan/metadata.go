@@ -2,8 +2,6 @@ package scan
 
 import (
 	"time"
-
-	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
 type ScanMetadata struct {
@@ -23,9 +21,6 @@ type ScanMetadata struct {
 	PeakRSSBytes uint64 `json:",omitempty"`
 	// PeakRSSPhase is the scan phase in which PeakRSSBytes was reached.
 	PeakRSSPhase string `json:",omitempty"`
-	// Incomplete lists why the scan left part of its input unevaluated;
-	// empty for a complete scan.
-	Incomplete []model.IncompleteReason `json:",omitempty"`
 }
 
 type ScanStats struct {

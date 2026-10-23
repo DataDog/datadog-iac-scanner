@@ -1892,8 +1892,8 @@ func TestEvaluateModule_LargeDynamicBlockExpandsEveryBlock(t *testing.T) {
 	if sg.DynamicCounts[firstDynamic(t, sg)] != largeDynamic {
 		t.Fatalf("dynamic counts = %v", sg.DynamicCounts)
 	}
-	if logs.Len() != 0 || !e.Report().Complete() {
-		t.Fatalf("complete expansion warned: %q, %v", logs.String(), e.Report().Incomplete())
+	if logs.Len() != 0 {
+		t.Fatalf("complete expansion warned: %q", logs.String())
 	}
 }
 

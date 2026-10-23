@@ -8,7 +8,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -82,7 +81,7 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 	const depth, branch = 12, 2
 	root, files := writeDeepFanOut(t, depth, branch)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
 
 	if res.resourceCount == 0 {
 		t.Fatal("expected the nested module tree to instantiate resources, got none")
@@ -107,7 +106,7 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testing.T) {
 	root, files := writeBudgetFanOut(t, 6, 4)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
 
 	if res.resourceCount == 0 {
 		t.Fatal("expected resources to be instantiated")
@@ -178,15 +177,12 @@ module "deep" {
 func TestResolveModuleDocuments_DeepCallSiteResolves(t *testing.T) {
 	root, files := writeSharedModule(t, 25, false)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
 	if !res.ok || res.resourceCount != 2 {
 		t.Fatalf("ok=%t, %d resources instantiated; want both call sites", res.ok, res.resourceCount)
 	}
 	if !res.suppressed["shared"]["aws_s3_bucket"]["b"] {
 		t.Fatalf("both instances resolved, so the body is replaced: %#v", res.suppressed)
-	}
-	if !res.report.Complete() {
-		t.Fatalf("report incomplete: %v", res.report.Incomplete())
 	}
 }
 
@@ -198,7 +194,7 @@ func TestResolveModuleDocuments_DeepCallSiteResolves(t *testing.T) {
 func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T) {
 	root, files := writeSharedModule(t, 3, true)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
 
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed for the shallow call")
@@ -220,8 +216,5 @@ func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T
 			t.Errorf("shared module body is suppressed (%v) even though one of its call "+
 				"sites was never resolved; that instance is now scanned by nothing", blocks)
 		}
-	}
-	if inc := res.report.Incomplete(); len(inc) != 1 || inc[0].Reason != tfeval.ReasonModuleCycle {
-		t.Errorf("report = %+v, want the cycle", inc)
 	}
 }

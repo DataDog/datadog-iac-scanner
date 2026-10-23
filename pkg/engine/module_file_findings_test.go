@@ -7,7 +7,6 @@ package engine
 
 import (
 	"context"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -72,7 +71,7 @@ func resolveRemoteBucketPackage(
 		}, true
 	}
 	external := func(path string) bool { return pathWithinRoot(path, pkg) }
-	return resolveModuleDocuments(context.Background(), files, repo, resolver, targets, lookup, nil, nil, external, tfeval.Limits{})
+	return resolveModuleDocuments(context.Background(), files, repo, resolver, targets, lookup, nil, nil, external)
 }
 
 func TestResolveModuleDocuments_AttributesExternalModuleFilesToEveryCall(t *testing.T) {
@@ -148,7 +147,7 @@ func TestResolveModuleDocuments_NoExternalFilesRecordsNoCalls(t *testing.T) {
 	resolver := func(source, _, _, _ string) (string, string, bool) {
 		return bucket, pkg, source == bucketSource
 	}
-	res := resolveModuleDocuments(context.Background(), files, repo, resolver, nil, nil, nil, nil, nil, tfeval.Limits{})
+	res := resolveModuleDocuments(context.Background(), files, repo, resolver, nil, nil, nil, nil, nil)
 	require.True(t, res.ok)
 	require.Nil(t, res.moduleFiles)
 }

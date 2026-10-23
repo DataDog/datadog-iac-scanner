@@ -100,9 +100,6 @@ type moduleExpansionPlan struct {
 	forEach cty.Value
 	// unknown is the iteration variable bound when the expansion is unknown.
 	unknown string
-	// invalid describes an expansion Terraform rejects; it is evaluated once
-	// with an unknown iteration, like an unknown one.
-	invalid string
 }
 
 // moduleInstances plans the expansion of a module call's count or for_each under ctx.
@@ -110,28 +107,18 @@ func moduleInstances(mb *hclsyntax.Block, ctx *hcl.EvalContext) moduleExpansionP
 	if attr, ok := mb.Body.Attributes[iterCount]; ok {
 		n, state := countValue(attr.Expr, ctx)
 		if state != expansionKnown {
-			return moduleExpansionPlan{mode: expansionUnknown, ctx: ctx, unknown: iterCount, invalid: invalidReason(state, iterCount)}
+			return moduleExpansionPlan{mode: expansionUnknown, ctx: ctx, unknown: iterCount}
 		}
 		return moduleExpansionPlan{mode: expansionCount, ctx: ctx, count: n}
 	}
 	if attr, ok := mb.Body.Attributes[forEachArg]; ok {
 		v, state := forEachValue(attr.Expr, ctx)
 		if state != expansionKnown {
-			return moduleExpansionPlan{mode: expansionUnknown, ctx: ctx, unknown: iterEach, invalid: invalidReason(state, forEachArg)}
+			return moduleExpansionPlan{mode: expansionUnknown, ctx: ctx, unknown: iterEach}
 		}
 		return moduleExpansionPlan{mode: expansionForEach, ctx: ctx, forEach: v}
 	}
 	return moduleExpansionPlan{mode: expansionNone, ctx: ctx}
-}
-
-func invalidReason(state expansionState, arg string) string {
-	if state != expansionInvalid {
-		return ""
-	}
-	if arg == iterCount {
-		return "count is not a whole non-negative number"
-	}
-	return "for_each is not a map or a set of strings"
 }
 
 // all yields every instance of the plan in Terraform's order: count by index,

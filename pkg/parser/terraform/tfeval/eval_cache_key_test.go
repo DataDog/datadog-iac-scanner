@@ -200,14 +200,14 @@ func TestEvaluate_DeepChainEvaluatesEveryLevel(t *testing.T) {
 			t.Errorf("%s was not recorded as evaluated", dir)
 		}
 	}
-	if !e.Report().Complete() || len(e.NotEvaluatedDirs()) != 0 {
-		t.Fatalf("deep chain reported incomplete: %v, skipped %v", e.Report().Incomplete(), e.NotEvaluatedDirs())
+	if len(e.NotEvaluatedDirs()) != 0 {
+		t.Fatalf("deep chain skipped %v", e.NotEvaluatedDirs())
 	}
 }
 
-// A module calling itself is the one recursion Terraform rejects. It is
-// reported, and its directory is left to be scanned as written.
-func TestEvaluate_ModuleCycleIsReportedIncomplete(t *testing.T) {
+// A module calling itself is the one recursion Terraform rejects. Its
+// directory is left to be scanned as written.
+func TestEvaluate_ModuleCycleIsLeftAsWritten(t *testing.T) {
 	root := t.TempDir()
 	writeModule(t, root, "a", map[string]string{"main.tf": `
 resource "aws_s3_bucket" "a" {}
@@ -221,10 +221,6 @@ module "a" { source = "../a" }
 	_, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
-	}
-	inc := e.Report().Incomplete()
-	if len(inc) != 1 || inc[0].Reason != ReasonModuleCycle || inc[0].Examples[0] != "module.a.module.b.module.a" {
-		t.Fatalf("incomplete = %+v, want the cycle at module.a.module.b.module.a", inc)
 	}
 	if !slicesContain(e.NotEvaluatedDirs(), filepath.Join(root, "a")) {
 		t.Fatalf("cycle directory not reported as not evaluated: %v", e.NotEvaluatedDirs())
@@ -240,74 +236,22 @@ func slicesContain(list []string, want string) bool {
 	return false
 }
 
-// The instance limit is an explicit boundary: past it the evaluation fails as
-// a whole, rather than returning the instances that fit.
-func TestInstanceLimit_StopsRecursionExplicitly(t *testing.T) {
-	stack := writeNestedFanOut(t, 10, 3)
-
-	unbounded := New()
-	all, _, _, err := unbounded.EvaluateModule(context.Background(), stack, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	if len(all) != 19683 || !unbounded.Report().Complete() {
-		t.Fatalf("unbounded run resolved %d resources, want all 3^9", len(all))
-	}
-
-	bounded := limitedEvaluator(4)
-	limited, _, _, err := bounded.EvaluateModule(context.Background(), stack, nil)
-	requireStoppedAt(t, bounded, limited, err)
-}
-
-func TestInstanceLimit_CountsFinalInstancesOnce(t *testing.T) {
-	stack := writeNestedFanOut(t, 12, 3)
-
-	const want = 177147
-	e := limitedEvaluator(want)
-	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule at exactly the limit: %v", err)
-	}
-	if got := len(resources); got != want {
-		t.Fatalf("resolved %d resources, want %d", got, want)
-	}
-	if got := e.guard.Instances(); got != want {
-		t.Fatalf("counted %d instances for %d returned resources", got, len(resources))
+// A fan-out of branch^depth instances resolves every one of them.
+func TestEvaluate_NestedFanOutResolvesEveryInstance(t *testing.T) {
+	for _, c := range []struct{ depth, want int }{{10, 19683}, {12, 177147}} {
+		stack := writeNestedFanOut(t, c.depth, 3)
+		resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+		if err != nil {
+			t.Fatalf("EvaluateModule: %v", err)
+		}
+		if len(resources) != c.want {
+			t.Fatalf("depth %d resolved %d resources, want %d", c.depth, len(resources), c.want)
+		}
 	}
 }
 
-// Instantiated resources become documents that live until the scan ends, so
-// the limit spans every root of the scan, and counts root module resources
-// like module ones.
-func TestInstanceLimit_SpansRootsAndCountsRootResources(t *testing.T) {
-	root := t.TempDir()
-	stackA := writeModule(t, root, "a", map[string]string{"main.tf": `resource "aws_iam_role" "r" { count = 80 }`})
-	stackB := writeModule(t, root, "b", map[string]string{"main.tf": `resource "aws_iam_role" "r" { count = 80 }`})
-	guard := NewGuard(Limits{MaxInstances: 100})
-	e := New()
-	e.SetGuard(guard)
-	ctx := context.Background()
-
-	a, _, _, err := e.EvaluateModule(ctx, stackA, nil)
-	if err != nil || len(a) != 80 {
-		t.Fatalf("first root: %d resources, %v", len(a), err)
-	}
-	fork := e.Fork()
-	b, _, _, err := fork.EvaluateModule(ctx, stackB, nil)
-	if !errors.Is(err, ErrEvaluationStopped) || len(b) != 0 {
-		t.Fatalf("second root on a forked evaluator: %d resources, %v; want it stopped", len(b), err)
-	}
-	if reason, _ := guard.Stopped(); reason != ReasonInstanceLimit {
-		t.Fatalf("guard stopped for %q", reason)
-	}
-	// The guard stays tripped: a later root is not evaluated in part.
-	if again, _, _, err := e.EvaluateModule(ctx, stackA, nil); !errors.Is(err, ErrEvaluationStopped) || len(again) != 0 {
-		t.Fatalf("root after the limit: %d resources, %v", len(again), err)
-	}
-}
-
-// Cancelling the scan stops evaluation explicitly; nothing evaluated before
-// the cancellation is passed off as the whole module.
+// Canceling the scan stops evaluation; nothing evaluated before the
+// cancellation is passed off as the whole module.
 func TestEvaluate_CancellationStopsExplicitly(t *testing.T) {
 	stack := writeNestedFanOut(t, 10, 3)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -317,11 +261,8 @@ func TestEvaluate_CancellationStopsExplicitly(t *testing.T) {
 	if !errors.Is(err, ErrEvaluationStopped) || len(resources) != 0 {
 		t.Fatalf("cancelled evaluation: %d resources, %v", len(resources), err)
 	}
-	if reason, _ := e.guard.Stopped(); reason != ReasonCanceled {
-		t.Fatalf("guard stopped for %q, want cancellation", reason)
-	}
 	// Work stops within one check interval rather than after the whole tree.
-	if n := e.Report().ModuleEvaluations; n > guardCheckEvery {
+	if n := e.Report().ModuleEvaluations; n > cancelCheckEvery {
 		t.Fatalf("%d module evaluations ran after cancellation", n)
 	}
 }

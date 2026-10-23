@@ -33,23 +33,21 @@ type Run struct {
 	TimedOut    bool    `json:"timed_out"`
 
 	// Counters the scanner logs, absent from scanners that do not log them.
-	ModuleResources   int      `json:"module_resources_instantiated"`
-	ModuleDocuments   int      `json:"module_documents"`
-	EvaluatedModules  int      `json:"evaluated_module_instances"`
-	EvalCacheEntries  int      `json:"eval_cache_entries"`
-	GoTotalAlloc      int64    `json:"go_total_alloc_bytes"`
-	GoMallocs         int64    `json:"go_mallocs"`
-	Truncations       int      `json:"count_expansion_truncated"`
-	BudgetExhausted   bool     `json:"resource_budget_exhausted"`
-	Incomplete        bool     `json:"incomplete"`
-	IncompleteReasons []string `json:"incomplete_reasons,omitempty"`
-	Warnings          []string `json:"warnings,omitempty"`
+	ModuleResources  int      `json:"module_resources_instantiated"`
+	ModuleDocuments  int      `json:"module_documents"`
+	EvaluatedModules int      `json:"evaluated_module_instances"`
+	EvalCacheEntries int      `json:"eval_cache_entries"`
+	GoTotalAlloc     int64    `json:"go_total_alloc_bytes"`
+	GoMallocs        int64    `json:"go_mallocs"`
+	Truncations      int      `json:"count_expansion_truncated"`
+	BudgetExhausted  bool     `json:"resource_budget_exhausted"`
+	Warnings         []string `json:"warnings,omitempty"`
 
 	Findings       int            `json:"findings"`
 	FindingsByRule map[string]int `json:"findings_by_rule"`
 
 	// Complete is set when the findings the fixture guarantees are all present
-	// and the scan reported nothing incomplete.
+	// and nothing was truncated.
 	Complete bool     `json:"complete"`
 	Problems []string `json:"problems,omitempty"`
 }
@@ -166,9 +164,6 @@ func (r *Run) check() {
 	if r.BudgetExhausted {
 		r.Problems = append(r.Problems, "instantiation budget exhausted")
 	}
-	if r.Incomplete {
-		r.Problems = append(r.Problems, fmt.Sprintf("scan reported incomplete: %v", r.IncompleteReasons))
-	}
 	r.Complete = len(r.Problems) == 0
 }
 
@@ -226,14 +221,7 @@ func (r *Run) readEntry(entry map[string]any) {
 	if v, ok := entry["resource_budget_exhausted"].(bool); ok && v {
 		r.BudgetExhausted = true
 	}
-	if v, ok := entry["scan_incomplete"].(bool); ok && v {
-		r.Incomplete = true
-		if reasons, ok := entry["incomplete_reasons"].([]any); ok {
-			for _, reason := range reasons {
-				r.IncompleteReasons = append(r.IncompleteReasons, fmt.Sprint(reason))
-			}
-		}
-	}
+
 }
 
 func intField(entry map[string]any, key string, dst *int) {
@@ -297,7 +285,7 @@ func Compare(base, head []Run, t Thresholds) []string {
 	for i := range head {
 		h := &head[i]
 		if !h.Complete {
-			failures = append(failures, fmt.Sprintf("%s: incomplete: %v", h.Shape, h.Problems))
+			failures = append(failures, fmt.Sprintf("%s: instances missing: %v", h.Shape, h.Problems))
 			continue
 		}
 		b, ok := byShape[h.Shape]

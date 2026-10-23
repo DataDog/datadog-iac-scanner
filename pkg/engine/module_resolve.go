@@ -51,8 +51,7 @@ type moduleResolutionResult struct {
 	moduleFiles   map[string]*moduleFileCalls
 	resourceCount int
 	rootCount     int
-	// report is what evaluation evaluated across every root, and what it
-	// could not evaluate completely.
+	// report counts what evaluation did across every root.
 	report tfeval.Report
 	ok     bool
 }
@@ -139,17 +138,12 @@ func (c *Inspector) instantiateLocalModules(
 // logModuleInstantiationSummary emits the fields an on-call search needs at warn
 // level. Production runs at warn, so the info-level count above is invisible there;
 // without this, a scan on its way to OOM looks identical to one that never ran
-// module evaluation, and an incomplete one like a complete one.
+// module evaluation.
 func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionResult) {
-	incomplete := res.report.Incomplete()
-	if res.resourceCount == 0 && len(incomplete) == 0 {
+	if res.resourceCount == 0 {
 		return
 	}
-	reasons := make([]string, len(incomplete))
-	for i, inc := range incomplete {
-		reasons[i] = inc.Reason
-	}
-	ev := log.Warn().
+	log.Warn().
 		Int("module_resources_instantiated", res.resourceCount).
 		Int("module_root_count", res.rootCount).
 		Int("module_documents", len(res.docs)).
@@ -157,13 +151,7 @@ func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionRes
 		Int("instance_evaluations", res.report.InstanceEvaluations).
 		Int("eval_cache_entries", res.report.CacheEntries).
 		Int("eval_cache_hits", res.report.CacheHits).
-		Int("unknown_expansions", res.report.UnknownExpansions).
-		Bool("scan_incomplete", len(incomplete) > 0).
-		Strs("incomplete_reasons", reasons)
-	for _, inc := range incomplete {
-		ev = ev.Int("incomplete_"+inc.Reason, inc.Count)
-	}
-	ev.Msg("tfeval: module instantiation summary")
+		Msg("tfeval: module instantiation summary")
 }
 
 // declaresTargetedResource reports whether any scanned Terraform file declares
@@ -402,7 +390,7 @@ func (c *Inspector) resolveModulesSafely(
 	}
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys,
-		externalModuleFile, c.moduleLimits,
+		externalModuleFile,
 	)
 }
 
@@ -502,9 +490,8 @@ func (m *rootMerge) merge(
 	if err != nil {
 		contextLogger := logger.FromContext(m.ctx)
 		if errors.Is(err, tfeval.ErrEvaluationStopped) {
-			// The root is scanned as written; the scan reports why it is
-			// incomplete once, from the guard, rather than once per root.
-			contextLogger.Debug().Msgf("tfeval: evaluation of root module %s stopped", dir)
+			// The scan was canceled and ends with its context's error.
+			contextLogger.Debug().Msgf("tfeval: evaluation of root module %s canceled", dir)
 		} else {
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
 		}
@@ -545,9 +532,8 @@ type rootResult struct {
 
 // evaluateConcurrently evaluates roots on workers and merges them in order, so
 // shared documents get the same owners as when roots are evaluated one by one.
-// A root is evaluated apart from the roots before it; the only state they
-// share is the scan's guard, which fails a root as a whole, so merging in
-// order yields what evaluating them one by one would.
+// A root is evaluated apart from the roots before it, so merging in order
+// yields what evaluating them one by one would.
 func (m *rootMerge) evaluateConcurrently(roots []string, workers int) {
 	results := make([]chan rootResult, len(roots))
 	for i := range results {
@@ -621,8 +607,8 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 // collectNotEvaluatedDirs marks the directories the evaluator skipped, and
 // everything they call, as unresolved.
 //
-// A directory is reached from several call sites, and depth, cycle and budget
-// stops apply to one call site at a time, so a directory can come out of a scan
+// A directory is reached from several call sites, and cycle stops apply to
+// one call site at a time, so a directory can come out of a scan
 // with some instances resolved and others skipped. Suppression is decided per
 // directory, so without this the resolved instances would suppress the body and
 // the skipped ones would be represented by nothing at all — a silent false
@@ -690,7 +676,6 @@ func resolveModuleDocuments(
 	mergeAllow map[string]struct{},
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
-	limits tfeval.Limits,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -710,8 +695,6 @@ func resolveModuleDocuments(
 	onlyExternalCalls := moduleCalls != nil && !declaresResource
 
 	evaluator := tfeval.NewWithFS(fsys)
-	guard := tfeval.NewGuard(limits)
-	evaluator.SetGuard(guard)
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
 	if resolver != nil {
@@ -764,9 +747,6 @@ func resolveModuleDocuments(
 	)
 	evaluator.ReleaseCaches()
 	report := evaluator.TakeReport()
-	if reason, detail := guard.Stopped(); reason != "" {
-		report.Note(reason, detail)
-	}
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement.

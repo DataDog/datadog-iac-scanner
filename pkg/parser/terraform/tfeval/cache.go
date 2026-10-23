@@ -47,18 +47,13 @@ type evalCacheKey struct {
 type evalCacheEntry struct {
 	result     *[]ResolvedResource
 	start, end int
-	// instances are the module calls evaluated inside this evaluation, and
-	// notes what it could not evaluate completely.
+	// instances are the module calls evaluated inside this evaluation.
 	instances    []ModuleInstance
-	notes        []evalNote
 	outputs      map[string]cty.Value
 	visitedDirs  []string
 	baseAddr     string
 	baseChainLen int
 }
-
-// size is how many resource and data instances the evaluation produced.
-func (entry *evalCacheEntry) size() int { return entry.end - entry.start }
 
 // appendRebased appends to out the cached resources as they would have been
 // recorded had the module been evaluated at addr/chain instead of the

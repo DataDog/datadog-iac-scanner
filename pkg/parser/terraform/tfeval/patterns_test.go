@@ -22,8 +22,17 @@ import (
 // patterns evaluation supports. Every case pins the exact instances a pattern
 // produces, by address, and the outputs Terraform would compute where they
 // are knowable from the configuration. A finite known expansion yields every
-// instance; one that is not knowable is evaluated once, as Terraform plans it;
-// one Terraform rejects is reported incomplete.
+// instance; one that is not knowable, or that Terraform rejects, is evaluated
+// once with an unknown iteration, as Terraform plans an unknown one.
+
+// instanceAddress is the Terraform address of a resolved instance.
+func instanceAddress(r *ResolvedResource) string {
+	local := r.Type + "." + r.Name
+	if r.Data {
+		local = "data." + local
+	}
+	return joinAddr(r.ModuleAddress, local)
+}
 
 func addresses(resources []ResolvedResource) []string {
 	out := make([]string, len(resources))
@@ -103,9 +112,6 @@ type patternCase struct {
 	modules map[string]string
 	want    []string
 	outputs map[string]string
-	// incomplete is the reason the case reports, if any.
-	incomplete string
-	unknown    int
 }
 
 func runPattern(t *testing.T, c patternCase) []ResolvedResource {
@@ -123,15 +129,6 @@ func runPattern(t *testing.T, c patternCase) []ResolvedResource {
 	for name, want := range c.outputs {
 		require.Equal(t, want, jsonOf(t, outputs[name]), "output %s", name)
 	}
-	report := e.Report()
-	if c.incomplete == "" {
-		require.True(t, report.Complete(), "report incomplete: %+v", report.Incomplete())
-	} else {
-		inc := report.Incomplete()
-		require.Len(t, inc, 1, "%+v", inc)
-		require.Equal(t, c.incomplete, inc[0].Reason)
-	}
-	require.Equal(t, c.unknown, report.UnknownExpansions, "unknown expansions")
 	return resources
 }
 
@@ -200,8 +197,7 @@ output "n" { value = length(aws_s3_bucket.zero) + length(aws_s3_bucket.none) }
 variable "n" {}
 resource "aws_s3_bucket" "b" { count = var.n }
 `},
-			want:    []string{"aws_s3_bucket.b"},
-			unknown: 1,
+			want: []string{"aws_s3_bucket.b"},
 		},
 		{
 			name: "unknown for_each",
@@ -209,44 +205,37 @@ resource "aws_s3_bucket" "b" { count = var.n }
 variable "m" {}
 resource "aws_s3_bucket" "b" { for_each = var.m }
 `},
+			want: []string{"aws_s3_bucket.b"},
+		},
+		{
+			name:    "null count",
+			modules: map[string]string{"stack": `resource "aws_s3_bucket" "b" { count = null }`},
 			want:    []string{"aws_s3_bucket.b"},
-			unknown: 1,
 		},
 		{
-			name:       "null count",
-			modules:    map[string]string{"stack": `resource "aws_s3_bucket" "b" { count = null }`},
-			want:       []string{"aws_s3_bucket.b"},
-			incomplete: ReasonInvalidExpansion,
+			name:    "negative count",
+			modules: map[string]string{"stack": `resource "aws_s3_bucket" "b" { count = -1 }`},
+			want:    []string{"aws_s3_bucket.b"},
 		},
 		{
-			name:       "negative count",
-			modules:    map[string]string{"stack": `resource "aws_s3_bucket" "b" { count = -1 }`},
-			want:       []string{"aws_s3_bucket.b"},
-			incomplete: ReasonInvalidExpansion,
+			name:    "fractional count",
+			modules: map[string]string{"stack": `resource "aws_s3_bucket" "b" { count = 1.5 }`},
+			want:    []string{"aws_s3_bucket.b"},
 		},
 		{
-			name:       "fractional count",
-			modules:    map[string]string{"stack": `resource "aws_s3_bucket" "b" { count = 1.5 }`},
-			want:       []string{"aws_s3_bucket.b"},
-			incomplete: ReasonInvalidExpansion,
+			name:    "for_each over a list",
+			modules: map[string]string{"stack": `resource "aws_s3_bucket" "b" { for_each = ["a"] }`},
+			want:    []string{"aws_s3_bucket.b"},
 		},
 		{
-			name:       "for_each over a list",
-			modules:    map[string]string{"stack": `resource "aws_s3_bucket" "b" { for_each = ["a"] }`},
-			want:       []string{"aws_s3_bucket.b"},
-			incomplete: ReasonInvalidExpansion,
+			name:    "for_each over a set of numbers",
+			modules: map[string]string{"stack": `resource "aws_s3_bucket" "b" { for_each = toset([1, 2]) }`},
+			want:    []string{"aws_s3_bucket.b"},
 		},
 		{
-			name:       "for_each over a set of numbers",
-			modules:    map[string]string{"stack": `resource "aws_s3_bucket" "b" { for_each = toset([1, 2]) }`},
-			want:       []string{"aws_s3_bucket.b"},
-			incomplete: ReasonInvalidExpansion,
-		},
-		{
-			name:       "null for_each",
-			modules:    map[string]string{"stack": `resource "aws_s3_bucket" "b" { for_each = null }`},
-			want:       []string{"aws_s3_bucket.b"},
-			incomplete: ReasonInvalidExpansion,
+			name:    "null for_each",
+			modules: map[string]string{"stack": `resource "aws_s3_bucket" "b" { for_each = null }`},
+			want:    []string{"aws_s3_bucket.b"},
 		},
 		{
 			name: "references between expanded resources",
@@ -360,8 +349,7 @@ module "m" {
   name   = "x"
 }
 `},
-			want:    []string{"module.m.aws_s3_bucket.b"},
-			unknown: 1,
+			want: []string{"module.m.aws_s3_bucket.b"},
 		},
 		{
 			name: "invalid module for_each",
@@ -372,8 +360,7 @@ module "m" {
   name     = "x"
 }
 `},
-			want:       []string{"module.m.aws_s3_bucket.b"},
-			incomplete: ReasonInvalidExpansion,
+			want: []string{"module.m.aws_s3_bucket.b"},
 		},
 		{
 			name: "resource count inside an expanded module",
@@ -651,16 +638,14 @@ func TestPatterns_ModulePaths(t *testing.T) {
 module "gone" { source = "./does-not-exist" }
 resource "aws_s3_bucket" "own" {}
 `},
-			want:       []string{"aws_s3_bucket.own"},
-			incomplete: ReasonModuleUnresolved,
+			want: []string{"aws_s3_bucket.own"},
 		},
 		{
 			name: "unresolved remote module",
 			modules: map[string]string{"stack": `
 module "remote" { source = "terraform-aws-modules/s3-bucket/aws" }
 `},
-			want:       nil,
-			incomplete: ReasonModuleUnresolved,
+			want: nil,
 		},
 		{
 			name: "cyclic module path",
@@ -670,9 +655,8 @@ module "remote" { source = "terraform-aws-modules/s3-bucket/aws" }
 				"stack": `module "a" { source = "../a" }`,
 			},
 			// The instances outside the cycle resolve; the call closing it is
-			// reported and left as written.
-			want:       []string{"module.a.aws_s3_bucket.a", "module.a.module.b.aws_s3_bucket.b"},
-			incomplete: ReasonModuleCycle,
+			// left as written.
+			want: []string{"module.a.aws_s3_bucket.a", "module.a.module.b.aws_s3_bucket.b"},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) { runPattern(t, c) })

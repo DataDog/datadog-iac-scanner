@@ -284,8 +284,8 @@ func (d *moduleData) evalBlock(
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
 	d.e.dataBlockEvals++
-	// A stopped expansion is incomplete; the evaluation fails as a whole once
-	// the guard is consulted, so nothing partial is kept.
+	// An expansion stopped by cancellation is partial; the evaluation fails as
+	// a whole once it checks, so nothing partial is kept.
 	expanded, _ := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true, nil)
 	for i := range expanded {
 		inst := &expanded[i]

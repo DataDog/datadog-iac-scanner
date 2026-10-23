@@ -26,13 +26,12 @@ type rootEvaluationOutcome struct {
 	ResourceCount                                    int
 	RootEvalOK                                       bool
 	Report                                           string
-	Stopped                                          string
 	NotEvaluated                                     []string
 	// ModuleCalls are the evaluated calls of the module directories, by directory.
 	ModuleCalls map[string][]string
 }
 
-func evaluateRootsWith(t *testing.T, workers int, limit int64, root string, roots []string, files model.FileMetadatas) rootEvaluationOutcome {
+func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, files model.FileMetadatas) rootEvaluationOutcome {
 	t.Helper()
 	previous := rootEvalWorkers
 	rootEvalWorkers = workers
@@ -40,8 +39,6 @@ func evaluateRootsWith(t *testing.T, workers int, limit int64, root string, root
 
 	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, root)
 	evaluator := tfeval.New()
-	guard := tfeval.NewGuard(tfeval.Limits{MaxInstances: limit})
-	evaluator.SetGuard(guard)
 	evaluator.SetTrackModuleInstances(true)
 	moduleCalls := newModuleCallIndex(filesByDir, func(path string) bool {
 		return pathWithinRoot(path, filepath.Join(root, "modules"))
@@ -81,11 +78,7 @@ func evaluateRootsWith(t *testing.T, workers int, limit int64, root string, root
 	out.Extras = encode(extras)
 	out.Instantiated = encode(instantiated)
 	report := evaluator.TakeReport()
-	out.Report = encode(struct {
-		Report     tfeval.Report
-		Incomplete []tfeval.Incompleteness
-	}{report, report.Incomplete()})
-	out.Stopped, _ = guard.Stopped()
+	out.Report = encode(report)
 	out.ModuleCalls = make(map[string][]string, len(moduleCalls.calls))
 	for dir, calls := range moduleCalls.calls {
 		for _, call := range calls {
@@ -149,39 +142,14 @@ resource "aws_s3_bucket" "own" { bucket = "own-%d" }
 	}
 	sort.Strings(roots)
 
-	serial := evaluateRootsWith(t, 1, 0, root, roots, files)
+	serial := evaluateRootsWith(t, 1, root, roots, files)
 	if serial.ResourceCount == 0 || len(serial.ModuleCalls) == 0 {
 		t.Fatal("the fixture must instantiate module resources and record module calls")
 	}
-	if serial.Stopped != "" {
-		t.Fatalf("an unlimited evaluation stopped: %s", serial.Stopped)
-	}
 	for range 10 {
-		concurrent := evaluateRootsWith(t, 4, 0, root, roots, files)
+		concurrent := evaluateRootsWith(t, 4, root, roots, files)
 		if !reflect.DeepEqual(concurrent, serial) {
 			t.Fatalf("concurrent evaluation differs from serial:\nserial:     %+v\nconcurrent: %+v", serial, concurrent)
 		}
-	}
-
-	// Past an instance limit both stop explicitly. Which roots finished
-	// before the guard tripped depends on scheduling, but no root is ever
-	// merged in part: every root is either complete or scanned as written.
-	for _, limit := range []int64{60, 17, 1} {
-		t.Run(fmt.Sprintf("limit_%d", limit), func(t *testing.T) {
-			for _, workers := range []int{1, 4} {
-				got := evaluateRootsWith(t, workers, limit, root, roots, files)
-				if got.Stopped != tfeval.ReasonInstanceLimit {
-					t.Fatalf("workers=%d: stopped for %q, want the instance limit", workers, got.Stopped)
-				}
-				if int64(got.ResourceCount) > limit {
-					t.Fatalf("workers=%d: %d resources instantiated past a limit of %d", workers, got.ResourceCount, limit)
-				}
-				for dir := range got.Successful {
-					if got.Unresolved[dir] {
-						t.Fatalf("workers=%d: root %s both merged and unresolved", workers, dir)
-					}
-				}
-			}
-		})
 	}
 }

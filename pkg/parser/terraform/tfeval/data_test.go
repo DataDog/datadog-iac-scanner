@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -109,116 +108,9 @@ func TestDataPolicyDocumentResolvesInModule(t *testing.T) {
 	require.Equal(t, "s1", policy.Statement[0]["Sid"])
 }
 
-// limitedEvaluator returns an evaluator stopping past maxInstances instances.
-func limitedEvaluator(maxInstances int64) *Evaluator {
-	e := New()
-	e.SetGuard(NewGuard(Limits{MaxInstances: maxInstances}))
-	return e
-}
-
-// requireStoppedAt checks that an evaluation past its instance limit fails as
-// a whole, explicitly, instead of returning the instances that fit.
-func requireStoppedAt(t *testing.T, e *Evaluator, resources []ResolvedResource, err error) {
-	t.Helper()
-	require.ErrorIs(t, err, ErrEvaluationStopped)
-	require.Empty(t, resources, "a stopped evaluation returns nothing rather than a prefix")
-	reason, _ := e.guard.Stopped()
-	require.Equal(t, ReasonInstanceLimit, reason)
-}
-
-// TestInstanceLimitStopsEvaluationExplicitly evaluates a module declaring
-// more instances than the limit: the evaluation fails as a whole and says why.
-func TestInstanceLimitStopsEvaluationExplicitly(t *testing.T) {
-	root := t.TempDir()
-	writeModule(t, root, "heavy", map[string]string{"main.tf": `
-resource "aws_s3_bucket" "a" {}
-resource "aws_s3_bucket" "b" {}
-
-output "out" {
-  value = "arn:aws:sqs:us-east-1:1:q"
-}
-`})
-	writeModule(t, root, "consumer", map[string]string{"main.tf": `
-module "heavy" {
-  source = "../heavy"
-}
-
-resource "aws_s3_bucket" "r" {}
-
-data "aws_region" "big" {
-  count = 1000
-  name  = module.heavy.out
-}
-`})
-	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
-module "consumer" {
-  source = "../consumer"
-}
-`})
-
-	e := limitedEvaluator(2)
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	requireStoppedAt(t, e, resources, err)
-	// The data expansion stops at the limit instead of evaluating its 1000
-	// instances first.
-	require.LessOrEqual(t, e.Report().InstanceEvaluations, 3)
-}
-
-// TestInstanceLimitStopsWithoutRepeatingWork pins the shape that once
-// retried refused work for every sibling: a leaf of two resources, a mid with
-// one own resource and count=50 on the leaf, and a stack with count=50 on the
-// mid, under a limit of 100. The first mid's leaves reach the limit and its
-// own resource exceeds it; nothing after that is evaluated.
-func TestInstanceLimitStopsWithoutRepeatingWork(t *testing.T) {
-	for _, calls := range []int{1, 2} {
-		t.Run(fmt.Sprintf("calls=%d", calls), func(t *testing.T) {
-			root := t.TempDir()
-			writeModule(t, root, "leaf", map[string]string{"main.tf": `
-variable "in" {}
-
-resource "aws_s3_bucket" "a" {
-  bucket = var.in
-}
-
-resource "aws_s3_bucket" "b" {
-  bucket = var.in
-}
-`})
-			writeModule(t, root, "mid", map[string]string{"main.tf": `
-variable "in" {}
-
-module "leaf" {
-  count  = 50
-  source = "../leaf"
-  in     = "${var.in}-${count.index}"
-}
-
-resource "aws_s3_bucket" "own" {
-  bucket = var.in
-}
-`})
-			var stack strings.Builder
-			for i := range calls {
-				fmt.Fprintf(&stack, "module \"mid_%d\" {\n  count  = 50\n  source = \"../mid\"\n  in     = count.index\n}\n", i)
-			}
-			dir := writeModule(t, root, "stack", map[string]string{"main.tf": stack.String()})
-
-			e := limitedEvaluator(100)
-			resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-			requireStoppedAt(t, e, resources, err)
-			// The stack, the first mid and its 50 leaves; no sibling is evaluated
-			// after the limit is reached, speculatively or not.
-			require.Equal(t, 52, e.Report().ModuleEvaluations)
-			// The stopped evaluation was rolled back, and the cache entries of
-			// the leaves it held with it.
-			require.Empty(t, e.cache)
-		})
-	}
-}
-
-// TestDataEvaluatesWithoutLimit pins that an evaluator without limits
-// evaluates data blocks as usual.
-func TestDataEvaluatesWithoutLimit(t *testing.T) {
+// TestDataEvaluatesInModule pins that a called module's data blocks are
+// evaluated.
+func TestDataEvaluatesInModule(t *testing.T) {
 	root := t.TempDir()
 	writeModule(t, root, "mod", map[string]string{"main.tf": `
 resource "aws_s3_bucket" "r" {}
@@ -240,7 +132,6 @@ module "mod" {
 	e := New()
 	_, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
 	require.NoError(t, err)
-	require.True(t, e.Report().Complete())
 	// The module evaluated as usual and its data block expanded.
 	require.Positive(t, e.DataBlockEvaluations())
 	require.Empty(t, e.NotEvaluatedDirs())
@@ -541,26 +432,15 @@ resource "aws_sqs_queue_policy" "p" {
 	require.Contains(t, doc["policy"], `arn:aws:sqs:us-east-1:1:q`)
 }
 
-func TestDataInstancesCountTowardInstanceLimit(t *testing.T) {
-	files := map[string]string{"main.tf": `
+func TestDataInstancesAreInstantiatedWithResources(t *testing.T) {
+	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": `
 resource "aws_s3_bucket" "a" {}
 resource "aws_s3_bucket" "b" {}
 data "aws_region" "r" {}
 data "aws_caller_identity" "c" {}
-`}
-
-	e := limitedEvaluator(4)
-	resources := evaluateWithChild(t, e, files, callChild)
+`}, callChild)
 	findResource(t, resources, "aws_s3_bucket", "a")
-	require.EqualValues(t, 4, e.guard.Instances())
-
-	// Resources and data together exceed a limit of three.
-	root := t.TempDir()
-	writeModule(t, root, "child", files)
-	dir := writeModule(t, root, "root", map[string]string{"main.tf": callChild})
-	e = limitedEvaluator(3)
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	requireStoppedAt(t, e, resources, err)
+	require.Len(t, resources, 4)
 }
 
 // TestDataReferenceCycleTerminates evaluates data blocks reading each other
@@ -604,8 +484,8 @@ data "aws_iam_policy_document" "b" {
 }
 
 // TestDataRefreshCountsInstancesOnce builds a source_policy_documents chain
-// that settles only after several refresh passes. The instances are counted
-// once: with a limit of four, counting every pass would exceed it.
+// that settles only after several refresh passes. Each instance is kept once,
+// whatever the number of passes.
 func TestDataRefreshCountsInstancesOnce(t *testing.T) {
 	files := map[string]string{"main.tf": `
 data "aws_iam_policy_document" "d1" {
@@ -627,8 +507,7 @@ data "aws_iam_policy_document" "d4" {
   source_policy_documents = [data.aws_iam_policy_document.d3.json]
 }
 `}
-	e := limitedEvaluator(4)
-	resources := evaluateWithChild(t, e, files, callChild)
+	resources := evaluateWithChild(t, New(), files, callChild)
 	var data int
 	for _, r := range resources {
 		if r.Data {
@@ -636,7 +515,7 @@ data "aws_iam_policy_document" "d4" {
 		}
 	}
 	require.Equal(t, 4, data)
-	require.EqualValues(t, 4, e.guard.Instances())
+	require.Len(t, resources, 4)
 }
 
 func findData(t *testing.T, data []ResolvedResource, typ, name string) ResolvedResource {

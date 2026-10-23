@@ -73,29 +73,48 @@ func TestGuardrail_AllocationsPerInstanceStayFlat(t *testing.T) {
 	require.Less(t, largeBytes, smallBytes*1.25, "bytes per instance grow with the instance count")
 }
 
-// A count far beyond what can be evaluated reserves nothing up front: under
-// an instance limit the evaluation stops after the limit with an allocation
-// proportional to the limit, not to the count.
+// A count far beyond what can be evaluated reserves nothing up front:
+// stopped after one check interval, the evaluation has allocated in proportion
+// to the instances it evaluated, not to the count it was asked for.
 func TestGuardrail_HugeCountIsNotPreallocated(t *testing.T) {
 	for _, src := range []string{
 		fmt.Sprintf(`resource "aws_s3_bucket" "b" { count = %d }`, math.MaxInt32),
-		fmt.Sprintf("variable \"x\" { default = \"x\" }\nmodule \"m\" {\n  source = \"../leaf\"\n  count  = %d\n}\n", math.MaxInt32),
+		fmt.Sprintf("module \"m\" {\n  source = \"../leaf\"\n  count  = %d\n}\n", math.MaxInt32),
 	} {
 		root := t.TempDir()
 		writeModule(t, root, "leaf", map[string]string{"main.tf": `resource "aws_s3_bucket" "b" {}`})
 		stack := writeModule(t, root, "stack", map[string]string{"main.tf": src})
-		e := limitedEvaluator(1000)
+		e := New()
 		runtime.GC()
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
-		resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+		// The first check, at the start, passes; the next, one interval in, stops.
+		ctx := &checksAfter{Context: context.Background(), pass: 1}
+		resources, _, _, err := e.EvaluateModule(ctx, stack, nil)
 		runtime.ReadMemStats(&after)
-		requireStoppedAt(t, e, resources, err)
-		require.LessOrEqual(t, e.Report().InstanceEvaluations, 1001, "instances evaluated past the limit")
-		require.LessOrEqual(t, e.Report().ModuleEvaluations, 1002, "modules evaluated past the limit")
+		require.ErrorIs(t, err, ErrEvaluationStopped)
+		require.Empty(t, resources, "a canceled evaluation returns nothing rather than a prefix")
+		require.LessOrEqual(t, e.Report().InstanceEvaluations, 2*cancelCheckEvery)
+		require.LessOrEqual(t, e.Report().ModuleEvaluations, 2*cancelCheckEvery)
 		require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(64<<20),
-			"allocated %d bytes for a limit of 1000 instances", after.TotalAlloc-before.TotalAlloc)
+			"allocated %d bytes for a count of %d", after.TotalAlloc-before.TotalAlloc, math.MaxInt32)
 	}
+}
+
+// checksAfter is a context that is canceled once Err has been called more
+// than pass times.
+type checksAfter struct {
+	context.Context
+	pass  int
+	calls int
+}
+
+func (c *checksAfter) Err() error {
+	c.calls++
+	if c.calls > c.pass {
+		return context.Canceled
+	}
+	return nil
 }
 
 // Identical inputs are evaluated once and reused at every other address;

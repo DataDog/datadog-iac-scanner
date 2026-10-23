@@ -122,8 +122,6 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		ScannedPaths:      c.ScanParams.Path,
 		PathExtractionMap: scanResults.ExtractedPaths.ExtractionMap,
 	})
-	summary.Incomplete = scanResults.Incomplete
-	logIncomplete(ctx, scanResults.Incomplete)
 
 	if err := c.resolveOutputs(
 		ctx,
@@ -146,28 +144,9 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 
 	// generate metadata payload
 	metadata = c.generateMetadata(scanResults, c.ScanStartTime, endTime)
-	metadata.Incomplete = scanResults.Incomplete
 	memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 
 	return metadata, nil
-}
-
-// logIncomplete reports an incomplete scan at warn level, where production
-// logs it, with every reason and how often it occurred.
-func logIncomplete(ctx context.Context, incomplete []model.IncompleteReason) {
-	if len(incomplete) == 0 {
-		return
-	}
-	reasons := make([]string, len(incomplete))
-	for i, r := range incomplete {
-		reasons[i] = r.Reason
-	}
-	contextLogger := logger.FromContext(ctx)
-	ev := contextLogger.Warn().Bool("scan_incomplete", true).Strs("incomplete_reasons", reasons)
-	for _, r := range incomplete {
-		ev = ev.Int("incomplete_"+r.Reason, r.Count).Strs("incomplete_"+r.Reason+"_examples", r.Examples)
-	}
-	ev.Msg("scan incomplete: part of the Terraform configuration could not be evaluated and was scanned as written")
 }
 
 func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.Time) ScanMetadata {

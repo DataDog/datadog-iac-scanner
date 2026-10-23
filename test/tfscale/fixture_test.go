@@ -67,7 +67,6 @@ func TestGenerate_ExpectedCardinalityMatchesEvaluation(t *testing.T) {
 				ev := tfeval.New()
 				resources, _, _, err := ev.EvaluateModule(context.Background(), root, nil)
 				require.NoError(t, err)
-				require.True(t, ev.Report().Complete(), "%v", ev.Report().Incomplete())
 				for _, r := range resources {
 					if r.Type == "aws_s3_bucket" && !r.Data {
 						buckets++

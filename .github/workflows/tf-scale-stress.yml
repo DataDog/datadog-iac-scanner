@@ -2,9 +2,9 @@ name: tf-scale-stress
 
 # Scans the generated Terraform scale fixtures (test/tfscale) with the scanner
 # at this commit and at a baseline, using one rule bundle for both. Fails when
-# this commit leaves an instance out, reports itself incomplete, or regresses
-# peak RSS or CPU time materially against a complete baseline. The results of
-# both runs are kept as artifacts.
+# this commit leaves an instance out, or regresses peak RSS or CPU time
+# materially against a complete baseline. The results of both runs are kept as
+# artifacts.
 
 on:
   schedule:

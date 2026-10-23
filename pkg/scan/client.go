@@ -95,11 +95,7 @@ type Parameters struct {
 	RemoteModulesManifestPath  string
 	RemoteModulesHostAllowlist []string
 	// ModuleMaxDepth caps the BFS depth of the remote-module graph walker (0 disables traversal entirely).
-	ModuleMaxDepth int
-	// TerraformMaxInstances, when positive, is how many Terraform resource and
-	// data instances module evaluation may instantiate. Reaching it stops
-	// evaluation and reports the scan incomplete; zero is unbounded.
-	TerraformMaxInstances   int64
+	ModuleMaxDepth          int
 	ModuleFetchTimeout      time.Duration
 	MaxModuleBytesTotal     int64
 	MaxModulePackageBytes   int64

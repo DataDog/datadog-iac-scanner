@@ -16,7 +16,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/stretchr/testify/require"
 )
 
@@ -122,7 +121,7 @@ func TestInspect_EveryInstanceIsOneFinding(t *testing.T) {
 	for _, distinct := range []bool{false, true} {
 		t.Run(fmt.Sprintf("distinct=%t", distinct), func(t *testing.T) {
 			repo, files, want := cardinalityFixture(t, 3, distinct)
-			keys, ins := inspectFindings(t, 1, repo, files)
+			keys, _ := inspectFindings(t, 1, repo, files)
 			require.Len(t, keys, want, "one finding per instance")
 			seen := map[string]bool{}
 			for _, k := range keys {
@@ -138,7 +137,6 @@ func TestInspect_EveryInstanceIsOneFinding(t *testing.T) {
 			for i := range 3 {
 				require.Equal(t, 3, byDir[fmt.Sprintf("r%02d", i)])
 			}
-			require.True(t, ins.ModuleEvaluationReport().Complete())
 		})
 	}
 }
@@ -152,20 +150,4 @@ func TestInspect_ConcurrentRootsMatchSerialFindings(t *testing.T) {
 		concurrent, _ := inspectFindings(t, 4, repo, files)
 		require.Equal(t, serial, concurrent)
 	}
-}
-
-// Past an explicit instance limit the scan says it is incomplete, and keeps
-// scanning as written what it did not instantiate instead of dropping it.
-func TestInspect_InstanceLimitReportsIncomplete(t *testing.T) {
-	repo, files, _ := cardinalityFixture(t, 3, true)
-	ins := aclInspector(t, repo)
-	ins.SetModuleEvaluationLimits(tfeval.Limits{MaxInstances: 20})
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
-	require.NoError(t, err)
-	inc := ins.ModuleEvaluationReport().Incomplete()
-	require.Len(t, inc, 1)
-	require.Equal(t, tfeval.ReasonInstanceLimit, inc[0].Reason)
-	// Each root that was not evaluated still has its blocks scanned as
-	// written: the module bucket block and its own two blocks at least.
-	require.NotEmpty(t, vulns)
 }

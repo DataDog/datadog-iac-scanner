@@ -265,9 +265,7 @@ type Inspector struct {
 	// from its live-heap gate (see SetEvalGcRelief).
 	evalGcRelief bool
 
-	// moduleLimits are the operational boundaries of module evaluation, and
-	// moduleReport what the last Inspect evaluated and could not.
-	moduleLimits tfeval.Limits
+	// moduleReport counts what module evaluation did during the last Inspect.
 	moduleReport tfeval.Report
 }
 
@@ -323,12 +321,8 @@ func (c *Inspector) SetReleasePostEvalData(release bool) {
 	c.discardLineInfoAfterUse = release
 }
 
-// SetModuleEvaluationLimits sets the operational boundaries of module
-// evaluation. Reaching one stops evaluation and reports the scan incomplete.
-func (c *Inspector) SetModuleEvaluationLimits(limits tfeval.Limits) { c.moduleLimits = limits }
-
-// ModuleEvaluationReport returns what module evaluation evaluated during the
-// last Inspect, and why it was incomplete if it was.
+// ModuleEvaluationReport counts what module evaluation did during the last
+// Inspect.
 func (c *Inspector) ModuleEvaluationReport() *tfeval.Report { return &c.moduleReport }
 
 // SetEvalGcRelief enables the eval GC ticker; the scanner sets it from the

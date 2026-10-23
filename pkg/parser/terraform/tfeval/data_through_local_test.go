@@ -10,7 +10,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
@@ -67,7 +66,7 @@ resource "aws_iam_policy" "direct" {
 	require.Contains(t, doc["policy"], `arn:aws:s3:::mybucket`)
 }
 
-func TestNestedModuleDataCountsTowardInstanceLimit(t *testing.T) {
+func TestNestedModuleDataAndResourcesAreAllInstantiated(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "mod_a"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "mod_b"), 0o755))
@@ -89,18 +88,8 @@ module "b" { source = "../mod_b" }
 `), 0o644))
 
 	stack := filepath.Join(root, "stack")
-	// Over the limit nothing is kept, not even the sibling that would fit:
-	// a partial result would pass for a complete one.
-	for _, limit := range []int64{3, 2} {
-		t.Run("limit_"+strconv.FormatInt(limit, 10), func(t *testing.T) {
-			e := limitedEvaluator(limit)
-			resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
-			requireStoppedAt(t, e, resources, err)
-		})
-	}
-	// At the limit every instance of both modules is there.
-	e := limitedEvaluator(5)
-	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	// Every instance of both modules is there.
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
 	require.Len(t, resources, 5)
 }
