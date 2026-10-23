@@ -836,10 +836,16 @@ func (c *Inspector) executeQueries(
 		return vulnerabilities, err
 	}
 
-	// Aggregate serially: processResult mutates shared state.
+	// Aggregate serially: processResult mutates shared state. The findings of
+	// several queries are gathered in one allocation, each query's released
+	// once taken; those of a single query are taken as they are.
+	if total, queriesWithFindings := countFindings(results); queriesWithFindings > 1 {
+		vulnerabilities = make([]model.Vulnerability, 0, total)
+	}
 	moduleVulns := make(map[string]int)
 	for i := range results {
 		processResult(ctx, &results[i], &vulnerabilities, &moduleVulns, queries, c)
+		results[i].vulnerabilities = nil
 	}
 	for vulnerability, number := range moduleVulns {
 		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
@@ -906,7 +912,25 @@ func processResult(ctx context.Context, result *QueryResult,
 			}
 		}
 	}
+	if cap(*vulnerabilities) == 0 {
+		// Nothing gathered yet: the query's findings are taken without a copy,
+		// capped so that appending more copies them rather than writing past.
+		*vulnerabilities = result.vulnerabilities[:len(result.vulnerabilities):len(result.vulnerabilities)]
+		return
+	}
 	*vulnerabilities = append(*vulnerabilities, result.vulnerabilities...)
+}
+
+// countFindings returns how many findings the successful queries have, and
+// how many of those queries have any.
+func countFindings(results []QueryResult) (total, queries int) {
+	for i := range results {
+		if results[i].err == nil && len(results[i].vulnerabilities) > 0 {
+			total += len(results[i].vulnerabilities)
+			queries++
+		}
+	}
+	return total, queries
 }
 
 // LenQueriesByPlat returns the number of queries by platforms
@@ -1514,9 +1538,7 @@ func (c *Inspector) DecodeQueryResults(
 		// discarded on its last finding (advanceLineInfoFile); without grouping,
 		// interleaved documentIds would discard and reparse per transition.
 		// Stable keeps the per-file ordering the query produced.
-		sort.SliceStable(queryResultItems, func(i, j int) bool {
-			return resultDocumentID(queryResultItems[i]) < resultDocumentID(queryResultItems[j])
-		})
+		sortByDocument(queryResultItems)
 	}
 
 	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
@@ -1524,7 +1546,9 @@ func (c *Inspector) DecodeQueryResults(
 	canceled := false
 	var activeLineInfoFile string
 decodeLoop:
-	for _, queryResultItem := range queryResultItems {
+	for i, queryResultItem := range queryResultItems {
+		// The result set holds the same items: each is released once decoded.
+		queryResultItems[i] = nil
 		select {
 		case <-ctxTimeout.Done():
 			// Scan canceled (shutdown/error). Stop decoding entirely. The partial
@@ -1573,6 +1597,23 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 		}
 	}
 	return nextID
+}
+
+// sortByDocument orders result items by the id of the document they point
+// at, keeping the order of the items of one document.
+func sortByDocument(items []interface{}) {
+	type keyed struct {
+		id   string
+		item interface{}
+	}
+	byID := make([]keyed, len(items))
+	for i, item := range items {
+		byID[i] = keyed{id: resultDocumentID(item), item: item}
+	}
+	slices.SortStableFunc(byID, func(a, b keyed) int { return strings.Compare(a.id, b.id) })
+	for i := range byID {
+		items[i] = byID[i].item
+	}
 }
 
 // resultDocumentID returns the file id a result item points at.

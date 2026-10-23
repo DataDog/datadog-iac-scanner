@@ -45,6 +45,12 @@ func (m *MemoryStorage) GetFiles(_ context.Context, _ string) (model.FileMetadat
 func (m *MemoryStorage) SaveVulnerabilities(_ context.Context, vulnerabilities []model.Vulnerability) error {
 	defer memoryMu.Unlock()
 	memoryMu.Lock()
+	if len(m.vulnerabilities) == 0 && len(vulnerabilities) > 0 {
+		// The first findings saved are kept without a copy, capped so that
+		// saving more copies them rather than writing past them.
+		m.vulnerabilities = vulnerabilities[:len(vulnerabilities):len(vulnerabilities)]
+		return nil
+	}
 	m.vulnerabilities = append(m.vulnerabilities, vulnerabilities...)
 	return nil
 }

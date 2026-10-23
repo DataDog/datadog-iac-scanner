@@ -329,3 +329,25 @@ func TestMemoryStorage_UniqueFindingsKeepLastInOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"c=only", "a=third", "b=again"}, searchKeys(got))
 }
+
+// The first findings saved are kept without a copy, and saving more never
+// writes past them into the slice they came in.
+func TestMemoryStorage_FirstSaveIsNotCopied(t *testing.T) {
+	ctx := context.Background()
+	storage := NewMemoryStorage()
+	first := make([]model.Vulnerability, 1, 3)
+	first[0] = model.Vulnerability{FileName: "a.tf", QueryID: "q", ResourceName: "a"}
+	require.NoError(t, storage.SaveVulnerabilities(ctx, first))
+	require.NoError(t, storage.SaveVulnerabilities(ctx, []model.Vulnerability{{FileName: "b.tf", QueryID: "q", ResourceName: "b"}}))
+	require.Empty(t, first[:2][1].FileName)
+	got, err := storage.GetVulnerabilities(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	empty := NewMemoryStorage()
+	require.NoError(t, empty.SaveVulnerabilities(ctx, nil))
+	got, err = empty.GetVulnerabilities(ctx, "")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Empty(t, got)
+}
