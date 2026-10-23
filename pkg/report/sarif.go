@@ -25,6 +25,10 @@ func PrintSarifReport(ctx context.Context, path, filename string, body interface
 		}
 
 		sarifReport := reportModel.NewSarifReport()
+		// The results are built as they are written: a scan can have millions.
+		if deferring, ok := sarifReport.(interface{ DeferResults() }); ok {
+			deferring.DeferResults()
+		}
 		auxGUID := map[string]string{}
 		for idx := range summary.Queries {
 			if cwe, err := sarifReport.BuildSarifIssue(ctx, &summary.Queries[idx], *sciInfo); err != nil {

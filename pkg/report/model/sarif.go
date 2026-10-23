@@ -212,6 +212,26 @@ type sarifReport struct {
 	Schema       string     `json:"$schema"`
 	SarifVersion string     `json:"version"`
 	Runs         []SarifRun `json:"runs"`
+	// deferResults has BuildSarifIssue only record its issues, in deferred,
+	// for EncodeJSON to build their results as it writes them: a report of
+	// millions of findings is then never held as results all at once.
+	deferResults bool
+	deferred     []deferredIssue
+}
+
+// deferredIssue is an issue whose results are built when they are encoded.
+type deferredIssue struct {
+	ctx       context.Context
+	issue     *model.QueryResult
+	ruleIndex int
+	tags      []string
+}
+
+// DeferResults makes the report build the results of the issues added from
+// now on only while encoding them, into EncodeJSON's output. Encoding the
+// report any other way leaves those results out.
+func (sr *sarifReport) DeferResults() {
+	sr.deferResults = true
 }
 
 const (
@@ -331,7 +351,11 @@ func (sr *sarifReport) EncodeJSON(w io.Writer) error {
 			if i > 0 {
 				_, _ = bw.WriteString(",")
 			}
-			if err := sr.Runs[i].encodeJSON(bw, put); err != nil {
+			var deferred []deferredIssue
+			if i == 0 {
+				deferred = sr.deferred
+			}
+			if err := sr.Runs[i].encodeJSON(bw, put, deferred); err != nil {
 				return err
 			}
 		}
@@ -344,7 +368,8 @@ func (sr *sarifReport) EncodeJSON(w io.Writer) error {
 }
 
 // encodeJSON writes the run as json.Marshal would, one result at a time.
-func (run *SarifRun) encodeJSON(bw *bufio.Writer, put func(string, interface{}) error) error {
+// deferred are the issues whose results follow run.Results.
+func (run *SarifRun) encodeJSON(bw *bufio.Writer, put func(string, interface{}) error, deferred []deferredIssue) error {
 	if err := put(`{"tool":`, run.Tool); err != nil {
 		return err
 	}
@@ -352,7 +377,9 @@ func (run *SarifRun) encodeJSON(bw *bufio.Writer, put func(string, interface{}) 
 		_, _ = bw.WriteString(`,"results":null`)
 	} else {
 		_, _ = bw.WriteString(`,"results":[`)
-		if err := encodeResults(bw, run.Results); err != nil {
+		size := sarifEncodeBatch
+		batches := append(resultBatches(run.Results, size), deferredBatches(deferred, size)...)
+		if err := encodeResults(bw, batches); err != nil {
 			return err
 		}
 		_, _ = bw.WriteString("]")
@@ -369,58 +396,103 @@ func (run *SarifRun) encodeJSON(bw *bufio.Writer, put func(string, interface{}) 
 // sarifEncodeBatch is how many results one worker encodes at a time.
 var sarifEncodeBatch = 2048
 
-// encodedResults is a batch of results encoded, comma-separated, as the
-// elements of the results array from its own position on.
-type encodedResults struct {
+// resultBatch encodes a run of results, each preceded by a comma.
+type resultBatch func() ([]byte, error)
+
+// encodedBatch is a batch encoded, once done is closed.
+type encodedBatch struct {
 	data []byte
 	err  error
 	done chan struct{}
 }
 
-func (b *encodedResults) encode(results []sarifResult, first bool) {
-	defer close(b.done)
+// appendResults appends results to data, each preceded by a comma.
+func appendResults(data []byte, results []sarifResult) ([]byte, error) {
 	for i := range results {
-		if i > 0 || !first {
-			b.data = append(b.data, ',')
-		}
-		data, err := json.Marshal(&results[i])
+		encoded, err := json.Marshal(&results[i])
 		if err != nil {
-			b.err = err
-			return
+			return nil, err
 		}
-		b.data = append(b.data, data...)
+		data = append(append(data, ','), encoded...)
 	}
+	return data, nil
 }
 
-// encodeResults writes the elements of the results array. A large array is
-// encoded in batches on several workers and written in order, so the output
-// is the one encoding the results one by one gives; at most one batch per
-// worker is held encoded at once.
-func encodeResults(bw *bufio.Writer, results []sarifResult) error {
-	batch := sarifEncodeBatch
-	workers := min(runtime.GOMAXPROCS(0), len(results)/batch)
-	if workers <= 1 {
-		b := &encodedResults{done: make(chan struct{})}
-		b.encode(results, true)
-		if b.err != nil {
-			return b.err
+// resultBatches splits results into batches of at most size.
+func resultBatches(results []sarifResult, size int) []resultBatch {
+	var batches []resultBatch
+	for from := 0; from < len(results); from += size {
+		part := results[from:min(from+size, len(results))]
+		batches = append(batches, func() ([]byte, error) { return appendResults(nil, part) })
+	}
+	return batches
+}
+
+// deferredBatches splits the files of the deferred issues into batches of at
+// most size, each building the results of its files as it encodes them.
+func deferredBatches(issues []deferredIssue, size int) []resultBatch {
+	var batches []resultBatch
+	for _, d := range issues {
+		for from := 0; from < len(d.issue.Files); from += size {
+			to := min(from+size, len(d.issue.Files))
+			batches = append(batches, func() ([]byte, error) {
+				fixes := remediationsHelper.NewFixCache()
+				results := make([]sarifResult, 0, to-from)
+				for idx := from; idx < to; idx++ {
+					if result, ok := issueResult(d.ctx, d.issue, idx, d.ruleIndex, d.tags, fixes); ok {
+						results = append(results, result)
+					}
+				}
+				return appendResults(nil, results)
+			})
 		}
-		_, err := bw.Write(b.data)
+	}
+	return batches
+}
+
+// encodeResults writes the elements of a results array the batches encode, in
+// order. Batches are encoded on several workers when there are several, and
+// at most one batch per worker is held encoded at once; the output is the one
+// encoding the results one by one gives.
+func encodeResults(bw *bufio.Writer, batches []resultBatch) error {
+	first := true
+	write := func(data []byte) error {
+		if first && len(data) > 0 {
+			// Every result is preceded by a comma but the first.
+			data, first = data[1:], false
+		}
+		_, err := bw.Write(data)
 		return err
 	}
-	pending := make(chan *encodedResults, workers)
+	workers := min(runtime.GOMAXPROCS(0), len(batches))
+	if workers <= 1 {
+		for _, batch := range batches {
+			data, err := batch()
+			if err != nil {
+				return err
+			}
+			if err := write(data); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	pending := make(chan *encodedBatch, workers)
 	stop := make(chan struct{})
 	defer close(stop)
 	go func() {
 		defer close(pending)
-		for from := 0; from < len(results); from += batch {
-			b := &encodedResults{done: make(chan struct{})}
+		for _, batch := range batches {
+			b := &encodedBatch{done: make(chan struct{})}
 			select {
 			case pending <- b:
 			case <-stop:
 				return
 			}
-			go b.encode(results[from:min(from+batch, len(results))], from == 0)
+			go func() {
+				defer close(b.done)
+				b.data, b.err = batch()
+			}()
 		}
 	}()
 	for b := range pending {
@@ -428,7 +500,7 @@ func encodeResults(bw *bufio.Writer, results []sarifResult) error {
 		if b.err != nil {
 			return b.err
 		}
-		if _, err := bw.Write(b.data); err != nil {
+		if err := write(b.data); err != nil {
 			return err
 		}
 	}
@@ -587,7 +659,6 @@ func (sr *sarifReport) RebuildTaxonomies(cwes []string, guids map[string]string)
 // BuildSarifIssue creates a new entries in Results (one for each file) and new entry in Rules and Taxonomy if necessary
 // nolint:gocritic,gocyclo
 func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryResult, sciInfo model.SCIInfo) (string, error) {
-	contextLogger := logger.FromContext(ctx)
 	if len(issue.Files) > 0 {
 		fixes := remediationsHelper.NewFixCache()
 		metadata := ruleMetadata{
@@ -619,172 +690,189 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 			tags = append(tags, cweTag)
 		}
 
+		if sr.deferResults {
+			sr.deferred = append(sr.deferred, deferredIssue{ctx: ctx, issue: issue, ruleIndex: ruleIndex, tags: tags})
+			return issue.CWE, nil
+		}
 		for idx := range issue.Files {
-			vulnerability := issue.Files[idx]
-
-			resourceType := vulnerability.ResourceType
-			resourceName := vulnerability.ResourceName
-			resourceTypeTag := GetResourceTypeTag(resourceType)
-			resourceNameTag := GetResourceNameTag(resourceName)
-
-			// nolint:gocritic
-			resultTags := append(tags, resourceTypeTag, resourceNameTag)
-
-			resourceLocation := vulnerability.ResourceLocation
-
-			if resourceLocation.Start.Line < 1 || resourceLocation.End.Line < 1 {
-				contextLogger.Error().
-					Str("file", vulnerability.FileName).
-					Str("query_name", issue.QueryName).
-					Str("resource_type", resourceType).
-					Str("resource_name", resourceName).
-					Str("platform", issue.Platform).
-					Msg("Invalid resource location for file")
-				continue
+			if result, ok := issueResult(ctx, issue, idx, ruleIndex, tags, fixes); ok {
+				sr.Runs[0].Results = append(sr.Runs[0].Results, result)
 			}
-
-			if resourceLocation.Start.Col < 1 {
-				resourceLocation.Start.Col = 1
-			}
-			if resourceLocation.End.Col < 1 {
-				resourceLocation.End.Col = resourceLocation.Start.Col
-			}
-
-			resourceStartLocation := model.SarifResourceLocation{
-				Line: resourceLocation.Start.Line,
-				Col:  resourceLocation.Start.Col,
-			}
-			resourceEndLocation := model.SarifResourceLocation{
-				Line: resourceLocation.End.Line,
-				Col:  resourceLocation.End.Col,
-			}
-
-			remediationLocation := vulnerability.RemediationLocation
-			remediationStartLocation := model.SarifResourceLocation{
-				Line: remediationLocation.Start.Line,
-				Col:  remediationLocation.Start.Col,
-			}
-			remediationEndLocation := model.SarifResourceLocation{
-				Line: remediationLocation.End.Line,
-				Col:  remediationLocation.End.Col,
-			}
-
-			if resourceStartLocation.Col < 1 {
-				resourceStartLocation.Col = 1
-			}
-
-			// Always narrow the SARIF region to the remediation location when it falls
-			// within the resource block. The remediation location holds the precise
-			// attribute-level line even when no remediation
-			// string is present. Do NOT gate change this,
-			// that would cause rules without a fix to fall back to the full block range.
-			if remediationStartLocation.Line >= resourceStartLocation.Line &&
-				remediationEndLocation.Line <= resourceEndLocation.Line {
-				resourceStartLocation = remediationStartLocation
-				resourceEndLocation = remediationEndLocation
-			}
-
-			logVulnerabilityLineEmpty(
-				ctx,
-				vulnerability.LineWithVulnerability,
-				issue.Platform,
-				issue.QueryName,
-				vulnerability.FileName,
-				vulnerability.Line,
-			)
-
-			artifactPath := issue.Files[idx].FileName
-			if artifactPath == "." {
-				artifactPath = ""
-			}
-
-			primaryURI := artifactPath
-			primaryStart := resourceStartLocation
-			primaryEnd := resourceEndLocation
-			resultProperties := sarifProperties{"tags": resultTags}
-			moduleAttribution := vulnerability.ModuleAttribution
-			if moduleAttribution != nil && moduleAttribution.CallSite.Filename != "" {
-				primaryURI = moduleAttribution.CallSite.Filename
-				primaryStart = model.SarifResourceLocation{
-					Line: moduleAttribution.CallSite.LineStart,
-					Col:  moduleAttribution.CallSite.ColumnStart,
-				}
-				primaryEnd = model.SarifResourceLocation{
-					Line: moduleAttribution.CallSite.LineEnd,
-					Col:  moduleAttribution.CallSite.ColumnEnd,
-				}
-				if primaryStart.Col <= 0 {
-					primaryStart.Col = 1
-				}
-				if primaryEnd.Line < primaryStart.Line {
-					primaryEnd.Line = primaryStart.Line
-				}
-				if primaryEnd.Col <= 0 {
-					primaryEnd.Col = 1
-				}
-				if primaryEnd.Line == primaryStart.Line && primaryEnd.Col <= primaryStart.Col {
-					primaryEnd.Col = primaryStart.Col + 1
-				}
-				if modulePayload := model.ModuleAttributionForSARIF(moduleAttribution); modulePayload != nil {
-					resultProperties["module"] = modulePayload
-				}
-			}
-
-			primaryURI = filepath.ToSlash(primaryURI)
-
-			result := sarifResult{
-				ResultRuleID:    issue.QueryName,
-				ResultRuleIndex: ruleIndex,
-				ResultLevel:     SeverityLevelEquivalence[issue.Severity],
-				ResultMessage: sarifMessage{
-					Text: issue.QueryName,
-				},
-				ResultLocations: []SarifLocation{
-					{
-						PhysicalLocation: sarifPhysicalLocation{
-							ArtifactLocation: sarifArtifactLocation{ArtifactURI: primaryURI},
-							Region: model.SarifRegion{
-								StartLine:   primaryStart.Line,
-								EndLine:     primaryEnd.Line,
-								StartColumn: primaryStart.Col,
-								EndColumn:   primaryEnd.Col,
-							},
-						},
-					},
-				},
-				ResultProperties: resultProperties,
-				PartialFingerprints: SarifPartialFingerprints{
-					DatadogFingerprint: vulnerability.Fingerprint,
-				},
-				Suppressions: buildSarifSuppressions(ctx, &vulnerability),
-			}
-			// A fix rewriting the module body changes the value for every
-			// caller, so it is only offered for a value the module sets itself.
-			remediationAllowed := moduleAttribution == nil ||
-				(moduleAttribution.ModuleCodeOwned &&
-					moduleAttribution.ArgumentControl == model.ArgumentControlModule)
-			if vulnerability.Remediation != "" && vulnerability.RemediationType != "" && remediationAllowed &&
-				remediationStartLocation.Line >= 1 {
-				sarifFix, err := fixes.TransformToSarifFix(
-					ctx,
-					vulnerability,
-					remediationStartLocation,
-					remediationEndLocation,
-				)
-				if err == nil {
-					if moduleAttribution == nil {
-						// we want the location displayed in the UI to properly highlight the remediation
-						result.ResultLocations[0].PhysicalLocation.Region.StartLine = remediationStartLocation.Line
-						result.ResultLocations[0].PhysicalLocation.Region.EndLine = remediationEndLocation.Line
-					}
-					result.ResultFixes = append(result.ResultFixes, sarifFix)
-				}
-			}
-			sr.Runs[0].Results = append(sr.Runs[0].Results, result)
 		}
 		return issue.CWE, nil
 	}
 	return "", nil
+}
+
+// issueResult builds the result of the idx-th file of issue, or reports that
+// the file has none for an invalid location.
+// nolint:gocritic,gocyclo,funlen
+func issueResult(
+	ctx context.Context, issue *model.QueryResult, idx, ruleIndex int, tags []string,
+	fixes *remediationsHelper.FixCache,
+) (sarifResult, bool) {
+	contextLogger := logger.FromContext(ctx)
+	vulnerability := issue.Files[idx]
+
+	resourceType := vulnerability.ResourceType
+	resourceName := vulnerability.ResourceName
+	resourceTypeTag := GetResourceTypeTag(resourceType)
+	resourceNameTag := GetResourceNameTag(resourceName)
+
+	// nolint:gocritic
+	resultTags := append(tags, resourceTypeTag, resourceNameTag)
+
+	resourceLocation := vulnerability.ResourceLocation
+
+	if resourceLocation.Start.Line < 1 || resourceLocation.End.Line < 1 {
+		contextLogger.Error().
+			Str("file", vulnerability.FileName).
+			Str("query_name", issue.QueryName).
+			Str("resource_type", resourceType).
+			Str("resource_name", resourceName).
+			Str("platform", issue.Platform).
+			Msg("Invalid resource location for file")
+		return sarifResult{}, false
+	}
+
+	if resourceLocation.Start.Col < 1 {
+		resourceLocation.Start.Col = 1
+	}
+	if resourceLocation.End.Col < 1 {
+		resourceLocation.End.Col = resourceLocation.Start.Col
+	}
+
+	resourceStartLocation := model.SarifResourceLocation{
+		Line: resourceLocation.Start.Line,
+		Col:  resourceLocation.Start.Col,
+	}
+	resourceEndLocation := model.SarifResourceLocation{
+		Line: resourceLocation.End.Line,
+		Col:  resourceLocation.End.Col,
+	}
+
+	remediationLocation := vulnerability.RemediationLocation
+	remediationStartLocation := model.SarifResourceLocation{
+		Line: remediationLocation.Start.Line,
+		Col:  remediationLocation.Start.Col,
+	}
+	remediationEndLocation := model.SarifResourceLocation{
+		Line: remediationLocation.End.Line,
+		Col:  remediationLocation.End.Col,
+	}
+
+	if resourceStartLocation.Col < 1 {
+		resourceStartLocation.Col = 1
+	}
+
+	// Always narrow the SARIF region to the remediation location when it falls
+	// within the resource block. The remediation location holds the precise
+	// attribute-level line even when no remediation
+	// string is present. Do NOT gate change this,
+	// that would cause rules without a fix to fall back to the full block range.
+	if remediationStartLocation.Line >= resourceStartLocation.Line &&
+		remediationEndLocation.Line <= resourceEndLocation.Line {
+		resourceStartLocation = remediationStartLocation
+		resourceEndLocation = remediationEndLocation
+	}
+
+	logVulnerabilityLineEmpty(
+		ctx,
+		vulnerability.LineWithVulnerability,
+		issue.Platform,
+		issue.QueryName,
+		vulnerability.FileName,
+		vulnerability.Line,
+	)
+
+	artifactPath := issue.Files[idx].FileName
+	if artifactPath == "." {
+		artifactPath = ""
+	}
+
+	primaryURI := artifactPath
+	primaryStart := resourceStartLocation
+	primaryEnd := resourceEndLocation
+	resultProperties := sarifProperties{"tags": resultTags}
+	moduleAttribution := vulnerability.ModuleAttribution
+	if moduleAttribution != nil && moduleAttribution.CallSite.Filename != "" {
+		primaryURI = moduleAttribution.CallSite.Filename
+		primaryStart = model.SarifResourceLocation{
+			Line: moduleAttribution.CallSite.LineStart,
+			Col:  moduleAttribution.CallSite.ColumnStart,
+		}
+		primaryEnd = model.SarifResourceLocation{
+			Line: moduleAttribution.CallSite.LineEnd,
+			Col:  moduleAttribution.CallSite.ColumnEnd,
+		}
+		if primaryStart.Col <= 0 {
+			primaryStart.Col = 1
+		}
+		if primaryEnd.Line < primaryStart.Line {
+			primaryEnd.Line = primaryStart.Line
+		}
+		if primaryEnd.Col <= 0 {
+			primaryEnd.Col = 1
+		}
+		if primaryEnd.Line == primaryStart.Line && primaryEnd.Col <= primaryStart.Col {
+			primaryEnd.Col = primaryStart.Col + 1
+		}
+		if modulePayload := model.ModuleAttributionForSARIF(moduleAttribution); modulePayload != nil {
+			resultProperties["module"] = modulePayload
+		}
+	}
+
+	primaryURI = filepath.ToSlash(primaryURI)
+
+	result := sarifResult{
+		ResultRuleID:    issue.QueryName,
+		ResultRuleIndex: ruleIndex,
+		ResultLevel:     SeverityLevelEquivalence[issue.Severity],
+		ResultMessage: sarifMessage{
+			Text: issue.QueryName,
+		},
+		ResultLocations: []SarifLocation{
+			{
+				PhysicalLocation: sarifPhysicalLocation{
+					ArtifactLocation: sarifArtifactLocation{ArtifactURI: primaryURI},
+					Region: model.SarifRegion{
+						StartLine:   primaryStart.Line,
+						EndLine:     primaryEnd.Line,
+						StartColumn: primaryStart.Col,
+						EndColumn:   primaryEnd.Col,
+					},
+				},
+			},
+		},
+		ResultProperties: resultProperties,
+		PartialFingerprints: SarifPartialFingerprints{
+			DatadogFingerprint: vulnerability.Fingerprint,
+		},
+		Suppressions: buildSarifSuppressions(ctx, &vulnerability),
+	}
+	// A fix rewriting the module body changes the value for every
+	// caller, so it is only offered for a value the module sets itself.
+	remediationAllowed := moduleAttribution == nil ||
+		(moduleAttribution.ModuleCodeOwned &&
+			moduleAttribution.ArgumentControl == model.ArgumentControlModule)
+	if vulnerability.Remediation != "" && vulnerability.RemediationType != "" && remediationAllowed &&
+		remediationStartLocation.Line >= 1 {
+		sarifFix, err := fixes.TransformToSarifFix(
+			ctx,
+			vulnerability,
+			remediationStartLocation,
+			remediationEndLocation,
+		)
+		if err == nil {
+			if moduleAttribution == nil {
+				// we want the location displayed in the UI to properly highlight the remediation
+				result.ResultLocations[0].PhysicalLocation.Region.StartLine = remediationStartLocation.Line
+				result.ResultLocations[0].PhysicalLocation.Region.EndLine = remediationEndLocation.Line
+			}
+			result.ResultFixes = append(result.ResultFixes, sarifFix)
+		}
+	}
+	return result, true
 }
 
 // buildSarifSuppressions returns the SARIF `suppressions` array for a

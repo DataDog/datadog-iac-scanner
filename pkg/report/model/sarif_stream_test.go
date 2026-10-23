@@ -77,3 +77,57 @@ func TestEncodeJSON_ReturnsResultEncodingErrors(t *testing.T) {
 		require.Error(t, report.EncodeJSON(&bytes.Buffer{}), "batch %d", batch)
 	}
 }
+
+// deferredReport builds a report like streamedReport, with findings whose
+// location is invalid among the others and a remediation on some, building
+// the results while encoding when deferred.
+func deferredReport(t *testing.T, results int, deferred bool) *sarifReport {
+	t.Helper()
+	report := NewSarifReport().(*sarifReport)
+	if deferred {
+		report.DeferResults()
+	}
+	source := []string{`resource "aws_s3_bucket" "b" {`, `  acl = "public-read"`, `}`}
+	for _, rule := range []string{"<html> & rule", "other rule"} {
+		q := model.QueryResult{
+			QueryName: rule, QueryID: "id-" + rule, Description: "desc <b>", Severity: model.SeverityHigh,
+			Category: "Access Control", Platform: "Terraform", CWE: "284",
+		}
+		for i := range results {
+			start := 1
+			if i%7 == 0 {
+				start = 0 // an invalid location: the finding has no result
+			}
+			q.Files = append(q.Files, model.VulnerableFile{
+				FileName: fmt.Sprintf("modules/m%d/main.tf", i%3), Line: 2, ResourceType: "aws_s3_bucket",
+				ResourceName: fmt.Sprintf("b[%d]", i), ModuleCallChain: fmt.Sprintf("r/main.tf|module.m[%d]", i),
+				ResourceLocation:      model.ResourceLocation{Start: model.ResourceLine{Line: start, Col: 1}, End: model.ResourceLine{Line: 3, Col: 2}},
+				RemediationLocation:   model.ResourceLocation{Start: model.ResourceLine{Line: 2, Col: 3}, End: model.ResourceLine{Line: 2, Col: 22}},
+				BlockLocation:         model.ResourceLocation{Start: model.ResourceLine{Line: 1, Col: 1}, End: model.ResourceLine{Line: 3, Col: 2}},
+				LineWithVulnerability: source[1], FileSource: source,
+				Remediation: `{"before":"public-read","after":"private"}`, RemediationType: "replacement",
+			})
+		}
+		_, err := report.BuildSarifIssue(context.Background(), &q, model.SCIInfo{})
+		require.NoError(t, err)
+	}
+	require.NoError(t, report.AddTags(context.Background(), &model.Summary{}, &model.DiffAware{}))
+	return report
+}
+
+// A deferred report encodes to the same bytes as one holding its results,
+// whatever the batches its results are built in.
+func TestEncodeJSON_DeferredResultsMatchBuiltResults(t *testing.T) {
+	previous := sarifEncodeBatch
+	defer func() { sarifEncodeBatch = previous }()
+	for _, results := range []int{0, 1, 7, 50} {
+		var want bytes.Buffer
+		require.NoError(t, deferredReport(t, results, false).EncodeJSON(&want))
+		for _, batch := range []int{previous, 7, 3, 1} {
+			sarifEncodeBatch = batch
+			var got bytes.Buffer
+			require.NoError(t, deferredReport(t, results, true).EncodeJSON(&got))
+			require.Equal(t, want.String(), got.String(), "%d results in batches of %d", results, batch)
+		}
+	}
+}
