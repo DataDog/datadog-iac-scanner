@@ -485,13 +485,23 @@ func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind 
 // round-trip path did.
 var errCyclicDocument = errors.New("cyclic document tree")
 
-// sanitizeScanDocumentInPlace strips _dd_lines and resolves JSON filters in
-// place, avoiding prepareScanDocument's JSON round-trip deep copy (the dominant
-// heap/CPU cost) — the lazy line-info refactor leaves body exclusively owned.
-// Cycles are rejected with errCyclicDocument, as json.Marshal would.
-func sanitizeScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
-	stack := make(map[uintptr]bool)
-	if err := sanitizeScanDocumentNodeInPlace(body, kind, true, true, stack); err != nil {
+// scanDocumentSanitizer lives only while sinking one parsed file. Terraform
+// layers share unchanged maps: retain completed visits so each is normalized
+// once. Do not reuse this state after sinking, when module resolution may mutate
+// the documents. Other kinds keep only the recursion stack, since Terraform
+// plans in particular resolve filters differently depending on the root key.
+// A true entry is active (cycle); false is a successfully sanitized map.
+type scanDocumentSanitizer struct {
+	kind model.FileKind
+	maps map[uintptr]bool
+}
+
+func newScanDocumentSanitizer(kind model.FileKind) *scanDocumentSanitizer {
+	return &scanDocumentSanitizer{kind: kind, maps: make(map[uintptr]bool)}
+}
+
+func (s *scanDocumentSanitizer) sanitize(body map[string]interface{}) (map[string]interface{}, error) {
+	if err := sanitizeScanDocumentNodeInPlace(body, s.kind, true, true, s.maps); err != nil {
 		return nil, err
 	}
 	return body, nil
@@ -509,7 +519,7 @@ func sanitizeScanDocumentNodeInPlace(
 	case []interface{}:
 		for i, indx := range bodyType {
 			if !isCanonicalDocumentValue(indx) {
-				if normalized, changed := normalizeDocumentValue(indx); changed {
+				if normalized, changed := normalizeScanDocumentValue(indx, kind); changed {
 					bodyType[i] = normalized
 				}
 			}
@@ -528,12 +538,28 @@ func sanitizeScanDocumentValueInPlace(
 	stack map[uintptr]bool,
 ) error {
 	ptr := reflect.ValueOf(bodyType).Pointer()
-	if stack[ptr] {
-		return errCyclicDocument
+	if active, visited := stack[ptr]; visited {
+		if active {
+			return errCyclicDocument
+		}
+		return nil
 	}
 	stack[ptr] = true
-	defer delete(stack, ptr)
+	err := sanitizeScanDocumentEntriesInPlace(bodyType, kind, resolveFilters, atDocumentRoot, stack)
+	if err == nil && kind == model.KindTerraform {
+		stack[ptr] = false
+	} else {
+		delete(stack, ptr)
+	}
+	return err
+}
 
+func sanitizeScanDocumentEntriesInPlace(
+	bodyType map[string]interface{},
+	kind model.FileKind,
+	resolveFilters, atDocumentRoot bool,
+	stack map[uintptr]bool,
+) error {
 	delete(bodyType, "_dd_lines")
 	for key, v := range bodyType {
 		childResolveFilters := resolveFilters
@@ -577,7 +603,7 @@ func sanitizeNormalizedValueInPlace(
 	resolveFilters bool,
 	stack map[uintptr]bool,
 ) error {
-	if normalized, changed := normalizeDocumentValue(bodyType[key]); changed {
+	if normalized, changed := normalizeScanDocumentValue(bodyType[key], kind); changed {
 		bodyType[key] = normalized
 	}
 	switch value := bodyType[key].(type) {
@@ -591,6 +617,18 @@ func sanitizeNormalizedValueInPlace(
 		}
 	}
 	return nil
+}
+
+// normalizeScanDocumentValue preserves the converter's shared maps only for
+// Terraform configurations. The sanitizer normalizes their entries in place;
+// other platforms and nil named maps keep the existing normalization path.
+func normalizeScanDocumentValue(value interface{}, kind model.FileKind) (interface{}, bool) {
+	if kind == model.KindTerraform {
+		if doc, ok := value.(model.Document); ok && doc != nil {
+			return map[string]interface{}(doc), true
+		}
+	}
+	return normalizeDocumentValue(value)
 }
 
 // isCanonicalDocumentValue reports whether v is one of the value types the

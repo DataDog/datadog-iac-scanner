@@ -127,9 +127,10 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 
 	shareable := shareKey != "" && shareableParse(&documents)
 	var sharedDocs []model.Document
+	sanitizer := newScanDocumentSanitizer(documents.Kind)
 
 	for docIdx := range documents.Docs {
-		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, shareable,
+		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, sanitizer, shareable,
 			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands); doc != nil {
 			sharedDocs = append(sharedDocs, doc)
 		}
@@ -155,6 +156,7 @@ func (s *Service) sinkDocument(
 	filename, scanID string,
 	documents *iacparser.ParsedDocument,
 	docIdx int,
+	sanitizer *scanDocumentSanitizer,
 	shareable, isMinified, openAPIResolveReferences bool,
 	maxResolverDepth int,
 	content []byte,
@@ -163,9 +165,9 @@ func (s *Service) sinkDocument(
 	contextLogger := logger.FromContext(ctx)
 	document := documents.Docs[docIdx]
 
-	// Sanitize in place — safe because the tree is exclusively owned (line info is
-	// lazily reparsed) — and reject cycles, as json.Marshal would.
-	preparedDocument, err := sanitizeScanDocumentInPlace(document, documents.Kind)
+	// Layers may share children within this file. Normalize those children once
+	// in place; line-info trees are reparsed independently when needed.
+	preparedDocument, err := sanitizer.sanitize(document)
 	if err != nil {
 		contextLogger.Err(err).Msgf("failed to sanitize document for file: %s", filename)
 		return nil
