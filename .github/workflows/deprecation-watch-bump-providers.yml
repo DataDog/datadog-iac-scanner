@@ -1,0 +1,61 @@
+name: deprecation-watch-bump-providers
+
+on:
+  schedule:
+    - cron: "0 9 1 * *" # 1st of every month, 9am UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: deprecation-watch-bump-providers
+  cancel-in-progress: true
+
+jobs:
+  bump-providers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Setup Python
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
+        with:
+          python-version: "3.12"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Bump provider versions and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/deprecation_watch/bump_providers.py
+          if git diff --quiet scripts/deprecation_watch/providers/; then
+            echo "All providers already at latest, nothing to do"
+            exit 0
+          fi
+          BRANCH="chore/deprecation-watch-bump-providers"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add scripts/deprecation_watch/providers/main.tf scripts/deprecation_watch/providers/.terraform.lock.hcl
+          git commit -m "chore(deps): bump deprecation-watch Terraform providers"
+          git push -f origin "$BRANCH"
+          if gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' | grep -q .; then
+            echo "PR already exists for $BRANCH"
+          else
+            gh pr create \
+              --title "chore(deps): bump deprecation-watch Terraform providers" \
+              --body "**Automated by deprecation-watch-bump-providers**
+          Updated provider version pins in \`scripts/deprecation_watch/providers/main.tf\`
+          and regenerated \`.terraform.lock.hcl\`." \
+              --base main \
+              --head "$BRANCH" \
+              --label dependencies
+          fi
