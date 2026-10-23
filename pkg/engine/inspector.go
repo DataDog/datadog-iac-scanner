@@ -51,6 +51,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/topdown"
 	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -1730,21 +1731,56 @@ func (c *Inspector) buildPlatformPayloads(
 		neededPlatforms[key] = true
 	}
 
-	terms := make([]*ast.Term, len(allDocs))
-	cons := newPayloadHashCons()
-	for i, doc := range allDocs {
-		v, err := c.interfaceToPayloadValue(ctx, doc, cons)
-		if err != nil {
-			return platformPayloads{}, err
-		}
-		terms[i] = ast.NewTerm(v)
-		if c.releaseDocumentsAfterPayload {
-			releaseDocumentTree(i, filesMap, combinedDocs, moduleDocs)
-		}
+	terms, err := c.convertPayloadDocuments(ctx, allDocs, filesMap, combinedDocs, moduleDocs)
+	if err != nil {
+		return platformPayloads{}, err
 	}
-
 	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
 	return payloads, nil
+}
+
+// parallelPayloadDocuments is how many documents each conversion worker
+// takes at least; below twice that, one worker converts them all.
+var parallelPayloadDocuments = 4096
+
+// convertPayloadDocuments converts every document to its payload term, in
+// order. Documents convert independently, so a large set is split into
+// contiguous chunks converted concurrently, each through its own hash-cons:
+// structurally identical subtrees are shared within a chunk, where documents
+// from the same file and module call sit next to each other.
+func (c *Inspector) convertPayloadDocuments(
+	ctx context.Context,
+	allDocs []interface{},
+	filesMap map[string]*model.FileMetadata,
+	combinedDocs, moduleDocs []model.Document,
+) ([]*ast.Term, error) {
+	terms := make([]*ast.Term, len(allDocs))
+	convert := func(from, to int) error {
+		cons := newPayloadHashCons()
+		for i := from; i < to; i++ {
+			v, err := c.interfaceToPayloadValue(ctx, allDocs[i], cons)
+			if err != nil {
+				return err
+			}
+			terms[i] = ast.NewTerm(v)
+			allDocs[i] = nil
+			if c.releaseDocumentsAfterPayload {
+				releaseDocumentTree(i, filesMap, combinedDocs, moduleDocs)
+			}
+		}
+		return nil
+	}
+	workers := min(runtime.GOMAXPROCS(0), len(allDocs)/parallelPayloadDocuments)
+	if workers <= 1 {
+		return terms, convert(0, len(allDocs))
+	}
+	var g errgroup.Group
+	chunk := (len(allDocs) + workers - 1) / workers
+	for from := 0; from < len(allDocs); from += chunk {
+		to := min(from+chunk, len(allDocs))
+		g.Go(func() error { return convert(from, to) })
+	}
+	return terms, g.Wait()
 }
 
 // assemblePlatformPayloads wraps the converted terms into per-platform payloads
