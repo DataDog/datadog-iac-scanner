@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -148,10 +147,13 @@ output "names" { value = module.buckets }
 	require.False(t, outputs["names"].IsKnown(), "outputs of an unexpanded call are unknown")
 }
 
-func TestEvaluateModule_TruncatedModuleCountKeepsModuleScanned(t *testing.T) {
+// largeExpansion is past every cap module evaluation used to apply: 50
+// instances per block and a 512-instance shape for padded references.
+const largeExpansion = 600
+
+func TestEvaluateModule_LargeModuleCountExpandsEveryInstance(t *testing.T) {
 	root := t.TempDir()
 	bucket := bucketModule(t, root)
-	requested := maxCountExpansion + 2
 	stack := writeModule(t, root, "stack", map[string]string{
 		"main.tf": fmt.Sprintf(`
 module "many" {
@@ -163,7 +165,7 @@ module "many" {
 output "n" { value = length(module.many) }
 output "last" { value = module.many[%d].name }
 output "first" { value = module.many[0].name }
-`, requested, requested-1),
+`, largeExpansion, largeExpansion-1),
 	})
 
 	var logs bytes.Buffer
@@ -171,29 +173,34 @@ output "first" { value = module.many[0].name }
 	e := New()
 	resources, outputs, _, err := e.EvaluateModule(ctx, stack, nil)
 	require.NoError(t, err)
-	require.Len(t, resources, maxCountExpansion)
-	require.Equal(t, 1, e.ExpansionTruncations())
-	require.Equal(t, requested, e.ExpansionMaxRequested())
-	require.Contains(t, logs.String(), `"count_expansion_cap":`+strconv.Itoa(maxCountExpansion))
-	require.Contains(t, logs.String(), `"requested_instances":`+strconv.Itoa(requested))
-	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(int64(requested))), "length must keep the full requested size, got %#v", outputs["n"])
-	require.True(t, outputs["first"].RawEquals(cty.StringVal("b-0")), "expanded instance outputs stay known")
-	require.False(t, outputs["last"].IsKnown(), "omitted instance outputs must be unknown, got %#v", outputs["last"])
+	require.Len(t, resources, largeExpansion)
+	for i := range resources {
+		require.Equal(t, fmt.Sprintf("module.many[%d]", i), resources[i].ModuleAddress)
+		require.True(t, resources[i].Attributes["bucket"].RawEquals(cty.StringVal(fmt.Sprintf("b-%d", i))))
+	}
+	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(largeExpansion)), "length = %#v", outputs["n"])
+	require.True(t, outputs["first"].RawEquals(cty.StringVal("b-0")))
+	require.True(t, outputs["last"].RawEquals(cty.StringVal(fmt.Sprintf("b-%d", largeExpansion-1))))
+	require.True(t, e.Report().Complete(), "%v", e.Report().Incomplete())
+	require.NotContains(t, logs.String(), "truncat")
 
 	abs, err := filepath.Abs(bucket)
 	require.NoError(t, err)
-	require.Contains(t, e.NotEvaluatedDirs(), abs)
+	require.NotContains(t, e.NotEvaluatedDirs(), abs, "a complete expansion leaves nothing to scan as written")
 }
 
-func TestEvaluateModule_TruncatedModuleForEachPadsMissingKeys(t *testing.T) {
+func forEachEntries(n int) (entries string, last string) {
+	lines := make([]string, n)
+	for i := range lines {
+		lines[i] = fmt.Sprintf(`    "k%04d" = true`, i)
+	}
+	return strings.Join(lines, "\n"), fmt.Sprintf("k%04d", n-1)
+}
+
+func TestEvaluateModule_LargeModuleForEachExpandsEveryKey(t *testing.T) {
 	root := t.TempDir()
 	bucketModule(t, root)
-	requested := maxCountExpansion + 2
-	entries := make([]string, requested)
-	for i := range entries {
-		entries[i] = fmt.Sprintf(`    "k%02d" = true`, i)
-	}
-	missing := fmt.Sprintf("k%02d", requested-1)
+	entries, last := forEachEntries(largeExpansion)
 	stack := writeModule(t, root, "stack", map[string]string{
 		"main.tf": fmt.Sprintf(`
 module "many" {
@@ -205,22 +212,27 @@ module "many" {
 }
 
 output "n" { value = length(module.many) }
-output "missing" { value = module.many["%s"].name }
-output "first" { value = module.many["k00"].name }
-`, strings.Join(entries, "\n"), missing),
+output "last" { value = module.many["%s"].name }
+output "first" { value = module.many["k0000"].name }
+`, entries, last),
 	})
 
 	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
-	require.Len(t, resources, maxCountExpansion)
-	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(int64(requested))), "length = %#v", outputs["n"])
-	require.True(t, outputs["first"].RawEquals(cty.StringVal("k00")))
-	require.False(t, outputs["missing"].IsKnown(), "omitted for_each key must be unknown, got %#v", outputs["missing"])
+	require.Len(t, resources, largeExpansion)
+	seen := map[string]bool{}
+	for i := range resources {
+		seen[resources[i].ModuleAddress] = true
+	}
+	require.Len(t, seen, largeExpansion, "every key is its own instance address")
+	require.True(t, seen[`module.many["`+last+`"]`])
+	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(largeExpansion)), "length = %#v", outputs["n"])
+	require.True(t, outputs["first"].RawEquals(cty.StringVal("k0000")))
+	require.True(t, outputs["last"].RawEquals(cty.StringVal(last)))
 }
 
-func TestEvaluateModule_TruncatedResourceCountPadsRefs(t *testing.T) {
+func TestEvaluateModule_LargeResourceCountExpandsEveryInstance(t *testing.T) {
 	root := t.TempDir()
-	requested := maxCountExpansion + 2
 	stack := writeModule(t, root, "stack", map[string]string{
 		"main.tf": fmt.Sprintf(`
 resource "aws_s3_bucket" "replica" {
@@ -231,27 +243,23 @@ resource "aws_s3_bucket" "replica" {
 output "n" { value = length(aws_s3_bucket.replica) }
 output "last" { value = aws_s3_bucket.replica[%d].bucket }
 output "first" { value = aws_s3_bucket.replica[0].bucket }
-`, requested, requested-1),
+`, largeExpansion, largeExpansion-1),
 	})
 
 	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
-	require.Len(t, resources, maxCountExpansion)
-	require.True(t, resources[0].ExpansionTruncated)
-	require.Equal(t, requested, resources[0].ExpansionTotal)
-	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(int64(requested))), "length = %#v", outputs["n"])
+	require.Len(t, resources, largeExpansion)
+	for i := range resources {
+		require.Equal(t, fmt.Sprintf("replica[%d]", i), resources[i].Name)
+	}
+	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(largeExpansion)), "length = %#v", outputs["n"])
 	require.True(t, outputs["first"].RawEquals(cty.StringVal("b-0")))
-	require.False(t, outputs["last"].IsKnown(), "omitted resource index must be unknown, got %#v", outputs["last"])
+	require.True(t, outputs["last"].RawEquals(cty.StringVal(fmt.Sprintf("b-%d", largeExpansion-1))))
 }
 
-func TestEvaluateModule_TruncatedResourceForEachPadsRefs(t *testing.T) {
+func TestEvaluateModule_LargeResourceForEachExpandsEveryKey(t *testing.T) {
 	root := t.TempDir()
-	requested := maxCountExpansion + 2
-	entries := make([]string, requested)
-	for i := range entries {
-		entries[i] = fmt.Sprintf(`    "k%02d" = true`, i)
-	}
-	missing := fmt.Sprintf("k%02d", requested-1)
+	entries, last := forEachEntries(largeExpansion)
 	stack := writeModule(t, root, "stack", map[string]string{
 		"main.tf": fmt.Sprintf(`
 resource "aws_s3_bucket" "replica" {
@@ -262,76 +270,40 @@ resource "aws_s3_bucket" "replica" {
 }
 
 output "n" { value = length(aws_s3_bucket.replica) }
-output "missing" { value = aws_s3_bucket.replica["%s"].bucket }
-output "first" { value = aws_s3_bucket.replica["k00"].bucket }
-`, strings.Join(entries, "\n"), missing),
+output "last" { value = aws_s3_bucket.replica["%s"].bucket }
+output "first" { value = aws_s3_bucket.replica["k0000"].bucket }
+`, entries, last),
 	})
 
 	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
-	require.Len(t, resources, maxCountExpansion)
-	require.True(t, resources[0].ExpansionTruncated)
-	require.Len(t, resources[0].ExpansionKeys, requested)
-	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(int64(requested))), "length = %#v", outputs["n"])
-	require.True(t, outputs["first"].RawEquals(cty.StringVal("k00")))
-	require.False(t, outputs["missing"].IsKnown(), "omitted for_each key must be unknown, got %#v", outputs["missing"])
+	require.Len(t, resources, largeExpansion)
+	require.Equal(t, `replica["`+last+`"]`, resources[largeExpansion-1].Name)
+	require.True(t, outputs["n"].RawEquals(cty.NumberIntVal(largeExpansion)), "length = %#v", outputs["n"])
+	require.True(t, outputs["first"].RawEquals(cty.StringVal("k0000")))
+	require.True(t, outputs["last"].RawEquals(cty.StringVal(last)))
 }
 
-func TestModuleOutputsValue_HugeTruncatedCountBecomesUnknown(t *testing.T) {
-	outs := make([]cty.Value, maxCountExpansion)
-	for i := range outs {
-		outs[i] = cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("x")})
-	}
-	got, ok := moduleOutputsValue(moduleExpansionPlan{
-		mode:      expansionCount,
-		requested: maxExpansionShape + 1,
-		instances: make([]moduleInstance, maxCountExpansion),
-	}, outs)
-	require.True(t, ok)
-	require.False(t, got.IsKnown(), "shapes beyond maxExpansionShape must not materialize")
-}
-
-func TestForEachInstances_SmallKeepsConcreteOutputsWithoutFullKeyList(t *testing.T) {
-	expr, diags := hclsyntax.ParseExpression([]byte(`{ a = 1, b = 2 }`), "x.tf", hcl.Pos{Line: 1, Column: 1})
+func TestModuleInstances_ForEachYieldsEveryKeyInOrder(t *testing.T) {
+	expr, diags := hclsyntax.ParseExpression([]byte(`{ b = 2, a = 1 }`), "x.tf", hcl.Pos{Line: 1, Column: 1})
 	require.False(t, diags.HasErrors(), diags.Error())
-	plan := forEachInstances(&hclsyntax.Attribute{Expr: expr}, &hcl.EvalContext{})
+	block := &hclsyntax.Block{Type: "module", Body: &hclsyntax.Body{
+		Attributes: hclsyntax.Attributes{"for_each": {Name: "for_each", Expr: expr}},
+	}}
+	plan := moduleInstances(block, &hcl.EvalContext{})
 	require.Equal(t, expansionForEach, plan.mode)
-	require.Equal(t, 2, plan.requested)
-	require.Len(t, plan.instances, 2)
-	require.Nil(t, plan.forEachKeys, "small for_each should not materialize a padding key list")
-
-	outs := []cty.Value{
-		cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("a")}),
-		cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("b")}),
+	var keys, outs []cty.Value
+	for instance := range plan.all {
+		keys = append(keys, instance.key)
+		key := instance.ctx.Variables["each"].GetAttr("key")
+		outs = append(outs, cty.ObjectVal(map[string]cty.Value{"name": key}))
 	}
-	got, ok := moduleOutputsValue(plan, outs)
+	require.Equal(t, []cty.Value{cty.StringVal("a"), cty.StringVal("b")}, keys)
+	got, ok := moduleOutputsValue(&plan, keys, outs)
 	require.True(t, ok)
 	require.True(t, got.IsWhollyKnown())
 	require.True(t, got.GetAttr("a").GetAttr("name").RawEquals(cty.StringVal("a")))
 	require.True(t, got.GetAttr("b").GetAttr("name").RawEquals(cty.StringVal("b")))
-}
-
-func TestForEachInstances_HugeTruncationDoesNotKeepKeys(t *testing.T) {
-	n := maxExpansionShape + 1
-	var b strings.Builder
-	b.WriteByte('{')
-	for i := 0; i < n; i++ {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		fmt.Fprintf(&b, `"k%04d"=true`, i)
-	}
-	b.WriteByte('}')
-	expr, diags := hclsyntax.ParseExpression([]byte(b.String()), "x.tf", hcl.Pos{Line: 1, Column: 1})
-	require.False(t, diags.HasErrors(), diags.Error())
-	plan := forEachInstances(&hclsyntax.Attribute{Expr: expr}, &hcl.EvalContext{})
-	require.True(t, plan.truncated())
-	require.Equal(t, n, plan.requested)
-	require.Len(t, plan.instances, maxCountExpansion)
-	require.Nil(t, plan.forEachKeys)
-	got, ok := moduleOutputsValue(plan, make([]cty.Value, len(plan.instances)))
-	require.True(t, ok)
-	require.False(t, got.IsKnown())
 }
 
 func TestEvaluateModule_InstanceAttributesKeepIterationValuesWithSharedOnes(t *testing.T) {

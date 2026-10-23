@@ -36,6 +36,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -263,6 +264,11 @@ type Inspector struct {
 	// evalGcRelief enables the eval-phase forced-GC ticker; the scanner sets it
 	// from its live-heap gate (see SetEvalGcRelief).
 	evalGcRelief bool
+
+	// moduleLimits are the operational boundaries of module evaluation, and
+	// moduleReport what the last Inspect evaluated and could not.
+	moduleLimits tfeval.Limits
+	moduleReport tfeval.Report
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -316,6 +322,14 @@ func (c *Inspector) SetReleasePostEvalData(release bool) {
 	c.releasePostEvalData = release
 	c.discardLineInfoAfterUse = release
 }
+
+// SetModuleEvaluationLimits sets the operational boundaries of module
+// evaluation. Reaching one stops evaluation and reports the scan incomplete.
+func (c *Inspector) SetModuleEvaluationLimits(limits tfeval.Limits) { c.moduleLimits = limits }
+
+// ModuleEvaluationReport returns what module evaluation evaluated during the
+// last Inspect, and why it was incomplete if it was.
+func (c *Inspector) ModuleEvaluationReport() *tfeval.Report { return &c.moduleReport }
 
 // SetEvalGcRelief enables the eval GC ticker; the scanner sets it from the
 // same live-heap measurement that gates the reduced GC percent.

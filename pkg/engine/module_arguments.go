@@ -210,16 +210,17 @@ func (t *moduleAttributionCache) resourceAttributes(r *tfeval.ResolvedResource) 
 	if cached, ok := t.attributes[key]; ok && !cached.iterationDependent {
 		return cached
 	}
-	key.iteration = iterationKey(r.Iteration)
+	iteration := r.Iteration.Variables()
+	key.iteration = iterationKey(iteration)
 	if key.iteration != "" {
 		if cached, ok := t.attributes[key]; ok {
 			return cached
 		}
 	}
-	a := t.analyzer(r.Scope, r.Iteration)
+	a := t.analyzer(r.Scope, iteration)
 	if attr, ok := r.Body.Attributes[forEachAttribute]; ok {
 		a.forEach = attr
-		a.iterators = append(a.iterators, a.eachIterator(attr.Expr, r.Iteration[resourceEachRoot]))
+		a.iterators = append(a.iterators, a.eachIterator(attr.Expr, iteration[resourceEachRoot]))
 	}
 	var attrs []attributeReads
 	a.collectBody(r.Body, &attrs)

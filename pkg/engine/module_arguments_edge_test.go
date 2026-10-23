@@ -156,9 +156,9 @@ func TestModuleArgumentsEachFromMixedCollections(t *testing.T) {
 		resource := &tfeval.ResolvedResource{
 			Body:  parseBlockBody(t, body),
 			Scope: evaluatedScope(t, vars, ""),
-			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 				"key": cty.StringVal(key), "value": cty.StringVal("v"),
-			})},
+			})}),
 			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = { y = \"1\" }\n  n      = \"dyn\"\n  names  = [\"n\"]\n}"),
 		}
 		return newModuleAttributionCache().resourceArguments(resource, "main.tf")
@@ -238,7 +238,7 @@ func TestModuleArgumentsAnalyzeEachInstanceOnce(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		resource := &tfeval.ResolvedResource{
 			Body: body, Scope: scope,
-			Iteration: map[string]cty.Value{"count": cty.ObjectVal(map[string]cty.Value{"index": cty.NumberIntVal(int64(i))})},
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"count": cty.ObjectVal(map[string]cty.Value{"index": cty.NumberIntVal(int64(i))})}),
 			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n}"),
 		}
 		cache.resourceAttributes(resource)
@@ -312,9 +312,9 @@ func TestModuleArgumentsEachWithNumericKeys(t *testing.T) {
 	resource := &tfeval.ResolvedResource{
 		Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = { a = var.x, 1 = \"lit\" }\n  acl      = each.value\n}"),
 		Scope: evaluatedScope(t, map[string]cty.Value{"x": cty.StringVal("v")}, ""),
-		Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+		Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 			"key": cty.StringVal("1"), "value": cty.StringVal("lit"),
-		})},
+		})}),
 		CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  x      = \"v\"\n}"),
 	}
 	requireControlAt(t, newModuleAttributionCache().resourceArguments(resource, "main.tf"), 3, model.ArgumentControlModule)
@@ -327,9 +327,9 @@ func TestModuleArgumentsIndexEachCollectionOnce(t *testing.T) {
 	for _, key := range []string{"a", "b", "c"} {
 		cache.resourceAttributes(&tfeval.ResolvedResource{
 			Body: body, Scope: scope,
-			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 				"key": cty.StringVal(key), "value": cty.StringVal("v"),
-			})},
+			})}),
 		})
 	}
 	require.Len(t, cache.eachIndexes, 1)
@@ -407,9 +407,9 @@ func TestModuleArgumentsLargeForEachStaysCheap(t *testing.T) {
 	for i := 0; i < instances; i++ {
 		args := cache.resourceArguments(&tfeval.ResolvedResource{
 			Body: body, Scope: scope, CallChain: chain,
-			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 				"key": cty.StringVal(fmt.Sprintf("k%d", i)), "value": cty.StringVal("v"),
-			})},
+			})}),
 		}, "main.tf")
 		require.LessOrEqual(t, len(args), 3, "an instance keeps the lines of the collection as a whole")
 	}
@@ -425,9 +425,9 @@ func TestModuleArgumentsMixedCollectionThroughLocal(t *testing.T) {
 		return newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
 			Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = local.n\n  name     = each.key\n}"),
 			Scope: scope,
-			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 				"key": cty.StringVal(key), "value": cty.StringVal("v"),
-			})},
+			})}),
 			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = { a = \"1\" }\n}"),
 		}, "main.tf")
 	}
@@ -439,9 +439,9 @@ func TestModuleArgumentsDuplicateSetElementsAreAmbiguous(t *testing.T) {
 	resource := &tfeval.ResolvedResource{
 		Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = toset([\"a\", var.x])\n  name     = each.value\n}"),
 		Scope: evaluatedScope(t, map[string]cty.Value{"x": cty.StringVal("a")}, ""),
-		Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+		Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 			"key": cty.StringVal("a"), "value": cty.StringVal("a"),
-		})},
+		})}),
 		CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  x      = \"a\"\n}"),
 	}
 	requireControlAt(t, newModuleAttributionCache().resourceArguments(resource, "main.tf"), 3, model.ArgumentControlUnknown)
@@ -514,9 +514,9 @@ func TestModuleArgumentsSelfReferencingLocalsTerminate(t *testing.T) {
 			newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
 				Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = "+collection+"\n  name     = each.key\n}"),
 				Scope: scope,
-				Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+				Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 					"key": cty.StringVal("x"), "value": cty.StringVal("x"),
-				})},
+				})}),
 				CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = [\"p\"]\n}"),
 			}, "main.tf")
 		})
@@ -549,9 +549,9 @@ func TestModuleArgumentsMixedForExpressionIsAmbiguous(t *testing.T) {
 		return newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
 			Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = { for k, v in merge(var.a, { z = \"1\" }) : k => v }\n  name     = each.key\n}"),
 			Scope: scope,
-			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 				"key": cty.StringVal(key), "value": cty.StringVal("1"),
-			})},
+			})}),
 			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = { a = \"1\" }\n}"),
 		}, "main.tf")
 	}
@@ -570,9 +570,9 @@ func TestModuleArgumentsMixedResultDoesNotDependOnInstanceOrder(t *testing.T) {
 	analyze := func(cache *moduleAttributionCache, key, value string) []model.ModuleArgument {
 		return cache.resourceArguments(&tfeval.ResolvedResource{
 			Body: body, Scope: scope,
-			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 				"key": cty.StringVal(key), "value": cty.StringVal(value),
-			})},
+			})}),
 			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  a      = \"s\"\n}"),
 		}, "main.tf")
 	}
@@ -605,9 +605,9 @@ func TestModuleArgumentsForExpressionMixesKeyAndValueOrigins(t *testing.T) {
 		args := newModuleAttributionCache().resourceArguments(&tfeval.ResolvedResource{
 			Body:  parseBlockBody(t, "resource \"t\" \"r\" {\n  for_each = "+collection+"\n  name     = each.value\n}"),
 			Scope: scope,
-			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 				"key": cty.StringVal("a"), "value": cty.StringVal("lit"),
-			})},
+			})}),
 			CallChain: singleCall(t, "module \"m\" {\n  source = \"./m\"\n  m      = { a = \"1\" }\n}"),
 		}, "main.tf")
 		for _, arg := range args {

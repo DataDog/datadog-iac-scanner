@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -47,14 +48,13 @@ type moduleResolutionResult struct {
 	unresolvedModuleDirs map[string]bool
 	extras               map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
-	moduleFiles    map[string]*moduleFileCalls
-	resourceCount  int
-	rootCount      int
-	budgetExceeded bool
-	// count/for_each per-block expansion cap observability
-	expansionTruncations  int
-	expansionMaxRequested int
-	ok                    bool
+	moduleFiles   map[string]*moduleFileCalls
+	resourceCount int
+	rootCount     int
+	// report is what evaluation evaluated across every root, and what it
+	// could not evaluate completely.
+	report tfeval.Report
+	ok     bool
 }
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
@@ -84,6 +84,7 @@ func (c *Inspector) instantiateLocalModules(
 ) {
 	resolver := c.buildRemoteResolver()
 	res := c.resolveModulesSafely(ctx, files, resolver, targets)
+	c.moduleReport = res.report
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Info().
 		Int("module_resources_instantiated", res.resourceCount).
@@ -138,23 +139,29 @@ func (c *Inspector) instantiateLocalModules(
 // logModuleInstantiationSummary emits the fields an on-call search needs at warn
 // level. Production runs at warn, so the info-level count above is invisible there;
 // without this, a scan on its way to OOM looks identical to one that never ran
-// module evaluation.
+// module evaluation, and an incomplete one like a complete one.
 func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionResult) {
-	if res.resourceCount == 0 && !res.budgetExceeded && res.expansionTruncations == 0 {
+	incomplete := res.report.Incomplete()
+	if res.resourceCount == 0 && len(incomplete) == 0 {
 		return
+	}
+	reasons := make([]string, len(incomplete))
+	for i, inc := range incomplete {
+		reasons[i] = inc.Reason
 	}
 	ev := log.Warn().
 		Int("module_resources_instantiated", res.resourceCount).
 		Int("module_root_count", res.rootCount).
 		Int("module_documents", len(res.docs)).
-		Int("resource_budget", tfeval.MaxInstantiated()).
-		Bool("resource_budget_exhausted", res.budgetExceeded)
-	if res.expansionTruncations > 0 {
-		ev = ev.
-			Int("count_expansion_cap", tfeval.MaxCountExpansion()).
-			Int("dynamic_expansion_cap", tfeval.MaxDynamicExpansion()).
-			Int("count_expansion_truncated", res.expansionTruncations).
-			Int("count_expansion_max_requested", res.expansionMaxRequested)
+		Int("module_instances_evaluated", res.report.ModuleEvaluations).
+		Int("instance_evaluations", res.report.InstanceEvaluations).
+		Int("eval_cache_entries", res.report.CacheEntries).
+		Int("eval_cache_hits", res.report.CacheHits).
+		Int("unknown_expansions", res.report.UnknownExpansions).
+		Bool("scan_incomplete", len(incomplete) > 0).
+		Strs("incomplete_reasons", reasons)
+	for _, inc := range incomplete {
+		ev = ev.Int("incomplete_"+inc.Reason, inc.Count)
 	}
 	ev.Msg("tfeval: module instantiation summary")
 }
@@ -395,7 +402,7 @@ func (c *Inspector) resolveModulesSafely(
 	}
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys,
-		externalModuleFile,
+		externalModuleFile, c.moduleLimits,
 	)
 }
 
@@ -437,12 +444,11 @@ func evaluateRootModules(
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
 	}
-	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
-		next = m.evaluateConcurrently(roots, workers)
+		m.evaluateConcurrently(roots, workers)
+		return
 	}
-	for _, dir := range roots[next:] {
-		evaluator.ResetSpeculativeBudget()
+	for _, dir := range roots {
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVars(dir))
 		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
 		if err == nil {
@@ -494,7 +500,13 @@ func (m *rootMerge) merge(
 	defer m.evaluator.ForgetRootParse(dir)
 	if err != nil {
 		contextLogger := logger.FromContext(m.ctx)
-		contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
+		if errors.Is(err, tfeval.ErrEvaluationStopped) {
+			// The root is scanned as written; the scan reports why it is
+			// incomplete once, from the guard, rather than once per root.
+			contextLogger.Debug().Msgf("tfeval: evaluation of root module %s stopped", dir)
+		} else {
+			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
+		}
 		for _, called := range discoverCalledModuleClosure(
 			m.ctx, m.evaluator, m.filesByDir, m.repoPath, m.resolver, dir,
 		) {
@@ -516,27 +528,23 @@ func (m *rootMerge) merge(
 	*m.resourceCount += count
 }
 
-// rootResult is a root evaluated by a worker, starting from an empty budget.
+// rootResult is a root evaluated by a worker.
 type rootResult struct {
-	resources             []tfeval.ResolvedResource
-	instances             []tfeval.ModuleInstance
-	childDirs             map[string]bool
-	err                   error
-	charged               int
-	demand                int
-	notEvaluated          []string
-	expansionTruncations  int
-	expansionMaxRequested int
-	panicked              any
+	resources    []tfeval.ResolvedResource
+	instances    []tfeval.ModuleInstance
+	childDirs    map[string]bool
+	err          error
+	notEvaluated []string
+	report       tfeval.Report
+	panicked     any
 }
 
 // evaluateConcurrently evaluates roots on workers and merges them in order, so
 // shared documents get the same owners as when roots are evaluated one by one.
-// A root is only evaluated apart from the roots before it; the one thing they
-// share is the scan's instantiation budget, so a worker's result is merged only
-// while the budget left could not have changed it. It returns the index of the
-// first root it did not merge, from which the caller evaluates serially.
-func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
+// A root is evaluated apart from the roots before it; the only state they
+// share is the scan's guard, which fails a root as a whole, so merging in
+// order yields what evaluating them one by one would.
+func (m *rootMerge) evaluateConcurrently(roots []string, workers int) {
 	results := make([]chan rootResult, len(roots))
 	for i := range results {
 		results[i] = make(chan rootResult, 1)
@@ -580,43 +588,29 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 		wg.Wait()
 	}()
 
-	budget := m.evaluator.InstantiationBudget()
-	charged := m.evaluator.InstantiatedCount()
 	for i, dir := range roots {
 		r := <-results[i]
 		<-window
-		if budget > 0 && charged+r.demand > budget {
-			m.evaluator.RestoreInstantiatedCount(charged)
-			return i
-		}
 		if r.panicked != nil {
 			panic(r.panicked)
 		}
-		charged += r.charged
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
-		m.evaluator.AddExpansionStats(r.expansionTruncations, r.expansionMaxRequested)
+		m.evaluator.Report().Merge(&r.report)
 		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
 	}
-	m.evaluator.RestoreInstantiatedCount(charged)
-	return len(roots)
 }
 
 func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r rootResult) {
-	worker.ResetSpeculativeBudget()
-	worker.RestoreInstantiatedCount(0)
-	worker.ResetBudgetDemand()
 	defer func() {
 		if p := recover(); p != nil {
 			r = rootResult{panicked: p}
 		}
-		r.demand = worker.BudgetDemand()
 		r.notEvaluated = worker.TakeNotEvaluatedDirs()
-		r.expansionTruncations, r.expansionMaxRequested = worker.TakeExpansionStats()
+		r.report = worker.TakeReport()
 		worker.ReleaseEvalCache()
 	}()
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVars(dir))
 	r.instances = worker.TakeModuleInstances()
-	r.charged = worker.InstantiatedCount()
 	return r
 }
 
@@ -692,6 +686,7 @@ func resolveModuleDocuments(
 	mergeAllow map[string]struct{},
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
+	limits tfeval.Limits,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -711,6 +706,8 @@ func resolveModuleDocuments(
 	onlyExternalCalls := moduleCalls != nil && !declaresResource
 
 	evaluator := tfeval.NewWithFS(fsys)
+	guard := tfeval.NewGuard(limits)
+	evaluator.SetGuard(guard)
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
 	if resolver != nil {
@@ -762,11 +759,15 @@ func resolveModuleDocuments(
 		ctx, evaluator, filesByDir, repoPath, resolver, unresolvedModuleDirs,
 	)
 	evaluator.ReleaseCaches()
+	report := evaluator.TakeReport()
+	if reason, detail := guard.Stopped(); reason != "" {
+		report.Note(reason, detail)
+	}
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement.
 	if !rootEvalOK {
-		return moduleResolutionResult{}
+		return moduleResolutionResult{report: report}
 	}
 
 	// A call site is only stripped once the module behind it actually produced
@@ -794,21 +795,19 @@ func resolveModuleDocuments(
 	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
 
 	return moduleResolutionResult{
-		docs:                  extra,
-		syntheticFiles:        syntheticFiles,
-		suppressed:            instantiated,
-		calledDirs:            strippedDirs,
-		successfulRoots:       successfulRoots,
-		rootDirs:              roots,
-		unresolvedModuleDirs:  unresolvedModuleDirs,
-		extras:                extras,
-		moduleFiles:           moduleCalls.fileCalls(unresolvedModuleDirs),
-		resourceCount:         resourceCount,
-		rootCount:             len(roots),
-		budgetExceeded:        evaluator.BudgetExceeded(),
-		expansionTruncations:  evaluator.ExpansionTruncations(),
-		expansionMaxRequested: evaluator.ExpansionMaxRequested(),
-		ok:                    true,
+		docs:                 extra,
+		syntheticFiles:       syntheticFiles,
+		suppressed:           instantiated,
+		calledDirs:           strippedDirs,
+		successfulRoots:      successfulRoots,
+		rootDirs:             roots,
+		unresolvedModuleDirs: unresolvedModuleDirs,
+		extras:               extras,
+		moduleFiles:          moduleCalls.fileCalls(unresolvedModuleDirs),
+		resourceCount:        resourceCount,
+		rootCount:            len(roots),
+		report:               report,
+		ok:                   true,
 	}
 }
 
@@ -985,7 +984,9 @@ func instantiatedDocs(
 
 	for i := range resources {
 		r := &resources[i]
-		if r.ModuleAddress == "" {
+		if r.ModuleAddress == "" && !expandedInstance(r) {
+			// A root module block without count or for_each is one resource,
+			// and the parsed file already holds it as written.
 			continue
 		}
 		if !targets.matches(r.Type) {
@@ -1030,9 +1031,7 @@ func instantiatedDocs(
 		g.entries = append(g.entries, entry)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
-		if !r.ExpansionTruncated {
-			instantiated.add(fm.ID, kind, base)
-		}
+		instantiated.add(fm.ID, kind, base)
 		resourceCount++
 	}
 
@@ -1082,6 +1081,12 @@ func instantiatedDocs(
 		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
+}
+
+// expandedInstance reports whether r is one instance of a block expanded by a
+// known count or for_each, which Terraform addresses with an index or key.
+func expandedInstance(r *tfeval.ResolvedResource) bool {
+	return tfeval.ResourceBaseName(r.Name) != r.Name
 }
 
 // groupContentKey identifies a document by the module call address it belongs

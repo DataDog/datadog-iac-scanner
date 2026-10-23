@@ -271,7 +271,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		t.Fatalf("remove stack-b: %v", err)
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatal("expected partial module resolution to succeed")
 	}
@@ -326,7 +326,7 @@ resource "aws_s3_bucket" "this" {
 		t.Fatalf("remove failed root: %v", err)
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatal("expected the other root to evaluate successfully")
 	}
@@ -335,11 +335,14 @@ resource "aws_s3_bucket" "this" {
 	}
 }
 
-func TestResolveModuleDocuments_TruncatedCountKeepsSourceBlock(t *testing.T) {
+// A count past every cap evaluation once applied instantiates one document
+// per instance and replaces the source block, which no instance is left
+// without.
+func TestResolveModuleDocuments_LargeCountInstantiatesEveryInstance(t *testing.T) {
 	root := t.TempDir()
 	rootDir := filepath.Join(root, "stack")
 	modDir := filepath.Join(root, "modules", "buckets")
-	cap := tfeval.MaxCountExpansion()
+	const n = 600
 
 	rootFile := writeFile(t, rootDir, "main.tf", `
 module "buckets" {
@@ -351,28 +354,33 @@ resource "aws_s3_bucket" "replica" {
   count  = %d
   bucket = "bucket-${count.index}"
 }
-`, cap+2))
+`, n))
 
 	files := model.FileMetadatas{
 		fileMeta("root-id", rootFile),
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed")
 	}
-	if len(res.docs) != cap {
-		t.Fatalf("expected %d instantiated docs for truncated count, got %d", cap, len(res.docs))
+	if len(res.docs) != n || res.resourceCount != n {
+		t.Fatalf("got %d documents for %d resources, want %d of each", len(res.docs), res.resourceCount, n)
 	}
-	if res.expansionTruncations == 0 {
-		t.Fatal("expected count expansion truncation to be recorded")
+	buckets := map[string]bool{}
+	for _, doc := range res.docs {
+		r := doc["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})["replica"].(map[string]interface{})
+		buckets[r["bucket"].(string)] = true
 	}
-	if res.expansionMaxRequested != cap+2 {
-		t.Fatalf("expansionMaxRequested = %d, want %d", res.expansionMaxRequested, cap+2)
+	if len(buckets) != n || !buckets[fmt.Sprintf("bucket-%d", n-1)] {
+		t.Fatalf("got %d distinct instances, want %d", len(buckets), n)
 	}
-	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
-		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)
+	if !res.suppressed["mod-id"]["aws_s3_bucket"]["replica"] {
+		t.Fatalf("the instances replace the source block: %#v", res.suppressed)
+	}
+	if !res.report.Complete() {
+		t.Fatalf("complete expansion reported incomplete: %v", res.report.Incomplete())
 	}
 }
 
@@ -403,7 +411,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -481,7 +489,7 @@ resource "aws_sqs_queue_policy" "this" {
 `)
 	files := model.FileMetadatas{fileMeta("root-id", rootFile), fileMeta("mod-id", modFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	require.True(t, res.ok)
 	require.Len(t, res.docs, 1)
 	doc := res.docs[0]
@@ -627,7 +635,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", filepath.Join("modules", "bucket", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -698,7 +706,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 
 	for _, roots := range []int{1, 4, 32} {
 		repo, files := writeFanOut(t, roots, false)
-		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 		if !res.ok {
 			t.Fatalf("roots=%d: resolveModuleDocuments ok = false", roots)
 		}
@@ -717,7 +725,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 
 	// Different inputs genuinely produce different content, so those do scale.
 	repo, files := writeFanOut(t, 8, true)
-	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if len(res.docs) != 8*modFiles {
 		t.Fatalf("%d documents for 8 differing roots, want %d", len(res.docs), 8*modFiles)
 	}
@@ -727,7 +735,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 // document holding that file's resources, and nothing else.
 func TestResolveModuleDocuments_DocumentMirrorsItsFile(t *testing.T) {
 	repo, files := writeFanOut(t, 1, false)
-	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatal("resolveModuleDocuments ok = false")
 	}
@@ -766,7 +774,7 @@ func TestResolveModuleDocuments_DocumentIDsAreStable(t *testing.T) {
 	repo, files := writeFanOut(t, 8, false)
 
 	snapshot := func() ([]string, map[string][]string) {
-		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 		ids := make([]string, 0, len(res.docs))
 		for _, doc := range res.docs {
 			ids = append(ids, doc["id"].(string))
@@ -834,7 +842,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -917,7 +925,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1014,7 +1022,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		fileMeta("mod-b", modBFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1052,7 +1060,7 @@ module "bucket" {
 		fileMeta("root-id", filepath.Join("stack", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if res.ok {
 		t.Fatalf("resolveModuleDocuments ok = true, want false when all roots fail")
 	}
@@ -1079,7 +1087,7 @@ resource "aws_s3_bucket" "this" {
 
 	files := model.FileMetadatas{fileMeta("orphan-id", orphanFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
@@ -1122,7 +1130,7 @@ resource "aws_s3_bucket" "leaf" {
 		fileMeta("leaf-id", leafFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1396,7 +1404,7 @@ resource "aws_s3_bucket" "this" {
 `)
 
 	files := model.FileMetadatas{fileMeta("env-id", envFile), fileMeta("mod-id", modFile)}
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, vfs.DiskFS{}, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, vfs.DiskFS{}, nil, tfeval.Limits{})
 	if !res.ok || len(res.docs) != 1 {
 		t.Fatalf("expected the module instantiated once, got ok=%v docs=%#v", res.ok, res.docs)
 	}

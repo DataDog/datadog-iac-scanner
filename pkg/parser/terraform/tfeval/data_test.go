@@ -10,7 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -109,12 +109,26 @@ func TestDataPolicyDocumentResolvesInModule(t *testing.T) {
 	require.Equal(t, "s1", policy.Statement[0]["Sid"])
 }
 
-// TestDataExpansionSkippedWhenBudgetExhausted evaluates a module whose child
-// exhausts the instantiation budget exactly: the module is discarded either
-// way, and only the evaluation count shows the avoided data expansion. The
-// child's charge stays once a budget refusal happened, so the siblings after it
-// stop in evaluationStop instead of redoing the refused work.
-func TestDataExpansionSkippedWhenBudgetExhausted(t *testing.T) {
+// limitedEvaluator returns an evaluator stopping past maxInstances instances.
+func limitedEvaluator(maxInstances int64) *Evaluator {
+	e := New()
+	e.SetGuard(NewGuard(Limits{MaxInstances: maxInstances}))
+	return e
+}
+
+// requireStoppedAt checks that an evaluation past its instance limit fails as
+// a whole, explicitly, instead of returning the instances that fit.
+func requireStoppedAt(t *testing.T, e *Evaluator, resources []ResolvedResource, err error) {
+	t.Helper()
+	require.ErrorIs(t, err, ErrEvaluationStopped)
+	require.Empty(t, resources, "a stopped evaluation returns nothing rather than a prefix")
+	reason, _ := e.guard.Stopped()
+	require.Equal(t, ReasonInstanceLimit, reason)
+}
+
+// TestInstanceLimitStopsEvaluationExplicitly evaluates a module declaring
+// more instances than the limit: the evaluation fails as a whole and says why.
+func TestInstanceLimitStopsEvaluationExplicitly(t *testing.T) {
 	root := t.TempDir()
 	writeModule(t, root, "heavy", map[string]string{"main.tf": `
 resource "aws_s3_bucket" "a" {}
@@ -142,36 +156,24 @@ module "consumer" {
 }
 `})
 
-	e := New()
-	e.SetMaxInstantiated(2)
+	e := limitedEvaluator(2)
 	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	require.NoError(t, err)
-
-	// The consumer module is discarded either way: heavy's charge exhausted the
-	// budget, and the consumer's own resource cannot fit the zero remainder.
-	require.Equal(t, 1, len(e.NotEvaluatedDirs()))
-	require.True(t, e.BudgetExceeded())
-	// The refusal stands, so the consumer's discarded evaluation does not hand
-	// the budget back: heavy's charge stays and bounds what follows.
-	require.Equal(t, 2, e.InstantiatedCount())
-	require.Empty(t, resources)
-	// Only the initial expansion ran: the refresh against module.heavy.out saw
-	// the exhausted budget and skipped the data expansion.
-	require.Equal(t, 1, e.DataBlockEvaluations())
+	requireStoppedAt(t, e, resources, err)
+	// The data expansion stops at the limit instead of evaluating its 1000
+	// instances first.
+	require.LessOrEqual(t, e.Report().InstanceEvaluations, 3)
 }
 
-// TestBudgetFailureDoesNotRepeatForEverySibling pins Nathan's repro shape: a
-// leaf of two resources fed var.in, a mid with one own resource and count=50 on
-// the leaf, and a stack with count=50 on the mid, under a budget of 100. The
-// first mid's leaves fill the budget exactly and its own resource is refused;
-// restoring for that refusal would restart every remaining mid with the full
-// budget, re-evaluating 50 leaves per mid (2500 cached evaluations at two
-// wrapper levels, more at deeper fan-out). With the refusal left standing the
-// remaining instances stop in evaluationStop, so the leaf evaluations done
-// once — 50 distinct inputs, one cache entry each — are all there are.
-func TestBudgetFailureDoesNotRepeatForEverySibling(t *testing.T) {
-	root := t.TempDir()
-	writeModule(t, root, "leaf", map[string]string{"main.tf": `
+// TestInstanceLimitStopsWithoutRepeatingWork pins the shape that once
+// retried refused work for every sibling: a leaf of two resources, a mid with
+// one own resource and count=50 on the leaf, and a stack with count=50 on the
+// mid, under a limit of 100. The first mid's leaves reach the limit and its
+// own resource exceeds it; nothing after that is evaluated.
+func TestInstanceLimitStopsWithoutRepeatingWork(t *testing.T) {
+	for _, calls := range []int{1, 2} {
+		t.Run(fmt.Sprintf("calls=%d", calls), func(t *testing.T) {
+			root := t.TempDir()
+			writeModule(t, root, "leaf", map[string]string{"main.tf": `
 variable "in" {}
 
 resource "aws_s3_bucket" "a" {
@@ -182,7 +184,7 @@ resource "aws_s3_bucket" "b" {
   bucket = var.in
 }
 `})
-	writeModule(t, root, "mid", map[string]string{"main.tf": `
+			writeModule(t, root, "mid", map[string]string{"main.tf": `
 variable "in" {}
 
 module "leaf" {
@@ -195,91 +197,28 @@ resource "aws_s3_bucket" "own" {
   bucket = var.in
 }
 `})
-	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
-module "mid" {
-  count  = 50
-  source = "../mid"
-  in     = count.index
-}
-`})
+			var stack strings.Builder
+			for i := range calls {
+				fmt.Fprintf(&stack, "module \"mid_%d\" {\n  count  = 50\n  source = \"../mid\"\n  in     = count.index\n}\n", i)
+			}
+			dir := writeModule(t, root, "stack", map[string]string{"main.tf": stack.String()})
 
-	e := New()
-	e.SetMaxInstantiated(100)
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	require.NoError(t, err)
-
-	// The leaves of the first mid were evaluated and charged before its own
-	// resource was refused; their charges stay, and nothing re-evaluates them.
-	require.Equal(t, 100, e.InstantiatedCount())
-	require.Equal(t, 50, len(e.cache))
-	require.True(t, e.BudgetExceeded())
-	require.Contains(t, e.NotEvaluatedDirs(), filepath.Join(root, "mid"))
-	require.Empty(t, resources)
+			e := limitedEvaluator(100)
+			resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+			requireStoppedAt(t, e, resources, err)
+			// The stack, the first mid and its 50 leaves; no sibling is evaluated
+			// after the limit is reached, speculatively or not.
+			require.Equal(t, 52, e.Report().ModuleEvaluations)
+			// The stopped evaluation was rolled back, and the cache entries of
+			// the leaves it held with it.
+			require.Empty(t, e.cache)
+		})
+	}
 }
 
-// TestBudgetFailureDoesNotRepeatInPrepass runs the same shape through the
-// speculative sibling prepass, which shares the refusal handling through
-// currentInstantiationCount: two calls give the stack a prepass, and the
-// refusal of the first mid's own resource must stop the prepass instances
-// rather than hand the speculative budget back to each of them.
-func TestBudgetFailureDoesNotRepeatInPrepass(t *testing.T) {
-	root := t.TempDir()
-	writeModule(t, root, "leaf", map[string]string{"main.tf": `
-variable "in" {}
-
-resource "aws_s3_bucket" "a" {
-  bucket = var.in
-}
-
-resource "aws_s3_bucket" "b" {
-  bucket = var.in
-}
-`})
-	writeModule(t, root, "mid", map[string]string{"main.tf": `
-variable "in" {}
-
-module "leaf" {
-  count  = 50
-  source = "../leaf"
-  in     = "${var.in}-${count.index}"
-}
-
-resource "aws_s3_bucket" "own" {
-  bucket = var.in
-}
-`})
-	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
-module "mid_a" {
-  count  = 50
-  source = "../mid"
-  in     = count.index
-}
-
-module "mid_b" {
-  count  = 50
-  source = "../mid"
-  in     = count.index
-}
-`})
-
-	e := New()
-	e.SetMaxInstantiated(100)
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	require.NoError(t, err)
-
-	// Both calls share the leaf inputs (in = count.index of each call), so the
-	// leaves of the first prepass instance are the whole eval cache: 50
-	// entries, not one batch of 50 per retried instance.
-	require.Equal(t, 100, e.InstantiatedCount())
-	require.Equal(t, 50, len(e.cache))
-	require.True(t, e.BudgetExceeded())
-	require.Empty(t, resources)
-}
-
-// TestDataDisabledBudgetStillEvaluatesData pins that a disabled instantiation
-// budget disables the data expansion pre-check too: remainingInstantiationBudget
-// reports -1 for it, which must not read as exhausted.
-func TestDataDisabledBudgetStillEvaluatesData(t *testing.T) {
+// TestDataEvaluatesWithoutLimit pins that an evaluator without limits
+// evaluates data blocks as usual.
+func TestDataEvaluatesWithoutLimit(t *testing.T) {
 	root := t.TempDir()
 	writeModule(t, root, "mod", map[string]string{"main.tf": `
 resource "aws_s3_bucket" "r" {}
@@ -299,10 +238,9 @@ module "mod" {
 `})
 
 	e := New()
-	e.SetMaxInstantiated(0)
 	_, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
 	require.NoError(t, err)
-	require.False(t, e.BudgetExceeded())
+	require.True(t, e.Report().Complete())
 	// The module evaluated as usual and its data block expanded.
 	require.Positive(t, e.DataBlockEvaluations())
 	require.Empty(t, e.NotEvaluatedDirs())
@@ -603,7 +541,7 @@ resource "aws_sqs_queue_policy" "p" {
 	require.Contains(t, doc["policy"], `arn:aws:sqs:us-east-1:1:q`)
 }
 
-func TestDataInstancesChargeBudget(t *testing.T) {
+func TestDataInstancesCountTowardInstanceLimit(t *testing.T) {
 	files := map[string]string{"main.tf": `
 resource "aws_s3_bucket" "a" {}
 resource "aws_s3_bucket" "b" {}
@@ -611,22 +549,18 @@ data "aws_region" "r" {}
 data "aws_caller_identity" "c" {}
 `}
 
-	e := New()
-	e.SetMaxInstantiated(5)
+	e := limitedEvaluator(4)
 	resources := evaluateWithChild(t, e, files, callChild)
 	findResource(t, resources, "aws_s3_bucket", "a")
-	require.Equal(t, 4, e.InstantiatedCount())
-	require.False(t, e.BudgetExceeded())
+	require.EqualValues(t, 4, e.guard.Instances())
 
-	// A module whose resources and data together exceed the budget is not
-	// instantiated, as one whose resources alone do.
-	e = New()
-	e.SetMaxInstantiated(3)
-	resources = evaluateWithChild(t, e, files, callChild)
-	for _, r := range resources {
-		require.NotEqual(t, "aws_s3_bucket", r.Type)
-	}
-	require.True(t, e.BudgetExceeded())
+	// Resources and data together exceed a limit of three.
+	root := t.TempDir()
+	writeModule(t, root, "child", files)
+	dir := writeModule(t, root, "root", map[string]string{"main.tf": callChild})
+	e = limitedEvaluator(3)
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	requireStoppedAt(t, e, resources, err)
 }
 
 // TestDataReferenceCycleTerminates evaluates data blocks reading each other
@@ -669,11 +603,10 @@ data "aws_iam_policy_document" "b" {
 	require.Equal(t, docs, dataDocs())
 }
 
-// TestDataRefreshDoesNotRechargeBudget builds a source_policy_documents chain
-// that settles only after several refresh passes. The blocks are charged once:
-// with a budget of five, pass-scoped charging (four blocks times the passes)
-// would exceed it and leave the module scanned as written.
-func TestDataRefreshDoesNotRechargeBudget(t *testing.T) {
+// TestDataRefreshCountsInstancesOnce builds a source_policy_documents chain
+// that settles only after several refresh passes. The instances are counted
+// once: with a limit of four, counting every pass would exceed it.
+func TestDataRefreshCountsInstancesOnce(t *testing.T) {
 	files := map[string]string{"main.tf": `
 data "aws_iam_policy_document" "d1" {
   statement {
@@ -694,8 +627,7 @@ data "aws_iam_policy_document" "d4" {
   source_policy_documents = [data.aws_iam_policy_document.d3.json]
 }
 `}
-	e := New()
-	e.SetMaxInstantiated(5)
+	e := limitedEvaluator(4)
 	resources := evaluateWithChild(t, e, files, callChild)
 	var data int
 	for _, r := range resources {
@@ -704,8 +636,7 @@ data "aws_iam_policy_document" "d4" {
 		}
 	}
 	require.Equal(t, 4, data)
-	require.Equal(t, 4, e.InstantiatedCount())
-	require.False(t, e.BudgetExceeded())
+	require.EqualValues(t, 4, e.guard.Instances())
 }
 
 func findData(t *testing.T, data []ResolvedResource, typ, name string) ResolvedResource {

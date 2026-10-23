@@ -28,6 +28,7 @@ import (
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	dockerComposeParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose"
@@ -43,6 +44,8 @@ type Results struct {
 	ExtractedPaths provider.ExtractedPath
 	Files          model.FileMetadatas
 	FailedQueries  map[string]error
+	// Incomplete lists why the scan left part of its input unevaluated.
+	Incomplete []model.IncompleteReason
 }
 
 type executeScanParameters struct {
@@ -151,6 +154,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		inspector.SetRemoteModuleProvenance(remoteModuleProvenance)
 	}
 	inspector.SetExternalModulePaths(remoteModulePaths)
+	inspector.SetModuleEvaluationLimits(tfeval.Limits{MaxInstances: c.ScanParams.TerraformMaxInstances})
 	if c.inMemory {
 		inspector.SetMergeAllow(append(append([]string{}, c.inMemoryPaths...), remoteModulePaths...))
 	} else {
@@ -282,7 +286,22 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 		ExtractedPaths: executeScanParameters.extractedPaths,
 		Files:          files,
 		FailedQueries:  failedQueries,
+		Incomplete:     incompleteReasons(executeScanParameters.inspector.ModuleEvaluationReport()),
 	}, nil
+}
+
+// incompleteReasons converts what module evaluation could not evaluate into
+// the reasons a scan reports itself incomplete for.
+func incompleteReasons(report *tfeval.Report) []model.IncompleteReason {
+	incomplete := report.Incomplete()
+	if len(incomplete) == 0 {
+		return nil
+	}
+	out := make([]model.IncompleteReason, len(incomplete))
+	for i, inc := range incomplete {
+		out[i] = model.IncompleteReason{Reason: inc.Reason, Count: inc.Count, Examples: inc.Examples}
+	}
+	return out
 }
 
 func useDifferentPlatformQueries(platforms *[]string) {

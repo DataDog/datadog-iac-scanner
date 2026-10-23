@@ -7,6 +7,7 @@ package tfeval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -149,13 +150,11 @@ module "beta" {
 	}
 }
 
-// A module the evaluator declines to evaluate must be reported as not evaluated
-// rather than as a module that resolved to nothing. The caller uses that to keep
-// it in the scan, so conflating the two silently drops it.
-func TestEvaluate_DepthCapReportsNotEvaluated(t *testing.T) {
+// writeChain lays down depth module levels, each calling the next once; the
+// last declares the resource.
+func writeChain(t *testing.T, depth int) string {
+	t.Helper()
 	root := t.TempDir()
-	// One level deeper than the evaluator will follow.
-	depth := defaultMaxDepth + 3
 	for i := 0; i < depth; i++ {
 		dir := filepath.Join(root, fmt.Sprintf("lvl%02d", i))
 		body := "variable \"in\" { type = string }\n"
@@ -171,144 +170,159 @@ func TestEvaluate_DepthCapReportsNotEvaluated(t *testing.T) {
 			t.Fatalf("write: %v", err)
 		}
 	}
+	return root
+}
 
+// Module nesting has no depth limit: Terraform has none, and a chain without
+// a cycle ends after as many levels as it has directories. Every level of a
+// chain far deeper than the 15 levels evaluation once stopped at resolves.
+func TestEvaluate_DeepChainEvaluatesEveryLevel(t *testing.T) {
+	const depth = 40
+	root := writeChain(t, depth)
 	e := New()
-	_, _, visited, err := e.EvaluateModule(context.Background(), filepath.Join(root, "lvl00"),
+	resources, _, visited, err := e.EvaluateModule(context.Background(), filepath.Join(root, "lvl00"),
 		map[string]cty.Value{"in": cty.StringVal("seed")})
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
-
-	// The levels past the cap were never resolved, so they must not be recorded as
-	// evaluated — otherwise their bodies are suppressed with nothing standing in.
-	for i := defaultMaxDepth + 1; i < depth; i++ {
-		dir := filepath.Join(root, fmt.Sprintf("lvl%02d", i))
-		if visited[dir] {
-			t.Errorf("%s was not evaluated (past the depth cap) but is recorded as visited, "+
-				"so it would be dropped from the scan", dir)
+	if len(resources) != 1 {
+		t.Fatalf("resolved %d resources, want the leaf", len(resources))
+	}
+	want := strings.Repeat("module.next.", depth-1)
+	if got := resources[0].ModuleAddress + "."; got != want {
+		t.Fatalf("leaf address %q, want %q", got, want)
+	}
+	if len(resources[0].CallChain) != depth-1 {
+		t.Fatalf("leaf call chain has %d hops, want %d", len(resources[0].CallChain), depth-1)
+	}
+	for i := 1; i < depth; i++ {
+		if dir := filepath.Join(root, fmt.Sprintf("lvl%02d", i)); !visited[dir] {
+			t.Errorf("%s was not recorded as evaluated", dir)
 		}
+	}
+	if !e.Report().Complete() || len(e.NotEvaluatedDirs()) != 0 {
+		t.Fatalf("deep chain reported incomplete: %v, skipped %v", e.Report().Incomplete(), e.NotEvaluatedDirs())
 	}
 }
 
-// The instantiation budget is a backstop for shapes that are genuinely enormous.
-// It must stop the recursion rather than let a single root grow without bound.
-func TestInstantiationBudget_StopsRecursion(t *testing.T) {
+// A module calling itself is the one recursion Terraform rejects. It is
+// reported, and its directory is left to be scanned as written.
+func TestEvaluate_ModuleCycleIsReportedIncomplete(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "a", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "a" {}
+module "b" { source = "../b" }
+`})
+	writeModule(t, root, "b", map[string]string{"main.tf": `
+module "a" { source = "../a" }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `module "a" { source = "../a" }`})
+	e := New()
+	_, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	inc := e.Report().Incomplete()
+	if len(inc) != 1 || inc[0].Reason != ReasonModuleCycle || inc[0].Examples[0] != "module.a.module.b.module.a" {
+		t.Fatalf("incomplete = %+v, want the cycle at module.a.module.b.module.a", inc)
+	}
+	if !slicesContain(e.NotEvaluatedDirs(), filepath.Join(root, "a")) {
+		t.Fatalf("cycle directory not reported as not evaluated: %v", e.NotEvaluatedDirs())
+	}
+}
+
+func slicesContain(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
+// The instance limit is an explicit boundary: past it the evaluation fails as
+// a whole, rather than returning the instances that fit.
+func TestInstanceLimit_StopsRecursionExplicitly(t *testing.T) {
 	stack := writeNestedFanOut(t, 10, 3)
 
 	unbounded := New()
-	unbounded.SetMaxInstantiated(0)
 	all, _, _, err := unbounded.EvaluateModule(context.Background(), stack, nil)
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
-	if unbounded.BudgetExceeded() {
-		t.Error("budget reported exceeded when disabled")
+	if len(all) != 19683 || !unbounded.Report().Complete() {
+		t.Fatalf("unbounded run resolved %d resources, want all 3^9", len(all))
 	}
 
-	bounded := New()
-	bounded.SetMaxInstantiated(4)
+	bounded := limitedEvaluator(4)
 	limited, _, _, err := bounded.EvaluateModule(context.Background(), stack, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	if !bounded.BudgetExceeded() {
-		t.Error("budget was not reported as exceeded")
-	}
-	if len(limited) >= len(all) {
-		t.Errorf("bounded run resolved %d resources, want fewer than the %d of an unbounded run",
-			len(limited), len(all))
-	}
+	requireStoppedAt(t, bounded, limited, err)
 }
 
-func TestInstantiationBudget_CountsFinalInstancesOnce(t *testing.T) {
+func TestInstanceLimit_CountsFinalInstancesOnce(t *testing.T) {
 	stack := writeNestedFanOut(t, 12, 3)
 
-	e := New()
-	e.SetMaxInstantiated(300000)
+	const want = 177147
+	e := limitedEvaluator(want)
 	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
 	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
+		t.Fatalf("EvaluateModule at exactly the limit: %v", err)
 	}
-
-	const want = 177147
 	if got := len(resources); got != want {
-		t.Fatalf("resolved %d resources after counting %d, want %d below the %d-resource budget",
-			got, e.instantiated, want, e.maxInstantiated)
+		t.Fatalf("resolved %d resources, want %d", got, want)
 	}
-	if e.BudgetExceeded() {
-		t.Fatalf("budget was exhausted after resolving %d resources below its %d limit",
-			len(resources), e.maxInstantiated)
-	}
-	if e.instantiated != len(resources) {
-		t.Fatalf("budget counted %d instances for %d returned resources",
-			e.instantiated, len(resources))
+	if got := e.guard.Instances(); got != want {
+		t.Fatalf("counted %d instances for %d returned resources", got, len(resources))
 	}
 }
 
-// Instantiated resources become documents that live until the scan ends, so the
-// budget has to bound their total. A budget handed back at every root boundary
-// bounds nothing, because the number of roots in a repository is not bounded.
-func TestInstantiationBudget_SpansRootsRatherThanResettingPerRoot(t *testing.T) {
+// Instantiated resources become documents that live until the scan ends, so
+// the limit spans every root of the scan, and counts root module resources
+// like module ones.
+func TestInstanceLimit_SpansRootsAndCountsRootResources(t *testing.T) {
+	root := t.TempDir()
+	stackA := writeModule(t, root, "a", map[string]string{"main.tf": `resource "aws_iam_role" "r" { count = 80 }`})
+	stackB := writeModule(t, root, "b", map[string]string{"main.tf": `resource "aws_iam_role" "r" { count = 80 }`})
+	guard := NewGuard(Limits{MaxInstances: 100})
 	e := New()
-	e.SetMaxInstantiated(100)
+	e.SetGuard(guard)
 	ctx := context.Background()
 
-	if !e.chargeInstantiationBudget(ctx, 80) {
-		t.Fatal("80 resources should fit a budget of 100")
+	a, _, _, err := e.EvaluateModule(ctx, stackA, nil)
+	if err != nil || len(a) != 80 {
+		t.Fatalf("first root: %d resources, %v", len(a), err)
 	}
-
-	e.ResetSpeculativeBudget()
-
-	if e.chargeInstantiationBudget(ctx, 80) {
-		t.Fatal("a second root was granted 80 more instances on a budget of 100")
+	fork := e.Fork()
+	b, _, _, err := fork.EvaluateModule(ctx, stackB, nil)
+	if !errors.Is(err, ErrEvaluationStopped) || len(b) != 0 {
+		t.Fatalf("second root on a forked evaluator: %d resources, %v; want it stopped", len(b), err)
 	}
-	if !e.BudgetExceeded() {
-		t.Fatal("the budget stopped the recursion but was not reported as exceeded")
+	if reason, _ := guard.Stopped(); reason != ReasonInstanceLimit {
+		t.Fatalf("guard stopped for %q", reason)
 	}
-	if !e.chargeInstantiationBudget(ctx, 20) {
-		t.Fatal("20 resources should still fit the 20 remaining of a budget of 100")
+	// The guard stays tripped: a later root is not evaluated in part.
+	if again, _, _, err := e.EvaluateModule(ctx, stackA, nil); !errors.Is(err, ErrEvaluationStopped) || len(again) != 0 {
+		t.Fatalf("root after the limit: %d resources, %v", len(again), err)
 	}
 }
 
-func TestInstantiationBudget_BoundsTotalAcrossManyRoots(t *testing.T) {
-	const (
-		budget = 500
-		roots  = 40
-	)
-
-	shared := writeNestedFanOut(t, 6, 2)
-	repo := filepath.Dir(shared)
-
+// Cancelling the scan stops evaluation explicitly; nothing evaluated before
+// the cancellation is passed off as the whole module.
+func TestEvaluate_CancellationStopsExplicitly(t *testing.T) {
+	stack := writeNestedFanOut(t, 10, 3)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	e := New()
-	e.SetMaxInstantiated(budget)
-
-	total := 0
-	for i := 0; i < roots; i++ {
-		dir := filepath.Join(repo, fmt.Sprintf("root%02d", i))
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-		body := fmt.Sprintf("module \"m\" {\n  source = \"../lvl00\"\n  in = \"seed%d\"\n}\n", i)
-		if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(body), 0o644); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-
-		e.ResetSpeculativeBudget()
-		resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-		if err != nil {
-			t.Fatalf("EvaluateModule root %d: %v", i, err)
-		}
-		total += len(resources)
+	resources, _, _, err := e.EvaluateModule(ctx, stack, nil)
+	if !errors.Is(err, ErrEvaluationStopped) || len(resources) != 0 {
+		t.Fatalf("cancelled evaluation: %d resources, %v", len(resources), err)
 	}
-
-	if total > budget {
-		t.Errorf("%d roots instantiated %d resources against a budget of %d", roots, total, budget)
+	if reason, _ := e.guard.Stopped(); reason != ReasonCanceled {
+		t.Fatalf("guard stopped for %q, want cancellation", reason)
 	}
-	if total == 0 {
-		t.Error("no resources resolved at all")
-	}
-	if !e.BudgetExceeded() {
-		t.Error("the budget bound the scan but was never reported as exceeded")
+	// Work stops within one check interval rather than after the whole tree.
+	if n := e.Report().ModuleEvaluations; n > guardCheckEvery {
+		t.Fatalf("%d module evaluations ran after cancellation", n)
 	}
 }
 
@@ -343,269 +357,4 @@ resource "test_resource" "root" {
 	}
 	r := findResource(t, resources, "test_resource", "root")
 	requireString(t, r.Attributes, "value", filepath.ToSlash(rootB))
-}
-
-func TestEvalCache_DoesNotReuseDepthTruncatedResult(t *testing.T) {
-	root := t.TempDir()
-	leaf := filepath.Join(root, "leaf")
-	target := filepath.Join(root, "target")
-	for _, dir := range []string{leaf, target} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", dir, err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(leaf, "main.tf"), []byte(`
-variable "in" { type = string }
-resource "aws_s3_bucket" "leaf" { bucket = var.in }
-`), 0o644); err != nil {
-		t.Fatalf("write leaf: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(target, "main.tf"), []byte(`
-variable "in" { type = string }
-resource "aws_s3_bucket" "target" { bucket = var.in }
-module "leaf" {
-  source = "../leaf"
-  in     = var.in
-}
-`), 0o644); err != nil {
-		t.Fatalf("write target: %v", err)
-	}
-
-	e := New()
-	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
-	partial, _, err := e.evaluate(
-		context.Background(), target, target, "", inputs, "module.deep", nil,
-		e.maxDepth, map[string]bool{}, map[string]bool{},
-	)
-	if err != nil {
-		t.Fatalf("deep evaluate: %v", err)
-	}
-	if len(partial) != 1 {
-		t.Fatalf("deep evaluate returned %d resources, want the target resource only", len(partial))
-	}
-	key := evalCacheKey{dir: target, rootDir: target, inputs: canonicalInputsKey(inputs)}
-	if _, ok := e.cache[key]; ok {
-		t.Fatal("depth-truncated evaluation was cached as complete")
-	}
-
-	complete, _, err := e.evaluate(
-		context.Background(), target, target, "", inputs, "module.shallow", nil,
-		0, map[string]bool{}, map[string]bool{},
-	)
-	if err != nil {
-		t.Fatalf("shallow evaluate: %v", err)
-	}
-	if len(complete) != 2 {
-		t.Fatalf("shallow evaluate returned %d resources, want target and leaf", len(complete))
-	}
-}
-
-func TestEvalCache_DoesNotReuseResultCachedFromDeeperDepth(t *testing.T) {
-	root := t.TempDir()
-	leaf := filepath.Join(root, "leaf")
-	mid := filepath.Join(root, "mid")
-	wrapper := filepath.Join(root, "wrapper")
-	for _, dir := range []string{leaf, mid, wrapper} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", dir, err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(leaf, "main.tf"), []byte(`
-variable "in" { type = string }
-resource "aws_s3_bucket" "leaf" { bucket = var.in }
-`), 0o644); err != nil {
-		t.Fatalf("write leaf: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(mid, "main.tf"), []byte(`
-variable "in" { type = string }
-resource "aws_s3_bucket" "mid" { bucket = var.in }
-module "leaf" {
-  source = "../leaf"
-  in     = var.in
-}
-`), 0o644); err != nil {
-		t.Fatalf("write mid: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(wrapper, "main.tf"), []byte(`
-variable "in" { type = string }
-module "mid" {
-  source = "../mid"
-  in     = var.in
-}
-`), 0o644); err != nil {
-		t.Fatalf("write wrapper: %v", err)
-	}
-
-	e := New()
-	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
-	deepDepth := e.maxDepth - 1
-	deep, _, err := e.evaluate(
-		context.Background(), mid, mid, "", inputs, "module.deep", nil,
-		deepDepth, map[string]bool{}, map[string]bool{},
-	)
-	if err != nil {
-		t.Fatalf("deep evaluate: %v", err)
-	}
-	if len(deep) != 2 {
-		t.Fatalf("deep evaluate returned %d resources, want mid and leaf", len(deep))
-	}
-	key := evalCacheKey{dir: mid, rootDir: mid, inputs: canonicalInputsKey(inputs)}
-	entry, ok := e.cache[key]
-	if !ok {
-		t.Fatal("expected mid module to cache its partial deep evaluation")
-	}
-	if entry.evalDepth != deepDepth {
-		t.Fatalf("cached evalDepth = %d, want %d", entry.evalDepth, deepDepth)
-	}
-
-	shallow, _, err := e.evaluate(
-		context.Background(), mid, mid, "", inputs, "module.shallow", nil,
-		0, map[string]bool{}, map[string]bool{},
-	)
-	if err != nil {
-		t.Fatalf("shallow evaluate: %v", err)
-	}
-	if len(shallow) != 2 {
-		t.Fatalf("shallow evaluate returned %d resources, want mid and leaf", len(shallow))
-	}
-}
-
-func TestInstantiationBudget_IgnoresRootInlineResources(t *testing.T) {
-	root := t.TempDir()
-	modDir := filepath.Join(root, "modules", "bucket")
-	inlineDir := filepath.Join(root, "inline")
-	requireRoot := func(t *testing.T, err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatalf("setup: %v", err)
-		}
-	}
-	requireRoot(t, os.MkdirAll(inlineDir, 0o755))
-	requireRoot(t, os.MkdirAll(filepath.Join(root, "stack"), 0o755))
-	requireRoot(t, os.MkdirAll(modDir, 0o755))
-	requireRoot(t, os.WriteFile(filepath.Join(modDir, "main.tf"), []byte(`
-resource "aws_s3_bucket" "this" {}
-`), 0o644))
-
-	var inlineResources strings.Builder
-	for i := 0; i < 200; i++ {
-		fmt.Fprintf(&inlineResources, "resource \"aws_iam_role\" \"r%d\" {}\n", i)
-	}
-	requireRoot(t, os.WriteFile(filepath.Join(inlineDir, "main.tf"), []byte(inlineResources.String()), 0o644))
-	requireRoot(t, os.WriteFile(filepath.Join(root, "stack", "main.tf"), []byte(`
-module "bucket" { source = "../modules/bucket" }
-`), 0o644))
-
-	e := New()
-	ctx := context.Background()
-
-	e.SetMaxInstantiated(0)
-	_, _, _, err := e.EvaluateModule(ctx, inlineDir, nil)
-	if err != nil {
-		t.Fatalf("inline-only root: %v", err)
-	}
-	if e.instantiated != 0 {
-		t.Fatalf("inline-only root charged %d resources against the retained-document budget", e.instantiated)
-	}
-
-	e.SetMaxInstantiated(10)
-	e.ResetSpeculativeBudget()
-	resources, _, _, err := e.EvaluateModule(ctx, filepath.Join(root, "stack"), nil)
-	if err != nil {
-		t.Fatalf("module root: %v", err)
-	}
-	if got := moduleResourceCount(resources); got != 1 {
-		t.Fatalf("module root resolved %d module resources, want 1", got)
-	}
-	if e.instantiated != 1 {
-		t.Fatalf("module root charged %d retained resources, want 1", e.instantiated)
-	}
-}
-
-func TestInstantiationBudget_RollsBackFailedRootCharges(t *testing.T) {
-	root := t.TempDir()
-	modDir := filepath.Join(root, "modules", "bucket")
-	requireRoot := func(t *testing.T, err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatalf("setup: %v", err)
-		}
-	}
-	requireRoot(t, os.MkdirAll(filepath.Join(root, "stack-a"), 0o755))
-	requireRoot(t, os.MkdirAll(filepath.Join(root, "stack-b"), 0o755))
-	requireRoot(t, os.MkdirAll(modDir, 0o755))
-	requireRoot(t, os.WriteFile(filepath.Join(modDir, "main.tf"), []byte(`
-resource "aws_s3_bucket" "this" {}
-`), 0o644))
-	requireRoot(t, os.WriteFile(filepath.Join(root, "stack-a", "main.tf"), []byte(`
-module "bucket" { source = "../modules/bucket" }
-resource "aws_iam_role" "many" { count = 100 }
-`), 0o644))
-	requireRoot(t, os.WriteFile(filepath.Join(root, "stack-b", "main.tf"), []byte(`
-module "bucket" { source = "../modules/bucket" }
-`), 0o644))
-
-	e := New()
-	e.SetMaxInstantiated(10)
-	ctx := context.Background()
-
-	before := e.InstantiatedCount()
-	_, _, _, err := e.EvaluateModule(ctx, filepath.Join(root, "stack-a"), nil)
-	if err == nil {
-		t.Fatal("expected stack-a to fail once root expansion exceeds the remaining budget")
-	}
-	if e.InstantiatedCount() != before {
-		t.Fatalf("failed root left %d charged instances, want rollback to %d",
-			e.InstantiatedCount(), before)
-	}
-
-	e.ResetSpeculativeBudget()
-	resources, _, _, err := e.EvaluateModule(ctx, filepath.Join(root, "stack-b"), nil)
-	if err != nil {
-		t.Fatalf("stack-b should still fit after rollback: %v", err)
-	}
-	if got := moduleResourceCount(resources); got != 1 {
-		t.Fatalf("stack-b resolved %d module resources, want 1", got)
-	}
-}
-
-// Whether a module was resolved is decided per directory by the caller, but the
-// stops are per call site: the same directory can be resolved on one path and
-// skipped on another. Every skipped directory has to be reported, or the caller
-// suppresses a body whose skipped instances nothing replaces.
-func TestNotEvaluatedDirs_ReportsSkippedDirectories(t *testing.T) {
-	stack := writeNestedFanOut(t, 10, 3)
-
-	unbounded := New()
-	unbounded.SetMaxInstantiated(0)
-	if _, _, _, err := unbounded.EvaluateModule(context.Background(), stack, nil); err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	if dirs := unbounded.NotEvaluatedDirs(); len(dirs) != 0 {
-		t.Errorf("nothing was skipped, yet %d directories are reported as not evaluated: %v",
-			len(dirs), dirs)
-	}
-
-	bounded := New()
-	bounded.SetMaxInstantiated(4)
-	if _, _, _, err := bounded.EvaluateModule(context.Background(), stack, nil); err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	skipped := bounded.NotEvaluatedDirs()
-	if len(skipped) == 0 {
-		t.Fatal("the budget stopped the recursion but no directory is reported as not evaluated")
-	}
-	for _, dir := range skipped {
-		if !strings.HasPrefix(dir, filepath.Dir(stack)) {
-			t.Errorf("reported directory %s is outside the fixture", dir)
-		}
-	}
-
-	// A root boundary returns the speculative allowance, but a skipped directory
-	// stays skipped: the caller's suppression decision spans every root.
-	bounded.ResetSpeculativeBudget()
-	if got := len(bounded.NotEvaluatedDirs()); got != len(skipped) {
-		t.Errorf("resetting the budget changed the skipped set from %d to %d directories",
-			len(skipped), got)
-	}
 }

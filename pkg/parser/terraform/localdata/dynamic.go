@@ -7,7 +7,6 @@
 package localdata
 
 import (
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
@@ -32,8 +31,7 @@ type scopedBlock struct {
 
 // blocks returns the blocks of type typ in content, in source order, with those
 // a dynamic block of that type generates. A dynamic block whose for_each does
-// not resolve, or asks for more than the block or document cap, generates none
-// and marks the document as incomplete.
+// not resolve generates none and marks the document as incomplete.
 func (d decoder) blocks(content *hcl.BodyContent, typ string) []scopedBlock {
 	var out []scopedBlock
 	for _, block := range content.Blocks {
@@ -61,12 +59,6 @@ func (d decoder) expand(block *hcl.Block, typ string) []scopedBlock {
 		*d.skipped = true
 		return nil
 	}
-	count := forEach.LengthInt()
-	if count > dynamicblock.MaxExpansion || count > *d.budget {
-		*d.skipped = true
-		return nil
-	}
-	*d.budget -= count
 	name := typ
 	if attr := dyn.Attributes["iterator"]; attr != nil {
 		if kw := hcl.ExprAsKeyword(attr.Expr); kw != "" {
@@ -85,7 +77,7 @@ func (d decoder) expand(block *hcl.Block, typ string) []scopedBlock {
 // bind returns a decoder evaluating in the scope of vars as well.
 func (d decoder) bind(vars map[string]cty.Value) decoder {
 	parent := d.eval
-	return decoder{skipped: d.skipped, budget: d.budget, eval: func(expr hcl.Expression) (cty.Value, bool) {
+	return decoder{skipped: d.skipped, eval: func(expr hcl.Expression) (cty.Value, bool) {
 		return parent(partial.Bind(expr, vars))
 	}}
 }

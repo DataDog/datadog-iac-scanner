@@ -44,7 +44,7 @@ func newRenderer(r *ResolvedResource) *partial.Renderer {
 	ctx := r.Scope.evalCtx
 	if r.Iteration != nil {
 		ctx = ctx.NewChild()
-		ctx.Variables = r.Iteration
+		ctx.Variables = r.Iteration.Variables()
 	}
 	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources)}
 }

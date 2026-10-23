@@ -7,6 +7,8 @@
 package tfeval
 
 import (
+	"context"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -15,11 +17,11 @@ import (
 
 // addDynamicBlocks adds the nested blocks a dynamic block generates to out, in
 // the shape a block written once per element would have. A dynamic block whose
-// for_each or labels do not resolve, or which asks for more blocks than the caps
-// allow, is kept as written. The budget is claimed per dynamic block, so a block
-// nested in the content of an expanded parent can find it spent and stay as
-// written while its siblings were expanded.
-func (e *Evaluator) addDynamicBlocks(out map[string]cty.Value, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState) {
+// for_each or labels do not resolve is kept as written; one that resolves
+// generates every block it declares.
+func (e *Evaluator) addDynamicBlocks(
+	gctx context.Context, out *blockSet, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState,
+) {
 	content := dynamicblock.Content(b)
 	exp := dynamicblock.Expand(b, ctx)
 	name := dynamicblock.IteratorName(b)
@@ -29,20 +31,18 @@ func (e *Evaluator) addDynamicBlocks(out map[string]cty.Value, b *hclsyntax.Bloc
 	if resolved {
 		scopes, paths, resolved = generatedBlocks(b, exp.Iterators, name, ctx)
 	}
-	if resolved && !st.reserveDynamic(len(exp.Iterators)) {
-		st.noteDynamicOverflow(b, exp.Requested, dynamicblock.MaxGeneratedPerResource)
-		resolved = false
-	} else if content != nil && exp.OverCap {
-		st.noteDynamicOverflow(b, exp.Requested, dynamicblock.MaxExpansion)
-	}
 	if !resolved {
 		st.recordDynamic(b, keptAsWritten)
-		addNestedBlock(out, append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st.withoutMemo())))
+		out.add(append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(gctx, b.Body, ctx, nil, st.withoutMemo())))
 		return
 	}
 	st.recordDynamic(b, len(scopes))
+	inner := st.inDynamic(name)
 	for i, scope := range scopes {
-		addNestedBlock(out, paths[i], objectOrEmpty(e.evalBodyWith(content, scope, nil, st.inDynamic(name))))
+		if !e.step(gctx) {
+			return
+		}
+		out.add(paths[i], objectOrEmpty(e.evalBodyWith(gctx, content, scope, nil, inner)))
 	}
 }
 
@@ -65,35 +65,6 @@ func generatedBlocks(
 		paths[i] = append([]string{dynamicblock.GeneratedType(b)}, labels...)
 	}
 	return scopes, paths, true
-}
-
-// dynamicOverflow is a dynamic block kept as written because it asked for more
-// blocks than a cap allows.
-type dynamicOverflow struct {
-	label     string
-	requested int
-	limit     int
-}
-
-// reserveDynamic claims n generated blocks of the resource instance's budget.
-func (st *bodyState) reserveDynamic(n int) bool {
-	if st == nil || st.dynamic == nil {
-		return true
-	}
-	if st.dynamic.generated+n > dynamicblock.MaxGeneratedPerResource {
-		return false
-	}
-	st.dynamic.generated += n
-	return true
-}
-
-func (st *bodyState) noteDynamicOverflow(b *hclsyntax.Block, requested, limit int) {
-	if st == nil || st.dynamic == nil {
-		return
-	}
-	st.dynamic.overflow = append(st.dynamic.overflow, dynamicOverflow{
-		label: dynamicblock.GeneratedType(b), requested: requested, limit: limit,
-	})
 }
 
 // DynamicCounts maps a dynamic block to how many blocks it generated, or to

@@ -194,9 +194,38 @@ type sarifTaxonomy struct {
 
 // SarifRun - sarifRun is a component of the SARIF report
 type SarifRun struct {
-	Tool       sarifTool       `json:"tool"`
-	Results    []sarifResult   `json:"results"`
-	Taxonomies []sarifTaxonomy `json:"taxonomies,omitempty"`
+	Tool        sarifTool         `json:"tool"`
+	Invocations []sarifInvocation `json:"invocations,omitempty"`
+	Results     []sarifResult     `json:"results"`
+	Taxonomies  []sarifTaxonomy   `json:"taxonomies,omitempty"`
+}
+
+// sarifInvocation describes how the scan ran; it is only emitted for a scan
+// that left part of its input unevaluated, which its notifications explain.
+type sarifInvocation struct {
+	ExecutionSuccessful        bool                `json:"executionSuccessful"`
+	ToolExecutionNotifications []sarifNotification `json:"toolExecutionNotifications,omitempty"`
+}
+
+type sarifNotification struct {
+	Descriptor sarifNotificationDescriptor `json:"descriptor"`
+	Level      string                      `json:"level"`
+	Message    sarifNotificationMessage    `json:"message"`
+	Properties sarifNotificationProps      `json:"properties"`
+}
+
+type sarifNotificationDescriptor struct {
+	ID string `json:"id"`
+}
+
+type sarifNotificationMessage struct {
+	Text string `json:"text"`
+}
+
+type sarifNotificationProps struct {
+	Reason   string   `json:"reason"`
+	Count    int      `json:"count"`
+	Examples []string `json:"examples,omitempty"`
 }
 
 // SarifReport represents a usable sarif report reference
@@ -219,7 +248,9 @@ const (
 	diffAwareBaseShaTag      = "DATADOG_DIFF_AWARE_BASE_SHA:%s"
 	diffAwareFileTag         = "DATADOG_DIFF_AWARE_FILE:%s"
 	executionTimeTag         = "DATADOG_EXECUTION_TIME_SECS:%v"
+	scanCompleteTag          = "DATADOG_SCAN_COMPLETE:%t"
 	sarifWriteBufferSize     = 64 << 10
+	incompleteNotificationID = "datadog-iac-scanner/scan-incomplete"
 	ruleTypeProperty         = "DATADOG_RULE_TYPE:IAC_SCANNING"
 	categoryTag              = "DATADOG_CATEGORY:%s"
 	severityTag              = "DATADOG_SEVERITY:%s"
@@ -346,6 +377,11 @@ func (sr *sarifReport) EncodeJSON(w io.Writer) error {
 func (run *SarifRun) encodeJSON(bw *bufio.Writer, put func(string, interface{}) error) error {
 	if err := put(`{"tool":`, run.Tool); err != nil {
 		return err
+	}
+	if len(run.Invocations) > 0 {
+		if err := put(`,"invocations":`, run.Invocations); err != nil {
+			return err
+		}
 	}
 	if run.Results == nil {
 		_, _ = bw.WriteString(`,"results":null`)
@@ -779,6 +815,11 @@ func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diff
 		tagsToAppend = append(tagsToAppend, diffAwareConfigDigestTag, diffAwareBaseShaTag, diffAwareFileTag)
 	}
 
+	if len(summary.Incomplete) > 0 {
+		tagsToAppend = append(tagsToAppend, fmt.Sprintf(scanCompleteTag, false))
+		sr.Runs[0].Invocations = []sarifInvocation{incompleteInvocation(summary.Incomplete)}
+	}
+
 	sarifToolProperties := &sr.Runs[0].Tool.Driver.Properties
 	sarifToolProperties.Tags = append(
 		sarifToolProperties.Tags,
@@ -786,6 +827,24 @@ func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diff
 	)
 
 	return nil
+}
+
+// incompleteInvocation reports every reason the scan is incomplete as a
+// notification. The execution itself succeeded: its findings are valid, but
+// the input the notifications describe may have findings that are missing.
+func incompleteInvocation(reasons []model.IncompleteReason) sarifInvocation {
+	inv := sarifInvocation{ExecutionSuccessful: true}
+	for _, r := range reasons {
+		inv.ToolExecutionNotifications = append(inv.ToolExecutionNotifications, sarifNotification{
+			Descriptor: sarifNotificationDescriptor{ID: incompleteNotificationID},
+			Level:      "warning",
+			Message: sarifNotificationMessage{Text: fmt.Sprintf(
+				"Terraform evaluation incomplete (%s, %d occurrences): the affected configuration was scanned as written and findings may be missing",
+				r.Reason, r.Count)},
+			Properties: sarifNotificationProps{Reason: r.Reason, Count: r.Count, Examples: r.Examples},
+		})
+	}
+	return inv
 }
 
 func logVulnerabilityLineEmpty(ctx context.Context, lineWithVulnerability, platform, queryName, fileName string, line int) {

@@ -65,15 +65,41 @@ resource "aws_s3_bucket" "root" { bucket = "stack%d-root" }
 	return dirs
 }
 
-// cachedResources counts the ResolvedResource structs the evaluation cache is
-// holding. Every entry stores its whole subtree, so this is what a scan actually
-// retains, not the number of resources it reports.
+// cachedResources counts the ResolvedResource structs the evaluation cache
+// keeps reachable: the results its entries point into, each counted once.
 func cachedResources(e *Evaluator) int {
+	results := map[*[]ResolvedResource]bool{}
 	total := 0
 	for _, entry := range e.cache {
-		total += len(entry.resources)
+		if !results[entry.result] {
+			results[entry.result] = true
+			total += len(*entry.result)
+		}
 	}
 	return total
+}
+
+// The cache holds no copy of what it caches: without a speculative sibling
+// pass, every entry is a range of the root's own result, so a root of any size
+// is stored once whatever the number of cache entries.
+func TestEvalCache_EntriesAreRangesOfTheRootResult(t *testing.T) {
+	dirs := writeSharedModuleFanout(t, t.TempDir(), 1, 6, 4)
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dirs[0], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(e.cache) < 6 {
+		t.Fatalf("%d cache entries, want one per module level at least", len(e.cache))
+	}
+	for key, entry := range e.cache {
+		if len(*entry.result) != len(resources) || &(*entry.result)[0] != &resources[0] {
+			t.Fatalf("entry %v points into a result other than the root's", key.dir)
+		}
+	}
+	if got := cachedResources(e); got != len(resources) {
+		t.Fatalf("cache keeps %d resources reachable for a root of %d", got, len(resources))
+	}
 }
 
 // Every cache entry holds the resolved resources of its whole subtree, so holding

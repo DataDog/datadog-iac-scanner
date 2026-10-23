@@ -10,11 +10,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -1121,9 +1119,10 @@ resource "aws_y" "b" {
 	require.Contains(t, b["dynamic"], "setting")
 }
 
-// Nested dynamic blocks share one budget per top-level block: once it is spent,
-// the inner blocks that do not fit stay as written, and the rest still expand.
-func TestDynamicBlocksShareTheBlockBudget(t *testing.T) {
+// Nested dynamic blocks expand in full under every element of their parent,
+// however many blocks that adds up to: 40 x 30 is past the 1024 blocks per
+// resource once allowed.
+func TestNestedDynamicBlocksExpandInFull(t *testing.T) {
 	input := `
 resource "aws_security_group" "sg" {
   dynamic "outer" {
@@ -1155,24 +1154,17 @@ resource "aws_security_group" "sg" {
 	sg := out["resource"].(map[string]interface{})["aws_security_group"].(map[string]interface{})["sg"].(map[string]interface{})
 	outer := sg["outer"].([]interface{})
 	require.Len(t, outer, 40)
-
-	expanded, asWritten := 0, 0
 	for _, o := range outer {
 		entry := o.(map[string]interface{})
-		if inner, ok := entry["inner"].([]interface{}); ok {
-			expanded += len(inner)
-			continue
-		}
-		asWritten++
-		require.Contains(t, entry["dynamic"], "inner")
+		require.NotContains(t, entry, "dynamic")
+		inner := entry["inner"].([]interface{})
+		require.Len(t, inner, 30)
+		require.EqualValues(t, 29, inner[29].(map[string]interface{})["port"])
 	}
-	require.LessOrEqual(t, 40+expanded, dynamicblock.MaxGeneratedPerResource)
-	require.Greater(t, asWritten, 0, "the budget must run out and leave some inner blocks as written")
-	require.Greater(t, expanded, 0)
 }
 
-// A dynamic block kept as written for exceeding a cap is logged, once per file.
-func TestDynamicBlockOverflowIsLoggedOnce(t *testing.T) {
+// A dynamic block far past the 256 blocks once allowed expands in full, quietly.
+func TestLargeDynamicBlockExpandsInFull(t *testing.T) {
 	input := `
 resource "aws_security_group" "sg" {
   dynamic "ingress" {
@@ -1181,15 +1173,10 @@ resource "aws_security_group" "sg" {
       from_port = ingress.value
     }
   }
-  dynamic "egress" {
-    for_each = var.big
-    content {
-      to_port = egress.value
-    }
-  }
 }
 `
-	vals := make([]cty.Value, dynamicblock.MaxExpansion+1)
+	const n = 2000
+	vals := make([]cty.Value, n)
 	for i := range vals {
 		vals[i] = cty.NumberIntVal(int64(i))
 	}
@@ -1197,10 +1184,13 @@ resource "aws_security_group" "sg" {
 	require.False(t, diags.HasErrors())
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
-	_, err := Convert(ctx, file, VariableMap{
+	doc, err := Convert(ctx, file, VariableMap{
 		"var": cty.ObjectVal(map[string]cty.Value{"big": cty.ListVal(vals)}),
 	}, Options{})
 	require.NoError(t, err)
-	require.Equal(t, 1, strings.Count(logs.String(), `"expansion_kind":"dynamic"`), logs.String())
-	require.Contains(t, logs.String(), `"address":"dynamic.ingress"`)
+	require.Empty(t, logs.String())
+	sg := doc["resource"].(model.Document)["aws_security_group"].(model.Document)["sg"].(model.Document)
+	ingress := sg["ingress"].([]interface{})
+	require.Len(t, ingress, n)
+	require.NotContains(t, sg, "dynamic")
 }

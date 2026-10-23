@@ -102,6 +102,11 @@ var scanAction = &cli.Command{
 			Usage: "maximum traversal depth for the Terraform module graph",
 			Value: scan.DefaultRemoteModuleMaxDepth,
 		},
+		&cli.Int64Flag{
+			Name: "terraform-max-instances",
+			Usage: "stop Terraform evaluation once it instantiates more than this many resource and data instances, " +
+				"reporting the scan incomplete (0: no limit)",
+		},
 		&cli.DurationFlag{
 			Name:  "terraform-modules-fetch-timeout",
 			Usage: "per-module fetch timeout",
@@ -397,6 +402,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),
 		RemoteModulesHostAllowlist:  c.StringSlice("module-allowed-hosts"),
 		ModuleMaxDepth:              c.Int("terraform-modules-max-depth"),
+		TerraformMaxInstances:       c.Int64("terraform-max-instances"),
 		ModuleFetchTimeout:          c.Duration("terraform-modules-fetch-timeout"),
 		ModuleResolutionTimeout:     c.Duration("module-resolution-timeout"),
 		MaxModuleBytesTotal:         c.Int64("terraform-modules-max-bytes"),

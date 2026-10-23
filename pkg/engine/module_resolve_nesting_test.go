@@ -8,6 +8,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,7 +82,7 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 	const depth, branch = 12, 2
 	root, files := writeDeepFanOut(t, depth, branch)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 
 	if res.resourceCount == 0 {
 		t.Fatal("expected the nested module tree to instantiate resources, got none")
@@ -106,7 +107,7 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testing.T) {
 	root, files := writeBudgetFanOut(t, 6, 4)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 
 	if res.resourceCount == 0 {
 		t.Fatal("expected resources to be instantiated")
@@ -128,11 +129,11 @@ func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testi
 		res.resourceCount, len(res.docs), len(res.suppressed))
 }
 
-// writePartiallyResolvedShare lays down a module directory reached twice: once
-// directly from the root, and once at the bottom of a chain long enough that the
-// evaluator's depth cap stops before it. The direct call resolves, the deep one
-// never does, so the directory ends the scan only partially resolved.
-func writePartiallyResolvedShare(t *testing.T, levels int) (string, model.FileMetadatas) {
+// writeSharedModule lays down a module directory reached twice: once directly
+// from the root, and once at the bottom of a chain of the given number of
+// levels. With cycle set the bottom of the chain also calls back into the
+// chain's top, a recursion Terraform rejects.
+func writeSharedModule(t *testing.T, levels int, cycle bool) (string, model.FileMetadatas) {
 	t.Helper()
 	root := t.TempDir()
 
@@ -145,6 +146,9 @@ func writePartiallyResolvedShare(t *testing.T, levels int) (string, model.FileMe
 		body := "variable \"name\" { type = string }\n"
 		if i == levels-1 {
 			body += "module \"shared\" {\n  source = \"../shared\"\n  name = var.name\n}\n"
+			if cycle {
+				body += "module \"back\" {\n  source = \"../lvl00\"\n  name = var.name\n}\n"
+			}
 		} else {
 			body += fmt.Sprintf("module \"next\" {\n  source = \"../lvl%02d\"\n  name = var.name\n}\n", i+1)
 		}
@@ -168,17 +172,33 @@ module "deep" {
 	return root, files
 }
 
-// A directory is suppressed for the whole scan at once, but depth, cycle and
-// budget stops apply to a single call site. So a directory can finish the scan
-// with one instance resolved and another skipped, and suppressing it then leaves
-// the skipped instance represented by nothing: not by a synthetic document, since
-// it was never evaluated, and not by its own body, since that was removed. The
-// body has to stay.
-func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T) {
-	// Comfortably past the evaluator's depth cap, so the chain is cut short.
-	root, files := writePartiallyResolvedShare(t, 25)
+// Nesting has no depth limit, so a call site at the bottom of a chain far
+// deeper than the 15 levels evaluation once followed resolves like the
+// shallow one, and the two instances replace the module body together.
+func TestResolveModuleDocuments_DeepCallSiteResolves(t *testing.T) {
+	root, files := writeSharedModule(t, 25, false)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
+	if !res.ok || res.resourceCount != 2 {
+		t.Fatalf("ok=%t, %d resources instantiated; want both call sites", res.ok, res.resourceCount)
+	}
+	if !res.suppressed["shared"]["aws_s3_bucket"]["b"] {
+		t.Fatalf("both instances resolved, so the body is replaced: %#v", res.suppressed)
+	}
+	if !res.report.Complete() {
+		t.Fatalf("report incomplete: %v", res.report.Incomplete())
+	}
+}
+
+// A directory is suppressed for the whole scan at once, but a cycle stops a
+// single call site. So a directory can finish the scan with one instance
+// resolved and another skipped, and suppressing it then leaves the skipped
+// instance represented by nothing. The body has to stay, and the scan reports
+// the cycle.
+func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T) {
+	root, files := writeSharedModule(t, 3, true)
+
+	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil, tfeval.Limits{})
 
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed for the shallow call")
@@ -200,5 +220,8 @@ func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T
 			t.Errorf("shared module body is suppressed (%v) even though one of its call "+
 				"sites was never resolved; that instance is now scanned by nothing", blocks)
 		}
+	}
+	if inc := res.report.Incomplete(); len(inc) != 1 || inc[0].Reason != tfeval.ReasonModuleCycle {
+		t.Errorf("report = %+v, want the cycle", inc)
 	}
 }

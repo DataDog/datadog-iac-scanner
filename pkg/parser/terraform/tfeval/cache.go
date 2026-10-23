@@ -36,43 +36,71 @@ type evalCacheKey struct {
 // visitedDirs is the set of child dirs that were added to allVisited *inside* this
 // evaluation (not including the module dir itself, which is tracked by the caller).
 //
+// The resources are not held by the entry: they are the range [start, end) of
+// the result the evaluation appended them to, which outlives the entry. An
+// entry costs the same whatever the size of the subtree it stands for.
+//
 // baseAddr and baseChainLen record the position the entry was first evaluated at,
 // so a caller reaching the same module by another path can rewrite the recorded
 // address and chain onto the result. Outputs need no rewrite because rootDir is
 // part of the cache key.
 type evalCacheEntry struct {
-	resources []ResolvedResource
-	// instances are the module calls evaluated inside this evaluation.
+	result     *[]ResolvedResource
+	start, end int
+	// instances are the module calls evaluated inside this evaluation, and
+	// notes what it could not evaluate completely.
 	instances    []ModuleInstance
+	notes        []evalNote
 	outputs      map[string]cty.Value
 	visitedDirs  []string
 	baseAddr     string
 	baseChainLen int
-	// evalDepth is the nesting depth this entry was evaluated at. A module cached
-	// from a deeper call may have truncated descendants; shallower callers need a
-	// fresh evaluation with more depth remaining.
-	evalDepth int
 }
 
-// rebase returns the cached resources as they would have been recorded had the
-// module been evaluated at addr/chain instead of the position it was first
-// evaluated at.
+// size is how many resource and data instances the evaluation produced.
+func (entry *evalCacheEntry) size() int { return entry.end - entry.start }
+
+// appendRebased appends to out the cached resources as they would have been
+// recorded had the module been evaluated at addr/chain instead of the
+// position it was first evaluated at.
 //
 // Attributes and Body are shared rather than copied. They are the expensive part
 // of a resolved resource and they are identical for identical inputs, so sharing
 // them is what makes reuse cheap; both are treated as read-only after evaluation.
-func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedResource {
+// Every resource of one module instance shares its chain and address, so each
+// distinct one is rebased once.
+func (entry *evalCacheEntry) appendRebased(out *[]ResolvedResource, addr string, chain []CallSite) {
+	cached := (*entry.result)[entry.start:entry.end]
 	if entry.baseAddr == addr && entry.baseChainLen == len(chain) {
-		return entry.resources
+		*out = append(*out, cached...)
+		return
 	}
-	out := make([]ResolvedResource, len(entry.resources))
-	for i := range entry.resources {
-		r := entry.resources[i]
-		r.ModuleAddress = rebaseAddr(r.ModuleAddress, entry.baseAddr, addr)
-		r.CallChain = rebaseChain(r.CallChain, entry.baseChainLen, chain)
-		out[i] = r
+	type chainID struct {
+		first *CallSite
+		n     int
 	}
-	return out
+	chains := map[chainID][]CallSite{}
+	addrs := map[string]string{}
+	for i := range cached {
+		r := cached[i]
+		rebased, ok := addrs[r.ModuleAddress]
+		if !ok {
+			rebased = rebaseAddr(r.ModuleAddress, entry.baseAddr, addr)
+			addrs[r.ModuleAddress] = rebased
+		}
+		r.ModuleAddress = rebased
+		var id chainID
+		if len(r.CallChain) > 0 {
+			id = chainID{&r.CallChain[0], len(r.CallChain)}
+		}
+		rebasedChain, ok := chains[id]
+		if !ok {
+			rebasedChain = rebaseChain(r.CallChain, entry.baseChainLen, chain)
+			chains[id] = rebasedChain
+		}
+		r.CallChain = rebasedChain
+		*out = append(*out, r)
+	}
 }
 
 // rebaseInstances returns the cached module calls as they would have been

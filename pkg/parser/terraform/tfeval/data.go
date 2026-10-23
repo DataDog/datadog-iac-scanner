@@ -65,11 +65,6 @@ type moduleData struct {
 	// inputs it read, so a refresh pass with unchanged inputs reuses it.
 	evalCache map[*hclsyntax.Block]blockEvalCache
 
-	// hasUnconditionalResource records whether the module has a resource block
-	// instantiating regardless of context, so an exhausted budget discards it
-	// and its data need not expand.
-	hasUnconditionalResource bool
-
 	// moduleAtRefresh is the module.* value the data blocks were last refreshed
 	// against; republishing it need not refresh the data again.
 	moduleAtRefresh cty.Value
@@ -90,7 +85,6 @@ func newModuleData(
 	resourceTypes map[string]struct{},
 	addr string,
 	chain []CallSite,
-	hasUnconditionalResource bool,
 ) *moduleData {
 	blocks := collectDataBlocks(bodies)
 	if len(blocks) == 0 {
@@ -98,7 +92,7 @@ func newModuleData(
 	}
 	d := &moduleData{
 		e: e, blocks: blocks, sources: sources, localExprs: scope.Locals, addr: addr, chain: chain,
-		dataLocals: scope.dataLocals(), hasUnconditionalResource: hasUnconditionalResource,
+		dataLocals: scope.dataLocals(),
 	}
 	for _, b := range blocks {
 		d.readsData = d.readsData || bodyReadsResource(b.Body, dataRoot)
@@ -269,7 +263,7 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 	}
 	d.instances = instances
 	byType := &hcl.EvalContext{Variables: map[string]cty.Value{}}
-	injectResourceRefs(byType, exposed)
+	injectResourceRefs(byType, exposed, emptyExpansions(d.blocks, evalCtx))
 	return objectOrEmpty(byType.Variables)
 }
 
@@ -289,11 +283,10 @@ func (d *moduleData) evalBlock(
 	ctx context.Context, b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
-	if !d.e.dataExpansionWithinBudget(d.addr, d.hasUnconditionalResource) {
-		return cached
-	}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
+	// A stopped expansion is incomplete; the evaluation fails as a whole once
+	// the guard is consulted, so nothing partial is kept.
+	expanded, _ := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true, nil)
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
@@ -470,7 +463,7 @@ func (d *moduleData) withComputedAttributes(
 	ctx := evalCtx
 	if inst.Iteration != nil {
 		ctx = evalCtx.NewChild()
-		ctx.Variables = inst.Iteration
+		ctx.Variables = inst.Iteration.Variables()
 	}
 	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources)}
 	var computed map[string]string

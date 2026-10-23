@@ -126,9 +126,8 @@ func TestProbe_OOMReproBeforeAfter(t *testing.T) {
 	if cache > depth+2 {
 		t.Errorf("WITH FIX: cache has %d entries, expected ~%d", cache, depth+1)
 	}
-	if theoretical <= defaultMaxInstantiated && res != theoretical {
-		t.Errorf("resolved %d resources, want %d below the instantiation budget",
-			res, theoretical)
+	if res != theoretical {
+		t.Errorf("resolved %d resources, want all %d", res, theoretical)
 	}
 }
 

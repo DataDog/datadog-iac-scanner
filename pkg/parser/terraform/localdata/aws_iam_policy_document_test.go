@@ -7,6 +7,7 @@
 package localdata
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -530,7 +531,9 @@ func TestParsePolicyJSONFailsClosedOnUnreadableFields(t *testing.T) {
 	}
 }
 
-func TestNestedDynamicBlocksShareOneBudget(t *testing.T) {
+// Nested dynamic blocks expand in full: a document computed from a part of
+// its blocks would grant or deny less than the configuration declares.
+func TestNestedDynamicBlocksExpandInFull(t *testing.T) {
 	list := func(n int) string { return "[" + strings.Repeat(`"a",`, n) + "]" }
 	nested := func(outer, inner int) string {
 		return `
@@ -548,17 +551,16 @@ dynamic "statement" {
   }
 }`
 	}
-	// 100 statements and 5 principals each generate 600 blocks.
-	require.NotNil(t, renderedAttributes(t, nested(100, 5)))
-	// Each cap alone holds, but their product does not.
-	require.Nil(t, renderedAttributes(t, nested(256, 256)))
-	// 2 statements with 256 principals each is 514 blocks, within the budget;
-	// 4 statements is 1028, over it.
-	require.NotNil(t, renderedAttributes(t, nested(2, 256)))
-	require.Nil(t, renderedAttributes(t, nested(4, 256)))
+	for _, shape := range [][2]int{{100, 5}, {2, 256}, {4, 256}, {300, 40}} {
+		attrs := renderedAttributes(t, nested(shape[0], shape[1]))
+		require.NotNil(t, attrs, "%d statements of %d principals", shape[0], shape[1])
+		var policy struct{ Statement []json.RawMessage }
+		require.NoError(t, json.Unmarshal([]byte(attrs["json"]), &policy))
+		require.Len(t, policy.Statement, shape[0])
+	}
 }
 
-func TestGoogleDynamicBlocksShareOneBudget(t *testing.T) {
+func TestGoogleDynamicBlocksExpandInFull(t *testing.T) {
 	list := func(n int) string { return "[" + strings.Repeat(`"a",`, n) + "]" }
 	src := `
 dynamic "binding" {
@@ -577,7 +579,11 @@ dynamic "binding" {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	rd := &partial.Renderer{Ctx: &hcl.EvalContext{Variables: map[string]cty.Value{}}, Source: partial.BytesSource([]byte(src))}
-	require.Nil(t, googleIAMPolicyAttributes(file.Body, rd.Render))
+	attrs := googleIAMPolicyAttributes(file.Body, rd.Render)
+	require.NotNil(t, attrs)
+	var policy struct{ Bindings []map[string]interface{} }
+	require.NoError(t, json.Unmarshal([]byte(attrs["policy_data"]), &policy))
+	require.Len(t, policy.Bindings, 256)
 }
 
 // An unresolved condition value renders like in own statements: dropping it

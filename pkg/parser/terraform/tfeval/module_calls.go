@@ -89,132 +89,83 @@ func (i moduleInstance) address(parent, label string) string {
 	return joinAddr(parent, seg)
 }
 
-// moduleExpansionPlan is the result of expanding a module call's count/for_each.
+// moduleExpansionPlan is how a module call's count/for_each expanded. Its
+// instances are generated one at a time by all, so nothing is allocated for
+// instances before they are evaluated, and a known expansion yields every
+// instance it declares.
 type moduleExpansionPlan struct {
-	instances []moduleInstance
-	mode      moduleExpansion
-	// requested is the full instance count when known (before the per-block cap).
-	requested int
-	// forEachKeys is every for_each key when mode is for_each and the collection
-	// is within maxExpansionShape (including keys beyond the expansion cap).
-	forEachKeys []cty.Value
+	mode    moduleExpansion
+	ctx     *hcl.EvalContext
+	count   int
+	forEach cty.Value
+	// unknown is the iteration variable bound when the expansion is unknown.
+	unknown string
+	// invalid describes an expansion Terraform rejects; it is evaluated once
+	// with an unknown iteration, like an unknown one.
+	invalid string
 }
 
-func (p moduleExpansionPlan) truncated() bool {
-	return p.requested > maxCountExpansion && (p.mode == expansionCount || p.mode == expansionForEach)
-}
-
-// moduleInstances expands a module call's count or for_each under ctx.
+// moduleInstances plans the expansion of a module call's count or for_each under ctx.
 func moduleInstances(mb *hclsyntax.Block, ctx *hcl.EvalContext) moduleExpansionPlan {
-	if attr, ok := mb.Body.Attributes["count"]; ok {
-		return countInstances(attr, ctx)
+	if attr, ok := mb.Body.Attributes[iterCount]; ok {
+		n, state := countValue(attr.Expr, ctx)
+		if state != expansionKnown {
+			return moduleExpansionPlan{mode: expansionUnknown, ctx: ctx, unknown: iterCount, invalid: invalidReason(state, iterCount)}
+		}
+		return moduleExpansionPlan{mode: expansionCount, ctx: ctx, count: n}
 	}
-	if attr, ok := mb.Body.Attributes["for_each"]; ok {
-		return forEachInstances(attr, ctx)
+	if attr, ok := mb.Body.Attributes[forEachArg]; ok {
+		v, state := forEachValue(attr.Expr, ctx)
+		if state != expansionKnown {
+			return moduleExpansionPlan{mode: expansionUnknown, ctx: ctx, unknown: iterEach, invalid: invalidReason(state, forEachArg)}
+		}
+		return moduleExpansionPlan{mode: expansionForEach, ctx: ctx, forEach: v}
 	}
-	return moduleExpansionPlan{
-		instances: []moduleInstance{{ctx: ctx}},
-		mode:      expansionNone,
-		requested: 1,
+	return moduleExpansionPlan{mode: expansionNone, ctx: ctx}
+}
+
+func invalidReason(state expansionState, arg string) string {
+	if state != expansionInvalid {
+		return ""
+	}
+	if arg == iterCount {
+		return "count is not a whole non-negative number"
+	}
+	return "for_each is not a map or a set of strings"
+}
+
+// all yields every instance of the plan in Terraform's order: count by index,
+// for_each by key.
+func (p *moduleExpansionPlan) all(yield func(moduleInstance) bool) {
+	switch p.mode {
+	case expansionNone:
+		yield(moduleInstance{ctx: p.ctx})
+	case expansionUnknown:
+		yield(moduleInstance{ctx: unknownIterationContext(p.ctx, p.unknown)})
+	case expansionCount:
+		for i := range p.count {
+			index := cty.NumberIntVal(int64(i))
+			if !yield(moduleInstance{key: index, ctx: iterationContext(p.ctx, iterCount, map[string]cty.Value{"index": index})}) {
+				return
+			}
+		}
+	case expansionForEach:
+		for it := p.forEach.ElementIterator(); it.Next(); {
+			key, value := it.Element()
+			ctx := iterationContext(p.ctx, iterEach, map[string]cty.Value{"key": key, "value": value})
+			if !yield(moduleInstance{key: key, ctx: ctx}) {
+				return
+			}
+		}
 	}
 }
 
-func countInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExpansionPlan {
-	v, diags := attr.Expr.Value(ctx)
-	n, ok := 0, false
-	if !diags.HasErrors() {
-		n, ok = ctyutil.LiteralInt(v)
+// unknownIterationContext binds count.index or each to unknown values.
+func unknownIterationContext(ctx *hcl.EvalContext, name string) *hcl.EvalContext {
+	if name == iterCount {
+		return iterationContext(ctx, iterCount, map[string]cty.Value{"index": cty.UnknownVal(cty.Number)})
 	}
-	if !ok {
-		return moduleExpansionPlan{
-			instances: []moduleInstance{{ctx: iterationContext(ctx, "count", map[string]cty.Value{
-				"index": cty.UnknownVal(cty.Number),
-			})}},
-			mode: expansionUnknown,
-		}
-	}
-	requested := max(n, 0)
-	expand := min(requested, maxCountExpansion)
-	instances := make([]moduleInstance, expand)
-	for i := range instances {
-		index := cty.NumberIntVal(int64(i))
-		instances[i] = moduleInstance{
-			key: index,
-			ctx: iterationContext(ctx, "count", map[string]cty.Value{"index": index}),
-		}
-	}
-	return moduleExpansionPlan{instances: instances, mode: expansionCount, requested: requested}
-}
-
-func forEachInstances(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) moduleExpansionPlan {
-	unknown := unknownForEachPlan(ctx)
-	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() || !isForEachCollection(v) {
-		return unknown
-	}
-	if v.LengthInt() == 0 {
-		return moduleExpansionPlan{mode: expansionForEach}
-	}
-	plan, ok := expandForEachPlan(ctx, v)
-	if !ok {
-		return unknown
-	}
-	return plan
-}
-
-func unknownForEachPlan(ctx *hcl.EvalContext) moduleExpansionPlan {
-	return moduleExpansionPlan{
-		instances: []moduleInstance{{ctx: iterationContext(ctx, "each", map[string]cty.Value{
-			"key":   cty.UnknownVal(cty.String),
-			"value": cty.DynamicVal,
-		})}},
-		mode: expansionUnknown,
-	}
-}
-
-func isForEachCollection(v cty.Value) bool {
-	if !ctyutil.Materialized(v) || !v.CanIterateElements() || !v.Length().IsKnown() {
-		return false
-	}
-	t := v.Type()
-	return t.IsObjectType() || t.IsMapType() || t.IsSetType()
-}
-
-func expandForEachPlan(ctx *hcl.EvalContext, v cty.Value) (moduleExpansionPlan, bool) {
-	requested := v.LengthInt()
-	expandTo := min(requested, maxCountExpansion)
-	// Only walk the full collection when we need every key to pad a truncated shape.
-	keepKeys := requested > maxCountExpansion && requested <= maxExpansionShape
-	instances := make([]moduleInstance, 0, expandTo)
-	var allKeys []cty.Value
-	if keepKeys {
-		allKeys = make([]cty.Value, 0, requested)
-	}
-	for it := v.ElementIterator(); it.Next(); {
-		key, value := it.Element()
-		if _, ok := ctyutil.ConcreteString(key); !ok {
-			return moduleExpansionPlan{}, false
-		}
-		if keepKeys {
-			allKeys = append(allKeys, key)
-		}
-		if len(instances) < expandTo {
-			instances = append(instances, moduleInstance{
-				key: key,
-				ctx: iterationContext(ctx, "each", map[string]cty.Value{"key": key, "value": value}),
-			})
-			continue
-		}
-		if !keepKeys {
-			break
-		}
-	}
-	return moduleExpansionPlan{
-		instances:   instances,
-		mode:        expansionForEach,
-		requested:   requested,
-		forEachKeys: allKeys,
-	}, true
+	return iterationContext(ctx, iterEach, map[string]cty.Value{"key": cty.UnknownVal(cty.String), "value": cty.DynamicVal})
 }
 
 func iterationContext(ctx *hcl.EvalContext, name string, attrs map[string]cty.Value) *hcl.EvalContext {
@@ -225,70 +176,37 @@ func iterationContext(ctx *hcl.EvalContext, name string, attrs map[string]cty.Va
 
 // moduleOutputsValue is what module.<label> evaluates to in the caller: the
 // outputs object of a single call, a tuple of them for count and an object of
-// them keyed like for_each. outs holds cty.NilVal for instances that failed.
-// When the expansion was truncated, the returned collection keeps the full
-// requested shape with unknown values for instances that were not evaluated,
-// unless the shape would exceed maxExpansionShape (then the whole value is unknown).
-func moduleOutputsValue(plan moduleExpansionPlan, outs []cty.Value) (cty.Value, bool) {
+// them keyed like for_each. outs holds the outputs of every instance in plan
+// order, cty.NilVal for one that failed, which reads as unknown, and keys the
+// for_each key of each.
+func moduleOutputsValue(plan *moduleExpansionPlan, keys, outs []cty.Value) (cty.Value, bool) {
 	switch plan.mode {
 	case expansionUnknown:
 		return cty.DynamicVal, true
 	case expansionCount:
-		return truncatedCountOutputs(plan.requested, outs), true
+		if len(outs) == 0 {
+			return cty.EmptyTupleVal, true
+		}
+		elems := make([]cty.Value, len(outs))
+		for i, out := range outs {
+			elems[i] = orUnknown(out)
+		}
+		return cty.TupleVal(elems), true
 	case expansionForEach:
-		return truncatedForEachOutputs(plan, outs), true
+		if len(outs) == 0 {
+			return cty.EmptyObjectVal, true
+		}
+		byKey := make(map[string]cty.Value, len(outs))
+		for i, out := range outs {
+			key, _ := ctyutil.ConcreteString(keys[i])
+			byKey[key] = orUnknown(out)
+		}
+		return cty.ObjectVal(byKey), true
 	}
 	if len(outs) == 1 && outs[0] != cty.NilVal {
 		return outs[0], true
 	}
 	return cty.NilVal, false
-}
-
-func truncatedCountOutputs(requested int, outs []cty.Value) cty.Value {
-	if requested == 0 {
-		return cty.EmptyTupleVal
-	}
-	if requested > maxExpansionShape {
-		return cty.DynamicVal
-	}
-	elems := make([]cty.Value, requested)
-	for i := range elems {
-		if i < len(outs) {
-			elems[i] = orUnknown(outs[i])
-		} else {
-			elems[i] = cty.DynamicVal
-		}
-	}
-	return cty.TupleVal(elems)
-}
-
-func truncatedForEachOutputs(plan moduleExpansionPlan, outs []cty.Value) cty.Value {
-	if plan.requested == 0 {
-		return cty.EmptyObjectVal
-	}
-	if plan.requested > maxExpansionShape {
-		return cty.DynamicVal
-	}
-	byKey := make(map[string]cty.Value, plan.requested)
-	switch {
-	case len(plan.forEachKeys) == plan.requested:
-		// Truncated (or fully keyed) shape: start with unknown for every key.
-		for _, key := range plan.forEachKeys {
-			s, _ := ctyutil.ConcreteString(key)
-			byKey[s] = cty.DynamicVal
-		}
-	case plan.truncated():
-		// Truncated but keys were not kept — do not publish a short object.
-		return cty.DynamicVal
-	}
-	for i, out := range outs {
-		if i >= len(plan.instances) {
-			break
-		}
-		key, _ := ctyutil.ConcreteString(plan.instances[i].key)
-		byKey[key] = orUnknown(out)
-	}
-	return objectOrEmpty(byKey)
 }
 
 func orUnknown(v cty.Value) cty.Value {

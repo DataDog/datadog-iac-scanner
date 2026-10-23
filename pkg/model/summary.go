@@ -114,6 +114,18 @@ type Summary struct {
 	Queries      QueryResultSlice  `json:"queries"`
 	Bom          QueryResultSlice  `json:"bill_of_materials,omitempty"`
 	FilePaths    map[string]string `json:"-"`
+	// Incomplete lists why the scan did not evaluate everything its input
+	// declares; empty for a complete scan.
+	Incomplete []IncompleteReason `json:"incomplete,omitempty"`
+}
+
+// IncompleteReason is one reason a scan left part of its input unevaluated,
+// such as Terraform instances that could not be instantiated. The input it
+// concerns is scanned as written, if at all, so its findings may be missing.
+type IncompleteReason struct {
+	Reason   string   `json:"reason"`
+	Count    int      `json:"count"`
+	Examples []string `json:"examples,omitempty"`
 }
 
 // PathParameters - structure wraps the required fields for temporary path translation

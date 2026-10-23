@@ -461,10 +461,10 @@ func TestModuleArgumentsResolveChoicesWithInstanceIteration(t *testing.T) {
 		return &tfeval.ResolvedResource{
 			Body:  body,
 			Scope: scope,
-			Iteration: map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
+			Iteration: tfeval.IterationOf(map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{
 				"key":   cty.StringVal(key),
 				"value": cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal(key), "acl": acl}),
-			})},
+			})}),
 			CallChain: []tfeval.CallSite{{Body: call}},
 		}
 	}
