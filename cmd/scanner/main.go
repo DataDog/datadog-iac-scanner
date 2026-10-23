@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	cli "github.com/urfave/cli/v3"
@@ -27,6 +28,12 @@ func main() {
 	if _, ok := os.LookupEnv("GOGC"); !ok {
 		debug.SetGCPercent(gcPercent)
 	}
+	// JSON log lines are batched: a scan logs a line per finding. Warnings
+	// and errors are still written as they happen. This is zerolog's default
+	// logger with a batching writer under it.
+	logOut := logger.NewBatchingWriter(os.Stderr)
+	log.Logger = zerolog.New(logOut).With().Timestamp().Logger()
+	logger.SetFlush(func() { _ = logOut.Flush() })
 	cmd := &cli.Command{
 		Name:    "datadog-iac-scanner",
 		Usage:   "Scans your Infrastructure as Code configurations",
@@ -70,8 +77,10 @@ func main() {
 		if err != nil {
 			fmt.Printf("Program failed: %v\n", err)
 		}
+		logger.Flush()
 		os.Exit(code)
 	}
+	logger.Flush()
 }
 
 func applyGlobalOptions(ctx context.Context, c *cli.Command) (context.Context, error) {

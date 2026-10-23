@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	ansibleConfigParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/config"
@@ -161,6 +162,7 @@ func finishTests(results []ruleOutcome, allPass bool) error {
 	if allPass {
 		if len(results) == 0 {
 			fmt.Println("No rules with tests were found")
+			logger.Flush()
 			os.Exit(1)
 		}
 		fmt.Printf("PASS: %s\n", plural("%d rule", "%d rules", len(results)))
@@ -183,6 +185,7 @@ func finishTests(results []ruleOutcome, allPass bool) error {
 	fmt.Printf("FAIL: %s, %s\n",
 		plural("%d rule failed", "%d rules failed", failed),
 		plural("%d rule passed", "%d rules passed", passed))
+	logger.Flush()
 	os.Exit(1)
 	return nil
 }
