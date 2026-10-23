@@ -8,6 +8,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -198,6 +199,7 @@ resource "aws_s3_bucket" "replica" {
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
+		make(instanceLineInfo),
 	)
 
 	if len(docs) != 2 {
@@ -970,8 +972,11 @@ func TestNewInstanceFileMetadata_LineInfoDocumentNotAliased(t *testing.T) {
 			},
 		},
 	}
-	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x", nil)
+	synth := newInstanceFileMetadata(fm, model.NewSharedLineInfo(fm), "synth-id", "stack|module.x", nil)
 	delete(fm.LineInfoDocument, "resource")
+	if err := synth.EnsureLineInfoDocument(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := synth.LineInfoDocument["resource"]; !ok {
 		t.Fatal("synthetic LineInfoDocument must keep resource after suppression on parent")
 	}
@@ -1416,5 +1421,33 @@ resource "aws_s3_bucket" "this" {
 	}
 	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatal("the called module must not also be scanned as a root")
+	}
+}
+
+func TestHashAttributes_EqualDocumentsOnly(t *testing.T) {
+	doc := func() map[string]interface{} {
+		return map[string]interface{}{
+			"bucket": "b", "count": json.Number("3"), "versioned": true,
+			"tags": map[string]interface{}{"a": "1", "b": []interface{}{"x", nil}},
+		}
+	}
+	if hashAttributes(doc()) != hashAttributes(doc()) {
+		t.Fatal("equal documents hash differently")
+	}
+	for name, change := range map[string]func(map[string]interface{}){
+		"value":       func(d map[string]interface{}) { d["bucket"] = "c" },
+		"number":      func(d map[string]interface{}) { d["count"] = json.Number("4") },
+		"type":        func(d map[string]interface{}) { d["count"] = "3" },
+		"bool":        func(d map[string]interface{}) { d["versioned"] = false },
+		"nested":      func(d map[string]interface{}) { d["tags"].(map[string]interface{})["a"] = "2" },
+		"list":        func(d map[string]interface{}) { d["tags"].(map[string]interface{})["b"] = []interface{}{"x"} },
+		"key":         func(d map[string]interface{}) { d["bucket2"] = d["bucket"]; delete(d, "bucket") },
+		"concatenate": func(d map[string]interface{}) { d["bucket"] = "bc"; d["versioned"] = true },
+	} {
+		changed := doc()
+		change(changed)
+		if hashAttributes(changed) == hashAttributes(doc()) {
+			t.Errorf("%s: different documents hash equal", name)
+		}
 	}
 }

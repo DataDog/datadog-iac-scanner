@@ -7,6 +7,7 @@ package model
 
 import (
 	"context"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -364,6 +365,54 @@ func (f *FileMetadata) ShallowCopy() *FileMetadata {
 	if f.linesLazy != nil && f.LinesOriginalData == nil {
 		clone.linesLazy = &linesLazyState{}
 	}
+	return &clone
+}
+
+// SharedLineInfo is the line-info document of a file, built at most once and
+// read by every copy DerivedCopy makes of it. Documents instantiated from one
+// Terraform file can number in the hundreds of thousands; building line info
+// once per copy reparses the whole file once per instance.
+type SharedLineInfo struct {
+	once   sync.Once
+	src    *FileMetadata
+	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
+	doc    map[string]interface{}
+	err    error
+}
+
+// NewSharedLineInfo captures f's line info as it stands: the document when it
+// is already materialized, otherwise the loader that builds it from f's
+// content. Later changes to f's own line-info document are not seen.
+func NewSharedLineInfo(f *FileMetadata) *SharedLineInfo {
+	s := &SharedLineInfo{src: f}
+	if f.LineInfoDocument != nil {
+		s.doc = maps.Clone(f.LineInfoDocument)
+		return s
+	}
+	if f.lineInfo != nil {
+		s.loader = f.lineInfo.loader
+	}
+	return s
+}
+
+func (s *SharedLineInfo) load(ctx context.Context, _ *FileMetadata) (map[string]interface{}, error) {
+	s.once.Do(func() {
+		if s.doc == nil && s.loader != nil {
+			s.doc, s.err = s.loader(ctx, s.src)
+		}
+	})
+	return s.doc, s.err
+}
+
+// DerivedCopy returns a copy of f for a document derived from f's content,
+// such as an instantiated module resource. Its line info is shared's, and its
+// lines and line matches are f's own, so no copy recomputes them. Copies must
+// not modify the line-info document they read.
+func (f *FileMetadata) DerivedCopy(shared *SharedLineInfo) *FileMetadata {
+	f.Lines()
+	clone := *f
+	clone.LineInfoDocument = nil
+	clone.lineInfo = &lineInfoState{loader: shared.load}
 	return &clone
 }
 

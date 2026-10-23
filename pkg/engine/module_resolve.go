@@ -488,6 +488,7 @@ type rootMerge struct {
 	resourceCount        *int
 	rootEvalOK           *bool
 	moduleCalls          *moduleCallIndex
+	lineInfo             instanceLineInfo
 }
 
 func (m *rootMerge) merge(
@@ -520,8 +521,11 @@ func (m *rootMerge) merge(
 		m.actualCalledDirs[d] = true
 	}
 	attributions := newModuleAttributionCache()
+	if m.lineInfo == nil {
+		m.lineInfo = make(instanceLineInfo)
+	}
 	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions, m.lineInfo)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -935,6 +939,22 @@ type docGroup struct {
 	layer         int
 	entries       []instantiatedResource
 	attributions  map[string]*model.ModuleAttribution
+	// ownAttributions is set once attributions is the group's own map rather
+	// than the one its call shares.
+	ownAttributions bool
+}
+
+// setAttribution records the attribution of a resource of the group.
+func (g *docGroup) setAttribution(key string, attr *model.ModuleAttribution) {
+	existing, ok := g.attributions[key]
+	if ok && existing == attr {
+		return
+	}
+	if ok && !g.ownAttributions {
+		g.attributions = maps.Clone(g.attributions)
+		g.ownAttributions = true
+	}
+	g.attributions[key] = attr
 }
 
 // docContentKey identifies a document by its content. Two independent digests
@@ -973,14 +993,27 @@ func instantiatedDocs(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
+	lineInfo instanceLineInfo,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
-	groups := make(map[string]*docGroup)
-	var order []string
+	// Keys are structs of strings the resources already hold, not strings
+	// built per resource.
+	type slotKey struct{ callChain, fileID, kind, base string }
+	type groupKey struct {
+		callChain, fileID string
+		layer             int
+	}
+	groups := make(map[groupKey]*docGroup)
+	var order []groupKey
+	// The attributions of one call in one file are shared by the documents
+	// holding its instances. An instance's attribution is usually its block's,
+	// the same pointer for every instance; a group meeting one that differs,
+	// because it depends on the iteration, takes its own copy of the map.
+	callAttributions := make(map[string]map[string]*model.ModuleAttribution)
 	// A base name repeats within one call and file whenever count/for_each
 	// expands a block. Document keys stay base-named so line detection can
 	// resolve them against the file's HCL, so repeats spill into a further
 	// document rather than overwriting each other.
-	layers := make(map[string]int)
+	layers := make(map[slotKey]int)
 
 	for i := range resources {
 		r := &resources[i]
@@ -1012,22 +1045,27 @@ func instantiatedDocs(
 			attrsHash: hashAttributes(attrs),
 		}
 
-		slot := cck + "\x00" + fm.ID + "\x00" + kind + "\x00" + base
+		slot := slotKey{callChain: cck, fileID: fm.ID, kind: kind, base: base}
 		layer := layers[slot]
 		layers[slot] = layer + 1
 
-		key := cck + "\x00" + fm.ID + "\x00" + strconv.Itoa(layer)
+		key := groupKey{callChain: cck, fileID: fm.ID, layer: layer}
 		g, exists := groups[key]
 		if !exists {
+			call := cck + "\x00" + fm.ID
+			shared, ok := callAttributions[call]
+			if !ok {
+				shared = make(map[string]*model.ModuleAttribution)
+				callAttributions[call] = shared
+			}
 			g = &docGroup{
 				fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer,
-				attributions: make(map[string]*model.ModuleAttribution),
+				attributions: shared,
 			}
 			groups[key] = g
 			order = append(order, key)
 		}
-		g.attributions[moduleAttributionKey(kind, r.DefLine, r.DefColumn)] =
-			attributions.attribution(r, repoPath, lookup)
+		g.setAttribution(moduleAttributionKey(kind, r.DefLine, r.DefColumn), attributions.attribution(r, repoPath, lookup))
 		g.entries = append(g.entries, entry)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
@@ -1044,7 +1082,7 @@ func instantiatedDocs(
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
 				callChain:    g.callChain,
 				docID:        docID,
-				attributions: cloneModuleAttributions(g.attributions),
+				attributions: g.attributions,
 			})
 			continue
 		}
@@ -1078,7 +1116,7 @@ func instantiatedDocs(
 			doc["data"] = data
 		}
 		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
+		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, lineInfo.of(g.fm), docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
 }
@@ -1125,14 +1163,66 @@ func sortInstantiated(entries []instantiatedResource) {
 	})
 }
 
+// hashAttributes digests a resource's document. Equal documents digest equal:
+// maps are walked in key order, and every value is tagged with its kind and
+// length so different shapes do not run together. The digest is streamed:
+// marshaling each of hundreds of thousands of resources to JSON first
+// allocates more than the documents themselves.
 func hashAttributes(attrs map[string]interface{}) uint64 {
-	b, err := json.Marshal(attrs)
-	if err != nil {
-		// Unmarshalable attributes must never collapse onto each other, so fall
-		// back to a value that cannot match another resource's content.
-		return xxhash.Sum64String(fmt.Sprintf("%v", attrs))
+	d := xxhash.New()
+	hashValue(d, attrs)
+	return d.Sum64()
+}
+
+func hashValue(d *xxhash.Digest, v interface{}) {
+	var buf [9]byte
+	tag := func(kind byte, n int) {
+		buf[0] = kind
+		binary.LittleEndian.PutUint64(buf[1:], uint64(n))
+		_, _ = d.Write(buf[:])
 	}
-	return xxhash.Sum64(b)
+	str := func(kind byte, s string) {
+		tag(kind, len(s))
+		_, _ = d.WriteString(s)
+	}
+	switch x := v.(type) {
+	case nil:
+		tag('z', 0)
+	case string:
+		str('s', x)
+	case json.Number:
+		str('n', string(x))
+	case bool:
+		if x {
+			tag('t', 0)
+		} else {
+			tag('f', 0)
+		}
+	case map[string]interface{}:
+		hashMap(d, x, tag, str)
+	case model.Document:
+		hashMap(d, x, tag, str)
+	case []interface{}:
+		tag('l', len(x))
+		for _, e := range x {
+			hashValue(d, e)
+		}
+	default:
+		str('?', fmt.Sprintf("%T:%v", x, x))
+	}
+}
+
+func hashMap(d *xxhash.Digest, m map[string]interface{}, tag func(byte, int), str func(byte, string)) {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	tag('m', len(keys))
+	for _, k := range keys {
+		str('k', k)
+		hashValue(d, m[k])
+	}
 }
 
 // contentHasher folds fields into a 128-bit key using two independent digests.
@@ -1163,21 +1253,33 @@ func (h contentHasher) key() docContentKey {
 	return docContentKey{a: h.a.Sum64(), b: h.b.Sum64()}
 }
 
+// instanceLineInfo holds, by file ID, the line info every synthetic document
+// of a file shares: line detection reparses a file once, not once per instance.
+type instanceLineInfo map[string]*model.SharedLineInfo
+
+func (l instanceLineInfo) of(fm *model.FileMetadata) *model.SharedLineInfo {
+	shared, ok := l[fm.ID]
+	if !ok {
+		// Captured before suppression edits fm's own line info, so instances
+		// keep resolving lines of the blocks they replace.
+		shared = model.NewSharedLineInfo(fm)
+		l[fm.ID] = shared
+	}
+	return shared
+}
+
 // newInstanceFileMetadata clones fm for a synthetic doc (empty Document so Combine skips it).
 func newInstanceFileMetadata(
-	fm *model.FileMetadata, id, callChain string, attributions map[string]*model.ModuleAttribution,
+	fm *model.FileMetadata, lineInfo *model.SharedLineInfo, id, callChain string,
+	attributions map[string]*model.ModuleAttribution,
 ) *model.FileMetadata {
-	clone := fm.ShallowCopy()
+	clone := fm.DerivedCopy(lineInfo)
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
-	clone.ModuleAttributions = cloneModuleAttributions(attributions)
-	if fm.LineInfoDocument != nil {
-		// Already materialized: shallow-clone so later mutations on the
-		// parent (e.g. deleting a suppressed "resource" key) don't alias
-		// into this synthetic instance's copy.
-		clone.LineInfoDocument = maps.Clone(fm.LineInfoDocument)
-	}
+	// Shared, not copied: attributions are only read, through
+	// moduleAttributionForResource, which copies what it narrows.
+	clone.ModuleAttributions = attributions
 	return clone
 }
 

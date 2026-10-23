@@ -9,7 +9,9 @@ package tfeval
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"slices"
+	"strconv"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
@@ -279,7 +281,7 @@ func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) inte
 		return v.True()
 	case cty.Number:
 		// json.Number avoids float64 precision loss for large integers.
-		return json.Number(v.AsBigFloat().Text('f', -1))
+		return json.Number(numberText(v.AsBigFloat()))
 	}
 
 	switch {
@@ -496,4 +498,16 @@ func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResol
 // from dir. Remote/registry sources are ignored.
 func CalledLocalDirs(dir string, fsys vfs.FS) []string {
 	return CalledModuleDirs(dir, nil, fsys)
+}
+
+// numberText renders bf as bf.Text('f', -1) does. Integers, which almost every
+// Terraform number is, take the cheap route: the decimal conversion Text
+// performs allocates more than the rest of a resource's document.
+func numberText(bf *big.Float) string {
+	if bf.IsInt() && bf.Sign() != 0 {
+		if i, acc := bf.Int64(); acc == big.Exact {
+			return strconv.FormatInt(i, 10)
+		}
+	}
+	return bf.Text('f', -1)
 }

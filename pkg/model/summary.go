@@ -282,14 +282,14 @@ func removeURLCredentials(url string) string {
 	return RedactURLCredentials(url)
 }
 
+// cloneModuleAttributionSummary copies attr for the summary. ModulePath is
+// shared rather than copied: it is never modified once built, and is the same
+// for every finding of a module call.
 func cloneModuleAttributionSummary(attr *ModuleAttribution) *ModuleAttribution {
 	if attr == nil {
 		return nil
 	}
 	clone := *attr
-	if len(attr.ModulePath) > 0 {
-		clone.ModulePath = append([]ModulePathHop(nil), attr.ModulePath...)
-	}
 	return &clone
 }
 

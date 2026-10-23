@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"math/big"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -419,5 +421,17 @@ module "c" {
 	want := []interface{}{"${__dd_unknown__}", "b"}
 	if !reflect.DeepEqual(ids, want) {
 		t.Errorf("ids = %#v, want %#v", ids, want)
+	}
+}
+
+func TestNumberTextMatchesBigFloatText(t *testing.T) {
+	for _, f := range []*big.Float{
+		big.NewFloat(0), new(big.Float).Neg(big.NewFloat(0)), big.NewFloat(63), big.NewFloat(-7), big.NewFloat(1.5),
+		big.NewFloat(1e30), new(big.Float).SetInt64(math.MaxInt64), new(big.Float).SetInt64(math.MinInt64),
+		new(big.Float).SetPrec(512).SetFloat64(0.1),
+	} {
+		if got, want := numberText(f), f.Text('f', -1); got != want {
+			t.Errorf("numberText(%v) = %q, want %q", f, got, want)
+		}
 	}
 }
