@@ -994,35 +994,49 @@ func instantiatedDocs(
 	// resolve them against the file's HCL, so repeats spill into a further
 	// document rather than overwriting each other.
 	layers := make(map[slotKey]int)
+	converted := convertInstances(resources, targets)
+	files := make(map[string]*model.FileMetadata)
+	type chainKey struct {
+		first   *tfeval.CallSite
+		n       int
+		address string
+	}
+	chainKeys := make(map[chainKey]string)
 
 	for i := range resources {
 		r := &resources[i]
-		if r.ModuleAddress == "" && !expandedInstance(r) {
-			// A root module block without count or for_each is one resource,
-			// and the parsed file already holds it as written.
+		if !converted[i].ok {
 			continue
 		}
-		if !targets.matches(r.Type) {
-			// No rule can match this type by name, so resolving its values
-			// cannot change a finding. It keeps being scanned where it is
-			// written, exactly as it is without module evaluation.
-			continue
-		}
+		attrs := converted[i].attrs
 		kind := blockKind(r)
-		fm, ok := byAbsPath[absPath(r.DefinedIn, repoPath)]
+		fm, ok := files[r.DefinedIn]
 		if !ok {
+			fm = byAbsPath[absPath(r.DefinedIn, repoPath)]
+			files[r.DefinedIn] = fm
+		}
+		if fm == nil {
 			continue
 		}
-		cck := callChainKey(r, repoPath)
+		// Every resource of a module instance shares its chain, so its call
+		// chain key is built once.
+		ck := chainKey{n: len(r.CallChain), address: r.ModuleAddress}
+		if len(r.CallChain) > 0 {
+			ck.first = &r.CallChain[0]
+		}
+		cck, ok := chainKeys[ck]
+		if !ok {
+			cck = callChainKey(r, repoPath)
+			chainKeys[ck] = cck
+		}
 		base := tfeval.ResourceBaseName(r.Name)
-		attrs := tfeval.AttributesToDocument(r)
 		entry := instantiatedResource{
 			typ:       kind,
 			baseName:  base,
 			fullName:  r.Name,
 			defLine:   r.DefLine,
 			attrs:     attrs,
-			attrsHash: hashAttributes(attrs),
+			attrsHash: converted[i].hash,
 		}
 
 		slot := slotKey{callChain: cck, fileID: fm.ID, kind: kind, base: base}
@@ -1099,6 +1113,56 @@ func instantiatedDocs(
 		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, lineInfo.of(g.fm), docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
+}
+
+// convertedInstance is a resolved resource's document and its content hash;
+// ok is false for a resource that is not instantiated.
+type convertedInstance struct {
+	attrs map[string]interface{}
+	hash  uint64
+	ok    bool
+}
+
+// parallelInstanceConversion is how many resources each conversion worker
+// takes at least; below twice that, one worker converts them all.
+var parallelInstanceConversion = 4096
+
+// convertInstances converts every instantiated resource to its document.
+// Conversion only reads what evaluation produced, so a large set is split
+// across workers.
+func convertInstances(resources []tfeval.ResolvedResource, targets *ruleTargets) []convertedInstance {
+	out := make([]convertedInstance, len(resources))
+	convert := func(from, to int) {
+		for i := from; i < to; i++ {
+			r := &resources[i]
+			if r.ModuleAddress == "" && !expandedInstance(r) {
+				// A root module block without count or for_each is one resource,
+				// and the parsed file already holds it as written.
+				continue
+			}
+			if !targets.matches(r.Type) {
+				// No rule can match this type by name, so resolving its values
+				// cannot change a finding. It keeps being scanned where it is
+				// written, exactly as it is without module evaluation.
+				continue
+			}
+			attrs := tfeval.AttributesToDocument(r)
+			out[i] = convertedInstance{attrs: attrs, hash: hashAttributes(attrs), ok: true}
+		}
+	}
+	workers := min(runtime.GOMAXPROCS(0), len(resources)/parallelInstanceConversion)
+	if workers <= 1 {
+		convert(0, len(resources))
+		return out
+	}
+	var wg sync.WaitGroup
+	chunk := (len(resources) + workers - 1) / workers
+	for from := 0; from < len(resources); from += chunk {
+		to := min(from+chunk, len(resources))
+		wg.Go(func() { convert(from, to) })
+	}
+	wg.Wait()
+	return out
 }
 
 // expandedInstance reports whether r is one instance of a block expanded by a
