@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -102,16 +103,16 @@ func TestGuardrail_HugeCountIsNotPreallocated(t *testing.T) {
 }
 
 // checksAfter is a context that is canceled once Err has been called more
-// than pass times.
+// than pass times. Err is called by every worker evaluating instances, so the
+// count is atomic.
 type checksAfter struct {
 	context.Context
-	pass  int
-	calls int
+	pass  int64
+	calls atomic.Int64
 }
 
 func (c *checksAfter) Err() error {
-	c.calls++
-	if c.calls > c.pass {
+	if c.calls.Add(1) > c.pass {
 		return context.Canceled
 	}
 	return nil
