@@ -2322,14 +2322,20 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 			queryPath[i] = fmt.Sprintf("data.datadog.q%d.DatadogPolicy", i)
 		}
 
-		compiler := ast.NewCompiler().WithCapabilities(safeCapabilities())
-		compiler.Compile(modules)
-		if compiler.Failed() {
-			// A rule that parsed but failed semantic compilation poisons the whole
-			// batch. Fall back to isolated compilation for this platform's rules so
-			// correctness is never sacrificed for the memory optimization.
+		compiler, dropped, err := compileSharedModules(modules, queryPath, queries)
+		for _, i := range dropped {
+			// The rule is compiled on its own instead, as it would be without
+			// a shared compiler.
+			contextLogger.Warn().Msgf("shared compile: rule %s failed to compile with the others, compiling it alone",
+				queries[i].Query)
+			delete(queryPath, i)
+		}
+		if err != nil {
+			// A failure no rule can be blamed for, in a library, fails the
+			// whole batch. Fall back to isolated compilation for this platform's
+			// rules so correctness is never sacrificed for the memory optimization.
 			contextLogger.Warn().Msgf("shared compile failed for platform %s (%v); falling back to isolated compilation",
-				platform, compiler.Errors)
+				platform, err)
 			continue
 		}
 
@@ -2356,6 +2362,52 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 		}
 	}
 	return prepared
+}
+
+// sharedCompileRounds bounds how often a shared compile is retried without
+// the rules it failed on. The compiler stops at the first stage any module
+// fails, so a rule failing a later stage is only found by a later round.
+const sharedCompileRounds = 8
+
+// compileSharedModules compiles the libraries and the rules in queryPath
+// together. A rule failing to compile is removed from modules and returned,
+// and the others are compiled again without it: one broken rule does not cost
+// every other rule the shared compiler. An error that cannot be traced to a
+// rule, a library's, fails the compile.
+func compileSharedModules(
+	modules map[string]*ast.Module, queryPath map[int]string, queries []model.QueryMetadata,
+) (*ast.Compiler, []int, error) {
+	// A rule's errors are located in the file it was parsed as, its query name.
+	ruleByFile := make(map[string]int, len(queryPath))
+	for i := range queryPath {
+		ruleByFile[queries[i].Query] = i
+	}
+	var dropped []int
+	for range sharedCompileRounds {
+		compiler := ast.NewCompiler().WithCapabilities(safeCapabilities()).SetErrorLimit(0)
+		compiler.Compile(modules)
+		if !compiler.Failed() {
+			return compiler, dropped, nil
+		}
+		failing := map[int]bool{}
+		for _, compileErr := range compiler.Errors {
+			if compileErr.Location == nil {
+				return nil, dropped, compiler.Errors
+			}
+			i, ok := ruleByFile[compileErr.Location.File]
+			if !ok {
+				return nil, dropped, compiler.Errors
+			}
+			failing[i] = true
+		}
+		for i := range failing {
+			delete(modules, fmt.Sprintf("rule%d", i))
+			delete(ruleByFile, queries[i].Query)
+			dropped = append(dropped, i)
+		}
+		sort.Ints(dropped)
+	}
+	return nil, dropped, errors.New("shared compile: still failing after dropping the rules it failed on")
 }
 
 // loadSharedQueriesCached returns the latest matching co-compiled ruleset.

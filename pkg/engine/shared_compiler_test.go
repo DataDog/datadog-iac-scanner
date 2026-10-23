@@ -400,3 +400,36 @@ func summarize(vulns []model.Vulnerability) map[string]int {
 	}
 	return m
 }
+
+// A rule failing to compile with the others is left to compile alone, and the
+// others still share one compiler; a library failing fails them all.
+func TestLoadSharedQueries_DropsOnlyTheRulesThatFail(t *testing.T) {
+	platform := "terraform"
+	good := func(name, value string) model.QueryMetadata {
+		return staticQuery(platform, name, "DatadogPolicy contains result if { result := \""+value+"\" }\n")
+	}
+	queries := []model.QueryMetadata{
+		good("first", "a"),
+		staticQuery(platform, "undefined_function", "DatadogPolicy contains result if { result := data.generic.terraform.missing(1) }\n"),
+		staticQuery(platform, "type_error", "DatadogPolicy contains result if { result := count(1) }\n"),
+		good("last", "b"),
+	}
+	loader := newCacheTestLoader(t, platform, queries)
+	stores, _ := baseStoresFor(platform, "{}")
+
+	shared := loader.loadSharedQueries(context.Background(), queries, stores)
+	require.Len(t, shared, 2)
+	for i, want := range map[int]string{0: "a", 3: "b"} {
+		require.Contains(t, shared, i)
+		rs, err := shared[i].Eval(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{want}, rs[0].Bindings["result"])
+	}
+
+	broken := newCacheTestLoader(t, platform, queries[:1])
+	lib := broken.platformLibraries[platform]
+	lib.LibraryCode = "package generic.terraform\nbroken := count(1)\n"
+	broken.platformLibraries[platform] = lib
+	broken.parsedGeneric = nil
+	require.Empty(t, broken.loadSharedQueries(context.Background(), queries[:1], stores))
+}
