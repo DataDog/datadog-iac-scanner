@@ -122,9 +122,10 @@ type siblingReads struct {
 	direct []labelSet
 	// resolved adds what they read through locals and data blocks.
 	resolved []labelSet
-	// indirect is set when a call's arguments read a local or a data block, so
-	// they are evaluated against the shared context those are refreshed in.
-	indirect []bool
+	// throughLocals is set when the locals and data blocks a call's arguments
+	// read reach a module call, so the call is evaluated against the shared
+	// context those are refreshed in.
+	throughLocals []bool
 	// prepass marks the calls the sibling prepass evaluates; anyPrepass is
 	// set when there is one.
 	prepass    []bool
@@ -170,16 +171,24 @@ func computeSiblingReads(
 		r.body(b.Body, nil)
 	}
 	out := &siblingReads{
-		direct:   make([]labelSet, len(moduleBlocks)),
-		resolved: make([]labelSet, len(moduleBlocks)),
-		indirect: make([]bool, len(moduleBlocks)),
+		direct:        make([]labelSet, len(moduleBlocks)),
+		resolved:      make([]labelSet, len(moduleBlocks)),
+		throughLocals: make([]bool, len(moduleBlocks)),
 	}
 	for i, mb := range moduleBlocks {
 		r := &blockReads{}
 		r.body(mb.Body, unreadModuleAttrs)
 		out.direct[i] = r.modules
-		out.resolved[i] = resolveModuleReads(r, locals, data)
-		out.indirect[i] = r.allLocals || r.allData || len(r.locals) > 0 || len(r.data) > 0
+		reached := resolveModuleReads(r, locals, data)
+		out.resolved[i] = reached
+		if r.modules.all {
+			out.resolved[i].all = true
+		} else {
+			for name := range r.modules.names {
+				out.resolved[i].add(name)
+			}
+		}
+		out.throughLocals[i] = reached.all || len(reached.names) > 0
 	}
 	out.prepass = prepassCalls(moduleBlocks, out)
 	out.anyPrepass = slices.Contains(out.prepass, true)
@@ -250,37 +259,39 @@ func prepassCalls(moduleBlocks []*hclsyntax.Block, reads *siblingReads) []bool {
 func resolveModuleReads(refs *blockReads, locals, data map[string]*blockReads) labelSet {
 	var out labelSet
 	visited := map[*blockReads]bool{}
-	var walk func(r *blockReads)
-	walk = func(r *blockReads) {
+	var walk func(r *blockReads, includeModules bool)
+	walk = func(r *blockReads, includeModules bool) {
 		if r == nil || visited[r] || out.all {
 			return
 		}
 		visited[r] = true
-		if r.modules.all {
-			out.all = true
-			return
-		}
-		for name := range r.modules.names {
-			out.add(name)
+		if includeModules {
+			if r.modules.all {
+				out.all = true
+				return
+			}
+			for name := range r.modules.names {
+				out.add(name)
+			}
 		}
 		if r.allLocals {
 			for _, next := range locals {
-				walk(next)
+				walk(next, true)
 			}
 		}
 		for name := range r.locals {
-			walk(locals[name])
+			walk(locals[name], true)
 		}
 		if r.allData {
 			for _, next := range data {
-				walk(next)
+				walk(next, true)
 			}
 		}
 		for key := range r.data {
-			walk(data[key])
+			walk(data[key], true)
 		}
 	}
-	walk(refs)
+	walk(refs, false)
 	return out
 }
 

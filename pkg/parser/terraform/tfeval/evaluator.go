@@ -928,8 +928,8 @@ func (e *Evaluator) reportInstantiationBudgetExceeded(ctx context.Context, insta
 	contextLogger.Warn().
 		Int("resources_instantiated", instantiated).
 		Int("resource_budget", e.maxInstantiated).
-		Msg("tfeval: module instantiation budget exhausted; " +
-			"stopping recursion, remaining modules are scanned as written")
+		Msg("tfeval: module instantiation budget reached; " +
+			"modules that do not fit are scanned as written")
 }
 
 func (e *Evaluator) remainingInstantiationBudget() int {
@@ -1035,7 +1035,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		// those. A call that reads all of them, or reads them through a local
 		// or data block that reads one, needs them published on the shared context.
 		callCtx := evalCtx
-		if reads.indirect[pos] || reads.direct[pos].all {
+		if reads.throughLocals[pos] || reads.direct[pos].all {
 			if published.stale(reads.resolved[pos]) {
 				e.installModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
 			}

@@ -111,6 +111,7 @@ resource "aws_sqs_queue" "q" { name = var.in }
 	b.WriteString(`
 locals {
   from_b = "${module.b.out}-local"
+  hop2   = "${local.from_b}-h2"
 }
 data "aws_iam_policy_document" "p" {
   statement { resources = [module.c.out] }
@@ -125,7 +126,7 @@ module "b" {
 }
 module "c" {
   source = "../pass"
-  in     = local.from_b
+  in     = local.hop2
 }
 module "d" {
   source = "../pass"
@@ -173,7 +174,7 @@ module "bare" {
 	}
 	require.Equal(t, "a", names["module.a"])
 	require.Equal(t, "a-b", names["module.b"])
-	require.Equal(t, "a-b-local", names["module.c"])
+	require.Equal(t, "a-b-local-h2", names["module.c"])
 	require.Contains(t, names["module.d"], "a-b-local")
 	require.Equal(t, "a-late-early", names["module.early"])
 	require.Equal(t, "a-late", names["module.late"])
@@ -257,6 +258,16 @@ func TestScaling_SiblingModuleCallsCostIsLinear(t *testing.T) {
 			}
 			return fmt.Sprintf(`in = "${module.m%04d.out}-x"`, i-1)
 		}},
+		{
+			name:   "each call reads the previous plus a constant local",
+			header: "locals {\n  tags = \"t\"\n}\n",
+			call: func(i, _ int) string {
+				if i == 0 {
+					return `in = "first-${local.tags}"`
+				}
+				return fmt.Sprintf(`in = "${module.m%04d.out}-${local.tags}"`, i-1)
+			},
+		},
 		{
 			name:           "each call reads every module output through a local",
 			header:         "locals {\n  all = module\n}\n",
