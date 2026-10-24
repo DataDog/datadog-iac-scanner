@@ -359,9 +359,30 @@ func TestInstantiationBudget_BoundsTotalAcrossManyRoots(t *testing.T) {
 	}
 }
 
-// A call the budget refuses is scanned as written, so what reads its outputs
-// after it sees them unknown rather than a speculative value.
+// A call the budget refuses is scanned as written, so later calls read its
+// outputs as unknown. A call before it keeps the prepass value.
 func TestInstantiationBudget_RefusedCallOutputsAreUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name, ahead string
+		budget      int
+	}{
+		{name: "read after the call", budget: 4},
+		// The ahead call takes one budget instance.
+		{name: "also read before the call", budget: 5, ahead: `
+module "ahead" {
+  source = "../one"
+  in     = "${module.refused.out}-ahead"
+}
+`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testRefusedCallOutputsAreUnknown(t, tc.ahead, tc.budget)
+		})
+	}
+}
+
+func testRefusedCallOutputsAreUnknown(t *testing.T, ahead string, budget int) {
+	t.Helper()
 	root := t.TempDir()
 	writeModule(t, root, "one", map[string]string{"main.tf": `
 variable "in" {}
@@ -385,7 +406,7 @@ module "y" {
   in     = "second"
 }
 `})
-	second := writeModule(t, root, "second", map[string]string{"main.tf": `
+	second := writeModule(t, root, "second", map[string]string{"main.tf": ahead + `
 module "refused" {
   source = "../three"
   in     = "refused"
@@ -398,7 +419,7 @@ resource "aws_s3_bucket" "r" { bucket = module.refused.out }
 `})
 
 	e := New()
-	e.SetMaxInstantiated(4)
+	e.SetMaxInstantiated(budget)
 	if _, _, _, err := e.EvaluateModule(context.Background(), first, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -418,6 +439,8 @@ resource "aws_s3_bucket" "r" { bucket = module.refused.out }
 			t.Errorf("module.refused resolved %s.%s past the budget", r.Type, r.Name)
 		case r.ModuleAddress == "module.reader":
 			read["module.reader"] = r.Attributes["name"]
+		case r.ModuleAddress == "module.ahead":
+			read["module.ahead"] = r.Attributes["name"]
 		case r.Type == "aws_s3_bucket":
 			read["aws_s3_bucket.r"] = r.Attributes["bucket"]
 		}
@@ -430,6 +453,11 @@ resource "aws_s3_bucket" "r" { bucket = module.refused.out }
 		}
 		if v.IsWhollyKnown() {
 			t.Errorf("%s read %#v, want unknown: it reads a call the budget refused", reader, v)
+		}
+	}
+	if ahead != "" {
+		if got, ok := read["module.ahead"]; !ok || !got.RawEquals(cty.StringVal("refused-ahead")) {
+			t.Errorf("module.ahead read %#v, want %s", got, cty.StringVal("refused-ahead"))
 		}
 	}
 	if !containsDir(e.NotEvaluatedDirs(), filepath.Join(root, "three")) {

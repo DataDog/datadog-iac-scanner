@@ -1085,9 +1085,15 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			childResources = append(childResources, childRes...)
 			outs[i] = objectOrEmpty(childOuts)
 		}
-		if value, ok := moduleOutputsValue(plan, outs); ok {
-			published.set(call.label, value)
+		value, ok := moduleOutputsValue(plan, outs)
+		if !ok {
+			// A call that failed after the prepass seeded it has no final value.
+			if _, seeded := moduleOutputs[call.label]; !seeded {
+				continue
+			}
+			value = cty.DynamicVal
 		}
+		published.set(call.label, value)
 	}
 	return childResources, moduleOutputs
 }
