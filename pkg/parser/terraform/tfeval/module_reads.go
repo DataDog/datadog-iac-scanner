@@ -7,6 +7,8 @@
 package tfeval
 
 import (
+	"slices"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -120,6 +122,13 @@ type siblingReads struct {
 	direct []labelSet
 	// resolved adds what they read through locals and data blocks.
 	resolved []labelSet
+	// indirect is set when a call's arguments read a local or a data block, so
+	// they are evaluated against the shared context those are refreshed in.
+	indirect []bool
+	// prepass marks the calls the sibling prepass evaluates; anyPrepass is
+	// set when there is one.
+	prepass    []bool
+	anyPrepass bool
 }
 
 // siblingReadsOf returns the sibling reads of a module's calls.
@@ -163,14 +172,77 @@ func computeSiblingReads(
 	out := &siblingReads{
 		direct:   make([]labelSet, len(moduleBlocks)),
 		resolved: make([]labelSet, len(moduleBlocks)),
+		indirect: make([]bool, len(moduleBlocks)),
 	}
 	for i, mb := range moduleBlocks {
 		r := &blockReads{}
 		r.body(mb.Body, unreadModuleAttrs)
 		out.direct[i] = r.modules
 		out.resolved[i] = resolveModuleReads(r, locals, data)
+		out.indirect[i] = r.allLocals || r.allData || len(r.locals) > 0 || len(r.data) > 0
 	}
+	out.prepass = prepassCalls(moduleBlocks, out)
+	out.anyPrepass = slices.Contains(out.prepass, true)
 	return out
+}
+
+// prepassCalls returns the calls the sibling prepass must evaluate.
+//
+// The main loop evaluates the calls in order and publishes each call's outputs
+// before a later call reads them, so a call reading only earlier calls sees
+// their final outputs without a prepass. Only a call reading itself or a later
+// call needs that call's outputs ahead of time. The prepass evaluates those,
+// plus every call their arguments read directly. Reads through locals and
+// data need not be followed there: they are not refreshed between prepass
+// calls.
+func prepassCalls(moduleBlocks []*hclsyntax.Block, reads *siblingReads) []bool {
+	members := make([]bool, len(moduleBlocks))
+	if len(moduleBlocks) <= 1 {
+		return members
+	}
+	positions := make(map[string][]int, len(moduleBlocks))
+	for i, mb := range moduleBlocks {
+		positions[blockLabel(mb)] = append(positions[blockLabel(mb)], i)
+	}
+	var pending []int
+	include := func(i int) {
+		if !members[i] {
+			members[i] = true
+			pending = append(pending, i)
+		}
+	}
+	includeAll := func() {
+		for i := range members {
+			include(i)
+		}
+	}
+	for i, r := range reads.resolved {
+		if r.all {
+			includeAll()
+			break
+		}
+		for name := range r.names {
+			for _, pos := range positions[name] {
+				if pos >= i {
+					include(pos)
+				}
+			}
+		}
+	}
+	for len(pending) > 0 {
+		m := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if reads.direct[m].all {
+			includeAll()
+			continue
+		}
+		for name := range reads.direct[m].names {
+			for _, pos := range positions[name] {
+				include(pos)
+			}
+		}
+	}
+	return members
 }
 
 // resolveModuleReads follows refs through the locals and data blocks it reads
@@ -238,4 +310,23 @@ func (p *moduleOutputsPublisher) stale(reads labelSet) bool {
 	}
 	p.changed = nil
 	return true
+}
+
+// moduleCallContext evaluates one call against a module.* object holding only
+// the labels reads names. Rebuilding the object of every call is quadratic in
+// the number of calls; a read that does not name its labels still needs that
+// object, and reads.all leaves it to the caller.
+func moduleCallContext(parent *hcl.EvalContext, outputs map[string]cty.Value, reads labelSet) *hcl.EvalContext {
+	if reads.all || len(reads.names) == 0 {
+		return parent
+	}
+	attrs := make(map[string]cty.Value, len(reads.names))
+	for name := range reads.names {
+		if value, ok := outputs[name]; ok {
+			attrs[name] = value
+		}
+	}
+	child := parent.NewChild()
+	child.Variables = map[string]cty.Value{"module": cty.ObjectVal(attrs)}
+	return child
 }

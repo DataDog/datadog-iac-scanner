@@ -7,6 +7,7 @@ package tfeval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,16 +22,27 @@ import (
 // but the module tree it describes has branch^depth instances.
 func writeNestedFanOut(t *testing.T, depth, branch int) string {
 	t.Helper()
+	return writeFanOut(t, depth, branch, false)
+}
+
+// writeFanOut is writeNestedFanOut where, with readAhead, the first call of
+// every level reads the last one, so every level runs the sibling prepass.
+func writeFanOut(t *testing.T, depth, branch int, readAhead bool) string {
+	t.Helper()
 	root := t.TempDir()
 
 	for i := 0; i < depth; i++ {
 		dir := filepath.Join(root, fmt.Sprintf("lvl%02d", i))
-		body := "variable \"in\" { type = string }\n"
+		body := "variable \"in\" { type = string }\nvariable \"peer\" { default = \"\" }\n"
 		if i == depth-1 {
 			body += "resource \"aws_s3_bucket\" \"leaf\" { bucket = var.in }\noutput \"out\" { value = var.in }\n"
 		} else {
 			for b := 0; b < branch; b++ {
-				body += fmt.Sprintf("module \"m%d\" {\n  source = \"../lvl%02d\"\n  in = var.in\n}\n", b, i+1)
+				peer := ""
+				if readAhead && b == 0 {
+					peer = fmt.Sprintf("  peer = module.m%d.out\n", branch-1)
+				}
+				body += fmt.Sprintf("module \"m%d\" {\n  source = \"../lvl%02d\"\n  in = var.in\n%s}\n", b, i+1, peer)
 			}
 			body += "output \"out\" { value = module.m0.out }\n"
 		}
@@ -270,46 +282,168 @@ func TestInstantiationBudget_SpansRootsRatherThanResettingPerRoot(t *testing.T) 
 	}
 }
 
+// Once the budget is spent, every later root fails with ErrModuleNotEvaluated,
+// so the engine scans it as written. Before that, a root the budget cuts short
+// still succeeds with what fit, and reports the calls it refused as not
+// evaluated, also when a sibling prepass evaluated them ahead and the main loop
+// charges them again.
 func TestInstantiationBudget_BoundsTotalAcrossManyRoots(t *testing.T) {
 	const (
-		budget = 500
-		roots  = 40
+		budget  = 500
+		roots   = 40
+		perRoot = 32
 	)
+	for _, readAhead := range []bool{false, true} {
+		t.Run(fmt.Sprintf("read ahead %v", readAhead), func(t *testing.T) {
+			shared := writeFanOut(t, 6, 2, readAhead)
+			repo := filepath.Dir(shared)
 
-	shared := writeNestedFanOut(t, 6, 2)
-	repo := filepath.Dir(shared)
+			e := New()
+			e.SetMaxInstantiated(budget)
+
+			total, refused, short := 0, 0, 0
+			for i := 0; i < roots; i++ {
+				dir := filepath.Join(repo, fmt.Sprintf("root%02d", i))
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				body := fmt.Sprintf("module \"m\" {\n  source = \"../lvl00\"\n  in = \"seed%d\"\n}\n", i)
+				if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(body), 0o644); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+
+				e.ResetSpeculativeBudget()
+				e.TakeNotEvaluatedDirs()
+				resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+				if refused > 0 || errors.Is(err, ErrModuleNotEvaluated) {
+					if !errors.Is(err, ErrModuleNotEvaluated) {
+						t.Fatalf("root %d after the budget was spent: got %d resources and error %v, want ErrModuleNotEvaluated",
+							i, len(resources), err)
+					}
+					if got := e.InstantiatedCount(); got != budget {
+						t.Fatalf("root %d was refused with %d of %d instances charged", i, got, budget)
+					}
+					refused++
+					continue
+				}
+				if err != nil {
+					t.Fatalf("EvaluateModule root %d: %v", i, err)
+				}
+				if len(resources) < perRoot {
+					short++
+					if len(e.NotEvaluatedDirs()) == 0 {
+						t.Fatalf("root %d resolved %d of %d resources without reporting the calls it refused", i, len(resources), perRoot)
+					}
+				}
+				total += len(resources)
+			}
+
+			switch {
+			case total > budget:
+				t.Errorf("%d roots instantiated %d resources against a budget of %d", roots, total, budget)
+			case readAhead:
+				// Prepass charges the main loop never instantiates can leave the
+				// budget short of full, so no root need be refused outright.
+			case total != budget:
+				t.Errorf("%d roots instantiated %d resources, want exactly the budget of %d", roots, total, budget)
+			case refused == 0:
+				t.Error("no root was refused once the budget was spent")
+			}
+			if short == 0 {
+				t.Error("no root was cut short by the budget")
+			}
+			if !e.BudgetExceeded() {
+				t.Error("the budget bound the scan but was never reported as exceeded")
+			}
+		})
+	}
+}
+
+// A call the budget refuses is scanned as written, so what reads its outputs
+// after it sees them unknown rather than a speculative value.
+func TestInstantiationBudget_RefusedCallOutputsAreUnknown(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "one", map[string]string{"main.tf": `
+variable "in" {}
+output "out" { value = var.in }
+resource "aws_sqs_queue" "a" { name = var.in }
+`})
+	writeModule(t, root, "three", map[string]string{"main.tf": `
+variable "in" {}
+output "out" { value = var.in }
+resource "aws_sqs_queue" "a" { name = var.in }
+resource "aws_sqs_queue" "b" { name = var.in }
+resource "aws_sqs_queue" "c" { name = var.in }
+`})
+	first := writeModule(t, root, "first", map[string]string{"main.tf": `
+module "x" {
+  source = "../one"
+  in     = "first"
+}
+module "y" {
+  source = "../one"
+  in     = "second"
+}
+`})
+	second := writeModule(t, root, "second", map[string]string{"main.tf": `
+module "refused" {
+  source = "../three"
+  in     = "refused"
+}
+module "reader" {
+  source = "../one"
+  in     = "${module.refused.out}-reader"
+}
+resource "aws_s3_bucket" "r" { bucket = module.refused.out }
+`})
 
 	e := New()
-	e.SetMaxInstantiated(budget)
-
-	total := 0
-	for i := 0; i < roots; i++ {
-		dir := filepath.Join(repo, fmt.Sprintf("root%02d", i))
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-		body := fmt.Sprintf("module \"m\" {\n  source = \"../lvl00\"\n  in = \"seed%d\"\n}\n", i)
-		if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(body), 0o644); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-
-		e.ResetSpeculativeBudget()
-		resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-		if err != nil {
-			t.Fatalf("EvaluateModule root %d: %v", i, err)
-		}
-		total += len(resources)
+	e.SetMaxInstantiated(4)
+	if _, _, _, err := e.EvaluateModule(context.Background(), first, nil); err != nil {
+		t.Fatal(err)
 	}
-
-	if total > budget {
-		t.Errorf("%d roots instantiated %d resources against a budget of %d", roots, total, budget)
-	}
-	if total == 0 {
-		t.Error("no resources resolved at all")
+	e.ReleaseEvalCache()
+	e.ResetSpeculativeBudget()
+	resources, _, _, err := e.EvaluateModule(context.Background(), second, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if !e.BudgetExceeded() {
-		t.Error("the budget bound the scan but was never reported as exceeded")
+		t.Fatal("module.refused fit the budget; the fixture must make the budget refuse it")
 	}
+	read := map[string]cty.Value{}
+	for _, r := range resources {
+		switch {
+		case r.ModuleAddress == "module.refused":
+			t.Errorf("module.refused resolved %s.%s past the budget", r.Type, r.Name)
+		case r.ModuleAddress == "module.reader":
+			read["module.reader"] = r.Attributes["name"]
+		case r.Type == "aws_s3_bucket":
+			read["aws_s3_bucket.r"] = r.Attributes["bucket"]
+		}
+	}
+	for _, reader := range []string{"module.reader", "aws_s3_bucket.r"} {
+		v, ok := read[reader]
+		if !ok {
+			t.Errorf("%s did not resolve", reader)
+			continue
+		}
+		if v.IsWhollyKnown() {
+			t.Errorf("%s read %#v, want unknown: it reads a call the budget refused", reader, v)
+		}
+	}
+	if !containsDir(e.NotEvaluatedDirs(), filepath.Join(root, "three")) {
+		t.Errorf("the refused call is not reported as not evaluated: %v", e.NotEvaluatedDirs())
+	}
+}
+
+func containsDir(dirs []string, want string) bool {
+	for _, d := range dirs {
+		if d == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestEvalCache_SeparatesPathRootValues(t *testing.T) {

@@ -219,9 +219,10 @@ module "mid" {
 
 // TestBudgetFailureDoesNotRepeatInPrepass runs the same shape through the
 // speculative sibling prepass, which shares the refusal handling through
-// currentInstantiationCount: two calls give the stack a prepass, and the
-// refusal of the first mid's own resource must stop the prepass instances
-// rather than hand the speculative budget back to each of them.
+// currentInstantiationCount: the first call reading the second gives the
+// stack a prepass, and the refusal of the first mid's own resource must stop
+// the prepass instances rather than hand the speculative budget back to each
+// of them.
 func TestBudgetFailureDoesNotRepeatInPrepass(t *testing.T) {
 	root := t.TempDir()
 	writeModule(t, root, "leaf", map[string]string{"main.tf": `
@@ -237,6 +238,7 @@ resource "aws_s3_bucket" "b" {
 `})
 	writeModule(t, root, "mid", map[string]string{"main.tf": `
 variable "in" {}
+variable "peer" { default = "" }
 
 module "leaf" {
   count  = 50
@@ -253,6 +255,7 @@ module "mid_a" {
   count  = 50
   source = "../mid"
   in     = count.index
+  peer   = module.mid_b
 }
 
 module "mid_b" {
@@ -271,6 +274,7 @@ module "mid_b" {
 	// leaves of the first prepass instance are the whole eval cache: 50
 	// entries, not one batch of 50 per retried instance.
 	require.Equal(t, 100, e.InstantiatedCount())
+	require.Equal(t, 100, e.prepassInstantiated)
 	require.Equal(t, 50, len(e.cache))
 	require.True(t, e.BudgetExceeded())
 	require.Empty(t, resources)

@@ -662,7 +662,7 @@ func (e *Evaluator) evaluate(
 		ctx, moduleBlocks, evalCtx, scope, data, locals, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
 	)
 
-	e.applyModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
+	e.installModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
 
 	rootResources, err := e.evaluateRootResources(
 		ctx, dir, resourceBlocks, locals, scope, evalCtx, data, addr, chain,
@@ -714,19 +714,6 @@ func (e *Evaluator) evaluate(
 	)
 
 	return resources, outputs, nil
-}
-
-// applyModuleOutputs installs the module.* outputs of the module calls and
-// refreshes what reads them.
-func (e *Evaluator) applyModuleOutputs(
-	ctx context.Context,
-	evalCtx *hcl.EvalContext,
-	scope *ModuleScope,
-	locals *localGraph,
-	data *moduleData,
-	moduleOutputs map[string]cty.Value,
-) {
-	e.installModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
 }
 
 // installModuleOutputs publishes module.* and refreshes what reads it: first
@@ -999,7 +986,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	depth int,
 	visiting map[string]bool,
 ) {
-	if len(moduleBlocks) <= 1 {
+	if !e.siblingReadsOf(moduleBlocks, scope).anyPrepass {
 		return
 	}
 	prelimOutputs := e.preliminaryModuleOutputs(
@@ -1044,14 +1031,22 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	reads := e.siblingReadsOf(moduleBlocks, scope)
 	published := moduleOutputsPublisher{outputs: moduleOutputs}
 	for pos, mb := range moduleBlocks {
-		if published.stale(reads.resolved[pos]) {
-			e.installSiblingModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
+		// A call that names the outputs it reads is evaluated against only
+		// those. A call that reads all of them, or reads them through a local
+		// or data block that reads one, needs them published on the shared context.
+		callCtx := evalCtx
+		if reads.indirect[pos] || reads.direct[pos].all {
+			if published.stale(reads.resolved[pos]) {
+				e.installModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
+			}
+		} else {
+			callCtx = moduleCallContext(evalCtx, moduleOutputs, reads.direct[pos])
 		}
-		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
+		call, ok := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
 		if !ok {
 			continue
 		}
-		plan := moduleInstances(mb, evalCtx)
+		plan := moduleInstances(mb, callCtx)
 		if plan.truncated() {
 			kind := "module_count"
 			if plan.mode == expansionForEach {
@@ -1107,19 +1102,6 @@ func (e *Evaluator) discardFailedChild(instancesBefore, instantiatedBefore, refu
 	if e.budgetRefusals == refusalsBefore {
 		e.restoreInstantiationCount(instantiatedBefore)
 	}
-}
-
-// installSiblingModuleOutputs publishes module.* for later siblings and
-// refreshes locals and data that read those outputs.
-func (e *Evaluator) installSiblingModuleOutputs(
-	ctx context.Context,
-	evalCtx *hcl.EvalContext,
-	scope *ModuleScope,
-	locals *localGraph,
-	data *moduleData,
-	moduleOutputs map[string]cty.Value,
-) {
-	e.installModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
 }
 
 // isReportableModuleEvalError excludes a missing local source, which the module
@@ -1330,6 +1312,7 @@ func (e *Evaluator) evalResourceBlocks(
 		if limit >= 0 {
 			e.noteBudgetDemand(e.maxInstantiated - limit + len(resources) + len(expanded))
 			if len(resources)+len(expanded) > limit {
+				e.reportInstantiationBudgetExceeded(ctx, e.maxInstantiated-limit)
 				e.noteBudgetRefusal()
 				return resources, false
 			}
@@ -1922,7 +1905,8 @@ func evalLength(expr hclsyntax.Expression, ctx *hcl.EvalContext) (cty.Value, boo
 	return got, true
 }
 
-// preliminaryModuleOutputs evaluates local modules once to fill module.* for sibling refs.
+// preliminaryModuleOutputs evaluates the calls prepassCalls selects once to fill module.* for
+// calls reading a sibling at or after their own position.
 // Passes the real chain so the cache key matches the main-loop evaluate calls, turning the
 // second evaluation into a cache hit. Copies visiting; uses a fresh allVisited.
 func (e *Evaluator) preliminaryModuleOutputs(
@@ -1951,16 +1935,26 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	reads := e.siblingReadsOf(moduleBlocks, scope)
 	published := moduleOutputsPublisher{outputs: out}
 	for pos, mb := range moduleBlocks {
-		// Calls see their siblings' prepass outputs through module.* alone:
-		// locals and data are not refreshed between prepass calls.
-		if published.stale(reads.direct[pos]) {
-			evalCtx.Variables["module"] = cty.ObjectVal(out)
+		if !reads.prepass[pos] {
+			continue
 		}
-		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
+		// Calls see their siblings' prepass outputs through module.* alone:
+		// locals and data are not refreshed between prepass calls. A call that
+		// names the outputs it reads gets only those; a call that reads all of
+		// them needs the whole object on the shared context.
+		callCtx := evalCtx
+		if reads.direct[pos].all {
+			if published.stale(reads.direct[pos]) {
+				evalCtx.Variables["module"] = cty.ObjectVal(out)
+			}
+		} else {
+			callCtx = moduleCallContext(evalCtx, out, reads.direct[pos])
+		}
+		call, ok := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
 		if !ok {
 			continue
 		}
-		plan := moduleInstances(mb, evalCtx) // prepass: no truncation accounting
+		plan := moduleInstances(mb, callCtx) // prepass: no truncation accounting
 		site := call.site(scope)
 		outs := make([]cty.Value, len(plan.instances))
 		for i, instance := range plan.instances {
