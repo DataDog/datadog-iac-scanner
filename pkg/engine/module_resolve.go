@@ -442,22 +442,18 @@ func evaluateRootModules(
 		next = m.evaluateConcurrently(roots, workers)
 	}
 	for _, dir := range roots[next:] {
+		// A root that declares no module call has nothing to instantiate: its
+		// resources are scanned as written, and evaluating it only reparses it.
+		if !directoryDeclaresModuleCall(filesByDir[dir]) {
+			continue
+		}
 		evaluator.ResetSpeculativeBudget()
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVars(dir))
 		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
-		if err == nil {
-			// instantiatedDocs has copied everything this root needs into plain
-			// documents, so the evaluator's cty values are dead here. Another root
-			// could in principle reuse them, but each root passes its own values to
-			// the modules it shares, so the hit rate does not pay for a peak that
-			// grows with the whole repository rather than the largest single root.
-			evaluator.ReleaseEvalCache()
-		} else {
-			// The cache stays: a nested module this root did evaluate can still be
-			// reused. The local memo cannot, and its values are exactly the large
-			// ones a failing root would otherwise keep until the scan ends.
-			evaluator.ReleaseLocalMemo()
-		}
+		// instantiatedDocs has copied everything this root needs into plain
+		// documents, so the evaluator's cty values are dead here, failed root or
+		// not: cache keys include the root, so no other root could reuse them.
+		evaluator.ReleaseEvalCache()
 	}
 }
 
@@ -523,10 +519,13 @@ func (m *rootMerge) merge(
 
 // rootResult is a root evaluated by a worker, starting from an empty budget.
 type rootResult struct {
-	resources             []tfeval.ResolvedResource
-	instances             []tfeval.ModuleInstance
-	childDirs             map[string]bool
-	err                   error
+	resources []tfeval.ResolvedResource
+	instances []tfeval.ModuleInstance
+	childDirs map[string]bool
+	err       error
+	// unevaluated is a root that declares no module call. It is not merged:
+	// merging a success would record the root as evaluated.
+	unevaluated           bool
 	charged               int
 	demand                int
 	notEvaluated          []string
@@ -576,6 +575,10 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 					return
 				default:
 				}
+				if !directoryDeclaresModuleCall(m.filesByDir[roots[i]]) {
+					results[i] <- rootResult{unevaluated: true}
+					continue
+				}
 				results[i] <- evaluateRoot(m.ctx, worker, roots[i])
 			}
 		})
@@ -596,6 +599,9 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 		}
 		if r.panicked != nil {
 			panic(r.panicked)
+		}
+		if r.unevaluated {
+			continue
 		}
 		charged += r.charged
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
@@ -854,6 +860,21 @@ type staticCallGraph struct {
 	// opaque holds the directories making a call the graph cannot follow, such
 	// as a source built from a variable. What they reach is unknown.
 	opaque map[string]bool
+}
+
+// directoryDeclaresModuleCall reports whether files contain a module block.
+// A file with no parsed document may still contain one, so it counts as
+// declaring one.
+func directoryDeclaresModuleCall(files []*model.FileMetadata) bool {
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		if len(file.Document) == 0 || len(docAsMap(file.Document["module"])) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // hasUnresolvableModuleCall reports whether files make a module call whose

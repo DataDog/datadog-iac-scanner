@@ -224,11 +224,51 @@ resource "aws_s3_bucket" "replica" {
 	}
 }
 
-// A root that fails after evaluating a nested module keeps that module's
-// evaluation for the next root, and drops the local memo. The memo's keys
-// include path.*, so a failed root's entries match nothing afterwards, and a
-// run of failing roots would otherwise retain every derived local.
-func TestFailedRootDropsLocalMemoAndKeepsEvalCache(t *testing.T) {
+// A root that declares no module call is not evaluated: it has nothing to
+// instantiate.
+func TestRootWithoutModuleCallsIsNotEvaluated(t *testing.T) {
+	root := t.TempDir()
+	plain := filepath.Join(root, "plain")
+	calling := filepath.Join(root, "calling")
+	child := filepath.Join(root, "modules", "child")
+	plainPath := writeFile(t, plain, "main.tf", `
+resource "aws_s3_bucket" "b" {
+  count  = 1000
+  bucket = "plain-${count.index}"
+}
+`)
+	childPath := writeFile(t, child, "main.tf", `
+resource "aws_s3_bucket" "c" { bucket = "child" }
+`)
+	callingPath := writeFile(t, calling, "main.tf", `
+module "child" {
+  source = "../modules/child"
+}
+`)
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, plainPath)...)
+	files = append(files, parseTerraform(t, childPath)...)
+	files = append(files, parseTerraform(t, callingPath)...)
+
+	for _, workers := range []int{1, 4} {
+		previous := rootEvalWorkers
+		rootEvalWorkers = workers
+		res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+		rootEvalWorkers = previous
+		if res.expansionTruncations != 0 {
+			t.Errorf("workers=%d: a root with no module call was evaluated (%d expansion truncations)",
+				workers, res.expansionTruncations)
+		}
+		if res.resourceCount != 1 {
+			t.Errorf("workers=%d: instantiated %d resources, want the one module call", workers, res.resourceCount)
+		}
+	}
+}
+
+// A root that fails after evaluating a nested module drops that evaluation and
+// its local memo. Both are keyed on the root, so they match nothing afterwards,
+// and a run of failing roots would otherwise retain every value they derived.
+func TestFailedRootReleasesItsEvaluations(t *testing.T) {
 	repo := t.TempDir()
 	child := writeFile(t, filepath.Join(repo, "modules", "child"), "main.tf", `
 resource "aws_s3_bucket" "c" { bucket = "child" }
@@ -281,8 +321,8 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 	if evaluator.LocalMemoSize() != 0 {
 		t.Fatalf("failed roots retained %d local values", evaluator.LocalMemoSize())
 	}
-	if evaluator.EvalCacheSize() == 0 {
-		t.Fatal("failed roots dropped the nested module evaluations they can reuse")
+	if evaluator.EvalCacheSize() != 0 {
+		t.Fatalf("failed roots retained %d module evaluations", evaluator.EvalCacheSize())
 	}
 }
 

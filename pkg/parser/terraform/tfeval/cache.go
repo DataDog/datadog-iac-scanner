@@ -23,8 +23,9 @@ import (
 // The module address and call chain are deliberately absent. They describe where
 // a module was called from, not what it evaluates to, so including them made a
 // module reached by N distinct paths evaluate N times for identical results.
-// rootDir remains because path.root can affect evaluated values. Callers re-stamp
-// the address and chain onto cached results.
+// rootDir remains because path.root, path.cwd and the filesystem functions, which
+// may read anywhere under the root, depend on it. Callers re-stamp the address and
+// chain onto cached results.
 type evalCacheKey struct {
 	dir         string
 	rootDir     string
@@ -38,8 +39,8 @@ type evalCacheKey struct {
 //
 // baseAddr and baseChainLen record the position the entry was first evaluated at,
 // so a caller reaching the same module by another path can rewrite the recorded
-// address and chain onto the result. Outputs need no rewrite because rootDir is
-// part of the cache key.
+// address and chain onto the result. Outputs need no rewrite: they do not depend
+// on the address, and what they read of the root is covered by rootDir in the key.
 type evalCacheEntry struct {
 	resources []ResolvedResource
 	// instances are the module calls evaluated inside this evaluation.

@@ -180,6 +180,9 @@ type Evaluator struct {
 	// the evaluation cache's lifetime.
 	localMemo  map[localMemoKey]cty.Value
 	localReads map[hclsyntax.Expression]localReads
+	// siblingReads is what the module calls of each parsed module read of one
+	// another, keyed by the module's first call.
+	siblingReads map[*hclsyntax.Block]*siblingReads
 	// When set, non-local module sources resolve here and recurse with caller inputs.
 	remoteResolver RemoteResolver
 
@@ -525,21 +528,20 @@ func (e *Evaluator) ReleaseCaches() {
 // ReleaseEvalCache drops memoized module evaluations while keeping parsed HCL
 // bodies. Every entry holds the resolved resources of its whole subtree, so
 // retaining entries for a whole repository scales peak memory with the number of
-// roots. Entries are reusable across roots now that the key is the inputs alone,
-// but in practice each root passes its own values to the shared modules it calls,
-// so the hit rate across roots is low and not worth that peak. The parse cache is
-// keyed by directory alone, genuinely is shared by every root, and is kept.
+// roots. The key includes the root directory, so no entry can be reused by
+// another root anyway. The parse cache is keyed by directory alone, genuinely is
+// shared by every root, and is kept.
 func (e *Evaluator) ReleaseEvalCache() {
 	e.cache = make(map[evalCacheKey]*evalCacheEntry)
 	e.keyMemo = keyMemo{}
 	e.ReleaseLocalMemo()
 	e.localReads = nil
+	e.siblingReads = nil
 }
 
-// ReleaseLocalMemo drops local values shared across module instances. A failed
-// root keeps its evaluation cache, so a nested module it did finish can be
-// reused, but nothing in the local memo can: every key includes path.*, which
-// the next root does not match.
+// ReleaseLocalMemo drops local values shared across module instances. Nothing in
+// it can serve another root: every key includes path.*, which the next root does
+// not match.
 func (e *Evaluator) ReleaseLocalMemo() {
 	e.localMemo = nil
 }
@@ -1039,7 +1041,12 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 	}
 
-	for _, mb := range moduleBlocks {
+	reads := e.siblingReadsOf(moduleBlocks, scope)
+	published := moduleOutputsPublisher{outputs: moduleOutputs}
+	for pos, mb := range moduleBlocks {
+		if published.stale(reads.resolved[pos]) {
+			e.installSiblingModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
+		}
 		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
 		if !ok {
 			continue
@@ -1084,8 +1091,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			outs[i] = objectOrEmpty(childOuts)
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
-			moduleOutputs[call.label] = value
-			e.installSiblingModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
+			published.set(call.label, value)
 		}
 	}
 	return childResources, moduleOutputs
@@ -1942,7 +1948,14 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	for k, v := range visiting {
 		tmpVisiting[k] = v
 	}
-	for _, mb := range moduleBlocks {
+	reads := e.siblingReadsOf(moduleBlocks, scope)
+	published := moduleOutputsPublisher{outputs: out}
+	for pos, mb := range moduleBlocks {
+		// Calls see their siblings' prepass outputs through module.* alone:
+		// locals and data are not refreshed between prepass calls.
+		if published.stale(reads.direct[pos]) {
+			evalCtx.Variables["module"] = cty.ObjectVal(out)
+		}
 		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
 		if !ok {
 			continue
@@ -1962,11 +1975,9 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			}
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
-			out[call.label] = value
-			// Make each module's outputs visible to subsequent siblings within this
-			// same pre-pass loop, so their inputs resolve to the same values that the
-			// main evaluation loop will compute — this keeps cache keys consistent.
-			evalCtx.Variables["module"] = cty.ObjectVal(out)
+			// Later siblings must see these outputs, so their inputs resolve to
+			// the values the main loop computes and its evaluations hit the cache.
+			published.set(call.label, value)
 		}
 	}
 	return out
