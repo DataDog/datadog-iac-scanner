@@ -247,6 +247,31 @@ func TestMemoryStorage_ReportedFindingsAreNotMerged(t *testing.T) {
 	require.Len(t, got, 2, "the same finding saved twice is still one")
 }
 
+// Storage keeps the last finding of each identity, in the order they were
+// saved, whether or not the findings were already deduplicated.
+func TestMemoryStorage_ReportsTheLastFindingOfEachIdentity(t *testing.T) {
+	finding := func(name, searchKey string) model.Vulnerability {
+		return model.Vulnerability{
+			FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
+			ResourceType: "aws_s3_bucket", ResourceName: name, SearchKey: searchKey,
+		}
+	}
+	m := NewMemoryStorage()
+	require.NoError(t, m.SaveVulnerabilities(context.Background(), []model.Vulnerability{
+		finding("replica", "first"),
+		finding("primary", "only"),
+		finding("replica", "last"),
+	}))
+
+	got, err := m.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Equal(t, []model.Vulnerability{finding("primary", "only"), finding("replica", "last")}, got)
+
+	again, err := m.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Equal(t, got, again, "deduplicating an already unique collection leaves it as it is")
+}
+
 // TestNewMemoryStorage tests the functions [NewMemoryStorage()]
 func TestNewMemoryStorage(t *testing.T) {
 	tests := []struct {

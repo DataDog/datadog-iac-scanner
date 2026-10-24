@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 
@@ -43,6 +42,13 @@ func (m *MemoryStorage) GetFiles(_ context.Context, _ string) (model.FileMetadat
 func (m *MemoryStorage) SaveVulnerabilities(_ context.Context, vulnerabilities []model.Vulnerability) error {
 	defer memoryMu.Unlock()
 	memoryMu.Lock()
+	if len(m.vulnerabilities) == 0 {
+		// Callers hand over the findings of a whole scan and do not use the
+		// slice again, so the first batch is taken as is rather than copied,
+		// which would hold every finding twice.
+		m.vulnerabilities = vulnerabilities
+		return nil
+	}
 	m.vulnerabilities = append(m.vulnerabilities, vulnerabilities...)
 	return nil
 }
@@ -54,33 +60,27 @@ func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model
 	return m.getUniqueVulnerabilities(), nil
 }
 
+// getUniqueVulnerabilities keeps the last finding of each identity. Storage
+// returns them in the order they were saved; reports may sort them again. It
+// compacts in place so the findings are not held twice, which leaves an
+// already deduplicated collection as it is.
 func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
-	vulnDictionary := make(map[string]model.Vulnerability)
+	keys := make([]string, len(m.vulnerabilities))
+	last := make(map[string]int, len(m.vulnerabilities))
 	for i := range m.vulnerabilities {
-		v := m.vulnerabilities[i]
-		fileName, line := v.Identity()
-		// SCIInfo is constant within a scan; an empty value yields the same grouping.
-		key := model.GetDatadogFingerprintHash(
-			model.SCIInfo{},
-			fileName,
-			v.Platform,
-			v.ResourceType,
-			v.ResourceName,
-			utils.ChooseQueryID(v.QueryID, v.LegacyQueryID),
-			line,
-			v.ModuleCallChain,
-		)
-		vulnDictionary[key] = v
+		v := &m.vulnerabilities[i]
+		keys[i] = model.FindingIdentity(v)
+		last[keys[i]] = i
 	}
-
-	var uniqueVulnerabilities []model.Vulnerability
-	for key := range vulnDictionary {
-		uniqueVulnerabilities = append(uniqueVulnerabilities, vulnDictionary[key])
+	unique := m.vulnerabilities[:0]
+	for i := range m.vulnerabilities {
+		if last[keys[i]] == i {
+			unique = append(unique, m.vulnerabilities[i])
+		}
 	}
-	if len(uniqueVulnerabilities) == 0 {
-		return m.vulnerabilities
-	}
-	return uniqueVulnerabilities
+	clear(m.vulnerabilities[len(unique):])
+	m.vulnerabilities = unique
+	return unique
 }
 
 // NewMemoryStorage creates a new MemoryStorage empty and returns it

@@ -6,6 +6,7 @@
 package model
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -32,4 +33,33 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 	// Non-Terraform platforms must ignore the module call chain.
 	k8sWithChain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
 	require.Equal(t, base, k8sWithChain, "non-Terraform platforms must ignore the module call chain")
+}
+
+// FindingIdentity (storage's grouping) and CreateSummary (the report's
+// persisted fingerprint) must group findings on exactly the same fields (see
+// fingerprintFields), or a finding storage reduced to one copy could still be
+// fingerprinted as two distinct findings in the report, or the reverse.
+func TestFindingIdentity_EqualIdentityMeansEqualCreateSummaryFingerprint(t *testing.T) {
+	a := Vulnerability{
+		FileName: "/repo/stack/main.tf", Platform: terraformPlatform, QueryID: "rule-1",
+		ResourceType: "aws_security_group", ResourceName: "sg", ModuleCallChain: "stack/main.tf|module.sg",
+		Line: 4, LineWithVulnerability: "cidr_blocks = [\"0.0.0.0/0\"] # ingress[0]",
+		Severity: SeverityHigh, SearchKey: "aws_security_group[sg].ingress[0].cidr_blocks",
+	}
+	// b differs only on fields FindingIdentity does not use for a Terraform
+	// finding: the line and the exact text detected there. This is exactly the
+	// shape of two ingress blocks violating one rule on one resource.
+	b := a
+	b.Line = 9
+	b.LineWithVulnerability = "cidr_blocks = [\"0.0.0.0/0\"] # ingress[1]"
+	b.SearchKey = "aws_security_group[sg].ingress[1].cidr_blocks"
+
+	require.Equal(t, FindingIdentity(&a), FindingIdentity(&b), "precondition: the two findings share an identity")
+
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{a, b}, "scan", nil, "/repo", SCIInfo{})
+	require.Len(t, summary.Queries, 1)
+	files := summary.Queries[0].Files
+	require.Len(t, files, 2, "CreateSummary keeps every finding it is given; identity reduction is storage's job")
+	require.Equal(t, files[0].Fingerprint, files[1].Fingerprint,
+		"equal FindingIdentity must mean equal CreateSummary fingerprints")
 }

@@ -870,6 +870,9 @@ func processResult(ctx context.Context, result *QueryResult,
 		}
 	}
 	*vulnerabilities = append(*vulnerabilities, result.vulnerabilities...)
+	// The aggregate holds a copy, so releasing the rule's own slice keeps the
+	// scan from holding every finding twice until aggregation is done.
+	result.vulnerabilities = nil
 }
 
 // LenQueriesByPlat returns the number of queries by platforms
