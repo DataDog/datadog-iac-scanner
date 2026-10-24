@@ -460,12 +460,15 @@ func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string
 	return calledModuleDirs(dir, bodies, resolver, fsys)
 }
 
-func (e *Evaluator) CalledModuleDirs(dir string) []string {
-	bodies, _, err := e.parseDir(context.Background(), dir, "")
-	if err != nil {
+// CalledModuleDirs returns the directories of the modules dir calls. Parsing dir
+// here also builds its locals graph and reports what it finds through ctx's
+// logger, once per parse, so ctx must be the scan's.
+func (e *Evaluator) CalledModuleDirs(ctx context.Context, dir string) []string {
+	parsed := e.parseDir(ctx, dir, "")
+	if parsed.err != nil {
 		return nil
 	}
-	return calledModuleDirs(dir, bodies, e.remoteResolver, e.fsys)
+	return calledModuleDirs(dir, parsed.bodies, e.remoteResolver, e.fsys)
 }
 
 func calledModuleDirs(dir string, bodies []*hclsyntax.Body, resolver RemoteResolver, fsys vfs.FS) []string {

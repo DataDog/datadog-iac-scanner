@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
@@ -46,7 +45,7 @@ type moduleData struct {
 	e          *Evaluator
 	blocks     []*hclsyntax.Block
 	sources    map[string][]byte
-	localExprs map[string]hclsyntax.Expression
+	localGraph *localGraph
 	addr       string
 	chain      []CallSite
 
@@ -86,7 +85,7 @@ func newModuleData(
 	e *Evaluator,
 	bodies []*hclsyntax.Body,
 	sources map[string][]byte,
-	scope *ModuleScope,
+	locals *localGraph,
 	resourceTypes map[string]struct{},
 	addr string,
 	chain []CallSite,
@@ -97,21 +96,21 @@ func newModuleData(
 		return nil
 	}
 	d := &moduleData{
-		e: e, blocks: blocks, sources: sources, localExprs: scope.Locals, addr: addr, chain: chain,
-		dataLocals: scope.dataLocals(), hasUnconditionalResource: hasUnconditionalResource,
+		e: e, blocks: blocks, sources: sources, localGraph: locals, addr: addr, chain: chain,
+		dataLocals: locals.dataLocals, hasUnconditionalResource: hasUnconditionalResource,
 	}
 	for _, b := range blocks {
 		d.readsData = d.readsData || bodyReadsResource(b.Body, dataRoot)
 		d.readsResources = d.readsResources || bodyReadsResource(b.Body, resourceTypes)
 		d.readsLocals = d.readsLocals || bodyReadsResource(b.Body, localRoot)
 	}
-	if d.readsLocals && localsReadResources(scope.Locals, resourceTypes) {
+	if d.readsLocals && locals.readsResources {
 		d.readsResources = true
 	}
 	for _, b := range blocks {
 		d.readsModuleOutputs = d.readsModuleOutputs || bodyReadsResource(b.Body, moduleRoot)
 	}
-	if d.readsLocals && localsReadResources(scope.Locals, moduleRoot) {
+	if d.readsLocals && locals.readsModules {
 		d.readsModuleOutputs = true
 	}
 	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
@@ -177,37 +176,6 @@ func (d *moduleData) refreshedWithModule(value cty.Value) bool {
 	return d != nil && !d.moduleAtRefresh.IsNull() && equalValues(d.moduleAtRefresh, value)
 }
 
-// localsReadingRoot returns the locals reading roots, directly or through
-// other locals.
-func localsReadingRoot(localExprs map[string]hclsyntax.Expression, roots map[string]struct{}) map[string]bool {
-	reading := map[string]bool{}
-	for changed := true; changed; {
-		changed = false
-		for name, expr := range localExprs {
-			if reading[name] {
-				continue
-			}
-			for _, traversal := range expr.Variables() {
-				if readsRootOrLocal(traversal, roots, reading) {
-					reading[name] = true
-					changed = true
-					break
-				}
-			}
-		}
-	}
-	return reading
-}
-
-func readsRootOrLocal(traversal hcl.Traversal, roots map[string]struct{}, locals map[string]bool) bool {
-	root := traversal.RootName()
-	if _, ok := roots[root]; ok {
-		return true
-	}
-	name, ok := terraform.LocalTraversalName(traversal)
-	return ok && locals[name]
-}
-
 func (d *moduleData) readsOwnResources() bool {
 	return d != nil && d.readsResources
 }
@@ -252,7 +220,7 @@ func (d *moduleData) refreshDataLocals(evalCtx *hcl.EvalContext) {
 			}
 		}
 	}
-	evalCtx.Variables["local"] = objectOrEmpty(d.e.resolveLocalsWith(d.localExprs, evalCtx, fixed))
+	evalCtx.Variables["local"] = objectOrEmpty(d.e.resolveLocalsWith(d.localGraph, evalCtx, fixed))
 }
 
 func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty.Value {

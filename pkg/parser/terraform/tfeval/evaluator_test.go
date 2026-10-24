@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -2301,5 +2303,309 @@ dynamic "a" {
 	}
 	if _, kept := out["dynamic"]; !kept {
 		t.Fatalf("out = %#v, want the dynamic block kept as written", out)
+	}
+}
+
+func evaluateRoot(t *testing.T, ctx context.Context, src string) map[string]ResolvedResource {
+	t.Helper()
+	stack := writeModule(t, t.TempDir(), "stack", map[string]string{"main.tf": src})
+	resources, _, _, err := New().EvaluateModule(ctx, stack, nil)
+	require.NoError(t, err)
+	return resourcesByAddress(resources)
+}
+
+// chainSource declares l0 = start and each lN reading l(N-1), in reverse so
+// declaration order does not help.
+func chainSource(length int, start string) string {
+	var b strings.Builder
+	b.WriteString("locals {\n")
+	for l := length - 1; l > 0; l-- {
+		fmt.Fprintf(&b, "  l%d = \"${local.l%d}x\"\n", l, l-1)
+	}
+	fmt.Fprintf(&b, "  l0 = %s\n}\n", start)
+	return b.String()
+}
+
+func TestResolveLocals_LongChainResolves(t *testing.T) {
+	const length = 60
+	suffix := strings.Repeat("x", length-1)
+	reader := fmt.Sprintf("resource \"aws_sqs_queue\" \"q\" { name = local.l%d }\n", length-1)
+	t.Run("constant", func(t *testing.T) {
+		byAddr := evaluateRoot(t, context.Background(), chainSource(length, `"v"`)+reader)
+		requireString(t, byAddr["/aws_sqs_queue.q"].Attributes, "name", "v"+suffix)
+	})
+	t.Run("resource attribute", func(t *testing.T) {
+		byAddr := evaluateRoot(t, context.Background(), chainSource(length, "aws_s3_bucket.src.bucket")+
+			"resource \"aws_s3_bucket\" \"src\" { bucket = \"b\" }\n"+reader)
+		requireString(t, byAddr["/aws_sqs_queue.q"].Attributes, "name", "b"+suffix)
+	})
+	t.Run("module loop", func(t *testing.T) {
+		root := t.TempDir()
+		writeModule(t, root, "leaf", map[string]string{"main.tf": "variable \"name\" { type = string }\n" +
+			chainSource(length, "var.name") + reader})
+		stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "leaf" {
+  source   = "../leaf"
+  for_each = toset(["a", "b"])
+  name     = each.key
+}
+`})
+		resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+		require.NoError(t, err)
+		byAddr := resourcesByAddress(resources)
+		for _, key := range []string{"a", "b"} {
+			requireString(t, byAddr[fmt.Sprintf("module.leaf[%q]/aws_sqs_queue.q", key)].Attributes, "name", key+suffix)
+		}
+	})
+}
+
+// try and can over a local declared later see that local's value, not its
+// absence.
+func TestResolveLocals_TryAndCanReadLaterLocal(t *testing.T) {
+	byAddr := evaluateRoot(t, context.Background(), `
+locals {
+  a     = try(local.z, "fallback")
+  known = can(local.z) ? "yes" : "no"
+  z     = "real"
+}
+resource "aws_sqs_queue" "q" { tags = { a = local.a, known = local.known } }
+`)
+	tags := byAddr["/aws_sqs_queue.q"].Attributes["tags"]
+	require.Equal(t, "real", tags.GetAttr("a").AsString())
+	require.Equal(t, "yes", tags.GetAttr("known").AsString())
+}
+
+func TestResolveLocals_UnknownLocalIsAbsentToReaders(t *testing.T) {
+	byAddr := evaluateRoot(t, context.Background(), `
+variable "unset" {}
+locals {
+  unknown  = var.unset
+  fallback = try(local.unknown, "fallback")
+  partial  = { known = "k", unknown = local.unknown }
+}
+resource "aws_sqs_queue" "q" {
+  name = local.fallback
+  tags = local.partial
+}
+`)
+	attrs := byAddr["/aws_sqs_queue.q"].Attributes
+	requireString(t, attrs, "name", "fallback")
+	require.Equal(t, "k", attrs["tags"].GetAttr("known").AsString())
+	require.False(t, attrs["tags"].GetAttr("unknown").IsKnown())
+}
+
+func TestResolveLocals_CyclesResolveUnknownAndAreReported(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+	byAddr := evaluateRoot(t, ctx, `
+locals {
+  a    = "${local.b}-a"
+  b    = "${local.a}-b"
+  self = "${local.self}-s"
+  ok   = "fine"
+  next = "${local.a}-${local.ok}"
+}
+resource "aws_sqs_queue" "q" {
+  name = local.ok
+  tags = { a = local.a, self = local.self, next = local.next }
+}
+`)
+	attrs := byAddr["/aws_sqs_queue.q"].Attributes
+	requireString(t, attrs, "name", "fine")
+	for _, name := range []string{"a", "self", "next"} {
+		require.False(t, attrs["tags"].GetAttr(name).IsKnown(), name)
+	}
+	require.Contains(t, logs.String(), "cycle among locals: local.a, local.b")
+	require.Contains(t, logs.String(), "cycle among locals: local.self")
+	require.Equal(t, 2, strings.Count(logs.String(), "cycle among locals"))
+}
+
+// Module discovery parses a directory before it is evaluated, and the
+// evaluation reuses that parse, so discovery must report through the scan's
+// logger.
+func TestResolveLocals_WarningsSurviveModuleDiscovery(t *testing.T) {
+	stack := writeModule(t, t.TempDir(), "stack", map[string]string{"main.tf": `
+locals {
+  a   = local.b
+  b   = local.a
+  all = local
+}
+`})
+	for _, discoverFirst := range []bool{false, true} {
+		var logs bytes.Buffer
+		ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+		e := New()
+		if discoverFirst {
+			require.Empty(t, e.CalledModuleDirs(ctx, stack))
+		}
+		if _, _, _, err := e.EvaluateModule(ctx, stack, nil); err != nil {
+			t.Fatalf("EvaluateModule: %v", err)
+		}
+		require.Equal(t, 1, strings.Count(logs.String(), "cycle among locals"), "discover first: %v", discoverFirst)
+		require.Equal(t, 1, strings.Count(logs.String(), "reads local as a whole"), "discover first: %v", discoverFirst)
+	}
+}
+
+// Locals reading each other resolve in passes, each against the values the
+// pass before left, so a fallback on one or both sides breaks the cycle.
+func TestResolveLocals_CycleBrokenByFallback(t *testing.T) {
+	byAddr := evaluateRoot(t, context.Background(), `
+locals {
+  a = try(local.b, "seed")
+  b = "${local.a}-b"
+  x = try(local.y, "xs")
+  y = try(local.x, "ys")
+}
+resource "aws_sqs_queue" "q" { tags = { a = local.a, b = local.b, x = local.x, y = local.y } }
+`)
+	tags := byAddr["/aws_sqs_queue.q"].Attributes["tags"]
+	require.Equal(t, "seed", tags.GetAttr("a").AsString())
+	require.Equal(t, "seed-b", tags.GetAttr("b").AsString())
+	require.Equal(t, "xs", tags.GetAttr("x").AsString())
+	require.Equal(t, "ys", tags.GetAttr("y").AsString())
+}
+
+// syncBuffer is a log sink several goroutines write to.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// Forks evaluating the same module at once share one parse, so the cycle is
+// reported once however many forks and instances reach it.
+func TestResolveLocals_CycleIsWarnedOnceAcrossForks(t *testing.T) {
+	var logs syncBuffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "n" {}
+locals {
+  a = "${local.b}${var.n}"
+  b = local.a
+}
+resource "aws_sqs_queue" "q" { name = var.n }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "leaf" {
+  source   = "../leaf"
+  for_each = toset(["a", "b", "c"])
+  n        = each.key
+}
+`})
+	e := New()
+	var wg sync.WaitGroup
+	for range 4 {
+		f := e.Fork()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, _, _ = f.EvaluateModule(ctx, stack, nil)
+		}()
+	}
+	wg.Wait()
+	require.Equal(t, 1, strings.Count(logs.String(), "cycle among locals"), logs.String())
+}
+
+// Terraform rejects a read of local as a whole, so it is reported even when
+// it closes no cycle. lookup over local still returns the value it names.
+func TestResolveLocals_WholeLocalReadIsWarned(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+	byAddr := evaluateRoot(t, ctx, `
+locals {
+  real = "r"
+  pick = lookup(local, "real", "d")
+}
+resource "aws_sqs_queue" "q" { name = local.pick }
+`)
+	requireString(t, byAddr["/aws_sqs_queue.q"].Attributes, "name", "r")
+	require.Contains(t, logs.String(), "local.pick reads local as a whole")
+	require.NotContains(t, logs.String(), "cycle among locals")
+
+	logs.Reset()
+	evaluateRoot(t, ctx, `
+locals {
+  all = local
+  x   = "a"
+}
+`)
+	require.Contains(t, logs.String(), "local.all reads local as a whole")
+	require.NotContains(t, logs.String(), "cycle among locals")
+}
+
+func parseLocals(t *testing.T, src string) *localGraph {
+	t.Helper()
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.Pos{Line: 1, Column: 1})
+	require.False(t, diags.HasErrors(), diags.Error())
+	_, localExprs, _, resourceBlocks, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
+	return newLocalGraph(localExprs, declaredResourceTypes(resourceBlocks))
+}
+
+func TestLocalGraph(t *testing.T) {
+	buckets := map[string]struct{}{"aws_s3_bucket": {}}
+	for name, tt := range map[string]struct {
+		src         string
+		wantCycles  []string
+		wantReading map[string]bool
+	}{
+		"chain, cycle and index read": {
+			src: `
+locals {
+  d     = "${local.c}${local.b}"
+  c     = local.b
+  b     = local.a
+  a     = aws_s3_bucket.x.id
+  e     = "${local.f}${local.a}"
+  f     = local.e
+  g     = local["a"]
+  h     = local.undeclared
+  other = "x"
+}
+`,
+			wantCycles:  []string{"local.e, local.f"},
+			wantReading: map[string]bool{"a": true, "b": true, "c": true, "d": true, "e": true, "f": true, "g": true},
+		},
+		// Terraform rejects a read of local as a whole, so it is reported as a cycle.
+		"whole local read": {
+			src: `
+locals {
+  all  = local
+  next = local.all
+}
+`,
+			wantCycles:  []string{"local.all, local.next"},
+			wantReading: map[string]bool{},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := parseLocals(t, tt.src)
+			position := map[string]int{}
+			for i, c := range g.components {
+				for _, v := range c.members {
+					position[g.names[v]] = i
+				}
+			}
+			for v, reads := range g.reads {
+				for _, w := range reads {
+					require.LessOrEqual(t, position[g.names[w]], position[g.names[v]], "%s reads %s", g.names[v], g.names[w])
+				}
+			}
+			require.Equal(t, tt.wantCycles, g.cycles)
+			require.Equal(t, tt.wantReading, g.reading(buckets))
+			require.Equal(t, len(tt.wantReading) > 0, g.readsAny(buckets))
+			require.False(t, g.readsAny(map[string]struct{}{"aws_sqs_queue": {}}))
+		})
 	}
 }

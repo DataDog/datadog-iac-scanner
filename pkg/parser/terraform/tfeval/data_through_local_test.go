@@ -44,9 +44,9 @@ resource "aws_iam_policy" "consumer" {
 `
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.Pos{Line: 1, Column: 1})
 	require.False(t, diags.HasErrors(), diags.Error())
-	_, localExprs, _, resourceBlocks, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
+	_, _, _, resourceBlocks, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
 	types := declaredResourceTypes(resourceBlocks)
-	dataLocals := localsReadingRoot(localExprs, dataRoot)
+	dataLocals := parseLocals(t, src).reading(dataRoot)
 	require.True(t, dataLocals["policy"])
 	require.True(t, resourcesReadNamedLocals(resourceBlocks, dataLocals))
 	require.False(t, resourcesReadResources(resourceBlocks, dataRoot))

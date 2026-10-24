@@ -1292,7 +1292,7 @@ func discoverCalledModuleDirs(
 	contextLogger.Debug().Str("dir", dir).Msg(
 		"module resolve: falling back to directory parse for called module discovery",
 	)
-	return evaluator.CalledModuleDirs(dir)
+	return evaluator.CalledModuleDirs(ctx, dir)
 }
 
 // discoverCalledModuleClosure returns every module transitively reachable from
