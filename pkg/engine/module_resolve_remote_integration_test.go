@@ -271,7 +271,10 @@ module "bucket" {
 	ins := newTestInspector(t, inspectorOpts{
 		queries: []model.QueryMetadata{{
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+			// "Terraform" puts the call chain in the finding identity, as the
+			// Terraform rules do. Without it the two callers are one finding.
+			Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
+			Aggregation: 1,
 		}},
 		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
@@ -296,6 +299,9 @@ module "bucket" {
 
 func TestInspect_RemoteModule_CountExpansionBothInstancesScanned(t *testing.T) {
 	fx := newRemoteBucketFixture(t)
+	// Only the second instance is public: a finding proves that instance was
+	// evaluated and scanned. Both instances raise the same finding identity,
+	// which the scan reports once, so counting findings would prove nothing.
 	writeRemoteBucketModule(t, fx.modPath, `
 variable "acl" {
   type = string
@@ -304,7 +310,7 @@ variable "acl" {
 resource "aws_s3_bucket" "replica" {
   count  = 2
   bucket = "bucket-${count.index}"
-  acl    = var.acl
+  acl    = count.index == 1 ? var.acl : "private"
 }
 `)
 	callerPath := writeRemoteCaller(t, fx.callerRoot, `
@@ -316,7 +322,9 @@ module "bucket" {
 `)
 
 	vulns := inspectRemoteBucket(t, fx, []string{callerPath}, aclRule)
-	require.Len(t, vulns, 2, "both count-expanded instances must produce a finding")
+	require.Len(t, vulns, 1, "the second count-expanded instance must be scanned")
+	require.Equal(t, "replica", vulns[0].ResourceName)
+	require.Equal(t, "stack/main.tf|module.bucket", vulns[0].ModuleCallChain)
 }
 
 func TestInspect_RemoteModule_PreservesNonResourceBlocksInModuleBody(t *testing.T) {

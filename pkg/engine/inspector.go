@@ -263,6 +263,10 @@ type Inspector struct {
 	// evalGcRelief enables the eval-phase forced-GC ticker; the scanner sets it
 	// from its live-heap gate (see SetEvalGcRelief).
 	evalGcRelief bool
+	// compactFindingsAtDecode keeps one finding per identity as each rule's
+	// findings are decoded (see findingSet) instead of returning every decoded
+	// finding (see SetCompactFindingsAtDecode).
+	compactFindingsAtDecode bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -323,6 +327,21 @@ func (c *Inspector) SetEvalGcRelief(relief bool) {
 	c.evalGcRelief = relief
 }
 
+// SetCompactFindingsAtDecode keeps one finding per identity as each rule's
+// findings are decoded, so a module instantiated per count/for_each instance
+// does not have every duplicate instance of its findings held in memory until
+// storage reduces them at the end of the scan.
+//
+// Only a caller that, like storage, keeps the last finding of each identity
+// and drops the rest should enable this: it must stay off for a caller that
+// reads Inspect's return value directly, such as the test-rules rule
+// harness, because identity does not include the line for most platforms and
+// collapsing at decode would silently drop a second genuine violation of one
+// rule on one resource (e.g. two ingress blocks in one security group).
+func (c *Inspector) SetCompactFindingsAtDecode(compact bool) {
+	c.compactFindingsAtDecode = compact
+}
+
 func (c *Inspector) SetExternalModulePaths(paths []string) {
 	if len(paths) == 0 {
 		c.externalPathRoots = nil
@@ -352,6 +371,12 @@ type QueryContext struct {
 	// discardLineInfoAfterUse drops each file's line-info tree after line
 	// detection for a finding (loader kept for reuse) when post-eval release is on.
 	discardLineInfoAfterUse bool
+	// routing, when set, routes the rule's findings to the module callers they
+	// stand for once they are decoded.
+	routing *findingRouting
+	// compactFindingsAtDecode mirrors Inspector.compactFindingsAtDecode for the
+	// query this context runs (see SetCompactFindingsAtDecode).
+	compactFindingsAtDecode bool
 }
 
 var (
@@ -483,7 +508,7 @@ type QueryResult struct {
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
 	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery) QueryResult {
+	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
 	contextLogger := logger.FromContext(ctx)
 
 	loadStart := time.Now()
@@ -518,6 +543,8 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		payload:                 &payload,
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
+		routing:                 routing,
+		compactFindingsAtDecode: c.compactFindingsAtDecode,
 	}
 
 	evalStart := time.Now()
@@ -639,30 +666,28 @@ func (c *Inspector) Inspect(
 			len(sharedQueries), len(queries))
 	}
 
+	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
+
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries)
+		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
 	if err != nil {
 		return nil, err
 	}
 
 	c.releasePostEvalFileData(filesMap)
-
-	vulnerabilities = expandModuleFindings(vulnerabilities, moduleExtras)
-	vulnerabilities = attributeModuleFileFindings(vulnerabilities, moduleFiles)
-	return c.applyCallSiteFilters(ctx, vulnerabilities, files), nil
+	return vulnerabilities, nil
 }
 
-// applyCallSiteFilters applies the root caller file's rule path filters and
+// filterAtCallSites applies the root caller file's rule path filters and
 // ignore comments to module findings, which are reported at the call site.
 // The module file's own filters and comments were applied when the finding
 // was built; this runs after caller expansion so each caller is judged on its
 // own file. External module callers keep the same rule-path bypass as the
 // file-side check, so findings called from a scanned remote module are not
 // dropped by repo-only path filters.
-func (c *Inspector) applyCallSiteFilters(
-	ctx context.Context, vulns []model.Vulnerability, files model.FileMetadatas,
+func (c *Inspector) filterAtCallSites(
+	ctx context.Context, vulns []model.Vulnerability, callers map[string]*model.FileMetadata,
 ) []model.Vulnerability {
-	callers := callerFileIndex(vulns, files, c.repoPath)
 	if len(callers) == 0 {
 		return vulns
 	}
@@ -685,35 +710,6 @@ func (c *Inspector) applyCallSiteFilters(
 		kept = append(kept, *v)
 	}
 	return kept
-}
-
-// callerFileIndex maps the call-site file names of module findings to the
-// scanned files, or returns nil when no finding came from a module.
-func callerFileIndex(vulns []model.Vulnerability, files model.FileMetadatas, repoPath string) map[string]*model.FileMetadata {
-	wanted := make(map[string]*model.FileMetadata)
-	for i := range vulns {
-		if attr := vulns[i].ModuleAttribution; attr != nil && attr.CallSite.Filename != "" {
-			wanted[attr.CallSite.Filename] = nil
-		}
-	}
-	if len(wanted) == 0 {
-		return nil
-	}
-	for _, f := range files {
-		if f == nil || f.ModuleCallChain != "" {
-			continue
-		}
-		key := repoRelativeFile(f.FilePath, repoPath)
-		if existing, ok := wanted[key]; ok && existing == nil {
-			wanted[key] = f
-		}
-	}
-	for key, f := range wanted {
-		if f == nil {
-			delete(wanted, key)
-		}
-	}
-	return wanted
 }
 
 // suppressAtCallSite honors the caller file's disable command and ignore
@@ -754,6 +750,7 @@ func (c *Inspector) executeQueries(
 	baseStores map[string]storage.Store,
 	baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery,
+	routing *findingRouting,
 ) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
@@ -789,7 +786,8 @@ func (c *Inspector) executeQueries(
 	results := make([]QueryResult, len(queries))
 	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
 		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes, sharedQueries)
+			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
+				sharedQueries, routing)
 			return nil
 		})
 	// The closure never returns a non-nil error itself, so ForEach only reports
@@ -1430,12 +1428,15 @@ func (c *Inspector) DecodeQueryResults(
 		})
 	}
 
-	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
+	findings := newFindingSet(qCtx.compactFindingsAtDecode)
 	failedDetectLine := false
 	canceled := false
 	var activeLineInfoFile string
 decodeLoop:
-	for _, queryResultItem := range queryResultItems {
+	for i, queryResultItem := range queryResultItems {
+		// Each item is decoded once; dropping it as it is read lets a rule
+		// raising many findings hold one decoded item rather than all of them.
+		queryResultItems[i] = nil
 		select {
 		case <-ctxTimeout.Done():
 			// Scan canceled (shutdown/error). Stop decoding entirely. The partial
@@ -1449,7 +1450,7 @@ decodeLoop:
 				failedDetectLine = aux
 			}
 			if vulnerability != nil && !aux {
-				vulnerabilities = append(vulnerabilities, *vulnerability)
+				findings.addRouted(ctx, c, qCtx.routing, vulnerability)
 			}
 		}
 	}
@@ -1471,7 +1472,7 @@ decodeLoop:
 		}
 	}
 
-	return vulnerabilities, nil
+	return findings.out, nil
 }
 
 func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
