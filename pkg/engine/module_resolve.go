@@ -445,6 +445,7 @@ func evaluateRootModules(
 		// A root that declares no module call has nothing to instantiate: its
 		// resources are scanned as written, and evaluating it only reparses it.
 		if !directoryDeclaresModuleCall(filesByDir[dir]) {
+			m.recordSuccess(dir)
 			continue
 		}
 		evaluator.ResetSpeculativeBudget()
@@ -503,8 +504,7 @@ func (m *rootMerge) merge(
 		}
 		return
 	}
-	*m.rootEvalOK = true
-	m.successfulRoots[dir] = true
+	m.recordSuccess(dir)
 	for d := range childDirs {
 		m.actualCalledDirs[d] = true
 	}
@@ -517,14 +517,22 @@ func (m *rootMerge) merge(
 	*m.resourceCount += count
 }
 
+// recordSuccess records a root that evaluated successfully or declares no
+// module call. A root owns the module directories below it, and only a
+// successful owner has its call sites stripped.
+func (m *rootMerge) recordSuccess(dir string) {
+	*m.rootEvalOK = true
+	m.successfulRoots[dir] = true
+}
+
 // rootResult is a root evaluated by a worker, starting from an empty budget.
 type rootResult struct {
 	resources []tfeval.ResolvedResource
 	instances []tfeval.ModuleInstance
 	childDirs map[string]bool
 	err       error
-	// unevaluated is a root that declares no module call. It is not merged:
-	// merging a success would record the root as evaluated.
+	// unevaluated is a root that declares no module call, so it was not
+	// evaluated.
 	unevaluated           bool
 	charged               int
 	demand                int
@@ -601,6 +609,7 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 			panic(r.panicked)
 		}
 		if r.unevaluated {
+			m.recordSuccess(dir)
 			continue
 		}
 		charged += r.charged

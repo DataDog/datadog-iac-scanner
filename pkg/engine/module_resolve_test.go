@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -261,6 +262,63 @@ module "child" {
 		}
 		if res.resourceCount != 1 {
 			t.Errorf("workers=%d: instantiated %d resources, want the one module call", workers, res.resourceCount)
+		}
+	}
+}
+
+// A root declaring no module call still owns the module directories below it.
+// It must count as successful, or the call sites of those directories stay in
+// the scan beside the instances that replace them.
+func TestRootWithoutModuleCallsStillStripsCallSites(t *testing.T) {
+	previousProcs := runtime.GOMAXPROCS(0)
+	if previousProcs < 2 {
+		runtime.GOMAXPROCS(2)
+	}
+	t.Cleanup(func() { runtime.GOMAXPROCS(previousProcs) })
+
+	root := t.TempDir()
+	topPath := writeFile(t, root, "main.tf", `
+resource "aws_s3_bucket" "top" { bucket = "top" }
+`)
+	prodPath := writeFile(t, filepath.Join(root, "envs", "prod"), "main.tf", `
+module "mid" {
+  source = "../../modules/mid"
+}
+`)
+	midPath := writeFile(t, filepath.Join(root, "modules", "mid"), "main.tf", `
+module "leaf" {
+  source = "../leaf"
+}
+`)
+	leafPath := writeFile(t, filepath.Join(root, "modules", "leaf"), "main.tf", `
+resource "aws_s3_bucket" "leaf" { bucket = "leaf" }
+`)
+
+	for _, workers := range []int{1, 4} {
+		var files model.FileMetadatas
+		for _, path := range []string{topPath, prodPath, midPath, leafPath} {
+			files = append(files, parseTerraform(t, path)...)
+		}
+		previous := rootEvalWorkers
+		rootEvalWorkers = workers
+		res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+		rootEvalWorkers = previous
+		if !res.ok {
+			t.Fatalf("workers=%d: module resolution failed", workers)
+		}
+		if !res.successfulRoots[root] {
+			t.Errorf("workers=%d: the root declaring no module call is not recorded as successful", workers)
+		}
+		var mid *model.FileMetadata
+		for _, f := range files {
+			if f.FilePath == midPath {
+				mid = f
+			}
+		}
+		stripModuleCalls(mid.Document, mid.FilePath, root, res.calledDirs, res.successfulRoots,
+			newRootIndex(res.rootDirs), nil, nil)
+		if _, kept := mid.Document["module"]; kept {
+			t.Errorf("workers=%d: the leaf call site in modules/mid was kept beside its instance", workers)
 		}
 	}
 }
