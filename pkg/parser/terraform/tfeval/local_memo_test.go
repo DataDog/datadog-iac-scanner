@@ -8,6 +8,8 @@ package tfeval
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -161,6 +163,47 @@ resource "aws_sqs_queue" "this" { name = local.version }
 	}
 }
 
+func TestEvaluateModule_SharedLocalsTellAbsentAttributesApart(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{
+		"main.tf": `
+variable "config" { type = any }
+locals {
+  owner = try(var.config.owner, "nobody")
+}
+resource "aws_sqs_queue" "this" {
+  name = local.owner
+}
+`,
+	})
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+module "set" {
+  source = "../child"
+  config = { owner = "team" }
+}
+module "unset" {
+  source = "../child"
+  config = { other = "x" }
+}
+module "unset_too" {
+  source = "../child"
+  config = { another = "y" }
+}
+`,
+	})
+
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	byAddr := resourcesByAddress(resources)
+	requireString(t, byAddr["module.set/aws_sqs_queue.this"].Attributes, "name", "team")
+	requireString(t, byAddr["module.unset/aws_sqs_queue.this"].Attributes, "name", "nobody")
+	requireString(t, byAddr["module.unset_too/aws_sqs_queue.this"].Attributes, "name", "nobody")
+	require.Equal(t, 2, e.LocalMemoSize(),
+		"configurations lacking the attribute share one value, keyed apart from the one holding it")
+}
+
 func TestEqualValues_AgreesWithRawEquals(t *testing.T) {
 	shared := cty.ObjectVal(map[string]cty.Value{
 		"a": cty.ListVal([]cty.Value{cty.StringVal("x"), cty.StringVal("y")}),
@@ -201,4 +244,85 @@ func TestEqualValues_AgreesWithRawEquals(t *testing.T) {
 		}
 	}
 	require.True(t, sharesStorage(wrap(shared).GetAttr("v"), shared))
+}
+
+// memoChainCost is what evaluating a chain of locals allocated, and what it
+// left live after a GC while its results were held.
+type memoChainCost struct {
+	retained, allocated float64
+}
+
+func memoChainStack(t *testing.T, length int) string {
+	t.Helper()
+	const width = 100
+	var b strings.Builder
+	fmt.Fprintf(&b, "locals {\n  l0 = { for i in range(%d) : format(\"k%%04d\", i) => { n = i, s = \"v\" } }\n", width)
+	for l := 1; l < length; l++ {
+		fmt.Fprintf(&b, "  l%d = { for k, v in local.l%d : k => { n = v.n + 1, s = \"${v.s}x\" } }\n", l, l-1)
+	}
+	fmt.Fprintf(&b, "}\nresource \"aws_sqs_queue\" \"q\" { name = local.l%d[\"k0000\"].s }\n", length-1)
+	return writeModule(t, t.TempDir(), "stack", map[string]string{"main.tf": b.String()})
+}
+
+func memoChainHeap() runtime.MemStats {
+	runtime.GC()
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m
+}
+
+func measureMemoChain(t *testing.T, length int) memoChainCost {
+	t.Helper()
+	stack := memoChainStack(t, length)
+	before := memoChainHeap()
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	after := memoChainHeap()
+	runtime.KeepAlive(e)
+	require.Len(t, resources, 1)
+	want := "v" + strings.Repeat("x", length-1)
+	require.True(t, resources[0].Attributes["name"].RawEquals(cty.StringVal(want)),
+		"a chain of %d locals did not resolve: %#v", length, resources[0].Attributes["name"])
+	return memoChainCost{
+		retained:  float64(int64(after.HeapAlloc) - int64(before.HeapAlloc)),
+		allocated: float64(after.TotalAlloc - before.TotalAlloc),
+	}
+}
+
+// A chain of locals each derived from the one before must cost the same per
+// local however long it is: work repeated for every resolved local whenever
+// another resolves makes the chain quadratic.
+func TestLocalMemo_ChainCostIsLinear(t *testing.T) {
+	const (
+		maxGrowth = 1.5
+		// Calibrated at about 800 KiB allocated and 95 KiB retained per local,
+		// with 2x headroom.
+		allocatedBudget float64 = 1600 * 1024
+		retainedBudget  float64 = 190 * 1024
+	)
+	measureMemoChain(t, 2) // charges lazily initialized globals to no size
+	lengths := []int{3, 5, 10}
+	costs := make([]memoChainCost, len(lengths))
+	for i, length := range lengths {
+		costs[i] = measureMemoChain(t, length)
+		t.Logf("%2d locals: retained %.1f KiB, allocated %.1f KiB", length, costs[i].retained/1024, costs[i].allocated/1024)
+	}
+	perLocal := func(i, j int) memoChainCost {
+		n := float64(lengths[j] - lengths[i])
+		return memoChainCost{
+			retained:  (costs[j].retained - costs[i].retained) / n,
+			allocated: (costs[j].allocated - costs[i].allocated) / n,
+		}
+	}
+	first, last := perLocal(0, 1), perLocal(1, 2)
+	t.Logf("per local: allocated %.1f→%.1f KiB, retained %.1f→%.1f KiB",
+		first.allocated/1024, last.allocated/1024, first.retained/1024, last.retained/1024)
+	require.LessOrEqual(t, last.allocated, maxGrowth*max(first.allocated, 1024),
+		"allocated bytes per local grew with the chain length")
+	require.LessOrEqual(t, last.retained, maxGrowth*max(first.retained, 1024),
+		"retained heap per local grew with the chain length")
+	require.LessOrEqual(t, last.allocated, allocatedBudget, "every local got more expensive to resolve")
+	require.LessOrEqual(t, last.retained, retainedBudget, "every local retains more")
 }

@@ -123,8 +123,14 @@ func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Val
 		}
 		name := root
 		for _, step := range t[1:] {
-			next, label, ok := traverseStatic(v, step)
-			if !ok {
+			next, label, found := traverseStatic(v, step)
+			if found == stepAbsent {
+				// A step known to be absent fails the same whatever else v holds, so
+				// key the read by the absence rather than by v.
+				v, name = cty.True, name+"\x00"+label+"\x00!"
+				break
+			}
+			if found != stepFound {
 				break
 			}
 			v, name = next, name+"\x00"+label
@@ -137,29 +143,39 @@ func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Val
 	return inputs, true
 }
 
+type stepResult int
+
+const (
+	stepUnresolved stepResult = iota
+	stepFound
+	// stepAbsent is a step v is known to lack, which fails the same whatever
+	// else v holds.
+	stepAbsent
+)
+
 // traverseStatic applies an attribute or literal index step to v, when v is a
 // known value the step resolves in.
-func traverseStatic(v cty.Value, step hcl.Traverser) (cty.Value, string, bool) {
+func traverseStatic(v cty.Value, step hcl.Traverser) (cty.Value, string, stepResult) {
 	key, ok := stepKey(step)
 	if !ok || v.IsMarked() || !v.IsKnown() || v.IsNull() {
-		return cty.NilVal, "", false
+		return cty.NilVal, "", stepUnresolved
 	}
 	t := v.Type()
 	switch {
 	case key.Type() == cty.String && t.IsObjectType():
 		name := key.AsString()
 		if !t.HasAttribute(name) {
-			return cty.NilVal, "", false
+			return cty.NilVal, strconv.Quote(name), stepAbsent
 		}
-		return v.GetAttr(name), strconv.Quote(name), true
+		return v.GetAttr(name), strconv.Quote(name), stepFound
 	case key.Type() == cty.String && t.IsMapType(),
 		key.Type() == cty.Number && (t.IsListType() || t.IsTupleType()):
 		if !v.HasIndex(key).True() {
-			return cty.NilVal, "", false
+			return cty.NilVal, stepLabel(key), stepAbsent
 		}
-		return v.Index(key), stepLabel(key), true
+		return v.Index(key), stepLabel(key), stepFound
 	}
-	return cty.NilVal, "", false
+	return cty.NilVal, "", stepUnresolved
 }
 
 // stepKey is the key an attribute or literal index step reads.
