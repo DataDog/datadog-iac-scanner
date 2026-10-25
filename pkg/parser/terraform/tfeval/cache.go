@@ -126,17 +126,26 @@ func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite 
 // one module's evaluation for different inputs.
 type inputsDigest struct{ a, b uint64 }
 
-// keyMemo memoizes digests of large collections for one evaluator. The same
-// decoded configuration is handed to every instance of a module loop, and cty
-// shares the collection's storage across those copies. Each entry keeps the
-// value so that storage cannot be reused under the same identity.
+// keyMemoPairsCap bounds the set elements one key memo holds.
+const keyMemoPairsCap = 1 << 16
+
+// keyMemo memoizes, for one evaluator, digests of large collections and the
+// sorted elements of sets. The same decoded configuration is handed to every
+// instance of a module loop, and cty shares the collection's storage across
+// those copies; ElementIterator sorts a set on every call, and evaluation
+// passes walk and compare the same for_each set once per pass. Each entry keeps
+// the value so that storage cannot be reused under the same identity.
 type keyMemo struct {
 	entries map[collectionID]keyMemoEntry
+	// pairs counts the set elements held across entries.
+	pairs int
 }
 
 type keyMemoEntry struct {
-	value  cty.Value
-	digest inputsDigest
+	value     cty.Value
+	digest    inputsDigest
+	hasDigest bool
+	pairs     []elementPair
 }
 
 // inputsKey returns a stable digest of a set of resolved module inputs.
@@ -264,7 +273,7 @@ func (m *keyMemo) collectionDigest(v cty.Value) inputsDigest {
 	// identity is not safe to reuse. They are cheap to encode directly.
 	memoize := ok && m != nil && id.n > 0
 	if memoize {
-		if e, hit := m.entries[id]; hit {
+		if e, hit := m.entries[id]; hit && e.hasDigest {
 			return e.digest
 		}
 	}
@@ -275,7 +284,9 @@ func (m *keyMemo) collectionDigest(v cty.Value) inputsDigest {
 		if m.entries == nil {
 			m.entries = make(map[collectionID]keyMemoEntry)
 		}
-		m.entries[id] = keyMemoEntry{value: v, digest: d}
+		e := m.entries[id]
+		e.value, e.digest, e.hasDigest = v, d, true
+		m.entries[id] = e
 	}
 	return d
 }
@@ -288,7 +299,8 @@ type collectionID struct {
 
 // collectionIdentity returns the identity of the map or slice holding a
 // collection's elements. cty values are immutable and share that storage
-// when they are copied, so the same identity means the same elements.
+// when they are copied, so the same identity means the same elements. A set is
+// a struct held by value whose vals map is what its copies share.
 func collectionIdentity(v cty.Value) (collectionID, bool) {
 	rv := reflect.ValueOf(&v).Elem().FieldByName("v")
 	if !rv.IsValid() || (rv.Kind() == reflect.Interface && rv.IsNil()) {
@@ -296,6 +308,9 @@ func collectionIdentity(v cty.Value) (collectionID, bool) {
 	}
 	if rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
+	}
+	if rv.Kind() == reflect.Struct {
+		rv = rv.FieldByName("vals")
 	}
 	switch rv.Kind() {
 	case reflect.Map, reflect.Slice:

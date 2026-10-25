@@ -673,7 +673,7 @@ func (e *Evaluator) evaluate(
 	// reference the Nth hop of an N-hop chain can resolve. For chains shorter
 	// than resourceRefPasses hops all resources were already injected inside the
 	// loop, so injectResourceRefs returns false and the locals refresh is skipped.
-	if injectResourceRefs(evalCtx, rootResources) {
+	if injectResourceRefs(&e.keyMemo, evalCtx, rootResources) {
 		evalCtx.Variables["local"] = objectOrEmpty(
 			e.resolveLocalsIncremental(scope, locals, evalCtx, true, false))
 	}
@@ -827,7 +827,7 @@ func (e *Evaluator) preinjectResourceRefs(
 	if !complete {
 		return false
 	}
-	injected := injectResourceRefs(evalCtx, resources)
+	injected := injectResourceRefs(&e.keyMemo, evalCtx, resources)
 	evalCtx.Variables["local"] = objectOrEmpty(
 		e.resolveLocalsIncremental(scope, locals, evalCtx, injected, false))
 	if data.readsOwnResources() {
@@ -1171,7 +1171,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 			return nil, false
 		}
 		// Always inject so resolved attrs reach evalCtx on every pass including the last.
-		changed := injectResourceRefs(evalCtx, rootResources)
+		changed := injectResourceRefs(&e.keyMemo, evalCtx, rootResources)
 		if !changed || !readsOwn {
 			// Nothing the resource blocks or locals read has changed, so
 			// evaluating them again would reproduce these instances.
@@ -1516,8 +1516,12 @@ func (e *Evaluator) expandKnownForEachResources(
 	if needKeys {
 		allKeys = make([]string, 0, total)
 	}
-	for it := fv.ElementIterator(); it.Next(); {
-		k, kv := it.Element()
+	next := e.forEachElements(fv)
+	for {
+		k, kv, more := next()
+		if !more {
+			break
+		}
 		keyStr := "__"
 		if s, ok := ctyutil.ConcreteString(k); ok {
 			keyStr = s
@@ -1568,7 +1572,7 @@ func makeForEachResource(
 // Count-expanded resources are exposed as ordered tuples so that x[0].attr resolves correctly;
 // for_each-expanded resources as keyed objects so that x["k"].attr resolves correctly.
 // Truncated expansions keep the full requested shape with unknown values for omitted instances.
-func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) bool {
+func injectResourceRefs(memo *keyMemo, evalCtx *hcl.EvalContext, resources []ResolvedResource) bool {
 	type instBucket struct {
 		keys     []string
 		attrs    []map[string]cty.Value
@@ -1608,7 +1612,7 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 			typeAttrs[baseName] = buildInstanceCtyVal(b.keys, b.attrs, b.isCount, b.expanded, b.total, b.allKeys)
 		}
 		newVal := cty.ObjectVal(typeAttrs)
-		if existing, ok := evalCtx.Variables[typeName]; !ok || !equalValues(existing, newVal) {
+		if existing, ok := evalCtx.Variables[typeName]; !ok || !memo.equal(existing, newVal) {
 			evalCtx.Variables[typeName] = newVal
 			progress = true
 		}

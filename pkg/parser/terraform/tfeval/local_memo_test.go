@@ -229,6 +229,16 @@ func TestEqualValues_AgreesWithRawEquals(t *testing.T) {
 		cty.EmptyObjectVal,
 		cty.EmptyTupleVal,
 		cty.SetVal([]cty.Value{cty.StringVal("x")}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.UnknownVal(cty.String)}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.NullVal(cty.String)}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.StringVal("y").Mark("m")}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.StringVal("y")}),
+		cty.SetVal([]cty.Value{cty.NumberIntVal(1), cty.UnknownVal(cty.Number)}),
+		cty.SetVal([]cty.Value{cty.NumberIntVal(1), cty.NullVal(cty.Number)}),
+		cty.SetVal([]cty.Value{cty.True, cty.UnknownVal(cty.Bool)}),
+		cty.SetVal([]cty.Value{cty.True, cty.NullVal(cty.Bool)}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.UnknownVal(cty.String), cty.UnknownVal(cty.String)}),
+		cty.SetValEmpty(cty.String),
 		cty.ObjectVal(map[string]cty.Value{"v": cty.UnknownVal(cty.String)}),
 		cty.ObjectVal(map[string]cty.Value{"v": cty.NullVal(cty.String)}),
 		cty.ObjectVal(map[string]cty.Value{"v": cty.NullVal(cty.Number)}),
@@ -238,12 +248,83 @@ func TestEqualValues_AgreesWithRawEquals(t *testing.T) {
 		cty.NullVal(cty.DynamicPseudoType),
 		cty.StringVal("x"),
 	}
+	var memo keyMemo
 	for i, a := range values {
 		for j, b := range values {
 			require.Equal(t, a.RawEquals(b), equalValues(a, b), "values %d and %d: %#v vs %#v", i, j, a, b)
+			require.Equal(t, a.RawEquals(b), memo.equal(a, b), "memoized, values %d and %d: %#v vs %#v", i, j, a, b)
 		}
 	}
 	require.True(t, sharesStorage(wrap(shared).GetAttr("v"), shared))
+	set := cty.SetVal([]cty.Value{cty.StringVal("x"), cty.StringVal("y")})
+	require.True(t, sharesStorage(wrap(set).GetAttr("v"), set))
+}
+
+func memoSet(tag string, i int) cty.Value {
+	return cty.SetVal([]cty.Value{cty.StringVal(fmt.Sprintf("%s-%d-a", tag, i)), cty.StringVal(fmt.Sprintf("%s-%d-b", tag, i))})
+}
+
+// The memo keys a set by its storage, so it keeps the set: a set allocated
+// after a GC must not reuse the storage of one it remembers.
+func TestKeyMemo_KeepsTheSetsItSorted(t *testing.T) {
+	var memo keyMemo
+	for i := range 2000 {
+		memo.setElements(memoSet("old", i))
+	}
+	runtime.GC()
+	runtime.GC()
+	for i := range 2000 {
+		got := memo.setElements(memoSet("new", i))
+		require.Len(t, got, 2)
+		require.Equal(t, fmt.Sprintf("new-%d-a", i), got[0].value.AsString())
+		require.Equal(t, fmt.Sprintf("new-%d-b", i), got[1].value.AsString())
+	}
+	for _, entry := range memo.entries {
+		require.Equal(t, entry.value.LengthInt(), len(entry.pairs))
+		for _, pair := range entry.pairs {
+			require.True(t, entry.value.HasElement(pair.value).True())
+		}
+	}
+}
+
+// A set's digest and its sorted elements share one entry, so one release drops
+// both. A set over the cap replaces every entry rather than being re-sorted on
+// every walk.
+func TestKeyMemo_SetPairsAreBoundedAndReleasedPerEvaluator(t *testing.T) {
+	big := func(tag string, n int) cty.Value {
+		elems := make([]cty.Value, n)
+		for i := range elems {
+			elems[i] = cty.StringVal(fmt.Sprintf("%s-%d", tag, i))
+		}
+		return cty.SetVal(elems)
+	}
+	var memo keyMemo
+	memo.setElements(big("a", keyMemoPairsCap/2+1))
+	b := big("b", keyMemoPairsCap/2+1)
+	memo.setElements(b)
+	require.Len(t, memo.entries, 1)
+	require.Equal(t, keyMemoPairsCap/2+1, memo.pairs)
+
+	huge := big("huge", keyMemoPairsCap+1)
+	memo.setElements(huge)
+	require.Len(t, memo.entries, 1)
+	id, _ := collectionIdentity(huge)
+	require.Len(t, memo.entries[id].pairs, keyMemoPairsCap+1)
+
+	set := memoSet("both", 0)
+	first, second := New(), New()
+	first.keyMemo.collectionDigest(set)
+	first.keyMemo.setElements(set)
+	second.keyMemo.setElements(memoSet("second", 0))
+	require.Len(t, first.keyMemo.entries, 1)
+	for _, entry := range first.keyMemo.entries {
+		require.True(t, entry.hasDigest)
+		require.Len(t, entry.pairs, 2)
+	}
+	first.ReleaseEvalCache()
+	require.Empty(t, first.keyMemo.entries)
+	require.Zero(t, first.keyMemo.pairs)
+	require.Len(t, second.keyMemo.entries, 1)
 }
 
 // memoChainCost is what evaluating a chain of locals allocated, and what it

@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -2607,5 +2608,59 @@ locals {
 			require.Equal(t, len(tt.wantReading) > 0, g.readsAny(buckets))
 			require.False(t, g.readsAny(map[string]struct{}{"aws_sqs_queue": {}}))
 		})
+	}
+}
+
+// forEachSetSource is a module whose for_each set is larger than the per-block
+// cap, so the reference pass walks the whole set to pad the keys it did not
+// expand, and a second resource reads one element back.
+func forEachSetSource(n int) string {
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("%q", fmt.Sprintf("k%04d", i))
+	}
+	return fmt.Sprintf(`
+resource "aws_s3_bucket" "b" {
+  for_each = toset([%s])
+  bucket   = each.key
+}
+resource "aws_sqs_queue" "q" { name = aws_s3_bucket.b["k0000"].bucket }
+`, strings.Join(keys, ", "))
+}
+
+// forEachSetAlloc is the bytes allocated while evaluating a for_each set of n
+// elements, past the per-block cap so a pass walks the whole set.
+func forEachSetAlloc(t *testing.T, n int) float64 {
+	t.Helper()
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": forEachSetSource(n)})
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	e := New()
+	e.SetMaxInstantiated(0)
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	runtime.ReadMemStats(&after)
+	runtime.KeepAlive(e)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	requireString(t, findResource(t, resources, "aws_sqs_queue", "q").Attributes, "name", "k0000")
+	return float64(after.TotalAlloc - before.TotalAlloc)
+}
+
+// Re-injecting a for_each over a set must stay within a fixed allocation per
+// element. Walking and comparing the set through its own iterator sorts it on
+// every pass, at about 44-48 KiB per element whatever the size; sorting it once
+// per evaluator is about 4x less. The set is larger than the per-block cap,
+// which is what makes a pass walk all of it.
+func TestEvaluateModule_ForEachSetReinjectionCostIsBounded(t *testing.T) {
+	forEachSetAlloc(t, 8) // charges lazily initialized globals to no size
+	small, large := forEachSetAlloc(t, 200), forEachSetAlloc(t, 400)
+	perElement := (large - small) / 200
+	t.Logf("200: %.1f KiB, 400: %.1f KiB, per element: %.1f KiB", small/1024, large/1024, perElement/1024)
+	// Measured at about 12 KiB per element.
+	const perElementBudget float64 = 28 * 1024
+	if perElement > perElementBudget {
+		t.Fatalf("per element %.1f KiB passed the %.1f KiB budget", perElement/1024, perElementBudget/1024)
 	}
 }
