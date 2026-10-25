@@ -183,6 +183,9 @@ func EvalFuncsWithRoot(baseDir, rootDir string, fsys vfs.FS) map[string]function
 	for name, fn := range fileHashFuncs(baseDir, rootDir, fsys) {
 		funcs[name] = fn
 	}
+	if s, ok := fsys.(*ScanFS); ok {
+		maps.Copy(funcs, s.memo.decodeFuncs)
+	}
 	funcs["abspath"] = MakeAbsPathFunc(baseDir)
 	funcs["templatefile"] = makeTemplateFileFunc(baseDir, rootDir, fsys, funcsCb)
 	funcs["templatestring"] = makeTemplateStringFunc(funcsCb)

@@ -10,13 +10,14 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/zclconf/go-cty/cty/function"
 )
 
 // ScanFS serves the filesystem functions of one scan. The files a scan reads do
 // not change under it, so each path's symlinks are resolved once instead of on
-// every call that confines a path to its module, and what the file functions
-// make of a file is shared by every call asking for it again. Whoever creates
-// a ScanFS decides how long those results live.
+// every call that confines a path to its module, and what the file and decode
+// functions make of a file or input is shared by every call asking for it
+// again. Whoever creates a ScanFS decides how long those results live.
 type ScanFS struct {
 	vfs.FS
 
@@ -61,19 +62,36 @@ func (s *ScanFS) realPath(path string) string {
 	return path
 }
 
-// resultKinds is the number of memos a ScanFS has.
-const resultKinds = 1
+// resultKinds is the number of memos a ScanFS has: files and decodes.
+const resultKinds = 2
 
-// scanMemo holds the results a ScanFS shares, within scanBudget.
+// scanMemo holds the results a ScanFS shares, within scanBudget. Decodes and
+// file results have a budget each, so neither can take the other's room, and
+// share one allowance for larger results.
 type scanMemo struct {
-	files *resultMemo[fileKey, fileResult]
+	decodes *resultMemo[decodeKey, valueResult]
+	files   *resultMemo[fileKey, fileResult]
+	keys    *decodeKeys
+	// decodeFuncs are jsondecode and yamldecode sharing decodes.
+	decodeFuncs map[string]function.Function
 }
 
 func newScanMemo() *scanMemo {
 	total := scanBudget()
 	budget := total / kindShare
 	large := &allowance{size: total - resultKinds*budget}
-	return &scanMemo{files: newResultMemo(budget, large, estimateFile)}
+	m := &scanMemo{
+		decodes: newResultMemo(budget, large, estimateDecode),
+		files:   newResultMemo(budget, large, estimateFile),
+		keys:    &decodeKeys{pinned: map[stringID]struct{}{}, keys: map[idKey]decodeKey{}},
+	}
+	m.decodeFuncs = decodeFuncs(m)
+	m.files.kept = func(r fileResult) {
+		if s, ok := r.outputString(); ok {
+			m.keys.pin(s)
+		}
+	}
+	return m
 }
 
 func evalSymlinks(fsys vfs.FS, path string) (string, error) {

@@ -244,8 +244,8 @@ type Evaluator struct {
 	parseMu  *sync.Mutex
 	dirCache map[string]dirParse
 	// funcFS serves the Terraform functions of every module this evaluator and
-	// its forks reach, so paths confined once stay resolved and files asked for
-	// again are shared until ReleaseCaches.
+	// its forks reach, so paths confined once stay resolved and files and
+	// decodes asked for again are shared until ReleaseCaches.
 	funcFS *tffunctions.ScanFS
 
 	// mergeAllow, when set, limits OpenTofu twin-shadowing to inventory paths.
@@ -1757,7 +1757,7 @@ func (e *Evaluator) resolveLocalsWith(
 				continue
 			}
 			prev, seen := resolved[name]
-			if seen && prev.IsWhollyKnown() {
+			if seen && e.keyMemo.whollyKnown(prev) {
 				continue
 			}
 			v, diags := expr.Value(ctx)

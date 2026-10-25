@@ -68,10 +68,10 @@ func (a *allowance) take(n int) bool {
 
 // resultMemo shares the results of calls asked for again. Every instance of a
 // module loop, every root and every reparse of a file calls its functions
-// again, so a loop reading one large configuration file would read it once
-// per call. Files do not change during a scan and cty values are immutable,
-// so a result asked for more than once is kept and shared for the rest of
-// the scan, and a result used once dies with the call that used it.
+// again, so a loop reading one large configuration file would read and decode
+// it once per call. cty values are immutable, so a result asked for more than
+// once is kept and shared for the rest of the scan, and a result used once
+// dies with the call that used it.
 //
 // Kept results are never evicted to make room: under the cyclic access of a
 // module loop, eviction would drop each one just before it is asked for
@@ -89,6 +89,8 @@ type resultMemo[K comparable, R any] struct {
 	// estimate returns the memory a result keeps live, or false for a result
 	// not worth keeping.
 	estimate func(K, R) (int, bool)
+	// kept runs under mu when a result is kept.
+	kept func(R)
 
 	entries map[K]R
 	size    int
@@ -181,6 +183,9 @@ func (m *resultMemo[K, R]) remember(key K, result R, size int) {
 		return
 	}
 	m.entries[key] = result
+	if m.kept != nil {
+		m.kept(result)
+	}
 }
 
 // Estimates, in bytes, of what each part of a kept result keeps live,

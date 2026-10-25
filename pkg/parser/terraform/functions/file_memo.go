@@ -62,6 +62,18 @@ func estimateFile(key fileKey, r fileResult) (int, bool) {
 	return n + estimateValue(r.value), true
 }
 
+// outputString is the string every call returning r passes on.
+func (r fileResult) outputString() (string, bool) {
+	return stringOutput(r.value, r.err)
+}
+
+func stringOutput(v cty.Value, err error) (string, bool) {
+	if err != nil || v == cty.NilVal || !v.Type().Equals(cty.String) || !v.IsKnown() || v.IsNull() {
+		return "", false
+	}
+	return v.AsString(), true
+}
+
 func fileText(src []byte) fileResult {
 	if !utf8.Valid(src) {
 		return fileResult{err: errInvalidUTF8}

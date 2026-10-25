@@ -57,6 +57,41 @@ func TestInputsKeySharedCollectionDoesNotScale(t *testing.T) {
 	}
 }
 
+// A long collection checked for unknowns once, such as a value built per
+// instance, is not kept; one checked again is remembered with its answer.
+func TestWhollyKnownRemembersACollectionCheckedAgain(t *testing.T) {
+	var memo keyMemo
+	shared := objectWithKeys(minWhollyKnownMemo, "")
+	perInstance := make([]cty.Value, 3)
+	for i := range perInstance {
+		perInstance[i] = objectWithKeys(minWhollyKnownMemo, fmt.Sprint(i))
+		if !memo.whollyKnown(perInstance[i]) {
+			t.Fatal("a known collection was reported unknown")
+		}
+	}
+	if len(memo.entries) != 0 {
+		t.Fatalf("kept %d collections each checked once", len(memo.entries))
+	}
+	for range 3 {
+		if !memo.whollyKnown(shared) {
+			t.Fatal("a known collection was reported unknown")
+		}
+	}
+	if len(memo.entries) != 1 {
+		t.Fatalf("kept %d collections, want the one checked again", len(memo.entries))
+	}
+	partly := cty.ObjectVal(map[string]cty.Value{"a": cty.UnknownVal(cty.String), "b": shared})
+	list := cty.ListVal([]cty.Value{partly, partly, partly})
+	for range minWhollyKnownMemo / 3 {
+		list = cty.ListVal(append(list.AsValueSlice(), partly))
+	}
+	for range 3 {
+		if memo.whollyKnown(list) {
+			t.Fatal("a collection holding an unknown was reported wholly known")
+		}
+	}
+}
+
 func TestInputsKeyEmptyListsOfDifferentTypesDoNotCollide(t *testing.T) {
 	var memo keyMemo
 	strings := memo.inputsKey(map[string]cty.Value{"v": cty.ListValEmpty(cty.String)})

@@ -126,17 +126,69 @@ func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite 
 // one module's evaluation for different inputs.
 type inputsDigest struct{ a, b uint64 }
 
-// keyMemo memoizes digests of large collections for one evaluator. The same
-// decoded configuration is handed to every instance of a module loop, and cty
-// shares the collection's storage across those copies. Each entry keeps the
-// value so that storage cannot be reused under the same identity.
+// keyMemo memoizes digests of large collections, and whether they are wholly
+// known, for one evaluator. The same decoded configuration is handed to every
+// instance of a module loop, and cty shares the collection's storage across
+// those copies. Each entry keeps the value so that storage cannot be reused
+// under the same identity.
 type keyMemo struct {
 	entries map[collectionID]keyMemoEntry
+	// knownOnce holds the long collections checked once for unknowns, which
+	// are only remembered when checked again: a value built per instance is
+	// checked once and would otherwise be kept until the cache is released.
+	knownOnce map[collectionID]struct{}
 }
 
 type keyMemoEntry struct {
-	value  cty.Value
-	digest inputsDigest
+	value     cty.Value
+	digest    inputsDigest
+	hasDigest bool
+	known     bool
+	hasKnown  bool
+}
+
+// minWhollyKnownMemo is the collection length from which remembering a
+// wholly-known answer costs less than walking the collection again.
+const minWhollyKnownMemo = 128
+
+// maxKnownOnce bounds knownOnce; reaching it starts the record over.
+const maxKnownOnce = 1 << 16
+
+func (m *keyMemo) entry(id collectionID, v cty.Value) keyMemoEntry {
+	if e, hit := m.entries[id]; hit {
+		return e
+	}
+	if m.entries == nil {
+		m.entries = make(map[collectionID]keyMemoEntry)
+	}
+	return keyMemoEntry{value: v}
+}
+
+// whollyKnown reports whether v holds no unknown, remembering the answer for a
+// long collection checked again so a value shared by every instance is walked
+// a fixed number of times.
+func (m *keyMemo) whollyKnown(v cty.Value) bool {
+	id, ok := collectionIdentity(v)
+	if !ok || id.n < minWhollyKnownMemo {
+		return v.IsWhollyKnown()
+	}
+	if e, hit := m.entries[id]; hit && e.hasKnown {
+		return e.known
+	}
+	if _, again := m.knownOnce[id]; !again {
+		if _, hit := m.entries[id]; !hit {
+			if m.knownOnce == nil || len(m.knownOnce) >= maxKnownOnce {
+				m.knownOnce = make(map[collectionID]struct{})
+			}
+			m.knownOnce[id] = struct{}{}
+			return v.IsWhollyKnown()
+		}
+	}
+	delete(m.knownOnce, id)
+	e := m.entry(id, v)
+	e.known, e.hasKnown = v.IsWhollyKnown(), true
+	m.entries[id] = e
+	return e.known
 }
 
 // inputsKey returns a stable digest of a set of resolved module inputs.
@@ -262,22 +314,19 @@ func (m *keyMemo) collectionDigest(v cty.Value) inputsDigest {
 	id, ok := collectionIdentity(v)
 	// Empty slices of different types can share one runtime pointer, so their
 	// identity is not safe to reuse. They are cheap to encode directly.
-	memoize := ok && m != nil && id.n > 0
-	if memoize {
-		if e, hit := m.entries[id]; hit {
-			return e.digest
-		}
+	if !ok || m == nil || id.n == 0 {
+		w := newKeyWriter()
+		m.writeCollection(w, v)
+		return w.digest()
 	}
-	w := newKeyWriter()
-	m.writeCollection(w, v)
-	d := w.digest()
-	if memoize {
-		if m.entries == nil {
-			m.entries = make(map[collectionID]keyMemoEntry)
-		}
-		m.entries[id] = keyMemoEntry{value: v, digest: d}
+	e := m.entry(id, v)
+	if !e.hasDigest {
+		w := newKeyWriter()
+		m.writeCollection(w, v)
+		e.digest, e.hasDigest = w.digest(), true
+		m.entries[id] = e
 	}
-	return d
+	return e.digest
 }
 
 // collectionID identifies a collection value by the storage cty keeps it in.
