@@ -32,6 +32,12 @@ type directoryDependentParser interface {
 	DirectoryDependent() bool
 }
 
+// cacheReleasingParser is an optional parser capability to drop what it keeps
+// only for the files parsed during preparation.
+type cacheReleasingParser interface {
+	ReleaseParseCaches()
+}
+
 type kindParser interface {
 	GetKind() model.FileKind
 	GetCommentToken() string
@@ -130,6 +136,14 @@ func (c *Parser) FS() vfs.FS {
 		return vfs.DiskFS{}
 	}
 	return c.fsys
+}
+
+// ReleaseParseCaches drops the caches the parser keeps while files are
+// prepared, once preparation is done.
+func (c *Parser) ReleaseParseCaches() {
+	if r, ok := c.Parsers.(cacheReleasingParser); ok {
+		r.ReleaseParseCaches()
+	}
 }
 
 // ParsedDocument is a struct containing data retrieved from parsing

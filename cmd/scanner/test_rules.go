@@ -472,6 +472,11 @@ func getFixtureParsers(ctx context.Context) ([]*parser.Parser, error) {
 			Add(&ansibleConfigParser.Parser{}).
 			Add(&ansibleHostsParser.Parser{}).
 			Build([]string{""}, []string{""})
+		// The parsers live for the whole run and parse each fixture once, so
+		// caching for repeated parses would only accumulate across fixtures.
+		for _, p := range fixtureParsers {
+			p.ReleaseParseCaches()
+		}
 	})
 	return fixtureParsers, fixtureParsersErr
 }

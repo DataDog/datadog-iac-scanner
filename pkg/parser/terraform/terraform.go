@@ -11,12 +11,14 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
@@ -54,6 +56,9 @@ type Parser struct {
 	// .tfvars, data sources). Defaults to the real disk; the HTTP server injects
 	// an in-memory FS populated from pushed content.
 	fsys vfs.FS
+	// caches share the files the converted files ask for again until
+	// ReleaseParseCaches; afterwards functions read fsys.
+	caches atomic.Pointer[parseCaches]
 
 	// dirVarsCache memoizes per-directory variable/locals resolution (O(N²) without
 	// it). A scanned .tf file shadowed by an inventoried .tofu twin gets its own
@@ -79,22 +84,39 @@ func (p *Parser) SetMergeAllow(paths []string) {
 
 // NewDefault initializes a parser with Parser default values
 func NewDefault() *Parser {
-	return &Parser{
-		numOfRetries: RetriesDefaultValue,
-		convertFunc:  converter.Convert,
-		fsys:         vfs.DiskFS{},
-	}
+	return newParser(vfs.DiskFS{})
 }
 
 // nolint:gocritic
 func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
-	parser := NewDefault()
-	if fsys != nil {
-		parser.fsys = fsys
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
 	}
+	parser := newParser(fsys)
 	parser.terraformVarsPath = terraformVarsPath
 	parser.sciInfo = sciInfo
 	return parser
+}
+
+func newParser(fsys vfs.FS) *Parser {
+	p := &Parser{
+		numOfRetries: RetriesDefaultValue,
+		convertFunc:  converter.Convert,
+		fsys:         fsys,
+	}
+	p.caches.Store(&parseCaches{fs: functions.NewScanFS(fsys)})
+	return p
+}
+
+type parseCaches struct {
+	fs *functions.ScanFS
+}
+
+// ReleaseParseCaches drops what the parser keeps for files converted again.
+// Files parsed afterwards, such as reparses for line information, still
+// convert, without sharing.
+func (p *Parser) ReleaseParseCaches() {
+	p.caches.Store(nil)
 }
 
 // Resolve - replace or modifies in-memory content before parsing
@@ -294,10 +316,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 
 	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
 
-	fc, parseErr := p.convertFunc(ctx, file, inputVariables, converter.Options{
-		BaseDir: filepath.Dir(path),
-		FS:      p.fsys,
-	})
+	opts := converter.Options{BaseDir: filepath.Dir(path), FS: p.fsys}
+	if c := p.caches.Load(); c != nil {
+		opts.FS = c.fs
+	}
+	fc, parseErr := p.convertFunc(ctx, file, inputVariables, opts)
 	json, err := addExtraInfo(ctx, []model.Document{fc}, path)
 	if err != nil {
 		return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed terraform parse")

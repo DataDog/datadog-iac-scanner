@@ -14,12 +14,16 @@ import (
 
 // ScanFS serves the filesystem functions of one scan. The files a scan reads do
 // not change under it, so each path's symlinks are resolved once instead of on
-// every call that confines a path to its module.
+// every call that confines a path to its module, and what the file functions
+// make of a file is shared by every call asking for it again. Whoever creates
+// a ScanFS decides how long those results live.
 type ScanFS struct {
 	vfs.FS
 
 	mu       sync.Mutex
 	resolved map[string]resolvedPath
+
+	memo *scanMemo
 }
 
 type resolvedPath struct {
@@ -28,7 +32,7 @@ type resolvedPath struct {
 }
 
 func NewScanFS(fsys vfs.FS) *ScanFS {
-	return &ScanFS{FS: fsys, resolved: make(map[string]resolvedPath)}
+	return &ScanFS{FS: fsys, resolved: make(map[string]resolvedPath), memo: newScanMemo()}
 }
 
 // EvalSymlinks is filepath.EvalSymlinks, remembered for the life of the scan.
@@ -44,6 +48,32 @@ func (s *ScanFS) EvalSymlinks(path string) (string, error) {
 	s.resolved[path] = resolvedPath{path: resolved, err: err}
 	s.mu.Unlock()
 	return resolved, err
+}
+
+// realPath names the file at path, so links to one file share its results.
+func (s *ScanFS) realPath(path string) string {
+	if !vfs.IsDisk(s.FS) {
+		return path
+	}
+	if resolved, err := s.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
+}
+
+// resultKinds is the number of memos a ScanFS has.
+const resultKinds = 1
+
+// scanMemo holds the results a ScanFS shares, within scanBudget.
+type scanMemo struct {
+	files *resultMemo[fileKey, fileResult]
+}
+
+func newScanMemo() *scanMemo {
+	total := scanBudget()
+	budget := total / kindShare
+	large := &allowance{size: total - resultKinds*budget}
+	return &scanMemo{files: newResultMemo(budget, large, estimateFile)}
 }
 
 func evalSymlinks(fsys vfs.FS, path string) (string, error) {

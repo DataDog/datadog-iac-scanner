@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -147,6 +148,54 @@ func Test_Parser(t *testing.T) {
 	secret := document[0]["resource"].(model.Document)["aws_secretsmanager_secret_version"].(model.Document)["example"].(model.Document)
 	require.Contains(t, secret["secret_string"], "${null}")
 
+}
+
+// A parser keeps sharing file reads only while files are prepared; a reparse
+// after ReleaseParseCaches still resolves file functions through its fsys.
+func TestParser_ReleaseParseCachesKeepsReparsing(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	policy := `{"Statement":[` + strings.Repeat(`{"Effect":"Allow"},`, 400) + `{}]}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.json"), []byte(policy), 0o600))
+	src := []byte(`
+resource "aws_iam_policy" "p" {
+  policy = file("${path.module}/policy.json")
+}
+`)
+	fsys := &countingReads{}
+	parser := NewDefaultWithParams(fsys, "", model.SCIInfo{})
+	read := func() string {
+		_, document, _, _, err := parser.Parse(ctx, src, filepath.Join(dir, "main.tf"), true, 15)
+		require.NoError(t, err)
+		require.Len(t, document, 1)
+		p := document[0]["resource"].(model.Document)["aws_iam_policy"].(model.Document)["p"].(model.Document)
+		return fmt.Sprint(p["policy"])
+	}
+	before := read()
+	require.Contains(t, before, "Allow")
+	for range 3 {
+		read()
+	}
+	shared := fsys.reads.Load()
+	require.Less(t, shared, int32(4), "parses before the release did not share the file")
+	parser.ReleaseParseCaches()
+	for i := range 3 {
+		require.Equal(t, before, read())
+		require.Equal(t, shared+int32(i)+1, fsys.reads.Load(), "a reparse after the release did not read the file")
+	}
+}
+
+// countingReads counts the JSON files read from disk.
+type countingReads struct {
+	vfs.DiskFS
+	reads atomic.Int32
+}
+
+func (c *countingReads) ReadFile(name string) ([]byte, error) {
+	if strings.HasSuffix(name, ".json") {
+		c.reads.Add(1)
+	}
+	return c.DiskFS.ReadFile(name)
 }
 
 // Test_Count tests resources with count set to 0

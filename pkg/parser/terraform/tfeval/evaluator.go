@@ -243,8 +243,9 @@ type Evaluator struct {
 	// parseMu guards dirCache, which evaluators forked from one another share.
 	parseMu  *sync.Mutex
 	dirCache map[string]dirParse
-	// funcFS serves the Terraform filesystem functions of every module this
-	// evaluator reaches, so paths confined once stay resolved for the scan.
+	// funcFS serves the Terraform functions of every module this evaluator and
+	// its forks reach, so paths confined once stay resolved and files asked for
+	// again are shared until ReleaseCaches.
 	funcFS *tffunctions.ScanFS
 
 	// mergeAllow, when set, limits OpenTofu twin-shadowing to inventory paths.
@@ -279,7 +280,7 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
-		funcFS:           tffunctions.NewScanFS(vfs.DiskFS{}),
+		funcFS:           tffunctions.NewScanFS(fsys),
 		notEvaluatedDirs: make(map[string]bool),
 		fsys:             fsys,
 	}
@@ -511,7 +512,7 @@ func (e *Evaluator) ReleaseCaches() {
 	e.parseMu.Lock()
 	e.dirCache = make(map[string]dirParse)
 	e.parseMu.Unlock()
-	e.funcFS = tffunctions.NewScanFS(vfs.DiskFS{})
+	e.funcFS = tffunctions.NewScanFS(e.fsys)
 }
 
 // ReleaseEvalCache drops memoized module evaluations while keeping parsed HCL

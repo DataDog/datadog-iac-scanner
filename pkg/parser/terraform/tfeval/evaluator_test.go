@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
@@ -105,6 +106,43 @@ resource "aws_s3_bucket" "this" {
 
 	r := findResource(t, resources, "aws_s3_bucket", "this")
 	requireString(t, r.Attributes, "bucket", "my-bucket")
+}
+
+// Pushed content is read through the evaluator's filesystem, by module
+// functions too, and a later evaluator over replaced content reads the new file.
+func TestEvaluateModule_FileReadsTheEvaluatorFilesystem(t *testing.T) {
+	const dir = "/repo/mod"
+	main := []byte(`
+resource "aws_iam_policy" "p" {
+  policy = file("${path.module}/policy.json")
+}
+`)
+	evaluate := func(e *Evaluator) string {
+		t.Helper()
+		resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+		if err != nil {
+			t.Fatalf("EvaluateModule: %v", err)
+		}
+		v := findResource(t, resources, "aws_iam_policy", "p").Attributes["policy"]
+		if !v.IsKnown() || v.Type() != cty.String {
+			t.Fatalf("policy = %#v, want the pushed file's text", v)
+		}
+		return v.AsString()
+	}
+	pushed := `{"Statement":[` + strings.Repeat(`{"Effect":"Allow"},`, 400) + `{}]}`
+	first := NewWithFS(vfs.NewMemFS(map[string][]byte{dir + "/main.tf": main, dir + "/policy.json": []byte(pushed)}))
+	for range 2 {
+		if got := evaluate(first); got != pushed {
+			t.Fatalf("read %d bytes, want the %d pushed", len(got), len(pushed))
+		}
+		first.ReleaseEvalCache()
+	}
+
+	replaced := strings.Replace(pushed, "Allow", "Deny", 1)
+	second := NewWithFS(vfs.NewMemFS(map[string][]byte{dir + "/main.tf": main, dir + "/policy.json": []byte(replaced)}))
+	if got := evaluate(second); got != replaced {
+		t.Fatal("a second evaluator read the file the first one was given")
+	}
 }
 
 func TestEvaluateModule_JSONConfigInputPropagated(t *testing.T) {

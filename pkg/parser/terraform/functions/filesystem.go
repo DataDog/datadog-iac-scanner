@@ -21,7 +21,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/zclconf/go-cty/cty"
@@ -29,21 +28,26 @@ import (
 )
 
 func makeFileFunc(baseDir, rootDir string, fsys vfs.FS, encBase64 bool) function.Function {
+	name, derive := "file", fileText
+	if encBase64 {
+		name, derive = "filebase64", fileBase64
+	}
 	return function.New(&function.Spec{
 		Params: []function.Parameter{{Name: "path", Type: cty.String}},
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			src, err := readConfinedFile(baseDir, rootDir, fsys, args[0].AsString())
+			full, err := confinePath(baseDir, rootDir, fsys, args[0].AsString())
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
-			if encBase64 {
-				return cty.StringVal(base64.StdEncoding.EncodeToString(src)), nil
-			}
-			if !utf8.Valid(src) {
+			got := readFileResult(fsys, name, full, derive)
+			if errors.Is(got.err, errInvalidUTF8) {
 				return cty.NilVal, function.NewArgErrorf(0, "contents of %s are not valid UTF-8; use filebase64", args[0].AsString())
 			}
-			return cty.StringVal(string(src)), nil
+			if got.err != nil {
+				return cty.NilVal, function.NewArgError(0, got.err)
+			}
+			return got.value, nil
 		},
 	})
 }
@@ -119,22 +123,52 @@ func makeFileSetFunc(baseDir, rootDir string, fsys vfs.FS) function.Function {
 	})
 }
 
-func makeFileHashFunc(baseDir, rootDir string, fsys vfs.FS, newHash func() hash.Hash, asBase64 bool) function.Function {
+// fileHashes are the file hash functions: the hash each computes and whether
+// it is written in base64 rather than hex.
+var fileHashes = []struct {
+	name     string
+	newHash  func() hash.Hash
+	asBase64 bool
+}{
+	{"filemd5", md5.New, false},
+	{"filesha1", sha1.New, false},
+	{"filesha256", sha256.New, false},
+	{"filesha512", sha512.New, false},
+	{"filebase64sha256", sha256.New, true},
+	{"filebase64sha512", sha512.New, true},
+}
+
+func fileHashFuncs(baseDir, rootDir string, fsys vfs.FS) map[string]function.Function {
+	funcs := make(map[string]function.Function, len(fileHashes))
+	for _, h := range fileHashes {
+		funcs[h.name] = makeFileHashFunc(baseDir, rootDir, fsys, h.name, h.newHash, h.asBase64)
+	}
+	return funcs
+}
+
+func makeFileHashFunc(baseDir, rootDir string, fsys vfs.FS, name string, newHash func() hash.Hash, asBase64 bool) function.Function {
+	derive := func(src []byte) fileResult {
+		h := newHash()
+		_, _ = h.Write(src)
+		sum := h.Sum(nil)
+		if asBase64 {
+			return fileResult{value: cty.StringVal(base64.StdEncoding.EncodeToString(sum))}
+		}
+		return fileResult{value: cty.StringVal(hex.EncodeToString(sum))}
+	}
 	return function.New(&function.Spec{
 		Params: []function.Parameter{{Name: "path", Type: cty.String}},
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			src, err := readConfinedFile(baseDir, rootDir, fsys, args[0].AsString())
+			full, err := confinePath(baseDir, rootDir, fsys, args[0].AsString())
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
-			h := newHash()
-			_, _ = h.Write(src)
-			sum := h.Sum(nil)
-			if asBase64 {
-				return cty.StringVal(base64.StdEncoding.EncodeToString(sum)), nil
+			got := readFileResult(fsys, name, full, derive)
+			if got.err != nil {
+				return cty.NilVal, function.NewArgError(0, got.err)
 			}
-			return cty.StringVal(hex.EncodeToString(sum)), nil
+			return got.value, nil
 		},
 	})
 }
@@ -475,15 +509,4 @@ func appendGlobClass(b *strings.Builder, class string) {
 		b.WriteByte(class[i])
 	}
 	b.WriteByte(']')
-}
-
-func fileHashFuncs(baseDir, rootDir string, fsys vfs.FS) map[string]function.Function {
-	return map[string]function.Function{
-		"filemd5":          makeFileHashFunc(baseDir, rootDir, fsys, md5.New, false),
-		"filesha1":         makeFileHashFunc(baseDir, rootDir, fsys, sha1.New, false),
-		"filesha256":       makeFileHashFunc(baseDir, rootDir, fsys, sha256.New, false),
-		"filesha512":       makeFileHashFunc(baseDir, rootDir, fsys, sha512.New, false),
-		"filebase64sha256": makeFileHashFunc(baseDir, rootDir, fsys, sha256.New, true),
-		"filebase64sha512": makeFileHashFunc(baseDir, rootDir, fsys, sha512.New, true),
-	}
 }

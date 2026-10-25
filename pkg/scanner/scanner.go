@@ -44,13 +44,13 @@ func PrepareAndScan(
 		err := runner.PrepareDiskSources(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth, parallel)
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
-		if err != nil {
-			return err
-		}
 		// The cached file bytes were only needed during the shared walk; release them
 		// before eval so they are not held through the query phase.
 		fsp.ReleaseContentCache()
 		releasePrepareState(services)
+		if err != nil {
+			return err
+		}
 		return StartScan(ctx, scanID, services)
 	}
 
@@ -63,10 +63,10 @@ func PrepareAndScan(
 			flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing))
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
+		releasePrepareState(services)
 		if err != nil {
 			return err
 		}
-		releasePrepareState(services)
 		return StartScan(ctx, scanID, services)
 	}
 
@@ -82,6 +82,9 @@ func releasePrepareState(services serviceSlice) {
 		s.ClearContentInterner()
 		s.ClearParsedShares()
 		s.ClearTreeCons()
+		if s.Parser != nil {
+			s.Parser.ReleaseParseCaches()
+		}
 	}
 	model.ClearYAMLScalarInterner()
 }
