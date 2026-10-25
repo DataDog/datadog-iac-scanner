@@ -1148,7 +1148,7 @@ func TestEvaluateLocalModuleBlocksIgnoresNullPreliminaryOutputs(t *testing.T) {
 	}()
 
 	_, outputs := New().evaluateLocalModuleBlocks(
-		context.Background(), nil, evalCtx, nil, nil, nil, "", "", "", "", nil, 0, nil, nil,
+		context.Background(), nil, nil, evalCtx, nil, nil, nil, "", "", "", "", nil, 0, nil, nil,
 	)
 	if len(outputs) != 0 {
 		t.Fatalf("outputs = %#v, want empty", outputs)

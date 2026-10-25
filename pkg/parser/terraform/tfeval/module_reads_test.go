@@ -19,21 +19,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func parseTestBlocks(t *testing.T, src string) (modules []*hclsyntax.Block, locals map[string]hclsyntax.Expression, data []*hclsyntax.Block) {
+func parseTestBlocks(t *testing.T, src string) (modules []*hclsyntax.Block, locals *localGraph, data []*hclsyntax.Block) {
 	t.Helper()
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	bodies := []*hclsyntax.Body{file.Body.(*hclsyntax.Body)}
-	_, locals, modules, _, _ = collectBlocks(bodies)
-	return modules, locals, collectDataBlocks(bodies)
+	_, localExprs, modules, _, _ := collectBlocks(bodies)
+	return modules, newLocalGraph(localExprs, nil), collectDataBlocks(bodies)
 }
 
 func TestComputeSiblingReads(t *testing.T) {
 	modules, locals, data := parseTestBlocks(t, `
 locals {
   direct  = module.a.id
-  chained = local.direct
-  unread  = module.z.id
+  chained  = local.direct
+  unread   = module.z.id
+  via_data = data.aws_iam_policy_document.p.json
+  constant = "t"
 }
 data "aws_iam_policy_document" "p" {
   statement { resources = [local.chained, module.b.arn] }
@@ -61,6 +63,15 @@ module "e" {
   in     = local["chained"]
   all    = data.aws_iam_policy_document
 }
+module "f" {
+  source = "./f"
+  in     = local.via_data
+  tag    = local.constant
+}
+module "g" {
+  source = "./g"
+  in     = "${module.f.id}-${local.constant}"
+}
 `)
 	reads := computeSiblingReads(modules, locals, data)
 	names := func(s labelSet) map[string]bool {
@@ -83,6 +94,11 @@ module "e" {
 
 	require.False(t, reads.direct[4].all)
 	require.Equal(t, map[string]bool{"a": true, "b": true}, names(reads.resolved[4]))
+
+	require.Equal(t, map[string]bool{"a": true, "b": true}, names(reads.resolved[5]), "a local reading a data block")
+	require.True(t, reads.throughLocals[5])
+	require.Equal(t, map[string]bool{"f": true}, names(reads.resolved[6]))
+	require.False(t, reads.throughLocals[6], "a constant local reaches no call")
 	for i := range reads.resolved {
 		require.False(t, reads.resolved[i].all, "call %d", i)
 	}

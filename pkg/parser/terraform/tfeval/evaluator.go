@@ -180,9 +180,6 @@ type Evaluator struct {
 	// the evaluation cache's lifetime.
 	localMemo  map[localMemoKey]cty.Value
 	localReads map[hclsyntax.Expression]localReads
-	// siblingReads is what the module calls of each parsed module read of one
-	// another, keyed by the module's first call.
-	siblingReads map[*hclsyntax.Block]*siblingReads
 	// When set, non-local module sources resolve here and recurse with caller inputs.
 	remoteResolver RemoteResolver
 
@@ -245,7 +242,9 @@ type dirParse struct {
 	bodies  []*hclsyntax.Body
 	sources map[string][]byte
 	locals  *localGraph
-	err     error
+	// siblings is what the module's calls read of one another.
+	siblings *siblingReads
+	err      error
 }
 
 func New() *Evaluator {
@@ -354,8 +353,9 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
 	parsed := dirParse{bodies: bodies, sources: sources, err: err}
 	if err == nil {
-		_, localExprs, _, resourceBlocks, _ := collectBlocks(bodies)
+		_, localExprs, moduleBlocks, resourceBlocks, _ := collectBlocks(bodies)
 		parsed.locals = newLocalGraph(localExprs, declaredResourceTypes(resourceBlocks))
+		parsed.siblings = computeSiblingReads(moduleBlocks, parsed.locals, collectDataBlocks(bodies))
 	}
 
 	e.parseMu.Lock()
@@ -536,7 +536,6 @@ func (e *Evaluator) ReleaseEvalCache() {
 	e.keyMemo = keyMemo{}
 	e.ReleaseLocalMemo()
 	e.localReads = nil
-	e.siblingReads = nil
 }
 
 // ReleaseLocalMemo drops local values shared across module instances. Nothing in
@@ -655,11 +654,11 @@ func (e *Evaluator) evaluate(
 	}
 
 	e.applySiblingModulePrepass(
-		ctx, moduleBlocks, evalCtx, scope, data, locals, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, parsed.siblings, evalCtx, scope, data, locals, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, evalCtx, scope, data, locals, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
+		ctx, moduleBlocks, parsed.siblings, evalCtx, scope, data, locals, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
 	)
 
 	e.installModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
@@ -977,6 +976,7 @@ func (e *Evaluator) ResetSpeculativeBudget() {
 func (e *Evaluator) applySiblingModulePrepass(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
+	reads *siblingReads,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	data *moduleData,
@@ -986,11 +986,11 @@ func (e *Evaluator) applySiblingModulePrepass(
 	depth int,
 	visiting map[string]bool,
 ) {
-	if !e.siblingReadsOf(moduleBlocks, scope).anyPrepass {
+	if !reads.anyPrepass {
 		return
 	}
 	prelimOutputs := e.preliminaryModuleOutputs(
-		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, reads, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 	e.installModuleOutputs(ctx, evalCtx, scope, locals, data, prelimOutputs)
 }
@@ -998,6 +998,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 func (e *Evaluator) evaluateLocalModuleBlocks(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
+	reads *siblingReads,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	data *moduleData,
@@ -1028,7 +1029,6 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 	}
 
-	reads := e.siblingReadsOf(moduleBlocks, scope)
 	published := moduleOutputsPublisher{outputs: moduleOutputs}
 	for pos, mb := range moduleBlocks {
 		// A call that names the outputs it reads is evaluated against only
@@ -1918,6 +1918,7 @@ func evalLength(expr hclsyntax.Expression, ctx *hcl.EvalContext) (cty.Value, boo
 func (e *Evaluator) preliminaryModuleOutputs(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
+	reads *siblingReads,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	dir, rootDir, packageRoot, addr string,
@@ -1938,7 +1939,6 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	for k, v := range visiting {
 		tmpVisiting[k] = v
 	}
-	reads := e.siblingReadsOf(moduleBlocks, scope)
 	published := moduleOutputsPublisher{outputs: out}
 	for pos, mb := range moduleBlocks {
 		if !reads.prepass[pos] {

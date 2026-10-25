@@ -35,6 +35,21 @@ func (s *labelSet) add(name string) {
 	s.names[name] = true
 }
 
+// union adds the labels of other to s. A set reading every call drops its
+// names.
+func (s *labelSet) union(other labelSet) {
+	if s.all {
+		return
+	}
+	if other.all {
+		*s = labelSet{all: true}
+		return
+	}
+	for name := range other.names {
+		s.add(name)
+	}
+}
+
 // readsAny reports whether s reads one of the labels in changed.
 func (s labelSet) readsAny(changed map[string]bool) bool {
 	if len(changed) == 0 {
@@ -132,63 +147,30 @@ type siblingReads struct {
 	anyPrepass bool
 }
 
-// siblingReadsOf returns the sibling reads of a module's calls.
-func (e *Evaluator) siblingReadsOf(moduleBlocks []*hclsyntax.Block, scope *ModuleScope) *siblingReads {
-	if len(moduleBlocks) == 0 {
-		return &siblingReads{}
-	}
-	key := moduleBlocks[0]
-	if reads, ok := e.siblingReads[key]; ok {
-		return reads
-	}
-	reads := computeSiblingReads(moduleBlocks, scope.Locals, collectDataBlocks(scope.Bodies))
-	if e.siblingReads == nil {
-		e.siblingReads = make(map[*hclsyntax.Block]*siblingReads)
-	}
-	e.siblingReads[key] = reads
-	return reads
-}
-
+// computeSiblingReads returns what a module's calls read of one another. It
+// depends on the module's HCL alone, so it is computed once per parse.
 func computeSiblingReads(
 	moduleBlocks []*hclsyntax.Block,
-	localExprs map[string]hclsyntax.Expression,
+	locals *localGraph,
 	dataBlocks []*hclsyntax.Block,
 ) *siblingReads {
-	locals := make(map[string]*blockReads, len(localExprs))
-	for name, expr := range localExprs {
-		r := &blockReads{}
-		r.expr(expr)
-		locals[name] = r
-	}
-	data := make(map[string]*blockReads, len(dataBlocks))
-	for _, b := range dataBlocks {
-		key := b.Labels[0] + "." + b.Labels[1]
-		r := data[key]
-		if r == nil {
-			r = &blockReads{}
-			data[key] = r
-		}
-		r.body(b.Body, nil)
-	}
 	out := &siblingReads{
 		direct:        make([]labelSet, len(moduleBlocks)),
 		resolved:      make([]labelSet, len(moduleBlocks)),
 		throughLocals: make([]bool, len(moduleBlocks)),
 	}
+	if len(moduleBlocks) == 0 {
+		return out
+	}
+	closure := newModuleReadClosure(locals, dataBlocks)
 	for i, mb := range moduleBlocks {
 		r := &blockReads{}
 		r.body(mb.Body, unreadModuleAttrs)
 		out.direct[i] = r.modules
-		reached := resolveModuleReads(r, locals, data)
-		out.resolved[i] = reached
-		if r.modules.all {
-			out.resolved[i].all = true
-		} else {
-			for name := range r.modules.names {
-				out.resolved[i].add(name)
-			}
-		}
+		reached := closure.reached(r)
 		out.throughLocals[i] = reached.all || len(reached.names) > 0
+		reached.union(r.modules)
+		out.resolved[i] = reached
 	}
 	out.prepass = prepassCalls(moduleBlocks, out)
 	out.anyPrepass = slices.Contains(out.prepass, true)
@@ -254,44 +236,110 @@ func prepassCalls(moduleBlocks []*hclsyntax.Block, reads *siblingReads) []bool {
 	return members
 }
 
-// resolveModuleReads follows refs through the locals and data blocks it reads
-// to the module calls it reads in the end.
-func resolveModuleReads(refs *blockReads, locals, data map[string]*blockReads) labelSet {
-	var out labelSet
-	visited := map[*blockReads]bool{}
-	var walk func(r *blockReads, includeModules bool)
-	walk = func(r *blockReads, includeModules bool) {
-		if r == nil || visited[r] || out.all {
-			return
+// moduleReadClosure is the module calls each local and data block reads in
+// the end, directly or through other locals and data blocks. Locals are the
+// local graph's vertices by index; data blocks follow them.
+type moduleReadClosure struct {
+	locals    *localGraph
+	dataIndex map[string]int
+	reach     []labelSet
+}
+
+func newModuleReadClosure(locals *localGraph, dataBlocks []*hclsyntax.Block) *moduleReadClosure {
+	c := &moduleReadClosure{locals: locals, dataIndex: map[string]int{}}
+	nLocals := 0
+	if locals != nil {
+		nLocals = len(locals.names)
+	}
+	refs := make([]*blockReads, nLocals)
+	for v := range refs {
+		refs[v] = &blockReads{}
+		refs[v].expr(locals.exprs[v])
+	}
+	for _, b := range dataBlocks {
+		key := b.Labels[0] + "." + b.Labels[1]
+		v, ok := c.dataIndex[key]
+		if !ok {
+			v = len(refs)
+			c.dataIndex[key] = v
+			refs = append(refs, &blockReads{})
 		}
-		visited[r] = true
-		if includeModules {
-			if r.modules.all {
-				out.all = true
-				return
+		refs[v].body(b.Body, nil)
+	}
+	edges := make([][]int, len(refs))
+	for v, r := range refs {
+		if v < nLocals {
+			edges[v] = append(edges[v], locals.reads[v]...)
+		} else {
+			edges[v] = append(edges[v], c.localTargets(r)...)
+		}
+		edges[v] = append(edges[v], c.dataTargets(r, nLocals, len(refs))...)
+	}
+	c.reach = make([]labelSet, len(refs))
+	for _, comp := range orderComponents(edges) {
+		var reach labelSet
+		for _, v := range comp.members {
+			reach.union(refs[v].modules)
+			for _, w := range edges[v] {
+				reach.union(c.reach[w])
 			}
-			for name := range r.modules.names {
-				out.add(name)
-			}
 		}
-		if r.allLocals {
-			for _, next := range locals {
-				walk(next, true)
-			}
-		}
-		for name := range r.locals {
-			walk(locals[name], true)
-		}
-		if r.allData {
-			for _, next := range data {
-				walk(next, true)
-			}
-		}
-		for key := range r.data {
-			walk(data[key], true)
+		for _, v := range comp.members {
+			c.reach[v] = reach
 		}
 	}
-	walk(refs, false)
+	return c
+}
+
+// localTargets is the declared locals r reads, by graph index.
+func (c *moduleReadClosure) localTargets(r *blockReads) []int {
+	if c.locals == nil {
+		return nil
+	}
+	if r.allLocals {
+		all := make([]int, len(c.locals.names))
+		for v := range all {
+			all[v] = v
+		}
+		return all
+	}
+	var out []int
+	for name := range r.locals {
+		if v, ok := slices.BinarySearch(c.locals.names, name); ok {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// dataTargets is the data blocks r reads, by vertex.
+func (c *moduleReadClosure) dataTargets(r *blockReads, first, end int) []int {
+	if r.allData {
+		all := make([]int, 0, end-first)
+		for v := first; v < end; v++ {
+			all = append(all, v)
+		}
+		return all
+	}
+	var out []int
+	for key := range r.data {
+		if v, ok := c.dataIndex[key]; ok {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// reached is the module calls r reads through the locals and data blocks it
+// reads, leaving out the calls it reads directly.
+func (c *moduleReadClosure) reached(r *blockReads) labelSet {
+	var out labelSet
+	for _, v := range c.localTargets(r) {
+		out.union(c.reach[v])
+	}
+	for _, v := range c.dataTargets(r, len(c.reach)-len(c.dataIndex), len(c.reach)) {
+		out.union(c.reach[v])
+	}
 	return out
 }
 
