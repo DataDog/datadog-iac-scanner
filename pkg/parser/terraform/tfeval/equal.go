@@ -123,8 +123,9 @@ func (m *keyMemo) equalElement(a, b cty.Value) bool {
 }
 
 // setElements returns a set's elements in ElementIterator order, sorted once
-// per set the memo holds. A set larger than the cap replaces every entry, so
-// the largest for_each still sorts once.
+// per set the memo holds. The counted entries hold at most keyMemoPairsCap
+// elements, plus one oversized set that remains cached while smaller sets are
+// sorted.
 func (m *keyMemo) setElements(v cty.Value) []elementPair {
 	id, ok := collectionIdentity(v)
 	memoize := ok && m != nil && id.n > 0
@@ -139,9 +140,21 @@ func (m *keyMemo) setElements(v cty.Value) []elementPair {
 		pairs = append(pairs, elementPair{k, val})
 	}
 	if memoize {
+		if len(pairs) > keyMemoPairsCap {
+			m.entries = make(map[collectionID]keyMemoEntry)
+			m.pairs = 0
+			m.hasOversized = true
+			m.oversizedID = id
+			m.oversized = keyMemoEntry{value: v, pairs: pairs}
+			m.entries[id] = m.oversized
+			return pairs
+		}
 		if m.entries == nil || m.pairs+len(pairs) > keyMemoPairsCap {
 			m.entries = make(map[collectionID]keyMemoEntry)
 			m.pairs = 0
+			if m.hasOversized {
+				m.entries[m.oversizedID] = m.oversized
+			}
 		}
 		e := m.entries[id]
 		e.value, e.pairs = v, pairs

@@ -126,7 +126,8 @@ func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite 
 // one module's evaluation for different inputs.
 type inputsDigest struct{ a, b uint64 }
 
-// keyMemoPairsCap bounds the set elements one key memo holds.
+// keyMemoPairsCap bounds the counted set elements one key memo holds. One
+// oversized set stays memoized outside that total.
 const keyMemoPairsCap = 1 << 16
 
 // keyMemo memoizes, for one evaluator, digests of large collections and the
@@ -137,8 +138,12 @@ const keyMemoPairsCap = 1 << 16
 // the value so that storage cannot be reused under the same identity.
 type keyMemo struct {
 	entries map[collectionID]keyMemoEntry
-	// pairs counts the set elements held across entries.
-	pairs int
+	// pairs counts the set elements in the capped entries. The oversized entry is
+	// not included.
+	pairs        int
+	oversized    keyMemoEntry
+	oversizedID  collectionID
+	hasOversized bool
 }
 
 type keyMemoEntry struct {
@@ -287,6 +292,9 @@ func (m *keyMemo) collectionDigest(v cty.Value) inputsDigest {
 		e := m.entries[id]
 		e.value, e.digest, e.hasDigest = v, d, true
 		m.entries[id] = e
+		if m.hasOversized && m.oversizedID == id {
+			m.oversized = e
+		}
 	}
 	return d
 }

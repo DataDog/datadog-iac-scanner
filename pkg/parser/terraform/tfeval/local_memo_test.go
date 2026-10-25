@@ -288,8 +288,8 @@ func TestKeyMemo_KeepsTheSetsItSorted(t *testing.T) {
 }
 
 // A set's digest and its sorted elements share one entry, so one release drops
-// both. A set over the cap replaces every entry rather than being re-sorted on
-// every walk.
+// both. A set over the cap stays memoized outside the counted cap while smaller
+// sets stay within the cap.
 func TestKeyMemo_SetPairsAreBoundedAndReleasedPerEvaluator(t *testing.T) {
 	big := func(tag string, n int) cty.Value {
 		elems := make([]cty.Value, n)
@@ -306,10 +306,14 @@ func TestKeyMemo_SetPairsAreBoundedAndReleasedPerEvaluator(t *testing.T) {
 	require.Equal(t, keyMemoPairsCap/2+1, memo.pairs)
 
 	huge := big("huge", keyMemoPairsCap+1)
-	memo.setElements(huge)
+	hugePairs := memo.setElements(huge)
 	require.Len(t, memo.entries, 1)
 	id, _ := collectionIdentity(huge)
 	require.Len(t, memo.entries[id].pairs, keyMemoPairsCap+1)
+	memo.setElements(memoSet("small", 0))
+	hugeAgain := memo.setElements(huge)
+	require.Same(t, &hugePairs[0], &hugeAgain[0])
+	require.Equal(t, 2, memo.pairs)
 
 	set := memoSet("both", 0)
 	first, second := New(), New()
