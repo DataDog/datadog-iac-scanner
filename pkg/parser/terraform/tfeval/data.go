@@ -173,7 +173,7 @@ func (d *moduleData) readsModules() bool {
 // refreshedWithModule reports whether the data blocks were already refreshed
 // against the given module.* value.
 func (d *moduleData) refreshedWithModule(value cty.Value) bool {
-	return d != nil && !d.moduleAtRefresh.IsNull() && equalValues(d.moduleAtRefresh, value)
+	return d != nil && !d.moduleAtRefresh.IsNull() && d.e.keyMemo.equal(d.moduleAtRefresh, value)
 }
 
 func (d *moduleData) readsOwnResources() bool {
@@ -196,7 +196,7 @@ func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
 	}
 	for pass := 0; pass <= bound; pass++ {
 		value := d.evaluate(ctx, evalCtx)
-		if existing, ok := evalCtx.Variables[blockTypeData]; ok && equalValues(existing, value) {
+		if existing, ok := evalCtx.Variables[blockTypeData]; ok && d.e.keyMemo.equal(existing, value) {
 			break
 		}
 		evalCtx.Variables[blockTypeData] = value
@@ -237,7 +237,7 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 	}
 	d.instances = instances
 	byType := &hcl.EvalContext{Variables: map[string]cty.Value{}}
-	injectResourceRefs(byType, exposed)
+	injectResourceRefs(&d.e.keyMemo, byType, exposed)
 	return objectOrEmpty(byType.Variables)
 }
 

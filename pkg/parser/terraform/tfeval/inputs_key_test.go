@@ -46,14 +46,25 @@ func TestInputsKeySharedCollectionDoesNotScale(t *testing.T) {
 	}); got == first {
 		t.Fatal("a different instance reused the first key")
 	}
-	if got := memo.inputsKey(map[string]cty.Value{
-		"config": objectWithKeys(500, "other"),
+	other := objectWithKeys(500, "other")
+	got := memo.inputsKey(map[string]cty.Value{
+		"config": other,
 		"n":      cty.NumberIntVal(0),
-	}); got == first {
+	})
+	if got == first {
 		t.Fatal("a different collection produced the same key")
 	}
-	if len(memo.entries) != 2 {
-		t.Fatalf("memoized %d collections, want the two distinct configs", len(memo.entries))
+	if len(memo.digests) != 1 {
+		t.Fatalf("retained %d collections, want the config keyed more than once", len(memo.digests))
+	}
+	if again := memo.inputsKey(map[string]cty.Value{
+		"config": other,
+		"n":      cty.NumberIntVal(0),
+	}); again != got {
+		t.Fatal("the second sight of a collection changed its key")
+	}
+	if len(memo.digests) != 2 {
+		t.Fatalf("retained %d collections, want both configs once each was keyed twice", len(memo.digests))
 	}
 }
 
@@ -64,8 +75,8 @@ func TestInputsKeyEmptyListsOfDifferentTypesDoNotCollide(t *testing.T) {
 	if strings == numbers {
 		t.Fatal("empty lists of different types produced the same key")
 	}
-	if len(memo.entries) != 0 {
-		t.Fatalf("memoized %d empty lists", len(memo.entries))
+	if len(memo.digests) != 0 {
+		t.Fatalf("memoized %d empty lists", len(memo.digests))
 	}
 }
 
@@ -111,14 +122,16 @@ func TestInputsKeyNonFiniteNumbersDoNotCollideWithUnknown(t *testing.T) {
 
 func TestInputsKeyMemoizesCollectionInputsOnly(t *testing.T) {
 	var memo keyMemo
-	memo.inputsKey(map[string]cty.Value{
+	in := map[string]cty.Value{
 		"config": cty.ObjectVal(map[string]cty.Value{
 			"nested": cty.ListVal([]cty.Value{cty.StringVal("x")}),
 		}),
 		"name": cty.StringVal("plain"),
-	})
-	if len(memo.entries) != 1 {
-		t.Fatalf("memoized %d collections, want the top-level collection input only", len(memo.entries))
+	}
+	memo.inputsKey(in)
+	memo.inputsKey(in)
+	if len(memo.digests) != 1 {
+		t.Fatalf("memoized %d collections, want the top-level collection input only", len(memo.digests))
 	}
 }
 
@@ -160,7 +173,7 @@ resource "aws_s3_bucket" "b" {
 		require.True(t, r.Attributes["size"].RawEquals(cty.NumberIntVal(keys)))
 	}
 	require.Len(t, names, 40)
-	require.Len(t, e.keyMemo.entries, 1)
+	require.Len(t, e.keyMemo.digests, 1)
 }
 
 func TestEvalObjectLength(t *testing.T) {

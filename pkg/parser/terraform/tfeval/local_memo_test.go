@@ -8,6 +8,7 @@ package tfeval
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"runtime"
 	"strings"
 	"testing"
@@ -382,6 +383,16 @@ func TestEqualValues_AgreesWithRawEquals(t *testing.T) {
 		cty.EmptyObjectVal,
 		cty.EmptyTupleVal,
 		cty.SetVal([]cty.Value{cty.StringVal("x")}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.UnknownVal(cty.String)}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.NullVal(cty.String)}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.StringVal("y").Mark("m")}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.StringVal("y")}),
+		cty.SetVal([]cty.Value{cty.NumberIntVal(1), cty.UnknownVal(cty.Number)}),
+		cty.SetVal([]cty.Value{cty.NumberIntVal(1), cty.NullVal(cty.Number)}),
+		cty.SetVal([]cty.Value{cty.True, cty.UnknownVal(cty.Bool)}),
+		cty.SetVal([]cty.Value{cty.True, cty.NullVal(cty.Bool)}),
+		cty.SetVal([]cty.Value{cty.StringVal("x"), cty.UnknownVal(cty.String), cty.UnknownVal(cty.String)}),
+		cty.SetValEmpty(cty.String),
 		cty.ObjectVal(map[string]cty.Value{"v": cty.UnknownVal(cty.String)}),
 		cty.ObjectVal(map[string]cty.Value{"v": cty.NullVal(cty.String)}),
 		cty.ObjectVal(map[string]cty.Value{"v": cty.NullVal(cty.Number)}),
@@ -391,12 +402,215 @@ func TestEqualValues_AgreesWithRawEquals(t *testing.T) {
 		cty.NullVal(cty.DynamicPseudoType),
 		cty.StringVal("x"),
 	}
+	var memo keyMemo
 	for i, a := range values {
 		for j, b := range values {
 			require.Equal(t, a.RawEquals(b), equalValues(a, b), "values %d and %d: %#v vs %#v", i, j, a, b)
+			require.Equal(t, a.RawEquals(b), memo.equal(a, b), "memoized, values %d and %d: %#v vs %#v", i, j, a, b)
 		}
 	}
 	require.True(t, sharesStorage(wrap(shared).GetAttr("v"), shared))
+	set := cty.SetVal([]cty.Value{cty.StringVal("x"), cty.StringVal("y")})
+	require.True(t, sharesStorage(wrap(set).GetAttr("v"), set))
+
+	base, _, err := big.ParseFloat("0.1", 10, 64, big.ToNearestEven)
+	require.NoError(t, err)
+	// Same numeric value at a higher precision. Cmp matches; cty does not.
+	wider := new(big.Float).SetPrec(256).Set(base)
+	a, b := cty.NumberVal(base), cty.NumberVal(wider)
+	require.Zero(t, base.Cmp(wider))
+	require.False(t, a.RawEquals(b))
+	require.False(t, memo.equal(a, b))
+	require.False(t, memo.equalElement(a, b))
+}
+
+func memoSet(tag string, i int) cty.Value {
+	return cty.SetVal([]cty.Value{cty.StringVal(fmt.Sprintf("%s-%d-a", tag, i)), cty.StringVal(fmt.Sprintf("%s-%d-b", tag, i))})
+}
+
+// The memo keys a set by its storage, so it keeps the set: a set allocated
+// after a GC must not reuse the storage of one it remembers.
+func TestKeyMemo_KeepsTheSetsItSorted(t *testing.T) {
+	var memo keyMemo
+	kept := memoSet("kept", 0)
+	memo.setElements(kept)
+	keptID, _ := collectionIdentity(kept)
+	require.NotContains(t, memo.sets, keptID, "a set seen once is not kept")
+	memo.setElements(kept)
+	require.Contains(t, memo.sets, keptID)
+	runtime.GC()
+	runtime.GC()
+	for i := range 2000 {
+		got := memo.setElements(memoSet("new", i))
+		require.Len(t, got, 2)
+		require.Equal(t, fmt.Sprintf("new-%d-a", i), got[0].value.AsString())
+		require.Equal(t, fmt.Sprintf("new-%d-b", i), got[1].value.AsString())
+		id, ok := collectionIdentity(memoSet("new", i))
+		if ok {
+			require.NotContains(t, memo.sets, id)
+		}
+	}
+	for _, entry := range memo.sets {
+		require.Equal(t, entry.value.LengthInt(), len(entry.pairs))
+		for _, pair := range entry.pairs {
+			require.True(t, entry.value.HasElement(pair.value).True())
+		}
+	}
+}
+
+// A full record of sets seen once still lets a stable set be stored when it is
+// sorted again.
+func TestKeyMemo_StableSetIsKeptAfterManyOneOffSets(t *testing.T) {
+	var memo keyMemo
+	others := make([]cty.Value, keyMemoSeenSetsCap+10)
+	for i := range others {
+		others[i] = memoSet("other", i)
+		memo.setElements(others[i])
+	}
+	stable := memoSet("stable", 0)
+	memo.setElements(stable)
+	memo.setElements(stable)
+	id, ok := collectionIdentity(stable)
+	require.True(t, ok)
+	require.Contains(t, memo.sets, id)
+	require.LessOrEqual(t, len(memo.seenSets), keyMemoSeenSetsCap)
+}
+
+// A set seen once is recorded by its storage. Dropping it lets a later set
+// reuse that storage, and the first sort of that set would look like a second
+// one, so the record keeps the value alive.
+func TestKeyMemo_SeenSetIsNotConfusedWithAReusedStorage(t *testing.T) {
+	var memo keyMemo
+	for i := range 64 {
+		memo.setElements(memoSet("gone", i))
+	}
+	require.Len(t, memo.seenSets, 64)
+	for id, seen := range memo.seenSets {
+		kept, ok := collectionIdentity(seen.value)
+		require.True(t, ok)
+		require.Equal(t, id, kept, "the record holds the set its id was taken from")
+	}
+	runtime.GC()
+	runtime.GC()
+	for i := range 4000 {
+		memo.setElements(memoSet("new", i))
+		require.Empty(t, memo.sets, "set %d was sorted once", i)
+	}
+}
+
+// Counted sets stop being stored once they would pass the element cap, and
+// that does not drop a digest or another set. Two sets over the cap both stay
+// cached. Releasing one evaluator leaves the other's sets in place.
+func TestKeyMemo_SetPairsAreBoundedAndReleasedPerEvaluator(t *testing.T) {
+	big := func(tag string, n int) cty.Value {
+		elems := make([]cty.Value, n)
+		for i := range elems {
+			elems[i] = cty.StringVal(fmt.Sprintf("%s-%d", tag, i))
+		}
+		return cty.SetVal(elems)
+	}
+	var memo keyMemo
+	kept := big("a", keyMemoPairsCap/2+1)
+	memo.setElements(kept)
+	memo.setElements(kept)
+	other := big("b", keyMemoPairsCap/2+1)
+	memo.setElements(other)
+	memo.setElements(other)
+	require.Len(t, memo.sets, 1)
+	require.Equal(t, keyMemoPairsCap/2+1, memo.pairs)
+	keptID, _ := collectionIdentity(kept)
+	require.Contains(t, memo.sets, keptID)
+
+	cfg := cty.ObjectVal(map[string]cty.Value{"k": cty.StringVal("v")})
+	memo.inputsKey(map[string]cty.Value{"config": cfg})
+	memo.inputsKey(map[string]cty.Value{"config": cfg})
+	require.Len(t, memo.digests, 1)
+
+	hugeA := big("huge-a", keyMemoPairsCap+1)
+	hugeB := big("huge-b", keyMemoPairsCap+1)
+	memo.setElements(hugeA)
+	memo.setElements(hugeB)
+	pairsA := memo.setElements(hugeA)
+	pairsB := memo.setElements(hugeB)
+	require.Same(t, &pairsA[0], &memo.setElements(hugeA)[0])
+	require.Same(t, &pairsB[0], &memo.setElements(hugeB)[0])
+	require.Len(t, memo.sets, 1)
+	require.Len(t, memo.digests, 1)
+	small := memoSet("small", 0)
+	memo.setElements(small)
+	memo.setElements(small)
+	require.Len(t, memo.sets, 2)
+	require.Len(t, memo.digests, 1)
+
+	set := memoSet("both", 0)
+	first, second := New(), New()
+	in := map[string]cty.Value{"v": set}
+	first.keyMemo.inputsKey(in)
+	first.keyMemo.inputsKey(in)
+	first.keyMemo.setElements(set)
+	first.keyMemo.setElements(set)
+	secondSet := memoSet("second", 0)
+	second.keyMemo.setElements(secondSet)
+	second.keyMemo.setElements(secondSet)
+	require.Len(t, first.keyMemo.digests, 1)
+	require.Len(t, first.keyMemo.sets, 1)
+	first.ReleaseEvalCache()
+	require.Empty(t, first.keyMemo.digests)
+	require.Empty(t, first.keyMemo.sets)
+	require.Zero(t, first.keyMemo.pairs)
+	require.Zero(t, first.KeyMemoSize())
+	require.Len(t, second.keyMemo.sets, 1)
+}
+
+func TestKeyMemo_DigestRetentionIsBounded(t *testing.T) {
+	var memo keyMemo
+	objects := make([]cty.Value, keyMemoDigestCap+10)
+	for i := range objects {
+		objects[i] = cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(int64(i))})
+	}
+	for _, obj := range objects {
+		in := map[string]cty.Value{"c": obj}
+		memo.inputsKey(in)
+		memo.inputsKey(in)
+	}
+	require.LessOrEqual(t, len(memo.digests), keyMemoDigestCap)
+	id, ok := collectionIdentity(objects[0])
+	require.True(t, ok)
+	require.Contains(t, memo.digests, id)
+}
+
+// A full pending set gives way to the oldest entry, so a collection keyed again
+// after many one-off collections is still retained.
+func TestKeyMemo_RepeatedDigestIsKeptAfterManyOneOffs(t *testing.T) {
+	var memo keyMemo
+	objects := make([]cty.Value, keyMemoDigestCap+10)
+	for i := range objects {
+		objects[i] = cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(int64(i))})
+		memo.inputsKey(map[string]cty.Value{"c": objects[i]})
+	}
+	shared := cty.ObjectVal(map[string]cty.Value{"owner": cty.StringVal("team")})
+	memo.inputsKey(map[string]cty.Value{"c": shared})
+	memo.inputsKey(map[string]cty.Value{"c": shared})
+	id, ok := collectionIdentity(shared)
+	require.True(t, ok)
+	require.Contains(t, memo.digests, id)
+	require.LessOrEqual(t, len(memo.pendingDigests), keyMemoDigestCap)
+}
+
+// Other locals key their own collections between two instances. The shared
+// configuration is still retained when the next instance keys it.
+func TestKeyMemo_SharedDigestSurvivesInterveningKeys(t *testing.T) {
+	var memo keyMemo
+	shared := cty.ObjectVal(map[string]cty.Value{"owner": cty.StringVal("team")})
+	for i := range 5 {
+		memo.inputsKey(map[string]cty.Value{"config": shared})
+		other := cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(int64(i))})
+		memo.inputsKey(map[string]cty.Value{"config": other})
+	}
+	id, ok := collectionIdentity(shared)
+	require.True(t, ok)
+	require.Contains(t, memo.digests, id)
+	require.NotZero(t, len(memo.digests))
 }
 
 // A plain unknown string may be null. An unknown string known to start with a

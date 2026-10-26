@@ -388,7 +388,7 @@ func (e *Evaluator) resolveCycle(
 				continue
 			}
 			value := e.localValue(g.exprs[v], ctx)
-			if !value.IsKnown() || (seen && equalValues(prev, value)) {
+			if !value.IsKnown() || (seen && e.keyMemo.equal(prev, value)) {
 				continue
 			}
 			resolved[name] = value

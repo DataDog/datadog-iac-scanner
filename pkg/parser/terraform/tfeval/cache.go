@@ -126,19 +126,71 @@ func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite 
 // one module's evaluation for different inputs.
 type inputsDigest struct{ a, b uint64 }
 
-// keyMemo memoizes digests of large collections for one evaluator. The same
-// decoded configuration is handed to every instance of a module loop, and cty
-// shares the collection's storage across those copies. Each entry keeps the
-// value so that storage cannot be reused under the same identity.
+// keyMemoPairsCap bounds the counted set elements one key memo holds.
+// keyMemoDigestCap bounds the collections whose digests are retained.
+// Two oversized sets stay memoized so comparing them does not evict either.
+const (
+	keyMemoPairsCap    = 1 << 16
+	keyMemoDigestCap   = 256
+	keyMemoSeenSetsCap = 1 << 12
+	oversizedSetSlots  = 2
+)
+
+// keyMemo memoizes, for one evaluator, digests of large collections and the
+// sorted elements of sets. The same decoded configuration is handed to every
+// instance of a module loop, and cty shares the collection's storage across
+// those copies; ElementIterator sorts a set on every call, and evaluation
+// passes walk and compare the same for_each set once per pass. A retained
+// entry keeps the value so that storage cannot be reused under the same identity.
+// Set elements and digests are stored apart: dropping a set must not drop a digest.
 type keyMemo struct {
-	entries map[collectionID]keyMemoEntry
-	// digestGen counts inputsKey calls so a local is hashed only once it is shared.
+	digests        map[collectionID]digestEntry
+	pendingDigests map[collectionID]pendingDigest
+	// digestGen is the inputsKey currently walking collections. A digest is
+	// retained when the next inputsKey sees the same collection.
 	digestGen uint64
+
+	sets  map[collectionID]setMemoEntry
+	pairs int
+	// seenSets records a set the first time it is sorted. The pairs are kept
+	// only if that same set is sorted again. seenOrder holds the ids in the
+	// order they were recorded, at most keyMemoSeenSetsCap, and a new id takes
+	// the slot of the oldest.
+	seenSets  map[collectionID]seenSet
+	seenOrder []collectionID
+	seenNext  int
+	// oversized is a ring of sets larger than keyMemoPairsCap.
+	oversized     [oversizedSetSlots]oversizedSet
+	oversizedNext int
 }
 
-type keyMemoEntry struct {
+type digestEntry struct {
 	value  cty.Value
 	digest inputsDigest
+}
+
+type pendingDigest struct {
+	value  cty.Value
+	digest inputsDigest
+	gen    uint64
+}
+
+// seenSet keeps the value of a set seen once, so its storage cannot be reused
+// by another set under the same id while the id is recorded.
+type seenSet struct {
+	value cty.Value
+	slot  int
+}
+
+type setMemoEntry struct {
+	value cty.Value
+	pairs []elementPair
+}
+
+type oversizedSet struct {
+	id    collectionID
+	entry setMemoEntry
+	used  bool
 }
 
 // inputsKey returns a stable digest of a set of resolved module inputs.
@@ -147,7 +199,7 @@ type keyMemoEntry struct {
 // a module input can be a decoded configuration passed to every instance.
 func (m *keyMemo) inputsKey(inputs map[string]cty.Value) inputsDigest {
 	if m != nil && len(inputs) > 0 {
-		m.digestGen++
+		m.beginDigest()
 	}
 	if len(inputs) == 0 {
 		return inputsDigest{}
@@ -261,28 +313,77 @@ func (m *keyMemo) writeCollection(w keySink, v cty.Value) {
 	w.WriteString(closing)
 }
 
+// beginDigest starts one inputsKey. A pending digest stays until a later
+// inputsKey sees the collection or it is the oldest of a full pending set, so
+// other locals keyed in between do not forget a configuration shared by a
+// module loop.
+func (m *keyMemo) beginDigest() {
+	m.digestGen++
+}
+
 // collectionDigest is the digest of a collection's own encoding, memoized by
-// the identity of the collection's storage.
+// the identity of the collection's storage. The first sight is pending. The
+// next inputsKey retains it, until keyMemoDigestCap collections are retained.
 func (m *keyMemo) collectionDigest(v cty.Value) inputsDigest {
 	id, ok := collectionIdentity(v)
 	// Empty slices of different types can share one runtime pointer, so their
 	// identity is not safe to reuse. They are cheap to encode directly.
 	memoize := ok && m != nil && id.n > 0
 	if memoize {
-		if e, hit := m.entries[id]; hit {
-			return e.digest
+		if d, hit := m.cachedDigest(id); hit {
+			return d
 		}
 	}
 	w := newKeyWriter()
 	m.writeCollection(w, v)
 	d := w.digest()
 	if memoize {
-		if m.entries == nil {
-			m.entries = make(map[collectionID]keyMemoEntry)
-		}
-		m.entries[id] = keyMemoEntry{value: v, digest: d}
+		m.rememberDigest(id, v, d)
 	}
 	return d
+}
+
+// cachedDigest returns a retained digest, or promotes a digest pending from
+// the previous inputsKey.
+func (m *keyMemo) cachedDigest(id collectionID) (inputsDigest, bool) {
+	if e, hit := m.digests[id]; hit {
+		return e.digest, true
+	}
+	pending, hit := m.pendingDigests[id]
+	if !hit {
+		return inputsDigest{}, false
+	}
+	if pending.gen == m.digestGen {
+		return pending.digest, true
+	}
+	delete(m.pendingDigests, id)
+	if len(m.digests) >= keyMemoDigestCap {
+		return pending.digest, true
+	}
+	if m.digests == nil {
+		m.digests = make(map[collectionID]digestEntry)
+	}
+	m.digests[id] = digestEntry{value: pending.value, digest: pending.digest}
+	return pending.digest, true
+}
+
+// rememberDigest records a first sight. A full pending set drops its oldest
+// entry, so one-off collections cannot keep a repeated one from being retained.
+func (m *keyMemo) rememberDigest(id collectionID, v cty.Value, d inputsDigest) {
+	if len(m.pendingDigests) >= keyMemoDigestCap {
+		var oldest collectionID
+		oldestGen := ^uint64(0)
+		for pid, p := range m.pendingDigests {
+			if p.gen < oldestGen {
+				oldest, oldestGen = pid, p.gen
+			}
+		}
+		delete(m.pendingDigests, oldest)
+	}
+	if m.pendingDigests == nil {
+		m.pendingDigests = make(map[collectionID]pendingDigest)
+	}
+	m.pendingDigests[id] = pendingDigest{value: v, digest: d, gen: m.digestGen}
 }
 
 // collectionID identifies a collection value by the storage cty keeps it in.
@@ -293,7 +394,8 @@ type collectionID struct {
 
 // collectionIdentity returns the identity of the map or slice holding a
 // collection's elements. cty values are immutable and share that storage
-// when they are copied, so the same identity means the same elements.
+// when they are copied, so the same identity means the same elements. A set is
+// a struct held by value whose vals map is what its copies share.
 func collectionIdentity(v cty.Value) (collectionID, bool) {
 	rv := reflect.ValueOf(&v).Elem().FieldByName("v")
 	if !rv.IsValid() || (rv.Kind() == reflect.Interface && rv.IsNil()) {
@@ -301,6 +403,9 @@ func collectionIdentity(v cty.Value) (collectionID, bool) {
 	}
 	if rv.Kind() == reflect.Interface {
 		rv = rv.Elem()
+	}
+	if rv.Kind() == reflect.Struct {
+		rv = rv.FieldByName("vals")
 	}
 	switch rv.Kind() {
 	case reflect.Map, reflect.Slice:
