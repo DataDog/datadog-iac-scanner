@@ -56,7 +56,7 @@ Any time you change Go code under `pkg/`, `cmd/`, or elsewhere in this module, *
 golangci-lint run -c .golangci.yml --timeout 20m
 ```
 
-CI pins **golangci-lint v2.4.0**; if your installed binary is a different major/minor and results disagree, align your version with CI or run the same release via the `golangci/golangci-lint:v2.4.0` image.
+CI pins **golangci-lint v2.9.0**; if your installed binary is a different major/minor and results disagree, align your version with CI or run the same release via the `golangci/golangci-lint:v2.9.0` image.
 
 ## Writing Rules
 
