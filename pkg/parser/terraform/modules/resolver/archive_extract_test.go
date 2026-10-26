@@ -8,6 +8,8 @@ package resolver
 import (
 	"archive/tar"
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -199,6 +201,10 @@ func TestArchiveCommandHelper(t *testing.T) {
 	if os.Getenv("GO_WANT_ARCHIVE_COMMAND_HELPER") != "1" {
 		return
 	}
+	if failure := os.Getenv("GO_WANT_ARCHIVE_COMMAND_ERROR"); failure != "" {
+		_, _ = fmt.Fprint(os.Stderr, failure)
+		os.Exit(1)
+	}
 	archivePath := os.Args[len(os.Args)-1]
 	archive, err := os.Open(archivePath)
 	if err != nil {
@@ -211,4 +217,114 @@ func TestArchiveCommandHelper(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+func TestArchiveExtractFollowsConfigPlaceholders(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-q", "-b", "main")
+	for name, content := range map[string]string{
+		"modules/local/main.tf":             "./real.hcl",
+		"modules/local/real.hcl":            `module "common" { source = "../common" }`,
+		"modules/json/main.tf.json":         "./body.json",
+		"modules/json/body.json":            `{"module":{"common":{"source":"../common"}}}`,
+		"modules/external/main.tf":          "../shared/main.tf",
+		"modules/directory/main.tf":         `module "alias" { source = "../alias/nested" }`,
+		"modules/alias":                     "./actual",
+		"modules/actual/nested/main.tf":     `module "common" { source = "../../common" }`,
+		"modules/shared/main.tf":            "../templates/nested/body.hcl",
+		"modules/templates/nested/body.hcl": `module "common" { source = "../common" }`,
+		"modules/common/main.tf":            `resource "null_resource" "example" {}`,
+		"modules/cycle/main.tf":             "./main.tf",
+		"modules/missing/main.tf":           "../absent/main.tf",
+		"modules/escape/main.tf":            "../../../outside/main.tf",
+		"modules/unrelated/main.tf":         "# unrelated",
+	} {
+		file := filepath.Join(repo, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o755))
+		require.NoError(t, os.WriteFile(file, []byte(content), 0o644))
+	}
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-q", "-m", "placeholder modules")
+	sha := runGit(t, repo, "rev-parse", "HEAD")
+	gitDir := filepath.Join(repo, ".git")
+	for _, tc := range []struct {
+		name, selected string
+		common, fatal  bool
+	}{
+		{"local", "local", true, false}, {"json", "json", true, false},
+		{"ordinary-metadata-unavailable", "common", false, false},
+		{"external", "external", true, false}, {"directory", "directory", true, false},
+		{"cycle", "cycle", false, false}, {"missing", "missing", false, false}, {"escape", "escape", false, false},
+		{"budget", "external", false, true}, {"acquisition", "external", false, true},
+		{"git-failure", "external", false, true}, {"tree-failure", "external", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			if tc.name == "budget" {
+				ctx = WithResourceBudget(ctx, NewResourceBudget(ResourceLimits{MaxPackageBytes: 60}))
+			}
+			extractBase := t.TempDir()
+			lookupGitDir := gitDir
+			if tc.name == "tree-failure" || tc.name == "ordinary-metadata-unavailable" {
+				lookupGitDir = filepath.Join(t.TempDir(), "unavailable.git")
+			}
+			var paths []string
+			acquisitionErr := errors.New("target archive unavailable")
+			runArchive := func(ctx context.Context, args []string) ([]archivePrep, error) {
+				paths = append(paths, filepath.ToSlash(args[len(args)-1]))
+				if tc.name == "acquisition" && len(paths) > 1 {
+					return nil, acquisitionErr
+				}
+				if tc.name == "git-failure" && len(paths) > 1 {
+					cmd := archiveHelperCommand(t, "")
+					cmd.Env = append(cmd.Env, "GO_WANT_ARCHIVE_COMMAND_ERROR=fatal: pathspec 'modules/shared' did not match any files\n")
+					return []archivePrep{{cmd: cmd}}, nil
+				}
+				if tc.name == "missing" && len(paths) > 1 {
+					cmd := archiveHelperCommand(t, "")
+					cmd.Env = append(cmd.Env, "GO_WANT_ARCHIVE_COMMAND_ERROR=warning: archive warning\nfatal: pathspec 'modules/absent' did not match any files\n")
+					return []archivePrep{{cmd: cmd}}, nil
+				}
+				return localCloneArchiveCommand(gitDir)(ctx, args)
+			}
+			_, err := archiveExtract(ctx, lookupGitDir, extractBase, sha, "modules/"+tc.selected, runArchive, nil)
+			root := archiveCacheDir(extractBase, sha)
+			if tc.fatal {
+				requireArchiveAcquisitionError(t, tc.name, err, acquisitionErr)
+				require.NoFileExists(t, filepath.Join(root, "modules", tc.selected, "main.tf"), "failed closure must roll back its writes")
+				return
+			}
+			require.NoError(t, err)
+			if tc.common {
+				require.FileExists(t, filepath.Join(root, "modules", "common", "main.tf"))
+			}
+			if tc.name == "external" {
+				require.FileExists(t, filepath.Join(root, "modules", "shared", "main.tf"))
+				require.FileExists(t, filepath.Join(root, "modules", "templates", "nested", "body.hcl"))
+				require.Equal(t, []string{"modules/external", "modules/shared", "modules/templates", "modules/common"}, paths)
+			}
+			if tc.name == "cycle" || tc.name == "escape" || tc.name == "missing" {
+				require.Equal(t, []string{"modules/" + tc.selected}, paths, "unsafe targets must not trigger archive operations")
+			}
+			require.NoDirExists(t, filepath.Join(root, "modules", "unrelated"))
+			calls := len(paths)
+			_, err = archiveExtract(ctx, gitDir, extractBase, sha, "modules/"+tc.selected, runArchive, nil)
+			require.NoError(t, err)
+			require.Len(t, paths, calls, "complete closures must keep the archive cache fast path")
+		})
+	}
+}
+
+func requireArchiveAcquisitionError(t *testing.T, name string, err, acquisitionErr error) {
+	t.Helper()
+	switch name {
+	case "budget":
+		var budgetErr *BudgetExceededError
+		require.ErrorAs(t, err, &budgetErr)
+	case "acquisition":
+		require.ErrorIs(t, err, acquisitionErr)
+	case "git-failure", "tree-failure":
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, err, &exitErr)
+	}
 }

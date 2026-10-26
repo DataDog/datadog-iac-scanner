@@ -154,6 +154,26 @@ func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
 	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
 }
 
+func TestScanRemoteModuleConfigPlaceholder(t *testing.T) {
+	root := t.TempDir()
+	moduleDir, manifestPath := writeRemoteModuleFixture(t, root)
+	config := filepath.Join(moduleDir, "main.tf")
+	require.NoError(t, os.Rename(config, filepath.Join(moduleDir, "main.hcl")))
+	require.NoError(t, os.WriteFile(config, []byte("./main.hcl"), 0o644))
+	params := remoteModuleScanParams(root)
+	params.TerraformModules = TerraformModulesOn
+	params.RemoteModulesManifestPath = manifestPath
+
+	results := executeRemoteModuleScan(t, params)
+	require.NotEmpty(t, results.Results)
+	for _, file := range results.Files {
+		if filepath.ToSlash(file.FilePath) == filepath.ToSlash(config) {
+			return
+		}
+	}
+	t.Fatal("downloaded placeholder config was skipped")
+}
+
 func TestManifestV1PreservesLegacyFindingOutput(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "repo")

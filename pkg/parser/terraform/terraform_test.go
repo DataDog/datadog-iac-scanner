@@ -6,6 +6,7 @@
 package terraform
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
@@ -519,4 +521,17 @@ func TestParser_WrapsEscapingFileFunction(t *testing.T) {
 	require.Len(t, docs, 1)
 	n := docs[0]["resource"].(model.Document)["t"].(model.Document)["x"].(model.Document)["n"]
 	require.Equal(t, `${file("../secret")}`, n)
+}
+
+func TestParseUnavailableJSONLinkPlaceholder(t *testing.T) {
+	repo := t.TempDir()
+	path := filepath.Join(repo, "main.tf.json")
+	placeholder := []byte("./missing.tf")
+	require.NoError(t, os.WriteFile(path, placeholder, 0o644))
+	var logs bytes.Buffer
+	log := zerolog.New(&logs).Level(zerolog.DebugLevel)
+	_, docs, _, _, err := NewDefault().Parse(log.WithContext(t.Context()), placeholder, path, false, 0)
+	require.NoError(t, err)
+	require.Empty(t, docs)
+	require.Contains(t, logs.String(), `"level":"debug"`)
 }

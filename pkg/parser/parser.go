@@ -149,38 +149,51 @@ type ParsedDocument struct {
 
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
 func (c *Parser) CommentsCommands(ctx context.Context, filePath string, fileContent []byte) model.CommentsCommands {
-	if c.isValidExtension(ctx, filePath) {
-		commentsCommands := make(model.CommentsCommands)
-		commentToken := c.Parsers.GetCommentToken()
-		if commentToken != "" {
-			lines := strings.Split(string(fileContent), "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				if line == "" {
-					continue
-				}
-				if strings.HasSuffix(filePath, ".yaml") && strings.HasPrefix(line, "---") {
-					continue
-				}
+	if !c.isValidExtension(ctx, filePath) {
+		return nil
+	}
+	return c.commentsCommands(filePath, string(fileContent))
+}
 
-				if !strings.HasPrefix(line, commentToken) {
-					break
-				}
+// CommentsCommandsFromString reads file directives from content already stored
+// as a string, without copying the complete source back to bytes.
+func (c *Parser) CommentsCommandsFromString(ctx context.Context, filePath, fileContent string) model.CommentsCommands {
+	if !c.isValidExtension(ctx, filePath) {
+		return nil
+	}
+	return c.commentsCommands(filePath, fileContent)
+}
 
-				fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, commentToken)))
-				if len(fields) > 1 && fields[0] == "dd-iac-scan" && fields[1] != "" {
-					commandParameters := strings.SplitN(fields[1], "=", 2)
-					if len(commandParameters) > 1 {
-						commentsCommands[commandParameters[0]] = commandParameters[1]
-					} else {
-						commentsCommands[commandParameters[0]] = ""
-					}
+func (c *Parser) commentsCommands(filePath, fileContent string) model.CommentsCommands {
+	commentsCommands := make(model.CommentsCommands)
+	commentToken := c.Parsers.GetCommentToken()
+	if commentToken != "" {
+		lines := strings.Split(fileContent, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if strings.HasSuffix(filePath, ".yaml") && strings.HasPrefix(line, "---") {
+				continue
+			}
+
+			if !strings.HasPrefix(line, commentToken) {
+				break
+			}
+
+			fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, commentToken)))
+			if len(fields) > 1 && fields[0] == "dd-iac-scan" && fields[1] != "" {
+				commandParameters := strings.SplitN(fields[1], "=", 2)
+				if len(commandParameters) > 1 {
+					commentsCommands[commandParameters[0]] = commandParameters[1]
+				} else {
+					commentsCommands[commandParameters[0]] = ""
 				}
 			}
 		}
-		return commentsCommands
 	}
-	return nil
+	return commentsCommands
 }
 
 // Parse executes a parser on the fileContent and returns the file content as a Document, the file kind and
@@ -222,13 +235,18 @@ func (c *Parser) parseContent(
 		return ParsedDocument{}, err
 	}
 
+	kind := c.Parsers.GetKind()
+	// Terraform resolves checkout symlink placeholders to source bytes while
+	// retaining the logical filename. Keep that source for detection and snippets.
+	if kind == model.KindTerraform {
+		fileContent = resolved
+	}
 	cont, err := c.Parsers.StringifyContent(fileContent)
 	if err != nil {
 		contextLogger.Error().Msgf("failed to stringify original content: %s", err)
 		cont = string(fileContent)
 	}
 
-	kind := c.Parsers.GetKind()
 	if ck, ok := c.Parsers.(contentKindParser); ok {
 		if refined, override := ck.KindForContent(resolved); override {
 			kind = refined

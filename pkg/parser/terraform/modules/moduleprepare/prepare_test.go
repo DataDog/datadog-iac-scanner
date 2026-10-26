@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -344,6 +345,12 @@ module "example" {
 }
 
 func TestPreparePublishesPartialManifestOnResolutionTimeout(t *testing.T) {
+	// Advance the deadline only once discovery and resolution have blocked,
+	// so scheduler delays cannot expire it before the module is discovered.
+	synctest.Test(t, testPreparePublishesPartialManifestOnResolutionTimeout)
+}
+
+func testPreparePublishesPartialManifestOnResolutionTimeout(t *testing.T) {
 	root := t.TempDir()
 	source := "git::https://git.example/acme/slow.git?ref=v1"
 	writeFile(t, filepath.Join(root, "main.tf"), `

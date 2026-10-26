@@ -33,6 +33,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 // dirPerm is the permission mode used for all directories created by resolvers.
@@ -41,6 +42,12 @@ const dirPerm = 0o750
 // maxArchiveExtractBytes caps cumulative bytes read from a single git archive
 // tar stream unless a larger package limit applies.
 const maxArchiveExtractBytes = 200 * 1024 * 1024
+
+var (
+	errArchiveMaterialization = errors.New("archive materialization failed")
+	errArchivePathMissing     = errors.New("archive path unavailable")
+	errArchiveCommandExit     = errors.New("running git archive")
+)
 
 // BareGitResolver keeps one bare clone per repo and extracts refs via git archive.
 type BareGitResolver struct {
@@ -703,7 +710,7 @@ func fetchedTag(fetchHead []byte) bool {
 }
 
 func archiveCacheKey(sha string) string {
-	h := sha256.Sum256([]byte("sparse-package-v1\x00" + sha))
+	h := sha256.Sum256([]byte("sparse-package-v2\x00" + sha))
 	// sha[:8] prefix makes the directory human-readable during debugging.
 	return sha[:8] + "-" + fmt.Sprintf("%x", h[:4])
 }
@@ -807,6 +814,7 @@ func archiveExtract(
 	}
 	archive := &sparseArchive{
 		runArchive:  runArchive,
+		gitDir:      gitDir,
 		sha:         sha,
 		dest:        dest,
 		extractBase: extractBase,
@@ -837,18 +845,20 @@ func archiveBaselineUsage(ctx context.Context, dest string, limits ResourceLimit
 // the shared per-SHA tree. It records everything it creates so a failure undoes
 // exactly its own writes.
 type sparseArchive struct {
-	runArchive  archiveCommandFunc
-	sha         string
-	dest        string
-	extractBase string
-	counter     *PackageCounter
-	objectMu    *sync.RWMutex
-	guard       *gitObjectGuard
-	extracted   int64
-	visited     map[string]bool
-	unmarked    []string
-	written     archiveWrites
-	markers     archiveWrites
+	runArchive   archiveCommandFunc
+	gitDir       string
+	sha          string
+	dest         string
+	extractBase  string
+	counter      *PackageCounter
+	objectMu     *sync.RWMutex
+	guard        *gitObjectGuard
+	extracted    int64
+	visited      map[string]bool
+	materialized map[string]error
+	unmarked     []string
+	written      archiveWrites
+	markers      archiveWrites
 }
 
 func (a *sparseArchive) materialize(ctx context.Context, subdir string) error {
@@ -904,16 +914,15 @@ func (a *sparseArchive) materializeClosure(ctx context.Context, subdir string) e
 	if _, err := os.Stat(archiveMarkerPath(a.extractBase, a.sha, subdir)); err == nil {
 		return nil
 	}
-	if err := a.extract(ctx, subdir); err != nil {
+	moduleDir, err := a.materializeModuleDirectory(ctx, subdir)
+	if err != nil {
+		if errors.Is(err, tfmodules.ErrSkippedLinkPlaceholder) && !errors.Is(err, errArchiveMaterialization) && ctx.Err() == nil {
+			return nil
+		}
 		return err
 	}
 	a.unmarked = append(a.unmarked, subdir)
-
-	moduleDir := a.dest
-	if subdir != "." {
-		moduleDir = filepath.Join(a.dest, subdir)
-	}
-	children, err := localModuleArchiveSubdirs(ctx, moduleDir, a.dest)
+	children, err := a.localModuleArchiveSubdirs(ctx, moduleDir)
 	if err != nil {
 		return err
 	}
@@ -923,6 +932,123 @@ func (a *sparseArchive) materializeClosure(ctx context.Context, subdir string) e
 		}
 	}
 	return nil
+}
+
+func (a *sparseArchive) materializeModuleDirectory(ctx context.Context, subdir string) (string, error) {
+	extractErr := a.extractSubdir(ctx, subdir)
+	if subdir != "." && ctx.Err() == nil && errors.Is(extractErr, errArchiveCommandExit) {
+		// A directory placeholder in the requested path can make git archive
+		// fail before the confined walker reaches it. Query the tree only on
+		// a process failure, keeping ordinary successful archives unchanged.
+		exists, err := a.pathExists(ctx, subdir)
+		if err != nil {
+			return "", fmt.Errorf("%w: %w", errArchiveMaterialization, err)
+		}
+		if !exists {
+			extractErr = errArchivePathMissing
+			a.materialized[subdir] = extractErr
+		}
+	}
+	if errors.Is(extractErr, errArchiveMaterialization) {
+		return "", extractErr
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	requestedDir := filepath.Join(a.dest, subdir)
+	moduleDir, err := tfmodules.ResolveModuleDirWithMaterializer(ctx, vfs.DiskFS{}, a.dest, requestedDir, a.dest, a.materializeMissingPath)
+	if err != nil {
+		return "", err
+	}
+	if extractErr != nil && moduleDir == requestedDir {
+		return "", extractErr
+	}
+	return moduleDir, nil
+}
+
+func (a *sparseArchive) extractSubdir(ctx context.Context, subdir string) error {
+	if err, done := a.materialized[subdir]; done {
+		return err
+	}
+	if a.materialized == nil {
+		a.materialized = make(map[string]error)
+	}
+	err := a.extract(ctx, subdir)
+	if err != nil {
+		// Acquisition, extraction and resource-limit failures must abort and
+		// roll back the closure; missing paths are checked separately.
+		err = fmt.Errorf("%w: %w", errArchiveMaterialization, err)
+	}
+	a.materialized[subdir] = err
+	return err
+}
+
+// materializeMissingPath is called only after placeholder walking has confined
+// a missing component. Extracting its subtree lets the normal resolver handle
+// the remaining components, including further directory and config links.
+func (a *sparseArchive) materializeMissingPath(ctx context.Context, path string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	root, err := pathutil.EvalSymlinksCached(ctx, a.dest)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || !filepath.IsLocal(rel) || rel == "." {
+		return fmt.Errorf("placeholder target %q escapes archive root", path)
+	}
+	for dir := rel; ; dir = filepath.Dir(dir) {
+		if extractErr, done := a.materialized[dir]; done && extractErr == nil {
+			// A complete subtree was already extracted. The missing component
+			// is absent at this commit; retrying git archive cannot provide it.
+			return os.ErrNotExist
+		}
+		if dir == "." {
+			break
+		}
+	}
+	if err, done := a.materialized[rel]; done {
+		return err
+	}
+	exists, err := a.pathExists(ctx, rel)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errArchiveMaterialization, err)
+	}
+	if !exists {
+		if a.materialized == nil {
+			a.materialized = make(map[string]error)
+		}
+		a.materialized[rel] = errArchivePathMissing
+		return errArchivePathMissing
+	}
+	return a.extractSubdir(ctx, rel)
+}
+
+// pathExists distinguishes an absent link target from archive failures without
+// depending on Git's diagnostics. Blob-filtered clones retain their trees, so
+// this query never needs to acquire missing file contents.
+func (a *sparseArchive) pathExists(ctx context.Context, subdir string) (bool, error) {
+	release, err := acquireGitProc(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	archiveArg, err := gitSafeArg(a.sha)
+	if err != nil {
+		return false, err
+	}
+	if a.objectMu != nil {
+		a.objectMu.RLock()
+		defer a.objectMu.RUnlock()
+	}
+	output, err := gitLocalInDir(ctx, a.gitDir,
+		"--literal-pathspecs", "ls-tree", "--name-only", "--full-tree", archiveArg, "--", filepath.ToSlash(subdir),
+	).Output()
+	if err != nil {
+		return false, fmt.Errorf("listing git archive %s path %q: %w", archiveArg, subdir, err)
+	}
+	return len(output) != 0, nil
 }
 
 func (a *sparseArchive) extract(ctx context.Context, subdir string) error {
@@ -1033,7 +1159,7 @@ func extractArchiveCommandWithResourceBudget(
 		return budgetErr
 	}
 	if waitErr != nil {
-		return fmt.Errorf("running git archive: %w", waitErr)
+		return fmt.Errorf("%w: %w", errArchiveCommandExit, waitErr)
 	}
 	return nil
 }
@@ -1219,7 +1345,7 @@ func extractTarRegularFile(
 	return nil
 }
 
-func localModuleArchiveSubdirs(ctx context.Context, moduleDir, packageRoot string) ([]string, error) {
+func (a *sparseArchive) localModuleArchiveSubdirs(ctx context.Context, moduleDir string) ([]string, error) {
 	entries, err := os.ReadDir(moduleDir)
 	if err != nil {
 		return nil, fmt.Errorf("reading materialized module %q: %w", moduleDir, err)
@@ -1238,12 +1364,15 @@ func localModuleArchiveSubdirs(ctx context.Context, moduleDir, packageRoot strin
 		if tfmodules.ConfigFileTooLarge(path, maxConfigBytes) {
 			continue
 		}
-		src, readErr := os.ReadFile(filepath.Clean(path))
+		src, readErr := tfmodules.ReadConfigFileWithMaterializer(ctx, vfs.DiskFS{}, path, a.dest, a.materializeMissingPath)
 		if readErr != nil {
+			if errors.Is(readErr, errArchiveMaterialization) || ctx.Err() != nil {
+				return nil, readErr
+			}
 			continue
 		}
 		for _, source := range configModuleSources(src, path) {
-			rel, ok := localArchiveSubdir(moduleDir, packageRoot, source)
+			rel, ok := localArchiveSubdir(moduleDir, a.dest, source)
 			if !ok || seen[rel] {
 				continue
 			}

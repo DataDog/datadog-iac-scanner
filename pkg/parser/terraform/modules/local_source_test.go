@@ -28,6 +28,9 @@ func TestResolveLocalModuleDir(t *testing.T) {
 	env := mkdir("domains/svc/config/tf/environments/us1.prod")
 	mkdir("domains/svc/config/tf/workflows/create")
 	mkdir("domains/svc/config/tf/environments/us1.prod/local")
+	selected := mkdir("domains/svc/config/tf/selected")
+	mkdir("domains/svc/config/tf/linked")
+	require.NoError(t, os.WriteFile(filepath.Join(env, "linked"), []byte("../../selected"), 0o644))
 	mkdir("domains/shared/modules/slo")
 	// Build containers mount the repository at a path like /cnab/app/terraform;
 	// derive an OS-absolute equivalent so the absolute-source branch runs on
@@ -43,6 +46,7 @@ func TestResolveLocalModuleDir(t *testing.T) {
 	}{
 		{"relative source that exists", svc, "./workflows/create", filepath.Join(svc, "workflows/create")},
 		{"environment file keeps its own directory first", env, "./local", filepath.Join(env, "local")},
+		{"placeholder keeps precedence over merged fallback", env, "./linked", selected},
 		{"environment file merged into its module", env, "./workflows/create", filepath.Join(svc, "workflows/create")},
 		{"relative source missing everywhere", env, "./nope", filepath.Join(env, "nope")},
 		{"not under environments", svc, "../nope", filepath.Join(filepath.Dir(svc), "nope")},
@@ -78,4 +82,37 @@ func TestLocalModuleDir(t *testing.T) {
 	require.False(t, ok)
 	_, ok = LocalModuleDir(nil, "/caller", "hashicorp/consul/aws")
 	require.False(t, ok)
+}
+
+func TestModuleDirectoryPlaceholders(t *testing.T) {
+	// Exercise Windows short path components on every platform.
+	repo := filepath.Join(t.TempDir(), "CHECKO~1")
+	require.NoError(t, os.Symlink(t.TempDir(), repo))
+	canonicalRepo, err := filepath.EvalSymlinks(repo)
+	require.NoError(t, err)
+	actual := filepath.Join(repo, "actual", "nested")
+	require.NoError(t, os.MkdirAll(actual, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "alias"), []byte("./actual"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "chain"), []byte("alias"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "absolute"), []byte(filepath.Join(repo, "actual")), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "missing"), []byte("./gone"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "escape"), []byte("../outside"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "cycle"), []byte("./cycle"), 0o644))
+	for _, tt := range []struct {
+		source, want string
+	}{
+		{"./chain/nested", actual},
+		{"./absolute/nested", actual},
+		{"./missing", ""}, {"./escape", ""}, {"./cycle", ""},
+	} {
+		t.Run(tt.source, func(t *testing.T) {
+			resolved, err := ResolveModuleDir(t.Context(), vfs.DiskFS{}, repo, filepath.Join(repo, tt.source), canonicalRepo)
+			if tt.want != "" {
+				require.NoError(t, err)
+				require.Equal(t, tt.want, resolved)
+			} else {
+				require.ErrorIs(t, err, ErrSkippedLinkPlaceholder)
+			}
+		})
+	}
 }

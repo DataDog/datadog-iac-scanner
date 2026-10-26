@@ -131,7 +131,7 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 	calledDirs := map[string]bool{"/cache/vpc": true}
 	successfulRoots := map[string]bool{root: true}
 
-	stripModuleCalls(doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, string, bool) {
+	stripModuleCalls(t.Context(), doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, string, bool) {
 		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
 			return "/cache/vpc", "/cache", true
 		}
@@ -162,7 +162,7 @@ module "bucket" {
 	calledDirs := map[string]bool{filepath.Join(root, "modules", "bucket"): true}
 	successfulRoots := map[string]bool{stackA: true} // stack-b eval failed
 
-	stripModuleCalls(doc, rootFileB, root, calledDirs, successfulRoots, newRootIndex([]string{stackA, stackB}), nil, nil)
+	stripModuleCalls(t.Context(), doc, rootFileB, root, calledDirs, successfulRoots, newRootIndex([]string{stackA, stackB}), nil, nil)
 
 	if _, ok := doc["module"]; !ok {
 		t.Fatal("module call under a failed root must not be stripped")
@@ -1216,7 +1216,7 @@ func TestCalledModuleDirsFromDocuments_MergedEnvironmentLayout(t *testing.T) {
 	}
 	envFile := filepath.Join(root, "mod", "environments", "prod", "main.tf")
 
-	dirs, ok := calledModuleDirsFromDocuments(vfs.DiskFS{}, model.FileMetadatas{
+	dirs, ok := calledModuleDirsFromDocuments(t.Context(), vfs.DiskFS{}, model.FileMetadatas{
 		{
 			ID:       "env-id",
 			FilePath: envFile,
@@ -1237,7 +1237,7 @@ func TestCalledModuleDirsFromDocuments_LocalModule(t *testing.T) {
 	modDir := filepath.Join(root, "modules", "bucket")
 	rootFile := filepath.Join(root, "stack", "main.tf")
 
-	dirs, ok := calledModuleDirsFromDocuments(nil, model.FileMetadatas{
+	dirs, ok := calledModuleDirsFromDocuments(t.Context(), nil, model.FileMetadatas{
 		{
 			ID:       "root-id",
 			FilePath: rootFile,
@@ -1257,6 +1257,18 @@ func TestCalledModuleDirsFromDocuments_LocalModule(t *testing.T) {
 	if len(dirs) != 1 || dirs[0] != want {
 		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
 	}
+}
+
+func TestResolveModuleTargetDirDoesNotFetchSkippedLocal(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "linked", "./missing")
+	remote := func(_, _, _, _ string) (string, string, bool) {
+		t.Error("skipped local source reached the remote resolver")
+		return root, root, true
+	}
+	dir, ok := resolveModuleTargetDir(t.Context(), vfs.DiskFS{}, root, root, "./linked", "", "", "", remote)
+	require.False(t, ok)
+	require.Empty(t, dir)
 }
 
 func TestDiscoverCalledModuleDirs_UsesParsedDocument(t *testing.T) {
