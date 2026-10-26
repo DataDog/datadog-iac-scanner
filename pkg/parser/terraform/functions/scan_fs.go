@@ -33,7 +33,35 @@ type resolvedPath struct {
 }
 
 func NewScanFS(fsys vfs.FS) *ScanFS {
+	if parent, ok := fsys.(*ScanFS); ok {
+		// Same scan: share the parent's memo and its process budget.
+		return &ScanFS{FS: parent.FS, resolved: make(map[string]resolvedPath), memo: parent.memo}
+	}
 	return &ScanFS{FS: fsys, resolved: make(map[string]resolvedPath), memo: newScanMemo()}
+}
+
+// ReleaseMemo drops kept results and their budget charge. The next function
+// call creates a fresh memo; ReleaseCaches must not reserve a full budget.
+func (s *ScanFS) ReleaseMemo() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.memo != nil {
+		s.memo.release()
+		s.memo = nil
+	}
+}
+
+// ensureMemo returns the scan memo, creating one after ReleaseMemo.
+func (s *ScanFS) ensureMemo() *scanMemo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.memo == nil {
+		s.memo = newScanMemo()
+	}
+	return s.memo
 }
 
 // EvalSymlinks is filepath.EvalSymlinks, remembered for the life of the scan.
@@ -62,12 +90,9 @@ func (s *ScanFS) realPath(path string) string {
 	return path
 }
 
-// resultKinds is the number of memos a ScanFS has: files, decodes and renders.
-const resultKinds = 3
-
 // scanMemo holds the results a ScanFS shares, within scanBudget. Decodes, file
 // results and template renders have a budget each, so none can take another's
-// room, and share one allowance for larger results.
+// room, and share the process allowance for larger results.
 type scanMemo struct {
 	decodes *resultMemo[decodeKey, valueResult]
 	files   *resultMemo[fileKey, fileResult]
@@ -80,7 +105,7 @@ type scanMemo struct {
 func newScanMemo() *scanMemo {
 	total := scanBudget()
 	budget := total / kindShare
-	large := &allowance{size: total - resultKinds*budget}
+	large := processRetained()
 	m := &scanMemo{
 		decodes: newResultMemo(budget, large, estimateDecode),
 		files:   newResultMemo(budget, large, estimateFile),
@@ -99,6 +124,12 @@ func newScanMemo() *scanMemo {
 		}
 	}
 	return m
+}
+
+func (m *scanMemo) release() {
+	m.decodes.releaseAll()
+	m.files.releaseAll()
+	m.renders.releaseAll()
 }
 
 func evalSymlinks(fsys vfs.FS, path string) (string, error) {

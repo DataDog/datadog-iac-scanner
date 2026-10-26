@@ -8,7 +8,6 @@ package functions
 import (
 	"encoding/base64"
 	"errors"
-	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -54,13 +53,16 @@ func readFileResult(fsys vfs.FS, fn, full string, derive func([]byte) fileResult
 	if !ok {
 		return read()
 	}
-	return s.memo.files.lookupOrCompute(fileKey{fn: fn, path: s.realPath(full)}, read)
+	return s.ensureMemo().files.lookupOrCompute(fileKey{fn: fn, path: s.realPath(full)}, read)
 }
 
 func estimateFile(key fileKey, r fileResult) (int, bool) {
 	n := retainedEntry + len(key.path)
 	switch {
 	case r.err != nil:
+		if !cacheableFileError(r.err) {
+			return 0, false
+		}
 		return n + estimateError(r.err), true
 	case r.size < minMemoizedSize:
 		return 0, false
@@ -68,6 +70,17 @@ func estimateFile(key fileKey, r fileResult) (int, bool) {
 		return n + estimateTemplate(r.template.expr), true
 	}
 	return n + estimateValue(r.value), true
+}
+
+// cacheableFileError reports errors that will not change for the rest of the
+// scan: missing files and rejected content. Transient read failures must not
+// be kept.
+func cacheableFileError(err error) bool {
+	if isNotExist(err) || errors.Is(err, errInvalidUTF8) {
+		return true
+	}
+	var diags hcl.Diagnostics
+	return errors.As(err, &diags)
 }
 
 // outputString is the string every call returning r passes on.
@@ -124,8 +137,6 @@ type parsedTemplate struct {
 	// pure is set for a template calling no function, which renders the same
 	// text for the same variables.
 	pure bool
-	// smallOutput is set once a render came out too short to remember.
-	smallOutput atomic.Bool
 }
 
 // literalTemplate returns the text of a template that renders its single

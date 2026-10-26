@@ -184,7 +184,7 @@ func EvalFuncsWithRoot(baseDir, rootDir string, fsys vfs.FS) map[string]function
 		funcs[name] = fn
 	}
 	if s, ok := fsys.(*ScanFS); ok {
-		maps.Copy(funcs, s.memo.decodeFuncs)
+		maps.Copy(funcs, s.ensureMemo().decodeFuncs)
 	}
 	funcs["abspath"] = MakeAbsPathFunc(baseDir)
 	funcs["templatefile"] = makeTemplateFileFunc(baseDir, rootDir, fsys, funcsCb)

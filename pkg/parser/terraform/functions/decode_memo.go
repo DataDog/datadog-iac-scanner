@@ -139,16 +139,7 @@ func memoizeDecode(
 		Description: original.Description(),
 		Params:      original.Params(),
 		VarParam:    original.VarParam(),
-		Type: func(args []cty.Value) (cty.Type, error) {
-			// A large input is decoded in Impl only. Its exact type here would
-			// cost a parse on a miss, and a deep type comparison of the result
-			// against it on a hit; Call returns a decode error the same way
-			// from either.
-			if _, ok := largeDecodeInput(args); ok {
-				return cty.DynamicPseudoType, nil
-			}
-			return original.ReturnTypeForValues(args)
-		},
+		Type:        original.ReturnTypeForValues,
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			input, ok := largeDecodeInput(args)
 			if !ok {

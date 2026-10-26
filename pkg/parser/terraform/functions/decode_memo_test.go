@@ -46,6 +46,23 @@ func countingJSONDecode(parses *atomic.Int32) function.Function {
 	})
 }
 
+func TestMemoizeDecode_LargeInputTypeMatchesStdlib(t *testing.T) {
+	funcs, _ := scanFuncs(t)
+	input := cty.StringVal(largeJSON(200))
+	args := []cty.Value{input}
+	want, wantErr := stdlib.JSONDecodeFunc.ReturnTypeForValues(args)
+	got, gotErr := funcs["jsondecode"].ReturnTypeForValues(args)
+	if (wantErr == nil) != (gotErr == nil) || (wantErr != nil && wantErr.Error() != gotErr.Error()) {
+		t.Fatalf("Type err %v, want %v", gotErr, wantErr)
+	}
+	if wantErr == nil && !got.Equals(want) {
+		t.Fatalf("Type %s, want %s (not DynamicPseudoType)", got.FriendlyName(), want.FriendlyName())
+	}
+	if got.Equals(cty.DynamicPseudoType) {
+		t.Fatal("large input Type returned DynamicPseudoType")
+	}
+}
+
 func TestMemoizeDecode_KeepsAValueOnlyWhenAskedAgain(t *testing.T) {
 	memo := newScanMemo()
 	keptDecodes := memo.decodes.keptResults
@@ -75,8 +92,9 @@ func TestMemoizeDecode_KeepsAValueOnlyWhenAskedAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parses.Load() != 2 {
-		t.Fatalf("parsed %d times, want 2", parses.Load())
+	// Type always parses; Impl parses on each miss. Two Calls miss, one hits.
+	if parses.Load() != 5 {
+		t.Fatalf("parsed %d times, want 5", parses.Load())
 	}
 	if !first.RawEquals(second) || !first.RawEquals(third) {
 		t.Fatal("decodes differ")
@@ -193,8 +211,10 @@ func TestMemoizeDecode_LargeDecodeErrorSurfacesAsBefore(t *testing.T) {
 			t.Fatalf("call %d: value %#v, want %#v", call, gotVal, wantVal)
 		}
 	}
-	if kept := memo.decodes.keptResults(); kept != 1 {
-		t.Fatalf("a repeated decode error was not kept: %d entries", kept)
+	// Type fails before Impl for invalid input, same as a small decode, so
+	// the error is not kept in the Impl memo.
+	if kept := memo.decodes.keptResults(); kept != 0 {
+		t.Fatalf("a Type-failing decode was kept: %d entries", kept)
 	}
 }
 
@@ -327,13 +347,11 @@ func TestMemoizeDecode_LargeSharedConfigsAreDecodedAFixedNumberOfTimes(t *testin
 	decodes := map[int]int{}
 	counting := function.New(&function.Spec{
 		Params: stdlib.JSONDecodeFunc.Params(),
-		Type: func(args []cty.Value) (cty.Type, error) {
+		Type:   stdlib.JSONDecodeFunc.ReturnTypeForValues,
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			mu.Lock()
 			decodes[len(args[0].AsString())]++
 			mu.Unlock()
-			return stdlib.JSONDecodeFunc.ReturnTypeForValues(args)
-		},
-		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			return unmarshalJSON(args[0].AsString(), retType)
 		},
 	})

@@ -115,8 +115,8 @@ func renderTemplateFile(
 }
 
 // cachedTemplateRender returns a remembered render of a pure template. ok is
-// false when this call has to render, including after a first render under
-// minMemoizedSize, whose key is dropped so it is not kept.
+// false when this call has to render. A short render drops its seen mark so a
+// later large render of the same template can still be shared.
 func cachedTemplateRender(
 	fsys vfs.FS,
 	full string,
@@ -125,24 +125,20 @@ func cachedTemplateRender(
 	render func() (cty.Value, error),
 ) (cty.Value, error, bool) {
 	s, ok := fsys.(*ScanFS)
-	if !ok || !t.pure || t.smallOutput.Load() {
+	if !ok || !t.pure {
 		return cty.NilVal, nil, false
 	}
 	key, ok := renderKeyOf(s.realPath(full), vars)
 	if !ok {
 		return cty.NilVal, nil, false
 	}
-	r := s.memo.renders.lookupOrCompute(key, func() valueResult {
+	memo := s.ensureMemo()
+	r := memo.renders.lookupOrCompute(key, func() valueResult {
 		v, err := render()
-		if out, ok := stringOutput(v, err); ok && len(out) < minMemoizedSize {
-			t.smallOutput.Store(true)
-		}
 		return valueResult{value: v, err: err}
 	})
-	if t.smallOutput.Load() {
-		s.memo.renders.mu.Lock()
-		delete(s.memo.renders.seen, key)
-		s.memo.renders.mu.Unlock()
+	if out, ok := r.outputString(); ok && len(out) < minMemoizedSize {
+		memo.renders.forget(key)
 	}
 	return r.value, r.err, true
 }
@@ -176,6 +172,9 @@ func renderKeyOf(path string, vars cty.Value) (renderKey, bool) {
 type varsDigest struct {
 	a, b maphash.Hash
 	left int
+	// attrNames are sorted object attribute lists from the type walk, reused
+	// by the value walk in the same order.
+	attrNames [][]string
 }
 
 // varsNode is what the walk charges for each type or value node.
@@ -249,7 +248,9 @@ func (d *varsDigest) objectType(attrs map[string]cty.Type) bool {
 		return false
 	}
 	d.tag('O', len(attrs))
-	for _, name := range sortedAttributes(attrs) {
+	names := sortedAttributes(attrs)
+	d.attrNames = append(d.attrNames, names)
+	for _, name := range names {
 		d.tag('a', len(name))
 		if !d.spend(len(name)) {
 			return false
@@ -297,16 +298,26 @@ func (d *varsDigest) value(v cty.Value) bool {
 		}
 		return true
 	case ty.IsObjectType():
-		for _, name := range sortedAttributes(ty.AttributeTypes()) {
-			if !d.value(v.GetAttr(name)) {
-				return false
-			}
-		}
-		return true
+		return d.objectValue(v)
 	case ty.IsCollectionType() || ty.IsTupleType():
 		return d.elements(v, ty.IsMapType())
 	}
 	return false
+}
+
+func (d *varsDigest) objectValue(v cty.Value) bool {
+	var names []string
+	if len(d.attrNames) > 0 {
+		names, d.attrNames = d.attrNames[0], d.attrNames[1:]
+	} else {
+		names = sortedAttributes(v.Type().AttributeTypes())
+	}
+	for _, name := range names {
+		if !d.value(v.GetAttr(name)) {
+			return false
+		}
+	}
+	return true
 }
 
 func (d *varsDigest) text(c byte, s string) bool {

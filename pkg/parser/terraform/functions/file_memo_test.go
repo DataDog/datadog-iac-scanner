@@ -6,6 +6,8 @@
 package functions
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -22,6 +24,73 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 )
+
+// A transient read error is not kept; not-exist and invalid content are.
+func TestFileMemo_TransientReadErrorsAreRetried(t *testing.T) {
+	content := strings.Repeat("a", minMemoizedSize)
+	mem := vfs.NewMemFS(map[string][]byte{
+		"mod/ok.txt":  []byte(content),
+		"mod/bad.txt": append([]byte("\xff\xfe"), bytes.Repeat([]byte("x"), minMemoizedSize)...),
+	})
+	var failOK atomic.Bool
+	failOK.Store(true)
+	var reads atomic.Int32
+	fsys := NewScanFS(readHookFS{FS: mem, hook: func(name string) error {
+		reads.Add(1)
+		if strings.HasSuffix(name, "ok.txt") && failOK.Swap(false) {
+			return errors.New("interrupted")
+		}
+		return nil
+	}})
+	funcs := EvalFuncs("mod", fsys)
+
+	if _, err := funcs["file"].Call([]cty.Value{cty.StringVal("ok.txt")}); err == nil {
+		t.Fatal("first read should fail")
+	}
+	if got := callFunc(t, funcs["file"], cty.StringVal("ok.txt")); got.AsString() != content {
+		t.Fatal("transient error was not retried")
+	}
+	afterOK := reads.Load()
+	callFunc(t, funcs["file"], cty.StringVal("ok.txt"))
+	if reads.Load() != afterOK {
+		t.Fatal("a successful large read was not kept")
+	}
+
+	beforeMissing := reads.Load()
+	for range 3 {
+		if _, err := funcs["file"].Call([]cty.Value{cty.StringVal("missing.txt")}); err == nil {
+			t.Fatal("missing file should err")
+		}
+	}
+	// First call alone, second keeps the not-exist error.
+	if got := reads.Load() - beforeMissing; got != 2 {
+		t.Fatalf("missing file read %d times, want 2", got)
+	}
+
+	beforeBad := reads.Load()
+	for range 3 {
+		if _, err := funcs["file"].Call([]cty.Value{cty.StringVal("bad.txt")}); err == nil {
+			t.Fatal("invalid UTF-8 should err")
+		}
+	}
+	if got := reads.Load() - beforeBad; got != 2 {
+		t.Fatalf("invalid content read %d times, want 2", got)
+	}
+}
+
+type readHookFS struct {
+	vfs.FS
+	hook func(string) error
+}
+
+func (f readHookFS) ReadFile(name string) ([]byte, error) {
+	if f.hook != nil {
+		if err := f.hook(name); err != nil {
+			return nil, err
+		}
+	}
+	return f.FS.ReadFile(name)
+}
 
 func TestFileMemo_SharesOneReadAcrossModuleEvaluations(t *testing.T) {
 	root := t.TempDir()
@@ -345,7 +414,8 @@ func TestTemplateFileMemo_EqualVariablesShareOneRender(t *testing.T) {
 		t.Fatalf("attribute names past the walk bound built %d keys", grew)
 	}
 
-	// A template rendering short text leaves no key.
+	// A template rendering short text leaves no key, and must not disable
+	// sharing for a later large render of the same template file.
 	writeFile(t, filepath.Join(root, "short.tftpl"), "${suffix}"+strings.Repeat("%{ if false }x%{ endif }", minMemoizedSize/16))
 	before = seen()
 	for range 3 {
@@ -355,6 +425,31 @@ func TestTemplateFileMemo_EqualVariablesShareOneRender(t *testing.T) {
 	}
 	if grew := seen() - before; grew != 0 {
 		t.Fatalf("a template rendering short text built %d keys", grew)
+	}
+	writeFile(t, filepath.Join(root, "grow.tftpl"), `%{ for n in nums }${pad}%{ endfor }`)
+	pad := strings.Repeat("p", 64)
+	nums := func(n int) cty.Value {
+		elems := make([]cty.Value, n)
+		for i := range elems {
+			elems[i] = cty.NumberIntVal(int64(i))
+		}
+		return cty.ObjectVal(map[string]cty.Value{
+			"pad":  cty.StringVal(pad),
+			"nums": cty.TupleVal(elems),
+		})
+	}
+	if got := render("grow.tftpl", nums(1)); got != pad {
+		t.Fatalf("small render %q", got)
+	}
+	var largeRenders []string
+	for range 3 {
+		largeRenders = append(largeRenders, render("grow.tftpl", nums(80)))
+	}
+	if len(largeRenders[0]) < minMemoizedSize {
+		t.Fatalf("large render is %d bytes", len(largeRenders[0]))
+	}
+	if unsafe.StringData(largeRenders[1]) != unsafe.StringData(largeRenders[2]) {
+		t.Fatal("a large render after a small one was not shared")
 	}
 
 	// Nulls and unknowns render as without the memo.
@@ -604,6 +699,45 @@ func TestResultMemo_SeenKeysAreBounded(t *testing.T) {
 	}
 	if computeTwice(m, "unseen", 1); !m.stored("unseen") {
 		t.Fatal("a key asked for twice after the record started over was not kept")
+	}
+}
+
+// A key refused for budget stays refused after seen is reset past maxSeen.
+func TestResultMemo_RefusedSurvivesSeenReset(t *testing.T) {
+	m := sizedMemo(10)
+	if computeTwice(m, "big", 100); m.stored("big") {
+		t.Fatal("a result past the budget and allowance was kept")
+	}
+	if _, ok := m.refused["big"]; !ok {
+		t.Fatal("a refused key was not recorded")
+	}
+	for i := range maxSeen + 10 {
+		m.lookupOrCompute(fmt.Sprint(i), func() int { return 1 })
+	}
+	if _, ok := m.refused["big"]; !ok {
+		t.Fatal("seen reset dropped the refusal mark")
+	}
+	estimates := 0
+	estimate := m.estimate
+	m.estimate = func(k string, size int) (int, bool) {
+		estimates++
+		return estimate(k, size)
+	}
+	if got := computeTwice(m, "big", 100); got != 2 || estimates != 0 {
+		t.Fatalf("refused key computed %d times and measured %d times; want 2 and 0", got, estimates)
+	}
+}
+
+func TestScanFS_ReleaseMemoDropsWithoutReserving(t *testing.T) {
+	s := NewScanFS(vfs.DiskFS{})
+	first := s.ensureMemo()
+	s.ReleaseMemo()
+	if s.memo != nil {
+		t.Fatal("ReleaseMemo left a memo in place")
+	}
+	second := s.ensureMemo()
+	if second == nil || second == first {
+		t.Fatal("next use must create a fresh memo")
 	}
 }
 
