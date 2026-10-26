@@ -472,7 +472,7 @@ func (d *moduleData) withComputedAttributes(
 		ctx = evalCtx.NewChild()
 		ctx.Variables = inst.Iteration
 	}
-	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources)}
+	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources), Verdicts: d.e.templates}
 	var computed map[string]string
 	if body, ok := d.jsonBodies[b]; ok {
 		src := d.sources[b.TypeRange.Filename]
@@ -496,7 +496,7 @@ func (d *moduleData) withComputedAttributes(
 // variables it was bound to when read inside a dynamic block.
 func renderJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.Value, bool) {
 	if inner, vars, ok := partial.Unbind(expr); ok {
-		scoped := &partial.Renderer{Ctx: partial.Scope(rd.Ctx, vars), Source: rd.Source}
+		scoped := &partial.Renderer{Ctx: partial.Scope(rd.Ctx, vars), Source: rd.Source, Verdicts: rd.Verdicts}
 		return renderJSON(scoped, inner, src)
 	}
 	return rd.Render(jsonExprToHCL(expr, src))

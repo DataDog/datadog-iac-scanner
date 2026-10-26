@@ -46,7 +46,7 @@ func newRenderer(r *ResolvedResource) *partial.Renderer {
 		ctx = ctx.NewChild()
 		ctx.Variables = r.Iteration
 	}
-	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources)}
+	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources), Verdicts: r.Scope.templates}
 }
 
 // attrSource locates the HCL that produced a value so unresolved values can fall

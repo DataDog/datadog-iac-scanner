@@ -7,6 +7,8 @@
 package partial
 
 import (
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
@@ -174,4 +176,44 @@ func TestWithUnknownRefs(t *testing.T) {
 	v := WithUnknownRefs(expr, ctx)
 	require.False(t, v.GetAttr("a").IsKnown())
 	require.Equal(t, cty.StringVal("y"), v.GetAttr("b"))
+}
+
+// A template rendered for every instance of a module loop is the same text, so
+// deciding whether it only places variables parses it once.
+func TestPlacingTemplate_RepeatedTextIsRemembered(t *testing.T) {
+	placingTemplates := NewTemplateVerdicts()
+	body := strings.Repeat("${name}\n", 2000)
+	if !placingTemplates.lookup(body) {
+		t.Fatal("a template of bare variables was not placing")
+	}
+	if placingTemplates.lookup("%{ if true }x%{ endif }${name}") {
+		t.Fatal("a template with a directive was placing")
+	}
+	placingTemplates.mu.Lock()
+	kept := len(placingTemplates.verdicts)
+	placingTemplates.mu.Unlock()
+
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+	const calls = 2000
+	for range calls {
+		if !placingTemplates.lookup(body) {
+			t.Fatal("a remembered template changed its verdict")
+		}
+	}
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	placingTemplates.mu.Lock()
+	grew := len(placingTemplates.verdicts) - kept
+	placingTemplates.mu.Unlock()
+	if grew != 0 {
+		t.Fatalf("remembering one template stored %d more verdicts", grew)
+	}
+	if kept != 2 {
+		t.Fatalf("a fresh cache held %d verdicts after two templates (want 2)", kept)
+	}
+	if perCall := float64(after.TotalAlloc-before.TotalAlloc) / calls; perCall > 1024 {
+		t.Fatalf("one more check of a remembered template allocated %.0f B (want at most 1024): it was parsed again", perCall)
+	}
 }

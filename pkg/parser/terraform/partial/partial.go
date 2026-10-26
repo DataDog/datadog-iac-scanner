@@ -66,6 +66,8 @@ func sourceRange(src []byte, rng hcl.Range) (string, bool) {
 type Renderer struct {
 	Ctx    *hcl.EvalContext
 	Source Source
+	// Verdicts, when set, remembers which templates only place variables.
+	Verdicts *TemplateVerdicts
 }
 
 var emptyCtx = &hcl.EvalContext{}
@@ -81,7 +83,7 @@ func (r *Renderer) ctx() *hcl.EvalContext {
 // false when expr cannot be rendered.
 func (r *Renderer) Render(expr hcl.Expression) (cty.Value, bool) {
 	if b, ok := expr.(bound); ok {
-		return (&Renderer{Ctx: scope(r.Ctx, b.vars), Source: r.Source}).Render(b.Expression)
+		return (&Renderer{Ctx: scope(r.Ctx, b.vars), Source: r.Source, Verdicts: r.Verdicts}).Render(b.Expression)
 	}
 	if v, diags := expr.Value(r.ctx()); !diags.HasErrors() && v.IsWhollyKnown() {
 		v, _ = v.UnmarkDeep()
@@ -465,22 +467,7 @@ func (r *Renderer) placingTemplate(name string, arg hclsyntax.Expression) bool {
 			return false
 		}
 	}
-	tmpl, diags := hclsyntax.ParseTemplate([]byte(s), name, hcl.InitialPos)
-	if diags.HasErrors() {
-		return false
-	}
-	placing := true
-	_ = hclsyntax.VisitAll(tmpl, func(node hclsyntax.Node) hcl.Diagnostics {
-		switch n := node.(type) {
-		case *hclsyntax.TemplateExpr, *hclsyntax.TemplateWrapExpr, *hclsyntax.LiteralValueExpr:
-		case *hclsyntax.ScopeTraversalExpr:
-			placing = placing && len(n.Traversal) == 1
-		default:
-			placing = false
-		}
-		return nil
-	})
-	return placing
+	return r.Verdicts.lookup(s)
 }
 
 // renderParts rebuilds the constructors evaluation could not substitute

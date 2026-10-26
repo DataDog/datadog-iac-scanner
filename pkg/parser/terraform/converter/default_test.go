@@ -707,7 +707,7 @@ block "label_one" {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			file, _ := hclsyntax.ParseConfig([]byte(tt.input), "testFileName", hcl.Pos{Byte: 0, Line: 1, Column: 1})
-			c := newConverter(file.Bytes, nil, functions.TerraformFuncs)
+			c := newConverter(file.Bytes, nil, functions.TerraformFuncs, nil)
 			got, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 			fmt.Println(err)
 			require.True(t, (err != nil) == tt.wantErr)

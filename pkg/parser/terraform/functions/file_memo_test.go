@@ -202,6 +202,183 @@ func TestFileMemo_MemFS(t *testing.T) {
 	}
 }
 
+func TestTemplateFileMemo_DepthLimitComesBeforeAParseError(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "bad.tftpl"), "hi ${"+strings.Repeat(" ", minMemoizedSize))
+	fsys := NewScanFS(vfs.DiskFS{})
+	vars := cty.EmptyObjectVal
+	funcs := func() map[string]function.Function { return TerraformFuncs }
+	shallow := makeTemplateFileFuncDepth(root, root, fsys, funcs, 0)
+	deep := makeTemplateFileFuncDepth(root, root, fsys, funcs, templateMaxDepth+1)
+	for range 3 {
+		if _, err := shallow.Call([]cty.Value{cty.StringVal("bad.tftpl"), vars}); err == nil || strings.Contains(err.Error(), "recursion") {
+			t.Fatalf("shallow render: %v", err)
+		}
+		if _, err := deep.Call([]cty.Value{cty.StringVal("bad.tftpl"), vars}); err == nil || !strings.Contains(err.Error(), "recursion") {
+			t.Fatalf("deep render: %v", err)
+		}
+	}
+}
+
+func TestTemplateFileMemo_ConcurrentRendersShareOneParse(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "t.tftpl"), "%{ for k, v in items }${k}=${upper(v)};%{ endfor }${name}")
+	funcs := EvalFuncs(root, NewScanFS(vfs.DiskFS{}))
+	var wg sync.WaitGroup
+	for i := range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			name := strings.Repeat("n", i)
+			got, err := funcs["templatefile"].Call([]cty.Value{cty.StringVal("t.tftpl"), cty.ObjectVal(map[string]cty.Value{
+				"name":  cty.StringVal(name),
+				"items": cty.MapVal(map[string]cty.Value{"a": cty.StringVal("x"), "b": cty.StringVal("y")}),
+			})})
+			if err != nil || got.AsString() != "a=X;b=Y;"+name {
+				t.Errorf("render %d = %#v, %v", i, got, err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// A template with nothing to evaluate renders as the text kept for it, which
+// a decode of the render then finds by identity.
+func TestTemplateFileMemo_ALiteralTemplateIsItsText(t *testing.T) {
+	root := t.TempDir()
+	content := largeJSON(2000)
+	writeFile(t, filepath.Join(root, "config.json"), content)
+	fsys := NewScanFS(vfs.DiskFS{})
+	funcs := EvalFuncs(root, fsys)
+	var renders []cty.Value
+	for range 3 {
+		renders = append(renders, callFunc(t, funcs["templatefile"], cty.StringVal("config.json"), cty.EmptyObjectVal))
+	}
+	if renders[0].AsString() != content {
+		t.Fatal("a literal template rendered other text")
+	}
+	if unsafe.StringData(renders[1].AsString()) != unsafe.StringData(renders[2].AsString()) {
+		t.Fatal("a literal template was rendered again")
+	}
+	fsys.memo.keys.mu.Lock()
+	pinned := len(fsys.memo.keys.pinned)
+	fsys.memo.keys.mu.Unlock()
+	if pinned != 1 {
+		t.Fatalf("%d strings known by identity, want the kept template's text", pinned)
+	}
+}
+
+// A template calling no function renders the same text for the same
+// variables, so instances passing equal variables share one render; other
+// variables, or the same values with another type, render on their own.
+func TestTemplateFileMemo_EqualVariablesShareOneRender(t *testing.T) {
+	root := t.TempDir()
+	padding := strings.Repeat("x", minMemoizedSize)
+	writeFile(t, filepath.Join(root, "pure.tftpl"), padding+`${suffix}%{ if n == "1" }-text%{ else }-number%{ endif }`)
+	writeFile(t, filepath.Join(root, "calls.tftpl"), padding+"${upper(suffix)}")
+	fsys := NewScanFS(vfs.DiskFS{})
+	funcs := EvalFuncs(root, fsys)
+	vars := func(suffix string, n cty.Value) cty.Value {
+		return cty.ObjectVal(map[string]cty.Value{"suffix": cty.StringVal(suffix), "n": n})
+	}
+	render := func(path string, v cty.Value) string {
+		return callFunc(t, funcs["templatefile"], cty.StringVal(path), v).AsString()
+	}
+
+	var renders []string
+	for range 3 {
+		renders = append(renders, render("pure.tftpl", vars("-a", cty.StringVal("1"))))
+	}
+	if renders[0] != padding+"-a-text" {
+		t.Fatalf("rendered %q", renders[0][len(padding):])
+	}
+	if unsafe.StringData(renders[1]) != unsafe.StringData(renders[2]) {
+		t.Fatal("equal variables rendered the template again")
+	}
+	if got := render("pure.tftpl", vars("-b", cty.StringVal("1"))); got != padding+"-b-text" {
+		t.Fatalf("other variables rendered %q", got[len(padding):])
+	}
+	if got := render("pure.tftpl", vars("-a", cty.NumberIntVal(1))); got != padding+"-a-number" {
+		t.Fatalf("a number variable rendered %q", got[len(padding):])
+	}
+	for range 3 {
+		if got := render("calls.tftpl", vars("-a", cty.StringVal("1"))); got != padding+"-A" {
+			t.Fatalf("a template calling a function rendered %q", got[len(padding):])
+		}
+	}
+	if kept := fsys.memo.renders.keptResults(); kept != 1 {
+		t.Fatalf("%d renders kept, want the one asked for again of the template calling no function", kept)
+	}
+	seen := func() int {
+		fsys.memo.renders.mu.Lock()
+		defer fsys.memo.renders.mu.Unlock()
+		return len(fsys.memo.renders.seen)
+	}
+
+	// Variables past maxRenderVars are not keyed, so a large shared value
+	// passed with a per-instance one costs no more than rendering.
+	before := seen()
+	for i := range 3 {
+		large := vars(strings.Repeat("v", maxRenderVars)+fmt.Sprint(i), cty.StringVal("1"))
+		if got := render("pure.tftpl", large); !strings.HasSuffix(got, fmt.Sprint(i)+"-text") {
+			t.Fatalf("large variables rendered %q", got[len(got)-10:])
+		}
+	}
+	if grew := seen() - before; grew != 0 {
+		t.Fatalf("variables past the walk bound built %d keys", grew)
+	}
+
+	// A few attributes whose names pass the walk bound are not keyed either.
+	before = seen()
+	named := cty.ObjectVal(map[string]cty.Value{
+		"suffix":                           cty.StringVal("-a"),
+		"n":                                cty.StringVal("1"),
+		strings.Repeat("k", maxRenderVars): cty.StringVal("v"),
+	})
+	if _, ok := renderKeyOf("pure.tftpl", named); ok {
+		t.Fatal("attribute names past the walk bound were keyed")
+	}
+	if got := render("pure.tftpl", named); got != padding+"-a-text" {
+		t.Fatalf("huge attribute names rendered %q", got[len(padding):])
+	}
+	if grew := seen() - before; grew != 0 {
+		t.Fatalf("attribute names past the walk bound built %d keys", grew)
+	}
+
+	// A template rendering short text leaves no key.
+	writeFile(t, filepath.Join(root, "short.tftpl"), "${suffix}"+strings.Repeat("%{ if false }x%{ endif }", minMemoizedSize/16))
+	before = seen()
+	for range 3 {
+		if got := render("short.tftpl", vars("-a", cty.StringVal("1"))); got != "-a" {
+			t.Fatalf("short template rendered %q", got)
+		}
+	}
+	if grew := seen() - before; grew != 0 {
+		t.Fatalf("a template rendering short text built %d keys", grew)
+	}
+
+	// Nulls and unknowns render as without the memo.
+	nullVars := cty.ObjectVal(map[string]cty.Value{"suffix": cty.NullVal(cty.String), "n": cty.StringVal("1")})
+	writeFile(t, filepath.Join(root, "null.tftpl"), padding+`%{ if suffix == null }null%{ else }${suffix}%{ endif }`)
+	for range 3 {
+		if got := render("null.tftpl", nullVars); got != padding+"null" {
+			t.Fatalf("null variable rendered %q", got[len(padding):])
+		}
+	}
+	unknown := vars("-a", cty.UnknownVal(cty.String))
+	for range 3 {
+		if got := callFunc(t, funcs["templatefile"], cty.StringVal("pure.tftpl"), unknown); got.IsKnown() {
+			t.Fatal("an unknown variable rendered known text")
+		}
+	}
+	marked := vars("-a", cty.StringVal("1")).Mark("sensitive")
+	for range 3 {
+		if got := callFunc(t, funcs["templatefile"], cty.StringVal("pure.tftpl"), marked); !got.IsMarked() {
+			t.Fatal("a marked variable rendered unmarked text")
+		}
+	}
+}
+
 func largeJSON(entries int) string {
 	var b strings.Builder
 	b.WriteByte('{')

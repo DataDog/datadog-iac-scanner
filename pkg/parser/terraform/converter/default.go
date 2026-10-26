@@ -37,6 +37,8 @@ type Options struct {
 	BaseDir string
 	RootDir string
 	FS      vfs.FS
+	// Verdicts, when set, is shared with the other files of the scan.
+	Verdicts *partial.TemplateVerdicts
 }
 
 // Convert an hcl File to a toJson serializable object.
@@ -49,7 +51,7 @@ func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, op
 	for name, value := range functions.ContextVariables(opts.BaseDir, opts.RootDir) {
 		variables[name] = value
 	}
-	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS))
+	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS), opts.Verdicts)
 	c.file = file.Body.(*hclsyntax.Body)
 	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 
@@ -81,13 +83,15 @@ type converter struct {
 	dynamicWarned bool
 }
 
-func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
+func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function,
+	verdicts *partial.TemplateVerdicts) converter {
 	return converter{
 		bytes:     src,
 		inputVars: variables,
 		renderer: &partial.Renderer{
-			Ctx:    &hcl.EvalContext{Variables: variables, Functions: funcs},
-			Source: partial.BytesSource(src),
+			Ctx:      &hcl.EvalContext{Variables: variables, Functions: funcs},
+			Source:   partial.BytesSource(src),
+			Verdicts: verdicts,
 		},
 	}
 }

@@ -47,7 +47,7 @@ func decodeKeyOf(fn, input string) decodeKey {
 	return decodeKey{fn: fn, n: len(input), a: a.Sum64(), b: b.Sum64()}
 }
 
-// valueResult is a decode: the value a call returns, or its error.
+// valueResult is a decode or render: the value a call returns, or its error.
 type valueResult struct {
 	value cty.Value
 	err   error

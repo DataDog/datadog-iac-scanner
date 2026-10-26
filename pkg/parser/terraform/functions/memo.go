@@ -68,10 +68,10 @@ func (a *allowance) take(n int) bool {
 
 // resultMemo shares the results of calls asked for again. Every instance of a
 // module loop, every root and every reparse of a file calls its functions
-// again, so a loop reading one large configuration file would read and decode
-// it once per call. cty values are immutable, so a result asked for more than
-// once is kept and shared for the rest of the scan, and a result used once
-// dies with the call that used it.
+// again, so a loop reading one large configuration file would read, decode or
+// parse it once per call. cty values and parsed templates are immutable, so a
+// result asked for more than once is kept and shared for the rest of the
+// scan, and a result used once dies with the call that used it.
 //
 // Kept results are never evicted to make room: under the cyclic access of a
 // module loop, eviction would drop each one just before it is asked for
@@ -189,7 +189,7 @@ func (m *resultMemo[K, R]) remember(key K, result R, size int) {
 }
 
 // Estimates, in bytes, of what each part of a kept result keeps live,
-// measured on JSON and YAML documents.
+// measured on JSON and YAML documents and on templates of each shape.
 const (
 	retainedScalar  = 32
 	retainedNumber  = 80
@@ -200,6 +200,7 @@ const (
 	retainedAttr    = 192
 	retainedError   = 256
 	retainedEntry   = 256
+	retainedNode    = 144
 )
 
 func estimateError(err error) int {

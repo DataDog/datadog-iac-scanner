@@ -138,8 +138,9 @@ type ModuleScope struct {
 	// evalCtx is the context the module's blocks were evaluated in, final once
 	// evaluation completes, and sources the module's files by filename. They
 	// let a value evaluation could not resolve be rendered as its parts.
-	evalCtx *hcl.EvalContext
-	sources map[string][]byte
+	evalCtx   *hcl.EvalContext
+	sources   map[string][]byte
+	templates *partial.TemplateVerdicts
 
 	// localDeps classifies, per local, which of the roots that change during
 	// evaluation (the module's resources, its module outputs, its data) the
@@ -245,8 +246,10 @@ type Evaluator struct {
 	dirCache map[string]dirParse
 	// funcFS serves the Terraform functions of every module this evaluator and
 	// its forks reach, so paths confined once stay resolved and files and
-	// decodes asked for again are shared until ReleaseCaches.
-	funcFS *tffunctions.ScanFS
+	// decodes asked for again are shared until ReleaseCaches. templates is
+	// shared and released along with it.
+	funcFS    *tffunctions.ScanFS
+	templates *partial.TemplateVerdicts
 
 	// mergeAllow, when set, limits OpenTofu twin-shadowing to inventory paths.
 	mergeAllow map[string]struct{}
@@ -281,6 +284,7 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
 		funcFS:           tffunctions.NewScanFS(fsys),
+		templates:        partial.NewTemplateVerdicts(),
 		notEvaluatedDirs: make(map[string]bool),
 		fsys:             fsys,
 	}
@@ -376,6 +380,7 @@ func (e *Evaluator) Fork() *Evaluator {
 		parseMu:          e.parseMu,
 		dirCache:         e.dirCache,
 		funcFS:           e.funcFS,
+		templates:        e.templates,
 		mergeAllow:       e.mergeAllow,
 		trackInstances:   e.trackInstances,
 	}
@@ -513,6 +518,7 @@ func (e *Evaluator) ReleaseCaches() {
 	e.dirCache = make(map[string]dirParse)
 	e.parseMu.Unlock()
 	e.funcFS = tffunctions.NewScanFS(e.fsys)
+	e.templates = partial.NewTemplateVerdicts()
 }
 
 // ReleaseEvalCache drops memoized module evaluations while keeping parsed HCL
@@ -618,7 +624,10 @@ func (e *Evaluator) evaluate(
 	}
 
 	resourceTypes := declaredResourceTypes(resourceBlocks)
-	scope := &ModuleScope{Locals: localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources}
+	scope := &ModuleScope{
+		Locals: localExprs, Bodies: bodies, Var: evalCtx.Variables["var"],
+		evalCtx: evalCtx, sources: sources, templates: e.templates,
+	}
 	evalCtx.Variables["local"] = objectOrEmpty(
 		e.resolveLocalsIncremental(scope, localExprs, resourceTypes, evalCtx, false, false))
 	data := newModuleData(e, bodies, sources, scope, resourceTypes, addr, chain, hasUnconditionalResourceBlock(resourceBlocks))

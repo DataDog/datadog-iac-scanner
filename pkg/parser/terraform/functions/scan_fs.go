@@ -15,9 +15,9 @@ import (
 
 // ScanFS serves the filesystem functions of one scan. The files a scan reads do
 // not change under it, so each path's symlinks are resolved once instead of on
-// every call that confines a path to its module, and what the file and decode
-// functions make of a file or input is shared by every call asking for it
-// again. Whoever creates a ScanFS decides how long those results live.
+// every call that confines a path to its module, and what the file, decode and
+// template functions make of a file or input is shared by every call asking
+// for it again. Whoever creates a ScanFS decides how long those results live.
 type ScanFS struct {
 	vfs.FS
 
@@ -62,15 +62,16 @@ func (s *ScanFS) realPath(path string) string {
 	return path
 }
 
-// resultKinds is the number of memos a ScanFS has: files and decodes.
-const resultKinds = 2
+// resultKinds is the number of memos a ScanFS has: files, decodes and renders.
+const resultKinds = 3
 
-// scanMemo holds the results a ScanFS shares, within scanBudget. Decodes and
-// file results have a budget each, so neither can take the other's room, and
-// share one allowance for larger results.
+// scanMemo holds the results a ScanFS shares, within scanBudget. Decodes, file
+// results and template renders have a budget each, so none can take another's
+// room, and share one allowance for larger results.
 type scanMemo struct {
 	decodes *resultMemo[decodeKey, valueResult]
 	files   *resultMemo[fileKey, fileResult]
+	renders *resultMemo[renderKey, valueResult]
 	keys    *decodeKeys
 	// decodeFuncs are jsondecode and yamldecode sharing decodes.
 	decodeFuncs map[string]function.Function
@@ -83,10 +84,16 @@ func newScanMemo() *scanMemo {
 	m := &scanMemo{
 		decodes: newResultMemo(budget, large, estimateDecode),
 		files:   newResultMemo(budget, large, estimateFile),
+		renders: newResultMemo(budget, large, estimateRender),
 		keys:    &decodeKeys{pinned: map[stringID]struct{}{}, keys: map[idKey]decodeKey{}},
 	}
 	m.decodeFuncs = decodeFuncs(m)
 	m.files.kept = func(r fileResult) {
+		if s, ok := r.outputString(); ok {
+			m.keys.pin(s)
+		}
+	}
+	m.renders.kept = func(r valueResult) {
 		if s, ok := r.outputString(); ok {
 			m.keys.pin(s)
 		}

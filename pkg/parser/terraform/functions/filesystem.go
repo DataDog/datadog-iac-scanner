@@ -173,14 +173,6 @@ func makeFileHashFunc(baseDir, rootDir string, fsys vfs.FS, name string, newHash
 	})
 }
 
-func readConfinedFile(baseDir, rootDir string, fsys vfs.FS, rel string) ([]byte, error) {
-	full, err := confinePath(baseDir, rootDir, fsys, rel)
-	if err != nil {
-		return nil, err
-	}
-	return fsys.ReadFile(full)
-}
-
 // confinePath resolves rel against baseDir and rejects any result that leaves that tree.
 func confinePath(baseDir, rootDir string, fsys vfs.FS, rel string) (string, error) {
 	base := filepath.Clean(baseDir)

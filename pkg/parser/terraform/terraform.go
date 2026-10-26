@@ -20,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -56,8 +57,8 @@ type Parser struct {
 	// .tfvars, data sources). Defaults to the real disk; the HTTP server injects
 	// an in-memory FS populated from pushed content.
 	fsys vfs.FS
-	// caches share the files the converted files ask for again until
-	// ReleaseParseCaches; afterwards functions read fsys.
+	// caches share the files, decodes and template verdicts the converted files
+	// ask for again until ReleaseParseCaches; afterwards functions read fsys.
 	caches atomic.Pointer[parseCaches]
 
 	// dirVarsCache memoizes per-directory variable/locals resolution (O(N²) without
@@ -104,12 +105,13 @@ func newParser(fsys vfs.FS) *Parser {
 		convertFunc:  converter.Convert,
 		fsys:         fsys,
 	}
-	p.caches.Store(&parseCaches{fs: functions.NewScanFS(fsys)})
+	p.caches.Store(&parseCaches{fs: functions.NewScanFS(fsys), templates: partial.NewTemplateVerdicts()})
 	return p
 }
 
 type parseCaches struct {
-	fs *functions.ScanFS
+	fs        *functions.ScanFS
+	templates *partial.TemplateVerdicts
 }
 
 // ReleaseParseCaches drops what the parser keeps for files converted again.
@@ -318,7 +320,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 
 	opts := converter.Options{BaseDir: filepath.Dir(path), FS: p.fsys}
 	if c := p.caches.Load(); c != nil {
-		opts.FS = c.fs
+		opts.FS, opts.Verdicts = c.fs, c.templates
 	}
 	fc, parseErr := p.convertFunc(ctx, file, inputVariables, opts)
 	json, err := addExtraInfo(ctx, []model.Document{fc}, path)
