@@ -11,7 +11,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -1061,6 +1063,179 @@ resource "aws_sqs_queue_policy" "other" {
 		require.Equal(t, 3, got.Line, key)
 		require.Equal(t, 1, got.BlockLocation.Start.Line, key)
 	}
+}
+
+// The block the key names is the line, even when an earlier block spells the
+// key's text exactly or a later block holds the only exact match.
+func TestDetectLineStaysInTheNamedBlock(t *testing.T) {
+	cases := []struct {
+		name, src       string
+		line, blockLine int
+	}{
+		{
+			name: "earlier exact string",
+			src: `resource "aws_s3_bucket_policy" "p" {
+  description = "aws_s3_bucket target"
+  acl = "private"
+}
+resource "aws_s3_bucket" "target" {
+  acl = "public-read"
+}
+`,
+			line: 6, blockLine: 5,
+		},
+		{
+			name: "earlier heredoc spelling the header",
+			src: `resource "aws_iam_policy" "p" {
+  policy = <<EOF
+resource "aws_s3_bucket" "target" {
+  acl = "private"
+}
+EOF
+}
+resource "aws_s3_bucket" "target" {
+  acl = "public-read"
+}
+`,
+			line: 9, blockLine: 8,
+		},
+		{
+			name: "exact header string only in a later block",
+			src: `resource "aws_s3_bucket" "target"{
+  acl = "public-read"
+}
+resource "aws_iam_policy" "later" {
+  description = "aws_s3_bucket target"
+  acl = "private"
+}
+`,
+			line: 2, blockLine: 1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			file := &model.FileMetadata{
+				ScanID:            "t",
+				ID:                "t",
+				FilePath:          "main.tf",
+				Kind:              model.KindTerraform,
+				OriginalData:      tc.src,
+				LinesOriginalData: utils.SplitLines(tc.src),
+			}
+			got := (&DetectKindLine{}).DetectLine(context.Background(), file, "aws_s3_bucket[target].acl", 1)
+			require.Equal(t, tc.line, got.Line)
+			require.Equal(t, tc.blockLine, got.BlockLocation.Start.Line)
+		})
+	}
+}
+
+// Four times the blocks, or four times the attributes searched inside one
+// block, must not mean four times the CPU per finding. The attribute case
+// times the search alone, because locating a block reads the whole block.
+func TestDetectLine_searchCostStaysFlatAsTheFileGrows(t *testing.T) {
+	if processCPU() == 0 {
+		t.Skip("process CPU time is unavailable on this OS")
+	}
+	const maxGrowth = 2.5
+	floor := float64(5 * time.Microsecond)
+	budget := float64(200 * time.Microsecond)
+	for _, shape := range []struct {
+		name           string
+		run            func(t *testing.T, n int) (time.Duration, int)
+		smallN, largeN int
+	}{
+		{"blocks", detectEveryBucketCPU, 400, 1600},
+		{"attributes in one block", searchLargeBucketCPU, 2000, 8000},
+	} {
+		perFinding := func(n int) float64 {
+			best, findings := time.Duration(1<<63-1), 1
+			for range 3 {
+				elapsed, count := shape.run(t, n)
+				if elapsed < best {
+					best, findings = elapsed, count
+				}
+			}
+			return float64(best) / float64(findings)
+		}
+		perSmall, perLarge := perFinding(shape.smallN), perFinding(shape.largeN)
+		t.Logf("line search CPU per finding: %s at %d %s, %s at %d",
+			time.Duration(perSmall), shape.smallN, shape.name, time.Duration(perLarge), shape.largeN)
+		require.LessOrEqualf(t, perLarge, budget, "CPU per finding above the budget (%s)", shape.name)
+		require.LessOrEqualf(t, perLarge, max(perSmall, floor)*maxGrowth, "CPU per finding grew with the %s", shape.name)
+	}
+}
+
+func detectEveryBucketCPU(t *testing.T, n int) (time.Duration, int) {
+	t.Helper()
+	var b strings.Builder
+	for i := range n {
+		fmt.Fprintf(&b, "resource \"aws_s3_bucket\" \"b%d\" {\n  acl = \"public-read\"\n}\n", i)
+	}
+	file, done := leasedFile(t, b.String())
+	defer done()
+	detect := func() {
+		for i := range n {
+			got := (&DetectKindLine{}).DetectLine(context.Background(), file, fmt.Sprintf("aws_s3_bucket[b%d].acl", i), 1)
+			require.Equal(t, i*3+2, got.Line)
+			require.Equal(t, i*3+1, got.BlockLocation.Start.Line)
+		}
+	}
+	detect()
+	start := processCPU()
+	detect()
+	return processCPU() - start, n
+}
+
+// searchLargeBucketCPU searches one block of n attributes for a few findings
+// spread through it, so the lines each finding's text is on stay cached.
+func searchLargeBucketCPU(t *testing.T, n int) (time.Duration, int) {
+	t.Helper()
+	const findings = 8
+	var b strings.Builder
+	b.WriteString("resource \"aws_s3_bucket\" \"big\" {\n")
+	names := map[string]int{}
+	for i := range n {
+		if i%(n/findings) == 0 {
+			name := fmt.Sprintf("acl_%c", 'a'+len(names))
+			fmt.Fprintf(&b, "  %s = \"public-read\"\n", name)
+			names[name] = i + 1
+			continue
+		}
+		fmt.Fprintf(&b, "  filler_%d = \"x\"\n", i)
+	}
+	b.WriteString("}\n")
+	file, done := leasedFile(t, b.String())
+	defer done()
+	lines := file.Lines()
+	search := func() {
+		for name, line := range names {
+			d := &detector.DefaultDetectLineResponse{File: file}
+			d.SetSearchEnd(n + 2)
+			d.DetectCurrentLine(name, "", 0, lines, model.KindTerraform)
+			require.Equal(t, line, d.CurrentLine, name)
+		}
+	}
+	search()
+	const rounds = 50
+	start := processCPU()
+	for range rounds {
+		search()
+	}
+	return processCPU() - start, rounds * len(names)
+}
+
+func leasedFile(t *testing.T, src string) (*model.FileMetadata, func()) {
+	t.Helper()
+	body, err := parseHCLBody(src, "main.tf")
+	require.NoError(t, err)
+	lineSrc := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
+		return []model.Document{{}}, map[model.DerivedKey]any{model.HCLBodyKey: body}, nil
+	})
+	file := &model.FileMetadata{FilePath: "main.tf", OriginalData: src, Kind: model.KindTerraform}
+	file.SetLineInfoSource(lineSrc, 0)
+	lease := file.LeaseLineInfo()
+	require.NoError(t, file.EnsureLineInfoDocument(context.Background()))
+	return file, lease.Close
 }
 
 // Several rules detecting lines in one file must share the body the line-info

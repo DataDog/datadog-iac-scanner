@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -153,9 +154,18 @@ func detectKeyParts(
 ) *detector.DefaultDetectLineResponse {
 	var scope *hclsyntax.Block
 	if body, err := parse(); err == nil {
-		scope = searchKeyBlock(body, keyParts, extracted)
+		scope = searchKeyBlock(detection.File, body, keyParts, extracted)
 	}
+	// A search from the first line re-reads every earlier block for every
+	// finding. The block the key names starts the search.
 	inScope := false
+	if scope != nil && scope.TypeRange.Start.Line > 0 {
+		detection.CurrentLine = scope.TypeRange.Start.Line - 1
+		inScope = true
+		if scope.Body != nil && scope.Body.SrcRange.End.Line > detection.CurrentLine {
+			detection.SetSearchEnd(scope.Body.SrcRange.End.Line)
+		}
+	}
 	cursor := newDocCursor(doc, extracted)
 	lineCursor := newDocCursor(lineDoc, extracted)
 	for _, part := range keyParts {
@@ -302,11 +312,21 @@ func locateTerraformBlock(
 	return syntheticVulnerabilityLines(identifyingLine, strLines), nil
 }
 
+// blockIndexAfter is the first block whose header is past line. Blocks come
+// from the parser in source order, so their start lines only increase.
+func blockIndexAfter(blocks hclsyntax.Blocks, line int) int {
+	return sort.Search(len(blocks), func(i int) bool {
+		return blocks[i].TypeRange.Start.Line > line
+	})
+}
+
 func blockContainingLine(blocks hclsyntax.Blocks, line int) *hclsyntax.Block {
-	for _, block := range blocks {
-		if blockSpansLine(block, line) {
-			return block
-		}
+	i := blockIndexAfter(blocks, line)
+	if i == 0 {
+		return nil
+	}
+	if blockSpansLine(blocks[i-1], line) {
+		return blocks[i-1]
 	}
 	return nil
 }
@@ -318,7 +338,7 @@ var labelOnlyBlockTypes = map[string]bool{"module": true, "variable": true, "out
 // searchKeyBlock returns the top-level block a search key names, as in
 // resource.aws_s3_bucket[name] or data.aws_ami[name], or nil when the key
 // names none unambiguously.
-func searchKeyBlock(body *hclsyntax.Body, keyParts []string, extracted [][]string) *hclsyntax.Block {
+func searchKeyBlock(file *model.FileMetadata, body *hclsyntax.Body, keyParts []string, extracted [][]string) *hclsyntax.Block {
 	if len(keyParts) == 0 {
 		return nil
 	}
@@ -340,30 +360,77 @@ func searchKeyBlock(body *hclsyntax.Body, keyParts []string, extracted [][]strin
 			name = extracted[i][1]
 		}
 	}
-	var found *hclsyntax.Block
-	for _, block := range body.Blocks {
-		if !blockNamed(block, blockType, typ, name) {
-			continue
-		}
-		if found != nil {
-			return nil
-		}
-		found = block
-	}
-	return found
+	return blocksOf(file, body).get(blockType, typ, name)
 }
 
-func blockNamed(block *hclsyntax.Block, blockType, typ, name string) bool {
-	if blockType == "" && labelOnlyBlockTypes[typ] {
-		return block.Type == typ && len(block.Labels) == 1 && block.Labels[0] == name
+// terraformBlockIndexKey keeps one name-to-block map for the file's HCL body
+// while a lease holds the parse. Building it per finding walks every earlier
+// block again.
+var terraformBlockIndexKey = model.NewDerivedKey("terraform.blockIndex")
+
+// blockIndex maps a block's type and labels to that block. A nil value means
+// more than one block has those labels, which the search treats as no block.
+type blockIndex struct {
+	unique map[string]*hclsyntax.Block
+}
+
+func (idx *blockIndex) add(key string, block *hclsyntax.Block) {
+	if prev, ok := idx.unique[key]; ok && prev != nil {
+		idx.unique[key] = nil
+		return
 	}
-	if blockType == "" && block.Type != blockTypeResource && block.Type != blockTypeData {
-		return false
+	if _, ok := idx.unique[key]; ok {
+		return
 	}
-	if blockType != "" && block.Type != blockType {
-		return false
+	idx.unique[key] = block
+}
+
+func (idx *blockIndex) get(blockType, typ, name string) *hclsyntax.Block {
+	if idx == nil {
+		return nil
 	}
-	return len(block.Labels) == 2 && block.Labels[0] == typ && block.Labels[1] == name
+	var key string
+	switch {
+	case blockType == "" && labelOnlyBlockTypes[typ]:
+		key = typ + "\x00" + name
+	case blockType == "":
+		key = "\x00" + typ + "\x00" + name
+	default:
+		key = blockType + "\x00" + typ + "\x00" + name
+	}
+	return idx.unique[key]
+}
+
+func indexBlocks(body *hclsyntax.Body) *blockIndex {
+	idx := &blockIndex{unique: map[string]*hclsyntax.Block{}}
+	if body == nil {
+		return idx
+	}
+	for _, block := range body.Blocks {
+		switch {
+		case (block.Type == blockTypeResource || block.Type == blockTypeData) && len(block.Labels) == 2:
+			labels := block.Labels[0] + "\x00" + block.Labels[1]
+			idx.add(block.Type+"\x00"+labels, block)
+			idx.add("\x00"+labels, block)
+		case labelOnlyBlockTypes[block.Type] && len(block.Labels) == 1:
+			idx.add(block.Type+"\x00"+block.Labels[0], block)
+		}
+	}
+	return idx
+}
+
+func blocksOf(file *model.FileMetadata, body *hclsyntax.Body) *blockIndex {
+	if file == nil {
+		return indexBlocks(body)
+	}
+	v, err := file.Derived(terraformBlockIndexKey, func() (any, error) {
+		return indexBlocks(body), nil
+	})
+	idx, ok := v.(*blockIndex)
+	if err != nil || !ok || idx == nil {
+		return indexBlocks(body)
+	}
+	return idx
 }
 
 func blockSpansLine(block *hclsyntax.Block, line int) bool {
@@ -371,16 +438,24 @@ func blockSpansLine(block *hclsyntax.Block, line int) bool {
 }
 
 func nearestBlock(blocks hclsyntax.Blocks, line int) *hclsyntax.Block {
-	var nearest *hclsyntax.Block
-	best := -1
-	for _, block := range blocks {
-		dist := lineDistance(line, block.TypeRange.Start.Line, block.Body.SrcRange.End.Line)
-		if nearest == nil || dist < best {
-			nearest = block
-			best = dist
-		}
+	if len(blocks) == 0 {
+		return nil
 	}
-	return nearest
+	i := blockIndexAfter(blocks, line)
+	if i == 0 {
+		return blocks[0]
+	}
+	if i == len(blocks) {
+		return blocks[len(blocks)-1]
+	}
+	prev, next := blocks[i-1], blocks[i]
+	prevDist := lineDistance(line, prev.TypeRange.Start.Line, prev.Body.SrcRange.End.Line)
+	nextDist := lineDistance(line, next.TypeRange.Start.Line, next.Body.SrcRange.End.Line)
+	// An equal distance keeps the earlier block, matching the old scan.
+	if nextDist < prevDist {
+		return next
+	}
+	return prev
 }
 
 func lineDistance(line, start, end int) int {
@@ -497,7 +572,8 @@ func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (
 	insertionLine = min(max(insertionLine, 1), len(lines))
 	col = determineInsertionIndent(lines, insertionLine, caseType, nestedStart.Line, nestedEnd.Line) + 1
 	trimmed := strings.TrimSpace(lines[insertionLine-1])
-	if caseType == "block-start" && (strings.Contains(trimmed, "}") || isHeredocTerminator(trimmed, lines, insertionLine-1)) {
+	heredocEnd := isHeredocTerminator(trimmed, lines, insertionLine-1, block.TypeRange.Start.Line-1)
+	if caseType == "block-start" && (strings.Contains(trimmed, "}") || heredocEnd) {
 		col = len(lines[insertionLine-1]) + 1
 	}
 	return insertionLine, col
@@ -574,8 +650,11 @@ func firstNonWhitespaceIndex(line string) int {
 	return -1
 }
 
-func isHeredocTerminator(line string, lines []string, idx int) bool {
-	for i := idx - 1; i >= 0; i-- {
+func isHeredocTerminator(line string, lines []string, idx, floor int) bool {
+	if floor < 0 {
+		floor = 0
+	}
+	for i := idx - 1; i >= floor; i-- {
 		text := strings.TrimSpace(lines[i])
 		if strings.Contains(text, "<<") {
 			parts := strings.Split(text, "<<")

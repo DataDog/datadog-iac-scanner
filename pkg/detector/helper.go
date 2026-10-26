@@ -45,6 +45,14 @@ type DefaultDetectLineResponse struct {
 	// File, when set, is the file whose Lines() are passed to DetectCurrentLine,
 	// letting it visit only the lines that contain the searched text.
 	File *model.FileMetadata
+	// searchEnd is the exclusive line index DetectCurrentLine stops before.
+	// Zero searches through the last line.
+	searchEnd int
+}
+
+// SetSearchEnd limits DetectCurrentLine to lines before end. Zero clears the limit.
+func (d *DefaultDetectLineResponse) SetSearchEnd(end int) {
+	d.searchEnd = end
 }
 
 // GetBracketValues gets values inside "{{ }}" ignoring any "{{" or "}}" inside
@@ -286,32 +294,15 @@ func removeExtras(result string, start, end int) string {
 	return result[start+1 : end]
 }
 
+// shortBlockLines is the longest named block DetectCurrentLine reads line by
+// line rather than through the lines its text is on.
+const shortBlockLines = 64
+
 // DetectCurrentLine uses levenshtein distance to find the most accurate line for the vulnerability
 // nolint:gocritic
 func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurseCount int,
 	lines []string, kind model.FileKind) (*DefaultDetectLineResponse, model.ResourceLine, model.ResourceLine, []string) {
-	best, bestDistance := -1, 0
-	var bestStart, bestEnd model.ResourceLine
-
-	// visit reports whether the scan can stop: lines are visited in ascending
-	// order, so the first exact match (distance 0) is the best and earliest one.
-	visit := func(i int) bool {
-		distance, start, end, ok := checkLine(str1, str2, lines, i, kind)
-		if ok && (best < 0 || distance < bestDistance) {
-			best, bestDistance, bestStart, bestEnd = i, distance, start, end
-		}
-		return ok && distance == 0
-	}
-	if first, second, ok := d.candidateLines(str1, str2, kind); ok {
-		walkAscending(first, second, d.CurrentLine, func(i int) bool { return visit(i) })
-	} else {
-		for i := d.CurrentLine; i < len(lines); i++ {
-			if visit(i) {
-				break
-			}
-		}
-	}
-
+	best, bestStart, bestEnd := d.locateCurrentLine(str1, str2, lines, kind)
 	if best < 0 {
 		d.IsBreak = true
 		return d, model.ResourceLine{Line: d.CurrentLine + 1, Col: 0},
@@ -324,6 +315,88 @@ func (d *DefaultDetectLineResponse) DetectCurrentLine(str1, str2 string, recurse
 	d.FoundAtLeastOne = true
 
 	return d, bestStart, bestEnd, lines
+}
+
+// lineSearch is one DetectCurrentLine walk. Lines are visited in ascending
+// order, so the first exact match (distance 0) is the best and earliest one.
+type lineSearch struct {
+	lines                      []string
+	str1, str2                 string
+	kind                       model.FileKind
+	best, bestDistance         int
+	bestStart, bestEnd         model.ResourceLine
+	first, second              []int
+	haveCandidates, triedLines bool
+}
+
+func (h *lineSearch) visit(i int) bool {
+	distance, start, end, ok := checkLine(h.str1, h.str2, h.lines, i, h.kind)
+	if ok && (h.best < 0 || distance < h.bestDistance) {
+		h.best, h.bestDistance, h.bestStart, h.bestEnd = i, distance, start, end
+	}
+	return ok && distance == 0
+}
+
+func (h *lineSearch) candidates(d *DefaultDetectLineResponse) bool {
+	if !h.triedLines {
+		h.first, h.second, h.haveCandidates = d.candidateLines(h.str1, h.str2, h.kind)
+		h.triedLines = true
+	}
+	return h.haveCandidates
+}
+
+// locateCurrentLine prefers an exact match inside the named block. A merely
+// similar line is not enough: an exact match later in the file can outrank
+// it, and the caller then rejects that later match when it falls outside the
+// block.
+func (d *DefaultDetectLineResponse) locateCurrentLine(
+	str1, str2 string, lines []string, kind model.FileKind,
+) (best int, bestStart, bestEnd model.ResourceLine) {
+	h := &lineSearch{lines: lines, str1: str1, str2: str2, kind: kind, best: -1}
+	if !d.exactMatchInBlock(h) {
+		h.best, h.bestDistance = -1, 0
+		h.bestStart, h.bestEnd = model.ResourceLine{}, model.ResourceLine{}
+		d.matchFromCurrentLine(h)
+	}
+	return h.best, h.bestStart, h.bestEnd
+}
+
+func (d *DefaultDetectLineResponse) exactMatchInBlock(h *lineSearch) bool {
+	if d.searchEnd <= d.CurrentLine {
+		return false
+	}
+	limit := min(d.searchEnd, len(h.lines))
+	// Listing candidates reads the whole file unless the text's lines are
+	// cached, so a short block is cheaper to read line by line.
+	if limit-d.CurrentLine > shortBlockLines && h.candidates(d) {
+		exact := false
+		walkAscending(h.first, h.second, d.CurrentLine, func(i int) bool {
+			if i >= limit {
+				return true
+			}
+			exact = h.visit(i)
+			return exact
+		})
+		return exact
+	}
+	for i := d.CurrentLine; i < limit; i++ {
+		if h.visit(i) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *DefaultDetectLineResponse) matchFromCurrentLine(h *lineSearch) {
+	if h.candidates(d) {
+		walkAscending(h.first, h.second, d.CurrentLine, func(i int) bool { return h.visit(i) })
+		return
+	}
+	for i := d.CurrentLine; i < len(h.lines); i++ {
+		if h.visit(i) {
+			return
+		}
+	}
 }
 
 // candidateLines returns sorted line indexes, as one or two lists whose union
