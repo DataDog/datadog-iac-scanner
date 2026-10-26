@@ -116,7 +116,10 @@ func (c *Inspector) instantiateLocalModules(
 			removeInstantiatedResources(f.Document, replaced)
 			if err := f.EnsureLineInfoDocument(ctx); err != nil {
 				contextLogger.Err(err).Msgf("failed to build line-info document for file %s", f.FilePath)
-			} else {
+			} else if f.LineInfoDocument != nil {
+				// The tree is the file's shared parse. Copy the maps this
+				// deletes from so the file's other documents keep them.
+				f.LineInfoDocument = detachLineInfoDocument(f.LineInfoDocument)
 				removeInstantiatedResources(f.LineInfoDocument, replaced)
 			}
 		}
@@ -212,6 +215,39 @@ func (idx instantiatedIndex) add(fileID, typ, name string) {
 		byType[typ] = names
 	}
 	names[name] = true
+}
+
+// detachLineInfoDocument copies the top-level map and the resource and data
+// maps, which removeInstantiatedResources deletes from.
+func detachLineInfoDocument(doc map[string]interface{}) map[string]interface{} {
+	out := maps.Clone(doc)
+	for _, key := range []string{"resource", "data"} {
+		inner, ok := cloneObject(out[key])
+		if !ok {
+			continue
+		}
+		innerMap, _ := asStringMap(inner)
+		for typ, v := range innerMap {
+			if byName, ok := cloneObject(v); ok {
+				innerMap[typ] = byName
+			}
+		}
+		out[key] = inner
+	}
+	return out
+}
+
+// cloneObject copies an object of either shape asStringMap accepts, keeping
+// its type.
+func cloneObject(value interface{}) (interface{}, bool) {
+	switch m := value.(type) {
+	case model.Document:
+		return maps.Clone(m), true
+	case map[string]interface{}:
+		return maps.Clone(m), true
+	default:
+		return nil, false
+	}
 }
 
 // removeInstantiatedResources deletes the named resource and data blocks from

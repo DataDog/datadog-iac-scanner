@@ -66,18 +66,7 @@ func (s *Service) storeResolvedFiles(
 		isMinified := minified.IsMinified(rfile.FileName, rfile.Content)
 		documents, err := s.parseResolvedFile(
 			ctx, rfile.FileName, rfile.Content, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
-		if err != nil {
-			if documents.Kind == "break" {
-				continue
-			}
-			// A Helm template may render to only comments when all range iterations are
-			// conditionally skipped (e.g. a service disabled in prod). That's expected;
-			// skip silently rather than logging a spurious error.
-			if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
-				continue
-			}
-			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
-				Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
+		if skipUnparsedResolvedFile(&contextLogger, rfile.FileName, rfile.Content, kind, &documents, err) {
 			continue
 		}
 
@@ -90,6 +79,11 @@ func (s *Service) storeResolvedFiles(
 		}
 		platform := s.classifyPlatform(ctx, kind, rfile.FileName, rfile.Content)
 		ownedRenderedContent := ownedHelmRenderedContent(kind, rfile.IsCRD, rfile.Content)
+		var lineInfo *model.LineInfoSource
+		if kind == model.KindHELM {
+			lineInfo = newHelmLineInfoSource(s.Parser, rfile, ownedRenderedContent,
+				openAPIResolveReferences, isMinified, maxResolverDepth)
+		}
 
 		for docIdx, document := range documents.Docs {
 			preparedDocument, prepareErr := prepareResolvedScanDocument(document, kind)
@@ -123,10 +117,8 @@ func (s *Service) storeResolvedFiles(
 				IsMinified:        documents.IsMinified,
 				Platform:          platform,
 			}
-			if kind == model.KindHELM {
-				file.SetLineInfoLoader(newHelmLineInfoLoader(
-					s.Parser, rfile, ownedRenderedContent, docIdx,
-					openAPIResolveReferences, isMinified, maxResolverDepth))
+			if lineInfo != nil {
+				file.SetLineInfoSource(lineInfo, helmLineInfoDocument(rfile, docIdx))
 			}
 			s.saveToFile(ctx, &file)
 			if n := len(storedPaths); n == 0 || storedPaths[n-1] != rfile.FileName {
@@ -144,6 +136,31 @@ func (s *Service) storeResolvedFiles(
 		}
 	}
 	return storedPaths
+}
+
+// skipUnparsedResolvedFile reports whether a rendered file produced no scan
+// documents. A Helm template that renders to only comments, because every
+// range iteration was skipped, is expected and is not logged.
+func skipUnparsedResolvedFile(
+	log *zerolog.Logger,
+	filename string,
+	content []byte,
+	kind model.FileKind,
+	documents *parser.ParsedDocument,
+	err error,
+) bool {
+	if err == nil {
+		return false
+	}
+	if documents.Kind == "break" {
+		return true
+	}
+	if kind == model.KindHELM && isCommentOnlyContent(content) {
+		return true
+	}
+	log.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+		Msgf("failed to parse file content '%s' with fileType '%s'", filename, kind)
+	return true
 }
 
 func ownedHelmRenderedContent(kind model.FileKind, isCRD bool, content []byte) string {
@@ -248,56 +265,25 @@ func isHelmJSONFile(kind model.FileKind, filename string) bool {
 	return kind == model.KindHELM && strings.EqualFold(filepath.Ext(filename), ".json")
 }
 
-func newHelmLineInfoLoader(
+// newHelmLineInfoSource is the reparse the documents of one rendered Helm
+// file read their line info from: the rendered content, or for a CRD, which
+// is kept as written, the chart file it was read from.
+func newHelmLineInfoSource(
 	p *parser.Parser,
 	rfile *model.ResolvedHelm,
 	renderedContent string,
-	renderedDocumentIndex int,
 	openAPIResolveReferences bool,
 	isMinified bool,
 	maxResolverDepth int,
-) func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
-	if rfile.IsCRD {
-		return newOriginalResolvedLineInfoLoader(
-			p, rfile.FileName, rfile.SourceDocumentIndex,
-			openAPIResolveReferences, isMinified, maxResolverDepth)
-	}
-	return newResolvedLineInfoLoader(
-		p, rfile.FileName, renderedContent, renderedDocumentIndex,
-		openAPIResolveReferences, isMinified, maxResolverDepth)
-}
-
-func newResolvedLineInfoLoader(
-	p *parser.Parser,
-	filename, renderedContent string,
-	docIdx int,
-	openAPIResolveReferences bool,
-	isMinified bool,
-	maxResolverDepth int,
-) func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
-	return newLineInfoLoaderWithReparser(filename, docIdx,
-		func(ctx context.Context, _ *model.FileMetadata) (parser.ParsedDocument, error) {
-			content := []byte(renderedContent)
-			if isHelmJSONFile(model.KindHELM, filename) && p.Parsers.GetKind() == model.KindYAML {
-				return p.ParseContent(
-					ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
-			}
-			return p.Parse(
-				ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
-		})
-}
-
-func newOriginalResolvedLineInfoLoader(
-	p *parser.Parser,
-	filename string,
-	sourceDocumentIndex int,
-	openAPIResolveReferences bool,
-	isMinified bool,
-	maxResolverDepth int,
-) func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
-	return newLineInfoLoaderWithReparser(filename, sourceDocumentIndex,
+) *model.LineInfoSource {
+	filename := rfile.FileName
+	isCRD := rfile.IsCRD
+	return newReparseLineInfoSource(filename,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
-			content := []byte(f.OriginalData)
+			content := []byte(renderedContent)
+			if isCRD {
+				content = []byte(f.OriginalData)
+			}
 			if isHelmJSONFile(model.KindHELM, filename) && p.Parsers.GetKind() == model.KindYAML {
 				return p.ParseContent(
 					ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
@@ -305,6 +291,15 @@ func newOriginalResolvedLineInfoLoader(
 			return p.Parse(
 				ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
 		})
+}
+
+// helmLineInfoDocument is the document of a Helm rendered file's line-info
+// source that its document docIdx reads.
+func helmLineInfoDocument(rfile *model.ResolvedHelm, docIdx int) int {
+	if rfile.IsCRD {
+		return rfile.SourceDocumentIndex
+	}
+	return docIdx
 }
 
 // logResolveError logs a resolve/render failure as debug when it is expected

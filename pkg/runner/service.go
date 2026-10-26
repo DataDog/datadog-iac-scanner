@@ -433,41 +433,34 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	}
 }
 
-// newLineInfoLoader builds a lazy loader that reconstructs a file's line-info
-// document by re-parsing OriginalData on demand.
-func newLineInfoLoader(
+// newLineInfoSource builds the source a file's documents rebuild their
+// line-info trees from, by re-parsing OriginalData on demand.
+func newLineInfoSource(
 	p *parser.Parser,
 	filename string,
-	docIdx int,
 	openAPIResolveReferences bool,
 	isMinified bool,
 	maxResolverDepth int,
-) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
-	return newLineInfoLoaderWithReparser(filename, docIdx,
+) *model.LineInfoSource {
+	return newReparseLineInfoSource(filename,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
 			return p.Parse(ctx, filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
 		})
 }
 
-// newLineInfoLoaderWithReparser returns a loader reading document docIdx of
-// reparse, which is told it parses only for line info.
-func newLineInfoLoaderWithReparser(
+// newReparseLineInfoSource returns a source reading the documents reparse
+// returns. reparse is told it parses only for line info.
+func newReparseLineInfoSource(
 	filename string,
-	docIdx int,
 	reparse func(context.Context, *model.FileMetadata) (parser.ParsedDocument, error),
-) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
-	return func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
+) *model.LineInfoSource {
+	return model.NewLineInfoSource(func(ctx context.Context, f *model.FileMetadata) ([]model.Document, error) {
 		reparsed, err := reparse(parser.WithLineInfoOnly(ctx), f)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)
 		}
-		if docIdx >= len(reparsed.Docs) {
-			return nil, errors.Errorf(
-				"reparse of %s for line info produced %d documents, expected index %d",
-				filename, len(reparsed.Docs), docIdx)
-		}
-		return reparsed.Docs[docIdx], nil
-	}
+		return reparsed.Docs, nil
+	})
 }
 
 // PrepareScanDocument removes _dd_lines from payload and parses json filters.

@@ -133,9 +133,11 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	shareable := shareKey != "" && shareableParse(&documents)
 	var sharedDocs []model.Document
 
+	// The documents of a file read one reparse and one split of it.
+	lineInfo := newLineInfoSource(s.Parser, filename, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	for docIdx := range documents.Docs {
-		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, shareable,
-			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands); doc != nil {
+		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, lineInfo, shareable,
+			*content, fileCommands); doc != nil {
 			sharedDocs = append(sharedDocs, doc)
 		}
 	}
@@ -160,8 +162,8 @@ func (s *Service) sinkDocument(
 	filename, scanID string,
 	documents *iacparser.ParsedDocument,
 	docIdx int,
-	shareable, isMinified, openAPIResolveReferences bool,
-	maxResolverDepth int,
+	lineInfo *model.LineInfoSource,
+	shareable bool,
 	content []byte,
 	fileCommands model.CommentsCommands,
 ) model.Document {
@@ -195,10 +197,7 @@ func (s *Service) sinkDocument(
 		IsMinified:    documents.IsMinified,
 		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
 	}
-	file.SetLineInfoLoader(newLineInfoLoader(
-		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
-	// Lazy lines, as in sinkContent.
-	file.SetLazyLines()
+	file.SetLineInfoSource(lineInfo, docIdx)
 
 	s.saveToFile(ctx, &file)
 	if !shareable {
@@ -218,6 +217,7 @@ func (s *Service) sinkSharedParse(
 	maxResolverDepth int,
 	content []byte,
 ) error {
+	lineInfo := newLineInfoSource(s.Parser, filename, openAPIResolveReferences, isMinified, maxResolverDepth)
 	for docIdx, sharedDoc := range shared.docs {
 		file := model.FileMetadata{
 			ID:           uuid.New().String(),
@@ -231,9 +231,7 @@ func (s *Service) sinkSharedParse(
 			IsMinified:   shared.isMinified,
 			Platform:     s.classifyPlatform(ctx, shared.kind, filename, content),
 		}
-		file.SetLineInfoLoader(newLineInfoLoader(
-			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
-		file.SetLazyLines()
+		file.SetLineInfoSource(lineInfo, docIdx)
 		s.saveToFile(ctx, &file)
 	}
 	s.Tracker.TrackFileParse(filename)

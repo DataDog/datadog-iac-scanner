@@ -154,6 +154,40 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, 4, v.ModuleAttribution.CallSite.LineEnd)
 }
 
+// Removing instantiated blocks from one document's line-info tree must not
+// remove them from the parse the file's other documents read while leased.
+func TestDetachLineInfoDocument_leavesTheSharedRealParseIntact(t *testing.T) {
+	content := []byte("resource \"aws_s3_bucket\" \"this\" {\n  acl = \"private\"\n}\n" +
+		"resource \"aws_s3_bucket\" \"other\" {\n  acl = \"private\"\n}\n")
+	src := model.NewLineInfoSource(func(ctx context.Context, f *model.FileMetadata) ([]model.Document, error) {
+		_, docs, _, _, err := terraformParser.NewDefault().Parse(ctx, []byte(f.OriginalData), f.FilePath, true, 15)
+		return docs, err
+	})
+	f := &model.FileMetadata{ID: "f", FilePath: "main.tf", OriginalData: string(content), Kind: model.KindTerraform}
+	f.SetLineInfoSource(src, 0)
+	instance := f.ShallowCopy()
+	lease := f.LeaseLineInfo()
+	defer lease.Close()
+
+	require.NoError(t, f.EnsureLineInfoDocument(context.Background()))
+	f.LineInfoDocument = detachLineInfoDocument(f.LineInfoDocument)
+	removeInstantiatedResources(f.LineInfoDocument, map[string]map[string]bool{"aws_s3_bucket": {"this": true}})
+
+	require.NoError(t, instance.EnsureLineInfoDocument(context.Background()))
+	resources, ok := asStringMap(instance.LineInfoDocument["resource"])
+	require.True(t, ok)
+	buckets, ok := asStringMap(resources["aws_s3_bucket"])
+	require.True(t, ok)
+	require.Contains(t, buckets, "this")
+	require.Contains(t, buckets, "other")
+
+	detached := f.LineInfoDocument["resource"]
+	require.IsType(t, instance.LineInfoDocument["resource"], detached)
+	detachedResources, ok := asStringMap(detached)
+	require.True(t, ok)
+	require.IsType(t, resources["aws_s3_bucket"], detachedResources["aws_s3_bucket"])
+}
+
 func TestInspect_ModuleEvaluationPreservesDynamicBlockLabels(t *testing.T) {
 	root := t.TempDir()
 	rootDir := filepath.Join(root, "stack")

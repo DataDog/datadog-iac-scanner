@@ -1418,19 +1418,14 @@ func (c *Inspector) DecodeQueryResults(
 		return nil, err
 	}
 	if qCtx.discardLineInfoAfterUse {
-		// Group findings by file so each file's line-info tree is built once and
-		// discarded on its last finding (advanceLineInfoFile); without grouping,
-		// interleaved documentIds would discard and reparse per transition.
-		// Stable keeps the per-file ordering the query produced.
-		sort.SliceStable(queryResultItems, func(i, j int) bool {
-			return resultDocumentID(queryResultItems[i]) < resultDocumentID(queryResultItems[j])
-		})
+		queryResultItems = groupResultsByFile(qCtx, queryResultItems)
 	}
 
 	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
 	failedDetectLine := false
 	canceled := false
-	var activeLineInfoFile string
+	lineInfo := lineInfoWindow{qCtx: qCtx}
+	defer lineInfo.close()
 decodeLoop:
 	for _, queryResultItem := range queryResultItems {
 		select {
@@ -1440,7 +1435,7 @@ decodeLoop:
 			canceled = true
 			break decodeLoop
 		default:
-			activeLineInfoFile = advanceLineInfoFile(qCtx, activeLineInfoFile, resultDocumentID(queryResultItem))
+			lineInfo.advance(resultDocumentID(queryResultItem))
 			vulnerability, aux := getVulnerabilitiesFromQuery(ctx, qCtx, c, queryResultItem, queryDuration)
 			if aux {
 				failedDetectLine = aux
@@ -1462,25 +1457,93 @@ decodeLoop:
 		c.tracker.FailedDetectLine()
 	}
 
-	if qCtx.discardLineInfoAfterUse && activeLineInfoFile != "" {
-		if fm := qCtx.Files[activeLineInfoFile]; fm != nil {
-			fm.DiscardLineInfoDocument()
-		}
-	}
-
 	return vulnerabilities, nil
 }
 
-func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
-	if !qCtx.discardLineInfoAfterUse || nextID == "" || nextID == active {
-		return active
+// groupResultsByFile orders results by file path, then document id, so a
+// decode pass reads each file's documents together and parses the file once.
+// Stable keeps the order the query found one document's results in.
+func groupResultsByFile(qCtx *QueryContext, items []interface{}) []interface{} {
+	type keyed struct {
+		path, id string
+		item     interface{}
 	}
-	if active != "" {
-		if fm := qCtx.Files[active]; fm != nil {
-			fm.DiscardLineInfoDocument()
+	sorted := make([]keyed, len(items))
+	for i, item := range items {
+		id := resultDocumentID(item)
+		sorted[i] = keyed{id: id, item: item}
+		if fm := qCtx.Files[id]; fm != nil {
+			sorted[i].path = fm.FilePath
 		}
 	}
-	return nextID
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].path != sorted[j].path {
+			return sorted[i].path < sorted[j].path
+		}
+		return sorted[i].id < sorted[j].id
+	})
+	for i := range sorted {
+		items[i] = sorted[i].item
+	}
+	return items
+}
+
+// lineInfoWindow drops the line-info trees of a file's documents once a
+// decode pass has left the file, releasing the one lease on the parse those
+// documents share. Deferring one close lets a panic unwinding through the
+// decode loop still release it.
+type lineInfoWindow struct {
+	qCtx  *QueryContext
+	path  string
+	docs  []*model.FileMetadata
+	seen  map[string]struct{}
+	lease *model.LineInfoLease
+}
+
+func (w *lineInfoWindow) advance(nextID string) {
+	if nextID == "" {
+		return
+	}
+	fm := w.qCtx.Files[nextID]
+	// Documents of one file share its path, and the grouping above makes
+	// them contiguous, so one lease covers all of them.
+	if fm != nil && fm.FilePath != "" && fm.FilePath == w.path {
+		if _, ok := w.seen[nextID]; !ok {
+			w.seen[nextID] = struct{}{}
+			w.docs = append(w.docs, fm)
+		}
+		return
+	}
+	if !w.qCtx.discardLineInfoAfterUse {
+		// The trees are kept for the report, so hold the shared parse instead
+		// of reparsing it for every document. See LineInfoSource.Pin.
+		if fm != nil {
+			fm.PinLineInfo()
+		}
+		return
+	}
+	// Lease the next file before releasing the current one, so two groups
+	// that share a parse never see it dropped between them.
+	var lease *model.LineInfoLease
+	if fm != nil {
+		lease = fm.LeaseLineInfo()
+	}
+	w.close()
+	w.path, w.lease = "", lease
+	w.seen = nil
+	if fm != nil {
+		w.path = fm.FilePath
+		w.docs = []*model.FileMetadata{fm}
+		w.seen = map[string]struct{}{nextID: {}}
+	}
+}
+
+func (w *lineInfoWindow) close() {
+	for _, fm := range w.docs {
+		fm.DiscardLineInfoDocument()
+	}
+	w.lease.Close()
+	w.path, w.docs, w.seen, w.lease = "", nil, nil, nil
 }
 
 // resultDocumentID returns the file id a result item points at.

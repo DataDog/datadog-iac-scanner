@@ -46,7 +46,7 @@ func scanByStr1(file *model.FileMetadata, str1, str2 string, lines []string, vis
 
 func TestCandidateSelectionVisitsFewerLines(t *testing.T) {
 	file := &model.FileMetadata{OriginalData: strings.Join(playbookLines(1000), "\n")}
-	file.SetLazyLines()
+	enableSharedLines(file)
 	lines := file.Lines()
 
 	var oldVisits, newVisits int
@@ -81,7 +81,7 @@ func TestCandidateSelectionVisitsFewerLines(t *testing.T) {
 
 func BenchmarkCandidateSelection(b *testing.B) {
 	file := &model.FileMetadata{OriginalData: strings.Join(playbookLines(2000), "\n")}
-	file.SetLazyLines()
+	enableSharedLines(file)
 	lines := file.Lines()
 	str2s := make([]string, 0, 200)
 	for i := 0; i < 2000; i += 10 {

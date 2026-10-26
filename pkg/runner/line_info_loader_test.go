@@ -47,19 +47,14 @@ func TestEnsureLineInfoDocument_matchesEagerParse(t *testing.T) {
 		FilePath:          path,
 		LinesOriginalData: utils.SplitLines(parsed.Content),
 	}
-	loader := newLineInfoLoader(p, path, 0, false, false, 15)
-	lazyDoc, err := loader(ctx, file)
-	require.NoError(t, err)
+	file.SetLineInfoSource(newLineInfoSource(p, path, false, false, 15), 0)
+	require.NoError(t, file.EnsureLineInfoDocument(ctx))
 
 	eagerJ, err := json.Marshal(parsed.Docs[0])
 	require.NoError(t, err)
-	lazyJ, err := json.Marshal(lazyDoc)
+	lazyJ, err := json.Marshal(file.LineInfoDocument)
 	require.NoError(t, err)
 	require.JSONEq(t, string(eagerJ), string(lazyJ))
-
-	file.SetLineInfoLoader(loader)
-	require.NoError(t, file.EnsureLineInfoDocument(ctx))
-	require.True(t, reflect.DeepEqual(lazyDoc, file.LineInfoDocument))
 }
 
 func TestEnsureLineInfoDocument_minifiedTFPlanUsesOriginalData(t *testing.T) {
@@ -86,34 +81,30 @@ func TestEnsureLineInfoDocument_minifiedTFPlanUsesOriginalData(t *testing.T) {
 		FilePath:          path,
 		LinesOriginalData: utils.SplitLines(parsed.Content),
 	}
-	loader := newLineInfoLoader(p, path, 0, false, false, 1)
-	lazyDoc, err := loader(ctx, file)
-	require.NoError(t, err)
-	require.False(t, reflect.DeepEqual(eagerFromMinified[0], lazyDoc),
+	file.SetLineInfoSource(newLineInfoSource(p, path, false, false, 1), 0)
+	require.NoError(t, file.EnsureLineInfoDocument(ctx))
+	require.False(t, reflect.DeepEqual(eagerFromMinified[0], file.LineInfoDocument),
 		"lazy reparse aligns _dd_lines with indented OriginalData, not the initial minified parse")
 
 	reparsed, err := p.Parse(ctx, path, []byte(parsed.Content), false, false, 1)
 	require.NoError(t, err)
-	lazyJ, err := json.Marshal(lazyDoc)
+	lazyJ, err := json.Marshal(file.LineInfoDocument)
 	require.NoError(t, err)
 	reparsedJ, err := json.Marshal(reparsed.Docs[0])
 	require.NoError(t, err)
 	require.JSONEq(t, string(reparsedJ), string(lazyJ))
-
-	file.SetLineInfoLoader(loader)
-	require.NoError(t, file.EnsureLineInfoDocument(ctx))
-	require.True(t, reflect.DeepEqual(lazyDoc, file.LineInfoDocument))
 }
 
 // Scanned and Helm rendered files both reparse through
-// newLineInfoLoaderWithReparser, so parsers skip what only a scan needs.
-func TestNewLineInfoLoaderWithReparser_reparsesOnlyForLineInfo(t *testing.T) {
+// newReparseLineInfoSource, so parsers skip what only a scan needs.
+func TestNewReparseLineInfoSource_reparsesOnlyForLineInfo(t *testing.T) {
 	var lineInfoOnly bool
-	load := newLineInfoLoaderWithReparser("main.tf", 0, func(ctx context.Context, _ *model.FileMetadata) (parser.ParsedDocument, error) {
+	src := newReparseLineInfoSource("main.tf", func(ctx context.Context, _ *model.FileMetadata) (parser.ParsedDocument, error) {
 		lineInfoOnly = parser.IsLineInfoOnly(ctx)
 		return parser.ParsedDocument{Docs: []model.Document{{}}}, nil
 	})
-	_, err := load(context.Background(), &model.FileMetadata{})
-	require.NoError(t, err)
+	file := &model.FileMetadata{}
+	file.SetLineInfoSource(src, 0)
+	require.NoError(t, file.EnsureLineInfoDocument(context.Background()))
 	require.True(t, lineInfoOnly)
 }

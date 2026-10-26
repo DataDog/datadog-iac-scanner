@@ -502,7 +502,7 @@ func TestDetectCurrentLineMatchesFullScan(t *testing.T) {
 			for _, k := range keys {
 				for start := range lines {
 					file := &model.FileMetadata{OriginalData: strings.Join(lines, "\n")}
-					file.SetLazyLines()
+					enableSharedLines(file)
 					d := &DefaultDetectLineResponse{CurrentLine: start}
 					if cached {
 						d.File = file
@@ -524,6 +524,14 @@ func TestDetectCurrentLineMatchesFullScan(t *testing.T) {
 	}
 }
 
+// enableSharedLines gives file the line split a scanned file has, so
+// LinesContaining can memoize.
+func enableSharedLines(file *model.FileMetadata) {
+	file.SetLineInfoSource(model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, error) {
+		return []model.Document{{}}, nil
+	}), 0)
+}
+
 func TestDetectCurrentLineMatchesFullScanRandomized(t *testing.T) {
 	vocab := []string{
 		"name: web", "name: db", "  name: web1", "    - name: task a", "    - name: task b",
@@ -542,7 +550,7 @@ func TestDetectCurrentLineMatchesFullScanRandomized(t *testing.T) {
 			lines[i] = vocab[rng.Intn(len(vocab))]
 		}
 		file := &model.FileMetadata{OriginalData: strings.Join(lines, "\n")}
-		file.SetLazyLines()
+		enableSharedLines(file)
 		fileLines := file.Lines()
 		for _, kind := range []model.FileKind{model.KindYAML, model.KindJSON} {
 			for _, k := range keys {

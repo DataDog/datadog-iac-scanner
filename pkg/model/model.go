@@ -7,6 +7,7 @@ package model
 
 import (
 	"context"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -147,13 +148,16 @@ type HelmIDLineRange struct {
 type lineInfoState struct {
 	mu     sync.Mutex
 	err    error
-	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
+	src    *LineInfoSource
+	docIdx int
 }
 
-// linesLazyState guards the one-time computation of LinesOriginalData from
-// OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
+// linesLazyState guards the one-time split of OriginalData into lines, and
+// is shared by the documents of a file and their copies. Behind a pointer so
+// FileMetadata copies stay copylocks-clean.
 type linesLazyState struct {
-	once sync.Once
+	once  sync.Once
+	lines *[]string
 
 	matchMu sync.Mutex
 	matches map[string][]int
@@ -187,9 +191,9 @@ type FileMetadata struct {
 	LinesIgnore       []int
 	ResolvedFiles     map[string]ResolvedFile
 	LinesOriginalData *[]string
-	// linesLazy, when set, defers the SplitLines(OriginalData) computation to
-	// first access via Lines(). nil means LinesOriginalData is already populated
-	// (or intentionally left unset).
+	// linesLazy, when set, is the line split the file shares with its documents
+	// and their copies; Lines() fills it once. Nil for a file with no line-info
+	// source, which splits into LinesOriginalData instead.
 	linesLazy  *linesLazyState `json:"-"`
 	IsMinified bool
 	// releaseOriginalDataAfterLineInfo makes EnsureLineInfoDocument release
@@ -214,31 +218,19 @@ type FileMetadata struct {
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
 	Platform string
+
+	// lineInfoSource is the parse of the file f's line info is read from,
+	// shared with the file's other documents and their copies. Unlike
+	// lineInfo, a copy keeps it once its tree is loaded.
+	lineInfoSource *LineInfoSource `json:"-"`
 }
 
-// SetLineInfoLoader configures on-demand reconstruction of LineInfoDocument.
-func (f *FileMetadata) SetLineInfoLoader(
-	loader func(ctx context.Context, fm *FileMetadata) (map[string]interface{}, error),
-) {
-	if loader == nil {
-		f.lineInfo = nil
-		return
-	}
-	f.lineInfo = &lineInfoState{loader: loader}
-}
-
-// cloneLineInfoState returns an independent lazy state that shares loader.
-func cloneLineInfoState(src *lineInfoState) *lineInfoState {
-	if src == nil {
-		return nil
-	}
-	return &lineInfoState{loader: src.loader}
-}
-
-// SetLazyLines configures on-demand computation of LinesOriginalData from
-// OriginalData on first access via Lines().
-func (f *FileMetadata) SetLazyLines() {
-	f.linesLazy = &linesLazyState{}
+// SetLineInfoSource makes f read its line info from document docIdx of
+// src's parse, and its lines from src's split.
+func (f *FileMetadata) SetLineInfoSource(src *LineInfoSource, docIdx int) {
+	f.lineInfo = &lineInfoState{src: src, docIdx: docIdx}
+	f.lineInfoSource = src
+	f.linesLazy = src.sharedLines()
 }
 
 // SetReleaseOriginalDataAfterLineInfo instructs EnsureLineInfoDocument to
@@ -248,16 +240,18 @@ func (f *FileMetadata) SetReleaseOriginalDataAfterLineInfo(release bool) {
 	f.releaseOriginalDataAfterLineInfo = release
 }
 
-// Lines returns the file's content split into lines, computing it lazily from
-// OriginalData on first access when SetLazyLines was configured. Safe for
-// concurrent callers.
+// Lines returns the file's content split into lines, computed once on first
+// access for a file with a line-info source and shared with the documents
+// reading it. Safe for concurrent callers.
 func (f *FileMetadata) Lines() []string {
-	if f.linesLazy != nil {
-		f.linesLazy.once.Do(func() {
-			if f.LinesOriginalData == nil {
-				f.LinesOriginalData = utils.SplitLines(f.OriginalData)
+	if st := f.linesLazy; st != nil {
+		st.once.Do(func() {
+			st.lines = f.LinesOriginalData
+			if st.lines == nil {
+				st.lines = utils.SplitLines(f.OriginalData)
 			}
 		})
+		return *st.lines
 	}
 	if f.LinesOriginalData == nil {
 		// No lazy state (e.g. test fixtures); compute directly.
@@ -334,13 +328,14 @@ func (f *FileMetadata) ReleasePostEvalData() {
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
 	f.linesLazy = nil
+	f.lineInfoSource.releaseLines()
 }
 
 // DiscardLineInfoDocument drops a memoized line-info tree while keeping the
-// loader so a later decode pass can rebuild it. No-op when line info was
-// never lazily loaded: without a loader the tree could not be rebuilt, and
+// source so a later decode pass can rebuild it. No-op when line info was
+// never loaded lazily: without a source the tree could not be rebuilt, and
 // writing the field outside the state mutex would race concurrent readers
-// (UseLineInfoDocument reads it unlocked when no loader is configured).
+// (UseLineInfoDocument reads it unlocked when no source is configured).
 func (f *FileMetadata) DiscardLineInfoDocument() {
 	st := f.lineInfo
 	if st == nil {
@@ -351,20 +346,37 @@ func (f *FileMetadata) DiscardLineInfoDocument() {
 	f.LineInfoDocument = nil
 }
 
-// ShallowCopy returns a copy of f with independent lazy line-info memoization.
+// ShallowCopy returns a copy of f with independent lazy line-info
+// memoization. The copy reads f's line-info source and lines, so the copies
+// of a file, such as a module's instance documents, parse and split it once
+// between them. A copy of a file whose tree is already loaded keeps that
+// tree and never reloads it.
 func (f *FileMetadata) ShallowCopy() *FileMetadata {
 	clone := *f
-	if f.LineInfoDocument != nil {
+	if f.LineInfoDocument != nil || f.lineInfo == nil {
 		clone.lineInfo = nil
 	} else {
-		clone.lineInfo = cloneLineInfoState(f.lineInfo)
-	}
-	// LinesOriginalData is shared (same pointer); keep the lazy guard so a copy
-	// that hasn't materialized lines yet still computes them on demand.
-	if f.linesLazy != nil && f.LinesOriginalData == nil {
-		clone.linesLazy = &linesLazyState{}
+		clone.lineInfo = &lineInfoState{src: f.lineInfo.src, docIdx: f.lineInfo.docIdx}
 	}
 	return &clone
+}
+
+// LeaseLineInfo keeps the parse f shares with its file loaded until the
+// lease is closed. Nil for a file that has no source.
+func (f *FileMetadata) LeaseLineInfo() *LineInfoLease {
+	if f == nil {
+		return nil
+	}
+	return f.lineInfoSource.Lease()
+}
+
+// PinLineInfo keeps the parse f shares loaded for as long as the source
+// lives. See LineInfoSource.Pin.
+func (f *FileMetadata) PinLineInfo() {
+	if f == nil {
+		return
+	}
+	f.lineInfoSource.Pin()
 }
 
 // EnsureLineInfoDocument lazily materializes LineInfoDocument on first access,
@@ -387,7 +399,7 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[string]interface{}) error) error {
 	st := f.lineInfo
 	if st == nil {
-		// No lazy loader configured: the document (if any) was populated at
+		// No source configured: the document (if any) was populated at
 		// parse time and is never mutated afterwards; read it once.
 		doc := f.LineInfoDocument
 		return fn(doc)
@@ -411,12 +423,11 @@ func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
 	if st.err != nil {
 		return st.err
 	}
-	if st.loader == nil {
-		return nil
-	}
-	doc, err := st.loader(ctx, f)
+	doc, err := st.src.document(ctx, f, st.docIdx)
 	if err != nil {
-		st.err = err
+		if !isCanceled(err) {
+			st.err = err
+		}
 		return err
 	}
 	f.LineInfoDocument = doc
@@ -759,6 +770,12 @@ type Document map[string]interface{}
 func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 	contextLogger := logger.FromContext(ctx)
 	documents := Documents{Documents: make([]Document, 0, len(m))}
+	// One lease per source, held while consecutive documents read it, so a
+	// multi-document file is parsed once. The id and file written below go on
+	// a copy: the tree is shared with every document of the file.
+	var lease *LineInfoLease
+	var leased *LineInfoSource
+	defer func() { lease.Close() }()
 	for _, f := range m {
 		_, ignore := f.Commands["ignore"]
 		if ignore {
@@ -766,6 +783,11 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 			continue
 		}
 		if lineInfo {
+			if f.lineInfoSource != leased {
+				lease.Close()
+				lease = f.LeaseLineInfo()
+				leased = f.lineInfoSource
+			}
 			if err := f.EnsureLineInfoDocument(ctx); err != nil {
 				contextLogger.Err(err).Msgf("failed to build line-info document for file %s", f.FilePath)
 				if len(f.Document) == 0 {
@@ -779,9 +801,10 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 			if f.LineInfoDocument == nil {
 				continue
 			}
-			f.LineInfoDocument["id"] = f.ID
-			f.LineInfoDocument["file"] = f.FilePath
-			documents.Documents = append(documents.Documents, f.LineInfoDocument)
+			doc := maps.Clone(f.LineInfoDocument)
+			doc["id"] = f.ID
+			doc["file"] = f.FilePath
+			documents.Documents = append(documents.Documents, doc)
 			continue
 		}
 		if len(f.Document) == 0 {

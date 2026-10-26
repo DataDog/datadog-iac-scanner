@@ -11,7 +11,10 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1607,4 +1610,126 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 
 	// Non-canizable nodes never validate.
 	assert.False(t, cons.pointerMemoMatches(memo, map[string]interface{}{"k": struct{ X int }{}}))
+}
+
+func TestDecodeQueryResults_parsesAMultiDocumentFileOnce(t *testing.T) {
+	var parses atomic.Int32
+	src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, error) {
+		parses.Add(1)
+		return []model.Document{{"k": "a"}, {"k": "b"}}, nil
+	})
+	files := map[string]*model.FileMetadata{}
+	items := make([]interface{}, 2)
+	for i, id := range []string{"a", "b"} {
+		fm := &model.FileMetadata{ID: id, FilePath: "all.yaml", OriginalData: "a: 1\n"}
+		fm.SetLineInfoSource(src, i)
+		files[id] = fm
+		items[1-i] = map[string]interface{}{"documentId": id}
+	}
+	ins := newTestInspector(t, inspectorOpts{
+		vb: func(ctx context.Context, qCtx *QueryContext, _ Tracker, v interface{},
+			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			file := qCtx.Files[v.(map[string]interface{})["documentId"].(string)]
+			err := file.UseLineInfoDocument(ctx, func(map[string]interface{}) error { return nil })
+			return &model.Vulnerability{FileID: file.ID}, err
+		},
+	})
+	qCtx := &QueryContext{
+		Files: files, Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}},
+		discardLineInfoAfterUse: true,
+	}
+	results := rego.ResultSet{{Bindings: map[string]interface{}{"result": items}}}
+	got, err := ins.DecodeQueryResults(context.Background(), qCtx, context.Background(), results, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, int32(1), parses.Load())
+	for _, f := range files {
+		require.Nil(t, f.LineInfoDocument)
+	}
+}
+
+// A multi-document file is one document per YAML document, each finding
+// located by reparsing the whole file. One decode pass must parse the file
+// once, not once per document, so the cost per finding stays flat as
+// documents are added. Growth is relative, so the check holds on any machine.
+func TestDecodeQueryResults_LineInfoCostPerFindingIsFlatInDocuments(t *testing.T) {
+	const rules = 3
+	const maxGrowth = 1.5
+	const allocBudgetPerFinding = 8 << 10
+
+	decode := func(documents int) (allocated, retained int64, findings int, parses int32) {
+		var parsed atomic.Int32
+		content := strings.Repeat("apiVersion: v1\nkind: Pod\nmetadata:\n  name: app\n---\n", documents)
+		src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, error) {
+			parsed.Add(1)
+			docs := make([]model.Document, documents)
+			for i := range docs {
+				docs[i] = model.Document{"kind": "Pod"}
+			}
+			return docs, nil
+		})
+		files := make(map[string]*model.FileMetadata, documents)
+		items := make([]interface{}, 0, documents)
+		for i := range documents {
+			id := fmt.Sprintf("%016x", i)
+			fm := &model.FileMetadata{ID: id, FilePath: "all.yaml", OriginalData: content}
+			fm.SetLineInfoSource(src, i)
+			files[id] = fm
+			items = append(items, map[string]interface{}{"documentId": id})
+		}
+		ins := newTestInspector(t, inspectorOpts{
+			vb: func(ctx context.Context, qCtx *QueryContext, _ Tracker, v interface{},
+				_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+				file := qCtx.Files[v.(map[string]interface{})["documentId"].(string)]
+				err := file.UseLineInfoDocument(ctx, func(map[string]interface{}) error {
+					_, _ = file.LinesContaining("kind")
+					return nil
+				})
+				return &model.Vulnerability{FileID: file.ID}, err
+			},
+		})
+		qCtx := &QueryContext{
+			Files: files, Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}},
+			discardLineInfoAfterUse: true,
+		}
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for range rules {
+			results := rego.ResultSet{{Bindings: map[string]interface{}{"result": append([]interface{}(nil), items...)}}}
+			got, err := ins.DecodeQueryResults(context.Background(), qCtx, context.Background(), results, 0)
+			require.NoError(t, err)
+			require.Len(t, got, documents)
+		}
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+		return int64(after.TotalAlloc - before.TotalAlloc), int64(after.HeapAlloc) - int64(before.HeapAlloc),
+			rules * documents, parsed.Load()
+	}
+
+	decode(8)
+	sizes := []int{250, 500, 1000}
+	allocated := make([]int64, len(sizes))
+	retained := make([]int64, len(sizes))
+	findings := make([]int, len(sizes))
+	for i, n := range sizes {
+		var parses int32
+		allocated[i], retained[i], findings[i], parses = decode(n)
+		require.Equal(t, int32(rules), parses, "%d documents: one parse per decode pass", n)
+	}
+	perFinding := func(v []int64, i, j int) float64 {
+		return float64(v[j]-v[i]) / float64(findings[j]-findings[i])
+	}
+	last := len(sizes) - 1
+	first, final := perFinding(allocated, 0, 1), perFinding(allocated, last-1, last)
+	if final > maxGrowth*first {
+		t.Errorf("allocated bytes per finding grew from %.1f KiB to %.1f KiB (%.2fx)", first/1024, final/1024, final/first)
+	}
+	if final > allocBudgetPerFinding {
+		t.Errorf("allocated %.1f KiB per finding, over the %d KiB budget", final/1024, allocBudgetPerFinding>>10)
+	}
+	if r0, r1 := perFinding(retained, 0, 1), perFinding(retained, last-1, last); r1 > maxGrowth*max(r0, 1024) {
+		t.Errorf("retained bytes per finding grew from %.1f KiB to %.1f KiB", r0/1024, r1/1024)
+	}
 }
