@@ -26,9 +26,11 @@ func IsOnly(ctx context.Context) bool {
 
 type hclBodyKey struct{}
 
-// WithHCLBody returns a context a parser can publish the HCL body it built on,
-// and a function reading what was published. The body is only meaningful when
-// the parser parsed the bytes it was given unchanged.
+// WithHCLBody returns a context a parser can publish an HCL body on, and a
+// function reading it back. The box is required for this parse: it is the
+// only way the Terraform parser hands its body to the caller, which copies it
+// onto ParsedDocument.HCLBody. Line detection reads ParsedDocument.HCLBody,
+// not the box.
 func WithHCLBody(parent context.Context) (ctx context.Context, body func() any) {
 	box := new(any)
 	ctx = context.WithValue(parent, hclBodyKey{}, box)
@@ -37,7 +39,8 @@ func WithHCLBody(parent context.Context) (ctx context.Context, body func() any) 
 }
 
 // SetHCLBody publishes body for the context from WithHCLBody. It does nothing
-// on any other context.
+// on any other context, so a parse not started under WithHCLBody publishes no
+// body onto ParsedDocument.HCLBody.
 func SetHCLBody(ctx context.Context, body any) {
 	if box, ok := ctx.Value(hclBodyKey{}).(*any); ok {
 		*box = body

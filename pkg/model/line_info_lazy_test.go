@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -181,14 +182,75 @@ func TestLineInfoSource_doesNotRememberACanceledParse(t *testing.T) {
 	cancel()
 	var calls atomic.Int32
 	fm := &FileMetadata{FilePath: "a.yaml"}
-	fm.SetLineInfoSource(NewLineInfoSource(func(ctx context.Context, _ *FileMetadata) ([]Document, map[DerivedKey]any, error) {
+	fm.SetLineInfoSource(NewLineInfoSource(func(context.Context, *FileMetadata) ([]Document, map[DerivedKey]any, error) {
+		if calls.Add(1) == 1 {
+			return nil, nil, context.DeadlineExceeded
+		}
+		return []Document{{"k": 1}}, nil, nil
+	}), 0)
+	require.ErrorIs(t, fm.EnsureLineInfoDocument(ctx), context.Canceled)
+	require.Zero(t, calls.Load(), "a caller canceled before loading must not start a parse")
+	require.ErrorIs(t, fm.EnsureLineInfoDocument(context.Background()), context.DeadlineExceeded)
+	require.NoError(t, fm.EnsureLineInfoDocument(context.Background()))
+	require.Equal(t, int32(2), calls.Load())
+}
+
+func TestLineInfoSource_oneCallersCancelDoesNotFailTheOthers(t *testing.T) {
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	var calls atomic.Int32
+	src := NewLineInfoSource(func(ctx context.Context, _ *FileMetadata) ([]Document, map[DerivedKey]any, error) {
 		calls.Add(1)
+		close(started)
+		<-proceed
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
 		return []Document{{"k": 1}}, nil, nil
+	})
+	canceled := &FileMetadata{FilePath: "a.yaml"}
+	live := &FileMetadata{FilePath: "a.yaml"}
+	canceled.SetLineInfoSource(src, 0)
+	live.SetLineInfoSource(src, 0)
+
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	canceledErr := make(chan error, 1)
+	go func() { canceledErr <- canceled.EnsureLineInfoDocument(cancelCtx) }()
+	<-started
+	liveErr := make(chan error, 1)
+	go func() { liveErr <- live.EnsureLineInfoDocument(context.Background()) }()
+	// Give the live caller time to join the in-flight parse.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	close(proceed)
+
+	require.ErrorIs(t, <-canceledErr, context.Canceled)
+	require.NoError(t, <-liveErr)
+	require.Equal(t, int32(1), calls.Load(), "both callers share one parse")
+	require.Equal(t, 1, live.LineInfoDocument["k"])
+}
+
+func TestLineInfoSource_reparseKeepsAValueDerivedBeforeIt(t *testing.T) {
+	var reparses atomic.Int32
+	fm := &FileMetadata{FilePath: "main.tf"}
+	fm.SetLineInfoSource(NewLineInfoSource(func(context.Context, *FileMetadata) ([]Document, map[DerivedKey]any, error) {
+		reparses.Add(1)
+		return []Document{{"k": 1}}, map[DerivedKey]any{HCLBodyKey: "from reparse"}, nil
 	}), 0)
-	require.Error(t, fm.EnsureLineInfoDocument(ctx))
+	lease := fm.LeaseLineInfo()
+	defer lease.Close()
+
+	first, err := fm.Derived(HCLBodyKey, func() (any, error) { return "from line detection", nil })
+	require.NoError(t, err)
+	require.Equal(t, "from line detection", first)
 	require.NoError(t, fm.EnsureLineInfoDocument(context.Background()))
-	require.Equal(t, int32(2), calls.Load())
+	require.Equal(t, int32(1), reparses.Load())
+
+	again, err := fm.Derived(HCLBodyKey, func() (any, error) {
+		t.Fatal("the derived value must still be kept")
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, "from line detection", again, "the reparse must not overwrite a published value")
 }

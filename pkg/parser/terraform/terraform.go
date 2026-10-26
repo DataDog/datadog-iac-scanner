@@ -288,8 +288,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		err := diagnostics.Errs()[0]
 		return nil, nil, nil, nil, err
 	}
-	// The detector searches this same body. Publish it only when it was parsed
-	// from the bytes given, which is the file's original content on a reparse.
+	// The detector searches this same body. Publish it for this parse only when
+	// it was parsed from the bytes given (the file's original content on a reparse).
+	// parseContent copies it onto ParsedDocument.HCLBody for the line-info loader.
 	if lineinfo.IsOnly(ctx) && bytes.Equal(resolved, fileContent) {
 		if body, ok := file.Body.(*hclsyntax.Body); ok {
 			lineinfo.SetHCLBody(ctx, body)

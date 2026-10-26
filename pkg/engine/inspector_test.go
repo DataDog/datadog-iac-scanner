@@ -812,11 +812,11 @@ func TestInspector_DecodeQueryResults(t *testing.T) {
 	queryContext := newQueryContext(ctx)
 
 	// Pass a context that is already expired so DecodeQueryResults must short-circuit
-	// on its cancellation branch and return no results.
+	// on its cancellation branch, return no results and report the cancellation.
 	expiredCtx, cancel := context.WithTimeout(ctx, 0)
 	defer cancel()
 	result, err := c.DecodeQueryResults(ctx, &queryContext, expiredCtx, newResultset(), 57)
-	assert.Nil(t, err, "Error not as expected")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Equal(t, 0, len(result), "Array size is not as expected")
 }
 
@@ -1612,112 +1612,164 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 	assert.False(t, cons.pointerMemoMatches(memo, map[string]interface{}{"k": struct{ X int }{}}))
 }
 
-// decodeByFileFixture is two rules reporting in a two-document file and a
-// one-document file, with each file's parses counted. Document IDs sort
-// against document order, as random IDs may. onDecode, when set, runs at the
-// start of every decode.
-func decodeByFileFixture(
-	t *testing.T, workers int, onDecode func(),
-) (*Inspector, []QueryResult, map[string]*model.FileMetadata, map[string]*atomic.Int32) {
+// lowMemoryDecodeFixture is a file of documents line-info sources share,
+// decoded by an inspector in low-memory mode whose vulnerability builder
+// reads each finding's line-info document.
+func lowMemoryDecodeFixture(t *testing.T, documents int) (*Inspector, *QueryContext, []interface{}, *atomic.Int32) {
 	t.Helper()
-	files := map[string]*model.FileMetadata{}
-	parses := map[string]*atomic.Int32{}
-	var items []interface{}
-	for _, path := range []string{"b.yaml", "a.yaml"} {
-		count := &atomic.Int32{}
-		parses[path] = count
-		docs := map[string]int{"a.yaml": 2, "b.yaml": 1}[path]
-		src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
-			count.Add(1)
-			return make([]model.Document, docs), nil, nil
-		})
-		for i := docs - 1; i >= 0; i-- {
-			id := fmt.Sprintf("%s#%d", path, 9-i)
-			fm := &model.FileMetadata{ID: id, FilePath: path, OriginalData: "a: 1\n"}
-			fm.SetLineInfoSource(src, i)
-			files[id] = fm
-			items = append(items, map[string]interface{}{"documentId": id})
+	var parsed atomic.Int32
+	src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
+		parsed.Add(1)
+		docs := make([]model.Document, documents)
+		for i := range docs {
+			docs[i] = model.Document{"kind": "Pod"}
 		}
+		return docs, nil, nil
+	})
+	files := map[string]*model.FileMetadata{}
+	var items []interface{}
+	for i := range documents {
+		id := fmt.Sprintf("a.yaml#%d", i)
+		fm := &model.FileMetadata{ID: id, FilePath: "a.yaml", OriginalData: "a: 1\n"}
+		fm.SetLineInfoSource(src, i)
+		files[id] = fm
+		items = append(items, map[string]interface{}{"documentId": id})
 	}
 	ins := newTestInspector(t, inspectorOpts{
-		numWorkers: workers,
 		vb: func(ctx context.Context, qCtx *QueryContext, _ Tracker, v interface{},
 			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
-			if onDecode != nil {
-				onDecode()
-			}
 			file := qCtx.Files[v.(map[string]interface{})["documentId"].(string)]
-			err := file.UseLineInfoDocument(ctx, func(map[string]interface{}) error { return nil })
+			err := file.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+				if doc == nil {
+					return fmt.Errorf("no line-info document for %s", file.ID)
+				}
+				return nil
+			})
 			return &model.Vulnerability{FileID: file.ID}, err
 		},
 	})
+	ins.SetReleasePostEvalData(true)
 	qCtx := &QueryContext{Files: files, Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}}}
-	results := make([]QueryResult, 2)
-	for q := range results {
-		results[q] = QueryResult{qCtx: qCtx, pending: &pendingDecode{results: rego.ResultSet{{
-			Bindings: map[string]interface{}{"result": append([]interface{}(nil), items...)},
-		}}}}
-	}
-	return ins, results, files, parses
+	return ins, qCtx, items, &parsed
 }
 
-func TestDecodeByFile_parsesEachFileOnceAcrossRules(t *testing.T) {
-	ins, results, files, parses := decodeByFileFixture(t, 2, nil)
-	require.NoError(t, ins.decodeByFile(context.Background(), results))
-	for path, count := range parses {
-		require.Equal(t, int32(1), count.Load(), path)
-	}
-	for q := range results {
-		require.NoError(t, results[q].err)
-		require.Nil(t, results[q].pending)
-		var order []string
-		for _, v := range results[q].vulnerabilities {
-			order = append(order, v.FileID)
+// In low-memory mode one decode parses a file once for all of its documents,
+// the next decode parses it again, and each decode drops the trees on return.
+func TestDecodeQueryResults_LeasesTheRulesFilesForOneDecode(t *testing.T) {
+	ins, qCtx, items, parsed := lowMemoryDecodeFixture(t, 3)
+	for call := 1; call <= 2; call++ {
+		results := rego.ResultSet{{Bindings: map[string]interface{}{
+			"result": append([]interface{}(nil), items...),
+		}}}
+		vulns, err := ins.DecodeQueryResults(context.Background(), qCtx, context.Background(), results, 0)
+		require.NoError(t, err)
+		require.Len(t, vulns, 3)
+		require.Equal(t, int32(call), parsed.Load(), "decode %d: one parse per decode", call)
+		for id, fm := range qCtx.Files {
+			require.Nil(t, fm.LineInfoDocument, "decode %d: %s must drop its line-info document", call, id)
 		}
-		require.Equal(t, []string{"a.yaml#9", "a.yaml#8", "b.yaml#9"}, order)
-	}
-	for _, f := range files {
-		require.Nil(t, f.LineInfoDocument)
 	}
 }
 
-// A scan canceled partway through decode must not start another decode, even
-// within the file being decoded, nor parse another file.
-func TestDecodeByFile_stopsDecodingOnceTheScanIsCanceled(t *testing.T) {
-	const cancelAfter = 2
+// A canceled decode returns the cancellation and still drops the trees of
+// the files it leased.
+func TestDecodeQueryResults_ReleasesItsLeaseWhenCanceled(t *testing.T) {
+	ins, qCtx, items, parsed := lowMemoryDecodeFixture(t, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	results := rego.ResultSet{{Bindings: map[string]interface{}{"result": items}}}
+	ins.vb = func(ctx context.Context, qCtx *QueryContext, _ Tracker, v interface{},
+		_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+		file := qCtx.Files[v.(map[string]interface{})["documentId"].(string)]
+		err := file.UseLineInfoDocument(ctx, func(map[string]interface{}) error { return nil })
+		cancel()
+		return &model.Vulnerability{FileID: file.ID}, err
+	}
+	_, err := ins.DecodeQueryResults(context.Background(), qCtx, ctx, results, 0)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, int32(1), parsed.Load())
+	for id, fm := range qCtx.Files {
+		require.Nil(t, fm.LineInfoDocument, "%s must drop its line-info document", id)
+	}
+}
+
+// A rule whose decode is canceled after its eval succeeded is not counted as
+// executed.
+func TestEvalQuery_canceledDecodeIsNotCountedAsExecuted(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var calls, late atomic.Int32
-	var canceled atomic.Bool
-	ins, results, files, parses := decodeByFileFixture(t, 1, func() {
-		if canceled.Load() {
-			late.Add(1)
-		}
-		if calls.Add(1) == cancelAfter {
+	track := &tracker.CITracker{}
+	ins := newTestInspector(t, inspectorOpts{
+		tracker: track,
+		vb: func(_ context.Context, _ *QueryContext, _ Tracker, v interface{},
+			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
 			cancel()
-			canceled.Store(true)
-		}
+			return &model.Vulnerability{FileID: v.(map[string]interface{})["documentId"].(string)}, nil
+		},
 	})
-	require.ErrorIs(t, ins.decodeByFile(ctx, results), context.Canceled)
-	require.Equal(t, int32(cancelAfter), calls.Load())
-	require.Zero(t, late.Load())
-	var parsed int32
-	for _, count := range parses {
-		parsed += count.Load()
+	prepared, err := rego.New(
+		rego.Query(`result := [{"documentId": "f"}, {"documentId": "f"}]`),
+	).PrepareForEval(context.Background())
+	require.NoError(t, err)
+	files := map[string]*model.FileMetadata{"f": {ID: "f", FilePath: "a.yaml"}}
+	queries := []model.QueryMetadata{{Query: "q", Aggregation: 1}}
+	payloads := platformPayloads{full: ast.NewObject()}
+
+	got := ins.evalQuery(ctx, "scan", files, payloads, queries, 0, nil, nil, nil,
+		map[int]*rego.PreparedEvalQuery{0: &prepared})
+	require.ErrorIs(t, got.err, context.Canceled)
+	require.Zero(t, track.ExecutedQueries)
+}
+
+// A rule whose decode completes is counted as executed.
+func TestEvalQuery_completedDecodeIsCountedAsExecuted(t *testing.T) {
+	track := &tracker.CITracker{}
+	ins := newTestInspector(t, inspectorOpts{tracker: track})
+	prepared, err := rego.New(rego.Query(`result := [{"documentId": "f"}]`)).PrepareForEval(context.Background())
+	require.NoError(t, err)
+	files := map[string]*model.FileMetadata{"f": {ID: "f", FilePath: "a.yaml"}}
+	queries := []model.QueryMetadata{{Query: "q", Aggregation: 1}}
+
+	got := ins.evalQuery(context.Background(), "scan", files, platformPayloads{full: ast.NewObject()}, queries, 0,
+		nil, nil, nil, map[int]*rego.PreparedEvalQuery{0: &prepared})
+	require.NoError(t, got.err)
+	require.Equal(t, 1, track.ExecutedQueries)
+}
+
+// Failed line detection is counted once per query even when several of its
+// results fail, so one noisy rule cannot dominate the failed-line count.
+func TestDecodeQueryResults_CountsFailedDetectLineOncePerQuery(t *testing.T) {
+	track := &tracker.CITracker{}
+	ins := newTestInspector(t, inspectorOpts{
+		tracker: track,
+		vb: func(_ context.Context, _ *QueryContext, _ Tracker, v interface{},
+			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			return &model.Vulnerability{
+				FileID: v.(map[string]interface{})["documentId"].(string),
+				Line:   UndetectedVulnerabilityLine,
+			}, nil
+		},
+	})
+	qCtx := &QueryContext{
+		Files: map[string]*model.FileMetadata{"f": {ID: "f", FilePath: "a.yaml"}},
+		Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q", Aggregation: 1}},
 	}
-	require.Equal(t, int32(1), parsed)
-	for q := range results {
-		require.ErrorIs(t, results[q].err, context.Canceled)
-		require.Nil(t, results[q].pending)
-	}
-	for _, f := range files {
-		require.Nil(t, f.LineInfoDocument)
-	}
+	results := rego.ResultSet{{
+		Bindings: map[string]interface{}{"result": []interface{}{
+			map[string]interface{}{"documentId": "f"},
+			map[string]interface{}{"documentId": "f"},
+		}},
+	}}
+	_, err := ins.DecodeQueryResults(context.Background(), qCtx, context.Background(), results, 0)
+	require.NoError(t, err)
+	// FailedDetectLine decrements ExecutedQueries once; two failing results
+	// in the same query must not decrement it twice.
+	require.Equal(t, -1, track.ExecutedQueries)
 }
 
 // A multi-document file is one document per YAML document, each finding
-// located by reparsing the whole file. One decode pass must parse the file
-// once, not once per document, so the cost per finding stays flat as
+// located by reparsing the whole file. In low-memory mode each rule's decode
+// leases the file itself, so the file is parsed once per rule however many
+// of its documents the rule reports. The cost per finding stays flat as
 // documents are added. Growth is relative, so the check holds on any machine.
 func TestDecodeQueryResults_LineInfoCostPerFindingIsFlatInDocuments(t *testing.T) {
 	const rules = 3
@@ -1755,29 +1807,26 @@ func TestDecodeQueryResults_LineInfoCostPerFindingIsFlatInDocuments(t *testing.T
 				return &model.Vulnerability{FileID: file.ID}, err
 			},
 		})
+		ins.SetReleasePostEvalData(true)
 		qCtx := &QueryContext{Files: files, Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}}}
 		runtime.GC()
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
-		pending := make([]QueryResult, rules)
-		for q := range rules {
-			pending[q] = QueryResult{
-				qCtx: qCtx,
-				pending: &pendingDecode{results: rego.ResultSet{{Bindings: map[string]interface{}{
-					"result": append([]interface{}(nil), items...),
-				}}}},
-			}
-		}
-		require.NoError(t, ins.decodeByFile(context.Background(), pending))
-		for q := range rules {
-			require.NoError(t, pending[q].err)
-			require.Len(t, pending[q].vulnerabilities, documents)
+		total := 0
+		for range rules {
+			results := rego.ResultSet{{Bindings: map[string]interface{}{
+				"result": append([]interface{}(nil), items...),
+			}}}
+			vulns, err := ins.DecodeQueryResults(context.Background(), qCtx, context.Background(), results, 0)
+			require.NoError(t, err)
+			require.Len(t, vulns, documents)
+			total += len(vulns)
 		}
 		runtime.GC()
 		runtime.GC()
 		runtime.ReadMemStats(&after)
 		return int64(after.TotalAlloc - before.TotalAlloc), int64(after.HeapAlloc) - int64(before.HeapAlloc),
-			rules * documents, parsed.Load()
+			total, parsed.Load()
 	}
 
 	decode(8)
@@ -1788,7 +1837,7 @@ func TestDecodeQueryResults_LineInfoCostPerFindingIsFlatInDocuments(t *testing.T
 	for i, n := range sizes {
 		var parses int32
 		allocated[i], retained[i], findings[i], parses = decode(n)
-		require.Equal(t, int32(1), parses, "%d documents, %d rules: the file must be parsed once", n, rules)
+		require.Equal(t, int32(rules), parses, "%d documents, %d rules: the file must be parsed once per rule", n, rules)
 	}
 	perFinding := func(v []int64, i, j int) float64 {
 		return float64(v[j]-v[i]) / float64(findings[j]-findings[i])

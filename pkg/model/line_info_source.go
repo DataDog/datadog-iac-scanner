@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // LineInfoParse reparses the file f is a document of, returning its documents
@@ -33,6 +35,7 @@ type LineInfoSource struct {
 	pinned  bool
 	lines   *linesLazyState
 	derived map[DerivedKey]any
+	flight  singleflight.Group
 }
 
 // DerivedKey names a value derived from a file's content, kept with its
@@ -65,33 +68,87 @@ func (s *LineInfoSource) document(ctx context.Context, f *FileMetadata, docIdx i
 }
 
 // load returns the source's parse. A failure is remembered and not retried,
-// except a canceled parse, which the caller may retry.
+// except a canceled parse, which the caller may retry. The file is parsed
+// outside the mutex; concurrent callers for the same file share one parse.
+// The shared parse ignores cancellation so one caller's cancel cannot fail
+// the others; a caller whose own ctx is canceled gets its ctx error.
 func (s *LineInfoSource) load(ctx context.Context, f *FileMetadata) ([]Document, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.err != nil {
-		return nil, s.err
-	}
-	if s.docs != nil {
-		return s.docs, nil
-	}
-	docs, derived, err := s.parse(ctx, f)
-	if err != nil {
-		if !isCanceled(err) {
-			s.err = err
-		}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if s.held > 0 {
-		s.docs = docs
-		for key, value := range derived {
-			if s.derived == nil {
-				s.derived = map[DerivedKey]any{}
-			}
-			s.derived[key] = value
-		}
+	s.mu.Lock()
+	if s.err != nil {
+		err := s.err
+		s.mu.Unlock()
+		return nil, err
 	}
-	return docs, nil
+	if s.docs != nil {
+		docs := s.docs
+		s.mu.Unlock()
+		return docs, nil
+	}
+	s.mu.Unlock()
+
+	type loaded struct {
+		docs    []Document
+		derived map[DerivedKey]any
+	}
+	v, err, _ := s.flight.Do("load", func() (any, error) {
+		s.mu.Lock()
+		if s.err != nil {
+			err := s.err
+			s.mu.Unlock()
+			return nil, err
+		}
+		if s.docs != nil {
+			docs := s.docs
+			s.mu.Unlock()
+			return loaded{docs: docs}, nil
+		}
+		s.mu.Unlock()
+
+		docs, derived, err := s.parse(context.WithoutCancel(ctx), f)
+		if err != nil {
+			if !isCanceled(err) {
+				s.mu.Lock()
+				s.err = err
+				s.mu.Unlock()
+			}
+			return nil, err
+		}
+
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.docs != nil {
+			return loaded{docs: s.docs}, nil
+		}
+		if s.held > 0 {
+			s.docs = docs
+			s.keepDerived(derived)
+		}
+		return loaded{docs: docs, derived: derived}, nil
+	})
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	if err != nil {
+		return nil, err
+	}
+	return v.(loaded).docs, nil
+}
+
+// keepDerived stores the values a reparse derived, keeping any value Derived
+// already published for the same key. Callers hold s.mu.
+func (s *LineInfoSource) keepDerived(derived map[DerivedKey]any) {
+	for key, value := range derived {
+		if s.derived == nil {
+			s.derived = map[DerivedKey]any{}
+		}
+		if _, ok := s.derived[key]; ok {
+			continue
+		}
+		s.derived[key] = value
+	}
 }
 
 func isCanceled(err error) bool {
@@ -159,28 +216,48 @@ func (s *LineInfoSource) release() {
 }
 
 // Derived returns the value build derives from the file, built once and kept
-// while a lease holds the file's source. build runs under the source lock and
-// must not call back into the source. A failure is not kept, and neither is a
-// value built while no lease holds the source.
+// while a lease holds the file's source. build runs outside the source lock.
+// A failure is not kept, and neither is a value built while no lease holds
+// the source. Concurrent callers for the same key share one build.
 func (f *FileMetadata) Derived(key DerivedKey, build func() (any, error)) (any, error) {
 	s := f.lineInfoSource
 	if s == nil {
 		return build()
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if value, ok := s.derived[key]; ok {
+		s.mu.Unlock()
 		return value, nil
 	}
-	value, err := build()
-	if err != nil || s.held == 0 {
-		return value, err
-	}
-	if s.derived == nil {
-		s.derived = map[DerivedKey]any{}
-	}
-	s.derived[key] = value
-	return value, nil
+	s.mu.Unlock()
+
+	v, err, _ := s.flight.Do("derived:"+key.name, func() (any, error) {
+		s.mu.Lock()
+		if value, ok := s.derived[key]; ok {
+			s.mu.Unlock()
+			return value, nil
+		}
+		s.mu.Unlock()
+
+		value, err := build()
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if existing, ok := s.derived[key]; ok {
+			return existing, nil
+		}
+		if s.held == 0 {
+			return value, nil
+		}
+		if s.derived == nil {
+			s.derived = map[DerivedKey]any{}
+		}
+		s.derived[key] = value
+		return value, nil
+	})
+	return v, err
 }
 
 // LineInfoLease is one claim on a LineInfoSource's parse.

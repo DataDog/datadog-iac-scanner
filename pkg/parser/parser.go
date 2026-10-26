@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/lineinfo"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -145,6 +146,11 @@ type ParsedDocument struct {
 	// (see directoryDependentParser); the runner must not share them across
 	// files with identical content.
 	DirectoryDependent bool
+	// HCLBody is the *hclsyntax.Body a Terraform line-info reparse built from
+	// the file's own content when that content was parsed unchanged, published
+	// through the per-parse lineinfo.WithHCLBody box. Read by the line-info
+	// loader; nil for other platforms.
+	HCLBody any
 }
 
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
@@ -229,6 +235,9 @@ func (c *Parser) parseContent(
 	contextLogger := logger.FromContext(ctx)
 	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, utils.GetVaultPassword())
 
+	// Per-parse box so concurrent reparses of different files never share one
+	// HCL body slot. The body is copied onto ParsedDocument below.
+	ctx, hclBody := lineinfo.WithHCLBody(ctx)
 	resolved, obj, igLines, resolvedFiles, err := c.Parsers.Parse(
 		ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
 	if err != nil {
@@ -267,6 +276,7 @@ func (c *Parser) parseContent(
 		ResolvedFiles:      resolvedFiles,
 		IsMinified:         isMinified,
 		DirectoryDependent: directoryDependent,
+		HCLBody:            hclBody(),
 	}, nil
 }
 
