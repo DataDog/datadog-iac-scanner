@@ -56,7 +56,7 @@ func resolveLocalModuleDir(ctx context.Context, fsys vfs.FS, callerDir, source s
 	if !filepath.IsAbs(source) {
 		resolved = filepath.Join(callerDir, source)
 	}
-	if fsys == nil {
+	if fsys == nil || isDir(fsys, resolved) {
 		return resolved, nil
 	}
 	// A checkout placeholder at the original location takes precedence over
@@ -65,7 +65,7 @@ func resolveLocalModuleDir(ctx context.Context, fsys vfs.FS, callerDir, source s
 	if err != nil {
 		return "", err
 	}
-	if linked != resolved || isDir(fsys, resolved) {
+	if linked != resolved {
 		return linked, nil
 	}
 	if !filepath.IsAbs(source) {
@@ -105,17 +105,20 @@ func repoPathOfAbsSource(fsys vfs.FS, callerDir, source string) (string, bool) {
 // LocalModuleDir resolves source with ResolveLocalModuleDir when it is a local
 // module source, after removing its go-getter prefixes.
 func LocalModuleDir(fsys vfs.FS, callerDir, source string) (string, bool) {
-	return LocalModuleDirWithContext(context.Background(), fsys, callerDir, source)
+	dir, local, err := LocalModuleDirWithContext(context.Background(), fsys, callerDir, source)
+	return dir, local && err == nil
 }
 
 // LocalModuleDirWithContext also retains an explicit checkout boundary and the
 // scan-scoped symlink cache while resolving placeholder module directories.
-func LocalModuleDirWithContext(ctx context.Context, fsys vfs.FS, callerDir, source string) (string, bool) {
+// local identifies the source syntax even when its target must be skipped, so
+// callers never offer a failed local source to a remote resolver.
+func LocalModuleDirWithContext(ctx context.Context, fsys vfs.FS, callerDir, source string) (dir string, local bool, err error) {
 	if !LooksLikeLocalModuleSource(source) {
-		return "", false
+		return "", false, nil
 	}
-	dir, err := resolveLocalModuleDir(ctx, fsys, callerDir, StripGetterPrefix(source))
-	return dir, err == nil
+	dir, err = resolveLocalModuleDir(ctx, fsys, callerDir, StripGetterPrefix(source))
+	return dir, true, err
 }
 
 func isDir(fsys vfs.FS, path string) bool {

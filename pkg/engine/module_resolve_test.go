@@ -1259,6 +1259,18 @@ func TestCalledModuleDirsFromDocuments_LocalModule(t *testing.T) {
 	}
 }
 
+func TestResolveModuleTargetDirDoesNotFetchSkippedLocal(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "linked", "./missing")
+	remote := func(_, _, _, _ string) (string, string, bool) {
+		t.Error("skipped local source reached the remote resolver")
+		return root, root, true
+	}
+	dir, ok := resolveModuleTargetDir(t.Context(), vfs.DiskFS{}, root, root, "./linked", "", "", "", remote)
+	require.False(t, ok)
+	require.Empty(t, dir)
+}
+
 func TestDiscoverCalledModuleDirs_UsesParsedDocument(t *testing.T) {
 	root := t.TempDir()
 	modDir := filepath.Join(root, "modules", "bucket")

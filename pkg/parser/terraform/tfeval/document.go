@@ -484,8 +484,10 @@ func calledModuleDirs(ctx context.Context, dir string, bodies []*hclsyntax.Body,
 		if source == "" {
 			continue
 		}
-		if local, ok := tfmodules.LocalModuleDirWithContext(ctx, fsys, dir, source); ok {
-			dirs = append(dirs, local)
+		if localDir, local, err := tfmodules.LocalModuleDirWithContext(ctx, fsys, dir, source); local {
+			if err == nil {
+				dirs = append(dirs, localDir)
+			}
 			continue
 		}
 		if resolver != nil {

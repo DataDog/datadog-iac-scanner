@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -188,6 +189,27 @@ func TestCalledLocalDirs_NoModules(t *testing.T) {
 	})
 	if got := CalledLocalDirs(dir, nil); got != nil {
 		t.Fatalf("CalledLocalDirs = %#v, want nil", got)
+	}
+}
+
+func TestCalledModuleDirsDoesNotFetchSkippedLocal(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"linked": "./missing",
+		"main.tf": `module "local" { source = "./linked" }
+module "remote" { source = "hashicorp/consul/aws" }`,
+	})
+	remoteDir := filepath.Join(root, "remote")
+	calls := 0
+	got := CalledModuleDirs(dir, func(source, _, _, _ string) (string, string, bool) {
+		calls++
+		if source != "hashicorp/consul/aws" {
+			t.Errorf("skipped local source reached the remote resolver: %s", source)
+		}
+		return remoteDir, root, true
+	}, vfs.DiskFS{})
+	if calls != 1 || !reflect.DeepEqual(got, []string{remoteDir}) {
+		t.Fatalf("called dirs = %v, remote calls = %d; want [%s], 1", got, calls, remoteDir)
 	}
 }
 

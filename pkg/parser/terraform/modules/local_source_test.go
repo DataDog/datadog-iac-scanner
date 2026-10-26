@@ -83,3 +83,35 @@ func TestLocalModuleDir(t *testing.T) {
 	_, ok = LocalModuleDir(nil, "/caller", "hashicorp/consul/aws")
 	require.False(t, ok)
 }
+
+func TestModuleDirectoryPlaceholders(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.Symlink(t.TempDir(), repo))
+	canonicalRepo, err := filepath.EvalSymlinks(repo)
+	require.NoError(t, err)
+	actual := filepath.Join(repo, "actual", "nested")
+	require.NoError(t, os.MkdirAll(actual, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "alias"), []byte("./actual"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "chain"), []byte("alias"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "absolute"), []byte(filepath.Join(repo, "actual")), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "missing"), []byte("./gone"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "escape"), []byte("../outside"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "cycle"), []byte("./cycle"), 0o644))
+	for _, tt := range []struct {
+		source, want string
+	}{
+		{"./chain/nested", actual},
+		{"./absolute/nested", actual},
+		{"./missing", ""}, {"./escape", ""}, {"./cycle", ""},
+	} {
+		t.Run(tt.source, func(t *testing.T) {
+			resolved, err := ResolveModuleDir(t.Context(), vfs.DiskFS{}, repo, filepath.Join(repo, tt.source), canonicalRepo)
+			if tt.want != "" {
+				require.NoError(t, err)
+				require.Equal(t, tt.want, resolved)
+			} else {
+				require.ErrorIs(t, err, ErrSkippedLinkPlaceholder)
+			}
+		})
+	}
+}

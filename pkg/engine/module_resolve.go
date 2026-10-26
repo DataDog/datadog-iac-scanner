@@ -1359,8 +1359,8 @@ func resolveModuleTargetDir(
 	resolver tfeval.RemoteResolver,
 ) (string, bool) {
 	ctx = tfmodules.WithLinkPlaceholderRoot(ctx, repoPath)
-	if dir, ok := tfmodules.LocalModuleDirWithContext(ctx, fsys, callerDir, source); ok {
-		return dir, true
+	if dir, local, err := tfmodules.LocalModuleDirWithContext(ctx, fsys, callerDir, source); local {
+		return dir, err == nil
 	}
 	if resolver == nil {
 		return "", false

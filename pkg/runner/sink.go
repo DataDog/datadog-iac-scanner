@@ -85,15 +85,12 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if err != nil {
 		return errors.Wrapf(err, "failed to get file content: %s", filename)
 	}
-	// LinesOriginalData is lazy (see FileMetadata.Lines): most files never produce
-	// a finding, so the SplitLines copy is not retained for the whole scan.
-	fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
-
 	// Fast path: duplicate content already parsed and sanitized — reuse the shared
 	// trees with a per-file top-level map and skip parsing. The interned key also
 	// serves the slow path below (pure function of content).
 	shareKey, shared := s.lookupSharedParse(*c.Content)
 	if shared != nil {
+		fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
 		return s.sinkSharedParse(ctx, filename, scanID, shareKey, shared,
 			fileCommands, c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content)
 	}
@@ -102,6 +99,14 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if err != nil {
 		s.logParseFailure(ctx, filename, *content, err)
 		return nil
+	}
+	var fileCommands model.CommentsCommands
+	if documents.Kind == model.KindTerraform {
+		// Checkout placeholders carry only the target path. File directives,
+		// like line detection, must use the resolved Terraform source.
+		fileCommands = s.Parser.CommentsCommandsFromString(ctx, filename, documents.Content)
+	} else {
+		fileCommands = s.Parser.CommentsCommands(ctx, filename, *content)
 	}
 
 	linesResolved := 0
