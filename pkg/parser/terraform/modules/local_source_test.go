@@ -85,7 +85,8 @@ func TestLocalModuleDir(t *testing.T) {
 }
 
 func TestModuleDirectoryPlaceholders(t *testing.T) {
-	repo := filepath.Join(t.TempDir(), "repo")
+	// Exercise Windows short path components on every platform.
+	repo := filepath.Join(t.TempDir(), "CHECKO~1")
 	require.NoError(t, os.Symlink(t.TempDir(), repo))
 	canonicalRepo, err := filepath.EvalSymlinks(repo)
 	require.NoError(t, err)

@@ -336,7 +336,7 @@ func parseDirModules(
 			return nil, err
 		}
 		content := getFileContent(file)
-		if len(content) <= maxLinkPlaceholderBytes {
+		if placeholderCandidate([]byte(content)) {
 			resolved, err := ResolveConfigContent(ctx, fsys, file.FilePath, "", []byte(content))
 			if err != nil {
 				continue

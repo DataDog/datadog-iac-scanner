@@ -201,6 +201,10 @@ func TestArchiveCommandHelper(t *testing.T) {
 	if os.Getenv("GO_WANT_ARCHIVE_COMMAND_HELPER") != "1" {
 		return
 	}
+	if failure := os.Getenv("GO_WANT_ARCHIVE_COMMAND_ERROR"); failure != "" {
+		_, _ = fmt.Fprint(os.Stderr, failure)
+		os.Exit(1)
+	}
 	archivePath := os.Args[len(os.Args)-1]
 	archive, err := os.Open(archivePath)
 	if err != nil {
@@ -248,9 +252,11 @@ func TestArchiveExtractFollowsConfigPlaceholders(t *testing.T) {
 		common, fatal  bool
 	}{
 		{"local", "local", true, false}, {"json", "json", true, false},
+		{"ordinary-metadata-unavailable", "common", false, false},
 		{"external", "external", true, false}, {"directory", "directory", true, false},
 		{"cycle", "cycle", false, false}, {"missing", "missing", false, false}, {"escape", "escape", false, false},
-		{"budget", "external", false, true}, {"acquisition", "external", false, true}, {"git-failure", "external", false, true},
+		{"budget", "external", false, true}, {"acquisition", "external", false, true},
+		{"git-failure", "external", false, true}, {"tree-failure", "external", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := t.Context()
@@ -258,6 +264,10 @@ func TestArchiveExtractFollowsConfigPlaceholders(t *testing.T) {
 				ctx = WithResourceBudget(ctx, NewResourceBudget(ResourceLimits{MaxPackageBytes: 60}))
 			}
 			extractBase := t.TempDir()
+			lookupGitDir := gitDir
+			if tc.name == "tree-failure" || tc.name == "ordinary-metadata-unavailable" {
+				lookupGitDir = filepath.Join(t.TempDir(), "unavailable.git")
+			}
 			var paths []string
 			acquisitionErr := errors.New("target archive unavailable")
 			runArchive := func(ctx context.Context, args []string) ([]archivePrep, error) {
@@ -266,12 +276,18 @@ func TestArchiveExtractFollowsConfigPlaceholders(t *testing.T) {
 					return nil, acquisitionErr
 				}
 				if tc.name == "git-failure" && len(paths) > 1 {
-					cmd := gitLocalInDir(ctx, gitDir, "archive", "--format=tar", "missing-ref")
+					cmd := archiveHelperCommand(t, "")
+					cmd.Env = append(cmd.Env, "GO_WANT_ARCHIVE_COMMAND_ERROR=fatal: pathspec 'modules/shared' did not match any files\n")
+					return []archivePrep{{cmd: cmd}}, nil
+				}
+				if tc.name == "missing" && len(paths) > 1 {
+					cmd := archiveHelperCommand(t, "")
+					cmd.Env = append(cmd.Env, "GO_WANT_ARCHIVE_COMMAND_ERROR=warning: archive warning\nfatal: pathspec 'modules/absent' did not match any files\n")
 					return []archivePrep{{cmd: cmd}}, nil
 				}
 				return localCloneArchiveCommand(gitDir)(ctx, args)
 			}
-			_, err := archiveExtract(ctx, gitDir, extractBase, sha, "modules/"+tc.selected, runArchive, nil)
+			_, err := archiveExtract(ctx, lookupGitDir, extractBase, sha, "modules/"+tc.selected, runArchive, nil)
 			root := archiveCacheDir(extractBase, sha)
 			if tc.fatal {
 				requireArchiveAcquisitionError(t, tc.name, err, acquisitionErr)
@@ -287,7 +303,7 @@ func TestArchiveExtractFollowsConfigPlaceholders(t *testing.T) {
 				require.FileExists(t, filepath.Join(root, "modules", "templates", "nested", "body.hcl"))
 				require.Equal(t, []string{"modules/external", "modules/shared", "modules/templates", "modules/common"}, paths)
 			}
-			if tc.name == "cycle" || tc.name == "escape" {
+			if tc.name == "cycle" || tc.name == "escape" || tc.name == "missing" {
 				require.Equal(t, []string{"modules/" + tc.selected}, paths, "unsafe targets must not trigger archive operations")
 			}
 			require.NoDirExists(t, filepath.Join(root, "modules", "unrelated"))
@@ -307,7 +323,7 @@ func requireArchiveAcquisitionError(t *testing.T, name string, err, acquisitionE
 		require.ErrorAs(t, err, &budgetErr)
 	case "acquisition":
 		require.ErrorIs(t, err, acquisitionErr)
-	case "git-failure":
+	case "git-failure", "tree-failure":
 		var exitErr *exec.ExitError
 		require.ErrorAs(t, err, &exitErr)
 	}

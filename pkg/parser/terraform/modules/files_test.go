@@ -108,14 +108,17 @@ func TestPlaceholderTarget(t *testing.T) {
 			require.False(t, ok)
 		})
 	}
-	for _, data := range []string{"main.tf", "./main.tf", "../shared/main.tf\n", "../shared/main.tofu\r\n", "main.tf.json"} {
+	for _, data := range []string{
+		"main.tf", "./main.tf", "../shared/main.tf\n", "../shared/main.tofu\r\n", "main.tf.json", "../RUNNER~1/shared.tf",
+	} {
 		_, ok := placeholderTarget([]byte(data), false)
 		require.True(t, ok, data)
 	}
 }
 
 func TestConfigPlaceholderConfinement(t *testing.T) {
-	repo := filepath.Join(t.TempDir(), "repo")
+	// Exercise Windows short path components on every platform.
+	repo := filepath.Join(t.TempDir(), "CHECKO~1")
 	require.NoError(t, os.Symlink(t.TempDir(), repo))
 	canonicalRepo, err := filepath.EvalSymlinks(repo)
 	require.NoError(t, err)

@@ -46,6 +46,7 @@ const maxArchiveExtractBytes = 200 * 1024 * 1024
 var (
 	errArchiveMaterialization = errors.New("archive materialization failed")
 	errArchivePathMissing     = errors.New("archive path unavailable")
+	errArchiveCommandExit     = errors.New("running git archive")
 )
 
 // BareGitResolver keeps one bare clone per repo and extracts refs via git archive.
@@ -813,6 +814,7 @@ func archiveExtract(
 	}
 	archive := &sparseArchive{
 		runArchive:  runArchive,
+		gitDir:      gitDir,
 		sha:         sha,
 		dest:        dest,
 		extractBase: extractBase,
@@ -844,6 +846,7 @@ func archiveBaselineUsage(ctx context.Context, dest string, limits ResourceLimit
 // exactly its own writes.
 type sparseArchive struct {
 	runArchive   archiveCommandFunc
+	gitDir       string
 	sha          string
 	dest         string
 	extractBase  string
@@ -933,6 +936,19 @@ func (a *sparseArchive) materializeClosure(ctx context.Context, subdir string) e
 
 func (a *sparseArchive) materializeModuleDirectory(ctx context.Context, subdir string) (string, error) {
 	extractErr := a.extractSubdir(ctx, subdir)
+	if subdir != "." && ctx.Err() == nil && errors.Is(extractErr, errArchiveCommandExit) {
+		// A directory placeholder in the requested path can make git archive
+		// fail before the confined walker reaches it. Query the tree only on
+		// a process failure, keeping ordinary successful archives unchanged.
+		exists, err := a.pathExists(ctx, subdir)
+		if err != nil {
+			return "", fmt.Errorf("%w: %w", errArchiveMaterialization, err)
+		}
+		if !exists {
+			extractErr = errArchivePathMissing
+			a.materialized[subdir] = extractErr
+		}
+	}
 	if errors.Is(extractErr, errArchiveMaterialization) {
 		return "", extractErr
 	}
@@ -958,9 +974,9 @@ func (a *sparseArchive) extractSubdir(ctx context.Context, subdir string) error 
 		a.materialized = make(map[string]error)
 	}
 	err := a.extract(ctx, subdir)
-	if err != nil && !errors.Is(err, errArchivePathMissing) {
-		// Missing git paths are unavailable links; acquisition, extraction and
-		// resource-limit failures must still abort and roll back the closure.
+	if err != nil {
+		// Acquisition, extraction and resource-limit failures must abort and
+		// roll back the closure; missing paths are checked separately.
 		err = fmt.Errorf("%w: %w", errArchiveMaterialization, err)
 	}
 	a.materialized[subdir] = err
@@ -992,7 +1008,47 @@ func (a *sparseArchive) materializeMissingPath(ctx context.Context, path string)
 			break
 		}
 	}
+	if err, done := a.materialized[rel]; done {
+		return err
+	}
+	exists, err := a.pathExists(ctx, rel)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errArchiveMaterialization, err)
+	}
+	if !exists {
+		if a.materialized == nil {
+			a.materialized = make(map[string]error)
+		}
+		a.materialized[rel] = errArchivePathMissing
+		return errArchivePathMissing
+	}
 	return a.extractSubdir(ctx, rel)
+}
+
+// pathExists distinguishes an absent link target from archive failures without
+// depending on Git's diagnostics. Blob-filtered clones retain their trees, so
+// this query never needs to acquire missing file contents.
+func (a *sparseArchive) pathExists(ctx context.Context, subdir string) (bool, error) {
+	release, err := acquireGitProc(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	archiveArg, err := gitSafeArg(a.sha)
+	if err != nil {
+		return false, err
+	}
+	if a.objectMu != nil {
+		a.objectMu.RLock()
+		defer a.objectMu.RUnlock()
+	}
+	output, err := gitLocalInDir(ctx, a.gitDir,
+		"--literal-pathspecs", "ls-tree", "--name-only", "--full-tree", archiveArg, "--", filepath.ToSlash(subdir),
+	).Output()
+	if err != nil {
+		return false, fmt.Errorf("listing git archive %s path %q: %w", archiveArg, subdir, err)
+	}
+	return len(output) != 0, nil
 }
 
 func (a *sparseArchive) extract(ctx context.Context, subdir string) error {
@@ -1072,14 +1128,6 @@ func extractArchiveCommandWithResourceBudget(
 	ctx context.Context, cmd *exec.Cmd, dest string, extracted *int64, maxBytes int64,
 	counter *PackageCounter, guard *gitObjectGuard, written *archiveWrites,
 ) error {
-	stderr := &archiveStderr{}
-	// Missing-path diagnostics must be independent of the caller's locale.
-	cmd.Env = append(cmd.Environ(), "LC_ALL=C")
-	if cmd.Stderr == nil {
-		cmd.Stderr = stderr
-	} else {
-		cmd.Stderr = io.MultiWriter(cmd.Stderr, stderr)
-	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("opening git archive stream: %w", err)
@@ -1111,23 +1159,9 @@ func extractArchiveCommandWithResourceBudget(
 		return budgetErr
 	}
 	if waitErr != nil {
-		if bytes.HasPrefix(stderr.data, []byte("fatal: pathspec '")) &&
-			bytes.Contains(stderr.data, []byte("' did not match any files")) {
-			return fmt.Errorf("%w: %w", errArchivePathMissing, waitErr)
-		}
-		return fmt.Errorf("running git archive: %w", waitErr)
+		return fmt.Errorf("%w: %w", errArchiveCommandExit, waitErr)
 	}
 	return nil
-}
-
-// archiveStderr retains only enough output to distinguish a missing archive
-// path from acquisition failures, without buffering unbounded remote output.
-type archiveStderr struct{ data []byte }
-
-func (w *archiveStderr) Write(data []byte) (int, error) {
-	const maxArchiveStderrBytes = 4096
-	w.data = append(w.data, data[:min(len(data), maxArchiveStderrBytes-len(w.data))]...)
-	return len(data), nil
 }
 
 func snapshotTree(root string) (map[string]bool, error) {

@@ -97,8 +97,9 @@ func placeholderCandidate(data []byte) bool {
 }
 
 func placeholderPathChar(char rune) bool {
+	// Windows short paths can contain a literal tilde (e.g. RUNNER~1).
 	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') ||
-		strings.ContainsRune("/._-", char)
+		strings.ContainsRune("/._-~", char)
 }
 
 func placeholderRoot(ctx context.Context, fsys vfs.FS, dir, packageRoot string) string {
