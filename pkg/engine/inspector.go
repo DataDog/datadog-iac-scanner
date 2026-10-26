@@ -256,9 +256,9 @@ type Inspector struct {
 	// releasePostEvalData drops OriginalData and LinesOriginalData after eval,
 	// once detectors and lazy line-info reparses no longer need them.
 	releasePostEvalData bool
-	// discardLineInfoAfterUse drops each file's line-info tree after line
-	// detection when releasePostEvalData is enabled (OriginalData stays until
-	// post-eval so the loader can rebuild).
+	// discardLineInfoAfterUse decodes a file's findings under one lease
+	// (decodeByFile, LeaseLineInfoOf) and drops its line-info trees when that
+	// lease closes. Set together with releasePostEvalData.
 	discardLineInfoAfterUse bool
 	// evalGcRelief enables the eval-phase forced-GC ticker; the scanner sets it
 	// from its live-heap gate (see SetEvalGcRelief).
@@ -309,9 +309,8 @@ func (c *Inspector) SetReleaseDocumentsAfterPayload(release bool) {
 }
 
 // SetReleasePostEvalData drops OriginalData and LinesOriginalData after the
-// eval+decode phases (see releasePostEvalFileData) and enables per-file
-// line-info tree discarding during decode. OriginalData must stay live
-// through decode so discarded line-info trees can be rebuilt by reparse.
+// eval+decode phases (see releasePostEvalFileData) and makes decode lease
+// each file once, dropping its line-info trees when that lease closes.
 func (c *Inspector) SetReleasePostEvalData(release bool) {
 	c.releasePostEvalData = release
 	c.discardLineInfoAfterUse = release
@@ -349,9 +348,6 @@ type QueryContext struct {
 	Query         *PreparedQuery
 	payload       *ast.Value
 	FlagEvaluator featureflags.FlagEvaluator
-	// discardLineInfoAfterUse drops each file's line-info tree after line
-	// detection for a finding (loader kept for reuse) when post-eval release is on.
-	discardLineInfoAfterUse bool
 }
 
 var (
@@ -475,6 +471,17 @@ type QueryResult struct {
 	vulnerabilities []model.Vulnerability
 	err             error
 	queryID         int
+	// pending, and the qCtx it is decoded with, are set only when line info
+	// is discarded after use, so every rule's findings in one file are decoded
+	// together. See decodeByFile.
+	qCtx    *QueryContext
+	pending *pendingDecode
+}
+
+// pendingDecode is one rule's evaluated results, not yet decoded.
+type pendingDecode struct {
+	results      rego.ResultSet
+	evalDuration time.Duration
 }
 
 // evalQuery loads and evaluates a single query, returning its result. Load and
@@ -511,24 +518,27 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	// is safe.
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
 	queryContext := &QueryContext{
-		Ctx:                     ctx,
-		scanID:                  scanID,
-		Files:                   filesMap,
-		Query:                   query,
-		payload:                 &payload,
-		FlagEvaluator:           c.flagEvaluator,
-		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
+		Ctx:           ctx,
+		scanID:        scanID,
+		Files:         filesMap,
+		Query:         query,
+		payload:       &payload,
+		FlagEvaluator: c.flagEvaluator,
 	}
 
 	evalStart := time.Now()
-	vuls, err := c.doRun(ctx, queryContext)
+	vuls, pending, err := c.doRun(ctx, queryContext)
 	evalDur := time.Since(evalStart)
 	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
 		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
 	if err == nil {
 		c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
 	}
-	return QueryResult{vulnerabilities: vuls, err: err, queryID: queryID}
+	result := QueryResult{vulnerabilities: vuls, pending: pending, err: err, queryID: queryID}
+	if pending != nil {
+		result.qCtx = queryContext
+	}
+	return result
 }
 
 func (c *Inspector) Inspect(
@@ -798,6 +808,12 @@ func (c *Inspector) executeQueries(
 	if err != nil {
 		return vulnerabilities, err
 	}
+	// One lease per file covers every rule that reports in it.
+	if c.discardLineInfoAfterUse {
+		if err := c.decodeByFile(ctx, results); err != nil {
+			return vulnerabilities, err
+		}
+	}
 
 	// Aggregate serially: processResult mutates shared state.
 	moduleVulns := make(map[string]int)
@@ -952,7 +968,7 @@ func queryIDsFromMetadata(ctx context.Context, metadata *model.QueryMetadata) (q
 	return queryID, legacyQueryID
 }
 
-func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, err error) {
+func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, pending *pendingDecode, err error) {
 	contextLogger := logger.FromContext(ctx)
 	defer func() {
 		if r := recover(); r != nil {
@@ -966,11 +982,11 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	queryID, legacyQueryID := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
 	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID); found {
 		if args, ok, err := ruleArgumentsValue(rc); err != nil {
-			return nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
+			return nil, nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
 		} else if ok {
 			payload, err = withRuleArguments(payload, args)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
@@ -988,10 +1004,10 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	qCtx.payload = nil
 	if err != nil {
 		if topdown.IsCancel(err) {
-			return nil, errors.Wrap(err, "query evaluation canceled (scan aborting)")
+			return nil, nil, errors.Wrap(err, "query evaluation canceled (scan aborting)")
 		}
 
-		return nil, errors.Wrap(err, "failed to evaluate query")
+		return nil, nil, errors.Wrap(err, "failed to evaluate query")
 	}
 	if c.enableCoverageReport && cov != nil {
 		module, parseErr := ast.ParseModuleWithOpts(
@@ -1000,7 +1016,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			ast.ParserOptions{RegoVersion: ast.RegoV1},
 		)
 		if parseErr != nil {
-			return nil, errors.Wrap(parseErr, "failed to parse coverage module")
+			return nil, nil, errors.Wrap(parseErr, "failed to parse coverage module")
 		}
 
 		c.coverageReport = cov.Report(map[string]*ast.Module{
@@ -1008,23 +1024,31 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 		})
 	}
 
+	// Decoded with every other rule's findings in the same file, so the file is
+	// parsed once for all of them. See decodeByFile.
+	if c.discardLineInfoAfterUse {
+		return nil, &pendingDecode{results: results, evalDuration: evalDuration}, nil
+	}
+
 	decodeStart := time.Now()
 	vulns, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
-	decodeDuration := time.Since(decodeStart)
+	logSlowQuery(ctx, qCtx, evalDuration, time.Since(decodeStart))
+	return vulns, nil, err
+}
 
-	// Flag slow rules so they can be debugged/optimized later
-	if total := evalDuration + decodeDuration; total > slowQueryWarnThreshold {
+func logSlowQuery(ctx context.Context, qCtx *QueryContext, eval, decode time.Duration) {
+	if total := eval + decode; total > slowQueryWarnThreshold {
+		contextLogger := logger.FromContext(ctx)
 		contextLogger.Warn().
 			Str("event", "slow_rule").
 			Str("queryID", qCtx.Query.Metadata.Query).
 			Str("platform", qCtx.Query.Metadata.Platform).
-			Int64("evalMs", evalDuration.Milliseconds()).
-			Int64("decodeMs", decodeDuration.Milliseconds()).
+			Int64("evalMs", eval.Milliseconds()).
+			Int64("decodeMs", decode.Milliseconds()).
 			Int64("totalMs", total.Milliseconds()).
 			Int64("thresholdMs", slowQueryWarnThreshold.Milliseconds()).
 			Msg("slow rule")
 	}
-	return vulns, err
 }
 
 func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.Value) ast.Value {
@@ -1405,7 +1429,167 @@ func (cons *payloadHashCons) stringTerm(s string) *ast.Term {
 	return t
 }
 
-// DecodeQueryResults decodes the results into []model.Vulnerability
+type groupedDecodeItem struct {
+	query  int
+	path   string
+	docIdx int
+	file   *model.FileMetadata
+	value  interface{}
+}
+
+// decodeGroup is every rule's findings in one file, and what decoding them
+// produced, keyed by rule.
+type decodeGroup struct {
+	items []groupedDecodeItem
+	vulns map[int][]model.Vulnerability
+	spent map[int]time.Duration
+	errs  map[int]error
+}
+
+// groupedDecodeItems splits every rule's pending findings into one group per
+// file. Groups are in path order; a group's items are in rule, then document
+// index order, so concatenating groups keeps each rule's findings ordered by
+// file then document. Findings in one document keep the rule's order.
+func groupedDecodeItems(results []QueryResult) []*decodeGroup {
+	var items []groupedDecodeItem
+	for q := range results {
+		if results[q].err != nil || results[q].pending == nil {
+			continue
+		}
+		got, err := resultItems(results[q].pending.results)
+		results[q].pending.results = nil
+		if err != nil {
+			results[q].err = err
+			continue
+		}
+		qCtx := results[q].qCtx
+		for _, v := range got {
+			id := resultDocumentID(v)
+			fm := qCtx.Files[id]
+			path, docIdx := id, 0
+			if fm != nil && fm.FilePath != "" {
+				path, docIdx = fm.FilePath, fm.LineInfoDocIndex()
+			}
+			items = append(items, groupedDecodeItem{query: q, path: path, docIdx: docIdx, file: fm, value: v})
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].path != items[j].path {
+			return items[i].path < items[j].path
+		}
+		if items[i].query != items[j].query {
+			return items[i].query < items[j].query
+		}
+		return items[i].docIdx < items[j].docIdx
+	})
+	var groups []*decodeGroup
+	for start := 0; start < len(items); {
+		end := start + 1
+		for end < len(items) && items[end].path == items[start].path {
+			end++
+		}
+		groups = append(groups, &decodeGroup{
+			items: items[start:end:end],
+			vulns: map[int][]model.Vulnerability{},
+			spent: map[int]time.Duration{},
+			errs:  map[int]error{},
+		})
+		start = end
+	}
+	return groups
+}
+
+// decodeByFile decodes every rule's findings one file at a time, under one
+// lease per file. A canceled scan errors every rule still pending.
+func (c *Inspector) decodeByFile(ctx context.Context, results []QueryResult) error {
+	groups := groupedDecodeItems(results)
+	err := utils.ForEach(ctx, groups, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
+		func(ctx context.Context, g *decodeGroup, _ int) error {
+			return c.decodeFileGroup(ctx, results, g)
+		})
+
+	spent := make([]time.Duration, len(results))
+	for _, g := range groups {
+		for q, e := range g.errs {
+			if results[q].err == nil {
+				results[q].err = e
+			}
+		}
+		for q, v := range g.vulns {
+			results[q].vulnerabilities = append(results[q].vulnerabilities, v...)
+		}
+		for q, d := range g.spent {
+			spent[q] += d
+		}
+	}
+	for q := range results {
+		if results[q].pending == nil {
+			continue
+		}
+		if err != nil && results[q].err == nil {
+			results[q].err = errors.Wrap(err, "decoding canceled")
+		}
+		logSlowQuery(ctx, results[q].qCtx, results[q].pending.evalDuration, spent[q])
+		results[q].pending = nil
+	}
+	if err != nil {
+		return err
+	}
+	if len(groups) > 0 {
+		contextLogger := logger.FromContext(ctx)
+		// line_info_files counts file groups, including files with no line-info source.
+		contextLogger.Info().
+			Int("line_info_files", len(groups)).
+			Int("rules", len(results)).
+			Msg("line info parsed once per file across rules")
+	}
+	return nil
+}
+
+func (c *Inspector) decodeFileGroup(ctx context.Context, results []QueryResult, g *decodeGroup) error {
+	files := make([]*model.FileMetadata, 0, len(g.items))
+	for i := range g.items {
+		files = append(files, g.items[i].file)
+	}
+	lease := model.LeaseLineInfoOf(files)
+	defer lease.Close()
+	for i := range g.items {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		it := &g.items[i]
+		c.decodeGroupedItem(ctx, results, g, it)
+		it.value = nil
+	}
+	g.items = nil
+	return nil
+}
+
+func (c *Inspector) decodeGroupedItem(ctx context.Context, results []QueryResult, g *decodeGroup, it *groupedDecodeItem) {
+	q := it.query
+	qCtx := results[q].qCtx
+	defer func() {
+		if r := recover(); r != nil {
+			g.errs[q] = fmt.Errorf("panic: %v\n%s", r, string(debug.Stack()))
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Err(g.errs[q]).Msgf(
+				"Recovered from panic during query '%s' run. ", qCtx.Query.Metadata.Query)
+		}
+	}()
+	if g.errs[q] != nil {
+		return
+	}
+	begin := time.Now()
+	vulnerability, _ := getVulnerabilitiesFromQuery(ctx, qCtx, c, it.value, results[q].pending.evalDuration)
+	g.spent[q] += time.Since(begin)
+	if vulnerability != nil {
+		g.vulns[q] = append(g.vulns[q], *vulnerability)
+	}
+}
+
+// DecodeQueryResults decodes the results into []model.Vulnerability. The
+// line-info trees it reads are kept for the report, so each file's shared
+// parse is pinned rather than reparsed for every document.
 func (c *Inspector) DecodeQueryResults(
 	ctx context.Context,
 	qCtx *QueryContext,
@@ -1417,15 +1601,10 @@ func (c *Inspector) DecodeQueryResults(
 	if err != nil {
 		return nil, err
 	}
-	if qCtx.discardLineInfoAfterUse {
-		queryResultItems = groupResultsByFile(qCtx, queryResultItems)
-	}
 
 	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
 	failedDetectLine := false
 	canceled := false
-	lineInfo := lineInfoWindow{qCtx: qCtx}
-	defer lineInfo.close()
 decodeLoop:
 	for _, queryResultItem := range queryResultItems {
 		select {
@@ -1435,7 +1614,9 @@ decodeLoop:
 			canceled = true
 			break decodeLoop
 		default:
-			lineInfo.advance(resultDocumentID(queryResultItem))
+			if fm := qCtx.Files[resultDocumentID(queryResultItem)]; fm != nil {
+				fm.PinLineInfo()
+			}
 			vulnerability, aux := getVulnerabilitiesFromQuery(ctx, qCtx, c, queryResultItem, queryDuration)
 			if aux {
 				failedDetectLine = aux
@@ -1458,92 +1639,6 @@ decodeLoop:
 	}
 
 	return vulnerabilities, nil
-}
-
-// groupResultsByFile orders results by file path, then document id, so a
-// decode pass reads each file's documents together and parses the file once.
-// Stable keeps the order the query found one document's results in.
-func groupResultsByFile(qCtx *QueryContext, items []interface{}) []interface{} {
-	type keyed struct {
-		path, id string
-		item     interface{}
-	}
-	sorted := make([]keyed, len(items))
-	for i, item := range items {
-		id := resultDocumentID(item)
-		sorted[i] = keyed{id: id, item: item}
-		if fm := qCtx.Files[id]; fm != nil {
-			sorted[i].path = fm.FilePath
-		}
-	}
-	sort.SliceStable(sorted, func(i, j int) bool {
-		if sorted[i].path != sorted[j].path {
-			return sorted[i].path < sorted[j].path
-		}
-		return sorted[i].id < sorted[j].id
-	})
-	for i := range sorted {
-		items[i] = sorted[i].item
-	}
-	return items
-}
-
-// lineInfoWindow drops the line-info trees of a file's documents once a
-// decode pass has left the file, releasing the one lease on the parse those
-// documents share. Deferring one close lets a panic unwinding through the
-// decode loop still release it.
-type lineInfoWindow struct {
-	qCtx  *QueryContext
-	path  string
-	docs  []*model.FileMetadata
-	seen  map[string]struct{}
-	lease *model.LineInfoLease
-}
-
-func (w *lineInfoWindow) advance(nextID string) {
-	if nextID == "" {
-		return
-	}
-	fm := w.qCtx.Files[nextID]
-	// Documents of one file share its path, and the grouping above makes
-	// them contiguous, so one lease covers all of them.
-	if fm != nil && fm.FilePath != "" && fm.FilePath == w.path {
-		if _, ok := w.seen[nextID]; !ok {
-			w.seen[nextID] = struct{}{}
-			w.docs = append(w.docs, fm)
-		}
-		return
-	}
-	if !w.qCtx.discardLineInfoAfterUse {
-		// The trees are kept for the report, so hold the shared parse instead
-		// of reparsing it for every document. See LineInfoSource.Pin.
-		if fm != nil {
-			fm.PinLineInfo()
-		}
-		return
-	}
-	// Lease the next file before releasing the current one, so two groups
-	// that share a parse never see it dropped between them.
-	var lease *model.LineInfoLease
-	if fm != nil {
-		lease = fm.LeaseLineInfo()
-	}
-	w.close()
-	w.path, w.lease = "", lease
-	w.seen = nil
-	if fm != nil {
-		w.path = fm.FilePath
-		w.docs = []*model.FileMetadata{fm}
-		w.seen = map[string]struct{}{nextID: {}}
-	}
-}
-
-func (w *lineInfoWindow) close() {
-	for _, fm := range w.docs {
-		fm.DiscardLineInfoDocument()
-	}
-	w.lease.Close()
-	w.path, w.docs, w.seen, w.lease = "", nil, nil, nil
 }
 
 // resultDocumentID returns the file id a result item points at.

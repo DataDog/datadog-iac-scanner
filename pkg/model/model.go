@@ -223,6 +223,7 @@ type FileMetadata struct {
 	// shared with the file's other documents and their copies. Unlike
 	// lineInfo, a copy keeps it once its tree is loaded.
 	lineInfoSource *LineInfoSource `json:"-"`
+	lineInfoDocIdx int
 }
 
 // SetLineInfoSource makes f read its line info from document docIdx of
@@ -230,7 +231,14 @@ type FileMetadata struct {
 func (f *FileMetadata) SetLineInfoSource(src *LineInfoSource, docIdx int) {
 	f.lineInfo = &lineInfoState{src: src, docIdx: docIdx}
 	f.lineInfoSource = src
+	f.lineInfoDocIdx = docIdx
 	f.linesLazy = src.sharedLines()
+}
+
+// LineInfoDocIndex is f's position among its file's documents, kept by
+// copies. Zero for a file that has no line-info source.
+func (f *FileMetadata) LineInfoDocIndex() int {
+	return f.lineInfoDocIdx
 }
 
 // SetReleaseOriginalDataAfterLineInfo instructs EnsureLineInfoDocument to

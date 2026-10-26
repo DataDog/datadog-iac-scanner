@@ -1612,37 +1612,104 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 	assert.False(t, cons.pointerMemoMatches(memo, map[string]interface{}{"k": struct{ X int }{}}))
 }
 
-func TestDecodeQueryResults_parsesAMultiDocumentFileOnce(t *testing.T) {
-	var parses atomic.Int32
-	src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, error) {
-		parses.Add(1)
-		return []model.Document{{"k": "a"}, {"k": "b"}}, nil
-	})
+// decodeByFileFixture is two rules reporting in a two-document file and a
+// one-document file, with each file's parses counted. Document IDs sort
+// against document order, as random IDs may. onDecode, when set, runs at the
+// start of every decode.
+func decodeByFileFixture(
+	t *testing.T, workers int, onDecode func(),
+) (*Inspector, []QueryResult, map[string]*model.FileMetadata, map[string]*atomic.Int32) {
+	t.Helper()
 	files := map[string]*model.FileMetadata{}
-	items := make([]interface{}, 2)
-	for i, id := range []string{"a", "b"} {
-		fm := &model.FileMetadata{ID: id, FilePath: "all.yaml", OriginalData: "a: 1\n"}
-		fm.SetLineInfoSource(src, i)
-		files[id] = fm
-		items[1-i] = map[string]interface{}{"documentId": id}
+	parses := map[string]*atomic.Int32{}
+	var items []interface{}
+	for _, path := range []string{"b.yaml", "a.yaml"} {
+		count := &atomic.Int32{}
+		parses[path] = count
+		docs := map[string]int{"a.yaml": 2, "b.yaml": 1}[path]
+		src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, error) {
+			count.Add(1)
+			return make([]model.Document, docs), nil
+		})
+		for i := docs - 1; i >= 0; i-- {
+			id := fmt.Sprintf("%s#%d", path, 9-i)
+			fm := &model.FileMetadata{ID: id, FilePath: path, OriginalData: "a: 1\n"}
+			fm.SetLineInfoSource(src, i)
+			files[id] = fm
+			items = append(items, map[string]interface{}{"documentId": id})
+		}
 	}
 	ins := newTestInspector(t, inspectorOpts{
+		numWorkers: workers,
 		vb: func(ctx context.Context, qCtx *QueryContext, _ Tracker, v interface{},
 			_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+			if onDecode != nil {
+				onDecode()
+			}
 			file := qCtx.Files[v.(map[string]interface{})["documentId"].(string)]
 			err := file.UseLineInfoDocument(ctx, func(map[string]interface{}) error { return nil })
 			return &model.Vulnerability{FileID: file.ID}, err
 		},
 	})
-	qCtx := &QueryContext{
-		Files: files, Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}},
-		discardLineInfoAfterUse: true,
+	qCtx := &QueryContext{Files: files, Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}}}
+	results := make([]QueryResult, 2)
+	for q := range results {
+		results[q] = QueryResult{qCtx: qCtx, pending: &pendingDecode{results: rego.ResultSet{{
+			Bindings: map[string]interface{}{"result": append([]interface{}(nil), items...)},
+		}}}}
 	}
-	results := rego.ResultSet{{Bindings: map[string]interface{}{"result": items}}}
-	got, err := ins.DecodeQueryResults(context.Background(), qCtx, context.Background(), results, 0)
-	require.NoError(t, err)
-	require.Len(t, got, 2)
-	require.Equal(t, int32(1), parses.Load())
+	return ins, results, files, parses
+}
+
+func TestDecodeByFile_parsesEachFileOnceAcrossRules(t *testing.T) {
+	ins, results, files, parses := decodeByFileFixture(t, 2, nil)
+	require.NoError(t, ins.decodeByFile(context.Background(), results))
+	for path, count := range parses {
+		require.Equal(t, int32(1), count.Load(), path)
+	}
+	for q := range results {
+		require.NoError(t, results[q].err)
+		require.Nil(t, results[q].pending)
+		var order []string
+		for _, v := range results[q].vulnerabilities {
+			order = append(order, v.FileID)
+		}
+		require.Equal(t, []string{"a.yaml#9", "a.yaml#8", "b.yaml#9"}, order)
+	}
+	for _, f := range files {
+		require.Nil(t, f.LineInfoDocument)
+	}
+}
+
+// A scan canceled partway through decode must not start another decode, even
+// within the file being decoded, nor parse another file.
+func TestDecodeByFile_stopsDecodingOnceTheScanIsCanceled(t *testing.T) {
+	const cancelAfter = 2
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var calls, late atomic.Int32
+	var canceled atomic.Bool
+	ins, results, files, parses := decodeByFileFixture(t, 1, func() {
+		if canceled.Load() {
+			late.Add(1)
+		}
+		if calls.Add(1) == cancelAfter {
+			cancel()
+			canceled.Store(true)
+		}
+	})
+	require.ErrorIs(t, ins.decodeByFile(ctx, results), context.Canceled)
+	require.Equal(t, int32(cancelAfter), calls.Load())
+	require.Zero(t, late.Load())
+	var parsed int32
+	for _, count := range parses {
+		parsed += count.Load()
+	}
+	require.Equal(t, int32(1), parsed)
+	for q := range results {
+		require.ErrorIs(t, results[q].err, context.Canceled)
+		require.Nil(t, results[q].pending)
+	}
 	for _, f := range files {
 		require.Nil(t, f.LineInfoDocument)
 	}
@@ -1688,18 +1755,23 @@ func TestDecodeQueryResults_LineInfoCostPerFindingIsFlatInDocuments(t *testing.T
 				return &model.Vulnerability{FileID: file.ID}, err
 			},
 		})
-		qCtx := &QueryContext{
-			Files: files, Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}},
-			discardLineInfoAfterUse: true,
-		}
+		qCtx := &QueryContext{Files: files, Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}}}
 		runtime.GC()
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
-		for range rules {
-			results := rego.ResultSet{{Bindings: map[string]interface{}{"result": append([]interface{}(nil), items...)}}}
-			got, err := ins.DecodeQueryResults(context.Background(), qCtx, context.Background(), results, 0)
-			require.NoError(t, err)
-			require.Len(t, got, documents)
+		pending := make([]QueryResult, rules)
+		for q := range rules {
+			pending[q] = QueryResult{
+				qCtx: qCtx,
+				pending: &pendingDecode{results: rego.ResultSet{{Bindings: map[string]interface{}{
+					"result": append([]interface{}(nil), items...),
+				}}}},
+			}
+		}
+		require.NoError(t, ins.decodeByFile(context.Background(), pending))
+		for q := range rules {
+			require.NoError(t, pending[q].err)
+			require.Len(t, pending[q].vulnerabilities, documents)
 		}
 		runtime.GC()
 		runtime.GC()
@@ -1716,14 +1788,15 @@ func TestDecodeQueryResults_LineInfoCostPerFindingIsFlatInDocuments(t *testing.T
 	for i, n := range sizes {
 		var parses int32
 		allocated[i], retained[i], findings[i], parses = decode(n)
-		require.Equal(t, int32(rules), parses, "%d documents: one parse per decode pass", n)
+		require.Equal(t, int32(1), parses, "%d documents, %d rules: the file must be parsed once", n, rules)
 	}
 	perFinding := func(v []int64, i, j int) float64 {
 		return float64(v[j]-v[i]) / float64(findings[j]-findings[i])
 	}
 	last := len(sizes) - 1
 	first, final := perFinding(allocated, 0, 1), perFinding(allocated, last-1, last)
-	if final > maxGrowth*first {
+	// Below the per-finding budget, a small ratio is measurement noise.
+	if final > maxGrowth*max(first, float64(allocBudgetPerFinding)) {
 		t.Errorf("allocated bytes per finding grew from %.1f KiB to %.1f KiB (%.2fx)", first/1024, final/1024, final/first)
 	}
 	if final > allocBudgetPerFinding {

@@ -151,3 +151,52 @@ func (l *LineInfoLease) Close() {
 	l.source.release()
 	l.source = nil
 }
+
+// LineInfoLeases holds one lease on each distinct line-info source of a set
+// of files, such as the documents of one file and their copies.
+type LineInfoLeases struct {
+	files  []*FileMetadata
+	leases []*LineInfoLease
+}
+
+// LeaseLineInfoOf leases each distinct line-info source of files once.
+func LeaseLineInfoOf(files []*FileMetadata) *LineInfoLeases {
+	l := &LineInfoLeases{}
+	seenFiles := map[*FileMetadata]struct{}{}
+	seenSources := map[*LineInfoSource]struct{}{}
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		if _, ok := seenFiles[f]; ok {
+			continue
+		}
+		seenFiles[f] = struct{}{}
+		l.files = append(l.files, f)
+		if f.lineInfoSource == nil {
+			continue
+		}
+		if _, ok := seenSources[f.lineInfoSource]; ok {
+			continue
+		}
+		seenSources[f.lineInfoSource] = struct{}{}
+		l.leases = append(l.leases, f.lineInfoSource.Lease())
+	}
+	return l
+}
+
+// Close drops the files' line-info trees, then releases the leases, so a
+// source's parse is dropped once no file still holds a tree from it.
+// Idempotent.
+func (l *LineInfoLeases) Close() {
+	if l == nil {
+		return
+	}
+	for _, f := range l.files {
+		f.DiscardLineInfoDocument()
+	}
+	for _, lease := range l.leases {
+		lease.Close()
+	}
+	l.files, l.leases = nil, nil
+}
