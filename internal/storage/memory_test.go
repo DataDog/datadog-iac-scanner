@@ -272,6 +272,41 @@ func TestMemoryStorage_ReportsTheLastFindingOfEachIdentity(t *testing.T) {
 	require.Equal(t, got, again, "deduplicating an already unique collection leaves it as it is")
 }
 
+// The first SaveVulnerabilities retains the caller's backing array but caps
+// capacity so a later append cannot write past the caller's length. In-place
+// compaction may reorder the caller's logical contents.
+func TestMemoryStorage_FirstBatchDoesNotShareCallerCapacity(t *testing.T) {
+	finding := func(name, searchKey string) model.Vulnerability {
+		return model.Vulnerability{
+			FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
+			ResourceType: "aws_s3_bucket", ResourceName: name, SearchKey: searchKey,
+		}
+	}
+	buf := make([]model.Vulnerability, 8)
+	buf[0] = finding("replica", "first")
+	buf[1] = finding("replica", "last")
+	sentinel := finding("sentinel", "unused")
+	buf[2] = sentinel
+	caller := buf[:2]
+
+	m := NewMemoryStorage()
+	require.NoError(t, m.SaveVulnerabilities(context.Background(), caller))
+
+	got, err := m.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Equal(t, []model.Vulnerability{finding("replica", "last")}, got)
+	require.Equal(t, got, caller[:len(got)], "in-place compaction mutates the caller's logical contents")
+
+	require.NoError(t, m.SaveVulnerabilities(context.Background(), []model.Vulnerability{
+		finding("other", "batch"),
+	}))
+	require.Equal(t, sentinel, buf[2], "a later append must not write into the caller's spare capacity")
+
+	got, err = m.GetVulnerabilities(context.Background(), "")
+	require.NoError(t, err)
+	require.Equal(t, []model.Vulnerability{finding("replica", "last"), finding("other", "batch")}, got)
+}
+
 // TestNewMemoryStorage tests the functions [NewMemoryStorage()]
 func TestNewMemoryStorage(t *testing.T) {
 	tests := []struct {

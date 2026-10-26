@@ -46,10 +46,11 @@ var scanReadBufferPool = sync.Pool{
 	},
 }
 
-// Storage is the interface that wraps following basic methods: SaveFile, SaveVulnerabilities, and GetVulnerabilities
-// SaveFile should append metadata to a file
-// SaveVulnerabilities should append vulnerabilities list to current storage
-// GetVulnerabilities should returns all vulnerabilities associated to a scan ID
+// Storage holds scan files and findings.
+//
+// SaveVulnerabilities may retain the slice and reorder it in place; the caller
+// must not use the slice afterward. GetVulnerabilities returns storage's own
+// slice; the caller must not mutate or retain it.
 type Storage interface {
 	SaveFile(ctx context.Context, metadata *model.FileMetadata) error
 	SaveVulnerabilities(ctx context.Context, vulnerabilities []model.Vulnerability) error

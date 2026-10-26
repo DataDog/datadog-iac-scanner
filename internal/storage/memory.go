@@ -43,10 +43,8 @@ func (m *MemoryStorage) SaveVulnerabilities(_ context.Context, vulnerabilities [
 	defer memoryMu.Unlock()
 	memoryMu.Lock()
 	if len(m.vulnerabilities) == 0 {
-		// Callers hand over the findings of a whole scan and do not use the
-		// slice again, so the first batch is taken as is rather than copied,
-		// which would hold every finding twice.
-		m.vulnerabilities = vulnerabilities
+		// Cap so a later append cannot write into the caller's spare capacity.
+		m.vulnerabilities = vulnerabilities[:len(vulnerabilities):len(vulnerabilities)]
 		return nil
 	}
 	m.vulnerabilities = append(m.vulnerabilities, vulnerabilities...)
@@ -65,16 +63,13 @@ func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model
 // compacts in place so the findings are not held twice, which leaves an
 // already deduplicated collection as it is.
 func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
-	keys := make([]string, len(m.vulnerabilities))
 	last := make(map[string]int, len(m.vulnerabilities))
 	for i := range m.vulnerabilities {
-		v := &m.vulnerabilities[i]
-		keys[i] = model.FindingIdentity(v)
-		last[keys[i]] = i
+		last[model.FindingIdentity(&m.vulnerabilities[i])] = i
 	}
 	unique := m.vulnerabilities[:0]
 	for i := range m.vulnerabilities {
-		if last[keys[i]] == i {
+		if last[model.FindingIdentity(&m.vulnerabilities[i])] == i {
 			unique = append(unique, m.vulnerabilities[i])
 		}
 	}
