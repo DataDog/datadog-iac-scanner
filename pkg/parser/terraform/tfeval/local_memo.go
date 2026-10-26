@@ -9,6 +9,7 @@ package tfeval
 import (
 	"strconv"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -22,6 +23,9 @@ const (
 	rootPath      = "path"
 	rootTerraform = "terraform"
 )
+
+// localMemoCap bounds the local values shared across module instances.
+const localMemoCap = 1024
 
 // localMemoKey identifies a local's value by its expression and the values it
 // reads. The expression pins the module directory its functions resolve files
@@ -39,14 +43,27 @@ type localReads struct {
 	refs      []hcl.Traversal
 }
 
+// pendingLocal is one evaluation of an expression that has not been seen from
+// another instance with the same inputs. A second instance promotes it into
+// localMemo. The same instance, including its prepass and its main pass, does
+// not: that is one evaluation, and the inputs are not hashed until a second
+// instance exists. key is the digest of inputs once one was computed.
+type pendingLocal struct {
+	addr   string
+	inputs map[string]cty.Value
+	keyed  bool
+	key    inputsDigest
+	value  cty.Value
+}
+
 // localValue evaluates a local, sharing the value with every evaluation of the
 // same expression that reads the same values.
 //
 // A module loop hands every instance the same configuration, and a local
-// derived from it alone is the same in each instance. Evaluating it once per
-// instance repeats the work, and every instance's scope keeps its own copy
-// until the root is merged: memory grows with the instances times the size of
-// what the configuration is reshaped into.
+// derived from it alone is the same in each instance. The value is kept after
+// a second instance reads the same inputs. A value that changes with the
+// instance is evaluated and dropped, and the inputs are hashed only once a
+// second instance makes a hit possible.
 func (e *Evaluator) localValue(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
 	reads := e.localReadsOf(expr)
 	if !reads.shareable {
@@ -56,16 +73,97 @@ func (e *Evaluator) localValue(expr hclsyntax.Expression, ctx *hcl.EvalContext) 
 	if !ok {
 		return evalLocal(expr, ctx)
 	}
-	key := localMemoKey{expr: expr, inputs: e.keyMemo.inputsKey(inputs)}
-	if v, hit := e.localMemo[key]; hit {
+	v, hit, next := e.reuseLocal(expr, inputs)
+	if hit {
 		return v
 	}
-	v := evalLocal(expr, ctx)
+	next.value = evalLocal(expr, ctx)
+	e.rememberLocal(expr, &next)
+	return next.value
+}
+
+// reuseLocal returns a local already evaluated for these inputs. The same
+// instance reuses its pending value without hashing. An expression already
+// promoted probes localMemo. A different instance with the same inputs keeps
+// the pending value for the instances after it. On a miss it returns the
+// pending entry to record for these inputs, with the digest if one was taken.
+func (e *Evaluator) reuseLocal(expr hclsyntax.Expression, inputs map[string]cty.Value) (cty.Value, bool, pendingLocal) {
+	next := pendingLocal{addr: e.evalAddr, inputs: inputs}
+	p, pending := e.localPending[expr]
+	if pending && p.addr == e.evalAddr && sameInputs(p.inputs, inputs) {
+		return p.value, true, next
+	}
+	if _, promoted := e.localPromoted[expr]; promoted {
+		next.key, next.keyed = e.keyMemo.inputsKey(inputs), true
+		if v, hit := e.localMemo[localMemoKey{expr: expr, inputs: next.key}]; hit {
+			return v, true, next
+		}
+	}
+	if !pending || p.addr == e.evalAddr {
+		return cty.NilVal, false, next
+	}
+	if !next.keyed {
+		next.key, next.keyed = e.keyMemo.inputsKey(inputs), true
+	}
+	if !p.keyed {
+		p.key, p.keyed = e.keyMemo.inputsKey(p.inputs), true
+		e.localPending[expr] = p
+	}
+	if p.key != next.key {
+		return cty.NilVal, false, next
+	}
+	if e.promoteLocal(expr, next.key, p.value) {
+		delete(e.localPending, expr)
+	}
+	return p.value, true, next
+}
+
+// promoteLocal shares a value with the instances after the second one. A full
+// localMemo keeps the pending entry instead, which later instances still
+// compare against.
+func (e *Evaluator) promoteLocal(expr hclsyntax.Expression, key inputsDigest, v cty.Value) bool {
+	if len(e.localMemo) >= localMemoCap {
+		return false
+	}
 	if e.localMemo == nil {
 		e.localMemo = make(map[localMemoKey]cty.Value)
+		e.localPromoted = make(map[hclsyntax.Expression]struct{})
 	}
-	e.localMemo[key] = v
-	return v
+	e.localMemo[localMemoKey{expr: expr, inputs: key}] = v
+	e.localPromoted[expr] = struct{}{}
+	return true
+}
+
+// sameInputs reports whether two local-input maps are the values one instance
+// already evaluated. A collection is the same only when it shares storage, so
+// a module that runs once neither hashes nor walks it.
+func sameInputs(a, b map[string]cty.Value) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, av := range a {
+		bv, ok := b[k]
+		if !ok {
+			return false
+		}
+		if isCollectionOrStructural(av.Type()) || isCollectionOrStructural(bv.Type()) {
+			if !sharesStorage(av, bv) {
+				return false
+			}
+			continue
+		}
+		if !av.RawEquals(bv) {
+			return false
+		}
+	}
+	return true
+}
+
+func (e *Evaluator) rememberLocal(expr hclsyntax.Expression, p *pendingLocal) {
+	if e.localPending == nil {
+		e.localPending = make(map[hclsyntax.Expression]pendingLocal)
+	}
+	e.localPending[expr] = *p
 }
 
 func evalLocal(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
@@ -104,7 +202,7 @@ func (e *Evaluator) localReadsOf(expr hclsyntax.Expression) localReads {
 // step of its traversal, so a local reading one attribute of a configuration
 // is keyed by that attribute rather than the whole configuration.
 func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Value, bool) {
-	path, ok := contextVariable(ctx, rootPath)
+	path, ok := ctyutil.LookupVariable(ctx, rootPath)
 	if !ok || path.IsMarked() || !path.IsWhollyKnown() || !path.Type().IsObjectType() {
 		return nil, false
 	}
@@ -116,15 +214,21 @@ func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Val
 	}
 	for _, t := range refs {
 		root := t.RootName()
-		v, ok := contextVariable(ctx, root)
+		v, ok := ctyutil.LookupVariable(ctx, root)
 		if !ok {
 			inputs[root+"\x00!"] = cty.True
 			continue
 		}
 		name := root
 		for _, step := range t[1:] {
-			next, label, ok := traverseStatic(v, step)
-			if !ok {
+			next, label, found := traverseStatic(v, step)
+			if found == stepAbsent {
+				// A step known to be absent fails the same whatever else v holds, so
+				// key the read by the absence rather than by v.
+				v, name = cty.True, name+"\x00"+label+"\x00!"
+				break
+			}
+			if found != stepFound {
 				break
 			}
 			v, name = next, name+"\x00"+label
@@ -139,29 +243,39 @@ func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Val
 	return inputs, true
 }
 
+type stepResult int
+
+const (
+	stepUnresolved stepResult = iota
+	stepFound
+	// stepAbsent is a step v is known to lack, which fails the same whatever
+	// else v holds.
+	stepAbsent
+)
+
 // traverseStatic applies an attribute or literal index step to v, when v is a
 // known value the step resolves in.
-func traverseStatic(v cty.Value, step hcl.Traverser) (cty.Value, string, bool) {
+func traverseStatic(v cty.Value, step hcl.Traverser) (cty.Value, string, stepResult) {
 	key, ok := stepKey(step)
 	if !ok || v.IsMarked() || !v.IsKnown() || v.IsNull() {
-		return cty.NilVal, "", false
+		return cty.NilVal, "", stepUnresolved
 	}
 	t := v.Type()
 	switch {
 	case key.Type() == cty.String && t.IsObjectType():
 		name := key.AsString()
 		if !t.HasAttribute(name) {
-			return cty.NilVal, "", false
+			return cty.NilVal, strconv.Quote(name), stepAbsent
 		}
-		return v.GetAttr(name), strconv.Quote(name), true
+		return v.GetAttr(name), strconv.Quote(name), stepFound
 	case key.Type() == cty.String && t.IsMapType(),
 		key.Type() == cty.Number && (t.IsListType() || t.IsTupleType()):
 		if !v.HasIndex(key).True() {
-			return cty.NilVal, "", false
+			return cty.NilVal, stepLabel(key), stepAbsent
 		}
-		return v.Index(key), stepLabel(key), true
+		return v.Index(key), stepLabel(key), stepFound
 	}
-	return cty.NilVal, "", false
+	return cty.NilVal, "", stepUnresolved
 }
 
 // stepKey is the key an attribute or literal index step reads.
@@ -183,14 +297,4 @@ func stepLabel(key cty.Value) string {
 		return strconv.Quote(key.AsString())
 	}
 	return "[" + key.AsBigFloat().Text('f', -1) + "]"
-}
-
-// contextVariable looks name up through ctx and its parents.
-func contextVariable(ctx *hcl.EvalContext, name string) (cty.Value, bool) {
-	for c := ctx; c != nil; c = c.Parent() {
-		if v, ok := c.Variables[name]; ok {
-			return v, true
-		}
-	}
-	return cty.NilVal, false
 }

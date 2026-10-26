@@ -194,10 +194,18 @@ type Evaluator struct {
 	cache   map[evalCacheKey]*evalCacheEntry
 	keyMemo keyMemo
 	// localMemo shares local values across the module evaluations reading the
-	// same values; localReads is what each local expression reads. Both follow
-	// the evaluation cache's lifetime.
-	localMemo  map[localMemoKey]cty.Value
-	localReads map[hclsyntax.Expression]localReads
+	// same values. localPending holds a value until the same expression and
+	// inputs are evaluated again. localPromoted holds the expressions with a
+	// value in localMemo, the only ones whose inputs are hashed to probe it.
+	// localReads is what each local expression reads. All follow the
+	// evaluation cache's lifetime.
+	localMemo     map[localMemoKey]cty.Value
+	localPending  map[hclsyntax.Expression]pendingLocal
+	localPromoted map[hclsyntax.Expression]struct{}
+	localReads    map[hclsyntax.Expression]localReads
+	// evalAddr is the module instance whose locals are being evaluated.
+	// A pending local is shared only with a different address.
+	evalAddr string
 	// When set, non-local module sources resolve here and recurse with caller inputs.
 	remoteResolver RemoteResolver
 
@@ -533,6 +541,8 @@ func (e *Evaluator) ReleaseEvalCache() {
 // ReleaseLocalMemo drops local values shared across module instances.
 func (e *Evaluator) ReleaseLocalMemo() {
 	e.localMemo = nil
+	e.localPending = nil
+	e.localPromoted = nil
 }
 
 // LocalMemoSize, KeyMemoSize and EvalCacheSize report what a root left retained.
@@ -591,6 +601,9 @@ func (e *Evaluator) evaluate(
 	if err := e.evaluationStop(ctx, dir, depth, visiting); err != nil {
 		return nil, nil, err
 	}
+	prevAddr := e.evalAddr
+	e.evalAddr = addr
+	defer func() { e.evalAddr = prevAddr }()
 
 	cacheKey := evalCacheKey{
 		dir:         dir,

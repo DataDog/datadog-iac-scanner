@@ -132,6 +132,8 @@ type inputsDigest struct{ a, b uint64 }
 // value so that storage cannot be reused under the same identity.
 type keyMemo struct {
 	entries map[collectionID]keyMemoEntry
+	// digestGen counts inputsKey calls so a local is hashed only once it is shared.
+	digestGen uint64
 }
 
 type keyMemoEntry struct {
@@ -144,6 +146,9 @@ type keyMemoEntry struct {
 // retained: the key of every evaluation is kept until the root is merged, and
 // a module input can be a decoded configuration passed to every instance.
 func (m *keyMemo) inputsKey(inputs map[string]cty.Value) inputsDigest {
+	if m != nil && len(inputs) > 0 {
+		m.digestGen++
+	}
 	if len(inputs) == 0 {
 		return inputsDigest{}
 	}

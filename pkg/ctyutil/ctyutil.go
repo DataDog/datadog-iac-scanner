@@ -15,6 +15,16 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// LookupVariable finds name in ctx, innermost context first.
+func LookupVariable(ctx *hcl.EvalContext, name string) (cty.Value, bool) {
+	for c := ctx; c != nil; c = c.Parent() {
+		if v, ok := c.Variables[name]; ok {
+			return v, true
+		}
+	}
+	return cty.NilVal, false
+}
+
 // Materialized reports whether v is known and non-null. cty's integration methods
 // (AsString, LengthInt, ElementIterator, AsValueSlice, …) panic on null even when
 // IsWhollyKnown() is true.

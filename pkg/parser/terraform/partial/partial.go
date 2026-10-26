@@ -604,7 +604,7 @@ func (o *overlay) set(traversal hcl.Traversal, leaf cty.Value) {
 	root := traversal.RootName()
 	base, has := o.vars[root]
 	if !has {
-		base, has = lookupVariable(o.ctx, root)
+		base, has = ctyutil.LookupVariable(o.ctx, root)
 	}
 	o.vars[root] = setPath(base, has, traversal[1:], leaf)
 }
@@ -613,16 +613,6 @@ func (o *overlay) context() *hcl.EvalContext {
 	child := o.ctx.NewChild()
 	child.Variables = o.vars
 	return child
-}
-
-// lookupVariable finds name the way evaluation does, innermost context first.
-func lookupVariable(ctx *hcl.EvalContext, name string) (cty.Value, bool) {
-	for c := ctx; c != nil; c = c.Parent() {
-		if v, ok := c.Variables[name]; ok {
-			return v, true
-		}
-	}
-	return cty.NilVal, false
 }
 
 // substituteUnknowns replaces every unknown part of v with the interpolation of
