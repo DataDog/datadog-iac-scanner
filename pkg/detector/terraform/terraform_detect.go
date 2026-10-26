@@ -7,11 +7,14 @@ package terraform
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -29,14 +32,41 @@ const strNestedBody = "nested-body"
 const blockTypeResource = "resource"
 const blockTypeData = "data"
 
+// hclCacheCap bounds the bodies a detector keeps for files with no line-info
+// source.
+const hclCacheCap = 256
+
 // DetectKindLine finds a finding's lines in a Terraform file. The file's HCL
 // body is the one its line-info reparse built, when that reparse parsed the
-// file's own content; otherwise it is parsed once and kept with that reparse.
-type DetectKindLine struct{}
+// file's own content. A file with no line-info source has no lease to bound
+// a cached body on, so its parse is kept in a capped cache keyed by a hash of
+// its path and content: module copies of one file share a parse, and two
+// contents at one path do not. A failed parse is kept too.
+type DetectKindLine struct {
+	mu       sync.Mutex
+	hclCache map[[sha256.Size]byte]hclCacheEntry
+	// parseBody parses HCL source; nil means parseHCLBody.
+	parseBody func(src, filePath string) (*hclsyntax.Body, error)
+}
+
+type hclCacheEntry struct {
+	body *hclsyntax.Body
+	err  error
+}
+
+func (d *DetectKindLine) parse(src, filePath string) (*hclsyntax.Body, error) {
+	if d.parseBody != nil {
+		return d.parseBody(src, filePath)
+	}
+	return parseHCLBody(src, filePath)
+}
 
 func (d *DetectKindLine) cachedParseBody(file *model.FileMetadata) (*hclsyntax.Body, error) {
+	if !file.HasLineInfoSource() {
+		return d.parseFile(file)
+	}
 	body, err := file.Derived(model.HCLBodyKey, func() (any, error) {
-		return parseHCLBody(file.OriginalData, file.FilePath)
+		return d.parse(file.OriginalData, file.FilePath)
 	})
 	if err != nil || body == nil {
 		return nil, err
@@ -46,6 +76,46 @@ func (d *DetectKindLine) cachedParseBody(file *model.FileMetadata) (*hclsyntax.B
 		return nil, fmt.Errorf("unexpected HCL body type")
 	}
 	return parsed, nil
+}
+
+// parseFile parses a file that has no line-info source to hold a Derived
+// body on, through the detector's capped cache.
+func (d *DetectKindLine) parseFile(file *model.FileMetadata) (*hclsyntax.Body, error) {
+	key := hclCacheKey(file.FilePath, file.OriginalData)
+	d.mu.Lock()
+	cached, ok := d.hclCache[key]
+	d.mu.Unlock()
+	if ok {
+		return cached.body, cached.err
+	}
+
+	body, err := d.parse(file.OriginalData, file.FilePath)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.hclCache == nil {
+		d.hclCache = make(map[[sha256.Size]byte]hclCacheEntry)
+	}
+	if _, ok := d.hclCache[key]; !ok && len(d.hclCache) >= hclCacheCap {
+		for evict := range d.hclCache {
+			delete(d.hclCache, evict)
+			break
+		}
+	}
+	d.hclCache[key] = hclCacheEntry{body: body, err: err}
+	return body, err
+}
+
+func hclCacheKey(filePath, src string) [sha256.Size]byte {
+	h := sha256.New()
+	var n [8]byte
+	binary.LittleEndian.PutUint64(n[:], uint64(len(filePath)))
+	h.Write(n[:])
+	h.Write([]byte(filePath))
+	h.Write([]byte(src))
+	var key [sha256.Size]byte
+	h.Sum(key[:0])
+	return key
 }
 
 func parseHCLBody(src, filePath string) (*hclsyntax.Body, error) {
@@ -139,9 +209,9 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 }
 
 // detectKeyParts walks the search key part by part. A search key names one
-// block, so once the search is inside it, a part only matching text past it
-// (inside a heredoc, say) is skipped and the search goes on from the last line
-// found within it.
+// block, so once a part has matched inside it, a later part only matching text
+// past it (inside a heredoc, say) is skipped. If nothing matches inside the
+// block, the search falls back to the whole file.
 func detectKeyParts(
 	ctx context.Context,
 	detection *detector.DefaultDetectLineResponse,
@@ -156,12 +226,32 @@ func detectKeyParts(
 	if body, err := parse(); err == nil {
 		scope = searchKeyBlock(detection.File, body, keyParts, extracted)
 	}
-	// A search from the first line re-reads every earlier block for every
-	// finding. The block the key names starts the search.
-	inScope := false
+	startLine := detection.CurrentLine
+	detection = walkKeyParts(ctx, detection, keyParts, extracted, lines, kind, doc, lineDoc, parse, scope)
+	if scope != nil && !detection.FoundAtLeastOne {
+		detection.CurrentLine = startLine
+		detection.IsBreak = false
+		detection.SetSearchEnd(0)
+		detection = walkKeyParts(ctx, detection, keyParts, extracted, lines, kind, doc, lineDoc, parse, nil)
+	}
+	return detection
+}
+
+// walkKeyParts searches keyParts from detection.CurrentLine. When scope is set,
+// the search starts at that block and only keeps matches on lines it spans.
+func walkKeyParts(
+	ctx context.Context,
+	detection *detector.DefaultDetectLineResponse,
+	keyParts []string,
+	extracted [][]string,
+	lines []string,
+	kind model.FileKind,
+	doc, lineDoc model.Document,
+	parse func() (*hclsyntax.Body, error),
+	scope *hclsyntax.Block,
+) *detector.DefaultDetectLineResponse {
 	if scope != nil && scope.TypeRange.Start.Line > 0 {
 		detection.CurrentLine = scope.TypeRange.Start.Line - 1
-		inScope = true
 		if scope.Body != nil && scope.Body.SrcRange.End.Line > detection.CurrentLine {
 			detection.SetSearchEnd(scope.Body.SrcRange.End.Line)
 		}
@@ -179,13 +269,11 @@ func detectKeyParts(
 		} else {
 			detection, _, _, _ = detection.DetectCurrentLine(s1, s2, 0, lines, kind)
 		}
-		if scope != nil && detection.FoundAtLeastOne {
-			within := blockSpansLine(scope, detection.CurrentLine+1)
-			if inScope && !within {
-				detection.CurrentLine, detection.FoundAtLeastOne = prevLine, prevFound
-				continue
-			}
-			inScope = within
+		// Do not treat the search as inside the block until a part matches on
+		// a line it spans; out-of-block hits are only kept on the full-file pass.
+		if scope != nil && detection.FoundAtLeastOne && !blockSpansLine(scope, detection.CurrentLine+1) {
+			detection.CurrentLine, detection.FoundAtLeastOne = prevLine, prevFound
+			continue
 		}
 		if detection.IsBreak {
 			break

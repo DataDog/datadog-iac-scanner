@@ -241,6 +241,12 @@ func (f *FileMetadata) LineInfoDocIndex() int {
 	return f.lineInfoDocIdx
 }
 
+// HasLineInfoSource reports whether f reads its line info from a reparse
+// (SetLineInfoSource), as opposed to having none at all.
+func (f *FileMetadata) HasLineInfoSource() bool {
+	return f.lineInfoSource != nil
+}
+
 // SetReleaseOriginalDataAfterLineInfo instructs EnsureLineInfoDocument to
 // release OriginalData after populating LineInfoDocument and
 // LinesOriginalData (for non-Terraform kinds).

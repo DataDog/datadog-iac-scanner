@@ -1129,6 +1129,31 @@ resource "aws_iam_policy" "later" {
 	}
 }
 
+// When the named block's header text does not match the search key and no key
+// part matches inside that block, fall back to a full-file search so a match
+// elsewhere still produces a line instead of dropping the finding.
+func TestDetectLine_fallsBackWhenSearchKeyMissesNamedBlock(t *testing.T) {
+	src := `resource "aws_s3_bucket" "target" {
+  bucket = "logs"
+}
+
+locals {
+  note = "aws_s3_bucket[target].acl"
+}
+`
+	file := &model.FileMetadata{
+		ScanID:            "t",
+		ID:                "t",
+		FilePath:          "main.tf",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file, "aws_s3_bucket[target].acl", 1)
+	require.Greater(t, got.Line, 0, "full-file fallback must locate the search key text")
+	require.NotEqual(t, -1, got.Line)
+}
+
 // Four times the blocks, or four times the attributes searched inside one
 // block, must not mean four times the CPU per finding. The attribute case
 // times the search alone, because locating a block reads the whole block.
@@ -1236,6 +1261,74 @@ func leasedFile(t *testing.T, src string) (*model.FileMetadata, func()) {
 	lease := file.LeaseLineInfo()
 	require.NoError(t, file.EnsureLineInfoDocument(context.Background()))
 	return file, lease.Close
+}
+
+func countingDetector() (*DetectKindLine, *atomic.Int32) {
+	var parses atomic.Int32
+	return &DetectKindLine{parseBody: func(src, filePath string) (*hclsyntax.Body, error) {
+		parses.Add(1)
+		return parseHCLBody(src, filePath)
+	}}, &parses
+}
+
+func terraformFile(path, src string) *model.FileMetadata {
+	return &model.FileMetadata{
+		FilePath: path, Kind: model.KindTerraform,
+		OriginalData: src, LinesOriginalData: utils.SplitLines(src),
+	}
+}
+
+// A file with no line-info source is parsed once; later calls reuse the body.
+func TestDetectLine_cachesHCLParseWithoutLineInfoSource(t *testing.T) {
+	src := "resource \"aws_s3_bucket\" \"b\" {\n  acl = \"public-read\"\n}\n"
+	file := terraformFile("main.tf", src)
+	d, parses := countingDetector()
+	require.Equal(t, 2, d.DetectLine(context.Background(), file, "aws_s3_bucket[b].acl", 1).Line)
+	require.Equal(t, int32(1), parses.Load())
+	require.Equal(t, 2, d.DetectLine(context.Background(), file, "aws_s3_bucket[b].acl", 1).Line)
+	require.Equal(t, int32(1), parses.Load(), "the second call must reuse the cached body")
+}
+
+// Module copies are distinct FileMetadata with one path and one content;
+// they must share one parse.
+func TestDetectLine_sharesAParseAcrossCopiesWithTheSameContent(t *testing.T) {
+	src := "resource \"aws_s3_bucket\" \"b\" {\n  acl = \"public-read\"\n}\n"
+	d, parses := countingDetector()
+	require.Equal(t, 2, d.DetectLine(context.Background(), terraformFile("main.tf", src), "aws_s3_bucket[b].acl", 1).Line)
+	require.Equal(t, 2, d.DetectLine(context.Background(), terraformFile("main.tf", src), "aws_s3_bucket[b].acl", 1).Line)
+	require.Equal(t, int32(1), parses.Load())
+}
+
+// Two contents at one path must not share a cached parse.
+func TestDetectLine_doesNotShareAParseAcrossDifferentFilesAtTheSamePath(t *testing.T) {
+	src1 := "resource \"aws_s3_bucket\" \"b\" {\n  acl = \"public-read\"\n}\n"
+	src2 := "resource \"aws_s3_bucket\" \"b\" {\n  bucket = \"x\"\n  acl    = \"public-read\"\n}\n"
+	d, parses := countingDetector()
+	require.Equal(t, 2, d.DetectLine(context.Background(), terraformFile("main.tf", src1), "aws_s3_bucket[b].acl", 1).Line)
+	require.Equal(t, 3, d.DetectLine(context.Background(), terraformFile("main.tf", src2), "aws_s3_bucket[b].acl", 1).Line)
+	require.Equal(t, int32(2), parses.Load())
+}
+
+// An invalid file is parsed once; the failure is cached like a body.
+func TestDetectLine_cachesAParseFailure(t *testing.T) {
+	src := "resource \"aws_s3_bucket\" \"b\" {\n  acl = \"public-read\"\n"
+	file := terraformFile("main.tf", src)
+	d, parses := countingDetector()
+	d.DetectLine(context.Background(), file, "aws_s3_bucket[b].acl", 1)
+	d.DetectLine(context.Background(), file, "aws_s3_bucket[b].acl", 1)
+	require.Equal(t, int32(1), parses.Load())
+}
+
+func TestDetectLine_hclCacheStaysWithinItsCap(t *testing.T) {
+	d, parses := countingDetector()
+	const files = hclCacheCap + 44
+	for i := range files {
+		src := fmt.Sprintf("resource \"aws_s3_bucket\" \"b\" {\n  acl = \"r%d\"\n}\n", i)
+		require.Equal(t, 2, d.DetectLine(context.Background(), terraformFile(fmt.Sprintf("f%d.tf", i), src), "aws_s3_bucket[b].acl", 1).Line)
+		require.LessOrEqual(t, len(d.hclCache), hclCacheCap)
+	}
+	require.Equal(t, int32(files), parses.Load())
+	require.Len(t, d.hclCache, hclCacheCap)
 }
 
 // Several rules detecting lines in one file must share the body the line-info
