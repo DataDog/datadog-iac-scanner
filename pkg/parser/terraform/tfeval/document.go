@@ -460,18 +460,15 @@ func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string
 	return calledModuleDirs(context.Background(), dir, bodies, resolver, fsys)
 }
 
-func (e *Evaluator) CalledModuleDirs(dir string) []string {
-	return e.CalledModuleDirsWithContext(context.Background(), dir)
-}
-
-// CalledModuleDirsWithContext retains the scan's root and confinement cache
-// during discovery, which shares parsed directories with module evaluation.
-func (e *Evaluator) CalledModuleDirsWithContext(ctx context.Context, dir string) []string {
-	bodies, _, err := e.parseDir(ctx, dir, "")
-	if err != nil {
+// CalledModuleDirs returns the directories of the modules dir calls. Parsing dir
+// builds its locals graph and reports what it finds through ctx's logger, and
+// ctx carries the path cache shared with evaluation.
+func (e *Evaluator) CalledModuleDirs(ctx context.Context, dir string) []string {
+	parsed := e.parseDir(ctx, dir, "")
+	if parsed.err != nil {
 		return nil
 	}
-	return calledModuleDirs(ctx, dir, bodies, e.remoteResolver, e.fsys)
+	return calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys)
 }
 
 func calledModuleDirs(ctx context.Context, dir string, bodies []*hclsyntax.Body, resolver RemoteResolver, fsys vfs.FS) []string {

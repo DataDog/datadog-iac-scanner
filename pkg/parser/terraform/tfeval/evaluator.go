@@ -43,8 +43,6 @@ import (
 const (
 	// defaultMaxDepth caps nested module recursion (cycles, deep graphs).
 	defaultMaxDepth = 15
-	// localsMaxPasses caps fixed-point resolution of locals that reference each other.
-	localsMaxPasses = 10
 	// resourceRefPasses caps passes that install same-module resource attrs for refs.
 	resourceRefPasses = 3
 	// maxCountExpansion caps instances per count/for_each block (resources and modules).
@@ -141,12 +139,9 @@ type ModuleScope struct {
 	evalCtx *hcl.EvalContext
 	sources map[string][]byte
 
-	// localDeps classifies, per local, which of the roots that change during
-	// evaluation (the module's resources, its module outputs, its data) the
-	// local reads, directly or through other locals; localCache holds the
-	// values the last resolution returned. A re-resolution re-evaluates only
-	// the locals reading a root that changed, and reuses the rest verbatim.
-	localDeps  map[string]localDeps
+	// localCache holds the values the last resolution of the module's locals
+	// returned. A re-resolution re-evaluates only the locals reading a root
+	// that changed, per the graph's classification, and reuses the rest.
 	localCache map[string]cty.Value
 }
 
@@ -157,19 +152,6 @@ type localDeps struct {
 	resources bool
 	modules   bool
 	data      bool
-}
-
-// dataLocals returns the locals reading data.*, directly or through other
-// locals, per the classification resolveLocalsIncremental computed. It must
-// run after that first resolution, which is what computes the classification.
-func (s *ModuleScope) dataLocals() map[string]bool {
-	out := make(map[string]bool, len(s.localDeps))
-	for name, deps := range s.localDeps {
-		if deps.data {
-			out[name] = true
-		}
-	}
-	return out
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not
@@ -253,9 +235,11 @@ type Evaluator struct {
 	instances      []ModuleInstance
 	trackInstances bool
 
-	// parseMu guards dirCache, which evaluators forked from one another share.
-	parseMu  *sync.Mutex
-	dirCache map[string]dirParse
+	// parseMu guards dirCache and warnedLocalDirs, which evaluators forked from
+	// one another share.
+	parseMu         *sync.Mutex
+	dirCache        map[string]dirParse
+	warnedLocalDirs map[string]struct{}
 	// funcFS serves the Terraform filesystem functions of every module this
 	// evaluator reaches, so paths confined once stay resolved for the scan.
 	funcFS *tffunctions.ScanFS
@@ -265,9 +249,16 @@ type Evaluator struct {
 }
 
 type dirParse struct {
-	bodies  []*hclsyntax.Body
-	sources map[string][]byte
-	err     error
+	bodies        []*hclsyntax.Body
+	sources       map[string][]byte
+	locals        *localGraph
+	varDecls      map[string]variableDecl
+	localExprs    map[string]hclsyntax.Expression
+	modules       []*hclsyntax.Block
+	resources     []*hclsyntax.Block
+	outputs       map[string]hclsyntax.Expression
+	resourceTypes map[string]struct{}
+	err           error
 }
 
 func New() *Evaluator {
@@ -292,6 +283,7 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
+		warnedLocalDirs:  make(map[string]struct{}),
 		funcFS:           tffunctions.NewScanFS(vfs.DiskFS{}),
 		notEvaluatedDirs: make(map[string]bool),
 		fsys:             fsys,
@@ -355,22 +347,52 @@ func (e *Evaluator) restoreInstantiationCount(n int) {
 	*e.currentInstantiationCount() = n
 }
 
-func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) ([]*hclsyntax.Body, map[string][]byte, error) {
-	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
+func parseCacheKey(dir, packageRoot string) string {
+	return filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
+}
 
+// parseDir returns the parsed files of a module directory and the graph of
+// its locals, parsed once and shared by every fork. When two forks parse the
+// same directory at once, the first to insert its parse wins. What Terraform
+// would reject in the module's locals is reported once per directory, however
+// many package roots parse it.
+func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirParse {
+	key := parseCacheKey(dir, packageRoot)
+
+	e.parseMu.Lock()
+	dp, ok := e.dirCache[key]
+	e.parseMu.Unlock()
+	if ok {
+		return dp
+	}
+
+	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+	parsed := dirParse{bodies: bodies, sources: sources, err: err}
+	if err == nil {
+		parsed.varDecls, parsed.localExprs, parsed.modules, parsed.resources, parsed.outputs = collectBlocks(bodies)
+		parsed.resourceTypes = declaredResourceTypes(parsed.resources)
+		parsed.locals = newLocalGraph(parsed.localExprs, parsed.resourceTypes)
+	}
+
+	warn := false
 	e.parseMu.Lock()
 	if dp, ok := e.dirCache[key]; ok {
 		e.parseMu.Unlock()
-		return dp.bodies, dp.sources, dp.err
+		return dp
+	}
+	e.dirCache[key] = parsed
+	if parsed.locals != nil {
+		cleaned := filepath.Clean(dir)
+		if _, seen := e.warnedLocalDirs[cleaned]; !seen {
+			e.warnedLocalDirs[cleaned] = struct{}{}
+			warn = true
+		}
 	}
 	e.parseMu.Unlock()
-
-	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
-
-	e.parseMu.Lock()
-	e.dirCache[key] = dirParse{bodies: bodies, sources: sources, err: err}
-	e.parseMu.Unlock()
-	return bodies, sources, err
+	if warn {
+		parsed.locals.warn(ctx, dir)
+	}
+	return parsed
 }
 
 // Fork returns an evaluator that can evaluate other roots concurrently with e.
@@ -387,6 +409,7 @@ func (e *Evaluator) Fork() *Evaluator {
 		notEvaluatedDirs: make(map[string]bool),
 		parseMu:          e.parseMu,
 		dirCache:         e.dirCache,
+		warnedLocalDirs:  e.warnedLocalDirs,
 		funcFS:           e.funcFS,
 		mergeAllow:       e.mergeAllow,
 		trackInstances:   e.trackInstances,
@@ -504,7 +527,7 @@ func (e *Evaluator) ForgetRootParse(dir string) {
 	if err != nil {
 		abs = filepath.Clean(dir)
 	}
-	key := filepath.Clean(abs) + "\x00" + filepath.Clean("")
+	key := parseCacheKey(abs, "")
 	e.parseMu.Lock()
 	delete(e.dirCache, key)
 	e.parseMu.Unlock()
@@ -523,6 +546,7 @@ func (e *Evaluator) ReleaseCaches() {
 	e.ReleaseEvalCache()
 	e.parseMu.Lock()
 	e.dirCache = make(map[string]dirParse)
+	clear(e.warnedLocalDirs)
 	e.parseMu.Unlock()
 	e.funcFS = tffunctions.NewScanFS(vfs.DiskFS{})
 }
@@ -628,12 +652,16 @@ func (e *Evaluator) evaluate(
 		prevAllVisited[k] = true
 	}
 
-	bodies, sources, err := e.parseDir(ctx, dir, packageRoot)
-	if err != nil {
-		return nil, nil, err
+	parsed := e.parseDir(ctx, dir, packageRoot)
+	if parsed.err != nil {
+		return nil, nil, parsed.err
 	}
-
-	varDecls, localExprs, moduleBlocks, resourceBlocks, outputExprs := collectBlocks(bodies)
+	bodies, sources, locals := parsed.bodies, parsed.sources, parsed.locals
+	varDecls := parsed.varDecls
+	localExprs := parsed.localExprs
+	moduleBlocks := parsed.modules
+	resourceBlocks := parsed.resources
+	outputExprs := parsed.outputs
 
 	varVals := e.resolveVariables(varDecls, inputs)
 
@@ -647,29 +675,29 @@ func (e *Evaluator) evaluate(
 		evalCtx.Variables[name] = value
 	}
 
-	resourceTypes := declaredResourceTypes(resourceBlocks)
+	resourceTypes := parsed.resourceTypes
 	scope := &ModuleScope{Locals: localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources}
 	evalCtx.Variables["local"] = objectOrEmpty(
-		e.resolveLocalsIncremental(scope, localExprs, resourceTypes, evalCtx, false, false))
-	data := newModuleData(e, bodies, sources, scope, resourceTypes, addr, chain, hasUnconditionalResourceBlock(resourceBlocks))
+		e.resolveLocalsIncremental(scope, locals, evalCtx, false, false))
+	data := newModuleData(e, bodies, sources, locals, resourceTypes, addr, chain, hasUnconditionalResourceBlock(resourceBlocks))
 	data.refresh(ctx, evalCtx)
 
-	if !e.preinjectResourceRefs(ctx, resourceBlocks, moduleBlocks, localExprs, scope, resourceTypes, evalCtx, data, addr, chain) {
+	if !e.preinjectResourceRefs(ctx, resourceBlocks, moduleBlocks, locals, scope, evalCtx, data, addr, chain) {
 		return nil, nil, e.skipEvaluation(dir)
 	}
 
 	e.applySiblingModulePrepass(
-		ctx, moduleBlocks, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, evalCtx, scope, data, locals, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, evalCtx, scope, data, localExprs, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
+		ctx, moduleBlocks, evalCtx, scope, data, locals, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
 	)
 
-	e.applyModuleOutputs(ctx, evalCtx, scope, localExprs, data, moduleOutputs)
+	e.applyModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
 
 	rootResources, err := e.evaluateRootResources(
-		ctx, dir, resourceBlocks, localExprs, scope, resourceTypes, evalCtx, data, addr, chain,
+		ctx, dir, resourceBlocks, locals, scope, evalCtx, data, addr, chain,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -681,7 +709,7 @@ func (e *Evaluator) evaluate(
 	// loop, so injectResourceRefs returns false and the locals refresh is skipped.
 	if injectResourceRefs(evalCtx, rootResources) {
 		evalCtx.Variables["local"] = objectOrEmpty(
-			e.resolveLocalsIncremental(scope, localExprs, resourceTypes, evalCtx, true, false))
+			e.resolveLocalsIncremental(scope, locals, evalCtx, true, false))
 	}
 	if data.readsOwnResources() {
 		data.refresh(ctx, evalCtx)
@@ -726,11 +754,11 @@ func (e *Evaluator) applyModuleOutputs(
 	ctx context.Context,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
-	localExprs map[string]hclsyntax.Expression,
+	locals *localGraph,
 	data *moduleData,
 	moduleOutputs map[string]cty.Value,
 ) {
-	e.installModuleOutputs(ctx, evalCtx, scope, localExprs, data, moduleOutputs)
+	e.installModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
 }
 
 // installModuleOutputs publishes module.* and refreshes what reads it: first
@@ -741,7 +769,7 @@ func (e *Evaluator) installModuleOutputs(
 	ctx context.Context,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
-	localExprs map[string]hclsyntax.Expression,
+	locals *localGraph,
 	data *moduleData,
 	moduleOutputs map[string]cty.Value,
 ) {
@@ -751,7 +779,7 @@ func (e *Evaluator) installModuleOutputs(
 	value := cty.ObjectVal(moduleOutputs)
 	evalCtx.Variables["module"] = value
 	evalCtx.Variables["local"] = objectOrEmpty(
-		e.resolveLocalsIncremental(scope, localExprs, nil, evalCtx, false, true))
+		e.resolveLocalsIncremental(scope, locals, evalCtx, false, true))
 	if !data.readsModules() || data.refreshedWithModule(value) {
 		return
 	}
@@ -817,9 +845,8 @@ func (e *Evaluator) reuseCachedEvaluation(
 func (e *Evaluator) preinjectResourceRefs(
 	ctx context.Context,
 	resourceBlocks, moduleBlocks []*hclsyntax.Block,
-	localExprs map[string]hclsyntax.Expression,
+	locals *localGraph,
 	scope *ModuleScope,
-	resourceTypes map[string]struct{},
 	evalCtx *hcl.EvalContext,
 	data *moduleData,
 	addr string,
@@ -836,7 +863,7 @@ func (e *Evaluator) preinjectResourceRefs(
 	}
 	injected := injectResourceRefs(evalCtx, resources)
 	evalCtx.Variables["local"] = objectOrEmpty(
-		e.resolveLocalsIncremental(scope, localExprs, resourceTypes, evalCtx, injected, false))
+		e.resolveLocalsIncremental(scope, locals, evalCtx, injected, false))
 	if data.readsOwnResources() {
 		data.refresh(ctx, evalCtx)
 	}
@@ -847,16 +874,15 @@ func (e *Evaluator) evaluateRootResources(
 	ctx context.Context,
 	dir string,
 	resourceBlocks []*hclsyntax.Block,
-	localExprs map[string]hclsyntax.Expression,
+	locals *localGraph,
 	scope *ModuleScope,
-	resourceTypes map[string]struct{},
 	evalCtx *hcl.EvalContext,
 	data *moduleData,
 	addr string,
 	chain []CallSite,
 ) ([]ResolvedResource, error) {
 	resources, complete := e.rootResourcesWithRefPasses(
-		ctx, resourceBlocks, localExprs, scope, resourceTypes, evalCtx, data, addr, chain,
+		ctx, resourceBlocks, locals, scope, evalCtx, data, addr, chain,
 	)
 	if !complete {
 		return nil, e.skipEvaluation(dir)
@@ -999,6 +1025,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	data *moduleData,
+	locals *localGraph,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
@@ -1010,7 +1037,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	prelimOutputs := e.preliminaryModuleOutputs(
 		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
-	e.installModuleOutputs(ctx, evalCtx, scope, scope.Locals, data, prelimOutputs)
+	e.installModuleOutputs(ctx, evalCtx, scope, locals, data, prelimOutputs)
 }
 
 func (e *Evaluator) evaluateLocalModuleBlocks(
@@ -1019,7 +1046,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	data *moduleData,
-	localExprs map[string]hclsyntax.Expression,
+	locals *localGraph,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
 	depth int,
@@ -1092,7 +1119,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
 			moduleOutputs[call.label] = value
-			e.installSiblingModuleOutputs(ctx, evalCtx, scope, localExprs, data, moduleOutputs)
+			e.installSiblingModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
 		}
 	}
 	return childResources, moduleOutputs
@@ -1116,11 +1143,11 @@ func (e *Evaluator) installSiblingModuleOutputs(
 	ctx context.Context,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
-	localExprs map[string]hclsyntax.Expression,
+	locals *localGraph,
 	data *moduleData,
 	moduleOutputs map[string]cty.Value,
 ) {
-	e.installModuleOutputs(ctx, evalCtx, scope, localExprs, data, moduleOutputs)
+	e.installModuleOutputs(ctx, evalCtx, scope, locals, data, moduleOutputs)
 }
 
 // isReportableModuleEvalError excludes a missing local source, which the module
@@ -1150,9 +1177,8 @@ func (e *Evaluator) resolveModuleDir(
 func (e *Evaluator) rootResourcesWithRefPasses(
 	ctx context.Context,
 	resourceBlocks []*hclsyntax.Block,
-	localExprs map[string]hclsyntax.Expression,
+	locals *localGraph,
 	scope *ModuleScope,
-	resourceTypes map[string]struct{},
 	evalCtx *hcl.EvalContext,
 	data *moduleData,
 	addr string,
@@ -1160,7 +1186,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 ) ([]ResolvedResource, bool) {
 	var rootResources []ResolvedResource
 	types := declaredResourceTypes(resourceBlocks)
-	localsReadOwn := localsReadResources(localExprs, types)
+	localsReadOwn := locals.readsResources
 	dataReadsOwn := data.readsOwnResources()
 	// Resources may consume refreshed data through locals (data → local →
 	// resource) without a direct data.* traversal in the body.
@@ -1189,7 +1215,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 		// newly-resolved resource attrs are up-to-date before outputs are computed.
 		if localsReadOwn {
 			evalCtx.Variables["local"] = objectOrEmpty(
-				e.resolveLocalsIncremental(scope, localExprs, resourceTypes, evalCtx, true, false))
+				e.resolveLocalsIncremental(scope, locals, evalCtx, true, false))
 		}
 		if dataReadsOwn {
 			data.refresh(ctx, evalCtx)
@@ -1216,15 +1242,6 @@ func declaredResourceTypes(resourceBlocks []*hclsyntax.Block) map[string]struct{
 		}
 	}
 	return types
-}
-
-func localsReadResources(localExprs map[string]hclsyntax.Expression, types map[string]struct{}) bool {
-	for _, expr := range localExprs {
-		if readsResource(expr, types) {
-			return true
-		}
-	}
-	return false
 }
 
 func resourcesReadResources(resourceBlocks []*hclsyntax.Block, types map[string]struct{}) bool {
@@ -1723,34 +1740,18 @@ func (e *Evaluator) resolveVariables(
 // outputs and they changed, or when it reads data, which the data refresh
 // re-resolves out of band; everything else is a pure function of the module
 // inputs and the locals reused before it, so its value cannot have changed.
-// The re-evaluated locals still converge through the same pass machinery as a
-// full resolution. resourceTypes is only read on the first call, where the
-// per-local classification is computed; later calls may pass nil.
 func (e *Evaluator) resolveLocalsIncremental(
 	scope *ModuleScope,
-	localExprs map[string]hclsyntax.Expression,
-	resourceTypes map[string]struct{},
+	locals *localGraph,
 	base *hcl.EvalContext,
 	resourcesChanged, modulesChanged bool,
 ) map[string]cty.Value {
-	if scope.localDeps == nil {
-		resourceReaders := localsReadingRoot(localExprs, resourceTypes)
-		moduleReaders := localsReadingRoot(localExprs, moduleRoot)
-		dataReaders := localsReadingRoot(localExprs, dataRoot)
-		deps := make(map[string]localDeps, len(localExprs))
-		for name := range localExprs {
-			deps[name] = localDeps{
-				resources: resourceReaders[name],
-				modules:   moduleReaders[name],
-				data:      dataReaders[name],
-			}
-		}
-		scope.localDeps = deps
-		scope.localCache = make(map[string]cty.Value, len(localExprs))
+	if scope.localCache == nil {
+		scope.localCache = make(map[string]cty.Value, len(locals.names))
 	}
 	fixed := make(map[string]cty.Value, len(scope.localCache))
 	for name, v := range scope.localCache {
-		deps := scope.localDeps[name]
+		deps := locals.deps[name]
 		// Data-reading locals are never reused: the data refresh re-resolves
 		// them out of band, so the cache may hold a value older than data.*.
 		if deps.data || (resourcesChanged && deps.resources) || (modulesChanged && deps.modules) {
@@ -1758,54 +1759,9 @@ func (e *Evaluator) resolveLocalsIncremental(
 		}
 		fixed[name] = v
 	}
-	resolved := e.resolveLocalsWith(localExprs, base, fixed)
+	resolved := e.resolveLocalsWith(locals, base, fixed)
 	for name, v := range resolved {
 		scope.localCache[name] = v
-	}
-	return resolved
-}
-
-// resolveLocalsWith resolves localExprs keeping the locals in fixed at their
-// value, for a refresh only some locals depend on.
-func (e *Evaluator) resolveLocalsWith(
-	localExprs map[string]hclsyntax.Expression,
-	base *hcl.EvalContext,
-	fixed map[string]cty.Value,
-) map[string]cty.Value {
-	resolved := make(map[string]cty.Value, len(localExprs))
-	for name, v := range fixed {
-		resolved[name] = v
-	}
-
-	for pass := 0; pass < localsMaxPasses; pass++ {
-		progressed := false
-		ctx := base.NewChild()
-		ctx.Variables = map[string]cty.Value{"local": objectOrEmpty(resolved)}
-
-		for name, expr := range localExprs {
-			if _, ok := fixed[name]; ok {
-				continue
-			}
-			prev, seen := resolved[name]
-			if seen && prev.IsWhollyKnown() {
-				continue
-			}
-			v := e.localValue(expr, ctx)
-			if !v.IsKnown() || (seen && equalValues(prev, v)) {
-				continue
-			}
-			resolved[name] = v
-			progressed = true
-		}
-		if !progressed {
-			break
-		}
-	}
-
-	for name := range localExprs {
-		if _, ok := resolved[name]; !ok {
-			resolved[name] = cty.UnknownVal(cty.DynamicPseudoType)
-		}
 	}
 	return resolved
 }

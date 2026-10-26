@@ -72,10 +72,10 @@ resource "aws_s3_bucket" "b" {}`,
 			if diags.HasErrors() {
 				t.Fatalf("parse: %v", diags)
 			}
-			_, localExprs, _, resourceBlocks, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
+			_, _, _, resourceBlocks, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
 			types := declaredResourceTypes(resourceBlocks)
-			if got := localsReadResources(localExprs, types); got != tt.wantLocals {
-				t.Errorf("localsReadResources = %v, want %v", got, tt.wantLocals)
+			if got := parseLocals(t, tt.src).readsAny(types); got != tt.wantLocals {
+				t.Errorf("readsAny = %v, want %v", got, tt.wantLocals)
 			}
 			if got := resourcesReadResources(resourceBlocks, types); got != tt.wantResources {
 				t.Errorf("resourcesReadResources = %v, want %v", got, tt.wantResources)
