@@ -517,7 +517,7 @@ func (e *Evaluator) ReleaseCaches() {
 	e.parseMu.Lock()
 	e.dirCache = make(map[string]dirParse)
 	e.parseMu.Unlock()
-	e.funcFS = tffunctions.NewScanFS(e.fsys)
+	e.funcFS.ReleaseMemo()
 	e.templates = partial.NewTemplateVerdicts()
 }
 
@@ -593,6 +593,7 @@ func (e *Evaluator) evaluate(
 		return resources, outputs, err
 	}
 
+	e.keyMemo.beginGeneration()
 	visiting[dir] = true
 	defer delete(visiting, dir)
 	skippedBefore := e.skipped

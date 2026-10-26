@@ -134,9 +134,11 @@ type inputsDigest struct{ a, b uint64 }
 type keyMemo struct {
 	entries map[collectionID]keyMemoEntry
 	// knownOnce holds the long collections checked once for unknowns, which
-	// are only remembered when checked again: a value built per instance is
-	// checked once and would otherwise be kept until the cache is released.
-	knownOnce map[collectionID]struct{}
+	// are only remembered when checked again under a later module evaluation:
+	// resolveLocalsWith re-checks within one evaluation, and a value built per
+	// instance is checked once and would otherwise be kept until release.
+	knownOnce  map[collectionID]uint64
+	generation uint64
 }
 
 type keyMemoEntry struct {
@@ -151,7 +153,7 @@ type keyMemoEntry struct {
 // wholly-known answer costs less than walking the collection again.
 const minWhollyKnownMemo = 128
 
-// maxKnownOnce bounds knownOnce; reaching it starts the record over.
+// maxKnownOnce bounds knownOnce; reaching it drops oldest pending sights.
 const maxKnownOnce = 1 << 16
 
 func (m *keyMemo) entry(id collectionID, v cty.Value) keyMemoEntry {
@@ -164,9 +166,13 @@ func (m *keyMemo) entry(id collectionID, v cty.Value) keyMemoEntry {
 	return keyMemoEntry{value: v}
 }
 
+func (m *keyMemo) beginGeneration() {
+	m.generation++
+}
+
 // whollyKnown reports whether v holds no unknown, remembering the answer for a
-// long collection checked again so a value shared by every instance is walked
-// a fixed number of times.
+// long collection seen again in a later module evaluation so a value shared by
+// every instance is walked a fixed number of times.
 func (m *keyMemo) whollyKnown(v cty.Value) bool {
 	id, ok := collectionIdentity(v)
 	if !ok || id.n < minWhollyKnownMemo {
@@ -175,12 +181,9 @@ func (m *keyMemo) whollyKnown(v cty.Value) bool {
 	if e, hit := m.entries[id]; hit && e.hasKnown {
 		return e.known
 	}
-	if _, again := m.knownOnce[id]; !again {
+	if gen, pending := m.knownOnce[id]; !pending || gen == m.generation {
 		if _, hit := m.entries[id]; !hit {
-			if m.knownOnce == nil || len(m.knownOnce) >= maxKnownOnce {
-				m.knownOnce = make(map[collectionID]struct{})
-			}
-			m.knownOnce[id] = struct{}{}
+			m.noteKnownOnce(id)
 			return v.IsWhollyKnown()
 		}
 	}
@@ -189,6 +192,27 @@ func (m *keyMemo) whollyKnown(v cty.Value) bool {
 	e.known, e.hasKnown = v.IsWhollyKnown(), true
 	m.entries[id] = e
 	return e.known
+}
+
+func (m *keyMemo) noteKnownOnce(id collectionID) {
+	if m.knownOnce == nil {
+		m.knownOnce = make(map[collectionID]uint64)
+	}
+	if len(m.knownOnce) >= maxKnownOnce {
+		for k, gen := range m.knownOnce {
+			if gen < m.generation {
+				delete(m.knownOnce, k)
+				break
+			}
+		}
+		if len(m.knownOnce) >= maxKnownOnce {
+			for k := range m.knownOnce {
+				delete(m.knownOnce, k)
+				break
+			}
+		}
+	}
+	m.knownOnce[id] = m.generation
 }
 
 // inputsKey returns a stable digest of a set of resolved module inputs.
