@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
 	"iter"
 	"slices"
 
@@ -40,7 +41,7 @@ type findingSet struct {
 	routing *findingRouting
 	// kept holds the identities of the findings in out. Nil when the set is
 	// not reducing by identity, so every finding is appended.
-	kept   map[string]struct{}
+	kept   map[[sha256.Size]byte]struct{}
 	keyBuf []byte
 }
 
@@ -50,7 +51,7 @@ type findingSet struct {
 func newFindingSet(compact bool, routing *findingRouting) *findingSet {
 	s := &findingSet{routing: routing}
 	if compact {
-		s.kept = make(map[string]struct{})
+		s.kept = make(map[[sha256.Size]byte]struct{})
 	}
 	return s
 }
@@ -114,16 +115,16 @@ func (s *findingSet) keepChained(id model.ChainedIdentity, v *model.Vulnerabilit
 	if s.has(id, v.ModuleCallChain) {
 		return
 	}
-	s.kept[model.StringToHash(string(s.keyBuf))] = struct{}{}
+	s.kept[sha256.Sum256(s.keyBuf)] = struct{}{}
 	s.out = append(s.out, *v)
 }
 
 func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
-	key = model.StringToHash(key)
-	if _, ok := s.kept[key]; ok {
+	digest := sha256.Sum256([]byte(key))
+	if _, ok := s.kept[digest]; ok {
 		return
 	}
-	s.kept[key] = struct{}{}
+	s.kept[digest] = struct{}{}
 	s.out = append(s.out, *v)
 }
 
@@ -180,7 +181,7 @@ func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, c
 
 func (s *findingSet) has(id model.ChainedIdentity, chain string) bool {
 	s.keyBuf = id.AppendWithChain(s.keyBuf[:0], chain)
-	_, ok := s.kept[model.StringToHash(string(s.keyBuf))]
+	_, ok := s.kept[sha256.Sum256(s.keyBuf)]
 	return ok
 }
 

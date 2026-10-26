@@ -418,7 +418,7 @@ func decodeCompacted(
 			FlagEvaluator: featureflags.NewLocalEvaluator(),
 			findings:      newFindingSet(compact, routing),
 		}
-		got, _, err := ins.DecodeQueryResults(ctx, qCtx, ctx, bucketResultSet(items), 0)
+		got, _, _, err := ins.DecodeQueryResults(ctx, qCtx, ctx, bucketResultSet(items), 0)
 		require.NoError(t, err)
 		require.Empty(t, ins.GetFailedQueries())
 		if compact {

@@ -7,6 +7,7 @@ package storage
 
 import (
 	"context"
+	"crypto/sha256"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -63,19 +64,22 @@ func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model
 // compacts in place so the findings are not held twice, which leaves an
 // already deduplicated collection as it is.
 func (m *MemoryStorage) getUniqueVulnerabilities() []model.Vulnerability {
-	last := make(map[string]int, len(m.vulnerabilities))
-	for i := range m.vulnerabilities {
-		last[model.FindingIdentity(&m.vulnerabilities[i])] = i
-	}
-	unique := m.vulnerabilities[:0]
-	for i := range m.vulnerabilities {
-		if last[model.FindingIdentity(&m.vulnerabilities[i])] == i {
-			unique = append(unique, m.vulnerabilities[i])
+	seen := make(map[[sha256.Size]byte]struct{}, len(m.vulnerabilities))
+	write := len(m.vulnerabilities) - 1
+	for i := write; i >= 0; i-- {
+		digest := sha256.Sum256([]byte(model.FindingIdentity(&m.vulnerabilities[i])))
+		if _, duplicate := seen[digest]; duplicate {
+			continue
 		}
+		seen[digest] = struct{}{}
+		m.vulnerabilities[write] = m.vulnerabilities[i]
+		write--
 	}
+	unique := m.vulnerabilities[write+1:]
+	copy(m.vulnerabilities, unique)
 	clear(m.vulnerabilities[len(unique):])
-	m.vulnerabilities = unique
-	return unique
+	m.vulnerabilities = m.vulnerabilities[:len(unique)]
+	return m.vulnerabilities
 }
 
 // NewMemoryStorage creates a new MemoryStorage empty and returns it
