@@ -224,11 +224,10 @@ resource "aws_s3_bucket" "replica" {
 	}
 }
 
-// A root that fails after evaluating a nested module keeps that module's
-// evaluation for the next root, and drops the local memo. The memo's keys
-// include path.*, so a failed root's entries match nothing afterwards, and a
-// run of failing roots would otherwise retain every derived local.
-func TestFailedRootDropsLocalMemoAndKeepsEvalCache(t *testing.T) {
+// A failed root's evaluations are keyed by its directory, so the next root
+// cannot reuse them. Releasing the cache also drops the collections keyMemo
+// pinned while hashing the locals.
+func TestFailedRootReleasesEvalCache(t *testing.T) {
 	repo := t.TempDir()
 	child := writeFile(t, filepath.Join(repo, "modules", "child"), "main.tf", `
 resource "aws_s3_bucket" "c" { bucket = "child" }
@@ -240,8 +239,10 @@ resource "aws_s3_bucket" "c" { bucket = "child" }
 		dir := filepath.Join(repo, name)
 		path := writeFile(t, dir, "main.tf", `
 locals {
-  derived = upper("kept")
+  owners  = { a = "alpha", b = "beta" }
+  derived = local.owners[var.service]
 }
+variable "service" { default = "a" }
 module "child" {
   source = "../modules/child"
 }
@@ -281,8 +282,11 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 	if evaluator.LocalMemoSize() != 0 {
 		t.Fatalf("failed roots retained %d local values", evaluator.LocalMemoSize())
 	}
-	if evaluator.EvalCacheSize() == 0 {
-		t.Fatal("failed roots dropped the nested module evaluations they can reuse")
+	if evaluator.KeyMemoSize() != 0 {
+		t.Fatalf("failed roots retained %d hashed collections", evaluator.KeyMemoSize())
+	}
+	if evaluator.EvalCacheSize() != 0 {
+		t.Fatalf("failed roots retained %d module evaluations", evaluator.EvalCacheSize())
 	}
 }
 

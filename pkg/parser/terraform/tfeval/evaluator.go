@@ -520,12 +520,9 @@ func (e *Evaluator) ReleaseCaches() {
 }
 
 // ReleaseEvalCache drops memoized module evaluations while keeping parsed HCL
-// bodies. Every entry holds the resolved resources of its whole subtree, so
-// retaining entries for a whole repository scales peak memory with the number of
-// roots. Entries are reusable across roots now that the key is the inputs alone,
-// but in practice each root passes its own values to the shared modules it calls,
-// so the hit rate across roots is low and not worth that peak. The parse cache is
-// keyed by directory alone, genuinely is shared by every root, and is kept.
+// bodies. The key includes rootDir, so a later root does not reuse them, and
+// each entry holds its subtree. The parse cache is keyed by directory alone
+// and is kept.
 func (e *Evaluator) ReleaseEvalCache() {
 	e.cache = make(map[evalCacheKey]*evalCacheEntry)
 	e.keyMemo = keyMemo{}
@@ -533,16 +530,16 @@ func (e *Evaluator) ReleaseEvalCache() {
 	e.localReads = nil
 }
 
-// ReleaseLocalMemo drops local values shared across module instances. A failed
-// root keeps its evaluation cache, so a nested module it did finish can be
-// reused, but nothing in the local memo can: every key includes path.*, which
-// the next root does not match.
+// ReleaseLocalMemo drops local values shared across module instances.
 func (e *Evaluator) ReleaseLocalMemo() {
 	e.localMemo = nil
 }
 
-// LocalMemoSize and EvalCacheSize report what a root left retained.
+// LocalMemoSize, KeyMemoSize and EvalCacheSize report what a root left retained.
 func (e *Evaluator) LocalMemoSize() int { return len(e.localMemo) }
+
+// KeyMemoSize reports collections retained so their digests stay valid.
+func (e *Evaluator) KeyMemoSize() int { return len(e.keyMemo.entries) }
 
 // EvalCacheSize reports memoized module evaluations.
 func (e *Evaluator) EvalCacheSize() int { return len(e.cache) }
