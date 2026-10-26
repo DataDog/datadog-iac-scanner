@@ -495,8 +495,11 @@ func getPlatformLibraries(ctx context.Context, queriesSource source.QueriesSourc
 
 type QueryResult struct {
 	vulnerabilities []model.Vulnerability
-	err             error
-	queryID         int
+	// moduleResultsRaised is how many ResourceType=="module" results the rule
+	// raised before identity dedup at decode.
+	moduleResultsRaised int
+	err                 error
+	queryID             int
 }
 
 // evalQuery loads and evaluates a single query, returning its result. Load and
@@ -544,14 +547,14 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	}
 
 	evalStart := time.Now()
-	vuls, err := c.doRun(ctx, queryContext)
+	vuls, moduleRaised, err := c.doRun(ctx, queryContext)
 	evalDur := time.Since(evalStart)
 	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
 		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
 	if err == nil {
 		c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
 	}
-	return QueryResult{vulnerabilities: vuls, err: err, queryID: queryID}
+	return QueryResult{vulnerabilities: vuls, moduleResultsRaised: moduleRaised, err: err, queryID: queryID}
 }
 
 func (c *Inspector) Inspect(
@@ -794,15 +797,23 @@ func (c *Inspector) executeQueries(
 	}
 
 	// Aggregate serially: processResult mutates shared state.
-	moduleVulns := make(map[string]int)
+	moduleVulns := make(map[string]moduleVulnCounts)
 	for i := range results {
 		processResult(ctx, &results[i], &vulnerabilities, &moduleVulns, queries, c)
 	}
-	for vulnerability, number := range moduleVulns {
-		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
+	for name, counts := range moduleVulns {
+		event := contextLogger.Info()
+		if counts.unique != counts.raised {
+			event = event.Int("uniqueFindings", counts.unique)
+		}
+		event.Msgf("Found %d of module vulnerability %s", counts.raised, name)
 	}
 
 	return vulnerabilities, nil
+}
+
+type moduleVulnCounts struct {
+	raised, unique int
 }
 
 func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas) bool {
@@ -840,7 +851,7 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 
 // nolint:gocritic
 func processResult(ctx context.Context, result *QueryResult,
-	vulnerabilities *[]model.Vulnerability, moduleVulns *map[string]int,
+	vulnerabilities *[]model.Vulnerability, moduleVulns *map[string]moduleVulnCounts,
 	queries []model.QueryMetadata, c *Inspector) {
 	contextLogger := logger.FromContext(ctx)
 	if result.err != nil {
@@ -851,17 +862,32 @@ func processResult(ctx context.Context, result *QueryResult,
 		return
 	}
 
+	uniqueModule := 0
+	var moduleName string
+	var moduleSeverity model.Severity
 	// nolint:gocritic
 	for _, vulnerability := range result.vulnerabilities {
-		if vulnerability.ResourceType == "module" {
-			val, ok := (*moduleVulns)[vulnerability.QueryName]
-			if ok {
-				(*moduleVulns)[vulnerability.QueryName] = val + 1
-			} else {
-				(*moduleVulns)[vulnerability.QueryName] = 1
-				contextLogger.Info().Msgf("Found module vulnerability %s of severity %s", vulnerability.QueryName, vulnerability.Severity)
-			}
+		if vulnerability.ResourceType == moduleCallRoot {
+			uniqueModule++
+			moduleName = vulnerability.QueryName
+			moduleSeverity = vulnerability.Severity
 		}
+	}
+	raisedModule := result.moduleResultsRaised
+	if raisedModule == 0 {
+		raisedModule = uniqueModule
+	}
+	if raisedModule > 0 {
+		if moduleName == "" {
+			moduleName = queries[result.queryID].Query
+		}
+		counts := (*moduleVulns)[moduleName]
+		if counts.raised == 0 && moduleSeverity != "" {
+			contextLogger.Info().Msgf("Found module vulnerability %s of severity %s", moduleName, moduleSeverity)
+		}
+		counts.raised += raisedModule
+		counts.unique += uniqueModule
+		(*moduleVulns)[moduleName] = counts
 	}
 	*vulnerabilities = append(*vulnerabilities, result.vulnerabilities...)
 	// The aggregate holds a copy, so releasing the rule's own slice keeps the
@@ -949,7 +975,7 @@ func queryIDsFromMetadata(ctx context.Context, metadata *model.QueryMetadata) (q
 	return queryID, legacyQueryID
 }
 
-func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, err error) {
+func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, moduleRaised int, err error) {
 	contextLogger := logger.FromContext(ctx)
 	defer func() {
 		if r := recover(); r != nil {
@@ -963,11 +989,11 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	queryID, legacyQueryID := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
 	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID); found {
 		if args, ok, err := ruleArgumentsValue(rc); err != nil {
-			return nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
+			return nil, 0, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
 		} else if ok {
 			payload, err = withRuleArguments(payload, args)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 		}
 	}
@@ -985,10 +1011,10 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	qCtx.payload = nil
 	if err != nil {
 		if topdown.IsCancel(err) {
-			return nil, errors.Wrap(err, "query evaluation canceled (scan aborting)")
+			return nil, 0, errors.Wrap(err, "query evaluation canceled (scan aborting)")
 		}
 
-		return nil, errors.Wrap(err, "failed to evaluate query")
+		return nil, 0, errors.Wrap(err, "failed to evaluate query")
 	}
 	if c.enableCoverageReport && cov != nil {
 		module, parseErr := ast.ParseModuleWithOpts(
@@ -997,7 +1023,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			ast.ParserOptions{RegoVersion: ast.RegoV1},
 		)
 		if parseErr != nil {
-			return nil, errors.Wrap(parseErr, "failed to parse coverage module")
+			return nil, 0, errors.Wrap(parseErr, "failed to parse coverage module")
 		}
 
 		c.coverageReport = cov.Report(map[string]*ast.Module{
@@ -1006,7 +1032,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	}
 
 	decodeStart := time.Now()
-	vulns, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
+	vulns, moduleRaised, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
 	decodeDuration := time.Since(decodeStart)
 
 	// Flag slow rules so they can be debugged/optimized later
@@ -1021,7 +1047,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			Int64("thresholdMs", slowQueryWarnThreshold.Milliseconds()).
 			Msg("slow rule")
 	}
-	return vulns, err
+	return vulns, moduleRaised, err
 }
 
 func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.Value) ast.Value {
@@ -1402,17 +1428,19 @@ func (cons *payloadHashCons) stringTerm(s string) *ast.Term {
 	return t
 }
 
-// DecodeQueryResults decodes the results into []model.Vulnerability
+// DecodeQueryResults decodes the results into []model.Vulnerability.
+// moduleRaised is how many ResourceType=="module" results were decoded before
+// identity dedup.
 func (c *Inspector) DecodeQueryResults(
 	ctx context.Context,
 	qCtx *QueryContext,
 	ctxTimeout context.Context,
 	results rego.ResultSet,
-	queryDuration time.Duration) ([]model.Vulnerability, error) {
+	queryDuration time.Duration) ([]model.Vulnerability, int, error) {
 	contextLogger := logger.FromContext(ctx)
 	queryResultItems, err := resultItems(results)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if qCtx.discardLineInfoAfterUse {
 		// Group findings by file so each file's line-info tree is built once and
@@ -1430,6 +1458,7 @@ func (c *Inspector) DecodeQueryResults(
 	}
 	failedDetectLine := false
 	canceled := false
+	moduleRaised := 0
 	var activeLineInfoFile string
 decodeLoop:
 	for i := range findings.order(len(queryResultItems)) {
@@ -1445,6 +1474,9 @@ decodeLoop:
 			break decodeLoop
 		default:
 			activeLineInfoFile = advanceLineInfoFile(qCtx, activeLineInfoFile, resultDocumentID(queryResultItem))
+			if resultResourceType(queryResultItem) == moduleCallRoot {
+				moduleRaised++
+			}
 			vulnerability, aux := getVulnerabilitiesFromQuery(ctx, qCtx, c, queryResultItem, queryDuration)
 			if aux {
 				failedDetectLine = aux
@@ -1472,7 +1504,18 @@ decodeLoop:
 		}
 	}
 
-	return findings.findings(), nil
+	return findings.findings(), moduleRaised, nil
+}
+
+// resultResourceType is the resourceType a rule result raised, before decode
+// drops or deduplicates it.
+func resultResourceType(item interface{}) string {
+	m, ok := item.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	resourceType, _ := m["resourceType"].(string)
+	return resourceType
 }
 
 func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {

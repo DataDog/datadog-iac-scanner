@@ -117,7 +117,12 @@ func fingerprintInput(
 	return strings.Join(segments, "|")
 }
 
-func stringToHash(str string) string {
+// StringToHash returns the SHA-256 hex digest of str.
+func StringToHash(str string) string {
 	hash := sha256.Sum256([]byte(str))
 	return hex.EncodeToString(hash[:])
+}
+
+func stringToHash(str string) string {
+	return StringToHash(str)
 }

@@ -812,7 +812,7 @@ func TestInspector_DecodeQueryResults(t *testing.T) {
 	// on its cancellation branch and return no results.
 	expiredCtx, cancel := context.WithTimeout(ctx, 0)
 	defer cancel()
-	result, err := c.DecodeQueryResults(ctx, &queryContext, expiredCtx, newResultset(), 57)
+	result, _, err := c.DecodeQueryResults(ctx, &queryContext, expiredCtx, newResultset(), 57)
 	assert.Nil(t, err, "Error not as expected")
 	assert.Equal(t, 0, len(result), "Array size is not as expected")
 }
@@ -1412,7 +1412,7 @@ func TestInspector_FailedQueriesConcurrentWrites(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			vulns := make([]model.Vulnerability, 0)
-			moduleVulns := make(map[string]int)
+			moduleVulns := make(map[string]moduleVulnCounts)
 			result := QueryResult{err: buildErr, queryID: i}
 			<-start
 			processResult(ctx, &result, &vulns, &moduleVulns, queries, ins)

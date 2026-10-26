@@ -418,11 +418,11 @@ func decodeCompacted(
 			FlagEvaluator: featureflags.NewLocalEvaluator(),
 			findings:      newFindingSet(compact, routing),
 		}
-		got, err := ins.DecodeQueryResults(ctx, qCtx, ctx, bucketResultSet(items), 0)
+		got, _, err := ins.DecodeQueryResults(ctx, qCtx, ctx, bucketResultSet(items), 0)
 		require.NoError(t, err)
 		require.Empty(t, ins.GetFailedQueries())
 		if compact {
-			skipped = tr.SupersededResults
+			skipped = int(atomic.LoadInt64(&tr.SupersededResults))
 		}
 		return got
 	}

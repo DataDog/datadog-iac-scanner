@@ -114,11 +114,12 @@ func (s *findingSet) keepChained(id model.ChainedIdentity, v *model.Vulnerabilit
 	if s.has(id, v.ModuleCallChain) {
 		return
 	}
-	s.kept[string(s.keyBuf)] = struct{}{}
+	s.kept[model.StringToHash(string(s.keyBuf))] = struct{}{}
 	s.out = append(s.out, *v)
 }
 
 func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
+	key = model.StringToHash(key)
 	if _, ok := s.kept[key]; ok {
 		return
 	}
@@ -179,7 +180,7 @@ func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, c
 
 func (s *findingSet) has(id model.ChainedIdentity, chain string) bool {
 	s.keyBuf = id.AppendWithChain(s.keyBuf[:0], chain)
-	_, ok := s.kept[string(s.keyBuf)]
+	_, ok := s.kept[model.StringToHash(string(s.keyBuf))]
 	return ok
 }
 

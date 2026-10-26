@@ -8,6 +8,7 @@ package tracker
 import (
 	"fmt"
 	"reflect"
+	"sync/atomic"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/test"
@@ -116,6 +117,11 @@ func TestCITracker(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", tt.name+"_TrackFoundCountResources"), func(t *testing.T) {
 			c.TrackFileFoundCountResources(5)
 			require.Equal(t, 5, c.FoundCountLines)
+		})
+		t.Run(fmt.Sprintf("%s", tt.name+"_SkippedSupersededResult"), func(t *testing.T) {
+			c.SkippedSupersededResult()
+			c.SkippedSupersededResult()
+			require.Equal(t, int64(2), atomic.LoadInt64(&c.SupersededResults))
 		})
 	}
 }

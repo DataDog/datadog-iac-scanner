@@ -8,6 +8,7 @@ package tracker
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 )
@@ -34,7 +35,7 @@ type CITracker struct {
 	syncFileMutex        sync.Mutex
 	FoundResources       int
 	LineInfoLoadFailures int
-	SupersededResults    int
+	SupersededResults    int64
 }
 
 // NewTracker will create a new instance of a tracker with the number of lines to display in results output
@@ -119,9 +120,7 @@ func (c *CITracker) FailedLineInfoDocument() {
 
 // SkippedSupersededResult counts a result dropped before its line was detected.
 func (c *CITracker) SkippedSupersededResult() {
-	trackerMu.Lock()
-	defer trackerMu.Unlock()
-	c.SupersededResults++
+	atomic.AddInt64(&c.SupersededResults, 1)
 }
 
 // TrackFileFoundCountLines - information about the lines of the scanned files

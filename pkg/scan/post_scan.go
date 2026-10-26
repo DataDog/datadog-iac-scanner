@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	consoleHelpers "github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
@@ -136,8 +137,8 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 	endTime := time.Now()
 	scanDuration := endTime.Sub(c.ScanStartTime)
 	consolePrinter.PrintScanDuration(ctx, scanDuration)
-	if n := c.Tracker.SupersededResults; n > 0 {
-		contextLogger.Info().Int("supersededResults", n).
+	if n := atomic.LoadInt64(&c.Tracker.SupersededResults); n > 0 {
+		contextLogger.Info().Int64("supersededResults", n).
 			Msg("Skipped line detection for results a later result of the same rule already covered")
 	}
 
