@@ -11,6 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector/docker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -1585,6 +1588,62 @@ func TestDetectLineNestedDynamicBlocksFromDocument(t *testing.T) {
 					require.Equal(t, want, got.Line, shape+": "+key)
 				}
 			}
+		})
+	}
+}
+
+// Decoding relies on this to know a finding's file before its line is
+// detected (see detector.DetectLine.ReportsScannedFile).
+func TestDetectLine_AlwaysReportsTheScannedFile(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name, path, src, key string
+	}{
+		{name: "found", path: "main.tf", src: OriginalData1, key: "aws_s3_bucket[bucket].acl"},
+		{name: "not_found", path: "main.tf", src: OriginalData1, key: "aws_s3_bucket[missing].acl"},
+		{name: "empty_key", path: "main.tf", src: OriginalData1, key: ""},
+		{name: "empty_file", path: "main.tf", src: "", key: "aws_s3_bucket[bucket].acl"},
+		{name: "unparsable", path: "main.tf", src: "resource \"aws_s3_bucket\" \"bucket\" {\n  acl = \"x\"\n", key: "aws_s3_bucket[bucket].acl"},
+		{name: "referenced_file", path: "iam.tf", src: policyFromFileFunction,
+			key: "aws_iam_role[DatadogAWSIntegration].assume_role_policy.Statement[0].Principal"},
+		{name: "json_found", path: "main.tf.json", src: "{\n  \"resource\": {\n    \"aws_s3_bucket\": {\n      \"bucket\": {\n        \"acl\": \"x\"\n      }\n    }\n  }\n}\n",
+			key: "resource.aws_s3_bucket.bucket.acl"},
+		{name: "json_not_found", path: "main.tf.json", src: "{}\n", key: "resource.aws_s3_bucket.bucket.acl"},
+		{name: "json_empty", path: "main.tf.json", src: "", key: "resource.aws_s3_bucket.bucket.acl"},
+	}
+	require.True(t, (&DetectKindLine{}).ReportsScannedFile())
+
+	var unset *detector.DetectLine
+	require.False(t, unset.ReportsScannedFile(&model.FileMetadata{Kind: model.KindTerraform}))
+	scanDetector := detector.NewDetectLine(3).
+		Add(helm.DetectKindLine{}, model.KindHELM).
+		Add(docker.DetectKindLine{}, model.KindDOCKER).
+		Add(&DetectKindLine{}, model.KindTerraform).
+		Add(detector.DockerComposeDetectLine{}, model.KindYAML)
+	for kind, want := range map[model.FileKind]bool{
+		model.KindTerraform:     true,
+		model.KindTerraformPlan: false,
+		model.KindJSON:          false,
+		model.KindHELM:          false,
+		model.KindDOCKER:        false,
+		model.KindYAML:          false,
+	} {
+		require.Equalf(t, want, scanDetector.ReportsScannedFile(&model.FileMetadata{Kind: kind}), "kind %s", kind)
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// The parse cache is keyed by path, so each case needs its own.
+			detector := &DetectKindLine{}
+			file := &model.FileMetadata{
+				ID:                "t",
+				Kind:              model.KindTerraform,
+				FilePath:          tc.path,
+				OriginalData:      tc.src,
+				LinesOriginalData: utils.SplitLines(tc.src),
+			}
+			got := detector.DetectLine(ctx, file, tc.key, 3)
+			require.Equal(t, tc.path, got.ResolvedFile)
 		})
 	}
 }

@@ -371,12 +371,9 @@ type QueryContext struct {
 	// discardLineInfoAfterUse drops each file's line-info tree after line
 	// detection for a finding (loader kept for reuse) when post-eval release is on.
 	discardLineInfoAfterUse bool
-	// routing, when set, routes the rule's findings to the module callers they
-	// stand for once they are decoded.
-	routing *findingRouting
-	// compactFindingsAtDecode mirrors Inspector.compactFindingsAtDecode for the
-	// query this context runs (see SetCompactFindingsAtDecode).
-	compactFindingsAtDecode bool
+	// findings collects this rule's results. Nil when the context was not built
+	// for a scan; DecodeQueryResults then keeps every decoded finding.
+	findings *findingSet
 }
 
 var (
@@ -543,8 +540,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		payload:                 &payload,
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
-		routing:                 routing,
-		compactFindingsAtDecode: c.compactFindingsAtDecode,
+		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
 	}
 
 	evalStart := time.Now()
@@ -1428,12 +1424,16 @@ func (c *Inspector) DecodeQueryResults(
 		})
 	}
 
-	findings := newFindingSet(qCtx.compactFindingsAtDecode)
+	findings := qCtx.findings
+	if findings == nil {
+		findings = newFindingSet(false, nil)
+	}
 	failedDetectLine := false
 	canceled := false
 	var activeLineInfoFile string
 decodeLoop:
-	for i, queryResultItem := range queryResultItems {
+	for i := range findings.order(len(queryResultItems)) {
+		queryResultItem := queryResultItems[i]
 		// Each item is decoded once; dropping it as it is read lets a rule
 		// raising many findings hold one decoded item rather than all of them.
 		queryResultItems[i] = nil
@@ -1450,7 +1450,7 @@ decodeLoop:
 				failedDetectLine = aux
 			}
 			if vulnerability != nil && !aux {
-				findings.addRouted(ctx, c, qCtx.routing, vulnerability)
+				findings.addRouted(ctx, c, vulnerability)
 			}
 		}
 	}
@@ -1472,7 +1472,7 @@ decodeLoop:
 		}
 	}
 
-	return findings.out, nil
+	return findings.findings(), nil
 }
 
 func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {

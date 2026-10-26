@@ -136,6 +136,10 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 	endTime := time.Now()
 	scanDuration := endTime.Sub(c.ScanStartTime)
 	consolePrinter.PrintScanDuration(ctx, scanDuration)
+	if n := c.Tracker.SupersededResults; n > 0 {
+		contextLogger.Info().Int("supersededResults", n).
+			Msg("Skipped line detection for results a later result of the same rule already covered")
+	}
 
 	handler, exitCode := consoleHelpers.ResultsExitCode(&summary)
 	if handler.ShowError("results") && exitCode != 0 {

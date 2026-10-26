@@ -7,6 +7,8 @@ package engine
 
 import (
 	"context"
+	"iter"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
@@ -24,50 +26,173 @@ import (
 // That reduction is only valid for a caller that, like storage, keeps the
 // last finding of each identity (see Inspector.SetCompactFindingsAtDecode).
 //
+// A compacting set is given the rule's results last raised first, so the
+// finding it keeps is the first one it is given. A result whose every
+// identity is already kept can then be skipped before its line is detected
+// (see supersedes).
+//
 // Routing runs before the identity is recorded. It gives a finding the call
 // chain of each module caller it stands for, and two instances that share an
 // identity can stand for different callers. Recording the identity first would
 // drop the callers of every instance but the last.
 type findingSet struct {
-	out []model.Vulnerability
-	// at is the position in out of the finding kept for an identity. Nil when
-	// the set is not reducing by identity, so add appends unconditionally.
-	at map[string]int
+	out     []model.Vulnerability
+	routing *findingRouting
+	// kept holds the identities of the findings in out. Nil when the set is
+	// not reducing by identity, so every finding is appended.
+	kept   map[string]struct{}
+	keyBuf []byte
 }
 
 // newFindingSet starts a set that reduces findings to one per identity when
 // compact is true, or keeps every finding it is given when compact is false.
-func newFindingSet(compact bool) *findingSet {
-	if !compact {
-		return &findingSet{}
+// routing, which may be nil, routes each finding before it is kept.
+func newFindingSet(compact bool, routing *findingRouting) *findingSet {
+	s := &findingSet{routing: routing}
+	if compact {
+		s.kept = make(map[string]struct{})
 	}
-	return &findingSet{at: make(map[string]int)}
+	return s
 }
 
-// addRouted routes v to the module callers it stands for and keeps the last
-// finding of each identity that routing produced.
-func (s *findingSet) addRouted(ctx context.Context, c *Inspector, routing *findingRouting, v *model.Vulnerability) {
-	routed := routing.route(ctx, c, []model.Vulnerability{*v})
-	for i := range routed {
-		s.add(&routed[i])
+// lastRaisedFirst reports whether the set must be given the rule's results
+// from the last one raised to the first.
+func (s *findingSet) lastRaisedFirst() bool {
+	return s != nil && s.kept != nil
+}
+
+// maySkip reports whether a result could be dropped before its line is
+// detected. The first result of a rule cannot: nothing is kept yet.
+func (s *findingSet) maySkip() bool {
+	return s != nil && len(s.kept) > 0
+}
+
+// order yields the positions of a rule's n results in the order the set must
+// be given them.
+func (s *findingSet) order(n int) iter.Seq[int] {
+	lastFirst := s.lastRaisedFirst()
+	return func(yield func(int) bool) {
+		for k := 0; k < n; k++ {
+			i := k
+			if lastFirst {
+				i = n - 1 - k
+			}
+			if !yield(i) {
+				return
+			}
+		}
 	}
 }
 
-// add keeps v as the finding of its identity, replacing the one kept before
-// it, when the set reduces by identity; otherwise it appends v unconditionally.
-// Either way, findings are kept in the order the rule raised them.
-func (s *findingSet) add(v *model.Vulnerability) {
-	if s.at == nil {
-		s.out = append(s.out, *v)
+// addRouted routes v to the module callers it stands for and keeps what
+// routing produced. A compacting set, given results last raised first, keeps
+// the first finding of each identity.
+func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulnerability) {
+	var routed []model.Vulnerability
+	if s.routing == nil {
+		routed = []model.Vulnerability{*v}
+	} else {
+		routed = s.routing.route(ctx, c, []model.Vulnerability{*v})
+	}
+	if s.kept == nil {
+		s.out = append(s.out, routed...)
 		return
 	}
-	key := model.FindingIdentity(v)
-	if at, ok := s.at[key]; ok {
-		s.out[at] = *v
+	// Routing changes only the call chain of what goes into the identity.
+	id, lineFree := model.IdentityBeforeLine(v)
+	for i := len(routed) - 1; i >= 0; i-- {
+		if lineFree {
+			s.keepChained(id, &routed[i])
+		} else {
+			s.keepKey(model.FindingIdentity(&routed[i]), &routed[i])
+		}
+	}
+}
+
+// keepChained records v unless id under v's call chain is already kept.
+func (s *findingSet) keepChained(id model.ChainedIdentity, v *model.Vulnerability) {
+	if s.has(id, v.ModuleCallChain) {
 		return
 	}
-	s.at[key] = len(s.out)
+	s.kept[string(s.keyBuf)] = struct{}{}
 	s.out = append(s.out, *v)
+}
+
+func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
+	if _, ok := s.kept[key]; ok {
+		return
+	}
+	s.kept[key] = struct{}{}
+	s.out = append(s.out, *v)
+}
+
+// supersedes reports whether routing a result raised on file with identity id
+// now would only produce identities this set already kept, so the result
+// cannot change the report.
+//
+// It has to agree with findingRouting.route in that direction (see
+// TestFindingSet_SupersedesMeansRouteKeepsNothingNew). The as-written
+// identity is required only when routing can produce it: an external module
+// file that is reported only through its calls does not.
+func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetadata, resourceType string) bool {
+	if file == nil || len(s.kept) == 0 {
+		return false
+	}
+	if !s.accounted(id, file.ID, resourceType, file.ModuleCallChain, len(file.ModuleAttributions) > 0) {
+		return false
+	}
+	if s.routing == nil {
+		return true
+	}
+	for _, ex := range s.routing.extras[file.ID] {
+		if !s.accounted(id, ex.docID, resourceType, ex.callChain, len(ex.attributions) > 0) {
+			return false
+		}
+	}
+	return true
+}
+
+// accounted reports whether every identity routing can give a finding raised
+// on document fileID and reported under chain is already kept.
+func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, chain string, attributionPossible bool) bool {
+	var file *moduleFileCalls
+	if s.routing != nil {
+		file = s.routing.moduleFiles[fileID]
+	}
+	if file == nil || file.keptAsWritten(resourceType) {
+		return s.has(id, chain)
+	}
+	// The calls are produced unless the line attributes the finding. The line
+	// is not known yet, so every call has to be kept already.
+	for i := range file.calls {
+		if !s.has(id, file.calls[i].callChain) {
+			return false
+		}
+	}
+	// Kept as written, or attributed from the line. Without attributions the
+	// as-written finding is not produced, and requiring it would never skip.
+	if file.keepWritten || attributionPossible {
+		return s.has(id, chain)
+	}
+	return true
+}
+
+func (s *findingSet) has(id model.ChainedIdentity, chain string) bool {
+	s.keyBuf = id.AppendWithChain(s.keyBuf[:0], chain)
+	_, ok := s.kept[string(s.keyBuf)]
+	return ok
+}
+
+// findings returns what the set kept, in the order the rule raised it, and
+// empties the set. A compacting set is given its results last raised first,
+// so this reverses them.
+func (s *findingSet) findings() []model.Vulnerability {
+	out := s.out
+	if s.lastRaisedFirst() {
+		slices.Reverse(out)
+	}
+	s.out, s.kept, s.keyBuf = nil, nil, nil
+	return out
 }
 
 // findingRouting is what turns the findings a rule raises on the scanned

@@ -21,12 +21,13 @@ import (
 // cacheTracker is a no-op Tracker for building a QueryLoader in tests.
 type cacheTracker struct{}
 
-func (cacheTracker) TrackQueryLoad(int)      {}
-func (cacheTracker) TrackQueryExecuting(int) {}
-func (cacheTracker) TrackQueryExecution(int) {}
-func (cacheTracker) FailedDetectLine()       {}
-func (cacheTracker) FailedLineInfoDocument() {}
-func (cacheTracker) GetOutputLines() int     { return 3 }
+func (cacheTracker) TrackQueryLoad(int)       {}
+func (cacheTracker) TrackQueryExecuting(int)  {}
+func (cacheTracker) TrackQueryExecution(int)  {}
+func (cacheTracker) FailedDetectLine()        {}
+func (cacheTracker) FailedLineInfoDocument()  {}
+func (cacheTracker) SkippedSupersededResult() {}
+func (cacheTracker) GetOutputLines() int      { return 3 }
 
 func newCacheTestLoader(t *testing.T, platform string, queries []model.QueryMetadata) *QueryLoader {
 	t.Helper()

@@ -63,3 +63,24 @@ func TestFindingIdentity_EqualIdentityMeansEqualCreateSummaryFingerprint(t *test
 	require.Equal(t, files[0].Fingerprint, files[1].Fingerprint,
 		"equal FindingIdentity must mean equal CreateSummary fingerprints")
 }
+
+func TestIdentityBeforeLine_IsFindingIdentityUnderEveryChain(t *testing.T) {
+	for _, platform := range []string{"Terraform", "CloudFormation", "Kubernetes", ""} {
+		for _, chain := range []string{"", "module.a", "module.a.module.b[\"k\"]"} {
+			v := &Vulnerability{
+				FileName: "modules/app/main.tf", Platform: platform, ResourceType: "aws_s3_bucket",
+				ResourceName: "logs", QueryID: "q", LegacyQueryID: "legacy",
+				LineWithVulnerability: "line text", ModuleCallChain: chain,
+			}
+			id, ok := IdentityBeforeLine(v)
+			require.True(t, ok, platform)
+			want := fingerprintInput(SCIInfo{}, v.FileName, platform, v.ResourceType, v.ResourceName, "legacy", "line text", chain)
+			require.Equal(t, want, FindingIdentity(v), platform)
+			require.Equal(t, want, id.WithChain(chain), platform)
+			require.Equal(t, want, string(id.AppendWithChain(nil, chain)), platform)
+		}
+	}
+
+	_, ok := IdentityBeforeLine(&Vulnerability{Platform: "Dockerfile"})
+	require.False(t, ok, "a Dockerfile identity includes the line")
+}

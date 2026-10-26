@@ -34,6 +34,7 @@ type CITracker struct {
 	syncFileMutex        sync.Mutex
 	FoundResources       int
 	LineInfoLoadFailures int
+	SupersededResults    int
 }
 
 // NewTracker will create a new instance of a tracker with the number of lines to display in results output
@@ -114,6 +115,13 @@ func (c *CITracker) FailedLineInfoDocument() {
 	trackerMu.Lock()
 	defer trackerMu.Unlock()
 	c.LineInfoLoadFailures++
+}
+
+// SkippedSupersededResult counts a result dropped before its line was detected.
+func (c *CITracker) SkippedSupersededResult() {
+	trackerMu.Lock()
+	defer trackerMu.Unlock()
+	c.SupersededResults++
 }
 
 // TrackFileFoundCountLines - information about the lines of the scanned files
