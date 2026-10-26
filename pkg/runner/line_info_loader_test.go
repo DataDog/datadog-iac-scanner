@@ -104,3 +104,16 @@ func TestEnsureLineInfoDocument_minifiedTFPlanUsesOriginalData(t *testing.T) {
 	require.NoError(t, file.EnsureLineInfoDocument(ctx))
 	require.True(t, reflect.DeepEqual(lazyDoc, file.LineInfoDocument))
 }
+
+// Scanned and Helm rendered files both reparse through
+// newLineInfoLoaderWithReparser, so parsers skip what only a scan needs.
+func TestNewLineInfoLoaderWithReparser_reparsesOnlyForLineInfo(t *testing.T) {
+	var lineInfoOnly bool
+	load := newLineInfoLoaderWithReparser("main.tf", 0, func(ctx context.Context, _ *model.FileMetadata) (parser.ParsedDocument, error) {
+		lineInfoOnly = parser.IsLineInfoOnly(ctx)
+		return parser.ParsedDocument{Docs: []model.Document{{}}}, nil
+	})
+	_, err := load(context.Background(), &model.FileMetadata{})
+	require.NoError(t, err)
+	require.True(t, lineInfoOnly)
+}

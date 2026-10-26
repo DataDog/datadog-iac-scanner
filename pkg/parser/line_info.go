@@ -5,18 +5,19 @@
  */
 package parser
 
-import "context"
+import (
+	"context"
 
-type lineInfoOnlyKey struct{}
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/lineinfo"
+)
 
 // WithLineInfoOnly marks a parse as a reparse that only needs the document's
 // line markers, so parsers may skip enrichment that only rules consume.
 func WithLineInfoOnly(ctx context.Context) context.Context {
-	return context.WithValue(ctx, lineInfoOnlyKey{}, true)
+	return lineinfo.WithOnly(ctx)
 }
 
 // IsLineInfoOnly reports whether ctx was marked with WithLineInfoOnly.
 func IsLineInfoOnly(ctx context.Context) bool {
-	v, _ := ctx.Value(lineInfoOnlyKey{}).(bool)
-	return v
+	return lineinfo.IsOnly(ctx)
 }

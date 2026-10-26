@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/lineinfo"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -287,12 +288,14 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		return nil, nil, nil, nil, err
 	}
 
-	ignore, err := comment.ParseComments(resolved, path)
-	if err != nil {
-		contextLogger.Err(err).Msg("failed to parse comments")
+	var linesToIgnore []int
+	if !lineinfo.IsOnly(ctx) {
+		ignore, err := comment.ParseComments(resolved, path)
+		if err != nil {
+			contextLogger.Err(err).Msg("failed to parse comments")
+		}
+		linesToIgnore = comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
 	}
-
-	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
 
 	fc, parseErr := p.convertFunc(ctx, file, inputVariables, converter.Options{
 		BaseDir: filepath.Dir(path),

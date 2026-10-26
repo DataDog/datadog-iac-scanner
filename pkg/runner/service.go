@@ -445,18 +445,19 @@ func newLineInfoLoader(
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return newLineInfoLoaderWithReparser(filename, docIdx,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
-			return p.Parse(parser.WithLineInfoOnly(ctx),
-				filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
+			return p.Parse(ctx, filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
 		})
 }
 
+// newLineInfoLoaderWithReparser returns a loader reading document docIdx of
+// reparse, which is told it parses only for line info.
 func newLineInfoLoaderWithReparser(
 	filename string,
 	docIdx int,
 	reparse func(context.Context, *model.FileMetadata) (parser.ParsedDocument, error),
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
-		reparsed, err := reparse(ctx, f)
+		reparsed, err := reparse(parser.WithLineInfoOnly(ctx), f)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)
 		}

@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/lineinfo"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -147,6 +148,16 @@ func Test_Parser(t *testing.T) {
 	secret := document[0]["resource"].(model.Document)["aws_secretsmanager_secret_version"].(model.Document)["example"].(model.Document)
 	require.Contains(t, secret["secret_string"], "${null}")
 
+}
+
+func Test_Parser_lineInfoOnlySkipsIgnoreComments(t *testing.T) {
+	ctx := context.Background()
+	_, full, _, _, err := NewDefault().Parse(ctx, []byte(have), "test.tf", true, 15)
+	require.NoError(t, err)
+	_, lineInfo, linesToIgnore, _, err := NewDefault().Parse(lineinfo.WithOnly(ctx), []byte(have), "test.tf", true, 15)
+	require.NoError(t, err)
+	require.Empty(t, linesToIgnore)
+	require.Equal(t, full, lineInfo)
 }
 
 // Test_Count tests resources with count set to 0
