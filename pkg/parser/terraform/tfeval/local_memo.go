@@ -129,7 +129,9 @@ func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Val
 			}
 			v, name = next, name+"\x00"+label
 		}
-		if v.IsMarked() {
+		// A memo key records only "?" and the type for an unknown, so a plain
+		// unknown and one refined with a prefix or non-null would share a value.
+		if v.IsMarked() || !v.IsWhollyKnown() {
 			return nil, false
 		}
 		inputs[name] = v

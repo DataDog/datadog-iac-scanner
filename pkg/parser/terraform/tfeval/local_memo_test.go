@@ -10,6 +10,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -201,4 +204,29 @@ func TestEqualValues_AgreesWithRawEquals(t *testing.T) {
 		}
 	}
 	require.True(t, sharesStorage(wrap(shared).GetAttr("v"), shared))
+}
+
+// A plain unknown string may be null. An unknown string known to start with a
+// prefix may not, so the two must not share one memoized comparison.
+func TestLocalValue_DoesNotReuseARefinedUnknown(t *testing.T) {
+	expr, diags := hclsyntax.ParseExpression([]byte("var.x == null"), "t.hcl", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+
+	e := New()
+	ctxFor := func(x cty.Value) *hcl.EvalContext {
+		vars := map[string]cty.Value{
+			"var": cty.ObjectVal(map[string]cty.Value{"x": x}),
+		}
+		for name, value := range functions.ContextVariables("/mod", "/root") {
+			vars[name] = value
+		}
+		return &hcl.EvalContext{Variables: vars}
+	}
+	plain := e.localValue(expr, ctxFor(cty.UnknownVal(cty.String)))
+	refined := e.localValue(expr, ctxFor(
+		cty.UnknownVal(cty.String).Refine().NotNull().StringPrefix("arn:").NewValue(),
+	))
+
+	require.False(t, plain.IsKnown(), "a plain unknown string may be null")
+	require.True(t, refined.RawEquals(cty.False), "a string known to start with a prefix is not null")
 }
