@@ -24,6 +24,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/lineinfo"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -454,12 +455,17 @@ func newReparseLineInfoSource(
 	filename string,
 	reparse func(context.Context, *model.FileMetadata) (parser.ParsedDocument, error),
 ) *model.LineInfoSource {
-	return model.NewLineInfoSource(func(ctx context.Context, f *model.FileMetadata) ([]model.Document, error) {
+	return model.NewLineInfoSource(func(ctx context.Context, f *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
+		ctx, body := lineinfo.WithHCLBody(ctx)
 		reparsed, err := reparse(parser.WithLineInfoOnly(ctx), f)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)
+			return nil, nil, errors.Wrapf(err, "failed to reparse %s for line info", filename)
 		}
-		return reparsed.Docs, nil
+		var derived map[model.DerivedKey]any
+		if b := body(); b != nil {
+			derived = map[model.DerivedKey]any{model.HCLBodyKey: b}
+		}
+		return reparsed.Docs, derived, nil
 	})
 }
 

@@ -427,8 +427,15 @@ func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (
 		// Computed once per file and shared across every document's
 		// FileMetadata below; docs.Content is identical for every document.
 		linesOriginalData := scanUtils.SplitLines(docs.Content)
-		for _, doc := range docs.Docs {
-			files = append(files, &model.FileMetadata{
+		// Pinned, so values line detection derives from the file, such as its
+		// HCL body, are built once per file rather than once per finding.
+		parsed := docs.Docs
+		lineInfo := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
+			return parsed, nil, nil
+		})
+		lineInfo.Pin()
+		for docIdx, doc := range docs.Docs {
+			file := &model.FileMetadata{
 				ID:                uuid.NewString(),
 				ScanID:            "test",
 				Document:          runner.PrepareScanDocument(ctx, doc, docs.Kind),
@@ -438,7 +445,9 @@ func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (
 				FilePath:          cleanPath,
 				ResolvedFiles:     docs.ResolvedFiles,
 				LinesOriginalData: linesOriginalData,
-			})
+			}
+			file.SetLineInfoSource(lineInfo, docIdx)
+			files = append(files, file)
 		}
 	}
 	return files, nil

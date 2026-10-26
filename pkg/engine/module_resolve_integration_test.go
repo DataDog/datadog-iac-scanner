@@ -159,9 +159,9 @@ resource "aws_s3_bucket" "this" {
 func TestDetachLineInfoDocument_leavesTheSharedRealParseIntact(t *testing.T) {
 	content := []byte("resource \"aws_s3_bucket\" \"this\" {\n  acl = \"private\"\n}\n" +
 		"resource \"aws_s3_bucket\" \"other\" {\n  acl = \"private\"\n}\n")
-	src := model.NewLineInfoSource(func(ctx context.Context, f *model.FileMetadata) ([]model.Document, error) {
+	src := model.NewLineInfoSource(func(ctx context.Context, f *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
 		_, docs, _, _, err := terraformParser.NewDefault().Parse(ctx, []byte(f.OriginalData), f.FilePath, true, 15)
-		return docs, err
+		return docs, nil, err
 	})
 	f := &model.FileMetadata{ID: "f", FilePath: "main.tf", OriginalData: string(content), Kind: model.KindTerraform}
 	f.SetLineInfoSource(src, 0)

@@ -12,8 +12,9 @@ import (
 	"sync"
 )
 
-// LineInfoParse reparses the file f is a document of, returning its documents.
-type LineInfoParse func(ctx context.Context, f *FileMetadata) ([]Document, error)
+// LineInfoParse reparses the file f is a document of, returning its documents
+// and any values derived from the content while parsing it (see Derived).
+type LineInfoParse func(ctx context.Context, f *FileMetadata) ([]Document, map[DerivedKey]any, error)
 
 // LineInfoSource is one reparse of a file. Each of the file's documents, and
 // each copy made of them, reads its line-info tree and its lines from it, so
@@ -24,14 +25,26 @@ type LineInfoParse func(ctx context.Context, f *FileMetadata) ([]Document, error
 // lease holds the source share their trees, so a holder must treat them as
 // read-only.
 type LineInfoSource struct {
-	mu     sync.Mutex
-	parse  LineInfoParse
-	docs   []Document
-	err    error
-	held   int
-	pinned bool
-	lines  *linesLazyState
+	mu      sync.Mutex
+	parse   LineInfoParse
+	docs    []Document
+	err     error
+	held    int
+	pinned  bool
+	lines   *linesLazyState
+	derived map[DerivedKey]any
 }
+
+// DerivedKey names a value derived from a file's content, kept with its
+// line-info parse. Keys from NewDerivedKey compare equal when their names do.
+type DerivedKey struct{ name string }
+
+// NewDerivedKey returns the key for name.
+func NewDerivedKey(name string) DerivedKey { return DerivedKey{name} }
+
+// HCLBodyKey is the *hclsyntax.Body a Terraform line-info reparse built from
+// the file's own content, when that content was parsed unchanged.
+var HCLBodyKey = NewDerivedKey("terraform.hclBody")
 
 // NewLineInfoSource returns a source reading the documents parse returns.
 func NewLineInfoSource(parse LineInfoParse) *LineInfoSource {
@@ -62,7 +75,7 @@ func (s *LineInfoSource) load(ctx context.Context, f *FileMetadata) ([]Document,
 	if s.docs != nil {
 		return s.docs, nil
 	}
-	docs, err := s.parse(ctx, f)
+	docs, derived, err := s.parse(ctx, f)
 	if err != nil {
 		if !isCanceled(err) {
 			s.err = err
@@ -71,6 +84,12 @@ func (s *LineInfoSource) load(ctx context.Context, f *FileMetadata) ([]Document,
 	}
 	if s.held > 0 {
 		s.docs = docs
+		for key, value := range derived {
+			if s.derived == nil {
+				s.derived = map[DerivedKey]any{}
+			}
+			s.derived[key] = value
+		}
 	}
 	return docs, nil
 }
@@ -135,7 +154,33 @@ func (s *LineInfoSource) release() {
 	}
 	if s.held == 0 {
 		s.docs = nil
+		s.derived = nil
 	}
+}
+
+// Derived returns the value build derives from the file, built once and kept
+// while a lease holds the file's source. build runs under the source lock and
+// must not call back into the source. A failure is not kept, and neither is a
+// value built while no lease holds the source.
+func (f *FileMetadata) Derived(key DerivedKey, build func() (any, error)) (any, error) {
+	s := f.lineInfoSource
+	if s == nil {
+		return build()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if value, ok := s.derived[key]; ok {
+		return value, nil
+	}
+	value, err := build()
+	if err != nil || s.held == 0 {
+		return value, err
+	}
+	if s.derived == nil {
+		s.derived = map[DerivedKey]any{}
+	}
+	s.derived[key] = value
+	return value, nil
 }
 
 // LineInfoLease is one claim on a LineInfoSource's parse.

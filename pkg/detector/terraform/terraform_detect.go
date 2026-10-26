@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -29,21 +28,26 @@ const strNestedBody = "nested-body"
 const blockTypeResource = "resource"
 const blockTypeData = "data"
 
-// DetectKindLine holds a per-scan HCL parse cache. Multiple findings in the
-// same file reuse the parsed body instead of re-running hclsyntax.ParseConfig
-// for each one, which is the dominant cost when a single rule fires thousands
-// of times across a large repo.
-type DetectKindLine struct {
-	// hclCache maps file path → *hclsyntax.Body, populated on first parse.
-	hclCache sync.Map
+// DetectKindLine finds a finding's lines in a Terraform file. The file's HCL
+// body is the one its line-info reparse built, when that reparse parsed the
+// file's own content; otherwise it is parsed once and kept with that reparse.
+type DetectKindLine struct{}
+
+func (d *DetectKindLine) cachedParseBody(file *model.FileMetadata) (*hclsyntax.Body, error) {
+	body, err := file.Derived(model.HCLBodyKey, func() (any, error) {
+		return parseHCLBody(file.OriginalData, file.FilePath)
+	})
+	if err != nil || body == nil {
+		return nil, err
+	}
+	parsed, ok := body.(*hclsyntax.Body)
+	if !ok {
+		return nil, fmt.Errorf("unexpected HCL body type")
+	}
+	return parsed, nil
 }
 
-// cachedParseBody parses src as HCL and returns the body, reusing a previously
-// parsed result for the same filePath within this scan.
-func (d *DetectKindLine) cachedParseBody(src, filePath string) (*hclsyntax.Body, error) {
-	if cached, ok := d.hclCache.Load(filePath); ok {
-		return cached.(*hclsyntax.Body), nil
-	}
+func parseHCLBody(src, filePath string) (*hclsyntax.Body, error) {
 	hclFile, diagnostics := hclsyntax.ParseConfig([]byte(src), filePath, hcl.InitialPos)
 	if diagnostics.HasErrors() {
 		return nil, fmt.Errorf("failed to parse HCL: %v", diagnostics.Errs())
@@ -52,7 +56,6 @@ func (d *DetectKindLine) cachedParseBody(src, filePath string) (*hclsyntax.Body,
 	if !ok {
 		return nil, fmt.Errorf("unexpected HCL body type")
 	}
-	d.hclCache.Store(filePath, body)
 	return body, nil
 }
 
@@ -97,14 +100,23 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 		return detectJSONConfigLine(ctx, file, keyParts, extracted, outputLines)
 	}
 
+	// A file without a line-info source has no lease to keep the body on, so
+	// the body is parsed at most once here and handed to every step.
+	var body *hclsyntax.Body
+	var parseErr error
+	parsed := false
 	parse := func() (*hclsyntax.Body, error) {
-		return d.cachedParseBody(file.OriginalData, file.FilePath)
+		if !parsed {
+			body, parseErr = d.cachedParseBody(file)
+			parsed = true
+		}
+		return body, parseErr
 	}
 	detection = detectKeyParts(ctx, detection, keyParts, extracted, lines, file.Kind, file.Document, file.LineInfoDocument, parse)
 
 	if detection.FoundAtLeastOne {
 		line := detection.CurrentLine + 1
-		body, parseErr := d.cachedParseBody(file.OriginalData, file.FilePath)
+		body, parseErr := parse()
 		if parseErr != nil {
 			contextLogger.Error().Err(parseErr).Msgf("Failed to parse block at line %d in file %s", line, file.FilePath)
 			return buildEmptyVulnerabilityLines(file)

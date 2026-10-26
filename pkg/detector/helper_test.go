@@ -527,8 +527,8 @@ func TestDetectCurrentLineMatchesFullScan(t *testing.T) {
 // enableSharedLines gives file the line split a scanned file has, so
 // LinesContaining can memoize.
 func enableSharedLines(file *model.FileMetadata) {
-	file.SetLineInfoSource(model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, error) {
-		return []model.Document{{}}, nil
+	file.SetLineInfoSource(model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
+		return []model.Document{{}}, nil, nil
 	}), 0)
 }
 

@@ -6,6 +6,7 @@
 package terraform
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -286,6 +287,13 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	if diagnostics != nil && diagnostics.HasErrors() && len(diagnostics.Errs()) > 0 {
 		err := diagnostics.Errs()[0]
 		return nil, nil, nil, nil, err
+	}
+	// The detector searches this same body. Publish it only when it was parsed
+	// from the bytes given, which is the file's original content on a reparse.
+	if lineinfo.IsOnly(ctx) && bytes.Equal(resolved, fileContent) {
+		if body, ok := file.Body.(*hclsyntax.Body); ok {
+			lineinfo.SetHCLBody(ctx, body)
+		}
 	}
 
 	var linesToIgnore []int

@@ -12,11 +12,11 @@ import (
 )
 
 func lineInfoReturning(docs []Document, err error, loads *atomic.Int32) *LineInfoSource {
-	return NewLineInfoSource(func(context.Context, *FileMetadata) ([]Document, error) {
+	return NewLineInfoSource(func(context.Context, *FileMetadata) ([]Document, map[DerivedKey]any, error) {
 		if loads != nil {
 			loads.Add(1)
 		}
-		return docs, err
+		return docs, nil, err
 	})
 }
 
@@ -181,12 +181,12 @@ func TestLineInfoSource_doesNotRememberACanceledParse(t *testing.T) {
 	cancel()
 	var calls atomic.Int32
 	fm := &FileMetadata{FilePath: "a.yaml"}
-	fm.SetLineInfoSource(NewLineInfoSource(func(ctx context.Context, _ *FileMetadata) ([]Document, error) {
+	fm.SetLineInfoSource(NewLineInfoSource(func(ctx context.Context, _ *FileMetadata) ([]Document, map[DerivedKey]any, error) {
 		calls.Add(1)
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return []Document{{"k": 1}}, nil
+		return []Document{{"k": 1}}, nil, nil
 	}), 0)
 	require.Error(t, fm.EnsureLineInfoDocument(ctx))
 	require.NoError(t, fm.EnsureLineInfoDocument(context.Background()))

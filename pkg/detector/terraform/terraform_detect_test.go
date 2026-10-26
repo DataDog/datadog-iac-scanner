@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -1062,6 +1063,32 @@ resource "aws_sqs_queue_policy" "other" {
 	}
 }
 
+// Several rules detecting lines in one file must share the body the line-info
+// reparse built, including after the file's content is no longer parseable:
+// reparsing it per rule is what a cache smaller than the repository does.
+func TestDetectLine_reusesTheLineInfoHCLBody(t *testing.T) {
+	src := "resource \"aws_s3_bucket\" \"b\" {\n  bucket = \"logs\"\n  acl    = \"public-read\"\n}\n"
+	body, err := parseHCLBody(src, "main.tf")
+	require.NoError(t, err)
+	var parses atomic.Int32
+	lineSrc := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
+		parses.Add(1)
+		return []model.Document{{}}, map[model.DerivedKey]any{model.HCLBodyKey: body}, nil
+	})
+	file := &model.FileMetadata{FilePath: "main.tf", OriginalData: src, Kind: model.KindTerraform}
+	file.SetLineInfoSource(lineSrc, 0)
+	lease := file.LeaseLineInfo()
+	defer lease.Close()
+	require.NoError(t, file.EnsureLineInfoDocument(context.Background()))
+	file.OriginalData = "this is not hcl {"
+
+	for range 3 {
+		got := (&DetectKindLine{}).DetectLine(context.Background(), file, "aws_s3_bucket[b].acl", 1)
+		require.Equal(t, 3, got.Line)
+	}
+	require.Equal(t, int32(1), parses.Load())
+}
+
 // A part found only past the named block is skipped; the parts after it still
 // search from the last line found within the block.
 func TestDetectLineSkipsPartLeavingNamedBlock(t *testing.T) {
@@ -1147,7 +1174,7 @@ func TestDetectLineFileFunctionKeepsAttributeLine(t *testing.T) {
 func TestLocateTerraformBlockUsesNearestBlockForHeaderComments(t *testing.T) {
 	source := "# license\n# owner\n\nresource \"aws_s3_bucket\" \"helm\" {\n  bucket = \"x\"\n}\n"
 	lines := strings.Split(source, "\n")
-	body, err := (&DetectKindLine{}).cachedParseBody(source, "helm_bucket.tf")
+	body, err := parseHCLBody(source, "helm_bucket.tf")
 	require.NoError(t, err)
 
 	got, err := locateTerraformBlock(context.Background(), body, 2, lines)
@@ -1159,7 +1186,7 @@ func TestLocateTerraformBlockUsesNearestBlockForHeaderComments(t *testing.T) {
 func TestCalculateInsertionPointClampsFunctionWrapperAtEndOfFile(t *testing.T) {
 	source := "variable \"name\" {\n  default = merge({\n  })\n}"
 	lines := strings.Split(source, "\n")[:3]
-	body, err := (&DetectKindLine{}).cachedParseBody(source, "variable.tf")
+	body, err := parseHCLBody(source, "variable.tf")
 	require.NoError(t, err)
 	require.Len(t, body.Blocks, 1)
 

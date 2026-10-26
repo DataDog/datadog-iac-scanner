@@ -1627,9 +1627,9 @@ func decodeByFileFixture(
 		count := &atomic.Int32{}
 		parses[path] = count
 		docs := map[string]int{"a.yaml": 2, "b.yaml": 1}[path]
-		src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, error) {
+		src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
 			count.Add(1)
-			return make([]model.Document, docs), nil
+			return make([]model.Document, docs), nil, nil
 		})
 		for i := docs - 1; i >= 0; i-- {
 			id := fmt.Sprintf("%s#%d", path, 9-i)
@@ -1727,13 +1727,13 @@ func TestDecodeQueryResults_LineInfoCostPerFindingIsFlatInDocuments(t *testing.T
 	decode := func(documents int) (allocated, retained int64, findings int, parses int32) {
 		var parsed atomic.Int32
 		content := strings.Repeat("apiVersion: v1\nkind: Pod\nmetadata:\n  name: app\n---\n", documents)
-		src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, error) {
+		src := model.NewLineInfoSource(func(context.Context, *model.FileMetadata) ([]model.Document, map[model.DerivedKey]any, error) {
 			parsed.Add(1)
 			docs := make([]model.Document, documents)
 			for i := range docs {
 				docs[i] = model.Document{"kind": "Pod"}
 			}
-			return docs, nil
+			return docs, nil, nil
 		})
 		files := make(map[string]*model.FileMetadata, documents)
 		items := make([]interface{}, 0, documents)

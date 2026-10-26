@@ -55,6 +55,18 @@ func TestEnsureLineInfoDocument_matchesEagerParse(t *testing.T) {
 	lazyJ, err := json.Marshal(file.LineInfoDocument)
 	require.NoError(t, err)
 	require.JSONEq(t, string(eagerJ), string(lazyJ))
+
+	// The reparse parsed this content, so detection must reuse that body.
+	lease := file.LeaseLineInfo()
+	defer lease.Close()
+	file.DiscardLineInfoDocument()
+	require.NoError(t, file.EnsureLineInfoDocument(ctx))
+	body, err := file.Derived(model.HCLBodyKey, func() (any, error) {
+		t.Fatal("line detection parsed the file again")
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.NotNil(t, body)
 }
 
 func TestEnsureLineInfoDocument_minifiedTFPlanUsesOriginalData(t *testing.T) {

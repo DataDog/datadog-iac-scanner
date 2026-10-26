@@ -23,3 +23,23 @@ func IsOnly(ctx context.Context) bool {
 	v, _ := ctx.Value(onlyKey{}).(bool)
 	return v
 }
+
+type hclBodyKey struct{}
+
+// WithHCLBody returns a context a parser can publish the HCL body it built on,
+// and a function reading what was published. The body is only meaningful when
+// the parser parsed the bytes it was given unchanged.
+func WithHCLBody(parent context.Context) (ctx context.Context, body func() any) {
+	box := new(any)
+	ctx = context.WithValue(parent, hclBodyKey{}, box)
+	body = func() any { return *box }
+	return ctx, body
+}
+
+// SetHCLBody publishes body for the context from WithHCLBody. It does nothing
+// on any other context.
+func SetHCLBody(ctx context.Context, body any) {
+	if box, ok := ctx.Value(hclBodyKey{}).(*any); ok {
+		*box = body
+	}
+}
