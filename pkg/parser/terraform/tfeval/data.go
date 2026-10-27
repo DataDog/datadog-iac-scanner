@@ -74,6 +74,10 @@ type moduleData struct {
 	// against; republishing it need not refresh the data again.
 	moduleAtRefresh cty.Value
 
+	// cyclic holds the blocks reading their own result, directly or through
+	// other data blocks and locals. data.* exposes them as unknown.
+	cyclic map[*hclsyntax.Block]bool
+
 	// jsonBodies holds the native JSON body of each locally computed data
 	// block declared in a JSON configuration file. Converted to native syntax
 	// without a schema, its nested blocks read as attributes.
@@ -114,8 +118,92 @@ func newModuleData(
 	if d.readsLocals && localsReadResources(scope.Locals, moduleRoot) {
 		d.readsModuleOutputs = true
 	}
+	if d.readsData || (d.readsLocals && len(d.dataLocals) > 0) {
+		d.cyclic = cyclicDataBlocks(blocks, scope.Locals)
+	}
 	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
 	return d
+}
+
+// cyclicDataBlocks returns the data blocks that read their own result,
+// directly or through other data blocks and locals. Terraform rejects such a
+// cycle. Each refresh pass would feed the block its result of the previous
+// pass, and a function such as jsonencode nests that result once more, so its
+// size doubled with every pass and every refresh. Only static data.<type>.<name>
+// and local.<name> references are followed, as Terraform requires.
+func cyclicDataBlocks(blocks []*hclsyntax.Block, localExprs map[string]hclsyntax.Expression) map[*hclsyntax.Block]bool {
+	edges := map[string][]string{}
+	for _, b := range blocks {
+		key := dataNodeKey(b.Labels[0], b.Labels[1])
+		edges[key] = appendBodyDataEdges(edges[key], b.Body)
+	}
+	for name, expr := range localExprs {
+		edges["local."+name] = appendDataEdges(nil, expr.Variables())
+	}
+	var cyclic map[*hclsyntax.Block]bool
+	for _, b := range blocks {
+		start := dataNodeKey(b.Labels[0], b.Labels[1])
+		if reachesNode(edges, start) {
+			if cyclic == nil {
+				cyclic = map[*hclsyntax.Block]bool{}
+			}
+			cyclic[b] = true
+		}
+	}
+	return cyclic
+}
+
+func dataNodeKey(typ, name string) string {
+	return blockTypeData + "." + typ + "." + name
+}
+
+// reachesNode reports whether a path of at least one edge leads from start
+// back to start.
+func reachesNode(edges map[string][]string, start string) bool {
+	seen := map[string]bool{}
+	stack := append([]string(nil), edges[start]...)
+	for len(stack) > 0 {
+		node := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if node == start {
+			return true
+		}
+		if seen[node] {
+			continue
+		}
+		seen[node] = true
+		stack = append(stack, edges[node]...)
+	}
+	return false
+}
+
+func appendBodyDataEdges(out []string, body *hclsyntax.Body) []string {
+	for _, attr := range body.Attributes {
+		out = appendDataEdges(out, attr.Expr.Variables())
+	}
+	for _, block := range body.Blocks {
+		out = appendBodyDataEdges(out, block.Body)
+	}
+	return out
+}
+
+// appendDataEdges appends the data blocks and locals the traversals name.
+func appendDataEdges(out []string, traversals []hcl.Traversal) []string {
+	for _, traversal := range traversals {
+		if name, ok := terraform.LocalTraversalName(traversal); ok {
+			out = append(out, "local."+name)
+			continue
+		}
+		if traversal.RootName() != blockTypeData || len(traversal) < 3 {
+			continue
+		}
+		typ, okType := traversal[1].(hcl.TraverseAttr)
+		name, okName := traversal[2].(hcl.TraverseAttr)
+		if okType && okName {
+			out = append(out, dataNodeKey(typ.Name, name.Name))
+		}
+	}
+	return out
 }
 
 func jsonLocalDataBodies(blocks []*hclsyntax.Block, sources map[string][]byte) map[*hclsyntax.Block]hcl.Body {
@@ -270,7 +358,26 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 	d.instances = instances
 	byType := &hcl.EvalContext{Variables: map[string]cty.Value{}}
 	injectResourceRefs(byType, exposed)
+	for _, b := range d.blocks {
+		if d.cyclic[b] {
+			exposeUnknown(byType, b.Labels[0], b.Labels[1])
+		}
+	}
 	return objectOrEmpty(byType.Variables)
+}
+
+// exposeUnknown sets data.<typ>.<name> to an unknown value, the result of a
+// reference cycle.
+func exposeUnknown(byType *hcl.EvalContext, typ, name string) {
+	attrs := map[string]cty.Value{}
+	if current, ok := byType.Variables[typ]; ok && slicableObject(current) {
+		attrs = current.AsValueMap()
+		if attrs == nil {
+			attrs = map[string]cty.Value{}
+		}
+	}
+	attrs[name] = cty.DynamicVal
+	byType.Variables[typ] = cty.ObjectVal(attrs)
 }
 
 // blockEvalCache is a data block's last evaluation: the context variables it
