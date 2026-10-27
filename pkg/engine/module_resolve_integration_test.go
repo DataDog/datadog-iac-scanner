@@ -1005,3 +1005,143 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 	require.Empty(t, ins.GetFailedQueries())
 	require.NotEmpty(t, vulns, "rule should fire on resolved module resource")
 }
+
+// Root module resources with count or for_each are scanned per instance, so a
+// value that depends on each.value or count.index is resolved, and the finding
+// is reported once per written block at its line. Blocks without count or
+// for_each, and blocks whose instances are all private, raise nothing new.
+func TestInspect_RootCountAndForEachInstancesScanned(t *testing.T) {
+	root := t.TempDir()
+	rootPath := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`resource "aws_s3_bucket" "fe" {
+  for_each = { a = "public-read", b = "public-read", c = "private" }
+  bucket   = "b-${each.key}"
+  acl      = each.value
+}
+resource "aws_s3_bucket" "ct" {
+  count  = 2
+  bucket = "c-${count.index}"
+  acl    = count.index == 0 ? "public-read" : "private"
+}
+resource "aws_s3_bucket" "fe_private" {
+  for_each = { a = "private", b = "private" }
+  acl      = each.value
+}
+resource "aws_s3_bucket" "ct_private" {
+  count = 2
+  acl   = count.index == 5 ? "public-read" : "private"
+}
+resource "aws_s3_bucket" "plain" {
+  acl = "public-read"
+}
+resource "aws_s3_bucket" "unknown_count" {
+  count = length(var.unset)
+  acl   = "public-read"
+}
+variable "unset" {
+  type = list(string)
+}
+`), 0o644))
+
+	queries := []model.QueryMetadata{{
+		Query:       "acl_rule",
+		Content:     aclRule,
+		InputData:   "{}",
+		Platform:    "terraform",
+		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Aggregation: 1,
+	}}
+	ins := newTestInspector(t, inspectorOpts{
+		queries:       queries,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", parseTerraform(t, rootPath), []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	// The scan reports one finding per identity; the plain blocks are raised
+	// again on each document of the file, with the identity they have as written.
+	lines := make(map[string]int)
+	identities := make(map[string]bool)
+	for i := range vulns {
+		v := &vulns[i]
+		if identities[model.FindingIdentity(v)] {
+			continue
+		}
+		identities[model.FindingIdentity(v)] = true
+		lines[v.ResourceName]++
+		require.Equal(t, rootPath, v.FileName)
+		require.Empty(t, v.ModuleCallChain, "a root instance has no call chain")
+		require.Nil(t, v.ModuleAttribution, "a root instance has no module call to attribute to")
+	}
+	require.Equal(t, map[string]int{"fe": 1, "ct": 1, "plain": 1, "unknown_count": 1}, lines,
+		"a block with a public instance is reported once, a private block is not")
+	for i := range vulns {
+		v := &vulns[i]
+		switch v.ResourceName {
+		case "fe":
+			require.Equal(t, 4, v.Line)
+		case "ct":
+			require.Equal(t, 9, v.Line)
+		case "plain":
+			require.Equal(t, 20, v.Line)
+		case "unknown_count":
+			require.Equal(t, 24, v.Line)
+		}
+	}
+}
+
+// The blocks of a root file that refer to an expanded block, or that it refers
+// to, are still read together with it: a rule that looks for the use of a
+// security group in one document finds it whichever of the two is expanded.
+func TestInspect_RootExpandedBlocksKeepTheirSiblingReferences(t *testing.T) {
+	root := t.TempDir()
+	rootPath := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`resource "aws_security_group" "expanded" {
+  for_each = toset(["a", "b"])
+  name     = "sg-${each.key}"
+}
+resource "aws_security_group" "plain" {
+  name = "plain"
+}
+resource "aws_security_group" "unused" {
+  name = "unused"
+}
+resource "aws_instance" "uses_expanded" {
+  vpc_security_group_ids = ["aws_security_group.expanded.id"]
+}
+resource "aws_instance" "counted" {
+  count                  = 2
+  vpc_security_group_ids = ["aws_security_group.plain.id"]
+}
+`), 0o644))
+
+	queries := []model.QueryMetadata{{
+		Query:       "sg_not_used_rule",
+		Content:     sgNotUsedRule,
+		InputData:   "{}",
+		Platform:    "terraform",
+		Metadata:    map[string]interface{}{"id": "sg-not-used"},
+		Aggregation: 1,
+	}}
+	ins := newTestInspector(t, inspectorOpts{
+		queries:       queries,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", parseTerraform(t, rootPath), []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	names := make(map[string]bool)
+	for i := range vulns {
+		names[vulns[i].ResourceName] = true
+	}
+	require.Equal(t, map[string]bool{"unused": true}, names,
+		"only the security group nothing refers to is reported")
+}

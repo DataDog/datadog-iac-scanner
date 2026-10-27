@@ -1488,3 +1488,111 @@ resource "aws_s3_bucket" "this" {
 		t.Fatal("the called module must not also be scanned as a root")
 	}
 }
+
+// A root block is instantiated only when count or for_each expanded it, and
+// only then is the written block dropped. A truncated expansion keeps it, as in
+// a module.
+func TestResolveModuleDocuments_RootBlocksWithCountOrForEach(t *testing.T) {
+	root := t.TempDir()
+	cap := tfeval.MaxCountExpansion()
+	rootFile := writeFile(t, filepath.Join(root, "stack"), "main.tf", fmt.Sprintf(`
+resource "aws_s3_bucket" "plain" {
+  acl = "public-read"
+}
+resource "aws_s3_bucket" "each" {
+  for_each = toset(["a", "b"])
+  acl      = "acl-${each.key}"
+}
+resource "aws_s3_bucket" "counted" {
+  count = 2
+  acl   = "acl-${count.index}"
+}
+resource "aws_s3_bucket" "empty" {
+  count = 0
+}
+resource "aws_s3_bucket" "unknown" {
+  count = length(var.unset)
+}
+resource "aws_s3_bucket" "truncated" {
+  count = %d
+  acl   = "acl-${count.index}"
+}
+variable "unset" {
+  type = list(string)
+}
+`, cap+2))
+
+	res := resolveModuleDocuments(context.Background(), model.FileMetadatas{fileMeta("root-id", rootFile)},
+		root, nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+
+	names := make(map[string]int)
+	for _, doc := range res.docs {
+		require.Equal(t, rootFile, doc["file"])
+		for name := range docAsMap(docAsMap(doc["resource"])["aws_s3_bucket"]) {
+			names[name]++
+		}
+	}
+	require.Equal(t, map[string]int{"each": 2, "counted": 2, "truncated": cap}, names,
+		"only expanded blocks become documents")
+	for _, f := range res.syntheticFiles {
+		require.Empty(t, f.ModuleCallChain)
+		require.Empty(t, f.ModuleAttributions)
+	}
+	require.Equal(t, map[string]bool{"each": true, "counted": true},
+		res.suppressed["root-id"]["aws_s3_bucket"], "the written blocks of an expanded resource are replaced")
+}
+
+// The documents of a root file's expanded blocks read like the file: every
+// document holds the blocks that were not expanded, as written, and the
+// outputs; the written document gives those blocks up. A file with a block cut
+// short keeps everything it declares.
+func TestResolveModuleDocuments_RootInstanceDocumentsCarryTheFile(t *testing.T) {
+	const body = `resource "aws_s3_bucket" "each" {
+  for_each = toset(["a", "b"])
+  acl      = "acl-${each.key}"
+}
+resource "aws_s3_bucket" "plain" {
+  acl = "${var.acl}"
+}
+data "aws_caller_identity" "me" {}
+output "ids" {
+  value = aws_s3_bucket.each
+}
+variable "acl" {
+  default = "private"
+}
+`
+	for _, truncated := range []bool{false, true} {
+		root := t.TempDir()
+		src := body
+		if truncated {
+			src += fmt.Sprintf("resource \"aws_s3_bucket\" \"big\" {\n  count = %d\n}\n", tfeval.MaxCountExpansion()+1)
+		}
+		rootFile := writeFile(t, root, "main.tf", src)
+		files := parseTerraform(t, rootFile)
+		require.Len(t, files, 1)
+
+		res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+		require.True(t, res.ok)
+		require.NotEmpty(t, res.docs)
+		for _, doc := range res.docs {
+			buckets := docAsMap(docAsMap(doc["resource"])["aws_s3_bucket"])
+			require.Contains(t, buckets, "plain", "the written block travels with each document")
+			require.NotEmpty(t, doc["output"])
+			require.NotNil(t, docAsMap(docAsMap(doc["data"])["aws_caller_identity"])["me"])
+			require.Nil(t, doc["variable"], "only what rules read across blocks is carried")
+		}
+		suppressed := res.suppressed[files[0].ID]
+		if truncated {
+			require.NotContains(t, suppressed["aws_s3_bucket"], "plain", "a cut-short file keeps its written blocks")
+			require.NotContains(t, suppressed["aws_s3_bucket"], "big")
+			require.True(t, suppressed["aws_s3_bucket"]["each"])
+			continue
+		}
+		require.Equal(t, map[string]map[string]bool{
+			"aws_s3_bucket":            {"each": true, "plain": true},
+			"data.aws_caller_identity": {"me": true},
+		}, map[string]map[string]bool(suppressed))
+	}
+}

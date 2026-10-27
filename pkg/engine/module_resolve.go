@@ -170,7 +170,7 @@ func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) b
 		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
-		for _, key := range [...]string{"resource", "data"} {
+		for _, key := range [...]string{resourceKey, dataKey} {
 			blocks, ok := asStringMap(f.Document[key])
 			if !ok {
 				continue
@@ -184,6 +184,11 @@ func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) b
 	}
 	return false
 }
+
+const (
+	resourceKey = "resource"
+	dataKey     = "data"
+)
 
 // dataTypePrefix marks a data block's type wherever data and resource blocks
 // share a namespace, as it does in the resourceType of a finding.
@@ -233,8 +238,8 @@ func removeInstantiatedResources(doc map[string]interface{}, replaced map[string
 		}
 		resources[kind] = names
 	}
-	removeInstantiatedBlocks(doc, "resource", resources)
-	removeInstantiatedBlocks(doc, "data", data)
+	removeInstantiatedBlocks(doc, resourceKey, resources)
+	removeInstantiatedBlocks(doc, dataKey, data)
 }
 
 func removeInstantiatedBlocks(doc map[string]interface{}, key string, replaced map[string]map[string]bool) {
@@ -944,6 +949,16 @@ type docGroup struct {
 // different resources into one finding.
 type docContentKey struct{ a, b uint64 }
 
+// instantiable reports whether a resolved block is re-emitted as an instantiated
+// document. Every block of a called module is. A block of the root module is
+// only when count or for_each expanded it into instances; the others resolve to
+// what is written, so they are scanned as written (see addWrittenContext). A
+// block whose count or for_each is unknown keeps its written name, and so is
+// one of them.
+func instantiable(r *tfeval.ResolvedResource) bool {
+	return r.ModuleAddress != "" || strings.IndexByte(r.Name, '[') >= 0
+}
+
 // instantiatedDocs emits one synthetic OPA document per (module call, defining
 // file), holding every resource that call resolved in that file.
 //
@@ -982,10 +997,11 @@ func instantiatedDocs(
 	// resolve them against the file's HCL, so repeats spill into a further
 	// document rather than overwriting each other.
 	layers := make(map[string]int)
+	root := newRootExpansions()
 
 	for i := range resources {
 		r := &resources[i]
-		if r.ModuleAddress == "" {
+		if !instantiable(r) {
 			continue
 		}
 		if !targets.matches(r.Type) {
@@ -1025,9 +1041,13 @@ func instantiatedDocs(
 			groups[key] = g
 			order = append(order, key)
 		}
-		g.attributions[moduleAttributionKey(kind, r.DefLine, r.DefColumn)] =
-			attributions.attribution(r, repoPath, lookup)
+		// A root block has no module call to attribute its findings to.
+		if r.ModuleAddress != "" {
+			g.attributions[moduleAttributionKey(kind, r.DefLine, r.DefColumn)] =
+				attributions.attribution(r, repoPath, lookup)
+		}
 		g.entries = append(g.entries, entry)
+		root.note(r, fm, kind, base)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
 		if !r.ExpansionTruncated {
@@ -1035,6 +1055,8 @@ func instantiatedDocs(
 		}
 		resourceCount++
 	}
+
+	root.claimWrittenBlocks(instantiated)
 
 	for _, key := range order {
 		g := groups[key]
@@ -1076,12 +1098,126 @@ func instantiatedDocs(
 			"resource": resource,
 		}
 		if data != nil {
-			doc["data"] = data
+			doc[dataKey] = data
 		}
+		root.addContext(doc, g)
 		docs = append(docs, doc)
 		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
+}
+
+// rootExpansions records the blocks of the root module a count or for_each
+// expanded, truncated or not, by file.
+type rootExpansions struct {
+	expanded  instantiatedIndex
+	files     map[string]*model.FileMetadata
+	truncated map[string]bool
+}
+
+func newRootExpansions() *rootExpansions {
+	return &rootExpansions{
+		expanded:  make(instantiatedIndex),
+		files:     make(map[string]*model.FileMetadata),
+		truncated: make(map[string]bool),
+	}
+}
+
+// note records r, a resolved block, when it belongs to the root module.
+func (e *rootExpansions) note(r *tfeval.ResolvedResource, fm *model.FileMetadata, kind, base string) {
+	if r.ModuleAddress != "" {
+		return
+	}
+	e.expanded.add(fm.ID, kind, base)
+	e.files[fm.ID] = fm
+	e.truncated[fm.ID] = e.truncated[fm.ID] || r.ExpansionTruncated
+}
+
+// addContext adds the written blocks of g's file to doc when g belongs to the
+// root module (see addWrittenContext).
+func (e *rootExpansions) addContext(doc model.Document, g *docGroup) {
+	if g.moduleAddress == "" {
+		addWrittenContext(doc, g.fm.Document, e.expanded[g.fm.ID])
+	}
+}
+
+// claimWrittenBlocks records in instantiated the blocks of a root file that
+// were not expanded: they travel with the expanded ones (see addWrittenContext),
+// so the written document gives them up too. A file with a block cut short
+// keeps everything it declares: its written block is still scanned there, and
+// needs what refers to it.
+func (e *rootExpansions) claimWrittenBlocks(instantiated instantiatedIndex) {
+	for fileID, fm := range e.files {
+		if e.truncated[fileID] {
+			continue
+		}
+		forEachWrittenBlock(fm.Document, e.expanded[fileID], func(kind, name string, _ interface{}) {
+			instantiated.add(fileID, kind, name)
+		})
+	}
+}
+
+// addWrittenContext gives the document of a root file's expanded blocks the
+// rest of what the file declares as it is written: the resource and data blocks
+// that were not expanded, and the outputs. A rule that decides by reading one
+// whole document, such as whether a security group is referenced, would
+// otherwise stop seeing the references between an expanded block and its
+// siblings the moment the block moved to its own document. A module file never
+// needs this: all its resources are instantiated together, so they stay in one
+// document.
+//
+// The findings the rest of the file raises here repeat the ones a written
+// document would raise, with the same identity, so a scan reports each once.
+// expanded holds the blocks of the file that have instances, which replace the
+// written ones.
+func addWrittenContext(doc, written model.Document, expanded map[string]map[string]bool) {
+	forEachWrittenBlock(written, expanded, func(kind, name string, block interface{}) {
+		key, typ := resourceKey, kind
+		if t, ok := strings.CutPrefix(kind, dataTypePrefix); ok {
+			key, typ = dataKey, t
+		}
+		blocks, _ := doc[key].(map[string]interface{})
+		if blocks == nil {
+			blocks = make(map[string]interface{})
+			doc[key] = blocks
+		}
+		byName, _ := blocks[typ].(map[string]interface{})
+		if byName == nil {
+			byName = make(map[string]interface{})
+			blocks[typ] = byName
+		}
+		if _, instance := byName[name]; !instance {
+			byName[name] = block
+		}
+	})
+	if outputs := written["output"]; outputs != nil {
+		doc["output"] = outputs
+	}
+}
+
+// forEachWrittenBlock visits the named resource and data blocks of a parsed
+// file other than the ones in skip, as kind, name and block.
+func forEachWrittenBlock(
+	written model.Document, skip map[string]map[string]bool, visit func(kind, name string, block interface{}),
+) {
+	for key, prefix := range map[string]string{resourceKey: "", dataKey: dataTypePrefix} {
+		blocks, ok := asStringMap(written[key])
+		if !ok {
+			continue
+		}
+		for typ, raw := range blocks {
+			byName, ok := asStringMap(raw)
+			if !ok {
+				continue
+			}
+			kind := prefix + typ
+			for name, block := range byName {
+				if !strings.HasPrefix(name, "_") && !skip[kind][name] {
+					visit(kind, name, block)
+				}
+			}
+		}
+	}
 }
 
 // groupContentKey identifies a document by the module call address it belongs

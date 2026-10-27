@@ -833,7 +833,7 @@ func (a *valueAnalyzer) blockBody(address string) *hclsyntax.Body {
 		for _, body := range a.scope.Bodies {
 			for _, block := range body.Blocks {
 				switch {
-				case block.Type == "resource" && len(block.Labels) == 2:
+				case block.Type == resourceKey && len(block.Labels) == 2:
 					index[block.Labels[0]+"."+block.Labels[1]] = block.Body
 				case block.Type == dataRoot && len(block.Labels) == 2:
 					index[dataRoot+"."+block.Labels[0]+"."+block.Labels[1]] = block.Body
