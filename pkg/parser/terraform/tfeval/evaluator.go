@@ -184,6 +184,9 @@ type ModuleInstance struct {
 type Evaluator struct {
 	funcs    map[string]function.Function
 	maxDepth int
+	// cyclicDataWarned holds the directories already warned about for a data
+	// reference cycle.
+	cyclicDataWarned sync.Map
 	// fsys serves the evaluator's directory reads (module and tfvars files).
 	// Defaults to the real disk; content-push scans inject an in-memory FS.
 	fsys vfs.FS
@@ -639,6 +642,7 @@ func (e *Evaluator) evaluate(
 	evalCtx.Variables["local"] = objectOrEmpty(
 		e.resolveLocalsIncremental(scope, localExprs, resourceTypes, evalCtx, false, false))
 	data := newModuleData(e, bodies, sources, scope, resourceTypes, addr, chain, hasUnconditionalResourceBlock(resourceBlocks))
+	e.noteCyclicData(ctx, dir, data)
 	data.refresh(ctx, evalCtx)
 
 	if !e.preinjectResourceRefs(ctx, resourceBlocks, moduleBlocks, localExprs, scope, resourceTypes, evalCtx, data, addr, chain) {
@@ -1083,6 +1087,25 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 	}
 	return childResources, moduleOutputs
+}
+
+// noteCyclicData warns, once per directory, about the data blocks reading their
+// own result, which data.* exposes as unknown.
+func (e *Evaluator) noteCyclicData(ctx context.Context, dir string, data *moduleData) {
+	if data == nil || len(data.cyclic) == 0 {
+		return
+	}
+	if _, seen := e.cyclicDataWarned.LoadOrStore(dir, true); seen {
+		return
+	}
+	names := make([]string, 0, len(data.cyclic))
+	for b := range data.cyclic {
+		names = append(names, terraform.DataKey(b.Labels[0], b.Labels[1]))
+	}
+	slices.Sort(names)
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Warn().Strs("data_blocks", names).
+		Msgf("tfeval: data reference cycle at %s; the blocks are read as unknown", dir)
 }
 
 // discardFailedChild drops the instances and charges a failed child left
