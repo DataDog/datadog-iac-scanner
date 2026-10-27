@@ -1009,7 +1009,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 			}
 		}
 	}
-	options := []rego.EvalOption{rego.EvalParsedInput(payload)}
+	options := []rego.EvalOption{rego.EvalParsedInput(payload), rego.EvalVirtualCache(newCompactVirtualCache())}
 
 	var cov *cover.Cover
 	if c.enableCoverageReport {
