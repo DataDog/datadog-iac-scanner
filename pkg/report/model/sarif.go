@@ -6,10 +6,13 @@
 package model
 
 import (
+	"bufio"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -216,6 +219,7 @@ const (
 	diffAwareBaseShaTag      = "DATADOG_DIFF_AWARE_BASE_SHA:%s"
 	diffAwareFileTag         = "DATADOG_DIFF_AWARE_FILE:%s"
 	executionTimeTag         = "DATADOG_EXECUTION_TIME_SECS:%v"
+	sarifWriteBufferSize     = 64 << 10
 	ruleTypeProperty         = "DATADOG_RULE_TYPE:IAC_SCANNING"
 	categoryTag              = "DATADOG_CATEGORY:%s"
 	severityTag              = "DATADOG_SEVERITY:%s"
@@ -293,6 +297,78 @@ func initSarifRun() []SarifRun {
 			// Taxonomies: initSarifTaxonomies(),
 		},
 	}
+}
+
+// EncodeJSON writes the report exactly as json.NewEncoder(w).Encode would,
+// but encodes the results one at a time instead of rendering the whole
+// report in memory first: a large scan holds hundreds of thousands of results,
+// and the rendered report would be held twice, once encoded and once written.
+func (sr *sarifReport) EncodeJSON(w io.Writer) error {
+	bw := bufio.NewWriterSize(w, sarifWriteBufferSize)
+	put := func(prefix string, v interface{}) error {
+		if _, err := bw.WriteString(prefix); err != nil {
+			return err
+		}
+		data, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		_, err = bw.Write(data)
+		return err
+	}
+	if err := put(`{"$schema":`, sr.Schema); err != nil {
+		return err
+	}
+	if err := put(`,"version":`, sr.SarifVersion); err != nil {
+		return err
+	}
+	if sr.Runs == nil {
+		_, _ = bw.WriteString(`,"runs":null}`)
+	} else {
+		_, _ = bw.WriteString(`,"runs":[`)
+		for i := range sr.Runs {
+			if i > 0 {
+				_, _ = bw.WriteString(",")
+			}
+			if err := sr.Runs[i].encodeJSON(bw, put); err != nil {
+				return err
+			}
+		}
+		_, _ = bw.WriteString(`]}`)
+	}
+	if _, err := bw.WriteString("\n"); err != nil {
+		return err
+	}
+	return bw.Flush()
+}
+
+// encodeJSON writes the run as json.Marshal would, one result at a time.
+func (run *SarifRun) encodeJSON(bw *bufio.Writer, put func(string, interface{}) error) error {
+	if err := put(`{"tool":`, run.Tool); err != nil {
+		return err
+	}
+	if run.Results == nil {
+		_, _ = bw.WriteString(`,"results":null`)
+	} else {
+		_, _ = bw.WriteString(`,"results":[`)
+		for i := range run.Results {
+			prefix := ","
+			if i == 0 {
+				prefix = ""
+			}
+			if err := put(prefix, &run.Results[i]); err != nil {
+				return err
+			}
+		}
+		_, _ = bw.WriteString("]")
+	}
+	if len(run.Taxonomies) > 0 {
+		if err := put(`,"taxonomies":`, run.Taxonomies); err != nil {
+			return err
+		}
+	}
+	_, err := bw.WriteString("}")
+	return err
 }
 
 // NewSarifReport creates and start a new sarif report with default values respecting SARIF schema 2.1.0
