@@ -62,6 +62,10 @@ type decoded struct {
 type decodeMemo struct {
 	mu      sync.Mutex
 	results map[decodeKey]decoded
+	// pending holds a result the type callback decoded and did not remember,
+	// for the value callback of the same call. cty calls the type callback
+	// and then the value callback.
+	pending map[decodeKey][]decoded
 	bytes   int
 }
 
@@ -72,69 +76,113 @@ func (m *decodeMemo) lookup(key decodeKey) (decoded, bool) {
 	return r, ok
 }
 
-func (m *decodeMemo) remember(key decodeKey, r decoded) {
+// remember stores r when it fits the budget. A small input is never stored.
+func (m *decodeMemo) remember(key decodeKey, r decoded) bool {
+	if key.n < minMemoizedDecode {
+		return false
+	}
 	cost := key.n * decodeBytesPerInputByte
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.results[key]; ok || m.bytes+cost > decodeMemoBudget {
-		return
+	if _, ok := m.results[key]; ok {
+		return true
+	}
+	if m.bytes+cost > decodeMemoBudget {
+		return false
 	}
 	if m.results == nil {
 		m.results = make(map[decodeKey]decoded)
 	}
 	m.results[key] = r
 	m.bytes += cost
+	return true
 }
 
-// decode returns the decoded value of a large input, calling original only the
-// first time the scan sees it.
-func (m *decodeMemo) decode(name string, original function.Function, input string, args []cty.Value) decoded {
+func (m *decodeMemo) pushPending(key decodeKey, r decoded) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pending == nil {
+		m.pending = make(map[decodeKey][]decoded)
+	}
+	m.pending[key] = append(m.pending[key], r)
+}
+
+func (m *decodeMemo) popPending(key decodeKey) (decoded, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	queue := m.pending[key]
+	if len(queue) == 0 {
+		return decoded{}, false
+	}
+	r := queue[len(queue)-1]
+	queue = queue[:len(queue)-1]
+	if len(queue) == 0 {
+		delete(m.pending, key)
+	} else {
+		m.pending[key] = queue
+	}
+	return r, true
+}
+
+// obtain returns the decode of input. forValue is set for the value callback,
+// which reuses what the type callback just decoded instead of decoding again.
+func (m *decodeMemo) obtain(name string, original function.Function, input string, args []cty.Value, forValue bool) decoded {
 	key := decodeKeyOf(name, input)
 	if r, ok := m.lookup(key); ok {
 		return r
 	}
+	if r, ok := m.popPending(key); ok {
+		if !forValue {
+			m.pushPending(key, r)
+		}
+		return r
+	}
 	value, err := original.Call(args)
 	r := decoded{value: value, err: err}
-	m.remember(key, r)
+	if err != nil || m.remember(key, r) || forValue {
+		return r
+	}
+	m.pushPending(key, r)
 	return r
 }
 
 // memoizeDecode wraps a decode function so large inputs are decoded once per
-// scan. function.Call asks for the return type before it calls the
-// implementation, and finding it parses the input, so both read the memo.
-// Marks are removed from the arguments before either runs and applied to what
-// the call returns, so the memo holds the unmarked value.
+// scan. function.Call asks for the return type before the value, and finding
+// the type parses the input, so the type callback decodes and the value
+// callback reuses that result. A result the memo does not keep is handed from
+// one callback to the next instead of being decoded again. Marks are removed
+// from the arguments before either runs and applied to what the call returns,
+// so the memo holds the unmarked value.
 func (m *decodeMemo) memoizeDecode(name string, original function.Function) function.Function {
 	return function.New(&function.Spec{
 		Description: original.Description(),
 		Params:      original.Params(),
 		VarParam:    original.VarParam(),
 		Type: func(args []cty.Value) (cty.Type, error) {
-			input, ok := largeDecodeInput(args)
+			input, ok := knownDecodeInput(args)
 			if !ok {
 				return original.ReturnTypeForValues(args)
 			}
-			r := m.decode(name, original, input, args)
+			r := m.obtain(name, original, input, args, false)
 			if r.err != nil {
 				return cty.NilType, r.err
 			}
 			return r.value.Type(), nil
 		},
 		Impl: func(args []cty.Value, _ cty.Type) (cty.Value, error) {
-			input, ok := largeDecodeInput(args)
+			input, ok := knownDecodeInput(args)
 			if !ok {
 				return original.Call(args)
 			}
-			r := m.decode(name, original, input, args)
+			r := m.obtain(name, original, input, args, true)
 			return r.value, r.err
 		},
 	})
 }
 
-func largeDecodeInput(args []cty.Value) (string, bool) {
+func knownDecodeInput(args []cty.Value) (string, bool) {
 	if len(args) != 1 || !args[0].IsKnown() || args[0].IsNull() || !args[0].Type().Equals(cty.String) {
 		return "", false
 	}
-	input := args[0].AsString()
-	return input, len(input) >= minMemoizedDecode
+	return args[0].AsString(), true
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/function"
 	"github.com/zclconf/go-cty/cty/function/stdlib"
 )
 
@@ -170,5 +171,55 @@ func TestDecodeMemoStopsRememberingPastItsBudget(t *testing.T) {
 	}
 	if _, ok := m.lookup(decodeKey{fn: "jsondecode", n: per, a: 0}); !ok {
 		t.Fatal("the first results must stay remembered")
+	}
+}
+
+// A call parses its input once for the type and once for the value. A small
+// input, and one the memo does not keep, must not add another pass.
+func TestMemoizeDecodeParsesUncachedInputsOnce(t *testing.T) {
+	var typeN, implN int
+	original := function.New(&function.Spec{
+		Params: []function.Parameter{{Name: "str", Type: cty.String}},
+		Type: func(args []cty.Value) (cty.Type, error) {
+			typeN++
+			if args[0].AsString() == "bad" {
+				return cty.NilType, fmt.Errorf("bad")
+			}
+			return cty.String, nil
+		},
+		Impl: func(args []cty.Value, _ cty.Type) (cty.Value, error) {
+			implN++
+			return cty.StringVal("ok"), nil
+		},
+	})
+	check := func(t *testing.T, m *decodeMemo, input string, wantType, wantImpl int, wantErr bool) {
+		t.Helper()
+		typeN, implN = 0, 0
+		_, err := m.memoizeDecode("f", original).Call([]cty.Value{cty.StringVal(input)})
+		if wantErr {
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if typeN != wantType || implN != wantImpl {
+			t.Fatalf("type calls = %d, value calls = %d, want %d and %d", typeN, implN, wantType, wantImpl)
+		}
+	}
+
+	var fresh decodeMemo
+	check(t, &fresh, "small", 1, 1, false)
+	check(t, &fresh, "bad", 1, 0, true)
+
+	kept := strings.Repeat("a", minMemoizedDecode)
+	check(t, &fresh, kept, 1, 1, false)
+	check(t, &fresh, kept, 0, 0, false)
+
+	var full decodeMemo
+	full.bytes = decodeMemoBudget
+	check(t, &full, kept+"b", 1, 1, false)
+	if _, ok := full.lookup(decodeKeyOf("f", kept+"b")); ok {
+		t.Fatal("a result past the budget was remembered")
 	}
 }
