@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,6 +23,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -1145,7 +1147,7 @@ func TestEvaluateLocalModuleBlocksIgnoresNullPreliminaryOutputs(t *testing.T) {
 	}()
 
 	_, outputs := New().evaluateLocalModuleBlocks(
-		context.Background(), nil, evalCtx, nil, nil, nil, "", "", "", "", nil, 0, nil, nil,
+		context.Background(), nil, nil, evalCtx, nil, nil, nil, "", "", "", "", nil, 0, nil, nil,
 	)
 	if len(outputs) != 0 {
 		t.Fatalf("outputs = %#v, want empty", outputs)
@@ -2301,5 +2303,223 @@ dynamic "a" {
 	}
 	if _, kept := out["dynamic"]; !kept {
 		t.Fatalf("out = %#v, want the dynamic block kept as written", out)
+	}
+}
+
+// Each for_each instance keeps only its own element of the collection, and
+// references to an instance do not expose the meta-arguments, as in Terraform.
+func TestEvaluateModule_ForEachInstanceKeepsItsOwnElement(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_s3_bucket" "set" {
+  for_each = toset(["a", "b", "c"])
+  bucket   = each.key
+}
+resource "aws_s3_bucket" "map" {
+  for_each = { x = "one", y = "two" }
+  bucket   = each.value
+}
+resource "aws_s3_bucket_versioning" "v" {
+  for_each = aws_s3_bucket.set
+  bucket   = each.value.bucket
+  note     = length(aws_s3_bucket.set["a"])
+}
+`,
+	})
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+module "m" {
+  source = "../mod"
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+
+	byName := make(map[string]ResolvedResource)
+	for _, r := range resources {
+		byName[r.Type+"."+r.Name] = r
+	}
+
+	set := byName[`aws_s3_bucket.set["b"]`].Attributes["for_each"]
+	require.True(t, set.Type().IsSetType())
+	require.True(t, set.RawEquals(cty.SetVal([]cty.Value{cty.StringVal("b")})))
+
+	m := byName[`aws_s3_bucket.map["y"]`].Attributes["for_each"]
+	require.True(t, m.RawEquals(cty.ObjectVal(map[string]cty.Value{"y": cty.StringVal("two")})))
+
+	// for_each over a resource still sees every instance, and an instance
+	// reference has only the resource's own attributes.
+	v := byName[`aws_s3_bucket_versioning.v["c"]`]
+	require.Equal(t, cty.StringVal("c"), v.Attributes["bucket"])
+	require.Equal(t, cty.NumberIntVal(1), v.Attributes["note"])
+	require.Len(t, resources, 8)
+}
+
+func TestReferenceAttributesDropsMetaArguments(t *testing.T) {
+	attrs := map[string]cty.Value{
+		"bucket":   cty.StringVal("b"),
+		"for_each": cty.SetVal([]cty.Value{cty.StringVal("b")}),
+		"count":    cty.NumberIntVal(2),
+	}
+	got := referenceAttributes(attrs)
+	require.Equal(t, map[string]cty.Value{"bucket": cty.StringVal("b")}, got)
+	require.Len(t, attrs, 3, "the instance attributes are left unchanged")
+
+	plain := map[string]cty.Value{"bucket": cty.StringVal("b")}
+	require.Equal(t, plain, referenceAttributes(plain))
+}
+
+// Siblings reading earlier siblings, directly or through locals, see their
+// outputs, and calls nobody reads still reach the module's outputs.
+func TestEvaluateModule_SiblingModuleOutputs(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{
+		"main.tf": `
+variable "name" { type = string }
+resource "aws_s3_bucket" "b" { bucket = var.name }
+output "id" { value = var.name }
+`,
+	})
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+module "m0" {
+  source = "../leaf"
+  name   = "zero"
+}
+module "m1" {
+  source = "../leaf"
+  name   = "one"
+}
+locals {
+  first = module.m0.id
+  ids   = [module.m0.id, module.m1.id, module.m2.id]
+}
+module "m2" {
+  source = "../leaf"
+  name   = "${local.first}-two"
+}
+module "m3" {
+  source = "../leaf"
+  name   = module.m2.id
+}
+output "ids" { value = local.ids }
+`,
+	})
+
+	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	buckets := map[string]string{}
+	for _, r := range resources {
+		buckets[r.ModuleAddress] = r.Attributes["bucket"].AsString()
+	}
+	require.Equal(t, map[string]string{
+		"module.m0": "zero", "module.m1": "one", "module.m2": "zero-two", "module.m3": "zero-two",
+	}, buckets)
+	require.True(t, outputs["ids"].RawEquals(cty.TupleVal([]cty.Value{
+		cty.StringVal("zero"), cty.StringVal("one"), cty.StringVal("zero-two"),
+	})))
+}
+
+// Each call of a chain sees the output of the call before it, read directly,
+// through a chain of locals, by index or as part of module.* as a whole, and
+// a call reading a later sibling still gets its output from the pre-pass.
+func TestEvaluateModule_ChainedSiblingModuleOutputs(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{
+		"main.tf": `
+variable "in" {}
+resource "aws_s3_bucket" "b" { bucket = var.in }
+output "out" { value = var.in }
+`,
+	})
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+module "m0" {
+  source = "../leaf"
+  in     = "a"
+}
+module "m1" {
+  source = "../leaf"
+  in     = "${module.m0.out}b"
+}
+locals {
+  via   = module.m1.out
+  twice = "${local.via}c"
+  fixed = "f"
+}
+module "m2" {
+  source = "../leaf"
+  in     = "${local.twice}-${local.fixed}"
+}
+module "m3" {
+  source = "../leaf"
+  in     = "${module["m2"].out}d"
+}
+module "m4" {
+  source = "../leaf"
+  in     = "${length(keys(module))}-${module.m3.out}"
+}
+module "m5" {
+  source = "../leaf"
+  in     = "${module.m6.out}-${module.m4.out}"
+}
+module "m6" {
+  source = "../leaf"
+  in     = "late"
+}
+module "m7" {
+  source = "../leaf"
+  in     = module.missing.out
+}
+output "last" { value = module.m5.out }
+output "via" { value = local.twice }
+`,
+	})
+
+	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	buckets := map[string]cty.Value{}
+	for _, r := range resources {
+		buckets[r.ModuleAddress] = r.Attributes["bucket"]
+	}
+	want := map[string]string{
+		"module.m0": "a", "module.m1": "ab", "module.m2": "abc-f", "module.m3": "abc-fd",
+		"module.m4": "8-abc-fd", "module.m5": "late-8-abc-fd", "module.m6": "late",
+	}
+	for addr, value := range want {
+		require.True(t, buckets[addr].RawEquals(cty.StringVal(value)), "%s = %#v, want %q", addr, buckets[addr], value)
+	}
+	require.False(t, buckets["module.m7"].IsKnown())
+	require.True(t, outputs["last"].RawEquals(cty.StringVal("late-8-abc-fd")))
+	require.True(t, outputs["via"].RawEquals(cty.StringVal("abc")))
+}
+
+// nestedBlocks builds the same value addNestedBlock does one block at a time,
+// for any mix of unlabeled and labeled blocks and attributes of the same name.
+func TestNestedBlocksMatchesAddNestedBlock(t *testing.T) {
+	paths := [][]string{{"ingress"}, {"egress"}, {"ingress", "x"}, {"rule", "a"}, {"rule", "a", "b"}, {"rule"}}
+	rng := rand.New(rand.NewSource(1))
+	for run := 0; run < 2000; run++ {
+		want := map[string]cty.Value{}
+		got := map[string]cty.Value{}
+		if rng.Intn(3) == 0 {
+			attr := cty.TupleVal([]cty.Value{cty.StringVal("attr")})
+			want["ingress"], got["ingress"] = attr, attr
+		}
+		blocks := nestedBlocks{out: got}
+		for i, n := 0, rng.Intn(12); i < n; i++ {
+			path := paths[rng.Intn(len(paths))]
+			value := cty.ObjectVal(map[string]cty.Value{"i": cty.NumberIntVal(int64(i))})
+			addNestedBlock(want, path, value)
+			blocks.add(path, value)
+		}
+		blocks.flushAll()
+		require.Equal(t, len(want), len(got), "run %d", run)
+		for k, v := range want {
+			require.True(t, v.RawEquals(got[k]), "run %d key %s: %#v != %#v", run, k, v, got[k])
+		}
 	}
 }
