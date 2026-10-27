@@ -10,6 +10,8 @@ package engine
 // TrackQueryExecution increments the number of queries executed
 // FailedDetectLine decrements the number of queries executed
 // FailedLineInfoDocument increments line-info lazy-load failures
+// SkippedSupersededResult counts a result dropped before its line was
+// detected because a later result of the rule already covers it
 // GetOutputLines returns the number of lines to be displayed in results outputs
 type Tracker interface {
 	TrackQueryLoad(queryAggregation int)
@@ -17,5 +19,6 @@ type Tracker interface {
 	TrackQueryExecution(queryAggregation int)
 	FailedDetectLine()
 	FailedLineInfoDocument()
+	SkippedSupersededResult()
 	GetOutputLines() int
 }
