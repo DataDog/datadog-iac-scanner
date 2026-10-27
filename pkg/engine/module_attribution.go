@@ -673,30 +673,20 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// cloneModuleAttribution copies attr so a finding can narrow its locations.
+// ModulePath is shared: it is never modified once built, and every finding of
+// a module call has the same one, so copying it per finding only multiplies
+// the path by the number of findings.
 func cloneModuleAttribution(attr *model.ModuleAttribution) *model.ModuleAttribution {
 	if attr == nil {
 		return nil
 	}
 	clone := *attr
-	if len(attr.ModulePath) > 0 {
-		clone.ModulePath = append([]model.ModulePathHop(nil), attr.ModulePath...)
-	}
 	return &clone
 }
 
 func moduleAttributionKey(resourceType string, definitionLine, definitionColumn int) string {
 	return resourceType + "." + strconv.Itoa(definitionLine) + "." + strconv.Itoa(definitionColumn)
-}
-
-func cloneModuleAttributions(attrs map[string]*model.ModuleAttribution) map[string]*model.ModuleAttribution {
-	if len(attrs) == 0 {
-		return nil
-	}
-	out := make(map[string]*model.ModuleAttribution, len(attrs))
-	for key, attr := range attrs {
-		out[key] = cloneModuleAttribution(attr)
-	}
-	return out
 }
 
 // moduleAttributionForResource returns the attribution of the resource the

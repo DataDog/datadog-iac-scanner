@@ -1067,7 +1067,7 @@ func instantiatedDocs(
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
 				callChain:    g.callChain,
 				docID:        docID,
-				attributions: cloneModuleAttributions(g.attributions),
+				attributions: g.attributions,
 			})
 			continue
 		}
@@ -1302,7 +1302,9 @@ func newInstanceFileMetadata(
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
-	clone.ModuleAttributions = cloneModuleAttributions(attributions)
+	// The attributions are read-only (see moduleAttributionCache.attribution)
+	// and the map is the group's own, so the instance takes it as it is.
+	clone.ModuleAttributions = attributions
 	if fm.LineInfoDocument != nil {
 		// Already materialized: shallow-clone so later mutations on the
 		// parent (e.g. deleting a suppressed "resource" key) don't alias
