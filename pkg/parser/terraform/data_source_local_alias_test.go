@@ -436,11 +436,24 @@ data "aws_iam_policy_document" "p" {
 // rejects: it is left unrendered, however many locals alias it, while the
 // documents outside the cycle still render.
 func Test_getDataSourcePolicy_cycleThroughLocalsIsNotRendered(t *testing.T) {
+	for _, ref := range []string{
+		"data.aws_iam_policy_document.p.json",
+		`data.aws_iam_policy_document["p"].json`,
+		`data["aws_iam_policy_document"]["p"].json`,
+	} {
+		t.Run(ref, func(t *testing.T) {
+			assertCycleThroughLocalsIsNotRendered(t, ref)
+		})
+	}
+}
+
+func assertCycleThroughLocalsIsNotRendered(t *testing.T, ref string) {
+	t.Helper()
 	for _, aliases := range []int{2, 24} {
 		var b strings.Builder
-		b.WriteString("locals {\n  l0 = [data.aws_iam_policy_document.p.json, \"x\"]\n")
+		fmt.Fprintf(&b, "locals {\n  l0 = [%s, \"x\"]\n", ref)
 		for i := 0; i < aliases; i++ {
-			fmt.Fprintf(&b, "  alias%d = [data.aws_iam_policy_document.p.json]\n", i)
+			fmt.Fprintf(&b, "  alias%d = [%s]\n", i, ref)
 		}
 		b.WriteString(`}
 data "aws_iam_policy_document" "p" {
@@ -467,6 +480,31 @@ data "aws_iam_policy_document" "other" {
 	}
 }
 
+func Test_getDataSourcePolicy_dynamicIteratorNamedLocalStillRenders(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+locals {
+  value   = data.aws_iam_policy_document.p.json
+  actions = ["s3:GetObject"]
+}
+data "aws_iam_policy_document" "p" {
+  dynamic "statement" {
+    for_each = local.actions
+    iterator = local
+    content {
+      actions = [local.value]
+    }
+  }
+}
+`), 0o600))
+	ctx := context.Background()
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
+	var data map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	require.Contains(t, data["aws_iam_policy_document"]["p"]["json"], "s3:GetObject")
+}
+
 func TestDataCycles(t *testing.T) {
 	parse := func(src string) []hcl.Traversal {
 		expr, diags := hclsyntax.ParseExpression([]byte(src), "main.tf", hcl.InitialPos)
@@ -474,15 +512,23 @@ func TestDataCycles(t *testing.T) {
 		return expr.Variables()
 	}
 	reads := map[string][]hcl.Traversal{
-		DataKey("t", "self"):  parse(`data.t.self.json`),
-		DataKey("t", "viaA"):  parse(`local.a`),
-		DataKey("t", "chain"): parse(`data.t.self.json`),
-		DataKey("t", "plain"): parse(`local.c`),
+		DataKey("t", "self"):    parse(`data.t.self.json`),
+		DataKey("t", "indexed"): parse(`data.t["indexed"].json`),
+		DataKey("t", "bracket"): parse(`data["t"]["bracket"].json`),
+		DataKey("t", "viaA"):    parse(`local.a`),
+		DataKey("t", "chain"):   parse(`data.t.self.json`),
+		DataKey("t", "plain"):   parse(`local.c`),
+		DataKey("t", "runtime"): parse(`data.t[var.name].json`),
 	}
 	locals := map[string][]hcl.Traversal{
 		"a": parse(`[local.b]`),
-		"b": parse(`data.t.viaA.json`),
+		"b": parse(`data.t["viaA"].json`),
 		"c": parse(`var.x`),
 	}
-	require.Equal(t, map[string]bool{DataKey("t", "self"): true, DataKey("t", "viaA"): true}, DataCycles(reads, locals))
+	require.Equal(t, map[string]bool{
+		DataKey("t", "self"):    true,
+		DataKey("t", "indexed"): true,
+		DataKey("t", "bracket"): true,
+		DataKey("t", "viaA"):    true,
+	}, DataCycles(reads, locals))
 }

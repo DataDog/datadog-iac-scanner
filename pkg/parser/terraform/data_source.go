@@ -10,12 +10,14 @@ import (
 	"context"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -154,9 +156,10 @@ func DataKey(typ, name string) string {
 // such a cycle. Evaluating one anyway feeds the block its previous result on
 // every pass, and a function such as jsonencode nests that result once more,
 // so its size doubles with each pass. reads gives the traversals each block's
-// configuration reads, locals those of each local. Only static
-// data.<type>.<name> and local.<name> references are followed, as Terraform
-// requires.
+// configuration reads, locals those of each local. A step counts when it is
+// an attribute or a constant string index, because evaluation resolves both.
+// Inside a dynamic block's content the iterator name shadows a local of that
+// name.
 func DataCycles(reads, locals map[string][]hcl.Traversal) map[string]bool {
 	edges := make(map[string][]string, len(reads)+len(locals))
 	for key, traversals := range reads {
@@ -193,13 +196,63 @@ func BodyTraversals(body hcl.Body) []hcl.Traversal {
 }
 
 func nativeBodyTraversals(out []hcl.Traversal, body *hclsyntax.Body) []hcl.Traversal {
+	return bodyTraversals(out, body, nil)
+}
+
+// bodyTraversals walks body. shadowed holds the dynamic iterator names in
+// scope, which hide a local of the same name inside their content.
+func bodyTraversals(out []hcl.Traversal, body *hclsyntax.Body, shadowed []string) []hcl.Traversal {
 	for _, attr := range body.Attributes {
-		out = append(out, attr.Expr.Variables()...)
+		out = appendUnshadowed(out, attr.Expr.Variables(), shadowed)
 	}
 	for _, block := range body.Blocks {
-		out = nativeBodyTraversals(out, block.Body)
+		out = blockTraversals(out, block, shadowed)
 	}
 	return out
+}
+
+func blockTraversals(out []hcl.Traversal, block *hclsyntax.Block, shadowed []string) []hcl.Traversal {
+	if !dynamicblock.Is(block) {
+		return bodyTraversals(out, block.Body, shadowed)
+	}
+	for _, attr := range block.Body.Attributes {
+		out = appendUnshadowed(out, attr.Expr.Variables(), shadowed)
+	}
+	inContent := make([]string, len(shadowed)+1)
+	copy(inContent, shadowed)
+	inContent[len(shadowed)] = dynamicblock.IteratorName(block)
+	for _, inner := range block.Body.Blocks {
+		if inner.Type == "content" {
+			out = bodyTraversals(out, inner.Body, inContent)
+			continue
+		}
+		out = blockTraversals(out, inner, shadowed)
+	}
+	return out
+}
+
+func appendUnshadowed(out, traversals []hcl.Traversal, shadowed []string) []hcl.Traversal {
+	for _, traversal := range traversals {
+		if slices.Contains(shadowed, traversal.RootName()) {
+			continue
+		}
+		out = append(out, traversal)
+	}
+	return out
+}
+
+// staticStepName returns the name an attribute or a constant string index
+// gives a reference step.
+func staticStepName(step hcl.Traverser) (string, bool) {
+	switch s := step.(type) {
+	case hcl.TraverseAttr:
+		return s.Name, true
+	case hcl.TraverseIndex:
+		if s.Key.IsKnown() && !s.Key.IsNull() && s.Key.Type() == cty.String {
+			return s.Key.AsString(), true
+		}
+	}
+	return "", false
 }
 
 // dataEdges returns the data blocks and locals the traversals name.
@@ -213,10 +266,10 @@ func dataEdges(traversals []hcl.Traversal) []string {
 		if traversal.RootName() != terraformDataIdentifier || len(traversal) < 3 {
 			continue
 		}
-		typ, okType := traversal[1].(hcl.TraverseAttr)
-		name, okName := traversal[2].(hcl.TraverseAttr)
+		typ, okType := staticStepName(traversal[1])
+		name, okName := staticStepName(traversal[2])
 		if okType && okName {
-			out = append(out, DataKey(typ.Name, name.Name))
+			out = append(out, DataKey(typ, name))
 		}
 	}
 	return out

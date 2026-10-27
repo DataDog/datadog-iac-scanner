@@ -769,13 +769,26 @@ module "c" {
 // pass used to nest the previous JSON once more, so its size doubled with
 // every pass and every refresh and the evaluation ran out of memory.
 func TestDataJSONEncodeCycleStaysBounded(t *testing.T) {
-	src := `
+	for _, ref := range []string{
+		"data.aws_iam_policy_document.p.json",
+		`data.aws_iam_policy_document["p"].json`,
+		`data["aws_iam_policy_document"]["p"].json`,
+	} {
+		t.Run(ref, func(t *testing.T) {
+			assertJSONEncodeCycleStaysBounded(t, ref)
+		})
+	}
+}
+
+func assertJSONEncodeCycleStaysBounded(t *testing.T, ref string) {
+	t.Helper()
+	src := fmt.Sprintf(`
 variable "x" {
   default = "x"
 }
 
 locals {
-  l0 = [data.aws_iam_policy_document.p.json, var.x]
+  l0 = [%s, var.x]
   l1 = [module.m.out, local.l0]
 }
 
@@ -793,9 +806,9 @@ module "m" {
 resource "aws_s3_bucket" "consumer" {
   bucket = jsonencode(local.l1)
 }
-`
+`, ref)
 	for i := 0; i < 2; i++ {
-		src += fmt.Sprintf("locals {\n  alias%d = [data.aws_iam_policy_document.p.json]\n}\n", i)
+		src += fmt.Sprintf("locals {\n  alias%d = [%s]\n}\n", i, ref)
 	}
 	root := t.TempDir()
 	writeModule(t, root, "leaf", map[string]string{"main.tf": `
@@ -814,12 +827,41 @@ output "out" { value = var.in }
 	findResource(t, resources, "aws_s3_bucket", "consumer")
 }
 
+// An iterator named local hides the module local of that name inside the
+// content, so a document that only reads the iterator still resolves.
+func TestDynamicIteratorNamedLocalIsNotADataCycle(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "root", map[string]string{"main.tf": `
+locals {
+  value   = data.aws_iam_policy_document.p.json
+  actions = ["s3:GetObject"]
+}
+data "aws_iam_policy_document" "p" {
+  dynamic "statement" {
+    for_each = local.actions
+    iterator = local
+    content {
+      actions = [local.value]
+    }
+  }
+}
+resource "aws_sqs_queue_policy" "q" {
+  policy = data.aws_iam_policy_document.p.json
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	policy := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "q")))["policy"]
+	require.Contains(t, policy, "s3:GetObject")
+}
+
 func TestCyclicDataBlocksFollowsOnlyCycles(t *testing.T) {
 	file, diags := hclsyntax.ParseConfig([]byte(`
 locals {
   base    = data.aws_iam_policy_document.base.json
   through = local.loop
   loop    = data.aws_iam_policy_document.loop.json
+  value   = data.aws_iam_policy_document.shadowed.json
+  nested  = data.aws_iam_policy_document.nested.json
 }
 
 data "aws_iam_policy_document" "base" {
@@ -835,14 +877,48 @@ data "aws_iam_policy_document" "chained" {
 data "aws_iam_policy_document" "loop" {
   dynamic "statement" {
     for_each = [local.through]
+    iterator = local
     content {
-      actions = [statement.value]
+      actions = [local.value]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "shadowed" {
+  dynamic "statement" {
+    for_each = ["sqs:SendMessage"]
+    iterator = local
+    content {
+      actions = [local.value]
     }
   }
 }
 
 data "aws_iam_policy_document" "self" {
   source_policy_documents = [data.aws_iam_policy_document.self.json]
+}
+
+data "aws_iam_policy_document" "nested" {
+  dynamic "statement" {
+    for_each = ["sqs:SendMessage"]
+    iterator = local
+    content {
+      dynamic "condition" {
+        for_each = [local.nested]
+        content {
+          test = local.nested
+        }
+      }
+    }
+  }
+}
+
+data "aws_iam_policy_document" "indexed" {
+  source_policy_documents = [data.aws_iam_policy_document["indexed"].json]
+}
+
+data "aws_iam_policy_document" "bracket" {
+  source_policy_documents = [data["aws_iam_policy_document"]["bracket"].json]
 }
 
 data "aws_iam_policy_document" "reads_loop" {
@@ -857,5 +933,5 @@ data "aws_iam_policy_document" "reads_loop" {
 	for b := range cyclic {
 		names[b.Labels[1]] = true
 	}
-	require.Equal(t, map[string]bool{"loop": true, "self": true}, names)
+	require.Equal(t, map[string]bool{"loop": true, "self": true, "indexed": true, "bracket": true}, names)
 }
