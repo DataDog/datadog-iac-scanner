@@ -239,7 +239,6 @@ type Inspector struct {
 	useOldSeverities     bool
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
-	disableRuleIsolation bool
 	useRulesCache        bool
 	// fsys is the filesystem used for Terraform module resolution. Defaults to
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
@@ -394,7 +393,6 @@ func NewInspector(
 	numWorkers int,
 	flagEvaluator featureflags.FlagEvaluator,
 	fsys vfs.FS,
-	disableRuleIsolation bool,
 	useRulesCache bool,
 ) (*Inspector, error) {
 	contextLogger := logger.FromContext(ctx)
@@ -436,19 +434,18 @@ func NewInspector(
 		Add(detector.DockerComposeDetectLine{}, model.KindYAML)
 
 	return &Inspector{
-		QueryLoader:          &queryLoader,
-		vb:                   vb,
-		tracker:              tracker,
-		failedQueries:        failedQueries,
-		ruleConfigs:          ruleConfigs,
-		detector:             lineDetector,
-		repoPath:             repoPath,
-		useOldSeverities:     useOldSeverities,
-		numWorkers:           utils.AdjustNumWorkers(numWorkers),
-		flagEvaluator:        flagEvaluator,
-		fsys:                 fsys,
-		disableRuleIsolation: disableRuleIsolation,
-		useRulesCache:        useRulesCache,
+		QueryLoader:      &queryLoader,
+		vb:               vb,
+		tracker:          tracker,
+		failedQueries:    failedQueries,
+		ruleConfigs:      ruleConfigs,
+		detector:         lineDetector,
+		repoPath:         repoPath,
+		useOldSeverities: useOldSeverities,
+		numWorkers:       utils.AdjustNumWorkers(numWorkers),
+		flagEvaluator:    flagEvaluator,
+		fsys:             fsys,
+		useRulesCache:    useRulesCache,
 	}, nil
 }
 
@@ -617,27 +614,25 @@ func (c *Inspector) Inspect(
 	baseStores := precomputeBaseStores(baseInputData)
 	baseDataHashes := hashBaseInputData(baseInputData)
 
-	// When rule isolation is disabled, co-compile all rules + libraries once per
-	// platform into a shared compiler (rules rewritten to unique packages) so the
-	// library AST is retained a single time. Rules missing from the returned map
-	// (parse/compile failures) fall back to isolated LoadQuery in the worker, so
-	// correctness is preserved even if shared compilation partially fails.
+	// Co-compile all rules + libraries once per platform into a shared compiler
+	// (rules rewritten to unique packages) so the library AST is retained a single
+	// time. Rules missing from the returned map (parse/compile failures) fall back
+	// to isolated LoadQuery in the worker, so correctness is preserved even if
+	// shared compilation partially fails.
 	var sharedQueries map[int]*rego.PreparedEvalQuery
-	if c.disableRuleIsolation {
-		if c.useRulesCache {
-			var cacheHit bool
-			sharedQueries, cacheHit, err = c.QueryLoader.loadSharedQueriesCached(
-				ctx, queries, baseStores, baseDataHashes)
-			if err != nil {
-				return nil, err
-			}
-			contextLogger.Info().Msgf("Shared compiler cache hit: %t", cacheHit)
-		} else {
-			sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
+	if c.useRulesCache {
+		var cacheHit bool
+		sharedQueries, cacheHit, err = c.QueryLoader.loadSharedQueriesCached(
+			ctx, queries, baseStores, baseDataHashes)
+		if err != nil {
+			return nil, err
 		}
-		contextLogger.Info().Msgf("Rule isolation disabled: %d/%d queries served from shared compiler",
-			len(sharedQueries), len(queries))
+		contextLogger.Info().Msgf("Shared compiler cache hit: %t", cacheHit)
+	} else {
+		sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
 	}
+	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
+		len(sharedQueries), len(queries))
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
 		enrichedModules, baseStores, baseDataHashes, sharedQueries)
@@ -1465,6 +1460,7 @@ decodeLoop:
 	if qCtx.discardLineInfoAfterUse && activeLineInfoFile != "" {
 		if fm := qCtx.Files[activeLineInfoFile]; fm != nil {
 			fm.DiscardLineInfoDocument()
+			fm.ReleaseSubstringIndex()
 		}
 	}
 
@@ -1477,7 +1473,12 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 	}
 	if active != "" {
 		if fm := qCtx.Files[active]; fm != nil {
+			// Module instances of one file share its tree: keep it across them.
+			if next := qCtx.Files[nextID]; next != nil && next.LineInfoShareKey() == fm.LineInfoShareKey() {
+				return nextID
+			}
 			fm.DiscardLineInfoDocument()
+			fm.ReleaseSubstringIndex()
 		}
 	}
 	return nextID

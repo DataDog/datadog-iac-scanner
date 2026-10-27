@@ -348,7 +348,7 @@ func classifyData(traversal hcl.Traversal) (kind dataRefKind, typ, name string) 
 	if len(traversal) < 3 {
 		return dataType, typ, ""
 	}
-	name, ok := cycleStepName(traversal[2])
+	name, ok = cycleStepName(traversal[2])
 	if !ok {
 		return dataType, typ, ""
 	}

@@ -115,7 +115,7 @@ func ruleset(rules ...datadog.Rule) datadog.Ruleset {
 // chart rendering included).
 func newParallelTestServer(t *testing.T) *Server {
 	t.Helper()
-	return New(&Config{ParallelParsing: true})
+	return New(&Config{})
 }
 
 func postAnalyze(t *testing.T, s *Server, req analyzeRequest) (*analyzeResponse, int) {
@@ -667,20 +667,11 @@ func TestAnalyze_LocalModuleAbsolutePathShape(t *testing.T) {
 // the same in-memory FS, and a chart that fails to render escalates its
 // directory.
 func TestServerFlagEvaluator(t *testing.T) {
-	evaluator := serverFlagEvaluator(false)
+	evaluator := serverFlagEvaluator()
 
 	if !evaluator.EvaluateWithOrg(featureflags.IacEnableKicsHelmResolver) {
 		t.Error("IacEnableKicsHelmResolver must be pinned true in server mode: " +
 			"the chart loader reads pushed content through the in-memory FS")
-	}
-	// Each flag is read through the same method its production call site uses,
-	// so this keeps holding if server mode ever gets an evaluator whose methods
-	// do not all resolve to the same value.
-	if evaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing) {
-		t.Error("parallel file parsing should be off unless the server opts in")
-	}
-	if !serverFlagEvaluator(true).EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing) {
-		t.Error("parallel file parsing should follow the server's --x-parallelparsing setting")
 	}
 }
 
@@ -991,7 +982,7 @@ func TestAnalyze_RequestLibrariesInvalidateSharedRuleCache(t *testing.T) {
 	engine.ResetCompiledQueryCachesForTest()
 	t.Cleanup(engine.ResetCompiledQueryCachesForTest)
 
-	s := New(&Config{UseRulesCache: true, DisableRuleIsolation: true})
+	s := New(&Config{UseRulesCache: true})
 	req := analyzeRequest{
 		Files: []analyzeFile{{
 			Path:    "infra/main.tf",

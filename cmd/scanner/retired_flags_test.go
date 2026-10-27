@@ -117,3 +117,25 @@ func TestUnknownXFlagFailsAtParseTime(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "flag provided but not defined")
 }
+
+// Deployments that still pass the retired flags, in any boolean spelling,
+// must keep starting.
+func TestRetiredParallelParsingAndRuleIsolationFlagsAreAccepted(t *testing.T) {
+	t.Parallel()
+
+	for name, flags := range map[string][]cli.Flag{
+		"scan":  retiredScanFlags(),
+		"serve": retiredServeFlags(),
+	} {
+		for _, args := range [][]string{
+			{"--x-parallelparsing"},
+			{"--x-parallelparsing=false"},
+		} {
+			cmd := &cli.Command{Name: name, Flags: flags}
+			require.NoError(t, cmd.Run(context.Background(), append([]string{name}, args...)), "%s %v", name, args)
+		}
+	}
+
+	scan := &cli.Command{Name: "scan", Flags: retiredScanFlags()}
+	require.NoError(t, scan.Run(context.Background(), []string{"scan", "--x-disable-rule-isolation"}))
+}

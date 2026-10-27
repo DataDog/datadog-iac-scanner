@@ -59,15 +59,8 @@ var serveAction = &cli.Command{
 			Name:   "x-use-rules-cache",
 			Hidden: true,
 			Value:  false,
-			Usage: "(experimental, will be removed soon) cache compiled rules and co-compile them " +
-				"into a shared compiler (rules cache + disabled rule isolation), for faster repeat " +
-				"scans at low memory",
-		},
-		&cli.BoolFlag{
-			Name:   "x-parallelparsing",
-			Hidden: true,
-			Usage:  "(experimental, will be removed soon) parse pushed files in parallel across CPUs",
-			Value:  true,
+			Usage: "(experimental, will be removed soon) cache compiled rules across requests, " +
+				"for faster repeat scans at low memory",
 		},
 	}, retiredServeFlags()...),
 	Action: serve,
@@ -84,11 +77,6 @@ func serve(ctx context.Context, c *cli.Command) error {
 		writeTimeout = -1
 	}
 
-	// --x-use-rules-cache is a single toggle for the rules-caching mode: it both
-	// caches compiled rules across requests and co-compiles them into a shared
-	// compiler. The two are deliberately not separately configurable.
-	useRulesCache := c.Bool("x-use-rules-cache")
-
 	cfg := server.Config{
 		Address:              c.String("address"),
 		Port:                 c.Int("port"),
@@ -98,9 +86,7 @@ func serve(ctx context.Context, c *cli.Command) error {
 		MaxFiles:             c.Int("max-files"),
 		MaxRequestBytes:      int64(c.Int("max-request-mib")) << 20,
 		WriteTimeout:         writeTimeout,
-		ParallelParsing:      c.Bool("x-parallelparsing"),
-		UseRulesCache:        useRulesCache,
-		DisableRuleIsolation: useRulesCache,
+		UseRulesCache:        c.Bool("x-use-rules-cache"),
 	}
 	return server.New(&cfg).ListenAndServe(ctx)
 }

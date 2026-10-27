@@ -314,13 +314,9 @@ func validateFilePath(p string) error {
 // Helm rendering loads the chart from the request's in-memory FS, so the
 // resolver is on; a chart that fails to render from the pushed content
 // escalates its directory as a missing file.
-//
-// Parallel file parsing fans the per-file parse across CPUs; enabled by default
-// and can be disabled with --x-parallelparsing=false.
-func serverFlagEvaluator(parallelParsing bool) featureflags.FlagEvaluator {
+func serverFlagEvaluator() featureflags.FlagEvaluator {
 	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
-		featureflags.IacEnableKicsHelmResolver:        true,
-		featureflags.IaCEnableKicsParallelFileParsing: parallelParsing,
+		featureflags.IacEnableKicsHelmResolver: true,
 	})
 }
 
@@ -364,19 +360,18 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	}
 
 	params := &scan.Parameters{
-		CloudProvider:        []string{""},
-		Path:                 memfs.Paths(),
-		RepoPath:             "", // no git in server mode
-		PreviewLines:         3,
-		Platform:             plats,
-		DisableSecrets:       true,
-		ScanID:               "serve",
-		MaxFileSizeFlag:      100,
-		MaxResolverDepth:     15,
-		FlagEvaluator:        serverFlagEvaluator(s.cfg.ParallelParsing),
-		Config:               cfg,
-		DisableRuleIsolation: s.cfg.DisableRuleIsolation,
-		UseRulesCache:        s.cfg.UseRulesCache,
+		CloudProvider:    []string{""},
+		Path:             memfs.Paths(),
+		RepoPath:         "", // no git in server mode
+		PreviewLines:     3,
+		Platform:         plats,
+		DisableSecrets:   true,
+		ScanID:           "serve",
+		MaxFileSizeFlag:  100,
+		MaxResolverDepth: 15,
+		FlagEvaluator:    serverFlagEvaluator(),
+		Config:           cfg,
+		UseRulesCache:    s.cfg.UseRulesCache,
 	}
 
 	client, err := scan.NewClient(ctx, params, &consolePrinter.Printer{},

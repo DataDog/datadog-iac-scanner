@@ -138,7 +138,6 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		c.ScanParams.ParallelScanFlag,
 		c.ScanParams.FlagEvaluator,
 		c.fsys,
-		c.ScanParams.DisableRuleIsolation,
 		c.ScanParams.UseRulesCache,
 	)
 	metrics.Metric.Stop()
@@ -264,7 +263,7 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	if err = scanner.PrepareAndScan(
 		ctx,
 		c.ScanParams.ScanID, c.ScanParams.OpenAPIResolveReferences, c.ScanParams.MaxResolverDepth,
-		executeScanParameters.services, c.FlagEvaluator); err != nil {
+		executeScanParameters.services); err != nil {
 		contextLogger.Err(err).Msgf("failed to prepare and scan %v", err)
 		return nil, err
 	}

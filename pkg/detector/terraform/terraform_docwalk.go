@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
@@ -63,6 +64,7 @@ type docCursor struct {
 	root      model.Document
 	extracted [][]string
 	stage     int
+	memo      *blockLinesMemo
 }
 
 const (
@@ -137,7 +139,7 @@ func (c *docCursor) enterChild(child interface{}, value string, indexed bool) re
 		if index >= 0 && index < len(v) {
 			c.node = v[index]
 		}
-		return repeatedBlocks{total: len(v), lines: blockLines(v)}
+		return repeatedBlocks{total: len(v), lines: c.memo.lines(v)}
 	case nil:
 		c.node = nil
 		return unknownBlocks
@@ -162,6 +164,56 @@ func blockLines(blocks []interface{}) []int {
 		}
 		lines = append(lines, line-1)
 	}
+	return lines
+}
+
+// blockLinesMemoMin is the smallest list worth memoizing; blockLinesMemoMax
+// bounds the entries kept, so few block lists stay pinned.
+const (
+	blockLinesMemoMin = 16
+	blockLinesMemoMax = 64
+)
+
+// blockLinesMemo caches blockLines per list of blocks. A list is identified by
+// its backing array and length; each entry keeps the list itself, so that array
+// cannot be freed and reused by another list while the entry exists. Documents
+// are read-only once built, so a list's lines never change. The cached lines
+// are shared and must not be modified.
+type blockLinesMemo struct {
+	mu      sync.Mutex
+	entries map[blockListKey]blockLinesEntry
+}
+
+type blockListKey struct {
+	data *interface{}
+	n    int
+}
+
+type blockLinesEntry struct {
+	blocks []interface{}
+	lines  []int
+}
+
+// lines returns blockLines(blocks), computed once per list. A nil memo computes
+// it every time.
+func (m *blockLinesMemo) lines(blocks []interface{}) []int {
+	if m == nil || len(blocks) < blockLinesMemoMin {
+		return blockLines(blocks)
+	}
+	key := blockListKey{data: &blocks[0], n: len(blocks)}
+	m.mu.Lock()
+	entry, ok := m.entries[key]
+	m.mu.Unlock()
+	if ok {
+		return entry.lines
+	}
+	lines := blockLines(blocks)
+	m.mu.Lock()
+	if m.entries == nil || len(m.entries) >= blockLinesMemoMax {
+		m.entries = make(map[blockListKey]blockLinesEntry)
+	}
+	m.entries[key] = blockLinesEntry{blocks: blocks, lines: lines}
+	m.mu.Unlock()
 	return lines
 }
 

@@ -19,7 +19,7 @@ import (
 // scanOnDisk writes files under a new directory and prepares the charts at the
 // roots, relative to it, as a disk scan does. It returns the services and the
 // directory.
-func scanOnDisk(t *testing.T, files map[string]string, parallel bool, roots ...string) ([]*Service, string) {
+func scanOnDisk(t *testing.T, files map[string]string, roots ...string) ([]*Service, string) {
 	t.Helper()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -35,13 +35,13 @@ func scanOnDisk(t *testing.T, files map[string]string, parallel bool, roots ...s
 	services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, paths...)
 	src, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareDiskSources(ctx, src, services, "scan", false, 5, parallel))
+	require.NoError(t, PrepareDiskSources(ctx, src, services, "scan", false, 5))
 	return services, dir
 }
 
 // scanInMemory prepares files pushed to the server, every chart in them, as a
 // server scan does. It returns the services.
-func scanInMemory(t *testing.T, files map[string]string, parallel bool) []*Service {
+func scanInMemory(t *testing.T, files map[string]string) []*Service {
 	t.Helper()
 	ctx := context.Background()
 	pushed := make(map[string][]byte, len(files))
@@ -53,7 +53,7 @@ func scanInMemory(t *testing.T, files map[string]string, parallel bool) []*Servi
 	services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
 	src, ok := MemorySourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareMemorySources(ctx, src, services, "scan", false, 5, parallel))
+	require.NoError(t, PrepareMemorySources(ctx, src, services, "scan", false, 5))
 	return services
 }
 
@@ -82,12 +82,12 @@ func TestPrepareDiskSources_TemplateNoRenderStoredIsNotReported(t *testing.T) {
 	}
 
 	t.Run("disk", func(t *testing.T) {
-		services, dir := scanOnDisk(t, files, true, "app", "lib")
+		services, dir := scanOnDisk(t, files, "app", "lib")
 		require.Equal(t, want, templatesStored(t, services, dir))
 	})
 
 	t.Run("memory", func(t *testing.T) {
-		services := scanInMemory(t, files, false)
+		services := scanInMemory(t, files)
 		require.Equal(t, want, templatesStored(t, services, "."))
 	})
 }
@@ -108,27 +108,6 @@ func TestRenderCoverageWithoutRaw(t *testing.T) {
 		{Path: "lib/templates/disabled.yaml"},
 		{Path: "app/templates/cm.yaml"},
 	}, stored.withoutRaw(files))
-}
-
-// The sequential and the parallel prepare store the same files, on disk and in memory.
-func TestPrepareSequentialMatchesParallel(t *testing.T) {
-	files := map[string]string{
-		"lib/Chart.yaml":        "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
-		"lib/templates/cm.yaml": "name: {{ required \"name is required\" .Values.name }}\n",
-		"app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n" +
-			"dependencies:\n- name: lib\n  version: 1.0.0\n  repository: file://../lib\n",
-		"app/values.yaml":       "lib:\n  name: web\n",
-		"app/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n",
-	}
-	disk := func(parallel bool) map[string]int {
-		services, dir := scanOnDisk(t, files, parallel, "app", "lib")
-		return templatesStored(t, services, dir)
-	}
-	memory := func(parallel bool) map[string]int {
-		return templatesStored(t, scanInMemory(t, files, parallel), ".")
-	}
-	require.Equal(t, disk(true), disk(false), "disk")
-	require.Equal(t, memory(true), memory(false), "memory")
 }
 
 // lib's template is disabled by a condition inside a YAML comment, so its raw
@@ -153,12 +132,12 @@ func TestPrepareSources_DisabledTemplateIsNotScannedRaw(t *testing.T) {
 	}
 
 	t.Run("disk", func(t *testing.T) {
-		services, dir := scanOnDisk(t, files, true, "app", "lib")
+		services, dir := scanOnDisk(t, files, "app", "lib")
 		require.Equal(t, want, templatesStored(t, services, dir))
 	})
 
 	t.Run("memory", func(t *testing.T) {
-		services := scanInMemory(t, files, false)
+		services := scanInMemory(t, files)
 		require.Equal(t, want, templatesStored(t, services, "."))
 	})
 }
@@ -179,7 +158,7 @@ func TestPrepareDiskSources_RenderedFileNotDuplicatedAcrossScanPaths(t *testing.
 
 	for _, order := range [][]string{{"app", "lib"}, {"lib", "app"}} {
 		t.Run(order[0]+" first", func(t *testing.T) {
-			services, dir := scanOnDisk(t, files, true, order...)
+			services, dir := scanOnDisk(t, files, order...)
 			require.Equal(t, want, templatesStored(t, services, dir))
 		})
 	}
