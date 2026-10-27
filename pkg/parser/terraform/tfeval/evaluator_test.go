@@ -2497,6 +2497,46 @@ output "via" { value = local.twice }
 	require.True(t, outputs["via"].RawEquals(cty.StringVal("abc")))
 }
 
+// A local re-resolved because it follows a sibling output keeps the value of a
+// local it reads that does not follow one. The call reads only the combined
+// local, so that value has to be present during the re-resolution.
+func TestEvaluateModule_ReResolvedLocalKeepsStableLocal(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{
+		"main.tf": `
+variable "in" {}
+resource "aws_s3_bucket" "b" { bucket = var.in }
+output "out" { value = var.in }
+`,
+	})
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+module "m0" {
+  source = "../leaf"
+  in     = "a"
+}
+locals {
+  fixed = "f"
+  via   = module.m0.out
+  both  = "${local.via}-${local.fixed}"
+}
+module "m1" {
+  source = "../leaf"
+  in     = local.both
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	buckets := map[string]cty.Value{}
+	for _, r := range resources {
+		buckets[r.ModuleAddress] = r.Attributes["bucket"]
+	}
+	require.True(t, buckets["module.m0"].RawEquals(cty.StringVal("a")))
+	require.True(t, buckets["module.m1"].RawEquals(cty.StringVal("a-f")), "module.m1 = %#v", buckets["module.m1"])
+}
+
 // nestedBlocks builds the same value addNestedBlock does one block at a time,
 // for any mix of unlabeled and labeled blocks and attributes of the same name.
 func TestNestedBlocksMatchesAddNestedBlock(t *testing.T) {
@@ -2672,8 +2712,8 @@ resource "aws_sqs_queue" "q" {
 
 // Terraform rejects a cycle among locals. Its locals, even one with a
 // fallback, and the locals reading them are unknown; the others resolve, and
-// each cycle is reported once per directory, however many instances and
-// evaluators reach it.
+// each cycle is reported once per directory on one evaluator, however many
+// instances reach it.
 func TestResolveLocals_CyclesAreUnknownAndWarnedOnce(t *testing.T) {
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
