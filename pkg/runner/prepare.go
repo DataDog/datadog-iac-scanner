@@ -77,41 +77,29 @@ type preparedSource interface {
 }
 
 // PrepareDiskSources walks the disk once, renders each chart once, and dispatches
-// files to parsers. It serves every disk scan. parallel (the --x-parallelparsing
-// flag) sets the concurrency of chart rendering and file dispatch, as for memory.
+// files to parsers. It serves every disk scan.
 func PrepareDiskSources(ctx context.Context,
 	fsp *provider.FileSystemSourceProvider,
 	services []*Service,
 	scanID string,
 	openAPIResolveReferences bool,
-	maxResolverDepth int,
-	parallel bool) error {
+	maxResolverDepth int) error {
 	chartPool := utils.PoolOptions{CPUBound: true}
 	filePool := utils.PoolOptions{MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers}
-	if !parallel {
-		chartPool, filePool = utils.PoolOptions{Workers: 1}, utils.PoolOptions{Workers: 1}
-	}
 	return prepareSources(ctx, diskSource{fsp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
 		chartPool, filePool)
 }
 
 // PrepareMemorySources is PrepareDiskSources over the files the IDE pushed, and
 // the path every server scan takes. A chart that fails to render escalates its
-// directory via the missing set. parallel (the --x-parallelparsing flag)
-// controls the concurrency of both chart rendering and file dispatch; charts
-// render in both modes.
+// directory via the missing set.
 func PrepareMemorySources(ctx context.Context,
 	mp *provider.MemorySourceProvider,
 	services []*Service,
 	scanID string,
 	openAPIResolveReferences bool,
-	maxResolverDepth int,
-	parallel bool) error {
+	maxResolverDepth int) error {
 	pool := utils.PoolOptions{CPUBound: true}
-	if !parallel {
-		// The flag is off: sequential rendering and dispatch.
-		pool = utils.PoolOptions{Workers: 1}
-	}
 	return prepareSources(ctx, memorySource{mp}, services, scanID, openAPIResolveReferences, maxResolverDepth,
 		pool, pool)
 }

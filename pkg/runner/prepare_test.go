@@ -116,7 +116,7 @@ func TestPrepareDiskSources_RoutesHelmToKubernetesParser(t *testing.T) {
 	services, _ := buildDiskServices(t, ctx, []string{chartPath})
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "helm-routing", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "helm-routing", false, 5))
 
 	for _, service := range services {
 		helmDocs := 0
@@ -158,7 +158,7 @@ func TestPrepareDiskSources_RoutesKnownYAMLPlatforms(t *testing.T) {
 	}
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "routing", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "routing", false, 5))
 
 	for _, service := range services {
 		paths := make([]string, 0, len(service.files))
@@ -186,7 +186,7 @@ func TestPrepareMemorySources_RoutesPushedYAMLByContent(t *testing.T) {
 	services, _ := buildServices(t, ctx, memfs, mp)
 	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareMemorySources(ctx, shared, services, "routing", false, 5, false))
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "routing", false, 5))
 
 	for _, service := range services {
 		paths := make([]string, 0, len(service.files))
@@ -217,7 +217,7 @@ func TestPrepareMemorySources_SkipsFilesExcludedByContent(t *testing.T) {
 	services, _ := buildServices(t, ctx, memfs, mp)
 	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareMemorySources(ctx, shared, services, "excluded", false, 5, false))
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "excluded", false, 5))
 
 	var paths []string
 	for _, service := range services {
@@ -277,7 +277,7 @@ func TestPrepareDiskSources_DanglingChartYamlSymlinkStillScansTerraform(t *testi
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "dangling-chart", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "dangling-chart", false, 5))
 
 	prepared := documentFingerprint(t, store)
 	require.NotEmpty(t, prepared)
@@ -316,7 +316,7 @@ func TestPrepareDiskSources_RenderedChartStillScansTerraform(t *testing.T) {
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "rendered-chart", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "rendered-chart", false, 5))
 
 	found := false
 	for key := range documentFingerprint(t, store) {
@@ -354,7 +354,7 @@ func TestPrepareDiskSources_PreparesTfvars(t *testing.T) {
 	for _, s := range services {
 		s.FilePlatform = analyzed.FilePlatform
 	}
-	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "tfvars", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "tfvars", false, 5))
 
 	found := false
 	for key := range documentFingerprint(t, store) {
@@ -409,7 +409,7 @@ func TestPrepareDiskSources_UnexpectedRenderErrorStillSilencesRawTemplates(t *te
 	services, _ := buildDiskServices(t, ctx, []string{dir})
 	fsp, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "unexpected-render", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "unexpected-render", false, 5))
 
 	logged := logBuf.String()
 	require.Contains(t, logged, "failed to render file content")
@@ -484,7 +484,7 @@ func TestPrepareDiskSources_DependencyChartFiles(t *testing.T) {
 			services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
 			shared, ok := DiskSourceProvider(services)
 			require.True(t, ok)
-			require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5, true))
+			require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5))
 			require.Equal(t, tt.want, storedFiles(t, services, dir))
 		})
 	}
@@ -503,7 +503,7 @@ func TestPrepareMemorySources_DependencyInIgnorePathsIsNotReported(t *testing.T)
 	services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
 	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareMemorySources(ctx, shared, services, "ignore-paths", false, 5, false))
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "ignore-paths", false, 5))
 	require.Equal(t, map[string]int{"app/templates/cm.yaml": 1}, storedFiles(t, services, "."))
 }
 
@@ -549,7 +549,7 @@ func TestPrepareDiskSources_AnalyzerExclusionsKeepRenderedFiles(t *testing.T) {
 	}
 	shared, ok := DiskSourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5, true))
+	require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5))
 	require.Equal(t, map[string]int{
 		"app/templates/pod.json":            1,
 		"app/templates/pod.yaml":            1,
@@ -571,7 +571,7 @@ func TestPrepareMemorySources_OnlyPathsTemplateRendersItsChart(t *testing.T) {
 	services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
 	shared, ok := MemorySourceProvider(services)
 	require.True(t, ok)
-	require.NoError(t, PrepareMemorySources(ctx, shared, services, "only-paths", false, 5, false))
+	require.NoError(t, PrepareMemorySources(ctx, shared, services, "only-paths", false, 5))
 	require.Equal(t, map[string]int{"app/templates/cm.yaml": 1}, storedFiles(t, services, "."))
 	for _, service := range services {
 		for _, file := range service.files {
@@ -607,7 +607,7 @@ func TestPrepareDiskSources_RenderedDependencyReplacesRawTemplate(t *testing.T) 
 		services, _ := buildServices(t, ctx, vfs.DiskFS{}, fsp, filepath.Join(dir, "app"), filepath.Join(dir, "lib"))
 		shared, ok := DiskSourceProvider(services)
 		require.True(t, ok)
-		require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5, true))
+		require.NoError(t, PrepareDiskSources(ctx, shared, services, "scan", false, 5))
 		require.Equal(t, want, templatesStored(t, services, dir))
 		requireRenderedOnce(t, services, dir, "lib/templates/cm.yaml")
 	})
@@ -623,7 +623,7 @@ func TestPrepareDiskSources_RenderedDependencyReplacesRawTemplate(t *testing.T) 
 		services, _ := buildServices(t, ctx, memfs, mp, provider.ChartRoots(memfs.Paths())...)
 		shared, ok := MemorySourceProvider(services)
 		require.True(t, ok)
-		require.NoError(t, PrepareMemorySources(ctx, shared, services, "scan", false, 5, false))
+		require.NoError(t, PrepareMemorySources(ctx, shared, services, "scan", false, 5))
 		require.Equal(t, want, templatesStored(t, services, "."))
 		requireRenderedOnce(t, services, ".", "lib/templates/cm.yaml")
 	})

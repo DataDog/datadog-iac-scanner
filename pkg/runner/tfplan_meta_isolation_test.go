@@ -150,7 +150,6 @@ func TestInspect_TFPlanMetaNotExposedAsFakeResource(t *testing.T) {
 		featureflags.NewLocalEvaluator(),
 		vfs.DiskFS{},
 		false,
-		false,
 	)
 	require.NoError(t, err)
 

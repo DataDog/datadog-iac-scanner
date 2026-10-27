@@ -14,7 +14,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
-	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
@@ -28,7 +27,6 @@ func PrepareAndScan(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	services serviceSlice,
-	flagEvaluator featureflags.FlagEvaluator,
 ) error {
 	// A config or platform filter can leave no service, which is an empty scan,
 	// not a mix of providers.
@@ -37,11 +35,9 @@ func PrepareAndScan(
 	}
 	metrics.Metric.Start("prepare_sources")
 
-	// The disk walk serves every disk scan. The parallel-parsing flag only sets
-	// its concurrency; when it is off the walk runs sequentially.
+	// The disk walk serves every disk scan.
 	if fsp, ok := runner.DiskSourceProvider(services); ok {
-		parallel := flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing)
-		err := runner.PrepareDiskSources(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth, parallel)
+		err := runner.PrepareDiskSources(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth)
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
@@ -55,12 +51,9 @@ func PrepareAndScan(
 	}
 
 	// The in-memory (server) dispatch: one pass over the pushed files, rendering
-	// each pushed Helm chart once. It runs regardless of the parallel-parsing
-	// flag — the flag only fans chart rendering and file dispatch out — so charts
-	// never silently fall back to raw-template scanning.
+	// each pushed Helm chart once.
 	if mp, ok := runner.MemorySourceProvider(services); ok {
-		err := runner.PrepareMemorySources(ctx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth,
-			flagEvaluator.EvaluateWithOrgAndEnv(featureflags.IaCEnableKicsParallelFileParsing))
+		err := runner.PrepareMemorySources(ctx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth)
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
