@@ -8,6 +8,7 @@ package tfeval
 
 import (
 	"context"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
@@ -320,13 +321,12 @@ func namedObject(values map[string]cty.Value, names []string) cty.Value {
 // are evaluated. It is only used when the data blocks do not read module
 // outputs, so publishing never refreshes data and data.* stays as it is.
 type siblingOutputs struct {
-	e          *Evaluator
-	ctx        context.Context
-	evalCtx    *hcl.EvalContext
-	scope      *ModuleScope
-	localExprs map[string]hclsyntax.Expression
-	data       *moduleData
-	outputs    map[string]cty.Value
+	e       *Evaluator
+	ctx     context.Context
+	evalCtx *hcl.EvalContext
+	scope   *ModuleScope
+	data    *moduleData
+	outputs map[string]cty.Value
 	// stale is set when outputs changed since evalCtx last published them.
 	stale bool
 }
@@ -338,7 +338,7 @@ func (s *siblingOutputs) set(label string, value cty.Value) {
 
 func (s *siblingOutputs) publish() *hcl.EvalContext {
 	if s.stale {
-		s.e.installModuleOutputs(s.ctx, s.evalCtx, s.scope, s.localExprs, s.data, s.outputs)
+		s.e.installModuleOutputs(s.ctx, s.evalCtx, s.scope, s.data, s.outputs)
 		s.stale = false
 	}
 	return s.evalCtx
@@ -349,7 +349,7 @@ func (s *siblingOutputs) contextFor(r *siblingReads) *hcl.EvalContext {
 	if !s.stale {
 		return s.evalCtx
 	}
-	if r.opaque || s.scope == nil || s.scope.localDeps == nil {
+	if r.opaque || s.scope == nil || s.scope.localCache == nil {
 		return s.publish()
 	}
 	following, ok := s.followingLocals(r.locals)
@@ -362,7 +362,7 @@ func (s *siblingOutputs) contextFor(r *siblingReads) *hcl.EvalContext {
 	}
 	modules := make(map[string]cty.Value, len(r.modules))
 	s.addOutputs(modules, r.modules)
-	exprs, fixed, ok := s.localsFollowing(following, modules)
+	members, values, ok := s.localsFollowing(following, modules)
 	if !ok {
 		return s.publish()
 	}
@@ -371,36 +371,38 @@ func (s *siblingOutputs) contextFor(r *siblingReads) *hcl.EvalContext {
 	if len(r.locals) == 0 {
 		return child
 	}
-	child.Variables["local"] = s.localsObject(r.locals, exprs, fixed, child)
+	child.Variables["local"] = s.localsObject(r.locals, members, values, child)
 	return child
 }
 
 // followingLocals returns the named locals following module outputs. It fails
 // for a local it does not know or one reading data, which publishing would
 // re-resolve against data.*.
-func (s *siblingOutputs) followingLocals(names []string) ([]string, bool) {
-	var following []string
+func (s *siblingOutputs) followingLocals(names []string) ([]int, bool) {
+	g := s.scope.localGraph
+	var following []int
 	for _, name := range names {
-		deps, ok := s.scope.localDeps[name]
-		if !ok || deps.data {
+		v, ok := g.index[name]
+		if !ok || g.deps[v].data {
 			return nil, false
 		}
-		if deps.modules {
-			following = append(following, name)
+		if g.deps[v].modules {
+			following = append(following, v)
 		}
 	}
 	return following, true
 }
 
 // localsObject is the object of the named locals as publishing would leave
-// them: it re-resolves the locals following module outputs, exprs here, and
-// keeps the others at their last value, as fixed does.
+// them: it re-resolves the locals following module outputs, members here,
+// into values, which keeps the others they read at their last value.
 func (s *siblingOutputs) localsObject(
-	names []string, exprs map[string]hclsyntax.Expression, fixed map[string]cty.Value, ctx *hcl.EvalContext,
+	names []string, members []int, values map[string]cty.Value, ctx *hcl.EvalContext,
 ) cty.Value {
-	values := s.scope.localCache
-	if len(exprs) > 0 {
-		values = s.e.resolveLocalsWith(exprs, ctx, fixed)
+	if len(members) == 0 {
+		values = s.scope.localCache
+	} else {
+		s.e.resolveLocals(s.scope.localGraph, ctx, values, members)
 		for _, name := range names {
 			if _, ok := values[name]; !ok {
 				values[name] = s.scope.localCache[name]
@@ -421,45 +423,41 @@ func (s *siblingOutputs) addOutputs(modules map[string]cty.Value, names []string
 }
 
 // localsFollowing returns the locals following module outputs that the named
-// ones read, themselves included, and the values of the other locals they
-// read. It adds the module outputs they read to modules, and fails when one
-// reads something it cannot narrow.
+// ones read, themselves included, in dependency order, and the values of the
+// other locals they read. It adds the module outputs they read to modules,
+// and fails when one reads something it cannot narrow.
 func (s *siblingOutputs) localsFollowing(
-	names []string, modules map[string]cty.Value,
-) (exprs map[string]hclsyntax.Expression, fixed map[string]cty.Value, ok bool) {
-	exprs = make(map[string]hclsyntax.Expression, len(names))
-	fixed = map[string]cty.Value{}
-	queue := append([]string(nil), names...)
+	following []int, modules map[string]cty.Value,
+) (members []int, values map[string]cty.Value, ok bool) {
+	g := s.scope.localGraph
+	values = map[string]cty.Value{}
+	seen := make(map[int]bool, len(following))
+	queue := append([]int(nil), following...)
 	for len(queue) > 0 {
-		name := queue[len(queue)-1]
+		v := queue[len(queue)-1]
 		queue = queue[:len(queue)-1]
-		if _, seen := exprs[name]; seen {
+		if seen[v] {
 			continue
 		}
-		expr, known := s.localExprs[name]
-		if !known {
+		seen[v] = true
+		members = append(members, v)
+		r := &g.siblings[v]
+		if r.opaque {
 			return nil, nil, false
 		}
-		exprs[name] = expr
-		for _, traversal := range expr.Variables() {
-			var r siblingReads
-			r.add(traversal)
-			if r.opaque {
+		s.addOutputs(modules, r.modules)
+		for _, l := range r.locals {
+			w, known := g.index[l]
+			switch {
+			case !known || g.deps[w].data:
 				return nil, nil, false
-			}
-			s.addOutputs(modules, r.modules)
-			for _, l := range r.locals {
-				deps, known := s.scope.localDeps[l]
-				switch {
-				case !known || deps.data:
-					return nil, nil, false
-				case deps.modules:
-					queue = append(queue, l)
-				default:
-					fixed[l] = s.scope.localCache[l]
-				}
+			case g.deps[w].modules:
+				queue = append(queue, w)
+			default:
+				values[l] = s.scope.localCache[l]
 			}
 		}
 	}
-	return exprs, fixed, true
+	slices.SortFunc(members, func(a, b int) int { return g.rank[a] - g.rank[b] })
+	return members, values, true
 }
