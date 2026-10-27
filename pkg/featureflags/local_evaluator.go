@@ -6,12 +6,11 @@ type LocalEvaluator struct {
 
 func NewLocalEvaluatorWithOverrides(overrides map[string]bool) *LocalEvaluator {
 	flags := map[string]bool{
-		IacAttachCustomFrameworks:        true,
-		IacAttachDefaultFrameworks:       true,
-		IacDisableKicsRule:               false,
-		IacEnableKicsPlatform:            true,
-		IacEnableKicsHelmResolver:        true,
-		IaCEnableKicsParallelFileParsing: true,
+		IacAttachCustomFrameworks:  true,
+		IacAttachDefaultFrameworks: true,
+		IacDisableKicsRule:         false,
+		IacEnableKicsPlatform:      true,
+		IacEnableKicsHelmResolver:  true,
 	}
 
 	for k, v := range overrides {

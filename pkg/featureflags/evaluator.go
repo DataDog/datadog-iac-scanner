@@ -1,12 +1,11 @@
 package featureflags
 
 const (
-	IacAttachCustomFrameworks        = "k9-iac-attach-custom-frameworks"
-	IacAttachDefaultFrameworks       = "k9-iac-attach-default-frameworks"
-	IacDisableKicsRule               = "k9-iac-disable-kics-rule"
-	IacEnableKicsPlatform            = "k9-iac-enable-kics-platform"
-	IacEnableKicsHelmResolver        = "k9-iac-enable-kics-helm-resolver"
-	IaCEnableKicsParallelFileParsing = "k9-iac-enable-kics-parallel-file-parsing"
+	IacAttachCustomFrameworks  = "k9-iac-attach-custom-frameworks"
+	IacAttachDefaultFrameworks = "k9-iac-attach-default-frameworks"
+	IacDisableKicsRule         = "k9-iac-disable-kics-rule"
+	IacEnableKicsPlatform      = "k9-iac-enable-kics-platform"
+	IacEnableKicsHelmResolver  = "k9-iac-enable-kics-helm-resolver"
 )
 
 type FlagEvaluator interface {

@@ -295,7 +295,6 @@ func runFiles(
 		featureflags.NewLocalEvaluator(),
 		vfs.DiskFS{},
 		false,
-		false,
 	)
 	if err != nil {
 		return nil, nil, err

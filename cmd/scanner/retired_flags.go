@@ -13,7 +13,11 @@ const retiredTimeoutUsage = "(DEPRECATED) no longer has any effect; " +
 
 // Shared retired flags must be removed from both scan and serve in the same change.
 func sharedRetiredFlags() []cli.Flag {
-	return nil
+	return []cli.Flag{
+		retiredBool("x-parallelparsing",
+			"(DEPRECATED) files are now always parsed in parallel; "+
+				"this flag no longer has any effect. It will be removed."),
+	}
 }
 
 func retiredScanOnlyFlags() []cli.Flag {
@@ -21,6 +25,9 @@ func retiredScanOnlyFlags() []cli.Flag {
 		retiredInt("timeout", retiredTimeoutUsage),
 		retiredBool("x-local-module-eval",
 			"(DEPRECATED) Terraform local module evaluation is now always enabled; "+
+				"this flag no longer has any effect. It will be removed."),
+		retiredBool("x-disable-rule-isolation",
+			"(DEPRECATED) rules are now always co-compiled into a shared compiler; "+
 				"this flag no longer has any effect. It will be removed."),
 	}
 }

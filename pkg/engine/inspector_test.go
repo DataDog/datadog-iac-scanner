@@ -56,18 +56,17 @@ func (s *stubQueriesSource) GetQueryLibrary(_ context.Context, platform string) 
 // with no rules. Set `querySource` to plug in a custom QueriesSource (e.g. a
 // gomock) instead of the default in-memory stub backed by `queries`.
 type inspectorOpts struct {
-	queries              []model.QueryMetadata
-	querySource          source.QueriesSource
-	queryParameters      *source.QueryInspectorParameters
-	repoPath             string
-	useOldSeverities     bool
-	needsLog             bool
-	numWorkers           int
-	vb                   VulnerabilityBuilder
-	tracker              Tracker
-	flagEvaluator        featureflags.FlagEvaluator
-	disableRuleIsolation bool
-	useRulesCache        bool
+	queries          []model.QueryMetadata
+	querySource      source.QueriesSource
+	queryParameters  *source.QueryInspectorParameters
+	repoPath         string
+	useOldSeverities bool
+	needsLog         bool
+	numWorkers       int
+	vb               VulnerabilityBuilder
+	tracker          Tracker
+	flagEvaluator    featureflags.FlagEvaluator
+	useRulesCache    bool
 }
 
 // newTestInspector runs the real [NewInspector] against a configurable
@@ -114,7 +113,6 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.numWorkers,
 		opts.flagEvaluator,
 		vfs.DiskFS{},
-		opts.disableRuleIsolation,
 		opts.useRulesCache,
 	)
 	require.NoError(t, err)
