@@ -301,11 +301,13 @@ resource "aws_s3_bucket" "this" {
 	files = append(files, parseTerraform(t, modPath)...)
 
 	queries := []model.QueryMetadata{{
-		Query:       "acl_rule",
-		Content:     aclRule,
-		InputData:   "{}",
-		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Query:     "acl_rule",
+		Content:   aclRule,
+		InputData: "{}",
+		Platform:  "terraform",
+		// "Terraform" is what puts the call chain in the finding identity, as the
+		// Terraform rules do. Without it the two callers are one finding.
+		Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -829,11 +831,13 @@ resource "aws_instance" "server" {
 	files = append(files, parseTerraform(t, instancePath)...)
 
 	queries := []model.QueryMetadata{{
-		Query:       "sg_not_used_rule",
-		Content:     sgNotUsedRule,
-		InputData:   "{}",
-		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "sg-not-used"},
+		Query:     "sg_not_used_rule",
+		Content:   sgNotUsedRule,
+		InputData: "{}",
+		Platform:  "terraform",
+		// "Terraform" puts the call chain in the finding identity, as the
+		// Terraform rules do. Without it the two callers are one finding.
+		Metadata:    map[string]interface{}{"id": "sg-not-used", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -873,6 +877,9 @@ module "buckets" {
   acl    = "public-read"
 }
 `), 0o644))
+	// Only the second instance is public: a finding proves that instance was
+	// evaluated and scanned. Both instances raise the same finding identity,
+	// which the scan reports once, so counting findings would prove nothing.
 	require.NoError(t, os.WriteFile(modPath, []byte(`
 variable "acl" {
   type = string
@@ -881,7 +888,7 @@ variable "acl" {
 resource "aws_s3_bucket" "replica" {
   count  = 2
   bucket = "bucket-${count.index}"
-  acl    = var.acl
+  acl    = count.index == 1 ? var.acl : "private"
 }
 `), 0o644))
 
@@ -909,7 +916,9 @@ resource "aws_s3_bucket" "replica" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
-	require.Len(t, vulns, 2, "both count-expanded instances must produce a finding")
+	require.Len(t, vulns, 1, "the second count-expanded instance must be scanned")
+	require.Equal(t, "replica", vulns[0].ResourceName)
+	require.Equal(t, "stack/main.tf|module.buckets", vulns[0].ModuleCallChain)
 }
 
 // TestInspect_SharedBaseStoresConcurrentReads runs multiple queries on one platform

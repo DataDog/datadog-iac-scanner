@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
-	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 // SeveritySummary contains scans' result numbers, how many vulnerabilities of each severity was detected
@@ -324,7 +323,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		resolvedPath := resolvePath(item.FileName, pathExtractionMap, repoDir)
 
 		// Stamp the fingerprint here so every report format reads one shared value.
-		identityFile, identityLine := item.Identity()
+		identityFile, identityLine, ruleID := fingerprintFields(&item)
 		fingerprintPath := resolvedPath
 		if identityFile != item.FileName {
 			fingerprintPath = resolvePath(identityFile, pathExtractionMap, repoDir)
@@ -338,7 +337,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			item.Platform,
 			item.ResourceType,
 			item.ResourceName,
-			utils.ChooseQueryID(item.QueryID, item.LegacyQueryID),
+			ruleID,
 			identityLine,
 			item.ModuleCallChain,
 		)
