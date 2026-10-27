@@ -179,21 +179,23 @@ type linesLazyState struct {
 	// names is small and fixed by the callers, so it is not bounded.
 	predMatches map[string][]int
 	// scans counts the substrings LinesContaining looked up and did not find
-	// in matches.
+	// in matches since the suffix array was last released.
 	scans int
-	// index, built once scans reaches substringIndexAfterScans, answers those
-	// lookups without reading every line; noIndex records that it cannot be
-	// built for the file.
+	// index answers lookups without reading every line once scans reaches
+	// substringIndexAfterScans. It is released when detection leaves the file.
+	// noIndex records that it cannot be built for the file.
 	index   *substringIndex
 	noIndex bool
 }
 
 // substringIndexAfterScans is how many lookups of substrings not in the cache
-// read every line of a file before LinesContaining indexes it. Search keys name
-// the blocks of a file, so a file of K blocks with findings looks up about K
-// substrings, and reading every line for each made line detection quadratic in
-// K. Indexing costs about as much as forty such reads, so files with few
-// lookups are never indexed.
+// read every line of one visit before LinesContaining indexes the file. Search
+// keys name the blocks of a file, so a file of K blocks looks up about K
+// substrings while it is the file being detected, and reading every line for
+// each made that quadratic in K. Indexing costs about as much as forty such
+// reads, so a visit with few lookups never indexes. The array is about five
+// bytes per byte of the file, so it is dropped when detection leaves the file
+// rather than kept for the rest of the scan.
 const substringIndexAfterScans = 64
 
 // substringIndex finds the lines of a file that contain a substring with a
@@ -442,6 +444,20 @@ func (f *FileMetadata) LinesContaining(sub string) (indexes []int, ok bool) {
 	return indexes, true
 }
 
+// ReleaseSubstringIndex drops the suffix array and starts its miss count over.
+// Cached matches stay. Copies of one source share the array, so releasing it
+// on any copy releases it for all of them.
+func (f *FileMetadata) ReleaseSubstringIndex() {
+	st := f.linesLazy
+	if st == nil {
+		return
+	}
+	st.matchMu.Lock()
+	st.index = nil
+	st.scans = 0
+	st.matchMu.Unlock()
+}
+
 // LinesMatching returns the indexes of Lines() for which pred reports true, in
 // ascending order, memoized per file under name. pred must always give the same
 // answer for a given name. ok is false when the file has no lazy line state to
@@ -510,11 +526,8 @@ func (f *FileMetadata) ShallowCopy() *FileMetadata {
 	} else {
 		clone.lineInfo = cloneLineInfoState(f.lineInfo)
 	}
-	// LinesOriginalData is shared (same pointer); keep the lazy guard so a copy
-	// that hasn't materialized lines yet still computes them on demand.
-	if f.linesLazy != nil && f.LinesOriginalData == nil {
-		clone.linesLazy = &linesLazyState{}
-	}
+	// Line lookups depend only on the source text, so copies share that state
+	// instead of each holding a suffix array of the same file.
 	return &clone
 }
 

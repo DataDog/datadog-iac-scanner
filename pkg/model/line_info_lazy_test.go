@@ -280,6 +280,35 @@ func TestLinesContainingDoesNotIndexLinesWithNewlines(t *testing.T) {
 	require.True(t, f.linesLazy.noIndex)
 }
 
+func TestReleaseSubstringIndexDropsTheArrayAndSharesItAcrossCopies(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < substringIndexAfterScans; i++ {
+		fmt.Fprintf(&b, "resource \"t\" \"r%d\" {}\n", i)
+	}
+	f := &FileMetadata{OriginalData: b.String()}
+	f.SetLazyLines()
+	clone := f.ShallowCopy()
+	require.Same(t, f.linesLazy, clone.linesLazy)
+	for i := 0; i < substringIndexAfterScans; i++ {
+		got, ok := f.LinesContaining(fmt.Sprintf("\"r%d\"", i))
+		require.True(t, ok)
+		require.Equal(t, []int{i}, got)
+	}
+	require.NotNil(t, f.linesLazy.index)
+
+	clone.ReleaseSubstringIndex()
+	require.Nil(t, f.linesLazy.index)
+	got, ok := f.LinesContaining("\"r0\"")
+	require.True(t, ok)
+	require.Equal(t, []int{0}, got)
+	require.Nil(t, f.linesLazy.index, "a cached lookup must not rebuild the array")
+
+	_, ok = f.LinesContaining("absent")
+	require.True(t, ok)
+	require.Nil(t, f.linesLazy.index)
+	require.Equal(t, 1, f.linesLazy.scans)
+}
+
 func TestLinesContainingIndexConcurrent(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 400; i++ {

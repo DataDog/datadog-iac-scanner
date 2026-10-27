@@ -1465,6 +1465,7 @@ decodeLoop:
 	if qCtx.discardLineInfoAfterUse && activeLineInfoFile != "" {
 		if fm := qCtx.Files[activeLineInfoFile]; fm != nil {
 			fm.DiscardLineInfoDocument()
+			fm.ReleaseSubstringIndex()
 		}
 	}
 
@@ -1482,6 +1483,7 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 				return nextID
 			}
 			fm.DiscardLineInfoDocument()
+			fm.ReleaseSubstringIndex()
 		}
 	}
 	return nextID
