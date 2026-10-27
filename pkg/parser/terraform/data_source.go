@@ -337,7 +337,7 @@ const (
 // name is one block. A constant type whose name is missing or not a single
 // step is every block of that type. Anything else that still roots at data is
 // every data block.
-func classifyData(traversal hcl.Traversal) (dataRefKind, string, string) {
+func classifyData(traversal hcl.Traversal) (kind dataRefKind, typ, name string) {
 	if len(traversal) < 2 {
 		return dataAll, "", ""
 	}
