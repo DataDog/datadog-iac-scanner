@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -443,7 +444,9 @@ func evaluateRootModules(
 	}
 	for _, dir := range roots[next:] {
 		evaluator.ResetSpeculativeBudget()
+		end := memwatch.Begin(ctx, "root "+dir)
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
+		end()
 		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
 		// The cache key includes rootDir, so the next root cannot reuse these
 		// evaluations, and keyMemo pins every collection they hashed.
@@ -486,6 +489,7 @@ func (m *rootMerge) merge(
 	childDirs map[string]bool,
 	err error,
 ) {
+	defer memwatch.Begin(m.ctx, "merge "+dir)()
 	defer m.evaluator.ForgetRootParse(dir)
 	if err != nil {
 		contextLogger := logger.FromContext(m.ctx)
@@ -609,6 +613,7 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 		r.expansionTruncations, r.expansionMaxRequested = worker.TakeExpansionStats()
 		worker.ReleaseEvalCache()
 	}()
+	defer memwatch.Begin(ctx, "root "+dir)()
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
 	r.instances = worker.TakeModuleInstances()
 	r.charged = worker.InstantiatedCount()

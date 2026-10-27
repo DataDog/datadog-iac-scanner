@@ -109,3 +109,58 @@ func TestUnsupportedSamplerLeavesPeakEmpty(t *testing.T) {
 		t.Fatalf("Peak() = (%d, %q), want (0, empty)", peak, phase)
 	}
 }
+
+func TestSampleLogsEachThresholdOnceWithPhaseAndWorkInFlight(t *testing.T) {
+	values := []uint64{1 << 29, 3 << 29, 5 << 30, 5 << 30, 13 << 30}
+	var logs bytes.Buffer
+	w := &Watcher{
+		logger: zerolog.New(&logs).Level(zerolog.InfoLevel),
+		sampleRSS: func() (uint64, bool) {
+			value := values[0]
+			values = values[1:]
+			return value, true
+		},
+	}
+	ctx := context.WithValue(context.Background(), watcherKey{}, w)
+
+	Sample(ctx, PhaseModuleEval)
+	end := Begin(ctx, "root b")
+	endOther := Begin(ctx, "root a")
+	Sample(ctx, "")
+	endOther()
+	Sample(ctx, "")
+	Sample(ctx, "")
+	end()
+	Sample(ctx, PhaseStartScan)
+
+	var entries []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("unmarshal %q: %v", line, err)
+		}
+		entries = append(entries, entry)
+	}
+	// 1.5 GiB crosses 1 GiB; 5 GiB crosses 2 and 4 together; 13 GiB crosses 8 and 12.
+	if len(entries) != 5 {
+		t.Fatalf("got %d threshold logs, want 5: %q", len(entries), logs.String())
+	}
+	first := entries[0]
+	if first["last_completed_phase"] != PhaseModuleEval || first["threshold_bytes"].(float64) != float64(1<<30) {
+		t.Fatalf("first log = %v", first)
+	}
+	if flight := first["in_flight"].([]any); len(flight) != 2 || flight[0] != "root a" || flight[1] != "root b" {
+		t.Fatalf("in_flight = %v, want both roots sorted", flight)
+	}
+	if flight := entries[1]["in_flight"].([]any); len(flight) != 1 || flight[0] != "root b" {
+		t.Fatalf("second in_flight = %v, want only root b", flight)
+	}
+	last := entries[4]
+	if last["last_completed_phase"] != PhaseStartScan || last["threshold_bytes"].(float64) != float64(12<<30) {
+		t.Fatalf("last log = %v", last)
+	}
+}
+
+func TestBeginWithoutWatcherIsNoop(t *testing.T) {
+	Begin(context.Background(), "root")()
+}

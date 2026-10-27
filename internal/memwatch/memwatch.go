@@ -10,10 +10,21 @@ package memwatch
 
 import (
 	"context"
+	"slices"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
 )
+
+// sampleInterval is how often the watcher samples between phase boundaries.
+const sampleInterval = 500 * time.Millisecond
+
+// progressThresholds are the resident sizes, in bytes, that are logged when
+// first reached, with the last phase that completed and the work then in flight. A scan killed for
+// its memory never reaches the summary Stop logs, so these are what say where
+// it was.
+var progressThresholds = []uint64{1 << 30, 2 << 30, 4 << 30, 8 << 30, 12 << 30}
 
 const (
 	PhaseStartup        = "startup"
@@ -22,6 +33,8 @@ const (
 	PhaseGetQueries     = "get_queries"
 	PhasePrepareSources = "prepare_sources"
 	PhaseModuleEval     = "local_module_eval"
+	PhaseCombine        = "combine_documents"
+	PhasePayloads       = "build_payloads"
 	PhaseStartScan      = "start_scan"
 	PhaseGenerateReport = "generate_report"
 )
@@ -35,6 +48,12 @@ type Watcher struct {
 	peakBytes uint64
 	peakPhase string
 	stopped   bool
+
+	phase     string
+	active    map[int]string
+	nextID    int
+	nextLevel int
+	done      chan struct{}
 }
 
 func Start(ctx context.Context, log *zerolog.Logger) (context.Context, *Watcher) {
@@ -43,7 +62,46 @@ func Start(ctx context.Context, log *zerolog.Logger) (context.Context, *Watcher)
 		sampleRSS: peakRSSBytes,
 	}
 	w.sample(PhaseStartup)
+	w.done = make(chan struct{})
+	go w.run(w.done)
 	return context.WithValue(ctx, watcherKey{}, w), w
+}
+
+// run samples until done is closed.
+func (w *Watcher) run(done <-chan struct{}) {
+	ticker := time.NewTicker(sampleInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			w.sample("")
+		}
+	}
+}
+
+// Begin records label as work in flight until the returned function is called.
+// Labels of the work in flight are logged with the progress thresholds, so the
+// work running when memory grew is known.
+func Begin(ctx context.Context, label string) (end func()) {
+	w, ok := ctx.Value(watcherKey{}).(*Watcher)
+	if !ok {
+		return func() {}
+	}
+	w.mu.Lock()
+	if w.active == nil {
+		w.active = map[int]string{}
+	}
+	id := w.nextID
+	w.nextID++
+	w.active[id] = label
+	w.mu.Unlock()
+	return func() {
+		w.mu.Lock()
+		delete(w.active, id)
+		w.mu.Unlock()
+	}
 }
 
 func Sample(ctx context.Context, phase string) {
@@ -66,6 +124,9 @@ func (w *Watcher) Stop() {
 		return
 	}
 	w.stopped = true
+	if w.done != nil {
+		close(w.done)
+	}
 
 	if w.peakBytes == 0 {
 		return
@@ -88,8 +149,29 @@ func (w *Watcher) sample(phase string) {
 	if w.stopped {
 		return
 	}
+	// A phase is sampled when it completes, so a periodic sample, which has no
+	// phase of its own, was taken in the work after the last completed phase.
+	if phase == "" {
+		phase = w.phase
+	} else {
+		w.phase = phase
+	}
 	if current > w.peakBytes {
 		w.peakBytes = current
 		w.peakPhase = phase
+	}
+	for w.nextLevel < len(progressThresholds) && current >= progressThresholds[w.nextLevel] {
+		active := make([]string, 0, len(w.active))
+		for _, label := range w.active {
+			active = append(active, label)
+		}
+		slices.Sort(active)
+		w.logger.Info().
+			Uint64("rss_bytes", current).
+			Uint64("threshold_bytes", progressThresholds[w.nextLevel]).
+			Str("last_completed_phase", phase).
+			Strs("in_flight", active).
+			Msg("memwatch: resident memory threshold reached")
+		w.nextLevel++
 	}
 }

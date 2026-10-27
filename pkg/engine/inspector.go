@@ -582,6 +582,7 @@ func (c *Inspector) Inspect(
 
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
+	memwatch.Sample(ctx, memwatch.PhaseCombine)
 
 	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
 	// non-fatal (logged, scan continues), but a context cancellation must abort
@@ -620,6 +621,7 @@ func (c *Inspector) Inspect(
 	if err != nil {
 		return nil, err
 	}
+	memwatch.Sample(ctx, memwatch.PhasePayloads)
 
 	// Collect the trees released during conversion and recompute the heap goal
 	// from the smaller live set before eval.
