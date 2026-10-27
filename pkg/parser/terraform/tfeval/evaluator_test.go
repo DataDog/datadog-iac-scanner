@@ -1147,7 +1147,7 @@ func TestEvaluateLocalModuleBlocksIgnoresNullPreliminaryOutputs(t *testing.T) {
 	}()
 
 	_, outputs := New().evaluateLocalModuleBlocks(
-		context.Background(), nil, nil, evalCtx, nil, nil, nil, "", "", "", "", nil, 0, nil, nil,
+		context.Background(), nil, nil, evalCtx, nil, nil, "", "", "", "", nil, 0, nil, nil,
 	)
 	if len(outputs) != 0 {
 		t.Fatalf("outputs = %#v, want empty", outputs)
@@ -2521,5 +2521,342 @@ func TestNestedBlocksMatchesAddNestedBlock(t *testing.T) {
 		for k, v := range want {
 			require.True(t, v.RawEquals(got[k]), "run %d key %s: %#v != %#v", run, k, v, got[k])
 		}
+	}
+}
+
+func evaluateRoot(t *testing.T, ctx context.Context, src string) map[string]ResolvedResource {
+	t.Helper()
+	stack := writeModule(t, t.TempDir(), "stack", map[string]string{"main.tf": src})
+	resources, _, _, err := New().EvaluateModule(ctx, stack, nil)
+	require.NoError(t, err)
+	return resourcesByAddress(resources)
+}
+
+// chainSource declares l0 = start and each lN reading l(N-1), in reverse so
+// declaration order does not help.
+func chainSource(length int, start string) string {
+	var b strings.Builder
+	b.WriteString("locals {\n")
+	for l := length - 1; l > 0; l-- {
+		fmt.Fprintf(&b, "  l%d = \"${local.l%d}x\"\n", l, l-1)
+	}
+	fmt.Fprintf(&b, "  l0 = %s\n}\n", start)
+	return b.String()
+}
+
+// A chain of locals longer than any number of passes resolves, whatever its
+// start reads: a constant, a resource, a module output, data, or a variable
+// of each instance of a module loop.
+func TestResolveLocals_LongChainResolves(t *testing.T) {
+	const length = 60
+	suffix := strings.Repeat("x", length-1)
+	reader := fmt.Sprintf("resource \"aws_sqs_queue\" \"q\" { name = local.l%d }\n", length-1)
+	t.Run("constant", func(t *testing.T) {
+		byAddr := evaluateRoot(t, context.Background(), chainSource(length, `"v"`)+reader)
+		requireString(t, byAddr["/aws_sqs_queue.q"].Attributes, "name", "v"+suffix)
+	})
+	t.Run("resource attribute", func(t *testing.T) {
+		byAddr := evaluateRoot(t, context.Background(), chainSource(length, "aws_s3_bucket.src.bucket")+
+			"resource \"aws_s3_bucket\" \"src\" { bucket = \"b\" }\n"+reader)
+		requireString(t, byAddr["/aws_sqs_queue.q"].Attributes, "name", "b"+suffix)
+	})
+	t.Run("module output", func(t *testing.T) {
+		root := t.TempDir()
+		writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "in" {}
+output "out" { value = var.in }
+`})
+		stack := writeModule(t, root, "stack", map[string]string{"main.tf": chainSource(length, "module.m.out") +
+			"module \"m\" {\n  source = \"../leaf\"\n  in     = \"m\"\n}\n" + reader})
+		resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+		require.NoError(t, err)
+		requireString(t, resourcesByAddress(resources)["/aws_sqs_queue.q"].Attributes, "name", "m"+suffix)
+	})
+	t.Run("data", func(t *testing.T) {
+		byAddr := evaluateRoot(t, context.Background(), chainSource(length, "data.aws_iam_policy_document.p.json")+`
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = ["sqs:SendMessage"]
+  }
+}
+`+reader)
+		name := byAddr["/aws_sqs_queue.q"].Attributes["name"]
+		require.True(t, name.IsKnown())
+		require.Contains(t, name.AsString(), "sqs:SendMessage")
+		require.True(t, strings.HasSuffix(name.AsString(), suffix))
+	})
+	t.Run("module loop", func(t *testing.T) {
+		root := t.TempDir()
+		writeModule(t, root, "leaf", map[string]string{"main.tf": "variable \"name\" { type = string }\n" +
+			chainSource(length, "var.name") + reader})
+		stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "leaf" {
+  source   = "../leaf"
+  for_each = toset(["a", "b"])
+  name     = each.key
+}
+`})
+		resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+		require.NoError(t, err)
+		byAddr := resourcesByAddress(resources)
+		for _, key := range []string{"a", "b"} {
+			requireString(t, byAddr[fmt.Sprintf("module.leaf[%q]/aws_sqs_queue.q", key)].Attributes, "name", key+suffix)
+		}
+	})
+}
+
+// A module call reading a local that follows an earlier call's output through
+// a long chain declared out of order sees the chain resolved against that
+// output, without the outputs being published before the call.
+func TestResolveLocals_SiblingReadsLongChainOfModuleOutput(t *testing.T) {
+	const length = 30
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "in" {}
+resource "aws_s3_bucket" "b" { bucket = var.in }
+output "out" { value = var.in }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": chainSource(length, "module.m0.out") + `
+locals {
+  fixed = "f"
+}
+module "m0" {
+  source = "../leaf"
+  in     = "a"
+}
+module "m1" {
+  source = "../leaf"
+  in     = "${local.l` + strconv.Itoa(length-1) + `}-${local.fixed}"
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	byAddr := resourcesByAddress(resources)
+	requireString(t, byAddr["module.m1/aws_s3_bucket.b"].Attributes, "bucket", "a"+strings.Repeat("x", length-1)+"-f")
+}
+
+// try and can over a local declared later see that local's value, not its
+// absence.
+func TestResolveLocals_TryAndCanReadLaterLocal(t *testing.T) {
+	byAddr := evaluateRoot(t, context.Background(), `
+locals {
+  a     = try(local.z, "fallback")
+  known = can(local.z) ? "yes" : "no"
+  z     = "real"
+}
+resource "aws_sqs_queue" "q" { tags = { a = local.a, known = local.known } }
+`)
+	tags := byAddr["/aws_sqs_queue.q"].Attributes["tags"]
+	require.Equal(t, "real", tags.GetAttr("a").AsString())
+	require.Equal(t, "yes", tags.GetAttr("known").AsString())
+}
+
+func TestResolveLocals_UnknownLocalStaysUnknownToReaders(t *testing.T) {
+	byAddr := evaluateRoot(t, context.Background(), `
+variable "unset" {}
+locals {
+  unknown  = var.unset
+  fallback = try(local.unknown, "fallback")
+  partial  = { known = "k", unknown = local.unknown }
+}
+resource "aws_sqs_queue" "q" {
+  name = local.fallback
+  tags = local.partial
+}
+`)
+	attrs := byAddr["/aws_sqs_queue.q"].Attributes
+	require.False(t, attrs["name"].IsKnown())
+	require.Equal(t, "k", attrs["tags"].GetAttr("known").AsString())
+	require.False(t, attrs["tags"].GetAttr("unknown").IsKnown())
+}
+
+// Terraform rejects a cycle among locals. Its locals, even one with a
+// fallback, and the locals reading them are unknown; the others resolve, and
+// each cycle is reported once per directory, however many instances and
+// evaluators reach it.
+func TestResolveLocals_CyclesAreUnknownAndWarnedOnce(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "n" {}
+locals {
+  a    = "${local.b}-a"
+  b    = "${local.a}-b"
+  self = "${local.self}-s"
+  x    = try(local.y, "xs")
+  y    = local.x
+  ok   = "fine-${var.n}"
+  next = "${local.a}-${local.ok}"
+}
+resource "aws_sqs_queue" "q" {
+  name = local.ok
+  tags = { a = local.a, self = local.self, next = local.next, x = local.x }
+}
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "leaf" {
+  source   = "../leaf"
+  for_each = toset(["a", "b", "c"])
+  n        = each.key
+}
+`})
+	e := New()
+	for range 2 {
+		resources, _, _, err := e.EvaluateModule(ctx, stack, nil)
+		require.NoError(t, err)
+		attrs := resourcesByAddress(resources)[`module.leaf["a"]/aws_sqs_queue.q`].Attributes
+		requireString(t, attrs, "name", "fine-a")
+		for _, name := range []string{"a", "self", "next", "x"} {
+			require.False(t, attrs["tags"].GetAttr(name).IsKnown(), name)
+		}
+	}
+	require.Equal(t, 3, strings.Count(logs.String(), "cycle among locals"), logs.String())
+	require.Contains(t, logs.String(), `"locals":["local.a","local.b"]`)
+	require.Contains(t, logs.String(), `"locals":["local.self"]`)
+	require.Contains(t, logs.String(), `"locals":["local.x","local.y"]`)
+}
+
+// A directory with a cycle among its locals and a data block reading its own
+// result through a local reports both, once.
+func TestResolveLocals_LocalAndDataCyclesWarnedTogether(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+	stack := writeModule(t, t.TempDir(), "stack", map[string]string{"main.tf": `
+locals {
+  a    = local.b
+  b    = local.a
+  loop = data.aws_iam_policy_document.p.json
+}
+data "aws_iam_policy_document" "p" {
+  source_policy_documents = [local.loop]
+}
+`})
+	e := New()
+	for range 2 {
+		_, _, _, err := e.EvaluateModule(ctx, stack, nil)
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, strings.Count(logs.String(), "cycle among locals"), logs.String())
+	require.Equal(t, 1, strings.Count(logs.String(), "data reference cycle"), logs.String())
+}
+
+// A read of local as a whole sees the locals that do not read it back, and
+// is not a cycle with a local reading its result.
+func TestResolveLocals_WholeLocalRead(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
+	byAddr := evaluateRoot(t, ctx, `
+locals {
+  pick = lookup(local, "real", "d")
+  real = "r"
+  next = local.pick
+  z    = "zz"
+  y    = keys(local)
+  b    = [length(local), local.y]
+}
+resource "aws_sqs_queue" "q" { name = local.next }
+resource "aws_sqs_queue" "keys" { name = join(",", local.b[1]) }
+`)
+	requireString(t, byAddr["/aws_sqs_queue.q"].Attributes, "name", "r")
+	requireString(t, byAddr["/aws_sqs_queue.keys"].Attributes, "name", "real,z")
+	require.NotContains(t, logs.String(), "cycle among locals")
+}
+
+func parseLocals(t *testing.T, src string) *localGraph {
+	t.Helper()
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.Pos{Line: 1, Column: 1})
+	require.False(t, diags.HasErrors(), diags.Error())
+	bodies := []*hclsyntax.Body{file.Body.(*hclsyntax.Body)}
+	_, localExprs, _, resourceBlocks, _ := collectBlocks(bodies)
+	return newLocalGraph(localExprs, declaredResourceTypes(resourceBlocks), collectDataBlocks(bodies))
+}
+
+func TestLocalGraph(t *testing.T) {
+	g := parseLocals(t, `
+locals {
+  d     = "${local.c}${local.b}"
+  c     = local.b
+  b     = local.a
+  a     = aws_s3_bucket.x.id
+  e     = "${local.f}${local.a}"
+  f     = local.e
+  g     = local["a"]
+  h     = local.undeclared
+  m     = module.x.out
+  n     = [local.m, local.h]
+  p     = data.aws_iam_policy_document.p.json
+  q     = local.p
+  whole = keys(local)
+  other = "x"
+}
+resource "aws_s3_bucket" "x" {}
+data "aws_iam_policy_document" "p" {}
+`)
+	for v, reads := range g.reads {
+		for _, w := range reads {
+			if !g.cyclic[v] {
+				require.Less(t, g.rank[w], g.rank[v], "%s reads %s", g.names[v], g.names[w])
+			}
+		}
+	}
+	require.Equal(t, [][]string{{"local.e", "local.f"}}, g.cycles)
+	for _, name := range []string{"other", "a", "b", "c", "d", "g", "h", "m", "n", "p", "q"} {
+		require.Less(t, g.rank[g.index[name]], g.rank[g.index["whole"]], "whole waits for %s", name)
+	}
+	following := func(pick func(localDeps) bool) []string {
+		var out []string
+		for v, deps := range g.deps {
+			if pick(deps) {
+				out = append(out, g.names[v])
+			}
+		}
+		return out
+	}
+	require.Equal(t, []string{"a", "b", "c", "d", "e", "f", "g", "whole"}, following(func(d localDeps) bool { return d.resources }))
+	require.Equal(t, []string{"m", "n", "whole"}, following(func(d localDeps) bool { return d.modules }))
+	require.Equal(t, map[string]bool{"p": true, "q": true, "whole": true}, g.dataLocals)
+	require.Equal(t, []int{g.index["p"], g.index["q"], g.index["whole"]}, g.dataOrder)
+	require.True(t, g.readsResources)
+	require.True(t, g.readsModules)
+	require.Equal(t, []string{"x"}, g.siblings[g.index["m"]].modules)
+	require.True(t, g.siblings[g.index["whole"]].opaque)
+	require.True(t, g.siblings[g.index["p"]].opaque)
+	require.Empty(t, g.cyclicData)
+}
+
+// numberChainSource declares n0 = 0 and each nN = n(N-1) + 1, in reverse, with
+// a resource reading the last: every local is the same size, so evaluating
+// the module costs the same per local whatever the chain's length.
+func numberChainSource(length int) string {
+	var b strings.Builder
+	b.WriteString("locals {\n")
+	for l := length - 1; l > 0; l-- {
+		fmt.Fprintf(&b, "  n%d = local.n%d + 1\n", l, l-1)
+	}
+	fmt.Fprintf(&b, "  n0 = 0\n}\nresource \"aws_sqs_queue\" \"q\" { delay_seconds = local.n%d }\n", length-1)
+	return b.String()
+}
+
+// Resolving a chain of locals declared out of order costs the same per local
+// whatever its length: ns/local stays flat as the chain doubles.
+func BenchmarkResolveLocalsChain(b *testing.B) {
+	for _, length := range []int{50, 100, 200, 400, 800} {
+		stack := filepath.Join(b.TempDir(), "stack")
+		if err := os.MkdirAll(stack, 0o755); err != nil {
+			b.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(stack, "main.tf"), []byte(numberChainSource(length)), 0o644); err != nil {
+			b.Fatal(err)
+		}
+		b.Run(fmt.Sprintf("locals=%d", length), func(b *testing.B) {
+			for b.Loop() {
+				resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+				if err != nil || len(resources) != 1 {
+					b.Fatalf("resources = %d, err = %v", len(resources), err)
+				}
+			}
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(length), "ns/local")
+		})
 	}
 }

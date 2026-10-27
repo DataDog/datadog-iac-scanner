@@ -43,12 +43,12 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 // attributes localdata computes for data sources whose result follows from
 // their configuration alone.
 type moduleData struct {
-	e          *Evaluator
-	blocks     []*hclsyntax.Block
-	sources    map[string][]byte
-	localExprs map[string]hclsyntax.Expression
-	addr       string
-	chain      []CallSite
+	e       *Evaluator
+	blocks  []*hclsyntax.Block
+	sources map[string][]byte
+	locals  *localGraph
+	addr    string
+	chain   []CallSite
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -88,38 +88,34 @@ type moduleData struct {
 
 func newModuleData(
 	e *Evaluator,
-	bodies []*hclsyntax.Body,
 	sources map[string][]byte,
-	scope *ModuleScope,
+	locals *localGraph,
 	resourceTypes map[string]struct{},
 	addr string,
 	chain []CallSite,
 	hasUnconditionalResource bool,
 ) *moduleData {
-	blocks := collectDataBlocks(bodies)
+	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
 		return nil
 	}
 	d := &moduleData{
-		e: e, blocks: blocks, sources: sources, localExprs: scope.Locals, addr: addr, chain: chain,
-		dataLocals: scope.dataLocals(), hasUnconditionalResource: hasUnconditionalResource,
+		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
+		dataLocals: locals.dataLocals, cyclic: locals.cyclicData, hasUnconditionalResource: hasUnconditionalResource,
 	}
 	for _, b := range blocks {
 		d.readsData = d.readsData || bodyReadsResource(b.Body, dataRoot)
 		d.readsResources = d.readsResources || bodyReadsResource(b.Body, resourceTypes)
 		d.readsLocals = d.readsLocals || bodyReadsResource(b.Body, localRoot)
 	}
-	if d.readsLocals && localsReadResources(scope.Locals, resourceTypes) {
+	if d.readsLocals && locals.readsResources {
 		d.readsResources = true
 	}
 	for _, b := range blocks {
 		d.readsModuleOutputs = d.readsModuleOutputs || bodyReadsResource(b.Body, moduleRoot)
 	}
-	if d.readsLocals && localsReadResources(scope.Locals, moduleRoot) {
+	if d.readsLocals && locals.readsModules {
 		d.readsModuleOutputs = true
-	}
-	if d.readsData || (d.readsLocals && len(d.dataLocals) > 0) {
-		d.cyclic = cyclicDataBlocks(blocks, scope.Locals)
 	}
 	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
 	return d
@@ -209,37 +205,6 @@ func (d *moduleData) refreshedWithModule(value cty.Value) bool {
 	return d != nil && !d.moduleAtRefresh.IsNull() && equalValues(d.moduleAtRefresh, value)
 }
 
-// localsReadingRoot returns the locals reading roots, directly or through
-// other locals.
-func localsReadingRoot(localExprs map[string]hclsyntax.Expression, roots map[string]struct{}) map[string]bool {
-	reading := map[string]bool{}
-	for changed := true; changed; {
-		changed = false
-		for name, expr := range localExprs {
-			if reading[name] {
-				continue
-			}
-			for _, traversal := range expr.Variables() {
-				if readsRootOrLocal(traversal, roots, reading) {
-					reading[name] = true
-					changed = true
-					break
-				}
-			}
-		}
-	}
-	return reading
-}
-
-func readsRootOrLocal(traversal hcl.Traversal, roots map[string]struct{}, locals map[string]bool) bool {
-	root := traversal.RootName()
-	if _, ok := roots[root]; ok {
-		return true
-	}
-	name, ok := terraform.LocalTraversalName(traversal)
-	return ok && locals[name]
-}
-
 func (d *moduleData) readsOwnResources() bool {
 	return d != nil && d.readsResources
 }
@@ -273,18 +238,20 @@ func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
 	}
 }
 
-// refreshDataLocals re-resolves the locals reading data.*, keeping the others:
-// they may read files or other costly function results.
+// refreshDataLocals re-resolves the locals reading data.*, in dependency
+// order, keeping the others: they may read files or other costly function
+// results. Without a local.* object to keep them from, every local resolves.
 func (d *moduleData) refreshDataLocals(evalCtx *hcl.EvalContext) {
-	fixed := map[string]cty.Value{}
+	values := map[string]cty.Value{}
+	members := d.locals.order
 	if current, ok := evalCtx.Variables["local"]; ok && ctyutil.Materialized(current) && current.Type().IsObjectType() {
-		for name, v := range current.AsValueMap() {
-			if !d.dataLocals[name] {
-				fixed[name] = v
-			}
+		if m := current.AsValueMap(); m != nil {
+			values = m
 		}
+		members = d.locals.dataOrder
 	}
-	evalCtx.Variables["local"] = objectOrEmpty(d.e.resolveLocalsWith(d.localExprs, evalCtx, fixed))
+	d.e.resolveLocals(d.locals, evalCtx, values, members)
+	evalCtx.Variables["local"] = objectOrEmpty(values)
 }
 
 func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty.Value {
