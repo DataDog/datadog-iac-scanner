@@ -184,6 +184,11 @@ func EvalFuncsWithRoot(baseDir, rootDir string, fsys vfs.FS) map[string]function
 		funcs[name] = fn
 	}
 	funcs["abspath"] = MakeAbsPathFunc(baseDir)
+	if scan, ok := fsys.(*ScanFS); ok {
+		for _, name := range []string{"jsondecode", "yamldecode"} {
+			funcs[name] = scan.decodes.memoizeDecode(name, funcs[name])
+		}
+	}
 	funcs["templatefile"] = makeTemplateFileFunc(baseDir, rootDir, fsys, funcsCb)
 	funcs["templatestring"] = makeTemplateStringFunc(funcsCb)
 	return funcs
