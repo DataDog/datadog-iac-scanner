@@ -1107,7 +1107,7 @@ func (e *Evaluator) noteCyclicData(ctx context.Context, dir string, data *module
 	}
 	names := make([]string, 0, len(data.cyclic))
 	for b := range data.cyclic {
-		names = append(names, dataNodeKey(b.Labels[0], b.Labels[1]))
+		names = append(names, terraform.DataKey(b.Labels[0], b.Labels[1]))
 	}
 	slices.Sort(names)
 	contextLogger := logger.FromContext(ctx)

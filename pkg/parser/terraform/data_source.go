@@ -88,6 +88,9 @@ func getDataSourcePolicy(
 	for i := range blocks {
 		readsData = readsData || blocks[i].readsData
 	}
+	// A block reading its own result has no value Terraform would compute,
+	// and each pass would feed it its previous result: it is left unrendered.
+	blocks = dropCyclicData(ctx, currentPath, blocks, locals)
 	// Locals that read data only resolve after a data pass, so keep their
 	// expressions and refresh them when data grows.
 	assignments := dataDependentLocals(locals)
@@ -112,6 +115,131 @@ func getDataSourcePolicy(
 		}
 	}
 	return inputVariables
+}
+
+// dropCyclicData returns blocks without those in a data reference cycle,
+// which are then read as written.
+func dropCyclicData(ctx context.Context, dir string, blocks []localDataBlock, locals []localAssignment) []localDataBlock {
+	reads := make(map[string][]hcl.Traversal, len(blocks))
+	for i := range blocks {
+		key := DataKey(blocks[i].typ, blocks[i].name)
+		reads[key] = append(reads[key], BodyTraversals(blocks[i].body)...)
+	}
+	localReads := make(map[string][]hcl.Traversal, len(locals))
+	for _, local := range locals {
+		localReads[local.name] = local.expr.Variables()
+	}
+	cyclic := DataCycles(reads, localReads)
+	if len(cyclic) == 0 {
+		return blocks
+	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Debug().Msgf("data reference cycle in %s; the blocks are read as written", dir)
+	kept := blocks[:0:0]
+	for i := range blocks {
+		if !cyclic[DataKey(blocks[i].typ, blocks[i].name)] {
+			kept = append(kept, blocks[i])
+		}
+	}
+	return kept
+}
+
+// DataKey names a data block in the graph DataCycles reads.
+func DataKey(typ, name string) string {
+	return terraformDataIdentifier + "." + typ + "." + name
+}
+
+// DataCycles returns the data blocks, named by DataKey, that read their own
+// result, directly or through other data blocks and locals. Terraform rejects
+// such a cycle. Evaluating one anyway feeds the block its previous result on
+// every pass, and a function such as jsonencode nests that result once more,
+// so its size doubles with each pass. reads gives the traversals each block's
+// configuration reads, locals those of each local. Only static
+// data.<type>.<name> and local.<name> references are followed, as Terraform
+// requires.
+func DataCycles(reads, locals map[string][]hcl.Traversal) map[string]bool {
+	edges := make(map[string][]string, len(reads)+len(locals))
+	for key, traversals := range reads {
+		edges[key] = dataEdges(traversals)
+	}
+	for name, traversals := range locals {
+		edges["local."+name] = dataEdges(traversals)
+	}
+	var cyclic map[string]bool
+	for key := range reads {
+		if reachesItself(edges, key) {
+			if cyclic == nil {
+				cyclic = map[string]bool{}
+			}
+			cyclic[key] = true
+		}
+	}
+	return cyclic
+}
+
+// BodyTraversals returns the traversals a block body reads: those of its
+// attributes and nested blocks, or, for a JSON body, of its attributes, which
+// hold its nested blocks as objects.
+func BodyTraversals(body hcl.Body) []hcl.Traversal {
+	if native, ok := body.(*hclsyntax.Body); ok {
+		return nativeBodyTraversals(nil, native)
+	}
+	attrs, _ := body.JustAttributes()
+	var out []hcl.Traversal
+	for _, attr := range attrs {
+		out = append(out, attr.Expr.Variables()...)
+	}
+	return out
+}
+
+func nativeBodyTraversals(out []hcl.Traversal, body *hclsyntax.Body) []hcl.Traversal {
+	for _, attr := range body.Attributes {
+		out = append(out, attr.Expr.Variables()...)
+	}
+	for _, block := range body.Blocks {
+		out = nativeBodyTraversals(out, block.Body)
+	}
+	return out
+}
+
+// dataEdges returns the data blocks and locals the traversals name.
+func dataEdges(traversals []hcl.Traversal) []string {
+	var out []string
+	for _, traversal := range traversals {
+		if name, ok := LocalTraversalName(traversal); ok {
+			out = append(out, "local."+name)
+			continue
+		}
+		if traversal.RootName() != terraformDataIdentifier || len(traversal) < 3 {
+			continue
+		}
+		typ, okType := traversal[1].(hcl.TraverseAttr)
+		name, okName := traversal[2].(hcl.TraverseAttr)
+		if okType && okName {
+			out = append(out, DataKey(typ.Name, name.Name))
+		}
+	}
+	return out
+}
+
+// reachesItself reports whether a path of at least one edge leads from start
+// back to start.
+func reachesItself(edges map[string][]string, start string) bool {
+	seen := map[string]bool{}
+	stack := append([]string(nil), edges[start]...)
+	for len(stack) > 0 {
+		node := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if node == start {
+			return true
+		}
+		if seen[node] {
+			continue
+		}
+		seen[node] = true
+		stack = append(stack, edges[node]...)
+	}
+	return false
 }
 
 func renderLocalData(

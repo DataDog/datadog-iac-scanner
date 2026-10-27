@@ -7,9 +7,11 @@ package terraform
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -428,4 +430,59 @@ data "aws_iam_policy_document" "p" {
 	docs := result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap()
 	require.Contains(t, docs["p"].AsValueMap()["json"].AsString(), `"s3:Right"`)
 	require.NotContains(t, docs["p"].AsValueMap()["json"].AsString(), `"s3:Wrong"`)
+}
+
+// A policy document reading itself through locals is a cycle Terraform
+// rejects: it is left unrendered, however many locals alias it, while the
+// documents outside the cycle still render.
+func Test_getDataSourcePolicy_cycleThroughLocalsIsNotRendered(t *testing.T) {
+	for _, aliases := range []int{2, 24} {
+		var b strings.Builder
+		b.WriteString("locals {\n  l0 = [data.aws_iam_policy_document.p.json, \"x\"]\n")
+		for i := 0; i < aliases; i++ {
+			fmt.Fprintf(&b, "  alias%d = [data.aws_iam_policy_document.p.json]\n", i)
+		}
+		b.WriteString(`}
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = [jsonencode(local.l0)]
+  }
+}
+data "aws_iam_policy_document" "other" {
+  statement {
+    sid     = "Other"
+    actions = ["s3:GetObject"]
+  }
+}
+`)
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(b.String()), 0o600))
+		ctx := context.Background()
+		inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+		result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
+		var data map[string]map[string]map[string]string
+		require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+		require.NotContains(t, data["aws_iam_policy_document"], "p", "aliases=%d", aliases)
+		require.Contains(t, data["aws_iam_policy_document"]["other"]["json"], `"Sid":"Other"`)
+	}
+}
+
+func TestDataCycles(t *testing.T) {
+	parse := func(src string) []hcl.Traversal {
+		expr, diags := hclsyntax.ParseExpression([]byte(src), "main.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+		return expr.Variables()
+	}
+	reads := map[string][]hcl.Traversal{
+		DataKey("t", "self"):  parse(`data.t.self.json`),
+		DataKey("t", "viaA"):  parse(`local.a`),
+		DataKey("t", "chain"): parse(`data.t.self.json`),
+		DataKey("t", "plain"): parse(`local.c`),
+	}
+	locals := map[string][]hcl.Traversal{
+		"a": parse(`[local.b]`),
+		"b": parse(`data.t.viaA.json`),
+		"c": parse(`var.x`),
+	}
+	require.Equal(t, map[string]bool{DataKey("t", "self"): true, DataKey("t", "viaA"): true}, DataCycles(reads, locals))
 }
