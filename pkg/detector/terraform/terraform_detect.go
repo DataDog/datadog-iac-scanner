@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,34 @@ const blockTypeData = "data"
 type DetectKindLine struct {
 	// hclCache maps file path → *hclsyntax.Body, populated on first parse.
 	hclCache sync.Map
+	// blockLines memoizes the source lines of repeated blocks, which every
+	// finding indexing one of them would otherwise reread in full.
+	blockLines blockLinesMemo
+	// namedBlocks maps a parsed body → namedBlocks, its top-level blocks by
+	// type and labels, so finding the block a search key names does not read
+	// every block of the file.
+	namedBlocks sync.Map
+}
+
+// namedBlocks indexes the top-level blocks of a body by blockKey, in order.
+type namedBlocks map[string][]*hclsyntax.Block
+
+func blockKey(blockType string, labels ...string) string {
+	return blockType + "\x00" + strings.Join(labels, "\x00")
+}
+
+// blocksByName returns the index of body's top-level blocks, built once.
+func (d *DetectKindLine) blocksByName(body *hclsyntax.Body) namedBlocks {
+	if cached, ok := d.namedBlocks.Load(body); ok {
+		return cached.(namedBlocks)
+	}
+	index := make(namedBlocks, len(body.Blocks))
+	for _, block := range body.Blocks {
+		key := blockKey(block.Type, block.Labels...)
+		index[key] = append(index[key], block)
+	}
+	d.namedBlocks.Store(body, index)
+	return index
 }
 
 // cachedParseBody parses src as HCL and returns the body, reusing a previously
@@ -100,7 +129,7 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 	parse := func() (*hclsyntax.Body, error) {
 		return d.cachedParseBody(file.OriginalData, file.FilePath)
 	}
-	detection = detectKeyParts(ctx, detection, keyParts, extracted, lines, file.Kind, file.Document, file.LineInfoDocument, parse)
+	detection = detectKeyParts(ctx, detection, keyParts, extracted, lines, file.Kind, file.Document, file.LineInfoDocument, parse, d)
 
 	if detection.FoundAtLeastOne {
 		line := detection.CurrentLine + 1
@@ -109,7 +138,11 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 			contextLogger.Error().Err(parseErr).Msgf("Failed to parse block at line %d in file %s", line, file.FilePath)
 			return buildEmptyVulnerabilityLines(file)
 		}
-		vulnLines, err := locateTerraformBlock(ctx, body, line, lines)
+		heredocs, ok := file.LinesContaining("<<")
+		if ok && heredocs == nil {
+			heredocs = []int{}
+		}
+		vulnLines, err := locateTerraformBlock(ctx, body, line, lines, heredocs)
 		if err != nil {
 			contextLogger.Error().Err(err).Msgf("Failed to locate block at line %d in file %s", line, file.FilePath)
 			return buildEmptyVulnerabilityLines(file)
@@ -138,14 +171,16 @@ func detectKeyParts(
 	kind model.FileKind,
 	doc, lineDoc model.Document,
 	parse func() (*hclsyntax.Body, error),
+	d *DetectKindLine,
 ) *detector.DefaultDetectLineResponse {
 	var scope *hclsyntax.Block
 	if body, err := parse(); err == nil {
-		scope = searchKeyBlock(body, keyParts, extracted)
+		scope = searchKeyBlock(body, keyParts, extracted, d.blocksByName(body))
 	}
 	inScope := false
 	cursor := newDocCursor(doc, extracted)
 	lineCursor := newDocCursor(lineDoc, extracted)
+	cursor.memo, lineCursor.memo = &d.blockLines, &d.blockLines
 	for _, part := range keyParts {
 		prevLine, prevFound := detection.CurrentLine, detection.FoundAtLeastOne
 		repeated := withSourceLines(cursor.advance(part), lineCursor.advance(part))
@@ -267,6 +302,7 @@ func locateTerraformBlock(
 	body *hclsyntax.Body,
 	identifyingLine int,
 	strLines []string,
+	heredocs []int,
 ) (model.VulnerabilityLines, error) {
 	contextLogger := logger.FromContext(ctx)
 
@@ -280,10 +316,10 @@ func locateTerraformBlock(
 	}
 
 	if block := blockContainingLine(body.Blocks, identifyingLine); block != nil {
-		return vulnerabilityLinesFromBlock(block, identifyingLine, strLines), nil
+		return vulnerabilityLinesFromBlock(block, identifyingLine, strLines, heredocs), nil
 	}
 	if block := nearestBlock(body.Blocks, identifyingLine); block != nil {
-		return vulnerabilityLinesFromBlock(block, identifyingLine, strLines), nil
+		return vulnerabilityLinesFromBlock(block, identifyingLine, strLines, heredocs), nil
 	}
 
 	contextLogger.Warn().Msgf("using line %d as location because no HCL block was found", identifyingLine)
@@ -306,7 +342,7 @@ var labelOnlyBlockTypes = map[string]bool{"module": true, "variable": true, "out
 // searchKeyBlock returns the top-level block a search key names, as in
 // resource.aws_s3_bucket[name] or data.aws_ami[name], or nil when the key
 // names none unambiguously.
-func searchKeyBlock(body *hclsyntax.Body, keyParts []string, extracted [][]string) *hclsyntax.Block {
+func searchKeyBlock(body *hclsyntax.Body, keyParts []string, extracted [][]string, index namedBlocks) *hclsyntax.Block {
 	if len(keyParts) == 0 {
 		return nil
 	}
@@ -328,6 +364,9 @@ func searchKeyBlock(body *hclsyntax.Body, keyParts []string, extracted [][]strin
 			name = extracted[i][1]
 		}
 	}
+	if index != nil {
+		return uniqueBlock(namedCandidates(index, blockType, typ, name))
+	}
 	var found *hclsyntax.Block
 	for _, block := range body.Blocks {
 		if !blockNamed(block, blockType, typ, name) {
@@ -337,6 +376,33 @@ func searchKeyBlock(body *hclsyntax.Body, keyParts []string, extracted [][]strin
 			return nil
 		}
 		found = block
+	}
+	return found
+}
+
+// namedCandidates lists the blocks of the index blockNamed accepts.
+func namedCandidates(index namedBlocks, blockType, typ, name string) [][]*hclsyntax.Block {
+	switch {
+	case blockType == "" && labelOnlyBlockTypes[typ]:
+		return [][]*hclsyntax.Block{index[blockKey(typ, name)]}
+	case blockType == "":
+		return [][]*hclsyntax.Block{index[blockKey(blockTypeResource, typ, name)], index[blockKey(blockTypeData, typ, name)]}
+	default:
+		return [][]*hclsyntax.Block{index[blockKey(blockType, typ, name)]}
+	}
+}
+
+// uniqueBlock returns the only block of the lists, or nil when there is not
+// exactly one.
+func uniqueBlock(lists [][]*hclsyntax.Block) *hclsyntax.Block {
+	var found *hclsyntax.Block
+	for _, list := range lists {
+		for _, block := range list {
+			if found != nil {
+				return nil
+			}
+			found = block
+		}
 	}
 	return found
 }
@@ -381,14 +447,14 @@ func lineDistance(line, start, end int) int {
 	return 0
 }
 
-func vulnerabilityLinesFromBlock(block *hclsyntax.Block, identifyingLine int, strLines []string) model.VulnerabilityLines {
+func vulnerabilityLinesFromBlock(block *hclsyntax.Block, identifyingLine int, strLines []string, heredocs []int) model.VulnerabilityLines {
 	start := block.TypeRange.Start
 	end := block.Body.SrcRange.End
 	anchor := identifyingLine
 	if identifyingLine < start.Line || identifyingLine > end.Line {
 		anchor = start.Line
 	}
-	insertionLine, insertionCol := calculateInsertionPoint(block, anchor, strLines)
+	insertionLine, insertionCol := calculateInsertionPoint(block, anchor, strLines, heredocs)
 	return model.VulnerabilityLines{
 		VulnerablilityLocation: model.ResourceLocation{
 			Start: toResourceLine(start),
@@ -430,7 +496,7 @@ func extractBlockSource(lines []string, start, end int) string {
 }
 
 // nolint:gocyclo
-func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (insertionLine, col int) {
+func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string, heredocs []int) (insertionLine, col int) {
 	name, nestedStart, nestedEnd, isAttr := findContainingStructure(block, line)
 
 	var caseType string
@@ -485,7 +551,7 @@ func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string) (
 	insertionLine = min(max(insertionLine, 1), len(lines))
 	col = determineInsertionIndent(lines, insertionLine, caseType, nestedStart.Line, nestedEnd.Line) + 1
 	trimmed := strings.TrimSpace(lines[insertionLine-1])
-	if caseType == "block-start" && (strings.Contains(trimmed, "}") || isHeredocTerminator(trimmed, lines, insertionLine-1)) {
+	if caseType == "block-start" && (strings.Contains(trimmed, "}") || isHeredocTerminator(trimmed, lines, insertionLine-1, heredocs)) {
 		col = len(lines[insertionLine-1]) + 1
 	}
 	return insertionLine, col
@@ -562,7 +628,13 @@ func firstNonWhitespaceIndex(line string) int {
 	return -1
 }
 
-func isHeredocTerminator(line string, lines []string, idx int) bool {
+// isHeredocTerminator reports whether line ends the heredoc opened by the
+// nearest line above idx with one "<<". heredocs, when not nil, lists the lines
+// containing "<<" in ascending order, so only those are read.
+func isHeredocTerminator(line string, lines []string, idx int, heredocs []int) bool {
+	if heredocs != nil {
+		return isHeredocTerminatorAt(line, lines, heredocs[:sort.SearchInts(heredocs, idx)])
+	}
 	for i := idx - 1; i >= 0; i-- {
 		text := strings.TrimSpace(lines[i])
 		if strings.Contains(text, "<<") {
@@ -571,6 +643,19 @@ func isHeredocTerminator(line string, lines []string, idx int) bool {
 				marker := strings.TrimSpace(parts[1])
 				return line == marker
 			}
+		}
+	}
+	return false
+}
+
+// isHeredocTerminatorAt is isHeredocTerminator reading only the lines above
+// idx that contain "<<" (heredocs, ascending), the only ones its search stops
+// at: each block of a file would otherwise read every line above it.
+func isHeredocTerminatorAt(line string, lines []string, heredocs []int) bool {
+	for k := len(heredocs) - 1; k >= 0; k-- {
+		parts := strings.Split(strings.TrimSpace(lines[heredocs[k]]), "<<")
+		if len(parts) == 2 {
+			return line == strings.TrimSpace(parts[1])
 		}
 	}
 	return false

@@ -175,3 +175,25 @@ func TestWithUnknownRefs(t *testing.T) {
 	require.False(t, v.GetAttr("a").IsKnown())
 	require.Equal(t, cty.StringVal("y"), v.GetAttr("b"))
 }
+
+// References under one root are gathered into one object, keeping the known
+// attributes of the root and the ones other references set.
+func TestWithUnknownRefsManyAttributesOfOneRoot(t *testing.T) {
+	expr, diags := hclsyntax.ParseExpression(
+		[]byte(`[module.a.id, module.b.id, module.b.arn, module.c["k"].id, local.x, local.y.z]`), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{
+		"module": cty.ObjectVal(map[string]cty.Value{
+			"a": cty.ObjectVal(map[string]cty.Value{"id": cty.StringVal("a-id")}),
+		}),
+		"local": cty.ObjectVal(map[string]cty.Value{"x": cty.StringVal("x")}),
+	}}
+	v := WithUnknownRefs(expr, ctx)
+	require.Equal(t, 6, v.LengthInt())
+	require.Equal(t, cty.StringVal("a-id"), v.Index(cty.NumberIntVal(0)))
+	for i := 1; i <= 3; i++ {
+		require.False(t, v.Index(cty.NumberIntVal(int64(i))).IsKnown(), "element %d", i)
+	}
+	require.Equal(t, cty.StringVal("x"), v.Index(cty.NumberIntVal(4)))
+	require.False(t, v.Index(cty.NumberIntVal(5)).IsKnown())
+}

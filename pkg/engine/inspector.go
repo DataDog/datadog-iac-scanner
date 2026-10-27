@@ -1477,6 +1477,10 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 	}
 	if active != "" {
 		if fm := qCtx.Files[active]; fm != nil {
+			// Module instances of one file share its tree: keep it across them.
+			if next := qCtx.Files[nextID]; next != nil && next.LineInfoShareKey() == fm.LineInfoShareKey() {
+				return nextID
+			}
 			fm.DiscardLineInfoDocument()
 		}
 	}
