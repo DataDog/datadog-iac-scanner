@@ -8,16 +8,19 @@ package runner
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	ansibleConfigParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/config"
 	iniHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
@@ -484,6 +487,68 @@ func TestSink_ParseFailureRedactsCredentials(t *testing.T) {
 			// ... but without the credentials that were embedded in the scanned file.
 			require.NotContains(t, logged, "sup3rs3cret")
 			require.NotContains(t, logged, "user:sup3rs3cret")
+		})
+	}
+}
+
+// TestSink_ParseFailureRedactsQuotedTokens verifies that tokens the Ansible
+// config parser quotes from a scanned .conf file never reach the logs. A NATS
+// server config holds its operator JWT outside any INI section, so the parser
+// fails with "missing section header: <line> operator: <the JWT>".
+func TestSink_ParseFailureRedactsQuotedTokens(t *testing.T) {
+	// Assembled at run time so that no JWT-looking literal lives in the repository.
+	jwt := base64.RawURLEncoding.EncodeToString([]byte(`{"typ":"JWT","alg":"ed25519-nkey"}`)) + "." +
+		base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"fixture","nats":{"type":"operator"}}`)) + "." +
+		base64.RawURLEncoding.EncodeToString([]byte("not-a-signature"))
+
+	tests := []struct {
+		name     string
+		content  string
+		secret   string
+		wantKept string
+	}{
+		{
+			name:     "jwt",
+			content:  "# operator\noperator: " + jwt + "\n",
+			secret:   strings.SplitN(jwt, ".", 2)[0],
+			wantKept: "missing section header: 2 operator: [REDACTED]",
+		},
+		{
+			name:     "password",
+			content:  "db_password = sup3rs3cret\n",
+			secret:   "sup3rs3cret",
+			wantKept: "missing section header: 1 db_password = [REDACTED]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			parsers, err := parser.NewBuilder(ctx).
+				Add(&ansibleConfigParser.Parser{}).
+				Build([]string{"ansible"}, []string{""})
+			require.NoError(t, err)
+			require.NotEmpty(t, parsers)
+
+			var logBuf bytes.Buffer
+			testCtx := zerolog.New(&logBuf).WithContext(ctx)
+
+			svc := &Service{
+				Parser:      parsers[0],
+				Tracker:     noopTracker{},
+				MaxFileSize: 1,
+			}
+
+			rc := bytes.NewReader([]byte(tt.content))
+			buf := make([]byte, 1024)
+			require.NoError(t, sinkReader(svc, testCtx, "/repo/nats/server.conf", "scan1", rc, buf, false, 1))
+
+			logged := logBuf.String()
+			require.Contains(t, logged, `"level":"error"`)
+			require.Contains(t, logged, "failed to parse file content")
+			require.Contains(t, logged, tt.wantKept)
+			require.NotContains(t, logged, tt.secret)
 		})
 	}
 }

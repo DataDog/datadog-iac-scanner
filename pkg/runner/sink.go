@@ -33,11 +33,13 @@ var (
 	}
 )
 
-// redactErrorForLog renders err for logging with URL credentials stripped.
+// redactErrorForLog renders err for logging with credentials stripped.
 //
 // Parse/render errors are produced by third-party libraries that routinely
 // quote the offending fragment of the file being scanned: e.g. the Ansible INI
-// parser reports `bad key=value pair supplied: postgres://user:pass@host/db`.
+// parser reports `bad key=value pair supplied: postgres://user:pass@host/db`,
+// and the Ansible config parser quotes the whole line, such as the JWT in
+// `missing section header: 2 operator: eyJ…` for a NATS server config.
 // Since scanned files belong to customer repositories, logging such an error
 // verbatim copies whatever credentials it happens to embed into our logs. The
 // message is still needed for triage, so redact the credentials rather than
@@ -47,7 +49,7 @@ func redactErrorForLog(err error) string {
 	if err == nil {
 		return ""
 	}
-	return model.RedactURLCredentials(err.Error())
+	return model.RedactCredentials(err.Error())
 }
 
 // logParseFailure logs a file that could not be parsed. Raw templates of a

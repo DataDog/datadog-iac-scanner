@@ -146,7 +146,62 @@ var (
 	// A malformed authority holding several `@` is redacted up to the last of
 	// them, which over-redacts rather than leaking.
 	urlAuthRedactRegex = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^\s/?#]+@`)
+
+	// credentialRedactions are the credentials RedactCredentials removes on
+	// top of URL userinfo, in order. Like urlAuthRedactRegex, each one leans
+	// toward over-redacting: a value lost from a log line is cheap, a leaked
+	// credential is not.
+	credentialRedactions = []struct {
+		re   *regexp.Regexp
+		repl string
+	}{
+		{
+			// PEM private keys and NATS seeds, through the END line or, when the
+			// message cuts the block short, through the end of the text.
+			re: regexp.MustCompile(`-----BEGIN [A-Z0-9 ]*(?:PRIVATE KEY|SEED)[A-Z0-9 ]*-----(?s:.*?)` +
+				`(?:-----END [A-Z0-9 ]*(?:PRIVATE KEY|SEED)[A-Z0-9 ]*-----|$)`),
+			repl: redactedCredential,
+		},
+		{
+			// The value assigned to a key whose name says it holds a credential
+			// (`password = …`, `"api_key": "…"`, `AWS_SECRET_ACCESS_KEY=…`), keeping
+			// the key and any auth scheme for triage. The key excludes `.` so that
+			// file names such as `templates/secret.yaml:12:3:` are not mistaken for
+			// one, and the value stays on the key's line. A quoted value runs to its
+			// closing quote, or to the end of the text when the message truncates it.
+			re: regexp.MustCompile(`(?i)([\w-]*(?:passw(?:or)?d|passphrase|pwd|secret|token|api[_-]?key|` +
+				`access[_-]?key|private[_-]?key|credentials?|authorization)[\w-]*["']?[ \t]*[:=]{1,2}[ \t]*)` +
+				`((?:bearer|basic)[ \t]+)?("[^"]*"?|'[^']*'?|[^\s"']+)`),
+			repl: "${1}${2}" + redactedCredential,
+		},
+		{
+			// HTTP Authorization credentials outside a recognized key.
+			re:   regexp.MustCompile(`(?i)\b(bearer|basic)([ \t]+)[A-Za-z0-9._~+/-]{8,}=*`),
+			repl: "${1}${2}" + redactedCredential,
+		},
+		{
+			// Self-describing token formats, whatever surrounds them.
+			re: regexp.MustCompile(`\b(?:` +
+				// JWTs, and any other base64-encoded JSON object (`{"` encodes to `eyJ`).
+				`eyJ[A-Za-z0-9+/_-]{8,}=*(?:\.[A-Za-z0-9+/_=-]*)*` +
+				// AWS access key IDs.
+				`|(?:AKIA|ASIA)[0-9A-Z]{16}` +
+				// GitHub, GitLab and Slack tokens.
+				`|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}` +
+				`|glpat-[A-Za-z0-9_-]{20,}` +
+				`|xox[abposr]-[A-Za-z0-9-]{10,}` +
+				// Google API keys.
+				`|AIza[0-9A-Za-z_-]{35}` +
+				// NATS nkey seeds.
+				`|S[OACUNX][A-Z2-7]{56}` +
+				`)`),
+			repl: redactedCredential,
+		},
+	}
 )
+
+// redactedCredential replaces each credential RedactCredentials removes.
+const redactedCredential = "[REDACTED]"
 
 // countNotSuppressed returns the number of non-suppressed files.
 func countNotSuppressed(files []VulnerableFile) int {
@@ -264,6 +319,21 @@ func RedactURLCredentials(s string) string {
 		return ""
 	}
 	return urlAuthRedactRegex.ReplaceAllString(s, "${1}")
+}
+
+// RedactCredentials strips the credentials that text quoted from a scanned
+// file may carry: URL userinfo (see RedactURLCredentials), private keys, the
+// values of keys named after credentials (`password`, `token`, `api_key`, …),
+// Authorization credentials and self-describing tokens such as JWTs or cloud
+// and source-control access tokens. Each credential becomes `[REDACTED]` and
+// the rest of the text is left as is, so it is safe to call on arbitrary
+// text such as error messages.
+func RedactCredentials(s string) string {
+	s = RedactURLCredentials(s)
+	for _, r := range credentialRedactions {
+		s = r.re.ReplaceAllString(s, r.repl)
+	}
+	return s
 }
 
 func removeURLCredentials(url string) string {

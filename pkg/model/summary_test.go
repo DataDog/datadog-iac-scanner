@@ -7,9 +7,11 @@ package model
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -508,6 +510,163 @@ func TestRemoveURLCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, removeURLCredentials(tt.args.url))
+		})
+	}
+}
+
+// TestRedactCredentials covers the credentials parser error messages quote
+// from scanned files. Token-shaped inputs are assembled at run time so that
+// no credential-looking literal lives in the repository.
+func TestRedactCredentials(t *testing.T) {
+	jwt := base64.RawURLEncoding.EncodeToString([]byte(`{"typ":"JWT","alg":"ed25519-nkey"}`)) + "." +
+		base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"fixture","nats":{"type":"operator"}}`)) + "." +
+		base64.RawURLEncoding.EncodeToString([]byte("not-a-signature"))
+	dockerConfig := base64.StdEncoding.EncodeToString([]byte(`{"auths":{"registry.example.com":{"auth":"dXNlcjpwYXNz"}}}`))
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			// The line the Ansible config parser quoted from a NATS server config.
+			name: "jwt_in_quoted_line",
+			in:   "missing section header: 2 operator: " + jwt,
+			want: "missing section header: 2 operator: [REDACTED]",
+		},
+		{
+			name: "jwt_in_backquotes",
+			in:   "cannot unmarshal !!str `" + jwt + "` into map[string]interface {}",
+			want: "cannot unmarshal !!str `[REDACTED]` into map[string]interface {}",
+		},
+		{
+			name: "base64_json",
+			in:   "invalid value: .dockerconfigjson: " + dockerConfig,
+			want: "invalid value: .dockerconfigjson: [REDACTED]",
+		},
+		{
+			name: "ini_password",
+			in:   "missing section header: 1 db_password = hunter2",
+			want: "missing section header: 1 db_password = [REDACTED]",
+		},
+		{
+			name: "json_quoted_value_with_spaces",
+			in:   `{"client_secret": "a b c", "user": "bob"}`,
+			want: `{"client_secret": [REDACTED], "user": "bob"}`,
+		},
+		{
+			name: "truncated_quoted_value",
+			in:   `password: "hunter 2`,
+			want: `password: [REDACTED]`,
+		},
+		{
+			name: "env_assignment",
+			in:   "bad line: AWS_SECRET_ACCESS_KEY=" + strings.Repeat("x", 40),
+			want: "bad line: AWS_SECRET_ACCESS_KEY=[REDACTED]",
+		},
+		{
+			name: "camel_case_key",
+			in:   "apiKey: abc123 and accessToken:abc123",
+			want: "apiKey: [REDACTED] and accessToken:[REDACTED]",
+		},
+		{
+			name: "dotted_key",
+			in:   "spring.datasource.password=s3cr3t",
+			want: "spring.datasource.password=[REDACTED]",
+		},
+		{
+			name: "authorization_bearer",
+			in:   "Authorization: Bearer " + strings.Repeat("t", 24),
+			want: "Authorization: Bearer [REDACTED]",
+		},
+		{
+			name: "authorization_basic",
+			in:   "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("user:password")),
+			want: "Authorization: Basic [REDACTED]",
+		},
+		{
+			name: "bearer_without_key",
+			in:   `header "Bearer ` + strings.Repeat("t", 24) + `" not allowed`,
+			want: `header "Bearer [REDACTED]" not allowed`,
+		},
+		{
+			name: "pem_private_key_block",
+			in:   "bad value: -----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY----- here",
+			want: "bad value: [REDACTED] here",
+		},
+		{
+			name: "truncated_pem_private_key_block",
+			in:   "missing section header: 1 -----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk",
+			want: "missing section header: 1 [REDACTED]",
+		},
+		{
+			name: "nats_seed_block",
+			in:   "creds: -----BEGIN USER NKEY SEED-----\nseed\n-----END USER NKEY SEED-----\nend",
+			want: "creds: [REDACTED]\nend",
+		},
+		{
+			name: "aws_access_key_id",
+			in:   "unknown field: AKIA" + strings.Repeat("Q", 16),
+			want: "unknown field: [REDACTED]",
+		},
+		{
+			name: "source_control_and_chat_tokens",
+			in: "ghp_" + strings.Repeat("a", 36) + " github_pat_" + strings.Repeat("b", 22) +
+				" glpat-" + strings.Repeat("c", 20) + " xoxb-" + strings.Repeat("1", 12),
+			want: "[REDACTED] [REDACTED] [REDACTED] [REDACTED]",
+		},
+		{
+			name: "google_api_key",
+			in:   "key AIza" + strings.Repeat("d", 35),
+			want: "key [REDACTED]",
+		},
+		{
+			name: "nats_seed",
+			in:   "seed SU" + strings.Repeat("A", 56),
+			want: "seed [REDACTED]",
+		},
+		{
+			name: "url_userinfo_and_query_token",
+			in:   "bad key=value pair supplied: postgres://u:p@localhost:5432/dogdata?token=abc",
+			want: "bad key=value pair supplied: postgres://localhost:5432/dogdata?token=[REDACTED]",
+		},
+		// Messages without credentials must survive intact for triage.
+		{
+			name: "yaml_syntax_error_untouched",
+			in:   "yaml: line 3: did not find expected key",
+			want: "yaml: line 3: did not find expected key",
+		},
+		{
+			name: "helm_error_on_secret_template_untouched",
+			in: `template: chart/templates/secret.yaml:12:3: executing "chart/templates/secret.yaml" ` +
+				`at <.Values.token>: nil pointer evaluating interface {}.token`,
+			want: `template: chart/templates/secret.yaml:12:3: executing "chart/templates/secret.yaml" ` +
+				`at <.Values.token>: nil pointer evaluating interface {}.token`,
+		},
+		{
+			name: "hcl_argument_name_untouched",
+			in:   `Unsupported argument; An argument named "password" is not expected here.`,
+			want: `Unsupported argument; An argument named "password" is not expected here.`,
+		},
+		{
+			name: "antlr_token_error_untouched",
+			in:   "token recognition error at: '$'",
+			want: "token recognition error at: '$'",
+		},
+		{
+			name: "commit_sha_untouched",
+			in:   "ref 0123456789abcdef0123456789abcdef01234567 not found",
+			want: "ref 0123456789abcdef0123456789abcdef01234567 not found",
+		},
+		{
+			name: "empty_string",
+			in:   "",
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, RedactCredentials(tt.in))
 		})
 	}
 }
