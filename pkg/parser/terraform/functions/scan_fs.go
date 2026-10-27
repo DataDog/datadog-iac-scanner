@@ -14,12 +14,14 @@ import (
 
 // ScanFS serves the filesystem functions of one scan. The files a scan reads do
 // not change under it, so each path's symlinks are resolved once instead of on
-// every call that confines a path to its module.
+// every call that confines a path to its module, and the large documents they
+// read are decoded once (see decodeMemo).
 type ScanFS struct {
 	vfs.FS
 
 	mu       sync.Mutex
 	resolved map[string]resolvedPath
+	decodes  decodeMemo
 }
 
 type resolvedPath struct {
