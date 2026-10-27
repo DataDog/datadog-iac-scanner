@@ -7,6 +7,7 @@ package model
 
 import (
 	"context"
+	"index/suffixarray"
 	"regexp"
 	"sort"
 	"strings"
@@ -148,6 +149,21 @@ type lineInfoState struct {
 	mu     sync.Mutex
 	err    error
 	loader func(ctx context.Context, f *FileMetadata) (map[string]interface{}, error)
+	// group, when set, holds the tree for every copy of one source file, so the
+	// copies reparse it once instead of once each.
+	group *lineInfoGroup
+	// copies is the group handed to the copies of this file (see ShallowCopy).
+	// The file itself stays out of it, because its own tree is edited after
+	// instantiation (instantiated resources are removed from it).
+	copies *lineInfoGroup
+}
+
+// lineInfoGroup is the line-info tree shared by the copies of one source file.
+// The tree is read-only once built; copies only hold it while they use it.
+type lineInfoGroup struct {
+	mu  sync.Mutex
+	doc map[string]interface{}
+	err error
 }
 
 // linesLazyState guards the one-time computation of LinesOriginalData from
@@ -157,14 +173,113 @@ type linesLazyState struct {
 
 	matchMu sync.Mutex
 	matches map[string][]int
+	// matchedIndexes counts the indexes held in matches.
+	matchedIndexes int
 	// predMatches holds LinesMatching results by caller-chosen name; the set of
 	// names is small and fixed by the callers, so it is not bounded.
 	predMatches map[string][]int
+	// scans counts the substrings LinesContaining looked up and did not find
+	// in matches since the suffix array was last released.
+	scans int
+	// index answers lookups without reading every line once scans reaches
+	// substringIndexAfterScans. It is released when detection leaves the file.
+	// noIndex records that it cannot be built for the file.
+	index   *substringIndex
+	noIndex bool
+}
+
+// substringIndexAfterScans is how many lookups of substrings not in the cache
+// read every line of one visit before LinesContaining indexes the file. Search
+// keys name the blocks of a file, so a file of K blocks looks up about K
+// substrings while it is the file being detected, and reading every line for
+// each made that quadratic in K. Indexing costs about as much as forty such
+// reads, so a visit with few lookups never indexes. The array is about five
+// bytes per byte of the file, so it is dropped when detection leaves the file
+// rather than kept for the rest of the scan.
+const substringIndexAfterScans = 64
+
+// substringIndex finds the lines of a file that contain a substring with a
+// suffix array of the lines joined by newlines. It holds about five bytes per
+// byte of the file.
+type substringIndex struct {
+	sa *suffixarray.Index
+	// starts holds the offset of each line in the joined text.
+	starts []int
+}
+
+// newSubstringIndex indexes lines, or returns nil when a line contains a
+// newline, which would let a match span two lines.
+func newSubstringIndex(lines []string) *substringIndex {
+	size := len(lines)
+	for _, line := range lines {
+		if strings.IndexByte(line, '\n') >= 0 {
+			return nil
+		}
+		size += len(line)
+	}
+	data := make([]byte, 0, size)
+	starts := make([]int, len(lines))
+	for i, line := range lines {
+		starts[i] = len(data)
+		data = append(data, line...)
+		data = append(data, '\n')
+	}
+	return &substringIndex{sa: suffixarray.New(data), starts: starts}
+}
+
+// linesContaining returns the indexes of the lines that contain sub, in
+// ascending order and nil when there is none, as a scan of the lines does. ok
+// is false when sub is empty or holds a newline, or when it occurs at least
+// once per line, which a scan finds as fast.
+func (x *substringIndex) linesContaining(sub string) (indexes []int, ok bool) {
+	if sub == "" || strings.IndexByte(sub, '\n') >= 0 {
+		return nil, false
+	}
+	offsets := x.sa.Lookup([]byte(sub), len(x.starts))
+	if len(offsets) == len(x.starts) {
+		return nil, false
+	}
+	sort.Ints(offsets)
+	for _, offset := range offsets {
+		i := sort.SearchInts(x.starts, offset+1) - 1
+		if len(indexes) == 0 || indexes[len(indexes)-1] != i {
+			indexes = append(indexes, i)
+		}
+	}
+	return indexes, true
+}
+
+// substringIndex returns the index of lines once enough lookups have read
+// every line, building it on the lookup that reaches the count; nil before
+// that or when the file cannot be indexed. st.matchMu must be held.
+func (st *linesLazyState) substringIndex(lines []string) *substringIndex {
+	st.scans++
+	if st.index == nil && !st.noIndex && st.scans >= substringIndexAfterScans {
+		st.index = newSubstringIndex(lines)
+		st.noIndex = st.index == nil
+	}
+	return st.index
 }
 
 // maxCachedLineMatches bounds how many distinct substrings LinesContaining
-// remembers per file.
+// remembers per file, unless the file is larger (see cacheLineMatches).
 const maxCachedLineMatches = 512
+
+// cachedLineMatchesPerLine bounds, per line of a file, the indexes that the
+// substrings remembered beyond maxCachedLineMatches may hold.
+const cachedLineMatchesPerLine = 4
+
+// cacheLineMatches reports whether LinesContaining remembers one more
+// substring, matching n lines, for a file of the given number of lines. A
+// file larger than maxCachedLineMatches lines remembers up to one substring
+// per line: search keys name its blocks, so their number grows with the file,
+// and rescanning the file for each one made line detection quadratic in it.
+func (st *linesLazyState) cacheLineMatches(lines, n int) bool {
+	if len(st.matches) < maxCachedLineMatches {
+		return true
+	}
+	return len(st.matches) < lines && st.matchedIndexes+n <= cachedLineMatchesPerLine*lines
+}
 
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
@@ -227,12 +342,34 @@ func (f *FileMetadata) SetLineInfoLoader(
 	f.lineInfo = &lineInfoState{loader: loader}
 }
 
-// cloneLineInfoState returns an independent lazy state that shares loader.
+// cloneLineInfoState returns a lazy state that shares loader and, with every
+// other copy of the same file, one line-info tree: module instances are copies
+// of their source file, and reparsing it per instance made line detection cost
+// grow with the square of the instance count.
 func cloneLineInfoState(src *lineInfoState) *lineInfoState {
 	if src == nil {
 		return nil
 	}
-	return &lineInfoState{loader: src.loader}
+	group := src.group
+	if group == nil {
+		src.mu.Lock()
+		if src.copies == nil {
+			src.copies = &lineInfoGroup{}
+		}
+		group = src.copies
+		src.mu.Unlock()
+	}
+	return &lineInfoState{loader: src.loader, group: group}
+}
+
+// LineInfoShareKey identifies the line-info tree f reads: copies of one source
+// file share a key, so a caller walking files in order can keep the tree across
+// them and discard it once.
+func (f *FileMetadata) LineInfoShareKey() any {
+	if f.lineInfo != nil && f.lineInfo.group != nil {
+		return f.lineInfo.group
+	}
+	return f
 }
 
 // SetLazyLines configures on-demand computation of LinesOriginalData from
@@ -277,24 +414,48 @@ func (f *FileMetadata) LinesContaining(sub string) (indexes []int, ok bool) {
 	lines := f.Lines()
 	st.matchMu.Lock()
 	indexes, ok = st.matches[sub]
+	var index *substringIndex
+	if !ok {
+		index = st.substringIndex(lines)
+	}
 	st.matchMu.Unlock()
 	if ok {
 		return indexes, true
 	}
-	for i, line := range lines {
-		if strings.Contains(line, sub) {
-			indexes = append(indexes, i)
+	if index != nil {
+		indexes, ok = index.linesContaining(sub)
+	}
+	if !ok {
+		for i, line := range lines {
+			if strings.Contains(line, sub) {
+				indexes = append(indexes, i)
+			}
 		}
 	}
 	st.matchMu.Lock()
 	if st.matches == nil {
 		st.matches = make(map[string][]int)
 	}
-	if len(st.matches) < maxCachedLineMatches {
+	if _, cached := st.matches[sub]; !cached && st.cacheLineMatches(len(lines), len(indexes)) {
 		st.matches[sub] = indexes
+		st.matchedIndexes += len(indexes)
 	}
 	st.matchMu.Unlock()
 	return indexes, true
+}
+
+// ReleaseSubstringIndex drops the suffix array and starts its miss count over.
+// Cached matches stay. Copies of one source share the array, so releasing it
+// on any copy releases it for all of them.
+func (f *FileMetadata) ReleaseSubstringIndex() {
+	st := f.linesLazy
+	if st == nil {
+		return
+	}
+	st.matchMu.Lock()
+	st.index = nil
+	st.scans = 0
+	st.matchMu.Unlock()
 }
 
 // LinesMatching returns the indexes of Lines() for which pred reports true, in
@@ -349,9 +510,15 @@ func (f *FileMetadata) DiscardLineInfoDocument() {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	f.LineInfoDocument = nil
+	if g := st.group; g != nil {
+		g.mu.Lock()
+		g.doc = nil
+		g.mu.Unlock()
+	}
 }
 
-// ShallowCopy returns a copy of f with independent lazy line-info memoization.
+// ShallowCopy returns a copy of f whose lazy line-info tree is shared with the
+// other copies of f, but not with f itself.
 func (f *FileMetadata) ShallowCopy() *FileMetadata {
 	clone := *f
 	if f.LineInfoDocument != nil {
@@ -359,11 +526,8 @@ func (f *FileMetadata) ShallowCopy() *FileMetadata {
 	} else {
 		clone.lineInfo = cloneLineInfoState(f.lineInfo)
 	}
-	// LinesOriginalData is shared (same pointer); keep the lazy guard so a copy
-	// that hasn't materialized lines yet still computes them on demand.
-	if f.linesLazy != nil && f.LinesOriginalData == nil {
-		clone.linesLazy = &linesLazyState{}
-	}
+	// Line lookups depend only on the source text, so copies share that state
+	// instead of each holding a suffix array of the same file.
 	return &clone
 }
 
@@ -397,6 +561,11 @@ func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[stri
 	if err := f.ensureLineInfoDocumentLocked(ctx); err != nil {
 		return err
 	}
+	if st.group != nil {
+		// The group owns the shared tree; this copy only holds it while in use,
+		// so discarding the group releases it.
+		defer func() { f.LineInfoDocument = nil }()
+	}
 	return fn(f.LineInfoDocument)
 }
 
@@ -413,6 +582,9 @@ func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
 	}
 	if st.loader == nil {
 		return nil
+	}
+	if st.group != nil {
+		return f.ensureGroupLineInfoDocument(ctx, st)
 	}
 	doc, err := st.loader(ctx, f)
 	if err != nil {
@@ -432,6 +604,29 @@ func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
 		f.Kind != KindTerraform && f.Kind != KindTerraformPlan {
 		f.OriginalData = ""
 	}
+	return nil
+}
+
+// ensureGroupLineInfoDocument points f at its group's tree, building it on the
+// first use since the group was created or discarded. A load error is kept for
+// the group, as it is for a file that is not a copy.
+func (f *FileMetadata) ensureGroupLineInfoDocument(ctx context.Context, st *lineInfoState) error {
+	g := st.group
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.err != nil {
+		return g.err
+	}
+	if g.doc == nil {
+		doc, err := st.loader(ctx, f)
+		if err != nil {
+			g.err = err
+			return err
+		}
+		g.doc = doc
+	}
+	f.LineInfoDocument = g.doc
+	f.Lines()
 	return nil
 }
 

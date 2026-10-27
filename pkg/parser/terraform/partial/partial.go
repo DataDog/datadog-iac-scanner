@@ -584,9 +584,17 @@ func longestFirst(traversals []hcl.Traversal) []hcl.Traversal {
 }
 
 // overlay shadows the values some traversals read in a context.
+//
+// A root whose first step is an attribute name keeps its attributes in a map
+// until context() builds the object: setting each of n traversals under one
+// root by rebuilding the root object made an expression reading n attributes
+// of module or local cost n^2.
 type overlay struct {
 	ctx  *hcl.EvalContext
 	vars map[string]cty.Value
+	// objects holds, by root, the attributes of a root set through an
+	// attribute step, built into vars by context().
+	objects map[string]map[string]cty.Value
 }
 
 func newOverlay(ctx *hcl.EvalContext) *overlay {
@@ -594,7 +602,7 @@ func newOverlay(ctx *hcl.EvalContext) *overlay {
 }
 
 func (o *overlay) empty() bool {
-	return len(o.vars) == 0
+	return len(o.vars) == 0 && len(o.objects) == 0
 }
 
 func (o *overlay) set(traversal hcl.Traversal, leaf cty.Value) {
@@ -602,17 +610,77 @@ func (o *overlay) set(traversal hcl.Traversal, leaf cty.Value) {
 		o.vars = map[string]cty.Value{}
 	}
 	root := traversal.RootName()
+	if attrs, ok := o.objects[root]; ok {
+		if len(traversal) == 1 {
+			delete(o.objects, root)
+			o.vars[root] = leaf
+			return
+		}
+		// Any other step leaves an object as it is, as setPath does.
+		if key, ok := attributeStep(traversal[1]); ok {
+			child, childHas := attrs[key]
+			attrs[key] = setPath(child, childHas, traversal[2:], leaf)
+		}
+		return
+	}
 	base, has := o.vars[root]
 	if !has {
 		base, has = lookupVariable(o.ctx, root)
+	}
+	if len(traversal) > 1 {
+		if key, ok := attributeStep(traversal[1]); ok {
+			attrs := objectAttributes(base, has)
+			child, childHas := attrs[key]
+			attrs[key] = setPath(child, childHas, traversal[2:], leaf)
+			if o.objects == nil {
+				o.objects = map[string]map[string]cty.Value{}
+			}
+			o.objects[root] = attrs
+			delete(o.vars, root)
+			return
+		}
 	}
 	o.vars[root] = setPath(base, has, traversal[1:], leaf)
 }
 
 func (o *overlay) context() *hcl.EvalContext {
+	for root, attrs := range o.objects {
+		o.vars[root] = cty.ObjectVal(attrs)
+	}
+	o.objects = nil
 	child := o.ctx.NewChild()
 	child.Variables = o.vars
 	return child
+}
+
+// attributeStep returns the attribute a step names when setPath sets it as
+// an object attribute.
+func attributeStep(step hcl.Traverser) (string, bool) {
+	switch s := step.(type) {
+	case hcl.TraverseAttr:
+		return s.Name, true
+	case hcl.TraverseIndex:
+		if ctyutil.Materialized(s.Key) && s.Key.Type() == cty.String {
+			return s.Key.AsString(), true
+		}
+	}
+	return "", false
+}
+
+// objectAttributes returns a copy of the attributes setPath starts an object
+// from: base's own when it is a known object or map, none otherwise.
+func objectAttributes(base cty.Value, has bool) map[string]cty.Value {
+	attrs := map[string]cty.Value{}
+	if !has {
+		return attrs
+	}
+	base, _ = base.Unmark()
+	if ctyutil.Materialized(base) && (base.Type().IsObjectType() || base.Type().IsMapType()) {
+		for k, v := range base.AsValueMap() {
+			attrs[k] = v
+		}
+	}
+	return attrs
 }
 
 // lookupVariable finds name the way evaluation does, innermost context first.

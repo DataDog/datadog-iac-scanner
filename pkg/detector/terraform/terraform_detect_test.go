@@ -1150,7 +1150,7 @@ func TestLocateTerraformBlockUsesNearestBlockForHeaderComments(t *testing.T) {
 	body, err := (&DetectKindLine{}).cachedParseBody(source, "helm_bucket.tf")
 	require.NoError(t, err)
 
-	got, err := locateTerraformBlock(context.Background(), body, 2, lines)
+	got, err := locateTerraformBlock(context.Background(), body, 2, lines, nil)
 	require.NoError(t, err)
 	require.Equal(t, 4, got.BlockLocation.Start.Line)
 	require.Equal(t, "# owner", got.LineWithVulnerability)
@@ -1163,7 +1163,7 @@ func TestCalculateInsertionPointClampsFunctionWrapperAtEndOfFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, body.Blocks, 1)
 
-	line, _ := calculateInsertionPoint(body.Blocks[0], len(lines), lines)
+	line, _ := calculateInsertionPoint(body.Blocks[0], len(lines), lines, nil)
 
 	require.Equal(t, len(lines), line)
 }
@@ -1586,5 +1586,34 @@ func TestDetectLineNestedDynamicBlocksFromDocument(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Reading only the lines containing "<<" finds the same heredoc terminators
+// as scanning every line above.
+func TestIsHeredocTerminatorWithIndexMatchesScan(t *testing.T) {
+	lines := []string{
+		`resource "a" "b" {`,
+		`  policy = <<EOT`,
+		`{}`,
+		`EOT`,
+		`  x = "<< not << a heredoc"`,
+		`  y = <<-POLICY`,
+		`  {}`,
+		`  POLICY`,
+		`}`,
+		`EOT`,
+		`POLICY`,
+	}
+	var heredocs []int
+	for i, l := range lines {
+		if strings.Contains(l, "<<") {
+			heredocs = append(heredocs, i)
+		}
+	}
+	for idx := range lines {
+		trimmed := strings.TrimSpace(lines[idx])
+		require.Equal(t, isHeredocTerminator(trimmed, lines, idx, nil),
+			isHeredocTerminator(trimmed, lines, idx, heredocs), "line %d", idx)
 	}
 }
