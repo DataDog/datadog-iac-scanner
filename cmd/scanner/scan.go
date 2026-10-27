@@ -374,7 +374,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		MaxResolverDepth:            c.Int("max-resolver-depth"),
 		PayloadPath:                 payloadPath,
 		SCIInfo:                     model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
-		FlagEvaluator:               getFeatureFlagEvaluator(c),
+		FlagEvaluator:               featureflags.NewLocalEvaluator(),
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
 		TerraformModules:            modulesSetting,
@@ -704,10 +704,6 @@ func selectPlatforms(platforms []string) []string {
 		}
 	}
 	return out
-}
-
-func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
-	return featureflags.NewLocalEvaluator()
 }
 
 func getAbsolutePath(path string) (string, error) {
