@@ -810,7 +810,7 @@ func TestInspector_DecodeQueryResults(t *testing.T) {
 	// on its cancellation branch and return no results.
 	expiredCtx, cancel := context.WithTimeout(ctx, 0)
 	defer cancel()
-	result, err := c.DecodeQueryResults(ctx, &queryContext, expiredCtx, newResultset(), 57)
+	result, _, _, err := c.DecodeQueryResults(ctx, &queryContext, expiredCtx, newResultset(), 57)
 	assert.Nil(t, err, "Error not as expected")
 	assert.Equal(t, 0, len(result), "Array size is not as expected")
 }
@@ -1410,7 +1410,7 @@ func TestInspector_FailedQueriesConcurrentWrites(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			vulns := make([]model.Vulnerability, 0)
-			moduleVulns := make(map[string]int)
+			moduleVulns := make(map[string]moduleVulnCounts)
 			result := QueryResult{err: buildErr, queryID: i}
 			<-start
 			processResult(ctx, &result, &vulns, &moduleVulns, queries, ins)
@@ -1422,6 +1422,51 @@ func TestInspector_FailedQueriesConcurrentWrites(t *testing.T) {
 
 	// Sanity: the failures were actually recorded
 	require.NotEmpty(t, ins.GetFailedQueries())
+}
+
+// The module info log must use a surviving finding's already-resolved
+// severity (case-normalized, overridable) rather than the raw pre-decode
+// value, which can differ in case or have been overridden downstream.
+func TestProcessResult_LogsASurvivingFindingsSeverityOverTheRawOne(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+	ins := newTestInspector(t, inspectorOpts{})
+	queries := []model.QueryMetadata{{Query: "my-rule"}}
+	result := QueryResult{
+		queryID:             0,
+		moduleResultsRaised: 1,
+		moduleSeverity:      "high", // raw, lowercase: not a valid model.Severity as-is
+		vulnerabilities: []model.Vulnerability{
+			{ResourceType: moduleCallRoot, Severity: model.SeverityCritical},
+		},
+	}
+	vulns := make([]model.Vulnerability, 0)
+	moduleVulns := make(map[string]moduleVulnCounts)
+	processResult(ctx, &result, &vulns, &moduleVulns, queries, ins)
+	require.Contains(t, logs.String(), "CRITICAL")
+	require.NotContains(t, logs.String(), "high")
+}
+
+// When every module result was filtered or deduplicated before decode, the
+// raw pre-decode severity is the only one available; it must still be
+// normalized the same way a resolved finding's severity would be.
+func TestProcessResult_NormalizesTheRawSeverityWhenNothingSurvivedDecode(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+	ins := newTestInspector(t, inspectorOpts{})
+	queries := []model.QueryMetadata{{Query: "my-rule"}}
+	result := QueryResult{
+		queryID:             0,
+		moduleResultsRaised: 1,
+		moduleSeverity:      "high",
+		// No surviving vulnerabilities: every module result was filtered or
+		// deduplicated before decode.
+	}
+	vulns := make([]model.Vulnerability, 0)
+	moduleVulns := make(map[string]moduleVulnCounts)
+	processResult(ctx, &result, &vulns, &moduleVulns, queries, ins)
+	require.Contains(t, logs.String(), "HIGH")
+	require.NotContains(t, logs.String(), "\"high\"")
 }
 
 // TestExecuteQueries_CanceledContextReturnsError guards the cancellation
@@ -1447,6 +1492,7 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 		queries,
 		nil,
 		map[string]storage.Store{},
+		nil,
 		nil,
 		nil,
 	)

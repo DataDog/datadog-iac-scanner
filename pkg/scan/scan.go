@@ -251,6 +251,8 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	// line-info documents (line-info payload mode). In every other case it can
 	// be dropped once all detectors and line-info reparses have completed.
 	executeScanParameters.inspector.SetReleasePostEvalData(!c.ScanParams.LineInfoPayload)
+	// Every finding Inspect returns goes straight to storage.
+	executeScanParameters.inspector.SetCompactFindingsAtDecode(true)
 
 	if executeScanParameters.moduleCleanup != nil {
 		defer executeScanParameters.moduleCleanup()

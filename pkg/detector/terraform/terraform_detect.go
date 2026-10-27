@@ -87,6 +87,11 @@ func (d *DetectKindLine) cachedParseBody(src, filePath string) (*hclsyntax.Body,
 
 const undetectedVulnerabilityLine = -1
 
+// ReportsScannedFile is true: every path of DetectLine reports the scanned file.
+func (d *DetectKindLine) ReportsScannedFile() bool {
+	return true
+}
+
 // DetectLine searches vulnerability line in terraform files
 func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata,
 	searchKey string, outputLines int) model.VulnerabilityLines {

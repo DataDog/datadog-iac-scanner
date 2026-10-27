@@ -262,6 +262,10 @@ type Inspector struct {
 	// evalGcRelief enables the eval-phase forced-GC ticker; the scanner sets it
 	// from its live-heap gate (see SetEvalGcRelief).
 	evalGcRelief bool
+	// compactFindingsAtDecode keeps one finding per identity as each rule's
+	// findings are decoded (see findingSet) instead of returning every decoded
+	// finding (see SetCompactFindingsAtDecode).
+	compactFindingsAtDecode bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -322,6 +326,21 @@ func (c *Inspector) SetEvalGcRelief(relief bool) {
 	c.evalGcRelief = relief
 }
 
+// SetCompactFindingsAtDecode keeps one finding per identity as each rule's
+// findings are decoded, so a module instantiated per count/for_each instance
+// does not have every duplicate instance of its findings held in memory until
+// storage reduces them at the end of the scan.
+//
+// Only a caller that, like storage, keeps the last finding of each identity
+// and drops the rest should enable this: it must stay off for a caller that
+// reads Inspect's return value directly, such as the test-rules rule
+// harness, because identity does not include the line for most platforms and
+// collapsing at decode would silently drop a second genuine violation of one
+// rule on one resource (e.g. two ingress blocks in one security group).
+func (c *Inspector) SetCompactFindingsAtDecode(compact bool) {
+	c.compactFindingsAtDecode = compact
+}
+
 func (c *Inspector) SetExternalModulePaths(paths []string) {
 	if len(paths) == 0 {
 		c.externalPathRoots = nil
@@ -351,6 +370,9 @@ type QueryContext struct {
 	// discardLineInfoAfterUse drops each file's line-info tree after line
 	// detection for a finding (loader kept for reuse) when post-eval release is on.
 	discardLineInfoAfterUse bool
+	// findings collects this rule's results. Nil when the context was not built
+	// for a scan; DecodeQueryResults then keeps every decoded finding.
+	findings *findingSet
 }
 
 var (
@@ -470,8 +492,12 @@ func getPlatformLibraries(ctx context.Context, queriesSource source.QueriesSourc
 
 type QueryResult struct {
 	vulnerabilities []model.Vulnerability
-	err             error
-	queryID         int
+	// moduleResultsRaised is how many ResourceType=="module" results the rule
+	// raised before identity dedup at decode.
+	moduleResultsRaised int
+	moduleSeverity      model.Severity
+	err                 error
+	queryID             int
 }
 
 // evalQuery loads and evaluates a single query, returning its result. Load and
@@ -480,7 +506,7 @@ type QueryResult struct {
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
 	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery) QueryResult {
+	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
 	contextLogger := logger.FromContext(ctx)
 
 	loadStart := time.Now()
@@ -515,17 +541,20 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		payload:                 &payload,
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
+		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
 	}
 
 	evalStart := time.Now()
-	vuls, err := c.doRun(ctx, queryContext)
+	vuls, moduleRaised, moduleSeverity, err := c.doRun(ctx, queryContext)
 	evalDur := time.Since(evalStart)
 	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
 		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
 	if err == nil {
 		c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
 	}
-	return QueryResult{vulnerabilities: vuls, err: err, queryID: queryID}
+	return QueryResult{
+		vulnerabilities: vuls, moduleResultsRaised: moduleRaised, moduleSeverity: moduleSeverity, err: err, queryID: queryID,
+	}
 }
 
 func (c *Inspector) Inspect(
@@ -634,30 +663,28 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
+	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
+
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries)
+		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
 	if err != nil {
 		return nil, err
 	}
 
 	c.releasePostEvalFileData(filesMap)
-
-	vulnerabilities = expandModuleFindings(vulnerabilities, moduleExtras)
-	vulnerabilities = attributeModuleFileFindings(vulnerabilities, moduleFiles)
-	return c.applyCallSiteFilters(ctx, vulnerabilities, files), nil
+	return vulnerabilities, nil
 }
 
-// applyCallSiteFilters applies the root caller file's rule path filters and
+// filterAtCallSites applies the root caller file's rule path filters and
 // ignore comments to module findings, which are reported at the call site.
 // The module file's own filters and comments were applied when the finding
 // was built; this runs after caller expansion so each caller is judged on its
 // own file. External module callers keep the same rule-path bypass as the
 // file-side check, so findings called from a scanned remote module are not
 // dropped by repo-only path filters.
-func (c *Inspector) applyCallSiteFilters(
-	ctx context.Context, vulns []model.Vulnerability, files model.FileMetadatas,
+func (c *Inspector) filterAtCallSites(
+	ctx context.Context, vulns []model.Vulnerability, callers map[string]*model.FileMetadata,
 ) []model.Vulnerability {
-	callers := callerFileIndex(vulns, files, c.repoPath)
 	if len(callers) == 0 {
 		return vulns
 	}
@@ -680,35 +707,6 @@ func (c *Inspector) applyCallSiteFilters(
 		kept = append(kept, *v)
 	}
 	return kept
-}
-
-// callerFileIndex maps the call-site file names of module findings to the
-// scanned files, or returns nil when no finding came from a module.
-func callerFileIndex(vulns []model.Vulnerability, files model.FileMetadatas, repoPath string) map[string]*model.FileMetadata {
-	wanted := make(map[string]*model.FileMetadata)
-	for i := range vulns {
-		if attr := vulns[i].ModuleAttribution; attr != nil && attr.CallSite.Filename != "" {
-			wanted[attr.CallSite.Filename] = nil
-		}
-	}
-	if len(wanted) == 0 {
-		return nil
-	}
-	for _, f := range files {
-		if f == nil || f.ModuleCallChain != "" {
-			continue
-		}
-		key := repoRelativeFile(f.FilePath, repoPath)
-		if existing, ok := wanted[key]; ok && existing == nil {
-			wanted[key] = f
-		}
-	}
-	for key, f := range wanted {
-		if f == nil {
-			delete(wanted, key)
-		}
-	}
-	return wanted
 }
 
 // suppressAtCallSite honors the caller file's disable command and ignore
@@ -749,6 +747,7 @@ func (c *Inspector) executeQueries(
 	baseStores map[string]storage.Store,
 	baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery,
+	routing *findingRouting,
 ) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
@@ -784,7 +783,8 @@ func (c *Inspector) executeQueries(
 	results := make([]QueryResult, len(queries))
 	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
 		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes, sharedQueries)
+			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
+				sharedQueries, routing)
 			return nil
 		})
 	// The closure never returns a non-nil error itself, so ForEach only reports
@@ -795,15 +795,23 @@ func (c *Inspector) executeQueries(
 	}
 
 	// Aggregate serially: processResult mutates shared state.
-	moduleVulns := make(map[string]int)
+	moduleVulns := make(map[string]moduleVulnCounts)
 	for i := range results {
 		processResult(ctx, &results[i], &vulnerabilities, &moduleVulns, queries, c)
 	}
-	for vulnerability, number := range moduleVulns {
-		contextLogger.Info().Msgf("Found %d of module vulnerability %s", number, vulnerability)
+	for name, counts := range moduleVulns {
+		event := contextLogger.Info()
+		if counts.unique != counts.raised {
+			event = event.Int("uniqueFindings", counts.unique)
+		}
+		event.Msgf("Found %d of module vulnerability %s", counts.raised, name)
 	}
 
 	return vulnerabilities, nil
+}
+
+type moduleVulnCounts struct {
+	raised, unique int
 }
 
 func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas) bool {
@@ -841,7 +849,7 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 
 // nolint:gocritic
 func processResult(ctx context.Context, result *QueryResult,
-	vulnerabilities *[]model.Vulnerability, moduleVulns *map[string]int,
+	vulnerabilities *[]model.Vulnerability, moduleVulns *map[string]moduleVulnCounts,
 	queries []model.QueryMetadata, c *Inspector) {
 	contextLogger := logger.FromContext(ctx)
 	if result.err != nil {
@@ -852,19 +860,42 @@ func processResult(ctx context.Context, result *QueryResult,
 		return
 	}
 
+	uniqueModule := 0
+	moduleName := queries[result.queryID].Query
+	var moduleSeverity model.Severity
 	// nolint:gocritic
 	for _, vulnerability := range result.vulnerabilities {
-		if vulnerability.ResourceType == "module" {
-			val, ok := (*moduleVulns)[vulnerability.QueryName]
-			if ok {
-				(*moduleVulns)[vulnerability.QueryName] = val + 1
-			} else {
-				(*moduleVulns)[vulnerability.QueryName] = 1
-				contextLogger.Info().Msgf("Found module vulnerability %s of severity %s", vulnerability.QueryName, vulnerability.Severity)
+		if vulnerability.ResourceType == moduleCallRoot {
+			uniqueModule++
+			if moduleSeverity == "" {
+				moduleSeverity = vulnerability.Severity
 			}
 		}
 	}
+	// A surviving finding's severity is already resolved. When every module
+	// result was filtered or deduplicated and no finding survived, the raw
+	// pre-decode fallback is only upper-cased. Overrides, oldSeverity, and
+	// the INFO default are not applied.
+	if moduleSeverity == "" && result.moduleSeverity != "" {
+		moduleSeverity = getSeverity(strings.ToUpper(string(result.moduleSeverity)))
+	}
+	raisedModule := result.moduleResultsRaised
+	if raisedModule == 0 {
+		raisedModule = uniqueModule
+	}
+	if raisedModule > 0 {
+		counts := (*moduleVulns)[moduleName]
+		if counts.raised == 0 && moduleSeverity != "" {
+			contextLogger.Info().Msgf("Found module vulnerability %s of severity %s", moduleName, moduleSeverity)
+		}
+		counts.raised += raisedModule
+		counts.unique += uniqueModule
+		(*moduleVulns)[moduleName] = counts
+	}
 	*vulnerabilities = append(*vulnerabilities, result.vulnerabilities...)
+	// The aggregate holds a copy, so releasing the rule's own slice keeps the
+	// scan from holding every finding twice until aggregation is done.
+	result.vulnerabilities = nil
 }
 
 // LenQueriesByPlat returns the number of queries by platforms
@@ -947,7 +978,9 @@ func queryIDsFromMetadata(ctx context.Context, metadata *model.QueryMetadata) (q
 	return queryID, legacyQueryID
 }
 
-func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []model.Vulnerability, err error) {
+func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
+	vulns []model.Vulnerability, moduleRaised int, moduleSeverity model.Severity, err error,
+) {
 	contextLogger := logger.FromContext(ctx)
 	defer func() {
 		if r := recover(); r != nil {
@@ -961,11 +994,11 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	queryID, legacyQueryID := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
 	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID); found {
 		if args, ok, err := ruleArgumentsValue(rc); err != nil {
-			return nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
+			return nil, 0, "", errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
 		} else if ok {
 			payload, err = withRuleArguments(payload, args)
 			if err != nil {
-				return nil, err
+				return nil, 0, "", err
 			}
 		}
 	}
@@ -983,10 +1016,10 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	qCtx.payload = nil
 	if err != nil {
 		if topdown.IsCancel(err) {
-			return nil, errors.Wrap(err, "query evaluation canceled (scan aborting)")
+			return nil, 0, "", errors.Wrap(err, "query evaluation canceled (scan aborting)")
 		}
 
-		return nil, errors.Wrap(err, "failed to evaluate query")
+		return nil, 0, "", errors.Wrap(err, "failed to evaluate query")
 	}
 	if c.enableCoverageReport && cov != nil {
 		module, parseErr := ast.ParseModuleWithOpts(
@@ -995,7 +1028,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			ast.ParserOptions{RegoVersion: ast.RegoV1},
 		)
 		if parseErr != nil {
-			return nil, errors.Wrap(parseErr, "failed to parse coverage module")
+			return nil, 0, "", errors.Wrap(parseErr, "failed to parse coverage module")
 		}
 
 		c.coverageReport = cov.Report(map[string]*ast.Module{
@@ -1004,7 +1037,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 	}
 
 	decodeStart := time.Now()
-	vulns, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
+	vulns, moduleRaised, moduleSeverity, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
 	decodeDuration := time.Since(decodeStart)
 
 	// Flag slow rules so they can be debugged/optimized later
@@ -1019,7 +1052,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (vulns []mode
 			Int64("thresholdMs", slowQueryWarnThreshold.Milliseconds()).
 			Msg("slow rule")
 	}
-	return vulns, err
+	return vulns, moduleRaised, moduleSeverity, err
 }
 
 func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.Value) ast.Value {
@@ -1400,17 +1433,19 @@ func (cons *payloadHashCons) stringTerm(s string) *ast.Term {
 	return t
 }
 
-// DecodeQueryResults decodes the results into []model.Vulnerability
+// DecodeQueryResults decodes the results into []model.Vulnerability.
+// moduleRaised is how many ResourceType=="module" results were decoded before
+// identity dedup.
 func (c *Inspector) DecodeQueryResults(
 	ctx context.Context,
 	qCtx *QueryContext,
 	ctxTimeout context.Context,
 	results rego.ResultSet,
-	queryDuration time.Duration) ([]model.Vulnerability, error) {
+	queryDuration time.Duration) ([]model.Vulnerability, int, model.Severity, error) {
 	contextLogger := logger.FromContext(ctx)
 	queryResultItems, err := resultItems(results)
 	if err != nil {
-		return nil, err
+		return nil, 0, "", err
 	}
 	if qCtx.discardLineInfoAfterUse {
 		// Group findings by file so each file's line-info tree is built once and
@@ -1422,12 +1457,21 @@ func (c *Inspector) DecodeQueryResults(
 		})
 	}
 
-	vulnerabilities := make([]model.Vulnerability, 0, len(queryResultItems))
+	findings := qCtx.findings
+	if findings == nil {
+		findings = newFindingSet(false, nil)
+	}
 	failedDetectLine := false
 	canceled := false
+	moduleRaised := 0
+	var moduleSeverity model.Severity
 	var activeLineInfoFile string
 decodeLoop:
-	for _, queryResultItem := range queryResultItems {
+	for i := range findings.order(len(queryResultItems)) {
+		queryResultItem := queryResultItems[i]
+		// Each item is decoded once; dropping it as it is read lets a rule
+		// raising many findings hold one decoded item rather than all of them.
+		queryResultItems[i] = nil
 		select {
 		case <-ctxTimeout.Done():
 			// Scan canceled (shutdown/error). Stop decoding entirely. The partial
@@ -1436,12 +1480,13 @@ decodeLoop:
 			break decodeLoop
 		default:
 			activeLineInfoFile = advanceLineInfoFile(qCtx, activeLineInfoFile, resultDocumentID(queryResultItem))
+			moduleRaised, moduleSeverity = countModuleResult(queryResultItem, moduleRaised, moduleSeverity)
 			vulnerability, aux := getVulnerabilitiesFromQuery(ctx, qCtx, c, queryResultItem, queryDuration)
 			if aux {
 				failedDetectLine = aux
 			}
 			if vulnerability != nil && !aux {
-				vulnerabilities = append(vulnerabilities, *vulnerability)
+				findings.addRouted(ctx, c, vulnerability)
 			}
 		}
 	}
@@ -1464,7 +1509,43 @@ decodeLoop:
 		}
 	}
 
-	return vulnerabilities, nil
+	return findings.findings(), moduleRaised, moduleSeverity, nil
+}
+
+func countModuleResult(item interface{}, raised int, severity model.Severity) (int, model.Severity) {
+	if resultResourceType(item) != moduleCallRoot {
+		return raised, severity
+	}
+	if severity == "" {
+		severity = resultSeverity(item)
+	}
+	return raised + 1, severity
+}
+
+// resultResourceType is the resourceType a rule result raised, before decode
+// drops or deduplicates it.
+func resultResourceType(item interface{}) string {
+	m, ok := item.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	resourceType, _ := m["resourceType"].(string)
+	return resourceType
+}
+
+func resultSeverity(item interface{}) model.Severity {
+	m, ok := item.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	switch severity := m["severity"].(type) {
+	case model.Severity:
+		return severity
+	case string:
+		return model.Severity(severity)
+	default:
+		return ""
+	}
 }
 
 func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
