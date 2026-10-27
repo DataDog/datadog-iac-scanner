@@ -440,6 +440,13 @@ func Test_getDataSourcePolicy_cycleThroughLocalsIsNotRendered(t *testing.T) {
 		"data.aws_iam_policy_document.p.json",
 		`data.aws_iam_policy_document["p"].json`,
 		`data["aws_iam_policy_document"]["p"].json`,
+		`lookup(data.aws_iam_policy_document, "p").json`,
+		`values(data.aws_iam_policy_document)[0].json`,
+		`data.aws_iam_policy_document[var.k].json`,
+		`data.aws_iam_policy_document.*.json`,
+		`data.aws_iam_policy_document["a.b"].json`,
+		`data`,
+		`data[var.kind].p`,
 	} {
 		t.Run(ref, func(t *testing.T) {
 			assertCycleThroughLocalsIsNotRendered(t, ref)
@@ -480,6 +487,65 @@ data "aws_iam_policy_document" "other" {
 	}
 }
 
+func Test_getDataSourcePolicy_cycleThroughWholeLocalIsNotRendered(t *testing.T) {
+	for _, expr := range []string{
+		`lookup(local, "l0")`,
+		`local[var.k]`,
+		`values(local)[0]`,
+		`local.*`,
+		`local["a.b"]`,
+	} {
+		t.Run(expr, func(t *testing.T) {
+			src := fmt.Sprintf(`
+locals {
+  l0 = [data.aws_iam_policy_document.p.json, "x"]
+}
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = [jsonencode(%s)]
+  }
+}
+data "aws_iam_policy_document" "other" {
+  statement {
+    sid     = "Other"
+    actions = ["s3:GetObject"]
+  }
+}
+`, expr)
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(src), 0o600))
+			ctx := context.Background()
+			inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+			result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
+			var data map[string]map[string]map[string]string
+			require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+			require.NotContains(t, data["aws_iam_policy_document"], "p")
+			require.Contains(t, data["aws_iam_policy_document"]["other"]["json"], `"Sid":"Other"`)
+		})
+	}
+}
+
+func Test_getDataSourcePolicy_specificLocalDoesNotCycleThroughSibling(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
+locals {
+  alias = data.aws_iam_policy_document.p.json
+  safe  = "s3:GetObject"
+}
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = [local.safe]
+  }
+}
+`), 0o600))
+	ctx := context.Background()
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
+	var data map[string]map[string]map[string]string
+	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
+	require.Contains(t, data["aws_iam_policy_document"]["p"]["json"], "s3:GetObject")
+}
+
 func Test_getDataSourcePolicy_dynamicIteratorNamedLocalStillRenders(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
@@ -512,23 +578,59 @@ func TestDataCycles(t *testing.T) {
 		return expr.Variables()
 	}
 	reads := map[string][]hcl.Traversal{
-		DataKey("t", "self"):    parse(`data.t.self.json`),
-		DataKey("t", "indexed"): parse(`data.t["indexed"].json`),
-		DataKey("t", "bracket"): parse(`data["t"]["bracket"].json`),
-		DataKey("t", "viaA"):    parse(`local.a`),
-		DataKey("t", "chain"):   parse(`data.t.self.json`),
-		DataKey("t", "plain"):   parse(`local.c`),
-		DataKey("t", "runtime"): parse(`data.t[var.name].json`),
+		DataKey("t", "self"):     parse(`data.t.self.json`),
+		DataKey("t", "indexed"):  parse(`data.t["indexed"].json`),
+		DataKey("t", "bracket"):  parse(`data["t"]["bracket"].json`),
+		DataKey("t", "viaA"):     parse(`local.a`),
+		DataKey("t", "chain"):    parse(`data.t.self.json`),
+		DataKey("t", "plain"):    parse(`local.c`),
+		DataKey("t", "runtime"):  parse(`data.t[var.name].json`),
+		DataKey("t", "lookup"):   parse(`lookup(data.t, "lookup").json`),
+		DataKey("t", "values"):   parse(`values(data.t)[0].json`),
+		DataKey("t", "splat"):    parse(`data.t.*.json`),
+		DataKey("t", "number"):   parse(`data.t[0].json`),
+		DataKey("t", "dotted"):   parse(`data.t["a.b"].json`),
+		DataKey("t", "viaLocal"): parse(`lookup(local, "alias")`),
+		DataKey("t", "viaIndex"): parse(`local[var.k]`),
+		DataKey("u", "other"):    parse(`data.t[var.name].json`),
+		DataKey("u", "safe"):     parse(`local.c`),
 	}
 	locals := map[string][]hcl.Traversal{
-		"a": parse(`[local.b]`),
-		"b": parse(`data.t["viaA"].json`),
-		"c": parse(`var.x`),
+		"a":     parse(`[local.b]`),
+		"b":     parse(`data.t["viaA"].json`),
+		"c":     parse(`var.x`),
+		"alias": parse(`data.t.viaLocal.json`),
+		"idx":   parse(`data.t.viaIndex.json`),
 	}
 	require.Equal(t, map[string]bool{
-		DataKey("t", "self"):    true,
-		DataKey("t", "indexed"): true,
-		DataKey("t", "bracket"): true,
-		DataKey("t", "viaA"):    true,
+		DataKey("t", "self"):     true,
+		DataKey("t", "indexed"):  true,
+		DataKey("t", "bracket"):  true,
+		DataKey("t", "viaA"):     true,
+		DataKey("t", "runtime"):  true,
+		DataKey("t", "lookup"):   true,
+		DataKey("t", "values"):   true,
+		DataKey("t", "splat"):    true,
+		DataKey("t", "number"):   true,
+		DataKey("t", "dotted"):   true,
+		DataKey("t", "viaLocal"): true,
+		DataKey("t", "viaIndex"): true,
 	}, DataCycles(reads, locals))
+}
+
+func TestDataCycles_WholeDataReferenceReachesEveryBlock(t *testing.T) {
+	parse := func(src string) []hcl.Traversal {
+		expr, diags := hclsyntax.ParseExpression([]byte(src), "main.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+		return expr.Variables()
+	}
+	reads := map[string][]hcl.Traversal{
+		DataKey("t", "bare"):    parse(`data`),
+		DataKey("t", "dynType"): parse(`data[var.kind].name`),
+		DataKey("u", "sibling"): parse(`var.x`),
+	}
+	require.Equal(t, map[string]bool{
+		DataKey("t", "bare"):    true,
+		DataKey("t", "dynType"): true,
+	}, DataCycles(reads, nil))
 }
