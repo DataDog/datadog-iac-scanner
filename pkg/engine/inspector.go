@@ -836,7 +836,7 @@ func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas
 
 // expandModuleFindings clones findings from deduplicated OPA docs back to each
 // extra caller, so every call-site gets its own fingerprint/file attribution.
-func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo) []model.Vulnerability {
+func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo, parts *findingParts) []model.Vulnerability {
 	if len(extras) == 0 {
 		return vulns
 	}
@@ -847,7 +847,7 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy := vulns[i]
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
-			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			vCopy.ModuleAttribution = parts.attribution(ex.attributions, &vCopy)
 			expanded = append(expanded, vCopy)
 		}
 	}

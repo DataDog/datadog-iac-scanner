@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"iter"
 	"slices"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
@@ -205,6 +206,102 @@ type findingRouting struct {
 	extras      map[string][]extraCallerInfo
 	moduleFiles map[string]*moduleFileCalls
 	callers     map[string]*model.FileMetadata
+	// parts shares what the scan's findings hold equal.
+	parts *findingParts
+}
+
+// findingParts shares, between the findings of one scan, the parts that are
+// equal for many of them. The instances of a module block are findings on the
+// same lines of the same file, so their block source, surrounding lines and
+// narrowed module attribution are the same for every instance and for every
+// rule flagging the same line. What it returns is shared and only read.
+// A nil findingParts shares nothing.
+type findingParts struct {
+	mu           sync.Mutex
+	sources      map[string]string
+	lines        map[linesKey]*[]model.CodeLine
+	attributions map[attributionKey]*model.ModuleAttribution
+}
+
+type linesKey struct {
+	file string
+	line int
+}
+
+// attributionKey holds what moduleAttributionForResource reads of a finding
+// besides the attribution of its block, which it narrows.
+type attributionKey struct {
+	attribution   *model.ModuleAttribution
+	line          int
+	vulnerability model.ResourceLocation
+	remediation   model.ResourceLocation
+}
+
+func newFindingParts() *findingParts {
+	return &findingParts{
+		sources:      make(map[string]string),
+		lines:        make(map[linesKey]*[]model.CodeLine),
+		attributions: make(map[attributionKey]*model.ModuleAttribution),
+	}
+}
+
+// source returns s, or an equal block source seen before.
+func (p *findingParts) source(s string) string {
+	if p == nil || s == "" {
+		return s
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if shared, ok := p.sources[s]; ok {
+		return shared
+	}
+	p.sources[s] = s
+	return s
+}
+
+// codeLines returns lines, or equal lines seen before around the same line of
+// the same file.
+func (p *findingParts) codeLines(file string, line int, lines *[]model.CodeLine) *[]model.CodeLine {
+	if p == nil || lines == nil {
+		return lines
+	}
+	key := linesKey{file: file, line: line}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if shared, ok := p.lines[key]; ok && slices.Equal(*shared, *lines) {
+		return shared
+	}
+	p.lines[key] = lines
+	return lines
+}
+
+// attribution returns moduleAttributionForResource(attrs, v), built once for
+// the findings it reads the same of.
+func (p *findingParts) attribution(attrs map[string]*model.ModuleAttribution, v *model.Vulnerability) *model.ModuleAttribution {
+	base, ok := resourceAttribution(attrs, v)
+	if p == nil || !ok {
+		return moduleAttributionForResource(attrs, v)
+	}
+	key := attributionKey{attribution: base, line: v.Line, vulnerability: v.VulnerabilityLocation, remediation: v.RemediationLocation}
+	p.mu.Lock()
+	shared, ok := p.attributions[key]
+	p.mu.Unlock()
+	if ok {
+		return shared
+	}
+	attr := moduleAttributionForResource(attrs, v)
+	p.mu.Lock()
+	p.attributions[key] = attr
+	p.mu.Unlock()
+	return attr
+}
+
+// parts returns what the set's findings share, or nil when it shares nothing.
+func (s *findingSet) parts() *findingParts {
+	if s == nil || s.routing == nil {
+		return nil
+	}
+	return s.routing.parts
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
@@ -223,7 +320,7 @@ func newFindingRouting(
 			callers[key] = f
 		}
 	}
-	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers}
+	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers, parts: newFindingParts()}
 }
 
 // route turns one rule's decoded findings into the findings the scan reports
@@ -235,7 +332,7 @@ func (r *findingRouting) route(
 	if r == nil {
 		return vulns
 	}
-	vulns = expandModuleFindings(vulns, r.extras)
+	vulns = expandModuleFindings(vulns, r.extras, r.parts)
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
 	return c.filterAtCallSites(ctx, vulns, r.callers)
 }

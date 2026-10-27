@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
@@ -671,4 +673,58 @@ func TestInspect_SupersededInstanceFindingsSkipLineDetection(t *testing.T) {
 	require.Equal(t, uncompacted[1]-uncompacted[0], int64(sizes[1]-sizes[0]),
 		"without compaction, every decoded instance has its line detected")
 	require.Equal(t, detected[0], detected[1], "only the finding that is kept has its line detected")
+}
+
+// Equal parts of findings are shared; parts that differ are not.
+func TestFindingParts_SharesOnlyEqualParts(t *testing.T) {
+	p := newFindingParts()
+
+	a := strings.Repeat("x", 8)
+	b := strings.Repeat("x", 8)
+	require.Equal(t, unsafe.StringData(a), unsafe.StringData(p.source(a)))
+	require.Equal(t, unsafe.StringData(a), unsafe.StringData(p.source(b)), "an equal source is the one seen first")
+	require.Equal(t, "y", p.source("y"))
+
+	lines := &[]model.CodeLine{{Position: 2, Line: "a"}, {Position: 3, Line: "b"}}
+	same := &[]model.CodeLine{{Position: 2, Line: "a"}, {Position: 3, Line: "b"}}
+	other := &[]model.CodeLine{{Position: 2, Line: "a"}, {Position: 3, Line: "c"}}
+	require.Same(t, lines, p.codeLines("f.tf", 3, lines))
+	require.Same(t, lines, p.codeLines("f.tf", 3, same))
+	require.Same(t, other, p.codeLines("f.tf", 3, other), "different lines at the same place are kept")
+	require.Same(t, same, p.codeLines("g.tf", 3, same), "lines of another file are kept")
+
+	var none *findingParts
+	require.Equal(t, "z", none.source("z"))
+	require.Same(t, lines, none.codeLines("f.tf", 3, lines))
+	var noSet *findingSet
+	require.Nil(t, noSet.parts())
+	require.Nil(t, newFindingSet(true, nil).parts())
+}
+
+// A shared attribution is the one building it for the finding gives.
+func TestFindingParts_AttributionMatchesBuildingIt(t *testing.T) {
+	base := &model.ModuleAttribution{
+		Source: "../modules/m",
+		Arguments: []model.ModuleArgument{
+			{LineStart: 3, LineEnd: 3, Control: model.ArgumentControlCaller, CallSite: model.SourceLocation{Filename: "root.tf", LineStart: 9}},
+		},
+		CallSite: model.SourceLocation{Filename: "root.tf", LineStart: 1},
+	}
+	attrs := map[string]*model.ModuleAttribution{moduleAttributionKey("aws_s3_bucket", 1, 1): base}
+	finding := func(line int) *model.Vulnerability {
+		return &model.Vulnerability{
+			ResourceType: "aws_s3_bucket", Line: line,
+			BlockLocation:         model.ResourceLocation{Start: model.ResourceLine{Line: 1, Col: 1}},
+			VulnerabilityLocation: model.ResourceLocation{Start: model.ResourceLine{Line: line, Col: 3}, End: model.ResourceLine{Line: line, Col: 9}},
+		}
+	}
+	p := newFindingParts()
+	for _, line := range []int{3, 4, 3, 4} {
+		require.Equal(t, moduleAttributionForResource(attrs, finding(line)), p.attribution(attrs, finding(line)), "line %d", line)
+	}
+	require.Same(t, p.attribution(attrs, finding(3)), p.attribution(attrs, finding(3)))
+	require.NotSame(t, p.attribution(attrs, finding(3)), p.attribution(attrs, finding(4)))
+	require.Nil(t, p.attribution(nil, finding(3)))
+	var none *findingParts
+	require.Equal(t, moduleAttributionForResource(attrs, finding(3)), none.attribution(attrs, finding(3)))
 }
