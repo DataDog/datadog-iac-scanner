@@ -77,12 +77,6 @@ var scanAction = &cli.Command{
 			Usage:   "a list of platform types to scan",
 			Value:   iacplatforms.Supported,
 		},
-		&cli.BoolFlag{
-			Name:   "x-parallelparsing",
-			Hidden: true,
-			Usage:  "(experimental, will be removed soon) parse files in parallel",
-			Value:  true,
-		},
 		&cli.StringFlag{
 			Name:  "terraform-modules",
 			Usage: "enable remote Terraform module resolution: off or on",
@@ -150,14 +144,6 @@ var scanAction = &cli.Command{
 			Hidden: true,
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
 			Value:  false,
-		},
-		&cli.BoolFlag{
-			Name:   "x-disable-rule-isolation",
-			Hidden: true,
-			Usage: "(experimental, will be removed soon) co-compile all rules and libraries into a " +
-				"shared compiler instead of isolating each rule; greatly reduces memory at the cost " +
-				"of per-rule compile-failure isolation",
-			Value: false,
 		},
 		&cli.StringSliceFlag{
 			Name:    "queries-path",
@@ -388,10 +374,9 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		MaxResolverDepth:            c.Int("max-resolver-depth"),
 		PayloadPath:                 payloadPath,
 		SCIInfo:                     model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
-		FlagEvaluator:               getFeatureFlagEvaluator(c),
+		FlagEvaluator:               featureflags.NewLocalEvaluator(),
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
-		DisableRuleIsolation:        c.Bool("x-disable-rule-isolation"),
 		TerraformModules:            modulesSetting,
 		NetworkIsolation:            offlineBundlePath != "",
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),
@@ -719,12 +704,6 @@ func selectPlatforms(platforms []string) []string {
 		}
 	}
 	return out
-}
-
-func getFeatureFlagEvaluator(c *cli.Command) featureflags.FlagEvaluator {
-	return featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
-		featureflags.IaCEnableKicsParallelFileParsing: c.Bool("x-parallelparsing"),
-	})
 }
 
 func getAbsolutePath(path string) (string, error) {

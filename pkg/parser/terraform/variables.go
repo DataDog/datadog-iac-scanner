@@ -410,15 +410,7 @@ func LocalTraversalName(traversal hcl.Traversal) (string, bool) {
 	if traversal.RootName() != blockTypeLocalReference || len(traversal) < 2 {
 		return "", false
 	}
-	switch step := traversal[1].(type) {
-	case hcl.TraverseAttr:
-		return step.Name, true
-	case hcl.TraverseIndex:
-		if step.Key.IsKnown() && !step.Key.IsNull() && step.Key.Type() == cty.String {
-			return step.Key.AsString(), true
-		}
-	}
-	return "", false
+	return staticStepName(traversal[1])
 }
 
 // refreshLocals re-evaluates locals against vars (including data) so try /

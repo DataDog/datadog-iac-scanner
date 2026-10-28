@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 )
 
@@ -760,4 +762,241 @@ module "c" {
 		`{"Actions":["s3:GetObject","a:*"],"Effect":"Allow","Resources":["arn:aws:s3:::a/x"],"Sid":"a"},`+
 		`{"Actions":["s3:GetObject","b:*"],"Effect":"Allow","Resources":["arn:aws:s3:::b/x"],"Sid":"b"}],`+
 		`"Version":"2012-10-17"}`+"\n", doc["policy"])
+}
+
+// TestDataJSONEncodeCycleStaysBounded pins a data block reading its own JSON
+// through a local and jsonencode. Terraform rejects the cycle. Each refresh
+// pass used to nest the previous JSON once more, so its size doubled with
+// every pass and every refresh and the evaluation ran out of memory.
+func TestDataJSONEncodeCycleStaysBounded(t *testing.T) {
+	for _, ref := range []string{
+		"data.aws_iam_policy_document.p.json",
+		`data.aws_iam_policy_document["p"].json`,
+		`data["aws_iam_policy_document"]["p"].json`,
+		`lookup(data.aws_iam_policy_document, "p").json`,
+		`values(data.aws_iam_policy_document)[0].json`,
+		`data.aws_iam_policy_document[var.k].json`,
+		`data.aws_iam_policy_document.*.json`,
+		`data.aws_iam_policy_document["a.b"].json`,
+		`data`,
+		`data[var.kind].p`,
+	} {
+		t.Run(ref, func(t *testing.T) {
+			assertJSONEncodeCycleStaysBounded(t, ref)
+		})
+	}
+}
+
+func assertJSONEncodeCycleStaysBounded(t *testing.T, ref string) {
+	t.Helper()
+	src := fmt.Sprintf(`
+variable "x" {
+  default = "x"
+}
+
+locals {
+  l0 = [%s, var.x]
+  l1 = [module.m.out, local.l0]
+}
+
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = [jsonencode(local.l0)]
+  }
+}
+
+module "m" {
+  source = "../leaf"
+  in     = [module.m.out, var.x]
+}
+
+resource "aws_s3_bucket" "consumer" {
+  bucket = jsonencode(local.l1)
+}
+`, ref)
+	for i := 0; i < 2; i++ {
+		src += fmt.Sprintf("locals {\n  alias%d = [%s]\n}\n", i, ref)
+	}
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "in" {}
+output "out" { value = var.in }
+`})
+	dir := writeModule(t, root, "child", map[string]string{"main.tf": src})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	for i := range resources {
+		raw, err := json.Marshal(AttributesToDocument(&resources[i]))
+		require.NoError(t, err)
+		require.Less(t, len(raw), 4096, "%s.%s grew: %d bytes", resources[i].Type, resources[i].Name, len(raw))
+	}
+	findData(t, dataInstances(resources), "aws_iam_policy_document", "p")
+	findResource(t, resources, "aws_s3_bucket", "consumer")
+}
+
+// A data block that reads the whole local object, and a local that reads the
+// block, is the same cycle as a named local. The document stays bounded.
+func TestDataJSONEncodeCycleThroughWholeLocalStaysBounded(t *testing.T) {
+	for _, expr := range []string{
+		`lookup(local, "l0")`,
+		`local[var.k]`,
+		`values(local)[0]`,
+		`local.*`,
+		`local["a.b"]`,
+	} {
+		t.Run(expr, func(t *testing.T) {
+			dir := writeModule(t, t.TempDir(), "root", map[string]string{"main.tf": fmt.Sprintf(`
+locals {
+  l0 = [data.aws_iam_policy_document.p.json, "x"]
+}
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = [jsonencode(%s)]
+  }
+}
+resource "aws_s3_bucket" "consumer" {
+  bucket = jsonencode(local.l0)
+}
+`, expr)})
+			resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			for i := range resources {
+				raw, err := json.Marshal(AttributesToDocument(&resources[i]))
+				require.NoError(t, err)
+				require.Less(t, len(raw), 4096, "%s.%s grew: %d bytes", resources[i].Type, resources[i].Name, len(raw))
+			}
+		})
+	}
+}
+
+// An iterator named local hides the module local of that name inside the
+// content, so a document that only reads the iterator still resolves.
+func TestDynamicIteratorNamedLocalIsNotADataCycle(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "root", map[string]string{"main.tf": `
+locals {
+  value   = data.aws_iam_policy_document.p.json
+  actions = ["s3:GetObject"]
+}
+data "aws_iam_policy_document" "p" {
+  dynamic "statement" {
+    for_each = local.actions
+    iterator = local
+    content {
+      actions = [local.value]
+    }
+  }
+}
+resource "aws_sqs_queue_policy" "q" {
+  policy = data.aws_iam_policy_document.p.json
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	policy := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "q")))["policy"]
+	require.Contains(t, policy, "s3:GetObject")
+}
+
+func TestCyclicDataBlocksFollowsOnlyCycles(t *testing.T) {
+	file, diags := hclsyntax.ParseConfig([]byte(`
+locals {
+  base    = data.aws_iam_policy_document.base.json
+  through = local.loop
+  loop    = data.aws_iam_policy_document.loop.json
+  value   = data.aws_iam_policy_document.shadowed.json
+  nested  = data.aws_iam_policy_document.nested.json
+}
+
+data "aws_iam_policy_document" "base" {
+  statement {
+    actions = ["sqs:*"]
+  }
+}
+
+data "aws_iam_policy_document" "chained" {
+  source_policy_documents = [local.base, data.aws_iam_policy_document.base.json]
+}
+
+data "aws_iam_policy_document" "loop" {
+  dynamic "statement" {
+    for_each = [local.through]
+    iterator = local
+    content {
+      actions = [local.value]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "shadowed" {
+  dynamic "statement" {
+    for_each = ["sqs:SendMessage"]
+    iterator = local
+    content {
+      actions = [local.value]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "self" {
+  source_policy_documents = [data.aws_iam_policy_document.self.json]
+}
+
+data "aws_iam_policy_document" "nested" {
+  dynamic "statement" {
+    for_each = ["sqs:SendMessage"]
+    iterator = local
+    content {
+      dynamic "condition" {
+        for_each = [local.nested]
+        content {
+          test = local.nested
+        }
+      }
+    }
+  }
+}
+
+data "aws_iam_policy_document" "indexed" {
+  source_policy_documents = [data.aws_iam_policy_document["indexed"].json]
+}
+
+data "aws_iam_policy_document" "bracket" {
+  source_policy_documents = [data["aws_iam_policy_document"]["bracket"].json]
+}
+
+data "aws_iam_policy_document" "reads_loop" {
+  source_policy_documents = [local.loop]
+}
+
+data "aws_iam_policy_document" "looked" {
+  source_policy_documents = [lookup(data.aws_iam_policy_document, "looked").json]
+}
+
+data "aws_iam_policy_document" "dyn" {
+  source_policy_documents = [data.aws_iam_policy_document[var.k].json]
+}
+
+data "aws_s3_bucket" "elsewhere" {
+  bucket = data.aws_iam_policy_document[var.k].id
+}
+
+locals {
+  alias = data.aws_iam_policy_document.from_local.json
+}
+
+data "aws_iam_policy_document" "from_local" {
+  source_policy_documents = [lookup(local, "alias")]
+}
+`), "main.tf", hcl.Pos{Line: 1, Column: 1})
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body)
+	_, localExprs, _, _, _ := collectBlocks([]*hclsyntax.Body{body})
+	cyclic := cyclicDataBlocks(collectDataBlocks([]*hclsyntax.Body{body}), localExprs)
+	names := map[string]bool{}
+	for b := range cyclic {
+		names[b.Labels[1]] = true
+	}
+	require.Equal(t, map[string]bool{
+		"loop": true, "self": true, "indexed": true, "bracket": true,
+		"looked": true, "dyn": true, "from_local": true,
+	}, names)
 }

@@ -10,12 +10,14 @@ import (
 	"context"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -88,6 +90,9 @@ func getDataSourcePolicy(
 	for i := range blocks {
 		readsData = readsData || blocks[i].readsData
 	}
+	// A block reading its own result has no value Terraform would compute,
+	// and each pass would feed it its previous result: it is left unrendered.
+	blocks = dropCyclicData(ctx, currentPath, blocks, locals)
 	// Locals that read data only resolve after a data pass, so keep their
 	// expressions and refresh them when data grows.
 	assignments := dataDependentLocals(locals)
@@ -112,6 +117,269 @@ func getDataSourcePolicy(
 		}
 	}
 	return inputVariables
+}
+
+// dropCyclicData returns blocks without those in a data reference cycle,
+// which are then read as written.
+func dropCyclicData(ctx context.Context, dir string, blocks []localDataBlock, locals []localAssignment) []localDataBlock {
+	reads := make(map[string][]hcl.Traversal, len(blocks))
+	for i := range blocks {
+		key := DataKey(blocks[i].typ, blocks[i].name)
+		reads[key] = append(reads[key], BodyTraversals(blocks[i].body)...)
+	}
+	localReads := make(map[string][]hcl.Traversal, len(locals))
+	for _, local := range locals {
+		localReads[local.name] = local.expr.Variables()
+	}
+	cyclic := DataCycles(reads, localReads)
+	if len(cyclic) == 0 {
+		return blocks
+	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Debug().Msgf("data reference cycle in %s; the blocks are read as written", dir)
+	kept := blocks[:0:0]
+	for i := range blocks {
+		if !cyclic[DataKey(blocks[i].typ, blocks[i].name)] {
+			kept = append(kept, blocks[i])
+		}
+	}
+	return kept
+}
+
+// DataKey names a data block in the graph DataCycles reads.
+func DataKey(typ, name string) string {
+	return terraformDataIdentifier + "." + typ + "." + name
+}
+
+// DataCycles returns the data blocks, named by DataKey, that read their own
+// result, directly or through other data blocks and locals. Terraform rejects
+// such a cycle. Evaluating one anyway feeds the block its previous result on
+// every pass, and a function such as jsonencode nests that result once more,
+// so its size doubles with each pass. reads gives the traversals each block's
+// configuration reads, locals those of each local. A constant type and name
+// select one block. A constant type with no single name selects every block of
+// that type, and a data reference that does not name a type selects every data
+// block: evaluation reads that whole object, which includes the block being
+// rendered. A local reference that does not name one local selects every
+// local, for the same reason. Inside a dynamic block's content the iterator
+// name shadows a local of that name.
+func DataCycles(reads, locals map[string][]hcl.Traversal) map[string]bool {
+	byType := make(map[string][]string, len(reads))
+	allData := make([]string, 0, len(reads))
+	for key := range reads {
+		allData = append(allData, key)
+		if typ, ok := dataKeyType(key); ok {
+			byType[typ] = append(byType[typ], key)
+		}
+	}
+	allLocals := make([]string, 0, len(locals))
+	for name := range locals {
+		allLocals = append(allLocals, "local."+name)
+	}
+	edges := make(map[string][]string, len(reads)+len(locals))
+	for key, traversals := range reads {
+		edges[key] = dataEdges(traversals, byType, allData, allLocals)
+	}
+	for name, traversals := range locals {
+		edges["local."+name] = dataEdges(traversals, byType, allData, allLocals)
+	}
+	var cyclic map[string]bool
+	for key := range reads {
+		if reachesItself(edges, key) {
+			if cyclic == nil {
+				cyclic = map[string]bool{}
+			}
+			cyclic[key] = true
+		}
+	}
+	return cyclic
+}
+
+// BodyTraversals returns the traversals a block body reads: those of its
+// attributes and nested blocks, or, for a JSON body, of its attributes, which
+// hold its nested blocks as objects.
+func BodyTraversals(body hcl.Body) []hcl.Traversal {
+	if native, ok := body.(*hclsyntax.Body); ok {
+		return nativeBodyTraversals(nil, native)
+	}
+	attrs, _ := body.JustAttributes()
+	var out []hcl.Traversal
+	for _, attr := range attrs {
+		out = append(out, attr.Expr.Variables()...)
+	}
+	return out
+}
+
+func nativeBodyTraversals(out []hcl.Traversal, body *hclsyntax.Body) []hcl.Traversal {
+	return bodyTraversals(out, body, nil)
+}
+
+// bodyTraversals walks body. shadowed holds the dynamic iterator names in
+// scope, which hide a local of the same name inside their content.
+func bodyTraversals(out []hcl.Traversal, body *hclsyntax.Body, shadowed []string) []hcl.Traversal {
+	for _, attr := range body.Attributes {
+		out = appendUnshadowed(out, attr.Expr.Variables(), shadowed)
+	}
+	for _, block := range body.Blocks {
+		out = blockTraversals(out, block, shadowed)
+	}
+	return out
+}
+
+func blockTraversals(out []hcl.Traversal, block *hclsyntax.Block, shadowed []string) []hcl.Traversal {
+	if !dynamicblock.Is(block) {
+		return bodyTraversals(out, block.Body, shadowed)
+	}
+	for name, attr := range block.Body.Attributes {
+		// iterator names the loop variable. It is not a read of that value.
+		if name == "iterator" {
+			continue
+		}
+		out = appendUnshadowed(out, attr.Expr.Variables(), shadowed)
+	}
+	inContent := make([]string, len(shadowed)+1)
+	copy(inContent, shadowed)
+	inContent[len(shadowed)] = dynamicblock.IteratorName(block)
+	for _, inner := range block.Body.Blocks {
+		if inner.Type == "content" {
+			out = bodyTraversals(out, inner.Body, inContent)
+			continue
+		}
+		out = blockTraversals(out, inner, shadowed)
+	}
+	return out
+}
+
+func appendUnshadowed(out, traversals []hcl.Traversal, shadowed []string) []hcl.Traversal {
+	for _, traversal := range traversals {
+		if slices.Contains(shadowed, traversal.RootName()) {
+			continue
+		}
+		out = append(out, traversal)
+	}
+	return out
+}
+
+// staticStepName returns the name an attribute or a constant string index
+// gives a reference step.
+func staticStepName(step hcl.Traverser) (string, bool) {
+	switch s := step.(type) {
+	case hcl.TraverseAttr:
+		return s.Name, true
+	case hcl.TraverseIndex:
+		if s.Key.IsKnown() && !s.Key.IsNull() && s.Key.Type() == cty.String {
+			return s.Key.AsString(), true
+		}
+	}
+	return "", false
+}
+
+// cycleStepName is a step evaluation can slice out of a root object. An empty
+// index or one containing "." is excluded: evaluation reads the whole object
+// for those, so they must not select a single block.
+func cycleStepName(step hcl.Traverser) (string, bool) {
+	name, ok := staticStepName(step)
+	if !ok || name == "" || strings.ContainsAny(name, ".\x00") {
+		return "", false
+	}
+	return name, true
+}
+
+func dataKeyType(key string) (string, bool) {
+	rest, ok := strings.CutPrefix(key, terraformDataIdentifier+".")
+	if !ok {
+		return "", false
+	}
+	typ, _, ok := strings.Cut(rest, ".")
+	return typ, ok && typ != ""
+}
+
+// dataEdges returns the data blocks and locals the traversals read. byType,
+// allData and allLocals are the blocks and locals in this scope; a reference
+// evaluation cannot narrow selects all of them.
+func dataEdges(traversals []hcl.Traversal, byType map[string][]string, allData, allLocals []string) []string {
+	var out []string
+	for _, traversal := range traversals {
+		out = appendTraversalEdges(out, traversal, byType, allData, allLocals)
+	}
+	return out
+}
+
+func appendTraversalEdges(out []string, traversal hcl.Traversal, byType map[string][]string, allData, allLocals []string) []string {
+	switch traversal.RootName() {
+	case blockTypeLocalReference:
+		if name, ok := specificLocal(traversal); ok {
+			return append(out, "local."+name)
+		}
+		return append(out, allLocals...)
+	case terraformDataIdentifier:
+		switch kind, typ, name := classifyData(traversal); kind {
+		case dataOne:
+			return append(out, DataKey(typ, name))
+		case dataType:
+			return append(out, byType[typ]...)
+		case dataAll:
+			return append(out, allData...)
+		}
+	}
+	return out
+}
+
+type dataRefKind int
+
+const (
+	dataOne dataRefKind = iota + 1
+	dataType
+	dataAll
+)
+
+// classifyData reports how much of data a traversal reads. A constant type and
+// name is one block. A constant type whose name is missing or not a single
+// step is every block of that type. Anything else that still roots at data is
+// every data block.
+func classifyData(traversal hcl.Traversal) (kind dataRefKind, typ, name string) {
+	if len(traversal) < 2 {
+		return dataAll, "", ""
+	}
+	typ, ok := cycleStepName(traversal[1])
+	if !ok {
+		return dataAll, "", ""
+	}
+	if len(traversal) < 3 {
+		return dataType, typ, ""
+	}
+	name, ok = cycleStepName(traversal[2])
+	if !ok {
+		return dataType, typ, ""
+	}
+	return dataOne, typ, name
+}
+
+func specificLocal(traversal hcl.Traversal) (string, bool) {
+	if len(traversal) < 2 {
+		return "", false
+	}
+	return cycleStepName(traversal[1])
+}
+
+// reachesItself reports whether a path of at least one edge leads from start
+// back to start.
+func reachesItself(edges map[string][]string, start string) bool {
+	seen := map[string]bool{}
+	stack := append([]string(nil), edges[start]...)
+	for len(stack) > 0 {
+		node := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if node == start {
+			return true
+		}
+		if seen[node] {
+			continue
+		}
+		seen[node] = true
+		stack = append(stack, edges[node]...)
+	}
+	return false
 }
 
 func renderLocalData(

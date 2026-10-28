@@ -19,7 +19,7 @@ import (
 // allow, is kept as written. The budget is claimed per dynamic block, so a block
 // nested in the content of an expanded parent can find it spent and stay as
 // written while its siblings were expanded.
-func (e *Evaluator) addDynamicBlocks(out map[string]cty.Value, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState) {
+func (e *Evaluator) addDynamicBlocks(out *nestedBlocks, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState) {
 	content := dynamicblock.Content(b)
 	exp := dynamicblock.Expand(b, ctx)
 	name := dynamicblock.IteratorName(b)
@@ -37,12 +37,12 @@ func (e *Evaluator) addDynamicBlocks(out map[string]cty.Value, b *hclsyntax.Bloc
 	}
 	if !resolved {
 		st.recordDynamic(b, keptAsWritten)
-		addNestedBlock(out, append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st.withoutMemo())))
+		out.add(append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st.withoutMemo())))
 		return
 	}
 	st.recordDynamic(b, len(scopes))
 	for i, scope := range scopes {
-		addNestedBlock(out, paths[i], objectOrEmpty(e.evalBodyWith(content, scope, nil, st.inDynamic(name))))
+		out.add(paths[i], objectOrEmpty(e.evalBodyWith(content, scope, nil, st.inDynamic(name))))
 	}
 }
 

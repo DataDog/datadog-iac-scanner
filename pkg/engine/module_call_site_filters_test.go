@@ -57,11 +57,13 @@ resource "aws_s3_bucket" "this" {
 	}
 	ins := newTestInspector(t, inspectorOpts{
 		queries: []model.QueryMetadata{{
-			Query:       "acl_rule",
-			Content:     aclRule,
-			InputData:   "{}",
-			Platform:    "terraform",
-			Metadata:    map[string]interface{}{"id": "acl-rule"},
+			Query:     "acl_rule",
+			Content:   aclRule,
+			InputData: "{}",
+			Platform:  "terraform",
+			// "Terraform" puts the call chain in the finding identity, as the
+			// Terraform rules do. Without it the two callers are one finding.
+			Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 			Aggregation: 1,
 		}},
 		repoPath:      root,

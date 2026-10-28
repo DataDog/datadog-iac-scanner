@@ -295,7 +295,6 @@ func runFiles(
 		featureflags.NewLocalEvaluator(),
 		vfs.DiskFS{},
 		false,
-		false,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -491,9 +490,10 @@ func (s *singleRuleSource) GetQueryLibrary(ctx context.Context, platform string)
 
 type noopTracker struct{}
 
-func (t *noopTracker) TrackQueryLoad(int)      {}
-func (t *noopTracker) TrackQueryExecuting(int) {}
-func (t *noopTracker) TrackQueryExecution(int) {}
-func (t *noopTracker) FailedDetectLine()       {}
-func (t *noopTracker) FailedLineInfoDocument() {}
-func (t *noopTracker) GetOutputLines() int     { return 0 }
+func (t *noopTracker) TrackQueryLoad(int)       {}
+func (t *noopTracker) TrackQueryExecuting(int)  {}
+func (t *noopTracker) TrackQueryExecution(int)  {}
+func (t *noopTracker) FailedDetectLine()        {}
+func (t *noopTracker) FailedLineInfoDocument()  {}
+func (t *noopTracker) SkippedSupersededResult() {}
+func (t *noopTracker) GetOutputLines() int      { return 0 }

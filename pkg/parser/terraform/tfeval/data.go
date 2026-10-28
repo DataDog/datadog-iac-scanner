@@ -74,6 +74,10 @@ type moduleData struct {
 	// against; republishing it need not refresh the data again.
 	moduleAtRefresh cty.Value
 
+	// cyclic holds the blocks reading their own result, directly or through
+	// other data blocks and locals. data.* exposes them as unknown.
+	cyclic map[*hclsyntax.Block]bool
+
 	// jsonBodies holds the native JSON body of each locally computed data
 	// block declared in a JSON configuration file. Converted to native syntax
 	// without a schema, its nested blocks read as attributes.
@@ -114,8 +118,36 @@ func newModuleData(
 	if d.readsLocals && localsReadResources(scope.Locals, moduleRoot) {
 		d.readsModuleOutputs = true
 	}
+	if d.readsData || (d.readsLocals && len(d.dataLocals) > 0) {
+		d.cyclic = cyclicDataBlocks(blocks, scope.Locals)
+	}
 	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
 	return d
+}
+
+// cyclicDataBlocks returns the data blocks that read their own result,
+// directly or through other data blocks and locals (see terraform.DataCycles).
+func cyclicDataBlocks(blocks []*hclsyntax.Block, localExprs map[string]hclsyntax.Expression) map[*hclsyntax.Block]bool {
+	reads := make(map[string][]hcl.Traversal, len(blocks))
+	for _, b := range blocks {
+		key := terraform.DataKey(b.Labels[0], b.Labels[1])
+		reads[key] = append(reads[key], terraform.BodyTraversals(b.Body)...)
+	}
+	locals := make(map[string][]hcl.Traversal, len(localExprs))
+	for name, expr := range localExprs {
+		locals[name] = expr.Variables()
+	}
+	keys := terraform.DataCycles(reads, locals)
+	var cyclic map[*hclsyntax.Block]bool
+	for _, b := range blocks {
+		if keys[terraform.DataKey(b.Labels[0], b.Labels[1])] {
+			if cyclic == nil {
+				cyclic = map[*hclsyntax.Block]bool{}
+			}
+			cyclic[b] = true
+		}
+	}
+	return cyclic
 }
 
 func jsonLocalDataBodies(blocks []*hclsyntax.Block, sources map[string][]byte) map[*hclsyntax.Block]hcl.Body {
@@ -270,7 +302,26 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 	d.instances = instances
 	byType := &hcl.EvalContext{Variables: map[string]cty.Value{}}
 	injectResourceRefs(byType, exposed)
+	for _, b := range d.blocks {
+		if d.cyclic[b] {
+			exposeUnknown(byType, b.Labels[0], b.Labels[1])
+		}
+	}
 	return objectOrEmpty(byType.Variables)
+}
+
+// exposeUnknown sets data.<typ>.<name> to an unknown value, the result of a
+// reference cycle.
+func exposeUnknown(byType *hcl.EvalContext, typ, name string) {
+	attrs := map[string]cty.Value{}
+	if current, ok := byType.Variables[typ]; ok && slicableObject(current) {
+		attrs = current.AsValueMap()
+		if attrs == nil {
+			attrs = map[string]cty.Value{}
+		}
+	}
+	attrs[name] = cty.DynamicVal
+	byType.Variables[typ] = cty.ObjectVal(attrs)
 }
 
 // blockEvalCache is a data block's last evaluation: the context variables it

@@ -45,6 +45,23 @@ func (d *DetectLine) Add(detector kindDetectLine, kind model.FileKind) *DetectLi
 	return d
 }
 
+// scannedFileReporter is a kindDetectLine that reports every line it detects,
+// or fails to, on the scanned file itself rather than on a file it references.
+type scannedFileReporter interface {
+	ReportsScannedFile() bool
+}
+
+// ReportsScannedFile reports whether a finding raised on file with a search
+// key is always reported on file.FilePath, whatever its search key resolves
+// to, so its file is known before its line is detected.
+func (d *DetectLine) ReportsScannedFile(file *model.FileMetadata) bool {
+	if d == nil {
+		return false
+	}
+	det, ok := d.detectors[file.Kind].(scannedFileReporter)
+	return ok && det.ReportsScannedFile()
+}
+
 // DetectLine will use the correct kindDetectLine according to the files kind
 // if file kind is not in detectors default detect line is called
 func (d *DetectLine) DetectLine(ctx context.Context, file *model.FileMetadata, searchKey string) model.VulnerabilityLines {

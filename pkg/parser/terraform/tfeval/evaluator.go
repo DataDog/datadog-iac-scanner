@@ -184,6 +184,9 @@ type ModuleInstance struct {
 type Evaluator struct {
 	funcs    map[string]function.Function
 	maxDepth int
+	// cyclicDataWarned holds the directories already warned about for a data
+	// reference cycle.
+	cyclicDataWarned sync.Map
 	// fsys serves the evaluator's directory reads (module and tfvars files).
 	// Defaults to the real disk; content-push scans inject an in-memory FS.
 	fsys vfs.FS
@@ -639,18 +642,21 @@ func (e *Evaluator) evaluate(
 	evalCtx.Variables["local"] = objectOrEmpty(
 		e.resolveLocalsIncremental(scope, localExprs, resourceTypes, evalCtx, false, false))
 	data := newModuleData(e, bodies, sources, scope, resourceTypes, addr, chain, hasUnconditionalResourceBlock(resourceBlocks))
+	e.noteCyclicData(ctx, dir, data)
 	data.refresh(ctx, evalCtx)
 
 	if !e.preinjectResourceRefs(ctx, resourceBlocks, moduleBlocks, localExprs, scope, resourceTypes, evalCtx, data, addr, chain) {
 		return nil, nil, e.skipEvaluation(dir)
 	}
 
+	reads := callSiblingReads(moduleBlocks)
 	e.applySiblingModulePrepass(
-		ctx, moduleBlocks, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, evalCtx, scope, data, localExprs, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
+		ctx, moduleBlocks, reads, evalCtx, scope, data, localExprs, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		allVisited,
 	)
 
 	e.applyModuleOutputs(ctx, evalCtx, scope, localExprs, data, moduleOutputs)
@@ -983,6 +989,7 @@ func (e *Evaluator) ResetSpeculativeBudget() {
 func (e *Evaluator) applySiblingModulePrepass(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
+	reads []siblingReads,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	data *moduleData,
@@ -995,7 +1002,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 		return
 	}
 	prelimOutputs := e.preliminaryModuleOutputs(
-		ctx, moduleBlocks, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, reads, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
 	e.installModuleOutputs(ctx, evalCtx, scope, scope.Locals, data, prelimOutputs)
 }
@@ -1003,6 +1010,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 func (e *Evaluator) evaluateLocalModuleBlocks(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
+	reads []siblingReads,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	data *moduleData,
@@ -1018,27 +1026,26 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	// Seed with the pre-pass values already in evalCtx so that forward dependencies
 	// (module B referencing module C where C appears later in file order) survive the
 	// first iteration's evalCtx.Variables["module"] update.
-	moduleOutputs = map[string]cty.Value{}
-	if existing, ok := evalCtx.Variables["module"]; ok &&
-		existing.IsKnown() &&
-		!existing.IsNull() &&
-		existing.Type().IsObjectType() {
-		for it := existing.ElementIterator(); it.Next(); {
-			k, v := it.Element()
-			name, ok := ctyutil.ConcreteString(k)
-			if !ok {
-				continue
-			}
-			moduleOutputs[name] = v
+	moduleOutputs = publishedModuleOutputs(evalCtx)
+
+	// Data reading module outputs is refreshed on every publication, so it
+	// keeps being published after every call.
+	var siblings *siblingOutputs
+	if !data.readsModules() {
+		siblings = &siblingOutputs{
+			e: e, ctx: ctx, evalCtx: evalCtx, scope: scope, localExprs: localExprs, data: data, outputs: moduleOutputs,
 		}
 	}
-
-	for _, mb := range moduleBlocks {
-		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
+	for blockIndex, mb := range moduleBlocks {
+		callCtx := evalCtx
+		if siblings != nil {
+			callCtx = siblings.contextFor(&reads[blockIndex])
+		}
+		call, ok := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
 		if !ok {
 			continue
 		}
-		plan := moduleInstances(mb, evalCtx)
+		plan := moduleInstances(mb, callCtx)
 		if plan.truncated() {
 			kind := "module_count"
 			if plan.mode == expansionForEach {
@@ -1078,11 +1085,51 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			outs[i] = objectOrEmpty(childOuts)
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
+			if siblings != nil {
+				siblings.set(call.label, value)
+				continue
+			}
 			moduleOutputs[call.label] = value
 			e.installSiblingModuleOutputs(ctx, evalCtx, scope, localExprs, data, moduleOutputs)
 		}
 	}
 	return childResources, moduleOutputs
+}
+
+// noteCyclicData warns, once per directory, about the data blocks reading their
+// own result, which data.* exposes as unknown.
+func (e *Evaluator) noteCyclicData(ctx context.Context, dir string, data *moduleData) {
+	if data == nil || len(data.cyclic) == 0 {
+		return
+	}
+	if _, seen := e.cyclicDataWarned.LoadOrStore(dir, true); seen {
+		return
+	}
+	names := make([]string, 0, len(data.cyclic))
+	for b := range data.cyclic {
+		names = append(names, terraform.DataKey(b.Labels[0], b.Labels[1]))
+	}
+	slices.Sort(names)
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Warn().Strs("data_blocks", names).
+		Msgf("tfeval: data reference cycle at %s; the blocks are read as unknown", dir)
+}
+
+// publishedModuleOutputs returns the module outputs evalCtx already publishes
+// as module.*, by call name.
+func publishedModuleOutputs(evalCtx *hcl.EvalContext) map[string]cty.Value {
+	out := map[string]cty.Value{}
+	existing, ok := evalCtx.Variables["module"]
+	if !ok || !existing.IsKnown() || existing.IsNull() || !existing.Type().IsObjectType() {
+		return out
+	}
+	for it := existing.ElementIterator(); it.Next(); {
+		k, v := it.Element()
+		if name, ok := ctyutil.ConcreteString(k); ok {
+			out[name] = v
+		}
+	}
+	return out
 }
 
 // discardFailedChild drops the instances and charges a failed child left
@@ -1561,11 +1608,35 @@ func makeForEachResource(
 		}),
 	}
 	res := makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child)
+	if fe, ok := res.Attributes[metaArgForEach]; ok {
+		res.Attributes[metaArgForEach] = instanceForEach(fe, keyStr, value)
+	}
 	if truncated {
 		res.ExpansionTruncated = true
 		res.ExpansionTotal = total
 	}
 	return res
+}
+
+// instanceForEach narrows a resource's evaluated for_each to the element of one
+// instance, as the instance sees it in Terraform: each instance kept the whole
+// collection, so instance documents grew with the square of the instance count.
+// Rules that read for_each only test that it is non-empty or walk the values
+// each.value can take, which for one instance is its own value.
+func instanceForEach(fe cty.Value, key string, value cty.Value) cty.Value {
+	if !fe.IsKnown() || fe.IsNull() || fe.IsMarked() {
+		return fe
+	}
+	ty := fe.Type()
+	switch {
+	case ty.IsMapType():
+		return cty.MapVal(map[string]cty.Value{key: value})
+	case ty.IsObjectType():
+		return cty.ObjectVal(map[string]cty.Value{key: value})
+	case ty.IsSetType():
+		return cty.SetVal([]cty.Value{value})
+	}
+	return fe
 }
 
 // injectResourceRefs sets evalCtx.Variables[type][name] from resources; returns true if changed.
@@ -1596,7 +1667,7 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 			b.expanded = true
 		}
 		b.keys = append(b.keys, key)
-		b.attrs = append(b.attrs, r.Attributes)
+		b.attrs = append(b.attrs, referenceAttributes(r.Attributes))
 		if r.ExpansionTruncated && r.ExpansionTotal > b.total {
 			b.total = r.ExpansionTotal
 			b.allKeys = r.ExpansionKeys
@@ -1618,6 +1689,32 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 		}
 	}
 	return progress
+}
+
+// Resource meta-arguments that expand a block into instances.
+const (
+	metaArgCount   = "count"
+	metaArgForEach = "for_each"
+)
+
+// referenceAttributes drops the count and for_each meta-arguments, which
+// Terraform does not expose on a resource instance. Every instance of a block
+// carries the whole for_each collection, so keeping it made the reference value
+// grow with the square of the instance count and comparing it, on every
+// reference pass, sort each copy.
+func referenceAttributes(attrs map[string]cty.Value) map[string]cty.Value {
+	_, hasCount := attrs[metaArgCount]
+	_, hasForEach := attrs[metaArgForEach]
+	if !hasCount && !hasForEach {
+		return attrs
+	}
+	out := make(map[string]cty.Value, len(attrs))
+	for name, v := range attrs {
+		if name != metaArgCount && name != metaArgForEach {
+			out[name] = v
+		}
+	}
+	return out
 }
 
 // buildInstanceCtyVal converts grouped resource instances into the cty value used for ref injection.
@@ -1860,15 +1957,67 @@ func (e *Evaluator) evalBodyWith(
 		out[name] = e.evalExprMemo(attr.Expr, ctx, st)
 	}
 
+	blocks := nestedBlocks{out: out}
 	for _, b := range body.Blocks {
 		if st != nil && dynamicblock.Is(b) {
-			e.addDynamicBlocks(out, b, ctx, st)
+			e.addDynamicBlocks(&blocks, b, ctx, st)
 			continue
 		}
 		path := append([]string{b.Type}, b.Labels...)
-		addNestedBlock(out, path, objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st)))
+		blocks.add(path, objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st)))
 	}
+	blocks.flushAll()
 	return out
+}
+
+// nestedBlocks adds the nested blocks of one body to out as addNestedBlock
+// does, but collects the blocks of a repeated unlabeled type and builds their
+// tuple once: rebuilding it per block made a body with n such blocks (written
+// or generated by dynamic blocks) cost n^2.
+type nestedBlocks struct {
+	out map[string]cty.Value
+	// pending holds, per key, the elements of the tuple out[key] will be set
+	// to; out[key] is stale while the key is pending.
+	pending map[string][]cty.Value
+}
+
+func (n *nestedBlocks) add(path []string, value cty.Value) {
+	key := path[0]
+	if len(path) > 1 {
+		n.flush(key)
+		addNestedBlock(n.out, path, value)
+		return
+	}
+	if list, ok := n.pending[key]; ok {
+		n.pending[key] = append(list, value)
+		return
+	}
+	current, ok := n.out[key]
+	if !ok {
+		n.out[key] = value
+		return
+	}
+	if n.pending == nil {
+		n.pending = make(map[string][]cty.Value)
+	}
+	if current.Type().IsTupleType() {
+		n.pending[key] = append(current.AsValueSlice(), value)
+	} else {
+		n.pending[key] = []cty.Value{current, value}
+	}
+}
+
+func (n *nestedBlocks) flush(key string) {
+	if list, ok := n.pending[key]; ok {
+		n.out[key] = cty.TupleVal(list)
+		delete(n.pending, key)
+	}
+}
+
+func (n *nestedBlocks) flushAll() {
+	for key := range n.pending {
+		n.flush(key)
+	}
 }
 
 // invariantMemo reuses the value of expressions that do not read each, count or
@@ -1983,6 +2132,7 @@ func evalLength(expr hclsyntax.Expression, ctx *hcl.EvalContext) (cty.Value, boo
 func (e *Evaluator) preliminaryModuleOutputs(
 	ctx context.Context,
 	moduleBlocks []*hclsyntax.Block,
+	reads []siblingReads,
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	dir, rootDir, packageRoot, addr string,
@@ -2003,12 +2153,32 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	for k, v := range visiting {
 		tmpVisiting[k] = v
 	}
-	for _, mb := range moduleBlocks {
-		call, ok := e.resolveModuleCall(ctx, mb, evalCtx, dir, packageRoot)
+	// Each call sees the outputs of the calls before it in this pre-pass, so
+	// that its inputs resolve to the same values that the main evaluation loop
+	// will compute — this keeps cache keys consistent. The pre-pass publishes
+	// module.* only, so a call reading a few named outputs is given just those,
+	// and module.* is rebuilt only for a call reading it as a whole or reading
+	// as many outputs as it holds. The caller publishes the complete object
+	// once the loop is done.
+	stale := false
+	for blockIndex, mb := range moduleBlocks {
+		callCtx := evalCtx
+		switch r := &reads[blockIndex]; {
+		case len(out) == 0:
+		case r.wholeModule || len(r.modules) >= len(out):
+			if stale {
+				evalCtx.Variables["module"] = cty.ObjectVal(out)
+				stale = false
+			}
+		case len(r.modules) > 0:
+			callCtx = evalCtx.NewChild()
+			callCtx.Variables = map[string]cty.Value{blockTypeModule: namedObject(out, r.modules)}
+		}
+		call, ok := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
 		if !ok {
 			continue
 		}
-		plan := moduleInstances(mb, evalCtx) // prepass: no truncation accounting
+		plan := moduleInstances(mb, callCtx) // prepass: no truncation accounting
 		site := call.site(scope)
 		outs := make([]cty.Value, len(plan.instances))
 		for i, instance := range plan.instances {
@@ -2024,10 +2194,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
 			out[call.label] = value
-			// Make each module's outputs visible to subsequent siblings within this
-			// same pre-pass loop, so their inputs resolve to the same values that the
-			// main evaluation loop will compute — this keeps cache keys consistent.
-			evalCtx.Variables["module"] = cty.ObjectVal(out)
+			stale = true
 		}
 	}
 	return out
