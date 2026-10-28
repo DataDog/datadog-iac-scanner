@@ -87,6 +87,20 @@ func (m *MemFS) Stat(name string) (fs.FileInfo, error) {
 	return nil, notExist("stat", name)
 }
 
+// DirInfo returns the info of a directory synthesized from the pushed file
+// keys: one exists when a pushed file lives under name. A miss is not recorded.
+func (m *MemFS) DirInfo(name string) (fs.FileInfo, bool) {
+	dir := normalize(name)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for p := range m.files {
+		if _, ok := underDir(p, dir); ok || dir == "." {
+			return memFileInfo{name: path.Base(dir), dir: true}, true
+		}
+	}
+	return nil, false
+}
+
 // ReadDir returns the immediate children of a directory synthesized from the
 // pushed file keys. A miss (no file lives under the directory) is recorded: an
 // absent directory is the primary escalation signal (a Terraform module whose
