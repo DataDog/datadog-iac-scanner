@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v3/pkg/chart"
@@ -27,8 +28,8 @@ func TestSilenceStdLogRestoresAfterLastRender(t *testing.T) {
 	log.SetOutput(&out)
 	defer log.SetOutput(prev)
 
-	endFirst := silenceStdLog()
-	endSecond := silenceStdLog()
+	endFirst := logger.SilenceStdLog()
+	endSecond := logger.SilenceStdLog()
 	endFirst()
 	log.Print("while a render is still running")
 	require.Empty(t, out.String())
