@@ -30,6 +30,7 @@ const (
 	KindPROTO         FileKind = "PROTO"
 	KindCOMMON        FileKind = "*"
 	KindHELM          FileKind = "HELM"
+	KindKUSTOMIZE     FileKind = "KUSTOMIZE"
 	KindBUILDAH       FileKind = "SH"
 	KindCFG           FileKind = "CFG"
 	KindINI           FileKind = "INI"
