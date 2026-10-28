@@ -467,11 +467,11 @@ func (e *Evaluator) CalledModuleDirs(dir string) []string {
 // CalledModuleDirsWithContext retains the scan's root and confinement cache
 // during discovery, which shares parsed directories with module evaluation.
 func (e *Evaluator) CalledModuleDirsWithContext(ctx context.Context, dir string) []string {
-	bodies, _, err := e.parseDir(ctx, dir, "")
-	if err != nil {
+	parsed := e.parseDir(ctx, dir, "")
+	if parsed.err != nil {
 		return nil
 	}
-	return calledModuleDirs(ctx, dir, bodies, e.remoteResolver, e.fsys)
+	return calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys)
 }
 
 func calledModuleDirs(ctx context.Context, dir string, bodies []*hclsyntax.Body, resolver RemoteResolver, fsys vfs.FS) []string {
