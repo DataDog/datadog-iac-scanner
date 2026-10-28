@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -221,5 +222,59 @@ func TestMemoizeDecodeParsesUncachedInputsOnce(t *testing.T) {
 	check(t, &full, kept+"b", 1, 1, false)
 	if _, ok := full.lookup(decodeKeyOf("f", kept+"b")); ok {
 		t.Fatal("a result past the budget was remembered")
+	}
+}
+
+func TestMemoizeDecodeKeepsUnknownPrefixType(t *testing.T) {
+	scan := NewScanFS(vfs.DiskFS{})
+	fn := EvalFuncsWithRoot(t.TempDir(), "", scan)["jsondecode"]
+	unknown := cty.UnknownVal(cty.String).Refine().NotNull().StringPrefixFull(`"`).NewValue()
+	ty, err := fn.ReturnTypeForValues([]cty.Value{unknown})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ty.Equals(cty.String) {
+		t.Fatalf("return type = %s, want string", ty.FriendlyName())
+	}
+	got, err := fn.Call([]cty.Value{unknown})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsKnown() || !got.Type().Equals(cty.String) {
+		t.Fatalf("result = %#v, want an unknown string", got)
+	}
+}
+
+func TestMemoizeDecodeSharesOneInFlightDecode(t *testing.T) {
+	scan := NewScanFS(vfs.DiskFS{})
+	fn := EvalFuncsWithRoot(t.TempDir(), "", scan)["jsondecode"]
+	doc := largeJSON(300)
+	want, err := stdlib.JSONDecodeFunc.Call([]cty.Value{cty.StringVal(doc)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	errc := make(chan error, 32)
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, err := fn.Call([]cty.Value{cty.StringVal(doc)})
+			if err != nil {
+				errc <- err
+				return
+			}
+			if !got.RawEquals(want) {
+				errc <- fmt.Errorf("decoded value differs")
+			}
+		}()
+	}
+	wg.Wait()
+	close(errc)
+	for err := range errc {
+		t.Error(err)
+	}
+	if n := len(scan.decodes.results); n != 1 {
+		t.Fatalf("memo holds %d results, want 1", n)
 	}
 }
