@@ -753,6 +753,35 @@ type ResolvedHelm struct {
 	HelmInvocations HelmInvocations
 	IDInfo          map[int]interface{}
 	IsCRD           bool
+	// Kustomize is set when the document was rendered by Kustomize.
+	Kustomize *KustomizeAttribution
+}
+
+// KustomizeAttribution ties a document rendered by Kustomize to the files a
+// developer edits. Paths are absolute. There is no patch provenance: a field
+// an overlay patch introduced is attributed to the source document.
+type KustomizeAttribution struct {
+	// RenderRoot is the kustomization directory that was rendered.
+	RenderRoot string
+	Kind       string
+	// SourceName and SourceNamespace are as written in the source document;
+	// RenderedName and RenderedNamespace are after transformers.
+	SourceName        string
+	SourceNamespace   string
+	RenderedName      string
+	RenderedNamespace string
+	// Chain lists the kustomization files from the render root to the one that
+	// loaded the source file.
+	Chain []string
+	// Generator is set for generated objects: the generator kind and name in the
+	// kustomization file (FileName).
+	Generator *KustomizeGenerator
+}
+
+// KustomizeGenerator names the generator entry that produced an object.
+type KustomizeGenerator struct {
+	Kind string
+	Name string
 }
 
 // HelmInvocationAt is an include-like action that emitted part of a rendered

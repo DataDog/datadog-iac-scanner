@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/kustomize/api/types"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
@@ -292,3 +293,43 @@ type file struct {
 func (f *file) Write([]byte) (int, error)  { return 0, errReadOnly }
 func (f *file) Close() error               { return nil }
 func (f *file) Stat() (os.FileInfo, error) { return f.info, nil }
+
+// withOriginAnnotations returns content with originAnnotations added to
+// buildMetadata, or nil when content is not a mapping.
+func withOriginAnnotations(content []byte) []byte {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(content, &doc); err != nil || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil
+	}
+	m := doc.Content[0]
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value != "buildMetadata" {
+			continue
+		}
+		seq := m.Content[i+1]
+		if seq.Kind != yaml.SequenceNode {
+			return nil
+		}
+		for _, v := range seq.Content {
+			if v.Value == types.OriginAnnotations {
+				return content
+			}
+		}
+		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: types.OriginAnnotations})
+		out, err := yaml.Marshal(&doc)
+		if err != nil {
+			return nil
+		}
+		return out
+	}
+	m.Content = append(m.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "buildMetadata"},
+		&yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: types.OriginAnnotations},
+		}})
+	out, err := yaml.Marshal(&doc)
+	if err != nil {
+		return nil
+	}
+	return out
+}
