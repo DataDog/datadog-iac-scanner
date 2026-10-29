@@ -102,6 +102,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	c.ScanParams.Config.IgnorePaths = pathTypes.Exc
 	c.walkInventory = pathTypes.Inventory
 	c.walkScopeExcludes = pathTypes.ScopeExcludes
+	contextLogger.Info().Msgf("QADEBUG scopeExcludes=%q exc=%q", pathTypes.ScopeExcludes, pathTypes.Exc)
 	c.chartRoots = pathTypes.ChartRoots
 	c.kustomizeRoots = pathTypes.KustomizeRoots
 	c.chartFilter = chartFilter

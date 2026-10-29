@@ -182,6 +182,8 @@ func rootFileList(res *kustomize.Result, rel string, listed map[string]string, w
 	renderer *kustomize.Renderer, service *Service, ctx context.Context,
 	openAPIResolveReferences bool, maxResolverDepth int, scope *provider.PathFilter) model.ResolvedFiles {
 	resFiles := model.ResolvedFiles{File: make([]model.ResolvedHelm, 0, len(res.Documents))}
+	cl := logger.FromContext(context.TODO())
+	cl.Info().Msgf("QADEBUG2 docs=%d", len(res.Documents))
 	for i := range res.Documents {
 		d := &res.Documents[i]
 		d.Kustomize.RenderRoot = rel
