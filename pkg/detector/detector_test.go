@@ -147,8 +147,9 @@ func TestKustomizeDetectLine(t *testing.T) {
 		Kustomize: &model.KustomizeAttribution{Kind: "ConfigMap", RenderedName: "settings-abc",
 			Generator: &model.KustomizeGenerator{Kind: "ConfigMapGenerator", Name: "settings"}},
 	}
+	// The snippet is the entry's name alone: the literals line never shows.
 	got = KustomizeDetectLine{}.DetectLine(context.Background(), gen, "metadata.name={{settings-abc}}.data.SECRET", 3)
-	if got.Line != 2 || got.LineWithVulnerability != "  - name: settings" || len(*got.VulnLines) != 1 {
+	if got.Line != 2 || got.LineWithVulnerability != "name: settings" || len(*got.VulnLines) != 1 {
 		t.Errorf("generator line: %+v", got)
 	}
 

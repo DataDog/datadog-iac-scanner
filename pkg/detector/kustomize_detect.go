@@ -43,17 +43,14 @@ func SourceSearchKey(a *model.KustomizeAttribution, searchKey string) string {
 }
 
 func generatorLine(file *model.FileMetadata, a *model.KustomizeAttribution) model.VulnerabilityLines {
-	lines := file.Lines()
-	// Without a matching entry line, line 1 is reported with no source text:
-	// any line of a kustomization may hold generator literals.
-	line, text := 1, ""
-	for i, l := range lines {
-		t := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "- "))
-		if t == "name: "+a.Generator.Name || t == `name: "`+a.Generator.Name+`"` {
-			line, text = i+1, l
-			break
-		}
+	// The generator entry is found structurally (any YAML style), and the
+	// shown text is the entry's name alone: generator literals never reach
+	// the output, not even on a flow-style line.
+	line := generatorEntryLine(file.OriginalData, a.Generator.Name)
+	if line <= 0 {
+		line = 1
 	}
+	text := "name: " + a.Generator.Name
 	loc := model.ResourceLocation{
 		Start: model.ResourceLine{Line: line, Col: 1},
 		End:   model.ResourceLine{Line: line, Col: len(text) + 1},
@@ -125,6 +122,36 @@ func documentSpan(content string, index int) (start, end int, ok bool) {
 		end = starts[index+1] - 1
 	}
 	return start, end, true
+}
+
+// generatorEntryLine is the 1-based line of the generator entry named name in
+// a kustomization, in any YAML style.
+func generatorEntryLine(content, name string) int {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil || len(doc.Content) == 0 {
+		return 0
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return 0
+	}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		section := root.Content[i+1]
+		if root.Content[i].Value != "configMapGenerator" && root.Content[i].Value != "secretGenerator" {
+			continue
+		}
+		if section.Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, item := range section.Content {
+			for k := 0; k+1 < len(item.Content); k += 2 {
+				if item.Content[k].Value == "name" && item.Content[k+1].Value == name {
+					return item.Line
+				}
+			}
+		}
+	}
+	return 0
 }
 
 func shift(v *model.VulnerabilityLines, by int) {
