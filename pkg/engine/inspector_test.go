@@ -488,6 +488,130 @@ func TestBuildPlatformPayloadsSharesSubtreesAndReleases(t *testing.T) {
 		"shared child subtrees must map to one ast.Value")
 }
 
+// scopeDocIDs decodes the ids of the documents held by a scope payload.
+func scopeDocIDs(t *testing.T, payload ast.Value) []string {
+	t.Helper()
+	docs := payload.(ast.Object).Get(ast.StringTerm("document")).Value.(*ast.Array)
+	ids := make([]string, 0, docs.Len())
+	for i := 0; i < docs.Len(); i++ {
+		id := docs.Elem(i).Value.(ast.Object).Get(ast.StringTerm("id")).Value.(ast.String)
+		ids = append(ids, string(id))
+	}
+	return ids
+}
+
+func TestRenderRootsPerDoc(t *testing.T) {
+	filesMap := map[string]*model.FileMetadata{
+		"root-a":  {ID: "root-a", Platform: "kubernetes", RenderRoot: "overlays/a"},
+		"root-b":  {ID: "root-b", Platform: "kubernetes", RenderRoot: "."},
+		"raw":     {ID: "raw", Platform: "kubernetes"},
+		"unknown": {ID: "unknown", Platform: ""},
+	}
+	docs := []interface{}{
+		map[string]interface{}{"id": "root-a"},
+		map[string]interface{}{"id": "unknown"},
+		map[string]interface{}{"id": "raw"},
+		map[string]interface{}{"id": "root-b"},
+	}
+
+	require.Nil(t, renderRootsPerDoc(map[string]*model.FileMetadata{}, docs))
+
+	roots := renderRootsPerDoc(filesMap, docs)
+	require.NotNil(t, roots)
+	require.Equal(t, []string{"overlays/a", "", "", "."}, roots)
+}
+
+func TestKubernetesScopes(t *testing.T) {
+	docTerm := func(id string) *ast.Term {
+		return ast.MustParseTerm(fmt.Sprintf(`{"id": %q}`, id))
+	}
+
+	// No render root anywhere: no scopes, rules evaluate the plain payload.
+	require.Nil(t, kubernetesScopes(nil, nil, [][]string{{"kubernetes"}}, nil))
+
+	// Every Kubernetes doc is raw: one implicit scope, not worth splitting.
+	terms := []*ast.Term{docTerm("raw-1"), docTerm("raw-2")}
+	require.Nil(t, kubernetesScopes([]string{"", ""}, terms, [][]string{{"kubernetes"}, {"kubernetes"}}, nil))
+
+	// Two roots: one payload each, sorted by root; raw docs land in their own
+	// scope (sorted first, empty key) and knative docs follow their kubernetes
+	// bucket.
+	terms = []*ast.Term{
+		docTerm("b-1"), docTerm("raw"), docTerm("a-1"), docTerm("kna"),
+	}
+	scopes := kubernetesScopes(
+		[]string{"overlays/b", "", "overlays/a", "overlays/a"},
+		terms,
+		[][]string{{"kubernetes"}, nil, {"kubernetes"}, {"knative", "kubernetes"}},
+		[]int{1},
+	)
+	require.Len(t, scopes, 3)
+	require.Equal(t, []string{"raw"}, scopeDocIDs(t, scopes[0]))
+	require.Equal(t, []string{"a-1", "kna"}, scopeDocIDs(t, scopes[1]))
+	require.Equal(t, []string{"b-1"}, scopeDocIDs(t, scopes[2]))
+
+	// A non-Kubernetes doc is not scoped at all: only the root holding the
+	// Kubernetes doc forms a scope.
+	scopes = kubernetesScopes(
+		[]string{"overlays/a", "overlays/b"},
+		[]*ast.Term{docTerm("tf"), docTerm("a-1")},
+		[][]string{{"terraform"}, {"kubernetes"}},
+		nil,
+	)
+	require.Len(t, scopes, 1)
+	require.Equal(t, []string{"a-1"}, scopeDocIDs(t, scopes[0]))
+}
+
+func TestBuildPlatformPayloadsScopesKubernetesByRenderRoot(t *testing.T) {
+	filesMap := map[string]*model.FileMetadata{
+		"a": {ID: "a", Platform: "kubernetes", RenderRoot: "overlays/dev"},
+		"b": {ID: "b", Platform: "kubernetes", RenderRoot: "overlays/prod"},
+		"r": {ID: "r", Platform: "kubernetes"},
+	}
+	documents := []model.Document{
+		{"id": "a", "kind": "Pod"},
+		{"id": "b", "kind": "Pod"},
+		{"id": "r", "kind": "Pod"},
+	}
+
+	// Kubernetes queries are needed: scopes split the payload by root, and
+	// every scope document also belongs to the plain kubernetes payload.
+	payloads, err := (&Inspector{}).buildPlatformPayloads(
+		context.Background(), filesMap, documents, nil,
+		[]model.QueryMetadata{{Platform: "k8s"}})
+	require.NoError(t, err)
+	require.Len(t, payloads.kubernetesScopes, 3)
+	full := scopeDocIDs(t, payloads.byPlatform["kubernetes"])
+	require.ElementsMatch(t, []string{"a", "b", "r"}, full)
+	scoped := map[string][]string{}
+	for _, s := range payloads.kubernetesScopes {
+		scoped[fmt.Sprint(scopeDocIDs(t, s))] = nil
+		require.Subset(t, full, scopeDocIDs(t, s))
+	}
+	require.Len(t, scoped, 3)
+
+	// No Kubernetes query needs the platform: no scopes are built.
+	payloads, err = (&Inspector{}).buildPlatformPayloads(
+		context.Background(), filesMap, documents, nil,
+		[]model.QueryMetadata{{Platform: "terraform"}})
+	require.NoError(t, err)
+	require.Nil(t, payloads.kubernetesScopes)
+
+	// A single render root and no raw Kubernetes doc still scopes (the rule
+	// sees exactly that root), but raw-only scans keep the plain payload.
+	filesMap = map[string]*model.FileMetadata{
+		"x": {ID: "x", Platform: "kubernetes", RenderRoot: "overlays/dev"},
+		"y": {ID: "y", Platform: "kubernetes"},
+	}
+	// Mixed raw: one scope per root plus the raw scope.
+	payloads, err = (&Inspector{}).buildPlatformPayloads(
+		context.Background(), filesMap,
+		[]model.Document{{"id": "x"}, {"id": "y"}}, nil,
+		[]model.QueryMetadata{{Platform: "k8s"}})
+	require.NoError(t, err)
+	require.Len(t, payloads.kubernetesScopes, 2)
+}
+
 func TestEngine_selectPlatformPayload(t *testing.T) {
 	full := ast.String("FULL")
 	byPlatform := map[string]ast.Value{

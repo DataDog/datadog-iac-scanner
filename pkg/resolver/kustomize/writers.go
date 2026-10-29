@@ -97,7 +97,6 @@ func assignDepthsAndAffixes(byDir map[string]*kustNode, rootDir string, closure 
 	}
 }
 
-
 func closureAffix(closure map[string]Affixes, dir string) Affixes {
 	if closure == nil {
 		return Affixes{}
