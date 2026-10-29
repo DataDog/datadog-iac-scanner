@@ -8,6 +8,7 @@ package scan
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
@@ -259,14 +260,22 @@ func (c *Client) Scan(ctx context.Context) (*Results, error) {
 	return c.executeScan(ctx)
 }
 
-// collectKustomize reports whether Kustomize roots should be collected:
-// rendering is enabled and payload export (which would write rendered
-// content to disk) is off.
+// collectKustomize reports whether Kustomize roots should be collected and
+// may activate the Kubernetes parsers: rendering is enabled, payload export
+// (which would write rendered content to disk) is off, and Kubernetes is
+// among the effective platforms.
 func (c *Client) collectKustomize() bool {
 	if !c.ScanParams.EnableKustomize || c.ScanParams.PayloadPath != "" {
 		return false
 	}
-	return true
+	active := c.ScanParams.GetEffectivePlatforms()
+	// No -t at all (or the all-platforms marker) scans every platform.
+	for _, name := range active {
+		if name == "" || strings.EqualFold(name, "kubernetes") {
+			return true
+		}
+	}
+	return len(active) == 0
 }
 
 // PerformScan executes executeScan and postScan
