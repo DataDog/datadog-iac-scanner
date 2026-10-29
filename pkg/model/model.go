@@ -281,6 +281,54 @@ func (st *linesLazyState) cacheLineMatches(lines, n int) bool {
 	return len(st.matches) < lines && st.matchedIndexes+n <= cachedLineMatchesPerLine*lines
 }
 
+// TerraformBlock identifies one Terraform configuration block the way
+// Terraform's own addresses name it: kind ("resource", "data", "module",
+// "variable", ...), and for the labeled kinds its type and name. See
+// pkg/parser/terraform/address, which aliases this type.
+type TerraformBlock struct {
+	Kind string
+	Type string
+	Name string
+}
+
+// TerraformScope is a scanned file's Terraform identity context
+// (K9CODESEC-7158): the root module its blocks belong to, the module instance
+// address they are evaluated under, the blocks it declares, and which block
+// instance a synthetic document represents.
+type TerraformScope struct {
+	// RootModule is the repository-relative root module directory this file's
+	// blocks belong to: the file's own directory for an HCL file, the file
+	// itself for a terraform plan -json or .tfvars file (a plan or a vars file
+	// is one evaluation, not a directory of source). It pairs with
+	// Vulnerability.ResourceID: a Terraform address is root-relative, so the
+	// two together identify an instance in a repository that may call the same
+	// module path from several root stacks.
+	RootModule string
+	// ModuleAddress is the module instance address the file's blocks are
+	// evaluated under (module.a["x"], keys included), empty for a root or
+	// standalone file.
+	ModuleAddress string
+	// Blocks records every top-level block the file declares, so a finding's
+	// resourceType and resourceName can be verified against the configuration
+	// before its address is built. Nil when there is no document to verify
+	// against (a .tfvars file).
+	Blocks map[TerraformBlock]bool
+	// Instances maps an expanded block to the count/for_each key suffix the
+	// document represents ("[0]", `["key"]`). Set only on synthetic
+	// per-instance documents; one document holds at most one instance of a
+	// block, so the lookup is exact.
+	Instances map[TerraformBlock]string
+	// Borrowed marks blocks a synthetic document carries only for context: a
+	// sibling copied into an expanded-root layer the document does not own.
+	// Findings on borrowed blocks are reported by the owning document.
+	Borrowed map[TerraformBlock]bool
+	// PlanAddresses holds a terraform plan -json document's per-resource
+	// addresses (the ones Terraform itself computed), flattened by
+	// pkg/parser/json's PlanAddresses while the document is alive and keyed
+	// (type, document key). The engine never rebuilds the plan's key layout.
+	PlanAddresses map[[2]string]string
+}
+
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
 	ID               string `db:"id"`
