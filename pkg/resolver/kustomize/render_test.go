@@ -2077,6 +2077,59 @@ patchesJson6902:
 	t.Fatal("no deployment rendered")
 }
 
+// TestRenderWritersLabelsAndAnnotations attributes a field a label or
+// annotation transformer set to its entry, and leaves replacements
+// unattributed rather than guessed.
+func TestRenderWritersLabelsAndAnnotations(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": `resources:
+  - dep.yaml
+  - cm.yaml
+labels:
+  - pairs:
+      app: web
+commonAnnotations:
+  owner: team
+replacements:
+  - source: {kind: ConfigMap, name: x, fieldPath: data.k}
+    targets:
+      - select: {kind: Deployment}
+        fieldPaths:
+          - metadata.annotations.note
+`,
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  annotations:\n    note: old\n",
+		"o/cm.yaml":  "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\ndata:\n  k: fresh\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		var labels, annotations, replacements bool
+		for _, w := range d.Kustomize.Writers {
+			switch w.Kind {
+			case model.KustomizeLabels:
+				labels = w.Name == "app" && w.Line == 5
+			case model.KustomizeAnnotations:
+				annotations = w.Name == "owner" && w.Line == 8
+			case model.KustomizeReplacement:
+				replacements = true
+			}
+		}
+		if !labels || !annotations {
+			t.Fatalf("label/annotation writers missing (labels=%v annotations=%v)", labels, annotations)
+		}
+		if replacements {
+			t.Fatal("replacement must not be attributed")
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
 // TestRenderInlineOffsetsDistinct keeps two inline patches with the same
 // first line apart: each writer points at its own entry line.
 func TestRenderInlineOffsetsDistinct(t *testing.T) {
@@ -2214,9 +2267,10 @@ patches:
 			rel, _ := filepath.Rel(dir, w.File)
 			got = append(got, w.Kind+":"+filepath.ToSlash(rel)+":"+strconv.Itoa(w.LineOffset+w.Line))
 		}
-		// Kustomize applies patches in listing order, so the last writer to
-		// touch a field is found first.
+		// Kustomize applies images after namespace after patches, so the last
+		// writer to touch a field is found first.
 		want := []string{
+			"images:overlays/dev/kustomization.yaml:6", "namespace:overlays/dev/kustomization.yaml:2",
 			"smp:overlays/dev/kustomization.yaml:14", "json6902:overlays/dev/ops.yaml:0",
 			"smp:overlays/dev/smp.yaml:0",
 		}

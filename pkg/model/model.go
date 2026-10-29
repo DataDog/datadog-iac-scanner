@@ -833,6 +833,12 @@ func (a *KustomizeAttribution) ResourceID(resourceName string) string {
 const (
 	KustomizeStrategicMerge = "smp"
 	KustomizeJSON6902       = "json6902"
+	KustomizeImages         = "images"
+	KustomizeNamespace      = "namespace"
+	KustomizeReplicas       = "replicas"
+	KustomizeLabels         = "labels"
+	KustomizeAnnotations    = "annotations"
+	KustomizeReplacement    = "replacement"
 )
 
 // KustomizeWriter is a patch or builtin transformer entry of a kustomization

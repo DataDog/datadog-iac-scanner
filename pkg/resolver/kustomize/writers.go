@@ -265,6 +265,22 @@ func (r *Renderer) ownWriters(n *kustNode, a *model.KustomizeAttribution) []mode
 	kustText, _ := r.Source(n.file)
 	node := r.KustNode(n.file, kustText)
 	var out []model.KustomizeWriter
+	// Replacements apply last and are not attributed; mapResources counts
+	// them instead of guessing their lines.
+	for i := len(n.k.Images) - 1; i >= 0; i-- {
+		img := n.k.Images[i]
+		if l := entryLine(node, "images", i, img.Name); l > 0 {
+			out = append(out, model.KustomizeWriter{Kind: model.KustomizeImages, File: n.file, Line: l, Name: img.Name})
+		}
+	}
+	for i := len(n.k.Replicas) - 1; i >= 0; i-- {
+		rep := n.k.Replicas[i]
+		if nameMatchesLevel(rep.Name, n, a) {
+			if l := entryLine(node, "replicas", i, rep.Name); l > 0 {
+				out = append(out, model.KustomizeWriter{Kind: model.KustomizeReplicas, File: n.file, Line: l, Name: rep.Name})
+			}
+		}
+	}
 	// JSON 6902 patches apply after the node's own label and annotation
 	// transformers: their selectors see those entries too.
 	afterKV := *a
@@ -274,6 +290,14 @@ func (r *Renderer) ownWriters(n *kustNode, a *model.KustomizeAttribution) []mode
 		p := n.k.PatchesJson6902[i] //nolint:staticcheck // see above
 		if w, ok := r.patchWriter(n, node, "patchesJson6902", i, p.Path, p.Patch, p.Target, &afterKV); ok {
 			out = append(out, w)
+		}
+	}
+	out = append(out, kvWriters(n, node, "commonAnnotations", model.KustomizeAnnotations)...)
+	out = append(out, kvWriters(n, node, "commonLabels", model.KustomizeLabels)...)
+	out = append(out, kvWriters(n, node, "labels", model.KustomizeLabels)...)
+	if n.k.Namespace != "" {
+		if l := sectionLine(node, "namespace"); l > 0 {
+			out = append(out, model.KustomizeWriter{Kind: model.KustomizeNamespace, File: n.file, Line: l})
 		}
 	}
 	// Unified patches apply in listing order; reversed, the last one is
@@ -330,6 +354,57 @@ func (r *Renderer) legacySMPWriters(n *kustNode, node *yaml.Node, a *model.Kusto
 	return out
 }
 
+// kvWriters lists one writer per label or annotation entry of the section,
+// keyed by the keys that entry sets. Kustomize applies them in listing order,
+// so the last entry is found first. A mapping section (commonAnnotations)
+// yields one writer per key.
+func kvWriters(n *kustNode, node *yaml.Node, section, kind string) []model.KustomizeWriter {
+	sectionNode := mappingValue(node, section)
+	if sectionNode == nil {
+		return nil
+	}
+	var out []model.KustomizeWriter
+	if sectionNode.Kind == yaml.MappingNode {
+		for i := len(sectionNode.Content) - 2; i >= 0; i -= 2 {
+			out = append(out, model.KustomizeWriter{Kind: kind, File: n.file,
+				Line: sectionNode.Content[i].Line, Name: sectionNode.Content[i].Value})
+		}
+		return out
+	}
+	if sectionNode.Kind != yaml.SequenceNode {
+		return nil
+	}
+	for i := len(sectionNode.Content) - 1; i >= 0; i-- {
+		item := sectionNode.Content[i]
+		keys := entryKeys(item)
+		if len(keys) == 0 {
+			continue
+		}
+		out = append(out, model.KustomizeWriter{Kind: kind, File: n.file, Line: item.Line, Name: strings.Join(keys, ",")})
+	}
+	return out
+}
+
+// entryKeys lists the label or annotation keys one transformer entry sets.
+func entryKeys(item *yaml.Node) []string {
+	pairs := mappingValue(item, "pairs")
+	if pairs == nil || pairs.Kind != yaml.MappingNode {
+		// A flat entry mapping is itself the pairs (legacy form).
+		pairs = item
+	}
+	var keys []string
+	if pairs.Kind == yaml.MappingNode {
+		for i := 0; i < len(pairs.Content); i += 2 {
+			key := pairs.Content[i].Value
+			if key == "includeSelectors" || key == "fields" {
+				continue
+			}
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
 // patchWriter builds the writer of a patch referenced by path or inline under
 // one of the kustomization's patch fields, when its target matches.
 func (r *Renderer) patchWriter(n *kustNode, node *yaml.Node, field string, index int,
@@ -368,6 +443,22 @@ func (n *kustNode) loads(source string) bool {
 
 func nameMatches(name string, a *model.KustomizeAttribution) bool {
 	return name == a.SourceName || name == a.RenderedName
+}
+
+// nameMatchesLevel reports whether a transformer entry's name is the
+// resource's name as visible at n's level: the source name with the affixes
+// of the kustomizations applied before n, or the rendered name.
+func nameMatchesLevel(name string, n *kustNode, a *model.KustomizeAttribution) bool {
+	if nameMatches(name, a) {
+		return true
+	}
+	if a.SourceName == "" {
+		return false
+	}
+	if expectedName(n.parentAffixes, a.SourceName) == name {
+		return true
+	}
+	return expectedName(n.affixes, a.SourceName) == name
 }
 
 // expectedName is a source name after the affixes of a kustomization level.
@@ -581,6 +672,30 @@ func mappingValue(m *yaml.Node, key string) *yaml.Node {
 		}
 	}
 	return nil
+}
+
+// sectionLine is the 1-based line of a top-level key of the kustomization.
+func sectionLine(root *yaml.Node, key string) int {
+	if v := mappingValue(root, key); v != nil {
+		return v.Line
+	}
+	return 0
+}
+
+// entryLine is the 1-based line of the index-th entry of a top-level
+// sequence section whose name matches name (empty matches any).
+func entryLine(root *yaml.Node, section string, index int, name string) int {
+	seq := mappingValue(root, section)
+	if seq == nil || seq.Kind != yaml.SequenceNode || index >= len(seq.Content) {
+		return 0
+	}
+	item := seq.Content[index]
+	if name != "" {
+		if n := mappingValue(item, "name"); n != nil && n.Value != name {
+			return 0
+		}
+	}
+	return item.Line
 }
 
 // inlineOffset is the 0-based line of kust before the index-th entry of

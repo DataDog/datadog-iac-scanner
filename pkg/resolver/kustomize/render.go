@@ -108,6 +108,9 @@ type Result struct {
 	Reads []string
 	// MappingFailures counts documents whose source document was not found.
 	MappingFailures int
+	// Unsupported counts fields a replacement transformer may have written:
+	// replacements are not attributed to lines yet.
+	Unsupported int
 	// RunNs is the time krusty spent building the ResMap; MapNs the time
 	// mapping and attribution took afterwards.
 	RunNs, MapNs time.Duration
