@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
@@ -247,7 +248,8 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 
 type kustomizeFinding struct{ file, root string }
 
-// scanKustomize scans files written to a temporary tree and returns the
+// scanKustomize scans files written to a temporary tree (a value starting with
+// "symlink:" is written as a symlink to the rest of it) and returns the
 // privileged-container findings and the raw SARIF.
 func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustomizeFinding, string) {
 	t.Helper()
@@ -258,6 +260,13 @@ func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustom
 	for p, c := range files {
 		full := filepath.Join(dir, filepath.FromSlash(p))
 		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		// A "symlink:" value makes the file a symlink to the rest of it.
+		if target, ok := strings.CutPrefix(c, "symlink:"); ok {
+			if err := os.Symlink(filepath.FromSlash(target), full); err != nil {
+				t.Skipf("symlinks unsupported: %v", err)
+			}
+			continue
+		}
 		require.NoError(t, os.WriteFile(full, []byte(c), 0o600))
 	}
 	params, ctx := scan.GetDefaultParameters(context.Background(), "")
@@ -352,6 +361,52 @@ func Test_E2EKustomize(t *testing.T) {
 		}, true)
 		require.Equal(t, []kustomizeFinding{{"app/deployment.yaml", ""}}, got)
 	})
+
+	for name, prod := range map[string]string{
+		"refused by the planner": "resources:\n  - ../../base\n  - https://example.invalid/extra.yaml\n",
+		"failing to render":      "resources:\n  - ../../base\n  - missing.yaml\n",
+	} {
+		t.Run("a root "+name+" keeps its shared base scanned as written", func(t *testing.T) {
+			got, _ := scanKustomize(t, tree(map[string]string{"overlays/prod/kustomization.yaml": prod}), true)
+			require.Equal(t, []kustomizeFinding{
+				{"base/deployment.yaml", ""}, {"base/deployment.yaml", "overlays/dev"},
+			}, got)
+		})
+	}
+
+	t.Run("a failed root keeps a manifest it lists outside its directories scanned as written", func(t *testing.T) {
+		got, _ := scanKustomize(t, tree(map[string]string{
+			"base/kustomization.yaml":          "resources:\n  - deployment.yaml\n  - ../shared/side.yaml\n",
+			"shared/side.yaml":                 strings.Replace(privilegedDeployment, "name: web\nspec", "name: side\nspec", 1),
+			"overlays/prod/kustomization.yaml": "resources:\n  - ../../base\n  - missing.yaml\n",
+		}), true)
+		require.Equal(t, []kustomizeFinding{
+			{"base/deployment.yaml", ""}, {"base/deployment.yaml", "overlays/dev"},
+			{"shared/side.yaml", ""}, {"shared/side.yaml", "overlays/dev"},
+		}, got)
+	})
+
+	t.Run("a failed root keeps a manifest it reaches through a symlink scanned as written", func(t *testing.T) {
+		got, _ := scanKustomize(t, map[string]string{
+			"shared/deployment.yaml":           privilegedDeployment,
+			"overlays/dev/kustomization.yaml":  "resources:\n  - ../../shared/deployment.yaml\n",
+			"overlays/prod/kustomization.yaml": "resources:\n  - link.yaml\n  - missing.yaml\n",
+			"overlays/prod/link.yaml":          "symlink:../../shared/deployment.yaml",
+		}, true)
+		require.Contains(t, got, kustomizeFinding{"shared/deployment.yaml", ""})
+	})
+
+	t.Run("a failed root keeps a manifest of a base it reaches through a symlinked directory scanned as written",
+		func(t *testing.T) {
+			got, _ := scanKustomize(t, map[string]string{
+				"base/kustomization.yaml":          "resources:\n  - ../shared/deployment.yaml\n",
+				"shared/deployment.yaml":           privilegedDeployment,
+				"overlays/dev/kustomization.yaml":  "resources:\n  - ../../base\n",
+				"overlays/prod/kustomization.yaml": "resources:\n  - alias\n  - missing.yaml\n",
+				"overlays/prod/alias":              "symlink:../../base",
+			}, true)
+			require.Contains(t, got, kustomizeFinding{"shared/deployment.yaml", ""})
+		})
 
 	t.Run("flag off scans files as written", func(t *testing.T) {
 		got, _ := scanKustomize(t, tree(nil), false)

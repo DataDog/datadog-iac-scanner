@@ -19,6 +19,10 @@ type PlannedRoot struct {
 	// Closure maps each kustomization directory the root reaches to the
 	// affixes applied to resources loaded there.
 	Closure map[string]Affixes
+	// Files are the paths the kustomizations of Closure list that are not
+	// kustomization directories themselves: manifests, patches and generator
+	// sources, wherever they live.
+	Files []string
 }
 
 // Plan picks the top-level roots among dirs (kustomization directories):
@@ -54,9 +58,28 @@ func Plan(dirs, chartRoots []string, read func(string) ([]byte, error)) []Planne
 		if !walkClosure(d, Affixes{}, kusts, known, root.Closure, map[string]bool{}) {
 			root.Skip = ReasonPlanSkip
 		}
+		root.Files = closureFiles(root.Closure, kusts, known)
 		out = append(out, root)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
+	return out
+}
+
+// closureFiles lists the files the kustomizations of closure reference.
+func closureFiles(closure map[string]Affixes, kusts map[string]*types.Kustomization, known map[string]bool) []string {
+	var out []string
+	for d := range closure {
+		k := kusts[d]
+		if k == nil {
+			continue
+		}
+		for _, p := range kustomizationPaths(k) {
+			if f := filepath.Join(d, filepath.FromSlash(p)); p != "" && !known[f] {
+				out = append(out, f)
+			}
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -81,9 +104,18 @@ func children(dir string, k *types.Kustomization) []string {
 	}
 	out := make([]string, 0, len(k.Resources)+len(k.Components))
 	for _, e := range append(append([]string{}, k.Resources...), k.Components...) {
-		out = append(out, filepath.Join(dir, filepath.FromSlash(e)))
+		out = append(out, canonicalPath(filepath.Join(dir, filepath.FromSlash(e))))
 	}
 	return out
+}
+
+// canonicalPath resolves p's symlinks, as the planned directories and the
+// render's reads are, so an aliased base or component is the same directory.
+func canonicalPath(p string) string {
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return filepath.Clean(p)
 }
 
 // walkClosure records the directories dir reaches with their affixes. It

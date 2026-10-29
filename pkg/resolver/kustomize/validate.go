@@ -48,9 +48,21 @@ func validateKustomization(k *types.Kustomization) error {
 	return validatePaths(k)
 }
 
-// validatePaths collects every path-bearing entry of the kustomization and
-// checks each is a plain local path.
+// validatePaths checks every path-bearing entry of the kustomization is a
+// plain local path.
 func validatePaths(k *types.Kustomization) error {
+	for _, p := range kustomizationPaths(k) {
+		if p != "" && !isPlainLocalPath(p) {
+			return errRefused
+		}
+	}
+	return nil
+}
+
+// kustomizationPaths lists every path-bearing entry of the kustomization, as
+// written: resources, bases, components, CRDs, configurations, patch,
+// replacement and generator files.
+func kustomizationPaths(k *types.Kustomization) []string {
 	paths := make([]string, 0, len(k.Resources)+len(k.Components))
 	paths = append(paths, k.Resources...)
 	paths = append(paths, k.Bases...) //nolint:staticcheck // legacy kustomizations still declare bases
@@ -77,12 +89,7 @@ func validatePaths(k *types.Kustomization) error {
 	for i := range k.SecretGenerator {
 		paths = appendGeneratorPaths(paths, &k.SecretGenerator[i].GeneratorArgs)
 	}
-	for _, p := range paths {
-		if p != "" && !isPlainLocalPath(p) {
-			return errRefused
-		}
-	}
-	return nil
+	return paths
 }
 
 var resourceFactory = provider.NewDefaultDepProvider().GetResourceFactory()

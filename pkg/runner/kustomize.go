@@ -19,7 +19,7 @@ import (
 // stores their documents for the Kubernetes parsers and returns files without
 // those the successful renders consumed. Anything not rendered is scanned raw.
 //
-// ponytail: roots render and store one after the other; Kustomize serializes
+// Roots render and store one after the other; Kustomize serializes
 // Run anyway, and storing per root keeps one root's documents in memory.
 func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSettings, chartRoots []string,
 	services []*Service, files []provider.InventoryFile, scanID string,
@@ -42,6 +42,8 @@ func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSetti
 	plan := kustomize.Plan(dirs, charts, renderer.BoundedRead())
 
 	consumed := map[string]struct{}{}
+	// unrendered holds the directories and files a skipped root reaches.
+	unrendered := map[string]struct{}{}
 	reasons := map[string]int{}
 	stats := kustomizeStats{}
 	planDone := time.Now()
@@ -51,6 +53,7 @@ func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSetti
 		res, resFiles, reads, skip := renderPlannedRoot(ctx, renderer, root, rel, listed)
 		stats.renderNs += time.Since(renderStart)
 		if skip != "" {
+			markUnrendered(unrendered, root)
 			reasons[skip]++
 			contextLogger.Debug().Msgf("Kustomize root '%s' not rendered: %s", rel, skip)
 			continue
@@ -80,7 +83,43 @@ func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSetti
 	logKustomizeSummary(ctx, stats.rendered, stats.docs, stats.mappingFailures,
 		reasons, time.Since(start), stats.runNs, stats.mapNs, stats.storeNs, planDone.Sub(start))
 
-	return withoutConsumedFiles(files, consumed)
+	return withoutConsumedFiles(files, renderedOnly(consumed, unrendered))
+}
+
+// renderedOnly drops from consumed the files a skipped root also reaches;
+// when a skipped root's reach is unknown, nothing is consumed.
+func renderedOnly(consumed, unrendered map[string]struct{}) map[string]struct{} {
+	if _, unknown := unrendered[""]; unknown {
+		return nil
+	}
+	for p := range consumed {
+		_, inDir := unrendered[filepath.Dir(p)]
+		_, listed := unrendered[p]
+		if inDir || listed {
+			delete(consumed, p)
+		}
+	}
+	return consumed
+}
+
+// markUnrendered records the kustomization directories a skipped root
+// reaches and the files they reference: they stay scanned as written even
+// when another root rendered them. A root the planner refused has an
+// incomplete reach: it is recorded as "", which keeps every file scanned as
+// written. Paths are symlink-resolved, like the render's reads they are
+// compared with.
+func markUnrendered(unrendered map[string]struct{}, root kustomize.PlannedRoot) {
+	if root.Skip == kustomize.ReasonPlanSkip {
+		unrendered[""] = struct{}{}
+		return
+	}
+	unrendered[absPath(root.Dir)] = struct{}{}
+	for d := range root.Closure {
+		unrendered[absPath(d)] = struct{}{}
+	}
+	for _, f := range root.Files {
+		unrendered[absPath(f)] = struct{}{}
+	}
 }
 
 // kustomizeStats aggregates the per-root counters of a render phase.
