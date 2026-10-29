@@ -368,11 +368,26 @@ type FileMetadata struct {
 	// Archive is the chart archive the file was rendered from, if any (see
 	// ResolvedHelm.Archive).
 	Archive string
-	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
-	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
 	// document groups multiple module resources from the same file.
 	ModuleAttributions map[string]*ModuleAttribution
+	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
+	ModuleCallChain string
+	// ResourceIDs maps a resource or data block's kind and base document name
+	// to the full Terraform address of the one instance this synthetic
+	// document represents. Set only for Terraform documents the engine
+	// instantiated per count/for_each instance; nil otherwise.
+	ResourceIDs map[string]string
+	// RootModuleDir is the repository-relative directory of the root module
+	// this file's resources are declared (root resources) or instantiated
+	// under (module resources, via their outermost caller).
+	RootModuleDir string
+	// TerraformScope carries the file's Terraform identity context
+	// (K9CODESEC-7158): where its blocks live (root module, module instance
+	// address), which blocks it declares, and which block instance a synthetic
+	// document represents. Nil for non-Terraform files; findings on such files
+	// keep the legacy resource-name fingerprint.
+	TerraformScope *TerraformScope
 	// Platform is the lowercased platform the file was classified as (e.g.
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
@@ -735,11 +750,31 @@ type Vulnerability struct {
 	IsSuppressed             bool   `json:"isSuppressed,omitempty"`
 	SuppressionKind          string `json:"suppressionKind,omitempty"`
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
-	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
-	ModuleCallChain string `json:"moduleCallChain,omitempty"`
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// ResourceID is the full Terraform address of the resource instance this
+	// finding was raised on (e.g. module.a["x"].aws_s3_bucket.b[0]), parseable
+	// the same way Terraform's own addresses are (see
+	// pkg/parser/terraform/address). RootModule (repo-relative) must be set
+	// alongside it: a Terraform address is root-relative, so the two together
+	// are what identifies the instance uniquely in a repository that may call
+	// the same module path from several root stacks. Empty only for findings
+	// this scan could not resolve a Terraform identity for, which fall back to
+	// the legacy resource-name fingerprint (see K9CODESEC-7158).
+	ResourceID string `json:"resourceId,omitempty"`
+	// ModuleCallChain: local-module instantiation path; empty for root resources; used by the legacy fingerprint fallback.
+	ModuleCallChain string `json:"moduleCallChain,omitempty"`
+	// RootModuleDir is the scanned repository's root module directory this
+	// finding's resource is declared (root resource) or instantiated under
+	// (module resource, via its outermost caller), relative to the repository
+	// root.
+	RootModuleDir string `json:"rootModuleDir,omitempty"`
+	// RootModule is the scanned repository's root module directory this
+	// finding's block is declared (HCL) or evaluated (module instance) under,
+	// relative to the repository root; the file itself for a plan or tfvars
+	// finding. See ResourceID.
+	RootModule string `json:"rootModule,omitempty"`
 	// DetectedFileName and DetectedLineWithVulnerability are where the finding
 	// was detected when it is reported at another place (see ReportedLocation).
 	// They stay its identity: every file of a packaged dependency is reported
