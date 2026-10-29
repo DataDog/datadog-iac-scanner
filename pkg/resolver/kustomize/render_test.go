@@ -369,7 +369,7 @@ func TestRenderRemainingBudgetDeadline(t *testing.T) {
 	dir := writeTree(t, baseTree())
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	r.timeout = time.Minute
-	r.deadline = time.Now().Add(time.Nanosecond)
+	r.deadline = time.Now().Add(-time.Second)
 	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"))
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
