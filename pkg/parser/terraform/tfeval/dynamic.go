@@ -15,10 +15,9 @@ import (
 
 // addDynamicBlocks adds the nested blocks a dynamic block generates to out, in
 // the shape a block written once per element would have. A dynamic block whose
-// for_each or labels do not resolve, or which asks for more blocks than the caps
-// allow, is kept as written. The budget is claimed per dynamic block, so a block
-// nested in the content of an expanded parent can find it spent and stay as
-// written while its siblings were expanded.
+// for_each or labels do not resolve is kept as written. Every resolved element
+// is expanded: a cap would leave generated blocks without their content and
+// their findings unreported.
 func (e *Evaluator) addDynamicBlocks(out *nestedBlocks, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState) {
 	content := dynamicblock.Content(b)
 	exp := dynamicblock.Expand(b, ctx)
@@ -28,12 +27,6 @@ func (e *Evaluator) addDynamicBlocks(out *nestedBlocks, b *hclsyntax.Block, ctx 
 	var paths [][]string
 	if resolved {
 		scopes, paths, resolved = generatedBlocks(b, exp.Iterators, name, ctx)
-	}
-	if resolved && !st.reserveDynamic(len(exp.Iterators)) {
-		st.noteDynamicOverflow(b, exp.Requested, dynamicblock.MaxGeneratedPerResource)
-		resolved = false
-	} else if content != nil && exp.OverCap {
-		st.noteDynamicOverflow(b, exp.Requested, dynamicblock.MaxExpansion)
 	}
 	if !resolved {
 		st.recordDynamic(b, keptAsWritten)
@@ -65,35 +58,6 @@ func generatedBlocks(
 		paths[i] = append([]string{dynamicblock.GeneratedType(b)}, labels...)
 	}
 	return scopes, paths, true
-}
-
-// dynamicOverflow is a dynamic block kept as written because it asked for more
-// blocks than a cap allows.
-type dynamicOverflow struct {
-	label     string
-	requested int
-	limit     int
-}
-
-// reserveDynamic claims n generated blocks of the resource instance's budget.
-func (st *bodyState) reserveDynamic(n int) bool {
-	if st == nil || st.dynamic == nil {
-		return true
-	}
-	if st.dynamic.generated+n > dynamicblock.MaxGeneratedPerResource {
-		return false
-	}
-	st.dynamic.generated += n
-	return true
-}
-
-func (st *bodyState) noteDynamicOverflow(b *hclsyntax.Block, requested, limit int) {
-	if st == nil || st.dynamic == nil {
-		return
-	}
-	st.dynamic.overflow = append(st.dynamic.overflow, dynamicOverflow{
-		label: dynamicblock.GeneratedType(b), requested: requested, limit: limit,
-	})
 }
 
 // DynamicCounts maps a dynamic block to how many blocks it generated, or to

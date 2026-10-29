@@ -96,33 +96,24 @@ func (i moduleInstance) address(parent, label string) string {
 type moduleExpansionPlan struct {
 	instances []moduleInstance
 	mode      moduleExpansion
-	// requested is the full instance count when known (before the per-block cap).
-	requested int
-	// forEachKeys is every for_each key when mode is for_each and the collection
-	// is within maxExpansionShape (including keys beyond the expansion cap).
-	forEachKeys []cty.Value
 }
 
-func (p moduleExpansionPlan) truncated() bool {
-	return p.requested > maxCountExpansion && (p.mode == expansionCount || p.mode == expansionForEach)
-}
-
-// moduleInstances expands a module call's count or for_each under ctx.
+// moduleInstances expands a module call's count or for_each under ctx. Every
+// known instance is expanded: a cap would leave instances without their real
+// address and their findings unreported.
 func moduleInstances(mb *hclsyntax.Block, ctx *hcl.EvalContext) moduleExpansionPlan {
 	count, forEach := tfinstances.Attributes(mb.Body)
-	plan := tfinstances.Resolve(count, forEach, ctx, maxExpansionShape)
+	plan := tfinstances.Resolve(count, forEach, ctx)
 	return modulePlan(&plan, ctx)
 }
 
 // modulePlan adds caller contexts and the module-specific unresolved fallback.
-// Expansion decisions and iteration bindings come from the shared resolver;
-// output padding and instantiation budgets remain owned by the evaluator.
+// Expansion decisions and iteration bindings come from the shared resolver.
 func modulePlan(plan *tfinstances.Plan, ctx *hcl.EvalContext) moduleExpansionPlan {
 	if plan.Kind == "" {
 		return moduleExpansionPlan{
 			instances: []moduleInstance{{ctx: ctx}},
 			mode:      expansionNone,
-			requested: 1,
 		}
 	}
 	if plan.Unresolved {
@@ -139,12 +130,7 @@ func modulePlan(plan *tfinstances.Plan, ctx *hcl.EvalContext) moduleExpansionPla
 	for i, item := range plan.Items {
 		expanded[i] = moduleInstance{key: item.Key, ctx: instanceContext(ctx, plan, item)}
 	}
-	return moduleExpansionPlan{
-		instances:   expanded,
-		mode:        mode,
-		requested:   plan.Requested,
-		forEachKeys: plan.ForEachKeys,
-	}
+	return moduleExpansionPlan{instances: expanded, mode: mode}
 }
 
 func instanceContext(ctx *hcl.EvalContext, plan *tfinstances.Plan, item tfinstances.Item) *hcl.EvalContext {
@@ -154,74 +140,34 @@ func instanceContext(ctx *hcl.EvalContext, plan *tfinstances.Plan, item tfinstan
 	return child
 }
 
-func isForEachCollection(v cty.Value) bool { return tfinstances.ForEachCollection(v) }
-
 // moduleOutputsValue is what module.<label> evaluates to in the caller: the
 // outputs object of a single call, a tuple of them for count and an object of
 // them keyed like for_each. outs holds cty.NilVal for instances that failed.
-// When the expansion was truncated, the returned collection keeps the full
-// requested shape with unknown values for instances that were not evaluated,
-// unless the shape would exceed maxExpansionShape (then the whole value is unknown).
 func moduleOutputsValue(plan moduleExpansionPlan, outs []cty.Value) (cty.Value, bool) {
 	switch plan.mode {
 	case expansionUnknown:
 		return cty.DynamicVal, true
 	case expansionCount:
-		return truncatedCountOutputs(plan.requested, outs), true
+		elems := make([]cty.Value, len(outs))
+		for i, out := range outs {
+			elems[i] = orUnknown(out)
+		}
+		return cty.TupleVal(elems), true
 	case expansionForEach:
-		return truncatedForEachOutputs(plan, outs), true
+		byKey := make(map[string]cty.Value, len(outs))
+		for i, out := range outs {
+			if i >= len(plan.instances) {
+				break
+			}
+			key, _ := ctyutil.ConcreteString(plan.instances[i].key)
+			byKey[key] = orUnknown(out)
+		}
+		return objectOrEmpty(byKey), true
 	}
 	if len(outs) == 1 && outs[0] != cty.NilVal {
 		return outs[0], true
 	}
 	return cty.NilVal, false
-}
-
-func truncatedCountOutputs(requested int, outs []cty.Value) cty.Value {
-	if requested == 0 {
-		return cty.EmptyTupleVal
-	}
-	if requested > maxExpansionShape {
-		return cty.DynamicVal
-	}
-	elems := make([]cty.Value, requested)
-	for i := range elems {
-		if i < len(outs) {
-			elems[i] = orUnknown(outs[i])
-		} else {
-			elems[i] = cty.DynamicVal
-		}
-	}
-	return cty.TupleVal(elems)
-}
-
-func truncatedForEachOutputs(plan moduleExpansionPlan, outs []cty.Value) cty.Value {
-	if plan.requested == 0 {
-		return cty.EmptyObjectVal
-	}
-	if plan.requested > maxExpansionShape {
-		return cty.DynamicVal
-	}
-	byKey := make(map[string]cty.Value, plan.requested)
-	switch {
-	case len(plan.forEachKeys) == plan.requested:
-		// Truncated (or fully keyed) shape: start with unknown for every key.
-		for _, key := range plan.forEachKeys {
-			s, _ := ctyutil.ConcreteString(key)
-			byKey[s] = cty.DynamicVal
-		}
-	case plan.truncated():
-		// Truncated but keys were not kept — do not publish a short object.
-		return cty.DynamicVal
-	}
-	for i, out := range outs {
-		if i >= len(plan.instances) {
-			break
-		}
-		key, _ := ctyutil.ConcreteString(plan.instances[i].key)
-		byKey[key] = orUnknown(out)
-	}
-	return objectOrEmpty(byKey)
 }
 
 func orUnknown(v cty.Value) cty.Value {
@@ -338,7 +284,7 @@ func (s *siblingOutputs) set(label string, value cty.Value) {
 
 func (s *siblingOutputs) publish() *hcl.EvalContext {
 	if s.stale {
-		s.e.installModuleOutputs(s.ctx, s.evalCtx, s.scope, s.data, s.outputs)
+		s.e.installModuleOutputs(s.evalCtx, s.scope, s.data, s.outputs)
 		s.stale = false
 	}
 	return s.evalCtx

@@ -10,9 +10,6 @@
 package address
 
 import (
-	"strconv"
-	"strings"
-
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/zclconf/go-cty/cty"
@@ -85,32 +82,16 @@ func instanceKinded(b Block) bool {
 // Instance joins a module instance address and a block into the full Terraform
 // address of one instance, e.g. module.a["x"].aws_s3_bucket.example[0].
 //
-// suffix is the count index or for_each key of the instance in the evaluator's
-// internal form, "[0]" or `["key"]` (Go-quoted); it is converted to properly
-// escaped HCL here, so quotes, backslashes and template openers in the key
-// round-trip correctly. Only instance-kinded blocks take a suffix; a module
-// call block configures every instance at once and the label-only kinds do not
-// expand, so their suffix is ignored.
-// Resource joins a module instance address and a resolved resource's type
-// and instance name (e.g. resource["key"]) into its full Terraform address.
-// Temporary shim while the engine migrates to Block/Instance.
-func Resource(module, kind, typ, name string) string {
-	b := Block{Kind: KindResource, Type: typ}
-	if kind == "data" {
-		b.Kind = KindData
-	}
-	if i := strings.IndexByte(name, '['); i >= 0 && strings.HasSuffix(name, "]") {
-		b.Name = name[:i]
-		return Instance(module, b, name[i:])
-	}
-	b.Name = name
-	return Instance(module, b, "")
-}
-
+// suffix is the count index or for_each key of the instance, already in HCL
+// syntax (see InstanceSuffix — the one escaping path, applied when the
+// evaluator names the instance). It is appended verbatim: re-escaping an
+// already-escaped key would double every $ and %. Only instance-kinded blocks
+// take a suffix; a module call block configures every instance at once and
+// the label-only kinds do not expand, so their suffix is ignored.
 func Instance(module string, b Block, suffix string) string {
 	addr := Addr(b)
 	if suffix != "" && instanceKinded(b) {
-		addr += normalizeSuffix(suffix)
+		addr += suffix
 	}
 	if module != "" {
 		return module + "." + addr
@@ -123,23 +104,5 @@ func Instance(module string, b Block, suffix string) string {
 func InstanceSuffix(key cty.Value) string {
 	key, _ = key.Unmark()
 	suffix, _ := ctyutil.FormatIndexKey(key)
-	return suffix
-}
-
-// normalizeSuffix converts an evaluator instance suffix into HCL syntax.
-// The evaluator names instances internally with a Go-quoted for_each key
-// (resource[%q]); that is converted so the address is valid, round-trippable
-// HCL.
-func normalizeSuffix(suffix string) string {
-	if !strings.HasPrefix(suffix, "[") || !strings.HasSuffix(suffix, "]") {
-		return suffix
-	}
-	inner := suffix[1 : len(suffix)-1]
-	if !strings.HasPrefix(inner, `"`) {
-		return suffix
-	}
-	if key, err := strconv.Unquote(inner); err == nil {
-		return InstanceSuffix(cty.StringVal(key))
-	}
 	return suffix
 }

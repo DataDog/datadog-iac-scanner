@@ -7,7 +7,6 @@
 package tfeval
 
 import (
-	"context"
 	"slices"
 	"strings"
 
@@ -65,11 +64,6 @@ type moduleData struct {
 	// inputs it read, so a refresh pass with unchanged inputs reuses it.
 	evalCache map[*hclsyntax.Block]blockEvalCache
 
-	// hasUnconditionalResource records whether the module has a resource block
-	// instantiating regardless of context, so an exhausted budget discards it
-	// and its data need not expand.
-	hasUnconditionalResource bool
-
 	// moduleAtRefresh is the module.* value the data blocks were last refreshed
 	// against; republishing it need not refresh the data again.
 	moduleAtRefresh cty.Value
@@ -93,7 +87,6 @@ func newModuleData(
 	resourceTypes map[string]struct{},
 	addr string,
 	chain []CallSite,
-	hasUnconditionalResource bool,
 ) *moduleData {
 	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
@@ -101,7 +94,7 @@ func newModuleData(
 	}
 	d := &moduleData{
 		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
-		dataLocals: locals.dataLocals, cyclic: locals.cyclicData, hasUnconditionalResource: hasUnconditionalResource,
+		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
 	}
 	for _, b := range blocks {
 		d.readsData = d.readsData || bodyReadsResource(b.Body, dataRoot)
@@ -213,7 +206,7 @@ func (d *moduleData) readsOwnResources() bool {
 // locals that read it when it changed, until data.* settles. The pass bound
 // matches a source_policy_documents chain as long as the blocks and the locals
 // aliasing them, as getDataSourcePolicy does at the root.
-func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
+func (d *moduleData) refresh(evalCtx *hcl.EvalContext) {
 	if d == nil {
 		return
 	}
@@ -224,7 +217,7 @@ func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
 		bound = 1
 	}
 	for pass := 0; pass <= bound; pass++ {
-		value := d.evaluate(ctx, evalCtx)
+		value := d.evaluate(evalCtx)
 		if existing, ok := evalCtx.Variables[blockTypeData]; ok && equalValues(existing, value) {
 			break
 		}
@@ -254,14 +247,14 @@ func (d *moduleData) refreshDataLocals(evalCtx *hcl.EvalContext) {
 	evalCtx.Variables["local"] = objectOrEmpty(values)
 }
 
-func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty.Value {
+func (d *moduleData) evaluate(evalCtx *hcl.EvalContext) cty.Value {
 	instances := make([]ResolvedResource, 0, len(d.blocks))
 	exposed := make([]ResolvedResource, 0, len(d.blocks))
 	for _, b := range d.blocks {
 		inputs := blockEvalInputs(b, evalCtx)
 		cached, ok := d.evalCache[b]
 		if !ok || !sameCtyValues(cached.inputs, inputs) {
-			cached = d.evalBlock(ctx, b, evalCtx, inputs)
+			cached = d.evalBlock(b, evalCtx, inputs)
 		}
 		instances = append(instances, cached.instances...)
 		exposed = append(exposed, cached.exposed...)
@@ -304,14 +297,11 @@ type blockEvalCache struct {
 // evalBlock evaluates one data block and memoizes the result against the
 // context inputs it read: unchanged inputs reproduce the same result.
 func (d *moduleData) evalBlock(
-	ctx context.Context, b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
+	b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
-	if !d.e.dataExpansionWithinBudget(d.addr, d.hasUnconditionalResource) {
-		return cached
-	}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
+	expanded := d.e.expandBlock(b, evalCtx, d.addr, d.chain, true)
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
