@@ -315,6 +315,8 @@ type FileMetadata struct {
 	// HelmAttribution says which source actions emitted a rendered Helm
 	// resource whose YAML lives in named templates; nil when none is known.
 	HelmAttribution *HelmAttribution
+	// Kustomize is set on a document rendered by Kustomize.
+	Kustomize *KustomizeAttribution
 	// Reported, when set, is where this file's findings are reported instead of
 	// FilePath (see ResolvedHelm.Reported).
 	Reported *ReportedLocation
@@ -697,6 +699,10 @@ type Vulnerability struct {
 	// RenderRoot: kustomization that rendered the document; folded into
 	// the fingerprint (see FileMetadata.RenderRoot).
 	RenderRoot string `json:"renderRoot,omitempty"`
+	// KustomizeResourceID: the rendered object within RenderRoot (see
+	// KustomizeIdentity); with RenderRoot it replaces file, resource type and
+	// resource name in the fingerprint.
+	KustomizeResourceID string `json:"kustomizeResourceId,omitempty"`
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
@@ -783,6 +789,28 @@ type KustomizeAttribution struct {
 	// Generator is set for generated objects: the generator kind and name in the
 	// kustomization file (FileName).
 	Generator *KustomizeGenerator
+	// APIGroup is the rendered object's API group ("" for the core group).
+	APIGroup string
+	// IdentityName and IdentityNamespace identify the rendered object without
+	// carrying generated data: the rendered values with a generator hash
+	// suffix stripped, the values as written when a replacement may have set
+	// them, and "" when neither is safe.
+	IdentityName      string
+	IdentityNamespace string
+}
+
+// GroupKind is the rendered object's "apiGroup/kind".
+func (a *KustomizeAttribution) GroupKind() string {
+	return a.APIGroup + "/" + a.Kind
+}
+
+// ResourceID is the rendered object's KustomizeIdentity.ResourceID, or its
+// GroupKind for a finding its rule reports as unnamed (resourceName "n/a").
+func (a *KustomizeAttribution) ResourceID(resourceName string) string {
+	if resourceName == unnamedResource {
+		return a.GroupKind()
+	}
+	return a.GroupKind() + "|" + a.IdentityNamespace + "|" + a.IdentityName
 }
 
 // KustomizeGenerator names the generator entry that produced an object.

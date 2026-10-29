@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1531,5 +1532,93 @@ func BenchmarkPlan(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		Plan(abs, nil, content)
+	}
+}
+
+// identities renders root in tree and returns the resource IDs of the
+// rendered objects.
+func identities(t *testing.T, tree map[string]string, root string) []string {
+	t.Helper()
+	res, err := render(t, writeTree(t, tree), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, d := range res.Documents {
+		ids = append(ids, d.Kustomize.ResourceID("web"))
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// TestRenderIdentity identifies a rendered object by its rendered group, kind,
+// namespace and name: where its manifest lives and what a generator holds do
+// not matter, the affixes and namespace an overlay sets do.
+func TestRenderIdentity(t *testing.T) {
+	tree := func(file, prefix, ns, value string) map[string]string {
+		return map[string]string{
+			"base/kustomization.yaml": "resources:\n  - " + file + "\n",
+			"base/" + file:            deployment,
+			"o/kustomization.yaml": "namePrefix: " + prefix + "\nnamespace: " + ns + "\nresources:\n  - ../base\n" +
+				"configMapGenerator:\n  - name: settings\n    literals:\n      - A=" + value + "\n",
+		}
+	}
+	got := identities(t, tree("deployment.yaml", "dev-", "dev", "1"), "o")
+	want := []string{"/ConfigMap|dev|dev-settings", "/Service|dev|dev-web", "apps/Deployment|dev|dev-web"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for name, other := range map[string]map[string]string{
+		"moved manifest":      tree("moved.yaml", "dev-", "dev", "1"),
+		"generated data edit": tree("deployment.yaml", "dev-", "dev", "2"),
+	} {
+		if ids := identities(t, other, "o"); !reflect.DeepEqual(ids, got) {
+			t.Errorf("%s: got %v, want %v", name, ids, got)
+		}
+	}
+	for name, other := range map[string]map[string]string{
+		"namePrefix": tree("deployment.yaml", "qa-", "dev", "1"),
+		"namespace":  tree("deployment.yaml", "dev-", "qa", "1"),
+	} {
+		for i, id := range identities(t, other, "o") {
+			if id == got[i] {
+				t.Errorf("%s: %s kept its identity", name, id)
+			}
+		}
+	}
+}
+
+// TestRenderIdentityReplacementCanary never identifies an object by a name a
+// replacement copied from generated data, whether the target names the field
+// or leaves it out: an omitted target fieldPaths defaults to metadata.name.
+func TestRenderIdentityReplacementCanary(t *testing.T) {
+	for name, targets := range map[string]string{
+		"named field":   "        fieldPaths:\n          - metadata.name\n",
+		"omitted field": "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeTree(t, map[string]string{
+				"o/deployment.yaml": deployment,
+				"o/kustomization.yaml": "resources:\n  - deployment.yaml\n" +
+					"configMapGenerator:\n  - name: settings\n    literals:\n      - TOKEN=canaryvalue\n" +
+					"replacements:\n  - source:\n      kind: ConfigMap\n      name: settings\n      fieldPath: data.TOKEN\n" +
+					"    targets:\n      - select:\n          kind: Deployment\n" + targets,
+			})
+			res, err := render(t, dir, "o")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var copied bool
+			for _, d := range res.Documents {
+				a := d.Kustomize
+				copied = copied || a.RenderedName == "canaryvalue"
+				if id := a.ResourceID("web"); strings.Contains(id, "canary") {
+					t.Errorf("identity %q carries generated data", id)
+				}
+			}
+			if !copied {
+				t.Fatal("precondition: the replacement did not copy the value into a name")
+			}
+		})
 	}
 }
