@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -45,13 +46,15 @@ func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSetti
 	consumed := map[string]struct{}{}
 	// unrendered holds the directories and files a skipped root reaches.
 	unrendered := map[string]struct{}{}
+	writerIgnores := map[string][]int{}
 	reasons := map[string]int{}
 	stats := kustomizeStats{}
 	planDone := time.Now()
 	for _, root := range plan {
 		rel := renderRootPath(repo, root.Dir)
 		renderStart := time.Now()
-		res, resFiles, reads, skip := renderPlannedRoot(ctx, renderer, root, rel, listed, settings.Scope)
+		res, resFiles, reads, skip := renderPlannedRoot(ctx, renderer, root, rel, listed, writerIgnores, k8s[0],
+			openAPIResolveReferences, maxResolverDepth, settings.Scope)
 		stats.renderNs += time.Since(renderStart)
 		if skip != "" {
 			markUnrendered(unrendered, root)
@@ -149,7 +152,9 @@ func kustomizeInputPaths(settings *provider.KustomizeSettings, chartRoots []stri
 // renderPlannedRoot renders one planned root and returns its stored files plus
 // the files the render read; skip is the reason the root was not rendered.
 func renderPlannedRoot(ctx context.Context, renderer *kustomize.Renderer, root kustomize.PlannedRoot, rel string,
-	listed map[string]string, scope *provider.PathFilter) (res kustomize.Result, files model.ResolvedFiles, reads []string, skip string) {
+	listed map[string]string, writerIgnores map[string][]int, service *Service,
+	openAPIResolveReferences bool, maxResolverDepth int,
+	scope *provider.PathFilter) (res kustomize.Result, files model.ResolvedFiles, reads []string, skip string) {
 	if root.Skip != "" {
 		return kustomize.Result{}, model.ResolvedFiles{}, nil, root.Skip
 	}
@@ -163,7 +168,7 @@ func renderPlannedRoot(ctx context.Context, renderer *kustomize.Renderer, root k
 		return kustomize.Result{}, model.ResolvedFiles{}, nil, reason
 	}
 	res = *r
-	files = rootFileList(&res, rel, listed, scope)
+	files = rootFileList(&res, rel, listed, writerIgnores, renderer, service, ctx, openAPIResolveReferences, maxResolverDepth, scope)
 	return res, files, r.Reads, ""
 }
 
@@ -173,7 +178,9 @@ func renderPlannedRoot(ctx context.Context, renderer *kustomize.Renderer, root k
 // only) is dropped: the raw scan would never scan it. A source merely absent
 // from the inventory for extension reasons stays — the inventory skips
 // extensionless files, the scan scope does not.
-func rootFileList(res *kustomize.Result, rel string, listed map[string]string, scope *provider.PathFilter) model.ResolvedFiles {
+func rootFileList(res *kustomize.Result, rel string, listed map[string]string, writerIgnores map[string][]int,
+	renderer *kustomize.Renderer, service *Service, ctx context.Context,
+	openAPIResolveReferences bool, maxResolverDepth int, scope *provider.PathFilter) model.ResolvedFiles {
 	resFiles := model.ResolvedFiles{File: make([]model.ResolvedHelm, 0, len(res.Documents))}
 	for i := range res.Documents {
 		d := &res.Documents[i]
@@ -183,9 +190,43 @@ func rootFileList(res *kustomize.Result, rel string, listed map[string]string, s
 		} else if scope != nil && scope.ExcludesAny(d.FileName) {
 			continue
 		}
+		for j := range d.Kustomize.Writers {
+			adoptWriter(d, &d.Kustomize.Writers[j], listed, writerIgnores, renderer, service, ctx,
+				openAPIResolveReferences, maxResolverDepth)
+		}
 		resFiles.File = append(resFiles.File, *d)
 	}
 	return resFiles
+}
+
+// adoptWriter rewrites a writer's path to its listed name and attaches the
+// ignore lines read from the writer file, plus those of a patch written
+// inline in a kustomization, whose comments are block scalar text there.
+func adoptWriter(d *model.ResolvedHelm, w *model.KustomizeWriter, listed map[string]string,
+	writerIgnores map[string][]int, renderer *kustomize.Renderer, service *Service, ctx context.Context,
+	openAPIResolveReferences bool, maxResolverDepth int) {
+	if p, ok := listed[w.File]; ok {
+		w.File = p
+	}
+	if d.Kustomize.IgnoreLines == nil {
+		d.Kustomize.IgnoreLines = map[string][]int{}
+	}
+	if _, ok := writerIgnores[w.File]; !ok {
+		content, _ := renderer.Source(w.File)
+		writerIgnores[w.File], _ = service.getOriginalIgnoreLines(ctx, w.File, content,
+			model.KindKUSTOMIZE, openAPIResolveReferences, false, maxResolverDepth)
+	}
+	lines := append([]int(nil), d.Kustomize.IgnoreLines[w.File]...)
+	lines = append(lines, writerIgnores[w.File]...)
+	if w.LineOffset > 0 && w.Content != "" {
+		inline, _ := service.getOriginalIgnoreLines(ctx, w.File, []byte(w.Content),
+			model.KindKUSTOMIZE, openAPIResolveReferences, false, maxResolverDepth)
+		for _, l := range inline {
+			lines = append(lines, l+w.LineOffset)
+		}
+	}
+	slices.Sort(lines)
+	d.Kustomize.IgnoreLines[w.File] = slices.Compact(lines)
 }
 
 // withoutConsumedFiles drops the inventory files a successful render consumed.

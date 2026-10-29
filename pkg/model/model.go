@@ -792,6 +792,8 @@ type KustomizeAttribution struct {
 	// Writers are the patches and transformers that may have set a field of
 	// the resource, the last one Kustomize applies first.
 	Writers []KustomizeWriter
+	// IgnoreLines are the suppressed lines of each writer file.
+	IgnoreLines map[string][]int
 	// Commands are the scanner directives of each writer file.
 	Commands map[string]CommentsCommands
 	// APIVersion, Labels and Annotations snapshot the rendered resource for
@@ -1126,8 +1128,8 @@ type AnalyzedPaths struct {
 	// exclude, only): unlike Exc they never carry files that are merely
 	// parser-ineligible, so they can act as a scope predicate.
 	ScopeExcludes []string
-	TotalFiles     int
-	ContentCache   map[string][]byte
+	TotalFiles    int
+	ContentCache  map[string][]byte
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file
