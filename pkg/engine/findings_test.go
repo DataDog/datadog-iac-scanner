@@ -672,3 +672,23 @@ func TestInspect_SupersededInstanceFindingsSkipLineDetection(t *testing.T) {
 		"without compaction, every decoded instance has its line detected")
 	require.Equal(t, detected[0], detected[1], "only the finding that is kept has its line detected")
 }
+
+// One base line rendered by two kustomizations is two findings that both
+// survive compaction and storage.
+func TestFindingSet_KeepsOneFindingPerRenderRoot(t *testing.T) {
+	ctx := context.Background()
+	base := model.Vulnerability{
+		FileName: "base/deployment.yaml", Platform: "Kubernetes", QueryID: "q",
+		ResourceType: "Deployment", ResourceName: "web", Line: 9, SearchKey: "metadata.name={{web}}",
+	}
+	dev, prod := base, base
+	dev.RenderRoot, prod.RenderRoot = "overlays/dev", "overlays/prod"
+	kept := decodeAll(newFindingSet(true, nil), []model.Vulnerability{dev, prod, dev})
+	require.Len(t, kept, 2)
+
+	s := storage.NewMemoryStorage()
+	require.NoError(t, s.SaveVulnerabilities(ctx, kept))
+	got, err := s.GetVulnerabilities(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+}

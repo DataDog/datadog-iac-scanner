@@ -561,6 +561,9 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 			primaryStart := resourceStartLocation
 			primaryEnd := resourceEndLocation
 			resultProperties := sarifProperties{"tags": resultTags}
+			if root := vulnerability.RenderRoot; root != "" {
+				resultProperties["kustomize"] = map[string]string{"render_root": root}
+			}
 			moduleAttribution := vulnerability.ModuleAttribution
 			if moduleAttribution != nil && moduleAttribution.CallSite.Filename != "" {
 				primaryURI = moduleAttribution.CallSite.Filename

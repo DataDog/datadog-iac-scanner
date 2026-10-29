@@ -215,3 +215,23 @@ func TestBuildSarifIssue_NonModuleFindingUnchanged(t *testing.T) {
 	_, hasModule := result.ResultProperties["module"]
 	require.False(t, hasModule)
 }
+
+func TestBuildSarifIssue_RenderRootProperty(t *testing.T) {
+	file := model.VulnerableFile{
+		FileName: "base/deployment.yaml", Line: 9, ResourceType: "Deployment", ResourceName: "web",
+		ResourceLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 1, Col: 1}, End: model.ResourceLine{Line: 3, Col: 1}},
+	}
+	issue := model.QueryResult{QueryName: "r", QueryID: "r", Severity: model.SeverityHigh, Platform: "Kubernetes",
+		Files: []model.VulnerableFile{file}}
+	issue.Files = append(issue.Files, file)
+	issue.Files[1].RenderRoot = "overlays/dev"
+
+	report := NewSarifReport().(*sarifReport)
+	_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+	require.NoError(t, err)
+	results := report.Runs[0].Results
+	require.Len(t, results, 2)
+	_, raw := results[0].ResultProperties["kustomize"]
+	require.False(t, raw)
+	require.Equal(t, map[string]string{"render_root": "overlays/dev"}, results[1].ResultProperties["kustomize"])
+}

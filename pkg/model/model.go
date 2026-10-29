@@ -323,6 +323,10 @@ type FileMetadata struct {
 	Archive string
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
+	// RenderRoot is the repository-relative slash path of the kustomization
+	// that rendered this document ("." for the repository root); empty for a
+	// document scanned as written. It is part of the finding identity.
+	RenderRoot string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
 	// document groups multiple module resources from the same file.
 	ModuleAttributions map[string]*ModuleAttribution
@@ -690,6 +694,9 @@ type Vulnerability struct {
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
+	// RenderRoot: kustomization that rendered the document; folded into
+	// the fingerprint (see FileMetadata.RenderRoot).
+	RenderRoot string `json:"renderRoot,omitempty"`
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`

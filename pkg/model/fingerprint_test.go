@@ -30,9 +30,33 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 	fromAAgain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
 	require.Equal(t, fromA, fromAAgain, "the same caller must produce a stable fingerprint")
 
-	// Non-Terraform platforms must ignore the module call chain.
-	k8sWithChain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
-	require.Equal(t, base, k8sWithChain, "non-Terraform platforms must ignore the module call chain")
+	// Platforms without chains must ignore the call chain.
+	cfn := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "CloudFormation", "aws_s3_bucket", "this", "rule-1", "", "")
+	cfnWithChain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "CloudFormation", "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
+	require.Equal(t, cfn, cfnWithChain, "platforms without chains must ignore the call chain")
+}
+
+// A Kubernetes document rendered by two kustomizations is two findings; one
+// scanned as written keeps the fingerprint it always had.
+func TestGetDatadogFingerprintHash_RenderRoot(t *testing.T) {
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
+	hash := func(platform, root string) string {
+		return GetDatadogFingerprintHash(sci, "base/deployment.yaml", platform, "Deployment", "web", "rule-1", "", root)
+	}
+	require.Equal(t, "repo|base/deployment.yaml|Deployment|web|rule-1",
+		fingerprintInput(sci, "base/deployment.yaml", "Kubernetes", "Deployment", "web", "rule-1", "", ""))
+	require.NotEqual(t, hash("Kubernetes", "overlays/dev"), hash("Kubernetes", "overlays/prod"))
+	require.NotEqual(t, hash("Kubernetes", ""), hash("Kubernetes", "overlays/dev"))
+	require.Equal(t, hash("Kubernetes", "overlays/dev"), hash("kubernetes", "overlays/dev"))
+
+	dev := &Vulnerability{FileName: "base/deployment.yaml", Platform: "Kubernetes", ResourceType: "Deployment",
+		ResourceName: "web", QueryID: "rule-1", RenderRoot: "overlays/dev"}
+	prod := *dev
+	prod.RenderRoot = "overlays/prod"
+	require.NotEqual(t, FindingIdentity(dev), FindingIdentity(&prod))
+	id, ok := IdentityBeforeLine(dev)
+	require.True(t, ok)
+	require.Equal(t, FindingIdentity(dev), id.WithChain(dev.IdentityChain()))
 }
 
 // FindingIdentity (storage's grouping) and CreateSummary (the report's
