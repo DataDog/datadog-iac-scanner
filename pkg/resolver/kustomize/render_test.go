@@ -342,53 +342,128 @@ func TestRenderNoEgress(t *testing.T) {
 	}
 }
 
-// TestRenderSymlinkRoleValidation refuses a kustomization reached through a
-// symlink to an ordinary file: the requested role, not the target's name,
-// decides validation, so a remote reference inside it never loads.
+// TestRenderSymlinkRoleValidation decides the role by the requested name, not
+// the symlink target's: a remote reference inside an in-workspace alias is
+// validated and refused, a valid alias renders, and the escaped file is
+// never read.
 func TestRenderSymlinkRoleValidation(t *testing.T) {
+	outside := t.TempDir()
+	escaped := filepath.Join(outside, "escape.txt")
+	if err := os.WriteFile(escaped, []byte("resources:\n  - https://example.com/x.yaml\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	dir := writeTree(t, map[string]string{
+		"o/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+		// An in-workspace alias holding a valid kustomization renders fine.
+		"o/plain.yaml": "resources:\n  - deployment.yaml\n",
+	})
+	if err := os.Symlink(filepath.Join(dir, "o/plain.yaml"), filepath.Join(dir, "o/kustomization.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	res, err := r.Render(context.Background(), filepath.Join(dir, "o"), nil)
+	if err != nil {
+		t.Fatalf("valid in-workspace alias: %v", err)
+	}
+	if len(res.Documents) != 1 {
+		t.Fatalf("aliased kustomization rendered %d documents", len(res.Documents))
+	}
+
+	// An alias to a file outside the root is refused and never read.
+	dir2 := writeTree(t, map[string]string{
+		"o/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+	})
+	if err := os.Symlink(escaped, filepath.Join(dir2, "o/kustomization.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	r2 := NewRenderer(vfs.Default(), dir2, 5<<20)
+	if _, err := r2.Render(context.Background(), filepath.Join(dir2, "o"), nil); err == nil {
+		t.Fatal("rendered a kustomization alias pointing outside the root")
+	}
+	if b, ok := r2.Source(escaped); ok {
+		t.Fatalf("the escaped file was read: %d bytes", len(b))
+	}
+
+	// An in-workspace alias whose content is not a kustomization is
+	// validated as one and refused.
+	dir3 := writeTree(t, map[string]string{
 		"o/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
 		"o/plain.txt":       "resources:\n  - https://example.com/x.yaml\n",
 	})
-	if err := os.Symlink(filepath.Join(dir, "o/plain.txt"), filepath.Join(dir, "o/kustomization.yaml")); err != nil {
+	if err := os.Symlink(filepath.Join(dir3, "o/plain.txt"), filepath.Join(dir3, "o/kustomization.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := render(t, dir, "o"); err == nil {
+	if _, err := render(t, dir3, "o"); err == nil {
 		t.Fatal("rendered a symlinked kustomization without validation")
 	}
 }
 
 // TestRenderNestedSymlinkNoEgress refuses a kustomization reached through
-// nested symlinks that end outside the confinement root.
+// nested symlinks that end outside the confinement root, with live HTTP and
+// git traps: the escaped file is never read and no remote is contacted.
 func TestRenderNestedSymlinkNoEgress(t *testing.T) {
-	dir := writeTree(t, map[string]string{
-		"o/kustomization.yaml": "resources:\n  - dep.yaml\n",
-		"o/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
-	})
-	outside := t.TempDir()
-	escaped := filepath.Join(outside, "escape.yaml")
-	if err := os.WriteFile(escaped, []byte("apiVersion: v1\nkind: Secret\n"), 0o600); err != nil {
+	var hits atomic.Int32
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
 		t.Fatal(err)
 	}
-	// o/link2 -> outside/escape.yaml, o/link1 -> link2: two hops.
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	})}
+	go func() { _ = srv.Serve(ln) }()
+	defer srv.Close()
+	bin := t.TempDir()
+	marker := filepath.Join(bin, "git-ran")
+	if err := os.WriteFile(filepath.Join(bin, "git"),
+		[]byte("#!/bin/sh\necho ran > "+marker+"\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HTTP_PROXY", "http://"+ln.Addr().String())
+	t.Setenv("HTTPS_PROXY", "http://"+ln.Addr().String())
+	t.Setenv("PATH", bin)
+
+	outside := t.TempDir()
+	escaped := filepath.Join(outside, "escape.yaml")
+	// The escaped file orders a remote fetch: reading it would mean egress.
+	if err := os.WriteFile(escaped, []byte("resources:\n  - https://example.invalid/x.yaml\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := writeTree(t, map[string]string{
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+	})
+	// o/link2 -> outside/escape.yaml, o/link1 -> link2, resource -> link1:
+	// two symlink hops ending outside the root.
 	if err := os.Symlink(escaped, filepath.Join(dir, "o/link2")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Join(dir, "o/link2"), filepath.Join(dir, "o/link1")); err != nil {
 		t.Fatal(err)
 	}
-	// The escaped file is written to a location the render must never reach:
-	// also point a resource at it and check the refusal.
+	if err := os.WriteFile(filepath.Join(dir, "o/kustomization.yaml"),
+		[]byte("resources:\n  - dep.yaml\n  - link1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := render(t, dir, "o"); err == nil {
+		t.Fatal("rendered a resource outside the confinement root")
+	}
+	if hits.Load() != 0 {
+		t.Errorf("%d requests reached the proxy", hits.Load())
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("git ran")
+	}
+	// The root kustomization itself must not be reachable through an outside
+	// symlink either: preparation probes through the confined resolve.
 	dir2 := writeTree(t, map[string]string{
-		"o/kustomization.yaml": "resources:\n  - link1\n",
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
 	})
-	if err := os.Symlink(escaped, filepath.Join(dir2, "o/link1")); err != nil {
+	if err := os.Symlink(filepath.Join(dir, "o/link2"), filepath.Join(dir2, "o/kustomization.yaml")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := render(t, dir2, "o"); err == nil {
-		t.Fatal("rendered a resource outside the confinement root")
+		t.Fatal("prepared a root kustomization outside the confinement root")
 	}
-	_ = dir
 }
 
 // TestRenderRemainingBudgetDeadline caps a root by what is left of the phase
