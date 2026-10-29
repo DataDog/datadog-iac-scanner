@@ -571,6 +571,34 @@ func Test_E2EKustomize(t *testing.T) {
 		require.NotContains(t, raw, "Y2FuYXJ5LXNlY3JldC12YWx1ZQ==") // base64 of the canary
 	})
 
+	t.Run("rules relating documents only see one render root", func(t *testing.T) {
+		got, _ := scanKustomize(t, map[string]string{
+			"base/kustomization.yaml":          "resources:\n  - deployment.yaml\n",
+			"base/deployment.yaml":             safeBase,
+			"overlays/dev/kustomization.yaml":  "resources:\n  - ../../base\n",
+			"overlays/prod/kustomization.yaml": "resources:\n  - ../../base\n  - netpol.yaml\n",
+			"overlays/prod/netpol.yaml": "apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: deny\n" +
+				"spec:\n  podSelector: {}\n",
+		}, true, "k8s_scoped")
+		require.Equal(t, []kustomizeFinding{{"base/deployment.yaml", "overlays/dev", 4, false}}, got)
+	})
+	t.Run("rules relating documents keep raw and rendered documents apart", func(t *testing.T) {
+		netpol := "apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: deny\nspec:\n  podSelector: {}\n"
+		// A raw NetworkPolicy does not cover a rendered Deployment.
+		got, _ := scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "resources:\n  - deployment.yaml\n",
+			"app/deployment.yaml":    safeBase,
+			"raw/netpol.yaml":        netpol,
+		}, true, "k8s_scoped")
+		require.Equal(t, []kustomizeFinding{{"app/deployment.yaml", "app", 4, false}}, got)
+		// A rendered NetworkPolicy does not cover a raw Deployment.
+		got, _ = scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "resources:\n  - netpol.yaml\n",
+			"app/netpol.yaml":        netpol,
+			"raw/deployment.yaml":    safeBase,
+		}, true, "k8s_scoped")
+		require.Equal(t, []kustomizeFinding{{"raw/deployment.yaml", "", 4, false}}, got)
+	})
 	t.Run("a generator-only repository is not scanned for other platforms", func(t *testing.T) {
 		got, raw := scanKustomizePlatform(t, map[string]string{
 			"app/kustomization.yaml": "secretGenerator:\n  - name: only\n    literals:\n      - PASSWORD=generator-only-canary\n",
