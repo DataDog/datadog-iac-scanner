@@ -42,6 +42,32 @@ type extraCallerInfo struct {
 	attributions map[string]*model.ModuleAttribution
 }
 
+// extraInstanceInfo records a count/for_each instance document whose
+// rule-visible content is identical to the primary's, so its findings are
+// cloned from the primary after eval without a document of its own in
+// input.document. Unlike a deduplicated module caller, a member differs from
+// the primary only in which instance of each block it is: the finding's
+// address is rebuilt with the member's suffix, and its root module directory
+// can differ from the primary's when two roots expand identical blocks.
+type extraInstanceInfo struct {
+	docID      string
+	rootModule string
+	// instances maps each expanded block to the instance suffix this member
+	// represents. It carries the same blocks as the primary's scope with the
+	// member's own keys.
+	instances map[model.TerraformBlock]string
+	// scope is the primary document's TerraformScope, which the member's
+	// findings are resolved against (the members declare the same blocks).
+	scope *model.TerraformScope
+}
+
+// instancePrimary records the document an all-instances group folds into: its
+// docID and the synthetic scope its findings resolve against.
+type instancePrimary struct {
+	docID string
+	scope *model.TerraformScope
+}
+
 // moduleResolutionResult bundles all outputs of resolveModuleDocuments.
 type moduleResolutionResult struct {
 	docs                 []model.Document
@@ -51,6 +77,7 @@ type moduleResolutionResult struct {
 	rootDirs             []string
 	unresolvedModuleDirs map[string]bool
 	extras               map[string][]extraCallerInfo
+	instanceExtras       map[string][]extraInstanceInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
 	moduleFiles   map[string]*moduleFileCalls
 	resourceCount int
@@ -72,7 +99,8 @@ type moduleResolutionResult struct {
 // without a synthetic replacement.
 // Returns synthetic docs and matching FileMetadata (call chain for fingerprints).
 // Caller must append the files before Combine/ToMap. extras lists duplicate callers for post-OPA finding expansion,
-// and moduleFiles the calls reaching each external module file.
+// instanceExtras the identical-content instance documents folded into a
+// primary's, and moduleFiles the calls reaching each external module file.
 func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
@@ -81,6 +109,7 @@ func (c *Inspector) instantiateLocalModules(
 	docs []model.Document,
 	syntheticFiles []*model.FileMetadata,
 	extras map[string][]extraCallerInfo,
+	instanceExtras map[string][]extraInstanceInfo,
 	moduleFiles map[string]*moduleFileCalls,
 ) {
 	resolver := c.buildRemoteResolver()
@@ -97,7 +126,7 @@ func (c *Inspector) instantiateLocalModules(
 		)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	for _, f := range files {
 		if f == nil || !tfpath.IsConfig(f.FilePath) {
@@ -135,7 +164,7 @@ func (c *Inspector) instantiateLocalModules(
 			calls.writtenResourceTypes = documentResourceTypes(f.Document)
 		}
 	}
-	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
+	return res.docs, res.syntheticFiles, res.extras, res.instanceExtras, res.moduleFiles
 }
 
 // logModuleInstantiationSummary emits the fields an on-call search needs at warn
@@ -438,6 +467,8 @@ func evaluateRootModules(
 	byAbsPath map[string]*model.FileMetadata,
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
+	instanceSeen map[docContentKey]instancePrimary,
+	instanceExtras map[string][]extraInstanceInfo,
 	instantiated instantiatedIndex,
 	successfulRoots map[string]bool,
 	unresolvedModuleDirs map[string]bool,
@@ -451,6 +482,7 @@ func evaluateRootModules(
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, relDir: relDir, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
+		instanceSeen: instanceSeen, instanceExtras: instanceExtras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
@@ -488,6 +520,8 @@ type rootMerge struct {
 	byAbsPath            map[string]*model.FileMetadata
 	seen                 map[docContentKey]string
 	extras               map[string][]extraCallerInfo
+	instanceSeen         map[docContentKey]instancePrimary
+	instanceExtras       map[string][]extraInstanceInfo
 	instantiated         instantiatedIndex
 	successfulRoots      map[string]bool
 	unresolvedModuleDirs map[string]bool
@@ -524,7 +558,8 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, m.relDir, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		resources, m.byAbsPath, m.repoPath, m.relDir, m.targets, m.seen, m.extras,
+		m.instanceSeen, m.instanceExtras, m.instantiated, m.lookup, attributions)
 	m.moduleCalls.record(instances, m.repoPath, m.relDir, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -720,8 +755,14 @@ func resolveModuleDocuments(
 
 	// seen maps a content-based key to the primary docID so duplicate callers can
 	// be recorded in extras rather than emitted as separate OPA documents.
+	// instanceSeen is the same for root-file count/for_each instance documents,
+	// whose content key ignores the instance identity: two maps keep module
+	// callers (keyed on full names) and instance members (keyed on base names)
+	// from ever colliding.
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
+	instanceSeen := make(map[docContentKey]instancePrimary)
+	instanceExtras := make(map[string][]extraInstanceInfo)
 	instantiated := make(instantiatedIndex)
 	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
@@ -750,7 +791,7 @@ func resolveModuleDocuments(
 
 	evaluateRootModules(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, relDir, resolver, targets, lookup,
-		byAbsPath, seen, extras, instantiated,
+		byAbsPath, seen, extras, instanceSeen, instanceExtras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
 	)
@@ -775,6 +816,7 @@ func resolveModuleDocuments(
 		rootDirs:             roots,
 		unresolvedModuleDirs: unresolvedModuleDirs,
 		extras:               extras,
+		instanceExtras:       instanceExtras,
 		moduleFiles:          moduleCalls.fileCalls(unresolvedModuleDirs),
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
@@ -953,6 +995,8 @@ func instantiatedDocs(
 	targets *ruleTargets,
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
+	instanceSeen map[docContentKey]instancePrimary,
+	instanceExtras map[string][]extraInstanceInfo,
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
@@ -1035,22 +1079,97 @@ func instantiatedDocs(
 		g := groups[key]
 		docID := docGroupID(g)
 
-		contentKey := groupContentKey(g)
-		if primaryDocID, dup := seen[contentKey]; dup {
-			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
-				docID:        docID,
-				rootModule:   g.rootModule,
-				attributions: cloneModuleAttributions(g.attributions),
-			})
-			continue
-		}
-		seen[contentKey] = docID
+		if allEntriesInstanced(g) {
+			// Every entry is one count/for_each instance of a root-file block:
+			// the documents differ only in which instance of each block they
+			// carry, so documents whose rule-visible content matches are
+			// folded into the first one and their findings cloned after eval.
+			contentKey := instanceGroupContentKey(g)
+			if primary, dup := instanceSeen[contentKey]; dup {
+				instanceExtras[primary.docID] = append(instanceExtras[primary.docID], extraInstanceInfo{
+					docID:      docID,
+					rootModule: g.rootModule,
+					instances:  cloneInstanceSuffixes(g.instances),
+					scope:      primary.scope,
+				})
+				continue
+			}
+			scope := groupScope(g)
+			instanceSeen[contentKey] = instancePrimary{docID: docID, scope: scope}
 
-		doc := groupDocument(g)
-		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(g))
+			doc := groupDocument(g)
+			docs = append(docs, doc)
+			synthetic = append(synthetic, newFileMetadataWithScope(g, scope))
+		} else {
+			contentKey := groupContentKey(g)
+			if primaryDocID, dup := seen[contentKey]; dup {
+				extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
+					docID:        docID,
+					rootModule:   g.rootModule,
+					attributions: cloneModuleAttributions(g.attributions),
+				})
+				continue
+			}
+			seen[contentKey] = docID
+
+			doc := groupDocument(g)
+			docs = append(docs, doc)
+			synthetic = append(synthetic, newInstanceFileMetadata(g))
+		}
 	}
 	return docs, synthetic, resourceCount
+}
+
+// allEntriesInstanced reports whether every entry of the group can take part
+// in identity-free content deduplication: no module call resolved the group,
+// and every entry is either one count/for_each instance of a root-file block
+// or a plain sibling root. Plain siblings (joined for context by
+// joinPlainRootSiblings) carry no instance suffix and are identical in every
+// layer, so they fold with the rest: their findings belong to the layer that
+// owns them, the primary, and a member never re-reports them — the clone step
+// substitutes suffixes only for blocks the members instance.
+func allEntriesInstanced(g *docGroup) bool {
+	// Every root-file entry is either a count/for_each instance (it carries a
+	// suffix) or a plain root (it does not); module-scoped entries are the
+	// only ones that need the exact content key.
+	return g.moduleAddress == ""
+}
+
+// instanceGroupContentKey identifies an all-instances document by the module
+// call address it belongs to, its defining file, and the content it resolved
+// to — with the per-instance identity left out: entries are hashed under
+// their base name, so two documents carrying the same blocks at the same
+// resolved attributes share a key however their instance keys differ. The
+// layer index and the calling root are left out as in groupContentKey: a
+// root's second instance of a block, and another root's first, both fold into
+// the first document, whose extras record what each member stands for.
+//
+// It must never be compared against a groupContentKey value: the two key
+// spaces live in separate maps, so a module-scoped group and an all-instances
+// group cannot collide.
+func instanceGroupContentKey(g *docGroup) docContentKey {
+	sortInstantiated(g.entries)
+
+	h := newContentHasher()
+	h.str(g.moduleAddress)
+	h.str(g.fm.ID)
+	for i := range g.entries {
+		e := &g.entries[i]
+		h.str(e.typ)
+		h.str(e.baseName)
+		h.u64(uint64(e.defLine))
+		h.u64(e.attrsHash)
+	}
+	return h.key()
+}
+
+func cloneInstanceSuffixes(instances map[model.TerraformBlock]string) map[model.TerraformBlock]string {
+	if len(instances) == 0 {
+		return nil
+	}
+	out := make(map[model.TerraformBlock]string, len(instances))
+	maps.Copy(out, instances)
+	return out
 }
 
 // rootResource is a root block that has no count/for_each instance suffix.
@@ -1274,17 +1393,29 @@ func docGroupID(g *docGroup) string {
 // under, the outermost caller's root module, which block instance this
 // document represents, and which blocks it only borrows for context.
 func newInstanceFileMetadata(g *docGroup) *model.FileMetadata {
-	clone := g.fm.ShallowCopy()
-	clone.ID = docGroupID(g)
-	clone.Document = model.Document{}
-	clone.ModuleAttributions = cloneModuleAttributions(g.attributions)
-	clone.TerraformScope = &model.TerraformScope{
+	return newFileMetadataWithScope(g, groupScope(g))
+}
+
+// groupScope builds the Terraform identity context of a synthetic instance
+// document (K9CODESEC-7158): the module instance address its blocks are
+// evaluated under, the outermost caller's root module, which block instance
+// this document represents, and which blocks it only borrows for context.
+func groupScope(g *docGroup) *model.TerraformScope {
+	return &model.TerraformScope{
 		RootModule:    g.rootModule,
 		ModuleAddress: g.moduleAddress,
 		Instances:     g.instances,
 		Borrowed:      g.borrowed,
 		Blocks:        groupBlocks(g),
 	}
+}
+
+func newFileMetadataWithScope(g *docGroup, scope *model.TerraformScope) *model.FileMetadata {
+	clone := g.fm.ShallowCopy()
+	clone.ID = docGroupID(g)
+	clone.Document = model.Document{}
+	clone.ModuleAttributions = cloneModuleAttributions(g.attributions)
+	clone.TerraformScope = scope
 	if g.fm.LineInfoDocument != nil {
 		// Already materialized: shallow-clone so later mutations on the
 		// parent (e.g. deleting a suppressed "resource" key) don't alias

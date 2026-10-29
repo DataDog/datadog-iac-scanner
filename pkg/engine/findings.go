@@ -193,6 +193,13 @@ func (s *findingSet) appendRouteIdentities(
 			model.TerraformIdentity{RootModule: ex.rootModule, ResourceID: id.ResourceID},
 			len(ex.attributions) > 0)
 	}
+	// An identical-content instance member reports the same blocks at its own
+	// instance keys. Like route's expandInstanceFindings, a member identity is
+	// only produced for a finding on an expanded block both the primary's and
+	// the member's scope carry (see instanceMemberIdentity).
+	if (address.Block{}) != block {
+		s.appendInstanceMemberIdentities(ids, ruleID, docID, scope, block)
+	}
 	if mf != nil && !mf.keptAsWritten(resourceType) {
 		for i := range mf.calls {
 			call := &mf.calls[i]
@@ -238,18 +245,21 @@ func (s *findingSet) findings() []model.Vulnerability {
 
 // findingRouting is what turns the findings a rule raises on the scanned
 // documents into the findings of the scan: the callers a deduplicated module
-// document stands for, the calls reaching an external module file, and the
-// caller files whose filters apply to module findings.
+// document stands for, the identical-content instance documents folded into a
+// primary's, the calls reaching an external module file, and the caller files
+// whose filters apply to module findings.
 type findingRouting struct {
-	extras      map[string][]extraCallerInfo
-	moduleFiles map[string]*moduleFileCalls
-	callers     map[string]*model.FileMetadata
+	extras         map[string][]extraCallerInfo
+	instanceExtras map[string][]extraInstanceInfo
+	moduleFiles    map[string]*moduleFileCalls
+	callers        map[string]*model.FileMetadata
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
 // rules route concurrently, so the index is built before any of them run.
 func newFindingRouting(
-	extras map[string][]extraCallerInfo, moduleFiles map[string]*moduleFileCalls,
+	extras map[string][]extraCallerInfo, instanceExtras map[string][]extraInstanceInfo,
+	moduleFiles map[string]*moduleFileCalls,
 	files model.FileMetadatas, repoPath string,
 ) *findingRouting {
 	callers := make(map[string]*model.FileMetadata)
@@ -262,7 +272,7 @@ func newFindingRouting(
 			callers[key] = f
 		}
 	}
-	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers}
+	return &findingRouting{extras: extras, instanceExtras: instanceExtras, moduleFiles: moduleFiles, callers: callers}
 }
 
 // route turns one rule's decoded findings into the findings the scan reports
@@ -275,6 +285,92 @@ func (r *findingRouting) route(
 		return vulns
 	}
 	vulns = expandModuleFindings(vulns, r.extras)
+	vulns = expandInstanceFindings(vulns, r.instanceExtras)
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
 	return c.filterAtCallSites(ctx, vulns, r.callers)
+}
+
+// expandInstanceFindings clones the findings of an all-instances primary
+// document onto every identical-content member instance, rewriting each
+// finding's address with the member's instance suffix. Everything else —
+// message, lines, severity, rule — is identical by construction: the members
+// resolved byte-identical attributes and share the defining file, so their
+// line detection resolves the same text.
+//
+// Only a finding whose block is one of the expanded instances is cloned: a
+// finding that names no declared block has no instance address to rewrite and
+// keeps the legacy fingerprint, which is the same for every member (they
+// share the defining file), so the report collapses them as it does today.
+func expandInstanceFindings(
+	vulns []model.Vulnerability, extras map[string][]extraInstanceInfo,
+) []model.Vulnerability {
+	if len(extras) == 0 {
+		return vulns
+	}
+	expanded := make([]model.Vulnerability, 0, len(vulns))
+	for i := range vulns {
+		members := extras[vulns[i].FileID]
+		if len(members) == 0 {
+			expanded = append(expanded, vulns[i])
+			continue
+		}
+		expanded = append(expanded, vulns[i])
+		// Every member carries the same blocks as the primary, so the primary's
+		// scope resolves the finding's block for all of them.
+		scope := members[0].scope
+		block, ok := resolveTerraformBlock(scope, vulns[i].ResourceType, vulns[i].ResourceName)
+		if !ok {
+			continue
+		}
+		if _, instanced := scope.Instances[block]; !instanced {
+			continue
+		}
+		for _, m := range members {
+			vCopy := vulns[i]
+			if suffix, ok := m.instances[block]; ok {
+				vCopy.ResourceID = address.Instance(scope.ModuleAddress, block, suffix)
+			} else {
+				// Unreachable for content-identical members; keep the primary's
+				// address rather than inventing one.
+				vCopy.ResourceID = vulns[i].ResourceID
+			}
+			vCopy.RootModule = m.rootModule
+			vCopy.FileID = m.docID
+			expanded = append(expanded, vCopy)
+		}
+	}
+	return expanded
+}
+
+// instanceMemberIdentity returns the identity a member instance document
+// reports for a finding on block b of the primary's scope: the member's root
+// module and the block's address at the member's instance key. ok is false
+// when the block is not one of the member's instances, in which case the
+// member reports nothing new for the finding (route's expandInstanceFindings
+// does not clone it either — the two must agree, see supersedes).
+func instanceMemberIdentity(
+	scope *model.TerraformScope, b address.Block, member extraInstanceInfo,
+) (model.TerraformIdentity, bool) {
+	if suffix, ok := member.instances[b]; ok {
+		return model.TerraformIdentity{
+			RootModule: member.rootModule,
+			ResourceID: address.Instance(scope.ModuleAddress, b, suffix),
+		}, true
+	}
+	return model.TerraformIdentity{}, false
+}
+
+// appendInstanceMemberIdentities appends the identity each identical-content
+// instance member would report for a finding raised on docID's block: the
+// member's root module and the block's address at the member's instance key.
+// A finding on a block outside the primary's instances map reports nothing
+// per member (see instanceMemberIdentity).
+func (s *findingSet) appendInstanceMemberIdentities(
+	ids *[]string, ruleID, docID string, scope *model.TerraformScope, block address.Block,
+) {
+	for _, ex := range s.routing.instanceExtras[docID] {
+		if id, ok := instanceMemberIdentity(scope, block, ex); ok {
+			*ids = append(*ids, terraformIdentityInput(ruleID, id))
+		}
+	}
 }

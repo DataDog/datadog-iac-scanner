@@ -576,11 +576,12 @@ func (c *Inspector) Inspect(
 
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
+	var instanceExtras map[string][]extraInstanceInfo
 	var moduleFiles map[string]*moduleFileCalls
 	var syntheticFiles []*model.FileMetadata
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		moduleDocs, syntheticFiles, moduleExtras, instanceExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
 
@@ -670,7 +671,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
-	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
+	routing := newFindingRouting(moduleExtras, instanceExtras, moduleFiles, files, c.repoPath)
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
 		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)

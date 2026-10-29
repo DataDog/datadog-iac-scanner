@@ -47,13 +47,15 @@ func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, f
 	}
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
+	instanceSeen := make(map[docContentKey]instancePrimary)
+	instanceExtras := make(map[string][]extraInstanceInfo)
 	instantiated := make(instantiatedIndex)
 	out := rootEvaluationOutcome{Successful: map[string]bool{}, Unresolved: map[string]bool{}, Called: map[string]bool{}}
 	var docs []model.Document
 	var synthetic []*model.FileMetadata
 	relDir := func(dir string) string { return repoRelativeDir(dir, root, nil) }
 	evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, relDir, nil, nil, nil,
-		byAbsPath, seen, extras, instantiated, out.Successful, out.Unresolved, out.Called,
+		byAbsPath, seen, extras, instanceSeen, instanceExtras, instantiated, out.Successful, out.Unresolved, out.Called,
 		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls)
 
 	encode := func(v any) string {

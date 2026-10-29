@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -85,6 +86,13 @@ type ResolvedResource struct {
 	// and addressed like a resource, but a separate namespace — a managed
 	// resource of the same type and name is a different block.
 	Ephemeral bool
+
+	// Digest is a 128-bit fingerprint of Attributes, computed alongside
+	// evaluation. DigestOK is false when no digest was computed or the value
+	// held a kind the digester does not model. Reference passes compare these
+	// instead of deep-comparing whole per-type objects between passes.
+	Digest   digest
+	DigestOK bool
 }
 
 // CallSite records one hop in a module call chain.
@@ -490,7 +498,12 @@ func (e *Evaluator) evaluate(
 	data := newModuleData(e, sources, parsed.locals, parsed.resourceTypes, addr, chain)
 	data.refresh(evalCtx)
 
-	e.preinjectResourceRefs(resourceBlocks, moduleBlocks, scope, evalCtx, data, addr, chain)
+	// refState carries, across this module's resource injections, the digest of
+	// what each pass installed, so passes detect progress by comparing folded
+	// digests instead of deep-comparing the injected objects.
+	refState := &refPassState{digests: make(map[string]digestEntry)}
+
+	e.preinjectResourceRefs(resourceBlocks, moduleBlocks, scope, evalCtx, data, addr, chain, refState)
 
 	reads := callSiblingReads(moduleBlocks)
 	e.applySiblingModulePrepass(
@@ -504,14 +517,14 @@ func (e *Evaluator) evaluate(
 	e.applyModuleOutputs(evalCtx, scope, data, moduleOutputs)
 
 	rootResources := e.evaluateRootResources(
-		resourceBlocks, scope, evalCtx, data, addr, chain,
+		resourceBlocks, scope, evalCtx, data, addr, chain, refState,
 	)
 
 	// Re-inject the final-pass resource values so that outputs and locals that
 	// reference the Nth hop of an N-hop chain can resolve. For chains shorter
 	// than resourceRefPasses hops all resources were already injected inside the
 	// loop, so injectResourceRefs returns false and the locals refresh is skipped.
-	if injectResourceRefs(evalCtx, rootResources) {
+	if injectResourceRefsState(evalCtx, rootResources, refState) {
 		evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, true, false)
 	}
 	if data.readsOwnResources() {
@@ -629,12 +642,13 @@ func (e *Evaluator) preinjectResourceRefs(
 	data *moduleData,
 	addr string,
 	chain []CallSite,
+	state *refPassState,
 ) {
 	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 {
 		return
 	}
-	resources := e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
-	injected := injectResourceRefs(evalCtx, resources)
+	resources := e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain, newPassDigester())
+	injected := injectResourceRefsState(evalCtx, resources, state)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, injected, false)
 	if data.readsOwnResources() {
 		data.refresh(evalCtx)
@@ -648,9 +662,10 @@ func (e *Evaluator) evaluateRootResources(
 	data *moduleData,
 	addr string,
 	chain []CallSite,
+	state *refPassState,
 ) []ResolvedResource {
 	return e.rootResourcesWithRefPasses(
-		resourceBlocks, scope, evalCtx, data, addr, chain,
+		resourceBlocks, scope, evalCtx, data, addr, chain, state,
 	)
 }
 
@@ -861,6 +876,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	data *moduleData,
 	addr string,
 	chain []CallSite,
+	state *refPassState,
 ) []ResolvedResource {
 	var rootResources []ResolvedResource
 	types := declaredResourceTypes(resourceBlocks)
@@ -875,9 +891,9 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	readsOwn := localsReadOwn || resourcesReadResources(resourceBlocks, types) ||
 		(dataReadsOwn && readsDataPath)
 	for pass := 0; pass < resourceRefPasses; pass++ {
-		rootResources = e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+		rootResources = e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain, newPassDigester())
 		// Always inject so resolved attrs reach evalCtx on every pass including the last.
-		changed := injectResourceRefs(evalCtx, rootResources)
+		changed := injectResourceRefsState(evalCtx, rootResources, state)
 		if !changed || !readsOwn {
 			// Nothing the resource blocks or locals read has changed, so
 			// evaluating them again would reproduce these instances.
@@ -898,7 +914,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	// One final evaluation picks up attrs that were only injected on the last pass
 	// (e.g. the Nth resource in an A→B→C→D chain whose evalCtx was updated after the
 	// last evalResourceBlocks call).
-	return e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+	return e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain, newPassDigester())
 }
 
 // declaredResourceTypes returns the resource types a module declares, the
@@ -1003,10 +1019,11 @@ func (e *Evaluator) evalResourceBlocks(
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain []CallSite,
+	dig *passDigester,
 ) []ResolvedResource {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
-		resources = append(resources, e.expandBlock(rb, evalCtx, addr, chain, false)...)
+		resources = append(resources, e.expandBlockWith(rb, evalCtx, addr, chain, false, dig)...)
 	}
 	return resources
 }
@@ -1023,28 +1040,47 @@ func (e *Evaluator) expandBlock(
 	chain []CallSite,
 	data bool,
 ) []ResolvedResource {
+	return e.expandBlockWith(rb, evalCtx, addr, chain, data, nil)
+}
+
+func (e *Evaluator) expandBlockWith(
+	rb *hclsyntax.Block,
+	evalCtx *hcl.EvalContext,
+	addr string,
+	chain []CallSite,
+	data bool,
+	dig *passDigester,
+) []ResolvedResource {
 	if len(rb.Labels) < 2 {
 		return nil
 	}
-	typeName, resName := rb.Labels[0], rb.Labels[1]
 
 	// Attributes that ignore each/count evaluate identically in every instance.
 	memo := newInvariantMemo()
+	memo.analysis = analyzeBody(rb.Body)
 
-	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
+	sharedChain := cloneChain(chain)
+
+	makeOne := func(name string, child *hcl.EvalContext, attrs map[string]cty.Value, counts DynamicCounts) ResolvedResource {
 		// Only attribution of module resources and data evaluation read the
 		// iteration, so the resource instances of the root module do not keep it.
 		var iteration map[string]cty.Value
 		if child != evalCtx && (addr != "" || data) {
 			iteration = child.Variables
 		}
-		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
-		attrs := e.evalBodyWith(rb.Body, child, nil, state)
+		dg, dgOK := memo.templateDigest, memo.templateOK
+		if attrs == nil {
+			state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}, dig: dig}
+			var dgVal digest
+			attrs, dgVal, dgOK = e.evalBodyWithCore(rb.Body, child, nil, state)
+			dg = dgVal
+			counts = state.dynamic.counts
+		}
 		return ResolvedResource{
-			Type:          typeName,
+			Type:          rb.Labels[0],
 			Name:          name,
 			Attributes:    attrs,
-			DynamicCounts: state.dynamic.counts,
+			DynamicCounts: counts,
 			Body:          rb.Body,
 			Iteration:     iteration,
 			DefinedIn:     rb.TypeRange.Filename,
@@ -1053,17 +1089,34 @@ func (e *Evaluator) expandBlock(
 			DefColumn:     rb.TypeRange.Start.Column,
 			DefEndColumn:  rb.Range().End.Column,
 			ModuleAddress: addr,
-			CallChain:     cloneChain(chain),
+			CallChain:     sharedChain,
 			Data:          data,
 			Ephemeral:     rb.Type == blockTypeEphemeral,
+			Digest:        dg,
+			DigestOK:      dgOK,
 		}
 	}
 
 	count, forEach := tfinstances.Attributes(rb.Body)
 	plan := tfinstances.Resolve(count, forEach, evalCtx)
+	return expandPlan(e, rb, evalCtx, plan, memo, dig, makeOne)
+}
+
+// expandPlan turns one block's resolved count/for_each plan into its resource
+// instances.
+func expandPlan(
+	e *Evaluator,
+	rb *hclsyntax.Block,
+	evalCtx *hcl.EvalContext,
+	plan tfinstances.Plan,
+	memo *invariantMemo,
+	dig *passDigester,
+	makeOne func(name string, child *hcl.EvalContext, attrs map[string]cty.Value, counts DynamicCounts) ResolvedResource,
+) []ResolvedResource {
+	resName := rb.Labels[1]
 	switch {
 	case plan.Kind == "":
-		return []ResolvedResource{makeOne(resName, evalCtx)}
+		return []ResolvedResource{makeOne(resName, evalCtx, nil, nil)}
 	case plan.Unresolved:
 		// One placeholder instance with its iteration unknown: Terraform treats
 		// an address with no index as naming every instance of the block, and
@@ -1071,20 +1124,39 @@ func (e *Evaluator) expandBlock(
 		name, value := plan.Variable(tfinstances.Item{})
 		child := evalCtx.NewChild()
 		child.Variables = map[string]cty.Value{name: value}
-		return []ResolvedResource{makeOne(resName, child)}
+		return []ResolvedResource{makeOne(resName, child, nil, nil)}
 	case len(plan.Items) == 0:
 		// The expansion resolved to zero instances: the block exists nowhere.
 		return nil
 	}
-	out := make([]ResolvedResource, 0, len(plan.Items))
 	isCount := plan.Kind == tfinstances.KindCount
+	// A body that never reads the iteration resolves to the same attributes in
+	// every instance. Evaluating it once per block and sharing the result keeps
+	// N instances from paying N times for one body's evaluation, for both the
+	// CPU and the memory the duplicate values used to take. The shared map is
+	// never mutated afterwards: a for_each instance narrows its own shallow
+	// copy, and reference injection already copies when meta-arguments exist.
+	var template map[string]cty.Value
+	var templateCounts DynamicCounts
+	if memo.analysis.iterationFree {
+		first := plan.Items[0]
+		bindName, bindValue := plan.Variable(first)
+		firstChild := evalCtx.NewChild()
+		firstChild.Variables = map[string]cty.Value{bindName: bindValue}
+		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}, dig: dig}
+		var dg digest
+		template, dg, _ = e.evalBodyWithCore(rb.Body, firstChild, nil, state)
+		templateCounts = state.dynamic.counts
+		memo.templateDigest, memo.templateOK = dg, true
+	}
+	out := make([]ResolvedResource, 0, len(plan.Items))
 	for _, item := range plan.Items {
-		var keyStr string
 		// The instance suffix is HCL-escaped through the same path the address
 		// formatter uses (address.InstanceSuffix), so quotes, backslashes and
 		// template openers in a for_each key never corrupt the name the
 		// address is built from.
 		suffix := address.InstanceSuffix(item.Key)
+		keyStr := ""
 		if !isCount {
 			// Resolve validated every key as a concrete string.
 			keyStr, _ = ctyutil.ConcreteString(item.Key)
@@ -1092,7 +1164,11 @@ func (e *Evaluator) expandBlock(
 		name, value := plan.Variable(item)
 		child := evalCtx.NewChild()
 		child.Variables = map[string]cty.Value{name: value}
-		res := makeOne(resName+suffix, child)
+		attrs, counts := template, templateCounts
+		if attrs != nil && !isCount {
+			attrs = maps.Clone(attrs)
+		}
+		res := makeOne(resName+suffix, child, attrs, counts)
 		if !isCount {
 			if fe, ok := res.Attributes[metaArgForEach]; ok {
 				res.Attributes[metaArgForEach] = instanceForEach(fe, keyStr, item.Value)
@@ -1128,18 +1204,33 @@ func instanceForEach(fe cty.Value, key string, value cty.Value) cty.Value {
 // Count-expanded resources are exposed as ordered tuples so that x[0].attr resolves correctly;
 // for_each-expanded resources as keyed objects so that x["k"].attr resolves correctly.
 // instBucket is one block's grouped instances: the per-instance keys, the
-// attributes to expose, and whether the block expanded at all.
+// attributes to expose, and whether the block expanded at all. dgs holds each
+// instance's digest so the per-type digest can fold them.
 type instBucket struct {
 	keys     []string
 	attrs    []map[string]cty.Value
+	dgs      []digest
 	isCount  bool
 	expanded bool // true when any instance has brackets (count or for_each)
+	allOK    bool // false when any instance carries no trustworthy digest
+}
+
+// refPassState holds, per injected variable, the digest of what the previous
+// injectResourceRefsState call installed. The next call detects progress by
+// folding the instances' digests and comparing, instead of deep-comparing the
+// whole injected per-type object against the previous pass.
+type refPassState struct {
+	digests map[string]digestEntry
 }
 
 func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) bool {
+	return injectResourceRefsState(evalCtx, resources, nil)
+}
+
+func injectResourceRefsState(evalCtx *hcl.EvalContext, resources []ResolvedResource, state *refPassState) bool {
 	// Ephemeral instances are referenced as ephemeral.<type>.<name>, their own
 	// namespace under one "ephemeral" variable, so a managed resource of the
-	// same type never merges with them.
+	// same type and name is a different block.
 	byType := make(map[string]map[string]*instBucket)
 	ephemeralTypes := make(map[string]map[string]*instBucket)
 	for i := range resources {
@@ -1157,38 +1248,135 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 		}
 		b := (*buckets)[r.Type][base]
 		if b == nil {
-			b = &instBucket{isCount: isCount, expanded: expanded}
+			b = &instBucket{isCount: isCount, expanded: expanded, allOK: true}
 			(*buckets)[r.Type][base] = b
 		} else if expanded {
 			b.expanded = true
 		}
 		b.keys = append(b.keys, key)
 		b.attrs = append(b.attrs, referenceAttributes(r.Attributes))
+		b.dgs = append(b.dgs, r.Digest)
+		if !r.DigestOK {
+			b.allOK = false
+		}
 	}
 	if len(byType) == 0 && len(ephemeralTypes) == 0 {
 		return false
 	}
 	progress := false
-	install := func(name string, value cty.Value) {
-		if existing, ok := evalCtx.Variables[name]; !ok || !equalValues(existing, value) {
-			evalCtx.Variables[name] = value
+	install := func(name string, value cty.Value, entry digestEntry) {
+		if installResourceRef(evalCtx, state, name, value, entry) {
 			progress = true
 		}
 	}
+	typeDigest := typeInstancesDigest
 	for typeName, nameMap := range byType {
-		install(typeName, instancesObject(nameMap))
+		install(typeName, instancesObject(nameMap), typeDigest(nameMap))
 	}
 	if len(ephemeralTypes) > 0 {
-		// Ephemeral instances are referenced as ephemeral.<type>.<name>, their
-		// own namespace under one "ephemeral" variable, so a managed resource
-		// of the same type never merges with them.
-		byNamespace := make(map[string]cty.Value, len(ephemeralTypes))
-		for typeName, nameMap := range ephemeralTypes {
-			byNamespace[typeName] = instancesObject(nameMap)
-		}
-		install("ephemeral", cty.ObjectVal(byNamespace))
+		entry, value := ephemeralNamespace(ephemeralTypes, typeDigest)
+		install("ephemeral", value, entry)
 	}
 	return progress
+}
+
+// ephemeralNamespace folds the ephemeral types' digest and builds the value
+// the "ephemeral" variable carries: one object keyed by type, so a managed
+// resource of the same type never merges with an ephemeral one.
+func ephemeralNamespace(
+	ephemeralTypes map[string]map[string]*instBucket,
+	typeDigest func(map[string]*instBucket) digestEntry,
+) (digestEntry, cty.Value) {
+	byNamespace := make(map[string]cty.Value, len(ephemeralTypes))
+	h := newHasher()
+	h.mixTag(tagRefEphemeral)
+	ok := true
+	names := make([]string, 0, len(ephemeralTypes))
+	for typeName := range ephemeralTypes {
+		names = append(names, typeName)
+	}
+	sort.Strings(names)
+	for _, typeName := range names {
+		h.mixString(typeName)
+		entry := typeDigest(ephemeralTypes[typeName])
+		if !entry.ok {
+			ok = false
+		}
+		h.mixDigest(entry.d)
+		byNamespace[typeName] = instancesObject(ephemeralTypes[typeName])
+	}
+	return digestEntry{d: h.digest(), ok: ok}, cty.ObjectVal(byNamespace)
+}
+
+// installResourceRef installs one injected variable and reports whether the
+// injection changed: by the folded digest when the state has a trustworthy
+// entry for name, by deep comparison otherwise.
+func installResourceRef(evalCtx *hcl.EvalContext, state *refPassState, name string, value cty.Value, entry digestEntry) bool {
+	changed := true
+	if state != nil {
+		if entry.ok {
+			if prev, had := state.digests[name]; had && prev.ok && prev.d == entry.d {
+				changed = false
+			} else {
+				state.digests[name] = entry
+			}
+		} else {
+			state.digests[name] = entry
+		}
+	}
+	if changed {
+		if existing, ok := evalCtx.Variables[name]; ok && (state == nil || !entry.ok) {
+			if equalValues(existing, value) {
+				changed = false
+			}
+		}
+	}
+	if !changed {
+		if _, present := evalCtx.Variables[name]; present {
+			return false
+		}
+	}
+	evalCtx.Variables[name] = value
+	return true
+}
+
+// typeInstancesDigest folds one type's instances into a digest: the base
+// names, their expansion flags and keys, and each instance's digest, in the
+// deterministic order the instances were evaluated in. ok is false when any
+// instance carries no trustworthy digest.
+func typeInstancesDigest(nameMap map[string]*instBucket) digestEntry {
+	h := newHasher()
+	h.mixTag(tagRefType)
+	ok := true
+	bases := make([]string, 0, len(nameMap))
+	for base := range nameMap {
+		bases = append(bases, base)
+	}
+	sort.Strings(bases)
+	for _, base := range bases {
+		b := nameMap[base]
+		h.mixString(base)
+		if b.isCount {
+			h.mixTag(tagRefCount)
+		} else {
+			h.mixTag(tagRefForEach)
+		}
+		if b.expanded {
+			h.mixTag(tagRefExpanded)
+		} else {
+			h.mixTag(tagRefSingle)
+		}
+		for _, k := range b.keys {
+			h.mixString(k)
+		}
+		for _, dg := range b.dgs {
+			h.mixDigest(dg)
+		}
+		if !b.allOK {
+			ok = false
+		}
+	}
+	return digestEntry{d: h.digest(), ok: ok}
 }
 
 // instancesObject builds the per-base-instance object reference injection
@@ -1340,11 +1528,15 @@ func (e *Evaluator) evalBody(
 }
 
 // bodyState carries what evaluating a resource body shares across its nested
-// blocks: the memo of expressions that ignore the iteration, and how many
-// blocks each dynamic block generated.
+// blocks: the memo of expressions that ignore the iteration, how many blocks
+// each dynamic block generated, and the pass digester that folds the body's
+// digest alongside its evaluation. dig is nil when no digest is wanted.
 type bodyState struct {
 	memo    *invariantMemo
 	dynamic *dynamicRecorder
+	// dig folds the evaluated body into a digest, once per expression per
+	// pass; nil when the caller does not want a digest.
+	dig *passDigester
 	// iterators are the iterator names of the dynamic blocks enclosing the body
 	// being evaluated; expressions reading one of them vary between blocks.
 	iterators []string
@@ -1361,7 +1553,7 @@ func (st *bodyState) withoutMemo() *bodyState {
 	if st == nil {
 		return nil
 	}
-	return &bodyState{dynamic: st.dynamic}
+	return &bodyState{dynamic: st.dynamic, dig: st.dig}
 }
 
 // inDynamic is the state for the content of a dynamic block binding iterator.
@@ -1371,7 +1563,7 @@ func (st *bodyState) inDynamic(iterator string) *bodyState {
 	}
 	names := make([]string, len(st.iterators), len(st.iterators)+1)
 	copy(names, st.iterators)
-	return &bodyState{memo: st.memo, dynamic: st.dynamic, iterators: append(names, iterator)}
+	return &bodyState{memo: st.memo, dynamic: st.dynamic, dig: st.dig, iterators: append(names, iterator)}
 }
 
 func (e *Evaluator) evalBodyWith(
@@ -1380,26 +1572,129 @@ func (e *Evaluator) evalBodyWith(
 	skip map[string]bool,
 	st *bodyState,
 ) map[string]cty.Value {
+	out, _, _ := e.evalBodyWithCore(body, ctx, skip, st)
+	return out
+}
+
+// digestState accumulates a body's digest while the body is evaluated.
+// Attributes fold into an order-independent accumulator, so identical bodies
+// fold identically whatever the map iteration order was; blocks and dynamic
+// elements fold in body order, which is their value's order.
+type digestState struct {
+	dig  *passDigester
+	h    hasher
+	sumA uint64
+	sumB uint64
+	ok   bool
+}
+
+// startDigest returns a digestState when st wants one.
+func startDigest(st *bodyState) *digestState {
+	if st == nil || st.dig == nil {
+		return nil
+	}
+	return &digestState{dig: st.dig, h: newHasher(), ok: true}
+}
+
+// foldAttr folds one attribute's value: its name and digest, unordered.
+func (ds *digestState) foldAttr(name string, expr hclsyntax.Expression, v cty.Value, st *bodyState) {
+	if !ds.ok {
+		return
+	}
+	var dg digest
+	var have bool
+	if st != nil && st.memo != nil {
+		if entry, cached := st.memo.digests[expr]; cached {
+			if !entry.ok {
+				ds.ok = false
+				return
+			}
+			dg, have = entry.d, true
+		}
+	}
+	if !have {
+		var ok bool
+		dg, ok = ds.dig.valueDigest(v)
+		if !ok {
+			ds.ok = false
+			return
+		}
+	}
+	nh := newHasher()
+	nh.mixString(name)
+	ds.sumA += splitmix64(dg.a ^ (nh.a * hashPrimeA))
+	ds.sumB += splitmix64(dg.b ^ (nh.b * hashPrimeB))
+}
+
+// foldDigest mixes one folded child (a nested block, a dynamic element) into
+// the ordered stream.
+func (ds *digestState) foldDigest(tag byte, labels []string, dg digest, ok bool) {
+	if !ds.ok {
+		return
+	}
+	if !ok {
+		ds.ok = false
+		return
+	}
+	ds.h.mixTag(tag)
+	for _, l := range labels {
+		ds.h.mixString(l)
+	}
+	ds.h.mixDigest(dg)
+}
+
+// digest returns the folded body digest.
+func (ds *digestState) digest() (digest, bool) {
+	if ds == nil || !ds.ok {
+		return digest{}, false
+	}
+	ds.h.mixTag(tagRefBody)
+	ds.h.mix64(ds.sumA)
+	ds.h.mix64(ds.sumB)
+	return ds.h.digest(), true
+}
+
+// evalBodyWithCore evaluates a body and folds its digest alongside. The
+// digest is exact for memoized expressions (their cached value is what lands
+// in the result) and for every other expression's freshly evaluated value, so
+// equal bodies fold to equal digests and, up to a hash collision, different
+// bodies do not.
+func (e *Evaluator) evalBodyWithCore(
+	body *hclsyntax.Body,
+	ctx *hcl.EvalContext,
+	skip map[string]bool,
+	st *bodyState,
+) (map[string]cty.Value, digest, bool) {
 	out := make(map[string]cty.Value, len(body.Attributes)+len(body.Blocks))
+	ds := startDigest(st)
 
 	for name, attr := range body.Attributes {
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExprMemo(attr.Expr, ctx, st)
+		v := e.evalExprMemo(attr.Expr, ctx, st)
+		out[name] = v
+		if ds != nil {
+			ds.foldAttr(name, attr.Expr, v, st)
+		}
 	}
 
 	blocks := nestedBlocks{out: out}
 	for _, b := range body.Blocks {
 		if st != nil && dynamicblock.Is(b) {
-			e.addDynamicBlocks(&blocks, b, ctx, st)
+			e.addDynamicBlocks(&blocks, b, ctx, st, ds)
 			continue
 		}
 		path := append([]string{b.Type}, b.Labels...)
-		blocks.add(path, objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st)))
+		child, dg, ok := e.evalBodyWithCore(b.Body, ctx, nil, st)
+		blocks.add(path, objectOrEmpty(child))
+		if ds != nil {
+			ds.foldDigest(tagRefBlock, path, dg, ok)
+		}
 	}
 	blocks.flushAll()
-	return out
+	dg, ok := ds.digest()
+	return out, dg, ok
 }
 
 // nestedBlocks adds the nested blocks of one body to out as addNestedBlock
@@ -1457,13 +1752,43 @@ func (n *nestedBlocks) flushAll() {
 // blocks its dynamic blocks generate, which share a parent context.
 type invariantMemo struct {
 	values map[hclsyntax.Expression]cty.Value
-	varies map[hclsyntax.Expression]bool
+	// digests caches, per memoized expression, the digest of its shared value,
+	// folded once when the value is first computed.
+	digests map[hclsyntax.Expression]digestEntry
+	varies  map[hclsyntax.Expression]bool
+	// analysis is the block's static sharing classification, computed once.
+	analysis *bodyAnalysis
+	// templateDigest is the whole-body template's digest for an iteration-free
+	// block, shared by every instance.
+	templateDigest digest
+	templateOK     bool
+	// expansions memoizes the blocks an invariant dynamic block generates: its
+	// for_each, labels and content read no outer iteration, so the generated
+	// blocks are identical in every instance of the resource and of every
+	// element of an enclosing dynamic block.
+	expansions map[*hclsyntax.Block]*dynamicExpansionMemo
+}
+
+// dynamicExpansionMemo is an invariant dynamic block's generated blocks and
+// the digest folding them, so a body reusing the expansion folds one digest
+// instead of walking the generated content again.
+type dynamicExpansionMemo struct {
+	els []generatedBlock
+	dg  digestEntry
+}
+
+// generatedBlock is one block a dynamic block generated: its path among the
+// nested blocks and the content value its iterator scope produced.
+type generatedBlock struct {
+	path []string
+	val  cty.Value
 }
 
 func newInvariantMemo() *invariantMemo {
 	return &invariantMemo{
-		values: make(map[hclsyntax.Expression]cty.Value),
-		varies: make(map[hclsyntax.Expression]bool),
+		values:  make(map[hclsyntax.Expression]cty.Value),
+		digests: make(map[hclsyntax.Expression]digestEntry),
+		varies:  make(map[hclsyntax.Expression]bool),
 	}
 }
 
@@ -1474,16 +1799,120 @@ func (m *invariantMemo) readsIteration(expr hclsyntax.Expression, iterators []st
 	if v, ok := m.varies[expr]; ok {
 		return v
 	}
-	reads := false
+	reads := exprReadsIteration(expr, iterators)
+	m.varies[expr] = reads
+	return reads
+}
+
+// dynamicExpansion returns the blocks an invariant dynamic block generated.
+func (m *invariantMemo) dynamicExpansion(b *hclsyntax.Block) (*dynamicExpansionMemo, bool) {
+	els, ok := m.expansions[b]
+	return els, ok
+}
+
+func (m *invariantMemo) storeDynamicExpansion(b *hclsyntax.Block, els []generatedBlock, dg digestEntry) {
+	if m.expansions == nil {
+		m.expansions = make(map[*hclsyntax.Block]*dynamicExpansionMemo)
+	}
+	m.expansions[b] = &dynamicExpansionMemo{els: els, dg: dg}
+}
+
+// exprReadsIteration reports whether expr reads count, each, or one of the
+// dynamic block iterators in iterators. Local scopes (for expressions) mask
+// their own iterator names, so the traversal only reports outer reads.
+func exprReadsIteration(expr hclsyntax.Expression, iterators []string) bool {
 	for _, t := range expr.Variables() {
 		root := t.RootName()
 		if root == "each" || root == "count" || slices.Contains(iterators, root) {
-			reads = true
-			break
+			return true
 		}
 	}
-	m.varies[expr] = reads
-	return reads
+	return false
+}
+
+// bodyAnalysis precomputes, once per resource block, what its evaluation can
+// share across the block's instances: whether the whole body reads no
+// iteration, and which dynamic blocks generate identical content in every
+// instance and enclosing element. The answers are static, so the per-instance
+// evaluation path consults them instead of re-walking the body.
+type bodyAnalysis struct {
+	// iterationFree reports whether the block's body reads no count or each.
+	iterationFree bool
+	// dynOK marks the dynamic blocks whose for_each, labels and content read
+	// no iteration beyond their own, so their expansion is shared.
+	dynOK map[*hclsyntax.Block]bool
+}
+
+// analyzeBody walks the body once, classifying every dynamic block relative
+// to the iterators that enclose it.
+func analyzeBody(body *hclsyntax.Body) *bodyAnalysis {
+	a := &bodyAnalysis{dynOK: make(map[*hclsyntax.Block]bool)}
+	a.iterationFree = !bodyReadsIteration(body, nil)
+	analyzeDynamicBlocks(body, nil, a.dynOK)
+	return a
+}
+
+// analyzeDynamicBlocks classifies the dynamic blocks of body, whose enclosing
+// iterators are iterators.
+func analyzeDynamicBlocks(body *hclsyntax.Body, iterators []string, out map[*hclsyntax.Block]bool) {
+	if body == nil {
+		return
+	}
+	for _, b := range body.Blocks {
+		if dynamicblock.Is(b) {
+			inner := append(slices.Clone(iterators), dynamicblock.IteratorName(b))
+			out[b] = !dynamicReadsOuterIteration(b, iterators)
+			// Nested dynamics are classified relative to their own position,
+			// whether or not the enclosing one is shared.
+			analyzeDynamicBlocks(dynamicblock.Content(b), inner, out)
+			continue
+		}
+		analyzeDynamicBlocks(b.Body, iterators, out)
+	}
+}
+
+// bodyReadsIteration reports whether any expression of body, its nested static
+// blocks, or the for_each, labels or content of its dynamic blocks reads the
+// instance iteration (count, each) or an enclosing dynamic iterator. Content
+// reading its own dynamic iterator is fine: the expansion enumerates it.
+func bodyReadsIteration(body *hclsyntax.Body, iterators []string) bool {
+	if body == nil {
+		return false
+	}
+	for _, attr := range body.Attributes {
+		if attr != nil && exprReadsIteration(attr.Expr, iterators) {
+			return true
+		}
+	}
+	for _, b := range body.Blocks {
+		if dynamicblock.Is(b) {
+			if dynamicReadsOuterIteration(b, iterators) {
+				return true
+			}
+			continue
+		}
+		if bodyReadsIteration(b.Body, iterators) {
+			return true
+		}
+	}
+	return false
+}
+
+// dynamicReadsOuterIteration reports whether the dynamic block's for_each or
+// labels expressions, or any expression of its content, reads the instance
+// iteration or an enclosing dynamic iterator.
+func dynamicReadsOuterIteration(b *hclsyntax.Block, iterators []string) bool {
+	if attr, ok := b.Body.Attributes["for_each"]; ok && attr != nil && exprReadsIteration(attr.Expr, iterators) {
+		return true
+	}
+	if attr, ok := b.Body.Attributes["labels"]; ok && attr != nil && exprReadsIteration(attr.Expr, iterators) {
+		return true
+	}
+	content := dynamicblock.Content(b)
+	if content == nil {
+		return true
+	}
+	return bodyReadsIteration(content, append(slices.Clone(iterators), dynamicblock.IteratorName(b)))
 }
 
 func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, st *bodyState) cty.Value {
@@ -1495,6 +1924,12 @@ func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext
 	}
 	v := e.evalExpr(expr, ctx)
 	st.memo.values[expr] = v
+	if st.dig != nil {
+		// The digest is folded from the value every instance of this
+		// expression shares, so it is computed once per expression per pass.
+		dg, ok := st.dig.valueDigest(v)
+		st.memo.digests[expr] = digestEntry{d: dg, ok: ok}
+	}
 	return v
 }
 

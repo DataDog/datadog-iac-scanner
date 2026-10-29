@@ -149,6 +149,8 @@ resource "aws_s3_bucket" "replica" {
 		nil,
 		make(map[docContentKey]string),
 		make(map[string][]extraCallerInfo),
+		make(map[docContentKey]instancePrimary),
+		make(map[string][]extraInstanceInfo),
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
@@ -1096,7 +1098,7 @@ module "bucket" {
 	})
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).WithContext(context.Background())
-	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
+	if docs, synthetic, extras, instanceExtras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil); docs != nil || synthetic != nil || extras != nil || instanceExtras != nil || moduleFiles != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {

@@ -18,8 +18,17 @@ import (
 // for_each or labels do not resolve is kept as written. Every resolved element
 // is expanded: a cap would leave generated blocks without their content and
 // their findings unreported.
-func (e *Evaluator) addDynamicBlocks(out *nestedBlocks, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState) {
+//
+// A dynamic block that reads no outer iteration generates identical blocks in
+// every instance of the resource and every element of an enclosing dynamic
+// block, so its expansion is computed once per resource block and shared.
+// When ds wants a digest, the shared expansion folds one cached digest, and a
+// varying one folds each element's digest.
+func (e *Evaluator) addDynamicBlocks(out *nestedBlocks, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState, ds *digestState) {
 	content := dynamicblock.Content(b)
+	if e.addSharedDynamicBlocks(out, b, ctx, st, ds, content) {
+		return
+	}
 	exp := dynamicblock.Expand(b, ctx)
 	name := dynamicblock.IteratorName(b)
 	resolved := content != nil && exp.Resolved
@@ -29,13 +38,83 @@ func (e *Evaluator) addDynamicBlocks(out *nestedBlocks, b *hclsyntax.Block, ctx 
 		scopes, paths, resolved = generatedBlocks(b, exp.Iterators, name, ctx)
 	}
 	if !resolved {
-		st.recordDynamic(b, keptAsWritten)
-		out.add(append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(b.Body, ctx, nil, st.withoutMemo())))
+		e.addKeptAsWritten(out, b, ctx, st, ds)
 		return
 	}
 	st.recordDynamic(b, len(scopes))
 	for i, scope := range scopes {
-		out.add(paths[i], objectOrEmpty(e.evalBodyWith(content, scope, nil, st.inDynamic(name))))
+		val, dg, ok := e.evalBodyWithCore(content, scope, nil, st.inDynamic(name))
+		out.add(paths[i], objectOrEmpty(val))
+		if ds != nil {
+			ds.foldDigest(tagRefDynElem, paths[i], dg, ok)
+		}
+	}
+}
+
+// addSharedDynamicBlocks expands a dynamic block whose expansion is identical
+// in every instance and enclosing element: it reuses the block's memoized
+// expansion when there is one, computes and memoizes it otherwise, and reports
+// whether it handled the block. Blocks it does not handle (not invariant, no
+// memo, or content-less) fall through to the per-instance expansion.
+func (e *Evaluator) addSharedDynamicBlocks(
+	out *nestedBlocks, b *hclsyntax.Block, ctx *hcl.EvalContext,
+	st *bodyState, ds *digestState, content *hclsyntax.Body,
+) bool {
+	if content == nil || st == nil || st.memo == nil || st.memo.analysis == nil || !st.memo.analysis.dynOK[b] {
+		return false
+	}
+	if exp, ok := st.memo.dynamicExpansion(b); ok {
+		st.recordDynamic(b, len(exp.els))
+		for i := range exp.els {
+			out.add(exp.els[i].path, exp.els[i].val)
+		}
+		if ds != nil {
+			ds.foldDigest(tagRefDynMemo, nil, exp.dg.d, exp.dg.ok)
+		}
+		return true
+	}
+	exp := dynamicblock.Expand(b, ctx)
+	name := dynamicblock.IteratorName(b)
+	scopes, paths, resolved := generatedBlocks(b, exp.Iterators, name, ctx)
+	if !exp.Resolved || !resolved {
+		// An invariant block whose expansion does not resolve is kept as
+		// written, like any other unresolved dynamic block.
+		e.addKeptAsWritten(out, b, ctx, st, ds)
+		return true
+	}
+	els := make([]generatedBlock, len(scopes))
+	ed := startDigest(st)
+	for i, scope := range scopes {
+		val, dg, ok := e.evalBodyWithCore(content, scope, nil, st.inDynamic(name))
+		els[i] = generatedBlock{
+			path: paths[i],
+			val:  objectOrEmpty(val),
+		}
+		if ed != nil {
+			ed.foldDigest(tagRefDynElem, paths[i], dg, ok)
+		}
+	}
+	dgEntry, dgOK := ed.digest()
+	entry := digestEntry{d: dgEntry, ok: dgOK}
+	st.memo.storeDynamicExpansion(b, els, entry)
+	st.recordDynamic(b, len(els))
+	for i := range els {
+		out.add(els[i].path, els[i].val)
+	}
+	if ds != nil {
+		ds.foldDigest(tagRefDynMemo, nil, entry.d, entry.ok)
+	}
+	return true
+}
+
+// addKeptAsWritten adds a dynamic block that was not expanded as its written
+// body.
+func (e *Evaluator) addKeptAsWritten(out *nestedBlocks, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState, ds *digestState) {
+	st.recordDynamic(b, keptAsWritten)
+	val, dg, ok := e.evalBodyWithCore(b.Body, ctx, nil, st.withoutMemo())
+	out.add(append([]string{b.Type}, b.Labels...), objectOrEmpty(val))
+	if ds != nil {
+		ds.foldDigest(tagRefDynWrite, append([]string{b.Type}, b.Labels...), dg, ok)
 	}
 }
 
