@@ -94,6 +94,27 @@ func generatorLine(file *model.FileMetadata, a *model.KustomizeAttribution) mode
 	}
 }
 
+// RedactSearchKey hides the values a generated name may carry in a search
+// key shown in reports or logs: the rendered name and namespace are replaced
+// by the ones written in the source, and by nothing when the generator entry
+// is unknown — a replacement may have copied generated data into the name.
+// Detection keeps the full key internal.
+func RedactSearchKey(a *model.KustomizeAttribution, key string) string {
+	if a == nil || a.Generator == nil {
+		return key
+	}
+	key = SourceSearchKey(a, key)
+	// The name and namespace are redacted independently: either may be known
+	// in the source while the other is not.
+	if a.SourceName == "" && a.RenderedName != "" {
+		key = strings.ReplaceAll(key, "{{"+a.RenderedName+"}}", "")
+	}
+	if a.SourceNamespace == "" && a.RenderedNamespace != "" {
+		key = strings.ReplaceAll(key, "{{"+a.RenderedNamespace+"}}", "")
+	}
+	return key
+}
+
 // detectSourceLine scopes the text search to the document the resource was
 // rendered from, so a same-name document of another kind cannot win, and
 // translates the offsets back to the whole file.

@@ -257,7 +257,20 @@ type kustomizeFinding struct {
 // scanKustomize scans files written to a temporary tree (a value starting with
 // "symlink:" is written as a symlink to the rest of it) and returns the
 // privileged-container findings and the raw SARIF.
-func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustomizeFinding, string) {
+func scanKustomizePlatform(t *testing.T, files map[string]string, enable bool, platform string,
+	rules ...string) ([]kustomizeFinding, string) {
+	findings, raw := scanKustomizeRestricted(t, files, enable, func(params *scan.Parameters) {
+		params.Platform = []string{platform}
+	}, rules...)
+	return findings, raw
+}
+
+func scanKustomize(t *testing.T, files map[string]string, enable bool, rules ...string) ([]kustomizeFinding, string) {
+	return scanKustomizeRestricted(t, files, enable, nil, rules...)
+}
+
+func scanKustomizeRestricted(t *testing.T, files map[string]string, enable bool,
+	configure func(params *scan.Parameters), rules ...string) ([]kustomizeFinding, string) {
 	t.Helper()
 	dir := t.TempDir()
 	if real, err := filepath.EvalSymlinks(dir); err == nil {
@@ -279,9 +292,18 @@ func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustom
 	params.Path = []string{dir}
 	params.RepoPath = dir
 	params.OutputPath = t.TempDir()
-	params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "k8s"))}
+	if len(rules) == 0 {
+		rules = []string{"k8s"}
+	}
+	params.QueriesPath = nil
+	for _, r := range rules {
+		params.QueriesPath = append(params.QueriesPath, mustAbs(t, filepath.Join("testdata", "rules", r)))
+	}
 	params.ChangedDefaultQueryPath = true
 	params.EnableKustomize = enable
+	if configure != nil {
+		configure(params)
+	}
 	params.SCIInfo = model.SCIInfo{RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url"}}
 	params.FlagEvaluator = featureflags.NewLocalEvaluator()
 	_, err := console.ExecuteScan(ctx, params)
@@ -536,6 +558,64 @@ func Test_E2EKustomize(t *testing.T) {
 			require.Len(t, got, 1, name)
 			require.True(t, got[0].suppressed, name)
 		}
+	})
+	t.Run("a generated Secret is reported on its generator entry without its values", func(t *testing.T) {
+		got, raw := scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "secretGenerator:\n  - name: creds\n    literals:\n      - PASSWORD=canary-secret-value\n",
+			"app/deployment.yaml":    safeBase,
+		}, true, "k8s_secret")
+		require.Len(t, got, 1)
+		require.Equal(t, "app/kustomization.yaml", got[0].file)
+		require.Equal(t, 2, got[0].line, "the finding lands on the generator entry's name line")
+		require.NotContains(t, raw, "canary-secret-value")
+		require.NotContains(t, raw, "Y2FuYXJ5LXNlY3JldC12YWx1ZQ==") // base64 of the canary
+	})
+
+	t.Run("a generator-only repository is not scanned for other platforms", func(t *testing.T) {
+		got, raw := scanKustomizePlatform(t, map[string]string{
+			"app/kustomization.yaml": "secretGenerator:\n  - name: only\n    literals:\n      - PASSWORD=generator-only-canary\n",
+		}, true, "Terraform", "k8s_secret")
+		require.Empty(t, got, "no Kubernetes finding may be reported under -t Terraform")
+		require.NotContains(t, raw, "generator-only-canary")
+		require.NotContains(t, raw, "render_root", "Kubernetes rendering must not run")
+	})
+
+	t.Run("a replacement into an ordinary resource name reports the source name", func(t *testing.T) {
+		got, raw := scanKustomize(t, map[string]string{
+			"base/kustomization.yaml": "resources:\n  - deployment.yaml\n  - cm.yaml\n",
+			"base/deployment.yaml":    privilegedDeployment,
+			"base/cm.yaml":            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cfg\ndata:\n  TOKEN: canary-ordinary-replacement\n",
+			"overlays/dev/kustomization.yaml": "namePrefix: dev-\nresources:\n  - ../../base\n" +
+				"replacements:\n  - source: {kind: ConfigMap, name: cfg, fieldPath: data.TOKEN}\n    targets:\n      - select: {kind: Deployment}\n        fieldPaths:\n          - metadata.name\n",
+		}, true)
+		require.NotContains(t, raw, "canary-ordinary-replacement")
+		require.Contains(t, raw, "IAC_RESOURCE_NAME:web",
+			"the replacement renamed the Deployment; the finding must report the source name")
+		require.Contains(t, raw, "render_root",
+			"the root must have rendered; a raw fallback makes the canary assertions trivial")
+		require.NotEmpty(t, got)
+	})
+
+	t.Run("a generator-only repository is scanned", func(t *testing.T) {
+		got, _ := scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "secretGenerator:\n  - name: only\n    literals:\n      - PASSWORD=generator-only-canary\n",
+		}, true, "k8s_secret")
+		require.Equal(t, []kustomizeFinding{{"app/kustomization.yaml", "app", 2, false}}, got)
+	})
+
+	t.Run("a replacement copying generated data into a name leaves no value in any output", func(t *testing.T) {
+		got, raw := scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "configMapGenerator:\n  - name: cfg\n    literals:\n      - TOKEN=canary-replacement-value\n" +
+				"secretGenerator:\n  - name: creds\n    literals:\n      - PASSWORD=other\n" +
+				"replacements:\n  - source: {kind: ConfigMap, name: cfg, fieldPath: data.TOKEN}\n    targets:\n      - select: {kind: Secret}\n        fieldPaths:\n          - metadata.name\n",
+			"app/deployment.yaml": safeBase,
+		}, true, "k8s_secret")
+		require.NotContains(t, raw, "canary-replacement-value")
+		require.NotContains(t, raw, "Y2FuYXJ5LXJlcGxhY2VtZW50LXZhbHVl") // base64 of the canary
+		for _, f := range got {
+			require.Equal(t, "app/kustomization.yaml", f.file)
+		}
+		require.NotEmpty(t, got)
 	})
 
 }

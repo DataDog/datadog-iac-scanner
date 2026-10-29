@@ -52,12 +52,13 @@ func (r *Renderer) mapResources(ctx context.Context, res *Result, m resmap.ResMa
 	// Counted once mapping is done, every walk the graph took included.
 	defer func() { res.graphSteps += g.steps }()
 	asWritten := r.namesMaySetByReplacement(res.Reads)
+	namesWritten := r.replacementsWriteNames(res.Reads)
 	nodes := r.renderGraph(res, rootKust, closure)
 	for _, rs := range m.Resources() {
 		if expired() {
 			return &RenderError{Reason: ReasonTimeout}
 		}
-		doc, ok := r.mapResource(res, rs, g, mode, nodes)
+		doc, ok := r.mapResource(res, rs, g, mode, nodes, namesWritten)
 		if !ok {
 			return &RenderError{Reason: ReasonRenderError}
 		}
@@ -184,9 +185,8 @@ func (r *Renderer) beyondAffixes(k *types.Kustomization, kust string) bool {
 				return true
 			}
 		case "Replacements":
-			if replacementWritesName(k.Replacements) {
-				return true
-			}
+			// A replacement's targets are read: one that writes a name or
+			// namespace makes matching fall back to the kind instead.
 		default:
 			return true
 		}
@@ -409,8 +409,20 @@ func (r *Renderer) namesMaySetByReplacement(reads []string) bool {
 	return false
 }
 
-func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph, mode renameMode,
-	nodes []*kustNode) (model.ResolvedHelm, bool) {
+// replacementsWriteNames reports whether a kustomization the render read has
+// a replacement that may write a name or namespace: the rendered names it
+// touches prove nothing, and matching falls back to the kind.
+func (r *Renderer) replacementsWriteNames(reads []string) bool {
+	for _, p := range reads {
+		if k, ok := r.Kustomization(p); ok && replacementWritesName(k.Replacements) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph, mode renameMode, nodes []*kustNode,
+	namesWritten bool) (model.ResolvedHelm, bool) {
 	rootKust := g.rootKust
 	origin, _ := rs.GetOrigin()
 	ann := rs.GetAnnotations()
@@ -442,7 +454,7 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 		}
 	}
 
-	r.attributeSource(res, origin, attr, &doc, g, mode)
+	r.attributeSource(res, origin, attr, &doc, g, mode, namesWritten)
 	if doc.SourceDocumentIndex < 0 && attr.Generator == nil && doc.FileName != rootKust {
 		res.MappingFailures++
 	}
@@ -472,7 +484,7 @@ func (r *Renderer) unsupportedReplacements(nodes []*kustNode, source string) int
 // generating kustomization entry, its source document, or the root
 // kustomization when the origin is unusable.
 func (r *Renderer) attributeSource(res *Result, origin *resource.Origin, attr *model.KustomizeAttribution,
-	doc *model.ResolvedHelm, g *loadGraph, mode renameMode) {
+	doc *model.ResolvedHelm, g *loadGraph, mode renameMode, namesWritten bool) {
 	rootKust := g.rootKust
 	switch {
 	case origin != nil && origin.ConfiguredIn != "":
@@ -488,7 +500,7 @@ func (r *Renderer) attributeSource(res *Result, origin *resource.Origin, attr *m
 		attr.SourceName, attr.SourceNamespace = entry.Name, entry.Namespace
 	case origin != nil && origin.Path != "" && origin.Repo == "":
 		doc.FileName = r.canonical(filepath.Join(res.Root, filepath.FromSlash(origin.Path)))
-		idx, src := r.matchDocument(attr, g, doc.FileName, mode)
+		idx, src := r.matchDocument(attr, g, doc.FileName, mode, namesWritten)
 		doc.SourceDocumentIndex = idx
 		if idx >= 0 {
 			attr.SourceName, attr.SourceNamespace = src.name, src.namespace
@@ -514,8 +526,17 @@ func (r *Renderer) matchGenerator(attr *model.KustomizeAttribution, g *loadGraph
 }
 
 // matchDocument returns the document of file attr renders: by exact identity
-// when renaming is absent, by affixes alone when only they rename.
-func (r *Renderer) matchDocument(attr *model.KustomizeAttribution, g *loadGraph, file string, mode renameMode) (int, sourceDoc) {
+// when renaming is absent, by affixes alone when only they rename. A
+// replacement may have written the name the rendered object carries, so a
+// failed match falls back to the only document of that kind in the file.
+func (r *Renderer) matchDocument(attr *model.KustomizeAttribution, g *loadGraph, file string, mode renameMode,
+	namesWritten bool) (int, sourceDoc) {
+	if namesWritten {
+		// A replacement may have written the rendered name: an exact or
+		// affix match could hit a sibling whose name the replacement copied,
+		// so the kind alone identifies the document.
+		return sameKindDocument(r.sourceDocuments(file), attr.Kind)
+	}
 	prefix, suffix, ok := r.affixes(g.record(attr, file), mode, g.count(file))
 	switch {
 	case mode == renameNone:
@@ -524,6 +545,26 @@ func (r *Renderer) matchDocument(attr *model.KustomizeAttribution, g *loadGraph,
 		return affixDocument(r.sourceDocuments(file), attr.Kind, attr.RenderedName, prefix, suffix)
 	}
 	return -1, sourceDoc{}
+}
+
+// sameKindDocument returns the only document of kind in docs; none or several
+// are a mapping failure, since a written name proves nothing and the kind is
+// the only proof left.
+func sameKindDocument(docs []sourceDoc, kind string) (int, sourceDoc) {
+	found := -1
+	for i, d := range docs {
+		if d.kind != kind {
+			continue
+		}
+		if found >= 0 {
+			return -1, sourceDoc{}
+		}
+		found = i
+	}
+	if found < 0 {
+		return -1, sourceDoc{}
+	}
+	return found, docs[found]
 }
 
 // affixes returns the name prefix and suffix the kustomizations of chain add,
