@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,11 +35,12 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 	if time.Now().After(rootDeadline) || time.Now().After(r.deadline) {
 		return false
 	}
+	mode := r.renameMode(res.Reads)
 	for _, rs := range m.Resources() {
 		if time.Now().After(rootDeadline) || time.Now().After(r.deadline) {
 			return false
 		}
-		doc, ok := r.mapResource(res, rs, rootKust)
+		doc, ok := r.mapResource(res, rs, rootKust, mode)
 		if ok {
 			res.Documents = append(res.Documents, doc)
 		}
@@ -53,10 +56,9 @@ type mappingKey struct {
 
 // rejectCollisions turns into mapping failures the documents attributed to a
 // source document or generator entry another document of the same rendered
-// namespace is attributed to: name affix matching cannot tell app rendered as
-// dev-app from dev-app itself.
-// ponytail: also rejects one source included twice into a namespace under two
-// affixes; the plan's name-transform chain replaces the affix matching.
+// namespace is attributed to.
+// ponytail: also rejects one source included twice into a namespace through
+// two chains; per-chain origins would tell them apart.
 func rejectCollisions(res *Result) {
 	groups := map[mappingKey][]int{}
 	for i := range res.Documents {
@@ -87,7 +89,113 @@ func rejectCollisions(res *Result) {
 	}
 }
 
-func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust string) (model.ResolvedHelm, bool) {
+// renameMode is how far the render graph can rename an object.
+type renameMode int
+
+const (
+	// renameAny: a kustomization may rename beyond affixes (patches,
+	// replacements, transformers, ...); no rendered name is attributable.
+	renameAny renameMode = iota
+	// renameAffix: only namePrefix, nameSuffix and namespace rename.
+	renameAffix
+	// renameNone: a rendered name is its source name (a generator's plus its
+	// hash).
+	renameNone
+)
+
+// affixFields may rename only by the affixes along an object's chain, and
+// namespace only Namespace objects.
+var affixFields = map[string]bool{"NamePrefix": true, "NameSuffix": true, "Namespace": true}
+
+// renameMode returns how far the kustomizations the render read can rename:
+// every one must set only identity-safe fields for renameNone, add only affix
+// fields for renameAffix (components excluded: they apply affixes to their
+// parent's objects), and generator entries must be unambiguous
+// (generatorEntries) for either. Reads are symlink-resolved: a kustomization
+// is known by its decoded entry whatever the target file is named, and one
+// named as a kustomization without an entry is unproven.
+func (r *Renderer) renameMode(reads []string) renameMode {
+	mode := renameNone
+	var gens generatorEntries
+	for _, p := range reads {
+		r.cache.mu.Lock()
+		_, decoded := r.cache.kusts[p]
+		r.cache.mu.Unlock()
+		if !decoded && !IsKustomizationFile(filepath.Base(p)) {
+			continue
+		}
+		k, ok := r.Kustomization(p)
+		switch {
+		case !ok || !gens.add(k):
+			return renameAny
+		case !renames(k, nil):
+		case !renames(k, affixFields) && k.Kind != types.ComponentKind:
+			mode = renameAffix
+		default:
+			return renameAny
+		}
+	}
+	return mode
+}
+
+// generatorEntries proves generated names unambiguous across the graph: every
+// entry creates (merge and replace keep the base origin under another
+// kustomization's options), no entry name repeats, in any namespace or level,
+// and every entry hashes the same way.
+type generatorEntries struct {
+	names   map[string]bool
+	hashOff *bool
+}
+
+func (g *generatorEntries) add(k *types.Kustomization) bool {
+	if g.names == nil {
+		g.names = map[string]bool{}
+	}
+	global := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
+	var args []types.GeneratorArgs
+	for i := range k.ConfigMapGenerator {
+		args = append(args, k.ConfigMapGenerator[i].GeneratorArgs)
+	}
+	for i := range k.SecretGenerator {
+		args = append(args, k.SecretGenerator[i].GeneratorArgs)
+	}
+	for i := range args {
+		a := &args[i]
+		off := global || a.Options != nil && a.Options.DisableNameSuffixHash
+		if (a.Behavior != "" && a.Behavior != "create") || g.names[a.Name] || (g.hashOff != nil && *g.hashOff != off) {
+			return false
+		}
+		g.names[a.Name], g.hashOff = true, &off
+	}
+	return true
+}
+
+// identitySafe are the kustomization fields that cannot change an object's
+// name: labels and annotations on their built-in field specs, images,
+// replicas, inputs, generators with their options (the hash is matched apart),
+// and metadata of the build itself. Any other field, including one added to
+// the schema later, may rename: namespace renames Namespace objects.
+var identitySafe = map[string]bool{
+	"TypeMeta": true, "MetaData": true, "CommonLabels": true, "CommonAnnotations": true,
+	"Labels": true, "Images": true, "ImageTags": true, "Replicas": true, "Resources": true, "Components": true,
+	"Bases": true, "ConfigMapGenerator": true, "SecretGenerator": true, "GeneratorOptions": true,
+	"SortOptions": true, "BuildMetadata": true,
+}
+
+// renames reports whether k sets a field that can rename an object: one
+// outside identitySafe and also, labels with their own field specs, which can target
+// metadata/name.
+func renames(k *types.Kustomization, also map[string]bool) bool {
+	v := reflect.ValueOf(k).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		if n := v.Type().Field(i).Name; !v.Field(i).IsZero() && !identitySafe[n] && !also[n] {
+			return true
+		}
+	}
+	return slices.ContainsFunc(k.Labels, func(l types.Label) bool { return len(l.FieldSpecs) > 0 })
+}
+
+func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust string, mode renameMode) (model.ResolvedHelm, bool) {
 	origin, _ := rs.GetOrigin()
 	ann := rs.GetAnnotations()
 	delete(ann, originAnnotation)
@@ -106,10 +214,13 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust stri
 		Chain:             []string{rootKust},
 	}
 	doc := model.ResolvedHelm{Content: content, SourceDocumentIndex: -1, Kustomize: attr}
+	if mode == renameAffix && attr.Kind == "Namespace" {
+		mode = renameAny
+	}
 	switch {
 	case origin != nil && origin.ConfiguredIn != "":
 		doc.FileName = r.canonical(filepath.Join(res.Root, filepath.FromSlash(origin.ConfiguredIn)))
-		name := r.generatorName(doc.FileName, origin.ConfiguredBy.Kind, attr.RenderedName)
+		name := r.matchGenerator(attr, rootKust, doc.FileName, origin.ConfiguredBy.Kind, mode)
 		if name == "" {
 			res.MappingFailures++
 		}
@@ -118,7 +229,7 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust stri
 		attr.SourceNamespace = origin.ConfiguredBy.Namespace
 	case origin != nil && origin.Path != "" && origin.Repo == "":
 		doc.FileName = r.canonical(filepath.Join(res.Root, filepath.FromSlash(origin.Path)))
-		idx, src := r.findSourceDocument(doc.FileName, attr.Kind, attr.RenderedName, attr.RenderedNamespace)
+		idx, src := r.matchDocument(attr, rootKust, doc.FileName, mode)
 		doc.SourceDocumentIndex = idx
 		if idx >= 0 {
 			attr.SourceName, attr.SourceNamespace = src.name, src.namespace
@@ -130,11 +241,122 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust stri
 	if doc.SourceDocumentIndex < 0 && attr.Generator == nil && doc.FileName != rootKust {
 		res.MappingFailures++
 	}
-	if chain := r.chainTo(rootKust, doc.FileName, map[string]bool{}); chain != nil {
-		attr.Chain = chain
-	}
+	r.chain(attr, rootKust, doc.FileName)
 	doc.OriginalData, _ = r.Source(doc.FileName)
 	return doc, true
+}
+
+// matchGenerator returns the generator entry of genKind in file attr renders.
+func (r *Renderer) matchGenerator(attr *model.KustomizeAttribution, rootKust, file, genKind string, mode renameMode) string {
+	prefix, suffix, ok := r.affixes(r.chain(attr, rootKust, file), mode, r.rootPaths(attr.RenderRoot, rootKust, file))
+	if !ok {
+		return ""
+	}
+	return r.generatorName(file, genKind, attr.RenderedName, prefix, suffix)
+}
+
+// matchDocument returns the document of file attr renders: by exact identity
+// when renaming is absent, by affixes alone when only they rename.
+func (r *Renderer) matchDocument(attr *model.KustomizeAttribution, rootKust, file string, mode renameMode) (int, sourceDoc) {
+	prefix, suffix, ok := r.affixes(r.chain(attr, rootKust, file), mode, r.rootPaths(attr.RenderRoot, rootKust, file))
+	switch {
+	case mode == renameNone:
+		return exactDocument(r.sourceDocuments(file), attr.Kind, attr.RenderedName, attr.RenderedNamespace)
+	case ok:
+		return affixDocument(r.sourceDocuments(file), attr.Kind, attr.RenderedName, prefix, suffix)
+	}
+	return -1, sourceDoc{}
+}
+
+// chain records in attr and returns the kustomizations from rootKust to file,
+// nil when none loads it.
+func (r *Renderer) chain(attr *model.KustomizeAttribution, rootKust, file string) []string {
+	c := r.chainTo(rootKust, file, map[string]bool{})
+	if c != nil {
+		attr.Chain = c
+	}
+	return c
+}
+
+// affixes returns the name prefix and suffix the kustomizations of chain add,
+// outermost first, and whether they alone explain a rendered name under mode.
+// With affixes, file must be reached by a single chain: two overlays sharing a
+// base apply different transformations, and one chain explains neither.
+func (r *Renderer) affixes(chain []string, mode renameMode, paths int) (prefix, suffix string, ok bool) {
+	switch {
+	case mode == renameNone:
+		return "", "", true
+	case mode == renameAny || chain == nil || paths != 1:
+		return "", "", false
+	}
+	for _, p := range chain {
+		k, found := r.Kustomization(p)
+		if !found {
+			return "", "", false
+		}
+		prefix, suffix = prefix+k.NamePrefix, k.NameSuffix+suffix
+	}
+	return prefix, suffix, true
+}
+
+// entries returns what k loads: resources, components and legacy bases.
+func entries(k *types.Kustomization) []string {
+	return slices.Concat(k.Resources, k.Components, k.Bases) //nolint:staticcheck // legacy kustomizations still declare bases
+}
+
+// rootPaths is paths from the root kustomization, 2 when it is linked from
+// another directory than the render root Kustomize resolves its entries from.
+// Remote entries never match a local file, missing ones load nothing, and a
+// repeated entry counts twice.
+func (r *Renderer) rootPaths(root, rootKust, file string) int {
+	if filepath.Dir(rootKust) != root {
+		return 2
+	}
+	return r.paths(rootKust, file, map[string]bool{})
+}
+
+// paths counts, up to 2, the chains from kust to file through the resources
+// and components each kustomization loads, by symlink-resolved path like the
+// cache; onPath breaks cycles, and an undecoded served kustomization counts 2.
+func (r *Renderer) paths(kust, file string, onPath map[string]bool) int {
+	if kust == file {
+		return 1
+	}
+	k, ok := r.Kustomization(kust)
+	if !ok {
+		// Probed names that do not exist are no path; a served file whose
+		// kustomization is unknown is unproven.
+		if _, served := r.Source(kust); served {
+			return 2
+		}
+		return 0
+	}
+	if onPath[kust] {
+		return 0
+	}
+	onPath[kust] = true
+	defer delete(onPath, kust)
+	n := 0
+	dir := filepath.Dir(kust)
+	for _, e := range entries(k) {
+		p := r.canonical(filepath.Join(dir, filepath.FromSlash(e)))
+		if p == file {
+			n++
+		}
+		for _, name := range KustomizationFileNames {
+			child := r.canonical(filepath.Join(p, name))
+			if _, ok := r.Kustomization(child); ok && filepath.Dir(child) != p {
+				// Linked from another directory: Kustomize resolves its
+				// entries from p, the chain walk from the target's.
+				return 2
+			}
+			n += r.paths(child, file, onPath)
+		}
+		if n >= 2 {
+			return 2
+		}
+	}
+	return n
 }
 
 // chainTo returns the kustomizations from kust down to the one listing file
@@ -150,13 +372,13 @@ func (r *Renderer) chainTo(kust, file string, seen map[string]bool) []string {
 	}
 	seen[kust] = true
 	dir := filepath.Dir(kust)
-	for _, e := range append(append([]string{}, k.Resources...), k.Components...) {
+	for _, e := range entries(k) {
 		p := r.canonical(filepath.Join(dir, filepath.FromSlash(e)))
 		if p == file {
 			return []string{kust}
 		}
 		for _, n := range KustomizationFileNames {
-			if sub := r.chainTo(filepath.Join(p, n), file, seen); sub != nil {
+			if sub := r.chainTo(r.canonical(filepath.Join(p, n)), file, seen); sub != nil {
 				return append([]string{kust}, sub...)
 			}
 		}
@@ -174,77 +396,39 @@ func (r *Renderer) canonical(p string) string {
 	return p
 }
 
-// findSourceDocument returns the index of the document of kind in path that
-// rendered to name, -1 when the names of two documents of kind are both in it:
-// exact name (the rendered namespace disambiguates, an
-// unresolved tie is a mapping failure), else the unique longest name the
-// rendered one contains (prefixes and suffixes added), else the only document
-// of that kind.
-// ponytail: affix matching ignores which kustomization added which affix; the
-// plan's name-transform chain replaces it once roots are planned.
-func (r *Renderer) findSourceDocument(path, kind, name, namespace string) (int, sourceDoc) {
-	docs := r.sourceDocuments(path)
-	if nestedNames(docs, kind, name) {
-		return -1, sourceDoc{}
-	}
-	exact, contains, sameKind := -1, -1, -1
-	ambiguousExact, ambiguousContains, ambiguousKind := false, false, false
+// affixDocument returns the only document of kind in docs, across every
+// namespace, when prefix and suffix around its name give the rendered name;
+// several documents of kind, or an unexplained name, are a mapping failure.
+func affixDocument(docs []sourceDoc, kind, name, prefix, suffix string) (int, sourceDoc) {
+	found := -1
 	for i, d := range docs {
 		if d.kind != kind {
 			continue
 		}
-		if d.name == name {
-			exact, ambiguousExact = pickExact(docs, exact, i, ambiguousExact, namespace)
-			continue
+		if found >= 0 {
+			return -1, sourceDoc{}
 		}
-		if d.name != "" && strings.Contains(name, d.name) {
-			contains, ambiguousContains = pickContains(docs, contains, i, ambiguousContains)
-		}
-		if sameKind >= 0 {
-			ambiguousKind = true
-		}
-		sameKind = i
+		found = i
 	}
-	switch {
-	case exact >= 0 && ambiguousExact:
+	if found < 0 || prefix+docs[found].name+suffix != name {
 		return -1, sourceDoc{}
-	case exact >= 0:
-		return exact, docs[exact]
-	case contains >= 0 && !ambiguousContains:
-		return contains, docs[contains]
-	case sameKind >= 0 && !ambiguousKind:
-		return sameKind, docs[sameKind]
 	}
-	return -1, sourceDoc{}
+	return found, docs[found]
 }
 
-// nestedNames reports whether name contains the names of two documents of
-// kind: either could have rendered to it under an affix, even one deleted from
-// the render or in another namespace.
-func nestedNames(docs []sourceDoc, kind, name string) bool {
-	seen := ""
-	for _, d := range docs {
-		if d.kind != kind || d.name == "" || !strings.Contains(name, d.name) {
-			continue
+// exactDocument returns the document of kind named name, the one in namespace
+// when several are; any other tie is a mapping failure.
+func exactDocument(docs []sourceDoc, kind, name, namespace string) (int, sourceDoc) {
+	exact, ambiguous := -1, false
+	for i, d := range docs {
+		if d.kind == kind && d.name == name {
+			exact, ambiguous = pickExact(docs, exact, i, ambiguous, namespace)
 		}
-		if seen != "" && seen != d.name {
-			return true
-		}
-		seen = d.name
 	}
-	return false
-}
-
-// pickContains folds document i, whose name the rendered one contains, into
-// the current one: the longest name wins, an equal length is ambiguous.
-func pickContains(docs []sourceDoc, contains, i int, ambiguous bool) (int, bool) {
-	switch {
-	case contains < 0 || len(docs[i].name) > len(docs[contains].name):
-		return i, false
-	case len(docs[i].name) == len(docs[contains].name):
-		return contains, true
+	if exact < 0 || ambiguous {
+		return -1, sourceDoc{}
 	}
-	return contains, ambiguous
+	return exact, docs[exact]
 }
 
 // pickExact folds document i, an exact name match, into the current one:
@@ -293,15 +477,26 @@ func (r *Renderer) sourceDocuments(path string) []sourceDoc {
 	return docs
 }
 
+// generatedAs reports whether name is the output of generator entry name n:
+// n itself with the hash disabled, else n and one hash segment.
+func generatedAs(name, n string, hashOff bool) bool {
+	if hashOff {
+		return name == n
+	}
+	hash, ok := strings.CutPrefix(name, n+"-")
+	return ok && hash != "" && !strings.Contains(hash, "-")
+}
+
 // generatorName returns the name of the only generator entry of genKind
-// (ConfigMapGenerator or SecretGenerator) in the kustomization at path that
-// the rendered name contains (prefix, suffix and hash added); more than one is
-// ambiguous and returns "".
-func (r *Renderer) generatorName(path, genKind, rendered string) string {
+// (ConfigMapGenerator or SecretGenerator) in the kustomization at path whose
+// name between prefix and suffix, with its hash unless disabled, is the
+// rendered name; none or several return "".
+func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string) string {
 	k, ok := r.Kustomization(path)
 	if !ok {
 		return ""
 	}
+	hashOff := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
 	var args []types.GeneratorArgs
 	switch genKind {
 	case "ConfigMapGenerator":
@@ -316,11 +511,10 @@ func (r *Renderer) generatorName(path, genKind, rendered string) string {
 	best := ""
 	for i := range args {
 		n := args[i].Name
+		off := hashOff || args[i].Options != nil && args[i].Options.DisableNameSuffixHash
 		switch {
-		case n == "" || !strings.Contains(rendered, n):
+		case n == "" || !generatedAs(rendered, prefix+n+suffix, off):
 		case best != "":
-			// Two entries, or one name in two namespaces: either could have
-			// rendered to this name under an affix.
 			return ""
 		default:
 			best = n

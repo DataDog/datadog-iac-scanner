@@ -22,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"sigs.k8s.io/kustomize/api/resmap"
 	"sigs.k8s.io/kustomize/api/resource"
+	"sigs.k8s.io/kustomize/api/types"
 )
 
 func writeTree(t *testing.T, files map[string]string) string {
@@ -740,9 +741,9 @@ func TestRenderGeneratorTieFails(t *testing.T) {
 	}
 }
 
-// TestRenderAffixCollisionFails counts as mapping failures the objects a
-// name prefix makes indistinguishable: app rendered as dev-app and dev-app
-// itself, as source documents and as generator entries.
+// TestRenderAffixCollisionFails counts as mapping failures the documents of a
+// file holding several of their kind under a name prefix (app rendered as
+// dev-app, dev-app itself); generator entries the prefix explains exactly map.
 func TestRenderAffixCollisionFails(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"o/kustomization.yaml": "namePrefix: dev-\nresources:\n  - cm.yaml\n" +
@@ -755,17 +756,22 @@ func TestRenderAffixCollisionFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, d := range res.Documents {
-		if d.SourceDocumentIndex >= 0 || (d.Kustomize.Generator != nil && d.Kustomize.Generator.Name != "") {
-			t.Errorf("%s attributed despite the collision", d.Kustomize.RenderedName)
+		a := d.Kustomize
+		switch {
+		case a.Generator == nil && d.SourceDocumentIndex >= 0:
+			t.Errorf("%s attributed despite the collision", a.RenderedName)
+		case a.Generator != nil && !generatedAs(a.RenderedName, "dev-"+a.Generator.Name, false):
+			t.Errorf("%s attributed to generator %q", a.RenderedName, a.Generator.Name)
 		}
 	}
-	if len(res.Documents) != 4 || res.MappingFailures != 4 {
+	if len(res.Documents) != 4 || res.MappingFailures != 2 {
 		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
 	}
 }
 
 // TestRenderAffixCollisionOtherNamespaceFails rejects affix collisions the
-// rendered output alone cannot reveal: counterparts in other namespaces.
+// rendered output alone cannot reveal, counterparts in other namespaces: two
+// Services of one file fail, the generator entries the prefix explains map.
 func TestRenderAffixCollisionOtherNamespaceFails(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"o/kustomization.yaml": "namePrefix: dev-\nresources:\n  - svc.yaml\n" +
@@ -778,7 +784,7 @@ func TestRenderAffixCollisionOtherNamespaceFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Documents) != 4 || res.MappingFailures != 4 {
+	if len(res.Documents) != 4 || res.MappingFailures != 2 {
 		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
 	}
 }
@@ -797,6 +803,296 @@ func TestRenderAffixCollisionDeletedFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(res.Documents) != 1 || res.Documents[0].SourceDocumentIndex >= 0 || res.MappingFailures != 1 {
+		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
+	}
+}
+
+// TestRenderNestedNamesWithoutRenaming maps nested names exactly when no
+// kustomization in the graph can rename, and rejects them once one level adds
+// an affix.
+func TestRenderNestedNamesWithoutRenaming(t *testing.T) {
+	files := map[string]string{
+		"top/kustomization.yaml": "resources:\n  - ../o\n",
+		"o/kustomization.yaml": "resources:\n  - svc.yaml\n" +
+			"configMapGenerator:\n  - name: gen\n    literals:\n      - A=b\n  - name: gen-x\n    literals:\n      - A=b\n",
+		"o/svc.yaml": "apiVersion: v1\nkind: Service\nmetadata:\n  name: app\n---\n" +
+			"apiVersion: v1\nkind: Service\nmetadata:\n  name: app-config\n",
+	}
+	res, err := render(t, writeTree(t, files), "top")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, d := range res.Documents {
+		a := d.Kustomize
+		got[a.RenderedName] = a.SourceName
+		if a.Generator != nil {
+			got[a.RenderedName] = a.Generator.Name
+		}
+	}
+	if got["app"] != "app" || got["app-config"] != "app-config" || res.MappingFailures != 0 || len(got) != 4 {
+		t.Fatalf("got %v, %d failures", got, res.MappingFailures)
+	}
+	for _, n := range []string{"gen", "gen-x"} {
+		var ok bool
+		for k, v := range got {
+			ok = ok || (strings.HasPrefix(k, n+"-") && v == n)
+		}
+		if !ok {
+			t.Errorf("generator %s not attributed: %v", n, got)
+		}
+	}
+	files["top/kustomization.yaml"] = "nameSuffix: -s\nresources:\n  - ../o\n"
+	res, err = render(t, writeTree(t, files), "top")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two Services in one file fail under the suffix; each generator entry the
+	// suffix explains exactly maps.
+	for _, d := range res.Documents {
+		a := d.Kustomize
+		if (a.Generator == nil && d.SourceDocumentIndex >= 0) || (a.Generator != nil && !generatedAs(a.RenderedName, a.Generator.Name+"-s", false)) {
+			t.Errorf("%s attributed despite the affix", a.RenderedName)
+		}
+	}
+	if res.MappingFailures != 2 {
+		t.Fatalf("affix in the graph: %d failures, want 2", res.MappingFailures)
+	}
+}
+
+// TestRenderNoRenamingProof keeps the conservative matching when renaming
+// is not proven absent: transformer configurations, or a symlinked
+// kustomization whose target name is not a kustomization's.
+func TestRenderNoRenamingProof(t *testing.T) {
+	svc := "apiVersion: v1\nkind: Service\nmetadata:\n  name: app\n---\n" +
+		"apiVersion: v1\nkind: Service\nmetadata:\n  name: app-config\n"
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "resources:\n  - svc.yaml\nconfigurations:\n  - conf.yaml\n",
+		"o/conf.yaml":          "namePrefix:\n  - path: metadata/name\n",
+		"o/svc.yaml":           svc,
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.MappingFailures != 2 {
+		t.Fatalf("configurations: %d failures, want 2", res.MappingFailures)
+	}
+	if !renames(&types.Kustomization{Labels: []types.Label{{Pairs: map[string]string{"a": "b"}, FieldSpecs: []types.FieldSpec{{Path: "metadata/name"}}}}}, nil) {
+		t.Fatal("labels with their own field specs proved no renaming")
+	}
+	gen := func(name, behavior string, off bool) types.ConfigMapArgs {
+		return types.ConfigMapArgs{GeneratorArgs: types.GeneratorArgs{Name: name, Behavior: behavior,
+			Options: &types.GeneratorOptions{DisableNameSuffixHash: off}}}
+	}
+	for name, ks := range map[string][]types.Kustomization{
+		"merge":         {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "merge", false)}}},
+		"repeated name": {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "", false)}}, {SecretGenerator: []types.SecretArgs{{GeneratorArgs: gen("g", "", false).GeneratorArgs}}}},
+		"mixed hashing": {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "", false)}}, {ConfigMapGenerator: []types.ConfigMapArgs{gen("h", "create", true)}}},
+	} {
+		var g generatorEntries
+		ok := true
+		for i := range ks {
+			ok = g.add(&ks[i]) && ok
+		}
+		if ok {
+			t.Errorf("%s: generator entries proved unambiguous", name)
+		}
+	}
+	var g generatorEntries
+	if !g.add(&types.Kustomization{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "create", false), gen("g-x", "", false)}}) {
+		t.Error("distinct created entries hashing alike must keep the shortcut")
+	}
+	dir = writeTree(t, map[string]string{
+		"top/kustomization.yaml": "resources:\n  - ../o\nconfigMapGenerator:\n  - name: gen\n    behavior: merge\n    literals:\n      - C=d\n",
+		"o/kustomization.yaml":   "configMapGenerator:\n  - name: gen\n    literals:\n      - A=b\n  - name: gen-x\n    literals:\n      - A=b\n",
+	})
+	r0 := NewRenderer(vfs.Default(), dir, 5<<20)
+	res, err = r0.Render(context.Background(), filepath.Join(dir, "top"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r0.renameMode(res.Reads) == renameNone {
+		t.Fatal("a merging generator proved no renaming")
+	}
+	if !renames(&types.Kustomization{OpenAPI: map[string]string{"path": "s.json"}}, nil) ||
+		!renames(&types.Kustomization{Namespace: "n", Resources: []string{"a"}}, nil) || renames(&types.Kustomization{Resources: []string{"a"}}, nil) {
+		t.Fatal("only identity-safe fields prove no renaming")
+	}
+	dir = writeTree(t, map[string]string{
+		"o/real.yml": "namePrefix: dev-\nresources:\n  - svc.yaml\n",
+		"o/svc.yaml": "apiVersion: v1\nkind: Service\nmetadata:\n  name: app\n---\n" +
+			"apiVersion: v1\nkind: Service\nmetadata:\n  name: dev-app\n",
+	})
+	if err := os.Symlink("real.yml", filepath.Join(dir, "o", "kustomization.yaml")); err != nil {
+		t.Skip(err)
+	}
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	if _, err := r.Render(context.Background(), filepath.Join(dir, "o")); err != nil {
+		t.Fatal(err)
+	}
+	if r.renameMode([]string{filepath.Join(dir, "o", "real.yml")}) == renameNone {
+		t.Fatal("a symlinked kustomization with an affix proved no renaming")
+	}
+}
+
+// TestRenderGeneratorHashOption matches generator entries by exact name when
+// the hash is disabled, and nested entry names stay unambiguous either way.
+func TestRenderGeneratorHashOption(t *testing.T) {
+	for _, opts := range []string{"", "generatorOptions:\n  disableNameSuffixHash: true\n"} {
+		dir := writeTree(t, map[string]string{
+			"o/kustomization.yaml": opts + "configMapGenerator:\n  - name: gen\n    literals:\n      - A=b\n" +
+				"  - name: gen-x\n    literals:\n      - A=b\n",
+		})
+		res, err := render(t, dir, "o")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, d := range res.Documents {
+			got[d.Kustomize.RenderedName] = d.Kustomize.Generator.Name
+		}
+		if res.MappingFailures != 0 || len(got) != 2 {
+			t.Fatalf("%q: got %v, %d failures", opts, got, res.MappingFailures)
+		}
+		if opts != "" && (got["gen"] != "gen" || got["gen-x"] != "gen-x") {
+			t.Fatalf("hash disabled: got %v", got)
+		}
+	}
+}
+
+// TestRenderJSONPatchRenameFails counts as a mapping failure an object a JSON
+// patch renamed and moved to another namespace, even when the name it took is
+// a source document's own.
+func TestRenderJSONPatchRenameFails(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "resources:\n  - svc.yaml\npatches:\n  - target:\n      kind: Service\n      name: app\n    patch: |-\n" +
+			"      - op: replace\n        path: /metadata/name\n        value: other\n" +
+			"      - op: add\n        path: /metadata/namespace\n        value: b\n",
+		"o/svc.yaml": "apiVersion: v1\nkind: Service\nmetadata:\n  name: app\n  namespace: a\n---\n" +
+			"apiVersion: v1\nkind: Service\nmetadata:\n  name: other\n  namespace: b2\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.SourceDocumentIndex >= 0 {
+			t.Errorf("%s/%s attributed despite the patch", d.Kustomize.RenderedNamespace, d.Kustomize.RenderedName)
+		}
+	}
+	if len(res.Documents) != 2 || res.MappingFailures != 2 {
+		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
+	}
+}
+
+// TestRenderSharedBaseTwoChainsFails counts as failures the objects of a base
+// two overlays reach with different affixes: one chain cannot explain them.
+func TestRenderSharedBaseTwoChainsFails(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"top/kustomization.yaml": "resources:\n  - ../a\n  - ../b\n",
+		"a/kustomization.yaml":   "namePrefix: dev-\nnamespace: a\nresources:\n  - ../base\n",
+		"b/kustomization.yaml":   "namespace: b\nresources:\n  - ../base\n",
+		"base/kustomization.yaml": "configMapGenerator:\n  - name: gen\n    options:\n      annotations:\n" +
+			"        config.kubernetes.io/local-config: \"true\"\n    literals:\n      - A=b\n" +
+			"  - name: dev-gen\n    literals:\n      - A=b\n",
+	})
+	res, err := render(t, dir, "top")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if g := d.Kustomize.Generator; g != nil && g.Name != "" {
+			t.Errorf("%s/%s attributed to %s", d.Kustomize.RenderedNamespace, d.Kustomize.RenderedName, g.Name)
+		}
+	}
+	if len(res.Documents) != 2 || res.MappingFailures != 2 {
+		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
+	}
+}
+
+// TestRenderSharedBaseSymlinkChainsFails counts both chains to a base one
+// overlay reaches through a symlinked kustomization.
+func TestRenderSharedBaseSymlinkChainsFails(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"top/kustomization.yaml": "resources:\n  - ../a\n  - ../b\n",
+		"a/kustomization.yaml":   "namePrefix: dev-\nnamespace: a\nresources:\n  - ../base\n",
+		"b/kustomization.yaml":   "namespace: b\nresources:\n  - ../alias\n",
+		"base/kustomization.yaml": "configMapGenerator:\n  - name: gen\n    options:\n      annotations:\n" +
+			"        config.kubernetes.io/local-config: \"true\"\n    literals:\n      - A=b\n" +
+			"  - name: dev-gen\n    literals:\n      - A=b\n",
+	})
+	if err := os.MkdirAll(filepath.Join(dir, "alias"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "base", "kustomization.yaml"), filepath.Join(dir, "alias", "kustomization.yaml")); err != nil {
+		t.Skip(err)
+	}
+	res, err := render(t, dir, "top")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if g := d.Kustomize.Generator; g != nil && g.Name != "" {
+			t.Errorf("%s/%s attributed to %s", d.Kustomize.RenderedNamespace, d.Kustomize.RenderedName, g.Name)
+		}
+	}
+	if res.MappingFailures != len(res.Documents) {
+		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
+	}
+}
+
+// TestRenderSymlinkedKustomizationOtherDirFails fails closed on a base an
+// overlay reaches through a kustomization symlinked from another directory:
+// Kustomize resolves its entries from the link's directory.
+func TestRenderSymlinkedKustomizationOtherDirFails(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"top/kustomization.yaml": "resources:\n  - ../a\n  - ../b\n",
+		"a/kustomization.yaml":   "namePrefix: dev-\nnamespace: a\nresources:\n  - ../base\n",
+		"templates/deep/b.yml":   "namespace: b\nresources:\n  - ../base\n",
+		"b/placeholder.txt":      "",
+		"base/kustomization.yaml": "configMapGenerator:\n  - name: gen\n    options:\n      annotations:\n" +
+			"        config.kubernetes.io/local-config: \"true\"\n    literals:\n      - A=b\n" +
+			"  - name: dev-gen\n    literals:\n      - A=b\n",
+	})
+	if err := os.Symlink(filepath.Join("..", "templates", "deep", "b.yml"), filepath.Join(dir, "b", "kustomization.yaml")); err != nil {
+		t.Skip(err)
+	}
+	res, err := render(t, dir, "top")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if g := d.Kustomize.Generator; g != nil && g.Name != "" {
+			t.Errorf("%s/%s attributed to %s", d.Kustomize.RenderedNamespace, d.Kustomize.RenderedName, g.Name)
+		}
+	}
+	if len(res.Documents) != 2 || res.MappingFailures != 2 {
+		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
+	}
+}
+
+// TestRenderSymlinkedRootKustomizationFails fails closed when the root
+// kustomization is linked from another directory, even when the chain walk
+// from the target's directory happens to reach the source file.
+func TestRenderSymlinkedRootKustomizationFails(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"t/k.yml":       "namePrefix: dev-\nresources:\n  - cm.yaml\n",
+		"o/cm.yaml":     "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n",
+		"o/placeholder": "",
+	})
+	if err := os.Symlink(filepath.Join("..", "t", "k.yml"), filepath.Join(dir, "o", "kustomization.yaml")); err != nil {
+		t.Skip(err)
+	}
+	// The chain walk from t then reaches o/cm.yaml through t/cm.yaml.
+	if err := os.Symlink(filepath.Join("..", "o", "cm.yaml"), filepath.Join(dir, "t", "cm.yaml")); err != nil {
+		t.Skip(err)
+	}
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Documents) != 1 || res.MappingFailures != 1 {
 		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
 	}
 }
