@@ -1230,7 +1230,6 @@ func TestRenderNoRenamingProof(t *testing.T) {
 	for name, ks := range map[string][]types.Kustomization{
 		"merge":         {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "merge", false)}}},
 		"repeated name": {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "", false)}}, {SecretGenerator: []types.SecretArgs{{GeneratorArgs: gen("g", "", false).GeneratorArgs}}}},
-		"mixed hashing": {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "", false)}}, {ConfigMapGenerator: []types.ConfigMapArgs{gen("h", "create", true)}}},
 	} {
 		var g generatorEntries
 		ok := true
@@ -1240,6 +1239,11 @@ func TestRenderNoRenamingProof(t *testing.T) {
 		if ok {
 			t.Errorf("%s: generator entries proved unambiguous", name)
 		}
+	}
+	var mixed generatorEntries
+	if !mixed.add(&types.Kustomization{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "", false)}}) ||
+		!mixed.add(&types.Kustomization{ConfigMapGenerator: []types.ConfigMapArgs{gen("h", "create", true)}}) {
+		t.Error("entries hashing differently are matched by their own hashing")
 	}
 	var g generatorEntries
 	if !g.add(&types.Kustomization{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "create", false), gen("g-x", "", false)}}) {
@@ -1436,6 +1440,73 @@ func TestRenderSymlinkedRootKustomizationFails(t *testing.T) {
 	}
 	if len(res.Documents) != 1 || res.MappingFailures != 1 {
 		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
+	}
+}
+
+// TestRenderIdentityNameHashDisabled keeps a generated name that only looks
+// hashed when its generator disabled the content-hash suffix, by its own
+// options or the kustomization's generatorOptions.
+func TestRenderIdentityNameHashDisabled(t *testing.T) {
+	const kust = "configMapGenerator:\n  - name: settings-bcdfgh2m4k\n    literals:\n      - TOKEN=1\n"
+	for name, option := range map[string]string{
+		"global generatorOptions": "generatorOptions:\n  disableNameSuffixHash: true\n" + kust,
+		"generator options":       kust + "    options:\n      disableNameSuffixHash: true\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			res, err := render(t, writeTree(t, map[string]string{"o/kustomization.yaml": option}), "o")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range res.Documents {
+				a := d.Kustomize
+				if a.Kind != "ConfigMap" {
+					continue
+				}
+				if a.RenderedName != "settings-bcdfgh2m4k" {
+					t.Errorf("precondition: rendered name %q, want the generator name whole", a.RenderedName)
+				}
+				if a.IdentityName != a.RenderedName {
+					t.Errorf("identity name %q lost a suffix that was never a hash", a.IdentityName)
+				}
+			}
+		})
+	}
+}
+
+// TestRenderIdentityOverlappingGenerators keeps the stripped identity of a
+// hash-enabled generator whose name contains a disableNameSuffixHash sibling's
+// name, and keeps it when the generated data changes the content hash.
+func TestRenderIdentityOverlappingGenerators(t *testing.T) {
+	tree := func(value string) map[string]string {
+		return map[string]string{"o/kustomization.yaml": "configMapGenerator:\n" +
+			"  - name: app\n    options:\n      disableNameSuffixHash: true\n    literals:\n      - A=1\n" +
+			"  - name: app-config\n    literals:\n      - A=" + value + "\n"}
+	}
+	config := func(t *testing.T, tree map[string]string) (rendered, identity string) {
+		t.Helper()
+		res, err := render(t, writeTree(t, tree), "o")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range res.Documents {
+			if a := d.Kustomize; a.Kind == "ConfigMap" && strings.HasPrefix(a.RenderedName, "app-config") {
+				return a.RenderedName, a.IdentityName
+			}
+		}
+		t.Fatal("no app-config ConfigMap rendered")
+		return "", ""
+	}
+	rendered, identity := config(t, tree("1"))
+	if rendered == "app-config" {
+		t.Fatal("precondition: the hash-enabled generator rendered no content hash")
+	}
+	if identity != "app-config" {
+		t.Errorf("identity name %q kept the content hash", identity)
+	}
+	if editedRendered, editedIdentity := config(t, tree("2")); editedIdentity != identity {
+		t.Errorf("data edit moved the identity from %q to %q", identity, editedIdentity)
+	} else if editedRendered == rendered {
+		t.Error("precondition: the data edit did not change the content hash")
 	}
 }
 
