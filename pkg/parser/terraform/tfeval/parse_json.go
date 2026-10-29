@@ -25,6 +25,10 @@ var jsonConfigSchema = &hcl.BodySchema{
 		{Type: blockTypeModule, LabelNames: []string{"name"}},
 		{Type: "resource", LabelNames: []string{"type", "name"}},
 		{Type: "data", LabelNames: []string{"type", "name"}},
+		// Ephemeral blocks expand and are addressed like resources; without
+		// them in the schema a JSON configuration loses their instances
+		// entirely (K9CODESEC-7158).
+		{Type: "ephemeral", LabelNames: []string{"type", "name"}},
 	},
 }
 

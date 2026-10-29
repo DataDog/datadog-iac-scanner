@@ -567,6 +567,13 @@ func (c *Inspector) Inspect(
 
 	queries := c.getQueriesByPlat(platforms)
 
+	// Stamp the files' Terraform identity context before anything reads it:
+	// module evaluation captures external-module-file scopes and mutates
+	// documents (instantiated blocks are stripped), and the payload build may
+	// release the documents the plan metadata and block sets are extracted
+	// from (K9CODESEC-7158).
+	c.stampTerraformScopes(files)
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
@@ -838,9 +845,12 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 		expanded = append(expanded, vulns[i])
 		for _, ex := range extras[vulns[i].FileID] {
 			vCopy := vulns[i]
-			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			// ResourceID is unchanged: a deduplicated caller resolves the same
+			// module address, only its own root module directory differs
+			// (K9CODESEC-7158).
+			vCopy.RootModule = ex.rootModule
 			expanded = append(expanded, vCopy)
 		}
 	}

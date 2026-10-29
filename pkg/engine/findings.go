@@ -12,6 +12,8 @@ import (
 	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 // findingSet collects the findings of one rule as they are decoded and
@@ -32,17 +34,17 @@ import (
 // identity is already kept can then be skipped before its line is detected
 // (see supersedes).
 //
-// Routing runs before the identity is recorded. It gives a finding the call
-// chain of each module caller it stands for, and two instances that share an
-// identity can stand for different callers. Recording the identity first would
-// drop the callers of every instance but the last.
+// Routing runs before the identity is recorded. It gives a finding the root
+// module of each caller it stands for, and for an external module file the
+// module address of each call reaching it, and two callers can share one
+// identity only when the report collapses them too. Recording the identity
+// first would drop the callers of every instance but the last.
 type findingSet struct {
 	out     []model.Vulnerability
 	routing *findingRouting
 	// kept holds the identities of the findings in out. Nil when the set is
 	// not reducing by identity, so every finding is appended.
-	kept   map[[sha256.Size]byte]struct{}
-	keyBuf []byte
+	kept map[[sha256.Size]byte]struct{}
 }
 
 // newFindingSet starts a set that reduces findings to one per identity when
@@ -99,28 +101,19 @@ func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulne
 		s.out = append(s.out, routed...)
 		return
 	}
-	// Routing changes only the call chain of what goes into the identity.
-	id, lineFree := model.IdentityBeforeLine(v)
+	// Routing changes the root module directory, and for a finding on an
+	// external module file the address, of what goes into the identity:
+	// different callers of the same module path are different root stacks, so
+	// the identity is recomputed per routed copy rather than once from v (see
+	// K9CODESEC-7158).
 	for i := len(routed) - 1; i >= 0; i-- {
-		if lineFree {
-			s.keepChained(id, &routed[i])
-		} else {
-			s.keepKey(model.FindingIdentity(&routed[i]), &routed[i])
-		}
+		s.keep(model.FindingIdentity(&routed[i]), &routed[i])
 	}
 }
 
-// keepChained records v unless id under v's call chain is already kept.
-func (s *findingSet) keepChained(id model.ChainedIdentity, v *model.Vulnerability) {
-	if s.has(id, v.ModuleCallChain) {
-		return
-	}
-	s.kept[sha256.Sum256(s.keyBuf)] = struct{}{}
-	s.out = append(s.out, *v)
-}
-
-func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
-	digest := sha256.Sum256([]byte(key))
+// keep records v unless its identity is already kept.
+func (s *findingSet) keep(id string, v *model.Vulnerability) {
+	digest := sha256.Sum256([]byte(id))
 	if _, ok := s.kept[digest]; ok {
 		return
 	}
@@ -128,60 +121,106 @@ func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
 	s.out = append(s.out, *v)
 }
 
-// supersedes reports whether routing a result raised on file with identity id
-// now would only produce identities this set already kept, so the result
-// cannot change the report.
-//
-// It has to agree with findingRouting.route in that direction (see
-// TestFindingSet_SupersedesMeansRouteKeepsNothingNew). The as-written
-// identity is required only when routing can produce it: an external module
-// file that is reported only through its calls does not.
-func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetadata, resourceType string) bool {
-	if file == nil || len(s.kept) == 0 {
+// supersedes reports whether routing a result with the given identities
+// would only produce identities this set already kept, so the result cannot
+// change the report. An empty entry is an identity routing does not produce
+// (a module file reported only through its calls keeps no as-written
+// finding). It has to agree with findingRouting.route in that direction (see
+// TestFindingSet_SupersedesMeansRouteKeepsNothingNew).
+func (s *findingSet) supersedes(identities []string) bool {
+	if len(s.kept) == 0 {
 		return false
 	}
-	if !s.accounted(id, file.ID, resourceType, file.ModuleCallChain, len(file.ModuleAttributions) > 0) {
-		return false
+	for _, id := range identities {
+		if id != "" && !s.has(id) {
+			return false
+		}
+	}
+	return true
+}
+
+// findingIdentities returns the identities a result raised on file with this
+// resourceType and resourceName would produce: one per finding routing keeps,
+// in the order route produces them. An empty entry is an identity routing
+// does not produce (see supersedes). ok is false when the identity cannot be
+// known before the line is detected (a Dockerfile finding).
+func (s *findingSet) findingIdentities(
+	file *model.FileMetadata, platform, resourceType, resourceName, queryID, legacyQueryID string,
+) ([]string, bool) {
+	ruleID := utils.ChooseQueryID(queryID, legacyQueryID)
+	id, resolved := terraformIdentityFor(file, resourceType, resourceName)
+	if platform != terraformPlatformValue || file.TerraformScope == nil || !resolved {
+		// Without a resolved identity the finding falls back to the legacy
+		// fingerprint, which routing no longer changes (a routed copy without
+		// an address hashes like the as-written one).
+		legacy, known := model.IdentityInputFor(file.FilePath, platform, resourceType, resourceName, queryID, legacyQueryID)
+		return []string{legacy}, known
+	}
+	var block address.Block
+	if file.Kind != model.KindTerraformPlan {
+		block, _ = terraformBlockFor(file, resourceType, resourceName)
+	}
+	var ids []string
+	s.appendRouteIdentities(&ids, ruleID, resourceType, file.ID, file.TerraformScope, block, id,
+		len(file.ModuleAttributions) > 0)
+	return ids, true
+}
+
+// appendRouteIdentities appends the identities routing produces for a finding
+// with identity id raised on document docID (scoped by scope, its block by
+// block): the finding itself, unless an external-module-file route replaces
+// it, then one per extra caller and one per call reaching an external module
+// file — recursively, since an extra caller may itself be an external module
+// file whose copies route through its own calls.
+func (s *findingSet) appendRouteIdentities(
+	ids *[]string, ruleID, resourceType, docID string,
+	scope *model.TerraformScope, block address.Block, id model.TerraformIdentity,
+	attributionPossible bool,
+) {
+	var mf *moduleFileCalls
+	if s.routing != nil {
+		mf = s.routing.moduleFiles[docID]
+	}
+	routedAway := mf != nil && !mf.keptAsWritten(resourceType) && !mf.keepWritten && !attributionPossible
+	if !routedAway {
+		*ids = append(*ids, terraformIdentityInput(ruleID, id))
 	}
 	if s.routing == nil {
-		return true
+		return
 	}
-	for _, ex := range s.routing.extras[file.ID] {
-		if !s.accounted(id, ex.docID, resourceType, ex.callChain, len(ex.attributions) > 0) {
-			return false
+	for _, ex := range s.routing.extras[docID] {
+		s.appendRouteIdentities(ids, ruleID, resourceType, ex.docID, scope, block,
+			model.TerraformIdentity{RootModule: ex.rootModule, ResourceID: id.ResourceID},
+			len(ex.attributions) > 0)
+	}
+	if mf != nil && !mf.keptAsWritten(resourceType) {
+		for i := range mf.calls {
+			call := &mf.calls[i]
+			resourceID := id.ResourceID
+			if call.moduleAddress != "" {
+				resourceID = call.moduleAddress + "." + resourceID
+			}
+			if (address.Block{}) != block {
+				resourceID = routedBlockAddress(scope, block, call.moduleAddress)
+			}
+			*ids = append(*ids, terraformIdentityInput(ruleID, model.TerraformIdentity{
+				RootModule: call.rootModule,
+				ResourceID: resourceID,
+			}))
 		}
 	}
-	return true
 }
 
-// accounted reports whether every identity routing can give a finding raised
-// on document fileID and reported under chain is already kept.
-func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, chain string, attributionPossible bool) bool {
-	var file *moduleFileCalls
-	if s.routing != nil {
-		file = s.routing.moduleFiles[fileID]
-	}
-	if file == nil || file.keptAsWritten(resourceType) {
-		return s.has(id, chain)
-	}
-	// The calls are produced unless the line attributes the finding. The line
-	// is not known yet, so every call has to be kept already.
-	for i := range file.calls {
-		if !s.has(id, file.calls[i].callChain) {
-			return false
-		}
-	}
-	// Kept as written, or attributed from the line. Without attributions the
-	// as-written finding is not produced, and requiring it would never skip.
-	if file.keepWritten || attributionPossible {
-		return s.has(id, chain)
-	}
-	return true
+// terraformIdentityInput builds the fingerprint input of a Terraform finding
+// from its resolved identity and rule, the exact input model.FindingIdentity
+// hashes (the repo is constant within a scan).
+func terraformIdentityInput(ruleID string, id model.TerraformIdentity) string {
+	input, _ := model.IdentityInput("", terraformPlatformValue, "", "", ruleID, id)
+	return input
 }
 
-func (s *findingSet) has(id model.ChainedIdentity, chain string) bool {
-	s.keyBuf = id.AppendWithChain(s.keyBuf[:0], chain)
-	_, ok := s.kept[sha256.Sum256(s.keyBuf)]
+func (s *findingSet) has(id string) bool {
+	_, ok := s.kept[sha256.Sum256([]byte(id))]
 	return ok
 }
 
@@ -193,7 +232,7 @@ func (s *findingSet) findings() []model.Vulnerability {
 	if s.lastRaisedFirst() {
 		slices.Reverse(out)
 	}
-	s.out, s.kept, s.keyBuf = nil, nil, nil
+	s.out, s.kept = nil, nil
 	return out
 }
 
@@ -215,7 +254,7 @@ func newFindingRouting(
 ) *findingRouting {
 	callers := make(map[string]*model.FileMetadata)
 	for _, f := range files {
-		if f == nil || f.ModuleCallChain != "" {
+		if f == nil || isSyntheticTerraformDoc(f) {
 			continue
 		}
 		key := repoRelativeFile(f.FilePath, repoPath)

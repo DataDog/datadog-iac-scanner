@@ -142,7 +142,7 @@ module "bucket" {
 	vulns := inspectRemoteBucket(t, fx, []string{callerPath}, aclRule)
 	require.Len(t, vulns, 1)
 	require.Equal(t, fx.modPath, vulns[0].FileName)
-	require.NotEmpty(t, vulns[0].ModuleCallChain)
+	require.Equal(t, "stack", vulns[0].RootModule)
 	require.NotNil(t, vulns[0].ModuleAttribution)
 	require.Equal(t, "stack/main.tf", vulns[0].ModuleAttribution.CallSite.Filename)
 	require.Len(t, vulns[0].ModuleAttribution.ModulePath, 1)
@@ -240,11 +240,11 @@ module "bucket" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1, "only the public-read caller should produce a finding")
-	require.Equal(t, "stack-b/main.tf|module.bucket", vulns[0].ModuleCallChain,
+	require.Equal(t, "stack-b", vulns[0].RootModule,
 		"finding must be attributed to the vulnerable caller, not the secure one")
 }
 
-func TestInspect_RemoteModule_TwoCallersGetDistinctCallChains(t *testing.T) {
+func TestInspect_RemoteModule_TwoCallersGetDistinctRoots(t *testing.T) {
 	fx := newRemoteBucketFixture(t)
 	aRoot := filepath.Join(fx.root, "stack-a")
 	bRoot := filepath.Join(fx.root, "stack-b")
@@ -271,7 +271,7 @@ module "bucket" {
 	ins := newTestInspector(t, inspectorOpts{
 		queries: []model.QueryMetadata{{
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
-			// "Terraform" puts the call chain in the finding identity, as the
+			// "Terraform" puts the root module in the finding identity, as the
 			// Terraform rules do. Without it the two callers are one finding.
 			Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 			Aggregation: 1,
@@ -288,13 +288,12 @@ module "bucket" {
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 2)
 
-	chains := map[string]bool{}
+	roots := map[string]bool{}
 	for _, v := range vulns {
 		require.Equal(t, fx.modPath, v.FileName)
-		require.NotEmpty(t, v.ModuleCallChain)
-		chains[v.ModuleCallChain] = true
+		roots[v.RootModule] = true
 	}
-	require.Len(t, chains, 2)
+	require.Len(t, roots, 2)
 }
 
 func TestInspect_RemoteModule_CountExpansionBothInstancesScanned(t *testing.T) {
@@ -324,7 +323,7 @@ module "bucket" {
 	vulns := inspectRemoteBucket(t, fx, []string{callerPath}, aclRule)
 	require.Len(t, vulns, 1, "the second count-expanded instance must be scanned")
 	require.Equal(t, "replica", vulns[0].ResourceName)
-	require.Equal(t, "stack/main.tf|module.bucket", vulns[0].ModuleCallChain)
+	require.Equal(t, "stack", vulns[0].RootModule)
 }
 
 func TestInspect_RemoteModule_PreservesNonResourceBlocksInModuleBody(t *testing.T) {
@@ -406,4 +405,34 @@ module "bucket" {
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1,
 		"unevaluated fetched module bodies use parser variable defaults, not caller inputs")
+}
+
+// The identity of a finding routed through a remote module call carries the
+// call's module instance address as a prefix and the caller's root module:
+// two instances of one call report distinct blocks (K9CODESEC-7158). The
+// scopes this routing reads must be stamped before module evaluation runs.
+func TestInspect_RemoteModule_RoutedFindingsCarryCallAddress(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	writeRemoteBucketModule(t, fx.modPath, `
+variable "acl" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  acl = var.acl
+}
+`)
+	callerPath := writeRemoteCaller(t, fx.callerRoot, `
+module "bucket" {
+  source  = "`+remoteBucketSource+`"
+  version = "`+remoteBucketVersion+`"
+  acl     = "public-read"
+}
+`)
+
+	vulns := inspectRemoteBucket(t, fx, []string{callerPath}, aclRule)
+	require.Len(t, vulns, 1)
+	require.Equal(t, "module.bucket.aws_s3_bucket.this", vulns[0].ResourceID,
+		"the routed finding is prefixed with the call's module instance address")
+	require.Equal(t, "stack", vulns[0].RootModule)
 }

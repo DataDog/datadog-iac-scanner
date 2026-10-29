@@ -496,4 +496,5 @@ func (t *noopTracker) TrackQueryExecution(int)  {}
 func (t *noopTracker) FailedDetectLine()        {}
 func (t *noopTracker) FailedLineInfoDocument()  {}
 func (t *noopTracker) SkippedSupersededResult() {}
+func (t *noopTracker) FindingWithoutIdentity()  {}
 func (t *noopTracker) GetOutputLines() int      { return 0 }

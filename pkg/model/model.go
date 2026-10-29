@@ -322,6 +322,12 @@ type TerraformScope struct {
 	// sibling copied into an expanded-root layer the document does not own.
 	// Findings on borrowed blocks are reported by the owning document.
 	Borrowed map[TerraformBlock]bool
+	// UnlabeledIndex maps a repeated unlabeled block (moved, import, removed)
+	// under its file-local identity — the one rules report — to its
+	// module-wide index in deterministic file order, which is what the
+	// address carries. Two files of one module each declaring such a block
+	// keep distinct addresses without disturbing the declaration keys.
+	UnlabeledIndex map[TerraformBlock]int
 	// PlanAddresses holds a terraform plan -json document's per-resource
 	// addresses (the ones Terraform itself computed), flattened by
 	// pkg/parser/json's PlanAddresses while the document is alive and keyed
@@ -371,17 +377,6 @@ type FileMetadata struct {
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
 	// document groups multiple module resources from the same file.
 	ModuleAttributions map[string]*ModuleAttribution
-	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
-	ModuleCallChain string
-	// ResourceIDs maps a resource or data block's kind and base document name
-	// to the full Terraform address of the one instance this synthetic
-	// document represents. Set only for Terraform documents the engine
-	// instantiated per count/for_each instance; nil otherwise.
-	ResourceIDs map[string]string
-	// RootModuleDir is the repository-relative directory of the root module
-	// this file's resources are declared (root resources) or instantiated
-	// under (module resources, via their outermost caller).
-	RootModuleDir string
 	// TerraformScope carries the file's Terraform identity context
 	// (K9CODESEC-7158): where its blocks live (root module, module instance
 	// address), which blocks it declares, and which block instance a synthetic
@@ -763,13 +758,6 @@ type Vulnerability struct {
 	// this scan could not resolve a Terraform identity for, which fall back to
 	// the legacy resource-name fingerprint (see K9CODESEC-7158).
 	ResourceID string `json:"resourceId,omitempty"`
-	// ModuleCallChain: local-module instantiation path; empty for root resources; used by the legacy fingerprint fallback.
-	ModuleCallChain string `json:"moduleCallChain,omitempty"`
-	// RootModuleDir is the scanned repository's root module directory this
-	// finding's resource is declared (root resource) or instantiated under
-	// (module resource, via its outermost caller), relative to the repository
-	// root.
-	RootModuleDir string `json:"rootModuleDir,omitempty"`
 	// RootModule is the scanned repository's root module directory this
 	// finding's block is declared (HCL) or evaluated (module instance) under,
 	// relative to the repository root; the file itself for a plan or tfvars

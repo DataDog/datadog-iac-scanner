@@ -103,6 +103,10 @@ type ResolvedResource struct {
 
 	// Data marks an instance of a data block rather than a resource.
 	Data bool
+	// Ephemeral marks an instance of an ephemeral resource block: expanded
+	// and addressed like a resource, but a separate namespace — a managed
+	// resource of the same type and name is a different block.
+	Ephemeral bool
 }
 
 // CallSite records one hop in a module call chain.
@@ -1299,6 +1303,10 @@ func bodyReadsResource(body *hclsyntax.Body, types map[string]struct{}) bool {
 	return false
 }
 
+// readsResource reports whether expr reads one of the given block types.
+// Managed and data references name the type at the traversal root;
+// ephemeral ones carry the namespace first
+// (ephemeral.random_password.x.result), so the second hop names the type.
 func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
 	if len(types) == 0 {
 		return false
@@ -1306,6 +1314,13 @@ func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
 	for _, traversal := range expr.Variables() {
 		if _, ok := types[traversal.RootName()]; ok {
 			return true
+		}
+		if traversal.RootName() == "ephemeral" && len(traversal) > 1 {
+			if attr, ok := traversal[1].(hcl.TraverseAttr); ok {
+				if _, ok := types[attr.Name]; ok {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -1425,6 +1440,7 @@ func (e *Evaluator) expandBlock(
 			ModuleAddress: addr,
 			CallChain:     cloneChain(chain),
 			Data:          data,
+			Ephemeral:     rb.Type == "ephemeral",
 		}
 	}
 
@@ -1620,26 +1636,40 @@ func instanceForEach(fe cty.Value, key string, value cty.Value) cty.Value {
 // Count-expanded resources are exposed as ordered tuples so that x[0].attr resolves correctly;
 // for_each-expanded resources as keyed objects so that x["k"].attr resolves correctly.
 // Truncated expansions keep the full requested shape with unknown values for omitted instances.
+// instBucket is one block's grouped instances: the per-instance keys, the
+// attributes to expose, and whether the block expanded at all.
+type instBucket struct {
+	keys     []string
+	attrs    []map[string]cty.Value
+	isCount  bool
+	expanded bool // true when any instance has brackets (count or for_each)
+	total    int
+	allKeys  []string
+}
+
 func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) bool {
-	type instBucket struct {
-		keys     []string
-		attrs    []map[string]cty.Value
-		isCount  bool
-		expanded bool // true when any instance has brackets (count or for_each)
-		total    int
-		allKeys  []string
-	}
+	// Ephemeral instances are referenced as ephemeral.<type>.<name>, their own
+	// namespace under one "ephemeral" variable, so a managed resource of the
+	// same type never merges with them.
 	byType := make(map[string]map[string]*instBucket)
+	ephemeralTypes := make(map[string]map[string]*instBucket)
 	for i := range resources {
 		r := &resources[i]
 		base, key, isCount, expanded := parseResourceInstanceKey(r.Name)
-		if byType[r.Type] == nil {
-			byType[r.Type] = make(map[string]*instBucket)
+		buckets := &byType
+		if r.Ephemeral {
+			buckets = &ephemeralTypes
 		}
-		b := byType[r.Type][base]
+		if *buckets == nil {
+			*buckets = make(map[string]map[string]*instBucket)
+		}
+		if (*buckets)[r.Type] == nil {
+			(*buckets)[r.Type] = make(map[string]*instBucket)
+		}
+		b := (*buckets)[r.Type][base]
 		if b == nil {
 			b = &instBucket{isCount: isCount, expanded: expanded}
-			byType[r.Type][base] = b
+			(*buckets)[r.Type][base] = b
 		} else if expanded {
 			b.expanded = true
 		}
@@ -1650,22 +1680,45 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 			b.allKeys = r.ExpansionKeys
 		}
 	}
-	if len(byType) == 0 {
+	if len(byType) == 0 && len(ephemeralTypes) == 0 {
 		return false
 	}
 	progress := false
+	setVar := func(name string, value cty.Value) {
+		if existing, ok := evalCtx.Variables[name]; !ok || !equalValues(existing, value) {
+			evalCtx.Variables[name] = value
+			progress = true
+		}
+	}
 	for typeName, nameMap := range byType {
 		typeAttrs := make(map[string]cty.Value, len(nameMap))
 		for baseName, b := range nameMap {
 			typeAttrs[baseName] = buildInstanceCtyVal(b.keys, b.attrs, b.isCount, b.expanded, b.total, b.allKeys)
 		}
-		newVal := cty.ObjectVal(typeAttrs)
-		if existing, ok := evalCtx.Variables[typeName]; !ok || !equalValues(existing, newVal) {
-			evalCtx.Variables[typeName] = newVal
-			progress = true
+		setVar(typeName, cty.ObjectVal(typeAttrs))
+	}
+	if len(ephemeralTypes) > 0 {
+		byNamespace := make(map[string]cty.Value, len(ephemeralTypes))
+		for typeName, nameMap := range ephemeralTypes {
+			typeAttrs := make(map[string]cty.Value, len(nameMap))
+			for baseName, b := range nameMap {
+				typeAttrs[baseName] = buildInstanceCtyVal(b.keys, b.attrs, b.isCount, b.expanded, b.total, b.allKeys)
+			}
+			byNamespace[typeName] = cty.ObjectVal(typeAttrs)
 		}
+		setVar("ephemeral", cty.ObjectVal(byNamespace))
 	}
 	return progress
+}
+
+// instancesObject builds the per-base-instance object reference injection
+// exposes for one block type.
+func instancesObject(nameMap map[string]*instBucket) cty.Value {
+	typeAttrs := make(map[string]cty.Value, len(nameMap))
+	for baseName, b := range nameMap {
+		typeAttrs[baseName] = buildInstanceCtyVal(b.keys, b.attrs, b.isCount, b.expanded, b.total, b.allKeys)
+	}
+	return cty.ObjectVal(typeAttrs)
 }
 
 // Resource meta-arguments that expand a block into instances.

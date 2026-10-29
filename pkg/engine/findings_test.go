@@ -33,8 +33,8 @@ func instanceFindings(instances int, line int) []model.Vulnerability {
 		out = append(out, model.Vulnerability{
 			FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
 			ResourceType: "aws_s3_bucket", ResourceName: "replica",
-			ModuleCallChain: "stack/main.tf|module.app",
-			Line:            line + i, SearchKey: "aws_s3_bucket[replica].acl",
+			RootModule: "stack", ResourceID: "module.app.aws_s3_bucket.replica",
+			Line: line + i, SearchKey: "aws_s3_bucket[replica].acl",
 		})
 	}
 	return out
@@ -55,6 +55,7 @@ func TestFindingSet_KeepsTheLastFindingOfEachIdentity(t *testing.T) {
 	raised := instanceFindings(3, 10)
 	other := raised[0]
 	other.ResourceName = "primary"
+	other.ResourceID = "module.app.aws_s3_bucket.primary"
 	raised = append(raised, other)
 
 	got := decodeAll(set, raised)
@@ -91,15 +92,15 @@ func TestFindingSet_KeepsWhatStorageReports(t *testing.T) {
 // onto the earlier instance is not a caller of the later one. Routing after
 // keeping one finding would report only the later instance's callers.
 func TestFindingSet_RoutesBeforeKeepingAnIdentity(t *testing.T) {
-	chain := "stack/main.tf|module.app"
 	finding := func(docID string, line int) model.Vulnerability {
 		return model.Vulnerability{
 			FileID: docID, FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
-			ResourceType: "aws_s3_bucket", ResourceName: "replica", ModuleCallChain: chain, Line: line,
+			ResourceType: "aws_s3_bucket", ResourceName: "replica",
+			RootModule: "stack", ResourceID: "module.app.aws_s3_bucket.replica", Line: line,
 		}
 	}
 	routing := newFindingRouting(map[string][]extraCallerInfo{
-		"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
+		"doc-early": {{rootModule: "other", docID: "doc-other"}},
 	}, nil, nil, "/repo")
 
 	kept := decodeAll(newFindingSet(true, routing), []model.Vulnerability{
@@ -108,12 +109,9 @@ func TestFindingSet_RoutesBeforeKeepingAnIdentity(t *testing.T) {
 
 	got := map[string]int{}
 	for i := range kept {
-		got[kept[i].ModuleCallChain] = kept[i].Line
+		got[kept[i].RootModule] = kept[i].Line
 	}
-	require.Equal(t, map[string]int{
-		chain:                      2,
-		"other/main.tf|module.app": 1,
-	}, got)
+	require.Equal(t, map[string]int{"stack": 2, "other": 1}, got)
 }
 
 func TestFindingSet_KeepsEveryFindingWhenNotCompacting(t *testing.T) {
@@ -128,7 +126,8 @@ func TestNewFindingRouting_IndexesRootCallersOnly(t *testing.T) {
 	repo := t.TempDir()
 	files := model.FileMetadatas{
 		{FilePath: filepath.Join(repo, "stack", "main.tf")},
-		{FilePath: filepath.Join(repo, "modules", "app", "main.tf"), ModuleCallChain: "stack/main.tf|module.app"},
+		{FilePath: filepath.Join(repo, "modules", "app", "main.tf"),
+			TerraformScope: &model.TerraformScope{ModuleAddress: `module.app["x"]`}},
 		nil,
 	}
 	routing := newFindingRouting(nil, nil, files, repo)
@@ -143,15 +142,28 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 	ctx := context.Background()
 	base := model.Vulnerability{
 		FileID: "doc", FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
-		ResourceType: "aws_s3_bucket", ResourceName: "this", ModuleCallChain: "stack/main.tf|module.app",
+		ResourceType: "aws_s3_bucket", ResourceName: "this",
+		RootModule: "stack", ResourceID: "aws_s3_bucket.this",
+	}
+	// resolvedFile is a file whose scope resolves the block the rules name, so
+	// the identities are Terraform ones.
+	resolvedFile := func(id string) *model.FileMetadata {
+		return &model.FileMetadata{
+			ID: id, FilePath: "modules/app/main.tf",
+			TerraformScope: &model.TerraformScope{
+				RootModule: "stack",
+				Blocks:     map[model.TerraformBlock]bool{{Kind: "resource", Type: "aws_s3_bucket", Name: "this"}: true},
+			},
+		}
 	}
 	calls := []moduleCall{
-		{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-		{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{}},
+		{moduleAddress: "module.m", rootModule: "a", attribution: &model.ModuleAttribution{}},
+		{moduleAddress: "module.m", rootModule: "b", attribution: &model.ModuleAttribution{}},
 	}
 	moduleFiles := func(keepWritten bool, written map[string]bool) map[string]*moduleFileCalls {
 		return map[string]*moduleFileCalls{
-			"doc": {calls: calls, name: "main.tf", keepWritten: keepWritten, writtenResourceTypes: written},
+			"doc": {calls: calls, name: "main.tf", scope: resolvedFile("doc").TerraformScope,
+				keepWritten: keepWritten, writtenResourceTypes: written},
 		}
 	}
 	same := func(v model.Vulnerability, line int) model.Vulnerability {
@@ -174,7 +186,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 		{
 			name: "extra caller on the earlier instance only",
 			routing: newFindingRouting(map[string][]extraCallerInfo{
-				"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
+				"doc-early": {{rootModule: "other", docID: "doc-other"}},
 			}, nil, nil, "/repo"),
 			steps: []model.Vulnerability{
 				func() model.Vulnerability { v := same(base, 1); v.FileID = "doc-early"; return v }(),
@@ -186,9 +198,9 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 		{
 			name: "extra caller whose own document is an external module file",
 			routing: newFindingRouting(map[string][]extraCallerInfo{
-				"doc": {{callChain: "other/main.tf|module.app", docID: "ext"}},
+				"doc": {{rootModule: "other", docID: "ext"}},
 			}, map[string]*moduleFileCalls{
-				"ext": {calls: calls, name: "main.tf"},
+				"ext": {calls: calls, name: "main.tf", scope: resolvedFile("ext").TerraformScope},
 			}, nil, "/repo"),
 			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
 			wantSkipped: 1,
@@ -237,18 +249,18 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 			skipped := 0
 			for i := range set.order(len(tc.steps)) {
 				step := tc.steps[i]
-				file := &model.FileMetadata{ID: step.FileID, ModuleCallChain: step.ModuleCallChain}
+				file := resolvedFile(step.FileID)
 				if tc.attr != nil && tc.attr[i] {
 					file.ModuleAttributions = map[string]*model.ModuleAttribution{"": {}}
 				}
-				id, ok := model.IdentityBeforeLine(&step)
+				ids, ok := set.findingIdentities(file, step.Platform, step.ResourceType, step.ResourceName, step.QueryID, "")
 				require.True(t, ok)
-				if set.supersedes(id, file, step.ResourceType) {
+				if set.supersedes(ids) {
 					skipped++
 					routed := tc.routing.route(ctx, &Inspector{}, []model.Vulnerability{step})
 					for j := range routed {
-						require.Truef(t, set.has(id, routed[j].ModuleCallChain),
-							"skipped a result route still keeps (%s)", routed[j].ModuleCallChain)
+						require.Truef(t, set.has(model.FindingIdentity(&routed[j])),
+							"skipped a result route still keeps (%s)", model.FindingIdentity(&routed[j]))
 					}
 					continue
 				}
@@ -258,7 +270,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 		})
 	}
 
-	require.False(t, newFindingSet(false, nil).supersedes(model.ChainedIdentity{}, &model.FileMetadata{}, ""),
+	require.False(t, newFindingSet(false, nil).supersedes([]string{"anything"}),
 		"a set keeping every finding never skips one")
 }
 
@@ -437,8 +449,8 @@ func moduleCalls(keepWritten bool, written map[string]bool) map[string]*moduleFi
 			name:        "main.tf",
 			keepWritten: keepWritten,
 			calls: []moduleCall{
-				{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-				{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{}},
+				{moduleAddress: "module.m", rootModule: "a", attribution: &model.ModuleAttribution{}},
+				{moduleAddress: "module.m", rootModule: "b", attribution: &model.ModuleAttribution{}},
 			},
 			writtenResourceTypes: written,
 		},
@@ -474,7 +486,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			items:       twice,
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(map[string][]extraCallerInfo{
-					file.ID: {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
+					file.ID: {{rootModule: "other", docID: "doc-other"}},
 				}, nil, nil, "")
 			},
 		},
@@ -516,7 +528,6 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			file := parsedBucket(t)
-			file.ModuleCallChain = "stack/main.tf|module.app"
 			ins := newTestInspector(t, inspectorOpts{vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator()})
 			ins.ruleConfigs = tc.ruleConfigs
 			compacted, full, skipped := decodeCompacted(t, ins, tc.files(file), tc.routing(file), tc.items(file))
@@ -531,9 +542,6 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		newer.FilePath = older.FilePath
 		newer.OriginalData = older.OriginalData
 		newer.LinesOriginalData = older.LinesOriginalData
-		chain := "stack/main.tf|module.app"
-		older.ModuleCallChain = chain
-		newer.ModuleCallChain = chain
 
 		ins := newTestInspector(t, inspectorOpts{vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator()})
 		detected := ins.detector.DetectLine(ctx, newer, "aws_s3_bucket[this].acl")
@@ -566,9 +574,6 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			good := parsedBucket(t)
 			bad := parsedBucket(t)
 			bad.FilePath = good.FilePath
-			chain := "stack/main.tf|module.app"
-			good.ModuleCallChain = chain
-			bad.ModuleCallChain = chain
 			bad.LineInfoDocument = nil
 			bad.SetLineInfoLoader(func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
 				return nil, errors.New("reparse failed")
@@ -653,22 +658,18 @@ resource "aws_s3_bucket" "this" {
 	return calls.Load() - atomic.LoadInt64(&ciTracker.SupersededResults), vulns
 }
 
-// On the scan path, instances of one counted resource share an identity, so
-// only the instance that is kept may have its line detected.
-func TestInspect_SupersededInstanceFindingsSkipLineDetection(t *testing.T) {
-	sizes := []int{20, 40}
-	detected := make([]int64, len(sizes))
-	uncompacted := make([]int64, len(sizes))
-	for i, n := range sizes {
-		var vulns []model.Vulnerability
-		detected[i], vulns = supersededInstances(t, n, true)
-		require.Len(t, vulns, 1, "the instances share one identity")
+// On the scan path, each instance of a counted resource resolves its own
+// Terraform address (see K9CODESEC-7158), so the instances are distinct
+// findings rather than one shared identity: compaction keeps every one of
+// them, and none is skipped as superseded before its line is detected.
+func TestInspect_CountedInstancesAreDistinctFindings(t *testing.T) {
+	for _, n := range []int{20, 40} {
+		detected, vulns := supersededInstances(t, n, true)
+		require.Len(t, vulns, n, "each instance has its own resolved address, so none supersedes another")
+		require.EqualValues(t, n, detected, "no instance is superseded, so every line is detected")
 
-		uncompacted[i], vulns = supersededInstances(t, n, false)
-		require.Len(t, vulns, n)
+		detectedUncompacted, uncompactedVulns := supersededInstances(t, n, false)
+		require.Len(t, uncompactedVulns, n)
+		require.EqualValues(t, n, detectedUncompacted)
 	}
-
-	require.Equal(t, uncompacted[1]-uncompacted[0], int64(sizes[1]-sizes[0]),
-		"without compaction, every decoded instance has its line detected")
-	require.Equal(t, detected[0], detected[1], "only the finding that is kept has its line detected")
 }

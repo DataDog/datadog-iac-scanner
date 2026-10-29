@@ -20,5 +20,10 @@ type Tracker interface {
 	FailedDetectLine()
 	FailedLineInfoDocument()
 	SkippedSupersededResult()
+	// FindingWithoutIdentity counts a Terraform finding whose resourceType and
+	// resourceName named no declared block, so it kept the legacy fingerprint
+	// (K9CODESEC-7158). Logged once per scan: any count above zero is a gap in
+	// the rules or the identity resolution, to fix at the source.
+	FindingWithoutIdentity()
 	GetOutputLines() int
 }

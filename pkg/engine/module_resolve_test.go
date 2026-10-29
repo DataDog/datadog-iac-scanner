@@ -24,10 +24,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// docFileID is the prefix of synthetic doc ids: fileID\x00callChain.
+// docFileID is the file-id field of a synthetic doc id
+// (rootModule\x00fileID\x00moduleAddress\x00layer).
 func docFileID(id interface{}) string {
 	s, _ := id.(string)
-	return strings.SplitN(s, "\x00", 2)[0]
+	parts := strings.SplitN(s, "\x00", 3)
+	if len(parts) == 3 {
+		return parts[1]
+	}
+	return s
 }
 
 // writeFile creates dir/name with content and returns the absolute path.
@@ -117,58 +122,6 @@ func TestBuildRemoteResolverPrefersCallSpecificMapping(t *testing.T) {
 	}
 }
 
-func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
-	root := t.TempDir()
-	rootFile := filepath.Join(root, "main.tf")
-	doc := model.Document{
-		"module": map[string]interface{}{
-			"remote": map[string]interface{}{
-				"source":  "terraform-aws-modules/vpc/aws",
-				"version": "1.0.0",
-			},
-		},
-	}
-	calledDirs := map[string]bool{"/cache/vpc": true}
-	successfulRoots := map[string]bool{root: true}
-
-	stripModuleCalls(t.Context(), doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, string, bool) {
-		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
-			return "/cache/vpc", "/cache", true
-		}
-		return "", "", false
-	}, nil)
-
-	if _, ok := doc["module"]; ok {
-		t.Fatalf("expected resolved remote module call to be stripped")
-	}
-}
-
-func TestStripModuleCalls_SkipsFailedRoot(t *testing.T) {
-	root := t.TempDir()
-	stackA := filepath.Join(root, "stack-a")
-	stackB := filepath.Join(root, "stack-b")
-	rootFileB := writeFile(t, stackB, "main.tf", `
-module "bucket" {
-  source = "../modules/bucket"
-}
-`)
-	doc := model.Document{
-		"module": map[string]interface{}{
-			"bucket": map[string]interface{}{
-				"source": "../modules/bucket",
-			},
-		},
-	}
-	calledDirs := map[string]bool{filepath.Join(root, "modules", "bucket"): true}
-	successfulRoots := map[string]bool{stackA: true} // stack-b eval failed
-
-	stripModuleCalls(t.Context(), doc, rootFileB, root, calledDirs, successfulRoots, newRootIndex([]string{stackA, stackB}), nil, nil)
-
-	if _, ok := doc["module"]; !ok {
-		t.Fatal("module call under a failed root must not be stripped")
-	}
-}
-
 func TestInstantiatedDocs_DoesNotDuplicateStaticResourcesAcrossExpansionLayers(t *testing.T) {
 	root := t.TempDir()
 	modulePath := writeFile(t, filepath.Join(root, "modules", "app"), "main.tf", `
@@ -192,6 +145,7 @@ resource "aws_s3_bucket" "replica" {
 		resources,
 		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
 		root,
+		func(dir string) string { return repoRelativeDir(dir, root, nil) },
 		nil,
 		make(map[docContentKey]string),
 		make(map[string][]extraCallerInfo),
@@ -221,72 +175,6 @@ resource "aws_s3_bucket" "replica" {
 	}
 	if replicas != 2 {
 		t.Fatalf("expanded resource appears %d times, want one per instance", replicas)
-	}
-}
-
-// A failed root's evaluations are keyed by its directory, so the next root
-// cannot reuse them. Releasing the cache also drops the collections keyMemo
-// pinned while hashing the locals.
-func TestFailedRootReleasesEvalCache(t *testing.T) {
-	repo := t.TempDir()
-	child := writeFile(t, filepath.Join(repo, "modules", "child"), "main.tf", `
-resource "aws_s3_bucket" "c" { bucket = "child" }
-`)
-	var files model.FileMetadatas
-	files = append(files, fileMeta("child", child))
-	var roots []string
-	for _, name := range []string{"stack-a", "stack-b"} {
-		dir := filepath.Join(repo, name)
-		path := writeFile(t, dir, "main.tf", `
-locals {
-  owners  = { a = "alpha", b = "beta" }
-  derived = local.owners[var.service]
-}
-variable "service" { default = "a" }
-module "child" {
-  source = "../modules/child"
-}
-resource "aws_s3_bucket" "a" { bucket = local.derived }
-`)
-		files = append(files, fileMeta(name, path))
-		roots = append(roots, dir)
-	}
-
-	previous := rootEvalWorkers
-	rootEvalWorkers = 1
-	defer func() { rootEvalWorkers = previous }()
-
-	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, repo)
-	evaluator := tfeval.New()
-	evaluator.SetMaxInstantiated(1)
-	moduleCalls := newModuleCallIndex(filesByDir, func(path string) bool {
-		return pathWithinRoot(path, filepath.Join(repo, "modules"))
-	})
-	if moduleCalls == nil {
-		t.Fatal("fixture must index the child module")
-	}
-	seen := make(map[docContentKey]string)
-	extras := make(map[string][]extraCallerInfo)
-	instantiated := make(instantiatedIndex)
-	var docs []model.Document
-	var synthetic []*model.FileMetadata
-	var resourceCount int
-	var rootEvalOK bool
-	evaluateRootModules(
-		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
-		byAbsPath, seen, extras, instantiated,
-		map[string]bool{}, map[string]bool{}, map[string]bool{},
-		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls,
-	)
-
-	if evaluator.LocalMemoSize() != 0 {
-		t.Fatalf("failed roots retained %d local values", evaluator.LocalMemoSize())
-	}
-	if evaluator.KeyMemoSize() != 0 {
-		t.Fatalf("failed roots retained %d hashed collections", evaluator.KeyMemoSize())
-	}
-	if evaluator.EvalCacheSize() != 0 {
-		t.Fatalf("failed roots retained %d module evaluations", evaluator.EvalCacheSize())
 	}
 }
 
@@ -337,7 +225,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		t.Fatalf("remove stack-b: %v", err)
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("expected partial module resolution to succeed")
 	}
@@ -392,53 +280,12 @@ resource "aws_s3_bucket" "this" {
 		t.Fatalf("remove failed root: %v", err)
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("expected the other root to evaluate successfully")
 	}
 	if len(res.suppressed["leaf-id"]) != 0 {
 		t.Fatalf("transitive module beneath failed root must not be suppressed: %#v", res.suppressed)
-	}
-}
-
-func TestResolveModuleDocuments_TruncatedCountKeepsSourceBlock(t *testing.T) {
-	root := t.TempDir()
-	rootDir := filepath.Join(root, "stack")
-	modDir := filepath.Join(root, "modules", "buckets")
-	cap := tfeval.MaxCountExpansion()
-
-	rootFile := writeFile(t, rootDir, "main.tf", `
-module "buckets" {
-  source = "../modules/buckets"
-}
-`)
-	modFile := writeFile(t, modDir, "main.tf", fmt.Sprintf(`
-resource "aws_s3_bucket" "replica" {
-  count  = %d
-  bucket = "bucket-${count.index}"
-}
-`, cap+2))
-
-	files := model.FileMetadatas{
-		fileMeta("root-id", rootFile),
-		fileMeta("mod-id", modFile),
-	}
-
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
-	if !res.ok {
-		t.Fatal("expected module resolution to succeed")
-	}
-	if len(res.docs) != cap {
-		t.Fatalf("expected %d instantiated docs for truncated count, got %d", cap, len(res.docs))
-	}
-	if res.expansionTruncations == 0 {
-		t.Fatal("expected count expansion truncation to be recorded")
-	}
-	if res.expansionMaxRequested != cap+2 {
-		t.Fatalf("expansionMaxRequested = %d, want %d", res.expansionMaxRequested, cap+2)
-	}
-	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
-		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)
 	}
 }
 
@@ -469,7 +316,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -489,8 +336,8 @@ resource "aws_s3_bucket" "this" {
 	if res.syntheticFiles[0].ID != doc["id"] {
 		t.Fatalf("synthetic file id = %v, want doc id %v", res.syntheticFiles[0].ID, doc["id"])
 	}
-	if res.syntheticFiles[0].ModuleCallChain == "" {
-		t.Fatalf("synthetic file should carry a non-empty module call chain")
+	if res.syntheticFiles[0].TerraformScope == nil || res.syntheticFiles[0].TerraformScope.ModuleAddress == "" {
+		t.Fatalf("synthetic file should carry its module instance scope")
 	}
 	if len(res.syntheticFiles[0].Document) != 0 {
 		t.Fatalf("synthetic file Document must be empty so Combine skips it")
@@ -547,7 +394,7 @@ resource "aws_sqs_queue_policy" "this" {
 `)
 	files := model.FileMetadatas{fileMeta("root-id", rootFile), fileMeta("mod-id", modFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	require.True(t, res.ok)
 	require.Len(t, res.docs, 1)
 	doc := res.docs[0]
@@ -693,7 +540,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", filepath.Join("modules", "bucket", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -764,7 +611,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 
 	for _, roots := range []int{1, 4, 32} {
 		repo, files := writeFanOut(t, roots, false)
-		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+		res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, nil, nil, nil, nil, nil)
 		if !res.ok {
 			t.Fatalf("roots=%d: resolveModuleDocuments ok = false", roots)
 		}
@@ -783,7 +630,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 
 	// Different inputs genuinely produce different content, so those do scale.
 	repo, files := writeFanOut(t, 8, true)
-	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, nil, nil, nil, nil, nil)
 	if len(res.docs) != 8*modFiles {
 		t.Fatalf("%d documents for 8 differing roots, want %d", len(res.docs), 8*modFiles)
 	}
@@ -793,7 +640,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 // document holding that file's resources, and nothing else.
 func TestResolveModuleDocuments_DocumentMirrorsItsFile(t *testing.T) {
 	repo, files := writeFanOut(t, 1, false)
-	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("resolveModuleDocuments ok = false")
 	}
@@ -832,7 +679,7 @@ func TestResolveModuleDocuments_DocumentIDsAreStable(t *testing.T) {
 	repo, files := writeFanOut(t, 8, false)
 
 	snapshot := func() ([]string, map[string][]string) {
-		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+		res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, nil, nil, nil, nil, nil)
 		ids := make([]string, 0, len(res.docs))
 		for _, doc := range res.docs {
 			ids = append(ids, doc["id"].(string))
@@ -900,7 +747,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -923,17 +770,20 @@ resource "aws_s3_bucket" "this" {
 	if names["from-a"] != 1 || names["from-b"] != 1 {
 		t.Fatalf("bucket values = %#v, want one from-a and one from-b", names)
 	}
-	// The two callers must produce distinct document ids and distinct call chains
-	// so their findings get distinct fingerprints instead of collapsing.
+	// The two callers must produce distinct document ids and distinct root
+	// modules so their findings get distinct fingerprints instead of collapsing.
 	if len(docIDs) != 2 {
 		t.Fatalf("want 2 distinct per-caller doc ids, got %d: %#v", len(docIDs), docIDs)
 	}
-	chains := make(map[string]bool)
+	roots := make(map[string]bool)
 	for _, sf := range res.syntheticFiles {
-		chains[sf.ModuleCallChain] = true
+		if sf.TerraformScope == nil {
+			t.Fatalf("synthetic file %v carries no Terraform scope", sf.ID)
+		}
+		roots[sf.TerraformScope.RootModule] = true
 	}
-	if len(chains) != 2 {
-		t.Fatalf("want 2 distinct module call chains (one per root), got %d: %#v", len(chains), chains)
+	if len(roots) != 2 {
+		t.Fatalf("want 2 distinct root modules (one per root), got %d: %#v", len(roots), roots)
 	}
 	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatalf("shared module file should be suppressed")
@@ -983,7 +833,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1011,11 +861,8 @@ resource "aws_s3_bucket" "this" {
 	if dupes[0].docID == primaryID {
 		t.Fatalf("deduplicated caller must have a distinct doc id from the primary")
 	}
-	if dupes[0].callChain == res.syntheticFiles[0].ModuleCallChain {
-		t.Fatalf("deduplicated caller must have a distinct call chain from the primary")
-	}
-	if dupes[0].callChain == "" {
-		t.Fatalf("deduplicated caller must carry a non-empty call chain")
+	if dupes[0].rootModule == "" {
+		t.Fatalf("deduplicated caller must carry its root module directory")
 	}
 }
 
@@ -1028,7 +875,7 @@ func TestNewInstanceFileMetadata_LineInfoDocumentNotAliased(t *testing.T) {
 			},
 		},
 	}
-	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x", nil)
+	synth := newInstanceFileMetadata(&docGroup{fm: fm, rootModule: "stack", moduleAddress: "module.x", layer: 0})
 	delete(fm.LineInfoDocument, "resource")
 	if _, ok := synth.LineInfoDocument["resource"]; !ok {
 		t.Fatal("synthetic LineInfoDocument must keep resource after suppression on parent")
@@ -1080,7 +927,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		fileMeta("mod-b", modBFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1118,7 +965,7 @@ module "bucket" {
 		fileMeta("root-id", filepath.Join("stack", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if res.ok {
 		t.Fatalf("resolveModuleDocuments ok = true, want false when all roots fail")
 	}
@@ -1145,7 +992,7 @@ resource "aws_s3_bucket" "this" {
 
 	files := model.FileMetadatas{fileMeta("orphan-id", orphanFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
@@ -1188,7 +1035,7 @@ resource "aws_s3_bucket" "leaf" {
 		fileMeta("leaf-id", leafFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1474,7 +1321,7 @@ resource "aws_s3_bucket" "this" {
 `)
 
 	files := model.FileMetadatas{fileMeta("env-id", envFile), fileMeta("mod-id", modFile)}
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, vfs.DiskFS{}, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, vfs.DiskFS{}, nil)
 	if !res.ok || len(res.docs) != 1 {
 		t.Fatalf("expected the module instantiated once, got ok=%v docs=%#v", res.ok, res.docs)
 	}

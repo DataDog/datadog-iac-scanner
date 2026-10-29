@@ -16,7 +16,12 @@ import (
 
 // moduleCall is one evaluated call of a module directory.
 type moduleCall struct {
-	callChain string
+	// moduleAddress is the call's module instance address, keys included
+	// (K9CODESEC-7158): a resource in the module is reported under it, so two
+	// instances of one call never share a fingerprint.
+	moduleAddress string
+	// rootModule is the caller's root module directory, repository-relative.
+	rootModule string
 	// attribution names the directory in ModuleCodeLocation.Filename. It is
 	// shared by every file of the directory and read-only.
 	attribution *model.ModuleAttribution
@@ -28,6 +33,9 @@ type moduleCall struct {
 type moduleFileCalls struct {
 	calls []moduleCall
 	name  string
+	// scope is the file's Terraform identity context: the as-written block
+	// addresses a finding routed to a call is prefixed with (K9CODESEC-7158).
+	scope *model.TerraformScope
 	// writtenResourceTypes are the resource types still scanned where they are
 	// written, the blocks evaluation did not instantiate. Their findings keep
 	// standing for those blocks as written.
@@ -74,6 +82,7 @@ func newModuleCallIndex(filesByDir map[string][]*model.FileMetadata, external fu
 func (idx *moduleCallIndex) record(
 	instances []tfeval.ModuleInstance,
 	repoPath string,
+	relDir func(string) string,
 	lookup moduleProvenanceLookup,
 	cache *moduleAttributionCache,
 ) {
@@ -96,8 +105,9 @@ func (idx *moduleCallIndex) record(
 			continue
 		}
 		idx.calls[dir] = append(idx.calls[dir], moduleCall{
-			callChain:   moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
-			attribution: attr,
+			moduleAddress: instance.ModuleAddress,
+			rootModule:    relDir(filepath.Dir(absPath(instance.CallChain[0].CalledFrom, repoPath))),
+			attribution:   attr,
 		})
 	}
 }
@@ -113,6 +123,7 @@ func (idx *moduleCallIndex) fileCalls(unresolvedDirs map[string]bool) map[string
 			out[f.ID] = &moduleFileCalls{
 				calls:       calls,
 				name:        filepath.Base(f.FilePath),
+				scope:       f.TerraformScope,
 				keepWritten: unresolvedDirs[dir],
 			}
 		}
@@ -121,11 +132,12 @@ func (idx *moduleCallIndex) fileCalls(unresolvedDirs map[string]bool) map[string
 }
 
 // documentResourceTypes returns the resource types a parsed file declares,
-// and its data types prefixed with "data.", as findings name them.
+// its data and ephemeral types prefixed as findings name them.
 func documentResourceTypes(doc model.Document) map[string]bool {
 	resources, hasResources := asStringMap(doc["resource"])
 	data, hasData := asStringMap(doc["data"])
-	if !hasResources && !hasData {
+	ephemeral, hasEphemeral := asStringMap(doc[ephemeralSection])
+	if !hasResources && !hasData && !hasEphemeral {
 		return nil
 	}
 	types := make(map[string]bool)
@@ -134,6 +146,9 @@ func documentResourceTypes(doc model.Document) map[string]bool {
 	}
 	for typ := range data {
 		types[dataTypePrefix+typ] = true
+	}
+	for typ := range ephemeral {
+		types[ephemeralPrefix+typ] = true
 	}
 	return types
 }
@@ -179,8 +194,17 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 		for j := range file.calls {
 			call := &file.calls[j]
 			attributed := *v
-			attributed.ModuleCallChain = call.callChain
 			attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
+			// The copy stands for the block as written under this call's
+			// module instance address and the caller's root module, so two
+			// instances of one call get distinct fingerprints
+			// (K9CODESEC-7158).
+			attributed.RootModule = call.rootModule
+			if file.scope != nil {
+				if block, ok := resolveTerraformBlock(file.scope, v.ResourceType, v.ResourceName); ok {
+					attributed.ResourceID = routedBlockAddress(file.scope, block, call.moduleAddress)
+				}
+			}
 			out = append(out, attributed)
 		}
 	}

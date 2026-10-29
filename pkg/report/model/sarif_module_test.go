@@ -24,7 +24,7 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 			FileName: "modules/bucket/main.tf",
 			Fingerprint: model.GetDatadogFingerprintHash(
 				model.SCIInfo{}, "modules/bucket/main.tf", "terraform",
-				"aws_s3_bucket", "this", "acl-rule", "acl = public-read", "stack|module.bucket",
+				"aws_s3_bucket", "this", "acl-rule", "acl = public-read",
 			),
 			Line: 3,
 			ResourceLocation: model.ResourceLocation{
@@ -195,7 +195,7 @@ func TestBuildSarifIssue_NonModuleFindingUnchanged(t *testing.T) {
 			FileName: "main.tf",
 			Fingerprint: model.GetDatadogFingerprintHash(
 				model.SCIInfo{}, "main.tf", "terraform",
-				"aws_s3_bucket", "root", "root-rule", "acl = private", "",
+				"aws_s3_bucket", "root", "root-rule", "acl = private",
 			),
 			Line: 1,
 			ResourceLocation: model.ResourceLocation{
@@ -214,4 +214,66 @@ func TestBuildSarifIssue_NonModuleFindingUnchanged(t *testing.T) {
 	require.Equal(t, "main.tf", result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
 	_, hasModule := result.ResultProperties["module"]
 	require.False(t, hasModule)
+}
+
+// TestBuildSarifIssue_ResourceID verifies a finding whose Terraform address
+// resolved (K9CODESEC-7158) carries it as both a tag and a result property,
+// and that a finding without one (e.g. this scan never resolved an address
+// for it at all) carries neither.
+func TestBuildSarifIssue_ResourceID(t *testing.T) {
+	baseFile := model.VulnerableFile{
+		FileName: "stack/main.tf",
+		Fingerprint: model.GetDatadogFingerprintHash(
+			model.SCIInfo{}, "stack/main.tf", "terraform",
+			"aws_s3_bucket", "this", "acl-rule", "acl = public-read",
+		),
+		Line: 3,
+		ResourceLocation: model.ResourceLocation{
+			Start: model.ResourceLine{Line: 2, Col: 1},
+			End:   model.ResourceLine{Line: 4, Col: 1},
+		},
+		ResourceType: "aws_s3_bucket",
+		ResourceName: "this",
+	}
+
+	t.Run("resolved address", func(t *testing.T) {
+		file := baseFile
+		file.ResourceID = "aws_s3_bucket.this[0]"
+		file.RootModule = "stack"
+		issue := model.QueryResult{
+			QueryName: "acl_rule", QueryID: "acl-rule", Severity: model.SeverityHigh, Platform: "terraform",
+			Files: []model.VulnerableFile{file},
+		}
+
+		report := NewSarifReport().(*sarifReport)
+		_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+		require.NoError(t, err)
+		result := report.Runs[0].Results[0]
+
+		require.Equal(t, "aws_s3_bucket.this[0]", result.ResultProperties["resource_id"])
+		require.Equal(t, "stack", result.ResultProperties["root_module"])
+		tags, ok := result.ResultProperties["tags"].([]string)
+		require.True(t, ok)
+		require.Contains(t, tags, "IAC_RESOURCE_ID:aws_s3_bucket.this[0]")
+	})
+
+	t.Run("unresolved address", func(t *testing.T) {
+		issue := model.QueryResult{
+			QueryName: "acl_rule", QueryID: "acl-rule", Severity: model.SeverityHigh, Platform: "terraform",
+			Files: []model.VulnerableFile{baseFile},
+		}
+
+		report := NewSarifReport().(*sarifReport)
+		_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+		require.NoError(t, err)
+		result := report.Runs[0].Results[0]
+
+		_, hasResourceID := result.ResultProperties["resource_id"]
+		require.False(t, hasResourceID)
+		tags, ok := result.ResultProperties["tags"].([]string)
+		require.True(t, ok)
+		for _, tag := range tags {
+			require.NotContains(t, tag, "IAC_RESOURCE_ID")
+		}
+	})
 }

@@ -18,75 +18,69 @@ const (
 	terraformPlatform  = "Terraform"
 )
 
+// TerraformIdentity is a block instance's Terraform address and the
+// repository-relative root module it belongs to (K9CODESEC-7158). A Terraform
+// address is root-relative, so the two together — not either alone — identify
+// an instance uniquely in a repository that can call the same module path from
+// several root stacks.
+type TerraformIdentity struct {
+	RootModule string
+	ResourceID string
+}
+
+// resolved reports whether id has both fields needed to identify an instance
+// by its Terraform address rather than by resource name.
+func (id TerraformIdentity) resolved() bool {
+	return id.RootModule != "" && id.ResourceID != ""
+}
+
 // GetDatadogFingerprintHash is the single source of truth for a finding's
 // stable identity. It is computed once when the summary is built and reused by
 // every report format, so the fingerprint never diverges across outputs.
 // nolint:gocritic
 func GetDatadogFingerprintHash(
-	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
+	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine string,
+	terraformIdentity ...TerraformIdentity,
 ) string {
-	return stringToHash(fingerprintInput(sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain))
+	return stringToHash(fingerprintInput(
+		sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, terraformIdentity...,
+	))
 }
 
 // FindingIdentity is what a scan reports one finding for: findings of equal
 // identity share a fingerprint, and only the last of them is reported.
 func FindingIdentity(v *Vulnerability) string {
 	fileName, line, ruleID := fingerprintFields(v)
-	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID); ok {
-		return id.WithChain(v.ModuleCallChain)
-	}
-	// SCIInfo is constant within a scan; an empty value yields the same grouping.
-	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.ModuleCallChain)
+	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line,
+		vulnerabilityTerraformIdentity(v))
 }
 
-// ChainedIdentity is the FindingIdentity of a finding whose identity does not
-// include its line, less its module call chain: the finding's identity under
-// any call chain is built from it without rebuilding the rest.
-type ChainedIdentity struct {
-	prefix  string
-	chained bool
+func vulnerabilityTerraformIdentity(v *Vulnerability) TerraformIdentity {
+	return TerraformIdentity{RootModule: v.RootModule, ResourceID: v.ResourceID}
 }
 
-// IdentityBeforeLine returns v's identity less its call chain. It returns
-// false when v's platform puts the line in the identity.
-func IdentityBeforeLine(v *Vulnerability) (ChainedIdentity, bool) {
-	fileName, _, ruleID := fingerprintFields(v)
-	return chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID)
-}
-
-// ChainedIdentityFor is IdentityBeforeLine for a finding that is not built
-// yet. ruleID is the id FindingIdentity would choose (see utils.ChooseQueryID).
-func ChainedIdentityFor(fileName, platform, resourceType, resourceName, queryID, legacyQueryID string) (ChainedIdentity, bool) {
-	return chainedIdentity(fileName, platform, resourceType, resourceName, utils.ChooseQueryID(queryID, legacyQueryID))
-}
-
-func chainedIdentity(fileName, platform, resourceType, resourceName, ruleID string) (ChainedIdentity, bool) {
+// IdentityInput is the fingerprint input of a finding less its line, for a
+// finding that is not built yet. It returns false when the platform puts the
+// line in the identity, so the input cannot be known before line detection.
+func IdentityInput(
+	fileName, platform, resourceType, resourceName, ruleID string,
+	terraformIdentity ...TerraformIdentity,
+) (string, bool) {
 	if platform == dockerfilePlatform {
-		return ChainedIdentity{}, false
+		return "", false
 	}
-	return ChainedIdentity{
-		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", ""),
-		chained: platform == terraformPlatform,
-	}, true
+	return fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", terraformIdentity...), true
 }
 
-// WithChain is the identity of the finding reported under chain.
-func (id ChainedIdentity) WithChain(chain string) string {
-	if !id.chained || chain == "" {
-		return id.prefix
-	}
-	return id.prefix + "|" + chain
-}
-
-// AppendWithChain appends WithChain(chain) to dst, so a caller looking the
-// identity up can reuse one buffer instead of allocating a string per lookup.
-func (id ChainedIdentity) AppendWithChain(dst []byte, chain string) []byte {
-	dst = append(dst, id.prefix...)
-	if id.chained && chain != "" {
-		dst = append(dst, '|')
-		dst = append(dst, chain...)
-	}
-	return dst
+// IdentityInputFor is IdentityInput for a finding whose rule ID is not chosen
+// yet. ruleID is the id FindingIdentity would choose (see utils.ChooseQueryID).
+func IdentityInputFor(
+	fileName, platform, resourceType, resourceName, queryID, legacyQueryID string,
+	terraformIdentity ...TerraformIdentity,
+) (string, bool) {
+	return IdentityInput(
+		fileName, platform, resourceType, resourceName, utils.ChooseQueryID(queryID, legacyQueryID), terraformIdentity...,
+	)
 }
 
 // fingerprintFields picks the file, line and rule ID that identify a finding.
@@ -100,18 +94,24 @@ func fingerprintFields(v *Vulnerability) (file, line, ruleID string) {
 
 // nolint:gocritic
 func fingerprintInput(
-	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
+	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine string,
+	terraformIdentity ...TerraformIdentity,
 ) string {
+	if platform == terraformPlatform && len(terraformIdentity) > 0 {
+		if id := terraformIdentity[0]; id.resolved() {
+			// The repository, root module and address already pick out exactly
+			// one instance; resourceType and resourceName add nothing an
+			// address-based identity needs (see K9CODESEC-7158).
+			return strings.Join(
+				[]string{sciInfo.RepositoryCommitInfo.RepositoryUrl, id.RootModule, id.ResourceID, ruleID}, "|",
+			)
+		}
+	}
+
 	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleID}
 
-	switch platform {
-	case dockerfilePlatform:
+	if platform == dockerfilePlatform {
 		segments = append(segments, vulnLine)
-	case terraformPlatform:
-		// Same resource reached through different module call paths is a distinct finding.
-		if moduleCallChain != "" {
-			segments = append(segments, moduleCallChain)
-		}
 	}
 
 	return strings.Join(segments, "|")

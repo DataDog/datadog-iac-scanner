@@ -2900,3 +2900,27 @@ func BenchmarkResolveLocalsChain(b *testing.B) {
 		})
 	}
 }
+
+// Ephemeral resource blocks expand and are addressed like resources, with the
+// instance suffix, so their instances never collapse onto the bare block.
+func TestExpandBlock_EphemeralInstancesAreExpanded(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+ephemeral "aws_secretsmanager_secret" "login" {
+  for_each = toset(["a", "b"])
+  name     = each.key
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 2)
+	for i := range resources {
+		require.Equal(t, "aws_secretsmanager_secret", resources[i].Type)
+	}
+	require.ElementsMatch(t, []string{
+		`login["a"]`,
+		`login["b"]`,
+	}, []string{resources[0].Name, resources[1].Name})
+}

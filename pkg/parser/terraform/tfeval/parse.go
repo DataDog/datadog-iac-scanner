@@ -153,8 +153,12 @@ func (d variableDecl) conform(v cty.Value) cty.Value {
 	return converted
 }
 
+// blockTypeEphemeral is the ephemeral resource block type; its blocks expand
+// and are addressed like resources, in their own namespace.
+const blockTypeEphemeral = "ephemeral"
+
 // collectBlocks partitions blocks across all bodies into variables, locals,
-// module calls, resources, and outputs.
+// module calls, resources (ephemeral resource blocks included), and outputs.
 func collectBlocks(bodies []*hclsyntax.Body) (
 	varDecls map[string]variableDecl,
 	localExprs map[string]hclsyntax.Expression,
@@ -180,7 +184,7 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 				}
 			case blockTypeModule:
 				modules = append(modules, block)
-			case "resource":
+			case "resource", blockTypeEphemeral:
 				resources = append(resources, block)
 			case "output":
 				if len(block.Labels) != 1 {
