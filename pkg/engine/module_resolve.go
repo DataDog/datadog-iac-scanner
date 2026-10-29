@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -1477,7 +1478,10 @@ func docAsMap(v interface{}) map[string]interface{} {
 // absPath returns a cleaned path. Relative paths are resolved against base
 // (typically the scan repo root), not the process working directory.
 func absPath(p, base string) string {
-	if filepath.IsAbs(p) {
+	// A path rooted without a volume ("/repo" on Windows) counts as absolute:
+	// filepath.IsAbs is false for it, and joining it under base would
+	// duplicate the root (see repoRelativeDir).
+	if filepath.IsAbs(p) || path.IsAbs(filepath.ToSlash(p)) {
 		return filepath.Clean(p)
 	}
 	return filepath.Clean(filepath.Join(base, p))
