@@ -859,6 +859,14 @@ type KustomizeWriter struct {
 	// selector, which already selected the resource when the writer was
 	// recorded; the patch document's own name may differ.
 	Targeted bool
+	// Templates and Selectors report whether a label or annotation entry
+	// also reaches pod templates and selectors; the resource's own metadata
+	// is always reached.
+	Templates bool
+	Selectors bool
+	// NewName is an images entry's newName, which renames the image for the
+	// steps applied after it.
+	NewName string
 }
 
 // KustomizeGenerator names the generator entry that produced an object.

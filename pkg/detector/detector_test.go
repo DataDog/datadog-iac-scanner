@@ -211,6 +211,38 @@ func TestKustomizeDetectLineSpanBounded(t *testing.T) {
 	}
 }
 
+// A legacy commonLabels entry is attributed at its key's line through the
+// real renderer and detector, not a fabricated writer.
+func TestKustomizeCommonLabelsWriterLine(t *testing.T) {
+	files := map[string]string{
+		"o/kustomization.yaml": "resources:\n  - dep.yaml\ncommonLabels:\n  app: web\n",
+		"o/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: c\n          securityContext:\n            privileged: true\n",
+	}
+	res, err := kustomizeRenderForDetector(t, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range res.Documents {
+		d := &res.Documents[i]
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		file := &model.FileMetadata{
+			FilePath: d.FileName, OriginalData: string(d.OriginalData), Kind: model.KindKUSTOMIZE,
+			Kustomize: d.Kustomize,
+		}
+		got := KustomizeDetectLine{}.DetectLine(context.Background(), file,
+			"metadata.name={{web}}.metadata.labels.app", 3)
+		// The finding is reported on the kustomization file that carries the
+		// commonLabels entry, at its key's line.
+		if got.Line != 4 || got.ResolvedFile != d.Kustomize.Writers[0].File {
+			t.Fatalf("commonLabels writer line: got %+v", got)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
 // A JSON-format JSON 6902 patch is attributed at the op's line.
 func TestKustomizeJSON6902JSONFormatLine(t *testing.T) {
 	content := "[\n  {\"op\": \"replace\", \"path\": \"/spec/paused\", \"value\": true},\n" +
@@ -242,6 +274,7 @@ func TestKustomizeDetectLineWriters(t *testing.T) {
 	smp := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: web\n          securityContext:\n            privileged: true\n"
 	ops := "- op: add\n  path: /spec/template/spec/containers/0/securityContext\n  value: {privileged: true}\n"
 	key := "metadata.name={{dev-web}}.spec.template.spec.containers.name={{web}}.securityContext.privileged"
+	imageKey := "metadata.name={{dev-web}}.spec.template.spec.containers.name={{web}}.image"
 	attr := func(w ...model.KustomizeWriter) *model.FileMetadata {
 		return &model.FileMetadata{FilePath: "base/d.yaml", OriginalData: base, Kind: model.KindKUSTOMIZE,
 			Kustomize: &model.KustomizeAttribution{Kind: "Deployment", SourceName: "web", RenderedName: "dev-web", Writers: w}}
@@ -268,6 +301,11 @@ func TestKustomizeDetectLineWriters(t *testing.T) {
 			key, "base/d.yaml", 9},
 		{"patch without the field", attr(model.KustomizeWriter{Kind: model.KustomizeStrategicMerge, File: "p.yaml", Content: "kind: Deployment\nmetadata:\n  name: web\n"}),
 			"metadata.name={{dev-web}}.spec.template.spec.containers.name={{web}}.image", "base/d.yaml", 10},
+		{"images", attr(model.KustomizeWriter{Kind: model.KustomizeImages, File: "k.yaml", Line: 4, Name: "nginx"}),
+			"metadata.name={{dev-web}}.spec.template.spec.containers.name={{web}}.image", "k.yaml", 4},
+		// An images entry for another image name must not claim the line.
+		{"other image", attr(model.KustomizeWriter{Kind: model.KustomizeImages, File: "k.yaml", Line: 4, Name: "ngin"}),
+			"metadata.name={{dev-web}}.spec.template.spec.containers.name={{web}}.image", "base/d.yaml", 10},
 		// A key that names only the resource is a missing-field finding: a
 		// patch that targets the resource never owns it.
 		{"resource anchor only", attr(model.KustomizeWriter{Kind: model.KustomizeStrategicMerge, File: "p.yaml", Content: smp}),
@@ -293,6 +331,33 @@ func TestKustomizeDetectLineWriters(t *testing.T) {
 			Content: strings.Replace(smp, "name: web", "name: other", 1)}), key, "base/d.yaml", 9},
 		{"targeted patch, other doc name", attr(model.KustomizeWriter{Kind: model.KustomizeStrategicMerge, File: "p.yaml",
 			Content: strings.Replace(smp, "name: web", "name: other", 1), Targeted: true}), key, "p.yaml", 11},
+		// A labels entry never claims a finding on an annotation of the same
+		// key, and an annotations entry claims its own.
+		{"labels entry, annotation key", attr(model.KustomizeWriter{Kind: model.KustomizeLabels, File: "k.yaml", Line: 4, Name: "app"}),
+			"metadata.name={{dev-web}}.metadata.annotations.app", "base/d.yaml", 4},
+		{"annotations entry, annotation key", attr(model.KustomizeWriter{Kind: model.KustomizeAnnotations, File: "k.yaml", Line: 4, Name: "app"}),
+			"metadata.name={{dev-web}}.metadata.annotations.app", "k.yaml", 4},
+		// An entry key that collides with an unrelated field name does not
+		// claim a finding outside the label or annotation path.
+		{"labels entry, colliding field", attr(model.KustomizeWriter{Kind: model.KustomizeLabels, File: "k.yaml", Line: 4, Name: "image"}),
+			"metadata.name={{dev-web}}.spec.template.spec.containers.name={{web}}.image", "base/d.yaml", 10},
+		// An images entry matches the image visible when it applies: a
+		// stacked rename changes it from the source document's.
+		{"stacked rename", attr(
+			model.KustomizeWriter{Kind: model.KustomizeImages, File: "k2.yaml", Line: 6, Name: "registry/nginx"},
+			model.KustomizeWriter{Kind: model.KustomizeImages, File: "k1.yaml", Line: 4, Name: "nginx", NewName: "registry/nginx"},
+		), imageKey, "k2.yaml", 6},
+		// An entry for another image is a no-op in the rename chain.
+		{"rename with no-op", attr(
+			model.KustomizeWriter{Kind: model.KustomizeImages, File: "k2.yaml", Line: 6, Name: "registry/nginx"},
+			model.KustomizeWriter{Kind: model.KustomizeImages, File: "k3.yaml", Line: 8, Name: "redis"},
+			model.KustomizeWriter{Kind: model.KustomizeImages, File: "k1.yaml", Line: 4, Name: "nginx", NewName: "registry/nginx"},
+		), imageKey, "k2.yaml", 6},
+		// Without the earlier rename, the entry does not match the source
+		// image and owns nothing.
+		{"rename without source", attr(
+			model.KustomizeWriter{Kind: model.KustomizeImages, File: "k2.yaml", Line: 6, Name: "registry/nginx"},
+		), imageKey, "base/d.yaml", 10},
 	}
 	for _, c := range cases {
 		got := KustomizeDetectLine{}.DetectLine(context.Background(), c.file, c.key, 3)
@@ -407,6 +472,36 @@ func TestKustomizeSMPPatchExplicitTarget(t *testing.T) {
 	t.Fatal("no deployment rendered")
 }
 
+// An images entry is attributed at the last step that renamed the image:
+// a stacked rename is visible to the entries applied after it.
+func TestKustomizeImagesStackedRename(t *testing.T) {
+	files := map[string]string{
+		"o/kustomization.yaml":    "resources:\n  - ../m\nimages:\n  - name: registry/nginx\n    newTag: v2\n",
+		"m/kustomization.yaml":    "resources:\n  - ../base\nimages:\n  - name: nginx\n    newName: registry/nginx\n",
+		"base/kustomization.yaml": "resources:\n  - dep.yaml\n",
+		"base/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: c\n          image: nginx:1.25\n",
+	}
+	res, err := kustomizeRenderForDetector(t, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range res.Documents {
+		d := &res.Documents[i]
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		file := &model.FileMetadata{FilePath: d.FileName, OriginalData: string(d.OriginalData),
+			Kind: model.KindKUSTOMIZE, Kustomize: d.Kustomize}
+		got := KustomizeDetectLine{}.DetectLine(context.Background(), file,
+			"metadata.name={{web}}.spec.template.spec.containers.name={{c}}.image", 3)
+		if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), "o/kustomization.yaml") || got.Line != 4 {
+			t.Errorf("stacked rename: got %s:%d, want o/kustomization.yaml:4", got.ResolvedFile, got.Line)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
 // A key stopping at an object the patch merely holds, or at a scalar value
 // anchor the patch sets, decides between source and patch attribution.
 func TestKustomizeSMPTerminalField(t *testing.T) {
@@ -479,6 +574,215 @@ func TestKustomizeSMPPatchTargetNamespace(t *testing.T) {
 			"metadata.name={{web}}.spec.template.spec.containers.name={{first}}.securityContext.privileged", 3)
 		if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), "o/patch.yaml") || got.Line != 12 {
 			t.Errorf("target namespace: got %s:%d, want o/patch.yaml:12", got.ResolvedFile, got.Line)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// A labels entry reaches the resource's own metadata always, but pod
+// templates only when the entry propagates there; commonLabels reaches both.
+func TestKustomizeLabelsScope(t *testing.T) {
+	dep := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    metadata:\n      labels:\n        app: vulnerable\n    spec:\n      containers:\n      - name: first\n        image: old:1\n"
+	key := "metadata.name={{web}}.spec.template.metadata.labels.app"
+	detect := func(t *testing.T, kust string) model.VulnerabilityLines {
+		t.Helper()
+		res, err := kustomizeRenderForDetector(t, map[string]string{
+			"o/dep.yaml":           dep,
+			"o/kustomization.yaml": kust,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range res.Documents {
+			d := &res.Documents[i]
+			if d.Kustomize.Kind != "Deployment" {
+				continue
+			}
+			file := &model.FileMetadata{FilePath: d.FileName, OriginalData: string(d.OriginalData),
+				Kind: model.KindKUSTOMIZE, Kustomize: d.Kustomize}
+			return KustomizeDetectLine{}.DetectLine(context.Background(), file, key, 3)
+		}
+		t.Fatal("no deployment rendered")
+		return model.VulnerabilityLines{}
+	}
+	// The entry does not propagate to templates: the unchanged template
+	// label stays on the source manifest.
+	kust := "resources: [dep.yaml]\nlabels:\n- pairs:\n    app: root-only\n  includeTemplates: false\n  includeSelectors: false\n"
+	res, err := kustomizeRenderForDetector(t, map[string]string{
+		"o/dep.yaml":           dep,
+		"o/kustomization.yaml": kust,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range res.Documents {
+		d := &res.Documents[i]
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		file := &model.FileMetadata{FilePath: d.FileName, OriginalData: string(d.OriginalData),
+			Kind: model.KindKUSTOMIZE, Kustomize: d.Kustomize}
+		got := KustomizeDetectLine{}.DetectLine(context.Background(), file, key, 3)
+		if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), "o/dep.yaml") || got.Line != 9 {
+			t.Errorf("excluded template label: got %s:%d, want o/dep.yaml:9", got.ResolvedFile, got.Line)
+		}
+		// The entry does set the resource's own metadata labels.
+		got = KustomizeDetectLine{}.DetectLine(context.Background(), file,
+			"metadata.name={{web}}.metadata.labels.app", 3)
+		if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), "o/kustomization.yaml") || got.Line != 3 {
+			t.Errorf("metadata label: got %s:%d, want o/kustomization.yaml:3", got.ResolvedFile, got.Line)
+		}
+	}
+	// commonLabels propagates to templates.
+	got := detect(t, "resources: [dep.yaml]\ncommonLabels:\n  app: root-only\n")
+	if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), "o/kustomization.yaml") || got.Line != 3 {
+		t.Errorf("commonLabels template label: got %s:%d, want o/kustomization.yaml:3", got.ResolvedFile, got.Line)
+	}
+}
+
+// An images entry is judged on the image state the patches before it left:
+// a patch that rewrites the container's image decides what the entry can
+// still match.
+func TestKustomizeImagesAfterPatch(t *testing.T) {
+	pod := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n      - name: first\n        image: old:1\n        securityContext:\n          privileged: true\n      - name: second\n        image: old:1\n        securityContext:\n          privileged: false\n"
+	patch := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n      - name: first\n        image: middle:1\n"
+	key := "metadata.name={{web}}.spec.template.spec.containers.name={{first}}.image"
+	detect := func(t *testing.T, image string) model.VulnerabilityLines {
+		t.Helper()
+		res, err := kustomizeRenderForDetector(t, map[string]string{
+			"o/dep.yaml":           pod,
+			"o/patch.yaml":         patch,
+			"o/kustomization.yaml": "resources: [dep.yaml]\npatches:\n- path: patch.yaml\nimages:\n- name: " + image + "\n  newTag: v2\n",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range res.Documents {
+			d := &res.Documents[i]
+			if d.Kustomize.Kind != "Deployment" {
+				continue
+			}
+			file := &model.FileMetadata{FilePath: d.FileName, OriginalData: string(d.OriginalData),
+				Kind: model.KindKUSTOMIZE, Kustomize: d.Kustomize}
+			return KustomizeDetectLine{}.DetectLine(context.Background(), file, key, 3)
+		}
+		t.Fatal("no deployment rendered")
+		return model.VulnerabilityLines{}
+	}
+	want := func(t *testing.T, got model.VulnerabilityLines, file string, line int) {
+		t.Helper()
+		if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), file) || got.Line != line {
+			t.Errorf("got %s:%d, want %s:%d", got.ResolvedFile, got.Line, file, line)
+		}
+	}
+	// An entry for the source image no longer matches the patched first
+	// container: the patch line stays the owner.
+	want(t, detect(t, "old"), "o/patch.yaml", 10)
+	// An entry for the patched image really rewrites it: the entry owns the
+	// finding.
+	want(t, detect(t, "middle"), "o/kustomization.yaml", 5)
+}
+
+// commonAnnotations and a labels entry with includeSelectors reach pod
+// templates even though they name no templates.
+func TestKustomizeLabelsTemplateReach(t *testing.T) {
+	dep := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    metadata:\n      labels:\n        app: vulnerable\n    spec:\n      containers:\n      - name: first\n        image: old:1\n"
+	detect := func(t *testing.T, depContent, kust, key string) model.VulnerabilityLines {
+		t.Helper()
+		res, err := kustomizeRenderForDetector(t, map[string]string{
+			"o/dep.yaml":           depContent,
+			"o/kustomization.yaml": kust,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range res.Documents {
+			d := &res.Documents[i]
+			if d.Kustomize.Kind != "Deployment" {
+				continue
+			}
+			file := &model.FileMetadata{FilePath: d.FileName, OriginalData: string(d.OriginalData),
+				Kind: model.KindKUSTOMIZE, Kustomize: d.Kustomize}
+			return KustomizeDetectLine{}.DetectLine(context.Background(), file, key, 3)
+		}
+		t.Fatal("no deployment rendered")
+		return model.VulnerabilityLines{}
+	}
+	want := func(t *testing.T, got model.VulnerabilityLines, file string, line int) {
+		t.Helper()
+		if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), file) || got.Line != line {
+			t.Errorf("got %s:%d, want %s:%d", got.ResolvedFile, got.Line, file, line)
+		}
+	}
+	// commonAnnotations annotates pod templates too.
+	want(t, detect(t, strings.Replace(dep, "labels:", "annotations:", 1),
+		"resources: [dep.yaml]\ncommonAnnotations:\n  app: root\n",
+		"metadata.name={{web}}.spec.template.metadata.annotations.app"), "o/kustomization.yaml", 3)
+	// A labels entry with includeSelectors keeps the template labels in sync
+	// with the selector, with or without includeTemplates.
+	want(t, detect(t, dep,
+		"resources: [dep.yaml]\nlabels:\n- pairs:\n    app: root-only\n  includeSelectors: true\n  includeTemplates: false\n",
+		"metadata.name={{web}}.spec.template.metadata.labels.app"), "o/kustomization.yaml", 3)
+}
+
+// A JSON 6902 patch writing an image by list index leaves the image the
+// container carries unproven: an images entry for the old name owns nothing.
+func TestKustomizeImagesAfterJSONPatch(t *testing.T) {
+	files := map[string]string{
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n      - name: first\n        image: old:1\n      - name: second\n        image: old:1\n",
+		"o/kustomization.yaml": "resources: [dep.yaml]\npatches:\n- patch: |\n" +
+			"    - op: replace\n      path: /spec/template/spec/containers/0/image\n      value: middle:1\n" +
+			"  target:\n    kind: Deployment\n    name: web\nimages:\n- name: old\n  newTag: v2\n",
+	}
+	res, err := kustomizeRenderForDetector(t, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range res.Documents {
+		d := &res.Documents[i]
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		file := &model.FileMetadata{FilePath: d.FileName, OriginalData: string(d.OriginalData),
+			Kind: model.KindKUSTOMIZE, Kustomize: d.Kustomize}
+		got := KustomizeDetectLine{}.DetectLine(context.Background(), file,
+			"metadata.name={{web}}.spec.template.spec.containers.name={{first}}.image", 3)
+		if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), "o/dep.yaml") || got.Line != 10 {
+			t.Errorf("json patch image: got %s:%d, want o/dep.yaml:10", got.ResolvedFile, got.Line)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// A JSON patch that writes an image by index leaves the state unproven, and
+// a later patch setting the image exactly proves it again: the images entry
+// for the proven name owns the finding.
+func TestKustomizeImagesJSONThenPatch(t *testing.T) {
+	files := map[string]string{
+		"o/kustomization.yaml": "resources:\n  - ../inner\npatches:\n  - path: smp.yaml\nimages:\n  - name: middle\n    newTag: v2\n",
+		"o/smp.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n      - name: first\n        image: middle:1\n",
+		"inner/kustomization.yaml": "resources: [dep.yaml]\npatches:\n- patch: |\n" +
+			"    - op: replace\n      path: /spec/template/spec/containers/0/image\n      value: transient:1\n" +
+			"  target:\n    kind: Deployment\n    name: web\n",
+		"inner/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n      - name: first\n        image: old:1\n",
+	}
+	res, err := kustomizeRenderForDetector(t, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range res.Documents {
+		d := &res.Documents[i]
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		file := &model.FileMetadata{FilePath: d.FileName, OriginalData: string(d.OriginalData),
+			Kind: model.KindKUSTOMIZE, Kustomize: d.Kustomize}
+		got := KustomizeDetectLine{}.DetectLine(context.Background(), file,
+			"metadata.name={{web}}.spec.template.spec.containers.name={{first}}.image", 3)
+		if !strings.HasSuffix(filepath.ToSlash(got.ResolvedFile), "o/kustomization.yaml") || got.Line != 6 {
+			t.Errorf("json then patch: got %s:%d, want o/kustomization.yaml:6", got.ResolvedFile, got.Line)
 		}
 		return
 	}

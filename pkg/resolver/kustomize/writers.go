@@ -270,7 +270,7 @@ func (r *Renderer) ownWriters(n *kustNode, a *model.KustomizeAttribution) []mode
 	for i := len(n.k.Images) - 1; i >= 0; i-- {
 		img := n.k.Images[i]
 		if l := entryLine(node, "images", i, img.Name); l > 0 {
-			out = append(out, model.KustomizeWriter{Kind: model.KustomizeImages, File: n.file, Line: l, Name: img.Name})
+			out = append(out, model.KustomizeWriter{Kind: model.KustomizeImages, File: n.file, Line: l, Name: img.Name, NewName: img.NewName})
 		}
 	}
 	for i := len(n.k.Replicas) - 1; i >= 0; i-- {
@@ -365,9 +365,14 @@ func kvWriters(n *kustNode, node *yaml.Node, section, kind string) []model.Kusto
 	}
 	var out []model.KustomizeWriter
 	if sectionNode.Kind == yaml.MappingNode {
+		// commonLabels also labels pod templates and selectors, and
+		// commonAnnotations also annotates pod templates; selectors carry
+		// no annotations.
+		templates, selectors := section == "commonLabels" || section == "commonAnnotations", false
 		for i := len(sectionNode.Content) - 2; i >= 0; i -= 2 {
 			out = append(out, model.KustomizeWriter{Kind: kind, File: n.file,
-				Line: sectionNode.Content[i].Line, Name: sectionNode.Content[i].Value})
+				Line: sectionNode.Content[i].Line, Name: sectionNode.Content[i].Value,
+				Templates: templates, Selectors: selectors})
 		}
 		return out
 	}
@@ -380,9 +385,20 @@ func kvWriters(n *kustNode, node *yaml.Node, section, kind string) []model.Kusto
 		if len(keys) == 0 {
 			continue
 		}
-		out = append(out, model.KustomizeWriter{Kind: kind, File: n.file, Line: item.Line, Name: strings.Join(keys, ",")})
+		// Updating selectors keeps the pod template labels in sync, even
+		// without includeTemplates.
+		selectors := entryFlag(item, "includeSelectors")
+		out = append(out, model.KustomizeWriter{Kind: kind, File: n.file, Line: item.Line,
+			Name: strings.Join(keys, ","), Templates: selectors || entryFlag(item, "includeTemplates"),
+			Selectors: selectors})
 	}
 	return out
+}
+
+// entryFlag reads a boolean field of a label or annotation transformer entry.
+func entryFlag(item *yaml.Node, key string) bool {
+	v := mappingValue(item, key)
+	return v != nil && v.Value == "true"
 }
 
 // entryKeys lists the label or annotation keys one transformer entry sets.
