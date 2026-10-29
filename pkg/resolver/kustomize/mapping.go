@@ -25,6 +25,7 @@ const originAnnotation = "config.kubernetes.io/origin"
 
 type sourceDoc struct {
 	kind, name, namespace string
+	labels, annotations   map[string]string
 }
 
 // mapResources attributes every rendered resource to the file it came from:
@@ -424,9 +425,12 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 	attr := &model.KustomizeAttribution{
 		RenderRoot:        res.Root,
 		Kind:              rs.GetKind(),
+		APIVersion:        rs.GetApiVersion(),
 		RenderedName:      rs.GetName(),
 		RenderedNamespace: rs.GetNamespace(),
 		Chain:             []string{rootKust},
+		Labels:            rs.GetLabels(),
+		Annotations:       rs.GetAnnotations(),
 	}
 	doc := model.ResolvedHelm{Content: content, SourceDocumentIndex: -1, Kustomize: attr}
 	if mode == renameAffix && attr.Kind == "Namespace" {
@@ -469,6 +473,10 @@ func (r *Renderer) attributeSource(res *Result, origin *resource.Origin, attr *m
 		doc.SourceDocumentIndex = idx
 		if idx >= 0 {
 			attr.SourceName, attr.SourceNamespace = src.name, src.namespace
+			// Patch-target selectors are evaluated against the labels and
+			// annotations visible when the patch applied; the source
+			// document's own are the best state we keep.
+			attr.SourceLabels, attr.SourceAnnotations = src.labels, src.annotations
 		}
 	default:
 		res.MappingFailures++
@@ -780,27 +788,6 @@ func (d *domTree) dominates(a, b string) bool {
 	return d.in[a] <= d.in[b] && d.out[b] <= d.out[a]
 }
 
-// attachChain records in attr the kustomizations from the root down to the
-// source file: every node that loads it, root first.
-func (r *Renderer) attachChain(nodes []*kustNode, fileName string, attr *model.KustomizeAttribution) {
-	attr.Chain = attr.Chain[:0]
-	var loading []*kustNode
-	for _, n := range nodes {
-		if n.loads(fileName) {
-			loading = append(loading, n)
-		}
-	}
-	sort.Slice(loading, func(i, j int) bool {
-		if loading[i].depth != loading[j].depth {
-			return loading[i].depth < loading[j].depth
-		}
-		return loading[i].file < loading[j].file
-	})
-	for _, n := range loading {
-		attr.Chain = append(attr.Chain, n.file)
-	}
-}
-
 // canonical returns p in the symlink-free form the source cache is keyed by:
 // an origin keeps the name a kustomization listed, not the file it read.
 func (r *Renderer) canonical(p string) string {
@@ -829,6 +816,66 @@ func affixDocument(docs []sourceDoc, kind, name, prefix, suffix string) (int, so
 		return -1, sourceDoc{}
 	}
 	return found, docs[found]
+}
+
+// attachChain records the kustomizations from the root down to the source file
+// and the patch and transformer entries applying to it, with the scanner
+// directives of the files findings are reported on.
+func (r *Renderer) attachChain(nodes []*kustNode, fileName string, attr *model.KustomizeAttribution) {
+	attr.Chain = attr.Chain[:0]
+	var loading []*kustNode
+	for _, n := range nodes {
+		if n.loads(fileName) {
+			loading = append(loading, n)
+		}
+	}
+	// Root first: shallower kustomizations precede the deeper ones on the
+	// dependency path.
+	sort.Slice(loading, func(i, j int) bool {
+		if loading[i].depth != loading[j].depth {
+			return loading[i].depth < loading[j].depth
+		}
+		return loading[i].file < loading[j].file
+	})
+	for _, n := range loading {
+		attr.Chain = append(attr.Chain, n.file)
+	}
+	attr.Writers = r.writers(nodes, fileName, attr)
+	if len(attr.Writers) > 0 {
+		attr.Commands = map[string]model.CommentsCommands{}
+	}
+	seen := map[string]bool{}
+	for _, w := range attr.Writers {
+		if seen[w.File] {
+			continue
+		}
+		seen[w.File] = true
+		if b, ok := r.Source(w.File); ok {
+			attr.Commands[w.File] = writerCommands(b)
+		}
+	}
+}
+
+// writerCommands parses the head-of-file scanner directives (`# dd-iac-scan: …`)
+// of a patch or kustomization file a finding is reported on; suppression must
+// follow the attributed file, not the source manifest.
+func writerCommands(content []byte) model.CommentsCommands {
+	out := model.CommentsCommands{}
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "---") {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") {
+			break
+		}
+		fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, "#")))
+		if len(fields) > 1 && fields[0] == "dd-iac-scan" {
+			key, value, _ := strings.Cut(fields[1], "=")
+			out[key] = value
+		}
+	}
+	return out
 }
 
 // exactDocument returns the document of kind named name, the one in namespace
@@ -887,12 +934,15 @@ func (r *Renderer) sourceDocuments(path string) []sourceDoc {
 		var d struct {
 			Kind     string `yaml:"kind"`
 			Metadata struct {
-				Name      string `yaml:"name"`
-				Namespace string `yaml:"namespace"`
+				Name        string            `yaml:"name"`
+				Namespace   string            `yaml:"namespace"`
+				Labels      map[string]string `yaml:"labels"`
+				Annotations map[string]string `yaml:"annotations"`
 			} `yaml:"metadata"`
 		}
 		_ = node.Decode(&d)
-		docs = append(docs, sourceDoc{kind: d.Kind, name: d.Metadata.Name, namespace: d.Metadata.Namespace})
+		docs = append(docs, sourceDoc{kind: d.Kind, name: d.Metadata.Name, namespace: d.Metadata.Namespace,
+			labels: d.Metadata.Labels, annotations: d.Metadata.Annotations})
 	}
 	r.docs[path] = docs
 	return docs

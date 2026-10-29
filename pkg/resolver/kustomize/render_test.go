@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"sigs.k8s.io/kustomize/api/resmap"
@@ -1232,9 +1234,10 @@ func TestRenderAffixCollisionOtherNamespaceDisambiguates(t *testing.T) {
 	}
 }
 
-// TestRenderAffixCollisionDeletedFails rejects a match whose counterpart a
-// patch deleted from the render: dev-app may be app under the prefix.
-func TestRenderAffixCollisionDeletedFails(t *testing.T) {
+// TestRenderAffixCollisionDeletedDisambiguates attributes the survivor of a
+// patch that deleted its counterpart: dev-app is app under the prefix, the
+// deleted source document rendered nothing.
+func TestRenderAffixCollisionDeletedDisambiguates(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"o/kustomization.yaml": "namePrefix: dev-\nresources:\n  - svc.yaml\npatches:\n" +
 			"  - patch: |-\n      apiVersion: v1\n      kind: Service\n      metadata:\n        name: dev-app\n      $patch: delete\n",
@@ -1245,7 +1248,7 @@ func TestRenderAffixCollisionDeletedFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Documents) != 1 || res.Documents[0].SourceDocumentIndex >= 0 || res.MappingFailures != 1 {
+	if len(res.Documents) != 1 || res.Documents[0].SourceDocumentIndex != 0 || res.MappingFailures != 0 {
 		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
 	}
 }
@@ -1780,6 +1783,449 @@ func BenchmarkPlan(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Plan(abs, nil, content)
 	}
+}
+
+// TestRenderMapsByAffixChain maps a rendered name to the source document the
+// verified affix chain selects: dev- prefixed, "web" and "dev-web" in one
+// file must not be confused, and an unresolvable name is a mapping failure.
+func TestRenderMapsByAffixChain(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"base/kustomization.yaml": "namePrefix: dev-\nresources:\n  - dep.yaml\n",
+		"base/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: dev-web\n",
+	})
+	res, err := render(t, dir, "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]int{}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		// The rendered name keeps its source name plus the affix.
+		found[d.Kustomize.SourceName] = d.SourceDocumentIndex
+	}
+	want := map[string]int{"web": 0, "dev-web": 1}
+	if !reflect.DeepEqual(found, want) {
+		t.Fatalf("affix mapping: got %v, want %v", found, want)
+	}
+	if res.MappingFailures != 0 {
+		t.Fatalf("mapping failures: %d, want 0", res.MappingFailures)
+	}
+}
+
+// TestRenderTargetsMatchSelectorSemantics drops patches whose namespace,
+// apiVersion or label selector does not select the resource.
+func TestRenderTargetsMatchSelectorSemantics(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": `resources:
+  - dep.yaml
+patches:
+  - path: wrong-ns.yaml
+    target: {kind: Deployment, name: web, namespace: other}
+  - path: wrong-group.yaml
+    target: {group: batch, version: v1, kind: Job, name: web}
+  - path: right-label.yaml
+    target: {kind: Deployment, name: web, labelSelector: "app=web"}
+  - path: wrong-label.yaml
+    target: {kind: Deployment, name: web, labelSelector: "app=backend"}
+  - path: right-set.yaml
+    target: {kind: Deployment, name: web, labelSelector: "app in (web, api)"}
+  - path: right-existence.yaml
+    target: {kind: Deployment, name: web, labelSelector: "app"}
+  - path: wrong-inequality.yaml
+    target: {kind: Deployment, name: web, labelSelector: "app!=web"}
+`,
+		"o/dep.yaml":              "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  labels:\n    app: web\n",
+		"o/wrong-ns.yaml":         "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 1\n",
+		"o/wrong-group.yaml":      "apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: web\n",
+		"o/right-label.yaml":      "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2\n",
+		"o/wrong-label.yaml":      "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 3\n",
+		"o/right-set.yaml":        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 4\n",
+		"o/right-existence.yaml":  "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 5\n",
+		"o/wrong-inequality.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 6\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		files := map[string]bool{}
+		for _, w := range d.Kustomize.Writers {
+			files[filepath.Base(w.File)] = true
+		}
+		if files["wrong-ns.yaml"] || files["wrong-group.yaml"] || files["wrong-label.yaml"] || files["wrong-inequality.yaml"] {
+			t.Fatalf("non-selecting patch attributed: %v", files)
+		}
+		if !files["right-label.yaml"] || !files["right-set.yaml"] || !files["right-existence.yaml"] {
+			t.Fatalf("selecting patch missing: %v", files)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// TestRenderWritersPatchOnlyComponentAndOrder attributes a patch-only
+// component and orders overlapping writes by Kustomize's application order:
+// the overlay's patch beats the component's, which beats the base's.
+func TestRenderWritersPatchOnlyComponentAndOrder(t *testing.T) {
+	files := map[string]string{
+		"base/kustomization.yaml":         "resources:\n  - dep.yaml\npatches:\n  - path: base-patch.yaml\n",
+		"base/dep.yaml":                   "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 1\n",
+		"base/base-patch.yaml":            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2\n",
+		"comp/kustomization.yaml":         "apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\npatches:\n  - path: comp-patch.yaml\n",
+		"comp/comp-patch.yaml":            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 3\n",
+		"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\ncomponents:\n  - ../../comp\npatches:\n  - path: dev-patch.yaml\n",
+		"overlays/dev/dev-patch.yaml":     "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 4\n",
+	}
+	dir := writeTree(t, files)
+	res, err := render(t, dir, "overlays/dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		var got []string
+		for _, w := range d.Kustomize.Writers {
+			rel, _ := filepath.Rel(dir, w.File)
+			got = append(got, filepath.ToSlash(rel))
+		}
+		// Last applied first: overlay, then component (patch-only, hoisted),
+		// then the base's own patch.
+		want := []string{"overlays/dev/dev-patch.yaml", "comp/comp-patch.yaml", "base/base-patch.yaml"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("writer order: %v", got)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// TestRenderWritersSiblingAndNestedComponents orders sibling components
+// last-listed first, resolves nested components relative to their loader, and
+// asserts the nested component's patch is applied and attributed.
+func TestRenderWritersSiblingAndNestedComponents(t *testing.T) {
+	files := map[string]string{
+		"base/kustomization.yaml":         "resources:\n  - dep.yaml\n",
+		"base/dep.yaml":                   "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 1\n",
+		"comp1/kustomization.yaml":        "apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\ncomponents:\n  - nested\npatches:\n  - path: c1-patch.yaml\n",
+		"comp1/c1-patch.yaml":             "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2\n",
+		"comp1/nested/kustomization.yaml": "apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\npatches:\n  - path: n-patch.yaml\n",
+		"comp1/nested/n-patch.yaml":       "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 3\n",
+		"comp2/kustomization.yaml":        "apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\npatches:\n  - path: c2-patch.yaml\n",
+		"comp2/c2-patch.yaml":             "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 4\n",
+		"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\ncomponents:\n  - ../../comp1\n  - ../../comp2\n",
+	}
+	dir := writeTree(t, files)
+	res, err := render(t, dir, "overlays/dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		// The nested component's patch applied: the last writer set the
+		// replicas it carries.
+		if !strings.Contains(string(d.Content), "replicas: 4") {
+			t.Fatalf("expected comp2's patch last, got: %s", d.Content)
+		}
+		var got []string
+		for _, w := range d.Kustomize.Writers {
+			rel, _ := filepath.Rel(dir, w.File)
+			got = append(got, filepath.ToSlash(rel))
+		}
+		// Last applied first: comp2 (listed last), comp1, then comp1's nested
+		// component (its step runs inside comp1's).
+		want := []string{"comp2/c2-patch.yaml", "comp1/c1-patch.yaml", "comp1/nested/n-patch.yaml"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("component writer order: %v", got)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// TestRenderWritersSelectorBeforeLabelTransform keeps a patch attributed when
+// a later commonLabels entry overwrites the label its selector matched.
+func TestRenderWritersSelectorBeforeLabelTransform(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": `resources:
+  - dep.yaml
+patches:
+  - path: sel.yaml
+    target: {kind: Deployment, name: web, labelSelector: "app in (web)"}
+commonLabels:
+  app: prod
+`,
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  labels:\n    app: web\n",
+		"o/sel.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		found := false
+		for _, w := range d.Kustomize.Writers {
+			if w.Kind == model.KustomizeStrategicMerge && filepath.Base(w.File) == "sel.yaml" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("patch selected before the label transform lost: %+v", d.Kustomize.Writers)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// TestRenderWritersSelectorStateAtPatchLevel evaluates patch selectors
+// against the label state at the patch's application point: a mid-level label
+// is visible to the outer patch, an outer-only label is not visible to the
+// mid patch.
+func TestRenderWritersSelectorStateAtPatchLevel(t *testing.T) {
+	// (a) The mid overlay adds commonLabels; the outer patch selects on it.
+	files := map[string]string{
+		"base/kustomization.yaml":  "resources:\n  - dep.yaml\n",
+		"base/dep.yaml":            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 1\n",
+		"mid/kustomization.yaml":   "resources:\n  - ../base\ncommonLabels:\n  tier: mid\n",
+		"outer/kustomization.yaml": "resources:\n  - ../mid\npatches:\n  - path: sel.yaml\n    target: {kind: Deployment, name: web, labelSelector: \"tier in (mid)\"}\n",
+		"outer/sel.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2\n",
+	}
+	dir := writeTree(t, files)
+	res, err := render(t, dir, "outer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		if !slices.ContainsFunc(d.Kustomize.Writers, func(w model.KustomizeWriter) bool {
+			return w.Kind == model.KustomizeStrategicMerge && filepath.Base(w.File) == "sel.yaml"
+		}) {
+			t.Fatalf("outer patch selecting a mid-level label lost: %+v", d.Kustomize.Writers)
+		}
+	}
+	// (b) The mid patch selects a label only the outer level adds: krusty
+	// never applies it, and attribution must not claim it.
+	files2 := map[string]string{
+		"base/kustomization.yaml":  "resources:\n  - dep.yaml\n",
+		"base/dep.yaml":            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 1\n",
+		"mid/kustomization.yaml":   "resources:\n  - ../base\npatches:\n  - path: sel.yaml\n    target: {kind: Deployment, name: web, labelSelector: \"app in (prod)\"}\n",
+		"mid/sel.yaml":             "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2\n",
+		"outer/kustomization.yaml": "resources:\n  - ../mid\ncommonLabels:\n  app: prod\n",
+	}
+	dir2 := writeTree(t, files2)
+	res2, err := render(t, dir2, "outer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res2.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		if slices.ContainsFunc(d.Kustomize.Writers, func(w model.KustomizeWriter) bool {
+			return w.Kind == model.KustomizeStrategicMerge && filepath.Base(w.File) == "sel.yaml"
+		}) {
+			t.Fatalf("mid patch selecting an outer-only label attributed: %+v", d.Kustomize.Writers)
+		}
+	}
+}
+
+// TestRenderWritersJSON6902AfterLabels attributes a JSON 6902 patch whose
+// selector matches a label the same kustomization's labels set: JSON 6902
+// applies after the label transformer.
+func TestRenderWritersJSON6902AfterLabels(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": `resources:
+  - dep.yaml
+labels:
+  - pairs:
+      tier: mid
+patchesJson6902:
+  - path: p.json
+    target: {kind: Deployment, name: web, labelSelector: "tier in (mid)"}
+`,
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  paused: false\n",
+		"o/p.json":   `[{"op": "replace", "path": "/spec/paused", "value": true}]`,
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		if !slices.ContainsFunc(d.Kustomize.Writers, func(w model.KustomizeWriter) bool {
+			return w.Kind == model.KustomizeJSON6902 && filepath.Base(w.File) == "p.json"
+		}) {
+			t.Fatalf("JSON 6902 patch selected by the same kustomization's labels lost: %+v", d.Kustomize.Writers)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// TestRenderInlineOffsetsDistinct keeps two inline patches with the same
+// first line apart: each writer points at its own entry line.
+func TestRenderInlineOffsetsDistinct(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": `resources:
+  - dep.yaml
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        replicas: 1
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        replicas: 2
+`,
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		var offsets []int
+		for _, w := range d.Kustomize.Writers {
+			offsets = append(offsets, w.LineOffset+w.Line)
+		}
+		if len(offsets) != 2 || offsets[0] == offsets[1] {
+			t.Fatalf("inline patches collide: %v", offsets)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// TestRenderWritersSingleLineSMP attributes a single-line flow-style inline
+// patchesStrategicMerge entry to its patch line, as Kustomize classifies it.
+func TestRenderWritersSingleLineSMP(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "resources:\n  - dep.yaml\npatchesStrategicMerge:\n" +
+			"  - '{apiVersion: apps/v1, kind: Deployment, metadata: {name: web}, spec: {replicas: 3}}'\n",
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 1\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		ws := d.Kustomize.Writers
+		if len(ws) != 1 || ws[0].Kind != model.KustomizeStrategicMerge || filepath.Base(ws[0].File) != "kustomization.yaml" ||
+			ws[0].LineOffset != 3 { // content starts on line 4
+			t.Fatalf("inline patch writer missing: %+v", ws)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+// TestRenderJSON6902FileDetectsOps reads a JSON-format JSON 6902 patch file.
+func TestRenderJSON6902FileDetectsOps(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": `resources:
+  - dep.yaml
+patchesJson6902:
+  - path: patch.json
+    target: {kind: Deployment, name: web}
+`,
+		"o/dep.yaml":   "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  paused: false\n",
+		"o/patch.json": `[{"op": "replace", "path": "/spec/paused", "value": true}]`,
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		if len(d.Kustomize.Writers) != 1 || d.Kustomize.Writers[0].Kind != model.KustomizeJSON6902 {
+			t.Fatalf("JSON 6902 writer missing: %+v", d.Kustomize.Writers)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
+}
+
+func TestRenderWriters(t *testing.T) {
+	files := baseTree()
+	files["overlays/dev/kustomization.yaml"] = `namePrefix: dev-
+namespace: dev
+resources:
+  - ../../base
+images:
+  - name: nginx
+    newTag: latest
+patches:
+  - path: smp.yaml
+  - target:
+      kind: Deployment
+      name: web
+    path: ops.yaml
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        replicas: 3
+`
+	files["overlays/dev/smp.yaml"] = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n"
+	files["overlays/dev/ops.yaml"] = "- op: add\n  path: /spec/paused\n  value: true\n"
+	dir := writeTree(t, files)
+	res, err := render(t, dir, "overlays/dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind != "Deployment" {
+			continue
+		}
+		var got []string
+		for _, w := range d.Kustomize.Writers {
+			rel, _ := filepath.Rel(dir, w.File)
+			got = append(got, w.Kind+":"+filepath.ToSlash(rel)+":"+strconv.Itoa(w.LineOffset+w.Line))
+		}
+		// Kustomize applies patches in listing order, so the last writer to
+		// touch a field is found first.
+		want := []string{
+			"smp:overlays/dev/kustomization.yaml:14", "json6902:overlays/dev/ops.yaml:0",
+			"smp:overlays/dev/smp.yaml:0",
+		}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("writers: %v", got)
+		}
+		return
+	}
+	t.Fatal("no deployment rendered")
 }
 
 // identities renders root in tree and returns the resource IDs of the

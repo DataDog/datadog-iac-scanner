@@ -789,6 +789,19 @@ type KustomizeAttribution struct {
 	// Generator is set for generated objects: the generator kind and name in the
 	// kustomization file (FileName).
 	Generator *KustomizeGenerator
+	// Writers are the patches and transformers that may have set a field of
+	// the resource, the last one Kustomize applies first.
+	Writers []KustomizeWriter
+	// Commands are the scanner directives of each writer file.
+	Commands map[string]CommentsCommands
+	// APIVersion, Labels and Annotations snapshot the rendered resource for
+	// patch-target matching; SourceLabels and SourceAnnotations are the
+	// source document's own, the state patches applied before transforms.
+	APIVersion        string
+	Labels            map[string]string
+	Annotations       map[string]string
+	SourceLabels      map[string]string
+	SourceAnnotations map[string]string
 	// SourceDocumentIndex is the source document the resource came from,
 	// -1 when unknown; it scopes line detection to that document.
 	SourceDocumentIndex int
@@ -814,6 +827,28 @@ func (a *KustomizeAttribution) ResourceID(resourceName string) string {
 		return a.GroupKind()
 	}
 	return a.GroupKind() + "|" + a.IdentityNamespace + "|" + a.IdentityName
+}
+
+// Kinds of KustomizeWriter.
+const (
+	KustomizeStrategicMerge = "smp"
+	KustomizeJSON6902       = "json6902"
+)
+
+// KustomizeWriter is a patch or builtin transformer entry of a kustomization
+// that applies to a rendered resource.
+type KustomizeWriter struct {
+	Kind string
+	// File holds the patch or the transformer entry.
+	File string
+	// Content is the patch as written; LineOffset is the line of File before
+	// its first line (non-zero for a patch inline in a kustomization).
+	Content    string
+	LineOffset int
+	// Line is the line of a transformer entry in File; Name is an images or
+	// replicas entry's name.
+	Line int
+	Name string
 }
 
 // KustomizeGenerator names the generator entry that produced an object.
