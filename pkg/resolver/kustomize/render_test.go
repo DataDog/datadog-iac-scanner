@@ -1321,7 +1321,8 @@ func TestRenderNoRenamingProof(t *testing.T) {
 	if res.MappingFailures != 2 {
 		t.Fatalf("configurations: %d failures, want 2", res.MappingFailures)
 	}
-	if !renames(&types.Kustomization{Labels: []types.Label{{Pairs: map[string]string{"a": "b"}, FieldSpecs: []types.FieldSpec{{Path: "metadata/name"}}}}}, nil) {
+	rn := NewRenderer(vfs.Default(), t.TempDir(), 5<<20)
+	if !rn.beyondAffixes(&types.Kustomization{Labels: []types.Label{{Pairs: map[string]string{"a": "b"}, FieldSpecs: []types.FieldSpec{{Path: "metadata/name"}}}}}, "") {
 		t.Fatal("labels with their own field specs proved no renaming")
 	}
 	gen := func(name, behavior string, off bool) types.ConfigMapArgs {
@@ -1362,8 +1363,8 @@ func TestRenderNoRenamingProof(t *testing.T) {
 	if r0.renameMode(res.Reads) == renameNone {
 		t.Fatal("a merging generator proved no renaming")
 	}
-	if !renames(&types.Kustomization{OpenAPI: map[string]string{"path": "s.json"}}, nil) ||
-		!renames(&types.Kustomization{Namespace: "n", Resources: []string{"a"}}, nil) || renames(&types.Kustomization{Resources: []string{"a"}}, nil) {
+	if !rn.beyondAffixes(&types.Kustomization{OpenAPI: map[string]string{"path": "s.json"}}, "") ||
+		!setsAffixes(&types.Kustomization{Namespace: "n", Resources: []string{"a"}}) || rn.beyondAffixes(&types.Kustomization{Resources: []string{"a"}}, "") {
 		t.Fatal("only identity-safe fields prove no renaming")
 	}
 	dir = writeTree(t, map[string]string{
@@ -1405,6 +1406,80 @@ func TestRenderGeneratorHashOption(t *testing.T) {
 		if opts != "" && (got["gen"] != "gen" || got["gen-x"] != "gen-x") {
 			t.Fatalf("hash disabled: got %v", got)
 		}
+	}
+}
+
+// TestRenderPatchRenaming keeps the conservative refusal when a patch opts
+// into renaming, writes the whole document, or is a component renaming.
+func TestRenderPatchRenaming(t *testing.T) {
+	cases := map[string]string{
+		"allowNameChange": "patches:\n  - target: {kind: Deployment, name: web}\n    options: {allowNameChange: true}\n" +
+			"    patch: |-\n      apiVersion: apps/v1\n      kind: Deployment\n      metadata:\n        name: web\n",
+		"allowKindChange": "patches:\n  - target: {kind: Deployment, name: web}\n    options: {allowKindChange: true}\n" +
+			"    patch: |-\n      apiVersion: apps/v1\n      kind: Deployment\n      metadata:\n        name: web\n",
+		"whole document pointer": "patches:\n  - target: {kind: Deployment, name: web}\n" +
+			"    patch: '[{\"op\":\"replace\",\"path\":\"/\",\"value\":{}}]'\n",
+	}
+	for name, extra := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := writeTree(t, map[string]string{
+				"o/kustomization.yaml": "resources:\n  - dep.yaml\n" + extra,
+				"o/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+			})
+			res, err := render(t, dir, "o")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.MappingFailures == 0 {
+				t.Fatal("the renaming patch proved the names attributable")
+			}
+			for _, d := range res.Documents {
+				if d.SourceDocumentIndex >= 0 {
+					t.Errorf("%s attributed despite the renaming patch", d.Kustomize.RenderedName)
+				}
+			}
+		})
+	}
+	dir := writeTree(t, map[string]string{
+		"top/kustomization.yaml":      "components:\n  - comp\n",
+		"top/comp/kustomization.yaml": "apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\nnamespace: prod\nresources:\n  - dep.yaml\n",
+		"top/comp/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+	})
+	res, err := render(t, dir, "top")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.MappingFailures == 0 {
+		t.Fatal("a component renaming proved the names attributable")
+	}
+}
+
+// TestPatchesRenameUnreadable treats a patch the renderer cannot read, a JSON
+// 6902 patch that does not decode, an op writing the whole object or the
+// metadata object, and a move out of metadata as ones that may rename; a
+// strategic-merge patch proves it cannot rename.
+func TestPatchesRenameUnreadable(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "resources:\n  - dep.yaml\n",
+		"o/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+	})
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	kust := filepath.Join(dir, "o", "kustomization.yaml")
+	if !r.patchMayRename(kust, "missing.yaml", "") {
+		t.Fatal("an unreadable patch file proved it cannot rename")
+	}
+	for name, patch := range map[string]string{
+		"undecodable ops":         "- just a string",
+		"metadata object pointer": "[{\"op\":\"replace\",\"path\":\"/metadata\",\"value\":{}}]",
+		"move out of metadata":    "[{\"op\":\"move\",\"from\":\"/metadata/labels/app\",\"path\":\"/spec/label\"}]",
+		"empty op path":           "[{\"op\":\"replace\",\"path\":\"\",\"value\":{}}]",
+	} {
+		if !r.patchMayRename("", "", patch) {
+			t.Errorf("%s proved it cannot rename", name)
+		}
+	}
+	if r.patchMayRename("", "", "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n") {
+		t.Error("a strategic-merge patch proved it can rename")
 	}
 }
 
