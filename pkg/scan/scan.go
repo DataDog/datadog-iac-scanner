@@ -9,6 +9,7 @@ package scan
 
 import (
 	"context"
+	"math"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
@@ -367,6 +368,25 @@ func (c *Client) createService(
 		}
 		if c.chartFilter != nil {
 			fsSource.SetChartFilter(c.chartFilter)
+		}
+		if len(c.kustomizeRoots) > 0 {
+			repo := c.ScanParams.RepoPath
+			if repo == "" && len(paths) > 0 {
+				repo = paths[0]
+			}
+			maxFile := int64(math.MaxInt64)
+			if c.ScanParams.MaxFileSizeFlag > 0 {
+				maxFile = int64(c.ScanParams.MaxFileSizeFlag) << 20
+			}
+			// Built after the walk's excludes are known: Config.IgnorePaths
+			// carries the gitignore and exclude paths by now.
+			scope, scopeErr := provider.ExpandPathFilter(c.walkScopeExcludes, c.ScanParams.Config.OnlyPaths)
+			if scopeErr != nil {
+				return nil, scopeErr
+			}
+			fsSource.SetKustomize(&provider.KustomizeSettings{
+				Roots: c.kustomizeRoots, RepoPath: repo, MaxFileBytes: maxFile, Scope: scope,
+			})
 		}
 		fsSource.AddUnfilteredPaths(remoteModulePaths)
 		filesSource, renderedFileFilter = fsSource, fsSource.ChartFilter()
