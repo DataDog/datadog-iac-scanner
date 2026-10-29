@@ -174,3 +174,34 @@ func TestKustomizeDetectLine(t *testing.T) {
 		t.Errorf("generator literal leaked: %+v", got)
 	}
 }
+
+// A same-name Deployment after a Job must not pull the Job's line: spans are
+// bounded by the next document and a miss stays inside the mapped document.
+func TestKustomizeDetectLineSpanBounded(t *testing.T) {
+	base := "apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n" +
+		"      containers:\n        - name: j\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n" +
+		"spec:\n  template:\n    spec:\n      containers:\n        - name: d\n          securityContext:\n" +
+		"            privileged: true\n"
+	file := &model.FileMetadata{
+		FilePath: "base/jobs.yaml", OriginalData: base, Kind: model.KindKUSTOMIZE,
+		Kustomize: &model.KustomizeAttribution{Kind: "Deployment", SourceName: "web", RenderedName: "web",
+			SourceDocumentIndex: 1},
+	}
+	got := KustomizeDetectLine{}.DetectLine(context.Background(), file,
+		"metadata.name={{web}}.spec.template.spec.containers.name={{d}}.securityContext.privileged", 3)
+	if got.Line != 21 {
+		t.Errorf("deployment line: got %d, want 21", got.Line)
+	}
+	// The Job's mapped document does not hold the Deployment containers: the
+	// search must not cross into the Deployment.
+	job := &model.FileMetadata{
+		FilePath: "base/jobs.yaml", OriginalData: base, Kind: model.KindKUSTOMIZE,
+		Kustomize: &model.KustomizeAttribution{Kind: "Job", SourceName: "web", RenderedName: "web",
+			SourceDocumentIndex: 0},
+	}
+	got = KustomizeDetectLine{}.DetectLine(context.Background(), job,
+		"metadata.name={{web}}.spec.template.spec.containers.name={{d}}.securityContext.privileged", 3)
+	if got.Line >= 10 {
+		t.Errorf("job document must not report a Deployment line, got %d", got.Line)
+	}
+}
