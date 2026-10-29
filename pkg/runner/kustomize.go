@@ -151,7 +151,7 @@ func renderPlannedRoot(ctx context.Context, renderer *kustomize.Renderer, root k
 	if root.Skip != "" {
 		return kustomize.Result{}, model.ResolvedFiles{}, nil, root.Skip
 	}
-	r, err := renderer.Render(ctx, root.Dir)
+	r, err := renderer.Render(ctx, root.Dir, nil)
 	if err != nil {
 		var re *kustomize.RenderError
 		reason := kustomize.ReasonRenderError

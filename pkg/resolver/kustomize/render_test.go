@@ -104,7 +104,7 @@ func waitRunLock() { runLock.idle() }
 func render(t *testing.T, dir, root string) (*Result, error) {
 	t.Helper()
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
-	res, err := r.Render(context.Background(), filepath.Join(dir, root))
+	res, err := r.Render(context.Background(), filepath.Join(dir, root), nil)
 	if err == nil {
 		checkDocumentCounts(t, r, res)
 	}
@@ -194,7 +194,7 @@ func TestRenderAttributesSources(t *testing.T) {
 func TestRenderReadSetAndCacheKeepOriginal(t *testing.T) {
 	dir := writeTree(t, baseTree())
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
-	res, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"))
+	res, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestRenderRefusals(t *testing.T) {
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			dir := writeTree(t, c.files)
-			_, err := NewRenderer(vfs.Default(), dir, 1<<20).Render(context.Background(), filepath.Join(dir, "o"))
+			_, err := NewRenderer(vfs.Default(), dir, 1<<20).Render(context.Background(), filepath.Join(dir, "o"), nil)
 			var re *RenderError
 			if !errors.As(err, &re) || re.Reason != c.reason {
 				t.Fatalf("got %v, want %s", err, c.reason)
@@ -259,7 +259,7 @@ func TestRenderSymlinkEscapeRefused(t *testing.T) {
 		t.Skip(err)
 	}
 	for _, fsys := range []vfs.FS{vfs.DiskFS{}, &vfs.DiskFS{}} {
-		if _, err := NewRenderer(fsys, dir, 5<<20).Render(context.Background(), filepath.Join(dir, "o")); err == nil {
+		if _, err := NewRenderer(fsys, dir, 5<<20).Render(context.Background(), filepath.Join(dir, "o"), nil); err == nil {
 			t.Fatalf("%T: symlink outside the root was followed", fsys)
 		}
 	}
@@ -269,7 +269,7 @@ func TestRenderBudget(t *testing.T) {
 	dir := writeTree(t, baseTree())
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	r.cache.served = maxServedBytes - 10
-	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonBudget {
 		t.Fatalf("got %v", err)
@@ -399,7 +399,7 @@ func TestRenderRemainingBudgetDeadline(t *testing.T) {
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	r.timeout = time.Minute
 	r.deadline = time.Now().Add(-time.Second)
-	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
@@ -437,7 +437,7 @@ func TestRenderMappingRootDeadline(t *testing.T) {
 	if err := rm.Append(rs); err != nil {
 		t.Fatal(err)
 	}
-	if r.mapResources(&Result{}, rm, "", time.Now().Add(-time.Second)) == nil {
+	if r.mapResources(context.Background(), &Result{}, rm, "", nil, time.Now().Add(-time.Second)) == nil {
 		t.Fatal("mapping past the root deadline must fail the root")
 	}
 }
@@ -458,8 +458,34 @@ func TestRenderMappingLastResourceDeadline(t *testing.T) {
 	if err := rm.Append(rs); err != nil {
 		t.Fatal(err)
 	}
-	if r.mapResources(&Result{Root: dir}, rm, "", time.Now().Add(100*time.Millisecond)) == nil {
+	if r.mapResources(context.Background(), &Result{Root: dir}, rm, "", nil, time.Now().Add(100*time.Millisecond)) == nil {
 		t.Fatal("a root whose deadline passed while mapping must fail")
+	}
+}
+
+// TestRenderMappingDeadlineMidWork expires the deadline while mapping real
+// documents: the root is abandoned rather than partially mapped.
+func TestRenderMappingDeadlineMidWork(t *testing.T) {
+	dir := writeTree(t, baseTree())
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	if _, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"), nil); err != nil {
+		t.Fatal(err)
+	}
+	// Re-map a ResMap-shaped result past a deadline that has already expired:
+	// check() runs before the graph and per resource.
+	r.deadline = time.Now().Add(-time.Second)
+	rm := resmap.New()
+	rs, err := resource.NewFactory(nil).FromMap(map[string]interface{}{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]interface{}{"name": "x"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rm.Append(rs); err != nil {
+		t.Fatal(err)
+	}
+	if r.mapResources(context.Background(), &Result{Root: dir}, rm, "", nil, time.Now().Add(100*time.Millisecond)) == nil {
 	}
 }
 
@@ -469,7 +495,7 @@ func TestRenderContextCanceled(t *testing.T) {
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := r.Render(ctx, filepath.Join(dir, "overlays/dev"))
+	_, err := r.Render(ctx, filepath.Join(dir, "overlays/dev"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
@@ -492,7 +518,7 @@ func TestRenderMappingDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.deadline = time.Now().Add(-time.Second)
-	if r.mapResources(&Result{}, rm, "", time.Now().Add(time.Hour)) == nil {
+	if r.mapResources(context.Background(), &Result{}, rm, "", nil, time.Now().Add(time.Hour)) == nil {
 		t.Fatal("mapping past the phase deadline must fail the root")
 	}
 }
@@ -506,7 +532,7 @@ func TestRenderConcurrent(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			root := []string{"overlays/dev", "overlays/prod"}[i%2]
-			if _, err := r.Render(context.Background(), filepath.Join(dir, root)); err != nil {
+			if _, err := r.Render(context.Background(), filepath.Join(dir, root), nil); err != nil {
 				t.Error(err)
 			}
 		}(i)
@@ -534,7 +560,7 @@ func BenchmarkRender(b *testing.B) {
 	}
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	for i := 0; i < b.N; i++ {
-		if _, err := r.Render(context.Background(), filepath.Join(dir, "overlays/prod")); err != nil {
+		if _, err := r.Render(context.Background(), filepath.Join(dir, "overlays/prod"), nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -550,7 +576,7 @@ func TestRenderMemFS(t *testing.T) {
 		"/repo/o/kustomization.yaml": []byte("resources:\n  - cm.yaml\n"),
 		"/repo/o/cm.yaml":            []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n"),
 	})
-	res, err := NewRenderer(fsys, "/repo", 5<<20).Render(context.Background(), "/repo/o")
+	res, err := NewRenderer(fsys, "/repo", 5<<20).Render(context.Background(), "/repo/o", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,7 +591,7 @@ func TestRenderRemoteShapedRootRefused(t *testing.T) {
 	fsys := vfs.NewMemFS(map[string][]byte{
 		"github.com/org/repo/kustomization.yaml": []byte("resources: []\n"),
 	})
-	_, err := NewRenderer(fsys, "github.com", 5<<20).Render(context.Background(), "github.com/org/repo")
+	_, err := NewRenderer(fsys, "github.com", 5<<20).Render(context.Background(), "github.com/org/repo", nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonValidation {
 		t.Fatalf("got %v", err)
@@ -618,7 +644,7 @@ func TestRenderStdLogSharedWithHelm(t *testing.T) {
 	endHelm := logger.SilenceStdLog()
 	done := make(chan error, 1)
 	go func() {
-		_, err := NewRenderer(fsys, dir, 5<<20).Render(context.Background(), filepath.Join(dir, "base"))
+		_, err := NewRenderer(fsys, dir, 5<<20).Render(context.Background(), filepath.Join(dir, "base"), nil)
 		done <- err
 	}()
 	<-reached
@@ -660,7 +686,7 @@ func TestRenderWatchdogRemainingBudget(t *testing.T) {
 	r := NewRenderer(fsys, dir, 5<<20)
 	r.timeout = 2 * time.Second
 	start := time.Now()
-	_, err := r.Render(context.Background(), filepath.Join(dir, "base"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "base"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
@@ -685,7 +711,7 @@ func TestRenderWatchdogBoundsPreparation(t *testing.T) {
 	r := NewRenderer(fsys, dir, 5<<20)
 	r.timeout = 200 * time.Millisecond
 	start := time.Now()
-	_, err := r.Render(context.Background(), filepath.Join(dir, "base"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "base"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
@@ -770,13 +796,13 @@ func TestRenderSerializationFailureFailsRoot(t *testing.T) {
 		"b/deployment.yaml":    deployment,
 	})
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
-	res, err := r.Render(context.Background(), filepath.Join(dir, "o"))
+	res, err := r.Render(context.Background(), filepath.Join(dir, "o"), nil)
 	var re *RenderError
 	if res != nil || !errors.As(err, &re) || re.Reason != ReasonRenderError {
 		t.Fatalf("got a result: %t, error %v", res != nil, err)
 	}
 	// Not a timeout: the next root still renders.
-	if _, err := r.Render(context.Background(), filepath.Join(dir, "b")); err != nil {
+	if _, err := r.Render(context.Background(), filepath.Join(dir, "b"), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -883,7 +909,7 @@ func TestRenderAbandonedLockFailsFast(t *testing.T) {
 	o := runLock.acquire(context.Background(), time.Now().Add(time.Hour))
 	runLock.abandon(o)
 	start := time.Now()
-	_, err := r.Render(context.Background(), filepath.Join(dir, "base"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "base"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout || time.Since(start) > rootTimeout/2 {
 		t.Fatalf("got %v after %v", err, time.Since(start))
@@ -895,7 +921,7 @@ func TestRenderAbandonedLockFailsFast(t *testing.T) {
 		runLock.release(live)
 	}()
 	for _, root := range []string{"base", "overlays/dev"} {
-		if _, err := r.Render(context.Background(), filepath.Join(dir, root)); err != nil {
+		if _, err := r.Render(context.Background(), filepath.Join(dir, root), nil); err != nil {
 			t.Fatalf("%s: %v", root, err)
 		}
 	}
@@ -1254,7 +1280,7 @@ func TestRenderNoRenamingProof(t *testing.T) {
 		"o/kustomization.yaml":   "configMapGenerator:\n  - name: gen\n    literals:\n      - A=b\n  - name: gen-x\n    literals:\n      - A=b\n",
 	})
 	r0 := NewRenderer(vfs.Default(), dir, 5<<20)
-	res, err = r0.Render(context.Background(), filepath.Join(dir, "top"))
+	res, err = r0.Render(context.Background(), filepath.Join(dir, "top"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1274,7 +1300,7 @@ func TestRenderNoRenamingProof(t *testing.T) {
 		t.Skip(err)
 	}
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
-	if _, err := r.Render(context.Background(), filepath.Join(dir, "o")); err != nil {
+	if _, err := r.Render(context.Background(), filepath.Join(dir, "o"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if r.renameMode([]string{filepath.Join(dir, "o", "real.yml")}) == renameNone {
