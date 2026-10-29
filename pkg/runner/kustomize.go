@@ -60,6 +60,7 @@ func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSetti
 		}
 		stats.rendered++
 		stats.mappingFailures += res.MappingFailures
+		stats.unsupported += res.Unsupported
 		stats.runNs += res.RunNs
 		stats.mapNs += res.MapNs
 		if f := k8s[0].RenderedFileFilter; f != nil {
@@ -80,7 +81,7 @@ func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSetti
 	for _, s := range k8s {
 		s.kustomizeSources = nil
 	}
-	logKustomizeSummary(ctx, stats.rendered, stats.docs, stats.mappingFailures,
+	logKustomizeSummary(ctx, stats.rendered, stats.docs, stats.mappingFailures, stats.unsupported,
 		reasons, time.Since(start), stats.runNs, stats.mapNs, stats.storeNs, planDone.Sub(start))
 
 	return withoutConsumedFiles(files, renderedOnly(consumed, unrendered))
@@ -124,8 +125,8 @@ func markUnrendered(unrendered map[string]struct{}, root kustomize.PlannedRoot) 
 
 // kustomizeStats aggregates the per-root counters of a render phase.
 type kustomizeStats struct {
-	rendered, docs, mappingFailures int
-	renderNs, storeNs, runNs, mapNs time.Duration
+	rendered, docs, mappingFailures, unsupported int
+	renderNs, storeNs, runNs, mapNs              time.Duration
 }
 
 // kustomizeInputPaths maps every scanned file and root to its absolute path.
@@ -151,7 +152,7 @@ func renderPlannedRoot(ctx context.Context, renderer *kustomize.Renderer, root k
 	if root.Skip != "" {
 		return kustomize.Result{}, model.ResolvedFiles{}, nil, root.Skip
 	}
-	r, err := renderer.Render(ctx, root.Dir, nil)
+	r, err := renderer.Render(ctx, root.Dir, root.Closure)
 	if err != nil {
 		var re *kustomize.RenderError
 		reason := kustomize.ReasonRenderError
@@ -227,7 +228,7 @@ func renderRootPath(repo, dir string) string {
 	return filepath.ToSlash(rel)
 }
 
-func logKustomizeSummary(ctx context.Context, rendered, docs, mappingFailures int,
+func logKustomizeSummary(ctx context.Context, rendered, docs, mappingFailures, unsupported int,
 	reasons map[string]int, took, runNs, mapNs, storeNs, planNs time.Duration) {
 	contextLogger := logger.FromContext(ctx)
 	keys := make([]string, 0, len(reasons))
@@ -236,7 +237,7 @@ func logKustomizeSummary(ctx context.Context, rendered, docs, mappingFailures in
 	}
 	sort.Strings(keys)
 	ev := contextLogger.Info().Int("roots_rendered", rendered).Int("documents", docs).
-		Int("mapping_failures", mappingFailures).
+		Int("mapping_failures", mappingFailures).Int("unsupported_fields", unsupported).
 		Int64("render_ms", took.Milliseconds()).
 		Int64("plan_ms", planNs.Milliseconds()).
 		Int64("krusty_ms", runNs.Milliseconds()).
