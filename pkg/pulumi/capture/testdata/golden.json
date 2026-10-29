@@ -1,0 +1,178 @@
+{
+  "formatVersion": 1,
+  "project": "demo",
+  "stack": "prod",
+  "runtime": "python",
+  "projectDir": "infra",
+  "resources": [
+    {
+      "urn": "urn:pulumi:prod::demo::aws:rds/instance:Instance::db",
+      "type": "aws:rds/instance:Instance",
+      "name": "db",
+      "custom": true,
+      "inputs": {
+        "allocatedStorage": 20,
+        "engine": "postgres",
+        "instanceClass": "db.t3.micro",
+        "password": {
+          "__dd_secret": true
+        },
+        "publiclyAccessible": true
+      },
+      "source": {
+        "uri": "file:///work/repo/infra/__main__.py",
+        "path": "infra/__main__.py",
+        "line": 26,
+        "column": 6
+      }
+    },
+    {
+      "urn": "urn:pulumi:prod::demo::pulumi:providers:aws::east",
+      "type": "pulumi:providers:aws",
+      "name": "east",
+      "custom": true,
+      "inputs": {
+        "defaultTags": {
+          "tags": {
+            "team": "data"
+          }
+        },
+        "region": "us-east-1"
+      },
+      "source": {
+        "uri": "file:///work/repo/infra/__main__.py",
+        "path": "infra/__main__.py",
+        "line": 8,
+        "column": 8
+      }
+    },
+    {
+      "urn": "urn:pulumi:prod::demo::demo:index:Assets::assets",
+      "type": "demo:index:Assets",
+      "name": "assets",
+      "custom": false,
+      "inputs": {},
+      "source": {
+        "uri": "file:///work/repo/infra/components.py",
+        "path": "infra/components.py",
+        "line": 12,
+        "column": 9
+      }
+    },
+    {
+      "urn": "urn:pulumi:prod::demo::demo:index:Assets$aws:s3/bucketV2:BucketV2::assets",
+      "type": "aws:s3/bucketV2:BucketV2",
+      "name": "assets",
+      "custom": true,
+      "parent": "urn:pulumi:prod::demo::demo:index:Assets::assets",
+      "provider": "urn:pulumi:prod::demo::pulumi:providers:aws::east::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+      "inputs": {
+        "tags": {
+          "Name": "assets"
+        }
+      },
+      "source": {
+        "uri": "file:///work/repo/infra/components.py",
+        "path": "infra/components.py",
+        "line": 15,
+        "column": 23
+      }
+    },
+    {
+      "urn": "urn:pulumi:prod::demo::aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock::assets-pab",
+      "type": "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock",
+      "name": "assets-pab",
+      "custom": true,
+      "inputs": {
+        "blockPublicAcls": false,
+        "bucket": {
+          "__dd_unknown": true
+        }
+      },
+      "propertyDependencies": {
+        "bucket": [
+          "urn:pulumi:prod::demo::demo:index:Assets$aws:s3/bucketV2:BucketV2::assets"
+        ]
+      },
+      "dependencies": [
+        "urn:pulumi:prod::demo::demo:index:Assets$aws:s3/bucketV2:BucketV2::assets"
+      ],
+      "source": {
+        "uri": "file:///work/repo/infra/__main__.py",
+        "path": "infra/__main__.py",
+        "line": 64,
+        "column": 7
+      }
+    },
+    {
+      "urn": "urn:pulumi:prod::demo::aws:lambda/function:Function::handler",
+      "type": "aws:lambda/function:Function",
+      "name": "handler",
+      "custom": true,
+      "inputs": {
+        "code": {
+          "__dd_archive": true,
+          "path": "./app"
+        },
+        "environment": {
+          "variables": {
+            "STAGE": "prod"
+          }
+        },
+        "role": {
+          "__dd_ref": "urn:pulumi:prod::demo::aws:iam/role:Role::handler-role"
+        },
+        "runtime": "python3.12"
+      },
+      "source": {
+        "uri": "file:///home/user/go/pkg/mod/github.com/pulumi/pulumi-aws/sdk/v6@v6.48.0/go/aws/lambda/function.go"
+      }
+    }
+  ],
+  "invokes": [
+    {
+      "token": "aws:index/getAvailabilityZones:getAvailabilityZones",
+      "args": {
+        "state": "available"
+      },
+      "placeholder": true,
+      "source": {
+        "uri": "file:///work/repo/infra/__main__.py",
+        "path": "infra/__main__.py",
+        "line": 18,
+        "column": 7
+      }
+    }
+  ],
+  "reads": [
+    {
+      "urn": "urn:pulumi:prod::demo::pulumi:pulumi:StackReference::network",
+      "type": "pulumi:pulumi:StackReference",
+      "name": "network",
+      "id": "acme/network/prod"
+    }
+  ],
+  "config": {
+    "values": {
+      "aws:region": "us-east-1",
+      "demo:dbName": "ddph",
+      "demo:enableLogs": "true",
+      "demo:subnets": "[\"10.0.0.0/24\",\"10.0.1.0/24\"]"
+    },
+    "placeholders": [
+      "demo:dbName"
+    ],
+    "providerDefaults": [
+      "aws:region"
+    ],
+    "secrets": [
+      "demo:dbPassword"
+    ]
+  },
+  "result": {
+    "status": "evaluated",
+    "partial": true,
+    "attempts": 2,
+    "durationMillis": 1350
+  }
+}
