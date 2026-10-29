@@ -3,7 +3,6 @@ package kustomize
 import (
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strings"
 
@@ -26,10 +25,6 @@ type kustNode struct {
 	// applyOrder ranks the transformer steps Kustomize runs: deeper
 	// kustomizations apply first, and the root applies last.
 	applyOrder int
-	// beforeLabels and beforeAnnotations are the label and annotation
-	// transforms of the steps that ran before this node's own patches: the
-	// state its patch targets are evaluated against.
-	beforeLabels, beforeAnnotations map[string]string
 	// components are the kustomizations this one loads as components,
 	// deepest first: their transformer steps run just before this node's own.
 	components []*kustNode
@@ -46,7 +41,6 @@ func (r *Renderer) renderGraph(res *Result, rootKust string, closure map[string]
 	}
 	assignDepthsAndAffixes(byDir, rootDir, closure)
 	orderNodeSteps(byDir, rootDir)
-	collectAppliedTransforms(byDir)
 	return r.buildGraph(byDir)
 }
 
@@ -103,47 +97,6 @@ func assignDepthsAndAffixes(byDir map[string]*kustNode, rootDir string, closure 
 	}
 }
 
-// collectAppliedTransforms records, per node, the label and annotation
-// transforms of every step that runs before the node's own patches: the
-// resource subtrees its resources come from and its components, never the
-// node's own or any later, outer level.
-func collectAppliedTransforms(byDir map[string]*kustNode) {
-	var walk func(d string, into map[string]bool)
-	walk = func(d string, into map[string]bool) {
-		if into[d] || byDir[d] == nil {
-			return
-		}
-		into[d] = true
-		for _, c := range children(d, byDir[d].k) {
-			walk(c, into)
-		}
-		for _, e := range byDir[d].k.Components {
-			walk(filepath.Join(d, filepath.FromSlash(e)), into)
-		}
-	}
-	for _, n := range byDir {
-		if n.depth < 0 {
-			continue
-		}
-		n.beforeLabels, n.beforeAnnotations = map[string]string{}, map[string]string{}
-		applied := map[string]bool{}
-		root := filepath.Dir(n.file)
-		for _, c := range children(root, n.k) {
-			walk(c, applied)
-		}
-		for _, e := range n.k.Components {
-			walk(filepath.Join(root, filepath.FromSlash(e)), applied)
-		}
-		for d := range applied {
-			for key, v := range kustomizationLabels(byDir[d].k) {
-				n.beforeLabels[key] = v
-			}
-			for key, v := range kustomizationAnnotations(byDir[d].k) {
-				n.beforeAnnotations[key] = v
-			}
-		}
-	}
-}
 
 func closureAffix(closure map[string]Affixes, dir string) Affixes {
 	if closure == nil {
@@ -158,10 +111,12 @@ func closureAffix(closure map[string]Affixes, dir string) Affixes {
 // reverse walk over the graph's edges, computed once per source.
 type kustGraph struct {
 	nodes []*kustNode
-	// parents maps each kustomization directory to the nodes loading it, and
-	// atDir holds the node rooted at each directory (it loads its own files).
+	// parents maps each kustomization directory to the nodes loading it,
+	// atDir holds the node rooted at each directory (it loads its own files)
+	// and byFile the node owning each kustomization file.
 	parents map[string][]*kustNode
 	atDir   map[string]*kustNode
+	byFile  map[string]*kustNode
 	loaders map[string]map[*kustNode]bool
 	// probes counts node examinations and edge walks: tests bound it to
 	// prove a loader query stays linear in nodes plus edges.
@@ -171,13 +126,14 @@ type kustGraph struct {
 // renderGraph indexes the kustomizations a render read into the load graph.
 func (r *Renderer) buildGraph(byDir map[string]*kustNode) *kustGraph {
 	g := &kustGraph{parents: map[string][]*kustNode{}, atDir: map[string]*kustNode{},
-		loaders: map[string]map[*kustNode]bool{}}
+		byFile: map[string]*kustNode{}, loaders: map[string]map[*kustNode]bool{}}
 	for _, n := range byDir {
 		if n.depth < 0 {
 			continue
 		}
 		g.nodes = append(g.nodes, n)
 		g.atDir[filepath.Dir(n.file)] = n
+		g.byFile[n.file] = n
 		for _, c := range children(filepath.Dir(n.file), n.k) {
 			g.parents[c] = append(g.parents[c], n)
 		}
@@ -295,9 +251,9 @@ func (r *Renderer) writers(graph *kustGraph, source string, a *model.KustomizeAt
 		}
 		// The node's own step runs last: its writers come first, then its
 		// components', last applied (last listed) first.
-		out = append(out, r.ownWriters(n, a)...)
+		out = append(out, r.ownWriters(graph, n, a)...)
 		for i := len(n.components) - 1; i >= 0; i-- {
-			out = append(out, r.ownWriters(n.components[i], a)...)
+			out = append(out, r.ownWriters(graph, n.components[i], a)...)
 		}
 	}
 	return out
@@ -305,17 +261,35 @@ func (r *Renderer) writers(graph *kustGraph, source string, a *model.KustomizeAt
 
 // ownWriters lists one kustomization's own patches and transformer entries
 // that apply to the resource, last applied first.
-func (r *Renderer) ownWriters(n *kustNode, a *model.KustomizeAttribution) []model.KustomizeWriter {
+func (r *Renderer) ownWriters(graph *kustGraph, n *kustNode, a *model.KustomizeAttribution) []model.KustomizeWriter {
 	// Patch targets are evaluated against the labels and annotations visible
 	// when the patch applied: the source document's own plus the transforms
-	// of the steps before this node's patches, never later or outer levels.
+	// of the resource's chain steps before this node's patches, in Kustomize's
+	// application order. Steps outside the chain — a sibling base among them —
+	// never contaminate it.
 	visible := *a
-	visible.Labels = mergeKV(a.SourceLabels, n.beforeLabels)
-	visible.Annotations = mergeKV(a.SourceAnnotations, n.beforeAnnotations)
+	visible.Labels = mergeKV(a.SourceLabels, chainTransforms(graph, a.Chain, n, kustomizationLabels))
+	visible.Annotations = mergeKV(a.SourceAnnotations, chainTransforms(graph, a.Chain, n, kustomizationAnnotations))
 	a = &visible
 	kustText, _ := r.Source(n.file)
 	node := r.KustNode(n.file, kustText)
 	var out []model.KustomizeWriter
+	// Replacements apply last and are not attributed; mapResources counts
+	// them instead of guessing their lines.
+	for i := len(n.k.Images) - 1; i >= 0; i-- {
+		img := n.k.Images[i]
+		if l := entryLine(node, "images", i, img.Name); l > 0 {
+			out = append(out, model.KustomizeWriter{Kind: model.KustomizeImages, File: n.file, Line: l, Name: img.Name})
+		}
+	}
+	for i := len(n.k.Replicas) - 1; i >= 0; i-- {
+		rep := n.k.Replicas[i]
+		if nameMatchesLevel(rep.Name, n, a) {
+			if l := entryLine(node, "replicas", i, rep.Name); l > 0 {
+				out = append(out, model.KustomizeWriter{Kind: model.KustomizeReplicas, File: n.file, Line: l, Name: rep.Name})
+			}
+		}
+	}
 	// JSON 6902 patches apply after the node's own label and annotation
 	// transformers: their selectors see those entries too.
 	afterKV := *a
@@ -325,6 +299,14 @@ func (r *Renderer) ownWriters(n *kustNode, a *model.KustomizeAttribution) []mode
 		p := n.k.PatchesJson6902[i] //nolint:staticcheck // see above
 		if w, ok := r.patchWriter(n, node, "patchesJson6902", i, p.Path, p.Patch, p.Target, &afterKV); ok {
 			out = append(out, w)
+		}
+	}
+	out = append(out, kvWriters(n, node, "commonAnnotations", model.KustomizeAnnotations)...)
+	out = append(out, kvWriters(n, node, "commonLabels", model.KustomizeLabels)...)
+	out = append(out, kvWriters(n, node, "labels", model.KustomizeLabels)...)
+	if n.k.Namespace != "" {
+		if l := sectionLine(node, "namespace"); l > 0 {
+			out = append(out, model.KustomizeWriter{Kind: model.KustomizeNamespace, File: n.file, Line: l})
 		}
 	}
 	// Unified patches apply in listing order; reversed, the last one is
@@ -381,6 +363,57 @@ func (r *Renderer) legacySMPWriters(n *kustNode, node *yaml.Node, a *model.Kusto
 	return out
 }
 
+// kvWriters lists one writer per label or annotation entry of the section,
+// keyed by the keys that entry sets. Kustomize applies them in listing order,
+// so the last entry is found first. A mapping section (commonAnnotations)
+// yields one writer per key.
+func kvWriters(n *kustNode, node *yaml.Node, section, kind string) []model.KustomizeWriter {
+	sectionNode := mappingValue(node, section)
+	if sectionNode == nil {
+		return nil
+	}
+	var out []model.KustomizeWriter
+	if sectionNode.Kind == yaml.MappingNode {
+		for i := len(sectionNode.Content) - 2; i >= 0; i -= 2 {
+			out = append(out, model.KustomizeWriter{Kind: kind, File: n.file,
+				Line: sectionNode.Content[i].Line, Name: sectionNode.Content[i].Value})
+		}
+		return out
+	}
+	if sectionNode.Kind != yaml.SequenceNode {
+		return nil
+	}
+	for i := len(sectionNode.Content) - 1; i >= 0; i-- {
+		item := sectionNode.Content[i]
+		keys := entryKeys(item)
+		if len(keys) == 0 {
+			continue
+		}
+		out = append(out, model.KustomizeWriter{Kind: kind, File: n.file, Line: item.Line, Name: strings.Join(keys, ",")})
+	}
+	return out
+}
+
+// entryKeys lists the label or annotation keys one transformer entry sets.
+func entryKeys(item *yaml.Node) []string {
+	pairs := mappingValue(item, "pairs")
+	if pairs == nil || pairs.Kind != yaml.MappingNode {
+		// A flat entry mapping is itself the pairs (legacy form).
+		pairs = item
+	}
+	var keys []string
+	if pairs.Kind == yaml.MappingNode {
+		for i := 0; i < len(pairs.Content); i += 2 {
+			key := pairs.Content[i].Value
+			if key == "includeSelectors" || key == "fields" {
+				continue
+			}
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
 // patchWriter builds the writer of a patch referenced by path or inline under
 // one of the kustomization's patch fields, when its target matches.
 func (r *Renderer) patchWriter(n *kustNode, node *yaml.Node, field string, index int,
@@ -412,6 +445,22 @@ func (r *Renderer) patchWriter(n *kustNode, node *yaml.Node, field string, index
 
 func nameMatches(name string, a *model.KustomizeAttribution) bool {
 	return name == a.SourceName || name == a.RenderedName
+}
+
+// nameMatchesLevel reports whether a transformer entry's name is the
+// resource's name as visible at n's level: the source name with the affixes
+// of the kustomizations applied before n, or the rendered name.
+func nameMatchesLevel(name string, n *kustNode, a *model.KustomizeAttribution) bool {
+	if nameMatches(name, a) {
+		return true
+	}
+	if a.SourceName == "" {
+		return false
+	}
+	if expectedName(n.parentAffixes, a.SourceName) == name {
+		return true
+	}
+	return expectedName(n.affixes, a.SourceName) == name
 }
 
 // expectedName is a source name after the affixes of a kustomization level.
@@ -490,6 +539,28 @@ func mergeKV(base, overrides map[string]string) map[string]string {
 	}
 	for k, v := range overrides {
 		out[k] = v
+	}
+	return out
+}
+
+// chainTransforms merges, in Kustomize's application order, the label or
+// annotation transforms of the resource's chain steps that ran before n: the
+// state a patch target at n is evaluated against. The chain is root first,
+// which is application order, so a later step's entries win.
+func chainTransforms(graph *kustGraph, chain []string, n *kustNode,
+	get func(*types.Kustomization) map[string]string) map[string]string {
+	out := map[string]string{}
+	// The chain is root first; Kustomize applies deepest first, so merging
+	// from the deepest end lets a later, shallower step's value win — the
+	// last writer to touch a field is the one Kustomize keeps.
+	for i := len(chain) - 1; i >= 0; i-- {
+		c := graph.byFile[chain[i]]
+		if c == nil || c.applyOrder >= n.applyOrder {
+			continue
+		}
+		for key, v := range get(c.k) {
+			out[key] = v
+		}
 	}
 	return out
 }
@@ -625,6 +696,30 @@ func mappingValue(m *yaml.Node, key string) *yaml.Node {
 		}
 	}
 	return nil
+}
+
+// sectionLine is the 1-based line of a top-level key of the kustomization.
+func sectionLine(root *yaml.Node, key string) int {
+	if v := mappingValue(root, key); v != nil {
+		return v.Line
+	}
+	return 0
+}
+
+// entryLine is the 1-based line of the index-th entry of a top-level
+// sequence section whose name matches name (empty matches any).
+func entryLine(root *yaml.Node, section string, index int, name string) int {
+	seq := mappingValue(root, section)
+	if seq == nil || seq.Kind != yaml.SequenceNode || index >= len(seq.Content) {
+		return 0
+	}
+	item := seq.Content[index]
+	if name != "" {
+		if n := mappingValue(item, "name"); n != nil && n.Value != name {
+			return 0
+		}
+	}
+	return item.Line
 }
 
 // inlineOffset is the 0-based line of kust before the index-th entry of

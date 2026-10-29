@@ -460,6 +460,13 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 	if mode == renameAffix && attr.Kind == "Namespace" {
 		mode = renameAny
 	}
+	if graph != nil {
+		for n := range graph.loadersOf(doc.FileName) {
+			if len(n.k.Replacements) > 0 {
+				res.Unsupported++
+			}
+		}
+	}
 
 	r.attributeSource(res, origin, attr, &doc, g, mode)
 	if doc.SourceDocumentIndex < 0 && attr.Generator == nil && doc.FileName != rootKust {
@@ -468,9 +475,26 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 	g.record(attr, doc.FileName)
 	if attr.Generator == nil && doc.SourceDocumentIndex >= 0 {
 		r.attachChain(graph, doc.FileName, attr)
+		res.Unsupported += r.unsupportedReplacements(graph, doc.FileName)
 	}
 	doc.OriginalData, _ = r.Source(doc.FileName)
 	return doc, true
+}
+
+// unsupportedReplacements counts the replacement entries of the
+// kustomizations that load the source file: their written fields are counted,
+// not attributed.
+func (r *Renderer) unsupportedReplacements(graph *kustGraph, source string) int {
+	if graph == nil {
+		return 0
+	}
+	n := 0
+	for node := range graph.loadersOf(source) {
+		if len(node.k.Replacements) > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // attributeSource maps a rendered resource to the file a developer edits: the
