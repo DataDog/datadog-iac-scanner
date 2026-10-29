@@ -13,10 +13,12 @@ import (
 const metadataKey = "metadata"
 
 // templateScope and selectorScope name the parts of a resource a label or
-// annotation path can point at beyond its own metadata.
+// annotation path can point at beyond its own metadata, and testOp is the
+// JSON 6902 op that only asserts a value.
 const (
 	templateScope = "template"
 	selectorScope = "selector"
+	testOp        = "test"
 )
 
 // KustomizeDetectLine finds the line of a finding raised on a document
@@ -188,7 +190,7 @@ func detectWriter(ctx context.Context, file *model.FileMetadata, a *model.Kustom
 	last := segs[len(segs)-1]
 	for i := range a.Writers {
 		w := &a.Writers[i]
-		if got, ok := writerLine(ctx, w, a, file, searchKey, segs, last, outputLines, source); ok {
+		if got, ok := writerLine(ctx, w, a, file, searchKey, segs, last, i, outputLines, source); ok {
 			return got, true
 		}
 	}
@@ -198,7 +200,7 @@ func detectWriter(ctx context.Context, file *model.FileMetadata, a *model.Kustom
 // writerLine resolves the line one writer contributed for the field segs
 // names, if any.
 func writerLine(ctx context.Context, w *model.KustomizeWriter, a *model.KustomizeAttribution,
-	file *model.FileMetadata, searchKey string, segs []string, last string, outputLines int,
+	file *model.FileMetadata, searchKey string, segs []string, last string, i, outputLines int,
 	source func() model.VulnerabilityLines) (model.VulnerabilityLines, bool) {
 	switch w.Kind {
 	case model.KustomizeStrategicMerge:
@@ -207,6 +209,8 @@ func writerLine(ctx context.Context, w *model.KustomizeWriter, a *model.Kustomiz
 		if l := jsonOpLine(w.Content, segs); l > 0 {
 			return lineIn(w.File, w.Content, l+w.LineOffset, l), true
 		}
+	default:
+		return transformerWriterLine(w, a, file, segs, last, i, source)
 	}
 	return model.VulnerabilityLines{}, false
 }
@@ -241,6 +245,215 @@ func smpWriterLine(ctx context.Context, w *model.KustomizeWriter, a *model.Kusto
 	}
 	shift(&got, by)
 	return got, true
+}
+
+// transformerWriterLine reports the line of a builtin transformer entry
+// (images, namespace, replicas) that set the field segs names.
+func transformerWriterLine(w *model.KustomizeWriter, a *model.KustomizeAttribution, file *model.FileMetadata,
+	segs []string, last string, i int, source func() model.VulnerabilityLines) (model.VulnerabilityLines, bool) {
+	switch w.Kind {
+	case model.KustomizeImages:
+		if last != "image" {
+			return model.VulnerabilityLines{}, false
+		}
+		// The entry matches the image the resource carries when it applies,
+		// which the patches and entries applied before it may have renamed;
+		// a JSON patch writing the image by a list index leaves it unproven.
+		if visible, known := visibleImage(a.Writers, i, a, segs, imageName(lineText(file, source().Line))); !known || visible != w.Name {
+			return model.VulnerabilityLines{}, false
+		}
+		return lineIn(w.File, "", w.Line, 0), true
+	case model.KustomizeNamespace:
+		if last == "namespace" && len(segs) >= 2 && segs[len(segs)-2] == metadataKey {
+			return lineIn(w.File, "", w.Line, 0), true
+		}
+	case model.KustomizeReplicas:
+		if last == "replicas" && len(segs) >= 2 && segs[len(segs)-2] == "spec" {
+			return lineIn(w.File, "", w.Line, 0), true
+		}
+	case model.KustomizeLabels, model.KustomizeAnnotations:
+		return kvEntryLine(w, segs, last)
+	case model.KustomizeReplacement:
+		// Replacements are not attributed yet; never guessed.
+	}
+	return model.VulnerabilityLines{}, false
+}
+
+// kvEntryLine reports the line of a label or annotation transformer entry
+// whose keys the search key names. The key's path must name the entry's
+// category right before its final key, and the path's scope must be one the
+// entry reaches: the resource's own metadata always, pod templates and
+// selectors only when the entry propagates there.
+func kvEntryLine(w *model.KustomizeWriter, segs []string, last string) (model.VulnerabilityLines, bool) {
+	category := "labels"
+	if w.Kind == model.KustomizeAnnotations {
+		category = "annotations"
+	}
+	if len(segs) < 2 || segs[len(segs)-2] != category || !keysContain(w.Name, last) {
+		return model.VulnerabilityLines{}, false
+	}
+	switch labelScope(segs[:len(segs)-2]) {
+	case templateScope:
+		if !w.Templates {
+			return model.VulnerabilityLines{}, false
+		}
+	case selectorScope:
+		if !w.Selectors {
+			return model.VulnerabilityLines{}, false
+		}
+	case metadataKey:
+	default:
+		// An unknown scope is unproven: the source keeps the line.
+		return model.VulnerabilityLines{}, false
+	}
+	return lineIn(w.File, "", w.Line, 0), true
+}
+
+// labelScope classifies where in the resource a label or annotation path
+// points, after the resource's name anchor: "metadata", "template",
+// "selector", or "" for anything unproven.
+func labelScope(segs []string) string {
+	path := segs
+	if len(path) >= 2 && path[0] == metadataKey && strings.HasPrefix(path[1], "name=") {
+		path = path[2:]
+	}
+	for _, s := range path {
+		if s == templateScope {
+			return templateScope
+		}
+		if s == selectorScope {
+			return selectorScope
+		}
+	}
+	if len(path) > 0 && path[len(path)-1] == metadataKey {
+		return metadataKey
+	}
+	return ""
+}
+
+// keysContain reports whether the comma-joined keys include key.
+func keysContain(joined, key string) bool {
+	for _, k := range strings.Split(joined, ",") {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+// imageName is the image name of an "image:" line, without tag or digest.
+func imageName(line string) string {
+	_, ref, _ := strings.Cut(line, "image:")
+	return imageRef(ref)
+}
+
+// imageRef is an image reference without tag or digest.
+func imageRef(ref string) string {
+	ref = strings.Trim(strings.TrimSpace(ref), `"'`)
+	ref, _, _ = strings.Cut(ref, "@")
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		ref = ref[:i]
+	}
+	return ref
+}
+
+func lineText(file *model.FileMetadata, line int) string {
+	lines := file.Lines()
+	if line >= 1 && line <= len(lines) {
+		return lines[line-1]
+	}
+	return ""
+}
+
+// visibleImage returns the image name the resource carries when writers[i]
+// applies, and whether it is known: the source image as the patches and
+// images entries applied before it reshaped it. Writers are last applied
+// first, so those are the ones after i, and an entry whose name does not
+// match changes nothing. A JSON patch writing the image by a list index
+// leaves it unproven, since the index cannot be tied to the container, and
+// a later patch setting the image exactly proves it again.
+func visibleImage(writers []model.KustomizeWriter, i int, a *model.KustomizeAttribution,
+	segs []string, source string) (string, bool) {
+	cur := source
+	known := true
+	for j := len(writers) - 1; j > i; j-- {
+		switch w := &writers[j]; w.Kind {
+		case model.KustomizeImages:
+			if known && w.Name == cur && w.NewName != "" {
+				cur = w.NewName
+			}
+		case model.KustomizeStrategicMerge:
+			img, ok := patchedImage(w, a, segs)
+			if ok {
+				cur, known = img, true
+			}
+		case model.KustomizeJSON6902:
+			if jsonOpTouchesField(w.Content, segs) {
+				known = false
+			}
+		}
+	}
+	return cur, known
+}
+
+// jsonOpTouchesField reports whether a writing op of a JSON 6902 patch may
+// set the field the search key names: its path matches the key's, with the
+// key's value anchors matching any list index the op names.
+func jsonOpTouchesField(content string, segs []string) bool {
+	if len(segs) >= 2 && segs[0] == metadataKey && strings.HasPrefix(segs[1], "name=") {
+		segs = segs[2:]
+	}
+	if len(segs) == 0 {
+		return false
+	}
+	var seq yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &seq); err != nil || len(seq.Content) == 0 {
+		return false
+	}
+	root := seq.Content[0]
+	if root.Kind != yaml.SequenceNode {
+		return false
+	}
+	for _, item := range root.Content {
+		if item.Kind != yaml.MappingNode {
+			continue
+		}
+		op, p, line := jsonOp(item)
+		if op == testOp || line <= 0 {
+			continue
+		}
+		if opTouches(strings.Split(strings.TrimPrefix(p, "/"), "/"), segs) {
+			return true
+		}
+	}
+	return false
+}
+
+// opTouches reports whether the op path's segments match the key's, with a
+// value anchor of the key matching any single segment.
+func opTouches(op, keys []string) bool {
+	if len(op) > len(keys) {
+		return false
+	}
+	for i, o := range op {
+		if keys[i] != o && !strings.Contains(keys[i], "=") {
+			return false
+		}
+	}
+	return true
+}
+
+// patchedImage returns the image name an SMP patch writes for the container
+// the search key names, if it sets it.
+func patchedImage(w *model.KustomizeWriter, a *model.KustomizeAttribution, segs []string) (string, bool) {
+	_, _, value, ok := smpDoc(w.Content, w, a, segs)
+	if !ok {
+		return "", false
+	}
+	if img := imageRef(toString(value)); img != "" {
+		return img, true
+	}
+	return "", false
 }
 
 // lineIn reports line of file; text is shown from content's contentLine
@@ -483,7 +696,7 @@ func jsonOpLine(content string, segs []string) int {
 		}
 		op, p, line := jsonOp(item)
 		// A test op asserts a value without writing it: it never owns a field.
-		if op == "test" || line <= 0 {
+		if op == testOp || line <= 0 {
 			continue
 		}
 		if opCovers(strings.Split(strings.TrimPrefix(p, "/"), "/"), segs) {
