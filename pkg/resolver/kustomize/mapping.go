@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -44,6 +45,7 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 	g := r.loadGraph(res.Root, rootKust)
 	// Counted once mapping is done, every walk the graph took included.
 	defer func() { res.graphSteps += g.steps }()
+	asWritten := r.namesMaySetByReplacement(res.Reads)
 	for _, rs := range m.Resources() {
 		if expired() {
 			return &RenderError{Reason: ReasonTimeout}
@@ -52,6 +54,7 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 		if !ok {
 			return &RenderError{Reason: ReasonRenderError}
 		}
+		setIdentity(doc.Kustomize, rs.GetGvk().Group, asWritten)
 		res.Documents = append(res.Documents, doc)
 	}
 	rejectCollisions(res)
@@ -209,6 +212,64 @@ func renames(k *types.Kustomization, also map[string]bool) bool {
 		}
 	}
 	return slices.ContainsFunc(k.Labels, func(l types.Label) bool { return len(l.FieldSpecs) > 0 })
+}
+
+// hashSuffix matches the "-" and 10 characters Kustomize appends to a
+// generated name: a hex digest prefix with 0, 1, 3, a and e respelled.
+var hashSuffix = regexp.MustCompile(`-[2456789bcdfghkmt]{10}$`)
+
+// setIdentity fills the fields a finding on the object is identified by. A
+// generated name loses its content hash, so editing generated data keeps the
+// identity; an unknown generator entry leaves no name. When a replacement may
+// have set names, the names as written are used: the rendered ones may carry
+// values copied from generated data.
+// ponytail: a generator with disableNameSuffixHash whose name ends like a
+// hash loses that ending too; reading generatorOptions would tell them apart.
+func setIdentity(a *model.KustomizeAttribution, group string, asWritten bool) {
+	a.APIGroup = group
+	switch {
+	case asWritten:
+		a.IdentityName, a.IdentityNamespace = a.SourceName, a.SourceNamespace
+	case a.Generator != nil && a.Generator.Name == "":
+		a.IdentityName, a.IdentityNamespace = "", a.RenderedNamespace
+	case a.Generator != nil:
+		a.IdentityName, a.IdentityNamespace = hashSuffix.ReplaceAllString(a.RenderedName, ""), a.RenderedNamespace
+	default:
+		a.IdentityName, a.IdentityNamespace = a.RenderedName, a.RenderedNamespace
+	}
+}
+
+// namesMaySetByReplacement reports whether a kustomization the render read
+// has a replacement that may write a name or namespace, or a transformer
+// entry, whose configuration is not inspected.
+func (r *Renderer) namesMaySetByReplacement(reads []string) bool {
+	for _, p := range reads {
+		k, ok := r.Kustomization(p)
+		if !ok {
+			continue
+		}
+		if len(k.Transformers) > 0 {
+			return true
+		}
+		for i := range k.Replacements {
+			if k.Replacements[i].Path != "" {
+				return true
+			}
+			for _, t := range k.Replacements[i].Targets {
+				if len(t.FieldPaths) == 0 {
+					// Kustomize writes the target's metadata.name when
+					// the target lists no fieldPaths.
+					return true
+				}
+				for _, fp := range t.FieldPaths {
+					if strings.HasPrefix(fp, "metadata") && (fp == "metadata" || strings.Contains(fp, "name")) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph, mode renameMode) (model.ResolvedHelm, bool) {

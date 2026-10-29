@@ -342,6 +342,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			ruleID,
 			identityLine,
 			item.IdentityChain(),
+			vulnerabilityKustomizeIdentity(&item),
 		)
 
 		qItem := q[item.QueryID]

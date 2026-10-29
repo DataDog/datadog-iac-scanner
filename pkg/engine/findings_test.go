@@ -692,3 +692,46 @@ func TestFindingSet_KeepsOneFindingPerRenderRoot(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 }
+
+// Two same-name objects of one file rendered into different namespaces are
+// two findings: a rendered finding is identified by the rendered object, not
+// by the rule's resource name. An object its rule reports unnamed is
+// identified by its group and kind, the file telling two apart.
+func TestFindingSet_KeepsOneFindingPerRenderedObject(t *testing.T) {
+	ctx := context.Background()
+	files := map[string]*model.FileMetadata{}
+	for _, ns := range []string{"a", "b"} {
+		f := &model.FileMetadata{
+			ID: ns, FilePath: "o/cm.yaml", Kind: model.KindYAML, RenderRoot: "o",
+			LinesOriginalData: &[]string{"kind: ConfigMap"},
+			Kustomize: &model.KustomizeAttribution{Kind: "ConfigMap", RenderedName: "app", RenderedNamespace: ns,
+				IdentityName: "app", IdentityNamespace: ns},
+		}
+		f.SetLineInfoLoader(func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
+			return map[string]interface{}{}, nil
+		})
+		files[ns] = f
+	}
+	qCtx := &QueryContext{
+		scanID: "scan",
+		Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q", Metadata: map[string]interface{}{
+			"severity": model.SeverityInfo, "platform": "Kubernetes", "id": "rule-id",
+		}}},
+		Files:         files,
+		FlagEvaluator: featureflags.NewLocalEvaluator(),
+	}
+	build := func(doc, name string) model.Vulnerability {
+		v, err := DefaultVulnerabilityBuilder(ctx, qCtx, &tracker.CITracker{}, map[string]interface{}{
+			"documentId": doc, "searchKey": "metadata.name={{app}}", "resourceType": "ConfigMap", "resourceName": name,
+		}, detector.NewDetectLine(3), false, 0)
+		require.NoError(t, err)
+		return *v
+	}
+	a, b := build("a", "app"), build("b", "app")
+	require.Equal(t, "/ConfigMap|a|app", a.KustomizeResourceID)
+	require.Len(t, decodeAll(newFindingSet(true, nil), []model.Vulnerability{a, b, a}), 2)
+
+	unnamed := build("a", "n/a")
+	require.Equal(t, "/ConfigMap", unnamed.KustomizeResourceID)
+	require.Len(t, decodeAll(newFindingSet(true, nil), []model.Vulnerability{unnamed, build("b", "n/a")}), 1)
+}
