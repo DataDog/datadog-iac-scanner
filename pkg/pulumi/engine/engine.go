@@ -53,6 +53,8 @@ type Options struct {
 	// Placeholder returns the outputs to answer an invoke (data source) with.
 	// When nil or when it returns false, the invoke gets an empty result.
 	Placeholder func(token string) (map[string]any, bool)
+	// OnCapped is called once, when the program goes over MaxResources.
+	OnCapped func()
 }
 
 // LogEntry is one message the program sent to the engine log.
@@ -83,6 +85,8 @@ type Server struct {
 
 	mu   sync.Mutex
 	snap Snapshot
+
+	cappedOnce sync.Once
 }
 
 // Start listens on an ephemeral 127.0.0.1 port and serves the fake engine.

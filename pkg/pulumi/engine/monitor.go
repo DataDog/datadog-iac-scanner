@@ -86,6 +86,9 @@ func (m *monitor) RegisterResource(_ context.Context, r *pulumirpc.RegisterResou
 	if len(m.s.snap.Resources) >= m.s.opts.MaxResources {
 		m.s.snap.Capped = true
 		m.s.mu.Unlock()
+		if m.s.opts.OnCapped != nil {
+			m.s.cappedOnce.Do(m.s.opts.OnCapped)
+		}
 		return nil, status.Errorf(codes.ResourceExhausted,
 			"the scanner's fake Pulumi engine records at most %d resources per stack", m.s.opts.MaxResources)
 	}

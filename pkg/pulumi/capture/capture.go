@@ -161,6 +161,9 @@ const (
 	DetailAfterInvoke      = "after_invoke"
 	DetailDepsIncompatible = "deps_incompatible"
 	DetailEntrypoint       = "entrypoint"
+	// DetailRequiredInput is an SDK check of a required input that got no
+	// value, often because it depends on a value the fake engine left unknown.
+	DetailRequiredInput = "required_input"
 )
 
 // Result is the outcome of the evaluation of one project × stack.
