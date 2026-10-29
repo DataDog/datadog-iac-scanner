@@ -535,11 +535,13 @@ func Test_E2EKustomize(t *testing.T) {
 				want = kustomizeFinding{"overlays/dev/kustomization.yaml", "overlays/dev", 15, false}
 			}
 			require.Equal(t, []kustomizeFinding{want}, got, name)
-			// No regression: every file today's raw scan reports still has a finding.
+			// No regression: every identity and location today's raw scan
+			// reports still has a finding at the same file and line.
 			raw, _ := scanKustomize(t, files, false)
 			for _, r := range raw {
-				require.True(t, slices.ContainsFunc(got, func(f kustomizeFinding) bool { return f.file == r.file }),
-					"%s: raw finding on %s lost", name, r.file)
+				require.True(t, slices.ContainsFunc(got, func(f kustomizeFinding) bool {
+					return f.file == r.file && f.line == r.line
+				}), "%s: raw finding on %s:%d lost", name, r.file, r.line)
 			}
 		}
 	})
@@ -599,6 +601,20 @@ func Test_E2EKustomize(t *testing.T) {
 		}, true, "k8s_scoped")
 		require.Equal(t, []kustomizeFinding{{"raw/deployment.yaml", "", 4, false}}, got)
 	})
+
+	t.Run("a base deployed as-is by an in-repo Argo CD Application becomes a root", func(t *testing.T) {
+		got, _ := scanKustomize(t, map[string]string{
+			"base/kustomization.yaml":         "resources:\n  - deployment.yaml\n",
+			"base/deployment.yaml":            privilegedDeployment,
+			"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\n",
+			"argo/app.yaml":                   "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: a\nspec:\n  source:\n    repoURL: test/url\n    path: base\n",
+		}, true)
+		require.ElementsMatch(t, []kustomizeFinding{
+			{"base/deployment.yaml", "base", 12, false},
+			{"base/deployment.yaml", "overlays/dev", 12, false},
+		}, got)
+	})
+
 	t.Run("a generator-only repository is not scanned for other platforms", func(t *testing.T) {
 		got, raw := scanKustomizePlatform(t, map[string]string{
 			"app/kustomization.yaml": "secretGenerator:\n  - name: only\n    literals:\n      - PASSWORD=generator-only-canary\n",
@@ -646,6 +662,15 @@ func Test_E2EKustomize(t *testing.T) {
 		require.NotEmpty(t, got)
 	})
 
+	t.Run("an Application of another repo does not deploy a base", func(t *testing.T) {
+		got, _ := scanKustomize(t, map[string]string{
+			"base/kustomization.yaml":         "resources:\n  - deployment.yaml\n",
+			"base/deployment.yaml":            privilegedDeployment,
+			"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\n",
+			"argo/app.yaml":                   "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: a\nspec:\n  source:\n    repoURL: https://github.com/other/repo.git\n    path: base\n",
+		}, true)
+		require.Equal(t, []kustomizeFinding{{"base/deployment.yaml", "overlays/dev", 12, false}}, got)
+	})
 }
 
 func indent(s, prefix string) string {

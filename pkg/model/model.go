@@ -1123,8 +1123,11 @@ type AnalyzedPaths struct {
 	// KustomizeRoots are the slash directories holding a kustomization file,
 	// when collected.
 	KustomizeRoots []string
-	TotalFiles     int
-	ContentCache   map[string][]byte
+	// DeployedBaseCandidates are the files mentioning an Argo CD Application
+	// or Flux GitRepository/Kustomization, when KustomizeRoots are collected.
+	DeployedBaseCandidates []string
+	TotalFiles             int
+	ContentCache           map[string][]byte
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file

@@ -761,6 +761,10 @@ type KustomizeSettings struct {
 	// RepoPath confines what renders read and roots the render-root paths.
 	RepoPath     string
 	MaxFileBytes int64
+	// DeployedCandidates are the files mentioning an Argo CD Application or
+	// Flux GitRepository/Kustomization; RepoURL is the scanned repo's URL.
+	DeployedCandidates []string
+	RepoURL            string
 }
 
 // SetKustomize enables Kustomize rendering; it runs before a walk starts.

@@ -197,6 +197,9 @@ type analyzerInfo struct {
 	// scanFiles is the analyzer's walked candidate set (slash paths); scopes
 	// the Docker Compose override guard to bases that are part of this scan.
 	scanFiles map[string]struct{}
+	// deployedBaseCandidates records files mentioning an Argo CD Application
+	// or Flux GitRepository/Kustomization, when collecting kustomize roots.
+	deployedBaseCandidates *sync.Map
 }
 
 // Analyzer keeps all the relevant info for the function Analyze
@@ -518,6 +521,11 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	var filePlatformMap sync.Map
 	var contentCache sync.Map
 	var helmCacheLocal sync.Map
+	var deployedBaseCandidates sync.Map
+	var deployedMap *sync.Map
+	if a.CollectKustomizeRoots {
+		deployedMap = &deployedBaseCandidates
+	}
 
 	// Detect each file's type with a bounded worker pool. File-type detection
 	// reads file content (I/O-bound), so it does not consume the shared CPU
@@ -535,13 +543,14 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			utils.PoolOptions{Workers: a.NumWorkers, MinWorkers: utils.IOMinWorkers, MaxWorkers: utils.IOMaxWorkers},
 			func(ctx context.Context, filePath string, _ int) error {
 				analyzerInfo := &analyzerInfo{
-					typesFlag:       typesFlag,
-					filePath:        filePath,
-					maxFileSize:     a.MaxFileSize,
-					filePlatformMap: &filePlatformMap,
-					contentCache:    &contentCache,
-					helmCache:       &helmCacheLocal,
-					scanFiles:       scanFiles,
+					typesFlag:              typesFlag,
+					filePath:               filePath,
+					maxFileSize:            a.MaxFileSize,
+					filePlatformMap:        &filePlatformMap,
+					contentCache:           &contentCache,
+					helmCache:              &helmCacheLocal,
+					scanFiles:              scanFiles,
+					deployedBaseCandidates: deployedMap,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
 				return nil
@@ -573,6 +582,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	returnAnalyzedPaths.TotalFiles = totalFiles
 	returnAnalyzedPaths.ChartRoots = chartRoots
 	returnAnalyzedPaths.KustomizeRoots = kustomizeRoots
+	returnAnalyzedPaths.DeployedBaseCandidates = collectSyncMapKeys(&deployedBaseCandidates)
 
 	unwantedSet := make(map[string]struct{}, len(unwantedPaths))
 	for _, p := range unwantedPaths {
@@ -595,6 +605,20 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	returnAnalyzedPaths.ContentCache = cacheOut
 
 	return returnAnalyzedPaths, nil
+}
+
+// collectSyncMapKeys returns the sorted keys of a sync.Map.
+func collectSyncMapKeys(m *sync.Map) []string {
+	if m == nil {
+		return nil
+	}
+	var out []string
+	m.Range(func(k, _ interface{}) bool {
+		out = append(out, k.(string))
+		return true
+	})
+	sort.Strings(out)
+	return out
 }
 
 // worker determines the type of the file by ext (dockerfile and terraform)/content and
@@ -625,6 +649,11 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 	}
 	if !ok {
 		return
+	}
+	// The content is already read for classification: a cheap marker scan
+	// records the files the Kustomize planner may decode for deployed bases.
+	if a.deployedBaseCandidates != nil && containsAny(content, deployedBaseMarkers) {
+		a.deployedBaseCandidates.Store(a.filePath, struct{}{})
 	}
 
 	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)
@@ -831,6 +860,12 @@ func isCatalogEntity(content []byte) bool {
 	}
 	return found
 }
+
+// deployedBaseMarkers select the files that may declare a base deployed
+// as-is by an in-repo Argo CD Application or Flux GitRepository/Kustomization.
+// The Flux marker covers both kustomize.toolkit.fluxcd.io (Kustomization)
+// and source.toolkit.fluxcd.io (GitRepository).
+var deployedBaseMarkers = [][]byte{[]byte("argoproj.io/"), []byte("toolkit.fluxcd.io/")}
 
 func containsAny(content []byte, needles [][]byte) bool {
 	for _, needle := range needles {

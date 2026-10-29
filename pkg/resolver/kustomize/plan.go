@@ -27,8 +27,10 @@ type PlannedRoot struct {
 
 // Plan picks the top-level roots among dirs (kustomization directories):
 // those no other one references, that are not components and that are not
-// Helm charts. read returns a file's bytes. Output is sorted by directory.
-func Plan(dirs, chartRoots []string, read func(string) ([]byte, error)) []PlannedRoot {
+// Helm charts. deployed lists directories an in-repo Argo CD or Flux object
+// deploys as-is; they are rendered as roots even when referenced. read
+// returns a file's bytes. Output is sorted by directory.
+func Plan(dirs, chartRoots, deployed []string, read func(string) ([]byte, error)) []PlannedRoot {
 	known := make(map[string]bool, len(dirs))
 	for _, d := range dirs {
 		known[filepath.Clean(d)] = true
@@ -49,9 +51,20 @@ func Plan(dirs, chartRoots []string, read func(string) ([]byte, error)) []Planne
 			}
 		}
 	}
+	forced := make(map[string]bool, len(deployed))
+	for _, d := range deployed {
+		forced[filepath.Clean(d)] = true
+	}
+	return planRoots(kusts, known, referenced, charts, forced)
+}
+
+// planRoots renders a root for every kustomization not referenced, not a
+// chart and not a component — plus the forced (deployed) ones — and walks
+// each closure.
+func planRoots(kusts map[string]*types.Kustomization, known, referenced, charts, forced map[string]bool) []PlannedRoot {
 	var out []PlannedRoot
 	for d, k := range kusts {
-		if referenced[d] || charts[d] || (k != nil && k.Kind == types.ComponentKind) {
+		if (referenced[d] || charts[d] || (k != nil && k.Kind == types.ComponentKind)) && !forced[d] {
 			continue
 		}
 		root := PlannedRoot{Dir: d, Closure: map[string]Affixes{}}
