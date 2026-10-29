@@ -47,6 +47,7 @@ github.com/grpc-ecosystem/*: Copyright 2016 Michal Witkowski. All Rights Reserve
 google.golang.org/genproto/*: Copyright 2015 Google LLC
 google.golang.org/grpc: Copyright 2014 gRPC authors.
 google.golang.org/grpc/*: Copyright 2014 gRPC authors.
+github.com/pulumi/pulumi/sdk/v3/*: Copyright 2016, Pulumi Corporation.
 github.com/skydive-project/go-debouncer: Copyright (C) 2018 Red Hat, Inc.
 github.com/go-errors/errors: Copyright (c) 2015 Conrad Irwin <conrad@bugsnag.com>
 github.com/google/btree: Copyright 2014 Google Inc.
