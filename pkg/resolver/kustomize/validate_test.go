@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"sigs.k8s.io/kustomize/api/krusty"
 	"sigs.k8s.io/kustomize/api/types"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
 func TestIsPlainLocalPath(t *testing.T) {
@@ -38,5 +40,45 @@ func TestKustomizationFieldsClassified(t *testing.T) {
 		if !known[typ.Field(i).Name] {
 			t.Errorf("unclassified kustomization field %s", typ.Field(i).Name)
 		}
+	}
+}
+
+func TestValidatePatchesStrategicMerge(t *testing.T) {
+	for entry, want := range map[string]bool{
+		"{apiVersion: apps/v1, kind: Deployment, metadata: {name: web}, spec: {replicas: 3}}":   true,
+		"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 3\n": true,
+		"patch.yaml":                    true,
+		"../base/patch.yaml":            true,
+		"/etc/passwd":                   false,
+		"https://example.invalid/p.yml": false,
+		"github.com/org/repo/p.yaml":    false,
+	} {
+		k := &types.Kustomization{PatchesStrategicMerge: []types.PatchStrategicMerge{types.PatchStrategicMerge(entry)}} //nolint:staticcheck // legacy field under test
+		if got := validatePaths(k) == nil; got != want {
+			t.Errorf("%q: accepted %v", entry, got)
+		}
+	}
+}
+
+func TestSingleLineInlinePatchRenders(t *testing.T) {
+	fs := filesys.MakeFsInMemory()
+	k := "resources: [deploy.yaml]\npatchesStrategicMerge:\n- '{apiVersion: apps/v1, kind: Deployment, metadata: {name: web}, spec: {replicas: 3}}'\n"
+	if err := fs.WriteFile("/app/kustomization.yaml", []byte(k)); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.WriteFile("/app/deploy.yaml", []byte("apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 1\n")); err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeKustomization([]byte(k))
+	if err != nil || validateKustomization(decoded) != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	m, err := krusty.MakeKustomizer(krusty.MakeDefaultOptions()).Run(fs, "/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := m.AsYaml()
+	if err != nil || !strings.Contains(string(out), "replicas: 3") {
+		t.Fatalf("patch not applied: %v\n%s", err, out)
 	}
 }

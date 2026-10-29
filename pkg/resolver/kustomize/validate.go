@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"sigs.k8s.io/kustomize/api/provider"
 	"sigs.k8s.io/kustomize/api/types"
 )
 
@@ -57,8 +58,7 @@ func validatePaths(k *types.Kustomization) error {
 	paths = append(paths, k.Crds...)
 	paths = append(paths, k.Configurations...)
 	for _, p := range k.PatchesStrategicMerge { //nolint:staticcheck // legacy kustomizations still declare patchesStrategicMerge
-		// A multi-line entry is an inline patch, never loaded as a path.
-		if !strings.Contains(string(p), "\n") {
+		if !IsInlinePatch(string(p)) {
 			paths = append(paths, string(p))
 		}
 	}
@@ -83,6 +83,16 @@ func validatePaths(k *types.Kustomization) error {
 		}
 	}
 	return nil
+}
+
+var resourceFactory = provider.NewDefaultDepProvider().GetResourceFactory()
+
+// IsInlinePatch reports whether Kustomize treats a patchesStrategicMerge entry
+// as patch content: like PatchStrategicMergeTransformer, it first decodes the
+// entry as resources and only loads it as a path when that fails.
+func IsInlinePatch(entry string) bool {
+	_, err := resourceFactory.SliceFromBytes([]byte(entry))
+	return err == nil
 }
 
 func appendGeneratorPaths(paths []string, g *types.GeneratorArgs) []string {
