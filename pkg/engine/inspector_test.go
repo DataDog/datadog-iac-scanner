@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
@@ -709,6 +710,85 @@ func TestGetVulnerabilitiesFromQuery_SuppressionPaths(t *testing.T) {
 			require.Equal(t, tc.expectSuppressed, got.IsSuppressed)
 			require.Equal(t, tc.expectSuppressionKind, got.SuppressionKind)
 			require.Equal(t, tc.expectJustification, got.SuppressionJustification)
+		})
+	}
+}
+
+// A Kustomize finding reported on a patch answers to the patch's directives,
+// ignore comments and rule path filters; the base manifest's directives do
+// not suppress it, and a patch's directives do not reach the base.
+func TestGetVulnerabilitiesFromQuery_KustomizeWriterFile(t *testing.T) {
+	const (
+		fileID  = "file-1"
+		queryID = "k8s-rule"
+		base    = "base/deployment.yaml"
+		patch   = "overlays/dev/p.yaml"
+	)
+	cases := []struct {
+		name             string
+		reportedOn       string
+		baseCommands     model.CommentsCommands
+		patchCommands    model.CommentsCommands
+		ignorePaths      []string
+		onlyPaths        []string
+		patchIgnoreLine  bool
+		expectDropped    bool
+		expectSuppressed bool
+	}{
+		{name: "base disable leaves a patch finding", reportedOn: patch,
+			baseCommands: model.CommentsCommands{"disable": queryID}},
+		{name: "patch disable suppresses a patch finding", reportedOn: patch,
+			patchCommands: model.CommentsCommands{"disable": queryID}, expectSuppressed: true},
+		{name: "patch disable leaves a base finding", reportedOn: base,
+			patchCommands: model.CommentsCommands{"disable": queryID}},
+		{name: "patch ignore line suppresses a patch finding", reportedOn: patch, patchIgnoreLine: true,
+			expectSuppressed: true},
+		{name: "patch ignore line leaves a base finding", reportedOn: base, patchIgnoreLine: true},
+		{name: "ignore-paths on the patch drops a patch finding", reportedOn: patch,
+			ignorePaths: []string{"overlays/**"}, expectDropped: true},
+		{name: "ignore-paths on the patch leaves a base finding", reportedOn: base,
+			ignorePaths: []string{"overlays/**"}},
+		{name: "only-paths on the patch keeps a patch finding", reportedOn: patch,
+			onlyPaths: []string{"overlays/**"}},
+		{name: "only-paths on the patch drops a base finding", reportedOn: base,
+			onlyPaths: []string{"overlays/**"}, expectDropped: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var ignoreLines map[string][]int
+			if tc.patchIgnoreLine {
+				ignoreLines = map[string][]int{patch: {3}}
+			}
+			file := &model.FileMetadata{
+				ID: fileID, FilePath: base, Commands: tc.baseCommands,
+				Kustomize: &model.KustomizeAttribution{
+					Commands:    map[string]model.CommentsCommands{patch: tc.patchCommands},
+					IgnoreLines: ignoreLines,
+				},
+			}
+			ins := newTestInspector(t, inspectorOpts{
+				vb: func(_ context.Context, _ *QueryContext, _ Tracker, _ interface{},
+					_ *detector.DetectLine, _ bool, _ time.Duration) (*model.Vulnerability, error) {
+					return &model.Vulnerability{FileID: fileID, QueryID: queryID, QueryName: "rule",
+						FileName: tc.reportedOn, Line: 3}, nil
+				},
+			})
+			if tc.ignorePaths != nil || tc.onlyPaths != nil {
+				ins.ruleConfigs = map[string]config.IacRuleConfig{
+					queryID: {IgnorePaths: tc.ignorePaths, OnlyPaths: tc.onlyPaths}}
+			}
+			queryCtx := &QueryContext{
+				Ctx:   context.Background(),
+				Files: map[string]*model.FileMetadata{fileID: file},
+				Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q"}},
+			}
+			got, _ := getVulnerabilitiesFromQuery(context.Background(), queryCtx, ins, nil, 0)
+			if tc.expectDropped {
+				require.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got)
+			require.Equal(t, tc.expectSuppressed, got.IsSuppressed)
 		})
 	}
 }

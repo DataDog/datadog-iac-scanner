@@ -792,6 +792,8 @@ type KustomizeAttribution struct {
 	// Writers are the patches and transformers that may have set a field of
 	// the resource, the last one Kustomize applies first.
 	Writers []KustomizeWriter
+	// IgnoreLines are the suppressed lines of each writer file.
+	IgnoreLines map[string][]int
 	// Commands are the scanner directives of each writer file.
 	Commands map[string]CommentsCommands
 	// APIVersion, Labels and Annotations snapshot the rendered resource for

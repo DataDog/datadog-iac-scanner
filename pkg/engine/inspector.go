@@ -1635,7 +1635,9 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 }
 
 // dropByRuleConfig applies the rule config of the finding's rule; it reports
-// whether the finding must be dropped by the rule's path filters.
+// whether the finding must be dropped by the rule's path filters. A Kustomize
+// finding reported on a patch or kustomization file answers to that file's
+// path filters too.
 func (c *Inspector) dropByRuleConfig(contextLogger *zerolog.Logger, vulnerability *model.Vulnerability,
 	file *model.FileMetadata) bool {
 	rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID)
@@ -1646,7 +1648,11 @@ func (c *Inspector) dropByRuleConfig(contextLogger *zerolog.Logger, vulnerabilit
 		vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 	}
 	reportedPath := file.Reported.PathOr(file.FilePath)
-	if c.rulePathsExcluded(file.KnownPaths(), rc.IgnorePaths, rc.OnlyPaths) {
+	paths := file.KnownPaths()
+	if k := file.Kustomize; k != nil && vulnerability.FileName != "" && vulnerability.FileName != file.FilePath {
+		paths = append(paths, vulnerability.FileName)
+	}
+	if c.rulePathsExcluded(paths, rc.IgnorePaths, rc.OnlyPaths) {
 		contextLogger.Debug().Msgf("Dropping finding in %s for rule %s (rule path filter)",
 			reportedPath, vulnerability.QueryID)
 		return true
@@ -1657,13 +1663,22 @@ func (c *Inspector) dropByRuleConfig(contextLogger *zerolog.Logger, vulnerabilit
 // applySuppressions marks a finding suppressed by an in-file disable command
 // or ignore comment on the line the finding is reported on.
 func applySuppressions(contextLogger *zerolog.Logger, file *model.FileMetadata, vulnerability *model.Vulnerability) {
-	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
+	commands := file.Commands
+	ignoreLines := file.LinesIgnore
+	// A Kustomize finding may be reported on a patch or kustomization file:
+	// its directives and ignore comments govern, not the base manifest's.
+	if k := file.Kustomize; k != nil && vulnerability.FileName != "" && vulnerability.FileName != file.FilePath {
+		if cmds, ok := k.Commands[vulnerability.FileName]; ok {
+			commands = cmds
+		}
+		ignoreLines = k.IgnoreLines[vulnerability.FileName]
+	}
+	if ShouldSkipVulnerability(commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
 		contextLogger.Debug().Msgf("Suppressing vulnerability in file %s for query '%s':%s",
-			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)
+			vulnerability.FileName, vulnerability.QueryName, vulnerability.QueryID)
 		markSuppressed(vulnerability, model.SuppressionJustificationDisableInFile)
 	}
-
-	if checkComment(vulnerability.Line, file.LinesIgnore) {
+	if checkComment(vulnerability.Line, ignoreLines) {
 		contextLogger.Debug().
 			Msgf("Suppressing result by Comment at line %d", vulnerability.Line)
 		markSuppressed(vulnerability, model.SuppressionJustificationIgnoreComment)
