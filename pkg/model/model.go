@@ -855,6 +855,10 @@ type KustomizeWriter struct {
 	// replicas entry's name.
 	Line int
 	Name string
+	// Targeted reports that the patch entry carried an explicit target
+	// selector, which already selected the resource when the writer was
+	// recorded; the patch document's own name may differ.
+	Targeted bool
 }
 
 // KustomizeGenerator names the generator entry that produced an object.

@@ -409,7 +409,7 @@ func entryKeys(item *yaml.Node) []string {
 // one of the kustomization's patch fields, when its target matches.
 func (r *Renderer) patchWriter(n *kustNode, node *yaml.Node, field string, index int,
 	path, patch string, target *types.Selector, a *model.KustomizeAttribution) (model.KustomizeWriter, bool) {
-	w := model.KustomizeWriter{File: n.file}
+	w := model.KustomizeWriter{File: n.file, Targeted: target != nil}
 	if path != "" {
 		w.File = filepath.Join(filepath.Dir(n.file), filepath.FromSlash(path))
 		b, _ := r.Source(w.File)
