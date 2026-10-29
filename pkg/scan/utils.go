@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	consoleHelpers "github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
@@ -78,6 +79,13 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		return provider.ExtractedPath{}, nil, errAnalyze
 	}
 
+	// A repository whose Kubernetes objects exist only rendered (generators,
+	// overlays without manifests) discovers no Kubernetes platform of its
+	// own: prepare the Kubernetes parsers anyway when Kubernetes is scanned
+	// and Kustomize roots were found, so the rendered documents are scanned.
+	if c.collectKustomize() && len(pathTypes.KustomizeRoots) > 0 && !slices.Contains(pathTypes.Types, "kubernetes") {
+		pathTypes.Types = append(pathTypes.Types, "kubernetes")
+	}
 	if len(pathTypes.Types) == 0 {
 		return provider.ExtractedPath{}, nil, nil
 	}
