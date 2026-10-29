@@ -101,6 +101,10 @@ type Service struct {
 	// already stored (see firstHelmRender).
 	storedHelmMu sync.Mutex
 	storedHelm   map[string]struct{}
+	// kustomizeSources and kustomizeTracked are shared by the roots of a scan,
+	// which are stored one after the other (see renderKustomizeRoots).
+	kustomizeSources map[string]*resolvedSourceData
+	kustomizeTracked map[string]struct{}
 	// contentInterner dedups OriginalData strings across files with identical
 	// content (47%+ on community-operators); guarded by contentInternerMu.
 	contentInternerMu sync.Mutex
