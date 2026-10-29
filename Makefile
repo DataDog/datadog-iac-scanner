@@ -63,6 +63,11 @@ generate: mod-tidy ## go generate
 	$(call print-target)
 	@go generate ./...
 
+.PHONY: generate-pulumi-placeholders
+generate-pulumi-placeholders: ## regenerate the Pulumi invoke placeholder table, downloads the pinned provider schemas
+	$(call print-target)
+	@go run ./pkg/pulumi/placeholders/gen -out-dir pkg/pulumi/placeholders
+
 .PHONY: generate-antlr
 generate-antlr: ## generate parser with ANTLRv4, needs JRE (Java Runtime Environment) on the system
 	@cd pkg/parser/jsonfilter/ && java -jar $(LIB)/antlr-4.13.1-complete.jar -Dlanguage=Go -visitor -no-listener -o parser JSONFilter.g4
