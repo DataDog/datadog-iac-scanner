@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
@@ -247,7 +248,8 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 
 type kustomizeFinding struct{ file, root string }
 
-// scanKustomize scans files written to a temporary tree and returns the
+// scanKustomize scans files written to a temporary tree (a value starting with
+// "symlink:" is written as a symlink to the rest of it) and returns the
 // privileged-container findings and the raw SARIF.
 func scanKustomize(t *testing.T, files map[string]string, enable bool, rules ...string) ([]kustomizeFinding, string) {
 	t.Helper()
@@ -258,6 +260,13 @@ func scanKustomize(t *testing.T, files map[string]string, enable bool, rules ...
 	for p, c := range files {
 		full := filepath.Join(dir, filepath.FromSlash(p))
 		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		// A "symlink:" value makes the file a symlink to the rest of it.
+		if target, ok := strings.CutPrefix(c, "symlink:"); ok {
+			if err := os.Symlink(filepath.FromSlash(target), full); err != nil {
+				t.Skipf("symlinks unsupported: %v", err)
+			}
+			continue
+		}
 		require.NoError(t, os.WriteFile(full, []byte(c), 0o600))
 	}
 	params, ctx := scan.GetDefaultParameters(context.Background(), "")
