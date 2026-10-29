@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"log"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -105,33 +103,6 @@ func chartKubeVersionConstraint(ch *chart.Chart) string {
 	return ch.Metadata.KubeVersion
 }
 
-var (
-	stdLogMu      sync.Mutex
-	stdLogSilence int
-	stdLogOutput  io.Writer
-)
-
-// silenceStdLog discards the standard logger, which Helm writes render noise
-// to, until the returned func runs. Charts render concurrently, so the logger
-// is restored only when the last render ends, to the output it had before.
-func silenceStdLog() func() {
-	stdLogMu.Lock()
-	defer stdLogMu.Unlock()
-	if stdLogSilence == 0 {
-		stdLogOutput = log.Writer()
-		log.SetOutput(io.Discard)
-	}
-	stdLogSilence++
-	return func() {
-		stdLogMu.Lock()
-		defer stdLogMu.Unlock()
-		stdLogSilence--
-		if stdLogSilence == 0 {
-			log.SetOutput(stdLogOutput)
-		}
-	}
-}
-
 // runInstall renders the chart at chartPath. With attach false no dependency
 // is attached from outside charts/. The locator is returned with a render
 // error too, which says whether any was.
@@ -140,7 +111,7 @@ func silenceStdLog() func() {
 func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chartIndex, attach bool, client *action.Install,
 	valueOpts *values.Options, marks *invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, *fileLocator, error) {
 	contextLogger := logger.FromContext(ctx)
-	defer silenceStdLog()()
+	defer logger.SilenceStdLog()()
 
 	contextLogger.Debug().Msgf("Starting helm install process for chart path: %s", chartPath)
 
