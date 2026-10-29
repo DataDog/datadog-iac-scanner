@@ -16,6 +16,7 @@ import (
 const (
 	dockerfilePlatform = "Dockerfile"
 	terraformPlatform  = "Terraform"
+	kubernetesPlatform = "Kubernetes"
 )
 
 // GetDatadogFingerprintHash is the single source of truth for a finding's
@@ -33,10 +34,10 @@ func GetDatadogFingerprintHash(
 func FindingIdentity(v *Vulnerability) string {
 	fileName, line, ruleID := fingerprintFields(v)
 	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID); ok {
-		return id.WithChain(v.ModuleCallChain)
+		return id.WithChain(v.IdentityChain())
 	}
 	// SCIInfo is constant within a scan; an empty value yields the same grouping.
-	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.ModuleCallChain)
+	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.IdentityChain())
 }
 
 // ChainedIdentity is the FindingIdentity of a finding whose identity does not
@@ -66,7 +67,7 @@ func chainedIdentity(fileName, platform, resourceType, resourceName, ruleID stri
 	}
 	return ChainedIdentity{
 		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", ""),
-		chained: platform == terraformPlatform,
+		chained: platform == terraformPlatform || strings.EqualFold(platform, kubernetesPlatform),
 	}, true
 }
 
@@ -104,11 +105,12 @@ func fingerprintInput(
 ) string {
 	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleID}
 
-	switch platform {
-	case dockerfilePlatform:
+	switch {
+	case platform == dockerfilePlatform:
 		segments = append(segments, vulnLine)
-	case terraformPlatform:
-		// Same resource reached through different module call paths is a distinct finding.
+	case platform == terraformPlatform, strings.EqualFold(platform, kubernetesPlatform):
+		// Same resource reached through different module call paths, or
+		// rendered by different kustomizations, is a distinct finding.
 		if moduleCallChain != "" {
 			segments = append(segments, moduleCallChain)
 		}
@@ -120,4 +122,21 @@ func fingerprintInput(
 func stringToHash(str string) string {
 	hash := sha256.Sum256([]byte(str))
 	return hex.EncodeToString(hash[:])
+}
+
+// IdentityChain is the chain folded into v's identity: its module call chain
+// for Terraform, its render root for a rendered Kubernetes document.
+func (v *Vulnerability) IdentityChain() string {
+	if v.ModuleCallChain != "" {
+		return v.ModuleCallChain
+	}
+	return v.RenderRoot
+}
+
+// IdentityChain is FileMetadata's counterpart of Vulnerability.IdentityChain.
+func (f *FileMetadata) IdentityChain() string {
+	if f.ModuleCallChain != "" {
+		return f.ModuleCallChain
+	}
+	return f.RenderRoot
 }

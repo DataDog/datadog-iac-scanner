@@ -100,6 +100,35 @@ func TestPrintSimpleJSONReport(t *testing.T) {
 		require.Equal(t, "Terraform", findings[0].Platform)
 	})
 
+	t.Run("render root passed through and omitted when empty", func(t *testing.T) {
+		summary := model.Summary{
+			Queries: []model.QueryResult{
+				{
+					QueryID:   "kustomize-query",
+					QueryName: "Test Query",
+					Severity:  model.SeverityHigh,
+					Platform:  "Kubernetes",
+					Files: []model.VulnerableFile{
+						{FileName: "base/deployment.yaml", Line: 1, RenderRoot: "overlays/dev"},
+						{FileName: "raw.yaml", Line: 2},
+					},
+				},
+			},
+		}
+		dir := t.TempDir()
+		require.NoError(t, PrintSimpleJSONReport(ctx, dir, "output", summary, &model.SCIInfo{}))
+
+		raw, err := os.ReadFile(filepath.Join(dir, "output.simple.json"))
+		require.NoError(t, err)
+		// The raw finding's entry carries no render_root key at all.
+		require.Contains(t, string(raw), "\"render_root\":\"overlays/dev\"")
+		require.NotContains(t, string(raw), "\"fileName\":\"raw.yaml\",\"fingerPrint\":\"\",\"render_root\"")
+		findings := readFindings(t, dir, "output.simple.json")
+		require.Len(t, findings, 2)
+		require.Equal(t, "overlays/dev", findings[0].RenderRoot)
+		require.Empty(t, findings[1].RenderRoot)
+	})
+
 	t.Run("empty body produces empty array", func(t *testing.T) {
 		dir := t.TempDir()
 		require.NoError(t, PrintSimpleJSONReport(ctx, dir, "output", "", &model.SCIInfo{}))
