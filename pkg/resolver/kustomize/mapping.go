@@ -57,8 +57,8 @@ type mappingKey struct {
 // rejectCollisions turns into mapping failures the documents attributed to a
 // source document or generator entry another document of the same rendered
 // namespace is attributed to.
-// ponytail: also rejects one source included twice into a namespace through
-// two chains; per-chain origins would tell them apart.
+// This also rejects one source included twice into a namespace through two
+// chains, since the key does not record the chain a document came through.
 func rejectCollisions(res *Result) {
 	groups := map[mappingKey][]int{}
 	for i := range res.Documents {
