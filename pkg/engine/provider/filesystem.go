@@ -43,6 +43,7 @@ type FileSystemSourceProvider struct {
 	chartRoots    []string
 	contentCache  map[string][]byte
 	unfiltered    map[string]struct{}
+	kustomize     *KustomizeSettings
 }
 
 var (
@@ -752,3 +753,21 @@ func containsFile(fileList []os.FileInfo, target os.FileInfo) bool {
 	}
 	return false
 }
+
+// KustomizeSettings enables Kustomize rendering for a disk scan.
+type KustomizeSettings struct {
+	// Roots are the directories holding a kustomization file.
+	Roots []string
+	// RepoPath confines what renders read and roots the render-root paths.
+	RepoPath     string
+	MaxFileBytes int64
+}
+
+// SetKustomize enables Kustomize rendering; it runs before a walk starts.
+func (s *FileSystemSourceProvider) SetKustomize(k *KustomizeSettings) { s.kustomize = k }
+
+// Kustomize returns the Kustomize settings, nil when rendering is off.
+func (s *FileSystemSourceProvider) Kustomize() *KustomizeSettings { return s.kustomize }
+
+// ChartRoots returns the Helm chart roots of the prebuilt walk.
+func (s *FileSystemSourceProvider) ChartRoots() []string { return s.chartRoots }

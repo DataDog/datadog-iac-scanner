@@ -63,6 +63,8 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		ExcludeGitIgnore:  c.ScanParams.ExcludeGitIgnore,
 		MaxFileSize:       c.ScanParams.MaxFileSizeFlag,
 		NumWorkers:        c.ScanParams.ParallelScanFlag,
+		// Payload export would write rendered content to disk.
+		CollectKustomizeRoots: c.collectKustomize(),
 	}
 
 	var pathTypes model.AnalyzedPaths
@@ -92,6 +94,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	c.ScanParams.Config.IgnorePaths = pathTypes.Exc
 	c.walkInventory = pathTypes.Inventory
 	c.chartRoots = pathTypes.ChartRoots
+	c.kustomizeRoots = pathTypes.KustomizeRoots
 	c.chartFilter = chartFilter
 	c.contentCache = pathTypes.ContentCache
 

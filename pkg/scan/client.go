@@ -87,8 +87,10 @@ type Parameters struct {
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
 	ShouldScanTfPlans           bool
-	UseRulesCache               bool
-	TerraformModules            TerraformModulesSetting
+	// EnableKustomize renders kustomizations on disk scans.
+	EnableKustomize  bool
+	UseRulesCache    bool
+	TerraformModules TerraformModulesSetting
 	// NetworkIsolation disables outbound module fetchers so scans stay offline.
 	NetworkIsolation           bool
 	RemoteModulesManifestPath  string
@@ -134,6 +136,8 @@ type Client struct {
 	inMemoryPaths []string
 	walkInventory []string
 	chartRoots    []string
+	// kustomizeRoots are the kustomization directories the analyzer found.
+	kustomizeRoots []string
 	// chartFilter holds the user's own path filters. The analyzer's exclusions
 	// also list raw templates it does not classify and gitignored files, whose
 	// rendered documents are still scanned.
@@ -253,6 +257,16 @@ func NewClient(ctx context.Context, params *Parameters, customPrint *consolePrin
 func (c *Client) Scan(ctx context.Context) (*Results, error) {
 	c.ScanStartTime = time.Now()
 	return c.executeScan(ctx)
+}
+
+// collectKustomize reports whether Kustomize roots should be collected:
+// rendering is enabled and payload export (which would write rendered
+// content to disk) is off.
+func (c *Client) collectKustomize() bool {
+	if !c.ScanParams.EnableKustomize || c.ScanParams.PayloadPath != "" {
+		return false
+	}
+	return true
 }
 
 // PerformScan executes executeScan and postScan

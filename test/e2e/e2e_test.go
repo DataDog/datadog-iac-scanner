@@ -2,7 +2,10 @@ package test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
@@ -239,5 +242,119 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 		// The CloudFormation JSON file is filtered out by the analyzer because
 		// it's a JSON file but not a Terraform plan
 		require.Equal(t, 1, metadata.Stats.Files, "Should scan exactly 1 file (tfplan.json), CloudFormation JSON excluded")
+	})
+}
+
+type kustomizeFinding struct{ file, root string }
+
+// scanKustomize scans files written to a temporary tree and returns the
+// privileged-container findings and the raw SARIF.
+func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustomizeFinding, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	for p, c := range files {
+		full := filepath.Join(dir, filepath.FromSlash(p))
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		require.NoError(t, os.WriteFile(full, []byte(c), 0o600))
+	}
+	params, ctx := scan.GetDefaultParameters(context.Background(), "")
+	params.Path = []string{dir}
+	params.RepoPath = dir
+	params.OutputPath = t.TempDir()
+	params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "k8s"))}
+	params.ChangedDefaultQueryPath = true
+	params.EnableKustomize = enable
+	params.SCIInfo = model.SCIInfo{RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url"}}
+	params.FlagEvaluator = featureflags.NewLocalEvaluator()
+	_, err := console.ExecuteScan(ctx, params)
+	require.NoError(t, err)
+	raw, err := os.ReadFile(filepath.Join(params.OutputPath, "kics-result.sarif"))
+	require.NoError(t, err)
+	var sarif struct {
+		Runs []struct {
+			Results []struct {
+				Locations []struct {
+					PhysicalLocation struct {
+						ArtifactLocation struct{ URI string } `json:"artifactLocation"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+				Properties struct {
+					Kustomize struct {
+						RenderRoot string `json:"render_root"`
+					} `json:"kustomize"`
+				} `json:"properties"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &sarif))
+	var out []kustomizeFinding
+	for _, r := range sarif.Runs[0].Results {
+		out = append(out, kustomizeFinding{r.Locations[0].PhysicalLocation.ArtifactLocation.URI, r.Properties.Kustomize.RenderRoot})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].file+out[i].root < out[j].file+out[j].root })
+	return out, string(raw)
+}
+
+const privilegedDeployment = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      containers:
+        - name: web
+          image: nginx
+          securityContext:
+            privileged: true
+`
+
+func Test_E2EKustomize(t *testing.T) {
+	tree := func(extra map[string]string) map[string]string {
+		files := map[string]string{
+			"base/kustomization.yaml":         "resources:\n  - deployment.yaml\n",
+			"base/deployment.yaml":            privilegedDeployment,
+			"overlays/dev/kustomization.yaml": "namePrefix: dev-\nnamespace: dev\nresources:\n  - ../../base\n",
+			"overlays/prod/kustomization.yaml": "namespace: prod\nresources:\n  - ../../base\n" +
+				"secretGenerator:\n  - name: creds\n    literals:\n      - PASSWORD=canary-e2e-literal\n",
+		}
+		for k, v := range extra {
+			files[k] = v
+		}
+		return files
+	}
+
+	t.Run("one finding per overlay on the base line", func(t *testing.T) {
+		got, raw := scanKustomize(t, tree(nil), true)
+		require.Equal(t, []kustomizeFinding{
+			{"base/deployment.yaml", "overlays/dev"}, {"base/deployment.yaml", "overlays/prod"},
+		}, got)
+		require.NotContains(t, raw, "canary-e2e-literal")
+		require.NotContains(t, raw, "Y2FuYXJ5LWUyZS1saXRlcmFs") // base64 of the canary
+	})
+
+	t.Run("a patch fixing prod leaves dev", func(t *testing.T) {
+		got, _ := scanKustomize(t, tree(map[string]string{
+			"overlays/prod/kustomization.yaml": "resources:\n  - ../../base\npatches:\n  - path: fix.yaml\n",
+			"overlays/prod/fix.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n" +
+				"    spec:\n      containers:\n        - name: web\n          securityContext:\n            privileged: false\n",
+		}), true)
+		require.Equal(t, []kustomizeFinding{{"base/deployment.yaml", "overlays/dev"}}, got)
+	})
+
+	t.Run("a remote base falls back to the raw scan", func(t *testing.T) {
+		got, _ := scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "resources:\n  - deployment.yaml\n  - https://example.invalid/base.yaml\n",
+			"app/deployment.yaml":    privilegedDeployment,
+		}, true)
+		require.Equal(t, []kustomizeFinding{{"app/deployment.yaml", ""}}, got)
+	})
+
+	t.Run("flag off scans files as written", func(t *testing.T) {
+		got, _ := scanKustomize(t, tree(nil), false)
+		require.Equal(t, []kustomizeFinding{{"base/deployment.yaml", ""}}, got)
 	})
 }
