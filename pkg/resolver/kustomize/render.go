@@ -47,6 +47,8 @@ type Result struct {
 	// RunNs is the time krusty spent building the ResMap; MapNs the time
 	// mapping and attribution took afterwards.
 	RunNs, MapNs time.Duration
+	// graphSteps counts the steps the load graph walks took.
+	graphSteps int
 }
 
 // Renderer renders the kustomizations of one scan. Its methods are safe for

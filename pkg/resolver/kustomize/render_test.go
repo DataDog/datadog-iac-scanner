@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -791,6 +792,99 @@ func TestRenderSerializationFailureFailsRoot(t *testing.T) {
 	// Not a timeout: the next root still renders.
 	if _, err := r.Render(context.Background(), filepath.Join(dir, "b")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRenderLoadGraphUnprovenStaysLocal keeps a proven paths count when an
+// unrelated kustomization is unproven: the root's own generator maps under its
+// prefix though a child kustomization is linked from another directory, whose
+// resources do not.
+func TestRenderLoadGraphUnprovenStaysLocal(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "namePrefix: dev-\nresources:\n  - ../c\n" +
+			"configMapGenerator:\n  - name: gen\n    literals:\n      - A=b\n",
+		"real/kustomization.yaml": "resources:\n  - svc.yaml\n",
+		"c/svc.yaml":              "apiVersion: v1\nkind: Service\nmetadata:\n  name: app\n",
+	})
+	if err := os.Symlink(filepath.Join("..", "real", "kustomization.yaml"), filepath.Join(dir, "c", "kustomization.yaml")); err != nil {
+		t.Skip(err)
+	}
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, d := range res.Documents {
+		got[d.Kustomize.Kind] = d.SourceDocumentIndex >= 0 || d.Kustomize.Generator != nil && d.Kustomize.Generator.Name == "gen"
+	}
+	if len(got) != 2 || !got["ConfigMap"] || got["Service"] || res.MappingFailures != 1 {
+		t.Fatalf("mapped %v, %d failures", got, res.MappingFailures)
+	}
+}
+
+// TestRenderLoadGraphBoundedUnproven bounds the walk, every step counted, when
+// an unproven branch comes first and many generator-only branches follow: the
+// generators' paths counts are not a root walk each. The root reaches the
+// unproven branch past none of them, so, as before, none maps.
+func TestRenderLoadGraphBoundedUnproven(t *testing.T) {
+	const gens = 300
+	files := map[string]string{
+		"u/kustomization.yaml":    "resources:\n  - ../w\n",
+		"real/kustomization.yaml": "resources:\n  - svc.yaml\n",
+		"w/svc.yaml":              "apiVersion: v1\nkind: Service\nmetadata:\n  name: app\n",
+	}
+	var root strings.Builder
+	root.WriteString("namePrefix: p-\nresources:\n  - ../u\n")
+	for i := range gens {
+		fmt.Fprintf(&root, "  - ../g%d\n", i)
+		files[fmt.Sprintf("g%d/kustomization.yaml", i)] = fmt.Sprintf("configMapGenerator:\n  - name: cm%d\n    literals:\n      - A=b\n", i)
+	}
+	files["o/kustomization.yaml"] = root.String()
+	dir := writeTree(t, files)
+	if err := os.Symlink(filepath.Join("..", "real", "kustomization.yaml"), filepath.Join(dir, "w", "kustomization.yaml")); err != nil {
+		t.Skip(err)
+	}
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Documents) != gens+1 || res.MappingFailures != gens+1 {
+		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
+	}
+	entries, nodes := 2+gens, 3+gens
+	if limit := 4 * (entries*(1+len(KustomizationFileNames)) + nodes); res.graphSteps > limit {
+		t.Fatalf("load graph walks took %d steps, want at most %d", res.graphSteps, limit)
+	}
+}
+
+// TestRenderLoadGraphBounded walks the load graph once per root: the steps
+// are bounded by the graph's entries, not by resources times the graph.
+func TestRenderLoadGraphBounded(t *testing.T) {
+	const bases, docs = 40, 50
+	files := map[string]string{}
+	var root strings.Builder
+	root.WriteString("namePrefix: p-\nresources:\n")
+	for b := range bases {
+		fmt.Fprintf(&root, "  - ../b%d\n", b)
+		var k strings.Builder
+		k.WriteString("resources:\n")
+		for d := range docs {
+			fmt.Fprintf(&k, "  - d%d.yaml\n", d)
+			files[fmt.Sprintf("b%d/d%d.yaml", b, d)] = fmt.Sprintf("apiVersion: v1\nkind: Service\nmetadata:\n  name: s%d-%d\n", b, d)
+		}
+		files[fmt.Sprintf("b%d/kustomization.yaml", b)] = k.String()
+	}
+	files["o/kustomization.yaml"] = root.String()
+	res, err := render(t, writeTree(t, files), "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := bases + bases*docs
+	if len(res.Documents) != bases*docs || res.MappingFailures != 0 {
+		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
+	}
+	if limit := entries * (1 + len(KustomizationFileNames)); res.graphSteps == 0 || res.graphSteps > limit {
+		t.Fatalf("load graph walk took %d steps, want at most %d", res.graphSteps, limit)
 	}
 }
 

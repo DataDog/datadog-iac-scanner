@@ -41,11 +41,14 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 		return &RenderError{Reason: ReasonTimeout}
 	}
 	mode := r.renameMode(res.Reads)
+	g := r.loadGraph(res.Root, rootKust)
+	// Counted once mapping is done, every walk the graph took included.
+	defer func() { res.graphSteps += g.steps }()
 	for _, rs := range m.Resources() {
 		if expired() {
 			return &RenderError{Reason: ReasonTimeout}
 		}
-		doc, ok := r.mapResource(res, rs, rootKust, mode)
+		doc, ok := r.mapResource(res, rs, g, mode)
 		if !ok {
 			return &RenderError{Reason: ReasonRenderError}
 		}
@@ -208,7 +211,8 @@ func renames(k *types.Kustomization, also map[string]bool) bool {
 	return slices.ContainsFunc(k.Labels, func(l types.Label) bool { return len(l.FieldSpecs) > 0 })
 }
 
-func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust string, mode renameMode) (model.ResolvedHelm, bool) {
+func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph, mode renameMode) (model.ResolvedHelm, bool) {
+	rootKust := g.rootKust
 	origin, _ := rs.GetOrigin()
 	ann := rs.GetAnnotations()
 	delete(ann, originAnnotation)
@@ -235,7 +239,7 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust stri
 		doc.FileName = r.canonical(filepath.Join(res.Root, filepath.FromSlash(origin.ConfiguredIn)))
 		// Built-in generators record only their kind in the origin: the
 		// namespace comes from the matched entry.
-		entry := r.matchGenerator(attr, rootKust, doc.FileName, origin.ConfiguredBy.Kind, mode)
+		entry := r.matchGenerator(attr, g, doc.FileName, origin.ConfiguredBy.Kind, mode)
 		if entry == nil {
 			res.MappingFailures++
 			entry = &types.GeneratorArgs{}
@@ -244,7 +248,7 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust stri
 		attr.SourceName, attr.SourceNamespace = entry.Name, entry.Namespace
 	case origin != nil && origin.Path != "" && origin.Repo == "":
 		doc.FileName = r.canonical(filepath.Join(res.Root, filepath.FromSlash(origin.Path)))
-		idx, src := r.matchDocument(attr, rootKust, doc.FileName, mode)
+		idx, src := r.matchDocument(attr, g, doc.FileName, mode)
 		doc.SourceDocumentIndex = idx
 		if idx >= 0 {
 			attr.SourceName, attr.SourceNamespace = src.name, src.namespace
@@ -256,14 +260,15 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust stri
 	if doc.SourceDocumentIndex < 0 && attr.Generator == nil && doc.FileName != rootKust {
 		res.MappingFailures++
 	}
-	r.chain(attr, rootKust, doc.FileName)
+	g.record(attr, doc.FileName)
 	doc.OriginalData, _ = r.Source(doc.FileName)
 	return doc, true
 }
 
 // matchGenerator returns the generator entry of genKind in file attr renders.
-func (r *Renderer) matchGenerator(attr *model.KustomizeAttribution, rootKust, file, genKind string, mode renameMode) *types.GeneratorArgs {
-	prefix, suffix, ok := r.affixes(r.chain(attr, rootKust, file), mode, r.rootPaths(attr.RenderRoot, rootKust, file))
+func (r *Renderer) matchGenerator(attr *model.KustomizeAttribution, g *loadGraph, file, genKind string,
+	mode renameMode) *types.GeneratorArgs {
+	prefix, suffix, ok := r.affixes(g.record(attr, file), mode, g.count(file))
 	if !ok {
 		return nil
 	}
@@ -272,8 +277,8 @@ func (r *Renderer) matchGenerator(attr *model.KustomizeAttribution, rootKust, fi
 
 // matchDocument returns the document of file attr renders: by exact identity
 // when renaming is absent, by affixes alone when only they rename.
-func (r *Renderer) matchDocument(attr *model.KustomizeAttribution, rootKust, file string, mode renameMode) (int, sourceDoc) {
-	prefix, suffix, ok := r.affixes(r.chain(attr, rootKust, file), mode, r.rootPaths(attr.RenderRoot, rootKust, file))
+func (r *Renderer) matchDocument(attr *model.KustomizeAttribution, g *loadGraph, file string, mode renameMode) (int, sourceDoc) {
+	prefix, suffix, ok := r.affixes(g.record(attr, file), mode, g.count(file))
 	switch {
 	case mode == renameNone:
 		return exactDocument(r.sourceDocuments(file), attr.Kind, attr.RenderedName, attr.RenderedNamespace)
@@ -281,16 +286,6 @@ func (r *Renderer) matchDocument(attr *model.KustomizeAttribution, rootKust, fil
 		return affixDocument(r.sourceDocuments(file), attr.Kind, attr.RenderedName, prefix, suffix)
 	}
 	return -1, sourceDoc{}
-}
-
-// chain records in attr and returns the kustomizations from rootKust to file,
-// nil when none loads it.
-func (r *Renderer) chain(attr *model.KustomizeAttribution, rootKust, file string) []string {
-	c := r.chainTo(rootKust, file, map[string]bool{})
-	if c != nil {
-		attr.Chain = c
-	}
-	return c
 }
 
 // affixes returns the name prefix and suffix the kustomizations of chain add,
@@ -319,86 +314,259 @@ func entries(k *types.Kustomization) []string {
 	return slices.Concat(k.Resources, k.Components, k.Bases) //nolint:staticcheck // legacy kustomizations still declare bases
 }
 
-// rootPaths is paths from the root kustomization, 2 when it is linked from
-// another directory than the render root Kustomize resolves its entries from.
-// Remote entries never match a local file, missing ones load nothing, and a
-// repeated entry counts twice.
-func (r *Renderer) rootPaths(root, rootKust, file string) int {
-	if filepath.Dir(rootKust) != root {
-		return 2
-	}
-	return r.paths(rootKust, file, map[string]bool{})
+// loadGraph is what the kustomizations of one render load, walked once from
+// its root kustomization: every file's first chain and its paths count.
+type loadGraph struct {
+	rootKust string
+	// chains are the kustomizations from the root down to the one listing a
+	// file as a resource, or to the file itself when it is a kustomization
+	// (a generator's), first found through the resources and components
+	// each loads in order.
+	chains map[string][]string
+	// paths counts, up to 2, the chains from the root to a file, by
+	// symlink-resolved path like the cache; a repeated entry counts twice.
+	paths map[string]int
+	// rootLinked makes every count 2: the root kustomization is linked from
+	// another directory than the render root Kustomize resolves its entries
+	// from.
+	rootLinked bool
+	// unproven are the kustomizations whose loads are unproven: one they load
+	// is linked from another directory than the one Kustomize resolves its
+	// entries from, is served but undecoded, or cycles back. A file reached
+	// from the root past one of them counts 2.
+	unproven map[string]bool
+	// kusts are the kustomizations the walk visited, children those each
+	// loads, and past answers pastUnproven for a kustomization.
+	kusts, past map[string]bool
+	children    map[string][]string
+	// steps counts the entries, kustomization probes and walks taken.
+	steps int
 }
 
-// paths counts, up to 2, the chains from kust to file through the resources
-// and components each kustomization loads, by symlink-resolved path like the
-// cache; onPath breaks cycles, and an undecoded served kustomization counts 2.
-func (r *Renderer) paths(kust, file string, onPath map[string]bool) int {
-	if kust == file {
-		return 1
-	}
-	k, ok := r.Kustomization(kust)
-	if !ok {
-		// Probed names that do not exist are no path; a served file whose
-		// kustomization is unknown is unproven.
-		if _, served := r.Source(kust); served {
-			return 2
+// loadGraph walks the kustomizations rootKust loads once, depth first in
+// entry order, then counts paths in topological order. Remote entries never
+// match a local file, and missing ones load nothing.
+func (r *Renderer) loadGraph(root, rootKust string) *loadGraph {
+	g := &loadGraph{rootKust: rootKust, chains: map[string][]string{rootKust: {rootKust}}, paths: map[string]int{},
+		rootLinked: filepath.Dir(rootKust) != root, unproven: map[string]bool{}, children: map[string][]string{},
+		kusts: map[string]bool{}, past: map[string]bool{}}
+	children, listed := g.children, map[string][]string{}
+	const visiting, visited = 1, 2
+	state := map[string]int{}
+	var order []string
+	var walk func(kust string)
+	walk = func(kust string) {
+		state[kust] = visiting
+		g.kusts[kust] = true
+		defer func() { state[kust] = visited; order = append(order, kust) }()
+		k, ok := r.Kustomization(kust)
+		if !ok {
+			if _, served := r.Source(kust); served {
+				g.unproven[kust] = true
+			}
+			return
 		}
-		return 0
-	}
-	if onPath[kust] {
-		return 0
-	}
-	onPath[kust] = true
-	defer delete(onPath, kust)
-	n := 0
-	dir := filepath.Dir(kust)
-	for _, e := range entries(k) {
-		p := r.canonical(filepath.Join(dir, filepath.FromSlash(e)))
-		if p == file {
-			n++
-		}
-		for _, name := range KustomizationFileNames {
-			child := r.canonical(filepath.Join(p, name))
-			if _, ok := r.Kustomization(child); ok && filepath.Dir(child) != p {
+		dir := filepath.Dir(kust)
+		for _, e := range entries(k) {
+			g.steps++
+			p := r.canonical(filepath.Join(dir, filepath.FromSlash(e)))
+			listed[kust] = append(listed[kust], p)
+			if _, ok := g.chains[p]; !ok {
+				g.chains[p] = slices.Clone(g.chains[kust])
+			}
+			for _, name := range KustomizationFileNames {
+				g.steps++
+				child := r.canonical(filepath.Join(p, name))
+				if _, ok := r.Kustomization(child); !ok {
+					// Probed names that do not exist are no path; a served
+					// file whose kustomization is unknown is unproven.
+					if _, served := r.Source(child); served {
+						g.unproven[kust] = true
+					}
+					continue
+				}
 				// Linked from another directory: Kustomize resolves its
 				// entries from p, the chain walk from the target's.
-				return 2
+				if filepath.Dir(child) != p {
+					g.unproven[kust] = true
+				}
+				children[kust] = append(children[kust], child)
+				if _, ok := g.chains[child]; !ok {
+					g.chains[child] = append(slices.Clone(g.chains[kust]), child)
+				}
+				switch state[child] {
+				case visiting:
+					g.unproven[kust] = true
+				case 0:
+					walk(child)
+				}
 			}
-			n += r.paths(child, file, onPath)
-		}
-		if n >= 2 {
-			return 2
 		}
 	}
-	return n
+	walk(rootKust)
+	g.countPaths(order, children, listed)
+	g.markPast(order)
+	return g
 }
 
-// chainTo returns the kustomizations from kust down to the one listing file
-// as a resource, or to file itself when it is a kustomization (a generator's),
-// through the resources and components each loads.
-func (r *Renderer) chainTo(kust, file string, seen map[string]bool) []string {
-	if kust == file {
-		return []string{kust}
-	}
-	k, ok := r.Kustomization(kust)
-	if !ok || seen[kust] {
-		return nil
-	}
-	seen[kust] = true
-	dir := filepath.Dir(kust)
-	for _, e := range entries(k) {
-		p := r.canonical(filepath.Join(dir, filepath.FromSlash(e)))
-		if p == file {
-			return []string{kust}
+// countPaths counts, in the topological order the reverse of order gives,
+// the paths from the root to every kustomization and to every entry each
+// lists.
+func (g *loadGraph) countPaths(order []string, children, listed map[string][]string) {
+	kusts := map[string]int{g.rootKust: 1}
+	for i := len(order) - 1; i >= 0; i-- {
+		kust := order[i]
+		for _, c := range children[kust] {
+			kusts[c] = min(kusts[c]+kusts[kust], 2)
 		}
-		for _, n := range KustomizationFileNames {
-			if sub := r.chainTo(r.canonical(filepath.Join(p, n)), file, seen); sub != nil {
-				return append([]string{kust}, sub...)
+		for _, p := range listed[kust] {
+			g.paths[p] = min(g.paths[p]+kusts[kust], 2)
+		}
+	}
+	for kust, n := range kusts {
+		g.paths[kust] = min(g.paths[kust]+n, 2)
+	}
+}
+
+// record records in attr and returns the chain to file, nil when none loads
+// it.
+func (g *loadGraph) record(attr *model.KustomizeAttribution, file string) []string {
+	c := g.chains[file]
+	if c != nil {
+		attr.Chain = c
+	}
+	return c
+}
+
+// count is the paths count to file: 2 when the walk from the root to it,
+// stopping at file, passes an unproven kustomization.
+func (g *loadGraph) count(file string) int {
+	if g.rootLinked || g.pastUnproven(file) {
+		return 2
+	}
+	return g.paths[file]
+}
+
+// pastUnproven reports whether the root reaches an unproven kustomization
+// other than file without passing file. Only a kustomization stops the walk,
+// so for any other file any unproven kustomization counts.
+func (g *loadGraph) pastUnproven(file string) bool {
+	if len(g.unproven) == 0 {
+		return false
+	}
+	if !g.kusts[file] {
+		return true
+	}
+	return g.past[file]
+}
+
+// markPast answers pastUnproven for every kustomization at once. The root
+// reaches an unproven kustomization u avoiding f exactly when f does not
+// dominate u, so f is past none only when it dominates the lowest common
+// dominator of the unproven kustomizations other than itself.
+func (g *loadGraph) markPast(order []string) {
+	if len(g.unproven) == 0 {
+		return
+	}
+	d := g.dominators(order)
+	var unproven []string
+	for _, k := range order {
+		if g.unproven[k] {
+			unproven = append(unproven, k)
+		}
+	}
+	// Lowest common dominators of the unproven kustomizations before and after
+	// each, to leave one out.
+	n := len(unproven)
+	before, after := make([]string, n+1), make([]string, n+1)
+	for i, u := range unproven {
+		before[i+1] = d.common(before[i], u)
+	}
+	for i := n - 1; i >= 0; i-- {
+		after[i] = d.common(after[i+1], unproven[i])
+	}
+	for k := range g.kusts {
+		g.steps++
+		g.past[k] = !d.dominates(k, before[n])
+	}
+	for i, u := range unproven {
+		rest := d.common(before[i], after[i+1])
+		g.past[u] = rest != "" && !d.dominates(u, rest)
+	}
+}
+
+// domTree is the dominator tree of a load graph, with intervals answering
+// "a dominates b" in constant time.
+type domTree struct {
+	g       *loadGraph
+	post    map[string]int
+	idom    map[string]string
+	in, out map[string]int
+}
+
+// dominators computes the dominator tree in one pass in topological order
+// over the acyclic graph: a cycle is unproven, and Kustomize rejects it.
+// ponytail: common walks the tree, so a pathological graph costs edges times
+// depth; Lengauer-Tarjan is the upgrade if that ever shows.
+func (g *loadGraph) dominators(order []string) *domTree {
+	d := &domTree{g: g, post: make(map[string]int, len(order)), idom: map[string]string{g.rootKust: g.rootKust},
+		in: map[string]int{}, out: map[string]int{}}
+	for i, k := range order {
+		d.post[k] = i
+	}
+	for i := len(order) - 1; i >= 0; i-- {
+		k := order[i]
+		for _, c := range g.children[k] {
+			g.steps++
+			// The root and back edges dominate nothing new.
+			if c != g.rootKust && d.post[c] < d.post[k] {
+				d.idom[c] = d.common(d.idom[c], k)
 			}
 		}
 	}
-	return nil
+	tree := map[string][]string{}
+	for _, k := range order {
+		if k != g.rootKust {
+			tree[d.idom[k]] = append(tree[d.idom[k]], k)
+		}
+	}
+	clock := 0
+	stack := []string{g.rootKust}
+	for len(stack) > 0 {
+		k := stack[len(stack)-1]
+		if _, seen := d.in[k]; !seen {
+			d.in[k], clock = clock, clock+1
+			stack = append(stack, tree[k]...)
+			continue
+		}
+		stack = stack[:len(stack)-1]
+		d.out[k], clock = clock, clock+1
+		g.steps++
+	}
+	return d
+}
+
+// common returns the lowest common dominator of a and b, either one alone
+// when the other is "".
+func (d *domTree) common(a, b string) string {
+	if a == "" || b == "" {
+		return a + b
+	}
+	for a != b {
+		for d.post[a] < d.post[b] {
+			a = d.idom[a]
+			d.g.steps++
+		}
+		for d.post[b] < d.post[a] {
+			b = d.idom[b]
+			d.g.steps++
+		}
+	}
+	return a
+}
+
+func (d *domTree) dominates(a, b string) bool {
+	return d.in[a] <= d.in[b] && d.out[b] <= d.out[a]
 }
 
 // canonical returns p in the symlink-free form the source cache is keyed by:
