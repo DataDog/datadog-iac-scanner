@@ -40,7 +40,9 @@ func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSetti
 	defer renderer.Release()
 	// The planner reads through the renderer's confined, regular-file-only,
 	// bounded reader: no repository read bypasses the render's bounds.
-	plan := kustomize.Plan(dirs, charts, renderer.BoundedRead())
+	planRead := renderer.BoundedRead()
+	deployed := kustomize.DeployedDirs(repo, settings.DeployedCandidates, settings.RepoURL, planRead)
+	plan := kustomize.Plan(dirs, charts, deployed, planRead)
 
 	consumed := map[string]struct{}{}
 	// unrendered holds the directories and files a skipped root reaches.

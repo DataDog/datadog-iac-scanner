@@ -380,6 +380,8 @@ func (c *Client) createService(
 			}
 			fsSource.SetKustomize(&provider.KustomizeSettings{
 				Roots: c.kustomizeRoots, RepoPath: repo, MaxFileBytes: maxFile,
+				DeployedCandidates: c.kustomizeDeployedCandidates,
+				RepoURL:            c.ScanParams.SCIInfo.RepositoryCommitInfo.RepositoryUrl,
 			})
 		}
 		fsSource.AddUnfilteredPaths(remoteModulePaths)

@@ -1752,7 +1752,7 @@ func planTree(t *testing.T, files map[string]string, charts ...string) (string, 
 	for _, c := range charts {
 		chartDirs = append(chartDirs, filepath.Join(dir, c))
 	}
-	return dir, Plan(dirs, chartDirs, os.ReadFile)
+	return dir, Plan(dirs, chartDirs, nil, os.ReadFile)
 }
 
 func TestPlan(t *testing.T) {
@@ -1808,7 +1808,7 @@ func BenchmarkPlan(b *testing.B) {
 	}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		Plan(abs, nil, content)
+		Plan(abs, nil, nil, content)
 	}
 }
 
@@ -2394,5 +2394,96 @@ func TestRenderIdentityReplacementCanary(t *testing.T) {
 				t.Fatal("precondition: the replacement did not copy the value into a name")
 			}
 		})
+	}
+}
+
+func TestDeployedDirs(t *testing.T) {
+	const app = "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: a\nspec:\n"
+	const fk = "apiVersion: kustomize.toolkit.fluxcd.io/v1\nkind: Kustomization\nmetadata:\n  name: fk\n  namespace: flux-system\nspec:\n"
+	gitRepo := func(ns, url string) string {
+		return "apiVersion: source.toolkit.fluxcd.io/v1\nkind: GitRepository\nmetadata:\n  name: repo\n  namespace: " + ns + "\nspec:\n  url: " + url + "\n"
+	}
+	const ref = "  sourceRef:\n    kind: GitRepository\n    name: repo\n"
+	cases := []struct {
+		name string
+		docs []string
+		want []string
+	}{
+		{"argo source, revision ignored", []string{app + "  source:\n    repoURL: https://github.com/acme/repo.git\n    targetRevision: other-branch\n    path: a1\n"}, []string{"a1"}},
+		{"argo other repo", []string{app + "  source:\n    repoURL: https://github.com/other/repo.git\n    path: a2\n"}, nil},
+		{"argo sources override source", []string{app + "  source:\n    repoURL: https://github.com/acme/repo\n    path: a3\n  sources:\n    - repoURL: https://github.com/acme/repo\n      path: a4\n    - repoURL: https://github.com/other/repo\n      path: a5\n"}, []string{"a4"}},
+		{"application of another group", []string{"apiVersion: example.com/v1\nkind: Application\nmetadata:\n  name: x\nspec:\n  source:\n    repoURL: https://github.com/acme/repo\n    path: a6\n", app + "  source:\n    repoURL: https://github.com/acme/repo\n    path: a7\n"}, []string{"a7"}},
+		{"path leaving the repo", []string{app + "  source:\n    repoURL: https://github.com/acme/repo\n    path: ../outside\n"}, nil},
+		{"flux kustomization before its source", []string{fk + "  path: ./f1\n" + ref, gitRepo("flux-system", "ssh://git@github.com/acme/repo")}, []string{"f1"}},
+		{"flux omitted path is the repo root", []string{fk + ref, gitRepo("flux-system", "https://github.com/acme/repo")}, []string{"."}},
+		{"flux same name other namespace only", []string{fk + "  path: ./f2\n" + ref, gitRepo("other", "https://github.com/acme/repo")}, nil},
+		{"flux explicit cross-namespace ref", []string{fk + "  path: ./f3\n" + ref + "    namespace: other\n", gitRepo("other", "https://github.com/acme/repo"), gitRepo("flux-system", "https://github.com/evil/repo")}, []string{"f3"}},
+		{"flux source of another repo", []string{fk + "  path: ./f4\n" + ref, gitRepo("flux-system", "https://github.com/evil/repo")}, nil},
+		{"flux OCIRepository ref", []string{fk + "  path: ./f5\n  sourceRef:\n    kind: OCIRepository\n    name: repo\n", "apiVersion: source.toolkit.fluxcd.io/v1beta2\nkind: OCIRepository\nmetadata:\n  name: repo\n  namespace: flux-system\nspec:\n  url: oci://registry/acme/repo\n"}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			files := map[string]string{}
+			var candidates []string
+			for i, d := range tc.docs {
+				files[fmt.Sprintf("deploy/%d.yaml", i)] = d
+			}
+			dir := writeTree(t, files)
+			for i := range tc.docs {
+				candidates = append(candidates, filepath.Join(dir, fmt.Sprintf("deploy/%d.yaml", i)))
+			}
+			got := DeployedDirs(dir, candidates, "git@github.com:acme/repo.git", os.ReadFile)
+			var want []string
+			for _, w := range tc.want {
+				want = append(want, filepath.Join(dir, w))
+			}
+			if !reflect.DeepEqual(got, want) && (len(got) != 0 || len(want) != 0) {
+				t.Fatalf("want %v, got %v", want, got)
+			}
+			if got := DeployedDirs(dir, candidates, "", os.ReadFile); got != nil {
+				t.Fatalf("empty repo URL must disable the feature, got %v", got)
+			}
+		})
+	}
+}
+
+func TestPlanRendersDeployedReferencedRoots(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"kustomization.yaml":              "resources:\n  - deployment.yaml\n",
+		"deployment.yaml":                 "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app\n",
+		"overlays/dev/kustomization.yaml": "resources:\n  - ../..\n",
+		"flux/ks.yaml":                    "apiVersion: kustomize.toolkit.fluxcd.io/v1\nkind: Kustomization\nmetadata:\n  name: fk\nspec:\n  sourceRef:\n    kind: GitRepository\n    name: repo\n",
+		"flux/repo.yaml":                  "apiVersion: source.toolkit.fluxcd.io/v1\nkind: GitRepository\nmetadata:\n  name: repo\nspec:\n  url: https://github.com/acme/repo\n",
+	})
+	dirs := []string{dir, filepath.Join(dir, "overlays/dev")}
+	deployed := DeployedDirs(dir, []string{filepath.Join(dir, "flux/ks.yaml"), filepath.Join(dir, "flux/repo.yaml")},
+		"https://github.com/acme/repo.git", os.ReadFile)
+	rootPlanned := func(deployed []string) bool {
+		for _, r := range Plan(dirs, nil, deployed, os.ReadFile) {
+			if r.Dir == dir && r.Skip == "" {
+				return true
+			}
+		}
+		return false
+	}
+	if !rootPlanned(deployed) {
+		t.Fatalf("the deployed repo-root kustomization must be a root, deployed=%v", deployed)
+	}
+	if rootPlanned(nil) {
+		t.Fatal("a referenced kustomization must not be a root unless deployed")
+	}
+}
+
+func TestDeployedDirsResolvesSymlinks(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"real/kustomization.yaml": "resources: []\n",
+		"app.yaml":                "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: a\nspec:\n  source:\n    repoURL: https://github.com/acme/repo\n    path: link\n",
+	})
+	if err := os.Symlink("real", filepath.Join(dir, "link")); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+	got := DeployedDirs(dir, []string{filepath.Join(dir, "app.yaml")}, "https://github.com/acme/repo", os.ReadFile)
+	if want := []string{filepath.Join(dir, "real")}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("want %v, got %v", want, got)
 	}
 }

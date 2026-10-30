@@ -103,6 +103,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	c.walkInventory = pathTypes.Inventory
 	c.chartRoots = pathTypes.ChartRoots
 	c.kustomizeRoots = pathTypes.KustomizeRoots
+	c.kustomizeDeployedCandidates = pathTypes.DeployedBaseCandidates
 	c.chartFilter = chartFilter
 	c.contentCache = pathTypes.ContentCache
 
