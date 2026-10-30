@@ -923,7 +923,7 @@ func ExcludedByContent(path string, content []byte) bool {
 // PlatformForKind returns the fixed platform for kind when known.
 func PlatformForKind(kind model.FileKind) (string, bool) {
 	switch kind {
-	case model.KindHELM:
+	case model.KindHELM, model.KindKUSTOMIZE:
 		return kubernetes, true
 	case model.KindTerraform, model.KindTerraformPlan:
 		return terraform, true
