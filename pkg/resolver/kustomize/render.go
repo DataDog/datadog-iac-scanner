@@ -13,6 +13,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/kustomize/api/krusty"
 	"sigs.k8s.io/kustomize/api/resmap"
 	"sigs.k8s.io/kustomize/api/types"
@@ -107,6 +108,9 @@ type Result struct {
 	Reads []string
 	// MappingFailures counts documents whose source document was not found.
 	MappingFailures int
+	// Unsupported counts fields a replacement transformer may have written:
+	// replacements are not attributed to lines yet.
+	Unsupported int
 	// RunNs is the time krusty spent building the ResMap; MapNs the time
 	// mapping and attribution took afterwards.
 	RunNs, MapNs time.Duration
@@ -124,6 +128,7 @@ type Renderer struct {
 	dead     bool
 	deadline time.Time
 	docs     map[string][]sourceDoc
+	kustText map[string]*yaml.Node
 	timeout  time.Duration
 }
 
@@ -152,6 +157,7 @@ func NewRenderer(fsys vfs.FS, confine string, maxFileBytes int64) *Renderer {
 		},
 		deadline: time.Now().Add(PhaseTimeout),
 		docs:     map[string][]sourceDoc{},
+		kustText: map[string]*yaml.Node{},
 		timeout:  rootTimeout,
 	}
 }
@@ -199,7 +205,21 @@ func (r *Renderer) Release() {
 	r.cache.mu.Unlock()
 	r.mu.Lock()
 	r.docs = map[string][]sourceDoc{}
+	r.kustText = map[string]*yaml.Node{}
 	r.mu.Unlock()
+}
+
+// KustNode returns the parsed YAML node of a kustomization file, cached per
+// scan: every resource of a root would otherwise re-parse the same file.
+func (r *Renderer) KustNode(path string, content []byte) *yaml.Node {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if node, ok := r.kustText[path]; ok {
+		return node
+	}
+	node := parseKustNode(content)
+	r.kustText[path] = node
+	return node
 }
 
 type runOutcome struct {

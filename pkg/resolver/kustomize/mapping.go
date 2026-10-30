@@ -25,6 +25,7 @@ const originAnnotation = "config.kubernetes.io/origin"
 
 type sourceDoc struct {
 	kind, name, namespace string
+	labels, annotations   map[string]string
 }
 
 // mapResources attributes every rendered resource to the file it came from:
@@ -115,7 +116,8 @@ type renameMode int
 
 const (
 	// renameAny: a kustomization may rename beyond affixes (patches,
-	// replacements, transformers, ...); no rendered name is attributable.
+	// replacements, transformers, ...); a rendered name is attributable only
+	// by an exact identity in the rendered namespace.
 	renameAny renameMode = iota
 	// renameAffix: only namePrefix, nameSuffix and namespace rename.
 	renameAffix
@@ -153,14 +155,154 @@ func (r *Renderer) renameMode(reads []string) renameMode {
 		switch {
 		case !ok || !gens.add(k):
 			return renameAny
-		case !renames(k, nil):
-		case !renames(k, affixFields) && k.Kind != types.ComponentKind:
-			mode = renameAffix
-		default:
+		case r.beyondAffixes(k, p):
 			return renameAny
+		case setsAffixes(k):
+			mode = renameAffix
 		}
 	}
 	return mode
+}
+
+// beyondAffixes reports whether k can rename beyond the affix fields: a field
+// outside identitySafe that no proof clears. A strategic-merge patch selects
+// its target by the name it keeps, so it cannot rename; a JSON 6902 patch is
+// read to see whether its ops write a name or namespace, and so is a
+// replacement's target list. Any other field, including transformers and
+// configurations, is not inspected and may rename.
+func (r *Renderer) beyondAffixes(k *types.Kustomization, kust string) bool {
+	v := reflect.ValueOf(k).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		n := v.Type().Field(i).Name
+		if v.Field(i).IsZero() || identitySafe[n] || (affixFields[n] && k.Kind != types.ComponentKind) {
+			continue
+		}
+		switch n {
+		//nolint:staticcheck // legacy kustomizations still declare patchesStrategicMerge and patchesJson6902
+		case "Patches", "PatchesStrategicMerge", "PatchesJson6902":
+			if r.patchEntriesMayRename(k, kust) {
+				return true
+			}
+		case "Replacements":
+			if replacementWritesName(k.Replacements) {
+				return true
+			}
+		default:
+			return true
+		}
+	}
+	return slices.ContainsFunc(k.Labels, func(l types.Label) bool { return len(l.FieldSpecs) > 0 })
+}
+
+// patchEntriesMayRename reports whether any patch entry of k can rename its
+// target.
+func (r *Renderer) patchEntriesMayRename(k *types.Kustomization, kust string) bool {
+	for _, p := range k.Patches {
+		if patchOptionsAllowRename(p.Options) || r.patchMayRename(kust, p.Path, p.Patch) {
+			return true
+		}
+	}
+	for _, p := range k.PatchesStrategicMerge { //nolint:staticcheck // legacy kustomizations still declare patchesStrategicMerge
+		if entry := string(p); !IsInlinePatch(entry) && r.patchMayRename(kust, entry, "") {
+			return true
+		}
+	}
+	for _, p := range k.PatchesJson6902 { //nolint:staticcheck // legacy kustomizations still declare patchesJson6902
+		if r.patchMayRename(kust, p.Path, p.Patch) {
+			return true
+		}
+	}
+	return false
+}
+
+// patchOptionsAllowRename reports whether a patch entry opts into changing
+// its target's name or kind.
+func patchOptionsAllowRename(o *types.PatchArgs) bool {
+	return o != nil && (o.AllowNameChange || o.AllowKindChange)
+}
+
+// patchMayRename reports whether a patch entry can rename its target. The
+// content is an inline patch, or read from path relative to the kustomization
+// at kust; an unreadable patch may rename. A JSON 6902 patch renames when an
+// op writes or moves a metadata name or namespace; a strategic-merge patch
+// never renames, it selects by the name it keeps.
+func (r *Renderer) patchMayRename(kust, path, inline string) bool {
+	content := inline
+	if path != "" {
+		b, ok := r.Source(r.canonical(filepath.Join(filepath.Dir(kust), filepath.FromSlash(path))))
+		if !ok {
+			return true
+		}
+		content = string(b)
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		// An undecodable patch may rename.
+		return true
+	}
+	root := &doc
+	if root.Kind == yaml.DocumentNode && len(root.Content) == 1 {
+		root = root.Content[0]
+	}
+	if root.Kind != yaml.SequenceNode {
+		// A strategic-merge patch: it selects by the name it keeps.
+		return false
+	}
+	var ops []struct {
+		Op   string `yaml:"op"`
+		Path string `yaml:"path"`
+		From string `yaml:"from"`
+	}
+	if err := root.Decode(&ops); err != nil || len(ops) == 0 {
+		// An undecodable or empty op list may rename.
+		return true
+	}
+	for _, op := range ops {
+		if jsonPointerMayRename(op.Path) {
+			return true
+		}
+		if (op.Op == "move" || op.Op == "copy") &&
+			(jsonPointerMayRename(op.From) || strings.HasPrefix(op.From, "/metadata")) {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonPointerMayRename reports whether a JSON 6902 pointer may rename its
+// target: the whole document ("" or "/"), the whole metadata object, or the
+// metadata name or namespace.
+func jsonPointerMayRename(p string) bool {
+	return p == "" || p == "/" || p == "/metadata" || p == "/metadata/name" || p == "/metadata/namespace"
+}
+
+// replacementWritesName reports whether a replacement may write a name: a
+// source by path is not inspected, a target without fieldPaths writes the
+// name Kustomize defaults to, and a fieldPath under metadata may be the name.
+func replacementWritesName(reps []types.ReplacementField) bool {
+	for i := range reps {
+		if reps[i].Path != "" {
+			return true
+		}
+		for _, t := range reps[i].Targets {
+			if len(t.FieldPaths) == 0 {
+				return true
+			}
+			for _, fp := range t.FieldPaths {
+				if strings.HasPrefix(fp, "metadata") && (fp == "metadata" || strings.Contains(fp, "name")) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// setsAffixes reports whether k adds name affixes or a namespace. Components
+// apply their parent's affixes, so they never set their own.
+func setsAffixes(k *types.Kustomization) bool {
+	return k.Kind != types.ComponentKind &&
+		(k.NamePrefix != "" || k.NameSuffix != "" || k.Namespace != "")
 }
 
 // generatorEntries proves generated names unambiguous across the graph: every
@@ -202,19 +344,6 @@ var identitySafe = map[string]bool{
 	"Labels": true, "Images": true, "ImageTags": true, "Replicas": true, "Resources": true, "Components": true,
 	"Bases": true, "ConfigMapGenerator": true, "SecretGenerator": true, "GeneratorOptions": true,
 	"SortOptions": true, "BuildMetadata": true,
-}
-
-// renames reports whether k sets a field that can rename an object: one
-// outside identitySafe and also, labels with their own field specs, which can target
-// metadata/name.
-func renames(k *types.Kustomization, also map[string]bool) bool {
-	v := reflect.ValueOf(k).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		if n := v.Type().Field(i).Name; !v.Field(i).IsZero() && !identitySafe[n] && !also[n] {
-			return true
-		}
-	}
-	return slices.ContainsFunc(k.Labels, func(l types.Label) bool { return len(l.FieldSpecs) > 0 })
 }
 
 // hashSuffix matches the "-" and 10 characters Kustomize appends to a
@@ -273,25 +402,8 @@ func (r *Renderer) namesMaySetByReplacement(reads []string) bool {
 		if !ok {
 			continue
 		}
-		if len(k.Transformers) > 0 {
+		if len(k.Transformers) > 0 || replacementWritesName(k.Replacements) {
 			return true
-		}
-		for i := range k.Replacements {
-			if k.Replacements[i].Path != "" {
-				return true
-			}
-			for _, t := range k.Replacements[i].Targets {
-				if len(t.FieldPaths) == 0 {
-					// Kustomize writes the target's metadata.name when
-					// the target lists no fieldPaths.
-					return true
-				}
-				for _, fp := range t.FieldPaths {
-					if strings.HasPrefix(fp, "metadata") && (fp == "metadata" || strings.Contains(fp, "name")) {
-						return true
-					}
-				}
-			}
 		}
 	}
 	return false
@@ -313,13 +425,21 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 	attr := &model.KustomizeAttribution{
 		RenderRoot:        res.Root,
 		Kind:              rs.GetKind(),
+		APIVersion:        rs.GetApiVersion(),
 		RenderedName:      rs.GetName(),
 		RenderedNamespace: rs.GetNamespace(),
 		Chain:             []string{rootKust},
+		Labels:            rs.GetLabels(),
+		Annotations:       rs.GetAnnotations(),
 	}
 	doc := model.ResolvedHelm{Content: content, SourceDocumentIndex: -1, Kustomize: attr}
 	if mode == renameAffix && attr.Kind == "Namespace" {
 		mode = renameAny
+	}
+	for _, n := range nodes {
+		if n.loads(doc.FileName) && len(n.k.Replacements) > 0 {
+			res.Unsupported++
+		}
 	}
 
 	r.attributeSource(res, origin, attr, &doc, g, mode)
@@ -329,9 +449,23 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 	g.record(attr, doc.FileName)
 	if attr.Generator == nil && doc.SourceDocumentIndex >= 0 {
 		r.attachChain(nodes, doc.FileName, attr)
+		res.Unsupported += r.unsupportedReplacements(nodes, doc.FileName)
 	}
 	doc.OriginalData, _ = r.Source(doc.FileName)
 	return doc, true
+}
+
+// unsupportedReplacements counts the replacement entries of the
+// kustomizations that load the source file: their written fields are counted,
+// not attributed.
+func (r *Renderer) unsupportedReplacements(nodes []*kustNode, source string) int {
+	n := 0
+	for _, node := range nodes {
+		if node.loads(source) && len(node.k.Replacements) > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // attributeSource maps a rendered resource to the file a developer edits: the
@@ -358,6 +492,10 @@ func (r *Renderer) attributeSource(res *Result, origin *resource.Origin, attr *m
 		doc.SourceDocumentIndex = idx
 		if idx >= 0 {
 			attr.SourceName, attr.SourceNamespace = src.name, src.namespace
+			// Patch-target selectors are evaluated against the labels and
+			// annotations visible when the patch applied; the source
+			// document's own are the best state we keep.
+			attr.SourceLabels, attr.SourceAnnotations = src.labels, src.annotations
 		}
 	default:
 		res.MappingFailures++
@@ -669,27 +807,6 @@ func (d *domTree) dominates(a, b string) bool {
 	return d.in[a] <= d.in[b] && d.out[b] <= d.out[a]
 }
 
-// attachChain records in attr the kustomizations from the root down to the
-// source file: every node that loads it, root first.
-func (r *Renderer) attachChain(nodes []*kustNode, fileName string, attr *model.KustomizeAttribution) {
-	attr.Chain = attr.Chain[:0]
-	var loading []*kustNode
-	for _, n := range nodes {
-		if n.loads(fileName) {
-			loading = append(loading, n)
-		}
-	}
-	sort.Slice(loading, func(i, j int) bool {
-		if loading[i].depth != loading[j].depth {
-			return loading[i].depth < loading[j].depth
-		}
-		return loading[i].file < loading[j].file
-	})
-	for _, n := range loading {
-		attr.Chain = append(attr.Chain, n.file)
-	}
-}
-
 // canonical returns p in the symlink-free form the source cache is keyed by:
 // an origin keeps the name a kustomization listed, not the file it read.
 func (r *Renderer) canonical(p string) string {
@@ -718,6 +835,66 @@ func affixDocument(docs []sourceDoc, kind, name, prefix, suffix string) (int, so
 		return -1, sourceDoc{}
 	}
 	return found, docs[found]
+}
+
+// attachChain records the kustomizations from the root down to the source file
+// and the patch and transformer entries applying to it, with the scanner
+// directives of the files findings are reported on.
+func (r *Renderer) attachChain(nodes []*kustNode, fileName string, attr *model.KustomizeAttribution) {
+	attr.Chain = attr.Chain[:0]
+	var loading []*kustNode
+	for _, n := range nodes {
+		if n.loads(fileName) {
+			loading = append(loading, n)
+		}
+	}
+	// Root first: shallower kustomizations precede the deeper ones on the
+	// dependency path.
+	sort.Slice(loading, func(i, j int) bool {
+		if loading[i].depth != loading[j].depth {
+			return loading[i].depth < loading[j].depth
+		}
+		return loading[i].file < loading[j].file
+	})
+	for _, n := range loading {
+		attr.Chain = append(attr.Chain, n.file)
+	}
+	attr.Writers = r.writers(nodes, fileName, attr)
+	if len(attr.Writers) > 0 {
+		attr.Commands = map[string]model.CommentsCommands{}
+	}
+	seen := map[string]bool{}
+	for _, w := range attr.Writers {
+		if seen[w.File] {
+			continue
+		}
+		seen[w.File] = true
+		if b, ok := r.Source(w.File); ok {
+			attr.Commands[w.File] = writerCommands(b)
+		}
+	}
+}
+
+// writerCommands parses the head-of-file scanner directives (`# dd-iac-scan: …`)
+// of a patch or kustomization file a finding is reported on; suppression must
+// follow the attributed file, not the source manifest.
+func writerCommands(content []byte) model.CommentsCommands {
+	out := model.CommentsCommands{}
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "---") {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") {
+			break
+		}
+		fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, "#")))
+		if len(fields) > 1 && fields[0] == "dd-iac-scan" {
+			key, value, _ := strings.Cut(fields[1], "=")
+			out[key] = value
+		}
+	}
+	return out
 }
 
 // exactDocument returns the document of kind named name, the one in namespace
@@ -776,12 +953,15 @@ func (r *Renderer) sourceDocuments(path string) []sourceDoc {
 		var d struct {
 			Kind     string `yaml:"kind"`
 			Metadata struct {
-				Name      string `yaml:"name"`
-				Namespace string `yaml:"namespace"`
+				Name        string            `yaml:"name"`
+				Namespace   string            `yaml:"namespace"`
+				Labels      map[string]string `yaml:"labels"`
+				Annotations map[string]string `yaml:"annotations"`
 			} `yaml:"metadata"`
 		}
 		_ = node.Decode(&d)
-		docs = append(docs, sourceDoc{kind: d.Kind, name: d.Metadata.Name, namespace: d.Metadata.Namespace})
+		docs = append(docs, sourceDoc{kind: d.Kind, name: d.Metadata.Name, namespace: d.Metadata.Namespace,
+			labels: d.Metadata.Labels, annotations: d.Metadata.Annotations})
 	}
 	r.docs[path] = docs
 	return docs
