@@ -785,10 +785,70 @@ func TestRenderGeneratorTieFails(t *testing.T) {
 	}
 }
 
-// TestRenderAffixCollisionFails counts as mapping failures the documents of a
-// file holding several of their kind under a name prefix (app rendered as
-// dev-app, dev-app itself); generator entries the prefix explains exactly map.
-func TestRenderAffixCollisionFails(t *testing.T) {
+// TestRenderAffixSameKind maps every document of a file holding several of
+// one kind under a namespace-only or a prefix-only overlay.
+func TestRenderAffixSameKind(t *testing.T) {
+	deploy := func(n string) string {
+		return "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: " + n + "\n---\n"
+	}
+	for name, affix := range map[string]string{"namespace": "namespace: dev\n", "prefix": "namePrefix: dev-\n"} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeTree(t, map[string]string{
+				"o/kustomization.yaml": affix + "resources:\n  - app.yaml\n",
+				"o/app.yaml":           deploy("api") + deploy("worker") + "apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n",
+			})
+			res, err := render(t, dir, "o")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := map[string]int{}
+			for _, d := range res.Documents {
+				got[d.Kustomize.Kind+"/"+d.Kustomize.SourceName] = d.SourceDocumentIndex
+			}
+			if len(got) != 3 || got["Deployment/api"] != 0 || got["Deployment/worker"] != 1 || got["Service/api"] != 2 ||
+				res.MappingFailures != 0 {
+				t.Fatalf("got %v, %d failures", got, res.MappingFailures)
+			}
+		})
+	}
+	// The prefix transformer skips CustomResourceDefinitions and APIServices:
+	// under a prefix dev-app is not app, so neither maps; a namespace alone
+	// renames neither, so both map by name.
+	obj := func(kind, n string) string {
+		return "apiVersion: v1\nkind: " + kind + "\nmetadata:\n  name: " + n + "\n---\n"
+	}
+	for _, kind := range []string{"CustomResourceDefinition", "APIService"} {
+		for affix, want := range map[string]int{"namePrefix: dev-\n": -1, "namespace: dev\n": 0} {
+			res, err := render(t, writeTree(t, map[string]string{
+				"o/kustomization.yaml": affix + "resources:\n  - crd.yaml\n",
+				"o/crd.yaml":           obj(kind, "app") + obj(kind, "dev-app"),
+			}), "o")
+			if err != nil {
+				t.Fatal(err)
+			}
+			failures := 0
+			for _, d := range res.Documents {
+				switch {
+				case want < 0 && d.SourceDocumentIndex >= 0:
+					t.Errorf("%s %s %s attributed to %s", affix, kind, d.Kustomize.RenderedName, d.Kustomize.SourceName)
+				case want >= 0 && (d.SourceDocumentIndex < 0 || d.Kustomize.SourceName != d.Kustomize.RenderedName):
+					t.Errorf("%s %s %s not attributed by name", affix, kind, d.Kustomize.RenderedName)
+				case d.SourceDocumentIndex < 0:
+					failures++
+				}
+			}
+			if len(res.Documents) != 2 || res.MappingFailures != failures {
+				t.Errorf("%s %s: %d documents, %d failures", affix, kind, len(res.Documents), res.MappingFailures)
+			}
+		}
+	}
+}
+
+// TestRenderAffixCollisionDisambiguates attributes the documents of a file
+// holding several of their kind under a name prefix: the affix chain names
+// one document per rendered name (app rendered as dev-app, dev-app as
+// dev-dev-app), and generator entries the prefix explains exactly map.
+func TestRenderAffixCollisionDisambiguates(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"o/kustomization.yaml": "namePrefix: dev-\nresources:\n  - cm.yaml\n" +
 			"configMapGenerator:\n  - name: gen\n    literals:\n      - A=b\n  - name: dev-gen\n    literals:\n      - A=b\n",
@@ -802,21 +862,21 @@ func TestRenderAffixCollisionFails(t *testing.T) {
 	for _, d := range res.Documents {
 		a := d.Kustomize
 		switch {
-		case a.Generator == nil && d.SourceDocumentIndex >= 0:
-			t.Errorf("%s attributed despite the collision", a.RenderedName)
+		case a.Generator == nil && d.SourceDocumentIndex < 0:
+			t.Errorf("%s not attributed: the affix chain names one document", a.RenderedName)
 		case a.Generator != nil && !generatedAs(a.RenderedName, "dev-"+a.Generator.Name, false):
 			t.Errorf("%s attributed to generator %q", a.RenderedName, a.Generator.Name)
 		}
 	}
-	if len(res.Documents) != 4 || res.MappingFailures != 2 {
+	if len(res.Documents) != 4 || res.MappingFailures != 0 {
 		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
 	}
 }
 
-// TestRenderAffixCollisionOtherNamespaceFails rejects affix collisions the
-// rendered output alone cannot reveal, counterparts in other namespaces: two
-// Services of one file fail, the generator entries the prefix explains map.
-func TestRenderAffixCollisionOtherNamespaceFails(t *testing.T) {
+// TestRenderAffixCollisionOtherNamespaceDisambiguates attributes counterparts
+// in other namespaces the rendered output alone cannot tell apart: the affix
+// chain names one document per rendered name, the generator entries map.
+func TestRenderAffixCollisionOtherNamespaceDisambiguates(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"o/kustomization.yaml": "namePrefix: dev-\nresources:\n  - svc.yaml\n" +
 			"configMapGenerator:\n  - name: gen\n    namespace: a\n    literals:\n      - A=b\n" +
@@ -828,7 +888,7 @@ func TestRenderAffixCollisionOtherNamespaceFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Documents) != 4 || res.MappingFailures != 2 {
+	if len(res.Documents) != 4 || res.MappingFailures != 0 {
 		t.Fatalf("got %d documents, %d failures", len(res.Documents), res.MappingFailures)
 	}
 }
@@ -891,16 +951,16 @@ func TestRenderNestedNamesWithoutRenaming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Two Services in one file fail under the suffix; each generator entry the
-	// suffix explains exactly maps.
+	// The suffix names one document per rendered Service, and each generator
+	// entry it explains exactly maps.
 	for _, d := range res.Documents {
 		a := d.Kustomize
-		if (a.Generator == nil && d.SourceDocumentIndex >= 0) || (a.Generator != nil && !generatedAs(a.RenderedName, a.Generator.Name+"-s", false)) {
-			t.Errorf("%s attributed despite the affix", a.RenderedName)
+		if (a.Generator == nil && d.SourceDocumentIndex < 0) || (a.Generator != nil && !generatedAs(a.RenderedName, a.Generator.Name+"-s", false)) {
+			t.Errorf("%s not attributed: the suffix names one document", a.RenderedName)
 		}
 	}
-	if res.MappingFailures != 2 {
-		t.Fatalf("affix in the graph: %d failures, want 2", res.MappingFailures)
+	if res.MappingFailures != 0 {
+		t.Fatalf("affix in the graph: %d failures, want 0", res.MappingFailures)
 	}
 }
 

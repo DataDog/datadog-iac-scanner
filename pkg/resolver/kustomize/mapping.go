@@ -108,6 +108,10 @@ const (
 // namespace only Namespace objects.
 var affixFields = map[string]bool{"NamePrefix": true, "NameSuffix": true, "Namespace": true}
 
+// affixSkipped are the kinds the prefix and suffix transformers leave unnamed:
+// an affix match would misread their names.
+var affixSkipped = map[string]bool{"CustomResourceDefinition": true, "APIService": true}
+
 // renameMode returns how far the kustomizations the render read can rename:
 // every one must set only identity-safe fields for renameNone, add only affix
 // fields for renameAffix (components excluded: they apply affixes to their
@@ -263,7 +267,7 @@ func (r *Renderer) matchDocument(attr *model.KustomizeAttribution, rootKust, fil
 	switch {
 	case mode == renameNone:
 		return exactDocument(r.sourceDocuments(file), attr.Kind, attr.RenderedName, attr.RenderedNamespace)
-	case ok:
+	case ok && (prefix+suffix == "" || !affixSkipped[attr.Kind]):
 		return affixDocument(r.sourceDocuments(file), attr.Kind, attr.RenderedName, prefix, suffix)
 	}
 	return -1, sourceDoc{}
@@ -398,12 +402,12 @@ func (r *Renderer) canonical(p string) string {
 }
 
 // affixDocument returns the only document of kind in docs, across every
-// namespace, when prefix and suffix around its name give the rendered name;
-// several documents of kind, or an unexplained name, are a mapping failure.
+// namespace, whose name between prefix and suffix gives the rendered name;
+// none or several are a mapping failure.
 func affixDocument(docs []sourceDoc, kind, name, prefix, suffix string) (int, sourceDoc) {
 	found := -1
 	for i, d := range docs {
-		if d.kind != kind {
+		if d.kind != kind || prefix+d.name+suffix != name {
 			continue
 		}
 		if found >= 0 {
@@ -411,7 +415,7 @@ func affixDocument(docs []sourceDoc, kind, name, prefix, suffix string) (int, so
 		}
 		found = i
 	}
-	if found < 0 || prefix+docs[found].name+suffix != name {
+	if found < 0 {
 		return -1, sourceDoc{}
 	}
 	return found, docs[found]
