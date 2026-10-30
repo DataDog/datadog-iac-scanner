@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -407,6 +408,59 @@ func Test_E2EKustomize(t *testing.T) {
 			}, true)
 			require.Contains(t, got, kustomizeFinding{"shared/deployment.yaml", ""})
 		})
+
+	t.Run("same-kind resources of one file report their own lines", func(t *testing.T) {
+		dep := func(name, privileged string) string {
+			return strings.NewReplacer("name: web\n", "name: "+name+"\n", "privileged: true", "privileged: "+privileged).
+				Replace(privilegedDeployment)
+		}
+		// Empty and comment-only documents separate the resources: the YAML
+		// parser skips them when it indexes documents.
+		base := dep("one", "true") + "---\n# a comment\n---\n---\n" + dep("two", "false") + "---\n" + dep("three", "true")
+		lines := func(files map[string]string) []string {
+			_, raw := scanKustomize(t, files, true)
+			var sarif struct {
+				Runs []struct {
+					Results []struct {
+						Locations []struct {
+							PhysicalLocation struct {
+								ArtifactLocation struct{ URI string }    `json:"artifactLocation"`
+								Region           struct{ StartLine int } `json:"region"`
+							} `json:"physicalLocation"`
+						} `json:"locations"`
+					} `json:"results"`
+				} `json:"runs"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(raw), &sarif))
+			var out []string
+			for _, r := range sarif.Runs[0].Results {
+				l := r.Locations[0].PhysicalLocation
+				out = append(out, fmt.Sprintf("%s:%d", l.ArtifactLocation.URI, l.Region.StartLine))
+			}
+			sort.Strings(out)
+			return out
+		}
+		files := map[string]string{
+			"base/kustomization.yaml":    "namespace: team\nresources:\n  - app.yaml\n",
+			"base/app.yaml":              base,
+			"overlay/kustomization.yaml": "namespace: team\nresources:\n  - ../base\n",
+		}
+		require.Equal(t, []string{"base/app.yaml:12", "base/app.yaml:41"}, lines(files))
+
+		files["base/app.yaml"] = strings.Replace(base, dep("two", "false"), dep("two", "true"), 1)
+		require.Equal(t, []string{"base/app.yaml:12", "base/app.yaml:28", "base/app.yaml:41"}, lines(files))
+
+		files["base/app.yaml"] = base
+		files["overlay/kustomization.yaml"] += "patches:\n  - path: fix.yaml\n"
+		// The patch file holds an empty and a comment-only document before
+		// the patches, which the patch document index must skip too.
+		patch := func(name string) string {
+			return "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: " + name + "\nspec:\n  template:\n" +
+				"    spec:\n      containers:\n        - name: web\n          securityContext:\n            privileged: true\n"
+		}
+		files["overlay/fix.yaml"] = "---\n# a comment\n---\n" + patch("one") + "---\n" + patch("two") + "---\n" + patch("three")
+		require.Equal(t, []string{"overlay/fix.yaml:14", "overlay/fix.yaml:26", "overlay/fix.yaml:38"}, lines(files))
+	})
 
 	t.Run("flag off scans files as written", func(t *testing.T) {
 		got, _ := scanKustomize(t, tree(nil), false)
