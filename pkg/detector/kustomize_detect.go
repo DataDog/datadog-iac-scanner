@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"gopkg.in/yaml.v3"
 )
 
@@ -124,7 +125,8 @@ func detectSourceLine(ctx context.Context, file *model.FileMetadata, key string,
 
 // documentSpan returns the 1-based start and end lines of the index-th
 // document of a multi-document YAML file: each document ends where the next
-// one starts, not at EOF.
+// one starts, not at EOF. Empty and comment-only documents are skipped, as
+// the YAML parser does when it indexes documents.
 func documentSpan(content string, index int) (start, end int, ok bool) {
 	dec := yaml.NewDecoder(strings.NewReader(content))
 	var starts []int
@@ -133,7 +135,9 @@ func documentSpan(content string, index int) (start, end int, ok bool) {
 		if err := dec.Decode(&doc); err != nil {
 			break
 		}
-		starts = append(starts, doc.Line)
+		if !yamlparser.IsEmptyDocument(&doc) {
+			starts = append(starts, doc.Line)
+		}
 	}
 	if index < 0 || index >= len(starts) {
 		return 0, 0, false
@@ -533,9 +537,18 @@ func smpDoc(content string, w *model.KustomizeWriter, a *model.KustomizeAttribut
 	dec := yaml.NewDecoder(strings.NewReader(content))
 	fallbackName, fallbackIndex, fallbackValue := "", -1, interface{}(nil)
 	for i := 0; ; i++ {
-		var doc map[string]interface{}
-		if err := dec.Decode(&doc); err != nil {
+		var node yaml.Node
+		if err := dec.Decode(&node); err != nil {
 			break
+		}
+		// Documents are indexed as documentSpan indexes them.
+		if yamlparser.IsEmptyDocument(&node) {
+			i--
+			continue
+		}
+		var doc map[string]interface{}
+		if node.Decode(&doc) != nil {
+			continue
 		}
 		docName, docValue, targets := smpTargets(doc, w, a, segs)
 		if !targets {

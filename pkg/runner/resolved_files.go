@@ -573,6 +573,8 @@ func isRenderedKind(kind model.FileKind) bool {
 func (s *Service) setRenderedSource(file *model.FileMetadata, rfile *model.ResolvedHelm, kind model.FileKind,
 	ownedRenderedContent string, docIdx int, openAPIResolveReferences, isMinified bool, maxResolverDepth int) {
 	if a := rfile.Kustomize; a != nil {
+		// Line detection scopes its search to this document.
+		a.SourceDocumentIndex = rfile.SourceDocumentIndex
 		file.Kustomize = a
 		file.RenderRoot = a.RenderRoot
 		if rfile.SourceDocumentIndex >= 0 {
