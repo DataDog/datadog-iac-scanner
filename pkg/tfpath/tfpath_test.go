@@ -307,3 +307,27 @@ func TestAutoloadedVarFilesCaseSensitive(t *testing.T) {
 func keys(m map[string]struct{}) []string {
 	return slices.Sorted(maps.Keys(m))
 }
+
+func TestIsOverride(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "override.tf", want: true},
+		{path: "main_override.tf", want: true},
+		{path: "dir/a_override.tf.json", want: true},
+		{path: "override.tofu", want: true},
+		{path: "x_override.tofu.json", want: true},
+		{path: "main.tf", want: false},
+		{path: "overrides.tf", want: false},
+		{path: "main-override.tf", want: false},
+		{path: "main_override.tfvars", want: false},
+		{path: "Override.tf", want: false},
+		{path: "", want: false},
+	}
+	for _, tt := range tests {
+		if got := IsOverride(tt.path); got != tt.want {
+			t.Errorf("IsOverride(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
