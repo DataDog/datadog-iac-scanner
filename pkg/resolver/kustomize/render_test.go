@@ -769,6 +769,26 @@ func TestRenderGeneratorKind(t *testing.T) {
 	}
 }
 
+// TestRenderGeneratorNamespace reports a generated object's source namespace
+// from its generator entry, empty when the entry sets none.
+func TestRenderGeneratorNamespace(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "configMapGenerator:\n  - name: a\n    namespace: x\n    literals:\n      - A=b\n" +
+			"  - name: b\n    literals:\n      - A=b\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, d := range res.Documents {
+		got[d.Kustomize.SourceName] = d.Kustomize.SourceNamespace
+	}
+	if ns, ok := got["a"]; !ok || ns != "x" || got["b"] != "" || len(got) != 2 {
+		t.Fatalf("got %v", got)
+	}
+}
+
 // TestRenderGeneratorTieFails counts generated objects whose generator entry
 // is ambiguous (one name in two namespaces) as mapping failures.
 func TestRenderGeneratorTieFails(t *testing.T) {

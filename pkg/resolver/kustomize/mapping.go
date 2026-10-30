@@ -225,13 +225,15 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust stri
 	switch {
 	case origin != nil && origin.ConfiguredIn != "":
 		doc.FileName = r.canonical(filepath.Join(res.Root, filepath.FromSlash(origin.ConfiguredIn)))
-		name := r.matchGenerator(attr, rootKust, doc.FileName, origin.ConfiguredBy.Kind, mode)
-		if name == "" {
+		// Built-in generators record only their kind in the origin: the
+		// namespace comes from the matched entry.
+		entry := r.matchGenerator(attr, rootKust, doc.FileName, origin.ConfiguredBy.Kind, mode)
+		if entry == nil {
 			res.MappingFailures++
+			entry = &types.GeneratorArgs{}
 		}
-		attr.Generator = &model.KustomizeGenerator{Kind: origin.ConfiguredBy.Kind, Name: name}
-		attr.SourceName = name
-		attr.SourceNamespace = origin.ConfiguredBy.Namespace
+		attr.Generator = &model.KustomizeGenerator{Kind: origin.ConfiguredBy.Kind, Name: entry.Name}
+		attr.SourceName, attr.SourceNamespace = entry.Name, entry.Namespace
 	case origin != nil && origin.Path != "" && origin.Repo == "":
 		doc.FileName = r.canonical(filepath.Join(res.Root, filepath.FromSlash(origin.Path)))
 		idx, src := r.matchDocument(attr, rootKust, doc.FileName, mode)
@@ -252,10 +254,10 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, rootKust stri
 }
 
 // matchGenerator returns the generator entry of genKind in file attr renders.
-func (r *Renderer) matchGenerator(attr *model.KustomizeAttribution, rootKust, file, genKind string, mode renameMode) string {
+func (r *Renderer) matchGenerator(attr *model.KustomizeAttribution, rootKust, file, genKind string, mode renameMode) *types.GeneratorArgs {
 	prefix, suffix, ok := r.affixes(r.chain(attr, rootKust, file), mode, r.rootPaths(attr.RenderRoot, rootKust, file))
 	if !ok {
-		return ""
+		return nil
 	}
 	return r.generatorName(file, genKind, attr.RenderedName, prefix, suffix)
 }
@@ -498,14 +500,14 @@ func generatedAs(name, n string, hashOff bool) bool {
 	return ok && hash != "" && !strings.Contains(hash, "-")
 }
 
-// generatorName returns the name of the only generator entry of genKind
+// generatorName returns the only generator entry of genKind
 // (ConfigMapGenerator or SecretGenerator) in the kustomization at path whose
 // name between prefix and suffix, with its hash unless disabled, is the
-// rendered name; none or several return "".
-func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string) string {
+// rendered name; none or several return nil.
+func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string) *types.GeneratorArgs {
 	k, ok := r.Kustomization(path)
 	if !ok {
-		return ""
+		return nil
 	}
 	hashOff := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
 	var args []types.GeneratorArgs
@@ -519,16 +521,16 @@ func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string)
 			args = append(args, k.SecretGenerator[i].GeneratorArgs)
 		}
 	}
-	best := ""
+	var best *types.GeneratorArgs
 	for i := range args {
 		n := args[i].Name
 		off := hashOff || args[i].Options != nil && args[i].Options.DisableNameSuffixHash
 		switch {
 		case n == "" || !generatedAs(rendered, prefix+n+suffix, off):
-		case best != "":
-			return ""
+		case best != nil:
+			return nil
 		default:
-			best = n
+			best = &args[i]
 		}
 	}
 	return best
