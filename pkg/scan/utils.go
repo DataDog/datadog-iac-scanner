@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	consoleHelpers "github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
@@ -63,6 +64,8 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		ExcludeGitIgnore:  c.ScanParams.ExcludeGitIgnore,
 		MaxFileSize:       c.ScanParams.MaxFileSizeFlag,
 		NumWorkers:        c.ScanParams.ParallelScanFlag,
+		// Payload export would write rendered content to disk.
+		CollectKustomizeRoots: c.collectKustomize(),
 	}
 
 	var pathTypes model.AnalyzedPaths
@@ -76,6 +79,13 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		return provider.ExtractedPath{}, nil, errAnalyze
 	}
 
+	// A repository whose Kubernetes objects exist only rendered (generators,
+	// overlays without manifests) discovers no Kubernetes platform of its
+	// own: prepare the Kubernetes parsers anyway when Kubernetes is scanned
+	// and Kustomize roots were found, so the rendered documents are scanned.
+	if c.collectKustomize() && len(pathTypes.KustomizeRoots) > 0 && !slices.Contains(pathTypes.Types, "kubernetes") {
+		pathTypes.Types = append(pathTypes.Types, "kubernetes")
+	}
 	if len(pathTypes.Types) == 0 {
 		return provider.ExtractedPath{}, nil, nil
 	}
@@ -92,6 +102,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	c.ScanParams.Config.IgnorePaths = pathTypes.Exc
 	c.walkInventory = pathTypes.Inventory
 	c.chartRoots = pathTypes.ChartRoots
+	c.kustomizeRoots = pathTypes.KustomizeRoots
 	c.chartFilter = chartFilter
 	c.contentCache = pathTypes.ContentCache
 
