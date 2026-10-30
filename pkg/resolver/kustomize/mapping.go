@@ -2,12 +2,14 @@ package kustomize
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,11 +35,14 @@ type sourceDoc struct {
 // never the patch file or the fields changed. A field an overlay patch adds or
 // changes is therefore attributed to the source document, where it may be
 // absent.
-// It fails with a timeout past a deadline, and with a render error when a
-// resource cannot be serialized: the whole root then falls back to the raw
-// scan rather than losing that resource.
-func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, rootDeadline time.Time) error {
-	expired := func() bool { return time.Now().After(rootDeadline) || time.Now().After(r.deadline) }
+// It fails with a timeout past a deadline or once the scan is canceled, and
+// with a render error when a resource cannot be serialized: the whole root
+// then falls back to the raw scan rather than losing that resource.
+func (r *Renderer) mapResources(ctx context.Context, res *Result, m resmap.ResMap, rootKust string,
+	closure map[string]Affixes, rootDeadline time.Time) error {
+	expired := func() bool {
+		return ctx.Err() != nil || time.Now().After(rootDeadline) || time.Now().After(r.deadline)
+	}
 	if expired() {
 		return &RenderError{Reason: ReasonTimeout}
 	}
@@ -46,11 +51,12 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 	// Counted once mapping is done, every walk the graph took included.
 	defer func() { res.graphSteps += g.steps }()
 	asWritten := r.namesMaySetByReplacement(res.Reads)
+	nodes := r.renderGraph(res, rootKust, closure)
 	for _, rs := range m.Resources() {
 		if expired() {
 			return &RenderError{Reason: ReasonTimeout}
 		}
-		doc, ok := r.mapResource(res, rs, g, mode)
+		doc, ok := r.mapResource(res, rs, g, mode, nodes)
 		if !ok {
 			return &RenderError{Reason: ReasonRenderError}
 		}
@@ -291,7 +297,8 @@ func (r *Renderer) namesMaySetByReplacement(reads []string) bool {
 	return false
 }
 
-func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph, mode renameMode) (model.ResolvedHelm, bool) {
+func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph, mode renameMode,
+	nodes []*kustNode) (model.ResolvedHelm, bool) {
 	rootKust := g.rootKust
 	origin, _ := rs.GetOrigin()
 	ann := rs.GetAnnotations()
@@ -314,6 +321,25 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 	if mode == renameAffix && attr.Kind == "Namespace" {
 		mode = renameAny
 	}
+
+	r.attributeSource(res, origin, attr, &doc, g, mode)
+	if doc.SourceDocumentIndex < 0 && attr.Generator == nil && doc.FileName != rootKust {
+		res.MappingFailures++
+	}
+	g.record(attr, doc.FileName)
+	if attr.Generator == nil && doc.SourceDocumentIndex >= 0 {
+		r.attachChain(nodes, doc.FileName, attr)
+	}
+	doc.OriginalData, _ = r.Source(doc.FileName)
+	return doc, true
+}
+
+// attributeSource maps a rendered resource to the file a developer edits: the
+// generating kustomization entry, its source document, or the root
+// kustomization when the origin is unusable.
+func (r *Renderer) attributeSource(res *Result, origin *resource.Origin, attr *model.KustomizeAttribution,
+	doc *model.ResolvedHelm, g *loadGraph, mode renameMode) {
+	rootKust := g.rootKust
 	switch {
 	case origin != nil && origin.ConfiguredIn != "":
 		doc.FileName = r.canonical(filepath.Join(res.Root, filepath.FromSlash(origin.ConfiguredIn)))
@@ -337,12 +363,6 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 		res.MappingFailures++
 		doc.FileName = rootKust
 	}
-	if doc.SourceDocumentIndex < 0 && attr.Generator == nil && doc.FileName != rootKust {
-		res.MappingFailures++
-	}
-	g.record(attr, doc.FileName)
-	doc.OriginalData, _ = r.Source(doc.FileName)
-	return doc, true
 }
 
 // matchGenerator returns the generator entry of genKind in file attr renders.
@@ -647,6 +667,27 @@ func (d *domTree) common(a, b string) string {
 
 func (d *domTree) dominates(a, b string) bool {
 	return d.in[a] <= d.in[b] && d.out[b] <= d.out[a]
+}
+
+// attachChain records in attr the kustomizations from the root down to the
+// source file: every node that loads it, root first.
+func (r *Renderer) attachChain(nodes []*kustNode, fileName string, attr *model.KustomizeAttribution) {
+	attr.Chain = attr.Chain[:0]
+	var loading []*kustNode
+	for _, n := range nodes {
+		if n.loads(fileName) {
+			loading = append(loading, n)
+		}
+	}
+	sort.Slice(loading, func(i, j int) bool {
+		if loading[i].depth != loading[j].depth {
+			return loading[i].depth < loading[j].depth
+		}
+		return loading[i].file < loading[j].file
+	})
+	for _, n := range loading {
+		attr.Chain = append(attr.Chain, n.file)
+	}
 }
 
 // canonical returns p in the symlink-free form the source cache is keyed by:

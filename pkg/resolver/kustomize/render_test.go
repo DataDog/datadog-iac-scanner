@@ -104,7 +104,7 @@ func waitRunLock() { runLock.idle() }
 func render(t *testing.T, dir, root string) (*Result, error) {
 	t.Helper()
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
-	res, err := r.Render(context.Background(), filepath.Join(dir, root))
+	res, err := r.Render(context.Background(), filepath.Join(dir, root), nil)
 	if err == nil {
 		checkDocumentCounts(t, r, res)
 	}
@@ -194,7 +194,7 @@ func TestRenderAttributesSources(t *testing.T) {
 func TestRenderReadSetAndCacheKeepOriginal(t *testing.T) {
 	dir := writeTree(t, baseTree())
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
-	res, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"))
+	res, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestRenderRefusals(t *testing.T) {
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			dir := writeTree(t, c.files)
-			_, err := NewRenderer(vfs.Default(), dir, 1<<20).Render(context.Background(), filepath.Join(dir, "o"))
+			_, err := NewRenderer(vfs.Default(), dir, 1<<20).Render(context.Background(), filepath.Join(dir, "o"), nil)
 			var re *RenderError
 			if !errors.As(err, &re) || re.Reason != c.reason {
 				t.Fatalf("got %v, want %s", err, c.reason)
@@ -259,7 +259,7 @@ func TestRenderSymlinkEscapeRefused(t *testing.T) {
 		t.Skip(err)
 	}
 	for _, fsys := range []vfs.FS{vfs.DiskFS{}, &vfs.DiskFS{}} {
-		if _, err := NewRenderer(fsys, dir, 5<<20).Render(context.Background(), filepath.Join(dir, "o")); err == nil {
+		if _, err := NewRenderer(fsys, dir, 5<<20).Render(context.Background(), filepath.Join(dir, "o"), nil); err == nil {
 			t.Fatalf("%T: symlink outside the root was followed", fsys)
 		}
 	}
@@ -269,7 +269,7 @@ func TestRenderBudget(t *testing.T) {
 	dir := writeTree(t, baseTree())
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	r.cache.served = maxServedBytes - 10
-	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonBudget {
 		t.Fatalf("got %v", err)
@@ -342,53 +342,128 @@ func TestRenderNoEgress(t *testing.T) {
 	}
 }
 
-// TestRenderSymlinkRoleValidation refuses a kustomization reached through a
-// symlink to an ordinary file: the requested role, not the target's name,
-// decides validation, so a remote reference inside it never loads.
+// TestRenderSymlinkRoleValidation decides the role by the requested name, not
+// the symlink target's: a remote reference inside an in-workspace alias is
+// validated and refused, a valid alias renders, and the escaped file is
+// never read.
 func TestRenderSymlinkRoleValidation(t *testing.T) {
+	outside := t.TempDir()
+	escaped := filepath.Join(outside, "escape.txt")
+	if err := os.WriteFile(escaped, []byte("resources:\n  - https://example.com/x.yaml\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	dir := writeTree(t, map[string]string{
+		"o/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+		// An in-workspace alias holding a valid kustomization renders fine.
+		"o/plain.yaml": "resources:\n  - deployment.yaml\n",
+	})
+	if err := os.Symlink(filepath.Join(dir, "o/plain.yaml"), filepath.Join(dir, "o/kustomization.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	res, err := r.Render(context.Background(), filepath.Join(dir, "o"), nil)
+	if err != nil {
+		t.Fatalf("valid in-workspace alias: %v", err)
+	}
+	if len(res.Documents) != 1 {
+		t.Fatalf("aliased kustomization rendered %d documents", len(res.Documents))
+	}
+
+	// An alias to a file outside the root is refused and never read.
+	dir2 := writeTree(t, map[string]string{
+		"o/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+	})
+	if err := os.Symlink(escaped, filepath.Join(dir2, "o/kustomization.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	r2 := NewRenderer(vfs.Default(), dir2, 5<<20)
+	if _, err := r2.Render(context.Background(), filepath.Join(dir2, "o"), nil); err == nil {
+		t.Fatal("rendered a kustomization alias pointing outside the root")
+	}
+	if b, ok := r2.Source(escaped); ok {
+		t.Fatalf("the escaped file was read: %d bytes", len(b))
+	}
+
+	// An in-workspace alias whose content is not a kustomization is
+	// validated as one and refused.
+	dir3 := writeTree(t, map[string]string{
 		"o/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
 		"o/plain.txt":       "resources:\n  - https://example.com/x.yaml\n",
 	})
-	if err := os.Symlink(filepath.Join(dir, "o/plain.txt"), filepath.Join(dir, "o/kustomization.yaml")); err != nil {
+	if err := os.Symlink(filepath.Join(dir3, "o/plain.txt"), filepath.Join(dir3, "o/kustomization.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := render(t, dir, "o"); err == nil {
+	if _, err := render(t, dir3, "o"); err == nil {
 		t.Fatal("rendered a symlinked kustomization without validation")
 	}
 }
 
 // TestRenderNestedSymlinkNoEgress refuses a kustomization reached through
-// nested symlinks that end outside the confinement root.
+// nested symlinks that end outside the confinement root, with live HTTP and
+// git traps: the escaped file is never read and no remote is contacted.
 func TestRenderNestedSymlinkNoEgress(t *testing.T) {
-	dir := writeTree(t, map[string]string{
-		"o/kustomization.yaml": "resources:\n  - dep.yaml\n",
-		"o/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
-	})
-	outside := t.TempDir()
-	escaped := filepath.Join(outside, "escape.yaml")
-	if err := os.WriteFile(escaped, []byte("apiVersion: v1\nkind: Secret\n"), 0o600); err != nil {
+	var hits atomic.Int32
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
 		t.Fatal(err)
 	}
-	// o/link2 -> outside/escape.yaml, o/link1 -> link2: two hops.
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	})}
+	go func() { _ = srv.Serve(ln) }()
+	defer srv.Close()
+	bin := t.TempDir()
+	marker := filepath.Join(bin, "git-ran")
+	if err := os.WriteFile(filepath.Join(bin, "git"),
+		[]byte("#!/bin/sh\necho ran > "+marker+"\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HTTP_PROXY", "http://"+ln.Addr().String())
+	t.Setenv("HTTPS_PROXY", "http://"+ln.Addr().String())
+	t.Setenv("PATH", bin)
+
+	outside := t.TempDir()
+	escaped := filepath.Join(outside, "escape.yaml")
+	// The escaped file orders a remote fetch: reading it would mean egress.
+	if err := os.WriteFile(escaped, []byte("resources:\n  - https://example.invalid/x.yaml\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := writeTree(t, map[string]string{
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+	})
+	// o/link2 -> outside/escape.yaml, o/link1 -> link2, resource -> link1:
+	// two symlink hops ending outside the root.
 	if err := os.Symlink(escaped, filepath.Join(dir, "o/link2")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Join(dir, "o/link2"), filepath.Join(dir, "o/link1")); err != nil {
 		t.Fatal(err)
 	}
-	// The escaped file is written to a location the render must never reach:
-	// also point a resource at it and check the refusal.
+	if err := os.WriteFile(filepath.Join(dir, "o/kustomization.yaml"),
+		[]byte("resources:\n  - dep.yaml\n  - link1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := render(t, dir, "o"); err == nil {
+		t.Fatal("rendered a resource outside the confinement root")
+	}
+	if hits.Load() != 0 {
+		t.Errorf("%d requests reached the proxy", hits.Load())
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("git ran")
+	}
+	// The root kustomization itself must not be reachable through an outside
+	// symlink either: preparation probes through the confined resolve.
 	dir2 := writeTree(t, map[string]string{
-		"o/kustomization.yaml": "resources:\n  - link1\n",
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
 	})
-	if err := os.Symlink(escaped, filepath.Join(dir2, "o/link1")); err != nil {
+	if err := os.Symlink(filepath.Join(dir, "o/link2"), filepath.Join(dir2, "o/kustomization.yaml")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := render(t, dir2, "o"); err == nil {
-		t.Fatal("rendered a resource outside the confinement root")
+		t.Fatal("prepared a root kustomization outside the confinement root")
 	}
-	_ = dir
 }
 
 // TestRenderRemainingBudgetDeadline caps a root by what is left of the phase
@@ -399,7 +474,7 @@ func TestRenderRemainingBudgetDeadline(t *testing.T) {
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	r.timeout = time.Minute
 	r.deadline = time.Now().Add(-time.Second)
-	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
@@ -437,7 +512,7 @@ func TestRenderMappingRootDeadline(t *testing.T) {
 	if err := rm.Append(rs); err != nil {
 		t.Fatal(err)
 	}
-	if r.mapResources(&Result{}, rm, "", time.Now().Add(-time.Second)) == nil {
+	if r.mapResources(context.Background(), &Result{}, rm, "", nil, time.Now().Add(-time.Second)) == nil {
 		t.Fatal("mapping past the root deadline must fail the root")
 	}
 }
@@ -458,8 +533,34 @@ func TestRenderMappingLastResourceDeadline(t *testing.T) {
 	if err := rm.Append(rs); err != nil {
 		t.Fatal(err)
 	}
-	if r.mapResources(&Result{Root: dir}, rm, "", time.Now().Add(100*time.Millisecond)) == nil {
+	if r.mapResources(context.Background(), &Result{Root: dir}, rm, "", nil, time.Now().Add(100*time.Millisecond)) == nil {
 		t.Fatal("a root whose deadline passed while mapping must fail")
+	}
+}
+
+// TestRenderMappingDeadlineMidWork expires the deadline while mapping real
+// documents: the root is abandoned rather than partially mapped.
+func TestRenderMappingDeadlineMidWork(t *testing.T) {
+	dir := writeTree(t, baseTree())
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	if _, err := r.Render(context.Background(), filepath.Join(dir, "overlays/dev"), nil); err != nil {
+		t.Fatal(err)
+	}
+	// Re-map a ResMap-shaped result past a deadline that has already expired:
+	// check() runs before the graph and per resource.
+	r.deadline = time.Now().Add(-time.Second)
+	rm := resmap.New()
+	rs, err := resource.NewFactory(nil).FromMap(map[string]interface{}{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]interface{}{"name": "x"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rm.Append(rs); err != nil {
+		t.Fatal(err)
+	}
+	if r.mapResources(context.Background(), &Result{Root: dir}, rm, "", nil, time.Now().Add(100*time.Millisecond)) == nil {
 	}
 }
 
@@ -469,7 +570,7 @@ func TestRenderContextCanceled(t *testing.T) {
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := r.Render(ctx, filepath.Join(dir, "overlays/dev"))
+	_, err := r.Render(ctx, filepath.Join(dir, "overlays/dev"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
@@ -492,7 +593,7 @@ func TestRenderMappingDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.deadline = time.Now().Add(-time.Second)
-	if r.mapResources(&Result{}, rm, "", time.Now().Add(time.Hour)) == nil {
+	if r.mapResources(context.Background(), &Result{}, rm, "", nil, time.Now().Add(time.Hour)) == nil {
 		t.Fatal("mapping past the phase deadline must fail the root")
 	}
 }
@@ -506,7 +607,7 @@ func TestRenderConcurrent(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			root := []string{"overlays/dev", "overlays/prod"}[i%2]
-			if _, err := r.Render(context.Background(), filepath.Join(dir, root)); err != nil {
+			if _, err := r.Render(context.Background(), filepath.Join(dir, root), nil); err != nil {
 				t.Error(err)
 			}
 		}(i)
@@ -534,7 +635,7 @@ func BenchmarkRender(b *testing.B) {
 	}
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	for i := 0; i < b.N; i++ {
-		if _, err := r.Render(context.Background(), filepath.Join(dir, "overlays/prod")); err != nil {
+		if _, err := r.Render(context.Background(), filepath.Join(dir, "overlays/prod"), nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -550,7 +651,7 @@ func TestRenderMemFS(t *testing.T) {
 		"/repo/o/kustomization.yaml": []byte("resources:\n  - cm.yaml\n"),
 		"/repo/o/cm.yaml":            []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n"),
 	})
-	res, err := NewRenderer(fsys, "/repo", 5<<20).Render(context.Background(), "/repo/o")
+	res, err := NewRenderer(fsys, "/repo", 5<<20).Render(context.Background(), "/repo/o", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,7 +666,7 @@ func TestRenderRemoteShapedRootRefused(t *testing.T) {
 	fsys := vfs.NewMemFS(map[string][]byte{
 		"github.com/org/repo/kustomization.yaml": []byte("resources: []\n"),
 	})
-	_, err := NewRenderer(fsys, "github.com", 5<<20).Render(context.Background(), "github.com/org/repo")
+	_, err := NewRenderer(fsys, "github.com", 5<<20).Render(context.Background(), "github.com/org/repo", nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonValidation {
 		t.Fatalf("got %v", err)
@@ -618,7 +719,7 @@ func TestRenderStdLogSharedWithHelm(t *testing.T) {
 	endHelm := logger.SilenceStdLog()
 	done := make(chan error, 1)
 	go func() {
-		_, err := NewRenderer(fsys, dir, 5<<20).Render(context.Background(), filepath.Join(dir, "base"))
+		_, err := NewRenderer(fsys, dir, 5<<20).Render(context.Background(), filepath.Join(dir, "base"), nil)
 		done <- err
 	}()
 	<-reached
@@ -660,7 +761,7 @@ func TestRenderWatchdogRemainingBudget(t *testing.T) {
 	r := NewRenderer(fsys, dir, 5<<20)
 	r.timeout = 2 * time.Second
 	start := time.Now()
-	_, err := r.Render(context.Background(), filepath.Join(dir, "base"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "base"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
@@ -685,7 +786,7 @@ func TestRenderWatchdogBoundsPreparation(t *testing.T) {
 	r := NewRenderer(fsys, dir, 5<<20)
 	r.timeout = 200 * time.Millisecond
 	start := time.Now()
-	_, err := r.Render(context.Background(), filepath.Join(dir, "base"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "base"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
@@ -770,13 +871,13 @@ func TestRenderSerializationFailureFailsRoot(t *testing.T) {
 		"b/deployment.yaml":    deployment,
 	})
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
-	res, err := r.Render(context.Background(), filepath.Join(dir, "o"))
+	res, err := r.Render(context.Background(), filepath.Join(dir, "o"), nil)
 	var re *RenderError
 	if res != nil || !errors.As(err, &re) || re.Reason != ReasonRenderError {
 		t.Fatalf("got a result: %t, error %v", res != nil, err)
 	}
 	// Not a timeout: the next root still renders.
-	if _, err := r.Render(context.Background(), filepath.Join(dir, "b")); err != nil {
+	if _, err := r.Render(context.Background(), filepath.Join(dir, "b"), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -883,7 +984,7 @@ func TestRenderAbandonedLockFailsFast(t *testing.T) {
 	o := runLock.acquire(context.Background(), time.Now().Add(time.Hour))
 	runLock.abandon(o)
 	start := time.Now()
-	_, err := r.Render(context.Background(), filepath.Join(dir, "base"))
+	_, err := r.Render(context.Background(), filepath.Join(dir, "base"), nil)
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout || time.Since(start) > rootTimeout/2 {
 		t.Fatalf("got %v after %v", err, time.Since(start))
@@ -895,7 +996,7 @@ func TestRenderAbandonedLockFailsFast(t *testing.T) {
 		runLock.release(live)
 	}()
 	for _, root := range []string{"base", "overlays/dev"} {
-		if _, err := r.Render(context.Background(), filepath.Join(dir, root)); err != nil {
+		if _, err := r.Render(context.Background(), filepath.Join(dir, root), nil); err != nil {
 			t.Fatalf("%s: %v", root, err)
 		}
 	}
@@ -1254,7 +1355,7 @@ func TestRenderNoRenamingProof(t *testing.T) {
 		"o/kustomization.yaml":   "configMapGenerator:\n  - name: gen\n    literals:\n      - A=b\n  - name: gen-x\n    literals:\n      - A=b\n",
 	})
 	r0 := NewRenderer(vfs.Default(), dir, 5<<20)
-	res, err = r0.Render(context.Background(), filepath.Join(dir, "top"))
+	res, err = r0.Render(context.Background(), filepath.Join(dir, "top"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1274,7 +1375,7 @@ func TestRenderNoRenamingProof(t *testing.T) {
 		t.Skip(err)
 	}
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
-	if _, err := r.Render(context.Background(), filepath.Join(dir, "o")); err != nil {
+	if _, err := r.Render(context.Background(), filepath.Join(dir, "o"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if r.renameMode([]string{filepath.Join(dir, "o", "real.yml")}) == renameNone {

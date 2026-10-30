@@ -232,11 +232,12 @@ func (r *Renderer) prepareAndRun(ctx context.Context, a *adapter, root string, d
 	return out
 }
 
-// Render renders the kustomization directory root. One remaining-budget
-// deadline covers preparation, execution and mapping: a root started near the
-// phase deadline gets only what is left of it, and scan cancellation aborts
-// the render.
-func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
+// Render renders the kustomization directory root. closure carries the plan's
+// verified per-directory affixes; nil falls back to deriving them from the
+// render graph. One remaining-budget deadline covers preparation, execution
+// and mapping: a root started near the phase deadline gets only what is left
+// of it, and scan cancellation aborts the render.
+func (r *Renderer) Render(ctx context.Context, root string, closure map[string]Affixes) (*Result, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, &RenderError{Reason: ReasonTimeout}
 	}
@@ -298,9 +299,9 @@ func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
 	}
 	res := &Result{Root: abs, Reads: sortedKeys(a.reads), RunNs: out.runNs}
 	mapStart := time.Now()
-	if err := r.mapResources(res, out.m, kustFile, deadline); err != nil {
+	if err := r.mapResources(ctx, res, out.m, kustFile, closure, deadline); err != nil {
 		// Abandon the result so its files fall back to the raw scan; past the
-		// phase deadline, stop rendering.
+		// phase deadline or once the scan is canceled, stop rendering.
 		var re *RenderError
 		if errors.As(err, &re) && re.Reason == ReasonTimeout {
 			r.kill()
