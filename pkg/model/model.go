@@ -318,10 +318,6 @@ type TerraformScope struct {
 	// per-instance documents; one document holds at most one instance of a
 	// block, so the lookup is exact.
 	Instances map[TerraformBlock]string
-	// Borrowed marks blocks a synthetic document carries only for context: a
-	// sibling copied into an expanded-root layer the document does not own.
-	// Findings on borrowed blocks are reported by the owning document.
-	Borrowed map[TerraformBlock]bool
 	// UnlabeledIndex maps a repeated unlabeled block (moved, import, removed)
 	// under its file-local identity — the one rules report — to its
 	// module-wide index in deterministic file order, which is what the
