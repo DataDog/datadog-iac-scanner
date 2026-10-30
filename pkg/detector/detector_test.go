@@ -180,6 +180,29 @@ func TestKustomizeDetectLine(t *testing.T) {
 	}
 }
 
+// RedactSearchKey keeps generated values out of reported and logged search
+// keys while detection still runs on the full one.
+func TestKustomizeRedactSearchKey(t *testing.T) {
+	gen := &model.KustomizeAttribution{Kind: "Secret", SourceName: "creds",
+		RenderedName: "creds-canary-secret-value-1234", Generator: &model.KustomizeGenerator{Name: "creds"}}
+	key := "metadata.name={{creds-canary-secret-value-1234}}.type"
+	if got := RedactSearchKey(gen, key); got != "metadata.name={{creds}}.type" {
+		t.Errorf("redacted key: %q", got)
+	}
+	// Without a generator there is nothing to hide.
+	plain := &model.KustomizeAttribution{Kind: "Deployment", SourceName: "web", RenderedName: "dev-web"}
+	if got := RedactSearchKey(plain, "metadata.name={{dev-web}}"); got != "metadata.name={{dev-web}}" {
+		t.Errorf("plain key changed: %q", got)
+	}
+	// An unknown generator entry (a replacement copied generated data into
+	// the name) must leave no rendered value behind.
+	unknown := &model.KustomizeAttribution{Kind: "Secret", RenderedName: "canary-secret-48cm2f79c4",
+		Generator: &model.KustomizeGenerator{Name: ""}}
+	if got := RedactSearchKey(unknown, "metadata.name={{canary-secret-48cm2f79c4}}.type"); got != "metadata.name=.type" {
+		t.Errorf("unknown generator key: %q", got)
+	}
+}
+
 // A same-name Deployment after a Job must not pull the Job's line: spans are
 // bounded by the next document and a miss stays inside the mapped document.
 func TestKustomizeDetectLineSpanBounded(t *testing.T) {

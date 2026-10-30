@@ -63,87 +63,123 @@ func (s *Service) storeResolvedFiles(
 		}
 		tracked := s.trackResolvedFileFound(kind, rfile.FileName)
 
-		isMinified := minified.IsMinified(rfile.FileName, rfile.Content)
-		documents, err := s.parseResolvedFile(
-			ctx, rfile.FileName, rfile.Content, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
-		if err != nil {
-			if documents.Kind == "break" {
-				continue
-			}
-			// A Helm template may render to only comments when all range iterations are
-			// conditionally skipped (e.g. a service disabled in prod). That's expected;
-			// skip silently rather than logging a spurious error.
-			if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
-				continue
-			}
-			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
-				Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
+		documents, parsed := s.parseResolvedFileOrSkip(ctx, rfile, kind, &contextLogger,
+			openAPIResolveReferences, maxResolverDepth)
+		if !parsed {
 			continue
 		}
 
-		s.setResolvedLineMetadata(ctx, &documents, rfile, sourceCache, kind,
-			openAPIResolveReferences, isMinified, maxResolverDepth)
-
-		cached := sourceCache[rfile.FileName]
-		if len(documents.IgnoreLines) > 0 {
-			sort.Ints(documents.IgnoreLines)
-		}
-		platform := s.classifyResolvedPlatform(ctx, kind, rfile.FileName, rfile.Content)
-		ownedRenderedContent := ownedHelmRenderedContent(kind, rfile.IsCRD, rfile.Content)
-
-		for docIdx, document := range documents.Docs {
-			preparedDocument, prepareErr := prepareResolvedScanDocument(document, kind)
-			if prepareErr != nil {
-				contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(prepareErr)).
-					Msgf("failed to prepare scan document '%s' with fileType '%s'", rfile.FileName, kind)
-				continue
-			}
-
-			lineInfoDocument := document
-			if isRenderedKind(kind) {
-				lineInfoDocument = nil
-			}
-			file := model.FileMetadata{
-				ID:                uuid.New().String(),
-				ScanID:            scanID,
-				Document:          preparedDocument,
-				OriginalData:      cached.originalData,
-				LineInfoDocument:  lineInfoDocument,
-				Kind:              kind,
-				FilePath:          rfile.FileName,
-				Reported:          rfile.Reported,
-				Archive:           rfile.Archive,
-				HelmID:            rfile.SplitID,
-				HelmAttribution:   model.NewHelmAttribution(rfile.HelmInvocations, ownedRenderedContent),
-				Commands:          cached.commands,
-				IDInfo:            rfile.IDInfo,
-				LinesIgnore:       documents.IgnoreLines,
-				ResolvedFiles:     documents.ResolvedFiles,
-				LinesOriginalData: cached.linesOriginalData,
-				IsMinified:        documents.IsMinified,
-				Platform:          platform,
-			}
-			s.setRenderedSource(&file, rfile, kind, ownedRenderedContent, docIdx,
-				openAPIResolveReferences, isMinified, maxResolverDepth)
-			s.saveToFile(ctx, &file)
-			if n := len(storedPaths); n == 0 || storedPaths[n-1] != rfile.FileName {
-				storedPaths = append(storedPaths, rfile.FileName)
-			}
+		s.storeResolvedDocument(ctx, rfile, &documents, kind, &contextLogger, sourceCache, scanID,
+			openAPIResolveReferences, maxResolverDepth)
+		if n := len(storedPaths); n == 0 || storedPaths[n-1] != rfile.FileName {
+			storedPaths = append(storedPaths, rfile.FileName)
 		}
 		if !tracked {
 			continue
 		}
-		s.Tracker.TrackFileParse(rfile.FileName)
-		s.Tracker.TrackFileFoundCountLines(documents.CountLines)
-		s.Tracker.TrackFileParseCountLines(documents.CountLines - len(documents.IgnoreLines))
-		s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))
-
-		if kind == model.KindTerraform {
-			resourceCount := GetCountTerraformResources(rfile.Content)
-			s.Tracker.TrackFileFoundCountResources(resourceCount)
-		}
+		s.trackParsedFile(kind, rfile, &documents)
 	}
 	return storedPaths
+}
+
+// parseResolvedFileOrSkip parses one resolved file and reports whether its
+// documents should be stored; expected skip cases stay silent.
+func (s *Service) parseResolvedFileOrSkip(ctx context.Context, rfile *model.ResolvedHelm, kind model.FileKind,
+	contextLogger *zerolog.Logger, openAPIResolveReferences bool, maxResolverDepth int) (parser.ParsedDocument, bool) {
+	isMinified := minified.IsMinified(rfile.FileName, rfile.Content)
+	documents, err := s.parseResolvedFile(
+		ctx, rfile.FileName, rfile.Content, kind, openAPIResolveReferences, isMinified, maxResolverDepth)
+	if err == nil {
+		return documents, true
+	}
+	if documents.Kind == "break" {
+		return documents, false
+	}
+	// A Helm template may render to only comments when all range iterations are
+	// conditionally skipped (e.g. a service disabled in prod). That's expected;
+	// skip silently rather than logging a spurious error.
+	if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
+		return documents, false
+	}
+	contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+		Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
+	return documents, false
+}
+
+// storeResolvedDocument builds the file metadata of one parsed resolved file
+// and saves every document it holds.
+func (s *Service) storeResolvedDocument(ctx context.Context, rfile *model.ResolvedHelm, documents *parser.ParsedDocument,
+	kind model.FileKind, contextLogger *zerolog.Logger, sourceCache map[string]*resolvedSourceData, scanID string,
+	openAPIResolveReferences bool, maxResolverDepth int) {
+	s.setResolvedLineMetadata(ctx, documents, rfile, sourceCache, kind,
+		openAPIResolveReferences, documents.IsMinified, maxResolverDepth)
+
+	cached := sourceCache[rfile.FileName]
+	if len(documents.IgnoreLines) > 0 {
+		sort.Ints(documents.IgnoreLines)
+	}
+	platform := s.classifyResolvedPlatform(ctx, kind, rfile.FileName, rfile.Content)
+	ownedRenderedContent := ownedHelmRenderedContent(kind, rfile.IsCRD, rfile.Content)
+
+	for docIdx, document := range documents.Docs {
+		preparedDocument, prepareErr := prepareResolvedScanDocument(document, kind)
+		if prepareErr != nil {
+			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(prepareErr)).
+				Msgf("failed to prepare scan document '%s' with fileType '%s'", rfile.FileName, kind)
+			continue
+		}
+		file := s.resolvedFileMetadata(rfile, documents, preparedDocument, docIdx, kind, scanID,
+			cached, platform, ownedRenderedContent, openAPIResolveReferences, documents.IsMinified, maxResolverDepth)
+		s.saveToFile(ctx, &file)
+	}
+}
+
+// resolvedFileMetadata assembles the metadata of one document of a resolved
+// file, including the Kustomize and Helm line-info loaders.
+func (s *Service) resolvedFileMetadata(rfile *model.ResolvedHelm, documents *parser.ParsedDocument,
+	preparedDocument model.Document, docIdx int, kind model.FileKind, scanID string,
+	cached *resolvedSourceData, platform string, ownedRenderedContent string,
+	openAPIResolveReferences bool, isMinified bool, maxResolverDepth int) model.FileMetadata {
+	var lineInfoDocument model.Document
+	if !isRenderedKind(kind) {
+		lineInfoDocument = documents.Docs[docIdx]
+	}
+	file := model.FileMetadata{
+		ID:                uuid.New().String(),
+		ScanID:            scanID,
+		Document:          preparedDocument,
+		OriginalData:      cached.originalData,
+		LineInfoDocument:  lineInfoDocument,
+		Kind:              kind,
+		FilePath:          rfile.FileName,
+		Reported:          rfile.Reported,
+		Archive:           rfile.Archive,
+		HelmID:            rfile.SplitID,
+		HelmAttribution:   model.NewHelmAttribution(rfile.HelmInvocations, ownedRenderedContent),
+		Commands:          cached.commands,
+		IDInfo:            rfile.IDInfo,
+		LinesIgnore:       documents.IgnoreLines,
+		ResolvedFiles:     documents.ResolvedFiles,
+		LinesOriginalData: cached.linesOriginalData,
+		IsMinified:        documents.IsMinified,
+		Platform:          platform,
+	}
+	s.setRenderedSource(&file, rfile, kind, ownedRenderedContent, docIdx,
+		openAPIResolveReferences, isMinified, maxResolverDepth)
+	return file
+}
+
+// trackParsedFile records parse counters for a tracked resolved file.
+func (s *Service) trackParsedFile(kind model.FileKind, rfile *model.ResolvedHelm, documents *parser.ParsedDocument) {
+	s.Tracker.TrackFileParse(rfile.FileName)
+	s.Tracker.TrackFileFoundCountLines(documents.CountLines)
+	s.Tracker.TrackFileParseCountLines(documents.CountLines - len(documents.IgnoreLines))
+	s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))
+
+	if kind == model.KindTerraform {
+		resourceCount := GetCountTerraformResources(rfile.Content)
+		s.Tracker.TrackFileFoundCountResources(resourceCount)
+	}
 }
 
 func ownedHelmRenderedContent(kind model.FileKind, isCRD bool, content []byte) string {

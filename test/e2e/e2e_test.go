@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -247,12 +248,29 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 	})
 }
 
-type kustomizeFinding struct{ file, root string }
+type kustomizeFinding struct {
+	file, root string
+	line       int
+	suppressed bool
+}
 
 // scanKustomize scans files written to a temporary tree (a value starting with
 // "symlink:" is written as a symlink to the rest of it) and returns the
 // privileged-container findings and the raw SARIF.
-func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustomizeFinding, string) {
+func scanKustomizePlatform(t *testing.T, files map[string]string, enable bool, platform string,
+	rules ...string) ([]kustomizeFinding, string) {
+	findings, raw := scanKustomizeRestricted(t, files, enable, func(params *scan.Parameters) {
+		params.Platform = []string{platform}
+	}, rules...)
+	return findings, raw
+}
+
+func scanKustomize(t *testing.T, files map[string]string, enable bool, rules ...string) ([]kustomizeFinding, string) {
+	return scanKustomizeRestricted(t, files, enable, nil, rules...)
+}
+
+func scanKustomizeRestricted(t *testing.T, files map[string]string, enable bool,
+	configure func(params *scan.Parameters), rules ...string) ([]kustomizeFinding, string) {
 	t.Helper()
 	dir := t.TempDir()
 	if real, err := filepath.EvalSymlinks(dir); err == nil {
@@ -274,9 +292,18 @@ func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustom
 	params.Path = []string{dir}
 	params.RepoPath = dir
 	params.OutputPath = t.TempDir()
-	params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "k8s"))}
+	if len(rules) == 0 {
+		rules = []string{"k8s"}
+	}
+	params.QueriesPath = nil
+	for _, r := range rules {
+		params.QueriesPath = append(params.QueriesPath, mustAbs(t, filepath.Join("testdata", "rules", r)))
+	}
 	params.ChangedDefaultQueryPath = true
 	params.EnableKustomize = enable
+	if configure != nil {
+		configure(params)
+	}
 	params.SCIInfo = model.SCIInfo{RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url"}}
 	params.FlagEvaluator = featureflags.NewLocalEvaluator()
 	_, err := console.ExecuteScan(ctx, params)
@@ -289,9 +316,13 @@ func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustom
 				Locations []struct {
 					PhysicalLocation struct {
 						ArtifactLocation struct{ URI string } `json:"artifactLocation"`
+						Region           struct {
+							StartLine int `json:"startLine"`
+						} `json:"region"`
 					} `json:"physicalLocation"`
 				} `json:"locations"`
-				Properties struct {
+				Suppressions []json.RawMessage `json:"suppressions"`
+				Properties   struct {
 					Kustomize struct {
 						RenderRoot string `json:"render_root"`
 					} `json:"kustomize"`
@@ -302,7 +333,13 @@ func scanKustomize(t *testing.T, files map[string]string, enable bool) ([]kustom
 	require.NoError(t, json.Unmarshal(raw, &sarif))
 	var out []kustomizeFinding
 	for _, r := range sarif.Runs[0].Results {
-		out = append(out, kustomizeFinding{r.Locations[0].PhysicalLocation.ArtifactLocation.URI, r.Properties.Kustomize.RenderRoot})
+		loc := r.Locations[0].PhysicalLocation
+		content, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(loc.ArtifactLocation.URI)))
+		require.NoError(t, err)
+		require.True(t, loc.Region.StartLine >= 1 && loc.Region.StartLine <= strings.Count(string(content), "\n")+1,
+			"line %d outside %s", loc.Region.StartLine, loc.ArtifactLocation.URI)
+		out = append(out, kustomizeFinding{loc.ArtifactLocation.URI, r.Properties.Kustomize.RenderRoot,
+			loc.Region.StartLine, len(r.Suppressions) > 0})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].file+out[i].root < out[j].file+out[j].root })
 	return out, string(raw)
@@ -340,7 +377,7 @@ func Test_E2EKustomize(t *testing.T) {
 	t.Run("one finding per overlay on the base line", func(t *testing.T) {
 		got, raw := scanKustomize(t, tree(nil), true)
 		require.Equal(t, []kustomizeFinding{
-			{"base/deployment.yaml", "overlays/dev"}, {"base/deployment.yaml", "overlays/prod"},
+			{"base/deployment.yaml", "overlays/dev", 12, false}, {"base/deployment.yaml", "overlays/prod", 12, false},
 		}, got)
 		require.NotContains(t, raw, "canary-e2e-literal")
 		require.NotContains(t, raw, "Y2FuYXJ5LWUyZS1saXRlcmFs") // base64 of the canary
@@ -352,7 +389,7 @@ func Test_E2EKustomize(t *testing.T) {
 			"overlays/prod/fix.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n" +
 				"    spec:\n      containers:\n        - name: web\n          securityContext:\n            privileged: false\n",
 		}), true)
-		require.Equal(t, []kustomizeFinding{{"base/deployment.yaml", "overlays/dev"}}, got)
+		require.Equal(t, []kustomizeFinding{{"base/deployment.yaml", "overlays/dev", 12, false}}, got)
 	})
 
 	t.Run("a remote base falls back to the raw scan", func(t *testing.T) {
@@ -360,7 +397,7 @@ func Test_E2EKustomize(t *testing.T) {
 			"app/kustomization.yaml": "resources:\n  - deployment.yaml\n  - https://example.invalid/base.yaml\n",
 			"app/deployment.yaml":    privilegedDeployment,
 		}, true)
-		require.Equal(t, []kustomizeFinding{{"app/deployment.yaml", ""}}, got)
+		require.Equal(t, []kustomizeFinding{{"app/deployment.yaml", "", 12, false}}, got)
 	})
 
 	for name, prod := range map[string]string{
@@ -370,7 +407,7 @@ func Test_E2EKustomize(t *testing.T) {
 		t.Run("a root "+name+" keeps its shared base scanned as written", func(t *testing.T) {
 			got, _ := scanKustomize(t, tree(map[string]string{"overlays/prod/kustomization.yaml": prod}), true)
 			require.Equal(t, []kustomizeFinding{
-				{"base/deployment.yaml", ""}, {"base/deployment.yaml", "overlays/dev"},
+				{"base/deployment.yaml", "", 12, false}, {"base/deployment.yaml", "overlays/dev", 12, false},
 			}, got)
 		})
 	}
@@ -382,8 +419,8 @@ func Test_E2EKustomize(t *testing.T) {
 			"overlays/prod/kustomization.yaml": "resources:\n  - ../../base\n  - missing.yaml\n",
 		}), true)
 		require.Equal(t, []kustomizeFinding{
-			{"base/deployment.yaml", ""}, {"base/deployment.yaml", "overlays/dev"},
-			{"shared/side.yaml", ""}, {"shared/side.yaml", "overlays/dev"},
+			{"base/deployment.yaml", "", 12, false}, {"base/deployment.yaml", "overlays/dev", 12, false},
+			{"shared/side.yaml", "", 12, false}, {"shared/side.yaml", "overlays/dev", 12, false},
 		}, got)
 	})
 
@@ -394,7 +431,7 @@ func Test_E2EKustomize(t *testing.T) {
 			"overlays/prod/kustomization.yaml": "resources:\n  - link.yaml\n  - missing.yaml\n",
 			"overlays/prod/link.yaml":          "symlink:../../shared/deployment.yaml",
 		}, true)
-		require.Contains(t, got, kustomizeFinding{"shared/deployment.yaml", ""})
+		require.Contains(t, got, kustomizeFinding{"shared/deployment.yaml", "", 12, false})
 	})
 
 	t.Run("a failed root keeps a manifest of a base it reaches through a symlinked directory scanned as written",
@@ -406,7 +443,7 @@ func Test_E2EKustomize(t *testing.T) {
 				"overlays/prod/kustomization.yaml": "resources:\n  - alias\n  - missing.yaml\n",
 				"overlays/prod/alias":              "symlink:../../base",
 			}, true)
-			require.Contains(t, got, kustomizeFinding{"shared/deployment.yaml", ""})
+			require.Contains(t, got, kustomizeFinding{"shared/deployment.yaml", "", 12, false})
 		})
 
 	t.Run("same-kind resources of one file report their own lines", func(t *testing.T) {
@@ -464,6 +501,125 @@ func Test_E2EKustomize(t *testing.T) {
 
 	t.Run("flag off scans files as written", func(t *testing.T) {
 		got, _ := scanKustomize(t, tree(nil), false)
-		require.Equal(t, []kustomizeFinding{{"base/deployment.yaml", ""}}, got)
+		require.Equal(t, []kustomizeFinding{{"base/deployment.yaml", "", 12, false}}, got)
 	})
+
+	safeBase := strings.Replace(privilegedDeployment, "privileged: true", "privileged: false", 1)
+	patch := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n" +
+		"      containers:\n        - name: web\n          securityContext:\n%s            privileged: true\n"
+	t.Run("a field set by an overlay patch lands on the patch", func(t *testing.T) {
+		for name, files := range map[string]map[string]string{
+			"strategic merge file": {"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\npatches:\n  - path: p.yaml\n",
+				"overlays/dev/p.yaml": fmt.Sprintf(patch, "")},
+			"inline": {"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\npatches:\n  - patch: |-\n" +
+				indent(fmt.Sprintf(patch, ""), "      ")},
+			"added field": {"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\npatches:\n  - path: p.yaml\n",
+				"overlays/dev/p.yaml": fmt.Sprintf(patch, ""), "base/deployment.yaml": strings.Replace(privilegedDeployment,
+					"          securityContext:\n            privileged: true\n", "", 1)},
+			"json 6902": {"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\npatches:\n  - path: p.yaml\n" +
+				"    target: {kind: Deployment, name: web}\n",
+				"overlays/dev/p.yaml": "- op: replace\n  path: /spec/template/spec/containers/0/securityContext/privileged\n  value: true\n"},
+		} {
+			files["base/kustomization.yaml"] = "resources:\n  - deployment.yaml\n"
+			if _, ok := files["base/deployment.yaml"]; !ok {
+				files["base/deployment.yaml"] = safeBase
+			}
+			got, _ := scanKustomize(t, files, true)
+			want := kustomizeFinding{"overlays/dev/p.yaml", "overlays/dev", 11, false}
+			switch name {
+			case "json 6902":
+				// A list index never proves which container it selects: the
+				// field keeps its base line.
+				want = kustomizeFinding{"base/deployment.yaml", "overlays/dev", 12, false}
+			case "inline":
+				want = kustomizeFinding{"overlays/dev/kustomization.yaml", "overlays/dev", 15, false}
+			}
+			require.Equal(t, []kustomizeFinding{want}, got, name)
+			// No regression: every file today's raw scan reports still has a finding.
+			raw, _ := scanKustomize(t, files, false)
+			for _, r := range raw {
+				require.True(t, slices.ContainsFunc(got, func(f kustomizeFinding) bool { return f.file == r.file }),
+					"%s: raw finding on %s lost", name, r.file)
+			}
+		}
+	})
+
+	t.Run("a suppression comment in a patch is honored", func(t *testing.T) {
+		ignored := fmt.Sprintf(patch, "            # dd-iac-scan ignore-line\n")
+		for name, overlay := range map[string]map[string]string{
+			"file": {"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\npatches:\n  - path: p.yaml\n",
+				"overlays/dev/p.yaml": ignored},
+			"inline": {"overlays/dev/kustomization.yaml": "resources:\n  - ../../base\npatches:\n  - patch: |-\n" +
+				indent(ignored, "      ")},
+		} {
+			overlay["base/kustomization.yaml"] = "resources:\n  - deployment.yaml\n"
+			overlay["base/deployment.yaml"] = safeBase
+			got, _ := scanKustomize(t, overlay, true)
+			require.Len(t, got, 1, name)
+			require.True(t, got[0].suppressed, name)
+		}
+	})
+	t.Run("a generated Secret is reported on its generator entry without its values", func(t *testing.T) {
+		got, raw := scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "secretGenerator:\n  - name: creds\n    literals:\n      - PASSWORD=canary-secret-value\n",
+			"app/deployment.yaml":    safeBase,
+		}, true, "k8s_secret")
+		require.Len(t, got, 1)
+		require.Equal(t, "app/kustomization.yaml", got[0].file)
+		require.Equal(t, 2, got[0].line, "the finding lands on the generator entry's name line")
+		require.NotContains(t, raw, "canary-secret-value")
+		require.NotContains(t, raw, "Y2FuYXJ5LXNlY3JldC12YWx1ZQ==") // base64 of the canary
+	})
+
+	t.Run("a generator-only repository is not scanned for other platforms", func(t *testing.T) {
+		got, raw := scanKustomizePlatform(t, map[string]string{
+			"app/kustomization.yaml": "secretGenerator:\n  - name: only\n    literals:\n      - PASSWORD=generator-only-canary\n",
+		}, true, "Terraform", "k8s_secret")
+		require.Empty(t, got, "no Kubernetes finding may be reported under -t Terraform")
+		require.NotContains(t, raw, "generator-only-canary")
+		require.NotContains(t, raw, "render_root", "Kubernetes rendering must not run")
+	})
+
+	t.Run("a replacement into an ordinary resource name reports the source name", func(t *testing.T) {
+		got, raw := scanKustomize(t, map[string]string{
+			"base/kustomization.yaml": "resources:\n  - deployment.yaml\n  - cm.yaml\n",
+			"base/deployment.yaml":    privilegedDeployment,
+			"base/cm.yaml":            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cfg\ndata:\n  TOKEN: canary-ordinary-replacement\n",
+			"overlays/dev/kustomization.yaml": "namePrefix: dev-\nresources:\n  - ../../base\n" +
+				"replacements:\n  - source: {kind: ConfigMap, name: cfg, fieldPath: data.TOKEN}\n    targets:\n      - select: {kind: Deployment}\n        fieldPaths:\n          - metadata.name\n",
+		}, true)
+		require.NotContains(t, raw, "canary-ordinary-replacement")
+		require.Contains(t, raw, "IAC_RESOURCE_NAME:web",
+			"the replacement renamed the Deployment; the finding must report the source name")
+		require.Contains(t, raw, "render_root",
+			"the root must have rendered; a raw fallback makes the canary assertions trivial")
+		require.NotEmpty(t, got)
+	})
+
+	t.Run("a generator-only repository is scanned", func(t *testing.T) {
+		got, _ := scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "secretGenerator:\n  - name: only\n    literals:\n      - PASSWORD=generator-only-canary\n",
+		}, true, "k8s_secret")
+		require.Equal(t, []kustomizeFinding{{"app/kustomization.yaml", "app", 2, false}}, got)
+	})
+
+	t.Run("a replacement copying generated data into a name leaves no value in any output", func(t *testing.T) {
+		got, raw := scanKustomize(t, map[string]string{
+			"app/kustomization.yaml": "configMapGenerator:\n  - name: cfg\n    literals:\n      - TOKEN=canary-replacement-value\n" +
+				"secretGenerator:\n  - name: creds\n    literals:\n      - PASSWORD=other\n" +
+				"replacements:\n  - source: {kind: ConfigMap, name: cfg, fieldPath: data.TOKEN}\n    targets:\n      - select: {kind: Secret}\n        fieldPaths:\n          - metadata.name\n",
+			"app/deployment.yaml": safeBase,
+		}, true, "k8s_secret")
+		require.NotContains(t, raw, "canary-replacement-value")
+		require.NotContains(t, raw, "Y2FuYXJ5LXJlcGxhY2VtZW50LXZhbHVl") // base64 of the canary
+		for _, f := range got {
+			require.Equal(t, "app/kustomization.yaml", f.file)
+		}
+		require.NotEmpty(t, got)
+	})
+
+}
+
+func indent(s, prefix string) string {
+	return prefix + strings.ReplaceAll(strings.TrimSuffix(s, "\n"), "\n", "\n"+prefix) + "\n"
 }

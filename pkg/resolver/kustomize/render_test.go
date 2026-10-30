@@ -1486,6 +1486,33 @@ func TestPatchesRenameUnreadable(t *testing.T) {
 	}
 }
 
+// TestRenderReplacementRenameRefusesSibling refuses to attribute a
+// replacement-renamed object to the sibling whose name the replacement
+// copied: only the kind identifies the document.
+func TestRenderReplacementRenameRefusesSibling(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "resources:\n  - dep.yaml\n  - cm.yaml\n" +
+			"replacements:\n  - source: {kind: ConfigMap, name: cfg, fieldPath: data.TOKEN}\n    targets:\n" +
+			"      - select: {kind: Deployment, name: web}\n        fieldPaths:\n          - metadata.name\n",
+		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: a\n---\n" +
+			"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\n  namespace: b\n",
+		"o/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cfg\ndata:\n  TOKEN: api\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attributed := 0
+	for _, d := range res.Documents {
+		if d.Kustomize.Kind == "Deployment" && d.SourceDocumentIndex >= 0 {
+			attributed++
+		}
+	}
+	if attributed != 0 || res.MappingFailures == 0 {
+		t.Fatalf("%d deployments attributed, %d failures", attributed, res.MappingFailures)
+	}
+}
+
 // TestRenderJSONPatchRenameFails counts as a mapping failure an object a JSON
 // patch renamed and moved to another namespace, even when the name it took is
 // a source document's own.
