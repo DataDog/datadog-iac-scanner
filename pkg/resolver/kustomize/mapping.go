@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -44,6 +45,7 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 	g := r.loadGraph(res.Root, rootKust)
 	// Counted once mapping is done, every walk the graph took included.
 	defer func() { res.graphSteps += g.steps }()
+	asWritten := r.namesMaySetByReplacement(res.Reads)
 	for _, rs := range m.Resources() {
 		if expired() {
 			return &RenderError{Reason: ReasonTimeout}
@@ -52,6 +54,7 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 		if !ok {
 			return &RenderError{Reason: ReasonRenderError}
 		}
+		r.setIdentity(doc.Kustomize, rs.GetGvk().Group, asWritten, doc.FileName)
 		res.Documents = append(res.Documents, doc)
 	}
 	rejectCollisions(res)
@@ -156,18 +159,16 @@ func (r *Renderer) renameMode(reads []string) renameMode {
 
 // generatorEntries proves generated names unambiguous across the graph: every
 // entry creates (merge and replace keep the base origin under another
-// kustomization's options), no entry name repeats, in any namespace or level,
-// and every entry hashes the same way.
+// kustomization's options), and no entry name repeats, in any namespace or
+// level. Entries may hash differently: each is matched by its own hashing.
 type generatorEntries struct {
-	names   map[string]bool
-	hashOff *bool
+	names map[string]bool
 }
 
 func (g *generatorEntries) add(k *types.Kustomization) bool {
 	if g.names == nil {
 		g.names = map[string]bool{}
 	}
-	global := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
 	var args []types.GeneratorArgs
 	for i := range k.ConfigMapGenerator {
 		args = append(args, k.ConfigMapGenerator[i].GeneratorArgs)
@@ -177,11 +178,10 @@ func (g *generatorEntries) add(k *types.Kustomization) bool {
 	}
 	for i := range args {
 		a := &args[i]
-		off := global || a.Options != nil && a.Options.DisableNameSuffixHash
-		if (a.Behavior != "" && a.Behavior != "create") || g.names[a.Name] || (g.hashOff != nil && *g.hashOff != off) {
+		if (a.Behavior != "" && a.Behavior != "create") || g.names[a.Name] {
 			return false
 		}
-		g.names[a.Name], g.hashOff = true, &off
+		g.names[a.Name] = true
 	}
 	return true
 }
@@ -209,6 +209,86 @@ func renames(k *types.Kustomization, also map[string]bool) bool {
 		}
 	}
 	return slices.ContainsFunc(k.Labels, func(l types.Label) bool { return len(l.FieldSpecs) > 0 })
+}
+
+// hashSuffix matches the "-" and 10 characters Kustomize appends to a
+// generated name: a hex digest prefix with 0, 1, 3, a and e respelled.
+var hashSuffix = regexp.MustCompile(`-[2456789bcdfghkmt]{10}$`)
+
+// setIdentity fills the fields a finding on the object is identified by. A
+// generated name loses its content hash, so editing generated data keeps the
+// identity, unless the generator disabled that hash and its name ends like
+// one; an unknown generator entry leaves no name. When a replacement may
+// have set names, the names as written are used: the rendered ones may carry
+// values copied from generated data.
+func (r *Renderer) setIdentity(a *model.KustomizeAttribution, group string, asWritten bool, genKust string) {
+	a.APIGroup = group
+	switch {
+	case asWritten:
+		a.IdentityName, a.IdentityNamespace = a.SourceName, a.SourceNamespace
+	case a.Generator != nil && a.Generator.Name == "":
+		a.IdentityName, a.IdentityNamespace = "", a.RenderedNamespace
+	case a.Generator != nil && !r.nameHashDisabled(genKust, a.Generator.Kind, a.Generator.Name):
+		a.IdentityName, a.IdentityNamespace = hashSuffix.ReplaceAllString(a.RenderedName, ""), a.RenderedNamespace
+	default:
+		a.IdentityName, a.IdentityNamespace = a.RenderedName, a.RenderedNamespace
+	}
+}
+
+// nameHashDisabled reports whether the generator that rendered the object in
+// the kustomization at path had its content-hash suffix disabled, by its own
+// options or the kustomization's generatorOptions: its name is then as
+// written, even when it ends like a hash. The generator's own options apply
+// only to the entry attributed by name, never to a sibling whose rendered
+// name merely contains it.
+func (r *Renderer) nameHashDisabled(path, genKind, attributed string) bool {
+	k, ok := r.Kustomization(path)
+	if !ok {
+		return false
+	}
+	if k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash {
+		return true
+	}
+	args := generatorArgs(k, genKind)
+	for i := range args {
+		if args[i].Options != nil && args[i].Options.DisableNameSuffixHash && args[i].Name == attributed {
+			return true
+		}
+	}
+	return false
+}
+
+// namesMaySetByReplacement reports whether a kustomization the render read
+// has a replacement that may write a name or namespace, or a transformer
+// entry, whose configuration is not inspected.
+func (r *Renderer) namesMaySetByReplacement(reads []string) bool {
+	for _, p := range reads {
+		k, ok := r.Kustomization(p)
+		if !ok {
+			continue
+		}
+		if len(k.Transformers) > 0 {
+			return true
+		}
+		for i := range k.Replacements {
+			if k.Replacements[i].Path != "" {
+				return true
+			}
+			for _, t := range k.Replacements[i].Targets {
+				if len(t.FieldPaths) == 0 {
+					// Kustomize writes the target's metadata.name when
+					// the target lists no fieldPaths.
+					return true
+				}
+				for _, fp := range t.FieldPaths {
+					if strings.HasPrefix(fp, "metadata") && (fp == "metadata" || strings.Contains(fp, "name")) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph, mode renameMode) (model.ResolvedHelm, bool) {
@@ -676,16 +756,9 @@ func generatedAs(name, n string, hashOff bool) bool {
 	return ok && hash != "" && !strings.Contains(hash, "-")
 }
 
-// generatorName returns the only generator entry of genKind
-// (ConfigMapGenerator or SecretGenerator) in the kustomization at path whose
-// name between prefix and suffix, with its hash unless disabled, is the
-// rendered name; none or several return nil.
-func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string) *types.GeneratorArgs {
-	k, ok := r.Kustomization(path)
-	if !ok {
-		return nil
-	}
-	hashOff := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
+// generatorArgs returns the ConfigMap and Secret generators of genKind
+// declared in k.
+func generatorArgs(k *types.Kustomization, genKind string) []types.GeneratorArgs {
 	var args []types.GeneratorArgs
 	switch genKind {
 	case "ConfigMapGenerator":
@@ -697,6 +770,20 @@ func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string)
 			args = append(args, k.SecretGenerator[i].GeneratorArgs)
 		}
 	}
+	return args
+}
+
+// generatorName returns the only generator entry of genKind
+// (ConfigMapGenerator or SecretGenerator) in the kustomization at path whose
+// name between prefix and suffix, with its hash unless disabled, is the
+// rendered name; none or several return nil.
+func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string) *types.GeneratorArgs {
+	k, ok := r.Kustomization(path)
+	if !ok {
+		return nil
+	}
+	args := generatorArgs(k, genKind)
+	hashOff := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
 	var best *types.GeneratorArgs
 	for i := range args {
 		n := args[i].Name

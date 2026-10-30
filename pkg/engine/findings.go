@@ -112,7 +112,7 @@ func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulne
 
 // keepChained records v unless id under v's call chain is already kept.
 func (s *findingSet) keepChained(id model.ChainedIdentity, v *model.Vulnerability) {
-	if s.has(id, v.ModuleCallChain) {
+	if s.has(id, v.IdentityChain()) {
 		return
 	}
 	s.kept[sha256.Sum256(s.keyBuf)] = struct{}{}
@@ -140,7 +140,7 @@ func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetada
 	if file == nil || len(s.kept) == 0 {
 		return false
 	}
-	if !s.accounted(id, file.ID, resourceType, file.ModuleCallChain, len(file.ModuleAttributions) > 0) {
+	if !s.accounted(id, file.ID, resourceType, file.IdentityChain(), len(file.ModuleAttributions) > 0) {
 		return false
 	}
 	if s.routing == nil {
