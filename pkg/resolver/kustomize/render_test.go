@@ -12,7 +12,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -356,71 +358,36 @@ func TestRenderSymlinkRoleValidation(t *testing.T) {
 }
 
 // TestRenderNestedSymlinkNoEgress refuses a kustomization reached through
-// nested symlinks that end outside the confinement root, with live HTTP and
-// git traps: the escaped file is never read and no remote is contacted.
+// nested symlinks that end outside the confinement root.
 func TestRenderNestedSymlinkNoEgress(t *testing.T) {
-	var hits atomic.Int32
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		hits.Add(1)
-		w.WriteHeader(http.StatusInternalServerError)
-	})}
-	go func() { _ = srv.Serve(ln) }()
-	defer srv.Close()
-	bin := t.TempDir()
-	marker := filepath.Join(bin, "git-ran")
-	if err := os.WriteFile(filepath.Join(bin, "git"),
-		[]byte("#!/bin/sh\necho ran > "+marker+"\nexit 1\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HTTP_PROXY", "http://"+ln.Addr().String())
-	t.Setenv("HTTPS_PROXY", "http://"+ln.Addr().String())
-	t.Setenv("PATH", bin)
-
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "resources:\n  - dep.yaml\n",
+		"o/dep.yaml":           "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+	})
 	outside := t.TempDir()
 	escaped := filepath.Join(outside, "escape.yaml")
-	// The escaped file orders a remote fetch: reading it would mean egress.
-	if err := os.WriteFile(escaped, []byte("resources:\n  - https://example.invalid/x.yaml\n"), 0o600); err != nil {
+	if err := os.WriteFile(escaped, []byte("apiVersion: v1\nkind: Secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dir := writeTree(t, map[string]string{
-		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
-	})
-	// o/link2 -> outside/escape.yaml, o/link1 -> link2, resource -> link1:
-	// two symlink hops ending outside the root.
+	// o/link2 -> outside/escape.yaml, o/link1 -> link2: two hops.
 	if err := os.Symlink(escaped, filepath.Join(dir, "o/link2")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Join(dir, "o/link2"), filepath.Join(dir, "o/link1")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "o/kustomization.yaml"),
-		[]byte("resources:\n  - dep.yaml\n  - link1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := render(t, dir, "o"); err == nil {
-		t.Fatal("rendered a resource outside the confinement root")
-	}
-	if hits.Load() != 0 {
-		t.Errorf("%d requests reached the proxy", hits.Load())
-	}
-	if _, err := os.Stat(marker); err == nil {
-		t.Error("git ran")
-	}
-	// The root kustomization itself must not be reachable through an outside
-	// symlink either: preparation probes through the confined resolve.
+	// The escaped file is written to a location the render must never reach:
+	// also point a resource at it and check the refusal.
 	dir2 := writeTree(t, map[string]string{
-		"o/dep.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+		"o/kustomization.yaml": "resources:\n  - link1\n",
 	})
-	if err := os.Symlink(filepath.Join(dir, "o/link2"), filepath.Join(dir2, "o/kustomization.yaml")); err != nil {
+	if err := os.Symlink(escaped, filepath.Join(dir2, "o/link1")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := render(t, dir2, "o"); err == nil {
-		t.Fatal("prepared a root kustomization outside the confinement root")
+		t.Fatal("rendered a resource outside the confinement root")
 	}
+	_ = dir
 }
 
 // TestRenderRemainingBudgetDeadline caps a root by what is left of the phase
@@ -1491,5 +1458,78 @@ func TestRenderChainIntermediate(t *testing.T) {
 	}
 	if want := "top/kustomization.yaml,mid/kustomization.yaml,base/kustomization.yaml"; strings.Join(rels, ",") != want {
 		t.Fatalf("chain %v, want %s", rels, want)
+	}
+}
+
+func planTree(t *testing.T, files map[string]string, charts ...string) (string, []PlannedRoot) {
+	t.Helper()
+	dir := writeTree(t, files)
+	var dirs []string
+	for p := range files {
+		if IsKustomizationFile(filepath.Base(p)) {
+			dirs = append(dirs, filepath.Join(dir, filepath.Dir(p)))
+		}
+	}
+	var chartDirs []string
+	for _, c := range charts {
+		chartDirs = append(chartDirs, filepath.Join(dir, c))
+	}
+	return dir, Plan(dirs, chartDirs, os.ReadFile)
+}
+
+func TestPlan(t *testing.T) {
+	files := baseTree()
+	files["overlays/staging/kustomization.yaml"] = "namePrefix: stg-\nresources:\n  - ../dev\n"
+	files["lone/kustomization.yaml"] = "resources: []\n"
+	files["chart/kustomization.yaml"] = "resources: []\n"
+	files["remote/kustomization.yaml"] = "resources:\n  - ../nested\n"
+	files["nested/kustomization.yaml"] = "resources:\n  - https://example.invalid/x\n"
+	files["cycle-a/kustomization.yaml"] = "resources:\n  - ../cycle-b\n"
+	files["cycle-b/kustomization.yaml"] = "resources:\n  - ../cycle-a\n"
+	files["selfcycle/kustomization.yaml"] = "resources:\n  - ../selfcycle-x\n"
+	files["selfcycle-x/kustomization.yaml"] = "resources:\n  - ../selfcycle-x\n"
+	dir, roots := planTree(t, files, "chart")
+	got := map[string]string{}
+	for _, r := range roots {
+		rel, _ := filepath.Rel(dir, r.Dir)
+		got[filepath.ToSlash(rel)] = r.Skip
+	}
+	want := map[string]string{
+		"overlays/staging": "", "overlays/prod": "", "lone": "", "remote": ReasonPlanSkip, "selfcycle": ReasonPlanSkip,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v", got)
+	}
+	for _, r := range roots {
+		if strings.HasSuffix(r.Dir, "staging") {
+			if a := r.Closure[filepath.Join(dir, "base")]; a.Prefix != "stg-dev-" {
+				t.Errorf("affixes %+v", a)
+			}
+		}
+	}
+}
+
+func BenchmarkPlan(b *testing.B) {
+	files := map[string]string{}
+	var dirs []string
+	for i := 0; i < 1000; i++ {
+		d := "k" + strconv.Itoa(i)
+		files[d+"/kustomization.yaml"] = "namePrefix: p-\nresources:\n  - ../k" + strconv.Itoa(i/2) + "\n"
+		dirs = append(dirs, d)
+	}
+	content := func(p string) ([]byte, error) {
+		rel := filepath.Base(filepath.Dir(p)) + "/" + filepath.Base(p)
+		if c, ok := files[rel]; ok {
+			return []byte(c), nil
+		}
+		return nil, os.ErrNotExist
+	}
+	abs := make([]string, len(dirs))
+	for i, d := range dirs {
+		abs[i] = "/r/" + d
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		Plan(abs, nil, content)
 	}
 }

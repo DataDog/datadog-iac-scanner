@@ -210,6 +210,9 @@ type Analyzer struct {
 	ExcludeGitIgnore  bool
 	MaxFileSize       int
 	NumWorkers        int
+	// CollectKustomizeRoots records the directories holding a kustomization
+	// file in AnalyzedPaths.KustomizeRoots.
+	CollectKustomizeRoots bool
 }
 
 // types is a map that contains the regex by type
@@ -374,6 +377,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	var err error
 	var files []string
 	var chartRoots []string
+	var kustomizeRoots []string
 	var totalFiles int
 	// results is the channel shared by the workers that contains the types found
 	results := make(chan string)
@@ -449,6 +453,13 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					a.Exc = append(a.Exc, norm)
 					return nil
 				}
+			}
+
+			// Before the extension filter: "Kustomization" has none.
+			if a.CollectKustomizeRoots && isKustomizationFile(filepath.Base(path)) &&
+				(!insideRepo || !hasGitIgnoreFile || !gitIgnore.MatchesPath(trimmedPath)) &&
+				!isExcludedFile(path, a.Exc) && isIncludedFile(path, a.Only) {
+				kustomizeRoots = append(kustomizeRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
 			if filepath.Base(path) == "Chart.yaml" {
@@ -561,6 +572,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	returnAnalyzedPaths.FilePlatform = fp
 	returnAnalyzedPaths.TotalFiles = totalFiles
 	returnAnalyzedPaths.ChartRoots = chartRoots
+	returnAnalyzedPaths.KustomizeRoots = kustomizeRoots
 
 	unwantedSet := make(map[string]struct{}, len(unwantedPaths))
 	for _, p := range unwantedPaths {
@@ -918,6 +930,10 @@ func ExcludedByContent(path string, content []byte) bool {
 		return isCatalogEntity(content)
 	}
 	return false
+}
+
+func isKustomizationFile(base string) bool {
+	return base == "kustomization.yaml" || base == "kustomization.yml" || base == "Kustomization"
 }
 
 // PlatformForKind returns the fixed platform for kind when known.

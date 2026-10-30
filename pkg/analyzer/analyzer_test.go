@@ -968,3 +968,34 @@ func TestAnalyze_IgnorePathsDirectoryExcludesFilesBelow(t *testing.T) {
 		})
 	}
 }
+
+func TestAnalyze_KustomizeRoots(t *testing.T) {
+	dir := t.TempDir()
+	for p, c := range map[string]string{
+		"a/kustomization.yaml":        "resources: []\n",
+		"b/Kustomization":             "resources: []\n",
+		"c/kustomization.yml":         "resources: []\n",
+		"ignored/kustomization.yaml":  "resources: []\n",
+		"excluded/kustomization.yaml": "resources: []\n",
+		".gitignore":                  "ignored/\n",
+	} {
+		full := filepath.Join(dir, p)
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		require.NoError(t, os.WriteFile(full, []byte(c), 0o600))
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	analyze := func(collect bool) []string {
+		got, err := Analyze(context.Background(), &Analyzer{
+			RepoPath: dir, Paths: []string{dir}, Types: []string{""}, MaxFileSize: -1,
+			GitIgnoreFileName: ".gitignore", Exc: []string{filepath.Join(dir, "excluded")},
+			CollectKustomizeRoots: collect,
+		})
+		require.NoError(t, err)
+		return got.KustomizeRoots
+	}
+	require.ElementsMatch(t, []string{
+		filepath.ToSlash(filepath.Join(dir, "a")), filepath.ToSlash(filepath.Join(dir, "b")),
+		filepath.ToSlash(filepath.Join(dir, "c")),
+	}, analyze(true))
+	require.Empty(t, analyze(false))
+}

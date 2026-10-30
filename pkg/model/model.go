@@ -1027,8 +1027,11 @@ type AnalyzedPaths struct {
 	FilePlatform map[string]string
 	Inventory    []string
 	ChartRoots   []string
-	TotalFiles   int
-	ContentCache map[string][]byte
+	// KustomizeRoots are the slash directories holding a kustomization file,
+	// when collected.
+	KustomizeRoots []string
+	TotalFiles     int
+	ContentCache   map[string][]byte
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file
