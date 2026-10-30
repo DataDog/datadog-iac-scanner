@@ -82,6 +82,22 @@ configMapGenerator:
 	}
 }
 
+// idle waits until no render holds the lock, abandoned or not.
+func (l *renderLock) idle() {
+	for {
+		l.mu.Lock()
+		owner, changed := l.owner, l.changed
+		l.mu.Unlock()
+		if owner == nil {
+			return
+		}
+		<-changed
+	}
+}
+
+// waitRunLock waits for an abandoned run to release the render lock.
+func waitRunLock() { runLock.idle() }
+
 func render(t *testing.T, dir, root string) (*Result, error) {
 	t.Helper()
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
@@ -672,6 +688,7 @@ func TestRenderWatchdogRemainingBudget(t *testing.T) {
 			}
 		},
 	}
+	t.Cleanup(waitRunLock)
 	r := NewRenderer(fsys, dir, 5<<20)
 	r.timeout = 2 * time.Second
 	start := time.Now()
@@ -696,6 +713,7 @@ func TestRenderWatchdogBoundsPreparation(t *testing.T) {
 			<-release
 		}
 	}}
+	t.Cleanup(waitRunLock)
 	r := NewRenderer(fsys, dir, 5<<20)
 	r.timeout = 200 * time.Millisecond
 	start := time.Now()
@@ -886,6 +904,119 @@ func TestRenderLoadGraphBounded(t *testing.T) {
 	if limit := entries * (1 + len(KustomizationFileNames)); res.graphSteps == 0 || res.graphSteps > limit {
 		t.Fatalf("load graph walk took %d steps, want at most %d", res.graphSteps, limit)
 	}
+}
+
+// TestRenderAbandonedLockFailsFast fails a root fast while an abandoned run
+// holds the render lock, without stopping the renderer, waits for a live one,
+// and renders the roots after it once the lock is free.
+func TestRenderAbandonedLockFailsFast(t *testing.T) {
+	dir := writeTree(t, baseTree())
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	o := runLock.acquire(context.Background(), time.Now().Add(time.Hour))
+	runLock.abandon(o)
+	start := time.Now()
+	_, err := r.Render(context.Background(), filepath.Join(dir, "base"))
+	var re *RenderError
+	if !errors.As(err, &re) || re.Reason != ReasonTimeout || time.Since(start) > rootTimeout/2 {
+		t.Fatalf("got %v after %v", err, time.Since(start))
+	}
+	runLock.release(o)
+	live := runLock.acquire(context.Background(), time.Now().Add(time.Hour))
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		runLock.release(live)
+	}()
+	for _, root := range []string{"base", "overlays/dev"} {
+		if _, err := r.Render(context.Background(), filepath.Join(dir, root)); err != nil {
+			t.Fatalf("%s: %v", root, err)
+		}
+	}
+}
+
+// TestRenderLockWaiterSeesAbandonment fails a waiter that started while the
+// owner was live as soon as the owner is abandoned, not at its deadline.
+func TestRenderLockWaiterSeesAbandonment(t *testing.T) {
+	l := &renderLock{changed: make(chan struct{})}
+	o := l.acquire(context.Background(), time.Now().Add(time.Hour))
+	got := make(chan *lockOwner)
+	go func() { got <- l.acquire(context.Background(), time.Now().Add(time.Hour)) }()
+	time.Sleep(50 * time.Millisecond)
+	l.abandon(o)
+	select {
+	case w := <-got:
+		if w != nil {
+			t.Fatal("the waiter took a lock its abandoned owner still holds")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the waiter kept waiting after the owner was abandoned")
+	}
+}
+
+// TestRenderLockEndedWait refuses the lock to an acquisition whose context
+// ended or whose deadline passed, even free or released while it waited, and
+// leaves the lock usable by the roots after it.
+func TestRenderLockEndedWait(t *testing.T) {
+	l := &renderLock{changed: make(chan struct{})}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if l.acquire(canceled, time.Now().Add(time.Hour)) != nil {
+		t.Fatal("a canceled acquisition took the free lock")
+	}
+	if l.acquire(context.Background(), time.Now().Add(-time.Second)) != nil {
+		t.Fatal("an expired acquisition took the free lock")
+	}
+	o := l.acquire(context.Background(), time.Now().Add(time.Hour))
+	ctx, cancel := context.WithCancel(context.Background())
+	got := make(chan *lockOwner)
+	go func() { got <- l.acquire(ctx, time.Now().Add(time.Hour)) }()
+	cancel()
+	l.release(o)
+	if <-got != nil {
+		t.Fatal("a canceled waiter took the released lock")
+	}
+	if l.acquire(context.Background(), time.Now().Add(time.Hour)) == nil {
+		t.Fatal("the lock is not usable after the canceled waiter")
+	}
+}
+
+// TestRenderLockIdleWaitsForAbandoned waits for an abandoned owner to finish
+// before cleanup returns, though acquisitions fail fast meanwhile.
+func TestRenderLockIdleWaitsForAbandoned(t *testing.T) {
+	l := &renderLock{changed: make(chan struct{})}
+	o := l.acquire(context.Background(), time.Now().Add(time.Hour))
+	l.abandon(o)
+	idle := make(chan struct{})
+	go func() { l.idle(); close(idle) }()
+	select {
+	case <-idle:
+		t.Fatal("idle returned while the abandoned owner holds the lock")
+	case <-time.After(100 * time.Millisecond):
+	}
+	l.release(o)
+	<-idle
+}
+
+// TestRenderLockLateAbandonment ignores an abandonment that comes after its
+// owner released the lock: the next owner stays live and its waiters wait.
+func TestRenderLockLateAbandonment(t *testing.T) {
+	l := &renderLock{changed: make(chan struct{})}
+	o := l.acquire(context.Background(), time.Now().Add(time.Hour))
+	l.release(o)
+	next := l.acquire(context.Background(), time.Now().Add(time.Hour))
+	l.abandon(o)
+	ctx, cancel := context.WithCancel(context.Background())
+	got := make(chan *lockOwner)
+	go func() { got <- l.acquire(ctx, time.Now().Add(time.Hour)) }()
+	select {
+	case <-got:
+		t.Fatal("a waiter failed fast on a live owner")
+	case <-time.After(100 * time.Millisecond):
+	}
+	l.release(next)
+	if w := <-got; w == nil {
+		t.Fatal("the waiter did not take the released lock")
+	}
+	cancel()
 }
 
 // TestRenderGeneratorNamespace reports a generated object's source namespace

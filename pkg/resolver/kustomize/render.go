@@ -26,8 +26,71 @@ const (
 	PhaseTimeout = 60 * time.Second
 )
 
-// runMu serializes krusty.Run, which resets process-wide OpenAPI state.
-var runMu sync.Mutex
+// runLock serializes renders: krusty.Run resets process-wide OpenAPI state.
+var runLock = &renderLock{changed: make(chan struct{})}
+
+// renderLock is held by one render at a time. A render abandoned at its
+// deadline keeps it until its run returns; the renders waiting for it, or
+// arriving meanwhile, fail fast instead.
+type renderLock struct {
+	mu    sync.Mutex
+	owner *lockOwner
+	// changed is closed, and replaced, when the owner releases the lock or is
+	// abandoned.
+	changed chan struct{}
+}
+
+type lockOwner struct{ abandoned bool }
+
+// acquire takes the lock, waiting for a live owner until ctx ends or
+// deadline passes; an abandoned owner fails it at once. Both are checked
+// before every grant, so a release does not win over an ended wait.
+func (l *renderLock) acquire(ctx context.Context, deadline time.Time) *lockOwner {
+	wait := time.NewTimer(time.Until(deadline))
+	defer wait.Stop()
+	for {
+		if ctx.Err() != nil || time.Now().After(deadline) {
+			return nil
+		}
+		l.mu.Lock()
+		if l.owner == nil {
+			l.owner = &lockOwner{}
+			l.mu.Unlock()
+			return l.owner
+		}
+		abandoned, changed := l.owner.abandoned, l.changed
+		l.mu.Unlock()
+		if abandoned {
+			return nil
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return nil
+		case <-wait.C:
+			return nil
+		}
+	}
+}
+
+// release frees the lock o holds.
+func (l *renderLock) release(o *lockOwner) { l.change(o, func() { l.owner = nil }) }
+
+// abandon marks o abandoned while it still holds the lock; once it released
+// it, abandoning changes nothing, so a late abandonment never marks the next
+// owner.
+func (l *renderLock) abandon(o *lockOwner) { l.change(o, func() { o.abandoned = true }) }
+
+func (l *renderLock) change(o *lockOwner, f func()) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.owner != o {
+		return
+	}
+	f()
+	close(l.changed)
+	l.changed = make(chan struct{})
+}
 
 // RenderError tells why a root did not render. It carries only a category:
 // Kustomize error text may echo secret input and is dropped.
@@ -183,8 +246,16 @@ func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
 	if dead {
 		return nil, &RenderError{Reason: ReasonTimeout}
 	}
-	// One absolute deadline covers preparation, execution and mapping: a root
-	// started near the phase deadline gets only what is left of it.
+	r.mu.Lock()
+	phase := r.deadline
+	r.mu.Unlock()
+	owner := runLock.acquire(ctx, phase)
+	if owner == nil {
+		return nil, &RenderError{Reason: ReasonTimeout}
+	}
+	// One absolute deadline covers preparation, execution and mapping, from
+	// when the render holds the lock: a root started near the phase deadline
+	// gets only what is left of it.
 	r.mu.Lock()
 	budget := time.Until(r.deadline)
 	r.mu.Unlock()
@@ -195,7 +266,9 @@ func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
 	a := &adapter{fsys: r.fsys, root: r.confine, cache: r.cache, reads: map[string]struct{}{}}
 	done := make(chan runOutcome, 1)
 	go func() {
-		done <- r.prepareAndRun(ctx, a, root, deadline)
+		out := r.prepareAndRun(ctx, a, root, deadline)
+		runLock.release(owner)
+		done <- out
 	}()
 	// The absolute root deadline bounds preparation and execution alike.
 	timer := time.NewTimer(time.Until(deadline))
@@ -204,9 +277,11 @@ func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
 	select {
 	case out = <-done:
 	case <-timer.C:
+		runLock.abandon(owner)
 		r.kill()
 		return nil, &RenderError{Reason: ReasonTimeout}
 	case <-ctx.Done():
+		runLock.abandon(owner)
 		r.kill()
 		return nil, &RenderError{Reason: ReasonTimeout}
 	}
@@ -291,8 +366,6 @@ func (r *Renderer) prepareRoot(a *adapter, root string, deadline time.Time) (str
 
 func run(a *adapter, root string) (out runOutcome) {
 	out.a = a
-	runMu.Lock()
-	defer runMu.Unlock()
 	// Kustomize logs var values through the standard logger (refvar); they may
 	// be secrets. Its direct stderr writes are constant deprecation notices.
 	defer logger.SilenceStdLog()()
