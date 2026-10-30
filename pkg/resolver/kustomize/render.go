@@ -221,11 +221,14 @@ func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
 	}
 	res := &Result{Root: abs, Reads: sortedKeys(a.reads), RunNs: out.runNs}
 	mapStart := time.Now()
-	if !r.mapResources(res, out.m, kustFile, deadline) {
-		// The phase deadline passed while mapping: abandon the result so its
-		// files fall back to the raw scan.
-		r.kill()
-		return nil, &RenderError{Reason: ReasonTimeout}
+	if err := r.mapResources(res, out.m, kustFile, deadline); err != nil {
+		// Abandon the result so its files fall back to the raw scan; past the
+		// phase deadline, stop rendering.
+		var re *RenderError
+		if errors.As(err, &re) && re.Reason == ReasonTimeout {
+			r.kill()
+		}
+		return nil, err
 	}
 	res.MapNs = time.Since(mapStart)
 	return res, nil

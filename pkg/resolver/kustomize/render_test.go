@@ -452,7 +452,7 @@ func TestRenderMappingRootDeadline(t *testing.T) {
 	if err := rm.Append(rs); err != nil {
 		t.Fatal(err)
 	}
-	if r.mapResources(&Result{}, rm, "", time.Now().Add(-time.Second)) {
+	if r.mapResources(&Result{}, rm, "", time.Now().Add(-time.Second)) == nil {
 		t.Fatal("mapping past the root deadline must fail the root")
 	}
 }
@@ -473,7 +473,7 @@ func TestRenderMappingLastResourceDeadline(t *testing.T) {
 	if err := rm.Append(rs); err != nil {
 		t.Fatal(err)
 	}
-	if r.mapResources(&Result{Root: dir}, rm, "", time.Now().Add(100*time.Millisecond)) {
+	if r.mapResources(&Result{Root: dir}, rm, "", time.Now().Add(100*time.Millisecond)) == nil {
 		t.Fatal("a root whose deadline passed while mapping must fail")
 	}
 }
@@ -507,7 +507,7 @@ func TestRenderMappingDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.deadline = time.Now().Add(-time.Second)
-	if r.mapResources(&Result{}, rm, "", time.Now().Add(time.Hour)) {
+	if r.mapResources(&Result{}, rm, "", time.Now().Add(time.Hour)) == nil {
 		t.Fatal("mapping past the phase deadline must fail the root")
 	}
 }
@@ -766,6 +766,31 @@ func TestRenderGeneratorKind(t *testing.T) {
 	}
 	if got["ConfigMap"] != "app" || got["Secret"] != "dev-app" {
 		t.Fatalf("got %v", got)
+	}
+}
+
+// TestRenderSerializationFailureFailsRoot fails the whole root when a
+// rendered resource cannot be serialized (a replacement writing a string
+// into an integer field), rather than dropping that resource.
+func TestRenderSerializationFailureFailsRoot(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "resources:\n  - a.yaml\nreplacements:\n  - source:\n      kind: ConfigMap\n" +
+			"      fieldPath: data.x\n    targets:\n      - select:\n          kind: Deployment\n        fieldPaths:\n" +
+			"          - spec.replicas\n",
+		"o/a.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\ndata:\n  x: abc\n---\n" +
+			"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: d\nspec:\n  replicas: 1\n",
+		"b/kustomization.yaml": "resources:\n  - deployment.yaml\n",
+		"b/deployment.yaml":    deployment,
+	})
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	res, err := r.Render(context.Background(), filepath.Join(dir, "o"))
+	var re *RenderError
+	if res != nil || !errors.As(err, &re) || re.Reason != ReasonRenderError {
+		t.Fatalf("got a result: %t, error %v", res != nil, err)
+	}
+	// Not a timeout: the next root still renders.
+	if _, err := r.Render(context.Background(), filepath.Join(dir, "b")); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -32,22 +32,30 @@ type sourceDoc struct {
 // never the patch file or the fields changed. A field an overlay patch adds or
 // changes is therefore attributed to the source document, where it may be
 // absent.
-func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, rootDeadline time.Time) bool {
-	if time.Now().After(rootDeadline) || time.Now().After(r.deadline) {
-		return false
+// It fails with a timeout past a deadline, and with a render error when a
+// resource cannot be serialized: the whole root then falls back to the raw
+// scan rather than losing that resource.
+func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, rootDeadline time.Time) error {
+	expired := func() bool { return time.Now().After(rootDeadline) || time.Now().After(r.deadline) }
+	if expired() {
+		return &RenderError{Reason: ReasonTimeout}
 	}
 	mode := r.renameMode(res.Reads)
 	for _, rs := range m.Resources() {
-		if time.Now().After(rootDeadline) || time.Now().After(r.deadline) {
-			return false
+		if expired() {
+			return &RenderError{Reason: ReasonTimeout}
 		}
 		doc, ok := r.mapResource(res, rs, rootKust, mode)
-		if ok {
-			res.Documents = append(res.Documents, doc)
+		if !ok {
+			return &RenderError{Reason: ReasonRenderError}
 		}
+		res.Documents = append(res.Documents, doc)
 	}
 	rejectCollisions(res)
-	return !time.Now().After(rootDeadline) && !time.Now().After(r.deadline)
+	if expired() {
+		return &RenderError{Reason: ReasonTimeout}
+	}
+	return nil
 }
 
 type mappingKey struct {
