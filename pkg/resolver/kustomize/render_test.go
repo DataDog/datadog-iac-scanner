@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"sigs.k8s.io/kustomize/api/resmap"
 	"sigs.k8s.io/kustomize/api/resource"
@@ -82,7 +83,50 @@ configMapGenerator:
 
 func render(t *testing.T, dir, root string) (*Result, error) {
 	t.Helper()
-	return NewRenderer(vfs.Default(), dir, 5<<20).Render(context.Background(), filepath.Join(dir, root))
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	res, err := r.Render(context.Background(), filepath.Join(dir, root))
+	if err == nil {
+		checkDocumentCounts(t, r, res)
+	}
+	return res, err
+}
+
+// checkDocumentCounts checks that the mapping indexes the documents of every
+// source manifest a render read as the YAML parser does.
+func checkDocumentCounts(t *testing.T, r *Renderer, res *Result) {
+	t.Helper()
+	for _, p := range res.Reads {
+		content, ok := r.Source(p)
+		if !ok || IsKustomizationFile(filepath.Base(p)) {
+			continue
+		}
+		parsed, _, _ := yamlparser.ParseWithNodeTransformNoResolve(context.Background(), content, p, nil)
+		if got := len(r.sourceDocuments(p)); got != len(parsed) {
+			t.Errorf("%s: mapping counts %d documents, the parser %d", p, got, len(parsed))
+		}
+	}
+}
+
+// TestRenderEmptyDocumentIndex indexes source documents past empty and
+// comment-only ones as the YAML parser does.
+func TestRenderEmptyDocumentIndex(t *testing.T) {
+	svc := func(n string) string { return "apiVersion: v1\nkind: Service\nmetadata:\n  name: " + n + "\n" }
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml": "resources:\n  - a.yaml\n  - b.yaml\n",
+		"o/a.yaml":             svc("a1") + "---\n---\n" + svc("a2"),
+		"o/b.yaml":             svc("b1") + "---\n# only a comment\n---\n" + svc("b2"),
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, d := range res.Documents {
+		got[d.Kustomize.RenderedName] = d.SourceDocumentIndex
+	}
+	if got["a1"] != 0 || got["a2"] != 1 || got["b1"] != 0 || got["b2"] != 1 || res.MappingFailures != 0 {
+		t.Fatalf("got %v, %d failures", got, res.MappingFailures)
+	}
 }
 
 func TestRenderAttributesSources(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/kustomize/api/resmap"
 	"sigs.k8s.io/kustomize/api/resource"
@@ -456,14 +457,8 @@ func (r *Renderer) sourceDocuments(path string) []sourceDoc {
 	var docs []sourceDoc
 	dec := yaml.NewDecoder(bytes.NewReader(content))
 	for {
-		var d struct {
-			Kind     string `yaml:"kind"`
-			Metadata struct {
-				Name      string `yaml:"name"`
-				Namespace string `yaml:"namespace"`
-			} `yaml:"metadata"`
-		}
-		err := dec.Decode(&d)
+		var node yaml.Node
+		err := dec.Decode(&node)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -471,6 +466,18 @@ func (r *Renderer) sourceDocuments(path string) []sourceDoc {
 			docs = append(docs, sourceDoc{})
 			break
 		}
+		// Index documents as the YAML parser does, which skips empty ones.
+		if yamlparser.IsEmptyDocument(&node) {
+			continue
+		}
+		var d struct {
+			Kind     string `yaml:"kind"`
+			Metadata struct {
+				Name      string `yaml:"name"`
+				Namespace string `yaml:"namespace"`
+			} `yaml:"metadata"`
+		}
+		_ = node.Decode(&d)
 		docs = append(docs, sourceDoc{kind: d.Kind, name: d.Metadata.Name, namespace: d.Metadata.Namespace})
 	}
 	r.docs[path] = docs
