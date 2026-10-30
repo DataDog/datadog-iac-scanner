@@ -1,0 +1,14 @@
+{
+  "id": "test-kubernetes-deployment-without-network-policy",
+  "legacyId": "00000000-0000-4000-8000-00000000c0de",
+  "queryName": "Deployment without network policy (test)",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Test-only rule relating two documents.",
+  "descriptionUrl": "https://docs.datadoghq.com/",
+  "platform": "Kubernetes",
+  "descriptionID": "c0dec0de",
+  "cwe": "269",
+  "providerUrl": "https://kubernetes.io/docs/concepts/workloads/pods/#privileged-mode-for-containers",
+  "cloudProvider": ""
+}

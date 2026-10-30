@@ -358,6 +358,61 @@ func TestInspect_TwoViolationsOnOneResource_CompactedScanPathKeepsOne(t *testing
 	require.Equal(t, 11, vulns[0].Line, "the last decoded violation (port 3389) is the one kept")
 }
 
+// Two Kubernetes documents of different render roots raising the same rule:
+// each scope decodes with its own finding set, so the compacting scan path
+// keeps one finding per root instead of panicking on the emptied set.
+func TestInspect_ScopedRunsReinitializeCompaction(t *testing.T) {
+	podRule := []model.QueryMetadata{{
+		Query: "pod_rule",
+		Content: `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	pod := input.document[i]
+	pod.kind == "Pod"
+
+	result := {
+		"documentId": pod.id,
+		"resourceType": "Pod",
+		"resourceName": pod.metadata.name,
+		"searchKey": sprintf("metadata.name={{%s}}", [pod.metadata.name]),
+	}
+}
+`,
+		InputData: "{}",
+		Platform:  "k8s",
+		Metadata:  map[string]interface{}{"id": "test-kubernetes-pod", "platform": "Kubernetes"},
+	}}
+	root := t.TempDir()
+	files := model.FileMetadatas{}
+	// Two single-document scopes, then a LATER scope holding two documents of
+	// the same file and root: one duplicate identity inside that scope. A
+	// scope decodes with its own set, so the later scope's compaction keeps
+	// one of its two; a set emptied by an earlier scope would append both.
+	for i, renderRoot := range []string{"overlays/a", "overlays/b", "overlays/c", "overlays/c"} {
+		id := fmt.Sprintf("pod-%d", i)
+		files = append(files, &model.FileMetadata{
+			ID: id, ScanID: "test", Kind: model.KindYAML, Platform: "kubernetes",
+			FilePath:     filepath.Join(root, "base/deployment.yaml"),
+			OriginalData: "apiVersion: v1\nkind: Pod\nmetadata:\n  name: web\n",
+			RenderRoot:   renderRoot,
+			Document:     model.Document{"id": id, "kind": "Pod", "metadata": map[string]interface{}{"name": "web"}},
+		})
+	}
+	ins := newTestInspector(t, inspectorOpts{
+		queries:       podRule,
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	ins.SetCompactFindingsAtDecode(true)
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"kubernetes"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 3, "one finding per scope, the last scope compacting its two duplicates to one")
+}
+
 const decodedBucketHCL = `
 resource "aws_s3_bucket" "this" {
   acl = "public-read"
