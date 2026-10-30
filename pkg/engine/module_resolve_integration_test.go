@@ -937,10 +937,15 @@ resource "aws_s3_bucket" "replica" {
 	require.Equal(t, "stack", vulns[0].RootModule)
 }
 
-// TestInspect_ExpandedRootKeepsSiblingInEachInstance verifies that a root
-// count/for_each split does not hide the file's other resources from a rule
-// that reads them off the same document.
-func TestInspect_ExpandedRootKeepsSiblingInEachInstance(t *testing.T) {
+// TestInspect_ExpandedRootKeepsSiblingInOwningInstance verifies where a root
+// count/for_each split leaves the file's other resources: the owning instance
+// document (the first layer) keeps them next to the layer-0 instances, the
+// way a called module's unexpanded blocks stay in its layer-0 document, and
+// later layers carry only their own instance. Copying the siblings into every
+// layer made the scan's documents grow with siblings × layers, so every rule
+// re-evaluated each sibling once per instance and peak memory followed the
+// product rather than the configuration.
+func TestInspect_ExpandedRootKeepsSiblingInOwningInstance(t *testing.T) {
 	root := t.TempDir()
 	stackDir := filepath.Join(root, "stack")
 	require.NoError(t, os.MkdirAll(stackDir, 0o755))
@@ -1013,9 +1018,11 @@ DatadogPolicy contains result if {
 		byQuery[vulns[i].QueryID] = append(byQuery[vulns[i].QueryID], vulns[i].ResourceID)
 		detail = append(detail, fmt.Sprintf("%s id=%q root=%q file=%s line=%d", vulns[i].QueryID, vulns[i].ResourceID, vulns[i].RootModule, vulns[i].FileID, vulns[i].Line))
 	}
-	require.Empty(t, byQuery["missing-block"], "the public access block is in each instance document")
+	require.Equal(t, []string{"aws_s3_bucket.this[1]"}, byQuery["missing-block"],
+		"the owning instance keeps the sibling, so a same-document rule sees it next to this[0] only")
 	require.ElementsMatch(t, []string{"aws_s3_bucket.this[0]", "aws_s3_bucket.this[1]"}, byQuery["acl-rule"], strings.Join(detail, "\n"))
-	require.Equal(t, []string{"aws_s3_bucket_public_access_block.guard"}, byQuery["guard-rule"])
+	require.Equal(t, []string{"aws_s3_bucket_public_access_block.guard"}, byQuery["guard-rule"],
+		"the sibling is reported once, by the owning document")
 }
 
 // TestInspect_RootResourceAddress verifies that a root resource with no

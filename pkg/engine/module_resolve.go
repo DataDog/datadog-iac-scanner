@@ -473,6 +473,10 @@ func evaluateRootModules(
 // concurrency adds.
 var rootEvalWorkers = 4
 
+// windowSlack widens the token window beyond the workers: see
+// evaluateConcurrently.
+const windowSlack = 256
+
 // rootMerge folds root evaluations into the scan's documents, in root order.
 type rootMerge struct {
 	ctx        context.Context
@@ -552,8 +556,15 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 		results[i] = make(chan rootResult, 1)
 	}
 	// Tokens bound the roots evaluated but not yet merged. Workers take a token
-	// before an index, so the roots in flight are always the next ones to merge.
-	window := make(chan struct{}, 2*workers)
+	// before an index, so the roots in flight are always the next ones to
+	// merge. The slack keeps the merge's order from stalling the workers: a
+	// slow root blocks the merge until it arrives, and a window that only
+	// fits the workers would idle all of them for that whole duration with
+	// fast roots queued behind it. Queued results are small — a worker
+	// releases its evaluation caches once its root is evaluated, so what is
+	// held is the resolved resources — and the heavy roots a repository has
+	// are the ones the merge is waiting on anyway.
+	window := make(chan struct{}, 2*workers+windowSlack)
 	stop := make(chan struct{})
 	var (
 		mu       sync.Mutex
@@ -914,9 +925,6 @@ type docGroup struct {
 	// represents (K9CODESEC-7158). One document holds at most one instance of
 	// a block, so the lookup is exact.
 	instances map[model.TerraformBlock]string
-	// borrowed marks blocks this document carries only for context: a sibling
-	// copied into a later expanded-root layer, reported by the owning layer.
-	borrowed map[model.TerraformBlock]bool
 }
 
 // docContentKey identifies a document by its content. Two independent digests
@@ -1060,12 +1068,25 @@ type rootResource struct {
 	kind string
 }
 
-// joinPlainRootSiblings copies each unexpanded root resource into every
-// expanded-root layer of its file and drops it from the original document.
-// A file with no expanded root resource keeps the resource where it was
-// written. The first layer owns the copy: later layers carry it only for
-// context, marked borrowed, so each sibling yields one finding per rule.
-// Returns how many resources were copied.
+// joinPlainRootSiblings moves each unexpanded root resource of a file that has
+// an expanded root resource into the owning instance document — the file's
+// first layer — and drops it from the original document. A file with no
+// expanded root resource keeps the resource where it was written. The
+// sibling's own findings are reported once, from the owning document, and a
+// same-document rule sees it next to the layer-0 instances of every expanded
+// block, exactly as it does for the resources of a called module (see
+// instantiatedDocs: a module file's unexpanded blocks also stay in layer 0
+// only).
+//
+// Later layers do not carry a copy of the sibling. Copying it into every layer
+// made the scan's input grow with siblings × layers: a file with a few
+// hundred plain blocks and a for_each in the hundreds turned into one
+// document per instance, each holding every sibling again, so every rule
+// re-evaluated the same siblings once per instance and a scan's peak memory
+// followed the product rather than the configuration. Instance findings are
+// untouched: each instance document keeps the instance it exists for, and the
+// sibling keeps one finding per rule from the owning document.
+// Returns how many resources were moved.
 func joinPlainRootSiblings(
 	plain []rootResource,
 	expandedRoot map[string]bool,
@@ -1084,24 +1105,19 @@ func joinPlainRootSiblings(
 			// resolved from the file's own scope (see stampTerraformScopes).
 			continue
 		}
-		owned := false
 		joined := false
 		for _, key := range order {
 			g := groups[key]
 			if g.fm.ID != p.fm.ID || g.moduleAddress != "" {
 				continue
 			}
-			addGroupEntry(g, p.r, p.kind, repoPath, lookup, attributions)
-			if !owned {
-				owned = true
-			} else {
-				kindBlock, typ := addressKindOf(p.kind)
-				b := address.Block{Kind: kindBlock, Type: typ, Name: tfeval.ResourceBaseName(p.r.Name)}
-				if g.borrowed == nil {
-					g.borrowed = make(map[model.TerraformBlock]bool)
-				}
-				g.borrowed[b] = true
+			if joined {
+				// Only the owning document, the first layer of the file,
+				// carries the sibling; later layers exist for their own
+				// instances.
+				continue
 			}
+			addGroupEntry(g, p.r, p.kind, repoPath, lookup, attributions)
 			joined = true
 		}
 		if !joined {
@@ -1282,7 +1298,6 @@ func newInstanceFileMetadata(g *docGroup) *model.FileMetadata {
 		RootModule:    g.rootModule,
 		ModuleAddress: g.moduleAddress,
 		Instances:     g.instances,
-		Borrowed:      g.borrowed,
 		Blocks:        groupBlocks(g),
 	}
 	if g.fm.LineInfoDocument != nil {

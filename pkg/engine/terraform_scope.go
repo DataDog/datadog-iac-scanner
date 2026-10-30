@@ -523,19 +523,6 @@ func routedBlockAddress(scope *model.TerraformScope, b address.Block, moduleAddr
 	return address.Instance(moduleAddress, b, "")
 }
 
-// skipBorrowedBlock reports whether the finding's block is borrowed by this
-// synthetic document: a sibling copied into an expanded-root layer it does not
-// own, so the owning document reports it (see joinPlainRootSiblings). Dropping
-// it here keeps each sibling at one finding per rule.
-func skipBorrowedBlock(file *model.FileMetadata, resourceType, resourceName string) bool {
-	scope := file.TerraformScope
-	if scope == nil || len(scope.Borrowed) == 0 || file.Kind == model.KindTerraformPlan {
-		return false
-	}
-	block, ok := resolveTerraformBlock(scope, resourceType, resourceName)
-	return ok && scope.Borrowed[block]
-}
-
 // isSyntheticTerraformDoc reports whether f stands for a module instance or a
 // count/for_each instance rather than the file as written.
 func isSyntheticTerraformDoc(f *model.FileMetadata) bool {
