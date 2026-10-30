@@ -75,6 +75,131 @@ func TestJson_parseTFPlan(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "test - planned data source and managed resource of the same type and name stay separate",
+			args: args{
+				doc: model.Document{
+					"format_version":    "0.2",
+					"terraform_version": "1.0.5",
+					"variables":         map[string]interface{}{},
+					"planned_values": map[string]interface{}{
+						"root_module": map[string]interface{}{
+							"resources": []map[string]interface{}{
+								{
+									"address":       "aws_s3_bucket.x",
+									"mode":          "managed",
+									"type":          "aws_s3_bucket",
+									"name":          "x",
+									"provider_name": "registry.terraform.io/hashicorp/aws",
+									"values":        map[string]interface{}{"bucket": "managed"},
+								},
+								{
+									"address":       "data.aws_s3_bucket.x",
+									"mode":          "data",
+									"type":          "aws_s3_bucket",
+									"name":          "x",
+									"provider_name": "registry.terraform.io/hashicorp/aws",
+									"values":        map[string]interface{}{"bucket": "planned-read"},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]interface{}{},
+					"configuration":    map[string]interface{}{},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]interface{}{
+					"aws_s3_bucket": map[string]interface{}{
+						"x": map[string]interface{}{"bucket": "managed"},
+					},
+				},
+				"data": map[string]interface{}{
+					"aws_s3_bucket": map[string]interface{}{
+						"x": map[string]interface{}{"bucket": "planned-read"},
+					},
+				},
+				"_dd_tfplan_meta": map[string]interface{}{
+					"aws_s3_bucket": map[string]interface{}{
+						"x": map[string]interface{}{"address": "aws_s3_bucket.x"},
+					},
+					"data.aws_s3_bucket": map[string]interface{}{
+						"x": map[string]interface{}{"address": "data.aws_s3_bucket.x"},
+					},
+				},
+				"resource_changes": []interface{}{},
+				"configuration":    map[string]interface{}{},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test - prior state fills only the data entries the plan does not carry",
+			args: args{
+				doc: model.Document{
+					"format_version":    "0.2",
+					"terraform_version": "1.0.5",
+					"variables":         map[string]interface{}{},
+					"planned_values": map[string]interface{}{
+						"root_module": map[string]interface{}{
+							"resources": []map[string]interface{}{
+								{
+									"address": "data.aws_s3_bucket.both",
+									"mode":    "data",
+									"type":    "aws_s3_bucket",
+									"name":    "both",
+									"values":  map[string]interface{}{"bucket": "planned"},
+								},
+							},
+						},
+					},
+					"prior_state": map[string]interface{}{
+						"format_version": "1.0",
+						"values": map[string]interface{}{
+							"root_module": map[string]interface{}{
+								"resources": []map[string]interface{}{
+									{
+										"address": "data.aws_s3_bucket.both",
+										"mode":    "data",
+										"type":    "aws_s3_bucket",
+										"name":    "both",
+										"values":  map[string]interface{}{"bucket": "prior"},
+									},
+									{
+										"address": "data.aws_s3_bucket.prior_only",
+										"mode":    "data",
+										"type":    "aws_s3_bucket",
+										"name":    "prior_only",
+										"values":  map[string]interface{}{"bucket": "prior-only"},
+									},
+								},
+							},
+						},
+					},
+					"resource_changes": []map[string]interface{}{},
+					"configuration":    map[string]interface{}{},
+				},
+			},
+			want: model.Document{
+				"resource": map[string]interface{}{
+					"aws_s3_bucket": map[string]interface{}{},
+				},
+				"data": map[string]interface{}{
+					"aws_s3_bucket": map[string]interface{}{
+						"both":       map[string]interface{}{"bucket": "planned"},
+						"prior_only": map[string]interface{}{"bucket": "prior-only"},
+					},
+				},
+				"_dd_tfplan_meta": map[string]interface{}{
+					"data.aws_s3_bucket": map[string]interface{}{
+						"both":       map[string]interface{}{"address": "data.aws_s3_bucket.both"},
+						"prior_only": map[string]interface{}{"address": "data.aws_s3_bucket.prior_only"},
+					},
+				},
+				"resource_changes": []interface{}{},
+				"configuration":    map[string]interface{}{},
+			},
+			wantErr: false,
+		},
+		{
 			name: "test - resource_changes and configuration pass through",
 			args: args{
 				doc: model.Document{
@@ -815,6 +940,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
+				"_dd_tfplan_meta": map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
+					},
+				},
 				"resource_changes": []any{},
 				"configuration":    map[string]any{},
 			},
@@ -873,6 +1003,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"by_alias": map[string]any{
 							"key_id": "alias/aws/s3",
 						},
+					},
+				},
+				"_dd_tfplan_meta": map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
 					},
 				},
 				"resource_changes": []any{},
@@ -988,6 +1123,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
+				"_dd_tfplan_meta": map[string]any{
+					"data.aws_kms_key": map[string]any{
+						`by_alias["prod"]`: map[string]any{"address": `data.aws_kms_key.by_alias["prod"]`},
+						`by_alias["dev"]`:  map[string]any{"address": `data.aws_kms_key.by_alias["dev"]`},
+					},
+				},
 				"resource_changes": []any{},
 				"configuration":    map[string]any{},
 			},
@@ -1052,6 +1193,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"module.storage.by_alias": map[string]any{
 							"key_id": "alias/storage",
 						},
+					},
+				},
+				"_dd_tfplan_meta": map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias":                map[string]any{"address": "data.aws_kms_key.by_alias"},
+						"module.storage.by_alias": map[string]any{"address": "module.storage.data.aws_kms_key.by_alias"},
 					},
 				},
 				"resource_changes": []any{},
@@ -2060,4 +2207,39 @@ func TestJson_parseTFPlan_dd_tfplan_meta_call_site_chain_grows_linearly_not_expo
 		depth, full, depth/2, half)
 	require.Less(t, full, 100,
 		"call_site_expressions should stay proportional to the number of real call sites (depth=%d), not explode to %d", depth, full)
+}
+
+// PlanAddresses flattens the plan's own per-resource addresses into
+// (section, document key) entries, keeping the resource and data namespaces
+// separate so a managed resource and a data source sharing type and key never
+// answer for each other.
+func TestJson_PlanAddresses(t *testing.T) {
+	doc := model.Document{
+		"_dd_tfplan_meta": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{
+				"this[0]": map[string]interface{}{"address": "aws_s3_bucket.this[0]"},
+			},
+			"data.aws_kms_key": map[string]interface{}{
+				"by_alias": map[string]interface{}{"address": "data.aws_kms_key.by_alias"},
+			},
+		},
+	}
+	got := PlanAddresses(doc)
+	require.Equal(t, "aws_s3_bucket.this[0]", got[[2]string{"aws_s3_bucket", "this[0]"}])
+	require.Equal(t, "data.aws_kms_key.by_alias", got[[2]string{"data.aws_kms_key", "by_alias"}])
+	// The namespaces stay separate: the data entry is not reachable by the
+	// bare type, and a resource/data pair sharing type and key never merges.
+	_, ok := got[[2]string{"aws_kms_key", "by_alias"}]
+	require.False(t, ok)
+
+	merged := model.Document{
+		"_dd_tfplan_meta": map[string]interface{}{
+			"aws_s3_bucket":      map[string]interface{}{"x": map[string]interface{}{"address": "aws_s3_bucket.x"}},
+			"data.aws_s3_bucket": map[string]interface{}{"x": map[string]interface{}{"address": "data.aws_s3_bucket.x"}},
+		},
+	}
+	got = PlanAddresses(merged)
+	require.Equal(t, "aws_s3_bucket.x", got[[2]string{"aws_s3_bucket", "x"}])
+	require.Equal(t, "data.aws_s3_bucket.x", got[[2]string{"data.aws_s3_bucket", "x"}])
+	require.Nil(t, PlanAddresses(model.Document{}))
 }

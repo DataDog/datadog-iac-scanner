@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
+	"github.com/rs/zerolog/log"
 )
 
 // CITracker contains information of how many queries were loaded and executed
@@ -36,6 +37,7 @@ type CITracker struct {
 	FoundResources       int
 	LineInfoLoadFailures int
 	SupersededResults    int64
+	IdentityGaps         int64
 }
 
 // NewTracker will create a new instance of a tracker with the number of lines to display in results output
@@ -121,6 +123,19 @@ func (c *CITracker) FailedLineInfoDocument() {
 // SkippedSupersededResult counts a result dropped before its line was detected.
 func (c *CITracker) SkippedSupersededResult() {
 	atomic.AddInt64(&c.SupersededResults, 1)
+}
+
+// FindingWithoutIdentity counts a Terraform finding whose resourceType and
+// resourceName named no declared block, so it kept the legacy fingerprint
+// (K9CODESEC-7158), and logs the first one: a count above zero is a gap in the
+// rules or the identity resolution, to fix at the source.
+func (c *CITracker) FindingWithoutIdentity() {
+	if atomic.AddInt64(&c.IdentityGaps, 1) == 1 {
+		// The global logger, which the CLI configures: the tracker carries no
+		// context, and a context lookup here would return zerolog's disabled
+		// logger and silence the one warning the scan owes.
+		log.Warn().Msg("terraform findings without identity; keeping the legacy fingerprint for them")
+	}
 }
 
 // TrackFileFoundCountLines - information about the lines of the scanned files

@@ -153,8 +153,13 @@ func (d variableDecl) conform(v cty.Value) cty.Value {
 	return converted
 }
 
+// blockTypeEphemeral is the ephemeral resource block type; its blocks expand
+// and are addressed like resources, in their own namespace.
+const blockTypeEphemeral = "ephemeral"
+
 // collectBlocks partitions blocks across all bodies into variables, locals,
-// module calls, resources, and outputs.
+// module calls, resources (ephemeral resource blocks included: they expand
+// and are addressed like resources, in their own namespace), and outputs.
 func collectBlocks(bodies []*hclsyntax.Body) (
 	varDecls map[string]variableDecl,
 	localExprs map[string]hclsyntax.Expression,
@@ -180,7 +185,7 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 				}
 			case blockTypeModule:
 				modules = append(modules, block)
-			case "resource":
+			case "resource", blockTypeEphemeral:
 				resources = append(resources, block)
 			case "output":
 				if len(block.Labels) != 1 {
@@ -282,12 +287,8 @@ func parseResourceInstanceKey(name string) (base, key string, isCount, expanded 
 	// for_each: name ends with `"]` and contains `["`
 	if strings.HasSuffix(name, `"]`) {
 		if idx := strings.LastIndex(name, `["`); idx >= 0 {
-			quoted := name[idx+1 : len(name)-1] // `"bar"`
-			unquoted, err := strconv.Unquote(quoted)
-			if err != nil {
-				unquoted = strings.Trim(quoted, `"`)
-			}
-			return name[:idx], unquoted, false, true
+			quoted := name[idx+1 : len(name)-1] // `"bar"`, HCL-escaped
+			return name[:idx], decodeHCLString(quoted), false, true
 		}
 	}
 	// count: name ends with [N] where N is an integer
@@ -300,6 +301,26 @@ func parseResourceInstanceKey(name string) (base, key string, isCount, expanded 
 		}
 	}
 	return name, "", false, false
+}
+
+// decodeHCLString decodes an HCL-escaped string literal (the inside of an
+// instance suffix, quotes included) back to the raw key, by parsing it as the
+// HCL template it is and evaluating. hclwrite only doubles the template
+// introducers ($$, %%) before a real brace, so a text replace would collapse
+// literal $$ the formatter never doubled — keys a$b and a$$b must stay
+// distinct. Whatever hclwrite wrote round-trips: it escapes every template
+// introducer, so the parsed template holds only literal text and evaluates
+// with no context.
+func decodeHCLString(quoted string) string {
+	expr, diags := hclsyntax.ParseExpression([]byte(quoted), "", hcl.InitialPos)
+	if diags.HasErrors() {
+		return strings.Trim(quoted, `"`)
+	}
+	v, err := expr.Value(nil)
+	if err != nil || !v.IsKnown() || v.IsNull() || !v.IsWhollyKnown() || v.Type() != cty.String {
+		return strings.Trim(quoted, `"`)
+	}
+	return v.AsString()
 }
 
 // ResourceBaseName strips any count/for_each instance suffix from a resource Name

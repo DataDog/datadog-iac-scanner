@@ -567,6 +567,38 @@ func (c *Inspector) Inspect(
 
 	queries := c.getQueriesByPlat(platforms)
 
+	// Stamp the files' Terraform identity context before anything reads it:
+	// module evaluation captures external-module-file scopes and mutates
+	// documents (instantiated blocks are stripped), and the payload build may
+	// release the documents the plan metadata and block sets are extracted
+	// from (K9CODESEC-7158).
+	c.stampTerraformScopes(files)
+
+	// Step 1 and 2 parse the repository's module calls and the variables they
+	// declare, from the files' raw content. Module evaluation never touches
+	// that content (it only rewrites the parsed Document and line-info trees),
+	// so the parse runs concurrently with the evaluation below rather than
+	// after it: the evaluation is the phase that fills the machine, and the
+	// parse pool, which draws from the shared CPU budget, uses the cores it
+	// leaves idle. The goroutine is joined before any early return, so a scan
+	// failure never leaks it. A genuine per-file HCL parse failure is
+	// non-fatal (logged, scan continues), but a context cancellation must
+	// abort the scan rather than proceed with partial module data.
+	type moduleParse struct {
+		modules   map[string]tfmodules.ParsedModule
+		enriched  []tfmodules.ParsedModule
+		parseErr  error
+		enrichErr error
+	}
+	moduleParseDone := make(chan moduleParse, 1)
+	go func() {
+		var out moduleParse
+		out.modules, out.parseErr = tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
+		out.enriched, out.enrichErr = tfmodules.ParseAllModuleVariables(
+			ctx, c.fsys, out.modules, c.repoPath, c.buildModuleMetadataResolver(), c.mergeAllow)
+		moduleParseDone <- out
+	}()
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
@@ -577,30 +609,21 @@ func (c *Inspector) Inspect(
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
 
-	// Must run after module mutations (which suppress module bodies in place).
-	combinedFiles := files.Combine(ctx, false)
-
-	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
-	// non-fatal (logged, scan continues), but a context cancellation must abort
-	// the scan rather than proceed with partial module data.
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
-	if err != nil {
+	moduleData := <-moduleParseDone
+	if moduleData.parseErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
+		contextLogger.Warn().Err(moduleData.parseErr).Msg("Failed to parse Terraform modules")
 	}
-	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
+	contextLogger.Info().Msgf("Found %d modules", len(moduleData.modules))
+	if moduleData.enrichErr != nil {
+		return nil, moduleData.enrichErr
+	}
+	enrichedModules := moduleData.enriched
 
-	// Step 2: Enrich modules with parsed variables. As with Step 1, a context
-	// cancellation must abort the scan rather than proceed with partial module
-	// data; per-module parse failures are non-fatal and handled internally.
-	rootDir := c.repoPath
-	enrichedModules, err := tfmodules.ParseAllModuleVariables(
-		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver(), c.mergeAllow)
-	if err != nil {
-		return nil, err
-	}
+	// Must run after module mutations (which suppress module bodies in place).
+	combinedFiles := files.Combine(ctx, false)
 
 	// Synthetic files stand in for module instantiations of a file that has
 	// already been read; they are only joined once findings need to be
@@ -838,9 +861,12 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 		expanded = append(expanded, vulns[i])
 		for _, ex := range extras[vulns[i].FileID] {
 			vCopy := vulns[i]
-			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			// ResourceID is unchanged: a deduplicated caller resolves the same
+			// module address, only its own root module directory differs
+			// (K9CODESEC-7158).
+			vCopy.RootModule = ex.rootModule
 			expanded = append(expanded, vCopy)
 		}
 	}

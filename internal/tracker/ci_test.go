@@ -8,10 +8,13 @@ package tracker
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/test"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -174,5 +177,25 @@ func TestNewTracker(t *testing.T) {
 				t.Errorf("NewTracker() = %v, want = %v", gotStrVulnerabilities, wantStrVulnerabilities)
 			}
 		})
+	}
+}
+
+// FindingWithoutIdentity logs the first gap once per scan, on the global
+// logger the CLI configures — never on zerolog's disabled context logger.
+func TestFindingWithoutIdentityLogsOnce(t *testing.T) {
+	var buf strings.Builder
+	previous := log.Logger
+	log.Logger = zerolog.New(&buf).With().Timestamp().Logger()
+	defer func() { log.Logger = previous }()
+
+	c := &CITracker{}
+	c.FindingWithoutIdentity()
+	c.FindingWithoutIdentity()
+
+	if n := strings.Count(buf.String(), "terraform findings without identity"); n != 1 {
+		t.Fatalf("identity-gap warning emitted %d times, want exactly 1: %q", n, buf.String())
+	}
+	if c.IdentityGaps != 2 {
+		t.Fatalf("IdentityGaps = %d, want 2", c.IdentityGaps)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -25,6 +26,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
+	"github.com/zclconf/go-cty/cty"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
@@ -632,6 +635,19 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 		// yaml.v3 produces these only for non-string keys; string keys convert
 		// exactly as the JSON round-trip did (values included).
 		return normalizeInterfaceKeyedMap(t), true
+	case model.LineObject:
+		// The parsers' line metadata. It is the most common struct in
+		// Terraform documents — one per tracked block and attribute — and the
+		// JSON round trip it used to take dominated document sanitization on
+		// large repositories. The direct walk produces the same map the round
+		// trip did.
+		return normalizeLineObject(&t), true
+	case *model.LineObject:
+		return normalizeLineObject(t), true
+	case ctyjson.SimpleJSONValue:
+		// A cty value the Terraform converters embedded directly; the direct
+		// walk produces what marshaling it and parsing it back did.
+		return normalizeSimpleJSONValue(t)
 	}
 
 	// Reflect fallback for the remaining container shapes seen in parsed
@@ -650,6 +666,87 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 		return normalizeViaJSON(v)
 	}
 	return v, false
+}
+
+// normalizeLineObject converts a *model.LineObject to the map the JSON round
+// trip produced: {"_dd_line": <number>}, plus "_dd_arr" when the tracked block
+// array carries entries. Nested line objects convert recursively; a nil one
+// marshaled as null and unmarshaled as a nil interface.
+func normalizeLineObject(l *model.LineObject) interface{} {
+	if l == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, 2)
+	out["_dd_line"] = float64(l.Line)
+	if len(l.Arr) > 0 {
+		arr := make([]interface{}, len(l.Arr))
+		for i, entry := range l.Arr {
+			if entry == nil {
+				// A nil map marshals as null.
+				arr[i] = nil
+				continue
+			}
+			inner := make(map[string]interface{}, len(entry))
+			for k, lo := range entry {
+				inner[k] = normalizeLineObject(lo)
+			}
+			arr[i] = inner
+		}
+		out["_dd_arr"] = arr
+	}
+	return out
+}
+
+// normalizeSimpleJSONValue converts a ctyjson.SimpleJSONValue to the canonical
+// value the JSON round trip produced, walking the cty value directly. Numbers
+// convert through big-float to float64 the way parsing the encoded token did;
+// unknown and marked values, capsules and anything else the encoder rejects
+// stay as they are, as they did when json.Marshal failed.
+func normalizeSimpleJSONValue(s ctyjson.SimpleJSONValue) (interface{}, bool) {
+	v := s.Value
+	if !v.IsKnown() || v.ContainsMarked() {
+		return s, false
+	}
+	if v.IsNull() {
+		return nil, true
+	}
+	ty := v.Type()
+	switch {
+	case ty == cty.String:
+		return v.AsString(), true
+	case ty == cty.Bool:
+		return v.True(), true
+	case ty == cty.Number:
+		f, _ := v.AsBigFloat().Float64()
+		return f, true
+	case ty.IsObjectType(), ty.IsMapType():
+		out := make(map[string]interface{}, v.LengthInt())
+		for it := v.ElementIterator(); it.Next(); {
+			k, ev := it.Element()
+			name, ok := ctyutil.ConcreteString(k)
+			if !ok {
+				return s, false
+			}
+			nv, handled := normalizeSimpleJSONValue(ctyjson.SimpleJSONValue{Value: ev})
+			if !handled {
+				return s, false
+			}
+			out[name] = nv
+		}
+		return out, true
+	case ty.IsTupleType(), ty.IsListType(), ty.IsSetType():
+		out := make([]interface{}, 0, v.LengthInt())
+		for it := v.ElementIterator(); it.Next(); {
+			_, ev := it.Element()
+			nv, handled := normalizeSimpleJSONValue(ctyjson.SimpleJSONValue{Value: ev})
+			if !handled {
+				return s, false
+			}
+			out = append(out, nv)
+		}
+		return out, true
+	}
+	return s, false
 }
 
 func normalizeViaJSON(v interface{}) (interface{}, bool) {

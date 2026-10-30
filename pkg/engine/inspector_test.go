@@ -1508,22 +1508,24 @@ func TestExpandModuleFindings_NoExtrasUnchanged(t *testing.T) {
 }
 
 func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
-	primaryID := "primary\x00stack-a|module.app\x00this"
-	extraID := "extra\x00stack-b|module.app\x00this"
+	primaryID := "primary"
+	extraID := "extra"
 	extras := map[string][]extraCallerInfo{
-		primaryID: {{callChain: "stack-b|module.app", docID: extraID}},
+		primaryID: {{rootModule: "stack-b", docID: extraID}},
 	}
 	vulns := []model.Vulnerability{{
-		FileID:    primaryID,
-		FileName:  "modules/app/main.tf",
-		Line:      5,
-		QueryName: "rule-a",
+		FileID:     primaryID,
+		FileName:   "modules/app/main.tf",
+		Line:       5,
+		QueryName:  "rule-a",
+		RootModule: "stack-a", ResourceID: "module.app.aws_s3_bucket.b",
 	}}
 	got := expandModuleFindings(vulns, extras)
 	require.Len(t, got, 2)
 	require.Equal(t, primaryID, got[0].FileID)
 	require.Equal(t, extraID, got[1].FileID)
-	require.Equal(t, "stack-b|module.app", got[1].ModuleCallChain)
+	require.Equal(t, "stack-b", got[1].RootModule, "only the root module switches per caller")
+	require.Equal(t, got[0].ResourceID, got[1].ResourceID, "the address is the caller-independent part")
 	require.Equal(t, got[0].Line, got[1].Line)
 	require.Equal(t, got[0].FileName, got[1].FileName)
 	require.Equal(t, got[0].QueryName, got[1].QueryName)

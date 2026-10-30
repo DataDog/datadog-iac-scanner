@@ -403,8 +403,30 @@ func readPlan(
 	return doc
 }
 
-// readModule recursively accumulates resources from every module into the
-// same flat resource.<type>.<name> map. moduleAddress is "" for the root module.
+// managedSection returns the resource.<type> map a managed resource is
+// recorded under, creating it when needed.
+func (kp *TFPlan) managedSection(typ string) TFPlanResource {
+	if kp.Resource[typ] == nil {
+		kp.Resource[typ] = make(TFPlanResource)
+	}
+	return kp.Resource[typ]
+}
+
+// dataSection returns the data.<type> map a data source is recorded under,
+// creating it when needed.
+func (kp *TFPlan) dataSection(typ string) (section string, typeRes TFPlanResource, metaSection string) {
+	if kp.Data == nil {
+		kp.Data = make(map[string]map[string]any)
+	}
+	if kp.Data[typ] == nil {
+		kp.Data[typ] = make(map[string]any)
+	}
+	return "data." + typ, kp.Data[typ], "data." + typ
+}
+
+// readModule recursively accumulates managed resources from every module into
+// the flat resource.<type>.<name> map and planned data sources into the data
+// map. moduleAddress is "" for the root module.
 func (kp *TFPlan) readModule(
 	module *hcl_plan.StateModule,
 	moduleAddress string,
@@ -412,11 +434,6 @@ func (kp *TFPlan) readModule(
 	correlation *resourceChangeCorrelation,
 ) {
 	for _, resource := range module.Resources {
-		if kp.Resource[resource.Type] == nil {
-			kp.Resource[resource.Type] = make(TFPlanResource)
-		}
-		typeRes := kp.Resource[resource.Type]
-
 		// Module-prefixed so same-type-same-name resources in different
 		// modules don't collide.
 		resourceKey := resource.Name
@@ -426,6 +443,15 @@ func (kp *TFPlan) readModule(
 
 		if resource.Index != nil {
 			resourceKey = formatResourceKeyWithIndex(resourceKey, resource.Index)
+		}
+
+		// Planned data sources are kept in the data namespace, separate from
+		// managed resources of the same type and name: a planned read and a
+		// managed resource sharing type and key are two different blocks.
+		typeRes := kp.managedSection(resource.Type)
+		metaSection := resource.Type
+		if resource.Mode == hcl_plan.DataResourceMode {
+			_, typeRes, metaSection = kp.dataSection(resource.Type)
 		}
 
 		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
@@ -439,13 +465,12 @@ func (kp *TFPlan) readModule(
 			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
 		}
 
-		if kp.TfplanMeta[resource.Type] == nil {
-			if kp.TfplanMeta == nil {
-				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
-			}
-			kp.TfplanMeta[resource.Type] = make(map[string]tfplanResourceMeta)
+		if resource.Mode == hcl_plan.DataResourceMode {
+			// A data source has no planned change to correlate.
+			kp.recordPlanAddress(metaSection, resourceKey, resource.Address)
+			continue
 		}
-		kp.TfplanMeta[resource.Type][resourceKey] = resourceMetaFor(resource.Address, correlation)
+		kp.recordPlanMeta(metaSection, resourceKey, resourceMetaFor(resource.Address, correlation))
 	}
 
 	for _, childModule := range module.ChildModules {
@@ -506,7 +531,17 @@ func (kp *TFPlan) readPriorStateData(
 		}
 
 		typeData := kp.Data[resource.Type]
-		typeData[dataKey] = resource.AttributeValues
+		// A data source the plan already resolved (planned_values) keeps its
+		// values: prior state is the pre-plan snapshot, so it fills only the
+		// entries the plan does not carry.
+		if _, exists := typeData[dataKey]; !exists {
+			typeData[dataKey] = resource.AttributeValues
+		}
+
+		// prior_state data sources are not in planned_values, so readModule
+		// never records their address. Key the meta by data.<type> so it
+		// cannot collide with a managed resource of the same type and name.
+		kp.recordPlanAddress("data."+resource.Type, dataKey, resource.Address)
 
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
@@ -521,6 +556,64 @@ func (kp *TFPlan) readPriorStateData(
 	for _, childModule := range module.ChildModules {
 		kp.readPriorStateData(childModule, childModule.Address, resourceLines, deleted)
 	}
+}
+
+// recordPlanMeta stores meta for one planned resource, creating the maps it needs.
+func (kp *TFPlan) recordPlanMeta(typ, key string, meta tfplanResourceMeta) {
+	if kp.TfplanMeta == nil {
+		kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
+	}
+	if kp.TfplanMeta[typ] == nil {
+		kp.TfplanMeta[typ] = make(map[string]tfplanResourceMeta)
+	}
+	kp.TfplanMeta[typ][key] = meta
+}
+
+// recordPlanAddress stores a resource's Terraform address when that is all
+// the scan needs (a prior-state data source has no planned change to correlate).
+func (kp *TFPlan) recordPlanAddress(typ, key, address string) {
+	kp.recordPlanMeta(typ, key, tfplanResourceMeta{Address: address})
+}
+
+// TfplanMetaKey is the reserved top-level key pkg's tfplan parser attaches its
+// per-resource plan metadata under, parallel to Resource.
+const TfplanMetaKey = "_dd_tfplan_meta"
+
+// PlanAddresses flattens a terraform plan -json document's per-resource meta
+// (the addresses Terraform itself computed when producing the plan) into
+// (section, document key) -> address. The section is the plan's own key for
+// the resource: the type for a planned resource, "data."+type for a
+// prior-state data source. Resource and data namespaces stay separate, so a
+// managed resource and a data source sharing type and key never answer for
+// each other; the lookup passes the rule's resourceType through as-is. nil
+// when the document carries no meta.
+func PlanAddresses(doc model.Document) map[[2]string]string {
+	raw, ok := doc[TfplanMetaKey].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	out := make(map[[2]string]string, len(raw))
+	for section, entriesRaw := range raw {
+		entries, ok := entriesRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for key, entryRaw := range entries {
+			entry, ok := entryRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			planAddress, _ := entry["address"].(string)
+			if planAddress == "" {
+				continue
+			}
+			out[[2]string{section, key}] = planAddress
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // formatResourceKeyWithIndex appends a count/for_each index, e.g. "web[0]" or "bucket[\"prod\"]".

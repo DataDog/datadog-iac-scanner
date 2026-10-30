@@ -111,6 +111,15 @@ func (g *localGraph) noteReads(resourceTypes map[string]struct{}) []localDeps {
 			g.siblings[i].add(t)
 			root := t.RootName()
 			_, resource := resourceTypes[root]
+			if !resource && root == blockTypeEphemeral && len(t) > 1 {
+				if attr, ok := t[1].(hcl.TraverseAttr); ok {
+					_, resource = resourceTypes[attr.Name]
+				}
+			}
+			// Ephemeral references carry the namespace first
+			// (ephemeral.random_password.x.result); the second hop names the
+			// block type, and a local reading one must re-resolve when that
+			// block's values are injected.
 			direct[i].resources = direct[i].resources || resource
 			direct[i].modules = direct[i].modules || root == blockTypeModule
 			direct[i].data = direct[i].data || root == blockTypeData
