@@ -1592,12 +1592,18 @@ func TestPlanSymlinkedBase(t *testing.T) {
 }
 
 func TestPlanSymlinkConfined(t *testing.T) {
+	// Both escape vectors: o references a directory entry that is a symlink
+	// out of the repository, and a sibling kustomization whose file is a
+	// symlink into the escaped tree. Nothing outside may be read, and the
+	// escaped tree stays out of the closure.
 	dir := writeTree(t, map[string]string{
-		"o/kustomization.yaml":     "resources:\n  - ../esc-link\n  - ./b\n",
-		"b/kustomization.yaml":     "resources: []\n",
+		"o/kustomization.yaml": "resources:\n  - ../esc-link\n  - ../b\n",
 	})
 	esc := t.TempDir()
 	if err := os.WriteFile(filepath.Join(esc, "kustomization.yaml"), []byte("resources: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "b"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(esc, filepath.Join(dir, "esc-link")); err != nil {
@@ -1610,14 +1616,18 @@ func TestPlanSymlinkConfined(t *testing.T) {
 	bounded := r.BoundedRead()
 	var read []string
 	roots := Plan([]string{filepath.Join(dir, "o")}, nil, func(p string) ([]byte, error) {
-		read = append(read, p)
-		return bounded(p)
+		b, err := bounded(p)
+		if err == nil {
+			read = append(read, p)
+		}
+		return b, err
 	}, r.Canonical)
+	// b's kustomization escapes, so its directory stays unknown: the root
+	// plans without it rather than reading through the symlink.
 	if len(roots) != 1 || roots[0].Dir != filepath.Join(dir, "o") {
 		t.Fatalf("roots %+v", roots)
 	}
-	// Nothing outside the repository is ever read: the entry symlink and the
-	// kustomization symlink both escape, and their targets stay unknown.
+	// No successful read resolves outside the repository.
 	for _, p := range read {
 		real, err := filepath.EvalSymlinks(p)
 		if err == nil && real != dir && !strings.HasPrefix(real, dir+string(filepath.Separator)) {
@@ -1626,6 +1636,9 @@ func TestPlanSymlinkConfined(t *testing.T) {
 	}
 	if _, reaches := roots[0].Closure[esc]; reaches {
 		t.Errorf("closure reaches the escaped target")
+	}
+	if _, reaches := roots[0].Closure[filepath.Join(dir, "b")]; reaches {
+		t.Errorf("closure reaches the directory whose kustomization escapes")
 	}
 }
 
