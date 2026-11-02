@@ -140,6 +140,13 @@ type ModuleInstance struct {
 	CallChain     []CallSite
 }
 
+// EmptyBlock is a resource, data or ephemeral block whose count or for_each
+// expanded to zero instances.
+type EmptyBlock struct {
+	Type, Name, DefinedIn string // DefinedIn as in ResolvedResource.DefinedIn
+	Data, Ephemeral       bool
+}
+
 // Evaluator evaluates local Terraform modules.
 type Evaluator struct {
 	funcs    map[string]function.Function
@@ -181,6 +188,9 @@ type Evaluator struct {
 	// They are only collected when trackInstances is set.
 	instances      []ModuleInstance
 	trackInstances bool
+
+	// emptyBlocks holds the blocks the running EvaluateModule found empty.
+	emptyBlocks []EmptyBlock
 
 	// parseMu guards dirCache, which evaluators forked from one another share.
 	parseMu  *sync.Mutex
@@ -272,6 +282,13 @@ func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
 	instances := e.instances
 	e.instances = nil
 	return instances
+}
+
+// TakeEmptyBlocks returns the blocks the last EvaluateModule found empty, and clears them.
+func (e *Evaluator) TakeEmptyBlocks() []EmptyBlock {
+	blocks := e.emptyBlocks
+	e.emptyBlocks = nil
+	return blocks
 }
 
 // recordModuleInstance notes an evaluated call when instances are tracked. The
@@ -417,9 +434,11 @@ func (e *Evaluator) EvaluateModule(
 	visiting := map[string]bool{}
 	allVisited := map[string]bool{}
 	e.instances = nil
+	e.emptyBlocks = nil
 	resources, outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err != nil {
 		e.instances = nil
+		e.emptyBlocks = nil
 	}
 	return resources, outputs, allVisited, err
 }
@@ -457,6 +476,7 @@ func (e *Evaluator) evaluate(
 	defer delete(visiting, dir)
 	skippedBefore := e.skipped
 	instancesBefore := len(e.instances)
+	emptyBefore := len(e.emptyBlocks)
 
 	// Snapshot allVisited so we can determine which dirs this subtree adds.
 	prevAllVisited := make(map[string]bool, len(allVisited))
@@ -504,7 +524,7 @@ func (e *Evaluator) evaluate(
 
 	e.installModuleOutputs(evalCtx, scope, data, moduleOutputs)
 
-	rootResources := e.rootResourcesWithRefPasses(
+	rootResources, emptyRoot := e.rootResourcesWithRefPasses(
 		resourceBlocks, scope, evalCtx, data, addr, chain,
 	)
 
@@ -523,6 +543,8 @@ func (e *Evaluator) evaluate(
 		rootResources[i].Scope = scope
 	}
 	dataInstances := data.resolved(scope)
+	e.emptyBlocks = append(e.emptyBlocks, emptyRoot...)
+	e.emptyBlocks = append(e.emptyBlocks, data.emptyBlocks()...)
 	resources := make([]ResolvedResource, 0, len(rootResources)+len(dataInstances)+len(childResources))
 	resources = append(resources, rootResources...)
 	resources = append(resources, dataInstances...)
@@ -541,7 +563,8 @@ func (e *Evaluator) evaluate(
 		}
 	}
 	e.cacheCompletedEvaluation(
-		cacheKey, skippedBefore, resources, e.instances[instancesBefore:], outputs, visitedDirs, addr, len(chain), depth,
+		cacheKey, skippedBefore, resources, e.instances[instancesBefore:], e.emptyBlocks[emptyBefore:],
+		outputs, visitedDirs, addr, len(chain), depth,
 	)
 
 	return resources, outputs, nil
@@ -609,6 +632,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 		allVisited[visited] = true
 	}
 	e.instances = append(e.instances, entry.rebaseInstances(addr, chain)...)
+	e.emptyBlocks = append(e.emptyBlocks, entry.emptyBlocks...)
 	return entry.rebase(addr, chain), entry.outputs, true
 }
 
@@ -623,7 +647,7 @@ func (e *Evaluator) preinjectResourceRefs(
 	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 {
 		return
 	}
-	resources := e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+	resources, _ := e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
 	injected := injectResourceRefs(evalCtx, resources)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, injected, false)
 	if data.readsOwnResources() {
@@ -636,6 +660,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	skippedBefore uint64,
 	resources []ResolvedResource,
 	instances []ModuleInstance,
+	emptyBlocks []EmptyBlock,
 	outputs map[string]cty.Value,
 	visitedDirs []string,
 	addr string,
@@ -648,6 +673,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	e.cache[key] = &evalCacheEntry{
 		resources:    resources,
 		instances:    slices.Clone(instances),
+		emptyBlocks:  slices.Clone(emptyBlocks),
 		outputs:      outputs,
 		visitedDirs:  visitedDirs,
 		baseAddr:     addr,
@@ -722,6 +748,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			childAddr := instance.address(addr, call.label)
 			childChain := append(cloneChain(chain), site)
 			instancesBefore := len(e.instances)
+			emptyBefore := len(e.emptyBlocks)
 
 			childRes, childOuts, cErr := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
@@ -734,6 +761,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				// Deliberately not added to allVisited: the module was not resolved, so
 				// it must keep being scanned where it is written.
 				e.instances = e.instances[:instancesBefore]
+				e.emptyBlocks = e.emptyBlocks[:emptyBefore]
 				continue
 			}
 			e.recordModuleInstance(call.dir, childAddr, childChain)
@@ -827,8 +855,9 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	data *moduleData,
 	addr string,
 	chain []CallSite,
-) []ResolvedResource {
+) ([]ResolvedResource, []EmptyBlock) {
 	var rootResources []ResolvedResource
+	var empty []EmptyBlock
 	types := declaredResourceTypes(resourceBlocks)
 	localsReadOwn := scope.localGraph.readsResources
 	dataReadsOwn := data.readsOwnResources()
@@ -841,13 +870,13 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	readsOwn := localsReadOwn || resourcesReadResources(resourceBlocks, types) ||
 		(dataReadsOwn && readsDataPath)
 	for pass := 0; pass < resourceRefPasses; pass++ {
-		rootResources = e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
+		rootResources, empty = e.evalResourceBlocks(resourceBlocks, evalCtx, addr, chain)
 		// Always inject so resolved attrs reach evalCtx on every pass including the last.
 		changed := injectResourceRefs(evalCtx, rootResources)
 		if !changed || !readsOwn {
 			// Nothing the resource blocks or locals read has changed, so
 			// evaluating them again would reproduce these instances.
-			return rootResources
+			return rootResources, empty
 		}
 		// Refresh locals after every successful injection so that locals referencing
 		// newly-resolved resource attrs are up-to-date before outputs are computed.
@@ -967,34 +996,47 @@ func readsType(ref *tfrefs.Ref, types map[string]struct{}) bool {
 	return ok
 }
 
-// evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
+// evalResourceBlocks evaluates resource blocks (count/for_each expanded when
+// known), returning also the blocks that expanded to zero instances.
 func (e *Evaluator) evalResourceBlocks(
 	resourceBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain []CallSite,
-) []ResolvedResource {
+) ([]ResolvedResource, []EmptyBlock) {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
+	var empty []EmptyBlock
 	for _, rb := range resourceBlocks {
-		resources = append(resources, e.expandBlock(rb, evalCtx, addr, chain, false)...)
+		expanded, isEmpty := e.expandBlock(rb, evalCtx, addr, chain, false)
+		resources = append(resources, expanded...)
+		if isEmpty {
+			empty = append(empty, emptyBlockOf(rb, false))
+		}
 	}
-	return resources
+	return resources, empty
+}
+
+func emptyBlockOf(rb *hclsyntax.Block, data bool) EmptyBlock {
+	return EmptyBlock{
+		Type: rb.Labels[0], Name: rb.Labels[1], DefinedIn: rb.TypeRange.Filename,
+		Data: data, Ephemeral: rb.Type == blockTypeEphemeral,
+	}
 }
 
 // expandBlock emits zero, one, or N instances of a resource or data block;
 // known count/for_each get count.index / each.* in a child context; unknown
 // expansion uses one placeholder instance. Every known instance is expanded:
 // a cap would leave instances without their real address and their findings
-// unreported.
+// unreported. empty reports a known expansion to zero instances.
 func (e *Evaluator) expandBlock(
 	rb *hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain []CallSite,
 	data bool,
-) []ResolvedResource {
+) (resources []ResolvedResource, empty bool) {
 	if len(rb.Labels) < 2 {
-		return nil
+		return nil, false
 	}
 	typeName, resName := rb.Labels[0], rb.Labels[1]
 
@@ -1035,7 +1077,7 @@ func (e *Evaluator) expandBlock(
 	plan := tfinstances.Resolve(count, forEach, evalCtx)
 	switch {
 	case plan.Kind == "":
-		return []ResolvedResource{makeOne(InstanceKey{}, evalCtx)}
+		return []ResolvedResource{makeOne(InstanceKey{}, evalCtx)}, false
 	case plan.Unresolved:
 		// One placeholder instance with its iteration unknown: Terraform treats
 		// an address with no index as naming every instance of the block, and
@@ -1043,10 +1085,10 @@ func (e *Evaluator) expandBlock(
 		name, value := plan.Variable(tfinstances.Item{})
 		child := evalCtx.NewChild()
 		child.Variables = map[string]cty.Value{name: value}
-		return []ResolvedResource{makeOne(InstanceKey{}, child)}
+		return []ResolvedResource{makeOne(InstanceKey{}, child)}, false
 	case len(plan.Items) == 0:
 		// The expansion resolved to zero instances: the block exists nowhere.
-		return nil
+		return nil, true
 	}
 	out := make([]ResolvedResource, 0, len(plan.Items))
 	isCount := plan.Kind == tfinstances.KindCount
@@ -1070,7 +1112,7 @@ func (e *Evaluator) expandBlock(
 		}
 		out = append(out, res)
 	}
-	return out
+	return out, false
 }
 
 // instanceForEach narrows a resource's evaluated for_each to the element of one
@@ -1544,8 +1586,10 @@ func (e *Evaluator) preliminaryModuleOutputs(
 ) map[string]cty.Value {
 	// The calls evaluated here are speculative; cache entries keep their own.
 	instancesBefore := len(e.instances)
+	emptyBefore := len(e.emptyBlocks)
 	defer func() {
 		e.instances = e.instances[:instancesBefore]
+		e.emptyBlocks = e.emptyBlocks[:emptyBefore]
 	}()
 
 	out := map[string]cty.Value{}

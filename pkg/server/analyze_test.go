@@ -659,6 +659,46 @@ func TestAnalyze_LocalModuleAbsolutePathShape(t *testing.T) {
 	}
 }
 
+// TestAnalyze_ContentPush_ZeroCountBlockDropped proves the content-push path
+// drops a block whose count is known to be zero, as the CLI does: only the
+// count = 1 sibling produces a finding.
+func TestAnalyze_ContentPush_ZeroCountBlockDropped(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticBucketRule("zero-count-bucket")
+	const tmpl = `resource "aws_s3_bucket" "this" {
+  count  = %d
+  bucket = "zero-count-bucket"
+}
+`
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/off.tf", Content: fmt.Sprintf(tmpl, 0)},
+			{Path: "infra/on.tf", Content: fmt.Sprintf(tmpl, 1)},
+		},
+		Ruleset:  ruleset(rule),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var sawOn bool
+	for _, f := range out.Findings {
+		if f.QueryID != syntheticBucketRuleID {
+			continue
+		}
+		switch f.FileName {
+		case "infra/off.tf":
+			t.Errorf("zero-count block produced a finding: %+v", f)
+		case "infra/on.tf":
+			sawOn = true
+		}
+	}
+	if !sawOn {
+		t.Errorf("expected a finding for the count = 1 block; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+}
+
 // TestServerFlagEvaluator pins the flags server mode depends on. The
 // local-module-eval pin is on: tfeval reads module and tfvars files through the
 // request's in-memory FS, so evaluation can only see pushed content and an

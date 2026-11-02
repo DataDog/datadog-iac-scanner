@@ -3101,3 +3101,120 @@ resource "null_resource" "p" {}
 	}
 	require.ElementsMatch(t, []string{`c[0]`, `c[1]`, `f[""]`, `f["a$b"]`, `p`}, names)
 }
+
+func emptyBlockNames(blocks []EmptyBlock) map[string]EmptyBlock {
+	out := map[string]EmptyBlock{}
+	for _, b := range blocks {
+		out[b.Type+"."+b.Name] = b
+	}
+	return out
+}
+
+func TestEmptyBlocks_KnownZero(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+variable "on" {
+  default = false
+}
+resource "aws_s3_bucket" "a" {
+  count = 0
+}
+resource "aws_s3_bucket" "b" {
+  for_each = {}
+}
+resource "aws_s3_bucket" "c" {
+  count = var.on ? 1 : 0
+}
+data "aws_iam_policy_document" "d" {
+  count = 0
+}
+resource "aws_s3_bucket" "kept" {}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	blocks := e.TakeEmptyBlocks()
+	require.Len(t, blocks, 4)
+	got := emptyBlockNames(blocks)
+	for _, key := range []string{"aws_s3_bucket.a", "aws_s3_bucket.b", "aws_s3_bucket.c", "aws_iam_policy_document.d"} {
+		b, ok := got[key]
+		require.True(t, ok, key)
+		require.Equal(t, filepath.Join(dir, "main.tf"), b.DefinedIn)
+		require.Equal(t, key == "aws_iam_policy_document.d", b.Data, key)
+		require.False(t, b.Ephemeral, key)
+	}
+	require.Len(t, resources, 1)
+	require.Equal(t, "kept", resources[0].Name)
+}
+
+func TestEmptyBlocks_UnknownKeepsPlaceholder(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+variable "n" {}
+resource "aws_s3_bucket" "a" {
+  count = var.n
+}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Empty(t, e.TakeEmptyBlocks())
+	require.Len(t, resources, 1)
+	require.Equal(t, "a", resources[0].Name)
+}
+
+func TestEmptyBlocks_ReplayedOnCacheHit(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "gone" {
+  count = 0
+}
+`})
+	parent := writeModule(t, root, "parent", map[string]string{"main.tf": `
+module "one" {
+  source = "../child"
+}
+module "two" {
+  source = "../child"
+}
+`})
+	e := New()
+	_, _, _, err := e.EvaluateModule(context.Background(), parent, nil)
+	require.NoError(t, err)
+	blocks := e.TakeEmptyBlocks()
+	require.Len(t, blocks, 2)
+	for _, b := range blocks {
+		require.Equal(t, "aws_s3_bucket", b.Type)
+		require.Equal(t, "gone", b.Name)
+		require.Equal(t, filepath.Join(root, "child", "main.tf"), b.DefinedIn)
+	}
+}
+
+func TestEmptyBlocks_NotRecordedWhenEmptyOnlyInEarlierPass(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+resource "null_resource" "a" {
+  triggers = {
+    n = "1"
+  }
+}
+resource "aws_s3_bucket" "b" {
+  count = try(null_resource.a.triggers.n == "1" ? 1 : 0, 0)
+}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Empty(t, e.TakeEmptyBlocks())
+	findResource(t, resources, "aws_s3_bucket", "b[0]")
+}
+
+func TestEmptyBlocks_ClearedByTake(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "a" {
+  count = 0
+}
+`})
+	e := New()
+	_, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Len(t, e.TakeEmptyBlocks(), 1)
+	require.Nil(t, e.TakeEmptyBlocks())
+}

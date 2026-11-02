@@ -107,12 +107,11 @@ func (c *Inspector) instantiateLocalModules(
 			if res.unresolvedModuleDirs[moduleFileDir(f.FilePath, c.repoPath)] {
 				continue
 			}
-			// Only the blocks that came back as instantiated documents are
-			// dropped, so nothing loses its coverage: a resource the evaluator
-			// could not resolve, or one that expanded to no instances, keeps
-			// being scanned where it is written. The rest of the body
-			// (variable/output/data/locals) is always kept so its rules fire as
-			// they do in a standalone scan.
+			// Blocks that came back as instantiated documents, or are known to
+			// expand to zero instances, are removed; blocks that could not be
+			// resolved stay and are scanned where they are written. The rest of
+			// the body (variable/output/data/locals) is always kept so its
+			// rules fire as in a standalone scan.
 			removeInstantiatedResources(f.Document, replaced)
 			if err := f.EnsureLineInfoDocument(ctx); err != nil {
 				contextLogger.Err(err).Msgf("failed to build line-info document for file %s", f.FilePath)
@@ -186,19 +185,92 @@ const (
 	dataTypePrefix   = "data."
 	ephemeralPrefix  = "ephemeral."
 	ephemeralSection = "ephemeral"
+	resourceSection  = "resource"
 )
 
 // blockKind is the type a resolved block is indexed and attributed under.
 // The evaluator carries the block kind from HCL, so a managed resource and an
 // ephemeral one sharing type and name never conflate, however they expand.
 func blockKind(r *tfeval.ResolvedResource, _ *model.TerraformScope) string {
+	return blockKindOf(r.Type, r.Data, r.Ephemeral)
+}
+
+func blockKindOf(typ string, data, ephemeral bool) string {
 	switch {
-	case r.Data:
-		return dataTypePrefix + r.Type
-	case r.Ephemeral:
-		return ephemeralPrefix + r.Type
+	case data:
+		return dataTypePrefix + typ
+	case ephemeral:
+		return ephemeralPrefix + typ
 	}
-	return r.Type
+	return typ
+}
+
+// declaresExpandedBlock reports whether any scanned Terraform file declares a
+// block with count or for_each, which may expand to no instance.
+func declaresExpandedBlock(files model.FileMetadatas) bool {
+	for _, f := range files {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
+			continue
+		}
+		for _, key := range [...]string{"resource", "data", ephemeralSection} {
+			blocks, _ := asStringMap(f.Document[key])
+			for _, byName := range blocks {
+				names, _ := asStringMap(byName)
+				for _, block := range names {
+					attrs, _ := asStringMap(block)
+					if _, ok := attrs["count"]; ok {
+						return true
+					}
+					if _, ok := attrs["for_each"]; ok {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// addDroppedBlocks records the empty blocks no evaluation resolved to any
+// instance, so they are removed from the files they are written in.
+func addDroppedBlocks(
+	instantiated instantiatedIndex,
+	empty []tfeval.EmptyBlock,
+	resolved map[string]bool,
+	failedRoots map[string]bool,
+	byAbsPath map[string]*model.FileMetadata,
+	repoPath string,
+) {
+	for _, b := range empty {
+		file := absPath(b.DefinedIn, repoPath)
+		kind := blockKindOf(b.Type, b.Data, b.Ephemeral)
+		if resolved[resolvedBlockKey(file, kind, b.Name)] {
+			continue
+		}
+		fm, ok := byAbsPath[file]
+		if !ok || failedRoots[moduleFileDir(fm.FilePath, repoPath)] {
+			continue
+		}
+		// A list-shaped type cannot lose one block without losing all of them.
+		if _, named := asStringMap(docAsMap(fm.Document[blockSection(b)])[b.Type]); !named {
+			continue
+		}
+		instantiated.add(fm.ID, kind, b.Name)
+	}
+}
+
+func blockSection(b tfeval.EmptyBlock) string {
+	switch {
+	case b.Data:
+		return "data"
+	case b.Ephemeral:
+		return ephemeralSection
+	}
+	return resourceSection
+}
+
+func resolvedBlockKey(file, kind, name string) string {
+	return file + "\x00" + kind + "\x00" + name
 }
 
 // instantiatedIndex records which resource and data blocks of a file were
@@ -433,6 +505,7 @@ func evaluateRootModules(
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
+		resolved: make(map[string]bool), failedRoots: make(map[string]bool),
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -440,11 +513,12 @@ func evaluateRootModules(
 	}
 	for _, dir := range roots[next:] {
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
-		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
+		m.merge(dir, resources, evaluator.TakeModuleInstances(), evaluator.TakeEmptyBlocks(), childDirs, err)
 		// The cache key includes rootDir, so the next root cannot reuse these
 		// evaluations, and keyMemo pins every collection they hashed.
 		evaluator.ReleaseEvalCache()
 	}
+	addDroppedBlocks(instantiated, m.emptyBlocks, m.resolved, m.failedRoots, byAbsPath, repoPath)
 }
 
 // rootEvalWorkers bounds the roots evaluated at once. Each holds its own
@@ -480,12 +554,16 @@ type rootMerge struct {
 	resourceCount        *int
 	rootEvalOK           *bool
 	moduleCalls          *moduleCallIndex
+	emptyBlocks          []tfeval.EmptyBlock
+	resolved             map[string]bool
+	failedRoots          map[string]bool
 }
 
 func (m *rootMerge) merge(
 	dir string,
 	resources []tfeval.ResolvedResource,
 	instances []tfeval.ModuleInstance,
+	empty []tfeval.EmptyBlock,
 	childDirs map[string]bool,
 	err error,
 ) {
@@ -493,6 +571,7 @@ func (m *rootMerge) merge(
 	if err != nil {
 		contextLogger := logger.FromContext(m.ctx)
 		contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
+		m.failedRoots[dir] = true
 		for _, called := range discoverCalledModuleClosure(
 			m.ctx, m.evaluator, m.filesByDir, m.repoPath, m.resolver, dir,
 		) {
@@ -502,6 +581,11 @@ func (m *rootMerge) merge(
 	}
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
+	m.emptyBlocks = append(m.emptyBlocks, empty...)
+	for i := range resources {
+		r := &resources[i]
+		m.resolved[resolvedBlockKey(absPath(r.DefinedIn, m.repoPath), blockKind(r, nil), r.BaseName)] = true
+	}
 	for d := range childDirs {
 		m.actualCalledDirs[d] = true
 	}
@@ -518,6 +602,7 @@ func (m *rootMerge) merge(
 type rootResult struct {
 	resources    []tfeval.ResolvedResource
 	instances    []tfeval.ModuleInstance
+	empty        []tfeval.EmptyBlock
 	childDirs    map[string]bool
 	err          error
 	notEvaluated []string
@@ -587,7 +672,7 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 			panic(r.panicked)
 		}
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
-		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
+		m.merge(dir, r.resources, r.instances, r.empty, r.childDirs, r.err)
 	}
 	return len(roots)
 }
@@ -602,6 +687,7 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 	}()
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
 	r.instances = worker.TakeModuleInstances()
+	r.empty = worker.TakeEmptyBlocks()
 	return r
 }
 
@@ -688,7 +774,7 @@ func resolveModuleDocuments(
 	// labels are already in the parsed documents, so this costs nothing.
 	// External module files still need their calls, whatever they declare.
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
-	declaresResource := declaresTargetedResource(files, targets)
+	declaresResource := declaresTargetedResource(files, targets) || declaresExpandedBlock(files)
 	nothingToEvaluate := moduleCalls == nil && !declaresResource
 	if nothingToEvaluate && !declaresModuleCall(filesByDir) {
 		return moduleResolutionResult{}

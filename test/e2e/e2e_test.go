@@ -2,6 +2,8 @@ package test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -240,4 +242,55 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 		// it's a JSON file but not a Terraform plan
 		require.Equal(t, 1, metadata.Stats.Files, "Should scan exactly 1 file (tfplan.json), CloudFormation JSON excluded")
 	})
+}
+
+func Test_E2ETerraformZeroCountBlocksProduceNoFindings(t *testing.T) {
+	outDir := t.TempDir()
+	params, ctx := scan.GetDefaultParameters(context.Background(), "")
+	params.Path = []string{mustAbs(t, filepath.Join("fixtures", "zero-count.tf"))}
+	params.OutputPath = outDir
+	params.OutputName = "result"
+	params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform"))}
+	params.ChangedDefaultQueryPath = true
+	params.SCIInfo = model.SCIInfo{
+		DiffAware:            model.DiffAware{Enabled: false},
+		RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+	}
+	params.FlagEvaluator = featureflags.NewLocalEvaluator()
+	_, err := console.ExecuteScan(ctx, params)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(outDir, "result.sarif"))
+	require.NoError(t, err)
+	var doc struct {
+		Runs []struct {
+			Results []struct {
+				Locations []struct {
+					PhysicalLocation struct {
+						Region struct {
+							StartLine int `json:"startLine"`
+						} `json:"region"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(data, &doc))
+
+	lines := map[int]bool{}
+	for _, run := range doc.Runs {
+		for _, r := range run.Results {
+			for _, l := range r.Locations {
+				lines[l.PhysicalLocation.Region.StartLine] = true
+			}
+		}
+	}
+
+	const enabledLine, zeroLine, disabledLine, unknownLine, localFlagLine, emptyForEachLine = 8, 13, 18, 23, 32, 37
+	require.True(t, lines[enabledLine], "the enabled bucket must produce a finding: %v", lines)
+	require.True(t, lines[unknownLine], "the bucket with an unknown count must produce a finding: %v", lines)
+	require.False(t, lines[zeroLine], "count = 0 must produce no finding: %v", lines)
+	require.False(t, lines[disabledLine], "a count that evaluates to 0 must produce no finding: %v", lines)
+	require.False(t, lines[localFlagLine], "a count read through a local that evaluates to 0 must produce no finding: %v", lines)
+	require.False(t, lines[emptyForEachLine], "an empty for_each must produce no finding: %v", lines)
 }

@@ -292,6 +292,7 @@ type blockEvalCache struct {
 	// exposed are the instances as data.* exposes them, with the attributes
 	// localdata computes added and, at the root module, the iteration dropped.
 	exposed []ResolvedResource
+	empty   bool
 }
 
 // evalBlock evaluates one data block and memoizes the result against the
@@ -301,7 +302,8 @@ func (d *moduleData) evalBlock(
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(b, evalCtx, d.addr, d.chain, true)
+	expanded, empty := d.e.expandBlock(b, evalCtx, d.addr, d.chain, true)
+	cached.empty = empty
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
@@ -319,6 +321,21 @@ func (d *moduleData) evalBlock(
 	}
 	d.evalCache[b] = cached
 	return cached
+}
+
+// emptyBlocks returns the blocks whose last evaluation, the one the current
+// instances come from, expanded to zero instances.
+func (d *moduleData) emptyBlocks() []EmptyBlock {
+	if d == nil {
+		return nil
+	}
+	var out []EmptyBlock
+	for _, b := range d.blocks {
+		if d.evalCache[b].empty {
+			out = append(out, emptyBlockOf(b, true))
+		}
+	}
+	return out
 }
 
 // blockEvalInputs snapshots the context variables the block's traversals name.

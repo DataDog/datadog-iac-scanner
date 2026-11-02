@@ -44,6 +44,7 @@ type evalCacheEntry struct {
 	resources []ResolvedResource
 	// instances are the module calls evaluated inside this evaluation.
 	instances    []ModuleInstance
+	emptyBlocks  []EmptyBlock
 	outputs      map[string]cty.Value
 	visitedDirs  []string
 	baseAddr     string
