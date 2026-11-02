@@ -1509,6 +1509,61 @@ func TestPlan(t *testing.T) {
 	}
 }
 
+func TestPlanDiamond(t *testing.T) {
+	// A 24-level diamond: top fans out to a1 and b1, and every level
+	// converges back on a(i+1) and b(i+1). 49 directories, 94 edges. A walk
+	// that re-visits shared subgraphs explores 2^25 paths; a visit-once walk
+	// stays within nodes plus edges.
+	files := map[string]string{"top/kustomization.yaml": "resources:\n  - ../a1\n  - ../b1\n"}
+	for i := 1; i <= 24; i++ {
+		for _, side := range []string{"a", "b"} {
+			res := ""
+			if i < 24 {
+				res = fmt.Sprintf("\nresources:\n  - ../a%d\n  - ../b%d\n", i+1, i+1)
+			} else {
+				res = "\nresources: []\n"
+			}
+			files[side+strconv.Itoa(i)+"/kustomization.yaml"] = "namePrefix: " + side + strconv.Itoa(i) + "-\n" + res
+		}
+	}
+	var dirs []string
+	dir := writeTree(t, files)
+	for d := range files {
+		dirs = append(dirs, filepath.Join(dir, filepath.Dir(d)))
+	}
+	roots := Plan(dirs, nil, os.ReadFile)
+	if len(roots) != 1 || roots[0].Skip != "" {
+		t.Fatalf("roots %+v", roots)
+	}
+	// 49 nodes visited once plus 94 edges examined.
+	if roots[0].steps > 49+94 {
+		t.Fatalf("steps %d exceeds nodes plus edges %d", roots[0].steps, 49+94)
+	}
+}
+
+func TestPlanMultiChain(t *testing.T) {
+	_, roots := planTree(t, map[string]string{
+		"top/kustomization.yaml":    "resources:\n  - ../a\n  - ../b\n",
+		"a/kustomization.yaml":      "namePrefix: a-\nresources:\n  - ../shared\n",
+		"b/kustomization.yaml":      "namePrefix: b-\nresources:\n  - ../shared\n",
+		"shared/kustomization.yaml": "resources:\n  - ../leaf\n",
+		"leaf/kustomization.yaml":   "resources: []\n",
+	})
+	if len(roots) != 1 {
+		t.Fatalf("roots %+v", roots)
+	}
+	closure := roots[0].Closure
+	if af := closure[filepath.Join(roots[0].Dir, "..", "a")]; af.Prefix != "a-" || af.MultiChain {
+		t.Errorf("a affixes %+v", af)
+	}
+	for _, name := range []string{"shared", "leaf"} {
+		af := closure[filepath.Join(roots[0].Dir, "..", name)]
+		if !af.MultiChain || af.Prefix != "" || af.Suffix != "" {
+			t.Errorf("%s affixes %+v, want multichain with empty affixes", name, af)
+		}
+	}
+}
+
 func BenchmarkPlan(b *testing.B) {
 	files := map[string]string{}
 	var dirs []string

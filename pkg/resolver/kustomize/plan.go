@@ -8,8 +8,14 @@ import (
 )
 
 // Affixes are the name prefix and suffix the kustomizations from a render
-// root down to one directory add, outermost first.
-type Affixes struct{ Prefix, Suffix string }
+// root down to one directory add, outermost first. MultiChain marks a
+// directory reached through several chains, where path-dependent affixes
+// have no single value.
+type Affixes struct {
+	Prefix     string
+	Suffix     string
+	MultiChain bool
+}
 
 // PlannedRoot is a kustomization directory to render on its own.
 type PlannedRoot struct {
@@ -19,6 +25,9 @@ type PlannedRoot struct {
 	// Closure maps each kustomization directory the root reaches to the
 	// affixes applied to resources loaded there.
 	Closure map[string]Affixes
+	// steps counts the nodes visited and the edges examined while planning
+	// the root's closure.
+	steps int
 }
 
 // Plan picks the top-level roots among dirs (kustomization directories):
@@ -51,7 +60,7 @@ func Plan(dirs, chartRoots []string, read func(string) ([]byte, error)) []Planne
 			continue
 		}
 		root := PlannedRoot{Dir: d, Closure: map[string]Affixes{}}
-		if !walkClosure(d, Affixes{}, kusts, known, root.Closure, map[string]bool{}) {
+		if !planClosure(d, kusts, known, root.Closure, &root.steps) {
 			root.Skip = ReasonPlanSkip
 		}
 		out = append(out, root)
@@ -86,21 +95,72 @@ func children(dir string, k *types.Kustomization) []string {
 	return out
 }
 
-// walkClosure records the directories dir reaches with their affixes. It
-// reports false on a refused kustomization or a cycle.
-func walkClosure(dir string, outer Affixes, kusts map[string]*types.Kustomization, known map[string]bool,
-	closure map[string]Affixes, onPath map[string]bool) bool {
-	k := kusts[dir]
-	if k == nil || onPath[dir] {
+// planClosure records the directories dir reaches with their affixes,
+// visiting each directory once so a converging graph costs nodes plus edges,
+// not once per path. It reports false on a refused kustomization or a cycle.
+// A directory reached through several chains, or below one, is marked
+// MultiChain with empty affixes: the affixes are path-dependent and unknown,
+// so attribution must fail closed instead of using one arbitrary chain.
+func planClosure(dir string, kusts map[string]*types.Kustomization, known map[string]bool,
+	closure map[string]Affixes, steps *int) bool {
+	// states: 1 visiting (on the current path), 2 done.
+	state := make(map[string]int, len(kusts))
+	postorder := make([]string, 0, len(kusts))
+	edges := make(map[string][]string, len(kusts))
+	var walk func(d string, outer Affixes) bool
+	walk = func(d string, outer Affixes) bool {
+		switch state[d] {
+		case 1:
+			return false
+		case 2:
+			return true
+		}
+		*steps++
+		k := kusts[d]
+		if k == nil {
+			return false
+		}
+		state[d] = 1
+		closure[d] = Affixes{Prefix: outer.Prefix + k.NamePrefix, Suffix: k.NameSuffix + outer.Suffix}
+		kids := children(d, k)
+		*steps += len(kids)
+		for _, child := range kids {
+			if known[child] {
+				edges[d] = append(edges[d], child)
+				if !walk(child, closure[d]) {
+					return false
+				}
+			}
+		}
+		state[d] = 2
+		postorder = append(postorder, d)
+		return true
+	}
+	if !walk(dir, Affixes{}) {
 		return false
 	}
-	affixes := Affixes{Prefix: outer.Prefix + k.NamePrefix, Suffix: k.NameSuffix + outer.Suffix}
-	closure[dir] = affixes
-	onPath[dir] = true
-	defer delete(onPath, dir)
-	for _, child := range children(dir, k) {
-		if known[child] && !walkClosure(child, affixes, kusts, known, closure, onPath) {
-			return false
+	// Count the paths from the root to every directory over the recorded
+	// edges, in reverse post-order (root first), capped at 2: two or more
+	// paths mean the directory is multi-chain, and so is everything below it.
+	paths := make(map[string]int, len(postorder))
+	paths[dir] = 1
+	for i := len(postorder) - 1; i >= 0; i-- {
+		d := postorder[i]
+		for _, child := range edges[d] {
+			if paths[d] > 0 {
+				if paths[d]+paths[child] > 2 {
+					paths[child] = 2
+				} else {
+					paths[child] += paths[d]
+				}
+			}
+		}
+	}
+	for d, n := range paths {
+		if n >= 2 {
+			a := closure[d]
+			a.Prefix, a.Suffix, a.MultiChain = "", "", true
+			closure[d] = a
 		}
 	}
 	return true
