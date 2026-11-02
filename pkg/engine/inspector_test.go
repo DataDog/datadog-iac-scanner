@@ -1502,7 +1502,7 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 
 func TestExpandModuleFindings_NoExtrasUnchanged(t *testing.T) {
 	vulns := []model.Vulnerability{{FileID: "primary", QueryName: "rule-a"}}
-	got := expandModuleFindings(vulns, nil)
+	got := expandModuleFindings(vulns, nil, nil)
 	require.Equal(t, vulns, got)
 }
 
@@ -1519,7 +1519,7 @@ func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
 		QueryName:  "rule-a",
 		RootModule: "stack-a", ResourceID: "module.app.aws_s3_bucket.b",
 	}}
-	got := expandModuleFindings(vulns, extras)
+	got := expandModuleFindings(vulns, extras, nil)
 	require.Len(t, got, 2)
 	require.Equal(t, primaryID, got[0].FileID)
 	require.Equal(t, extraID, got[1].FileID)

@@ -1,0 +1,12 @@
+{
+  "id": "terraform-aws-versioning-by-root",
+  "legacyId": "b1b1b1b1-0000-4000-8000-000000000001",
+  "queryName": "Bucket without versioning in a root",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Flags an S3 bucket without enabled versioning and attributes the finding to the root module that violates it.",
+  "descriptionUrl": "https://example.com/versioning-by-root",
+  "platform": "Terraform",
+  "descriptionID": "b1b1b1b1",
+  "cloudProvider": "aws"
+}

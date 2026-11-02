@@ -46,6 +46,7 @@ func (c *Inspector) stampTerraformScopes(files model.FileMetadatas) {
 			scope := &model.TerraformScope{RootModule: repoRelativeFile(f.FilePath, c.repoPath)}
 			if planAddresses := json.PlanAddresses(f.Document); planAddresses != nil {
 				scope.PlanAddresses = planAddresses
+				stampPlanMeta(f.Document, planAddresses, scope.RootModule)
 			}
 			f.TerraformScope = scope
 		case model.KindTerraform:
@@ -59,6 +60,7 @@ func (c *Inspector) stampTerraformScopes(files model.FileMetadatas) {
 				RootModule: relDir(filepath.Dir(absPath(f.FilePath, c.repoPath))),
 				Blocks:     documentBlocks(f.Document),
 			}
+			stampWrittenMeta(f.Document, f.TerraformScope)
 		}
 	}
 	// Repeated unlabeled blocks (moved, import, removed) are indexed across

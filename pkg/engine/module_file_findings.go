@@ -178,38 +178,58 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 	for i := range vulns {
 		v := &vulns[i]
 		file := files[v.FileID]
-		if file == nil || v.ModuleAttribution != nil || file.keptAsWritten(v.ResourceType) {
+		if file == nil {
 			if out != nil {
 				out = append(out, *v)
 			}
+			continue
+		}
+		asWritten := v.ModuleAttribution != nil || file.keptAsWritten(v.ResourceType)
+		if asWritten && rootAllowed(v.OnlyRootModule, v.RootModule) && out == nil {
 			continue
 		}
 		if out == nil {
 			out = make([]model.Vulnerability, i, len(vulns)+len(file.calls))
 			copy(out, vulns[:i])
 		}
-		if file.keepWritten {
+		if asWritten {
+			if rootAllowed(v.OnlyRootModule, v.RootModule) {
+				out = append(out, *v)
+			}
+			continue
+		}
+		if file.keepWritten && rootAllowed(v.OnlyRootModule, v.RootModule) {
 			out = append(out, *v)
 		}
-		for j := range file.calls {
-			call := &file.calls[j]
-			attributed := *v
-			attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
-			// The copy stands for the block as written under this call's
-			// module instance address and the caller's root module, so two
-			// instances of one call get distinct fingerprints
-			// (K9CODESEC-7158).
-			attributed.RootModule = call.rootModule
-			if file.scope != nil {
-				if block, ok := resolveTerraformBlock(file.scope, v.ResourceType, v.ResourceName); ok {
-					attributed.ResourceID = routedBlockAddress(file.scope, block, call.moduleAddress)
-				}
-			}
-			out = append(out, attributed)
-		}
+		out = appendCallCopies(out, v, file)
 	}
 	if out == nil {
 		return vulns
+	}
+	return out
+}
+
+// appendCallCopies appends v once per call of file whose root module v may be
+// reported under.
+func appendCallCopies(out []model.Vulnerability, v *model.Vulnerability, file *moduleFileCalls) []model.Vulnerability {
+	for j := range file.calls {
+		call := &file.calls[j]
+		if !rootAllowed(v.OnlyRootModule, call.rootModule) {
+			continue
+		}
+		attributed := *v
+		attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
+		// The copy stands for the block as written under this call's
+		// module instance address and the caller's root module, so two
+		// instances of one call get distinct fingerprints
+		// (K9CODESEC-7158).
+		attributed.RootModule = call.rootModule
+		if file.scope != nil {
+			if block, ok := resolveTerraformBlock(file.scope, v.ResourceType, v.ResourceName); ok {
+				attributed.ResourceID = routedBlockAddress(file.scope, block, call.moduleAddress)
+			}
+		}
+		out = append(out, attributed)
 	}
 	return out
 }

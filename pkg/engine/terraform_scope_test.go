@@ -242,3 +242,113 @@ func TestRemoveInstantiatedResources_KeepsUnderscoreNamedBlocks(t *testing.T) {
 	require.True(t, onlyMetadataKeys(map[string]interface{}{"_dd_lines": model.Document{}, "_dd__default": model.Document{}}))
 	require.False(t, onlyMetadataKeys(map[string]interface{}{"_secret": model.Document{}}))
 }
+
+func TestStampTerraformScopesAddsMeta(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "envs", "prod", "main.tf")
+	require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o755))
+	require.NoError(t, os.WriteFile(file, []byte(`
+resource "aws_s3_bucket" "b" {
+  bucket = "x"
+}
+data "aws_iam_policy_document" "p" {
+  version = "2012-10-17"
+}
+ephemeral "random_password" "pw" {
+  length = 8
+}
+`), 0o644))
+	files := model.FileMetadatas{parseTerraform(t, file)[0]}
+	(&Inspector{repoPath: dir}).stampTerraformScopes(files)
+
+	want := func(addr string) map[string]interface{} {
+		return map[string]interface{}{"address": addr, "root_modules": []interface{}{"envs/prod"}}
+	}
+	for section, c := range map[string][3]string{
+		"resource":       {"aws_s3_bucket", "b", "aws_s3_bucket.b"},
+		"data":           {"aws_iam_policy_document", "p", "data.aws_iam_policy_document.p"},
+		ephemeralSection: {"random_password", "pw", "ephemeral.random_password.pw"},
+	} {
+		sec, _ := asStringMap(files[0].Document[section])
+		byType, _ := asStringMap(sec[c[0]])
+		block, ok := asStringMap(byType[c[1]])
+		require.True(t, ok, section)
+		require.Equal(t, want(c[2]), block[ddMetaKey], section)
+	}
+}
+
+func TestStampTerraformScopesKeepsListShapedTypesAndReplacesUserMeta(t *testing.T) {
+	list := []interface{}{map[string]interface{}{"a": 1}}
+	doc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_x": list,
+			"aws_y": map[string]interface{}{
+				"n": map[string]interface{}{ddMetaKey: map[string]interface{}{"address": "user"}},
+				"s": map[string]interface{}{ddMetaKey: "user"},
+			},
+		},
+	}
+	stampWrittenMeta(doc, &model.TerraformScope{RootModule: "."})
+	res, _ := asStringMap(doc["resource"])
+	require.Equal(t, []interface{}{map[string]interface{}{"a": 1}}, res["aws_x"])
+	y, _ := asStringMap(res["aws_y"])
+	want := resourceMeta("aws_y.n", []string{"."})
+	n, _ := asStringMap(y["n"])
+	require.Equal(t, want, n[ddMetaKey])
+	str, _ := asStringMap(y["s"])
+	require.Equal(t, resourceMeta("aws_y.s", []string{"."}), str[ddMetaKey])
+}
+
+func TestDocumentBlocksIndexesBlocksNamedDDMeta(t *testing.T) {
+	doc := model.Document{
+		"resource": model.Document{"t": model.Document{ddMetaKey: model.Document{"x": 1}}},
+		"variable": model.Document{ddMetaKey: model.Document{"default": 1}},
+	}
+	blocks := documentBlocks(doc)
+	require.True(t, blocks[model.TerraformBlock{Kind: address.KindResource, Type: "t", Name: ddMetaKey}])
+	require.True(t, blocks[model.TerraformBlock{Kind: address.KindVariable, Name: ddMetaKey}])
+
+	stampWrittenMeta(doc, &model.TerraformScope{RootModule: "."})
+	res, _ := asStringMap(doc["resource"])
+	byName, _ := asStringMap(res["t"])
+	block, _ := asStringMap(byName[ddMetaKey])
+	require.Equal(t, resourceMeta("t."+ddMetaKey, []string{"."}), block[ddMetaKey])
+}
+
+func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
+	doc := model.Document{
+		"resource": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{
+				"module.m.aws_s3_bucket.b[1]": map[string]interface{}{"bucket": "x"},
+				"r":                           map[string]interface{}{"bucket": "y"},
+			},
+		},
+		"data": map[string]interface{}{
+			"aws_kms_key": map[string]interface{}{
+				"k": map[string]interface{}{ddMetaKey: "user"},
+			},
+		},
+		"_dd_tfplan_meta": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{
+				"module.m.aws_s3_bucket.b[1]": map[string]interface{}{"address": "module.m.aws_s3_bucket.b[1]"},
+				"r":                           map[string]interface{}{"address": "aws_s3_bucket.r"},
+			},
+			"data.aws_kms_key": map[string]interface{}{
+				"k": map[string]interface{}{"address": "data.aws_kms_key.k"},
+			},
+		},
+	}
+	f := &model.FileMetadata{FilePath: "stacks/prod/tfplan.json", Kind: model.KindTerraformPlan, Document: doc}
+	(&Inspector{}).stampTerraformScopes(model.FileMetadatas{f})
+
+	root := []string{"stacks/prod/tfplan.json"}
+	buckets, _ := asStringMap(doc["resource"].(map[string]interface{})["aws_s3_bucket"])
+	b, _ := asStringMap(buckets["module.m.aws_s3_bucket.b[1]"])
+	require.Equal(t, resourceMeta("module.m.aws_s3_bucket.b[1]", root), b[ddMetaKey])
+	r, _ := asStringMap(buckets["r"])
+	require.Equal(t, resourceMeta("aws_s3_bucket.r", root), r[ddMetaKey])
+	keys, _ := asStringMap(doc["data"].(map[string]interface{})["aws_kms_key"])
+	k, _ := asStringMap(keys["k"])
+	require.Equal(t, resourceMeta("data.aws_kms_key.k", root), k[ddMetaKey])
+	require.Contains(t, doc, "_dd_tfplan_meta")
+}

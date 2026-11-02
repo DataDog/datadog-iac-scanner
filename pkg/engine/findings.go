@@ -93,7 +93,9 @@ func (s *findingSet) order(n int) iter.Seq[int] {
 func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulnerability) {
 	var routed []model.Vulnerability
 	if s.routing == nil {
-		routed = []model.Vulnerability{*v}
+		if rootAllowed(v.OnlyRootModule, v.RootModule) {
+			routed = []model.Vulnerability{*v}
+		}
 	} else {
 		routed = s.routing.route(ctx, c, []model.Vulnerability{*v})
 	}
@@ -145,23 +147,25 @@ func (s *findingSet) supersedes(identities []string) bool {
 // does not produce (see supersedes). ok is false when the identity cannot be
 // known before the line is detected (a Dockerfile finding).
 func (s *findingSet) findingIdentities(
-	file *model.FileMetadata, platform, resourceType, resourceName, queryID, legacyQueryID string,
+	file *model.FileMetadata, platform, resourceType, resourceName, queryID, legacyQueryID, onlyRoot string,
 ) ([]string, bool) {
 	ruleID := utils.ChooseQueryID(queryID, legacyQueryID)
 	id, resolved := terraformIdentityFor(file, resourceType, resourceName)
 	if platform != terraformPlatformValue || file.TerraformScope == nil || !resolved {
 		// Without a resolved identity the finding falls back to the legacy
 		// fingerprint, which routing no longer changes (a routed copy without
-		// an address hashes like the as-written one).
+		// an address hashes like the as-written one). A restricted result is
+		// gated by routing on roots this path cannot predict, so it is never
+		// skipped.
 		legacy, known := model.IdentityInputFor(file.FilePath, platform, resourceType, resourceName, queryID, legacyQueryID)
-		return []string{legacy}, known
+		return []string{legacy}, known && onlyRoot == ""
 	}
 	var block address.Block
 	if file.Kind != model.KindTerraformPlan {
 		block, _ = terraformBlockFor(file, resourceType, resourceName)
 	}
 	var ids []string
-	s.appendRouteIdentities(&ids, ruleID, resourceType, file.ID, file.TerraformScope, block, id,
+	s.appendRouteIdentities(&ids, ruleID, resourceType, onlyRoot, file.ID, file.TerraformScope, block, id,
 		len(file.ModuleAttributions) > 0)
 	return ids, true
 }
@@ -173,7 +177,7 @@ func (s *findingSet) findingIdentities(
 // file — recursively, since an extra caller may itself be an external module
 // file whose copies route through its own calls.
 func (s *findingSet) appendRouteIdentities(
-	ids *[]string, ruleID, resourceType, docID string,
+	ids *[]string, ruleID, resourceType, onlyRoot, docID string,
 	scope *model.TerraformScope, block address.Block, id model.TerraformIdentity,
 	attributionPossible bool,
 ) {
@@ -182,20 +186,23 @@ func (s *findingSet) appendRouteIdentities(
 		mf = s.routing.moduleFiles[docID]
 	}
 	routedAway := mf != nil && !mf.keptAsWritten(resourceType) && !mf.keepWritten && !attributionPossible
-	if !routedAway {
+	if !routedAway && rootAllowed(onlyRoot, id.RootModule) {
 		*ids = append(*ids, terraformIdentityInput(ruleID, id))
 	}
 	if s.routing == nil {
 		return
 	}
 	for _, ex := range s.routing.extras[docID] {
-		s.appendRouteIdentities(ids, ruleID, resourceType, ex.docID, scope, block,
+		s.appendRouteIdentities(ids, ruleID, resourceType, onlyRoot, ex.docID, scope, block,
 			model.TerraformIdentity{RootModule: ex.rootModule, ResourceID: id.ResourceID},
 			len(ex.attributions) > 0)
 	}
 	if mf != nil && !mf.keptAsWritten(resourceType) {
 		for i := range mf.calls {
 			call := &mf.calls[i]
+			if !rootAllowed(onlyRoot, call.rootModule) {
+				continue
+			}
 			resourceID := id.ResourceID
 			if call.moduleAddress != "" {
 				resourceID = call.moduleAddress + "." + resourceID
@@ -217,6 +224,15 @@ func (s *findingSet) appendRouteIdentities(
 func terraformIdentityInput(ruleID string, id model.TerraformIdentity) string {
 	input, _ := model.IdentityInput("", terraformPlatformValue, "", "", ruleID, id)
 	return input
+}
+
+func anyRootRestricted(vulns []model.Vulnerability) bool {
+	for i := range vulns {
+		if vulns[i].OnlyRootModule != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *findingSet) has(id string) bool {
@@ -274,7 +290,7 @@ func (r *findingRouting) route(
 	if r == nil {
 		return vulns
 	}
-	vulns = expandModuleFindings(vulns, r.extras)
+	vulns = expandModuleFindings(vulns, r.extras, r.moduleFiles)
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
 	return c.filterAtCallSites(ctx, vulns, r.callers)
 }

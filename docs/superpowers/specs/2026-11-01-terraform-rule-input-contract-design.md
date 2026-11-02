@@ -90,7 +90,7 @@ These would make the work a failure even if it technically works:
   - `null` values are dropped, because Terraform treats null as unset.
   - An empty nested-block list is dropped when the configuration has no expression for it.
 - **Bookkeeping:**
-  - `_dd_meta` is listed in the engine's `bookkeepingKeys`, so a resource holding only metadata counts as empty.
+  - `_dd_meta` is a block-level key that is never a label, so it need not be in the label-level bookkeeping sets; a block literally named `_dd_meta` is content.
   - `root_modules` is excluded from the content hash used for cross-root deduplication.
   - `_dd_meta` is visible to rules; it is never stripped.
 

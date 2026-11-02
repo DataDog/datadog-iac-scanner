@@ -811,16 +811,29 @@ func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas
 	return false
 }
 
+// rootAllowed reports whether a finding restricted to the root module only
+// (empty: unrestricted) may be reported under root.
+func rootAllowed(only, root string) bool {
+	return only == "" || only == root
+}
+
 // expandModuleFindings clones findings from deduplicated OPA docs back to each
 // extra caller, so every call-site gets its own fingerprint/file attribution.
-func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo) []model.Vulnerability {
-	if len(extras) == 0 {
+func expandModuleFindings(
+	vulns []model.Vulnerability, extras map[string][]extraCallerInfo, files map[string]*moduleFileCalls,
+) []model.Vulnerability {
+	if len(extras) == 0 && !anyRootRestricted(vulns) {
 		return vulns
 	}
 	expanded := make([]model.Vulnerability, 0, len(vulns))
 	for i := range vulns {
-		expanded = append(expanded, vulns[i])
+		if files[vulns[i].FileID] != nil || rootAllowed(vulns[i].OnlyRootModule, vulns[i].RootModule) {
+			expanded = append(expanded, vulns[i])
+		}
 		for _, ex := range extras[vulns[i].FileID] {
+			if files[ex.docID] == nil && !rootAllowed(vulns[i].OnlyRootModule, ex.rootModule) {
+				continue
+			}
 			vCopy := vulns[i]
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)

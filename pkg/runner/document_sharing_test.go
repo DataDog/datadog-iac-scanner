@@ -225,3 +225,16 @@ func TestCloneSharedParseDocumentRefreshesPath(t *testing.T) {
 	require.Equal(t, "first.yaml", cached["_path"])
 	require.Equal(t, reflect.ValueOf(child).Pointer(), reflect.ValueOf(clone["metadata"]).Pointer())
 }
+
+func TestSanitizeScanDocumentInPlaceKeepsDDMeta(t *testing.T) {
+	meta := map[string]interface{}{"address": "aws_x.y", "root_modules": []interface{}{"."}}
+	body := map[string]interface{}{
+		"resource": map[string]interface{}{"aws_x": map[string]interface{}{"y": map[string]interface{}{
+			"_dd_meta": meta, "_dd_lines": map[string]int{":0:0": 1},
+		}}},
+	}
+	got, err := sanitizeScanDocumentInPlace(body, model.KindTerraform)
+	require.NoError(t, err)
+	require.Equal(t, map[string]interface{}{"_dd_meta": meta},
+		got["resource"].(map[string]interface{})["aws_x"].(map[string]interface{})["y"])
+}

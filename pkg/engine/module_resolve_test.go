@@ -18,10 +18,12 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // docFileID is the file-id field of a synthetic doc id
@@ -458,6 +460,18 @@ func TestRemoveInstantiatedResources(t *testing.T) {
 		if _, still := doc["resource"]; still {
 			t.Fatalf("only parser line metadata was left, so resource should be gone: %#v", doc)
 		}
+	})
+
+	t.Run("keeps a written block named like the metadata key", func(t *testing.T) {
+		doc := model.Document{"resource": model.Document{"aws_s3_bucket": model.Document{
+			"replaced": model.Document{"bucket": "a"},
+			ddMetaKey:  model.Document{"bucket": "b"},
+		}}}
+		removeInstantiatedResources(doc, map[string]map[string]bool{"aws_s3_bucket": {"replaced": true}})
+
+		resources, _ := asStringMap(doc["resource"])
+		buckets, _ := asStringMap(resources["aws_s3_bucket"])
+		require.Contains(t, buckets, ddMetaKey)
 	})
 
 	t.Run("removes instantiated data blocks", func(t *testing.T) {
@@ -1642,4 +1656,231 @@ func TestAddDroppedBlocksSkipsFailedRootDirectory(t *testing.T) {
 		map[string]*model.FileMetadata{path: fm}, repo)
 
 	require.Empty(t, instantiated)
+}
+
+func metaOf(t *testing.T, doc model.Document, section, typ, name string) map[string]interface{} {
+	t.Helper()
+	block := docAsMap(docAsMap(docAsMap(doc[section])[typ])[name])
+	meta, ok := block[ddMetaKey].(map[string]interface{})
+	require.True(t, ok, "%s.%s.%s has no _dd_meta: %#v", section, typ, name, block)
+	return meta
+}
+
+func scopeOfDoc(t *testing.T, res moduleResolutionResult, doc model.Document) *model.FileMetadata {
+	t.Helper()
+	for _, sf := range res.syntheticFiles {
+		if sf.ID == doc["id"] {
+			return sf
+		}
+	}
+	t.Fatalf("no synthetic file for doc %v", doc["id"])
+	return nil
+}
+
+func resolveModuleFixture(t *testing.T, calls map[string]string, moduleBody string) (moduleResolutionResult, string) {
+	t.Helper()
+	root := t.TempDir()
+	modFile := writeFile(t, filepath.Join(root, "modules", "m"), "main.tf", moduleBody)
+	files := model.FileMetadatas{fileMeta("mod-id", modFile)}
+	for dir, body := range calls {
+		files = append(files, fileMeta(dir+"-root", writeFile(t, filepath.Join(root, dir), "main.tf", body)))
+	}
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	return res, root
+}
+
+func TestInstantiatedDocCarriesMeta(t *testing.T) {
+	res, _ := resolveModuleFixture(t, map[string]string{"envs": `
+module "m" {
+  source = "../modules/m"
+}
+`}, `
+resource "aws_s3_bucket" "b" {
+  bucket = "x"
+}
+
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = ["s3:*"]
+  }
+}
+`)
+	require.Len(t, res.docs, 1)
+	doc := res.docs[0]
+	fm := scopeOfDoc(t, res, doc)
+
+	bucket := metaOf(t, doc, "resource", "aws_s3_bucket", "b")
+	policy := metaOf(t, doc, "data", "aws_iam_policy_document", "p")
+	require.Equal(t, "module.m.aws_s3_bucket.b", bucket["address"])
+	require.Equal(t, "module.m.data.aws_iam_policy_document.p", policy["address"])
+	require.Equal(t, []interface{}{"envs"}, bucket["root_modules"])
+
+	id, ok := terraformIdentityFor(fm, "aws_s3_bucket", "b")
+	require.True(t, ok)
+	require.Equal(t, id.ResourceID, bucket["address"])
+	id, ok = terraformIdentityFor(fm, "data.aws_iam_policy_document", "p")
+	require.True(t, ok)
+	require.Equal(t, id.ResourceID, policy["address"])
+}
+
+func TestInstantiatedDocMetaInstanceAddresses(t *testing.T) {
+	t.Run("count", func(t *testing.T) {
+		res, _ := resolveModuleFixture(t, map[string]string{"envs": `
+module "m" {
+  source = "../modules/m"
+}
+`}, `
+resource "aws_s3_bucket" "b" {
+  count  = 2
+  bucket = "x"
+}
+`)
+		require.Len(t, res.docs, 2)
+		var got []string
+		for _, doc := range res.docs {
+			addr, _ := metaOf(t, doc, "resource", "aws_s3_bucket", "b")["address"].(string)
+			got = append(got, addr)
+			id, ok := terraformIdentityFor(scopeOfDoc(t, res, doc), "aws_s3_bucket", "b")
+			require.True(t, ok)
+			require.Equal(t, id.ResourceID, addr)
+		}
+		sort.Strings(got)
+		require.Equal(t, []string{"module.m.aws_s3_bucket.b[0]", "module.m.aws_s3_bucket.b[1]"}, got)
+	})
+
+	t.Run("for_each", func(t *testing.T) {
+		res, _ := resolveModuleFixture(t, map[string]string{"envs": `
+module "m" {
+  source = "../modules/m"
+}
+`}, `
+resource "aws_s3_bucket" "b" {
+  for_each = {"a$b" = 1}
+  bucket   = "x"
+}
+`)
+		require.Len(t, res.docs, 1)
+		want := "module.m.aws_s3_bucket.b" + address.InstanceSuffix(cty.StringVal("a$b"))
+		got := metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "b")["address"]
+		require.Equal(t, want, got)
+		id, ok := terraformIdentityFor(scopeOfDoc(t, res, res.docs[0]), "aws_s3_bucket", "b")
+		require.True(t, ok)
+		require.Equal(t, id.ResourceID, got)
+	})
+}
+
+const sharedModuleBody = `
+variable "name" {
+  type = string
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.name
+}
+
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = [var.name]
+  }
+}
+`
+
+func twoRootCalls(nameA, nameB string) map[string]string {
+	call := func(name string) string {
+		return `
+module "m" {
+  source = "../../modules/m"
+  name   = "` + name + `"
+}
+`
+	}
+	return map[string]string{"envs/a": call(nameA), "envs/b": call(nameB)}
+}
+
+func TestSharedDocListsEveryRoot(t *testing.T) {
+	t.Run("identical inputs share one document", func(t *testing.T) {
+		res, _ := resolveModuleFixture(t, twoRootCalls("same", "same"), sharedModuleBody)
+		require.Len(t, res.docs, 1)
+		want := []interface{}{"envs/a", "envs/b"}
+		require.Equal(t, want, metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "b")["root_modules"])
+		require.Equal(t, want, metaOf(t, res.docs[0], "data", "aws_iam_policy_document", "p")["root_modules"])
+	})
+
+	t.Run("different inputs keep one root each", func(t *testing.T) {
+		res, _ := resolveModuleFixture(t, twoRootCalls("one", "two"), sharedModuleBody)
+		require.Len(t, res.docs, 2)
+		var roots []string
+		for _, doc := range res.docs {
+			list, _ := metaOf(t, doc, "resource", "aws_s3_bucket", "b")["root_modules"].([]interface{})
+			require.Len(t, list, 1)
+			roots = append(roots, list[0].(string))
+		}
+		sort.Strings(roots)
+		require.Equal(t, []string{"envs/a", "envs/b"}, roots)
+	})
+}
+
+func TestMetaDoesNotSplitDedup(t *testing.T) {
+	res, _ := resolveModuleFixture(t, twoRootCalls("same", "same"), sharedModuleBody)
+	require.Len(t, res.docs, 1)
+	require.Len(t, res.syntheticFiles, 1)
+}
+
+func TestSetDocumentRootsReplacesRoots(t *testing.T) {
+	doc := model.Document{"resource": map[string]interface{}{"t": map[string]interface{}{
+		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"z"})},
+	}}}
+	setDocumentRoots(doc, []string{"a", "b"})
+	require.Equal(t, resourceMeta("t.n", []string{"a", "b"}), metaOf(t, doc, "resource", "t", "n"))
+}
+
+func TestRouteSharedDocumentRootsSortsAndDeduplicates(t *testing.T) {
+	doc := model.Document{"id": "doc", "resource": map[string]interface{}{"t": map[string]interface{}{
+		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"m"})},
+	}}}
+	synthetic := []*model.FileMetadata{{ID: "doc", TerraformScope: &model.TerraformScope{RootModule: "m"}}}
+	extras := map[string][]extraCallerInfo{"doc": {{rootModule: "z"}, {rootModule: "a"}, {rootModule: "z"}, {rootModule: "m"}}}
+
+	routeSharedDocumentRoots([]model.Document{doc}, synthetic, extras)
+
+	require.Equal(t, resourceMeta("t.n", []string{"a", "m", "z"}), metaOf(t, doc, "resource", "t", "n"))
+}
+
+func TestInstantiatedRootModuleDocMeta(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+resource "aws_s3_bucket" "b" {
+  count = 2
+}
+`)
+	res := resolveModuleDocuments(context.Background(), model.FileMetadatas{fileMeta("root-id", path)},
+		root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	require.Len(t, res.docs, 2)
+	var got []string
+	for _, doc := range res.docs {
+		meta := metaOf(t, doc, "resource", "aws_s3_bucket", "b")
+		addr, _ := meta["address"].(string)
+		got = append(got, addr)
+		require.Equal(t, []interface{}{"envs"}, meta["root_modules"])
+		id, ok := terraformIdentityFor(scopeOfDoc(t, res, doc), "aws_s3_bucket", "b")
+		require.True(t, ok)
+		require.Equal(t, id.ResourceID, addr)
+	}
+	sort.Strings(got)
+	require.Equal(t, []string{"aws_s3_bucket.b[0]", "aws_s3_bucket.b[1]"}, got)
+}
+
+func TestLayerDocumentsHoldDistinctTopLevelMaps(t *testing.T) {
+	shared := map[string]interface{}{"bucket": "x"}
+	entries := []instantiatedResource{{typ: "aws_s3_bucket", baseName: "b", attrs: shared}}
+	fm := &model.FileMetadata{ID: "f", FilePath: "main.tf"}
+	first := groupDocument(&docGroup{fm: fm, layer: 0, entries: entries, rootModule: "envs"})
+	second := groupDocument(&docGroup{fm: fm, layer: 1, entries: entries, rootModule: "envs"})
+
+	a := docAsMap(docAsMap(first["resource"])["aws_s3_bucket"])["b"].(map[string]interface{})
+	b := docAsMap(docAsMap(second["resource"])["aws_s3_bucket"])["b"].(map[string]interface{})
+	require.NotEqual(t, reflect.ValueOf(a).Pointer(), reflect.ValueOf(b).Pointer())
+	require.NotContains(t, shared, ddMetaKey)
 }

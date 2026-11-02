@@ -759,6 +759,9 @@ type Vulnerability struct {
 	// relative to the repository root; the file itself for a plan or tfvars
 	// finding. See ResourceID.
 	RootModule string `json:"rootModule,omitempty"`
+	// OnlyRootModule is the root module a rule result restricted its finding
+	// to; empty means every root module the finding reaches.
+	OnlyRootModule string `json:"-"`
 	// DetectedFileName and DetectedLineWithVulnerability are where the finding
 	// was detected when it is reported at another place (see ReportedLocation).
 	// They stay its identity: every file of a packaged dependency is reported

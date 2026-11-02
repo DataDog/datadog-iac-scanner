@@ -294,3 +294,52 @@ func Test_E2ETerraformZeroCountBlocksProduceNoFindings(t *testing.T) {
 	require.False(t, lines[localFlagLine], "a count read through a local that evaluates to 0 must produce no finding: %v", lines)
 	require.False(t, lines[emptyForEachLine], "an empty for_each must produce no finding: %v", lines)
 }
+
+func Test_E2ETerraformSharedModuleRootRouting(t *testing.T) {
+	scanRoutingRule := func(t *testing.T, ruleDir string) []string {
+		t.Helper()
+		outDir := t.TempDir()
+		params, ctx := scan.GetDefaultParameters(context.Background(), "")
+		repo := mustAbs(t, filepath.Join("fixtures", "root-routing"))
+		params.Path = []string{repo}
+		params.RepoPath = repo
+		params.OutputPath = outDir
+		params.OutputName = "result"
+		params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform_root_routing", ruleDir))}
+		params.ChangedDefaultQueryPath = true
+		params.SCIInfo = model.SCIInfo{
+			DiffAware:            model.DiffAware{Enabled: false},
+			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+		}
+		params.FlagEvaluator = featureflags.NewLocalEvaluator()
+		_, err := console.ExecuteScan(ctx, params)
+		require.NoError(t, err)
+
+		data, err := os.ReadFile(filepath.Join(outDir, "result.sarif"))
+		require.NoError(t, err)
+		var doc struct {
+			Runs []struct {
+				Results []struct {
+					Properties map[string]interface{} `json:"properties"`
+				} `json:"results"`
+			} `json:"runs"`
+		}
+		require.NoError(t, json.Unmarshal(data, &doc))
+		var roots []string
+		for _, run := range doc.Runs {
+			for _, r := range run.Results {
+				root, _ := r.Properties["root_module"].(string)
+				roots = append(roots, root)
+			}
+		}
+		return roots
+	}
+
+	t.Run("restricted rule reports only the violating root", func(t *testing.T) {
+		require.Equal(t, []string{"envs/b"}, scanRoutingRule(t, "versioning_by_root"))
+	})
+
+	t.Run("unrestricted rule reports every root", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"envs/a", "envs/b"}, scanRoutingRule(t, "versioning_any_root"))
+	})
+}
