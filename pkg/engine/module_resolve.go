@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,12 +51,18 @@ type moduleResolutionResult struct {
 	successfulRoots      map[string]bool
 	rootDirs             []string
 	unresolvedModuleDirs map[string]bool
-	extras               map[string][]extraCallerInfo
+	// unresolvedRoots lists, by directory, the sorted repository-relative
+	// roots whose calls reach a directory that could not be evaluated.
+	unresolvedRoots map[string][]string
+	extras          map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
-	moduleFiles   map[string]*moduleFileCalls
-	resourceCount int
-	rootCount     int
-	ok            bool
+	moduleFiles map[string]*moduleFileCalls
+	// writtenReferences holds the references of the plain root blocks kept
+	// in their written files.
+	writtenReferences writtenReferences
+	resourceCount     int
+	rootCount         int
+	ok                bool
 }
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
@@ -134,7 +141,9 @@ func (c *Inspector) instantiateLocalModules(
 			calls.writtenResourceTypes = documentResourceTypes(f.Document)
 		}
 	}
+	stampWrittenReferences(files, res.writtenReferences)
 	routeModuleFileRoots(files, res.moduleFiles)
+	routeUnresolvedDirRoots(files, res.unresolvedRoots, c.repoPath)
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
 }
 
@@ -272,6 +281,49 @@ func blockSection(b tfeval.EmptyBlock) string {
 
 func resolvedBlockKey(file, kind, name string) string {
 	return file + "\x00" + kind + "\x00" + name
+}
+
+// writtenReferences maps the resolvedBlockKey of a plain root block, by file
+// ID, to its references.
+type writtenReferences map[string]map[string]interface{}
+
+func (w writtenReferences) add(p *rootResource, attributions *moduleAttributionCache) {
+	if refs := attributions.resourceReferences(p.r); refs != nil {
+		w[resolvedBlockKey(p.fm.ID, p.kind, p.r.BaseName)] = refs
+	}
+}
+
+// stampWrittenReferences adds the traced references to the _dd_meta of the
+// plain root blocks kept in their written files.
+func stampWrittenReferences(files model.FileMetadatas, written writtenReferences) {
+	if len(written) == 0 {
+		return
+	}
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		for _, section := range [...]struct{ key, prefix string }{
+			{resourceSection, ""},
+			{dataRoot, dataTypePrefix},
+			{ephemeralSection, ephemeralPrefix},
+		} {
+			byType, _ := asStringMap(f.Document[section.key])
+			for typ, typeBlocks := range byType {
+				byName, _ := asStringMap(typeBlocks)
+				for name, raw := range byName {
+					block, _ := asStringMap(raw)
+					meta, ok := block[ddMetaKey].(map[string]interface{})
+					if !ok {
+						continue
+					}
+					if refs, ok := written[resolvedBlockKey(f.ID, section.prefix+typ, name)]; ok {
+						meta[referencesKey] = refs
+					}
+				}
+			}
+		}
+	}
 }
 
 // instantiatedIndex records which resource and data blocks of a file were
@@ -501,14 +553,14 @@ func evaluateRootModules(
 	resourceCount *int,
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
-) {
+) writtenReferences {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, relDir: relDir, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
-		resolved: make(map[string]bool), failedRoots: make(map[string]bool),
+		resolved: make(map[string]bool), failedRoots: make(map[string]bool), written: make(writtenReferences),
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -522,6 +574,7 @@ func evaluateRootModules(
 		evaluator.ReleaseEvalCache()
 	}
 	addDroppedBlocks(instantiated, m.emptyBlocks, m.resolved, m.failedRoots, byAbsPath, repoPath)
+	return m.written
 }
 
 // rootEvalWorkers bounds the roots evaluated at once. Each holds its own
@@ -560,6 +613,7 @@ type rootMerge struct {
 	emptyBlocks          []tfeval.EmptyBlock
 	resolved             map[string]bool
 	failedRoots          map[string]bool
+	written              writtenReferences
 }
 
 func (m *rootMerge) merge(
@@ -594,7 +648,8 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, m.relDir, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		resources, m.byAbsPath, m.repoPath, m.relDir, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions,
+		m.written)
 	m.moduleCalls.record(instances, m.repoPath, m.relDir, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -796,7 +851,7 @@ func resolveModuleDocuments(
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
 	staticCalledDirs, staticCalls := discoverStaticCalls(
-		ctx, evaluator, filesByDir, dirsWithTf, repoPath, resolver, onlyExternalCalls)
+		ctx, evaluator, filesByDir, dirsWithTf, repoPath, resolver, true)
 
 	if nothingToEvaluate {
 		return moduleResolutionResult{}
@@ -832,7 +887,7 @@ func resolveModuleDocuments(
 		evaluatedRoots = rootsReaching(roots, staticCalls, moduleCalls.files)
 	}
 
-	evaluateRootModules(
+	written := evaluateRootModules(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, relDir, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
@@ -851,6 +906,7 @@ func resolveModuleDocuments(
 	routeSharedDocumentRoots(extra, syntheticFiles, extras)
 
 	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
+	unresolvedRoots := reachingRootsByDir(roots, staticCalls, unresolvedModuleDirs, relDir)
 
 	return moduleResolutionResult{
 		docs:                 extra,
@@ -859,12 +915,89 @@ func resolveModuleDocuments(
 		successfulRoots:      successfulRoots,
 		rootDirs:             roots,
 		unresolvedModuleDirs: unresolvedModuleDirs,
+		unresolvedRoots:      unresolvedRoots,
 		extras:               extras,
 		moduleFiles:          moduleCalls.fileCalls(unresolvedModuleDirs),
+		writtenReferences:    written,
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		ok:                   true,
 	}
+}
+
+// reachingRootsByDir maps each unresolved directory to the sorted
+// repository-relative roots whose calls reach it, leaving out directories no
+// root reaches. The reverse call map and the roots above an opaque call are
+// built once, so each directory costs only a walk over its own callers.
+func reachingRootsByDir(
+	roots []string,
+	graph staticCallGraph,
+	unresolvedModuleDirs map[string]bool,
+	relDir func(string) string,
+) map[string][]string {
+	if len(unresolvedModuleDirs) == 0 {
+		return nil
+	}
+	callers := reverseCalls(graph)
+	isRoot := make(map[string]bool, len(roots))
+	for _, r := range roots {
+		isRoot[r] = true
+	}
+	opaqueReached := make(map[string]bool)
+	walkCallers(callers, opaqueReached, opaqueDirs(graph)...)
+	out := make(map[string][]string, len(unresolvedModuleDirs))
+	for dir := range unresolvedModuleDirs {
+		reached := make(map[string]bool)
+		walkCallers(callers, reached, dir)
+		var rel []string
+		for _, r := range roots {
+			if reached[r] || opaqueReached[r] {
+				rel = append(rel, relDir(r))
+			}
+		}
+		if len(rel) > 0 {
+			out[dir] = sortedUnique(rel)
+		}
+	}
+	return out
+}
+
+// routeUnresolvedDirRoots lists the calling roots of a directory that could
+// not be evaluated in the metadata of each block of its files, beside the
+// roots the block already lists and the file's own root, which its written
+// copy's findings carry. Addresses are kept.
+func routeUnresolvedDirRoots(files model.FileMetadatas, unresolvedRoots map[string][]string, repoPath string) {
+	if len(unresolvedRoots) == 0 {
+		return
+	}
+	for _, f := range files {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
+			continue
+		}
+		callers := unresolvedRoots[moduleFileDir(f.FilePath, repoPath)]
+		if len(callers) == 0 {
+			continue
+		}
+		own := ""
+		if f.TerraformScope != nil {
+			own = f.TerraformScope.RootModule
+		}
+		rewriteBlockMeta(f.Document, func(_ address.Block, addr string, prev []string) (string, []string, bool) {
+			roots := make([]string, 0, len(callers)+len(prev)+1)
+			roots = append(roots, callers...)
+			roots = append(roots, prev...)
+			if own != "" {
+				roots = append(roots, own)
+			}
+			return addr, sortedUnique(roots), true
+		})
+	}
+}
+
+// sortedUnique sorts s in place and drops repeated values.
+func sortedUnique(s []string) []string {
+	sort.Strings(s)
+	return slices.Compact(s)
 }
 
 // routeSharedDocumentRoots lists, in each shared document's metadata, its own
@@ -905,35 +1038,49 @@ func routeSharedDocumentRoots(
 // setDocumentRoots rewrites root_modules in the metadata of every resource,
 // data and ephemeral block of doc.
 func setDocumentRoots(doc model.Document, roots []string) {
-	rewriteBlockMeta(doc, func(_ address.Block, addr string) (string, []string, bool) {
+	rewriteBlockMeta(doc, func(_ address.Block, addr string, _ []string) (string, []string, bool) {
 		return addr, roots, true
 	})
 }
 
 // rewriteBlockMeta replaces the _dd_meta of every resource, data and
-// ephemeral block of doc with the address and roots rewrite returns for it,
-// leaving the block as it is when rewrite reports false.
-func rewriteBlockMeta(doc model.Document, rewrite func(b address.Block, addr string) (string, []string, bool)) {
+// ephemeral block of doc with the address and roots rewrite returns for it
+// from the block's current address and roots, keeping its other keys, and
+// leaves the block as it is when rewrite reports false.
+func rewriteBlockMeta(doc model.Document, rewrite func(b address.Block, addr string, roots []string) (string, []string, bool)) {
 	for _, section := range [...]struct{ key, kind string }{
 		{"resource", address.KindResource},
 		{"data", address.KindData},
 		{ephemeralSection, address.KindEphemeral},
 	} {
-		byType, _ := doc[section.key].(map[string]interface{})
+		byType, _ := asStringMap(doc[section.key])
 		for typ, typeBlocks := range byType {
-			byName, _ := typeBlocks.(map[string]interface{})
+			byName, _ := asStringMap(typeBlocks)
 			for name, raw := range byName {
-				block, _ := raw.(map[string]interface{})
-				meta, ok := block[ddMetaKey].(map[string]interface{})
+				block, _ := asStringMap(raw)
+				meta, ok := asStringMap(block[ddMetaKey])
 				if !ok {
 					continue
 				}
 				addr, _ := meta["address"].(string)
-				addr, roots, ok := rewrite(address.Block{Kind: section.kind, Type: typ, Name: name}, addr)
+				prev, _ := meta["root_modules"].([]interface{})
+				prevRoots := make([]string, 0, len(prev))
+				for _, r := range prev {
+					if root, isString := r.(string); isString {
+						prevRoots = append(prevRoots, root)
+					}
+				}
+				addr, roots, ok := rewrite(address.Block{Kind: section.kind, Type: typ, Name: name}, addr, prevRoots)
 				if !ok {
 					continue
 				}
-				block[ddMetaKey] = resourceMeta(addr, roots)
+				next := resourceMeta(addr, roots, nil)
+				for k, v := range meta {
+					if _, rewritten := next[k]; !rewritten {
+						next[k] = v
+					}
+				}
+				block[ddMetaKey] = next
 			}
 		}
 	}
@@ -965,7 +1112,7 @@ func routeModuleFileRoots(files model.FileMetadatas, moduleFiles map[string]*mod
 			roots = append(roots, r)
 		}
 		sort.Strings(roots)
-		rewriteBlockMeta(f.Document, func(b address.Block, addr string) (string, []string, bool) {
+		rewriteBlockMeta(f.Document, func(b address.Block, addr string, _ []string) (string, []string, bool) {
 			if mf.keptAsWritten(blockResourceType(b)) {
 				return addr, nil, false
 			}
@@ -1069,29 +1216,55 @@ func hasUnresolvableModuleCall(files []*model.FileMetadata) bool {
 // of local or remote calls, to one of the target directories. A root reaching
 // a directory with a call the graph cannot follow is kept: it may reach them.
 func rootsReaching(roots []string, graph staticCallGraph, targets map[string][]*model.FileMetadata) []string {
+	seeds := opaqueDirs(graph)
+	for dir := range targets {
+		seeds = append(seeds, dir)
+	}
+	reaches := make(map[string]bool, len(graph.calls))
+	walkCallers(reverseCalls(graph), reaches, seeds...)
+	var out []string
+	for _, root := range roots {
+		if reaches[root] {
+			out = append(out, root)
+		}
+	}
+	return out
+}
+
+// reverseCalls maps each called directory to the directories calling it.
+func reverseCalls(graph staticCallGraph) map[string][]string {
 	callers := make(map[string][]string, len(graph.calls))
 	for dir, called := range graph.calls {
 		for _, c := range called {
 			callers[c] = append(callers[c], dir)
 		}
 	}
-	// Walking the calls backwards from the directories of interest is safe on
-	// cycles and does not depend on the order roots are visited in.
-	reaches := make(map[string]bool, len(graph.calls))
+	return callers
+}
+
+func opaqueDirs(graph staticCallGraph) []string {
+	var dirs []string
+	for dir, opaque := range graph.opaque {
+		if opaque {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
+// walkCallers marks the seeds and every directory calling them, directly or
+// not. Walking backwards is safe on cycles and does not depend on the order
+// roots are visited in.
+func walkCallers(callers map[string][]string, marked map[string]bool, seeds ...string) {
 	var queue []string
 	mark := func(dir string) {
-		if !reaches[dir] {
-			reaches[dir] = true
+		if !marked[dir] {
+			marked[dir] = true
 			queue = append(queue, dir)
 		}
 	}
-	for dir := range targets {
+	for _, dir := range seeds {
 		mark(dir)
-	}
-	for dir, opaque := range graph.opaque {
-		if opaque {
-			mark(dir)
-		}
 	}
 	for len(queue) > 0 {
 		dir := queue[len(queue)-1]
@@ -1100,13 +1273,6 @@ func rootsReaching(roots []string, graph staticCallGraph, targets map[string][]*
 			mark(caller)
 		}
 	}
-	var out []string
-	for _, root := range roots {
-		if reaches[root] {
-			out = append(out, root)
-		}
-	}
-	return out
 }
 
 // instantiatedResource is one resolved resource or data block as it is placed
@@ -1119,6 +1285,9 @@ type instantiatedResource struct {
 	defLine   int
 	attrs     map[string]interface{}
 	attrsHash uint64
+	// references is the block's _dd_meta references, nil when it reads none.
+	references     map[string]interface{}
+	referencesHash uint64
 }
 
 // docGroup collects every resource one module call resolved in one defining file.
@@ -1176,6 +1345,7 @@ func instantiatedDocs(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
+	written writtenReferences,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -1214,6 +1384,7 @@ func instantiatedDocs(
 			// No rule can match this type by name, so resolving its values
 			// cannot change a finding. It keeps being scanned where it is
 			// written, exactly as it is without module evaluation.
+			// An untargeted source block is never a rule's subject; references still name it.
 			continue
 		}
 
@@ -1248,7 +1419,7 @@ func instantiatedDocs(
 		resourceCount++
 	}
 	resourceCount += joinPlainRootSiblings(
-		plainRoots, expandedRoot, groups, order, repoPath, instantiated, lookup, attributions,
+		plainRoots, expandedRoot, groups, order, repoPath, instantiated, lookup, attributions, written,
 	)
 
 	for _, key := range order {
@@ -1308,6 +1479,7 @@ func joinPlainRootSiblings(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
+	written writtenReferences,
 ) int {
 	added := 0
 	for i := range plain {
@@ -1315,6 +1487,7 @@ func joinPlainRootSiblings(
 		if !expandedRoot[p.fm.ID] {
 			// The block stays scanned where it is written; its identity is
 			// resolved from the file's own scope (see stampTerraformScopes).
+			written.add(p, attributions)
 			continue
 		}
 		joined := false
@@ -1333,6 +1506,7 @@ func joinPlainRootSiblings(
 			joined = true
 		}
 		if !joined {
+			written.add(p, attributions)
 			continue
 		}
 		instantiated.add(p.fm.ID, p.kind, p.r.BaseName)
@@ -1349,6 +1523,7 @@ func addGroupEntry(
 	attributions *moduleAttributionCache,
 ) {
 	attrs := tfeval.AttributesToDocument(r)
+	refs := attributions.resourceReferences(r)
 	key := moduleAttributionKey(kind, r.DefLine, r.DefColumn)
 	// Clone: one root sibling is copied into every layer, and a finding may
 	// narrow the attribution it is given.
@@ -1363,12 +1538,14 @@ func addGroupEntry(
 		g.instances[b] = r.Name[len(base):]
 	}
 	g.entries = append(g.entries, instantiatedResource{
-		typ:       kind,
-		baseName:  base,
-		fullName:  r.Name,
-		defLine:   r.DefLine,
-		attrs:     attrs,
-		attrsHash: hashAttributes(attrs),
+		typ:            kind,
+		baseName:       base,
+		fullName:       r.Name,
+		defLine:        r.DefLine,
+		attrs:          attrs,
+		attrsHash:      hashAttributes(attrs),
+		references:     refs,
+		referencesHash: hashAttributes(refs),
 	})
 }
 
@@ -1392,6 +1569,7 @@ func groupContentKey(g *docGroup) docContentKey {
 		h.str(e.fullName)
 		h.u64(uint64(e.defLine))
 		h.u64(e.attrsHash)
+		h.u64(e.referencesHash)
 	}
 	return h.key()
 }
@@ -1480,7 +1658,7 @@ func groupDocument(g *docGroup) model.Document {
 		kind, blockType := addressKindOf(e.typ)
 		block := address.Block{Kind: kind, Type: blockType, Name: e.baseName}
 		addr := address.Instance(g.moduleAddress, block, g.instances[block])
-		attrs[ddMetaKey] = resourceMeta(addr, []string{g.rootModule})
+		attrs[ddMetaKey] = resourceMeta(addr, []string{g.rootModule}, e.references)
 		byName[e.baseName] = attrs
 	}
 

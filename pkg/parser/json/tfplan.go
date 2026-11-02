@@ -45,12 +45,26 @@ type tfplanResourceMeta struct {
 	AfterUnknown             any    `json:"after_unknown,omitempty"`
 	ConfigurationExpressions any    `json:"configuration_expressions,omitempty"`
 	Provisioners             any    `json:"provisioners,omitempty"`
+	References               any    `json:"references,omitempty"`
 }
 
 type resourceChangeCorrelation struct {
 	afterUnknownByAddress map[string]any
 	expressionsByAddress  map[string]any
 	provisionersByAddress map[string]any
+
+	// configByAddress holds each config resource's raw expressions by
+	// canonical address; moduleCalls and moduleOutputs are keyed by the child
+	// module's config path.
+	configByAddress map[string]gjson.Result
+	moduleCalls     map[string]gjson.Result
+	moduleOutputs   map[string]gjson.Result
+	// instances and moduleInstances list the planned instance addresses by
+	// canonical config address.
+	instances       map[string][]string
+	moduleInstances map[string][]string
+	// resolved memoises resolveReferences by references list and module instance.
+	resolved map[string][]string
 }
 
 func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
@@ -58,18 +72,34 @@ func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 		afterUnknownByAddress: make(map[string]any),
 		expressionsByAddress:  make(map[string]any),
 		provisionersByAddress: make(map[string]any),
+		configByAddress:       make(map[string]gjson.Result),
+		moduleCalls:           make(map[string]gjson.Result),
+		moduleOutputs:         make(map[string]gjson.Result),
+		resolved:              make(map[string][]string),
 	}
+	planned := make(map[string]bool)
+	deleted := make(map[string]bool)
 
 	gjson.GetBytes(rawPlan, "resource_changes").ForEach(func(_, change gjson.Result) bool {
-		address := change.Get("address").String()
-		if address == "" {
+		addr := change.Get("address").String()
+		if addr == "" {
 			return true
 		}
+		if actions := change.Get("change.actions").Array(); len(actions) == 1 && actions[0].String() == "delete" {
+			deleted[addr] = true
+		} else {
+			planned[addr] = true
+		}
 		if afterUnknown := change.Get("change.after_unknown"); afterUnknown.Exists() {
-			c.afterUnknownByAddress[address] = afterUnknown.Value()
+			c.afterUnknownByAddress[addr] = afterUnknown.Value()
 		}
 		return true
 	})
+	plannedRoot := gjson.GetBytes(rawPlan, "planned_values.root_module")
+	collectStateAddresses(&plannedRoot, false, deleted, planned)
+	priorRoot := gjson.GetBytes(rawPlan, "prior_state.values.root_module")
+	collectStateAddresses(&priorRoot, true, deleted, planned)
+	c.indexInstances(planned)
 
 	rootConfigModule := gjson.GetBytes(rawPlan, "configuration.root_module")
 	walkConfigModule(&rootConfigModule, "", nil, &c)
@@ -117,6 +147,7 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 			absoluteAddress = modulePath + "." + relativeAddress
 		}
 		if expressions := resource.Get("expressions"); expressions.Exists() {
+			c.configByAddress[absoluteAddress] = expressions
 			c.expressionsByAddress[absoluteAddress] = qualifyExpressionTree(&expressions, callArgs)
 		}
 		if provisioners := resource.Get("provisioners"); provisioners.Exists() {
@@ -134,6 +165,8 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 		if modulePath != "" {
 			childPath = modulePath + "." + childPath
 		}
+		c.moduleCalls[childPath] = call.Get("expressions")
+		c.moduleOutputs[childPath] = childModule.Get("outputs")
 		childArgs := make(map[string]callArgument)
 		call.Get("expressions").ForEach(func(argName, argExpr gjson.Result) bool {
 			// Resolve this call's own args against the parent so a chain of
@@ -306,19 +339,30 @@ func canonicalConfigAddress(address string) string {
 	return canonical
 }
 
-func resourceMetaFor(address string, c *resourceChangeCorrelation) tfplanResourceMeta {
-	meta := tfplanResourceMeta{Address: address}
-	if afterUnknown, ok := c.afterUnknownByAddress[address]; ok {
+func resourceMetaFor(addr string, c *resourceChangeCorrelation) tfplanResourceMeta {
+	meta := tfplanResourceMeta{Address: addr}
+	if afterUnknown, ok := c.afterUnknownByAddress[addr]; ok {
 		meta.AfterUnknown = afterUnknown
 	}
-	configAddress := canonicalConfigAddress(address)
+	configAddress := canonicalConfigAddress(addr)
 	if expressions, ok := c.expressionsByAddress[configAddress]; ok {
 		meta.ConfigurationExpressions = expressions
 	}
 	if provisioners, ok := c.provisionersByAddress[configAddress]; ok {
 		meta.Provisioners = provisioners
 	}
+	if refs := c.referencesFor(addr); refs != nil {
+		meta.References = refs
+	}
 	return meta
+}
+
+func (c *resourceChangeCorrelation) referencesFor(addr string) map[string]interface{} {
+	expressions, ok := c.configByAddress[canonicalConfigAddress(addr)]
+	if !ok {
+		return nil
+	}
+	return planReferences(&expressions, addr, c)
 }
 
 func parseTFPlan(doc model.Document) (model.Document, error) {
@@ -386,7 +430,7 @@ func readPlan(
 	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, correlation)
 
 	if plan.PriorState != nil && plan.PriorState.Values != nil {
-		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", resourceLines, deletedAddresses(plan.ResourceChanges))
+		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", resourceLines, deletedAddresses(plan.ResourceChanges), correlation)
 	}
 
 	doc := model.Document{}
@@ -467,10 +511,11 @@ func (kp *TFPlan) readModule(
 
 		if resource.Mode == hcl_plan.DataResourceMode {
 			// A data source has no planned change to correlate.
-			kp.recordPlanAddress(metaSection, resourceKey, resource.Address)
+			kp.recordPlanAddress(metaSection, resourceKey, resource.Address, correlation)
 			continue
 		}
-		kp.recordPlanMeta(metaSection, resourceKey, resourceMetaFor(resource.Address, correlation))
+		meta := resourceMetaFor(resource.Address, correlation)
+		kp.recordPlanMeta(metaSection, resourceKey, &meta)
 	}
 
 	for _, childModule := range module.ChildModules {
@@ -499,6 +544,7 @@ func (kp *TFPlan) readPriorStateData(
 	moduleAddress string,
 	resourceLines map[string]int,
 	deleted map[string]bool,
+	correlation *resourceChangeCorrelation,
 ) {
 	if module == nil {
 		return
@@ -541,7 +587,7 @@ func (kp *TFPlan) readPriorStateData(
 		// prior_state data sources are not in planned_values, so readModule
 		// never records their address. Key the meta by data.<type> so it
 		// cannot collide with a managed resource of the same type and name.
-		kp.recordPlanAddress("data."+resource.Type, dataKey, resource.Address)
+		kp.recordPlanAddress("data."+resource.Type, dataKey, resource.Address, correlation)
 
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
@@ -554,25 +600,29 @@ func (kp *TFPlan) readPriorStateData(
 	}
 
 	for _, childModule := range module.ChildModules {
-		kp.readPriorStateData(childModule, childModule.Address, resourceLines, deleted)
+		kp.readPriorStateData(childModule, childModule.Address, resourceLines, deleted, correlation)
 	}
 }
 
 // recordPlanMeta stores meta for one planned resource, creating the maps it needs.
-func (kp *TFPlan) recordPlanMeta(typ, key string, meta tfplanResourceMeta) {
+func (kp *TFPlan) recordPlanMeta(typ, key string, meta *tfplanResourceMeta) {
 	if kp.TfplanMeta == nil {
 		kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
 	}
 	if kp.TfplanMeta[typ] == nil {
 		kp.TfplanMeta[typ] = make(map[string]tfplanResourceMeta)
 	}
-	kp.TfplanMeta[typ][key] = meta
+	kp.TfplanMeta[typ][key] = *meta
 }
 
 // recordPlanAddress stores a resource's Terraform address when that is all
 // the scan needs (a prior-state data source has no planned change to correlate).
-func (kp *TFPlan) recordPlanAddress(typ, key, address string) {
-	kp.recordPlanMeta(typ, key, tfplanResourceMeta{Address: address})
+func (kp *TFPlan) recordPlanAddress(typ, key, addr string, correlation *resourceChangeCorrelation) {
+	meta := tfplanResourceMeta{Address: addr}
+	if refs := correlation.referencesFor(addr); refs != nil {
+		meta.References = refs
+	}
+	kp.recordPlanMeta(typ, key, &meta)
 }
 
 // TfplanMetaKey is the reserved top-level key pkg's tfplan parser attaches its
@@ -608,6 +658,36 @@ func PlanAddresses(doc model.Document) map[[2]string]string {
 				continue
 			}
 			out[[2]string{section, key}] = planAddress
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// PlanReferences flattens each plan resource's references into
+// (section, document key) -> references object, keyed like PlanAddresses. nil
+// when no resource has any.
+func PlanReferences(doc model.Document) map[[2]string]interface{} {
+	raw, ok := doc[TfplanMetaKey].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	out := make(map[[2]string]interface{})
+	for section, entriesRaw := range raw {
+		entries, ok := entriesRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for key, entryRaw := range entries {
+			entry, ok := entryRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if refs, ok := entry["references"].(map[string]interface{}); ok && len(refs) > 0 {
+				out[[2]string{section, key}] = refs
+			}
 		}
 	}
 	if len(out) == 0 {

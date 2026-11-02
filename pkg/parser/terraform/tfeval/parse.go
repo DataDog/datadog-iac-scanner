@@ -183,7 +183,7 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 				}
 			case blockTypeModule:
 				modules = append(modules, block)
-			case "resource", blockTypeEphemeral:
+			case blockTypeResource, blockTypeEphemeral:
 				resources = append(resources, block)
 			case "output":
 				if len(block.Labels) != 1 {

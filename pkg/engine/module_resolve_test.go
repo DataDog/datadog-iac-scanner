@@ -141,6 +141,7 @@ resource "aws_s3_bucket" "replica" {
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
+		make(writtenReferences),
 	)
 
 	if len(docs) != 2 {
@@ -1829,22 +1830,33 @@ func TestMetaDoesNotSplitDedup(t *testing.T) {
 
 func TestSetDocumentRootsReplacesRoots(t *testing.T) {
 	doc := model.Document{"resource": map[string]interface{}{"t": map[string]interface{}{
-		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"z"})},
+		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"z"}, nil)},
 	}}}
 	setDocumentRoots(doc, []string{"a", "b"})
-	require.Equal(t, resourceMeta("t.n", []string{"a", "b"}), metaOf(t, doc, "resource", "t", "n"))
+	require.Equal(t, resourceMeta("t.n", []string{"a", "b"}, nil), metaOf(t, doc, "resource", "t", "n"))
+}
+
+func TestSetDocumentRootsRewritesDocumentTypedSectionsAndKeepsReferences(t *testing.T) {
+	refs := map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s"}}
+	doc := model.Document{"resource": model.Document{"t": model.Document{
+		"n": model.Document{ddMetaKey: model.Document(resourceMeta("t.n", []string{"z"}, refs))},
+	}}}
+	setDocumentRoots(doc, []string{"a", "b"})
+	meta, ok := asStringMap(docAsMap(docAsMap(docAsMap(doc["resource"])["t"])["n"])[ddMetaKey])
+	require.True(t, ok)
+	require.Equal(t, resourceMeta("t.n", []string{"a", "b"}, refs), meta)
 }
 
 func TestRouteSharedDocumentRootsSortsAndDeduplicates(t *testing.T) {
 	doc := model.Document{"id": "doc", "resource": map[string]interface{}{"t": map[string]interface{}{
-		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"m"})},
+		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"m"}, nil)},
 	}}}
 	synthetic := []*model.FileMetadata{{ID: "doc", TerraformScope: &model.TerraformScope{RootModule: "m"}}}
 	extras := map[string][]extraCallerInfo{"doc": {{rootModule: "z"}, {rootModule: "a"}, {rootModule: "z"}, {rootModule: "m"}}}
 
 	routeSharedDocumentRoots([]model.Document{doc}, synthetic, extras)
 
-	require.Equal(t, resourceMeta("t.n", []string{"a", "m", "z"}), metaOf(t, doc, "resource", "t", "n"))
+	require.Equal(t, resourceMeta("t.n", []string{"a", "m", "z"}, nil), metaOf(t, doc, "resource", "t", "n"))
 }
 
 func TestInstantiatedRootModuleDocMeta(t *testing.T) {
@@ -1883,4 +1895,239 @@ func TestLayerDocumentsHoldDistinctTopLevelMaps(t *testing.T) {
 	b := docAsMap(docAsMap(second["resource"])["aws_s3_bucket"])["b"].(map[string]interface{})
 	require.NotEqual(t, reflect.ValueOf(a).Pointer(), reflect.ValueOf(b).Pointer())
 	require.NotContains(t, shared, ddMetaKey)
+}
+
+func unresolvedDirFixture(
+	t *testing.T, callers map[string]string, stampedRoot string, extra ...string,
+) (mod *model.FileMetadata, res moduleResolutionResult, modDir string) {
+	t.Helper()
+	root := t.TempDir()
+	modDir = filepath.Join(root, "modules", "m")
+	modFile := writeFile(t, modDir, "main.tf", `resource "aws_s3_bucket" "b" {}`)
+	mod = fileMeta("mod-id", modFile)
+	mod.Document = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"b"}})
+	mod.TerraformScope = &model.TerraformScope{RootModule: "modules/m"}
+	stampWrittenMeta(mod.Document, &model.TerraformScope{RootModule: stampedRoot})
+	files := model.FileMetadatas{mod}
+	for dir, source := range callers {
+		f := fileMeta(dir+"-root", filepath.Join(root, dir, "main.tf"))
+		f.Document = model.Document{"module": map[string]interface{}{
+			"m": map[string]interface{}{"source": source},
+		}}
+		files = append(files, f)
+	}
+	for _, dir := range extra {
+		f := fileMeta(dir+"-root", writeFile(t, filepath.Join(root, dir), "main.tf", `resource "aws_s3_bucket" "ok" {}`))
+		f.Document = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"ok"}})
+		files = append(files, f)
+	}
+	res = resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+	return mod, res, modDir
+}
+
+func TestUnresolvedDirListsCallerRoots(t *testing.T) {
+	mod, res, modDir := unresolvedDirFixture(t, map[string]string{
+		"envs/a": "../../modules/m", "envs/b": "../../modules/m",
+	}, "modules/m", "ok")
+	require.True(t, res.unresolvedModuleDirs[modDir])
+	meta := metaOf(t, mod.Document, "resource", "aws_s3_bucket", "b")
+	require.Equal(t, []interface{}{"envs/a", "envs/b", "modules/m"}, meta["root_modules"])
+	require.Equal(t, "aws_s3_bucket.b", meta["address"])
+}
+
+func TestUnresolvedDirRootsUnionCallersOwnAndExisting(t *testing.T) {
+	mod, res, modDir := unresolvedDirFixture(t, map[string]string{"envs/a": "../../modules/m"}, "prev", "ok")
+	require.True(t, res.unresolvedModuleDirs[modDir])
+	meta := metaOf(t, mod.Document, "resource", "aws_s3_bucket", "b")
+	require.Equal(t, []interface{}{"envs/a", "modules/m", "prev"}, meta["root_modules"])
+}
+
+func TestUnresolvedDirReachedThroughOpaqueCall(t *testing.T) {
+	mod, res, modDir := unresolvedDirFixture(t, map[string]string{
+		"envs/a": "../../modules/m", "envs/c": "${var.src}",
+	}, "modules/m", "ok")
+	require.True(t, res.unresolvedModuleDirs[modDir])
+	meta := metaOf(t, mod.Document, "resource", "aws_s3_bucket", "b")
+	require.Equal(t, []interface{}{"envs/a", "envs/c", "modules/m"}, meta["root_modules"])
+}
+
+func TestUncalledDirKeepsOwnRoot(t *testing.T) {
+	mod, res, modDir := unresolvedDirFixture(t, map[string]string{"envs/a": "../../modules/other"}, "modules/m", "ok")
+	require.False(t, res.unresolvedModuleDirs[modDir])
+	meta := metaOf(t, mod.Document, "resource", "aws_s3_bucket", "b")
+	require.Equal(t, []interface{}{"modules/m"}, meta["root_modules"])
+}
+
+func TestReachingRootsByDir(t *testing.T) {
+	identity := func(d string) string { return d }
+	unresolved := func(dirs ...string) map[string]bool {
+		out := map[string]bool{}
+		for _, d := range dirs {
+			out[d] = true
+		}
+		return out
+	}
+	t.Run("a chain reaches the outermost root", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"root": {"mid"}, "mid": {"m"}}}
+		require.Equal(t, map[string][]string{"m": {"root"}, "mid": {"root"}},
+			reachingRootsByDir([]string{"root"}, graph, unresolved("m", "mid"), identity))
+	})
+	t.Run("a cycle terminates and still reaches the root", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"root": {"n"}, "m": {"n"}, "n": {"m"}}}
+		require.Equal(t, map[string][]string{"m": {"root"}, "n": {"root"}},
+			reachingRootsByDir([]string{"root"}, graph, unresolved("m", "n"), identity))
+	})
+	t.Run("roots come out sorted whatever their order", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"z": {"m"}, "a": {"m"}, "k": {"m"}}}
+		require.Equal(t, map[string][]string{"m": {"a", "k", "z"}},
+			reachingRootsByDir([]string{"z", "a", "k"}, graph, unresolved("m"), identity))
+	})
+	t.Run("roots sharing a relative path are listed once", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"/x/env": {"m"}, "/y/env": {"m"}}}
+		strip := func(d string) string { return filepath.Base(d) }
+		require.Equal(t, map[string][]string{"m": {"env"}},
+			reachingRootsByDir([]string{"/x/env", "/y/env"}, graph, unresolved("m"), strip))
+	})
+	t.Run("a directory no root reaches is left out", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"root": {"other"}}}
+		require.Empty(t, reachingRootsByDir([]string{"root"}, graph, unresolved("m"), identity))
+	})
+	t.Run("a root with an opaque call reaches every directory", func(t *testing.T) {
+		graph := staticCallGraph{
+			calls:  map[string][]string{"r1": {"m"}, "r2": nil},
+			opaque: map[string]bool{"r2": true},
+		}
+		require.Equal(t, map[string][]string{"m": {"r1", "r2"}},
+			reachingRootsByDir([]string{"r1", "r2"}, graph, unresolved("m"), identity))
+	})
+}
+
+func TestUnresolvedDirKeepsCallRootsOfExternalModuleFile(t *testing.T) {
+	scope := &model.TerraformScope{RootModule: "lib"}
+	file := &model.FileMetadata{ID: "mod", FilePath: "/repo/lib/main.tf", TerraformScope: scope,
+		Document: blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"b"}})}
+	stampWrittenMeta(file.Document, scope)
+	mf := &moduleFileCalls{
+		scope: scope, keepWritten: true,
+		calls: []moduleCall{{moduleAddress: "module.m", rootModule: "envs/b"}, {moduleAddress: "module.m", rootModule: "envs/a"}},
+	}
+	files := model.FileMetadatas{file}
+	routeModuleFileRoots(files, map[string]*moduleFileCalls{"mod": mf})
+	routeUnresolvedDirRoots(files, map[string][]string{"/repo/lib": {"envs/c"}}, "/repo")
+
+	meta := metaOf(t, file.Document, "resource", "aws_s3_bucket", "b")
+	require.Equal(t, []interface{}{"envs/a", "envs/b", "envs/c", "lib"}, meta["root_modules"])
+}
+
+const netModuleBody = `
+resource "aws_subnet" "s" {
+  count      = 2
+  cidr_block = "10.0.0.0/24"
+}
+
+resource "aws_route_table_association" "a" {
+  count     = 2
+  subnet_id = aws_subnet.s[count.index].id
+}
+`
+
+func netCall() map[string]string {
+	return map[string]string{"envs": `
+module "net" {
+  source = "../modules/m"
+}
+`}
+}
+
+func TestInstantiatedDocCarriesReferences(t *testing.T) {
+	res, _ := resolveModuleFixture(t, netCall(), netModuleBody)
+	addresses := map[string]bool{}
+	var refs map[string]interface{}
+	for _, doc := range res.docs {
+		for typ, name := range map[string]string{"aws_subnet": "s", "aws_route_table_association": "a"} {
+			if _, ok := docAsMap(docAsMap(doc["resource"])[typ])[name]; !ok {
+				continue
+			}
+			meta := metaOf(t, doc, "resource", typ, name)
+			addresses[meta["address"].(string)] = true
+			if meta["address"] == "module.net.aws_route_table_association.a[0]" {
+				refs, _ = meta[referencesKey].(map[string]interface{})
+			}
+		}
+	}
+	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"module.net.aws_subnet.s[0]"}}, refs)
+	for _, addr := range refs["subnet_id"].([]interface{}) {
+		require.True(t, addresses[addr.(string)], "%s is no document's address", addr)
+	}
+}
+
+func TestReferencesNameUntargetedTypes(t *testing.T) {
+	root := t.TempDir()
+	files := parseTerraform(t, writeFile(t, filepath.Join(root, "modules", "m"), "main.tf", netModuleBody))
+	files = append(files, parseTerraform(t, writeFile(t, filepath.Join(root, "envs"), "main.tf", netCall()["envs"]))...)
+	targets := &ruleTargets{types: map[string]bool{"aws_route_table_association": true}}
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, targets, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	var got []interface{}
+	for _, doc := range res.docs {
+		require.Empty(t, docAsMap(doc["resource"])["aws_subnet"])
+		meta := metaOf(t, doc, "resource", "aws_route_table_association", "a")
+		if meta["address"] == "module.net.aws_route_table_association.a[1]" {
+			got = meta[referencesKey].(map[string]interface{})["subnet_id"].([]interface{})
+		}
+	}
+	require.Equal(t, []interface{}{"module.net.aws_subnet.s[1]"}, got)
+}
+
+func TestWrittenRootBlockCarriesReferences(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+resource "aws_subnet" "s" {
+  cidr_block = "10.0.0.0/24"
+}
+
+resource "aws_route_table_association" "a" {
+  subnet_id = aws_subnet.s.id
+}
+`)
+	files := parseTerraform(t, path)
+	scope := &model.TerraformScope{RootModule: "envs"}
+	for _, f := range files {
+		f.TerraformScope = scope
+		stampWrittenMeta(f.Document, scope)
+	}
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+
+	meta := metaOf(t, files[0].Document, "resource", "aws_route_table_association", "a")
+	require.Equal(t, "aws_route_table_association.a", meta["address"])
+	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s"}}, meta[referencesKey])
+	require.NotContains(t, metaOf(t, files[0].Document, "resource", "aws_subnet", "s"), referencesKey)
+}
+
+func TestRootRewriteKeepsReferences(t *testing.T) {
+	refs := map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s"}}
+	newDoc := func(id string) model.Document {
+		return model.Document{"id": id, "resource": map[string]interface{}{"aws_x": map[string]interface{}{
+			"n": map[string]interface{}{ddMetaKey: resourceMeta("aws_x.n", []string{"m"}, refs)},
+		}}}
+	}
+	shared := newDoc("doc")
+	routeSharedDocumentRoots([]model.Document{shared},
+		[]*model.FileMetadata{{ID: "doc", TerraformScope: &model.TerraformScope{RootModule: "m"}}},
+		map[string][]extraCallerInfo{"doc": {{rootModule: "z"}}})
+	require.Equal(t, resourceMeta("aws_x.n", []string{"m", "z"}, refs), metaOf(t, shared, "resource", "aws_x", "n"))
+
+	scope := &model.TerraformScope{RootModule: "lib"}
+	file := &model.FileMetadata{ID: "mod", FilePath: "/repo/lib/main.tf", TerraformScope: scope, Document: newDoc("mod")}
+	mf := &moduleFileCalls{scope: scope, keepWritten: true, calls: []moduleCall{{moduleAddress: "module.m", rootModule: "envs/a"}}}
+	files := model.FileMetadatas{file}
+	routeModuleFileRoots(files, map[string]*moduleFileCalls{"mod": mf})
+	routeUnresolvedDirRoots(files, map[string][]string{"/repo/lib": {"envs/c"}}, "/repo")
+	meta := metaOf(t, file.Document, "resource", "aws_x", "n")
+	require.Equal(t, []interface{}{"envs/a", "envs/c", "lib"}, meta["root_modules"])
+	require.Equal(t, refs, meta[referencesKey])
 }

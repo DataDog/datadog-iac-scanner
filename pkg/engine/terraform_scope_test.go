@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/stretchr/testify/require"
 )
@@ -292,11 +293,11 @@ func TestStampTerraformScopesKeepsListShapedTypesAndReplacesUserMeta(t *testing.
 	res, _ := asStringMap(doc["resource"])
 	require.Equal(t, []interface{}{map[string]interface{}{"a": 1}}, res["aws_x"])
 	y, _ := asStringMap(res["aws_y"])
-	want := resourceMeta("aws_y.n", []string{"."})
+	want := resourceMeta("aws_y.n", []string{"."}, nil)
 	n, _ := asStringMap(y["n"])
 	require.Equal(t, want, n[ddMetaKey])
 	str, _ := asStringMap(y["s"])
-	require.Equal(t, resourceMeta("aws_y.s", []string{"."}), str[ddMetaKey])
+	require.Equal(t, resourceMeta("aws_y.s", []string{"."}, nil), str[ddMetaKey])
 }
 
 func TestDocumentBlocksIndexesBlocksNamedDDMeta(t *testing.T) {
@@ -312,7 +313,7 @@ func TestDocumentBlocksIndexesBlocksNamedDDMeta(t *testing.T) {
 	res, _ := asStringMap(doc["resource"])
 	byName, _ := asStringMap(res["t"])
 	block, _ := asStringMap(byName[ddMetaKey])
-	require.Equal(t, resourceMeta("t."+ddMetaKey, []string{"."}), block[ddMetaKey])
+	require.Equal(t, resourceMeta("t."+ddMetaKey, []string{"."}, nil), block[ddMetaKey])
 }
 
 func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
@@ -331,7 +332,10 @@ func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
 		"_dd_tfplan_meta": map[string]interface{}{
 			"aws_s3_bucket": map[string]interface{}{
 				"module.m.aws_s3_bucket.b[1]": map[string]interface{}{"address": "module.m.aws_s3_bucket.b[1]"},
-				"r":                           map[string]interface{}{"address": "aws_s3_bucket.r"},
+				"r": map[string]interface{}{
+					"address":    "aws_s3_bucket.r",
+					"references": map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}},
+				},
 			},
 			"data.aws_kms_key": map[string]interface{}{
 				"k": map[string]interface{}{"address": "data.aws_kms_key.k"},
@@ -344,11 +348,15 @@ func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
 	root := []string{"stacks/prod/tfplan.json"}
 	buckets, _ := asStringMap(doc["resource"].(map[string]interface{})["aws_s3_bucket"])
 	b, _ := asStringMap(buckets["module.m.aws_s3_bucket.b[1]"])
-	require.Equal(t, resourceMeta("module.m.aws_s3_bucket.b[1]", root), b[ddMetaKey])
+	require.Equal(t, resourceMeta("module.m.aws_s3_bucket.b[1]", root, nil), b[ddMetaKey])
 	r, _ := asStringMap(buckets["r"])
-	require.Equal(t, resourceMeta("aws_s3_bucket.r", root), r[ddMetaKey])
+	wantR := resourceMeta("aws_s3_bucket.r", root, nil)
+	wantR["references"] = map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}}
+	require.Equal(t, wantR, r[ddMetaKey])
+	require.Equal(t, json.PlanReferences(doc)[[2]string{"aws_s3_bucket", "r"}], r[ddMetaKey].(map[string]interface{})["references"])
+	require.NotContains(t, b[ddMetaKey], "references")
 	keys, _ := asStringMap(doc["data"].(map[string]interface{})["aws_kms_key"])
 	k, _ := asStringMap(keys["k"])
-	require.Equal(t, resourceMeta("data.aws_kms_key.k", root), k[ddMetaKey])
+	require.Equal(t, resourceMeta("data.aws_kms_key.k", root, nil), k[ddMetaKey])
 	require.Contains(t, doc, "_dd_tfplan_meta")
 }

@@ -343,3 +343,50 @@ func Test_E2ETerraformSharedModuleRootRouting(t *testing.T) {
 		require.ElementsMatch(t, []string{"envs/a", "envs/b"}, scanRoutingRule(t, "versioning_any_root"))
 	})
 }
+
+func Test_E2ETerraformReferencesJoinAcrossModuleCalls(t *testing.T) {
+	scan1 := func(t *testing.T) map[string][]string {
+		t.Helper()
+		outDir := t.TempDir()
+		params, ctx := scan.GetDefaultParameters(context.Background(), "")
+		repo := mustAbs(t, filepath.Join("fixtures", "references-join"))
+		params.Path = []string{repo}
+		params.RepoPath = repo
+		params.OutputPath = outDir
+		params.OutputName = "result"
+		params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform_references_join"))}
+		params.ChangedDefaultQueryPath = true
+		params.SCIInfo = model.SCIInfo{
+			DiffAware:            model.DiffAware{Enabled: false},
+			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+		}
+		params.FlagEvaluator = featureflags.NewLocalEvaluator()
+		_, err := console.ExecuteScan(ctx, params)
+		require.NoError(t, err)
+
+		data, err := os.ReadFile(filepath.Join(outDir, "result.sarif"))
+		require.NoError(t, err)
+		var doc struct {
+			Runs []struct {
+				Results []struct {
+					Properties map[string]interface{} `json:"properties"`
+				} `json:"results"`
+			} `json:"runs"`
+		}
+		require.NoError(t, json.Unmarshal(data, &doc))
+		byRoot := map[string][]string{}
+		for _, run := range doc.Runs {
+			for _, r := range run.Results {
+				root, _ := r.Properties["root_module"].(string)
+				id, _ := r.Properties["resource_id"].(string)
+				byRoot[root] = append(byRoot[root], id)
+			}
+		}
+		return byRoot
+	}
+
+	byRoot := scan1(t)
+	require.ElementsMatch(t, []string{"module.a.aws_subnet.s[2]", "module.b.aws_subnet.s[1]", "module.b.aws_subnet.s[2]"}, byRoot["envs/main"], "%v", byRoot)
+	require.Empty(t, byRoot["envs/unset"], "a root whose association reads an unset variable is uncertain: %v", byRoot)
+	require.Len(t, byRoot, 1, "%v", byRoot)
+}

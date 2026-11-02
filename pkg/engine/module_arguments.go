@@ -28,6 +28,8 @@ const (
 	mergeFunction      = "merge"
 	toSetFunction      = "toset"
 	resourceEachRoot   = "each"
+	eachKeyStep        = "key"
+	eachValueStep      = "value"
 	dynamicBlockType   = "dynamic"
 	dynamicContentType = "content"
 	dynamicIterator    = "iterator"
@@ -426,6 +428,8 @@ type valueAnalyzer struct {
 	usedIteration bool
 	// forEach is the for_each attribute of the resource being analyzed.
 	forEach *hclsyntax.Attribute
+	// refs, when set, collects the instances of the blocks expressions read.
+	refs *referenceTrace
 }
 
 func (t *moduleAttributionCache) analyzer(scope *tfeval.ModuleScope, iteration map[string]cty.Value) *valueAnalyzer {
@@ -574,10 +578,19 @@ func (a *valueAnalyzer) reads(expr hclsyntax.Expression) inputReads {
 	case *hclsyntax.ScopeTraversalExpr:
 		return a.traversal(e.Traversal)
 	case *hclsyntax.RelativeTraversalExpr:
+		if a.refs != nil {
+			a.refs.indexedAttribute(e)
+		}
 		return a.reads(e.Source)
 	case *hclsyntax.IndexExpr:
+		if a.refs != nil && indexesReference(e.Collection) {
+			a.refs.indexKey = e.Key
+		}
 		r = a.reads(e.Collection)
-		r.addSelector(a.reads(e.Key))
+		if a.refs != nil {
+			a.refs.takeIndex()
+		}
+		r.addSelector(a.selectorReads(e.Key))
 	case *hclsyntax.SplatExpr:
 		r = a.reads(e.Source)
 		r.add(a.reads(e.Each))
@@ -620,7 +633,7 @@ func (a *valueAnalyzer) reads(expr hclsyntax.Expression) inputReads {
 		a.shadowed = append(a.shadowed, e.KeyVar, e.ValVar)
 		r.add(a.reads(e.KeyExpr))
 		r.add(a.reads(e.ValExpr))
-		r.addSelector(a.reads(e.CondExpr))
+		r.addSelector(a.selectorReads(e.CondExpr))
 		a.shadowed = a.shadowed[:scope]
 	default:
 		for _, traversal := range scopeTraversals(expr) {
@@ -656,14 +669,17 @@ func (a *valueAnalyzer) traversal(traversal hcl.Traversal) inputReads {
 		if it := &a.iterators[i]; it.name == root {
 			if it.split && len(traversal) > 1 {
 				switch stepString(traversal[1]) {
-				case "key":
+				case eachKeyStep:
 					return it.keyReads
-				case "value":
+				case eachValueStep:
 					return it.valueReads
 				}
 			}
 			return it.reads
 		}
+	}
+	if a.refs != nil {
+		a.refs.traversal(a, root, traversal)
 	}
 	switch root {
 	case moduleVariableRoot:
@@ -708,7 +724,10 @@ var nonReferenceRoots = map[string]bool{
 	"each": true, "count": true, "path": true, "terraform": true, "self": true,
 }
 
-const dataRoot = "data"
+const (
+	dataRoot      = "data"
+	ephemeralRoot = "ephemeral"
+)
 
 // blockReference returns what the attribute a traversal selects from a
 // resource or data block of the module reads, since a block can set it from
@@ -837,6 +856,8 @@ func (a *valueAnalyzer) blockBody(address string) *hclsyntax.Body {
 					index[block.Labels[0]+"."+block.Labels[1]] = block.Body
 				case block.Type == dataRoot && len(block.Labels) == 2:
 					index[dataRoot+"."+block.Labels[0]+"."+block.Labels[1]] = block.Body
+				case block.Type == ephemeralRoot && len(block.Labels) == 2:
+					index[ephemeralRoot+"."+block.Labels[0]+"."+block.Labels[1]] = block.Body
 				}
 			}
 		}
@@ -889,8 +910,21 @@ func (a *valueAnalyzer) call(e *hclsyntax.FunctionCallExpr) inputReads {
 	return r
 }
 
+// selectorReads is what an expression choosing between values reads. What
+// it fails to trace leaves the references complete: a choice it cannot make
+// lists every alternative.
+func (a *valueAnalyzer) selectorReads(expr hclsyntax.Expression) inputReads {
+	if a.refs == nil {
+		return a.reads(expr)
+	}
+	untraced := a.refs.untraced
+	r := a.reads(expr)
+	a.refs.untraced = untraced
+	return r
+}
+
 func (a *valueAnalyzer) conditional(e *hclsyntax.ConditionalExpr) inputReads {
-	condition := a.reads(e.Condition)
+	condition := a.selectorReads(e.Condition)
 	if v, ok := a.value(e.Condition); ok && !v.IsNull() && v.Type() == cty.Bool {
 		branch := e.FalseResult
 		if v.True() {
@@ -965,7 +999,7 @@ func (a *valueAnalyzer) firstEvaluated(args []hclsyntax.Expression) inputReads {
 }
 
 func (a *valueAnalyzer) lookup(collection, key, fallback hclsyntax.Expression) inputReads {
-	keyReads := a.reads(key)
+	keyReads := a.selectorReads(key)
 	if found, ok := a.hasKey(collection, key); ok {
 		chosen, other := collection, fallback
 		if !found {

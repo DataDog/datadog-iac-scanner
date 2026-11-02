@@ -130,6 +130,20 @@ type ModuleScope struct {
 	// and reuses the rest verbatim.
 	localGraph *localGraph
 	localCache map[string]cty.Value
+
+	// Outputs are the module's output expressions by name, and Children the
+	// evaluated instances of its module calls by call label.
+	Outputs  map[string]hclsyntax.Expression
+	Children map[string][]ChildScope
+}
+
+// ChildScope is one evaluated instance of a module call: its instance key as
+// written in an address ("", "[0]" or ["k"]), the call block's body and the
+// called module's scope.
+type ChildScope struct {
+	Suffix string
+	Call   *hclsyntax.Body
+	Scope  *ModuleScope
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not
@@ -435,7 +449,7 @@ func (e *Evaluator) EvaluateModule(
 	allVisited := map[string]bool{}
 	e.instances = nil
 	e.emptyBlocks = nil
-	resources, outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
+	resources, outputs, _, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err != nil {
 		e.instances = nil
 		e.emptyBlocks = nil
@@ -455,9 +469,9 @@ func (e *Evaluator) evaluate(
 	depth int,
 	visiting map[string]bool,
 	allVisited map[string]bool,
-) ([]ResolvedResource, map[string]cty.Value, error) {
+) ([]ResolvedResource, map[string]cty.Value, *ModuleScope, error) {
 	if err := e.evaluationStop(ctx, dir, depth, visiting); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	cacheKey := evalCacheKey{
@@ -466,10 +480,10 @@ func (e *Evaluator) evaluate(
 		packageRoot: packageRoot,
 		inputs:      e.keyMemo.inputsKey(inputs),
 	}
-	if resources, outputs, hit := e.reuseCachedEvaluation(
+	if resources, outputs, scope, hit := e.reuseCachedEvaluation(
 		cacheKey, addr, chain, depth, allVisited,
 	); hit {
-		return resources, outputs, nil
+		return resources, outputs, scope, nil
 	}
 
 	visiting[dir] = true
@@ -486,7 +500,7 @@ func (e *Evaluator) evaluate(
 
 	parsed := e.parseDir(ctx, dir, packageRoot)
 	if parsed.err != nil {
-		return nil, nil, parsed.err
+		return nil, nil, nil, parsed.err
 	}
 	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
 
@@ -504,7 +518,7 @@ func (e *Evaluator) evaluate(
 
 	scope := &ModuleScope{
 		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
-		localGraph: parsed.locals,
+		localGraph: parsed.locals, Outputs: parsed.outputs,
 	}
 	e.noteCycles(ctx, dir, parsed.locals)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
@@ -564,10 +578,10 @@ func (e *Evaluator) evaluate(
 	}
 	e.cacheCompletedEvaluation(
 		cacheKey, skippedBefore, resources, e.instances[instancesBefore:], e.emptyBlocks[emptyBefore:],
-		outputs, visitedDirs, addr, len(chain), depth,
+		outputs, scope, visitedDirs, addr, len(chain), depth,
 	)
 
-	return resources, outputs, nil
+	return resources, outputs, scope, nil
 }
 
 // installModuleOutputs publishes module.* and refreshes what reads it: first
@@ -619,21 +633,22 @@ func (e *Evaluator) reuseCachedEvaluation(
 ) (
 	resources []ResolvedResource,
 	outputs map[string]cty.Value,
+	scope *ModuleScope,
 	hit bool,
 ) {
 	entry, ok := e.cache[key]
 	if !ok {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	if entry.evalDepth > depth {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	for _, visited := range entry.visitedDirs {
 		allVisited[visited] = true
 	}
 	e.instances = append(e.instances, entry.rebaseInstances(addr, chain)...)
 	e.emptyBlocks = append(e.emptyBlocks, entry.emptyBlocks...)
-	return entry.rebase(addr, chain), entry.outputs, true
+	return entry.rebase(addr, chain), entry.outputs, entry.scope, true
 }
 
 func (e *Evaluator) preinjectResourceRefs(
@@ -662,6 +677,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	instances []ModuleInstance,
 	emptyBlocks []EmptyBlock,
 	outputs map[string]cty.Value,
+	scope *ModuleScope,
 	visitedDirs []string,
 	addr string,
 	chainLen int,
@@ -675,6 +691,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 		instances:    slices.Clone(instances),
 		emptyBlocks:  slices.Clone(emptyBlocks),
 		outputs:      outputs,
+		scope:        scope,
 		visitedDirs:  visitedDirs,
 		baseAddr:     addr,
 		baseChainLen: chainLen,
@@ -750,7 +767,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			instancesBefore := len(e.instances)
 			emptyBefore := len(e.emptyBlocks)
 
-			childRes, childOuts, cErr := e.evaluate(
+			childRes, childOuts, childScope, cErr := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
 				childChain, depth+1, visiting, allVisited,
 			)
@@ -768,6 +785,12 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			allVisited[call.dir] = true
 			childResources = append(childResources, childRes...)
 			outs[i] = objectOrEmpty(childOuts)
+			if scope.Children == nil {
+				scope.Children = map[string][]ChildScope{}
+			}
+			scope.Children[call.label] = append(scope.Children[call.label], ChildScope{
+				Suffix: childAddr[len(joinAddr(addr, "module."+call.label)):], Call: mb.Body, Scope: childScope,
+			})
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
 			if siblings != nil {
@@ -1628,7 +1651,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		for i, instance := range plan.instances {
 			modInputs := e.evalBody(mb.Body, instance.ctx, reservedModuleAttrs)
 			childChain := append(cloneChain(chain), site)
-			_, childOuts, err := e.evaluate(
+			_, childOuts, _, err := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
 				depth+1, tmpVisiting, map[string]bool{},
 			)

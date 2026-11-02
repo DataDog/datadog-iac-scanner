@@ -215,3 +215,42 @@ func TestInspect_IdenticalKeyedInstancesAcrossRootsStillDedup(t *testing.T) {
 	}
 	require.Equal(t, map[string]bool{"stack-a": true, "stack-b": true}, roots)
 }
+
+func TestReferencesSplitDedup(t *testing.T) {
+	const module = `
+variable "subnet_id" {}
+
+resource "aws_route_table_association" "a" {
+  subnet_id = var.subnet_id
+}
+`
+	call := func(subnet string) string {
+		return `
+resource "aws_subnet" "` + subnet + `" {
+  cidr_block = "10.0.0.0/24"
+}
+
+module "m" {
+  source    = "../../modules/m"
+  subnet_id = aws_subnet.` + subnet + `.id
+}
+`
+	}
+	refsOf := func(doc model.Document) interface{} {
+		return metaOf(t, doc, "resource", "aws_route_table_association", "a")[referencesKey]
+	}
+
+	res, _ := resolveModuleFixture(t, map[string]string{"envs/a": call("a"), "envs/b": call("b")}, module)
+	require.Len(t, res.docs, 2)
+	got := []interface{}{refsOf(res.docs[0]), refsOf(res.docs[1])}
+	require.ElementsMatch(t, []interface{}{
+		map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.a"}},
+		map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.b"}},
+	}, got)
+
+	res, _ = resolveModuleFixture(t, map[string]string{"envs/a": call("a"), "envs/b": call("a")}, module)
+	require.Len(t, res.docs, 1)
+	docID, _ := res.docs[0]["id"].(string)
+	require.Len(t, res.extras[docID], 1)
+	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.a"}}, refsOf(res.docs[0]))
+}

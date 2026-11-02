@@ -46,7 +46,7 @@ func (c *Inspector) stampTerraformScopes(files model.FileMetadatas) {
 			scope := &model.TerraformScope{RootModule: repoRelativeFile(f.FilePath, c.repoPath)}
 			if planAddresses := json.PlanAddresses(f.Document); planAddresses != nil {
 				scope.PlanAddresses = planAddresses
-				stampPlanMeta(f.Document, planAddresses, scope.RootModule)
+				stampPlanMeta(f.Document, planAddresses, json.PlanReferences(f.Document), scope.RootModule)
 			}
 			f.TerraformScope = scope
 		case model.KindTerraform:

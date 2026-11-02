@@ -6,7 +6,11 @@
 package json
 
 import (
+	stdjson "encoding/json"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
@@ -2242,4 +2246,259 @@ func TestJson_PlanAddresses(t *testing.T) {
 	require.Equal(t, "aws_s3_bucket.x", got[[2]string{"aws_s3_bucket", "x"}])
 	require.Equal(t, "data.aws_s3_bucket.x", got[[2]string{"data.aws_s3_bucket", "x"}])
 	require.Nil(t, PlanAddresses(model.Document{}))
+}
+
+func referencesPlanDoc(t *testing.T, plannedRoot string, changeAddrs []string, configRoot string) model.Document {
+	t.Helper()
+	changes := make([]string, len(changeAddrs))
+	for i, a := range changeAddrs {
+		changes[i] = fmt.Sprintf(`{"address":%q,"change":{"actions":["create"],"after_unknown":{}}}`, a)
+	}
+	raw := fmt.Sprintf(`{"format_version":"1.2","terraform_version":"1.9.0",
+		"planned_values":{"root_module":%s},
+		"resource_changes":[%s],
+		"configuration":{"root_module":%s}}`, plannedRoot, strings.Join(changes, ","), configRoot)
+	var doc model.Document
+	require.NoError(t, stdjson.Unmarshal([]byte(raw), &doc))
+	return doc
+}
+
+func planMetaFor(t *testing.T, doc model.Document, addr string) map[string]interface{} {
+	t.Helper()
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+	for _, entriesRaw := range got[TfplanMetaKey].(map[string]interface{}) {
+		for _, entry := range entriesRaw.(map[string]interface{}) {
+			if m := entry.(map[string]interface{}); m["address"] == addr {
+				return m
+			}
+		}
+	}
+	require.Failf(t, "no plan meta", "address %s", addr)
+	return nil
+}
+
+func TestPlanReferencesDirectAndIndexed(t *testing.T) {
+	planned := `{"resources":[
+		{"address":"aws_subnet.s[0]","mode":"managed","type":"aws_subnet","name":"s","index":0,"values":{}},
+		{"address":"aws_subnet.s[1]","mode":"managed","type":"aws_subnet","name":"s","index":1,"values":{}},
+		{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web","values":{}}]}`
+	addrs := []string{"aws_subnet.s[0]", "aws_subnet.s[1]", "aws_instance.web"}
+	config := func(refs string) string {
+		return `{"resources":[
+			{"address":"aws_subnet.s","mode":"managed","type":"aws_subnet","name":"s","count_expression":{"constant_value":2},"expressions":{}},
+			{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web","expressions":{"subnet_id":{"references":` + refs + `}}}]}`
+	}
+
+	indexed := referencesPlanDoc(t, planned, addrs, config(`["aws_subnet.s[0].id","aws_subnet.s[0]","aws_subnet.s"]`))
+	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s[0]"}},
+		planMetaFor(t, indexed, "aws_instance.web")["references"])
+
+	whole := referencesPlanDoc(t, planned, addrs, config(`["aws_subnet.s.id","aws_subnet.s"]`))
+	meta := planMetaFor(t, whole, "aws_instance.web")
+	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s[0]", "aws_subnet.s[1]"}}, meta["references"])
+	require.NotContains(t, planMetaFor(t, whole, "aws_subnet.s[0]"), "references")
+
+	targets := PlanAddresses(mustParse(t, whole))
+	for _, a := range meta["references"].(map[string]interface{})["subnet_id"].([]interface{}) {
+		require.Contains(t, mapValues(targets), a)
+	}
+}
+
+func mustParse(t *testing.T, doc model.Document) model.Document {
+	t.Helper()
+	got, err := parseTFPlan(doc)
+	require.NoError(t, err)
+	return got
+}
+
+func mapValues(m map[[2]string]string) []string {
+	out := make([]string, 0, len(m))
+	for _, v := range m {
+		out = append(out, v)
+	}
+	return out
+}
+
+func TestPlanReferencesThroughVariableAndOutput(t *testing.T) {
+	planned := `{"resources":[
+			{"address":"aws_subnet.s[0]","mode":"managed","type":"aws_subnet","name":"s","index":0,"values":{}},
+			{"address":"aws_subnet.s[1]","mode":"managed","type":"aws_subnet","name":"s","index":1,"values":{}},
+			{"address":"aws_instance.app","mode":"managed","type":"aws_instance","name":"app","values":{}}],
+		"child_modules":[
+			{"address":"module.net[0]","resources":[
+				{"address":"module.net[0].aws_subnet.s","mode":"managed","type":"aws_subnet","name":"s","values":{}},
+				{"address":"module.net[0].aws_instance.inner","mode":"managed","type":"aws_instance","name":"inner","values":{}}]},
+			{"address":"module.net[1]","resources":[
+				{"address":"module.net[1].aws_subnet.s","mode":"managed","type":"aws_subnet","name":"s","values":{}},
+				{"address":"module.net[1].aws_instance.inner","mode":"managed","type":"aws_instance","name":"inner","values":{}}]}]}`
+	addrs := []string{
+		"aws_subnet.s[0]", "aws_subnet.s[1]", "aws_instance.app",
+		"module.net[0].aws_subnet.s", "module.net[0].aws_instance.inner",
+		"module.net[1].aws_subnet.s", "module.net[1].aws_instance.inner",
+	}
+	config := `{"resources":[
+			{"address":"aws_subnet.s","mode":"managed","type":"aws_subnet","name":"s","count_expression":{"constant_value":2},"expressions":{}},
+			{"address":"aws_instance.app","mode":"managed","type":"aws_instance","name":"app",
+			 "expressions":{"subnet_id":{"references":["module.net.subnet_id","module.net"]}}}],
+		"module_calls":{"net":{
+			"count_expression":{"constant_value":2},
+			"expressions":{"subnet_id":{"references":["aws_subnet.s[1].id","aws_subnet.s[1]","aws_subnet.s"]}},
+			"module":{
+				"outputs":{"subnet_id":{"expression":{"references":["aws_subnet.s.id","aws_subnet.s"]}}},
+				"resources":[
+					{"address":"aws_subnet.s","mode":"managed","type":"aws_subnet","name":"s","expressions":{}},
+					{"address":"aws_instance.inner","mode":"managed","type":"aws_instance","name":"inner",
+					 "expressions":{"subnet_id":{"references":["var.subnet_id"]}}}]}}}}`
+	doc := referencesPlanDoc(t, planned, addrs, config)
+
+	for _, inst := range []string{"module.net[0]", "module.net[1]"} {
+		require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s[1]"}},
+			planMetaFor(t, doc, inst+".aws_instance.inner")["references"])
+	}
+	require.Equal(t,
+		map[string]interface{}{"subnet_id": []interface{}{"module.net[0].aws_subnet.s", "module.net[1].aws_subnet.s"}},
+		planMetaFor(t, doc, "aws_instance.app")["references"])
+
+	targets := mapValues(PlanAddresses(mustParse(t, doc)))
+	for _, a := range []string{"aws_subnet.s[1]", "module.net[0].aws_subnet.s", "module.net[1].aws_subnet.s"} {
+		require.Contains(t, targets, a)
+	}
+}
+
+func TestPlanReferencesNestedBlocksAndLocals(t *testing.T) {
+	planned := `{"resources":[
+		{"address":"aws_security_group.a","mode":"managed","type":"aws_security_group","name":"a","values":{}},
+		{"address":"aws_security_group.b","mode":"managed","type":"aws_security_group","name":"b","values":{}},
+		{"address":"aws_security_group.c","mode":"managed","type":"aws_security_group","name":"c","values":{}},
+		{"address":"aws_s3_bucket.only_local","mode":"managed","type":"aws_s3_bucket","name":"only_local","values":{}}]}`
+	addrs := []string{"aws_security_group.a", "aws_security_group.b", "aws_security_group.c", "aws_s3_bucket.only_local"}
+	config := `{"resources":[
+		{"address":"aws_security_group.c","mode":"managed","type":"aws_security_group","name":"c","expressions":{
+			"name":{"references":["local.prefix"]},
+			"ingress":[
+				{"security_groups":{"references":["aws_security_group.a.id","aws_security_group.a"]}},
+				{"security_groups":{"references":["aws_security_group.b.id","aws_security_group.b"]},"cidr_blocks":{"references":["local.cidrs"]}}]}},
+		{"address":"aws_s3_bucket.only_local","mode":"managed","type":"aws_s3_bucket","name":"only_local","expressions":{
+			"bucket":{"references":["local.name"]}}}]}`
+	doc := referencesPlanDoc(t, planned, addrs, config)
+
+	require.Equal(t, map[string]interface{}{
+		"ingress": []interface{}{
+			map[string]interface{}{"security_groups": []interface{}{"aws_security_group.a"}},
+			map[string]interface{}{"security_groups": []interface{}{"aws_security_group.b"}},
+		},
+	}, planMetaFor(t, doc, "aws_security_group.c")["references"])
+	require.NotContains(t, planMetaFor(t, doc, "aws_s3_bucket.only_local"), "references")
+}
+
+func TestPlanReferencesDataAndEphemeral(t *testing.T) {
+	planned := `{"resources":[
+		{"address":"aws_iam_role_policy.p","mode":"managed","type":"aws_iam_role_policy","name":"p","values":{}},
+		{"address":"data.aws_iam_policy_document.p","mode":"data","type":"aws_iam_policy_document","name":"p","values":{}}]}`
+	config := `{"resources":[
+		{"address":"data.aws_iam_policy_document.p","mode":"data","type":"aws_iam_policy_document","name":"p","expressions":{
+			"source_policy_documents":{"references":["aws_iam_role.r.arn","aws_iam_role.r"]}}},
+		{"address":"aws_iam_role_policy.p","mode":"managed","type":"aws_iam_role_policy","name":"p","expressions":{
+			"policy":{"references":["data.aws_iam_policy_document.p.json","data.aws_iam_policy_document.p"]},
+			"secret":{"references":["ephemeral.random_password.pw.result","ephemeral.random_password.pw"]}}}]}`
+	doc := referencesPlanDoc(t, planned, []string{"aws_iam_role_policy.p"}, config)
+
+	require.Equal(t, map[string]interface{}{"policy": []interface{}{"data.aws_iam_policy_document.p"}},
+		planMetaFor(t, doc, "aws_iam_role_policy.p")["references"])
+	require.NotContains(t, planMetaFor(t, doc, "data.aws_iam_policy_document.p"), "references")
+}
+
+func TestPlanReferencesSkipDestroyedPriorStateInstances(t *testing.T) {
+	planned := `{"resources":[
+		{"address":"aws_subnet.s[0]","mode":"managed","type":"aws_subnet","name":"s","index":0,"values":{}},
+		{"address":"aws_subnet.s[1]","mode":"managed","type":"aws_subnet","name":"s","index":1,"values":{}},
+		{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web","values":{}}]}`
+	config := `{"resources":[
+		{"address":"aws_subnet.s","mode":"managed","type":"aws_subnet","name":"s","count_expression":{"constant_value":2},"expressions":{}},
+		{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web","expressions":{
+			"subnet_id":{"references":["aws_subnet.s.id","aws_subnet.s"]}}}]}`
+	doc := referencesPlanDoc(t, planned, []string{"aws_subnet.s[0]", "aws_subnet.s[1]", "aws_instance.web"}, config)
+	var extra map[string]interface{}
+	require.NoError(t, stdjson.Unmarshal([]byte(`{
+		"resource_changes":[
+			{"address":"aws_subnet.s[2]","change":{"actions":["delete"],"after_unknown":{}}}],
+		"prior_state":{"format_version":"1.0","values":{"root_module":{"resources":[
+			{"address":"aws_subnet.s[0]","mode":"managed","type":"aws_subnet","name":"s","index":0,"values":{}},
+			{"address":"aws_subnet.s[2]","mode":"managed","type":"aws_subnet","name":"s","index":2,"values":{}},
+			{"address":"aws_subnet.s[3]","mode":"managed","type":"aws_subnet","name":"s","index":3,"values":{}}]}}}}`), &extra))
+	doc["resource_changes"] = append(doc["resource_changes"].([]interface{}), extra["resource_changes"].([]interface{})...)
+	doc["prior_state"] = extra["prior_state"]
+
+	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s[0]", "aws_subnet.s[1]"}},
+		planMetaFor(t, doc, "aws_instance.web")["references"])
+}
+
+func TestPlanReferencesIgnoreAddressesNoDocumentCarries(t *testing.T) {
+	planned := `{"resources":[
+		{"address":"aws_subnet.s[0]","mode":"managed","type":"aws_subnet","name":"s","index":0,"values":{}},
+		{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web","values":{}}]}`
+	config := `{"resources":[
+		{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web","expressions":{
+			"subnet_id":{"references":["aws_subnet.s[5].id","aws_subnet.s[5]","aws_subnet.s"]},
+			"secret":{"references":["ephemeral.random_password.pw[0].result","ephemeral.random_password.pw[0]","ephemeral.random_password.pw"]},
+			"other":{"references":["aws_subnet.s[0].id","aws_subnet.s[0]","aws_subnet.s"]}}}]}`
+	doc := referencesPlanDoc(t, planned, []string{"aws_subnet.s[0]", "aws_instance.web"}, config)
+
+	require.Equal(t, map[string]interface{}{"other": []interface{}{"aws_subnet.s[0]"}},
+		planMetaFor(t, doc, "aws_instance.web")["references"])
+}
+
+func TestPlanReferencesIgnoreLocalEachCountAndPathLookalikes(t *testing.T) {
+	planned := `{"resources":[
+		{"address":"local.x","mode":"managed","type":"local","name":"x","values":{}},
+		{"address":"each.value","mode":"managed","type":"each","name":"value","values":{}},
+		{"address":"count.index","mode":"managed","type":"count","name":"index","values":{}},
+		{"address":"terraform.data","mode":"managed","type":"terraform","name":"data","values":{}},
+		{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web","values":{}}]}`
+	addrs := []string{"local.x", "each.value", "count.index", "terraform.data", "aws_instance.web"}
+	config := `{"resources":[
+		{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web","expressions":{
+			"a":{"references":["local.x"]},
+			"b":{"references":["each.value"]},
+			"c":{"references":["count.index"]},
+			"d":{"references":["terraform.data"]}}}]}`
+	doc := referencesPlanDoc(t, planned, addrs, config)
+
+	require.NotContains(t, planMetaFor(t, doc, "aws_instance.web"), "references")
+}
+
+func chainModuleConfig(level, depth int) string {
+	refs := `["aws_x.y"]`
+	resources := `[{"address":"aws_x.y","mode":"managed","type":"aws_x","name":"y","expressions":{}}]`
+	calls := `{}`
+	if level < depth {
+		next := fmt.Sprintf("module.l%d", level+1)
+		refs = fmt.Sprintf(`[%q,%q]`, next+".o", next+".p")
+		resources = `[]`
+		calls = fmt.Sprintf(`{"l%d":{"expressions":{},"module":%s}}`, level+1, chainModuleConfig(level+1, depth))
+	}
+	out := `{"expression":{"references":` + refs + `}}`
+	return fmt.Sprintf(`{"outputs":{"o":%s,"p":%s},"resources":%s,"module_calls":%s}`, out, out, resources, calls)
+}
+
+func TestPlanReferencesDeepModuleChainStaysLinear(t *testing.T) {
+	const depth = 18
+	deepest := ""
+	for i := 1; i <= depth; i++ {
+		deepest += fmt.Sprintf("module.l%d.", i)
+	}
+	deepest += "aws_x.y"
+	planned := fmt.Sprintf(`{"resources":[{"address":"aws_instance.app","mode":"managed","type":"aws_instance","name":"app","values":{}}],
+		"child_modules":[{"address":%q,"resources":[{"address":%q,"mode":"managed","type":"aws_x","name":"y","values":{}}]}]}`,
+		strings.TrimSuffix(deepest, ".aws_x.y"), deepest)
+	config := fmt.Sprintf(`{"resources":[{"address":"aws_instance.app","mode":"managed","type":"aws_instance","name":"app",
+			"expressions":{"x":{"references":["module.l1.o","module.l1.p"]}}}],
+		"module_calls":{"l1":{"expressions":{},"module":%s}}}`, chainModuleConfig(1, depth))
+	doc := referencesPlanDoc(t, planned, []string{"aws_instance.app", deepest}, config)
+
+	start := time.Now()
+	meta := planMetaFor(t, doc, "aws_instance.app")
+	require.Equal(t, map[string]interface{}{"x": []interface{}{deepest}}, meta["references"])
+	require.Less(t, time.Since(start), 3*time.Second)
 }

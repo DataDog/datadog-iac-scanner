@@ -21,7 +21,10 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-const blockTypeData = "data"
+const (
+	blockTypeData     = "data"
+	blockTypeResource = "resource"
+)
 
 var dataRoot = map[string]struct{}{blockTypeData: {}}
 

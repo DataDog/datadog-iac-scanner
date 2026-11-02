@@ -251,7 +251,7 @@ module "leaf" {
 
 	e := New()
 	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
-	partial, _, err := e.evaluate(
+	partial, _, _, err := e.evaluate(
 		context.Background(), target, target, "", inputs, "module.deep", nil,
 		e.maxDepth, map[string]bool{}, map[string]bool{},
 	)
@@ -266,7 +266,7 @@ module "leaf" {
 		t.Fatal("depth-truncated evaluation was cached as complete")
 	}
 
-	complete, _, err := e.evaluate(
+	complete, _, _, err := e.evaluate(
 		context.Background(), target, target, "", inputs, "module.shallow", nil,
 		0, map[string]bool{}, map[string]bool{},
 	)
@@ -317,7 +317,7 @@ module "mid" {
 	e := New()
 	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
 	deepDepth := e.maxDepth - 1
-	deep, _, err := e.evaluate(
+	deep, _, _, err := e.evaluate(
 		context.Background(), mid, mid, "", inputs, "module.deep", nil,
 		deepDepth, map[string]bool{}, map[string]bool{},
 	)
@@ -336,7 +336,7 @@ module "mid" {
 		t.Fatalf("cached evalDepth = %d, want %d", entry.evalDepth, deepDepth)
 	}
 
-	shallow, _, err := e.evaluate(
+	shallow, _, _, err := e.evaluate(
 		context.Background(), mid, mid, "", inputs, "module.shallow", nil,
 		0, map[string]bool{}, map[string]bool{},
 	)

@@ -46,6 +46,7 @@ type evalCacheEntry struct {
 	instances    []ModuleInstance
 	emptyBlocks  []EmptyBlock
 	outputs      map[string]cty.Value
+	scope        *ModuleScope
 	visitedDirs  []string
 	baseAddr     string
 	baseChainLen int
