@@ -225,6 +225,7 @@ func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{})
 			m = v.(map[string]interface{})
 		}
 
+		var parsedByKey map[string][]ParsedExpression
 		for key, val := range m {
 			// Collect all expressions found in this value (string or array)
 			var allExpressions []ExpressionMatch
@@ -252,13 +253,19 @@ func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{})
 					}
 					parsedExprs = append(parsedExprs, *parsed)
 				}
-				// Add parsed expressions to the map under a special key
-				exprKey := "_parsed_expressions_" + strings.ReplaceAll(key, "-", "_")
-				m[exprKey] = parsedExprs
+				if parsedByKey == nil {
+					parsedByKey = make(map[string][]ParsedExpression)
+				}
+				parsedByKey[key] = parsedExprs
 			}
 
 			// Recurse into nested structures
 			p.parseExpressionsInValue(ctx, val)
+		}
+
+		// The map is only written once its iteration is over.
+		for exprKey, parsedExprs := range parsedExpressionKeys(m, parsedByKey) {
+			m[exprKey] = parsedExprs
 		}
 
 	case []interface{}:
@@ -266,4 +273,72 @@ func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{})
 			p.parseExpressionsInValue(ctx, item)
 		}
 	}
+}
+
+// parsedExpressionsKeyPrefix prefixes the map key under which the parsed expressions
+// of a sibling value are stored.
+const parsedExpressionsKeyPrefix = "_parsed_expressions_"
+
+// parsedExpressionKeys returns the entries to add to the map m for the parsed
+// expressions of its values, parsedByKey being keyed by the original key of each value.
+//
+// Keys starting with "_parsed_expressions_" belong to the scanner: an entry the
+// workflow writes under such a name is overwritten, so that it cannot hide the
+// parsed expressions of another value from the rules.
+//
+// The parsed expressions of key K are always stored under "_parsed_expressions_" + K,
+// the exact key. When K contains '-', they are also stored under the legacy alias
+// "_parsed_expressions_" + K with every '-' replaced by '_' ("runs-on" gives
+// "_parsed_expressions_runs_on"), which rules read under fixed names. Only workflow
+// keys, the keys of m that do not start with "_parsed_expressions_", get an alias, and
+// only they are considered when deciding whether an alias is ambiguous. The alias is
+// left out when:
+//   - its mangled name is itself a workflow key ("A_B" next to "A-B"): the exact key of
+//     that value wins, whether or not that value has expressions;
+//   - another workflow key has the same mangled name ("A-B_C" and "A_B-C"), whether or
+//     not that key has expressions: none of them gets the alias;
+//   - it is also the exact key of another value: the exact key wins.
+//
+// The result only depends on the keys and values of m and parsedByKey, not on map
+// iteration order.
+func parsedExpressionKeys(m map[string]interface{}, parsedByKey map[string][]ParsedExpression) map[string][]ParsedExpression {
+	if len(parsedByKey) == 0 {
+		return nil
+	}
+
+	additions := make(map[string][]ParsedExpression, len(parsedByKey))
+	for key, parsedExprs := range parsedByKey {
+		additions[parsedExpressionsKeyPrefix+key] = parsedExprs
+	}
+
+	mangledKeyCount := make(map[string]int)
+	for key := range m {
+		if !isWorkflowKey(key) {
+			continue
+		}
+		if mangled := strings.ReplaceAll(key, "-", "_"); mangled != key {
+			mangledKeyCount[mangled]++
+		}
+	}
+
+	for key, parsedExprs := range parsedByKey {
+		mangled := strings.ReplaceAll(key, "-", "_")
+		if !isWorkflowKey(key) || mangled == key || mangledKeyCount[mangled] > 1 {
+			continue
+		}
+		if _, mangledIsKey := m[mangled]; mangledIsKey && isWorkflowKey(mangled) {
+			continue
+		}
+		if _, aliasIsExactKey := parsedByKey[mangled]; aliasIsExactKey {
+			continue
+		}
+		additions[parsedExpressionsKeyPrefix+mangled] = parsedExprs
+	}
+	return additions
+}
+
+// isWorkflowKey reports whether key was written by the workflow rather than reserved
+// for the parsed expressions stored by the scanner.
+func isWorkflowKey(key string) bool {
+	return !strings.HasPrefix(key, parsedExpressionsKeyPrefix)
 }
