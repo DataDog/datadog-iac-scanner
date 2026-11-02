@@ -1830,48 +1830,6 @@ func TestPlanSymlinkConfined(t *testing.T) {
 	}
 }
 
-// TestRenderGraphLoadersLinear bounds a loader query of the render graph on
-// a 24-level diamond: one reverse walk over the graph's edges answers which
-// kustomizations load a source, where per-node descendant sets would be
-// copied and retained once per node. The top node is selected by its depth,
-// never by slice position, so the assertion does not depend on map order.
-func TestRenderGraphLoadersLinear(t *testing.T) {
-	dir := func(name string) string { return "/r/" + name }
-	kust := func(res ...string) *types.Kustomization { return &types.Kustomization{Resources: res} }
-	byDir := map[string]*kustNode{}
-	byDir[dir("top")] = &kustNode{file: dir("top") + "/kustomization.yaml", depth: 0,
-		k: kust("../a1", "../b1")}
-	for i := 1; i <= 24; i++ {
-		for _, side := range []string{"a", "b"} {
-			res := []string{}
-			if i < 24 {
-				res = []string{"../a" + strconv.Itoa(i+1), "../b" + strconv.Itoa(i+1)}
-			}
-			byDir[dir(side+strconv.Itoa(i))] = &kustNode{
-				file: dir(side+strconv.Itoa(i)) + "/kustomization.yaml", depth: i, k: kust(res...)}
-		}
-	}
-	var top *kustNode
-	for _, n := range byDir {
-		if n.depth == 0 {
-			top = n
-		}
-	}
-	g := (&Renderer{}).buildGraph(byDir)
-	source := dir("a1") + "/deployment.yaml"
-	loaders := g.loadersOf(source)
-	if len(loaders) != 2 || !loaders[top] || !loaders[byDir[dir("a1")]] {
-		t.Fatalf("loaders of %s: %d nodes", source, len(loaders))
-	}
-	if loaders[byDir[dir("b1")]] {
-		t.Fatal("the sibling branch loads the source")
-	}
-	// 94 edges walked once plus 49 nodes scanned for direct listings.
-	if g.probes > 49+94 {
-		t.Fatalf("loader query probed %d times, want at most %d", g.probes, 49+94)
-	}
-}
-
 func BenchmarkPlan(b *testing.B) {
 	files := map[string]string{}
 	var dirs []string
@@ -2023,6 +1981,7 @@ func TestRenderIdentityUnknownDocument(t *testing.T) {
 	}
 }
 
+
 // TestRenderIdentityLegacyVars keeps the identity of an object whose name a
 // legacy var writes through a custom varReference stable: editing only the
 // generated data the var carries moves neither identity nor fingerprint, and
@@ -2065,15 +2024,57 @@ func TestRenderIdentityLegacyVars(t *testing.T) {
 	}
 }
 
+// TestRenderGraphLoadersLinear bounds a loader query of the render graph on
+// a 24-level diamond: one reverse walk over the graph's edges answers which
+// kustomizations load a source, where per-node descendant sets would be
+// copied and retained once per node. The top node is selected by its depth,
+// never by slice position, so the assertion does not depend on map order.
+func TestRenderGraphLoadersLinear(t *testing.T) {
+	dir := func(name string) string { return "/r/" + name }
+	kust := func(res ...string) *types.Kustomization { return &types.Kustomization{Resources: res} }
+	byDir := map[string]*kustNode{}
+	byDir[dir("top")] = &kustNode{file: dir("top") + "/kustomization.yaml", depth: 0,
+		k: kust("../a1", "../b1")}
+	for i := 1; i <= 24; i++ {
+		for _, side := range []string{"a", "b"} {
+			res := []string{}
+			if i < 24 {
+				res = []string{"../a" + strconv.Itoa(i+1), "../b" + strconv.Itoa(i+1)}
+			}
+			byDir[dir(side+strconv.Itoa(i))] = &kustNode{
+				file: dir(side+strconv.Itoa(i)) + "/kustomization.yaml", depth: i, k: kust(res...)}
+		}
+	}
+	var top *kustNode
+	for _, n := range byDir {
+		if n.depth == 0 {
+			top = n
+		}
+	}
+	g := (&Renderer{}).buildGraph(byDir)
+	source := dir("a1") + "/deployment.yaml"
+	loaders := g.loadersOf(source)
+	if len(loaders) != 2 || !loaders[top] || !loaders[byDir[dir("a1")]] {
+		t.Fatalf("loaders of %s: %d nodes", source, len(loaders))
+	}
+	if loaders[byDir[dir("b1")]] {
+		t.Fatal("the sibling branch loads the source")
+	}
+	// 94 edges walked once plus 49 nodes scanned for direct listings.
+	if g.probes > 49+94 {
+		t.Fatalf("loader query probed %d times, want at most %d", g.probes, 49+94)
+	}
+}
+
 // TestRenderGraphFileOnlyChildPropagates keeps a patch of an outer
 // kustomization attributed to a manifest a deeper one lists directly, where
 // no kustomization exists in the manifest's own directory.
 func TestRenderGraphFileOnlyChildPropagates(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"top/kustomization.yaml": "resources:\n  - ../mid\npatches:\n  - path: patch.yaml\n",
-		"top/patch.yaml":         "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: web\n          image: busybox\n",
-		"mid/kustomization.yaml": "resources:\n  - ../shared/deployment.yaml\n",
-		"shared/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: web\n          image: nginx\n",
+		"top/kustomization.yaml":  "resources:\n  - ../mid\npatches:\n  - path: patch.yaml\n",
+		"top/patch.yaml":          "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: web\n          image: busybox\n",
+		"mid/kustomization.yaml":  "resources:\n  - ../shared/deployment.yaml\n",
+		"shared/deployment.yaml":  "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: web\n          image: nginx\n",
 	})
 	res, err := render(t, dir, "top")
 	if err != nil {

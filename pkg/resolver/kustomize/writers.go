@@ -13,13 +13,11 @@ type kustNode struct {
 	k         *types.Kustomization
 	depth     int
 	component bool
-	reach     map[string]bool // directories reachable from this one, itself included
 	// affixes are the name prefix and suffix applied to the resources this
 	// kustomization loads, root first; parentAffixes exclude its own.
 	affixes, parentAffixes Affixes
 }
 
-// renderGraph indexes the kustomizations a render read, with the affixes the
 // renderGraph indexes the kustomizations a render read, with the affixes the
 // plan verified. It returns nil when the render read no root kustomization.
 func (r *Renderer) renderGraph(res *Result, rootKust string, closure map[string]Affixes) *kustGraph {
