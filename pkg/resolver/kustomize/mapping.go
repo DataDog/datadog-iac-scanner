@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,7 +47,7 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 	// Counted once mapping is done, every walk the graph took included.
 	defer func() { res.graphSteps += g.steps }()
 	asWritten := r.namesMaySetByReplacement(res.Reads)
-	for _, rs := range m.Resources() {
+	for i, rs := range m.Resources() {
 		if expired() {
 			return &RenderError{Reason: ReasonTimeout}
 		}
@@ -54,7 +55,7 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 		if !ok {
 			return &RenderError{Reason: ReasonRenderError}
 		}
-		r.setIdentity(doc.Kustomize, rs.GetGvk().Group, asWritten, doc.FileName)
+		r.setIdentity(doc.Kustomize, rs.GetGvk().Group, asWritten, doc.FileName, doc.SourceDocumentIndex, i)
 		res.Documents = append(res.Documents, doc)
 	}
 	rejectCollisions(res)
@@ -220,19 +221,40 @@ var hashSuffix = regexp.MustCompile(`-[2456789bcdfghkmt]{10}$`)
 // identity, unless the generator disabled that hash and its name ends like
 // one; an unknown generator entry leaves no name. When a replacement may
 // have set names, the names as written are used: the rendered ones may carry
-// values copied from generated data.
-func (r *Renderer) setIdentity(a *model.KustomizeAttribution, group string, asWritten bool, genKust string) {
+// values copied from generated data. When even those are unknown, the source
+// file and document stand in for the name, so distinct objects never share
+// an identity and their findings never merge.
+func (r *Renderer) setIdentity(a *model.KustomizeAttribution, group string, asWritten bool,
+	sourceFile string, docIndex, ordinal int) {
 	a.APIGroup = group
 	switch {
 	case asWritten:
 		a.IdentityName, a.IdentityNamespace = a.SourceName, a.SourceNamespace
+		if a.IdentityName == "" {
+			a.IdentityName = sourceDocumentIdentity(a.RenderRoot, sourceFile, docIndex, ordinal)
+		}
 	case a.Generator != nil && a.Generator.Name == "":
 		a.IdentityName, a.IdentityNamespace = "", a.RenderedNamespace
-	case a.Generator != nil && !r.nameHashDisabled(genKust, a.Generator.Kind, a.Generator.Name):
+	case a.Generator != nil && !r.nameHashDisabled(sourceFile, a.Generator.Kind, a.Generator.Name):
 		a.IdentityName, a.IdentityNamespace = hashSuffix.ReplaceAllString(a.RenderedName, ""), a.RenderedNamespace
 	default:
 		a.IdentityName, a.IdentityNamespace = a.RenderedName, a.RenderedNamespace
 	}
+}
+
+// sourceDocumentIdentity stands in for an object's name when the as-written
+// one is unknown: the source file, the document within it, or the object's
+// position in the render when even the document is unknown. Generated values
+// never enter it.
+func sourceDocumentIdentity(root, file string, docIndex, ordinal int) string {
+	rel, err := filepath.Rel(root, file)
+	if err != nil {
+		rel = filepath.Base(file)
+	}
+	if docIndex < 0 {
+		return filepath.ToSlash(rel) + "#~" + strconv.Itoa(ordinal)
+	}
+	return filepath.ToSlash(rel) + "#" + strconv.Itoa(docIndex)
 }
 
 // nameHashDisabled reports whether the generator that rendered the object in

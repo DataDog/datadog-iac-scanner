@@ -1842,3 +1842,41 @@ func TestRenderIdentityReplacementCanary(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderIdentityUnknownDocument keeps the findings of distinct objects
+// whose source attribution fails apart: their identities fall back to the
+// source file and document, and to the object's position in the render when
+// even the document is unknown, without carrying generated data.
+func TestRenderIdentityUnknownDocument(t *testing.T) {
+	const two = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web1\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web2\n"
+	dir := writeTree(t, map[string]string{
+		"o/deployment.yaml": two,
+		"o/kustomization.yaml": "resources:\n  - deployment.yaml\n" +
+			"configMapGenerator:\n  - name: settings\n    literals:\n      - TOKEN=canaryvalue\n" +
+			"replacements:\n  - source:\n      kind: ConfigMap\n      name: settings\n      fieldPath: data.TOKEN\n" +
+			"    targets:\n      - select:\n          kind: Deployment\n          name: web1\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, d := range res.Documents {
+		a := d.Kustomize
+		if a.Kind != "Deployment" {
+			continue
+		}
+		if id := a.ResourceID("web"); strings.Contains(id, "canary") {
+			t.Errorf("identity %q carries generated data", id)
+		} else {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) != 2 {
+		t.Fatalf("got %d Deployment identities %v, want 2", len(ids), ids)
+	}
+	if ids[0] == ids[1] {
+		t.Errorf("two Deployments share one identity %q: one finding hides the other", ids[0])
+	}
+}
+

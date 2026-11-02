@@ -794,7 +794,8 @@ type KustomizeAttribution struct {
 	// IdentityName and IdentityNamespace identify the rendered object without
 	// carrying generated data: the rendered values with a generator hash
 	// suffix stripped, the values as written when a replacement may have set
-	// them, and "" when neither is safe.
+	// them, and a source file and document stand-in when even those are
+	// unknown, so distinct objects never share one.
 	IdentityName      string
 	IdentityNamespace string
 }
