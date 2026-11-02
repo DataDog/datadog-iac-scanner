@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/stretchr/testify/require"
 )
@@ -316,50 +315,43 @@ func TestDocumentBlocksIndexesBlocksNamedDDMeta(t *testing.T) {
 	require.Equal(t, resourceMeta("t."+ddMetaKey, blockMetaExtras{}), block[ddMetaKey])
 }
 
-func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
+func TestStampTerraformScopesCopiesPlanAddresses(t *testing.T) {
 	doc := model.Document{
 		"resource": map[string]interface{}{
 			"aws_s3_bucket": map[string]interface{}{
-				"module.m.aws_s3_bucket.b[1]": map[string]interface{}{"bucket": "x"},
-				"r":                           map[string]interface{}{"bucket": "y"},
+				"module.m.aws_s3_bucket.b[1]": map[string]interface{}{
+					"bucket":  "x",
+					ddMetaKey: map[string]interface{}{"address": "module.m.aws_s3_bucket.b[1]"},
+				},
+				"r": map[string]interface{}{
+					"bucket": "y",
+					ddMetaKey: map[string]interface{}{
+						"address":    "aws_s3_bucket.r",
+						"references": map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}},
+						"unknown":    map[string]interface{}{"arn": true},
+					},
+				},
 			},
 		},
 		"data": map[string]interface{}{
 			"aws_kms_key": map[string]interface{}{
-				"k": map[string]interface{}{ddMetaKey: "user"},
-			},
-		},
-		"_dd_tfplan_meta": map[string]interface{}{
-			"aws_s3_bucket": map[string]interface{}{
-				"module.m.aws_s3_bucket.b[1]": map[string]interface{}{"address": "module.m.aws_s3_bucket.b[1]"},
-				"r": map[string]interface{}{
-					"address":    "aws_s3_bucket.r",
-					"references": map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}},
-					"unknown":    map[string]interface{}{"arn": true},
+				"k": map[string]interface{}{
+					ddMetaKey: map[string]interface{}{"address": "data.aws_kms_key.k"},
 				},
-			},
-			"data.aws_kms_key": map[string]interface{}{
-				"k": map[string]interface{}{"address": "data.aws_kms_key.k"},
 			},
 		},
 	}
 	f := &model.FileMetadata{FilePath: "stacks/prod/tfplan.json", Kind: model.KindTerraformPlan, Document: doc}
 	(&Inspector{}).stampTerraformScopes(model.FileMetadatas{f})
 
+	require.Equal(t, map[[2]string]string{
+		{"aws_s3_bucket", "module.m.aws_s3_bucket.b[1]"}: "module.m.aws_s3_bucket.b[1]",
+		{"aws_s3_bucket", "r"}:                           "aws_s3_bucket.r",
+		{"data.aws_kms_key", "k"}:                        "data.aws_kms_key.k",
+	}, f.TerraformScope.PlanAddresses)
+	require.NotContains(t, doc, "_dd_tfplan_meta")
 	buckets, _ := asStringMap(doc["resource"].(map[string]interface{})["aws_s3_bucket"])
-	b, _ := asStringMap(buckets["module.m.aws_s3_bucket.b[1]"])
-	require.Equal(t, resourceMeta("module.m.aws_s3_bucket.b[1]", blockMetaExtras{}), b[ddMetaKey])
 	r, _ := asStringMap(buckets["r"])
-	wantR := resourceMeta("aws_s3_bucket.r", blockMetaExtras{})
-	wantR["references"] = map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}}
-	wantR["unknown"] = map[string]interface{}{"arn": true}
-	require.Equal(t, wantR, r[ddMetaKey])
-	require.Equal(t, json.PlanReferences(doc)[[2]string{"aws_s3_bucket", "r"}], r[ddMetaKey].(map[string]interface{})["references"])
-	require.Equal(t, json.PlanUnknowns(doc)[[2]string{"aws_s3_bucket", "r"}], r[ddMetaKey].(map[string]interface{})["unknown"])
-	require.NotContains(t, b[ddMetaKey], "references")
-	require.NotContains(t, b[ddMetaKey], "unknown")
-	keys, _ := asStringMap(doc["data"].(map[string]interface{})["aws_kms_key"])
-	k, _ := asStringMap(keys["k"])
-	require.Equal(t, resourceMeta("data.aws_kms_key.k", blockMetaExtras{}), k[ddMetaKey])
-	require.Contains(t, doc, "_dd_tfplan_meta")
+	require.Equal(t, map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}}, r[ddMetaKey].(map[string]interface{})["references"])
+	require.Equal(t, map[string]interface{}{"arn": true}, r[ddMetaKey].(map[string]interface{})["unknown"])
 }

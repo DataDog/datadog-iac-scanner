@@ -589,9 +589,8 @@ func TestDocRoots(t *testing.T) {
 		plan := &model.FileMetadata{
 			ID: "plan-id", FilePath: filepath.Join(repo, "stacks", "prod", "tfplan.json"), Kind: model.KindTerraformPlan,
 			Document: model.Document{
-				"resource": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{"r": map[string]interface{}{}}},
-				"_dd_tfplan_meta": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{
-					"r": map[string]interface{}{"address": "aws_s3_bucket.r"},
+				"resource": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{
+					"r": map[string]interface{}{"_dd_meta": map[string]interface{}{"address": "aws_s3_bucket.r"}},
 				}},
 			},
 		}

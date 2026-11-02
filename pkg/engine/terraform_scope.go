@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
@@ -43,12 +42,10 @@ func (c *Inspector) stampTerraformScopes(files model.FileMetadatas) {
 			// A plan file represents exactly one root's evaluation, already
 			// performed by Terraform itself, so the plan file's own path is
 			// that root. Two plan files in one directory are two roots.
-			scope := &model.TerraformScope{RootModule: repoRelativeFile(f.FilePath, c.repoPath)}
-			if planAddresses := json.PlanAddresses(f.Document); planAddresses != nil {
-				scope.PlanAddresses = planAddresses
-				stampPlanMeta(f.Document, planAddresses, planExtras(f.Document))
+			f.TerraformScope = &model.TerraformScope{
+				RootModule:    repoRelativeFile(f.FilePath, c.repoPath),
+				PlanAddresses: planResourceAddresses(f.Document),
 			}
-			f.TerraformScope = scope
 		case model.KindTerraform:
 			if isTFVarsFile(f.FilePath) {
 				// A vars file assigns variables; its root is itself, and its
@@ -532,18 +529,53 @@ func isSyntheticTerraformDoc(f *model.FileMetadata) bool {
 	return scope != nil && (scope.ModuleAddress != "" || len(scope.Instances) > 0)
 }
 
-// planExtras gathers the _dd_meta extras of every plan block that has any.
-func planExtras(doc model.Document) map[[2]string]blockMetaExtras {
-	extras := make(map[[2]string]blockMetaExtras)
-	for k, v := range json.PlanReferences(doc) {
-		e := extras[k]
-		e.references, _ = v.(map[string]interface{})
-		extras[k] = e
+// planResourceAddresses copies each plan block's _dd_meta.address, keyed the
+// way a finding names the block. The document may be released before findings
+// are built, so the identity lookup cannot read the document then.
+func planResourceAddresses(doc model.Document) map[[2]string]string {
+	if len(doc) == 0 {
+		return nil
 	}
-	for k, v := range json.PlanUnknowns(doc) {
-		e := extras[k]
-		e.unknown, _ = v.(map[string]interface{})
-		extras[k] = e
+	out := map[[2]string]string{}
+	for _, section := range [...]struct{ key, prefix string }{
+		{resourceSection, ""},
+		{dataRoot, dataTypePrefix},
+		{ephemeralSection, ephemeralPrefix},
+	} {
+		byType, ok := asStringMap(doc[section.key])
+		if !ok {
+			continue
+		}
+		for typ, typeBlocksRaw := range byType {
+			if isParserBookkeepingKey(typ) {
+				continue
+			}
+			byName, ok := asStringMap(typeBlocksRaw)
+			if !ok {
+				continue
+			}
+			for name, raw := range byName {
+				if isParserBookkeepingKey(name) {
+					continue
+				}
+				block, ok := asStringMap(raw)
+				if !ok {
+					continue
+				}
+				meta, ok := asStringMap(block[ddMetaKey])
+				if !ok {
+					continue
+				}
+				addr, _ := meta["address"].(string)
+				if addr == "" {
+					continue
+				}
+				out[[2]string{section.prefix + typ, name}] = addr
+			}
+		}
 	}
-	return extras
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

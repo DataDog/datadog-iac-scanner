@@ -324,10 +324,10 @@ type TerraformScope struct {
 	// address carries. Two files of one module each declaring such a block
 	// keep distinct addresses without disturbing the declaration keys.
 	UnlabeledIndex map[TerraformBlock]int
-	// PlanAddresses holds a terraform plan -json document's per-resource
-	// addresses (the ones Terraform itself computed), flattened by
-	// pkg/parser/json's PlanAddresses while the document is alive and keyed
-	// (type, document key). The engine never rebuilds the plan's key layout.
+	// PlanAddresses is each plan block's _dd_meta.address, keyed (resource
+	// type, document key) and copied while the document is alive. Findings
+	// are built after the document may be released, and this map is their
+	// resource id.
 	PlanAddresses map[[2]string]string
 }
 

@@ -8,7 +8,6 @@ package json
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/hashicorp/hcl/v2"
@@ -26,10 +25,6 @@ type TFPlan struct {
 
 	ResourceChanges any `json:"resource_changes,omitempty"`
 	Configuration   any `json:"configuration,omitempty"`
-
-	// TfplanMeta is a reserved top-level map, parallel to Resource (not
-	// nested inside it), keyed exactly like Resource[type][flattened-key].
-	TfplanMeta map[string]map[string]tfplanResourceMeta `json:"_dd_tfplan_meta,omitempty"`
 }
 
 // TFPlanResource is keyed by resource name, plus a reserved "_dd_lines" key
@@ -38,21 +33,10 @@ type TFPlanResource map[string]any
 
 type TFPlanNamedResource map[string]any
 
-// tfplanResourceMeta is the payload stored under
-// _dd_tfplan_meta.<type>.<flattened-key>.
-type tfplanResourceMeta struct {
-	Address                  string `json:"address"`
-	AfterUnknown             any    `json:"after_unknown,omitempty"`
-	ConfigurationExpressions any    `json:"configuration_expressions,omitempty"`
-	Provisioners             any    `json:"provisioners,omitempty"`
-	References               any    `json:"references,omitempty"`
-	Unknown                  any    `json:"unknown,omitempty"`
-}
+const ddMetaKey = "_dd_meta"
 
 type resourceChangeCorrelation struct {
 	afterUnknownByAddress map[string]any
-	expressionsByAddress  map[string]any
-	provisionersByAddress map[string]any
 
 	// configByAddress holds each config resource's raw expressions by
 	// canonical address; moduleCalls and moduleOutputs are keyed by the child
@@ -71,8 +55,6 @@ type resourceChangeCorrelation struct {
 func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 	c := resourceChangeCorrelation{
 		afterUnknownByAddress: make(map[string]any),
-		expressionsByAddress:  make(map[string]any),
-		provisionersByAddress: make(map[string]any),
 		configByAddress:       make(map[string]gjson.Result),
 		moduleCalls:           make(map[string]gjson.Result),
 		moduleOutputs:         make(map[string]gjson.Result),
@@ -103,41 +85,13 @@ func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 	c.indexInstances(planned)
 
 	rootConfigModule := gjson.GetBytes(rawPlan, "configuration.root_module")
-	walkConfigModule(&rootConfigModule, "", nil, &c)
+	walkConfigModule(&rootConfigModule, "", &c)
 
 	return c
 }
 
-// callSiteIdentity is a call site's stable identity: the module_calls block
-// and argument name it was declared at. expression itself isn't part of the
-// identity since a decoded JSON value (a map or slice) isn't comparable.
-type callSiteIdentity struct {
-	moduleAddress string
-	argumentName  string
-}
-
-// callSiteRecord is one entry in a call_site_expressions chain.
-type callSiteRecord struct {
-	callSiteIdentity
-	expression any
-}
-
-// callArgument is a call-site expression, never asserted as a resolved
-// value (Terraform serializes var.x and base64encode(var.x) alike).
-type callArgument struct {
-	callSiteIdentity
-	raw   gjson.Result
-	chain []callSiteRecord
-}
-
-// record returns arg's own call site as a callSiteRecord.
-func (arg *callArgument) record() callSiteRecord {
-	return callSiteRecord{callSiteIdentity: arg.callSiteIdentity, expression: arg.raw.Value()}
-}
-
-// walkConfigModule indexes each resource's expressions/provisioners by
-// absolute address, using callArgs to attach call-site provenance.
-func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[string]callArgument, c *resourceChangeCorrelation) {
+// walkConfigModule indexes each config resource's expressions by absolute address.
+func walkConfigModule(module *gjson.Result, modulePath string, c *resourceChangeCorrelation) {
 	module.Get("resources").ForEach(func(_, resource gjson.Result) bool {
 		relativeAddress := resource.Get("address").String()
 		if relativeAddress == "" {
@@ -149,10 +103,6 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 		}
 		if expressions := resource.Get("expressions"); expressions.Exists() {
 			c.configByAddress[absoluteAddress] = expressions
-			c.expressionsByAddress[absoluteAddress] = qualifyExpressionTree(&expressions, callArgs)
-		}
-		if provisioners := resource.Get("provisioners"); provisioners.Exists() {
-			c.provisionersByAddress[absoluteAddress] = qualifyExpressionTree(&provisioners, callArgs)
 		}
 		return true
 	})
@@ -168,155 +118,9 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 		}
 		c.moduleCalls[childPath] = call.Get("expressions")
 		c.moduleOutputs[childPath] = childModule.Get("outputs")
-		childArgs := make(map[string]callArgument)
-		call.Get("expressions").ForEach(func(argName, argExpr gjson.Result) bool {
-			// Resolve this call's own args against the parent so a chain of
-			// var.x indirections resolves transitively, not just one hop.
-			childArgs[argName.String()] = callArgument{
-				callSiteIdentity: callSiteIdentity{moduleAddress: modulePath, argumentName: argName.String()},
-				raw:              argExpr,
-				chain:            callArgumentChain(&argExpr, callArgs),
-			}
-			return true
-		})
-		walkConfigModule(&childModule, childPath, childArgs, c)
+		walkConfigModule(&childModule, childPath, c)
 		return true
 	})
-}
-
-// qualifyExpressionTree walks an expressions/provisioners tree, attaching
-// call-site provenance to reference leaves without modifying any field.
-func qualifyExpressionTree(value *gjson.Result, callArgs map[string]callArgument) any {
-	if len(callArgs) == 0 || !value.IsObject() && !value.IsArray() {
-		return value.Value()
-	}
-
-	if value.Get("references").Exists() {
-		return attachCallSiteExpressions(value, callArgs)
-	}
-
-	if value.IsArray() {
-		items := value.Array()
-		resolved := make([]any, len(items))
-		for i, item := range items {
-			resolved[i] = qualifyExpressionTree(&item, callArgs)
-		}
-		return resolved
-	}
-
-	resolved := make(map[string]any)
-	value.ForEach(func(key, item gjson.Result) bool {
-		resolved[key.String()] = qualifyExpressionTree(&item, callArgs)
-		return true
-	})
-	return resolved
-}
-
-// attachCallSiteExpressions adds a "call_site_expressions" sidecar listing
-// each matched var.<name> reference's call-site chain, never modifying expr.
-func attachCallSiteExpressions(expr *gjson.Result, callArgs map[string]callArgument) any {
-	chain := referencedArgumentChain(expr, callArgs)
-	if len(chain) == 0 {
-		return expr.Value()
-	}
-
-	value, ok := expr.Value().(map[string]any)
-	if !ok {
-		return expr.Value()
-	}
-	expressions := make([]any, len(chain))
-	for i, rec := range chain {
-		expressions[i] = rec.expression
-	}
-	value["call_site_expressions"] = expressions
-	return value
-}
-
-// callArgumentChain builds expr's own provenance for a child call to use.
-// Returns nil when callArgs is empty (see referencedArgumentChain).
-func callArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []callSiteRecord {
-	if len(callArgs) == 0 {
-		return nil
-	}
-	return referencedArgumentChain(expr, callArgs)
-}
-
-// referencedArgumentChain flattens every ancestor call site a var.<name>
-// reference resolves to, deduplicated by (module, argument) identity.
-func referencedArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []callSiteRecord {
-	refs := expr.Get("references")
-	if !refs.IsArray() || len(refs.Array()) == 0 {
-		return nil
-	}
-
-	rawRefs := make([]string, len(refs.Array()))
-	for i, ref := range refs.Array() {
-		rawRefs[i] = ref.String()
-	}
-
-	seen := make(map[callSiteIdentity]bool)
-	var chain []callSiteRecord
-	for i, ref := range refs.Array() {
-		name, ok := varReferenceName(ref.String())
-		if !ok {
-			continue
-		}
-		if hasMoreSpecificTraversal(rawRefs, i, name) {
-			continue
-		}
-		arg, ok := callArgs[name]
-		if !ok {
-			continue
-		}
-		chain = appendDedupRecord(chain, seen, arg.chain...)
-		chain = appendDedupRecord(chain, seen, arg.record())
-	}
-	return chain
-}
-
-// appendDedupRecord appends each of recs to chain, skipping any whose
-// identity is already in seen, and marks every appended identity as seen.
-func appendDedupRecord(chain []callSiteRecord, seen map[callSiteIdentity]bool, recs ...callSiteRecord) []callSiteRecord {
-	for _, rec := range recs {
-		if seen[rec.callSiteIdentity] {
-			continue
-		}
-		seen[rec.callSiteIdentity] = true
-		chain = append(chain, rec)
-	}
-	return chain
-}
-
-// hasMoreSpecificTraversal reports whether rawRefs also contains a
-// traversal into "var.<name>" (e.g. "var.settings.selected") at another index.
-func hasMoreSpecificTraversal(rawRefs []string, self int, name string) bool {
-	prefix := "var." + name
-	for i, ref := range rawRefs {
-		if i == self {
-			continue
-		}
-		if !strings.HasPrefix(ref, prefix) {
-			continue
-		}
-		rest := ref[len(prefix):]
-		if strings.HasPrefix(rest, ".") || strings.HasPrefix(rest, "[") {
-			return true
-		}
-	}
-	return false
-}
-
-// varReferenceName reports whether ref is exactly a bare "var.<name>" root
-// (not "var.settings.metric_name") and, if so, returns <name>.
-func varReferenceName(ref string) (string, bool) {
-	if !strings.HasPrefix(ref, "var.") {
-		return "", false
-	}
-	name := strings.TrimPrefix(ref, "var.")
-	if name == "" || strings.ContainsAny(name, ".[") {
-		return "", false
-	}
-	return name, true
 }
 
 // canonicalConfigAddress strips "[...]" instance-key suffixes, e.g.
@@ -340,22 +144,21 @@ func canonicalConfigAddress(address string) string {
 	return canonical
 }
 
-func resourceMetaFor(addr string, c *resourceChangeCorrelation) tfplanResourceMeta {
-	meta := tfplanResourceMeta{Address: addr}
-	if afterUnknown, ok := c.afterUnknownByAddress[addr]; ok {
-		meta.AfterUnknown = afterUnknown
+// withDDMeta returns values with _dd_meta attached, creating the object when
+// the resource has no planned values.
+func withDDMeta(values map[string]any, addr string, unknown map[string]any, c *resourceChangeCorrelation) map[string]any {
+	if values == nil {
+		values = map[string]any{}
 	}
-	configAddress := canonicalConfigAddress(addr)
-	if expressions, ok := c.expressionsByAddress[configAddress]; ok {
-		meta.ConfigurationExpressions = expressions
+	meta := map[string]any{"address": addr}
+	if refs := c.referencesFor(addr); len(refs) > 0 {
+		meta["references"] = refs
 	}
-	if provisioners, ok := c.provisionersByAddress[configAddress]; ok {
-		meta.Provisioners = provisioners
+	if len(unknown) > 0 {
+		meta["unknown"] = unknown
 	}
-	if refs := c.referencesFor(addr); refs != nil {
-		meta.References = refs
-	}
-	return meta
+	values[ddMetaKey] = meta
+	return values
 }
 
 func (c *resourceChangeCorrelation) referencesFor(addr string) map[string]interface{} {
@@ -459,14 +262,14 @@ func (kp *TFPlan) managedSection(typ string) TFPlanResource {
 
 // dataSection returns the data.<type> map a data source is recorded under,
 // creating it when needed.
-func (kp *TFPlan) dataSection(typ string) (section string, typeRes TFPlanResource, metaSection string) {
+func (kp *TFPlan) dataSection(typ string) map[string]any {
 	if kp.Data == nil {
 		kp.Data = make(map[string]map[string]any)
 	}
 	if kp.Data[typ] == nil {
 		kp.Data[typ] = make(map[string]any)
 	}
-	return "data." + typ, kp.Data[typ], "data." + typ
+	return kp.Data[typ]
 }
 
 // readModule recursively accumulates managed resources from every module into
@@ -494,13 +297,12 @@ func (kp *TFPlan) readModule(
 		// managed resources of the same type and name: a planned read and a
 		// managed resource sharing type and key are two different blocks.
 		typeRes := kp.managedSection(resource.Type)
-		metaSection := resource.Type
 		if resource.Mode == hcl_plan.DataResourceMode {
-			_, typeRes, metaSection = kp.dataSection(resource.Type)
+			typeRes = kp.dataSection(resource.Type)
 		}
 
 		unknown := correlation.planValues(resource.Address, resource.AttributeValues)
-		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
+		typeRes[resourceKey] = withDDMeta(resource.AttributeValues, resource.Address, unknown, correlation)
 
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeRes["_dd_lines"].(map[string]*model.LineObject)
@@ -510,17 +312,6 @@ func (kp *TFPlan) readModule(
 			}
 			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
 		}
-
-		if resource.Mode == hcl_plan.DataResourceMode {
-			// A data source has no planned change to correlate.
-			kp.recordPlanAddress(metaSection, resourceKey, resource.Address, unknown, correlation)
-			continue
-		}
-		meta := resourceMetaFor(resource.Address, correlation)
-		if unknown != nil {
-			meta.Unknown = unknown
-		}
-		kp.recordPlanMeta(metaSection, resourceKey, &meta)
 	}
 
 	for _, childModule := range module.ChildModules {
@@ -587,11 +378,7 @@ func (kp *TFPlan) readPriorStateData(
 		// entries the plan does not carry.
 		if _, exists := typeData[dataKey]; !exists {
 			unknown := correlation.planValues(resource.Address, resource.AttributeValues)
-			typeData[dataKey] = resource.AttributeValues
-			// prior_state data sources are not in planned_values, so readModule
-			// never records their address. Key the meta by data.<type> so it
-			// cannot collide with a managed resource of the same type and name.
-			kp.recordPlanAddress("data."+resource.Type, dataKey, resource.Address, unknown, correlation)
+			typeData[dataKey] = withDDMeta(resource.AttributeValues, resource.Address, unknown, correlation)
 		}
 
 		if line, ok := resourceLines[resource.Address]; ok {
@@ -607,111 +394,6 @@ func (kp *TFPlan) readPriorStateData(
 	for _, childModule := range module.ChildModules {
 		kp.readPriorStateData(childModule, childModule.Address, resourceLines, deleted, correlation)
 	}
-}
-
-// recordPlanMeta stores meta for one planned resource, creating the maps it needs.
-func (kp *TFPlan) recordPlanMeta(typ, key string, meta *tfplanResourceMeta) {
-	if kp.TfplanMeta == nil {
-		kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
-	}
-	if kp.TfplanMeta[typ] == nil {
-		kp.TfplanMeta[typ] = make(map[string]tfplanResourceMeta)
-	}
-	kp.TfplanMeta[typ][key] = *meta
-}
-
-// recordPlanAddress stores a resource's Terraform address when that is all
-// the scan needs (a prior-state data source has no planned change to correlate).
-func (kp *TFPlan) recordPlanAddress(typ, key, addr string, unknown map[string]any, correlation *resourceChangeCorrelation) {
-	meta := tfplanResourceMeta{Address: addr}
-	if refs := correlation.referencesFor(addr); refs != nil {
-		meta.References = refs
-	}
-	if unknown != nil {
-		meta.Unknown = unknown
-	}
-	kp.recordPlanMeta(typ, key, &meta)
-}
-
-// TfplanMetaKey is the reserved top-level key pkg's tfplan parser attaches its
-// per-resource plan metadata under, parallel to Resource.
-const TfplanMetaKey = "_dd_tfplan_meta"
-
-// PlanAddresses flattens a terraform plan -json document's per-resource meta
-// (the addresses Terraform itself computed when producing the plan) into
-// (section, document key) -> address. The section is the plan's own key for
-// the resource: the type for a planned resource, "data."+type for a
-// prior-state data source. Resource and data namespaces stay separate, so a
-// managed resource and a data source sharing type and key never answer for
-// each other; the lookup passes the rule's resourceType through as-is. nil
-// when the document carries no meta.
-func PlanAddresses(doc model.Document) map[[2]string]string {
-	raw, ok := doc[TfplanMetaKey].(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	out := make(map[[2]string]string, len(raw))
-	for section, entriesRaw := range raw {
-		entries, ok := entriesRaw.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		for key, entryRaw := range entries {
-			entry, ok := entryRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			planAddress, _ := entry["address"].(string)
-			if planAddress == "" {
-				continue
-			}
-			out[[2]string{section, key}] = planAddress
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-// PlanReferences flattens each plan resource's references into
-// (section, document key) -> references object, keyed like PlanAddresses. nil
-// when no resource has any.
-func PlanReferences(doc model.Document) map[[2]string]interface{} {
-	return planMetaObjects(doc, "references")
-}
-
-// PlanUnknowns flattens each plan resource's unknown object, keyed like
-// PlanAddresses. nil when no resource has any.
-func PlanUnknowns(doc model.Document) map[[2]string]interface{} {
-	return planMetaObjects(doc, "unknown")
-}
-
-func planMetaObjects(doc model.Document, field string) map[[2]string]interface{} {
-	raw, ok := doc[TfplanMetaKey].(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	out := make(map[[2]string]interface{})
-	for section, entriesRaw := range raw {
-		entries, ok := entriesRaw.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		for key, entryRaw := range entries {
-			entry, ok := entryRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if value, ok := entry[field].(map[string]interface{}); ok && len(value) > 0 {
-				out[[2]string{section, key}] = value
-			}
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
 }
 
 // formatResourceKeyWithIndex appends a count/for_each index, e.g. "web[0]" or "bucket[\"prod\"]".

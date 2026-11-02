@@ -161,26 +161,3 @@ func stampWrittenMeta(doc map[string]interface{}) {
 		}
 	}
 }
-
-// stampPlanMeta adds _dd_meta to each plan resource and data object, with the
-// address Terraform computed for it and its extras (replacing any value
-// already there).
-func stampPlanMeta(doc map[string]interface{}, addresses map[[2]string]string, extras map[[2]string]blockMetaExtras) {
-	for k, addr := range addresses {
-		section, typ := resourceSection, k[0]
-		if dataType, ok := strings.CutPrefix(typ, "data."); ok {
-			section, typ = dataRoot, dataType
-		}
-		byType, ok := asStringMap(doc[section])
-		if !ok {
-			continue
-		}
-		byKey, ok := asStringMap(byType[typ])
-		if !ok {
-			continue
-		}
-		if block, ok := asStringMap(byKey[k[1]]); ok {
-			block[ddMetaKey] = resourceMeta(addr, extras[k])
-		}
-	}
-}
