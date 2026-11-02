@@ -1464,6 +1464,7 @@ func TestRenderChainIntermediate(t *testing.T) {
 func planTree(t *testing.T, files map[string]string, charts ...string) (string, []PlannedRoot) {
 	t.Helper()
 	dir := writeTree(t, files)
+	r := NewRenderer(nil, dir, 5<<20)
 	var dirs []string
 	for p := range files {
 		if IsKustomizationFile(filepath.Base(p)) {
@@ -1474,7 +1475,7 @@ func planTree(t *testing.T, files map[string]string, charts ...string) (string, 
 	for _, c := range charts {
 		chartDirs = append(chartDirs, filepath.Join(dir, c))
 	}
-	return dir, Plan(dirs, chartDirs, os.ReadFile)
+	return dir, Plan(dirs, chartDirs, r.BoundedRead(), r.Canonical)
 }
 
 func TestPlan(t *testing.T) {
@@ -1531,7 +1532,8 @@ func TestPlanDiamond(t *testing.T) {
 	for d := range files {
 		dirs = append(dirs, filepath.Join(dir, filepath.Dir(d)))
 	}
-	roots := Plan(dirs, nil, os.ReadFile)
+	r := NewRenderer(nil, dir, 5<<20)
+	roots := Plan(dirs, nil, r.BoundedRead(), r.Canonical)
 	if len(roots) != 1 || roots[0].Skip != "" {
 		t.Fatalf("roots %+v", roots)
 	}
@@ -1564,6 +1566,69 @@ func TestPlanMultiChain(t *testing.T) {
 	}
 }
 
+func TestPlanSymlinkedBase(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"base/kustomization.yaml": "resources: []\n",
+		"o/kustomization.yaml":    "namePrefix: o-\nresources:\n  - ../base-link\n",
+	})
+	if err := os.Symlink(filepath.Join(dir, "base"), filepath.Join(dir, "base-link")); err != nil {
+		t.Skip(err)
+	}
+	r := NewRenderer(nil, dir, 5<<20)
+	roots := Plan([]string{filepath.Join(dir, "base"), filepath.Join(dir, "o")}, nil,
+		r.BoundedRead(), r.Canonical)
+	if len(roots) != 1 || roots[0].Dir != filepath.Join(dir, "o") || roots[0].Skip != "" {
+		t.Fatalf("roots %+v", roots)
+	}
+	// The symlinked dependency matches its target directory, so base is not
+	// a second root and the closure holds its canonical path.
+	base, ok := r.Canonical(filepath.Join(dir, "base"))
+	if !ok {
+		t.Fatal("canonical base refused")
+	}
+	if a := roots[0].Closure[base]; a.Prefix != "o-" || a.MultiChain {
+		t.Errorf("base affixes %+v", a)
+	}
+}
+
+func TestPlanSymlinkConfined(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"o/kustomization.yaml":     "resources:\n  - ../esc-link\n  - ./b\n",
+		"b/kustomization.yaml":     "resources: []\n",
+	})
+	esc := t.TempDir()
+	if err := os.WriteFile(filepath.Join(esc, "kustomization.yaml"), []byte("resources: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(esc, filepath.Join(dir, "esc-link")); err != nil {
+		t.Skip(err)
+	}
+	if err := os.Symlink(filepath.Join(esc, "kustomization.yaml"), filepath.Join(dir, "b", "kustomization.yaml")); err != nil {
+		t.Skip(err)
+	}
+	r := NewRenderer(nil, dir, 5<<20)
+	bounded := r.BoundedRead()
+	var read []string
+	roots := Plan([]string{filepath.Join(dir, "o")}, nil, func(p string) ([]byte, error) {
+		read = append(read, p)
+		return bounded(p)
+	}, r.Canonical)
+	if len(roots) != 1 || roots[0].Dir != filepath.Join(dir, "o") {
+		t.Fatalf("roots %+v", roots)
+	}
+	// Nothing outside the repository is ever read: the entry symlink and the
+	// kustomization symlink both escape, and their targets stay unknown.
+	for _, p := range read {
+		real, err := filepath.EvalSymlinks(p)
+		if err == nil && real != dir && !strings.HasPrefix(real, dir+string(filepath.Separator)) {
+			t.Errorf("read %s resolves outside %s", p, dir)
+		}
+	}
+	if _, reaches := roots[0].Closure[esc]; reaches {
+		t.Errorf("closure reaches the escaped target")
+	}
+}
+
 func BenchmarkPlan(b *testing.B) {
 	files := map[string]string{}
 	var dirs []string
@@ -1583,8 +1648,9 @@ func BenchmarkPlan(b *testing.B) {
 	for i, d := range dirs {
 		abs[i] = "/r/" + d
 	}
+	canonical := func(p string) (string, bool) { return filepath.Clean(p), true }
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		Plan(abs, nil, content)
+		Plan(abs, nil, content, canonical)
 	}
 }

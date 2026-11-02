@@ -32,35 +32,56 @@ type PlannedRoot struct {
 
 // Plan picks the top-level roots among dirs (kustomization directories):
 // those no other one references, that are not components and that are not
-// Helm charts. read returns a file's bytes. Output is sorted by directory.
-func Plan(dirs, chartRoots []string, read func(string) ([]byte, error)) []PlannedRoot {
+// Helm charts. read returns a file's bytes and canonical maps a path to its
+// symlink-free form inside the repository, refusing anything outside, so a
+// dependency reached through a symlink matches the directory discovered by
+// its real path. Output is sorted by directory; each root's Dir keeps the
+// lexicographically smallest input path that maps to its node.
+func Plan(dirs, chartRoots []string, read func(string) ([]byte, error), canonical func(string) (string, bool)) []PlannedRoot {
 	known := make(map[string]bool, len(dirs))
+	display := make(map[string]string, len(dirs))
 	for _, d := range dirs {
-		known[filepath.Clean(d)] = true
+		node, ok := canonical(d)
+		if !ok {
+			continue
+		}
+		known[node] = true
+		if cur, seen := display[node]; !seen || d < cur {
+			display[node] = d
+		}
 	}
 	charts := make(map[string]bool, len(chartRoots))
 	for _, c := range chartRoots {
-		charts[filepath.Clean(c)] = true
+		if node, ok := canonical(c); ok {
+			charts[node] = true
+		}
 	}
 	kusts := make(map[string]*types.Kustomization, len(known))
 	for d := range known {
 		kusts[d] = loadKustomization(d, read)
 	}
+	return selectRoots(known, display, charts, kusts, canonical)
+}
+
+// selectRoots keeps the kustomization directories nothing references, that
+// are not components and that are not Helm charts, and plans each one.
+func selectRoots(known map[string]bool, display map[string]string, charts map[string]bool,
+	kusts map[string]*types.Kustomization, canonical func(string) (string, bool)) []PlannedRoot {
 	referenced := map[string]bool{}
 	for d, k := range kusts {
-		for _, child := range children(d, k) {
+		for _, child := range canonicalChildren(d, k, canonical) {
 			if known[child] && child != d {
 				referenced[child] = true
 			}
 		}
 	}
 	var out []PlannedRoot
-	for d, k := range kusts {
-		if referenced[d] || charts[d] || (k != nil && k.Kind == types.ComponentKind) {
+	for node, k := range kusts {
+		if referenced[node] || charts[node] || (k != nil && k.Kind == types.ComponentKind) {
 			continue
 		}
-		root := PlannedRoot{Dir: d, Closure: map[string]Affixes{}}
-		if !planClosure(d, kusts, known, root.Closure, &root.steps) {
+		root := PlannedRoot{Dir: display[node], Closure: map[string]Affixes{}}
+		if !planClosure(node, kusts, known, canonical, root.Closure, &root.steps) {
 			root.Skip = ReasonPlanSkip
 		}
 		out = append(out, root)
@@ -84,13 +105,17 @@ func loadKustomization(dir string, read func(string) ([]byte, error)) *types.Kus
 	return nil
 }
 
-func children(dir string, k *types.Kustomization) []string {
+// canonicalChildren lists the entries a kustomization references, as paths
+// canonicalized inside the repository: entries that escape it are dropped.
+func canonicalChildren(dir string, k *types.Kustomization, canonical func(string) (string, bool)) []string {
 	if k == nil {
 		return nil
 	}
 	out := make([]string, 0, len(k.Resources)+len(k.Components))
 	for _, e := range append(append([]string{}, k.Resources...), k.Components...) {
-		out = append(out, filepath.Join(dir, filepath.FromSlash(e)))
+		if node, ok := canonical(filepath.Join(dir, filepath.FromSlash(e))); ok {
+			out = append(out, node)
+		}
 	}
 	return out
 }
@@ -102,7 +127,7 @@ func children(dir string, k *types.Kustomization) []string {
 // MultiChain with empty affixes: the affixes are path-dependent and unknown,
 // so attribution must fail closed instead of using one arbitrary chain.
 func planClosure(dir string, kusts map[string]*types.Kustomization, known map[string]bool,
-	closure map[string]Affixes, steps *int) bool {
+	canonical func(string) (string, bool), closure map[string]Affixes, steps *int) bool {
 	// states: 1 visiting (on the current path), 2 done.
 	state := make(map[string]int, len(kusts))
 	postorder := make([]string, 0, len(kusts))
@@ -122,7 +147,7 @@ func planClosure(dir string, kusts map[string]*types.Kustomization, known map[st
 		}
 		state[d] = 1
 		closure[d] = Affixes{Prefix: outer.Prefix + k.NamePrefix, Suffix: k.NameSuffix + outer.Suffix}
-		kids := children(d, k)
+		kids := canonicalChildren(d, k, canonical)
 		*steps += len(kids)
 		for _, child := range kids {
 			if known[child] {
