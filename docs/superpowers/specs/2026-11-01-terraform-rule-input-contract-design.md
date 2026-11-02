@@ -171,7 +171,7 @@ Migrated rules are silent without `_dd_meta`. Old scanners may miss findings, an
 
 ### Plan unknowns
 
-Present-but-unknown, matching Terraform's model: the attribute exists, its value is unknown, and it is reported in `unknown`.
+Present-but-unknown, matching Terraform's model: the attribute exists, its value is unknown, and it is reported in `unknown`. Sensitive values are passed through unmasked, and `after_sensitive` is ignored.
 
 ## Decided
 

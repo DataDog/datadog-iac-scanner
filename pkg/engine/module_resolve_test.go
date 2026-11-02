@@ -141,7 +141,7 @@ resource "aws_s3_bucket" "replica" {
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
-		make(writtenReferences),
+		make(writtenMeta),
 	)
 
 	if len(docs) != 2 {
@@ -1830,33 +1830,33 @@ func TestMetaDoesNotSplitDedup(t *testing.T) {
 
 func TestSetDocumentRootsReplacesRoots(t *testing.T) {
 	doc := model.Document{"resource": map[string]interface{}{"t": map[string]interface{}{
-		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"z"}, nil)},
+		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"z"}, blockMetaExtras{})},
 	}}}
 	setDocumentRoots(doc, []string{"a", "b"})
-	require.Equal(t, resourceMeta("t.n", []string{"a", "b"}, nil), metaOf(t, doc, "resource", "t", "n"))
+	require.Equal(t, resourceMeta("t.n", []string{"a", "b"}, blockMetaExtras{}), metaOf(t, doc, "resource", "t", "n"))
 }
 
 func TestSetDocumentRootsRewritesDocumentTypedSectionsAndKeepsReferences(t *testing.T) {
 	refs := map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s"}}
 	doc := model.Document{"resource": model.Document{"t": model.Document{
-		"n": model.Document{ddMetaKey: model.Document(resourceMeta("t.n", []string{"z"}, refs))},
+		"n": model.Document{ddMetaKey: model.Document(resourceMeta("t.n", []string{"z"}, blockMetaExtras{references: refs}))},
 	}}}
 	setDocumentRoots(doc, []string{"a", "b"})
 	meta, ok := asStringMap(docAsMap(docAsMap(docAsMap(doc["resource"])["t"])["n"])[ddMetaKey])
 	require.True(t, ok)
-	require.Equal(t, resourceMeta("t.n", []string{"a", "b"}, refs), meta)
+	require.Equal(t, resourceMeta("t.n", []string{"a", "b"}, blockMetaExtras{references: refs}), meta)
 }
 
 func TestRouteSharedDocumentRootsSortsAndDeduplicates(t *testing.T) {
 	doc := model.Document{"id": "doc", "resource": map[string]interface{}{"t": map[string]interface{}{
-		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"m"}, nil)},
+		"n": map[string]interface{}{ddMetaKey: resourceMeta("t.n", []string{"m"}, blockMetaExtras{})},
 	}}}
 	synthetic := []*model.FileMetadata{{ID: "doc", TerraformScope: &model.TerraformScope{RootModule: "m"}}}
 	extras := map[string][]extraCallerInfo{"doc": {{rootModule: "z"}, {rootModule: "a"}, {rootModule: "z"}, {rootModule: "m"}}}
 
 	routeSharedDocumentRoots([]model.Document{doc}, synthetic, extras)
 
-	require.Equal(t, resourceMeta("t.n", []string{"a", "m", "z"}, nil), metaOf(t, doc, "resource", "t", "n"))
+	require.Equal(t, resourceMeta("t.n", []string{"a", "m", "z"}, blockMetaExtras{}), metaOf(t, doc, "resource", "t", "n"))
 }
 
 func TestInstantiatedRootModuleDocMeta(t *testing.T) {
@@ -2105,21 +2105,46 @@ resource "aws_route_table_association" "a" {
 	meta := metaOf(t, files[0].Document, "resource", "aws_route_table_association", "a")
 	require.Equal(t, "aws_route_table_association.a", meta["address"])
 	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s"}}, meta[referencesKey])
-	require.NotContains(t, metaOf(t, files[0].Document, "resource", "aws_subnet", "s"), referencesKey)
+	require.Equal(t, map[string]interface{}{"subnet_id": true}, meta[unknownKey])
+	subnet := metaOf(t, files[0].Document, "resource", "aws_subnet", "s")
+	require.NotContains(t, subnet, referencesKey)
+	require.NotContains(t, subnet, unknownKey)
+}
+
+func TestInstantiatedDocCarriesUnknown(t *testing.T) {
+	res, _ := resolveModuleFixture(t, map[string]string{"envs": `
+module "m" {
+  source = "../modules/m"
+}
+`}, `
+variable "unset" {}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.unset
+}
+
+resource "aws_s3_bucket" "c" {
+  bucket = "c"
+}
+`)
+	require.Len(t, res.docs, 1)
+	require.Equal(t, map[string]interface{}{"bucket": true}, metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "b")[unknownKey])
+	require.NotContains(t, metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "c"), unknownKey)
 }
 
 func TestRootRewriteKeepsReferences(t *testing.T) {
 	refs := map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s"}}
+	extras := blockMetaExtras{references: refs, unknown: map[string]interface{}{"subnet_id": true}}
 	newDoc := func(id string) model.Document {
 		return model.Document{"id": id, "resource": map[string]interface{}{"aws_x": map[string]interface{}{
-			"n": map[string]interface{}{ddMetaKey: resourceMeta("aws_x.n", []string{"m"}, refs)},
+			"n": map[string]interface{}{ddMetaKey: resourceMeta("aws_x.n", []string{"m"}, extras)},
 		}}}
 	}
 	shared := newDoc("doc")
 	routeSharedDocumentRoots([]model.Document{shared},
 		[]*model.FileMetadata{{ID: "doc", TerraformScope: &model.TerraformScope{RootModule: "m"}}},
 		map[string][]extraCallerInfo{"doc": {{rootModule: "z"}}})
-	require.Equal(t, resourceMeta("aws_x.n", []string{"m", "z"}, refs), metaOf(t, shared, "resource", "aws_x", "n"))
+	require.Equal(t, resourceMeta("aws_x.n", []string{"m", "z"}, extras), metaOf(t, shared, "resource", "aws_x", "n"))
 
 	scope := &model.TerraformScope{RootModule: "lib"}
 	file := &model.FileMetadata{ID: "mod", FilePath: "/repo/lib/main.tf", TerraformScope: scope, Document: newDoc("mod")}
@@ -2130,4 +2155,5 @@ func TestRootRewriteKeepsReferences(t *testing.T) {
 	meta := metaOf(t, file.Document, "resource", "aws_x", "n")
 	require.Equal(t, []interface{}{"envs/a", "envs/c", "lib"}, meta["root_modules"])
 	require.Equal(t, refs, meta[referencesKey])
+	require.Equal(t, extras.unknown, meta[unknownKey])
 }

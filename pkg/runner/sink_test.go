@@ -286,7 +286,9 @@ func TestSink_TFPlanExposesAfterUnknownAndConfiguration(t *testing.T) {
 		"resource": {
 			"aws_s3_bucket": {
 				"main": {
-					"acl": "private"
+					"acl": "private",
+					"bucket": "${__dd_unknown__}",
+					"id": "${__dd_unknown__}"
 				}
 			}
 		},
@@ -295,6 +297,10 @@ func TestSink_TFPlanExposesAfterUnknownAndConfiguration(t *testing.T) {
 				"main": {
 					"address": "aws_s3_bucket.main",
 					"after_unknown": {
+						"bucket": true,
+						"id": true
+					},
+					"unknown": {
 						"bucket": true,
 						"id": true
 					},

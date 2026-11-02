@@ -602,6 +602,156 @@ func Test_detectLineTerraformPlanSiblingModulesSameTypeAndName(t *testing.T) {
 	require.NotEqual(t, app1.Line, app2.Line)
 }
 
+const planWithUnknownsAndConfig = `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_instance.web",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "web",
+          "values": {
+            "ami": "ami-1",
+            "description": null
+          }
+        },
+        {
+          "address": "aws_security_group.sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "sg",
+          "values": {
+            "ingress": [
+              {
+                "from_port": 22
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_instance.web",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "web",
+      "change": {
+        "actions": ["create"],
+        "after": {"ami": "ami-1", "description": null},
+        "after_unknown": {
+          "arn": true
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_security_group.sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "sg",
+          "expressions": {
+            "ingress": [
+              {
+                "description": {"constant_value": "ssh"}
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_instance.web",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "web",
+          "expressions": {
+            "arn": {"references": ["var.arn"]},
+            "description": {"constant_value": null}
+          }
+        }
+      ]
+    }
+  }
+}`
+
+func detectPlanWithUnknownsAndConfig(t *testing.T, searchKey string) int {
+	t.Helper()
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(planWithUnknownsAndConfig), "plan.json", false, 1)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(planWithUnknownsAndConfig),
+	}
+	return defaultDetectLine{}.DetectLine(context.Background(), file, searchKey, 0).Line
+}
+
+func Test_detectLineTerraformPlanUnknownAttributeUsesHeader(t *testing.T) {
+	require.Equal(t, 11, detectPlanWithUnknownsAndConfig(t, "aws_instance[web].arn"))
+}
+
+func Test_detectLineTerraformPlanMissingNestedUsesAncestor(t *testing.T) {
+	require.Equal(t, 24, detectPlanWithUnknownsAndConfig(t, "aws_security_group[sg].ingress.0.description"))
+}
+
+func Test_detectLineTerraformPlanDroppedNullKeepsOwnLine(t *testing.T) {
+	require.Equal(t, 13, detectPlanWithUnknownsAndConfig(t, "aws_instance[web].description"))
+}
+
+func Test_detectLineTerraformPlanUnknownAttributeUsesInstanceHeader(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_instance.web[0]",
+          "type": "aws_instance",
+          "name": "web",
+          "index": 0,
+          "values": {
+            "ami": "ami-0"
+          }
+        },
+        {
+          "address": "aws_instance.web[1]",
+          "type": "aws_instance",
+          "name": "web",
+          "index": 1,
+          "values": {
+            "ami": "ami-1"
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_instance.web[1]",
+      "change": {"after_unknown": {"arn": true}}
+    }
+  ]
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+	d := defaultDetectLine{}
+	require.Equal(t, 11, d.DetectLine(context.Background(), file, "aws_instance[web[0]].arn", 0).Line)
+	require.Equal(t, 20, d.DetectLine(context.Background(), file, "aws_instance[web[1]].arn", 0).Line)
+}
+
 func Test_detectLineTerraformPlanMinified(t *testing.T) {
 	// terraform show -json produces minified output; _dd_lines are all 1.
 	// After StringifyContent pretty-prints, LinesOriginalData is multi-line.

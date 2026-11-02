@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func TestJson_parseTFPlan(t *testing.T) {
@@ -218,7 +220,7 @@ func TestJson_parseTFPlan(t *testing.T) {
 									"type":    "aws_s3_bucket",
 									"name":    "main",
 									"values": map[string]interface{}{
-										"bucket": "main-bucket",
+										"acl": "private",
 									},
 								},
 							},
@@ -266,7 +268,9 @@ func TestJson_parseTFPlan(t *testing.T) {
 				"resource": map[string]interface{}{
 					"aws_s3_bucket": map[string]interface{}{
 						"main": map[string]interface{}{
-							"bucket": "main-bucket",
+							"acl":    "private",
+							"bucket": "${__dd_unknown__}",
+							"id":     "${__dd_unknown__}",
 						},
 					},
 				},
@@ -275,6 +279,10 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"main": map[string]interface{}{
 							"address": "aws_s3_bucket.main",
 							"after_unknown": map[string]interface{}{
+								"bucket": true,
+								"id":     true,
+							},
+							"unknown": map[string]interface{}{
 								"bucket": true,
 								"id":     true,
 							},
@@ -1421,42 +1429,49 @@ func TestJson_parseTFPlan_dd_tfplan_meta_correlation(t *testing.T) {
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_vpc.main",
 		"after_unknown":             map[string]interface{}{"id": true},
+		"unknown":                   map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"cidr_block": map[string]interface{}{"constant_value": "10.0.0.0/16"}},
 	}, meta("aws_vpc", "main"))
 
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_instance.web[0]",
 		"after_unknown":             map[string]interface{}{"arn": true},
+		"unknown":                   map[string]interface{}{"arn": true},
 		"configuration_expressions": map[string]interface{}{"instance_type": map[string]interface{}{"references": []interface{}{"var.instance_type"}}},
 	}, meta("aws_instance", "web[0]"))
 
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"prod\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
+		"unknown":                   map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"prod\"]"))
 
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"a.b\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
+		"unknown":                   map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"a.b\"]"))
 
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"a]b\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
+		"unknown":                   map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"a]b\"]"))
 
 	require.Equal(t, map[string]interface{}{
 		"address":                   "aws_s3_bucket.data[\"a\\\"b\"]",
 		"after_unknown":             map[string]interface{}{"id": true},
+		"unknown":                   map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"bucket": map[string]interface{}{"references": []interface{}{"var.bucket_name"}}},
 	}, meta("aws_s3_bucket", "data[\"a\\\"b\"]"))
 
 	require.Equal(t, map[string]interface{}{
 		"address":                   "module.networking.aws_subnet.public",
 		"after_unknown":             map[string]interface{}{"id": true},
+		"unknown":                   map[string]interface{}{"id": true},
 		"configuration_expressions": map[string]interface{}{"cidr_block": map[string]interface{}{"references": []interface{}{"var.subnet_cidr"}}},
 	}, meta("aws_subnet", "module.networking.public"))
 }
@@ -2501,4 +2516,255 @@ func TestPlanReferencesDeepModuleChainStaysLinear(t *testing.T) {
 	meta := planMetaFor(t, doc, "aws_instance.app")
 	require.Equal(t, map[string]interface{}{"x": []interface{}{deepest}}, meta["references"])
 	require.Less(t, time.Since(start), 3*time.Second)
+}
+
+func valuesPlanDoc(t *testing.T, values, afterUnknown, expressions string) model.Document {
+	t.Helper()
+	raw := fmt.Sprintf(`{"format_version":"1.2","terraform_version":"1.9.0",
+		"planned_values":{"root_module":{"resources":[
+			{"address":"aws_instance.web[0]","mode":"managed","type":"aws_instance","name":"web","index":0,"values":%s}]}},
+		"resource_changes":[{"address":"aws_instance.web[0]","mode":"managed","type":"aws_instance","name":"web","index":0,
+			"change":{"actions":["create"],"before":null,"after":%s,"after_unknown":%s}}],
+		"configuration":{"root_module":{"resources":[
+			{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web",
+			 "expressions":%s,"count_expression":{"constant_value":1}}]}}}`, values, values, afterUnknown, expressions)
+	var doc model.Document
+	require.NoError(t, stdjson.Unmarshal([]byte(raw), &doc))
+	return doc
+}
+
+func plannedWeb(t *testing.T, doc model.Document) (values, meta map[string]interface{}) {
+	t.Helper()
+	got := mustParse(t, doc)
+	values = got["resource"].(map[string]interface{})["aws_instance"].(map[string]interface{})["web[0]"].(map[string]interface{})
+	meta = got[TfplanMetaKey].(map[string]interface{})["aws_instance"].(map[string]interface{})["web[0]"].(map[string]interface{})
+	return values, meta
+}
+
+func TestPlanValuesUnknownPlaceholder(t *testing.T) {
+	values, meta := plannedWeb(t, valuesPlanDoc(t, `{"name":"a"}`, `{"id":true,"arn":true,"name":false}`, `{"name":{"constant_value":"a"}}`))
+	require.Equal(t, map[string]interface{}{"name": "a", "id": "${__dd_unknown__}", "arn": "${__dd_unknown__}"}, values)
+	require.Equal(t, map[string]interface{}{"id": true, "arn": true}, meta["unknown"])
+	require.Equal(t, map[string]interface{}{"id": true, "arn": true, "name": false}, meta["after_unknown"])
+
+	values, meta = plannedWeb(t, valuesPlanDoc(t, `{"name":"a"}`, `{"name":false}`, `{"name":{"constant_value":"a"}}`))
+	require.Equal(t, map[string]interface{}{"name": "a"}, values)
+	require.NotContains(t, meta, "unknown")
+}
+
+func TestPlanValuesUnknownListPositions(t *testing.T) {
+	values, meta := plannedWeb(t, valuesPlanDoc(t, `{"ips":["a",null,"c"]}`, `{"ips":[false,true,false]}`,
+		`{"ips":{"references":["aws_eip.e.public_ip","aws_eip.e"]}}`))
+	require.Equal(t, map[string]interface{}{"ips": []interface{}{"a", "${__dd_unknown__}", "c"}}, values)
+	require.Equal(t, map[string]interface{}{"ips": []interface{}{false, true, false}}, meta["unknown"])
+
+	values, meta = plannedWeb(t, valuesPlanDoc(t, `{"ips":["a",null,"c"],"rules":[null,{"port":1}]}`, `{}`,
+		`{"ips":{"references":["var.ips"]}}`))
+	require.Equal(t, map[string]interface{}{
+		"ips":   []interface{}{"a", nil, "c"},
+		"rules": []interface{}{nil, map[string]interface{}{"port": float64(1)}},
+	}, values)
+	require.NotContains(t, meta, "unknown")
+}
+
+func TestPlanValuesUnknownListMissingFromValues(t *testing.T) {
+	values, meta := plannedWeb(t, valuesPlanDoc(t, `{"name":"a"}`,
+		`{"name":false,"ips":[true,true],"ingress":[{"id":true},{}],"matrix":[[true],false]}`,
+		`{"name":{"constant_value":"a"}}`))
+	require.Equal(t, map[string]interface{}{
+		"name": "a",
+		"ips":  []interface{}{"${__dd_unknown__}", "${__dd_unknown__}"},
+		"ingress": []interface{}{
+			map[string]interface{}{"id": "${__dd_unknown__}"},
+			map[string]interface{}{},
+		},
+		"matrix": []interface{}{[]interface{}{"${__dd_unknown__}"}, nil},
+	}, values)
+	require.Equal(t, map[string]interface{}{
+		"ips":     []interface{}{true, true},
+		"ingress": []interface{}{map[string]interface{}{"id": true}, map[string]interface{}{}},
+		"matrix":  []interface{}{[]interface{}{true}, false},
+	}, meta["unknown"])
+
+	values, _ = plannedWeb(t, valuesPlanDoc(t, `{"ips":null}`, `{"ips":[true]}`, `{}`))
+	require.Equal(t, map[string]interface{}{"ips": []interface{}{"${__dd_unknown__}"}}, values)
+}
+
+func TestPlanValuesConfiguredEmptyListInAnyBlockOrder(t *testing.T) {
+	values, _ := plannedWeb(t, valuesPlanDoc(t,
+		`{"ingress":[{"from_port":443,"ipv6_cidr_blocks":[]},{"from_port":80,"prefix_list_ids":[]}]}`,
+		`{"ingress":[{},{}]}`,
+		`{"ingress":[{"from_port":{"constant_value":80}},{"from_port":{"constant_value":443},"ipv6_cidr_blocks":{"constant_value":[]}}]}`))
+	require.Equal(t, map[string]interface{}{"ingress": []interface{}{
+		map[string]interface{}{"from_port": float64(443), "ipv6_cidr_blocks": []interface{}{}},
+		map[string]interface{}{"from_port": float64(80)},
+	}}, values)
+}
+
+func TestPlanValuesConfiguredEmptyListPastConfiguredBlocks(t *testing.T) {
+	values, _ := plannedWeb(t, valuesPlanDoc(t,
+		`{"ingress":[{"from_port":80,"cidr_blocks":[]},{"from_port":81,"cidr_blocks":[]},{"from_port":82,"cidr_blocks":[]}]}`,
+		`{"ingress":[{},{},{}]}`,
+		`{"ingress":[{"from_port":{"references":["each.value"]},"cidr_blocks":{"constant_value":[]}}]}`))
+	block := func(port float64) map[string]interface{} {
+		return map[string]interface{}{"from_port": port, "cidr_blocks": []interface{}{}}
+	}
+	require.Equal(t, map[string]interface{}{"ingress": []interface{}{block(80), block(81), block(82)}}, values)
+}
+
+func TestPlanValuesDynamicBlockKeepsEmptyLists(t *testing.T) {
+	values, _ := plannedWeb(t, valuesPlanDoc(t,
+		`{"ingress":[{"from_port":80,"cidr_blocks":[],"self":false}],"egress":[],"name":"a"}`,
+		`{"ingress":[{}]}`,
+		`{"name":{"constant_value":"a"}}`))
+	require.Equal(t, map[string]interface{}{
+		"ingress": []interface{}{map[string]interface{}{"from_port": float64(80), "cidr_blocks": []interface{}{}, "self": false}},
+		"name":    "a",
+	}, values)
+}
+
+func TestPlanUnknownShapeMatchesSourceUnknowns(t *testing.T) {
+	unknownString := cty.UnknownVal(cty.String)
+	r := &tfeval.ResolvedResource{Attributes: map[string]cty.Value{
+		"name": cty.StringVal("a"),
+		"id":   unknownString,
+		"ingress": cty.ListVal([]cty.Value{
+			cty.ObjectVal(map[string]cty.Value{"cidr_blocks": cty.ListVal([]cty.Value{cty.StringVal("10.0.0.0/8")})}),
+			cty.ObjectVal(map[string]cty.Value{"cidr_blocks": cty.ListVal([]cty.Value{unknownString, cty.StringVal("10.0.0.0/8")})}),
+		}),
+		"matrix": cty.TupleVal([]cty.Value{
+			cty.ListVal([]cty.Value{cty.StringVal("a")}),
+			cty.ListVal([]cty.Value{unknownString, cty.StringVal("b")}),
+		}),
+	}}
+	var values, afterUnknown map[string]any
+	require.NoError(t, stdjson.Unmarshal([]byte(`{"name":"a","ingress":[{"cidr_blocks":["10.0.0.0/8"]},{"cidr_blocks":[null,"10.0.0.0/8"]}],"matrix":[["a"],[null,"b"]]}`), &values))
+	require.NoError(t, stdjson.Unmarshal([]byte(`{"name":false,"id":true,"ingress":[{"cidr_blocks":[false]},{"cidr_blocks":[true,false]}],"matrix":[[false],[true,false]]}`), &afterUnknown))
+	want := map[string]any{
+		"id":      true,
+		"ingress": []any{map[string]any{}, map[string]any{"cidr_blocks": []any{true, false}}},
+		"matrix":  []any{false, []any{true, false}},
+	}
+	require.Equal(t, want, tfeval.Unknowns(r, nil))
+	require.Equal(t, want, planValues(values, afterUnknown, nil))
+}
+
+func TestPlanValuesUnknownNestedBlock(t *testing.T) {
+	values, meta := plannedWeb(t, valuesPlanDoc(t,
+		`{"ingress":[{"from_port":80},{"from_port":443}]}`,
+		`{"ingress":[{},{"id":true}]}`,
+		`{"ingress":[{"from_port":{"constant_value":80}},{"from_port":{"constant_value":443}}]}`))
+	require.Equal(t, map[string]interface{}{"ingress": []interface{}{
+		map[string]interface{}{"from_port": float64(80)},
+		map[string]interface{}{"from_port": float64(443), "id": "${__dd_unknown__}"},
+	}}, values)
+	require.Equal(t, map[string]interface{}{"ingress": []interface{}{map[string]interface{}{}, map[string]interface{}{"id": true}}}, meta["unknown"])
+
+	values, meta = plannedWeb(t, valuesPlanDoc(t, `{}`, `{"ingress":true}`, `{"ingress":[{"from_port":{"references":["var.p"]}}]}`))
+	require.Equal(t, map[string]interface{}{"ingress": "${__dd_unknown__}"}, values)
+	require.Equal(t, map[string]interface{}{"ingress": true}, meta["unknown"])
+}
+
+func TestPlanValuesDropNulls(t *testing.T) {
+	values, _ := plannedWeb(t, valuesPlanDoc(t,
+		`{"description":null,"enabled":false,"count":0,"name":"","tags":{},"ingress":[{"description":null,"from_port":80}]}`,
+		`{"ingress":[{}]}`,
+		`{"enabled":{"constant_value":false},"ingress":[{"from_port":{"constant_value":80}}]}`))
+	require.Equal(t, map[string]interface{}{
+		"enabled": false, "count": float64(0), "name": "", "tags": map[string]interface{}{},
+		"ingress": []interface{}{map[string]interface{}{"from_port": float64(80)}},
+	}, values)
+}
+
+func TestPlanValuesDropUnconfiguredEmptyBlocks(t *testing.T) {
+	values, _ := plannedWeb(t, valuesPlanDoc(t,
+		`{"ebs_block_device":[],"ingress":[],"root_block_device":[{"tags":[],"throughput":[]}]}`,
+		`{"ebs_block_device":[],"ingress":[],"root_block_device":[{}]}`,
+		`{"ingress":[],"root_block_device":[{"throughput":{"constant_value":[]}}]}`))
+	require.Equal(t, map[string]interface{}{
+		"ingress":           []interface{}{},
+		"root_block_device": []interface{}{map[string]interface{}{"throughput": []interface{}{}}},
+	}, values)
+
+	doc := valuesPlanDoc(t, `{"ebs_block_device":[],"name":"a"}`, `{}`, `{}`)
+	doc["configuration"] = map[string]interface{}{}
+	values, _ = plannedWeb(t, doc)
+	require.Equal(t, map[string]interface{}{"name": "a"}, values)
+}
+
+func TestPlanValuesKeepEmptyListsInsideAttributes(t *testing.T) {
+	values, _ := plannedWeb(t, valuesPlanDoc(t,
+		`{"settings":{"mode":"x","ports":[],"note":null},"rules":[{"cidrs":[]}],"computed":{"ports":[]}}`,
+		`{}`,
+		`{"settings":{"constant_value":{"mode":"x","ports":[]}},"rules":{"references":["var.rules"]}}`))
+	require.Equal(t, map[string]interface{}{
+		"settings": map[string]interface{}{"mode": "x", "ports": []interface{}{}},
+		"rules":    []interface{}{map[string]interface{}{"cidrs": []interface{}{}}},
+		"computed": map[string]interface{}{"ports": []interface{}{}},
+	}, values)
+}
+
+func TestPlanValuesKeepLineBookkeeping(t *testing.T) {
+	values, _ := plannedWeb(t, valuesPlanDoc(t,
+		`{"description":null,"name":"a","_dd_lines":{"_dd_description":{"_dd_line":7},"_dd_name":{"_dd_line":8}}}`,
+		`{}`, `{"name":{"constant_value":"a"}}`))
+	require.Equal(t, map[string]interface{}{
+		"name": "a",
+		"_dd_lines": map[string]interface{}{
+			"_dd_description": map[string]interface{}{"_dd_line": float64(7)},
+			"_dd_name":        map[string]interface{}{"_dd_line": float64(8)},
+		},
+	}, values)
+}
+
+func TestPlanValuesPriorStateData(t *testing.T) {
+	raw := `{"format_version":"1.2","terraform_version":"1.9.0",
+		"planned_values":{"root_module":{}},
+		"prior_state":{"format_version":"1.0","values":{"root_module":{"resources":[
+			{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u","values":{"id":"ami-1","kernel_id":null,"block_device_mappings":[]}}]}}},
+		"resource_changes":[],
+		"configuration":{"root_module":{"resources":[
+			{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u","expressions":{"most_recent":{"constant_value":true}}}]}}}`
+	var doc model.Document
+	require.NoError(t, stdjson.Unmarshal([]byte(raw), &doc))
+	got := mustParse(t, doc)
+	require.Equal(t, map[string]interface{}{"id": "ami-1"},
+		got["data"].(map[string]interface{})["aws_ami"].(map[string]interface{})["u"])
+}
+
+func TestPlanValuesPlannedDataSourceUnknown(t *testing.T) {
+	raw := `{"format_version":"1.2","terraform_version":"1.9.0",
+		"planned_values":{"root_module":{"resources":[
+			{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u","values":{"most_recent":true,"kernel_id":null}}]}},
+		"prior_state":{"format_version":"1.0","values":{"root_module":{"resources":[
+			{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u","values":{"most_recent":true,"id":"ami-0"}}]}}},
+		"resource_changes":[{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u",
+			"change":{"actions":["read"],"before":null,"after":{"most_recent":true},"after_unknown":{"id":true,"kernel_id":true}}}],
+		"configuration":{"root_module":{"resources":[
+			{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u","expressions":{"most_recent":{"constant_value":true}}}]}}}`
+	var doc model.Document
+	require.NoError(t, stdjson.Unmarshal([]byte(raw), &doc))
+	got := mustParse(t, doc)
+	require.Equal(t, map[string]interface{}{"most_recent": true, "id": "${__dd_unknown__}", "kernel_id": "${__dd_unknown__}"},
+		got["data"].(map[string]interface{})["aws_ami"].(map[string]interface{})["u"])
+	require.Equal(t, map[[2]string]interface{}{{"data.aws_ami", "u"}: map[string]interface{}{"id": true, "kernel_id": true}}, PlanUnknowns(got))
+}
+
+func TestPlanValuesPriorStateKeepsPlannedDataSourceMeta(t *testing.T) {
+	const planned = `"planned_values":{"root_module":{"resources":[
+			{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u","values":{"owners":["self"]}}]}},
+		"resource_changes":[{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u",
+			"change":{"actions":["read"],"before":null,"after":{"owners":["self"]},"after_unknown":{"id":true}}}],
+		"configuration":{"root_module":{"resources":[
+			{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u","expressions":{"owners":{"references":["var.owner"]}}}]}}`
+	const prior = `"prior_state":{"format_version":"1.0","values":{"root_module":{"resources":[
+			{"address":"data.aws_ami.u","mode":"data","type":"aws_ami","name":"u","values":{"owners":["self"],"id":"ami-0"}}]}}},`
+	parse := func(raw string) map[string]interface{} {
+		var doc model.Document
+		require.NoError(t, stdjson.Unmarshal([]byte(raw), &doc))
+		return mustParse(t, doc)[TfplanMetaKey].(map[string]interface{})["data.aws_ami"].(map[string]interface{})["u"].(map[string]interface{})
+	}
+	want := parse(`{"format_version":"1.2","terraform_version":"1.9.0",` + planned + `}`)
+	require.Equal(t, map[string]interface{}{"address": "data.aws_ami.u", "unknown": map[string]interface{}{"id": true}}, want)
+	require.Equal(t, want, parse(`{"format_version":"1.2","terraform_version":"1.9.0",`+prior+planned+`}`))
 }

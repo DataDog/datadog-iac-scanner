@@ -36,6 +36,105 @@ func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
 	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(r))
 }
 
+// Unknowns returns r's _dd_meta.unknown, nil when every value is known. doc,
+// when non-nil, is AttributesToDocument(r): a value it holds as a scalar is
+// wholly unknown.
+func Unknowns(r *ResolvedResource, doc map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{})
+	for key, val := range r.Attributes {
+		var counterpart interface{}
+		if doc != nil {
+			counterpart = doc[key]
+		}
+		if u := unknownOf(val, counterpart, doc != nil); u != nil {
+			out[key] = u
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// unknownOf is v's unknown shape, nil when v is wholly known. guided says
+// counterpart is v's rendering in the document.
+func unknownOf(v cty.Value, counterpart interface{}, guided bool) interface{} {
+	v, _ = v.Unmark()
+	if v.IsWhollyKnown() {
+		return nil
+	}
+	if !v.IsKnown() {
+		return true
+	}
+	ty := v.Type()
+	switch {
+	case ty.IsObjectType() || ty.IsMapType():
+		sub, isMap := counterpart.(map[string]interface{})
+		if guided && !isMap {
+			return true
+		}
+		if out := unknownEntries(v, sub); len(out) > 0 {
+			return out
+		}
+		return nil
+	case ty.IsListType() || ty.IsTupleType() || ty.IsSetType():
+		sub, isList := counterpart.([]interface{})
+		if guided && !isList {
+			return true
+		}
+		return unknownElements(v, sub, guided && len(sub) == v.LengthInt())
+	}
+	return true
+}
+
+// unknownEntries is the unknown shape of a known object or map's entries,
+// guided by sub when non-nil.
+func unknownEntries(v cty.Value, sub map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{})
+	for it := v.ElementIterator(); it.Next(); {
+		k, ev := it.Element()
+		name, ok := ctyutil.ConcreteString(k)
+		if !ok {
+			continue
+		}
+		var c interface{}
+		if sub != nil {
+			c = sub[name]
+		}
+		if u := unknownOf(ev, c, sub != nil); u != nil {
+			out[name] = u
+		}
+	}
+	return out
+}
+
+// unknownElements is the unknown shape of a known collection's elements,
+// position by position; guided says sub holds them in the same order.
+func unknownElements(v cty.Value, sub []interface{}, guided bool) []interface{} {
+	out := make([]interface{}, 0, v.LengthInt())
+	for i, it := 0, v.ElementIterator(); it.Next(); i++ {
+		_, ev := it.Element()
+		var c interface{}
+		if guided {
+			c = sub[i]
+		}
+		out = append(out, unknownElement(ev, c, guided))
+	}
+	return out
+}
+
+// unknownElement is a list element's unknown shape: a known element keeps its
+// position as {} when it is an object and false otherwise.
+func unknownElement(v cty.Value, counterpart interface{}, guided bool) interface{} {
+	if u := unknownOf(v, counterpart, guided); u != nil {
+		return u
+	}
+	if ty := v.Type(); ty.IsObjectType() || ty.IsMapType() {
+		return map[string]interface{}{}
+	}
+	return false
+}
+
 // newRenderer renders r's attributes in the context they were evaluated in.
 func newRenderer(r *ResolvedResource) *partial.Renderer {
 	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {

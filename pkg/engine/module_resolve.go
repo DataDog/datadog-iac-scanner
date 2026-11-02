@@ -57,12 +57,12 @@ type moduleResolutionResult struct {
 	extras          map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
 	moduleFiles map[string]*moduleFileCalls
-	// writtenReferences holds the references of the plain root blocks kept
+	// writtenMeta holds the _dd_meta extras of the plain root blocks kept
 	// in their written files.
-	writtenReferences writtenReferences
-	resourceCount     int
-	rootCount         int
-	ok                bool
+	writtenMeta   writtenMeta
+	resourceCount int
+	rootCount     int
+	ok            bool
 }
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
@@ -141,7 +141,7 @@ func (c *Inspector) instantiateLocalModules(
 			calls.writtenResourceTypes = documentResourceTypes(f.Document)
 		}
 	}
-	stampWrittenReferences(files, res.writtenReferences)
+	stampWrittenExtras(files, res.writtenMeta)
 	routeModuleFileRoots(files, res.moduleFiles)
 	routeUnresolvedDirRoots(files, res.unresolvedRoots, c.repoPath)
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
@@ -283,19 +283,20 @@ func resolvedBlockKey(file, kind, name string) string {
 	return file + "\x00" + kind + "\x00" + name
 }
 
-// writtenReferences maps the resolvedBlockKey of a plain root block, by file
-// ID, to its references.
-type writtenReferences map[string]map[string]interface{}
+// writtenMeta maps the resolvedBlockKey of a plain root block, by file ID, to
+// its _dd_meta extras.
+type writtenMeta map[string]blockMetaExtras
 
-func (w writtenReferences) add(p *rootResource, attributions *moduleAttributionCache) {
-	if refs := attributions.resourceReferences(p.r); refs != nil {
-		w[resolvedBlockKey(p.fm.ID, p.kind, p.r.BaseName)] = refs
+func (w writtenMeta) add(p *rootResource, attributions *moduleAttributionCache) {
+	extras := blockMetaExtras{references: attributions.resourceReferences(p.r), unknown: tfeval.Unknowns(p.r, nil)}
+	if extras.references != nil || extras.unknown != nil {
+		w[resolvedBlockKey(p.fm.ID, p.kind, p.r.BaseName)] = extras
 	}
 }
 
-// stampWrittenReferences adds the traced references to the _dd_meta of the
-// plain root blocks kept in their written files.
-func stampWrittenReferences(files model.FileMetadatas, written writtenReferences) {
+// stampWrittenExtras adds the traced references and unknown paths to the
+// _dd_meta of the plain root blocks kept in their written files.
+func stampWrittenExtras(files model.FileMetadatas, written writtenMeta) {
 	if len(written) == 0 {
 		return
 	}
@@ -317,8 +318,15 @@ func stampWrittenReferences(files model.FileMetadatas, written writtenReferences
 					if !ok {
 						continue
 					}
-					if refs, ok := written[resolvedBlockKey(f.ID, section.prefix+typ, name)]; ok {
-						meta[referencesKey] = refs
+					extras, ok := written[resolvedBlockKey(f.ID, section.prefix+typ, name)]
+					if !ok {
+						continue
+					}
+					if extras.references != nil {
+						meta[referencesKey] = extras.references
+					}
+					if extras.unknown != nil {
+						meta[unknownKey] = extras.unknown
 					}
 				}
 			}
@@ -553,14 +561,14 @@ func evaluateRootModules(
 	resourceCount *int,
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
-) writtenReferences {
+) writtenMeta {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, relDir: relDir, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
-		resolved: make(map[string]bool), failedRoots: make(map[string]bool), written: make(writtenReferences),
+		resolved: make(map[string]bool), failedRoots: make(map[string]bool), written: make(writtenMeta),
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -613,7 +621,7 @@ type rootMerge struct {
 	emptyBlocks          []tfeval.EmptyBlock
 	resolved             map[string]bool
 	failedRoots          map[string]bool
-	written              writtenReferences
+	written              writtenMeta
 }
 
 func (m *rootMerge) merge(
@@ -918,7 +926,7 @@ func resolveModuleDocuments(
 		unresolvedRoots:      unresolvedRoots,
 		extras:               extras,
 		moduleFiles:          moduleCalls.fileCalls(unresolvedModuleDirs),
-		writtenReferences:    written,
+		writtenMeta:          written,
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		ok:                   true,
@@ -1074,7 +1082,7 @@ func rewriteBlockMeta(doc model.Document, rewrite func(b address.Block, addr str
 				if !ok {
 					continue
 				}
-				next := resourceMeta(addr, roots, nil)
+				next := resourceMeta(addr, roots, blockMetaExtras{})
 				for k, v := range meta {
 					if _, rewritten := next[k]; !rewritten {
 						next[k] = v
@@ -1288,6 +1296,9 @@ type instantiatedResource struct {
 	// references is the block's _dd_meta references, nil when it reads none.
 	references     map[string]interface{}
 	referencesHash uint64
+	// unknown is the block's _dd_meta unknown, nil when every value is known.
+	unknown     map[string]interface{}
+	unknownHash uint64
 }
 
 // docGroup collects every resource one module call resolved in one defining file.
@@ -1345,7 +1356,7 @@ func instantiatedDocs(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
-	written writtenReferences,
+	written writtenMeta,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -1479,7 +1490,7 @@ func joinPlainRootSiblings(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
-	written writtenReferences,
+	written writtenMeta,
 ) int {
 	added := 0
 	for i := range plain {
@@ -1524,6 +1535,7 @@ func addGroupEntry(
 ) {
 	attrs := tfeval.AttributesToDocument(r)
 	refs := attributions.resourceReferences(r)
+	unknown := tfeval.Unknowns(r, attrs)
 	key := moduleAttributionKey(kind, r.DefLine, r.DefColumn)
 	// Clone: one root sibling is copied into every layer, and a finding may
 	// narrow the attribution it is given.
@@ -1546,6 +1558,8 @@ func addGroupEntry(
 		attrsHash:      hashAttributes(attrs),
 		references:     refs,
 		referencesHash: hashAttributes(refs),
+		unknown:        unknown,
+		unknownHash:    hashAttributes(unknown),
 	})
 }
 
@@ -1570,6 +1584,7 @@ func groupContentKey(g *docGroup) docContentKey {
 		h.u64(uint64(e.defLine))
 		h.u64(e.attrsHash)
 		h.u64(e.referencesHash)
+		h.u64(e.unknownHash)
 	}
 	return h.key()
 }
@@ -1658,7 +1673,7 @@ func groupDocument(g *docGroup) model.Document {
 		kind, blockType := addressKindOf(e.typ)
 		block := address.Block{Kind: kind, Type: blockType, Name: e.baseName}
 		addr := address.Instance(g.moduleAddress, block, g.instances[block])
-		attrs[ddMetaKey] = resourceMeta(addr, []string{g.rootModule}, e.references)
+		attrs[ddMetaKey] = resourceMeta(addr, []string{g.rootModule}, blockMetaExtras{references: e.references, unknown: e.unknown})
 		byName[e.baseName] = attrs
 	}
 

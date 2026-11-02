@@ -46,7 +46,7 @@ func (c *Inspector) stampTerraformScopes(files model.FileMetadatas) {
 			scope := &model.TerraformScope{RootModule: repoRelativeFile(f.FilePath, c.repoPath)}
 			if planAddresses := json.PlanAddresses(f.Document); planAddresses != nil {
 				scope.PlanAddresses = planAddresses
-				stampPlanMeta(f.Document, planAddresses, json.PlanReferences(f.Document), scope.RootModule)
+				stampPlanMeta(f.Document, planAddresses, planExtras(f.Document), scope.RootModule)
 			}
 			f.TerraformScope = scope
 		case model.KindTerraform:
@@ -530,4 +530,20 @@ func routedBlockAddress(scope *model.TerraformScope, b address.Block, moduleAddr
 func isSyntheticTerraformDoc(f *model.FileMetadata) bool {
 	scope := f.TerraformScope
 	return scope != nil && (scope.ModuleAddress != "" || len(scope.Instances) > 0)
+}
+
+// planExtras gathers the _dd_meta extras of every plan block that has any.
+func planExtras(doc model.Document) map[[2]string]blockMetaExtras {
+	extras := make(map[[2]string]blockMetaExtras)
+	for k, v := range json.PlanReferences(doc) {
+		e := extras[k]
+		e.references, _ = v.(map[string]interface{})
+		extras[k] = e
+	}
+	for k, v := range json.PlanUnknowns(doc) {
+		e := extras[k]
+		e.unknown, _ = v.(map[string]interface{})
+		extras[k] = e
+	}
+	return extras
 }

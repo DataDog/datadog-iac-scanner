@@ -443,3 +443,114 @@ module "c" {
 		t.Errorf("ids = %#v, want %#v", ids, want)
 	}
 }
+
+func unknownsFor(t *testing.T, mainTF, typ, name string, withDoc bool) map[string]interface{} {
+	t.Helper()
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": mainTF})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	r := findResource(t, resources, typ, name)
+	if withDoc {
+		return Unknowns(&r, AttributesToDocument(&r))
+	}
+	return Unknowns(&r, nil)
+}
+
+func TestUnknownsRootVariableAndComputedAttribute(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_route_table_association" "a" {
+  name      = var.unset
+  subnet_id = aws_subnet.s.id
+  route     = "r"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = "b"
+  tags   = { a = "b" }
+}
+`
+	for _, withDoc := range []bool{false, true} {
+		want := map[string]interface{}{"name": true, "subnet_id": true}
+		if got := unknownsFor(t, mainTF, "aws_route_table_association", "a", withDoc); !reflect.DeepEqual(got, want) {
+			t.Errorf("withDoc=%v: unknown = %#v, want %#v", withDoc, got, want)
+		}
+		if got := unknownsFor(t, mainTF, "aws_s3_bucket", "b", withDoc); got != nil {
+			t.Errorf("withDoc=%v: literal resource unknown = %#v, want nil", withDoc, got)
+		}
+	}
+}
+
+func TestUnknownsNestedBlockAndList(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_security_group" "g" {
+  ingress {
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    cidr_blocks = [var.unset, "10.0.0.0/8"]
+  }
+}
+`
+	want := map[string]interface{}{"ingress": []interface{}{
+		map[string]interface{}{},
+		map[string]interface{}{"cidr_blocks": []interface{}{true, false}},
+	}}
+	for _, withDoc := range []bool{false, true} {
+		if got := unknownsFor(t, mainTF, "aws_security_group", "g", withDoc); !reflect.DeepEqual(got, want) {
+			t.Errorf("withDoc=%v: unknown = %#v, want %#v", withDoc, got, want)
+		}
+	}
+}
+
+func TestUnknownsRenderedTextIsWhole(t *testing.T) {
+	const mainTF = `
+variable "t" {}
+
+resource "aws_s3_bucket" "b" {
+  tags = merge(var.t, { a = "b" })
+}
+
+locals {
+  t = { a = var.t, b = "b" }
+}
+
+resource "aws_s3_bucket" "c" {
+  tags = coalesce(local.t, {})
+}
+`
+	for _, name := range []string{"b", "c"} {
+		got := unknownsFor(t, mainTF, "aws_s3_bucket", name, true)
+		if want := map[string]interface{}{"tags": true}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: unknown = %#v, want %#v", name, got, want)
+		}
+	}
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": mainTF})
+	if got, want := documentFor(t, dir, "aws_s3_bucket", "c")["tags"], "${coalesce(local.t, {})}"; got != want {
+		t.Errorf("c: tags = %#v, want %q", got, want)
+	}
+	unguided := map[string]interface{}{"tags": map[string]interface{}{"a": true}}
+	if got := unknownsFor(t, mainTF, "aws_s3_bucket", "c", false); !reflect.DeepEqual(got, unguided) {
+		t.Errorf("c without doc: unknown = %#v, want %#v", got, unguided)
+	}
+}
+
+func TestUnknownsKnownVariableNotReported(t *testing.T) {
+	const mainTF = `
+variable "x" {
+  default = "v"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.x
+}
+`
+	if got := unknownsFor(t, mainTF, "aws_s3_bucket", "b", true); got != nil {
+		t.Errorf("unknown = %#v, want nil", got)
+	}
+}

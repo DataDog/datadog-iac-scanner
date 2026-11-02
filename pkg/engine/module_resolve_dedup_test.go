@@ -254,3 +254,24 @@ module "m" {
 	require.Len(t, res.extras[docID], 1)
 	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.a"}}, refsOf(res.docs[0]))
 }
+
+func TestUnknownSplitsDedup(t *testing.T) {
+	const module = `
+variable "x" {}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.x
+}
+`
+	res, _ := resolveModuleFixture(t, map[string]string{
+		"envs/a": "module \"m\" {\n  source = \"../../modules/m\"\n  x      = \"$${var.x}\"\n}\n",
+		"envs/b": "module \"m\" {\n  source = \"../../modules/m\"\n}\n",
+	}, module)
+	require.Len(t, res.docs, 2)
+	var unknowns []interface{}
+	for _, doc := range res.docs {
+		require.Equal(t, "${var.x}", docAsMap(docAsMap(doc["resource"])["aws_s3_bucket"])["b"].(map[string]interface{})["bucket"])
+		unknowns = append(unknowns, metaOf(t, doc, "resource", "aws_s3_bucket", "b")[unknownKey])
+	}
+	require.ElementsMatch(t, []interface{}{nil, map[string]interface{}{"bucket": true}}, unknowns)
+}

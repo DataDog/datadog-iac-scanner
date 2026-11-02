@@ -344,6 +344,74 @@ func Test_E2ETerraformSharedModuleRootRouting(t *testing.T) {
 	})
 }
 
+func Test_E2ETerraformUnknownMeta(t *testing.T) {
+	type finding struct {
+		Resource string
+		Message  string
+		Line     int
+	}
+	scanUnknownMeta := func(t *testing.T, fixture string) []finding {
+		t.Helper()
+		outDir := t.TempDir()
+		params, ctx := scan.GetDefaultParameters(context.Background(), "")
+		repo := mustAbs(t, filepath.Join("fixtures", "unknown-meta", fixture))
+		params.Path = []string{repo}
+		params.RepoPath = repo
+		params.OutputPath = outDir
+		params.OutputName = "result"
+		params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform_unknown_meta"))}
+		params.ChangedDefaultQueryPath = true
+		params.ShouldScanTfPlans = true
+		params.SCIInfo = model.SCIInfo{
+			DiffAware:            model.DiffAware{Enabled: false},
+			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+		}
+		params.FlagEvaluator = featureflags.NewLocalEvaluator()
+		_, err := console.ExecuteScan(ctx, params)
+		require.NoError(t, err)
+
+		data, err := os.ReadFile(filepath.Join(outDir, "result.sarif"))
+		require.NoError(t, err)
+		var doc struct {
+			Runs []struct {
+				Results []struct {
+					Message struct {
+						Text string `json:"text"`
+					} `json:"message"`
+					Locations []struct {
+						PhysicalLocation struct {
+							Region struct {
+								StartLine int `json:"startLine"`
+							} `json:"region"`
+						} `json:"physicalLocation"`
+					} `json:"locations"`
+					Properties map[string]interface{} `json:"properties"`
+				} `json:"results"`
+			} `json:"runs"`
+		}
+		require.NoError(t, json.Unmarshal(data, &doc))
+		var findings []finding
+		for _, run := range doc.Runs {
+			for _, r := range run.Results {
+				require.Len(t, r.Locations, 1)
+				id, _ := r.Properties["resource_id"].(string)
+				findings = append(findings, finding{Resource: id, Message: r.Message.Text, Line: r.Locations[0].PhysicalLocation.Region.StartLine})
+			}
+		}
+		return findings
+	}
+
+	const sourceAmiLine, sourceControlLine, planValuesLineOfA, planControlLine = 6, 15, 13, 36
+	require.ElementsMatch(t, []finding{
+		{Resource: "aws_instance.a", Message: "Instance unknown meta", Line: sourceAmiLine},
+		{Resource: "aws_instance.c", Message: "Instance unknown meta", Line: sourceControlLine},
+	}, scanUnknownMeta(t, "source"))
+	require.ElementsMatch(t, []finding{
+		{Resource: "aws_instance.a", Message: "Instance unknown meta", Line: planValuesLineOfA},
+		{Resource: "aws_instance.c", Message: "Instance unknown meta", Line: planControlLine},
+	}, scanUnknownMeta(t, "plan"))
+}
+
 func Test_E2ETerraformReferencesJoinAcrossModuleCalls(t *testing.T) {
 	scan1 := func(t *testing.T) map[string][]string {
 		t.Helper()

@@ -293,11 +293,11 @@ func TestStampTerraformScopesKeepsListShapedTypesAndReplacesUserMeta(t *testing.
 	res, _ := asStringMap(doc["resource"])
 	require.Equal(t, []interface{}{map[string]interface{}{"a": 1}}, res["aws_x"])
 	y, _ := asStringMap(res["aws_y"])
-	want := resourceMeta("aws_y.n", []string{"."}, nil)
+	want := resourceMeta("aws_y.n", []string{"."}, blockMetaExtras{})
 	n, _ := asStringMap(y["n"])
 	require.Equal(t, want, n[ddMetaKey])
 	str, _ := asStringMap(y["s"])
-	require.Equal(t, resourceMeta("aws_y.s", []string{"."}, nil), str[ddMetaKey])
+	require.Equal(t, resourceMeta("aws_y.s", []string{"."}, blockMetaExtras{}), str[ddMetaKey])
 }
 
 func TestDocumentBlocksIndexesBlocksNamedDDMeta(t *testing.T) {
@@ -313,7 +313,7 @@ func TestDocumentBlocksIndexesBlocksNamedDDMeta(t *testing.T) {
 	res, _ := asStringMap(doc["resource"])
 	byName, _ := asStringMap(res["t"])
 	block, _ := asStringMap(byName[ddMetaKey])
-	require.Equal(t, resourceMeta("t."+ddMetaKey, []string{"."}, nil), block[ddMetaKey])
+	require.Equal(t, resourceMeta("t."+ddMetaKey, []string{"."}, blockMetaExtras{}), block[ddMetaKey])
 }
 
 func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
@@ -335,6 +335,7 @@ func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
 				"r": map[string]interface{}{
 					"address":    "aws_s3_bucket.r",
 					"references": map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}},
+					"unknown":    map[string]interface{}{"arn": true},
 				},
 			},
 			"data.aws_kms_key": map[string]interface{}{
@@ -348,15 +349,18 @@ func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
 	root := []string{"stacks/prod/tfplan.json"}
 	buckets, _ := asStringMap(doc["resource"].(map[string]interface{})["aws_s3_bucket"])
 	b, _ := asStringMap(buckets["module.m.aws_s3_bucket.b[1]"])
-	require.Equal(t, resourceMeta("module.m.aws_s3_bucket.b[1]", root, nil), b[ddMetaKey])
+	require.Equal(t, resourceMeta("module.m.aws_s3_bucket.b[1]", root, blockMetaExtras{}), b[ddMetaKey])
 	r, _ := asStringMap(buckets["r"])
-	wantR := resourceMeta("aws_s3_bucket.r", root, nil)
+	wantR := resourceMeta("aws_s3_bucket.r", root, blockMetaExtras{})
 	wantR["references"] = map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}}
+	wantR["unknown"] = map[string]interface{}{"arn": true}
 	require.Equal(t, wantR, r[ddMetaKey])
 	require.Equal(t, json.PlanReferences(doc)[[2]string{"aws_s3_bucket", "r"}], r[ddMetaKey].(map[string]interface{})["references"])
+	require.Equal(t, json.PlanUnknowns(doc)[[2]string{"aws_s3_bucket", "r"}], r[ddMetaKey].(map[string]interface{})["unknown"])
 	require.NotContains(t, b[ddMetaKey], "references")
+	require.NotContains(t, b[ddMetaKey], "unknown")
 	keys, _ := asStringMap(doc["data"].(map[string]interface{})["aws_kms_key"])
 	k, _ := asStringMap(keys["k"])
-	require.Equal(t, resourceMeta("data.aws_kms_key.k", root, nil), k[ddMetaKey])
+	require.Equal(t, resourceMeta("data.aws_kms_key.k", root, blockMetaExtras{}), k[ddMetaKey])
 	require.Contains(t, doc, "_dd_tfplan_meta")
 }

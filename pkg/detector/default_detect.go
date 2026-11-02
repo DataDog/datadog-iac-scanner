@@ -132,8 +132,10 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 }
 
 // detectTerraformPlanLine resolves a plan searchKey (e.g. "type[name].attr")
-// against the remapped "resource.type.name" document. Returns nil when the path
-// cannot be resolved so the caller can fall back to text matching.
+// against the remapped "resource.type.name" document, falling back to the
+// nearest ancestor present in the file down to the resource header. Returns nil
+// when even the header cannot be resolved so the caller can fall back to text
+// matching.
 func detectTerraformPlanLine(
 	searchKey string,
 	file *model.FileMetadata,
@@ -145,7 +147,10 @@ func detectTerraformPlanLine(
 	if len(path) < tfPlanMinAttributePathLen && !explicitResourcePath {
 		return nil
 	}
-	lineNr := GetLineBySearchLine(path, file)
+	lineNr := -1
+	for n := len(path); n >= min(tfPlanMinAttributePathLen, len(path)) && lineNr <= 0; n-- {
+		lineNr = GetLineBySearchLine(path[:n], file)
+	}
 	// lineNr == 1 means _dd_lines were computed from minified (single-line) JSON;
 	// the plan opening "{" sits on line 1 so that value is never a real attribute
 	// line. Fall through to text matching, which runs on the pretty-printed content.

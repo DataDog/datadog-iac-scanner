@@ -46,6 +46,7 @@ type tfplanResourceMeta struct {
 	ConfigurationExpressions any    `json:"configuration_expressions,omitempty"`
 	Provisioners             any    `json:"provisioners,omitempty"`
 	References               any    `json:"references,omitempty"`
+	Unknown                  any    `json:"unknown,omitempty"`
 }
 
 type resourceChangeCorrelation struct {
@@ -498,6 +499,7 @@ func (kp *TFPlan) readModule(
 			_, typeRes, metaSection = kp.dataSection(resource.Type)
 		}
 
+		unknown := correlation.planValues(resource.Address, resource.AttributeValues)
 		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
 
 		if line, ok := resourceLines[resource.Address]; ok {
@@ -511,10 +513,13 @@ func (kp *TFPlan) readModule(
 
 		if resource.Mode == hcl_plan.DataResourceMode {
 			// A data source has no planned change to correlate.
-			kp.recordPlanAddress(metaSection, resourceKey, resource.Address, correlation)
+			kp.recordPlanAddress(metaSection, resourceKey, resource.Address, unknown, correlation)
 			continue
 		}
 		meta := resourceMetaFor(resource.Address, correlation)
+		if unknown != nil {
+			meta.Unknown = unknown
+		}
 		kp.recordPlanMeta(metaSection, resourceKey, &meta)
 	}
 
@@ -581,13 +586,13 @@ func (kp *TFPlan) readPriorStateData(
 		// values: prior state is the pre-plan snapshot, so it fills only the
 		// entries the plan does not carry.
 		if _, exists := typeData[dataKey]; !exists {
+			unknown := correlation.planValues(resource.Address, resource.AttributeValues)
 			typeData[dataKey] = resource.AttributeValues
+			// prior_state data sources are not in planned_values, so readModule
+			// never records their address. Key the meta by data.<type> so it
+			// cannot collide with a managed resource of the same type and name.
+			kp.recordPlanAddress("data."+resource.Type, dataKey, resource.Address, unknown, correlation)
 		}
-
-		// prior_state data sources are not in planned_values, so readModule
-		// never records their address. Key the meta by data.<type> so it
-		// cannot collide with a managed resource of the same type and name.
-		kp.recordPlanAddress("data."+resource.Type, dataKey, resource.Address, correlation)
 
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
@@ -617,10 +622,13 @@ func (kp *TFPlan) recordPlanMeta(typ, key string, meta *tfplanResourceMeta) {
 
 // recordPlanAddress stores a resource's Terraform address when that is all
 // the scan needs (a prior-state data source has no planned change to correlate).
-func (kp *TFPlan) recordPlanAddress(typ, key, addr string, correlation *resourceChangeCorrelation) {
+func (kp *TFPlan) recordPlanAddress(typ, key, addr string, unknown map[string]any, correlation *resourceChangeCorrelation) {
 	meta := tfplanResourceMeta{Address: addr}
 	if refs := correlation.referencesFor(addr); refs != nil {
 		meta.References = refs
+	}
+	if unknown != nil {
+		meta.Unknown = unknown
 	}
 	kp.recordPlanMeta(typ, key, &meta)
 }
@@ -670,6 +678,16 @@ func PlanAddresses(doc model.Document) map[[2]string]string {
 // (section, document key) -> references object, keyed like PlanAddresses. nil
 // when no resource has any.
 func PlanReferences(doc model.Document) map[[2]string]interface{} {
+	return planMetaObjects(doc, "references")
+}
+
+// PlanUnknowns flattens each plan resource's unknown object, keyed like
+// PlanAddresses. nil when no resource has any.
+func PlanUnknowns(doc model.Document) map[[2]string]interface{} {
+	return planMetaObjects(doc, "unknown")
+}
+
+func planMetaObjects(doc model.Document, field string) map[[2]string]interface{} {
 	raw, ok := doc[TfplanMetaKey].(map[string]interface{})
 	if !ok {
 		return nil
@@ -685,8 +703,8 @@ func PlanReferences(doc model.Document) map[[2]string]interface{} {
 			if !ok {
 				continue
 			}
-			if refs, ok := entry["references"].(map[string]interface{}); ok && len(refs) > 0 {
-				out[[2]string{section, key}] = refs
+			if value, ok := entry[field].(map[string]interface{}); ok && len(value) > 0 {
+				out[[2]string{section, key}] = value
 			}
 		}
 	}

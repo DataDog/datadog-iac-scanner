@@ -770,7 +770,7 @@ func TestRouteModuleFileRootsMatchCallCopies(t *testing.T) {
 			{moduleAddress: "module.n", rootModule: "envs/b"},
 		}
 		file.Document["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})["this"] = map[string]interface{}{
-			ddMetaKey: resourceMeta("aws_s3_bucket.this", []string{"lib"}, nil),
+			ddMetaKey: resourceMeta("aws_s3_bucket.this", []string{"lib"}, blockMetaExtras{}),
 		}
 		routeModuleFileRoots(model.FileMetadatas{file}, map[string]*moduleFileCalls{"mod": &other})
 		meta := metaOf(t, file.Document, "resource", "aws_s3_bucket", "this")
@@ -782,10 +782,10 @@ func TestRouteModuleFileRootsMatchCallCopies(t *testing.T) {
 		kept := *mf
 		kept.writtenResourceTypes = map[string]bool{"aws_s3_bucket": true}
 		file.Document["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})["this"] = map[string]interface{}{
-			ddMetaKey: resourceMeta("aws_s3_bucket.this", []string{"lib"}, nil),
+			ddMetaKey: resourceMeta("aws_s3_bucket.this", []string{"lib"}, blockMetaExtras{}),
 		}
 		routeModuleFileRoots(model.FileMetadatas{file}, map[string]*moduleFileCalls{"mod": &kept})
-		require.Equal(t, resourceMeta("aws_s3_bucket.this", []string{"lib"}, nil),
+		require.Equal(t, resourceMeta("aws_s3_bucket.this", []string{"lib"}, blockMetaExtras{}),
 			metaOf(t, file.Document, "resource", "aws_s3_bucket", "this"))
 	})
 }
