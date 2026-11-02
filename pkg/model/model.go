@@ -789,6 +789,9 @@ type KustomizeAttribution struct {
 	// Generator is set for generated objects: the generator kind and name in the
 	// kustomization file (FileName).
 	Generator *KustomizeGenerator
+	// SourceDocumentIndex is the source document the resource came from,
+	// -1 when unknown; it scopes line detection to that document.
+	SourceDocumentIndex int
 	// APIGroup is the rendered object's API group ("" for the core group).
 	APIGroup string
 	// IdentityName and IdentityNamespace identify the rendered object without
