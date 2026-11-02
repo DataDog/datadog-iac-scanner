@@ -101,7 +101,7 @@ func TestFindingSet_RoutesBeforeKeepingAnIdentity(t *testing.T) {
 	}
 	routing := newFindingRouting(map[string][]extraCallerInfo{
 		"doc-early": {{rootModule: "other", docID: "doc-other"}},
-	}, nil, nil, "/repo")
+	}, nil, nil, nil, "/repo")
 
 	kept := decodeAll(newFindingSet(true, routing), []model.Vulnerability{
 		finding("doc-early", 1), finding("doc-late", 2),
@@ -130,7 +130,7 @@ func TestNewFindingRouting_IndexesRootCallersOnly(t *testing.T) {
 			TerraformScope: &model.TerraformScope{ModuleAddress: `module.app["x"]`}},
 		nil,
 	}
-	routing := newFindingRouting(nil, nil, files, repo)
+	routing := newFindingRouting(nil, nil, nil, files, repo)
 	require.Len(t, routing.callers, 1)
 	require.Contains(t, routing.callers, "stack/main.tf")
 }
@@ -187,7 +187,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 			name: "extra caller on the earlier instance only",
 			routing: newFindingRouting(map[string][]extraCallerInfo{
 				"doc-early": {{rootModule: "other", docID: "doc-other"}},
-			}, nil, nil, "/repo"),
+			}, nil, nil, nil, "/repo"),
 			steps: []model.Vulnerability{
 				func() model.Vulnerability { v := same(base, 1); v.FileID = "doc-early"; return v }(),
 				func() model.Vulnerability { v := same(base, 2); v.FileID = "doc-late"; return v }(),
@@ -201,25 +201,25 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 				"doc": {{rootModule: "other", docID: "ext"}},
 			}, map[string]*moduleFileCalls{
 				"ext": {calls: calls, name: "main.tf", scope: resolvedFile("ext").TerraformScope},
-			}, nil, "/repo"),
+			}, nil, nil, "/repo"),
 			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
 			wantSkipped: 1,
 		},
 		{
 			name:        "module file kept as written and once per call",
-			routing:     newFindingRouting(nil, moduleFiles(true, nil), nil, "/repo"),
+			routing:     newFindingRouting(nil, moduleFiles(true, nil), nil, nil, "/repo"),
 			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
 			wantSkipped: 1,
 		},
 		{
 			name:        "module file reported only through its calls",
-			routing:     newFindingRouting(nil, moduleFiles(false, nil), nil, "/repo"),
+			routing:     newFindingRouting(nil, moduleFiles(false, nil), nil, nil, "/repo"),
 			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
 			wantSkipped: 1,
 		},
 		{
 			name:    "module file that the line may attribute",
-			routing: newFindingRouting(nil, moduleFiles(false, nil), nil, "/repo"),
+			routing: newFindingRouting(nil, moduleFiles(false, nil), nil, nil, "/repo"),
 			steps: []model.Vulnerability{
 				func() model.Vulnerability {
 					v := same(base, 1)
@@ -237,7 +237,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 		},
 		{
 			name:        "resource type left as written",
-			routing:     newFindingRouting(nil, moduleFiles(false, map[string]bool{"aws_s3_bucket": true}), nil, "/repo"),
+			routing:     newFindingRouting(nil, moduleFiles(false, map[string]bool{"aws_s3_bucket": true}), nil, nil, "/repo"),
 			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
 			wantSkipped: 1,
 		},
@@ -253,7 +253,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 				if tc.attr != nil && tc.attr[i] {
 					file.ModuleAttributions = map[string]*model.ModuleAttribution{"": {}}
 				}
-				ids, ok := set.findingIdentities(file, step.Platform, step.ResourceType, step.ResourceName, step.QueryID, "", step.OnlyRootModule)
+				ids, ok := set.findingIdentities(file, step.Platform, step.ResourceType, step.ResourceName, step.QueryID, "")
 				require.True(t, ok)
 				if set.supersedes(ids) {
 					skipped++
@@ -487,7 +487,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(map[string][]extraCallerInfo{
 					file.ID: {{rootModule: "other", docID: "doc-other"}},
-				}, nil, nil, "")
+				}, nil, nil, nil, "")
 			},
 		},
 		{
@@ -498,7 +498,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(nil, map[string]*moduleFileCalls{
 					file.ID: moduleCalls(true, nil)["mod"],
-				}, nil, "")
+				}, nil, nil, "")
 			},
 		},
 		{
@@ -509,7 +509,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(nil, map[string]*moduleFileCalls{
 					file.ID: moduleCalls(false, nil)["mod"],
-				}, nil, "")
+				}, nil, nil, "")
 			},
 		},
 		{
@@ -520,7 +520,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(nil, map[string]*moduleFileCalls{
 					file.ID: moduleCalls(false, map[string]bool{"aws_s3_bucket": true})["mod"],
-				}, nil, "")
+				}, nil, nil, "")
 			},
 		},
 	}
@@ -555,7 +555,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		ins.ruleConfigs = map[string]config.IacRuleConfig{
 			"bucket-rule": {IgnorePaths: []string{"**/excluded/**"}},
 		}
-		routing := newFindingRouting(nil, nil, model.FileMetadatas{
+		routing := newFindingRouting(nil, nil, nil, model.FileMetadatas{
 			{FilePath: callerName},
 		}, "")
 		compacted, full, skipped := decodeCompacted(t, ins, map[string]*model.FileMetadata{
@@ -674,76 +674,13 @@ func TestInspect_CountedInstancesAreDistinctFindings(t *testing.T) {
 	}
 }
 
-func rootsOf(vulns []model.Vulnerability) []string {
-	roots := make([]string, 0, len(vulns))
-	for i := range vulns {
-		roots = append(roots, vulns[i].RootModule)
-	}
-	return roots
-}
-
-func restricted(v model.Vulnerability, only string) model.Vulnerability {
-	v.OnlyRootModule = only
-	return v
-}
-
-func TestRouteHonoursOnlyRootModule(t *testing.T) {
-	routing := newFindingRouting(map[string][]extraCallerInfo{
-		"doc": {{rootModule: "envs/b", docID: "doc-b"}, {rootModule: "envs/c", docID: "doc-c"}},
-	}, nil, nil, "")
-	base := model.Vulnerability{FileID: "doc", RootModule: "envs/a", ResourceID: "aws_s3_bucket.this"}
-
-	for _, tc := range []struct {
-		only string
-		want []string
-	}{
-		{"", []string{"envs/a", "envs/b", "envs/c"}},
-		{"envs/b", []string{"envs/b"}},
-		{"envs/a", []string{"envs/a"}},
-		{"envs/zzz", []string{}},
-	} {
-		t.Run("only "+tc.only, func(t *testing.T) {
-			got := routing.route(context.Background(), &Inspector{}, []model.Vulnerability{restricted(base, tc.only)})
-			require.Equal(t, tc.want, rootsOf(got))
-		})
-	}
-}
-
-func TestModuleFileFindingsHonourOnlyRootModule(t *testing.T) {
-	base := model.Vulnerability{
-		FileID: "mod", ResourceType: "aws_s3_bucket", ResourceName: "this", RootModule: "lib",
-	}
-	for _, tc := range []struct {
-		name        string
-		keepWritten bool
-		written     map[string]bool
-		only        string
-		want        []string
-	}{
-		{"unrestricted keeps written and calls", true, nil, "", []string{"lib", "a", "b"}},
-		{"unrestricted calls only", false, nil, "", []string{"a", "b"}},
-		{"one call", true, nil, "b", []string{"b"}},
-		{"written copy", true, nil, "lib", []string{"lib"}},
-		{"written copy not kept", false, nil, "lib", []string{}},
-		{"no root", true, nil, "zzz", []string{}},
-		{"type left as written", false, map[string]bool{"aws_s3_bucket": true}, "lib", []string{"lib"}},
-		{"type left as written elsewhere", false, map[string]bool{"aws_s3_bucket": true}, "a", []string{}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := attributeModuleFileFindings(
-				[]model.Vulnerability{restricted(base, tc.only)}, moduleCalls(tc.keepWritten, tc.written))
-			require.Equal(t, tc.want, rootsOf(got))
-		})
-	}
-}
-
 func TestRouteModuleFileRootsMatchCallCopies(t *testing.T) {
 	block := model.TerraformBlock{Kind: "resource", Type: "aws_s3_bucket", Name: "this"}
 	scope := &model.TerraformScope{RootModule: "lib", Blocks: map[model.TerraformBlock]bool{block: true}}
 	file := &model.FileMetadata{ID: "mod", FilePath: "lib/main.tf", TerraformScope: scope, Document: model.Document{
 		"resource": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{"this": map[string]interface{}{}}},
 	}}
-	stampWrittenMeta(file.Document, scope)
+	stampWrittenMeta(file.Document)
 	mf := &moduleFileCalls{
 		name: "main.tf", scope: scope, keepWritten: true,
 		calls: []moduleCall{
@@ -755,13 +692,14 @@ func TestRouteModuleFileRootsMatchCallCopies(t *testing.T) {
 	routeModuleFileRoots(model.FileMetadatas{file}, map[string]*moduleFileCalls{"mod": mf})
 
 	meta := metaOf(t, file.Document, "resource", "aws_s3_bucket", "this")
-	require.Equal(t, []interface{}{"envs/a", "envs/b", "lib"}, meta["root_modules"])
+	require.NotContains(t, meta, "root_modules")
+	require.Equal(t, "module.m.aws_s3_bucket.this", meta["address"])
 
 	base := model.Vulnerability{FileID: "mod", ResourceType: "aws_s3_bucket", ResourceName: "this", RootModule: "lib"}
-	got := attributeModuleFileFindings([]model.Vulnerability{restricted(base, "envs/a")}, map[string]*moduleFileCalls{"mod": mf})
-	require.Len(t, got, 1)
-	require.Equal(t, "envs/a", got[0].RootModule)
-	require.Equal(t, meta["address"], got[0].ResourceID)
+	got := attributeModuleFileFindings([]model.Vulnerability{base}, map[string]*moduleFileCalls{"mod": mf})
+	require.Len(t, got, 4)
+	require.Equal(t, "envs/a", got[2].RootModule)
+	require.Equal(t, meta["address"], got[2].ResourceID)
 
 	t.Run("calls with different module addresses keep the bare address", func(t *testing.T) {
 		other := *mf
@@ -770,27 +708,27 @@ func TestRouteModuleFileRootsMatchCallCopies(t *testing.T) {
 			{moduleAddress: "module.n", rootModule: "envs/b"},
 		}
 		file.Document["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})["this"] = map[string]interface{}{
-			ddMetaKey: resourceMeta("aws_s3_bucket.this", []string{"lib"}, blockMetaExtras{}),
+			ddMetaKey: resourceMeta("aws_s3_bucket.this", blockMetaExtras{}),
 		}
 		routeModuleFileRoots(model.FileMetadatas{file}, map[string]*moduleFileCalls{"mod": &other})
 		meta := metaOf(t, file.Document, "resource", "aws_s3_bucket", "this")
 		require.Equal(t, "aws_s3_bucket.this", meta["address"])
-		require.Equal(t, []interface{}{"envs/a", "envs/b", "lib"}, meta["root_modules"])
+		require.NotContains(t, meta, "root_modules")
 	})
 
 	t.Run("a block left as written keeps its metadata", func(t *testing.T) {
 		kept := *mf
 		kept.writtenResourceTypes = map[string]bool{"aws_s3_bucket": true}
 		file.Document["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})["this"] = map[string]interface{}{
-			ddMetaKey: resourceMeta("aws_s3_bucket.this", []string{"lib"}, blockMetaExtras{}),
+			ddMetaKey: resourceMeta("aws_s3_bucket.this", blockMetaExtras{}),
 		}
 		routeModuleFileRoots(model.FileMetadatas{file}, map[string]*moduleFileCalls{"mod": &kept})
-		require.Equal(t, resourceMeta("aws_s3_bucket.this", []string{"lib"}, blockMetaExtras{}),
+		require.Equal(t, resourceMeta("aws_s3_bucket.this", blockMetaExtras{}),
 			metaOf(t, file.Document, "resource", "aws_s3_bucket", "this"))
 	})
 }
 
-func TestSupersedesAgreesWithRouteWithOnlyRootModule(t *testing.T) {
+func TestSupersedesAgreesWithRouteAcrossCallers(t *testing.T) {
 	ctx := context.Background()
 	block := model.TerraformBlock{Kind: "resource", Type: "aws_s3_bucket", Name: "this"}
 	newFile := func(id, root string) *model.FileMetadata {
@@ -817,7 +755,7 @@ func TestSupersedesAgreesWithRouteWithOnlyRootModule(t *testing.T) {
 				"doc": {{rootModule: "envs/b", docID: "doc-b"}},
 			}, map[string]*moduleFileCalls{
 				"doc": {calls: calls, name: "main.tf"},
-			}, nil, ""),
+			}, nil, nil, ""),
 		},
 		"extra caller that is a module file": {
 			file: newFile("doc", "envs/a"),
@@ -825,7 +763,7 @@ func TestSupersedesAgreesWithRouteWithOnlyRootModule(t *testing.T) {
 				"doc": {{rootModule: "envs/b", docID: "mod"}},
 			}, map[string]*moduleFileCalls{
 				"mod": {calls: calls, name: "main.tf", scope: modFile.TerraformScope},
-			}, nil, ""),
+			}, nil, nil, ""),
 		},
 		"module file resource type left as written": {
 			file: modFile,
@@ -834,136 +772,119 @@ func TestSupersedesAgreesWithRouteWithOnlyRootModule(t *testing.T) {
 					calls: calls, name: "main.tf", scope: modFile.TerraformScope,
 					writtenResourceTypes: map[string]bool{"aws_s3_bucket": true},
 				},
-			}, nil, ""),
+			}, nil, nil, ""),
 		},
 		"module file the line may attribute": {
 			file: attributedModFile,
 			routing: newFindingRouting(nil, map[string]*moduleFileCalls{
 				"mod": {calls: calls, name: "main.tf", scope: modFile.TerraformScope},
-			}, nil, ""),
+			}, nil, nil, ""),
 		},
 		"extra callers": {
 			file: newFile("doc", "envs/a"),
 			routing: newFindingRouting(map[string][]extraCallerInfo{
 				"doc": {{rootModule: "envs/b", docID: "doc-b"}, {rootModule: "envs/c", docID: "doc-c"}},
-			}, nil, nil, ""),
+			}, nil, nil, nil, ""),
 		},
 		"module file kept as written": {
 			file: modFile,
 			routing: newFindingRouting(nil, map[string]*moduleFileCalls{
 				"mod": {calls: calls, name: "main.tf", scope: modFile.TerraformScope, keepWritten: true},
-			}, nil, ""),
+			}, nil, nil, ""),
 		},
 		"module file through its calls": {
 			file: modFile,
 			routing: newFindingRouting(nil, map[string]*moduleFileCalls{
 				"mod": {calls: calls, name: "main.tf", scope: modFile.TerraformScope},
-			}, nil, ""),
+			}, nil, nil, ""),
 		},
 		"no routing": {file: newFile("doc", "envs/a")},
 	}
 
 	for name, sc := range scenarios {
-		for _, only := range []string{"", "envs/a", "envs/b", "lib", "envs/zzz"} {
-			t.Run(name+" only "+only, func(t *testing.T) {
-				v := model.Vulnerability{
-					FileID: sc.file.ID, Platform: "Terraform", QueryID: "q",
-					ResourceType: "aws_s3_bucket", ResourceName: "this", OnlyRootModule: only,
-				}
-				if id, resolved := terraformIdentityFor(sc.file, "aws_s3_bucket", "this"); resolved {
-					v.RootModule, v.ResourceID = id.RootModule, id.ResourceID
-				}
-				if len(sc.file.ModuleAttributions) > 0 {
-					v.ModuleAttribution = &model.ModuleAttribution{}
-				}
-				fresh := func() *findingSet { return newFindingSet(true, sc.routing) }
+		t.Run(name, func(t *testing.T) {
+			v := model.Vulnerability{
+				FileID: sc.file.ID, Platform: "Terraform", QueryID: "q",
+				ResourceType: "aws_s3_bucket", ResourceName: "this",
+			}
+			if id, resolved := terraformIdentityFor(sc.file, "aws_s3_bucket", "this"); resolved {
+				v.RootModule, v.ResourceID = id.RootModule, id.ResourceID
+			}
+			if len(sc.file.ModuleAttributions) > 0 {
+				v.ModuleAttribution = &model.ModuleAttribution{}
+			}
+			fresh := func() *findingSet { return newFindingSet(true, sc.routing) }
 
-				ids, known := fresh().findingIdentities(sc.file, "Terraform", "aws_s3_bucket", "this", "q", "", only)
-				if sc.file.TerraformScope == nil {
-					require.Equal(t, only == "", known, "a restricted unresolved result is never skipped")
-					routed := sc.routing.route(ctx, &Inspector{}, []model.Vulnerability{v})
-					switch only {
-					case "envs/b":
-						require.Equal(t, []string{"envs/b", "envs/b"}, rootsOf(routed), "route still gates by root")
-					case "envs/a":
-						require.Equal(t, []string{"envs/a"}, rootsOf(routed))
-					case "envs/zzz":
-						require.Empty(t, routed)
-					}
-					return
+			ids, known := fresh().findingIdentities(sc.file, "Terraform", "aws_s3_bucket", "this", "q", "")
+			require.True(t, known)
+			if sc.file.TerraformScope == nil {
+				return
+			}
+			predicted := map[string]bool{}
+			for _, id := range ids {
+				if id != "" {
+					predicted[id] = true
 				}
-				require.True(t, known)
-				predicted := map[string]bool{}
-				for _, id := range ids {
-					if id != "" {
-						predicted[id] = true
-					}
-				}
+			}
 
-				set := fresh()
-				set.addRouted(ctx, &Inspector{}, &v)
-				routed := map[string]bool{}
-				for i := range set.out {
-					routed[model.FindingIdentity(&set.out[i])] = true
+			set := fresh()
+			set.addRouted(ctx, &Inspector{}, &v)
+			routed := map[string]bool{}
+			for i := range set.out {
+				routed[model.FindingIdentity(&set.out[i])] = true
+			}
+			if len(sc.file.ModuleAttributions) > 0 {
+				for id := range routed {
+					require.Contains(t, predicted, id, "the prediction may only over-approximate a result the line may attribute")
 				}
-				if len(sc.file.ModuleAttributions) > 0 {
-					for id := range routed {
-						require.Contains(t, predicted, id, "the prediction may only over-approximate a result the line may attribute")
-					}
-				} else {
-					require.Equal(t, predicted, routed)
-				}
-				if len(sc.file.ModuleAttributions) > 0 {
-					return
-				}
+			} else {
+				require.Equal(t, predicted, routed)
+			}
+			if len(sc.file.ModuleAttributions) > 0 {
+				return
+			}
 
-				seeded := fresh()
-				seeded.keep("unrelated", &model.Vulnerability{})
-				require.Equal(t, len(routed) == 0, seeded.supersedes(ids),
-					"a result routing nothing is superseded, one routing a new identity is not")
+			seeded := fresh()
+			seeded.keep("unrelated", &model.Vulnerability{})
+			require.Equal(t, len(routed) == 0, seeded.supersedes(ids),
+				"a result routing nothing is superseded, one routing a new identity is not")
 
-				if len(routed) > 0 {
-					skipper := fresh()
-					other := v
-					other.OnlyRootModule = ""
-					skipper.addRouted(ctx, &Inspector{}, &other)
-					require.True(t, skipper.supersedes(ids), "everything the restricted result routes was already kept")
-				}
-			})
-		}
+			if len(routed) > 0 {
+				skipper := fresh()
+				skipper.addRouted(ctx, &Inspector{}, &v)
+				require.True(t, skipper.supersedes(ids), "everything the result routes was already kept")
+			}
+		})
 	}
 }
 
-func TestBuilderParsesRootModule(t *testing.T) {
-	ins := newTestInspector(t, inspectorOpts{vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator()})
-	file := parsedBucket(t)
-	files := map[string]*model.FileMetadata{file.ID: file}
-	root := "envs/a"
-	file.TerraformScope = &model.TerraformScope{
-		RootModule: root,
+func TestRoutePerRootKeepsOnlyThatRoot(t *testing.T) {
+	ctx := context.Background()
+	scope := &model.TerraformScope{
+		RootModule: "stack",
 		Blocks:     map[model.TerraformBlock]bool{{Kind: "resource", Type: "aws_s3_bucket", Name: "this"}: true},
 	}
-
-	restrictedItem := bucketItem(file.ID)
-	restrictedItem["rootModule"] = root
-	got, _, _ := decodeCompacted(t, ins, files, nil, []map[string]interface{}{restrictedItem})
-	require.Len(t, got, 1)
-	require.Equal(t, root, got[0].OnlyRootModule)
-
-	got, _, _ = decodeCompacted(t, ins, files, nil, []map[string]interface{}{bucketItem(file.ID)})
-	require.Len(t, got, 1)
-	require.Empty(t, got[0].OnlyRootModule)
-
-	for _, spelled := range []string{"./envs/a", "envs/a/", "envs//a", "./envs/a/"} {
-		item := bucketItem(file.ID)
-		item["rootModule"] = spelled
-		got, _, _ = decodeCompacted(t, ins, files, nil, []map[string]interface{}{item})
-		require.Len(t, got, 1, spelled)
-		require.Equal(t, root, got[0].OnlyRootModule, spelled)
+	file := &model.FileMetadata{ID: "doc", FilePath: "modules/app/main.tf", TerraformScope: scope}
+	routing := newFindingRouting(nil, map[string]*moduleFileCalls{
+		"doc": {calls: []moduleCall{
+			{moduleAddress: "module.m", rootModule: "envs/a", attribution: &model.ModuleAttribution{}},
+			{moduleAddress: "module.m", rootModule: "envs/b", attribution: &model.ModuleAttribution{}},
+		}, name: "main.tf", scope: scope},
+	}, nil, nil, "/repo")
+	v := model.Vulnerability{
+		FileID: "doc", FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
+		ResourceType: "aws_s3_bucket", ResourceName: "this",
+		RootModule: "stack", ResourceID: "aws_s3_bucket.this",
 	}
 
-	mismatched := bucketItem(file.ID)
-	mismatched["rootModule"] = "elsewhere"
-	got, _, _ = decodeCompacted(t, ins, files, nil, []map[string]interface{}{mismatched})
-	require.Empty(t, got)
+	routed := routing.forRoot("envs/a").route(ctx, &Inspector{}, []model.Vulnerability{v})
+	require.Len(t, routed, 1)
+	require.Equal(t, "envs/a", routed[0].RootModule)
+
+	set := newFindingSet(true, routing.forRoot("envs/a"))
+	ids, ok := set.findingIdentities(file, "Terraform", "aws_s3_bucket", "this", "q", "")
+	require.True(t, ok)
+	require.Equal(t, []string{model.FindingIdentity(&routed[0])}, ids)
+	set.addRouted(ctx, &Inspector{}, &v)
+	require.True(t, set.supersedes(ids))
 }

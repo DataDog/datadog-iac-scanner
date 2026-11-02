@@ -154,6 +154,98 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, 4, v.ModuleAttribution.CallSite.LineEnd)
 }
 
+func TestInspect_SharedModuleCrossDocumentRule(t *testing.T) {
+	root := t.TempDir()
+	write := func(dir, body string) {
+		t.Helper()
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(root, dir, "main.tf"), []byte(body), 0o644))
+	}
+	write("modules/net", `
+resource "azurerm_subnet" "s" {
+  name = "shared"
+}
+`)
+	write("envs/a", `
+module "m" {
+  source = "../../modules/net"
+}
+
+resource "azurerm_subnet_network_security_group_association" "a" {
+  subnet_name = "s"
+}
+`)
+	write("envs/b", `
+module "m" {
+  source = "../../modules/net"
+}
+`)
+	var files model.FileMetadatas
+	for _, dir := range []string{"modules/net", "envs/a", "envs/b"} {
+		files = append(files, parseTerraform(t, filepath.Join(root, dir, "main.tf"))...)
+	}
+
+	const localRule = `package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	some name, subnet in doc.resource.azurerm_subnet
+	not subnet.tags
+	result := {
+		"documentId": doc.id,
+		"resourceType": "azurerm_subnet",
+		"resourceName": name,
+		"searchKey": sprintf("azurerm_subnet[%s]", [name]),
+	}
+}
+`
+	const joinRule = `package datadog
+
+import rego.v1
+
+associated contains name if {
+	some doc in input.document
+	some association in doc.resource.azurerm_subnet_network_security_group_association
+	name := association.subnet_name
+}
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	some name, subnet in doc.resource.azurerm_subnet
+	not name in associated
+	result := {
+		"documentId": doc.id,
+		"resourceType": "azurerm_subnet",
+		"resourceName": name,
+		"searchKey": sprintf("azurerm_subnet[%s]", [name]),
+	}
+}
+`
+	queries := []model.QueryMetadata{
+		{Query: "subnet-local", Content: localRule, InputData: "{}", Platform: "terraform", Aggregation: 1,
+			Metadata: map[string]interface{}{"id": "subnet-local"}},
+		{Query: "subnet-join", Content: joinRule, InputData: "{}", Platform: "terraform", Aggregation: 1,
+			Metadata: map[string]interface{}{"id": "subnet-join"}},
+	}
+	ins := newTestInspector(t, inspectorOpts{
+		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(), numWorkers: 2,
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	roots := map[string][]string{}
+	for _, v := range vulns {
+		require.Equal(t, "azurerm_subnet", v.ResourceType)
+		roots[v.QueryID] = append(roots[v.QueryID], v.RootModule)
+	}
+	require.ElementsMatch(t, []string{"envs/a", "envs/b"}, roots["subnet-local"])
+	require.Equal(t, []string{"envs/b"}, roots["subnet-join"])
+}
+
 func TestInspect_ModuleEvaluationPreservesDynamicBlockLabels(t *testing.T) {
 	root := t.TempDir()
 	rootDir := filepath.Join(root, "stack")
@@ -960,7 +1052,7 @@ resource "aws_s3_bucket_public_access_block" "guard" {
 
 	files := stampedRootFiles(t, rootPath)
 	ins := newTestInspector(t, inspectorOpts{repoPath: root})
-	docs, _, _, _ := ins.instantiateLocalModules(context.Background(), files, nil)
+	docs, _, _, _, _ := ins.instantiateLocalModules(context.Background(), files, nil)
 
 	require.Len(t, docs, 2)
 	for _, doc := range docs {

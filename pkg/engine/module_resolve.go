@@ -57,6 +57,8 @@ type moduleResolutionResult struct {
 	extras          map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
 	moduleFiles map[string]*moduleFileCalls
+	// docRoots holds, by document ID, the sorted roots each Terraform document stands for.
+	docRoots map[string][]string
 	// written holds the evaluated content of the plain root blocks kept in
 	// their written files.
 	written       writtenBlocks
@@ -79,7 +81,7 @@ type moduleResolutionResult struct {
 // without a synthetic replacement.
 // Returns synthetic docs and matching FileMetadata (call chain for fingerprints).
 // Caller must append the files before Combine/ToMap. extras lists duplicate callers for post-OPA finding expansion,
-// and moduleFiles the calls reaching each external module file.
+// moduleFiles the calls reaching each external module file, and docRoots the roots each document stands for.
 func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
@@ -89,6 +91,7 @@ func (c *Inspector) instantiateLocalModules(
 	syntheticFiles []*model.FileMetadata,
 	extras map[string][]extraCallerInfo,
 	moduleFiles map[string]*moduleFileCalls,
+	docRoots map[string][]string,
 ) {
 	resolver := c.buildRemoteResolver()
 	res := c.resolveModulesSafely(ctx, files, resolver, targets)
@@ -104,7 +107,7 @@ func (c *Inspector) instantiateLocalModules(
 		)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, documentRoots(files, nil, c.repoPath)
 	}
 	for _, f := range files {
 		if f == nil || !tfpath.IsConfig(f.FilePath) {
@@ -143,8 +146,77 @@ func (c *Inspector) instantiateLocalModules(
 	}
 	patchWrittenBlocks(files, res.written)
 	routeModuleFileRoots(files, res.moduleFiles)
-	routeUnresolvedDirRoots(files, res.unresolvedRoots, c.repoPath)
-	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
+	res.docRoots = documentRoots(files, &res, c.repoPath)
+	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles, res.docRoots
+}
+
+// documentRoots lists, by document ID, the sorted roots each Terraform
+// document stands for. res may be nil when no module was resolved.
+func documentRoots(files model.FileMetadatas, res *moduleResolutionResult, repoPath string) map[string][]string {
+	out := make(map[string][]string, len(files))
+	var moduleFiles map[string]*moduleFileCalls
+	var unresolvedRoots map[string][]string
+	if res != nil {
+		moduleFiles, unresolvedRoots = res.moduleFiles, res.unresolvedRoots
+		for _, fm := range res.syntheticFiles {
+			if fm == nil || fm.TerraformScope == nil {
+				continue
+			}
+			roots := []string{fm.TerraformScope.RootModule}
+			for _, ex := range res.extras[fm.ID] {
+				roots = append(roots, ex.rootModule)
+			}
+			out[fm.ID] = nonEmptyRoots(roots)
+		}
+	}
+	for _, f := range files {
+		if f == nil || f.TerraformScope == nil || isSyntheticTerraformDoc(f) {
+			continue
+		}
+		own := f.TerraformScope.RootModule
+		roots := []string{own}
+		if mf := moduleFiles[f.ID]; mf != nil && len(mf.calls) > 0 {
+			roots = moduleFileRoots(f.Document, mf, own)
+		}
+		if tfpath.IsConfig(f.FilePath) {
+			if callers := unresolvedRoots[moduleFileDir(f.FilePath, repoPath)]; len(callers) > 0 {
+				roots = append(roots, callers...)
+				if own != "" {
+					roots = append(roots, own)
+				}
+			}
+		}
+		out[f.ID] = nonEmptyRoots(roots)
+	}
+	return out
+}
+
+// nonEmptyRoots sorts roots and drops repeated and empty values.
+func nonEmptyRoots(roots []string) []string {
+	return slices.DeleteFunc(sortedUnique(roots), func(r string) bool { return r == "" })
+}
+
+// moduleFileRoots is the roots of an external module file reached by calls:
+// the callers' roots for blocks the calls replace, and the file's own root
+// for blocks kept as written.
+func moduleFileRoots(doc model.Document, mf *moduleFileCalls, own string) []string {
+	var roots []string
+	keptOwn, routed := false, false
+	rewriteBlockMeta(doc, func(b address.Block, addr string) (string, bool) {
+		if mf.keptAsWritten(blockResourceType(b)) {
+			keptOwn = true
+		} else {
+			routed = true
+		}
+		return addr, false
+	})
+	if routed {
+		roots = append(roots, moduleFileCallRoots(mf)...)
+	}
+	if keptOwn || len(roots) == 0 {
+		roots = append(roots, own)
+	}
+	return roots
 }
 
 // logModuleInstantiationSummary emits the fields an on-call search needs at warn
@@ -1027,8 +1099,6 @@ func resolveModuleDocuments(
 	if !rootEvalOK {
 		return moduleResolutionResult{}
 	}
-	routeSharedDocumentRoots(extra, syntheticFiles, extras)
-
 	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
 	unresolvedRoots := reachingRootsByDir(roots, staticCalls, unresolvedModuleDirs, relDir)
 
@@ -1086,92 +1156,16 @@ func reachingRootsByDir(
 	return out
 }
 
-// routeUnresolvedDirRoots lists the calling roots of a directory that could
-// not be evaluated in the metadata of each block of its files, beside the
-// roots the block already lists and the file's own root, which its written
-// copy's findings carry. Addresses are kept.
-func routeUnresolvedDirRoots(files model.FileMetadatas, unresolvedRoots map[string][]string, repoPath string) {
-	if len(unresolvedRoots) == 0 {
-		return
-	}
-	for _, f := range files {
-		if f == nil || !tfpath.IsConfig(f.FilePath) {
-			continue
-		}
-		callers := unresolvedRoots[moduleFileDir(f.FilePath, repoPath)]
-		if len(callers) == 0 {
-			continue
-		}
-		own := ""
-		if f.TerraformScope != nil {
-			own = f.TerraformScope.RootModule
-		}
-		rewriteBlockMeta(f.Document, func(_ address.Block, addr string, prev []string) (string, []string, bool) {
-			roots := make([]string, 0, len(callers)+len(prev)+1)
-			roots = append(roots, callers...)
-			roots = append(roots, prev...)
-			if own != "" {
-				roots = append(roots, own)
-			}
-			return addr, sortedUnique(roots), true
-		})
-	}
-}
-
 // sortedUnique sorts s in place and drops repeated values.
 func sortedUnique(s []string) []string {
 	sort.Strings(s)
 	return slices.Compact(s)
 }
 
-// routeSharedDocumentRoots lists, in each shared document's metadata, its own
-// root module plus the roots of the callers deduplicated into it.
-func routeSharedDocumentRoots(
-	docs []model.Document,
-	synthetic []*model.FileMetadata,
-	extras map[string][]extraCallerInfo,
-) {
-	if len(extras) == 0 {
-		return
-	}
-	ownRoot := make(map[string]string, len(synthetic))
-	for _, fm := range synthetic {
-		if fm.TerraformScope != nil {
-			ownRoot[fm.ID] = fm.TerraformScope.RootModule
-		}
-	}
-	for _, doc := range docs {
-		docID, _ := doc["id"].(string)
-		callers := extras[docID]
-		if len(callers) == 0 {
-			continue
-		}
-		set := map[string]struct{}{ownRoot[docID]: {}}
-		for _, c := range callers {
-			set[c.rootModule] = struct{}{}
-		}
-		roots := make([]string, 0, len(set))
-		for r := range set {
-			roots = append(roots, r)
-		}
-		sort.Strings(roots)
-		setDocumentRoots(doc, roots)
-	}
-}
-
-// setDocumentRoots rewrites root_modules in the metadata of every resource,
-// data and ephemeral block of doc.
-func setDocumentRoots(doc model.Document, roots []string) {
-	rewriteBlockMeta(doc, func(_ address.Block, addr string, _ []string) (string, []string, bool) {
-		return addr, roots, true
-	})
-}
-
-// rewriteBlockMeta replaces the _dd_meta of every resource, data and
-// ephemeral block of doc with the address and roots rewrite returns for it
-// from the block's current address and roots, keeping its other keys, and
-// leaves the block as it is when rewrite reports false.
-func rewriteBlockMeta(doc model.Document, rewrite func(b address.Block, addr string, roots []string) (string, []string, bool)) {
+// rewriteBlockMeta replaces the address in the _dd_meta of every resource,
+// data and ephemeral block of doc with the address rewrite returns, keeping
+// its other keys, and leaves the block as it is when rewrite reports false.
+func rewriteBlockMeta(doc model.Document, rewrite func(b address.Block, addr string) (string, bool)) {
 	for _, section := range [...]struct{ key, kind string }{
 		{"resource", address.KindResource},
 		{"data", address.KindData},
@@ -1187,19 +1181,15 @@ func rewriteBlockMeta(doc model.Document, rewrite func(b address.Block, addr str
 					continue
 				}
 				addr, _ := meta["address"].(string)
-				prev, _ := meta["root_modules"].([]interface{})
-				prevRoots := make([]string, 0, len(prev))
-				for _, r := range prev {
-					if root, isString := r.(string); isString {
-						prevRoots = append(prevRoots, root)
-					}
-				}
-				addr, roots, ok := rewrite(address.Block{Kind: section.kind, Type: typ, Name: name}, addr, prevRoots)
+				addr, ok = rewrite(address.Block{Kind: section.kind, Type: typ, Name: name}, addr)
 				if !ok {
 					continue
 				}
-				next := resourceMeta(addr, roots, blockMetaExtras{})
+				next := resourceMeta(addr, blockMetaExtras{})
 				for k, v := range meta {
+					if k == "root_modules" {
+						continue
+					}
 					if _, rewritten := next[k]; !rewritten {
 						next[k] = v
 					}
@@ -1210,9 +1200,8 @@ func rewriteBlockMeta(doc model.Document, rewrite func(b address.Block, addr str
 	}
 }
 
-// routeModuleFileRoots lists, in the metadata of each block of an external
-// module file that its calls replace, the roots and address of those calls'
-// copies, plus the file's own root when the written block is kept too.
+// routeModuleFileRoots rewrites the address of each block of an external
+// module file that its calls replace. A kept block stays as written.
 func routeModuleFileRoots(files model.FileMetadatas, moduleFiles map[string]*moduleFileCalls) {
 	for _, f := range files {
 		if f == nil {
@@ -1222,30 +1211,34 @@ func routeModuleFileRoots(files model.FileMetadatas, moduleFiles map[string]*mod
 		if mf == nil || len(mf.calls) == 0 {
 			continue
 		}
-		set := make(map[string]struct{}, len(mf.calls)+1)
 		sameAddress := true
 		for i := range mf.calls {
-			set[mf.calls[i].rootModule] = struct{}{}
 			sameAddress = sameAddress && mf.calls[i].moduleAddress == mf.calls[0].moduleAddress
 		}
-		if mf.keepWritten && mf.scope != nil {
-			set[mf.scope.RootModule] = struct{}{}
-		}
-		roots := make([]string, 0, len(set))
-		for r := range set {
-			roots = append(roots, r)
-		}
-		sort.Strings(roots)
-		rewriteBlockMeta(f.Document, func(b address.Block, addr string, _ []string) (string, []string, bool) {
+		rewriteBlockMeta(f.Document, func(b address.Block, addr string) (string, bool) {
 			if mf.keptAsWritten(blockResourceType(b)) {
-				return addr, nil, false
+				return addr, false
 			}
 			if sameAddress {
 				addr = routedBlockAddress(mf.scope, b, mf.calls[0].moduleAddress)
 			}
-			return addr, roots, true
+			return addr, true
 		})
 	}
+}
+
+// moduleFileCallRoots is the sorted root set of the blocks of an external
+// module file that its calls replace: the calls' roots, plus the file's own
+// root when the written block is kept too.
+func moduleFileCallRoots(mf *moduleFileCalls) []string {
+	roots := make([]string, 0, len(mf.calls)+1)
+	for i := range mf.calls {
+		roots = append(roots, mf.calls[i].rootModule)
+	}
+	if mf.keepWritten && mf.scope != nil {
+		roots = append(roots, mf.scope.RootModule)
+	}
+	return sortedUnique(roots)
 }
 
 // blockResourceType is the resource type findings name b by.
@@ -1713,7 +1706,7 @@ func groupDocument(g *docGroup) model.Document {
 		kind, blockType := addressKindOf(e.typ)
 		block := address.Block{Kind: kind, Type: blockType, Name: e.baseName}
 		addr := address.Instance(g.moduleAddress, block, g.instances[block])
-		attrs[ddMetaKey] = resourceMeta(addr, []string{g.rootModule}, blockMetaExtras{references: e.references, unknown: e.unknown})
+		attrs[ddMetaKey] = resourceMeta(addr, blockMetaExtras{references: e.references, unknown: e.unknown})
 		byName[e.baseName] = attrs
 	}
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/cespare/xxhash/v2"
 )
 
 // A rule names the resource and data types it can match, either by reading
@@ -110,11 +111,76 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	return &targets
 }
 
+// terraformCrossDocumentQueries classifies the loaded Terraform rules against
+// the same libraries their resource types are collected from. The result is
+// cached on the inspector for the ruleset that produced it: classifying every
+// rule recompiles them.
+func (c *Inspector) terraformCrossDocumentQueries(queries []model.QueryMetadata) map[string]bool {
+	terraform := make([]model.QueryMetadata, 0, len(queries))
+	for i := range queries {
+		if queries[i].Platform == platformTerraform {
+			terraform = append(terraform, queries[i])
+		}
+	}
+	if len(terraform) == 0 {
+		return nil
+	}
+	libraries := c.terraformRuleLibraries()
+	key := classificationKey(terraform, libraries)
+	c.crossDocMu.Lock()
+	defer c.crossDocMu.Unlock()
+	if c.crossDocReady && c.crossDocKey == key {
+		return c.crossDoc
+	}
+	c.crossDoc = crossDocumentQueries(terraform, libraries...)
+	c.crossDocKey = key
+	c.crossDocReady = true
+	return c.crossDoc
+}
+
+func classificationKey(queries []model.QueryMetadata, libraries []string) uint64 {
+	h := xxhash.New()
+	for i := range queries {
+		_, _ = h.WriteString(queries[i].Query)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(queries[i].Content)
+		_, _ = h.WriteString("\x00")
+	}
+	for _, library := range libraries {
+		_, _ = h.WriteString(library)
+		_, _ = h.WriteString("\x00")
+	}
+	return h.Sum64()
+}
+
+// terraformByRoot reports whether this scan builds one Terraform input per root.
+func terraformByRoot(rootCount int, cross map[string]bool) bool {
+	if rootCount < 2 {
+		return false
+	}
+	for _, isCross := range cross {
+		if isCross {
+			return true
+		}
+	}
+	return false
+}
+
+func countRoots(docRoots map[string][]string) int {
+	roots := map[string]bool{}
+	for _, rs := range docRoots {
+		for _, r := range rs {
+			roots[r] = true
+		}
+	}
+	return len(roots)
+}
+
 // terraformRuleLibraries returns the Rego libraries that Terraform rules are
 // compiled against, so type names spelled only in shared helpers are seen too.
 func (c *Inspector) terraformRuleLibraries() []string {
 	libraries := []string{c.QueryLoader.commonLibrary.LibraryCode}
-	if platform, ok := c.QueryLoader.platformLibraries["terraform"]; ok {
+	if platform, ok := c.QueryLoader.platformLibraries[platformTerraform]; ok {
 		libraries = append(libraries, platform.LibraryCode)
 	}
 	return libraries

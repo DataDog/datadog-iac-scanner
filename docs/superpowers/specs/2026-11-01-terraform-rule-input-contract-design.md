@@ -67,21 +67,18 @@ These would make the work a failure even if it technically works:
 ```json
 "_dd_meta": {
   "address": "module.a.azurerm_subnet_network_security_group_association.s[0]",
-  "root_modules": ["envs/prod"],
   "unknown": { "subnet_id": true },
   "references": { "subnet_id": ["module.a.azurerm_subnet.s"] }
 }
 ```
 
 - **`address`:** the absolute instance address within its root module, written as Terraform writes it. Data sources start with `data.`, ephemeral resources with `ephemeral.`. It must be byte-identical to the `resource_id` PR #465 puts on findings.
-- **`root_modules`:** every root module the document stands for. Source scans use the repository-relative root directory and plan scans the repository-relative plan file path, the same strings as `root_module` in PR #465. It is a list because identical module documents are shared across roots. Rules join on the pair `[root, address]`.
 - **`unknown`:** values Terraform would only know at apply time, in the same shape as Terraform's `after_unknown`. Only `true` leaves are present: nested blocks become lists of objects, and a whole unknown value is `true`. Omitted when nothing is unknown.
 - **`references`:** for each attribute path that reads another resource, data or ephemeral instance, the absolute instance addresses it reads. The shape mirrors the values; leaves are lists of addresses.
   - References are followed through locals, variables and module calls, module outputs, `each`, `count.index`, literal indexes and conditionals. Only resource, data and ephemeral addresses appear.
   - When the instance cannot be determined (for example a dynamic index), every instance of the target is listed.
   - The key is absent when the source cannot be traced, for example a root variable with no value, or a module that was not fetched.
   - References are recorded whether or not the value is known.
-- **Rule results:** a result may carry `"rootModule": "<root>"`. When present, the finding is attributed only to that root. When absent, today's behaviour holds (every caller of a shared document).
 - **Unknown values in documents:**
   - Source scans keep today's `${<use-site text>}` rendering, falling back to `${__dd_unknown__}`.
   - Plan scans fill every configured unknown leaf with `${__dd_unknown__}`; unconfigured computed attributes stay absent (see Plan unknowns).
@@ -91,26 +88,23 @@ These would make the work a failure even if it technically works:
   - An empty nested-block list is dropped when the configuration has no expression for it.
 - **Bookkeeping:**
   - `_dd_meta` is a block-level key that is never a label, so it need not be in the label-level bookkeeping sets; a block literally named `_dd_meta` is content.
-  - `root_modules` is excluded from the content hash used for cross-root deduplication.
   - `_dd_meta` is visible to rules; it is never stripped.
 
 ### Example: the NSG rule after migration
 
 ```rego
-associated_subnets contains [root, address] if {
+associated_subnets contains address if {
 	some doc in input.document
 	some association in doc.resource.azurerm_subnet_network_security_group_association
-	some root in association._dd_meta.root_modules
 	some address in association._dd_meta.references.subnet_id
 }
 
 DatadogPolicy contains result if {
 	some doc in input.document
 	some name, subnet in doc.resource.azurerm_subnet
-	some root in subnet._dd_meta.root_modules
-	not [root, subnet._dd_meta.address] in associated_subnets
+	not subnet._dd_meta.address in associated_subnets
 	...
-	result := {..., "rootModule": root}
+	result := {...}
 }
 ```
 
@@ -175,7 +169,8 @@ Present-but-unknown, matching Terraform's model: the attribute exists, its value
 
 ## Decided
 
-- **Root routing.** A finding is attributed only to the root named by `rootModule`. The engine's identity prediction and supersede logic (`findings.go`) must apply the same filter.
+- **Rule results are platform-agnostic.** A result never carries a root module or other Terraform routing, and rules never read or bind a root.
+- **Per-root evaluation.** The engine knows which roots each document stands for. A Terraform rule that provably reads one document per finding evaluates once over the deduplicated documents, and its findings go to every caller. Any other Terraform rule evaluates once per root, over that root's documents only, and its findings go to that root. A scan with one root evaluates every rule once. Performance comes from that split and from sharing document terms, with no caps: no ratio gates, no limits on roots or documents, and no size-based fallback.
 - **Plan line detection.** A searchKey pointing at an attribute absent from the plan file resolves to the nearest ancestor that exists, or to the resource header. It must not search forward into `after_unknown` or `configuration` text.
 - **Rule resource-type filter.** `rule_resource_types.go` stays a performance filter. A type no rule names is not evaluated, and its references still appear as addresses.
 - **One-evaluator fallback.** When a root cannot be evaluated, the converter renders values as `${...}` text with no variable, local or data substitution.
@@ -184,7 +179,7 @@ Present-but-unknown, matching Terraform's model: the attribute exists, its value
 - **Development linking.** The rules worktree links to the scanner worktree with an untracked `go.work`.
 
 - **Untraceable references are uncertain, not absent.** When a join attribute is configured but has no `references` entry, the rule treats every finding that join would produce in that root as uncertain and does not report it. In the NSG example, an association whose `subnet_id` is untraced suppresses "unassociated subnet" findings in its root. Over-reporting is the failure mode to avoid. Each migrated join rule has a negative fixture for this case.
-- **Metadata in fallback roots.** When a root cannot be evaluated, or a file belongs to a directory evaluated only as its own root, resources still carry `address` (`<type>.<name>`, with the module prefix when known) and `root_modules` (the evaluated root directories that reach the file, else the file's own directory). `references` is absent there, so joins fall under the uncertainty rule above. `unknown` lists the values left unevaluated, in the shape of Terraform's unknown values (a list keeps its length, with `{}` or `false` for a known element), while the document keeps their `${...}` text. Meta-arguments (`count`, `for_each`, `depends_on`, `provider`, `lifecycle`) are never listed, in `.tf` and `.tf.json` files alike. Directories no root calls are evaluated as their own root, as today.
+- **Metadata in fallback roots.** When a root cannot be evaluated, or a file belongs to a directory evaluated only as its own root, resources still carry `address` (`<type>.<name>`, with the module prefix when known), and the engine counts the file in the evaluated root directories that reach it, else in the file's own directory. `references` is absent there, so joins fall under the uncertainty rule above. `unknown` lists the values left unevaluated, in the shape of Terraform's unknown values (a list keeps its length, with `{}` or `false` for a known element), while the document keeps their `${...}` text. Meta-arguments (`count`, `for_each`, `depends_on`, `provider`, `lifecycle`) are never listed, in `.tf` and `.tf.json` files alike. Directories no root calls are evaluated as their own root, as today.
 - **Static-tracing fallback contract.** If the spike selects static tracing, a reference whose instance cannot be selected lists every instance of the target, and a reference through a module output lists the output's possible sources. Over-approximation can only hide findings in "is X referenced" rules, never invent them.
 - **Labeled nested blocks.** Nested blocks with labels, such as `provisioner`, are not evaluated: they keep their use-site `${...}` text and are not listed in `unknown`.
 - **`.tf` shadowed by `.tofu`.** A `.tf` file shadowed by an inventoried `.tofu` file of the same name keeps its raw text; the evaluator owns only the `.tofu` file, as Terraform's file selection does.

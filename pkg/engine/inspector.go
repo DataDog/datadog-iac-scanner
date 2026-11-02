@@ -266,6 +266,11 @@ type Inspector struct {
 	// findings are decoded (see findingSet) instead of returning every decoded
 	// finding (see SetCompactFindingsAtDecode).
 	compactFindingsAtDecode bool
+	// crossDoc caches document-scope classification for one Terraform ruleset.
+	crossDocMu    sync.Mutex
+	crossDocKey   uint64
+	crossDoc      map[string]bool
+	crossDocReady bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -504,7 +509,7 @@ type QueryResult struct {
 // evaluation failures both carry their error so the serial aggregation records
 // them in FailedQueries without terminating the rest of the scan.
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
-	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
+	payloads platformPayloads, queries []model.QueryMetadata, queryID int, root string,
 	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
 	contextLogger := logger.FromContext(ctx)
@@ -533,6 +538,10 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	// payload is read-only, so sharing the per-platform ast.Value across workers
 	// is safe.
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
+	if root != "" {
+		payload = payloads.terraformByRoot[root]
+		routing = routing.forRoot(root)
+	}
 	queryContext := &QueryContext{
 		Ctx:                     ctx,
 		scanID:                  scanID,
@@ -578,11 +587,27 @@ func (c *Inspector) Inspect(
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
 	var syntheticFiles []*model.FileMetadata
+	var docRoots map[string][]string
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		moduleDocs, syntheticFiles, moduleExtras, moduleFiles, docRoots = c.instantiateLocalModules(ctx, files, targets)
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
+	} else {
+		docRoots = documentRoots(files, nil, c.repoPath)
 	}
+	rootCount := countRoots(docRoots)
+	var cross map[string]bool
+	if rootCount > 1 {
+		cross = c.terraformCrossDocumentQueries(queries)
+		crossCount := 0
+		for _, isCross := range cross {
+			if isCross {
+				crossCount++
+			}
+		}
+		contextLogger.Debug().Msgf("%d/%d Terraform rules read more than one document", crossCount, len(cross))
+	}
+	byRoot := terraformByRoot(rootCount, cross)
 
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
@@ -598,9 +623,12 @@ func (c *Inspector) Inspect(
 	// payload partitioning.
 	filesMap := files.ToMap()
 
-	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries)
+	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries, docRoots, byRoot)
 	if err != nil {
 		return nil, err
+	}
+	if byRoot {
+		contextLogger.Debug().Msgf("%d Terraform inputs, one per root module", len(payloads.terraformByRoot))
 	}
 
 	// Collect the trees released during conversion and recompute the heap goal
@@ -648,7 +676,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
-	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
+	routing := newFindingRouting(moduleExtras, moduleFiles, docRoots, files, c.repoPath)
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
 		baseStores, baseDataHashes, sharedQueries, routing)
@@ -764,11 +792,12 @@ func (c *Inspector) executeQueries(
 	// budget and cannot oversubscribe the machine. Results land in an
 	// index-aligned slice (no shared mutable state between workers); the actual
 	// aggregation happens serially below.
-	results := make([]QueryResult, len(queries))
-	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
-		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, baseStores, baseDataHashes,
-				sharedQueries, routing)
+	work := c.queryWork(queries, payloads)
+	results := make([]QueryResult, len(work))
+	err := utils.ForEach(ctx, work, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
+		func(ctx context.Context, unit queryWork, i int) error {
+			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, unit.queryID, unit.root,
+				baseStores, baseDataHashes, sharedQueries, routing)
 			return nil
 		})
 	// The closure never returns a non-nil error itself, so ForEach only reports
@@ -794,6 +823,37 @@ func (c *Inspector) executeQueries(
 	return vulnerabilities, nil
 }
 
+// queryWork is one evaluation of a rule. root is set when the rule joins
+// documents and the scan has a Terraform input per root; those units of one
+// rule run in root order so their findings aggregate deterministically.
+type queryWork struct {
+	queryID int
+	root    string
+}
+
+func (c *Inspector) queryWork(queries []model.QueryMetadata, payloads platformPayloads) []queryWork {
+	roots := make([]string, 0, len(payloads.terraformByRoot))
+	for root := range payloads.terraformByRoot {
+		roots = append(roots, root)
+	}
+	sort.Strings(roots)
+	var cross map[string]bool
+	if len(roots) > 0 {
+		cross = c.terraformCrossDocumentQueries(queries)
+	}
+	work := make([]queryWork, 0, len(queries))
+	for i := range queries {
+		if len(roots) > 0 && queries[i].Platform == platformTerraform && cross[queries[i].Query] {
+			for _, root := range roots {
+				work = append(work, queryWork{queryID: i, root: root})
+			}
+			continue
+		}
+		work = append(work, queryWork{queryID: i})
+	}
+	return work
+}
+
 type moduleVulnCounts struct {
 	raised, unique int
 }
@@ -811,29 +871,16 @@ func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas
 	return false
 }
 
-// rootAllowed reports whether a finding restricted to the root module only
-// (empty: unrestricted) may be reported under root.
-func rootAllowed(only, root string) bool {
-	return only == "" || only == root
-}
-
 // expandModuleFindings clones findings from deduplicated OPA docs back to each
 // extra caller, so every call-site gets its own fingerprint/file attribution.
-func expandModuleFindings(
-	vulns []model.Vulnerability, extras map[string][]extraCallerInfo, files map[string]*moduleFileCalls,
-) []model.Vulnerability {
-	if len(extras) == 0 && !anyRootRestricted(vulns) {
+func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo) []model.Vulnerability {
+	if len(extras) == 0 {
 		return vulns
 	}
 	expanded := make([]model.Vulnerability, 0, len(vulns))
 	for i := range vulns {
-		if files[vulns[i].FileID] != nil || rootAllowed(vulns[i].OnlyRootModule, vulns[i].RootModule) {
-			expanded = append(expanded, vulns[i])
-		}
+		expanded = append(expanded, vulns[i])
 		for _, ex := range extras[vulns[i].FileID] {
-			if files[ex.docID] == nil && !rootAllowed(vulns[i].OnlyRootModule, ex.rootModule) {
-				continue
-			}
 			vCopy := vulns[i]
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
@@ -1730,12 +1777,17 @@ const (
 	platformKnative        = "knative"
 	platformServerlessFW   = "serverlessfw"
 	platformCloudFormation = "cloudformation"
+	platformTerraform      = "terraform"
 )
 
 // platformPayloads holds per-platform OPA input payloads built once per scan.
 type platformPayloads struct {
 	byPlatform map[string]ast.Value
 	full       ast.Value
+	// terraformByRoot holds one input per root, built from the Terraform bucket's
+	// own document terms. It stays nil for a single-root scan and for a scan
+	// whose Terraform rules are all document-local.
+	terraformByRoot map[string]ast.Value
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -1787,6 +1839,8 @@ func (c *Inspector) buildPlatformPayloads(
 	filesMap map[string]*model.FileMetadata,
 	combinedDocs, moduleDocs []model.Document,
 	queries []model.QueryMetadata,
+	docRoots map[string][]string,
+	byRoot bool,
 ) (platformPayloads, error) {
 	allDocs, bucketsPerDoc, unknownDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
 
@@ -1814,7 +1868,7 @@ func (c *Inspector) buildPlatformPayloads(
 		}
 	}
 
-	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
+	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload, docRoots, byRoot)
 	return payloads, nil
 }
 
@@ -1826,6 +1880,8 @@ func assemblePlatformPayloads(
 	unknownDocs []int,
 	neededPlatforms map[string]bool,
 	needFullPayload bool,
+	docRoots map[string][]string,
+	byRoot bool,
 ) platformPayloads {
 	platformLists := make(map[string][]*ast.Term, len(neededPlatforms))
 	for i, keys := range bucketsPerDoc {
@@ -1838,6 +1894,7 @@ func assemblePlatformPayloads(
 	out := platformPayloads{
 		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
 	}
+	var terraformList []*ast.Term
 	for key := range neededPlatforms {
 		list := platformLists[key]
 		if len(unknownDocs) > 0 {
@@ -1848,6 +1905,9 @@ func assemblePlatformPayloads(
 			}
 			list = combined
 		}
+		if key == platformTerraform {
+			terraformList = list
+		}
 		pv := assembleDocumentPayload(list)
 		out.byPlatform[key] = pv
 		if needFullPayload &&
@@ -1857,12 +1917,55 @@ func assemblePlatformPayloads(
 			out.full = pv
 		}
 	}
+	if byRoot {
+		out.terraformByRoot = payloadsByRoot(terraformList, docRoots)
+	}
 
 	if needFullPayload && out.full == nil {
 		out.full = assembleDocumentPayload(terms)
 	}
 
 	return out
+}
+
+// payloadsByRoot groups the Terraform bucket by root. Each root's array holds
+// the same *ast.Term values, in bucket order, for every document whose roots
+// include it. A document is not split when several roots share it.
+func payloadsByRoot(list []*ast.Term, docRoots map[string][]string) map[string]ast.Value {
+	grouped := make(map[string][]*ast.Term)
+	for _, term := range list {
+		id, ok := termDocumentID(term)
+		if !ok {
+			continue
+		}
+		for _, root := range docRoots[id] {
+			grouped[root] = append(grouped[root], term)
+		}
+	}
+	if len(grouped) == 0 {
+		return nil
+	}
+	out := make(map[string]ast.Value, len(grouped))
+	for root, terms := range grouped {
+		out[root] = assembleDocumentPayload(terms)
+	}
+	return out
+}
+
+func termDocumentID(term *ast.Term) (string, bool) {
+	obj, ok := term.Value.(ast.Object)
+	if !ok {
+		return "", false
+	}
+	id := obj.Get(ast.StringTerm("id"))
+	if id == nil {
+		return "", false
+	}
+	s, ok := id.Value.(ast.String)
+	if !ok {
+		return "", false
+	}
+	return string(s), true
 }
 
 // assembleDocumentPayload wraps a document term list in the

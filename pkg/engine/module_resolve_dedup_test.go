@@ -451,3 +451,139 @@ func BenchmarkResolveMultiRoot(b *testing.B) {
 		})
 	}
 }
+
+func requireNoRootModules(t *testing.T, doc model.Document) {
+	t.Helper()
+	if doc == nil {
+		return
+	}
+	for _, section := range []string{"resource", "data", "ephemeral"} {
+		byType, _ := asStringMap(doc[section])
+		for _, typeBlocks := range byType {
+			byName, _ := asStringMap(typeBlocks)
+			for _, raw := range byName {
+				block, _ := asStringMap(raw)
+				meta, _ := asStringMap(block[ddMetaKey])
+				require.NotContains(t, meta, "root_modules")
+			}
+		}
+	}
+}
+
+func requireDocsHaveNoRootModules(t *testing.T, files model.FileMetadatas, docs []model.Document) {
+	t.Helper()
+	for _, f := range files {
+		if f != nil {
+			requireNoRootModules(t, f.Document)
+		}
+	}
+	for _, doc := range docs {
+		requireNoRootModules(t, doc)
+	}
+}
+
+func TestDocRoots(t *testing.T) {
+	t.Run("multi-root dedup", func(t *testing.T) {
+		repo, files := writeMultiRootRepo(t, 3, 2, 1)
+		ins := newTestInspector(t, inspectorOpts{repoPath: repo})
+		ins.stampTerraformScopes(files)
+		docs, _, extras, _, docRoots := ins.instantiateLocalModules(context.Background(), files, multiRootTargets)
+		require.NotEmpty(t, extras)
+		require.NotEmpty(t, docRoots)
+		requireDocsHaveNoRootModules(t, files, docs)
+	})
+
+	t.Run("fallback roots and a plan file", func(t *testing.T) {
+		repo := t.TempDir()
+		modFile := writeFile(t, filepath.Join(repo, "modules", "m"), "main.tf", `resource "aws_s3_bucket" "b" {}`)
+		mod := fileMeta("mod-id", modFile)
+		mod.Kind = model.KindTerraform
+		mod.Document = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"b"}})
+		files := model.FileMetadatas{mod}
+		for _, dir := range []string{"envs/a", "envs/b"} {
+			f := fileMeta(dir+"-root", filepath.Join(repo, dir, "main.tf"))
+			f.Kind = model.KindTerraform
+			f.Document = model.Document{"module": map[string]interface{}{
+				"m": map[string]interface{}{"source": "../../modules/m"},
+			}}
+			files = append(files, f)
+		}
+		ok := fileMeta("ok-root", writeFile(t, filepath.Join(repo, "ok"), "main.tf", `resource "aws_s3_bucket" "ok" {}`))
+		ok.Kind = model.KindTerraform
+		ok.Document = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"ok"}})
+		plan := &model.FileMetadata{
+			ID: "plan-id", FilePath: filepath.Join(repo, "stacks", "prod", "tfplan.json"), Kind: model.KindTerraformPlan,
+			Document: model.Document{
+				"resource": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{"r": map[string]interface{}{}}},
+				"_dd_tfplan_meta": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{
+					"r": map[string]interface{}{"address": "aws_s3_bucket.r"},
+				}},
+			},
+		}
+		files = append(files, ok, plan)
+		ins := newTestInspector(t, inspectorOpts{repoPath: repo})
+		ins.stampTerraformScopes(files)
+		docs, _, _, _, docRoots := ins.instantiateLocalModules(context.Background(), files, nil)
+		require.Equal(t, []string{"envs/a", "envs/b", "modules/m"}, docRoots["mod-id"])
+		require.Equal(t, []string{"stacks/prod/tfplan.json"}, docRoots["plan-id"])
+		require.Equal(t, []string{"ok"}, docRoots["ok-root"])
+		requireDocsHaveNoRootModules(t, files, docs)
+	})
+
+	t.Run("external module file reached by calls", func(t *testing.T) {
+		repo, pkg := t.TempDir(), t.TempDir()
+		const source = "example/mod/aws"
+		modFile := writeFile(t, filepath.Join(pkg, "mod"), "main.tf", `variable "name" {}
+resource "aws_s3_bucket" "b" {
+  bucket = var.name
+}
+resource "aws_sqs_queue" "q" {}
+`)
+		files := parseTerraform(t, modFile)
+		modID := files[0].ID
+		dirs := map[string]RemoteModuleDirectory{}
+		for _, stack := range []string{"stack-a", "stack-b"} {
+			dir := filepath.Join(repo, stack)
+			files = append(files, parseTerraform(t, writeFile(t, dir, "main.tf", `module "m" {
+  source = "`+source+`"
+  name   = "`+stack+`"
+}
+`))...)
+			dirs[RemoteModuleKey(dir, source, "")] = RemoteModuleDirectory{Path: filepath.Join(pkg, "mod"), PackageRoot: pkg}
+		}
+		ins := newTestInspector(t, inspectorOpts{repoPath: repo})
+		ins.remoteModuleDirs = dirs
+		ins.externalPathRoots = map[string]bool{filepath.Clean(pkg): true}
+		ins.stampTerraformScopes(files)
+		docs, _, _, moduleFiles, docRoots := ins.instantiateLocalModules(
+			context.Background(), files, &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}})
+		mf := moduleFiles[modID]
+		require.NotNil(t, mf)
+		require.Len(t, mf.calls, 2)
+		require.True(t, mf.keptAsWritten("aws_sqs_queue"))
+		require.False(t, mf.keptAsWritten("aws_s3_bucket"))
+		require.Equal(t, []string{files[0].TerraformScope.RootModule}, docRoots[modID])
+		require.Len(t, docs, 2)
+		requireDocsHaveNoRootModules(t, files, docs)
+	})
+
+	t.Run("module file with routed and kept blocks", func(t *testing.T) {
+		for _, keepWritten := range []bool{false, true} {
+			scope := &model.TerraformScope{RootModule: "lib"}
+			file := &model.FileMetadata{ID: "mod", FilePath: "/repo/lib/main.tf", TerraformScope: scope,
+				Document: blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"b"}, "aws_sqs_queue": {"q"}})}
+			stampWrittenMeta(file.Document)
+			mf := &moduleFileCalls{
+				scope: scope, keepWritten: keepWritten, writtenResourceTypes: map[string]bool{"aws_sqs_queue": true},
+				calls: []moduleCall{{moduleAddress: "module.m", rootModule: "envs/b"}, {moduleAddress: "module.m", rootModule: "envs/a"}},
+			}
+			files := model.FileMetadatas{file}
+			moduleFiles := map[string]*moduleFileCalls{"mod": mf}
+			routeModuleFileRoots(files, moduleFiles)
+			require.NotContains(t, metaOf(t, file.Document, "resource", "aws_sqs_queue", "q"), "root_modules")
+			docRoots := documentRoots(files, &moduleResolutionResult{moduleFiles: moduleFiles}, "/repo")
+			require.Equal(t, []string{"envs/a", "envs/b", "lib"}, docRoots["mod"])
+			requireDocsHaveNoRootModules(t, files, nil)
+		}
+	})
+}

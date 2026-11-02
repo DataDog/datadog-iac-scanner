@@ -8,7 +8,6 @@ package engine
 import (
 	"strings"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 )
 
@@ -22,14 +21,11 @@ const (
 // blockMetaExtras holds the optional _dd_meta entries of a block, each nil when absent.
 type blockMetaExtras struct{ references, unknown map[string]interface{} }
 
-// resourceMeta is the _dd_meta object: address string, root_modules []interface{} of strings
-// and the non-nil extras.
-func resourceMeta(addr string, roots []string, extras blockMetaExtras) map[string]interface{} {
-	rootList := make([]interface{}, len(roots))
-	for i, r := range roots {
-		rootList[i] = r
-	}
-	meta := map[string]interface{}{"address": addr, "root_modules": rootList}
+// resourceMeta is the _dd_meta object: the address and the non-nil extras.
+// Roots stay on the engine. A rule sees one root's documents, so metadata
+// does not list them.
+func resourceMeta(addr string, extras blockMetaExtras) map[string]interface{} {
+	meta := map[string]interface{}{"address": addr}
 	if extras.references != nil {
 		meta[referencesKey] = extras.references
 	}
@@ -128,7 +124,7 @@ func mergeBlockLists(dst, src []interface{}) bool {
 // stampWrittenMeta adds _dd_meta to every name-keyed block of the resource,
 // data and ephemeral sections of doc, keeping only the unknown values the
 // converter recorded in any value already there.
-func stampWrittenMeta(doc map[string]interface{}, scope *model.TerraformScope) {
+func stampWrittenMeta(doc map[string]interface{}) {
 	sections := [...]struct{ key, kind string }{
 		{"resource", address.KindResource},
 		{"data", address.KindData},
@@ -160,7 +156,7 @@ func stampWrittenMeta(doc map[string]interface{}, scope *model.TerraformScope) {
 					extras.unknown, _ = asStringMap(prev[unknownKey])
 				}
 				addr := address.Instance("", address.Block{Kind: s.kind, Type: typ, Name: name}, "")
-				block[ddMetaKey] = resourceMeta(addr, []string{scope.RootModule}, extras)
+				block[ddMetaKey] = resourceMeta(addr, extras)
 			}
 		}
 	}
@@ -169,7 +165,7 @@ func stampWrittenMeta(doc map[string]interface{}, scope *model.TerraformScope) {
 // stampPlanMeta adds _dd_meta to each plan resource and data object, with the
 // address Terraform computed for it and its extras (replacing any value
 // already there).
-func stampPlanMeta(doc map[string]interface{}, addresses map[[2]string]string, extras map[[2]string]blockMetaExtras, root string) {
+func stampPlanMeta(doc map[string]interface{}, addresses map[[2]string]string, extras map[[2]string]blockMetaExtras) {
 	for k, addr := range addresses {
 		section, typ := resourceSection, k[0]
 		if dataType, ok := strings.CutPrefix(typ, "data."); ok {
@@ -184,7 +180,7 @@ func stampPlanMeta(doc map[string]interface{}, addresses map[[2]string]string, e
 			continue
 		}
 		if block, ok := asStringMap(byKey[k[1]]); ok {
-			block[ddMetaKey] = resourceMeta(addr, []string{root}, extras[k])
+			block[ddMetaKey] = resourceMeta(addr, extras[k])
 		}
 	}
 }

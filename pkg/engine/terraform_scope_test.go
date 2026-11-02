@@ -263,7 +263,7 @@ ephemeral "random_password" "pw" {
 	(&Inspector{repoPath: dir}).stampTerraformScopes(files)
 
 	want := func(addr string) map[string]interface{} {
-		return map[string]interface{}{"address": addr, "root_modules": []interface{}{"envs/prod"}}
+		return map[string]interface{}{"address": addr}
 	}
 	for section, c := range map[string][3]string{
 		"resource":       {"aws_s3_bucket", "b", "aws_s3_bucket.b"},
@@ -289,15 +289,15 @@ func TestStampTerraformScopesKeepsListShapedTypesAndReplacesUserMeta(t *testing.
 			},
 		},
 	}
-	stampWrittenMeta(doc, &model.TerraformScope{RootModule: "."})
+	stampWrittenMeta(doc)
 	res, _ := asStringMap(doc["resource"])
 	require.Equal(t, []interface{}{map[string]interface{}{"a": 1}}, res["aws_x"])
 	y, _ := asStringMap(res["aws_y"])
-	want := resourceMeta("aws_y.n", []string{"."}, blockMetaExtras{})
+	want := resourceMeta("aws_y.n", blockMetaExtras{})
 	n, _ := asStringMap(y["n"])
 	require.Equal(t, want, n[ddMetaKey])
 	str, _ := asStringMap(y["s"])
-	require.Equal(t, resourceMeta("aws_y.s", []string{"."}, blockMetaExtras{}), str[ddMetaKey])
+	require.Equal(t, resourceMeta("aws_y.s", blockMetaExtras{}), str[ddMetaKey])
 }
 
 func TestDocumentBlocksIndexesBlocksNamedDDMeta(t *testing.T) {
@@ -309,11 +309,11 @@ func TestDocumentBlocksIndexesBlocksNamedDDMeta(t *testing.T) {
 	require.True(t, blocks[model.TerraformBlock{Kind: address.KindResource, Type: "t", Name: ddMetaKey}])
 	require.True(t, blocks[model.TerraformBlock{Kind: address.KindVariable, Name: ddMetaKey}])
 
-	stampWrittenMeta(doc, &model.TerraformScope{RootModule: "."})
+	stampWrittenMeta(doc)
 	res, _ := asStringMap(doc["resource"])
 	byName, _ := asStringMap(res["t"])
 	block, _ := asStringMap(byName[ddMetaKey])
-	require.Equal(t, resourceMeta("t."+ddMetaKey, []string{"."}, blockMetaExtras{}), block[ddMetaKey])
+	require.Equal(t, resourceMeta("t."+ddMetaKey, blockMetaExtras{}), block[ddMetaKey])
 }
 
 func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
@@ -346,12 +346,11 @@ func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
 	f := &model.FileMetadata{FilePath: "stacks/prod/tfplan.json", Kind: model.KindTerraformPlan, Document: doc}
 	(&Inspector{}).stampTerraformScopes(model.FileMetadatas{f})
 
-	root := []string{"stacks/prod/tfplan.json"}
 	buckets, _ := asStringMap(doc["resource"].(map[string]interface{})["aws_s3_bucket"])
 	b, _ := asStringMap(buckets["module.m.aws_s3_bucket.b[1]"])
-	require.Equal(t, resourceMeta("module.m.aws_s3_bucket.b[1]", root, blockMetaExtras{}), b[ddMetaKey])
+	require.Equal(t, resourceMeta("module.m.aws_s3_bucket.b[1]", blockMetaExtras{}), b[ddMetaKey])
 	r, _ := asStringMap(buckets["r"])
-	wantR := resourceMeta("aws_s3_bucket.r", root, blockMetaExtras{})
+	wantR := resourceMeta("aws_s3_bucket.r", blockMetaExtras{})
 	wantR["references"] = map[string]interface{}{"kms_key_id": []interface{}{"data.aws_kms_key.k"}}
 	wantR["unknown"] = map[string]interface{}{"arn": true}
 	require.Equal(t, wantR, r[ddMetaKey])
@@ -361,6 +360,6 @@ func TestStampTerraformScopesAddsPlanMeta(t *testing.T) {
 	require.NotContains(t, b[ddMetaKey], "unknown")
 	keys, _ := asStringMap(doc["data"].(map[string]interface{})["aws_kms_key"])
 	k, _ := asStringMap(keys["k"])
-	require.Equal(t, resourceMeta("data.aws_kms_key.k", root, blockMetaExtras{}), k[ddMetaKey])
+	require.Equal(t, resourceMeta("data.aws_kms_key.k", blockMetaExtras{}), k[ddMetaKey])
 	require.Contains(t, doc, "_dd_tfplan_meta")
 }

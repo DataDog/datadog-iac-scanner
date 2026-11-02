@@ -227,7 +227,7 @@ func TestCloneSharedParseDocumentRefreshesPath(t *testing.T) {
 }
 
 func TestSanitizeScanDocumentInPlaceKeepsDDMeta(t *testing.T) {
-	meta := map[string]interface{}{"address": "aws_x.y", "root_modules": []interface{}{"."}}
+	meta := map[string]interface{}{"address": "aws_x.y"}
 	body := map[string]interface{}{
 		"resource": map[string]interface{}{"aws_x": map[string]interface{}{"y": map[string]interface{}{
 			"_dd_meta": meta, "_dd_lines": map[string]int{":0:0": 1},

@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
@@ -441,6 +442,8 @@ func TestBuildPlatformPayloadsReusesEquivalentFullPayload(t *testing.T) {
 		documents,
 		nil,
 		queries,
+		nil,
+		false,
 	)
 
 	require.NoError(t, err)
@@ -467,7 +470,7 @@ func TestBuildPlatformPayloadsSharesSubtreesAndReleases(t *testing.T) {
 
 	inspector := &Inspector{releaseDocumentsAfterPayload: true}
 	payloads, err := inspector.buildPlatformPayloads(
-		context.Background(), filesMap, combined, nil, queries)
+		context.Background(), filesMap, combined, nil, queries, nil, false)
 	require.NoError(t, err)
 
 	// Progressive release: every source document is dropped after conversion.
@@ -485,6 +488,195 @@ func TestBuildPlatformPayloadsSharesSubtreesAndReleases(t *testing.T) {
 	meta2 := arr.Elem(1).Value.(ast.Object).Get(ast.StringTerm("metadata")).Value
 	require.Equal(t, reflect.ValueOf(meta1).Pointer(), reflect.ValueOf(meta2).Pointer(),
 		"shared child subtrees must map to one ast.Value")
+}
+
+func TestTerraformByRoot(t *testing.T) {
+	cross := map[string]bool{"join": true, "local": false}
+	require.False(t, terraformByRoot(1, cross))
+	require.False(t, terraformByRoot(2, map[string]bool{"local": false}))
+	require.False(t, terraformByRoot(2, nil))
+	require.True(t, terraformByRoot(2, cross))
+}
+
+func TestBuildPlatformPayloadsPartitionsTerraformByRoot(t *testing.T) {
+	filesMap := map[string]*model.FileMetadata{
+		"shared": {ID: "shared", Platform: "terraform"},
+		"only-a": {ID: "only-a", Platform: "terraform"},
+		"only-b": {ID: "only-b", Platform: "terraform"},
+		"k8s":    {ID: "k8s", Platform: "kubernetes"},
+	}
+	sharedResource := map[string]interface{}{
+		"aws_s3_bucket": map[string]interface{}{"b": map[string]interface{}{}},
+		"aws_sqs_queue": map[string]interface{}{"q": map[string]interface{}{}},
+	}
+	documents := []model.Document{
+		{"id": "shared", "resource": sharedResource},
+		{"id": "only-a", "resource": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{"a": map[string]interface{}{}}}},
+		{"id": "only-b", "resource": map[string]interface{}{"aws_instance": map[string]interface{}{"i": map[string]interface{}{}}}},
+		{"id": "k8s", "kind": "Pod"},
+	}
+	docRoots := map[string][]string{
+		"shared": {"envs/a", "envs/b", "lib"},
+		"only-a": {"envs/a"},
+		"only-b": {"envs/b"},
+	}
+	queries := []model.QueryMetadata{{Platform: "terraform"}, {Platform: "kubernetes"}}
+
+	kept, err := (&Inspector{}).buildPlatformPayloads(
+		context.Background(), filesMap, documents, nil, queries, docRoots, false)
+	require.NoError(t, err)
+	require.Nil(t, kept.terraformByRoot)
+
+	payloads, err := (&Inspector{}).buildPlatformPayloads(
+		context.Background(), filesMap, documents, nil, queries, docRoots, true)
+	require.NoError(t, err)
+
+	tf := termsByID(t, payloads.byPlatform["terraform"])
+	require.NotContains(t, tf, "k8s")
+	shared := tf["shared"].Value.(ast.Object).Get(ast.StringTerm("resource")).Value.(ast.Object)
+	require.NotNil(t, shared.Get(ast.StringTerm("aws_s3_bucket")))
+	require.NotNil(t, shared.Get(ast.StringTerm("aws_sqs_queue")))
+
+	byRoot := map[string]map[string]*ast.Term{}
+	for root, payload := range payloads.terraformByRoot {
+		byRoot[root] = termsByID(t, payload)
+	}
+	require.Equal(t, []string{"shared", "only-a"}, documentIDs(t, payloads.terraformByRoot["envs/a"]))
+	require.Equal(t, []string{"shared", "only-b"}, documentIDs(t, payloads.terraformByRoot["envs/b"]))
+	require.Equal(t, []string{"shared"}, documentIDs(t, payloads.terraformByRoot["lib"]))
+	for _, root := range []string{"envs/a", "envs/b", "lib"} {
+		require.Same(t, tf["shared"], byRoot[root]["shared"])
+	}
+	require.Same(t, tf["only-a"], byRoot["envs/a"]["only-a"])
+	require.Same(t, tf["only-b"], byRoot["envs/b"]["only-b"])
+	require.NotContains(t, byRoot["envs/b"], "only-a")
+	require.NotContains(t, byRoot["lib"], "only-a")
+}
+
+func TestPerRootInputKeepsUntargetedModuleFileWhole(t *testing.T) {
+	typed := model.QueryMetadata{
+		Query: "typed", Platform: "terraform",
+		Content: "package datadog\n\nimport rego.v1\n\nx if { input.document[i].resource.aws_s3_bucket[name] }\n",
+	}
+	untyped := model.QueryMetadata{
+		Query: "untyped", Platform: "terraform",
+		Content: "package datadog\n\nimport rego.v1\n\nDatadogPolicy contains result if { result := {\"ok\": true} }\n",
+	}
+	queries := []model.QueryMetadata{typed, untyped}
+	targets := ruleTargetedResourceTypes(queries)
+	require.NotNil(t, targets)
+	require.True(t, targets.matches("aws_s3_bucket"))
+	require.False(t, targets.matches("aws_sqs_queue"))
+
+	repo, pkg := t.TempDir(), t.TempDir()
+	const source = "example/mod/aws"
+	modFile := writeFile(t, filepath.Join(pkg, "mod"), "main.tf", `variable "name" {}
+resource "aws_s3_bucket" "b" {
+  bucket = var.name
+}
+resource "aws_sqs_queue" "q" {}
+`)
+	files := parseTerraform(t, modFile)
+	modID := files[0].ID
+	dirs := map[string]RemoteModuleDirectory{}
+	for _, stack := range []string{"stack-a", "stack-b"} {
+		dir := filepath.Join(repo, stack)
+		files = append(files, parseTerraform(t, writeFile(t, dir, "main.tf", `module "m" {
+  source = "`+source+`"
+  name   = "`+stack+`"
+}
+`))...)
+		dirs[RemoteModuleKey(dir, source, "")] = RemoteModuleDirectory{Path: filepath.Join(pkg, "mod"), PackageRoot: pkg}
+	}
+	for _, f := range files {
+		f.Platform = "terraform"
+	}
+	ins := newTestInspector(t, inspectorOpts{repoPath: repo})
+	ins.remoteModuleDirs = dirs
+	ins.externalPathRoots = map[string]bool{filepath.Clean(pkg): true}
+	ins.stampTerraformScopes(files)
+	docs, synthetic, _, _, docRoots := ins.instantiateLocalModules(context.Background(), files, targets)
+	require.Equal(t, []string{files[0].TerraformScope.RootModule}, docRoots[modID])
+	require.False(t, targets.matches("aws_sqs_queue"))
+
+	combined := files.Combine(context.Background(), false)
+	files = append(files, synthetic...)
+	payloads, err := ins.buildPlatformPayloads(
+		context.Background(), files.ToMap(), combined.Documents, docs, queries, docRoots, true)
+	require.NoError(t, err)
+
+	tf := termsByID(t, payloads.byPlatform["terraform"])
+	modTerm := tf[modID]
+	require.NotNil(t, modTerm)
+	resource := modTerm.Value.(ast.Object).Get(ast.StringTerm("resource")).Value.(ast.Object)
+	require.NotNil(t, resource.Get(ast.StringTerm("aws_sqs_queue")))
+	require.Nil(t, resource.Get(ast.StringTerm("aws_s3_bucket")))
+
+	modRoot := docRoots[modID][0]
+	require.Same(t, modTerm, termsByID(t, payloads.terraformByRoot[modRoot])[modID])
+	callerRoots := map[string]bool{}
+	for id, roots := range docRoots {
+		if id == modID {
+			continue
+		}
+		for _, root := range roots {
+			if root != modRoot {
+				callerRoots[root] = true
+			}
+		}
+	}
+	require.Len(t, callerRoots, 2)
+	var sawBucket bool
+	for root := range callerRoots {
+		terms := termsByID(t, payloads.terraformByRoot[root])
+		require.NotContains(t, terms, modID)
+		for id, term := range terms {
+			require.Same(t, tf[id], term)
+			res := term.Value.(ast.Object).Get(ast.StringTerm("resource"))
+			if res != nil && res.Value.(ast.Object).Get(ast.StringTerm("aws_s3_bucket")) != nil {
+				sawBucket = true
+			}
+		}
+	}
+	require.True(t, sawBucket)
+}
+
+func payloadDocumentTerms(t *testing.T, v ast.Value) []*ast.Term {
+	t.Helper()
+	obj, ok := v.(ast.Object)
+	require.True(t, ok)
+	term := obj.Get(ast.StringTerm("document"))
+	require.NotNil(t, term)
+	arr, ok := term.Value.(*ast.Array)
+	require.True(t, ok)
+	out := make([]*ast.Term, arr.Len())
+	for i := 0; i < arr.Len(); i++ {
+		out[i] = arr.Elem(i)
+	}
+	return out
+}
+
+func termsByID(t *testing.T, v ast.Value) map[string]*ast.Term {
+	t.Helper()
+	out := map[string]*ast.Term{}
+	for _, term := range payloadDocumentTerms(t, v) {
+		id, ok := termDocumentID(term)
+		require.True(t, ok)
+		out[id] = term
+	}
+	return out
+}
+
+func documentIDs(t *testing.T, v ast.Value) []string {
+	t.Helper()
+	terms := payloadDocumentTerms(t, v)
+	ids := make([]string, len(terms))
+	for i, term := range terms {
+		id, ok := termDocumentID(term)
+		require.True(t, ok)
+		ids[i] = id
+	}
+	return ids
 }
 
 func TestEngine_selectPlatformPayload(t *testing.T) {
@@ -1502,7 +1694,7 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 
 func TestExpandModuleFindings_NoExtrasUnchanged(t *testing.T) {
 	vulns := []model.Vulnerability{{FileID: "primary", QueryName: "rule-a"}}
-	got := expandModuleFindings(vulns, nil, nil)
+	got := expandModuleFindings(vulns, nil)
 	require.Equal(t, vulns, got)
 }
 
@@ -1519,7 +1711,7 @@ func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
 		QueryName:  "rule-a",
 		RootModule: "stack-a", ResourceID: "module.app.aws_s3_bucket.b",
 	}}
-	got := expandModuleFindings(vulns, extras, nil)
+	got := expandModuleFindings(vulns, extras)
 	require.Len(t, got, 2)
 	require.Equal(t, primaryID, got[0].FileID)
 	require.Equal(t, extraID, got[1].FileID)

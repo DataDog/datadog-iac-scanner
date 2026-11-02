@@ -178,27 +178,17 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 	for i := range vulns {
 		v := &vulns[i]
 		file := files[v.FileID]
-		if file == nil {
+		if file == nil || v.ModuleAttribution != nil || file.keptAsWritten(v.ResourceType) {
 			if out != nil {
 				out = append(out, *v)
 			}
-			continue
-		}
-		asWritten := v.ModuleAttribution != nil || file.keptAsWritten(v.ResourceType)
-		if asWritten && rootAllowed(v.OnlyRootModule, v.RootModule) && out == nil {
 			continue
 		}
 		if out == nil {
 			out = make([]model.Vulnerability, i, len(vulns)+len(file.calls))
 			copy(out, vulns[:i])
 		}
-		if asWritten {
-			if rootAllowed(v.OnlyRootModule, v.RootModule) {
-				out = append(out, *v)
-			}
-			continue
-		}
-		if file.keepWritten && rootAllowed(v.OnlyRootModule, v.RootModule) {
+		if file.keepWritten {
 			out = append(out, *v)
 		}
 		out = appendCallCopies(out, v, file)
@@ -209,14 +199,10 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 	return out
 }
 
-// appendCallCopies appends v once per call of file whose root module v may be
-// reported under.
+// appendCallCopies appends v once per call of file.
 func appendCallCopies(out []model.Vulnerability, v *model.Vulnerability, file *moduleFileCalls) []model.Vulnerability {
 	for j := range file.calls {
 		call := &file.calls[j]
-		if !rootAllowed(v.OnlyRootModule, call.rootModule) {
-			continue
-		}
 		attributed := *v
 		attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
 		// The copy stands for the block as written under this call's

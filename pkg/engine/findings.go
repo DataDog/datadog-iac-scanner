@@ -93,9 +93,7 @@ func (s *findingSet) order(n int) iter.Seq[int] {
 func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulnerability) {
 	var routed []model.Vulnerability
 	if s.routing == nil {
-		if rootAllowed(v.OnlyRootModule, v.RootModule) {
-			routed = []model.Vulnerability{*v}
-		}
+		routed = []model.Vulnerability{*v}
 	} else {
 		routed = s.routing.route(ctx, c, []model.Vulnerability{*v})
 	}
@@ -147,27 +145,32 @@ func (s *findingSet) supersedes(identities []string) bool {
 // does not produce (see supersedes). ok is false when the identity cannot be
 // known before the line is detected (a Dockerfile finding).
 func (s *findingSet) findingIdentities(
-	file *model.FileMetadata, platform, resourceType, resourceName, queryID, legacyQueryID, onlyRoot string,
+	file *model.FileMetadata, platform, resourceType, resourceName, queryID, legacyQueryID string,
 ) ([]string, bool) {
 	ruleID := utils.ChooseQueryID(queryID, legacyQueryID)
 	id, resolved := terraformIdentityFor(file, resourceType, resourceName)
 	if platform != terraformPlatformValue || file.TerraformScope == nil || !resolved {
 		// Without a resolved identity the finding falls back to the legacy
 		// fingerprint, which routing no longer changes (a routed copy without
-		// an address hashes like the as-written one). A restricted result is
-		// gated by routing on roots this path cannot predict, so it is never
-		// skipped.
+		// an address hashes like the as-written one).
 		legacy, known := model.IdentityInputFor(file.FilePath, platform, resourceType, resourceName, queryID, legacyQueryID)
-		return []string{legacy}, known && onlyRoot == ""
+		return []string{legacy}, known
 	}
 	var block address.Block
 	if file.Kind != model.KindTerraformPlan {
 		block, _ = terraformBlockFor(file, resourceType, resourceName)
 	}
 	var ids []string
-	s.appendRouteIdentities(&ids, ruleID, resourceType, onlyRoot, file.ID, file.TerraformScope, block, id,
+	s.appendRouteIdentities(&ids, ruleID, resourceType, file.ID, file.TerraformScope, block, id,
 		len(file.ModuleAttributions) > 0)
 	return ids, true
+}
+
+func (s *findingSet) runRoot() string {
+	if s.routing == nil {
+		return ""
+	}
+	return s.routing.runRoot
 }
 
 // appendRouteIdentities appends the identities routing produces for a finding
@@ -177,7 +180,7 @@ func (s *findingSet) findingIdentities(
 // file — recursively, since an extra caller may itself be an external module
 // file whose copies route through its own calls.
 func (s *findingSet) appendRouteIdentities(
-	ids *[]string, ruleID, resourceType, onlyRoot, docID string,
+	ids *[]string, ruleID, resourceType, docID string,
 	scope *model.TerraformScope, block address.Block, id model.TerraformIdentity,
 	attributionPossible bool,
 ) {
@@ -185,37 +188,62 @@ func (s *findingSet) appendRouteIdentities(
 	if s.routing != nil {
 		mf = s.routing.moduleFiles[docID]
 	}
+	run := s.runRoot()
 	routedAway := mf != nil && !mf.keptAsWritten(resourceType) && !mf.keepWritten && !attributionPossible
-	if !routedAway && rootAllowed(onlyRoot, id.RootModule) {
+	if !routedAway && reportsRoot(run, id.RootModule) {
 		*ids = append(*ids, terraformIdentityInput(ruleID, id))
 	}
 	if s.routing == nil {
 		return
 	}
+	s.appendExtraIdentities(ids, ruleID, resourceType, docID, scope, block, id, run)
+	s.appendCallIdentities(ids, ruleID, mf, resourceType, scope, block, id, run)
+}
+
+func (s *findingSet) appendExtraIdentities(
+	ids *[]string, ruleID, resourceType, docID string,
+	scope *model.TerraformScope, block address.Block, id model.TerraformIdentity, run string,
+) {
 	for _, ex := range s.routing.extras[docID] {
-		s.appendRouteIdentities(ids, ruleID, resourceType, onlyRoot, ex.docID, scope, block,
+		if !reportsRoot(run, ex.rootModule) {
+			continue
+		}
+		s.appendRouteIdentities(ids, ruleID, resourceType, ex.docID, scope, block,
 			model.TerraformIdentity{RootModule: ex.rootModule, ResourceID: id.ResourceID},
 			len(ex.attributions) > 0)
 	}
-	if mf != nil && !mf.keptAsWritten(resourceType) {
-		for i := range mf.calls {
-			call := &mf.calls[i]
-			if !rootAllowed(onlyRoot, call.rootModule) {
-				continue
-			}
-			resourceID := id.ResourceID
-			if call.moduleAddress != "" {
-				resourceID = call.moduleAddress + "." + resourceID
-			}
-			if (address.Block{}) != block {
-				resourceID = routedBlockAddress(scope, block, call.moduleAddress)
-			}
-			*ids = append(*ids, terraformIdentityInput(ruleID, model.TerraformIdentity{
-				RootModule: call.rootModule,
-				ResourceID: resourceID,
-			}))
-		}
+}
+
+func (s *findingSet) appendCallIdentities(
+	ids *[]string, ruleID string, mf *moduleFileCalls, resourceType string,
+	scope *model.TerraformScope, block address.Block, id model.TerraformIdentity, run string,
+) {
+	if mf == nil || mf.keptAsWritten(resourceType) {
+		return
 	}
+	for i := range mf.calls {
+		call := &mf.calls[i]
+		if !reportsRoot(run, call.rootModule) {
+			continue
+		}
+		resourceID := id.ResourceID
+		if call.moduleAddress != "" {
+			resourceID = call.moduleAddress + "." + resourceID
+		}
+		if (address.Block{}) != block {
+			resourceID = routedBlockAddress(scope, block, call.moduleAddress)
+		}
+		*ids = append(*ids, terraformIdentityInput(ruleID, model.TerraformIdentity{
+			RootModule: call.rootModule,
+			ResourceID: resourceID,
+		}))
+	}
+}
+
+// reportsRoot reports whether a copy whose root is root belongs to this run.
+// A copy with no root is kept: the evaluation produced it and named no other root.
+func reportsRoot(run, root string) bool {
+	return run == "" || root == "" || root == run
 }
 
 // terraformIdentityInput builds the fingerprint input of a Terraform finding
@@ -224,15 +252,6 @@ func (s *findingSet) appendRouteIdentities(
 func terraformIdentityInput(ruleID string, id model.TerraformIdentity) string {
 	input, _ := model.IdentityInput("", terraformPlatformValue, "", "", ruleID, id)
 	return input
-}
-
-func anyRootRestricted(vulns []model.Vulnerability) bool {
-	for i := range vulns {
-		if vulns[i].OnlyRootModule != "" {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *findingSet) has(id string) bool {
@@ -260,13 +279,16 @@ type findingRouting struct {
 	extras      map[string][]extraCallerInfo
 	moduleFiles map[string]*moduleFileCalls
 	callers     map[string]*model.FileMetadata
+	docRoots    map[string][]string
+	// runRoot limits a cross-document evaluation to one root. Empty keeps every caller.
+	runRoot string
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
 // rules route concurrently, so the index is built before any of them run.
 func newFindingRouting(
 	extras map[string][]extraCallerInfo, moduleFiles map[string]*moduleFileCalls,
-	files model.FileMetadatas, repoPath string,
+	docRoots map[string][]string, files model.FileMetadatas, repoPath string,
 ) *findingRouting {
 	callers := make(map[string]*model.FileMetadata)
 	for _, f := range files {
@@ -278,7 +300,17 @@ func newFindingRouting(
 			callers[key] = f
 		}
 	}
-	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers}
+	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers, docRoots: docRoots}
+}
+
+// forRoot returns routing that reports only this root's copies. The maps stay shared.
+func (r *findingRouting) forRoot(root string) *findingRouting {
+	if r == nil || root == "" {
+		return r
+	}
+	cp := *r
+	cp.runRoot = root
+	return &cp
 }
 
 // route turns one rule's decoded findings into the findings the scan reports
@@ -290,7 +322,61 @@ func (r *findingRouting) route(
 	if r == nil {
 		return vulns
 	}
-	vulns = expandModuleFindings(vulns, r.extras, r.moduleFiles)
-	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
+	extras, moduleFiles := r.extras, r.moduleFiles
+	if r.runRoot != "" {
+		extras = extrasForRoot(extras, r.runRoot)
+		moduleFiles = moduleFilesForRoot(moduleFiles, r.runRoot)
+	}
+	vulns = expandModuleFindings(vulns, extras)
+	vulns = attributeModuleFileFindings(vulns, moduleFiles)
+	if r.runRoot != "" {
+		vulns = vulnsForRoot(vulns, r.runRoot)
+	}
 	return c.filterAtCallSites(ctx, vulns, r.callers)
+}
+
+func extrasForRoot(extras map[string][]extraCallerInfo, root string) map[string][]extraCallerInfo {
+	if len(extras) == 0 {
+		return extras
+	}
+	out := make(map[string][]extraCallerInfo)
+	for id, list := range extras {
+		for _, ex := range list {
+			if ex.rootModule == root {
+				out[id] = append(out[id], ex)
+			}
+		}
+	}
+	return out
+}
+
+func moduleFilesForRoot(files map[string]*moduleFileCalls, root string) map[string]*moduleFileCalls {
+	if len(files) == 0 {
+		return files
+	}
+	out := make(map[string]*moduleFileCalls, len(files))
+	for id, mf := range files {
+		if mf == nil {
+			continue
+		}
+		cp := *mf
+		cp.calls = nil
+		for i := range mf.calls {
+			if mf.calls[i].rootModule == root {
+				cp.calls = append(cp.calls, mf.calls[i])
+			}
+		}
+		out[id] = &cp
+	}
+	return out
+}
+
+func vulnsForRoot(vulns []model.Vulnerability, root string) []model.Vulnerability {
+	out := make([]model.Vulnerability, 0, len(vulns))
+	for i := range vulns {
+		if reportsRoot(root, vulns[i].RootModule) {
+			out = append(out, vulns[i])
+		}
+	}
+	return out
 }
