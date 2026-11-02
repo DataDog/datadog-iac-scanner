@@ -1594,8 +1594,10 @@ func TestPlanSymlinkedBase(t *testing.T) {
 func TestPlanSymlinkConfined(t *testing.T) {
 	// Both escape vectors: o references a directory entry that is a symlink
 	// out of the repository, and a sibling kustomization whose file is a
-	// symlink into the escaped tree. Nothing outside may be read, and the
-	// escaped tree stays out of the closure.
+	// symlink into the escaped tree. The planner is given every directory
+	// holding a kustomization file, as the analyzer does, so it actually
+	// attempts the sibling's load through the escaping symlink and must
+	// refuse it.
 	dir := writeTree(t, map[string]string{
 		"o/kustomization.yaml": "resources:\n  - ../esc-link\n  - ../b\n",
 	})
@@ -1614,20 +1616,33 @@ func TestPlanSymlinkConfined(t *testing.T) {
 	}
 	r := NewRenderer(nil, dir, 5<<20)
 	bounded := r.BoundedRead()
-	var read []string
-	roots := Plan([]string{filepath.Join(dir, "o")}, nil, func(p string) ([]byte, error) {
-		b, err := bounded(p)
-		if err == nil {
-			read = append(read, p)
-		}
-		return b, err
-	}, r.Canonical)
-	// b's kustomization escapes, so its directory stays unknown: the root
-	// plans without it rather than reading through the symlink.
-	if len(roots) != 1 || roots[0].Dir != filepath.Join(dir, "o") {
+	var attempted, read []string
+	roots := Plan([]string{filepath.Join(dir, "o"), filepath.Join(dir, "b")}, nil,
+		func(p string) ([]byte, error) {
+			attempted = append(attempted, p)
+			b, err := bounded(p)
+			if err == nil {
+				read = append(read, p)
+			}
+			return b, err
+		}, r.Canonical)
+	// The sibling's load is refused, so its directory stays unknown and the
+	// root is skipped rather than rendered from an unreadable dependency.
+	if len(roots) != 1 || roots[0].Dir != filepath.Join(dir, "o") || roots[0].Skip != ReasonPlanSkip {
 		t.Fatalf("roots %+v", roots)
 	}
-	// No successful read resolves outside the repository.
+	var siblingAttempted bool
+	for _, p := range attempted {
+		if strings.HasSuffix(p, filepath.Join("b", "kustomization.yaml")) {
+			siblingAttempted = true
+		}
+		if strings.Contains(p, "esc-link") {
+			t.Errorf("the escaped entry %s was read", p)
+		}
+	}
+	if !siblingAttempted {
+		t.Fatal("the sibling kustomization was never attempted: the test would be vacuous")
+	}
 	for _, p := range read {
 		real, err := filepath.EvalSymlinks(p)
 		if err == nil && real != dir && !strings.HasPrefix(real, dir+string(filepath.Separator)) {
