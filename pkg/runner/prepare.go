@@ -130,6 +130,10 @@ func prepareSources(ctx context.Context,
 	}
 	unrendered.log(ctx)
 	files = coverage.withoutRaw(files)
+	if d, ok := src.(diskSource); ok {
+		files = renderKustomizeRoots(ctx, d.Kustomize(), d.ChartRoots(), services, files, scanID,
+			openAPIResolveReferences, maxResolverDepth)
+	}
 
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
 

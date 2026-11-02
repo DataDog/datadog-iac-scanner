@@ -477,6 +477,22 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
+			// Scope rules come before parser eligibility: a file the parser
+			// cannot classify (extensionless Kustomization, extensionless
+			// resource YAML) is still gitignored, excluded or only-filtered
+			// as any other, so it lands in the exclusion sets and the scope
+			// predicate sees it.
+			if gitIgnored(trimmedPath) {
+				norm := filepath.ToSlash(path)
+				ignoreFiles = append(ignoreFiles, norm)
+				a.Exc = append(a.Exc, norm)
+				return nil
+			}
+
+			if isExcludedFile(path, a.Exc) || !isIncludedFile(path, a.Only) {
+				return nil
+			}
+
 			ext := utils.ExtensionFromPath(path)
 			if ext == "" {
 				return nil
@@ -489,17 +505,6 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				norm := filepath.ToSlash(path)
 				projectConfigFiles = append(projectConfigFiles, norm)
 				a.Exc = append(a.Exc, norm)
-				return nil
-			}
-
-			if gitIgnored(trimmedPath) {
-				norm := filepath.ToSlash(path)
-				ignoreFiles = append(ignoreFiles, norm)
-				a.Exc = append(a.Exc, norm)
-				return nil
-			}
-
-			if isExcludedFile(path, a.Exc) || !isIncludedFile(path, a.Only) {
 				return nil
 			}
 
@@ -571,6 +576,9 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	unwantedPaths = append(unwantedPaths, projectConfigFiles...)
 	returnAnalyzedPaths.Types = availableTypes
 	returnAnalyzedPaths.Exc = unwantedPaths
+	// True scope rules only: the walk's own exclusions (gitignore, exclude,
+	// config files), never the content a parser could not classify.
+	returnAnalyzedPaths.ScopeExcludes = append([]string(nil), a.Exc...)
 	returnAnalyzedPaths.ExpectedLOC = loc
 
 	fp := make(map[string]string, len(files))

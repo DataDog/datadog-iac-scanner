@@ -453,7 +453,8 @@ func NewInspector(
 		Add(helm.DetectKindLine{}, model.KindHELM).
 		Add(docker.DetectKindLine{}, model.KindDOCKER).
 		Add(&terraform.DetectKindLine{}, model.KindTerraform).
-		Add(detector.DockerComposeDetectLine{}, model.KindYAML)
+		Add(detector.DockerComposeDetectLine{}, model.KindYAML).
+		Add(detector.KustomizeDetectLine{}, model.KindKUSTOMIZE)
 
 	return &Inspector{
 		QueryLoader:      &queryLoader,

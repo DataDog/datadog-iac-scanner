@@ -7,7 +7,9 @@ package detector
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -124,4 +126,51 @@ var OriginalData0 = `resource "aws_s3_bucket" "b" {
 
 func initDetector() *DetectLine {
 	return NewDetectLine(3)
+}
+
+func TestKustomizeDetectLine(t *testing.T) {
+	base := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  template:\n    spec:\n      containers:\n        - name: web\n          securityContext:\n            privileged: true\n"
+	file := &model.FileMetadata{
+		FilePath: "base/deployment.yaml", OriginalData: base, Kind: model.KindKUSTOMIZE,
+		Kustomize: &model.KustomizeAttribution{Kind: "Deployment", SourceName: "web", RenderedName: "dev-web",
+			RenderedNamespace: "dev"},
+	}
+	got := KustomizeDetectLine{}.DetectLine(context.Background(), file,
+		"metadata.name={{dev-web}}.spec.template.spec.containers.name={{web}}.securityContext.privileged", 3)
+	if got.Line != 11 {
+		t.Errorf("source line: got %d", got.Line)
+	}
+
+	kust := "configMapGenerator:\n  - name: settings\n    literals:\n      - SECRET=canary\n"
+	gen := &model.FileMetadata{
+		FilePath: "overlays/prod/kustomization.yaml", OriginalData: kust, Kind: model.KindKUSTOMIZE,
+		Kustomize: &model.KustomizeAttribution{Kind: "ConfigMap", RenderedName: "settings-abc",
+			Generator: &model.KustomizeGenerator{Kind: "ConfigMapGenerator", Name: "settings"}},
+	}
+	got = KustomizeDetectLine{}.DetectLine(context.Background(), gen, "metadata.name={{settings-abc}}.data.SECRET", 3)
+	if got.Line != 2 || got.LineWithVulnerability != "  - name: settings" || len(*got.VulnLines) != 1 {
+		t.Errorf("generator line: %+v", got)
+	}
+
+	// A container named like the rendered resource keeps its anchor.
+	renamed := &model.FileMetadata{
+		FilePath: file.FilePath, OriginalData: strings.Replace(base, "privileged: true", "privileged: false", 1) +
+			"        - name: dev-web\n          securityContext:\n            privileged: true\n",
+		Kind: model.KindKUSTOMIZE, Kustomize: file.Kustomize,
+	}
+	got = KustomizeDetectLine{}.DetectLine(context.Background(), renamed,
+		"metadata.name={{dev-web}}.spec.template.spec.containers.name={{dev-web}}.securityContext.privileged", 3)
+	if got.Line != 14 {
+		t.Errorf("container anchor: got %d", got.Line)
+	}
+
+	// An entry written on one line is not found: no source text is shown.
+	flow := &model.FileMetadata{
+		FilePath: gen.FilePath, Kind: model.KindKUSTOMIZE, Kustomize: gen.Kustomize,
+		OriginalData: `{"configMapGenerator":[{"name":"settings","literals":["SECRET=canary"]}]}`,
+	}
+	got = KustomizeDetectLine{}.DetectLine(context.Background(), flow, "metadata.name={{settings-abc}}.data.SECRET", 3)
+	if strings.Contains(fmt.Sprintf("%+v", got), "canary") {
+		t.Errorf("generator literal leaked: %+v", got)
+	}
 }

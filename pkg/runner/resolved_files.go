@@ -54,14 +54,14 @@ func (s *Service) storeResolvedFiles(
 	openAPIResolveReferences bool,
 	maxResolverDepth int) []string {
 	contextLogger := logger.FromContext(ctx)
-	sourceCache := make(map[string]*resolvedSourceData)
+	sourceCache := s.resolvedSourceCache(kind)
 	var storedPaths []string
 	for i := range resFiles.File {
 		rfile := &resFiles.File[i]
 		if s.skipResolvedFile(kind, rfile) {
 			continue
 		}
-		s.Tracker.TrackFileFound(rfile.FileName)
+		tracked := s.trackResolvedFileFound(kind, rfile.FileName)
 
 		isMinified := minified.IsMinified(rfile.FileName, rfile.Content)
 		documents, err := s.parseResolvedFile(
@@ -88,7 +88,7 @@ func (s *Service) storeResolvedFiles(
 		if len(documents.IgnoreLines) > 0 {
 			sort.Ints(documents.IgnoreLines)
 		}
-		platform := s.classifyPlatform(ctx, kind, rfile.FileName, rfile.Content)
+		platform := s.classifyResolvedPlatform(ctx, kind, rfile.FileName, rfile.Content)
 		ownedRenderedContent := ownedHelmRenderedContent(kind, rfile.IsCRD, rfile.Content)
 
 		for docIdx, document := range documents.Docs {
@@ -100,7 +100,7 @@ func (s *Service) storeResolvedFiles(
 			}
 
 			lineInfoDocument := document
-			if kind == model.KindHELM {
+			if isRenderedKind(kind) {
 				lineInfoDocument = nil
 			}
 			file := model.FileMetadata{
@@ -123,15 +123,15 @@ func (s *Service) storeResolvedFiles(
 				IsMinified:        documents.IsMinified,
 				Platform:          platform,
 			}
-			if kind == model.KindHELM {
-				file.SetLineInfoLoader(newHelmLineInfoLoader(
-					s.Parser, rfile, ownedRenderedContent, docIdx,
-					openAPIResolveReferences, isMinified, maxResolverDepth))
-			}
+			s.setRenderedSource(&file, rfile, kind, ownedRenderedContent, docIdx,
+				openAPIResolveReferences, isMinified, maxResolverDepth)
 			s.saveToFile(ctx, &file)
 			if n := len(storedPaths); n == 0 || storedPaths[n-1] != rfile.FileName {
 				storedPaths = append(storedPaths, rfile.FileName)
 			}
+		}
+		if !tracked {
+			continue
 		}
 		s.Tracker.TrackFileParse(rfile.FileName)
 		s.Tracker.TrackFileFoundCountLines(documents.CountLines)
@@ -190,7 +190,7 @@ func (s *Service) setResolvedLineMetadata(
 		cached = newResolvedSourceData(ctx, s, rfile)
 		sourceCache[rfile.FileName] = cached
 	}
-	if kind != model.KindHELM {
+	if kind != model.KindHELM && kind != model.KindKUSTOMIZE {
 		documents.CountLines = cached.countLines + 1
 		return
 	}
@@ -236,7 +236,8 @@ func (s *Service) parseResolvedFile(
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int,
 ) (parser.ParsedDocument, error) {
-	if isHelmJSONFile(kind, filename) && s.Parser.Parsers.GetKind() == model.KindYAML {
+	// Rendered Kustomize output is YAML whatever its source file is named.
+	if kind == model.KindKUSTOMIZE || isHelmJSONFile(kind, filename) && s.Parser.Parsers.GetKind() == model.KindYAML {
 		return s.Parser.ParseContent(
 			ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
 	}
@@ -259,7 +260,7 @@ func newHelmLineInfoLoader(
 ) func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
 	if rfile.IsCRD {
 		return newOriginalResolvedLineInfoLoader(
-			p, rfile.FileName, rfile.SourceDocumentIndex,
+			p, model.KindHELM, rfile.FileName, rfile.SourceDocumentIndex,
 			openAPIResolveReferences, isMinified, maxResolverDepth)
 	}
 	return newResolvedLineInfoLoader(
@@ -289,6 +290,7 @@ func newResolvedLineInfoLoader(
 
 func newOriginalResolvedLineInfoLoader(
 	p *parser.Parser,
+	kind model.FileKind,
 	filename string,
 	sourceDocumentIndex int,
 	openAPIResolveReferences bool,
@@ -298,7 +300,7 @@ func newOriginalResolvedLineInfoLoader(
 	return newLineInfoLoaderWithReparser(filename, sourceDocumentIndex,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
 			content := []byte(f.OriginalData)
-			if isHelmJSONFile(model.KindHELM, filename) && p.Parsers.GetKind() == model.KindYAML {
+			if kind == model.KindKUSTOMIZE || isHelmJSONFile(kind, filename) && p.Parsers.GetKind() == model.KindYAML {
 				return p.ParseContent(
 					ctx, filename, content, openAPIResolveReferences, isMinified, maxResolverDepth)
 			}
@@ -521,4 +523,67 @@ func withoutHelmSourceHeader(content []byte) []byte {
 		return trimmed[end+1:]
 	}
 	return nil
+}
+
+// resolvedSourceCache returns the source cache of one storeResolvedFiles call.
+// The roots of a scan share their Kustomize bases: one copy of each source.
+func (s *Service) resolvedSourceCache(kind model.FileKind) map[string]*resolvedSourceData {
+	if kind != model.KindKUSTOMIZE {
+		return make(map[string]*resolvedSourceData)
+	}
+	if s.kustomizeSources == nil {
+		s.kustomizeSources = map[string]*resolvedSourceData{}
+	}
+	return s.kustomizeSources
+}
+
+// trackResolvedFileFound counts path as found and reports whether it was
+// counted: a Kustomize base rendered by several roots is one file.
+func (s *Service) trackResolvedFileFound(kind model.FileKind, path string) bool {
+	if kind == model.KindKUSTOMIZE {
+		if s.kustomizeTracked == nil {
+			s.kustomizeTracked = map[string]struct{}{}
+		}
+		if _, ok := s.kustomizeTracked[path]; ok {
+			return false
+		}
+		s.kustomizeTracked[path] = struct{}{}
+	}
+	s.Tracker.TrackFileFound(path)
+	return true
+}
+
+// classifyResolvedPlatform classifies a rendered file; Kustomize output is
+// Kubernetes whatever its source file looks like.
+func (s *Service) classifyResolvedPlatform(ctx context.Context, kind model.FileKind, filename string, content []byte) string {
+	if kind == model.KindKUSTOMIZE {
+		return "kubernetes"
+	}
+	return s.classifyPlatform(ctx, kind, filename, content)
+}
+
+// isRenderedKind reports whether kind's documents are rendered, so their line
+// info comes from the source file rather than the scanned document.
+func isRenderedKind(kind model.FileKind) bool {
+	return kind == model.KindHELM || kind == model.KindKUSTOMIZE
+}
+
+// setRenderedSource attaches the Kustomize attribution and the source-file
+// line info loader of a rendered document.
+func (s *Service) setRenderedSource(file *model.FileMetadata, rfile *model.ResolvedHelm, kind model.FileKind,
+	ownedRenderedContent string, docIdx int, openAPIResolveReferences, isMinified bool, maxResolverDepth int) {
+	if a := rfile.Kustomize; a != nil {
+		file.Kustomize = a
+		file.RenderRoot = a.RenderRoot
+		if rfile.SourceDocumentIndex >= 0 {
+			file.SetLineInfoLoader(newOriginalResolvedLineInfoLoader(
+				s.Parser, kind, rfile.FileName, rfile.SourceDocumentIndex,
+				openAPIResolveReferences, isMinified, maxResolverDepth))
+		}
+	}
+	if kind == model.KindHELM {
+		file.SetLineInfoLoader(newHelmLineInfoLoader(
+			s.Parser, rfile, ownedRenderedContent, docIdx,
+			openAPIResolveReferences, isMinified, maxResolverDepth))
+	}
 }

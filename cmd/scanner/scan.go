@@ -140,6 +140,12 @@ var scanAction = &cli.Command{
 			Value: scan.DefaultRemoteModuleMaxCacheBytes,
 		},
 		&cli.BoolFlag{
+			Name:   "x-kustomize",
+			Hidden: true,
+			Usage:  "(experimental) render Kustomize kustomizations and scan the rendered resources",
+			Value:  false,
+		},
+		&cli.BoolFlag{
 			Name:   "x-terraform-plan",
 			Hidden: true,
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
@@ -377,6 +383,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		FlagEvaluator:               featureflags.NewLocalEvaluator(),
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
+		EnableKustomize:             c.Bool("x-kustomize"),
 		TerraformModules:            modulesSetting,
 		NetworkIsolation:            offlineBundlePath != "",
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),

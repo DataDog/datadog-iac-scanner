@@ -1066,6 +1066,10 @@ type AnalyzedPaths struct {
 	// KustomizeRoots are the slash directories holding a kustomization file,
 	// when collected.
 	KustomizeRoots []string
+	// ScopeExcludes are the paths the scan scope itself excludes (gitignore,
+	// exclude, only): unlike Exc they never carry files that are merely
+	// parser-ineligible, so they can act as a scope predicate.
+	ScopeExcludes []string
 	TotalFiles     int
 	ContentCache   map[string][]byte
 }
