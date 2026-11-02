@@ -413,6 +413,18 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				trimmedPath != ".." &&
 				!strings.HasPrefix(trimmedPath, ".."+string(os.PathSeparator))
 
+			// One scope predicate shared by the file inventory and the
+			// Kustomize root collector: gitignore (with the single-file
+			// parent check the walk cannot do itself), exclude and only.
+			gitIgnored := func(trimmed string) bool {
+				return insideRepo && hasGitIgnoreFile &&
+					(gitIgnore.MatchesPath(trimmed) ||
+						(singleFilePath && gitIgnore.MatchesParentDir(trimmed)))
+			}
+			inScope := func(p string, ignored bool) bool {
+				return !ignored && !isExcludedFile(p, a.Exc) && isIncludedFile(p, a.Only)
+			}
+
 			if d.IsDir() {
 				if provider.IsTerraformCacheDir(path) {
 					return filepath.SkipDir
@@ -457,8 +469,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 			// Before the extension filter: "Kustomization" has none.
 			if a.CollectKustomizeRoots && isKustomizationFile(filepath.Base(path)) &&
-				(!insideRepo || !hasGitIgnoreFile || !gitIgnore.MatchesPath(trimmedPath)) &&
-				!isExcludedFile(path, a.Exc) && isIncludedFile(path, a.Only) {
+				inScope(path, gitIgnored(trimmedPath)) {
 				kustomizeRoots = append(kustomizeRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
@@ -481,9 +492,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return nil
 			}
 
-			if insideRepo && hasGitIgnoreFile &&
-				(gitIgnore.MatchesPath(trimmedPath) ||
-					(singleFilePath && gitIgnore.MatchesParentDir(trimmedPath))) {
+			if gitIgnored(trimmedPath) {
 				norm := filepath.ToSlash(path)
 				ignoreFiles = append(ignoreFiles, norm)
 				a.Exc = append(a.Exc, norm)

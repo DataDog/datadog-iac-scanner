@@ -998,4 +998,18 @@ func TestAnalyze_KustomizeRoots(t *testing.T) {
 		filepath.ToSlash(filepath.Join(dir, "c")),
 	}, analyze(true))
 	require.Empty(t, analyze(false))
+	// A single-file target under a git-ignored directory is out of scan
+	// scope, so its directory is not a Kustomize root either; a target that
+	// is not ignored still is.
+	analyzeOne := func(path string) []string {
+		got, err := Analyze(context.Background(), &Analyzer{
+			RepoPath: dir, Paths: []string{path}, Types: []string{""}, MaxFileSize: -1,
+			GitIgnoreFileName: ".gitignore", CollectKustomizeRoots: true,
+		})
+		require.NoError(t, err)
+		return got.KustomizeRoots
+	}
+	require.Empty(t, analyzeOne(filepath.Join(dir, "ignored", "kustomization.yaml")))
+	require.Equal(t, []string{filepath.ToSlash(filepath.Join(dir, "a"))},
+		analyzeOne(filepath.Join(dir, "a", "kustomization.yaml")))
 }
