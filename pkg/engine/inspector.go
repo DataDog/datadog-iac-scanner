@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1228,7 +1229,8 @@ func (c *Inspector) mapToPayloadValue(
 			return memo.val, nil
 		}
 	}
-	pairs := make([]payloadChildPair, 0, len(v))
+	mark := len(cons.childPairs)
+	defer func() { cons.childPairs = cons.childPairs[:mark] }()
 	for key, raw := range v {
 		converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
 		if err != nil {
@@ -1239,9 +1241,10 @@ func (c *Inspector) mapToPayloadValue(
 			h = hashConsScalarKey(converted)
 			cons.valHash[converted] = h
 		}
-		pairs = append(pairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
+		cons.childPairs = append(cons.childPairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].key < pairs[j].key })
+	pairs := cons.childPairs[mark:]
+	slices.SortFunc(pairs, func(a, b payloadChildPair) int { return strings.Compare(a.key, b.key) })
 
 	contentKey := hashConsBase
 	for _, p := range pairs {
@@ -1329,6 +1332,10 @@ type payloadHashCons struct {
 	// jsonencodeCache memoizes TransformJsonencodeInPayload results per
 	// input scalar value.
 	jsonencodeCache map[ast.Value]ast.Value
+	// childPairs is the children of the object nodes being converted. The
+	// conversion is depth first and no node keeps its children past its own
+	// conversion, so one stack serves every node instead of a slice per node.
+	childPairs []payloadChildPair
 }
 
 // pointerMemo is a byPointer entry: the converted value plus a fingerprint of

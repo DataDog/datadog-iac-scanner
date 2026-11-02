@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -374,7 +375,9 @@ func TestMultiRootRepoDedup(t *testing.T) {
 		repo, files := writeMultiRootRepo(t, roots, 3, 2)
 		res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, multiRootTargets, nil, nil, nil, nil)
 		require.True(t, res.ok, "roots=%d", roots)
-		require.Len(t, res.written, roots*6, "roots=%d", roots)
+		// Three plain resources per root; the root scope's locals and module
+		// calls are patched as each root is merged, not kept here.
+		require.Len(t, res.written, roots*3, "roots=%d", roots)
 		counts[roots] = len(res.docs)
 	}
 	require.Equal(t, 6, counts[10])
@@ -392,6 +395,9 @@ func TestInPlaceValuesAddNoDocument(t *testing.T) {
 	plain := docAsMap(docAsMap(files[len(files)-1].Document["resource"])["aws_s3_bucket"])["plain0"]
 	require.Equal(t, "app-0", docAsMap(plain)["bucket"])
 	require.Equal(t, map[string]interface{}{"team": "app"}, docAsMap(plain)["tags"])
+	root := files[len(files)-1].Document
+	require.Equal(t, map[string]interface{}{"team": "app"}, docAsMap(docAsMap(root["locals"])["tags"]))
+	require.Equal(t, json.Number("8"), docAsMap(docAsMap(root["module"])["net"])["n"])
 }
 
 // sampleHeapInuse records the highest HeapInuse seen every millisecond until stopped.

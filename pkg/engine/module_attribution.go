@@ -65,6 +65,8 @@ type moduleAttributionCache struct {
 	// referenceAnalyzers holds the analyzer resource references are read with,
 	// per module instance.
 	referenceAnalyzers map[referenceScope]*valueAnalyzer
+	// refs shares reference leaves across roots, so it outlives this cache.
+	refs *refIntern
 	// pathChains identifies call chains by their module blocks, and
 	// scopedChains by their module blocks and the scopes calling them.
 	pathChains   chainNode

@@ -384,13 +384,17 @@ func (w writtenBlocks) add(p *rootResource, attributions *moduleAttributionCache
 // patched from the root scope.
 var rootBlockSections = [...]string{localsSection, moduleCallRoot, outputSection, providerSection}
 
-// addRootScope records the evaluated content of the locals, module calls,
-// outputs and provider blocks written in the root module's files. Locals are
-// keyed by position in their file, providers by name and position.
-func (w writtenBlocks) addRootScope(scope *tfeval.ModuleScope, byAbsPath map[string]*model.FileMetadata, repoPath string) {
+// patchRootScope merges the evaluated content of the locals, module calls,
+// outputs and provider blocks written in the root module's files into those
+// files' documents. Locals are keyed by position in their file, providers by
+// name and position. A root's files are its own, so patching them as the root
+// is merged keeps one file's rendered blocks live instead of every root's
+// until the resolution ends.
+func patchRootScope(scope *tfeval.ModuleScope, byAbsPath map[string]*model.FileMetadata, repoPath string) {
 	if scope == nil {
 		return
 	}
+	written := make(writtenBlocks)
 	for _, body := range scope.Bodies {
 		if body == nil {
 			continue
@@ -399,6 +403,7 @@ func (w writtenBlocks) addRootScope(scope *tfeval.ModuleScope, byAbsPath map[str
 		if fm == nil {
 			continue
 		}
+		clear(written)
 		localsAt, providersAt := 0, map[string]int{}
 		for _, b := range body.Blocks {
 			var name string
@@ -414,8 +419,9 @@ func (w writtenBlocks) addRootScope(scope *tfeval.ModuleScope, byAbsPath map[str
 			default:
 				continue
 			}
-			w[resolvedBlockKey(fm.ID, b.Type, name)] = writtenBlock{attrs: scope.RenderBody(b.Body)}
+			written[resolvedBlockKey(fm.ID, b.Type, name)] = writtenBlock{attrs: scope.RenderBody(b.Body)}
 		}
+		patchRootScopeBlocks(fm, written)
 	}
 }
 
@@ -480,7 +486,6 @@ func patchWrittenBlocks(files model.FileMetadatas, written writtenBlocks) {
 		if f == nil {
 			continue
 		}
-		patchRootScopeBlocks(f, written)
 		for _, section := range [...]struct{ key, prefix string }{
 			{resourceSection, ""},
 			{dataRoot, dataTypePrefix},
@@ -753,6 +758,7 @@ func evaluateRootModules(
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
 		resolved: make(map[string]bool), failedRoots: make(map[string]bool), written: make(writtenBlocks),
+		refs: newRefIntern(),
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -806,6 +812,7 @@ type rootMerge struct {
 	resolved             map[string]bool
 	failedRoots          map[string]bool
 	written              writtenBlocks
+	refs                 *refIntern
 }
 
 func (m *rootMerge) merge(
@@ -840,11 +847,12 @@ func (m *rootMerge) merge(
 		m.actualCalledDirs[d] = true
 	}
 	attributions := newModuleAttributionCache()
+	attributions.refs = m.refs
 	docs, syn, count := instantiatedDocs(
 		resources, m.byAbsPath, m.repoPath, m.relDir, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions,
 		m.written)
 	m.moduleCalls.record(instances, m.repoPath, m.relDir, m.lookup, attributions)
-	m.written.addRootScope(scope, m.byAbsPath, m.repoPath)
+	patchRootScope(scope, m.byAbsPath, m.repoPath)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
 	*m.resourceCount += count

@@ -87,6 +87,47 @@ func staticReferences(r *tfeval.ResolvedResource, a *valueAnalyzer) map[string]i
 	return a.bodyReferences(r.Body)
 }
 
+// refIntern shares the leaves of the references metadata. The same addresses
+// are read by every instance of a block and by every block of a repeated
+// module, so without sharing each reader keeps its own copy of the same
+// strings for the whole resolution. It is only used from the merge goroutine.
+type refIntern struct {
+	leaves map[string][]interface{}
+	boxed  map[string]interface{}
+	key    []byte
+}
+
+func newRefIntern() *refIntern {
+	return &refIntern{leaves: map[string][]interface{}{}, boxed: map[string]interface{}{}}
+}
+
+// leaf returns the shared boxed form of addrs, which must be sorted and
+// deduplicated.
+func (i *refIntern) leaf(addrs []string) []interface{} {
+	if i == nil {
+		i = newRefIntern()
+	}
+	i.key = i.key[:0]
+	for _, addr := range addrs {
+		i.key = append(i.key, addr...)
+		i.key = append(i.key, 0)
+	}
+	if leaf, ok := i.leaves[string(i.key)]; ok {
+		return leaf
+	}
+	leaf := make([]interface{}, len(addrs))
+	for n, addr := range addrs {
+		box, ok := i.boxed[addr]
+		if !ok {
+			box = addr
+			i.boxed[addr] = box
+		}
+		leaf[n] = box
+	}
+	i.leaves[string(i.key)] = leaf
+	return leaf
+}
+
 // resourceReferences is r's staticReferences, read with one analyzer per
 // module instance.
 func (c *moduleAttributionCache) resourceReferences(r *tfeval.ResolvedResource) map[string]interface{} {
@@ -107,12 +148,7 @@ func (a *valueAnalyzer) bodyReferences(body *hclsyntax.Body) map[string]interfac
 		a.reads(attr.Expr)
 		if len(a.refs.found) > 0 && !a.refs.untraced {
 			slices.Sort(a.refs.found)
-			found := slices.Compact(a.refs.found)
-			leaf := make([]interface{}, len(found))
-			for i, addr := range found {
-				leaf[i] = addr
-			}
-			out[name] = leaf
+			out[name] = a.cache.refs.leaf(slices.Compact(a.refs.found))
 		}
 	}
 	var order []string
