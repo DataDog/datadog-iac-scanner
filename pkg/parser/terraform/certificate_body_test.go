@@ -39,7 +39,7 @@ resource "aws_acm_certificate" "example" {
 
 		var logBuf bytes.Buffer
 		ctx := zerolog.New(&logBuf).WithContext(context.Background())
-		parser := NewDefaultWithParams(vfs.DiskFS{}, "", model.SCIInfo{})
+		parser := NewDefaultWithParams(vfs.DiskFS{}, model.SCIInfo{})
 		path := filepath.Join(dir, "main.tf")
 		content, err := os.ReadFile(path)
 		if err != nil {

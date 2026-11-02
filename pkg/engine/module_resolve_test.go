@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
@@ -82,19 +82,6 @@ func TestBuildRemoteResolverUsesVersion(t *testing.T) {
 	if packageRoot != "/cache" {
 		t.Fatalf("package root = %q, want /cache", packageRoot)
 	}
-
-	metaResolver := inspector.buildModuleMetadataResolver()
-	got, err := metaResolver.Resolve(context.Background(), &tfmodules.ParsedModule{
-		Source:   "terraform-aws-modules/vpc/aws",
-		Version:  "1.0.0",
-		FileName: callerFile,
-	})
-	if err != nil {
-		t.Fatalf("metadata Resolve: %v", err)
-	}
-	if got != "/cache/v1" {
-		t.Fatalf("metadata resolved dir = %q, want /cache/v1", got)
-	}
 }
 
 func TestBuildRemoteResolverPrefersCallSpecificMapping(t *testing.T) {
@@ -136,9 +123,9 @@ resource "aws_s3_bucket" "replica" {
 `)
 	fm := fileMeta("mod-id", modulePath)
 	resources := []tfeval.ResolvedResource{
-		{Type: "aws_s3_bucket", Name: "shared", DefinedIn: modulePath, ModuleAddress: "module.app"},
-		{Type: "aws_s3_bucket", Name: "replica[0]", DefinedIn: modulePath, ModuleAddress: "module.app"},
-		{Type: "aws_s3_bucket", Name: "replica[1]", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "shared", BaseName: "shared", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[0]", BaseName: "replica", Key: tfeval.InstanceKey{Kind: tfeval.IntKey, Int: 0}, DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[1]", BaseName: "replica", Key: tfeval.InstanceKey{Kind: tfeval.IntKey, Int: 1}, DefinedIn: modulePath, ModuleAddress: "module.app"},
 	}
 
 	docs, _, _ := instantiatedDocs(
@@ -1334,4 +1321,55 @@ resource "aws_s3_bucket" "this" {
 	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatal("the called module must not also be scanned as a root")
 	}
+}
+
+type readDirRecorder struct {
+	vfs.FS
+	dirs []string
+}
+
+func (r *readDirRecorder) ReadDir(name string) ([]fs.DirEntry, error) {
+	r.dirs = append(r.dirs, name)
+	return r.FS.ReadDir(name)
+}
+
+func noTargetFile(withModuleCall bool) *model.FileMetadata {
+	file := fileMeta("main-id", "/ws/infra/main.tf")
+	file.Document = model.Document{
+		"resource": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{"b": map[string]interface{}{"bucket": "x"}},
+		},
+	}
+	if withModuleCall {
+		file.Document["module"] = map[string]interface{}{
+			"net": map[string]interface{}{"source": "../modules/net"},
+		}
+	}
+	return file
+}
+
+func TestResolveModuleDocumentsReadsCalledDirWhenNothingIsEvaluated(t *testing.T) {
+	memfs := vfs.NewMemFS(nil)
+	targets := &ruleTargets{types: map[string]bool{"aws_instance": true}}
+	files := model.FileMetadatas{noTargetFile(true)}
+
+	res := resolveModuleDocuments(
+		context.Background(), files, "/ws", relDirForTest("/ws"), nil, targets, nil, nil, memfs, nil,
+	)
+
+	require.False(t, res.ok)
+	require.Equal(t, []string{"/ws/modules/net"}, memfs.MissingFiles())
+}
+
+func TestResolveModuleDocumentsSkipsDiscoveryWithoutModuleCalls(t *testing.T) {
+	recorder := &readDirRecorder{FS: vfs.NewMemFS(nil)}
+	targets := &ruleTargets{types: map[string]bool{"aws_instance": true}}
+	files := model.FileMetadatas{noTargetFile(false)}
+
+	res := resolveModuleDocuments(
+		context.Background(), files, "/ws", relDirForTest("/ws"), nil, targets, nil, nil, recorder, nil,
+	)
+
+	require.False(t, res.ok)
+	require.Empty(t, recorder.dirs)
 }

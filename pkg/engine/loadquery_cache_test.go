@@ -8,6 +8,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/open-policy-agent/opa/v1/storage"
@@ -93,7 +94,7 @@ func TestBuildMergedInputData_PropagatesLibraryErrors(t *testing.T) {
 					platform: tt.platform,
 				},
 			}
-			merged, err := loader.buildMergedInputData(&query, nil)
+			merged, err := loader.buildMergedInputData(&query)
 			require.ErrorContains(t, err, tt.wantErrMsg)
 			require.Empty(t, merged)
 		})
@@ -112,18 +113,18 @@ func TestLoadQuery_CacheGate(t *testing.T) {
 
 	t.Run("disabled compiles fresh", func(t *testing.T) {
 		clearPreparedCache()
-		first, err := loader.LoadQuery(ctx, &q, nil, stores, hashes, false)
+		first, err := loader.LoadQuery(ctx, &q, stores, hashes, false)
 		require.NoError(t, err)
-		second, err := loader.LoadQuery(ctx, &q, nil, stores, hashes, false)
+		second, err := loader.LoadQuery(ctx, &q, stores, hashes, false)
 		require.NoError(t, err)
 		require.NotSame(t, first, second, "cache disabled: each load must compile a fresh query")
 	})
 
 	t.Run("enabled returns cached pointer", func(t *testing.T) {
 		clearPreparedCache()
-		first, err := loader.LoadQuery(ctx, &q, nil, stores, hashes, true)
+		first, err := loader.LoadQuery(ctx, &q, stores, hashes, true)
 		require.NoError(t, err)
-		second, err := loader.LoadQuery(ctx, &q, nil, stores, hashes, true)
+		second, err := loader.LoadQuery(ctx, &q, stores, hashes, true)
 		require.NoError(t, err)
 		require.Same(t, first, second, "cache enabled: identical query must return the cached pointer")
 	})
@@ -138,9 +139,9 @@ func TestLoadQuery_DifferentContentDifferentEntry(t *testing.T) {
 	stores, hashes := baseStoresFor(platform, "{}")
 	ctx := context.Background()
 
-	a, err := loader.LoadQuery(ctx, &qa, nil, stores, hashes, true)
+	a, err := loader.LoadQuery(ctx, &qa, stores, hashes, true)
 	require.NoError(t, err)
-	b, err := loader.LoadQuery(ctx, &qb, nil, stores, hashes, true)
+	b, err := loader.LoadQuery(ctx, &qb, stores, hashes, true)
 	require.NoError(t, err)
 	require.NotSame(t, a, b, "different query content must compile to a distinct cache entry")
 }
@@ -153,11 +154,11 @@ func TestLoadQuery_DifferentBaseDataDifferentEntry(t *testing.T) {
 	ctx := context.Background()
 
 	stores1, hashes1 := baseStoresFor(platform, "{}")
-	stores2, hashes2 := baseStoresFor(platform, `{"common_lib":{"modules":{"aws":{}}}}`)
+	stores2, hashes2 := baseStoresFor(platform, `{"common_lib":{"x":2}}`)
 
-	a, err := loader.LoadQuery(ctx, &q, nil, stores1, hashes1, true)
+	a, err := loader.LoadQuery(ctx, &q, stores1, hashes1, true)
 	require.NoError(t, err)
-	b, err := loader.LoadQuery(ctx, &q, nil, stores2, hashes2, true)
+	b, err := loader.LoadQuery(ctx, &q, stores2, hashes2, true)
 	require.NoError(t, err)
 	require.NotSame(t, a, b, "different base store data must not share a cache entry")
 }
@@ -171,9 +172,44 @@ func TestLoadQuery_CustomInputNotCached(t *testing.T) {
 	stores, hashes := baseStoresFor(platform, "{}")
 	ctx := context.Background()
 
-	first, err := loader.LoadQuery(ctx, &q, nil, stores, hashes, true)
+	first, err := loader.LoadQuery(ctx, &q, stores, hashes, true)
 	require.NoError(t, err)
-	second, err := loader.LoadQuery(ctx, &q, nil, stores, hashes, true)
+	second, err := loader.LoadQuery(ctx, &q, stores, hashes, true)
 	require.NoError(t, err)
 	require.NotSame(t, first, second, "custom-input queries must bypass the cache even when it is enabled")
+}
+
+func newInputDataTestLoader() *QueryLoader {
+	return &QueryLoader{
+		commonLibrary:     source.RegoLibraries{LibraryInputData: `{"common_lib": {"x": 1}}`},
+		platformLibraries: map[string]source.RegoLibraries{"terraform": {LibraryInputData: "{}"}},
+	}
+}
+
+func decodeInputData(t *testing.T, data string) map[string]any {
+	t.Helper()
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal([]byte(data), &decoded))
+	return decoded
+}
+
+func TestBaseInputDataHasNoModuleTable(t *testing.T) {
+	base := newInputDataTestLoader().precomputeBaseInputData()
+
+	commonLib, ok := decodeInputData(t, base["terraform"])["common_lib"].(map[string]any)
+	require.True(t, ok)
+	require.EqualValues(t, 1, commonLib["x"])
+	require.NotContains(t, commonLib, "modules")
+}
+
+func TestCustomInputDataStillMerged(t *testing.T) {
+	merged, err := newInputDataTestLoader().buildMergedInputData(
+		&model.QueryMetadata{Platform: "terraform", InputData: `{"k": 2}`})
+	require.NoError(t, err)
+
+	decoded := decodeInputData(t, merged)
+	require.EqualValues(t, 2, decoded["k"])
+	commonLib, ok := decoded["common_lib"].(map[string]any)
+	require.True(t, ok)
+	require.EqualValues(t, 1, commonLib["x"])
 }

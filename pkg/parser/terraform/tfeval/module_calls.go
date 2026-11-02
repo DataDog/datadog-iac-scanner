@@ -11,8 +11,8 @@ import (
 	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfrefs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -199,8 +199,9 @@ func callSiblingReads(moduleBlocks []*hclsyntax.Block) []siblingReads {
 
 func (r *siblingReads) addBody(body *hclsyntax.Body) {
 	for _, attr := range body.Attributes {
-		for _, traversal := range attr.Expr.Variables() {
-			r.add(traversal)
+		for _, t := range attr.Expr.Variables() {
+			ref := tfrefs.Parse(t)
+			r.add(&ref)
 		}
 	}
 	for _, block := range body.Blocks {
@@ -208,40 +209,23 @@ func (r *siblingReads) addBody(body *hclsyntax.Body) {
 	}
 }
 
-func (r *siblingReads) add(traversal hcl.Traversal) {
-	switch traversal.RootName() {
-	case blockTypeModule:
-		if name, ok := staticAttributeName(traversal); ok {
-			r.modules = append(r.modules, name)
+func (r *siblingReads) add(ref *tfrefs.Ref) {
+	switch ref.Kind {
+	case tfrefs.KindModule:
+		if ref.Name != "" {
+			r.modules = append(r.modules, ref.Name)
 			return
 		}
 		r.wholeModule, r.opaque = true, true
-	case "local":
-		if name, ok := terraform.LocalTraversalName(traversal); ok {
-			r.locals = append(r.locals, name)
+	case tfrefs.KindLocal:
+		if ref.Name != "" {
+			r.locals = append(r.locals, ref.Name)
 			return
 		}
 		r.opaque = true
-	case blockTypeData:
+	case tfrefs.KindData:
 		r.opaque = true
 	}
-}
-
-// staticAttributeName is the attribute a traversal's first step names, as
-// LocalTraversalName reads it for local.
-func staticAttributeName(traversal hcl.Traversal) (string, bool) {
-	if len(traversal) < 2 {
-		return "", false
-	}
-	switch step := traversal[1].(type) {
-	case hcl.TraverseAttr:
-		return step.Name, true
-	case hcl.TraverseIndex:
-		if step.Key.IsKnown() && !step.Key.IsNull() && step.Key.Type() == cty.String {
-			return step.Key.AsString(), true
-		}
-	}
-	return "", false
 }
 
 // namedObject is the object of the values the names select, leaving out the

@@ -13,7 +13,9 @@ import (
 	"io/fs"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -2848,14 +2850,14 @@ resource "aws_s3_bucket" "b" {
 
 	// Every name round-trips into a parseable Terraform address whose key is
 	// the raw for_each key, through the same parser the address consumers use.
-	for _, name := range names {
-		base, key, _, expanded := parseResourceInstanceKey(name)
-		require.True(t, expanded, name)
-		full := address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: base}, name[len(base):])
+	for i := range resources {
+		r := &resources[i]
+		require.Equal(t, StringKey, r.Key.Kind, r.Name)
+		full := address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: r.BaseName}, r.Key.String())
 		traversal, diags := hclsyntax.ParseTraversalAbs([]byte(full), "", hcl.InitialPos)
-		require.False(t, diags.HasErrors(), "%s: %s", name, diags.Error())
+		require.False(t, diags.HasErrors(), "%s: %s", r.Name, diags.Error())
 		index := traversal[len(traversal)-1].(hcl.TraverseIndex)
-		require.Equal(t, key, index.Key.AsString(), name)
+		require.Equal(t, r.Key.Str, index.Key.AsString(), r.Name)
 	}
 }
 
@@ -2973,8 +2975,8 @@ output "percent" {
 	// And the final identities are distinct per key.
 	ids := map[string]bool{}
 	for i := range resources {
-		base, _, _, _ := parseResourceInstanceKey(resources[i].Name)
-		ids[address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: base}, resources[i].Name[len(base):])] = true
+		r := &resources[i]
+		ids[address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: r.BaseName}, r.Key.String())] = true
 	}
 	require.Len(t, ids, 6, "six distinct keys, six distinct addresses")
 }
@@ -3045,4 +3047,57 @@ func TestJSONConfigEphemeralExpands(t *testing.T) {
 	require.ElementsMatch(t, []string{`login[0]`, `login[1]`}, names)
 	require.Equal(t, "secret-1", outputs["name"].AsString(),
 		"a reference through a JSON ephemeral instance resolves")
+}
+
+func TestTfevalDoesNotImportConverter(t *testing.T) {
+	out, err := exec.Command("go", "list", "-deps", ".").Output()
+	require.NoError(t, err)
+	const converter = "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	require.False(t, slices.Contains(strings.Fields(string(out)), converter),
+		"tfeval must not depend on %s", converter)
+}
+
+func TestInstanceKeyString(t *testing.T) {
+	tests := []struct {
+		key  InstanceKey
+		want string
+	}{
+		{InstanceKey{Kind: NoKey}, ""},
+		{InstanceKey{Kind: IntKey, Int: 3}, "[3]"},
+		{InstanceKey{Kind: StringKey, Str: "dev"}, `["dev"]`},
+		{InstanceKey{Kind: StringKey, Str: ""}, `[""]`},
+		{InstanceKey{Kind: StringKey, Str: "a$b"}, `["a$b"]`},
+		{InstanceKey{Kind: StringKey, Str: "a${b}"}, `["a$${b}"]`},
+		{InstanceKey{Kind: StringKey, Str: "a$${b}"}, `["a$$${b}"]`},
+		{InstanceKey{Kind: StringKey, Str: "a%{b}"}, `["a%%{b}"]`},
+		{InstanceKey{Kind: StringKey, Str: `q"x`}, `["q\"x"]`},
+		{InstanceKey{Kind: StringKey, Str: `a\b`}, `["a\\b"]`},
+		{InstanceKey{Kind: StringKey, Str: "é"}, `["é"]`},
+	}
+	for _, tt := range tests {
+		require.Equal(t, tt.want, tt.key.String(), "%#v", tt.key)
+	}
+}
+
+func TestResolvedResourceNameMatchesKey(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "m", map[string]string{"main.tf": `
+resource "null_resource" "c" {
+  count = 2
+}
+
+resource "null_resource" "f" {
+  for_each = {"a$b" = 1, "" = 2}
+}
+
+resource "null_resource" "p" {}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	names := make([]string, 0, len(resources))
+	for i := range resources {
+		r := &resources[i]
+		require.Equal(t, r.Name, r.BaseName+r.Key.String())
+		names = append(names, r.Name)
+	}
+	require.ElementsMatch(t, []string{`c[0]`, `c[1]`, `f[""]`, `f["a$b"]`, `p`}, names)
 }

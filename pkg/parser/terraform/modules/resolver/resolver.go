@@ -4,7 +4,7 @@
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
 
-// Package resolver implements Terraform module resolution for tfmodules.RemoteResolver.
+// Package resolver implements Terraform module resolution for module sources.
 package resolver
 
 import (

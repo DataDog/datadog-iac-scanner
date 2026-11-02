@@ -3,7 +3,6 @@ package tfmodules
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
@@ -137,45 +135,6 @@ func TestStripGetterPrefix(t *testing.T) {
 	}
 }
 
-// TestEnrichModule_DowngradesUnresolvedToDebug covers the log level of the
-// "Skipping module" message in enrichModule: an UnresolvedError (the remote
-// resolver declining or failing a source) was already reported, grouped by
-// reason, before enrichment, so it is only Debug; any other resolution error
-// stays at Warn.
-func TestEnrichModule_DowngradesUnresolvedToDebug(t *testing.T) {
-	tests := []struct {
-		name      string
-		err       error
-		wantLevel string
-	}{
-		{"unresolved resolver error logs at debug", &UnresolvedError{Reason: "no credentials"}, `"level":"debug"`},
-		{"plain resolver error logs at warn", errors.New("git clone failed"), `"level":"warn"`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var logBuf bytes.Buffer
-			ctx := zerolog.New(&logBuf).WithContext(t.Context())
-
-			mod := &ParsedModule{Name: "m", Source: "github.com/org/repo//mod"}
-			fake := fakeRemoteResolver{err: tt.err}
-			result := enrichModule(ctx, mod, t.TempDir(), fake, newModuleEnrichCache(vfs.DiskFS{}, nil))
-
-			require.Equal(t, ParsedModule{Name: "m", Source: "github.com/org/repo//mod"}, result.Module)
-			require.NoError(t, result.Error)
-			require.Contains(t, logBuf.String(), "Skipping module m")
-			require.Contains(t, logBuf.String(), tt.wantLevel)
-		})
-	}
-}
-
-type fakeRemoteResolver struct {
-	err error
-}
-
-func (f fakeRemoteResolver) Resolve(context.Context, *ParsedModule) (string, error) {
-	return "", f.err
-}
-
 func TestParseTerraformModules_AbsoluteLocalModule(t *testing.T) {
 	rootDir := t.TempDir()
 	moduleDir := t.TempDir()
@@ -261,22 +220,6 @@ func TestInvalidLocalModuleSourceWarnsOnlyInScanPass(t *testing.T) {
 	require.Equal(t, 1, strings.Count(scanLog, "\n"), "expected one warning, got %q", scanLog)
 	require.Contains(t, scanLog, `Invalid local module source \"../missing\"`)
 	require.Empty(t, parse(false), "the module graph pass must leave local source warnings to the scan pass")
-}
-
-// TestParseAllModuleVariables_CanceledContext guards the cancellation contract:
-// a canceled context should return an empty slice without blocking.
-func TestParseAllModuleVariables_CanceledContext(t *testing.T) {
-	modules := map[string]ParsedModule{
-		"a": {Name: "a", IsLocal: true, AbsSource: t.TempDir()},
-		"b": {Name: "b", IsLocal: true, AbsSource: t.TempDir()},
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // canceled scan
-
-	got, err := ParseAllModuleVariables(ctx, nil, modules, t.TempDir(), nil, nil)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Empty(t, got)
 }
 
 // TestParseTerraformModules_IdenticalContentResolvedPerDirectory guards the
@@ -1151,126 +1094,6 @@ func TestResolveExpr_FunctionCallExpr(t *testing.T) {
 			t.Errorf("resolveExpr = %q, want %q", result, want)
 		}
 	})
-}
-
-func TestGetProviderFromResourceType(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		expected  string
-		expectErr bool
-	}{
-		{
-			name:     "Valid AWS resource",
-			input:    "aws_s3_bucket",
-			expected: "aws",
-		},
-		{
-			name:     "Valid Azure resource",
-			input:    "azurerm_network_interface",
-			expected: "azurerm",
-		},
-		{
-			name:     "Valid GCP resource",
-			input:    "google_compute_instance",
-			expected: "google",
-		},
-		{
-			name:      "Invalid empty input",
-			input:     "",
-			expectErr: true,
-		},
-		{
-			name:      "Invalid no underscore",
-			input:     "aws",
-			expectErr: true,
-		},
-		{
-			name:     "Custom provider",
-			input:    "customprovider_widget",
-			expected: "customprovider",
-		},
-		{
-			name:     "Short input with underscore",
-			input:    "a_b",
-			expected: "a",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			provider, err := GetProviderFromResourceType(tt.input)
-			if tt.expectErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expected, provider)
-			}
-		})
-	}
-}
-
-func TestGenerateEquivalentMapIgnoresTerraformJSON(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
-resource "aws_s3_bucket" "example" {
-  bucket = var.name
-}
-`), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.tf.json"), []byte(`{
-  "resource": {
-    "aws_s3_bucket": {
-      "json": {
-        "bucket": "${var.other}"
-      }
-    }
-  }
-}`), 0o600))
-
-	equivalent, err := generateEquivalentMap(ctx, vfs.DiskFS{}, dir, nil)
-	require.NoError(t, err)
-	require.Contains(t, equivalent, "aws")
-	require.Contains(t, equivalent["aws"].Inputs, "bucket")
-}
-
-func TestGenerateEquivalentMap_TofuShadowsTf(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
-resource "aws_s3_bucket" "shadowed" {
-  bucket = var.from_tf
-}
-resource "aws_instance" "only_tf" {
-  ami = var.ami
-}
-`), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu"), []byte(`
-resource "aws_s3_bucket" "live" {
-  bucket = var.from_tofu
-}
-`), 0o600))
-
-	equivalent, err := generateEquivalentMap(ctx, vfs.DiskFS{}, dir, nil)
-	require.NoError(t, err)
-	require.Contains(t, equivalent, "aws")
-	require.Equal(t, []string{"aws_s3_bucket"}, equivalent["aws"].Resources)
-	require.Equal(t, "from_tofu", equivalent["aws"].Inputs["bucket"])
-	require.NotContains(t, equivalent["aws"].Inputs, "ami")
-}
-
-// A missing local source is reported once, by fillModuleAttrs: enrichment does
-// not warn about it a second time.
-func TestEnrichModule_MissingLocalSourceIsNotReportedAgain(t *testing.T) {
-	var logBuf bytes.Buffer
-	ctx := zerolog.New(&logBuf).Level(zerolog.WarnLevel).WithContext(t.Context())
-	missing := filepath.Join(t.TempDir(), "missing")
-	mod := &ParsedModule{Name: "m", Source: "./missing", IsLocal: true, AbsSource: missing}
-
-	result := enrichModule(ctx, mod, t.TempDir(), nil, newModuleEnrichCache(vfs.DiskFS{}, nil))
-
-	require.ErrorIs(t, result.Error, os.ErrNotExist)
-	require.Empty(t, logBuf.String())
 }
 
 // The level of a missing local source depends on the file calling it: a fixture

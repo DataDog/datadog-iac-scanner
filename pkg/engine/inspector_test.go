@@ -1490,7 +1490,6 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 		map[string]*model.FileMetadata{},
 		platformPayloads{},
 		queries,
-		nil,
 		map[string]storage.Store{},
 		nil,
 		nil,

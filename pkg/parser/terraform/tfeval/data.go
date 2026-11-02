@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfrefs"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -115,21 +115,21 @@ func newModuleData(
 }
 
 // cyclicDataBlocks returns the data blocks that read their own result,
-// directly or through other data blocks and locals (see terraform.DataCycles).
+// directly or through other data blocks and locals (see tfrefs.DataCycles).
 func cyclicDataBlocks(blocks []*hclsyntax.Block, localExprs map[string]hclsyntax.Expression) map[*hclsyntax.Block]bool {
 	reads := make(map[string][]hcl.Traversal, len(blocks))
 	for _, b := range blocks {
-		key := terraform.DataKey(b.Labels[0], b.Labels[1])
-		reads[key] = append(reads[key], terraform.BodyTraversals(b.Body)...)
+		key := tfrefs.DataKey(b.Labels[0], b.Labels[1])
+		reads[key] = append(reads[key], tfrefs.Traversals(tfrefs.OfBody(b.Body))...)
 	}
 	locals := make(map[string][]hcl.Traversal, len(localExprs))
 	for name, expr := range localExprs {
 		locals[name] = expr.Variables()
 	}
-	keys := terraform.DataCycles(reads, locals)
+	keys := tfrefs.DataCycles(reads, locals)
 	var cyclic map[*hclsyntax.Block]bool
 	for _, b := range blocks {
-		if keys[terraform.DataKey(b.Labels[0], b.Labels[1])] {
+		if keys[tfrefs.DataKey(b.Labels[0], b.Labels[1])] {
 			if cyclic == nil {
 				cyclic = map[*hclsyntax.Block]bool{}
 			}

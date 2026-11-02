@@ -372,7 +372,7 @@ func (c *Client) createService(
 		filesSource, renderedFileFilter = fsSource, fsSource.ChartFilter()
 	}
 
-	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)
+	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.SCIInfo)
 	if c.inMemory {
 		tfParser.SetMergeAllow(append(append([]string{}, paths...), remoteModulePaths...))
 	} else {

@@ -505,7 +505,7 @@ type QueryResult struct {
 // them in FailedQueries without terminating the rest of the scan.
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
-	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
+	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
 	contextLogger := logger.FromContext(ctx)
 
@@ -516,7 +516,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	queryOpa, ok := sharedQueries[queryID]
 	var err error
 	if !ok {
-		queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[queryID], modules, baseStores, baseDataHashes, c.useRulesCache)
+		queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[queryID], baseStores, baseDataHashes, c.useRulesCache)
 	}
 	loadDur := time.Since(loadStart)
 	if err != nil {
@@ -574,31 +574,6 @@ func (c *Inspector) Inspect(
 	// from (K9CODESEC-7158).
 	c.stampTerraformScopes(files)
 
-	// Step 1 and 2 parse the repository's module calls and the variables they
-	// declare, from the files' raw content. Module evaluation never touches
-	// that content (it only rewrites the parsed Document and line-info trees),
-	// so the parse runs concurrently with the evaluation below rather than
-	// after it: the evaluation is the phase that fills the machine, and the
-	// parse pool, which draws from the shared CPU budget, uses the cores it
-	// leaves idle. The goroutine is joined before any early return, so a scan
-	// failure never leaks it. A genuine per-file HCL parse failure is
-	// non-fatal (logged, scan continues), but a context cancellation must
-	// abort the scan rather than proceed with partial module data.
-	type moduleParse struct {
-		modules   map[string]tfmodules.ParsedModule
-		enriched  []tfmodules.ParsedModule
-		parseErr  error
-		enrichErr error
-	}
-	moduleParseDone := make(chan moduleParse, 1)
-	go func() {
-		var out moduleParse
-		out.modules, out.parseErr = tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
-		out.enriched, out.enrichErr = tfmodules.ParseAllModuleVariables(
-			ctx, c.fsys, out.modules, c.repoPath, c.buildModuleMetadataResolver(), c.mergeAllow)
-		moduleParseDone <- out
-	}()
-
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
@@ -608,19 +583,6 @@ func (c *Inspector) Inspect(
 		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
-
-	moduleData := <-moduleParseDone
-	if moduleData.parseErr != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		contextLogger.Warn().Err(moduleData.parseErr).Msg("Failed to parse Terraform modules")
-	}
-	contextLogger.Info().Msgf("Found %d modules", len(moduleData.modules))
-	if moduleData.enrichErr != nil {
-		return nil, moduleData.enrichErr
-	}
-	enrichedModules := moduleData.enriched
 
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
@@ -662,7 +624,7 @@ func (c *Inspector) Inspect(
 	// same payload for every PrepareForEval call. The per-platform data hash is
 	// folded into each compiled-query cache key so a compiled query is only
 	// reused by a later scan whose base data is byte-identical.
-	baseInputData := c.QueryLoader.precomputeBaseInputData(enrichedModules)
+	baseInputData := c.QueryLoader.precomputeBaseInputData()
 	baseStores := precomputeBaseStores(baseInputData)
 	baseDataHashes := hashBaseInputData(baseInputData)
 
@@ -689,7 +651,7 @@ func (c *Inspector) Inspect(
 	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
+		baseStores, baseDataHashes, sharedQueries, routing)
 	if err != nil {
 		return nil, err
 	}
@@ -766,7 +728,6 @@ func (c *Inspector) executeQueries(
 	filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads,
 	queries []model.QueryMetadata,
-	enrichedModules []tfmodules.ParsedModule,
 	baseStores map[string]storage.Store,
 	baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery,
@@ -806,7 +767,7 @@ func (c *Inspector) executeQueries(
 	results := make([]QueryResult, len(queries))
 	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
 		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
+			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, baseStores, baseDataHashes,
 				sharedQueries, routing)
 			return nil
 		})
@@ -2048,10 +2009,9 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 	}, nil
 }
 
-// buildMergedInputData merges the platform library, common library and (when
-// present) module input data into a single JSON document for a query.
-func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
-	modules []tfmodules.ParsedModule) (string, error) {
+// buildMergedInputData merges the platform library, common library and the
+// query's custom input data into a single JSON document for a query.
+func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata) (string, error) {
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
 	if !ok {
 		return "", errors.New("failed to get platform library")
@@ -2064,23 +2024,17 @@ func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
 	if err != nil {
 		return "", errors.Wrap(err, "could not merge common library input data")
 	}
-	if modules != nil {
-		mergedInputData, err = source.MergeModulesData(modules, mergedInputData)
-		if err != nil {
-			return "", errors.Wrap(err, "could not merge modules input data")
-		}
-	}
 	return mergedInputData, nil
 }
 
 // precomputeBaseInputData builds, once per platform, the merged input data for
-// queries that carry no custom InputData. The common/platform library data and
-// the module payload are identical across such queries, so doing this once
-// avoids re-serializing the (potentially large) module set for every query.
-func (q *QueryLoader) precomputeBaseInputData(modules []tfmodules.ParsedModule) map[string]string {
+// queries that carry no custom InputData. The common/platform library data is
+// identical across such queries, so doing this once avoids re-merging it for
+// every query.
+func (q *QueryLoader) precomputeBaseInputData() map[string]string {
 	base := make(map[string]string, len(q.platformLibraries))
 	for platform := range q.platformLibraries {
-		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform}, modules)
+		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform})
 		if err != nil {
 			continue
 		}
@@ -2104,16 +2058,15 @@ func precomputeBaseStores(baseInputData map[string]string) map[string]storage.St
 // LoadQuery loads the query into memory so it can be freed when not used anymore.
 //
 // baseStores holds one shared, read-only inmem store per platform (the merged
-// library + module input data for this scan); baseDataHashes holds a hash of
+// library input data for this scan); baseDataHashes holds a hash of
 // each store's data. When the query carries no custom InputData it uses the
 // shared base store, and its compiled *PreparedEvalQuery is served from / stored
 // in the process-global preparedQueryCache — the cache key folds in the base
 // data hash, so a compiled query (whose store bakes in this scan's data) is only
 // reused by a later scan whose base data is byte-identical. This makes warm
-// scans skip the expensive PrepareForEval compile even when Terraform module
-// data is present, as long as that data is unchanged.
+// scans skip the expensive PrepareForEval compile as long as that data is
+// unchanged.
 func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
-	modules []tfmodules.ParsedModule,
 	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
 	cacheEnabled bool) (*rego.PreparedEvalQuery, error) {
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
@@ -2147,7 +2100,7 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		if useCache {
 			store = prebuilt
 		} else {
-			mergedInputData, err := q.buildMergedInputData(query, modules)
+			mergedInputData, err := q.buildMergedInputData(query)
 			if err != nil {
 				return nil, err
 			}

@@ -17,20 +17,18 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
-	"strconv"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfrefs"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/hashicorp/hcl/v2"
@@ -54,8 +52,11 @@ var ErrModuleNotEvaluated = errors.New("tfeval: module not evaluated")
 // ResolvedResource is a resource block after evaluation with attributes
 // resolved to concrete cty values where possible, unknown otherwise.
 type ResolvedResource struct {
-	Type       string
+	Type string
+	// Name is BaseName followed by Key.String().
 	Name       string
+	BaseName   string
+	Key        InstanceKey
 	Attributes map[string]cty.Value
 	// Body is the resource's HCL body, used to recover the reference text of
 	// attributes evaluation could not resolve. It is not consulted during
@@ -501,9 +502,9 @@ func (e *Evaluator) evaluate(
 		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
 	)
 
-	e.applyModuleOutputs(evalCtx, scope, data, moduleOutputs)
+	e.installModuleOutputs(evalCtx, scope, data, moduleOutputs)
 
-	rootResources := e.evaluateRootResources(
+	rootResources := e.rootResourcesWithRefPasses(
 		resourceBlocks, scope, evalCtx, data, addr, chain,
 	)
 
@@ -544,17 +545,6 @@ func (e *Evaluator) evaluate(
 	)
 
 	return resources, outputs, nil
-}
-
-// applyModuleOutputs installs the module.* outputs of the module calls and
-// refreshes what reads them.
-func (e *Evaluator) applyModuleOutputs(
-	evalCtx *hcl.EvalContext,
-	scope *ModuleScope,
-	data *moduleData,
-	moduleOutputs map[string]cty.Value,
-) {
-	e.installModuleOutputs(evalCtx, scope, data, moduleOutputs)
 }
 
 // installModuleOutputs publishes module.* and refreshes what reads it: first
@@ -639,19 +629,6 @@ func (e *Evaluator) preinjectResourceRefs(
 	if data.readsOwnResources() {
 		data.refresh(evalCtx)
 	}
-}
-
-func (e *Evaluator) evaluateRootResources(
-	resourceBlocks []*hclsyntax.Block,
-	scope *ModuleScope,
-	evalCtx *hcl.EvalContext,
-	data *moduleData,
-	addr string,
-	chain []CallSite,
-) []ResolvedResource {
-	return e.rootResourcesWithRefPasses(
-		resourceBlocks, scope, evalCtx, data, addr, chain,
-	)
 }
 
 func (e *Evaluator) cacheCompletedEvaluation(
@@ -770,7 +747,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				continue
 			}
 			moduleOutputs[call.label] = value
-			e.installSiblingModuleOutputs(evalCtx, scope, data, moduleOutputs)
+			e.installModuleOutputs(evalCtx, scope, data, moduleOutputs)
 		}
 	}
 	return childResources, moduleOutputs
@@ -795,7 +772,7 @@ func (e *Evaluator) noteCycles(ctx context.Context, dir string, locals *localGra
 	}
 	names := make([]string, 0, len(locals.cyclicData))
 	for b := range locals.cyclicData {
-		names = append(names, terraform.DataKey(b.Labels[0], b.Labels[1]))
+		names = append(names, tfrefs.DataKey(b.Labels[0], b.Labels[1]))
 	}
 	slices.Sort(names)
 	contextLogger.Warn().Strs("data_blocks", names).
@@ -819,19 +796,8 @@ func publishedModuleOutputs(evalCtx *hcl.EvalContext) map[string]cty.Value {
 	return out
 }
 
-// installSiblingModuleOutputs publishes module.* for later siblings and
-// refreshes locals and data that read those outputs.
-func (e *Evaluator) installSiblingModuleOutputs(
-	evalCtx *hcl.EvalContext,
-	scope *ModuleScope,
-	data *moduleData,
-	moduleOutputs map[string]cty.Value,
-) {
-	e.installModuleOutputs(evalCtx, scope, data, moduleOutputs)
-}
-
-// isReportableModuleEvalError excludes a missing local source, which the module
-// parser already reports.
+// isReportableModuleEvalError excludes a missing local source: it is skipped here
+// and reported only by `list-modules` and the module graph, not by scans.
 func isReportableModuleEvalError(err error) bool {
 	return !errors.Is(err, ErrModuleNotEvaluated) && !errors.Is(err, fs.ErrNotExist)
 }
@@ -952,7 +918,7 @@ func bodyReadsNamedLocals(body *hclsyntax.Body, names map[string]bool) bool {
 
 func readsNamedLocals(expr hclsyntax.Expression, names map[string]bool) bool {
 	for _, traversal := range expr.Variables() {
-		name, ok := terraform.LocalTraversalName(traversal)
+		name, ok := tfrefs.LocalTraversalName(traversal)
 		if ok && names[name] {
 			return true
 		}
@@ -974,27 +940,31 @@ func bodyReadsResource(body *hclsyntax.Body, types map[string]struct{}) bool {
 	return false
 }
 
-// readsResource reports whether expr reads one of the given block types.
-// Managed and data references name the type at the traversal root;
-// ephemeral ones carry the namespace first
-// (ephemeral.random_password.x.result), so the second hop names the type.
+// readsResource reports whether expr reads one of the given root names, or
+// an ephemeral block of one of them.
 func readsResource(expr hclsyntax.Expression, types map[string]struct{}) bool {
 	if len(types) == 0 {
 		return false
 	}
-	for _, traversal := range expr.Variables() {
-		if _, ok := types[traversal.RootName()]; ok {
+	for _, t := range expr.Variables() {
+		if ref := tfrefs.Parse(t); readsType(&ref, types) {
 			return true
-		}
-		if traversal.RootName() == blockTypeEphemeral && len(traversal) > 1 {
-			if attr, ok := traversal[1].(hcl.TraverseAttr); ok {
-				if _, ok := types[attr.Name]; ok {
-					return true
-				}
-			}
 		}
 	}
 	return false
+}
+
+// readsType reports whether ref's root is one of types or, for an ephemeral
+// reference, whose root is the namespace, whether its type is.
+func readsType(ref *tfrefs.Ref, types map[string]struct{}) bool {
+	if _, ok := types[ref.Traversal.RootName()]; ok {
+		return true
+	}
+	if ref.Kind != tfrefs.KindEphemeral || ref.Type == "" {
+		return false
+	}
+	_, ok := types[ref.Type]
+	return ok
 }
 
 // evalResourceBlocks evaluates resource blocks (count/for_each expanded when known).
@@ -1031,7 +1001,7 @@ func (e *Evaluator) expandBlock(
 	// Attributes that ignore each/count evaluate identically in every instance.
 	memo := newInvariantMemo()
 
-	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
+	makeOne := func(key InstanceKey, child *hcl.EvalContext) ResolvedResource {
 		// Only attribution of module resources and data evaluation read the
 		// iteration, so the resource instances of the root module do not keep it.
 		var iteration map[string]cty.Value
@@ -1042,7 +1012,9 @@ func (e *Evaluator) expandBlock(
 		attrs := e.evalBodyWith(rb.Body, child, nil, state)
 		return ResolvedResource{
 			Type:          typeName,
-			Name:          name,
+			Name:          resName + key.String(),
+			BaseName:      resName,
+			Key:           key,
 			Attributes:    attrs,
 			DynamicCounts: state.dynamic.counts,
 			Body:          rb.Body,
@@ -1063,7 +1035,7 @@ func (e *Evaluator) expandBlock(
 	plan := tfinstances.Resolve(count, forEach, evalCtx)
 	switch {
 	case plan.Kind == "":
-		return []ResolvedResource{makeOne(resName, evalCtx)}
+		return []ResolvedResource{makeOne(InstanceKey{}, evalCtx)}
 	case plan.Unresolved:
 		// One placeholder instance with its iteration unknown: Terraform treats
 		// an address with no index as naming every instance of the block, and
@@ -1071,7 +1043,7 @@ func (e *Evaluator) expandBlock(
 		name, value := plan.Variable(tfinstances.Item{})
 		child := evalCtx.NewChild()
 		child.Variables = map[string]cty.Value{name: value}
-		return []ResolvedResource{makeOne(resName, child)}
+		return []ResolvedResource{makeOne(InstanceKey{}, child)}
 	case len(plan.Items) == 0:
 		// The expansion resolved to zero instances: the block exists nowhere.
 		return nil
@@ -1079,23 +1051,21 @@ func (e *Evaluator) expandBlock(
 	out := make([]ResolvedResource, 0, len(plan.Items))
 	isCount := plan.Kind == tfinstances.KindCount
 	for _, item := range plan.Items {
-		var keyStr string
-		// The instance suffix is HCL-escaped through the same path the address
-		// formatter uses (address.InstanceSuffix), so quotes, backslashes and
-		// template openers in a for_each key never corrupt the name the
-		// address is built from.
-		suffix := address.InstanceSuffix(item.Key)
-		if !isCount {
-			// Resolve validated every key as a concrete string.
-			keyStr, _ = ctyutil.ConcreteString(item.Key)
+		// Resolve validated every key as a concrete string or integer.
+		key := InstanceKey{Kind: StringKey}
+		if isCount {
+			key.Kind = IntKey
+			key.Int, _ = ctyutil.LiteralInt(item.Key)
+		} else {
+			key.Str, _ = ctyutil.ConcreteString(item.Key)
 		}
 		name, value := plan.Variable(item)
 		child := evalCtx.NewChild()
 		child.Variables = map[string]cty.Value{name: value}
-		res := makeOne(resName+suffix, child)
+		res := makeOne(key, child)
 		if !isCount {
 			if fe, ok := res.Attributes[metaArgForEach]; ok {
-				res.Attributes[metaArgForEach] = instanceForEach(fe, keyStr, item.Value)
+				res.Attributes[metaArgForEach] = instanceForEach(fe, key.Str, item.Value)
 			}
 		}
 		out = append(out, res)
@@ -1130,7 +1100,7 @@ func instanceForEach(fe cty.Value, key string, value cty.Value) cty.Value {
 // instBucket is one block's grouped instances: the per-instance keys, the
 // attributes to expose, and whether the block expanded at all.
 type instBucket struct {
-	keys     []string
+	keys     []InstanceKey
 	attrs    []map[string]cty.Value
 	isCount  bool
 	expanded bool // true when any instance has brackets (count or for_each)
@@ -1144,7 +1114,8 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 	ephemeralTypes := make(map[string]map[string]*instBucket)
 	for i := range resources {
 		r := &resources[i]
-		base, key, isCount, expanded := parseResourceInstanceKey(r.Name)
+		base := r.BaseName
+		isCount, expanded := r.Key.Kind == IntKey, r.Key.Kind != NoKey
 		buckets := &byType
 		if r.Ephemeral {
 			buckets = &ephemeralTypes
@@ -1162,7 +1133,7 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 		} else if expanded {
 			b.expanded = true
 		}
-		b.keys = append(b.keys, key)
+		b.keys = append(b.keys, r.Key)
 		b.attrs = append(b.attrs, referenceAttributes(r.Attributes))
 	}
 	if len(byType) == 0 && len(ephemeralTypes) == 0 {
@@ -1230,7 +1201,7 @@ func referenceAttributes(attrs map[string]cty.Value) map[string]cty.Value {
 // buildInstanceCtyVal converts grouped resource instances into the cty value used for ref injection.
 // Non-expanded resources become plain objects. Count resources become ordered tuples (x[0]).
 // For_each resources become keyed objects (x["key"]), including the empty-string key case.
-func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCount, expanded bool) cty.Value {
+func buildInstanceCtyVal(keys []InstanceKey, attrsSlice []map[string]cty.Value, isCount, expanded bool) cty.Value {
 	if !expanded {
 		// Plain (non-indexed) resource: expose as a simple attribute object.
 		return objectOrEmpty(attrsSlice[0])
@@ -1242,8 +1213,7 @@ func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCou
 		}
 		items := make([]indexed, len(keys))
 		for i, k := range keys {
-			n, _ := strconv.Atoi(k)
-			items[i] = indexed{n, attrsSlice[i]}
+			items[i] = indexed{k.Int, attrsSlice[i]}
 		}
 		sort.Slice(items, func(i, j int) bool { return items[i].i < items[j].i })
 		elems := make([]cty.Value, len(items))
@@ -1258,7 +1228,7 @@ func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCou
 	// Empty-string keys ("") are valid Terraform for_each keys and are kept.
 	kvs := make(map[string]cty.Value, len(keys))
 	for i, k := range keys {
-		kvs[k] = objectOrEmpty(attrsSlice[i])
+		kvs[k.Str] = objectOrEmpty(attrsSlice[i])
 	}
 	if len(kvs) == 0 {
 		return cty.EmptyObjectVal

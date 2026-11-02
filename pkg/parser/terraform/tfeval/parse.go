@@ -11,8 +11,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/ext/typeexpr"
@@ -275,62 +273,6 @@ func parseVarsFile(src []byte, path string) hcl.Attributes {
 	}
 	attrs, _ := file.Body.JustAttributes()
 	return attrs
-}
-
-// parseResourceInstanceKey splits an expanded resource Name into its base label, instance key,
-// whether the key is a count index (true) vs a for_each string key (false), and whether the
-// name contained any expansion brackets at all.
-//   - "foo"        → ("foo", "",    false, false) — no expansion
-//   - "foo[0]"     → ("foo", "0",   true,  true)  — count
-//   - `foo["bar"]` → ("foo", "bar", false, true)  — for_each (including empty-string key)
-func parseResourceInstanceKey(name string) (base, key string, isCount, expanded bool) {
-	// for_each: name ends with `"]` and contains `["`
-	if strings.HasSuffix(name, `"]`) {
-		if idx := strings.LastIndex(name, `["`); idx >= 0 {
-			quoted := name[idx+1 : len(name)-1] // `"bar"`, HCL-escaped
-			return name[:idx], decodeHCLString(quoted), false, true
-		}
-	}
-	// count: name ends with [N] where N is an integer
-	if strings.HasSuffix(name, "]") {
-		if idx := strings.LastIndex(name, "["); idx >= 0 {
-			inner := name[idx+1 : len(name)-1]
-			if _, err := strconv.Atoi(inner); err == nil {
-				return name[:idx], inner, true, true
-			}
-		}
-	}
-	return name, "", false, false
-}
-
-// decodeHCLString decodes an HCL-escaped string literal (the inside of an
-// instance suffix, quotes included) back to the raw key, by parsing it as the
-// HCL template it is and evaluating. hclwrite only doubles the template
-// introducers ($$, %%) before a real brace, so a text replace would collapse
-// literal $$ the formatter never doubled — keys a$b and a$$b must stay
-// distinct. Whatever hclwrite wrote round-trips: it escapes every template
-// introducer, so the parsed template holds only literal text and evaluates
-// with no context.
-func decodeHCLString(quoted string) string {
-	expr, diags := hclsyntax.ParseExpression([]byte(quoted), "", hcl.InitialPos)
-	if diags.HasErrors() {
-		return strings.Trim(quoted, `"`)
-	}
-	v, err := expr.Value(nil)
-	if err != nil || !v.IsKnown() || v.IsNull() || !v.IsWhollyKnown() || v.Type() != cty.String {
-		return strings.Trim(quoted, `"`)
-	}
-	return v.AsString()
-}
-
-// ResourceBaseName strips any count/for_each instance suffix from a resource Name
-// (e.g. "k[0]" → "k", `k["dev"]` → "k"). Used by callers that need the bare label
-// for rule matching or source-line lookups.
-func ResourceBaseName(name string) string {
-	if idx := strings.IndexByte(name, '['); idx >= 0 {
-		return name[:idx]
-	}
-	return name
 }
 
 func blockLabel(b *hclsyntax.Block) string {

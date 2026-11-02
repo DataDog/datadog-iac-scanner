@@ -7,10 +7,12 @@ package terraform
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -210,9 +212,6 @@ func TestGetInputVariables(t *testing.T) {
 					"map2": cty.ObjectVal(map[string]cty.Value{
 						"map2Key1": cty.StringVal("nestedMap"),
 					}),
-					"map3": cty.ObjectVal(map[string]cty.Value{
-						"map3Key1": cty.StringVal("givenByVar"),
-					}),
 					"test_terraform":    cty.StringVal("terraform.tfvars"),
 					"default_var_file":  cty.StringVal("default_var_file"),
 					"local_default_var": cty.StringVal("local_default"),
@@ -227,9 +226,21 @@ func TestGetInputVariables(t *testing.T) {
 			filename: filepath.FromSlash("../../../test/fixtures/test_terraform_variables/test_variables_comment_path.tf"),
 			want: converter.VariableMap{
 				"var": cty.ObjectVal(map[string]cty.Value{
+					"test1": cty.BoolVal(false),
+					"test2": cty.TupleVal([]cty.Value{cty.BoolVal(false), cty.BoolVal(true)}),
+					"map1": cty.ObjectVal(map[string]cty.Value{
+						"map1key1": cty.StringVal("map2Key1"),
+					}),
+					"map2": cty.ObjectVal(map[string]cty.Value{
+						"map2Key1": cty.StringVal("nestedMap"),
+					}),
 					"map3": cty.ObjectVal(map[string]cty.Value{
 						"map3Key1": cty.StringVal("givenByVar"),
 					}),
+					"test_terraform":    cty.StringVal("terraform.tfvars"),
+					"default_var_file":  cty.StringVal("default_var_file"),
+					"local_default_var": cty.StringVal("local_default"),
+					"invalid_attr":      cty.UnknownVal(cty.DynamicPseudoType),
 				}),
 				"local": cty.EmptyObjectVal,
 			},
@@ -241,7 +252,11 @@ func TestGetInputVariables(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fileContent, _ := os.ReadFile(tt.filename)
-			result := getInputVariables(ctx, vfs.DiskFS{}, tt.filename, string(fileContent), "../../../test/fixtures/test_terraform_variables/varsToUse/varsToUse.tf", nil, "")
+			dir := tt.filename
+			if filepath.Ext(dir) != "" {
+				dir = filepath.Dir(dir)
+			}
+			result := getInputVariables(ctx, vfs.DiskFS{}, dir, string(fileContent), nil, "")
 			require.Equal(t, tt.want, result)
 		})
 	}
@@ -259,7 +274,7 @@ variable "bucket" { default = "from-tofu" }
 variable "other" { default = "kept" }
 `), 0o600))
 
-	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", nil, "")
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", nil, "")
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "from-tofu", vars["bucket"].AsString())
 	require.Equal(t, "kept", vars["other"].AsString())
@@ -277,7 +292,7 @@ variable "bucket" { default = "from-tofu" }
 `), 0o600))
 
 	allow := map[string]struct{}{filepath.ToSlash(tf): {}}
-	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, "")
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", allow, "")
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "from-tf", vars["bucket"].AsString())
 }
@@ -297,9 +312,9 @@ variable "bucket" { default = "from-tofu" }
 		filepath.ToSlash(tf):   {},
 		filepath.ToSlash(tofu): {},
 	}
-	fromTF := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tf)
+	fromTF := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", allow, tf)
 	require.Equal(t, "from-tf", fromTF["var"].AsValueMap()["bucket"].AsString())
-	fromTofu := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tofu)
+	fromTofu := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", allow, tofu)
 	require.Equal(t, "from-tofu", fromTofu["var"].AsValueMap()["bucket"].AsString())
 }
 
@@ -313,7 +328,27 @@ variable "bucket" { default = "from-tofu" }
 `), 0o600))
 
 	allow := map[string]struct{}{filepath.ToSlash(filepath.Join(t.TempDir(), "other.tf")): {}}
-	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, "")
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", allow, "")
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "from-tofu", vars["bucket"].AsString())
+}
+
+func TestVarsDirectiveStillApplies(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "vars"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "vars", "custom.tfvars"), []byte("name = \"from-directive\"\n"), 0o600))
+	content := `// kics_terraform_vars: vars/custom.tfvars
+variable "name" {}
+resource "aws_s3_bucket" "b" { bucket = var.name }
+`
+	path := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	_, docs, _, _, err := NewDefault().Parse(context.Background(), []byte(content), path, true, 15)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	bucket := docs[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)["bucket"]
+	raw, err := json.Marshal(bucket)
+	require.NoError(t, err)
+	require.JSONEq(t, `"from-directive"`, string(raw))
 }

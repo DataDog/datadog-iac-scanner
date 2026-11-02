@@ -322,27 +322,6 @@ func (c *Inspector) buildRemoteResolver() tfeval.RemoteResolver {
 	}
 }
 
-func (c *Inspector) buildModuleMetadataResolver() tfmodules.RemoteResolver {
-	if len(c.remoteModuleDirs) == 0 {
-		return nil
-	}
-	return moduleMetadataResolver{dirs: c.remoteModuleDirs, repoPath: c.repoPath}
-}
-
-type moduleMetadataResolver struct {
-	dirs     map[string]RemoteModuleDirectory
-	repoPath string
-}
-
-func (r moduleMetadataResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (string, error) {
-	root := remoteModuleRoot(mod.FileName, r.repoPath)
-	resolved, ok := lookupRemoteDir(r.dirs, root, mod.Source, mod.Version, mod.Name)
-	if !ok {
-		return "", &tfmodules.UnresolvedError{Reason: "module was not resolved during pre-scan"}
-	}
-	return resolved.Path, nil
-}
-
 type RemoteModuleDirectory struct {
 	Path        string
 	PackageRoot string
@@ -710,7 +689,8 @@ func resolveModuleDocuments(
 	// External module files still need their calls, whatever they declare.
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
 	declaresResource := declaresTargetedResource(files, targets)
-	if moduleCalls == nil && !declaresResource {
+	nothingToEvaluate := moduleCalls == nil && !declaresResource
+	if nothingToEvaluate && !declaresModuleCall(filesByDir) {
 		return moduleResolutionResult{}
 	}
 	// With no resource to resolve, a root only matters for the calls it makes
@@ -728,6 +708,10 @@ func resolveModuleDocuments(
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
 	staticCalledDirs, staticCalls := discoverStaticCalls(
 		ctx, evaluator, filesByDir, dirsWithTf, repoPath, resolver, onlyExternalCalls)
+
+	if nothingToEvaluate {
+		return moduleResolutionResult{}
+	}
 
 	// seen maps a content-based key to the primary docID so duplicate callers can
 	// be recorded in extras rather than emitted as separate OPA documents.
@@ -818,10 +802,27 @@ func discoverStaticCalls(
 			graph.opaque[dir] = hasUnresolvableModuleCall(filesByDir[dir])
 		}
 		for _, calledDir := range calledDirs {
+			if !called[calledDir] {
+				// Reading a called directory is what reports one that was
+				// never pushed, even when nothing is evaluated.
+				_, _ = evaluator.FS().ReadDir(calledDir)
+			}
 			called[calledDir] = true
 		}
 	}
 	return called, graph
+}
+
+// declaresModuleCall reports whether any parsed file holds a module block.
+func declaresModuleCall(filesByDir map[string][]*model.FileMetadata) bool {
+	for _, files := range filesByDir {
+		for _, file := range files {
+			if file != nil && len(docAsMap(file.Document["module"])) > 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // staticCallGraph is the module calls readable without evaluating anything.
@@ -993,7 +994,7 @@ func instantiatedDocs(
 				// scanned where it is written, exactly as it is.
 				continue
 			}
-			if r.Name == tfeval.ResourceBaseName(r.Name) {
+			if r.Key.Kind == tfeval.NoKey {
 				plainRoots = append(plainRoots, rootResource{r: r, fm: fm, kind: kind})
 				continue
 			}
@@ -1005,7 +1006,7 @@ func instantiatedDocs(
 			continue
 		}
 
-		base := tfeval.ResourceBaseName(r.Name)
+		base := r.BaseName
 		// The root module directory keys the group alongside the call: two
 		// roots calling the same module path resolve it with their own inputs,
 		// and their documents must not collide (K9CODESEC-7158). Content
@@ -1123,7 +1124,7 @@ func joinPlainRootSiblings(
 		if !joined {
 			continue
 		}
-		instantiated.add(p.fm.ID, p.kind, tfeval.ResourceBaseName(p.r.Name))
+		instantiated.add(p.fm.ID, p.kind, p.r.BaseName)
 		added++
 	}
 	return added
@@ -1141,8 +1142,8 @@ func addGroupEntry(
 	// Clone: one root sibling is copied into every layer, and a finding may
 	// narrow the attribution it is given.
 	g.attributions[key] = cloneModuleAttribution(attributions.attribution(r, repoPath, lookup))
-	base := tfeval.ResourceBaseName(r.Name)
-	if base != r.Name {
+	base := r.BaseName
+	if r.Key.Kind != tfeval.NoKey {
 		kindBlock, typ := addressKindOf(kind)
 		b := address.Block{Kind: kindBlock, Type: typ, Name: base}
 		if g.instances == nil {

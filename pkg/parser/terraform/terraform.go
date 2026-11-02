@@ -45,10 +45,9 @@ type Converter func(
 
 // Parser struct that contains the function to parse file and the number of retries if something goes wrong
 type Parser struct {
-	convertFunc       Converter
-	numOfRetries      int
-	terraformVarsPath string
-	sciInfo           model.SCIInfo
+	convertFunc  Converter
+	numOfRetries int
+	sciInfo      model.SCIInfo
 
 	// fsys is the filesystem used for cross-file resolution (sibling .tf files,
 	// .tfvars, data sources). Defaults to the real disk; the HTTP server injects
@@ -87,12 +86,11 @@ func NewDefault() *Parser {
 }
 
 // nolint:gocritic
-func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
+func NewDefaultWithParams(fsys vfs.FS, sciInfo model.SCIInfo) *Parser {
 	parser := NewDefault()
 	if fsys != nil {
 		parser.fsys = fsys
 	}
-	parser.terraformVarsPath = terraformVarsPath
 	parser.sciInfo = sciInfo
 	return parser
 }
@@ -121,8 +119,8 @@ func (p *Parser) Resolve(ctx context.Context,
 // vars path directive are resolved per-file because their result depends on file
 // content.
 func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileContent []byte) converter.VariableMap {
-	if p.terraformVarsPath == "" && strings.Contains(string(fileContent), terraformVarsPathDirective) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
+	if strings.Contains(string(fileContent), terraformVarsPathDirective) {
+		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.mergeAllow, filename)
 		return getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
 	}
 
@@ -134,7 +132,7 @@ func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileC
 		return cloneVariableMap(v.(converter.VariableMap))
 	}
 	v, _, _ := p.dirVarsSF.Do(cacheKey, func() (interface{}, error) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
+		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.mergeAllow, filename)
 		vars := getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
 		p.dirVarsCache.Store(cacheKey, vars)
 		return vars, nil

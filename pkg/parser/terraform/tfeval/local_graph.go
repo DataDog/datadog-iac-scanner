@@ -10,7 +10,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfrefs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -108,27 +108,17 @@ func (g *localGraph) noteReads(resourceTypes map[string]struct{}) []localDeps {
 	direct := make([]localDeps, len(g.names)+1)
 	for i, expr := range g.exprs {
 		for _, t := range expr.Variables() {
-			g.siblings[i].add(t)
-			root := t.RootName()
-			_, resource := resourceTypes[root]
-			if !resource && root == blockTypeEphemeral && len(t) > 1 {
-				if attr, ok := t[1].(hcl.TraverseAttr); ok {
-					_, resource = resourceTypes[attr.Name]
-				}
-			}
-			// Ephemeral references carry the namespace first
-			// (ephemeral.random_password.x.result); the second hop names the
-			// block type, and a local reading one must re-resolve when that
-			// block's values are injected.
-			direct[i].resources = direct[i].resources || resource
-			direct[i].modules = direct[i].modules || root == blockTypeModule
-			direct[i].data = direct[i].data || root == blockTypeData
-			if root != rootLocal {
+			ref := tfrefs.Parse(t)
+			g.siblings[i].add(&ref)
+			direct[i].resources = direct[i].resources || readsType(&ref, resourceTypes)
+			direct[i].modules = direct[i].modules || ref.Kind == tfrefs.KindModule
+			direct[i].data = direct[i].data || ref.Kind == tfrefs.KindData
+			if ref.Kind != tfrefs.KindLocal {
 				continue
 			}
-			if name, ok := terraform.LocalTraversalName(t); !ok {
+			if ref.Name == "" {
 				g.whole[i] = true
-			} else if j, declared := g.index[name]; declared {
+			} else if j, declared := g.index[ref.Name]; declared {
 				g.reads[i] = append(g.reads[i], j)
 			}
 		}

@@ -16,8 +16,8 @@ import (
 // A rule names the resource and data types it can match, either by reading
 // them off a document (`input.document[i].resource.aws_s3_bucket[name]`,
 // `input.document[i].data.aws_ami[name]`) or by passing
-// them to a library helper (`module_equivalent_key("aws", source,
-// "aws_s3_bucket", key)`). Both forms are picked up here.
+// them to a library helper (`has_target_resource(bucket,
+// "aws_s3_bucket_lifecycle_configuration")`). Both forms are picked up here.
 var (
 	resourceFieldPattern = regexp.MustCompile(`resource\.([a-z][a-z0-9_]*)`)
 	resourceIndexPattern = regexp.MustCompile(`resource\[\s*"([^"\s]+)"\s*\]`)

@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfrefs"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -257,7 +258,7 @@ func evaluableWithLocalsOnly(expr hcl.Expression, resolved converter.VariableMap
 		if traversal.RootName() != blockTypeLocalReference {
 			return false
 		}
-		name, ok := LocalTraversalName(traversal)
+		name, ok := tfrefs.LocalTraversalName(traversal)
 		if !ok {
 			if strict {
 				return false
@@ -375,13 +376,13 @@ type localReads struct {
 
 func readsOf(expr hcl.Expression) localReads {
 	var r localReads
-	for _, traversal := range expr.Variables() {
-		switch traversal.RootName() {
-		case terraformDataIdentifier:
+	for _, t := range expr.Variables() {
+		switch ref := tfrefs.Parse(t); ref.Kind {
+		case tfrefs.KindData:
 			r.data = true
-		case blockTypeLocalReference:
-			if name, ok := LocalTraversalName(traversal); ok {
-				r.locals = append(r.locals, name)
+		case tfrefs.KindLocal:
+			if ref.Name != "" {
+				r.locals = append(r.locals, ref.Name)
 			} else {
 				r.anyLocal = true
 			}
@@ -402,15 +403,6 @@ func (r localReads) dependsOn(dependent map[string]bool) bool {
 		}
 	}
 	return false
-}
-
-// LocalTraversalName returns the local a local.<name> or local["<name>"]
-// traversal reads.
-func LocalTraversalName(traversal hcl.Traversal) (string, bool) {
-	if traversal.RootName() != blockTypeLocalReference || len(traversal) < 2 {
-		return "", false
-	}
-	return staticStepName(traversal[1])
 }
 
 // refreshLocals re-evaluates locals against vars (including data) so try /
@@ -472,7 +464,7 @@ func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {
 }
 
 func getInputVariables(
-	ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string,
+	ctx context.Context, fsys vfs.FS, currentPath, fileContent string,
 	allow map[string]struct{}, keep string,
 ) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
@@ -507,13 +499,11 @@ func getInputVariables(
 		mergeMaps(variablesMap, vars)
 	}
 
-	if terraformVarsPath == "" {
-		match := terraformVarsPathRegex.FindStringSubmatch(fileContent)
-		if match != nil {
-			terraformVarsPath = filepath.FromSlash(strings.ReplaceAll(match[1], "\\", "/"))
-			if !strings.Contains(match[1], ":") {
-				terraformVarsPath = filepath.Join(currentPath, terraformVarsPath)
-			}
+	var terraformVarsPath string
+	if match := terraformVarsPathRegex.FindStringSubmatch(fileContent); match != nil {
+		terraformVarsPath = filepath.FromSlash(strings.ReplaceAll(match[1], "\\", "/"))
+		if !strings.Contains(match[1], ":") {
+			terraformVarsPath = filepath.Join(currentPath, terraformVarsPath)
 		}
 	}
 

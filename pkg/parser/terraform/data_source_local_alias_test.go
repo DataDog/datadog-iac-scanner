@@ -43,7 +43,7 @@ data "aws_iam_policy_document" "combined" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -86,7 +86,7 @@ data "aws_iam_policy_document" "combined" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -105,7 +105,7 @@ func scanDataSourceDir(t *testing.T, files map[string]string) (before, after map
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
 	}
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	before = inputVars["local"].AsValueMap()
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	return before, result["local"].AsValueMap()
@@ -332,7 +332,7 @@ data "aws_iam_policy_document" "plain" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -365,7 +365,7 @@ data "aws_iam_policy_document" "plain" {
 }
 `), 0o600))
 	ctx := context.Background()
-	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	require.Contains(t, vars["local"].AsValueMap(), "encoded")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
 	docs := result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap()
@@ -377,7 +377,7 @@ data "aws_iam_policy_document" "plain" {
 variable "env" { default = "prod" }
 locals { bucket = "logs-${var.env}" }
 `), 0o600))
-	vars = getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	vars = getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	result = getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
 	require.NotContains(t, result["local"].AsValueMap(), "bucket")
 	require.Contains(t, result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap(), "via")
@@ -401,7 +401,7 @@ func Test_getDataSourcePolicy_JSONLocalChainFeedsSource(t *testing.T) {
   }
 }`), 0o600))
 	ctx := context.Background()
-	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	require.Contains(t, vars["local"].AsValueMap(), "d")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
 	docs := result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap()
@@ -425,7 +425,7 @@ data "aws_iam_policy_document" "p" {
 }
 `), 0o600))
 	ctx := context.Background()
-	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
 	docs := result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap()
 	require.Contains(t, docs["p"].AsValueMap()["json"].AsString(), `"s3:Right"`)
@@ -478,7 +478,7 @@ data "aws_iam_policy_document" "other" {
 		dir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(b.String()), 0o600))
 		ctx := context.Background()
-		inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+		inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 		result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 		var data map[string]map[string]map[string]string
 		require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -515,7 +515,7 @@ data "aws_iam_policy_document" "other" {
 			dir := t.TempDir()
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(src), 0o600))
 			ctx := context.Background()
-			inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+			inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 			result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 			var data map[string]map[string]map[string]string
 			require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -539,7 +539,7 @@ data "aws_iam_policy_document" "p" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -564,73 +564,9 @@ data "aws_iam_policy_document" "p" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", nil, "")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
 	require.Contains(t, data["aws_iam_policy_document"]["p"]["json"], "s3:GetObject")
-}
-
-func TestDataCycles(t *testing.T) {
-	parse := func(src string) []hcl.Traversal {
-		expr, diags := hclsyntax.ParseExpression([]byte(src), "main.tf", hcl.InitialPos)
-		require.False(t, diags.HasErrors())
-		return expr.Variables()
-	}
-	reads := map[string][]hcl.Traversal{
-		DataKey("t", "self"):     parse(`data.t.self.json`),
-		DataKey("t", "indexed"):  parse(`data.t["indexed"].json`),
-		DataKey("t", "bracket"):  parse(`data["t"]["bracket"].json`),
-		DataKey("t", "viaA"):     parse(`local.a`),
-		DataKey("t", "chain"):    parse(`data.t.self.json`),
-		DataKey("t", "plain"):    parse(`local.c`),
-		DataKey("t", "runtime"):  parse(`data.t[var.name].json`),
-		DataKey("t", "lookup"):   parse(`lookup(data.t, "lookup").json`),
-		DataKey("t", "values"):   parse(`values(data.t)[0].json`),
-		DataKey("t", "splat"):    parse(`data.t.*.json`),
-		DataKey("t", "number"):   parse(`data.t[0].json`),
-		DataKey("t", "dotted"):   parse(`data.t["a.b"].json`),
-		DataKey("t", "viaLocal"): parse(`lookup(local, "alias")`),
-		DataKey("t", "viaIndex"): parse(`local[var.k]`),
-		DataKey("u", "other"):    parse(`data.t[var.name].json`),
-		DataKey("u", "safe"):     parse(`local.c`),
-	}
-	locals := map[string][]hcl.Traversal{
-		"a":     parse(`[local.b]`),
-		"b":     parse(`data.t["viaA"].json`),
-		"c":     parse(`var.x`),
-		"alias": parse(`data.t.viaLocal.json`),
-		"idx":   parse(`data.t.viaIndex.json`),
-	}
-	require.Equal(t, map[string]bool{
-		DataKey("t", "self"):     true,
-		DataKey("t", "indexed"):  true,
-		DataKey("t", "bracket"):  true,
-		DataKey("t", "viaA"):     true,
-		DataKey("t", "runtime"):  true,
-		DataKey("t", "lookup"):   true,
-		DataKey("t", "values"):   true,
-		DataKey("t", "splat"):    true,
-		DataKey("t", "number"):   true,
-		DataKey("t", "dotted"):   true,
-		DataKey("t", "viaLocal"): true,
-		DataKey("t", "viaIndex"): true,
-	}, DataCycles(reads, locals))
-}
-
-func TestDataCycles_WholeDataReferenceReachesEveryBlock(t *testing.T) {
-	parse := func(src string) []hcl.Traversal {
-		expr, diags := hclsyntax.ParseExpression([]byte(src), "main.tf", hcl.InitialPos)
-		require.False(t, diags.HasErrors())
-		return expr.Variables()
-	}
-	reads := map[string][]hcl.Traversal{
-		DataKey("t", "bare"):    parse(`data`),
-		DataKey("t", "dynType"): parse(`data[var.kind].name`),
-		DataKey("u", "sibling"): parse(`var.x`),
-	}
-	require.Equal(t, map[string]bool{
-		DataKey("t", "bare"):    true,
-		DataKey("t", "dynType"): true,
-	}, DataCycles(reads, nil))
 }
