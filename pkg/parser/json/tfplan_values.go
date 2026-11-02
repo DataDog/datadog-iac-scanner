@@ -29,7 +29,7 @@ func planValues(values map[string]any, afterUnknown any, expressions *gjson.Resu
 	if expressions == nil {
 		expressions = &gjson.Result{}
 	}
-	rewriteObject(values, unknown, newBlockConfig([]gjson.Result{*expressions}))
+	rewriteObject(values, unknown, newBlockConfig([]gjson.Result{*expressions}), false)
 	return unknown
 }
 
@@ -98,13 +98,16 @@ func newBlockConfig(instances []gjson.Result) blockConfig {
 
 // rewriteObject rewrites one object level. A nil cfg is an attribute's value
 // or a block without configuration, where no empty list is dropped.
-func rewriteObject(obj, unknown map[string]any, cfg blockConfig) {
-	fillUnknown(obj, unknown)
+// inAttribute marks a configured attribute's value, where every key counts as
+// configured. Unknown values nobody configured stay absent.
+func rewriteObject(obj, unknown map[string]any, cfg blockConfig, inAttribute bool) {
+	fillUnknown(obj, unknown, cfg, inAttribute)
 	for k, v := range obj {
 		if k == linesKey {
 			continue
 		}
 		var nested blockConfig
+		nestedAttribute := inAttribute
 		if cfg != nil {
 			instances, configured := cfg[k]
 			if l, ok := v.([]any); ok && len(l) == 0 && !configured {
@@ -114,18 +117,44 @@ func rewriteObject(obj, unknown map[string]any, cfg blockConfig) {
 			if len(instances) > 0 {
 				nested = newBlockConfig(instances)
 			}
+			nestedAttribute = (configured && len(instances) == 0) || (!configured && isDynamicBlock(v))
 		}
 		switch v.(type) {
 		case nil:
 			delete(obj, k)
 		case []any, map[string]any:
-			rewriteValue(v, unknown[k], nested)
+			rewriteValue(v, unknown[k], nested, nestedAttribute)
 		}
 	}
 }
 
-func fillUnknown(obj, unknown map[string]any) {
+func isConfigured(k string, cfg blockConfig, inAttribute bool) bool {
+	_, configured := cfg[k]
+	return inAttribute || configured
+}
+
+// isDynamicBlock reports whether an unconfigured key's planned value is a
+// non-empty block: configuration expressions leave dynamic blocks out, so
+// such a block is treated as configured.
+func isDynamicBlock(v any) bool {
+	switch v := v.(type) {
+	case []any:
+		if len(v) == 0 {
+			return false
+		}
+		_, block := v[0].(map[string]any)
+		return block
+	case map[string]any:
+		return len(v) > 0
+	}
+	return false
+}
+
+func fillUnknown(obj, unknown map[string]any, cfg blockConfig, inAttribute bool) {
 	for k, u := range unknown {
+		if !isConfigured(k, cfg, inAttribute) {
+			continue
+		}
 		switch u := u.(type) {
 		case bool:
 			obj[k] = partial.UnknownPlaceholder
@@ -170,11 +199,11 @@ func isAttributeExpression(expr *gjson.Result) bool {
 	return attribute
 }
 
-func rewriteValue(value, unknown any, cfg blockConfig) {
+func rewriteValue(value, unknown any, cfg blockConfig, inAttribute bool) {
 	switch val := value.(type) {
 	case map[string]any:
 		u, _ := unknown.(map[string]any)
-		rewriteObject(val, u, cfg)
+		rewriteObject(val, u, cfg, inAttribute)
 	case []any:
 		u, _ := unknown.([]any)
 		for i, elem := range val {
@@ -183,10 +212,12 @@ func rewriteValue(value, unknown any, cfg blockConfig) {
 				elemUnknown = u[i]
 			}
 			if elemUnknown == true {
-				val[i] = partial.UnknownPlaceholder
+				if inAttribute {
+					val[i] = partial.UnknownPlaceholder
+				}
 				continue
 			}
-			rewriteValue(elem, elemUnknown, cfg)
+			rewriteValue(elem, elemUnknown, cfg, inAttribute)
 		}
 	}
 }

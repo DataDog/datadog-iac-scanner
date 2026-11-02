@@ -57,9 +57,9 @@ type moduleResolutionResult struct {
 	extras          map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
 	moduleFiles map[string]*moduleFileCalls
-	// writtenMeta holds the _dd_meta extras of the plain root blocks kept
-	// in their written files.
-	writtenMeta   writtenMeta
+	// written holds the evaluated content of the plain root blocks kept in
+	// their written files.
+	written       writtenBlocks
 	resourceCount int
 	rootCount     int
 	ok            bool
@@ -141,7 +141,7 @@ func (c *Inspector) instantiateLocalModules(
 			calls.writtenResourceTypes = documentResourceTypes(f.Document)
 		}
 	}
-	stampWrittenExtras(files, res.writtenMeta)
+	patchWrittenBlocks(files, res.written)
 	routeModuleFileRoots(files, res.moduleFiles)
 	routeUnresolvedDirRoots(files, res.unresolvedRoots, c.repoPath)
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
@@ -196,6 +196,9 @@ const (
 	ephemeralPrefix  = "ephemeral."
 	ephemeralSection = "ephemeral"
 	resourceSection  = "resource"
+	localsSection    = "locals"
+	outputSection    = "output"
+	providerSection  = "provider"
 )
 
 // blockKind is the type a resolved block is indexed and attributed under.
@@ -283,20 +286,121 @@ func resolvedBlockKey(file, kind, name string) string {
 	return file + "\x00" + kind + "\x00" + name
 }
 
-// writtenMeta maps the resolvedBlockKey of a plain root block, by file ID, to
-// its _dd_meta extras.
-type writtenMeta map[string]blockMetaExtras
+// writtenBlock is the evaluated content and _dd_meta extras of a plain root
+// block kept in its written file.
+type writtenBlock struct {
+	attrs  map[string]interface{}
+	extras blockMetaExtras
+	// emptyDynamic is the generated types of dynamic blocks expanded to none.
+	emptyDynamic map[string]bool
+}
 
-func (w writtenMeta) add(p *rootResource, attributions *moduleAttributionCache) {
-	extras := blockMetaExtras{references: attributions.resourceReferences(p.r), unknown: tfeval.Unknowns(p.r, nil)}
-	if extras.references != nil || extras.unknown != nil {
-		w[resolvedBlockKey(p.fm.ID, p.kind, p.r.BaseName)] = extras
+// writtenBlocks maps the resolvedBlockKey of a plain root block, by file ID,
+// to its evaluated content.
+type writtenBlocks map[string]writtenBlock
+
+func (w writtenBlocks) add(p *rootResource, attributions *moduleAttributionCache) {
+	attrs := tfeval.AttributesToDocument(p.r)
+	w[resolvedBlockKey(p.fm.ID, p.kind, p.r.BaseName)] = writtenBlock{
+		attrs:        attrs,
+		extras:       blockMetaExtras{references: attributions.resourceReferences(p.r), unknown: tfeval.Unknowns(p.r, attrs)},
+		emptyDynamic: tfeval.EmptyDynamicTypes(p.r),
 	}
 }
 
-// stampWrittenExtras adds the traced references and unknown paths to the
-// _dd_meta of the plain root blocks kept in their written files.
-func stampWrittenExtras(files model.FileMetadatas, written writtenMeta) {
+// rootBlockSections are the non-resource sections of a root's written files
+// patched from the root scope.
+var rootBlockSections = [...]string{localsSection, moduleCallRoot, outputSection, providerSection}
+
+// addRootScope records the evaluated content of the locals, module calls,
+// outputs and provider blocks written in the root module's files. Locals are
+// keyed by position in their file, providers by name and position.
+func (w writtenBlocks) addRootScope(scope *tfeval.ModuleScope, byAbsPath map[string]*model.FileMetadata, repoPath string) {
+	if scope == nil {
+		return
+	}
+	for _, body := range scope.Bodies {
+		if body == nil {
+			continue
+		}
+		fm := byAbsPath[absPath(body.SrcRange.Filename, repoPath)]
+		if fm == nil {
+			continue
+		}
+		localsAt, providersAt := 0, map[string]int{}
+		for _, b := range body.Blocks {
+			var name string
+			switch {
+			case b.Type == localsSection:
+				name = strconv.Itoa(localsAt)
+				localsAt++
+			case (b.Type == moduleCallRoot || b.Type == outputSection) && len(b.Labels) == 1:
+				name = b.Labels[0]
+			case b.Type == providerSection && len(b.Labels) == 1:
+				name = rootBlockAt(b.Labels[0], providersAt[b.Labels[0]])
+				providersAt[b.Labels[0]]++
+			default:
+				continue
+			}
+			w[resolvedBlockKey(fm.ID, b.Type, name)] = writtenBlock{attrs: scope.RenderBody(b.Body)}
+		}
+	}
+}
+
+func rootBlockAt(name string, i int) string {
+	return name + "\x00" + strconv.Itoa(i)
+}
+
+// patchRootScopeBlocks merges the evaluated content recorded by addRootScope
+// into a written file's document. A section whose blocks the document does
+// not hold one for one is left as written.
+func patchRootScopeBlocks(f *model.FileMetadata, written writtenBlocks) {
+	patch := func(kind, name string, raw interface{}) {
+		block, ok := asStringMap(raw)
+		if !ok {
+			return
+		}
+		if wb, ok := written[resolvedBlockKey(f.ID, kind, name)]; ok {
+			mergeEvaluated(block, wb.attrs)
+		}
+	}
+	for _, kind := range rootBlockSections {
+		raw, ok := f.Document[kind]
+		if !ok {
+			continue
+		}
+		if kind == localsSection {
+			for i, block := range blockList(raw) {
+				patch(kind, strconv.Itoa(i), block)
+			}
+			continue
+		}
+		byName, _ := asStringMap(raw)
+		for name, entry := range byName {
+			if kind != providerSection {
+				patch(kind, name, entry)
+				continue
+			}
+			for i, block := range blockList(entry) {
+				patch(kind, rootBlockAt(name, i), block)
+			}
+		}
+	}
+}
+
+// blockList is the blocks of a section the converter holds as one block when
+// written once and as a list otherwise.
+func blockList(raw interface{}) []interface{} {
+	if list, ok := raw.([]interface{}); ok {
+		return list
+	}
+	return []interface{}{raw}
+}
+
+// patchWrittenBlocks merges the evaluated content of the plain root blocks
+// into their written files' documents and adds the traced references and
+// unknown paths to their _dd_meta.
+func patchWrittenBlocks(files model.FileMetadatas, written writtenBlocks) {
 	if len(written) == 0 {
 		return
 	}
@@ -304,6 +408,7 @@ func stampWrittenExtras(files model.FileMetadatas, written writtenMeta) {
 		if f == nil {
 			continue
 		}
+		patchRootScopeBlocks(f, written)
 		for _, section := range [...]struct{ key, prefix string }{
 			{resourceSection, ""},
 			{dataRoot, dataTypePrefix},
@@ -313,20 +418,27 @@ func stampWrittenExtras(files model.FileMetadatas, written writtenMeta) {
 			for typ, typeBlocks := range byType {
 				byName, _ := asStringMap(typeBlocks)
 				for name, raw := range byName {
-					block, _ := asStringMap(raw)
+					block, ok := asStringMap(raw)
+					if !ok {
+						continue
+					}
+					wb, ok := written[resolvedBlockKey(f.ID, section.prefix+typ, name)]
+					if !ok {
+						continue
+					}
+					mergeEvaluated(block, wb.attrs)
+					dropDynamicTemplates(block, wb.emptyDynamic)
 					meta, ok := block[ddMetaKey].(map[string]interface{})
 					if !ok {
 						continue
 					}
-					extras, ok := written[resolvedBlockKey(f.ID, section.prefix+typ, name)]
-					if !ok {
-						continue
+					if wb.extras.references != nil {
+						meta[referencesKey] = wb.extras.references
 					}
-					if extras.references != nil {
-						meta[referencesKey] = extras.references
-					}
-					if extras.unknown != nil {
-						meta[unknownKey] = extras.unknown
+					if wb.extras.unknown != nil {
+						meta[unknownKey] = wb.extras.unknown
+					} else {
+						delete(meta, unknownKey)
 					}
 				}
 			}
@@ -561,14 +673,14 @@ func evaluateRootModules(
 	resourceCount *int,
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
-) writtenMeta {
+) writtenBlocks {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, relDir: relDir, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
-		resolved: make(map[string]bool), failedRoots: make(map[string]bool), written: make(writtenMeta),
+		resolved: make(map[string]bool), failedRoots: make(map[string]bool), written: make(writtenBlocks),
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -576,7 +688,7 @@ func evaluateRootModules(
 	}
 	for _, dir := range roots[next:] {
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
-		m.merge(dir, resources, evaluator.TakeModuleInstances(), evaluator.TakeEmptyBlocks(), childDirs, err)
+		m.merge(dir, resources, evaluator.TakeModuleInstances(), evaluator.TakeEmptyBlocks(), evaluator.TakeRootScope(), childDirs, err)
 		// The cache key includes rootDir, so the next root cannot reuse these
 		// evaluations, and keyMemo pins every collection they hashed.
 		evaluator.ReleaseEvalCache()
@@ -621,7 +733,7 @@ type rootMerge struct {
 	emptyBlocks          []tfeval.EmptyBlock
 	resolved             map[string]bool
 	failedRoots          map[string]bool
-	written              writtenMeta
+	written              writtenBlocks
 }
 
 func (m *rootMerge) merge(
@@ -629,6 +741,7 @@ func (m *rootMerge) merge(
 	resources []tfeval.ResolvedResource,
 	instances []tfeval.ModuleInstance,
 	empty []tfeval.EmptyBlock,
+	scope *tfeval.ModuleScope,
 	childDirs map[string]bool,
 	err error,
 ) {
@@ -659,6 +772,7 @@ func (m *rootMerge) merge(
 		resources, m.byAbsPath, m.repoPath, m.relDir, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions,
 		m.written)
 	m.moduleCalls.record(instances, m.repoPath, m.relDir, m.lookup, attributions)
+	m.written.addRootScope(scope, m.byAbsPath, m.repoPath)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
 	*m.resourceCount += count
@@ -669,6 +783,7 @@ type rootResult struct {
 	resources    []tfeval.ResolvedResource
 	instances    []tfeval.ModuleInstance
 	empty        []tfeval.EmptyBlock
+	scope        *tfeval.ModuleScope
 	childDirs    map[string]bool
 	err          error
 	notEvaluated []string
@@ -738,7 +853,7 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 			panic(r.panicked)
 		}
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
-		m.merge(dir, r.resources, r.instances, r.empty, r.childDirs, r.err)
+		m.merge(dir, r.resources, r.instances, r.empty, r.scope, r.childDirs, r.err)
 	}
 	return len(roots)
 }
@@ -754,6 +869,7 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
 	r.instances = worker.TakeModuleInstances()
 	r.empty = worker.TakeEmptyBlocks()
+	r.scope = worker.TakeRootScope()
 	return r
 }
 
@@ -831,7 +947,7 @@ func resolveModuleDocuments(
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
 ) moduleResolutionResult {
-	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
+	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath, fsys)
 	if len(dirsWithTf) == 0 {
 		return moduleResolutionResult{}
 	}
@@ -926,7 +1042,7 @@ func resolveModuleDocuments(
 		unresolvedRoots:      unresolvedRoots,
 		extras:               extras,
 		moduleFiles:          moduleCalls.fileCalls(unresolvedModuleDirs),
-		writtenMeta:          written,
+		written:              written,
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		ok:                   true,
@@ -1356,7 +1472,7 @@ func instantiatedDocs(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
-	written writtenMeta,
+	written writtenBlocks,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -1365,13 +1481,6 @@ func instantiatedDocs(
 	// resolve them against the file's HCL, so repeats spill into a further
 	// document rather than overwriting each other.
 	layers := make(map[string]int)
-
-	// plainRoots are root resources with no instance suffix. They stay on the
-	// file they were written in, unless that file also has an expanded root
-	// resource: a same-document rule must still see the sibling next to each
-	// instance, so those are copied into every layer below.
-	var plainRoots []rootResource
-	expandedRoot := make(map[string]bool)
 
 	for i := range resources {
 		r := &resources[i]
@@ -1387,10 +1496,9 @@ func instantiatedDocs(
 				continue
 			}
 			if r.Key.Kind == tfeval.NoKey {
-				plainRoots = append(plainRoots, rootResource{r: r, fm: fm, kind: kind})
+				written.add(&rootResource{r: r, fm: fm, kind: kind}, attributions)
 				continue
 			}
-			expandedRoot[fm.ID] = true
 		} else if !targets.matches(r.Type) && !targets.matches(kind) {
 			// No rule can match this type by name, so resolving its values
 			// cannot change a finding. It keeps being scanned where it is
@@ -1429,9 +1537,6 @@ func instantiatedDocs(
 		instantiated.add(fm.ID, kind, base)
 		resourceCount++
 	}
-	resourceCount += joinPlainRootSiblings(
-		plainRoots, expandedRoot, groups, order, repoPath, instantiated, lookup, attributions, written,
-	)
 
 	for _, key := range order {
 		g := groups[key]
@@ -1462,70 +1567,6 @@ type rootResource struct {
 	kind string
 }
 
-// joinPlainRootSiblings moves each unexpanded root resource of a file that has
-// an expanded root resource into the owning instance document — the file's
-// first layer — and drops it from the original document. A file with no
-// expanded root resource keeps the resource where it was written. The
-// sibling's own findings are reported once, from the owning document, and a
-// same-document rule sees it next to the layer-0 instances of every expanded
-// block, exactly as it does for the resources of a called module (see
-// instantiatedDocs: a module file's unexpanded blocks also stay in layer 0
-// only).
-//
-// Later layers do not carry a copy of the sibling. Copying it into every layer
-// made the scan's input grow with siblings × layers: a file with a few
-// hundred plain blocks and a for_each in the hundreds turned into one
-// document per instance, each holding every sibling again, so every rule
-// re-evaluated the same siblings once per instance and a scan's peak memory
-// followed the product rather than the configuration. Instance findings are
-// untouched: each instance document keeps the instance it exists for, and the
-// sibling keeps one finding per rule from the owning document.
-// Returns how many resources were moved.
-func joinPlainRootSiblings(
-	plain []rootResource,
-	expandedRoot map[string]bool,
-	groups map[string]*docGroup,
-	order []string,
-	repoPath string,
-	instantiated instantiatedIndex,
-	lookup moduleProvenanceLookup,
-	attributions *moduleAttributionCache,
-	written writtenMeta,
-) int {
-	added := 0
-	for i := range plain {
-		p := &plain[i]
-		if !expandedRoot[p.fm.ID] {
-			// The block stays scanned where it is written; its identity is
-			// resolved from the file's own scope (see stampTerraformScopes).
-			written.add(p, attributions)
-			continue
-		}
-		joined := false
-		for _, key := range order {
-			g := groups[key]
-			if g.fm.ID != p.fm.ID || g.moduleAddress != "" {
-				continue
-			}
-			if joined {
-				// Only the owning document, the first layer of the file,
-				// carries the sibling; later layers exist for their own
-				// instances.
-				continue
-			}
-			addGroupEntry(g, p.r, p.kind, repoPath, lookup, attributions)
-			joined = true
-		}
-		if !joined {
-			written.add(p, attributions)
-			continue
-		}
-		instantiated.add(p.fm.ID, p.kind, p.r.BaseName)
-		added++
-	}
-	return added
-}
-
 func addGroupEntry(
 	g *docGroup,
 	r *tfeval.ResolvedResource,
@@ -1537,8 +1578,7 @@ func addGroupEntry(
 	refs := attributions.resourceReferences(r)
 	unknown := tfeval.Unknowns(r, attrs)
 	key := moduleAttributionKey(kind, r.DefLine, r.DefColumn)
-	// Clone: one root sibling is copied into every layer, and a finding may
-	// narrow the attribution it is given.
+	// Clone: a finding may narrow the attribution it is given.
 	g.attributions[key] = cloneModuleAttribution(attributions.attribution(r, repoPath, lookup))
 	base := r.BaseName
 	if r.Key.Kind != tfeval.NoKey {
@@ -1863,7 +1903,7 @@ func resolveModuleTargetDir(
 }
 
 // indexTerraformFiles builds lookup maps from a flat FileMetadatas slice.
-func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPath string) (
+func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPath string, fsys vfs.FS) (
 	byAbsPath map[string]*model.FileMetadata,
 	filesByDir map[string][]*model.FileMetadata,
 	dirsWithTf map[string]bool,
@@ -1878,17 +1918,30 @@ func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPat
 		}
 		abs := absPath(f.FilePath, repoPath)
 		dir := filepath.Dir(abs)
-		if prev, exists := byAbsPath[abs]; exists && prev != nil && prev.ID != f.ID {
+		key := evaluatorPath(fsys, abs)
+		if prev, exists := byAbsPath[key]; exists && prev != nil && prev.ID != f.ID {
 			contextLogger.Warn().Msgf(
 				"duplicate terraform file path in scan input %s (file ids %s and %s); using the latter",
-				abs, prev.ID, f.ID,
+				key, prev.ID, f.ID,
 			)
 		}
-		byAbsPath[abs] = f
+		byAbsPath[key] = f
 		filesByDir[dir] = append(filesByDir[dir], f)
 		dirsWithTf[dir] = true
 	}
 	return
+}
+
+// evaluatorPath returns p as the evaluator names files, so a relative scan
+// path still matches the blocks it reports.
+func evaluatorPath(fsys vfs.FS, p string) string {
+	if fsys == nil {
+		return p
+	}
+	if a, err := fsys.Abs(p); err == nil {
+		return a
+	}
+	return p
 }
 
 // docAsMap coerces v to a string-keyed map regardless of whether it is a

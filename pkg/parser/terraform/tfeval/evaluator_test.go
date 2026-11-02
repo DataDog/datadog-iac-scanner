@@ -279,6 +279,44 @@ resource "aws_s3_bucket" "tofu" {
 	requireString(t, findResource(t, resources, "aws_s3_bucket", "tf").Attributes, "bucket", "from-tf")
 }
 
+func TestEvaluateModule_JSONConfigReadsSiblingVariablesAndLocals(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
+		"variables.tf":      `variable "acl" { default = "public-read" }`,
+		"variables.tf.json": `{"variable":{"resource":{"default":"from-var"}}}`,
+		"main.tf.json": `{
+  "locals": {"b": "${local.a}", "a": "resolved"},
+  "resource": {"aws_s3_bucket": {"b": {"acl": "${var.acl}", "bucket": "${var.resource}", "name": "${local.b}"}}}
+}`,
+		"tags.tf": `resource "aws_x" "t" {
+  tags = { ("Tag/${var.acl}") = "test" }
+}`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	bucket := findResource(t, resources, "aws_s3_bucket", "b").Attributes
+	requireString(t, bucket, "acl", "public-read")
+	requireString(t, bucket, "bucket", "from-var")
+	requireString(t, bucket, "name", "resolved")
+	tags := findResource(t, resources, "aws_x", "t").Attributes["tags"]
+	require.True(t, tags.Type().HasAttribute("Tag/public-read"))
+}
+
+func TestEvaluateModule_AllowMissKeepsTofuShadowing(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf":   `resource "aws_s3_bucket" "tf" { bucket = "from-tf" }`,
+		"main.tofu": `resource "aws_s3_bucket" "tofu" { bucket = "from-tofu" }`,
+	})
+
+	e := New()
+	e.SetMergeAllow(map[string]struct{}{filepath.ToSlash(filepath.Join(t.TempDir(), "other.tf")): {}})
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	requireString(t, findResource(t, resources, "aws_s3_bucket", "tofu").Attributes, "bucket", "from-tofu")
+}
+
 func TestEvaluateModule_DefaultAppliedWhenInputOmitted(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{

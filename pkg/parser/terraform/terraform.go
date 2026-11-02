@@ -9,8 +9,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strings"
-	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -26,7 +24,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pkg/errors"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
-	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -49,31 +46,10 @@ type Parser struct {
 	numOfRetries int
 	sciInfo      model.SCIInfo
 
-	// fsys is the filesystem used for cross-file resolution (sibling .tf files,
-	// .tfvars, data sources). Defaults to the real disk; the HTTP server injects
-	// an in-memory FS populated from pushed content.
+	// fsys is the filesystem used to read files the parsed file refers to.
+	// Defaults to the real disk; the HTTP server injects an in-memory FS
+	// populated from pushed content.
 	fsys vfs.FS
-
-	// dirVarsCache memoizes per-directory variable/locals resolution (O(N²) without
-	// it). A scanned .tf file shadowed by an inventoried .tofu twin gets its own
-	// entry. Scoped to the Parser instance, which is created once per scan.
-	dirVarsCache sync.Map // directory selection -> converter.VariableMap
-	dirVarsSF    singleflight.Group
-
-	// mergeAllow, when set, limits OpenTofu twin-shadowing to these paths.
-	mergeAllow    map[string]struct{}
-	shadowedFiles map[string]struct{}
-}
-
-// SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
-func (p *Parser) SetMergeAllow(paths []string) {
-	p.mergeAllow = tfpath.AllowSet(paths)
-	shadowed := tfpath.ShadowedByTofu(paths)
-	shadowedPaths := make([]string, 0, len(shadowed))
-	for path := range shadowed {
-		shadowedPaths = append(shadowedPaths, path)
-	}
-	p.shadowedFiles = tfpath.AllowSet(shadowedPaths)
 }
 
 // NewDefault initializes a parser with Parser default values
@@ -110,44 +86,7 @@ func (p *Parser) Resolve(ctx context.Context,
 	if err != nil {
 		return nil, nil, err
 	}
-	vars = p.resolveDirVars(ctx, filepath.Dir(filename), filename, fileContent)
-	return fileContent, vars, nil
-}
-
-// resolveDirVars returns the variable/locals/data-source map for a directory,
-// memoized per effective directory selection. Files carrying an inline Terraform
-// vars path directive are resolved per-file because their result depends on file
-// content.
-func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileContent []byte) converter.VariableMap {
-	if strings.Contains(string(fileContent), terraformVarsPathDirective) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.mergeAllow, filename)
-		return getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
-	}
-
-	cacheKey := filepath.Clean(dir)
-	if _, ok := p.shadowedFiles[filepath.ToSlash(filepath.Clean(filename))]; ok {
-		cacheKey += "\x00" + filepath.Base(filename)
-	}
-	if v, ok := p.dirVarsCache.Load(cacheKey); ok {
-		return cloneVariableMap(v.(converter.VariableMap))
-	}
-	v, _, _ := p.dirVarsSF.Do(cacheKey, func() (interface{}, error) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.mergeAllow, filename)
-		vars := getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
-		p.dirVarsCache.Store(cacheKey, vars)
-		return vars, nil
-	})
-	// Callers own the returned map; the cached one must stay unmodified. The
-	// cty.Value entries are immutable and safe to share.
-	return cloneVariableMap(v.(converter.VariableMap))
-}
-
-func cloneVariableMap(src converter.VariableMap) converter.VariableMap {
-	dst := make(converter.VariableMap, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
+	return fileContent, nil, nil
 }
 
 func processContent(ctx context.Context, elements model.Document, content, path string) {
@@ -264,7 +203,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	}
 
 	if tfpath.IsJSONConfig(path) {
-		fc, parseErr := parseJSONConfig(resolved, path, inputVariables)
+		fc, parseErr := parseJSONConfig(resolved, path)
 		json, extraErr := addExtraInfo(ctx, []model.Document{fc}, path)
 		if extraErr != nil {
 			return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(extraErr, "failed terraform parse")

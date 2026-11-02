@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	ddPrefix      = "_dd_"
 	ddMetaKey     = "_dd_meta"
 	referencesKey = "references"
 	unknownKey    = "unknown"
@@ -38,8 +39,95 @@ func resourceMeta(addr string, roots []string, extras blockMetaExtras) map[strin
 	return meta
 }
 
+// mergeEvaluated overwrites dst's content keys with src's in place. Keys with
+// the _dd_ prefix in dst are never touched; dst keys src lacks stay, except
+// dynamic templates of a block src renders.
+func mergeEvaluated(dst, src map[string]interface{}) {
+	dynamic, hasDynamic := asStringMap(dst["dynamic"])
+	if _, rendered := src["dynamic"]; rendered {
+		hasDynamic = false
+	}
+	for k, sv := range src {
+		if strings.HasPrefix(k, ddPrefix) {
+			continue
+		}
+		if hasDynamic {
+			delete(dynamic, k)
+		}
+		dv := dst[k]
+		if holdsFilterExpr(dv) {
+			continue
+		}
+		if dm, ok := asStringMap(dv); ok {
+			if sm, ok := asStringMap(sv); ok {
+				mergeEvaluated(dm, sm)
+				continue
+			}
+		}
+		if dl, ok := dv.([]interface{}); ok {
+			if sl, ok := sv.([]interface{}); ok && mergeBlockLists(dl, sl) {
+				continue
+			}
+		}
+		dst[k] = sv
+	}
+	if hasDynamic && len(dynamic) == 0 {
+		delete(dst, "dynamic")
+	}
+}
+
+// holdsFilterExpr reports whether v is a filter the runner sink resolved: an
+// object, or its JSON text, holding _dd_filter_expr.
+func holdsFilterExpr(v interface{}) bool {
+	const key = "_dd_filter_expr"
+	if m, ok := asStringMap(v); ok {
+		_, found := m[key]
+		return found
+	}
+	s, ok := v.(string)
+	return ok && strings.HasPrefix(s, `{"`+key+`"`)
+}
+
+// dropDynamicTemplates deletes block's dynamic templates of the given types,
+// and the dynamic key once it holds none.
+func dropDynamicTemplates(block map[string]interface{}, types map[string]bool) {
+	dynamic, ok := asStringMap(block["dynamic"])
+	if !ok || len(types) == 0 {
+		return
+	}
+	for typ := range types {
+		delete(dynamic, typ)
+	}
+	if len(dynamic) == 0 {
+		delete(block, "dynamic")
+	}
+}
+
+// mergeBlockLists merges src into dst element-wise when both are lists of
+// maps of equal length, reporting whether it did.
+func mergeBlockLists(dst, src []interface{}) bool {
+	if len(dst) != len(src) {
+		return false
+	}
+	for i := range dst {
+		if _, ok := asStringMap(dst[i]); !ok {
+			return false
+		}
+		if _, ok := asStringMap(src[i]); !ok {
+			return false
+		}
+	}
+	for i := range dst {
+		dm, _ := asStringMap(dst[i])
+		sm, _ := asStringMap(src[i])
+		mergeEvaluated(dm, sm)
+	}
+	return true
+}
+
 // stampWrittenMeta adds _dd_meta to every name-keyed block of the resource,
-// data and ephemeral sections of doc (replacing any value already there).
+// data and ephemeral sections of doc, keeping only the unknown values the
+// converter recorded in any value already there.
 func stampWrittenMeta(doc map[string]interface{}, scope *model.TerraformScope) {
 	sections := [...]struct{ key, kind string }{
 		{"resource", address.KindResource},
@@ -67,8 +155,12 @@ func stampWrittenMeta(doc map[string]interface{}, scope *model.TerraformScope) {
 				if !ok {
 					continue
 				}
+				var extras blockMetaExtras
+				if prev, ok := asStringMap(block[ddMetaKey]); ok {
+					extras.unknown, _ = asStringMap(prev[unknownKey])
+				}
 				addr := address.Instance("", address.Block{Kind: s.kind, Type: typ, Name: name}, "")
-				block[ddMetaKey] = resourceMeta(addr, []string{scope.RootModule}, blockMetaExtras{})
+				block[ddMetaKey] = resourceMeta(addr, []string{scope.RootModule}, extras)
 			}
 		}
 	}

@@ -240,10 +240,16 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 		}
 	}
 
+	paths := make([]string, 0, len(names))
+	for _, name := range tfpath.AutoloadedVarFiles(names) {
+		paths = append(paths, filepath.Join(dir, name))
+	}
+	paths = append(paths, e.directiveVarFiles(ctx, dir, entries)...)
+
 	out := map[string]cty.Value{}
 	emptyCtx := &hcl.EvalContext{}
-	for _, name := range tfpath.AutoloadedVarFiles(names) {
-		p := filepath.Clean(filepath.Join(dir, name))
+	for _, p := range paths {
+		p = filepath.Clean(p)
 		src, err := tfmodules.ReadConfigFile(ctx, fsys, p, "")
 		if err != nil {
 			continue
@@ -253,6 +259,28 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 			if !attrDiags.HasErrors() && v.IsKnown() {
 				out[attrName] = v
 			}
+		}
+	}
+	return out
+}
+
+// directiveVarFiles returns, in file order, the existing variable files named
+// by the tfvars path directive of dir's configuration files.
+func (e *Evaluator) directiveVarFiles(ctx context.Context, dir string, entries []fs.DirEntry) []string {
+	names := tfmodules.SelectConfigNames(entries, dir, e.mergeAllow, "")
+	sort.Strings(names)
+	var out []string
+	for _, name := range names {
+		src, err := tfmodules.ReadConfigFile(ctx, e.fsys, filepath.Join(dir, name), "")
+		if err != nil {
+			continue
+		}
+		p, ok := tfpath.VarsPathFromDirective(src, dir)
+		if !ok {
+			continue
+		}
+		if _, err := e.fsys.Stat(p); err == nil {
+			out = append(out, p)
 		}
 	}
 	return out

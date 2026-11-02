@@ -704,7 +704,7 @@ block "label_one" {
 		t.Run(tt.name, func(t *testing.T) {
 			file, _ := hclsyntax.ParseConfig([]byte(tt.input), "testFileName", hcl.Pos{Byte: 0, Line: 1, Column: 1})
 			c := newConverter(file.Bytes, nil, functions.TerraformFuncs)
-			got, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
+			got, _, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0, false)
 			fmt.Println(err)
 			require.True(t, (err != nil) == tt.wantErr)
 			gotJSON, _ := json.Marshal(got)
@@ -927,6 +927,15 @@ variable "region" {
 							"_dd_line": 53
 						}
 					},
+					"_dd_meta": {
+						"unknown": {
+							"config": {
+								"bucket": true,
+								"profile": true,
+								"region": true
+							}
+						}
+					},
 					"backend": "s3",
 					"config": {
 						"profile": "${var.profile}",
@@ -1065,8 +1074,23 @@ resource "aws_s3_bucket" "unknown" {
 		}),
 	})
 	buckets := out["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})
-	require.NotContains(t, buckets, "disabled")
+	require.EqualValues(t, 0, buckets["disabled"].(map[string]interface{})["count"])
 	require.Contains(t, buckets, "unknown")
+}
+
+func TestNestedCountAttributeKept(t *testing.T) {
+	input := `
+resource "aws_y" "b" {
+  setting {
+    count = 0
+    name  = "a"
+  }
+}
+`
+	out := convertToJSONMap(t, input, VariableMap{})
+	setting := out["resource"].(map[string]interface{})["aws_y"].(map[string]interface{})["b"].(map[string]interface{})["setting"].(map[string]interface{})
+	require.EqualValues(t, 0, setting["count"])
+	require.Equal(t, "a", setting["name"])
 }
 
 func TestNullStringDoesNotPanic(t *testing.T) {
@@ -1157,4 +1181,105 @@ resource "aws_security_group" "sg" {
 		require.True(t, ok, "every outer block must carry its expanded inner blocks")
 		require.Len(t, inner, 30)
 	}
+}
+
+// Values the converter cannot evaluate are listed in _dd_meta.unknown in the
+// shape of Terraform's after_unknown, while the document keeps their text.
+func TestUnevaluatedValuesAreUnknown(t *testing.T) {
+	input := `
+resource "aws_x" "a" {
+  name   = var.name
+  known  = "k"
+  joined = "${var.p}-x"
+  list   = ["a", var.b, { c = var.c }, { d = "d" }]
+  tags   = { a = "a", b = local.b }
+  ebs {
+    size = 1
+  }
+  ebs {
+    size = var.size
+  }
+  dynamic "setting" {
+    for_each = var.settings
+    content {
+      value = setting.value
+    }
+  }
+  dynamic "rule" {
+    for_each = ["x", "y"]
+    content {
+      value = rule.value == "y" ? var.y : rule.value
+    }
+  }
+}
+
+data "aws_y" "d" {
+  name = "n"
+}
+
+ephemeral "aws_z" "e" {
+  name = var.n
+}
+
+resource "aws_x" "single" {
+  ebs {
+    size = var.size
+    type = "gp3"
+  }
+  dynamic "rule" {
+    for_each = ["x"]
+    content {
+      value = var.y
+    }
+  }
+}
+
+module "m" {
+  source = var.s
+}
+`
+	out := convertToJSONMap(t, input, nil)
+	block := func(section, typ, name string) map[string]interface{} {
+		return out[section].(map[string]interface{})[typ].(map[string]interface{})[name].(map[string]interface{})
+	}
+	a := block("resource", "aws_x", "a")
+	require.Equal(t, "${var.name}", a["name"])
+	require.Equal(t, map[string]interface{}{"unknown": map[string]interface{}{
+		"name":    true,
+		"joined":  true,
+		"list":    []interface{}{false, true, map[string]interface{}{"c": true}, map[string]interface{}{}},
+		"tags":    map[string]interface{}{"b": true},
+		"ebs":     []interface{}{map[string]interface{}{}, map[string]interface{}{"size": true}},
+		"setting": true,
+		"rule":    []interface{}{map[string]interface{}{}, map[string]interface{}{"value": true}},
+	}}, a["_dd_meta"])
+	single := block("resource", "aws_x", "single")
+	require.IsType(t, map[string]interface{}{}, single["ebs"])
+	require.IsType(t, map[string]interface{}{}, single["rule"])
+	require.Equal(t, map[string]interface{}{"unknown": map[string]interface{}{
+		"ebs":  map[string]interface{}{"size": true},
+		"rule": map[string]interface{}{"value": true},
+	}}, single["_dd_meta"])
+	require.NotContains(t, block("data", "aws_y", "d"), "_dd_meta")
+	require.Equal(t, map[string]interface{}{"unknown": map[string]interface{}{"name": true}}, block("ephemeral", "aws_z", "e")["_dd_meta"])
+	require.NotContains(t, out["module"].(map[string]interface{})["m"], "_dd_meta")
+}
+
+// Meta-arguments are never unknown, as in an evaluated block.
+func TestMetaArgumentsAreNotUnknown(t *testing.T) {
+	input := `
+resource "aws_x" "a" {
+  count      = var.n
+  for_each   = var.m
+  depends_on = [var.d]
+  provider   = var.p
+  name       = var.name
+  lifecycle {
+    ignore_changes = [var.i]
+  }
+}
+`
+	out := convertToJSONMap(t, input, nil)
+	a := out["resource"].(map[string]interface{})["aws_x"].(map[string]interface{})["a"].(map[string]interface{})
+	require.Equal(t, map[string]interface{}{"unknown": map[string]interface{}{"name": true}}, a["_dd_meta"])
 }

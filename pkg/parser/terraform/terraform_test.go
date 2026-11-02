@@ -8,6 +8,7 @@ package terraform
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -157,8 +158,11 @@ func Test_Count(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, document, 1)
 	require.Contains(t, document[0], "resource")
-	require.Contains(t, document[0]["resource"].(model.Document)["aws_instance"], "server1")
-	require.NotContains(t, document[0]["resource"].(model.Document)["aws_instance"], "server")
+	instances := document[0]["resource"].(model.Document)["aws_instance"].(model.Document)
+	require.Contains(t, instances, "server1")
+	serverCount, err := json.Marshal(instances["server"].(model.Document)["count"])
+	require.NoError(t, err)
+	require.JSONEq(t, "0", string(serverCount))
 }
 
 // Test_Parentheses_Expr tests if parentheses expr is well parsed
@@ -174,7 +178,7 @@ func Test_Parentheses_Expr(t *testing.T) {
 	require.Len(t, document, 1)
 	require.Contains(t, document[0], "data")
 	ami := document[0]["data"].(model.Document)["aws_ami"].(model.Document)["example"]
-	require.Contains(t, ami.(model.Document)["tags"], "Tag/default_var_file")
+	require.Contains(t, ami.(model.Document)["tags"], "Tag/${var.default}")
 }
 
 // Test_namelessResource tests the case of the nameless resource where the resource name is not specified and model.Document resource is a list
@@ -205,67 +209,24 @@ func Test_Parser_Tofu(t *testing.T) {
 	require.Contains(t, document[0]["resource"], "aws_s3_bucket")
 }
 
-func Test_Parser_InventoriedTwinsKeepOwnVars(t *testing.T) {
+func TestParseRendersVariablesAsText(t *testing.T) {
 	dir := t.TempDir()
-	tf := filepath.Join(dir, "main.tf")
-	tofu := filepath.Join(dir, "main.tofu")
-	require.NoError(t, os.WriteFile(tf, []byte(`
-variable "name" { default = "from-tf" }
-resource "aws_s3_bucket" "b" { bucket = var.name }
-`), 0o600))
-	require.NoError(t, os.WriteFile(tofu, []byte(`
-variable "name" { default = "from-tofu" }
-resource "aws_s3_bucket" "b" { bucket = var.name }
-`), 0o600))
-
-	parser := NewDefault()
-	parser.SetMergeAllow([]string{tf, tofu})
-
-	_, tfDoc, _, _, err := parser.Parse(context.Background(), []byte(`
-variable "name" { default = "from-tf" }
-resource "aws_s3_bucket" "b" { bucket = var.name }
-`), tf, true, 15)
-	require.NoError(t, err)
-	tfBucket := fmt.Sprint(tfDoc[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)["bucket"])
-	require.Contains(t, tfBucket, "from-tf")
-	require.NotContains(t, tfBucket, "from-tofu")
-
-	_, tofuDoc, _, _, err := parser.Parse(context.Background(), []byte(`
-variable "name" { default = "from-tofu" }
-resource "aws_s3_bucket" "b" { bucket = var.name }
-`), tofu, true, 15)
-	require.NoError(t, err)
-	tofuBucket := fmt.Sprint(tofuDoc[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)["bucket"])
-	require.Contains(t, tofuBucket, "from-tofu")
-	require.NotContains(t, tofuBucket, "from-tf")
+	path := filepath.Join(dir, "main.tf")
+	content := []byte(`
+variable "name" { default = "default" }
+locals { suffix = "x" }
+resource "aws_s3_bucket" "b" {
+  bucket = var.name
+  acl    = local.suffix
 }
+`)
+	require.NoError(t, os.WriteFile(path, content, 0o600))
 
-func Test_Parser_SharesDirectoryVarsCacheAcrossSiblingFiles(t *testing.T) {
-	dir := t.TempDir()
-	paths := []string{
-		filepath.Join(dir, "main.tf"),
-		filepath.Join(dir, "variables.tf"),
-		filepath.Join(dir, "outputs.tf"),
-	}
-	for _, path := range paths {
-		require.NoError(t, os.WriteFile(path, []byte(`variable "name" { default = "shared" }`), 0o600))
-	}
-
-	parser := NewDefault()
-	parser.SetMergeAllow(paths)
-	for _, path := range paths {
-		content, err := os.ReadFile(path)
-		require.NoError(t, err)
-		_, _, _, _, err = parser.Parse(t.Context(), content, path, true, 15)
-		require.NoError(t, err)
-	}
-
-	cacheEntries := 0
-	parser.dirVarsCache.Range(func(_, _ any) bool {
-		cacheEntries++
-		return true
-	})
-	require.Equal(t, 1, cacheEntries)
+	_, docs, _, _, err := NewDefault().Parse(context.Background(), content, path, true, 15)
+	require.NoError(t, err)
+	bucket := docs[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["b"].(model.Document)
+	require.Equal(t, "${var.name}", bucket["bucket"])
+	require.Equal(t, "${local.suffix}", bucket["acl"])
 }
 
 // Test_Resolve tests the functions [Resolve()] and all the methods called by them

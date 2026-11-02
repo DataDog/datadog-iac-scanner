@@ -147,7 +147,7 @@ func detectTerraformPlanLine(
 	if len(path) < tfPlanMinAttributePathLen && !explicitResourcePath {
 		return nil
 	}
-	lineNr := -1
+	lineNr := listElementLine(path, file)
 	for n := len(path); n >= min(tfPlanMinAttributePathLen, len(path)) && lineNr <= 0; n-- {
 		lineNr = GetLineBySearchLine(path[:n], file)
 	}
@@ -166,6 +166,34 @@ func detectTerraformPlanLine(
 			End:   model.ResourceLine{Line: lineNr},
 		},
 	}
+}
+
+// listElementLine resolves a plan path whose searchKey omits list indices
+// (plan files encode blocks as lists, e.g. point_in_time_recovery.enabled) by
+// trying the remaining path against each list element, index 0 first. Returns
+// -1 when no element holds the full path.
+func listElementLine(path []string, file *model.FileMetadata) int {
+	for k := 1; k < len(path); k++ {
+		node, ok := resolvePath(file.LineInfoDocument, path[:k])
+		if !ok {
+			return -1
+		}
+		list, isList := node.([]interface{})
+		if !isList {
+			continue
+		}
+		if _, err := strconv.Atoi(path[k]); err == nil {
+			continue
+		}
+		for i := range list {
+			candidate := append(append(append([]string{}, path[:k]...), strconv.Itoa(i)), path[k:]...)
+			if line := listElementLine(candidate, file); line > 0 {
+				return line
+			}
+		}
+		return -1
+	}
+	return GetLineBySearchLine(path, file)
 }
 
 // expandSearchKeyPath turns a search key into structural path components:

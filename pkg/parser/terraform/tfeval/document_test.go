@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -508,6 +509,65 @@ resource "aws_security_group" "g" {
 	}
 }
 
+func TestUnknownsSingleNestedBlockFollowsDocument(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_instance" "i" {
+  ebs {
+    size = var.unset
+    type = "gp3"
+  }
+}
+`
+	want := map[string]interface{}{"ebs": map[string]interface{}{"size": true}}
+	if got := unknownsFor(t, mainTF, "aws_instance", "i", true); !reflect.DeepEqual(got, want) {
+		t.Errorf("unknown = %#v, want %#v", got, want)
+	}
+}
+
+func TestUnknownsKnownMapAndSetElementsInList(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_s3_bucket" "b" {
+  maps = [tomap({ a = "b" }), tomap({ a = var.unset })]
+  sets = [toset(["a"]), toset([var.unset])]
+}
+`
+	want := map[string]interface{}{
+		"maps": []interface{}{map[string]interface{}{}, true},
+		"sets": []interface{}{false, true},
+	}
+	if got := unknownsFor(t, mainTF, "aws_s3_bucket", "b", false); !reflect.DeepEqual(got, want) {
+		t.Errorf("unknown = %#v, want %#v", got, want)
+	}
+}
+
+func TestUnknownsOmitMetaArguments(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_s3_bucket" "c" {
+  count  = var.unset
+  bucket = var.unset
+}
+
+resource "aws_s3_bucket" "f" {
+  for_each = var.unset
+  bucket   = "b"
+}
+`
+	for _, withDoc := range []bool{false, true} {
+		if got, want := unknownsFor(t, mainTF, "aws_s3_bucket", "c", withDoc), map[string]interface{}{"bucket": true}; !reflect.DeepEqual(got, want) {
+			t.Errorf("withDoc=%v: count unknown = %#v, want %#v", withDoc, got, want)
+		}
+		if got := unknownsFor(t, mainTF, "aws_s3_bucket", "f", withDoc); got != nil {
+			t.Errorf("withDoc=%v: for_each unknown = %#v, want nil", withDoc, got)
+		}
+	}
+}
+
 func TestUnknownsRenderedTextIsWhole(t *testing.T) {
 	const mainTF = `
 variable "t" {}
@@ -552,5 +612,68 @@ resource "aws_s3_bucket" "b" {
 `
 	if got := unknownsFor(t, mainTF, "aws_s3_bucket", "b", true); got != nil {
 		t.Errorf("unknown = %#v, want nil", got)
+	}
+}
+
+func TestRenderBodyModuleCall(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "m", map[string]string{"main.tf": "variable \"name\" {}\n"})
+	writeModule(t, root, "env", map[string]string{"main.tf": `
+variable "n" {}
+
+module "m" {
+  source = "../m"
+  name   = var.n
+  extra  = var.missing
+  tags {
+    owner = var.n
+  }
+}
+`})
+	e := New()
+	if _, _, _, err := e.EvaluateModule(context.Background(), filepath.Join(root, "env"), map[string]cty.Value{"n": cty.StringVal("x")}); err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	scope := e.TakeRootScope()
+	if scope == nil {
+		t.Fatal("TakeRootScope = nil, want the root scope")
+	}
+	if again := e.TakeRootScope(); again != nil {
+		t.Fatalf("second TakeRootScope = %p, want nil", again)
+	}
+	var call *hclsyntax.Block
+	for _, body := range scope.Bodies {
+		for _, b := range body.Blocks {
+			if b.Type == "module" {
+				call = b
+			}
+		}
+	}
+	if call == nil {
+		t.Fatal("module block not found in scope bodies")
+	}
+	want := map[string]interface{}{
+		"source": "../m",
+		"name":   "x",
+		"extra":  "${var.missing}",
+		"tags":   map[string]interface{}{"owner": "x"},
+	}
+	if got := scope.RenderBody(call.Body); !reflect.DeepEqual(got, want) {
+		t.Errorf("RenderBody = %#v, want %#v", got, want)
+	}
+}
+
+func TestTakeRootScopeNilOnFailure(t *testing.T) {
+	root := t.TempDir()
+	ok := writeModule(t, root, "ok", map[string]string{"main.tf": "locals {\n  a = 1\n}\n"})
+	e := New()
+	if _, _, _, err := e.EvaluateModule(context.Background(), ok, nil); err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	if _, _, _, err := e.EvaluateModule(context.Background(), filepath.Join(root, "missing"), nil); err == nil {
+		t.Fatal("EvaluateModule of a missing dir succeeded, want an error")
+	}
+	if got := e.TakeRootScope(); got != nil {
+		t.Fatalf("TakeRootScope after failure = %p, want nil", got)
 	}
 }

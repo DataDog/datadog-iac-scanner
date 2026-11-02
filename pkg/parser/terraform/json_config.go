@@ -11,7 +11,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/hashicorp/hcl/v2"
 	hcljson "github.com/hashicorp/hcl/v2/json"
@@ -22,11 +21,11 @@ import (
 var jsonConfigSchema = &hcl.BodySchema{
 	Blocks: []hcl.BlockHeaderSchema{
 		{Type: "terraform"},
-		{Type: blockTypeLocals},
+		{Type: "locals"},
 		{Type: "moved"},
 		{Type: "import"},
 		{Type: "removed"},
-		{Type: blockTypeVariable, LabelNames: []string{"name"}},
+		{Type: "variable", LabelNames: []string{"name"}},
 		{Type: "output", LabelNames: []string{"name"}},
 		{Type: "module", LabelNames: []string{"name"}},
 		{Type: "provider", LabelNames: []string{"name"}},
@@ -37,7 +36,7 @@ var jsonConfigSchema = &hcl.BodySchema{
 	},
 }
 
-func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMap) (model.Document, error) {
+func parseJSONConfig(src []byte, filename string) (model.Document, error) {
 	file, diags := hcljson.Parse(src, filename)
 	if diags.HasErrors() {
 		return nil, diags
@@ -47,18 +46,16 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 		return nil, diags
 	}
 
-	evalCtx := &hcl.EvalContext{
-		Variables: inputVars,
-		Functions: functions.TerraformFuncs,
-	}
+	evalCtx := &hcl.EvalContext{Functions: functions.TerraformFuncs}
 	out := make(model.Document)
 	ddLines := map[string]model.LineObject{
 		"_dd__default": {Line: 1},
 	}
 	for _, block := range content.Blocks {
-		body, skip := convertJSONBody(block.Body, evalCtx, src, block.DefRange.Start.Line)
-		if skip {
-			continue
+		meta := metaSections[block.Type] && len(block.Labels) == 2
+		body, unknown := convertJSONBody(block.Body, evalCtx, src, block.DefRange.Start.Line, meta)
+		if meta && len(unknown) > 0 {
+			body["_dd_meta"] = map[string]interface{}{"unknown": unknown}
 		}
 		ddLines["_dd_"+block.Type] = model.LineObject{Line: block.TypeRange.Start.Line}
 		nestJSONBlock(out, block, body)
@@ -67,22 +64,35 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 	return out, nil
 }
 
-func convertJSONBody(body hcl.Body, evalCtx *hcl.EvalContext, src []byte, defLine int) (model.Document, bool) {
-	attrs, _ := body.JustAttributes()
-	if countZero(attrs, evalCtx) {
-		return nil, true
-	}
+// metaSections are the top-level sections whose blocks carry _dd_meta.
+var metaSections = map[string]bool{"resource": true, "data": true, "ephemeral": true}
 
-	out := make(model.Document)
+// metaArguments are the attributes of a metaSections block that are never unknown.
+var metaArguments = map[string]bool{"count": true, "for_each": true, "depends_on": true, "provider": true, "lifecycle": true}
+
+// convertJSONBody converts body and returns, beside it, the unknown shape of
+// its values (see convertJSONExpr). A metaBody leaves its meta-arguments out of
+// the shape.
+func convertJSONBody(
+	body hcl.Body, evalCtx *hcl.EvalContext, src []byte, defLine int, metaBody bool,
+) (out model.Document, unknown map[string]interface{}) {
+	attrs, _ := body.JustAttributes()
+
+	out = make(model.Document)
+	unknown = make(map[string]interface{})
 	ddLines := map[string]model.LineObject{
 		"_dd__default": {Line: defLine},
 	}
 	for name, attr := range attrs {
 		ddLines["_dd_"+name] = model.LineObject{Line: attr.NameRange.Start.Line}
-		out[name] = convertJSONExpr(attr.Expr, evalCtx, src, name)
+		var u interface{}
+		out[name], u = convertJSONExpr(attr.Expr, evalCtx, src, name)
+		if u != nil && (!metaBody || !metaArguments[name]) {
+			unknown[name] = u
+		}
 	}
 	out["_dd_lines"] = ddLines
-	return out, false
+	return out, unknown
 }
 
 func nestJSONBlock(out model.Document, block *hcl.Block, body model.Document) {
@@ -113,19 +123,6 @@ func nestJSONBlock(out model.Document, block *hcl.Block, body model.Document) {
 	cur[key] = body
 }
 
-func countZero(attrs hcl.Attributes, evalCtx *hcl.EvalContext) bool {
-	attr, ok := attrs["count"]
-	if !ok {
-		return false
-	}
-	val, diags := attr.Expr.Value(evalCtx)
-	if diags.HasErrors() {
-		return false
-	}
-	n, ok := ctyutil.LiteralInt(val)
-	return ok && n == 0
-}
-
 func ctyToJSONDocument(v cty.Value) interface{} {
 	if v.IsNull() {
 		return nil
@@ -151,49 +148,83 @@ func ctyToJSONDocument(v cty.Value) interface{} {
 	}
 }
 
-func convertJSONExpr(expr hcl.Expression, evalCtx *hcl.EvalContext, src []byte, fallback string) interface{} {
+// convertJSONExpr converts expr and returns, beside it, its unknown shape: nil
+// when it evaluates, an object of its unknown entries, a list keeping its
+// length with {} or false for a known element, and true otherwise.
+func convertJSONExpr(
+	expr hcl.Expression, evalCtx *hcl.EvalContext, src []byte, fallback string,
+) (value, unknown interface{}) {
 	val, diags := expr.Value(evalCtx)
 	if !diags.HasErrors() && val.IsWhollyKnown() {
-		return ctyToJSONDocument(val)
+		return ctyToJSONDocument(val), nil
 	}
-	if obj, ok := convertJSONObjectExpr(expr, evalCtx, src); ok {
-		return obj
+	if obj, u, ok := convertJSONObjectExpr(expr, evalCtx, src); ok {
+		return obj, u
 	}
-	if list, ok := convertJSONListExpr(expr, evalCtx, src, fallback); ok {
-		return list
+	if list, u, ok := convertJSONListExpr(expr, evalCtx, src, fallback); ok {
+		return list, u
 	}
-	return wrapJSONRange(expr.Range(), fallback, src)
+	return wrapJSONRange(expr.Range(), fallback, src), true
 }
 
-func convertJSONObjectExpr(expr hcl.Expression, evalCtx *hcl.EvalContext, src []byte) (model.Document, bool) {
+func convertJSONObjectExpr(
+	expr hcl.Expression, evalCtx *hcl.EvalContext, src []byte,
+) (model.Document, interface{}, bool) {
 	pairs, diags := hcl.ExprMap(expr)
 	if diags.HasErrors() || len(pairs) == 0 {
-		return nil, false
+		return nil, nil, false
 	}
 	out := make(model.Document, len(pairs))
+	unknown := make(map[string]interface{})
 	for _, pair := range pairs {
 		keyVal, keyDiags := pair.Key.Value(evalCtx)
 		key, ok := ctyutil.ConcreteString(keyVal)
 		if keyDiags.HasErrors() || !ok {
 			continue
 		}
-		out[key] = convertJSONExpr(pair.Value, evalCtx, src, key)
+		var u interface{}
+		out[key], u = convertJSONExpr(pair.Value, evalCtx, src, key)
+		if u != nil {
+			unknown[key] = u
+		}
 	}
-	return out, true
+	if len(unknown) == 0 {
+		return out, nil, true
+	}
+	return out, unknown, true
 }
 
 func convertJSONListExpr(
 	expr hcl.Expression, evalCtx *hcl.EvalContext, src []byte, fallback string,
-) ([]interface{}, bool) {
+) (list []interface{}, unknown interface{}, ok bool) {
 	items, diags := hcl.ExprList(expr)
 	if diags.HasErrors() || len(items) == 0 {
-		return nil, false
+		return nil, nil, false
 	}
 	out := make([]interface{}, 0, len(items))
-	for _, item := range items {
-		out = append(out, convertJSONExpr(item, evalCtx, src, fallback))
+	shape := make([]interface{}, len(items))
+	found := false
+	for i, item := range items {
+		value, u := convertJSONExpr(item, evalCtx, src, fallback)
+		out = append(out, value)
+		switch {
+		case u != nil:
+			shape[i], found = u, true
+		case isDocument(value):
+			shape[i] = map[string]interface{}{}
+		default:
+			shape[i] = false
+		}
 	}
-	return out, true
+	if !found {
+		return out, nil, true
+	}
+	return out, shape, true
+}
+
+func isDocument(v interface{}) bool {
+	_, ok := v.(model.Document)
+	return ok
 }
 
 func wrapJSONRange(r hcl.Range, fallback string, src []byte) string {

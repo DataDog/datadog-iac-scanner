@@ -84,7 +84,7 @@ These would make the work a failure even if it technically works:
 - **Rule results:** a result may carry `"rootModule": "<root>"`. When present, the finding is attributed only to that root. When absent, today's behaviour holds (every caller of a shared document).
 - **Unknown values in documents:**
   - Source scans keep today's `${<use-site text>}` rendering, falling back to `${__dd_unknown__}`.
-  - Plan scans fill every unknown leaf with `${__dd_unknown__}`.
+  - Plan scans fill every configured unknown leaf with `${__dd_unknown__}`; unconfigured computed attributes stay absent (see Plan unknowns).
   - Rules decide unknownness from `_dd_meta.unknown`, never from the text.
 - **Plan absence:**
   - `null` values are dropped, because Terraform treats null as unset.
@@ -171,7 +171,7 @@ Migrated rules are silent without `_dd_meta`. Old scanners may miss findings, an
 
 ### Plan unknowns
 
-Present-but-unknown, matching Terraform's model: the attribute exists, its value is unknown, and it is reported in `unknown`. Sensitive values are passed through unmasked, and `after_sensitive` is ignored.
+Present-but-unknown, matching Terraform's model: the attribute exists, its value is unknown, and it is reported in `unknown`. This applies to values the configuration sets. A computed attribute no configuration expression sets (such as `id` or `arn`) stays absent from the document, as in a source scan, so rules reporting a missing attribute still fire; `unknown` still lists it. Sensitive values are passed through unmasked, and `after_sensitive` is ignored.
 
 ## Decided
 
@@ -184,8 +184,10 @@ Present-but-unknown, matching Terraform's model: the attribute exists, its value
 - **Development linking.** The rules worktree links to the scanner worktree with an untracked `go.work`.
 
 - **Untraceable references are uncertain, not absent.** When a join attribute is configured but has no `references` entry, the rule treats every finding that join would produce in that root as uncertain and does not report it. In the NSG example, an association whose `subnet_id` is untraced suppresses "unassociated subnet" findings in its root. Over-reporting is the failure mode to avoid. Each migrated join rule has a negative fixture for this case.
-- **Metadata in fallback roots.** When a root cannot be evaluated, or a file belongs to a directory evaluated only as its own root, resources still carry `address` (`<type>.<name>`, with the module prefix when known) and `root_modules` (the evaluated root directories that reach the file, else the file's own directory). `references` and `unknown` are absent there, so joins fall under the uncertainty rule above. Directories no root calls are evaluated as their own root, as today.
+- **Metadata in fallback roots.** When a root cannot be evaluated, or a file belongs to a directory evaluated only as its own root, resources still carry `address` (`<type>.<name>`, with the module prefix when known) and `root_modules` (the evaluated root directories that reach the file, else the file's own directory). `references` is absent there, so joins fall under the uncertainty rule above. `unknown` lists the values left unevaluated, in the shape of Terraform's unknown values (a list keeps its length, with `{}` or `false` for a known element), while the document keeps their `${...}` text. Meta-arguments (`count`, `for_each`, `depends_on`, `provider`, `lifecycle`) are never listed, in `.tf` and `.tf.json` files alike. Directories no root calls are evaluated as their own root, as today.
 - **Static-tracing fallback contract.** If the spike selects static tracing, a reference whose instance cannot be selected lists every instance of the target, and a reference through a module output lists the output's possible sources. Over-approximation can only hide findings in "is X referenced" rules, never invent them.
+- **Labeled nested blocks.** Nested blocks with labels, such as `provisioner`, are not evaluated: they keep their use-site `${...}` text and are not listed in `unknown`.
+- **`.tf` shadowed by `.tofu`.** A `.tf` file shadowed by an inventoried `.tofu` file of the same name keeps its raw text; the evaluator owns only the `.tofu` file, as Terraform's file selection does.
 - **Unknown in source scans.** A value is unknown when evaluation leaves it unknown: root variables with no default and no value, attributes of resources only known after apply, and anything derived from them. This matches what `terraform plan` would report, given values for every variable that has one.
 
 ## Left to the builder
@@ -199,4 +201,4 @@ Present-but-unknown, matching Terraform's model: the attribute exists, its value
 ## Owner decisions
 
 - `data.common_lib.modules` and `_dd_tfplan_meta` are deleted outright, with no compatibility shim.
-- The `// kics_terraform_vars: <path>` comment directive is ported to the evaluator: the named file's values apply to the root that contains the commented file, before auto-loaded `.tfvars` files.
+- The `// dd_terraform_vars: <path>` comment directive is ported to the evaluator: the named file's values apply to the whole root that contains the commented file, not only to that file, and the directive overrides auto-loaded `.tfvars` files.

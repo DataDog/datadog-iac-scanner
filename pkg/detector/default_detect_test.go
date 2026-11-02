@@ -773,6 +773,79 @@ func Test_detectLineTerraformPlanMinified(t *testing.T) {
 	require.Greater(t, got.Line, 1)
 }
 
+const planWithListBlocks = `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_dynamodb_table.t",
+          "type": "aws_dynamodb_table",
+          "name": "t",
+          "values": {
+            "point_in_time_recovery": [
+              {
+                "enabled": false
+              }
+            ],
+            "ttl": [
+              {
+                "attribute_name": "a"
+              },
+              {
+                "attribute_name": "b",
+                "enabled": false
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_dynamodb_table.t",
+      "change": {"after_unknown": {"ttl": [{"kms_key_arn": true}]}}
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_dynamodb_table.t",
+          "expressions": {"ttl": [{"kms_key_arn": {"constant_value": "k"}}]}
+        }
+      ]
+    }
+  }
+}`
+
+func detectPlanWithListBlocks(t *testing.T, searchKey string) int {
+	t.Helper()
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(planWithListBlocks), "plan.json", false, 1)
+	require.NoError(t, err)
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(planWithListBlocks),
+	}
+	return defaultDetectLine{}.DetectLine(context.Background(), file, searchKey, 0).Line
+}
+
+func Test_detectLineTerraformPlanOneElementListBlock(t *testing.T) {
+	require.Equal(t, 13, detectPlanWithListBlocks(t, "aws_dynamodb_table[t].point_in_time_recovery.enabled"))
+}
+
+func Test_detectLineTerraformPlanMultiElementListBlock(t *testing.T) {
+	require.Equal(t, 18, detectPlanWithListBlocks(t, "aws_dynamodb_table[t].ttl.attribute_name"))
+	require.Equal(t, 22, detectPlanWithListBlocks(t, "aws_dynamodb_table[t].ttl.enabled"))
+}
+
+func Test_detectLineTerraformPlanListBlockMissingKeyUsesListLine(t *testing.T) {
+	require.Equal(t, 16, detectPlanWithListBlocks(t, "aws_dynamodb_table[t].ttl.kms_key_arn"))
+}
+
 var content = []byte(
 	`content1
 content2`)

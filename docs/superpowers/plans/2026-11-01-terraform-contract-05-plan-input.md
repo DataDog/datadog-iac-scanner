@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rules decide unknownness from `_dd_meta.unknown` in source and plan scans alike, plan documents look like source documents (unknown values present as `${__dd_unknown__}`, nulls and unconfigured empty blocks absent), and a plan finding on an attribute the file does not contain lands on its nearest existing ancestor.
+**Goal:** Rules decide unknownness from `_dd_meta.unknown` in source and plan scans alike, plan documents look like source documents (configured unknown values present as `${__dd_unknown__}`, unconfigured computed attributes, nulls and unconfigured empty blocks absent), and a plan finding on an attribute the file does not contain lands on its nearest existing ancestor.
 
 **Architecture:**
 - Source scans: `tfeval.Unknowns` walks a resolved resource's cty attributes (guided by the document it rendered, when there is one) into the `unknown` shape; the engine stores it beside `references` in instantiated documents and in written root blocks.
@@ -98,12 +98,12 @@ func planValues(values map[string]any, afterUnknown any, expressions *gjson.Resu
 func PlanUnknowns(doc model.Document) map[[2]string]interface{}
 ```
 
-Order inside `planValues`, per object level: (1) every `true` leaf of `afterUnknown` sets the value at that path to `partial.UnknownPlaceholder`, creating missing object keys and replacing `null` list elements; (2) `null` entries are deleted; (3) an empty list whose key is absent from `expressions` at that level is deleted (a nested block element's expressions are the element at the same index of the expressions list; no expressions object means absent); (4) recurse. `_dd_lines` is skipped at every level. The returned unknown is `afterUnknown` pruned to the Global Constraints shape.
+Order inside `planValues`, per object level: (1) every `true` leaf of `afterUnknown` whose key is configured at that level (present in `expressions`, or inside a configured attribute's value) sets the value at that path to `partial.UnknownPlaceholder`, creating missing object keys and replacing `null` list elements; (2) `null` entries are deleted; (3) an empty list whose key is absent from `expressions` at that level is deleted (a nested block element's expressions are the element at the same index of the expressions list; no expressions object means absent); (4) recurse. `_dd_lines` is skipped at every level. The returned unknown is `afterUnknown` pruned to the Global Constraints shape.
 
 - [ ] **Step 1: Write the failing tests** in `tfplan_test.go`, with small inline plan JSON in the style of `TestPlanReferencesDirectAndIndexed`:
-  - `TestPlanValuesUnknownPlaceholder`: `after_unknown = {"id": true, "arn": true, "name": false}`, `values = {"name": "a"}` gives `values == {"name": "a", "id": "${__dd_unknown__}", "arn": "${__dd_unknown__}"}` and `_dd_tfplan_meta...unknown == {"id": true, "arn": true}`; `after_unknown = {"name": false}` gives no `unknown`.
+  - `TestPlanValuesUnknownPlaceholder`: `after_unknown = {"id": true, "arn": true, "name": false}`, `values = {"name": "a"}`, `id` and `arn` configured by reference, gives `values == {"name": "a", "id": "${__dd_unknown__}", "arn": "${__dd_unknown__}"}` and `_dd_tfplan_meta...unknown == {"id": true, "arn": true}`; `after_unknown = {"name": false}` gives no `unknown`.
   - `TestPlanValuesUnknownListPositions`: Review Focus 2.
-  - `TestPlanValuesUnknownNestedBlock`: `after_unknown.ingress = [{}, {"id": true}]` gives `unknown.ingress == [{}, {"id": true}]` and the placeholder at `ingress[1].id`; `after_unknown.ingress = true` gives `values.ingress == "${__dd_unknown__}"`.
+  - `TestPlanValuesUnknownNestedBlock`: `after_unknown.ingress = [{}, {"id": true}]` gives `unknown.ingress == [{}, {"id": true}]` and, `id` being unconfigured, no placeholder at `ingress[1].id`; `after_unknown.ingress = true` gives `values.ingress == "${__dd_unknown__}"`.
   - `TestPlanValuesDropNulls`: `{"description": null, "enabled": false, "count": 0, "name": "", "tags": {}}` keeps the last four only; a null nested inside a block element is dropped too.
   - `TestPlanValuesDropUnconfiguredEmptyBlocks`: Review Focus 3, `ebs_block_device: []` with no `expressions.ebs_block_device` is dropped; `ingress: []` with `expressions.ingress` present is kept; the same at one nesting level down.
   - `TestPlanValuesKeepLineBookkeeping`: the `_dd_lines` map of a values object survives, including the entry of a dropped null attribute.

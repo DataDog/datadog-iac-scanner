@@ -2,9 +2,14 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -274,4 +279,175 @@ resource "aws_s3_bucket" "b" {
 		unknowns = append(unknowns, metaOf(t, doc, "resource", "aws_s3_bucket", "b")[unknownKey])
 	}
 	require.ElementsMatch(t, []interface{}{nil, map[string]interface{}{"bucket": true}}, unknowns)
+
+	unsetCall := "variable \"x\" {}\n\nmodule \"m\" {\n  source = \"../../modules/m\"\n  x      = var.x\n}\n"
+	res, _ = resolveModuleFixture(t, map[string]string{"envs/a": unsetCall, "envs/b": unsetCall}, module)
+	require.Len(t, res.docs, 1)
+	docID, _ := res.docs[0]["id"].(string)
+	require.Len(t, res.extras[docID], 1)
+	require.Equal(t, map[string]interface{}{"bucket": true}, metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "b")[unknownKey])
+}
+
+const multiRootNetworkModule = `
+variable "n" {}
+variable "nsg_id" {}
+locals {
+  ids = aws_subnet.s[*].id
+}
+resource "aws_subnet" "s" {
+  count      = var.n
+  cidr_block = "10.0.${count.index}.0/24"
+}
+resource "aws_network_security_group" "g" {
+  name = "g"
+}
+resource "azurerm_subnet_network_security_group_association" "a" {
+  count     = var.n
+  subnet_id = local.ids[count.index]
+  nsg       = var.nsg_id
+}
+module "rules" {
+  source = "./rules"
+  nsg_id = var.nsg_id
+}
+`
+
+const multiRootRulesModule = `
+variable "nsg_id" {}
+resource "aws_network_security_rule" "r" {
+  nsg = var.nsg_id
+}
+`
+
+var multiRootTargets = &ruleTargets{types: map[string]bool{
+	"aws_subnet": true, "aws_network_security_group": true, "aws_s3_bucket": true,
+	"azurerm_subnet_network_security_group_association": true, "aws_network_security_rule": true,
+}}
+
+// writeMultiRootRepo writes roots identical roots calling a shared module twice,
+// each with plain targeted blocks reading a variable and a local.
+func writeMultiRootRepo(tb testing.TB, roots, subnets, plain int) (string, model.FileMetadatas) {
+	tb.Helper()
+	repo := tb.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(repo, filepath.FromSlash(name))
+		require.NoError(tb, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(tb, os.WriteFile(path, []byte(content), 0o600))
+		return path
+	}
+	files := model.FileMetadatas{}
+	files = append(files, parseTerraform(tb, write("modules/network/main.tf", multiRootNetworkModule))...)
+	files = append(files, parseTerraform(tb, write("modules/network/rules/main.tf", multiRootRulesModule))...)
+	var blocks strings.Builder
+	for j := range plain {
+		fmt.Fprintf(&blocks, "resource \"aws_s3_bucket\" \"plain%d\" {\n  bucket = \"${var.name}-%d\"\n  tags   = local.tags\n  policy = aws_network_security_group.root.id\n}\n", j, j)
+	}
+	for i := range roots {
+		files = append(files, parseTerraform(tb, write(fmt.Sprintf("root%d/main.tf", i), fmt.Sprintf(`
+variable "name" {
+  default = "app"
+}
+locals {
+  tags = { team = var.name }
+}
+resource "aws_network_security_group" "root" {
+  name = "root%d"
+}
+module "net" {
+  source = "../modules/network"
+  n      = %d
+  nsg_id = aws_network_security_group.root.id
+}
+module "net_one" {
+  source = "../modules/network"
+  n      = 1
+  nsg_id = aws_network_security_group.root.id
+}
+%s`, i, subnets, blocks.String())))...)
+	}
+	return repo, files
+}
+
+func TestMultiRootRepoDedup(t *testing.T) {
+	counts := map[int]int{}
+	for _, roots := range []int{10, 50} {
+		repo, files := writeMultiRootRepo(t, roots, 3, 2)
+		res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, multiRootTargets, nil, nil, nil, nil)
+		require.True(t, res.ok, "roots=%d", roots)
+		require.Len(t, res.written, roots*6, "roots=%d", roots)
+		counts[roots] = len(res.docs)
+	}
+	require.Equal(t, 6, counts[10])
+	require.Equal(t, counts[10], counts[50])
+}
+
+func TestInPlaceValuesAddNoDocument(t *testing.T) {
+	repo, files := writeMultiRootRepo(t, 10, 8, 5)
+	res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, multiRootTargets, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	patchWrittenBlocks(files, res.written)
+	require.Len(t, res.docs, 11)
+	require.Len(t, res.syntheticFiles, 11)
+	require.Len(t, files, 12)
+	plain := docAsMap(docAsMap(files[len(files)-1].Document["resource"])["aws_s3_bucket"])["plain0"]
+	require.Equal(t, "app-0", docAsMap(plain)["bucket"])
+	require.Equal(t, map[string]interface{}{"team": "app"}, docAsMap(plain)["tags"])
+}
+
+// sampleHeapInuse records the highest HeapInuse seen every millisecond until stopped.
+func sampleHeapInuse() (stop func() uint64) {
+	var peak uint64
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		var ms runtime.MemStats
+		for {
+			runtime.ReadMemStats(&ms)
+			peak = max(peak, ms.HeapInuse)
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return func() uint64 {
+		close(done)
+		wg.Wait()
+		return peak
+	}
+}
+
+func BenchmarkResolveMultiRoot(b *testing.B) {
+	for _, bc := range []struct {
+		name         string
+		roots, plain int
+	}{
+		{"roots=10", 10, 5},
+		{"roots=50", 50, 5},
+		{"roots=200", 200, 5},
+		{"plain=50", 10, 50},
+	} {
+		b.Run(bc.name, func(b *testing.B) {
+			repo, files := writeMultiRootRepo(b, bc.roots, 3, bc.plain)
+			relDir := relDirForTest(repo)
+			runtime.GC()
+			b.ReportAllocs()
+			b.ResetTimer()
+			stop := sampleHeapInuse()
+			for range b.N {
+				res := resolveModuleDocuments(context.Background(), files, repo, relDir, nil, multiRootTargets, nil, nil, nil, nil)
+				if !res.ok {
+					b.Fatal("resolveModuleDocuments ok = false")
+				}
+				patchWrittenBlocks(files, res.written)
+			}
+			b.StopTimer()
+			b.ReportMetric(float64(stop()), "peak-heap-B")
+		})
+	}
 }

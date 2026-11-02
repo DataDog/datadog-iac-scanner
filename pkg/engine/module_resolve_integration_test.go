@@ -57,7 +57,7 @@ DatadogPolicy contains result if {
 }
 `
 
-func parseTerraform(t *testing.T, path string) model.FileMetadatas {
+func parseTerraform(t testing.TB, path string) model.FileMetadatas {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Clean(path))
 	require.NoError(t, err)
@@ -937,92 +937,39 @@ resource "aws_s3_bucket" "replica" {
 	require.Equal(t, "stack", vulns[0].RootModule)
 }
 
-// TestInspect_ExpandedRootKeepsSiblingInOwningInstance verifies where a root
-// count/for_each split leaves the file's other resources: the owning instance
-// document (the first layer) keeps them next to the layer-0 instances, the
-// way a called module's unexpanded blocks stay in its layer-0 document, and
-// later layers carry only their own instance. Copying the siblings into every
-// layer made the scan's documents grow with siblings × layers, so every rule
-// re-evaluated each sibling once per instance and peak memory followed the
-// product rather than the configuration.
-func TestInspect_ExpandedRootKeepsSiblingInOwningInstance(t *testing.T) {
+// TestInspect_ExpandedRootSiblingStaysWritten verifies that a plain root block
+// next to a count-expanded block is scanned in the file it is written in, with
+// its evaluated values, and that instance documents hold only instances.
+func TestInspect_ExpandedRootSiblingStaysWritten(t *testing.T) {
 	root := t.TempDir()
-	stackDir := filepath.Join(root, "stack")
-	require.NoError(t, os.MkdirAll(stackDir, 0o755))
-	rootPath := filepath.Join(stackDir, "main.tf")
-	require.NoError(t, os.WriteFile(rootPath, []byte(`
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	rootPath := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+
 resource "aws_s3_bucket" "this" {
   count = 2
   acl   = "public-read"
 }
 
 resource "aws_s3_bucket_public_access_block" "guard" {
-  bucket = "logs"
+  bucket = module.cfg.env
 }
-`), 0o644))
+`)
 
-	files := parseTerraform(t, rootPath)
-	queries := []model.QueryMetadata{
-		{
-			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
-		},
-		{
-			Query: "missing_block", Content: `package datadog
+	files := stampedRootFiles(t, rootPath)
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	docs, _, _, _ := ins.instantiateLocalModules(context.Background(), files, nil)
 
-DatadogPolicy contains result if {
-	some name, i
-	input.document[i].resource.aws_s3_bucket[name]
-	object.get(input.document[i].resource, "aws_s3_bucket_public_access_block", {}) == {}
-
-	result := {
-		"documentId": input.document[i].id,
-		"resourceType": "aws_s3_bucket",
-		"resourceName": name,
-		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
+	require.Len(t, docs, 2)
+	for _, doc := range docs {
+		resources := docAsMap(doc["resource"])
+		require.NotContains(t, resources, "aws_s3_bucket_public_access_block")
+		require.Contains(t, resources, "aws_s3_bucket")
 	}
-}
-`, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "missing-block"}, Aggregation: 1,
-		},
-		{
-			Query: "guard_rule", Content: `package datadog
-
-DatadogPolicy contains result if {
-	some name, i
-	input.document[i].resource.aws_s3_bucket_public_access_block[name]
-
-	result := {
-		"documentId": input.document[i].id,
-		"resourceType": "aws_s3_bucket_public_access_block",
-		"resourceName": name,
-		"searchKey": sprintf("aws_s3_bucket_public_access_block[%s]", [name]),
-	}
-}
-`, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "guard-rule"}, Aggregation: 1,
-		},
-	}
-	ins := newTestInspector(t, inspectorOpts{
-		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
-	})
-	ins.SetCompactFindingsAtDecode(false)
-
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
-	require.NoError(t, err)
-	require.Empty(t, ins.GetFailedQueries())
-
-	byQuery := map[string][]string{}
-	var detail []string
-	for i := range vulns {
-		byQuery[vulns[i].QueryID] = append(byQuery[vulns[i].QueryID], vulns[i].ResourceID)
-		detail = append(detail, fmt.Sprintf("%s id=%q root=%q file=%s line=%d", vulns[i].QueryID, vulns[i].ResourceID, vulns[i].RootModule, vulns[i].FileID, vulns[i].Line))
-	}
-	require.Equal(t, []string{"aws_s3_bucket.this[1]"}, byQuery["missing-block"],
-		"the owning instance keeps the sibling, so a same-document rule sees it next to this[0] only")
-	require.ElementsMatch(t, []string{"aws_s3_bucket.this[0]", "aws_s3_bucket.this[1]"}, byQuery["acl-rule"], strings.Join(detail, "\n"))
-	require.Equal(t, []string{"aws_s3_bucket_public_access_block.guard"}, byQuery["guard-rule"],
-		"the sibling is reported once, by the owning document")
+	guard := blockOf(files[0].Document, "aws_s3_bucket_public_access_block", "guard")
+	require.Equal(t, "prod", guard["bucket"])
 }
 
 // TestInspect_RootResourceAddress verifies that a root resource with no

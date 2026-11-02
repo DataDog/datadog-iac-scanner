@@ -36,3 +36,10 @@ resource "aws_s3_bucket" "empty_for_each" {
   for_each = var.enabled ? { a = 1 } : {}
   bucket   = "fe"
 }
+
+variable "zero" {}
+
+resource "aws_s3_bucket" "zero_from_tfvars" {
+  count  = var.zero
+  bucket = "tfvars"
+}

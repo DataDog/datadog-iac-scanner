@@ -36,7 +36,7 @@ func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, f
 	rootEvalWorkers = workers
 	defer func() { rootEvalWorkers = previous }()
 
-	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, root)
+	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, root, nil)
 	evaluator := tfeval.New()
 	evaluator.SetTrackModuleInstances(true)
 	moduleCalls := newModuleCallIndex(filesByDir, func(path string) bool {

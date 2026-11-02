@@ -373,11 +373,6 @@ func (c *Client) createService(
 	}
 
 	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.SCIInfo)
-	if c.inMemory {
-		tfParser.SetMergeAllow(append(append([]string{}, paths...), remoteModulePaths...))
-	} else {
-		tfParser.SetMergeAllow(append(append([]string{}, c.walkInventory...), remoteModulePaths...))
-	}
 
 	combinedParserBuilder := parser.NewBuilder(ctx).
 		WithFS(c.fsys).

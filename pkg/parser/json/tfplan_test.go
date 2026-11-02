@@ -270,7 +270,6 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"main": map[string]interface{}{
 							"acl":    "private",
 							"bucket": "${__dd_unknown__}",
-							"id":     "${__dd_unknown__}",
 						},
 					},
 				},
@@ -2542,7 +2541,8 @@ func plannedWeb(t *testing.T, doc model.Document) (values, meta map[string]inter
 }
 
 func TestPlanValuesUnknownPlaceholder(t *testing.T) {
-	values, meta := plannedWeb(t, valuesPlanDoc(t, `{"name":"a"}`, `{"id":true,"arn":true,"name":false}`, `{"name":{"constant_value":"a"}}`))
+	values, meta := plannedWeb(t, valuesPlanDoc(t, `{"name":"a"}`, `{"id":true,"arn":true,"name":false}`,
+		`{"name":{"constant_value":"a"},"id":{"references":["var.id"]},"arn":{"references":["var.arn"]}}`))
 	require.Equal(t, map[string]interface{}{"name": "a", "id": "${__dd_unknown__}", "arn": "${__dd_unknown__}"}, values)
 	require.Equal(t, map[string]interface{}{"id": true, "arn": true}, meta["unknown"])
 	require.Equal(t, map[string]interface{}{"id": true, "arn": true, "name": false}, meta["after_unknown"])
@@ -2570,7 +2570,8 @@ func TestPlanValuesUnknownListPositions(t *testing.T) {
 func TestPlanValuesUnknownListMissingFromValues(t *testing.T) {
 	values, meta := plannedWeb(t, valuesPlanDoc(t, `{"name":"a"}`,
 		`{"name":false,"ips":[true,true],"ingress":[{"id":true},{}],"matrix":[[true],false]}`,
-		`{"name":{"constant_value":"a"}}`))
+		`{"name":{"constant_value":"a"},"ips":{"references":["var.ips"]},"matrix":{"references":["var.matrix"]},
+		  "ingress":[{"id":{"references":["var.id"]}},{}]}`))
 	require.Equal(t, map[string]interface{}{
 		"name": "a",
 		"ips":  []interface{}{"${__dd_unknown__}", "${__dd_unknown__}"},
@@ -2586,7 +2587,7 @@ func TestPlanValuesUnknownListMissingFromValues(t *testing.T) {
 		"matrix":  []interface{}{[]interface{}{true}, false},
 	}, meta["unknown"])
 
-	values, _ = plannedWeb(t, valuesPlanDoc(t, `{"ips":null}`, `{"ips":[true]}`, `{}`))
+	values, _ = plannedWeb(t, valuesPlanDoc(t, `{"ips":null}`, `{"ips":[true]}`, `{"ips":{"references":["var.ips"]}}`))
 	require.Equal(t, map[string]interface{}{"ips": []interface{}{"${__dd_unknown__}"}}, values)
 }
 
@@ -2656,13 +2657,48 @@ func TestPlanValuesUnknownNestedBlock(t *testing.T) {
 		`{"ingress":[{"from_port":{"constant_value":80}},{"from_port":{"constant_value":443}}]}`))
 	require.Equal(t, map[string]interface{}{"ingress": []interface{}{
 		map[string]interface{}{"from_port": float64(80)},
-		map[string]interface{}{"from_port": float64(443), "id": "${__dd_unknown__}"},
+		map[string]interface{}{"from_port": float64(443)},
 	}}, values)
 	require.Equal(t, map[string]interface{}{"ingress": []interface{}{map[string]interface{}{}, map[string]interface{}{"id": true}}}, meta["unknown"])
 
 	values, meta = plannedWeb(t, valuesPlanDoc(t, `{}`, `{"ingress":true}`, `{"ingress":[{"from_port":{"references":["var.p"]}}]}`))
 	require.Equal(t, map[string]interface{}{"ingress": "${__dd_unknown__}"}, values)
 	require.Equal(t, map[string]interface{}{"ingress": true}, meta["unknown"])
+}
+
+func TestPlanValuesOmitUnconfiguredUnknowns(t *testing.T) {
+	values, meta := plannedWeb(t, valuesPlanDoc(t,
+		`{"name":"a","tags":{"env":"x"},"ingress":[{"from_port":80}],"ips":["a",null],"timeouts":[{"create":null}]}`,
+		`{"id":true,"name":false,"tags":{"owner":true},"ingress":[{"cidr":true,"rule_id":true}],"ips":[false,true],"timeouts":[{"create":true}],"blocks":[{"id":true}]}`,
+		`{"name":{"constant_value":"a"},"tags":{"references":["var.owner"]},"ingress":[{"from_port":{"constant_value":80},"cidr":{"references":["var.cidr"]}}]}`))
+	require.Equal(t, map[string]interface{}{
+		"name":     "a",
+		"tags":     map[string]interface{}{"env": "x", "owner": "${__dd_unknown__}"},
+		"ingress":  []interface{}{map[string]interface{}{"from_port": float64(80), "cidr": "${__dd_unknown__}"}},
+		"ips":      []interface{}{"a", nil},
+		"timeouts": []interface{}{map[string]interface{}{"create": "${__dd_unknown__}"}},
+	}, values)
+	require.Equal(t, map[string]interface{}{
+		"id": true, "tags": map[string]interface{}{"owner": true},
+		"ingress":  []interface{}{map[string]interface{}{"cidr": true, "rule_id": true}},
+		"ips":      []interface{}{false, true},
+		"timeouts": []interface{}{map[string]interface{}{"create": true}},
+		"blocks":   []interface{}{map[string]interface{}{"id": true}},
+	}, meta["unknown"])
+}
+
+func TestPlanValuesFillUnknownsInDynamicBlock(t *testing.T) {
+	values, meta := plannedWeb(t, valuesPlanDoc(t,
+		`{"ingress":[{"from_port":80}]}`,
+		`{"ingress":[{"description":true}]}`,
+		`{}`))
+	require.Equal(t, map[string]interface{}{"ingress": []interface{}{
+		map[string]interface{}{"from_port": float64(80), "description": "${__dd_unknown__}"},
+	}}, values)
+	require.Equal(t, map[string]interface{}{"ingress": []interface{}{map[string]interface{}{"description": true}}}, meta["unknown"])
+
+	values, _ = plannedWeb(t, valuesPlanDoc(t, `{"tags":{}}`, `{"tags":{"owner":true}}`, `{}`))
+	require.Equal(t, map[string]interface{}{"tags": map[string]interface{}{}}, values)
 }
 
 func TestPlanValuesDropNulls(t *testing.T) {
@@ -2745,7 +2781,7 @@ func TestPlanValuesPlannedDataSourceUnknown(t *testing.T) {
 	var doc model.Document
 	require.NoError(t, stdjson.Unmarshal([]byte(raw), &doc))
 	got := mustParse(t, doc)
-	require.Equal(t, map[string]interface{}{"most_recent": true, "id": "${__dd_unknown__}", "kernel_id": "${__dd_unknown__}"},
+	require.Equal(t, map[string]interface{}{"most_recent": true},
 		got["data"].(map[string]interface{})["aws_ami"].(map[string]interface{})["u"])
 	require.Equal(t, map[[2]string]interface{}{{"data.aws_ami", "u"}: map[string]interface{}{"id": true, "kernel_id": true}}, PlanUnknowns(got))
 }

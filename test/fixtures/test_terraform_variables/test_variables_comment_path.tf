@@ -1,4 +1,4 @@
-// kics_terraform_vars: varsToUse\\varsToUse.tf
+// dd_terraform_vars: varsToUse\\varsToUse.tf
 
 resource "test" "test1" {
   test_map        = var.map2

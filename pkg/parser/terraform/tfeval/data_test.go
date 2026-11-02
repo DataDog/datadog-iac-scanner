@@ -10,6 +10,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
@@ -734,4 +736,241 @@ data "aws_iam_policy_document" "from_local" {
 		"loop": true, "self": true, "indexed": true, "bracket": true,
 		"looked": true, "dyn": true, "from_local": true,
 	}, names)
+}
+
+func readFixtureFiles(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	files := make(map[string]string, len(entries))
+	for _, e := range entries {
+		content, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		require.NoError(t, err)
+		files[e.Name()] = string(content)
+	}
+	return files
+}
+
+func TestDataSourcesRenderInRoot(t *testing.T) {
+	fixtures := filepath.Join("..", "..", "..", "..", "test", "fixtures")
+	withConsumer := func(files map[string]string, ref string) map[string]string {
+		files["consumer.tf"] = `resource "aws_x" "r" { v = ` + ref + ` }`
+		return files
+	}
+	twin := func(name, ext string) string {
+		return `data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::from-` + name + `/*"]
+  }
+}
+` + ext
+	}
+	for name, tc := range map[string]struct {
+		files   map[string]string
+		allowTF bool
+		want    []string
+		absent  []string
+	}{
+		"fixture destination policy": {
+			files: withConsumer(readFixtureFiles(t, filepath.Join(fixtures, "test_terraform_data_source")),
+				"data.aws_iam_policy_document.test_destination_policy.json"),
+			want: []string{"logs:*", `\"Effect\":\"Allow\"`},
+		},
+		"fixture example policy": {
+			files: withConsumer(readFixtureFiles(t, filepath.Join(fixtures, "test_terraform_data_source")),
+				"data.aws_iam_policy_document.test_example.json"),
+			want: []string{`\"Id\":\"lala\"`, `home/\u0026{aws:username}/`, "s3:ListAllMyBuckets"},
+		},
+		"unset variable keeps the policy": {
+			files: withConsumer(readFixtureFiles(t, filepath.Join(fixtures, "test_terraform_data_source_unknown_vars")),
+				"data.aws_iam_policy_document.partial_unknowns.json"),
+			want: []string{"arn:aws:s3:::my-bucket/*", "s3:GetObject"},
+		},
+		"JSON config": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {"doc": {
+  "statement": [{"actions": ["s3:GetObject"], "resources": ["arn:aws:s3:::from-json/*"]}]}}}}`},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{"from-json"},
+		},
+		"JSON config chain": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {
+  "combined": {"source_policy_documents": ["${data.aws_iam_policy_document.base.json}"]},
+  "base": {"statement": [{"actions": ["s3:GetObject"], "resources": ["arn:aws:s3:::from-base/*"]}]}}}}`},
+				"data.aws_iam_policy_document.combined.json"),
+			want: []string{"from-base"},
+		},
+		"JSON config resource traversal": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {"doc": {
+  "statement": [{"actions": ["s3:GetObject"], "resources": ["${aws_s3_bucket.b.arn}"]}]}}}}`},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{"aws_s3_bucket.b.arn"},
+		},
+		"JSON config dynamic statements": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {"doc": {"dynamic": {"statement": {
+  "for_each": ["a", "b"],
+  "content": {"sid": "${statement.value}", "actions": ["s3:GetObject", "${statement.value}:*"]}}}}}}}`},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{`\"Sid\":\"a\"`, `\"Sid\":\"b\"`, "a:*", "b:*"},
+		},
+		"JSON config spaced or wrapped templates": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {
+  "outer": {"source_policy_documents": ["${ data.aws_iam_policy_document.mid.json }"]},
+  "mid": {"source_policy_documents": ["${[data.aws_iam_policy_document.base.json][0]}"]},
+  "base": {"statement": [{"sid": "Base", "actions": ["sqs:*"]}]}}}}`},
+				"data.aws_iam_policy_document.outer.json"),
+			want: []string{`\"Sid\":\"Base\"`},
+		},
+		"tofu JSON shadows tf JSON": {
+			files: withConsumer(map[string]string{
+				"policy.tf.json":   `{"data": {"aws_iam_policy_document": {"doc": {"statement": [{"resources": ["arn:aws:s3:::from-tf/*"]}]}}}}`,
+				"policy.tofu.json": `{"data": {"aws_iam_policy_document": {"doc": {"statement": [{"resources": ["arn:aws:s3:::from-tofu/*"]}]}}}}`,
+			}, "data.aws_iam_policy_document.doc.json"),
+			want:   []string{"from-tofu"},
+			absent: []string{"from-tf/"},
+		},
+		"tofu shadows tf": {
+			files:  withConsumer(map[string]string{"policy.tf": twin("tf", ""), "policy.tofu": twin("tofu", "")}, "data.aws_iam_policy_document.doc.json"),
+			want:   []string{"from-tofu"},
+			absent: []string{"from-tf/"},
+		},
+		"excluded tofu twin keeps the tf policy": {
+			files:   withConsumer(map[string]string{"policy.tf": twin("tf", ""), "policy.tofu": twin("tofu", "")}, "data.aws_iam_policy_document.doc.json"),
+			allowTF: true,
+			want:    []string{"from-tf"},
+			absent:  []string{"from-tofu"},
+		},
+		"file without policy documents is ignored": {
+			files: withConsumer(map[string]string{
+				"no_policy.tf": "resource \"aws_s3_bucket\" \"bucket\" {\n  bucket = \"example\"\n}\ndata \"aws_caller_identity\" \"current\" {}\n",
+				"policy.tf":    twin("example", ""),
+			}, "data.aws_iam_policy_document.doc.json"),
+			want: []string{`{\"Statement\":[{\"Actions\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resources\":[\"arn:aws:s3:::from-example/*\"]}],\"Version\":\"2012-10-17\"}`},
+		},
+		"ARN with data partition text": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "aws_iam_policy_document" "glue" {
+  statement {
+    actions   = ["glue:*"]
+    resources = ["arn:data.aws_partition.current.partition:glue:*"]
+  }
+}
+`}, "data.aws_iam_policy_document.glue.json"),
+			want: []string{"glue:*"},
+		},
+		"whitespace in block header": {
+			files: withConsumer(map[string]string{"policy.tf": "data\t\"aws_iam_policy_document\"\t\"doc\" {\n  statement {\n    actions = [\"s3:GetObject\"]\n  }\n}\n"},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{"s3:GetObject"},
+		},
+		"escaped label in block header": {
+			files: withConsumer(map[string]string{"policy.tf": "data \"aws_iam_pol\\u0069cy_document\" \"doc\" {\n  statement {\n    actions = [\"s3:GetObject\"]\n  }\n}\n"},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{"s3:GetObject"},
+		},
+		"google IAM policy": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "google_iam_policy" "public" {
+  binding {
+    role    = "roles/cloudkms.cryptoKeyDecrypter"
+    members = ["allUsers"]
+  }
+}
+`}, "data.google_iam_policy.public.policy_data"),
+			want: []string{`{\"bindings\":[{\"members\":[\"allUsers\"],\"role\":\"roles/cloudkms.cryptoKeyDecrypter\"}]}`},
+		},
+		"source chain with own statement": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "aws_iam_policy_document" "combined" {
+  source_policy_documents = [data.aws_iam_policy_document.base.json]
+  statement {
+    sid     = "Own"
+    actions = ["s3:GetObject"]
+  }
+}
+data "aws_iam_policy_document" "base" {
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+`}, "data.aws_iam_policy_document.combined.json"),
+			want: []string{`{\"Actions\":[\"sqs:*\"],\"Effect\":\"Allow\",\"Sid\":\"Base\"},{\"Actions\":[\"s3:GetObject\"],\"Effect\":\"Allow\",\"Sid\":\"Own\"}`},
+		},
+		"long chain in reverse declaration order": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "aws_iam_policy_document" "a" { source_policy_documents = [data.aws_iam_policy_document.b.json] }
+data "aws_iam_policy_document" "b" { source_policy_documents = [data.aws_iam_policy_document.c.json] }
+data "aws_iam_policy_document" "c" { source_policy_documents = [data.aws_iam_policy_document.d.json] }
+data "aws_iam_policy_document" "d" { source_policy_documents = [data.aws_iam_policy_document.base.json] }
+data "aws_iam_policy_document" "base" {
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+`}, "data.aws_iam_policy_document.a.json"),
+			want: []string{`\"Sid\":\"Base\"`},
+		},
+		"try through a local picks the document once it renders": {
+			files: withConsumer(map[string]string{"main.tf": `
+locals {
+  base_json = try(data.aws_iam_policy_document.base.json, data.aws_iam_policy_document.root.json)
+}
+data "aws_iam_policy_document" "root" {
+  statement {
+    sid     = "Root"
+    actions = ["iam:GetUser"]
+  }
+}
+data "aws_iam_policy_document" "leaf" {
+  statement {
+    sid     = "Leaf"
+    actions = ["ec2:*"]
+  }
+}
+data "aws_iam_policy_document" "base" {
+  source_policy_documents = [data.aws_iam_policy_document.leaf.json]
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+data "aws_iam_policy_document" "combined" {
+  source_policy_documents = [local.base_json]
+}
+`}, "data.aws_iam_policy_document.combined.json"),
+			want:   []string{`\"Sid\":\"Base\"`, `\"Sid\":\"Leaf\"`},
+			absent: []string{`\"Sid\":\"Root\"`},
+		},
+		"source document with an unresolved condition stays unresolved": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "aws_iam_policy_document" "guarded" {
+  source_policy_documents = [jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Sid = "Pub", Effect = "Allow", Principal = "*", Action = "s3:GetObject", Resource = "*", Condition = var.cond }]
+  })]
+}
+`}, "data.aws_iam_policy_document.guarded.json"),
+			absent: []string{"Pub"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeModule(t, t.TempDir(), "root", tc.files)
+			e := New()
+			if tc.allowTF {
+				e.SetMergeAllow(map[string]struct{}{filepath.ToSlash(filepath.Join(dir, "policy.tf")): {}})
+			}
+			resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			raw, err := json.Marshal(AttributesToDocument(ptr(findResource(t, resources, "aws_x", "r")))["v"])
+			require.NoError(t, err)
+			for _, want := range tc.want {
+				require.Contains(t, string(raw), want)
+			}
+			for _, absent := range tc.absent {
+				require.NotContains(t, string(raw), absent)
+			}
+		})
+	}
 }

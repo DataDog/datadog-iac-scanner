@@ -51,7 +51,7 @@ func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, op
 	}
 	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS))
 	c.file = file.Body.(*hclsyntax.Body)
-	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
+	body, _, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0, false)
 
 	if err != nil {
 		if er, ok := err.(*hcl.Diagnostic); ok && er.Subject != nil {
@@ -93,72 +93,112 @@ func (c *converter) rangeSource(r hcl.Range) string {
 	return string(c.bytes[r.Start.Byte:r.End.Byte])
 }
 
-func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLine int) (model.Document, error) {
-	var err error
-	countValue := body.Attributes["count"]
-	count := -1
-
-	if countValue != nil {
-		value, diags := countValue.Expr.Value(c.renderer.Ctx)
-		if !diags.HasErrors() {
-			if intValue, ok := ctyutil.LiteralInt(value); ok {
-				count = intValue
-			}
-		}
-	}
-
-	if count == 0 {
-		return nil, nil
-	}
-
+// convertBody converts body and returns, beside it, the unknown shape of its
+// values (see unknownOf); nested blocks are shaped as the document holds them,
+// an object for one block and a list of objects for more. A metaBody, the body
+// of a resource, data or ephemeral block, leaves its meta-arguments out of the
+// shape.
+func (c *converter) convertBody(
+	ctx context.Context, body *hclsyntax.Body, defLine int, metaBody bool,
+) (model.Document, map[string]interface{}, error) {
 	out := make(model.Document)
+	unknown := make(map[string]interface{})
 	ddLines := make(map[string]model.LineObject)
 	// set line info for the body
 	ddLines["_dd__default"] = model.LineObject{
 		Line: defLine,
 	}
-
-	if body.Attributes != nil {
-		for key, value := range body.Attributes {
-			out[key], err = c.convertExpression(value.Expr)
-			// set line info for the body value
-			ddLines["_dd_"+key] = model.LineObject{
-				Line: value.SrcRange.Start.Line,
-				Arr:  c.getArrLines(value.Expr),
-			}
-			if err != nil {
-				return nil, err
-			}
-		}
+	if err := c.convertAttributes(body, out, unknown, ddLines, metaBody); err != nil {
+		return nil, nil, err
 	}
 
+	nested := make(map[string][]interface{})
 	for _, block := range body.Blocks {
 		if dynamicblock.Is(block) {
-			expanded, err := c.convertDynamicBlock(ctx, block, out)
+			generated := dynamicblock.GeneratedType(block)
+			expanded, shapes, err := c.convertDynamicBlock(ctx, block, out)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if expanded {
-				ddLines["_dd_"+dynamicblock.GeneratedType(block)] = model.LineObject{
+				ddLines["_dd_"+generated] = model.LineObject{
 					Line: block.TypeRange.Start.Line,
 				}
+				nested[generated] = append(nested[generated], shapes...)
 				continue
 			}
+			unknown[generated] = true
 		}
 		// set line info for block
 		ddLines["_dd_"+block.Type] = model.LineObject{
 			Line: block.TypeRange.Start.Line,
 		}
-		err = c.convertBlock(ctx, block, out, block.TypeRange.Start.Line)
+		shape, err := c.convertBlock(ctx, block, out, block.TypeRange.Start.Line, body == c.file)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if len(block.Labels) == 0 && (!metaBody || block.Type != "lifecycle") {
+			nested[block.Type] = append(nested[block.Type], shape)
+		}
+	}
+	for typ, shapes := range nested {
+		if _, whole := unknown[typ]; whole || !hasUnknown(shapes) {
+			continue
+		}
+		if len(shapes) == 1 {
+			unknown[typ] = shapes[0]
+		} else {
+			unknown[typ] = shapes
 		}
 	}
 
 	out["_dd_lines"] = ddLines
 
-	return out, nil
+	return out, unknown, nil
 }
+
+// convertAttributes adds body's attributes to out, their lines to ddLines and
+// their unknown shapes to unknown.
+func (c *converter) convertAttributes(
+	body *hclsyntax.Body, out model.Document, unknown map[string]interface{},
+	ddLines map[string]model.LineObject, metaBody bool,
+) error {
+	for key, value := range body.Attributes {
+		var err error
+		out[key], err = c.convertExpression(value.Expr)
+		// set line info for the body value
+		ddLines["_dd_"+key] = model.LineObject{
+			Line: value.SrcRange.Start.Line,
+			Arr:  c.getArrLines(value.Expr),
+		}
+		if err != nil {
+			return err
+		}
+		if metaBody && metaArguments[key] {
+			continue
+		}
+		if u := c.unknownOf(value.Expr); u != nil {
+			unknown[key] = u
+		}
+	}
+	return nil
+}
+
+// hasUnknown reports whether any block shape lists an unknown value.
+func hasUnknown(shapes []interface{}) bool {
+	for _, s := range shapes {
+		if m, ok := s.(map[string]interface{}); ok && len(m) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// metaSections are the top-level sections whose blocks carry _dd_meta.
+var metaSections = map[string]bool{"resource": true, "data": true, "ephemeral": true}
+
+// metaArguments are the attributes of a metaSections block that are never unknown.
+var metaArguments = map[string]bool{"count": true, "for_each": true, "depends_on": true, "provider": true}
 
 // getArrLines will get line information for the array elements
 func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.LineObject {
@@ -198,23 +238,98 @@ func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.L
 	return arr
 }
 
-func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, out model.Document, defLine int) error {
-	value, err := c.convertBody(ctx, block.Body, defLine)
+// convertBlock adds block to out and returns its unknown shape. A file-level
+// resource, data or ephemeral block records it in _dd_meta.unknown.
+func (c *converter) convertBlock(
+	ctx context.Context, block *hclsyntax.Block, out model.Document, defLine int, fileLevel bool,
+) (map[string]interface{}, error) {
+	meta := fileLevel && metaSections[block.Type] && len(block.Labels) == 2
+	value, unknown, err := c.convertBody(ctx, block.Body, defLine, meta)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return insertBlock(ctx, out, append([]string{block.Type}, block.Labels...), value)
+	if meta && len(unknown) > 0 {
+		value[ddMetaKey] = map[string]interface{}{"unknown": unknown}
+	}
+	return unknown, insertBlock(ctx, out, append([]string{block.Type}, block.Labels...), value)
+}
+
+const ddMetaKey = "_dd_meta"
+
+// unknownOf is the unknown shape of expr's converted value, nil when the
+// converter evaluates it: an object keeps its unknown entries, a list keeps
+// its length with {} or false for a known element, and any other value the
+// converter cannot evaluate is true.
+func (c *converter) unknownOf(expr hclsyntax.Expression) interface{} {
+	switch e := expr.(type) {
+	case *hclsyntax.LiteralValueExpr:
+		return nil
+	case *hclsyntax.TemplateExpr:
+		if e.IsStringLiteral() {
+			return nil
+		}
+	case *hclsyntax.TupleConsExpr:
+		return c.unknownElements(e)
+	case *hclsyntax.ObjectConsExpr:
+		return c.unknownEntries(e)
+	}
+	if val, diags := expr.Value(c.renderer.Ctx); !diags.HasErrors() && val.IsWhollyKnown() {
+		return nil
+	}
+	return true
+}
+
+// unknownElements is the unknown shape of a list, nil when every element is known.
+func (c *converter) unknownElements(e *hclsyntax.TupleConsExpr) interface{} {
+	out := make([]interface{}, len(e.Exprs))
+	found := false
+	for i, ex := range e.Exprs {
+		if u := c.unknownOf(ex); u != nil {
+			out[i], found = u, true
+			continue
+		}
+		if _, isObject := ex.(*hclsyntax.ObjectConsExpr); isObject {
+			out[i] = map[string]interface{}{}
+		} else {
+			out[i] = false
+		}
+	}
+	if !found {
+		return nil
+	}
+	return out
+}
+
+// unknownEntries is the unknown shape of an object, nil when every entry is known.
+func (c *converter) unknownEntries(e *hclsyntax.ObjectConsExpr) interface{} {
+	out := make(map[string]interface{})
+	for _, item := range e.Items {
+		key, err := c.convertKey(item.KeyExpr)
+		if err != nil {
+			continue
+		}
+		if u := c.unknownOf(item.ValueExpr); u != nil {
+			out[key] = u
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // convertDynamicBlock adds the blocks a dynamic block generates to out, each
 // converted with the block's iterator bound to its element. It reports false,
 // adding nothing, when the block's for_each or labels do not resolve for every
-// element, so the block is kept as written.
-func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Block, out model.Document) (bool, error) {
+// element, so the block is kept as written. It also returns the unknown shape
+// of each unlabeled generated block.
+func (c *converter) convertDynamicBlock(
+	ctx context.Context, block *hclsyntax.Block, out model.Document,
+) (expanded bool, shapes []interface{}, err error) {
 	content := dynamicblock.Content(block)
 	expansion := dynamicblock.Expand(block, c.renderer.Ctx)
 	if content == nil || !expansion.Resolved {
-		return false, nil
+		return false, nil, nil
 	}
 	if c.inputVars == nil {
 		c.inputVars = make(VariableMap)
@@ -234,21 +349,25 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 		c.inputVars[name] = iterator
 		labels, ok := dynamicblock.Labels(block, c.renderer.Ctx)
 		if !ok {
-			return false, nil
+			return false, nil, nil
 		}
 		paths = append(paths, append([]string{dynamicblock.GeneratedType(block)}, labels...))
 	}
+	shapes = make([]interface{}, 0, len(expansion.Iterators))
 	for i, iterator := range expansion.Iterators {
 		c.inputVars[name] = iterator
-		value, err := c.convertBody(ctx, content, block.TypeRange.Start.Line)
+		value, unknown, err := c.convertBody(ctx, content, block.TypeRange.Start.Line, false)
 		if err != nil {
-			return true, err
+			return true, nil, err
 		}
 		if err := insertBlock(ctx, out, paths[i], value); err != nil {
-			return true, err
+			return true, nil, err
+		}
+		if len(paths[i]) == 1 {
+			shapes = append(shapes, unknown)
 		}
 	}
-	return true, nil
+	return true, shapes, nil
 }
 
 func insertBlock(ctx context.Context, out model.Document, path []string, value model.Document) error {

@@ -205,6 +205,8 @@ type Evaluator struct {
 
 	// emptyBlocks holds the blocks the running EvaluateModule found empty.
 	emptyBlocks []EmptyBlock
+	// rootScope is the root module scope of the last EvaluateModule.
+	rootScope *ModuleScope
 
 	// parseMu guards dirCache, which evaluators forked from one another share.
 	parseMu  *sync.Mutex
@@ -303,6 +305,14 @@ func (e *Evaluator) TakeEmptyBlocks() []EmptyBlock {
 	blocks := e.emptyBlocks
 	e.emptyBlocks = nil
 	return blocks
+}
+
+// TakeRootScope returns the root module scope of the last EvaluateModule, nil
+// after a failed evaluation, and clears it.
+func (e *Evaluator) TakeRootScope() *ModuleScope {
+	scope := e.rootScope
+	e.rootScope = nil
+	return scope
 }
 
 // recordModuleInstance notes an evaluated call when instances are tracked. The
@@ -449,10 +459,11 @@ func (e *Evaluator) EvaluateModule(
 	allVisited := map[string]bool{}
 	e.instances = nil
 	e.emptyBlocks = nil
-	resources, outputs, _, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
+	resources, outputs, e.rootScope, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err != nil {
 		e.instances = nil
 		e.emptyBlocks = nil
+		e.rootScope = nil
 	}
 	return resources, outputs, allVisited, err
 }

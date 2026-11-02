@@ -36,12 +36,73 @@ func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
 	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(r))
 }
 
+// EmptyDynamicTypes is the generated types of r's dynamic blocks that the
+// evaluation expanded to no blocks, nil when there are none.
+func EmptyDynamicTypes(r *ResolvedResource) map[string]bool {
+	var out map[string]bool
+	for _, b := range r.Body.Blocks {
+		if !dynamicblock.Is(b) {
+			continue
+		}
+		if n, seen := r.DynamicCounts[b]; seen && n == 0 {
+			if out == nil {
+				out = make(map[string]bool)
+			}
+			out[dynamicblock.GeneratedType(b)] = true
+		}
+	}
+	return out
+}
+
+// RenderBody renders body's attributes and nested blocks against s the way
+// AttributesToDocument renders a resource. Labeled and dynamic blocks are left
+// out.
+func (s *ModuleScope) RenderBody(body *hclsyntax.Body) map[string]interface{} {
+	rd := &partial.Renderer{Ctx: s.evalCtx, Source: partial.FileSources(s.sources)}
+	return s.renderBody(body, rd)
+}
+
+func (s *ModuleScope) renderBody(body *hclsyntax.Body, rd *partial.Renderer) map[string]interface{} {
+	attrs := make(map[string]cty.Value, len(body.Attributes))
+	for name, attr := range body.Attributes {
+		attrs[name] = evalScopeExpr(attr.Expr, s.evalCtx)
+	}
+	out := attributesToDocument(attrs, body, nil, rd)
+	nested := make(map[string][]interface{})
+	for _, b := range body.Blocks {
+		if len(b.Labels) > 0 || dynamicblock.Is(b) {
+			continue
+		}
+		nested[b.Type] = append(nested[b.Type], s.renderBody(b.Body, rd))
+	}
+	for typ, blocks := range nested {
+		if len(blocks) == 1 {
+			out[typ] = blocks[0]
+		} else {
+			out[typ] = blocks
+		}
+	}
+	return out
+}
+
+func evalScopeExpr(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
+	v, diags := expr.Value(ctx)
+	if diags.HasErrors() {
+		return partial.WithUnknownRefs(expr, ctx)
+	}
+	return v
+}
+
 // Unknowns returns r's _dd_meta.unknown, nil when every value is known. doc,
 // when non-nil, is AttributesToDocument(r): a value it holds as a scalar is
-// wholly unknown.
+// wholly unknown. The count and for_each meta-arguments are never reported, as
+// in Terraform's after_unknown.
 func Unknowns(r *ResolvedResource, doc map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{})
 	for key, val := range r.Attributes {
+		if key == metaArgCount || key == metaArgForEach {
+			continue
+		}
 		var counterpart interface{}
 		if doc != nil {
 			counterpart = doc[key]

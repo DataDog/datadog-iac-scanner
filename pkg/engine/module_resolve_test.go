@@ -8,6 +8,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -141,7 +142,7 @@ resource "aws_s3_bucket" "replica" {
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
-		make(writtenMeta),
+		make(writtenBlocks),
 	)
 
 	if len(docs) != 2 {
@@ -2092,15 +2093,19 @@ resource "aws_subnet" "s" {
 resource "aws_route_table_association" "a" {
   subnet_id = aws_subnet.s.id
 }
+
+variable "unset" {}
+
+locals {
+  u = { a = var.unset, b = "b" }
+}
+
+resource "aws_s3_bucket" "t" {
+  tags = merge(var.unset, { a = "b" })
+  labels = coalesce(local.u, {})
+}
 `)
-	files := parseTerraform(t, path)
-	scope := &model.TerraformScope{RootModule: "envs"}
-	for _, f := range files {
-		f.TerraformScope = scope
-		stampWrittenMeta(f.Document, scope)
-	}
-	ins := newTestInspector(t, inspectorOpts{repoPath: root})
-	ins.instantiateLocalModules(context.Background(), files, nil)
+	files := writtenRootFiles(t, root, path)
 
 	meta := metaOf(t, files[0].Document, "resource", "aws_route_table_association", "a")
 	require.Equal(t, "aws_route_table_association.a", meta["address"])
@@ -2109,6 +2114,487 @@ resource "aws_route_table_association" "a" {
 	subnet := metaOf(t, files[0].Document, "resource", "aws_subnet", "s")
 	require.NotContains(t, subnet, referencesKey)
 	require.NotContains(t, subnet, unknownKey)
+	require.Equal(t, map[string]interface{}{"tags": true, "labels": true}, metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "t")[unknownKey])
+}
+
+// writtenRootFiles parses paths as files of the root envs, stamped as a scan
+// does, keeps an independent copy of each document as its line-info document,
+// and runs module instantiation on them.
+func writtenRootFiles(t *testing.T, root string, paths ...string) model.FileMetadatas {
+	t.Helper()
+	files := stampedRootFiles(t, paths...)
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+	return files
+}
+
+func stampedRootFiles(t *testing.T, paths ...string) model.FileMetadatas {
+	t.Helper()
+	var files model.FileMetadatas
+	for _, p := range paths {
+		files = append(files, parseTerraform(t, p)...)
+	}
+	scope := &model.TerraformScope{RootModule: "envs"}
+	for _, f := range files {
+		f.TerraformScope = scope
+		stampWrittenMeta(f.Document, scope)
+		f.LineInfoDocument = jsonCopy(t, f.Document)
+	}
+	return files
+}
+
+func blockOf(doc map[string]interface{}, typ, name string) map[string]interface{} {
+	return docAsMap(docAsMap(docAsMap(doc["resource"])[typ])[name])
+}
+
+func jsonCopy(t *testing.T, v map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	return out
+}
+
+func jsonOf(t *testing.T, v interface{}) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	return string(raw)
+}
+
+const configModule = `
+output "env" {
+  value = "prod"
+}
+
+output "rules" {
+  value = [{ port = 1 }, { port = 2 }]
+}
+`
+
+func TestWrittenRootBlockCarriesEvaluatedValues(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	writeFile(t, dir, "terraform.tfvars", "name = \"prod\"\n")
+	path := writeFile(t, dir, "main.tf", `
+variable "name" {}
+
+module "cfg" {
+  source = "../modules/cfg"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.name
+  tags = {
+    env = module.cfg.env
+  }
+  versioning {
+    enabled = module.cfg.env == "prod"
+  }
+}
+`)
+	files := parseTerraform(t, path)
+	require.Len(t, files, 1)
+	before := blockOf(files[0].Document, "aws_s3_bucket", "b")
+	require.Equal(t, "${module.cfg.env}", docAsMap(before["tags"])["env"])
+	wantLines := jsonOf(t, before["_dd_lines"])
+	wantNestedLines := jsonOf(t, docAsMap(before["versioning"])["_dd_lines"])
+
+	files = writtenRootFiles(t, root, path)
+	written := blockOf(files[0].Document, "aws_s3_bucket", "b")
+	require.Equal(t, "prod", written["bucket"])
+	require.Equal(t, "prod", docAsMap(written["tags"])["env"])
+	require.Equal(t, true, docAsMap(written["versioning"])["enabled"])
+	require.Equal(t, wantLines, jsonOf(t, written["_dd_lines"]))
+	require.Equal(t, wantNestedLines, jsonOf(t, docAsMap(written["versioning"])["_dd_lines"]))
+	meta := metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b")
+	require.Equal(t, "aws_s3_bucket.b", meta["address"])
+	require.Equal(t, []interface{}{"envs"}, meta["root_modules"])
+	require.NotContains(t, meta, unknownKey)
+
+	lineInfo := blockOf(files[0].LineInfoDocument, "aws_s3_bucket", "b")
+	require.Equal(t, "${module.cfg.env}", docAsMap(lineInfo["tags"])["env"])
+}
+
+func TestWrittenRootKeepsSinkResolvedFilter(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+resource "aws_cloudwatch_log_metric_filter" "f" {
+  name    = "f"
+  pattern = "{ $.eventName = \"CreateTrail\" }"
+}
+`)
+	files := stampedRootFiles(t, path)
+	require.Len(t, files, 1)
+	resolved := `{"_dd_filter_expr":{"_selector":"$.eventName","_op":"=","_value":"CreateTrail"}}` + "\n"
+	blockOf(files[0].Document, "aws_cloudwatch_log_metric_filter", "f")["pattern"] = resolved
+
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+
+	block := blockOf(files[0].Document, "aws_cloudwatch_log_metric_filter", "f")
+	require.Equal(t, resolved, block["pattern"])
+	require.Equal(t, "f", block["name"])
+}
+
+func TestMergeEvaluatedKeepsSinkResolvedFilter(t *testing.T) {
+	resolved := `{"_dd_filter_expr":{"_selector":"$.a","_op":"=","_value":"b"}}`
+	asMap := map[string]interface{}{"_dd_filter_expr": map[string]interface{}{"_op": "="}}
+	dst := map[string]interface{}{"pattern": resolved, "object": asMap, "plain": "${var.x}"}
+	mergeEvaluated(dst, map[string]interface{}{"pattern": "raw", "object": "raw", "plain": "x"})
+	require.Equal(t, map[string]interface{}{"pattern": resolved, "object": asMap, "plain": "x"}, dst)
+}
+
+func TestParseKeepsDataReferenceText(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = ["s3:GetObject"]
+  }
+}
+
+resource "aws_iam_policy" "b" {
+  policy = data.aws_iam_policy_document.p.json
+}
+`)
+	files := parseTerraform(t, path)
+	require.Len(t, files, 1)
+	require.Equal(t, "${data.aws_iam_policy_document.p.json}", blockOf(files[0].Document, "aws_iam_policy", "b")["policy"])
+
+	files = writtenRootFiles(t, root, path)
+	require.Equal(t,
+		`{"Statement":[{"Actions":["s3:GetObject"],"Effect":"Allow"}],"Version":"2012-10-17"}`+"\n",
+		blockOf(files[0].Document, "aws_iam_policy", "b")["policy"])
+}
+
+func TestWrittenRootNonResourceBlocksEvaluated(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	modulePath := writeFile(t, filepath.Join(root, "modules", "m"), "main.tf", `
+variable "env" {}
+
+locals {
+  inner = var.env
+}
+`)
+	writeFile(t, dir, "terraform.tfvars", "region = \"eu-west-1\"\nenv = \"prod\"\n")
+	path := writeFile(t, dir, "main.tf", `
+variable "region" {}
+variable "env" {}
+
+provider "aws" {
+  region = var.region
+}
+
+provider "aws" {
+  alias  = "b"
+  region = var.region
+}
+
+locals {
+  env = var.env
+}
+
+locals {
+  name = "${local.env}-x"
+}
+
+output "o" {
+  value = local.env
+}
+
+module "m" {
+  source = "../modules/m"
+  env    = local.env
+}
+`)
+	other := filepath.Join(root, "other")
+	writeFile(t, other, "terraform.tfvars", "env = \"dev\"\n")
+	otherPath := writeFile(t, other, "main.tf", `
+variable "env" {}
+
+locals {
+  env = var.env
+}
+
+output "p" {
+  value = local.env
+}
+`)
+	before := stampedRootFiles(t, path, modulePath)
+	wantRootLines := jsonOf(t, before[0].Document["_dd_lines"])
+	wantModuleDoc := jsonOf(t, before[1].Document)
+	wantProviderLines := jsonOf(t, docAsMap(docAsMap(before[0].Document["provider"])["aws"].([]interface{})[1])["_dd_lines"])
+	wantCallLines := jsonOf(t, docAsMap(docAsMap(before[0].Document["module"])["m"])["_dd_lines"])
+	require.Equal(t, "${var.env}", docAsMap(before[1].Document["locals"])["inner"])
+
+	files := writtenRootFiles(t, root, path, modulePath, otherPath)
+	require.Equal(t, "dev", docAsMap(docAsMap(files[2].Document["output"])["p"])["value"])
+	doc := files[0].Document
+	providers, ok := docAsMap(doc["provider"])["aws"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, providers, 2)
+	require.Equal(t, "eu-west-1", docAsMap(providers[0])["region"])
+	require.Equal(t, "eu-west-1", docAsMap(providers[1])["region"])
+	require.Equal(t, "b", docAsMap(providers[1])["alias"])
+	require.Equal(t, wantProviderLines, jsonOf(t, docAsMap(providers[1])["_dd_lines"]))
+	locals, ok := doc["locals"].([]interface{})
+	require.True(t, ok)
+	require.Equal(t, "prod", docAsMap(locals[0])["env"])
+	require.Equal(t, "prod-x", docAsMap(locals[1])["name"])
+	require.Equal(t, "prod", docAsMap(docAsMap(doc["output"])["o"])["value"])
+	call := docAsMap(docAsMap(doc["module"])["m"])
+	require.Equal(t, "prod", call["env"])
+	require.Equal(t, "../modules/m", call["source"])
+	require.Equal(t, wantCallLines, jsonOf(t, call["_dd_lines"]))
+	require.Equal(t, wantRootLines, jsonOf(t, doc["_dd_lines"]))
+	require.Equal(t, wantModuleDoc, jsonOf(t, files[1].Document))
+}
+
+func TestMergeEvaluatedKeepsBookkeeping(t *testing.T) {
+	lines := func(n int) map[string]interface{} {
+		return map[string]interface{}{"_dd__default": map[string]interface{}{"_dd_line": n}}
+	}
+	dst := map[string]interface{}{
+		"_dd_lines": lines(1),
+		"_dd_meta":  map[string]interface{}{"address": "t.n"},
+		"name":      "${var.name}",
+		"kept":      "converter",
+		"nested": map[string]interface{}{
+			"_dd_lines": lines(2),
+			"value":     "${var.v}",
+		},
+		"rule": []interface{}{
+			map[string]interface{}{"_dd_lines": lines(3), "port": "${var.p}"},
+			map[string]interface{}{"_dd_lines": lines(4), "port": 2},
+		},
+		"ports": []interface{}{"${var.p}"},
+		"grown": []interface{}{map[string]interface{}{"_dd_lines": lines(5), "port": "${var.p}"}},
+	}
+	mergeEvaluated(dst, map[string]interface{}{
+		"_dd_meta": "evaluated",
+		"name":     "n",
+		"nested":   map[string]interface{}{"value": "v"},
+		"rule": []interface{}{
+			map[string]interface{}{"port": json.Number("1")},
+			map[string]interface{}{"port": json.Number("2")},
+		},
+		"ports": []interface{}{json.Number("1"), json.Number("2")},
+		"grown": []interface{}{map[string]interface{}{"port": json.Number("1")}, map[string]interface{}{"port": json.Number("2")}},
+		"added": true,
+	})
+	require.Equal(t, map[string]interface{}{
+		"_dd_lines": lines(1),
+		"_dd_meta":  map[string]interface{}{"address": "t.n"},
+		"name":      "n",
+		"kept":      "converter",
+		"nested":    map[string]interface{}{"_dd_lines": lines(2), "value": "v"},
+		"rule": []interface{}{
+			map[string]interface{}{"_dd_lines": lines(3), "port": json.Number("1")},
+			map[string]interface{}{"_dd_lines": lines(4), "port": json.Number("2")},
+		},
+		"ports": []interface{}{json.Number("1"), json.Number("2")},
+		"grown": []interface{}{map[string]interface{}{"port": json.Number("1")}, map[string]interface{}{"port": json.Number("2")}},
+		"added": true,
+	}, dst)
+}
+
+func TestWrittenDynamicBlockLengthDiffers(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+
+resource "aws_security_group" "g" {
+  ingress {
+    from_port = 0
+  }
+  dynamic "ingress" {
+    for_each = module.cfg.rules
+    content {
+      from_port = ingress.value.port
+    }
+  }
+}
+`)
+	files := parseTerraform(t, path)
+	before := blockOf(files[0].Document, "aws_security_group", "g")
+	_, single := asStringMap(before["ingress"])
+	require.True(t, single)
+	wantLines := jsonOf(t, before["_dd_lines"])
+	require.Contains(t, wantLines, `"_dd_ingress":{"_dd_line":7}`)
+	require.Contains(t, before, "dynamic")
+
+	files = writtenRootFiles(t, root, path)
+	g := blockOf(files[0].Document, "aws_security_group", "g")
+	require.Equal(t, []interface{}{
+		map[string]interface{}{"from_port": json.Number("0")},
+		map[string]interface{}{"from_port": json.Number("1")},
+		map[string]interface{}{"from_port": json.Number("2")},
+	}, g["ingress"])
+	require.Equal(t, wantLines, jsonOf(t, g["_dd_lines"]))
+	require.NotContains(t, g, "dynamic")
+}
+
+func TestWrittenEmptyDynamicBlockDropsTemplate(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+
+resource "aws_security_group" "g" {
+  name = "g"
+  dynamic "ingress" {
+    for_each = [for r in module.cfg.rules : r if false]
+    content {
+      from_port = ingress.value.port
+    }
+  }
+}
+`)
+	before := blockOf(parseTerraform(t, path)[0].Document, "aws_security_group", "g")
+	require.Contains(t, before, "dynamic")
+
+	g := blockOf(writtenRootFiles(t, root, path)[0].Document, "aws_security_group", "g")
+	require.NotContains(t, g, "ingress")
+	require.NotContains(t, g, "dynamic")
+}
+
+func TestWrittenFailedRootKeepsText(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	path := writeFile(t, dir, "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.x
+  tags = {
+    env = module.cfg.env
+  }
+}
+`)
+	files := stampedRootFiles(t, path)
+	want := jsonOf(t, files[0].Document)
+	require.NoError(t, os.RemoveAll(dir))
+
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+	require.Equal(t, want, jsonOf(t, files[0].Document))
+	require.Equal(t, "${module.cfg.env}", docAsMap(blockOf(files[0].Document, "aws_s3_bucket", "b")["tags"])["env"])
+	require.Equal(t, "${var.x}", blockOf(files[0].Document, "aws_s3_bucket", "b")["bucket"])
+	meta := metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b")
+	require.NotContains(t, meta, referencesKey)
+	require.Equal(t, map[string]interface{}{"bucket": true, "tags": map[string]interface{}{"env": true}}, meta[unknownKey])
+}
+
+func TestWrittenRootEvaluatedValueIsNotUnknown(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+variable "x" {
+  default = "b"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.x
+}
+`)
+	files := stampedRootFiles(t, path)
+	require.Equal(t, map[string]interface{}{"bucket": true}, metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b")[unknownKey])
+
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+	require.Equal(t, "b", blockOf(files[0].Document, "aws_s3_bucket", "b")["bucket"])
+	require.NotContains(t, metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b"), unknownKey)
+}
+
+func TestWrittenJSONRootBlockCarriesEvaluatedValues(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	writeFile(t, dir, "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+`)
+	path := writeFile(t, dir, "main.tf.json", `{
+  "resource": {
+    "aws_s3_bucket": {
+      "b": {
+        "bucket": "${module.cfg.env}"
+      }
+    }
+  }
+}
+`)
+	files := parseTerraform(t, path)
+	require.Len(t, files, 1)
+	wantLines := jsonOf(t, blockOf(files[0].Document, "aws_s3_bucket", "b")["_dd_lines"])
+
+	files = writtenRootFiles(t, root, path)
+	b := blockOf(files[0].Document, "aws_s3_bucket", "b")
+	require.Equal(t, "prod", b["bucket"])
+	require.Equal(t, wantLines, jsonOf(t, b["_dd_lines"]))
+	require.Equal(t, "aws_s3_bucket.b", metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b")["address"])
+}
+
+func TestPatchWrittenBlocksSkipsListShapedTypes(t *testing.T) {
+	listed := []interface{}{map[string]interface{}{"n": map[string]interface{}{ddMetaKey: map[string]interface{}{}, "v": "text"}}}
+	file := &model.FileMetadata{ID: "f", Document: model.Document{"resource": map[string]interface{}{"t": listed}}}
+	want := jsonOf(t, file.Document)
+	patchWrittenBlocks(model.FileMetadatas{file}, writtenBlocks{
+		resolvedBlockKey("f", "t", "n"): {attrs: map[string]interface{}{"v": "evaluated"}},
+	})
+	require.Equal(t, want, jsonOf(t, file.Document))
+}
+
+// The sibling of an expanded block is patched in its written file, so a
+// same-document rule no longer sees it next to the instances.
+func TestWrittenBlocksHoldTargetedSingleBlocksAndSiblingsOfInstances(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	writeFile(t, dir, "terraform.tfvars", "name = \"prod\"\n")
+	files := parseTerraform(t, writeFile(t, dir, "expanded.tf", `
+resource "aws_s3_bucket" "e" {
+  count  = 2
+  bucket = var.name
+}
+
+resource "aws_s3_bucket" "sibling" {
+  bucket = var.name
+}
+`))
+	files = append(files, parseTerraform(t, writeFile(t, dir, "main.tf", `
+variable "name" {}
+
+resource "aws_s3_bucket" "w" {
+  bucket = var.name
+}
+
+resource "aws_iam_role" "u" {
+  name = var.name
+}
+`))...)
+	targets := &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}}
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, targets, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	keys := make([]string, 0, len(res.written))
+	for k := range res.written {
+		keys = append(keys, k)
+	}
+	require.ElementsMatch(t, []string{
+		resolvedBlockKey(files[0].ID, "aws_s3_bucket", "sibling"),
+		resolvedBlockKey(files[1].ID, "aws_s3_bucket", "w"),
+	}, keys)
 }
 
 func TestInstantiatedDocCarriesUnknown(t *testing.T) {
@@ -2118,6 +2604,10 @@ module "m" {
 }
 `}, `
 variable "unset" {}
+
+locals {
+  u = { a = var.unset, b = "b" }
+}
 
 resource "aws_s3_bucket" "b" {
   bucket = var.unset
