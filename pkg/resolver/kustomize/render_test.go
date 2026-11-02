@@ -1880,3 +1880,45 @@ func TestRenderIdentityUnknownDocument(t *testing.T) {
 	}
 }
 
+
+// TestRenderIdentityLegacyVars keeps the identity of an object whose name a
+// legacy var writes through a custom varReference stable: editing only the
+// generated data the var carries moves neither identity nor fingerprint, and
+// the value never enters the identity.
+func TestRenderIdentityLegacyVars(t *testing.T) {
+	const varDeployment = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: $(TOKEN)\n"
+	identity := func(t *testing.T, value string) (rendered, id string) {
+		t.Helper()
+		dir := writeTree(t, map[string]string{
+			"o/deployment.yaml": varDeployment,
+			"o/ref.yaml":        "varReference:\n  - path: metadata/name\n    kind: Deployment\n",
+			"o/kustomization.yaml": "resources:\n  - deployment.yaml\n" +
+				"configurations:\n  - ref.yaml\n" +
+				"configMapGenerator:\n  - name: settings\n    literals:\n      - TOKEN=" + value + "\n" +
+				"vars:\n  - name: TOKEN\n    objref:\n      apiVersion: v1\n      kind: ConfigMap\n      name: settings\n    fieldref:\n      fieldpath: data.TOKEN\n",
+		})
+		res, err := render(t, dir, "o")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range res.Documents {
+			if a := d.Kustomize; a.Kind == "Deployment" {
+				return a.RenderedName, a.ResourceID("web")
+			}
+		}
+		t.Fatal("no Deployment rendered")
+		return "", ""
+	}
+	rendered, id := identity(t, "canaryvalue")
+	if !strings.Contains(rendered, "canaryvalue") {
+		t.Fatalf("precondition: the var did not reach the rendered name %q", rendered)
+	}
+	if strings.Contains(id, "canary") {
+		t.Errorf("identity %q carries generated data", id)
+	}
+	if editedRendered, editedID := identity(t, "othervalue"); editedID != id {
+		t.Errorf("data edit moved the identity from %q to %q", id, editedID)
+	} else if !strings.Contains(editedRendered, "othervalue") {
+		t.Error("precondition: the data edit did not reach the rendered name")
+	}
+}

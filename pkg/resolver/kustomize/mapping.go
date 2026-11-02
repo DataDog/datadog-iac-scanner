@@ -282,14 +282,15 @@ func (r *Renderer) nameHashDisabled(path, genKind, attributed string) bool {
 
 // namesMaySetByReplacement reports whether a kustomization the render read
 // has a replacement that may write a name or namespace, or a transformer
-// entry, whose configuration is not inspected.
+// entry, or a legacy var whose custom varReference is not inspected, or a
+// configuration file that may define one.
 func (r *Renderer) namesMaySetByReplacement(reads []string) bool {
 	for _, p := range reads {
 		k, ok := r.Kustomization(p)
 		if !ok {
 			continue
 		}
-		if len(k.Transformers) > 0 {
+		if len(k.Transformers) > 0 || len(k.Vars) > 0 || len(k.Configurations) > 0 { //nolint:staticcheck // legacy vars may write identity fields
 			return true
 		}
 		for i := range k.Replacements {
