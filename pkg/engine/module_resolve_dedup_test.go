@@ -422,6 +422,75 @@ func sampleHeapInuse() (stop func() uint64) {
 	}
 }
 
+func BenchmarkInspectMultiRootCrossDocument(b *testing.B) {
+	const localRule = `package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	some name, bucket in doc.resource.aws_s3_bucket
+	not bucket.logging
+	result := {
+		"documentId": doc.id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": name,
+		"searchKey": sprintf("aws_s3_bucket[%s]", [name]),
+	}
+}
+`
+	const joinRule = `package datadog
+
+import rego.v1
+
+associated contains address if {
+	some doc in input.document
+	some association in doc.resource.azurerm_subnet_network_security_group_association
+	some address in association._dd_meta.references.subnet_id
+}
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	some name, subnet in doc.resource.aws_subnet
+	address := subnet._dd_meta.address
+	not address in associated
+	result := {
+		"documentId": doc.id,
+		"resourceType": "aws_subnet",
+		"resourceName": name,
+		"searchKey": sprintf("aws_subnet[%s]", [name]),
+	}
+}
+`
+	queries := []model.QueryMetadata{
+		{Query: "bucket-local", Content: localRule, InputData: "{}", Platform: platformTerraform, Aggregation: 1,
+			Metadata: map[string]interface{}{"id": "bucket-local"}},
+		{Query: "subnet-join", Content: joinRule, InputData: "{}", Platform: platformTerraform, Aggregation: 1,
+			Metadata: map[string]interface{}{"id": "subnet-join"}},
+	}
+	for _, roots := range []int{10, 50, 200} {
+		b.Run(fmt.Sprintf("roots=%d", roots), func(b *testing.B) {
+			repo, files := writeMultiRootRepo(b, roots, 3, 5)
+			ins := newTestInspector(b, inspectorOpts{
+				queries: queries, repoPath: repo, vb: DefaultVulnerabilityBuilder,
+				flagEvaluator: featureflags.NewLocalEvaluator(), numWorkers: runtime.GOMAXPROCS(0),
+			})
+			ctx := context.Background()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				vulns, err := ins.Inspect(ctx, "bench", files, []string{"terraform"})
+				if err != nil {
+					b.Fatal(err)
+				}
+				if len(vulns) == 0 {
+					b.Fatal("expected findings")
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkResolveMultiRoot(b *testing.B) {
 	for _, bc := range []struct {
 		name         string

@@ -73,7 +73,7 @@ type inspectorOpts struct {
 // newTestInspector runs the real [NewInspector] against a configurable
 // [source.QueriesSource] so callers get the production constructor wiring
 // without loading any rules from disk.
-func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
+func newTestInspector(t testing.TB, opts inspectorOpts) *Inspector {
 	t.Helper()
 
 	if opts.querySource == nil {
