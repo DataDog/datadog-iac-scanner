@@ -41,7 +41,9 @@ func renderKustomizeRoots(ctx context.Context, settings *provider.KustomizeSetti
 	// The planner reads through the renderer's confined, regular-file-only,
 	// bounded reader and canonicalizes every path through it: no repository
 	// read bypasses the render's bounds and nothing outside is matched.
-	plan := kustomize.Plan(dirs, charts, renderer.BoundedRead(), renderer.Canonical)
+	planRead := renderer.BoundedRead()
+	deployed := kustomize.DeployedDirs(repo, settings.DeployedCandidates, settings.RepoURL, planRead)
+	plan := kustomize.Plan(dirs, charts, deployed, planRead, renderer.Canonical)
 
 	consumed := map[string]struct{}{}
 	// unrendered holds the directories and files a skipped root reaches.
@@ -168,7 +170,8 @@ func renderPlannedRoot(ctx context.Context, renderer *kustomize.Renderer, root k
 		return kustomize.Result{}, model.ResolvedFiles{}, nil, reason
 	}
 	res = *r
-	files = rootFileList(&res, rel, listed, writerIgnores, renderer, service, ctx, openAPIResolveReferences, maxResolverDepth, scope)
+	files = rootFileList(&res, rel, listed, writerIgnores, renderer, service, ctx,
+		openAPIResolveReferences, maxResolverDepth, scope)
 	return res, files, r.Reads, ""
 }
 
@@ -182,8 +185,6 @@ func rootFileList(res *kustomize.Result, rel string, listed map[string]string, w
 	renderer *kustomize.Renderer, service *Service, ctx context.Context,
 	openAPIResolveReferences bool, maxResolverDepth int, scope *provider.PathFilter) model.ResolvedFiles {
 	resFiles := model.ResolvedFiles{File: make([]model.ResolvedHelm, 0, len(res.Documents))}
-	cl := logger.FromContext(context.TODO())
-	cl.Info().Msgf("QADEBUG2 docs=%d", len(res.Documents))
 	for i := range res.Documents {
 		d := &res.Documents[i]
 		d.Kustomize.RenderRoot = rel

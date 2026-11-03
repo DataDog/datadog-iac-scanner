@@ -137,6 +137,9 @@ type Client struct {
 	inMemoryPaths []string
 	walkInventory []string
 	chartRoots    []string
+	// kustomizeDeployedCandidates are the files mentioning an Argo CD or Flux
+	// object that may deploy a base as-is.
+	kustomizeDeployedCandidates []string
 	// kustomizeRoots are the kustomization directories the analyzer found.
 	kustomizeRoots []string
 	// walkScopeExcludes are the scan scope's own exclusions (gitignore,

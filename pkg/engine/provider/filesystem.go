@@ -765,6 +765,10 @@ type KustomizeSettings struct {
 	// known (gitignore, exclude, only): a rendered document whose source
 	// file it excludes is dropped.
 	Scope *PathFilter
+	// DeployedCandidates are the files mentioning an Argo CD Application or
+	// Flux GitRepository/Kustomization; RepoURL is the scanned repo's URL.
+	DeployedCandidates []string
+	RepoURL            string
 }
 
 // SetKustomize enables Kustomize rendering; it runs before a walk starts.
