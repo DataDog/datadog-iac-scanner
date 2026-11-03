@@ -93,6 +93,20 @@ func IsConfig(path string) bool {
 	return IsHCLConfig(path) || IsJSONConfig(path)
 }
 
+// IsOverrideFile reports whether path is a Terraform or OpenTofu override file.
+// Those files are applied after the directory's other configuration, in name order.
+func IsOverrideFile(path string) bool {
+	base := filepath.Base(path)
+	switch base {
+	case "override.tf", "override.tf.json", "override.tofu", "override.tofu.json":
+		return true
+	}
+	return strings.HasSuffix(base, "_override.tf") ||
+		strings.HasSuffix(base, "_override.tf.json") ||
+		strings.HasSuffix(base, "_override.tofu") ||
+		strings.HasSuffix(base, "_override.tofu.json")
+}
+
 // Matching keeps paths that satisfy pred. It does not apply OpenTofu precedence.
 func Matching(paths []string, pred func(string) bool) []string {
 	out := make([]string, 0, len(paths))

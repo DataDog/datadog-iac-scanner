@@ -371,6 +371,176 @@ func TestParseTerraformModules_TofuShadowsTf(t *testing.T) {
 	require.ElementsMatch(t, []string{"from_tofu", "other"}, names)
 }
 
+func TestParseTerraformModules_OverrideFilesMergeIntoSameName(t *testing.T) {
+	dir := t.TempDir()
+	file := func(name, content string) *model.FileMetadata {
+		return &model.FileMetadata{FilePath: filepath.Join(dir, name), OriginalData: content}
+	}
+	parse := func(t *testing.T, files ...*model.FileMetadata) []ParsedModule {
+		t.Helper()
+		modules, err := ParseTerraformModules(context.Background(), nil, files, 0)
+		require.NoError(t, err)
+		got := make([]ParsedModule, 0, len(modules))
+		for _, mod := range modules {
+			got = append(got, mod)
+		}
+		sort.Slice(got, func(i, j int) bool {
+			if got[i].Name != got[j].Name {
+				return got[i].Name < got[j].Name
+			}
+			return got[i].FileName < got[j].FileName
+		})
+		return got
+	}
+
+	t.Run("later override replaces source and version while the base file stays the declaration", func(t *testing.T) {
+		got := parse(t,
+			file("main.tf", `
+locals {
+  src = "git::https://example.com/acme/base.git"
+}
+module "vpc" {
+  source  = local.src
+  version = "1.0.0"
+}
+module "other" {
+  source = "git::https://example.com/acme/other.git"
+}
+`),
+			file("a_override.tf", `
+locals {
+  src = "git::https://example.com/acme/from-override.git"
+}
+module "vpc" {
+  source  = local.src
+  version = "2.0.0"
+}
+`),
+			file("z_override.tf", `
+module "vpc" {
+  version = "3.0.0"
+}
+`),
+		)
+		require.Len(t, got, 2)
+		require.Equal(t, "other", got[0].Name)
+		require.Equal(t, "git::https://example.com/acme/other.git", got[0].Source)
+		require.Equal(t, "vpc", got[1].Name)
+		require.Equal(t, "git::https://example.com/acme/from-override.git", got[1].Source)
+		require.Equal(t, "3.0.0", got[1].Version)
+		require.Equal(t, filepath.Join(dir, "main.tf"), got[1].FileName)
+	})
+
+	t.Run("json and tofu override files merge and an empty json source clears the base", func(t *testing.T) {
+		got := parse(t,
+			file("main.tf.json", `{
+  "module": {
+    "vpc": {
+      "source": "git::https://example.com/acme/vpc.git",
+      "version": "1.0.0"
+    }
+  }
+}`),
+			file("override.tofu", `
+module "vpc" {
+  version = "4.0.0"
+}
+`),
+			file("vpc_override.tf.json", `{
+  "module": {
+    "vpc": {
+      "source": ""
+    }
+  }
+}`),
+		)
+		require.Len(t, got, 1)
+		require.Empty(t, got[0].Source)
+		require.Equal(t, "unknown", got[0].SourceType)
+		require.Equal(t, "4.0.0", got[0].Version)
+		require.Equal(t, filepath.Join(dir, "main.tf.json"), got[0].FileName)
+	})
+
+	t.Run("a new override name is kept and a normal file is not merged", func(t *testing.T) {
+		got := parse(t,
+			file("main.tf", `
+module "vpc" {
+  source  = "git::https://example.com/acme/vpc.git"
+  version = "1.0.0"
+}
+`),
+			file("extra.tf", `
+module "vpc" {
+  version = "9.9.9"
+}
+`),
+			file("override.tf", `
+module "extra" {
+  source = "git::https://example.com/acme/extra.git"
+}
+`),
+		)
+		require.Len(t, got, 3)
+		require.Equal(t, "extra", got[0].Name)
+		require.Equal(t, filepath.Join(dir, "override.tf"), got[0].FileName)
+		require.Equal(t, "vpc", got[1].Name)
+		require.Empty(t, got[1].Source)
+		require.Equal(t, "9.9.9", got[1].Version)
+		require.Equal(t, filepath.Join(dir, "extra.tf"), got[1].FileName)
+		require.Equal(t, "vpc", got[2].Name)
+		require.Equal(t, "git::https://example.com/acme/vpc.git", got[2].Source)
+		require.Equal(t, "1.0.0", got[2].Version)
+		require.Equal(t, filepath.Join(dir, "main.tf"), got[2].FileName)
+	})
+
+	t.Run("an override outside the allowed set does not merge", func(t *testing.T) {
+		mainPath := filepath.Join(dir, "main.tf")
+		modules, err := ParseTerraformModulesFromFiles(context.Background(), nil, model.FileMetadatas{
+			file("main.tf", `
+module "vpc" {
+  source  = "git::https://example.com/acme/vpc.git"
+  version = "1.0.0"
+}
+`),
+			file("override.tf", `
+module "vpc" {
+  version = "8.0.0"
+}
+`),
+		}, map[string]bool{mainPath: true})
+		require.NoError(t, err)
+		require.Len(t, modules, 1)
+		for _, mod := range modules {
+			require.Equal(t, "1.0.0", mod.Version)
+			require.Equal(t, "git::https://example.com/acme/vpc.git", mod.Source)
+		}
+	})
+
+	t.Run("tofu override shadows the tf override of the same name", func(t *testing.T) {
+		got := parse(t,
+			file("main.tf", `
+module "vpc" {
+  source  = "git::https://example.com/acme/vpc.git"
+  version = "1.0.0"
+}
+`),
+			file("stack_override.tf", `
+module "vpc" {
+  version = "2.0.0"
+}
+`),
+			file("stack_override.tofu", `
+module "vpc" {
+  version = "3.0.0"
+}
+`),
+		)
+		require.Len(t, got, 1)
+		require.Equal(t, "3.0.0", got[0].Version)
+		require.Equal(t, filepath.Join(dir, "main.tf"), got[0].FileName)
+	})
+}
+
 func TestParseTerraformModules(t *testing.T) {
 	tests := []struct {
 		name     string

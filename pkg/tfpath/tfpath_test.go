@@ -304,6 +304,38 @@ func TestAutoloadedVarFilesCaseSensitive(t *testing.T) {
 	}
 }
 
+func TestIsOverrideFile(t *testing.T) {
+	overrides := []string{
+		"override.tf",
+		"override.tf.json",
+		"override.tofu",
+		"override.tofu.json",
+		"dir/vpc_override.tf",
+		"dir/vpc_override.tf.json",
+		"dir/vpc_override.tofu",
+		"dir/vpc_override.tofu.json",
+	}
+	ordinary := []string{
+		"main.tf",
+		"main.tofu",
+		"override.tf.bak",
+		"myoverride.tf",
+		"Override.tf",
+		"vpc_override.tf.txt",
+		"vpc_Override.tf",
+	}
+	for _, path := range overrides {
+		if !IsOverrideFile(path) {
+			t.Errorf("IsOverrideFile(%q) = false, want true", path)
+		}
+	}
+	for _, path := range ordinary {
+		if IsOverrideFile(path) {
+			t.Errorf("IsOverrideFile(%q) = true, want false", path)
+		}
+	}
+}
+
 func keys(m map[string]struct{}) []string {
 	return slices.Sorted(maps.Keys(m))
 }

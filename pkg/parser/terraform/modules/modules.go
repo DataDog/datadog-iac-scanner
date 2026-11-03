@@ -327,6 +327,7 @@ func parseDirModules(
 ) (map[string]ParsedModule, error) {
 	contextLogger := logger.FromContext(ctx)
 	files, _ := tfpath.Partition(group.files, func(f *model.FileMetadata) string { return f.FilePath })
+	files = orderOverrideFilesLast(files)
 	fileExtracts := make([]*fileExtract, len(files))
 	localsMap := make(map[string]string)
 	varsMap := make(map[string]string)
@@ -357,7 +358,7 @@ func parseDirModules(
 		maps.Copy(varsMap, extract.vars)
 	}
 
-	modules := make(map[string]ParsedModule)
+	var contributing []dirModuleFile
 	for i, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -369,11 +370,110 @@ func parseDirModules(
 		if opts.allowedFiles != nil && !opts.allowedFiles[file.FilePath] {
 			continue
 		}
+		contributing = append(contributing, dirModuleFile{path: file.FilePath, blocks: extract.modules})
+	}
+
+	modules := make(map[string]ParsedModule)
+	for _, file := range mergeOverrideModuleBlocks(contributing) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		resolveModuleBlocks(
-			ctx, fsys, group.dir, file.FilePath, extract.modules, localsMap, varsMap, opts.validateLocalSources, modules,
+			ctx, fsys, group.dir, file.path, file.blocks, localsMap, varsMap, opts.validateLocalSources, modules,
 		)
 	}
 	return modules, nil
+}
+
+// dirModuleFile is one configuration file's module blocks, in file order.
+type dirModuleFile struct {
+	path   string
+	blocks []moduleBlockExtract
+}
+
+type moduleBlockSlot struct {
+	file  int
+	block int
+}
+
+// orderOverrideFilesLast keeps ordinary files in their existing order and moves
+// override files after them, sorted by base name. Locals and variable defaults
+// copied in that order then match Terraform: an override replaces an earlier value.
+func orderOverrideFilesLast(files model.FileMetadatas) model.FileMetadatas {
+	if len(files) < 2 {
+		return files
+	}
+	ordered := append(model.FileMetadatas(nil), files...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := tfpath.IsOverrideFile(ordered[i].FilePath)
+		right := tfpath.IsOverrideFile(ordered[j].FilePath)
+		if left != right {
+			return !left
+		}
+		if left {
+			return filepath.Base(ordered[i].FilePath) < filepath.Base(ordered[j].FilePath)
+		}
+		return false
+	})
+	return ordered
+}
+
+// mergeOverrideModuleBlocks applies override files to same-named module blocks.
+// A set source or version replaces the base value. The base file and line range
+// stay the declaration. A name that does not exist yet is a new module block.
+func mergeOverrideModuleBlocks(files []dirModuleFile) []dirModuleFile {
+	merged := make([]dirModuleFile, 0, len(files))
+	var overrides []dirModuleFile
+	for _, file := range files {
+		copied := dirModuleFile{
+			path:   file.path,
+			blocks: append([]moduleBlockExtract(nil), file.blocks...),
+		}
+		if tfpath.IsOverrideFile(file.path) {
+			overrides = append(overrides, copied)
+			continue
+		}
+		merged = append(merged, copied)
+	}
+	slots := make(map[string][]moduleBlockSlot)
+	for fi := range merged {
+		for bi := range merged[fi].blocks {
+			name := merged[fi].blocks[bi].name
+			slots[name] = append(slots[name], moduleBlockSlot{file: fi, block: bi})
+		}
+	}
+	for _, override := range overrides {
+		introducedAt := len(merged)
+		var introduced []moduleBlockExtract
+		for _, block := range override.blocks {
+			targets := slots[block.name]
+			if len(targets) == 0 {
+				introduced = append(introduced, block)
+				slots[block.name] = []moduleBlockSlot{{file: introducedAt, block: len(introduced) - 1}}
+				continue
+			}
+			for _, target := range targets {
+				if target.file == introducedAt {
+					mergeModuleOverride(&introduced[target.block], block)
+					continue
+				}
+				mergeModuleOverride(&merged[target.file].blocks[target.block], block)
+			}
+		}
+		if len(introduced) > 0 {
+			merged = append(merged, dirModuleFile{path: override.path, blocks: introduced})
+		}
+	}
+	return merged
+}
+
+func mergeModuleOverride(base *moduleBlockExtract, override moduleBlockExtract) {
+	if override.source != nil {
+		base.source = override.source
+	}
+	if override.version != nil {
+		base.version = override.version
+	}
 }
 
 // resolveModuleBlocks turns a file's extracted module blocks into ParsedModules,
