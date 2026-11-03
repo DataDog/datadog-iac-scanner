@@ -333,6 +333,54 @@ func (m *Manifest) resolveV1Paths(ctx context.Context, module *ManifestModule, e
 	return nil
 }
 
+// ManifestModuleRejection reports why module cannot be published beside accepted.
+// An empty string means the entry satisfies the checks LoadManifest applies
+// before it reads package bytes. One rejected entry can be left out without
+// failing the rest of the manifest.
+func ManifestModuleRejection(module *ManifestModule, accepted []ManifestModule) string {
+	if module == nil {
+		return "module is required"
+	}
+	source := strings.TrimSpace(module.Source)
+	if source == "" {
+		return "source is required"
+	}
+	if err := validateManifestDeclarations(module.Declarations); err != nil {
+		return err.Error()
+	}
+	switch module.Status {
+	case ManifestStatusResolved:
+		if module.LocalPath == "" || !filepath.IsLocal(module.LocalPath) {
+			return "local_path must be a non-empty relative path"
+		}
+		if strings.TrimSpace(module.ContentDigest) == "" {
+			return "content_digest is required for a resolved module"
+		}
+		packageRoot := module.PackageRoot
+		if packageRoot == "" {
+			packageRoot = module.LocalPath
+		}
+		if !filepath.IsLocal(packageRoot) {
+			return "package_root must be a relative path"
+		}
+	case ManifestStatusUnresolved:
+		if strings.TrimSpace(module.Failure) == "" {
+			return "failure is required for an unresolved module"
+		}
+	default:
+		return "status must be resolved or unresolved"
+	}
+	key := manifestModuleKey(source, strings.TrimSpace(module.RequestedVersion))
+	for i := range accepted {
+		other := &accepted[i]
+		otherKey := manifestModuleKey(strings.TrimSpace(other.Source), strings.TrimSpace(other.RequestedVersion))
+		if otherKey == key && declarationsOverlap(other.Declarations, module.Declarations) {
+			return fmt.Sprintf("duplicate module declaration for %q", key)
+		}
+	}
+	return ""
+}
+
 func validateManifestDeclarations(declarations []ManifestDeclaration) error {
 	if len(declarations) == 0 {
 		return fmt.Errorf("declarations must not be empty")

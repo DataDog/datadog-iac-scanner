@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
@@ -176,6 +177,13 @@ func buildManifestModules(
 		entry, err := materializer.buildEntry(groups[key])
 		if err != nil {
 			return nil, err
+		}
+		if reason := resolver.ManifestModuleRejection(&entry, entries); reason != "" {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Warn().
+				Str("source", entry.Source).
+				Msgf("omitting module manifest entry: %s", reason)
+			continue
 		}
 		entries = append(entries, entry)
 	}
