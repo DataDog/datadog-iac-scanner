@@ -327,7 +327,7 @@ func parseDirModules(
 ) (map[string]ParsedModule, error) {
 	contextLogger := logger.FromContext(ctx)
 	files, _ := tfpath.Partition(group.files, func(f *model.FileMetadata) string { return f.FilePath })
-	files = orderOverrideFilesLast(files)
+	files = tfpath.OrderOverrideLast(files, func(f *model.FileMetadata) string { return f.FilePath })
 	fileExtracts := make([]*fileExtract, len(files))
 	localsMap := make(map[string]string)
 	varsMap := make(map[string]string)
@@ -394,13 +394,6 @@ type dirModuleFile struct {
 type moduleBlockSlot struct {
 	file  int
 	block int
-}
-
-// orderOverrideFilesLast keeps ordinary files in their existing order and moves
-// override files after them, sorted by base name. Locals and variable defaults
-// copied in that order then match Terraform: an override replaces an earlier value.
-func orderOverrideFilesLast(files model.FileMetadatas) model.FileMetadatas {
-	return tfpath.OrderOverrideLast(files, func(f *model.FileMetadata) string { return f.FilePath })
 }
 
 // mergeOverrideModuleBlocks applies override files to same-named module blocks.

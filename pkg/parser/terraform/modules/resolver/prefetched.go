@@ -333,11 +333,38 @@ func (m *Manifest) resolveV1Paths(ctx context.Context, module *ManifestModule, e
 	return nil
 }
 
-// ManifestModuleRejection reports why module cannot be published beside accepted.
-// An empty string means the entry satisfies the checks LoadManifest applies
-// before it reads package bytes. One rejected entry can be left out without
-// failing the rest of the manifest.
-func ManifestModuleRejection(module *ManifestModule, accepted []ManifestModule) string {
+// ManifestEntryIndex tracks the declarations of accepted manifest entries by
+// source and requested version, the same key addV1Entry groups candidates
+// under. Checking a new entry against it costs time proportional to the
+// entries sharing its key, not every entry accepted so far.
+type ManifestEntryIndex struct {
+	declarations map[string][]ManifestDeclaration
+}
+
+func NewManifestEntryIndex() *ManifestEntryIndex {
+	return &ManifestEntryIndex{declarations: make(map[string][]ManifestDeclaration)}
+}
+
+func (idx *ManifestEntryIndex) key(module *ManifestModule) string {
+	return manifestModuleKey(strings.TrimSpace(module.Source), strings.TrimSpace(module.RequestedVersion))
+}
+
+// Add records module as accepted, so a later call to ManifestModuleRejection
+// checks its declarations against module.
+func (idx *ManifestEntryIndex) Add(module *ManifestModule) {
+	idx.declarations[idx.key(module)] = append(idx.declarations[idx.key(module)], module.Declarations...)
+}
+
+func (idx *ManifestEntryIndex) duplicates(module *ManifestModule) bool {
+	return declarationsOverlap(idx.declarations[idx.key(module)], module.Declarations)
+}
+
+// ManifestModuleRejection reports why module cannot be published beside the
+// entries already recorded in accepted. An empty string means the entry
+// satisfies the checks LoadManifest applies before it reads package bytes.
+// One rejected entry can be left out without failing the rest of the
+// manifest. A nil accepted index skips only the duplicate-declaration check.
+func ManifestModuleRejection(module *ManifestModule, accepted *ManifestEntryIndex) string {
 	if module == nil {
 		return "module is required"
 	}
@@ -370,13 +397,8 @@ func ManifestModuleRejection(module *ManifestModule, accepted []ManifestModule) 
 	default:
 		return "status must be resolved or unresolved"
 	}
-	key := manifestModuleKey(source, strings.TrimSpace(module.RequestedVersion))
-	for i := range accepted {
-		other := &accepted[i]
-		otherKey := manifestModuleKey(strings.TrimSpace(other.Source), strings.TrimSpace(other.RequestedVersion))
-		if otherKey == key && declarationsOverlap(other.Declarations, module.Declarations) {
-			return fmt.Sprintf("duplicate module declaration for %q", key)
-		}
+	if accepted != nil && accepted.duplicates(module) {
+		return fmt.Sprintf("duplicate module declaration for %q", accepted.key(module))
 	}
 	return ""
 }
