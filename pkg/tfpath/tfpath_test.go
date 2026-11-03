@@ -336,6 +336,26 @@ func TestIsOverrideFile(t *testing.T) {
 	}
 }
 
+func TestOrderOverrideLast(t *testing.T) {
+	identity := func(s string) string { return s }
+
+	got := OrderOverrideLast([]string{"override.tf", "zz_main.tf", "b_main.tf"}, identity)
+	want := []string{"zz_main.tf", "b_main.tf", "override.tf"}
+	if !slices.Equal(got, want) {
+		t.Errorf("OrderOverrideLast = %v, want %v", got, want)
+	}
+
+	got = OrderOverrideLast([]string{"z_override.tf", "a_override.tf", "main.tf"}, identity)
+	want = []string{"main.tf", "a_override.tf", "z_override.tf"}
+	if !slices.Equal(got, want) {
+		t.Errorf("OrderOverrideLast = %v, want %v", got, want)
+	}
+
+	if got := OrderOverrideLast([]string{"only.tf"}, identity); !slices.Equal(got, []string{"only.tf"}) {
+		t.Errorf("OrderOverrideLast = %v, want [only.tf]", got)
+	}
+}
+
 func keys(m map[string]struct{}) []string {
 	return slices.Sorted(maps.Keys(m))
 }

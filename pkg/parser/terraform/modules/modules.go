@@ -400,22 +400,7 @@ type moduleBlockSlot struct {
 // override files after them, sorted by base name. Locals and variable defaults
 // copied in that order then match Terraform: an override replaces an earlier value.
 func orderOverrideFilesLast(files model.FileMetadatas) model.FileMetadatas {
-	if len(files) < 2 {
-		return files
-	}
-	ordered := append(model.FileMetadatas(nil), files...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		left := tfpath.IsOverrideFile(ordered[i].FilePath)
-		right := tfpath.IsOverrideFile(ordered[j].FilePath)
-		if left != right {
-			return !left
-		}
-		if left {
-			return filepath.Base(ordered[i].FilePath) < filepath.Base(ordered[j].FilePath)
-		}
-		return false
-	})
-	return ordered
+	return tfpath.OrderOverrideLast(files, func(f *model.FileMetadata) string { return f.FilePath })
 }
 
 // mergeOverrideModuleBlocks applies override files to same-named module blocks.
