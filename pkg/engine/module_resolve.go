@@ -85,15 +85,6 @@ func (c *Inspector) instantiateLocalModules(
 	resolver := c.buildRemoteResolver()
 	res := c.resolveModulesSafely(ctx, files, resolver, targets)
 	contextLogger := logger.FromContext(ctx)
-	contextLogger.Info().
-		Int("module_resources_instantiated", res.resourceCount).
-		Int("module_documents", len(res.docs)).
-		Msgf(
-			"Instantiated %d module resources into %d documents (%d deduplicated callers)",
-			res.resourceCount,
-			len(res.docs),
-			deduplicatedCallerCount(&res),
-		)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
 		return nil, nil, nil, nil
@@ -135,18 +126,22 @@ func (c *Inspector) instantiateLocalModules(
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
 }
 
-// logModuleInstantiationSummary emits the fields an on-call search needs at warn
-// level. Production runs at warn, so the info-level count above is invisible there;
-// without this, a scan on its way to OOM looks identical to one that never ran
-// module evaluation.
+// logModuleInstantiationSummary emits the per-scan record of module
+// instantiation. The counts are informational and log at info level; a scan
+// that never evaluated a module root stays quiet. A scan that truncated module
+// evaluation — the resource budget was exhausted or a count/for_each expansion
+// was capped — silently lost rule coverage, so that case additionally logs at
+// warn level for on-call searches: without it, a scan on its way to OOM looks
+// identical to one that never ran module evaluation.
 func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionResult) {
-	if res.resourceCount == 0 && !res.budgetExceeded && res.expansionTruncations == 0 {
+	if res.rootCount == 0 && res.resourceCount == 0 && !res.budgetExceeded && res.expansionTruncations == 0 {
 		return
 	}
-	ev := log.Warn().
+	ev := log.Info().
 		Int("module_resources_instantiated", res.resourceCount).
 		Int("module_root_count", res.rootCount).
 		Int("module_documents", len(res.docs)).
+		Int("deduplicated_callers", deduplicatedCallerCount(res)).
 		Int("resource_budget", tfeval.MaxInstantiated()).
 		Bool("resource_budget_exhausted", res.budgetExceeded)
 	if res.expansionTruncations > 0 {
@@ -157,6 +152,21 @@ func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionRes
 			Int("count_expansion_max_requested", res.expansionMaxRequested)
 	}
 	ev.Msg("tfeval: module instantiation summary")
+	if res.budgetExceeded || res.expansionTruncations > 0 {
+		ev := log.Warn().
+			Int("module_resources_instantiated", res.resourceCount).
+			Int("module_root_count", res.rootCount).
+			Int("resource_budget", tfeval.MaxInstantiated()).
+			Bool("resource_budget_exhausted", res.budgetExceeded)
+		if res.expansionTruncations > 0 {
+			ev = ev.
+				Int("count_expansion_cap", tfeval.MaxCountExpansion()).
+				Int("dynamic_expansion_cap", tfeval.MaxDynamicExpansion()).
+				Int("count_expansion_truncated", res.expansionTruncations).
+				Int("count_expansion_max_requested", res.expansionMaxRequested)
+		}
+		ev.Msg("tfeval: module instantiation truncated")
+	}
 }
 
 // declaresTargetedResource reports whether any scanned Terraform file declares
@@ -759,9 +769,12 @@ func resolveModuleDocuments(
 	evaluator.ReleaseCaches()
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
-	// remove coverage with no synthetic replacement.
+	// remove coverage with no synthetic replacement. Keep the root count so the
+	// instantiation summary still records that evaluation ran and produced nothing;
+	// budget and truncation stats of a failed evaluation are moot, since nothing it
+	// computed reaches the scan output.
 	if !rootEvalOK {
-		return moduleResolutionResult{}
+		return moduleResolutionResult{rootCount: len(roots)}
 	}
 
 	// A call site is only stripped once the module behind it actually produced
