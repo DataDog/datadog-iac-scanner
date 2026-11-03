@@ -176,6 +176,15 @@ func (r *Renderer) BoundedRead() func(string) ([]byte, error) {
 	}
 }
 
+// Canonical returns the absolute, symlink-free form of p when it lies inside
+// the confinement root, and whether it does. The planner uses it so a
+// dependency reached through a symlink matches the directory discovered by
+// its real path, and nothing outside the repository is ever matched or read.
+func (r *Renderer) Canonical(p string) (string, bool) {
+	a := &adapter{fsys: r.fsys, root: r.confine, cache: r.cache, reads: map[string]struct{}{}}
+	return a.resolve(p)
+}
+
 // Source returns the original bytes of a file a render consumed.
 func (r *Renderer) Source(path string) ([]byte, bool) {
 	r.cache.mu.Lock()
