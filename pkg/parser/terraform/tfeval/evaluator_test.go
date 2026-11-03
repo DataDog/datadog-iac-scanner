@@ -1154,6 +1154,64 @@ func TestEvaluateLocalModuleBlocksIgnoresNullPreliminaryOutputs(t *testing.T) {
 	}
 }
 
+func TestEvaluateModule_OverrideFileSetsModuleInput(t *testing.T) {
+	// A root module.tf call has no input, an override.tf sets one on the same
+	// module name. Evaluation must apply the override the same way module
+	// discovery does, regardless of how override.tf sorts against main.tf.
+	root := t.TempDir()
+
+	writeModule(t, root, "child", map[string]string{
+		"main.tf": `
+variable "x" { default = "base" }
+resource "aws_s3_bucket" "r" { bucket = var.x }
+`,
+	})
+
+	dir := writeModule(t, root, "root", map[string]string{
+		"main.tf": `
+module "child" {
+  source = "../child"
+}
+`,
+		"override.tf": `
+module "child" {
+  x = "from-override"
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	r := findResource(t, resources, "aws_s3_bucket", "r")
+	requireString(t, r.Attributes, "bucket", "from-override")
+}
+
+func TestEvaluateModule_OverrideFileWinsRegardlessOfFileName(t *testing.T) {
+	// override.tf sorts before zz_main.tf lexically, but Terraform always
+	// applies override files last. A plain filename sort would let zz_main.tf
+	// clobber the override's local value instead of the other way round.
+	root := t.TempDir()
+
+	dir := writeModule(t, root, "root", map[string]string{
+		"zz_main.tf": `
+locals { greeting = "base" }
+resource "aws_s3_bucket" "r" { bucket = local.greeting }
+`,
+		"override.tf": `
+locals { greeting = "from-override" }
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	r := findResource(t, resources, "aws_s3_bucket", "r")
+	requireString(t, r.Attributes, "bucket", "from-override")
+}
+
 func TestEvaluateModule_LaterSiblingForwardDepNotDropped(t *testing.T) {
 	// Module B (second) references module C (third, forward dep) as input.
 	// Module A (first) has no outputs. Without seeding moduleOutputs from the

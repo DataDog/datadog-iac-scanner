@@ -333,6 +333,76 @@ func (m *Manifest) resolveV1Paths(ctx context.Context, module *ManifestModule, e
 	return nil
 }
 
+// ManifestEntryIndex tracks the declarations of accepted manifest entries by
+// source and requested version, the same key addV1Entry groups candidates
+// under. Checking a new entry against it costs time proportional to the
+// entries sharing its key, not every entry accepted so far.
+type ManifestEntryIndex struct {
+	declarations map[string][]ManifestDeclaration
+}
+
+func NewManifestEntryIndex() *ManifestEntryIndex {
+	return &ManifestEntryIndex{declarations: make(map[string][]ManifestDeclaration)}
+}
+
+func (idx *ManifestEntryIndex) key(module *ManifestModule) string {
+	return manifestModuleKey(strings.TrimSpace(module.Source), strings.TrimSpace(module.RequestedVersion))
+}
+
+// Add records module as accepted, so a later call to ManifestModuleRejection
+// checks its declarations against module.
+func (idx *ManifestEntryIndex) Add(module *ManifestModule) {
+	idx.declarations[idx.key(module)] = append(idx.declarations[idx.key(module)], module.Declarations...)
+}
+
+func (idx *ManifestEntryIndex) duplicates(module *ManifestModule) bool {
+	return declarationsOverlap(idx.declarations[idx.key(module)], module.Declarations)
+}
+
+// ManifestModuleRejection reports why module cannot be published beside the
+// entries already recorded in accepted. An empty string means the entry
+// satisfies the checks LoadManifest applies before it reads package bytes.
+// One rejected entry can be left out without failing the rest of the
+// manifest. A nil accepted index skips only the duplicate-declaration check.
+func ManifestModuleRejection(module *ManifestModule, accepted *ManifestEntryIndex) string {
+	if module == nil {
+		return "module is required"
+	}
+	source := strings.TrimSpace(module.Source)
+	if source == "" {
+		return "source is required"
+	}
+	if err := validateManifestDeclarations(module.Declarations); err != nil {
+		return err.Error()
+	}
+	switch module.Status {
+	case ManifestStatusResolved:
+		if module.LocalPath == "" || !filepath.IsLocal(module.LocalPath) {
+			return "local_path must be a non-empty relative path"
+		}
+		if strings.TrimSpace(module.ContentDigest) == "" {
+			return "content_digest is required for a resolved module"
+		}
+		packageRoot := module.PackageRoot
+		if packageRoot == "" {
+			packageRoot = module.LocalPath
+		}
+		if !filepath.IsLocal(packageRoot) {
+			return "package_root must be a relative path"
+		}
+	case ManifestStatusUnresolved:
+		if strings.TrimSpace(module.Failure) == "" {
+			return "failure is required for an unresolved module"
+		}
+	default:
+		return "status must be resolved or unresolved"
+	}
+	if accepted != nil && accepted.duplicates(module) {
+		return fmt.Sprintf("duplicate module declaration for %q", accepted.key(module))
+	}
+	return ""
+}
+
 func validateManifestDeclarations(declarations []ManifestDeclaration) error {
 	if len(declarations) == 0 {
 		return fmt.Errorf("declarations must not be empty")

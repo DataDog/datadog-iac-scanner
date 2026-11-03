@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -403,4 +404,85 @@ func TestLoadManifestRespectsCancelledContext(t *testing.T) {
 
 	_, err = LoadManifest(ctx, manifestPath)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestManifestModuleRejectionLeavesTheOtherEntries(t *testing.T) {
+	declaration := ManifestDeclaration{
+		Filename:   "main.tf",
+		LineStart:  1,
+		LineEnd:    4,
+		ModuleName: "vpc",
+	}
+	good := ManifestModule{
+		Source:       "git::https://example.com/acme/vpc.git",
+		Status:       ManifestStatusUnresolved,
+		Failure:      "fixture has no package",
+		Declarations: []ManifestDeclaration{declaration},
+	}
+	require.Empty(t, ManifestModuleRejection(&good, nil))
+
+	emptySource := good
+	emptySource.Source = "  "
+	require.Equal(t, "source is required", ManifestModuleRejection(&emptySource, nil))
+
+	accepted := NewManifestEntryIndex()
+	accepted.Add(&good)
+
+	duplicate := good
+	require.Contains(t, ManifestModuleRejection(&duplicate, accepted), "duplicate module declaration")
+
+	otherDeclaration := declaration
+	otherDeclaration.Filename = "other.tf"
+	resolved := ManifestModule{
+		Source:        good.Source,
+		Status:        ManifestStatusResolved,
+		LocalPath:     "pkg",
+		PackageRoot:   "pkg",
+		ContentDigest: "sha256:abc",
+		Declarations:  []ManifestDeclaration{otherDeclaration},
+	}
+	require.Empty(t, ManifestModuleRejection(&resolved, accepted))
+	resolved.ContentDigest = ""
+	require.Equal(t, "content_digest is required for a resolved module", ManifestModuleRejection(&resolved, nil))
+}
+
+// TestManifestEntryIndexScalesWithMatchingKeysNotTotalEntries indexes many
+// distinct sources, the way buildManifestModules does, and checks that a
+// duplicate is still caught by source and declaration rather than by scanning
+// every previously accepted entry.
+func TestManifestEntryIndexScalesWithMatchingKeysNotTotalEntries(t *testing.T) {
+	index := NewManifestEntryIndex()
+	const distinctSources = 5000
+	for i := range distinctSources {
+		module := ManifestModule{
+			Source:  fmt.Sprintf("git::https://example.com/acme/mod-%d.git", i),
+			Status:  ManifestStatusUnresolved,
+			Failure: "fixture has no package",
+			Declarations: []ManifestDeclaration{{
+				Filename: "main.tf", LineStart: 1, LineEnd: 4, ModuleName: fmt.Sprintf("m%d", i),
+			}},
+		}
+		require.Empty(t, ManifestModuleRejection(&module, index), "entry %d", i)
+		index.Add(&module)
+	}
+
+	declaration := ManifestDeclaration{Filename: "shared.tf", LineStart: 1, LineEnd: 4, ModuleName: "shared"}
+	first := ManifestModule{
+		Source: "git::https://example.com/acme/shared.git", Status: ManifestStatusUnresolved,
+		Failure: "fixture has no package", Declarations: []ManifestDeclaration{declaration},
+	}
+	require.Empty(t, ManifestModuleRejection(&first, index))
+	index.Add(&first)
+
+	// Same source and declaration: a real duplicate, caught against the one
+	// bucket it belongs to.
+	duplicate := first
+	require.Contains(t, ManifestModuleRejection(&duplicate, index), "duplicate module declaration")
+
+	// Same source, a different declaration: not a duplicate.
+	otherDeclaration := declaration
+	otherDeclaration.ModuleName = "shared2"
+	distinctDeclaration := first
+	distinctDeclaration.Declarations = []ManifestDeclaration{otherDeclaration}
+	require.Empty(t, ManifestModuleRejection(&distinctDeclaration, index))
 }

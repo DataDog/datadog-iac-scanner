@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
@@ -169,6 +170,7 @@ func buildManifestModules(
 	}
 	sort.Strings(keys)
 	entries := make([]resolver.ManifestModule, 0, len(keys))
+	accepted := resolver.NewManifestEntryIndex()
 	for _, key := range keys {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -177,6 +179,14 @@ func buildManifestModules(
 		if err != nil {
 			return nil, err
 		}
+		if reason := resolver.ManifestModuleRejection(&entry, accepted); reason != "" {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Warn().
+				Str("source", entry.Source).
+				Msgf("omitting module manifest entry: %s", reason)
+			continue
+		}
+		accepted.Add(&entry)
 		entries = append(entries, entry)
 	}
 	return entries, nil
