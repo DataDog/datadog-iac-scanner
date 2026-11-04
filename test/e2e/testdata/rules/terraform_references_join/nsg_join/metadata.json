@@ -1,0 +1,12 @@
+{
+  "id": "terraform-aws-subnet-without-association",
+  "legacyId": "b2b2b2b2-0000-4000-8000-000000000002",
+  "queryName": "Subnet without association",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Flags a subnet instance that no association reads, joined through traced references.",
+  "descriptionUrl": "https://example.com/subnet-without-association",
+  "platform": "Terraform",
+  "descriptionID": "b2b2b2b2",
+  "cloudProvider": "aws"
+}
