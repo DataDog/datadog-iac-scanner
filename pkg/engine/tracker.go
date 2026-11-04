@@ -20,5 +20,8 @@ type Tracker interface {
 	FailedDetectLine()
 	FailedLineInfoDocument()
 	SkippedSupersededResult()
+	// FindingWithoutIdentity counts a Terraform finding dropped because it
+	// names no declared block.
+	FindingWithoutIdentity()
 	GetOutputLines() int
 }

@@ -11,21 +11,29 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/cespare/xxhash/v2"
 )
 
 // A rule names the resource and data types it can match, either by reading
 // them off a document (`input.document[i].resource.aws_s3_bucket[name]`,
 // `input.document[i].data.aws_ami[name]`) or by passing
-// them to a library helper (`module_equivalent_key("aws", source,
-// "aws_s3_bucket", key)`). Both forms are picked up here.
+// them to a library helper (`has_target_resource(bucket,
+// "aws_s3_bucket_lifecycle_configuration")`). Both forms are picked up here.
 var (
 	resourceFieldPattern = regexp.MustCompile(`resource\.([a-z][a-z0-9_]*)`)
 	resourceIndexPattern = regexp.MustCompile(`resource\[\s*"([^"\s]+)"\s*\]`)
 	// Rego imports and data documents (`data.generic.terraform`) share the
 	// data. prefix; Terraform type names always hold an underscore.
-	dataFieldPattern   = regexp.MustCompile(`\bdata\.([a-z][a-z0-9]*_[a-z0-9_]*)`)
-	dataIndexPattern   = regexp.MustCompile(`\bdata\[\s*"([a-z][a-z0-9]*_[a-z0-9_]*)"\s*\]`)
-	typeLiteralPattern = regexp.MustCompile(`"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"`)
+	dataFieldPattern = regexp.MustCompile(`\bdata\.([a-z][a-z0-9]*_[a-z0-9_]*)`)
+	dataIndexPattern = regexp.MustCompile(`\bdata\[\s*"([a-z][a-z0-9]*_[a-z0-9_]*)"\s*\]`)
+	// Ephemeral resources are read through their namespace
+	// (`input.document[i].ephemeral.random_password[name]`) and named with it
+	// in literals (`"ephemeral.random_password"`). The namespace makes both
+	// patterns specific enough to skip the underscore requirement; the quoted
+	// form records the namespaced type whole, the way findings name it.
+	ephemeralFieldPattern  = regexp.MustCompile(`\bephemeral\.([a-z][a-z0-9_]*)`)
+	ephemeralQuotedPattern = regexp.MustCompile(`"(ephemeral\.[a-z][a-z0-9_]*)"`)
+	typeLiteralPattern     = regexp.MustCompile(`"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"`)
 	// Rules that apply to a whole provider select it by prefix, as in
 	// `startswith(resource_type, "aws_")`.
 	typePrefixPattern = regexp.MustCompile(`startswith\([^,]+,\s*"([a-z][a-z0-9]*_)"\s*\)`)
@@ -75,7 +83,8 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	prefixes := make(map[string]bool)
 	collect := func(source string) {
 		for _, pattern := range []*regexp.Regexp{
-			resourceFieldPattern, resourceIndexPattern, dataFieldPattern, dataIndexPattern, typeLiteralPattern,
+			resourceFieldPattern, resourceIndexPattern, dataFieldPattern, dataIndexPattern,
+			ephemeralFieldPattern, ephemeralQuotedPattern, typeLiteralPattern,
 		} {
 			for _, m := range pattern.FindAllStringSubmatch(source, -1) {
 				targets.types[m[1]] = true
@@ -102,12 +111,134 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	return &targets
 }
 
+// terraformCrossDocumentQueries classifies the loaded Terraform rules against
+// the same libraries their resource types are collected from.
+func (c *Inspector) terraformCrossDocumentQueries(queries []model.QueryMetadata) map[int]bool {
+	return c.terraformQueryAnalysis(queries).cross
+}
+
+// terraformQueryAnalysis analyzes the loaded Terraform rules, keyed by their
+// index in queries. The analysis is cached on the inspector for the ruleset
+// that produced it: analyzing every rule recompiles them.
+func (c *Inspector) terraformQueryAnalysis(queries []model.QueryMetadata) terraformQueryAnalysis {
+	terraform := make([]model.QueryMetadata, 0, len(queries))
+	positions := make([]int, 0, len(queries))
+	for i := range queries {
+		if queries[i].Platform == platformTerraform {
+			terraform = append(terraform, queries[i])
+			positions = append(positions, i)
+		}
+	}
+	if len(terraform) == 0 {
+		return terraformQueryAnalysis{}
+	}
+	libraries := c.terraformRuleLibraries()
+	key := classificationKey(terraform, libraries)
+	c.crossDocMu.Lock()
+	if !c.crossDocReady || c.crossDocKey != key {
+		c.crossDoc = analyzeTerraformQueries(terraform, libraries...)
+		c.crossDocKey = key
+		c.crossDocReady = true
+	}
+	analysis := c.crossDoc
+	c.crossDocMu.Unlock()
+	out := terraformQueryAnalysis{
+		cross:   make(map[int]bool, len(analysis.cross)),
+		targets: make(map[int]*ruleTargets, len(analysis.targets)),
+	}
+	for j, i := range positions {
+		if cross, ok := analysis.cross[j]; ok {
+			out.cross[i] = cross
+		}
+		if targets, ok := analysis.targets[j]; ok {
+			out.targets[i] = targets
+		}
+	}
+	return out
+}
+
+func classificationKey(queries []model.QueryMetadata, libraries []string) uint64 {
+	h := xxhash.New()
+	for i := range queries {
+		_, _ = h.WriteString(queries[i].Query)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(queries[i].Content)
+		_, _ = h.WriteString("\x00")
+	}
+	for _, library := range libraries {
+		_, _ = h.WriteString(library)
+		_, _ = h.WriteString("\x00")
+	}
+	return h.Sum64()
+}
+
+// terraformIndexNeeded reports whether any Terraform rule or its libraries
+// reads the scan-wide literal index (_dd_tf_index / literal_seen). The index
+// is only built then: it may only clear findings, so rules that never ask
+// never pay for it.
+func terraformIndexNeeded(queries []model.QueryMetadata, libraries ...string) bool {
+	usesIndex := func(source string) bool {
+		return strings.Contains(source, tfIndexKey) || strings.Contains(source, "literal_seen")
+	}
+	for _, library := range libraries {
+		if usesIndex(library) {
+			return true
+		}
+	}
+	for i := range queries {
+		if canonicalPlatformKey(queries[i].Platform) != platformTerraform {
+			continue
+		}
+		if usesIndex(queries[i].Content) || usesIndex(queries[i].InputData) {
+			return true
+		}
+	}
+	return false
+}
+
+// terraformByRoot reports whether this scan builds one Terraform input per root.
+func terraformByRoot(rootCount int, cross map[int]bool) bool {
+	if rootCount < 2 {
+		return false
+	}
+	for _, isCross := range cross {
+		if isCross {
+			return true
+		}
+	}
+	return false
+}
+
+func countRoots(docRoots map[string][]string) int {
+	roots := map[string]bool{}
+	for _, rs := range docRoots {
+		for _, r := range rs {
+			roots[r] = true
+		}
+	}
+	return len(roots)
+}
+
 // terraformRuleLibraries returns the Rego libraries that Terraform rules are
 // compiled against, so type names spelled only in shared helpers are seen too.
 func (c *Inspector) terraformRuleLibraries() []string {
 	libraries := []string{c.QueryLoader.commonLibrary.LibraryCode}
-	if platform, ok := c.QueryLoader.platformLibraries["terraform"]; ok {
+	if platform, ok := c.QueryLoader.platformLibraries[platformTerraform]; ok {
 		libraries = append(libraries, platform.LibraryCode)
 	}
 	return libraries
+}
+
+// rootHasRuleTarget reports whether rootTypes contains a type the rule can
+// match. Unknown targets (nil) always match so we never skip by mistake.
+func rootHasRuleTarget(rootTypes map[string]bool, targets *ruleTargets) bool {
+	if targets == nil {
+		return true
+	}
+	for typ := range rootTypes {
+		if targets.matches(typ) {
+			return true
+		}
+	}
+	return false
 }

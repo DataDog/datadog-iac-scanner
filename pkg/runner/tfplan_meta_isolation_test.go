@@ -55,7 +55,7 @@ DatadogPolicy contains result if {
 `
 
 // TestInspect_TFPlanMetaNotExposedAsFakeResource is a regression test:
-// _dd_tfplan_meta must never surface as a fake resource to Rego rules.
+// _dd_meta stays on the resource and is never itself reported as one.
 func TestInspect_TFPlanMetaNotExposedAsFakeResource(t *testing.T) {
 	ctx := context.Background()
 
@@ -110,8 +110,10 @@ func TestInspect_TFPlanMetaNotExposedAsFakeResource(t *testing.T) {
 	require.Equal(t, model.KindTerraformPlan, kind)
 
 	prepared := PrepareScanDocument(ctx, docs[0], kind)
-	require.Contains(t, prepared, "_dd_tfplan_meta",
-		"sanity check: the document must actually carry _dd_tfplan_meta for this test to be meaningful")
+	require.NotContains(t, prepared, "_dd_tfplan_meta")
+	buckets := prepared["resource"].(map[string]interface{})["aws_cloudwatch_log_metric_filter"].(map[string]interface{})
+	meta := buckets["errors"].(map[string]interface{})["_dd_meta"].(map[string]interface{})
+	require.Equal(t, "aws_cloudwatch_log_metric_filter.errors", meta["address"])
 
 	doc := model.FileMetadata{
 		ID:                uuid.NewString(),
@@ -161,7 +163,7 @@ func TestInspect_TFPlanMetaNotExposedAsFakeResource(t *testing.T) {
 	require.Equal(t, "errors", vulns[0].ResourceName)
 
 	for _, v := range vulns {
-		require.NotEqual(t, "_dd_tfplan_meta", v.ResourceName,
-			"_dd_tfplan_meta must never be reported as a resource")
+		require.NotEqual(t, "_dd_meta", v.ResourceName)
+		require.NotEqual(t, "_dd_tfplan_meta", v.ResourceName)
 	}
 }

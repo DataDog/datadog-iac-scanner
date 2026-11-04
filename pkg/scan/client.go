@@ -68,7 +68,6 @@ type Parameters struct {
 	LibrariesPath               string
 	ReportFormats               []string
 	Platform                    []string
-	TerraformVarsPath           string
 	LineInfoPayload             bool
 	DisableSecrets              bool
 	SecretsRegexesPath          string
@@ -194,7 +193,6 @@ func GetDefaultParameters(ctx context.Context, rootPath string) (*Parameters, co
 		LibrariesPath:               "./assets/libraries",
 		ReportFormats:               []string{"sarif"},
 		Platform:                    platforms.Supported,
-		TerraformVarsPath:           "",
 		LineInfoPayload:             false,
 		DisableSecrets:              true,
 		SecretsRegexesPath:          "",

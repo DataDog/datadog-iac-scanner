@@ -37,7 +37,9 @@ DatadogPolicy contains result if {
 
 wildcard(statement) if statement.Principal == "*"
 
-wildcard(statement) if "*" in statement.Principals.AWS
+wildcard(statement) if statement.Principal.AWS == "*"
+
+wildcard(statement) if "*" in statement.Principal.AWS
 `
 
 const amiOwnerRule = `package datadog

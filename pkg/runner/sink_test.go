@@ -36,7 +36,7 @@ func TestKics_prepareDocument(t *testing.T) {
 		want string
 	}{
 		{
-			name: "prepare document simple test",
+			name: "prepare document leaves terraform patterns as written",
 			args: args{
 				bodyType: `
 				{
@@ -115,7 +115,7 @@ func TestKics_prepareDocument(t *testing.T) {
 							"value": "1"
 						  },
 						  "name": "CIS-4.11-Changes-NACL",
-						  "pattern": "{\"_dd_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAcl\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclAssociation\"}},\"_kics_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAcl\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"DeleteNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclEntry\"}},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"ReplaceNetworkAclAssociation\"}}}"
+						  "pattern": "{ ($.eventName = CreateNetworkAcl) || ($.eventName = CreateNetworkAclEntry) || ($.eventName = DeleteNetworkAcl) || ($.eventName = DeleteNetworkAclEntry) || ($.eventName = ReplaceNetworkAclEntry) || ($.eventName = ReplaceNetworkAclAssociation) }"
 						}
 					  }
 					}
@@ -127,7 +127,7 @@ func TestKics_prepareDocument(t *testing.T) {
 		},
 		{
 			// Flat (not wrapped in "document":[...]) to match sink.go's real per-document input.
-			name: "prepare document resolves pattern for terraform plan documents",
+			name: "prepare document leaves terraform plan patterns as written",
 			args: args{
 				bodyType: `
 				{
@@ -165,7 +165,7 @@ func TestKics_prepareDocument(t *testing.T) {
 					"cis_changes_nacl": {
 					  "log_group_name": "aws_cloudwatch_log_group.CIS_CloudWatch_LogsGroup",
 					  "name": "CIS-4.11-Changes-NACL",
-					  "pattern": "{\"_dd_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}},\"_kics_filter_expr\":{\"_op\":\"||\",\"_left\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAcl\"},\"_right\":{\"_selector\":\"$.eventName\",\"_op\":\"=\",\"_value\":\"CreateNetworkAclEntry\"}}}"
+					  "pattern": "{ ($.eventName = CreateNetworkAcl) || ($.eventName = CreateNetworkAclEntry) }"
 					}
 				  }
 				},
@@ -286,21 +286,14 @@ func TestSink_TFPlanExposesAfterUnknownAndConfiguration(t *testing.T) {
 		"resource": {
 			"aws_s3_bucket": {
 				"main": {
-					"acl": "private"
-				}
-			}
-		},
-		"_dd_tfplan_meta": {
-			"aws_s3_bucket": {
-				"main": {
-					"address": "aws_s3_bucket.main",
-					"after_unknown": {
-						"bucket": true,
-						"id": true
-					},
-					"configuration_expressions": {
-						"bucket": {
-							"references": ["random_id.suffix"]
+					"acl": "private",
+					"bucket": "${__dd_unknown__}",
+					"_dd_meta": {
+						"address": "aws_s3_bucket.main",
+						"configured": {"bucket": true},
+						"references": {},
+						"unknown": {
+							"bucket": true
 						}
 					}
 				}

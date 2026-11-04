@@ -96,7 +96,7 @@ has_owner(resource) if resource.labels.owner`,
 
 import rego.v1
 
-display_name(resource_type, name) := sprintf("%s.%s", [resource_type, name])`,
+display_name(_, name) := name`,
 		},
 	}
 }
@@ -655,6 +655,46 @@ func TestAnalyze_LocalModuleAbsolutePathShape(t *testing.T) {
 	}
 	if !sawCallSite {
 		t.Errorf("expected an instantiated finding carrying call-site attribution; findings = %+v; failed queries: %v",
+			out.Findings, out.FailedQueries)
+	}
+}
+
+// TestAnalyze_ContentPush_ZeroCountBlockDropped proves the content-push path
+// drops a block whose count is known to be zero, as the CLI does: only the
+// count = 1 sibling produces a finding.
+func TestAnalyze_ContentPush_ZeroCountBlockDropped(t *testing.T) {
+	s := newTestServer(t)
+	rule := syntheticBucketRule("zero-count-bucket")
+	const tmpl = `resource "aws_s3_bucket" "this" {
+  count  = %d
+  bucket = "zero-count-bucket"
+}
+`
+	req := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: "infra/off.tf", Content: fmt.Sprintf(tmpl, 0)},
+			{Path: "infra/on.tf", Content: fmt.Sprintf(tmpl, 1)},
+		},
+		Ruleset:  ruleset(rule),
+		Platform: []string{"terraform"},
+	}
+
+	out, _ := postAnalyze(t, s, req)
+
+	var sawOn bool
+	for _, f := range out.Findings {
+		if f.QueryID != syntheticBucketRuleID {
+			continue
+		}
+		switch f.FileName {
+		case "infra/off.tf":
+			t.Errorf("zero-count block produced a finding: %+v", f)
+		case "infra/on.tf":
+			sawOn = true
+		}
+	}
+	if !sawOn {
+		t.Errorf("expected a finding for the count = 1 block; findings = %+v; failed queries: %v",
 			out.Findings, out.FailedQueries)
 	}
 }

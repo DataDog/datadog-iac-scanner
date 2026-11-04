@@ -8,7 +8,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"sort"
 
@@ -16,20 +15,19 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
-	"github.com/antlr4-go/antlr/v4"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
 
 var (
+	// lines names, per file kind, the attributes holding a CloudWatch Logs
+	// filter pattern that are parsed into a tree. Terraform documents are
+	// parsed by the engine once they are final (see engine.ParseFilterPattern).
 	lines = map[model.FileKind][]string{
-		"TF":     {"pattern"},
-		"TFPLAN": {"pattern"},
-		"JSON":   {"FilterPattern"},
-		"YAML":   {"filter_pattern", "FilterPattern"},
+		"JSON": {"FilterPattern"},
+		"YAML": {"filter_pattern", "FilterPattern"},
 	}
 )
 
@@ -252,38 +250,4 @@ func (s *Service) classifyPlatform(ctx context.Context, kind model.FileKind, fil
 
 func resolveCRLFFile(fileContent []byte) []byte {
 	return bytes.ReplaceAll(fileContent, []byte("\r\n"), []byte("\n"))
-}
-
-func resolveJSONFilter(jsonFilter string) string {
-	is := antlr.NewInputStream(jsonFilter)
-
-	// lexer build
-	lexer := parser.NewJSONFilterLexer(is)
-	lexer.RemoveErrorListeners()
-	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
-	errorListener := parser.NewCustomErrorListener()
-	lexer.RemoveErrorListeners()
-	lexer.AddErrorListener(errorListener)
-
-	// parser build
-	p := parser.NewJSONFilterParser(stream)
-	p.RemoveErrorListeners()
-	p.AddErrorListener(errorListener)
-	p.BuildParseTrees = true
-	tree := p.Awsjsonfilter()
-
-	// parse
-	visitor := parser.NewJSONFilterPrinterVisitor()
-	if errorListener.HasErrors() {
-		return jsonFilter
-	}
-
-	parsed := visitor.VisitAll(tree)
-
-	parsedByte, err := json.Marshal(parsed)
-	if err != nil {
-		return jsonFilter
-	}
-
-	return string(parsedByte)
 }

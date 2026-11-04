@@ -48,10 +48,11 @@ type VulnerableFile struct {
 	IsSuppressed             bool   `json:"is_suppressed,omitempty"`
 	SuppressionKind          string `json:"suppression_kind,omitempty"`
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
-	// ModuleCallChain: local-module call path; empty for root; included in fingerprint.
-	ModuleCallChain string `json:"module_call_chain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
+	// Terraform instance identity; see Vulnerability.ResourceID.
+	ResourceID string `json:"resource_id,omitempty"`
+	RootModule string `json:"root_module,omitempty"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -287,6 +288,24 @@ func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObje
 	return returnPath
 }
 
+// sortVulnerableFiles orders a rule's findings by where they are reported, so
+// a report does not depend on the order scan services stored them in.
+func sortVulnerableFiles(files []VulnerableFile) {
+	sort.SliceStable(files, func(i, j int) bool {
+		a, b := &files[i], &files[j]
+		if a.FileName != b.FileName {
+			return a.FileName < b.FileName
+		}
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		if a.SearchKey != b.SearchKey {
+			return a.SearchKey < b.SearchKey
+		}
+		return a.Fingerprint < b.Fingerprint
+	})
+}
+
 // CreateSummary creates a report for a single scan, based on its scanID
 //
 //nolint:gocritic
@@ -339,7 +358,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			item.ResourceName,
 			ruleID,
 			identityLine,
-			item.ModuleCallChain,
+			TerraformIdentity{RootModule: item.RootModule, ResourceID: item.ResourceID},
 		)
 
 		qItem := q[item.QueryID]
@@ -365,13 +384,18 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			IsSuppressed:             item.IsSuppressed,
 			SuppressionKind:          item.SuppressionKind,
 			SuppressionJustification: item.SuppressionJustification,
-			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
+			ResourceID:               item.ResourceID,
+			RootModule:               item.RootModule,
 		})
 
 		filePaths[resolvedPath] = item.FileName
 
 		q[item.QueryID] = qItem
+	}
+
+	for idx := range q {
+		sortVulnerableFiles(q[idx].Files)
 	}
 
 	queries := make([]QueryResult, 0, len(q))
@@ -400,7 +424,10 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 	}
 	sort.Slice(queries, func(i, j int) bool {
 		if severityOrder[queries[i].Severity] == severityOrder[queries[j].Severity] {
-			return queries[i].QueryName < queries[j].QueryName
+			if queries[i].QueryName != queries[j].QueryName {
+				return queries[i].QueryName < queries[j].QueryName
+			}
+			return queries[i].QueryID < queries[j].QueryID
 		}
 		return severityOrder[queries[i].Severity] < severityOrder[queries[j].Severity]
 	})

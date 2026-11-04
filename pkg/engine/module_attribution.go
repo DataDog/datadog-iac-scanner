@@ -60,6 +60,13 @@ type moduleAttributionCache struct {
 	blockReads     map[blockReadKey]inputReads
 	collections    map[localCacheKey]inputReads
 	argumentValues map[argumentCacheKey]argumentValue
+	references     map[referenceCacheKey]traced
+	blockInstances map[blockInstancesKey]blockInstances
+	// referenceAnalyzers holds the analyzer resource references are read with,
+	// per module instance.
+	referenceAnalyzers map[referenceScope]*valueAnalyzer
+	// refs shares reference leaves across roots, so it outlives this cache.
+	refs *refIntern
 	// pathChains identifies call chains by their module blocks, and
 	// scopedChains by their module blocks and the scopes calling them.
 	pathChains   chainNode
@@ -104,18 +111,21 @@ type modulePackage struct {
 
 func newModuleAttributionCache() *moduleAttributionCache {
 	return &moduleAttributionCache{
-		resources:      make(map[resourceCacheKey]*model.ModuleAttribution),
-		chains:         make(map[*chainNode]modulePathEntry),
-		attributes:     make(map[bodyCacheKey]bodyReads),
-		arguments:      make(map[argumentCacheKey]inputReads),
-		locals:         make(map[localCacheKey]inputReads),
-		eachIndexes:    make(map[localCacheKey]eachIndex),
-		entryParts:     make(map[localCacheKey]eachIndex),
-		mixed:          make(map[mixedCacheKey]bool),
-		blocks:         make(map[*tfeval.ModuleScope]map[string]*hclsyntax.Body),
-		blockReads:     make(map[blockReadKey]inputReads),
-		collections:    make(map[localCacheKey]inputReads),
-		argumentValues: make(map[argumentCacheKey]argumentValue),
+		resources:          make(map[resourceCacheKey]*model.ModuleAttribution),
+		chains:             make(map[*chainNode]modulePathEntry),
+		attributes:         make(map[bodyCacheKey]bodyReads),
+		arguments:          make(map[argumentCacheKey]inputReads),
+		locals:             make(map[localCacheKey]inputReads),
+		eachIndexes:        make(map[localCacheKey]eachIndex),
+		entryParts:         make(map[localCacheKey]eachIndex),
+		mixed:              make(map[mixedCacheKey]bool),
+		blocks:             make(map[*tfeval.ModuleScope]map[string]*hclsyntax.Body),
+		blockReads:         make(map[blockReadKey]inputReads),
+		collections:        make(map[localCacheKey]inputReads),
+		argumentValues:     make(map[argumentCacheKey]argumentValue),
+		references:         make(map[referenceCacheKey]traced),
+		blockInstances:     make(map[blockInstancesKey]blockInstances),
+		referenceAnalyzers: make(map[referenceScope]*valueAnalyzer),
 	}
 }
 

@@ -13,7 +13,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/pkg/errors"
 )
 
@@ -94,54 +93,6 @@ func MergeInputData(defaultInputData, customInputData string) (string, error) {
 	return string(mergedJSON), nil
 }
 
-func MergeModulesData(modules []tfmodules.ParsedModule, inputData string) (string, error) {
-	if checkEmptyInputdata(inputData) {
-		inputData = emptyInputData
-	}
-
-	dataJSON, err := parseInputDataObject(inputData)
-	if err != nil {
-		return "", err
-	}
-	// Ensure "common_lib" exists and is a map.
-	commonLib, ok := dataJSON["common_lib"].(map[string]any)
-	if !ok || commonLib == nil {
-		commonLib = make(map[string]any)
-		dataJSON["common_lib"] = commonLib
-	}
-
-	// Ensure "modules" within "common_lib" exists and is a map.
-	commonModules, ok := commonLib["modules"].(map[string]any)
-	if !ok || commonModules == nil {
-		commonModules = make(map[string]any)
-		commonLib["modules"] = commonModules
-	}
-
-	instanceCounts := moduleInstanceCounts(modules)
-	// Iterate through generated module mappings and merge their data.
-	for i := range modules {
-		module := &modules[i]
-		for provider, attrData := range module.AttributesData {
-			providersMap, ok := commonModules[provider].(map[string]any)
-			if !ok || providersMap == nil {
-				providersMap = map[string]any{}
-				commonModules[provider] = providersMap
-			}
-
-			providersMap[moduleEquivalentKey(module.Source, module.Version)] = attrData
-			if instanceCounts[provider+"\x00"+module.Source] <= 1 {
-				providersMap[module.Source] = attrData
-			}
-		}
-	}
-
-	mergedJSON, mergeErr := json.Marshal(dataJSON)
-	if mergeErr != nil {
-		return "", errors.Wrapf(mergeErr, "failed to merge query input data")
-	}
-	return string(mergedJSON), nil
-}
-
 func parseInputDataObject(inputData string) (map[string]any, error) {
 	if !IsJSONObject(inputData) {
 		return nil, errors.New("failed to merge query input data: expected a JSON object")
@@ -151,25 +102,6 @@ func parseInputDataObject(inputData string) (map[string]any, error) {
 		return nil, errors.Wrap(err, "failed to merge query input data")
 	}
 	return data, nil
-}
-
-func moduleEquivalentKey(source, version string) string {
-	if version == "" {
-		return source
-	}
-	return source + "@" + version
-}
-
-func moduleInstanceCounts(modules []tfmodules.ParsedModule) map[string]int {
-	counts := make(map[string]int)
-	for i := range modules {
-		module := &modules[i]
-		for provider := range module.AttributesData {
-			key := provider + "\x00" + module.Source
-			counts[key]++
-		}
-	}
-	return counts
 }
 
 func checkEmptyInputdata(inputData string) bool {

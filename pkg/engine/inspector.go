@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,6 +71,41 @@ const (
 // slowQueryWarnThreshold is how long a single query (rego eval + result decode)
 // may take before it is logged as slow. We surface slow rules so they can be optimized later.
 const slowQueryWarnThreshold = 60 * time.Second
+
+// payloadBuildGCPercent is the collection target while document trees are
+// converted into the OPA payload. The default target lets released trees sit
+// in the heap beside the new terms until the heap has grown by half, which
+// is what pushes peak RSS. Restored as soon as the payload exists.
+const payloadBuildGCPercent = 10
+
+// payloadGC holds the GC percent lowered while any payload is built. The
+// percent is process-wide and services build payloads concurrently, so each
+// build cannot save and restore it on its own: restores that interleave
+// would leave the lowered percent in place for the rest of the scan.
+var payloadGC struct {
+	sync.Mutex
+	builds   int
+	restored int
+}
+
+// lowerGCForPayload lowers the GC percent until the returned function is
+// called, unless another build already did.
+func lowerGCForPayload() (restore func()) {
+	payloadGC.Lock()
+	if payloadGC.builds == 0 {
+		payloadGC.restored = debug.SetGCPercent(payloadBuildGCPercent)
+	}
+	payloadGC.builds++
+	payloadGC.Unlock()
+	return func() {
+		payloadGC.Lock()
+		payloadGC.builds--
+		if payloadGC.builds == 0 {
+			debug.SetGCPercent(payloadGC.restored)
+		}
+		payloadGC.Unlock()
+	}
+}
 
 // ErrNoResult - error representing when a query didn't return a result
 var ErrNoResult = errors.New("query: not result")
@@ -266,6 +302,11 @@ type Inspector struct {
 	// findings are decoded (see findingSet) instead of returning every decoded
 	// finding (see SetCompactFindingsAtDecode).
 	compactFindingsAtDecode bool
+	// crossDoc caches the analysis of one Terraform ruleset.
+	crossDocMu    sync.Mutex
+	crossDocKey   uint64
+	crossDoc      terraformQueryAnalysis
+	crossDocReady bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -329,10 +370,11 @@ func (c *Inspector) SetEvalGcRelief(relief bool) {
 // SetCompactFindingsAtDecode keeps one finding per identity as each rule's
 // findings are decoded, so a module instantiated per count/for_each instance
 // does not have every duplicate instance of its findings held in memory until
-// storage reduces them at the end of the scan.
+// storage reduces them at the end of the scan. Inspect then returns one
+// finding per identity, the first in model.CompareFindings order.
 //
-// Only a caller that, like storage, keeps the last finding of each identity
-// and drops the rest should enable this: it must stay off for a caller that
+// Only a caller that, like storage, keeps one finding of each identity and
+// drops the rest should enable this: it must stay off for a caller that
 // reads Inspect's return value directly, such as the test-rules rule
 // harness, because identity does not include the line for most platforms and
 // collapsing at decode would silently drop a second genuine violation of one
@@ -504,8 +546,8 @@ type QueryResult struct {
 // evaluation failures both carry their error so the serial aggregation records
 // them in FailedQueries without terminating the rest of the scan.
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
-	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
-	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
+	payloads platformPayloads, queries []model.QueryMetadata, queryID int, root string,
+	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
 	contextLogger := logger.FromContext(ctx)
 
@@ -516,7 +558,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	queryOpa, ok := sharedQueries[queryID]
 	var err error
 	if !ok {
-		queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[queryID], modules, baseStores, baseDataHashes, c.useRulesCache)
+		queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[queryID], baseStores, baseDataHashes, c.useRulesCache)
 	}
 	loadDur := time.Since(loadStart)
 	if err != nil {
@@ -529,10 +571,14 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		Metadata: queries[queryID],
 	}
 
-	// Evaluate each query only against documents of its own platform. The
-	// payload is read-only, so sharing the per-platform ast.Value across workers
-	// is safe.
+	// Evaluate each query only against documents of its own platform. Per-root
+	// inputs are assembled here so the scan does not retain one object per root
+	// for the whole eval; workers still run roots in parallel.
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
+	if root != "" {
+		payload = payloads.payloadForRoot(root)
+		routing = routing.forRoot(root)
+	}
 	queryContext := &QueryContext{
 		Ctx:                     ctx,
 		scanID:                  scanID,
@@ -549,12 +595,22 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	evalDur := time.Since(evalStart)
 	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
 		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
-	if err == nil {
-		c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
-	}
 	return QueryResult{
 		vulnerabilities: vuls, moduleResultsRaised: moduleRaised, moduleSeverity: moduleSeverity, err: err, queryID: queryID,
 	}
+}
+
+func (c *Inspector) logCrossDocumentQueries(ctx context.Context, queries []model.QueryMetadata) map[int]bool {
+	cross := c.terraformCrossDocumentQueries(queries)
+	crossCount := 0
+	for _, isCross := range cross {
+		if isCross {
+			crossCount++
+		}
+	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Debug().Msgf("%d/%d Terraform rules read more than one document", crossCount, len(cross))
+	return cross
 }
 
 func (c *Inspector) Inspect(
@@ -567,40 +623,36 @@ func (c *Inspector) Inspect(
 
 	queries := c.getQueriesByPlat(platforms)
 
+	// Stamp the files' Terraform identity context before anything reads it:
+	// module evaluation captures external-module-file scopes and mutates
+	// documents (instantiated blocks are stripped), and the payload build may
+	// release the documents the plan metadata and block sets are extracted
+	// from.
+	c.stampTerraformScopes(files)
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
 	var syntheticFiles []*model.FileMetadata
+	var docRoots map[string][]string
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		moduleDocs, syntheticFiles, moduleExtras, moduleFiles, docRoots = c.instantiateLocalModules(ctx, files, targets)
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
+	} else {
+		docRoots = documentRoots(files, nil, c.repoPath)
 	}
+	stampProviderMeta(files, docRoots)
+	parseTerraformValues(ctx, files, moduleDocs)
+	rootCount := countRoots(docRoots)
+	var cross map[int]bool
+	if rootCount > 1 {
+		cross = c.logCrossDocumentQueries(ctx, queries)
+	}
+	byRoot := terraformByRoot(rootCount, cross)
 
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
-
-	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
-	// non-fatal (logged, scan continues), but a context cancellation must abort
-	// the scan rather than proceed with partial module data.
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
-	}
-	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
-
-	// Step 2: Enrich modules with parsed variables. As with Step 1, a context
-	// cancellation must abort the scan rather than proceed with partial module
-	// data; per-module parse failures are non-fatal and handled internally.
-	rootDir := c.repoPath
-	enrichedModules, err := tfmodules.ParseAllModuleVariables(
-		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver(), c.mergeAllow)
-	if err != nil {
-		return nil, err
-	}
 
 	// Synthetic files stand in for module instantiations of a file that has
 	// already been read; they are only joined once findings need to be
@@ -613,15 +665,15 @@ func (c *Inspector) Inspect(
 	// payload partitioning.
 	filesMap := files.ToMap()
 
-	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries)
-	if err != nil {
-		return nil, err
-	}
-
-	// Collect the trees released during conversion and recompute the heap goal
-	// from the smaller live set before eval.
-	if c.releaseDocumentsAfterPayload {
-		runtime.GC()
+	// Per-root payloads omit unresolved-module caller fan-out so shared module
+	// bodies are not pasted into every caller input. Routing still uses docRoots.
+	evalRoots := docRoots
+	if byRoot {
+		evalRoots = evalDocumentRoots(files, &moduleResolutionResult{
+			moduleFiles:    moduleFiles,
+			syntheticFiles: syntheticFiles,
+			extras:         moduleExtras,
+		}, c.repoPath)
 	}
 
 	// The payload is a self-contained ast.Value copy; only the line-info release
@@ -639,7 +691,7 @@ func (c *Inspector) Inspect(
 	// same payload for every PrepareForEval call. The per-platform data hash is
 	// folded into each compiled-query cache key so a compiled query is only
 	// reused by a later scan whose base data is byte-identical.
-	baseInputData := c.QueryLoader.precomputeBaseInputData(enrichedModules)
+	baseInputData := c.QueryLoader.precomputeBaseInputData()
 	baseStores := precomputeBaseStores(baseInputData)
 	baseDataHashes := hashBaseInputData(baseInputData)
 
@@ -648,6 +700,7 @@ func (c *Inspector) Inspect(
 	// time. Rules missing from the returned map (parse/compile failures) fall back
 	// to isolated LoadQuery in the worker, so correctness is preserved even if
 	// shared compilation partially fails.
+	var err error
 	var sharedQueries map[int]*rego.PreparedEvalQuery
 	if c.useRulesCache {
 		var cacheHit bool
@@ -663,15 +716,38 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
-	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
+	routing := newFindingRouting(moduleExtras, moduleFiles, docRoots, files, c.repoPath)
 
-	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
+	tally := queryTally{}
+	var vulnerabilities []model.Vulnerability
+	if c.batchLargeTerraform(queries, len(combinedFiles.Documents)+len(moduleDocs)) {
+		vulnerabilities, err = c.evalTerraformInBatches(ctx, scanID, filesMap, combinedFiles.Documents, moduleDocs, queries, evalRoots,
+			baseStores, baseDataHashes, sharedQueries, routing, tally)
+	} else {
+		var payloads platformPayloads
+		payloads, err = c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries, evalRoots, byRoot)
+		if err != nil {
+			return nil, err
+		}
+		if byRoot {
+			contextLogger.Debug().Msgf("%d Terraform inputs, one per root module", len(payloads.terraformRootDocs))
+		}
+		if c.releaseDocumentsAfterPayload {
+			runtime.GC()
+		}
+		vulnerabilities, err = c.executeQueries(ctx, scanID, filesMap, payloads, queries,
+			baseStores, baseDataHashes, sharedQueries, routing, nil, tally)
+	}
 	if err != nil {
 		return nil, err
 	}
+	c.trackExecutions(queries, tally)
 
 	c.releasePostEvalFileData(filesMap)
+	if c.compactFindingsAtDecode {
+		return model.FirstFindingPerIdentity(vulnerabilities), nil
+	}
+	model.SortFindings(vulnerabilities)
 	return vulnerabilities, nil
 }
 
@@ -743,11 +819,12 @@ func (c *Inspector) executeQueries(
 	filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads,
 	queries []model.QueryMetadata,
-	enrichedModules []tfmodules.ParsedModule,
 	baseStores map[string]storage.Store,
 	baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery,
 	routing *findingRouting,
+	only map[int]bool,
+	tally queryTally,
 ) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
@@ -780,11 +857,12 @@ func (c *Inspector) executeQueries(
 	// budget and cannot oversubscribe the machine. Results land in an
 	// index-aligned slice (no shared mutable state between workers); the actual
 	// aggregation happens serially below.
-	results := make([]QueryResult, len(queries))
-	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
-		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
-				sharedQueries, routing)
+	work := c.queryWork(queries, payloads, only)
+	results := make([]QueryResult, len(work))
+	err := utils.ForEach(ctx, work, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
+		func(ctx context.Context, unit queryWork, i int) error {
+			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, unit.queryID, unit.root,
+				baseStores, baseDataHashes, sharedQueries, routing)
 			return nil
 		})
 	// The closure never returns a non-nil error itself, so ForEach only reports
@@ -795,8 +873,16 @@ func (c *Inspector) executeQueries(
 	}
 
 	// Aggregate serially: processResult mutates shared state.
+	for i := range queries {
+		if only == nil || only[i] {
+			tally.ran(i)
+		}
+	}
 	moduleVulns := make(map[string]moduleVulnCounts)
 	for i := range results {
+		if results[i].err != nil {
+			tally.failed(results[i].queryID)
+		}
 		processResult(ctx, &results[i], &vulnerabilities, &moduleVulns, queries, c)
 	}
 	for name, counts := range moduleVulns {
@@ -808,6 +894,71 @@ func (c *Inspector) executeQueries(
 	}
 
 	return vulnerabilities, nil
+}
+
+// queryWork is one evaluation of a rule. root is set when the rule joins
+// documents and the scan has a Terraform input per root; those units of one
+// rule run in root order so their findings aggregate deterministically.
+type queryWork struct {
+	queryID int
+	root    string
+}
+
+// queryTally records, by rule index, whether any evaluation of the rule
+// failed. A rule runs once per root and per batch; it is counted once.
+type queryTally map[int]bool
+
+func (t queryTally) ran(queryID int) {
+	if t != nil && !t[queryID] {
+		t[queryID] = false
+	}
+}
+
+func (t queryTally) failed(queryID int) {
+	if t != nil {
+		t[queryID] = true
+	}
+}
+
+// trackExecutions counts every rule that ran without failing in
+// ExecutedQueries, the counterpart of ExecutingQueries.
+func (c *Inspector) trackExecutions(queries []model.QueryMetadata, tally queryTally) {
+	for queryID, failed := range tally {
+		if !failed {
+			c.tracker.TrackQueryExecution(queries[queryID].Aggregation)
+		}
+	}
+}
+
+func (c *Inspector) queryWork(queries []model.QueryMetadata, payloads platformPayloads, only map[int]bool) []queryWork {
+	roots := make([]string, 0, len(payloads.terraformRootDocs))
+	for root := range payloads.terraformRootDocs {
+		roots = append(roots, root)
+	}
+	sort.Strings(roots)
+	var analysis terraformQueryAnalysis
+	if len(roots) > 0 {
+		analysis = c.terraformQueryAnalysis(queries)
+	}
+	rootTypes := rootTypeIndex(payloads.terraformRootDocs)
+	work := make([]queryWork, 0, len(queries))
+	for i := range queries {
+		if only != nil && !only[i] {
+			continue
+		}
+		if len(roots) > 0 && queries[i].Platform == platformTerraform && analysis.cross[i] {
+			targets := analysis.targets[i]
+			for _, root := range roots {
+				if !rootHasRuleTarget(rootTypes[root], targets) {
+					continue
+				}
+				work = append(work, queryWork{queryID: i, root: root})
+			}
+			continue
+		}
+		work = append(work, queryWork{queryID: i})
+	}
+	return work
 }
 
 type moduleVulnCounts struct {
@@ -838,9 +989,11 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 		expanded = append(expanded, vulns[i])
 		for _, ex := range extras[vulns[i].FileID] {
 			vCopy := vulns[i]
-			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			// ResourceID is unchanged: a deduplicated caller resolves the same
+			// module address, only its own root module directory differs.
+			vCopy.RootModule = ex.rootModule
 			expanded = append(expanded, vCopy)
 		}
 	}
@@ -1181,7 +1334,8 @@ func (c *Inspector) mapToPayloadValue(
 			return memo.val, nil
 		}
 	}
-	pairs := make([]payloadChildPair, 0, len(v))
+	mark := len(cons.childPairs)
+	defer func() { cons.childPairs = cons.childPairs[:mark] }()
 	for key, raw := range v {
 		converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
 		if err != nil {
@@ -1192,9 +1346,10 @@ func (c *Inspector) mapToPayloadValue(
 			h = hashConsScalarKey(converted)
 			cons.valHash[converted] = h
 		}
-		pairs = append(pairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
+		cons.childPairs = append(cons.childPairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].key < pairs[j].key })
+	pairs := cons.childPairs[mark:]
+	slices.SortFunc(pairs, func(a, b payloadChildPair) int { return strings.Compare(a.key, b.key) })
 
 	contentKey := hashConsBase
 	for _, p := range pairs {
@@ -1282,6 +1437,10 @@ type payloadHashCons struct {
 	// jsonencodeCache memoizes TransformJsonencodeInPayload results per
 	// input scalar value.
 	jsonencodeCache map[ast.Value]ast.Value
+	// childPairs is the children of the object nodes being converted. The
+	// conversion is depth first and no node keeps its children past its own
+	// conversion, so one stack serves every node instead of a slice per node.
+	childPairs []payloadChildPair
 }
 
 // pointerMemo is a byPointer entry: the converted value plus a fingerprint of
@@ -1447,15 +1606,13 @@ func (c *Inspector) DecodeQueryResults(
 	if err != nil {
 		return nil, 0, "", err
 	}
-	if qCtx.discardLineInfoAfterUse {
-		// Group findings by file so each file's line-info tree is built once and
-		// discarded on its last finding (advanceLineInfoFile); without grouping,
-		// interleaved documentIds would discard and reparse per transition.
-		// Stable keeps the per-file ordering the query produced.
-		sort.SliceStable(queryResultItems, func(i, j int) bool {
-			return resultDocumentID(queryResultItems[i]) < resultDocumentID(queryResultItems[j])
-		})
-	}
+	// Group findings by document so each file's line-info tree is built once and
+	// discarded on its last finding (advanceLineInfoFile); without grouping,
+	// interleaved documentIds would discard and reparse per transition.
+	// Documents are ordered by path, since document ids are random, so the
+	// findings a compacting set skips do not depend on the run. Stable keeps
+	// the per-document ordering the query produced.
+	sortResultItems(queryResultItems, qCtx.Files)
 
 	findings := qCtx.findings
 	if findings == nil {
@@ -1467,7 +1624,7 @@ func (c *Inspector) DecodeQueryResults(
 	var moduleSeverity model.Severity
 	var activeLineInfoFile string
 decodeLoop:
-	for i := range findings.order(len(queryResultItems)) {
+	for i := range queryResultItems {
 		queryResultItem := queryResultItems[i]
 		// Each item is decoded once; dropping it as it is read lets a rule
 		// raising many findings hold one decoded item rather than all of them.
@@ -1566,6 +1723,22 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 }
 
 // resultDocumentID returns the file id a result item points at.
+func sortResultItems(items []interface{}, files map[string]*model.FileMetadata) {
+	path := func(id string) string {
+		if f := files[id]; f != nil {
+			return f.FilePath
+		}
+		return ""
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := resultDocumentID(items[i]), resultDocumentID(items[j])
+		if pa, pb := path(a), path(b); pa != pb {
+			return pa < pb
+		}
+		return a < b
+	})
+}
+
 func resultDocumentID(item interface{}) string {
 	if m, ok := item.(map[string]interface{}); ok {
 		if id, ok := m["documentId"].(string); ok {
@@ -1595,8 +1768,8 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	queryResultItem interface{}, queryDuration time.Duration) (*model.Vulnerability, bool) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerability, err := c.vb(ctx, qCtx, c.tracker, queryResultItem, c.detector, c.useOldSeverities, queryDuration)
-	if err != nil && err.Error() == ErrNoResult.Error() {
-		// Ignoring bad results
+	if err != nil && (errors.Is(err, ErrNoResult) || errors.Is(err, ErrNoTerraformIdentity)) {
+		// Ignoring bad results and Terraform findings that name no declared block.
 		return nil, false
 	}
 	if err != nil {
@@ -1730,12 +1903,30 @@ const (
 	platformKnative        = "knative"
 	platformServerlessFW   = "serverlessfw"
 	platformCloudFormation = "cloudformation"
+	platformTerraform      = "terraform"
 )
 
 // platformPayloads holds per-platform OPA input payloads built once per scan.
 type platformPayloads struct {
 	byPlatform map[string]ast.Value
 	full       ast.Value
+	// terraformRootDocs holds, per root, the Terraform document terms that root
+	// evaluates. Payloads are assembled on demand so a multi-root scan does not
+	// retain one input object per root for the whole eval. Nil when the scan
+	// is single-root or every Terraform rule is document-local.
+	terraformRootDocs map[string][]*ast.Term
+	// terraformIndex is the scan-wide literal index, attached when a root
+	// payload is assembled. Nil when the index is not needed.
+	terraformIndex ast.Object
+}
+
+// payloadForRoot builds the OPA input for one root from its document terms.
+func (p platformPayloads) payloadForRoot(root string) ast.Value {
+	pv := assembleDocumentPayload(p.terraformRootDocs[root])
+	if p.terraformIndex != nil {
+		pv = withTerraformIndex(pv, p.terraformIndex, root)
+	}
+	return pv
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -1747,7 +1938,7 @@ func partitionDocsByPlatform(
 	filesMap map[string]*model.FileMetadata,
 	combinedDocs, moduleDocs []model.Document,
 ) (all []interface{}, bucketsPerDoc [][]string, unknown []int) {
-	all = make([]interface{}, 0, len(combinedDocs)+len(moduleDocs))
+	all = make([]interface{}, 0, len(combinedDocs))
 	addDoc := func(d model.Document) {
 		m := map[string]interface{}(d)
 		id, _ := d["id"].(string)
@@ -1787,6 +1978,8 @@ func (c *Inspector) buildPlatformPayloads(
 	filesMap map[string]*model.FileMetadata,
 	combinedDocs, moduleDocs []model.Document,
 	queries []model.QueryMetadata,
+	docRoots map[string][]string,
+	byRoot bool,
 ) (platformPayloads, error) {
 	allDocs, bucketsPerDoc, unknownDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
 
@@ -1803,6 +1996,9 @@ func (c *Inspector) buildPlatformPayloads(
 
 	terms := make([]*ast.Term, len(allDocs))
 	cons := newPayloadHashCons()
+	if c.releaseDocumentsAfterPayload {
+		defer lowerGCForPayload()()
+	}
 	for i, doc := range allDocs {
 		v, err := c.interfaceToPayloadValue(ctx, doc, cons)
 		if err != nil {
@@ -1814,8 +2010,38 @@ func (c *Inspector) buildPlatformPayloads(
 		}
 	}
 
-	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
+	var libraries []string
+	if c.QueryLoader != nil {
+		libraries = c.terraformRuleLibraries()
+	}
+	needIndex := neededPlatforms[platformTerraform] && terraformIndexNeeded(queries, libraries...)
+	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload, docRoots, byRoot, needIndex)
 	return payloads, nil
+}
+
+// attachTerraformIndex adds the scan-wide literal index to the platform-wide
+// Terraform payload and records it for per-root assembly. When full shares
+// the platform payload's object, Insert mutates it in place too.
+func attachTerraformIndex(out *platformPayloads, terraformList []*ast.Term, docRoots map[string][]string) {
+	index := buildTerraformIndex(terraformList, docRoots)
+	out.terraformIndex = index
+	if pv, ok := out.byPlatform[platformTerraform]; ok {
+		out.byPlatform[platformTerraform] = withTerraformIndex(pv, index, soleRoot(docRoots))
+	}
+}
+
+// withUnknownDocs appends the documents of undetermined platform, which every
+// platform's payload carries, to list.
+func withUnknownDocs(list, terms []*ast.Term, unknownDocs []int) []*ast.Term {
+	if len(unknownDocs) == 0 {
+		return list
+	}
+	combined := make([]*ast.Term, 0, len(list)+len(unknownDocs))
+	combined = append(combined, list...)
+	for _, idx := range unknownDocs {
+		combined = append(combined, terms[idx])
+	}
+	return combined
 }
 
 // assemblePlatformPayloads wraps the converted terms into per-platform payloads
@@ -1826,6 +2052,9 @@ func assemblePlatformPayloads(
 	unknownDocs []int,
 	neededPlatforms map[string]bool,
 	needFullPayload bool,
+	docRoots map[string][]string,
+	byRoot bool,
+	needIndex bool,
 ) platformPayloads {
 	platformLists := make(map[string][]*ast.Term, len(neededPlatforms))
 	for i, keys := range bucketsPerDoc {
@@ -1838,17 +2067,13 @@ func assemblePlatformPayloads(
 	out := platformPayloads{
 		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
 	}
+	var terraformList []*ast.Term
 	for key := range neededPlatforms {
-		list := platformLists[key]
-		if len(unknownDocs) > 0 {
-			combined := make([]*ast.Term, 0, len(list)+len(unknownDocs))
-			combined = append(combined, list...)
-			for _, idx := range unknownDocs {
-				combined = append(combined, terms[idx])
-			}
-			list = combined
-		}
+		list := withUnknownDocs(platformLists[key], terms, unknownDocs)
 		pv := assembleDocumentPayload(list)
+		if key == platformTerraform {
+			terraformList = list
+		}
 		out.byPlatform[key] = pv
 		if needFullPayload &&
 			len(neededPlatforms) == 1 &&
@@ -1857,12 +2082,54 @@ func assemblePlatformPayloads(
 			out.full = pv
 		}
 	}
+	if byRoot {
+		out.terraformRootDocs = docsByRoot(terraformList, docRoots)
+	}
+	if needIndex {
+		attachTerraformIndex(&out, terraformList, docRoots)
+	}
 
 	if needFullPayload && out.full == nil {
 		out.full = assembleDocumentPayload(terms)
 	}
 
 	return out
+}
+
+// docsByRoot groups the Terraform bucket by root. Each root's list holds the
+// same *ast.Term values, in bucket order, for every document whose roots
+// include it. A document is not split when several roots share it.
+func docsByRoot(list []*ast.Term, docRoots map[string][]string) map[string][]*ast.Term {
+	grouped := make(map[string][]*ast.Term)
+	for _, term := range list {
+		id, ok := termDocumentID(term)
+		if !ok {
+			continue
+		}
+		for _, root := range docRoots[id] {
+			grouped[root] = append(grouped[root], term)
+		}
+	}
+	if len(grouped) == 0 {
+		return nil
+	}
+	return grouped
+}
+
+func termDocumentID(term *ast.Term) (string, bool) {
+	obj, ok := term.Value.(ast.Object)
+	if !ok {
+		return "", false
+	}
+	id := obj.Get(ast.StringTerm("id"))
+	if id == nil {
+		return "", false
+	}
+	s, ok := id.Value.(ast.String)
+	if !ok {
+		return "", false
+	}
+	return string(s), true
 }
 
 // assembleDocumentPayload wraps a document term list in the
@@ -2022,10 +2289,9 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 	}, nil
 }
 
-// buildMergedInputData merges the platform library, common library and (when
-// present) module input data into a single JSON document for a query.
-func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
-	modules []tfmodules.ParsedModule) (string, error) {
+// buildMergedInputData merges the platform library, common library and the
+// query's custom input data into a single JSON document for a query.
+func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata) (string, error) {
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
 	if !ok {
 		return "", errors.New("failed to get platform library")
@@ -2038,23 +2304,17 @@ func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
 	if err != nil {
 		return "", errors.Wrap(err, "could not merge common library input data")
 	}
-	if modules != nil {
-		mergedInputData, err = source.MergeModulesData(modules, mergedInputData)
-		if err != nil {
-			return "", errors.Wrap(err, "could not merge modules input data")
-		}
-	}
 	return mergedInputData, nil
 }
 
 // precomputeBaseInputData builds, once per platform, the merged input data for
-// queries that carry no custom InputData. The common/platform library data and
-// the module payload are identical across such queries, so doing this once
-// avoids re-serializing the (potentially large) module set for every query.
-func (q *QueryLoader) precomputeBaseInputData(modules []tfmodules.ParsedModule) map[string]string {
+// queries that carry no custom InputData. The common/platform library data is
+// identical across such queries, so doing this once avoids re-merging it for
+// every query.
+func (q *QueryLoader) precomputeBaseInputData() map[string]string {
 	base := make(map[string]string, len(q.platformLibraries))
 	for platform := range q.platformLibraries {
-		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform}, modules)
+		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform})
 		if err != nil {
 			continue
 		}
@@ -2078,16 +2338,15 @@ func precomputeBaseStores(baseInputData map[string]string) map[string]storage.St
 // LoadQuery loads the query into memory so it can be freed when not used anymore.
 //
 // baseStores holds one shared, read-only inmem store per platform (the merged
-// library + module input data for this scan); baseDataHashes holds a hash of
+// library input data for this scan); baseDataHashes holds a hash of
 // each store's data. When the query carries no custom InputData it uses the
 // shared base store, and its compiled *PreparedEvalQuery is served from / stored
 // in the process-global preparedQueryCache — the cache key folds in the base
 // data hash, so a compiled query (whose store bakes in this scan's data) is only
 // reused by a later scan whose base data is byte-identical. This makes warm
-// scans skip the expensive PrepareForEval compile even when Terraform module
-// data is present, as long as that data is unchanged.
+// scans skip the expensive PrepareForEval compile as long as that data is
+// unchanged.
 func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
-	modules []tfmodules.ParsedModule,
 	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
 	cacheEnabled bool) (*rego.PreparedEvalQuery, error) {
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
@@ -2121,7 +2380,7 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		if useCache {
 			store = prebuilt
 		} else {
-			mergedInputData, err := q.buildMergedInputData(query, modules)
+			mergedInputData, err := q.buildMergedInputData(query)
 			if err != nil {
 				return nil, err
 			}
