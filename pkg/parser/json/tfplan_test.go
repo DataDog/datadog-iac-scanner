@@ -1886,7 +1886,7 @@ func TestPlanValuesUnconfiguredListOfObjectsCountsAsWritten(t *testing.T) {
 		"tags_all":   map[string]interface{}{"env": "x"},
 	}, values)
 	require.Equal(t, map[string]interface{}{
-		"bucket": true,
+		"bucket":     true,
 		"versioning": []interface{}{map[string]interface{}{"enabled": true, "mfa_delete": true}},
 	}, meta["configured"],
 		"an unconfigured list of objects is written as a list of shapes, not a boolean")
@@ -2180,7 +2180,8 @@ func TestPlanReferencesDynamicIndexReadsEveryInstance(t *testing.T) {
 			"value":{"references":["each.value.id","each.value"]}}},
 		{"address":"aws_route_table_association.single","mode":"managed","type":"aws_route_table_association","name":"single","expressions":{
 			"literal":{"references":["aws_subnet.s[1].id","aws_subnet.s[1]","aws_subnet.s"]},
-			"choice":{"references":["var.on","aws_subnet.f[\"a\"]","aws_subnet.f","aws_subnet.s[0]","aws_subnet.s"]}}}]}`
+			"choice":{"references":["var.on","aws_subnet.f[\"a\"]","aws_subnet.f","aws_subnet.s[0]","aws_subnet.s"]},
+			"or_literal":{"references":["var.on","aws_subnet.s[0].id","aws_subnet.s[0]","aws_subnet.s"]}}}]}`
 	doc := referencesPlanDoc(t, planned, addrs, config)
 
 	counted := planMetaFor(t, doc, "aws_route_table_association.c[1]")
@@ -2201,10 +2202,12 @@ func TestPlanReferencesDynamicIndexReadsEveryInstance(t *testing.T) {
 
 	single := planMetaFor(t, doc, "aws_route_table_association.single")
 	require.Equal(t, map[string]interface{}{
-		"literal": []interface{}{"aws_subnet.s[1]"},
-		"choice":  []interface{}{`aws_subnet.f["a"]`, "aws_subnet.s[0]"},
+		"literal":    []interface{}{"aws_subnet.s[1]"},
+		"choice":     []interface{}{`aws_subnet.f["a"]`, "aws_subnet.s[0]"},
+		"or_literal": []interface{}{"aws_subnet.s[0]"},
 	}, single["references"])
-	require.Equal(t, map[string]interface{}{"choice": true}, single["ambiguous"])
+	// var.on ? aws_subnet.s[0].id : "subnet-1" may read nothing.
+	require.Equal(t, map[string]interface{}{"choice": true, "or_literal": true}, single["ambiguous"])
 }
 
 func TestPlanReferencesModuleCallWithoutPlannedResources(t *testing.T) {

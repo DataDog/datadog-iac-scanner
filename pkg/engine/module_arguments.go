@@ -651,8 +651,9 @@ func (a *valueAnalyzer) reads(expr hclsyntax.Expression) inputReads {
 		r.addSelector(a.selectorReads(e.CondExpr))
 		a.shadowed = a.shadowed[:scope]
 		if a.refs != nil && e.CondExpr != nil {
-			// The filter may keep only some of what the collection reads.
-			a.refs.markIfSeveral(start)
+			// The filter may keep only some of what the collection reads,
+			// or none of it.
+			a.refs.markIfAny(start)
 		}
 	default:
 		for _, traversal := range scopeTraversals(expr) {

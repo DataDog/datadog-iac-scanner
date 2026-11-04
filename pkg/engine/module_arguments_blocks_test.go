@@ -343,7 +343,8 @@ resource "aws_iam_role_policy_attachment" "a" {
 		"filtered":  addrs("aws_iam_role.source"),
 		"indexed":   addrs("aws_subnet.s[0]", "aws_subnet.s[1]"),
 	}, referencesOf(t, resources, "aws_iam_role_policy_attachment.a"))
-	require.Equal(t, map[string]interface{}{"indexed": true},
+	// The filter may keep nothing, so its one reference is not certain.
+	require.Equal(t, map[string]interface{}{"filtered": true, "indexed": true},
 		ambiguityOf(t, resources, "aws_iam_role_policy_attachment.a"))
 }
 

@@ -40,8 +40,9 @@ type referenceTrace struct {
 	found     []string
 	// untraced is set when part of what is read could not be followed.
 	untraced bool
-	// ambiguous is set when found over-approximates what is read: a choice
-	// or an index that could not be resolved listed every alternative.
+	// ambiguous is set when found over-approximates what is read: a choice,
+	// an index or a filter that could not be resolved listed every
+	// alternative, and the value reads some of them, possibly none.
 	ambiguous bool
 	// dynamic is how many blocks each dynamic block of the resource
 	// generated, so its references line up with its blocks.
@@ -92,8 +93,10 @@ var referenceKinds = map[tfrefs.Kind]string{
 // traced. What only selects the value, a condition, an index key or a for
 // filter, is not a reference. An index that cannot be resolved reads every
 // instance. ambiguous mirrors the references with a true leaf where the
-// addresses over-approximate the read. A plan lists every read, selectors
-// included, so plan references can be wider.
+// addresses over-approximate the read: the value reads some of them,
+// possibly none, and may come from elsewhere. Without that leaf the value
+// reads every listed address. A plan lists every read, selectors included,
+// so plan references can be wider.
 func staticReferences(r *tfeval.ResolvedResource, a *valueAnalyzer) (refs, ambiguous map[string]interface{}) {
 	if r.Body == nil || r.Scope == nil {
 		return nil, nil
@@ -297,6 +300,12 @@ func (t *referenceTrace) markIfSeveral(start int) {
 }
 
 // foundSince returns the sorted, duplicate-free addresses found from start on.
+func (t *referenceTrace) markIfAny(start int) {
+	if start < len(t.found) {
+		t.ambiguous = true
+	}
+}
+
 func (t *referenceTrace) foundSince(start int) []string {
 	if start > len(t.found) {
 		return nil

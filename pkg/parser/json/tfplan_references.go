@@ -498,8 +498,9 @@ func (c *resourceChangeCorrelation) resolveReferences(
 	trace.addrs = slices.Compact(trace.addrs)
 	// A plan lists the references of every alternative and of every index
 	// without saying which applies: a read that also chooses, by an index or
-	// a condition, over-approximates when it lists several instances.
-	if selects && len(trace.addrs) > 1 {
+	// a condition, may read any of the instances it lists, or none when the
+	// other alternative is a literal.
+	if selects && len(trace.addrs) > 0 {
 		trace.ambiguous = true
 	}
 	c.resolved[memoKey] = trace
