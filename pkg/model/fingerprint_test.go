@@ -7,9 +7,10 @@ package model
 
 import (
 	"context"
-	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,9 +38,8 @@ func TestGetDatadogFingerprintHash_ResolvedTerraformIdentity(t *testing.T) {
 	require.NotEqual(t, a, c, "the same address under a different root must produce a distinct fingerprint")
 }
 
-// A Terraform finding without a resolved identity keeps the legacy fingerprint,
-// which no longer carries a module call chain: the call chain left the identity
-// entirely.
+// A Terraform finding without a resolved identity keeps the legacy fingerprint.
+// The module call chain is part of that fingerprint; a resolved address replaces it.
 func TestGetDatadogFingerprintHash_LegacyTerraformFallback(t *testing.T) {
 	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
 
@@ -51,9 +51,42 @@ func TestGetDatadogFingerprintHash_LegacyTerraformFallback(t *testing.T) {
 	)
 	require.Equal(t, tf, half, "a half-resolved identity must not be used; fall back to the legacy formula")
 
+	chain := GetDatadogFingerprintHash(
+		sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "",
+		TerraformIdentity{CallChain: "stack/main.tf|module.bucket"},
+	)
+	require.Equal(t, stringToHash("repo|modules/bucket/main.tf|aws_s3_bucket|this|rule-1|stack/main.tf|module.bucket"), chain)
+	require.NotEqual(t, tf, chain)
+
+	resolved := GetDatadogFingerprintHash(
+		sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "",
+		TerraformIdentity{RootModule: "stack", ResourceID: "aws_s3_bucket.this", CallChain: "stack/main.tf|module.bucket"},
+	)
+	require.Equal(t, stringToHash("repo|stack|aws_s3_bucket.this|rule-1"), resolved)
+
 	// A non-Terraform platform hashes the same way (minus Terraform-specific fields).
 	other := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "")
 	require.Equal(t, tf, other)
+}
+
+func TestOmitTerraformInstanceIdentity_KeepsCallChainFingerprint(t *testing.T) {
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
+	v := Vulnerability{
+		FileName: "modules/bucket/main.tf", Platform: terraformPlatform, QueryID: "rule-1",
+		ResourceType: "aws_s3_bucket", ResourceName: "this", Severity: SeverityHigh,
+		RootModule: "stack", ResourceID: "module.bucket.aws_s3_bucket.this",
+		ModuleCallChain: "stack/main.tf|module.bucket", Line: 1, SearchKey: "k",
+	}
+	vulns := []Vulnerability{v}
+	OmitTerraformInstanceIdentity(vulns)
+	require.Empty(t, vulns[0].ResourceID)
+	require.Empty(t, vulns[0].RootModule)
+	require.Equal(t, "stack/main.tf|module.bucket", vulns[0].ModuleCallChain)
+
+	summary := CreateSummary(context.Background(), Counters{}, vulns, "scan", nil, "", sci)
+	require.Empty(t, summary.Queries[0].Files[0].ResourceID)
+	file := filepath.FromSlash("modules/bucket/main.tf")
+	require.Equal(t, stringToHash("repo|"+file+"|aws_s3_bucket|this|rule-1|stack/main.tf|module.bucket"), summary.Queries[0].Files[0].Fingerprint)
 }
 
 // The fingerprint of a resolved identity is exactly root + address + rule.

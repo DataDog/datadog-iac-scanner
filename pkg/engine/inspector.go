@@ -276,6 +276,9 @@ type Inspector struct {
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
 	useRulesCache        bool
+	// terraformInstanceIdentity reports Terraform findings by root module and
+	// address. Off keeps the file, resource name and module call chain fingerprint.
+	terraformInstanceIdentity bool
 	// fsys is the filesystem used for Terraform module resolution. Defaults to
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
 	// content.
@@ -383,6 +386,19 @@ func (c *Inspector) SetCompactFindingsAtDecode(compact bool) {
 	c.compactFindingsAtDecode = compact
 }
 
+// SetTerraformInstanceIdentity reports Terraform findings by root module and
+// address, and keeps that address on the finding for IAC_RESOURCE_ID. Off
+// leaves the address unset for reporting so the fingerprint stays the file,
+// resource name and module call chain.
+func (c *Inspector) SetTerraformInstanceIdentity(enabled bool) {
+	c.terraformInstanceIdentity = enabled
+}
+
+// TerraformInstanceIdentity reports whether address identity is in effect.
+func (c *Inspector) TerraformInstanceIdentity() bool {
+	return c.terraformInstanceIdentity
+}
+
 func (c *Inspector) SetExternalModulePaths(paths []string) {
 	if len(paths) == 0 {
 		c.externalPathRoots = nil
@@ -415,6 +431,9 @@ type QueryContext struct {
 	// findings collects this rule's results. Nil when the context was not built
 	// for a scan; DecodeQueryResults then keeps every decoded finding.
 	findings *findingSet
+	// terraformInstanceIdentity drops a Terraform finding that names no
+	// declared block. Off keeps it and fingerprints it by resource name.
+	terraformInstanceIdentity bool
 }
 
 var (
@@ -580,14 +599,15 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		routing = routing.forRoot(root)
 	}
 	queryContext := &QueryContext{
-		Ctx:                     ctx,
-		scanID:                  scanID,
-		Files:                   filesMap,
-		Query:                   query,
-		payload:                 &payload,
-		FlagEvaluator:           c.flagEvaluator,
-		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
-		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
+		Ctx:                       ctx,
+		scanID:                    scanID,
+		Files:                     filesMap,
+		Query:                     query,
+		payload:                   &payload,
+		FlagEvaluator:             c.flagEvaluator,
+		discardLineInfoAfterUse:   c.discardLineInfoAfterUse,
+		terraformInstanceIdentity: c.terraformInstanceIdentity,
+		findings:                  newFindingSet(c.compactFindingsAtDecode, routing),
 	}
 
 	evalStart := time.Now()
@@ -994,6 +1014,7 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			// ResourceID is unchanged: a deduplicated caller resolves the same
 			// module address, only its own root module directory differs.
 			vCopy.RootModule = ex.rootModule
+			vCopy.ModuleCallChain = ex.callChain
 			expanded = append(expanded, vCopy)
 		}
 	}

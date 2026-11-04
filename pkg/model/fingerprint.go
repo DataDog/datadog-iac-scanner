@@ -26,6 +26,9 @@ const (
 type TerraformIdentity struct {
 	RootModule string
 	ResourceID string
+	// CallChain is the legacy module call chain (caller file, then module
+	// address). It identifies a Terraform finding when the address is not used.
+	CallChain string
 }
 
 // resolved reports whether id has both fields needed to identify an instance
@@ -56,7 +59,17 @@ func FindingIdentity(v *Vulnerability) string {
 }
 
 func vulnerabilityTerraformIdentity(v *Vulnerability) TerraformIdentity {
-	return TerraformIdentity{RootModule: v.RootModule, ResourceID: v.ResourceID}
+	return TerraformIdentity{RootModule: v.RootModule, ResourceID: v.ResourceID, CallChain: v.ModuleCallChain}
+}
+
+// OmitTerraformInstanceIdentity clears address identity so a finding keeps the
+// file, resource name and module call chain fingerprint, and reports omit
+// IAC_RESOURCE_ID. The call chain is left in place.
+func OmitTerraformInstanceIdentity(vulns []Vulnerability) {
+	for i := range vulns {
+		vulns[i].ResourceID = ""
+		vulns[i].RootModule = ""
+	}
 }
 
 // IdentityInput is the fingerprint input of a finding less its line, for a
@@ -101,6 +114,9 @@ func fingerprintInput(
 
 	if platform == dockerfilePlatform {
 		segments = append(segments, vulnLine)
+	}
+	if platform == terraformPlatform && len(terraformIdentity) > 0 && terraformIdentity[0].CallChain != "" {
+		segments = append(segments, terraformIdentity[0].CallChain)
 	}
 
 	return strings.Join(segments, "|")

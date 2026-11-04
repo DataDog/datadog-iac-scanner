@@ -146,10 +146,10 @@ func (s *findingSet) findingIdentities(
 	id, resolved := terraformIdentityFor(file, resourceType, resourceName)
 	if platform != terraformPlatformValue || file.TerraformScope == nil || !resolved {
 		// Without a resolved identity the finding keys on the resource-name
-		// fingerprint (a Terraform one is dropped when built), which routing
-		// does not change (a routed copy without
+		// fingerprint, which routing does not change (a routed copy without
 		// an address hashes like the as-written one).
-		legacy, known := model.IdentityInput(file.FilePath, platform, resourceType, resourceName, ruleID)
+		legacy, known := model.IdentityInput(file.FilePath, platform, resourceType, resourceName, ruleID,
+			model.TerraformIdentity{CallChain: file.ModuleCallChain})
 		return []string{legacy}, known
 	}
 	var block address.Block

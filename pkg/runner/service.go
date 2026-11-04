@@ -328,6 +328,9 @@ func (s *Service) StartScan(
 			return
 		}
 	}
+	if s.Inspector != nil && !s.Inspector.TerraformInstanceIdentity() {
+		model.OmitTerraformInstanceIdentity(vulnerabilities)
+	}
 
 	err = s.Storage.SaveVulnerabilities(ctx, vulnerabilities)
 	if err != nil {

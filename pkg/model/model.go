@@ -371,6 +371,9 @@ type FileMetadata struct {
 	// Archive is the chart archive the file was rendered from, if any (see
 	// ResolvedHelm.Archive).
 	Archive string
+	// ModuleCallChain is the legacy fingerprint segment for a module instance:
+	// the outermost caller file and the module address. Empty for a root file.
+	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
 	// document groups multiple module resources from the same file.
 	ModuleAttributions map[string]*ModuleAttribution
@@ -745,6 +748,8 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// ModuleCallChain is included in the fingerprint when ResourceID is empty.
+	ModuleCallChain string `json:"moduleCallChain,omitempty"`
 	// ResourceID is the full Terraform address of the resource instance this
 	// finding was raised on (e.g. module.a["x"].aws_s3_bucket.b[0]), parseable
 	// the same way Terraform's own addresses are (see

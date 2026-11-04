@@ -358,7 +358,11 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			item.ResourceName,
 			ruleID,
 			identityLine,
-			TerraformIdentity{RootModule: item.RootModule, ResourceID: item.ResourceID},
+			TerraformIdentity{
+				RootModule: item.RootModule,
+				ResourceID: item.ResourceID,
+				CallChain:  item.ModuleCallChain,
+			},
 		)
 
 		qItem := q[item.QueryID]

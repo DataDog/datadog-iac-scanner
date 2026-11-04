@@ -41,7 +41,9 @@ type extraCallerInfo struct {
 	// The resource's address is the same as the primary's (content dedup keys
 	// on moduleAddress, which a caller's own root never changes), only the
 	// root differs, so only this needs to be carried.
-	rootModule   string
+	rootModule string
+	// callChain is the legacy fingerprint segment for this caller.
+	callChain    string
 	attributions map[string]*model.ModuleAttribution
 }
 
@@ -1536,6 +1538,8 @@ type docGroup struct {
 	// It is the same for every entry: all come from the same
 	// call chain, which is what it is derived from.
 	rootModule string
+	// callChain is the legacy fingerprint segment for this call.
+	callChain string
 	// instances maps an expanded block to the one instance key this document
 	// represents. One document holds at most one instance of
 	// a block, so the lookup is exact.
@@ -1630,6 +1634,7 @@ func instantiatedDocs(
 				moduleAddress: r.ModuleAddress,
 				layer:         layer,
 				rootModule:    callRoot,
+				callChain:     callChainKey(r, repoPath),
 				attributions:  make(map[string]*model.ModuleAttribution),
 			}
 			groups[key] = g
@@ -1651,6 +1656,7 @@ func instantiatedDocs(
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
 				docID:        docID,
 				rootModule:   g.rootModule,
+				callChain:    g.callChain,
 				attributions: cloneModuleAttributions(g.attributions),
 			})
 			continue
@@ -1852,6 +1858,7 @@ func newInstanceFileMetadata(g *docGroup) *model.FileMetadata {
 	clone.ID = docGroupID(g)
 	clone.Document = model.Document{}
 	clone.ModuleAttributions = cloneModuleAttributions(g.attributions)
+	clone.ModuleCallChain = g.callChain
 	clone.TerraformScope = &model.TerraformScope{
 		RootModule:    g.rootModule,
 		ModuleAddress: g.moduleAddress,
@@ -1894,6 +1901,23 @@ func groupBlocks(g *docGroup) map[model.TerraformBlock]bool {
 // moduleFileDir returns the absolute directory containing a scanned Terraform file.
 func moduleFileDir(filePath, repoPath string) string {
 	return pathKey(filepath.Dir(absPath(filePath, repoPath)))
+}
+
+// callChainKey is the outermost caller file and the module address.
+func callChainKey(r *tfeval.ResolvedResource, repoPath string) string {
+	return moduleCallChainKey(r.CallChain, r.ModuleAddress, repoPath)
+}
+
+func moduleCallChainKey(chain []tfeval.CallSite, moduleAddress, repoPath string) string {
+	if len(chain) == 0 {
+		return moduleAddress
+	}
+	root := absPath(chain[0].CalledFrom, repoPath)
+	rel := root
+	if rp, err := filepath.Rel(repoPath, root); err == nil {
+		rel = rp
+	}
+	return filepath.ToSlash(rel) + "|" + moduleAddress
 }
 
 // resourceRootModule is the repository-relative directory of the root module a

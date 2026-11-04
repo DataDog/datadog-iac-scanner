@@ -22,6 +22,8 @@ type moduleCall struct {
 	moduleAddress string
 	// rootModule is the caller's root module directory, repository-relative.
 	rootModule string
+	// callChain is the legacy fingerprint segment for this call.
+	callChain string
 	// attribution names the directory in ModuleCodeLocation.Filename. It is
 	// shared by every file of the directory and read-only.
 	attribution *model.ModuleAttribution
@@ -107,6 +109,7 @@ func (idx *moduleCallIndex) record(
 		idx.calls[dir] = append(idx.calls[dir], moduleCall{
 			moduleAddress: instance.ModuleAddress,
 			rootModule:    relDir(filepath.Dir(absPath(instance.CallChain[0].CalledFrom, repoPath))),
+			callChain:     moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
 			attribution:   attr,
 		})
 	}
@@ -209,6 +212,7 @@ func appendCallCopies(out []model.Vulnerability, v *model.Vulnerability, file *m
 		// module instance address and the caller's root module, so two
 		// instances of one call get distinct fingerprints.
 		attributed.RootModule = call.rootModule
+		attributed.ModuleCallChain = call.callChain
 		if file.scope != nil {
 			if block, ok := resolveTerraformBlock(file.scope, v.ResourceType, v.ResourceName); ok {
 				attributed.ResourceID = routedBlockAddress(file.scope, block, call.moduleAddress)

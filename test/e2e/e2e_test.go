@@ -333,6 +333,7 @@ func Test_E2ETerraformExpandedRootSiblingFingerprint(t *testing.T) {
 	params.OutputName = "result"
 	params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform_root_routing", "versioning_any_root"))}
 	params.ChangedDefaultQueryPath = true
+	params.TerraformInstanceIdentity = true
 	params.SCIInfo = model.SCIInfo{
 		DiffAware:            model.DiffAware{Enabled: false},
 		RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
@@ -403,6 +404,7 @@ func Test_E2ETerraformUnknownMeta(t *testing.T) {
 		params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform_unknown_meta"))}
 		params.ChangedDefaultQueryPath = true
 		params.ShouldScanTfPlans = true
+		params.TerraformInstanceIdentity = true
 		params.SCIInfo = model.SCIInfo{
 			DiffAware:            model.DiffAware{Enabled: false},
 			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
@@ -469,6 +471,7 @@ func Test_E2ETerraformPlainRootEvaluatedValues(t *testing.T) {
 		params.OutputName = "result"
 		params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform_plain_root_values"))}
 		params.ChangedDefaultQueryPath = true
+		params.TerraformInstanceIdentity = true
 		params.SCIInfo = model.SCIInfo{
 			DiffAware:            model.DiffAware{Enabled: false},
 			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
@@ -531,6 +534,7 @@ func Test_E2ETerraformReferencesJoinAcrossModuleCalls(t *testing.T) {
 		params.OutputName = "result"
 		params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform_references_join"))}
 		params.ChangedDefaultQueryPath = true
+		params.TerraformInstanceIdentity = true
 		params.SCIInfo = model.SCIInfo{
 			DiffAware:            model.DiffAware{Enabled: false},
 			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},

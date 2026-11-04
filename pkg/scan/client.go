@@ -86,8 +86,12 @@ type Parameters struct {
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
 	ShouldScanTfPlans           bool
-	UseRulesCache               bool
-	TerraformModules            TerraformModulesSetting
+	// TerraformInstanceIdentity reports Terraform findings by root module and
+	// address and emits that address as IAC_RESOURCE_ID. Off keeps the file,
+	// resource name and module call chain fingerprint.
+	TerraformInstanceIdentity bool
+	UseRulesCache             bool
+	TerraformModules          TerraformModulesSetting
 	// NetworkIsolation disables outbound module fetchers so scans stay offline.
 	NetworkIsolation           bool
 	RemoteModulesManifestPath  string
