@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
 )
@@ -53,13 +54,17 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		return nil, r, nil, resolvedFiles, err
 	}
 
-	jLine := initializeJSONLine(resolved)
-	jsonDoc := jLine.setLineInfo(r)
-
-	if !looksLikeTerraformPlan(fileContent) {
-		// JSON is not a tf plan
+	if !analyzer.IsTerraformPlan(fileContent) {
+		jsonDoc := initializeJSONLine(resolved).setLineInfo(r)
 		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
 	}
+
+	// Lines are reported against the indented plan StringifyContent shows.
+	var indented bytes.Buffer
+	if err := json.Indent(&indented, resolved, "", "  "); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	jsonDoc := initializeJSONLine(indented.Bytes()).setLineInfo(r)
 
 	// Try to parse JSON as Terraform plan
 	tfPlan, err := parseTFPlan(jsonDoc)
@@ -84,7 +89,7 @@ func (p *Parser) GetKind() model.FileKind {
 // KindForContent overrides the static kind for Terraform plan JSON so line
 // detection can resolve plan resources structurally instead of by text match.
 func (p *Parser) KindForContent(content []byte) (model.FileKind, bool) {
-	if looksLikeTerraformPlan(content) {
+	if analyzer.IsTerraformPlan(content) {
 		return model.KindTerraformPlan, true
 	}
 	return "", false
@@ -109,7 +114,7 @@ func (p *Parser) GetCommentToken() string {
 
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
-	if looksLikeTerraformPlan(content) {
+	if analyzer.IsTerraformPlan(content) {
 		var out bytes.Buffer
 		if err := json.Indent(&out, content, "", "  "); err != nil {
 			return "", err
@@ -117,13 +122,4 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 		return out.String(), nil
 	}
 	return string(content), nil
-}
-
-// looksLikeTerraformPlan is a fast byte-level heuristic that avoids a full
-// JSON parse. Both keys are required by the Terraform plan JSON spec, so their
-// co-presence is a reliable signal. Used by KindForContent and StringifyContent
-// where a full parseTFPlan call would be redundant (Parse already does it).
-func looksLikeTerraformPlan(content []byte) bool {
-	return bytes.Contains(content, []byte(`"format_version"`)) &&
-		bytes.Contains(content, []byte(`"planned_values"`))
 }

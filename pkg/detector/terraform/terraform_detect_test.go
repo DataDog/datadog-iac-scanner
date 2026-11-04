@@ -788,21 +788,21 @@ func TestDetectTerraformLineRemediations(t *testing.T) {
 		},
 		{
 			expected: model.VulnerabilityLines{
-				Line: 1,
+				Line: 3,
 				VulnLines: &[]model.CodeLine{
-					{Position: 1, Line: "resource \"aws_instance\" \"example\" {"},
 					{Position: 2, Line: "  tags = {"},
 					{Position: 3, Line: "    Name = \"web-server\""},
+					{Position: 4, Line: "  }"},
 				},
 				VulnerablilityLocation: model.ResourceLocation{
 					Start: model.ResourceLine{Col: 1, Line: 1},
 					End:   model.ResourceLine{Col: 2, Line: 5},
 				},
 				RemediationLocation: model.ResourceLocation{
-					Start: model.ResourceLine{Col: 1, Line: 1},
-					End:   model.ResourceLine{Col: 1, Line: 1},
+					Start: model.ResourceLine{Col: 5, Line: 3},
+					End:   model.ResourceLine{Col: 5, Line: 3},
 				},
-				LineWithVulnerability: "resource \"aws_instance\" \"example\" {",
+				LineWithVulnerability: "    Name = \"web-server\"",
 				ResolvedFile:          "",
 				ResourceSource:        "resource \"aws_instance\" \"example\" {\n  tags = {\n    Name = \"web-server\"\n  }\n}\n",
 				FileSource:            strings.Split("resource \"aws_instance\" \"example\" {\n  tags = {\n    Name = \"web-server\"\n  }\n}\n", "\n"),
@@ -1062,9 +1062,9 @@ resource "aws_sqs_queue_policy" "other" {
 	}
 }
 
-// A part found only past the named block is skipped; the parts after it still
-// search from the last line found within the block.
-func TestDetectLineSkipsPartLeavingNamedBlock(t *testing.T) {
+// A part missing from the named block stops the search there, even when a
+// block further down has it.
+func TestDetectLineStopsAtPartMissingFromNamedBlock(t *testing.T) {
 	src := `resource "aws_x" "b" {
   bar = [
     "a",
@@ -1084,6 +1084,8 @@ resource "aws_x" "c" {
 		LinesOriginalData: utils.SplitLines(src),
 	}
 	got := (&DetectKindLine{}).DetectLine(context.Background(), file, `aws_x[b].foo.bar[1]`, 3)
+	require.Equal(t, 1, got.Line)
+	got = (&DetectKindLine{}).DetectLine(context.Background(), file, `aws_x[b].bar[1]`, 3)
 	require.Equal(t, 4, got.Line)
 }
 
@@ -1616,4 +1618,65 @@ func TestIsHeredocTerminatorWithIndexMatchesScan(t *testing.T) {
 		require.Equal(t, isHeredocTerminator(trimmed, lines, idx, nil),
 			isHeredocTerminator(trimmed, lines, idx, heredocs), "line %d", idx)
 	}
+}
+
+func TestDetectLineIndexStaysInsideTheCurrentBlock(t *testing.T) {
+	src := `resource "kubernetes_ingress" "example" {
+  spec {
+    backend {
+      service_name = "MyApp1"
+    }
+
+    rule {
+      http {
+        path {
+          backend {
+            service_name = "MyApp1"
+          }
+        }
+
+        path {
+          backend {
+            service_name = "MyApp2"
+          }
+        }
+      }
+    }
+  }
+}
+`
+	file := &model.FileMetadata{
+		FilePath:          "main.tf",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	detect := func(searchKey string) int {
+		return (&DetectKindLine{}).DetectLine(context.Background(), file, searchKey, 3).Line
+	}
+	require.Equal(t, 10, detect("kubernetes_ingress[example].spec.rule[0].http[0].path[0].backend[0]"))
+	require.Equal(t, 16, detect("kubernetes_ingress[example].spec.rule[0].http[0].path[1].backend[0]"))
+}
+
+func TestDetectLineKeyPartNamesAKeyNotAValue(t *testing.T) {
+	src := `resource "aws_lb_listener" "listener" {
+  protocol = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port = "443"
+    }
+  }
+}
+`
+	file := &model.FileMetadata{
+		FilePath:          "main.tf",
+		Kind:              model.KindTerraform,
+		OriginalData:      src,
+		LinesOriginalData: utils.SplitLines(src),
+	}
+	got := (&DetectKindLine{}).DetectLine(context.Background(), file, "aws_lb_listener[listener].default_action.redirect", 3)
+	require.Equal(t, 7, got.Line)
 }

@@ -7,6 +7,8 @@ package tfeval
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -205,4 +207,94 @@ func TestLoadRootVarsIgnoresCaseMismatchedAutoTfvars(t *testing.T) {
 	vars := New().LoadRootVars(dir)
 	require.True(t, vars["env"].RawEquals(cty.StringVal("base")), "case-mismatched auto.tfvars must not override terraform.tfvars")
 	require.True(t, vars["region"].RawEquals(cty.StringVal("eu-west-1")), "case-mismatched *.auto.tfvars.json must not override")
+}
+
+func writeDirectiveStack(t *testing.T, directive string, files map[string]string) string {
+	t.Helper()
+	dir := writeModule(t, t.TempDir(), "stack", map[string]string{
+		"main.tf": "// dd_terraform_vars: " + directive + "\nvariable \"region\" {}\n",
+	})
+	for name, content := range files {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(content), 0o600))
+	}
+	return dir
+}
+
+func TestLoadRootVarsDirectiveRelative(t *testing.T) {
+	dir := writeDirectiveStack(t, "vars/custom.tfvars", map[string]string{"vars/custom.tfvars": `region = "eu"`})
+	require.Equal(t, map[string]cty.Value{"region": cty.StringVal("eu")}, New().LoadRootVars(dir))
+}
+
+func TestLoadRootVarsDirectiveLeadingSlashUnderDir(t *testing.T) {
+	dir := writeDirectiveStack(t, "/vars/custom.tfvars", map[string]string{"vars/custom.tfvars": `region = "eu"`})
+	require.Equal(t, map[string]cty.Value{"region": cty.StringVal("eu")}, New().LoadRootVars(dir))
+}
+
+func TestLoadRootVarsDirectiveAbsoluteOutsideDirSkipped(t *testing.T) {
+	varsFile := filepath.Join(t.TempDir(), "custom.tfvars")
+	require.NoError(t, os.WriteFile(varsFile, []byte(`region = "eu"`), 0o600))
+	dir := writeDirectiveStack(t, filepath.ToSlash(varsFile), map[string]string{"terraform.tfvars": `region = "us"`})
+	require.Equal(t, map[string]cty.Value{"region": cty.StringVal("us")}, New().LoadRootVars(dir))
+}
+
+func TestLoadRootVarsDirectiveBackslash(t *testing.T) {
+	dir := writeDirectiveStack(t, `vars\custom.tfvars`, map[string]string{"vars/custom.tfvars": `region = "eu"`})
+	require.Equal(t, map[string]cty.Value{"region": cty.StringVal("eu")}, New().LoadRootVars(dir))
+}
+
+func TestLoadRootVarsDirectiveOverridesAutoloaded(t *testing.T) {
+	dir := writeDirectiveStack(t, "vars/custom.tfvars", map[string]string{
+		"vars/custom.tfvars": "region = \"eu\"\nonly_directive = \"d\"\n",
+		"terraform.tfvars":   "region = \"us\"\nonly_auto = \"a\"\n",
+	})
+	require.Equal(t, map[string]cty.Value{
+		"region":         cty.StringVal("eu"),
+		"only_directive": cty.StringVal("d"),
+		"only_auto":      cty.StringVal("a"),
+	}, New().LoadRootVars(dir))
+}
+
+func TestLoadRootVarsDirectiveMissingFile(t *testing.T) {
+	dir := writeDirectiveStack(t, "vars/absent.tfvars", map[string]string{"terraform.tfvars": `region = "us"`})
+	require.Equal(t, map[string]cty.Value{"region": cty.StringVal("us")}, New().LoadRootVars(dir))
+}
+
+func TestLoadRootVarsDirectiveOfShadowedFileIgnored(t *testing.T) {
+	dir := writeDirectiveStack(t, "a.tfvars", map[string]string{
+		"main.tofu": "// dd_terraform_vars: b.tfvars\nvariable \"region\" {}\n",
+		"a.tfvars":  `region = "a"`,
+		"b.tfvars":  `region = "b"`,
+	})
+	require.Equal(t, map[string]cty.Value{"region": cty.StringVal("b")}, New().LoadRootVars(dir))
+}
+
+func TestLoadRootVarsLegacyDirectiveAlias(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "stack", map[string]string{
+		"main.tf":       "// kics_terraform_vars: custom.tfvars\nvariable \"region\" {}\n",
+		"custom.tfvars": `region = "eu"`,
+	})
+	require.Equal(t, map[string]cty.Value{"region": cty.StringVal("eu")}, New().LoadRootVars(dir))
+}
+
+func TestLoadRootVarsVariablesFixture(t *testing.T) {
+	vars := New().LoadRootVars(filepath.Join("..", "..", "..", "..", "test", "fixtures", "test_terraform_variables"))
+	require.Equal(t, map[string]cty.Value{
+		"test1":          cty.BoolVal(false),
+		"test2":          cty.TupleVal([]cty.Value{cty.BoolVal(false), cty.BoolVal(true)}),
+		"map1":           cty.ObjectVal(map[string]cty.Value{"map1key1": cty.StringVal("map2Key1")}),
+		"map2":           cty.ObjectVal(map[string]cty.Value{"map2Key1": cty.StringVal("nestedMap")}),
+		"map3":           cty.ObjectVal(map[string]cty.Value{"map3Key1": cty.StringVal("givenByVar")}),
+		"test_terraform": cty.StringVal("terraform.tfvars"),
+	}, vars)
+}
+
+func TestLoadRootVarsSkipsInvalidVarsFile(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "stack", map[string]string{
+		"terraform.tfvars":   `region = "us"`,
+		"broken.auto.tfvars": "variable \"x\" {\n  default = 1\n}\n",
+		"zz_ok.auto.tfvars":  `env = "prod"`,
+	})
+	require.Equal(t, map[string]cty.Value{"region": cty.StringVal("us"), "env": cty.StringVal("prod")}, New().LoadRootVars(dir))
 }

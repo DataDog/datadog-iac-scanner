@@ -7,9 +7,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
-	"runtime"
-	"sort"
 	"strings"
 	"sync"
 
@@ -23,22 +20,19 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/hashicorp/hcl/v2/hclwrite"
-	"golang.org/x/sync/singleflight"
 )
 
 type ParsedModule struct {
-	Name           string
-	AbsSource      string
-	Source         string
-	Version        string
-	IsLocal        bool
-	SourceType     string // local, git, registry, etc.
-	RegistryScope  string // public, private, or "" (non-registry)
-	AttributesData map[string]ModuleAttributesInfo
-	FileName       string
-	DefLine        int
-	DefEndLine     int
+	Name          string
+	AbsSource     string
+	Source        string
+	Version       string
+	IsLocal       bool
+	SourceType    string // local, git, registry, etc.
+	RegistryScope string // public, private, or "" (non-registry)
+	FileName      string
+	DefLine       int
+	DefEndLine    int
 }
 
 type UnresolvedError struct {
@@ -55,38 +49,6 @@ func (e *UnresolvedError) Error() string {
 func IsUnresolved(err error) bool {
 	var e *UnresolvedError
 	return errors.As(err, &e)
-}
-
-type RemoteResolver interface {
-	Resolve(ctx context.Context, mod *ParsedModule) (localPath string, err error)
-}
-
-type ModuleParseResult struct {
-	Index  int
-	Module ParsedModule
-	Error  error
-}
-
-type moduleWorkItem struct {
-	index int
-	key   string
-}
-
-type ModuleAttributesInfo struct {
-	Resources []string          `json:"resources"`
-	Inputs    map[string]string `json:"inputs"`
-}
-
-func resolveModulePath(source, rootDir string) string {
-	clean := strings.TrimPrefix(source, "file://")
-	clean = strings.TrimPrefix(clean, "git::")
-
-	// If the path is already absolute, don't join with rootDir
-	if filepath.IsAbs(clean) {
-		return filepath.Clean(clean)
-	}
-
-	return filepath.Clean(filepath.Join(rootDir, clean))
 }
 
 const (
@@ -823,338 +785,6 @@ func DetectModuleSourceType(source string) (sourceType, registryScope string) {
 	return stringUnknown, ""
 }
 
-// resolveModuleToLocalPath maps mod to a local directory, or returns ("", nil) when the module
-// should be silently skipped (no resolver, or remote with nil resolver).
-func resolveModuleToLocalPath(
-	ctx context.Context, mod *ParsedModule, rootDir string, resolver RemoteResolver,
-) (string, error) {
-	if mod.IsLocal {
-		if mod.AbsSource == "" {
-			return "", nil
-		}
-		return resolveModulePath(mod.AbsSource, rootDir), nil
-	}
-	if resolver == nil {
-		return "", nil // no resolver: skip remote silently
-	}
-	p, err := resolver.Resolve(ctx, mod)
-	if err != nil {
-		return "", err
-	}
-	return p, nil
-}
-
-// moduleEnrichCache shares equivalent-map parsing across call sites of the same directory.
-type moduleEnrichCache struct {
-	fsys  vfs.FS
-	allow map[string]struct{}
-	sf    singleflight.Group
-	mu    sync.Mutex
-	m     map[string]map[string]ModuleAttributesInfo
-}
-
-func newModuleEnrichCache(fsys vfs.FS, allow map[string]struct{}) *moduleEnrichCache {
-	if fsys == nil {
-		fsys = vfs.DiskFS{}
-	}
-	return &moduleEnrichCache{fsys: fsys, allow: allow, m: make(map[string]map[string]ModuleAttributesInfo)}
-}
-
-func (c *moduleEnrichCache) attributesFor(ctx context.Context, modulePath string) (map[string]ModuleAttributesInfo, error) {
-	c.mu.Lock()
-	if v, ok := c.m[modulePath]; ok {
-		c.mu.Unlock()
-		return v, nil
-	}
-	c.mu.Unlock()
-
-	v, err, _ := c.sf.Do(modulePath, func() (interface{}, error) {
-		res, genErr := generateEquivalentMap(ctx, c.fsys, modulePath, c.allow)
-		if genErr != nil {
-			return nil, genErr
-		}
-		c.mu.Lock()
-		c.m[modulePath] = res
-		c.mu.Unlock()
-		return res, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return v.(map[string]ModuleAttributesInfo), nil
-}
-
-func enrichModule(
-	ctx context.Context, mod *ParsedModule, rootDir string, resolver RemoteResolver, cache *moduleEnrichCache,
-) ModuleParseResult {
-	contextLogger := logger.FromContext(ctx)
-	localPath, err := resolveModuleToLocalPath(ctx, mod, rootDir, resolver)
-	if err != nil {
-		// Unresolved modules were already reported, grouped by reason, when
-		// remote modules were resolved before the scan.
-		event := contextLogger.Warn()
-		if IsUnresolved(err) {
-			event = contextLogger.Debug()
-		}
-		event.Msgf("Skipping module %s: %v", mod.Name, err)
-		return ModuleParseResult{Module: *mod}
-	}
-	if localPath == "" {
-		return ModuleParseResult{Module: *mod}
-	}
-	mod.AbsSource = localPath
-	attributesData, enrichErr := cache.attributesFor(ctx, localPath)
-	switch {
-	case enrichErr == nil:
-		mod.AttributesData = attributesData
-	case errors.Is(enrichErr, ErrSkippedLinkPlaceholder):
-	case errors.Is(enrichErr, os.ErrNotExist):
-		// fillModuleAttrs already warns about a missing local source.
-	default:
-		contextLogger.Warn().Msgf("Failed to generate equivalent map for module %s at %s: %v", mod.Name, localPath, enrichErr)
-	}
-	return ModuleParseResult{Module: *mod, Error: enrichErr}
-}
-
-const minParseWorkers = 4
-
-// ParseAllModuleVariables resolves modules to disk and fills AttributesData.
-// Resolution failures for individual modules are non-fatal and logged; only a
-// context cancellation returns an error.
-func ParseAllModuleVariables(
-	ctx context.Context, fsys vfs.FS, modules map[string]ParsedModule, rootDir string, resolver RemoteResolver,
-	mergeAllow map[string]struct{},
-) ([]ParsedModule, error) {
-	numWorkers := runtime.GOMAXPROCS(0)
-	if numWorkers < minParseWorkers {
-		numWorkers = minParseWorkers
-	}
-
-	keys := make([]string, 0, len(modules))
-	for key := range modules {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	input := make(chan moduleWorkItem)
-	output := make(chan ModuleParseResult)
-	enrichCache := newModuleEnrichCache(fsys, mergeAllow)
-
-	var wg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			runModuleEnrichWorker(ctx, input, output, modules, rootDir, resolver, enrichCache)
-		}()
-	}
-	go func() {
-		wg.Wait()
-		close(output)
-	}()
-	go func() {
-		defer close(input)
-		for i, key := range keys {
-			select {
-			case <-ctx.Done():
-				return
-			case input <- moduleWorkItem{index: i, key: key}:
-			}
-		}
-	}()
-
-	result := collectModuleResults(ctx, output, len(keys))
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func runModuleEnrichWorker(
-	ctx context.Context,
-	input <-chan moduleWorkItem,
-	output chan<- ModuleParseResult,
-	modules map[string]ParsedModule,
-	rootDir string,
-	resolver RemoteResolver,
-	cache *moduleEnrichCache,
-) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case item, ok := <-input:
-			if !ok {
-				return
-			}
-			mod := modules[item.key]
-			result := enrichModule(ctx, &mod, rootDir, resolver, cache)
-			result.Index = item.index
-			select {
-			case <-ctx.Done():
-				return
-			case output <- result:
-			}
-		}
-	}
-}
-
-func collectModuleResults(
-	ctx context.Context, output <-chan ModuleParseResult, moduleCount int,
-) []ParsedModule {
-	contextLogger := logger.FromContext(ctx)
-	finalModules := make([]ParsedModule, moduleCount)
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case res, ok := <-output:
-			if !ok {
-				return finalModules
-			}
-			if res.Error == nil {
-				contextLogger.Debug().Msgf("Enriched module %s", res.Module.Name)
-			}
-			finalModules[res.Index] = res.Module
-		}
-	}
-}
-
-func generateEquivalentMap(
-	ctx context.Context, fsys vfs.FS, modulePath string, allow map[string]struct{},
-) (map[string]ModuleAttributesInfo, error) {
-	contextLogger := logger.FromContext(ctx)
-	equivalentMap := make(map[string]ModuleAttributesInfo)
-	resourceTypesMap := make(map[string]map[string]bool)
-
-	var err error
-	modulePath, err = ResolveModuleDir(ctx, fsys, filepath.Dir(modulePath), modulePath, "")
-	if err != nil {
-		return nil, err
-	}
-	entries, err := fsys.ReadDir(modulePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			contextLogger.Debug().Msgf("module source directory not found, skipping enrichment: %s", modulePath)
-		} else {
-			contextLogger.Warn().Msgf("cannot read module source directory: %s: %v", modulePath, err)
-		}
-		return nil, err
-	}
-
-	for _, name := range SelectHCLConfigNames(entries, modulePath, allow, "") {
-		path := filepath.Join(modulePath, name)
-		if err := processEquivalentMapFile(ctx, fsys, path, equivalentMap, resourceTypesMap); err != nil {
-			if errors.Is(err, ErrSkippedLinkPlaceholder) {
-				continue
-			}
-			return nil, err
-		}
-	}
-
-	// After iterating through all files and blocks, populate the unique resources
-	// slice. Sort it so the result is deterministic across runs: it is built from
-	// a map, and unstable ordering otherwise yields byte-different module input
-	// data each scan (which defeats the compiled-query cache and makes output
-	// non-reproducible).
-	for provider, typesSet := range resourceTypesMap {
-		modInfo := equivalentMap[provider]
-		for rt := range typesSet {
-			modInfo.Resources = append(modInfo.Resources, rt)
-		}
-		sort.Strings(modInfo.Resources)
-		equivalentMap[provider] = modInfo
-	}
-	return equivalentMap, nil
-}
-
-func processEquivalentMapFile(
-	ctx context.Context,
-	fsys vfs.FS,
-	path string,
-	equivalentMap map[string]ModuleAttributesInfo,
-	resourceTypesMap map[string]map[string]bool,
-) error {
-	contextLogger := logger.FromContext(ctx)
-
-	contents, err := ReadConfigFile(ctx, fsys, path, "")
-	if err != nil {
-		if !errors.Is(err, ErrSkippedLinkPlaceholder) {
-			contextLogger.Error().Msgf("Failed to read file: %s", path)
-		}
-		return err
-	}
-
-	hclFile, diag := hclwrite.ParseConfig(contents, "", hcl.InitialPos)
-	if diag.HasErrors() {
-		parseErr := fmt.Errorf("error parsing input Terraform block in file %s: %s", path, diag.Error())
-		contextLogger.Error().Msg(parseErr.Error())
-		return parseErr
-	}
-
-	for _, block := range hclFile.Body().Blocks() {
-		if block.Type() != "resource" {
-			continue
-		}
-		if len(block.Labels()) < 1 {
-			contextLogger.Warn().Msgf("Skipping malformed resource block with no labels in file %s", path)
-			continue
-		}
-		resourceType := block.Labels()[0]
-		provider, err := GetProviderFromResourceType(resourceType)
-		if err != nil {
-			contextLogger.Warn().Msgf("Failed to get provider from resource type '%s' in file %s: %v", resourceType, path, err)
-			continue
-		}
-		if _, ok := resourceTypesMap[provider]; !ok {
-			resourceTypesMap[provider] = make(map[string]bool)
-		}
-		resourceTypesMap[provider][resourceType] = true
-
-		modInfo, ok := equivalentMap[provider]
-		if !ok {
-			modInfo = ModuleAttributesInfo{Resources: []string{}, Inputs: make(map[string]string)}
-		}
-		maps.Copy(modInfo.Inputs, getVariableAttributes(block))
-		equivalentMap[provider] = modInfo
-	}
-	return nil
-}
-
-func getVariableAttributes(block *hclwrite.Block) map[string]string {
-	attributeToVariableMap := make(map[string]string)
-	for name, attr := range block.Body().Attributes() {
-		value := string(attr.Expr().BuildTokens(nil).Bytes())
-		if !isVariableReference(value) {
-			continue
-		}
-
-		if varName := parseVariableReference(value); varName != "" {
-			attributeToVariableMap[name] = varName
-		}
-	}
-
-	// Handle nested blocks too
-	for _, nestedBlock := range block.Body().Blocks() {
-		maps.Copy(attributeToVariableMap, getVariableAttributes(nestedBlock))
-	}
-	return attributeToVariableMap
-}
-
-func isVariableReference(s string) bool {
-	return strings.Contains(s, "var.")
-}
-
-var reVarRef = regexp.MustCompile(`^var\.(\w+)$`)
-
-func parseVariableReference(s string) string {
-	match := reVarRef.FindStringSubmatch(strings.TrimSpace(s))
-	if len(match) > 1 {
-		return match[1]
-	}
-	return ""
-}
-
 // ParseTerraformModulesFromFiles is a variant of ParseTerraformModules that accepts an
 // optional allowedFiles set to restrict which files contribute module blocks (all files
 // still contribute locals/vars for correct resolution). fsys is used for local-source
@@ -1254,17 +884,4 @@ func ConfigFileTooLarge(path string, maxBytes int64) bool {
 	}
 	info, err := os.Stat(path)
 	return err == nil && info.Size() > maxBytes
-}
-
-// GetProviderFromResourceType extracts the provider name from a Terraform resource type.
-// For example: "aws_s3_bucket" → "aws", "azurerm_network_interface" → "azurerm"
-func GetProviderFromResourceType(resourceType string) (string, error) {
-	if resourceType == "" {
-		return "", errors.New("resource type cannot be empty")
-	}
-	parts := strings.SplitN(resourceType, "_", 2)
-	if len(parts) < 2 {
-		return "", errors.New("invalid Terraform resource type format")
-	}
-	return parts[0], nil
 }

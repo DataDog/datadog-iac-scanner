@@ -15,10 +15,9 @@ import (
 
 // addDynamicBlocks adds the nested blocks a dynamic block generates to out, in
 // the shape a block written once per element would have. A dynamic block whose
-// for_each or labels do not resolve, or which asks for more blocks than the caps
-// allow, is kept as written. The budget is claimed per dynamic block, so a block
-// nested in the content of an expanded parent can find it spent and stay as
-// written while its siblings were expanded.
+// for_each or labels do not resolve is kept as written. Every resolved element
+// is expanded: a cap would leave generated blocks without their content and
+// their findings unreported.
 func (e *Evaluator) addDynamicBlocks(out *nestedBlocks, b *hclsyntax.Block, ctx *hcl.EvalContext, st *bodyState) {
 	content := dynamicblock.Content(b)
 	exp := dynamicblock.Expand(b, ctx)
@@ -28,12 +27,6 @@ func (e *Evaluator) addDynamicBlocks(out *nestedBlocks, b *hclsyntax.Block, ctx 
 	var paths [][]string
 	if resolved {
 		scopes, paths, resolved = generatedBlocks(b, exp.Iterators, name, ctx)
-	}
-	if resolved && !st.reserveDynamic(len(exp.Iterators)) {
-		st.noteDynamicOverflow(b, exp.Requested, dynamicblock.MaxGeneratedPerResource)
-		resolved = false
-	} else if content != nil && exp.OverCap {
-		st.noteDynamicOverflow(b, exp.Requested, dynamicblock.MaxExpansion)
 	}
 	if !resolved {
 		st.recordDynamic(b, keptAsWritten)
@@ -67,35 +60,6 @@ func generatedBlocks(
 	return scopes, paths, true
 }
 
-// dynamicOverflow is a dynamic block kept as written because it asked for more
-// blocks than a cap allows.
-type dynamicOverflow struct {
-	label     string
-	requested int
-	limit     int
-}
-
-// reserveDynamic claims n generated blocks of the resource instance's budget.
-func (st *bodyState) reserveDynamic(n int) bool {
-	if st == nil || st.dynamic == nil {
-		return true
-	}
-	if st.dynamic.generated+n > dynamicblock.MaxGeneratedPerResource {
-		return false
-	}
-	st.dynamic.generated += n
-	return true
-}
-
-func (st *bodyState) noteDynamicOverflow(b *hclsyntax.Block, requested, limit int) {
-	if st == nil || st.dynamic == nil {
-		return
-	}
-	st.dynamic.overflow = append(st.dynamic.overflow, dynamicOverflow{
-		label: dynamicblock.GeneratedType(b), requested: requested, limit: limit,
-	})
-}
-
 // DynamicCounts maps a dynamic block to how many blocks it generated, or to
 // unknownDynamicCount when its evaluations disagreed (a nested dynamic block
 // generates a different number under each element of its parent).
@@ -106,6 +70,27 @@ const unknownDynamicCount = -1
 // keptAsWritten records a dynamic block that was not expanded; it generated no
 // blocks, but its as-written form is in the output.
 const keptAsWritten = -2
+
+// Generated is how many blocks b generated; ok is false when b was kept as
+// written, never reached, or generated a different number of blocks under
+// each instance of its parent.
+func (d DynamicCounts) Generated(b *hclsyntax.Block) (n int, ok bool) {
+	n, ok = d[b]
+	return n, ok && n >= 0
+}
+
+// Blocks is how many blocks b generated, none when it was kept as written or
+// never reached; varies is set when that differs under each instance of its
+// parent.
+func (d DynamicCounts) Blocks(b *hclsyntax.Block) (n int, varies bool) {
+	return max(d[b], 0), d.Varies(b)
+}
+
+// Varies reports whether b generated a different number of blocks under each
+// instance of its parent.
+func (d DynamicCounts) Varies(b *hclsyntax.Block) bool {
+	return d[b] == unknownDynamicCount
+}
 
 func (st *bodyState) recordDynamic(b *hclsyntax.Block, n int) {
 	if st == nil || st.dynamic == nil {

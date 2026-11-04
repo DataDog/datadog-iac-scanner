@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,9 +18,8 @@ type args struct {
 }
 
 var testsinitiateJSONLine = []struct {
-	name         string
-	args         args
-	want         string
+	name     string
+	args     args
 	wantLine string
 }{
 	{
@@ -37,53 +37,6 @@ var testsinitiateJSONLine = []struct {
 				}
 				`),
 		},
-		want: `{
-				"LineInfo": {
-				  "0": {
-					".father.son": {
-					  "Value": [
-						7
-					  ]
-					}
-				  },
-				  "1": {
-					".father.son": {
-					  "Value": [
-						4
-					  ]
-					}
-				  },
-				  "2": {
-					".father.son": {
-					  "Value": [
-						5
-					  ]
-					}
-				  },
-				  "3": {
-					".father.son": {
-					  "Value": [
-						6
-					  ]
-					}
-				  },
-				  "father": {
-					"": {
-					  "Value": [
-						2
-					  ]
-					}
-				  },
-				  "son": {
-					".father": {
-					  "Value": [
-						3
-					  ]
-					}
-				  }
-				}
-			  }
-			  `,
 		wantLine: `{
 				"_dd_lines": {
 				  "_dd__default": {
@@ -172,33 +125,6 @@ var testsinitiateJSONLine = []struct {
 				]
 			  }
 			  `,
-		want: `
-			{
-				"LineInfo": {
-				  "father": {
-					"": {
-					  "Value": [
-						2
-					  ]
-					}
-				  },
-				  "key": {
-					".father": {
-					  "Value": [
-						4
-					  ]
-					}
-				  },
-				  "value": {
-					".father": {
-					  "Value": [
-						4
-					  ]
-					}
-				  }
-				}
-			  }
-			`,
 	},
 	{
 		name: "test initiate json line",
@@ -220,26 +146,6 @@ var testsinitiateJSONLine = []struct {
 				},
 				"parameters":"simple test"
 			}`,
-		want: `
-			{
-				"LineInfo": {
-					"parameters": {
-						"": {
-							"Value": [
-								2
-							]
-						}
-					},
-					"simple test": {
-						"": {
-						"Value": [
-								2
-							]
-						}
-					}
-				}
-			}
-			`,
 	},
 	{
 		name: "test initiate special close json line",
@@ -285,33 +191,6 @@ var testsinitiateJSONLine = []struct {
 				}
 			  }
 			  `,
-		want: `
-			{
-				"LineInfo": {
-				  "close": {
-					".father": {
-					  "Value": [
-						3
-					  ]
-					}
-				  },
-				  "father": {
-					"": {
-					  "Value": [
-						2
-					  ]
-					}
-				  },
-				  "value": {
-					".father.close": {
-					  "Value": [
-						4
-					  ]
-					}
-				  }
-				}
-			  }
-			`,
 	},
 	{
 		name: "test same key different path json line",
@@ -361,49 +240,6 @@ var testsinitiateJSONLine = []struct {
 				  "key": "value"
 				}
 			  }`,
-		want: `
-			{
-				"LineInfo": {
-					"father1": {
-						"": {
-							"Value": [
-								2
-							]
-						}
-					},
-					"father2": {
-						"": {
-							"Value": [
-								5
-							]
-						}
-					},
-					"key": {
-						".father1": {
-							"Value": [
-								3
-							]
-						},
-						".father2": {
-							"Value": [
-								6
-							]
-						}
-					},
-					"value": {
-						".father1": {
-							"Value": [
-								3
-							]
-						},
-						".father2": {
-							"Value": [
-								6
-							]
-						}
-					}
-				}
-			}`,
 	},
 	{
 		name: "test with parent json line",
@@ -437,33 +273,7 @@ var testsinitiateJSONLine = []struct {
 					"son": "this is a son"
 					}
 			}`,
-		want: `
-		{
-			"LineInfo": {
-				"father": {
-					"": {
-						"Value": [
-							2
-						]
-					}
-				},
-				"son": {
-					".father": {
-						"Value": [
-							3
-						]
-					}
-				},
-				"this is a son": {
-					".father": {
-						"Value": [
-							3
-						]
-					}
-				}
-			}
-		}
-		`},
+	},
 	{
 		name: "test with array string json line",
 		args: args{
@@ -502,33 +312,6 @@ var testsinitiateJSONLine = []struct {
 					"testing2"
 				]
 			}`,
-		want: `
-			{
-				"LineInfo": {
-					"father": {
-						"": {
-							"Value": [
-								2
-							]
-						}
-					},
-					"testing1": {
-						".father": {
-							"Value": [
-								3
-							]
-						}
-					},
-					"testing2": {
-						".father": {
-							"Value": [
-								4
-							]
-						}
-					}
-				}
-			}
-			`,
 	},
 	{
 		name: "test with equal string json line",
@@ -568,27 +351,6 @@ var testsinitiateJSONLine = []struct {
 					"testing"
 				]
 			}`,
-		want: `
-			{
-				"LineInfo": {
-					"father": {
-						"": {
-							"Value": [
-								2
-							]
-						}
-					},
-					"testing": {
-						".father": {
-							"Value": [
-								3,
-								4
-							]
-						}
-					}
-				}
-			}
-			`,
 	},
 	{
 		name: "test arrays with objects",
@@ -666,52 +428,7 @@ var testsinitiateJSONLine = []struct {
 				}
 			]
 		}`,
-		want: `
-		{
-			"LineInfo":	{
-					"false": {
-						".resources.properties": {
-							"Value": [
-								5,
-								10
-							]
-						}
-					},
-					"httpsOnly": {
-						".resources.properties": {
-							"Value": [
-								5,
-								10
-							]
-						}
-					},
-					"properties": {
-						".resources": {
-							"Value": [
-								4,
-								9
-							]
-						}
-					},
-					"resources": {
-						"": {
-							"Value": [
-								2
-							]
-						}
-					}
-				}
-			}`,
 	},
-}
-
-func Test_initializeJSONLine(t *testing.T) {
-	for _, tt := range testsinitiateJSONLine {
-		t.Run(tt.name, func(t *testing.T) {
-			got := initializeJSONLine(tt.args.doc)
-			compareJSONLine(t, *got, tt.want)
-		})
-	}
 }
 
 func compareJSONLine(t *testing.T, test1 interface{}, test2 string) {
@@ -734,108 +451,136 @@ func Test_jsonLine_setLineInfo(t *testing.T) {
 	}
 }
 
-func Test_fifo_add(t *testing.T) {
-	type fields struct {
-		name  string
-		value []int
-	}
-	type args struct {
-		elements []int
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   []int
-	}{
-		{
-			name: "test pop",
-			fields: fields{
-				name:  "simple_pop",
-				value: []int{1, 2, 3, 4, 5, 6},
-			},
-			args: args{
-				elements: []int{9, 10},
-			},
-			want: []int{1, 2, 3, 4, 5, 6, 9, 10},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := &fifo{
-				name:  tt.fields.name,
-				Value: tt.fields.value,
-			}
-			f.add(tt.args.elements...)
-			require.Equal(t, tt.want, f.Value)
-		})
-	}
+func TestExtractResourceHeaderLinesReadsChildModules(t *testing.T) {
+	src := []byte(`{
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.main",
+          "values": {
+            "id": "vpc"
+          }
+        }
+      ],
+      "child_modules": [
+        {
+          "address": "module.child",
+          "resources": [
+            {
+              "address": "module.child.aws_vpc_endpoint.gw",
+              "values": {
+                "service_name": "dynamodb"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}`)
+	var doc map[string]interface{}
+	require.NoError(t, json.Unmarshal(src, &doc))
+	raw, err := json.Marshal(initializeJSONLine(src).setLineInfo(doc))
+	require.NoError(t, err)
+	lines := extractResourceHeaderLines(raw)
+	require.Equal(t, 7, lines["aws_vpc.main"])
+	require.Equal(t, 18, lines["module.child.aws_vpc_endpoint.gw"])
 }
 
-func Test_fifo_pop(t *testing.T) {
-	type fields struct {
-		name  string
-		value []int
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   int
-	}{
-		{
-			name: "test pop",
-			fields: fields{
-				name:  "simple_pop",
-				value: []int{1, 2, 3, 4, 5, 6},
-			},
-			want: 1,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := &fifo{
-				name:  tt.fields.name,
-				Value: tt.fields.value,
-			}
-			length := len(f.Value)
-			if got := f.pop(); got != tt.want {
-				t.Errorf("fifo.pop() = %v, want %v", got, tt.want)
-			}
-			require.Equal(t, length-1, len(f.Value))
-		})
-	}
+func TestSetLineInfoListElementsKeepTheirOwnLine(t *testing.T) {
+	src := []byte(`{
+  "items": [
+    {
+      "a": 1
+    },
+    {
+      "b": 2
+    }
+  ]
+}`)
+	var doc map[string]interface{}
+	require.NoError(t, json.Unmarshal(src, &doc))
+	out := initializeJSONLine(src).setLineInfo(doc)
+	arr := out["_dd_lines"].(map[string]*model.LineObject)["_dd_items"].Arr
+	require.Len(t, arr, 2)
+	require.Equal(t, 4, arr[0]["_dd__default"].Line)
+	require.Equal(t, 7, arr[1]["_dd__default"].Line)
 }
 
-func Test_fifo_head(t *testing.T) {
-	type fields struct {
-		name  string
-		value []int
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   int
-	}{
-		{
-			name: "test head",
-			fields: fields{
-				name:  "simple_head",
-				value: []int{5, 2, 3, 4, 5, 6},
-			},
-			want: 5,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := &fifo{
-				name:  tt.fields.name,
-				Value: tt.fields.value,
-			}
-			length := len(f.Value)
-			if got := f.head(); got != tt.want {
-				t.Errorf("fifo.head() = %v, want %v", got, tt.want)
-			}
-			require.Equal(t, length, len(f.Value))
-		})
-	}
+func TestSetLineInfoValuesNeverTakeKeyLines(t *testing.T) {
+	src := []byte(`{
+  "description": "egress",
+  "egress": [
+    {
+      "cidr_blocks": ["0.0.0.0/0"]
+    }
+  ],
+  "ingress": [
+    {
+      "cidr_blocks": ["10.0.0.0/8"],
+      "description": "self",
+      "self": false
+    },
+    {
+      "cidr_blocks": ["0.0.0.0/0"],
+      "description": "ssh",
+      "self": true
+    }
+  ]
+}`)
+	var doc map[string]interface{}
+	require.NoError(t, json.Unmarshal(src, &doc))
+	table := initializeJSONLine(src).setLineInfo(doc)["_dd_lines"].(map[string]*model.LineObject)
+	require.Equal(t, 3, table["_dd_egress"].Line)
+	ingress := table["_dd_ingress"].Arr
+	require.Len(t, ingress, 2)
+	require.Equal(t, 12, ingress[0]["_dd_self"].Line)
+	require.Equal(t, 15, ingress[1]["_dd__default"].Line)
+	require.Equal(t, 17, ingress[1]["_dd_self"].Line)
+	require.Equal(t, 15, ingress[1]["_dd_cidr_blocks"].Line)
+}
+
+func TestSetLineInfoListElementsAfterEqualValue(t *testing.T) {
+	src := []byte(`{
+  "default_action": [
+    {
+      "type": "redirect"
+    },
+    {
+      "redirect": [
+        {
+          "port": "443"
+        }
+      ],
+      "type": "forward"
+    }
+  ]
+}`)
+	var doc map[string]interface{}
+	require.NoError(t, json.Unmarshal(src, &doc))
+	actions := initializeJSONLine(src).setLineInfo(doc)["_dd_lines"].(map[string]*model.LineObject)["_dd_default_action"].Arr
+	require.Len(t, actions, 2)
+	require.Equal(t, 4, actions[0]["_dd_type"].Line)
+	require.Nil(t, actions[0]["_dd_redirect"])
+	require.Equal(t, 7, actions[1]["_dd_redirect"].Line)
+	require.Equal(t, 9, actions[1]["_dd_redirect"].Arr[0]["_dd_port"].Line)
+}
+
+func TestSetLineInfoNestedListsKeepElementIndexes(t *testing.T) {
+	src := []byte(`{
+  "matrix": [
+    [
+      "a"
+    ],
+    "b"
+  ]
+}`)
+	var doc map[string]interface{}
+	require.NoError(t, json.Unmarshal(src, &doc))
+	arr := initializeJSONLine(src).setLineInfo(doc)["_dd_lines"].(map[string]*model.LineObject)["_dd_matrix"].Arr
+	require.Len(t, arr, 2)
+	require.Equal(t, 3, arr[0]["_dd__default"].Line)
+	require.Equal(t, 4, arr[0]["_dd__default"].Arr[0]["_dd__default"].Line)
+	require.Equal(t, 6, arr[1]["_dd__default"].Line)
 }

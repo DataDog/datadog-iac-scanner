@@ -65,8 +65,9 @@ statement {
     values   = ["false"]
   }
 }`,
-			want: `{"Statement":[{"Actions":["s3:GetObject"],"Condition":{"Bool":{"aws:SecureTransport":["false"]},` +
-				`"StringEquals":{"aws:SourceAccount":["1"]}},"Effect":"Allow","Principals":{"AWS":["*"],"Service":["lambda.amazonaws.com"]}}],"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject",` +
+				`"Principal":{"AWS":"*","Service":"lambda.amazonaws.com"},` +
+				`"Condition":{"Bool":{"aws:SecureTransport":"false"},"StringEquals":{"aws:SourceAccount":"1"}}}]}` + "\n",
 		},
 		{
 			name: "effect defaults to Allow",
@@ -75,7 +76,7 @@ statement {
   actions   = ["s3:*"]
   resources = ["*"]
 }`,
-			want: `{"Statement":[{"Actions":["s3:*"],"Effect":"Allow","Resources":["*"]}],"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}` + "\n",
 		},
 		{
 			name: "null effect defaults to Allow",
@@ -85,7 +86,7 @@ statement {
   actions   = ["s3:*"]
   resources = ["*"]
 }`,
-			want: `{"Statement":[{"Actions":["s3:*"],"Effect":"Allow","Resources":["*"]}],"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}` + "\n",
 		},
 		{
 			name: "dynamic blocks expand to statements, principals and conditions",
@@ -116,12 +117,12 @@ dynamic "statement" {
 statement {
   actions = ["x:y"]
 }`,
-			want: `{"Statement":[` +
-				`{"Actions":["s3:Get*"],"Condition":{"StringEquals":{"aws:SourceAccount":["1"]}},"Effect":"Allow",` +
-				`"Principals":{"Service":["lambda.amazonaws.com"]},"Sid":"a"},` +
-				`{"Actions":["s3:Put*"],"Condition":{"StringEquals":{"aws:SourceAccount":["1"]}},"Effect":"Allow",` +
-				`"Principals":{"Service":["lambda.amazonaws.com"]},"Sid":"b"},` +
-				`{"Actions":["x:y"],"Effect":"Allow"}],"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Statement":[` +
+				`{"Sid":"a","Effect":"Allow","Action":"s3:Get*","Principal":{"Service":"lambda.amazonaws.com"},` +
+				`"Condition":{"StringEquals":{"aws:SourceAccount":"1"}}},` +
+				`{"Sid":"b","Effect":"Allow","Action":"s3:Put*","Principal":{"Service":"lambda.amazonaws.com"},` +
+				`"Condition":{"StringEquals":{"aws:SourceAccount":"1"}}},` +
+				`{"Effect":"Allow","Action":"x:y"}]}` + "\n",
 		},
 		{
 			name: "sensitive for_each still expands",
@@ -137,7 +138,7 @@ dynamic "statement" {
 					"names": cty.TupleVal([]cty.Value{cty.StringVal("s3:*")}).Mark("sensitive"),
 				}),
 			},
-			want: `{"Statement":[{"Actions":["s3:*"],"Effect":"Allow"}],"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*"}]}` + "\n",
 		},
 		{
 			name: "unresolvable field leaves the rest",
@@ -148,7 +149,7 @@ statement {
   actions   = ["*"]
   resources = [var.missing]
 }`,
-			want: `{"Id":"p","Statement":[{"Actions":["*"],"Effect":"Allow"}],"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Id":"p","Statement":[{"Effect":"Allow","Action":"*"}]}` + "\n",
 		},
 		{
 			name: "source and override documents merge by sid",
@@ -164,11 +165,11 @@ statement {
 					"src": cty.StringVal(`{"Version":"2012-10-17","Statement":[` +
 						`{"Sid":"Keep","Effect":"Allow","Action":"sqs:*","Principal":"*"},` +
 						`{"Sid":"Own","Effect":"Allow","Action":["s3:*"]}]}`),
-					"override": cty.StringVal(`{"Statement":[{"Sid":"Keep","Effect":"Deny","Actions":["sqs:*"]}],"Version":"2012-10-17"}`),
+					"override": cty.StringVal(`{"Statement":[{"Sid":"Keep","Effect":"Deny","Action":["sqs:*"]}],"Version":"2012-10-17"}`),
 				}),
 			},
-			want: `{"Statement":[{"Actions":["sqs:*"],"Effect":"Deny","Sid":"Keep"},{"Actions":["s3:ListBucket"],"Effect":"Allow","Sid":"Own"}],` +
-				`"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Statement":[{"Sid":"Keep","Effect":"Deny","Action":"sqs:*"},` +
+				`{"Sid":"Own","Effect":"Allow","Action":"s3:ListBucket"}]}` + "\n",
 		},
 		{
 			name: "source condition values that are not strings read as text",
@@ -179,8 +180,8 @@ statement {
 						`"Condition":{"Bool":{"aws:SecureTransport":false},"NumericLessThan":{"s3:TlsVersion":1.2}}}]}`),
 				}),
 			},
-			want: `{"Statement":[{"Actions":["s3:*"],"Condition":{"Bool":{"aws:SecureTransport":["false"]},` +
-				`"NumericLessThan":{"s3:TlsVersion":["1.2"]}},"Effect":"Deny","Sid":"DenyHTTP"}],"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Statement":[{"Sid":"DenyHTTP","Effect":"Deny","Action":"s3:*",` +
+				`"Condition":{"Bool":{"aws:SecureTransport":"false"},"NumericLessThan":{"s3:TlsVersion":"1.2"}}}]}` + "\n",
 		},
 		{
 			name: "deprecated source_json and override_json merge by sid",
@@ -197,7 +198,8 @@ statement {
 					"override": cty.StringVal(`{"Statement":[{"Sid":"Own","Effect":"Allow","Action":"*","Resource":"*"}],"Version":"2012-10-17"}`),
 				}),
 			},
-			want: `{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Sid":"Keep"},{"Actions":["*"],"Effect":"Allow","Resources":["*"],"Sid":"Own"}],"Version":"2012-10-17"}` + "\n",
+			want: `{"Version":"2012-10-17","Statement":[{"Sid":"Keep","Effect":"Allow","Action":"sqs:*"},` +
+				`{"Sid":"Own","Effect":"Allow","Action":"*","Resource":"*"}]}` + "\n",
 		},
 	}
 	for _, tt := range tests {
@@ -238,8 +240,8 @@ dynamic "statement" {
     resources = ["arn:${statement.value}:${var.y}"]
   }
 }`)
-	require.Equal(t, `{"Statement":[{"Actions":["a","${var.x}"],"Effect":"Allow","Resources":["arn:a:${var.y}"]}],`+
-		`"Version":"2012-10-17"}`+"\n", got["json"])
+	require.Equal(t, `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["a","${var.x}"],"Resource":"arn:a:${var.y}"}]}`+
+		"\n", got["json"])
 }
 
 func TestDocumentOfUnresolvedDynamicBlocksStaysUnresolved(t *testing.T) {
@@ -400,9 +402,9 @@ statement {
     values   = ["o"]
   }
 }`)["json"]
-	require.Contains(t, got, `"Principals":{"AWS":["a","b"]}`)
-	require.Contains(t, got, `"Not_principals":{"Service":["x","y"]}`)
-	require.Contains(t, got, `"StringEquals":{"aws:PrincipalOrgID":["o"],"aws:SourceAccount":["1","2"]}`)
+	require.Contains(t, got, `"Principal":{"AWS":["a","b"]}`)
+	require.Contains(t, got, `"NotPrincipal":{"Service":["x","y"]}`)
+	require.Contains(t, got, `"StringEquals":{"aws:PrincipalOrgID":"o","aws:SourceAccount":["1","2"]}`)
 }
 
 func TestUnreadableSourceDocumentsStayUnresolved(t *testing.T) {
@@ -504,9 +506,9 @@ source_policy_documents = [jsonencode({
 })]
 `)
 	require.NotNil(t, got)
-	require.Contains(t, got["json"], `"Bool":{"aws:SecureTransport":["false"]}`)
-	require.Contains(t, got["json"], `"NumericLessThan":{"s3:TlsVersion":["1.2"]}`)
-	require.Contains(t, got["json"], `"Not_resources":["arn:aws:s3:::b"]`)
+	require.Contains(t, got["json"], `"Bool":{"aws:SecureTransport":"false"}`)
+	require.Contains(t, got["json"], `"NumericLessThan":{"s3:TlsVersion":"1.2"}`)
+	require.Contains(t, got["json"], `"NotResource":"arn:aws:s3:::b"`)
 }
 
 func TestParsePolicyJSONFailsClosedOnUnreadableFields(t *testing.T) {
@@ -530,7 +532,9 @@ func TestParsePolicyJSONFailsClosedOnUnreadableFields(t *testing.T) {
 	}
 }
 
-func TestNestedDynamicBlocksShareOneBudget(t *testing.T) {
+// Nested dynamic blocks expand fully: every statement carries every principal,
+// however many the nesting multiplies to.
+func TestNestedDynamicBlocksExpandFully(t *testing.T) {
 	list := func(n int) string { return "[" + strings.Repeat(`"a",`, n) + "]" }
 	nested := func(outer, inner int) string {
 		return `
@@ -548,17 +552,11 @@ dynamic "statement" {
   }
 }`
 	}
-	// 100 statements and 5 principals each generate 600 blocks.
 	require.NotNil(t, renderedAttributes(t, nested(100, 5)))
-	// Each cap alone holds, but their product does not.
-	require.Nil(t, renderedAttributes(t, nested(256, 256)))
-	// 2 statements with 256 principals each is 514 blocks, within the budget;
-	// 4 statements is 1028, over it.
-	require.NotNil(t, renderedAttributes(t, nested(2, 256)))
-	require.Nil(t, renderedAttributes(t, nested(4, 256)))
+	require.NotNil(t, renderedAttributes(t, nested(256, 256)))
 }
 
-func TestGoogleDynamicBlocksShareOneBudget(t *testing.T) {
+func TestGoogleDynamicBlocksExpandFully(t *testing.T) {
 	list := func(n int) string { return "[" + strings.Repeat(`"a",`, n) + "]" }
 	src := `
 dynamic "binding" {
@@ -577,7 +575,7 @@ dynamic "binding" {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	rd := &partial.Renderer{Ctx: &hcl.EvalContext{Variables: map[string]cty.Value{}}, Source: partial.BytesSource([]byte(src))}
-	require.Nil(t, googleIAMPolicyAttributes(file.Body, rd.Render))
+	require.NotNil(t, googleIAMPolicyAttributes(file.Body, rd.Render))
 }
 
 // An unresolved condition value renders like in own statements: dropping it
@@ -595,8 +593,8 @@ source_policy_documents = [jsonencode({
 })]
 `)
 	require.NotNil(t, got)
-	require.Contains(t, got["json"], `"aws:SourceVpce":["${var.vpce}"]`)
-	require.Contains(t, got["json"], `"aws:SecureTransport":["false"]`)
+	require.Contains(t, got["json"], `"aws:SourceVpce":"${var.vpce}"`)
+	require.Contains(t, got["json"], `"aws:SecureTransport":"false"`)
 }
 
 func TestEmptyConditionValuesAreNotEmitted(t *testing.T) {
@@ -623,7 +621,7 @@ statement {
     identifiers = []
   }
 }`)
-	require.NotContains(t, got["json"], `"Principals"`)
+	require.NotContains(t, got["json"], `"Principal"`)
 }
 
 func TestParsePolicyJSONFailsClosedOnNullAndUnresolvedTemplates(t *testing.T) {
@@ -669,9 +667,10 @@ statement {
 }
 `)
 	require.NotNil(t, got)
-	require.Contains(t, got["json"], `"Resources":["${aws_s3_bucket.b.arn}/*"]`)
+	require.Contains(t, got["json"], `"Resource":"${aws_s3_bucket.b.arn}/*"`)
+	require.Contains(t, got["json"], `"Principal":"*"`)
 	require.Contains(t, got["json"], `"arn:aws:iam::*:user/${aws:username}"`)
-	require.Contains(t, got["json"], `"aws:SourceVpce":["${var.vpce}"]`)
+	require.Contains(t, got["json"], `"aws:SourceVpce":"${var.vpce}"`)
 }
 
 func TestOverrideJSONWinsOverOverridePolicyDocuments(t *testing.T) {
@@ -680,7 +679,7 @@ override_policy_documents = ["{\"Statement\":[{\"Sid\":\"S\",\"Effect\":\"Allow\
 override_json             = "{\"Statement\":[{\"Sid\":\"S\",\"Effect\":\"Deny\",\"Action\":\"s3:*\"}]}"
 `)
 	require.Contains(t, got["json"], `"Effect":"Deny"`)
-	require.Contains(t, got["json"], `"Actions":["s3:*"]`)
+	require.Contains(t, got["json"], `"Action":"s3:*"`)
 	require.NotContains(t, got["json"], `"s3:ListBucket"`)
 }
 
@@ -716,5 +715,5 @@ source_json               = "{\"Statement\":[{\"Sid\":\"S\",\"Effect\":\"Allow\"
 source_policy_documents   = ["{\"Statement\":[{\"Sid\":\"S\",\"Effect\":\"Deny\",\"Action\":\"s3:*\"}]}"]
 `)
 	require.Contains(t, got["json"], `"Effect":"Deny"`)
-	require.Contains(t, got["json"], `"Actions":["s3:*"]`)
+	require.Contains(t, got["json"], `"Action":"s3:*"`)
 }

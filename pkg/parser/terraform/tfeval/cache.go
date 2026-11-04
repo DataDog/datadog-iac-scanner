@@ -44,13 +44,15 @@ type evalCacheEntry struct {
 	resources []ResolvedResource
 	// instances are the module calls evaluated inside this evaluation.
 	instances    []ModuleInstance
+	emptyBlocks  []EmptyBlock
 	outputs      map[string]cty.Value
+	scope        *ModuleScope
 	visitedDirs  []string
 	baseAddr     string
 	baseChainLen int
-	// evalDepth is the nesting depth this entry was evaluated at. A module cached
-	// from a deeper call may have truncated descendants; shallower callers need a
-	// fresh evaluation with more depth remaining.
+	// evalDepth is the nesting depth this entry was evaluated at. A module
+	// cached from a deeper call may lack descendants a shallower caller still
+	// has depth budget for, so it is re-evaluated rather than reused.
 	evalDepth int
 }
 

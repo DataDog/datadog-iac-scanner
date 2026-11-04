@@ -8,6 +8,7 @@ package tfpath
 
 import (
 	"maps"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -358,4 +359,46 @@ func TestOrderOverrideLast(t *testing.T) {
 
 func keys(m map[string]struct{}) []string {
 	return slices.Sorted(maps.Keys(m))
+}
+
+func TestHasVarsPathDirective(t *testing.T) {
+	tests := []struct {
+		src  string
+		want bool
+	}{
+		{src: "// dd_terraform_vars: vars/x.tfvars\n", want: true},
+		{src: "  // kics_terraform_vars: vars/x.tfvars\r\n", want: true},
+		{src: "// dd_terraform_vars: vars/x.tfvars", want: false},
+		{src: "# dd_terraform_vars: vars/x.tfvars\n", want: false},
+		{src: "// other_terraform_vars: vars/x.tfvars\n", want: false},
+	}
+	for _, tt := range tests {
+		if got := HasVarsPathDirective([]byte(tt.src)); got != tt.want {
+			t.Errorf("HasVarsPathDirective(%q) = %v, want %v", tt.src, got, tt.want)
+		}
+	}
+}
+
+func TestVarsPathFromDirective(t *testing.T) {
+	dir := filepath.Join("repo", "stack")
+	tests := []struct {
+		src    string
+		want   string
+		wantOK bool
+	}{
+		{src: "// dd_terraform_vars: vars/x.tfvars\n", want: filepath.Join(dir, "vars", "x.tfvars"), wantOK: true},
+		{src: "// kics_terraform_vars: vars/x.tfvars\n", want: filepath.Join(dir, "vars", "x.tfvars"), wantOK: true},
+		{src: "// dd_terraform_vars: vars\\x.tfvars\n", want: filepath.Join(dir, "vars", "x.tfvars"), wantOK: true},
+		{src: "// dd_terraform_vars: /vars/x.tfvars\n", want: filepath.Join(dir, "vars", "x.tfvars"), wantOK: true},
+		{src: "// dd_terraform_vars: C:\\vars\\x.tfvars\n", want: filepath.FromSlash("C:/vars/x.tfvars"), wantOK: true},
+		{src: "// dd_terraform_vars: a.tfvars\n// dd_terraform_vars: b.tfvars\n", want: filepath.Join(dir, "a.tfvars"), wantOK: true},
+		{src: "variable \"x\" {}\n// dd_terraform_vars: a.tfvars", want: "", wantOK: false},
+		{src: "variable \"x\" {}\n", want: "", wantOK: false},
+	}
+	for _, tt := range tests {
+		got, ok := VarsPathFromDirective([]byte(tt.src), dir)
+		if got != tt.want || ok != tt.wantOK {
+			t.Errorf("VarsPathFromDirective(%q) = %q, %v, want %q, %v", tt.src, got, ok, tt.want, tt.wantOK)
+		}
+	}
 }

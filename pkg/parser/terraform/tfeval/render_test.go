@@ -124,8 +124,8 @@ resource "aws_s3_bucket" "b" {
 	}
 }
 
-// A value read whole keeps its resolved parts, with the unresolved ones named
-// by their path in it.
+// A local read whole keeps its resolved parts, with the unresolved ones
+// rendered through the local's expression.
 func TestRenderPartlyResolvedReference(t *testing.T) {
 	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
 		"main.tf": `
@@ -141,7 +141,7 @@ resource "aws_s3_bucket" "b" {
 `,
 	})
 	doc := documentFor(t, dir, "aws_s3_bucket", "b")
-	want := map[string]interface{}{"team": "core", "key": "${local.tags.key}"}
+	want := map[string]interface{}{"team": "core", "key": "${aws_kms_key.k.arn}"}
 	if got := doc["tags"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("tags = %#v, want %#v", got, want)
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/metaargs"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -27,13 +28,199 @@ import (
 const UnknownAttributePlaceholder = partial.UnknownPlaceholder
 
 // AttributesToDocument converts a resolved resource's attributes into the
-// map[string]interface{} shape the rule pipeline consumes. Every attribute is
-// always included: the parts of a value evaluation could not resolve are
-// rendered as their "${expr}" text, as the plain parser does, so presence-based
-// rules do not fire false positives on unresolved expressions and a string
+// map[string]interface{} shape the rule pipeline consumes. An attribute set to
+// null is left out, as Terraform reads it as unset; every other one is
+// included: the parts of a value evaluation could not resolve are rendered as
+// their "${expr}" text, as the plain parser does, so presence-based rules do
+// not fire false positives on unresolved expressions and a string
 // interpolating an unresolved value still carries the rest of its content.
 func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
 	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(r))
+}
+
+// RenderBody renders body's attributes and nested blocks against s the way
+// AttributesToDocument renders a resource. Labeled and dynamic blocks are left
+// out.
+func (s *ModuleScope) RenderBody(body *hclsyntax.Body) map[string]interface{} {
+	doc, _ := s.RenderBodyUnknowns(body)
+	return doc
+}
+
+// RenderBodyUnknowns is RenderBody with, beside the document, the unknown
+// shape of body's attributes and nested blocks, nil when every value is
+// known. A nested block type's shape is a list of one shape per block.
+func (s *ModuleScope) RenderBodyUnknowns(body *hclsyntax.Body) (doc, unknown map[string]interface{}) {
+	rd := &partial.Renderer{Ctx: s.evalCtx, Source: partial.FileSources(s.sources), Locals: s.Locals}
+	return s.renderBody(body, rd)
+}
+
+func (s *ModuleScope) renderBody(body *hclsyntax.Body, rd *partial.Renderer) (doc, unknown map[string]interface{}) {
+	attrs := make(map[string]cty.Value, len(body.Attributes))
+	for name, attr := range body.Attributes {
+		attrs[name] = evalScopeExpr(attr.Expr, s.evalCtx)
+	}
+	doc = attributesToDocument(attrs, body, nil, rd)
+	for name, val := range attrs {
+		if u := unknownOf(val, doc[name], true); u != nil {
+			unknown = setUnknown(unknown, name, u)
+		}
+	}
+	nested := make(map[string][]interface{})
+	shapes := make(map[string][]interface{})
+	unknownBlocks := make(map[string]bool)
+	for _, b := range body.Blocks {
+		if len(b.Labels) > 0 || dynamicblock.Is(b) {
+			continue
+		}
+		blockDoc, blockUnknown := s.renderBody(b.Body, rd)
+		nested[b.Type] = append(nested[b.Type], blockDoc)
+		if blockUnknown == nil {
+			blockUnknown = map[string]interface{}{}
+		} else {
+			unknownBlocks[b.Type] = true
+		}
+		shapes[b.Type] = append(shapes[b.Type], blockUnknown)
+	}
+	for typ, blocks := range nested {
+		doc[typ] = blocks
+		if unknownBlocks[typ] {
+			unknown = setUnknown(unknown, typ, shapes[typ])
+		}
+	}
+	return doc, unknown
+}
+
+func setUnknown(unknown map[string]interface{}, key string, shape interface{}) map[string]interface{} {
+	if unknown == nil {
+		unknown = make(map[string]interface{})
+	}
+	unknown[key] = shape
+	return unknown
+}
+
+func evalScopeExpr(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
+	v, diags := expr.Value(ctx)
+	if diags.HasErrors() {
+		return partial.WithUnknownRefs(expr, ctx)
+	}
+	return v
+}
+
+// Unknowns returns r's _dd_meta.unknown, nil when every value is known. doc,
+// when non-nil, is AttributesToDocument(r): a value it holds as a scalar is
+// wholly unknown. Meta-arguments are never reported as values, as in
+// Terraform's after_unknown; count is true on the placeholder instance of a
+// block whose instances are unknown, and the type of a dynamic block kept as
+// written is true.
+func Unknowns(r *ResolvedResource, doc map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{})
+	for key, val := range r.Attributes {
+		if metaargs.Is(key) || key == dynamicBlockKey {
+			continue
+		}
+		var counterpart interface{}
+		if doc != nil {
+			counterpart = doc[key]
+		}
+		if u := unknownOf(val, counterpart, doc != nil); u != nil {
+			out[key] = u
+		}
+	}
+	if kept, ok := r.Attributes[dynamicBlockKey]; ok && kept.IsKnown() && kept.CanIterateElements() {
+		for it := kept.ElementIterator(); it.Next(); {
+			k, _ := it.Element()
+			if typ, ok := ctyutil.ConcreteString(k); ok {
+				out[typ] = true
+			}
+		}
+	}
+	if r.UnknownExpansion {
+		// count stands for both meta-arguments: the instance count is unknown.
+		out[metaArgCount] = true
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// unknownOf is v's unknown shape, nil when v is wholly known. guided says
+// counterpart is v's rendering in the document.
+func unknownOf(v cty.Value, counterpart interface{}, guided bool) interface{} {
+	v, _ = v.Unmark()
+	if v.IsWhollyKnown() {
+		return nil
+	}
+	if !v.IsKnown() {
+		return true
+	}
+	ty := v.Type()
+	switch {
+	case ty.IsObjectType() || ty.IsMapType():
+		sub, isMap := counterpart.(map[string]interface{})
+		if guided && !isMap {
+			return true
+		}
+		if out := unknownEntries(v, sub); len(out) > 0 {
+			return out
+		}
+		return nil
+	case ty.IsListType() || ty.IsTupleType() || ty.IsSetType():
+		sub, isList := counterpart.([]interface{})
+		if guided && !isList {
+			return true
+		}
+		return unknownElements(v, sub, guided && len(sub) == v.LengthInt())
+	}
+	return true
+}
+
+// unknownEntries is the unknown shape of a known object or map's entries,
+// guided by sub when non-nil.
+func unknownEntries(v cty.Value, sub map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{})
+	for it := v.ElementIterator(); it.Next(); {
+		k, ev := it.Element()
+		name, ok := ctyutil.ConcreteString(k)
+		if !ok {
+			continue
+		}
+		var c interface{}
+		if sub != nil {
+			c = sub[name]
+		}
+		if u := unknownOf(ev, c, sub != nil); u != nil {
+			out[name] = u
+		}
+	}
+	return out
+}
+
+// unknownElements is the unknown shape of a known collection's elements,
+// position by position; guided says sub holds them in the same order.
+func unknownElements(v cty.Value, sub []interface{}, guided bool) []interface{} {
+	out := make([]interface{}, 0, v.LengthInt())
+	for i, it := 0, v.ElementIterator(); it.Next(); i++ {
+		_, ev := it.Element()
+		var c interface{}
+		if guided {
+			c = sub[i]
+		}
+		out = append(out, unknownElement(ev, c, guided))
+	}
+	return out
+}
+
+// unknownElement is a list element's unknown shape: a known element keeps its
+// position as {} when it is an object and false otherwise.
+func unknownElement(v cty.Value, counterpart interface{}, guided bool) interface{} {
+	if u := unknownOf(v, counterpart, guided); u != nil {
+		return u
+	}
+	if ty := v.Type(); ty.IsObjectType() || ty.IsMapType() {
+		return map[string]interface{}{}
+	}
+	return false
 }
 
 // newRenderer renders r's attributes in the context they were evaluated in.
@@ -44,9 +231,14 @@ func newRenderer(r *ResolvedResource) *partial.Renderer {
 	ctx := r.Scope.evalCtx
 	if r.Iteration != nil {
 		ctx = ctx.NewChild()
-		ctx.Variables = r.Iteration
+		if ctx.Variables == nil {
+			ctx.Variables = map[string]cty.Value{}
+		}
+		for k, v := range r.Iteration {
+			ctx.Variables[k] = v
+		}
 	}
-	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources)}
+	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources), Locals: r.Scope.Locals}
 }
 
 // attrSource locates the HCL that produced a value so unresolved values can fall
@@ -146,15 +338,34 @@ func (s *attrSource) blocksFromCounts(n int) (blocks []*hclsyntax.Block, ok bool
 	return out, true
 }
 
+// dynamicBlockKey holds the dynamic blocks kept as written, by generated type.
+const dynamicBlockKey = "dynamic"
+
 func attributesToDocument(
 	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, rd *partial.Renderer,
 ) map[string]interface{} {
 	out := make(map[string]interface{}, len(attrs))
 	for key, val := range attrs {
+		if isNullAttribute(body, key, val) {
+			continue
+		}
 		src := sourceFor(body, key, dynamic, nil)
 		out[key] = ctyValueToDocument(val, &src, rd)
 	}
 	return out
+}
+
+// isNullAttribute reports whether key is an attribute of body evaluated to
+// null.
+func isNullAttribute(body *hclsyntax.Body, key string, v cty.Value) bool {
+	if body == nil {
+		return false
+	}
+	if _, isAttr := body.Attributes[key]; !isAttr {
+		return false
+	}
+	v, _ = v.Unmark()
+	return v.IsKnown() && v.IsNull()
 }
 
 // sourceFor finds the attribute expression or nested blocks that produced key,
@@ -368,6 +579,9 @@ func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[st
 		var es attrSource
 		switch {
 		case body != nil:
+			if isNullAttribute(body, name, ev) {
+				continue
+			}
 			es = sourceFor(body, name, src.dynamic, src.iterators)
 		case items[name] != nil:
 			es = attrSource{expr: items[name], iterators: src.iterators}

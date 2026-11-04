@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -98,8 +99,8 @@ module "c" {
 
 func TestDataPolicyDocumentResolvesInModule(t *testing.T) {
 	resources := evaluateChild(t)
-	want := `{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Principals":{"AWS":["*"]},` +
-		`"Resources":["${aws_sqs_queue.q.arn}"]}],"Version":"2012-10-17"}` + "\n"
+	want := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sqs:*",` +
+		`"Resource":"${aws_sqs_queue.q.arn}","Principal":{"AWS":"*"}}]}` + "\n"
 	for _, name := range []string{"direct", "via_local"} {
 		doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", name)))
 		require.Equal(t, want, doc["policy"], name)
@@ -109,205 +110,6 @@ func TestDataPolicyDocumentResolvesInModule(t *testing.T) {
 	var policy struct{ Statement []map[string]interface{} }
 	require.NoError(t, json.Unmarshal([]byte(doc["policy"].(string)), &policy))
 	require.Equal(t, "s1", policy.Statement[0]["Sid"])
-}
-
-// TestDataExpansionSkippedWhenBudgetExhausted evaluates a module whose child
-// exhausts the instantiation budget exactly: the module is discarded either
-// way, and only the evaluation count shows the avoided data expansion. The
-// child's charge stays once a budget refusal happened, so the siblings after it
-// stop in evaluationStop instead of redoing the refused work.
-func TestDataExpansionSkippedWhenBudgetExhausted(t *testing.T) {
-	root := t.TempDir()
-	writeModule(t, root, "heavy", map[string]string{"main.tf": `
-resource "aws_s3_bucket" "a" {}
-resource "aws_s3_bucket" "b" {}
-
-output "out" {
-  value = "arn:aws:sqs:us-east-1:1:q"
-}
-`})
-	writeModule(t, root, "consumer", map[string]string{"main.tf": `
-module "heavy" {
-  source = "../heavy"
-}
-
-resource "aws_s3_bucket" "r" {}
-
-data "aws_region" "big" {
-  count = 1000
-  name  = module.heavy.out
-}
-`})
-	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
-module "consumer" {
-  source = "../consumer"
-}
-`})
-
-	e := New()
-	e.SetMaxInstantiated(2)
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	require.NoError(t, err)
-
-	// The consumer module is discarded either way: heavy's charge exhausted the
-	// budget, and the consumer's own resource cannot fit the zero remainder.
-	require.Equal(t, 1, len(e.NotEvaluatedDirs()))
-	require.True(t, e.BudgetExceeded())
-	// The refusal stands, so the consumer's discarded evaluation does not hand
-	// the budget back: heavy's charge stays and bounds what follows.
-	require.Equal(t, 2, e.InstantiatedCount())
-	require.Empty(t, resources)
-	// Only the initial expansion ran: the refresh against module.heavy.out saw
-	// the exhausted budget and skipped the data expansion.
-	require.Equal(t, 1, e.DataBlockEvaluations())
-}
-
-// TestBudgetFailureDoesNotRepeatForEverySibling pins Nathan's repro shape: a
-// leaf of two resources fed var.in, a mid with one own resource and count=50 on
-// the leaf, and a stack with count=50 on the mid, under a budget of 100. The
-// first mid's leaves fill the budget exactly and its own resource is refused;
-// restoring for that refusal would restart every remaining mid with the full
-// budget, re-evaluating 50 leaves per mid (2500 cached evaluations at two
-// wrapper levels, more at deeper fan-out). With the refusal left standing the
-// remaining instances stop in evaluationStop, so the leaf evaluations done
-// once — 50 distinct inputs, one cache entry each — are all there are.
-func TestBudgetFailureDoesNotRepeatForEverySibling(t *testing.T) {
-	root := t.TempDir()
-	writeModule(t, root, "leaf", map[string]string{"main.tf": `
-variable "in" {}
-
-resource "aws_s3_bucket" "a" {
-  bucket = var.in
-}
-
-resource "aws_s3_bucket" "b" {
-  bucket = var.in
-}
-`})
-	writeModule(t, root, "mid", map[string]string{"main.tf": `
-variable "in" {}
-
-module "leaf" {
-  count  = 50
-  source = "../leaf"
-  in     = "${var.in}-${count.index}"
-}
-
-resource "aws_s3_bucket" "own" {
-  bucket = var.in
-}
-`})
-	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
-module "mid" {
-  count  = 50
-  source = "../mid"
-  in     = count.index
-}
-`})
-
-	e := New()
-	e.SetMaxInstantiated(100)
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	require.NoError(t, err)
-
-	// The leaves of the first mid were evaluated and charged before its own
-	// resource was refused; their charges stay, and nothing re-evaluates them.
-	require.Equal(t, 100, e.InstantiatedCount())
-	require.Equal(t, 50, len(e.cache))
-	require.True(t, e.BudgetExceeded())
-	require.Contains(t, e.NotEvaluatedDirs(), filepath.Join(root, "mid"))
-	require.Empty(t, resources)
-}
-
-// TestBudgetFailureDoesNotRepeatInPrepass runs the same shape through the
-// speculative sibling prepass, which shares the refusal handling through
-// currentInstantiationCount: two calls give the stack a prepass, and the
-// refusal of the first mid's own resource must stop the prepass instances
-// rather than hand the speculative budget back to each of them.
-func TestBudgetFailureDoesNotRepeatInPrepass(t *testing.T) {
-	root := t.TempDir()
-	writeModule(t, root, "leaf", map[string]string{"main.tf": `
-variable "in" {}
-
-resource "aws_s3_bucket" "a" {
-  bucket = var.in
-}
-
-resource "aws_s3_bucket" "b" {
-  bucket = var.in
-}
-`})
-	writeModule(t, root, "mid", map[string]string{"main.tf": `
-variable "in" {}
-
-module "leaf" {
-  count  = 50
-  source = "../leaf"
-  in     = "${var.in}-${count.index}"
-}
-
-resource "aws_s3_bucket" "own" {
-  bucket = var.in
-}
-`})
-	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
-module "mid_a" {
-  count  = 50
-  source = "../mid"
-  in     = count.index
-}
-
-module "mid_b" {
-  count  = 50
-  source = "../mid"
-  in     = count.index
-}
-`})
-
-	e := New()
-	e.SetMaxInstantiated(100)
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	require.NoError(t, err)
-
-	// Both calls share the leaf inputs (in = count.index of each call), so the
-	// leaves of the first prepass instance are the whole eval cache: 50
-	// entries, not one batch of 50 per retried instance.
-	require.Equal(t, 100, e.InstantiatedCount())
-	require.Equal(t, 50, len(e.cache))
-	require.True(t, e.BudgetExceeded())
-	require.Empty(t, resources)
-}
-
-// TestDataDisabledBudgetStillEvaluatesData pins that a disabled instantiation
-// budget disables the data expansion pre-check too: remainingInstantiationBudget
-// reports -1 for it, which must not read as exhausted.
-func TestDataDisabledBudgetStillEvaluatesData(t *testing.T) {
-	root := t.TempDir()
-	writeModule(t, root, "mod", map[string]string{"main.tf": `
-resource "aws_s3_bucket" "r" {}
-
-data "aws_region" "cur" {
-  name = "us-east-1"
-}
-
-output "region" {
-  value = data.aws_region.cur.name
-}
-`})
-	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
-module "mod" {
-  source = "../mod"
-}
-`})
-
-	e := New()
-	e.SetMaxInstantiated(0)
-	_, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
-	require.NoError(t, err)
-	require.False(t, e.BudgetExceeded())
-	// The module evaluated as usual and its data block expanded.
-	require.Positive(t, e.DataBlockEvaluations())
-	require.Empty(t, e.NotEvaluatedDirs())
 }
 
 // TestDataCacheInvalidatesPerSource changes one data source after the blocks
@@ -521,7 +323,7 @@ func TestDataPolicyDocumentInJSONModule(t *testing.T) {
   }}}
 }`}, callChild)
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "p")))
-	require.Equal(t, `{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Principals":{"AWS":["*"]},"Sid":"Base"}],"Version":"2012-10-17"}`+"\n", doc["policy"])
+	require.Equal(t, `{"Version":"2012-10-17","Statement":[{"Sid":"Base","Effect":"Allow","Action":"sqs:*","Principal":{"AWS":"*"}}]}`+"\n", doc["policy"])
 }
 
 func TestDataReadingDataThroughLocal(t *testing.T) {
@@ -605,32 +407,6 @@ resource "aws_sqs_queue_policy" "p" {
 	require.Contains(t, doc["policy"], `arn:aws:sqs:us-east-1:1:q`)
 }
 
-func TestDataInstancesChargeBudget(t *testing.T) {
-	files := map[string]string{"main.tf": `
-resource "aws_s3_bucket" "a" {}
-resource "aws_s3_bucket" "b" {}
-data "aws_region" "r" {}
-data "aws_caller_identity" "c" {}
-`}
-
-	e := New()
-	e.SetMaxInstantiated(5)
-	resources := evaluateWithChild(t, e, files, callChild)
-	findResource(t, resources, "aws_s3_bucket", "a")
-	require.Equal(t, 4, e.InstantiatedCount())
-	require.False(t, e.BudgetExceeded())
-
-	// A module whose resources and data together exceed the budget is not
-	// instantiated, as one whose resources alone do.
-	e = New()
-	e.SetMaxInstantiated(3)
-	resources = evaluateWithChild(t, e, files, callChild)
-	for _, r := range resources {
-		require.NotEqual(t, "aws_s3_bucket", r.Type)
-	}
-	require.True(t, e.BudgetExceeded())
-}
-
 // TestDataReferenceCycleTerminates evaluates data blocks reading each other
 // through a local in a cycle: a reads local.middle, middle reads data b, and b
 // reads data a. Evaluation must end within the refresh pass bound, without
@@ -669,45 +445,6 @@ data "aws_iam_policy_document" "b" {
 	require.Contains(t, docs, "aws_iam_policy_document.a")
 	require.Contains(t, docs, "aws_iam_policy_document.b")
 	require.Equal(t, docs, dataDocs())
-}
-
-// TestDataRefreshDoesNotRechargeBudget builds a source_policy_documents chain
-// that settles only after several refresh passes. The blocks are charged once:
-// with a budget of five, pass-scoped charging (four blocks times the passes)
-// would exceed it and leave the module scanned as written.
-func TestDataRefreshDoesNotRechargeBudget(t *testing.T) {
-	files := map[string]string{"main.tf": `
-data "aws_iam_policy_document" "d1" {
-  statement {
-    sid     = "D1"
-    actions = ["sqs:*"]
-  }
-}
-
-data "aws_iam_policy_document" "d2" {
-  source_policy_documents = [data.aws_iam_policy_document.d1.json]
-}
-
-data "aws_iam_policy_document" "d3" {
-  source_policy_documents = [data.aws_iam_policy_document.d2.json]
-}
-
-data "aws_iam_policy_document" "d4" {
-  source_policy_documents = [data.aws_iam_policy_document.d3.json]
-}
-`}
-	e := New()
-	e.SetMaxInstantiated(5)
-	resources := evaluateWithChild(t, e, files, callChild)
-	var data int
-	for _, r := range resources {
-		if r.Data {
-			data++
-		}
-	}
-	require.Equal(t, 4, data)
-	require.Equal(t, 4, e.InstantiatedCount())
-	require.False(t, e.BudgetExceeded())
 }
 
 func findData(t *testing.T, data []ResolvedResource, typ, name string) ResolvedResource {
@@ -758,10 +495,9 @@ module "c" {
 	require.NoError(t, err)
 
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "p")))
-	require.Equal(t, `{"Statement":[`+
-		`{"Actions":["s3:GetObject","a:*"],"Effect":"Allow","Resources":["arn:aws:s3:::a/x"],"Sid":"a"},`+
-		`{"Actions":["s3:GetObject","b:*"],"Effect":"Allow","Resources":["arn:aws:s3:::b/x"],"Sid":"b"}],`+
-		`"Version":"2012-10-17"}`+"\n", doc["policy"])
+	require.Equal(t, `{"Version":"2012-10-17","Statement":[`+
+		`{"Sid":"a","Effect":"Allow","Action":["s3:GetObject","a:*"],"Resource":"arn:aws:s3:::a/x"},`+
+		`{"Sid":"b","Effect":"Allow","Action":["s3:GetObject","b:*"],"Resource":"arn:aws:s3:::b/x"}]}`+"\n", doc["policy"])
 }
 
 // TestDataJSONEncodeCycleStaysBounded pins a data block reading its own JSON
@@ -999,4 +735,241 @@ data "aws_iam_policy_document" "from_local" {
 		"loop": true, "self": true, "indexed": true, "bracket": true,
 		"looked": true, "dyn": true, "from_local": true,
 	}, names)
+}
+
+func readFixtureFiles(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	files := make(map[string]string, len(entries))
+	for _, e := range entries {
+		content, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		require.NoError(t, err)
+		files[e.Name()] = string(content)
+	}
+	return files
+}
+
+func TestDataSourcesRenderInRoot(t *testing.T) {
+	fixtures := filepath.Join("..", "..", "..", "..", "test", "fixtures")
+	withConsumer := func(files map[string]string, ref string) map[string]string {
+		files["consumer.tf"] = `resource "aws_x" "r" { v = ` + ref + ` }`
+		return files
+	}
+	twin := func(name, ext string) string {
+		return `data "aws_iam_policy_document" "doc" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::from-` + name + `/*"]
+  }
+}
+` + ext
+	}
+	for name, tc := range map[string]struct {
+		files   map[string]string
+		allowTF bool
+		want    []string
+		absent  []string
+	}{
+		"fixture destination policy": {
+			files: withConsumer(readFixtureFiles(t, filepath.Join(fixtures, "test_terraform_data_source")),
+				"data.aws_iam_policy_document.test_destination_policy.json"),
+			want: []string{"logs:*", `\"Effect\":\"Allow\"`},
+		},
+		"fixture example policy": {
+			files: withConsumer(readFixtureFiles(t, filepath.Join(fixtures, "test_terraform_data_source")),
+				"data.aws_iam_policy_document.test_example.json"),
+			want: []string{`\"Id\":\"lala\"`, `home/\u0026{aws:username}/`, "s3:ListAllMyBuckets"},
+		},
+		"unset variable keeps the policy": {
+			files: withConsumer(readFixtureFiles(t, filepath.Join(fixtures, "test_terraform_data_source_unknown_vars")),
+				"data.aws_iam_policy_document.partial_unknowns.json"),
+			want: []string{"arn:aws:s3:::my-bucket/*", "s3:GetObject"},
+		},
+		"JSON config": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {"doc": {
+  "statement": [{"actions": ["s3:GetObject"], "resources": ["arn:aws:s3:::from-json/*"]}]}}}}`},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{"from-json"},
+		},
+		"JSON config chain": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {
+  "combined": {"source_policy_documents": ["${data.aws_iam_policy_document.base.json}"]},
+  "base": {"statement": [{"actions": ["s3:GetObject"], "resources": ["arn:aws:s3:::from-base/*"]}]}}}}`},
+				"data.aws_iam_policy_document.combined.json"),
+			want: []string{"from-base"},
+		},
+		"JSON config resource traversal": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {"doc": {
+  "statement": [{"actions": ["s3:GetObject"], "resources": ["${aws_s3_bucket.b.arn}"]}]}}}}`},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{"aws_s3_bucket.b.arn"},
+		},
+		"JSON config dynamic statements": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {"doc": {"dynamic": {"statement": {
+  "for_each": ["a", "b"],
+  "content": {"sid": "${statement.value}", "actions": ["s3:GetObject", "${statement.value}:*"]}}}}}}}`},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{`\"Sid\":\"a\"`, `\"Sid\":\"b\"`, "a:*", "b:*"},
+		},
+		"JSON config spaced or wrapped templates": {
+			files: withConsumer(map[string]string{"policy.tf.json": `{"data": {"aws_iam_policy_document": {
+  "outer": {"source_policy_documents": ["${ data.aws_iam_policy_document.mid.json }"]},
+  "mid": {"source_policy_documents": ["${[data.aws_iam_policy_document.base.json][0]}"]},
+  "base": {"statement": [{"sid": "Base", "actions": ["sqs:*"]}]}}}}`},
+				"data.aws_iam_policy_document.outer.json"),
+			want: []string{`\"Sid\":\"Base\"`},
+		},
+		"tofu JSON shadows tf JSON": {
+			files: withConsumer(map[string]string{
+				"policy.tf.json":   `{"data": {"aws_iam_policy_document": {"doc": {"statement": [{"resources": ["arn:aws:s3:::from-tf/*"]}]}}}}`,
+				"policy.tofu.json": `{"data": {"aws_iam_policy_document": {"doc": {"statement": [{"resources": ["arn:aws:s3:::from-tofu/*"]}]}}}}`,
+			}, "data.aws_iam_policy_document.doc.json"),
+			want:   []string{"from-tofu"},
+			absent: []string{"from-tf/"},
+		},
+		"tofu shadows tf": {
+			files:  withConsumer(map[string]string{"policy.tf": twin("tf", ""), "policy.tofu": twin("tofu", "")}, "data.aws_iam_policy_document.doc.json"),
+			want:   []string{"from-tofu"},
+			absent: []string{"from-tf/"},
+		},
+		"excluded tofu twin keeps the tf policy": {
+			files:   withConsumer(map[string]string{"policy.tf": twin("tf", ""), "policy.tofu": twin("tofu", "")}, "data.aws_iam_policy_document.doc.json"),
+			allowTF: true,
+			want:    []string{"from-tf"},
+			absent:  []string{"from-tofu"},
+		},
+		"file without policy documents is ignored": {
+			files: withConsumer(map[string]string{
+				"no_policy.tf": "resource \"aws_s3_bucket\" \"bucket\" {\n  bucket = \"example\"\n}\ndata \"aws_caller_identity\" \"current\" {}\n",
+				"policy.tf":    twin("example", ""),
+			}, "data.aws_iam_policy_document.doc.json"),
+			want: []string{`{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::from-example/*\"}]}`},
+		},
+		"ARN with data partition text": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "aws_iam_policy_document" "glue" {
+  statement {
+    actions   = ["glue:*"]
+    resources = ["arn:data.aws_partition.current.partition:glue:*"]
+  }
+}
+`}, "data.aws_iam_policy_document.glue.json"),
+			want: []string{"glue:*"},
+		},
+		"whitespace in block header": {
+			files: withConsumer(map[string]string{"policy.tf": "data\t\"aws_iam_policy_document\"\t\"doc\" {\n  statement {\n    actions = [\"s3:GetObject\"]\n  }\n}\n"},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{"s3:GetObject"},
+		},
+		"escaped label in block header": {
+			files: withConsumer(map[string]string{"policy.tf": "data \"aws_iam_pol\\u0069cy_document\" \"doc\" {\n  statement {\n    actions = [\"s3:GetObject\"]\n  }\n}\n"},
+				"data.aws_iam_policy_document.doc.json"),
+			want: []string{"s3:GetObject"},
+		},
+		"google IAM policy": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "google_iam_policy" "public" {
+  binding {
+    role    = "roles/cloudkms.cryptoKeyDecrypter"
+    members = ["allUsers"]
+  }
+}
+`}, "data.google_iam_policy.public.policy_data"),
+			want: []string{`{\"bindings\":[{\"members\":[\"allUsers\"],\"role\":\"roles/cloudkms.cryptoKeyDecrypter\"}]}`},
+		},
+		"source chain with own statement": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "aws_iam_policy_document" "combined" {
+  source_policy_documents = [data.aws_iam_policy_document.base.json]
+  statement {
+    sid     = "Own"
+    actions = ["s3:GetObject"]
+  }
+}
+data "aws_iam_policy_document" "base" {
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+`}, "data.aws_iam_policy_document.combined.json"),
+			want: []string{`{\"Sid\":\"Base\",\"Effect\":\"Allow\",\"Action\":\"sqs:*\"},{\"Sid\":\"Own\",\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\"}`},
+		},
+		"long chain in reverse declaration order": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "aws_iam_policy_document" "a" { source_policy_documents = [data.aws_iam_policy_document.b.json] }
+data "aws_iam_policy_document" "b" { source_policy_documents = [data.aws_iam_policy_document.c.json] }
+data "aws_iam_policy_document" "c" { source_policy_documents = [data.aws_iam_policy_document.d.json] }
+data "aws_iam_policy_document" "d" { source_policy_documents = [data.aws_iam_policy_document.base.json] }
+data "aws_iam_policy_document" "base" {
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+`}, "data.aws_iam_policy_document.a.json"),
+			want: []string{`\"Sid\":\"Base\"`},
+		},
+		"try through a local picks the document once it renders": {
+			files: withConsumer(map[string]string{"main.tf": `
+locals {
+  base_json = try(data.aws_iam_policy_document.base.json, data.aws_iam_policy_document.root.json)
+}
+data "aws_iam_policy_document" "root" {
+  statement {
+    sid     = "Root"
+    actions = ["iam:GetUser"]
+  }
+}
+data "aws_iam_policy_document" "leaf" {
+  statement {
+    sid     = "Leaf"
+    actions = ["ec2:*"]
+  }
+}
+data "aws_iam_policy_document" "base" {
+  source_policy_documents = [data.aws_iam_policy_document.leaf.json]
+  statement {
+    sid     = "Base"
+    actions = ["sqs:*"]
+  }
+}
+data "aws_iam_policy_document" "combined" {
+  source_policy_documents = [local.base_json]
+}
+`}, "data.aws_iam_policy_document.combined.json"),
+			want:   []string{`\"Sid\":\"Base\"`, `\"Sid\":\"Leaf\"`},
+			absent: []string{`\"Sid\":\"Root\"`},
+		},
+		"source document with an unresolved condition stays unresolved": {
+			files: withConsumer(map[string]string{"main.tf": `
+data "aws_iam_policy_document" "guarded" {
+  source_policy_documents = [jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Sid = "Pub", Effect = "Allow", Principal = "*", Action = "s3:GetObject", Resource = "*", Condition = var.cond }]
+  })]
+}
+`}, "data.aws_iam_policy_document.guarded.json"),
+			absent: []string{"Pub"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeModule(t, t.TempDir(), "root", tc.files)
+			e := New()
+			if tc.allowTF {
+				e.SetMergeAllow(map[string]struct{}{filepath.ToSlash(filepath.Join(dir, "policy.tf")): {}})
+			}
+			resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			raw, err := json.Marshal(AttributesToDocument(ptr(findResource(t, resources, "aws_x", "r")))["v"])
+			require.NoError(t, err)
+			for _, want := range tc.want {
+				require.Contains(t, string(raw), want)
+			}
+			for _, absent := range tc.absent {
+				require.NotContains(t, string(raw), absent)
+			}
+		})
+	}
 }

@@ -458,6 +458,27 @@ func TestClassifyFile_SwaggerOpenAPI(t *testing.T) {
 	require.Equal(t, "openapi", got)
 }
 
+func TestClassifyFile_TerraformPlan(t *testing.T) {
+	const head = `{"format_version":"1.2","terraform_version":"1.9.0","planned_values":{"root_module":{}}`
+	for _, tt := range []struct {
+		name, content, want string
+		plan                bool
+	}{
+		{"plan", head + `,"resource_changes":[],"configuration":{"root_module":{}}}`, terraform, true},
+		{"plan with no change", head + `,"configuration":{"root_module":{}}}`, terraform, true},
+		{"plan without configuration", head + `,"resource_changes":[]}`, "", true},
+		{"state", `{"format_version":"1.0","terraform_version":"1.9.0","values":{"root_module":{}}}`, "", false},
+		{"other json", `{"planned_values":"x","configuration":{}}`, "", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "plan.json")
+			require.NoError(t, os.WriteFile(path, []byte(tt.content), 0o600))
+			require.Equal(t, tt.want, ClassifyFile(context.Background(), nil, path, []byte(tt.content), []string{""}))
+			require.Equal(t, tt.plan, IsTerraformPlan([]byte(tt.content)))
+		})
+	}
+}
+
 func TestClassifyFile_DockerCompose(t *testing.T) {
 	content := []byte("services:\n  web:\n    image: nginx:latest\n")
 	path := filepath.Join(t.TempDir(), "compose.yaml")

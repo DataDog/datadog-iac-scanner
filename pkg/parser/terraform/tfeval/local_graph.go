@@ -10,7 +10,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfrefs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -23,9 +23,10 @@ import (
 // follows, what each local reads that sibling module calls change, and the
 // data blocks reading their own result.
 type localGraph struct {
-	names []string
-	index map[string]int
-	exprs []hclsyntax.Expression
+	names  []string
+	index  map[string]int
+	exprs  []hclsyntax.Expression
+	byName map[string]hclsyntax.Expression
 	// reads holds the declared locals each local reads by name, by index;
 	// whole is set for a local reading local as a whole.
 	reads [][]int
@@ -92,6 +93,7 @@ func newLocalGraph(
 		deps:       make([]localDeps, n),
 		siblings:   make([]siblingReads, n),
 		dataBlocks: dataBlocks,
+		byName:     exprs,
 	}
 	for i, name := range names {
 		g.index[name] = i
@@ -108,18 +110,17 @@ func (g *localGraph) noteReads(resourceTypes map[string]struct{}) []localDeps {
 	direct := make([]localDeps, len(g.names)+1)
 	for i, expr := range g.exprs {
 		for _, t := range expr.Variables() {
-			g.siblings[i].add(t)
-			root := t.RootName()
-			_, resource := resourceTypes[root]
-			direct[i].resources = direct[i].resources || resource
-			direct[i].modules = direct[i].modules || root == blockTypeModule
-			direct[i].data = direct[i].data || root == blockTypeData
-			if root != rootLocal {
+			ref := tfrefs.Parse(t)
+			g.siblings[i].add(&ref)
+			direct[i].resources = direct[i].resources || readsType(&ref, resourceTypes)
+			direct[i].modules = direct[i].modules || ref.Kind == tfrefs.KindModule
+			direct[i].data = direct[i].data || ref.Kind == tfrefs.KindData
+			if ref.Kind != tfrefs.KindLocal {
 				continue
 			}
-			if name, ok := terraform.LocalTraversalName(t); !ok {
+			if ref.Name == "" {
 				g.whole[i] = true
-			} else if j, declared := g.index[name]; declared {
+			} else if j, declared := g.index[ref.Name]; declared {
 				g.reads[i] = append(g.reads[i], j)
 			}
 		}

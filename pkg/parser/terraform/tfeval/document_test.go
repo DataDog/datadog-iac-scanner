@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -125,10 +126,7 @@ resource "aws_s3_bucket_logging" "this" {
 		t.Errorf("computed = %#v, want ${timestamp()}", got)
 	}
 
-	rules, ok := doc["rule"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("rule = %#v, want object", doc["rule"])
-	}
+	rules := oneBlock(t, doc["rule"], "rule")
 	if got := rules["role_arn"]; got != "${aws_iam_role.replication.arn}" {
 		t.Errorf("rule.role_arn = %#v, want ${aws_iam_role.replication.arn}", got)
 	}
@@ -267,11 +265,8 @@ module "c" {
 `})
 
 	doc := documentFor(t, dir, "aws_security_group", "sg")
-	// One generated block collapses to an object, as a block written once would.
-	ingress, ok := doc["ingress"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("ingress = %#v, want an object", doc["ingress"])
-	}
+	// One generated block is a one-element list, as a block written once is.
+	ingress := oneBlock(t, doc["ingress"], "ingress")
 	cidr, ok := ingress["cidr_blocks"].([]interface{})
 	if !ok {
 		t.Fatalf("cidr_blocks = %#v, want a list", ingress["cidr_blocks"])
@@ -311,16 +306,8 @@ module "c" {
 `})
 
 	doc := documentFor(t, dir, "aws_iam_policy_document", "p")
-	// One generated block collapses to an object, as a block written once would.
-	st, ok := doc["statement"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("statement = %#v, want an object", doc["statement"])
-	}
-	// One nested block collapses to an object, as a block written once would.
-	principals, ok := st["principals"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("principals = %#v, want an object", st["principals"])
-	}
+	st := oneBlock(t, doc["statement"], "statement")
+	principals := oneBlock(t, st["principals"], "principals")
 	identifiers, ok := principals["identifiers"].([]interface{})
 	if !ok {
 		t.Fatalf("identifiers = %#v, want a list", principals["identifiers"])
@@ -361,10 +348,7 @@ module "c" {
 `})
 
 			doc := documentFor(t, dir, "aws_security_group", "sg")
-			ingress, ok := doc["ingress"].(map[string]interface{})
-			if !ok {
-				t.Fatalf("ingress = %#v, want an object", doc["ingress"])
-			}
+			ingress := oneBlock(t, doc["ingress"], "ingress")
 			rule, ok := ingress["rule"]
 			if !ok {
 				t.Fatalf("rule missing from %#v", ingress)
@@ -428,10 +412,7 @@ module "c" {
 `})
 
 	doc := documentFor(t, dir, "aws_security_group", "sg")
-	ingress, ok := doc["ingress"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("ingress = %#v, want an object", doc["ingress"])
-	}
+	ingress := oneBlock(t, doc["ingress"], "ingress")
 	ids, ok := ingress["ids"].([]interface{})
 	if !ok {
 		t.Fatalf("ids = %#v, want a list", ingress["ids"])
@@ -441,5 +422,295 @@ module "c" {
 	want := []interface{}{"${__dd_unknown__}", "b"}
 	if !reflect.DeepEqual(ids, want) {
 		t.Errorf("ids = %#v, want %#v", ids, want)
+	}
+}
+
+func unknownsFor(t *testing.T, mainTF, typ, name string, withDoc bool) map[string]interface{} {
+	t.Helper()
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": mainTF})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	r := findResource(t, resources, typ, name)
+	if withDoc {
+		return Unknowns(&r, AttributesToDocument(&r))
+	}
+	return Unknowns(&r, nil)
+}
+
+func TestUnknownsRootVariableAndComputedAttribute(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_route_table_association" "a" {
+  name      = var.unset
+  subnet_id = aws_subnet.s.id
+  route     = "r"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = "b"
+  tags   = { a = "b" }
+}
+`
+	for _, withDoc := range []bool{false, true} {
+		want := map[string]interface{}{"name": true, "subnet_id": true}
+		if got := unknownsFor(t, mainTF, "aws_route_table_association", "a", withDoc); !reflect.DeepEqual(got, want) {
+			t.Errorf("withDoc=%v: unknown = %#v, want %#v", withDoc, got, want)
+		}
+		if got := unknownsFor(t, mainTF, "aws_s3_bucket", "b", withDoc); got != nil {
+			t.Errorf("withDoc=%v: literal resource unknown = %#v, want nil", withDoc, got)
+		}
+	}
+}
+
+func TestUnknownsNestedBlockAndList(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_security_group" "g" {
+  ingress {
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    cidr_blocks = [var.unset, "10.0.0.0/8"]
+  }
+}
+`
+	want := map[string]interface{}{"ingress": []interface{}{
+		map[string]interface{}{},
+		map[string]interface{}{"cidr_blocks": []interface{}{true, false}},
+	}}
+	for _, withDoc := range []bool{false, true} {
+		if got := unknownsFor(t, mainTF, "aws_security_group", "g", withDoc); !reflect.DeepEqual(got, want) {
+			t.Errorf("withDoc=%v: unknown = %#v, want %#v", withDoc, got, want)
+		}
+	}
+}
+
+func TestUnknownsSingleNestedBlockFollowsDocument(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_instance" "i" {
+  ebs {
+    size = var.unset
+    type = "gp3"
+  }
+}
+`
+	want := map[string]interface{}{"ebs": []interface{}{map[string]interface{}{"size": true}}}
+	if got := unknownsFor(t, mainTF, "aws_instance", "i", true); !reflect.DeepEqual(got, want) {
+		t.Errorf("unknown = %#v, want %#v", got, want)
+	}
+}
+
+func TestUnknownsKnownMapAndSetElementsInList(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_s3_bucket" "b" {
+  maps = [tomap({ a = "b" }), tomap({ a = var.unset })]
+  sets = [toset(["a"]), toset([var.unset])]
+}
+`
+	want := map[string]interface{}{
+		"maps": []interface{}{map[string]interface{}{}, true},
+		"sets": []interface{}{false, true},
+	}
+	if got := unknownsFor(t, mainTF, "aws_s3_bucket", "b", false); !reflect.DeepEqual(got, want) {
+		t.Errorf("unknown = %#v, want %#v", got, want)
+	}
+}
+
+// The meta-arguments are never listed as values; the placeholder of an
+// unknown expansion reports its instance count as unknown.
+func TestUnknownsOmitMetaArguments(t *testing.T) {
+	const mainTF = `
+variable "unset" {}
+
+resource "aws_s3_bucket" "c" {
+  count  = var.unset
+  bucket = var.unset
+}
+
+resource "aws_s3_bucket" "f" {
+  for_each = var.unset
+  bucket   = "b"
+}
+`
+	for _, withDoc := range []bool{false, true} {
+		if got, want := unknownsFor(t, mainTF, "aws_s3_bucket", "c", withDoc), map[string]interface{}{"bucket": true, "count": true}; !reflect.DeepEqual(got, want) {
+			t.Errorf("withDoc=%v: count unknown = %#v, want %#v", withDoc, got, want)
+		}
+		if got, want := unknownsFor(t, mainTF, "aws_s3_bucket", "f", withDoc), map[string]interface{}{"count": true}; !reflect.DeepEqual(got, want) {
+			t.Errorf("withDoc=%v: for_each unknown = %#v, want %#v", withDoc, got, want)
+		}
+	}
+}
+
+func TestUnknownsRenderedTextIsWhole(t *testing.T) {
+	const mainTF = `
+variable "t" {}
+
+resource "aws_s3_bucket" "b" {
+  tags = merge(var.t, { a = "b" })
+}
+
+locals {
+  t = { a = var.t, b = "b" }
+}
+
+resource "aws_s3_bucket" "c" {
+  tags = coalesce(local.t, {})
+}
+`
+	for _, name := range []string{"b", "c"} {
+		got := unknownsFor(t, mainTF, "aws_s3_bucket", name, true)
+		if want := map[string]interface{}{"tags": true}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: unknown = %#v, want %#v", name, got, want)
+		}
+	}
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": mainTF})
+	if got, want := documentFor(t, dir, "aws_s3_bucket", "c")["tags"], "${coalesce(local.t, {})}"; got != want {
+		t.Errorf("c: tags = %#v, want %q", got, want)
+	}
+	unguided := map[string]interface{}{"tags": map[string]interface{}{"a": true}}
+	if got := unknownsFor(t, mainTF, "aws_s3_bucket", "c", false); !reflect.DeepEqual(got, unguided) {
+		t.Errorf("c without doc: unknown = %#v, want %#v", got, unguided)
+	}
+}
+
+func TestUnknownsKnownVariableNotReported(t *testing.T) {
+	const mainTF = `
+variable "x" {
+  default = "v"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.x
+}
+`
+	if got := unknownsFor(t, mainTF, "aws_s3_bucket", "b", true); got != nil {
+		t.Errorf("unknown = %#v, want nil", got)
+	}
+}
+
+func TestRenderBodyModuleCall(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "m", map[string]string{"main.tf": "variable \"name\" {}\n"})
+	writeModule(t, root, "env", map[string]string{"main.tf": `
+variable "n" {}
+
+module "m" {
+  source = "../m"
+  name   = var.n
+  extra  = var.missing
+  tags {
+    owner = var.n
+  }
+}
+`})
+	e := New()
+	if _, _, _, err := e.EvaluateModule(context.Background(), filepath.Join(root, "env"), map[string]cty.Value{"n": cty.StringVal("x")}); err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	scope := e.TakeRootScope()
+	if scope == nil {
+		t.Fatal("TakeRootScope = nil, want the root scope")
+	}
+	if again := e.TakeRootScope(); again != nil {
+		t.Fatalf("second TakeRootScope = %p, want nil", again)
+	}
+	var call *hclsyntax.Block
+	for _, body := range scope.Bodies {
+		for _, b := range body.Blocks {
+			if b.Type == "module" {
+				call = b
+			}
+		}
+	}
+	if call == nil {
+		t.Fatal("module block not found in scope bodies")
+	}
+	want := map[string]interface{}{
+		"source": "../m",
+		"name":   "x",
+		"extra":  "${var.missing}",
+		"tags":   []interface{}{map[string]interface{}{"owner": "x"}},
+	}
+	if got := scope.RenderBody(call.Body); !reflect.DeepEqual(got, want) {
+		t.Errorf("RenderBody = %#v, want %#v", got, want)
+	}
+}
+
+// oneBlock is the only object of a nested block, which is a list even when
+// the block is written once.
+func oneBlock(t *testing.T, v interface{}, what string) map[string]interface{} {
+	t.Helper()
+	blocks, ok := v.([]interface{})
+	if !ok || len(blocks) != 1 {
+		t.Fatalf("%s = %#v, want one block", what, v)
+	}
+	block, ok := blocks[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("%s[0] = %#v, want an object", what, blocks[0])
+	}
+	return block
+}
+
+func TestTakeRootScopeNilOnFailure(t *testing.T) {
+	root := t.TempDir()
+	ok := writeModule(t, root, "ok", map[string]string{"main.tf": "locals {\n  a = 1\n}\n"})
+	e := New()
+	if _, _, _, err := e.EvaluateModule(context.Background(), ok, nil); err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+	if _, _, _, err := e.EvaluateModule(context.Background(), filepath.Join(root, "missing"), nil); err == nil {
+		t.Fatal("EvaluateModule of a missing dir succeeded, want an error")
+	}
+	if got := e.TakeRootScope(); got != nil {
+		t.Fatalf("TakeRootScope after failure = %p, want nil", got)
+	}
+}
+
+// An attribute evaluated to null is unset, in the resource body and in its
+// nested blocks; a provisioner is a list of bodies even when written once.
+func TestAttributesToDocumentNullsAndProvisioners(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+variable "none" {
+  default = null
+}
+resource "aws_instance" "i" {
+  key_name = var.none
+  ami      = "a"
+  ebs_block_device {
+    kms_key_id = null
+    encrypted  = true
+  }
+  provisioner "local-exec" {
+    command = "echo"
+  }
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := findResource(t, resources, "aws_instance", "i")
+	doc := AttributesToDocument(&r)
+	if _, ok := doc["key_name"]; ok {
+		t.Fatalf("key_name = %#v, want it left out", doc["key_name"])
+	}
+	ebs := doc["ebs_block_device"].([]interface{})[0].(map[string]interface{})
+	if _, ok := ebs["kms_key_id"]; ok || ebs["encrypted"] != true {
+		t.Fatalf("ebs_block_device = %#v, want kms_key_id left out", ebs)
+	}
+	if got := doc["provisioner"].(map[string]interface{})["local-exec"]; len(got.([]interface{})) != 1 {
+		t.Fatalf("provisioner.local-exec = %#v, want a list of one body", got)
 	}
 }

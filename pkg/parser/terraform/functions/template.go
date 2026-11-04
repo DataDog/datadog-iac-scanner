@@ -8,6 +8,8 @@ package functions
 import (
 	"fmt"
 	"maps"
+	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -86,13 +88,42 @@ func renderTemplateFile(
 	}, depth)
 }
 
+// templateParseCache memoizes parsed templates for templatefile and
+// templatestring calls. The parse is a pure function of the source text, but
+// a block expanded for hundreds of count/for_each instances renders the same
+// template once per instance, so parsing per call made the expansion's CPU
+// follow the instance count rather than the configuration's size. Cached
+// expressions are only evaluated, never mutated; evaluation already shares
+// parsed expressions across the concurrent root evaluations through the
+// module parse cache. The cache is capped so adversarial input cannot grow it
+// without bound; past the cap, calls parse without caching.
+var templateParseCache sync.Map // string (source) -> hclsyntax.Expression
+
+const templateParseCacheLimit = 4096
+
+var templateParseCount atomic.Int64
+
+func parseTemplate(src string) (hclsyntax.Expression, error) {
+	if cached, ok := templateParseCache.Load(src); ok {
+		return cached.(hclsyntax.Expression), nil
+	}
+	expr, diags := hclsyntax.ParseTemplate([]byte(src), "template", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return nil, diags
+	}
+	if templateParseCount.Add(1) <= templateParseCacheLimit {
+		templateParseCache.Store(src, expr)
+	}
+	return expr, nil
+}
+
 func renderTemplateString(src string, vars cty.Value, funcsCb func() map[string]function.Function, depth int) (cty.Value, error) {
 	if depth > templateMaxDepth {
 		return cty.NilVal, fmt.Errorf("template recursion limit reached")
 	}
-	expr, diags := hclsyntax.ParseTemplate([]byte(src), "template", hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
-		return cty.NilVal, diags
+	expr, err := parseTemplate(src)
+	if err != nil {
+		return cty.NilVal, err
 	}
 	return evalTemplate(expr, vars, nestTemplateStringFuncs(funcsCb, depth))
 }

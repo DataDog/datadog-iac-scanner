@@ -9,9 +9,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
@@ -116,6 +118,27 @@ func TestJSON_StringifyContent(t *testing.T) {
 	}
 }
 
+func TestParsePlanLinesFollowStringifiedContent(t *testing.T) {
+	p := &Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(minifiedTFPlan), "plan.json", false, 15)
+	require.NoError(t, err)
+	shown, err := p.StringifyContent([]byte(minifiedTFPlan))
+	require.NoError(t, err)
+	lines := strings.Split(shown, "\n")
+
+	lineAt := func(path ...string) int {
+		var node interface{} = map[string]interface{}(docs[0])
+		for _, key := range path {
+			node = node.(map[string]interface{})[key]
+		}
+		return int(node.(float64))
+	}
+	header := lineAt("resource", "fakewebservices_database", "_dd_lines", "_dd_prod_db", "_dd_line")
+	require.Contains(t, lines[header-1], `"values": {`)
+	size := lineAt("resource", "fakewebservices_database", "prod_db", "_dd_lines", "_dd_size", "_dd_line")
+	require.Contains(t, lines[size-1], `"size": 256`)
+}
+
 // TestJSON_StringifyContent_NoCrossFileState guards the parallel-parsing
 func TestJSON_StringifyContent_NoCrossFileState(t *testing.T) {
 	ctx := context.Background()
@@ -156,4 +179,25 @@ func TestJSON_StringifyContent_ConcurrentNonPlan(t *testing.T) {
 	for i, got := range results {
 		require.Equalf(t, nonPlan, got, "iter %d: non-plan content was reformatted (shared parser state leaked)", i)
 	}
+}
+
+// The parser reads as a plan exactly what the analyzer classifies as one.
+func TestParserPlanDetectionMatchesAnalyzer(t *testing.T) {
+	for name, content := range map[string]string{
+		"plan":                       `{"format_version":"1.2","terraform_version":"1.9.0","planned_values":{},"configuration":{}}`,
+		"plan without configuration": `{"format_version":"1.2","terraform_version":"1.9.0","planned_values":{}}`,
+		"no terraform_version":       `{"format_version":"1.2","planned_values":{},"configuration":{}}`,
+		"keys as values":             `{"note":"format_version terraform_version planned_values"}`,
+		"spaced keys":                "{\"format_version\" : \"1.2\", \"terraform_version\"\n: \"1.9.0\", \"planned_values\" :{}}",
+		"state":                      `{"format_version":"1.0","terraform_version":"1.9.0","values":{}}`,
+		"cloudformation":             `{"AWSTemplateFormatVersion":"2010-09-09","Resources":{}}`,
+	} {
+		kind, isPlan := (&Parser{}).KindForContent([]byte(content))
+		require.Equal(t, analyzer.IsTerraformPlan([]byte(content)), isPlan, name)
+		if isPlan {
+			require.Equal(t, model.KindTerraformPlan, kind, name)
+		}
+	}
+	_, isPlan := (&Parser{}).KindForContent([]byte(`{"format_version":"1.2","planned_values":{}}`))
+	require.False(t, isPlan, "a plan has a terraform_version")
 }
