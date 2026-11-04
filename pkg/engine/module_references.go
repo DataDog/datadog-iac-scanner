@@ -87,10 +87,13 @@ var referenceKinds = map[tfrefs.Kind]string{
 }
 
 // staticReferences returns r's references: its attributes and nested blocks
-// mirrored, each leaf the sorted addresses of the instances it reads, empty
-// when it reads none, and absent when what it reads could not be traced. An
-// index that cannot be resolved reads every instance. ambiguous mirrors the
-// references with a true leaf where the addresses over-approximate the read.
+// mirrored, each leaf the sorted addresses of the instances its value is read
+// from, empty when it reads none, and absent when what it reads could not be
+// traced. What only selects the value, a condition, an index key or a for
+// filter, is not a reference. An index that cannot be resolved reads every
+// instance. ambiguous mirrors the references with a true leaf where the
+// addresses over-approximate the read. A plan lists every read, selectors
+// included, so plan references can be wider.
 func staticReferences(r *tfeval.ResolvedResource, a *valueAnalyzer) (refs, ambiguous map[string]interface{}) {
 	if r.Body == nil || r.Scope == nil {
 		return nil, nil

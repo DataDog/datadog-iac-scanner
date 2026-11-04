@@ -971,16 +971,17 @@ func (a *valueAnalyzer) call(e *hclsyntax.FunctionCallExpr) inputReads {
 // selectsElement are the functions returning one element of a collection.
 var selectsElement = map[string]bool{"element": true, "lookup": true, "one": true}
 
-// selectorReads is what an expression choosing between values reads. What
-// it fails to trace leaves the references complete: a choice it cannot make
-// lists every alternative.
+// selectorReads is what an expression choosing between values reads. The
+// blocks it reads are not part of the value, so they are not references, and
+// what it fails to trace leaves the references complete: a choice it cannot
+// make lists every alternative.
 func (a *valueAnalyzer) selectorReads(expr hclsyntax.Expression) inputReads {
 	if a.refs == nil {
 		return a.reads(expr)
 	}
-	untraced := a.refs.untraced
+	start, untraced, ambiguous := len(a.refs.found), a.refs.untraced, a.refs.ambiguous
 	r := a.reads(expr)
-	a.refs.untraced = untraced
+	a.refs.found, a.refs.untraced, a.refs.ambiguous = a.refs.found[:start], untraced, ambiguous
 	return r
 }
 

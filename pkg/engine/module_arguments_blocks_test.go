@@ -321,6 +321,32 @@ resource "aws_route_table_association" "choice" {
 		referencesOf(t, resources, "aws_route_table_association.choice"))
 }
 
+func TestStaticReferencesLeaveOutWhatOnlySelectsTheValue(t *testing.T) {
+	resources := evaluateReferences(t, map[string]string{"main.tf": `
+resource "aws_subnet" "s" {
+  count = 2
+}
+resource "aws_iam_role" "source" {
+  name = "source"
+}
+resource "aws_iam_role" "other" {
+  name = "other"
+}
+resource "aws_iam_role_policy_attachment" "a" {
+  condition = length(aws_iam_role.other.name) > 0 ? aws_iam_role.source.name : aws_iam_role.source.id
+  filtered  = [for r in [aws_iam_role.source] : r.name if r.name != aws_iam_role.other.name]
+  indexed   = aws_subnet.s[length(aws_iam_role.other.name)].id
+}
+`})
+	require.Equal(t, map[string]interface{}{
+		"condition": addrs("aws_iam_role.source"),
+		"filtered":  addrs("aws_iam_role.source"),
+		"indexed":   addrs("aws_subnet.s[0]", "aws_subnet.s[1]"),
+	}, referencesOf(t, resources, "aws_iam_role_policy_attachment.a"))
+	require.Equal(t, map[string]interface{}{"indexed": true},
+		ambiguityOf(t, resources, "aws_iam_role_policy_attachment.a"))
+}
+
 func TestStaticReferencesNestedBlockAndDataEphemeral(t *testing.T) {
 	resources := evaluateReferences(t, map[string]string{"main.tf": `
 data "aws_ip_ranges" "r" {
