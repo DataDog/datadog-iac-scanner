@@ -2,7 +2,10 @@ package test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
@@ -111,6 +114,64 @@ func violationDiff(a, b map[string]map[string]int) map[string]int {
 		}
 	}
 	return diff
+}
+
+// Test_E2ETerraformInstanceIdentityFlag checks that only a scan with
+// TerraformInstanceIdentity reports the Terraform address as IAC_RESOURCE_ID.
+func Test_E2ETerraformInstanceIdentityFlag(t *testing.T) {
+	queriesPaths := []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform"))}
+	// Neither a bucket name nor a Name tag, so the rule reports the block label.
+	fixture := filepath.Join(t.TempDir(), "main.tf")
+	require.NoError(t, os.WriteFile(fixture, []byte(`resource "aws_s3_bucket" "logs" {
+  tags = { Environment = "dev" }
+}
+`), 0o600))
+	resourceIDTags := func(enabled bool) []string {
+		params, ctx := scan.GetDefaultParameters(context.Background(), "")
+		params.Path = []string{fixture}
+		params.OutputPath = t.TempDir()
+		params.QueriesPath = queriesPaths
+		params.ChangedDefaultQueryPath = true
+		params.TerraformInstanceIdentity = enabled
+		params.SCIInfo = model.SCIInfo{
+			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+		}
+		params.FlagEvaluator = featureflags.NewLocalEvaluator()
+		metadata, err := console.ExecuteScan(ctx, params)
+		require.NoError(t, err)
+		require.NotEmpty(t, metadata.Stats.ViolationBreakdowns, "no violations: check queriesPaths")
+
+		sarifs, err := filepath.Glob(filepath.Join(params.OutputPath, "*.sarif"))
+		require.NoError(t, err)
+		require.Len(t, sarifs, 1)
+		data, err := os.ReadFile(sarifs[0])
+		require.NoError(t, err)
+		var doc struct {
+			Runs []struct {
+				Results []struct {
+					Properties struct {
+						Tags []string `json:"tags"`
+					} `json:"properties"`
+				} `json:"results"`
+			} `json:"runs"`
+		}
+		require.NoError(t, json.Unmarshal(data, &doc))
+		var tags []string
+		for _, run := range doc.Runs {
+			require.NotEmpty(t, run.Results)
+			for _, r := range run.Results {
+				for _, tag := range r.Properties.Tags {
+					if strings.HasPrefix(tag, "IAC_RESOURCE_ID:") {
+						tags = append(tags, tag)
+					}
+				}
+			}
+		}
+		return tags
+	}
+
+	require.Empty(t, resourceIDTags(false))
+	require.Contains(t, resourceIDTags(true), "IAC_RESOURCE_ID:aws_s3_bucket.logs")
 }
 
 func Test_E2ETofuScannedAsTerraform(t *testing.T) {

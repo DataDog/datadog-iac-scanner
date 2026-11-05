@@ -240,6 +240,10 @@ type Inspector struct {
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
 	useRulesCache        bool
+	// terraformInstanceIdentity identifies Terraform findings by root module
+	// and address. Off keeps the file, resource name and module call chain
+	// fingerprint.
+	terraformInstanceIdentity bool
 	// fsys is the filesystem used for Terraform module resolution. Defaults to
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
 	// content.
@@ -329,16 +333,25 @@ func (c *Inspector) SetEvalGcRelief(relief bool) {
 // SetCompactFindingsAtDecode keeps one finding per identity as each rule's
 // findings are decoded, so a module instantiated per count/for_each instance
 // does not have every duplicate instance of its findings held in memory until
-// storage reduces them at the end of the scan.
+// storage reduces them at the end of the scan. Inspect then returns one
+// finding per identity, the first in model.CompareFindings order.
 //
-// Only a caller that, like storage, keeps the last finding of each identity
-// and drops the rest should enable this: it must stay off for a caller that
+// Only a caller that, like storage, keeps one finding of each identity and
+// drops the rest should enable this: it must stay off for a caller that
 // reads Inspect's return value directly, such as the test-rules rule
 // harness, because identity does not include the line for most platforms and
 // collapsing at decode would silently drop a second genuine violation of one
 // rule on one resource (e.g. two ingress blocks in one security group).
 func (c *Inspector) SetCompactFindingsAtDecode(compact bool) {
 	c.compactFindingsAtDecode = compact
+}
+
+// SetTerraformInstanceIdentity identifies Terraform findings by root module and
+// address, and keeps that address on the finding for IAC_RESOURCE_ID. Off
+// leaves findings as they are without it: the fingerprint stays the file,
+// resource name and module call chain.
+func (c *Inspector) SetTerraformInstanceIdentity(enabled bool) {
+	c.terraformInstanceIdentity = enabled
 }
 
 func (c *Inspector) SetExternalModulePaths(paths []string) {
@@ -373,6 +386,9 @@ type QueryContext struct {
 	// findings collects this rule's results. Nil when the context was not built
 	// for a scan; DecodeQueryResults then keeps every decoded finding.
 	findings *findingSet
+	// terraformInstanceIdentity identifies Terraform findings by root module
+	// and address (see Inspector.SetTerraformInstanceIdentity).
+	terraformInstanceIdentity bool
 }
 
 var (
@@ -534,14 +550,15 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	// is safe.
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
 	queryContext := &QueryContext{
-		Ctx:                     ctx,
-		scanID:                  scanID,
-		Files:                   filesMap,
-		Query:                   query,
-		payload:                 &payload,
-		FlagEvaluator:           c.flagEvaluator,
-		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
-		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
+		Ctx:                       ctx,
+		scanID:                    scanID,
+		Files:                     filesMap,
+		Query:                     query,
+		payload:                   &payload,
+		FlagEvaluator:             c.flagEvaluator,
+		discardLineInfoAfterUse:   c.discardLineInfoAfterUse,
+		findings:                  newFindingSet(c.compactFindingsAtDecode, routing),
+		terraformInstanceIdentity: c.terraformInstanceIdentity,
 	}
 
 	evalStart := time.Now()
@@ -567,6 +584,15 @@ func (c *Inspector) Inspect(
 
 	queries := c.getQueriesByPlat(platforms)
 
+	// Stamp the files' Terraform identity context before anything reads it:
+	// module evaluation captures external-module-file scopes and mutates
+	// documents (instantiated blocks are stripped), and the payload build may
+	// release the documents the plan metadata and block sets are extracted
+	// from.
+	if c.terraformInstanceIdentity {
+		c.stampTerraformScopes(files)
+	}
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
@@ -574,6 +600,9 @@ func (c *Inspector) Inspect(
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		if c.terraformInstanceIdentity {
+			stampSyntheticBlocks(moduleDocs, syntheticFiles)
+		}
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
 
@@ -672,6 +701,10 @@ func (c *Inspector) Inspect(
 	}
 
 	c.releasePostEvalFileData(filesMap)
+	if c.compactFindingsAtDecode {
+		return model.FirstFindingPerIdentity(vulnerabilities), nil
+	}
+	model.SortFindings(vulnerabilities)
 	return vulnerabilities, nil
 }
 
@@ -841,6 +874,11 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			if vCopy.ResourceID != "" {
+				// A deduplicated caller resolves the same module address,
+				// only its own root module differs.
+				vCopy.RootModule = ex.rootModule
+			}
 			expanded = append(expanded, vCopy)
 		}
 	}
@@ -1447,15 +1485,13 @@ func (c *Inspector) DecodeQueryResults(
 	if err != nil {
 		return nil, 0, "", err
 	}
-	if qCtx.discardLineInfoAfterUse {
-		// Group findings by file so each file's line-info tree is built once and
-		// discarded on its last finding (advanceLineInfoFile); without grouping,
-		// interleaved documentIds would discard and reparse per transition.
-		// Stable keeps the per-file ordering the query produced.
-		sort.SliceStable(queryResultItems, func(i, j int) bool {
-			return resultDocumentID(queryResultItems[i]) < resultDocumentID(queryResultItems[j])
-		})
-	}
+	// Group findings by document so each file's line-info tree is built once and
+	// discarded on its last finding (advanceLineInfoFile); without grouping,
+	// interleaved documentIds would discard and reparse per transition.
+	// Documents are ordered by path, since document ids are random, so the
+	// findings a compacting set skips do not depend on the run. Stable keeps
+	// the per-document ordering the query produced.
+	sortResultItems(queryResultItems, qCtx.Files)
 
 	findings := qCtx.findings
 	if findings == nil {
@@ -1467,7 +1503,7 @@ func (c *Inspector) DecodeQueryResults(
 	var moduleSeverity model.Severity
 	var activeLineInfoFile string
 decodeLoop:
-	for i := range findings.order(len(queryResultItems)) {
+	for i := range queryResultItems {
 		queryResultItem := queryResultItems[i]
 		// Each item is decoded once; dropping it as it is read lets a rule
 		// raising many findings hold one decoded item rather than all of them.
@@ -1563,6 +1599,22 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 		}
 	}
 	return nextID
+}
+
+func sortResultItems(items []interface{}, files map[string]*model.FileMetadata) {
+	path := func(id string) string {
+		if f := files[id]; f != nil {
+			return f.FilePath
+		}
+		return ""
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := resultDocumentID(items[i]), resultDocumentID(items[j])
+		if pa, pb := path(a), path(b); pa != pb {
+			return pa < pb
+		}
+		return a < b
+	})
 }
 
 // resultDocumentID returns the file id a result item points at.

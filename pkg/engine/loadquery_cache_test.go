@@ -21,6 +21,8 @@ import (
 // cacheTracker is a no-op Tracker for building a QueryLoader in tests.
 type cacheTracker struct{}
 
+func (cacheTracker) FindingWithoutIdentity() {}
+
 func (cacheTracker) TrackQueryLoad(int)       {}
 func (cacheTracker) TrackQueryExecuting(int)  {}
 func (cacheTracker) TrackQueryExecution(int)  {}

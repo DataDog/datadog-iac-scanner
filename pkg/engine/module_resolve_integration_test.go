@@ -324,8 +324,18 @@ resource "aws_s3_bucket" "this" {
 	require.Contains(t, warnLine, `"resource_budget_exhausted":false`)
 }
 
-// Two roots call the same module with the same inputs: expect two findings and two distinct ModuleCallChain values.
+// Two roots call the same module with the same inputs: expect two findings and
+// two distinct ModuleCallChain values, and with instance identity two distinct
+// root modules.
 func TestInspect_TwoCallersGetDistinctCallChains(t *testing.T) {
+	for _, addresses := range []bool{false, true} {
+		t.Run(fmt.Sprintf("addresses=%v", addresses), func(t *testing.T) {
+			testTwoCallersGetDistinctCallChains(t, addresses)
+		})
+	}
+}
+
+func testTwoCallersGetDistinctCallChains(t *testing.T, addresses bool) {
 	root := t.TempDir()
 
 	modDir := filepath.Join(root, "modules", "bucket")
@@ -965,7 +975,7 @@ resource "aws_s3_bucket" "replica" {
 		Content:     aclRule,
 		InputData:   "{}",
 		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Metadata:    map[string]interface{}{"id": "acl-rule", "platform": "Terraform"},
 		Aggregation: 1,
 	}}
 
@@ -983,6 +993,164 @@ resource "aws_s3_bucket" "replica" {
 	require.Len(t, vulns, 1, "the second count-expanded instance must be scanned")
 	require.Equal(t, "replica", vulns[0].ResourceName)
 	require.Equal(t, "stack/main.tf|module.buckets", vulns[0].ModuleCallChain)
+
+	files = append(parseTerraform(t, rootPath), parseTerraform(t, modPath)...)
+	ins.SetTerraformInstanceIdentity(true)
+	vulns, err = ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Len(t, vulns, 1)
+	require.Equal(t, "module.buckets.aws_s3_bucket.replica[1]", vulns[0].ResourceID,
+		"the instance address picks out count.index 1, not the module call as a whole")
+	require.Equal(t, "stack", vulns[0].RootModule)
+}
+
+// TestInspect_CountedRootStaysInItsDocument verifies that a root block with
+// count stays in the document it is written in, beside its siblings, and is
+// reported once under its block address.
+func TestInspect_CountedRootStaysInItsDocument(t *testing.T) {
+	root := t.TempDir()
+	stackDir := filepath.Join(root, "stack")
+	require.NoError(t, os.MkdirAll(stackDir, 0o755))
+	rootPath := filepath.Join(stackDir, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+resource "aws_s3_bucket" "this" {
+  count = 2
+  acl   = "public-read"
+}
+
+resource "aws_s3_bucket_public_access_block" "guard" {
+  bucket = "logs"
+}
+`), 0o644))
+
+	files := parseTerraform(t, rootPath)
+	queries := []model.QueryMetadata{
+		{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
+		},
+		{
+			Query: "missing_block", Content: `package datadog
+
+DatadogPolicy contains result if {
+	some name, i
+	input.document[i].resource.aws_s3_bucket[name]
+	object.get(input.document[i].resource, "aws_s3_bucket_public_access_block", {}) == {}
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": name,
+		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
+	}
+}
+`, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "missing-block", "platform": "Terraform"}, Aggregation: 1,
+		},
+		{
+			Query: "guard_rule", Content: `package datadog
+
+DatadogPolicy contains result if {
+	some name, i
+	input.document[i].resource.aws_s3_bucket_public_access_block[name]
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket_public_access_block",
+		"resourceName": name,
+		"searchKey": sprintf("aws_s3_bucket_public_access_block[%s]", [name]),
+	}
+}
+`, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "guard-rule", "platform": "Terraform"}, Aggregation: 1,
+		},
+	}
+	ins := newTestInspector(t, inspectorOpts{
+		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+		addresses: true,
+	})
+	ins.SetCompactFindingsAtDecode(true)
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	byQuery := map[string][]string{}
+	var detail []string
+	for i := range vulns {
+		byQuery[vulns[i].QueryID] = append(byQuery[vulns[i].QueryID], vulns[i].ResourceID)
+		detail = append(detail, fmt.Sprintf("%s id=%q root=%q file=%s line=%d", vulns[i].QueryID, vulns[i].ResourceID, vulns[i].RootModule, vulns[i].FileID, vulns[i].Line))
+	}
+	require.Empty(t, byQuery["missing-block"], "the sibling is in the same document")
+	require.Equal(t, []string{"aws_s3_bucket.this"}, byQuery["acl-rule"], strings.Join(detail, "\n"))
+	require.Equal(t, []string{"aws_s3_bucket_public_access_block.guard"}, byQuery["guard-rule"])
+}
+
+// TestInspect_RootResourceAddress verifies that a root resource with no
+// count/for_each gets its unindexed Terraform address.
+func TestInspect_RootResourceAddress(t *testing.T) {
+	root := t.TempDir()
+	stackDir := filepath.Join(root, "stack")
+	require.NoError(t, os.MkdirAll(stackDir, 0o755))
+	rootPath := filepath.Join(stackDir, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+resource "aws_s3_bucket" "this" {
+  acl = "public-read"
+}
+`), 0o644))
+
+	files := parseTerraform(t, rootPath)
+	queries := []model.QueryMetadata{{
+		Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+		Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
+	}}
+	ins := newTestInspector(t, inspectorOpts{
+		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+		addresses: true,
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	require.Len(t, vulns, 1)
+	require.Equal(t, "aws_s3_bucket.this", vulns[0].ResourceID)
+	require.Equal(t, "stack", vulns[0].RootModule)
+}
+
+// TestInspect_RootResourceCountAddress verifies that a counted root resource
+// is one finding under its block address: root blocks are not split into
+// instances.
+func TestInspect_RootResourceCountAddress(t *testing.T) {
+	root := t.TempDir()
+	stackDir := filepath.Join(root, "stack")
+	require.NoError(t, os.MkdirAll(stackDir, 0o755))
+	rootPath := filepath.Join(stackDir, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+resource "aws_s3_bucket" "this" {
+  count  = 2
+  bucket = "bucket-${count.index}"
+  acl    = "public-read"
+}
+`), 0o644))
+
+	files := parseTerraform(t, rootPath)
+	queries := []model.QueryMetadata{{
+		Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+		Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
+	}}
+	ins := newTestInspector(t, inspectorOpts{
+		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+		addresses: true,
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	require.Len(t, vulns, 1)
+	require.Equal(t, "aws_s3_bucket.this", vulns[0].ResourceID)
+	require.Equal(t, "stack", vulns[0].RootModule)
 }
 
 // TestInspect_SharedBaseStoresConcurrentReads runs multiple queries on one platform
@@ -1068,4 +1236,386 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.NotEmpty(t, vulns, "rule should fire on resolved module resource")
+}
+
+const ephemeralRule = `package datadog
+
+DatadogPolicy contains result if {
+	some name, i
+	secret := input.document[i].ephemeral.aws_secretsmanager_secret[name]
+	secret.name
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "ephemeral.aws_secretsmanager_secret",
+		"resourceName": name,
+		"searchKey": sprintf("ephemeral.aws_secretsmanager_secret[%s].name", [name]),
+	}
+}
+`
+
+// A root-declared ephemeral block resolves against the file's declared blocks
+// and is reported once under its block address.
+func TestInspect_RootEphemeralBlockIsAddressed(t *testing.T) {
+	root := t.TempDir()
+	rootPath := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+ephemeral "aws_secretsmanager_secret" "login" {
+  for_each = toset(["a", "b"])
+  name     = each.key
+}
+`), 0o644))
+
+	files := parseTerraform(t, rootPath)
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "ephemeral_rule", Content: ephemeralRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "eph-rule", "platform": "Terraform"}, Aggregation: 1,
+		}},
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+		addresses:     true,
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1)
+	require.Equal(t, "ephemeral.aws_secretsmanager_secret.login", vulns[0].ResourceID)
+	require.Equal(t, ".", vulns[0].RootModule, "the file sits at the repository root")
+}
+
+// A managed resource and an ephemeral block sharing type and name are two
+// different blocks: the evaluator carries the kind from HCL, so their
+// expansions and references never merge.
+func TestInspect_ManagedAndEphemeralSameNameStayApart(t *testing.T) {
+	root := t.TempDir()
+	callerPath := filepath.Join(root, "main.tf")
+	modDir := filepath.Join(root, "modules", "pw")
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+	require.NoError(t, os.WriteFile(callerPath, []byte(`
+module "pw" { source = "./modules/pw" }
+`), 0o644))
+	modPath := filepath.Join(modDir, "main.tf")
+	require.NoError(t, os.WriteFile(modPath, []byte(`
+resource "random_password" "x" {
+  for_each = toset(["m"])
+  result   = "managed"
+}
+
+ephemeral "random_password" "x" {
+  for_each = toset(["e1", "e2"])
+  result   = each.key
+}
+`), 0o644))
+
+	ephRule := `package datadog
+
+DatadogPolicy contains result if {
+	some name, i
+	secret := input.document[i].ephemeral.random_password[name]
+	secret.result
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "ephemeral.random_password",
+		"resourceName": name,
+		"searchKey": sprintf("ephemeral.random_password[%s].result", [name]),
+	}
+}
+`
+	files := append(parseTerraform(t, callerPath), parseTerraform(t, modPath)...)
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "eph_rule", Content: ephRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "eph-rule", "platform": "Terraform"}, Aggregation: 1,
+		}},
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+		addresses:     true,
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 2, "only the ephemeral rule's instances are reported, both addressed")
+	ids := []string{vulns[0].ResourceID, vulns[1].ResourceID}
+	require.ElementsMatch(t, []string{
+		`module.pw.ephemeral.random_password.x["e1"]`,
+		`module.pw.ephemeral.random_password.x["e2"]`,
+	}, ids, "the managed random_password.x must never answer for the ephemeral one")
+}
+
+// A JSON-configured module's ephemeral instances are addressed under the
+// call's module path like HCL ones: the JSON config schema must know the
+// ephemeral block type, or the caller's instances are lost.
+func TestInspect_JSONModuleEphemeralInstancesAddressed(t *testing.T) {
+	root := t.TempDir()
+	stackDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "secrets")
+	require.NoError(t, os.MkdirAll(stackDir, 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+	rootPath := filepath.Join(stackDir, "main.tf")
+	require.NoError(t, os.WriteFile(rootPath, []byte(`
+module "secrets" {
+  source = "../modules/secrets"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(modDir, "main.tf.json"), []byte(`{
+  "ephemeral": {
+    "aws_secretsmanager_secret": {
+      "login": {
+        "for_each": {"a": {}, "b": {}},
+        "name": "secret-${each.key}"
+      }
+    }
+  }
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootPath)...)
+	files = append(files, parseTerraform(t, filepath.Join(modDir, "main.tf.json"))...)
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "eph_rule", Content: ephemeralRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "eph-rule", "platform": "Terraform"}, Aggregation: 1,
+		}},
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+		addresses:     true,
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 2, "both JSON ephemeral instances are reported")
+	ids := []string{vulns[0].ResourceID, vulns[1].ResourceID}
+	require.ElementsMatch(t, []string{
+		`module.secrets.ephemeral.aws_secretsmanager_secret.login["a"]`,
+		`module.secrets.ephemeral.aws_secretsmanager_secret.login["b"]`,
+	}, ids)
+}
+
+// keyedItemsModule is called with a for_each map whose keys differ per caller
+// and whose values are unknown: the module sees a map with known keys and
+// unknown values, so every instance expands with its own key while the bucket
+// and acl attributes stay identical.
+const keyedItemsModule = `
+variable "items" {
+  type = map(number)
+}
+
+resource "aws_s3_bucket" "b" {
+  for_each = var.items
+  bucket   = "static"
+  acl      = "public-read"
+}
+`
+
+// keyedRoot writes a caller root whose for_each key is name-derived.
+func keyedRoot(t *testing.T, root, name, key string) model.FileMetadatas {
+	t.Helper()
+	dir := filepath.Join(root, name)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	path := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(path, []byte(`
+resource "aws_instance" "src" {
+  ami = "ami-1"
+}
+
+module "m" {
+  source = "../modules/m"
+  items  = { `+key+` = aws_instance.src.arn }
+}
+`), 0o644))
+	return parseTerraform(t, path)
+}
+
+func keyedModuleFiles(t *testing.T, root string) model.FileMetadatas {
+	modDir := filepath.Join(root, "modules", "m")
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+	modPath := filepath.Join(modDir, "main.tf")
+	require.NoError(t, os.WriteFile(modPath, []byte(keyedItemsModule), 0o644))
+	return parseTerraform(t, modPath)
+}
+
+func keyedAclRule() []model.QueryMetadata {
+	return []model.QueryMetadata{{
+		Query: "acl_rule", Content: `package datadog
+
+DatadogPolicy contains result if {
+	some name, i
+	bucket := input.document[i].resource.aws_s3_bucket[name]
+	bucket.acl == "public-read"
+
+	result := {
+		"documentId": input.document[i].id,
+		"platform": "Terraform",
+		"resourceType": "aws_s3_bucket",
+		"resourceName": name,
+		"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
+	}
+}
+`, InputData: "{}", Platform: "terraform",
+		Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
+	}}
+}
+
+// Two roots iterating different for_each keys over unknown-valued maps each
+// report their own keyed instance, with decode-time compaction on and off.
+// The rendered attributes of the two instances differ only in the for_each
+// reference text, so this also pins that a keyed instance is never reported
+// with the primary caller's key.
+func TestInspect_KeyedInstancesAcrossRootsStayDistinct(t *testing.T) {
+	for _, compact := range []bool{false, true} {
+		t.Run(map[bool]string{false: "compaction off", true: "compaction on"}[compact], func(t *testing.T) {
+			root := t.TempDir()
+			var files model.FileMetadatas
+			files = append(files, keyedModuleFiles(t, root)...)
+			files = append(files, keyedRoot(t, root, "stack-a", "x")...)
+			files = append(files, keyedRoot(t, root, "stack-b", "y")...)
+
+			ins := newTestInspector(t, inspectorOpts{
+				queries:       keyedAclRule(),
+				repoPath:      root,
+				vb:            DefaultVulnerabilityBuilder,
+				flagEvaluator: featureflags.NewLocalEvaluator(),
+				addresses:     true,
+			})
+			ins.SetCompactFindingsAtDecode(compact)
+
+			vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, 2, "one finding per root's own keyed instance")
+
+			ids := map[string]bool{}
+			roots := map[string]string{}
+			for i := range vulns {
+				ids[vulns[i].ResourceID] = true
+				roots[vulns[i].ResourceID] = vulns[i].RootModule
+			}
+			idList := make([]string, 0, len(ids))
+			for id := range ids {
+				idList = append(idList, id)
+			}
+			require.ElementsMatch(t, []string{
+				`module.m.aws_s3_bucket.b["x"]`,
+				`module.m.aws_s3_bucket.b["y"]`,
+			}, idList, "each root reports its own for_each key")
+			require.Equal(t, "stack-a", roots[`module.m.aws_s3_bucket.b["x"]`],
+				"stack-a's finding carries stack-a's key, not the primary caller's")
+			require.Equal(t, "stack-b", roots[`module.m.aws_s3_bucket.b["y"]`])
+
+			// Distinct addresses must mean distinct fingerprints.
+			fingerprints := map[string]bool{}
+			for i := range vulns {
+				fingerprints[model.FindingIdentity(&vulns[i])] = true
+			}
+			require.Len(t, fingerprints, 2)
+		})
+	}
+}
+
+// Two roots iterating the SAME key with identical rendered attributes
+// deduplicate onto one keyed document: the second caller is recorded in the
+// primary document's extras, not emitted as a second document.
+func TestInspect_IdenticalKeyedInstancesAcrossRootsStillDedup(t *testing.T) {
+	root := t.TempDir()
+	var files model.FileMetadatas
+	files = append(files, keyedModuleFiles(t, root)...)
+	files = append(files, keyedRoot(t, root, "stack-a", "x")...)
+	files = append(files, keyedRoot(t, root, "stack-b", "x")...)
+
+	targets := ruleTargetedResourceTypes(keyedAclRule())
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, targets, nil, nil, nil, nil)
+	require.Len(t, res.docs, 1, "identical instances share one keyed document")
+	require.Len(t, res.syntheticFiles, 1)
+	require.Len(t, res.extras, 1, "the second caller is recorded in extras")
+
+	var primaryID string
+	for id := range res.extras {
+		primaryID = id
+	}
+	extras := res.extras[primaryID]
+	require.Len(t, extras, 1)
+	require.Equal(t, "stack-b", extras[0].rootModule,
+		"the extra caller keeps its own root, only the document is shared")
+
+	// End to end: both callers report the shared instance, each under its own root.
+	ins := newTestInspector(t, inspectorOpts{
+		queries:       keyedAclRule(),
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+		addresses:     true,
+	})
+	ins.SetCompactFindingsAtDecode(true)
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 2, "one finding per caller, both on the shared instance")
+	roots := map[string]bool{}
+	for i := range vulns {
+		require.Equal(t, `module.m.aws_s3_bucket.b["x"]`, vulns[i].ResourceID)
+		roots[vulns[i].RootModule] = true
+	}
+	require.Equal(t, map[string]bool{"stack-a": true, "stack-b": true}, roots)
+}
+
+// The instances of a counted module call are distinct findings: without
+// instance identity through their call chains, with it through their
+// addresses.
+func TestInspect_ModuleCountInstancesKeepDistinctFingerprints(t *testing.T) {
+	for _, addresses := range []bool{false, true} {
+		t.Run(fmt.Sprintf("addresses=%v", addresses), func(t *testing.T) {
+			root := t.TempDir()
+			rootPath := writeFile(t, filepath.Join(root, "stack"), "main.tf", `
+module "bucket" {
+  count  = 3
+  source = "../modules/bucket"
+}
+`)
+			modPath := writeFile(t, filepath.Join(root, "modules", "bucket"), "main.tf", `
+resource "aws_s3_bucket" "this" {
+  acl = "public-read"
+}
+`)
+			files := append(parseTerraform(t, rootPath), parseTerraform(t, modPath)...)
+			ins := newTestInspector(t, inspectorOpts{
+				queries: []model.QueryMetadata{{
+					Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+					Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
+				}},
+				repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+				addresses: addresses,
+			})
+
+			vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, 3)
+
+			fingerprints := map[string]bool{}
+			chains := map[string]bool{}
+			for i := range vulns {
+				fingerprints[model.FindingIdentity(&vulns[i])] = true
+				chains[vulns[i].ModuleCallChain] = true
+			}
+			require.Len(t, fingerprints, 3)
+			require.Equal(t, map[string]bool{
+				"stack/main.tf|module.bucket[0]": true,
+				"stack/main.tf|module.bucket[1]": true,
+				"stack/main.tf|module.bucket[2]": true,
+			}, chains)
+			if addresses {
+				require.Equal(t, "stack", vulns[0].RootModule)
+				require.Contains(t, vulns[0].ResourceID, "module.bucket[")
+			} else {
+				require.Empty(t, vulns[0].ResourceID)
+			}
+		})
+	}
 }

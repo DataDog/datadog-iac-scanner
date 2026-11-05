@@ -253,6 +253,7 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	executeScanParameters.inspector.SetReleasePostEvalData(!c.ScanParams.LineInfoPayload)
 	// Every finding Inspect returns goes straight to storage.
 	executeScanParameters.inspector.SetCompactFindingsAtDecode(true)
+	executeScanParameters.inspector.SetTerraformInstanceIdentity(c.ScanParams.TerraformInstanceIdentity)
 
 	if executeScanParameters.moduleCleanup != nil {
 		defer executeScanParameters.moduleCleanup()

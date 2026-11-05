@@ -8,41 +8,45 @@ package engine
 import (
 	"context"
 	"crypto/sha256"
-	"iter"
-	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 // findingSet collects the findings of one rule as they are decoded and
 // routed, optionally keeping one per identity.
 //
-// The scan reports the last finding of each identity (see
-// model.FindingIdentity), and a module instantiated per count or for_each
-// instance raises the same finding once per instance: one rule can raise
-// hundreds of thousands of findings that the report then collapses to a few
-// thousand. Keeping each identity's latest finding as they are decoded gives
-// the report the same findings without holding the others until the scan ends.
+// The scan reports one finding per identity (see model.FindingIdentity), the
+// first in model.CompareFindings order, and a module instantiated per count
+// or for_each instance raises the same finding once per instance: one rule
+// can raise hundreds of thousands of findings that the report then collapses
+// to a few thousand. Keeping each identity's first finding as they are
+// decoded gives the report the same findings without holding the others
+// until the scan ends.
 //
-// That reduction is only valid for a caller that, like storage, keeps the
-// last finding of each identity (see Inspector.SetCompactFindingsAtDecode).
+// That reduction is only valid for a caller that keeps one finding per
+// identity (see Inspector.SetCompactFindingsAtDecode).
 //
-// A compacting set is given the rule's results last raised first, so the
-// finding it keeps is the first one it is given. A result whose every
-// identity is already kept can then be skipped before its line is detected
-// (see supersedes).
+// A result that cannot come before what is kept for each of its identities
+// can be skipped before its line is detected (see supersedes).
 //
 // Routing runs before the identity is recorded. It gives a finding the call
-// chain of each module caller it stands for, and two instances that share an
-// identity can stand for different callers. Recording the identity first would
-// drop the callers of every instance but the last.
+// chain of each module caller it stands for (for a finding identified by its
+// Terraform address, the caller's root module, and for an external module
+// file the call's module address), and two instances that share an identity
+// can stand for different callers. Recording the identity first would drop
+// the callers of every instance but the first.
 type findingSet struct {
 	out     []model.Vulnerability
 	routing *findingRouting
-	// kept holds the identities of the findings in out. Nil when the set is
-	// not reducing by identity, so every finding is appended.
-	kept   map[[sha256.Size]byte]struct{}
-	keyBuf []byte
+	// kept maps the identities of the findings in out to their index. Nil
+	// when the set is not reducing by identity, so every finding is appended.
+	kept map[[sha256.Size]byte]int
+	// detectedOn holds, for each finding in out, the document its line was
+	// detected on, which routing does not change.
+	detectedOn []string
+	keyBuf     []byte
 }
 
 // newFindingSet starts a set that reduces findings to one per identity when
@@ -51,15 +55,9 @@ type findingSet struct {
 func newFindingSet(compact bool, routing *findingRouting) *findingSet {
 	s := &findingSet{routing: routing}
 	if compact {
-		s.kept = make(map[[sha256.Size]byte]struct{})
+		s.kept = make(map[[sha256.Size]byte]int)
 	}
 	return s
-}
-
-// lastRaisedFirst reports whether the set must be given the rule's results
-// from the last one raised to the first.
-func (s *findingSet) lastRaisedFirst() bool {
-	return s != nil && s.kept != nil
 }
 
 // maySkip reports whether a result could be dropped before its line is
@@ -68,26 +66,9 @@ func (s *findingSet) maySkip() bool {
 	return s != nil && len(s.kept) > 0
 }
 
-// order yields the positions of a rule's n results in the order the set must
-// be given them.
-func (s *findingSet) order(n int) iter.Seq[int] {
-	lastFirst := s.lastRaisedFirst()
-	return func(yield func(int) bool) {
-		for k := 0; k < n; k++ {
-			i := k
-			if lastFirst {
-				i = n - 1 - k
-			}
-			if !yield(i) {
-				return
-			}
-		}
-	}
-}
-
 // addRouted routes v to the module callers it stands for and keeps what
-// routing produced. A compacting set, given results last raised first, keeps
-// the first finding of each identity.
+// routing produced. A compacting set keeps the first finding of each identity
+// in model.CompareFindings order.
 func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulnerability) {
 	var routed []model.Vulnerability
 	if s.routing == nil {
@@ -99,55 +80,106 @@ func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulne
 		s.out = append(s.out, routed...)
 		return
 	}
-	// Routing changes only the call chain of what goes into the identity.
+	// Routing changes only the call chain of what goes into the identity, or
+	// the root module and address of a finding identified by them.
 	id, lineFree := model.IdentityBeforeLine(v)
-	for i := len(routed) - 1; i >= 0; i-- {
-		if lineFree {
-			s.keepChained(id, &routed[i])
-		} else {
-			s.keepKey(model.FindingIdentity(&routed[i]), &routed[i])
+	for i := range routed {
+		r := &routed[i]
+		var digest [sha256.Size]byte
+		switch tid, ok := model.TerraformIdentityOf(r); {
+		case ok:
+			s.keyBuf = model.AppendTerraformIdentity(s.keyBuf[:0], utils.ChooseQueryID(r.QueryID, r.LegacyQueryID), tid)
+			digest = sha256.Sum256(s.keyBuf)
+		case lineFree:
+			s.keyBuf = id.AppendWithChain(s.keyBuf[:0], r.ModuleCallChain)
+			digest = sha256.Sum256(s.keyBuf)
+		default:
+			digest = sha256.Sum256([]byte(model.FindingIdentity(r)))
+		}
+		s.keep(digest, r, v.FileID)
+	}
+}
+
+// keep records v, detected on document docID, unless a finding of identity
+// digest that comes first is kept.
+func (s *findingSet) keep(digest [sha256.Size]byte, v *model.Vulnerability, docID string) {
+	if i, ok := s.kept[digest]; ok {
+		if model.CompareFindings(v, &s.out[i]) < 0 {
+			s.out[i] = *v
+			s.detectedOn[i] = docID
+		}
+		return
+	}
+	s.kept[digest] = len(s.out)
+	s.out = append(s.out, *v)
+	s.detectedOn = append(s.detectedOn, docID)
+}
+
+// resultIdentity identifies the findings of a result before its line is
+// detected.
+type resultIdentity struct {
+	resourceType, resourceName string
+	// chained is the identity of a finding identified by its file, resource
+	// and module call chain.
+	chained model.ChainedIdentity
+	// id is the Terraform identity of a finding identified by its address,
+	// when addressed is set.
+	id        model.TerraformIdentity
+	addressed bool
+	ruleID    string
+	// docID, fileName and searchKey are where the result was raised, set by
+	// supersedes.
+	docID, fileName, searchKey string
+}
+
+// newResultIdentity is the identity of the findings of a result raised on file,
+// before its line is detected: the Terraform identity the vulnerability
+// builder attaches when addresses is set and the block resolves (the address
+// comes from the block, not the line), the chained identity otherwise. known
+// is false when the identity includes the line.
+func newResultIdentity(
+	file *model.FileMetadata, addresses bool, platform, resourceType, resourceName, queryID, legacyQueryID string,
+) (r resultIdentity, known bool) {
+	r = resultIdentity{resourceType: resourceType, resourceName: resourceName}
+	if addresses && platform == model.TerraformPlatform {
+		if r.id, r.addressed = terraformIdentityFor(file, resourceType, resourceName); r.addressed {
+			r.ruleID = utils.ChooseQueryID(queryID, legacyQueryID)
+			return r, true
 		}
 	}
+	r.chained, known = model.ChainedIdentityFor(file.FilePath, platform, resourceType, resourceName, queryID, legacyQueryID)
+	return r, known
 }
 
-// keepChained records v unless id under v's call chain is already kept.
-func (s *findingSet) keepChained(id model.ChainedIdentity, v *model.Vulnerability) {
-	if s.has(id, v.ModuleCallChain) {
-		return
-	}
-	s.kept[sha256.Sum256(s.keyBuf)] = struct{}{}
-	s.out = append(s.out, *v)
-}
-
-func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
-	digest := sha256.Sum256([]byte(key))
-	if _, ok := s.kept[digest]; ok {
-		return
-	}
-	s.kept[digest] = struct{}{}
-	s.out = append(s.out, *v)
-}
-
-// supersedes reports whether routing a result raised on file with identity id
-// now would only produce identities this set already kept, so the result
-// cannot change the report.
+// supersedes reports whether routing result r, raised on file at searchKey,
+// would only produce identities this set already kept on a finding that comes
+// first, so the result cannot change the report. Its line is not known yet,
+// so a finding kept on the same file comes first only when it was raised at
+// the same search key on a document built from the same written file: the
+// instances of one block detect the same location there, and nothing else
+// model.CompareFindings reads tells two findings of one identity apart.
 //
 // It has to agree with findingRouting.route in that direction (see
 // TestFindingSet_SupersedesMeansRouteKeepsNothingNew). The as-written
 // identity is required only when routing can produce it: an external module
 // file that is reported only through its calls does not.
-func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetadata, resourceType string) bool {
+func (s *findingSet) supersedes(r *resultIdentity, file *model.FileMetadata, searchKey string) bool {
 	if file == nil || len(s.kept) == 0 {
 		return false
 	}
-	if !s.accounted(id, file.ID, resourceType, file.ModuleCallChain, len(file.ModuleAttributions) > 0) {
+	r.docID, r.fileName, r.searchKey = file.ID, file.FilePath, searchKey
+	if !s.accounted(r, file.ID, file.ModuleCallChain, r.id, len(file.ModuleAttributions) > 0) {
 		return false
 	}
 	if s.routing == nil {
 		return true
 	}
 	for _, ex := range s.routing.extras[file.ID] {
-		if !s.accounted(id, ex.docID, resourceType, ex.callChain, len(ex.attributions) > 0) {
+		id := r.id
+		if r.addressed {
+			id.RootModule = ex.rootModule
+		}
+		if !s.accounted(r, ex.docID, ex.callChain, id, len(ex.attributions) > 0) {
 			return false
 		}
 	}
@@ -155,45 +187,66 @@ func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetada
 }
 
 // accounted reports whether every identity routing can give a finding raised
-// on document fileID and reported under chain is already kept.
-func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, chain string, attributionPossible bool) bool {
+// on document fileID and reported under chain, or under Terraform identity id,
+// is already kept.
+func (s *findingSet) accounted(
+	r *resultIdentity, fileID, chain string, id model.TerraformIdentity, attributionPossible bool,
+) bool {
 	var file *moduleFileCalls
 	if s.routing != nil {
 		file = s.routing.moduleFiles[fileID]
 	}
-	if file == nil || file.keptAsWritten(resourceType) {
-		return s.has(id, chain)
+	if file == nil || file.keptAsWritten(r.resourceType) {
+		return s.hasRoute(r, chain, id)
+	}
+	var block address.Block
+	var blockOK bool
+	if r.addressed {
+		block, blockOK = file.routedBlock(id, r.resourceType, r.resourceName)
 	}
 	// The calls are produced unless the line attributes the finding. The line
 	// is not known yet, so every call has to be kept already.
 	for i := range file.calls {
-		if !s.has(id, file.calls[i].callChain) {
+		call := &file.calls[i]
+		callID := id
+		if blockOK {
+			callID = file.callIdentity(call, block)
+		}
+		if !s.hasRoute(r, call.callChain, callID) {
 			return false
 		}
 	}
 	// Kept as written, or attributed from the line. Without attributions the
 	// as-written finding is not produced, and requiring it would never skip.
 	if file.keepWritten || attributionPossible {
-		return s.has(id, chain)
+		return s.hasRoute(r, chain, id)
 	}
 	return true
 }
 
-func (s *findingSet) has(id model.ChainedIdentity, chain string) bool {
-	s.keyBuf = id.AppendWithChain(s.keyBuf[:0], chain)
-	_, ok := s.kept[sha256.Sum256(s.keyBuf)]
-	return ok
+// hasRoute reports whether the finding of r routed under chain, or under
+// Terraform identity id when r is addressed, is already kept on a finding
+// that comes first.
+func (s *findingSet) hasRoute(r *resultIdentity, chain string, id model.TerraformIdentity) bool {
+	if r.addressed {
+		s.keyBuf = model.AppendTerraformIdentity(s.keyBuf[:0], r.ruleID, id)
+	} else {
+		s.keyBuf = r.chained.AppendWithChain(s.keyBuf[:0], chain)
+	}
+	i, ok := s.kept[sha256.Sum256(s.keyBuf)]
+	if !ok {
+		return false
+	}
+	kept := &s.out[i]
+	return kept.FileName < r.fileName ||
+		(kept.FileName == r.fileName && kept.SearchKey == r.searchKey &&
+			writtenFileID(s.detectedOn[i]) == writtenFileID(r.docID))
 }
 
-// findings returns what the set kept, in the order the rule raised it, and
-// empties the set. A compacting set is given its results last raised first,
-// so this reverses them.
+// findings returns what the set kept and empties the set.
 func (s *findingSet) findings() []model.Vulnerability {
 	out := s.out
-	if s.lastRaisedFirst() {
-		slices.Reverse(out)
-	}
-	s.out, s.kept, s.keyBuf = nil, nil, nil
+	s.out, s.kept, s.detectedOn, s.keyBuf = nil, nil, nil, nil
 	return out
 }
 
@@ -215,7 +268,7 @@ func newFindingRouting(
 ) *findingRouting {
 	callers := make(map[string]*model.FileMetadata)
 	for _, f := range files {
-		if f == nil || f.ModuleCallChain != "" {
+		if f == nil || f.ModuleCallChain != "" || isSyntheticTerraformDoc(f) {
 			continue
 		}
 		key := repoRelativeFile(f.FilePath, repoPath)

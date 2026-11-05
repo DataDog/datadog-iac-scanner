@@ -67,6 +67,8 @@ type inspectorOpts struct {
 	tracker          Tracker
 	flagEvaluator    featureflags.FlagEvaluator
 	useRulesCache    bool
+	// addresses turns on Terraform instance identity.
+	addresses bool
 }
 
 // newTestInspector runs the real [NewInspector] against a configurable
@@ -116,6 +118,7 @@ func newTestInspector(t *testing.T, opts inspectorOpts) *Inspector {
 		opts.useRulesCache,
 	)
 	require.NoError(t, err)
+	ins.SetTerraformInstanceIdentity(opts.addresses)
 	return ins
 }
 
@@ -1527,6 +1530,32 @@ func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
 	require.Equal(t, got[0].Line, got[1].Line)
 	require.Equal(t, got[0].FileName, got[1].FileName)
 	require.Equal(t, got[0].QueryName, got[1].QueryName)
+}
+
+// An addressed finding switches to each extra caller's root module and keeps
+// its address; one without an address keeps no identity in its copies.
+func TestExpandModuleFindings_AddressedCopiesSwitchRootModule(t *testing.T) {
+	extras := map[string][]extraCallerInfo{
+		"primary": {{callChain: "stack-b|module.app", rootModule: "stack-b", docID: "extra"}},
+	}
+	vulns := []model.Vulnerability{
+		{FileID: "primary", QueryName: "addressed", RootModule: "stack-a", ResourceID: "module.app.aws_s3_bucket.b"},
+		{FileID: "primary", QueryName: "unaddressed"},
+	}
+	got := expandModuleFindings(vulns, extras)
+	require.Len(t, got, 4)
+	byQuery := map[string][]model.Vulnerability{}
+	for i := range got {
+		byQuery[got[i].QueryName] = append(byQuery[got[i].QueryName], got[i])
+	}
+	addressed := byQuery["addressed"]
+	require.Equal(t, []string{"stack-a", "stack-b"}, []string{addressed[0].RootModule, addressed[1].RootModule})
+	require.Equal(t, addressed[0].ResourceID, addressed[1].ResourceID)
+	require.Equal(t, "stack-b|module.app", addressed[1].ModuleCallChain)
+	for _, v := range byQuery["unaddressed"] {
+		require.Empty(t, v.RootModule)
+		require.Empty(t, v.ResourceID)
+	}
 }
 
 func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {

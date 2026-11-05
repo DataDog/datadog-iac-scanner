@@ -18,16 +18,16 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 
 	// An empty chain appends nothing, so Terraform matches the plain base hash (no fingerprint churn).
 	base := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "")
-	tfEmpty := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "")
+	tfEmpty := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "")
 	require.Equal(t, base, tfEmpty, "empty call chain must not change the fingerprint")
 
-	fromA := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
-	fromB := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-b/main.tf|module.bucket")
+	fromA := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
+	fromB := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-b/main.tf|module.bucket")
 
 	require.NotEqual(t, tfEmpty, fromA, "a non-empty call chain must change the fingerprint")
 	require.NotEqual(t, fromA, fromB, "distinct callers must produce distinct fingerprints")
 
-	fromAAgain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
+	fromAAgain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
 	require.Equal(t, fromA, fromAAgain, "the same caller must produce a stable fingerprint")
 
 	// Non-Terraform platforms must ignore the module call chain.
@@ -41,7 +41,7 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 // fingerprinted as two distinct findings in the report, or the reverse.
 func TestFindingIdentity_EqualIdentityMeansEqualCreateSummaryFingerprint(t *testing.T) {
 	a := Vulnerability{
-		FileName: "/repo/stack/main.tf", Platform: terraformPlatform, QueryID: "rule-1",
+		FileName: "/repo/stack/main.tf", Platform: TerraformPlatform, QueryID: "rule-1",
 		ResourceType: "aws_security_group", ResourceName: "sg", ModuleCallChain: "stack/main.tf|module.sg",
 		Line: 4, LineWithVulnerability: "cidr_blocks = [\"0.0.0.0/0\"] # ingress[0]",
 		Severity: SeverityHigh, SearchKey: "aws_security_group[sg].ingress[0].cidr_blocks",
@@ -83,4 +83,43 @@ func TestIdentityBeforeLine_IsFindingIdentityUnderEveryChain(t *testing.T) {
 
 	_, ok := IdentityBeforeLine(&Vulnerability{Platform: "Dockerfile"})
 	require.False(t, ok, "a Dockerfile identity includes the line")
+}
+
+// A Terraform finding identified by its root module and address keys on them
+// alone: two instances sharing everything else must not collapse, and the same
+// address under another root module is another instance.
+func TestFindingIdentity_TerraformIdentity(t *testing.T) {
+	base := Vulnerability{
+		FileName: "/repo/stack/main.tf", Platform: TerraformPlatform, QueryID: "rule-1",
+		ResourceType: "aws_s3_bucket", ResourceName: "this", ModuleCallChain: "stack/main.tf|module.a",
+		Severity: SeverityHigh, SearchKey: "aws_s3_bucket[this]",
+	}
+	first, second, otherRoot := base, base, base
+	first.RootModule, first.ResourceID, first.Line = "stack", "aws_s3_bucket.this[0]", 2
+	second.RootModule, second.ResourceID, second.Line = "stack", "aws_s3_bucket.this[1]", 9
+	otherRoot.RootModule, otherRoot.ResourceID = "other", "aws_s3_bucket.this[0]"
+
+	require.NotEqual(t, FindingIdentity(&first), FindingIdentity(&second))
+	require.NotEqual(t, FindingIdentity(&first), FindingIdentity(&otherRoot))
+	require.Equal(t, "|stack|aws_s3_bucket.this[0]|rule-1", FindingIdentity(&first))
+	require.Equal(t, FindingIdentity(&first),
+		string(AppendTerraformIdentity(nil, "rule-1", TerraformIdentity{RootModule: "stack", ResourceID: "aws_s3_bucket.this[0]"})))
+
+	// Half an identity, or one on another platform, is not used.
+	half := base
+	half.RootModule = "stack"
+	require.Equal(t, FindingIdentity(&base), FindingIdentity(&half))
+	k8s := first
+	k8s.Platform = "Kubernetes"
+	_, ok := TerraformIdentityOf(&k8s)
+	require.False(t, ok)
+
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{first, second}, "scan", nil, "/repo",
+		SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}})
+	files := summary.Queries[0].Files
+	require.Len(t, files, 2)
+	require.Equal(t, stringToHash("repo|stack|aws_s3_bucket.this[0]|rule-1"), files[0].Fingerprint)
+	require.Equal(t, stringToHash("repo|stack|aws_s3_bucket.this[1]|rule-1"), files[1].Fingerprint)
+	require.Equal(t, "aws_s3_bucket.this[0]", files[0].ResourceID)
+	require.Equal(t, "stack", files[0].RootModule)
 }

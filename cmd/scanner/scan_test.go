@@ -180,6 +180,16 @@ func TestTerraformPlanFlag(t *testing.T) {
 	}
 }
 
+func TestTerraformInstanceIdentityFlagDefaultsOff(t *testing.T) {
+	for _, flag := range scanAction.Flags {
+		if boolFlag, ok := flag.(*cli.BoolFlag); ok && boolFlag.Name == "terraform-instance-identity" {
+			require.False(t, boolFlag.Value)
+			return
+		}
+	}
+	t.Fatal("terraform-instance-identity flag should be defined")
+}
+
 func TestTerraformModuleFlagsUseAuthoritativeMode(t *testing.T) {
 	names := make(map[string]bool)
 	for _, flag := range scanAction.Flags {

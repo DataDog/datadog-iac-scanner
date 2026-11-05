@@ -18,6 +18,7 @@ const (
 	cweTag          = "CWE:%s"
 	resourceTypeTag = "IAC_RESOURCE_TYPE:%s"
 	resourceNameTag = "IAC_RESOURCE_NAME:%s"
+	resourceIDTag   = "IAC_RESOURCE_ID:%s"
 )
 
 // nolint:gocritic
@@ -61,6 +62,13 @@ func GetResourceTypeTag(resourceType string) string {
 
 func GetResourceNameTag(resourceName string) string {
 	return fmt.Sprintf(resourceNameTag, resourceName)
+}
+
+// GetResourceIDTag tags a finding with its resolved Terraform address, e.g.
+// module.a["x"].aws_s3_bucket.b[0]. The caller omits the tag when the engine
+// resolved none.
+func GetResourceIDTag(resourceID string) string {
+	return fmt.Sprintf(resourceIDTag, resourceID)
 }
 
 func GetScannedFilesCountTag(scannedFiles int) string {
