@@ -447,34 +447,6 @@ func TestRepeatedBlockSlots(t *testing.T) {
 		"a single unresolved block stands for what the document's total leaves")
 }
 
-func TestEnclosingFirst(t *testing.T) {
-	src := `resource "r" "x" {
-  a {
-  }
-  b {
-    inner {
-    }
-  }
-  c {
-  }
-}
-`
-	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
-	require.False(t, diags.HasErrors(), diags.Error())
-	blocks := file.Body.(*hclsyntax.Body).Blocks[0].Body.Blocks
-	names := func(bs hclsyntax.Blocks) []string {
-		out := make([]string, 0, len(bs))
-		for _, b := range bs {
-			out = append(out, b.Type)
-		}
-		return out
-	}
-	require.Equal(t, []string{"a", "b", "c"}, names(enclosingFirst(blocks, -1)), "no context keeps source order")
-	require.Equal(t, []string{"b", "a", "c"}, names(enclosingFirst(blocks, 4)), "the block around the line comes first")
-	require.Equal(t, []string{"a", "b", "c"}, names(enclosingFirst(blocks, 1)))
-	require.Equal(t, []string{"a", "b", "c"}, names(enclosingFirst(blocks, 99)), "a line outside every block keeps source order")
-}
-
 // Below the body the blocks were counted for, the document's lines still pick the
 // blocks, but its total is not shared out between unresolved dynamic blocks.
 func TestRepeatedBlockSlotsInNestedBody(t *testing.T) {

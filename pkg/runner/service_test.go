@@ -22,6 +22,7 @@ import (
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
+	"github.com/stretchr/testify/require"
 )
 
 // TestService tests the functions [GetVulnerabilities(), StartScan()] and all the methods called by them
@@ -122,6 +123,38 @@ func TestService(t *testing.T) { //nolint
 			}
 		})
 	}
+}
+
+func TestConsolidateTerraformFilesMovesPlansOntoHCLService(t *testing.T) {
+	tf := &Service{Parser: &parser.Parser{Parsers: terraformParser.NewDefault()}}
+	jsonSvc := &Service{Parser: &parser.Parser{Parsers: &jsonParser.Parser{}}}
+	tf.appendFiles(model.FileMetadatas{
+		{ID: "hcl", Kind: model.KindTerraform, FilePath: "envs/a/main.tf"},
+	})
+	jsonSvc.appendFiles(model.FileMetadatas{
+		{ID: "plan", Kind: model.KindTerraformPlan, FilePath: "envs/a/tfplan.json"},
+		{ID: "cfn", Kind: model.KindJSON, FilePath: "template.json"},
+	})
+
+	ConsolidateTerraformFiles([]*Service{tf, jsonSvc})
+
+	require.Equal(t, 2, tf.FileCount(), "plan joins the HCL service for one Inspect")
+	require.Equal(t, 1, jsonSvc.FileCount(), "non-plan JSON stays on the JSON service")
+	ids := map[string]bool{}
+	for _, f := range tf.files {
+		ids[f.ID] = true
+	}
+	require.True(t, ids["hcl"] && ids["plan"])
+	require.Equal(t, "cfn", jsonSvc.files[0].ID)
+}
+
+func TestConsolidateTerraformFilesNoopWithoutTerraformService(t *testing.T) {
+	jsonSvc := &Service{Parser: &parser.Parser{Parsers: &jsonParser.Parser{}}}
+	jsonSvc.appendFiles(model.FileMetadatas{
+		{ID: "plan", Kind: model.KindTerraformPlan, FilePath: "tfplan.json"},
+	})
+	ConsolidateTerraformFiles([]*Service{jsonSvc})
+	require.Equal(t, 1, jsonSvc.FileCount(), "plans stay put when there is no HCL service")
 }
 
 func createParserSourceProvider(path string) ([]*parser.Parser,

@@ -131,9 +131,11 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 	}
 }
 
-// detectTerraformPlanLine resolves a plan searchKey (e.g. "type[name].attr")
-// against the remapped "resource.type.name" document. Returns nil when the path
-// cannot be resolved so the caller can fall back to text matching.
+// detectTerraformPlanLine resolves a plan searchKey (e.g. "type[name].attr" or
+// "data.type[name].attr") against the remapped plan document, falling back to
+// the nearest ancestor present in the file down to the block header. Returns
+// nil when even the header cannot be resolved so the caller can fall back to
+// text matching.
 func detectTerraformPlanLine(
 	searchKey string,
 	file *model.FileMetadata,
@@ -141,15 +143,15 @@ func detectTerraformPlanLine(
 	outputLines int,
 	lines []string,
 ) *model.VulnerabilityLines {
-	path, explicitResourcePath := terraformPlanPath(searchKey)
-	if len(path) < tfPlanMinAttributePathLen && !explicitResourcePath {
+	path, blockLen, explicitSection := terraformPlanPath(searchKey)
+	if len(path) < blockLen && !explicitSection {
 		return nil
 	}
-	lineNr := GetLineBySearchLine(path, file)
-	// lineNr == 1 means _dd_lines were computed from minified (single-line) JSON;
-	// the plan opening "{" sits on line 1 so that value is never a real attribute
-	// line. Fall through to text matching, which runs on the pretty-printed content.
-	if lineNr <= 1 || lineNr > len(lines) {
+	lineNr := -1
+	for n := len(path); n >= min(blockLen, len(path)) && lineNr <= 0; n-- {
+		lineNr = planLine(file.LineInfoDocument, path[:n])
+	}
+	if lineNr <= 0 || lineNr > len(lines) {
 		return nil
 	}
 	return &model.VulnerabilityLines{
@@ -212,16 +214,30 @@ func expandSearchKeyPath(searchKey string) []string {
 	return comps
 }
 
-// terraformPlanPath turns a plan searchKey into structural path components for
-// GetLineBySearchLine, rooted at the plan's top-level "resource" key; see
-// expandSearchKeyPath for the expansion rules.
-func terraformPlanPath(searchKey string) ([]string, bool) {
+// planSectionBlockLen is, for each top-level section of a plan document a
+// search key can start with, how many path components name one of its blocks.
+var planSectionBlockLen = map[string]int{
+	"resource": tfPlanMinAttributePathLen,
+	"data":     tfPlanMinAttributePathLen,
+	"output":   2,
+	"module":   2,
+	"variable": 2,
+	"provider": 2,
+}
+
+// terraformPlanPath turns a plan searchKey into structural path components,
+// rooted at the plan document's section the key starts with, or at
+// "resource" when it starts with a resource type; see expandSearchKeyPath for
+// the expansion rules. blockLen is how many components name the block, and
+// explicitSection whether the key named its section.
+func terraformPlanPath(searchKey string) (path []string, blockLen int, explicitSection bool) {
 	comps := expandSearchKeyPath(searchKey)
-	explicitResourcePath := len(comps) > 0 && comps[0] == "resource"
-	if explicitResourcePath {
-		comps = comps[1:]
+	if len(comps) > 0 {
+		if n, ok := planSectionBlockLen[comps[0]]; ok {
+			return comps, n, true
+		}
 	}
-	return append([]string{"resource"}, comps...), explicitResourcePath
+	return append([]string{"resource"}, comps...), tfPlanMinAttributePathLen, false
 }
 
 // findMatchingBracket finds the "]" closing the "[" at open in s, tracking

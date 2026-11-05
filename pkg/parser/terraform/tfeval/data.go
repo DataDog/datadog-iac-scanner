@@ -7,14 +7,13 @@
 package tfeval
 
 import (
-	"context"
 	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfrefs"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -22,7 +21,10 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-const blockTypeData = "data"
+const (
+	blockTypeData     = "data"
+	blockTypeResource = "resource"
+)
 
 var dataRoot = map[string]struct{}{blockTypeData: {}}
 
@@ -65,11 +67,6 @@ type moduleData struct {
 	// inputs it read, so a refresh pass with unchanged inputs reuses it.
 	evalCache map[*hclsyntax.Block]blockEvalCache
 
-	// hasUnconditionalResource records whether the module has a resource block
-	// instantiating regardless of context, so an exhausted budget discards it
-	// and its data need not expand.
-	hasUnconditionalResource bool
-
 	// moduleAtRefresh is the module.* value the data blocks were last refreshed
 	// against; republishing it need not refresh the data again.
 	moduleAtRefresh cty.Value
@@ -93,7 +90,6 @@ func newModuleData(
 	resourceTypes map[string]struct{},
 	addr string,
 	chain []CallSite,
-	hasUnconditionalResource bool,
 ) *moduleData {
 	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
@@ -101,7 +97,7 @@ func newModuleData(
 	}
 	d := &moduleData{
 		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
-		dataLocals: locals.dataLocals, cyclic: locals.cyclicData, hasUnconditionalResource: hasUnconditionalResource,
+		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
 	}
 	for _, b := range blocks {
 		d.readsData = d.readsData || bodyReadsResource(b.Body, dataRoot)
@@ -122,21 +118,21 @@ func newModuleData(
 }
 
 // cyclicDataBlocks returns the data blocks that read their own result,
-// directly or through other data blocks and locals (see terraform.DataCycles).
+// directly or through other data blocks and locals (see tfrefs.DataCycles).
 func cyclicDataBlocks(blocks []*hclsyntax.Block, localExprs map[string]hclsyntax.Expression) map[*hclsyntax.Block]bool {
 	reads := make(map[string][]hcl.Traversal, len(blocks))
 	for _, b := range blocks {
-		key := terraform.DataKey(b.Labels[0], b.Labels[1])
-		reads[key] = append(reads[key], terraform.BodyTraversals(b.Body)...)
+		key := tfrefs.DataKey(b.Labels[0], b.Labels[1])
+		reads[key] = append(reads[key], tfrefs.Traversals(tfrefs.OfBody(b.Body))...)
 	}
 	locals := make(map[string][]hcl.Traversal, len(localExprs))
 	for name, expr := range localExprs {
 		locals[name] = expr.Variables()
 	}
-	keys := terraform.DataCycles(reads, locals)
+	keys := tfrefs.DataCycles(reads, locals)
 	var cyclic map[*hclsyntax.Block]bool
 	for _, b := range blocks {
-		if keys[terraform.DataKey(b.Labels[0], b.Labels[1])] {
+		if keys[tfrefs.DataKey(b.Labels[0], b.Labels[1])] {
 			if cyclic == nil {
 				cyclic = map[*hclsyntax.Block]bool{}
 			}
@@ -213,7 +209,7 @@ func (d *moduleData) readsOwnResources() bool {
 // locals that read it when it changed, until data.* settles. The pass bound
 // matches a source_policy_documents chain as long as the blocks and the locals
 // aliasing them, as getDataSourcePolicy does at the root.
-func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
+func (d *moduleData) refresh(evalCtx *hcl.EvalContext) {
 	if d == nil {
 		return
 	}
@@ -224,7 +220,7 @@ func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
 		bound = 1
 	}
 	for pass := 0; pass <= bound; pass++ {
-		value := d.evaluate(ctx, evalCtx)
+		value := d.evaluate(evalCtx)
 		if existing, ok := evalCtx.Variables[blockTypeData]; ok && equalValues(existing, value) {
 			break
 		}
@@ -254,21 +250,25 @@ func (d *moduleData) refreshDataLocals(evalCtx *hcl.EvalContext) {
 	evalCtx.Variables["local"] = objectOrEmpty(values)
 }
 
-func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty.Value {
+func (d *moduleData) evaluate(evalCtx *hcl.EvalContext) cty.Value {
 	instances := make([]ResolvedResource, 0, len(d.blocks))
 	exposed := make([]ResolvedResource, 0, len(d.blocks))
+	var empty []EmptyBlock
 	for _, b := range d.blocks {
 		inputs := blockEvalInputs(b, evalCtx)
 		cached, ok := d.evalCache[b]
 		if !ok || !sameCtyValues(cached.inputs, inputs) {
-			cached = d.evalBlock(ctx, b, evalCtx, inputs)
+			cached = d.evalBlock(b, evalCtx, inputs)
 		}
 		instances = append(instances, cached.instances...)
 		exposed = append(exposed, cached.exposed...)
+		if cached.empty {
+			empty = append(empty, emptyBlockOf(b, true))
+		}
 	}
 	d.instances = instances
 	byType := &hcl.EvalContext{Variables: map[string]cty.Value{}}
-	injectResourceRefs(byType, exposed)
+	injectResourceRefs(byType, exposed, empty)
 	for _, b := range d.blocks {
 		if d.cyclic[b] {
 			exposeUnknown(byType, b.Labels[0], b.Labels[1])
@@ -299,27 +299,23 @@ type blockEvalCache struct {
 	// exposed are the instances as data.* exposes them, with the attributes
 	// localdata computes added and, at the root module, the iteration dropped.
 	exposed []ResolvedResource
+	empty   bool
 }
 
 // evalBlock evaluates one data block and memoizes the result against the
 // context inputs it read: unchanged inputs reproduce the same result.
 func (d *moduleData) evalBlock(
-	ctx context.Context, b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
+	b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
-	if !d.e.dataExpansionWithinBudget(d.addr, d.hasUnconditionalResource) {
-		return cached
-	}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
+	expanded, empty := d.e.expandBlock(b, evalCtx, d.addr, d.chain, true)
+	cached.empty = empty
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
 		if source, ok := localdata.Lookup(inst.Type); ok {
 			view.Attributes = d.withComputedAttributes(inst, b, evalCtx, source)
-		}
-		if d.addr == "" {
-			inst.Iteration = nil
 		}
 		cached.instances = append(cached.instances, *inst)
 		cached.exposed = append(cached.exposed, view)
@@ -329,6 +325,21 @@ func (d *moduleData) evalBlock(
 	}
 	d.evalCache[b] = cached
 	return cached
+}
+
+// emptyBlocks returns the blocks whose last evaluation, the one the current
+// instances come from, expanded to zero instances.
+func (d *moduleData) emptyBlocks() []EmptyBlock {
+	if d == nil {
+		return nil
+	}
+	var out []EmptyBlock
+	for _, b := range d.blocks {
+		if d.evalCache[b].empty {
+			out = append(out, emptyBlockOf(b, true))
+		}
+	}
+	return out
 }
 
 // blockEvalInputs snapshots the context variables the block's traversals name.
@@ -488,9 +499,14 @@ func (d *moduleData) withComputedAttributes(
 	ctx := evalCtx
 	if inst.Iteration != nil {
 		ctx = evalCtx.NewChild()
-		ctx.Variables = inst.Iteration
+		if ctx.Variables == nil {
+			ctx.Variables = map[string]cty.Value{}
+		}
+		for k, v := range inst.Iteration {
+			ctx.Variables[k] = v
+		}
 	}
-	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources)}
+	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources), Locals: d.locals.byName}
 	var computed map[string]string
 	if body, ok := d.jsonBodies[b]; ok {
 		src := d.sources[b.TypeRange.Filename]
@@ -514,7 +530,7 @@ func (d *moduleData) withComputedAttributes(
 // variables it was bound to when read inside a dynamic block.
 func renderJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.Value, bool) {
 	if inner, vars, ok := partial.Unbind(expr); ok {
-		scoped := &partial.Renderer{Ctx: partial.Scope(rd.Ctx, vars), Source: rd.Source}
+		scoped := &partial.Renderer{Ctx: partial.Scope(rd.Ctx, vars), Source: rd.Source, Locals: rd.Locals}
 		return renderJSON(scoped, inner, src)
 	}
 	return rd.Render(jsonExprToHCL(expr, src))

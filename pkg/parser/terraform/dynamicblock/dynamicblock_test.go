@@ -33,27 +33,19 @@ func listOf(n int) cty.Value {
 	return cty.TupleVal(elems)
 }
 
-func TestExpand_UpToTheCap(t *testing.T) {
-	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"items": listOf(MaxExpansion)}}
-	got := Expand(dynamicBlock(t, "items"), ctx)
-	require.True(t, got.Resolved)
-	require.False(t, got.OverCap)
-	require.Len(t, got.Iterators, MaxExpansion)
-	require.Equal(t, MaxExpansion, got.Requested)
+// Every resolved element is expanded, however many: a cap would leave generated
+// blocks without their content and their findings unreported.
+func TestExpand_ExpandsEveryElement(t *testing.T) {
+	for _, n := range []int{1, 256, 257, 1025} {
+		ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"items": listOf(n)}}
+		got := Expand(dynamicBlock(t, "items"), ctx)
+		require.True(t, got.Resolved)
+		require.Len(t, got.Iterators, n)
+	}
 }
 
-func TestExpand_BeyondTheCapStaysAsWritten(t *testing.T) {
-	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"items": listOf(MaxExpansion + 1)}}
-	got := Expand(dynamicBlock(t, "items"), ctx)
-	require.False(t, got.Resolved, "a partial expansion would drop the later blocks")
-	require.True(t, got.OverCap)
-	require.Equal(t, MaxExpansion+1, got.Requested)
-	require.Empty(t, got.Iterators)
-}
-
-func TestExpand_UnresolvedIsNotOverCap(t *testing.T) {
+func TestExpand_Unresolved(t *testing.T) {
 	got := Expand(dynamicBlock(t, "var.missing"), &hcl.EvalContext{})
 	require.False(t, got.Resolved)
-	require.False(t, got.OverCap)
-	require.Zero(t, got.Requested)
+	require.Empty(t, got.Iterators)
 }

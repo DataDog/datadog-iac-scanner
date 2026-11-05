@@ -327,26 +327,28 @@ func (d decoder) documents(attr *hcl.Attribute) ([]policyDocument, bool) {
 	return out, true
 }
 
+// renderedStatement is a statement in the IAM policy grammar the provider
+// writes to the json attribute.
 type renderedStatement struct {
-	Actions       []string                       `json:"Actions,omitempty"`
-	Condition     map[string]map[string][]string `json:"Condition,omitempty"`
-	Effect        string                         `json:"Effect,omitempty"`
-	NotActions    []string                       `json:"Not_actions,omitempty"`
-	NotPrincipals map[string][]string            `json:"Not_principals,omitempty"`
-	NotResources  []string                       `json:"Not_resources,omitempty"`
-	Principals    map[string][]string            `json:"Principals,omitempty"`
-	Resources     []string                       `json:"Resources,omitempty"`
-	Sid           string                         `json:"Sid,omitempty"`
+	Sid          string                            `json:"Sid,omitempty"`
+	Effect       string                            `json:"Effect,omitempty"`
+	Action       interface{}                       `json:"Action,omitempty"`
+	NotAction    interface{}                       `json:"NotAction,omitempty"`
+	Resource     interface{}                       `json:"Resource,omitempty"`
+	NotResource  interface{}                       `json:"NotResource,omitempty"`
+	Principal    interface{}                       `json:"Principal,omitempty"`
+	NotPrincipal interface{}                       `json:"NotPrincipal,omitempty"`
+	Condition    map[string]map[string]interface{} `json:"Condition,omitempty"`
 }
 
 type renderedPolicy struct {
+	Version   string              `json:"Version,omitempty"`
 	ID        string              `json:"Id,omitempty"`
 	Statement []renderedStatement `json:"Statement,omitempty"`
-	Version   string              `json:"Version,omitempty"`
 }
 
-// render renders the policy in the shape rules read from the data source's json
-// attribute.
+// render renders the policy the way the provider writes the data source's json
+// attribute, so rules read the same document from source and from a plan.
 func (p policyDocument) render() (string, error) {
 	// The provider writes its default version when none is given.
 	version := p.Version
@@ -360,15 +362,15 @@ func (p policyDocument) render() (string, error) {
 	for i := range p.Statements {
 		st := &p.Statements[i]
 		out.Statement[i] = renderedStatement{
-			Actions:       st.Actions,
-			Condition:     st.Condition,
-			Effect:        st.Effect,
-			NotActions:    st.NotActions,
-			NotPrincipals: st.NotPrincipals,
-			NotResources:  st.NotResources,
-			Principals:    st.Principals,
-			Resources:     st.Resources,
-			Sid:           st.Sid,
+			Sid:          st.Sid,
+			Effect:       st.Effect,
+			Action:       stringOrList(st.Actions),
+			NotAction:    stringOrList(st.NotActions),
+			Resource:     stringOrList(st.Resources),
+			NotResource:  stringOrList(st.NotResources),
+			Principal:    principalValue(st.Principals),
+			NotPrincipal: principalValue(st.NotPrincipals),
+			Condition:    conditionValue(st.Condition),
 		}
 	}
 	buf := &bytes.Buffer{}
@@ -380,8 +382,51 @@ func (p policyDocument) render() (string, error) {
 	return buf.String(), nil
 }
 
-// parsePolicyJSON reads a policy document given as JSON, in AWS policy grammar
-// or in the shape render produces. ok is false when the document, or any field
+// stringOrList is how the provider writes a list of values: a single value as
+// a string, more as a list, none as an omitted field.
+func stringOrList(values []string) interface{} {
+	switch len(values) {
+	case 0:
+		return nil
+	case 1:
+		return values[0]
+	default:
+		return values
+	}
+}
+
+// principalValue writes principals by type. The provider writes a principal of
+// type "*" as the bare "*" the policy grammar defines for everyone.
+func principalValue(byType map[string][]string) interface{} {
+	if len(byType) == 0 {
+		return nil
+	}
+	if _, everyone := byType["*"]; everyone {
+		return "*"
+	}
+	out := make(map[string]interface{}, len(byType))
+	for typ, ids := range byType {
+		out[typ] = stringOrList(ids)
+	}
+	return out
+}
+
+func conditionValue(byTest map[string]map[string][]string) map[string]map[string]interface{} {
+	if len(byTest) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]interface{}, len(byTest))
+	for test, byVariable := range byTest {
+		out[test] = make(map[string]interface{}, len(byVariable))
+		for variable, values := range byVariable {
+			out[test][variable] = stringOrList(values)
+		}
+	}
+	return out
+}
+
+// parsePolicyJSON reads a policy document given as JSON in the IAM policy
+// grammar. ok is false when the document, or any field
 // of it that is present, cannot be read, so the caller never merges a statement
 // that lost part of itself (a dropped Condition would turn a guarded Deny or
 // Allow into an unconditional one).
@@ -411,12 +456,12 @@ func parsePolicyJSON(raw string) (policyDocument, bool) {
 		policy.Statements = append(policy.Statements, policyStatement{
 			Sid:           r.str(st["Sid"]),
 			Effect:        r.str(st["Effect"]),
-			Actions:       r.strings(first(st, "Action", "Actions")),
-			NotActions:    r.strings(first(st, "NotAction", "Not_actions")),
-			Resources:     r.strings(first(st, "Resource", "Resources")),
-			NotResources:  r.strings(first(st, "NotResource", "Not_resources")),
-			Principals:    r.principal(first(st, "Principal", "Principals")),
-			NotPrincipals: r.principal(first(st, "NotPrincipal", "Not_principals")),
+			Actions:       r.strings(st["Action"]),
+			NotActions:    r.strings(st["NotAction"]),
+			Resources:     r.strings(st["Resource"]),
+			NotResources:  r.strings(st["NotResource"]),
+			Principals:    r.principal(st["Principal"]),
+			NotPrincipals: r.principal(st["NotPrincipal"]),
 			Condition:     r.condition(st["Condition"]),
 		})
 	}
@@ -424,15 +469,6 @@ func parsePolicyJSON(raw string) (policyDocument, bool) {
 		return policyDocument{}, false
 	}
 	return policy, true
-}
-
-func first(m map[string]json.RawMessage, keys ...string) json.RawMessage {
-	for _, k := range keys {
-		if v, ok := m[k]; ok {
-			return v
-		}
-	}
-	return nil
 }
 
 func isJSONNull(raw json.RawMessage) bool {

@@ -145,6 +145,12 @@ var scanAction = &cli.Command{
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
 			Value:  false,
 		},
+		&cli.BoolFlag{
+			Name: "terraform-instance-identity",
+			Usage: "identify Terraform findings by root module and address and report that address as " +
+				"IAC_RESOURCE_ID; off keeps the file, resource name and module call chain fingerprint",
+			Value: false,
+		},
 		&cli.StringSliceFlag{
 			Name:    "queries-path",
 			Aliases: []string{"q"},
@@ -377,6 +383,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		FlagEvaluator:               featureflags.NewLocalEvaluator(),
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
+		TerraformInstanceIdentity:   c.Bool("terraform-instance-identity"),
 		TerraformModules:            modulesSetting,
 		NetworkIsolation:            offlineBundlePath != "",
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),

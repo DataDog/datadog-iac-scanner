@@ -115,6 +115,8 @@ func StartScan(ctx context.Context, scanID string, services serviceSlice) error 
 
 	contextLogger.Info().Msgf("Starting scan with id: %s", scanID)
 
+	runner.ConsolidateTerraformFiles([]*runner.Service(services))
+
 	total := services.GetQueriesLength()
 	contextLogger.Info().Msgf("Got %d queries", total)
 

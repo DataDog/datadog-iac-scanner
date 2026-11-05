@@ -25,7 +25,8 @@ import rego.v1
 DatadogPolicy contains result if {
 	some name, i
 	bucket := input.document[i].resource.aws_s3_bucket[name]
-	bucket.versioning.enabled == false
+	some versioning in bucket.versioning
+	versioning.enabled == false
 
 	result := {
 		"documentId": input.document[i].id,

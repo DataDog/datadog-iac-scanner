@@ -38,7 +38,10 @@ func getCertificateInfo(filePath string) (certInfo, error) {
 	if err != nil {
 		return certInfo{}, err
 	}
+	return parseCertificate(certPEM)
+}
 
+func parseCertificate(certPEM []byte) (certInfo, error) {
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
 		return certInfo{}, errors.New("failed to parse the certificate PEM")
@@ -53,48 +56,66 @@ func getCertificateInfo(filePath string) (certInfo, error) {
 	certDate[1] = int(cert.NotAfter.Month())
 	certDate[2] = cert.NotAfter.Day()
 
-	var rsaBytes int
-
-	switch t := cert.PublicKey.(type) {
-	case *rsa.PublicKey:
-		_ = t
-		rsaBytes = cert.PublicKey.(*rsa.PublicKey).Size()
-	default:
-		rsaBytes = -1
+	rsaBytes := -1
+	if key, ok := cert.PublicKey.(*rsa.PublicKey); ok {
+		rsaBytes = key.Size()
 	}
 
 	return certInfo{date: certDate, rsaKeyBytes: rsaBytes}, nil
 }
 
+func (c certInfo) attributes() map[string]interface{} {
+	attributes := map[string]interface{}{"expiration_date": c.date}
+	if c.rsaKeyBytes != -1 {
+		attributes["rsa_key_bytes"] = c.rsaKeyBytes
+	}
+	return attributes
+}
+
+// CertificateInfo is what a scan reads of a PEM certificate: its expiration
+// date, [year, month, day], and, for an RSA key, rsa_key_bytes, the key's size
+// in bytes. ok is false when certPEM is not a certificate.
+func CertificateInfo(certPEM string) (info map[string]interface{}, ok bool) {
+	c, err := parseCertificate([]byte(certPEM))
+	if err != nil {
+		return nil, false
+	}
+	return c.attributes(), true
+}
+
+// certificateFile is the path of the certificate file content names, a full
+// path or one relative to the directory of the file at path.
+func certificateFile(ctx context.Context, path, content string) string {
+	if _, err := os.Stat(content); err == nil {
+		return content
+	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Trace().Msgf("path to the certificate content is not a valid: %s", content)
+	return filepath.Join(filepath.Dir(path), content)
+}
+
+// CertificateFileInfo is CertificateInfo for the certificate file content
+// names (see certificateFile), nil when it cannot be read.
+func CertificateFileInfo(ctx context.Context, path, content string) map[string]interface{} {
+	return fileInfo(ctx, certificateFile(ctx, path, content))
+}
+
+func fileInfo(ctx context.Context, filePath string) map[string]interface{} {
+	c, err := getCertificateInfo(filePath)
+	if err != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Error().Msgf("Failed to get certificate path %s: %s", filePath, err)
+		return nil
+	}
+	return c.attributes()
+}
+
 // AddCertificateInfo gets and adds certificate information of a certificate file
 func AddCertificateInfo(ctx context.Context, path, content string) map[string]interface{} {
-	loggerFromContext := logger.FromContext(ctx)
-	var filePath string
-
-	_, err := os.Stat(content)
-
-	if err != nil { // content is not a full valid path or is an incomplete path
-		loggerFromContext.Trace().Msgf("path to the certificate content is not a valid: %s", content)
-		filePath = filepath.Join(filepath.Dir(path), content)
-	} else { // content is a full valid path
-		filePath = content
-	}
-
-	date, err := getCertificateInfo(filePath)
-
-	if err == nil {
-		attributes := make(map[string]interface{})
+	filePath := certificateFile(ctx, path, content)
+	attributes := fileInfo(ctx, filePath)
+	if attributes != nil {
 		attributes["file"] = filePath
-		attributes["expiration_date"] = date.date
-
-		if date.rsaKeyBytes != -1 {
-			attributes["rsa_key_bytes"] = date.rsaKeyBytes
-		}
-
-		return attributes
 	}
-
-	loggerFromContext.Error().Msgf("Failed to get certificate path %s: %s", filePath, err)
-
-	return nil
+	return attributes
 }

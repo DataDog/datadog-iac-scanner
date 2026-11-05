@@ -253,6 +253,7 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	executeScanParameters.inspector.SetReleasePostEvalData(!c.ScanParams.LineInfoPayload)
 	// Every finding Inspect returns goes straight to storage.
 	executeScanParameters.inspector.SetCompactFindingsAtDecode(true)
+	executeScanParameters.inspector.SetTerraformInstanceIdentity(c.ScanParams.TerraformInstanceIdentity)
 
 	if executeScanParameters.moduleCleanup != nil {
 		defer executeScanParameters.moduleCleanup()
@@ -372,12 +373,7 @@ func (c *Client) createService(
 		filesSource, renderedFileFilter = fsSource, fsSource.ChartFilter()
 	}
 
-	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)
-	if c.inMemory {
-		tfParser.SetMergeAllow(append(append([]string{}, paths...), remoteModulePaths...))
-	} else {
-		tfParser.SetMergeAllow(append(append([]string{}, c.walkInventory...), remoteModulePaths...))
-	}
+	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.SCIInfo)
 
 	combinedParserBuilder := parser.NewBuilder(ctx).
 		WithFS(c.fsys).

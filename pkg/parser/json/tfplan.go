@@ -8,9 +8,9 @@ package json
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcl_plan "github.com/hashicorp/terraform-json"
@@ -24,12 +24,17 @@ type TFPlan struct {
 	// Data mirrors the HCL parser's data.<type>.<name> shape for data sources.
 	Data map[string]map[string]any `json:"data,omitempty"`
 
+	// Output, Module, Variable and Provider mirror the HCL parser's sections
+	// of the root module, read from the plan configuration so a rule sees the
+	// same blocks on both scans. Each carries a "_dd_lines" key, as a resource
+	// type does, holding each block's header line.
+	Output   map[string]any `json:"output,omitempty"`
+	Module   map[string]any `json:"module,omitempty"`
+	Variable map[string]any `json:"variable,omitempty"`
+	Provider map[string]any `json:"provider,omitempty"`
+
 	ResourceChanges any `json:"resource_changes,omitempty"`
 	Configuration   any `json:"configuration,omitempty"`
-
-	// TfplanMeta is a reserved top-level map, parallel to Resource (not
-	// nested inside it), keyed exactly like Resource[type][flattened-key].
-	TfplanMeta map[string]map[string]tfplanResourceMeta `json:"_dd_tfplan_meta,omitempty"`
 }
 
 // TFPlanResource is keyed by resource name, plus a reserved "_dd_lines" key
@@ -38,75 +43,110 @@ type TFPlanResource map[string]any
 
 type TFPlanNamedResource map[string]any
 
-// tfplanResourceMeta is the payload stored under
-// _dd_tfplan_meta.<type>.<flattened-key>.
-type tfplanResourceMeta struct {
-	Address                  string `json:"address"`
-	AfterUnknown             any    `json:"after_unknown,omitempty"`
-	ConfigurationExpressions any    `json:"configuration_expressions,omitempty"`
-	Provisioners             any    `json:"provisioners,omitempty"`
-}
+const (
+	ddMetaKey        = "_dd_meta"
+	constantValueKey = "constant_value"
+	referencesKey    = "references"
+)
 
 type resourceChangeCorrelation struct {
 	afterUnknownByAddress map[string]any
-	expressionsByAddress  map[string]any
-	provisionersByAddress map[string]any
+
+	// configByAddress holds each config resource's raw expressions by
+	// canonical address; moduleCalls and moduleOutputs are keyed by the child
+	// module's config path.
+	configByAddress map[string]gjson.Result
+	moduleCalls     map[string]gjson.Result
+	moduleOutputs   map[string]gjson.Result
+	// moduleVariables and nestedCalls are child modules' variables and the
+	// module calls made from inside a module, keyed by the call path.
+	moduleVariables map[string]gjson.Result
+	nestedCalls     map[string]gjson.Result
+	// declared holds the canonical address of every config resource, with
+	// or without expressions.
+	declared map[string]bool
+	// rootOutputs, rootModuleCalls and rootVariables are the root module's
+	// configuration blocks. Child modules keep their outputs and calls on
+	// moduleOutputs and moduleCalls.
+	rootOutputs     gjson.Result
+	rootModuleCalls gjson.Result
+	rootVariables   gjson.Result
+	// providerConfigs is the plan's provider_config, keyed by provider
+	// configuration key; providerByAddress the provider configuration
+	// address each config resource uses.
+	providerConfigs   gjson.Result
+	providerByAddress map[string]string
+	// forEachByAddress and moduleForEach hold the for_each expressions of
+	// config resources and module calls, provisionersByAddress the
+	// provisioners of config resources.
+	forEachByAddress      map[string]gjson.Result
+	moduleForEach         map[string]gjson.Result
+	provisionersByAddress map[string]gjson.Result
+	// repeatedModules holds the config path of every module call with count
+	// or for_each.
+	repeatedModules map[string]bool
+	// instances and moduleInstances list the planned instance addresses by
+	// canonical config address.
+	instances       map[string][]string
+	moduleInstances map[string][]string
+	// resolved memoises resolveReferences by references list and module instance.
+	resolved map[string]planTrace
 }
 
 func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
 	c := resourceChangeCorrelation{
 		afterUnknownByAddress: make(map[string]any),
-		expressionsByAddress:  make(map[string]any),
-		provisionersByAddress: make(map[string]any),
+		configByAddress:       make(map[string]gjson.Result),
+		declared:              make(map[string]bool),
+		moduleCalls:           make(map[string]gjson.Result),
+		moduleOutputs:         make(map[string]gjson.Result),
+		moduleVariables:       make(map[string]gjson.Result),
+		nestedCalls:           make(map[string]gjson.Result),
+		forEachByAddress:      make(map[string]gjson.Result),
+		moduleForEach:         make(map[string]gjson.Result),
+		provisionersByAddress: make(map[string]gjson.Result),
+		repeatedModules:       make(map[string]bool),
+		resolved:              make(map[string]planTrace),
+		providerByAddress:     make(map[string]string),
+		providerConfigs:       gjson.GetBytes(rawPlan, "configuration.provider_config"),
 	}
+	planned := make(map[string]bool)
+	deleted := make(map[string]bool)
 
 	gjson.GetBytes(rawPlan, "resource_changes").ForEach(func(_, change gjson.Result) bool {
-		address := change.Get("address").String()
-		if address == "" {
+		addr := change.Get("address").String()
+		if addr == "" {
 			return true
 		}
+		if actions := change.Get("change.actions").Array(); len(actions) == 1 && actions[0].String() == "delete" {
+			deleted[addr] = true
+		} else {
+			planned[addr] = true
+		}
 		if afterUnknown := change.Get("change.after_unknown"); afterUnknown.Exists() {
-			c.afterUnknownByAddress[address] = afterUnknown.Value()
+			c.afterUnknownByAddress[addr] = afterUnknown.Value()
 		}
 		return true
 	})
+	plannedRoot := gjson.GetBytes(rawPlan, "planned_values.root_module")
+	collectStateAddresses(&plannedRoot, false, deleted, planned)
+	priorRoot := gjson.GetBytes(rawPlan, "prior_state.values.root_module")
+	collectStateAddresses(&priorRoot, true, deleted, planned)
+	c.indexInstances(planned)
 
 	rootConfigModule := gjson.GetBytes(rawPlan, "configuration.root_module")
-	walkConfigModule(&rootConfigModule, "", nil, &c)
+	walkConfigModule(&rootConfigModule, "", &c)
 
 	return c
 }
 
-// callSiteIdentity is a call site's stable identity: the module_calls block
-// and argument name it was declared at. expression itself isn't part of the
-// identity since a decoded JSON value (a map or slice) isn't comparable.
-type callSiteIdentity struct {
-	moduleAddress string
-	argumentName  string
-}
-
-// callSiteRecord is one entry in a call_site_expressions chain.
-type callSiteRecord struct {
-	callSiteIdentity
-	expression any
-}
-
-// callArgument is a call-site expression, never asserted as a resolved
-// value (Terraform serializes var.x and base64encode(var.x) alike).
-type callArgument struct {
-	callSiteIdentity
-	raw   gjson.Result
-	chain []callSiteRecord
-}
-
-// record returns arg's own call site as a callSiteRecord.
-func (arg *callArgument) record() callSiteRecord {
-	return callSiteRecord{callSiteIdentity: arg.callSiteIdentity, expression: arg.raw.Value()}
-}
-
-// walkConfigModule indexes each resource's expressions/provisioners by
-// absolute address, using callArgs to attach call-site provenance.
-func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[string]callArgument, c *resourceChangeCorrelation) {
+// walkConfigModule indexes each config resource's expressions by absolute address.
+func walkConfigModule(module *gjson.Result, modulePath string, c *resourceChangeCorrelation) {
+	if modulePath == "" {
+		c.rootOutputs = module.Get("outputs")
+		c.rootModuleCalls = module.Get("module_calls")
+		c.rootVariables = module.Get("variables")
+	}
 	module.Get("resources").ForEach(func(_, resource gjson.Result) bool {
 		relativeAddress := resource.Get("address").String()
 		if relativeAddress == "" {
@@ -116,11 +156,18 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 		if modulePath != "" {
 			absoluteAddress = modulePath + "." + relativeAddress
 		}
+		c.declared[absoluteAddress] = true
+		if key := resource.Get("provider_config_key"); key.Type == gjson.String {
+			c.providerByAddress[absoluteAddress] = c.providerAddress(key.String(), modulePath)
+		}
 		if expressions := resource.Get("expressions"); expressions.Exists() {
-			c.expressionsByAddress[absoluteAddress] = qualifyExpressionTree(&expressions, callArgs)
+			c.configByAddress[absoluteAddress] = expressions
+		}
+		if forEach := resource.Get("for_each_expression"); forEach.Exists() {
+			c.forEachByAddress[absoluteAddress] = forEach
 		}
 		if provisioners := resource.Get("provisioners"); provisioners.Exists() {
-			c.provisionersByAddress[absoluteAddress] = qualifyExpressionTree(&provisioners, callArgs)
+			c.provisionersByAddress[absoluteAddress] = provisioners
 		}
 		return true
 	})
@@ -130,159 +177,31 @@ func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[stri
 		if !childModule.Exists() {
 			return true
 		}
+		// A constant count/for_each of zero creates no instance: leave no
+		// child sections (outputs, variables, nested calls) under it.
+		if zeroInstances(&call) {
+			return true
+		}
 		childPath := "module." + callName.String()
 		if modulePath != "" {
 			childPath = modulePath + "." + childPath
 		}
-		childArgs := make(map[string]callArgument)
-		call.Get("expressions").ForEach(func(argName, argExpr gjson.Result) bool {
-			// Resolve this call's own args against the parent so a chain of
-			// var.x indirections resolves transitively, not just one hop.
-			childArgs[argName.String()] = callArgument{
-				callSiteIdentity: callSiteIdentity{moduleAddress: modulePath, argumentName: argName.String()},
-				raw:              argExpr,
-				chain:            callArgumentChain(&argExpr, callArgs),
-			}
-			return true
-		})
-		walkConfigModule(&childModule, childPath, childArgs, c)
+		c.moduleCalls[childPath] = call.Get("expressions")
+		c.moduleOutputs[childPath] = childModule.Get("outputs")
+		if vars := childModule.Get("variables"); vars.IsObject() {
+			c.moduleVariables[childPath] = vars
+		}
+		// A call made from inside a module. Root calls stay in rootModuleCalls.
+		if modulePath != "" {
+			c.nestedCalls[childPath] = call
+		}
+		if forEach := call.Get("for_each_expression"); forEach.Exists() {
+			c.moduleForEach[childPath] = forEach
+		}
+		c.repeatedModules[childPath] = call.Get("count_expression").Exists() || call.Get("for_each_expression").Exists()
+		walkConfigModule(&childModule, childPath, c)
 		return true
 	})
-}
-
-// qualifyExpressionTree walks an expressions/provisioners tree, attaching
-// call-site provenance to reference leaves without modifying any field.
-func qualifyExpressionTree(value *gjson.Result, callArgs map[string]callArgument) any {
-	if len(callArgs) == 0 || !value.IsObject() && !value.IsArray() {
-		return value.Value()
-	}
-
-	if value.Get("references").Exists() {
-		return attachCallSiteExpressions(value, callArgs)
-	}
-
-	if value.IsArray() {
-		items := value.Array()
-		resolved := make([]any, len(items))
-		for i, item := range items {
-			resolved[i] = qualifyExpressionTree(&item, callArgs)
-		}
-		return resolved
-	}
-
-	resolved := make(map[string]any)
-	value.ForEach(func(key, item gjson.Result) bool {
-		resolved[key.String()] = qualifyExpressionTree(&item, callArgs)
-		return true
-	})
-	return resolved
-}
-
-// attachCallSiteExpressions adds a "call_site_expressions" sidecar listing
-// each matched var.<name> reference's call-site chain, never modifying expr.
-func attachCallSiteExpressions(expr *gjson.Result, callArgs map[string]callArgument) any {
-	chain := referencedArgumentChain(expr, callArgs)
-	if len(chain) == 0 {
-		return expr.Value()
-	}
-
-	value, ok := expr.Value().(map[string]any)
-	if !ok {
-		return expr.Value()
-	}
-	expressions := make([]any, len(chain))
-	for i, rec := range chain {
-		expressions[i] = rec.expression
-	}
-	value["call_site_expressions"] = expressions
-	return value
-}
-
-// callArgumentChain builds expr's own provenance for a child call to use.
-// Returns nil when callArgs is empty (see referencedArgumentChain).
-func callArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []callSiteRecord {
-	if len(callArgs) == 0 {
-		return nil
-	}
-	return referencedArgumentChain(expr, callArgs)
-}
-
-// referencedArgumentChain flattens every ancestor call site a var.<name>
-// reference resolves to, deduplicated by (module, argument) identity.
-func referencedArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []callSiteRecord {
-	refs := expr.Get("references")
-	if !refs.IsArray() || len(refs.Array()) == 0 {
-		return nil
-	}
-
-	rawRefs := make([]string, len(refs.Array()))
-	for i, ref := range refs.Array() {
-		rawRefs[i] = ref.String()
-	}
-
-	seen := make(map[callSiteIdentity]bool)
-	var chain []callSiteRecord
-	for i, ref := range refs.Array() {
-		name, ok := varReferenceName(ref.String())
-		if !ok {
-			continue
-		}
-		if hasMoreSpecificTraversal(rawRefs, i, name) {
-			continue
-		}
-		arg, ok := callArgs[name]
-		if !ok {
-			continue
-		}
-		chain = appendDedupRecord(chain, seen, arg.chain...)
-		chain = appendDedupRecord(chain, seen, arg.record())
-	}
-	return chain
-}
-
-// appendDedupRecord appends each of recs to chain, skipping any whose
-// identity is already in seen, and marks every appended identity as seen.
-func appendDedupRecord(chain []callSiteRecord, seen map[callSiteIdentity]bool, recs ...callSiteRecord) []callSiteRecord {
-	for _, rec := range recs {
-		if seen[rec.callSiteIdentity] {
-			continue
-		}
-		seen[rec.callSiteIdentity] = true
-		chain = append(chain, rec)
-	}
-	return chain
-}
-
-// hasMoreSpecificTraversal reports whether rawRefs also contains a
-// traversal into "var.<name>" (e.g. "var.settings.selected") at another index.
-func hasMoreSpecificTraversal(rawRefs []string, self int, name string) bool {
-	prefix := "var." + name
-	for i, ref := range rawRefs {
-		if i == self {
-			continue
-		}
-		if !strings.HasPrefix(ref, prefix) {
-			continue
-		}
-		rest := ref[len(prefix):]
-		if strings.HasPrefix(rest, ".") || strings.HasPrefix(rest, "[") {
-			return true
-		}
-	}
-	return false
-}
-
-// varReferenceName reports whether ref is exactly a bare "var.<name>" root
-// (not "var.settings.metric_name") and, if so, returns <name>.
-func varReferenceName(ref string) (string, bool) {
-	if !strings.HasPrefix(ref, "var.") {
-		return "", false
-	}
-	name := strings.TrimPrefix(ref, "var.")
-	if name == "" || strings.ContainsAny(name, ".[") {
-		return "", false
-	}
-	return name, true
 }
 
 // canonicalConfigAddress strips "[...]" instance-key suffixes, e.g.
@@ -306,19 +225,44 @@ func canonicalConfigAddress(address string) string {
 	return canonical
 }
 
-func resourceMetaFor(address string, c *resourceChangeCorrelation) tfplanResourceMeta {
-	meta := tfplanResourceMeta{Address: address}
-	if afterUnknown, ok := c.afterUnknownByAddress[address]; ok {
-		meta.AfterUnknown = afterUnknown
+// withDDMeta returns values with _dd_meta attached, creating the object when
+// the resource has no planned values.
+func withDDMeta(values map[string]any, addr string, unknown, configured map[string]any, c *resourceChangeCorrelation) map[string]any {
+	if values == nil {
+		values = map[string]any{}
 	}
-	configAddress := canonicalConfigAddress(address)
-	if expressions, ok := c.expressionsByAddress[configAddress]; ok {
-		meta.ConfigurationExpressions = expressions
+	meta := map[string]any{"address": addr}
+	if provider, ok := c.providerByAddress[canonicalConfigAddress(addr)]; ok {
+		meta["provider"] = provider
 	}
-	if provisioners, ok := c.provisionersByAddress[configAddress]; ok {
-		meta.Provisioners = provisioners
+	refs, ambiguous := c.referencesFor(addr)
+	// An empty references object is kept: the configuration was read and
+	// nothing in it traced, which is different from no configuration at all.
+	if refs != nil {
+		meta["references"] = refs
 	}
-	return meta
+	for _, entry := range [...]struct {
+		key   string
+		value map[string]any
+	}{
+		{"unknown", unknown},
+		{"ambiguous", ambiguous},
+		{"configured", configured},
+	} {
+		if len(entry.value) > 0 {
+			meta[entry.key] = entry.value
+		}
+	}
+	values[ddMetaKey] = meta
+	return values
+}
+
+func (c *resourceChangeCorrelation) referencesFor(addr string) (refs, ambiguous map[string]interface{}) {
+	expressions, ok := c.configByAddress[canonicalConfigAddress(addr)]
+	if !ok {
+		return nil, nil
+	}
+	return planReferences(&expressions, addr, c)
 }
 
 func parseTFPlan(doc model.Document) (model.Document, error) {
@@ -342,8 +286,9 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 }
 
 // extractResourceHeaderLines returns each resource's "values" attribute
-// line, keyed by resource address. Addresses are unique across the whole
-// plan, so planned_values and prior_state (resolved data sources) share one map.
+// line, keyed by resource address. A data source or managed resource with
+// state is in both planned_values and prior_state; its values come from
+// planned_values, and so does its line.
 func extractResourceHeaderLines(rawPlan []byte) map[string]int {
 	lines := make(map[string]int)
 	plannedRootModule := gjson.GetBytes(rawPlan, "planned_values.root_module")
@@ -354,21 +299,37 @@ func extractResourceHeaderLines(rawPlan []byte) map[string]int {
 }
 
 func walkModule(module *gjson.Result, lines map[string]int) {
+	table := module.Get(linesKey)
+	walkModuleLines(module, &table, lines)
+}
+
+// walkModuleLines reads resource header lines from lineTable, keeping a line
+// already recorded. A nested module is an array element, so its line table
+// lives on the parent (_dd_child_modules._dd_arr), not on the module object.
+func walkModuleLines(module, lineTable *gjson.Result, lines map[string]int) {
 	resources := module.Get("resources").Array()
-	arr := module.Get("_dd_lines._dd_resources._dd_arr").Array()
+	arr := lineTable.Get("_dd_resources._dd_arr").Array()
 	for i, resource := range resources {
 		if i >= len(arr) {
 			break
 		}
 		address := resource.Get("address").String()
+		if _, seen := lines[address]; seen {
+			continue
+		}
 		if line := arr[i].Get("_dd_values._dd_line").Int(); line > 0 {
 			lines[address] = int(line)
 		}
 	}
-	module.Get("child_modules").ForEach(func(_, child gjson.Result) bool {
-		walkModule(&child, lines)
-		return true
-	})
+	children := module.Get("child_modules").Array()
+	childArr := lineTable.Get("_dd_child_modules._dd_arr").Array()
+	for i, child := range children {
+		var table gjson.Result
+		if i < len(childArr) {
+			table = childArr[i]
+		}
+		walkModuleLines(&child, &table, lines)
+	}
 }
 
 func readPlan(
@@ -383,11 +344,18 @@ func readPlan(
 		Configuration:   configuration,
 	}
 
-	kp.readModule(plan.PlannedValues.RootModule, "", resourceLines, correlation)
+	reader := stateReader{resourceLines: resourceLines, correlation: correlation}
+	kp.readModule(plan.PlannedValues.RootModule, &reader)
 
 	if plan.PriorState != nil && plan.PriorState.Values != nil {
-		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", resourceLines, deletedAddresses(plan.ResourceChanges))
+		reader.priorState = true
+		reader.deleted = deletedAddresses(plan.ResourceChanges)
+		kp.readModule(plan.PriorState.Values.RootModule, &reader)
 	}
+	kp.Output = planOutputBlocks(correlation)
+	kp.Module = planModuleCallBlocks(correlation)
+	kp.Variable = planVariableBlocks(correlation)
+	kp.Provider = planProviderBlocks(&correlation.providerConfigs)
 
 	doc := model.Document{}
 
@@ -403,53 +371,324 @@ func readPlan(
 	return doc
 }
 
-// readModule recursively accumulates resources from every module into the
-// same flat resource.<type>.<name> map. moduleAddress is "" for the root module.
-func (kp *TFPlan) readModule(
-	module *hcl_plan.StateModule,
-	moduleAddress string,
-	resourceLines map[string]int,
-	correlation *resourceChangeCorrelation,
-) {
-	for _, resource := range module.Resources {
-		if kp.Resource[resource.Type] == nil {
-			kp.Resource[resource.Type] = make(TFPlanResource)
-		}
-		typeRes := kp.Resource[resource.Type]
+// planOutputBlocks is output.<name>. A child module's output is keyed by its
+// call path, module.a.module.b.<name>, the same way a child resource is.
+// Each block's value expression is resolved into _dd_meta.references the way
+// a resource attribute is.
+func planOutputBlocks(c *resourceChangeCorrelation) map[string]any {
+	out := map[string]any{}
+	addPlanOutputs(out, "", &c.rootOutputs, c)
+	for path, outputs := range c.moduleOutputs {
+		addPlanOutputs(out, path, &outputs, c)
+	}
+	return withSectionLines(out, &c.rootOutputs)
+}
 
+func addPlanOutputs(out map[string]any, prefix string, outputs *gjson.Result, c *resourceChangeCorrelation) {
+	if !outputs.IsObject() {
+		return
+	}
+	outputs.ForEach(func(name, output gjson.Result) bool {
+		if name.String() == linesKey {
+			return true
+		}
+		key := name.String()
+		if prefix != "" {
+			key = prefix + "." + key
+		}
+		block := map[string]any{}
+		if desc := output.Get("description"); desc.Type == gjson.String {
+			block["description"] = desc.String()
+		}
+		if sensitive := output.Get("sensitive"); sensitive.IsBool() {
+			block["sensitive"] = sensitive.Bool()
+		}
+		lines := linesOf(&output)
+		if expr := output.Get("expression"); expr.Exists() {
+			body := gjson.Parse(`{"value":` + expr.Raw + `}`)
+			addr := "output." + name.String()
+			if prefix != "" {
+				addr = prefix + ".output." + name.String()
+			}
+			meta := planConfigMeta(addr, prefix, &body, c)
+			if constant := expr.Get(constantValueKey); !constant.Exists() {
+				block["value"] = partial.UnknownPlaceholder
+				markUnknown(meta, "value")
+			} else if constant.Type != gjson.Null {
+				block["value"] = constant.Value()
+			}
+			block[ddMetaKey] = meta
+			renameLine(lines, "expression", "value")
+		}
+		setLines(block, lines)
+		out[key] = block
+		return true
+	})
+}
+
+// planModuleCallBlocks is module.<name>. A call made from inside a module is
+// keyed by its call path, module.a.module.b. Arguments come from the call's
+// expressions.
+func planModuleCallBlocks(c *resourceChangeCorrelation) map[string]any {
+	out := map[string]any{}
+	if c.rootModuleCalls.IsObject() {
+		c.rootModuleCalls.ForEach(func(name, call gjson.Result) bool {
+			addPlanModuleCall(out, name.String(), "module."+name.String(), &call, c)
+			return true
+		})
+	}
+	for path, call := range c.nestedCalls {
+		addPlanModuleCall(out, path, path, &call, c)
+	}
+	return withSectionLines(out, &c.rootModuleCalls)
+}
+
+func addPlanModuleCall(out map[string]any, key, address string, call *gjson.Result, c *resourceChangeCorrelation) {
+	if key == linesKey || zeroInstances(call) {
+		return
+	}
+	block := map[string]any{}
+	lines := map[string]any{}
+	exprs := call.Get("expressions")
+	if exprs.IsObject() {
+		meta := planConfigMeta(address, parentModulePath(address), &exprs, c)
+		exprs.ForEach(func(attr, expr gjson.Result) bool {
+			if attr.String() == linesKey {
+				return true
+			}
+			if constant := expr.Get(constantValueKey); constant.Exists() && constant.Type != gjson.Null {
+				block[attr.String()] = constant.Value()
+			} else if !constant.Exists() && isExpression(&expr) {
+				block[attr.String()] = partial.UnknownPlaceholder
+				markUnknown(meta, attr.String())
+			}
+			return true
+		})
+		block[ddMetaKey] = meta
+		lines = linesOf(&exprs)
+	}
+	callLines := linesOf(call)
+	if source := call.Get("source"); source.Type == gjson.String && block["source"] == nil {
+		block["source"] = source.String()
+		copyLine(lines, callLines, "source", "source")
+	}
+	if version := call.Get("version_constraint"); version.Type == gjson.String && block["version"] == nil {
+		block["version"] = version.String()
+		copyLine(lines, callLines, "version_constraint", "version")
+	}
+	setLines(block, lines)
+	out[key] = block
+}
+
+// planVariableBlocks is variable.<name>. A child module's variable is keyed
+// by its call path. A plan does not carry a variable's type or validation, so
+// type is unknown rather than absent: a rule must not report it missing.
+func planVariableBlocks(c *resourceChangeCorrelation) map[string]any {
+	out := map[string]any{}
+	addPlanVariables(out, "", &c.rootVariables)
+	for path, variables := range c.moduleVariables {
+		addPlanVariables(out, path, &variables)
+	}
+	return withSectionLines(out, &c.rootVariables)
+}
+
+func addPlanVariables(out map[string]any, prefix string, variables *gjson.Result) {
+	if !variables.IsObject() {
+		return
+	}
+	variables.ForEach(func(name, variable gjson.Result) bool {
+		if name.String() == linesKey {
+			return true
+		}
+		key := name.String()
+		if prefix != "" {
+			key = prefix + "." + key
+		}
+		block := map[string]any{
+			ddMetaKey: map[string]any{"unknown": map[string]any{"type": true}},
+		}
+		for _, k := range [...]string{"default", "description", "sensitive", "nullable"} {
+			if v := variable.Get(k); v.Exists() && v.Type != gjson.Null {
+				block[k] = v.Value()
+			}
+		}
+		setLines(block, linesOf(&variable))
+		out[key] = block
+		return true
+	})
+}
+
+// linesOf is a copy of the line table JSON line info attached to obj, empty
+// when it has none.
+func linesOf(obj *gjson.Result) map[string]any {
+	lines, _ := obj.Get(linesKey).Value().(map[string]any)
+	if lines == nil {
+		lines = map[string]any{}
+	}
+	return lines
+}
+
+func setLines(block, lines map[string]any) {
+	if len(lines) > 0 {
+		block[linesKey] = lines
+	}
+}
+
+// withSectionLines is section with the header lines of its blocks, read from
+// config, the configuration object it was built from; nil when empty.
+func withSectionLines(section map[string]any, config *gjson.Result) map[string]any {
+	if len(section) == 0 {
+		return nil
+	}
+	setLines(section, linesOf(config))
+	return section
+}
+
+// renameLine moves the line of key from to key to.
+func renameLine(lines map[string]any, from, to string) {
+	if line, ok := lines["_dd_"+from]; ok {
+		lines["_dd_"+to] = line
+	}
+}
+
+// copyLine sets the line of key to in dst to the line of key from in src.
+func copyLine(dst, src map[string]any, from, to string) {
+	if line, ok := src["_dd_"+from]; ok {
+		dst["_dd_"+to] = line
+	}
+}
+
+// zeroInstances reports whether a module call's count or for_each is a
+// constant that expands to no instance. A computed one is kept: the call may
+// still have instances.
+func zeroInstances(call *gjson.Result) bool {
+	if count := call.Get("count_expression.constant_value"); count.Type == gjson.Number {
+		return count.Int() == 0
+	}
+	switch forEach := call.Get("for_each_expression.constant_value"); {
+	case forEach.IsArray():
+		return len(forEach.Array()) == 0
+	case forEach.IsObject():
+		return len(forEach.Map()) == 0
+	}
+	return false
+}
+
+// markUnknown records in _dd_meta.unknown an attribute whose value the plan
+// does not know.
+func markUnknown(meta map[string]any, attr string) {
+	unknown, _ := meta["unknown"].(map[string]any)
+	if unknown == nil {
+		unknown = map[string]any{}
+		meta["unknown"] = unknown
+	}
+	unknown[attr] = true
+}
+
+// planConfigMeta resolves one configuration body of the block at address into
+// a _dd_meta. scope is the config path of the module Terraform evaluates the
+// body in: the declaring module for an output, the calling module for a
+// module call's arguments.
+func planConfigMeta(address, scope string, body *gjson.Result, c *resourceChangeCorrelation) map[string]any {
+	meta := map[string]any{"address": address}
+	reader := planReader{forEach: c.moduleForEach[canonicalConfigAddress(address)]}
+	if inst := c.moduleInstances[canonicalConfigAddress(scope)]; len(inst) == 1 {
+		reader.key = instanceKeyOf(inst[0])
+		scope = inst[0]
+	}
+	refs, ambiguous := c.planReferencesIn(body, scope, &reader)
+	// An empty references object is kept: the configuration was read and
+	// nothing in it traced, which is different from no configuration at all.
+	if refs != nil {
+		meta["references"] = refs
+	}
+	if len(ambiguous) > 0 {
+		meta["ambiguous"] = ambiguous
+	}
+	return meta
+}
+
+// managedSection returns the resource.<type> map a managed resource is
+// recorded under, creating it when needed.
+func (kp *TFPlan) managedSection(typ string) TFPlanResource {
+	if kp.Resource[typ] == nil {
+		kp.Resource[typ] = make(TFPlanResource)
+	}
+	return kp.Resource[typ]
+}
+
+// dataSection returns the data.<type> map a data source is recorded under,
+// creating it when needed.
+func (kp *TFPlan) dataSection(typ string) map[string]any {
+	if kp.Data == nil {
+		kp.Data = make(map[string]map[string]any)
+	}
+	if kp.Data[typ] == nil {
+		kp.Data[typ] = make(map[string]any)
+	}
+	return kp.Data[typ]
+}
+
+// stateReader is how readModule reads one state tree: planned_values, or
+// prior_state, from which only data sources the plan neither reads again nor
+// deletes are taken. prior_state predates the plan's diff, so a data source
+// this plan deletes is not part of the proposed infrastructure.
+type stateReader struct {
+	priorState    bool
+	deleted       map[string]bool
+	resourceLines map[string]int
+	correlation   *resourceChangeCorrelation
+}
+
+// readModule recursively accumulates managed resources from every module into
+// the flat resource.<type>.<name> map and data sources into the data map.
+func (kp *TFPlan) readModule(module *hcl_plan.StateModule, r *stateReader) {
+	if module == nil {
+		return
+	}
+	for _, resource := range module.Resources {
+		data := resource.Mode == hcl_plan.DataResourceMode
+		if r.priorState && (!data || r.deleted[resource.Address]) {
+			continue
+		}
 		// Module-prefixed so same-type-same-name resources in different
 		// modules don't collide.
 		resourceKey := resource.Name
-		if moduleAddress != "" {
-			resourceKey = moduleAddress + "." + resource.Name
+		if module.Address != "" {
+			resourceKey = module.Address + "." + resource.Name
 		}
-
 		if resource.Index != nil {
 			resourceKey = formatResourceKeyWithIndex(resourceKey, resource.Index)
 		}
 
-		typeRes[resourceKey] = TFPlanNamedResource(resource.AttributeValues)
+		// Data sources are kept in the data namespace, separate from managed
+		// resources of the same type and name: a read and a managed resource
+		// sharing type and key are two different blocks.
+		var section map[string]any
+		if data {
+			section = kp.dataSection(resource.Type)
+		} else {
+			section = kp.managedSection(resource.Type)
+		}
+		if _, planned := section[resourceKey]; planned {
+			continue
+		}
 
-		if line, ok := resourceLines[resource.Address]; ok {
-			ddLines, isMap := typeRes["_dd_lines"].(map[string]*model.LineObject)
+		unknown, configured := r.correlation.planValues(resource.Address, resource.AttributeValues)
+		section[resourceKey] = withDDMeta(resource.AttributeValues, resource.Address, unknown, configured, r.correlation)
+
+		if line, ok := r.resourceLines[resource.Address]; ok {
+			ddLines, isMap := section[linesKey].(map[string]*model.LineObject)
 			if !isMap {
 				ddLines = make(map[string]*model.LineObject)
-				typeRes["_dd_lines"] = ddLines
+				section[linesKey] = ddLines
 			}
 			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
 		}
-
-		if kp.TfplanMeta[resource.Type] == nil {
-			if kp.TfplanMeta == nil {
-				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
-			}
-			kp.TfplanMeta[resource.Type] = make(map[string]tfplanResourceMeta)
-		}
-		kp.TfplanMeta[resource.Type][resourceKey] = resourceMetaFor(resource.Address, correlation)
 	}
 
 	for _, childModule := range module.ChildModules {
-		kp.readModule(childModule, childModule.Address, resourceLines, correlation)
+		kp.readModule(childModule, r)
 	}
 }
 
@@ -463,64 +702,6 @@ func deletedAddresses(resourceChanges []*hcl_plan.ResourceChange) map[string]boo
 		}
 	}
 	return deleted
-}
-
-// readPriorStateData recursively merges resolved data sources into data.<type>.<name>.
-// moduleAddress is "" for the root module. prior_state predates the plan's
-// diff, so a data source being deleted by this plan is skipped rather than
-// republished as if it were still part of the proposed infrastructure.
-func (kp *TFPlan) readPriorStateData(
-	module *hcl_plan.StateModule,
-	moduleAddress string,
-	resourceLines map[string]int,
-	deleted map[string]bool,
-) {
-	if module == nil {
-		return
-	}
-
-	for _, resource := range module.Resources {
-		if resource.Mode != hcl_plan.DataResourceMode {
-			continue
-		}
-		if deleted[resource.Address] {
-			continue
-		}
-
-		if kp.Data == nil {
-			kp.Data = make(map[string]map[string]any)
-		}
-		if kp.Data[resource.Type] == nil {
-			kp.Data[resource.Type] = make(map[string]any)
-		}
-
-		// Module-prefixed and index-suffixed so same-type-same-name data
-		// sources in different modules or for_each/count instances don't
-		// collide, mirroring readModule's resourceKey construction.
-		dataKey := resource.Name
-		if moduleAddress != "" {
-			dataKey = moduleAddress + "." + resource.Name
-		}
-		if resource.Index != nil {
-			dataKey = formatResourceKeyWithIndex(dataKey, resource.Index)
-		}
-
-		typeData := kp.Data[resource.Type]
-		typeData[dataKey] = resource.AttributeValues
-
-		if line, ok := resourceLines[resource.Address]; ok {
-			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
-			if !isMap {
-				ddLines = make(map[string]*model.LineObject)
-				typeData["_dd_lines"] = ddLines
-			}
-			ddLines["_dd_"+dataKey] = &model.LineObject{Line: line}
-		}
-	}
-
-	for _, childModule := range module.ChildModules {
-		kp.readPriorStateData(childModule, childModule.Address, resourceLines, deleted)
-	}
 }
 
 // formatResourceKeyWithIndex appends a count/for_each index, e.g. "web[0]" or "bucket[\"prod\"]".

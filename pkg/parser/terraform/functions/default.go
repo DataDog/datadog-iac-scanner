@@ -10,7 +10,6 @@ import (
 	"maps"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"github.com/hashicorp/hcl/v2/ext/tryfunc"
 	ctyyaml "github.com/zclconf/go-cty-yaml"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
@@ -61,7 +60,7 @@ var TerraformFuncs = func() map[string]function.Function {
 		"base64sha256":     Base64Sha256Func,
 		"base64sha512":     Base64Sha512Func,
 		"basename":         BasenameFunc,
-		"can":              tryfunc.CanFunc,
+		"can":              CanFunc,
 		"cidrhost":         CidrHostFunc,
 		"cidrnetmask":      CidrNetmaskFunc,
 		"cidrsubnet":       CidrSubnetFunc,
@@ -140,7 +139,7 @@ var TerraformFuncs = func() map[string]function.Function {
 		"trimprefix":       stdlib.TrimPrefixFunc,
 		"trimspace":        stdlib.TrimSpaceFunc,
 		"trimsuffix":       stdlib.TrimSuffixFunc,
-		"try":              tryfunc.TryFunc,
+		"try":              TryFunc,
 		"upper":            stdlib.UpperFunc,
 		"urlencode":        URLEncodeFunc,
 		"uuidv5":           UUIDV5Func,

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -25,6 +26,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
+	"github.com/zclconf/go-cty/cty"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
@@ -32,9 +35,6 @@ import (
 
 const (
 	mbConst = 1048576
-	// terraformPlanResourceKey is the top-level subtree whose pattern
-	// rewriting is preserved verbatim in Terraform-plan documents.
-	terraformPlanResourceKey = "resource"
 )
 
 // scanReadBufferPool reuses the 1 MiB read buffers handed to getContent so we
@@ -328,6 +328,9 @@ func (s *Service) StartScan(
 			return
 		}
 	}
+	if s.Inspector != nil && !s.Inspector.TerraformInstanceIdentity() {
+		model.OmitTerraformInstanceIdentity(vulnerabilities)
+	}
 
 	err = s.Storage.SaveVulnerabilities(ctx, vulnerabilities)
 	if err != nil {
@@ -425,6 +428,61 @@ func (s *Service) FileCount() int {
 	return len(s.files)
 }
 
+// ConsolidateTerraformFiles moves Terraform plan documents onto the Terraform
+// HCL service so one Inspect builds a shared literal index and root set. Plan
+// and HCL roots stay distinct (the plan file path vs the HCL directory); only
+// the scan-wide index and per-root assembly are shared. Without this, the JSON
+// parser's plan files and the Terraform parser's HCL files would each get their
+// own index, and literal_seen could not clear across them.
+func ConsolidateTerraformFiles(services []*Service) {
+	var tf *Service
+	for _, s := range services {
+		if s != nil && s.Parser != nil && s.Parser.Parsers.GetKind() == model.KindTerraform {
+			tf = s
+			break
+		}
+	}
+	if tf == nil {
+		return
+	}
+	for _, s := range services {
+		if s == nil || s == tf {
+			continue
+		}
+		plans := s.takeFiles(func(f *model.FileMetadata) bool {
+			return f != nil && f.Kind == model.KindTerraformPlan
+		})
+		tf.appendFiles(plans)
+	}
+}
+
+// takeFiles removes and returns every collected file matching keep.
+func (s *Service) takeFiles(keep func(*model.FileMetadata) bool) model.FileMetadatas {
+	s.filesMu.Lock()
+	defer s.filesMu.Unlock()
+	var taken model.FileMetadatas
+	kept := s.files[:0]
+	for _, f := range s.files {
+		if keep(f) {
+			taken = append(taken, f)
+			continue
+		}
+		kept = append(kept, f)
+	}
+	s.files = kept
+	return taken
+}
+
+// appendFiles adds files to this service's collected set.
+func (s *Service) appendFiles(files model.FileMetadatas) {
+	if len(files) == 0 {
+		return
+	}
+	s.filesMu.Lock()
+	defer s.filesMu.Unlock()
+	s.files = append(s.files, files...)
+}
+
 func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	err := s.Storage.SaveFile(ctx, file)
 	if err == nil {
@@ -492,21 +550,16 @@ var errCyclicDocument = errors.New("cyclic document tree")
 // Cycles are rejected with errCyclicDocument, as json.Marshal would.
 func sanitizeScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
 	stack := make(map[uintptr]bool)
-	if err := sanitizeScanDocumentNodeInPlace(body, kind, true, true, stack); err != nil {
+	if err := sanitizeScanDocumentNodeInPlace(body, kind, stack); err != nil {
 		return nil, err
 	}
 	return body, nil
 }
 
-func sanitizeScanDocumentNodeInPlace(
-	body interface{},
-	kind model.FileKind,
-	resolveFilters, atDocumentRoot bool,
-	stack map[uintptr]bool,
-) error {
+func sanitizeScanDocumentNodeInPlace(body interface{}, kind model.FileKind, stack map[uintptr]bool) error {
 	switch bodyType := body.(type) {
 	case map[string]interface{}:
-		return sanitizeScanDocumentValueInPlace(bodyType, kind, resolveFilters, atDocumentRoot, stack)
+		return sanitizeScanDocumentValueInPlace(bodyType, kind, stack)
 	case []interface{}:
 		for i, indx := range bodyType {
 			if !isCanonicalDocumentValue(indx) {
@@ -514,7 +567,7 @@ func sanitizeScanDocumentNodeInPlace(
 					bodyType[i] = normalized
 				}
 			}
-			if err := sanitizeScanDocumentNodeInPlace(bodyType[i], kind, resolveFilters, false, stack); err != nil {
+			if err := sanitizeScanDocumentNodeInPlace(bodyType[i], kind, stack); err != nil {
 				return err
 			}
 		}
@@ -522,12 +575,7 @@ func sanitizeScanDocumentNodeInPlace(
 	return nil
 }
 
-func sanitizeScanDocumentValueInPlace(
-	bodyType map[string]interface{},
-	kind model.FileKind,
-	resolveFilters, atDocumentRoot bool,
-	stack map[uintptr]bool,
-) error {
+func sanitizeScanDocumentValueInPlace(bodyType map[string]interface{}, kind model.FileKind, stack map[uintptr]bool) error {
 	ptr := reflect.ValueOf(bodyType).Pointer()
 	if stack[ptr] {
 		return errCyclicDocument
@@ -537,29 +585,23 @@ func sanitizeScanDocumentValueInPlace(
 
 	delete(bodyType, "_dd_lines")
 	for key, v := range bodyType {
-		childResolveFilters := resolveFilters
-		if kind == model.KindTerraformPlan && atDocumentRoot {
-			childResolveFilters = key == terraformPlanResourceKey
-		}
 		switch value := v.(type) {
 		case map[string]interface{}:
-			if err := sanitizeScanDocumentNodeInPlace(value, kind, childResolveFilters, false, stack); err != nil {
+			if err := sanitizeScanDocumentNodeInPlace(value, kind, stack); err != nil {
 				return err
 			}
 		case []interface{}:
 			for _, indx := range value {
-				if err := sanitizeScanDocumentNodeInPlace(indx, kind, childResolveFilters, false, stack); err != nil {
+				if err := sanitizeScanDocumentNodeInPlace(indx, kind, stack); err != nil {
 					return err
 				}
 			}
 		case string:
-			if resolveFilters {
-				if field, ok := lines[kind]; ok && utils.Contains(key, field) {
-					bodyType[key] = resolveJSONFilter(value)
-				}
+			if field, ok := lines[kind]; ok && utils.Contains(key, field) {
+				bodyType[key] = engine.ParseFilterPattern(value)
 			}
 		default:
-			if err := sanitizeNormalizedValueInPlace(bodyType, key, kind, childResolveFilters, stack); err != nil {
+			if err := sanitizeNormalizedValueInPlace(bodyType, key, kind, stack); err != nil {
 				return err
 			}
 		}
@@ -575,7 +617,6 @@ func sanitizeNormalizedValueInPlace(
 	bodyType map[string]interface{},
 	key string,
 	kind model.FileKind,
-	resolveFilters bool,
 	stack map[uintptr]bool,
 ) error {
 	if normalized, changed := normalizeDocumentValue(bodyType[key]); changed {
@@ -583,10 +624,10 @@ func sanitizeNormalizedValueInPlace(
 	}
 	switch value := bodyType[key].(type) {
 	case map[string]interface{}:
-		return sanitizeScanDocumentNodeInPlace(value, kind, resolveFilters, false, stack)
+		return sanitizeScanDocumentNodeInPlace(value, kind, stack)
 	case []interface{}:
 		for _, indx := range value {
-			if err := sanitizeScanDocumentNodeInPlace(indx, kind, resolveFilters, false, stack); err != nil {
+			if err := sanitizeScanDocumentNodeInPlace(indx, kind, stack); err != nil {
 				return err
 			}
 		}
@@ -632,6 +673,19 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 		// yaml.v3 produces these only for non-string keys; string keys convert
 		// exactly as the JSON round-trip did (values included).
 		return normalizeInterfaceKeyedMap(t), true
+	case model.LineObject:
+		// The parsers' line metadata. It is the most common struct in
+		// Terraform documents — one per tracked block and attribute — and the
+		// JSON round trip it used to take dominated document sanitization on
+		// large repositories. The direct walk produces the same map the round
+		// trip did.
+		return normalizeLineObject(&t), true
+	case *model.LineObject:
+		return normalizeLineObject(t), true
+	case ctyjson.SimpleJSONValue:
+		// A cty value the Terraform converters embedded directly; the direct
+		// walk produces what marshaling it and parsing it back did.
+		return normalizeSimpleJSONValue(t)
 	}
 
 	// Reflect fallback for the remaining container shapes seen in parsed
@@ -650,6 +704,87 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 		return normalizeViaJSON(v)
 	}
 	return v, false
+}
+
+// normalizeLineObject converts a *model.LineObject to the map the JSON round
+// trip produced: {"_dd_line": <number>}, plus "_dd_arr" when the tracked block
+// array carries entries. Nested line objects convert recursively; a nil one
+// marshaled as null and unmarshaled as a nil interface.
+func normalizeLineObject(l *model.LineObject) interface{} {
+	if l == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, 2)
+	out["_dd_line"] = float64(l.Line)
+	if len(l.Arr) > 0 {
+		arr := make([]interface{}, len(l.Arr))
+		for i, entry := range l.Arr {
+			if entry == nil {
+				// A nil map marshals as null.
+				arr[i] = nil
+				continue
+			}
+			inner := make(map[string]interface{}, len(entry))
+			for k, lo := range entry {
+				inner[k] = normalizeLineObject(lo)
+			}
+			arr[i] = inner
+		}
+		out["_dd_arr"] = arr
+	}
+	return out
+}
+
+// normalizeSimpleJSONValue converts a ctyjson.SimpleJSONValue to the canonical
+// value the JSON round trip produced, walking the cty value directly. Numbers
+// convert through big-float to float64 the way parsing the encoded token did;
+// unknown and marked values, capsules and anything else the encoder rejects
+// stay as they are, as they did when json.Marshal failed.
+func normalizeSimpleJSONValue(s ctyjson.SimpleJSONValue) (interface{}, bool) {
+	v := s.Value
+	if !v.IsKnown() || v.ContainsMarked() {
+		return s, false
+	}
+	if v.IsNull() {
+		return nil, true
+	}
+	ty := v.Type()
+	switch {
+	case ty == cty.String:
+		return v.AsString(), true
+	case ty == cty.Bool:
+		return v.True(), true
+	case ty == cty.Number:
+		f, _ := v.AsBigFloat().Float64()
+		return f, true
+	case ty.IsObjectType(), ty.IsMapType():
+		out := make(map[string]interface{}, v.LengthInt())
+		for it := v.ElementIterator(); it.Next(); {
+			k, ev := it.Element()
+			name, ok := ctyutil.ConcreteString(k)
+			if !ok {
+				return s, false
+			}
+			nv, handled := normalizeSimpleJSONValue(ctyjson.SimpleJSONValue{Value: ev})
+			if !handled {
+				return s, false
+			}
+			out[name] = nv
+		}
+		return out, true
+	case ty.IsTupleType(), ty.IsListType(), ty.IsSetType():
+		out := make([]interface{}, 0, v.LengthInt())
+		for it := v.ElementIterator(); it.Next(); {
+			_, ev := it.Element()
+			nv, handled := normalizeSimpleJSONValue(ctyjson.SimpleJSONValue{Value: ev})
+			if !handled {
+				return s, false
+			}
+			out = append(out, nv)
+		}
+		return out, true
+	}
+	return s, false
 }
 
 func normalizeViaJSON(v interface{}) (interface{}, bool) {
@@ -791,41 +926,29 @@ func prepareScanDocument(body map[string]interface{}, kind model.FileKind) (map[
 }
 
 func prepareScanDocumentRoot(body interface{}, kind model.FileKind) {
-	prepareScanDocumentNode(body, kind, true, true)
-}
-
-// For Terraform-plan documents, pattern rewriting is scoped to the top-level
-// "resource" subtree, so resource_changes/configuration stay byte-identical to the raw plan.
-func prepareScanDocumentNode(body interface{}, kind model.FileKind, resolveFilters, atDocumentRoot bool) {
 	switch bodyType := body.(type) {
 	case map[string]interface{}:
-		prepareScanDocumentValue(bodyType, kind, resolveFilters, atDocumentRoot)
+		prepareScanDocumentValue(bodyType, kind)
 	case []interface{}:
 		for _, indx := range bodyType {
-			prepareScanDocumentNode(indx, kind, resolveFilters, false)
+			prepareScanDocumentRoot(indx, kind)
 		}
 	}
 }
 
-func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKind, resolveFilters, atDocumentRoot bool) {
+func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKind) {
 	delete(bodyType, "_dd_lines")
 	for key, v := range bodyType {
-		childResolveFilters := resolveFilters
-		if kind == model.KindTerraformPlan && atDocumentRoot {
-			childResolveFilters = key == terraformPlanResourceKey
-		}
 		switch value := v.(type) {
 		case map[string]interface{}:
-			prepareScanDocumentNode(value, kind, childResolveFilters, false)
+			prepareScanDocumentRoot(value, kind)
 		case []interface{}:
 			for _, indx := range value {
-				prepareScanDocumentNode(indx, kind, childResolveFilters, false)
+				prepareScanDocumentRoot(indx, kind)
 			}
 		case string:
-			if resolveFilters {
-				if field, ok := lines[kind]; ok && utils.Contains(key, field) {
-					bodyType[key] = resolveJSONFilter(value)
-				}
+			if field, ok := lines[kind]; ok && utils.Contains(key, field) {
+				bodyType[key] = engine.ParseFilterPattern(value)
 			}
 		}
 	}

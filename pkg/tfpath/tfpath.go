@@ -9,6 +9,7 @@ package tfpath
 
 import (
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -24,6 +25,35 @@ const (
 	defaultVars   = "terraform.tfvars"
 	autoVars      = ".auto.tfvars"
 )
+
+// VarsPathDirective is the comment that names a variable definitions file for a configuration file.
+const VarsPathDirective = "dd_terraform_vars"
+
+const legacyVarsPathDirective = "kics_terraform_vars"
+
+var varsPathDirectiveRegex = regexp.MustCompile(
+	`(?m)^\s*// (?:` + VarsPathDirective + `|` + legacyVarsPathDirective + `): ([\w/\\.:-]+)\r?\n`,
+)
+
+// HasVarsPathDirective reports whether src names a variable definitions file through the directive.
+func HasVarsPathDirective(src []byte) bool {
+	return varsPathDirectiveRegex.Match(src)
+}
+
+// VarsPathFromDirective returns the file named by the first directive in src,
+// joined to dir unless it holds a drive or scheme colon.
+func VarsPathFromDirective(src []byte, dir string) (string, bool) {
+	match := varsPathDirectiveRegex.FindSubmatch(src)
+	if match == nil {
+		return "", false
+	}
+	raw := strings.ReplaceAll(string(match[1]), "\\", "/")
+	path := filepath.FromSlash(raw)
+	if strings.Contains(raw, ":") {
+		return path, true
+	}
+	return filepath.Join(dir, path), true
+}
 
 // IsTFVarsJSON reports whether path is a variable definitions file in JSON syntax.
 func IsTFVarsJSON(path string) bool {

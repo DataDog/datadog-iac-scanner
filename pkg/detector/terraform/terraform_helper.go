@@ -292,26 +292,6 @@ func documentSlots(repeated repeatedBlocks, sourceLines map[int]bool) (blockSlot
 	return blockSlots(repeated.lines), true
 }
 
-// enclosingFirst orders blocks so the ones spanning contextLine (0-indexed, or
-// negative for none) come first, each group in source order.
-func enclosingFirst(blocks hclsyntax.Blocks, contextLine int) hclsyntax.Blocks {
-	if contextLine < 0 {
-		return blocks
-	}
-	ordered := make(hclsyntax.Blocks, 0, len(blocks))
-	for _, block := range blocks {
-		if blockSpansLine(block, contextLine+1) {
-			ordered = append(ordered, block)
-		}
-	}
-	for _, block := range blocks {
-		if !blockSpansLine(block, contextLine+1) {
-			ordered = append(ordered, block)
-		}
-	}
-	return ordered
-}
-
 // dynamicForEachContext evaluates a dynamic block's for_each with functions only.
 var dynamicForEachContext = &hcl.EvalContext{Functions: functions.TerraformFuncs}
 
@@ -341,15 +321,22 @@ func findInHCLBodyScoped(
 		}
 	}
 
+	// A line already inside a nested block names that block. Its own repeated
+	// blocks are found there: spec.backend must not win over the backend of the
+	// path the search is in.
+	for _, block := range body.Blocks {
+		if blockSpansLine(block, contextLine+1) {
+			return findInHCLBodyScoped(block.Body, attrName, index, contextLine, repeated.inNestedBody())
+		}
+	}
+
 	// Case 2: Repeated blocks (e.g., binding { } binding { }).
 	if slots := repeatedBlockSlots(body, attrName, repeated); index < slots.len() {
 		return "", slots[index]
 	}
 
-	// Case 3: Search in nested blocks recursively, those around contextLine first:
-	// the position the search has reached names the nested block the key is in,
-	// and the document's slots only fit the body that holds the blocks.
-	for _, block := range enclosingFirst(body.Blocks, contextLine) {
+	// Case 3: Search in nested blocks recursively.
+	for _, block := range body.Blocks {
 		if result, line := findInHCLBodyScoped(block.Body, attrName, index, contextLine, repeated.inNestedBody()); line > 0 || result != "" {
 			return result, line
 		}

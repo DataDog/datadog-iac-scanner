@@ -1,0 +1,12 @@
+{
+  "id": "terraform-aws-s3-bucket-public-acl-evaluated",
+  "legacyId": "b4b4b4b4-0000-4000-8000-000000000004",
+  "queryName": "Bucket public acl evaluated",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Flags a bucket whose evaluated acl is public-read.",
+  "descriptionUrl": "https://example.com/bucket-public-acl-evaluated",
+  "platform": "Terraform",
+  "descriptionID": "b4b4b4b4",
+  "cloudProvider": "aws"
+}

@@ -6,19 +6,16 @@
 package converter
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"sort"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
@@ -43,13 +40,13 @@ block "label_one" "label_two" {
 						"_dd_line": 3
 					}
 				},
-				"nested_block": {
+				"nested_block": [{
 					"_dd_lines": {
 						"_dd__default": {
 							"_dd_line": 3
 						}
 					}
-				}
+				}]
 			}
 		}
 	},
@@ -615,7 +612,20 @@ block "label_one" {
 				"data": {
 				  "aws_iam_policy_document": {
 					"blabla": {
-					  "statement": {
+					  "_dd_meta": {
+						"provider": "aws",
+						"configured": {
+						  "statement": [
+							{"actions": true, "resources": true}
+						  ]
+						},
+						"unknown": {
+						  "statement": [
+							{"resources": true}
+						  ]
+						}
+					  },
+					  "statement": [{
 						"resources": [
 						  "arn:aws:secretsmanager:eu-west-1:${data.aws_caller_identity.this.account_id}:secret:/${var.env}/*/DATABASE_READONLY_PASSWORD-*",
 						  "arn:aws:secretsmanager:eu-west-1:${data.aws_caller_identity.this.account_id}:secret:/${var.env}/*/DATABASE_DATA_PASSWORD-*"
@@ -641,7 +651,7 @@ block "label_one" {
 							"_dd_line": 6
 						  }
 						}
-					  },
+					  }],
 					  "_dd_lines": {
 						"_dd__default": {
 						  "_dd_line": 1
@@ -708,8 +718,9 @@ block "label_one" {
 		t.Run(tt.name, func(t *testing.T) {
 			file, _ := hclsyntax.ParseConfig([]byte(tt.input), "testFileName", hcl.Pos{Byte: 0, Line: 1, Column: 1})
 			c := newConverter(file.Bytes, nil, functions.TerraformFuncs)
-			got, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
-			fmt.Println(err)
+			body := file.Body.(*hclsyntax.Body)
+			c.file = body
+			got, _, err := c.convertBody(ctx, body, 0, bodyRules{})
 			require.True(t, (err != nil) == tt.wantErr)
 			gotJSON, _ := json.Marshal(got)
 			var wantJSON model.Document
@@ -931,6 +942,22 @@ variable "region" {
 							"_dd_line": 53
 						}
 					},
+					"_dd_meta": {
+						"provider": "terraform",
+						"configured": {
+							"backend": true,
+							"config": true,
+							"policy": true,
+							"some_number": true
+						},
+						"unknown": {
+							"config": {
+								"bucket": true,
+								"profile": true,
+								"region": true
+							}
+						}
+					},
 					"backend": "s3",
 					"config": {
 						"profile": "${var.profile}",
@@ -1044,7 +1071,7 @@ resource "aws_security_group" "sg" {
 	require.Equal(t, float64(22), ingress[1].(map[string]interface{})["from_port"])
 
 	require.NotContains(t, sg, "egress", "a dynamic block over an unknown collection is kept as written")
-	content := sg["dynamic"].(map[string]interface{})["egress"].(map[string]interface{})["content"].(map[string]interface{})
+	content := sg["dynamic"].(map[string]interface{})["egress"].([]interface{})[0].(map[string]interface{})["content"].([]interface{})[0].(map[string]interface{})
 	require.Equal(t, "${egress.value.port}", content["to_port"])
 
 	require.Equal(t, "${rule}", sg["tags"].(map[string]interface{})["name"],
@@ -1069,8 +1096,25 @@ resource "aws_s3_bucket" "unknown" {
 		}),
 	})
 	buckets := out["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})
-	require.NotContains(t, buckets, "disabled")
-	require.Contains(t, buckets, "unknown")
+	require.NotContains(t, buckets, "disabled", "a block whose count is known to be 0 creates nothing")
+	unknown := buckets["unknown"].(map[string]interface{})
+	require.NotContains(t, unknown, "count")
+	require.Equal(t, true, unknown["_dd_meta"].(map[string]interface{})["unknown"].(map[string]interface{})["count"])
+}
+
+func TestNestedCountAttributeKept(t *testing.T) {
+	input := `
+resource "aws_y" "b" {
+  setting {
+    count = 0
+    name  = "a"
+  }
+}
+`
+	out := convertToJSONMap(t, input, VariableMap{})
+	setting := out["resource"].(map[string]interface{})["aws_y"].(map[string]interface{})["b"].(map[string]interface{})["setting"].([]interface{})[0].(map[string]interface{})
+	require.EqualValues(t, 0, setting["count"])
+	require.Equal(t, "a", setting["name"])
 }
 
 func TestNullStringDoesNotPanic(t *testing.T) {
@@ -1121,9 +1165,9 @@ resource "aws_y" "b" {
 	require.Contains(t, b["dynamic"], "setting")
 }
 
-// Nested dynamic blocks share one budget per top-level block: once it is spent,
-// the inner blocks that do not fit stay as written, and the rest still expand.
-func TestDynamicBlocksShareTheBlockBudget(t *testing.T) {
+// Nested dynamic blocks expand fully: every outer block carries every inner
+// block, however many the nesting multiplies to.
+func TestDynamicBlocksExpandFully(t *testing.T) {
 	input := `
 resource "aws_security_group" "sg" {
   dynamic "outer" {
@@ -1155,52 +1199,353 @@ resource "aws_security_group" "sg" {
 	sg := out["resource"].(map[string]interface{})["aws_security_group"].(map[string]interface{})["sg"].(map[string]interface{})
 	outer := sg["outer"].([]interface{})
 	require.Len(t, outer, 40)
-
-	expanded, asWritten := 0, 0
 	for _, o := range outer {
 		entry := o.(map[string]interface{})
-		if inner, ok := entry["inner"].([]interface{}); ok {
-			expanded += len(inner)
-			continue
-		}
-		asWritten++
-		require.Contains(t, entry["dynamic"], "inner")
+		inner, ok := entry["inner"].([]interface{})
+		require.True(t, ok, "every outer block must carry its expanded inner blocks")
+		require.Len(t, inner, 30)
 	}
-	require.LessOrEqual(t, 40+expanded, dynamicblock.MaxGeneratedPerResource)
-	require.Greater(t, asWritten, 0, "the budget must run out and leave some inner blocks as written")
-	require.Greater(t, expanded, 0)
 }
 
-// A dynamic block kept as written for exceeding a cap is logged, once per file.
-func TestDynamicBlockOverflowIsLoggedOnce(t *testing.T) {
+// Values the converter cannot evaluate are listed in _dd_meta.unknown in the
+// shape of Terraform's after_unknown, while the document keeps their text.
+func TestUnevaluatedValuesAreUnknown(t *testing.T) {
 	input := `
-resource "aws_security_group" "sg" {
-  dynamic "ingress" {
-    for_each = var.big
+resource "aws_x" "a" {
+  name   = var.name
+  known  = "k"
+  joined = "${var.p}-x"
+  list   = ["a", var.b, { c = var.c }, { d = "d" }]
+  tags   = { a = "a", b = local.b }
+  ebs {
+    size = 1
+  }
+  ebs {
+    size = var.size
+  }
+  dynamic "setting" {
+    for_each = var.settings
     content {
-      from_port = ingress.value
+      value = setting.value
     }
   }
-  dynamic "egress" {
-    for_each = var.big
+  dynamic "rule" {
+    for_each = ["x", "y"]
     content {
-      to_port = egress.value
+      value = rule.value == "y" ? var.y : rule.value
+    }
+  }
+}
+
+data "aws_y" "d" {
+  name = "n"
+}
+
+ephemeral "aws_z" "e" {
+  name = var.n
+}
+
+resource "aws_x" "single" {
+  ebs {
+    size = var.size
+    type = "gp3"
+  }
+  dynamic "rule" {
+    for_each = ["x"]
+    content {
+      value = var.y
+    }
+  }
+}
+
+module "m" {
+  source = var.s
+}
+`
+	out := convertToJSONMap(t, input, nil)
+	block := func(section, typ, name string) map[string]interface{} {
+		byType := out[section].(map[string]interface{})[typ].(map[string]interface{})
+		if name == "" {
+			return byType
+		}
+		return byType[name].(map[string]interface{})
+	}
+	unknownOf := func(block map[string]interface{}) interface{} {
+		meta, _ := block["_dd_meta"].(map[string]interface{})
+		return meta["unknown"]
+	}
+	a := block("resource", "aws_x", "a")
+	require.Equal(t, "${var.name}", a["name"])
+	require.Equal(t, map[string]interface{}{
+		"name":    true,
+		"joined":  true,
+		"list":    []interface{}{false, true, map[string]interface{}{"c": true}, map[string]interface{}{}},
+		"tags":    map[string]interface{}{"b": true},
+		"ebs":     []interface{}{map[string]interface{}{}, map[string]interface{}{"size": true}},
+		"setting": true,
+		"rule":    []interface{}{map[string]interface{}{}, map[string]interface{}{"value": true}},
+	}, unknownOf(a))
+	single := block("resource", "aws_x", "single")
+	require.IsType(t, []interface{}{}, single["ebs"])
+	require.IsType(t, []interface{}{}, single["rule"])
+	require.Equal(t, map[string]interface{}{
+		"ebs":  []interface{}{map[string]interface{}{"size": true}},
+		"rule": []interface{}{map[string]interface{}{"value": true}},
+	}, unknownOf(single))
+	require.Nil(t, unknownOf(block("data", "aws_y", "d")))
+	require.Equal(t, map[string]interface{}{"name": true}, unknownOf(block("ephemeral", "aws_z", "e")))
+	require.Equal(t, map[string]interface{}{"source": true}, unknownOf(block("module", "m", "")))
+}
+
+// Meta-arguments are not in the body; an unknown count or for_each is
+// unknown.count, as in an evaluated block.
+func TestMetaArgumentsLeaveTheBody(t *testing.T) {
+	input := `
+resource "aws_x" "a" {
+  count      = var.n
+  depends_on = [var.d]
+  provider   = aws.west
+  name       = var.name
+  lifecycle {
+    ignore_changes = [var.i]
+  }
+  connection {
+    host = "h"
+  }
+  provisioner "local-exec" {
+    command = "echo"
+  }
+}
+
+resource "aws_x" "b" {
+  for_each = var.m
+}
+
+module "m" {
+  source     = "./m"
+  count      = 2
+  depends_on = [aws_x.a]
+  providers  = { aws = aws.west }
+}
+`
+	out := convertToJSONMap(t, input, nil)
+	a := out["resource"].(map[string]interface{})["aws_x"].(map[string]interface{})["a"].(map[string]interface{})
+	for _, key := range []string{"count", "depends_on", "provider", "lifecycle", "connection"} {
+		require.NotContains(t, a, key)
+	}
+	require.Contains(t, a, "provisioner")
+	meta := a["_dd_meta"].(map[string]interface{})
+	require.Equal(t, map[string]interface{}{"name": true, "count": true}, meta["unknown"])
+	require.Equal(t, map[string]interface{}{"name": true}, meta["configured"])
+	require.Equal(t, "aws.west", meta["provider"])
+
+	b := out["resource"].(map[string]interface{})["aws_x"].(map[string]interface{})["b"].(map[string]interface{})
+	require.NotContains(t, b, "for_each")
+	require.Equal(t, map[string]interface{}{"count": true}, b["_dd_meta"].(map[string]interface{})["unknown"])
+	require.Equal(t, "aws", b["_dd_meta"].(map[string]interface{})["provider"])
+
+	m := out["module"].(map[string]interface{})["m"].(map[string]interface{})
+	for _, key := range []string{"count", "depends_on", "providers"} {
+		require.NotContains(t, m, key)
+	}
+	require.Equal(t, "./m", m["source"])
+}
+
+// An output's depends_on is a meta-argument: not in the body and not unknown.
+func TestOutputDependsOnIsHidden(t *testing.T) {
+	out := convertToJSONMap(t, `
+output "o" {
+  value      = aws_x.a.id
+  depends_on = [aws_x.a]
+}
+resource "aws_x" "a" {}
+`, nil)
+	o := out["output"].(map[string]interface{})["o"].(map[string]interface{})
+	require.NotContains(t, o, "depends_on")
+	meta, _ := o["_dd_meta"].(map[string]interface{})
+	if meta != nil {
+		unknown, _ := meta["unknown"].(map[string]interface{})
+		require.NotContains(t, unknown, "depends_on")
+	}
+}
+
+// Blocks whose count or for_each is known to create nothing are left out.
+func TestEmptyExpansionsAreLeftOut(t *testing.T) {
+	input := `
+resource "aws_x" "zero" {
+  count = 0
+}
+resource "aws_x" "empty" {
+  for_each = toset([])
+}
+data "aws_y" "empty" {
+  for_each = {}
+}
+module "none" {
+  source = "./m"
+  count  = 0
+}
+resource "aws_x" "kept" {
+  count = 1
+}
+`
+	out := convertToJSONMap(t, input, nil)
+	require.Equal(t, []string{"kept"}, sortedKeys(out["resource"].(map[string]interface{})["aws_x"]))
+	require.NotContains(t, out, "data")
+	require.NotContains(t, out, "module")
+}
+
+func sortedKeys(v interface{}) []string {
+	var keys []string
+	for k := range v.(map[string]interface{}) {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// A constant null attribute of a resource or provider is unset, as in
+// Terraform; elsewhere, as a variable default, null is a value.
+func TestNullAttributesAreUnset(t *testing.T) {
+	input := `
+resource "aws_x" "a" {
+  key_name = null
+  name     = var.none
+  ebs {
+    size = null
+    type = "gp3"
+  }
+}
+provider "aws" {
+  region = null
+}
+variable "v" {
+  default = null
+}
+`
+	out := convertToJSONMap(t, input, VariableMap{
+		"var": cty.ObjectVal(map[string]cty.Value{"none": cty.NullVal(cty.String)}),
+	})
+	a := out["resource"].(map[string]interface{})["aws_x"].(map[string]interface{})["a"].(map[string]interface{})
+	require.NotContains(t, a, "key_name")
+	require.NotContains(t, a, "name")
+	require.Contains(t, a["_dd_lines"], "_dd_key_name", "the written line is still known")
+	ebs := a["ebs"].([]interface{})[0].(map[string]interface{})
+	require.NotContains(t, ebs, "size")
+	require.Equal(t, map[string]interface{}{"ebs": []interface{}{map[string]interface{}{"type": true}}},
+		a["_dd_meta"].(map[string]interface{})["configured"])
+	aws := out["provider"].(map[string]interface{})["aws"].([]interface{})[0].(map[string]interface{})
+	require.NotContains(t, aws, "region")
+	v := out["variable"].(map[string]interface{})["v"].(map[string]interface{})
+	require.Contains(t, v, "default")
+}
+
+// Labels that may repeat hold a list of bodies, even when written once.
+func TestRepeatableLabelsAreLists(t *testing.T) {
+	input := `
+provider "aws" {
+  region = "us-east-1"
+}
+provider "google" {
+  project = "a"
+}
+provider "google" {
+  alias   = "b"
+  project = "b"
+}
+resource "aws_x" "a" {
+  provisioner "local-exec" {
+    command = "echo"
+  }
+  dynamic "setting" {
+    for_each = var.unknown
+    content {
+      name = setting.value
     }
   }
 }
 `
-	vals := make([]cty.Value, dynamicblock.MaxExpansion+1)
-	for i := range vals {
-		vals[i] = cty.NumberIntVal(int64(i))
-	}
-	file, diags := hclsyntax.ParseConfig([]byte(input), "main.tf", hcl.Pos{Line: 1, Column: 1})
-	require.False(t, diags.HasErrors())
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
-	_, err := Convert(ctx, file, VariableMap{
-		"var": cty.ObjectVal(map[string]cty.Value{"big": cty.ListVal(vals)}),
-	}, Options{})
-	require.NoError(t, err)
-	require.Equal(t, 1, strings.Count(logs.String(), `"expansion_kind":"dynamic"`), logs.String())
-	require.Contains(t, logs.String(), `"address":"dynamic.ingress"`)
+	out := convertToJSONMap(t, input, nil)
+	providers := out["provider"].(map[string]interface{})
+	require.Len(t, providers["aws"], 1)
+	require.Len(t, providers["google"], 2)
+	a := out["resource"].(map[string]interface{})["aws_x"].(map[string]interface{})["a"].(map[string]interface{})
+	require.Len(t, a["provisioner"].(map[string]interface{})["local-exec"], 1)
+	require.Len(t, a["dynamic"].(map[string]interface{})["setting"], 1)
+}
+
+// An unknown dynamic block is unknown.<type> = true and generates no
+// configured shape; static and generated blocks of a type have one
+// configured shape per block, in document order.
+func TestDynamicBlocksMeta(t *testing.T) {
+	input := `
+resource "aws_x" "a" {
+  ingress {
+    from_port = 1
+  }
+  dynamic "ingress" {
+    for_each = ["a", "b"]
+    content {
+      to_port     = 2
+      description = ingress.value
+    }
+  }
+  dynamic "egress" {
+    for_each = var.unknown
+    content {
+      to_port = 2
+    }
+  }
+}
+`
+	out := convertToJSONMap(t, input, nil)
+	a := out["resource"].(map[string]interface{})["aws_x"].(map[string]interface{})["a"].(map[string]interface{})
+	require.Len(t, a["ingress"], 3)
+	require.NotContains(t, a["dynamic"], "ingress")
+	meta := a["_dd_meta"].(map[string]interface{})
+	require.Equal(t, map[string]interface{}{"egress": true}, meta["unknown"])
+	require.Equal(t, map[string]interface{}{
+		"ingress": []interface{}{
+			map[string]interface{}{"from_port": true},
+			map[string]interface{}{"to_port": true, "description": true},
+			map[string]interface{}{"to_port": true, "description": true},
+		},
+	}, meta["configured"])
+}
+
+// Module calls and outputs record their unknown values like a plan does.
+func TestModuleOutputAndProviderMeta(t *testing.T) {
+	input := `
+provider "aws" {
+  default_tags {
+    tags = var.tags
+  }
+}
+provider "aws" {
+  alias = "west"
+}
+module "m" {
+  source = "./m"
+  name   = var.name
+}
+output "o" {
+  value = aws_x.a.id
+}
+output "k" {
+  value = "k"
+}
+`
+	out := convertToJSONMap(t, input, nil)
+	m := out["module"].(map[string]interface{})["m"].(map[string]interface{})
+	require.Equal(t, map[string]interface{}{"unknown": map[string]interface{}{"name": true}}, m["_dd_meta"])
+	outputs := out["output"].(map[string]interface{})
+	require.Equal(t, map[string]interface{}{"unknown": map[string]interface{}{"value": true}},
+		outputs["o"].(map[string]interface{})["_dd_meta"])
+	require.NotContains(t, outputs["k"], "_dd_meta")
+	providers := out["provider"].(map[string]interface{})["aws"].([]interface{})
+	require.Len(t, providers, 2)
+	require.Equal(t, map[string]interface{}{"unknown": map[string]interface{}{
+		"default_tags": []interface{}{map[string]interface{}{"tags": true}},
+	}}, providers[0].(map[string]interface{})["_dd_meta"])
+	require.NotContains(t, providers[1], "_dd_meta")
 }

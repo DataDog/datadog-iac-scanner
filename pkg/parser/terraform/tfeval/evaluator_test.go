@@ -13,13 +13,15 @@ import (
 	"io/fs"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
@@ -275,6 +277,44 @@ resource "aws_s3_bucket" "tofu" {
 		t.Fatalf("got %d resources, want 1: %#v", len(resources), resources)
 	}
 	requireString(t, findResource(t, resources, "aws_s3_bucket", "tf").Attributes, "bucket", "from-tf")
+}
+
+func TestEvaluateModule_JSONConfigReadsSiblingVariablesAndLocals(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
+		"variables.tf":      `variable "acl" { default = "public-read" }`,
+		"variables.tf.json": `{"variable":{"resource":{"default":"from-var"}}}`,
+		"main.tf.json": `{
+  "locals": {"b": "${local.a}", "a": "resolved"},
+  "resource": {"aws_s3_bucket": {"b": {"acl": "${var.acl}", "bucket": "${var.resource}", "name": "${local.b}"}}}
+}`,
+		"tags.tf": `resource "aws_x" "t" {
+  tags = { ("Tag/${var.acl}") = "test" }
+}`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	bucket := findResource(t, resources, "aws_s3_bucket", "b").Attributes
+	requireString(t, bucket, "acl", "public-read")
+	requireString(t, bucket, "bucket", "from-var")
+	requireString(t, bucket, "name", "resolved")
+	tags := findResource(t, resources, "aws_x", "t").Attributes["tags"]
+	require.True(t, tags.Type().HasAttribute("Tag/public-read"))
+}
+
+func TestEvaluateModule_AllowMissKeepsTofuShadowing(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf":   `resource "aws_s3_bucket" "tf" { bucket = "from-tf" }`,
+		"main.tofu": `resource "aws_s3_bucket" "tofu" { bucket = "from-tofu" }`,
+	})
+
+	e := New()
+	e.SetMergeAllow(map[string]struct{}{filepath.ToSlash(filepath.Join(t.TempDir(), "other.tf")): {}})
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	requireString(t, findResource(t, resources, "aws_s3_bucket", "tofu").Attributes, "bucket", "from-tofu")
 }
 
 func TestEvaluateModule_DefaultAppliedWhenInputOmitted(t *testing.T) {
@@ -889,6 +929,42 @@ resource "aws_s3_bucket" "this" {
 		if !buckets[want] {
 			t.Fatalf("bucket %q not found; got %v", want, buckets)
 		}
+	}
+}
+
+// A for_each set with non-string elements is not something Terraform itself
+// accepts; it must be treated as unresolved (one "each.key"-unknown instance),
+// never as distinct instances sharing one invented placeholder key.
+func TestEvaluateModule_ForEachNonStringKeysAreUnresolved(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_s3_bucket" "this" {
+  for_each = toset([1, 2, 3])
+  bucket   = "bucket-${each.key}"
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+
+	var got []ResolvedResource
+	for _, r := range resources {
+		if r.Type == "aws_s3_bucket" {
+			got = append(got, r)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d aws_s3_bucket instances, want 1 (unresolved, not one per element)", len(got))
+	}
+	if got[0].Name != "this" {
+		t.Fatalf("unresolved instance name = %q, want the base name %q", got[0].Name, "this")
+	}
+	if v := got[0].Attributes["bucket"]; v.IsKnown() {
+		t.Fatalf("bucket = %v, want unknown since each.key could not be resolved", v)
 	}
 }
 
@@ -1589,11 +1665,10 @@ resource "google_sql_database_instance" "dynamic" {
 	}
 
 	versioning := findResource(t, resources, "aws_s3_bucket", "single").Attributes["versioning"]
-	if !versioning.Type().IsObjectType() {
-		t.Fatalf("versioning = %s, want an object for a block written once",
-			versioning.Type().FriendlyName())
+	if !versioning.Type().IsTupleType() || versioning.LengthInt() != 1 {
+		t.Fatalf("versioning = %s, want one block", versioning.Type().FriendlyName())
 	}
-	if enabled := versioning.GetAttr("enabled"); !enabled.True() {
+	if enabled := versioning.AsValueSlice()[0].GetAttr("enabled"); !enabled.True() {
 		t.Fatalf("versioning.enabled = %#v, want true", enabled)
 	}
 
@@ -1613,8 +1688,8 @@ resource "google_sql_database_instance" "dynamic" {
 			ipConfiguration.Type().FriendlyName(), ipConfiguration.LengthInt())
 	}
 	backup := dynamicResource.Attributes["backup_configuration"]
-	if !backup.Type().IsObjectType() || !backup.GetAttr("enabled").True() {
-		t.Fatalf("backup_configuration = %#v, want an object with enabled = true", backup)
+	if !backup.Type().IsTupleType() || backup.LengthInt() != 1 || !backup.AsValueSlice()[0].GetAttr("enabled").True() {
+		t.Fatalf("backup_configuration = %#v, want one block with enabled = true", backup)
 	}
 
 	doc := AttributesToDocument(&dynamicResource)
@@ -1714,7 +1789,11 @@ resource "aws_security_group" "unknown" {
 	if _, ok := nested.Attributes["logging"]; ok {
 		t.Fatal("a dynamic block over an empty collection must generate nothing")
 	}
-	rule := nested.Attributes["lifecycle_rule"]
+	rules := nested.Attributes["lifecycle_rule"]
+	if !rules.Type().IsTupleType() || rules.LengthInt() != 1 {
+		t.Fatalf("lifecycle_rule = %#v, want one block", rules)
+	}
+	rule := rules.AsValueSlice()[0]
 	if got := rule.GetAttr("prefix"); !got.RawEquals(cty.StringVal("logs")) {
 		t.Fatalf("lifecycle_rule.prefix = %#v, want logs", got)
 	}
@@ -1732,14 +1811,25 @@ resource "aws_security_group" "unknown" {
 	if _, ok := unknown.Attributes["ingress"]; ok {
 		t.Fatal("a dynamic block over an unknown collection may generate nothing and must be kept as written")
 	}
-	content := unknown.Attributes["dynamic"].GetAttr("ingress").GetAttr("content")
+	templates := unknown.Attributes["dynamic"].GetAttr("ingress")
+	if !templates.Type().IsTupleType() || templates.LengthInt() != 1 {
+		t.Fatalf("dynamic.ingress = %#v, want a list of one template", templates)
+	}
+	contents := templates.AsValueSlice()[0].GetAttr("content")
+	if !contents.Type().IsTupleType() || contents.LengthInt() != 1 {
+		t.Fatalf("content = %#v, want one block", contents)
+	}
+	content := contents.AsValueSlice()[0]
 	if got := content.GetAttr("to_port"); !got.RawEquals(cty.NumberIntVal(443)) {
 		t.Fatalf("dynamic.ingress.content.to_port = %#v, want 443", got)
 	}
 	doc := AttributesToDocument(&unknown)
-	rawContent := doc["dynamic"].(map[string]interface{})["ingress"].(map[string]interface{})["content"]
+	rawContent := doc["dynamic"].(map[string]interface{})["ingress"].([]interface{})[0].(map[string]interface{})["content"].([]interface{})[0]
 	if got := rawContent.(map[string]interface{})["from_port"]; got != "${ingress.value.port}" {
 		t.Fatalf("dynamic.ingress.content.from_port = %#v, want its source reference", got)
+	}
+	if got := Unknowns(&unknown, doc); got["ingress"] != true || got["dynamic"] != nil {
+		t.Fatalf("unknown = %#v, want ingress: true", got)
 	}
 }
 
@@ -1768,10 +1858,7 @@ resource "aws_security_group" "sg" {
 	}
 	sg := findResource(t, resources, "aws_security_group", "sg")
 	doc := AttributesToDocument(&sg)
-	ingress, ok := doc["ingress"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("ingress = %#v, want the static block alone", doc["ingress"])
-	}
+	ingress := oneBlock(t, doc["ingress"], "ingress")
 	cidrs := ingress["cidr_blocks"].([]interface{})
 	if len(cidrs) != 1 || cidrs[0] != "${aws_vpc.main.cidr_block}" {
 		t.Fatalf("cidr_blocks = %#v, want the static block's source reference", cidrs)
@@ -1920,131 +2007,6 @@ resource "aws_s3_bucket" "b" {
 	}
 }
 
-// A dynamic block whose for_each generates more blocks than the expansion cap
-// is kept as written instead of silently dropping the later ones.
-func TestEvaluateModule_DynamicBlockBeyondCapStaysAsWritten(t *testing.T) {
-	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
-		"main.tf": dynamicIngressModule(dynamicblock.MaxExpansion + 1),
-	})
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
-	e := New()
-	resources, _, _, err := e.EvaluateModule(ctx, dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	sg := findResource(t, resources, "aws_security_group", "sg")
-	if _, expanded := sg.Attributes["ingress"]; expanded {
-		t.Fatalf("ingress was expanded in part: %#v", sg.Attributes["ingress"])
-	}
-	if _, kept := sg.Attributes["dynamic"]; !kept {
-		t.Fatalf("attributes = %#v, want the dynamic block kept as written", sg.Attributes)
-	}
-	if e.ExpansionTruncations() == 0 || e.ExpansionMaxRequested() != dynamicblock.MaxExpansion+1 {
-		t.Fatalf("stats = %d truncations, max %d; want the oversized block counted",
-			e.ExpansionTruncations(), e.ExpansionMaxRequested())
-	}
-	for _, want := range []string{
-		`"expansion_kind":"dynamic"`,
-		`"requested_instances":` + strconv.Itoa(dynamicblock.MaxExpansion+1),
-		`"count_expansion_cap":` + strconv.Itoa(dynamicblock.MaxExpansion),
-	} {
-		if !strings.Contains(logs.String(), want) {
-			t.Fatalf("log %q lacks %s", logs.String(), want)
-		}
-	}
-}
-
-// An oversized dynamic block is one truncation of the block, not one per
-// instance of its resource or per element of a parent dynamic block.
-func TestEvaluateModule_OversizedDynamicBlockIsCountedOncePerBlock(t *testing.T) {
-	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
-		"main.tf": fmt.Sprintf(`
-resource "aws_security_group" "sg" {
-  count = 3
-  dynamic "outer" {
-    for_each = ["a", "b"]
-    content {
-      dynamic "ingress" {
-        for_each = [%s]
-        content {
-          from_port = ingress.value
-        }
-      }
-    }
-  }
-}
-`, numberList(dynamicblock.MaxExpansion+1)),
-	})
-	e := New()
-	if _, _, _, err := e.EvaluateModule(context.Background(), dir, nil); err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	if got := e.ExpansionTruncations(); got != 1 {
-		t.Fatalf("ExpansionTruncations = %d, want 1 for the one oversized block", got)
-	}
-}
-
-func TestEvaluateModule_DynamicBlockAtTheCapIsExpandedQuietly(t *testing.T) {
-	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
-		"main.tf": dynamicIngressModule(dynamicblock.MaxExpansion),
-	})
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
-	e := New()
-	resources, _, _, err := e.EvaluateModule(ctx, dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	sg := findResource(t, resources, "aws_security_group", "sg")
-	if got := sg.Attributes["ingress"].LengthInt(); got != dynamicblock.MaxExpansion {
-		t.Fatalf("expanded %d ingress blocks, want %d", got, dynamicblock.MaxExpansion)
-	}
-	if e.ExpansionTruncations() != 0 || logs.Len() != 0 {
-		t.Fatalf("expansion at the cap warned: %d truncations, log %q", e.ExpansionTruncations(), logs.String())
-	}
-}
-
-// The blocks of one resource are budgeted together, so several dynamic blocks
-// each within the per-block cap cannot add up past the per-resource limit.
-func TestEvaluateModule_DynamicBlocksShareTheResourceBudget(t *testing.T) {
-	const perBlock = 200
-	blocks := dynamicblock.MaxGeneratedPerResource/perBlock + 1
-	var sb strings.Builder
-	sb.WriteString("resource \"aws_security_group\" \"sg\" {\n")
-	for i := 0; i < blocks; i++ {
-		fmt.Fprintf(&sb, "  dynamic \"rule%d\" {\n    for_each = [%s]\n    content {\n      from_port = rule%d.value\n    }\n  }\n",
-			i, numberList(perBlock), i)
-	}
-	sb.WriteString("}\n")
-	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": sb.String()})
-
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
-	e := New()
-	resources, _, _, err := e.EvaluateModule(ctx, dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	sg := findResource(t, resources, "aws_security_group", "sg")
-	expanded, asWritten := 0, 0
-	for i := 0; i < blocks; i++ {
-		if _, ok := sg.Attributes[fmt.Sprintf("rule%d", i)]; ok {
-			expanded++
-		}
-	}
-	if dyn, ok := sg.Attributes["dynamic"]; ok {
-		asWritten = dyn.LengthInt()
-	}
-	if expanded != dynamicblock.MaxGeneratedPerResource/perBlock || asWritten == 0 {
-		t.Fatalf("expanded %d blocks and kept %d as written, want %d expanded and the rest as written",
-			expanded, asWritten, dynamicblock.MaxGeneratedPerResource/perBlock)
-	}
-	if e.ExpansionTruncations() == 0 || !strings.Contains(logs.String(), `"count_expansion_cap":`+strconv.Itoa(dynamicblock.MaxGeneratedPerResource)) {
-		t.Fatalf("budget overflow not reported: %d truncations, log %q", e.ExpansionTruncations(), logs.String())
-	}
-}
-
 // Dynamic content reuses what does not read an iterator, but every expression
 // reading its own or an enclosing iterator, or the resource's each, still varies.
 func TestEvaluateModule_DynamicContentKeepsIterationValuesWithSharedOnes(t *testing.T) {
@@ -2114,27 +2076,6 @@ resource "aws_s3_bucket" "b" {
 			}
 		}
 	}
-}
-
-func numberList(n int) string {
-	items := make([]string, n)
-	for i := range items {
-		items[i] = strconv.Itoa(i)
-	}
-	return strings.Join(items, ", ")
-}
-
-func dynamicIngressModule(n int) string {
-	return fmt.Sprintf(`
-resource "aws_security_group" "sg" {
-  dynamic "ingress" {
-    for_each = [%s]
-    content {
-      from_port = ingress.value
-    }
-  }
-}
-`, numberList(n))
 }
 
 // A dynamic block with labels maps its generated blocks to their sources like a
@@ -2364,9 +2305,9 @@ dynamic "a" {
 	}
 }
 
-// Each for_each instance keeps only its own element of the collection, and
-// references to an instance do not expose the meta-arguments, as in Terraform.
-func TestEvaluateModule_ForEachInstanceKeepsItsOwnElement(t *testing.T) {
+// An instance's attributes leave out the meta-arguments, and references to an
+// instance do not expose them, as in Terraform.
+func TestEvaluateModule_InstancesLeaveOutMetaArguments(t *testing.T) {
 	root := t.TempDir()
 	writeModule(t, root, "mod", map[string]string{
 		"main.tf": `
@@ -2375,8 +2316,16 @@ resource "aws_s3_bucket" "set" {
   bucket   = each.key
 }
 resource "aws_s3_bucket" "map" {
-  for_each = { x = "one", y = "two" }
-  bucket   = each.value
+  for_each   = { x = "one", y = "two" }
+  bucket     = each.value
+  depends_on = [aws_s3_bucket.set]
+  provider   = aws.west
+  lifecycle {
+    prevent_destroy = true
+  }
+  connection {
+    host = "h"
+  }
 }
 resource "aws_s3_bucket_versioning" "v" {
   for_each = aws_s3_bucket.set
@@ -2401,12 +2350,12 @@ module "m" {
 		byName[r.Type+"."+r.Name] = r
 	}
 
-	set := byName[`aws_s3_bucket.set["b"]`].Attributes["for_each"]
-	require.True(t, set.Type().IsSetType())
-	require.True(t, set.RawEquals(cty.SetVal([]cty.Value{cty.StringVal("b")})))
-
-	m := byName[`aws_s3_bucket.map["y"]`].Attributes["for_each"]
-	require.True(t, m.RawEquals(cty.ObjectVal(map[string]cty.Value{"y": cty.StringVal("two")})))
+	require.NotContains(t, byName[`aws_s3_bucket.set["b"]`].Attributes, "for_each")
+	m := byName[`aws_s3_bucket.map["y"]`].Attributes
+	require.Equal(t, cty.StringVal("two"), m["bucket"])
+	for _, key := range []string{"for_each", "depends_on", "provider", "lifecycle", "connection"} {
+		require.NotContains(t, m, key)
+	}
 
 	// for_each over a resource still sees every instance, and an instance
 	// reference has only the resource's own attributes.
@@ -2414,20 +2363,6 @@ module "m" {
 	require.Equal(t, cty.StringVal("c"), v.Attributes["bucket"])
 	require.Equal(t, cty.NumberIntVal(1), v.Attributes["note"])
 	require.Len(t, resources, 8)
-}
-
-func TestReferenceAttributesDropsMetaArguments(t *testing.T) {
-	attrs := map[string]cty.Value{
-		"bucket":   cty.StringVal("b"),
-		"for_each": cty.SetVal([]cty.Value{cty.StringVal("b")}),
-		"count":    cty.NumberIntVal(2),
-	}
-	got := referenceAttributes(attrs)
-	require.Equal(t, map[string]cty.Value{"bucket": cty.StringVal("b")}, got)
-	require.Len(t, attrs, 3, "the instance attributes are left unchanged")
-
-	plain := map[string]cty.Value{"bucket": cty.StringVal("b")}
-	require.Equal(t, plain, referenceAttributes(plain))
 }
 
 // Siblings reading earlier siblings, directly or through locals, see their
@@ -2611,7 +2546,16 @@ func TestNestedBlocksMatchesAddNestedBlock(t *testing.T) {
 		for i, n := 0, rng.Intn(12); i < n; i++ {
 			path := paths[rng.Intn(len(paths))]
 			value := cty.ObjectVal(map[string]cty.Value{"i": cty.NumberIntVal(int64(i))})
-			addNestedBlock(want, path, value)
+			if len(path) == 1 {
+				// An unlabeled block is a tuple even when it is the only one.
+				if current, ok := want[path[0]]; ok && current.Type().IsTupleType() {
+					want[path[0]] = cty.TupleVal(append(current.AsValueSlice(), value))
+				} else {
+					want[path[0]] = cty.TupleVal([]cty.Value{value})
+				}
+			} else {
+				addNestedBlock(want, path, value)
+			}
 			blocks.add(path, value)
 		}
 		blocks.flushAll()
@@ -2957,4 +2901,477 @@ func BenchmarkResolveLocalsChain(b *testing.B) {
 			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(length), "ns/local")
 		})
 	}
+}
+
+// Instance names carry HCL-escaped for_each keys — the same escaping the
+// address formatter uses — so keys with quotes, backslashes or template
+// openers produce valid, round-trippable addresses.
+func TestExpandBlock_InstanceNamesUseHCLEscaping(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+locals {
+  keys = toset(["a\"b", "a\\b", "a[b", "$${key}", "%%{if}"])
+}
+
+resource "aws_s3_bucket" "b" {
+  for_each = local.keys
+  bucket   = each.key
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 5)
+	names := make([]string, 0, 5)
+	for i := range resources {
+		names = append(names, resources[i].Name)
+	}
+	// Template openers carry exactly one level of $$ / %% escaping — the same
+	// the address formatter produces — never doubled by a second escaping pass.
+	require.ElementsMatch(t, []string{
+		`b["a\"b"]`,
+		`b["a\\b"]`,
+		`b["a[b"]`,
+		`b["$${key}"]`,
+		`b["%%{if}"]`,
+	}, names)
+
+	// Every name round-trips into a parseable Terraform address whose key is
+	// the raw for_each key, through the same parser the address consumers use.
+	for i := range resources {
+		r := &resources[i]
+		require.Equal(t, StringKey, r.Key.Kind, r.Name)
+		full := address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: r.BaseName}, r.Key.String())
+		traversal, diags := hclsyntax.ParseTraversalAbs([]byte(full), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors(), "%s: %s", r.Name, diags.Error())
+		index := traversal[len(traversal)-1].(hcl.TraverseIndex)
+		require.Equal(t, r.Key.Str, index.Key.AsString(), r.Name)
+	}
+}
+
+// Reference injection decodes the HCL-escaped instance key back to the raw
+// for_each key, so a local reading aws_s3_bucket.b["a\"b"] resolves the right
+// instance instead of an extra-$ shadow key.
+func TestInjectResourceRefs_DecodesHCLEscapedKeys(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+locals {
+  keys = toset(["a\"b", "$${key}"])
+}
+
+resource "aws_s3_bucket" "b" {
+  for_each = local.keys
+  bucket   = each.key
+}
+
+output "names" {
+  value = [for k, v in aws_s3_bucket.b : v.bucket]
+}
+
+output "quoted" {
+  value = aws_s3_bucket.b["a\"b"].bucket
+}
+`,
+	})
+	_, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	quoted := outputs["quoted"]
+	require.False(t, quoted.IsKnown() == false, "the reference through the HCL-escaped key must resolve")
+	require.Equal(t, `a"b`, quoted.AsString())
+}
+
+// Ephemeral resource blocks expand and are addressed like resources, with the
+// instance suffix, so their instances never collapse onto the bare block.
+func TestExpandBlock_EphemeralInstancesAreExpanded(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+ephemeral "aws_secretsmanager_secret" "login" {
+  for_each = toset(["a", "b"])
+  name     = each.key
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 2)
+	for i := range resources {
+		require.Equal(t, "aws_secretsmanager_secret", resources[i].Type)
+	}
+	require.ElementsMatch(t, []string{
+		`login["a"]`,
+		`login["b"]`,
+	}, []string{resources[0].Name, resources[1].Name})
+}
+
+// Keys with literal dollar/percent signs keep their identity through HCL
+// escaping: hclwrite doubles an introducer only before a brace, and the
+// reference-injection decode must be its exact inverse — a$$b and a$b are
+// different keys and never collapse.
+func TestExpandBlock_RepeatedSymbolKeysStayDistinct(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+locals {
+  keys = toset(["a$b", "a$$b", "a$${b}", "a%b", "a%%b", "a%%{b}"])
+}
+
+resource "aws_s3_bucket" "b" {
+  for_each = local.keys
+  bucket   = each.key
+}
+
+output "direct" {
+  value = aws_s3_bucket.b["a$$b"].bucket
+}
+
+output "escaped_introducer" {
+  value = aws_s3_bucket.b["a$${b}"].bucket
+}
+
+output "percent" {
+  value = aws_s3_bucket.b["a%%{b}"].bucket
+}
+`,
+	})
+	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 6)
+
+	names := make([]string, 0, 6)
+	for i := range resources {
+		names = append(names, resources[i].Name)
+	}
+	// The HCL-escaped names carry one introducer escape per real brace —
+	// literal $$ and %% (not before a brace) stay as written.
+	require.ElementsMatch(t, []string{
+		`b["a$b"]`,
+		`b["a$$b"]`,
+		`b["a$${b}"]`,
+		`b["a%b"]`,
+		`b["a%%b"]`,
+		`b["a%%{b}"]`,
+	}, names)
+
+	// References through those keys resolve the right instances, including
+	// the escaped-introducer key.
+	require.Equal(t, "a$$b", outputs["direct"].AsString())
+	require.Equal(t, "a${b}", outputs["escaped_introducer"].AsString())
+	require.Equal(t, "a%{b}", outputs["percent"].AsString())
+
+	// And the final identities are distinct per key.
+	ids := map[string]bool{}
+	for i := range resources {
+		r := &resources[i]
+		ids[address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: r.BaseName}, r.Key.String())] = true
+	}
+	require.Len(t, ids, 6, "six distinct keys, six distinct addresses")
+}
+
+// A local reading an ephemeral instance directly (or feeding another
+// ephemeral block or an output through a chain) is a resource-dependent
+// local: it re-resolves when the ephemeral block's values are injected, so
+// the values it feeds arrive known.
+func TestEphemeralReadsDriveLocalResolution(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+ephemeral "random_password" "source" {
+  count    = 2
+  result   = "pw-${count.index}"
+}
+
+locals {
+  ref = ephemeral.random_password.source[1].result
+}
+
+ephemeral "random_password" "consumer" {
+  result = local.ref
+}
+
+output "ref" {
+  value = local.ref
+}
+
+output "consumed" {
+  value = ephemeral.random_password.consumer.result
+}
+`,
+	})
+	_, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Equal(t, "pw-1", outputs["ref"].AsString(),
+		"the local reading the ephemeral instance must re-resolve after injection")
+	require.Equal(t, "pw-1", outputs["consumed"].AsString(),
+		"the ephemeral block fed by that local sees the known value")
+}
+
+// A JSON configuration's ephemeral blocks expand like HCL ones: without
+// ephemeral in the JSON schema their count/for_each instances were lost
+// entirely.
+func TestJSONConfigEphemeralExpands(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf.json": `{
+  "ephemeral": {
+    "aws_secretsmanager_secret": {
+      "login": {
+        "count": 2,
+        "name": "secret-${count.index}"
+      }
+    }
+  },
+  "output": {
+    "name": {"value": "${ephemeral.aws_secretsmanager_secret.login[1].name}"}
+  }
+}
+`,
+	})
+	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 2, "both count instances expand")
+	names := []string{resources[0].Name, resources[1].Name}
+	require.ElementsMatch(t, []string{`login[0]`, `login[1]`}, names)
+	require.Equal(t, "secret-1", outputs["name"].AsString(),
+		"a reference through a JSON ephemeral instance resolves")
+}
+
+func TestTfevalDoesNotImportConverter(t *testing.T) {
+	out, err := exec.Command("go", "list", "-deps", ".").Output()
+	require.NoError(t, err)
+	const converter = "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	require.False(t, slices.Contains(strings.Fields(string(out)), converter),
+		"tfeval must not depend on %s", converter)
+}
+
+func TestInstanceKeyString(t *testing.T) {
+	tests := []struct {
+		key  InstanceKey
+		want string
+	}{
+		{InstanceKey{Kind: NoKey}, ""},
+		{InstanceKey{Kind: IntKey, Int: 3}, "[3]"},
+		{InstanceKey{Kind: StringKey, Str: "dev"}, `["dev"]`},
+		{InstanceKey{Kind: StringKey, Str: ""}, `[""]`},
+		{InstanceKey{Kind: StringKey, Str: "a$b"}, `["a$b"]`},
+		{InstanceKey{Kind: StringKey, Str: "a${b}"}, `["a$${b}"]`},
+		{InstanceKey{Kind: StringKey, Str: "a$${b}"}, `["a$$${b}"]`},
+		{InstanceKey{Kind: StringKey, Str: "a%{b}"}, `["a%%{b}"]`},
+		{InstanceKey{Kind: StringKey, Str: `q"x`}, `["q\"x"]`},
+		{InstanceKey{Kind: StringKey, Str: `a\b`}, `["a\\b"]`},
+		{InstanceKey{Kind: StringKey, Str: "é"}, `["é"]`},
+	}
+	for _, tt := range tests {
+		require.Equal(t, tt.want, tt.key.String(), "%#v", tt.key)
+	}
+}
+
+func TestResolvedResourceNameMatchesKey(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "m", map[string]string{"main.tf": `
+resource "null_resource" "c" {
+  count = 2
+}
+
+resource "null_resource" "f" {
+  for_each = {"a$b" = 1, "" = 2}
+}
+
+resource "null_resource" "p" {}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	names := make([]string, 0, len(resources))
+	for i := range resources {
+		r := &resources[i]
+		require.Equal(t, r.Name, r.BaseName+r.Key.String())
+		names = append(names, r.Name)
+	}
+	require.ElementsMatch(t, []string{`c[0]`, `c[1]`, `f[""]`, `f["a$b"]`, `p`}, names)
+}
+
+func emptyBlockNames(blocks []EmptyBlock) map[string]EmptyBlock {
+	out := map[string]EmptyBlock{}
+	for _, b := range blocks {
+		out[b.Type+"."+b.Name] = b
+	}
+	return out
+}
+
+func TestEmptyBlocks_KnownZero(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+variable "on" {
+  default = false
+}
+resource "aws_s3_bucket" "a" {
+  count = 0
+}
+resource "aws_s3_bucket" "b" {
+  for_each = {}
+}
+resource "aws_s3_bucket" "c" {
+  count = var.on ? 1 : 0
+}
+data "aws_iam_policy_document" "d" {
+  count = 0
+}
+resource "aws_s3_bucket" "kept" {}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	blocks := e.TakeEmptyBlocks()
+	require.Len(t, blocks, 4)
+	got := emptyBlockNames(blocks)
+	for _, key := range []string{"aws_s3_bucket.a", "aws_s3_bucket.b", "aws_s3_bucket.c", "aws_iam_policy_document.d"} {
+		b, ok := got[key]
+		require.True(t, ok, key)
+		require.Equal(t, filepath.Join(dir, "main.tf"), b.DefinedIn)
+		require.Equal(t, key == "aws_iam_policy_document.d", b.Data, key)
+		require.False(t, b.Ephemeral, key)
+	}
+	require.Len(t, resources, 1)
+	require.Equal(t, "kept", resources[0].Name)
+}
+
+func TestEmptyBlocks_UnknownKeepsPlaceholder(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+variable "n" {}
+resource "aws_s3_bucket" "a" {
+  count = var.n
+}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Empty(t, e.TakeEmptyBlocks())
+	require.Len(t, resources, 1)
+	require.Equal(t, "a", resources[0].Name)
+}
+
+func TestEmptyBlocks_ReplayedOnCacheHit(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "gone" {
+  count = 0
+}
+`})
+	parent := writeModule(t, root, "parent", map[string]string{"main.tf": `
+module "one" {
+  source = "../child"
+}
+module "two" {
+  source = "../child"
+}
+`})
+	e := New()
+	_, _, _, err := e.EvaluateModule(context.Background(), parent, nil)
+	require.NoError(t, err)
+	blocks := e.TakeEmptyBlocks()
+	require.Len(t, blocks, 2)
+	for _, b := range blocks {
+		require.Equal(t, "aws_s3_bucket", b.Type)
+		require.Equal(t, "gone", b.Name)
+		require.Equal(t, filepath.Join(root, "child", "main.tf"), b.DefinedIn)
+	}
+}
+
+func TestEmptyBlocks_NotRecordedWhenEmptyOnlyInEarlierPass(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+resource "null_resource" "a" {
+  triggers = {
+    n = "1"
+  }
+}
+resource "aws_s3_bucket" "b" {
+  count = try(null_resource.a.triggers.n == "1" ? 1 : 0, 0)
+}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Empty(t, e.TakeEmptyBlocks())
+	findResource(t, resources, "aws_s3_bucket", "b[0]")
+}
+
+func TestEmptyBlocks_ClearedByTake(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "a" {
+  count = 0
+}
+`})
+	e := New()
+	_, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Len(t, e.TakeEmptyBlocks(), 1)
+	require.Nil(t, e.TakeEmptyBlocks())
+}
+
+func TestForEachOverZeroInstanceResourceIsEmpty(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+resource "aws_kms_key" "empty" {
+  for_each = {}
+}
+resource "aws_kms_key" "none" {
+  count = 0
+}
+data "aws_iam_policy_document" "gone" {
+  for_each = {}
+}
+resource "aws_kms_key_policy" "p" {
+  for_each = aws_kms_key.empty
+  key_id   = each.value.id
+}
+resource "aws_kms_key_policy" "c" {
+  count  = length(aws_kms_key.none)
+  key_id = aws_kms_key.none[count.index].id
+}
+resource "aws_iam_policy" "d" {
+  for_each = data.aws_iam_policy_document.gone
+  policy   = each.value.json
+}
+resource "aws_kms_key" "kept" {}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	var names []string
+	for i := range resources {
+		names = append(names, resources[i].Type+"."+resources[i].Name)
+	}
+	require.Equal(t, []string{"aws_kms_key.kept"}, names)
+	got := emptyBlockNames(e.TakeEmptyBlocks())
+	for _, key := range []string{"aws_kms_key_policy.p", "aws_kms_key_policy.c", "aws_iam_policy.d"} {
+		require.Contains(t, got, key)
+	}
+}
+
+func TestUnknownExpansionPlaceholderReportsUnknownCount(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+variable "n" {}
+variable "keys" {}
+resource "aws_s3_bucket" "counted" {
+  count  = var.n
+  bucket = "b"
+}
+resource "aws_s3_bucket" "each" {
+  for_each = var.keys
+  bucket   = "b"
+}
+resource "aws_s3_bucket" "known" {
+  count  = 1
+  bucket = "b"
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	unknowns := map[string]map[string]interface{}{}
+	for i := range resources {
+		r := &resources[i]
+		unknowns[r.Name] = Unknowns(r, AttributesToDocument(r))
+	}
+	require.Equal(t, map[string]interface{}{"count": true}, unknowns["counted"])
+	require.Equal(t, map[string]interface{}{"count": true}, unknowns["each"])
+	require.Nil(t, unknowns["known[0]"])
 }

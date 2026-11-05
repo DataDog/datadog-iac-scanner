@@ -34,7 +34,7 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": resource_name,
-		"resourceName": tf_lib.specific_resource_name(resource_type, resource_name, name),
+		"resourceName": name,
 		"searchKey": sprintf("%s[%s].tags", [resource_name, name]),
 	}
 }
@@ -55,7 +55,7 @@ DatadogPolicy contains result if {
 	result := {
 		"documentId": input.document[i].id,
 		"resourceType": resource_type,
-		"resourceName": tf_lib.specific_resource_name(resource, resource_type, name),
+		"resourceName": name,
 		"searchKey": sprintf("%s[%s].tags", [resource_type, name]),
 	}
 }

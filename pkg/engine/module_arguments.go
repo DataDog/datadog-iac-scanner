@@ -28,6 +28,8 @@ const (
 	mergeFunction      = "merge"
 	toSetFunction      = "toset"
 	resourceEachRoot   = "each"
+	eachKeyStep        = "key"
+	eachValueStep      = "value"
 	dynamicBlockType   = "dynamic"
 	dynamicContentType = "content"
 	dynamicIterator    = "iterator"
@@ -400,6 +402,9 @@ type iteratorReads struct {
 	name      string
 	reads     inputReads
 	evaluated bool
+	// collection is the for_each a dynamic block's iterator reads. Reference
+	// tracing follows it; module-argument tracing uses reads.
+	collection hclsyntax.Expression
 	// split is set when the instance's key and value are known to come from
 	// different parts of the collection.
 	split                bool
@@ -426,6 +431,8 @@ type valueAnalyzer struct {
 	usedIteration bool
 	// forEach is the for_each attribute of the resource being analyzed.
 	forEach *hclsyntax.Attribute
+	// refs, when set, collects the instances of the blocks expressions read.
+	refs *referenceTrace
 }
 
 func (t *moduleAttributionCache) analyzer(scope *tfeval.ModuleScope, iteration map[string]cty.Value) *valueAnalyzer {
@@ -574,10 +581,27 @@ func (a *valueAnalyzer) reads(expr hclsyntax.Expression) inputReads {
 	case *hclsyntax.ScopeTraversalExpr:
 		return a.traversal(e.Traversal)
 	case *hclsyntax.RelativeTraversalExpr:
+		if a.refs != nil {
+			a.refs.indexedAttribute(e)
+		}
 		return a.reads(e.Source)
 	case *hclsyntax.IndexExpr:
+		start := 0
+		if a.refs != nil {
+			start = len(a.refs.found)
+			if indexesReference(e.Collection) {
+				a.refs.indexKey = e.Key
+			}
+		}
 		r = a.reads(e.Collection)
-		r.addSelector(a.reads(e.Key))
+		if a.refs != nil {
+			a.refs.takeIndex()
+			if !indexesReference(e.Collection) {
+				// One element of a computed collection is selected.
+				a.refs.markIfSeveral(start)
+			}
+		}
+		r.addSelector(a.selectorReads(e.Key))
 	case *hclsyntax.SplatExpr:
 		r = a.reads(e.Source)
 		r.add(a.reads(e.Each))
@@ -615,13 +639,22 @@ func (a *valueAnalyzer) reads(expr hclsyntax.Expression) inputReads {
 	case *hclsyntax.TemplateJoinExpr:
 		return a.reads(e.Tuple)
 	case *hclsyntax.ForExpr:
+		start := 0
+		if a.refs != nil {
+			start = len(a.refs.found)
+		}
 		r = a.reads(e.CollExpr)
 		scope := len(a.shadowed)
 		a.shadowed = append(a.shadowed, e.KeyVar, e.ValVar)
 		r.add(a.reads(e.KeyExpr))
 		r.add(a.reads(e.ValExpr))
-		r.addSelector(a.reads(e.CondExpr))
+		r.addSelector(a.selectorReads(e.CondExpr))
 		a.shadowed = a.shadowed[:scope]
+		if a.refs != nil && e.CondExpr != nil {
+			// The filter may keep only some of what the collection reads,
+			// or none of it.
+			a.refs.markIfAny(start)
+		}
 	default:
 		for _, traversal := range scopeTraversals(expr) {
 			r.add(a.traversal(traversal))
@@ -652,18 +685,11 @@ func (a *valueAnalyzer) traversal(traversal hcl.Traversal) inputReads {
 	if slices.Contains(a.shadowed, root) {
 		return r
 	}
-	for i := len(a.iterators) - 1; i >= 0; i-- {
-		if it := &a.iterators[i]; it.name == root {
-			if it.split && len(traversal) > 1 {
-				switch stepString(traversal[1]) {
-				case "key":
-					return it.keyReads
-				case "value":
-					return it.valueReads
-				}
-			}
-			return it.reads
-		}
+	if reads, ok := a.iteratorRead(root, traversal); ok {
+		return reads
+	}
+	if a.refs != nil {
+		a.refs.traversal(a, root, traversal)
 	}
 	switch root {
 	case moduleVariableRoot:
@@ -687,6 +713,48 @@ func (a *valueAnalyzer) traversal(traversal hcl.Traversal) inputReads {
 	return r
 }
 
+// iteratorRead is what an enclosing for_each or dynamic iterator contributes
+// when traversal's root is that iterator. The second result is false when no
+// iterator of that name is in scope.
+func (a *valueAnalyzer) iteratorRead(root string, traversal hcl.Traversal) (inputReads, bool) {
+	for i := len(a.iterators) - 1; i >= 0; i-- {
+		it := &a.iterators[i]
+		if it.name != root {
+			continue
+		}
+		a.traceDynamicIterator(it, root, traversal)
+		if reads, ok := splitIteratorRead(it, traversal); ok {
+			return reads, true
+		}
+		return it.reads, true
+	}
+	return inputReads{}, false
+}
+
+// traceDynamicIterator records the resource addresses a dynamic block's
+// for_each reads. Module-argument tracing uses the iterator's reads instead.
+func (a *valueAnalyzer) traceDynamicIterator(it *iteratorReads, root string, traversal hcl.Traversal) {
+	if a.refs != nil && it.collection != nil {
+		a.refs.readDynamicIterator(a, root, traversal)
+	}
+}
+
+// splitIteratorRead is the key or value half of an iterator whose key and
+// value come from different parts of the collection.
+func splitIteratorRead(it *iteratorReads, traversal hcl.Traversal) (inputReads, bool) {
+	if !it.split || len(traversal) < 2 {
+		return inputReads{}, false
+	}
+	switch stepString(traversal[1]) {
+	case eachKeyStep:
+		return it.keyReads, true
+	case eachValueStep:
+		return it.valueReads, true
+	default:
+		return inputReads{}, false
+	}
+}
+
 // variableRead is what a reference to var reads: one input, through one
 // member when it selects one.
 func variableRead(traversal hcl.Traversal) inputReads {
@@ -708,7 +776,10 @@ var nonReferenceRoots = map[string]bool{
 	"each": true, "count": true, "path": true, "terraform": true, "self": true,
 }
 
-const dataRoot = "data"
+const (
+	dataRoot      = "data"
+	ephemeralRoot = "ephemeral"
+)
 
 // blockReference returns what the attribute a traversal selects from a
 // resource or data block of the module reads, since a block can set it from
@@ -837,6 +908,8 @@ func (a *valueAnalyzer) blockBody(address string) *hclsyntax.Body {
 					index[block.Labels[0]+"."+block.Labels[1]] = block.Body
 				case block.Type == dataRoot && len(block.Labels) == 2:
 					index[dataRoot+"."+block.Labels[0]+"."+block.Labels[1]] = block.Body
+				case block.Type == ephemeralRoot && len(block.Labels) == 2:
+					index[ephemeralRoot+"."+block.Labels[0]+"."+block.Labels[1]] = block.Body
 				}
 			}
 		}
@@ -882,15 +955,39 @@ func (a *valueAnalyzer) call(e *hclsyntax.FunctionCallExpr) inputReads {
 			}
 		}
 	}
+	start := 0
+	if a.refs != nil {
+		start = len(a.refs.found)
+	}
 	var r inputReads
 	for _, arg := range e.Args {
 		r.add(a.reads(arg))
 	}
+	if a.refs != nil && selectsElement[e.Name] {
+		a.refs.markIfSeveral(start)
+	}
+	return r
+}
+
+// selectsElement are the functions returning one element of a collection.
+var selectsElement = map[string]bool{"element": true, "lookup": true, "one": true}
+
+// selectorReads is what an expression choosing between values reads. The
+// blocks it reads are not part of the value, so they are not references, and
+// what it fails to trace leaves the references complete: a choice it cannot
+// make lists every alternative.
+func (a *valueAnalyzer) selectorReads(expr hclsyntax.Expression) inputReads {
+	if a.refs == nil {
+		return a.reads(expr)
+	}
+	start, untraced, ambiguous := len(a.refs.found), a.refs.untraced, a.refs.ambiguous
+	r := a.reads(expr)
+	a.refs.found, a.refs.untraced, a.refs.ambiguous = a.refs.found[:start], untraced, ambiguous
 	return r
 }
 
 func (a *valueAnalyzer) conditional(e *hclsyntax.ConditionalExpr) inputReads {
-	condition := a.reads(e.Condition)
+	condition := a.selectorReads(e.Condition)
 	if v, ok := a.value(e.Condition); ok && !v.IsNull() && v.Type() == cty.Bool {
 		branch := e.FalseResult
 		if v.True() {
@@ -965,7 +1062,7 @@ func (a *valueAnalyzer) firstEvaluated(args []hclsyntax.Expression) inputReads {
 }
 
 func (a *valueAnalyzer) lookup(collection, key, fallback hclsyntax.Expression) inputReads {
-	keyReads := a.reads(key)
+	keyReads := a.selectorReads(key)
 	if found, ok := a.hasKey(collection, key); ok {
 		chosen, other := collection, fallback
 		if !found {
@@ -1009,8 +1106,22 @@ func (a *valueAnalyzer) hasKey(collection, key hclsyntax.Expression) (found, ok 
 // inputs.
 func (a *valueAnalyzer) unresolved(selector inputReads, alternatives ...hclsyntax.Expression) inputReads {
 	var r inputReads
+	var first []string
 	for i, alt := range alternatives {
+		start := 0
+		if a.refs != nil {
+			start = len(a.refs.found)
+		}
 		reads := a.reads(alt)
+		if a.refs != nil {
+			// Listing alternatives that read different instances
+			// over-approximates the one that is taken.
+			if found := a.refs.foundSince(start); i == 0 {
+				first = found
+			} else if !slices.Equal(first, found) {
+				a.refs.ambiguous = true
+			}
+		}
 		if i == 0 {
 			r = reads
 			continue

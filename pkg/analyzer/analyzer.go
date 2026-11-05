@@ -47,8 +47,8 @@ var (
 	cloudRegex                                      = regexp.MustCompile(`("Resources"|Resources)\s*:`)
 	k8sRegex                                        = regexp.MustCompile(`("apiVersion"|apiVersion)\s*:`)
 	k8sRegexKind                                    = regexp.MustCompile(`("kind"|kind)\s*:`)
+	tfPlanRegexFV                                   = regexp.MustCompile(`"format_version"\s*:`)
 	tfPlanRegexPV                                   = regexp.MustCompile(`"planned_values"\s*:`)
-	tfPlanRegexRC                                   = regexp.MustCompile(`"resource_changes"\s*:`)
 	tfPlanRegexConf                                 = regexp.MustCompile(`"configuration"\s*:`)
 	tfPlanRegexTV                                   = regexp.MustCompile(`"terraform_version"\s*:`)
 	cdkTfRegexMetadata                              = regexp.MustCompile(`"metadata"\s*:`)
@@ -215,6 +215,16 @@ type Analyzer struct {
 	CollectKustomizeRoots bool
 }
 
+// tfPlanRegexes are the keys `terraform show -json` writes in every plan.
+// resource_changes is left out when nothing changes.
+var tfPlanRegexes = []*regexp.Regexp{tfPlanRegexFV, tfPlanRegexTV, tfPlanRegexPV}
+
+// IsTerraformPlan reports whether content is Terraform plan JSON. The plan is
+// scanned only when it also has a configuration section (see classifyByContent).
+func IsTerraformPlan(content []byte) bool {
+	return matchesType(terraform, content)
+}
+
 // types is a map that contains the regex by type
 var types = map[string]regexSlice{
 	"openapi": {
@@ -254,12 +264,7 @@ var types = map[string]regexSlice{
 		},
 	},
 	"terraform": {
-		[]*regexp.Regexp{
-			tfPlanRegexConf,
-			tfPlanRegexPV,
-			tfPlanRegexRC,
-			tfPlanRegexTV,
-		},
+		tfPlanRegexes,
 	},
 	"cdkTf": {
 		[]*regexp.Regexp{
@@ -800,6 +805,13 @@ func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []
 	// Only process JSON files if they are Terraform plans
 	// This will be the case until other platforms support json scanning
 	if ext == json && (endReturnType != "terraform" || returnType == cdkTf) {
+		return ""
+	}
+	if returnType == terraform && !tfPlanRegexConf.Match(content) {
+		// Without configuration a plan cannot tell the attributes the user
+		// wrote from the computed ones.
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Info().Msgf("skipping Terraform plan %s: it has no configuration section", path)
 		return ""
 	}
 

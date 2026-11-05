@@ -1,0 +1,12 @@
+{
+  "id": "terraform-aws-instance-unknown-meta",
+  "legacyId": "b3b3b3b3-0000-4000-8000-000000000003",
+  "queryName": "Instance unknown meta",
+  "severity": "LOW",
+  "category": "Best Practices",
+  "descriptionText": "Flags an instance whose ami is unknown and one whose description key exists.",
+  "descriptionUrl": "https://example.com/instance-unknown-meta",
+  "platform": "Terraform",
+  "descriptionID": "b3b3b3b3",
+  "cloudProvider": "aws"
+}

@@ -19,13 +19,6 @@ import (
 const (
 	blockType   = "dynamic"
 	contentType = "content"
-	// MaxExpansion caps the blocks one dynamic block generates; a larger
-	// for_each is kept as written rather than expanded in part.
-	MaxExpansion = 256
-	// MaxGeneratedPerResource caps the blocks the dynamic blocks under one resource
-	// (or other top-level block) generate in total, nested ones included, so
-	// nesting cannot multiply the per-block cap.
-	MaxGeneratedPerResource = 1024
 )
 
 // Is reports whether b is a dynamic block.
@@ -62,20 +55,16 @@ func IteratorName(b *hclsyntax.Block) string {
 type Expansion struct {
 	// Iterators holds the iterator value of every block generated; empty unless Resolved.
 	Iterators []cty.Value
-	// Requested is how many blocks for_each asks for, whether or not they were
-	// expanded; zero when for_each does not resolve.
-	Requested int
-	// Resolved is false when for_each cannot be resolved, or asks for more than
-	// MaxExpansion blocks: how many blocks the dynamic block generates, possibly
-	// none, is then unknown, and callers keep it as written so rules can tell a
-	// block that may be absent from one that is present, and no generated block
-	// is silently dropped.
+	// Resolved is false when for_each cannot be resolved: how many blocks the
+	// dynamic block generates, possibly none, is then unknown, and callers keep
+	// it as written so rules can tell a block that may be absent from one that
+	// is present, and no generated block is silently dropped.
 	Resolved bool
-	// OverCap is set when for_each resolves but asks for more than MaxExpansion.
-	OverCap bool
 }
 
-// Expand evaluates the for_each of b under ctx.
+// Expand evaluates the for_each of b under ctx. Every element is expanded: a
+// cap would leave generated blocks without their content and their findings
+// unreported.
 func Expand(b *hclsyntax.Block, ctx *hcl.EvalContext) Expansion {
 	attr, ok := b.Body.Attributes["for_each"]
 	if !ok {
@@ -85,15 +74,11 @@ func Expand(b *hclsyntax.Block, ctx *hcl.EvalContext) Expansion {
 	if diags.HasErrors() || !v.IsKnown() || v.IsNull() || !v.CanIterateElements() || !v.Length().IsKnown() {
 		return Expansion{}
 	}
-	requested := v.LengthInt()
-	if requested > MaxExpansion {
-		return Expansion{Requested: requested, OverCap: true}
-	}
-	iterators := make([]cty.Value, 0, requested)
+	iterators := make([]cty.Value, 0, v.LengthInt())
 	for it := v.ElementIterator(); it.Next(); {
 		iterators = append(iterators, iterator(it.Element()))
 	}
-	return Expansion{Iterators: iterators, Requested: requested, Resolved: true}
+	return Expansion{Iterators: iterators, Resolved: true}
 }
 
 func iterator(key, value cty.Value) cty.Value {

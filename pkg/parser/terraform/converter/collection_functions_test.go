@@ -32,11 +32,11 @@ func TestTosetForEachInDynamicBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	resource := doc["resource"].(model.Document)["google_sql_database_instance"].(model.Document)["x"].(model.Document)
-	settings := resource["settings"].(model.Document)
+	settings := resource["settings"].([]interface{})[0].(model.Document)
 	if _, ok := settings["dynamic"]; ok {
 		t.Fatal("dynamic block was not expanded")
 	}
-	ipConfiguration, ok := settings["ip_configuration"].(model.Document)
+	ipConfiguration, ok := settings["ip_configuration"].([]interface{})[0].(model.Document)
 	if !ok {
 		t.Fatalf("ip_configuration = %#v, want the single block toset([\"private\"]) generates", settings["ip_configuration"])
 	}

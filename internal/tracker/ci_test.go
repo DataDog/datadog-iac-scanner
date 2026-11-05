@@ -176,3 +176,12 @@ func TestNewTracker(t *testing.T) {
 		})
 	}
 }
+
+func TestFindingWithoutIdentityCounts(t *testing.T) {
+	c := &CITracker{}
+	c.FindingWithoutIdentity()
+	c.FindingWithoutIdentity()
+	if c.IdentityGaps != 2 {
+		t.Fatalf("IdentityGaps = %d, want 2", c.IdentityGaps)
+	}
+}

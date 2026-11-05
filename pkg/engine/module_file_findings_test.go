@@ -71,7 +71,7 @@ func resolveRemoteBucketPackage(
 		}, true
 	}
 	external := func(path string) bool { return pathWithinRoot(path, pkg) }
-	return resolveModuleDocuments(context.Background(), files, repo, resolver, targets, lookup, nil, nil, external)
+	return resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), resolver, targets, lookup, nil, nil, external)
 }
 
 func TestResolveModuleDocuments_AttributesExternalModuleFilesToEveryCall(t *testing.T) {
@@ -86,14 +86,15 @@ func TestResolveModuleDocuments_AttributesExternalModuleFilesToEveryCall(t *test
 	require.False(t, helper.keepWritten)
 	require.Equal(t, "@outputs.tf", helper.name)
 
-	chains := map[string]*model.ModuleAttribution{}
+	roots := map[string]*model.ModuleAttribution{}
 	for _, call := range helper.calls {
-		chains[call.callChain] = call.attribution
+		roots[call.rootModule] = call.attribution
 	}
-	require.Contains(t, chains, "stack-a/main.tf|module.bucket.module.helper")
-	require.Contains(t, chains, "stack-b/main.tf|module.bucket.module.helper")
+	require.Contains(t, roots, "stack-a")
+	require.Contains(t, roots, "stack-b")
+	require.NotEmpty(t, helper.calls[0].moduleAddress, "the call's module instance address identifies its copies")
 
-	attr := chains["stack-b/main.tf|module.bucket.module.helper"]
+	attr := roots["stack-b"]
 	require.Equal(t, model.SourceLocation{
 		Filename: "stack-b/main.tf", LineStart: 2, LineEnd: 2, ColumnStart: 3, ColumnEnd: 14 + len(bucketSource),
 	}, attr.CallSite)
@@ -118,8 +119,7 @@ func TestResolveModuleDocuments_AttributesExternalModuleFilesWithoutTargetedReso
 	targets := &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}}
 	res := resolveRemoteBucketPackage(t, repo, pkg, files, targets)
 	require.True(t, res.ok)
-	require.Empty(t, res.docs)
-	require.Empty(t, res.calledDirs, "nothing instantiated, so no call site is stripped")
+	require.Empty(t, res.docs, "nothing targeted is instantiated")
 	require.Len(t, res.moduleFiles["helper-outputs"].calls, 2)
 }
 
@@ -147,28 +147,28 @@ func TestResolveModuleDocuments_NoExternalFilesRecordsNoCalls(t *testing.T) {
 	resolver := func(source, _, _, _ string) (string, string, bool) {
 		return bucket, pkg, source == bucketSource
 	}
-	res := resolveModuleDocuments(context.Background(), files, repo, resolver, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), resolver, nil, nil, nil, nil, nil)
 	require.True(t, res.ok)
 	require.Nil(t, res.moduleFiles)
 }
 
 func TestAttributeModuleFileFindings(t *testing.T) {
-	call := func(chain, root string) moduleCall {
-		return moduleCall{callChain: chain, attribution: &model.ModuleAttribution{
+	call := func(moduleAddress, root string) moduleCall {
+		return moduleCall{moduleAddress: moduleAddress, rootModule: root, attribution: &model.ModuleAttribution{
 			SourceType:         moduleSourceTypeGit,
-			CallSite:           model.SourceLocation{Filename: root, LineStart: 2},
+			CallSite:           model.SourceLocation{Filename: root + "/main.tf", LineStart: 2},
 			ModuleCodeLocation: model.SourceLocation{Filename: "terraform-modules/aws--helper"},
 			ModulePath:         []model.ModulePathHop{{Name: "bucket"}, {Name: "helper"}},
 		}}
 	}
 	files := map[string]*moduleFileCalls{
 		"helper": {
-			calls:                []moduleCall{call("stack-a/main.tf|module.bucket.module.helper", "stack-a/main.tf"), call("stack-b/main.tf|module.bucket.module.helper", "stack-b/main.tf")},
+			calls:                []moduleCall{call("module.bucket.module.helper", "stack-a"), call("module.bucket.module.helper", "stack-b")},
 			name:                 "@outputs.tf",
 			writtenResourceTypes: map[string]bool{"aws_s3_bucket": true},
 		},
 		"partial": {
-			calls:       []moduleCall{call("stack-a/main.tf|module.other", "stack-a/main.tf")},
+			calls:       []moduleCall{call("module.other", "stack-a")},
 			name:        "main.tf",
 			keepWritten: true,
 		},
@@ -189,16 +189,16 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 
 	ids := make([]string, 0, len(got))
 	for i := range got {
-		ids = append(ids, got[i].QueryID+"@"+got[i].ModuleCallChain)
+		ids = append(ids, got[i].QueryID+"@"+got[i].RootModule)
 	}
 	require.Equal(t, []string{
 		"repo@",
-		"output@stack-a/main.tf|module.bucket.module.helper",
-		"output@stack-b/main.tf|module.bucket.module.helper",
+		"output@stack-a",
+		"output@stack-b",
 		"written-resource@",
 		"instantiated@",
 		"variable@",
-		"variable@stack-a/main.tf|module.other",
+		"variable@stack-a",
 	}, ids)
 
 	output := got[2].ModuleAttribution
@@ -374,7 +374,7 @@ func TestKeptAsWrittenDataFallback(t *testing.T) {
 func TestAttributeModuleFileFindingsLeavesPreAttributedUnchanged(t *testing.T) {
 	attr := &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: "stack/main.tf"}}
 	files := map[string]*moduleFileCalls{
-		"ext": {calls: []moduleCall{{callChain: "chain", attribution: &model.ModuleAttribution{}}}, name: "main.tf"},
+		"ext": {calls: []moduleCall{{moduleAddress: "module.m", rootModule: "stack", attribution: &model.ModuleAttribution{}}}, name: "main.tf"},
 	}
 	v := model.Vulnerability{FileID: "ext", ResourceType: "output", ModuleAttribution: attr}
 	got := attributeModuleFileFindings([]model.Vulnerability{v}, files)
@@ -394,4 +394,9 @@ func TestHasUnresolvableModuleCall(t *testing.T) {
 	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{call("%{ if x }a%{ endif }")}))
 	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{call(nil)}))
 	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{{Document: model.Document{}}}), "an unparsed file is not known to be free of them")
+}
+
+// relDirForTest names a directory relative to repo the way the Inspector does.
+func relDirForTest(repo string) func(string) string {
+	return func(dir string) string { return repoRelativeDir(dir, repo, nil) }
 }

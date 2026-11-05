@@ -8,7 +8,9 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,17 +19,23 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
-// docFileID is the prefix of synthetic doc ids: fileID\x00callChain.
+// docFileID is the file-id field of a synthetic doc id
+// (rootModule\x00fileID\x00moduleAddress\x00layer).
 func docFileID(id interface{}) string {
 	s, _ := id.(string)
-	return strings.SplitN(s, "\x00", 2)[0]
+	parts := strings.SplitN(s, "\x00", 3)
+	if len(parts) == 3 {
+		return parts[1]
+	}
+	return s
 }
 
 // writeFile creates dir/name with content and returns the absolute path.
@@ -77,19 +85,6 @@ func TestBuildRemoteResolverUsesVersion(t *testing.T) {
 	if packageRoot != "/cache" {
 		t.Fatalf("package root = %q, want /cache", packageRoot)
 	}
-
-	metaResolver := inspector.buildModuleMetadataResolver()
-	got, err := metaResolver.Resolve(context.Background(), &tfmodules.ParsedModule{
-		Source:   "terraform-aws-modules/vpc/aws",
-		Version:  "1.0.0",
-		FileName: callerFile,
-	})
-	if err != nil {
-		t.Fatalf("metadata Resolve: %v", err)
-	}
-	if got != "/cache/v1" {
-		t.Fatalf("metadata resolved dir = %q, want /cache/v1", got)
-	}
 }
 
 func TestBuildRemoteResolverPrefersCallSpecificMapping(t *testing.T) {
@@ -117,58 +112,6 @@ func TestBuildRemoteResolverPrefersCallSpecificMapping(t *testing.T) {
 	}
 }
 
-func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
-	root := t.TempDir()
-	rootFile := filepath.Join(root, "main.tf")
-	doc := model.Document{
-		"module": map[string]interface{}{
-			"remote": map[string]interface{}{
-				"source":  "terraform-aws-modules/vpc/aws",
-				"version": "1.0.0",
-			},
-		},
-	}
-	calledDirs := map[string]bool{"/cache/vpc": true}
-	successfulRoots := map[string]bool{root: true}
-
-	stripModuleCalls(t.Context(), doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, string, bool) {
-		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
-			return "/cache/vpc", "/cache", true
-		}
-		return "", "", false
-	}, nil)
-
-	if _, ok := doc["module"]; ok {
-		t.Fatalf("expected resolved remote module call to be stripped")
-	}
-}
-
-func TestStripModuleCalls_SkipsFailedRoot(t *testing.T) {
-	root := t.TempDir()
-	stackA := filepath.Join(root, "stack-a")
-	stackB := filepath.Join(root, "stack-b")
-	rootFileB := writeFile(t, stackB, "main.tf", `
-module "bucket" {
-  source = "../modules/bucket"
-}
-`)
-	doc := model.Document{
-		"module": map[string]interface{}{
-			"bucket": map[string]interface{}{
-				"source": "../modules/bucket",
-			},
-		},
-	}
-	calledDirs := map[string]bool{filepath.Join(root, "modules", "bucket"): true}
-	successfulRoots := map[string]bool{stackA: true} // stack-b eval failed
-
-	stripModuleCalls(t.Context(), doc, rootFileB, root, calledDirs, successfulRoots, newRootIndex([]string{stackA, stackB}), nil, nil)
-
-	if _, ok := doc["module"]; !ok {
-		t.Fatal("module call under a failed root must not be stripped")
-	}
-}
-
 func TestInstantiatedDocs_DoesNotDuplicateStaticResourcesAcrossExpansionLayers(t *testing.T) {
 	root := t.TempDir()
 	modulePath := writeFile(t, filepath.Join(root, "modules", "app"), "main.tf", `
@@ -183,21 +126,24 @@ resource "aws_s3_bucket" "replica" {
 `)
 	fm := fileMeta("mod-id", modulePath)
 	resources := []tfeval.ResolvedResource{
-		{Type: "aws_s3_bucket", Name: "shared", DefinedIn: modulePath, ModuleAddress: "module.app"},
-		{Type: "aws_s3_bucket", Name: "replica[0]", DefinedIn: modulePath, ModuleAddress: "module.app"},
-		{Type: "aws_s3_bucket", Name: "replica[1]", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "shared", BaseName: "shared", DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[0]", BaseName: "replica", Key: tfeval.InstanceKey{Kind: tfeval.IntKey, Int: 0}, DefinedIn: modulePath, ModuleAddress: "module.app"},
+		{Type: "aws_s3_bucket", Name: "replica[1]", BaseName: "replica", Key: tfeval.InstanceKey{Kind: tfeval.IntKey, Int: 1}, DefinedIn: modulePath, ModuleAddress: "module.app"},
 	}
 
 	docs, _, _ := instantiatedDocs(
 		resources,
-		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
+		map[string]*model.FileMetadata{evaluatorPath(nil, absPath(modulePath, root)): fm},
+		nil,
 		root,
+		func(dir string) string { return repoRelativeDir(dir, root, nil) },
 		nil,
 		make(map[docContentKey]string),
 		make(map[string][]extraCallerInfo),
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
+		make(writtenBlocks),
 	)
 
 	if len(docs) != 2 {
@@ -221,72 +167,6 @@ resource "aws_s3_bucket" "replica" {
 	}
 	if replicas != 2 {
 		t.Fatalf("expanded resource appears %d times, want one per instance", replicas)
-	}
-}
-
-// A failed root's evaluations are keyed by its directory, so the next root
-// cannot reuse them. Releasing the cache also drops the collections keyMemo
-// pinned while hashing the locals.
-func TestFailedRootReleasesEvalCache(t *testing.T) {
-	repo := t.TempDir()
-	child := writeFile(t, filepath.Join(repo, "modules", "child"), "main.tf", `
-resource "aws_s3_bucket" "c" { bucket = "child" }
-`)
-	var files model.FileMetadatas
-	files = append(files, fileMeta("child", child))
-	var roots []string
-	for _, name := range []string{"stack-a", "stack-b"} {
-		dir := filepath.Join(repo, name)
-		path := writeFile(t, dir, "main.tf", `
-locals {
-  owners  = { a = "alpha", b = "beta" }
-  derived = local.owners[var.service]
-}
-variable "service" { default = "a" }
-module "child" {
-  source = "../modules/child"
-}
-resource "aws_s3_bucket" "a" { bucket = local.derived }
-`)
-		files = append(files, fileMeta(name, path))
-		roots = append(roots, dir)
-	}
-
-	previous := rootEvalWorkers
-	rootEvalWorkers = 1
-	defer func() { rootEvalWorkers = previous }()
-
-	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, repo)
-	evaluator := tfeval.New()
-	evaluator.SetMaxInstantiated(1)
-	moduleCalls := newModuleCallIndex(filesByDir, func(path string) bool {
-		return pathWithinRoot(path, filepath.Join(repo, "modules"))
-	})
-	if moduleCalls == nil {
-		t.Fatal("fixture must index the child module")
-	}
-	seen := make(map[docContentKey]string)
-	extras := make(map[string][]extraCallerInfo)
-	instantiated := make(instantiatedIndex)
-	var docs []model.Document
-	var synthetic []*model.FileMetadata
-	var resourceCount int
-	var rootEvalOK bool
-	evaluateRootModules(
-		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
-		byAbsPath, seen, extras, instantiated,
-		map[string]bool{}, map[string]bool{}, map[string]bool{},
-		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls,
-	)
-
-	if evaluator.LocalMemoSize() != 0 {
-		t.Fatalf("failed roots retained %d local values", evaluator.LocalMemoSize())
-	}
-	if evaluator.KeyMemoSize() != 0 {
-		t.Fatalf("failed roots retained %d hashed collections", evaluator.KeyMemoSize())
-	}
-	if evaluator.EvalCacheSize() != 0 {
-		t.Fatalf("failed roots retained %d module evaluations", evaluator.EvalCacheSize())
 	}
 }
 
@@ -337,7 +217,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		t.Fatalf("remove stack-b: %v", err)
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("expected partial module resolution to succeed")
 	}
@@ -392,53 +272,12 @@ resource "aws_s3_bucket" "this" {
 		t.Fatalf("remove failed root: %v", err)
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("expected the other root to evaluate successfully")
 	}
 	if len(res.suppressed["leaf-id"]) != 0 {
 		t.Fatalf("transitive module beneath failed root must not be suppressed: %#v", res.suppressed)
-	}
-}
-
-func TestResolveModuleDocuments_TruncatedCountKeepsSourceBlock(t *testing.T) {
-	root := t.TempDir()
-	rootDir := filepath.Join(root, "stack")
-	modDir := filepath.Join(root, "modules", "buckets")
-	cap := tfeval.MaxCountExpansion()
-
-	rootFile := writeFile(t, rootDir, "main.tf", `
-module "buckets" {
-  source = "../modules/buckets"
-}
-`)
-	modFile := writeFile(t, modDir, "main.tf", fmt.Sprintf(`
-resource "aws_s3_bucket" "replica" {
-  count  = %d
-  bucket = "bucket-${count.index}"
-}
-`, cap+2))
-
-	files := model.FileMetadatas{
-		fileMeta("root-id", rootFile),
-		fileMeta("mod-id", modFile),
-	}
-
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
-	if !res.ok {
-		t.Fatal("expected module resolution to succeed")
-	}
-	if len(res.docs) != cap {
-		t.Fatalf("expected %d instantiated docs for truncated count, got %d", cap, len(res.docs))
-	}
-	if res.expansionTruncations == 0 {
-		t.Fatal("expected count expansion truncation to be recorded")
-	}
-	if res.expansionMaxRequested != cap+2 {
-		t.Fatalf("expansionMaxRequested = %d, want %d", res.expansionMaxRequested, cap+2)
-	}
-	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
-		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)
 	}
 }
 
@@ -469,7 +308,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -489,8 +328,8 @@ resource "aws_s3_bucket" "this" {
 	if res.syntheticFiles[0].ID != doc["id"] {
 		t.Fatalf("synthetic file id = %v, want doc id %v", res.syntheticFiles[0].ID, doc["id"])
 	}
-	if res.syntheticFiles[0].ModuleCallChain == "" {
-		t.Fatalf("synthetic file should carry a non-empty module call chain")
+	if res.syntheticFiles[0].TerraformScope == nil || res.syntheticFiles[0].TerraformScope.ModuleAddress == "" {
+		t.Fatalf("synthetic file should carry its module instance scope")
 	}
 	if len(res.syntheticFiles[0].Document) != 0 {
 		t.Fatalf("synthetic file Document must be empty so Combine skips it")
@@ -547,7 +386,7 @@ resource "aws_sqs_queue_policy" "this" {
 `)
 	files := model.FileMetadatas{fileMeta("root-id", rootFile), fileMeta("mod-id", modFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	require.True(t, res.ok)
 	require.Len(t, res.docs, 1)
 	doc := res.docs[0]
@@ -555,8 +394,8 @@ resource "aws_sqs_queue_policy" "this" {
 	data, _ := doc["data"].(map[string]interface{})
 	policyDoc, _ := data["aws_iam_policy_document"].(map[string]interface{})
 	p, _ := policyDoc["p"].(map[string]interface{})
-	statement, _ := p["statement"].(map[string]interface{})
-	principals, _ := statement["principals"].(map[string]interface{})
+	statement, _ := p["statement"].([]interface{})[0].(map[string]interface{})
+	principals, _ := statement["principals"].([]interface{})[0].(map[string]interface{})
 	require.Equal(t, []interface{}{"*"}, principals["identifiers"])
 	ami, _ := data["aws_ami"].(map[string]interface{})
 	require.Contains(t, ami, "ubuntu")
@@ -565,7 +404,7 @@ resource "aws_sqs_queue_policy" "this" {
 	policies, _ := resource["aws_sqs_queue_policy"].(map[string]interface{})
 	this, _ := policies["this"].(map[string]interface{})
 	require.Equal(t,
-		`{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Principals":{"AWS":["*"]}}],"Version":"2012-10-17"}`+"\n", this["policy"])
+		`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sqs:*","Principal":{"AWS":"*"}}]}`+"\n", this["policy"])
 
 	require.True(t, res.suppressed["mod-id"]["data.aws_ami"]["ubuntu"])
 	require.True(t, res.suppressed["mod-id"]["data.aws_iam_policy_document"]["p"])
@@ -624,6 +463,18 @@ func TestRemoveInstantiatedResources(t *testing.T) {
 		if _, still := doc["resource"]; still {
 			t.Fatalf("only parser line metadata was left, so resource should be gone: %#v", doc)
 		}
+	})
+
+	t.Run("keeps a written block named like the metadata key", func(t *testing.T) {
+		doc := model.Document{"resource": model.Document{"aws_s3_bucket": model.Document{
+			"replaced": model.Document{"bucket": "a"},
+			ddMetaKey:  model.Document{"bucket": "b"},
+		}}}
+		removeInstantiatedResources(doc, map[string]map[string]bool{"aws_s3_bucket": {"replaced": true}})
+
+		resources, _ := asStringMap(doc["resource"])
+		buckets, _ := asStringMap(resources["aws_s3_bucket"])
+		require.Contains(t, buckets, ddMetaKey)
 	})
 
 	t.Run("removes instantiated data blocks", func(t *testing.T) {
@@ -693,7 +544,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", filepath.Join("modules", "bucket", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -764,7 +615,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 
 	for _, roots := range []int{1, 4, 32} {
 		repo, files := writeFanOut(t, roots, false)
-		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+		res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, nil, nil, nil, nil, nil)
 		if !res.ok {
 			t.Fatalf("roots=%d: resolveModuleDocuments ok = false", roots)
 		}
@@ -783,7 +634,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 
 	// Different inputs genuinely produce different content, so those do scale.
 	repo, files := writeFanOut(t, 8, true)
-	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, nil, nil, nil, nil, nil)
 	if len(res.docs) != 8*modFiles {
 		t.Fatalf("%d documents for 8 differing roots, want %d", len(res.docs), 8*modFiles)
 	}
@@ -793,7 +644,7 @@ func TestResolveModuleDocuments_DocumentsDoNotGrowWithCallSites(t *testing.T) {
 // document holding that file's resources, and nothing else.
 func TestResolveModuleDocuments_DocumentMirrorsItsFile(t *testing.T) {
 	repo, files := writeFanOut(t, 1, false)
-	res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatal("resolveModuleDocuments ok = false")
 	}
@@ -832,7 +683,7 @@ func TestResolveModuleDocuments_DocumentIDsAreStable(t *testing.T) {
 	repo, files := writeFanOut(t, 8, false)
 
 	snapshot := func() ([]string, map[string][]string) {
-		res := resolveModuleDocuments(context.Background(), files, repo, nil, nil, nil, nil, nil, nil)
+		res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), nil, nil, nil, nil, nil, nil)
 		ids := make([]string, 0, len(res.docs))
 		for _, doc := range res.docs {
 			ids = append(ids, doc["id"].(string))
@@ -900,7 +751,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -923,17 +774,20 @@ resource "aws_s3_bucket" "this" {
 	if names["from-a"] != 1 || names["from-b"] != 1 {
 		t.Fatalf("bucket values = %#v, want one from-a and one from-b", names)
 	}
-	// The two callers must produce distinct document ids and distinct call chains
-	// so their findings get distinct fingerprints instead of collapsing.
+	// The two callers must produce distinct document ids and distinct root
+	// modules so their findings get distinct fingerprints instead of collapsing.
 	if len(docIDs) != 2 {
 		t.Fatalf("want 2 distinct per-caller doc ids, got %d: %#v", len(docIDs), docIDs)
 	}
-	chains := make(map[string]bool)
+	roots := make(map[string]bool)
 	for _, sf := range res.syntheticFiles {
-		chains[sf.ModuleCallChain] = true
+		if sf.TerraformScope == nil {
+			t.Fatalf("synthetic file %v carries no Terraform scope", sf.ID)
+		}
+		roots[sf.TerraformScope.RootModule] = true
 	}
-	if len(chains) != 2 {
-		t.Fatalf("want 2 distinct module call chains (one per root), got %d: %#v", len(chains), chains)
+	if len(roots) != 2 {
+		t.Fatalf("want 2 distinct root modules (one per root), got %d: %#v", len(roots), roots)
 	}
 	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatalf("shared module file should be suppressed")
@@ -983,7 +837,7 @@ resource "aws_s3_bucket" "this" {
 		fileMeta("mod-id", modFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1011,11 +865,8 @@ resource "aws_s3_bucket" "this" {
 	if dupes[0].docID == primaryID {
 		t.Fatalf("deduplicated caller must have a distinct doc id from the primary")
 	}
-	if dupes[0].callChain == res.syntheticFiles[0].ModuleCallChain {
-		t.Fatalf("deduplicated caller must have a distinct call chain from the primary")
-	}
-	if dupes[0].callChain == "" {
-		t.Fatalf("deduplicated caller must carry a non-empty call chain")
+	if dupes[0].rootModule == "" {
+		t.Fatalf("deduplicated caller must carry its root module directory")
 	}
 }
 
@@ -1028,7 +879,7 @@ func TestNewInstanceFileMetadata_LineInfoDocumentNotAliased(t *testing.T) {
 			},
 		},
 	}
-	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x", nil)
+	synth := newInstanceFileMetadata(&docGroup{fm: fm, rootModule: "stack", moduleAddress: "module.x", layer: 0})
 	delete(fm.LineInfoDocument, "resource")
 	if _, ok := synth.LineInfoDocument["resource"]; !ok {
 		t.Fatal("synthetic LineInfoDocument must keep resource after suppression on parent")
@@ -1080,7 +931,7 @@ resource "aws_s3_bucket" "this" { bucket = var.name }
 		fileMeta("mod-b", modBFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1118,7 +969,7 @@ module "bucket" {
 		fileMeta("root-id", filepath.Join("stack", "main.tf")),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if res.ok {
 		t.Fatalf("resolveModuleDocuments ok = true, want false when all roots fail")
 	}
@@ -1145,7 +996,7 @@ resource "aws_s3_bucket" "this" {
 
 	files := model.FileMetadatas{fileMeta("orphan-id", orphanFile)}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
@@ -1188,7 +1039,7 @@ resource "aws_s3_bucket" "leaf" {
 		fileMeta("leaf-id", leafFile),
 	}
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true")
 	}
@@ -1249,7 +1100,7 @@ module "bucket" {
 	})
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).WithContext(context.Background())
-	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
+	if docs, synthetic, extras, moduleFiles, _ := ins.instantiateLocalModules(ctx, files, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {
@@ -1293,8 +1144,8 @@ func TestCalledModuleDirsFromDocuments_MergedEnvironmentLayout(t *testing.T) {
 			},
 		},
 	}, root, nil)
-	if !ok || !reflect.DeepEqual(dirs, []string{modDir}) {
-		t.Fatalf("calledModuleDirsFromDocuments() = %v, %v; want [%s]", dirs, ok, modDir)
+	if !ok || !reflect.DeepEqual(dirs, []string{pathKey(modDir)}) {
+		t.Fatalf("calledModuleDirsFromDocuments() = %v, %v; want [%s]", dirs, ok, pathKey(modDir))
 	}
 }
 
@@ -1319,7 +1170,7 @@ func TestCalledModuleDirsFromDocuments_LocalModule(t *testing.T) {
 	if !ok {
 		t.Fatal("expected document-based discovery")
 	}
-	want := filepath.Clean(modDir)
+	want := pathKey(modDir)
 	if len(dirs) != 1 || dirs[0] != want {
 		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
 	}
@@ -1360,7 +1211,7 @@ func TestDiscoverCalledModuleDirs_UsesParsedDocument(t *testing.T) {
 		},
 	}, root, nil, filepath.Join(root, "stack"))
 
-	want := filepath.Clean(modDir)
+	want := pathKey(modDir)
 	if len(dirs) != 1 || dirs[0] != want {
 		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
 	}
@@ -1387,7 +1238,7 @@ module "bucket" {
 		fileMeta("root-id", rootFile),
 	}, root, nil, filepath.Dir(rootFile))
 
-	want := filepath.Clean(modDir)
+	want := pathKey(modDir)
 	if len(dirs) != 1 || dirs[0] != want {
 		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
 	}
@@ -1474,7 +1325,7 @@ resource "aws_s3_bucket" "this" {
 `)
 
 	files := model.FileMetadatas{fileMeta("env-id", envFile), fileMeta("mod-id", modFile)}
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, vfs.DiskFS{}, nil)
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, vfs.DiskFS{}, nil)
 	if !res.ok || len(res.docs) != 1 {
 		t.Fatalf("expected the module instantiated once, got ok=%v docs=%#v", res.ok, res.docs)
 	}
@@ -1487,4 +1338,1276 @@ resource "aws_s3_bucket" "this" {
 	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatal("the called module must not also be scanned as a root")
 	}
+}
+
+type readDirRecorder struct {
+	vfs.FS
+	dirs []string
+}
+
+func (r *readDirRecorder) ReadDir(name string) ([]fs.DirEntry, error) {
+	r.dirs = append(r.dirs, name)
+	return r.FS.ReadDir(name)
+}
+
+func noTargetFile(withModuleCall bool) *model.FileMetadata {
+	file := fileMeta("main-id", "/ws/infra/main.tf")
+	file.Document = model.Document{
+		"resource": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{"b": map[string]interface{}{"bucket": "x"}},
+		},
+	}
+	if withModuleCall {
+		file.Document["module"] = map[string]interface{}{
+			"net": map[string]interface{}{"source": "../modules/net"},
+		}
+	}
+	return file
+}
+
+func TestResolveModuleDocumentsReadsCalledDirWhenNothingIsEvaluated(t *testing.T) {
+	memfs := vfs.NewMemFS(nil)
+	targets := &ruleTargets{types: map[string]bool{"aws_instance": true}}
+	files := model.FileMetadatas{noTargetFile(true)}
+
+	res := resolveModuleDocuments(
+		context.Background(), files, "/ws", relDirForTest("/ws"), nil, targets, nil, nil, memfs, nil,
+	)
+
+	require.False(t, res.ok)
+	require.Equal(t, []string{"/ws/modules/net"}, memfs.MissingFiles())
+}
+
+func TestResolveModuleDocumentsSkipsDiscoveryWithoutModuleCalls(t *testing.T) {
+	recorder := &readDirRecorder{FS: vfs.NewMemFS(nil)}
+	targets := &ruleTargets{types: map[string]bool{"aws_instance": true}}
+	files := model.FileMetadatas{noTargetFile(false)}
+
+	res := resolveModuleDocuments(
+		context.Background(), files, "/ws", relDirForTest("/ws"), nil, targets, nil, nil, recorder, nil,
+	)
+
+	require.False(t, res.ok)
+	require.Empty(t, recorder.dirs)
+}
+
+func blocksDoc(section string, blocks map[string][]string) model.Document {
+	byType := map[string]interface{}{}
+	for typ, names := range blocks {
+		byName := map[string]interface{}{}
+		for _, name := range names {
+			byName[name] = map[string]interface{}{"bucket": name}
+		}
+		byType[typ] = byName
+	}
+	return model.Document{section: byType}
+}
+
+func blockNames(doc map[string]interface{}, section, typ string) []string {
+	var names []string
+	for name := range docAsMap(docAsMap(doc[section])[typ]) {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func zeroInstanceRoot(t *testing.T, targets *ruleTargets) *model.FileMetadata {
+	t.Helper()
+	root := t.TempDir()
+	fm := parseTerraform(t, writeFile(t, root, "main.tf", `
+resource "aws_s3_bucket" "gone" {
+  count  = 0
+  bucket = "gone"
+}
+
+resource "aws_s3_bucket" "kept" {
+  bucket = "kept"
+}
+`))[0]
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), model.FileMetadatas{fm}, targets)
+	return fm
+}
+
+func TestZeroInstanceBlockIsLeftOut(t *testing.T) {
+	for _, targets := range []*ruleTargets{
+		{types: map[string]bool{"aws_s3_bucket": true}},
+		{types: map[string]bool{"aws_instance": true}},
+	} {
+		fm := zeroInstanceRoot(t, targets)
+		require.Equal(t, []string{"kept"}, blockNames(fm.Document, "resource", "aws_s3_bucket"))
+		require.Equal(t, []string{"kept"}, blockNames(fm.LineInfoDocument, "resource", "aws_s3_bucket"))
+	}
+}
+
+func TestZeroInThisCallInstancesInAnother(t *testing.T) {
+	root := t.TempDir()
+	rootFile := writeFile(t, filepath.Join(root, "stack"), "main.tf", `
+module "none" {
+  source = "../modules/bucket"
+  n      = 0
+}
+
+module "two" {
+  source = "../modules/bucket"
+  n      = 2
+}
+`)
+	modFile := writeFile(t, filepath.Join(root, "modules", "bucket"), "main.tf", `
+variable "n" {}
+
+resource "aws_s3_bucket" "b" {
+  count  = var.n
+  bucket = "b-${count.index}"
+}
+`)
+	files := model.FileMetadatas{fileMeta("root-id", rootFile), fileMeta("mod-id", modFile)}
+
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	instances := 0
+	for _, doc := range res.docs {
+		instances += len(blockNames(doc, "resource", "aws_s3_bucket"))
+	}
+	require.Equal(t, 2, instances)
+	require.True(t, res.suppressed["mod-id"]["aws_s3_bucket"]["b"])
+}
+
+func TestDataAndEphemeralEmptyBlocksDropIndependently(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, root, "main.tf", `
+resource "aws_x" "same" {
+  count = 1
+}
+
+data "aws_x" "same" {
+  count = 0
+}
+
+ephemeral "aws_x" "same" {
+  count = 0
+}
+`)
+	fm := parseTerraform(t, path)[0]
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), model.FileMetadatas{fm}, &ruleTargets{types: map[string]bool{"aws_y": true}})
+
+	for _, doc := range []map[string]interface{}{fm.Document, fm.LineInfoDocument} {
+		require.Equal(t, []string{"same"}, blockNames(doc, "resource", "aws_x"))
+		require.Empty(t, blockNames(doc, "data", "aws_x"))
+		require.Empty(t, blockNames(doc, ephemeralSection, "aws_x"))
+	}
+}
+
+func TestUnresolvedDirKeepsEmptyBlocks(t *testing.T) {
+	root := t.TempDir()
+	stackA := filepath.Join(root, "stack-a")
+	stackB := filepath.Join(root, "stack-b")
+	call := `
+module "bucket" {
+  source = "../modules/bucket"
+}
+`
+	rootA := writeFile(t, stackA, "main.tf", call)
+	modFile := writeFile(t, filepath.Join(root, "modules", "bucket"), "main.tf", `
+resource "aws_s3_bucket" "gone" {
+  count = 0
+}
+`)
+	mod := fileMeta("mod-id", modFile)
+	mod.Document = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"gone"}})
+	mod.LineInfoDocument = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"gone"}})
+	rootB := fileMeta("b-root", filepath.Join(stackB, "main.tf"))
+	rootB.Document = model.Document{
+		"module": map[string]interface{}{"bucket": map[string]interface{}{"source": "../modules/bucket"}},
+	}
+	files := model.FileMetadatas{fileMeta("a-root", rootA), mod, rootB}
+
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+
+	require.Equal(t, []string{"gone"}, blockNames(mod.Document, "resource", "aws_s3_bucket"))
+	require.Equal(t, []string{"gone"}, blockNames(mod.LineInfoDocument, "resource", "aws_s3_bucket"))
+}
+
+func TestListShapedTypeKeepsItsEmptyBlocks(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, root, "main.tf", `
+resource "aws_s3_bucket" "gone" {
+  count = 0
+}
+
+resource "aws_s3_bucket" "kept" {}
+
+resource "aws_instance" "i" {}
+`)
+	list := func() model.Document {
+		return model.Document{"resource": map[string]interface{}{
+			"aws_s3_bucket": []interface{}{
+				map[string]interface{}{"count": 0},
+				map[string]interface{}{"bucket": "kept"},
+			},
+			"aws_instance": map[string]interface{}{"i": map[string]interface{}{}},
+		}}
+	}
+	fm := fileMeta("main-id", path)
+	fm.Document = list()
+	fm.LineInfoDocument = list()
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), model.FileMetadatas{fm}, &ruleTargets{types: map[string]bool{"aws_instance": true}})
+
+	for _, doc := range []map[string]interface{}{fm.Document, fm.LineInfoDocument} {
+		require.Equal(t, list()["resource"].(map[string]interface{})["aws_s3_bucket"], docAsMap(doc["resource"])["aws_s3_bucket"])
+	}
+}
+
+func TestEmptyInOneRootInstantiatedInAnotherIsKept(t *testing.T) {
+	root := t.TempDir()
+	rootA := writeFile(t, filepath.Join(root, "stack-a"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  n      = 0
+}
+`)
+	rootB := writeFile(t, filepath.Join(root, "stack-b"), "main.tf", `
+module "bucket" {
+  source = "../modules/bucket"
+  n      = 1
+}
+`)
+	modFile := writeFile(t, filepath.Join(root, "modules", "bucket"), "main.tf", `
+variable "n" {}
+
+resource "aws_s3_bucket" "b" {
+  count = var.n
+}
+`)
+	mod := fileMeta("mod-id", modFile)
+	mod.Document = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"b"}})
+	docAsMap(docAsMap(mod.Document["resource"])["aws_s3_bucket"])["b"].(map[string]interface{})["count"] = "${var.n}"
+	mod.LineInfoDocument = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"b"}})
+	call := model.Document{"module": map[string]interface{}{"bucket": map[string]interface{}{"source": "../modules/bucket"}}}
+	a, b := fileMeta("a-root", rootA), fileMeta("b-root", rootB)
+	a.Document, b.Document = call, call
+	files := model.FileMetadatas{a, b, mod}
+
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, &ruleTargets{types: map[string]bool{"aws_instance": true}})
+
+	require.Equal(t, []string{"b"}, blockNames(mod.Document, "resource", "aws_s3_bucket"))
+	require.Equal(t, []string{"b"}, blockNames(mod.LineInfoDocument, "resource", "aws_s3_bucket"))
+}
+
+func TestDroppingLastBlockLeavesWellFormedDocument(t *testing.T) {
+	for _, section := range []string{"resource", "data", ephemeralSection} {
+		t.Run(section, func(t *testing.T) {
+			root := t.TempDir()
+			path := writeFile(t, root, "main.tf", fmt.Sprintf(`
+%s "aws_x" "gone" {
+  count = 0
+}
+
+variable "v" {}
+`, section))
+			newDoc := func() model.Document {
+				doc := blocksDoc(section, map[string][]string{"aws_x": {"gone"}})
+				doc["variable"] = map[string]interface{}{"v": map[string]interface{}{}}
+				return doc
+			}
+			fm := fileMeta("main-id", path)
+			fm.Document = newDoc()
+			docAsMap(docAsMap(fm.Document[section])["aws_x"])["gone"].(map[string]interface{})["count"] = 0
+			fm.LineInfoDocument = newDoc()
+			ins := newTestInspector(t, inspectorOpts{repoPath: root})
+			// Target aws_x so count=0 is evaluated and stripped; unrelated types
+			// no longer force a full module walk.
+			ins.instantiateLocalModules(context.Background(), model.FileMetadatas{fm}, &ruleTargets{types: map[string]bool{"aws_x": true}})
+
+			want := model.Document{"variable": map[string]interface{}{"v": map[string]interface{}{}}}
+			require.Equal(t, want, fm.Document)
+			require.Equal(t, map[string]interface{}(want), fm.LineInfoDocument)
+		})
+	}
+}
+
+func TestAddDroppedBlocksSkipsFailedRootDirectory(t *testing.T) {
+	repo := t.TempDir()
+	failed := filepath.Join(repo, "failed")
+	path := filepath.Join(failed, "main.tf")
+	fm := fileMeta("failed-id", path)
+	fm.Document = blocksDoc("resource", map[string][]string{"aws_x": {"gone"}})
+	instantiated := make(instantiatedIndex)
+
+	addDroppedBlocks(instantiated,
+		[]tfeval.EmptyBlock{{Type: "aws_x", Name: "gone", DefinedIn: path}},
+		map[string]bool{}, map[string]bool{pathKey(failed): true},
+		map[string]*model.FileMetadata{pathKey(path): fm}, nil, repo)
+
+	require.Empty(t, instantiated)
+}
+
+func metaOf(t *testing.T, doc model.Document, section, typ, name string) map[string]interface{} {
+	t.Helper()
+	block := docAsMap(docAsMap(docAsMap(doc[section])[typ])[name])
+	meta, ok := block[ddMetaKey].(map[string]interface{})
+	require.True(t, ok, "%s.%s.%s has no _dd_meta: %#v", section, typ, name, block)
+	return meta
+}
+
+func scopeOfDoc(t *testing.T, res moduleResolutionResult, doc model.Document) *model.FileMetadata {
+	t.Helper()
+	for _, sf := range res.syntheticFiles {
+		if sf.ID == doc["id"] {
+			return sf
+		}
+	}
+	t.Fatalf("no synthetic file for doc %v", doc["id"])
+	return nil
+}
+
+func resolveModuleFixture(t *testing.T, calls map[string]string, moduleBody string) (moduleResolutionResult, string) {
+	t.Helper()
+	root := t.TempDir()
+	modFile := writeFile(t, filepath.Join(root, "modules", "m"), "main.tf", moduleBody)
+	files := model.FileMetadatas{fileMeta("mod-id", modFile)}
+	for dir, body := range calls {
+		files = append(files, fileMeta(dir+"-root", writeFile(t, filepath.Join(root, dir), "main.tf", body)))
+	}
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	return res, root
+}
+
+func TestInstantiatedDocCarriesMeta(t *testing.T) {
+	res, _ := resolveModuleFixture(t, map[string]string{"envs": `
+module "m" {
+  source = "../modules/m"
+}
+`}, `
+resource "aws_s3_bucket" "b" {
+  bucket = "x"
+}
+
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = ["s3:*"]
+  }
+}
+`)
+	require.Len(t, res.docs, 1)
+	doc := res.docs[0]
+	fm := scopeOfDoc(t, res, doc)
+
+	bucket := metaOf(t, doc, "resource", "aws_s3_bucket", "b")
+	policy := metaOf(t, doc, "data", "aws_iam_policy_document", "p")
+	require.Equal(t, "module.m.aws_s3_bucket.b", bucket["address"])
+	require.Equal(t, "module.m.data.aws_iam_policy_document.p", policy["address"])
+	require.NotContains(t, bucket, "root_modules")
+
+	id, ok := terraformIdentityFor(fm, "aws_s3_bucket", "b")
+	require.True(t, ok)
+	require.Equal(t, id.ResourceID, bucket["address"])
+	id, ok = terraformIdentityFor(fm, "data.aws_iam_policy_document", "p")
+	require.True(t, ok)
+	require.Equal(t, id.ResourceID, policy["address"])
+}
+
+func TestInstantiatedDocMetaInstanceAddresses(t *testing.T) {
+	t.Run("count", func(t *testing.T) {
+		res, _ := resolveModuleFixture(t, map[string]string{"envs": `
+module "m" {
+  source = "../modules/m"
+}
+`}, `
+resource "aws_s3_bucket" "b" {
+  count  = 2
+  bucket = "x"
+}
+`)
+		require.Len(t, res.docs, 2)
+		var got []string
+		for _, doc := range res.docs {
+			addr, _ := metaOf(t, doc, "resource", "aws_s3_bucket", "b")["address"].(string)
+			got = append(got, addr)
+			id, ok := terraformIdentityFor(scopeOfDoc(t, res, doc), "aws_s3_bucket", "b")
+			require.True(t, ok)
+			require.Equal(t, id.ResourceID, addr)
+		}
+		sort.Strings(got)
+		require.Equal(t, []string{"module.m.aws_s3_bucket.b[0]", "module.m.aws_s3_bucket.b[1]"}, got)
+	})
+
+	t.Run("for_each", func(t *testing.T) {
+		res, _ := resolveModuleFixture(t, map[string]string{"envs": `
+module "m" {
+  source = "../modules/m"
+}
+`}, `
+resource "aws_s3_bucket" "b" {
+  for_each = {"a$b" = 1}
+  bucket   = "x"
+}
+`)
+		require.Len(t, res.docs, 1)
+		want := "module.m.aws_s3_bucket.b" + address.InstanceSuffix(cty.StringVal("a$b"))
+		got := metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "b")["address"]
+		require.Equal(t, want, got)
+		id, ok := terraformIdentityFor(scopeOfDoc(t, res, res.docs[0]), "aws_s3_bucket", "b")
+		require.True(t, ok)
+		require.Equal(t, id.ResourceID, got)
+	})
+}
+
+const sharedModuleBody = `
+variable "name" {
+  type = string
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.name
+}
+
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = [var.name]
+  }
+}
+`
+
+func twoRootCalls(nameA, nameB string) map[string]string {
+	call := func(name string) string {
+		return `
+module "m" {
+  source = "../../modules/m"
+  name   = "` + name + `"
+}
+`
+	}
+	return map[string]string{"envs/a": call(nameA), "envs/b": call(nameB)}
+}
+
+func TestSharedDocListsEveryRoot(t *testing.T) {
+	t.Run("identical inputs share one document", func(t *testing.T) {
+		res, _ := resolveModuleFixture(t, twoRootCalls("same", "same"), sharedModuleBody)
+		require.Len(t, res.docs, 1)
+		require.NotContains(t, metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "b"), "root_modules")
+		var roots []string
+		for _, fm := range res.syntheticFiles {
+			roots = append(roots, fm.TerraformScope.RootModule)
+		}
+		for _, ex := range res.extras[res.docs[0]["id"].(string)] {
+			roots = append(roots, ex.rootModule)
+		}
+		sort.Strings(roots)
+		require.Equal(t, []string{"envs/a", "envs/b"}, roots)
+	})
+
+	t.Run("different inputs keep one root each", func(t *testing.T) {
+		res, _ := resolveModuleFixture(t, twoRootCalls("one", "two"), sharedModuleBody)
+		require.Len(t, res.docs, 2)
+		var roots []string
+		for _, fm := range res.syntheticFiles {
+			require.NotContains(t, metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "b"), "root_modules")
+			roots = append(roots, fm.TerraformScope.RootModule)
+		}
+		sort.Strings(roots)
+		require.Equal(t, []string{"envs/a", "envs/b"}, roots)
+	})
+}
+
+func TestMetaDoesNotSplitDedup(t *testing.T) {
+	res, _ := resolveModuleFixture(t, twoRootCalls("same", "same"), sharedModuleBody)
+	require.Len(t, res.docs, 1)
+	require.Len(t, res.syntheticFiles, 1)
+}
+
+func TestInstantiatedRootModuleDocMeta(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+resource "aws_s3_bucket" "b" {
+  count = 2
+}
+`)
+	res := resolveModuleDocuments(context.Background(), model.FileMetadatas{fileMeta("root-id", path)},
+		root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	require.Len(t, res.docs, 2)
+	var got []string
+	for _, doc := range res.docs {
+		meta := metaOf(t, doc, "resource", "aws_s3_bucket", "b")
+		addr, _ := meta["address"].(string)
+		got = append(got, addr)
+		require.NotContains(t, meta, "root_modules")
+		require.Equal(t, "envs", scopeOfDoc(t, res, doc).TerraformScope.RootModule)
+		id, ok := terraformIdentityFor(scopeOfDoc(t, res, doc), "aws_s3_bucket", "b")
+		require.True(t, ok)
+		require.Equal(t, id.ResourceID, addr)
+	}
+	sort.Strings(got)
+	require.Equal(t, []string{"aws_s3_bucket.b[0]", "aws_s3_bucket.b[1]"}, got)
+}
+
+func TestLayerDocumentsHoldDistinctTopLevelMaps(t *testing.T) {
+	shared := map[string]interface{}{"bucket": "x"}
+	entries := []instantiatedResource{{typ: "aws_s3_bucket", baseName: "b", attrs: shared}}
+	fm := &model.FileMetadata{ID: "f", FilePath: "main.tf"}
+	first := groupDocument(&docGroup{fm: fm, layer: 0, entries: entries, rootModule: "envs"})
+	second := groupDocument(&docGroup{fm: fm, layer: 1, entries: entries, rootModule: "envs"})
+
+	a := docAsMap(docAsMap(first["resource"])["aws_s3_bucket"])["b"].(map[string]interface{})
+	b := docAsMap(docAsMap(second["resource"])["aws_s3_bucket"])["b"].(map[string]interface{})
+	require.NotEqual(t, reflect.ValueOf(a).Pointer(), reflect.ValueOf(b).Pointer())
+	require.NotContains(t, shared, ddMetaKey)
+}
+
+func unresolvedDirFixture(
+	t *testing.T, callers map[string]string, extra ...string,
+) (mod *model.FileMetadata, res moduleResolutionResult, modDir string, docRoots map[string][]string) {
+	t.Helper()
+	root := t.TempDir()
+	modDir = filepath.Join(root, "modules", "m")
+	modFile := writeFile(t, modDir, "main.tf", `resource "aws_s3_bucket" "b" {}`)
+	mod = fileMeta("mod-id", modFile)
+	mod.Document = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"b"}})
+	mod.TerraformScope = &model.TerraformScope{RootModule: "modules/m"}
+	stampWrittenMeta(mod.Document)
+	files := model.FileMetadatas{mod}
+	for dir, source := range callers {
+		f := fileMeta(dir+"-root", filepath.Join(root, dir, "main.tf"))
+		f.Document = model.Document{"module": map[string]interface{}{
+			"m": map[string]interface{}{"source": source},
+		}}
+		files = append(files, f)
+	}
+	for _, dir := range extra {
+		f := fileMeta(dir+"-root", writeFile(t, filepath.Join(root, dir), "main.tf", `resource "aws_s3_bucket" "ok" {}`))
+		f.Document = blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"ok"}})
+		files = append(files, f)
+	}
+	res = resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, nil, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	_, _, _, _, docRoots = ins.instantiateLocalModules(context.Background(), files, nil)
+	return mod, res, modDir, docRoots
+}
+
+func TestUnresolvedDirListsCallerRoots(t *testing.T) {
+	mod, res, modDir, docRoots := unresolvedDirFixture(t, map[string]string{
+		"envs/a": "../../modules/m", "envs/b": "../../modules/m",
+	}, "ok")
+	require.True(t, res.unresolvedModuleDirs[pathKey(modDir)])
+	meta := metaOf(t, mod.Document, "resource", "aws_s3_bucket", "b")
+	require.NotContains(t, meta, "root_modules")
+	require.Equal(t, "aws_s3_bucket.b", meta["address"])
+	require.Equal(t, []string{"envs/a", "envs/b", "modules/m"}, docRoots["mod-id"])
+}
+
+func TestUnresolvedDirRootsUnionCallersAndOwn(t *testing.T) {
+	mod, res, modDir, docRoots := unresolvedDirFixture(t, map[string]string{"envs/a": "../../modules/m"}, "ok")
+	require.True(t, res.unresolvedModuleDirs[pathKey(modDir)])
+	require.NotContains(t, metaOf(t, mod.Document, "resource", "aws_s3_bucket", "b"), "root_modules")
+	require.Equal(t, []string{"envs/a", "modules/m"}, docRoots["mod-id"])
+}
+
+func TestUnresolvedDirReachedThroughOpaqueCall(t *testing.T) {
+	mod, res, modDir, docRoots := unresolvedDirFixture(t, map[string]string{
+		"envs/a": "../../modules/m", "envs/c": "${var.src}",
+	}, "ok")
+	require.True(t, res.unresolvedModuleDirs[pathKey(modDir)])
+	require.NotContains(t, metaOf(t, mod.Document, "resource", "aws_s3_bucket", "b"), "root_modules")
+	require.Equal(t, []string{"envs/a", "envs/c", "modules/m"}, docRoots["mod-id"])
+}
+
+func TestUncalledDirKeepsOwnRoot(t *testing.T) {
+	mod, res, modDir, docRoots := unresolvedDirFixture(t, map[string]string{"envs/a": "../../modules/other"}, "ok")
+	require.False(t, res.unresolvedModuleDirs[pathKey(modDir)])
+	require.NotContains(t, metaOf(t, mod.Document, "resource", "aws_s3_bucket", "b"), "root_modules")
+	require.Equal(t, []string{"modules/m"}, docRoots["mod-id"])
+}
+
+func TestReachingRootsByDir(t *testing.T) {
+	identity := func(d string) string { return d }
+	unresolved := func(dirs ...string) map[string]bool {
+		out := map[string]bool{}
+		for _, d := range dirs {
+			out[d] = true
+		}
+		return out
+	}
+	t.Run("a chain reaches the outermost root", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"root": {"mid"}, "mid": {"m"}}}
+		require.Equal(t, map[string][]string{"m": {"root"}, "mid": {"root"}},
+			reachingRootsByDir([]string{"root"}, graph, unresolved("m", "mid"), identity))
+	})
+	t.Run("a cycle terminates and still reaches the root", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"root": {"n"}, "m": {"n"}, "n": {"m"}}}
+		require.Equal(t, map[string][]string{"m": {"root"}, "n": {"root"}},
+			reachingRootsByDir([]string{"root"}, graph, unresolved("m", "n"), identity))
+	})
+	t.Run("roots come out sorted whatever their order", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"z": {"m"}, "a": {"m"}, "k": {"m"}}}
+		require.Equal(t, map[string][]string{"m": {"a", "k", "z"}},
+			reachingRootsByDir([]string{"z", "a", "k"}, graph, unresolved("m"), identity))
+	})
+	t.Run("roots sharing a relative path are listed once", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"/x/env": {"m"}, "/y/env": {"m"}}}
+		strip := func(d string) string { return filepath.Base(d) }
+		require.Equal(t, map[string][]string{"m": {"env"}},
+			reachingRootsByDir([]string{"/x/env", "/y/env"}, graph, unresolved("m"), strip))
+	})
+	t.Run("a directory no root reaches is left out", func(t *testing.T) {
+		graph := staticCallGraph{calls: map[string][]string{"root": {"other"}}}
+		require.Empty(t, reachingRootsByDir([]string{"root"}, graph, unresolved("m"), identity))
+	})
+	t.Run("a root with an opaque call reaches every directory", func(t *testing.T) {
+		graph := staticCallGraph{
+			calls:  map[string][]string{"r1": {"m"}, "r2": nil},
+			opaque: map[string]bool{"r2": true},
+		}
+		require.Equal(t, map[string][]string{"m": {"r1", "r2"}},
+			reachingRootsByDir([]string{"r1", "r2"}, graph, unresolved("m"), identity))
+	})
+}
+
+func TestUnresolvedDirKeepsCallRootsOfExternalModuleFile(t *testing.T) {
+	scope := &model.TerraformScope{RootModule: "lib"}
+	file := &model.FileMetadata{ID: "mod", FilePath: "/repo/lib/main.tf", TerraformScope: scope,
+		Document: blocksDoc("resource", map[string][]string{"aws_s3_bucket": {"b"}})}
+	stampWrittenMeta(file.Document)
+	mf := &moduleFileCalls{
+		scope: scope, keepWritten: true,
+		calls: []moduleCall{{moduleAddress: "module.m", rootModule: "envs/b"}, {moduleAddress: "module.m", rootModule: "envs/a"}},
+	}
+	files := model.FileMetadatas{file}
+	routeModuleFileRoots(files, map[string]*moduleFileCalls{"mod": mf})
+	require.NotContains(t, metaOf(t, file.Document, "resource", "aws_s3_bucket", "b"), "root_modules")
+	docRoots := documentRoots(files, &moduleResolutionResult{
+		moduleFiles:     map[string]*moduleFileCalls{"mod": mf},
+		unresolvedRoots: map[string][]string{moduleFileDir(file.FilePath, "/repo"): {"envs/c"}},
+	}, "/repo")
+	require.Equal(t, []string{"envs/a", "envs/b", "envs/c", "lib"}, docRoots["mod"])
+}
+
+const netModuleBody = `
+resource "aws_subnet" "s" {
+  count      = 2
+  cidr_block = "10.0.0.0/24"
+}
+
+resource "aws_route_table_association" "a" {
+  count     = 2
+  subnet_id = aws_subnet.s[count.index].id
+}
+`
+
+func netCall() map[string]string {
+	return map[string]string{"envs": `
+module "net" {
+  source = "../modules/m"
+}
+`}
+}
+
+func TestInstantiatedDocCarriesReferences(t *testing.T) {
+	res, _ := resolveModuleFixture(t, netCall(), netModuleBody)
+	addresses := map[string]bool{}
+	var refs map[string]interface{}
+	for _, doc := range res.docs {
+		for typ, name := range map[string]string{"aws_subnet": "s", "aws_route_table_association": "a"} {
+			if _, ok := docAsMap(docAsMap(doc["resource"])[typ])[name]; !ok {
+				continue
+			}
+			meta := metaOf(t, doc, "resource", typ, name)
+			addresses[meta["address"].(string)] = true
+			if meta["address"] == "module.net.aws_route_table_association.a[0]" {
+				refs, _ = meta[referencesKey].(map[string]interface{})
+			}
+		}
+	}
+	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"module.net.aws_subnet.s[0]"}}, refs)
+	for _, addr := range refs["subnet_id"].([]interface{}) {
+		require.True(t, addresses[addr.(string)], "%s is no document's address", addr)
+	}
+}
+
+func TestReferencesNameUntargetedTypes(t *testing.T) {
+	root := t.TempDir()
+	files := parseTerraform(t, writeFile(t, filepath.Join(root, "modules", "m"), "main.tf", netModuleBody))
+	files = append(files, parseTerraform(t, writeFile(t, filepath.Join(root, "envs"), "main.tf", netCall()["envs"]))...)
+	targets := &ruleTargets{types: map[string]bool{"aws_route_table_association": true}}
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, targets, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	var got []interface{}
+	for _, doc := range res.docs {
+		require.Empty(t, docAsMap(doc["resource"])["aws_subnet"])
+		meta := metaOf(t, doc, "resource", "aws_route_table_association", "a")
+		if meta["address"] == "module.net.aws_route_table_association.a[1]" {
+			got = meta[referencesKey].(map[string]interface{})["subnet_id"].([]interface{})
+		}
+	}
+	require.Equal(t, []interface{}{"module.net.aws_subnet.s[1]"}, got)
+}
+
+func TestWrittenRootBlockCarriesReferences(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+resource "aws_subnet" "s" {
+  cidr_block = "10.0.0.0/24"
+}
+
+resource "aws_route_table_association" "a" {
+  subnet_id = aws_subnet.s.id
+}
+
+variable "unset" {}
+
+locals {
+  u = { a = var.unset, b = "b" }
+}
+
+resource "aws_s3_bucket" "t" {
+  tags = merge(var.unset, { a = "b" })
+  labels = coalesce(local.u, {})
+}
+`)
+	files := writtenRootFiles(t, root, path)
+
+	meta := metaOf(t, files[0].Document, "resource", "aws_route_table_association", "a")
+	require.Equal(t, "aws_route_table_association.a", meta["address"])
+	require.Equal(t, map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s"}}, meta[referencesKey])
+	require.Equal(t, map[string]interface{}{"subnet_id": true}, meta[unknownKey])
+	subnet := metaOf(t, files[0].Document, "resource", "aws_subnet", "s")
+	require.Equal(t, map[string]interface{}{"cidr_block": []interface{}{}}, subnet[referencesKey])
+	require.NotContains(t, subnet, unknownKey)
+	require.Equal(t, map[string]interface{}{"tags": true, "labels": true}, metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "t")[unknownKey])
+}
+
+// writtenRootFiles parses paths as files of the root envs, stamped as a scan
+// does, keeps an independent copy of each document as its line-info document,
+// and runs module instantiation on them.
+func writtenRootFiles(t *testing.T, root string, paths ...string) model.FileMetadatas {
+	t.Helper()
+	files := stampedRootFiles(t, paths...)
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+	return files
+}
+
+func stampedRootFiles(t *testing.T, paths ...string) model.FileMetadatas {
+	t.Helper()
+	var files model.FileMetadatas
+	for _, p := range paths {
+		files = append(files, parseTerraform(t, p)...)
+	}
+	scope := &model.TerraformScope{RootModule: "envs"}
+	for _, f := range files {
+		f.TerraformScope = scope
+		stampWrittenMeta(f.Document)
+		f.LineInfoDocument = jsonCopy(t, f.Document)
+	}
+	return files
+}
+
+func blockOf(doc map[string]interface{}, typ, name string) map[string]interface{} {
+	return docAsMap(docAsMap(docAsMap(doc["resource"])[typ])[name])
+}
+
+func jsonCopy(t *testing.T, v map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	return out
+}
+
+func asList(v interface{}) []interface{} {
+	list, _ := v.([]interface{})
+	return list
+}
+
+func jsonOf(t *testing.T, v interface{}) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	return string(raw)
+}
+
+const configModule = `
+output "env" {
+  value = "prod"
+}
+
+output "rules" {
+  value = [{ port = 1 }, { port = 2 }]
+}
+`
+
+func TestWrittenRootBlockCarriesEvaluatedValues(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	writeFile(t, dir, "terraform.tfvars", "name = \"prod\"\n")
+	path := writeFile(t, dir, "main.tf", `
+variable "name" {}
+
+module "cfg" {
+  source = "../modules/cfg"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.name
+  tags = {
+    env = module.cfg.env
+  }
+  versioning {
+    enabled = module.cfg.env == "prod"
+  }
+}
+`)
+	files := parseTerraform(t, path)
+	require.Len(t, files, 1)
+	before := blockOf(files[0].Document, "aws_s3_bucket", "b")
+	require.Equal(t, "${module.cfg.env}", docAsMap(before["tags"])["env"])
+	wantLines := jsonOf(t, before["_dd_lines"])
+	wantNestedLines := jsonOf(t, docAsMap(asList(before["versioning"])[0])["_dd_lines"])
+
+	files = writtenRootFiles(t, root, path)
+	written := blockOf(files[0].Document, "aws_s3_bucket", "b")
+	require.Equal(t, "prod", written["bucket"])
+	require.Equal(t, "prod", docAsMap(written["tags"])["env"])
+	require.Equal(t, true, docAsMap(asList(written["versioning"])[0])["enabled"])
+	require.Equal(t, wantLines, jsonOf(t, written["_dd_lines"]))
+	require.Equal(t, wantNestedLines, jsonOf(t, docAsMap(asList(written["versioning"])[0])["_dd_lines"]))
+	meta := metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b")
+	require.Equal(t, "aws_s3_bucket.b", meta["address"])
+	require.NotContains(t, meta, "root_modules")
+	require.NotContains(t, meta, unknownKey)
+
+	lineInfo := blockOf(files[0].LineInfoDocument, "aws_s3_bucket", "b")
+	require.Equal(t, "${module.cfg.env}", docAsMap(lineInfo["tags"])["env"])
+}
+
+func TestWrittenRootKeepsSinkResolvedFilter(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+resource "aws_cloudwatch_log_metric_filter" "f" {
+  name    = "f"
+  pattern = "{ $.eventName = \"CreateTrail\" }"
+}
+`)
+	files := stampedRootFiles(t, path)
+	require.Len(t, files, 1)
+	resolved := `{"_dd_filter_expr":{"_selector":"$.eventName","_op":"=","_value":"CreateTrail"}}` + "\n"
+	blockOf(files[0].Document, "aws_cloudwatch_log_metric_filter", "f")["pattern"] = resolved
+
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+
+	block := blockOf(files[0].Document, "aws_cloudwatch_log_metric_filter", "f")
+	require.Equal(t, resolved, block["pattern"])
+	require.Equal(t, "f", block["name"])
+}
+
+func TestMergeEvaluatedKeepsSinkResolvedFilter(t *testing.T) {
+	resolved := `{"_dd_filter_expr":{"_selector":"$.a","_op":"=","_value":"b"}}`
+	asMap := map[string]interface{}{"_dd_filter_expr": map[string]interface{}{"_op": "="}}
+	dst := map[string]interface{}{"pattern": resolved, "object": asMap, "plain": "${var.x}"}
+	mergeEvaluated(dst, map[string]interface{}{"pattern": "raw", "object": "raw", "plain": "x"}, false)
+	require.Equal(t, map[string]interface{}{"pattern": resolved, "object": asMap, "plain": "x"}, dst)
+}
+
+func TestParseKeepsDataReferenceText(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = ["s3:GetObject"]
+  }
+}
+
+resource "aws_iam_policy" "b" {
+  policy = data.aws_iam_policy_document.p.json
+}
+`)
+	files := parseTerraform(t, path)
+	require.Len(t, files, 1)
+	require.Equal(t, "${data.aws_iam_policy_document.p.json}", blockOf(files[0].Document, "aws_iam_policy", "b")["policy"])
+
+	files = writtenRootFiles(t, root, path)
+	require.Equal(t,
+		`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject"}]}`+"\n",
+		blockOf(files[0].Document, "aws_iam_policy", "b")["policy"])
+}
+
+func TestWrittenRootNonResourceBlocksEvaluated(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	modulePath := writeFile(t, filepath.Join(root, "modules", "m"), "main.tf", `
+variable "env" {}
+
+locals {
+  inner = var.env
+}
+`)
+	writeFile(t, dir, "terraform.tfvars", "region = \"eu-west-1\"\nenv = \"prod\"\n")
+	path := writeFile(t, dir, "main.tf", `
+variable "region" {}
+variable "env" {}
+
+provider "aws" {
+  region = var.region
+}
+
+provider "aws" {
+  alias  = "b"
+  region = var.region
+}
+
+locals {
+  env = var.env
+}
+
+locals {
+  name = "${local.env}-x"
+}
+
+output "o" {
+  value = local.env
+}
+
+module "m" {
+  source = "../modules/m"
+  env    = local.env
+}
+`)
+	other := filepath.Join(root, "other")
+	writeFile(t, other, "terraform.tfvars", "env = \"dev\"\n")
+	otherPath := writeFile(t, other, "main.tf", `
+variable "env" {}
+
+locals {
+  env = var.env
+}
+
+output "p" {
+  value = local.env
+}
+`)
+	before := stampedRootFiles(t, path, modulePath)
+	wantRootLines := jsonOf(t, before[0].Document["_dd_lines"])
+	wantModuleDoc := jsonOf(t, before[1].Document)
+	wantProviderLines := jsonOf(t, docAsMap(docAsMap(before[0].Document["provider"])["aws"].([]interface{})[1])["_dd_lines"])
+	wantCallLines := jsonOf(t, docAsMap(docAsMap(before[0].Document["module"])["m"])["_dd_lines"])
+	require.Equal(t, "${var.env}", docAsMap(before[1].Document["locals"])["inner"])
+
+	files := writtenRootFiles(t, root, path, modulePath, otherPath)
+	require.Equal(t, "dev", docAsMap(docAsMap(files[2].Document["output"])["p"])["value"])
+	doc := files[0].Document
+	providers, ok := docAsMap(doc["provider"])["aws"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, providers, 2)
+	require.Equal(t, "eu-west-1", docAsMap(providers[0])["region"])
+	require.Equal(t, "eu-west-1", docAsMap(providers[1])["region"])
+	require.Equal(t, "b", docAsMap(providers[1])["alias"])
+	require.Equal(t, wantProviderLines, jsonOf(t, docAsMap(providers[1])["_dd_lines"]))
+	locals, ok := doc["locals"].([]interface{})
+	require.True(t, ok)
+	require.Equal(t, "prod", docAsMap(locals[0])["env"])
+	require.Equal(t, "prod-x", docAsMap(locals[1])["name"])
+	require.Equal(t, "prod", docAsMap(docAsMap(doc["output"])["o"])["value"])
+	call := docAsMap(docAsMap(doc["module"])["m"])
+	require.Equal(t, "prod", call["env"])
+	require.Equal(t, "../modules/m", call["source"])
+	require.Equal(t, wantCallLines, jsonOf(t, call["_dd_lines"]))
+	require.Equal(t, wantRootLines, jsonOf(t, doc["_dd_lines"]))
+	require.Equal(t, wantModuleDoc, jsonOf(t, files[1].Document))
+}
+
+func TestMergeEvaluatedKeepsBookkeeping(t *testing.T) {
+	lines := func(n int) map[string]interface{} {
+		return map[string]interface{}{"_dd__default": map[string]interface{}{"_dd_line": n}}
+	}
+	dst := map[string]interface{}{
+		"_dd_lines": lines(1),
+		"_dd_meta":  map[string]interface{}{"address": "t.n"},
+		"name":      "${var.name}",
+		"kept":      "converter",
+		"nested": map[string]interface{}{
+			"_dd_lines": lines(2),
+			"value":     "${var.v}",
+		},
+		"rule": []interface{}{
+			map[string]interface{}{"_dd_lines": lines(3), "port": "${var.p}"},
+			map[string]interface{}{"_dd_lines": lines(4), "port": 2},
+		},
+		"ports": []interface{}{"${var.p}"},
+		"grown": []interface{}{map[string]interface{}{"_dd_lines": lines(5), "port": "${var.p}"}},
+	}
+	mergeEvaluated(dst, map[string]interface{}{
+		"_dd_meta": "evaluated",
+		"name":     "n",
+		"nested":   map[string]interface{}{"value": "v"},
+		"rule": []interface{}{
+			map[string]interface{}{"port": json.Number("1")},
+			map[string]interface{}{"port": json.Number("2")},
+		},
+		"ports": []interface{}{json.Number("1"), json.Number("2")},
+		"grown": []interface{}{map[string]interface{}{"port": json.Number("1")}, map[string]interface{}{"port": json.Number("2")}},
+		"added": true,
+	}, false)
+	require.Equal(t, map[string]interface{}{
+		"_dd_lines": lines(1),
+		"_dd_meta":  map[string]interface{}{"address": "t.n"},
+		"name":      "n",
+		"kept":      "converter",
+		"nested":    map[string]interface{}{"_dd_lines": lines(2), "value": "v"},
+		"rule": []interface{}{
+			map[string]interface{}{"_dd_lines": lines(3), "port": json.Number("1")},
+			map[string]interface{}{"_dd_lines": lines(4), "port": json.Number("2")},
+		},
+		"ports": []interface{}{json.Number("1"), json.Number("2")},
+		"grown": []interface{}{map[string]interface{}{"port": json.Number("1")}, map[string]interface{}{"port": json.Number("2")}},
+		"added": true,
+	}, dst)
+}
+
+func TestWrittenDynamicBlockLengthDiffers(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+
+resource "aws_security_group" "g" {
+  ingress {
+    from_port = 0
+  }
+  dynamic "ingress" {
+    for_each = module.cfg.rules
+    content {
+      from_port = ingress.value.port
+    }
+  }
+}
+`)
+	files := parseTerraform(t, path)
+	before := blockOf(files[0].Document, "aws_security_group", "g")
+	require.Len(t, asList(before["ingress"]), 1)
+	wantLines := jsonOf(t, before["_dd_lines"])
+	require.Contains(t, wantLines, `"_dd_ingress":{"_dd_line":7}`)
+	require.Contains(t, before, "dynamic")
+
+	files = writtenRootFiles(t, root, path)
+	g := blockOf(files[0].Document, "aws_security_group", "g")
+	require.Equal(t, []interface{}{
+		map[string]interface{}{"from_port": json.Number("0")},
+		map[string]interface{}{"from_port": json.Number("1")},
+		map[string]interface{}{"from_port": json.Number("2")},
+	}, g["ingress"])
+	require.Equal(t, wantLines, jsonOf(t, g["_dd_lines"]))
+	require.NotContains(t, g, "dynamic")
+}
+
+func TestWrittenEmptyDynamicBlockDropsTemplate(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+
+resource "aws_security_group" "g" {
+  name = "g"
+  dynamic "ingress" {
+    for_each = [for r in module.cfg.rules : r if false]
+    content {
+      from_port = ingress.value.port
+    }
+  }
+}
+`)
+	before := blockOf(parseTerraform(t, path)[0].Document, "aws_security_group", "g")
+	require.Contains(t, before, "dynamic")
+
+	g := blockOf(writtenRootFiles(t, root, path)[0].Document, "aws_security_group", "g")
+	require.NotContains(t, g, "ingress")
+	require.NotContains(t, g, "dynamic")
+}
+
+func TestWrittenFailedRootKeepsText(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	path := writeFile(t, dir, "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.x
+  tags = {
+    env = module.cfg.env
+  }
+}
+`)
+	files := stampedRootFiles(t, path)
+	want := jsonOf(t, files[0].Document)
+	require.NoError(t, os.RemoveAll(dir))
+
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+	require.Equal(t, want, jsonOf(t, files[0].Document))
+	require.Equal(t, "${module.cfg.env}", docAsMap(blockOf(files[0].Document, "aws_s3_bucket", "b")["tags"])["env"])
+	require.Equal(t, "${var.x}", blockOf(files[0].Document, "aws_s3_bucket", "b")["bucket"])
+	meta := metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b")
+	require.NotContains(t, meta, referencesKey)
+	require.Equal(t, map[string]interface{}{"bucket": true, "tags": map[string]interface{}{"env": true}}, meta[unknownKey])
+}
+
+func TestWrittenRootEvaluatedValueIsNotUnknown(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, filepath.Join(root, "envs"), "main.tf", `
+variable "x" {
+  default = "b"
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.x
+}
+`)
+	files := stampedRootFiles(t, path)
+	require.Equal(t, map[string]interface{}{"bucket": true}, metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b")[unknownKey])
+
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), files, nil)
+	require.Equal(t, "b", blockOf(files[0].Document, "aws_s3_bucket", "b")["bucket"])
+	require.NotContains(t, metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b"), unknownKey)
+}
+
+func TestWrittenJSONRootBlockCarriesEvaluatedValues(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	writeFile(t, filepath.Join(root, "modules", "cfg"), "main.tf", configModule)
+	writeFile(t, dir, "main.tf", `
+module "cfg" {
+  source = "../modules/cfg"
+}
+`)
+	path := writeFile(t, dir, "main.tf.json", `{
+  "resource": {
+    "aws_s3_bucket": {
+      "b": {
+        "bucket": "${module.cfg.env}"
+      }
+    }
+  }
+}
+`)
+	files := parseTerraform(t, path)
+	require.Len(t, files, 1)
+	wantLines := jsonOf(t, blockOf(files[0].Document, "aws_s3_bucket", "b")["_dd_lines"])
+
+	files = writtenRootFiles(t, root, path)
+	b := blockOf(files[0].Document, "aws_s3_bucket", "b")
+	require.Equal(t, "prod", b["bucket"])
+	require.Equal(t, wantLines, jsonOf(t, b["_dd_lines"]))
+	require.Equal(t, "aws_s3_bucket.b", metaOf(t, files[0].Document, "resource", "aws_s3_bucket", "b")["address"])
+}
+
+func TestPatchWrittenBlocksSkipsListShapedTypes(t *testing.T) {
+	listed := []interface{}{map[string]interface{}{"n": map[string]interface{}{ddMetaKey: map[string]interface{}{}, "v": "text"}}}
+	file := &model.FileMetadata{ID: "f", Document: model.Document{"resource": map[string]interface{}{"t": listed}}}
+	want := jsonOf(t, file.Document)
+	patchWrittenBlocks(model.FileMetadatas{file}, writtenBlocks{
+		resolvedBlockKey("f", "t", "n"): {attrs: map[string]interface{}{"v": "evaluated"}},
+	})
+	require.Equal(t, want, jsonOf(t, file.Document))
+}
+
+// Every root block written once is patched in its written file, targeted or
+// not, so its _dd_meta does not depend on the rules loaded.
+func TestWrittenBlocksHoldEverySingleRootBlock(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "envs")
+	writeFile(t, dir, "terraform.tfvars", "name = \"prod\"\n")
+	files := parseTerraform(t, writeFile(t, dir, "expanded.tf", `
+resource "aws_s3_bucket" "e" {
+  count  = 2
+  bucket = var.name
+}
+
+resource "aws_s3_bucket" "sibling" {
+  bucket = var.name
+}
+`))
+	files = append(files, parseTerraform(t, writeFile(t, dir, "main.tf", `
+variable "name" {}
+
+resource "aws_s3_bucket" "w" {
+  bucket = var.name
+}
+
+resource "aws_iam_role" "u" {
+  name = var.name
+}
+`))...)
+	targets := &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}}
+	res := resolveModuleDocuments(context.Background(), files, root, relDirForTest(root), nil, targets, nil, nil, nil, nil)
+	require.True(t, res.ok)
+	keys := make([]string, 0, len(res.written))
+	for k := range res.written {
+		keys = append(keys, k)
+	}
+	require.ElementsMatch(t, []string{
+		resolvedBlockKey(files[0].ID, "aws_s3_bucket", "sibling"),
+		resolvedBlockKey(files[1].ID, "aws_s3_bucket", "w"),
+		resolvedBlockKey(files[1].ID, "aws_iam_role", "u"),
+	}, keys)
+}
+
+func TestInstantiatedDocCarriesUnknown(t *testing.T) {
+	res, _ := resolveModuleFixture(t, map[string]string{"envs": `
+module "m" {
+  source = "../modules/m"
+}
+`}, `
+variable "unset" {}
+
+locals {
+  u = { a = var.unset, b = "b" }
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = var.unset
+}
+
+resource "aws_s3_bucket" "c" {
+  bucket = "c"
+}
+`)
+	require.Len(t, res.docs, 1)
+	require.Equal(t, map[string]interface{}{"bucket": true}, metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "b")[unknownKey])
+	require.NotContains(t, metaOf(t, res.docs[0], "resource", "aws_s3_bucket", "c"), unknownKey)
+}
+
+func TestRootRewriteKeepsReferences(t *testing.T) {
+	refs := map[string]interface{}{"subnet_id": []interface{}{"aws_subnet.s"}}
+	extras := blockMetaExtras{references: refs, unknown: map[string]interface{}{"subnet_id": true}}
+	newDoc := func(id string) model.Document {
+		return model.Document{"id": id, "resource": map[string]interface{}{"aws_x": map[string]interface{}{
+			"n": map[string]interface{}{ddMetaKey: resourceMeta("aws_x.n", extras)},
+		}}}
+	}
+	scope := &model.TerraformScope{RootModule: "lib"}
+	file := &model.FileMetadata{ID: "mod", FilePath: "/repo/lib/main.tf", TerraformScope: scope, Document: newDoc("mod")}
+	mf := &moduleFileCalls{scope: scope, keepWritten: true, calls: []moduleCall{{moduleAddress: "module.m", rootModule: "envs/a"}}}
+	files := model.FileMetadatas{file}
+	routeModuleFileRoots(files, map[string]*moduleFileCalls{"mod": mf})
+	meta := metaOf(t, file.Document, "resource", "aws_x", "n")
+	require.NotContains(t, meta, "root_modules")
+	require.Equal(t, refs, meta[referencesKey])
+	require.Equal(t, extras.unknown, meta[unknownKey])
 }

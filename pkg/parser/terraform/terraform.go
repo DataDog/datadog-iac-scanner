@@ -9,24 +9,18 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strings"
-	"sync"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pkg/errors"
-	ctyjson "github.com/zclconf/go-cty/cty/json"
-	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -45,36 +39,14 @@ type Converter func(
 
 // Parser struct that contains the function to parse file and the number of retries if something goes wrong
 type Parser struct {
-	convertFunc       Converter
-	numOfRetries      int
-	terraformVarsPath string
-	sciInfo           model.SCIInfo
+	convertFunc  Converter
+	numOfRetries int
+	sciInfo      model.SCIInfo
 
-	// fsys is the filesystem used for cross-file resolution (sibling .tf files,
-	// .tfvars, data sources). Defaults to the real disk; the HTTP server injects
-	// an in-memory FS populated from pushed content.
+	// fsys is the filesystem used to read files the parsed file refers to.
+	// Defaults to the real disk; the HTTP server injects an in-memory FS
+	// populated from pushed content.
 	fsys vfs.FS
-
-	// dirVarsCache memoizes per-directory variable/locals resolution (O(N²) without
-	// it). A scanned .tf file shadowed by an inventoried .tofu twin gets its own
-	// entry. Scoped to the Parser instance, which is created once per scan.
-	dirVarsCache sync.Map // directory selection -> converter.VariableMap
-	dirVarsSF    singleflight.Group
-
-	// mergeAllow, when set, limits OpenTofu twin-shadowing to these paths.
-	mergeAllow    map[string]struct{}
-	shadowedFiles map[string]struct{}
-}
-
-// SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
-func (p *Parser) SetMergeAllow(paths []string) {
-	p.mergeAllow = tfpath.AllowSet(paths)
-	shadowed := tfpath.ShadowedByTofu(paths)
-	shadowedPaths := make([]string, 0, len(shadowed))
-	for path := range shadowed {
-		shadowedPaths = append(shadowedPaths, path)
-	}
-	p.shadowedFiles = tfpath.AllowSet(shadowedPaths)
 }
 
 // NewDefault initializes a parser with Parser default values
@@ -87,12 +59,11 @@ func NewDefault() *Parser {
 }
 
 // nolint:gocritic
-func NewDefaultWithParams(fsys vfs.FS, terraformVarsPath string, sciInfo model.SCIInfo) *Parser {
+func NewDefaultWithParams(fsys vfs.FS, sciInfo model.SCIInfo) *Parser {
 	parser := NewDefault()
 	if fsys != nil {
 		parser.fsys = fsys
 	}
-	parser.terraformVarsPath = terraformVarsPath
 	parser.sciInfo = sciInfo
 	return parser
 }
@@ -112,140 +83,7 @@ func (p *Parser) Resolve(ctx context.Context,
 	if err != nil {
 		return nil, nil, err
 	}
-	vars = p.resolveDirVars(ctx, filepath.Dir(filename), filename, fileContent)
-	return fileContent, vars, nil
-}
-
-// resolveDirVars returns the variable/locals/data-source map for a directory,
-// memoized per effective directory selection. Files carrying an inline Terraform
-// vars path directive are resolved per-file because their result depends on file
-// content.
-func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileContent []byte) converter.VariableMap {
-	if p.terraformVarsPath == "" && strings.Contains(string(fileContent), terraformVarsPathDirective) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
-		return getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
-	}
-
-	cacheKey := filepath.Clean(dir)
-	if _, ok := p.shadowedFiles[filepath.ToSlash(filepath.Clean(filename))]; ok {
-		cacheKey += "\x00" + filepath.Base(filename)
-	}
-	if v, ok := p.dirVarsCache.Load(cacheKey); ok {
-		return cloneVariableMap(v.(converter.VariableMap))
-	}
-	v, _, _ := p.dirVarsSF.Do(cacheKey, func() (interface{}, error) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
-		vars := getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
-		p.dirVarsCache.Store(cacheKey, vars)
-		return vars, nil
-	})
-	// Callers own the returned map; the cached one must stay unmodified. The
-	// cty.Value entries are immutable and safe to share.
-	return cloneVariableMap(v.(converter.VariableMap))
-}
-
-func cloneVariableMap(src converter.VariableMap) converter.VariableMap {
-	dst := make(converter.VariableMap, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
-func processContent(ctx context.Context, elements model.Document, content, path string) {
-	var certInfo map[string]interface{}
-	if content != "" {
-		certInfo = utils.AddCertificateInfo(ctx, path, content)
-		if certInfo != nil {
-			elements["certificate_body"] = certInfo
-		}
-	}
-}
-
-func processElements(ctx context.Context, elements model.Document, path string) {
-	for k, v3 := range elements { // resource elements
-		if k != "certificate_body" {
-			continue
-		}
-		switch value := v3.(type) {
-		case string:
-			content := utils.CheckCertificate(value)
-			processContent(ctx, elements, content, path)
-		case ctyjson.SimpleJSONValue:
-			s, ok := ctyutil.ConcreteString(value.Value)
-			if !ok {
-				continue
-			}
-			content := utils.CheckCertificate(s)
-			processContent(ctx, elements, content, path)
-		}
-	}
-}
-
-func processResourcesElements(ctx context.Context, resourcesElements model.Document, path string) error {
-	for _, v2 := range resourcesElements {
-		switch t := v2.(type) {
-		case []interface{}:
-			return errors.New("failed to process resources")
-		case interface{}:
-			if elements, ok := t.(model.Document); ok {
-				processElements(ctx, elements, path)
-			}
-		}
-	}
-	return nil
-}
-
-func processResources(ctx context.Context, doc model.Document, path string) error {
-	var resourcesElements model.Document
-
-	defer func() {
-		if r := recover(); r != nil {
-			errMessage := "Recovered from panic during process of resources in file " + path
-			masterUtils.HandlePanic(ctx, r, errMessage)
-		}
-	}()
-
-	for _, resources := range doc {
-		switch t := resources.(type) {
-		case []interface{}: // support the case of nameless resources - where we get a list of resources
-			for _, value := range t {
-				resourcesElements = value.(model.Document)
-				err := processResourcesElements(ctx, resourcesElements, path)
-				if err != nil {
-					return err
-				}
-			}
-
-		case interface{}:
-			resourcesElements = t.(model.Document)
-			err := processResourcesElements(ctx, resourcesElements, path)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func addExtraInfo(ctx context.Context, json []model.Document, path string) ([]model.Document, error) {
-	// handle panic during resource processing
-	defer func() {
-		if r := recover(); r != nil {
-			errMessage := "Recovered from panic during resource processing for file " + path
-			masterUtils.HandlePanic(ctx, r, errMessage)
-		}
-	}()
-	for _, documents := range json { // iterate over documents
-		if resources, ok := documents["resource"].(model.Document); ok {
-			err := processResources(ctx, resources, path)
-			if err != nil {
-				return []model.Document{}, err
-			}
-		}
-	}
-
-	return json, nil
+	return fileContent, nil, nil
 }
 
 // Parse execute parser for the content in a file
@@ -266,12 +104,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	}
 
 	if tfpath.IsJSONConfig(path) {
-		fc, parseErr := parseJSONConfig(resolved, path, inputVariables)
-		json, extraErr := addExtraInfo(ctx, []model.Document{fc}, path)
-		if extraErr != nil {
-			return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(extraErr, "failed terraform parse")
-		}
-		return resolved, json, nil, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
+		fc, parseErr := parseJSONConfig(resolved, path)
+		return resolved, []model.Document{fc}, nil, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
 	}
 
 	file, diagnostics := hclsyntax.ParseConfig(resolved, filepath.Base(path), hcl.Pos{Byte: 0, Line: 1, Column: 1})
@@ -298,12 +132,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		BaseDir: filepath.Dir(path),
 		FS:      p.fsys,
 	})
-	json, err := addExtraInfo(ctx, []model.Document{fc}, path)
-	if err != nil {
-		return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed terraform parse")
-	}
-
-	return resolved, json, linesToIgnore, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
+	return resolved, []model.Document{fc}, linesToIgnore, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
 }
 
 // SupportedExtensions returns Terraform/OpenTofu extensions.
