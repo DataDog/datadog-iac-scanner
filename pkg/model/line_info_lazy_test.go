@@ -331,3 +331,25 @@ func TestLinesContainingIndexConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestShallowCopy_SharesLineSplitAcrossCopies(t *testing.T) {
+	fm := &FileMetadata{ID: "id", OriginalData: "a\nb\nc"}
+	fm.SetLazyLines()
+	copies := make([]*FileMetadata, 8)
+	for i := range copies {
+		copies[i] = fm.ShallowCopy()
+	}
+	var wg sync.WaitGroup
+	for _, c := range copies {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			require.Equal(t, []string{"a", "b", "c"}, c.Lines())
+		}()
+	}
+	wg.Wait()
+	first := &copies[0].Lines()[0]
+	for _, c := range append(copies[1:], fm) {
+		require.Same(t, first, &c.Lines()[0], "every copy reads the one split")
+	}
+}

@@ -85,6 +85,17 @@ type ResolvedResource struct {
 	// and addressed like a resource, in its own namespace, so a managed
 	// resource of the same type and name is a different block.
 	Ephemeral bool
+
+	// instance is how expandBlock split Name, so references need not parse
+	// the suffix back; unset for resources built elsewhere.
+	instance instanceKey
+}
+
+// instanceKey is an expanded resource's base label and count/for_each key.
+type instanceKey struct {
+	base, key string
+	isCount   bool
+	set       bool
 }
 
 // CallSite records one hop in a module call chain.
@@ -1134,7 +1145,11 @@ func (e *Evaluator) expandBlock(
 		child := evalCtx.NewChild()
 		child.Variables = map[string]cty.Value{name: value}
 		res := makeOne(resName+suffix, child)
+		if isCount && suffix != "" {
+			res.instance = instanceKey{base: resName, key: suffix[1 : len(suffix)-1], isCount: true, set: true}
+		}
 		if !isCount {
+			res.instance = instanceKey{base: resName, key: keyStr, set: suffix != ""}
 			if fe, ok := res.Attributes[metaArgForEach]; ok {
 				res.Attributes[metaArgForEach] = instanceForEach(fe, keyStr, item.Value)
 			}
@@ -1185,7 +1200,10 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 	ephemeralTypes := make(map[string]map[string]*instBucket)
 	for i := range resources {
 		r := &resources[i]
-		base, key, isCount, expanded := parseResourceInstanceKey(r.Name)
+		base, key, isCount, expanded := r.instance.base, r.instance.key, r.instance.isCount, r.instance.set
+		if !r.instance.set {
+			base, key, isCount, expanded = parseResourceInstanceKey(r.Name)
+		}
 		buckets := byType
 		if r.Ephemeral {
 			buckets = ephemeralTypes

@@ -657,6 +657,8 @@ type rootResult struct {
 	panicked     any
 }
 
+const rootWindowPerWorker = 4
+
 // evaluateConcurrently evaluates roots on workers and merges them in order, so
 // shared documents get the same owners as when roots are evaluated one by one.
 func (m *rootMerge) evaluateConcurrently(roots []string, workers int) {
@@ -665,8 +667,10 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) {
 		results[i] = make(chan rootResult, 1)
 	}
 	// Tokens bound the roots evaluated but not yet merged. Workers take a token
-	// before an index, so the roots in flight are always the next ones to merge.
-	window := make(chan struct{}, 2*workers)
+	// before an index, so the roots in flight are always the next ones to
+	// merge. Each queued result holds a root's resolved resources, so the
+	// window stays a small multiple of the workers.
+	window := make(chan struct{}, rootWindowPerWorker*workers)
 	stop := make(chan struct{})
 	var (
 		mu       sync.Mutex

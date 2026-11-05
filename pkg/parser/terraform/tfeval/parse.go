@@ -371,6 +371,12 @@ func parseResourceInstanceKey(name string) (base, key string, isCount, expanded 
 // introducer, so the parsed template holds only literal text and evaluates
 // with no context.
 func decodeHCLString(quoted string) string {
+	if len(quoted) >= 2 {
+		if inner := quoted[1 : len(quoted)-1]; !strings.ContainsRune(inner, '\\') &&
+			!strings.Contains(inner, "$$") && !strings.Contains(inner, "%%") {
+			return inner
+		}
+	}
 	expr, diags := hclsyntax.ParseExpression([]byte(quoted), "", hcl.InitialPos)
 	if diags.HasErrors() {
 		return strings.Trim(quoted, `"`)

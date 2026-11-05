@@ -2905,9 +2905,11 @@ resource "aws_s3_bucket" "b" {
 
 	// Every name round-trips into a parseable Terraform address whose key is
 	// the raw for_each key, through the same parser the address consumers use.
-	for _, name := range names {
+	for i, name := range names {
 		base, key, _, expanded := parseResourceInstanceKey(name)
 		require.True(t, expanded, name)
+		require.Equal(t, instanceKey{base: base, key: key, set: true}, resources[i].instance,
+			"the key recorded at expansion is the one parsed back from %s", name)
 		full := address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: base}, name[len(base):])
 		traversal, diags := hclsyntax.ParseTraversalAbs([]byte(full), "", hcl.InitialPos)
 		require.False(t, diags.HasErrors(), "%s: %s", name, diags.Error())
