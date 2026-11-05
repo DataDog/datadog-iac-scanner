@@ -43,6 +43,7 @@ type ParsedModule struct {
 
 type UnresolvedError struct {
 	Reason string
+	Cause  error
 	// NotApplicable marks a resolver declining a source it does not handle, as
 	// opposed to a resolver that attempted the source and failed.
 	NotApplicable bool
@@ -50,6 +51,19 @@ type UnresolvedError struct {
 
 func (e *UnresolvedError) Error() string {
 	return "module unresolved: " + e.Reason
+}
+
+func (e *UnresolvedError) Unwrap() error { return e.Cause }
+
+var ErrEmptyModuleSource = errors.New("module source is empty or missing after override merging")
+
+// ValidateModuleSource rejects source-less declarations after override merging.
+// Keep these declarations in the parsed result so callers can report their location.
+func ValidateModuleSource(source string) error {
+	if strings.TrimSpace(source) == "" {
+		return &UnresolvedError{Reason: ErrEmptyModuleSource.Error(), Cause: ErrEmptyModuleSource}
+	}
+	return nil
 }
 
 func IsUnresolved(err error) bool {
@@ -828,6 +842,9 @@ func DetectModuleSourceType(source string) (sourceType, registryScope string) {
 func resolveModuleToLocalPath(
 	ctx context.Context, mod *ParsedModule, rootDir string, resolver RemoteResolver,
 ) (string, error) {
+	if err := ValidateModuleSource(mod.Source); err != nil {
+		return "", err
+	}
 	if mod.IsLocal {
 		if mod.AbsSource == "" {
 			return "", nil
