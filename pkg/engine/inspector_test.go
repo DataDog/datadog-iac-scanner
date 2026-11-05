@@ -1413,10 +1413,10 @@ func TestInspector_FailedQueriesConcurrentWrites(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			vulns := make([]model.Vulnerability, 0)
-			moduleVulns := make(map[string]moduleVulnCounts)
+			moduleVulns := moduleVulnTotals{}
 			result := QueryResult{err: buildErr, queryID: i}
 			<-start
-			processResult(ctx, &result, &vulns, &moduleVulns, queries, ins)
+			processResult(ctx, &result, &vulns, moduleVulns, queries, ins)
 		}()
 	}
 
@@ -1444,8 +1444,8 @@ func TestProcessResult_LogsASurvivingFindingsSeverityOverTheRawOne(t *testing.T)
 		},
 	}
 	vulns := make([]model.Vulnerability, 0)
-	moduleVulns := make(map[string]moduleVulnCounts)
-	processResult(ctx, &result, &vulns, &moduleVulns, queries, ins)
+	moduleVulns := moduleVulnTotals{}
+	processResult(ctx, &result, &vulns, moduleVulns, queries, ins)
 	require.Contains(t, logs.String(), "CRITICAL")
 	require.NotContains(t, logs.String(), "high")
 }
@@ -1466,10 +1466,44 @@ func TestProcessResult_NormalizesTheRawSeverityWhenNothingSurvivedDecode(t *test
 		// deduplicated before decode.
 	}
 	vulns := make([]model.Vulnerability, 0)
-	moduleVulns := make(map[string]moduleVulnCounts)
-	processResult(ctx, &result, &vulns, &moduleVulns, queries, ins)
+	moduleVulns := moduleVulnTotals{}
+	processResult(ctx, &result, &vulns, moduleVulns, queries, ins)
 	require.Contains(t, logs.String(), "HIGH")
 	require.NotContains(t, logs.String(), "\"high\"")
+}
+
+// A rule evaluated once per batch logs its module findings once: the raised
+// counts of every evaluation summed, the unique ones counted on what the
+// scan keeps.
+func TestQueryRun_ModuleCountsSummedAcrossEvaluations(t *testing.T) {
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(context.Background())
+	ins := newTestInspector(t, inspectorOpts{})
+	queries := []model.QueryMetadata{{Query: "module-rule"}, {Query: "failing-rule"}}
+	run := newQueryRun("scan", nil, queries)
+	module := model.Vulnerability{
+		QueryID: "module-rule", FileName: "main.tf", Line: 3, ResourceType: moduleCallRoot, ResourceName: "m",
+		Platform: "Terraform", Severity: model.SeverityHigh,
+	}
+	other := module
+	other.ResourceName = "n"
+	for _, result := range []QueryResult{
+		{queryID: 0, moduleResultsRaised: 3, vulnerabilities: []model.Vulnerability{module}},
+		{queryID: 1, moduleResultsRaised: 4, vulnerabilities: []model.Vulnerability{module}},
+		{queryID: 0, moduleResultsRaised: 2, vulnerabilities: []model.Vulnerability{module, other}},
+		{queryID: 1, err: fmt.Errorf("conflict")},
+	} {
+		run.evaluations[result.queryID]++
+		run.tally[result.queryID] = run.tally[result.queryID] || result.err != nil
+		processResult(ctx, &result, &run.found[result.queryID], run.moduleVulns, queries, ins)
+	}
+
+	kept := run.findings(true)
+	run.logModuleVulns(ctx)
+
+	require.Len(t, kept, 2, "the two evaluations raised module m twice and module n once")
+	require.Contains(t, logs.String(), `"uniqueFindings":2,"message":"Found 5 of module vulnerability module-rule"`)
+	require.NotContains(t, logs.String(), "of module vulnerability failing-rule")
 }
 
 // TestExecuteQueries_CanceledContextReturnsError guards the cancellation
@@ -1487,21 +1521,12 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // canceled scan
 
-	vulns, err := inspector.executeQueries(
-		ctx,
-		"scan-id",
-		map[string]*model.FileMetadata{},
-		platformPayloads{},
-		queries,
-		nil,
-		map[string]storage.Store{},
-		nil,
-		nil,
-		nil,
-	)
+	run := newQueryRun("scan-id", map[string]*model.FileMetadata{}, queries)
+	run.baseStores = map[string]storage.Store{}
+	err := inspector.executeQueries(ctx, run, platformPayloads{}, nil, inspector.numWorkers)
 
 	require.ErrorIs(t, err, context.Canceled)
-	require.Empty(t, vulns)
+	require.Empty(t, run.findings(false))
 }
 
 func TestExpandModuleFindings_NoExtrasUnchanged(t *testing.T) {

@@ -53,6 +53,43 @@ func TestFirstFindingPerIdentity_KeepsTheFirstLocation(t *testing.T) {
 	}
 }
 
+func TestFirstFindingPerIdentity_KeepsTheSameFindingWhateverTheInputOrder(t *testing.T) {
+	base := orderedFindings()[0]
+	differing := []func(v *Vulnerability){
+		func(v *Vulnerability) { v.Remediation = "b" },
+		func(v *Vulnerability) { v.VulnerabilityLocation.End.Line = 9 },
+		func(v *Vulnerability) { v.ModuleAttribution = &ModuleAttribution{ModulePath: []ModulePathHop{{Name: "b"}}} },
+		func(v *Vulnerability) {
+			v.ModuleAttribution = &ModuleAttribution{ModulePath: []ModulePathHop{{Name: "a"}, {Name: "c"}}}
+		},
+	}
+	raised := []Vulnerability{base}
+	for _, change := range differing {
+		v := base
+		change(&v)
+		raised = append(raised, v)
+	}
+	var want *Vulnerability
+	for shift := range raised {
+		order := append(slices.Clone(raised[shift:]), raised[:shift]...)
+		if shift%2 == 1 {
+			slices.Reverse(order)
+		}
+		kept := FirstFindingPerIdentity(order)
+		require.Len(t, kept, 1)
+		if want == nil {
+			want = &kept[0]
+			continue
+		}
+		require.Equal(t, *want, kept[0])
+	}
+	for i := range raised {
+		for j := range raised {
+			require.Equal(t, i == j, CompareFindings(&raised[i], &raised[j]) == 0, "%d and %d", i, j)
+		}
+	}
+}
+
 func TestCreateSummary_FilesOrderDoesNotDependOnInputOrder(t *testing.T) {
 	var want []VulnerableFile
 	for _, raised := range permutations(orderedFindings()) {
