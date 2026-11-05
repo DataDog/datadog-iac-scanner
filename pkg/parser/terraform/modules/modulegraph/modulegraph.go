@@ -97,6 +97,9 @@ type ResolutionFailure struct {
 	Version           string
 	Name              string
 	Reason            string
+	Failure           resolver.FailureDetails
+	Attempts          []resolver.FailureAttempt
+	Disposition       tfmodules.ResolverDisposition
 }
 
 // Terminal outcomes for ModuleStat. One sample is recorded per unique module
@@ -138,7 +141,9 @@ func moduleStatFor(mod *tfmodules.ParsedModule, resolution *resolver.Resolution,
 		return stat
 	}
 	stat.Outcome = ModuleOutcomeUnresolved
-	stat.FailureCode = resolver.ClassifyFailure(err)
+	// Legacy broker failures can omit the ref; the declaration supplies the
+	// context needed to classify template placeholders consistently with logs.
+	stat.FailureCode = resolver.DescribeModuleFailure(mod.Source, err).Class
 	return stat
 }
 
@@ -160,7 +165,7 @@ func moduleStatShed(mod *tfmodules.ParsedModule) ModuleStat {
 func moduleStatAborted(mod *tfmodules.ParsedModule, err error) ModuleStat {
 	stat := ModuleStat{
 		Outcome:     ModuleOutcomeUnresolved,
-		FailureCode: resolver.ClassifyFailure(err),
+		FailureCode: resolver.DescribeModuleFailure(mod.Source, err).Class,
 	}
 	if st, _ := tfmodules.DetectModuleSourceType(mod.Source); st != "" {
 		stat.Source = st
@@ -617,6 +622,16 @@ func (c *resultCollector) addResolutionFailure(
 	if unresolved, ok := err.(*tfmodules.UnresolvedError); ok { //nolint:errorlint
 		reason = unresolved.Reason
 	}
+	details := resolver.DescribeModuleFailure(mod.Source, err)
+	details.RequestURL = model.RedactURLCredentials(details.RequestURL)
+	attempts := resolver.FailureAttempts(err)
+	for i := range attempts {
+		attempts[i].Reason = model.RedactURLCredentials(attempts[i].Reason)
+		attempts[i].RequestURL = model.RedactURLCredentials(attempts[i].RequestURL)
+		if attempts[i].Class == details.Class {
+			reason = attempts[i].Reason
+		}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.failures = append(c.failures, ResolutionFailure{
@@ -629,6 +644,9 @@ func (c *resultCollector) addResolutionFailure(
 		Version:           mod.Version,
 		Name:              mod.Name,
 		Reason:            model.RedactURLCredentials(reason),
+		Failure:           details,
+		Attempts:          attempts,
+		Disposition:       resolver.FailureDisposition(err),
 	})
 }
 
@@ -925,6 +943,13 @@ func (w *walker) collectLocalModules(
 
 	for key := range mods {
 		mod := mods[key]
+		if err := tfmodules.ValidateModuleSource(mod.Source); err != nil {
+			w.results.addResolutionFailure(&mod, packageRoot, err)
+			if w.resolutions.setIfAbsent(remoteResolveIdentity(&mod), &resolvedEntry{err: err}) {
+				w.results.addModuleStat(moduleStatFor(&mod, &resolver.Resolution{}, err, 0))
+			}
+			continue
+		}
 		if !mod.IsLocal {
 			*remote = append(*remote, remoteModuleCall{mod: mod, depth: depth})
 			continue

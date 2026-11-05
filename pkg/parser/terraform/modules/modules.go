@@ -43,13 +43,72 @@ type ParsedModule struct {
 
 type UnresolvedError struct {
 	Reason string
+	Cause  error
 	// NotApplicable marks a resolver declining a source it does not handle, as
 	// opposed to a resolver that attempted the source and failed.
 	NotApplicable bool
+	// FailureClass is an optional bounded scanner failure code supplied by an
+	// external resolver. Unknown values are ignored by scanner classification.
+	FailureClass string
+	// FailureStage identifies the external operation that failed.
+	FailureStage string
+	// Disposition explicitly tells the resolver chain whether to continue,
+	// stop, or treat this error as a decline. When set to a known value, it takes
+	// precedence over Reason text and the legacy NotApplicable flag.
+	Disposition ResolverDisposition
 }
+
+// ResolverDisposition controls how ChainResolver handles an UnresolvedError.
+type ResolverDisposition string
+
+const (
+	ResolverDispositionDecline   ResolverDisposition = "decline"
+	ResolverDispositionTerminal  ResolverDisposition = "terminal"
+	ResolverDispositionRetryable ResolverDisposition = "retryable"
+)
+
+// Bounded failure-class values external resolvers can attach to UnresolvedError.
+// The resolver package validates every value against this taxonomy before using
+// it in logs or metric tags.
+const (
+	FailureClassTimeout                 = "timeout"
+	FailureClassBudgetExceeded          = "budget_exceeded"
+	FailureClassEmptySource             = "empty_source"
+	FailureClassHostNotAllowlisted      = "host_not_allowlisted"
+	FailureClassRegistryModuleNotFound  = "registry_module_not_found"
+	FailureClassRegistryVersionNotFound = "registry_version_not_found"
+	FailureClassInvalidVersion          = "invalid_version_constraint"
+	FailureClassGitAuthRequired         = "git_auth_required"
+	FailureClassGitRepoNotFound         = "git_repo_not_found"
+	FailureClassGitRefNotFound          = "git_ref_not_found"
+	FailureClassGitRefInvalid           = "git_ref_invalid"
+	FailureClassBrokerUnavailable       = "broker_unavailable"
+	FailureClassGitSubdirNotFound       = "git_subdir_not_found"
+	FailureClassGitRepoOrRefNotFound    = "git_repo_or_ref_not_found"
+	FailureClassPlaceholderRef          = "placeholder_ref"
+	FailureClassHTTPClient              = "http_4xx"
+	FailureClassHTTPServer              = "http_5xx"
+	FailureClassNetwork                 = "network"
+	FailureClassUnpack                  = "unpack_failed"
+	FailureClassUnknown                 = "unknown"
+	FailureClassNotFound                = "registry_not_found"
+)
 
 func (e *UnresolvedError) Error() string {
 	return "module unresolved: " + e.Reason
+}
+
+func (e *UnresolvedError) Unwrap() error { return e.Cause }
+
+var ErrEmptyModuleSource = errors.New("module source is empty or missing after override merging")
+
+// ValidateModuleSource rejects source-less declarations after override merging.
+// Keep these declarations in the parsed result so callers can report their location.
+func ValidateModuleSource(source string) error {
+	if strings.TrimSpace(source) == "" {
+		return &UnresolvedError{Reason: ErrEmptyModuleSource.Error(), Cause: ErrEmptyModuleSource}
+	}
+	return nil
 }
 
 func IsUnresolved(err error) bool {
@@ -828,6 +887,9 @@ func DetectModuleSourceType(source string) (sourceType, registryScope string) {
 func resolveModuleToLocalPath(
 	ctx context.Context, mod *ParsedModule, rootDir string, resolver RemoteResolver,
 ) (string, error) {
+	if err := ValidateModuleSource(mod.Source); err != nil {
+		return "", err
+	}
 	if mod.IsLocal {
 		if mod.AbsSource == "" {
 			return "", nil

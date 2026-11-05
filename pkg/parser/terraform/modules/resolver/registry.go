@@ -97,29 +97,30 @@ type serviceDiscovery struct {
 }
 
 func discoverModulesEndpoint(ctx context.Context, client *http.Client, baseURL string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/.well-known/terraform.json", http.NoBody)
+	rawURL := baseURL + "/.well-known/terraform.json"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
-		return "", err
+		return "", registryEndpointError("discovery", rawURL, 0, err)
 	}
 	addRegistryToken(req, req.URL.Hostname())
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", registryEndpointError("discovery", rawURL, 0, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("discovery returned HTTP %d", resp.StatusCode)
+		return "", registryEndpointError("discovery", rawURL, resp.StatusCode, nil)
 	}
 	body, err := readLimitedBody(resp.Body, discoveryResponseLimit, "discovery")
 	if err != nil {
-		return "", err
+		return "", registryEndpointError("discovery", rawURL, resp.StatusCode, err)
 	}
 	var sd serviceDiscovery
 	if err := json.Unmarshal(body, &sd); err != nil {
-		return "", fmt.Errorf("parsing discovery response: %w", err)
+		return "", registryEndpointError("discovery", rawURL, resp.StatusCode, fmt.Errorf("parsing discovery response: %w", err))
 	}
 	if sd.ModulesV1 == "" {
-		return "", fmt.Errorf("modules.v1 endpoint not found in discovery response")
+		return "", registryEndpointError("discovery", rawURL, resp.StatusCode, fmt.Errorf("modules.v1 endpoint not found in discovery response"))
 	}
 	if !strings.HasSuffix(sd.ModulesV1, "/") {
 		sd.ModulesV1 += "/"
@@ -149,45 +150,47 @@ func resolveRegistryVersion(
 	rawURL := fmt.Sprintf("%s%s/%s/%s/versions", modulesV1, namespace, name, provider)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
-		return "", err
+		return "", registryEndpointError("versions", rawURL, 0, err)
 	}
 	addRegistryToken(req, registryHost)
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", registryEndpointError("versions", rawURL, 0, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("versions endpoint returned HTTP %d", resp.StatusCode)
+		return "", registryEndpointError("versions", rawURL, resp.StatusCode, nil)
 	}
 	body, err := readLimitedBody(resp.Body, versionsResponseLimit, "versions")
 	if err != nil {
-		return "", err
+		return "", registryEndpointError("versions", rawURL, resp.StatusCode, err)
 	}
 	var vr versionsResponse
 	if err := json.Unmarshal(body, &vr); err != nil {
-		return "", fmt.Errorf("parsing versions response: %w", err)
+		return "", registryEndpointError("versions", rawURL, resp.StatusCode, fmt.Errorf("parsing versions response: %w", err))
 	}
 	if len(vr.Modules) == 0 || len(vr.Modules[0].Versions) == 0 {
-		return "", fmt.Errorf("no versions published")
+		return "", registryVersionSelectionError(FailureRegistryVersionNotFound, rawURL, fmt.Errorf("no versions published"))
 	}
 
 	allowPrerelease := constraintAllowsPrerelease(constraint)
 	if constraint == "" {
 		best, ok := selectBestVersion(vr, nil, allowPrerelease)
 		if !ok {
-			return "", fmt.Errorf("no parseable versions published")
+			return "", registryVersionSelectionError(FailureRegistryVersionNotFound, rawURL, fmt.Errorf("no parseable versions published"))
 		}
 		return best.Original(), nil
 	}
 
 	cs, err := goversion.NewConstraint(constraint)
 	if err != nil {
-		return "", fmt.Errorf("invalid version constraint %q: %w", constraint, err)
+		return "", registryVersionSelectionError(FailureInvalidVersion, rawURL, fmt.Errorf("invalid version constraint %q: %w", constraint, err))
 	}
 	best, ok := selectBestVersion(vr, cs, allowPrerelease)
 	if !ok {
-		return "", fmt.Errorf("no published version satisfies constraint %q", constraint)
+		return "", registryVersionSelectionError(
+			FailureRegistryVersionNotFound, rawURL, fmt.Errorf("no published version satisfies constraint %q", constraint),
+		)
 	}
 	return best.Original(), nil
 }
@@ -223,22 +226,22 @@ func registryDownloadURL(
 	rawURL := fmt.Sprintf("%s%s/%s/%s/%s/download", modulesV1, namespace, name, provider, version)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
-		return "", fmt.Errorf("building download request: %w", err)
+		return "", registryEndpointError("download", rawURL, 0, err)
 	}
 	addRegistryToken(req, host)
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("download request failed: %w", err)
+		return "", registryEndpointError("download", rawURL, 0, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	// 204/OK + X-Terraform-Get → getter URL.
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, resp.Body)
-		return "", fmt.Errorf("download endpoint returned HTTP %d", resp.StatusCode)
+		return "", registryEndpointError("download", rawURL, resp.StatusCode, nil)
 	}
 	getterURL := resp.Header.Get("X-Terraform-Get")
 	if getterURL == "" {
-		return "", errors.New("registry did not return X-Terraform-Get header")
+		return "", registryEndpointError("download", rawURL, resp.StatusCode, errors.New("registry did not return X-Terraform-Get header"))
 	}
 	// Resolve relative URLs (e.g. /archives/mod.zip) against the download endpoint.
 	if ref, err := url.Parse(getterURL); err == nil && !ref.IsAbs() {
@@ -247,14 +250,19 @@ func registryDownloadURL(
 	return getterURL, nil
 }
 
-// isBareVersion reports whether s is an exact semver (no constraint operators).
-func isBareVersion(s string) bool {
-	for _, c := range s {
-		if c != '.' && c != '-' && c != '+' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
-			return false
-		}
+// NormalizeExactRegistryVersion uses Terraform's version parser: v prefixes, leading
+// zeros and abbreviated versions all refer to the canonical registry version.
+func NormalizeExactRegistryVersion(s string) (string, bool) {
+	v, err := goversion.NewVersion(strings.TrimSpace(s))
+	if err != nil {
+		return "", false
 	}
-	return s != ""
+	return v.String(), true
+}
+
+func isBareVersion(s string) bool {
+	_, ok := NormalizeExactRegistryVersion(s)
+	return ok
 }
 
 func registryCredentialHost(rawHost string) string {

@@ -958,6 +958,9 @@ func (a *sparseArchive) materializeModuleDirectory(ctx context.Context, subdir s
 	requestedDir := filepath.Join(a.dest, subdir)
 	moduleDir, err := tfmodules.ResolveModuleDirWithMaterializer(ctx, vfs.DiskFS{}, a.dest, requestedDir, a.dest, a.materializeMissingPath)
 	if err != nil {
+		if errors.Is(extractErr, errArchivePathMissing) && errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("%w: %w", errArchivePathMissing, err)
+		}
 		return "", err
 	}
 	if extractErr != nil && moduleDir == requestedDir {
@@ -1552,23 +1555,23 @@ func (r *BareGitResolver) resolveRemoteArchive(
 	if err := remote.ensureClone(ctx); err != nil {
 		invalidateIfWritten()
 		release()
-		return Resolution{}, unresolvedResourceError(err)
+		return Resolution{}, unresolvedResourceError(gitResolutionError("git_clone", repoURL, ref, subdir, err))
 	}
 
 	sha, err := remote.fetchRef(ctx, ref)
 	if err != nil {
 		invalidateIfWritten()
 		release()
-		contextLogger.Warn().Err(err).Msgf("BareGitResolver: ref %q not reachable from %s", ref, repoURL)
-		return Resolution{}, unresolvedResourceError(err)
+		contextLogger.Debug().Err(err).Msgf("BareGitResolver: ref %q not reachable from %s", ref, repoURL)
+		return Resolution{}, unresolvedResourceError(gitResolutionError("git_fetch", repoURL, ref, subdir, err))
 	}
 
 	packageRoot, err := remote.extract(ctx, sha, subdir)
 	if err != nil {
 		invalidateIfWritten()
 		release()
-		contextLogger.Warn().Err(err).Msgf("BareGitResolver: archive %s:%s failed", sha, subdir)
-		return Resolution{}, unresolvedResourceError(err)
+		contextLogger.Debug().Err(err).Msgf("BareGitResolver: archive %s:%s failed", sha, subdir)
+		return Resolution{}, unresolvedResourceError(gitResolutionError("git_archive", repoURL, ref, subdir, err))
 	}
 	invalidateIfWritten()
 	if err := r.admitGitEntry(repoEntry); err != nil {

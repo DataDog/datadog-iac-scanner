@@ -62,7 +62,7 @@ func unresolvedResourceError(err error) error {
 	if errors.As(err, &budgetErr) {
 		return budgetErr
 	}
-	return &tfmodules.UnresolvedError{Reason: err.Error()}
+	return &tfmodules.UnresolvedError{Reason: err.Error(), Cause: err}
 }
 
 type resourceBudgetContextKey struct{}

@@ -226,6 +226,11 @@ func (m *materializer) buildEntry(group *manifestGroup) (resolver.ManifestModule
 	if len(group.failures) > 0 {
 		entry.Status = resolver.ManifestStatusUnresolved
 		entry.Failure = joinedFailureReasons(group.failures)
+		entry.FailureDetails = &group.failures[0].Failure
+		entry.FailureDisposition = group.failures[0].Disposition
+		for i := range group.failures {
+			entry.FailureAttempts = append(entry.FailureAttempts, group.failures[i].Attempts...)
+		}
 		return entry, nil
 	}
 	if len(group.resolved) == 0 {

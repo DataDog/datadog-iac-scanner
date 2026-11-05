@@ -111,6 +111,8 @@ module "missing" {
 	require.NoError(t, err)
 	_, err = prefetched.Resolve(t.Context(), &tfmodules.ParsedModule{Source: badSource})
 	require.ErrorContains(t, err, "fixture has no package")
+	require.Equal(t, result.Failures[0].Failure, resolver.DescribeFailure(err))
+	require.Equal(t, result.Failures[0].Attempts, resolver.FailureAttempts(err))
 
 	var resolved, unresolved int
 	for _, entry := range manifest.Entries {
@@ -151,6 +153,8 @@ module "bare" {
 	require.NoError(t, err)
 	require.Len(t, result.Failures, 1)
 	require.Empty(t, result.Failures[0].Source)
+	require.Equal(t, resolver.FailureEmptySource, result.Failures[0].Failure.Class)
+	require.Contains(t, result.Failures[0].Reason, "source is empty or missing")
 	require.Len(t, result.Modules, 1)
 	require.Equal(t, goodSource, result.Modules[0].Source)
 

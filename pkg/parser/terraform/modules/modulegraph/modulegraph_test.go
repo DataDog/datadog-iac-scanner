@@ -1037,6 +1037,58 @@ func TestResolveReportsResolutionFailure(t *testing.T) {
 	require.Contains(t, result.Failures[0].Reason, "unknown source")
 }
 
+func TestResolveRejectsEmptySourceBeforeResolution(t *testing.T) {
+	for _, tc := range []struct{ name, filename, content string }{
+		{"orphan override", "override.tf", "module \"network\" { version = \"1.0\" }"},
+		{"missing source", "main.tf", "module \"network\" {}"},
+		{"empty source", "main.tf", "module \"network\" { source = \"\" }"},
+		{"whitespace source", "main.tf", "module \"network\" { source = \"   \" }"},
+		{"json override", "override.tf.json", `{"module":{"network":{"version":"1.0"}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			file := filepath.Join(root, tc.filename)
+			if tc.filename != "main.tf" {
+				require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"),
+					[]byte(`module "network" { source = "acme/network/aws" }`), 0o644))
+			}
+			require.NoError(t, os.WriteFile(file, []byte(tc.content), 0o644))
+			tracking := &trackingResolver{calls: make(map[string]int)}
+			result := Resolve(t.Context(), &Request{
+				RootPaths: []string{root}, DiscoveryPaths: []string{file}, Resolver: tracking, MaxDepth: 2,
+			})
+			require.Empty(t, tracking.calls)
+			require.Empty(t, result.Modules)
+			require.Len(t, result.Failures, 1)
+			require.Equal(t, "network", result.Failures[0].Name)
+			require.Equal(t, file, result.Failures[0].CallerFile)
+			require.Equal(t, 1, result.Failures[0].CallerLine)
+			require.Contains(t, result.Failures[0].Reason, "source is empty or missing")
+			require.NotContains(t, result.Failures[0].Reason, "terraform init")
+			require.Equal(t, resolver.FailureEmptySource, result.Failures[0].Failure.Class)
+			require.Len(t, result.Stats, 1)
+			require.Equal(t, resolver.FailureEmptySource, result.Stats[0].FailureCode)
+		})
+	}
+}
+
+func TestResolveValidatesSourceAfterMergingOverrides(t *testing.T) {
+	root, remote := t.TempDir(), t.TempDir()
+	mainFile, overrideFile := filepath.Join(root, "main.tf"), filepath.Join(root, "override.tf")
+	require.NoError(t, os.WriteFile(mainFile, []byte(`module "network" { source = "acme/network/aws" }`), 0o644))
+	require.NoError(t, os.WriteFile(overrideFile, []byte(`module "network" { version = "v5.5.1" }`), 0o644))
+	result := Resolve(t.Context(), &Request{
+		RootPaths: []string{root}, DiscoveryPaths: []string{mainFile, overrideFile}, MaxDepth: 2,
+		Resolver: mapResolver{bySource: map[string]resolver.Resolution{
+			"acme/network/aws": {LocalPath: remote, PackageRoot: remote},
+		}},
+	})
+	require.Empty(t, result.Failures)
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, "v5.5.1", result.Modules[0].Version)
+	require.Equal(t, mainFile, result.Modules[0].CallerFile)
+}
+
 // screeningResolver screens out every source and counts Resolve calls, so a
 // test can prove screened modules never reach the resolver.
 type screeningResolver struct {
@@ -1080,7 +1132,7 @@ module "b" {
 		require.Contains(t, failure.Reason, "is not in --module-host-allowlist")
 	}
 	require.Len(t, result.Stats, 1, "one sample per module identity")
-	require.Equal(t, resolver.FailureAllowlistDenied, result.Stats[0].FailureCode)
+	require.Equal(t, resolver.FailureHostNotAllowlisted, result.Stats[0].FailureCode)
 }
 
 // fileScreeningResolver rules out calls declared in one file, as
@@ -1160,13 +1212,17 @@ func TestResolveReportsRedactedResolutionFailureCredentials(t *testing.T) {
 module "vpc" {
   source = %q
 }
+
 `, source)), 0o644))
 
 	result := Resolve(t.Context(), &Request{
 		RootPaths:      []string{root},
 		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
-		Resolver:       mapResolver{bySource: map[string]resolver.Resolution{}},
-		MaxDepth:       2,
+		Resolver: resolver.NewChainResolver(
+			errorResolver{err: fmt.Errorf("connection refused fetching %s", source)},
+			errorResolver{err: fmt.Errorf("anonymous fallback failed fetching %s", source)},
+		),
+		MaxDepth: 2,
 	})
 
 	require.Len(t, result.Failures, 1)
@@ -1174,6 +1230,36 @@ module "vpc" {
 	require.Contains(t, result.Failures[0].Source, "example.com/modules/vpc.git")
 	require.NotContains(t, result.Failures[0].Reason, "user:secret@")
 	require.Contains(t, result.Failures[0].Reason, "example.com/modules/vpc.git")
+	require.NotContains(t, result.Failures[0].Reason, "anonymous fallback")
+	require.Len(t, result.Failures[0].Attempts, 2)
+	for _, attempt := range result.Failures[0].Attempts {
+		require.NotContains(t, attempt.Reason, "user:secret@")
+	}
+}
+
+func TestResolutionFailureRedactsStructuredURLs(t *testing.T) {
+	const source = "acme/network/aws"
+	details := resolver.FailureDetails{
+		Class: resolver.FailureRegistryVersionNotFound, Stage: "registry_download",
+		RequestURL: "https://user:secret@registry.example/acme/network/aws/1.0.0/download", HTTPStatus: 404,
+	}
+	prefetched := resolver.NewPrefetchedResolver(&resolver.Manifest{Modules: map[string]resolver.ManifestEntry{
+		source: {
+			Status: resolver.ManifestStatusUnresolved, Failure: "download failed", FailureDetails: &details,
+			FailureAttempts: []resolver.FailureAttempt{{FailureDetails: details, Reason: "request " + details.RequestURL}},
+		},
+	}})
+	mod := &tfmodules.ParsedModule{Source: source, Version: "v1.0.0", Name: "network"}
+	_, err := prefetched.Resolve(t.Context(), mod)
+	require.Error(t, err)
+	var collector resultCollector
+	collector.addResolutionFailure(mod, "", err)
+	require.Len(t, collector.failures, 1)
+	failure := collector.failures[0]
+	require.NotContains(t, failure.Reason, "user:secret@")
+	require.NotContains(t, failure.Failure.RequestURL, "user:secret@")
+	require.NotContains(t, failure.Attempts[0].RequestURL, "user:secret@")
+	require.NotContains(t, failure.Attempts[0].Reason, "user:secret@")
 }
 
 func TestResolveReturnsPartialResultWhenPhaseDeadlineExpires(t *testing.T) {

@@ -170,19 +170,20 @@ func (c *registryCache) resolveConcreteVersion(ctx context.Context, source, vers
 		return "", &tfmodules.UnresolvedError{Reason: parseErr.Error()}
 	}
 
-	if version != "" && isBareVersion(version) {
-		return version, nil
+	if normalized, ok := NormalizeExactRegistryVersion(version); ok {
+		return normalized, nil
 	}
 
 	ep, err := c.modulesV1(ctx, host)
 	if err != nil {
-		return "", &tfmodules.UnresolvedError{Reason: fmt.Sprintf("registry discovery for %s: %v", host, err)}
+		return "", &tfmodules.UnresolvedError{Reason: fmt.Sprintf("registry discovery for %s: %v", host, err), Cause: err}
 	}
 
 	resolved, resolveErr := c.resolvedVersion(ctx, ep, host, namespace, name, provider, version)
 	if resolveErr != nil {
 		return "", &tfmodules.UnresolvedError{
 			Reason: fmt.Sprintf("could not resolve version for %s/%s/%s: %v", namespace, name, provider, resolveErr),
+			Cause:  resolveErr,
 		}
 	}
 	contextLogger := logger.FromContext(ctx)
@@ -202,12 +203,12 @@ func (c *registryCache) resolveGetterURL(ctx context.Context, source, concreteVe
 
 	ep, err := c.modulesV1(ctx, host)
 	if err != nil {
-		return "", &tfmodules.UnresolvedError{Reason: fmt.Sprintf("registry discovery for %s: %v", host, err)}
+		return "", &tfmodules.UnresolvedError{Reason: fmt.Sprintf("registry discovery for %s: %v", host, err), Cause: err}
 	}
 
 	dlURL, err := c.downloadURL(ctx, ep, host, namespace, name, provider, concreteVersion)
 	if err != nil {
-		return "", &tfmodules.UnresolvedError{Reason: err.Error()}
+		return "", &tfmodules.UnresolvedError{Reason: err.Error(), Cause: err}
 	}
 
 	if subdir := registrySubdir(source); subdir != "" {

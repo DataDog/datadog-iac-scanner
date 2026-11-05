@@ -376,8 +376,8 @@ func (r *LocalGitRefResolver) Resolve(ctx context.Context, mod *tfmodules.Parsed
 	})
 	if err != nil {
 		release()
-		contextLogger.Warn().Err(err).Msgf("LocalGitRefResolver: archive %s:%s failed", sha, subdir)
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: err.Error()}
+		contextLogger.Debug().Err(err).Msgf("LocalGitRefResolver: archive %s:%s failed", sha, subdir)
+		return Resolution{}, unresolvedResourceError(gitResolutionError("git_archive", info.gitDir, ref, subdir, err))
 	}
 
 	if err := r.Budget.EnsureEntryFits(info.extractBase); err != nil {

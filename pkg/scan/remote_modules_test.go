@@ -29,7 +29,11 @@ func TestLogModuleResolutionFailuresWarnsOncePerReason(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		failures = append(failures, modulegraph.ResolutionFailure{
 			Source:     "registry.example.com/acme/module-" + string(rune('a'+i)) + "/aws",
+			Version:    "v5.5.1",
+			Name:       "network",
 			CallerFile: "root/main.tf",
+			CallerLine: i + 1,
+			Failure:    resolver.FailureDetails{Class: "host_not_allowlisted", Stage: "policy"},
 			Reason:     allowlist,
 		})
 	}
@@ -40,7 +44,7 @@ func TestLogModuleResolutionFailuresWarnsOncePerReason(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	log := zerolog.New(&buf).Level(zerolog.WarnLevel)
+	log := zerolog.New(&buf).Level(zerolog.InfoLevel)
 	logModuleResolutionFailures(&log, failures)
 
 	var warnings []map[string]any
@@ -51,12 +55,67 @@ func TestLogModuleResolutionFailuresWarnsOncePerReason(t *testing.T) {
 	}
 	require.Len(t, warnings, 2)
 	require.Equal(t, allowlist, warnings[0]["reason"])
+	require.Equal(t, "info", warnings[0]["level"])
 	require.EqualValues(t, 7, warnings[0]["module_calls"])
 	require.EqualValues(t, 7, warnings[0]["module_source_count"])
 	require.Len(t, warnings[0]["module_sources"], maxLoggedFailureSources)
+	require.Equal(t, "host_not_allowlisted", warnings[0]["failure_class"])
+	require.Equal(t, "policy", warnings[0]["failure_stage"])
+	require.Len(t, warnings[0]["module_samples"], maxLoggedFailureSources)
+	sample := warnings[0]["module_samples"].([]any)[0].(map[string]any)
+	require.Equal(t, "v5.5.1", sample["version"])
+	require.Equal(t, "network", sample["name"])
+	require.Equal(t, "root/main.tf:1", sample["caller_location"])
 	require.Equal(t, denied, warnings[1]["reason"])
+	require.Equal(t, "warn", warnings[1]["level"])
 	require.EqualValues(t, 3, warnings[1]["module_calls"])
 	require.EqualValues(t, 1, warnings[1]["module_source_count"])
+
+	var warnOnly bytes.Buffer
+	warnLog := zerolog.New(&warnOnly).Level(zerolog.WarnLevel)
+	logModuleResolutionFailures(&warnLog, failures)
+	require.NotContains(t, warnOnly.String(), allowlist)
+	require.Contains(t, warnOnly.String(), denied)
+}
+
+func TestLogModuleResolutionFailureSamplesRetainDeclaredVersions(t *testing.T) {
+	const downloadURL = "https://registry.terraform.io/v1/modules/acme/network/aws/5.5.1/download"
+	details := resolver.FailureDetails{
+		Class: resolver.FailureRegistryVersionNotFound, Stage: "registry_download", RequestURL: downloadURL, HTTPStatus: 404,
+	}
+	failures := []modulegraph.ResolutionFailure{
+		{
+			Source: "acme/network/aws", Version: "v5.5.1", Name: "vpc", CallerFile: "network/main.tf", CallerLine: 7,
+			Reason: "download failed", Failure: details,
+			Attempts: []resolver.FailureAttempt{{FailureDetails: details, Reason: "download failed"}},
+		},
+		{
+			Source: "acme/network/aws", Version: "~> 5.0", Name: "fixture", CallerFile: "testdata/main.tf", CallerLine: 3,
+			Reason: "download failed", Failure: details,
+		},
+	}
+	var buf bytes.Buffer
+	log := zerolog.New(&buf).Level(zerolog.WarnLevel)
+	logModuleResolutionFailures(&log, failures)
+	var warning map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &warning))
+	require.Equal(t, downloadURL, warning["http_url"])
+	require.EqualValues(t, 404, warning["http_status_code"])
+	require.Len(t, warning["failure_attempts"], 1)
+	samples := warning["module_samples"].([]any)
+	require.Len(t, samples, 2)
+	require.Equal(t, "v5.5.1", samples[0].(map[string]any)["version"])
+	require.Equal(t, "network/main.tf:7", samples[0].(map[string]any)["caller_location"])
+	require.Equal(t, "~> 5.0", samples[1].(map[string]any)["version"])
+	require.Equal(t, "testdata/main.tf:3", samples[1].(map[string]any)["caller_location"])
+
+	// Concurrent graph traversal must not change the selected sample order.
+	failures[0], failures[1] = failures[1], failures[0]
+	failures[0].Attempts = failures[1].Attempts
+	var reversed bytes.Buffer
+	log = zerolog.New(&reversed).Level(zerolog.WarnLevel)
+	logModuleResolutionFailures(&log, failures)
+	require.Equal(t, buf.String(), reversed.String())
 }
 
 func TestResolvedModuleSourceTypeUsesResolvedGitRef(t *testing.T) {

@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -136,6 +138,92 @@ func TestChainResolver(t *testing.T) {
 	})
 }
 
+func TestStructuredDispositionOverridesReason(t *testing.T) {
+	t.Run("terminal stops fallback without message matching", func(t *testing.T) {
+		terminal := &tfmodules.UnresolvedError{
+			Reason:       "SCI rejected the requested revision",
+			FailureClass: tfmodules.FailureClassGitRefNotFound,
+			Disposition:  tfmodules.ResolverDispositionTerminal,
+		}
+		_, err := NewChainResolver(
+			failingResolver(terminal),
+			fakeChainResolver(func(context.Context, *tfmodules.ParsedModule) (Resolution, error) {
+				t.Fatal("terminal disposition must stop fallback")
+				return Resolution{}, nil
+			}),
+		).Resolve(t.Context(), &tfmodules.ParsedModule{Source: "git::https://example.com/acme/network?ref=missing"})
+		require.ErrorIs(t, err, terminal)
+		require.Equal(t, FailureGitRefNotFound, ClassifyFailure(err))
+	})
+
+	t.Run("retryable continues despite terminal-looking reason", func(t *testing.T) {
+		retryable := &tfmodules.UnresolvedError{
+			Reason:       "git ref not found through SCI: NotFound",
+			FailureClass: tfmodules.FailureClassGitRefNotFound,
+			Disposition:  tfmodules.ResolverDispositionRetryable,
+		}
+		res, err := NewChainResolver(
+			failingResolver(retryable),
+			succeedingResolver("/local/module"),
+		).Resolve(t.Context(), &tfmodules.ParsedModule{Source: "git::https://example.com/acme/network?ref=main"})
+		require.NoError(t, err)
+		require.Equal(t, "/local/module", res.LocalPath)
+	})
+
+	t.Run("unknown disposition cannot become terminal from reason text", func(t *testing.T) {
+		future := &tfmodules.UnresolvedError{
+			Reason:       "git ref not found through SCI: NotFound",
+			FailureClass: "future_failure_code",
+			Disposition:  tfmodules.ResolverDisposition("future-disposition"),
+		}
+		res, err := NewChainResolver(
+			failingResolver(future),
+			succeedingResolver("/local/module"),
+		).Resolve(t.Context(), &tfmodules.ParsedModule{Source: "git::https://example.com/acme/network?ref=main"})
+		require.NoError(t, err)
+		require.Equal(t, "/local/module", res.LocalPath)
+		require.Equal(t, FailureUnknown, ClassifyFailure(future))
+	})
+}
+
+func TestLegacyNotApplicableAlwaysContinues(t *testing.T) {
+	decline := &tfmodules.UnresolvedError{
+		Reason:        "git ref not found through SCI: NotFound",
+		FailureClass:  tfmodules.FailureClassGitRefNotFound,
+		NotApplicable: true,
+	}
+	res, err := NewChainResolver(
+		failingResolver(decline),
+		succeedingResolver("/local/module"),
+	).Resolve(t.Context(), &tfmodules.ParsedModule{Source: "git::https://example.com/acme/network?ref=main"})
+	require.NoError(t, err)
+	require.Equal(t, "/local/module", res.LocalPath)
+}
+
+func TestBrokerDeclineFallsThroughToLocalGitResolver(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-q", "-b", "main")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test")
+	runGit(t, repo, "remote", "add", "origin", "https://example.com/acme/network.git")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "main.tf"), []byte("# local fixture\n"), 0o644))
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-qm", "fixture")
+
+	brokerDecline := &tfmodules.UnresolvedError{
+		Reason:       "git revision cannot be resolved through SCI: NotFound",
+		FailureClass: tfmodules.FailureClassGitRefNotFound,
+		Disposition:  tfmodules.ResolverDispositionDecline,
+	}
+	local := NewLocalGitRefResolver([]string{repo}, t.TempDir())
+	res, err := NewChainResolver(failingResolver(brokerDecline), local).Resolve(t.Context(), &tfmodules.ParsedModule{
+		Source: "git::https://example.com/acme/network.git?ref=main~0",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "git_local", res.Origin)
+	require.NotEmpty(t, res.ResolvedRef)
+}
+
 // fakeScreener is a resolver whose Screen outcome is scripted; Resolve fails
 // the test because screening must never resolve anything.
 type fakeScreener struct {
@@ -199,7 +287,7 @@ func TestDefaultChainScreensHostsOutsideTheAllowlist(t *testing.T) {
 	privateRegistry := &tfmodules.ParsedModule{Name: "bucket", Source: "terraform-registry.example.io/team/bucket/aws"}
 	err = chain.Screen(context.Background(), privateRegistry)
 	require.Error(t, err)
-	require.Equal(t, FailureAllowlistDenied, ClassifyFailure(err))
+	require.Equal(t, FailureHostNotAllowlisted, ClassifyFailure(err))
 
 	allowedGit := &tfmodules.ParsedModule{Name: "vpc", Source: "git::https://github.com/acme/vpc.git?ref=v1"}
 	require.NoError(t, chain.Screen(context.Background(), allowedGit))
@@ -207,5 +295,15 @@ func TestDefaultChainScreensHostsOutsideTheAllowlist(t *testing.T) {
 	deniedGit := &tfmodules.ParsedModule{Name: "vpc", Source: "git::https://git.example.org/acme/vpc.git?ref=v1"}
 	err = chain.Screen(context.Background(), deniedGit)
 	require.Error(t, err)
-	require.Equal(t, FailureAllowlistDenied, ClassifyFailure(err))
+	require.Equal(t, FailureHostNotAllowlisted, ClassifyFailure(err))
+}
+
+func TestExplicitDispositionOverridesLegacyFlag(t *testing.T) {
+	terminal := &tfmodules.UnresolvedError{
+		Reason: "any wording", NotApplicable: true,
+		Disposition: tfmodules.ResolverDispositionTerminal,
+	}
+	_, err := NewChainResolver(failingResolver(terminal), succeedingResolver("/unexpected")).Resolve(
+		t.Context(), &tfmodules.ParsedModule{Source: "acme/network/aws"})
+	require.ErrorIs(t, err, terminal)
 }

@@ -8,6 +8,7 @@ package resolver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -29,15 +30,18 @@ const (
 )
 
 type ManifestEntry struct {
-	LocalPath        string `json:"local_path"`
-	PackageRoot      string `json:"package_root,omitempty"`
-	Version          string `json:"version,omitempty"`
-	Origin           string `json:"origin,omitempty"`
-	RequestedVersion string `json:"requested_version,omitempty"`
-	ResolvedVersion  string `json:"resolved_version,omitempty"`
-	ResolvedRef      string `json:"resolved_ref,omitempty"`
-	Status           string `json:"status,omitempty"`
-	Failure          string `json:"failure,omitempty"`
+	LocalPath          string                        `json:"local_path"`
+	PackageRoot        string                        `json:"package_root,omitempty"`
+	Version            string                        `json:"version,omitempty"`
+	Origin             string                        `json:"origin,omitempty"`
+	RequestedVersion   string                        `json:"requested_version,omitempty"`
+	ResolvedVersion    string                        `json:"resolved_version,omitempty"`
+	ResolvedRef        string                        `json:"resolved_ref,omitempty"`
+	Status             string                        `json:"status,omitempty"`
+	Failure            string                        `json:"failure,omitempty"`
+	FailureDetails     *FailureDetails               `json:"failure_details,omitempty"`
+	FailureAttempts    []FailureAttempt              `json:"failure_attempts,omitempty"`
+	FailureDisposition tfmodules.ResolverDisposition `json:"failure_disposition,omitempty"`
 }
 
 type Manifest struct {
@@ -58,20 +62,23 @@ type manifestCandidate struct {
 }
 
 type ManifestModule struct {
-	ID               string                `json:"id,omitempty"`
-	Source           string                `json:"source"`
-	CanonicalSource  string                `json:"canonical_source,omitempty"`
-	SourceType       string                `json:"source_type,omitempty"`
-	RegistryScope    string                `json:"registry_scope,omitempty"`
-	RequestedVersion string                `json:"requested_version,omitempty"`
-	ResolvedVersion  string                `json:"resolved_version,omitempty"`
-	ResolvedRef      string                `json:"resolved_ref,omitempty"`
-	ContentDigest    string                `json:"content_digest,omitempty"`
-	PackageRoot      string                `json:"package_root,omitempty"`
-	LocalPath        string                `json:"local_path,omitempty"`
-	Status           string                `json:"status"`
-	Failure          string                `json:"failure,omitempty"`
-	Declarations     []ManifestDeclaration `json:"declarations"`
+	ID                 string                        `json:"id,omitempty"`
+	Source             string                        `json:"source"`
+	CanonicalSource    string                        `json:"canonical_source,omitempty"`
+	SourceType         string                        `json:"source_type,omitempty"`
+	RegistryScope      string                        `json:"registry_scope,omitempty"`
+	RequestedVersion   string                        `json:"requested_version,omitempty"`
+	ResolvedVersion    string                        `json:"resolved_version,omitempty"`
+	ResolvedRef        string                        `json:"resolved_ref,omitempty"`
+	ContentDigest      string                        `json:"content_digest,omitempty"`
+	PackageRoot        string                        `json:"package_root,omitempty"`
+	LocalPath          string                        `json:"local_path,omitempty"`
+	Status             string                        `json:"status"`
+	Failure            string                        `json:"failure,omitempty"`
+	FailureDetails     *FailureDetails               `json:"failure_details,omitempty"`
+	FailureAttempts    []FailureAttempt              `json:"failure_attempts,omitempty"`
+	FailureDisposition tfmodules.ResolverDisposition `json:"failure_disposition,omitempty"`
+	Declarations       []ManifestDeclaration         `json:"declarations"`
 }
 
 type ManifestDeclaration struct {
@@ -255,12 +262,15 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) (stri
 	}
 	key := manifestModuleKey(module.Source, strings.TrimSpace(module.RequestedVersion))
 	entry := ManifestEntry{
-		RequestedVersion: strings.TrimSpace(module.RequestedVersion),
-		ResolvedVersion:  strings.TrimSpace(module.ResolvedVersion),
-		ResolvedRef:      strings.TrimSpace(module.ResolvedRef),
-		Status:           module.Status,
-		Failure:          module.Failure,
-		Origin:           module.SourceType,
+		RequestedVersion:   strings.TrimSpace(module.RequestedVersion),
+		ResolvedVersion:    strings.TrimSpace(module.ResolvedVersion),
+		ResolvedRef:        strings.TrimSpace(module.ResolvedRef),
+		Status:             module.Status,
+		Failure:            module.Failure,
+		FailureDetails:     module.FailureDetails,
+		FailureAttempts:    module.FailureAttempts,
+		FailureDisposition: module.FailureDisposition,
+		Origin:             module.SourceType,
 	}
 	switch module.Status {
 	case ManifestStatusResolved:
@@ -574,7 +584,13 @@ func resolveManifestEntry(
 	ctx context.Context, mod *tfmodules.ParsedModule, entry *ManifestEntry,
 ) (Resolution, error) {
 	if entry.Status == ManifestStatusUnresolved {
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: entry.Failure}
+		unresolved := &tfmodules.UnresolvedError{Reason: entry.Failure, Disposition: entry.FailureDisposition}
+		if entry.FailureDetails != nil {
+			unresolved.Cause = &resolutionError{
+				FailureDetails: *entry.FailureDetails, cause: errors.New(entry.Failure), attempts: entry.FailureAttempts,
+			}
+		}
+		return Resolution{}, unresolved
 	}
 	if entry.RequestedVersion != "" && mod.Version != "" && entry.RequestedVersion != mod.Version {
 		return Resolution{}, &tfmodules.UnresolvedError{

@@ -12,9 +12,12 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
+
+const preParseAdmissionStage = "pre_parse_admission"
 
 func moduleAdmissionLimit(request *Request) (maximum, baseline int64, enforce bool) {
 	if request.ResourceLimits.MaxTotalBytes > 0 {
@@ -92,7 +95,7 @@ func shedToTotalLimit(
 			currentBytes -= node.usage.Bytes
 			snapshot.budgetEvents = append(snapshot.budgetEvents, BudgetEvent{
 				Source:       node.source,
-				Gate:         "pre_parse_admission",
+				Gate:         preParseAdmissionStage,
 				Limit:        "module_bytes_total",
 				Maximum:      maximum,
 				Measured:     measured,
@@ -117,6 +120,10 @@ func shedToTotalLimit(
 			Source:            model.RedactURLCredentials(module.Source),
 			Version:           module.Version,
 			Name:              module.Name,
+			Disposition:       tfmodules.ResolverDispositionTerminal,
+			Failure: resolver.FailureDetails{
+				Class: resolver.FailureBudgetExceeded, Stage: preParseAdmissionStage,
+			},
 			Reason: fmt.Sprintf(
 				"module package rejected: pre-parse admission exceeds module_bytes_total limit %d",
 				maximum,

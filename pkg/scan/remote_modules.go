@@ -7,6 +7,8 @@ package scan
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -133,31 +135,88 @@ func remoteModulePackageRoots(directories map[string]engine.RemoteModuleDirector
 const maxLoggedFailureSources = 5
 
 type moduleFailureGroup struct {
-	reason  string
-	sources []string
-	seen    map[string]bool
-	calls   int
+	reason   string
+	failure  tfresolver.FailureDetails
+	attempts []tfresolver.FailureAttempt
+	sources  []string
+	seen     map[string]bool
+	samples  []moduleFailureSample
+	calls    int
+}
+
+type moduleFailureSample struct {
+	Source         string `json:"source"`
+	Version        string `json:"version"`
+	Name           string `json:"name"`
+	CallerFile     string `json:"caller_file"`
+	CallerLine     int    `json:"caller_line"`
+	CallerLocation string `json:"caller_location"`
+}
+
+func (g *moduleFailureGroup) addSample(failure *modulegraph.ResolutionFailure) {
+	location := failure.CallerFile
+	if failure.CallerLine > 0 {
+		location = fmt.Sprintf("%s:%d", location, failure.CallerLine)
+	}
+	sample := moduleFailureSample{
+		Source: failure.Source, Version: failure.Version, Name: failure.Name,
+		CallerFile: failure.CallerFile, CallerLine: failure.CallerLine, CallerLocation: location,
+	}
+	if slices.Contains(g.samples, sample) {
+		return
+	}
+	g.samples = append(g.samples, sample)
+	sort.Slice(g.samples, func(i, j int) bool {
+		a, b := g.samples[i], g.samples[j]
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		if a.Version != b.Version {
+			return a.Version < b.Version
+		}
+		if a.CallerFile != b.CallerFile {
+			return a.CallerFile < b.CallerFile
+		}
+		if a.CallerLine != b.CallerLine {
+			return a.CallerLine < b.CallerLine
+		}
+		return a.Name < b.Name
+	})
+	if len(g.samples) > maxLoggedFailureSources {
+		g.samples = g.samples[:maxLoggedFailureSources]
+	}
 }
 
 // logModuleResolutionFailures warns once per distinct failure reason, since a
 // single unreachable host or repository fails every call site that uses it.
-// Per-call details stay available at debug level.
+// Samples retain the association between source, declared version and location.
 func logModuleResolutionFailures(contextLogger *zerolog.Logger, failures []modulegraph.ResolutionFailure) {
-	groups := make(map[string]*moduleFailureGroup)
+	type groupKey struct {
+		reason  string
+		failure tfresolver.FailureDetails
+	}
+	groups := make(map[groupKey]*moduleFailureGroup)
 	for i := range failures {
 		failure := &failures[i]
 		contextLogger.Debug().
 			Str("module_source", failure.Source).
+			Str("module_version", failure.Version).
 			Str("module_name", failure.Name).
 			Str("caller_file", failure.CallerFile).
+			Int("caller_line", failure.CallerLine).
+			Str("failure_class", failure.Failure.Class).
 			Str("reason", failure.Reason).
 			Msg("Terraform module call unresolved")
-		group, ok := groups[failure.Reason]
+		key := groupKey{reason: failure.Reason, failure: failure.Failure}
+		group, ok := groups[key]
 		if !ok {
-			group = &moduleFailureGroup{reason: failure.Reason, seen: make(map[string]bool)}
-			groups[failure.Reason] = group
+			group = &moduleFailureGroup{
+				reason: failure.Reason, failure: failure.Failure, attempts: failure.Attempts, seen: make(map[string]bool),
+			}
+			groups[key] = group
 		}
 		group.calls++
+		group.addSample(failure)
 		if !group.seen[failure.Source] {
 			group.seen[failure.Source] = true
 			group.sources = append(group.sources, failure.Source)
@@ -172,19 +231,36 @@ func logModuleResolutionFailures(contextLogger *zerolog.Logger, failures []modul
 		if ordered[i].calls != ordered[j].calls {
 			return ordered[i].calls > ordered[j].calls
 		}
-		return ordered[i].reason < ordered[j].reason
+		if ordered[i].reason != ordered[j].reason {
+			return ordered[i].reason < ordered[j].reason
+		}
+		return ordered[i].failure.Class < ordered[j].failure.Class
 	})
 	for _, group := range ordered {
 		sources := group.sources
 		if len(sources) > maxLoggedFailureSources {
 			sources = sources[:maxLoggedFailureSources]
 		}
-		contextLogger.Warn().
+		level := zerolog.WarnLevel
+		if group.failure.Class == tfresolver.FailureHostNotAllowlisted {
+			level = zerolog.InfoLevel
+		}
+		event := contextLogger.WithLevel(level).
 			Str("reason", group.reason).
+			Str("failure_class", group.failure.Class).
+			Str("failure_stage", group.failure.Stage).
+			Interface("failure_attempts", group.attempts).
+			Interface("module_samples", group.samples).
 			Strs("module_sources", sources).
 			Int("module_source_count", len(group.sources)).
-			Int("module_calls", group.calls).
-			Msg("Terraform module resolution failed")
+			Int("module_calls", group.calls)
+		if group.failure.RequestURL != "" {
+			event.Str("http_url", group.failure.RequestURL)
+		}
+		if group.failure.HTTPStatus != 0 {
+			event.Int("http_status_code", group.failure.HTTPStatus)
+		}
+		event.Msg("Terraform module resolution failed")
 	}
 }
 

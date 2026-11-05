@@ -82,7 +82,7 @@ func TestResolveCollectsFailureModuleStat(t *testing.T) {
 	stat := result.Stats[0]
 	require.Equal(t, "git", stat.Source) // detected fallback: no resolver-provided origin
 	require.Equal(t, ModuleOutcomeUnresolved, stat.Outcome)
-	require.Equal(t, resolver.FailureAllowlistDenied, stat.FailureCode)
+	require.Equal(t, resolver.FailureHostNotAllowlisted, stat.FailureCode)
 	require.Empty(t, stat.Cache)
 }
 
@@ -99,4 +99,36 @@ func TestResolveCollectsHTTPFailureCode(t *testing.T) {
 	require.Len(t, result.Stats, 1)
 	require.Equal(t, ModuleOutcomeUnresolved, result.Stats[0].Outcome)
 	require.Equal(t, resolver.FailureHTTPServer, result.Stats[0].FailureCode)
+}
+
+func TestResolveCollectsDetailedFailureCodes(t *testing.T) {
+	const source = "git::https://example.com/acme/network.git?ref=v1"
+	const placeholderSource = "git::https://example.com/acme/network.git?ref=__SOURCE_REF__"
+	for _, tc := range []struct{ name, source, reason, want string }{
+		{"SCI repo or ref", source, "git ref not found through SCI: NotFound", resolver.FailureGitRepoOrRefNotFound},
+		{"broker ref", source, "git ref not advertised", resolver.FailureGitRefNotFound},
+		{"SCI placeholder", placeholderSource, "git ref not found through SCI: NotFound", resolver.FailurePlaceholderRef},
+		{"broker placeholder", placeholderSource, "git ref not advertised", resolver.FailurePlaceholderRef},
+		{"empty source", "", "fixture resolver must not run", resolver.FailureEmptySource},
+		{"missing subdir", source, "git_archive: archive path unavailable", resolver.FailureGitSubdirNotFound},
+		{"broker subdir absent at ref", source, "module subdirectory is not in the repository at this ref", resolver.FailureGitSubdirNotFound},
+		{"broker subdir not found", source, "brokered module subdirectory was not found", resolver.FailureGitSubdirNotFound},
+		{"registry module", "acme/network/aws", "versions endpoint returned HTTP 404", resolver.FailureRegistryModuleNotFound},
+		{"registry version", "acme/network/aws", "download endpoint returned HTTP 404", resolver.FailureRegistryVersionNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			file := filepath.Join(root, "main.tf")
+			require.NoError(t, os.WriteFile(file, []byte(fmt.Sprintf(`module "network" { source = %q }`, tc.source)), 0o644))
+			result := Resolve(t.Context(), &Request{
+				RootPaths: []string{root}, DiscoveryPaths: []string{file}, MaxDepth: 2,
+				Resolver: errorResolver{err: &tfmodules.UnresolvedError{Reason: tc.reason}},
+			})
+			require.Len(t, result.Stats, 1)
+			require.Equal(t, ModuleOutcomeUnresolved, result.Stats[0].Outcome)
+			require.Equal(t, tc.want, result.Stats[0].FailureCode)
+			require.Len(t, result.Failures, 1)
+			require.Equal(t, result.Failures[0].Failure.Class, result.Stats[0].FailureCode)
+		})
+	}
 }
