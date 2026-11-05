@@ -74,11 +74,8 @@ type converter struct {
 	bytes     []byte
 	inputVars VariableMap
 	renderer  *partial.Renderer
-	// file is the body of the whole file; its blocks each get a fresh dynamicLeft.
-	file        *hclsyntax.Body
-	dynamicLeft int
-	// dynamicWarned records that an overflow was already logged for this file.
-	dynamicWarned bool
+	// file is the body of the whole file.
+	file *hclsyntax.Body
 }
 
 func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
@@ -94,6 +91,29 @@ func newConverter(src []byte, variables VariableMap, funcs map[string]function.F
 
 func (c *converter) rangeSource(r hcl.Range) string {
 	return string(c.bytes[r.Start.Byte:r.End.Byte])
+}
+
+// ForEachEmpty reports whether a top-level block of the given type and label
+// count expands with for_each, and forEach evaluates under ctx to a known
+// empty collection: Terraform creates no instance of it. Other blocks, locals
+// or nested blocks among them, never expand, whatever their attributes.
+func ForEachEmpty(blockType string, labels int, forEach hcl.Expression, ctx *hcl.EvalContext) bool {
+	switch {
+	case forEach == nil:
+		return false
+	case blockType == "resource" || blockType == "data" || blockType == "ephemeral":
+		if labels != 2 {
+			return false
+		}
+	case blockType == "module":
+		if labels != 1 {
+			return false
+		}
+	default:
+		return false
+	}
+	v, diags := forEach.Value(ctx)
+	return !diags.HasErrors() && ctyutil.KnownEmptyCollection(v)
 }
 
 func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLine int) (model.Document, error) {
@@ -136,9 +156,6 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	}
 
 	for _, block := range body.Blocks {
-		if body == c.file {
-			c.dynamicLeft = dynamicblock.MaxGeneratedPerResource
-		}
 		if dynamicblock.Is(block) {
 			expanded, err := c.convertDynamicBlock(ctx, block, out)
 			if err != nil {
@@ -154,6 +171,9 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 		// set line info for block
 		ddLines["_dd_"+block.Type] = model.LineObject{
 			Line: block.TypeRange.Start.Line,
+		}
+		if body == c.file && c.forEachEmpty(block) {
+			continue
 		}
 		err = c.convertBlock(ctx, block, out, block.TypeRange.Start.Line)
 		if err != nil {
@@ -204,6 +224,11 @@ func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.L
 	return arr
 }
 
+func (c *converter) forEachEmpty(block *hclsyntax.Block) bool {
+	attr, ok := block.Body.Attributes["for_each"]
+	return ok && ForEachEmpty(block.Type, len(block.Labels), attr.Expr, c.renderer.Ctx)
+}
+
 func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, out model.Document, defLine int) error {
 	value, err := c.convertBody(ctx, block.Body, defLine)
 	if err != nil {
@@ -219,9 +244,6 @@ func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, ou
 func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Block, out model.Document) (bool, error) {
 	content := dynamicblock.Content(block)
 	expansion := dynamicblock.Expand(block, c.renderer.Ctx)
-	if content != nil && expansion.OverCap {
-		c.noteDynamicOverflow(ctx, block, expansion.Requested, dynamicblock.MaxExpansion)
-	}
 	if content == nil || !expansion.Resolved {
 		return false, nil
 	}
@@ -247,12 +269,6 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 		}
 		paths = append(paths, append([]string{dynamicblock.GeneratedType(block)}, labels...))
 	}
-	// Claimed all or nothing per block: a block that does not fit stays as written.
-	if len(expansion.Iterators) > c.dynamicLeft {
-		c.noteDynamicOverflow(ctx, block, expansion.Requested, dynamicblock.MaxGeneratedPerResource)
-		return false, nil
-	}
-	c.dynamicLeft -= len(expansion.Iterators)
 	for i, iterator := range expansion.Iterators {
 		c.inputVars[name] = iterator
 		value, err := c.convertBody(ctx, content, block.TypeRange.Start.Line)
@@ -264,22 +280,6 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 		}
 	}
 	return true, nil
-}
-
-// noteDynamicOverflow logs the first dynamic block kept as written for exceeding a
-// cap, once per file, as the evaluator does per scan.
-func (c *converter) noteDynamicOverflow(ctx context.Context, block *hclsyntax.Block, requested, limit int) {
-	if c.dynamicWarned {
-		return
-	}
-	c.dynamicWarned = true
-	contextLogger := logger.FromContext(ctx)
-	contextLogger.Warn().
-		Str("expansion_kind", "dynamic").
-		Str("address", "dynamic."+dynamicblock.GeneratedType(block)).
-		Int("requested_instances", requested).
-		Int("count_expansion_cap", limit).
-		Msg("tfeval: dynamic block expansion cap exceeded; block scanned as written")
 }
 
 func insertBlock(ctx context.Context, out model.Document, path []string, value model.Document) error {

@@ -56,7 +56,7 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 		"_dd__default": {Line: 1},
 	}
 	for _, block := range content.Blocks {
-		body, skip := convertJSONBody(block.Body, evalCtx, src, block.DefRange.Start.Line)
+		body, skip := convertJSONBody(block, evalCtx, src)
 		if skip {
 			continue
 		}
@@ -67,15 +67,18 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 	return out, nil
 }
 
-func convertJSONBody(body hcl.Body, evalCtx *hcl.EvalContext, src []byte, defLine int) (model.Document, bool) {
-	attrs, _ := body.JustAttributes()
+func convertJSONBody(block *hcl.Block, evalCtx *hcl.EvalContext, src []byte) (model.Document, bool) {
+	attrs, _ := block.Body.JustAttributes()
 	if countZero(attrs, evalCtx) {
+		return nil, true
+	}
+	if forEach, ok := attrs["for_each"]; ok && converter.ForEachEmpty(block.Type, len(block.Labels), forEach.Expr, evalCtx) {
 		return nil, true
 	}
 
 	out := make(model.Document)
 	ddLines := map[string]model.LineObject{
-		"_dd__default": {Line: defLine},
+		"_dd__default": {Line: block.DefRange.Start.Line},
 	}
 	for name, attr := range attrs {
 		ddLines["_dd_"+name] = model.LineObject{Line: attr.NameRange.Start.Line}

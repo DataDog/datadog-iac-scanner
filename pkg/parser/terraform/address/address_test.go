@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/zclconf/go-cty/cty"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
@@ -53,11 +55,23 @@ func TestInstance(t *testing.T) {
 func TestInstanceKeyEscaping(t *testing.T) {
 	for _, key := range []string{"", "a.b", `a"b`, `a\b`, `["]`, "\n\t\a", "${key}", "%{key}", "日本語"} {
 		t.Run(fmt.Sprintf("%q", key), func(t *testing.T) {
-			addr := Instance(`module.a["x"].module.b[0]`, Block{Kind: KindData, Type: "example_type", Name: "example"}, fmt.Sprintf("[%q]", key))
+			addr := Instance(`module.a["x"].module.b[0]`, Block{Kind: KindData, Type: "example_type", Name: "example"}, InstanceSuffix(cty.StringVal(key)))
 			traversal, diags := hclsyntax.ParseTraversalAbs([]byte(addr), "", hcl.InitialPos)
 			require.False(t, diags.HasErrors(), diags.Error())
 			index := traversal[len(traversal)-1].(hcl.TraverseIndex)
 			require.Equal(t, key, index.Key.AsString())
 		})
 	}
+}
+
+// A suffix that is already HCL-escaped is never re-escaped: template openers
+// keep exactly one level of $$ / %% escaping through the whole identity.
+func TestInstanceSuffixNotReEscaped(t *testing.T) {
+	bucket := Block{Kind: KindResource, Type: "aws_s3_bucket", Name: "b"}
+	require.Equal(t, `aws_s3_bucket.b["$${key}"]`, Instance("", bucket, `["$${key}"]`))
+	require.Equal(t, `aws_s3_bucket.b["%%{if}"]`, Instance("", bucket, `["%%{if}"]`))
+	// And round-trips: the address parses back to the raw key.
+	traversal, diags := hclsyntax.ParseTraversalAbs([]byte(Instance("", bucket, `["$${key}"]`)), "", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	require.Equal(t, "${key}", traversal[len(traversal)-1].(hcl.TraverseIndex).Key.AsString())
 }

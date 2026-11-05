@@ -101,7 +101,7 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 
 // Every directory whose body is suppressed from the scan must be replaced by at
 // least one synthetic document. A module that was skipped rather than resolved
-// (budget, depth cap, cycle) resolves to nothing, and treating that as a
+// (depth cap, cycle) resolves to nothing, and treating that as a
 // successful evaluation would drop it from the scan entirely.
 func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testing.T) {
 	root, files := writeBudgetFanOut(t, 6, 4)
@@ -168,8 +168,8 @@ module "deep" {
 	return root, files
 }
 
-// A directory is suppressed for the whole scan at once, but depth, cycle and
-// budget stops apply to a single call site. So a directory can finish the scan
+// A directory is suppressed for the whole scan at once, but depth and cycle
+// stops apply to a single call site. So a directory can finish the scan
 // with one instance resolved and another skipped, and suppressing it then leaves
 // the skipped instance represented by nothing: not by a synthetic document, since
 // it was never evaluated, and not by its own body, since that was removed. The
@@ -188,7 +188,7 @@ func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T
 	}
 
 	sharedFile := filepath.Join(root, "shared", "main.tf")
-	if !res.unresolvedModuleDirs[filepath.Dir(sharedFile)] {
+	if !res.unresolvedModuleDirs[pathKey(filepath.Dir(sharedFile))] {
 		t.Error("the shared module has a call site that was never evaluated but is not " +
 			"marked unresolved, so its body will be suppressed with nothing standing in")
 	}

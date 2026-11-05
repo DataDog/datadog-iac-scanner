@@ -92,7 +92,7 @@ func (idx *moduleCallIndex) record(
 	}
 	for i := range instances {
 		instance := &instances[i]
-		dir := filepath.Clean(instance.Dir)
+		dir := pathKey(instance.Dir)
 		if _, ok := idx.files[dir]; !ok {
 			continue
 		}

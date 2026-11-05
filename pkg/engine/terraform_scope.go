@@ -153,24 +153,34 @@ func repoRelativeDir(dir, repoPath string, externalRoots map[string]bool) string
 		// self-locating (see repoRelativeFile).
 		return path.Clean(filepath.ToSlash(dir))
 	}
-	abs := absPath(dir, repoPath)
-	if rel, err := filepath.Rel(filepath.Clean(repoPath), abs); err == nil &&
-		rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return filepath.ToSlash(rel)
+	// Both sides are slashed so a Windows path rooted without a volume ("/repo")
+	// compares like any other; filepath.Rel still returns platform separators.
+	absDir := path.Clean(filepath.ToSlash(absPath(dir, repoPath)))
+	root := path.Clean(filepath.ToSlash(repoPath))
+	if rel, err := filepath.Rel(root, absDir); err == nil {
+		rel = filepath.ToSlash(rel)
+		if rel != parentDirectoryPath && !strings.HasPrefix(rel, parentDirectoryPath+"/") {
+			return rel
+		}
 	}
-	if base, ok := externalRelativeDir(abs, externalRoots); ok {
+	if base, ok := externalRelativeDir(absDir, externalRoots); ok {
 		return base
 	}
-	return path.Base(filepath.ToSlash(abs))
+	return path.Base(absDir)
 }
 
 // externalRelativeDir names abs relative to the innermost external root that
 // contains it: <root basename>/<rel>. ok is false when no external root does.
+// Both arguments are slash-space paths (see repoRelativeDir).
 func externalRelativeDir(abs string, externalRoots map[string]bool) (string, bool) {
 	best := ""
 	for root := range externalRoots {
-		cleaned := filepath.Clean(root)
-		if !pathWithinRoot(abs, cleaned) {
+		cleaned := path.Clean(filepath.ToSlash(root))
+		rel, err := filepath.Rel(cleaned, abs)
+		if err != nil {
+			continue
+		}
+		if rel = filepath.ToSlash(rel); rel == parentDirectoryPath || strings.HasPrefix(rel, parentDirectoryPath+"/") {
 			continue
 		}
 		if best == "" || len(cleaned) > len(best) {
@@ -184,7 +194,7 @@ func externalRelativeDir(abs string, externalRoots map[string]bool) (string, boo
 	if err != nil {
 		return "", false
 	}
-	return path.Base(filepath.ToSlash(best)) + "/" + filepath.ToSlash(rel), true
+	return path.Base(best) + "/" + filepath.ToSlash(rel), true
 }
 
 // documentBlocks records every top-level block a parsed Terraform document

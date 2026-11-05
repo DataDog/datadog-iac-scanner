@@ -706,6 +706,13 @@ func TestInspect_SupersededInstanceFindingsSkipLineDetection(t *testing.T) {
 	require.Equal(t, detected[0], detected[1], "only the finding that is kept has its line detected")
 }
 
+func TestInspect_SupersededInstanceFindingsCollapseAtScale(t *testing.T) {
+	small, _ := supersededInstances(t, 20, true, false)
+	detected, vulns := supersededInstances(t, 2000, true, false)
+	require.Len(t, vulns, 1, "the instances share one identity")
+	require.Equal(t, small, detected, "only the finding that is kept has its line detected")
+}
+
 // With instance identity each instance has its own address, so none is
 // superseded.
 func TestInspect_CountedInstancesAreDistinctWithInstanceIdentity(t *testing.T) {

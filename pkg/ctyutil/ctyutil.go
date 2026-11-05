@@ -89,6 +89,12 @@ func LiteralInt(v cty.Value) (int, bool) {
 	}
 }
 
+// KnownEmptyCollection reports whether v is a materialized collection with
+// no element, such as a for_each that creates no instance.
+func KnownEmptyCollection(v cty.Value) bool {
+	return Materialized(v) && v.CanIterateElements() && v.Length().IsKnown() && v.LengthInt() == 0
+}
+
 // ContainsNestedUnknown reports whether a wholly-known value still contains unknown
 // or dynamic-typed elements that must be preserved as source references.
 func ContainsNestedUnknown(v cty.Value) bool {

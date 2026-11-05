@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -53,14 +54,10 @@ type moduleResolutionResult struct {
 	unresolvedModuleDirs map[string]bool
 	extras               map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
-	moduleFiles    map[string]*moduleFileCalls
-	resourceCount  int
-	rootCount      int
-	budgetExceeded bool
-	// count/for_each per-block expansion cap observability
-	expansionTruncations  int
-	expansionMaxRequested int
-	ok                    bool
+	moduleFiles   map[string]*moduleFileCalls
+	resourceCount int
+	rootCount     int
+	ok            bool
 }
 
 // instantiateLocalModules evaluates local modules and injects resolved resource
@@ -101,7 +98,7 @@ func (c *Inspector) instantiateLocalModules(
 			continue
 		}
 		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
-			if res.unresolvedModuleDirs[moduleFileDir(f.FilePath, c.repoPath)] {
+			if res.unresolvedModuleDirs[moduleFileDir(c.fsys, f.FilePath, c.repoPath)] {
 				continue
 			}
 			// Only the blocks that came back as instantiated documents are
@@ -133,46 +130,17 @@ func (c *Inspector) instantiateLocalModules(
 }
 
 // logModuleInstantiationSummary emits the per-scan record of module
-// instantiation. The counts are informational and log at info level; a scan
-// that never evaluated a module root stays quiet. A scan that truncated module
-// evaluation — the resource budget was exhausted or a count/for_each expansion
-// was capped — silently lost rule coverage, so that case additionally logs at
-// warn level for on-call searches: without it, a scan on its way to OOM looks
-// identical to one that never ran module evaluation.
+// instantiation at info level. A scan that never evaluated a module root stays quiet.
 func logModuleInstantiationSummary(log *zerolog.Logger, res *moduleResolutionResult) {
-	if res.rootCount == 0 && res.resourceCount == 0 && !res.budgetExceeded && res.expansionTruncations == 0 {
+	if res.rootCount == 0 && res.resourceCount == 0 {
 		return
 	}
-	ev := log.Info().
+	log.Info().
 		Int("module_resources_instantiated", res.resourceCount).
 		Int("module_root_count", res.rootCount).
 		Int("module_documents", len(res.docs)).
 		Int("deduplicated_callers", deduplicatedCallerCount(res)).
-		Int("resource_budget", tfeval.MaxInstantiated()).
-		Bool("resource_budget_exhausted", res.budgetExceeded)
-	if res.expansionTruncations > 0 {
-		ev = ev.
-			Int("count_expansion_cap", tfeval.MaxCountExpansion()).
-			Int("dynamic_expansion_cap", tfeval.MaxDynamicExpansion()).
-			Int("count_expansion_truncated", res.expansionTruncations).
-			Int("count_expansion_max_requested", res.expansionMaxRequested)
-	}
-	ev.Msg("tfeval: module instantiation summary")
-	if res.budgetExceeded || res.expansionTruncations > 0 {
-		ev := log.Warn().
-			Int("module_resources_instantiated", res.resourceCount).
-			Int("module_root_count", res.rootCount).
-			Int("resource_budget", tfeval.MaxInstantiated()).
-			Bool("resource_budget_exhausted", res.budgetExceeded)
-		if res.expansionTruncations > 0 {
-			ev = ev.
-				Int("count_expansion_cap", tfeval.MaxCountExpansion()).
-				Int("dynamic_expansion_cap", tfeval.MaxDynamicExpansion()).
-				Int("count_expansion_truncated", res.expansionTruncations).
-				Int("count_expansion_max_requested", res.expansionMaxRequested)
-		}
-		ev.Msg("tfeval: module instantiation truncated")
-	}
+		Msg("tfeval: module instantiation summary")
 }
 
 // declaresTargetedResource reports whether any scanned Terraform file declares
@@ -234,13 +202,104 @@ func splitBlockKind(kind string) (section, typ, addrKind string) {
 // evaluator carries the block kind from HCL, so a managed resource and an
 // ephemeral one sharing type and name never conflate.
 func blockKind(r *tfeval.ResolvedResource) string {
+	return blockKindOf(r.Type, r.Data, r.Ephemeral)
+}
+
+func blockKindOf(typ string, data, ephemeral bool) string {
 	switch {
-	case r.Data:
-		return dataTypePrefix + r.Type
-	case r.Ephemeral:
-		return ephemeralPrefix + r.Type
+	case data:
+		return dataTypePrefix + typ
+	case ephemeral:
+		return ephemeralPrefix + typ
 	}
-	return r.Type
+	return typ
+}
+
+// writesExpansion reports whether a parsed block writes count or for_each,
+// which its document leaves out but its line table records.
+func writesExpansion(block interface{}) bool {
+	attrs, _ := asStringMap(block)
+	has := func(key string) bool {
+		switch lines := attrs["_dd_lines"].(type) {
+		case map[string]model.LineObject:
+			_, ok := lines[key]
+			return ok
+		case map[string]interface{}:
+			_, ok := lines[key]
+			return ok
+		}
+		return false
+	}
+	return has("_dd_count") || has("_dd_for_each")
+}
+
+// declaresExpandedBlock reports whether any scanned Terraform file declares a
+// block some rule can match by name with count or for_each, which may expand
+// to no instance.
+func declaresExpandedBlock(files model.FileMetadatas, targets *ruleTargets) bool {
+	for _, f := range files {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
+			continue
+		}
+		for _, bs := range blockSections {
+			blocks, _ := asStringMap(f.Document[bs.section])
+			for typ, byName := range blocks {
+				if !targets.matches(typ) && !targets.matches(bs.prefix+typ) {
+					continue
+				}
+				names, _ := asStringMap(byName)
+				for _, block := range names {
+					if writesExpansion(block) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// addDroppedBlocks records in dropped the empty blocks no evaluation resolved
+// to any instance, so they are removed from the files they are written in.
+func addDroppedBlocks(
+	dropped instantiatedIndex,
+	empty []tfeval.EmptyBlock,
+	resolved map[string]bool,
+	failedRoots map[string]bool,
+	byAbsPath map[string]*model.FileMetadata,
+	fsys vfs.FS,
+	repoPath string,
+) {
+	for _, b := range empty {
+		file := absPath(b.DefinedIn, repoPath)
+		kind := blockKindOf(b.Type, b.Data, b.Ephemeral)
+		if resolved[resolvedBlockKey(file, kind, b.Name)] {
+			continue
+		}
+		fm := fileByPath(byAbsPath, fsys, b.DefinedIn, repoPath)
+		if fm == nil || failedRoots[moduleFileDir(fsys, fm.FilePath, repoPath)] {
+			continue
+		}
+		// A list-shaped type cannot lose one block without losing all of them.
+		if _, named := asStringMap(docAsMap(fm.Document[blockSection(b)])[b.Type]); !named {
+			continue
+		}
+		dropped.add(fm.ID, kind, b.Name)
+	}
+}
+
+func blockSection(b tfeval.EmptyBlock) string {
+	switch {
+	case b.Data:
+		return "data"
+	case b.Ephemeral:
+		return ephemeralSection
+	}
+	return blockSections[0].section
+}
+
+func resolvedBlockKey(file, kind, name string) string {
+	return file + "\x00" + kind + "\x00" + name
 }
 
 // instantiatedIndex records which resource and data blocks of a file were
@@ -259,6 +318,16 @@ func (idx instantiatedIndex) add(fileID, typ, name string) {
 		byType[typ] = names
 	}
 	names[name] = true
+}
+
+func (idx instantiatedIndex) merge(other instantiatedIndex) {
+	for fileID, byType := range other {
+		for typ, names := range byType {
+			for name := range names {
+				idx.add(fileID, typ, name)
+			}
+		}
+	}
 }
 
 // removeInstantiatedResources deletes the named resource, data and ephemeral
@@ -468,6 +537,7 @@ func evaluateRootModules(
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
 	instantiated instantiatedIndex,
+	dropped instantiatedIndex,
 	successfulRoots map[string]bool,
 	unresolvedModuleDirs map[string]bool,
 	actualCalledDirs map[string]bool,
@@ -483,19 +553,20 @@ func evaluateRootModules(
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
+		resolved: make(map[string]bool), failedRoots: make(map[string]bool),
 	}
-	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
-		next = m.evaluateConcurrently(roots, workers)
+		m.evaluateConcurrently(roots, workers)
+	} else {
+		for _, dir := range roots {
+			resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
+			m.merge(dir, resources, evaluator.TakeModuleInstances(), evaluator.TakeEmptyBlocks(), childDirs, err)
+			// The cache key includes rootDir, so the next root cannot reuse these
+			// evaluations, and keyMemo pins every collection they hashed.
+			evaluator.ReleaseEvalCache()
+		}
 	}
-	for _, dir := range roots[next:] {
-		evaluator.ResetSpeculativeBudget()
-		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
-		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
-		// The cache key includes rootDir, so the next root cannot reuse these
-		// evaluations, and keyMemo pins every collection they hashed.
-		evaluator.ReleaseEvalCache()
-	}
+	addDroppedBlocks(dropped, m.emptyBlocks, m.resolved, m.failedRoots, byAbsPath, evaluator.FS(), repoPath)
 }
 
 // rootEvalWorkers bounds the roots evaluated at once. Each holds its own
@@ -527,12 +598,19 @@ type rootMerge struct {
 	resourceCount        *int
 	rootEvalOK           *bool
 	moduleCalls          *moduleCallIndex
+	// emptyBlocks are the blocks evaluations found empty; resolved holds the
+	// blocks some evaluation did expand (see resolvedBlockKey), and failedRoots
+	// the roots whose evaluation failed.
+	emptyBlocks []tfeval.EmptyBlock
+	resolved    map[string]bool
+	failedRoots map[string]bool
 }
 
 func (m *rootMerge) merge(
 	dir string,
 	resources []tfeval.ResolvedResource,
 	instances []tfeval.ModuleInstance,
+	empty []tfeval.EmptyBlock,
 	childDirs map[string]bool,
 	err error,
 ) {
@@ -540,49 +618,48 @@ func (m *rootMerge) merge(
 	if err != nil {
 		contextLogger := logger.FromContext(m.ctx)
 		contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
+		m.failedRoots[pathKey(dir)] = true
 		for _, called := range discoverCalledModuleClosure(
 			m.ctx, m.evaluator, m.filesByDir, m.repoPath, m.resolver, dir,
 		) {
-			m.unresolvedModuleDirs[called] = true
+			m.unresolvedModuleDirs[pathKey(called)] = true
 		}
 		return
 	}
 	*m.rootEvalOK = true
-	m.successfulRoots[dir] = true
+	m.successfulRoots[pathKey(dir)] = true
+	m.emptyBlocks = append(m.emptyBlocks, empty...)
+	for i := range resources {
+		r := &resources[i]
+		m.resolved[resolvedBlockKey(absPath(r.DefinedIn, m.repoPath), blockKind(r), tfeval.ResourceBaseName(r.Name))] = true
+	}
 	for d := range childDirs {
-		m.actualCalledDirs[d] = true
+		m.actualCalledDirs[pathKey(d)] = true
 	}
 	attributions := newModuleAttributionCache()
 	rootModule := m.relDir(dir)
 	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, rootModule, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		resources, m.byAbsPath, m.evaluator.FS(), m.repoPath, rootModule, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
 	m.moduleCalls.record(instances, m.repoPath, rootModule, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
 	*m.resourceCount += count
 }
 
-// rootResult is a root evaluated by a worker, starting from an empty budget.
+// rootResult is a root evaluated by a worker.
 type rootResult struct {
-	resources             []tfeval.ResolvedResource
-	instances             []tfeval.ModuleInstance
-	childDirs             map[string]bool
-	err                   error
-	charged               int
-	demand                int
-	notEvaluated          []string
-	expansionTruncations  int
-	expansionMaxRequested int
-	panicked              any
+	resources    []tfeval.ResolvedResource
+	instances    []tfeval.ModuleInstance
+	empty        []tfeval.EmptyBlock
+	childDirs    map[string]bool
+	err          error
+	notEvaluated []string
+	panicked     any
 }
 
 // evaluateConcurrently evaluates roots on workers and merges them in order, so
 // shared documents get the same owners as when roots are evaluated one by one.
-// A root is only evaluated apart from the roots before it; the one thing they
-// share is the scan's instantiation budget, so a worker's result is merged only
-// while the budget left could not have changed it. It returns the index of the
-// first root it did not merge, from which the caller evaluates serially.
-func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
+func (m *rootMerge) evaluateConcurrently(roots []string, workers int) {
 	results := make([]chan rootResult, len(roots))
 	for i := range results {
 		results[i] = make(chan rootResult, 1)
@@ -626,50 +703,35 @@ func (m *rootMerge) evaluateConcurrently(roots []string, workers int) int {
 		wg.Wait()
 	}()
 
-	budget := m.evaluator.InstantiationBudget()
-	charged := m.evaluator.InstantiatedCount()
 	for i, dir := range roots {
 		r := <-results[i]
 		<-window
-		if budget > 0 && charged+r.demand > budget {
-			m.evaluator.RestoreInstantiatedCount(charged)
-			return i
-		}
 		if r.panicked != nil {
 			panic(r.panicked)
 		}
-		charged += r.charged
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
-		m.evaluator.AddExpansionStats(r.expansionTruncations, r.expansionMaxRequested)
-		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
+		m.merge(dir, r.resources, r.instances, r.empty, r.childDirs, r.err)
 	}
-	m.evaluator.RestoreInstantiatedCount(charged)
-	return len(roots)
 }
 
 func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r rootResult) {
-	worker.ResetSpeculativeBudget()
-	worker.RestoreInstantiatedCount(0)
-	worker.ResetBudgetDemand()
 	defer func() {
 		if p := recover(); p != nil {
 			r = rootResult{panicked: p}
 		}
-		r.demand = worker.BudgetDemand()
 		r.notEvaluated = worker.TakeNotEvaluatedDirs()
-		r.expansionTruncations, r.expansionMaxRequested = worker.TakeExpansionStats()
 		worker.ReleaseEvalCache()
 	}()
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
 	r.instances = worker.TakeModuleInstances()
-	r.charged = worker.InstantiatedCount()
+	r.empty = worker.TakeEmptyBlocks()
 	return r
 }
 
 // collectNotEvaluatedDirs marks the directories the evaluator skipped, and
 // everything they call, as unresolved.
 //
-// A directory is reached from several call sites, and depth, cycle and budget
+// A directory is reached from several call sites, and depth and cycle
 // stops apply to one call site at a time, so a directory can come out of a scan
 // with some instances resolved and others skipped. Suppression is decided per
 // directory, so without this the resolved instances would suppress the body and
@@ -691,11 +753,12 @@ func collectNotEvaluatedDirs(
 	// already had their own subtree walked.
 	var queue []string
 	for _, dir := range evaluator.NotEvaluatedDirs() {
-		if unresolvedModuleDirs[dir] {
+		key := pathKey(dir)
+		if unresolvedModuleDirs[key] {
 			continue
 		}
-		unresolvedModuleDirs[dir] = true
-		queue = append(queue, dir)
+		unresolvedModuleDirs[key] = true
+		queue = append(queue, key)
 	}
 	for len(queue) > 0 {
 		dir := queue[0]
@@ -716,13 +779,14 @@ func scrubInstantiatedForUnresolvedDirs(
 	instantiated instantiatedIndex,
 	files model.FileMetadatas,
 	unresolvedModuleDirs map[string]bool,
+	fsys vfs.FS,
 	repoPath string,
 ) {
 	for _, f := range files {
 		if f == nil {
 			continue
 		}
-		if unresolvedModuleDirs[moduleFileDir(f.FilePath, repoPath)] {
+		if unresolvedModuleDirs[moduleFileDir(fsys, f.FilePath, repoPath)] {
 			delete(instantiated, f.ID)
 		}
 	}
@@ -740,7 +804,7 @@ func resolveModuleDocuments(
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
 ) moduleResolutionResult {
-	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
+	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath, fsys)
 	if len(dirsWithTf) == 0 {
 		return moduleResolutionResult{}
 	}
@@ -749,7 +813,7 @@ func resolveModuleDocuments(
 	// labels are already in the parsed documents, so this costs nothing.
 	// External module files still need their calls, whatever they declare.
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
-	declaresResource := declaresTargetedResource(files, targets)
+	declaresResource := declaresTargetedResource(files, targets) || declaresExpandedBlock(files, targets)
 	if moduleCalls == nil && !declaresResource {
 		return moduleResolutionResult{}
 	}
@@ -774,6 +838,7 @@ func resolveModuleDocuments(
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
 	instantiated := make(instantiatedIndex)
+	dropped := make(instantiatedIndex)
 	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
 	successfulRoots := make(map[string]bool)
@@ -801,7 +866,7 @@ func resolveModuleDocuments(
 
 	evaluateRootModules(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, relDir, resolver, targets, lookup,
-		byAbsPath, seen, extras, instantiated,
+		byAbsPath, seen, extras, instantiated, dropped,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
 	)
@@ -812,9 +877,7 @@ func resolveModuleDocuments(
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement. Keep the root count so the
-	// instantiation summary still records that evaluation ran and produced nothing;
-	// budget and truncation stats of a failed evaluation are moot, since nothing it
-	// computed reaches the scan output.
+	// instantiation summary still records that evaluation ran and produced nothing.
 	if !rootEvalOK {
 		return moduleResolutionResult{rootCount: len(roots)}
 	}
@@ -841,24 +904,24 @@ func resolveModuleDocuments(
 		}
 	}
 
-	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
+	// Dropped blocks join the suppressed ones only now: a module whose blocks
+	// all expand to nothing has no document standing in for its call site.
+	instantiated.merge(dropped)
+	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, fsys, repoPath)
 
 	return moduleResolutionResult{
-		docs:                  extra,
-		syntheticFiles:        syntheticFiles,
-		suppressed:            instantiated,
-		calledDirs:            strippedDirs,
-		successfulRoots:       successfulRoots,
-		rootDirs:              roots,
-		unresolvedModuleDirs:  unresolvedModuleDirs,
-		extras:                extras,
-		moduleFiles:           moduleCalls.fileCalls(unresolvedModuleDirs),
-		resourceCount:         resourceCount,
-		rootCount:             len(roots),
-		budgetExceeded:        evaluator.BudgetExceeded(),
-		expansionTruncations:  evaluator.ExpansionTruncations(),
-		expansionMaxRequested: evaluator.ExpansionMaxRequested(),
-		ok:                    true,
+		docs:                 extra,
+		syntheticFiles:       syntheticFiles,
+		suppressed:           instantiated,
+		calledDirs:           strippedDirs,
+		successfulRoots:      successfulRoots,
+		rootDirs:             roots,
+		unresolvedModuleDirs: unresolvedModuleDirs,
+		extras:               extras,
+		moduleFiles:          moduleCalls.fileCalls(unresolvedModuleDirs),
+		resourceCount:        resourceCount,
+		rootCount:            len(roots),
+		ok:                   true,
 	}
 }
 
@@ -1024,6 +1087,7 @@ type docContentKey struct{ a, b uint64 }
 func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
+	fsys vfs.FS,
 	repoPath, rootModule string,
 	targets *ruleTargets,
 	seen map[docContentKey]string,
@@ -1055,8 +1119,8 @@ func instantiatedDocs(
 			// written, exactly as it is without module evaluation.
 			continue
 		}
-		fm, ok := byAbsPath[absPath(r.DefinedIn, repoPath)]
-		if !ok {
+		fm := fileByPath(byAbsPath, fsys, r.DefinedIn, repoPath)
+		if fm == nil {
 			continue
 		}
 		base := tfeval.ResourceBaseName(r.Name)
@@ -1079,9 +1143,7 @@ func instantiatedDocs(
 		addGroupEntry(g, r, kind, base, repoPath, lookup, attributions)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
-		if !r.ExpansionTruncated {
-			instantiated.add(fm.ID, kind, base)
-		}
+		instantiated.add(fm.ID, kind, base)
 		resourceCount++
 	}
 
@@ -1312,7 +1374,7 @@ func stripModuleCalls(
 	if modules == nil {
 		return
 	}
-	fileDir := filepath.Dir(absPath(filePath, repoPath))
+	fileDir := moduleFileDir(fsys, filePath, repoPath)
 	if root := rootDirs.owningRoot(fileDir); root == "" || !successfulRoots[root] {
 		return
 	}
@@ -1328,7 +1390,7 @@ func stripModuleCalls(
 		version, _ := call["version"].(string)
 		resolvedDir, _ := resolveModuleTargetDir(ctx, fsys, fileDir, repoPath, source, version, filePath, name, resolver)
 
-		if resolvedDir != "" && calledDirs[resolvedDir] {
+		if resolvedDir != "" && calledDirs[pathKey(resolvedDir)] {
 			delete(modules, name)
 		}
 	}
@@ -1337,9 +1399,10 @@ func stripModuleCalls(
 	}
 }
 
-// moduleFileDir returns the absolute directory containing a scanned Terraform file.
-func moduleFileDir(filePath, repoPath string) string {
-	return filepath.Dir(absPath(filePath, repoPath))
+// moduleFileDir returns the directory containing a scanned Terraform file,
+// keyed as indexTerraformFiles keys it.
+func moduleFileDir(fsys vfs.FS, filePath, repoPath string) string {
+	return path.Dir(evaluatorPath(fsys, absPath(filePath, repoPath)))
 }
 
 // rootIndex resolves which root module directory owns a file. Roots are already
@@ -1363,7 +1426,7 @@ func (idx rootIndex) owningRoot(fileDir string) string {
 		if idx[dir] {
 			return dir
 		}
-		parent := filepath.Dir(dir)
+		parent := path.Dir(dir)
 		if parent == dir {
 			return ""
 		}
@@ -1387,7 +1450,11 @@ func discoverCalledModuleDirs(
 	contextLogger.Debug().Str("dir", dir).Msg(
 		"module resolve: falling back to directory parse for called module discovery",
 	)
-	return evaluator.CalledModuleDirsWithContext(ctx, dir)
+	dirs := evaluator.CalledModuleDirsWithContext(ctx, dir)
+	for i, d := range dirs {
+		dirs[i] = pathKey(d)
+	}
+	return dirs
 }
 
 // discoverCalledModuleClosure returns every module transitively reachable from
@@ -1435,7 +1502,7 @@ func calledModuleDirsFromDocuments(
 			return nil, false
 		}
 		modules := docAsMap(file.Document["module"])
-		fileDir := filepath.Dir(absPath(file.FilePath, repoPath))
+		fileDir := moduleFileDir(fsys, file.FilePath, repoPath)
 		for name, callRaw := range modules {
 			call := docAsMap(callRaw)
 			source, _ := call["source"].(string)
@@ -1444,7 +1511,7 @@ func calledModuleDirsFromDocuments(
 			}
 			version, _ := call["version"].(string)
 			if dir, ok := resolveModuleTargetDir(ctx, fsys, fileDir, repoPath, source, version, file.FilePath, name, resolver); ok {
-				dirs = append(dirs, dir)
+				dirs = append(dirs, pathKey(dir))
 			}
 		}
 	}
@@ -1469,7 +1536,7 @@ func resolveModuleTargetDir(
 }
 
 // indexTerraformFiles builds lookup maps from a flat FileMetadatas slice.
-func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPath string) (
+func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPath string, fsys vfs.FS) (
 	byAbsPath map[string]*model.FileMetadata,
 	filesByDir map[string][]*model.FileMetadata,
 	dirsWithTf map[string]bool,
@@ -1482,19 +1549,44 @@ func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPat
 		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
-		abs := absPath(f.FilePath, repoPath)
-		dir := filepath.Dir(abs)
-		if prev, exists := byAbsPath[abs]; exists && prev != nil && prev.ID != f.ID {
+		key := evaluatorPath(fsys, absPath(f.FilePath, repoPath))
+		dir := path.Dir(key)
+		if prev, exists := byAbsPath[key]; exists && prev != nil && prev.ID != f.ID {
 			contextLogger.Warn().Msgf(
 				"duplicate terraform file path in scan input %s (file ids %s and %s); using the latter",
-				abs, prev.ID, f.ID,
+				key, prev.ID, f.ID,
 			)
 		}
-		byAbsPath[abs] = f
+		byAbsPath[key] = f
 		filesByDir[dir] = append(filesByDir[dir], f)
 		dirsWithTf[dir] = true
 	}
 	return
+}
+
+// pathKey is the slash-form map key for a Terraform file or directory path:
+// DiskFS paths on Windows use backslashes, MemFS paths slashes.
+func pathKey(p string) string {
+	return filepath.ToSlash(filepath.Clean(p))
+}
+
+// evaluatorPath returns p as the evaluator names files, so a relative scan
+// path still matches the blocks it reports.
+func evaluatorPath(fsys vfs.FS, p string) string {
+	if fsys == nil {
+		fsys = vfs.Default()
+	}
+	if a, err := fsys.Abs(p); err == nil {
+		p = a
+	}
+	return pathKey(p)
+}
+
+// fileByPath looks up a Terraform file the way indexTerraformFiles keyed it.
+func fileByPath(
+	byAbsPath map[string]*model.FileMetadata, fsys vfs.FS, filePath, repoPath string,
+) *model.FileMetadata {
+	return byAbsPath[evaluatorPath(fsys, absPath(filePath, repoPath))]
 }
 
 // docAsMap coerces v to a string-keyed map regardless of whether it is a
@@ -1512,7 +1604,9 @@ func docAsMap(v interface{}) map[string]interface{} {
 // absPath returns a cleaned path. Relative paths are resolved against base
 // (typically the scan repo root), not the process working directory.
 func absPath(p, base string) string {
-	if filepath.IsAbs(p) {
+	// A path rooted without a volume ("/repo" on Windows) is not filepath.IsAbs
+	// but must not be joined under base.
+	if filepath.IsAbs(p) || path.IsAbs(filepath.ToSlash(p)) {
 		return filepath.Clean(p)
 	}
 	return filepath.Clean(filepath.Join(base, p))
