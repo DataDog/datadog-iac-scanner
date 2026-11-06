@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -47,18 +48,40 @@ func StringFromAttribute(attr *hclsyntax.Attribute, ctx *hcl.EvalContext) string
 }
 
 // FormatIndexKey renders a materialized string or number index for HCL traversals.
+// A string key goes through hclwrite's own token generation rather than naive
+// quoting, so quotes, backslashes, control characters and template openers
+// (${, %{) in the key come out as valid, round-trippable HCL.
 func FormatIndexKey(key cty.Value) (string, bool) {
 	if !Materialized(key) {
 		return "", false
 	}
 	switch key.Type() {
 	case cty.String:
-		return `["` + key.AsString() + `"]`, true
+		if s := key.AsString(); isPlainQuotedLiteral(s) {
+			return `["` + s + `"]`, true
+		}
+		return "[" + string(hclwrite.TokensForValue(key).Bytes()) + "]", true
 	case cty.Number:
 		return "[" + key.AsBigFloat().Text('f', -1) + "]", true
 	default:
 		return "", false
 	}
+}
+
+// isPlainQuotedLiteral reports whether hclwrite quotes s without escaping
+// anything: printable ASCII other than a quote or backslash, and no template
+// introducer.
+func isPlainQuotedLiteral(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 0x20 || c > 0x7e || c == '"' || c == '\\' {
+			return false
+		}
+		if (c == '$' || c == '%') && i+1 < len(s) && s[i+1] == '{' {
+			return false
+		}
+	}
+	return true
 }
 
 // LiteralInt parses a materialized number or decimal string as int (e.g. count).
@@ -83,6 +106,12 @@ func LiteralInt(v cty.Value) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// KnownEmptyCollection reports whether v is a materialized collection with
+// no element, such as a for_each that creates no instance.
+func KnownEmptyCollection(v cty.Value) bool {
+	return Materialized(v) && v.CanIterateElements() && v.Length().IsKnown() && v.LengthInt() == 0
 }
 
 // ContainsNestedUnknown reports whether a wholly-known value still contains unknown

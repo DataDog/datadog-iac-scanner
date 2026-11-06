@@ -141,6 +141,10 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		contextLogger.Info().Int64("supersededResults", n).
 			Msg("Skipped line detection for results a later result of the same rule already covered")
 	}
+	if n := atomic.LoadInt64(&c.Tracker.IdentityGaps); n > 0 && c.ScanParams.TerraformInstanceIdentity {
+		contextLogger.Warn().Int64("findingsWithoutIdentity", n).
+			Msg("Terraform findings that name no declared block keep the file and resource name fingerprint")
+	}
 
 	handler, exitCode := consoleHelpers.ResultsExitCode(&summary)
 	if handler.ShowError("results") && exitCode != 0 {

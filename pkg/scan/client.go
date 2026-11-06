@@ -89,6 +89,9 @@ type Parameters struct {
 	ShouldScanTfPlans           bool
 	UseRulesCache               bool
 	TerraformModules            TerraformModulesSetting
+	// TerraformInstanceIdentity identifies Terraform findings by root module and
+	// address and reports that address as IAC_RESOURCE_ID.
+	TerraformInstanceIdentity bool
 	// NetworkIsolation disables outbound module fetchers so scans stay offline.
 	NetworkIsolation           bool
 	RemoteModulesManifestPath  string

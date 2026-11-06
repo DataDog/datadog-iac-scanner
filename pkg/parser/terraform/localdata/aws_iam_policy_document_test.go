@@ -530,7 +530,9 @@ func TestParsePolicyJSONFailsClosedOnUnreadableFields(t *testing.T) {
 	}
 }
 
-func TestNestedDynamicBlocksShareOneBudget(t *testing.T) {
+// Nested dynamic blocks expand fully: every statement carries every principal,
+// however many the nesting multiplies to.
+func TestNestedDynamicBlocksExpandFully(t *testing.T) {
 	list := func(n int) string { return "[" + strings.Repeat(`"a",`, n) + "]" }
 	nested := func(outer, inner int) string {
 		return `
@@ -548,17 +550,11 @@ dynamic "statement" {
   }
 }`
 	}
-	// 100 statements and 5 principals each generate 600 blocks.
 	require.NotNil(t, renderedAttributes(t, nested(100, 5)))
-	// Each cap alone holds, but their product does not.
-	require.Nil(t, renderedAttributes(t, nested(256, 256)))
-	// 2 statements with 256 principals each is 514 blocks, within the budget;
-	// 4 statements is 1028, over it.
-	require.NotNil(t, renderedAttributes(t, nested(2, 256)))
-	require.Nil(t, renderedAttributes(t, nested(4, 256)))
+	require.NotNil(t, renderedAttributes(t, nested(256, 256)))
 }
 
-func TestGoogleDynamicBlocksShareOneBudget(t *testing.T) {
+func TestGoogleDynamicBlocksExpandFully(t *testing.T) {
 	list := func(n int) string { return "[" + strings.Repeat(`"a",`, n) + "]" }
 	src := `
 dynamic "binding" {
@@ -577,7 +573,7 @@ dynamic "binding" {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	rd := &partial.Renderer{Ctx: &hcl.EvalContext{Variables: map[string]cty.Value{}}, Source: partial.BytesSource([]byte(src))}
-	require.Nil(t, googleIAMPolicyAttributes(file.Body, rd.Render))
+	require.NotNil(t, googleIAMPolicyAttributes(file.Body, rd.Render))
 }
 
 // An unresolved condition value renders like in own statements: dropping it

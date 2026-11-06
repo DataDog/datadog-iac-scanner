@@ -2,7 +2,10 @@ package test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/console"
@@ -111,6 +114,64 @@ func violationDiff(a, b map[string]map[string]int) map[string]int {
 		}
 	}
 	return diff
+}
+
+// Test_E2ETerraformInstanceIdentityFlag checks that only a scan with
+// TerraformInstanceIdentity reports the Terraform address as IAC_RESOURCE_ID.
+func Test_E2ETerraformInstanceIdentityFlag(t *testing.T) {
+	queriesPaths := []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform"))}
+	// Neither a bucket name nor a Name tag, so the rule reports the block label.
+	fixture := filepath.Join(t.TempDir(), "main.tf")
+	require.NoError(t, os.WriteFile(fixture, []byte(`resource "aws_s3_bucket" "logs" {
+  tags = { Environment = "dev" }
+}
+`), 0o600))
+	resourceIDTags := func(enabled bool) []string {
+		params, ctx := scan.GetDefaultParameters(context.Background(), "")
+		params.Path = []string{fixture}
+		params.OutputPath = t.TempDir()
+		params.QueriesPath = queriesPaths
+		params.ChangedDefaultQueryPath = true
+		params.TerraformInstanceIdentity = enabled
+		params.SCIInfo = model.SCIInfo{
+			RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+		}
+		params.FlagEvaluator = featureflags.NewLocalEvaluator()
+		metadata, err := console.ExecuteScan(ctx, params)
+		require.NoError(t, err)
+		require.NotEmpty(t, metadata.Stats.ViolationBreakdowns, "no violations: check queriesPaths")
+
+		sarifs, err := filepath.Glob(filepath.Join(params.OutputPath, "*.sarif"))
+		require.NoError(t, err)
+		require.Len(t, sarifs, 1)
+		data, err := os.ReadFile(sarifs[0])
+		require.NoError(t, err)
+		var doc struct {
+			Runs []struct {
+				Results []struct {
+					Properties struct {
+						Tags []string `json:"tags"`
+					} `json:"properties"`
+				} `json:"results"`
+			} `json:"runs"`
+		}
+		require.NoError(t, json.Unmarshal(data, &doc))
+		var tags []string
+		for _, run := range doc.Runs {
+			require.NotEmpty(t, run.Results)
+			for _, r := range run.Results {
+				for _, tag := range r.Properties.Tags {
+					if strings.HasPrefix(tag, "IAC_RESOURCE_ID:") {
+						tags = append(tags, tag)
+					}
+				}
+			}
+		}
+		return tags
+	}
+
+	require.Empty(t, resourceIDTags(false))
+	require.Contains(t, resourceIDTags(true), "IAC_RESOURCE_ID:aws_s3_bucket.logs")
 }
 
 func Test_E2ETofuScannedAsTerraform(t *testing.T) {
@@ -240,4 +301,83 @@ func Test_E2ETerraformPlanFlag(t *testing.T) {
 		// it's a JSON file but not a Terraform plan
 		require.Equal(t, 1, metadata.Stats.Files, "Should scan exactly 1 file (tfplan.json), CloudFormation JSON excluded")
 	})
+}
+
+func scanFindingLines(t *testing.T, path string) map[int]bool {
+	t.Helper()
+	outDir := t.TempDir()
+	params, ctx := scan.GetDefaultParameters(context.Background(), "")
+	params.Path = []string{path}
+	params.OutputPath = outDir
+	params.OutputName = "result"
+	params.QueriesPath = []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform"))}
+	params.ChangedDefaultQueryPath = true
+	params.SCIInfo = model.SCIInfo{
+		DiffAware:            model.DiffAware{Enabled: false},
+		RepositoryCommitInfo: model.RepositoryCommitInfo{RepositoryUrl: "test/url", CommitSHA: "test/hash", Branch: "test/branch"},
+	}
+	params.FlagEvaluator = featureflags.NewLocalEvaluator()
+	_, err := console.ExecuteScan(ctx, params)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(outDir, "result.sarif"))
+	require.NoError(t, err)
+	var doc struct {
+		Runs []struct {
+			Results []struct {
+				Locations []struct {
+					PhysicalLocation struct {
+						Region struct {
+							StartLine int `json:"startLine"`
+						} `json:"region"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(data, &doc))
+
+	lines := map[int]bool{}
+	for _, run := range doc.Runs {
+		for _, r := range run.Results {
+			for _, l := range r.Locations {
+				lines[l.PhysicalLocation.Region.StartLine] = true
+			}
+		}
+	}
+	return lines
+}
+
+func Test_E2ETerraformZeroCountBlocksProduceNoFindings(t *testing.T) {
+	const enabledLine, zeroLine, disabledLine, unknownLine, localFlagLine, emptyForEachLine, tfvarsLine = 8, 13, 18, 23, 32, 37, 44
+	for name, path := range map[string]string{
+		"absolute path": mustAbs(t, filepath.Join("fixtures", "zero-count")),
+		"relative path": filepath.Join("fixtures", "zero-count"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			lines := scanFindingLines(t, path)
+			require.True(t, lines[enabledLine], "the enabled bucket must produce a finding: %v", lines)
+			require.True(t, lines[unknownLine], "the bucket with an unknown count must produce a finding: %v", lines)
+			require.False(t, lines[zeroLine], "count = 0 must produce no finding: %v", lines)
+			require.False(t, lines[disabledLine], "a count that evaluates to 0 must produce no finding: %v", lines)
+			require.False(t, lines[localFlagLine], "a count read through a local that evaluates to 0 must produce no finding: %v", lines)
+			require.False(t, lines[emptyForEachLine], "an empty for_each must produce no finding: %v", lines)
+			require.False(t, lines[tfvarsLine], "a count set to 0 by terraform.tfvars must produce no finding: %v", lines)
+		})
+	}
+
+	const jsonEnabledLine, jsonZeroLine, jsonFromVarLine = 9, 12, 16
+	jsonLines := scanFindingLines(t, filepath.Join("fixtures", "zero-count-json"))
+	require.True(t, jsonLines[jsonEnabledLine], "the enabled .tf.json bucket must produce a finding: %v", jsonLines)
+	require.False(t, jsonLines[jsonZeroLine], "count = 0 in .tf.json must produce no finding: %v", jsonLines)
+	require.False(t, jsonLines[jsonFromVarLine], "a .tf.json count that evaluates to 0 must produce no finding: %v", jsonLines)
+
+	failedRoot := t.TempDir()
+	failedRootFile := filepath.Join(failedRoot, "main.tf")
+	require.NoError(t, os.WriteFile(failedRootFile, []byte("resource \"aws_s3_bucket\" \"zero\" {\n  count  = 0\n  bucket = \"zero\"\n}\n"), 0o600))
+	require.NoError(t, os.Chmod(failedRoot, 0o300))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(failedRoot, 0o700)) })
+	const failedRootZeroLine = 3
+	lines := scanFindingLines(t, failedRootFile)
+	require.False(t, lines[failedRootZeroLine], "a literal count = 0 creates nothing, even in a root that fails to evaluate: %v", lines)
 }

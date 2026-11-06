@@ -36,6 +36,7 @@ type CITracker struct {
 	FoundResources       int
 	LineInfoLoadFailures int
 	SupersededResults    int64
+	IdentityGaps         int64
 }
 
 // NewTracker will create a new instance of a tracker with the number of lines to display in results output
@@ -121,6 +122,12 @@ func (c *CITracker) FailedLineInfoDocument() {
 // SkippedSupersededResult counts a result dropped before its line was detected.
 func (c *CITracker) SkippedSupersededResult() {
 	atomic.AddInt64(&c.SupersededResults, 1)
+}
+
+// FindingWithoutIdentity counts a Terraform finding whose resourceType and
+// resourceName named no declared block, so it kept the legacy fingerprint.
+func (c *CITracker) FindingWithoutIdentity() {
+	atomic.AddInt64(&c.IdentityGaps, 1)
 }
 
 // TrackFileFoundCountLines - information about the lines of the scanned files

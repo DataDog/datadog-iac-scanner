@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/cespare/xxhash/v2"
 )
 
 // A rule names the resource and data types it can match, either by reading
@@ -23,9 +24,16 @@ var (
 	resourceIndexPattern = regexp.MustCompile(`resource\[\s*"([^"\s]+)"\s*\]`)
 	// Rego imports and data documents (`data.generic.terraform`) share the
 	// data. prefix; Terraform type names always hold an underscore.
-	dataFieldPattern   = regexp.MustCompile(`\bdata\.([a-z][a-z0-9]*_[a-z0-9_]*)`)
-	dataIndexPattern   = regexp.MustCompile(`\bdata\[\s*"([a-z][a-z0-9]*_[a-z0-9_]*)"\s*\]`)
-	typeLiteralPattern = regexp.MustCompile(`"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"`)
+	dataFieldPattern = regexp.MustCompile(`\bdata\.([a-z][a-z0-9]*_[a-z0-9_]*)`)
+	dataIndexPattern = regexp.MustCompile(`\bdata\[\s*"([a-z][a-z0-9]*_[a-z0-9_]*)"\s*\]`)
+	// Ephemeral resources are read through their namespace
+	// (`input.document[i].ephemeral.random_password[name]`) and named with it
+	// in literals (`"ephemeral.random_password"`). The namespace makes both
+	// patterns specific enough to skip the underscore requirement; the quoted
+	// form records the namespaced type whole, the way findings name it.
+	ephemeralFieldPattern  = regexp.MustCompile(`\bephemeral\.([a-z][a-z0-9_]*)`)
+	ephemeralQuotedPattern = regexp.MustCompile(`"(ephemeral\.[a-z][a-z0-9_]*)"`)
+	typeLiteralPattern     = regexp.MustCompile(`"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"`)
 	// Rules that apply to a whole provider select it by prefix, as in
 	// `startswith(resource_type, "aws_")`.
 	typePrefixPattern = regexp.MustCompile(`startswith\([^,]+,\s*"([a-z][a-z0-9]*_)"\s*\)`)
@@ -75,7 +83,8 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	prefixes := make(map[string]bool)
 	collect := func(source string) {
 		for _, pattern := range []*regexp.Regexp{
-			resourceFieldPattern, resourceIndexPattern, dataFieldPattern, dataIndexPattern, typeLiteralPattern,
+			resourceFieldPattern, resourceIndexPattern, dataFieldPattern, dataIndexPattern,
+			ephemeralFieldPattern, ephemeralQuotedPattern, typeLiteralPattern,
 		} {
 			for _, m := range pattern.FindAllStringSubmatch(source, -1) {
 				targets.types[m[1]] = true
@@ -102,11 +111,58 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	return &targets
 }
 
+// terraformJoiningQueries classifies the loaded Terraform rules (see
+// joiningQueries), keyed by their index in queries; other rules are absent.
+// The classification is cached on the inspector for the ruleset and libraries
+// that produced it: classifying recompiles every rule.
+func (c *Inspector) terraformJoiningQueries(queries []model.QueryMetadata) map[int]bool {
+	terraform := make([]model.QueryMetadata, 0, len(queries))
+	positions := make([]int, 0, len(queries))
+	for i := range queries {
+		if canonicalPlatformKey(queries[i].Platform) == platformTerraform {
+			terraform = append(terraform, queries[i])
+			positions = append(positions, i)
+		}
+	}
+	if len(terraform) == 0 {
+		return map[int]bool{}
+	}
+	libraries := c.terraformRuleLibraries()
+	key := classificationKey(terraform, libraries)
+	c.ruleScopeMu.Lock()
+	if c.ruleScope == nil || c.ruleScopeKey != key {
+		c.ruleScope = joiningQueries(terraform, libraries...)
+		c.ruleScopeKey = key
+	}
+	joining := c.ruleScope
+	c.ruleScopeMu.Unlock()
+	out := make(map[int]bool, len(positions))
+	for j, i := range positions {
+		out[i] = joining[j]
+	}
+	return out
+}
+
+func classificationKey(queries []model.QueryMetadata, libraries []string) uint64 {
+	h := xxhash.New()
+	for i := range queries {
+		_, _ = h.WriteString(queries[i].Query)
+		_, _ = h.WriteString("\x00")
+		_, _ = h.WriteString(queries[i].Content)
+		_, _ = h.WriteString("\x00")
+	}
+	for _, library := range libraries {
+		_, _ = h.WriteString(library)
+		_, _ = h.WriteString("\x00")
+	}
+	return h.Sum64()
+}
+
 // terraformRuleLibraries returns the Rego libraries that Terraform rules are
 // compiled against, so type names spelled only in shared helpers are seen too.
 func (c *Inspector) terraformRuleLibraries() []string {
 	libraries := []string{c.QueryLoader.commonLibrary.LibraryCode}
-	if platform, ok := c.QueryLoader.platformLibraries["terraform"]; ok {
+	if platform, ok := c.QueryLoader.platformLibraries[platformTerraform]; ok {
 		libraries = append(libraries, platform.LibraryCode)
 	}
 	return libraries
