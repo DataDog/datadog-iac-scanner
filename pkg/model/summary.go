@@ -50,6 +50,8 @@ type VulnerableFile struct {
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
 	// ModuleCallChain: local-module call path; empty for root; included in fingerprint.
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
+	// RenderRoot: kustomization that rendered the document; included in fingerprint.
+	RenderRoot string `json:"render_root,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
 }
@@ -339,7 +341,8 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			item.ResourceName,
 			ruleID,
 			identityLine,
-			item.ModuleCallChain,
+			item.IdentityChain(),
+			vulnerabilityKustomizeIdentity(&item),
 		)
 
 		qItem := q[item.QueryID]
@@ -366,6 +369,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionKind:          item.SuppressionKind,
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
+			RenderRoot:               item.RenderRoot,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
 		})
 
