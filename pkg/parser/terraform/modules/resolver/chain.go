@@ -29,6 +29,9 @@ func notApplicable(reason string) error {
 }
 
 func (c *ChainResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (Resolution, error) {
+	if err := tfmodules.ValidateModuleSource(mod.Source); err != nil {
+		return Resolution{}, err
+	}
 	if len(c.resolvers) == 0 {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "no resolvers configured"}
 	}
@@ -50,6 +53,9 @@ func (c *ChainResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule
 // Screen returns the error Resolve would return for mod when every resolver in
 // the chain rules it out, and nil as soon as one might resolve it or cannot tell.
 func (c *ChainResolver) Screen(ctx context.Context, mod *tfmodules.ParsedModule) error {
+	if err := tfmodules.ValidateModuleSource(mod.Source); err != nil {
+		return err
+	}
 	if len(c.resolvers) == 0 {
 		return &tfmodules.UnresolvedError{Reason: "no resolvers configured"}
 	}
