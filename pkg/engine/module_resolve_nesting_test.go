@@ -120,7 +120,7 @@ func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testi
 		t.Error("resources were suppressed but no synthetic documents replace them")
 	}
 	for dir := range res.calledDirs {
-		if !strings.HasPrefix(dir, root) {
+		if !strings.HasPrefix(dir, pathKey(root)) {
 			t.Errorf("called dir %s escapes the repository root %s", dir, root)
 		}
 	}

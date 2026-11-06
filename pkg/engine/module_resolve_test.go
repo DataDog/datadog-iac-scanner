@@ -136,7 +136,7 @@ func TestStripModuleCallsRemovesResolvedRemoteCallSites(t *testing.T) {
 		},
 	}
 	calledDirs := map[string]bool{"/cache/vpc": true}
-	successfulRoots := map[string]bool{root: true}
+	successfulRoots := map[string]bool{pathKey(root): true}
 
 	stripModuleCalls(t.Context(), doc, rootFile, root, calledDirs, successfulRoots, newRootIndex([]string{root}), func(source, version, callerFile, moduleName string) (string, string, bool) {
 		if source == "terraform-aws-modules/vpc/aws" && version == "1.0.0" && callerFile == rootFile && moduleName == "remote" {
@@ -1261,8 +1261,8 @@ func TestCalledModuleDirsFromDocuments_MergedEnvironmentLayout(t *testing.T) {
 			},
 		},
 	}, root, nil)
-	if !ok || !reflect.DeepEqual(dirs, []string{modDir}) {
-		t.Fatalf("calledModuleDirsFromDocuments() = %v, %v; want [%s]", dirs, ok, modDir)
+	if !ok || !reflect.DeepEqual(dirs, []string{pathKey(modDir)}) {
+		t.Fatalf("calledModuleDirsFromDocuments() = %v, %v; want [%s]", dirs, ok, pathKey(modDir))
 	}
 }
 
@@ -1287,7 +1287,7 @@ func TestCalledModuleDirsFromDocuments_LocalModule(t *testing.T) {
 	if !ok {
 		t.Fatal("expected document-based discovery")
 	}
-	want := filepath.Clean(modDir)
+	want := pathKey(modDir)
 	if len(dirs) != 1 || dirs[0] != want {
 		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
 	}
@@ -1328,7 +1328,7 @@ func TestDiscoverCalledModuleDirs_UsesParsedDocument(t *testing.T) {
 		},
 	}, root, nil, filepath.Join(root, "stack"))
 
-	want := filepath.Clean(modDir)
+	want := pathKey(modDir)
 	if len(dirs) != 1 || dirs[0] != want {
 		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
 	}
@@ -1355,7 +1355,7 @@ module "bucket" {
 		fileMeta("root-id", rootFile),
 	}, root, nil, filepath.Dir(rootFile))
 
-	want := filepath.Clean(modDir)
+	want := pathKey(modDir)
 	if len(dirs) != 1 || dirs[0] != want {
 		t.Fatalf("dirs = %#v, want [%q]", dirs, want)
 	}
@@ -1674,6 +1674,36 @@ resource "aws_s3_bucket" "kept" {
 	ins := newTestInspector(t, inspectorOpts{repoPath: root})
 	ins.instantiateLocalModules(context.Background(), model.FileMetadatas{fm}, targets)
 	return fm
+}
+
+func TestRootInstancesStayBesideTheirSiblings(t *testing.T) {
+	root := t.TempDir()
+	fm := parseTerraform(t, writeFile(t, root, "main.tf", `
+resource "aws_s3_bucket" "web" {
+  count  = 2
+  bucket = "web-${count.index}"
+}
+
+resource "aws_s3_bucket" "each" {
+  for_each = { a = "a", b = "b" }
+  bucket   = each.value
+}
+
+resource "aws_s3_bucket" "solo" {
+  bucket = "solo"
+}
+`))[0]
+	ins := newTestInspector(t, inspectorOpts{repoPath: root})
+	ins.instantiateLocalModules(context.Background(), model.FileMetadatas{fm}, &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}})
+
+	require.ElementsMatch(t, []string{`each["a"]`, `each["b"]`, "solo", "web[0]", "web[1]"},
+		blockNames(fm.Document, "resource", "aws_s3_bucket"))
+	require.Equal(t, map[string]bool{`each["a"]`: true, `each["b"]`: true, "web[0]": true, "web[1]": true},
+		fm.TerraformInstanceKeys)
+	resources, _ := asStringMap(fm.Document["resource"])
+	buckets, _ := asStringMap(resources["aws_s3_bucket"])
+	web0, _ := asStringMap(buckets["web[0]"])
+	require.Equal(t, "web-0", web0["bucket"])
 }
 
 func TestZeroInstanceBlockIsLeftOut(t *testing.T) {

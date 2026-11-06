@@ -363,6 +363,77 @@ func TestInspect_OverrideFileSharesTheOriginalAddress(t *testing.T) {
 	}
 }
 
+const rootBucketRule = `package datadog
+
+DatadogPolicy contains result if {
+	some i, name
+	bucket := input.document[i].resource.aws_s3_bucket[name]
+	bucket.bucket
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": name,
+		"searchKey": sprintf("aws_s3_bucket[%s].bucket", [name]),
+	}
+}
+`
+
+// Root count and for_each instances stay in the file and keep the sibling
+// visible. With instance identity each instance has its own address; without
+// it they fold into the written block's finding.
+func TestInspect_RootInstancesReportTheirAddress(t *testing.T) {
+	root := t.TempDir()
+	file := writeFile(t, root, "main.tf", `
+resource "aws_s3_bucket" "web" {
+  count  = 2
+  bucket = "web-${count.index}"
+}
+
+resource "aws_s3_bucket" "solo" {
+  bucket = "solo"
+}
+`)
+	query := model.QueryMetadata{
+		Query: "root_bucket", Content: rootBucketRule, InputData: "{}", Platform: "terraform",
+		Metadata: map[string]interface{}{"id": "root-bucket", "platform": "Terraform"}, Aggregation: 1,
+	}
+	inspect := func(t *testing.T, addresses bool) []model.Vulnerability {
+		t.Helper()
+		files := parseTerraform(t, file)
+		ins := newTestInspector(t, inspectorOpts{
+			queries: []model.QueryMetadata{query}, repoPath: root, vb: DefaultVulnerabilityBuilder,
+			flagEvaluator: featureflags.NewLocalEvaluator(), addresses: addresses,
+		})
+		ins.SetCompactFindingsAtDecode(true)
+		vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+		require.NoError(t, err)
+		require.Empty(t, ins.GetFailedQueries())
+		return vulns
+	}
+
+	folded := inspect(t, false)
+	require.Len(t, folded, 2)
+	for i := range folded {
+		require.Empty(t, folded[i].ResourceID)
+		require.Contains(t, []string{"web", "solo"}, folded[i].ResourceName)
+		require.NotContains(t, folded[i].SearchKey, "[0]")
+		require.Greater(t, folded[i].Line, 1)
+	}
+
+	split := inspect(t, true)
+	got := map[string]model.Vulnerability{}
+	for i := range split {
+		require.Equal(t, ".", split[i].RootModule)
+		require.NotContains(t, split[i].SearchKey, "[0]")
+		require.Greater(t, split[i].Line, 1)
+		got[split[i].ResourceID] = split[i]
+	}
+	require.ElementsMatch(t, []string{"aws_s3_bucket.web[0]", "aws_s3_bucket.web[1]", "aws_s3_bucket.solo"}, slices.Collect(maps.Keys(got)))
+	require.Equal(t, "web", got["aws_s3_bucket.web[0]"].ResourceName)
+	require.Equal(t, "solo", got["aws_s3_bucket.solo"].ResourceName)
+}
+
 func TestPlanIdentityFallsBackToDataSources(t *testing.T) {
 	f := &model.FileMetadata{Kind: model.KindTerraformPlan, TerraformScope: &model.TerraformScope{
 		RootModule: "stacks/prod/tfplan.json",

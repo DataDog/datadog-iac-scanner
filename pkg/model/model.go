@@ -382,6 +382,9 @@ type FileMetadata struct {
 	// for non-Terraform files; findings on such files keep the legacy
 	// resource-name fingerprint.
 	TerraformScope *TerraformScope
+	// TerraformInstanceKeys holds the document keys, such as web[0] or
+	// web["a"], under which a written root block's instances replace it.
+	TerraformInstanceKeys map[string]bool
 	// Platform is the lowercased platform the file was classified as (e.g.
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.

@@ -1106,13 +1106,18 @@ func instantiatedDocs(
 
 	for i := range resources {
 		r := &resources[i]
+		kind := blockKind(r)
 		if r.ModuleAddress == "" {
-			// A root block stays in the document it is written in. Splitting
-			// its instances across documents would hide its siblings from
-			// rules that read one document.
+			// A root instance stays in the file's own document, under its
+			// instance key, so its siblings stay visible. One document per
+			// instance would be converted and evaluated by every rule.
+			if tfeval.ResourceBaseName(r.Name) != r.Name && (targets.matches(r.Type) || targets.matches(kind)) {
+				if fm := fileByPath(byAbsPath, fsys, r.DefinedIn, repoPath); fm != nil {
+					keyRootInstance(fm, r, kind)
+				}
+			}
 			continue
 		}
-		kind := blockKind(r)
 		if !targets.matches(r.Type) && !targets.matches(kind) {
 			// No rule can match this type by name, so resolving its values
 			// cannot change a finding. It keeps being scanned where it is
@@ -1167,6 +1172,26 @@ func instantiatedDocs(
 		synthetic = append(synthetic, newInstanceFileMetadata(g, docID))
 	}
 	return docs, synthetic, resourceCount
+}
+
+// keyRootInstance replaces written root block r with its instance, keyed by
+// the instance name, beside the file's other blocks.
+func keyRootInstance(fm *model.FileMetadata, r *tfeval.ResolvedResource, kind string) {
+	section, typ, _ := splitBlockKind(kind)
+	blocks, ok := asStringMap(fm.Document[section])
+	if !ok {
+		return
+	}
+	byName, ok := asStringMap(blocks[typ])
+	if !ok {
+		return
+	}
+	delete(byName, tfeval.ResourceBaseName(r.Name))
+	byName[r.Name] = tfeval.AttributesToDocument(r)
+	if fm.TerraformInstanceKeys == nil {
+		fm.TerraformInstanceKeys = make(map[string]bool)
+	}
+	fm.TerraformInstanceKeys[r.Name] = true
 }
 
 // addGroupEntry adds resolved block r, indexed under kind and base-named base,
@@ -1414,15 +1439,16 @@ type rootIndex map[string]bool
 func newRootIndex(roots []string) rootIndex {
 	idx := make(rootIndex, len(roots))
 	for _, root := range roots {
-		idx[root] = true
+		idx[pathKey(root)] = true
 	}
 	return idx
 }
 
 // owningRoot returns the innermost root module directory containing fileDir,
-// or "" when no root does.
+// or "" when no root does. Both sides are slash-form, the way module directories
+// are keyed: a Windows temp path otherwise fails to contain its own children.
 func (idx rootIndex) owningRoot(fileDir string) string {
-	for dir := fileDir; ; {
+	for dir := pathKey(fileDir); ; {
 		if idx[dir] {
 			return dir
 		}
