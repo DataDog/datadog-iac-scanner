@@ -125,6 +125,75 @@ module "missing" {
 	require.Equal(t, 1, unresolved)
 }
 
+func TestPrepareOmitsEmptySourceWithoutDroppingResolvedModules(t *testing.T) {
+	root := t.TempDir()
+	goodSource := "git::https://git.example/acme/good.git?ref=v1"
+	writeFile(t, filepath.Join(root, "main.tf"), `
+module "good" {
+  source = "`+goodSource+`"
+}
+module "bare" {
+  version = "1.2.3"
+}
+`)
+	goodPackage := filepath.Join(t.TempDir(), "good")
+	writeFile(t, filepath.Join(goodPackage, "main.tf"), `resource "aws_vpc" "good" {}`)
+
+	artifactDir := filepath.Join(t.TempDir(), "prepared")
+	result, err := Prepare(t.Context(), &Config{
+		RepositoryRoot: root,
+		ArtifactDir:    artifactDir,
+		DiscoveryPaths: []string{"main.tf"},
+		Resolver: &fixtureResolver{
+			packages: map[string]string{goodSource: goodPackage},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Failures, 1)
+	require.Empty(t, result.Failures[0].Source)
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, goodSource, result.Modules[0].Source)
+
+	manifest, err := resolver.LoadManifest(t.Context(), result.ManifestPath)
+	require.NoError(t, err)
+	require.Len(t, manifest.Entries, 1)
+	require.Equal(t, goodSource, manifest.Entries[0].Source)
+	require.Equal(t, resolver.ManifestStatusResolved, manifest.Entries[0].Status)
+}
+
+func TestPrepareMergesOverrideModuleBeforeResolution(t *testing.T) {
+	root := t.TempDir()
+	source := "git::https://git.example/acme/vpc.git"
+	writeFile(t, filepath.Join(root, "main.tf"), `
+module "vpc" {
+  source  = "`+source+`"
+  version = "1.0.0"
+}
+`)
+	writeFile(t, filepath.Join(root, "override.tf"), `
+module "vpc" {
+  version = "2.0.0"
+}
+`)
+	modulePackage := filepath.Join(t.TempDir(), "vpc")
+	writeFile(t, filepath.Join(modulePackage, "main.tf"), `resource "aws_vpc" "vpc" {}`)
+
+	artifactDir := filepath.Join(t.TempDir(), "prepared")
+	result, err := Prepare(t.Context(), &Config{
+		RepositoryRoot: root,
+		ArtifactDir:    artifactDir,
+		Resolver: &fixtureResolver{
+			packages: map[string]string{source: modulePackage},
+		},
+	})
+	require.NoError(t, err)
+	require.Empty(t, result.Failures)
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, source, result.Modules[0].Source)
+	require.Equal(t, "2.0.0", result.Modules[0].RequestedVersion)
+	require.Equal(t, resolver.ManifestStatusResolved, result.Modules[0].Status)
+}
+
 func TestPrepareArtifactManifestRejectsTamperedPackage(t *testing.T) {
 	root := t.TempDir()
 	source := "git::https://git.example/acme/module.git?ref=v1"

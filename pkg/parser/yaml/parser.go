@@ -91,13 +91,10 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 			break
 		}
 
-		if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
+		if IsEmptyDocument(&node) {
 			continue
 		}
 		contentNode := node.Content[0]
-		if isEmptyYAMLDocument(contentNode) {
-			continue
-		}
 		if fn != nil {
 			fn(contentNode)
 		}
@@ -126,14 +123,14 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 	return documents, linesToIgnore, nil
 }
 
-func isEmptyYAMLDocument(node *yaml.Node) bool {
-	if node == nil {
+// IsEmptyDocument reports whether a decoded YAML document holds nothing, an
+// empty or comment-only document the parser skips without a document index.
+func IsEmptyDocument(doc *yaml.Node) bool {
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 || doc.Content[0] == nil {
 		return true
 	}
-	if node.Kind == yaml.ScalarNode {
-		return node.Value == "" || node.Tag == "!!null"
-	}
-	return false
+	n := doc.Content[0]
+	return n.Kind == yaml.ScalarNode && (n.Value == "" || n.Tag == "!!null")
 }
 
 // convertKeysToString goes through every document to convert map[interface{}]interface{}

@@ -210,6 +210,9 @@ type Analyzer struct {
 	ExcludeGitIgnore  bool
 	MaxFileSize       int
 	NumWorkers        int
+	// CollectKustomizeRoots records the directories holding a kustomization
+	// file in AnalyzedPaths.KustomizeRoots.
+	CollectKustomizeRoots bool
 }
 
 // types is a map that contains the regex by type
@@ -374,6 +377,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	var err error
 	var files []string
 	var chartRoots []string
+	var kustomizeRoots []string
 	var totalFiles int
 	// results is the channel shared by the workers that contains the types found
 	results := make(chan string)
@@ -408,6 +412,18 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			insideRepo := relErr == nil &&
 				trimmedPath != ".." &&
 				!strings.HasPrefix(trimmedPath, ".."+string(os.PathSeparator))
+
+			// One scope predicate shared by the file inventory and the
+			// Kustomize root collector: gitignore (with the single-file
+			// parent check the walk cannot do itself), exclude and only.
+			gitIgnored := func(trimmed string) bool {
+				return insideRepo && hasGitIgnoreFile &&
+					(gitIgnore.MatchesPath(trimmed) ||
+						(singleFilePath && gitIgnore.MatchesParentDir(trimmed)))
+			}
+			inScope := func(p string, ignored bool) bool {
+				return !ignored && !isExcludedFile(p, a.Exc) && isIncludedFile(p, a.Only)
+			}
 
 			if d.IsDir() {
 				if provider.IsTerraformCacheDir(path) {
@@ -451,6 +467,12 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				}
 			}
 
+			// Before the extension filter: "Kustomization" has none.
+			if a.CollectKustomizeRoots && isKustomizationFile(filepath.Base(path)) &&
+				inScope(path, gitIgnored(trimmedPath)) {
+				kustomizeRoots = append(kustomizeRoots, filepath.ToSlash(filepath.Dir(path)))
+			}
+
 			if filepath.Base(path) == "Chart.yaml" {
 				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
@@ -470,9 +492,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return nil
 			}
 
-			if insideRepo && hasGitIgnoreFile &&
-				(gitIgnore.MatchesPath(trimmedPath) ||
-					(singleFilePath && gitIgnore.MatchesParentDir(trimmedPath))) {
+			if gitIgnored(trimmedPath) {
 				norm := filepath.ToSlash(path)
 				ignoreFiles = append(ignoreFiles, norm)
 				a.Exc = append(a.Exc, norm)
@@ -561,6 +581,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	returnAnalyzedPaths.FilePlatform = fp
 	returnAnalyzedPaths.TotalFiles = totalFiles
 	returnAnalyzedPaths.ChartRoots = chartRoots
+	returnAnalyzedPaths.KustomizeRoots = kustomizeRoots
 
 	unwantedSet := make(map[string]struct{}, len(unwantedPaths))
 	for _, p := range unwantedPaths {
@@ -920,10 +941,14 @@ func ExcludedByContent(path string, content []byte) bool {
 	return false
 }
 
+func isKustomizationFile(base string) bool {
+	return base == "kustomization.yaml" || base == "kustomization.yml" || base == "Kustomization"
+}
+
 // PlatformForKind returns the fixed platform for kind when known.
 func PlatformForKind(kind model.FileKind) (string, bool) {
 	switch kind {
-	case model.KindHELM:
+	case model.KindHELM, model.KindKUSTOMIZE:
 		return kubernetes, true
 	case model.KindTerraform, model.KindTerraformPlan:
 		return terraform, true

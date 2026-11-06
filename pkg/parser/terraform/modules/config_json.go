@@ -46,7 +46,7 @@ func moduleBlocksFromJSON(raw json.RawMessage) ([]moduleBlockExtract, error) {
 	}
 	modules := make([]moduleBlockExtract, 0, len(blocks))
 	for name, body := range blocks {
-		source, version, err := moduleSourceVersionFromJSON(body)
+		source, version, sourceSet, versionSet, err := moduleSourceVersionFromJSON(body)
 		if err != nil {
 			return nil, fmt.Errorf("module %q: %w", name, err)
 		}
@@ -56,10 +56,11 @@ func moduleBlocksFromJSON(raw json.RawMessage) ([]moduleBlockExtract, error) {
 			defLine:    1,
 			defEndLine: 1,
 		}
-		if source != "" {
+		// A present key is set even when the string is empty, so an override can clear it.
+		if sourceSet {
 			mod.source = jsonStringToModuleExpr(source)
 		}
-		if version != "" {
+		if versionSet {
 			mod.version = jsonStringToModuleExpr(version)
 		}
 		modules = append(modules, mod)
@@ -67,24 +68,26 @@ func moduleBlocksFromJSON(raw json.RawMessage) ([]moduleBlockExtract, error) {
 	return modules, nil
 }
 
-func moduleSourceVersionFromJSON(raw json.RawMessage) (source, version string, err error) {
+func moduleSourceVersionFromJSON(raw json.RawMessage) (source, version string, sourceSet, versionSet bool, err error) {
 	var attrs map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &attrs); err != nil {
-		return "", "", fmt.Errorf("decoding module attributes: %w", err)
+		return "", "", false, false, fmt.Errorf("decoding module attributes: %w", err)
 	}
 	if rawSource, ok := attrs["source"]; ok {
 		source, err = decodeJSONString(rawSource)
 		if err != nil {
-			return "", "", fmt.Errorf("source: %w", err)
+			return "", "", false, false, fmt.Errorf("source: %w", err)
 		}
+		sourceSet = true
 	}
 	if rawVersion, ok := attrs["version"]; ok {
 		version, err = decodeJSONString(rawVersion)
 		if err != nil {
-			return "", "", fmt.Errorf("version: %w", err)
+			return "", "", false, false, fmt.Errorf("version: %w", err)
 		}
+		versionSet = true
 	}
-	return source, version, nil
+	return source, version, sourceSet, versionSet, nil
 }
 
 func variableDefaultsFromJSON(raw json.RawMessage) map[string]string {

@@ -925,6 +925,13 @@ func (w *walker) collectLocalModules(
 
 	for key := range mods {
 		mod := mods[key]
+		if err := tfmodules.ValidateModuleSource(mod.Source); err != nil {
+			w.results.addResolutionFailure(&mod, packageRoot, err)
+			if w.resolutions.setIfAbsent(remoteResolveIdentity(&mod), &resolvedEntry{err: err}) {
+				w.results.addModuleStat(moduleStatFor(&mod, &resolver.Resolution{}, err, 0))
+			}
+			continue
+		}
 		if !mod.IsLocal {
 			*remote = append(*remote, remoteModuleCall{mod: mod, depth: depth})
 			continue

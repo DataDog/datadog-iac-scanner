@@ -247,14 +247,19 @@ func registryDownloadURL(
 	return getterURL, nil
 }
 
-// isBareVersion reports whether s is an exact semver (no constraint operators).
-func isBareVersion(s string) bool {
-	for _, c := range s {
-		if c != '.' && c != '-' && c != '+' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
-			return false
-		}
+// NormalizeExactRegistryVersion uses Terraform's version parser: v prefixes, leading
+// zeros and abbreviated versions all refer to the canonical registry version.
+func NormalizeExactRegistryVersion(s string) (string, bool) {
+	v, err := goversion.NewVersion(strings.TrimSpace(s))
+	if err != nil {
+		return "", false
 	}
-	return s != ""
+	return v.String(), true
+}
+
+func isBareVersion(s string) bool {
+	_, ok := NormalizeExactRegistryVersion(s)
+	return ok
 }
 
 func registryCredentialHost(rawHost string) string {

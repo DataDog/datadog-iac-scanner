@@ -304,6 +304,58 @@ func TestAutoloadedVarFilesCaseSensitive(t *testing.T) {
 	}
 }
 
+func TestIsOverrideFile(t *testing.T) {
+	overrides := []string{
+		"override.tf",
+		"override.tf.json",
+		"override.tofu",
+		"override.tofu.json",
+		"dir/vpc_override.tf",
+		"dir/vpc_override.tf.json",
+		"dir/vpc_override.tofu",
+		"dir/vpc_override.tofu.json",
+	}
+	ordinary := []string{
+		"main.tf",
+		"main.tofu",
+		"override.tf.bak",
+		"myoverride.tf",
+		"Override.tf",
+		"vpc_override.tf.txt",
+		"vpc_Override.tf",
+	}
+	for _, path := range overrides {
+		if !IsOverrideFile(path) {
+			t.Errorf("IsOverrideFile(%q) = false, want true", path)
+		}
+	}
+	for _, path := range ordinary {
+		if IsOverrideFile(path) {
+			t.Errorf("IsOverrideFile(%q) = true, want false", path)
+		}
+	}
+}
+
+func TestOrderOverrideLast(t *testing.T) {
+	identity := func(s string) string { return s }
+
+	got := OrderOverrideLast([]string{"override.tf", "zz_main.tf", "b_main.tf"}, identity)
+	want := []string{"zz_main.tf", "b_main.tf", "override.tf"}
+	if !slices.Equal(got, want) {
+		t.Errorf("OrderOverrideLast = %v, want %v", got, want)
+	}
+
+	got = OrderOverrideLast([]string{"z_override.tf", "a_override.tf", "main.tf"}, identity)
+	want = []string{"main.tf", "a_override.tf", "z_override.tf"}
+	if !slices.Equal(got, want) {
+		t.Errorf("OrderOverrideLast = %v, want %v", got, want)
+	}
+
+	if got := OrderOverrideLast([]string{"only.tf"}, identity); !slices.Equal(got, []string{"only.tf"}) {
+		t.Errorf("OrderOverrideLast = %v, want [only.tf]", got)
+	}
+}
+
 func keys(m map[string]struct{}) []string {
 	return slices.Sorted(maps.Keys(m))
 }

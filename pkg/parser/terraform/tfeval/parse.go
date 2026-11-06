@@ -8,7 +8,9 @@ package tfeval
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -62,6 +64,10 @@ func parseDir(
 	}
 	names := tfmodules.SelectConfigNames(entries, dir, allow, "")
 	sort.Strings(names)
+	// Override files apply last regardless of their name, so locals, variable
+	// defaults and module attributes they set win over the directory's other
+	// files, matching the order module discovery assembles the same directory in.
+	names = tfpath.OrderOverrideLast(names, func(name string) string { return name })
 
 	bodies := make([]*hclsyntax.Body, 0, len(names))
 	sources := make(map[string][]byte, len(names))
@@ -192,7 +198,7 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 			}
 		}
 	}
-	return varDecls, localExprs, modules, resources, outputs
+	return varDecls, localExprs, mergeModuleOverrideBlocks(modules), resources, outputs
 }
 
 func collectModuleBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
@@ -204,7 +210,61 @@ func collectModuleBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 			}
 		}
 	}
-	return modules
+	return mergeModuleOverrideBlocks(modules)
+}
+
+// mergeModuleOverrideBlocks folds a later module block of the same name into
+// the first one, attribute by attribute, so an override block that restates a
+// module overlays only the attributes it sets. bodies arrive in override-last
+// order (see parseDir), so the first block with a given name is always the
+// base: a valid, non-override configuration never repeats a module name in
+// one directory. The merged block keeps the base block's identity (position,
+// labels) so call-site reporting is unaffected.
+func mergeModuleOverrideBlocks(blocks []*hclsyntax.Block) []*hclsyntax.Block {
+	if len(blocks) < 2 {
+		return blocks
+	}
+	order := make([]string, 0, len(blocks))
+	byLabel := make(map[string]*mergedModuleBlock, len(blocks))
+	for _, block := range blocks {
+		label := blockLabel(block)
+		if label == "" {
+			// An unlabeled block is invalid and resolveModuleCall already rejects
+			// it; keep it as its own entry rather than merging it by mistake.
+			order = append(order, fmt.Sprintf("\x00%p", block))
+			byLabel[order[len(order)-1]] = &mergedModuleBlock{block: block, attrs: block.Body.Attributes}
+			continue
+		}
+		existing, ok := byLabel[label]
+		if !ok {
+			attrs := make(hclsyntax.Attributes, len(block.Body.Attributes))
+			maps.Copy(attrs, block.Body.Attributes)
+			byLabel[label] = &mergedModuleBlock{block: block, attrs: attrs}
+			order = append(order, label)
+			continue
+		}
+		maps.Copy(existing.attrs, block.Body.Attributes)
+	}
+	merged := make([]*hclsyntax.Block, len(order))
+	for i, key := range order {
+		merged[i] = byLabel[key].finalize()
+	}
+	return merged
+}
+
+type mergedModuleBlock struct {
+	block *hclsyntax.Block
+	attrs hclsyntax.Attributes
+}
+
+// finalize builds the effective block: the base block's identity with the
+// merged attribute set. It is a no-op copy when nothing overlaid it.
+func (m *mergedModuleBlock) finalize() *hclsyntax.Block {
+	bodyCopy := *m.block.Body
+	bodyCopy.Attributes = m.attrs
+	blockCopy := *m.block
+	blockCopy.Body = &bodyCopy
+	return &blockCopy
 }
 
 // resolveLocalDir resolves a local module source path relative to callerDir.

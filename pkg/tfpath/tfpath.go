@@ -108,6 +108,45 @@ func IsConfig(path string) bool {
 	return IsHCLConfig(path) || IsJSONConfig(path)
 }
 
+// IsOverrideFile reports whether path is a Terraform or OpenTofu override file.
+// Those files are applied after the directory's other configuration, in name order.
+func IsOverrideFile(path string) bool {
+	base := filepath.Base(path)
+	switch base {
+	case "override.tf", "override.tf.json", "override.tofu", "override.tofu.json":
+		return true
+	}
+	return strings.HasSuffix(base, "_override.tf") ||
+		strings.HasSuffix(base, "_override.tf.json") ||
+		strings.HasSuffix(base, "_override.tofu") ||
+		strings.HasSuffix(base, "_override.tofu.json")
+}
+
+// OrderOverrideLast reorders items so override files come after the
+// directory's other files, sorted by base name among themselves. Non-override
+// items keep their given relative order. Terraform and OpenTofu apply
+// override files last; every reader of a directory's files must agree on this
+// order, since the last declaration of a local, variable default or module
+// attribute wins.
+func OrderOverrideLast[T any](items []T, path func(T) string) []T {
+	if len(items) < 2 {
+		return items
+	}
+	ordered := append([]T(nil), items...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := IsOverrideFile(path(ordered[i]))
+		right := IsOverrideFile(path(ordered[j]))
+		if left != right {
+			return !left
+		}
+		if left {
+			return filepath.Base(path(ordered[i])) < filepath.Base(path(ordered[j]))
+		}
+		return false
+	})
+	return ordered
+}
+
 // Matching keeps paths that satisfy pred. It does not apply OpenTofu precedence.
 func Matching(paths []string, pred func(string) bool) []string {
 	out := make([]string, 0, len(paths))

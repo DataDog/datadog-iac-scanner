@@ -1599,3 +1599,53 @@ func TestResolveAdmitsResolverReportedPackageUsageWithoutWalking(t *testing.T) {
 	require.Empty(t, result.Failures)
 	require.Len(t, result.Modules, 1)
 }
+
+func TestResolveRejectsEmptySourceBeforeResolution(t *testing.T) {
+	for _, tc := range []struct{ name, filename, content string }{
+		{"orphan override", "override.tf", "module \"network\" { version = \"1.0\" }"},
+		{"missing source", "main.tf", "module \"network\" {}"},
+		{"empty source", "main.tf", "module \"network\" { source = \"\" }"},
+		{"whitespace source", "main.tf", "module \"network\" { source = \"   \" }"},
+		{"json override", "override.tf.json", `{"module":{"network":{"version":"1.0"}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			file := filepath.Join(root, tc.filename)
+			if tc.filename != "main.tf" {
+				require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"),
+					[]byte(`module "network" { source = "acme/network/aws" }`), 0o644))
+			}
+			require.NoError(t, os.WriteFile(file, []byte(tc.content), 0o644))
+			tracking := &trackingResolver{calls: make(map[string]int)}
+			result := Resolve(t.Context(), &Request{
+				RootPaths: []string{root}, DiscoveryPaths: []string{file}, Resolver: tracking, MaxDepth: 2,
+			})
+			require.Empty(t, tracking.calls)
+			require.Empty(t, result.Modules)
+			require.Len(t, result.Failures, 1)
+			require.Equal(t, "network", result.Failures[0].Name)
+			require.Equal(t, file, result.Failures[0].CallerFile)
+			require.Equal(t, 1, result.Failures[0].CallerLine)
+			require.Contains(t, result.Failures[0].Reason, "source is empty or missing")
+			require.NotContains(t, result.Failures[0].Reason, "terraform init")
+			require.Len(t, result.Stats, 1)
+		})
+	}
+}
+
+func TestResolveValidatesSourceAfterMergingOverrides(t *testing.T) {
+	root, remote := t.TempDir(), t.TempDir()
+	mainFile, overrideFile := filepath.Join(root, "main.tf"), filepath.Join(root, "override.tf")
+	require.NoError(t, os.WriteFile(mainFile, []byte(`module "network" { source = "acme/network/aws" }`), 0o644))
+	require.NoError(t, os.WriteFile(overrideFile, []byte(`module "network" { version = "v5.5.1" }`), 0o644))
+	result := Resolve(t.Context(), &Request{
+		RootPaths: []string{root}, DiscoveryPaths: []string{mainFile, overrideFile}, MaxDepth: 2,
+		Resolver: mapResolver{bySource: map[string]resolver.Resolution{
+			"acme/network/aws": {LocalPath: remote, PackageRoot: remote},
+		}},
+	})
+	require.Empty(t, result.Failures)
+	require.Len(t, result.Modules, 1)
+	require.Equal(t, "v5.5.1", result.Modules[0].Version)
+	require.Equal(t, mainFile, result.Modules[0].CallerFile)
+}
