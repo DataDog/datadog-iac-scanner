@@ -1614,7 +1614,8 @@ func (r *BareGitResolver) admit(ctx context.Context, mod *tfmodules.ParsedModule
 	if err := checkGitTransportAllowed(ctx, parsedRepo); err != nil {
 		return bareGitSource{}, err
 	}
-	if err := checkHostAllowlist(mod.Source, r.hostAllowlist); err != nil {
+	// The host the remote is fetched from, not one read back from the source text.
+	if err := checkHostnameAllowlist(parsedRepo.Hostname(), r.hostAllowlist); err != nil {
 		return bareGitSource{}, err
 	}
 	return bareGitSource{repoURL: repoURL, subdir: subdir, ref: ref, parsed: parsedRepo}, nil
@@ -1661,7 +1662,8 @@ func (r *BareGitResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModu
 
 // checkGitTransportAllowed accepts only the transports whose destination the
 // resolver can pin: HTTPS through the policy proxy, and ssh to a host whose key is
-// already known. Credentials embedded in the URL are refused for both.
+// already known. Credentials embedded in the URL are refused for both, and so is
+// an ssh user or host that git or ssh could read as something other than a name.
 func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
 	switch repo.Scheme {
 	case httpsScheme:
@@ -1677,6 +1679,12 @@ func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
 				return &tfmodules.UnresolvedError{
 					Reason: "ssh git module transport does not accept a password embedded in the source URL",
 				}
+			}
+		}
+		if !sshRemoteNameSafe(repo.User.Username()) || !sshRemoteNameSafe(repo.Hostname()) {
+			return &tfmodules.UnresolvedError{
+				Reason: "ssh git module source user or host must not start with \"-\" " +
+					"or contain whitespace or control characters",
 			}
 		}
 		if err := checkSSHHostKeyPinned(ctx, sshHostKeyName(repo.Hostname(), repo.Port())); err != nil {
@@ -1698,34 +1706,52 @@ func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
 // BareGitResolver can clone them using the same SSH credentials that would be
 // used by a native git client.  HTTPS is intentionally avoided here because SCP
 // sources typically point at private repositories that require SSH auth.
+// Terraform also documents the SCP form behind the git:: getter prefix, which
+// normalizes the same way.
 //
 //	"git@github.com:org/repo//subdir?ref=tag"
+//	→ "git::ssh://git@github.com/org/repo//subdir?ref=tag", true
+//	"git::git@github.com:org/repo//subdir?ref=tag"
 //	→ "git::ssh://git@github.com/org/repo//subdir?ref=tag", true
 //
 // Returns ("", false) if source is not SCP form.
 func normalizeSCPGitSource(source string) (string, bool) {
-	// Must not already carry a getter scheme prefix.
-	if strings.Contains(source, "::") {
+	// Any other getter prefix, or a second one, is not SCP form.
+	address := strings.TrimPrefix(source, "git::")
+	if strings.Contains(address, "::") {
 		return "", false
 	}
-	// SCP form: [user@]host:path — @ precedes a colon that comes before any slash.
-	atIdx := strings.IndexByte(source, '@')
-	if atIdx < 0 {
+	// SCP form: user@host:path — the first @ ends the user and the first colon
+	// after it ends the host. URL forms such as ssh:// and https:// put their
+	// scheme in the user and are rejected by scpAddressName.
+	user, rest, ok := strings.Cut(address, "@")
+	if !ok {
 		return "", false
 	}
-	user := source[:atIdx]   // e.g. "git"
-	rest := source[atIdx+1:] // host:org/repo//subdir?ref=tag
-	colonIdx := strings.IndexByte(rest, ':')
-	if colonIdx < 0 {
+	host, path, ok := strings.Cut(rest, ":") // path: org/repo//subdir?ref=tag
+	if !ok || !scpAddressName(user) || !scpAddressName(host) {
 		return "", false
 	}
-	// Ensure the colon is a host separator, not a path colon (no slash before it).
-	if slashIdx := strings.IndexByte(rest, '/'); slashIdx >= 0 && slashIdx < colonIdx {
-		return "", false
-	}
-	host := rest[:colonIdx]
-	path := rest[colonIdx+1:] // org/repo//subdir?ref=tag
 	return "git::ssh://" + user + "@" + host + "/" + path, true
+}
+
+// scpAddressName reports whether name can be the user or host of an SCP-form
+// source. Only letters, digits, ".", "_" and a "-" that does not lead are
+// accepted: the ssh:// URL built from them then names exactly the user and host
+// that were written, with no escape to decode and no "/" or ":" to move the
+// host, and neither can reach git or ssh as an option.
+func scpAddressName(name string) bool {
+	if name == "" || name[0] == '-' {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') &&
+			c != '.' && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // normalizeImplicitGitHubSource converts Terraform's implicit GitHub module paths to git::https://.

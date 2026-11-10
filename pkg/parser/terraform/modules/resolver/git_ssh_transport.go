@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // knownHostsEnvVar points at a dedicated host key file. When set it replaces the
@@ -104,6 +105,19 @@ func checkSSHHostKeyPinned(ctx context.Context, host string) error {
 		)
 	}
 	return nil
+}
+
+// sshRemoteNameSafe reports whether a user or host decoded from an ssh remote URL
+// can reach ssh as that name. Git decodes %-escapes and hands "user@host" to ssh
+// as a single argument, so a leading "-" would read as an option, and whitespace
+// or control characters have no place in either name.
+func sshRemoteNameSafe(name string) bool {
+	if strings.HasPrefix(name, "-") {
+		return false
+	}
+	return !strings.ContainsFunc(name, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r)
+	})
 }
 
 // shellSingleQuote quotes arg for the shell that git uses to run GIT_SSH_COMMAND.

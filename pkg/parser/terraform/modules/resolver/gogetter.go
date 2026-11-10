@@ -752,7 +752,13 @@ func checkHostAllowlist(source string, allowlist []string) error {
 	if len(allowlist) == 0 {
 		return nil
 	}
-	host := extractSourceHost(source)
+	return checkHostnameAllowlist(extractSourceHost(source), allowlist)
+}
+
+func checkHostnameAllowlist(host string, allowlist []string) error {
+	if len(allowlist) == 0 {
+		return nil
+	}
 	for _, allowed := range allowlist {
 		if host == allowed || strings.HasSuffix(host, "."+allowed) {
 			return nil

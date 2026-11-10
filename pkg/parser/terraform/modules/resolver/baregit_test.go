@@ -543,6 +543,173 @@ func TestNormalizeSCPGitSource(t *testing.T) {
 	}
 }
 
+func TestNormalizeSCPGitSourceAcceptsGitPrefix(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{
+			"git::git@github.com:org/terraform-modules.git//modules/infra/pipeline?ref=infra-pipeline-v1.0.0",
+			"git::ssh://git@github.com/org/terraform-modules.git//modules/infra/pipeline?ref=infra-pipeline-v1.0.0",
+		},
+		{"git::username@example.com:storage.git", "git::ssh://username@example.com/storage.git"},
+		{"git::deploy_bot.ci-1@git.example.com:org/repo.git?ref=v1", "git::ssh://deploy_bot.ci-1@git.example.com/org/repo.git?ref=v1"},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			got, ok := normalizeSCPGitSource(c.in)
+			if !ok || got != c.want {
+				t.Fatalf("normalizeSCPGitSource(%q) = %q, %v; want %q", c.in, got, ok, c.want)
+			}
+			unprefixed, ok := normalizeSCPGitSource(strings.TrimPrefix(c.in, "git::"))
+			if !ok || unprefixed != got {
+				t.Fatalf("prefixed and unprefixed forms must normalize alike: %q vs %q", got, unprefixed)
+			}
+		})
+	}
+}
+
+func TestNormalizeSCPGitSourceLeavesURLFormsAlone(t *testing.T) {
+	for _, source := range []string{
+		"git::ssh://git@github.com/org/repo.git?ref=v1",
+		"git::ssh://git@github.com:2222/org/repo.git?ref=v1",
+		"git::https://github.com/org/repo.git//sub?ref=v1",
+		"git::https://evil.example/x@github.com:org/repo.git?ref=v1",
+		"ssh://git@github.com:2222/org/repo.git?ref=v1",
+		"hg::git@github.com:org/repo",
+		"git::git::git@github.com:org/repo",
+	} {
+		t.Run(source, func(t *testing.T) {
+			if got, ok := normalizeSCPGitSource(source); ok {
+				t.Fatalf("expected %q to be left alone, got %q", source, got)
+			}
+		})
+	}
+}
+
+// unsafeSCPGitSources have the SCP shape but a user or host that could be read
+// as a git or ssh option, carry whitespace or control characters, or would move
+// the host once written as an ssh:// URL.
+var unsafeSCPGitSources = []string{
+	"-oProxyCommand=touch /tmp/pwned@modules.example:org/repo.git?ref=v1",
+	"-oProxyCommand=id@modules.example:org/repo.git?ref=v1",
+	"git@-oProxyCommand=id:org/repo.git?ref=v1",
+	"%2DoProxyCommand=id@modules.example:org/repo.git?ref=v1",
+	"a%0Ab@modules.example:org/repo.git?ref=v1",
+	"a%20b@modules.example:org/repo.git?ref=v1",
+	"git user@modules.example:org/repo.git?ref=v1",
+	"git\tuser@modules.example:org/repo.git?ref=v1",
+	"git\nuser@modules.example:org/repo.git?ref=v1",
+	"git@modules.example :org/repo.git?ref=v1",
+	"git@modules\x00.example:org/repo.git?ref=v1",
+	"evil.example/x@modules.example:org/repo.git?ref=v1",
+	"@modules.example:org/repo.git?ref=v1",
+	"git@:org/repo.git?ref=v1",
+}
+
+func TestNormalizeSCPGitSourceRejectsUnsafeUserOrHost(t *testing.T) {
+	for _, source := range unsafeSCPGitSources {
+		for _, form := range []string{source, "git::" + source} {
+			t.Run(form, func(t *testing.T) {
+				if got, ok := normalizeSCPGitSource(form); ok {
+					t.Fatalf("expected %q to be rejected, got %q", form, got)
+				}
+				if bareGitOwnsSource(form) {
+					t.Fatalf("BareGitResolver must not own %q", form)
+				}
+			})
+		}
+	}
+}
+
+func TestBareGitResolverAdmitsSCPSourceWithOrWithoutGitPrefix(t *testing.T) {
+	const host = "modules.example"
+	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, knownHostsLineFor(t, host)))
+	r := NewBareGitResolver(t.TempDir(), host)
+
+	const scp = "git@" + host + ":org/terraform-modules.git//modules/infra/pipeline?ref=infra-pipeline-v1.0.0"
+	plain, err := r.admit(t.Context(), &tfmodules.ParsedModule{Source: scp})
+	if err != nil {
+		t.Fatalf("admitting %q: %v", scp, err)
+	}
+	prefixed, err := r.admit(t.Context(), &tfmodules.ParsedModule{Source: "git::" + scp})
+	if err != nil {
+		t.Fatalf("admitting git::%s: %v", scp, err)
+	}
+	if prefixed.repoURL != plain.repoURL || prefixed.subdir != plain.subdir || prefixed.ref != plain.ref {
+		t.Fatalf("git:: prefix changed the admitted source: %+v vs %+v", prefixed, plain)
+	}
+	if plain.repoURL != "ssh://git@"+host+"/org/terraform-modules.git" ||
+		plain.subdir != "modules/infra/pipeline" || plain.ref != "infra-pipeline-v1.0.0" {
+		t.Fatalf("unexpected admitted source %+v", plain)
+	}
+}
+
+func TestBareGitResolverAppliesHostPolicyToPrefixedSCPSource(t *testing.T) {
+	const host = "modules.example"
+	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, knownHostsLineFor(t, host)))
+	const scp = "git@" + host + ":org/repo.git?ref=v1"
+
+	for _, source := range []string{scp, "git::" + scp} {
+		t.Run(source, func(t *testing.T) {
+			denied := NewBareGitResolver(t.TempDir(), "allowed.example")
+			_, err := denied.Resolve(t.Context(), &tfmodules.ParsedModule{Source: source})
+			if err == nil || !strings.Contains(err.Error(), `module host "modules.example" is not in --module-host-allowlist`) {
+				t.Fatalf("expected host allowlist error, got %v", err)
+			}
+
+			r := NewBareGitResolver(t.TempDir(), host)
+			var looked []string
+			r.policy.lookupNetIP = func(_ context.Context, _, name string) ([]net.IP, error) {
+				looked = append(looked, name)
+				return []net.IP{net.ParseIP("169.254.169.254")}, nil
+			}
+			_, err = r.Resolve(t.Context(), &tfmodules.ParsedModule{Source: source})
+			if err == nil || !strings.Contains(err.Error(), "not a public unicast destination") {
+				t.Fatalf("expected private destination rejection, got %v", err)
+			}
+			if len(looked) != 1 || looked[0] != host {
+				t.Fatalf("expected the destination policy to check %q, got %v", host, looked)
+			}
+		})
+	}
+}
+
+func TestBareGitResolverRejectsUnsafeSSHUserOrHost(t *testing.T) {
+	const host = "modules.example"
+	t.Setenv(knownHostsEnvVar, writeKnownHosts(t, knownHostsLineFor(t, host)))
+	sources := []string{
+		"git::ssh://-oProxyCommand=id@" + host + "/org/repo.git?ref=v1",
+		"git::ssh://%2DoProxyCommand=id@" + host + "/org/repo.git?ref=v1",
+		"git::ssh://a%0Ab@" + host + "/org/repo.git?ref=v1",
+		"git::ssh://a%20b@" + host + "/org/repo.git?ref=v1",
+		"git::ssh://a%09b@" + host + "/org/repo.git?ref=v1",
+		"git::ssh://git@-oProxyCommand=id/org/repo.git?ref=v1",
+	}
+	for _, source := range unsafeSCPGitSources {
+		sources = append(sources, source, "git::"+source)
+	}
+	for _, source := range sources {
+		t.Run(source, func(t *testing.T) {
+			r := NewBareGitResolver(t.TempDir())
+			r.policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+				t.Fatal("an unsafe source must be rejected before any destination lookup")
+				return nil, errors.New("unreachable")
+			}
+			if _, err := r.Resolve(t.Context(), &tfmodules.ParsedModule{Source: source}); err == nil {
+				t.Fatal("expected the source to be rejected")
+			}
+		})
+	}
+}
+
+func TestBareGitResolverChecksAllowlistAgainstFetchedHost(t *testing.T) {
+	r := NewBareGitResolver(t.TempDir(), "github.com")
+	err := r.Screen(t.Context(), &tfmodules.ParsedModule{
+		Source: "git::https://evil.example/x@github.com:org/repo.git?ref=v1",
+	})
+	if err == nil || !strings.Contains(err.Error(), `module host "evil.example" is not in --module-host-allowlist`) {
+		t.Fatalf("expected the allowlist to check the host the remote is fetched from, got %v", err)
+	}
+}
+
 func TestNormalizeImplicitGitHubSource(t *testing.T) {
 	in := "github.com/oracle-quickstart/terraform-oci-cis-landing-zone-iam//identity-domains?ref=release-0.3.0"
 	got, ok := normalizeImplicitGitHubSource(in)
