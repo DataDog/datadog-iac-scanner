@@ -13,8 +13,11 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func writeNestedFanOutForProbe(t *testing.T, depth, branch int) string {
@@ -138,4 +141,119 @@ func powInt(base, exp int) int {
 		r *= base
 	}
 	return r
+}
+
+// The value-heavy fixture below matches the nested fan-out probe with 150 tags.
+// IAC_FANOUT_DEPTH=10 evaluates 19,683 leaves; depth 12 evaluates 177,147.
+// The benchmark disables the resource budget and asserts every leaf is returned.
+
+func writeTagFanout(tb testing.TB, depth int, repeated bool) string {
+	tb.Helper()
+	root := tb.TempDir()
+	for level := 0; level < depth; level++ {
+		dir := filepath.Join(root, fmt.Sprintf("lvl%02d", level))
+		require.NoError(tb, os.MkdirAll(dir, 0o755))
+		var body strings.Builder
+		body.WriteString("variable \"in\" { type = string }\nvariable \"env\" { type = string }\n")
+		if level == depth-1 {
+			body.WriteString("resource \"aws_s3_bucket\" \"leaf\" {\n bucket = var.in\n acl = \"public-read\"\n tags = {\n")
+			input := "in"
+			if repeated {
+				input = "env"
+			}
+			for j := 0; j < 150; j++ {
+				fmt.Fprintf(&body, " tag%d = \"${var.%s}-%s-%d\"\n", j, input, strings.Repeat("v", 80), j)
+			}
+			body.WriteString(" }\n}\noutput \"out\" { value = var.in }\n")
+		} else {
+			for k := 0; k < 3; k++ {
+				fmt.Fprintf(&body, "module \"m%d\" {\n source = \"../lvl%02d\"\n in = \"${var.in}-%d\"\n env = var.env\n}\n", k, level+1, k)
+			}
+			body.WriteString("output \"out\" { value = module.m0.out }\n")
+		}
+		require.NoError(tb, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(body.String()), 0o644))
+	}
+	stack := filepath.Join(root, "stack")
+	require.NoError(tb, os.MkdirAll(stack, 0o755))
+	require.NoError(tb, os.WriteFile(filepath.Join(stack, "main.tf"), []byte("module \"m\" {\n source = \"../lvl00\"\n in = \"seed\"\n env = \"prod\"\n}\n"), 0o644))
+	return stack
+}
+
+// BenchmarkTagFanout reproduces nested local-module fan-out with large tag
+// objects. IAC_FANOUT_DEPTH=10 evaluates 19,683 resources; depth 12 evaluates
+// 177,147. The resource budget is disabled so measurements include every leaf.
+func BenchmarkTagFanout(b *testing.B) {
+	depth := 7
+	if value := os.Getenv("IAC_FANOUT_DEPTH"); value != "" {
+		var err error
+		depth, err = strconv.Atoi(value)
+		require.NoError(b, err)
+		require.Positive(b, depth)
+	}
+	expected := powInt(3, depth-1)
+	for _, repeated := range []bool{false, true} {
+		b.Run(fmt.Sprintf("repeated=%t", repeated), func(b *testing.B) {
+			stack := writeTagFanout(b, depth, repeated)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				e := New()
+				e.SetMaxInstantiated(0)
+				resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+				require.NoError(b, err)
+				require.Len(b, resources, expected)
+			}
+		})
+	}
+}
+
+// Repeated values must share immutable evaluation storage while each instance
+// keeps its own identity. Unique inputs must continue to produce unique tags.
+func TestTagFanout(t *testing.T) {
+	for _, repeated := range []bool{false, true} {
+		t.Run(fmt.Sprintf("repeated=%t", repeated), func(t *testing.T) {
+			stack := writeTagFanout(t, 4, repeated)
+			e := New()
+			e.SetMaxInstantiated(0)
+			e.SetTrackModuleInstances(true)
+			resources, _, visited, err := e.EvaluateModule(context.Background(), stack, nil)
+			require.NoError(t, err)
+			require.Len(t, resources, 27)
+			require.Len(t, visited, 4)
+			require.Len(t, e.TakeModuleInstances(), 40)
+			require.Empty(t, e.NotEvaluatedDirs())
+			require.Zero(t, e.ExpansionTruncations())
+
+			seen := make(map[string]bool)
+			for i := range resources {
+				r := &resources[i]
+				name := "seed"
+				for _, segment := range strings.Split(r.ModuleAddress, ".") {
+					if len(segment) == 2 && segment[0] == 'm' {
+						name += "-" + segment[1:]
+					}
+				}
+				require.False(t, seen[name], "duplicate resource instance")
+				seen[name] = true
+				require.Equal(t, name, r.Attributes["bucket"].AsString())
+				tagPrefix := name
+				if repeated {
+					tagPrefix = "prod"
+				}
+				doc := AttributesToDocument(r)
+				tags := doc["tags"].(map[string]interface{})
+				require.Len(t, tags, 150)
+				for j := 0; j < 150; j++ {
+					require.Equal(t, fmt.Sprintf("%s-%s-%d", tagPrefix, strings.Repeat("v", 80), j), tags[fmt.Sprintf("tag%d", j)])
+				}
+				if i > 0 {
+					require.Equal(t, repeated, sharesStorage(resources[0].Attributes["tags"], r.Attributes["tags"]),
+						"only equal tag evaluations should share storage")
+				}
+			}
+			// Dropping caches before conversion must leave resolved values renderable.
+			e.ReleaseEvalCache()
+			require.Len(t, AttributesToDocument(&resources[0])["tags"], 150)
+		})
+	}
 }

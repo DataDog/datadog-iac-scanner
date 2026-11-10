@@ -2958,3 +2958,49 @@ func BenchmarkResolveLocalsChain(b *testing.B) {
 		})
 	}
 }
+
+func TestEvaluateModule_SharedContextKeepsFilesystemRoots(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"a", "b"} {
+		writeModule(t, root, name, map[string]string{
+			"config.txt": name,
+			"main.tf": `
+variable "name" { type = string }
+resource "aws_s3_bucket" "this" {
+  bucket = var.name
+  tags = {
+    module = file("config.txt")
+    root = file("${path.root}/config.txt")
+  }
+}
+`,
+		})
+	}
+	e := New()
+	for _, name := range []string{"first", "second"} {
+		stack := writeModule(t, root, name, map[string]string{
+			"config.txt": name,
+			"main.tf": fmt.Sprintf(`
+module "a" {
+  source = "../a"
+  count = 2
+  name = "%s-a-${count.index}"
+}
+module "b" {
+  source = "../b"
+  name = "%s-b"
+}
+`, name, name),
+		})
+		resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+		require.NoError(t, err)
+		require.Len(t, resources, 3)
+		for _, r := range resources {
+			module := r.CallChain[0].ModuleName
+			require.Equal(t, module, r.Attributes["tags"].GetAttr("module").AsString())
+			require.Equal(t, name, r.Attributes["tags"].GetAttr("root").AsString())
+		}
+		require.True(t, sharesStorage(resources[0].Attributes["tags"], resources[1].Attributes["tags"]),
+			"instances in one directory and root share equal file-derived attributes")
+	}
+}

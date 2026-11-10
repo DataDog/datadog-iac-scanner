@@ -90,10 +90,9 @@ func newModuleData(
 	e *Evaluator,
 	sources map[string][]byte,
 	locals *localGraph,
-	resourceTypes map[string]struct{},
+	static *dirStatic,
 	addr string,
 	chain []CallSite,
-	hasUnconditionalResource bool,
 ) *moduleData {
 	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
@@ -101,21 +100,12 @@ func newModuleData(
 	}
 	d := &moduleData{
 		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
-		dataLocals: locals.dataLocals, cyclic: locals.cyclicData, hasUnconditionalResource: hasUnconditionalResource,
-	}
-	for _, b := range blocks {
-		d.readsData = d.readsData || bodyReadsResource(b.Body, dataRoot)
-		d.readsResources = d.readsResources || bodyReadsResource(b.Body, resourceTypes)
-		d.readsLocals = d.readsLocals || bodyReadsResource(b.Body, localRoot)
-	}
-	if d.readsLocals && locals.readsResources {
-		d.readsResources = true
-	}
-	for _, b := range blocks {
-		d.readsModuleOutputs = d.readsModuleOutputs || bodyReadsResource(b.Body, moduleRoot)
-	}
-	if d.readsLocals && locals.readsModules {
-		d.readsModuleOutputs = true
+		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
+		hasUnconditionalResource: static.hasUnconditionalResource,
+		readsData:                static.dataReadsData,
+		readsLocals:              static.dataReadsLocals,
+		readsResources:           static.dataReadsResources,
+		readsModuleOutputs:       static.dataReadsModules,
 	}
 	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
 	return d

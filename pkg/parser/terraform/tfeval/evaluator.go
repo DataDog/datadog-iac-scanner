@@ -147,6 +147,7 @@ type ModuleScope struct {
 	// and reuses the rest verbatim.
 	localGraph *localGraph
 	localCache map[string]cty.Value
+	static     *dirStatic
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not
@@ -173,9 +174,14 @@ type Evaluator struct {
 	// inputs, whatever path led there.
 	cache   map[evalCacheKey]*evalCacheEntry
 	keyMemo keyMemo
-	// localMemo shares local values across the module evaluations reading the
-	// same values; localReads is what each local expression reads. Both follow
-	// the evaluation cache's lifetime.
+	// contexts shares the read-only functions and path values of a directory
+	// within a root. Scopes retain these after evaluation for attribution and
+	// rendering; rebuilding the functions for each instance pins all their
+	// filesystem closures once per call, even when every value is unique.
+	contexts map[moduleContextKey]moduleContext
+	// localMemo shares locals and invariant resource attributes across module
+	// evaluations reading the same values; localReads records their dependencies.
+	// Both follow the evaluation cache's lifetime.
 	localMemo  map[localMemoKey]cty.Value
 	localReads map[hclsyntax.Expression]localReads
 	// When set, non-local module sources resolve here and recurse with caller inputs.
@@ -248,6 +254,7 @@ type dirParse struct {
 	outputs       map[string]hclsyntax.Expression
 	resourceTypes map[string]struct{}
 	locals        *localGraph
+	static        *dirStatic
 	err           error
 }
 
@@ -354,6 +361,7 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 		dp.varDecls, dp.localExprs, dp.modules, dp.resources, dp.outputs = collectBlocks(bodies)
 		dp.resourceTypes = declaredResourceTypes(dp.resources)
 		dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, collectDataBlocks(bodies))
+		dp.static = newDirStatic(&dp)
 	}
 
 	e.parseMu.Lock()
@@ -523,11 +531,12 @@ func (e *Evaluator) ReleaseCaches() {
 func (e *Evaluator) ReleaseEvalCache() {
 	e.cache = make(map[evalCacheKey]*evalCacheEntry)
 	e.keyMemo = keyMemo{}
+	e.contexts = nil
 	e.ReleaseLocalMemo()
 	e.localReads = nil
 }
 
-// ReleaseLocalMemo drops local values shared across module instances.
+// ReleaseLocalMemo drops expression values shared across module instances.
 func (e *Evaluator) ReleaseLocalMemo() {
 	e.localMemo = nil
 }
@@ -619,31 +628,32 @@ func (e *Evaluator) evaluate(
 	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
 
 	varVals := e.resolveVariables(parsed.varDecls, inputs)
+	shared := e.moduleContext(dir, rootDir)
 
 	evalCtx := &hcl.EvalContext{
 		Variables: map[string]cty.Value{
 			"var": objectOrEmpty(varVals),
 		},
-		Functions: tffunctions.EvalFuncsWithRoot(dir, rootDir, e.funcFS),
+		Functions: shared.functions,
 	}
-	for name, value := range tffunctions.ContextVariables(dir, rootDir) {
+	for name, value := range shared.variables {
 		evalCtx.Variables[name] = value
 	}
 
 	scope := &ModuleScope{
 		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
-		localGraph: parsed.locals,
+		localGraph: parsed.locals, static: parsed.static,
 	}
 	e.noteCycles(ctx, dir, parsed.locals)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
-	data := newModuleData(e, sources, parsed.locals, parsed.resourceTypes, addr, chain, hasUnconditionalResourceBlock(resourceBlocks))
+	data := newModuleData(e, sources, parsed.locals, parsed.static, addr, chain)
 	data.refresh(ctx, evalCtx)
 
 	if !e.preinjectResourceRefs(ctx, resourceBlocks, moduleBlocks, scope, evalCtx, data, addr, chain) {
 		return nil, nil, e.skipEvaluation(dir)
 	}
 
-	reads := callSiblingReads(moduleBlocks)
+	reads := parsed.static.siblings
 	e.applySiblingModulePrepass(
 		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting,
 	)
@@ -1180,17 +1190,11 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	chain []CallSite,
 ) ([]ResolvedResource, bool) {
 	var rootResources []ResolvedResource
-	types := declaredResourceTypes(resourceBlocks)
 	localsReadOwn := scope.localGraph.readsResources
 	dataReadsOwn := data.readsOwnResources()
 	// Resources may consume refreshed data through locals (data → local →
 	// resource) without a direct data.* traversal in the body.
-	readsDataPath := resourcesReadResources(resourceBlocks, dataRoot)
-	if data != nil {
-		readsDataPath = readsDataPath || resourcesReadNamedLocals(resourceBlocks, data.dataLocals)
-	}
-	readsOwn := localsReadOwn || resourcesReadResources(resourceBlocks, types) ||
-		(dataReadsOwn && readsDataPath)
+	readsOwn := scope.static.resourcesReadOwn || (dataReadsOwn && scope.static.resourcesReadData)
 	for pass := 0; pass < resourceRefPasses; pass++ {
 		var complete bool
 		rootResources, complete = e.evalResourceBlocks(
@@ -1977,7 +1981,11 @@ func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext
 	if v, ok := st.memo.values[expr]; ok {
 		return v
 	}
-	v := e.evalExpr(expr, ctx)
+	// Preserve the object-length fast path before memo keys walk the inputs.
+	v, ok := evalLength(expr, ctx)
+	if !ok {
+		v = e.memoizedValue(expr, ctx, e.evalExpr)
+	}
 	st.memo.values[expr] = v
 	return v
 }

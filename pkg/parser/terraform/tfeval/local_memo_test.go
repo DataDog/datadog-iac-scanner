@@ -230,3 +230,125 @@ func TestLocalValue_DoesNotReuseARefinedUnknown(t *testing.T) {
 	require.False(t, plain.IsKnown(), "a plain unknown string may be null")
 	require.True(t, refined.RawEquals(cty.False), "a string known to start with a prefix is not null")
 }
+
+func TestMemoizedValue_DirectReferencesPreserveInputs(t *testing.T) {
+	shared := cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("one")})
+	values := []cty.Value{
+		shared,
+		cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal("two")}),
+		cty.UnknownVal(shared.Type()),
+		shared.Mark("sensitive"),
+		cty.NullVal(shared.Type()),
+	}
+	for _, source := range []string{
+		"var.tags", "local.tags", `var.config["tags"]`,
+		"var.config[var.name]", "(var.config)[var.name]", "(var.config[var.name])",
+		"var.nested[var.name].value", "var.nested[var.name][var.field]",
+	} {
+		t.Run(source, func(t *testing.T) {
+			expr, diags := hclsyntax.ParseExpression([]byte(source), "t.hcl", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+			e := New()
+			for _, want := range values {
+				vars := functions.ContextVariables("/mod", "/root")
+				vars["var"] = cty.ObjectVal(map[string]cty.Value{
+					"tags":   want,
+					"config": cty.ObjectVal(map[string]cty.Value{"tags": want}),
+					"name":   cty.StringVal("tags"),
+					"field":  cty.StringVal("value"),
+					"nested": cty.ObjectVal(map[string]cty.Value{
+						"tags": cty.ObjectVal(map[string]cty.Value{"value": want}),
+					}),
+				})
+				vars["local"] = cty.ObjectVal(map[string]cty.Value{"tags": want})
+				ctx := &hcl.EvalContext{Variables: vars}
+				got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+				require.True(t, want.RawEquals(got), "resource reference must preserve its input")
+				require.True(t, want.RawEquals(e.localValue(expr, ctx)), "local reference must preserve its input")
+				if want.IsKnown() && !want.IsNull() && !want.IsMarked() {
+					require.True(t, sharesStorage(want, got), "resource reference must reuse its input's storage")
+				}
+			}
+		})
+	}
+}
+
+func dynamicLookupContext(size int) *hcl.EvalContext {
+	vars := functions.ContextVariables("/mod", "/root")
+	vars["var"] = cty.ObjectVal(map[string]cty.Value{
+		"config": objectWithKeys(size, ""),
+		"name":   cty.StringVal("k0000"),
+	})
+	return &hcl.EvalContext{Variables: vars}
+}
+
+func TestMemoizedValue_DynamicLookupDoesNotScale(t *testing.T) {
+	expr, diags := hclsyntax.ParseExpression([]byte("var.config[var.name]"), "t.hcl", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+	allocsFor := func(size int) float64 {
+		ctx := dynamicLookupContext(size)
+		var got cty.Value
+		allocs := testing.AllocsPerRun(3, func() {
+			e := New()
+			for range 50 {
+				got = e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+			}
+		})
+		require.True(t, got.RawEquals(cty.StringVal("value")))
+		return allocs
+	}
+	one, many := allocsFor(1), allocsFor(10000)
+	require.LessOrEqual(t, many, one*2, "a lookup must not walk the shared collection")
+}
+
+func BenchmarkEvalExprMemo_DynamicLookup(b *testing.B) {
+	expr, diags := hclsyntax.ParseExpression([]byte("var.config[var.name]"), "t.hcl", hcl.InitialPos)
+	require.False(b, diags.HasErrors())
+	for _, size := range []int{1, 10000} {
+		b.Run(fmt.Sprintf("keys=%d", size), func(b *testing.B) {
+			ctx := dynamicLookupContext(size)
+			want := cty.StringVal("value")
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				e := New()
+				for range 50 {
+					got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+					if !got.RawEquals(want) {
+						b.Fatal("incorrect lookup result")
+					}
+				}
+			}
+		})
+	}
+}
+
+// Direct references already return the input's storage. In particular, their
+// cost should not grow with the size of a collection they simply pass through.
+func BenchmarkEvalExprMemo_DirectReference(b *testing.B) {
+	expr, diags := hclsyntax.ParseExpression([]byte("var.tags"), "t.hcl", hcl.InitialPos)
+	require.False(b, diags.HasErrors())
+	for _, size := range []int{1, 10000} {
+		b.Run(fmt.Sprintf("tags=%d", size), func(b *testing.B) {
+			tags := make(map[string]cty.Value, size)
+			for i := range size {
+				tags[fmt.Sprintf("tag%d", i)] = cty.StringVal("value")
+			}
+			shared := cty.ObjectVal(tags)
+			vars := functions.ContextVariables("/mod", "/root")
+			vars["var"] = cty.ObjectVal(map[string]cty.Value{"tags": shared})
+			ctx := &hcl.EvalContext{Variables: vars}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				e := New()
+				for range 50 {
+					value := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+					if !sharesStorage(shared, value) {
+						b.Fatal("direct reference copied its input")
+					}
+				}
+			}
+		})
+	}
+}
