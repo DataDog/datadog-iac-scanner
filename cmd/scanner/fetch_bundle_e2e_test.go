@@ -20,18 +20,34 @@ const fetchBundleE2ERule = `package datadog
 
 import rego.v1
 
-DatadogPolicy contains result if {
-	some name, i
-	bucket := input.document[i].resource.aws_s3_bucket[name]
-	bucket.versioning.enabled == false
+import data.generic.terraform as tf
 
-	result := {
-		"documentId": input.document[i].id,
-		"resourceType": "aws_s3_bucket",
-		"resourceName": name,
-		"searchKey": sprintf("aws_s3_bucket[%s].versioning", [name]),
-	}
+DatadogPolicy contains result if {
+	some bucket in tf.blocks("aws_s3_bucket")
+	some i, v in tf.nested(bucket, "versioning")
+	v.enabled == false
+	result := tf.finding(bucket, ["versioning", i, "enabled"], {})
 }
+`
+
+const fetchBundleE2ETerraformLibrary = `package generic.terraform
+
+import rego.v1
+
+blocks(type) := object.get(input._dd, ["blocks", "resource", type], [])
+
+# Nested block lists live under _dd.nested; fall back to the block for stubs.
+_nested(block) := object.get(object.get(input._dd, "nested", {}), block._dd_meta.id, {})
+
+nested(block, name) := list if {
+	list := object.get(_nested(block), name, null)
+	is_array(list)
+} else := list if {
+	list := block[name]
+	is_array(list)
+} else := []
+
+finding(block, path, details) := object.union(details, {"_dd_id": block._dd_meta.id, "path": path})
 `
 
 // Test_E2EFetchBundleThenOfflineScan exercises the full network-isolated
@@ -42,6 +58,36 @@ DatadogPolicy contains result if {
 // pkg/datadog/local_file_client_test.go, this drives the actual CLI commands
 // instead of constructing a datadog.Client and QueriesSource by hand.
 func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
+	bundleDir := fetchTestBundle(t)
+
+	manifest, err := readBundleManifest(bundleDir)
+	require.NoError(t, err)
+	require.False(t, manifest.FetchedAt.IsZero())
+
+	outputDir := t.TempDir()
+	metadataPath := filepath.Join(outputDir, "metadata.json")
+	err = scanTestBundle(t, bundleDir, outputDir, metadataPath)
+	// runScan intentionally returns a non-nil error carrying a severity-based
+	// exit code (here 50, for the HIGH violation) even on a successful scan;
+	// see getExitCode. The metadata file is what confirms the scan succeeded.
+	var exitErr *withExitCodeError
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, 50, exitErr.code)
+
+	metadataBytes, err := os.ReadFile(filepath.Clean(metadataPath))
+	require.NoError(t, err)
+	var metadata scan.ScanMetadata
+	require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
+
+	require.Equal(t, 1, metadata.Stats.Files, "the fixture file should have been scanned")
+	require.Equal(t, 1, metadata.Stats.Violations, "the offline bundle's rule should have fired exactly once")
+	require.Contains(t, metadata.Stats.ViolationBreakdowns["HIGH"], "terraform-s3-bucket-versioning-disabled")
+}
+
+// fetchTestBundle runs `fetch-bundle` against a stub Datadog server serving
+// the test rule. It returns the bundle directory.
+func fetchTestBundle(t *testing.T) string {
+	t.Helper()
 	for _, name := range []string{
 		"DD_API_KEY", "DATADOG_API_KEY",
 		"DD_APP_KEY", "DATADOG_APP_KEY",
@@ -81,7 +127,7 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 		case "/api/v2/static-analysis/iac/libraries":
 			libraries := []*datadog.Library{
 				{ID: "common", RegoCode: "package generic.common\n"},
-				{ID: "terraform", RegoCode: "package generic.terraform\n"},
+				{ID: "terraform", RegoCode: fetchBundleE2ETerraformLibrary},
 			}
 			body, err := jsonapi.Marshal(libraries)
 			require.NoError(t, err)
@@ -112,11 +158,14 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	for _, f := range []string{"config.yaml", "rules.json", "libraries.json", "manifest.json"} {
 		require.FileExists(t, filepath.Join(bundleDir, f))
 	}
+	return bundleDir
+}
 
-	outputDir := t.TempDir()
-	metadataPath := filepath.Join(outputDir, "metadata.json")
-
-	err = scanAction.Run(t.Context(), []string{
+// scanTestBundle runs `scan --offline-bundle-path` on the fixture matched by
+// fetchBundleE2ERule.
+func scanTestBundle(t *testing.T, bundleDir, outputDir, metadataPath string) error {
+	t.Helper()
+	return scanAction.Run(t.Context(), []string{
 		"scan",
 		"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
 		"--type", "terraform",
@@ -124,19 +173,4 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 		"--offline-bundle-path", bundleDir,
 		"--metadata-path", metadataPath,
 	})
-	// runScan intentionally returns a non-nil error carrying a severity-based
-	// exit code (here 50, for the HIGH violation) even on a successful scan;
-	// see getExitCode. The metadata file is what confirms the scan succeeded.
-	var exitErr *withExitCodeError
-	require.ErrorAs(t, err, &exitErr)
-	require.Equal(t, 50, exitErr.code)
-
-	metadataBytes, err := os.ReadFile(filepath.Clean(metadataPath))
-	require.NoError(t, err)
-	var metadata scan.ScanMetadata
-	require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
-
-	require.Equal(t, 1, metadata.Stats.Files, "the fixture file should have been scanned")
-	require.Equal(t, 1, metadata.Stats.Violations, "the offline bundle's rule should have fired exactly once")
-	require.Contains(t, metadata.Stats.ViolationBreakdowns["HIGH"], "terraform-s3-bucket-versioning-disabled")
 }
