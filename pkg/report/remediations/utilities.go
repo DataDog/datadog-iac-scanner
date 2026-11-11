@@ -164,10 +164,10 @@ func blockBodyIndent(fileLines []string, blockStartLine, blockEndLine int) strin
 }
 
 func determineActualBaseIndent(fileLines []string, startLine, blockStartLine int) string {
-	if startLine == 0 {
+	if startLine <= 0 || startLine > len(fileLines) {
 		return ""
 	}
-	for i := startLine - 1; i >= blockStartLine-1; i-- {
+	for i := startLine - 1; i >= max(blockStartLine-1, 0); i-- {
 		line := strings.TrimSpace(fileLines[i])
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
 			continue

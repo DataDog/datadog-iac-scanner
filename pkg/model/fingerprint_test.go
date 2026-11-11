@@ -74,7 +74,7 @@ func TestIdentityBeforeLine_IsFindingIdentityUnderEveryChain(t *testing.T) {
 			}
 			id, ok := IdentityBeforeLine(v)
 			require.True(t, ok, platform)
-			want := fingerprintInput(SCIInfo{}, v.FileName, platform, v.ResourceType, v.ResourceName, "legacy", "line text", chain)
+			want := fingerprintInput(SCIInfo{}, v.FileName, platform, v.ResourceType, v.ResourceName, "legacy", "line text", "", chain)
 			require.Equal(t, want, FindingIdentity(v), platform)
 			require.Equal(t, want, id.WithChain(chain), platform)
 			require.Equal(t, want, string(id.AppendWithChain(nil, chain)), platform)
@@ -102,7 +102,7 @@ func TestFindingIdentity_IgnoresTerraformAddress(t *testing.T) {
 	require.Equal(t, FindingIdentity(&first), FindingIdentity(&second))
 	require.Equal(t, FindingIdentity(&first), FindingIdentity(&otherRoot))
 	require.Equal(t,
-		fingerprintInput(SCIInfo{}, base.FileName, base.Platform, base.ResourceType, base.ResourceName, "rule-1", "", base.ModuleCallChain),
+		fingerprintInput(SCIInfo{}, base.FileName, base.Platform, base.ResourceType, base.ResourceName, "rule-1", "", "", base.ModuleCallChain),
 		FindingIdentity(&first))
 
 	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}

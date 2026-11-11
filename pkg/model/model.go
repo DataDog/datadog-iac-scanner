@@ -333,11 +333,6 @@ type TerraformScope struct {
 	// before its address is built. Nil when there is no document to verify
 	// against (a .tfvars file).
 	Blocks map[TerraformBlock]bool
-	// Instances maps an expanded block to the count/for_each key suffix the
-	// document represents ("[0]", `["key"]`). Set only on module instance
-	// documents; one such document holds at most one instance of a block, so
-	// the lookup is exact. Root instances are in FileMetadata.TerraformInstances.
-	Instances map[TerraformBlock]string
 	// UnlabeledIndex maps a repeated unlabeled block (terraform, moved, import,
 	// removed) under the key rules report to its
 	// module-wide index in deterministic file order, which is what the address
@@ -789,6 +784,12 @@ type Vulnerability struct {
 	// at one declaration line.
 	DetectedFileName              string `json:"-"`
 	DetectedLineWithVulnerability string `json:"-"`
+	// IdentityKey tells apart several findings of a rule on one Terraform
+	// block (Terraform rule contract: the result's path and key); folded into the
+	// fingerprint.
+	IdentityKey string `json:"identityKey,omitempty"`
+	// RelatedLocations are the places a finding cites as evidence.
+	RelatedLocations []SourceLocation `json:"relatedLocations,omitempty"`
 }
 
 // Identity returns the file and line text that tell v apart from other

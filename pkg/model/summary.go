@@ -52,6 +52,8 @@ type VulnerableFile struct {
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
+	// RelatedLocations are the places the finding cites as evidence.
+	RelatedLocations []SourceLocation `json:"-"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -349,16 +351,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		if fingerprintPath == "." {
 			fingerprintPath = ""
 		}
-		fingerprint := GetDatadogFingerprintHash(
-			sciInfo,
-			fingerprintPath,
-			item.Platform,
-			item.ResourceType,
-			item.ResourceName,
-			ruleID,
-			identityLine,
-			item.ModuleCallChain,
-		)
+		fingerprint := findingFingerprintHash(sciInfo, fingerprintPath, &item, ruleID, identityLine)
 
 		qItem := q[item.QueryID]
 		qItem.Files = append(qItem.Files, VulnerableFile{
@@ -385,6 +378,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
+			RelatedLocations:         item.RelatedLocations,
 		})
 
 		filePaths[resolvedPath] = item.FileName

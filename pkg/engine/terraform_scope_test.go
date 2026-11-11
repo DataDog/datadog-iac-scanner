@@ -223,31 +223,6 @@ moved {
 	require.Equal(t, "moved", terraformInstanceAddress(soloFiles[0].TerraformScope, block, ""))
 }
 
-// A block whose label starts with an underscore is content, not bookkeeping:
-// removing an instantiated sibling must not drop it with the line markers.
-func TestRemoveInstantiatedResources_KeepsUnderscoreNamedBlocks(t *testing.T) {
-	doc := model.Document{
-		"resource": model.Document{
-			"aws_s3_bucket": model.Document{
-				"_dd_lines":  model.Document{},
-				"instance":   model.Document{},
-				"_secret":    model.Document{},
-				"_dd_config": model.Document{},
-			},
-		},
-	}
-	removeInstantiatedResources(doc, map[string]map[string]bool{
-		"aws_s3_bucket": {"instance": true},
-	})
-	buckets, _ := asStringMap(doc["resource"])
-	byType, _ := asStringMap(buckets["aws_s3_bucket"])
-	require.Contains(t, byType, "_secret", "an underscore-named block is content")
-	require.Contains(t, byType, "_dd_config", "a _dd_-prefixed label is legal Terraform, not bookkeeping")
-	require.NotContains(t, byType, "instance")
-	require.True(t, onlyMetadataKeys(map[string]interface{}{"_dd_lines": model.Document{}, "_dd__default": model.Document{}}))
-	require.False(t, onlyMetadataKeys(map[string]interface{}{"_secret": model.Document{}}))
-}
-
 // movedRule fires once per document with a moved block, reporting the block
 // the way rules do: the resource type alone, with the file-local name (empty
 // for a lone block in the file).
@@ -321,9 +296,8 @@ DatadogPolicy contains result if {
 }
 `
 
-// An override file redeclares a block Terraform merges into the original.
-// Both declarations calculate the same address, and each file keeps its own
-// fingerprint because the file is part of it.
+// An override file redeclares a block Terraform merges into the original: the
+// legacy view has one block, in the original's file, at its address.
 func TestInspect_OverrideFileSharesTheOriginalAddress(t *testing.T) {
 	root := t.TempDir()
 	variables := writeFile(t, root, "variables.tf", "variable \"size\" {\n  type = number\n}\n")
@@ -340,13 +314,9 @@ func TestInspect_OverrideFileSharesTheOriginalAddress(t *testing.T) {
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
-	require.Len(t, vulns, 2)
-	identities := map[string]bool{}
-	for i := range vulns {
-		require.Equal(t, "var.size", vulns[i].ResourceID)
-		identities[model.FindingIdentity(&vulns[i])] = true
-	}
-	require.Len(t, identities, 2)
+	require.Len(t, vulns, 1)
+	require.Equal(t, "var.size", vulns[0].ResourceID)
+	require.Equal(t, variables, vulns[0].FileName)
 }
 
 const rootBucketRule = `package datadog

@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
@@ -267,6 +266,10 @@ type Inspector struct {
 	// findings are decoded (see findingSet) instead of returning every decoded
 	// finding (see SetCompactFindingsAtDecode).
 	compactFindingsAtDecode bool
+	// terraformReference evaluates each Terraform root alone with the same
+	// cross-root evidence and unknown gate, without chunking, merge, digests
+	// or fanout. Production scans leave it false; equivalence tests enable it.
+	terraformReference bool
 	// ruleScope caches terraformJoiningQueries for the ruleset hashed in
 	// ruleScopeKey.
 	ruleScopeMu  sync.Mutex
@@ -315,6 +318,13 @@ func (c *Inspector) buildModuleProvenanceLookup() moduleProvenanceLookup {
 // Combine output with lineInfo=false (JSON payload export without line info).
 func (c *Inspector) SetReleaseDocumentsAfterPayload(release bool) {
 	c.releaseDocumentsAfterPayload = release
+}
+
+// SetTerraformReferenceMode selects per-root Terraform evaluation without
+// chunking, merge, digests or fanout. Cross-root evidence and the unknown
+// gate stay the same. Intended for equivalence tests against the optimized path.
+func (c *Inspector) SetTerraformReferenceMode(enabled bool) {
+	c.terraformReference = enabled
 }
 
 // SetReleasePostEvalData drops OriginalData and LinesOriginalData after the
@@ -383,6 +393,10 @@ type QueryContext struct {
 	// ruleConfigs is the scan's per-rule config, used so early-skip compares the
 	// same severity the report keeps after lookupRuleConfig.
 	ruleConfigs map[string]config.IacRuleConfig
+	// terraform is the contract input for a Terraform rule, nil otherwise.
+	terraform *terraformInput
+	// unknownBlocks counts the results naming no block of that input.
+	unknownBlocks int
 }
 
 var (
@@ -529,7 +543,7 @@ func (c *Inspector) evalQuery(ctx context.Context, run *queryRun, payloads platf
 	}
 	loadDur := time.Since(loadStart)
 	if err != nil {
-		contextLogger.Warn().Err(err).Msgf("failed to load query %s", queries[queryID].Query)
+		contextLogger.Error().Err(err).Msgf("failed to load query %s", queries[queryID].Query)
 		return QueryResult{err: err, queryID: queryID}
 	}
 
@@ -552,6 +566,7 @@ func (c *Inspector) evalQuery(ctx context.Context, run *queryRun, payloads platf
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
 		findings:                newFindingSet(c.compactFindingsAtDecode, run.routing),
 		ruleConfigs:             c.ruleConfigs,
+		terraform:               payloads.terraform,
 	}
 
 	evalStart := time.Now()
@@ -571,8 +586,20 @@ func (c *Inspector) Inspect(
 	platforms []string) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
-
 	queries := c.getQueriesByPlat(platforms)
+	if !slices.ContainsFunc(platforms, isTerraformPlatform) {
+		return c.inspect(ctx, scanID, files, queries)
+	}
+	return c.inspectTerraformPlatform(ctx, scanID, files, queries)
+}
+
+// inspect evaluates queries over the parsed documents of files.
+func (c *Inspector) inspect(
+	ctx context.Context,
+	scanID string,
+	files model.FileMetadatas,
+	queries []model.QueryMetadata) ([]model.Vulnerability, error) {
+	contextLogger := logger.FromContext(ctx)
 
 	// Stamp the files' Terraform address context before anything reads it:
 	// module evaluation captures external-module-file scopes and mutates
@@ -601,17 +628,6 @@ func (c *Inspector) Inspect(
 		moduleParseDone <- out
 	}()
 
-	var moduleDocs []model.Document
-	var moduleExtras map[string][]extraCallerInfo
-	var moduleFiles map[string]*moduleFileCalls
-	var syntheticFiles []*model.FileMetadata
-	if shouldInstantiateLocalModules(platforms, files) {
-		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
-		stampSyntheticBlocks(moduleDocs, syntheticFiles)
-		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
-	}
-
 	moduleData := <-moduleParseDone
 	if moduleData.parseErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -628,18 +644,11 @@ func (c *Inspector) Inspect(
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
 
-	// Synthetic files stand in for module instantiations of a file that has
-	// already been read; they are only joined once findings need to be
-	// attributed back to a call site. Adding them any earlier would have every
-	// pass over the scan input, module parsing above in particular, redo that
-	// file's work once per instantiation.
-	files = append(files, syntheticFiles...)
-
 	// Compute the file map once and share it (read-only) across all workers and
 	// payload partitioning.
 	filesMap := files.ToMap()
 
-	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries)
+	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, nil, queries)
 	if err != nil {
 		return nil, err
 	}
@@ -692,7 +701,7 @@ func (c *Inspector) Inspect(
 	run := newQueryRun(scanID, filesMap, queries)
 	run.modules, run.baseStores, run.baseDataHashes = enrichedModules, baseStores, baseDataHashes
 	run.sharedQueries = sharedQueries
-	run.routing = newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath, c.isExternalModulePath)
+	run.routing = newFindingRouting(files, c.repoPath)
 
 	vulnerabilities, err := c.evaluate(ctx, run, payloads)
 	if err != nil {
@@ -702,8 +711,7 @@ func (c *Inspector) Inspect(
 	return vulnerabilities, nil
 }
 
-// evaluate runs every rule of run on payloads, batching large Terraform scans,
-// and returns the scan's findings in model.CompareFindings order.
+// evaluate runs every rule of run on payloads, and returns the scan's findings in model.CompareFindings order.
 func (c *Inspector) evaluate(ctx context.Context, run *queryRun, payloads platformPayloads) ([]model.Vulnerability, error) {
 	var err error
 	if docs, ok := c.batchLargeTerraform(run.queries, payloads); ok {
@@ -965,44 +973,6 @@ type moduleVulnCounts struct {
 	raised, unique int
 }
 
-func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas) bool {
-	for _, platform := range platforms {
-		if strings.EqualFold(platform, "Terraform") {
-			for _, file := range files {
-				if file != nil && tfpath.IsConfig(file.FilePath) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-// expandModuleFindings clones findings from deduplicated OPA docs back to each
-// extra caller, so every call-site gets its own fingerprint/file attribution.
-func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo) []model.Vulnerability {
-	if len(extras) == 0 {
-		return vulns
-	}
-	expanded := make([]model.Vulnerability, 0, len(vulns))
-	for i := range vulns {
-		expanded = append(expanded, vulns[i])
-		for _, ex := range extras[vulns[i].FileID] {
-			vCopy := vulns[i]
-			vCopy.ModuleCallChain = ex.callChain
-			vCopy.FileID = ex.docID
-			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
-			if vCopy.ResourceID != "" {
-				// A deduplicated caller resolves the same module address,
-				// only its own root module differs.
-				vCopy.RootModule = ex.rootModule
-			}
-			expanded = append(expanded, vCopy)
-		}
-	}
-	return expanded
-}
-
 // nolint:gocritic
 func processResult(ctx context.Context, result *QueryResult,
 	vulnerabilities *[]model.Vulnerability, moduleVulns moduleVulnTotals,
@@ -1176,6 +1146,9 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 
 		return nil, 0, "", errors.Wrap(err, "failed to evaluate query")
 	}
+	if qCtx.terraform != nil {
+		qCtx.terraform.gateResults(ctx, qCtx, payload, results)
+	}
 	if c.enableCoverageReport && cov != nil {
 		module, parseErr := ast.ParseModuleWithOpts(
 			qCtx.Query.Metadata.Query,
@@ -1192,7 +1165,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 	}
 
 	decodeStart := time.Now()
-	vulns, moduleRaised, moduleSeverity, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
+	vulns, moduleRaised, moduleSeverity, err = c.decodeResults(ctx, qCtx, results, evalDuration)
 	decodeDuration := time.Since(decodeStart)
 
 	// Flag slow rules so they can be debugged/optimized later
@@ -1661,6 +1634,13 @@ decodeLoop:
 		c.tracker.FailedDetectLine()
 	}
 
+	if qCtx.unknownBlocks > 0 {
+		contextLogger.Error().
+			Str("queryID", qCtx.Query.Metadata.Query).
+			Int("results", qCtx.unknownBlocks).
+			Msg("Rule results name no Terraform block of the input; they are not reported")
+	}
+
 	if qCtx.discardLineInfoAfterUse && activeLineInfoFile != "" {
 		if fm := qCtx.Files[activeLineInfoFile]; fm != nil {
 			fm.DiscardLineInfoDocument()
@@ -1770,7 +1750,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	queryResultItem interface{}, queryDuration time.Duration) (*model.Vulnerability, bool) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerability, err := c.vb(ctx, qCtx, c.tracker, queryResultItem, c.detector, c.useOldSeverities, queryDuration)
-	if err != nil && err.Error() == ErrNoResult.Error() {
+	if err != nil && (err.Error() == ErrNoResult.Error() || errors.Is(err, errUnknownBlock)) {
 		// Ignoring bad results
 		return nil, false
 	}
@@ -1912,6 +1892,8 @@ const (
 type platformPayloads struct {
 	byPlatform map[string]ast.Value
 	full       ast.Value
+	// terraform is set when full is the contract input for a Terraform rule.
+	terraform *terraformInput
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform

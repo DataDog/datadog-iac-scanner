@@ -60,15 +60,6 @@ func (c *Inspector) stampTerraformScopes(files model.FileMetadatas) {
 	indexUnlabeledBlocksModuleWide(files)
 }
 
-// stampSyntheticBlocks records the blocks each synthetic instance document
-// holds, so a finding's resourceType and resourceName are verified the same
-// way as on a file. files[i] is the metadata of docs[i].
-func stampSyntheticBlocks(docs []model.Document, files []*model.FileMetadata) {
-	for i, f := range files {
-		f.TerraformScope.Blocks = documentBlocks(docs[i])
-	}
-}
-
 // indexUnlabeledBlocksModuleWide records, per repeated unlabeled block, its
 // module-wide index in deterministic order (file path, then file-local
 // index), leaving the declaration keys rules report exactly as declared.
@@ -441,9 +432,6 @@ func unlabeledAddressBlock(scope *model.TerraformScope, b address.Block) address
 // instance's key. suffix is the key of a root instance keyed in the file's
 // document; otherwise the key is the one this document represents, if any.
 func terraformInstanceAddress(scope *model.TerraformScope, b address.Block, suffix string) string {
-	if suffix == "" {
-		suffix = scope.Instances[b]
-	}
 	return address.Instance(scope.ModuleAddress, unlabeledAddressBlock(scope, b), suffix)
 }
 
