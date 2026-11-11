@@ -25,6 +25,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
@@ -558,7 +559,7 @@ func sanitizeScanDocumentValueInPlace(
 		case string:
 			if resolveFilters {
 				if field, ok := lines[kind]; ok && utils.Contains(key, field) {
-					bodyType[key] = resolveJSONFilter(value)
+					bodyType[key] = jsonfilter.Resolve(value)
 				}
 			}
 		default:
@@ -916,7 +917,7 @@ func prepareScanDocumentValue(bodyType map[string]interface{}, kind model.FileKi
 		case string:
 			if resolveFilters {
 				if field, ok := lines[kind]; ok && utils.Contains(key, field) {
-					bodyType[key] = resolveJSONFilter(value)
+					bodyType[key] = jsonfilter.Resolve(value)
 				}
 			}
 		}

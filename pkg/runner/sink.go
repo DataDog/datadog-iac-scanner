@@ -15,7 +15,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -250,8 +249,4 @@ func (s *Service) classifyPlatform(ctx context.Context, kind model.FileKind, fil
 
 func resolveCRLFFile(fileContent []byte) []byte {
 	return bytes.ReplaceAll(fileContent, []byte("\r\n"), []byte("\n"))
-}
-
-func resolveJSONFilter(jsonFilter string) string {
-	return jsonfilter.Resolve(jsonFilter)
 }
