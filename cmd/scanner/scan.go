@@ -177,16 +177,16 @@ const (
 	staleBundleWarningAge = 7 * 24 * time.Hour
 )
 
-// warnIfBundleStale logs a warning if the offline bundle at bundleDir has no
+// checkBundleManifest logs a warning if the bundle at bundleDir has no
 // manifest, or was fetched more than staleBundleWarningAge ago, so that
 // running with stale rules is never silent.
-func warnIfBundleStale(ctx context.Context, bundleDir string) {
+func checkBundleManifest(ctx context.Context, bundleDir string) error {
 	contextLogger := logger.FromContext(ctx)
 	manifest, err := readBundleManifest(bundleDir)
 	if err != nil {
 		contextLogger.Warn().Err(err).Msg(
 			"could not read the offline bundle manifest; the bundle's age cannot be verified")
-		return
+		return nil
 	}
 	age := time.Since(manifest.FetchedAt)
 	if age > staleBundleWarningAge {
@@ -194,6 +194,7 @@ func warnIfBundleStale(ctx context.Context, bundleDir string) {
 			"the offline bundle was fetched %s ago (on %s); run `fetch-bundle` again to pick up rule updates",
 			age.Round(time.Hour), manifest.FetchedAt.Format(time.RFC3339))
 	}
+	return nil
 }
 
 func validateReportFormats(formats []string) error {
@@ -278,7 +279,9 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		if cfg == nil {
 			cfg = &config.IacConfig{}
 		}
-		warnIfBundleStale(ctx, offlineBundlePath)
+		if err := checkBundleManifest(ctx, offlineBundlePath); err != nil {
+			return err
+		}
 	} else {
 		cfg, _, err = config.ReadConfiguration(ctx, repoDir, config.WithDatadog(datadog.NewDatadogClient(), repoInfo.RepositoryUrl))
 		if err != nil {
