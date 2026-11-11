@@ -1526,60 +1526,6 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 	require.Empty(t, run.findings(false))
 }
 
-func TestExpandModuleFindings_NoExtrasUnchanged(t *testing.T) {
-	vulns := []model.Vulnerability{{FileID: "primary", QueryName: "rule-a"}}
-	got := expandModuleFindings(vulns, nil)
-	require.Equal(t, vulns, got)
-}
-
-func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
-	primaryID := "primary\x00stack-a|module.app\x00this"
-	extraID := "extra\x00stack-b|module.app\x00this"
-	extras := map[string][]extraCallerInfo{
-		primaryID: {{callChain: "stack-b|module.app", docID: extraID}},
-	}
-	vulns := []model.Vulnerability{{
-		FileID:    primaryID,
-		FileName:  "modules/app/main.tf",
-		Line:      5,
-		QueryName: "rule-a",
-	}}
-	got := expandModuleFindings(vulns, extras)
-	require.Len(t, got, 2)
-	require.Equal(t, primaryID, got[0].FileID)
-	require.Equal(t, extraID, got[1].FileID)
-	require.Equal(t, "stack-b|module.app", got[1].ModuleCallChain)
-	require.Equal(t, got[0].Line, got[1].Line)
-	require.Equal(t, got[0].FileName, got[1].FileName)
-	require.Equal(t, got[0].QueryName, got[1].QueryName)
-}
-
-// An addressed finding switches to each extra caller's root module and keeps
-// its address; one without an address keeps an empty address on its copies.
-func TestExpandModuleFindings_AddressedCopiesSwitchRootModule(t *testing.T) {
-	extras := map[string][]extraCallerInfo{
-		"primary": {{callChain: "stack-b|module.app", rootModule: "stack-b", docID: "extra"}},
-	}
-	vulns := []model.Vulnerability{
-		{FileID: "primary", QueryName: "addressed", RootModule: "stack-a", ResourceID: "module.app.aws_s3_bucket.b"},
-		{FileID: "primary", QueryName: "unaddressed"},
-	}
-	got := expandModuleFindings(vulns, extras)
-	require.Len(t, got, 4)
-	byQuery := map[string][]model.Vulnerability{}
-	for i := range got {
-		byQuery[got[i].QueryName] = append(byQuery[got[i].QueryName], got[i])
-	}
-	addressed := byQuery["addressed"]
-	require.Equal(t, []string{"stack-a", "stack-b"}, []string{addressed[0].RootModule, addressed[1].RootModule})
-	require.Equal(t, addressed[0].ResourceID, addressed[1].ResourceID)
-	require.Equal(t, "stack-b|module.app", addressed[1].ModuleCallChain)
-	for _, v := range byQuery["unaddressed"] {
-		require.Empty(t, v.RootModule)
-		require.Empty(t, v.ResourceID)
-	}
-}
-
 func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
 	ins := &Inspector{}
 	ins.SetExternalModulePaths([]string{"/tmp/remote-module"})

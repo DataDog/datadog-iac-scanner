@@ -136,6 +136,7 @@ type sarifResult struct {
 	ResultKind          string                   `json:"kind,omitempty"`
 	ResultMessage       sarifMessage             `json:"message"`
 	ResultLocations     []SarifLocation          `json:"locations"`
+	RelatedLocations    []SarifLocation          `json:"relatedLocations,omitempty"`
 	PartialFingerprints SarifPartialFingerprints `json:"partialFingerprints,omitempty"`
 	ResultLevel         string                   `json:"level"`
 	ResultProperties    sarifProperties          `json:"properties,omitempty"`
@@ -615,7 +616,8 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				PartialFingerprints: SarifPartialFingerprints{
 					DatadogFingerprint: vulnerability.Fingerprint,
 				},
-				Suppressions: buildSarifSuppressions(ctx, &vulnerability),
+				Suppressions:     buildSarifSuppressions(ctx, &vulnerability),
+				RelatedLocations: sarifRelatedLocations(vulnerability.RelatedLocations),
 			}
 			// A fix rewriting the module body changes the value for every
 			// caller, so it is only offered for a value the module sets itself.
@@ -644,6 +646,23 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 		return issue.CWE, nil
 	}
 	return "", nil
+}
+
+// sarifRelatedLocations renders the evidence a finding cites.
+func sarifRelatedLocations(locations []model.SourceLocation) []SarifLocation {
+	if len(locations) == 0 {
+		return nil
+	}
+	out := make([]SarifLocation, 0, len(locations))
+	for _, l := range locations {
+		region := model.SarifRegion{StartLine: l.LineStart, EndLine: max(l.LineEnd, l.LineStart),
+			StartColumn: max(l.ColumnStart, 1), EndColumn: max(l.ColumnEnd, 1)}
+		out = append(out, SarifLocation{PhysicalLocation: sarifPhysicalLocation{
+			ArtifactLocation: sarifArtifactLocation{ArtifactURI: filepath.ToSlash(l.Filename)},
+			Region:           region,
+		}})
+	}
+	return out
 }
 
 // buildSarifSuppressions returns the SARIF `suppressions` array for a

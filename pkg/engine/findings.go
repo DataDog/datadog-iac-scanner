@@ -132,51 +132,13 @@ func newResultIdentity(
 // can still differ, and that is part of what the report keeps.
 //
 // It has to agree with findingRouting.route in that direction (see
-// TestFindingSet_SupersedesMeansRouteKeepsNothingNew). The as-written
-// identity is required only when routing can produce it: an external module
-// file that is reported only through its calls does not.
+// TestFindingSet_SupersedesMeansRouteKeepsNothingNew).
 func (s *findingSet) supersedes(r *resultIdentity, file *model.FileMetadata, searchKey string) bool {
 	if file == nil || len(s.kept) == 0 {
 		return false
 	}
 	r.docID, r.fileName, r.searchKey = file.ID, file.FilePath, searchKey
-	if !s.accounted(r, file.ID, file.ModuleCallChain, len(file.ModuleAttributions) > 0) {
-		return false
-	}
-	if s.routing == nil {
-		return true
-	}
-	for _, ex := range s.routing.extras[file.ID] {
-		if !s.accounted(r, ex.docID, ex.callChain, len(ex.attributions) > 0) {
-			return false
-		}
-	}
-	return true
-}
-
-// accounted reports whether every identity routing can give a finding raised
-// on document fileID and reported under chain is already kept.
-func (s *findingSet) accounted(r *resultIdentity, fileID, chain string, attributionPossible bool) bool {
-	var file *moduleFileCalls
-	if s.routing != nil {
-		file = s.routing.moduleFiles[fileID]
-	}
-	if file == nil || file.keptAsWritten(r.resourceType) {
-		return s.hasRoute(r, chain)
-	}
-	// The calls are produced unless the line attributes the finding. The line
-	// is not known yet, so every call has to be kept already.
-	for i := range file.calls {
-		if !s.hasRoute(r, file.calls[i].callChain) {
-			return false
-		}
-	}
-	// Kept as written, or attributed from the line. Without attributions the
-	// as-written finding is not produced, and requiring it would never skip.
-	if file.keepWritten || attributionPossible {
-		return s.hasRoute(r, chain)
-	}
-	return true
+	return s.hasRoute(r, file.ModuleCallChain)
 }
 
 // hasRoute reports whether the finding of r routed under chain is already
@@ -216,21 +178,15 @@ func (s *findingSet) findings() []model.Vulnerability {
 }
 
 // findingRouting is what turns the findings a rule raises on the scanned
-// documents into the findings of the scan: the callers a deduplicated module
-// document stands for, the calls reaching an external module file, and the
-// caller files whose filters apply to module findings.
+// documents into the findings of the scan: each finding of a module file is
+// filtered by the caller files whose filters apply to it.
 type findingRouting struct {
-	extras      map[string][]extraCallerInfo
-	moduleFiles map[string]*moduleFileCalls
-	callers     map[string]*model.FileMetadata
+	callers map[string]*model.FileMetadata
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
 // rules route concurrently, so the index is built before any of them run.
-func newFindingRouting(
-	extras map[string][]extraCallerInfo, moduleFiles map[string]*moduleFileCalls,
-	files model.FileMetadatas, repoPath string,
-) *findingRouting {
+func newFindingRouting(files model.FileMetadatas, repoPath string) *findingRouting {
 	callers := make(map[string]*model.FileMetadata)
 	for _, f := range files {
 		if f == nil || f.ModuleCallChain != "" {
@@ -241,7 +197,7 @@ func newFindingRouting(
 			callers[key] = f
 		}
 	}
-	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers}
+	return &findingRouting{callers: callers}
 }
 
 // route turns one rule's decoded findings into the findings the scan reports
@@ -253,7 +209,5 @@ func (r *findingRouting) route(
 	if r == nil {
 		return vulns
 	}
-	vulns = expandModuleFindings(vulns, r.extras)
-	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
 	return c.filterAtCallSites(ctx, vulns, r.callers)
 }

@@ -1,0 +1,93 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+package engine
+
+import (
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
+)
+
+// declaresTargetedResource reports whether any scanned Terraform file declares
+// a resource or data type some rule can match by name.
+func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) bool {
+	if targets == nil {
+		return true
+	}
+	for _, f := range files {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
+			continue
+		}
+		for _, key := range [...]string{address.KindResource, address.KindData, address.KindEphemeral} {
+			blocks, ok := asStringMap(f.Document[key])
+			if !ok {
+				continue
+			}
+			for typ := range blocks {
+				// Ephemeral rules name the type with its namespace prefix.
+				if targets.matches(typ) || targets.matches(address.EphemeralPrefix+typ) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// blockSections are the document sections that hold typed, named blocks, with
+// the prefix their type carries where the sections share a namespace.
+var blockSections = [...]struct{ section, prefix string }{
+	{address.KindResource, ""},
+	{address.KindData, address.DataPrefix},
+	{address.KindEphemeral, address.EphemeralPrefix},
+}
+
+// writesExpansion reports whether a parsed block writes count or for_each,
+// which its document leaves out but its line table records.
+func writesExpansion(block interface{}) bool {
+	attrs, _ := asStringMap(block)
+	has := func(key string) bool {
+		switch lines := attrs["_dd_lines"].(type) {
+		case map[string]model.LineObject:
+			_, ok := lines[key]
+			return ok
+		case map[string]interface{}:
+			_, ok := lines[key]
+			return ok
+		}
+		return false
+	}
+	return has("_dd_count") || has("_dd_for_each")
+}
+
+// declaresExpandedBlock reports whether any scanned Terraform file declares a
+// block some rule can match by name with count or for_each, which may expand
+// to no instance.
+func declaresExpandedBlock(files model.FileMetadatas, targets *ruleTargets) bool {
+	if targets == nil {
+		return false
+	}
+	for _, f := range files {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
+			continue
+		}
+		for _, bs := range blockSections {
+			blocks, _ := asStringMap(f.Document[bs.section])
+			for typ, byName := range blocks {
+				if !targets.matches(typ) && !targets.matches(bs.prefix+typ) {
+					continue
+				}
+				names, _ := asStringMap(byName)
+				for _, block := range names {
+					if writesExpansion(block) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}

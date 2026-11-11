@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/cespare/xxhash/v2"
 )
 
 // A rule names the resource and data types it can match, either by reading
@@ -111,59 +110,3 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	return &targets
 }
 
-// terraformJoiningQueries classifies the loaded Terraform rules (see
-// joiningQueries), keyed by their index in queries; other rules are absent.
-// The classification is cached on the inspector for the ruleset and libraries
-// that produced it: classifying recompiles every rule.
-func (c *Inspector) terraformJoiningQueries(queries []model.QueryMetadata) map[int]bool {
-	terraform := make([]model.QueryMetadata, 0, len(queries))
-	positions := make([]int, 0, len(queries))
-	for i := range queries {
-		if canonicalPlatformKey(queries[i].Platform) == platformTerraform {
-			terraform = append(terraform, queries[i])
-			positions = append(positions, i)
-		}
-	}
-	if len(terraform) == 0 {
-		return map[int]bool{}
-	}
-	libraries := c.terraformRuleLibraries()
-	key := classificationKey(terraform, libraries)
-	c.ruleScopeMu.Lock()
-	if c.ruleScope == nil || c.ruleScopeKey != key {
-		c.ruleScope = joiningQueries(terraform, libraries...)
-		c.ruleScopeKey = key
-	}
-	joining := c.ruleScope
-	c.ruleScopeMu.Unlock()
-	out := make(map[int]bool, len(positions))
-	for j, i := range positions {
-		out[i] = joining[j]
-	}
-	return out
-}
-
-func classificationKey(queries []model.QueryMetadata, libraries []string) uint64 {
-	h := xxhash.New()
-	for i := range queries {
-		_, _ = h.WriteString(queries[i].Query)
-		_, _ = h.WriteString("\x00")
-		_, _ = h.WriteString(queries[i].Content)
-		_, _ = h.WriteString("\x00")
-	}
-	for _, library := range libraries {
-		_, _ = h.WriteString(library)
-		_, _ = h.WriteString("\x00")
-	}
-	return h.Sum64()
-}
-
-// terraformRuleLibraries returns the Rego libraries that Terraform rules are
-// compiled against, so type names spelled only in shared helpers are seen too.
-func (c *Inspector) terraformRuleLibraries() []string {
-	libraries := []string{c.QueryLoader.commonLibrary.LibraryCode}
-	if platform, ok := c.QueryLoader.platformLibraries[platformTerraform]; ok {
-		libraries = append(libraries, platform.LibraryCode)
-	}
-	return libraries
-}
