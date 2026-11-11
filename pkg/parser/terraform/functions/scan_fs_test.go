@@ -54,7 +54,7 @@ func TestScanFSKeepsConfinementAcrossCalls(t *testing.T) {
 			}
 		}
 		exists, err := funcs["fileexists"].Call([]cty.Value{cty.StringVal("missing.txt")})
-		if err != nil || !exists.RawEquals(cty.False) {
+		if err != nil || !exists.RawEquals(cty.UnknownVal(cty.Bool)) {
 			t.Fatalf("call %d: fileexists(missing.txt) = %#v, %v", call, exists, err)
 		}
 	}

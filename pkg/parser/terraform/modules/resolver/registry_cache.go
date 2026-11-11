@@ -170,8 +170,8 @@ func (c *registryCache) resolveConcreteVersion(ctx context.Context, source, vers
 		return "", &tfmodules.UnresolvedError{Reason: parseErr.Error()}
 	}
 
-	if version != "" && isBareVersion(version) {
-		return version, nil
+	if normalized, ok := NormalizeExactRegistryVersion(version); ok {
+		return normalized, nil
 	}
 
 	ep, err := c.modulesV1(ctx, host)

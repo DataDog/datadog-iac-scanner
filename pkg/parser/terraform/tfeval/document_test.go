@@ -182,6 +182,26 @@ module "remote" {
 	}
 }
 
+func TestCalledModuleTree(t *testing.T) {
+	root := t.TempDir()
+	child := writeModule(t, root, "child", map[string]string{
+		"main.tf": `module "grand" { source = "../grand" }`,
+	})
+	writeModule(t, root, "grand", map[string]string{
+		"main.tf": `resource "aws_s3_bucket" "this" { bucket = "x" }`,
+	})
+	rootDir := writeModule(t, root, "env", map[string]string{
+		"main.tf": `module "child" { source = "../child" }`,
+	})
+	got := New().CalledModuleTree(context.Background(), rootDir)
+	want := []string{filepath.Clean(child), filepath.Join(root, "grand")}
+	sort.Strings(got)
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("CalledModuleTree = %#v, want %#v", got, want)
+	}
+}
+
 func TestCalledLocalDirs_NoModules(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{

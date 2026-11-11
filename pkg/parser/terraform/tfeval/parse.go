@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"maps"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/hashicorp/hcl/v2"
@@ -61,6 +62,7 @@ func parseDir(
 		}
 	}
 	names := tfmodules.SelectConfigNames(entries, dir, allow, "")
+	names = appendPlainJSONConfigNames(ctx, names, entries, dir, allow, fsys)
 	sort.Strings(names)
 	// Override files apply last regardless of their name, so locals, variable
 	// defaults and module attributes they set win over the directory's other
@@ -90,8 +92,42 @@ func parseDir(
 	return bodies, sources, nil
 }
 
+// appendPlainJSONConfigNames adds bare .json files whose content is Terraform
+// configuration, matching model load and the analyzer.
+func appendPlainJSONConfigNames(
+	ctx context.Context, names []string, entries []fs.DirEntry, dir string, allow map[string]struct{}, fsys vfs.FS,
+) []string {
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !tfpath.IsPlainJSON(name) || slices.Contains(names, name) {
+			continue
+		}
+		if allow != nil {
+			joined := filepath.Join(dir, name)
+			if _, ok := allow[filepath.ToSlash(joined)]; !ok {
+				if _, ok := allow[filepath.ToSlash(filepath.Clean(joined))]; !ok {
+					continue
+				}
+			}
+		}
+		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, "")
+		if !ok {
+			continue
+		}
+		src, err := tfmodules.ReadConfigFile(ctx, fsys, path, "")
+		if err != nil || !tfpath.LooksLikeJSONConfig(src) {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
 func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
-	if tfpath.IsJSONConfig(path) {
+	if tfpath.IsJSONConfig(path) || tfpath.IsPlainJSON(path) {
 		return parseJSONAsHCLBody(src, path)
 	}
 	f, diags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})

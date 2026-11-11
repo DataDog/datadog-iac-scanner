@@ -127,7 +127,8 @@ func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadat
 
 	lines := file.Lines()
 
-	if tfpath.IsJSONConfig(file.FilePath) {
+	if tfpath.IsJSONConfig(file.FilePath) ||
+		(tfpath.IsPlainJSON(file.FilePath) && tfpath.LooksLikeJSONConfig([]byte(file.OriginalData))) {
 		return detectJSONConfigLine(ctx, file, keyParts, extracted, outputLines)
 	}
 
@@ -498,6 +499,20 @@ func toResourceLine(pos hcl.Pos) model.ResourceLine {
 
 func extractBlockSource(lines []string, start, end int) string {
 	return strings.Join(lines[start-1:end], "\n") + "\n"
+}
+
+// RemediationPoint is where a fix for a finding at line of the top-level block
+// of file is inserted, as for the findings of the legacy detector.
+func RemediationPoint(block *hclsyntax.Block, line int, file *model.FileMetadata) (insertionLine, col int) {
+	lines := file.Lines()
+	if line < block.TypeRange.Start.Line || line > block.Body.SrcRange.End.Line {
+		line = block.TypeRange.Start.Line
+	}
+	heredocs, ok := file.LinesContaining("<<")
+	if ok && heredocs == nil {
+		heredocs = []int{}
+	}
+	return calculateInsertionPoint(block, line, lines, heredocs)
 }
 
 // nolint:gocyclo

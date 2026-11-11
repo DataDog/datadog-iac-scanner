@@ -34,6 +34,9 @@ func makeFileFunc(baseDir, rootDir string, fsys vfs.FS, encBase64 bool) function
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			src, err := readConfinedFile(baseDir, rootDir, fsys, args[0].AsString())
+			if isNotExist(err) {
+				return cty.UnknownVal(cty.String), nil
+			}
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
@@ -60,7 +63,7 @@ func makeFileExistsFunc(baseDir, rootDir string, fsys vfs.FS) function.Function 
 			info, err := fsys.Stat(full)
 			if err != nil {
 				if isNotExist(err) {
-					return cty.False, nil
+					return cty.UnknownVal(cty.Bool), nil
 				}
 				return cty.NilVal, err
 			}
@@ -125,6 +128,9 @@ func makeFileHashFunc(baseDir, rootDir string, fsys vfs.FS, newHash func() hash.
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			src, err := readConfinedFile(baseDir, rootDir, fsys, args[0].AsString())
+			if isNotExist(err) {
+				return cty.UnknownVal(cty.String), nil
+			}
 			if err != nil {
 				return cty.NilVal, function.NewArgError(0, err)
 			}
@@ -139,6 +145,9 @@ func makeFileHashFunc(baseDir, rootDir string, fsys vfs.FS, newHash func() hash.
 	})
 }
 
+// readConfinedFile reads rel under baseDir. A file the repository does not
+// hold may be created before Terraform runs (generated, downloaded, written by
+// another step), so the file functions read it as unknown rather than fail.
 func readConfinedFile(baseDir, rootDir string, fsys vfs.FS, rel string) ([]byte, error) {
 	full, err := confinePath(baseDir, rootDir, fsys, rel)
 	if err != nil {

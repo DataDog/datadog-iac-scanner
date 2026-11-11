@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
@@ -26,6 +28,43 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func TestRegistryExactVersionNormalization(t *testing.T) {
+	for _, tc := range []struct{ declared, normalized string }{
+		{"v5.5.1", "5.5.1"},
+		{"36.0.02", "36.0.2"},
+		{"1.0", "1.0.0"},
+		{"1", "1.0.0"},
+		{"v1.02.3-beta.1+build", "1.2.3-beta.1+build"},
+	} {
+		t.Run(tc.declared, func(t *testing.T) {
+			cache := NewRegistryCache(time.Second)
+			var paths []string
+			cache.client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				paths = append(paths, req.URL.Path)
+				body, status := `{"modules.v1":"/v1/modules/"}`, http.StatusOK
+				header := make(http.Header)
+				if strings.HasSuffix(req.URL.Path, "/download") {
+					body, status = "", http.StatusNoContent
+					header.Set("X-Terraform-Get", "https://example.com/module.zip")
+				}
+				return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: header}, nil
+			})
+			const source = "acme/network/aws//modules/private"
+			version, err := cache.resolveConcreteVersion(t.Context(), source, tc.declared)
+			require.NoError(t, err)
+			require.Equal(t, tc.normalized, version)
+			_, err = cache.resolveGetterURL(t.Context(), source, version)
+			require.NoError(t, err)
+			require.Equal(t, []string{
+				"/.well-known/terraform.json", "/v1/modules/acme/network/aws/" + tc.normalized + "/download",
+			}, paths)
+			require.True(t, cacheableModule(source, tc.declared))
+		})
+	}
+	require.False(t, cacheableModule("acme/network/aws", "latest"))
+	require.False(t, cacheableModule("acme/network/aws", "~> 5.0"))
 }
 
 func TestRegistryClientRejectsPrivateDestinationWithoutAllowlist(t *testing.T) {

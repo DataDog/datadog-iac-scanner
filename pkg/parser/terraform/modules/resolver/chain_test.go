@@ -188,6 +188,20 @@ func TestChainResolverScreen(t *testing.T) {
 	})
 }
 
+func TestChainRejectsSourceLessDeclarations(t *testing.T) {
+	called := false
+	chain := NewChainResolver(fakeChainResolver(func(context.Context, *tfmodules.ParsedModule) (Resolution, error) {
+		called = true
+		return Resolution{LocalPath: "fallback"}, nil
+	}))
+	for _, source := range []string{"", "   "} {
+		_, err := chain.Resolve(t.Context(), &tfmodules.ParsedModule{Name: "network", Source: source})
+		require.ErrorIs(t, err, tfmodules.ErrEmptyModuleSource)
+		require.Error(t, chain.Screen(t.Context(), &tfmodules.ParsedModule{Name: "network", Source: source}))
+	}
+	require.False(t, called)
+}
+
 func TestDefaultChainScreensHostsOutsideTheAllowlist(t *testing.T) {
 	chain, err := NewDefaultChain(context.Background(), &DefaultChainConfig{
 		FetchRemote:   true,

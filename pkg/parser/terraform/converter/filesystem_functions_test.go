@@ -70,12 +70,14 @@ func TestFilesystemContextValues(t *testing.T) {
 		"module_file": "module",
 		"root_file":   "root",
 		"cwd":         "root",
-		"workspace":   "default",
 	} {
 		got, ok := attrs[name].(ctyjson.SimpleJSONValue)
 		if !ok || !got.Value.RawEquals(cty.StringVal(want)) {
 			t.Errorf("%s = %#v, want %q", name, attrs[name], want)
 		}
+	}
+	if got := attrs["workspace"]; got != "${terraform.workspace}" {
+		t.Errorf("workspace = %#v, want the reference: a run selects the workspace", got)
 	}
 }
 

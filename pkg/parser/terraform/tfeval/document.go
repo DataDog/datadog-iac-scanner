@@ -9,6 +9,7 @@ package tfeval
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
@@ -504,4 +505,69 @@ func calledModuleDirs(ctx context.Context, dir string, bodies []*hclsyntax.Body,
 // from dir. Remote/registry sources are ignored.
 func CalledLocalDirs(dir string, fsys vfs.FS) []string {
 	return CalledModuleDirs(dir, nil, fsys)
+}
+
+// CalledModuleTree returns every module directory reachable from dir through
+// module blocks whose source resolves statically or via the remote resolver,
+// without evaluating resource blocks.
+func (e *Evaluator) CalledModuleTree(ctx context.Context, dir string) []string {
+	seen := map[string]bool{}
+	var out []string
+	var visit func(dir string)
+	visit = func(dir string) {
+		dir = filepath.Clean(dir)
+		if seen[dir] {
+			return
+		}
+		seen[dir] = true
+		parsed := e.parseDir(ctx, dir, "")
+		if parsed.err != nil {
+			return
+		}
+		for _, d := range calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys) {
+			d = filepath.Clean(d)
+			out = append(out, d)
+			visit(d)
+		}
+	}
+	visit(dir)
+	return out
+}
+
+// MayDeclareResource reports whether dir or a module it calls, transitively,
+// may declare a resource of one of types. A module call it cannot resolve
+// counts as a yes.
+func (e *Evaluator) MayDeclareResource(ctx context.Context, dir string, types func(string) bool) bool {
+	seen := map[string]bool{}
+	var visit func(dir string) bool
+	visit = func(dir string) bool {
+		dir = filepath.Clean(dir)
+		if seen[dir] {
+			return false
+		}
+		seen[dir] = true
+		parsed := e.parseDir(ctx, dir, "")
+		if parsed.err != nil {
+			return true
+		}
+		for _, body := range parsed.bodies {
+			for _, b := range body.Blocks {
+				if b.Type == "resource" && len(b.Labels) > 0 && types(b.Labels[0]) {
+					return true
+				}
+			}
+		}
+		calls := collectModuleBlocks(parsed.bodies)
+		dirs := calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys)
+		if len(dirs) < len(calls) {
+			return true
+		}
+		for _, d := range dirs {
+			if visit(d) {
+				return true
+			}
+		}
+		return false
+	}
+	return visit(dir)
 }

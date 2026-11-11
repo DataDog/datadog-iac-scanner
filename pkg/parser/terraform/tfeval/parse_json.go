@@ -16,16 +16,22 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+var (
+	jsonNameLabel = []string{"name"}
+	jsonTypeName  = []string{"type", "name"}
+)
+
 var jsonConfigSchema = &hcl.BodySchema{
 	Blocks: []hcl.BlockHeaderSchema{
 		{Type: "terraform"},
+		{Type: "provider", LabelNames: jsonNameLabel},
 		{Type: "locals"},
-		{Type: "variable", LabelNames: []string{"name"}},
-		{Type: "output", LabelNames: []string{"name"}},
-		{Type: blockTypeModule, LabelNames: []string{"name"}},
-		{Type: blockTypeResource, LabelNames: []string{"type", "name"}},
-		{Type: blockTypeData, LabelNames: []string{"type", "name"}},
-		{Type: blockTypeEphemeral, LabelNames: []string{"type", "name"}},
+		{Type: "variable", LabelNames: jsonNameLabel},
+		{Type: "output", LabelNames: jsonNameLabel},
+		{Type: blockTypeModule, LabelNames: jsonNameLabel},
+		{Type: blockTypeResource, LabelNames: jsonTypeName},
+		{Type: blockTypeData, LabelNames: jsonTypeName},
+		{Type: blockTypeEphemeral, LabelNames: jsonTypeName},
 	},
 }
 
