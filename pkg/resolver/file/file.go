@@ -22,6 +22,11 @@ import (
 
 var serverlessFileReferenceRE = regexp.MustCompile(`^\${file\((.*\.(yaml|yml))\)}$`)
 
+const (
+	yamlDocumentMarker = "---"
+	utf8BOM            = "\uFEFF"
+)
+
 // ResolvedFile - used for caching the already resolved files
 type ResolvedFile struct {
 	fileContent        []byte
@@ -89,17 +94,7 @@ func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	}
 
 	if utils.Contains(filepath.Ext(path), []string{".yml", ".yaml"}) {
-		// A YAML document can only be modified by the resolution below when
-		// it holds a $ref/include_vars key or a scalar naming an external
-		// .yaml/.yml file (findFilePath requires the extension in the value;
-		// the serverless ${file(...)} form embeds it too) — each of those
-		// leaves a literal in the file bytes. Without any of them the resolve
-		// is a full parse + walk + re-marshal that returns an equivalent
-		// document, so return the original bytes and skip it entirely.
-		if !bytes.Contains(fileContent, []byte("$ref")) &&
-			!bytes.Contains(fileContent, []byte("include_vars")) &&
-			!bytes.Contains(fileContent, []byte(".yaml")) &&
-			!bytes.Contains(fileContent, []byte(".yml")) {
+		if !mayHoldYAMLReference(fileContent) {
 			return fileContent
 		}
 		return r.yamlResolve(ctx, fileContent, path, resolveCount, maxResolverDepth, resolvedFilesCache, resolveReferences)
@@ -194,29 +189,144 @@ func (r *Resolver) handleMap(
 func (r *Resolver) yamlResolve(ctx context.Context, fileContent []byte, path string,
 	resolveCount, maxResolverDepth int, resolvedFilesCache map[string]ResolvedFile,
 	resolveReferences bool) []byte {
-	var obj yaml.Node
-	err := r.unmarshler(fileContent, &obj)
-	if err != nil {
+	// The unmarshaler decodes only the first document of its input, so each
+	// document of a stream is resolved on its own. One that cannot hold a
+	// reference or fails to decode is kept as written, the latter for the
+	// parser to report.
+	docs := splitYAMLStream(fileContent)
+	resolved := make([]*yaml.Node, len(docs))
+	decoded := false
+	for i, doc := range docs {
+		if !mayHoldYAMLReference(doc) {
+			continue
+		}
+		var obj yaml.Node
+		if err := r.unmarshler(doc, &obj); err != nil {
+			continue
+		}
+
+		fullObjectCopy := obj
+
+		// resolve the paths
+		obj, _ = r.yamlWalk(
+			ctx,
+			fileContent, &fullObjectCopy, &obj, path, resolveCount,
+			maxResolverDepth, resolvedFilesCache, false, resolveReferences, false)
+
+		if obj.Kind == 1 && len(obj.Content) == 1 {
+			obj = *obj.Content[0]
+		}
+		resolved[i] = &obj
+		decoded = true
+	}
+
+	// The parser keeps the original content of a file that resolved no
+	// reference, so re-encoding it would be wasted. Nested resolves always
+	// re-encode: the referencing file decodes their output.
+	if !decoded || (resolveCount == 0 && len(r.ResolvedFiles) == 0) {
 		return fileContent
 	}
 
-	fullObjectCopy := obj
-
-	// resolve the paths
-	obj, _ = r.yamlWalk(
-		ctx,
-		fileContent, &fullObjectCopy, &obj, path, resolveCount,
-		maxResolverDepth, resolvedFilesCache, false, resolveReferences, false)
-
-	if obj.Kind == 1 && len(obj.Content) == 1 {
-		obj = *obj.Content[0]
+	var out []byte
+	for i, doc := range docs {
+		if resolved[i] == nil {
+			out = append(endLine(out), doc...)
+			continue
+		}
+		b, err := r.marshler(*resolved[i])
+		if err != nil {
+			return fileContent
+		}
+		if i == 0 {
+			out = b
+			continue
+		}
+		out = append(endLine(out), yamlDocumentMarker+"\n"...)
+		out = append(out, b...)
 	}
+	return out
+}
 
-	b, err := r.marshler(obj)
-	if err != nil {
-		return fileContent
+// mayHoldYAMLReference reports whether the resolution can modify YAML
+// content. Only a $ref/include_vars key or a scalar naming an external
+// .yaml/.yml file (findFilePath requires the extension in the value; the
+// serverless ${file(...)} form embeds it too) can, and each of those leaves a
+// literal in the bytes. Without any of them the resolve is a full parse +
+// walk + re-marshal that returns an equivalent document.
+func mayHoldYAMLReference(content []byte) bool {
+	return bytes.Contains(content, []byte("$ref")) ||
+		bytes.Contains(content, []byte("include_vars")) ||
+		bytes.Contains(content, []byte(".yaml")) ||
+		bytes.Contains(content, []byte(".yml"))
+}
+
+// splitYAMLStream splits a YAML stream into its documents, each starting
+// with its "---" line. Such a line at column 0 starts a document wherever it
+// appears (YAML forbids it inside any scalar), so the split needs no parse.
+// The first one opens the first document instead when only comments,
+// directives or blank lines precede it.
+func splitYAMLStream(content []byte) [][]byte {
+	if !bytes.Contains(content, []byte("\n"+yamlDocumentMarker)) {
+		return [][]byte{content}
 	}
+	var docs [][]byte
+	start, offset := 0, 0
+	if bytes.HasPrefix(content, []byte(utf8BOM)) {
+		offset = len(utf8BOM)
+	}
+	// inDocument is set once the first document has begun, after which every
+	// "---" line starts a new one.
+	inDocument := false
+	for offset < len(content) {
+		line := content[offset:]
+		if end := bytes.IndexByte(line, '\n'); end >= 0 {
+			line = line[:end+1]
+		}
+		if isYAMLDocumentStart(line) {
+			if inDocument {
+				docs = append(docs, content[start:offset])
+				start = offset
+			}
+			inDocument = true
+		} else if !inDocument && !isYAMLPreamble(line) {
+			inDocument = true
+		}
+		offset += len(line)
+	}
+	return append(docs, content[start:])
+}
 
+// isYAMLDocumentStart reports whether line is a "---" document marker line.
+func isYAMLDocumentStart(line []byte) bool {
+	if !bytes.HasPrefix(line, []byte(yamlDocumentMarker)) {
+		return false
+	}
+	if len(line) == len(yamlDocumentMarker) {
+		return true
+	}
+	switch line[len(yamlDocumentMarker)] {
+	case ' ', '\t', '\r', '\n':
+		return true
+	}
+	return false
+}
+
+// isYAMLPreamble reports whether line can precede a "---" line without
+// starting a document of its own.
+func isYAMLPreamble(line []byte) bool {
+	if len(line) > 0 && line[0] == '%' { // directive
+		return true
+	}
+	line = bytes.TrimLeft(line, " \t\r\n")
+	return len(line) == 0 || line[0] == '#'
+}
+
+// endLine terminates the last line of b, so that what is appended next
+// starts a line of its own.
+func endLine(b []byte) []byte {
+	if len(b) > 0 && b[len(b)-1] != '\n' {
+		return append(b, '\n')
+	}
 	return b
 }
 

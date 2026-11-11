@@ -3,7 +3,9 @@ package file
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -287,4 +289,163 @@ func TestCheckServerlessFileReference(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "config/settings.yaml", checkServerlessFileReference("${file(config/settings.yaml)}"))
 	require.Equal(t, "plain/path.yml", checkServerlessFileReference("plain/path.yml"))
+}
+
+func TestSplitYAMLStream(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{name: "single document", content: "a: 1\nb: 2\n", want: []string{"a: 1\nb: 2\n"}},
+		{name: "leading marker", content: "---\na: 1\n", want: []string{"---\na: 1\n"}},
+		{name: "content before the first marker", content: "a: 1\n---\nb: 2\n", want: []string{"a: 1\n", "---\nb: 2\n"}},
+		{name: "trailing marker", content: "a: 1\n---\n", want: []string{"a: 1\n", "---\n"}},
+		{
+			name:    "comments, blanks and directives before the first marker",
+			content: "# c\n\n%YAML 1.1\n---\na: 1\n---\nb: 2\n",
+			want:    []string{"# c\n\n%YAML 1.1\n---\na: 1\n", "---\nb: 2\n"},
+		},
+		{
+			name:    "marker followed by content or a comment",
+			content: "--- a: 1\n--- # c\nb: 2\n",
+			want:    []string{"--- a: 1\n", "--- # c\nb: 2\n"},
+		},
+		{
+			name:    "byte order mark",
+			content: "\uFEFF---\na: 1\n---\nb: 2\n",
+			want:    []string{"\uFEFF---\na: 1\n", "---\nb: 2\n"},
+		},
+		{name: "CRLF line endings", content: "a: 1\r\n---\r\nb: 2\r\n", want: []string{"a: 1\r\n", "---\r\nb: 2\r\n"}},
+		{
+			name:    "dashes that are not a marker",
+			content: "a: |\n  ---\nb: ---\n---c: 1\n",
+			want:    []string{"a: |\n  ---\nb: ---\n---c: 1\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var got []string
+			for _, doc := range splitYAMLStream([]byte(tt.content)) {
+				got = append(got, string(doc))
+			}
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+const yamlStreamWithReferences = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: first
+data:
+  path: extra.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: second
+data:
+  path: other.yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: priv
+`
+
+// writeYamlStreamFixture writes the files the stream references and returns
+// the path of the stream itself, which is left unwritten.
+func writeYamlStreamFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.yaml"), []byte("foo: bar\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "other.yaml"), []byte("baz: qux\n"), 0o600))
+	return filepath.Join(dir, "manifests.yaml")
+}
+
+func decodeYamlStream(t *testing.T, content []byte) []map[string]any {
+	t.Helper()
+	var docs []map[string]any
+	dec := yaml.NewDecoder(strings.NewReader(string(content)))
+	for {
+		var doc map[string]any
+		if err := dec.Decode(&doc); err != nil {
+			require.ErrorIs(t, err, io.EOF)
+			return docs
+		}
+		docs = append(docs, doc)
+	}
+}
+
+func TestResolver_Resolve_YamlStream(t *testing.T) {
+	ctx := context.Background()
+	extensions := []string{".yml", ".yaml"}
+
+	t.Run("resolves every document and keeps them all", func(t *testing.T) {
+		path := writeYamlStreamFixture(t)
+		r := NewResolver(yaml.Unmarshal, yaml.Marshal, extensions)
+
+		got := r.Resolve(ctx, []byte(yamlStreamWithReferences), path, 0, 15, make(map[string]ResolvedFile), false)
+
+		docs := decodeYamlStream(t, got)
+		require.Len(t, docs, 3)
+		assert.Equal(t, map[string]any{"path": map[string]any{"foo": "bar"}}, docs[0]["data"])
+		assert.Equal(t, map[string]any{"path": map[string]any{"baz": "qux"}}, docs[1]["data"])
+		assert.Equal(t, "Pod", docs[2]["kind"])
+		assert.True(t, strings.HasSuffix(string(got), "---\napiVersion: v1\nkind: Pod\nmetadata:\n  name: priv\n"),
+			"a document without a reference should be kept as written, got:\n%s", got)
+		assert.Contains(t, r.ResolvedFiles, "extra.yaml")
+		assert.Contains(t, r.ResolvedFiles, "other.yaml")
+	})
+
+	t.Run("returns the stream as written when nothing resolves", func(t *testing.T) {
+		path := writeYamlStreamFixture(t)
+		content := "# header\napiVersion: v1\nkind: ConfigMap\ndata:\n  path: missing.yaml\n---\napiVersion: v1\nkind: Pod\n"
+		r := NewResolver(yaml.Unmarshal, func(v any) ([]byte, error) {
+			t.Error("re-encoded a stream that resolved no reference")
+			return yaml.Marshal(v)
+		}, extensions)
+
+		got := r.Resolve(ctx, []byte(content), path, 0, 15, make(map[string]ResolvedFile), false)
+
+		assert.Equal(t, content, string(got))
+		assert.Empty(t, r.ResolvedFiles)
+	})
+
+	t.Run("keeps an undecodable document as written and resolves the others", func(t *testing.T) {
+		path := writeYamlStreamFixture(t)
+		broken := "---\nkind: Pod\nspec: [unterminated, other.yaml\n"
+		content := "kind: ConfigMap\ndata:\n  path: extra.yaml\n" + broken + "---\nkind: Secret\ndata:\n  path: other.yaml\n"
+		r := NewResolver(yaml.Unmarshal, yaml.Marshal, extensions)
+
+		got := r.Resolve(ctx, []byte(content), path, 0, 15, make(map[string]ResolvedFile), false)
+
+		assert.Equal(t,
+			"kind: ConfigMap\ndata:\n    path:\n        foo: bar\n"+broken+"---\nkind: Secret\ndata:\n    path:\n        baz: qux\n",
+			string(got))
+		assert.Contains(t, r.ResolvedFiles, "extra.yaml")
+		assert.Contains(t, r.ResolvedFiles, "other.yaml")
+	})
+
+	t.Run("decodes through the injected unmarshaler", func(t *testing.T) {
+		path := writeYamlStreamFixture(t)
+		r := NewResolver(func([]byte, any) error { return errors.New("injected") }, yaml.Marshal, extensions)
+
+		got := r.Resolve(ctx, []byte(yamlStreamWithReferences), path, 0, 15, make(map[string]ResolvedFile), false)
+
+		assert.Equal(t, yamlStreamWithReferences, string(got))
+		assert.Empty(t, r.ResolvedFiles)
+	})
+
+	t.Run("encodes through the injected marshaler", func(t *testing.T) {
+		path := writeYamlStreamFixture(t)
+		r := NewResolver(yaml.Unmarshal, func(any) ([]byte, error) { return nil, errors.New("injected") }, extensions)
+
+		got := r.Resolve(ctx, []byte(yamlStreamWithReferences), path, 0, 15, make(map[string]ResolvedFile), false)
+
+		assert.Equal(t, yamlStreamWithReferences, string(got))
+	})
 }
