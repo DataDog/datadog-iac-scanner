@@ -139,6 +139,12 @@ func Test_E2EJSONConfigScannedAsTerraform(t *testing.T) {
 		filepath.Join("fixtures", "positive.tofu.json"),
 	} {
 		t.Run(filepath.Base(fixture), func(t *testing.T) {
+			// OpenTofu reads positive.tofu.json instead of positive.tf.json
+			// beside it, so each file is scanned from a directory of its own.
+			data, err := os.ReadFile(fixture)
+			require.NoError(t, err)
+			fixture := filepath.Join(t.TempDir(), filepath.Base(fixture))
+			require.NoError(t, os.WriteFile(fixture, data, 0o600))
 			stats := runScan(t, fixture, queriesPaths)
 			require.Equal(t, 1, stats.Files, "%s must be scanned", fixture)
 			require.NotEmpty(t, stats.ViolationBreakdowns, "no violations on %s: check queriesPaths", fixture)
@@ -151,6 +157,20 @@ func Test_E2EJSONConfigScannedAsTerraform(t *testing.T) {
 			require.True(t, fired, "terraform-aws-team-tag-not-present must fire on %s", fixture)
 		})
 	}
+}
+
+// Test_E2ETerraformZeroCountBlocks checks that a block whose count evaluates
+// to zero produces no finding, and a block whose count is unknown does.
+func Test_E2ETerraformZeroCountBlocks(t *testing.T) {
+	queriesPaths := []string{mustAbs(t, filepath.Join("testdata", "rules", "terraform"))}
+
+	stats := runScan(t, filepath.Join("fixtures", "zero-count"), queriesPaths)
+
+	count := 0
+	for _, slugs := range stats.ViolationBreakdowns {
+		count += slugs["terraform-aws-team-tag-not-present"]
+	}
+	require.Equal(t, 2, count, "the enabled block and the block with an unknown count are reported; a count that evaluates to zero, even from a variable default or terraform.tfvars, is not")
 }
 
 // Test_E2ETerraformPlanFlag verifies that:
