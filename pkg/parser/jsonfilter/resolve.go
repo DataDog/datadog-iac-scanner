@@ -14,9 +14,49 @@ import (
 	"github.com/antlr4-go/antlr/v4"
 )
 
+// Status is how far Interpret understood a filter pattern.
+type Status int
+
+const (
+	// StatusOK means the pattern was parsed into an expression tree the
+	// rules can evaluate.
+	StatusOK Status = iota
+	// StatusUnsupported means the pattern is known text the parser cannot
+	// interpret (for example a regex clause). Rules must treat it as
+	// uncertain, not as a proven failure.
+	StatusUnsupported
+)
+
+// Interpretation is the derived reading of a filter pattern: the expression
+// tree when Status is StatusOK, otherwise nothing the rules can prove from.
+type Interpretation struct {
+	Status Status
+	// Expr is the object Resolve would serialize, with an _dd_filter_expr
+	// tree, when Status is StatusOK.
+	Expr map[string]any
+}
+
+// Interpret parses pattern. A pattern that does not parse, or that uses
+// syntax this package does not model, is StatusUnsupported.
+func Interpret(pattern string) Interpretation {
+	resolved := Resolve(pattern)
+	if resolved == pattern {
+		return Interpretation{Status: StatusUnsupported}
+	}
+	var expr map[string]any
+	if err := json.Unmarshal([]byte(resolved), &expr); err != nil {
+		return Interpretation{Status: StatusUnsupported}
+	}
+	if _, ok := expr["_dd_filter_expr"]; !ok {
+		return Interpretation{Status: StatusUnsupported}
+	}
+	return Interpretation{Status: StatusOK, Expr: expr}
+}
+
 // Resolve returns the JSON form of a filter pattern: an object whose
 // _dd_filter_expr key holds the expression tree. A pattern that does not
 // parse is returned unchanged, so a caller can tell the two apart by the key.
+// Prefer Interpret when the caller needs an explicit status.
 func Resolve(pattern string) string {
 	is := antlr.NewInputStream(pattern)
 
