@@ -1,0 +1,11 @@
+{
+  "id": "terraform-gate-companion-not-enabled",
+  "queryName": "Bucket without enabled versioning companion",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "No versioning resource enables versioning on the bucket.",
+  "descriptionUrl": "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/",
+  "platform": "Terraform",
+  "descriptionID": "-enabled",
+  "cloudProvider": "aws"
+}

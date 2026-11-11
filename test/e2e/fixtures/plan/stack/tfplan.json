@@ -1,0 +1,232 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.6.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.unversioned",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "unversioned",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "acme-plan-unversioned"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_s3_bucket.versioned",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "versioned",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "acme-plan-versioned"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_s3_bucket_versioning.versioned",
+          "mode": "managed",
+          "type": "aws_s3_bucket_versioning",
+          "name": "versioned",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "acme-plan-versioned",
+            "versioning_configuration": [
+              {
+                "status": "Enabled"
+              }
+            ]
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_s3_bucket_versioning.source",
+          "mode": "managed",
+          "type": "aws_s3_bucket_versioning",
+          "name": "source",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "acme-versioned-by-plan",
+            "versioning_configuration": [
+              {
+                "status": "Enabled"
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.unversioned",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "unversioned",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-plan-unversioned"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.versioned",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "versioned",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-plan-versioned"
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket_versioning.versioned",
+      "mode": "managed",
+      "type": "aws_s3_bucket_versioning",
+      "name": "versioned",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-plan-versioned",
+          "versioning_configuration": [
+            {
+              "status": "Enabled"
+            }
+          ]
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_s3_bucket_versioning.source",
+      "mode": "managed",
+      "type": "aws_s3_bucket_versioning",
+      "name": "source",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-versioned-by-plan",
+          "versioning_configuration": [
+            {
+              "status": "Enabled"
+            }
+          ]
+        },
+        "after_unknown": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.unversioned",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "unversioned",
+          "provider_config_key": "aws",
+          "expressions": {
+            "bucket": {
+              "constant_value": "acme-plan-unversioned"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_s3_bucket.versioned",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "versioned",
+          "provider_config_key": "aws",
+          "expressions": {
+            "bucket": {
+              "constant_value": "acme-plan-versioned"
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_s3_bucket_versioning.versioned",
+          "mode": "managed",
+          "type": "aws_s3_bucket_versioning",
+          "name": "versioned",
+          "provider_config_key": "aws",
+          "expressions": {
+            "bucket": {
+              "constant_value": "acme-plan-versioned"
+            },
+            "versioning_configuration": [
+              {
+                "status": {
+                  "constant_value": "Enabled"
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_s3_bucket_versioning.source",
+          "mode": "managed",
+          "type": "aws_s3_bucket_versioning",
+          "name": "source",
+          "provider_config_key": "aws",
+          "expressions": {
+            "bucket": {
+              "constant_value": "acme-versioned-by-plan"
+            },
+            "versioning_configuration": [
+              {
+                "status": {
+                  "constant_value": "Enabled"
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  }
+}
