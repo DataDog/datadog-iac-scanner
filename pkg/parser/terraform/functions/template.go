@@ -80,6 +80,9 @@ func renderTemplateFile(
 	depth int,
 ) (cty.Value, error) {
 	src, err := readConfinedFile(baseDir, rootDir, fsys, rel)
+	if isNotExist(err) {
+		return cty.DynamicVal, nil
+	}
 	if err != nil {
 		return cty.NilVal, err
 	}

@@ -130,6 +130,19 @@ func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite 
 // one module's evaluation for different inputs.
 type inputsDigest struct{ a, b uint64 }
 
+// InputKey is a stable identity for a module input map (same digest as the
+// evaluation cache).
+type InputKey struct{ a, b uint64 }
+
+// InputMemo memoizes digests of large input collections for one root evaluation.
+type InputMemo struct{ keyMemo }
+
+// Key returns the cache identity of inputs.
+func (m *InputMemo) Key(inputs map[string]cty.Value) InputKey {
+	d := m.inputsKey(inputs)
+	return InputKey{a: d.a, b: d.b}
+}
+
 // keyMemo memoizes digests of large collections for one evaluator. The same
 // decoded configuration is handed to every instance of a module loop, and cty
 // shares the collection's storage across those copies. Each entry keeps the

@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	tfvalue "github.com/DataDog/datadog-iac-scanner/pkg/terraform/value"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -517,14 +518,31 @@ func (d *moduleData) withComputedAttributes(
 		ctx.Variables = inst.Iteration
 	}
 	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources)}
+	// In opaque mode the unresolved parts of a rendered value become
+	// the unknown marker, so what the data source computes stays readable
+	// around them.
+	track := func(expr hcl.Expression, v cty.Value, ok bool) (cty.Value, bool) {
+		if ok && d.e.opaquePartialData && containsInterpolation(v) {
+			known, diags := expr.Value(ctx)
+			evaluated := !diags.HasErrors()
+			if !evaluated || !known.IsWhollyKnown() {
+				v = markUnresolved(v, known, evaluated)
+			}
+		}
+		return v, ok
+	}
 	var computed map[string]string
 	if body, ok := d.jsonBodies[b]; ok {
 		src := d.sources[b.TypeRange.Filename]
 		computed = source(d.ctx, body, func(expr hcl.Expression) (cty.Value, bool) {
-			return renderJSON(rd, expr, src)
+			v, ok := renderJSON(rd, expr, src)
+			return track(expr, v, ok)
 		})
 	} else {
-		computed = source(d.ctx, b.Body, rd.Render)
+		computed = source(d.ctx, b.Body, func(expr hcl.Expression) (cty.Value, bool) {
+			v, ok := rd.Render(expr)
+			return track(expr, v, ok)
+		})
 	}
 	attrs := make(map[string]cty.Value, len(inst.Attributes)+len(computed))
 	for k, v := range inst.Attributes {
@@ -534,6 +552,44 @@ func (d *moduleData) withComputedAttributes(
 		attrs[k] = cty.StringVal(v)
 	}
 	return attrs
+}
+
+// markUnresolved replaces each string of v that holds interpolation text with
+// the unknown marker. known is the expression evaluated for real when
+// evaluated is set: a string it holds wholly known, such as a literal
+// "$${...}", is kept.
+func markUnresolved(v, known cty.Value, evaluated bool) cty.Value {
+	v, _ = v.UnmarkDeep()
+	if evaluated {
+		known, _ = known.UnmarkDeep()
+	}
+	out, err := cty.Transform(v, func(path cty.Path, leaf cty.Value) (cty.Value, error) {
+		if !leaf.IsKnown() || leaf.IsNull() || leaf.Type() != cty.String || !strings.Contains(leaf.AsString(), "${") {
+			return leaf, nil
+		}
+		if evaluated {
+			if at, err := path.Apply(known); err == nil && at.IsWhollyKnown() {
+				return leaf, nil
+			}
+		}
+		return cty.StringVal(tfvalue.UnknownMarker), nil
+	})
+	if err != nil {
+		return v
+	}
+	return out
+}
+
+// containsInterpolation reports whether a rendered value holds interpolation text.
+func containsInterpolation(v cty.Value) bool {
+	found := false
+	_ = cty.Walk(v, func(_ cty.Path, leaf cty.Value) (bool, error) {
+		if leaf.IsKnown() && !leaf.IsNull() && leaf.Type() == cty.String && strings.Contains(leaf.AsString(), "${") {
+			found = true
+		}
+		return !found, nil
+	})
+	return found
 }
 
 // renderJSON renders a JSON configuration expression, in the scope of the

@@ -60,13 +60,24 @@ func (DiskFS) Abs(name string) (string, error) { return filepath.Abs(name) }
 // Default returns the filesystem used when none is injected (the real disk).
 func Default() FS { return DiskFS{} }
 
-// IsDisk reports whether fsys is the real filesystem, by value or pointer.
+// Wrapper is an FS that serves a subset of another FS.
+type Wrapper interface {
+	Unwrap() FS
+}
+
+// IsDisk reports whether fsys is the real filesystem, by value or pointer, or
+// a Wrapper of it.
 func IsDisk(fsys FS) bool {
-	switch fsys.(type) {
-	case DiskFS, *DiskFS:
-		return true
+	for {
+		switch f := fsys.(type) {
+		case DiskFS, *DiskFS:
+			return true
+		case Wrapper:
+			fsys = f.Unwrap()
+		default:
+			return false
+		}
 	}
-	return false
 }
 
 var _ FS = DiskFS{}

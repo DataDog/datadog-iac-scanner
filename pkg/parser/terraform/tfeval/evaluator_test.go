@@ -591,7 +591,9 @@ module "child" {
 	requireString(t, r.Attributes, "module_file", "module")
 	requireString(t, r.Attributes, "root_file", "root")
 	requireString(t, r.Attributes, "cwd", filepath.ToSlash(rootDir))
-	requireString(t, r.Attributes, "workspace", "default")
+	if v := r.Attributes["workspace"]; v.IsKnown() {
+		t.Errorf("workspace = %#v, want unknown: a run selects the workspace", v)
+	}
 }
 
 func TestEvaluateModule_TopLevelOutputsReturned(t *testing.T) {

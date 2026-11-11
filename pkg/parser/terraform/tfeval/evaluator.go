@@ -238,6 +238,13 @@ type Evaluator struct {
 	// registry holds the resource instance objects references read, for try
 	// and can. It follows the evaluation cache's lifetime.
 	registry *instanceRegistry
+
+	hooks *Hooks
+	// opaquePartialData makes a data source document with an unresolved part unknown.
+	opaquePartialData bool
+	// prepassDepth is above zero while sibling module outputs are computed
+	// speculatively; Instance hooks skip those evaluations.
+	prepassDepth int
 }
 
 // dirParse is a parsed module directory: its files, the blocks evaluation
@@ -381,6 +388,7 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	e.parseMu.Unlock()
 
 	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+	bodies = e.hookBodies(dir, bodies)
 	dp := dirParse{bodies: bodies, sources: sources, err: err}
 	if err == nil {
 		dp.varDecls, dp.localExprs, dp.modules, dp.resources, dp.outputs = collectBlocks(bodies)
@@ -402,25 +410,45 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 func (e *Evaluator) Fork() *Evaluator {
 	reg := newInstanceRegistry()
 	return &Evaluator{
-		funcs:            e.funcs,
-		maxDepth:         e.maxDepth,
-		fsys:             e.fsys,
-		cache:            make(map[evalCacheKey]*evalCacheEntry),
-		remoteResolver:   e.remoteResolver,
-		notEvaluatedDirs: make(map[string]bool),
-		parseMu:          e.parseMu,
-		dirCache:         e.dirCache,
-		funcFS:           e.funcFS,
-		mergeAllow:       e.mergeAllow,
-		trackInstances:   e.trackInstances,
-		registry:         reg,
-		keyMemo:          keyMemo{registry: reg},
+		funcs:             e.funcs,
+		maxDepth:          e.maxDepth,
+		fsys:              e.fsys,
+		cache:             make(map[evalCacheKey]*evalCacheEntry),
+		remoteResolver:    e.remoteResolver,
+		notEvaluatedDirs:  make(map[string]bool),
+		parseMu:           e.parseMu,
+		dirCache:          e.dirCache,
+		funcFS:            e.funcFS,
+		mergeAllow:        e.mergeAllow,
+		trackInstances:    e.trackInstances,
+		registry:          reg,
+		keyMemo:           keyMemo{registry: reg},
+		hooks:             e.hooks,
+		opaquePartialData: e.opaquePartialData,
 	}
 }
+
+// SetOpaquePartialData makes a computed data attribute whose rendering holds an
+// unresolved interpolation unknown instead of a string carrying its text.
+func (e *Evaluator) SetOpaquePartialData(opaque bool) { e.opaquePartialData = opaque }
 
 // SetTrackModuleInstances makes evaluations record the module calls they
 // evaluate, for TakeModuleInstances. Forks inherit the setting.
 func (e *Evaluator) SetTrackModuleInstances(track bool) { e.trackInstances = track }
+
+// DeclaredVariables returns the variable names declared in dir.
+func (e *Evaluator) DeclaredVariables(ctx context.Context, dir string) []string {
+	dp := e.parseDir(ctx, dir, "")
+	if dp.err != nil || len(dp.varDecls) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(dp.varDecls))
+	for name := range dp.varDecls {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
 
 // ForgetRootParse drops the parsed files of dir once it has been evaluated as a
 // root module. The parse cache pays off for modules many roots call; a root is
@@ -633,6 +661,7 @@ func (e *Evaluator) evaluate(
 		cacheKey, skippedBefore, resources, e.instances[instancesBefore:], e.emptyBlocks[emptyBefore:],
 		e.liveModules[liveBefore:], outputs, visitedDirs, addr, len(chain), depth,
 	)
+	e.hookScope(dir, addr, scope, outputs)
 
 	return resources, outputs, nil
 }
@@ -828,6 +857,7 @@ func (e *Evaluator) expandModuleCallInstances(
 			break
 		}
 		e.recordModuleInstance(call.dir, childAddr, childChain)
+		e.hookInstance(call.dir, childAddr, childChain, modInputs, childOuts)
 		allVisited[call.dir] = true
 		childResources = append(childResources, childRes...)
 		outs = append(outs, objectOrEmpty(childOuts))
