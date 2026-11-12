@@ -247,9 +247,10 @@ func TestMemoryStorage_ReportedFindingsAreNotMerged(t *testing.T) {
 	require.Len(t, got, 2, "the same finding saved twice is still one")
 }
 
-// Storage keeps the last finding of each identity, in the order they were
-// saved, whether or not the findings were already deduplicated.
-func TestMemoryStorage_ReportsTheLastFindingOfEachIdentity(t *testing.T) {
+// Storage keeps the first finding of each identity in model.CompareFindings
+// order, as the engine does, whether or not the findings were already
+// deduplicated.
+func TestMemoryStorage_ReportsTheFirstFindingOfEachIdentity(t *testing.T) {
 	finding := func(name, searchKey string) model.Vulnerability {
 		return model.Vulnerability{
 			FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
@@ -265,7 +266,7 @@ func TestMemoryStorage_ReportsTheLastFindingOfEachIdentity(t *testing.T) {
 
 	got, err := m.GetVulnerabilities(context.Background(), "")
 	require.NoError(t, err)
-	require.Equal(t, []model.Vulnerability{finding("primary", "only"), finding("replica", "last")}, got)
+	require.Equal(t, []model.Vulnerability{finding("replica", "first"), finding("primary", "only")}, got)
 
 	again, err := m.GetVulnerabilities(context.Background(), "")
 	require.NoError(t, err)
@@ -294,7 +295,7 @@ func TestMemoryStorage_FirstBatchDoesNotShareCallerCapacity(t *testing.T) {
 
 	got, err := m.GetVulnerabilities(context.Background(), "")
 	require.NoError(t, err)
-	require.Equal(t, []model.Vulnerability{finding("replica", "last")}, got)
+	require.Equal(t, []model.Vulnerability{finding("replica", "first")}, got)
 	require.Equal(t, got, caller[:len(got)], "in-place compaction mutates the caller's logical contents")
 
 	require.NoError(t, m.SaveVulnerabilities(context.Background(), []model.Vulnerability{
@@ -304,7 +305,7 @@ func TestMemoryStorage_FirstBatchDoesNotShareCallerCapacity(t *testing.T) {
 
 	got, err = m.GetVulnerabilities(context.Background(), "")
 	require.NoError(t, err)
-	require.Equal(t, []model.Vulnerability{finding("replica", "last"), finding("other", "batch")}, got)
+	require.Equal(t, []model.Vulnerability{finding("other", "batch"), finding("replica", "first")}, got)
 }
 
 // TestNewMemoryStorage tests the functions [NewMemoryStorage()]
