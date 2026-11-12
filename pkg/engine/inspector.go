@@ -267,6 +267,11 @@ type Inspector struct {
 	// findings are decoded (see findingSet) instead of returning every decoded
 	// finding (see SetCompactFindingsAtDecode).
 	compactFindingsAtDecode bool
+	// ruleScope caches terraformJoiningQueries for the ruleset hashed in
+	// ruleScopeKey.
+	ruleScopeMu  sync.Mutex
+	ruleScopeKey uint64
+	ruleScope    map[int]bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -508,20 +513,19 @@ type QueryResult struct {
 // evalQuery loads and evaluates a single query, returning its result. Load and
 // evaluation failures both carry their error so the serial aggregation records
 // them in FailedQueries without terminating the rest of the scan.
-func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
-	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
-	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
+func (c *Inspector) evalQuery(ctx context.Context, run *queryRun, payloads platformPayloads, queryID int) QueryResult {
 	contextLogger := logger.FromContext(ctx)
+	queries := run.queries
 
 	loadStart := time.Now()
 	// Prefer the shared-compiler query when one was prepared for this rule (rule
 	// isolation disabled); otherwise compile/load it individually, using the
 	// process-global compiled-query cache when enabled.
-	queryOpa, ok := sharedQueries[queryID]
+	queryOpa, ok := run.sharedQueries[queryID]
 	var err error
 	if !ok {
-		queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[queryID], modules, baseStores, baseDataHashes, c.useRulesCache)
+		queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[queryID], run.modules, run.baseStores,
+			run.baseDataHashes, c.useRulesCache)
 	}
 	loadDur := time.Since(loadStart)
 	if err != nil {
@@ -540,13 +544,13 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
 	queryContext := &QueryContext{
 		Ctx:                     ctx,
-		scanID:                  scanID,
-		Files:                   filesMap,
+		scanID:                  run.scanID,
+		Files:                   run.filesMap,
 		Query:                   query,
 		payload:                 &payload,
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
-		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
+		findings:                newFindingSet(c.compactFindingsAtDecode, run.routing),
 		ruleConfigs:             c.ruleConfigs,
 	}
 
@@ -555,9 +559,6 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	evalDur := time.Since(evalStart)
 	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
 		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
-	if err == nil {
-		c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
-	}
 	return QueryResult{
 		vulnerabilities: vuls, moduleResultsRaised: moduleRaised, moduleSeverity: moduleSeverity, err: err, queryID: queryID,
 	}
@@ -688,18 +689,34 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
-	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath, c.isExternalModulePath)
+	run := newQueryRun(scanID, filesMap, queries)
+	run.modules, run.baseStores, run.baseDataHashes = enrichedModules, baseStores, baseDataHashes
+	run.sharedQueries = sharedQueries
+	run.routing = newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath, c.isExternalModulePath)
 
-	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
+	vulnerabilities, err := c.evaluate(ctx, run, payloads)
 	if err != nil {
 		return nil, err
 	}
-
 	c.releasePostEvalFileData(filesMap)
-	if c.compactFindingsAtDecode {
-		return model.FirstFindingPerIdentity(vulnerabilities), nil
+	return vulnerabilities, nil
+}
+
+// evaluate runs every rule of run on payloads, batching large Terraform scans,
+// and returns the scan's findings in model.CompareFindings order.
+func (c *Inspector) evaluate(ctx context.Context, run *queryRun, payloads platformPayloads) ([]model.Vulnerability, error) {
+	var err error
+	if docs, ok := c.batchLargeTerraform(run.queries, payloads); ok {
+		err = c.evalTerraformInBatches(ctx, run, payloads, docs)
+	} else {
+		err = c.executeQueries(ctx, run, payloads, nil, c.numWorkers)
 	}
+	if err != nil {
+		return nil, err
+	}
+	c.trackExecutions(run)
+	vulnerabilities := run.findings(c.compactFindingsAtDecode)
+	run.logModuleVulns(ctx)
 	model.SortFindings(vulnerabilities)
 	return vulnerabilities, nil
 }
@@ -765,22 +782,124 @@ func (c *Inspector) releasePostEvalFileData(filesMap map[string]*model.FileMetad
 	debug.FreeOSMemory()
 }
 
-// executeQueries runs all prepared queries concurrently and collects vulnerabilities.
-func (c *Inspector) executeQueries(
-	ctx context.Context,
-	scanID string,
-	filesMap map[string]*model.FileMetadata,
-	payloads platformPayloads,
-	queries []model.QueryMetadata,
-	enrichedModules []tfmodules.ParsedModule,
-	baseStores map[string]storage.Store,
-	baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery,
-	routing *findingRouting,
-) ([]model.Vulnerability, error) {
-	contextLogger := logger.FromContext(ctx)
-	vulnerabilities := make([]model.Vulnerability, 0)
+// queryRun is what every evaluation of the rules of one Inspect shares, and
+// what those evaluations collect: a rule may be evaluated once per document
+// batch.
+type queryRun struct {
+	scanID         string
+	filesMap       map[string]*model.FileMetadata
+	queries        []model.QueryMetadata
+	modules        []tfmodules.ParsedModule
+	baseStores     map[string]storage.Store
+	baseDataHashes map[string]uint64
+	sharedQueries  map[int]*rego.PreparedEvalQuery
+	routing        *findingRouting
 
+	// found holds each rule's findings, by index in queries.
+	found [][]model.Vulnerability
+	// evaluations counts how many times each rule was evaluated.
+	evaluations []int
+	tally       queryTally
+	moduleVulns moduleVulnTotals
+}
+
+func newQueryRun(scanID string, filesMap map[string]*model.FileMetadata, queries []model.QueryMetadata) *queryRun {
+	return &queryRun{
+		scanID:      scanID,
+		filesMap:    filesMap,
+		queries:     queries,
+		found:       make([][]model.Vulnerability, len(queries)),
+		evaluations: make([]int, len(queries)),
+		tally:       queryTally{},
+		moduleVulns: moduleVulnTotals{},
+	}
+}
+
+// findings returns the findings of every rule that did not fail, each rule's
+// reduced to one per identity when compact is set and the rule was evaluated
+// more than once, and records each rule's unique module findings.
+func (r *queryRun) findings(compact bool) []model.Vulnerability {
+	n := 0
+	for i := range r.found {
+		if !r.tally[i] {
+			n += len(r.found[i])
+		}
+	}
+	out := make([]model.Vulnerability, 0, n)
+	for i, found := range r.found {
+		r.found[i] = nil
+		if r.tally[i] {
+			continue
+		}
+		if compact && r.evaluations[i] > 1 {
+			found = model.FirstFindingPerIdentity(found)
+		}
+		r.moduleVulns.countUnique(i, found)
+		out = append(out, found...)
+	}
+	return out
+}
+
+// moduleVulnTotals sums, by rule index, the module findings of every
+// evaluation of a rule, so they are logged once.
+type moduleVulnTotals map[int]moduleVulnCounts
+
+func (t moduleVulnTotals) countUnique(queryID int, found []model.Vulnerability) {
+	counts, ok := t[queryID]
+	if !ok {
+		return
+	}
+	for i := range found {
+		if found[i].ResourceType == moduleCallRoot {
+			counts.unique++
+		}
+	}
+	t[queryID] = counts
+}
+
+// logModuleVulns logs the module findings of the rules that did not fail,
+// summed by rule name.
+func (r *queryRun) logModuleVulns(ctx context.Context) {
+	byName := make(map[string]moduleVulnCounts, len(r.moduleVulns))
+	for queryID, counts := range r.moduleVulns {
+		if r.tally[queryID] {
+			continue
+		}
+		total := byName[r.queries[queryID].Query]
+		total.raised += counts.raised
+		total.unique += counts.unique
+		byName[r.queries[queryID].Query] = total
+	}
+	contextLogger := logger.FromContext(ctx)
+	for name, counts := range byName {
+		event := contextLogger.Info()
+		if counts.unique != counts.raised {
+			event = event.Int("uniqueFindings", counts.unique)
+		}
+		event.Msgf("Found %d of module vulnerability %s", counts.raised, name)
+	}
+}
+
+// queryTally records, by rule index, whether any evaluation of a rule that
+// ran failed.
+type queryTally map[int]bool
+
+// trackExecutions counts every rule that ran without failing in
+// ExecutedQueries once, however many times it was evaluated.
+func (c *Inspector) trackExecutions(run *queryRun) {
+	for queryID, failed := range run.tally {
+		if !failed {
+			c.tracker.TrackQueryExecution(run.queries[queryID].Aggregation)
+		}
+	}
+}
+
+// executeQueries evaluates the rules in only (every rule when nil) on
+// payloads with up to workers concurrent evaluations, and adds what they
+// raise to run.
+func (c *Inspector) executeQueries(
+	ctx context.Context, run *queryRun, payloads platformPayloads, only map[int]bool, workers int,
+) error {
 	// OPA eval generates massive transient allocations that outpace the default GC,
 	// driving peak RSS well above the live set; a background ticker forces a
 	// collection every 30s. Only for heap-gated scans (c.evalGcRelief): mid-size
@@ -809,34 +928,37 @@ func (c *Inspector) executeQueries(
 	// budget and cannot oversubscribe the machine. Results land in an
 	// index-aligned slice (no shared mutable state between workers); the actual
 	// aggregation happens serially below.
-	results := make([]QueryResult, len(queries))
-	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
-		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
-				sharedQueries, routing)
+	ids := make([]int, 0, len(run.queries))
+	for i := range run.queries {
+		if only == nil || only[i] {
+			ids = append(ids, i)
+		}
+	}
+	results := make([]QueryResult, len(ids))
+	err := utils.ForEach(ctx, ids, utils.PoolOptions{Workers: workers, CPUBound: true},
+		func(ctx context.Context, queryID int, i int) error {
+			results[i] = c.evalQuery(ctx, run, payloads, queryID)
 			return nil
 		})
 	// The closure never returns a non-nil error itself, so ForEach only reports
 	// context cancellation here; surfacing it keeps a canceled scan from being
 	// reported as a successful scan with partial/empty results.
 	if err != nil {
-		return vulnerabilities, err
+		return err
 	}
 
 	// Aggregate serially: processResult mutates shared state.
-	moduleVulns := make(map[string]moduleVulnCounts)
 	for i := range results {
-		processResult(ctx, &results[i], &vulnerabilities, &moduleVulns, queries, c)
-	}
-	for name, counts := range moduleVulns {
-		event := contextLogger.Info()
-		if counts.unique != counts.raised {
-			event = event.Int("uniqueFindings", counts.unique)
+		queryID := results[i].queryID
+		run.evaluations[queryID]++
+		if results[i].err != nil {
+			run.tally[queryID] = true
+		} else if _, seen := run.tally[queryID]; !seen {
+			run.tally[queryID] = false
 		}
-		event.Msgf("Found %d of module vulnerability %s", counts.raised, name)
+		processResult(ctx, &results[i], &run.found[queryID], run.moduleVulns, run.queries, c)
 	}
-
-	return vulnerabilities, nil
+	return nil
 }
 
 type moduleVulnCounts struct {
@@ -883,7 +1005,7 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 
 // nolint:gocritic
 func processResult(ctx context.Context, result *QueryResult,
-	vulnerabilities *[]model.Vulnerability, moduleVulns *map[string]moduleVulnCounts,
+	vulnerabilities *[]model.Vulnerability, moduleVulns moduleVulnTotals,
 	queries []model.QueryMetadata, c *Inspector) {
 	contextLogger := logger.FromContext(ctx)
 	if result.err != nil {
@@ -918,13 +1040,12 @@ func processResult(ctx context.Context, result *QueryResult,
 		raisedModule = uniqueModule
 	}
 	if raisedModule > 0 {
-		counts := (*moduleVulns)[moduleName]
+		counts := moduleVulns[result.queryID]
 		if counts.raised == 0 && moduleSeverity != "" {
 			contextLogger.Info().Msgf("Found module vulnerability %s of severity %s", moduleName, moduleSeverity)
 		}
 		counts.raised += raisedModule
-		counts.unique += uniqueModule
-		(*moduleVulns)[moduleName] = counts
+		moduleVulns[result.queryID] = counts
 	}
 	*vulnerabilities = append(*vulnerabilities, result.vulnerabilities...)
 	// The aggregate holds a copy, so releasing the rule's own slice keeps the
@@ -1784,6 +1905,7 @@ const (
 	platformKnative        = "knative"
 	platformServerlessFW   = "serverlessfw"
 	platformCloudFormation = "cloudformation"
+	platformTerraform      = "terraform"
 )
 
 // platformPayloads holds per-platform OPA input payloads built once per scan.
