@@ -41,6 +41,55 @@ func TestGitModuleResolveKeySeparatesTransport(t *testing.T) {
 	}
 }
 
+func TestGitPrefixedSCPSourceIsPinnedLikeSCP(t *testing.T) {
+	const scp = "git@github.com:org/terraform-modules.git//modules/infra/pipeline?ref=infra-pipeline-v1.0.0"
+	const prefixed = "git::" + scp
+
+	keySCP, ok := GitModuleResolveKey(scp, "")
+	if !ok {
+		t.Fatal("expected scp key")
+	}
+	keyPrefixed, ok := GitModuleResolveKey(prefixed, "")
+	if !ok {
+		t.Fatal("expected git:: scp key")
+	}
+	if keyPrefixed != keySCP {
+		t.Fatalf("git:: and bare scp spellings should coalesce: %q vs %q", keyPrefixed, keySCP)
+	}
+	if !bareGitOwnsSource(prefixed) {
+		t.Fatal("BareGitResolver must own a git:: scp source")
+	}
+
+	normalized, ok := normalizeGitModuleSourceForGetter(prefixed)
+	if !ok {
+		t.Fatal("expected git:: scp source to be normalized for go-getter")
+	}
+	packageSource, subdir := splitGetterSubdir(withDepth(normalized))
+	mod, ok := pinnableGitModuleFromGetterSource(packageSource, subdir)
+	if !ok {
+		t.Fatalf("expected %q to be pinned to BareGitResolver", packageSource)
+	}
+	want := "git::ssh://git@github.com/org/terraform-modules.git//modules/infra/pipeline?ref=infra-pipeline-v1.0.0"
+	if mod.Source != want {
+		t.Fatalf("pinned source = %q, want %q", mod.Source, want)
+	}
+}
+
+func TestGoGetterRejectsUnsafeSCPSourceBeforeFetching(t *testing.T) {
+	for _, source := range unsafeSCPGitSources {
+		for _, form := range []string{source, "git::" + source} {
+			t.Run(form, func(t *testing.T) {
+				if mod, ok := pinnableGitModuleFromGetterSource(form, ""); ok {
+					t.Fatalf("expected %q not to be pinned, got %q", form, mod.Source)
+				}
+				if err := validateGetterSourceTransport(form); err == nil {
+					t.Fatalf("expected go-getter to refuse %q", form)
+				}
+			})
+		}
+	}
+}
+
 func TestGitModuleResolveKeyFoldsEquivalentHTTPS(t *testing.T) {
 	withGit := "git::https://github.com/org/repo.git?ref=v1.0.0"
 	withoutGit := "git::https://github.com/org/repo?ref=v1.0.0"
