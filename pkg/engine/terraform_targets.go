@@ -8,6 +8,8 @@ package engine
 import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
+	"strings"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
 
@@ -86,6 +88,33 @@ func declaresExpandedBlock(files model.FileMetadatas, targets *ruleTargets) bool
 						return true
 					}
 				}
+			}
+		}
+	}
+	return false
+}
+
+// declaresLocalModuleCall reports whether any scanned Terraform file calls a
+// module by a local path. Terraform reads a source starting with "./", "../"
+// or "/" from the filesystem; anything else is a registry or remote source.
+// A scan whose rules target no declared resource type still models the layout
+// when files call local modules: expansion changes what the documents hold,
+// and a module directory the scan was not given is an escalation request
+// recorded when the model reads it.
+func declaresLocalModuleCall(files model.FileMetadatas) bool {
+	for _, f := range files {
+		if f == nil || !tfpath.IsConfig(f.FilePath) {
+			continue
+		}
+		modules, _ := asStringMap(f.Document["module"])
+		for _, body := range modules {
+			attrs, _ := asStringMap(body)
+			source, _ := attrs["source"].(string)
+			if source == "" {
+				continue
+			}
+			if strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") || strings.HasPrefix(source, "/") {
+				return true
 			}
 		}
 	}

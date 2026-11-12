@@ -109,4 +109,3 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	sort.Strings(targets.prefixes)
 	return &targets
 }
-

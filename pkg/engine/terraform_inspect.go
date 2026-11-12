@@ -135,7 +135,7 @@ type terraformStream struct {
 	tfRun       *terraformRun
 	legacyBuilt *legacyBuild
 	legacyB     *legacyRootBuild
-	written map[string]*model.FileMetadata
+	written     map[string]*model.FileMetadata
 }
 
 func (c *Inspector) newTerraformStream(

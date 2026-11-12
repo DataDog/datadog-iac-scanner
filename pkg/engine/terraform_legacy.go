@@ -162,7 +162,8 @@ func (c *Inspector) inspectTerraformLegacyStream(
 	c.stampTerraformScopes(files)
 	written := c.terraformFiles(files)
 	targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-	if !declaresTargetedResource(files, targets) && !declaresExpandedBlock(files, targets) {
+	if !declaresTargetedResource(files, targets) && !declaresExpandedBlock(files, targets) &&
+		!declaresLocalModuleCall(files) {
 		docs := c.addWrittenSections(nil, nil, written)
 		return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, files)
 	}
@@ -248,8 +249,8 @@ func (c *Inspector) takeLegacyRoot(built *legacyBuild, b *legacyRootBuild, root 
 		built.docs = append(built.docs, d.Doc)
 		file := b.written[d.Path]
 		copyWrittenSections(d.Doc, file)
+		built.covered = append(built.covered, &project.LegacyDoc{Path: d.Path})
 		if d.Module == nil {
-			built.covered = append(built.covered, &project.LegacyDoc{Path: d.Path})
 			addLegacyInstances(file, d.Instances)
 			continue
 		}
@@ -395,27 +396,41 @@ func copyWrittenSections(doc map[string]any, file *model.FileMetadata) {
 	}
 }
 
-// addWrittenSections adds a document for each scanned file that holds only
-// blocks the model does not carry.
+// addWrittenSections adds a document for each scanned file the legacy docs do
+// not already stand for. When the stream skipped modeling (raw holds no
+// document), every scanned file contributes its whole written document: the
+// rules run on the files as they are written. When the model produced
+// documents, config files contribute only the sections the model does not
+// carry: their blocks reach the report through the root's modeled document,
+// or, when an override merges them away, through the file they override. A
+// Terraform plan file is never a config file, so the model only covers it
+// when the layout modeled it; an uncovered plan contributes its whole written
+// document, which is already shaped for rules.
 func (c *Inspector) addWrittenSections(
 	docs []model.Document, raw []*project.LegacyDoc, written map[string]*model.FileMetadata,
 ) []model.Document {
+	modeled := len(raw) > 0
 	covered := make(map[string]bool, len(raw))
 	for _, d := range raw {
-		if d.Module == nil {
-			covered[d.Path] = true
-		}
+		// Module instance documents stand for their defining file too: the
+		// file's blocks reach the report through them.
+		covered[d.Path] = true
 	}
 	for _, path := range slices.Sorted(maps.Keys(written)) {
 		f := written[path]
-		if covered[path] || f.Kind != model.KindTerraform || isTFVarsFile(f.FilePath) || c.isModulePackageFile(path) {
+		if covered[path] || isTFVarsFile(f.FilePath) || c.isModulePackageFile(path) {
 			continue
 		}
 		doc := model.Document{legacyIDKey: f.ID, legacyFileKey: path}
-		copyWrittenSections(doc, f)
-		if len(doc) > 2 {
-			docs = append(docs, doc)
+		switch {
+		case f.Kind == model.KindTerraformPlan || !modeled:
+			maps.Copy(doc, f.Document)
+		case f.Kind == model.KindTerraform:
+			copyWrittenSections(doc, f)
+		default:
+			continue
 		}
+		docs = append(docs, doc)
 	}
 	return docs
 }
