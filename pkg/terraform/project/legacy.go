@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/terraform/model"
@@ -278,7 +279,29 @@ func legacyAttrs(b *model.Block, inst *model.Instance, conv value.Converter) map
 		out[name] = conv.Go(v)
 	}
 	collapseBlocks(out, body)
+	prepareLegacyFilterPatterns(out)
 	return out
+}
+
+// prepareLegacyFilterPatterns rewrites pattern attributes the way the runner
+// sanitizes KindTerraform documents, so counted instances keep _dd_filter_expr.
+func prepareLegacyFilterPatterns(doc map[string]any) {
+	for key, v := range doc {
+		switch node := v.(type) {
+		case map[string]any:
+			prepareLegacyFilterPatterns(node)
+		case []any:
+			for _, item := range node {
+				if child, ok := item.(map[string]any); ok {
+					prepareLegacyFilterPatterns(child)
+				}
+			}
+		case string:
+			if key == "pattern" {
+				doc[key] = jsonfilter.Resolve(node)
+			}
+		}
+	}
 }
 
 // partialText renders a string with an unknown part the way the legacy

@@ -8,6 +8,7 @@ package project
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,4 +207,32 @@ resource "aws_s3_bucket" "inner" { bucket = var.name }
 	}
 	require.Equal(t, 1, vars, "the module variable is written once")
 	require.Equal(t, 2, resources, "each root still gets its own resource instance")
+}
+
+func TestLegacyCloudWatchFilterKeepsNormalizedPattern(t *testing.T) {
+	pattern := `{ ($.eventName = CreateNetworkAcl) || ($.eventName = CreateNetworkAclEntry) }`
+	_, docs := legacy(t, map[string]string{
+		"main.tf": fmt.Sprintf(`
+resource "aws_cloudwatch_log_metric_filter" "cis" {
+  count          = 1
+  name           = "CIS"
+  pattern        = %q
+  log_group_name = "lg"
+  metric_transformation {
+    name      = "CIS"
+    namespace = "ns"
+    value     = "1"
+  }
+}
+`, pattern),
+	})
+	require.NotEmpty(t, docs)
+	doc := docs[0]
+	resources, _ := doc["resource"].(map[string]any)
+	filters, _ := resources["aws_cloudwatch_log_metric_filter"].(map[string]any)
+	require.NotEmpty(t, filters)
+	inst, _ := filters["cis[0]"].(map[string]any)
+	got, _ := inst["pattern"].(string)
+	require.Contains(t, got, "_dd_filter_expr")
+	require.NotEqual(t, pattern, got)
 }
