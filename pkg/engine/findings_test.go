@@ -438,7 +438,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		}
 		routing := newFindingRouting(model.FileMetadatas{
 			{FilePath: callerName},
-		}, "", nil)
+		}, "")
 		compacted, full, skipped := decodeCompacted(t, ins, map[string]*model.FileMetadata{
 			older.ID: older, newer.ID: newer,
 		}, routing, []map[string]interface{}{bucketItem(older.ID), bucketItem(newer.ID)})
