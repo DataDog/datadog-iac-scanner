@@ -447,6 +447,23 @@ func TestRepeatedBlockSlots(t *testing.T) {
 		"a single unresolved block stands for what the document's total leaves")
 }
 
+// Document-recorded slots must not expand the dynamic for_each: each finding
+// of a large block would otherwise redo that work.
+func TestRepeatedBlockSlotsUsesDocumentLinesWithoutExpanding(t *testing.T) {
+	src := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = range(100000)
+    content {}
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+	require.Equal(t, blockSlots{1, 1, 1},
+		repeatedBlockSlots(body, "ingress", repeatedBlocks{total: 3, lines: []int{1, 1, 1}}))
+}
+
 func TestEnclosingFirst(t *testing.T) {
 	src := `resource "r" "x" {
   a {

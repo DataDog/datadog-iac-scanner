@@ -8,6 +8,7 @@ package functions
 import (
 	"fmt"
 	"maps"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -19,11 +20,15 @@ import (
 
 const templateMaxDepth = 8
 
-func makeTemplateStringFunc(funcsCb func() map[string]function.Function) function.Function {
-	return makeTemplateStringFuncDepth(funcsCb, 0)
+func makeTemplateStringFunc(funcsCb func() map[string]function.Function, memo *templateMemo) function.Function {
+	return makeTemplateStringFuncDepth(funcsCb, 0, memo)
 }
 
-func makeTemplateStringFuncDepth(funcsCb func() map[string]function.Function, depth int) function.Function {
+func makeTemplateStringFuncDepth(
+	funcsCb func() map[string]function.Function,
+	depth int,
+	memo *templateMemo,
+) function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{
 			{Name: "str", Type: cty.String},
@@ -35,7 +40,7 @@ func makeTemplateStringFuncDepth(funcsCb func() map[string]function.Function, de
 			return cty.DynamicPseudoType, nil
 		},
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			return renderTemplateString(args[0].AsString(), args[1], funcsCb, depth)
+			return renderTemplateString(args[0].AsString(), args[1], funcsCb, depth, memo)
 		},
 	})
 }
@@ -83,18 +88,88 @@ func renderTemplateFile(
 	}
 	return renderTemplateString(string(src), vars, func() map[string]function.Function {
 		return nestTemplateFuncs(baseDir, rootDir, fsys, funcsCb, depth)
-	}, depth)
+	}, depth, templatesOf(fsys))
 }
 
-func renderTemplateString(src string, vars cty.Value, funcsCb func() map[string]function.Function, depth int) (cty.Value, error) {
+const (
+	// templateMemoBudget bounds the bytes the parsed templates of one scan may
+	// hold, estimated from the size of their sources. Past it, templates are
+	// parsed and not remembered.
+	templateMemoBudget = 16 << 20 // 16 MiB
+	// templateBytesPerSourceByte estimates how much a parsed template holds
+	// per byte of its source.
+	templateBytesPerSourceByte = 8
+)
+
+// templateMemo remembers parsed templatefile and templatestring sources for
+// the life of one scan: a block expanded for many instances renders the same
+// template once per instance. Parsed expressions are only evaluated, never
+// mutated, so concurrent evaluations share them.
+type templateMemo struct {
+	mu    sync.Mutex
+	exprs map[decodeKey]hclsyntax.Expression
+	bytes int
+}
+
+func templatesOf(fsys vfs.FS) *templateMemo {
+	if s, ok := fsys.(*ScanFS); ok {
+		return &s.templates
+	}
+	return nil
+}
+
+// parse returns the parsed template for src. A nil memo parses every call.
+func (m *templateMemo) parse(src string) (hclsyntax.Expression, error) {
+	if m == nil {
+		return parseTemplate(src)
+	}
+	key := decodeKeyOf("template", src)
+	m.mu.Lock()
+	expr, ok := m.exprs[key]
+	m.mu.Unlock()
+	if ok {
+		return expr, nil
+	}
+	expr, err := parseTemplate(src)
+	if err != nil {
+		return nil, err
+	}
+	cost := len(src) * templateBytesPerSourceByte
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.exprs[key]; !ok && m.bytes+cost <= templateMemoBudget {
+		if m.exprs == nil {
+			m.exprs = make(map[decodeKey]hclsyntax.Expression)
+		}
+		m.exprs[key] = expr
+		m.bytes += cost
+	}
+	return expr, nil
+}
+
+func parseTemplate(src string) (hclsyntax.Expression, error) {
+	expr, diags := hclsyntax.ParseTemplate([]byte(src), "template", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return nil, diags
+	}
+	return expr, nil
+}
+
+func renderTemplateString(
+	src string,
+	vars cty.Value,
+	funcsCb func() map[string]function.Function,
+	depth int,
+	memo *templateMemo,
+) (cty.Value, error) {
 	if depth > templateMaxDepth {
 		return cty.NilVal, fmt.Errorf("template recursion limit reached")
 	}
-	expr, diags := hclsyntax.ParseTemplate([]byte(src), "template", hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
-		return cty.NilVal, diags
+	expr, err := memo.parse(src)
+	if err != nil {
+		return cty.NilVal, err
 	}
-	return evalTemplate(expr, vars, nestTemplateStringFuncs(funcsCb, depth))
+	return evalTemplate(expr, vars, nestTemplateStringFuncs(funcsCb, depth, memo))
 }
 
 func nestTemplateFuncs(
@@ -105,13 +180,17 @@ func nestTemplateFuncs(
 ) map[string]function.Function {
 	funcs := maps.Clone(funcsCb())
 	funcs["templatefile"] = makeTemplateFileFuncDepth(baseDir, rootDir, fsys, funcsCb, depth+1)
-	funcs["templatestring"] = makeTemplateStringFuncDepth(funcsCb, depth+1)
+	funcs["templatestring"] = makeTemplateStringFuncDepth(funcsCb, depth+1, templatesOf(fsys))
 	return funcs
 }
 
-func nestTemplateStringFuncs(funcsCb func() map[string]function.Function, depth int) map[string]function.Function {
+func nestTemplateStringFuncs(
+	funcsCb func() map[string]function.Function,
+	depth int,
+	memo *templateMemo,
+) map[string]function.Function {
 	funcs := maps.Clone(funcsCb())
-	funcs["templatestring"] = makeTemplateStringFuncDepth(funcsCb, depth+1)
+	funcs["templatestring"] = makeTemplateStringFuncDepth(funcsCb, depth+1, memo)
 	return funcs
 }
 

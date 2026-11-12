@@ -235,12 +235,30 @@ func (s blockSlots) len() int { return len(s) }
 // them, so they stand for none, as the converter keeps them as written when it
 // cannot expand them.
 func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeatedBlocks) blockSlots {
+	sourceLines := make(map[int]bool)
+	for _, block := range body.Blocks {
+		line := block.TypeRange.Start.Line - 1
+		switch {
+		case block.Type == attrName:
+			sourceLines[line] = true
+		case dynamicblock.Is(block) && dynamicblock.GeneratedType(block) == attrName:
+			sourceLines[line] = true
+		}
+	}
+	// Prefer the document's recorded slots before expanding: each finding of a
+	// large dynamic block would otherwise re-expand the same for_each.
+	if slots, ok := documentSlots(repeated, sourceLines); ok {
+		return slots
+	}
+	return expandRepeatedBlockSlots(body, attrName, repeated)
+}
+
+func expandRepeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeatedBlocks) blockSlots {
 	type entry struct {
 		line  int
 		count int
 	}
 	var entries []entry
-	sourceLines := make(map[int]bool)
 	fixed, unresolved := 0, -1
 	unresolvedBlocks := 0
 	for _, block := range body.Blocks {
@@ -248,10 +266,8 @@ func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeated
 		switch {
 		case block.Type == attrName:
 			entries = append(entries, entry{line, 1})
-			sourceLines[line] = true
 			fixed++
 		case dynamicblock.Is(block) && dynamicblock.GeneratedType(block) == attrName:
-			sourceLines[line] = true
 			if expansion := dynamicblock.Expand(context.Background(), block, dynamicForEachContext); expansion.Resolved {
 				entries = append(entries, entry{line, len(expansion.Iterators)})
 				fixed += len(expansion.Iterators)
@@ -261,9 +277,6 @@ func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeated
 				entries = append(entries, entry{line, 0})
 			}
 		}
-	}
-	if slots, ok := documentSlots(repeated, sourceLines); ok {
-		return slots
 	}
 	if unresolvedBlocks == 1 && !repeated.nested && repeated.total != unknownTotal && repeated.total > fixed {
 		entries[unresolved].count = repeated.total - fixed
