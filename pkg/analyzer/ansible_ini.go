@@ -7,7 +7,12 @@ package analyzer
 
 import (
 	"bytes"
+	"net/netip"
+	"regexp"
 	"strings"
+	"unicode"
+
+	"github.com/google/shlex"
 )
 
 // ansibleConfigSections are the section headers ansible.cfg defines.
@@ -92,32 +97,115 @@ func looksLikeAnsibleConfig(content []byte) bool {
 	return found
 }
 
-// looksLikeAnsibleInventory reports whether a .ini file is an INI inventory.
-// Outside [group:vars] sections every entry starts with a host or group name,
-// which never contains "="; app config (pytest.ini, mypy.ini, dev.ini) is made
-// of "key=value" or "key = value" entries instead. A [group:vars] section with
-// entries is itself an inventory, even without hosts. A [group:vars] section with
-// entries is inventory evidence on its own.
+// inventorySection is Ansible's pattern for an INI inventory section header:
+// a group name, then an optional :hosts, :children or :vars type.
+var inventorySection = regexp.MustCompile(`^\[([^:\]\s]+)(?::(\w+))?\]\s*(?:#.*)?$`)
+
+// inventoryEntries checks the entries of a section by section type; a section
+// without a type, like the lines before the first section, lists hosts.
+var inventoryEntries = map[string]func(line string) bool{
+	"":         isInventoryHostLine,
+	"hosts":    isInventoryHostLine,
+	"children": isInventoryGroupLine,
+	"vars":     func(line string) bool { return strings.Contains(line, "=") },
+}
+
+// looksLikeAnsibleInventory reports whether a .ini file follows the INI
+// inventory syntax Ansible accepts. A host line is a host pattern followed by
+// key=value variables, a [group:children] entry starts with a group name and a
+// [group:vars] entry is key=value. App config (pytest.ini, mypy.ini, dev.ini)
+// is made of "key=value" or "key = value" entries; delimited data
+// ("Name|Value"), "name: url" lists and "key value" entries are not host lines
+// either. A [group:vars] section with entries is inventory evidence on its own.
 func looksLikeAnsibleInventory(content []byte) bool {
-	inVars := false
+	isEntry := isInventoryHostLine
 	entries := 0
 	ok := true
 	iniLines(content, func(line string) bool {
-		if name, isSection := iniSectionName(line); isSection {
-			inVars = strings.HasSuffix(name, ":vars")
-			return true
+		if strings.HasPrefix(line, "[") {
+			if m := inventorySection.FindStringSubmatch(line); m != nil {
+				isEntry, ok = inventoryEntries[m[2]]
+				return ok
+			}
+			if strings.HasSuffix(line, "]") {
+				ok = false
+				return false
+			}
 		}
-		if inVars {
-			entries++
-			return true
-		}
-		fields := strings.Fields(line)
-		if strings.Contains(fields[0], "=") || (len(fields) > 1 && strings.HasPrefix(fields[1], "=")) {
-			ok = false
-			return false
-		}
+		ok = isEntry(line)
 		entries++
-		return true
+		return ok
 	})
 	return ok && entries > 0
+}
+
+// isInventoryHostLine reports whether line is a host pattern followed by
+// key=value variables, split with shell quoting and "#" comments.
+func isInventoryHostLine(line string) bool {
+	fields, err := shlex.Split(line)
+	if err != nil || len(fields) == 0 || !isHostPattern(fields[0]) {
+		return false
+	}
+	for _, f := range fields[1:] {
+		if strings.IndexByte(f, '=') < 1 {
+			return false
+		}
+	}
+	return true
+}
+
+// isInventoryGroupLine reports whether line starts with a group name. Like the
+// hosts parser, it only reads the first token of a [group:children] entry.
+func isInventoryGroupLine(line string) bool {
+	fields, err := shlex.Split(line)
+	return err == nil && len(fields) > 0 && !strings.ContainsAny(fields[0], ":]")
+}
+
+// isHostPattern reports whether s is a hostname or an IP address, possibly with
+// [x:y] ranges and a :port. A bare IPv6 address is accepted as is, even where
+// the hosts parser cannot read its last group as a port, so that the parser
+// reports it. Otherwise s only uses letters, digits and ".-_:[]", and what
+// follows the last colon outside a range is a port number.
+func isHostPattern(s string) bool {
+	if !hasValidRanges(s) {
+		return false
+	}
+	if _, err := netip.ParseAddr(s); err == nil {
+		return true
+	}
+	i := strings.LastIndexByte(s, ':')
+	if i < 0 || strings.Contains(s[i:], "]") {
+		return true
+	}
+	port := s[i+1:]
+	return port != "" && strings.Trim(port, "0123456789") == ""
+}
+
+// hasValidRanges reports whether s only has characters a host pattern uses and
+// its "[begin:end]" or "[begin:end:step]" ranges are closed, do not nest and
+// have two or three parts.
+func hasValidRanges(s string) bool {
+	inRange := false
+	colons := 0
+	for _, r := range s {
+		switch {
+		case r == '[':
+			if inRange {
+				return false
+			}
+			inRange, colons = true, 0
+		case r == ']':
+			if !inRange || colons < 1 || colons > 2 {
+				return false
+			}
+			inRange = false
+		case r == ':':
+			if inRange {
+				colons++
+			}
+		case !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune(".-_", r):
+			return false
+		}
+	}
+	return !inRange
 }
