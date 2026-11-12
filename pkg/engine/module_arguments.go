@@ -6,6 +6,8 @@
 package engine
 
 import (
+	"encoding/binary"
+	"hash/maphash"
 	"maps"
 	"slices"
 	"strconv"
@@ -202,6 +204,33 @@ func (t *moduleAttributionCache) resourceArguments(r *tfeval.ResolvedResource, r
 		}
 		args = append(args, arg)
 	}
+	return t.internArguments(args)
+}
+
+var moduleArgumentSeed = maphash.MakeSeed()
+
+// internArguments shares equal lists without retaining an encoded copy of
+// every list as a map key. Compare the contents as well, so hash collisions
+// cannot change attribution. Consumers must treat the returned list as read-only.
+func (t *moduleAttributionCache) internArguments(args []model.ModuleArgument) []model.ModuleArgument {
+	var h maphash.Hash
+	h.SetSeed(moduleArgumentSeed)
+	var buf [8]byte
+	for _, arg := range args {
+		binary.LittleEndian.PutUint64(buf[:], maphash.Comparable(moduleArgumentSeed, arg))
+		_, _ = h.Write(buf[:])
+	}
+	key := h.Sum64()
+	for _, shared := range t.argumentLists[key] {
+		if slices.Equal(shared, args) {
+			return shared
+		}
+	}
+	if t.argumentLists == nil {
+		t.argumentLists = make(map[uint64][][]model.ModuleArgument)
+	}
+	args = slices.Clip(args)
+	t.argumentLists[key] = append(t.argumentLists[key], args)
 	return args
 }
 

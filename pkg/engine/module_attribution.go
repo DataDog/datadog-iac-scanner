@@ -60,6 +60,8 @@ type moduleAttributionCache struct {
 	blockReads     map[blockReadKey]inputReads
 	collections    map[localCacheKey]inputReads
 	argumentValues map[argumentCacheKey]argumentValue
+	// argumentLists shares identical, read-only attribution across instances.
+	argumentLists map[uint64][][]model.ModuleArgument
 	// pathChains identifies call chains by their module blocks, and
 	// scopedChains by their module blocks and the scopes calling them.
 	pathChains   chainNode

@@ -23,7 +23,7 @@ const (
 	rootTerraform = "terraform"
 )
 
-// localMemoKey identifies a local's value by its expression and the values it
+// localMemoKey identifies a value by its expression and the values it
 // reads. The expression pins the module directory its functions resolve files
 // against, and the values read include path.*, which pins the root.
 type localMemoKey struct {
@@ -31,7 +31,7 @@ type localMemoKey struct {
 	inputs inputsDigest
 }
 
-// localReads is what a local expression reads. It is shareable when it reads
+// localReads is what an expression reads. It is shareable when it reads
 // nothing but var.*, local.*, path.* and terraform.*, so that its value is a
 // function of those alone.
 type localReads struct {
@@ -39,33 +39,64 @@ type localReads struct {
 	refs      []hcl.Traversal
 }
 
-// localValue evaluates a local, sharing the value with every evaluation of the
-// same expression that reads the same values.
+// localValue evaluates a local, sharing its value across module instances.
+func (e *Evaluator) localValue(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
+	return e.memoizedValue(expr, ctx, evalLocal)
+}
+
+// memoizedValue shares locals and iteration-invariant resource attributes
+// across evaluations of the same expression reading the same values.
 //
 // A module loop hands every instance the same configuration, and a local
 // derived from it alone is the same in each instance. Evaluating it once per
 // instance repeats the work, and every instance's scope keeps its own copy
 // until the root is merged: memory grows with the instances times the size of
 // what the configuration is reshaped into.
-func (e *Evaluator) localValue(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
+func (e *Evaluator) memoizedValue(
+	expr hclsyntax.Expression, ctx *hcl.EvalContext,
+	evaluate func(hclsyntax.Expression, *hcl.EvalContext) cty.Value,
+) cty.Value {
+	// Lookups already reuse their input value. Building a memo key would
+	// walk collections that evaluating the reference itself does not copy.
+	if reusesInputValue(expr) {
+		return evaluate(expr, ctx)
+	}
 	reads := e.localReadsOf(expr)
 	if !reads.shareable {
-		return evalLocal(expr, ctx)
+		return evaluate(expr, ctx)
 	}
 	inputs, ok := localInputs(reads.refs, ctx)
 	if !ok {
-		return evalLocal(expr, ctx)
+		return evaluate(expr, ctx)
 	}
 	key := localMemoKey{expr: expr, inputs: e.keyMemo.inputsKey(inputs)}
 	if v, hit := e.localMemo[key]; hit {
 		return v
 	}
-	v := evalLocal(expr, ctx)
+	v := evaluate(expr, ctx)
 	if e.localMemo == nil {
 		e.localMemo = make(map[localMemoKey]cty.Value)
 	}
 	e.localMemo[key] = v
 	return v
+}
+
+// reusesInputValue recognizes lookups into existing values, including dynamic
+// indices, chained attributes, and parentheses around such lookups. Expressions
+// that construct a collection still benefit from sharing their evaluated value.
+func reusesInputValue(expr hclsyntax.Expression) bool {
+	switch expr := expr.(type) {
+	case *hclsyntax.ScopeTraversalExpr:
+		return true
+	case *hclsyntax.IndexExpr:
+		return reusesInputValue(expr.Collection)
+	case *hclsyntax.RelativeTraversalExpr:
+		return reusesInputValue(expr.Source)
+	case *hclsyntax.ParenthesesExpr:
+		return reusesInputValue(expr.Expression)
+	default:
+		return false
+	}
 }
 
 func evalLocal(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
@@ -108,8 +139,8 @@ func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Val
 	if !ok || path.IsMarked() || !path.IsWhollyKnown() || !path.Type().IsObjectType() {
 		return nil, false
 	}
-	// path.* is rebuilt for every module evaluation, so its attributes are
-	// keyed as strings: digesting the object would memoize one per evaluation.
+	// Key path.* attributes as strings so the digest memo does not need to
+	// retain the context's path object as well.
 	inputs := make(map[string]cty.Value, len(refs)+len(path.Type().AttributeTypes()))
 	for name := range path.Type().AttributeTypes() {
 		inputs[rootPath+"\x00"+name] = path.GetAttr(name)

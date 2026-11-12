@@ -446,10 +446,11 @@ func evaluateRootModules(
 	for _, dir := range roots[next:] {
 		evaluator.ResetSpeculativeBudget()
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
-		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
 		// The cache key includes rootDir, so the next root cannot reuse these
-		// evaluations, and keyMemo pins every collection they hashed.
+		// evaluations. Release their subtree slices and memo keys before building
+		// documents; resources and instances keep the values merging still needs.
 		evaluator.ReleaseEvalCache()
+		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
 	}
 }
 

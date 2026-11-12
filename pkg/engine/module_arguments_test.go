@@ -485,6 +485,31 @@ func TestModuleArgumentsResolveChoicesWithInstanceIteration(t *testing.T) {
 	requireControlAt(t, args, 4, model.ArgumentControlUnknown)
 }
 
+func TestModuleArgumentsShareEqualListsAcrossScopes(t *testing.T) {
+	body := parseBlockBody(t, `resource "aws_s3_bucket" "this" {
+  bucket = var.name
+  tags = { Name = var.name }
+}`)
+	call := parseBlockBody(t, `module "bucket" {
+  source = "../bucket"
+  name = "example"
+}`)
+	cache := newModuleAttributionCache()
+	arguments := func(name, file string) []model.ModuleArgument {
+		return cache.resourceArguments(&tfeval.ResolvedResource{
+			Body: body, Scope: evaluatedScope(t, map[string]cty.Value{"name": cty.StringVal(name)}, ""),
+			CallChain: []tfeval.CallSite{{Body: call}},
+		}, file)
+	}
+	first := arguments("one", "stack/main.tf")
+	second := arguments("two", "stack/main.tf")
+	require.NotEmpty(t, first)
+	require.Equal(t, first, second)
+	require.Same(t, &first[0], &second[0], "equal attribution is retained once across module instances")
+	other := arguments("three", "other/main.tf")
+	require.NotEqual(t, first, other, "different source locations must keep their own attribution")
+}
+
 func TestModuleArgumentsTraceIntermediateCallIteration(t *testing.T) {
 	tests := []struct {
 		name string

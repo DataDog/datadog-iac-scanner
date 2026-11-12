@@ -227,12 +227,65 @@ func TestEvalObjectLength(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, diags := hclsyntax.ParseExpression([]byte(tc.src), "test.tf", hcl.InitialPos)
 			require.False(t, diags.HasErrors())
-			got, ok := evalLength(expr, &hcl.EvalContext{Variables: map[string]cty.Value{
-				"var": cty.ObjectVal(tc.vars),
-			}})
+			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{
+				"var":  cty.ObjectVal(tc.vars),
+				"path": cty.EmptyObjectVal,
+			}}
+			got, ok := evalLength(expr, ctx)
 			require.Equal(t, tc.ok, ok)
 			if ok {
 				require.True(t, got.RawEquals(tc.want))
+				got = New().evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+				require.True(t, got.RawEquals(tc.want), "resource attributes must preserve length semantics")
+			}
+		})
+	}
+}
+
+func TestEvalExprMemo_ObjectLengthDoesNotScale(t *testing.T) {
+	expr, diags := hclsyntax.ParseExpression([]byte("length(var.config)"), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+	allocsFor := func(size int) float64 {
+		ctx := &hcl.EvalContext{Variables: map[string]cty.Value{
+			"var":  cty.ObjectVal(map[string]cty.Value{"config": objectWithKeys(size, "")}),
+			"path": cty.EmptyObjectVal,
+		}}
+		var got cty.Value
+		allocs := testing.AllocsPerRun(3, func() {
+			e := New()
+			for range 50 {
+				got = e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+			}
+		})
+		require.True(t, got.RawEquals(cty.NumberIntVal(int64(size))))
+		return allocs
+	}
+	one, many := allocsFor(1), allocsFor(10000)
+	require.LessOrEqual(t, many, one*2, "object length must not walk the shared object's values")
+}
+
+// Each operation evaluates one attribute in 50 module instances sharing the
+// same object. Reading its length should not walk the object's values.
+func BenchmarkEvalExprMemo_ObjectLength(b *testing.B) {
+	expr, diags := hclsyntax.ParseExpression([]byte("length(var.config)"), "test.tf", hcl.InitialPos)
+	require.False(b, diags.HasErrors())
+	for _, size := range []int{1, 10000} {
+		b.Run(fmt.Sprintf("keys=%d", size), func(b *testing.B) {
+			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{
+				"var":  cty.ObjectVal(map[string]cty.Value{"config": objectWithKeys(size, "")}),
+				"path": cty.EmptyObjectVal,
+			}}
+			want := cty.NumberIntVal(int64(size))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				e := New()
+				for range 50 {
+					got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+					if !got.RawEquals(want) {
+						b.Fatal("incorrect object length")
+					}
+				}
 			}
 		})
 	}
