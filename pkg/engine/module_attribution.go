@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfaddress "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -711,10 +712,10 @@ func moduleAttributionForResource(
 	}
 	line, col := v.BlockLocation.Start.Line, v.BlockLocation.Start.Col
 	attr, ok := attrs[moduleAttributionKey(v.ResourceType, line, col)]
-	if !ok && !strings.HasPrefix(v.ResourceType, dataTypePrefix) {
+	if !ok && !strings.HasPrefix(v.ResourceType, tfaddress.DataPrefix) {
 		// A data rule may name its type without the prefix; the block's
 		// position still identifies it.
-		attr, ok = attrs[moduleAttributionKey(dataTypePrefix+v.ResourceType, line, col)]
+		attr, ok = attrs[moduleAttributionKey(tfaddress.DataPrefix+v.ResourceType, line, col)]
 	}
 	if !ok {
 		return nil

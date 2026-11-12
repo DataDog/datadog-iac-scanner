@@ -23,9 +23,16 @@ var (
 	resourceIndexPattern = regexp.MustCompile(`resource\[\s*"([^"\s]+)"\s*\]`)
 	// Rego imports and data documents (`data.generic.terraform`) share the
 	// data. prefix; Terraform type names always hold an underscore.
-	dataFieldPattern   = regexp.MustCompile(`\bdata\.([a-z][a-z0-9]*_[a-z0-9_]*)`)
-	dataIndexPattern   = regexp.MustCompile(`\bdata\[\s*"([a-z][a-z0-9]*_[a-z0-9_]*)"\s*\]`)
-	typeLiteralPattern = regexp.MustCompile(`"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"`)
+	dataFieldPattern = regexp.MustCompile(`\bdata\.([a-z][a-z0-9]*_[a-z0-9_]*)`)
+	dataIndexPattern = regexp.MustCompile(`\bdata\[\s*"([a-z][a-z0-9]*_[a-z0-9_]*)"\s*\]`)
+	// Ephemeral resources are read through their namespace
+	// (`input.document[i].ephemeral.random_password[name]`) and named with it
+	// in literals (`"ephemeral.random_password"`). The namespace makes both
+	// patterns specific enough to skip the underscore requirement; the quoted
+	// form records the namespaced type whole, the way findings name it.
+	ephemeralFieldPattern  = regexp.MustCompile(`\bephemeral\.([a-z][a-z0-9_]*)`)
+	ephemeralQuotedPattern = regexp.MustCompile(`"(ephemeral\.[a-z][a-z0-9_]*)"`)
+	typeLiteralPattern     = regexp.MustCompile(`"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"`)
 	// Rules that apply to a whole provider select it by prefix, as in
 	// `startswith(resource_type, "aws_")`.
 	typePrefixPattern = regexp.MustCompile(`startswith\([^,]+,\s*"([a-z][a-z0-9]*_)"\s*\)`)
@@ -75,7 +82,8 @@ func ruleTargetedResourceTypes(queries []model.QueryMetadata, libraries ...strin
 	prefixes := make(map[string]bool)
 	collect := func(source string) {
 		for _, pattern := range []*regexp.Regexp{
-			resourceFieldPattern, resourceIndexPattern, dataFieldPattern, dataIndexPattern, typeLiteralPattern,
+			resourceFieldPattern, resourceIndexPattern, dataFieldPattern, dataIndexPattern,
+			ephemeralFieldPattern, ephemeralQuotedPattern, typeLiteralPattern,
 		} {
 			for _, m := range pattern.FindAllStringSubmatch(source, -1) {
 				targets.types[m[1]] = true

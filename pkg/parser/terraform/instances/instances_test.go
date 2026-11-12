@@ -7,6 +7,7 @@
 package instances
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -16,26 +17,26 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-func resolve(t *testing.T, src string, ctx *hcl.EvalContext, maxShape int) Plan {
+func resolve(t *testing.T, src string, ctx *hcl.EvalContext) Plan {
 	t.Helper()
 	file, diags := hclsyntax.ParseConfig([]byte(src), "test.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	count, forEach := Attributes(file.Body.(*hclsyntax.Body))
-	return Resolve(count, forEach, ctx, maxShape)
+	return Resolve(context.Background(), count, forEach, ctx)
 }
 
 func TestResolveCount(t *testing.T) {
 	for _, tt := range []struct {
 		expr       string
-		requested  int
+		instances  int
 		unresolved bool
 	}{
 		{"3", 3, false},
 		{`"2"`, 2, false},
 		{"0", 0, false},
 		{"-2", 0, false},
-		{fmt.Sprint(MaxPerBlock), MaxPerBlock, false},
-		{fmt.Sprint(MaxPerBlock + 1), MaxPerBlock + 1, false},
+		{"50", 50, false},
+		{"600", 600, false},
 		{"1.5", 0, true},
 		{`"1.5"`, 0, true},
 		{`"invalid"`, 0, true},
@@ -47,14 +48,13 @@ func TestResolveCount(t *testing.T) {
 	} {
 		t.Run(tt.expr, func(t *testing.T) {
 			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"input": cty.UnknownVal(cty.Number)}}
-			plan := resolve(t, "count = "+tt.expr, ctx, 512)
+			plan := resolve(t, "count = "+tt.expr, ctx)
 			require.Equal(t, KindCount, plan.Kind)
 			require.Equal(t, tt.unresolved, plan.Unresolved)
-			require.Equal(t, tt.requested, plan.Requested)
-			require.Len(t, plan.Items, min(tt.requested, MaxPerBlock))
-			require.Equal(t, tt.requested > MaxPerBlock, plan.Truncated())
-			require.Nil(t, plan.ForEachKeys)
-			for i, item := range plan.Items {
+			require.Empty(t, plan.Items)
+			require.Equal(t, tt.instances, plan.Len())
+			for i := range plan.Len() {
+				item := plan.At(i)
 				name, value := plan.Variable(item)
 				require.Equal(t, KindCount, name)
 				require.True(t, cty.NumberIntVal(int64(i)).RawEquals(item.Key))
@@ -98,13 +98,10 @@ func TestResolveForEach(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"input": tt.input}}
-			plan := resolve(t, "for_each = input", ctx, 512)
+			plan := resolve(t, "for_each = input", ctx)
 			require.Equal(t, KindForEach, plan.Kind)
 			require.Equal(t, tt.unresolved, plan.Unresolved)
-			require.Equal(t, len(tt.keys), plan.Requested)
 			require.Len(t, plan.Items, len(tt.keys))
-			require.False(t, plan.Truncated())
-			require.Nil(t, plan.ForEachKeys)
 			for i, item := range plan.Items {
 				require.Equal(t, cty.StringVal(tt.keys[i]), item.Key)
 				name, value := plan.Variable(item)
@@ -129,59 +126,117 @@ func TestResolveForEach(t *testing.T) {
 			}
 		})
 	}
-	plan := resolve(t, "for_each = missing", nil, 512)
+	plan := resolve(t, "for_each = missing", nil)
 	require.True(t, plan.Unresolved)
 	require.Empty(t, plan.Items)
 }
 
-func TestResolveForEachTruncatedShapes(t *testing.T) {
-	const maxShape = 512
-	for _, n := range []int{MaxPerBlock, MaxPerBlock + 1, maxShape, maxShape + 1} {
-		for _, set := range []bool{false, true} {
-			t.Run(fmt.Sprintf("size=%d/set=%v", n, set), func(t *testing.T) {
-				values := make(map[string]cty.Value, n)
-				setValues := make([]cty.Value, n)
-				for i := range n {
-					key := fmt.Sprintf("k%04d", i)
-					values[key] = cty.NumberIntVal(int64(i))
-					setValues[i] = cty.StringVal(key)
-				}
-				input := cty.MapVal(values)
-				if set {
-					input = cty.SetVal(setValues)
-				}
-				ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"input": input}}
-				plan := resolve(t, "for_each = input", ctx, maxShape)
-				require.False(t, plan.Unresolved)
-				require.Equal(t, n, plan.Requested)
-				require.Len(t, plan.Items, MaxPerBlock)
-				require.Equal(t, n > MaxPerBlock, plan.Truncated())
-				if n > MaxPerBlock && n <= maxShape {
-					require.Len(t, plan.ForEachKeys, n)
-					for i, key := range plan.ForEachKeys {
-						require.Equal(t, cty.StringVal(fmt.Sprintf("k%04d", i)), key)
-					}
-				} else {
-					require.Nil(t, plan.ForEachKeys)
-				}
-				require.Equal(t, cty.StringVal("k0049"), plan.Items[MaxPerBlock-1].Key)
-			})
-		}
+// Every instance of a collection is expanded, however large.
+func TestResolveForEachExpandsEveryInstance(t *testing.T) {
+	for _, n := range []int{50, 51, 512, 1200} {
+		t.Run(fmt.Sprintf("size=%d", n), func(t *testing.T) {
+			values := make(map[string]cty.Value, n)
+			for i := range n {
+				values[fmt.Sprintf("k%04d", i)] = cty.NumberIntVal(int64(i))
+			}
+			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"input": cty.MapVal(values)}}
+			plan := resolve(t, "for_each = input", ctx)
+			require.False(t, plan.Unresolved)
+			require.Len(t, plan.Items, n)
+			for i, item := range plan.Items {
+				require.Equal(t, cty.StringVal(fmt.Sprintf("k%04d", i)), item.Key)
+			}
+		})
 	}
+}
+
+func TestResolveForEach_CanceledContextDoesNotAllocate(t *testing.T) {
+	n := 10_000
+	values := make(map[string]cty.Value, n)
+	for i := range n {
+		values[fmt.Sprintf("k%04d", i)] = cty.NumberIntVal(int64(i))
+	}
+	evalCtx := &hcl.EvalContext{Variables: map[string]cty.Value{"input": cty.MapVal(values)}}
+	file, diags := hclsyntax.ParseConfig([]byte("for_each = input"), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	count, forEach := Attributes(file.Body.(*hclsyntax.Body))
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	plan := Resolve(canceled, count, forEach, evalCtx)
+	require.Equal(t, KindForEach, plan.Kind)
+	require.True(t, plan.Unresolved)
+	require.Empty(t, plan.Items)
 }
 
 func TestResolveCountPrecedenceAndNoExpansion(t *testing.T) {
 	for _, expr := range []string{"0", "missing"} {
-		plan := resolve(t, "count = "+expr+"\nfor_each = { a = 1 }", nil, 512)
+		plan := resolve(t, "count = "+expr+"\nfor_each = { a = 1 }", nil)
 		require.Equal(t, KindCount, plan.Kind)
 		require.Empty(t, plan.Items)
 		require.Equal(t, expr == "missing", plan.Unresolved)
 	}
-	plan := resolve(t, `name = "single"`, nil, 512)
+	plan := resolve(t, `name = "single"`, nil)
 	require.Empty(t, plan.Kind)
 	require.False(t, plan.Unresolved)
-	require.False(t, plan.Truncated())
 	name, value := plan.Variable(Item{})
 	require.Empty(t, name)
 	require.Equal(t, cty.NilVal, value)
+}
+
+func TestZeroInstances(t *testing.T) {
+	for _, tt := range []struct {
+		blockType string
+		labels    int
+		body      string
+		zero      bool
+	}{
+		{"resource", 2, "count = 0", true},
+		{"resource", 2, "count = -1", true},
+		{"resource", 2, "count = 1", false},
+		{"resource", 2, "count = var.n", false},
+		{"resource", 2, "for_each = {}", true},
+		{"resource", 2, "for_each = var.empty_set", true},
+		{"resource", 2, "for_each = []", false},
+		{"resource", 2, "for_each = { a = 1 }", false},
+		{"data", 2, "count = 0", true},
+		{"ephemeral", 2, "count = 0", true},
+		{"module", 1, "count = 0", true},
+		{"module", 1, "for_each = {}", true},
+		{"locals", 0, "count = 0", false},
+		{"variable", 1, "count = 0", false},
+		{"resource", 1, "count = 0", false},
+		{"resource", 2, "bucket = \"b\"", false},
+	} {
+		t.Run(tt.blockType+" "+tt.body, func(t *testing.T) {
+			file, diags := hclsyntax.ParseConfig([]byte(tt.body), "test.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			count, forEach := Attributes(file.Body.(*hclsyntax.Body))
+			ctx := &hcl.EvalContext{
+				Variables: map[string]cty.Value{"var": cty.ObjectVal(map[string]cty.Value{
+					"n":         cty.UnknownVal(cty.Number),
+					"empty_set": cty.SetValEmpty(cty.String),
+				})},
+			}
+			require.Equal(t, tt.zero, ZeroInstances(tt.blockType, tt.labels, count, forEach, ctx))
+		})
+	}
+}
+
+func TestZeroInstancesAsWritten(t *testing.T) {
+	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{
+		"var": cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(0), "items": cty.MapValEmpty(cty.String)}),
+	}}
+	for body, zero := range map[string]bool{
+		"count = 0":            true,
+		"for_each = {}":        true,
+		"count = var.n":        false,
+		"for_each = var.items": false,
+	} {
+		file, diags := hclsyntax.ParseConfig([]byte(body), "test.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors(), diags.Error())
+		count, forEach := Attributes(file.Body.(*hclsyntax.Body))
+		require.True(t, ZeroInstances("resource", 2, count, forEach, ctx), body)
+		require.Equal(t, zero, ZeroInstancesAsWritten("resource", 2, count, forEach, ctx), body)
+	}
 }

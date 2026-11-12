@@ -19,6 +19,8 @@ import (
 const (
 	rootVar       = "var"
 	rootLocal     = "local"
+	rootEach      = "each"
+	rootSelf      = "self"
 	rootPath      = "path"
 	rootTerraform = "terraform"
 )
@@ -105,7 +107,7 @@ func (e *Evaluator) localReadsOf(expr hclsyntax.Expression) localReads {
 // is keyed by that attribute rather than the whole configuration.
 func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Value, bool) {
 	path, ok := contextVariable(ctx, rootPath)
-	if !ok || path.IsMarked() || !path.IsWhollyKnown() || !path.Type().IsObjectType() {
+	if !ok || isUserMarked(path) || !path.IsWhollyKnown() || !path.Type().IsObjectType() {
 		return nil, false
 	}
 	// path.* is rebuilt for every module evaluation, so its attributes are
@@ -131,7 +133,7 @@ func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Val
 		}
 		// A memo key records only "?" and the type for an unknown, so a plain
 		// unknown and one refined with a prefix or non-null would share a value.
-		if v.IsMarked() || !v.IsWhollyKnown() {
+		if isUserMarked(v) || !v.IsWhollyKnown() {
 			return nil, false
 		}
 		inputs[name] = v
@@ -143,7 +145,7 @@ func localInputs(refs []hcl.Traversal, ctx *hcl.EvalContext) (map[string]cty.Val
 // known value the step resolves in.
 func traverseStatic(v cty.Value, step hcl.Traverser) (cty.Value, string, bool) {
 	key, ok := stepKey(step)
-	if !ok || v.IsMarked() || !v.IsKnown() || v.IsNull() {
+	if !ok || isUserMarked(v) || !v.IsKnown() || v.IsNull() {
 		return cty.NilVal, "", false
 	}
 	t := v.Type()
@@ -175,7 +177,7 @@ func stepKey(step hcl.Traverser) (cty.Value, bool) {
 	default:
 		return cty.NilVal, false
 	}
-	return key, !key.IsMarked() && key.IsKnown() && !key.IsNull()
+	return key, !isUserMarked(key) && key.IsKnown() && !key.IsNull()
 }
 
 func stepLabel(key cty.Value) string {

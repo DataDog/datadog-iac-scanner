@@ -18,16 +18,16 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 
 	// An empty chain appends nothing, so Terraform matches the plain base hash (no fingerprint churn).
 	base := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", "Kubernetes", "aws_s3_bucket", "this", "rule-1", "", "")
-	tfEmpty := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "")
+	tfEmpty := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "")
 	require.Equal(t, base, tfEmpty, "empty call chain must not change the fingerprint")
 
-	fromA := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
-	fromB := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-b/main.tf|module.bucket")
+	fromA := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
+	fromB := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-b/main.tf|module.bucket")
 
 	require.NotEqual(t, tfEmpty, fromA, "a non-empty call chain must change the fingerprint")
 	require.NotEqual(t, fromA, fromB, "distinct callers must produce distinct fingerprints")
 
-	fromAAgain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", terraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
+	fromAAgain := GetDatadogFingerprintHash(sci, "modules/bucket/main.tf", TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", "stack-a/main.tf|module.bucket")
 	require.Equal(t, fromA, fromAAgain, "the same caller must produce a stable fingerprint")
 
 	// Non-Terraform platforms must ignore the module call chain.
@@ -41,7 +41,7 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 // fingerprinted as two distinct findings in the report, or the reverse.
 func TestFindingIdentity_EqualIdentityMeansEqualCreateSummaryFingerprint(t *testing.T) {
 	a := Vulnerability{
-		FileName: "/repo/stack/main.tf", Platform: terraformPlatform, QueryID: "rule-1",
+		FileName: "/repo/stack/main.tf", Platform: TerraformPlatform, QueryID: "rule-1",
 		ResourceType: "aws_security_group", ResourceName: "sg", ModuleCallChain: "stack/main.tf|module.sg",
 		Line: 4, LineWithVulnerability: "cidr_blocks = [\"0.0.0.0/0\"] # ingress[0]",
 		Severity: SeverityHigh, SearchKey: "aws_security_group[sg].ingress[0].cidr_blocks",
@@ -83,4 +83,34 @@ func TestIdentityBeforeLine_IsFindingIdentityUnderEveryChain(t *testing.T) {
 
 	_, ok := IdentityBeforeLine(&Vulnerability{Platform: "Dockerfile"})
 	require.False(t, ok, "a Dockerfile identity includes the line")
+}
+
+// A stored Terraform address does not change the fingerprint: two instances
+// that share a file, resource and call chain share one fingerprint.
+func TestFindingIdentity_IgnoresTerraformAddress(t *testing.T) {
+	base := Vulnerability{
+		FileName: "/repo/stack/main.tf", Platform: TerraformPlatform, QueryID: "rule-1",
+		ResourceType: "aws_s3_bucket", ResourceName: "this", ModuleCallChain: "stack/main.tf|module.a",
+		Severity: SeverityHigh, SearchKey: "aws_s3_bucket[this]",
+	}
+	first, second, otherRoot := base, base, base
+	first.RootModule, first.ResourceID, first.Line = "stack", "aws_s3_bucket.this[0]", 2
+	second.RootModule, second.ResourceID, second.Line = "stack", "aws_s3_bucket.this[1]", 9
+	otherRoot.RootModule, otherRoot.ResourceID = "other", "aws_s3_bucket.this[0]"
+
+	require.Equal(t, FindingIdentity(&base), FindingIdentity(&first))
+	require.Equal(t, FindingIdentity(&first), FindingIdentity(&second))
+	require.Equal(t, FindingIdentity(&first), FindingIdentity(&otherRoot))
+	require.Equal(t,
+		fingerprintInput(SCIInfo{}, base.FileName, base.Platform, base.ResourceType, base.ResourceName, "rule-1", "", base.ModuleCallChain),
+		FindingIdentity(&first))
+
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{first, second}, "scan", nil, "/repo", sci)
+	files := summary.Queries[0].Files
+	require.Len(t, files, 2)
+	want := GetDatadogFingerprintHash(sci, files[0].FileName, TerraformPlatform, "aws_s3_bucket", "this", "rule-1", "", base.ModuleCallChain)
+	require.Equal(t, files[0].FileName, files[1].FileName)
+	require.Equal(t, want, files[0].Fingerprint)
+	require.Equal(t, want, files[1].Fingerprint)
 }

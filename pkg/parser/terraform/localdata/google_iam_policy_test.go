@@ -7,6 +7,7 @@
 package localdata
 
 import (
+	"context"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
@@ -46,7 +47,7 @@ audit_config {
 	}}
 	source, ok := Lookup(googleIAMPolicyType)
 	require.True(t, ok)
-	got := source(file.Body, func(expr hcl.Expression) (cty.Value, bool) {
+	got := source(context.Background(), file.Body, func(expr hcl.Expression) (cty.Value, bool) {
 		v, d := expr.Value(ctx)
 		return v, !d.HasErrors()
 	})
@@ -74,7 +75,7 @@ binding {
 	require.False(t, diags.HasErrors(), diags.Error())
 	source, ok := Lookup(googleIAMPolicyType)
 	require.True(t, ok)
-	got := source(file.Body, func(expr hcl.Expression) (cty.Value, bool) {
+	got := source(context.Background(), file.Body, func(expr hcl.Expression) (cty.Value, bool) {
 		v, d := expr.Value(&hcl.EvalContext{})
 		return v, !d.HasErrors()
 	})
@@ -129,7 +130,7 @@ binding {
 	} {
 		file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 		require.False(t, diags.HasErrors(), diags.Error())
-		require.Nil(t, source(file.Body, eval))
+		require.Nil(t, source(context.Background(), file.Body, eval))
 	}
 }
 
@@ -150,8 +151,49 @@ binding {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	rd := &partial.Renderer{Ctx: &hcl.EvalContext{}, Source: partial.BytesSource([]byte(src))}
-	got := googleIAMPolicyAttributes(file.Body, rd.Render)
+	got := googleIAMPolicyAttributes(context.Background(), file.Body, rd.Render)
 	require.Contains(t, got["policy_data"], `"title":"first"`)
 	require.Contains(t, got["policy_data"], `"expression":"false"`)
 	require.NotContains(t, got["policy_data"], `"title":"second"`)
+}
+
+// A done context stops dynamic expansion and renders nothing rather than a
+// document missing the blocks that were never generated.
+func TestLocalDataStopsWhenTheContextIsDone(t *testing.T) {
+	bodies := map[string]string{
+		googleIAMPolicyType: `
+dynamic "binding" {
+  for_each = ["a", "b", "c"]
+  content {
+    role    = "roles/viewer"
+    members = [binding.value]
+  }
+}
+`,
+		awsIAMPolicyDocumentType: `
+dynamic "statement" {
+  for_each = ["a", "b", "c"]
+  content {
+    actions   = ["s3:GetObject"]
+    resources = [statement.value]
+  }
+}
+`,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for typ, src := range bodies {
+		t.Run(typ, func(t *testing.T) {
+			file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			source, ok := Lookup(typ)
+			require.True(t, ok)
+			eval := func(expr hcl.Expression) (cty.Value, bool) {
+				v, d := expr.Value(&hcl.EvalContext{})
+				return v, !d.HasErrors()
+			}
+			require.NotEmpty(t, source(context.Background(), file.Body, eval))
+			require.Nil(t, source(ctx, file.Body, eval))
+		})
+	}
 }

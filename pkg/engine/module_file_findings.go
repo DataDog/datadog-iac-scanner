@@ -8,24 +8,43 @@ package engine
 import (
 	pathpkg "path"
 	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 )
 
 // moduleCall is one evaluated call of a module directory.
 type moduleCall struct {
 	callChain string
+	// moduleAddress is the call's module instance address, keys included: a
+	// block of the module is addressed under it, so two instances of one call
+	// get different addresses.
+	moduleAddress string
+	// rootModule is the caller's root module directory, repository-relative.
+	rootModule string
 	// attribution names the directory in ModuleCodeLocation.Filename. It is
 	// shared by every file of the directory and read-only.
 	attribution *model.ModuleAttribution
 }
 
-// moduleFileCalls are the evaluated calls reaching an external module file. A
-// finding raised on the file as written is reported once per call.
+// moduleFileCalls are the evaluated calls reaching an external module file.
+// Blocks other than resources are not instantiated per call, so their findings
+// are raised once on the file as written and reported once per call.
 type moduleFileCalls struct {
 	calls []moduleCall
 	name  string
+	// scope is the file's Terraform address context, which resolves the
+	// block a finding routed to a call is addressed by.
+	scope *model.TerraformScope
+	// writtenResourceTypes are the resource types still scanned where they are
+	// written, the blocks evaluation did not instantiate. Their findings keep
+	// standing for those blocks as written.
+	writtenResourceTypes map[string]bool
+	// keepWritten keeps each finding as written too, standing for the calls of
+	// the directory evaluation did not reach.
+	keepWritten bool
 }
 
 // moduleCallIndex collects the evaluated calls of the directories holding
@@ -64,7 +83,7 @@ func newModuleCallIndex(filesByDir map[string][]*model.FileMetadata, external fu
 // the root the instances were evaluated from.
 func (idx *moduleCallIndex) record(
 	instances []tfeval.ModuleInstance,
-	repoPath string,
+	repoPath, rootModule string,
 	lookup moduleProvenanceLookup,
 	cache *moduleAttributionCache,
 ) {
@@ -73,7 +92,7 @@ func (idx *moduleCallIndex) record(
 	}
 	for i := range instances {
 		instance := &instances[i]
-		dir := filepath.Clean(instance.Dir)
+		dir := pathKey(instance.Dir)
 		if _, ok := idx.files[dir]; !ok {
 			continue
 		}
@@ -87,14 +106,16 @@ func (idx *moduleCallIndex) record(
 			continue
 		}
 		idx.calls[dir] = append(idx.calls[dir], moduleCall{
-			callChain:   moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
-			attribution: attr,
+			callChain:     moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
+			moduleAddress: instance.ModuleAddress,
+			rootModule:    rootModule,
+			attribution:   attr,
 		})
 	}
 }
 
 // fileCalls returns the calls reaching each indexed file, by file ID.
-func (idx *moduleCallIndex) fileCalls() map[string]*moduleFileCalls {
+func (idx *moduleCallIndex) fileCalls(unresolvedDirs map[string]bool) map[string]*moduleFileCalls {
 	if idx == nil || len(idx.calls) == 0 {
 		return nil
 	}
@@ -102,17 +123,52 @@ func (idx *moduleCallIndex) fileCalls() map[string]*moduleFileCalls {
 	for dir, calls := range idx.calls {
 		for _, f := range idx.files[dir] {
 			out[f.ID] = &moduleFileCalls{
-				calls: calls,
-				name:  filepath.Base(f.FilePath),
+				calls:       calls,
+				name:        filepath.Base(f.FilePath),
+				scope:       f.TerraformScope,
+				keepWritten: unresolvedDirs[dir],
 			}
 		}
 	}
 	return out
 }
 
+// documentResourceTypes returns the resource types a parsed file declares,
+// its data and ephemeral types prefixed as findings name them.
+func documentResourceTypes(doc model.Document) map[string]bool {
+	var types map[string]bool
+	for _, bs := range blockSections {
+		byType, ok := asStringMap(doc[bs.section])
+		if !ok {
+			continue
+		}
+		if types == nil {
+			types = make(map[string]bool)
+		}
+		for typ := range byType {
+			types[bs.prefix+typ] = true
+		}
+	}
+	return types
+}
+
+// keptAsWritten reports whether the finding's resource type is still scanned
+// where it is written. A data rule may name its type without the "data."
+// prefix, as moduleAttributionForResource allows.
+func (f *moduleFileCalls) keptAsWritten(resourceType string) bool {
+	if f.writtenResourceTypes[resourceType] {
+		return true
+	}
+	if strings.HasPrefix(resourceType, address.DataPrefix) {
+		return false
+	}
+	return f.writtenResourceTypes[address.DataPrefix+resourceType]
+}
+
 // attributeModuleFileFindings reports each finding raised on an external
 // module file as written once per call reaching it, at that call's site.
-// Findings already attributed to a call are kept as they are.
+// Findings already attributed to a call, and those on resource blocks left as
+// written, are kept as they are.
 func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*moduleFileCalls) []model.Vulnerability {
 	if len(files) == 0 {
 		return vulns
@@ -121,7 +177,7 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 	for i := range vulns {
 		v := &vulns[i]
 		file := files[v.FileID]
-		if file == nil || v.ModuleAttribution != nil {
+		if file == nil || v.ModuleAttribution != nil || file.keptAsWritten(v.ResourceType) {
 			if out != nil {
 				out = append(out, *v)
 			}
@@ -131,11 +187,19 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 			out = make([]model.Vulnerability, i, len(vulns)+len(file.calls))
 			copy(out, vulns[:i])
 		}
+		if file.keepWritten {
+			out = append(out, *v)
+		}
+		block, addressed := file.routedBlock(v)
 		for j := range file.calls {
 			call := &file.calls[j]
 			attributed := *v
 			attributed.ModuleCallChain = call.callChain
 			attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
+			if addressed {
+				attributed.RootModule = call.rootModule
+				attributed.ResourceID = address.Instance(call.moduleAddress, unlabeledAddressBlock(file.scope, block), "")
+			}
 			out = append(out, attributed)
 		}
 	}
@@ -144,6 +208,17 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 	}
 	return out
 }
+
+// routedBlock resolves the block finding v names in the file. ok is false when
+// v has no address or names no block of the file: its copies through each
+// call then keep v's own address.
+func (f *moduleFileCalls) routedBlock(v *model.Vulnerability) (address.Block, bool) {
+	if v.ResourceID == "" || f.scope == nil {
+		return address.Block{}, false
+	}
+	return resolveTerraformBlock(f.scope, v.ResourceType, v.ResourceName)
+}
+
 
 // dropUnattributedExternalFindings removes the findings on an external module
 // file that no call accounts for. The file is not part of the scanned

@@ -7,11 +7,14 @@ package engine
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
@@ -72,7 +75,7 @@ func resolveRemoteBucketPackage(
 		}, true
 	}
 	external := func(path string) bool { return pathWithinRoot(path, pkg) }
-	return resolveModuleDocuments(context.Background(), files, repo, resolver, targets, lookup, nil, nil, external)
+	return resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), resolver, targets, lookup, nil, nil, external)
 }
 
 func TestResolveModuleDocuments_AttributesExternalModuleFilesToEveryCall(t *testing.T) {
@@ -147,7 +150,7 @@ func TestResolveModuleDocuments_NoExternalFilesRecordsNoCalls(t *testing.T) {
 	resolver := func(source, _, _, _ string) (string, string, bool) {
 		return bucket, pkg, source == bucketSource
 	}
-	res := resolveModuleDocuments(context.Background(), files, repo, resolver, nil, nil, nil, nil, nil)
+	res := resolveModuleDocuments(context.Background(), files, repo, relDirForTest(repo), resolver, nil, nil, nil, nil, nil)
 	require.True(t, res.ok)
 	require.Nil(t, res.moduleFiles)
 }
@@ -370,6 +373,42 @@ func TestDropUnattributedExternalFindings(t *testing.T) {
 	require.Equal(t, vulns, dropUnattributedExternalFindings(vulns, nil), "without an external predicate nothing is dropped")
 }
 
+// A finding with a resolved address is copied per call under the call's module
+// instance address and root module; without one the copies carry only the
+// call chain.
+func TestAttributeModuleFileFindings_AddressedCopiesPerCall(t *testing.T) {
+	calls := []moduleCall{
+		{callChain: "stack-a/main.tf|module.m", moduleAddress: "module.m", rootModule: "stack-a", attribution: &model.ModuleAttribution{}},
+		{callChain: "stack-b/main.tf|module.m[1]", moduleAddress: "module.m[1]", rootModule: "stack-b", attribution: &model.ModuleAttribution{}},
+	}
+	files := map[string]*moduleFileCalls{
+		"ext": {calls: calls, name: "outputs.tf", scope: &model.TerraformScope{
+			RootModule: "cache",
+			Blocks:     map[model.TerraformBlock]bool{{Kind: "output", Name: "arn"}: true},
+		}},
+	}
+	addressed := model.Vulnerability{
+		FileID: "ext", QueryID: "q", ResourceType: "output", ResourceName: "arn",
+		RootModule: "cache", ResourceID: "output.arn",
+	}
+	unaddressed := addressed
+	unaddressed.RootModule, unaddressed.ResourceID = "", ""
+
+	got := attributeModuleFileFindings([]model.Vulnerability{addressed, unaddressed}, files)
+	require.Len(t, got, 4)
+	type identity struct{ chain, root, id string }
+	ids := make([]identity, 0, len(got))
+	for i := range got {
+		ids = append(ids, identity{got[i].ModuleCallChain, got[i].RootModule, got[i].ResourceID})
+	}
+	require.Equal(t, []identity{
+		{"stack-a/main.tf|module.m", "stack-a", "module.m.output.arn"},
+		{"stack-b/main.tf|module.m[1]", "stack-b", "module.m[1].output.arn"},
+		{"stack-a/main.tf|module.m", "", ""},
+		{"stack-b/main.tf|module.m[1]", "", ""},
+	}, ids)
+}
+
 func TestAttributeModuleFileFindingsLeavesPreAttributedUnchanged(t *testing.T) {
 	attr := &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: "stack/main.tf"}}
 	files := map[string]*moduleFileCalls{
@@ -393,4 +432,109 @@ func TestHasUnresolvableModuleCall(t *testing.T) {
 	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{call("%{ if x }a%{ endif }")}))
 	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{call(nil)}))
 	require.True(t, hasUnresolvableModuleCall([]*model.FileMetadata{{Document: model.Document{}}}), "an unparsed file is not known to be free of them")
+}
+
+// movedFileRule fires once per moved block of a document, reporting the
+// block with its file-local list index — the name rules actually report.
+// The parser renders a file's repeated moved blocks as a list and a lone one
+// as a plain object, so the rule has a branch for each shape.
+const movedFileRule = `package datadog
+
+DatadogPolicy contains result if {
+	some i
+	doc := input.document[i]
+	is_array(doc.moved)
+	some idx
+	m := doc.moved[idx]
+	m.from
+
+	result := {
+		"documentId": doc.id,
+		"resourceType": "moved",
+		"resourceName": sprintf("%d", [idx]),
+		"searchKey": sprintf("moved[%d]", [idx]),
+	}
+}
+
+DatadogPolicy contains result if {
+	some i
+	doc := input.document[i]
+	is_object(doc.moved)
+	doc.moved.from
+
+	result := {
+		"documentId": doc.id,
+		"resourceType": "moved",
+		"resourceName": "",
+		"searchKey": "moved",
+	}
+}
+`
+
+// Two files of one external module each declare one moved block. Both findings
+// survive because they are different files. The module-wide index still gives
+// the routed copies distinct stored addresses: the first file's block is
+// moved.0 and the second file's is moved.1.
+func TestInspect_ExternalModuleFileUnlabeledBlocksStayDistinct(t *testing.T) {
+	root := t.TempDir()
+	cacheDir := filepath.Join(root, "cache")
+	stackDir := filepath.Join(root, "stack")
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+	require.NoError(t, os.MkdirAll(stackDir, 0o755))
+
+	// The external module: two files, one moved block each. Neither file
+	// alone has a collision, so only the module-wide index tells them apart.
+	firstPath := filepath.Join(cacheDir, "first.tf")
+	require.NoError(t, os.WriteFile(firstPath, []byte(`
+moved {
+  from = aws_a.first
+  to   = aws_b.first
+}
+`), 0o644))
+	secondPath := filepath.Join(cacheDir, "second.tf")
+	require.NoError(t, os.WriteFile(secondPath, []byte(`
+moved {
+  from = aws_a.second
+  to   = aws_b.second
+}
+`), 0o644))
+
+	callerPath := filepath.Join(stackDir, "main.tf")
+	require.NoError(t, os.WriteFile(callerPath, []byte(`
+module "m" {
+  source = "../cache"
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, firstPath)...)
+	files = append(files, parseTerraform(t, secondPath)...)
+	files = append(files, parseTerraform(t, callerPath)...)
+
+	tr := &tracker.CITracker{}
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "moved_rule", Content: movedFileRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "moved-rule", "platform": "Terraform"}, Aggregation: 1,
+		}},
+		repoPath:      root,
+		vb:            DefaultVulnerabilityBuilder,
+		tracker:       tr,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	ins.SetExternalModulePaths([]string{cacheDir})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	require.Len(t, vulns, 2, "each file's moved block is reported through the call")
+	ids := map[string]bool{}
+	for i := range vulns {
+		require.NotEmpty(t, vulns[i].ResourceID, "each routed copy carries its address")
+		ids[vulns[i].ResourceID] = true
+	}
+	require.Len(t, ids, 2, "the two routed addresses are distinct")
+	require.Contains(t, ids, "module.m.moved.0", "first file's block is indexed first")
+	require.Contains(t, ids, "module.m.moved.1", "second file's block keeps a distinct index")
 }

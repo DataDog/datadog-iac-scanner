@@ -18,7 +18,7 @@ import (
 // over a decoded configuration holds that configuration. RawEquals walks it and
 // re-compares its type at every level, once per instance and pass.
 func equalValues(a, b cty.Value) bool {
-	if a.IsMarked() || b.IsMarked() || !a.IsKnown() || !b.IsKnown() || a.IsNull() || b.IsNull() {
+	if isUserMarked(a) || isUserMarked(b) || !a.IsKnown() || !b.IsKnown() || a.IsNull() || b.IsNull() {
 		return a.RawEquals(b)
 	}
 	ta, tb := a.Type(), b.Type()

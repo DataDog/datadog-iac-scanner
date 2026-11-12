@@ -7,14 +7,15 @@ package json
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfaddress "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcl_plan "github.com/hashicorp/terraform-json"
 	"github.com/tidwall/gjson"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // TFPlan is an auxiliary structure for parsing tfplans as a scanner Document
@@ -337,8 +338,8 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 	resourceLines := extractResourceHeaderLines(b)
 	correlation := buildResourceChangeCorrelation(b)
 
-	parsedPlan := readPlan(plan, doc["resource_changes"], doc["configuration"], resourceLines, &correlation)
-	return parsedPlan, nil
+	parsed := readPlan(plan, doc["resource_changes"], doc["configuration"], resourceLines, &correlation)
+	return parsed, nil
 }
 
 // extractResourceHeaderLines returns each resource's "values" attribute
@@ -376,7 +377,7 @@ func readPlan(
 	resourceChanges, configuration any,
 	resourceLines map[string]int,
 	correlation *resourceChangeCorrelation,
-) model.Document {
+) (doc model.Document) {
 	kp := TFPlan{
 		Resource:        make(map[string]TFPlanResource),
 		ResourceChanges: resourceChanges,
@@ -389,8 +390,7 @@ func readPlan(
 		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", resourceLines, deletedAddresses(plan.ResourceChanges))
 	}
 
-	doc := model.Document{}
-
+	doc = model.Document{}
 	tmpDocBytes, err := json.Marshal(kp)
 	if err != nil {
 		return model.Document{}
@@ -399,7 +399,6 @@ func readPlan(
 	if err != nil {
 		return model.Document{}
 	}
-
 	return doc
 }
 
@@ -439,13 +438,7 @@ func (kp *TFPlan) readModule(
 			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
 		}
 
-		if kp.TfplanMeta[resource.Type] == nil {
-			if kp.TfplanMeta == nil {
-				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
-			}
-			kp.TfplanMeta[resource.Type] = make(map[string]tfplanResourceMeta)
-		}
-		kp.TfplanMeta[resource.Type][resourceKey] = resourceMetaFor(resource.Address, correlation)
+		kp.recordPlanMeta(resource.Type, resourceKey, resourceMetaFor(resource.Address, correlation))
 	}
 
 	for _, childModule := range module.ChildModules {
@@ -508,6 +501,11 @@ func (kp *TFPlan) readPriorStateData(
 		typeData := kp.Data[resource.Type]
 		typeData[dataKey] = resource.AttributeValues
 
+		// prior_state data sources are not in planned_values, so readModule
+		// never records their address. Key the meta by data.<type> so it
+		// cannot collide with a managed resource of the same type and name.
+		kp.recordPlanMeta("data."+resource.Type, dataKey, tfplanResourceMeta{Address: resource.Address})
+
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
 			if !isMap {
@@ -523,15 +521,67 @@ func (kp *TFPlan) readPriorStateData(
 	}
 }
 
-// formatResourceKeyWithIndex appends a count/for_each index, e.g. "web[0]" or "bucket[\"prod\"]".
+// recordPlanMeta stores meta for one planned resource, creating the maps it needs.
+func (kp *TFPlan) recordPlanMeta(typ, key string, meta tfplanResourceMeta) {
+	if kp.TfplanMeta == nil {
+		kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
+	}
+	if kp.TfplanMeta[typ] == nil {
+		kp.TfplanMeta[typ] = make(map[string]tfplanResourceMeta)
+	}
+	kp.TfplanMeta[typ][key] = meta
+}
+
+// TfplanMetaKey is the reserved top-level key pkg's tfplan parser attaches its
+// per-resource plan metadata under, parallel to Resource.
+const TfplanMetaKey = "_dd_tfplan_meta"
+
+// PlanAddresses flattens a terraform plan -json document's per-resource meta
+// (the addresses Terraform itself computed when producing the plan) into
+// (section, document key) -> address. The section is the plan's own key for
+// the entry: the type for anything under resource (planned data sources
+// included), "data."+type for a prior-state data source under data. The
+// lookup passes the rule's resourceType through as-is. nil when the document
+// carries no meta.
+func PlanAddresses(doc model.Document) map[model.PlanResourceKey]string {
+	raw, ok := doc[TfplanMetaKey].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	out := make(map[model.PlanResourceKey]string, len(raw))
+	for section, entriesRaw := range raw {
+		entries, ok := entriesRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for key, entryRaw := range entries {
+			entry, ok := entryRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			planAddress, _ := entry["address"].(string)
+			if planAddress == "" {
+				continue
+			}
+			out[model.PlanResourceKey{Section: section, Key: key}] = planAddress
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// formatResourceKeyWithIndex appends a count/for_each index in HCL syntax,
+// e.g. "web[0]" or `bucket["prod"]`.
 func formatResourceKeyWithIndex(baseName string, index any) string {
 	switch idx := index.(type) {
 	case float64:
-		return fmt.Sprintf("%s[%d]", baseName, int(idx))
+		return baseName + tfaddress.InstanceSuffix(cty.NumberIntVal(int64(idx)))
 	case int:
-		return fmt.Sprintf("%s[%d]", baseName, idx)
+		return baseName + tfaddress.InstanceSuffix(cty.NumberIntVal(int64(idx)))
 	case string:
-		return fmt.Sprintf("%s[%q]", baseName, idx)
+		return baseName + tfaddress.InstanceSuffix(cty.StringVal(idx))
 	default:
 		return baseName
 	}

@@ -23,8 +23,9 @@ var jsonConfigSchema = &hcl.BodySchema{
 		{Type: "variable", LabelNames: []string{"name"}},
 		{Type: "output", LabelNames: []string{"name"}},
 		{Type: blockTypeModule, LabelNames: []string{"name"}},
-		{Type: "resource", LabelNames: []string{"type", "name"}},
-		{Type: "data", LabelNames: []string{"type", "name"}},
+		{Type: blockTypeResource, LabelNames: []string{"type", "name"}},
+		{Type: blockTypeData, LabelNames: []string{"type", "name"}},
+		{Type: blockTypeEphemeral, LabelNames: []string{"type", "name"}},
 	},
 }
 

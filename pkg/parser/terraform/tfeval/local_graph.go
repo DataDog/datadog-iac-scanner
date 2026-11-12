@@ -110,8 +110,9 @@ func (g *localGraph) noteReads(resourceTypes map[string]struct{}) []localDeps {
 		for _, t := range expr.Variables() {
 			g.siblings[i].add(t)
 			root := t.RootName()
-			_, resource := resourceTypes[root]
-			direct[i].resources = direct[i].resources || resource
+			// A local reading a resource must re-resolve when that block's
+			// values are injected.
+			direct[i].resources = direct[i].resources || traversalReadsResource(t, resourceTypes)
 			direct[i].modules = direct[i].modules || root == blockTypeModule
 			direct[i].data = direct[i].data || root == blockTypeData
 			if root != rootLocal {

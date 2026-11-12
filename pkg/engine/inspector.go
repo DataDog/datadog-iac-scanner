@@ -567,6 +567,13 @@ func (c *Inspector) Inspect(
 
 	queries := c.getQueriesByPlat(platforms)
 
+	// Stamp the files' Terraform address context before anything reads it:
+	// module evaluation captures external-module-file scopes and mutates
+	// documents (instantiated blocks are stripped), and the payload build may
+	// release the documents the plan metadata and block sets are extracted
+	// from.
+	c.stampTerraformScopes(files)
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
@@ -574,6 +581,7 @@ func (c *Inspector) Inspect(
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		stampSyntheticBlocks(moduleDocs, syntheticFiles)
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
 
@@ -841,6 +849,11 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			if vCopy.ResourceID != "" {
+				// A deduplicated caller resolves the same module address,
+				// only its own root module differs.
+				vCopy.RootModule = ex.rootModule
+			}
 			expanded = append(expanded, vCopy)
 		}
 	}

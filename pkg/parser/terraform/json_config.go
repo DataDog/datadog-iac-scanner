@@ -11,8 +11,10 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2"
 	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/zclconf/go-cty/cty"
@@ -23,9 +25,9 @@ var jsonConfigSchema = &hcl.BodySchema{
 	Blocks: []hcl.BlockHeaderSchema{
 		{Type: "terraform"},
 		{Type: blockTypeLocals},
-		{Type: "moved"},
-		{Type: "import"},
-		{Type: "removed"},
+		{Type: address.KindMoved},
+		{Type: address.KindImport},
+		{Type: address.KindRemoved},
 		{Type: blockTypeVariable, LabelNames: []string{"name"}},
 		{Type: "output", LabelNames: []string{"name"}},
 		{Type: "module", LabelNames: []string{"name"}},
@@ -56,7 +58,7 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 		"_dd__default": {Line: 1},
 	}
 	for _, block := range content.Blocks {
-		body, skip := convertJSONBody(block.Body, evalCtx, src, block.DefRange.Start.Line)
+		body, skip := convertJSONBody(block, evalCtx, src)
 		if skip {
 			continue
 		}
@@ -67,15 +69,15 @@ func parseJSONConfig(src []byte, filename string, inputVars converter.VariableMa
 	return out, nil
 }
 
-func convertJSONBody(body hcl.Body, evalCtx *hcl.EvalContext, src []byte, defLine int) (model.Document, bool) {
-	attrs, _ := body.JustAttributes()
-	if countZero(attrs, evalCtx) {
+func convertJSONBody(block *hcl.Block, evalCtx *hcl.EvalContext, src []byte) (model.Document, bool) {
+	attrs, _ := block.Body.JustAttributes()
+	if tfinstances.ZeroInstancesAsWritten(block.Type, len(block.Labels), attrExpr(attrs, "count"), attrExpr(attrs, "for_each"), evalCtx) {
 		return nil, true
 	}
 
 	out := make(model.Document)
 	ddLines := map[string]model.LineObject{
-		"_dd__default": {Line: defLine},
+		"_dd__default": {Line: block.DefRange.Start.Line},
 	}
 	for name, attr := range attrs {
 		ddLines["_dd_"+name] = model.LineObject{Line: attr.NameRange.Start.Line}
@@ -113,17 +115,11 @@ func nestJSONBlock(out model.Document, block *hcl.Block, body model.Document) {
 	cur[key] = body
 }
 
-func countZero(attrs hcl.Attributes, evalCtx *hcl.EvalContext) bool {
-	attr, ok := attrs["count"]
-	if !ok {
-		return false
+func attrExpr(attrs hcl.Attributes, name string) hcl.Expression {
+	if attr, ok := attrs[name]; ok {
+		return attr.Expr
 	}
-	val, diags := attr.Expr.Value(evalCtx)
-	if diags.HasErrors() {
-		return false
-	}
-	n, ok := ctyutil.LiteralInt(val)
-	return ok && n == 0
+	return nil
 }
 
 func ctyToJSONDocument(v cty.Value) interface{} {
