@@ -9,6 +9,7 @@ import (
 	"context"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -83,7 +84,6 @@ func TestResolveModuleDocuments_AttributesExternalModuleFilesToEveryCall(t *test
 	helper := res.moduleFiles["helper-outputs"]
 	require.NotNil(t, helper, "a module declaring no resource is still reached by its calls")
 	require.Len(t, helper.calls, 2)
-	require.False(t, helper.keepWritten)
 	require.Equal(t, "@outputs.tf", helper.name)
 
 	chains := map[string]*model.ModuleAttribution{}
@@ -123,7 +123,7 @@ func TestResolveModuleDocuments_AttributesExternalModuleFilesWithoutTargetedReso
 	require.Len(t, res.moduleFiles["helper-outputs"].calls, 2)
 }
 
-func TestResolveModuleDocuments_ExternalModuleNoScannedFileCallsIsLeftAsWritten(t *testing.T) {
+func TestResolveModuleDocuments_ExternalModuleNoScannedFileCallsRecordsNoCalls(t *testing.T) {
 	repo, pkg, files := writeRemoteBucketPackage(t)
 	var external model.FileMetadatas
 	for _, f := range files {
@@ -163,14 +163,12 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 	}
 	files := map[string]*moduleFileCalls{
 		"helper": {
-			calls:                []moduleCall{call("stack-a/main.tf|module.bucket.module.helper", "stack-a/main.tf"), call("stack-b/main.tf|module.bucket.module.helper", "stack-b/main.tf")},
-			name:                 "@outputs.tf",
-			writtenResourceTypes: map[string]bool{"aws_s3_bucket": true},
+			calls: []moduleCall{call("stack-a/main.tf|module.bucket.module.helper", "stack-a/main.tf"), call("stack-b/main.tf|module.bucket.module.helper", "stack-b/main.tf")},
+			name:  "@outputs.tf",
 		},
 		"partial": {
-			calls:       []moduleCall{call("stack-a/main.tf|module.other", "stack-a/main.tf")},
-			name:        "main.tf",
-			keepWritten: true,
+			calls: []moduleCall{call("stack-a/main.tf|module.other", "stack-a/main.tf")},
+			name:  "main.tf",
 		},
 	}
 	attributed := &model.ModuleAttribution{}
@@ -180,7 +178,7 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 			VulnerabilityLocation: model.ResourceLocation{
 				Start: model.ResourceLine{Line: 2, Col: 1}, End: model.ResourceLine{Line: 2, Col: 36},
 			}},
-		{QueryID: "written-resource", FileID: "helper", ResourceType: "aws_s3_bucket", Line: 5},
+		{QueryID: "uninstantiated-resource", FileID: "helper", ResourceType: "aws_s3_bucket", Line: 5},
 		{QueryID: "instantiated", FileID: "helper", ResourceType: "aws_s3_bucket", ModuleAttribution: attributed},
 		{QueryID: "variable", FileID: "partial", ResourceType: "variable", Line: 1},
 	}
@@ -195,9 +193,9 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 		"repo@",
 		"output@stack-a/main.tf|module.bucket.module.helper",
 		"output@stack-b/main.tf|module.bucket.module.helper",
-		"written-resource@",
+		"uninstantiated-resource@stack-a/main.tf|module.bucket.module.helper",
+		"uninstantiated-resource@stack-b/main.tf|module.bucket.module.helper",
 		"instantiated@",
-		"variable@",
 		"variable@stack-a/main.tf|module.other",
 	}, ids)
 
@@ -206,8 +204,7 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 	require.Equal(t, model.SourceLocation{
 		Filename: "terraform-modules/aws--helper/@outputs.tf", LineStart: 2, LineEnd: 2, ColumnStart: 1, ColumnEnd: 36,
 	}, output.ModuleCodeLocation)
-	require.Same(t, attributed, got[4].ModuleAttribution)
-	require.Nil(t, got[5].ModuleAttribution)
+	require.Same(t, attributed, got[5].ModuleAttribution)
 	require.Equal(t, model.SourceLocation{Filename: "terraform-modules/aws--helper/main.tf", LineStart: 1, LineEnd: 1, ColumnStart: 1, ColumnEnd: 2},
 		got[6].ModuleAttribution.ModuleCodeLocation)
 	require.Equal(t, "terraform-modules/aws--helper", files["helper"].calls[0].attribution.ModuleCodeLocation.Filename,
@@ -352,23 +349,25 @@ func TestNewModuleCallIndexReturnsNilWithoutExternalFiles(t *testing.T) {
 	require.Nil(t, newModuleCallIndex(nil, func(string) bool { return true }))
 }
 
-func TestDocumentResourceTypes(t *testing.T) {
-	require.Nil(t, documentResourceTypes(model.Document{"resource": "not-a-map"}))
-	require.Nil(t, documentResourceTypes(model.Document{}))
-	require.Equal(t, map[string]bool{"aws_s3_bucket": true}, documentResourceTypes(model.Document{
-		"resource": map[string]any{"aws_s3_bucket": map[string]any{"b": map[string]any{}}},
-	}))
-	require.Equal(t, map[string]bool{"data.aws_iam_policy_document": true}, documentResourceTypes(model.Document{
-		"data": map[string]any{"aws_iam_policy_document": map[string]any{"p": map[string]any{}}},
-	}))
-}
+func TestDropUnattributedExternalFindings(t *testing.T) {
+	external := func(path string) bool { return strings.HasPrefix(path, "/pkg/") }
+	attr := &model.ModuleAttribution{}
+	vulns := []model.Vulnerability{
+		{QueryID: "caller", FileName: "/repo/stack/main.tf"},
+		{QueryID: "unreached", FileName: "/pkg/mod/main.tf"},
+		{QueryID: "attributed", FileName: "/pkg/mod/main.tf", ModuleAttribution: attr},
+	}
 
-func TestKeptAsWrittenDataFallback(t *testing.T) {
-	f := &moduleFileCalls{writtenResourceTypes: map[string]bool{"data.aws_iam_policy_document": true}}
-	require.True(t, f.keptAsWritten("data.aws_iam_policy_document"))
-	require.True(t, f.keptAsWritten("aws_iam_policy_document"))
-	require.False(t, f.keptAsWritten("aws_s3_bucket"))
-	require.False(t, f.keptAsWritten("data.aws_s3_bucket"))
+	got := dropUnattributedExternalFindings(vulns, external)
+
+	require.Len(t, got, 2)
+	require.Equal(t, "caller", got[0].QueryID)
+	require.Equal(t, "attributed", got[1].QueryID)
+	require.Len(t, vulns, 3, "the findings given are not modified")
+
+	kept := vulns[:1:1]
+	require.Equal(t, &kept[0], &dropUnattributedExternalFindings(kept, external)[0], "nothing is copied when nothing is dropped")
+	require.Equal(t, vulns, dropUnattributedExternalFindings(vulns, nil), "without an external predicate nothing is dropped")
 }
 
 func TestAttributeModuleFileFindingsLeavesPreAttributedUnchanged(t *testing.T) {

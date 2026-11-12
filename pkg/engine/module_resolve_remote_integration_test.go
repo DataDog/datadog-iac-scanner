@@ -407,3 +407,90 @@ module "bucket" {
 	require.Len(t, vulns, 1,
 		"unevaluated fetched module bodies use parser variable defaults, not caller inputs")
 }
+
+const untaggedResourceRule = `package datadog
+
+DatadogPolicy contains result if {
+	some i, typ, name
+	res := input.document[i].resource[typ][name]
+	not res.tags
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": typ,
+		"resourceName": name,
+		"searchKey": sprintf("%s[%s]", [typ, name]),
+	}
+}
+`
+
+func inspectExternalRemoteBucket(t *testing.T, fx remoteBucketFixture, callerPaths []string) []model.Vulnerability {
+	t.Helper()
+	var files model.FileMetadatas
+	for _, path := range callerPaths {
+		files = append(files, parseTerraform(t, path)...)
+	}
+	files = append(files, parseTerraform(t, fx.modPath)...)
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{
+			{
+				Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+				Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+			},
+			{
+				Query: "untagged_rule", Content: untaggedResourceRule, InputData: "{}", Platform: "terraform",
+				Metadata: map[string]interface{}{"id": "untagged-rule"}, Aggregation: 1,
+			},
+		},
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
+	ins.SetExternalModulePaths([]string{fx.cacheDir})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	return vulns
+}
+
+const remoteBucketWithTopic = `
+resource "aws_s3_bucket" "this" {
+  acl  = "public-read"
+  tags = {}
+}
+
+resource "aws_sns_topic" "alerts" {
+  name = "alerts"
+}
+`
+
+// A finding on a fetched module file is never reported at the file, whatever
+// the block it names: the file is outside the scanned repository.
+func TestInspect_RemoteModule_FindingsOnFetchedFilesAreReportedAtTheCall(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	writeRemoteBucketModule(t, fx.modPath, remoteBucketWithTopic)
+	callerPath := writeRemoteCaller(t, fx.callerRoot, `
+module "bucket" {
+  source  = "`+remoteBucketSource+`"
+  version = "`+remoteBucketVersion+`"
+}
+`)
+
+	vulns := inspectExternalRemoteBucket(t, fx, []string{callerPath})
+
+	types := map[string]bool{}
+	for i := range vulns {
+		require.NotNil(t, vulns[i].ModuleAttribution, "%s on %s has no call site", vulns[i].ResourceType, vulns[i].FileName)
+		require.Equal(t, "stack/main.tf", vulns[i].ModuleAttribution.CallSite.Filename)
+		types[vulns[i].ResourceType] = true
+	}
+	require.True(t, types["aws_s3_bucket"], "the instantiated bucket is reported")
+}
+
+func TestInspect_RemoteModule_FindingsOnFetchedFilesNoScannedCallReachesAreDropped(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	writeRemoteBucketModule(t, fx.modPath, remoteBucketWithTopic)
+
+	require.Empty(t, inspectExternalRemoteBucket(t, fx, nil))
+}

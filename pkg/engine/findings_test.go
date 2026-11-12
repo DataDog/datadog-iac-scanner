@@ -100,7 +100,7 @@ func TestFindingSet_RoutesBeforeKeepingAnIdentity(t *testing.T) {
 	}
 	routing := newFindingRouting(map[string][]extraCallerInfo{
 		"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
-	}, nil, nil, "/repo")
+	}, nil, nil, "/repo", nil)
 
 	kept := decodeAll(newFindingSet(true, routing), []model.Vulnerability{
 		finding("doc-early", 1), finding("doc-late", 2),
@@ -131,7 +131,7 @@ func TestNewFindingRouting_IndexesRootCallersOnly(t *testing.T) {
 		{FilePath: filepath.Join(repo, "modules", "app", "main.tf"), ModuleCallChain: "stack/main.tf|module.app"},
 		nil,
 	}
-	routing := newFindingRouting(nil, nil, files, repo)
+	routing := newFindingRouting(nil, nil, files, repo, nil)
 	require.Len(t, routing.callers, 1)
 	require.Contains(t, routing.callers, "stack/main.tf")
 }
@@ -149,10 +149,8 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 		{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{}},
 		{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{}},
 	}
-	moduleFiles := func(keepWritten bool, written map[string]bool) map[string]*moduleFileCalls {
-		return map[string]*moduleFileCalls{
-			"doc": {calls: calls, name: "main.tf", keepWritten: keepWritten, writtenResourceTypes: written},
-		}
+	moduleFiles := map[string]*moduleFileCalls{
+		"doc": {calls: calls, name: "main.tf"},
 	}
 	same := func(v model.Vulnerability, line int) model.Vulnerability {
 		v.Line = line
@@ -175,7 +173,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 			name: "extra caller on the earlier instance only",
 			routing: newFindingRouting(map[string][]extraCallerInfo{
 				"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
-			}, nil, nil, "/repo"),
+			}, nil, nil, "/repo", nil),
 			steps: []model.Vulnerability{
 				func() model.Vulnerability { v := same(base, 1); v.FileID = "doc-early"; return v }(),
 				func() model.Vulnerability { v := same(base, 2); v.FileID = "doc-late"; return v }(),
@@ -189,25 +187,19 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 				"doc": {{callChain: "other/main.tf|module.app", docID: "ext"}},
 			}, map[string]*moduleFileCalls{
 				"ext": {calls: calls, name: "main.tf"},
-			}, nil, "/repo"),
-			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
-			wantSkipped: 1,
-		},
-		{
-			name:        "module file kept as written and once per call",
-			routing:     newFindingRouting(nil, moduleFiles(true, nil), nil, "/repo"),
+			}, nil, "/repo", nil),
 			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
 			wantSkipped: 1,
 		},
 		{
 			name:        "module file reported only through its calls",
-			routing:     newFindingRouting(nil, moduleFiles(false, nil), nil, "/repo"),
+			routing:     newFindingRouting(nil, moduleFiles, nil, "/repo", nil),
 			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
 			wantSkipped: 1,
 		},
 		{
 			name:    "module file that the line may attribute",
-			routing: newFindingRouting(nil, moduleFiles(false, nil), nil, "/repo"),
+			routing: newFindingRouting(nil, moduleFiles, nil, "/repo", nil),
 			steps: []model.Vulnerability{
 				func() model.Vulnerability {
 					v := same(base, 1)
@@ -223,12 +215,6 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 			attr:        []bool{true, true},
 			wantSkipped: 0,
 		},
-		{
-			name:        "resource type left as written",
-			routing:     newFindingRouting(nil, moduleFiles(false, map[string]bool{"aws_s3_bucket": true}), nil, "/repo"),
-			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
-			wantSkipped: 1,
-		},
 	}
 
 	for _, tc := range cases {
@@ -243,7 +229,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 				}
 				id, ok := model.IdentityBeforeLine(&step)
 				require.True(t, ok)
-				if set.supersedes(id, file, step.ResourceType) {
+				if set.supersedes(id, file) {
 					skipped++
 					routed := tc.routing.route(ctx, &Inspector{}, []model.Vulnerability{step})
 					for j := range routed {
@@ -258,7 +244,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 		})
 	}
 
-	require.False(t, newFindingSet(false, nil).supersedes(model.ChainedIdentity{}, &model.FileMetadata{}, ""),
+	require.False(t, newFindingSet(false, nil).supersedes(model.ChainedIdentity{}, &model.FileMetadata{}),
 		"a set keeping every finding never skips one")
 }
 
@@ -431,16 +417,12 @@ func decodeCompacted(
 	return run(true), run(false), skipped
 }
 
-func moduleCalls(keepWritten bool, written map[string]bool) map[string]*moduleFileCalls {
-	return map[string]*moduleFileCalls{
-		"mod": {
-			name:        "main.tf",
-			keepWritten: keepWritten,
-			calls: []moduleCall{
-				{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-				{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-			},
-			writtenResourceTypes: written,
+func moduleCalls() *moduleFileCalls {
+	return &moduleFileCalls{
+		name: "main.tf",
+		calls: []moduleCall{
+			{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{}},
+			{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{}},
 		},
 	}
 }
@@ -475,18 +457,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(map[string][]extraCallerInfo{
 					file.ID: {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
-				}, nil, nil, "")
-			},
-		},
-		{
-			name:        "module file kept as written and once per call",
-			wantSkipped: 1,
-			files:       one,
-			items:       twice,
-			routing: func(file *model.FileMetadata) *findingRouting {
-				return newFindingRouting(nil, map[string]*moduleFileCalls{
-					file.ID: moduleCalls(true, nil)["mod"],
-				}, nil, "")
+				}, nil, nil, "", nil)
 			},
 		},
 		{
@@ -496,19 +467,8 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			items:       twice,
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(nil, map[string]*moduleFileCalls{
-					file.ID: moduleCalls(false, nil)["mod"],
-				}, nil, "")
-			},
-		},
-		{
-			name:        "resource type left as written",
-			wantSkipped: 1,
-			files:       one,
-			items:       twice,
-			routing: func(file *model.FileMetadata) *findingRouting {
-				return newFindingRouting(nil, map[string]*moduleFileCalls{
-					file.ID: moduleCalls(false, map[string]bool{"aws_s3_bucket": true})["mod"],
-				}, nil, "")
+					file.ID: moduleCalls(),
+				}, nil, "", nil)
 			},
 		},
 	}
@@ -549,7 +509,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		}
 		routing := newFindingRouting(nil, nil, model.FileMetadatas{
 			{FilePath: callerName},
-		}, "")
+		}, "", nil)
 		compacted, full, skipped := decodeCompacted(t, ins, map[string]*model.FileMetadata{
 			older.ID: older, newer.ID: newer,
 		}, routing, []map[string]interface{}{bucketItem(older.ID), bucketItem(newer.ID)})
