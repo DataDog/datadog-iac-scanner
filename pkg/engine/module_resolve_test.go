@@ -1696,7 +1696,7 @@ resource "aws_s3_bucket" "solo" {
 	ins := newTestInspector(t, inspectorOpts{repoPath: root})
 	ins.instantiateLocalModules(context.Background(), model.FileMetadatas{fm}, &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}})
 
-	require.ElementsMatch(t, []string{`each["a"]`, `each["b"]`, "solo", "web[0]", "web[1]"},
+	require.ElementsMatch(t, []string{"each", "solo", "web"},
 		blockNames(fm.Document, "resource", "aws_s3_bucket"))
 	require.Equal(t, map[model.TerraformInstanceKey]model.TerraformInstance{
 		{Kind: address.KindResource, Type: "aws_s3_bucket", Name: `each["a"]`}: {Label: "each", Suffix: `["a"]`},
@@ -1704,10 +1704,6 @@ resource "aws_s3_bucket" "solo" {
 		{Kind: address.KindResource, Type: "aws_s3_bucket", Name: "web[0]"}:    {Label: "web", Suffix: "[0]"},
 		{Kind: address.KindResource, Type: "aws_s3_bucket", Name: "web[1]"}:    {Label: "web", Suffix: "[1]"},
 	}, fm.TerraformInstances)
-	resources, _ := asStringMap(fm.Document["resource"])
-	buckets, _ := asStringMap(resources["aws_s3_bucket"])
-	web0, _ := asStringMap(buckets["web[0]"])
-	require.Equal(t, "web-0", web0["bucket"])
 }
 
 func TestRootCloudWatchFilterKeepsNormalizedPattern(t *testing.T) {
@@ -1733,10 +1729,13 @@ resource "aws_cloudwatch_log_metric_filter" "cis" {
 
 	resources, _ := asStringMap(fm.Document["resource"])
 	filters, _ := asStringMap(resources["aws_cloudwatch_log_metric_filter"])
-	inst, _ := asStringMap(filters["cis[0]"])
+	inst, _ := asStringMap(filters["cis"])
 	got, _ := inst["pattern"].(string)
 	require.Contains(t, got, "_dd_filter_expr")
 	require.NotEqual(t, pattern, got)
+	require.Contains(t, fm.TerraformInstances, model.TerraformInstanceKey{
+		Kind: address.KindResource, Type: "aws_cloudwatch_log_metric_filter", Name: "cis[0]",
+	})
 }
 
 func TestModuleCloudWatchFilterKeepsNormalizedPattern(t *testing.T) {

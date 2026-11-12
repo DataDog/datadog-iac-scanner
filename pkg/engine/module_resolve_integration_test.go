@@ -1023,9 +1023,9 @@ DatadogPolicy contains result if {
 }
 
 // TestInspect_RootForEachSecurityGroupWithPlainRuleIsUsed verifies that a
-// reference to the block, aws_security_group.web.id, does not name an instance
-// of a for_each group. The instances share a fingerprint, and the kept
-// finding carries the first instance's address.
+// reference to the written block, aws_security_group.web.id, marks that
+// for_each group used. The document keeps the block label, so the plain
+// reference matches.
 func TestInspect_RootForEachSecurityGroupWithPlainRuleIsUsed(t *testing.T) {
 	root := t.TempDir()
 	stackDir := filepath.Join(root, "stack")
@@ -1056,9 +1056,7 @@ resource "aws_security_group_rule" "in" {
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
-	require.Len(t, vulns, 1)
-	require.Equal(t, "web", vulns[0].ResourceName)
-	require.Equal(t, `aws_security_group.web["a"]`, vulns[0].ResourceID)
+	require.Empty(t, vulns)
 }
 
 // TestInspect_RootResourceAddress verifies that a root resource with no
@@ -1092,8 +1090,8 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, "stack", vulns[0].RootModule)
 }
 
-// TestInspect_RootResourceCountAddress verifies that each instance of a counted
-// root resource is reported under its own address.
+// TestInspect_RootResourceCountAddress verifies a counted root resource is
+// reported under the written label with the first instance's address.
 func TestInspect_RootResourceCountAddress(t *testing.T) {
 	root := t.TempDir()
 	stackDir := filepath.Join(root, "stack")
@@ -1119,14 +1117,10 @@ resource "aws_s3_bucket" "this" {
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
-
-	ids := make([]string, len(vulns))
-	for i := range vulns {
-		require.Equal(t, "stack", vulns[i].RootModule)
-		require.Equal(t, "this", vulns[i].ResourceName)
-		ids[i] = vulns[i].ResourceID
-	}
-	require.ElementsMatch(t, []string{"aws_s3_bucket.this[0]", "aws_s3_bucket.this[1]"}, ids)
+	require.Len(t, vulns, 1)
+	require.Equal(t, "stack", vulns[0].RootModule)
+	require.Equal(t, "this", vulns[0].ResourceName)
+	require.Equal(t, "aws_s3_bucket.this[0]", vulns[0].ResourceID)
 }
 
 // TestInspect_SharedBaseStoresConcurrentReads runs multiple queries on one platform
@@ -1230,8 +1224,9 @@ DatadogPolicy contains result if {
 }
 `
 
-// A root-declared ephemeral block resolves against the file's declared blocks,
-// and each for_each instance is reported under its own address.
+// A root-declared ephemeral block resolves against the file's declared blocks.
+// Instances share the written label in the document, so one finding is raised;
+// its address is the first instance key.
 func TestInspect_RootEphemeralBlockIsAddressed(t *testing.T) {
 	root := t.TempDir()
 	rootPath := filepath.Join(root, "main.tf")
@@ -1255,16 +1250,10 @@ ephemeral "aws_secretsmanager_secret" "login" {
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
-	ids := make([]string, len(vulns))
-	for i := range vulns {
-		require.Equal(t, ".", vulns[i].RootModule, "the file sits at the repository root")
-		require.Equal(t, "login", vulns[i].ResourceName)
-		ids[i] = vulns[i].ResourceID
-	}
-	require.ElementsMatch(t, []string{
-		`ephemeral.aws_secretsmanager_secret.login["a"]`,
-		`ephemeral.aws_secretsmanager_secret.login["b"]`,
-	}, ids)
+	require.Len(t, vulns, 1)
+	require.Equal(t, ".", vulns[0].RootModule, "the file sits at the repository root")
+	require.Equal(t, "login", vulns[0].ResourceName)
+	require.Equal(t, `ephemeral.aws_secretsmanager_secret.login["a"]`, vulns[0].ResourceID)
 }
 
 // A managed resource and an ephemeral block sharing type and name are two

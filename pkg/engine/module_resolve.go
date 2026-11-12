@@ -117,6 +117,14 @@ func (c *Inspector) instantiateLocalModules(
 		// module blocks must remain so the corresponding Rego branches can still fire.
 		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
 	}
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		if calls := res.moduleFiles[f.ID]; calls != nil {
+			calls.writtenResourceTypes = documentResourceTypes(f.Document)
+		}
+	}
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
 }
 
@@ -1132,9 +1140,8 @@ func instantiatedDocs(
 		r := &resources[i]
 		kind := blockKindOf(r.Type, r.Data, r.Ephemeral)
 		if r.ModuleAddress == "" {
-			// A root instance stays in the file's own document, under its
-			// instance key, so its siblings stay visible. One document per
-			// instance would be converted and evaluated by every rule.
+			// Record the instance for address lookup; the written document
+			// keeps the block label so rules and fixtures still join on it.
 			if r.InstanceSuffix() != "" && (targets.matches(r.Type) || targets.matches(kind)) {
 				if fm := fileByPath(byAbsPath, fsys, r.DefinedIn, repoPath); fm != nil {
 					keyRootInstance(fm, r, kind)
@@ -1198,25 +1205,26 @@ func instantiatedDocs(
 	return docs, synthetic, resourceCount
 }
 
-// keyRootInstance replaces written root block r with its instance, keyed by
-// the instance name, beside the file's other blocks.
+// keyRootInstance records a root instance for address lookup. The document
+// keeps the written block label: published rules join on those names and on
+// as-written expressions such as each.value, and test fixtures expect one
+// finding per written block rather than per expanded instance key.
 func keyRootInstance(fm *model.FileMetadata, r *tfeval.ResolvedResource, kind string) {
 	section, typ, addrKind := splitBlockKind(kind)
-	blocks, ok := asStringMap(fm.Document[section])
-	if !ok {
-		return
-	}
-	byName, ok := asStringMap(blocks[typ])
-	if !ok {
-		return
-	}
-	delete(byName, r.BaseName())
-	byName[r.Name] = preparedInstanceDocument(r)
 	if fm.TerraformInstances == nil {
 		fm.TerraformInstances = make(map[model.TerraformInstanceKey]model.TerraformInstance)
 	}
 	fm.TerraformInstances[model.TerraformInstanceKey{Kind: addrKind, Type: typ, Name: r.Name}] =
 		model.TerraformInstance{Label: r.BaseName(), Suffix: r.InstanceSuffix()}
+	// Instance evaluation does not rebuild the written body; keep filter
+	// patterns normalized the same way prepared instance documents do.
+	if blocks, ok := asStringMap(fm.Document[section]); ok {
+		if byName, ok := asStringMap(blocks[typ]); ok {
+			if body, ok := asStringMap(byName[r.BaseName()]); ok {
+				prepareTerraformFilterPatterns(body)
+			}
+		}
+	}
 }
 
 // preparedInstanceDocument is AttributesToDocument with the same CloudWatch

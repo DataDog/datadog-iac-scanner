@@ -219,7 +219,6 @@ func (f *moduleFileCalls) routedBlock(v *model.Vulnerability) (address.Block, bo
 	return resolveTerraformBlock(f.scope, v.ResourceType, v.ResourceName)
 }
 
-
 // dropUnattributedExternalFindings removes the findings on an external module
 // file that no call accounts for. The file is not part of the scanned
 // repository, so such a finding has no location to report.
