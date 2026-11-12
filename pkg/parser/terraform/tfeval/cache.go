@@ -135,7 +135,8 @@ type inputsDigest struct{ a, b uint64 }
 // shares the collection's storage across those copies. Each entry keeps the
 // value so that storage cannot be reused under the same identity.
 type keyMemo struct {
-	entries map[collectionID]keyMemoEntry
+	entries  map[collectionID]keyMemoEntry
+	registry *instanceRegistry
 }
 
 type keyMemoEntry struct {
@@ -195,7 +196,12 @@ func (w *keyWriter) digest() inputsDigest { return inputsDigest{a: w.a.Sum64(), 
 // values are unknown (IsKnown()==false), so they are handled by the unknown
 // branch and the DynamicPseudoType case never needs a special guard.
 func (m *keyMemo) writeValue(w keySink, v cty.Value, digestCollection bool) {
-	// Drop marks for the key only: ElementIterator and friends panic on them.
+	// Resource-instance provenance changes missing-attribute semantics, so two
+	// inputs that RawEquals would treat as equal must not share a module cache
+	// entry. Record it before Unmark: ElementIterator panics on marked values.
+	if m.resourceInstance(v) {
+		w.WriteString("\x01ri")
+	}
 	v, _ = v.Unmark()
 	if v.IsNull() {
 		// Include the type so cty.NullVal(cty.String) and cty.NullVal(cty.Number)
@@ -239,6 +245,14 @@ func (m *keyMemo) writeValue(w keySink, v cty.Value, digestCollection bool) {
 		return
 	}
 	w.WriteString(string(data))
+}
+
+// resourceInstance reports whether v is a resource instance object for keying.
+func (m *keyMemo) resourceInstance(v cty.Value) bool {
+	if m != nil && m.registry != nil {
+		return m.registry.isResourceInstance(v)
+	}
+	return v.HasMark(resourceInstanceMark{})
 }
 
 func (m *keyMemo) writeCollection(w keySink, v cty.Value) {

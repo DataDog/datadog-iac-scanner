@@ -162,6 +162,40 @@ output "resource_try" {
 	require.False(t, outputs["resource_try"].IsKnown(), "resource_try = %#v", outputs["resource_try"])
 }
 
+// A resource instance and a lookalike object passed to the same module must
+// not share a cache entry: try on a missing provider attr is unknown for the
+// instance and the fallback for the lookalike.
+func TestEvaluateModule_ResourceAndLookalikeModuleInputsDoNotShareCache(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "in" {}
+output "acl" { value = try(var.in.output, "public-read") }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+resource "terraform_data" "src" {
+  input = "secure"
+}
+module "from_resource" {
+  source = "../child"
+  in     = terraform_data.src
+}
+module "from_object" {
+  source = "../child"
+  in     = { input = terraform_data.src.input }
+}
+output "resource_acl" { value = module.from_resource.acl }
+output "object_acl" { value = module.from_object.acl }
+`})
+	_, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.False(t, outputs["resource_acl"].IsKnown(),
+		"resource instance missing attr stays unknown")
+	require.True(t,
+		outputs["object_acl"].RawEquals(cty.StringVal("public-read")),
+		"lookalike object must keep its concrete fallback, got %#v", outputs["object_acl"],
+	)
+}
+
 // Passing a marked empty resource into a module must not panic while hashing
 // inputs, and the child must still see it as an instance.
 func TestEvaluateModule_MarkedResourceModuleInputDoesNotDropChild(t *testing.T) {

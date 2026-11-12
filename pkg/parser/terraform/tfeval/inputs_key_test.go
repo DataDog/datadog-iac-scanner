@@ -64,22 +64,40 @@ func TestInputsKeyMarkedValuesDoNotPanic(t *testing.T) {
 		"src": marked,
 		"n":   cty.NumberIntVal(1),
 	})
-	require.Equal(t,
+	require.NotEqual(t,
 		canonicalInputsKey(map[string]cty.Value{"v": plain}),
 		canonicalInputsKey(map[string]cty.Value{"v": marked}),
+		"instance marks change missing-attribute semantics",
 	)
-	require.Equal(t,
+	require.NotEqual(t,
 		canonicalInputsKey(map[string]cty.Value{"cfg": cty.ObjectVal(map[string]cty.Value{
 			"src": plain, "n": cty.NumberIntVal(1),
 		})}),
 		canonicalInputsKey(map[string]cty.Value{"cfg": nested}),
+		"nested instance marks must affect the key",
 	)
-	require.Equal(t, encodeCtyForKey(plain), encodeCtyForKey(marked))
+	require.NotEqual(t, encodeCtyForKey(plain), encodeCtyForKey(marked))
 	require.NotPanics(t, func() {
 		_ = canonicalInputsKey(map[string]cty.Value{
 			"v": marked.Mark("sensitive"),
 		})
 	})
+}
+
+func TestInputsKeyRegisteredInstancesDifferFromLookalikes(t *testing.T) {
+	reg := newInstanceRegistry()
+	src := cty.ObjectVal(map[string]cty.Value{"input": cty.StringVal("secure")})
+	reg.register(&instanceAt{dir: ".", addr: "", kind: refManaged, typ: "terraform_data", name: "src"}, src)
+	lookalike := cty.ObjectVal(map[string]cty.Value{"input": cty.StringVal("secure")})
+	memo := keyMemo{registry: reg}
+	require.NotEqual(t,
+		memo.inputsKey(map[string]cty.Value{"in": src}),
+		memo.inputsKey(map[string]cty.Value{"in": lookalike}),
+	)
+	require.NotEqual(t,
+		memo.inputsKey(map[string]cty.Value{"cfg": cty.ObjectVal(map[string]cty.Value{"src": src})}),
+		memo.inputsKey(map[string]cty.Value{"cfg": cty.ObjectVal(map[string]cty.Value{"src": lookalike})}),
+	)
 }
 
 func TestInputsKeyEmptyListsOfDifferentTypesDoNotCollide(t *testing.T) {

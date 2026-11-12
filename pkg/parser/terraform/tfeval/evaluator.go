@@ -275,6 +275,7 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 	if fsys == nil {
 		fsys = vfs.Default()
 	}
+	reg := newInstanceRegistry()
 	return &Evaluator{
 		funcs:            tffunctions.TerraformFuncs,
 		maxDepth:         defaultMaxDepth,
@@ -284,7 +285,8 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 		funcFS:           tffunctions.NewScanFS(vfs.DiskFS{}),
 		notEvaluatedDirs: make(map[string]bool),
 		fsys:             fsys,
-		registry:         newInstanceRegistry(),
+		registry:         reg,
+		keyMemo:          keyMemo{registry: reg},
 	}
 }
 
@@ -398,6 +400,7 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 // It shares e's settings and its parse and path caches; its evaluation cache
 // and skipped directories are its own.
 func (e *Evaluator) Fork() *Evaluator {
+	reg := newInstanceRegistry()
 	return &Evaluator{
 		funcs:            e.funcs,
 		maxDepth:         e.maxDepth,
@@ -410,7 +413,8 @@ func (e *Evaluator) Fork() *Evaluator {
 		funcFS:           e.funcFS,
 		mergeAllow:       e.mergeAllow,
 		trackInstances:   e.trackInstances,
-		registry:         newInstanceRegistry(),
+		registry:         reg,
+		keyMemo:          keyMemo{registry: reg},
 	}
 }
 
@@ -456,10 +460,10 @@ func (e *Evaluator) ReleaseCaches() {
 // and is kept.
 func (e *Evaluator) ReleaseEvalCache() {
 	e.cache = make(map[evalCacheKey]*evalCacheEntry)
-	e.keyMemo = keyMemo{}
 	e.ReleaseLocalMemo()
 	e.localReads = nil
 	e.registry = newInstanceRegistry()
+	e.keyMemo = keyMemo{registry: e.registry}
 }
 
 // ReleaseLocalMemo drops local values shared across module instances.
