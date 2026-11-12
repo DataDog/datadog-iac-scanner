@@ -329,10 +329,11 @@ func (c *Inspector) SetEvalGcRelief(relief bool) {
 // SetCompactFindingsAtDecode keeps one finding per identity as each rule's
 // findings are decoded, so a module instantiated per count/for_each instance
 // does not have every duplicate instance of its findings held in memory until
-// storage reduces them at the end of the scan.
+// storage reduces them at the end of the scan. Inspect then returns one
+// finding per identity, the first in model.CompareFindings order.
 //
-// Only a caller that, like storage, keeps the last finding of each identity
-// and drops the rest should enable this: it must stay off for a caller that
+// Only a caller that, like storage, keeps one finding of each identity and
+// drops the rest should enable this: it must stay off for a caller that
 // reads Inspect's return value directly, such as the test-rules rule
 // harness, because identity does not include the line for most platforms and
 // collapsing at decode would silently drop a second genuine violation of one
@@ -373,6 +374,9 @@ type QueryContext struct {
 	// findings collects this rule's results. Nil when the context was not built
 	// for a scan; DecodeQueryResults then keeps every decoded finding.
 	findings *findingSet
+	// ruleConfigs is the scan's per-rule config, used so early-skip compares the
+	// same severity the report keeps after lookupRuleConfig.
+	ruleConfigs map[string]config.IacRuleConfig
 }
 
 var (
@@ -542,6 +546,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
 		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
+		ruleConfigs:             c.ruleConfigs,
 	}
 
 	evalStart := time.Now()
@@ -680,6 +685,10 @@ func (c *Inspector) Inspect(
 	}
 
 	c.releasePostEvalFileData(filesMap)
+	if c.compactFindingsAtDecode {
+		return model.FirstFindingPerIdentity(vulnerabilities), nil
+	}
+	model.SortFindings(vulnerabilities)
 	return vulnerabilities, nil
 }
 
@@ -1460,15 +1469,13 @@ func (c *Inspector) DecodeQueryResults(
 	if err != nil {
 		return nil, 0, "", err
 	}
-	if qCtx.discardLineInfoAfterUse {
-		// Group findings by file so each file's line-info tree is built once and
-		// discarded on its last finding (advanceLineInfoFile); without grouping,
-		// interleaved documentIds would discard and reparse per transition.
-		// Stable keeps the per-file ordering the query produced.
-		sort.SliceStable(queryResultItems, func(i, j int) bool {
-			return resultDocumentID(queryResultItems[i]) < resultDocumentID(queryResultItems[j])
-		})
-	}
+	// Group findings by document so each file's line-info tree is built once and
+	// discarded on its last finding (advanceLineInfoFile); without grouping,
+	// interleaved documentIds would discard and reparse per transition.
+	// Documents are ordered by path, since document ids are random, so the
+	// findings a compacting set skips do not depend on the run. Stable keeps
+	// the per-document ordering the query produced.
+	sortResultItems(queryResultItems, qCtx.Files)
 
 	findings := qCtx.findings
 	if findings == nil {
@@ -1480,7 +1487,7 @@ func (c *Inspector) DecodeQueryResults(
 	var moduleSeverity model.Severity
 	var activeLineInfoFile string
 decodeLoop:
-	for i := range findings.order(len(queryResultItems)) {
+	for i := range queryResultItems {
 		queryResultItem := queryResultItems[i]
 		// Each item is decoded once; dropping it as it is read lets a rule
 		// raising many findings hold one decoded item rather than all of them.
@@ -1576,6 +1583,22 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 		}
 	}
 	return nextID
+}
+
+func sortResultItems(items []interface{}, files map[string]*model.FileMetadata) {
+	path := func(id string) string {
+		if f := files[id]; f != nil {
+			return f.FilePath
+		}
+		return ""
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := resultDocumentID(items[i]), resultDocumentID(items[j])
+		if pa, pb := path(a), path(b); pa != pb {
+			return pa < pb
+		}
+		return a < b
+	})
 }
 
 // resultDocumentID returns the file id a result item points at.

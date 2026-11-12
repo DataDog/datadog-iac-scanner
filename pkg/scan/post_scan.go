@@ -139,7 +139,7 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 	consolePrinter.PrintScanDuration(ctx, scanDuration)
 	if n := atomic.LoadInt64(&c.Tracker.SupersededResults); n > 0 {
 		contextLogger.Info().Int64("supersededResults", n).
-			Msg("Skipped line detection for results a later result of the same rule already covered")
+			Msg("Skipped line detection for results a finding of the same rule already covered")
 	}
 
 	handler, exitCode := consoleHelpers.ResultsExitCode(&summary)
