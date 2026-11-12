@@ -17,6 +17,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
 // TestNormalizeDocumentValue verifies that non-canonical document values are
@@ -80,6 +82,53 @@ func TestNormalizeDocumentValue(t *testing.T) {
 			} else if tt.changed {
 				require.Equal(t, tt.want, got)
 			}
+		})
+	}
+}
+
+// TestNormalizeDocumentValueMatchesJSONRoundTrip checks the direct walks of
+// line objects and cty values against the JSON round trip they replace.
+func TestNormalizeDocumentValueMatchesJSONRoundTrip(t *testing.T) {
+	simple := func(v cty.Value) ctyjson.SimpleJSONValue { return ctyjson.SimpleJSONValue{Value: v} }
+	tests := []struct {
+		name string
+		in   interface{}
+	}{
+		{name: "line object", in: model.LineObject{Line: 3}},
+		{name: "nil line object", in: (*model.LineObject)(nil)},
+		{name: "line object with empty arr", in: &model.LineObject{Line: 1, Arr: []map[string]*model.LineObject{}}},
+		{name: "nested line objects", in: &model.LineObject{Line: 2, Arr: []map[string]*model.LineObject{
+			nil,
+			{"a": {Line: 4}, "b": nil},
+			{"c": {Line: 5, Arr: []map[string]*model.LineObject{{"d": {Line: 6}}}}},
+		}}},
+		{name: "string", in: simple(cty.StringVal("x"))},
+		{name: "bool", in: simple(cty.True)},
+		{name: "integer", in: simple(cty.NumberIntVal(42))},
+		{name: "fraction", in: simple(cty.NumberFloatVal(0.1))},
+		{name: "large number", in: simple(cty.MustParseNumberVal("123456789012345678901234567890"))},
+		{name: "null", in: simple(cty.NullVal(cty.String))},
+		{name: "null object", in: simple(cty.NullVal(cty.Object(map[string]cty.Type{"a": cty.String})))},
+		{name: "object", in: simple(cty.ObjectVal(map[string]cty.Value{
+			"a": cty.StringVal("b"),
+			"n": cty.NullVal(cty.Number),
+			"l": cty.ListVal([]cty.Value{cty.NumberIntVal(1), cty.NumberIntVal(2)}),
+		}))},
+		{name: "map", in: simple(cty.MapVal(map[string]cty.Value{"k": cty.StringVal("v")}))},
+		{name: "empty list", in: simple(cty.ListValEmpty(cty.String))},
+		{name: "set", in: simple(cty.SetVal([]cty.Value{cty.StringVal("b"), cty.StringVal("a")}))},
+		{name: "tuple", in: simple(cty.TupleVal([]cty.Value{cty.StringVal("a"), cty.True, cty.EmptyObjectVal}))},
+		{name: "unknown", in: simple(cty.UnknownVal(cty.String))},
+		{name: "nested unknown", in: simple(cty.ObjectVal(map[string]cty.Value{"a": cty.UnknownVal(cty.String)}))},
+		{name: "marked", in: simple(cty.StringVal("s").Mark("sensitive"))},
+		{name: "nested marked", in: simple(cty.ListVal([]cty.Value{cty.StringVal("s").Mark("sensitive")}))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want, wantChanged := normalizeViaJSON(tt.in)
+			got, changed := normalizeDocumentValue(tt.in)
+			require.Equal(t, wantChanged, changed)
+			require.Equal(t, want, got)
 		})
 	}
 }

@@ -57,12 +57,31 @@ func FormatIndexKey(key cty.Value) (string, bool) {
 	}
 	switch key.Type() {
 	case cty.String:
+		if s := key.AsString(); isPlainQuotedLiteral(s) {
+			return `["` + s + `"]`, true
+		}
 		return "[" + string(hclwrite.TokensForValue(key).Bytes()) + "]", true
 	case cty.Number:
 		return "[" + key.AsBigFloat().Text('f', -1) + "]", true
 	default:
 		return "", false
 	}
+}
+
+// isPlainQuotedLiteral reports whether hclwrite quotes s without escaping
+// anything: printable ASCII other than a quote or backslash, and no template
+// introducer.
+func isPlainQuotedLiteral(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 0x20 || c > 0x7e || c == '"' || c == '\\' {
+			return false
+		}
+		if (c == '$' || c == '%') && i+1 < len(s) && s[i+1] == '{' {
+			return false
+		}
+	}
+	return true
 }
 
 // LiteralInt parses a materialized number or decimal string as int (e.g. count).

@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -575,6 +576,26 @@ func (c *Inspector) Inspect(
 	// from.
 	c.stampTerraformScopes(files)
 
+	// Module calls and their variables are parsed from the files' raw content,
+	// which module evaluation never rewrites, so the parse overlaps it. The
+	// goroutine must be joined before any return. A per-file HCL parse failure
+	// is non-fatal, but a context cancellation aborts the scan rather than
+	// proceed with partial module data.
+	type moduleParse struct {
+		modules   map[string]tfmodules.ParsedModule
+		enriched  []tfmodules.ParsedModule
+		parseErr  error
+		enrichErr error
+	}
+	moduleParseDone := make(chan moduleParse, 1)
+	go func() {
+		var out moduleParse
+		out.modules, out.parseErr = tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
+		out.enriched, out.enrichErr = tfmodules.ParseAllModuleVariables(
+			ctx, c.fsys, out.modules, c.repoPath, c.buildModuleMetadataResolver(), c.mergeAllow)
+		moduleParseDone <- out
+	}()
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
@@ -586,30 +607,21 @@ func (c *Inspector) Inspect(
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
 
-	// Must run after module mutations (which suppress module bodies in place).
-	combinedFiles := files.Combine(ctx, false)
-
-	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
-	// non-fatal (logged, scan continues), but a context cancellation must abort
-	// the scan rather than proceed with partial module data.
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
-	if err != nil {
+	moduleData := <-moduleParseDone
+	if moduleData.parseErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
+		contextLogger.Warn().Err(moduleData.parseErr).Msg("Failed to parse Terraform modules")
 	}
-	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
+	contextLogger.Info().Msgf("Found %d modules", len(moduleData.modules))
+	if moduleData.enrichErr != nil {
+		return nil, moduleData.enrichErr
+	}
+	enrichedModules := moduleData.enriched
 
-	// Step 2: Enrich modules with parsed variables. As with Step 1, a context
-	// cancellation must abort the scan rather than proceed with partial module
-	// data; per-module parse failures are non-fatal and handled internally.
-	rootDir := c.repoPath
-	enrichedModules, err := tfmodules.ParseAllModuleVariables(
-		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver(), c.mergeAllow)
-	if err != nil {
-		return nil, err
-	}
+	// Must run after module mutations (which suppress module bodies in place).
+	combinedFiles := files.Combine(ctx, false)
 
 	// Synthetic files stand in for module instantiations of a file that has
 	// already been read; they are only joined once findings need to be
@@ -1199,7 +1211,8 @@ func (c *Inspector) mapToPayloadValue(
 			return memo.val, nil
 		}
 	}
-	pairs := make([]payloadChildPair, 0, len(v))
+	mark := len(cons.childPairs)
+	defer func() { cons.childPairs = cons.childPairs[:mark] }()
 	for key, raw := range v {
 		converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
 		if err != nil {
@@ -1210,9 +1223,10 @@ func (c *Inspector) mapToPayloadValue(
 			h = hashConsScalarKey(converted)
 			cons.valHash[converted] = h
 		}
-		pairs = append(pairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
+		cons.childPairs = append(cons.childPairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].key < pairs[j].key })
+	pairs := cons.childPairs[mark:]
+	slices.SortFunc(pairs, func(a, b payloadChildPair) int { return strings.Compare(a.key, b.key) })
 
 	contentKey := hashConsBase
 	for _, p := range pairs {
@@ -1300,6 +1314,10 @@ type payloadHashCons struct {
 	// jsonencodeCache memoizes TransformJsonencodeInPayload results per
 	// input scalar value.
 	jsonencodeCache map[ast.Value]ast.Value
+	// childPairs is the children of the object nodes being converted. The
+	// conversion is depth first and no node keeps its children past its own
+	// conversion, so one stack serves every node instead of a slice per node.
+	childPairs []payloadChildPair
 }
 
 // pointerMemo is a byPointer entry: the converted value plus a fingerprint of

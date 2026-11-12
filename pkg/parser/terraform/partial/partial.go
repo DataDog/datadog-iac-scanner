@@ -176,8 +176,8 @@ func (r *Renderer) reference(traversal hcl.Traversal) (cty.Value, bool) {
 	if !ok {
 		return cty.NilVal, false
 	}
-	v, diags := traversal.TraverseAbs(r.ctx())
-	if diags.HasErrors() || !v.IsKnown() {
+	v, resolved := traversalValue(r.ctx(), traversal)
+	if !resolved || !v.IsKnown() {
 		return cty.StringVal(interpolation(text)), true
 	}
 	v, _ = v.UnmarkDeep()
@@ -361,8 +361,8 @@ func (r *Renderer) forPlacesOnly(e *hclsyntax.ForExpr) bool {
 		if root := traversal.RootName(); root == e.KeyVar || root == e.ValVar {
 			continue
 		}
-		v, diags := traversal.TraverseAbs(r.ctx())
-		if diags.HasErrors() || !v.IsWhollyKnown() {
+		v, resolved := traversalValue(r.ctx(), traversal)
+		if !resolved || !v.IsWhollyKnown() {
 			return false
 		}
 	}
@@ -370,10 +370,11 @@ func (r *Renderer) forPlacesOnly(e *hclsyntax.ForExpr) bool {
 }
 
 func (r *Renderer) evalReferencesAsText(expr hclsyntax.Expression) (cty.Value, bool) {
-	o := newOverlay(r.ctx())
-	for _, traversal := range longestFirst(expr.Variables()) {
-		v, diags := traversal.TraverseAbs(r.ctx())
-		if !diags.HasErrors() && v.IsWhollyKnown() {
+	traversals := longestFirst(expr.Variables())
+	o := newOverlay(r.ctx(), traversals)
+	for _, traversal := range traversals {
+		v, resolved := traversalValue(r.ctx(), traversal)
+		if resolved && v.IsWhollyKnown() {
 			continue
 		}
 		text, ok := r.traversalText(traversal)
@@ -381,7 +382,7 @@ func (r *Renderer) evalReferencesAsText(expr hclsyntax.Expression) (cty.Value, b
 			return cty.NilVal, false
 		}
 		leaf := cty.StringVal(interpolation(text))
-		if !diags.HasErrors() {
+		if resolved {
 			v, _ = v.UnmarkDeep()
 			leaf = substituteUnknowns(v, text)
 		}
@@ -558,9 +559,13 @@ func (r *Renderer) StringPart(part hclsyntax.Expression) string {
 // A reference to a computed attribute thus leaves the rest of the value known
 // rather than turning it unknown as a whole.
 func WithUnknownRefs(expr hcl.Expression, ctx *hcl.EvalContext) cty.Value {
-	o := newOverlay(ctx)
-	for _, traversal := range longestFirst(expr.Variables()) {
-		if _, diags := traversal.TraverseAbs(ctx); diags.HasErrors() {
+	traversals := longestFirst(expr.Variables())
+	o := newOverlay(ctx, traversals)
+	for _, traversal := range traversals {
+		// TraverseAbs builds a diagnostic, and a missing root name also runs a
+		// name suggestion against every variable in scope. Only the error bit
+		// matters here.
+		if _, resolved := traversalValue(ctx, traversal); !resolved {
 			o.set(traversal, cty.DynamicVal)
 		}
 	}
@@ -595,10 +600,39 @@ type overlay struct {
 	// objects holds, by root, the attributes of a root set through an
 	// attribute step, built into vars by context().
 	objects map[string]map[string]cty.Value
+	// referenced is the attribute of each root this expression reads.
+	// whole is a root the expression reads beyond a single attribute, so
+	// its shadow keeps every attribute.
+	referenced map[string]map[string]bool
+	whole      map[string]bool
 }
 
-func newOverlay(ctx *hcl.EvalContext) *overlay {
-	return &overlay{ctx: ctx}
+func newOverlay(ctx *hcl.EvalContext, traversals []hcl.Traversal) *overlay {
+	o := &overlay{
+		ctx:        ctx,
+		referenced: map[string]map[string]bool{},
+		whole:      map[string]bool{},
+	}
+	for _, traversal := range traversals {
+		if len(traversal) == 0 || traversal.IsRelative() {
+			continue
+		}
+		root := traversal.RootName()
+		if len(traversal) < 2 {
+			o.whole[root] = true
+			continue
+		}
+		key, ok := attributeStep(traversal[1])
+		if !ok {
+			o.whole[root] = true
+			continue
+		}
+		if o.referenced[root] == nil {
+			o.referenced[root] = map[string]bool{}
+		}
+		o.referenced[root][key] = true
+	}
+	return o
 }
 
 func (o *overlay) empty() bool {
@@ -629,7 +663,7 @@ func (o *overlay) set(traversal hcl.Traversal, leaf cty.Value) {
 	}
 	if len(traversal) > 1 {
 		if key, ok := attributeStep(traversal[1]); ok {
-			attrs := objectAttributes(base, has)
+			attrs := o.scopedAttributes(root, base, has)
 			child, childHas := attrs[key]
 			attrs[key] = setPath(child, childHas, traversal[2:], leaf)
 			if o.objects == nil {
@@ -667,20 +701,172 @@ func attributeStep(step hcl.Traverser) (string, bool) {
 	return "", false
 }
 
+// scopedAttributes is the object a shadow of root starts from. An expression
+// that names attributes copies only those; the child context replaces root
+// as a whole, so an attribute it does not read is not needed. A root read as
+// a whole keeps every attribute.
+func (o *overlay) scopedAttributes(root string, base cty.Value, has bool) map[string]cty.Value {
+	if o.whole[root] {
+		return objectAttributes(base, has, nil)
+	}
+	return objectAttributes(base, has, o.referenced[root])
+}
+
 // objectAttributes returns a copy of the attributes setPath starts an object
-// from: base's own when it is a known object or map, none otherwise.
-func objectAttributes(base cty.Value, has bool) map[string]cty.Value {
+// from: base's own when it is a known object or map, none otherwise. only,
+// when set, limits the copy to those keys.
+func objectAttributes(base cty.Value, has bool, only map[string]bool) map[string]cty.Value {
 	attrs := map[string]cty.Value{}
 	if !has {
 		return attrs
 	}
 	base, _ = base.Unmark()
-	if ctyutil.Materialized(base) && (base.Type().IsObjectType() || base.Type().IsMapType()) {
+	if !ctyutil.Materialized(base) || (!base.Type().IsObjectType() && !base.Type().IsMapType()) {
+		return attrs
+	}
+	if only == nil {
 		for k, v := range base.AsValueMap() {
 			attrs[k] = v
 		}
+		return attrs
+	}
+	for key := range only {
+		if v, ok := attrValue(base, key); ok {
+			attrs[key] = v
+		}
 	}
 	return attrs
+}
+
+// traversalValue walks traversal the way TraverseAbs does and reports whether
+// that walk would return an error. The value is meaningful only when it would not.
+func traversalValue(ctx *hcl.EvalContext, traversal hcl.Traversal) (cty.Value, bool) {
+	if len(traversal) == 0 || traversal.IsRelative() {
+		return cty.NilVal, false
+	}
+	val, ok := lookupVariable(ctx, traversal.RootName())
+	if !ok {
+		return cty.NilVal, false
+	}
+	for _, step := range traversal[1:] {
+		val, ok = stepResolves(val, step)
+		if !ok {
+			return cty.NilVal, false
+		}
+	}
+	return val, true
+}
+
+func stepResolves(val cty.Value, step hcl.Traverser) (cty.Value, bool) {
+	switch s := step.(type) {
+	case hcl.TraverseAttr:
+		return attrResolves(val, s.Name)
+	case hcl.TraverseIndex:
+		return indexResolves(val, s.Key)
+	default:
+		return cty.NilVal, false
+	}
+}
+
+func attrResolves(obj cty.Value, name string) (cty.Value, bool) {
+	if obj.IsNull() {
+		return cty.NilVal, false
+	}
+	ty := obj.Type()
+	switch {
+	case ty.IsObjectType():
+		if !ty.HasAttribute(name) {
+			return cty.NilVal, false
+		}
+		if !obj.IsKnown() {
+			return cty.UnknownVal(ty.AttributeType(name)).WithSameMarks(obj), true
+		}
+		return obj.GetAttr(name), true
+	case ty.IsMapType():
+		if !obj.IsKnown() {
+			return cty.UnknownVal(ty.ElementType()).WithSameMarks(obj), true
+		}
+		return indexResolves(obj, cty.StringVal(name))
+	case ty == cty.DynamicPseudoType:
+		return cty.DynamicVal.WithSameMarks(obj), true
+	default:
+		return cty.NilVal, false
+	}
+}
+
+func indexResolves(collection, key cty.Value) (cty.Value, bool) {
+	if collection.IsNull() || key.IsNull() {
+		return cty.NilVal, false
+	}
+	ty := collection.Type()
+	if key.Type() == cty.DynamicPseudoType || ty == cty.DynamicPseudoType {
+		return cty.DynamicVal.WithSameMarks(collection), true
+	}
+	switch {
+	case ty.IsListType() || ty.IsTupleType() || ty.IsMapType():
+		return collectionIndexResolves(collection, key)
+	case ty.IsObjectType():
+		return objectIndexResolves(collection, key)
+	default:
+		return cty.NilVal, false
+	}
+}
+
+func collectionIndexResolves(collection, key cty.Value) (cty.Value, bool) {
+	ty := collection.Type()
+	want := cty.String
+	if ty.IsListType() || ty.IsTupleType() {
+		want = cty.Number
+	}
+	converted, err := ctyconvert.Convert(key, want)
+	if err != nil {
+		return cty.NilVal, false
+	}
+	has, _ := collection.HasIndex(converted).Unmark()
+	if !has.IsKnown() {
+		if ty.IsTupleType() {
+			return cty.DynamicVal.WithSameMarks(collection), true
+		}
+		return cty.UnknownVal(ty.ElementType()).WithSameMarks(collection), true
+	}
+	if has.False() {
+		return cty.NilVal, false
+	}
+	return collection.Index(converted), true
+}
+
+func objectIndexResolves(collection, key cty.Value) (cty.Value, bool) {
+	converted, err := ctyconvert.Convert(key, cty.String)
+	if err != nil {
+		return cty.NilVal, false
+	}
+	if !converted.IsKnown() {
+		return cty.DynamicVal.WithSameMarks(collection), true
+	}
+	converted, _ = converted.Unmark()
+	name := converted.AsString()
+	if !collection.Type().HasAttribute(name) {
+		return cty.NilVal, false
+	}
+	if !collection.IsKnown() {
+		return cty.UnknownVal(collection.Type().AttributeType(name)).WithSameMarks(collection), true
+	}
+	return collection.GetAttr(name), true
+}
+
+func attrValue(base cty.Value, key string) (cty.Value, bool) {
+	if base.Type().IsObjectType() {
+		if !base.Type().HasAttribute(key) {
+			return cty.NilVal, false
+		}
+		return base.GetAttr(key), true
+	}
+	idx := cty.StringVal(key)
+	has, _ := base.HasIndex(idx).Unmark()
+	if !has.IsKnown() || has.False() {
+		return cty.NilVal, false
+	}
+	return base.Index(idx), true
 }
 
 // lookupVariable finds name the way evaluation does, innermost context first.

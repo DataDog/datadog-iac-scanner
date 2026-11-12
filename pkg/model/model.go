@@ -167,10 +167,11 @@ type lineInfoGroup struct {
 	err error
 }
 
-// linesLazyState guards the one-time computation of LinesOriginalData from
-// OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
+// linesLazyState guards the one-time split of OriginalData into lines. Behind
+// a pointer so FileMetadata copies stay copylocks-clean and share the split.
 type linesLazyState struct {
-	once sync.Once
+	once  sync.Once
+	lines *[]string
 
 	matchMu sync.Mutex
 	matches map[string][]int
@@ -465,12 +466,14 @@ func (f *FileMetadata) SetReleaseOriginalDataAfterLineInfo(release bool) {
 // OriginalData on first access when SetLazyLines was configured. Safe for
 // concurrent callers.
 func (f *FileMetadata) Lines() []string {
-	if f.linesLazy != nil {
-		f.linesLazy.once.Do(func() {
-			if f.LinesOriginalData == nil {
-				f.LinesOriginalData = utils.SplitLines(f.OriginalData)
+	if st := f.linesLazy; st != nil {
+		st.once.Do(func() {
+			st.lines = f.LinesOriginalData
+			if st.lines == nil {
+				st.lines = utils.SplitLines(f.OriginalData)
 			}
 		})
+		return *st.lines
 	}
 	if f.LinesOriginalData == nil {
 		// No lazy state (e.g. test fixtures); compute directly.
@@ -603,7 +606,7 @@ func (f *FileMetadata) ShallowCopy() *FileMetadata {
 		clone.lineInfo = cloneLineInfoState(f.lineInfo)
 	}
 	// Line lookups depend only on the source text, so copies share that state
-	// instead of each holding a suffix array of the same file.
+	// instead of each holding its own split and suffix array of the same file.
 	return &clone
 }
 
