@@ -19,6 +19,8 @@ import (
 const (
 	rootVar       = "var"
 	rootLocal     = "local"
+	rootEach      = "each"
+	rootSelf      = "self"
 	rootPath      = "path"
 	rootTerraform = "terraform"
 )

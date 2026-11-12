@@ -6,11 +6,30 @@
 package json
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFormatResourceKeyWithIndex(t *testing.T) {
+	for _, tt := range []struct {
+		index any
+		want  string
+	}{
+		{float64(0), "web[0]"},
+		{2, "web[2]"},
+		{"prod", `web["prod"]`},
+		{`a"b`, `web["a\"b"]`},
+		{"a${b}", `web["a$${b}"]`},
+		{"a%{b}", `web["a%%{b}"]`},
+		{nil, "web"},
+	} {
+		require.Equal(t, tt.want, formatResourceKeyWithIndex("web", tt.index))
+	}
+}
 
 func TestJson_parseTFPlan(t *testing.T) {
 	type args struct {
@@ -815,6 +834,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
+				"_dd_tfplan_meta": map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
+					},
+				},
 				"resource_changes": []any{},
 				"configuration":    map[string]any{},
 			},
@@ -873,6 +897,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"by_alias": map[string]any{
 							"key_id": "alias/aws/s3",
 						},
+					},
+				},
+				"_dd_tfplan_meta": map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
 					},
 				},
 				"resource_changes": []any{},
@@ -988,6 +1017,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
+				"_dd_tfplan_meta": map[string]any{
+					"data.aws_kms_key": map[string]any{
+						`by_alias["prod"]`: map[string]any{"address": `data.aws_kms_key.by_alias["prod"]`},
+						`by_alias["dev"]`:  map[string]any{"address": `data.aws_kms_key.by_alias["dev"]`},
+					},
+				},
 				"resource_changes": []any{},
 				"configuration":    map[string]any{},
 			},
@@ -1052,6 +1087,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"module.storage.by_alias": map[string]any{
 							"key_id": "alias/storage",
 						},
+					},
+				},
+				"_dd_tfplan_meta": map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias":                map[string]any{"address": "data.aws_kms_key.by_alias"},
+						"module.storage.by_alias": map[string]any{"address": "module.storage.data.aws_kms_key.by_alias"},
 					},
 				},
 				"resource_changes": []any{},
@@ -2060,4 +2101,64 @@ func TestJson_parseTFPlan_dd_tfplan_meta_call_site_chain_grows_linearly_not_expo
 		depth, full, depth/2, half)
 	require.Less(t, full, 100,
 		"call_site_expressions should stay proportional to the number of real call sites (depth=%d), not explode to %d", depth, full)
+}
+
+// PlanAddresses flattens the plan's own per-resource addresses into
+// (section, document key) entries, keeping the resource and data namespaces
+// separate so a managed resource and a data source sharing type and key never
+// answer for each other.
+func TestJson_PlanAddresses(t *testing.T) {
+	doc := model.Document{
+		"_dd_tfplan_meta": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{
+				"this[0]": map[string]interface{}{"address": "aws_s3_bucket.this[0]"},
+			},
+			"data.aws_kms_key": map[string]interface{}{
+				"by_alias": map[string]interface{}{"address": "data.aws_kms_key.by_alias"},
+			},
+		},
+	}
+	got := PlanAddresses(doc)
+	require.Equal(t, "aws_s3_bucket.this[0]", got[model.PlanResourceKey{Section: "aws_s3_bucket", Key: "this[0]"}])
+	require.Equal(t, "data.aws_kms_key.by_alias", got[model.PlanResourceKey{Section: "data.aws_kms_key", Key: "by_alias"}])
+	// The namespaces stay separate: the data entry is not reachable by the
+	// bare type, and a resource/data pair sharing type and key never merges.
+	_, ok := got[model.PlanResourceKey{Section: "aws_kms_key", Key: "by_alias"}]
+	require.False(t, ok)
+
+	merged := model.Document{
+		"_dd_tfplan_meta": map[string]interface{}{
+			"aws_s3_bucket":      map[string]interface{}{"x": map[string]interface{}{"address": "aws_s3_bucket.x"}},
+			"data.aws_s3_bucket": map[string]interface{}{"x": map[string]interface{}{"address": "data.aws_s3_bucket.x"}},
+		},
+	}
+	got = PlanAddresses(merged)
+	require.Equal(t, "aws_s3_bucket.x", got[model.PlanResourceKey{Section: "aws_s3_bucket", Key: "x"}])
+	require.Equal(t, "data.aws_s3_bucket.x", got[model.PlanResourceKey{Section: "data.aws_s3_bucket", Key: "x"}])
+	require.Nil(t, PlanAddresses(model.Document{}))
+}
+
+func TestParser_PlanDocumentKeepsItsAddresses(t *testing.T) {
+	raw, err := json.Marshal(model.Document{
+		"format_version": "0.2",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"resources": []map[string]interface{}{{
+					"address": "fakewebservices_database.prod_db",
+					"mode":    "managed",
+					"type":    "fakewebservices_database",
+					"name":    "prod_db",
+					"values":  map[string]interface{}{"name": "Production DB"},
+				}},
+			},
+		},
+	})
+	require.NoError(t, err)
+	p := &Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), raw, "plan.json", false, 0)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	require.Contains(t, docs[0], "_dd_tfplan_meta")
+	require.Equal(t, "fakewebservices_database.prod_db",
+		PlanAddresses(docs[0])[model.PlanResourceKey{Section: "fakewebservices_database", Key: "prod_db"}])
 }

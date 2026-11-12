@@ -14,8 +14,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
 )
 
-// Parser defines a parser type
-type Parser struct{}
+// Parser defines a parser type.
+type Parser struct {
+}
 
 // Resolve - replace or modifies in-memory content before parsing
 func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,

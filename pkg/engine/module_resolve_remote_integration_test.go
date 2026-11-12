@@ -407,3 +407,42 @@ module "bucket" {
 	require.Len(t, vulns, 1,
 		"unevaluated fetched module bodies use parser variable defaults, not caller inputs")
 }
+
+// A finding in a remote module body is addressed under the call's module
+// instance address, in the caller's root module.
+func TestInspect_RemoteModule_RoutedFindingsCarryCallAddress(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	writeRemoteBucketModule(t, fx.modPath, `
+variable "acl" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  acl = var.acl
+}
+`)
+	callerPath := writeRemoteCaller(t, fx.callerRoot, `
+module "bucket" {
+  source  = "`+remoteBucketSource+`"
+  version = "`+remoteBucketVersion+`"
+  acl     = "public-read"
+}
+`)
+	files := append(parseTerraform(t, callerPath), parseTerraform(t, fx.modPath)...)
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
+		}},
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1)
+	require.Equal(t, "module.bucket.aws_s3_bucket.this", vulns[0].ResourceID)
+	require.Equal(t, "stack", vulns[0].RootModule)
+	require.Equal(t, "stack/main.tf|module.bucket", vulns[0].ModuleCallChain)
+}

@@ -13,8 +13,6 @@ import (
 	"maps"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/ext/typeexpr"
@@ -159,8 +157,12 @@ func (d variableDecl) conform(v cty.Value) cty.Value {
 	return converted
 }
 
+// blockTypeEphemeral is the ephemeral resource block type; its blocks expand
+// and are addressed like resources, in their own namespace.
+const blockTypeEphemeral = "ephemeral"
+
 // collectBlocks partitions blocks across all bodies into variables, locals,
-// module calls, resources, and outputs.
+// module calls, resources (ephemeral resource blocks included), and outputs.
 func collectBlocks(bodies []*hclsyntax.Body) (
 	varDecls map[string]variableDecl,
 	localExprs map[string]hclsyntax.Expression,
@@ -186,7 +188,7 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 				}
 			case blockTypeModule:
 				modules = append(modules, block)
-			case "resource":
+			case blockTypeResource, blockTypeEphemeral:
 				resources = append(resources, block)
 			case "output":
 				if len(block.Labels) != 1 {
@@ -330,46 +332,6 @@ func parseVarsFile(src []byte, path string) hcl.Attributes {
 	}
 	attrs, _ := file.Body.JustAttributes()
 	return attrs
-}
-
-// parseResourceInstanceKey splits an expanded resource Name into its base label, instance key,
-// whether the key is a count index (true) vs a for_each string key (false), and whether the
-// name contained any expansion brackets at all.
-//   - "foo"        → ("foo", "",    false, false) — no expansion
-//   - "foo[0]"     → ("foo", "0",   true,  true)  — count
-//   - `foo["bar"]` → ("foo", "bar", false, true)  — for_each (including empty-string key)
-func parseResourceInstanceKey(name string) (base, key string, isCount, expanded bool) {
-	// for_each: name ends with `"]` and contains `["`
-	if strings.HasSuffix(name, `"]`) {
-		if idx := strings.LastIndex(name, `["`); idx >= 0 {
-			quoted := name[idx+1 : len(name)-1] // `"bar"`
-			unquoted, err := strconv.Unquote(quoted)
-			if err != nil {
-				unquoted = strings.Trim(quoted, `"`)
-			}
-			return name[:idx], unquoted, false, true
-		}
-	}
-	// count: name ends with [N] where N is an integer
-	if strings.HasSuffix(name, "]") {
-		if idx := strings.LastIndex(name, "["); idx >= 0 {
-			inner := name[idx+1 : len(name)-1]
-			if _, err := strconv.Atoi(inner); err == nil {
-				return name[:idx], inner, true, true
-			}
-		}
-	}
-	return name, "", false, false
-}
-
-// ResourceBaseName strips any count/for_each instance suffix from a resource Name
-// (e.g. "k[0]" → "k", `k["dev"]` → "k"). Used by callers that need the bare label
-// for rule matching or source-line lookups.
-func ResourceBaseName(name string) string {
-	if idx := strings.IndexByte(name, '['); idx >= 0 {
-		return name[:idx]
-	}
-	return name
 }
 
 func blockLabel(b *hclsyntax.Block) string {

@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -74,11 +75,8 @@ type converter struct {
 	bytes     []byte
 	inputVars VariableMap
 	renderer  *partial.Renderer
-	// file is the body of the whole file; its blocks each get a fresh dynamicLeft.
-	file        *hclsyntax.Body
-	dynamicLeft int
-	// dynamicWarned records that an overflow was already logged for this file.
-	dynamicWarned bool
+	// file is the body of the whole file.
+	file *hclsyntax.Body
 }
 
 func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
@@ -98,22 +96,6 @@ func (c *converter) rangeSource(r hcl.Range) string {
 
 func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLine int) (model.Document, error) {
 	var err error
-	countValue := body.Attributes["count"]
-	count := -1
-
-	if countValue != nil {
-		value, diags := countValue.Expr.Value(c.renderer.Ctx)
-		if !diags.HasErrors() {
-			if intValue, ok := ctyutil.LiteralInt(value); ok {
-				count = intValue
-			}
-		}
-	}
-
-	if count == 0 {
-		return nil, nil
-	}
-
 	out := make(model.Document)
 	ddLines := make(map[string]model.LineObject)
 	// set line info for the body
@@ -136,8 +118,8 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 	}
 
 	for _, block := range body.Blocks {
-		if body == c.file {
-			c.dynamicLeft = dynamicblock.MaxGeneratedPerResource
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 		if dynamicblock.Is(block) {
 			expanded, err := c.convertDynamicBlock(ctx, block, out)
@@ -154,6 +136,9 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 		// set line info for block
 		ddLines["_dd_"+block.Type] = model.LineObject{
 			Line: block.TypeRange.Start.Line,
+		}
+		if body == c.file && c.zeroInstances(block) {
+			continue
 		}
 		err = c.convertBlock(ctx, block, out, block.TypeRange.Start.Line)
 		if err != nil {
@@ -204,6 +189,11 @@ func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.L
 	return arr
 }
 
+func (c *converter) zeroInstances(block *hclsyntax.Block) bool {
+	count, forEach := tfinstances.Attributes(block.Body)
+	return tfinstances.ZeroInstancesAsWritten(block.Type, len(block.Labels), count, forEach, c.renderer.Ctx)
+}
+
 func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, out model.Document, defLine int) error {
 	value, err := c.convertBody(ctx, block.Body, defLine)
 	if err != nil {
@@ -218,10 +208,7 @@ func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, ou
 // element, so the block is kept as written.
 func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Block, out model.Document) (bool, error) {
 	content := dynamicblock.Content(block)
-	expansion := dynamicblock.Expand(block, c.renderer.Ctx)
-	if content != nil && expansion.OverCap {
-		c.noteDynamicOverflow(ctx, block, expansion.Requested, dynamicblock.MaxExpansion)
-	}
+	expansion := dynamicblock.Expand(ctx, block, c.renderer.Ctx)
 	if content == nil || !expansion.Resolved {
 		return false, nil
 	}
@@ -240,6 +227,9 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 	}()
 	paths := make([][]string, 0, len(expansion.Iterators))
 	for _, iterator := range expansion.Iterators {
+		if err := ctx.Err(); err != nil {
+			return true, err
+		}
 		c.inputVars[name] = iterator
 		labels, ok := dynamicblock.Labels(block, c.renderer.Ctx)
 		if !ok {
@@ -247,13 +237,10 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 		}
 		paths = append(paths, append([]string{dynamicblock.GeneratedType(block)}, labels...))
 	}
-	// Claimed all or nothing per block: a block that does not fit stays as written.
-	if len(expansion.Iterators) > c.dynamicLeft {
-		c.noteDynamicOverflow(ctx, block, expansion.Requested, dynamicblock.MaxGeneratedPerResource)
-		return false, nil
-	}
-	c.dynamicLeft -= len(expansion.Iterators)
 	for i, iterator := range expansion.Iterators {
+		if err := ctx.Err(); err != nil {
+			return true, err
+		}
 		c.inputVars[name] = iterator
 		value, err := c.convertBody(ctx, content, block.TypeRange.Start.Line)
 		if err != nil {
@@ -264,22 +251,6 @@ func (c *converter) convertDynamicBlock(ctx context.Context, block *hclsyntax.Bl
 		}
 	}
 	return true, nil
-}
-
-// noteDynamicOverflow logs the first dynamic block kept as written for exceeding a
-// cap, once per file, as the evaluator does per scan.
-func (c *converter) noteDynamicOverflow(ctx context.Context, block *hclsyntax.Block, requested, limit int) {
-	if c.dynamicWarned {
-		return
-	}
-	c.dynamicWarned = true
-	contextLogger := logger.FromContext(ctx)
-	contextLogger.Warn().
-		Str("expansion_kind", "dynamic").
-		Str("address", "dynamic."+dynamicblock.GeneratedType(block)).
-		Int("requested_instances", requested).
-		Int("count_expansion_cap", limit).
-		Msg("tfeval: dynamic block expansion cap exceeded; block scanned as written")
 }
 
 func insertBlock(ctx context.Context, out model.Document, path []string, value model.Document) error {

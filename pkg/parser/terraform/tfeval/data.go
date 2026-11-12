@@ -22,7 +22,10 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-const blockTypeData = "data"
+const (
+	blockTypeData     = "data"
+	blockTypeResource = "resource"
+)
 
 var dataRoot = map[string]struct{}{blockTypeData: {}}
 
@@ -43,10 +46,14 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 // attributes localdata computes for data sources whose result follows from
 // their configuration alone.
 type moduleData struct {
+	// ctx bounds the expansion of the data blocks, which runs outside the call
+	// stack that carries the scan's context.
+	ctx     context.Context
 	e       *Evaluator
 	blocks  []*hclsyntax.Block
 	sources map[string][]byte
 	locals  *localGraph
+	dir     string
 	addr    string
 	chain   []CallSite
 
@@ -65,11 +72,6 @@ type moduleData struct {
 	// inputs it read, so a refresh pass with unchanged inputs reuses it.
 	evalCache map[*hclsyntax.Block]blockEvalCache
 
-	// hasUnconditionalResource records whether the module has a resource block
-	// instantiating regardless of context, so an exhausted budget discards it
-	// and its data need not expand.
-	hasUnconditionalResource bool
-
 	// moduleAtRefresh is the module.* value the data blocks were last refreshed
 	// against; republishing it need not refresh the data again.
 	moduleAtRefresh cty.Value
@@ -83,25 +85,30 @@ type moduleData struct {
 	// without a schema, its nested blocks read as attributes.
 	jsonBodies map[*hclsyntax.Block]hcl.Body
 
+	// refAttrs are the attributes read where an unknown value and a missing
+	// key differ.
+	refAttrs referencedAttrs
+
 	instances []ResolvedResource
 }
 
 func newModuleData(
+	ctx context.Context,
 	e *Evaluator,
 	sources map[string][]byte,
 	locals *localGraph,
 	resourceTypes map[string]struct{},
-	addr string,
+	refAttrs referencedAttrs,
+	dir, addr string,
 	chain []CallSite,
-	hasUnconditionalResource bool,
 ) *moduleData {
 	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
 		return nil
 	}
 	d := &moduleData{
-		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
-		dataLocals: locals.dataLocals, cyclic: locals.cyclicData, hasUnconditionalResource: hasUnconditionalResource,
+		ctx: ctx, e: e, blocks: blocks, sources: sources, locals: locals, dir: dir, addr: addr, chain: chain,
+		dataLocals: locals.dataLocals, cyclic: locals.cyclicData, refAttrs: refAttrs,
 	}
 	for _, b := range blocks {
 		d.readsData = d.readsData || bodyReadsResource(b.Body, dataRoot)
@@ -213,7 +220,7 @@ func (d *moduleData) readsOwnResources() bool {
 // locals that read it when it changed, until data.* settles. The pass bound
 // matches a source_policy_documents chain as long as the blocks and the locals
 // aliasing them, as getDataSourcePolicy does at the root.
-func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
+func (d *moduleData) refresh(evalCtx *hcl.EvalContext) {
 	if d == nil {
 		return
 	}
@@ -224,7 +231,7 @@ func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
 		bound = 1
 	}
 	for pass := 0; pass <= bound; pass++ {
-		value := d.evaluate(ctx, evalCtx)
+		value := d.evaluate(evalCtx)
 		if existing, ok := evalCtx.Variables[blockTypeData]; ok && equalValues(existing, value) {
 			break
 		}
@@ -254,21 +261,25 @@ func (d *moduleData) refreshDataLocals(evalCtx *hcl.EvalContext) {
 	evalCtx.Variables["local"] = objectOrEmpty(values)
 }
 
-func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty.Value {
+func (d *moduleData) evaluate(evalCtx *hcl.EvalContext) cty.Value {
 	instances := make([]ResolvedResource, 0, len(d.blocks))
 	exposed := make([]ResolvedResource, 0, len(d.blocks))
+	var empty []*hclsyntax.Block
 	for _, b := range d.blocks {
 		inputs := blockEvalInputs(b, evalCtx)
 		cached, ok := d.evalCache[b]
 		if !ok || !sameCtyValues(cached.inputs, inputs) {
-			cached = d.evalBlock(ctx, b, evalCtx, inputs)
+			cached = d.evalBlock(b, evalCtx, inputs)
 		}
 		instances = append(instances, cached.instances...)
 		exposed = append(exposed, cached.exposed...)
+		if cached.empty {
+			empty = append(empty, b)
+		}
 	}
 	d.instances = instances
 	byType := &hcl.EvalContext{Variables: map[string]cty.Value{}}
-	injectResourceRefs(byType, exposed)
+	injectResourceRefs(byType, exposed, empty, d.e.newModuleRefInjector(d.refAttrs, refData, d.dir, d.addr))
 	for _, b := range d.blocks {
 		if d.cyclic[b] {
 			exposeUnknown(byType, b.Labels[0], b.Labels[1])
@@ -299,19 +310,19 @@ type blockEvalCache struct {
 	// exposed are the instances as data.* exposes them, with the attributes
 	// localdata computes added and, at the root module, the iteration dropped.
 	exposed []ResolvedResource
+	// empty reports that the block expanded to zero instances.
+	empty bool
 }
 
 // evalBlock evaluates one data block and memoizes the result against the
 // context inputs it read: unchanged inputs reproduce the same result.
 func (d *moduleData) evalBlock(
-	ctx context.Context, b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
+	b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
-	if !d.e.dataExpansionWithinBudget(d.addr, d.hasUnconditionalResource) {
-		return cached
-	}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
+	expanded, empty := d.e.expandBlock(d.ctx, b, evalCtx, d.addr, d.chain, true)
+	cached.empty = empty
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
@@ -329,6 +340,21 @@ func (d *moduleData) evalBlock(
 	}
 	d.evalCache[b] = cached
 	return cached
+}
+
+// emptyBlocks returns the blocks whose last evaluation, the one the current
+// instances come from, expanded to zero instances.
+func (d *moduleData) emptyBlocks() []EmptyBlock {
+	if d == nil {
+		return nil
+	}
+	var out []EmptyBlock
+	for _, b := range d.blocks {
+		if d.evalCache[b].empty {
+			out = append(out, emptyBlockOf(b, true))
+		}
+	}
+	return out
 }
 
 // blockEvalInputs snapshots the context variables the block's traversals name.
@@ -494,11 +520,11 @@ func (d *moduleData) withComputedAttributes(
 	var computed map[string]string
 	if body, ok := d.jsonBodies[b]; ok {
 		src := d.sources[b.TypeRange.Filename]
-		computed = source(body, func(expr hcl.Expression) (cty.Value, bool) {
+		computed = source(d.ctx, body, func(expr hcl.Expression) (cty.Value, bool) {
 			return renderJSON(rd, expr, src)
 		})
 	} else {
-		computed = source(b.Body, rd.Render)
+		computed = source(d.ctx, b.Body, rd.Render)
 	}
 	attrs := make(map[string]cty.Value, len(inst.Attributes)+len(computed))
 	for k, v := range inst.Attributes {

@@ -40,6 +40,18 @@ DatadogPolicy contains result if {
 }
 `},
 		{Content: `
+DatadogPolicy contains result if {
+	secret := input.document[i].ephemeral.random_password[name]
+	secret.result
+}
+`},
+		{Content: `
+DatadogPolicy contains result if {
+	some t in ["ephemeral.aws_secretsmanager_secret"]
+	startswith(t, "ephemeral.")
+}
+`},
+		{Content: `
 taggable contains resource if {
 	some resource_type, resource in doc.resource
 	startswith(resource_type, "azurerm_")
@@ -54,12 +66,14 @@ taggable contains resource if {
 	}
 
 	for _, typ := range []string{
-		"aws_s3_bucket",           // read off a document by field
-		"google_storage_bucket",   // read off a document by key
-		"aws_sqs_queue",           // passed to a library helper
-		"aws_instance",            // named only in a library
-		"azurerm_anything_at_all", // whole provider selected by prefix
-		"aws_ami",                 // read off a document's data blocks
+		"aws_s3_bucket",                       // read off a document by field
+		"google_storage_bucket",               // read off a document by key
+		"aws_sqs_queue",                       // passed to a library helper
+		"aws_instance",                        // named only in a library
+		"azurerm_anything_at_all",             // whole provider selected by prefix
+		"aws_ami",                             // read off a document's data blocks
+		"random_password",                     // read off a document's ephemeral blocks
+		"ephemeral.aws_secretsmanager_secret", // named with its namespace in a literal
 	} {
 		if !targets.matches(typ) {
 			t.Errorf("%s should be matched by some rule", typ)
