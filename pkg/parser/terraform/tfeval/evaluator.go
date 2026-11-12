@@ -788,7 +788,8 @@ func (e *Evaluator) expandModuleCallInstances(
 ) []ResolvedResource {
 	contextLogger := logger.FromContext(ctx)
 	site := call.site(scope)
-	outs := make([]cty.Value, plan.Len())
+	// Do not pre-size to plan.Len(): an uncapped count panics before cancel.
+	outs := make([]cty.Value, 0)
 	var childResources []ResolvedResource
 	for i := range plan.Len() {
 		if ctx.Err() != nil {
@@ -825,7 +826,7 @@ func (e *Evaluator) expandModuleCallInstances(
 		e.recordModuleInstance(call.dir, childAddr, childChain)
 		allVisited[call.dir] = true
 		childResources = append(childResources, childRes...)
-		outs[i] = objectOrEmpty(childOuts)
+		outs = append(outs, objectOrEmpty(childOuts))
 	}
 	if value, ok := moduleOutputsValue(plan, outs); ok {
 		if siblings != nil {

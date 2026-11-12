@@ -154,6 +154,58 @@ func TestModuleInstances_CanceledContextDoesNotAllocateTheCount(t *testing.T) {
 	require.Zero(t, plan.Len())
 }
 
+func TestExpandModuleCallInstances_CanceledHugeCountDoesNotAllocate(t *testing.T) {
+	root := t.TempDir()
+	child := writeModule(t, root, "child", map[string]string{
+		"main.tf": `output "x" { value = 1 }`,
+	})
+	file, diags := hclsyntax.ParseConfig([]byte(`
+module "m" {
+  source = "./child"
+  count  = 1000000000000000
+}
+`), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	mb := file.Body.(*hclsyntax.Body).Blocks[0]
+	plan := moduleInstances(context.Background(), mb, &hcl.EvalContext{})
+	require.Equal(t, expansionCount, plan.mode)
+	require.Equal(t, 1000000000000000, plan.Len())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	call := moduleCall{block: mb, label: "m", source: "./child", dir: child}
+	var got []ResolvedResource
+	require.NotPanics(t, func() {
+		got = New().expandModuleCallInstances(
+			ctx, mb, &call, plan, &hcl.EvalContext{}, nil, nil, root, "", nil, 0,
+			nil, map[string]bool{}, nil, map[string]cty.Value{},
+		)
+	})
+	require.Empty(t, got)
+}
+
+func TestModuleOutputsValue_IncompleteExpansionIsUnknown(t *testing.T) {
+	file, diags := hclsyntax.ParseConfig([]byte(`count = 3`), "call.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	plan := moduleInstances(context.Background(), &hclsyntax.Block{Body: file.Body.(*hclsyntax.Body)}, &hcl.EvalContext{})
+	require.Equal(t, 3, plan.Len())
+
+	partial := []cty.Value{cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(0)})}
+	got, ok := moduleOutputsValue(plan, partial)
+	require.True(t, ok)
+	require.False(t, got.IsKnown(), "incomplete count must not allocate a padded tuple")
+
+	complete := []cty.Value{
+		cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(0)}),
+		cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(1)}),
+		cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(2)}),
+	}
+	got, ok = moduleOutputsValue(plan, complete)
+	require.True(t, ok)
+	require.True(t, got.IsWhollyKnown())
+	require.Equal(t, 3, got.LengthInt())
+}
+
 func TestForEachInstances_SmallKeepsConcreteOutputsWithoutFullKeyList(t *testing.T) {
 	file, diags := hclsyntax.ParseConfig([]byte(`for_each = { a = 1, b = 2 }`), "x.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())

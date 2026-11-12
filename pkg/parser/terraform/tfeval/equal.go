@@ -18,7 +18,13 @@ import (
 // over a decoded configuration holds that configuration. RawEquals walks it and
 // re-compares its type at every level, once per instance and pass.
 func equalValues(a, b cty.Value) bool {
-	if isUserMarked(a) || isUserMarked(b) || !a.IsKnown() || !b.IsKnown() || a.IsNull() || b.IsNull() {
+	if isUserMarked(a) || isUserMarked(b) {
+		return a.RawEquals(b)
+	}
+	// Instance marks are provenance only; IsKnown/GetAttr panic while they remain.
+	a, _ = a.Unmark()
+	b, _ = b.Unmark()
+	if !a.IsKnown() || !b.IsKnown() || a.IsNull() || b.IsNull() {
 		return a.RawEquals(b)
 	}
 	ta, tb := a.Type(), b.Type()

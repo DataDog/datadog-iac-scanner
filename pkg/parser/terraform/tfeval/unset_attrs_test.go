@@ -162,6 +162,47 @@ output "resource_try" {
 	require.False(t, outputs["resource_try"].IsKnown(), "resource_try = %#v", outputs["resource_try"])
 }
 
+// Passing a marked empty resource into a module must not panic while hashing
+// inputs, and the child must still see it as an instance.
+func TestEvaluateModule_MarkedResourceModuleInputDoesNotDropChild(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "obj" {}
+resource "terraform_data" "reader" {
+  input = try(var.obj.id, "missing")
+}
+output "via" { value = try(var.obj.id, "fallback") }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+resource "terraform_data" "source" {}
+module "a" {
+  source = "../child"
+  obj    = terraform_data.source
+}
+module "b" {
+  source = "../child"
+  obj    = merge({}, terraform_data.source)
+}
+resource "terraform_data" "after" {
+  input = module.a.via
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 4, "root source/after and both module readers")
+	readers := 0
+	for _, r := range resources {
+		if r.Type != "terraform_data" || r.Name != "reader" {
+			continue
+		}
+		readers++
+		require.False(t, r.Attributes["input"].IsKnown(), "%s reader input = %#v", r.ModuleAddress, r.Attributes["input"])
+	}
+	require.Equal(t, 2, readers)
+	after := findResource(t, resources, "terraform_data", "after")
+	require.False(t, after.Attributes["input"].IsKnown())
+}
+
 // An empty resource and a merge copy keep the instance mark; a lookalike empty
 // object does not.
 func TestEvaluateModule_EmptyAndMergedResourceObjectsAreUnknown(t *testing.T) {
@@ -206,6 +247,14 @@ func TestIsUserMarked(t *testing.T) {
 	require.False(t, isUserMarked(inst))
 	require.True(t, isUserMarked(plain.Mark("sensitive")))
 	require.True(t, isUserMarked(inst.Mark("sensitive")))
+}
+
+func TestEqualValues_IgnoresResourceInstanceMark(t *testing.T) {
+	plain := cty.EmptyObjectVal
+	inst := markResourceInstance(plain)
+	require.True(t, equalValues(plain, inst))
+	require.True(t, equalValues(inst, markResourceInstance(plain)))
+	require.False(t, equalValues(inst, inst.Mark("sensitive")))
 }
 
 // A try read per instance does not cost a search through the other instances.

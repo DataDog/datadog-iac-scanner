@@ -195,6 +195,8 @@ func (w *keyWriter) digest() inputsDigest { return inputsDigest{a: w.a.Sum64(), 
 // values are unknown (IsKnown()==false), so they are handled by the unknown
 // branch and the DynamicPseudoType case never needs a special guard.
 func (m *keyMemo) writeValue(w keySink, v cty.Value, digestCollection bool) {
+	// Drop marks for the key only: ElementIterator and friends panic on them.
+	v, _ = v.Unmark()
 	if v.IsNull() {
 		// Include the type so cty.NullVal(cty.String) and cty.NullVal(cty.Number)
 		// do not collide.

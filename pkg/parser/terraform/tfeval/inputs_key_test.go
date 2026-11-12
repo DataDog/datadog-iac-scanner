@@ -57,6 +57,31 @@ func TestInputsKeySharedCollectionDoesNotScale(t *testing.T) {
 	}
 }
 
+func TestInputsKeyMarkedValuesDoNotPanic(t *testing.T) {
+	plain := cty.EmptyObjectVal
+	marked := markResourceInstance(plain)
+	nested := cty.ObjectVal(map[string]cty.Value{
+		"src": marked,
+		"n":   cty.NumberIntVal(1),
+	})
+	require.Equal(t,
+		canonicalInputsKey(map[string]cty.Value{"v": plain}),
+		canonicalInputsKey(map[string]cty.Value{"v": marked}),
+	)
+	require.Equal(t,
+		canonicalInputsKey(map[string]cty.Value{"cfg": cty.ObjectVal(map[string]cty.Value{
+			"src": plain, "n": cty.NumberIntVal(1),
+		})}),
+		canonicalInputsKey(map[string]cty.Value{"cfg": nested}),
+	)
+	require.Equal(t, encodeCtyForKey(plain), encodeCtyForKey(marked))
+	require.NotPanics(t, func() {
+		_ = canonicalInputsKey(map[string]cty.Value{
+			"v": marked.Mark("sensitive"),
+		})
+	})
+}
+
 func TestInputsKeyEmptyListsOfDifferentTypesDoNotCollide(t *testing.T) {
 	var memo keyMemo
 	strings := memo.inputsKey(map[string]cty.Value{"v": cty.ListValEmpty(cty.String)})

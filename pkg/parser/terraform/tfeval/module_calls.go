@@ -155,18 +155,27 @@ func instanceContext(ctx *hcl.EvalContext, plan *tfinstances.Plan, item tfinstan
 
 // moduleOutputsValue is what module.<label> evaluates to in the caller: the
 // outputs object of a single call, a tuple of them for count and an object of
-// them keyed like for_each. outs holds cty.NilVal for instances that failed.
+// them keyed like for_each. outs is one entry per successfully evaluated
+// instance, in plan order. When that is shorter than the plan (a child failed
+// or evaluation stopped), the whole call is unknown: padding with per-index
+// unknowns would allocate plan.Len() and revive the uncapped makeslice.
 func moduleOutputsValue(plan moduleExpansionPlan, outs []cty.Value) (cty.Value, bool) {
 	switch plan.mode {
 	case expansionUnknown:
 		return cty.DynamicVal, true
 	case expansionCount:
+		if len(outs) != plan.Len() {
+			return cty.DynamicVal, true
+		}
 		elems := make([]cty.Value, len(outs))
 		for i, out := range outs {
 			elems[i] = orUnknown(out)
 		}
 		return cty.TupleVal(elems), true
 	case expansionForEach:
+		if len(outs) != plan.Len() {
+			return cty.DynamicVal, true
+		}
 		byKey := make(map[string]cty.Value, len(outs))
 		for i, out := range outs {
 			key, _ := ctyutil.ConcreteString(plan.plan.At(i).Key)
