@@ -1684,7 +1684,8 @@ func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
 		if !sshRemoteNameSafe(repo.User.Username(), false) || !sshRemoteHostSafe(repo.Hostname()) {
 			return &tfmodules.UnresolvedError{
 				Reason: "ssh git module source user or host must not start with \"-\" or contain " +
-					"\"/\", \"%\", \"@\", whitespace or control characters",
+					"\"/\", \"%\", \"@\", whitespace or control characters, and \":\" is allowed only " +
+					"in an IPv6 host",
 			}
 		}
 		if err := checkSSHHostKeyPinned(ctx, sshHostKeyName(repo.Hostname(), repo.Port())); err != nil {

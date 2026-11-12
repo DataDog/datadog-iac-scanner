@@ -719,8 +719,8 @@ func TestBareGitResolverRejectsUnsafeSSHUserOrHost(t *testing.T) {
 		"git::ssh://git@-oProxyCommand=id/org/repo.git?ref=v1",
 		// Git decodes these before splitting, so the name it dials differs from
 		// the one url.Parse reports.
-		"git::ssh://169.254.169.254%3A80%2Fx@github.com/org/repo.git?ref=v1",
-		"git::ssh://evil.example%2Fx@github.com/org/repo.git?ref=v1",
+		"git::ssh://169.254.169.254%3A80%2Fx@" + host + "/org/repo.git?ref=v1",
+		"git::ssh://evil.example%2Fx@" + host + "/org/repo.git?ref=v1",
 		"git::ssh://a%40b@" + host + "/org/repo.git?ref=v1",
 		"git::ssh://a%25b@" + host + "/org/repo.git?ref=v1",
 	}
