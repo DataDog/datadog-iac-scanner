@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"bytes"
+	"net/netip"
 	"regexp"
 	"strings"
 	"unicode"
@@ -111,7 +112,7 @@ var inventoryEntries = map[string]func(line string) bool{
 
 // looksLikeAnsibleInventory reports whether a .ini file follows the INI
 // inventory syntax Ansible accepts. A host line is a host pattern followed by
-// key=value variables, a [group:children] entry is a group name and a
+// key=value variables, a [group:children] entry starts with a group name and a
 // [group:vars] entry is key=value. App config (pytest.ini, mypy.ini, dev.ini)
 // is made of "key=value" or "key = value" entries; delimited data
 // ("Name|Value"), "name: url" lists and "key value" entries are not host lines
@@ -153,35 +154,24 @@ func isInventoryHostLine(line string) bool {
 	return true
 }
 
-// isInventoryGroupLine reports whether line names a single child group.
+// isInventoryGroupLine reports whether line starts with a group name. Like the
+// hosts parser, it only reads the first token of a [group:children] entry.
 func isInventoryGroupLine(line string) bool {
 	fields, err := shlex.Split(line)
-	return err == nil && len(fields) == 1 && !strings.ContainsAny(fields[0], ":]")
+	return err == nil && len(fields) > 0 && !strings.ContainsAny(fields[0], ":]")
 }
 
-// isHostPattern reports whether s is a hostname or an IPv4/IPv6 address,
-// possibly with [x:y] ranges and a :port. These only use letters, digits and
-// ".-_:[]", ranges do not nest, and what follows the last colon outside a range
-// is a port number.
+// isHostPattern reports whether s is a hostname or an IP address, possibly with
+// [x:y] ranges and a :port. A bare IPv6 address is accepted as is, even where
+// the hosts parser cannot read its last group as a port, so that the parser
+// reports it. Otherwise s only uses letters, digits and ".-_:[]", and what
+// follows the last colon outside a range is a port number.
 func isHostPattern(s string) bool {
-	depth := 0
-	for _, r := range s {
-		switch r {
-		case '[':
-			depth++
-		case ']':
-			depth--
-		default:
-			if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune(".-_:", r) {
-				return false
-			}
-		}
-		if depth < 0 || depth > 1 {
-			return false
-		}
-	}
-	if depth != 0 {
+	if !hasValidRanges(s) {
 		return false
+	}
+	if _, err := netip.ParseAddr(s); err == nil {
+		return true
 	}
 	i := strings.LastIndexByte(s, ':')
 	if i < 0 || strings.Contains(s[i:], "]") {
@@ -189,4 +179,33 @@ func isHostPattern(s string) bool {
 	}
 	port := s[i+1:]
 	return port != "" && strings.Trim(port, "0123456789") == ""
+}
+
+// hasValidRanges reports whether s only has characters a host pattern uses and
+// its "[begin:end]" or "[begin:end:step]" ranges are closed, do not nest and
+// have two or three parts.
+func hasValidRanges(s string) bool {
+	inRange := false
+	colons := 0
+	for _, r := range s {
+		switch {
+		case r == '[':
+			if inRange {
+				return false
+			}
+			inRange, colons = true, 0
+		case r == ']':
+			if !inRange || colons < 1 || colons > 2 {
+				return false
+			}
+			inRange = false
+		case r == ':':
+			if inRange {
+				colons++
+			}
+		case !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune(".-_", r):
+			return false
+		}
+	}
+	return !inRange
 }
