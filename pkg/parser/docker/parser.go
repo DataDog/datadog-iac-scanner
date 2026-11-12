@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -55,12 +54,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	arguments := make([]Command, 0)
 	ignoreStruct := newIgnore()
 
-	args := make(map[string]string, 0)
-	envs := make(map[string]string, 0)
+	resolver := newVariableResolver(parsed.EscapeToken)
 
 	for _, child := range parsed.AST.Children {
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
-		if child.Value == "from" {
+		if child.Value == fromInstruction {
 			fromValue = strings.TrimPrefix(strings.TrimSpace(child.Original), "FROM ")
 		}
 
@@ -89,17 +87,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 			cmd.Value = append(cmd.Value, n.Value)
 		}
 
-		if child.Value != "arg" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, args)
-		} else {
-			args = saveArgs(args, cmd.Value[0])
-		}
-
-		if child.Value != "env" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, envs)
-		} else {
-			envs = saveEnvs(envs, cmd.Value)
-		}
+		resolver.resolve(&cmd)
 
 		if fromValue == "" {
 			arguments = append(arguments, cmd)
@@ -152,41 +140,4 @@ func (p *Parser) GetCommentToken() string {
 // StringifyContent converts original content into string formatted version
 func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
-}
-
-func resolveArgsAndEnvs(values []string, args map[string]string) []string {
-	for i := range values {
-		for arg := range args {
-			ref1 := fmt.Sprintf("${%s}", arg)
-			values[i] = strings.ReplaceAll(values[i], ref1, args[arg])
-			ref2 := fmt.Sprintf("$%s", arg)
-			values[i] = strings.ReplaceAll(values[i], ref2, args[arg])
-		}
-	}
-
-	return values
-}
-
-func saveArgs(args map[string]string, argValue string) map[string]string {
-	value := strings.Split(argValue, "=")
-	if len(value) == 2 {
-		args[value[0]] = value[1]
-	}
-	if len(value) > 2 {
-		// to handle cases like ARG VAR=erereR=E
-		args[value[0]] = strings.Join(value[1:], "=")
-	}
-
-	return args
-}
-
-func saveEnvs(envs map[string]string, envValues []string) map[string]string {
-	// Multiple env variables may be defined in the same instruction
-	// Each env variable slice looks like ["name", "value", "="]
-	if len(envValues)%3 == 0 {
-		for i := 0; i < len(envValues); i += 3 {
-			envs[envValues[i]] = envValues[i+1]
-		}
-	}
-	return envs
 }
