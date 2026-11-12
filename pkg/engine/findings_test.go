@@ -227,7 +227,7 @@ func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
 			name:        "resource type left as written",
 			routing:     newFindingRouting(nil, moduleFiles(false, map[string]bool{"aws_s3_bucket": true}), nil, "/repo"),
 			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
-			wantSkipped: 1,
+			wantSkipped: 0,
 		},
 	}
 
@@ -502,7 +502,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		},
 		{
 			name:        "resource type left as written",
-			wantSkipped: 1,
+			wantSkipped: 0,
 			files:       one,
 			items:       twice,
 			routing: func(file *model.FileMetadata) *findingRouting {
@@ -651,6 +651,21 @@ resource "aws_s3_bucket" "this" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	return calls.Load() - atomic.LoadInt64(&ciTracker.SupersededResults), vulns
+}
+
+func TestRouteDropsUnattributedExternalModuleFindings(t *testing.T) {
+	routing := newFindingRouting(nil, nil, nil, "/repo")
+	routing.external = func(path string) bool { return path == "/cache/mod/main.tf" }
+	got := routing.route(context.Background(), &Inspector{}, []model.Vulnerability{
+		{FileName: "/repo/main.tf", QueryID: "local"},
+		{FileName: "/cache/mod/main.tf", QueryID: "remote-body"},
+		{FileName: "/cache/mod/main.tf", QueryID: "called", ModuleAttribution: &model.ModuleAttribution{}},
+	})
+	ids := make([]string, len(got))
+	for i := range got {
+		ids[i] = got[i].QueryID
+	}
+	require.Equal(t, []string{"local", "called"}, ids)
 }
 
 // On the scan path, instances of one counted resource share an identity, so

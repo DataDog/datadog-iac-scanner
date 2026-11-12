@@ -664,6 +664,7 @@ func (c *Inspector) Inspect(
 		len(sharedQueries), len(queries))
 
 	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
+	routing.external = c.isExternalModulePath
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
 		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)

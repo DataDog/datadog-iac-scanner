@@ -133,9 +133,9 @@ func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
 // cannot change the report.
 //
 // It has to agree with findingRouting.route in that direction (see
-// TestFindingSet_SupersedesMeansRouteKeepsNothingNew). The as-written
-// identity is required only when routing can produce it: an external module
-// file that is reported only through its calls does not.
+// TestFindingSet_SupersedesMeansRouteKeepsNothingNew). An external module
+// file is reported only through its calls. A block evaluation did not
+// resolve is not reported.
 func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetadata, resourceType string) bool {
 	if file == nil || len(s.kept) == 0 {
 		return false
@@ -161,8 +161,11 @@ func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, c
 	if s.routing != nil {
 		file = s.routing.moduleFiles[fileID]
 	}
-	if file == nil || file.keptAsWritten(resourceType) {
+	if file == nil || (file.keptAsWritten(resourceType) && attributionPossible) {
 		return s.has(id, chain)
+	}
+	if file.keptAsWritten(resourceType) {
+		return true
 	}
 	// The calls are produced unless the line attributes the finding. The line
 	// is not known yet, so every call has to be kept already.
@@ -171,9 +174,7 @@ func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, c
 			return false
 		}
 	}
-	// Kept as written, or attributed from the line. Without attributions the
-	// as-written finding is not produced, and requiring it would never skip.
-	if file.keepWritten || attributionPossible {
+	if attributionPossible {
 		return s.has(id, chain)
 	}
 	return true
@@ -205,6 +206,9 @@ type findingRouting struct {
 	extras      map[string][]extraCallerInfo
 	moduleFiles map[string]*moduleFileCalls
 	callers     map[string]*model.FileMetadata
+	// external reports whether a path is a fetched module, scanned only through
+	// the calls that reach it.
+	external func(string) bool
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
@@ -237,5 +241,24 @@ func (r *findingRouting) route(
 	}
 	vulns = expandModuleFindings(vulns, r.extras)
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
+	vulns = dropUnattributedExternalFindings(vulns, r.external)
 	return c.filterAtCallSites(ctx, vulns, r.callers)
+}
+
+// dropUnattributedExternalFindings removes findings on a fetched module that
+// no call in the scanned repository accounts for. The module file is not part
+// of that repository, so the finding would name a resource the caller is not deploying.
+func dropUnattributedExternalFindings(vulns []model.Vulnerability, external func(string) bool) []model.Vulnerability {
+	if external == nil {
+		return vulns
+	}
+	kept := vulns[:0]
+	for i := range vulns {
+		v := &vulns[i]
+		if v.ModuleAttribution == nil && external(v.FileName) {
+			continue
+		}
+		kept = append(kept, *v)
+	}
+	return kept
 }

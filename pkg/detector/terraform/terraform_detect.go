@@ -20,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	hcljson "github.com/hashicorp/hcl/v2/json"
 )
 
 const strBlockBody = "block-body"
@@ -248,7 +249,90 @@ func detectJSONConfigLine(
 	got.VulnLines = detector.GetAdjacentVulnLines(current, outputLines, lines)
 	got.ResolvedFile = file.FilePath
 	got.FileSource = lines
+	// Attribution keys a resource by its definition position. JSON line detection
+	// otherwise leaves BlockLocation on the flagged attribute.
+	if start, end, ok := jsonResourceTypeRange(file.OriginalData, file.FilePath, keyParts, extracted); ok {
+		got.BlockLocation = model.ResourceLocation{
+			Start: model.ResourceLine{Line: start.Line, Col: start.Column},
+			End:   model.ResourceLine{Line: end.Line, Col: end.Column},
+		}
+	}
 	return got
+}
+
+// jsonResourceTypeRange is the JSON block header the evaluator records as the
+// resource definition. Every instance of a type shares that header.
+func jsonResourceTypeRange(src, filename string, keyParts []string, extracted [][]string) (start, end hcl.Pos, ok bool) {
+	typ, name, blockType, ok := jsonResourceLabels(keyParts, extracted)
+	if !ok {
+		return hcl.Pos{}, hcl.Pos{}, false
+	}
+	file, diags := hcljson.Parse([]byte(src), filename)
+	if diags.HasErrors() {
+		return hcl.Pos{}, hcl.Pos{}, false
+	}
+	content, _, _ := file.Body.PartialContent(&hcl.BodySchema{Blocks: []hcl.BlockHeaderSchema{
+		{Type: blockTypeResource, LabelNames: []string{"type", "name"}},
+		{Type: blockTypeData, LabelNames: []string{"type", "name"}},
+	}})
+	block := jsonBlockByLabels(content, blockType, typ, name)
+	if block == nil || block.TypeRange.Empty() {
+		return hcl.Pos{}, hcl.Pos{}, false
+	}
+	return block.TypeRange.Start, block.TypeRange.End, true
+}
+
+func jsonResourceLabels(keyParts []string, extracted [][]string) (typ, name, blockType string, ok bool) {
+	parts := keyParts
+	if len(parts) > 0 && (parts[0] == blockTypeResource || parts[0] == blockTypeData) {
+		blockType, parts = parts[0], parts[1:]
+	}
+	if len(parts) == 0 {
+		return "", "", "", false
+	}
+	m := searchKeyBlockPart.FindStringSubmatch(parts[0])
+	if m == nil {
+		return "", "", "", false
+	}
+	return m[1], jsonExtractedName(m[2], extracted), blockType, true
+}
+
+func jsonExtractedName(name string, extracted [][]string) string {
+	if !strings.HasPrefix(name, "{{") || !strings.HasSuffix(name, "}}") {
+		return name
+	}
+	i, err := strconv.Atoi(name[2 : len(name)-2])
+	if err != nil || i < 0 || i >= len(extracted) {
+		return name
+	}
+	return extracted[i][1]
+}
+
+func jsonBlockByLabels(content *hcl.BodyContent, blockType, typ, name string) *hcl.Block {
+	if content == nil {
+		return nil
+	}
+	var found *hcl.Block
+	for _, block := range content.Blocks {
+		if !jsonBlockLabelsMatch(block, blockType, typ, name) {
+			continue
+		}
+		if found != nil && found.TypeRange != block.TypeRange {
+			return nil
+		}
+		found = block
+	}
+	return found
+}
+
+func jsonBlockLabelsMatch(block *hcl.Block, blockType, typ, name string) bool {
+	if blockType != "" && block.Type != blockType {
+		return false
+	}
+	if blockType == "" && block.Type != blockTypeResource && block.Type != blockTypeData {
+		return false
+	}
+	return len(block.Labels) == 2 && block.Labels[0] == typ && block.Labels[1] == name
 }
 
 func findJSONKeyLine(lines []string, from int, key string) (int, bool) {

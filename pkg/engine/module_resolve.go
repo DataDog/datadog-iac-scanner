@@ -514,7 +514,8 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions,
+		m.moduleCalls.noteResolvedInBody)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -982,6 +983,7 @@ func instantiatedDocs(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
+	noteResolved func(fileID, kind, name string),
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -997,9 +999,9 @@ func instantiatedDocs(
 			continue
 		}
 		if !targets.matches(r.Type) {
-			// No rule can match this type by name, so resolving its values
-			// cannot change a finding. It keeps being scanned where it is
-			// written, exactly as it is without module evaluation.
+			// No rule names this type. It stays in the module body, and a finding
+			// on it is reported at the call rather than as an uninstantiated block.
+			noteResolvedResource(noteResolved, byAbsPath, repoPath, r)
 			continue
 		}
 		kind := blockKind(r)
@@ -1090,6 +1092,24 @@ func instantiatedDocs(
 		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
+}
+
+// noteResolvedResource records a resolved block that stays in the file because
+// no rule names its type.
+func noteResolvedResource(
+	note func(fileID, kind, name string),
+	byAbsPath map[string]*model.FileMetadata,
+	repoPath string,
+	r *tfeval.ResolvedResource,
+) {
+	if note == nil {
+		return
+	}
+	fm, ok := byAbsPath[absPath(r.DefinedIn, repoPath)]
+	if !ok {
+		return
+	}
+	note(fm.ID, blockKind(r), tfeval.ResourceBaseName(r.Name))
 }
 
 // groupContentKey identifies a document by the module call address it belongs

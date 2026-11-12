@@ -1190,7 +1190,8 @@ func TestDetectLineJSONConfig(t *testing.T) {
 	require.Equal(t, 5, got.VulnerablilityLocation.Start.Line)
 	require.Equal(t, 5, got.VulnerablilityLocation.End.Line)
 	require.Equal(t, 5, got.RemediationLocation.Start.Line)
-	require.Equal(t, 5, got.BlockLocation.Start.Line)
+	require.Equal(t, 2, got.BlockLocation.Start.Line)
+	require.Equal(t, 3, got.BlockLocation.Start.Col)
 }
 
 func TestDetectLineJSONConfigArrayIndex(t *testing.T) {

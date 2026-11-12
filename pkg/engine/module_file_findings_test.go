@@ -165,7 +165,8 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 		"helper": {
 			calls:                []moduleCall{call("stack-a/main.tf|module.bucket.module.helper", "stack-a/main.tf"), call("stack-b/main.tf|module.bucket.module.helper", "stack-b/main.tf")},
 			name:                 "@outputs.tf",
-			writtenResourceTypes: map[string]bool{"aws_s3_bucket": true},
+			writtenResourceTypes: map[string]bool{"aws_s3_bucket": true, "aws_sns_topic": true},
+			resolvedInBody:       map[string]map[string]bool{"aws_sns_topic": {"alerts": true}},
 		},
 		"partial": {
 			calls:       []moduleCall{call("stack-a/main.tf|module.other", "stack-a/main.tf")},
@@ -180,7 +181,9 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 			VulnerabilityLocation: model.ResourceLocation{
 				Start: model.ResourceLine{Line: 2, Col: 1}, End: model.ResourceLine{Line: 2, Col: 36},
 			}},
-		{QueryID: "written-resource", FileID: "helper", ResourceType: "aws_s3_bucket", Line: 5},
+		{QueryID: "written-resource", FileID: "helper", ResourceType: "aws_s3_bucket", ResourceName: "this", Line: 5},
+		{QueryID: "resolved-topic", FileID: "helper", ResourceType: "aws_sns_topic", ResourceName: "alerts", Line: 8},
+		{QueryID: "zero-topic", FileID: "helper", ResourceType: "aws_sns_topic", ResourceName: "disabled", Line: 12},
 		{QueryID: "instantiated", FileID: "helper", ResourceType: "aws_s3_bucket", ModuleAttribution: attributed},
 		{QueryID: "variable", FileID: "partial", ResourceType: "variable", Line: 1},
 	}
@@ -195,9 +198,9 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 		"repo@",
 		"output@stack-a/main.tf|module.bucket.module.helper",
 		"output@stack-b/main.tf|module.bucket.module.helper",
-		"written-resource@",
+		"resolved-topic@stack-a/main.tf|module.bucket.module.helper",
+		"resolved-topic@stack-b/main.tf|module.bucket.module.helper",
 		"instantiated@",
-		"variable@",
 		"variable@stack-a/main.tf|module.other",
 	}, ids)
 
@@ -206,8 +209,7 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 	require.Equal(t, model.SourceLocation{
 		Filename: "terraform-modules/aws--helper/@outputs.tf", LineStart: 2, LineEnd: 2, ColumnStart: 1, ColumnEnd: 36,
 	}, output.ModuleCodeLocation)
-	require.Same(t, attributed, got[4].ModuleAttribution)
-	require.Nil(t, got[5].ModuleAttribution)
+	require.Same(t, attributed, got[5].ModuleAttribution)
 	require.Equal(t, model.SourceLocation{Filename: "terraform-modules/aws--helper/main.tf", LineStart: 1, LineEnd: 1, ColumnStart: 1, ColumnEnd: 2},
 		got[6].ModuleAttribution.ModuleCodeLocation)
 	require.Equal(t, "terraform-modules/aws--helper", files["helper"].calls[0].attribution.ModuleCodeLocation.Filename,
@@ -369,6 +371,13 @@ func TestKeptAsWrittenDataFallback(t *testing.T) {
 	require.True(t, f.keptAsWritten("aws_iam_policy_document"))
 	require.False(t, f.keptAsWritten("aws_s3_bucket"))
 	require.False(t, f.keptAsWritten("data.aws_s3_bucket"))
+	resolved := &moduleFileCalls{
+		writtenResourceTypes: map[string]bool{"aws_sns_topic": true},
+		resolvedInBody:       map[string]map[string]bool{"aws_sns_topic": {"alerts": true}},
+	}
+	require.False(t, resolved.keptAsWritten("aws_sns_topic"))
+	require.False(t, resolved.leftUninstantiated("aws_sns_topic", "alerts"))
+	require.True(t, resolved.leftUninstantiated("aws_sns_topic", "disabled"))
 }
 
 func TestAttributeModuleFileFindingsLeavesPreAttributedUnchanged(t *testing.T) {

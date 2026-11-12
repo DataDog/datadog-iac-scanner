@@ -407,3 +407,107 @@ module "bucket" {
 	require.Len(t, vulns, 1,
 		"unevaluated fetched module bodies use parser variable defaults, not caller inputs")
 }
+
+func TestInspect_RemoteJSONModule_FindingKeepsCaller(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	fx.modPath = filepath.Join(fx.cacheDir, "main.tf.json")
+	writeRemoteBucketModule(t, fx.modPath, `{
+  "resource": {
+    "aws_s3_bucket": {
+      "this": { "acl": "public-read" }
+    }
+  }
+}
+`)
+	callerPath := writeRemoteCaller(t, fx.callerRoot, `
+module "bucket" {
+  source  = "`+remoteBucketSource+`"
+  version = "`+remoteBucketVersion+`"
+}
+`)
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, callerPath)...)
+	files = append(files, parseTerraform(t, fx.modPath)...)
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		}},
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
+	ins.SetExternalModulePaths([]string{fx.modPath})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1)
+	require.NotNil(t, vulns[0].ModuleAttribution)
+	require.Equal(t, "stack/main.tf", vulns[0].ModuleAttribution.CallSite.Filename)
+}
+
+const snsPrefixRule = `package datadog
+
+DatadogPolicy contains result if {
+	some type, name, i
+	topic := input.document[i].resource[type][name]
+	startswith(type, "aws_sn")
+
+	result := {
+		"documentId": input.document[i].id,
+		"resourceType": type,
+		"resourceName": name,
+		"searchKey": sprintf("%s[%s].name", [type, name]),
+	}
+}
+`
+
+func TestInspect_RemoteModule_UntargetedResourceStaysOnCaller(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	writeRemoteBucketModule(t, fx.modPath, `
+resource "aws_s3_bucket" "this" {
+  acl = "private"
+}
+
+resource "aws_sns_topic" "alerts" {
+  name = "alerts"
+}
+
+resource "aws_sns_topic" "disabled" {
+  count = 0
+  name  = "nope"
+}
+`)
+	callerPath := writeRemoteCaller(t, fx.callerRoot, `
+module "bucket" {
+  source  = "`+remoteBucketSource+`"
+  version = "`+remoteBucketVersion+`"
+}
+`)
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, callerPath)...)
+	files = append(files, parseTerraform(t, fx.modPath)...)
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{
+			{
+				Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+				Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+			},
+			{
+				Query: "sns_rule", Content: snsPrefixRule, InputData: "{}", Platform: "terraform",
+				Metadata: map[string]interface{}{"id": "sns-rule"}, Aggregation: 1,
+			},
+		},
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
+	ins.SetExternalModulePaths([]string{fx.modPath})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1)
+	require.Equal(t, "alerts", vulns[0].ResourceName)
+	require.NotNil(t, vulns[0].ModuleAttribution)
+	require.Equal(t, "stack/main.tf", vulns[0].ModuleAttribution.CallSite.Filename)
+}

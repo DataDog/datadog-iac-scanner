@@ -198,6 +198,7 @@ resource "aws_s3_bucket" "replica" {
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
+		nil,
 	)
 
 	if len(docs) != 2 {

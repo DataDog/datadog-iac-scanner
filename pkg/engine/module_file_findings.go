@@ -28,12 +28,12 @@ type moduleCall struct {
 type moduleFileCalls struct {
 	calls []moduleCall
 	name  string
-	// writtenResourceTypes are the resource types still scanned where they are
-	// written, the blocks evaluation did not instantiate. Their findings keep
-	// standing for those blocks as written.
+	// writtenResourceTypes are resource types still in the file after instantiation.
 	writtenResourceTypes map[string]bool
-	// keepWritten keeps each finding as written too, standing for the calls of
-	// the directory evaluation did not reach.
+	// resolvedInBody are blocks evaluation resolved and left in the file because
+	// no rule names their type. kind -> base name.
+	resolvedInBody map[string]map[string]bool
+	// keepWritten records that some calls of the directory were not evaluated.
 	keepWritten bool
 }
 
@@ -43,6 +43,9 @@ type moduleCallIndex struct {
 	external func(string) bool
 	files    map[string][]*model.FileMetadata
 	calls    map[string][]moduleCall
+	// resolvedInBody is file ID -> block kind -> base name, for resources
+	// evaluation resolved and did not re-emit because no rule names the type.
+	resolvedInBody map[string]map[string]map[string]bool
 }
 
 // newModuleCallIndex indexes the directories of the files external reports,
@@ -67,6 +70,27 @@ func newModuleCallIndex(filesByDir map[string][]*model.FileMetadata, external fu
 		return nil
 	}
 	return idx
+}
+
+// noteResolvedInBody records a block evaluation resolved and left in the file.
+func (idx *moduleCallIndex) noteResolvedInBody(fileID, kind, name string) {
+	if idx == nil || fileID == "" || kind == "" || name == "" {
+		return
+	}
+	if idx.resolvedInBody == nil {
+		idx.resolvedInBody = make(map[string]map[string]map[string]bool)
+	}
+	byKind := idx.resolvedInBody[fileID]
+	if byKind == nil {
+		byKind = make(map[string]map[string]bool)
+		idx.resolvedInBody[fileID] = byKind
+	}
+	names := byKind[kind]
+	if names == nil {
+		names = make(map[string]bool)
+		byKind[kind] = names
+	}
+	names[name] = true
 }
 
 // record attributes each call of an indexed directory. cache must belong to
@@ -111,9 +135,10 @@ func (idx *moduleCallIndex) fileCalls(unresolvedDirs map[string]bool) map[string
 	for dir, calls := range idx.calls {
 		for _, f := range idx.files[dir] {
 			out[f.ID] = &moduleFileCalls{
-				calls:       calls,
-				name:        filepath.Base(f.FilePath),
-				keepWritten: unresolvedDirs[dir],
+				calls:          calls,
+				name:           filepath.Base(f.FilePath),
+				keepWritten:    unresolvedDirs[dir],
+				resolvedInBody: idx.resolvedInBody[f.ID],
 			}
 		}
 	}
@@ -142,6 +167,13 @@ func documentResourceTypes(doc model.Document) map[string]bool {
 // where it is written. A data rule may name its type without the "data."
 // prefix, as moduleAttributionForResource allows.
 func (f *moduleFileCalls) keptAsWritten(resourceType string) bool {
+	if f.anyResolvedInBody(resourceType) {
+		return false
+	}
+	return f.typeStillWritten(resourceType)
+}
+
+func (f *moduleFileCalls) typeStillWritten(resourceType string) bool {
 	if f.writtenResourceTypes[resourceType] {
 		return true
 	}
@@ -151,10 +183,46 @@ func (f *moduleFileCalls) keptAsWritten(resourceType string) bool {
 	return f.writtenResourceTypes[dataTypePrefix+resourceType]
 }
 
+// leftUninstantiated reports a block still in the file that evaluation did not resolve.
+func (f *moduleFileCalls) leftUninstantiated(resourceType, resourceName string) bool {
+	if !f.typeStillWritten(resourceType) {
+		return false
+	}
+	if f.resolvedName(resourceType, resourceName) {
+		return false
+	}
+	if resourceName == "" && f.anyResolvedInBody(resourceType) {
+		return false
+	}
+	return true
+}
+
+func (f *moduleFileCalls) anyResolvedInBody(resourceType string) bool {
+	return len(f.resolvedNames(resourceType)) > 0
+}
+
+func (f *moduleFileCalls) resolvedName(resourceType, resourceName string) bool {
+	names := f.resolvedNames(resourceType)
+	if len(names) == 0 || resourceName == "" {
+		return false
+	}
+	return names[tfeval.ResourceBaseName(resourceName)]
+}
+
+func (f *moduleFileCalls) resolvedNames(resourceType string) map[string]bool {
+	if names := f.resolvedInBody[resourceType]; len(names) > 0 {
+		return names
+	}
+	if strings.HasPrefix(resourceType, dataTypePrefix) {
+		return nil
+	}
+	return f.resolvedInBody[dataTypePrefix+resourceType]
+}
+
 // attributeModuleFileFindings reports each finding raised on an external
-// module file as written once per call reaching it, at that call's site.
-// Findings already attributed to a call, and those on resource blocks left as
-// written, are kept as they are.
+// module file once per call reaching it. A block evaluation did not resolve
+// is dropped. A block it resolved and left in the file, because no rule names
+// the type, is reported at the call.
 func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*moduleFileCalls) []model.Vulnerability {
 	if len(files) == 0 {
 		return vulns
@@ -163,7 +231,7 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 	for i := range vulns {
 		v := &vulns[i]
 		file := files[v.FileID]
-		if file == nil || v.ModuleAttribution != nil || file.keptAsWritten(v.ResourceType) {
+		if file == nil || v.ModuleAttribution != nil {
 			if out != nil {
 				out = append(out, *v)
 			}
@@ -173,8 +241,8 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 			out = make([]model.Vulnerability, i, len(vulns)+len(file.calls))
 			copy(out, vulns[:i])
 		}
-		if file.keepWritten {
-			out = append(out, *v)
+		if file.leftUninstantiated(v.ResourceType, v.ResourceName) {
+			continue
 		}
 		for j := range file.calls {
 			call := &file.calls[j]
