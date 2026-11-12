@@ -115,14 +115,6 @@ func (c *Inspector) instantiateLocalModules(
 		// module blocks must remain so the corresponding Rego branches can still fire.
 		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
 	}
-	for _, f := range files {
-		if f == nil {
-			continue
-		}
-		if calls := res.moduleFiles[f.ID]; calls != nil {
-			calls.writtenResourceTypes = documentResourceTypes(f.Document)
-		}
-	}
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
 }
 
@@ -810,7 +802,7 @@ func resolveModuleDocuments(
 		rootDirs:              roots,
 		unresolvedModuleDirs:  unresolvedModuleDirs,
 		extras:                extras,
-		moduleFiles:           moduleCalls.fileCalls(unresolvedModuleDirs),
+		moduleFiles:           moduleCalls.fileCalls(),
 		resourceCount:         resourceCount,
 		rootCount:             len(roots),
 		budgetExceeded:        evaluator.BudgetExceeded(),

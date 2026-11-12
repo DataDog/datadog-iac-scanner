@@ -663,7 +663,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
-	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath)
+	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath, c.isExternalModulePath)
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
 		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)

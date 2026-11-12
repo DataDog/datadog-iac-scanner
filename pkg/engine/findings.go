@@ -136,18 +136,18 @@ func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
 // TestFindingSet_SupersedesMeansRouteKeepsNothingNew). The as-written
 // identity is required only when routing can produce it: an external module
 // file that is reported only through its calls does not.
-func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetadata, resourceType string) bool {
+func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetadata) bool {
 	if file == nil || len(s.kept) == 0 {
 		return false
 	}
-	if !s.accounted(id, file.ID, resourceType, file.ModuleCallChain, len(file.ModuleAttributions) > 0) {
+	if !s.accounted(id, file.ID, file.ModuleCallChain, len(file.ModuleAttributions) > 0) {
 		return false
 	}
 	if s.routing == nil {
 		return true
 	}
 	for _, ex := range s.routing.extras[file.ID] {
-		if !s.accounted(id, ex.docID, resourceType, ex.callChain, len(ex.attributions) > 0) {
+		if !s.accounted(id, ex.docID, ex.callChain, len(ex.attributions) > 0) {
 			return false
 		}
 	}
@@ -156,12 +156,12 @@ func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetada
 
 // accounted reports whether every identity routing can give a finding raised
 // on document fileID and reported under chain is already kept.
-func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, chain string, attributionPossible bool) bool {
+func (s *findingSet) accounted(id model.ChainedIdentity, fileID, chain string, attributionPossible bool) bool {
 	var file *moduleFileCalls
 	if s.routing != nil {
 		file = s.routing.moduleFiles[fileID]
 	}
-	if file == nil || file.keptAsWritten(resourceType) {
+	if file == nil {
 		return s.has(id, chain)
 	}
 	// The calls are produced unless the line attributes the finding. The line
@@ -171,9 +171,9 @@ func (s *findingSet) accounted(id model.ChainedIdentity, fileID, resourceType, c
 			return false
 		}
 	}
-	// Kept as written, or attributed from the line. Without attributions the
-	// as-written finding is not produced, and requiring it would never skip.
-	if file.keepWritten || attributionPossible {
+	// Attributed from the line. Without attributions the as-written finding is
+	// not produced, and requiring it would never skip.
+	if attributionPossible {
 		return s.has(id, chain)
 	}
 	return true
@@ -205,13 +205,16 @@ type findingRouting struct {
 	extras      map[string][]extraCallerInfo
 	moduleFiles map[string]*moduleFileCalls
 	callers     map[string]*model.FileMetadata
+	// external reports whether a path is an external module file, reported
+	// only through the calls that reach it. It may be nil.
+	external func(string) bool
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
 // rules route concurrently, so the index is built before any of them run.
 func newFindingRouting(
 	extras map[string][]extraCallerInfo, moduleFiles map[string]*moduleFileCalls,
-	files model.FileMetadatas, repoPath string,
+	files model.FileMetadatas, repoPath string, external func(string) bool,
 ) *findingRouting {
 	callers := make(map[string]*model.FileMetadata)
 	for _, f := range files {
@@ -223,7 +226,7 @@ func newFindingRouting(
 			callers[key] = f
 		}
 	}
-	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers}
+	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers, external: external}
 }
 
 // route turns one rule's decoded findings into the findings the scan reports
@@ -237,5 +240,6 @@ func (r *findingRouting) route(
 	}
 	vulns = expandModuleFindings(vulns, r.extras)
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
+	vulns = dropUnattributedExternalFindings(vulns, r.external)
 	return c.filterAtCallSites(ctx, vulns, r.callers)
 }
