@@ -109,7 +109,7 @@ func (c *Inspector) terraformLayout(ctx context.Context, files model.FileMetadat
 	}
 	layout, err := tfmodel.ScanLayout(ctx, base, tfmodel.Options{
 		FS: c.withScannedPlans(files, plans), Resolver: c.buildRemoteResolver(),
-		Files: configs, Plans: plans, PlansOnly: !ok,
+		Files: configs, Plans: plans, PlansOnly: !ok, VarsPath: c.terraformVarsPath,
 	})
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {

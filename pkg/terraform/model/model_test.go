@@ -707,10 +707,10 @@ func TestFailedEvaluationRunsDegraded(t *testing.T) {
 	t.Cleanup(func() { runEvaluation = real })
 	var calls []map[string]cty.Value
 	runEvaluation = func(
-		ctx context.Context, fsys vfs.FS, e *tfeval.Evaluator, dir string, inputs map[string]cty.Value,
+		ctx context.Context, fsys vfs.FS, e *tfeval.Evaluator, dir string, inputs map[string]cty.Value, varsPath string,
 	) *evaluation {
 		calls = append(calls, inputs)
-		ev := real(ctx, fsys, e, dir, inputs)
+		ev := real(ctx, fsys, e, dir, inputs, varsPath)
 		if len(calls) == 1 {
 			ev.err = errors.New("evaluation failed")
 		}
@@ -1039,5 +1039,56 @@ func providerDefaultTeam(t *testing.T, b *Block) string {
 	default:
 		t.Fatalf("unexpected default_tags shape %T", tags)
 		return ""
+	}
+}
+
+func TestSelectedVarsPathKeepsCountEnabledResource(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"main.tf": `
+variable "enabled" { default = false }
+resource "aws_s3_bucket" "b" {
+  count  = var.enabled ? 1 : 0
+  bucket = "kept"
+}
+`,
+		"env.tfvars": `enabled = true`,
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
+	}
+	scan, err := Load(context.Background(), dir, Options{VarsPath: filepath.Join(dir, "env.tfvars")})
+	require.NoError(t, err)
+	require.Len(t, blocksOf(scan.Roots[0], "resource", "aws_s3_bucket"), 1)
+}
+
+func TestSelectedVarsDirectiveKeepsCountEnabledResource(t *testing.T) {
+	s := load(t, map[string]string{
+		"main.tf": `
+// kics_terraform_vars: env.tfvars
+variable "enabled" { default = false }
+resource "aws_s3_bucket" "b" {
+  count  = var.enabled ? 1 : 0
+  bucket = "kept"
+}
+`,
+		"env.tfvars": `enabled = true`,
+	})
+	require.Len(t, blocksOf(s.Roots[0], "resource", "aws_s3_bucket"), 1)
+}
+
+func TestZeroInstanceUnresolvedModuleCallIsLeftOut(t *testing.T) {
+	s := load(t, map[string]string{
+		"main.tf": `
+module "off" {
+  source = "git::https://example.invalid/missing.git"
+  count  = 0
+}
+resource "aws_s3_bucket" "kept" { bucket = "kept" }
+`,
+	})
+	r := s.Roots[0]
+	require.Len(t, blocksOf(r, "resource", "aws_s3_bucket"), 1)
+	for _, m := range r.Modules {
+		require.NotContains(t, m.Address, "module.off", "a known-empty call is not modeled")
 	}
 }

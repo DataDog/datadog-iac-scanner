@@ -270,6 +270,9 @@ type Inspector struct {
 	// cross-root evidence and unknown gate, without chunking, merge, digests
 	// or fanout. Production scans leave it false; equivalence tests enable it.
 	terraformReference bool
+	// terraformVarsPath is the scan-selected .tfvars file (CLI). Empty lets
+	// the model discover a // kics_terraform_vars: directive per root.
+	terraformVarsPath string
 	// ruleScope caches terraformJoiningQueries for the ruleset hashed in
 	// ruleScopeKey.
 	ruleScopeMu  sync.Mutex
@@ -373,6 +376,12 @@ func (c *Inspector) SetExternalModulePaths(paths []string) {
 // SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
 func (c *Inspector) SetMergeAllow(paths []string) {
 	c.mergeAllow = tfpath.AllowSet(paths)
+}
+
+// SetTerraformVarsPath selects the .tfvars file root evaluation overlays on
+// autoloaded vars, matching the Terraform parser.
+func (c *Inspector) SetTerraformVarsPath(path string) {
+	c.terraformVarsPath = path
 }
 
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,

@@ -12,8 +12,10 @@ import (
 	"io/fs"
 	"maps"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/ext/typeexpr"
@@ -27,6 +29,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
+
+// Same wire format as the Terraform parser's selected-vars directive.
+var selectedVarsPathDirective = regexp.MustCompile(`(?m)^\s*// kics_terraform_vars: ([\w/\\.:-]+)\r?\n`)
 
 const blockTypeModule = "module"
 
@@ -326,6 +331,14 @@ func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
 
 // LoadRootVarsWithContext preserves the scan boundary for linked variable files.
 func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map[string]cty.Value {
+	return e.LoadRootInputs(ctx, dir, "")
+}
+
+// LoadRootInputs is LoadRootVarsWithContext, then overlays selected when set.
+// When selected is empty, a // kics_terraform_vars: path directive in a root
+// config file of dir is used. Selected values override autoloaded ones so
+// empty-block decisions see the same inputs the parser used.
+func (e *Evaluator) LoadRootInputs(ctx context.Context, dir, selected string) map[string]cty.Value {
 	fsys := e.fsys
 	entries, _ := fsys.ReadDir(dir)
 	names := make([]string, 0, len(entries))
@@ -337,11 +350,10 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 
 	out := map[string]cty.Value{}
 	emptyCtx := &hcl.EvalContext{}
-	for _, name := range tfpath.AutoloadedVarFiles(names) {
-		p := filepath.Clean(filepath.Join(dir, name))
+	mergeFile := func(p string) {
 		src, err := tfmodules.ReadConfigFile(ctx, fsys, p, "")
 		if err != nil {
-			continue
+			return
 		}
 		for attrName, attr := range parseVarsFile(src, p) {
 			v, attrDiags := attr.Expr.Value(emptyCtx)
@@ -350,7 +362,41 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 			}
 		}
 	}
+	for _, name := range tfpath.AutoloadedVarFiles(names) {
+		mergeFile(filepath.Clean(filepath.Join(dir, name)))
+	}
+	if selected == "" {
+		selected = discoverSelectedVarsPath(ctx, fsys, dir, names)
+	}
+	if selected != "" {
+		mergeFile(filepath.Clean(selected))
+	}
 	return out
+}
+
+func discoverSelectedVarsPath(ctx context.Context, fsys vfs.FS, dir string, names []string) string {
+	sorted := append([]string(nil), names...)
+	sort.Strings(sorted)
+	for _, name := range sorted {
+		if !tfpath.IsHCLConfig(name) {
+			continue
+		}
+		p := filepath.Clean(filepath.Join(dir, name))
+		src, err := tfmodules.ReadConfigFile(ctx, fsys, p, "")
+		if err != nil {
+			continue
+		}
+		match := selectedVarsPathDirective.FindStringSubmatch(string(src))
+		if match == nil {
+			continue
+		}
+		path := filepath.FromSlash(strings.ReplaceAll(match[1], "\\", "/"))
+		if !strings.Contains(match[1], ":") {
+			path = filepath.Join(dir, path)
+		}
+		return path
+	}
+	return ""
 }
 
 // parseVarsFile returns the assignments of a variable definitions file, in

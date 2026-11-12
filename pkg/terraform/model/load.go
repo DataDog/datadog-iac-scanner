@@ -43,6 +43,8 @@ type Layout struct {
 	dirs  map[string]*dirInfo
 	Roots []string
 	Plans []string
+	// varsPath is the scan-wide selected .tfvars path (see Options.VarsPath).
+	varsPath string
 	// eval is shared across roots so a module directory is parsed once. Nil
 	// until the first Root call.
 	eval *tfeval.Evaluator
@@ -78,7 +80,7 @@ func ScanLayout(ctx context.Context, base string, opts Options) (*Layout, error)
 			return nil, err
 		}
 	}
-	layout := &Layout{Base: abs, fsys: fsys, dirs: dirs}
+	layout := &Layout{Base: abs, fsys: fsys, dirs: dirs, varsPath: opts.VarsPath}
 	for _, dir := range slices.Sorted(mapsKeys(dirs)) {
 		if called[dir] || len(dirs[dir].configs) == 0 {
 			continue
@@ -99,7 +101,7 @@ func ScanLayout(ctx context.Context, base string, opts Options) (*Layout, error)
 
 // Root evaluates one source directory of the layout.
 func (l *Layout) Root(ctx context.Context, resolver tfeval.RemoteResolver, dir string) *Root {
-	return loadRoot(ctx, l.fsys, resolver, l.Base, dir, l.dirs, l.evaluator(resolver))
+	return loadRoot(ctx, l.fsys, resolver, l.Base, dir, l.dirs, l.evaluator(resolver), l.varsPath)
 }
 
 // evaluator is the scan-wide evaluator: its parse cache is shared across
@@ -251,12 +253,12 @@ func (d *dirInfo) noteParse(fsys vfs.FS, path string) {
 
 func loadRoot(
 	ctx context.Context, fsys vfs.FS, resolver tfeval.RemoteResolver, base, dir string, dirs map[string]*dirInfo,
-	eval *tfeval.Evaluator,
+	eval *tfeval.Evaluator, varsPath string,
 ) *Root {
 	root := &Root{ID: rootID(base, dir), Dir: dir}
 	info := dirs[dir]
 	root.VarFiles = info.varFiles
-	ev := evaluate(ctx, fsys, resolver, dir, info.vars, eval)
+	ev := evaluate(ctx, fsys, resolver, dir, info.vars, eval, varsPath)
 	root.Degraded = ev.degraded
 	root.Notes = ev.notes(base)
 	if len(ev.skipped) > 0 || ev.err != nil {
