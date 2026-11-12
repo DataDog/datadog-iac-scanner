@@ -177,10 +177,10 @@ func TestEvaluate_CancelledSkipsDegraded(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	calls := 0
 	runEvaluation = func(
-		ctx context.Context, fsys vfs.FS, e *tfeval.Evaluator, dir string, inputs map[string]cty.Value,
+		ctx context.Context, fsys vfs.FS, e *tfeval.Evaluator, dir string, inputs map[string]cty.Value, varsPath string,
 	) *evaluation {
 		calls++
-		ev := real(ctx, fsys, e, dir, inputs)
+		ev := real(ctx, fsys, e, dir, inputs, varsPath)
 		cancel()
 		ev.err = errors.New("evaluation failed")
 		return ev

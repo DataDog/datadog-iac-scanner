@@ -38,6 +38,9 @@ type Options struct {
 	// roots are found among their directories instead of by walking the base,
 	// and the other configuration files of those directories are never read.
 	Files map[string]bool
+	// VarsPath is an explicit selected .tfvars file (CLI). Empty discovers
+	// a // kics_terraform_vars: directive in the root configs.
+	VarsPath string
 }
 
 // evaluation is what evaluating one root returned, before modeling.
@@ -86,7 +89,7 @@ type instanceRecord struct {
 // be nil; a non-nil evaluator is reused across roots so the parse cache is
 // shared, and its evaluation cache is released after each root.
 func evaluate(
-	ctx context.Context, fsys vfs.FS, resolver tfeval.RemoteResolver, dir string, varNames []string, eval *tfeval.Evaluator,
+	ctx context.Context, fsys vfs.FS, resolver tfeval.RemoteResolver, dir string, varNames []string, eval *tfeval.Evaluator, varsPath string,
 ) *evaluation {
 	e := eval
 	if e == nil {
@@ -97,7 +100,7 @@ func evaluate(
 	if resolver != nil {
 		e.SetRemoteResolver(resolver)
 	}
-	ev := runEvaluation(ctx, fsys, e, dir, nil)
+	ev := runEvaluation(ctx, fsys, e, dir, nil, varsPath)
 	if ctxErr := ctx.Err(); ctxErr != nil && ev.err == nil {
 		ev.err = ctxErr
 	}
@@ -115,7 +118,7 @@ func evaluate(
 	for _, name := range varNames {
 		inputs[name] = cty.DynamicVal
 	}
-	degraded := runEvaluation(ctx, fsys, e, dir, inputs)
+	degraded := runEvaluation(ctx, fsys, e, dir, inputs, varsPath)
 	degraded.degraded = true
 	e.ReleaseEvalCache()
 	e.ForgetRootParse(dir)
@@ -125,7 +128,7 @@ func evaluate(
 var runEvaluation = run
 
 func run(
-	ctx context.Context, fsys vfs.FS, e *tfeval.Evaluator, dir string, inputs map[string]cty.Value,
+	ctx context.Context, fsys vfs.FS, e *tfeval.Evaluator, dir string, inputs map[string]cty.Value, varsPath string,
 ) *evaluation {
 	out := &evaluation{
 		scopes:       map[string]scopeRecord{},
@@ -150,7 +153,7 @@ func run(
 		},
 	})
 	if inputs == nil {
-		inputs = e.LoadRootVarsWithContext(ctx, dir)
+		inputs = e.LoadRootInputs(ctx, dir, varsPath)
 	}
 	out.resources, out.outputs, _, out.err = e.EvaluateModule(ctx, dir, inputs)
 	out.kept = e.TakeModuleInstances()

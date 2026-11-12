@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfaddress "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/hashicorp/hcl/v2"
@@ -704,6 +705,20 @@ func TestModuleAttributionForResourceNarrowsCallSite(t *testing.T) {
 		BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 1, Col: 1}},
 		Line:          1,
 	}))
+}
+
+func TestModuleAttributionForResourceFallsBackToEphemeralPrefix(t *testing.T) {
+	attr := &model.ModuleAttribution{Source: "../modules/secret"}
+	attrs := map[string]*model.ModuleAttribution{
+		moduleAttributionKey(tfaddress.EphemeralPrefix+"aws_secretsmanager_secret", 3, 1): attr,
+	}
+	got := moduleAttributionForResource(attrs, &model.Vulnerability{
+		ResourceType:  "aws_secretsmanager_secret",
+		BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 3, Col: 1}},
+		Line:          3,
+	})
+	require.NotNil(t, got)
+	require.Equal(t, "../modules/secret", got.Source)
 }
 
 func TestBuildModuleAttributionAnchorsOnSourceArgument(t *testing.T) {

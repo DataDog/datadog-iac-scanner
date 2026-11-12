@@ -701,10 +701,16 @@ func moduleAttributionForResource(
 	}
 	line, col := v.BlockLocation.Start.Line, v.BlockLocation.Start.Col
 	attr, ok := attrs[moduleAttributionKey(v.ResourceType, line, col)]
-	if !ok && !strings.HasPrefix(v.ResourceType, tfaddress.DataPrefix) {
-		// A data rule may name its type without the prefix; the block's
-		// position still identifies it.
-		attr, ok = attrs[moduleAttributionKey(tfaddress.DataPrefix+v.ResourceType, line, col)]
+	if !ok {
+		for _, prefix := range [...]string{tfaddress.DataPrefix, tfaddress.EphemeralPrefix} {
+			if strings.HasPrefix(v.ResourceType, prefix) {
+				continue
+			}
+			attr, ok = attrs[moduleAttributionKey(prefix+v.ResourceType, line, col)]
+			if ok {
+				break
+			}
+		}
 	}
 	if !ok {
 		return nil

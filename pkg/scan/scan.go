@@ -152,6 +152,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	if len(remoteModuleProvenance) > 0 {
 		inspector.SetRemoteModuleProvenance(remoteModuleProvenance)
 	}
+	inspector.SetTerraformVarsPath(c.ScanParams.TerraformVarsPath)
 	inspector.SetExternalModulePaths(remoteModulePaths)
 	if c.inMemory {
 		inspector.SetMergeAllow(append(append([]string{}, c.inMemoryPaths...), remoteModulePaths...))

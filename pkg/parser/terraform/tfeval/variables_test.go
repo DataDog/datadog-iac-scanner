@@ -7,6 +7,7 @@ package tfeval
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -205,4 +206,27 @@ func TestLoadRootVarsIgnoresCaseMismatchedAutoTfvars(t *testing.T) {
 	vars := New().LoadRootVars(dir)
 	require.True(t, vars["env"].RawEquals(cty.StringVal("base")), "case-mismatched auto.tfvars must not override terraform.tfvars")
 	require.True(t, vars["region"].RawEquals(cty.StringVal("eu-west-1")), "case-mismatched *.auto.tfvars.json must not override")
+}
+
+func TestLoadRootInputsOverlaysSelectedVarsPath(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "stack", map[string]string{
+		"terraform.tfvars": `enabled = false`,
+		"env.tfvars":       `enabled = true`,
+	})
+	vars := New().LoadRootInputs(context.Background(), dir, filepath.Join(dir, "env.tfvars"))
+	require.True(t, vars["enabled"].True())
+}
+
+func TestLoadRootInputsDiscoversDirective(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+// kics_terraform_vars: env.tfvars
+variable "enabled" { default = false }
+`,
+		"env.tfvars": `enabled = true`,
+	})
+	vars := New().LoadRootInputs(context.Background(), dir, "")
+	require.True(t, vars["enabled"].True())
 }
