@@ -1681,10 +1681,10 @@ func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
 				}
 			}
 		}
-		if !sshRemoteNameSafe(repo.User.Username()) || !sshRemoteNameSafe(repo.Hostname()) {
+		if !sshRemoteNameSafe(repo.User.Username(), false) || !sshRemoteHostSafe(repo.Hostname()) {
 			return &tfmodules.UnresolvedError{
-				Reason: "ssh git module source user or host must not start with \"-\" " +
-					"or contain whitespace or control characters",
+				Reason: "ssh git module source user or host must not start with \"-\" or contain " +
+					"\"/\", \"%\", \"@\", whitespace or control characters",
 			}
 		}
 		if err := checkSSHHostKeyPinned(ctx, sshHostKeyName(repo.Hostname(), repo.Port())); err != nil {
@@ -1732,6 +1732,10 @@ func normalizeSCPGitSource(source string) (string, bool) {
 	if !ok || !scpAddressName(user) || !scpAddressName(host) {
 		return "", false
 	}
+	// "host:/org/repo" and "host:org/repo" name the same repository, as in
+	// Terraform. Joining the path to the host with another "/" would instead make
+	// it the "//" subdirectory marker.
+	path = strings.TrimPrefix(path, "/")
 	return "git::ssh://" + user + "@" + host + "/" + path, true
 }
 

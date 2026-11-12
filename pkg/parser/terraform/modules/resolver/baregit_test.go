@@ -566,6 +566,41 @@ func TestNormalizeSCPGitSourceAcceptsGitPrefix(t *testing.T) {
 	}
 }
 
+func TestNormalizeSCPGitSourceTreatsLeadingPathSlashAsSeparator(t *testing.T) {
+	const want = "git::ssh://git@github.com/org/repo.git?ref=v1"
+	for _, in := range []string{
+		"git@github.com:org/repo.git?ref=v1",
+		"git@github.com:/org/repo.git?ref=v1",
+		"git::git@github.com:org/repo.git?ref=v1",
+		"git::git@github.com:/org/repo.git?ref=v1",
+	} {
+		got, ok := normalizeSCPGitSource(in)
+		if !ok || got != want {
+			t.Fatalf("normalizeSCPGitSource(%q) = %q, %v; want %q", in, got, ok, want)
+		}
+		repoURL, subdir, ref, ok := parseGitGetterSource(in)
+		if !ok || repoURL != "ssh://git@github.com/org/repo.git" || subdir != "" || ref != "v1" {
+			t.Fatalf("parseGitGetterSource(%q) = %q, %q, %q, %v", in, repoURL, subdir, ref, ok)
+		}
+	}
+}
+
+func TestSSHRemoteHostSafeAllowsOnlyIPv6LiteralColons(t *testing.T) {
+	for host, want := range map[string]bool{
+		"github.com":   true,
+		"2606:50c0::1": true,
+		"fe80::1%eth0": false,
+		"a:80":         false,
+		"a/b":          false,
+		"a%2Fb":        false,
+		"-oFoo":        false,
+	} {
+		if got := sshRemoteHostSafe(host); got != want {
+			t.Errorf("sshRemoteHostSafe(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
+
 func TestNormalizeSCPGitSourceLeavesURLFormsAlone(t *testing.T) {
 	for _, source := range []string{
 		"git::ssh://git@github.com/org/repo.git?ref=v1",
@@ -682,6 +717,12 @@ func TestBareGitResolverRejectsUnsafeSSHUserOrHost(t *testing.T) {
 		"git::ssh://a%20b@" + host + "/org/repo.git?ref=v1",
 		"git::ssh://a%09b@" + host + "/org/repo.git?ref=v1",
 		"git::ssh://git@-oProxyCommand=id/org/repo.git?ref=v1",
+		// Git decodes these before splitting, so the name it dials differs from
+		// the one url.Parse reports.
+		"git::ssh://169.254.169.254%3A80%2Fx@github.com/org/repo.git?ref=v1",
+		"git::ssh://evil.example%2Fx@github.com/org/repo.git?ref=v1",
+		"git::ssh://a%40b@" + host + "/org/repo.git?ref=v1",
+		"git::ssh://a%25b@" + host + "/org/repo.git?ref=v1",
 	}
 	for _, source := range unsafeSCPGitSources {
 		sources = append(sources, source, "git::"+source)

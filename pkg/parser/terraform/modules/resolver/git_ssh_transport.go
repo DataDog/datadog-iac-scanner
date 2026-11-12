@@ -107,17 +107,27 @@ func checkSSHHostKeyPinned(ctx context.Context, host string) error {
 	return nil
 }
 
-// sshRemoteNameSafe reports whether a user or host decoded from an ssh remote URL
-// can reach ssh as that name. Git decodes %-escapes and hands "user@host" to ssh
-// as a single argument, so a leading "-" would read as an option, and whitespace
-// or control characters have no place in either name.
-func sshRemoteNameSafe(name string) bool {
+// sshRemoteNameSafe reports whether a user or host of an ssh remote URL is the
+// name git dials. Git percent-decodes the URL before it splits it, so a "%2F",
+// "%3A" or "%40" in the user would become a path, port or host separator, and a
+// leading "-" would read as an option. The name must therefore be free of those,
+// of "%", and of whitespace and control characters. Only an IPv6 literal host may
+// contain ":".
+func sshRemoteNameSafe(name string, ipv6Literal bool) bool {
 	if strings.HasPrefix(name, "-") {
 		return false
 	}
 	return !strings.ContainsFunc(name, func(r rune) bool {
-		return unicode.IsSpace(r) || unicode.IsControl(r)
+		return unicode.IsSpace(r) || unicode.IsControl(r) ||
+			r == '/' || r == '%' || r == '@' || (r == ':' && !ipv6Literal)
 	})
+}
+
+// sshRemoteHostSafe applies sshRemoteNameSafe to a URL hostname, which holds
+// the bare address of a bracketed IPv6 literal.
+func sshRemoteHostSafe(host string) bool {
+	addr, err := netip.ParseAddr(host)
+	return sshRemoteNameSafe(host, err == nil && addr.Is6() && addr.Zone() == "")
 }
 
 // shellSingleQuote quotes arg for the shell that git uses to run GIT_SSH_COMMAND.
