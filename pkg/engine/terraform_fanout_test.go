@@ -38,7 +38,7 @@ func fanoutRoots(t *testing.T) map[string]*terraformRoot {
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
-	scan, err := tfmodel.Load(context.Background(), dir, tfmodel.Options{})
+	scan, err := tfmodel.Load(context.Background(), dir, &tfmodel.Options{})
 	require.NoError(t, err)
 	out := map[string]*terraformRoot{}
 	for _, r := range scan.Roots {

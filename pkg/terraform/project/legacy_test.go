@@ -26,7 +26,7 @@ func legacy(t *testing.T, files map[string]string) (string, []map[string]any) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
-	scan, err := model.Load(context.Background(), dir, model.Options{})
+	scan, err := model.Load(context.Background(), dir, &model.Options{})
 	require.NoError(t, err)
 	docs := Legacy(scan.Roots, LegacyOptions{
 		Base:        scan.Base,
@@ -168,7 +168,7 @@ resource "aws_s3_bucket" "inner" {
 func TestLegacySkipsUnknownFiles(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "a" "b" {}`), 0o600))
-	scan, err := model.Load(context.Background(), dir, model.Options{})
+	scan, err := model.Load(context.Background(), dir, &model.Options{})
 	require.NoError(t, err)
 	docs := Legacy(scan.Roots, LegacyOptions{
 		Base:   scan.Base,

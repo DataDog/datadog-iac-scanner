@@ -31,7 +31,7 @@ func load(t *testing.T, files map[string]string) *Scan {
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
-	scan, err := Load(context.Background(), dir, Options{})
+	scan, err := Load(context.Background(), dir, &Options{})
 	require.NoError(t, err)
 	return scan
 }
@@ -1056,7 +1056,7 @@ resource "aws_s3_bucket" "b" {
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
 	}
-	scan, err := Load(context.Background(), dir, Options{VarsPath: filepath.Join(dir, "env.tfvars")})
+	scan, err := Load(context.Background(), dir, &Options{VarsPath: filepath.Join(dir, "env.tfvars")})
 	require.NoError(t, err)
 	require.Len(t, blocksOf(scan.Roots[0], "resource", "aws_s3_bucket"), 1)
 }

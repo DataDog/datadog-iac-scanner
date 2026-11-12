@@ -6,10 +6,10 @@
 package engine
 
 import (
-	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
 

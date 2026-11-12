@@ -34,7 +34,7 @@ func TestPlanComputedValues(t *testing.T) {
 	dir := t.TempDir()
 	plan := filepath.Join(dir, "tfplan.json")
 	require.NoError(t, os.WriteFile(plan, []byte(computedPlan), 0o600))
-	scan, err := model.Load(context.Background(), dir, model.Options{Plans: []string{plan}, PlansOnly: true})
+	scan, err := model.Load(context.Background(), dir, &model.Options{Plans: []string{plan}, PlansOnly: true})
 	require.NoError(t, err)
 	p := Project(scan.Roots, Options{Placeholder: testPlaceholder, LiteralKeys: s3Keys})
 
@@ -72,7 +72,7 @@ func TestPlanBareConfigurationLiteralCompanions(t *testing.T) {
 	dir := t.TempDir()
 	plan := filepath.Join(dir, "tfplan.json")
 	require.NoError(t, os.WriteFile(plan, []byte(barePlan), 0o600))
-	scan, err := model.Load(context.Background(), dir, model.Options{Plans: []string{plan}, PlansOnly: true})
+	scan, err := model.Load(context.Background(), dir, &model.Options{Plans: []string{plan}, PlansOnly: true})
 	require.NoError(t, err)
 	p := Project(scan.Roots, Options{Placeholder: testPlaceholder, LiteralKeys: s3Keys})
 

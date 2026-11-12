@@ -56,7 +56,7 @@ type Layout struct {
 // Each file of opts.Plans is listed after the source roots. When opts.Files
 // is set, only the directories of those files can be roots, and only those
 // files and the modules they call are read.
-func ScanLayout(ctx context.Context, base string, opts Options) (*Layout, error) {
+func ScanLayout(ctx context.Context, base string, opts *Options) (*Layout, error) {
 	fsys := opts.FS
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
@@ -124,7 +124,7 @@ func (l *Layout) Plan(ctx context.Context, path string) *Root {
 }
 
 // Load finds the roots under base and models each of them.
-func Load(ctx context.Context, base string, opts Options) (*Scan, error) {
+func Load(ctx context.Context, base string, opts *Options) (*Scan, error) {
 	layout, err := ScanLayout(ctx, base, opts)
 	if err != nil {
 		return nil, err

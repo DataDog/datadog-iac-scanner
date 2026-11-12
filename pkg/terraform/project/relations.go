@@ -58,7 +58,7 @@ func (l *idList) addLast(id string) {
 
 func (l *idList) add(id string) {
 	if l.seen == nil {
-		l.seen = make(map[string]struct{}, 4)
+		l.seen = make(map[string]struct{}, len(l.ids))
 		for _, existing := range l.ids {
 			l.seen[existing] = struct{}{}
 		}

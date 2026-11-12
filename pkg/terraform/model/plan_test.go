@@ -63,7 +63,7 @@ func loadPlans(t *testing.T, files map[string]string, plans ...string) *Scan {
 	for i, p := range plans {
 		paths[i] = filepath.Join(dir, p)
 	}
-	scan, err := Load(context.Background(), dir, Options{Plans: paths})
+	scan, err := Load(context.Background(), dir, &Options{Plans: paths})
 	require.NoError(t, err)
 	return scan
 }
@@ -170,7 +170,7 @@ func TestPlanPlansOnlySkipsSources(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(dupplanSource), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "tfplan.json"), []byte(dupplanPlan), 0o600))
-	s, err := Load(context.Background(), dir, Options{Plans: []string{filepath.Join(dir, "tfplan.json")}, PlansOnly: true})
+	s, err := Load(context.Background(), dir, &Options{Plans: []string{filepath.Join(dir, "tfplan.json")}, PlansOnly: true})
 	require.NoError(t, err)
 	require.Len(t, s.Roots, 1)
 	require.Equal(t, "tfplan.json", s.Roots[0].ID)

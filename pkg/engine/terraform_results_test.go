@@ -66,7 +66,7 @@ func terraformResultsInput(t *testing.T, files map[string]string) (*terraformInp
 			ID: name, FilePath: path, Kind: model.KindTerraform, OriginalData: content, LinesOriginalData: &lines,
 		})
 	}
-	scan, err := tfmodel.Load(context.Background(), dir, tfmodel.Options{})
+	scan, err := tfmodel.Load(context.Background(), dir, &tfmodel.Options{})
 	require.NoError(t, err)
 	require.Len(t, scan.Roots, 1)
 	proj := project.Project(scan.Roots, project.Options{Placeholder: resultsTestPlaceholder})

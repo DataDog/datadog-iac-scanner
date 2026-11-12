@@ -38,7 +38,7 @@ func TestAlarmMetricNameARNTargetsFilterByARN(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "tfplan.json")
 	require.NoError(t, os.WriteFile(path, []byte(plan), 0o600))
-	scan, err := model.Load(context.Background(), dir, model.Options{Plans: []string{path}})
+	scan, err := model.Load(context.Background(), dir, &model.Options{Plans: []string{path}})
 	require.NoError(t, err)
 	p := Project(scan.Roots, Options{Placeholder: testPlaceholder})
 	idx := dd(t, p)

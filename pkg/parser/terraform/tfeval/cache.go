@@ -140,7 +140,7 @@ type InputMemo struct{ keyMemo }
 // Key returns the cache identity of inputs.
 func (m *InputMemo) Key(inputs map[string]cty.Value) InputKey {
 	d := m.inputsKey(inputs)
-	return InputKey{a: d.a, b: d.b}
+	return InputKey(d)
 }
 
 // keyMemo memoizes digests of large collections for one evaluator. The same

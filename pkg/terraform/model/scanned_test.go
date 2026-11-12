@@ -86,7 +86,7 @@ resource "aws_s3_bucket" "scanned" {}
 		filepath.Join(repo, "modules", "unused", "main.tf"): true,
 	}
 	counting := &countingFS{FS: vfs.DiskFS{}, reads: map[string]int{}}
-	scan, err := Load(context.Background(), repo, Options{FS: counting, Files: scanned})
+	scan, err := Load(context.Background(), repo, &Options{FS: counting, Files: scanned})
 	require.NoError(t, err)
 
 	var ids []string
@@ -117,7 +117,7 @@ func TestScanLayout_PlansAreReadWithScannedFiles(t *testing.T) {
 		"plan.json": `{"format_version": "1.2", "planned_values": {"root_module": {}}}`,
 	})
 	plan := filepath.Join(dir, "plan.json")
-	layout, err := ScanLayout(context.Background(), dir, Options{
+	layout, err := ScanLayout(context.Background(), dir, &Options{
 		Files: map[string]bool{filepath.Join(dir, "main.tf"): true}, Plans: []string{plan},
 	})
 	require.NoError(t, err)
@@ -132,9 +132,9 @@ func TestScanLayout_StopsWhenCancelled(t *testing.T) {
 	writeTree(t, dir, map[string]string{"main.tf": `module "m" { source = "./m" }`, "m/main.tf": ``})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := ScanLayout(ctx, dir, Options{})
+	_, err := ScanLayout(ctx, dir, &Options{})
 	require.ErrorIs(t, err, context.Canceled)
-	_, err = ScanLayout(ctx, dir, Options{Files: map[string]bool{filepath.Join(dir, "main.tf"): true}})
+	_, err = ScanLayout(ctx, dir, &Options{Files: map[string]bool{filepath.Join(dir, "main.tf"): true}})
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -187,7 +187,7 @@ func TestEvaluate_CancelledSkipsDegraded(t *testing.T) {
 	}
 	dir := t.TempDir()
 	writeTree(t, dir, map[string]string{"main.tf": `resource "aws_s3_bucket" "b" {}`})
-	scan, err := Load(ctx, dir, Options{})
+	scan, err := Load(ctx, dir, &Options{})
 	require.NoError(t, err)
 	require.Equal(t, 1, calls, "a cancelled root is not evaluated again in degraded mode")
 	r := scan.Roots[0]

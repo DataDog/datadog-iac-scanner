@@ -38,7 +38,7 @@ func TestCrossEvidenceKeepsNestedBlocksInEveryRoot(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
-	scan, err := model.Load(context.Background(), dir, model.Options{})
+	scan, err := model.Load(context.Background(), dir, &model.Options{})
 	require.NoError(t, err)
 	opts := Options{Placeholder: testPlaceholder, LiteralKeys: keys}
 	idx := NewCrossIndex()

@@ -186,11 +186,11 @@ type projector struct {
 	order  []string
 	keys   map[string]*ast.Term
 
-	placeholderList      *ast.Term
-	parts                *parts
-	external             map[string]bool
-	cross                []CrossMatch
-	incompleteInventory  bool
+	placeholderList     *ast.Term
+	parts               *parts
+	external            map[string]bool
+	cross               []CrossMatch
+	incompleteInventory bool
 }
 
 func newProjector(opts Options) *projector {
@@ -425,6 +425,7 @@ func (p *projector) filterInterpretation(inst *model.Instance) (*ast.Term, bool)
 // instanceTerm is the block as a rule sees it. A nested block list is recorded
 // under _dd.nested instead of on the object, so a rule that only names the
 // block does not hash every generated element.
+// nolint:gocyclo
 func (p *projector) instanceTerm(
 	inst *model.Instance, id, key string, shared [][2]*ast.Term, sharedDerived, nonliteralTerm *ast.Term,
 	prev map[string]cached,

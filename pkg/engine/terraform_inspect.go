@@ -107,7 +107,7 @@ func (c *Inspector) terraformLayout(ctx context.Context, files model.FileMetadat
 	for _, plan := range plans {
 		base = widen(base, filepath.Dir(plan))
 	}
-	layout, err := tfmodel.ScanLayout(ctx, base, tfmodel.Options{
+	layout, err := tfmodel.ScanLayout(ctx, base, &tfmodel.Options{
 		FS: c.withScannedPlans(files, plans), Resolver: c.buildRemoteResolver(),
 		Files: configs, Plans: plans, PlansOnly: !ok, VarsPath: c.terraformVarsPath,
 	})

@@ -506,7 +506,7 @@ func countCompareExpand(countVars map[ast.Var]bool, op string, left, right *ast.
 	return 0, false
 }
 
-func countCompareNumber(countVars map[ast.Var]bool, left, right *ast.Term) (n int, countLeft bool, ok bool) {
+func countCompareNumber(countVars map[ast.Var]bool, left, right *ast.Term) (n int, countLeft, ok bool) {
 	switch {
 	case termIsCount(countVars, left):
 		n, ok = termInt(right)
@@ -544,6 +544,7 @@ func termInt(t *ast.Term) (int, bool) {
 }
 
 // replaceEvery returns v with r applied to every unknown it applies to.
+// nolint:gocyclo
 func replaceEvery(v ast.Value, r batchReplacement, ph *placeholder) ast.Value {
 	if ph.is(v) {
 		if r.applies(parentNone) {
@@ -748,6 +749,7 @@ func hasIdentity(res, id ast.Value, mask []string, ph *placeholder) bool {
 }
 
 // replaceAt returns v with the value at path replaced.
+// nolint:gocyclo
 func replaceAt(v ast.Value, path []*ast.Term, r replacement) ast.Value {
 	if len(path) == 0 {
 		return r.value

@@ -34,7 +34,7 @@ func projectRoots(t *testing.T, files map[string]string) map[string]*Projection 
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
-	scan, err := model.Load(context.Background(), dir, model.Options{})
+	scan, err := model.Load(context.Background(), dir, &model.Options{})
 	require.NoError(t, err)
 	out := map[string]*Projection{}
 	for _, r := range scan.Roots {
@@ -95,7 +95,7 @@ func crossProject(t *testing.T, files map[string]string, keys LiteralKeys) (map[
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
-	scan, err := model.Load(context.Background(), dir, model.Options{})
+	scan, err := model.Load(context.Background(), dir, &model.Options{})
 	require.NoError(t, err)
 	opts := Options{Placeholder: testPlaceholder, LiteralKeys: keys}
 	idx := NewCrossIndex()
@@ -130,7 +130,7 @@ provider "aws" { region = "us-east-1" }
 resource "aws_s3_bucket_versioning" "v" { bucket = "acme" }
 resource "aws_s3_bucket" "other" { bucket = "unrelated" }
 `), 0o600))
-	scan, err := model.Load(context.Background(), dir, model.Options{})
+	scan, err := model.Load(context.Background(), dir, &model.Options{})
 	require.NoError(t, err)
 	idx := NewCrossIndex()
 	idx.Add(Project(scan.Roots, Options{Placeholder: testPlaceholder, LiteralKeys: s3Keys}))
@@ -155,7 +155,7 @@ func TestCrossIndexDropsTheProjectedTerm(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`
 resource "aws_s3_bucket_versioning" "v" { bucket = "acme" }
 `), 0o600))
-	scan, err := model.Load(context.Background(), dir, model.Options{})
+	scan, err := model.Load(context.Background(), dir, &model.Options{})
 	require.NoError(t, err)
 	idx := NewCrossIndex()
 	idx.Add(Project(scan.Roots, Options{Placeholder: testPlaceholder, LiteralKeys: s3Keys}))

@@ -69,7 +69,7 @@ func projectFixture(t *testing.T, files map[string]string) *terraformInput {
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
-	scan, err := tfmodel.Load(context.Background(), dir, tfmodel.Options{})
+	scan, err := tfmodel.Load(context.Background(), dir, &tfmodel.Options{})
 	require.NoError(t, err)
 	proj := project.Project(scan.Roots, project.Options{Placeholder: "ph"})
 	return &terraformInput{projection: proj, placeholder: "ph"}

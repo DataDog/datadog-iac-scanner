@@ -58,6 +58,7 @@ func deriveBody(inst *Instance, m *Module, vals map[string]cty.Value, body *hcls
 	deriveNested(inst, m, vals, body, prefix, ctx)
 }
 
+// nolint:gocyclo
 func deriveAttr(inst *Instance, m *Module, expr hclsyntax.Expression, path string, ctx func() *hcl.EvalContext) {
 	switch e := expr.(type) {
 	case *hclsyntax.TemplateExpr:
@@ -121,10 +122,10 @@ func deriveAttr(inst *Instance, m *Module, expr hclsyntax.Expression, path strin
 // unknown values. Expression provenance for those leaves is returned separately
 // as "${expr}" text, with local aliases rewritten to their underlying
 // expression so policy rules can still match caller_identity account ids.
-func jsonEncodeArg(expr hcl.Expression, ctx *hcl.EvalContext, m *Module) (cty.Value, map[string]string) {
+func jsonEncodeArg(expr hcl.Expression, ctx *hcl.EvalContext, m *Module) (doc cty.Value, exprs map[string]string) {
 	rd := jsonRenderer(m, ctx)
-	exprs := map[string]string{}
-	doc := jsonEncodeValue(expr, ctx, rd, m, "", exprs)
+	exprs = map[string]string{}
+	doc = jsonEncodeValue(expr, ctx, rd, m, "", exprs)
 	if len(exprs) == 0 {
 		return doc, nil
 	}
@@ -139,7 +140,10 @@ func jsonRenderer(m *Module, ctx *hcl.EvalContext) *partial.Renderer {
 	return rd
 }
 
-func jsonEncodeValue(expr hcl.Expression, ctx *hcl.EvalContext, rd *partial.Renderer, m *Module, path string, exprs map[string]string) cty.Value {
+// nolint:gocyclo
+func jsonEncodeValue(
+	expr hcl.Expression, ctx *hcl.EvalContext, rd *partial.Renderer, m *Module, path string, exprs map[string]string,
+) cty.Value {
 	switch e := expr.(type) {
 	case *hclsyntax.ObjectConsExpr:
 		out := make(map[string]cty.Value, len(e.Items))
@@ -203,7 +207,9 @@ func jsonEncodeValue(expr hcl.Expression, ctx *hcl.EvalContext, rd *partial.Rend
 	return cty.UnknownVal(cty.String)
 }
 
-func jsonEncodeTemplate(e *hclsyntax.TemplateExpr, ctx *hcl.EvalContext, rd *partial.Renderer, m *Module, path string, exprs map[string]string) cty.Value {
+func jsonEncodeTemplate(
+	e *hclsyntax.TemplateExpr, ctx *hcl.EvalContext, rd *partial.Renderer, m *Module, path string, exprs map[string]string,
+) cty.Value {
 	var b strings.Builder
 	known, unknown := false, false
 	var provenance strings.Builder
@@ -233,6 +239,7 @@ func jsonEncodeTemplate(e *hclsyntax.TemplateExpr, ctx *hcl.EvalContext, rd *par
 	return cty.StringVal(b.String())
 }
 
+// nolint:gocyclo
 func markRenderedJSON(v cty.Value, rd *partial.Renderer, m *Module, path string, exprs map[string]string) cty.Value {
 	v, _ = v.UnmarkDeep()
 	if !v.IsKnown() || v.IsNull() {
@@ -313,6 +320,7 @@ func expandLocalText(s string, rd *partial.Renderer, m *Module) string {
 
 // assignJSONUnknownExprs walks doc and assigns unknownTexts, in order, to each
 // unknown leaf (or string holding UnknownMarker).
+// nolint:gocyclo
 func assignJSONUnknownExprs(doc cty.Value, path string, texts []string, at *int) map[string]string {
 	out := map[string]string{}
 	doc, _ = doc.UnmarkDeep()
