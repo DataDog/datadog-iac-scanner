@@ -790,13 +790,13 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				// Deliberately not added to allVisited: the module was not resolved, so
 				// it must keep being scanned where it is written.
 				e.instances = e.instances[:instancesBefore]
-				if ctx.Err() != nil {
-					break
-				}
-				// The failed instance publishes an unknown output; its siblings
-				// are still evaluated.
+				// What stopped this instance — the depth, a cycle or a directory
+				// that does not resolve — is the same for every instance of the
+				// call. The loop stops instead of redoing the same failing work
+				// once per instance; the un-evaluated instances stay unknown in
+				// the call's outputs.
 				outs = append(outs, cty.NilVal)
-				continue
+				break
 			}
 			e.recordModuleInstance(call.dir, childAddr, childChain)
 			allVisited[call.dir] = true
@@ -1716,9 +1716,12 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			)
 			if err == nil {
 				outs = append(outs, objectOrEmpty(childOuts))
-			} else {
-				outs = append(outs, cty.NilVal)
+				continue
 			}
+			// The failure is the same for every instance of the call; the rest
+			// of the outputs stay unknown.
+			outs = append(outs, cty.NilVal)
+			break
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
 			out[call.label] = value

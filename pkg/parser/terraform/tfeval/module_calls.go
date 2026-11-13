@@ -156,24 +156,51 @@ func instanceContext(ctx *hcl.EvalContext, plan *tfinstances.Plan, item tfinstan
 
 func isForEachCollection(v cty.Value) bool { return tfinstances.ForEachCollection(v) }
 
+// maxOutputShape bounds the collection an expansion that did not run to
+// completion is materialized as: beyond it, the whole value is unknown instead
+// of a shape with unknown tails too large to be worth building.
+const maxOutputShape = 512
+
 // moduleOutputsValue is what module.<label> evaluates to in the caller: the
 // outputs object of a single call, a tuple of them for count and an object of
-// them keyed like for_each. outs holds cty.NilVal for instances that failed.
+// them keyed like for_each. outs holds every instance that was evaluated,
+// cty.NilVal for one that failed. Instances after a failed one were never
+// evaluated — what stopped one stops every instance of the call — so they are
+// unknown, keeping the full shape while it fits within maxOutputShape and
+// making the whole value unknown beyond it.
 func moduleOutputsValue(plan moduleExpansionPlan, outs []cty.Value) (cty.Value, bool) {
 	switch plan.mode {
 	case expansionUnknown:
 		return cty.DynamicVal, true
 	case expansionCount:
-		elems := make([]cty.Value, len(outs))
-		for i, out := range outs {
-			elems[i] = orUnknown(out)
+		if len(outs) < plan.Len() && plan.Len() > maxOutputShape {
+			return cty.DynamicVal, true
+		}
+		n := plan.Len()
+		if len(outs) == plan.Len() {
+			n = len(outs)
+		}
+		elems := make([]cty.Value, n)
+		for i := range elems {
+			if i < len(outs) {
+				elems[i] = orUnknown(outs[i])
+			} else {
+				elems[i] = cty.DynamicVal
+			}
 		}
 		return cty.TupleVal(elems), true
 	case expansionForEach:
-		byKey := make(map[string]cty.Value, len(outs))
-		for i, out := range outs {
+		if len(outs) < plan.Len() && plan.Len() > maxOutputShape {
+			return cty.DynamicVal, true
+		}
+		byKey := make(map[string]cty.Value, plan.Len())
+		for i := range plan.Len() {
 			key, _ := ctyutil.ConcreteString(plan.plan.At(i).Key)
-			byKey[key] = orUnknown(out)
+			if i < len(outs) {
+				byKey[key] = orUnknown(outs[i])
+			} else {
+				byKey[key] = cty.DynamicVal
+			}
 		}
 		return objectOrEmpty(byKey), true
 	}

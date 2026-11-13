@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
@@ -1920,128 +1919,71 @@ resource "aws_s3_bucket" "b" {
 	}
 }
 
-// A dynamic block whose for_each generates more blocks than the expansion cap
-// is kept as written instead of silently dropping the later ones.
-func TestEvaluateModule_DynamicBlockBeyondCapStaysAsWritten(t *testing.T) {
+// A dynamic block past the old per-block limit expands every block it
+// generates, however many.
+func TestEvaluateModule_DynamicBlockExpandsPastTheOldLimit(t *testing.T) {
+	const blocks = 300
 	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
-		"main.tf": dynamicIngressModule(dynamicblock.MaxExpansion + 1),
+		"main.tf": dynamicIngressModule(blocks),
 	})
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
-	e := New()
-	resources, _, _, err := e.EvaluateModule(ctx, dir, nil)
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
 	sg := findResource(t, resources, "aws_security_group", "sg")
-	if _, expanded := sg.Attributes["ingress"]; expanded {
-		t.Fatalf("ingress was expanded in part: %#v", sg.Attributes["ingress"])
+	ingress := sg.Attributes["ingress"].AsValueSlice()
+	if len(ingress) != blocks {
+		t.Fatalf("expanded %d ingress blocks, want %d", len(ingress), blocks)
 	}
-	if _, kept := sg.Attributes["dynamic"]; !kept {
-		t.Fatalf("attributes = %#v, want the dynamic block kept as written", sg.Attributes)
-	}
-	if e.ExpansionTruncations() == 0 || e.ExpansionMaxRequested() != dynamicblock.MaxExpansion+1 {
-		t.Fatalf("stats = %d truncations, max %d; want the oversized block counted",
-			e.ExpansionTruncations(), e.ExpansionMaxRequested())
-	}
-	for _, want := range []string{
-		`"expansion_kind":"dynamic"`,
-		`"requested_instances":` + strconv.Itoa(dynamicblock.MaxExpansion+1),
-		`"count_expansion_cap":` + strconv.Itoa(dynamicblock.MaxExpansion),
-	} {
-		if !strings.Contains(logs.String(), want) {
-			t.Fatalf("log %q lacks %s", logs.String(), want)
+	for i, in := range ingress {
+		port, _ := in.GetAttr("from_port").AsBigFloat().Int64()
+		if int(port) != i {
+			t.Fatalf("ingress %d has from_port %d", i, port)
 		}
 	}
 }
 
-// An oversized dynamic block is one truncation of the block, not one per
-// instance of its resource or per element of a parent dynamic block.
-func TestEvaluateModule_OversizedDynamicBlockIsCountedOncePerBlock(t *testing.T) {
-	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
-		"main.tf": fmt.Sprintf(`
-resource "aws_security_group" "sg" {
-  count = 3
-  dynamic "outer" {
-    for_each = ["a", "b"]
-    content {
-      dynamic "ingress" {
-        for_each = [%s]
-        content {
-          from_port = ingress.value
-        }
-      }
-    }
-  }
-}
-`, numberList(dynamicblock.MaxExpansion+1)),
-	})
-	e := New()
-	if _, _, _, err := e.EvaluateModule(context.Background(), dir, nil); err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	if got := e.ExpansionTruncations(); got != 1 {
-		t.Fatalf("ExpansionTruncations = %d, want 1 for the one oversized block", got)
-	}
-}
-
-func TestEvaluateModule_DynamicBlockAtTheCapIsExpandedQuietly(t *testing.T) {
-	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
-		"main.tf": dynamicIngressModule(dynamicblock.MaxExpansion),
-	})
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
-	e := New()
-	resources, _, _, err := e.EvaluateModule(ctx, dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	sg := findResource(t, resources, "aws_security_group", "sg")
-	if got := sg.Attributes["ingress"].LengthInt(); got != dynamicblock.MaxExpansion {
-		t.Fatalf("expanded %d ingress blocks, want %d", got, dynamicblock.MaxExpansion)
-	}
-	if e.ExpansionTruncations() != 0 || logs.Len() != 0 {
-		t.Fatalf("expansion at the cap warned: %d truncations, log %q", e.ExpansionTruncations(), logs.String())
-	}
-}
-
-// The blocks of one resource are budgeted together, so several dynamic blocks
-// each within the per-block cap cannot add up past the per-resource limit.
-func TestEvaluateModule_DynamicBlocksShareTheResourceBudget(t *testing.T) {
-	const perBlock = 200
-	blocks := dynamicblock.MaxGeneratedPerResource/perBlock + 1
+// Nested dynamic blocks past the old per-resource total expand fully: every
+// parent element carries every child block the nesting multiplies to.
+func TestEvaluateModule_NestedDynamicBlocksExpandPastTheOldTotal(t *testing.T) {
+	const outer, inner = 40, 30
 	var sb strings.Builder
 	sb.WriteString("resource \"aws_security_group\" \"sg\" {\n")
-	for i := 0; i < blocks; i++ {
-		fmt.Fprintf(&sb, "  dynamic \"rule%d\" {\n    for_each = [%s]\n    content {\n      from_port = rule%d.value\n    }\n  }\n",
-			i, numberList(perBlock), i)
+	sb.WriteString("  dynamic \"outer\" {\n    for_each = [")
+	for i := 0; i < outer; i++ {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		fmt.Fprintf(&sb, "%d", i)
 	}
-	sb.WriteString("}\n")
+	sb.WriteString("]\n    content {\n")
+	sb.WriteString("      dynamic \"inner\" {\n        for_each = [")
+	for i := 0; i < inner; i++ {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		fmt.Fprintf(&sb, "%d", i)
+	}
+	sb.WriteString("]\n        content {\n          port = inner.value\n        }\n      }\n")
+	sb.WriteString("    }\n  }\n}\n")
 	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": sb.String()})
 
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).Level(zerolog.WarnLevel).WithContext(context.Background())
-	e := New()
-	resources, _, _, err := e.EvaluateModule(ctx, dir, nil)
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
 	sg := findResource(t, resources, "aws_security_group", "sg")
-	expanded, asWritten := 0, 0
-	for i := 0; i < blocks; i++ {
-		if _, ok := sg.Attributes[fmt.Sprintf("rule%d", i)]; ok {
-			expanded++
-		}
+	outs := sg.Attributes["outer"].AsValueSlice()
+	if len(outs) != outer {
+		t.Fatalf("outer = %#v, want %d expanded blocks", sg.Attributes["outer"], outer)
 	}
-	if dyn, ok := sg.Attributes["dynamic"]; ok {
-		asWritten = dyn.LengthInt()
+	expanded := 0
+	for _, o := range outs {
+		inners := o.GetAttr("inner").AsValueSlice()
+		expanded += len(inners)
 	}
-	if expanded != dynamicblock.MaxGeneratedPerResource/perBlock || asWritten == 0 {
-		t.Fatalf("expanded %d blocks and kept %d as written, want %d expanded and the rest as written",
-			expanded, asWritten, dynamicblock.MaxGeneratedPerResource/perBlock)
-	}
-	if e.ExpansionTruncations() == 0 || !strings.Contains(logs.String(), `"count_expansion_cap":`+strconv.Itoa(dynamicblock.MaxGeneratedPerResource)) {
-		t.Fatalf("budget overflow not reported: %d truncations, log %q", e.ExpansionTruncations(), logs.String())
+	if expanded != outer*inner {
+		t.Fatalf("expanded %d inner blocks, want %d", expanded, outer*inner)
 	}
 }
 
@@ -2355,7 +2297,7 @@ dynamic "a" {
 	if diags.HasErrors() {
 		t.Fatal(diags)
 	}
-	out := New().evalBody(file.Body.(*hclsyntax.Body), &hcl.EvalContext{}, nil)
+	out := New().evalBody(context.Background(), file.Body.(*hclsyntax.Body), &hcl.EvalContext{}, nil)
 	if _, expanded := out["a"]; expanded {
 		t.Fatalf("a was expanded: %#v", out["a"])
 	}
