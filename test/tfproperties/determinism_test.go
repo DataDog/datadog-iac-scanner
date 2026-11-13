@@ -21,14 +21,14 @@ import (
 
 // determinismCells samples the corpus for the determinism checks: every
 // expansion cell, so modules and expansions are covered, and every tenth
-// value cell, so the indirection kinds rotate through. The sampling bounds
-// only these repeated-run checks; the full grids are asserted cell by cell
-// by the evaluator, gate, agreement and parity properties, which is the
-// coverage the corpus owes.
+// value and pair cell, so the indirection kinds rotate through. The
+// sampling bounds only these repeated-run checks; the full value, pair and
+// expansion grids are asserted cell by cell by the evaluator, gate,
+// agreement and parity properties, which is the coverage the corpus owes.
 func determinismCells() []tfcorpus.Cell {
 	var cells []tfcorpus.Cell
 	cells = append(cells, tfcorpus.ExpansionGrid()...)
-	value := tfcorpus.ValueGrid()
+	value := append(tfcorpus.ValueGrid(), tfcorpus.PairGrid()...)
 	for i := 0; i < len(value); i += 10 {
 		cells = append(cells, value[i])
 	}
@@ -56,7 +56,11 @@ func TestRepeatedScansProduceTheSameFindings(t *testing.T) {
 		"two scans of the same corpus differ")
 
 	files := tfharness.ParseTree(t, dir)
-	for seed := 1; seed <= 5; seed++ {
+	permutations := 5
+	if testing.Short() {
+		permutations = 2
+	}
+	for seed := 1; seed <= permutations; seed++ {
 		shuffled := append(files[:0:0], files...)
 		rng := rand.New(rand.NewSource(int64(seed)))
 		rng.Shuffle(len(shuffled), func(i, j int) {

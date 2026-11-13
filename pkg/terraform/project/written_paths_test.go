@@ -262,7 +262,10 @@ func checkInstance(t *testing.T, proj *Projection, docs []*LegacyDoc, placeholde
 // model does not: every leaf of the legacy entry and of the contract block
 // maps to a path the model writes (or an unknown or template part of one),
 // the never-written paths of the cell stay absent, and no placeholder
-// stands in for one of them in either projection.
+// stands in for one of them in either projection. Empty containers count:
+// the legacy walker emits an empty map or slice nested in the entry as a
+// path, the contract walker visits empty objects and arrays, and the
+// allowed set carries the model's empty containers from expectedWritten.
 func checkNothingInvented(t *testing.T, contract contractTree, legacy map[string]any, inst *model.Instance, placeholder string, cellName string, cell tfcorpus.StateCell) {
 	t.Helper()
 	written := map[string]bool{}
@@ -386,6 +389,13 @@ func legacyLeafPaths(attrs map[string]any) []string {
 				walk(append(append([]string{}, prefix...), k), v[k])
 			}
 		case []any:
+			if len(v) == 0 {
+				if len(prefix) > 0 {
+					// An empty container nested in the entry is present too.
+					out = append(out, strings.Join(prefix, "."))
+				}
+				return
+			}
 			for i, e := range v {
 				walk(append(append([]string{}, prefix...), strconv.Itoa(i)), e)
 			}

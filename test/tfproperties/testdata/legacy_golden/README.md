@@ -8,10 +8,10 @@ sorted by content.
 `TestLegacyDocumentsMatchThePreviousEngine` in
 `test/tfproperties/legacy_golden_test.go` rebuilds these documents from the
 current engine's model and requires them to match, cell by cell. Differences
-that are the rebuild working as designed are listed in the
-`intendedDifferences` table (and the two content rules) in that file; an
-unlisted difference fails, and so does a listed one that no longer matches,
-so the table only shrinks.
+that are the rebuild working as designed are handled by the exact
+transformations in that file (`transformGolden` and `transformStateGolden`,
+one keyed function per difference), each of which must change the baseline
+it applies to; anything the transformations do not produce fails.
 
 ## Where the goldens come from
 

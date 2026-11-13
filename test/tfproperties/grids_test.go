@@ -131,7 +131,7 @@ func valueGrid(t *testing.T) (grid, oracle *gridResult, cells []tfcorpus.Cell, o
 	valueCache.once.Do(func() {
 		rules := tfcorpus.WriteRules(t)
 		libs := tfharness.LibraryPath(t)
-		cells := tfcorpus.ValueGrid()
+		cells := append(tfcorpus.ValueGrid(), tfcorpus.PairGrid()...)
 		valueCache.cells = cells
 		valueCache.grid = scanGrid(t, cells, rules, libs)
 		seen := map[string]bool{}

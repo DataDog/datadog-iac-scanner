@@ -82,9 +82,16 @@ func MaterializeState(t *testing.T, cells []StateCell) (string, []string) {
 	return dir, names
 }
 
-// labelRe matches a Terraform block header that declares a labeled block
-// (module, resource, data, ephemeral, variable, output).
-var labelRe = regexp.MustCompile(`(?m)^(module|resource|data|ephemeral|variable|output)\s+"[^"]+"\s+"([^"]+)"\s*\{`)
+// oneLabelRe matches a block header taking one quoted label (the block
+// kind and its name); twoLabelRe matches one taking two (the kind, the
+// resource type, and the name). Resource and data identity includes the
+// type; module identity includes the source, so two calls of the same name
+// with different sources stay distinct.
+var (
+	oneLabelRe  = regexp.MustCompile(`(?m)^(module|variable|output)\s+"([^"]+)"\s*\{([^}]*)`)
+	twoLabelRe  = regexp.MustCompile(`(?m)^(resource|data|ephemeral)\s+"([^"]+)"\s+"([^"]+)"\s*\{`)
+	moduleSrcRe = regexp.MustCompile(`source\s*=\s*"([^"]+)"`)
+)
 
 // checkLabels rejects a root that declares the same labeled block twice:
 // a collision would make two cells' fixtures overlap and the findings
@@ -92,8 +99,23 @@ var labelRe = regexp.MustCompile(`(?m)^(module|resource|data|ephemeral|variable|
 func checkLabels(cell Cell) error {
 	seen := map[string]string{}
 	for name, content := range cell.files {
-		for _, m := range labelRe.FindAllStringSubmatch(content, -1) {
+		for _, m := range oneLabelRe.FindAllStringSubmatch(content, -1) {
 			key := m[1] + " " + m[2]
+			if m[1] == "module" {
+				// Two calls of the same name are the same call only when
+				// they share the source.
+				src := moduleSrcRe.FindStringSubmatch(m[3])
+				if src != nil {
+					key += " " + src[1]
+				}
+			}
+			if prev, ok := seen[key]; ok {
+				return fmt.Errorf("cell %s declares %s twice (%s and %s)", cell.Name(), key, prev, name)
+			}
+			seen[key] = name
+		}
+		for _, m := range twoLabelRe.FindAllStringSubmatch(content, -1) {
+			key := m[1] + " " + m[2] + " " + m[3]
 			if prev, ok := seen[key]; ok {
 				return fmt.Errorf("cell %s declares %s twice (%s and %s)", cell.Name(), key, prev, name)
 			}

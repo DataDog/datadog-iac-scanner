@@ -352,13 +352,12 @@ func buildPair(outer, inner string, fire bool) Cell {
 		c.files["sink.tf"] = renderSink("resource", []string{
 			fmt.Sprintf("probe = true ? %s : %s", innerExpr, nf)})
 	case "try":
+		fallback := shapes["scalar"].noFire
+		if fire {
+			fallback = shapes["scalar"].fire
+		}
 		c.files["sink.tf"] = renderSink("resource", []string{
-			fmt.Sprintf("probe = try(local.missing.attr, %s)", value)})
-		// The try discards the inner value: the composition exercises that
-		// the inner indirection still evaluates without breaking the outer.
-		c.files["outer.tf"] = c.files["inner.tf"]
-		c.files["inner.tf"] = ""
-		delete(c.files, "inner.tf")
+			fmt.Sprintf("probe = try(%s, %s)", innerExpr, fallback)})
 	case "for_expr":
 		c.files["sink.tf"] = renderSink("resource", []string{
 			fmt.Sprintf("probe = [ for v in [%s] : v ]", innerExpr)})

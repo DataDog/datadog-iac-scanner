@@ -42,6 +42,13 @@ const updateEnv = "TFGOLDEN_UPDATE"
 // assigned at the start of the test.
 var markPlaceholder func(content []byte, placeholder string) []byte
 
+// tryPairRename reports whether the cell is a pair whose outer kind is the
+// try: the previous engine evaluated the inner kind's file under outer.tf,
+// this engine keeps it as inner.tf.
+func tryPairRename(c tfcorpus.Cell) bool {
+	return strings.HasPrefix(c.Indirection, "try+")
+}
+
 // transformCount counts the applications of each exact transformation, so
 // the test can require every one of them to have changed a baseline.
 var transformCount = map[string]int{}
@@ -129,7 +136,26 @@ func TestLegacyDocumentsMatchThePreviousEngine(t *testing.T) {
 		if d.isState {
 			expected = transformStateGolden(t, d.state, golden, placeholders[name])
 		} else {
-			expected = transformGolden(t, d.cell, golden)
+			g := golden
+			if tryPairRename(d.cell) {
+				// The previous engine evaluated the inner kind's file under
+				// outer.tf; this engine keeps it as inner.tf.
+				var byFile map[string][]map[string]any
+				if err := json.Unmarshal(g, &byFile); err == nil {
+					if inner, ok := byFile["outer.tf"]; ok {
+						delete(byFile, "outer.tf")
+						for _, doc := range inner {
+							doc["file"] = "inner.tf"
+						}
+						byFile["inner.tf"] = inner
+						rebuilt, err := json.Marshal(byFile)
+						if err == nil {
+							g = rebuilt
+						}
+					}
+				}
+			}
+			expected = transformGolden(t, d.cell, g)
 		}
 		if string(expected) != string(d.raw) {
 			failed++
