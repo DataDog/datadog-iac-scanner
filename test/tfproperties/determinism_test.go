@@ -82,7 +82,7 @@ func reportedKeys(vs []model.Vulnerability) []string {
 }
 
 // TestRepeatedScansWriteTheSameReport checks that a whole scan, through the
-// command-line path, writes the same SARIAT every time. The repetitions
+// command-line path, writes the same SARIF every time. The repetitions
 // reduce in short mode; the check itself never skips.
 func TestRepeatedScansWriteTheSameReport(t *testing.T) {
 	repetitions := 3
