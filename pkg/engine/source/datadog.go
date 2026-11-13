@@ -11,6 +11,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
 // NewDatadogSource creates a DatadogSource with the given options.
@@ -178,18 +179,41 @@ func (s *DatadogSource) isWantedCloudProvider(provider *string) bool {
 }
 
 func checkExcluded(rule *datadog.Rule, selection *QueryInspectorParameters) bool {
-	return isInCaseInsensitiveList(rule.LegacyId, selection.ExcludeQueries.ByIDs) ||
-		isInCaseInsensitiveList(&rule.ID, selection.ExcludeQueries.ByIDs) ||
-		isInCaseInsensitiveList(&rule.Category, selection.ExcludeQueries.ByCategories) ||
+	for _, ref := range selection.ExcludeQueries.ByIDs {
+		if utils.RuleIDMatches(rule.ID, stringPtrValue(rule.LegacyId), rule.LegacyIds, ref) {
+			return true
+		}
+	}
+	return isInCaseInsensitiveList(&rule.Category, selection.ExcludeQueries.ByCategories) ||
 		isInCaseInsensitiveList(&rule.Severity, selection.ExcludeQueries.BySeverities) ||
 		(!selection.BomQueries && strings.EqualFold(rule.Severity, model.SeverityTrace))
 }
 
 func checkIncluded(rule *datadog.Rule, selection *QueryInspectorParameters) bool {
-	return (isInCaseInsensitiveNotEmptyList(rule.LegacyId, selection.IncludeQueries.ByIDs) ||
-		isInCaseInsensitiveNotEmptyList(&rule.ID, selection.IncludeQueries.ByIDs)) &&
+	return ruleIDsIncluded(rule, selection.IncludeQueries.ByIDs) &&
 		isInCaseInsensitiveNotEmptyList(&rule.Category, selection.IncludeQueries.ByCategories) &&
 		isInCaseInsensitiveNotEmptyList(&rule.Severity, selection.IncludeQueries.BySeverities)
+}
+
+// ruleIDsIncluded reports whether an empty include list keeps the rule, or one
+// of its IDs (canonical id, legacy id, or a legacy_ids entry) is in the list.
+func ruleIDsIncluded(rule *datadog.Rule, list []string) bool {
+	if len(list) == 0 {
+		return true
+	}
+	for _, ref := range list {
+		if utils.RuleIDMatches(rule.ID, stringPtrValue(rule.LegacyId), rule.LegacyIds, ref) {
+			return true
+		}
+	}
+	return false
+}
+
+func stringPtrValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // isInCaseInsensitiveList checks if the given item is in the given list, doing a case-insensitive search.
@@ -231,6 +255,9 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 		Experimental: rule.IsTesting,
 	}
 	setStringPtr(out.Metadata, "legacyId", rule.LegacyId)
+	if len(rule.LegacyIds) > 0 {
+		out.Metadata["legacyIds"] = rule.LegacyIds
+	}
 	setStringPtr(out.Metadata, "providerUrl", rule.ProviderUrl)
 	setStringPtr(out.Metadata, "descriptionID", rule.DescriptionId)
 	setStringPtr(out.Metadata, "cloudProvider", rule.Provider)

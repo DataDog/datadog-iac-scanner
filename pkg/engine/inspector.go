@@ -694,7 +694,7 @@ func (c *Inspector) filterAtCallSites(
 		v := &vulns[i]
 		if attr := v.ModuleAttribution; attr != nil {
 			if caller, ok := callers[attr.CallSite.Filename]; ok {
-				if rc, found := lookupRuleConfig(c.ruleConfigs, v.QueryID, v.LegacyQueryID); found &&
+				if rc, found := lookupRuleConfig(c.ruleConfigs, v.QueryID, v.LegacyQueryID, v.LegacyQueryIDs); found &&
 					!c.isExternalModulePath(caller.FilePath) &&
 					rulePathExcluded(caller.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
 					contextLogger.Debug().Msgf("Dropping module finding called from %s for rule %s (rule path filter)",
@@ -712,7 +712,7 @@ func (c *Inspector) filterAtCallSites(
 // suppressAtCallSite honors the caller file's disable command and ignore
 // comments on the reported line or on the module block's first line.
 func suppressAtCallSite(v *model.Vulnerability, attr *model.ModuleAttribution, caller *model.FileMetadata) {
-	if ShouldSkipVulnerability(caller.Commands, v.QueryID, v.LegacyQueryID) {
+	if ShouldSkipVulnerability(caller.Commands, v.QueryID, v.LegacyQueryID, v.LegacyQueryIDs) {
 		markSuppressed(v, model.SuppressionJustificationDisableInFile)
 	}
 	if checkComment(attr.CallSite.LineStart, caller.LinesIgnore) ||
@@ -966,7 +966,7 @@ func withRuleArguments(payload, args ast.Value) (ast.Value, error) {
 	return out, nil
 }
 
-func queryIDsFromMetadata(ctx context.Context, metadata *model.QueryMetadata) (queryID, legacyQueryID string) {
+func queryIDsFromMetadata(ctx context.Context, metadata *model.QueryMetadata) (queryID, legacyQueryID string, legacyQueryIDs []string) {
 	queryID = DefaultQueryID
 	legacyQueryID = DefaultQueryID
 	if id, err := mapKeyToString(ctx, metadata.Metadata, "id", false); err == nil && id != nil {
@@ -975,7 +975,8 @@ func queryIDsFromMetadata(ctx context.Context, metadata *model.QueryMetadata) (q
 	if legacyID, err := mapKeyToString(ctx, metadata.Metadata, "legacyId", true); err == nil && legacyID != nil {
 		legacyQueryID = *legacyID
 	}
-	return queryID, legacyQueryID
+	legacyQueryIDs = utils.RuleIDsFromMetadata(metadata.Metadata["legacyIds"])
+	return queryID, legacyQueryID, legacyQueryIDs
 }
 
 func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
@@ -991,8 +992,8 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 	}()
 
 	payload := *qCtx.payload
-	queryID, legacyQueryID := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
-	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID); found {
+	queryID, legacyQueryID, legacyQueryIDs := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
+	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID, legacyQueryIDs); found {
 		if args, ok, err := ruleArgumentsValue(rc); err != nil {
 			return nil, 0, "", errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
 		} else if ok {
@@ -1613,7 +1614,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		return nil, false
 	}
 
-	if rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID); found {
+	if rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID, vulnerability.LegacyQueryIDs); found {
 		if rc.Severity != nil {
 			vulnerability.Severity = model.Severity(strings.ToUpper(*rc.Severity))
 		}
@@ -1625,7 +1626,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		}
 	}
 
-	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID) {
+	if ShouldSkipVulnerability(file.Commands, vulnerability.QueryID, vulnerability.LegacyQueryID, vulnerability.LegacyQueryIDs) {
 		contextLogger.Debug().Msgf("Suppressing vulnerability in file %s for query '%s':%s",
 			file.FilePath, vulnerability.QueryName, vulnerability.QueryID)
 		markSuppressed(vulnerability, model.SuppressionJustificationDisableInFile)
@@ -1650,16 +1651,17 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	return vulnerability, false
 }
 
-// lookupRuleConfig returns the first matching rule config for the given queryID or legacyQueryID.
-func lookupRuleConfig(ruleConfigs map[string]config.IacRuleConfig, queryID, legacyQueryID string) (config.IacRuleConfig, bool) {
+// lookupRuleConfig returns the rule config matching the queryID, legacyQueryID or one of the legacyQueryIDs.
+// If a config holds keys for more than one ID of the same rule, the canonical-ID key wins,
+// then the legacy_id key, then the legacy_ids entries in sorted order.
+func lookupRuleConfig(ruleConfigs map[string]config.IacRuleConfig,
+	queryID, legacyQueryID string, legacyQueryIDs []string,
+) (config.IacRuleConfig, bool) {
 	if len(ruleConfigs) == 0 {
 		return config.IacRuleConfig{}, false
 	}
-	if rc, ok := ruleConfigs[queryID]; ok {
-		return rc, true
-	}
-	if legacyQueryID != "" {
-		if rc, ok := ruleConfigs[legacyQueryID]; ok {
+	for _, id := range utils.RuleIDCandidates(queryID, legacyQueryID, legacyQueryIDs) {
+		if rc, ok := ruleConfigs[id]; ok {
 			return rc, true
 		}
 	}
@@ -1956,9 +1958,9 @@ func contains(s []string, e string) bool {
 	return false
 }
 
-func isDisabled(queries, queryID, legacyQueryID string, output bool) bool {
+func isDisabled(queries, queryID, legacyQueryID string, legacyQueryIDs []string, output bool) bool {
 	for _, query := range strings.Split(queries, ",") {
-		if strings.EqualFold(query, queryID) || strings.EqualFold(query, legacyQueryID) {
+		if utils.RuleIDMatches(queryID, legacyQueryID, legacyQueryIDs, query) {
 			return output
 		}
 	}
@@ -1967,12 +1969,12 @@ func isDisabled(queries, queryID, legacyQueryID string, output bool) bool {
 }
 
 // ShouldSkipVulnerability verifies if the vulnerability in question should be ignored through comment commands
-func ShouldSkipVulnerability(command model.CommentsCommands, queryID, legacyQueryID string) bool {
+func ShouldSkipVulnerability(command model.CommentsCommands, queryID, legacyQueryID string, legacyQueryIDs []string) bool {
 	if queries, ok := command["enable"]; ok {
-		return isDisabled(queries, queryID, legacyQueryID, false)
+		return isDisabled(queries, queryID, legacyQueryID, legacyQueryIDs, false)
 	}
 	if queries, ok := command["disable"]; ok {
-		return isDisabled(queries, queryID, legacyQueryID, true)
+		return isDisabled(queries, queryID, legacyQueryID, legacyQueryIDs, true)
 	}
 	return false
 }

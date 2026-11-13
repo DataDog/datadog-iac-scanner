@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
 )
 
@@ -192,8 +193,7 @@ func checkQueryFilterFieldExclude(ctx context.Context, id any, queries []string)
 }
 
 func checkQueryExclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
-	return checkQueryFilterFieldExclude(ctx, metadata["id"], queryParameters.ExcludeQueries.ByIDs) ||
-		checkQueryFilterFieldExclude(ctx, metadata["legacyId"], queryParameters.ExcludeQueries.ByIDs) ||
+	return queryIDsInList(metadata, queryParameters.ExcludeQueries.ByIDs) ||
 		checkQueryFilterFieldExclude(ctx, metadata["category"], queryParameters.ExcludeQueries.ByCategories) ||
 		checkQueryFilterFieldExclude(ctx, metadata["severity"], queryParameters.ExcludeQueries.BySeverities) ||
 		(!queryParameters.BomQueries && metadata["severity"] == model.SeverityTrace) ||
@@ -205,10 +205,33 @@ func checkQueryFilterFieldInclude(ctx context.Context, id any, queries []string)
 }
 
 func checkQueryInclude(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {
-	return (checkQueryFilterFieldInclude(ctx, metadata["id"], queryParameters.IncludeQueries.ByIDs) ||
-		checkQueryFilterFieldInclude(ctx, metadata["legacyId"], queryParameters.IncludeQueries.ByIDs)) &&
+	return queryIDsIncluded(metadata, queryParameters.IncludeQueries.ByIDs) &&
 		checkQueryFilterFieldInclude(ctx, metadata["category"], queryParameters.IncludeQueries.ByCategories) &&
 		checkQueryFilterFieldInclude(ctx, metadata["severity"], queryParameters.IncludeQueries.BySeverities)
+}
+
+// queryIDsInList reports whether a filter list contains one of the query's
+// rule IDs: its canonical id, its legacy id, or a legacy_ids entry.
+func queryIDsInList(metadata map[string]any, list []string) bool {
+	legacyIDs := utils.RuleIDsFromMetadata(metadata["legacyIds"])
+	for _, ref := range list {
+		if utils.RuleIDMatches(metadataString(metadata["id"]),
+			metadataString(metadata["legacyId"]), legacyIDs, ref) {
+			return true
+		}
+	}
+	return false
+}
+
+// queryIDsIncluded reports whether an empty include list keeps the query, or
+// one of the query's rule IDs is in the list.
+func queryIDsIncluded(metadata map[string]any, list []string) bool {
+	return len(list) == 0 || queryIDsInList(metadata, list)
+}
+
+func metadataString(value any) string {
+	s, _ := value.(string)
+	return s
 }
 
 func checkQueryFeatureFlagDisabled(ctx context.Context, metadata map[string]any, queryParameters *QueryInspectorParameters) bool {

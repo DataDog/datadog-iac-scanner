@@ -654,6 +654,7 @@ type Vulnerability struct {
 	FileName              string           `db:"file_name" json:"fileName"`
 	QueryID               string           `db:"query_id" json:"queryID"`
 	LegacyQueryID         string           `db:"legacy_query_id" json:"legacyQueryID"`
+	LegacyQueryIDs        []string         `db:"legacy_query_ids" json:"legacyQueryIDs,omitempty"`
 	QueryName             string           `db:"query_name" json:"queryName"`
 	QueryURI              string           `json:"-"`
 	Category              string           `json:"category"`
