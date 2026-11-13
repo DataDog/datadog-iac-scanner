@@ -21,6 +21,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helminstall"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
@@ -194,6 +195,9 @@ type analyzerInfo struct {
 	filePlatformMap *sync.Map
 	contentCache    *sync.Map
 	helmCache       *sync.Map
+	// helmContent collects the YAML files whose content may install a Helm
+	// chart (see helminstall.SniffDescriptor).
+	helmContent *sync.Map
 	// scanFiles is the analyzer's walked candidate set (slash paths); scopes
 	// the Docker Compose override guard to bases that are part of this scan.
 	scanFiles map[string]struct{}
@@ -378,6 +382,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	var files []string
 	var chartRoots []string
 	var kustomizeRoots []string
+	var helmDescriptors []string
 	var totalFiles int
 	// results is the channel shared by the workers that contains the types found
 	results := make(chan string)
@@ -477,6 +482,13 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
+			// Before the extension filter too: BUILD files have none. A
+			// descriptor says how a chart is installed even where the scan
+			// leaves the descriptor itself out.
+			if (helminstall.IsDescriptorName(path) || filepath.Ext(path) == ".tf") && !gitIgnored(trimmedPath) {
+				helmDescriptors = append(helmDescriptors, filepath.ToSlash(path))
+			}
+
 			ext := utils.ExtensionFromPath(path)
 			if ext == "" {
 				return nil
@@ -527,6 +539,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	var filePlatformMap sync.Map
 	var contentCache sync.Map
 	var helmCacheLocal sync.Map
+	var helmContent sync.Map
 
 	// Detect each file's type with a bounded worker pool. File-type detection
 	// reads file content (I/O-bound), so it does not consume the shared CPU
@@ -550,6 +563,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					filePlatformMap: &filePlatformMap,
 					contentCache:    &contentCache,
 					helmCache:       &helmCacheLocal,
+					helmContent:     &helmContent,
 					scanFiles:       scanFiles,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
@@ -582,6 +596,12 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	returnAnalyzedPaths.TotalFiles = totalFiles
 	returnAnalyzedPaths.ChartRoots = chartRoots
 	returnAnalyzedPaths.KustomizeRoots = kustomizeRoots
+	helmContent.Range(func(k, _ interface{}) bool {
+		helmDescriptors = append(helmDescriptors, k.(string))
+		return true
+	})
+	sort.Strings(helmDescriptors)
+	returnAnalyzedPaths.HelmDescriptors = helmDescriptors
 
 	unwantedSet := make(map[string]struct{}, len(unwantedPaths))
 	for _, p := range unwantedPaths {
@@ -634,6 +654,9 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 	}
 	if !ok {
 		return
+	}
+	if a.helmContent != nil && (ext == yaml || ext == yml) && helminstall.SniffDescriptor(content) {
+		a.helmContent.Store(a.filePath, struct{}{})
 	}
 
 	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)

@@ -412,7 +412,7 @@ func TestSink_ParseFailureLogLevel(t *testing.T) {
 				MaxFileSize: 1,
 			}
 			if tt.failedChart != "" {
-				svc.recordFailedHelmChart(tt.failedChart)
+				svc.recordFailedHelmChart(tt.failedChart, nil)
 			}
 
 			// "{" is an unclosed YAML flow mapping — guaranteed parse error.

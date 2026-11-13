@@ -24,6 +24,9 @@ messages or pull request descriptions.
   - `pkg/parser/`: one parser per platform; Terraform modules live in
     `pkg/parser/terraform/modules/`.
   - `pkg/resolver/`: renders Helm charts and resolves files.
+  - `pkg/helminstall/`: finds how each Helm chart is installed (release
+    name, namespace, values) from the deployment descriptors of the
+    repository, or by convention.
   - `pkg/engine/`: evaluates Rego; query sources are in `pkg/engine/source/`.
   - `pkg/report/`: SARIF and the other output formats.
 - `pkg/config/` reads `code-security.datadog.yaml` from the root of the scanned

@@ -428,7 +428,7 @@ func TestHelm_Resolve_RendersWithoutAttachedDependenciesThatFail(t *testing.T) {
 		"app/Chart.yaml":        "apiVersion: v2\nname: app\nversion: 1.0.0\ndependencies:\n- name: lib\n  version: 1.0.0\n",
 		"app/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n",
 		"lib/Chart.yaml":        "apiVersion: v2\nname: lib\nversion: 1.0.0\n",
-		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ required \"password\" .Values.password }}\n",
+		"lib/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: [unclosed\n",
 	})
 	roots := []string{filepath.Join(root, "app"), filepath.Join(root, "lib")}
 	got, err := NewResolver(nil).WithChartRoots(roots).Resolve(context.Background(), filepath.Join(root, "app"))
