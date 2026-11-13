@@ -44,7 +44,7 @@ func jsonConfigFixture(t *testing.T) (model.FileMetadatas, *vfs.MemFS) {
 
 func jsonEscalationInspector(t *testing.T, fsys *vfs.MemFS, rule model.QueryMetadata) *Inspector {
 	t.Helper()
-	ins, err := NewInspector(context.Background(), &contractLibSource{queries: []model.QueryMetadata{rule}},
+	ins, err := NewInspector(context.Background(), &stubQueriesSource{queries: []model.QueryMetadata{rule}},
 		DefaultVulnerabilityBuilder, &tracker.CITracker{}, &source.QueryInspectorParameters{}, nil,
 		"", false, false, 1, featureflags.NewLocalEvaluator(), fsys, false)
 	require.NoError(t, err)

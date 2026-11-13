@@ -6,81 +6,24 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
-	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
 
-// The libraries a contract rule needs: the engine locates findings from the
-// block ids the results name, so the library only looks them up in input._dd.
-const (
-	releaseCommonLib = `package generic.common
-
-import rego.v1
-
-finding(subject, path, details) := object.union(details, {"_dd_id": subject._dd_meta.id, "path": path})
-
-is_list(v) if is_array(v)
-`
-
-	releaseTerraformLib = `package generic.terraform
-
-import rego.v1
-
-import data.generic.common
-
-_dd := object.get(input, "_dd", {})
-
-_placeholder := object.get(_dd, "placeholder", "\u0000dd-unknown")
-
-blocks(type) := object.get(_dd, ["blocks", "resource", type], [])
-
-by_id(id) := object.get(_dd, ["by_id", id], _placeholder)
-
-literal_keys := {"aws_s3_bucket_versioning": {"bucket": {"aws_s3_bucket": ["bucket"]}}}
-`
-
-	releaseBucketRule = `package datadog
-
-import rego.v1
-
-import data.generic.common as common
-import data.generic.terraform as tf
-
-DatadogPolicy contains result if {
-	some b in tf.blocks("aws_s3_bucket")
-	result := common.finding(b, [], {})
-}
-`
-)
-
-// contractLibSource serves the contract libraries a contract rule imports:
-// the common library defines finding, the Terraform library the input lookups.
-type contractLibSource struct{ queries []model.QueryMetadata }
-
-func (s *contractLibSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
-	return s.queries, nil
-}
-
-func (s *contractLibSource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
-	code := releaseTerraformLib
-	if platform == "common" {
-		code = releaseCommonLib
-	}
-	return source.RegoLibraries{LibraryCode: code, LibraryInputData: "{}"}, nil
-}
-
 // releaseInspector is an inspector whose scan releases every scanned file's
 // documents before the Terraform rules evaluate (release true) or keeps them
 // (release false) — the two configurations a scan runs in, depending on
 // whether the plain JSON payload is exported.
-func releaseInspector(t *testing.T, root string, rule model.QueryMetadata, release bool) *Inspector {
+func releaseInspector(t *testing.T, root string, release bool) *Inspector {
 	t.Helper()
-	ins, err := NewInspector(context.Background(), &contractLibSource{queries: []model.QueryMetadata{rule}},
-		DefaultVulnerabilityBuilder, &tracker.CITracker{}, &source.QueryInspectorParameters{}, nil,
-		root, false, false, 1, featureflags.NewLocalEvaluator(), nil, false)
-	require.NoError(t, err)
+	ins := newTestInspector(t, inspectorOpts{
+		querySource: &referenceQueriesSource{queries: []model.QueryMetadata{
+			referenceQuery("release_bucket_rule", "release-bucket-rule", referenceBucketRule),
+		}},
+		repoPath: root, vb: DefaultVulnerabilityBuilder, tracker: &tracker.CITracker{},
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
 	ins.SetReleaseDocumentsAfterPayload(release)
 	ins.SetReleasePostEvalData(true)
 	return ins
@@ -102,21 +45,26 @@ resource "aws_s3_bucket" "mod_bucket" {
 		parseTerraformWritten(t, filepath.Join(root, "mod", "main.tf"))...)
 }
 
-func releaseRule() model.QueryMetadata {
-	return model.QueryMetadata{
-		Query: "release_bucket_rule", Content: releaseBucketRule, InputData: "{}", Platform: "terraform",
-		Metadata: map[string]interface{}{"id": "release-bucket-rule", "platform": "Terraform"}, Aggregation: 1,
-	}
-}
-
 // Releasing the documents before evaluation must not change what the scan
 // reports: the same module resource, with the same identity, whether the
 // documents were released or kept.
+//
+// The identity fields asserted here are the ones the contract decode path
+// populates. ResourceID is not among them: it is set only from a file's
+// TerraformScope lookups, which this path does not build. The finding's
+// identity is model.FindingIdentity — the exact input the report layer
+// hashes into the DATADOG_FINGERPRINT (via GetDatadogFingerprintHash, with
+// scan-constant SCIInfo) — and the fingerprint hash itself is compared too.
 func TestInspect_DocumentReleaseKeepsFindingsIdentical(t *testing.T) {
+	// One root for both runs: the finding identity carries the file path, so
+	// the runs must scan the same directory. Each run re-parses the files, so
+	// one run's released documents cannot leak into the other.
+	root := t.TempDir()
+	releaseModuleFiles(t, root)
 	run := func(t *testing.T, release bool) []model.Vulnerability {
-		root := t.TempDir()
-		files := releaseModuleFiles(t, root)
-		ins := releaseInspector(t, root, releaseRule(), release)
+		files := append(parseTerraformWritten(t, filepath.Join(root, "main.tf")),
+			parseTerraformWritten(t, filepath.Join(root, "mod", "main.tf"))...)
+		ins := releaseInspector(t, root, release)
 		vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 		require.NoError(t, err)
 		require.Empty(t, ins.GetFailedQueries())
@@ -141,13 +89,30 @@ func TestInspect_DocumentReleaseKeepsFindingsIdentical(t *testing.T) {
 	require.NotEmpty(t, released, "the module's resource is found with the documents released")
 	require.Len(t, released, len(kept), "the release does not change what is reported")
 	for i := range released {
-		require.Equal(t, kept[i].ResourceID, released[i].ResourceID, "same address either way")
-		require.Equal(t, kept[i].IdentityKey, released[i].IdentityKey, "same finding identity either way")
-		require.Equal(t, kept[i].SearchKey, released[i].SearchKey, "same search key either way")
-		require.Equal(t, kept[i].ModuleCallChain, released[i].ModuleCallChain, "same module call chain either way")
-		require.NotNil(t, released[i].ModuleAttribution, "the finding is attributed to the root call")
-		require.Equal(t, kept[i].ModuleAttribution.CallSite, released[i].ModuleAttribution.CallSite,
+		r, k := &released[i], &kept[i]
+		// The identity fields the decode path populates, and the identity and
+		// fingerprint built from them.
+		require.Equal(t, k.QueryID, r.QueryID)
+		require.Equal(t, k.FileName, r.FileName)
+		require.Equal(t, k.Line, r.Line, "same line either way")
+		require.Equal(t, k.ResourceType, r.ResourceType)
+		require.Equal(t, k.ResourceName, r.ResourceName)
+		require.NotEmpty(t, r.SearchKey, "the search key is populated on this path")
+		require.Equal(t, k.SearchKey, r.SearchKey, "same search key either way")
+		require.NotEmpty(t, r.IdentityKey, "the rule's path makes the identity key non-empty")
+		require.Equal(t, k.IdentityKey, r.IdentityKey, "same identity key either way")
+		require.Equal(t, k.ModuleCallChain, r.ModuleCallChain, "same module call chain either way")
+		require.NotNil(t, r.ModuleAttribution, "the finding is attributed to the root call")
+		require.Equal(t, k.ModuleAttribution.CallSite, r.ModuleAttribution.CallSite,
 			"same attribution either way")
+		require.Equal(t, model.FindingIdentity(k), model.FindingIdentity(r),
+			"same full finding identity either way")
+		require.Equal(t,
+			model.GetDatadogFingerprintHash(model.SCIInfo{}, k.FileName, k.Platform, k.ResourceType,
+				k.ResourceName, k.QueryID, "", k.ModuleCallChain),
+			model.GetDatadogFingerprintHash(model.SCIInfo{}, r.FileName, r.Platform, r.ResourceType,
+				r.ResourceName, r.QueryID, "", r.ModuleCallChain),
+			"same DATADOG_FINGERPRINT input either way")
 	}
 }
 
@@ -166,7 +131,7 @@ resource "aws_s3_bucket" "gone" {
 `)
 	files := append(parseTerraformWritten(t, filepath.Join(root, "main.tf")),
 		parseTerraformWritten(t, filepath.Join(root, "variables.tf"))...)
-	ins := releaseInspector(t, root, releaseRule(), true)
+	ins := releaseInspector(t, root, true)
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
