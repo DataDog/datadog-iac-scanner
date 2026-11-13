@@ -1,0 +1,14 @@
+{
+ "sink.tf": [
+  {
+   "data": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "safe"
+     }
+    }
+   },
+   "file": "sink.tf"
+  }
+ ]
+}

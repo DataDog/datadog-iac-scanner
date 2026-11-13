@@ -1,0 +1,27 @@
+{
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "attr": "{\"k\":\"${var.unset}\"}"
+     }
+    }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {}
+    }
+   },
+   "variable": {
+    "unset": {}
+   }
+  }
+ ]
+}

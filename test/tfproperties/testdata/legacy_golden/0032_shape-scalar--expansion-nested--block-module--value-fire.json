@@ -1,0 +1,34 @@
+{
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "mod/inner/main.tf": [
+  {
+   "file": "mod/inner/main.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "fire"
+     }
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "module": {
+    "inner": {
+     "source": "../inner"
+    }
+   }
+  }
+ ]
+}

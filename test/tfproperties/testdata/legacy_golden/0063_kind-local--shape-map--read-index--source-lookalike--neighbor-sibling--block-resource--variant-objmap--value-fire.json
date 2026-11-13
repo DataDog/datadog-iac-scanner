@@ -1,0 +1,54 @@
+{
+ "locals.tf": [
+  {
+   "file": "locals.tf",
+   "locals": [
+    {
+     "src": {
+      "probe_source": "fire"
+     }
+    },
+    {
+     "val": {
+      "probe_source": "fire"
+     }
+    }
+   ]
+  }
+ ],
+ "neighbor.tf": [
+  {
+   "file": "neighbor.tf",
+   "resource": {
+    "aws_instance": {
+     "nbr": {
+      "for_each": "${var.unset_value}",
+      "probe_source": "nbr"
+     }
+    }
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": {
+       "probe_source": "fire"
+      }
+     }
+    }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "variable": {
+    "unset_value": {}
+   }
+  }
+ ]
+}

@@ -1,0 +1,37 @@
+{
+ "locals.tf": [
+  {
+   "file": "locals.tf",
+   "locals": {
+    "val": "${aws_instance.src.probe_source}"
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "computed_ref": "${aws_instance.src.id}",
+      "probe": "${local.val}"
+     }
+    }
+   }
+  }
+ ],
+ "src.tf": [
+  {
+   "file": "src.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "probe_source": {
+       "a": "fire"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

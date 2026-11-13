@@ -1,0 +1,44 @@
+{
+ "data.tf": [
+  {
+   "data": {
+    "probe_data": {
+     "src": {
+      "value": [
+       "fire"
+      ]
+     }
+    }
+   },
+   "file": "data.tf",
+   "locals": {
+    "val": "${data.probe_data.src.value}"
+   }
+  }
+ ],
+ "neighbor.tf": [
+  {
+   "file": "neighbor.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "probe_source": "x"
+     }
+    }
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "computed_ref": "${aws_instance.src.id}",
+      "probe": "${local.val}"
+     }
+    }
+   }
+  }
+ ]
+}

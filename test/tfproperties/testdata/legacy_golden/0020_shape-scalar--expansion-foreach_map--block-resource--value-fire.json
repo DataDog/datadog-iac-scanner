@@ -1,0 +1,18 @@
+{
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "for_each": {
+       "one": "fire",
+       "two": "fire"
+      },
+      "probe": "${each.value}"
+     }
+    }
+   }
+  }
+ ]
+}

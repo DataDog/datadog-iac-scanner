@@ -1,0 +1,17 @@
+{
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "for_each": [
+       "k"
+      ],
+      "probe": "safe"
+     }
+    }
+   }
+  }
+ ]
+}

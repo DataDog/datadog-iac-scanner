@@ -1,0 +1,28 @@
+{
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "for_each": {
+      "one": "a",
+      "two": "b"
+     },
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "fire"
+     }
+    }
+   }
+  }
+ ]
+}

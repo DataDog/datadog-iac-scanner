@@ -1,0 +1,17 @@
+{
+ "sink.tf": [
+  {
+   "ephemeral": {
+    "aws_s3_bucket": {
+     "sink": {
+      "for_each": [
+       "k"
+      ],
+      "probe": "safe"
+     }
+    }
+   },
+   "file": "sink.tf"
+  }
+ ]
+}

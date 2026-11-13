@@ -1,0 +1,14 @@
+{
+ "sink.tf": [
+  {
+   "ephemeral": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "fire"
+     }
+    }
+   },
+   "file": "sink.tf"
+  }
+ ]
+}

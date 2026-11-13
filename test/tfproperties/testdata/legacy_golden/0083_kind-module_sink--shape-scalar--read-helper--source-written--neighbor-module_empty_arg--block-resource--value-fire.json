@@ -1,0 +1,51 @@
+{
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "fire"
+     }
+    }
+   },
+   "variable": {
+    "in_val": {
+     "default": "fire"
+    }
+   }
+  }
+ ],
+ "neighbor.tf": [
+  {
+   "file": "neighbor.tf",
+   "resource": {
+    "aws_instance": {
+     "empty": {}
+    }
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "extra": "${aws_instance.empty}"
+     }
+    }
+   }
+  }
+ ]
+}

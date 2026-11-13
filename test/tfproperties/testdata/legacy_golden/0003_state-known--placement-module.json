@@ -1,0 +1,41 @@
+{
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "in": "value",
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "attr": "${var.in}"
+     }
+    }
+   },
+   "variable": {
+    "in": {}
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {}
+    }
+   },
+   "variable": {
+    "unset": {}
+   }
+  }
+ ]
+}
