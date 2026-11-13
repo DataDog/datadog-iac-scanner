@@ -7,11 +7,12 @@ package tfeval
 
 import (
 	"context"
-	"strings"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // A module with one sane call and one call whose count cannot be enumerated in
@@ -66,19 +67,17 @@ module "huge" {
 	})
 }
 
-// A for_each over a collection larger than any scan enumerates keeps the call
-// unresolved and stops at the context, like the huge count.
+// A for_each over a collection far larger than any scan enumerates expands
+// many distinct instances and stops at the context; the identical-key shape
+// would dedupe to one instance and never exercise the expansion loop.
 func TestEvaluateModule_HugeForEachSiblingDoesNotPanicAndStopsAtTheContext(t *testing.T) {
-	var keys []string
-	for i := 0; i < 300000; i++ {
-		keys = append(keys, `"k"`)
-	}
 	root := t.TempDir()
 	writeModule(t, root, "child", map[string]string{"main.tf": `
 variable "in" { type = string }
 resource "aws_s3_bucket" "b" { bucket = var.in }
 `})
-	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
+	moduleSrc := func(expr string) string {
+		return `
 module "sane" {
   source = "../child"
   count  = 2
@@ -86,18 +85,44 @@ module "sane" {
 }
 module "huge" {
   source   = "../child"
-  for_each = toset([` + strings.Join(keys, ", ") + `])
+  for_each = ` + expr + `
   in       = "huge-${each.key}"
 }
-`})
+`
+	}
+	dir := writeModule(t, root, "stack", map[string]string{"main.tf": `
+variable "keys" { type = set(string) }
+` + moduleSrc("var.keys")})
 
-	deadline, dl := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer dl()
-	start := time.Now()
-	require.NotPanics(t, func() {
-		resources, _, _, err := New().EvaluateModule(deadline, dir, nil)
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-		require.Empty(t, resources)
+	distinctKeys := func(n int) cty.Value {
+		values := make([]cty.Value, n)
+		for i := range values {
+			values[i] = cty.StringVal(fmt.Sprintf("k%07d", i))
+		}
+		return cty.SetVal(values)
+	}
+
+	t.Run("a_moderate_distinct_collection_expands_every_instance", func(t *testing.T) {
+		resources, _, _, err := New().EvaluateModule(context.Background(), dir, map[string]cty.Value{
+			"keys": distinctKeys(2000),
+		})
+		require.NoError(t, err)
+		require.Len(t, resources, 2002)
 	})
-	require.Less(t, time.Since(start), 10*time.Second)
+
+	t.Run("a_huge_distinct_collection_stops_at_the_context", func(t *testing.T) {
+		deadline, dl := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer dl()
+		start := time.Now()
+		require.NotPanics(t, func() {
+			resources, _, _, err := New().EvaluateModule(deadline, dir, map[string]cty.Value{
+				"keys": distinctKeys(300000),
+			})
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			// The partial tree is discarded, never returned as a completed
+			// evaluation.
+			require.Empty(t, resources)
+		})
+		require.Less(t, time.Since(start), 10*time.Second)
+	})
 }
