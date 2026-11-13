@@ -153,6 +153,9 @@ func valueGrid(t *testing.T) (grid, oracle *gridResult, cells []tfcorpus.Cell, o
 
 // oracleFindings returns the oracle's findings by rule id.
 func oracleFindings(oracle *gridResult, o tfcorpus.Cell) map[string][]tfharness.Finding {
+	if oracle == nil {
+		panic("the oracle grid never built; the earlier Fatal should have stopped the test")
+	}
 	for i, oc := range oracle.cells {
 		if oc.Name() == o.Name() {
 			fs := oracle.findingsOf(i)

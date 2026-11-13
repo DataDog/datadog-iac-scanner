@@ -169,15 +169,13 @@ func TestInstancesOfABlockProduceTheSameFindingShape(t *testing.T) {
 }
 
 // TestContractInstancesCarryTheirAddress checks the contract side of parity:
-// on the contract input, every instance of an expanded resource or module
-// sink reports under its own instance key with the same finding shape as its
-// siblings. Data and ephemeral sinks are legacy-only, so they are skipped.
+// on the contract input, every instance of an expanded sink — resource, data
+// or module — reports under its own instance key with the same finding shape
+// as its siblings. Ephemeral blocks are evaluated as written, so their cells
+// hold a singleton and their contract rule fires on the one instance.
 func TestContractInstancesCarryTheirAddress(t *testing.T) {
 	grid, cells := expansionGrid(t)
 	for i, c := range cells {
-		if c.SinkKind == "data" || c.SinkKind == "ephemeral" {
-			continue
-		}
 		byRule := map[string][]tfharness.Finding{}
 		for _, f := range grid.findingsOf(i) {
 			if strings.HasPrefix(f.Rule, "probe-contract-") {

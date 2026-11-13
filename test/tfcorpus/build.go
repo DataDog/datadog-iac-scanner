@@ -78,24 +78,42 @@ func buildCell(c Cell) Cell {
 		if c.Neighbor == "module_empty_arg" {
 			// The empty instance answers unknown; a plain object errors
 			// into the fallback. The third sink observes it.
-			c.files["mod/main.tf"] += "\noutput \"out_extra\" {\n  value = try(var.extraArg.anything, \"marked\")\n}\n"
+			c.files["mod/main.tf"] += "\noutput \"out_extra\" {\n  value = try(var.extraArg.anything, \"fire\")\n}\n"
 			c.files["sink3.tf"] = renderSinkNamed("resource", "sink3", []string{"probe = module.m.out_extra"})
 		}
-		call := fmt.Sprintf("module \"m\" {\n  source = \"./mod\"\n  in_val = %s\n}\n", srcExpr)
+		extraArg := ""
+		if c.Neighbor == "module_empty_arg" {
+			extraArg = "  extraArg = aws_instance.empty\n"
+		}
+		call := fmt.Sprintf("module \"m\" {\n  source = \"./mod\"\n  in_val = %s\n%s}\n", srcExpr, extraArg)
 		// The same module called with the resource object and with the
 		// lookalike object in one root exercises the per-root caches: two
-		// arguments that evaluate equal but do not carry the same marks.
-		if c.Source == "resource_object" {
-			// The second call passes the lookalike object: equal value,
-			// different provenance. Both outputs land on their own sink, so
-			// a per-root cache that mixes the two evaluations up shows up as
-			// a lost finding on sink2.
-			call += fmt.Sprintf("module \"m2\" {\n  source = \"./mod\"\n  in_val = local.src\n}\n\nlocals {\n  src = { probe_source = %s }\n}\n\nresource \"aws_s3_bucket\" \"sink2\" {\n  probe = module.m2.out_val\n}\n", srcLiteral)
-			c.Sinks = 2
-		}
-		if c.Source == "lookalike" {
-			call += fmt.Sprintf("module \"m2\" {\n  source = \"./mod\"\n  in_val = aws_instance.src\n}\n\nresource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n\nresource \"aws_s3_bucket\" \"sink2\" {\n  probe = module.m2.out_val\n}\n", strings.ReplaceAll(srcLiteral, ", extra = ", "\n  extra = "))
-			c.Sinks = 2
+		// arguments that evaluate equal but do not carry the same marks. The
+		// second call's sink reads the output that tells an instance object
+		// from a plain one - an instance answers unknown, a plain object
+		// errors into the fallback - so a cache that mixes the two
+		// evaluations up shows up as a lost finding on sink2, and a third
+		// sink observes the first call's output the same way.
+		if c.Source == "resource_object" || c.Source == "lookalike" {
+			fallbackObj := `{ probe_source = "fire" }`
+			if !c.Fire {
+				fallbackObj = `{ probe_source = "safe", extra = "x" }`
+			}
+			c.files["mod/main.tf"] += "\noutput \"out_missing\" {\n  value = try(var.in_val.missing, " + fallbackObj + ")\n}\n"
+			other := "local.src"
+			decl := ""
+			if c.Source == "lookalike" {
+				other = "aws_instance.src"
+				decl = fmt.Sprintf("\nresource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n", strings.ReplaceAll(srcLiteral, ", extra = ", "\n  extra = "))
+			}
+			call += decl + fmt.Sprintf("module \"m2\" {\n  source = \"./mod\"\n  in_val = %s\n}\n\nresource \"aws_s3_bucket\" \"sink2\" {\n  probe = module.m2.out_missing\n}\n", other)
+			call += "\nresource \"aws_s3_bucket\" \"sink4\" {\n  probe = module.m.out_missing\n}\n"
+			if c.Source == "lookalike" {
+				// The observed call's input is the plain lookalike object:
+				// its missing-attribute output resolves to the fallback, so
+				// sink4 fires like the sink does.
+				c.Sinks = 2
+			}
 		}
 		c.files["main.tf"] = call
 		probeExpr = "module.m.out_val"
@@ -106,10 +124,14 @@ func buildCell(c Cell) Cell {
 		}
 		c.files["mod/main.tf"] = extraVar + fmt.Sprintf("variable \"in_val\" {\n  default = %s\n}\n\nresource \"aws_s3_bucket\" \"sink\" {\n  probe = var.in_val\n}\n", literal)
 		if c.Neighbor == "module_empty_arg" {
-			c.files["mod/main.tf"] += "\noutput \"out_extra\" {\n  value = try(var.extraArg.anything, \"marked\")\n}\n"
+			c.files["mod/main.tf"] += "\noutput \"out_extra\" {\n  value = try(var.extraArg.anything, \"fire\")\n}\n"
 			c.files["sink3.tf"] = renderSinkNamed("resource", "sink3", []string{"probe = module.m.out_extra"})
 		}
-		c.files["main.tf"] = "module \"m\" {\n  source = \"./mod\"\n}\n"
+		extraArg := ""
+		if c.Neighbor == "module_empty_arg" {
+			extraArg = "  extraArg = aws_instance.empty\n"
+		}
+		c.files["main.tf"] = "module \"m\" {\n  source = \"./mod\"\n" + extraArg + "}\n"
 		probeExpr = "" // the sink lives in the module
 	case "data_source":
 		dataArg := literal
@@ -138,17 +160,21 @@ func buildCell(c Cell) Cell {
 			// try takes the fallback.
 			c.files["locals.tf"] = "locals {\n  missing = {}\n}\n"
 			probeExpr = fmt.Sprintf("try(local.missing.attr, %s)", fallback)
-		case "resource_attr", "resource_object":
+		case "resource_attr":
 			// A computed attribute is unknown; try keeps the unknown, which
 			// is what Terraform does with an unknown first argument.
 			probeExpr = "try(aws_instance.src.probe_source, " + fallback + ")"
-		case "lookalike":
-			// An ordinary object equal to a resource's configured value,
-			// with the resource present: the try reads an attribute the
-			// object does not have, so the fallback is the value.
-			c.files["locals.tf"] = fmt.Sprintf("locals {\n  src = { probe_source = %s }\n}\n", srcLiteral)
-			c.files["src.tf"] = fmt.Sprintf("resource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n", srcLiteral)
-			probeExpr = fmt.Sprintf("try(local.src.missing, %s)", fallback)
+		case "resource_object", "lookalike":
+			// The whole object: an ordinary object equal to a resource's
+			// configured value, with the resource present, is exactly what
+			// the try returns.
+			c.files["src.tf"] = fmt.Sprintf("resource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n", strings.ReplaceAll(srcLiteral, ", extra = ", "\n  extra = "))
+			if c.Source == "lookalike" {
+				c.files["locals.tf"] = fmt.Sprintf("locals {\n  src = { probe_source = %s }\n}\n", srcLiteral)
+				probeExpr = fmt.Sprintf("try(local.src, %s)", fallback)
+			} else {
+				probeExpr = fmt.Sprintf("try(aws_instance.src, %s)", fallback)
+			}
 		}
 	case "coalesce":
 		probeExpr = fmt.Sprintf("coalesce(null, %s)", literal)
@@ -252,7 +278,11 @@ func buildCell(c Cell) Cell {
 	if needUnset {
 		c.files["unset.tf"] = "variable \"unset_value\" {}\n"
 	}
-	c.files["sink.tf"] = renderSink(c.SinkKind, sinkAttrs)
+	// The sink of a module_sink cell lives in the module's own file; the
+	// root declares no sink block of its own.
+	if c.Indirection != "module_sink" {
+		c.files["sink.tf"] = renderSink(c.SinkKind, sinkAttrs)
+	}
 	for _, extra := range extras {
 		c.files["neighbor.tf"] += extra
 	}
@@ -282,7 +312,7 @@ func buildLiteral(c *Cell) {
 			"sink.tf": renderSink("resource", []string{"probe = " + literal}),
 		}
 		if c.Sinks == 2 {
-			files["sink2.tf"] = renderSinkNamed("resource", "sink2", []string{"probe = " + literal})
+			files["sink4.tf"] = renderSinkNamed("resource", "sink4", []string{"probe = " + literal})
 		}
 		c.files = files
 		return
@@ -297,7 +327,7 @@ func buildLiteral(c *Cell) {
 	if c.Sinks == 2 {
 		// The cell observes two module calls with equal-value inputs; its
 		// oracle writes the same value on both sinks.
-		files["sink2.tf"] = renderSinkNamed("resource", "sink2", []string{"probe = " + literal})
+		files["sink4.tf"] = renderSinkNamed("resource", "sink4", []string{"probe = " + literal})
 	}
 	c.files = files
 }
@@ -346,20 +376,19 @@ func neighborAttrs(c Cell, needUnset *bool, extras *[]string) []string {
 	case "computed":
 		// The computed reference reads a provider-computed attribute of the
 		// source resource when the source already declares one.
-		if c.Source != "resource_attr" && c.Source != "resource_object" && c.Source != "merged" {
+		if !objectSource(c) && c.Source != "resource_attr" {
 			*extras = append(*extras, "resource \"aws_instance\" \"src\" {\n  probe_source = \"x\"\n}\n\n")
 		}
 		return []string{"computed_ref = aws_instance.src.id"}
 	case "module_arg":
 		*needUnset = true
-		*extras = append(*extras, "module \"m2\" {\n  source = \"./mod\"\n  in_val = var.unset_value\n}\n\n")
+		*extras = append(*extras, "module \"mUnknown\" {\n  source = \"./mod\"\n  in_val = var.unset_value\n}\n\n")
 		return nil
 	case "module_empty_arg":
 		// The empty resource object is a second input of the observed
-		// module call: the module must still evaluate, and the probe
-		// attribute must keep its concrete value.
+		// module call; the call wiring adds it where the call is built.
 		*extras = append(*extras, "resource \"aws_instance\" \"empty\" {}\n\n")
-		return []string{"extraArg = aws_instance.empty"}
+		return nil
 	}
 	panic("unknown neighbor " + c.Neighbor)
 }
@@ -405,9 +434,13 @@ func buildExpansion(c Cell) Cell {
 		}
 		c.files["sink.tf"] = renderSink(c.SinkKind, []string{
 			"for_each = { one = " + value + ", two = " + value + " }", "probe = each.value"})
-	case "foreach_set":
+	case "foreach_set", "foreach_set3":
+		keys := `["k"]`
+		if c.Expansion == "foreach_set3" {
+			keys = `["k1", "k2", "k3"]`
+		}
 		c.files["sink.tf"] = renderSink(c.SinkKind, []string{
-			`for_each = toset(["k"])`, "probe = " + literal})
+			"for_each = toset(" + keys + ")", "probe = " + literal})
 	case "module_count", "module_count3", "module_foreach", "nested":
 		c.Keys = []string{name}
 		c.files["mod/main.tf"] = renderSink("resource", []string{"probe = " + literal})

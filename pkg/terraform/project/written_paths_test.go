@@ -287,32 +287,23 @@ func checkNothingInvented(t *testing.T, contract contractTree, legacy map[string
 	for path := range inst.Computed {
 		templates[path] = true
 	}
+	allowed := map[string]bool{}
+	for path := range written {
+		allowed[path] = true
+		allowed[collapsedForm(path)] = true
+	}
+	for path := range templates {
+		allowed[path] = true
+		allowed[collapsedForm(path)] = true
+	}
 	known := func(path string) bool {
 		if strings.HasPrefix(path, "_dd_meta.") {
 			return true // the metadata the engine attaches to every block
 		}
-		if written[path] || templates[path] {
-			return true
-		}
-		// A nested block written once collapses to an object in the legacy
-		// document, so the model's index segment disappears: the path
-		// matches when the model writes a path whose indexes dropped give
-		// exactly this one.
-		if writtenCollapsed[collapsedForm(path)] || templates[collapsedForm(path)] {
-			return true
-		}
-		segments := strings.Split(path, ".")
-		for i := len(segments) - 1; i > 0; i-- {
-			prefix := strings.Join(segments[:i], ".")
-			if written[prefix] && !isLeafValue(modelLeafAt(inst, prefix)) {
-				// An unknown or container ancestor stands for its subtree.
-				return true
-			}
-			if templates[prefix] {
-				return true
-			}
-		}
-		return false
+		// The exact path set: a projected leaf is allowed only where the
+		// model writes it (or a template or computed part stands for it),
+		// with the collapsed form of the same path.
+		return allowed[path]
 	}
 	// The legacy document holds nothing the model does not.
 	for _, path := range legacyLeafPaths(legacy) {
@@ -379,6 +370,13 @@ func legacyLeafPaths(attrs map[string]any) []string {
 	walk = func(prefix []string, node any) {
 		switch v := node.(type) {
 		case map[string]any:
+			if len(v) == 0 {
+				if len(prefix) > 0 {
+					// An empty container nested in the entry is present too.
+					out = append(out, strings.Join(prefix, "."))
+				}
+				return
+			}
 			keys := make([]string, 0, len(v))
 			for k := range v {
 				keys = append(keys, k)

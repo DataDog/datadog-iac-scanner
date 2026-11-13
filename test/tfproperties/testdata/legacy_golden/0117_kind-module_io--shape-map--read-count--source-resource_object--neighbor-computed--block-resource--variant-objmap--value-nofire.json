@@ -1,0 +1,69 @@
+{
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "in_val": "${aws_instance.src}",
+     "source": "./mod"
+    },
+    "m2": {
+     "in_val": "${local.src}",
+     "source": "./mod"
+    }
+   },
+   "resource": {
+    "aws_s3_bucket": {
+     "sink2": {
+      "probe": "${module.m2.out_missing}"
+     },
+     "sink4": {
+      "probe": "${module.m.out_missing}"
+     }
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "output": {
+    "out_missing": {
+     "value": "${try(var.in_val.missing, { probe_source = \"safe\", extra = \"x\" })}"
+    },
+    "out_val": {
+     "value": "${var.in_val}"
+    }
+   },
+   "variable": {
+    "in_val": {}
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "computed_ref": "${aws_instance.src.id}",
+      "probe": "${module.m.out_val}"
+     }
+    }
+   }
+  }
+ ],
+ "src.tf": [
+  {
+   "file": "src.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "extra": "x",
+      "probe_source": "safe"
+     }
+    }
+   }
+  }
+ ]
+}

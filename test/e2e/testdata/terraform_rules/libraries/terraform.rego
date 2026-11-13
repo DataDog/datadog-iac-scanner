@@ -13,6 +13,12 @@ _placeholder := object.get(_dd, "placeholder", "\u0000dd-unknown")
 
 blocks(type) := object.get(_dd, ["blocks", "resource", type], [])
 
+# The data and ephemeral block inventories, read the same way: the contract
+# input lists each block kind under its own key.
+blocks_data(type) := object.get(_dd, ["blocks", "data", type], [])
+
+blocks_ephemeral(type) := object.get(_dd, ["blocks", "ephemeral", type], [])
+
 by_id(id) := object.get(_dd, ["by_id", id], _placeholder)
 
 # A list of a block kind that a rule uses with a common library helper, so the

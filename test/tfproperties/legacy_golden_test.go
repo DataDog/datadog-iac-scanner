@@ -237,6 +237,21 @@ func transformGolden(t *testing.T, cell tfcorpus.Cell, golden []byte) []byte {
 			if resolveChain(cell, doc, probeValue) {
 				transformCount["resolveChain"]++
 			}
+			_ = tryObjectProbe
+			if tryObjectProbe(cell) {
+				// The previous engine's try over the whole object fell back
+				// to the literal; the rebuild keeps the object itself.
+				if resource, ok := doc["resource"].(map[string]any); ok {
+					if byName, ok := resource["aws_s3_bucket"].(map[string]any); ok {
+						if entry, ok := byName["sink"].(map[string]any); ok {
+							if _, isObj := entry["probe"].(map[string]any); isObj {
+								entry["probe"] = probeValue
+								transformCount["resolveChain"]++
+							}
+						}
+					}
+				}
+			}
 			if mergeLocals(doc) {
 				transformCount["mergeLocals"]++
 			}
@@ -251,6 +266,13 @@ func transformGolden(t *testing.T, cell tfcorpus.Cell, golden []byte) []byte {
 		}
 	}
 	return tfcorpus.NormalizeDocs(".", flatten(byFile))
+}
+
+// tryObjectProbe reports whether the cell's try reads a whole object: the
+// previous engine fell back to the literal object, the rebuild keeps the
+// object itself.
+func tryObjectProbe(c tfcorpus.Cell) bool {
+	return c.Indirection == "try" && (c.Source == "resource_object" || c.Source == "lookalike")
 }
 
 // walkBlockEntries visits every block entry of a document.
@@ -579,10 +601,17 @@ func resolveChain(c tfcorpus.Cell, doc map[string]any, probeValue any) bool {
 				if !ok {
 					continue
 				}
-				if nameKey == "sink" || (nameKey == "sink2" && !losesFindings(c)) {
+				if nameKey == "sink" {
 					resolve(entry, "probe")
 					// The empty resource object the observed call carries.
 					resolve(entry, "extraArg")
+				}
+				// The missing-attribute output resolves only where the
+				// call's input is the plain lookalike object (the read
+				// errors into the fallback); an instance object answers
+				// unknown and the try keeps it as the source text.
+				if nameKey == "sink4" && c.Source == "lookalike" {
+					resolve(entry, "probe")
 				}
 				if section == "data" {
 					// The data attribute the chain feeds resolves too.
@@ -599,6 +628,13 @@ func resolveChain(c tfcorpus.Cell, doc map[string]any, probeValue any) bool {
 	if output, ok := doc["output"].(map[string]any); ok {
 		if outVal, ok := output["out_val"].(map[string]any); ok {
 			resolve(outVal, "value")
+		}
+		if outMissing, ok := output["out_missing"].(map[string]any); ok {
+			if c.Source == "lookalike" {
+				// The observed call's input is the plain lookalike object:
+				// the missing-attribute read errors into the fallback.
+				resolve(outMissing, "value")
+			}
 		}
 	}
 	return changed

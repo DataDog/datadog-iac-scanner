@@ -1,0 +1,53 @@
+{
+ "locals.tf": [
+  {
+   "file": "locals.tf",
+   "locals": {
+    "val": [
+     "safe",
+     "x",
+     "y"
+    ]
+   }
+  }
+ ],
+ "neighbor.tf": [
+  {
+   "file": "neighbor.tf",
+   "resource": {
+    "aws_s3_bucket_versioning": {
+     "rel": {
+      "bucket": "${aws_s3_bucket.sink.id}",
+      "versioning_configuration": {
+       "status": "${var.unset_value}"
+      }
+     }
+    }
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": [
+       "safe",
+       "x",
+       "y"
+      ]
+     }
+    }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "variable": {
+    "unset_value": {}
+   }
+  }
+ ]
+}

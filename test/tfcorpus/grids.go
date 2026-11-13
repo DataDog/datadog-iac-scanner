@@ -50,7 +50,7 @@ var kinds = map[string]struct {
 		neighbors: []string{"none", "same_block"},
 	},
 	"try": {
-		shapes:    []string{"scalar"},
+		shapes:    []string{"scalar", "map"},
 		sources:   []string{"written", "resource_attr", "lookalike", "resource_object"},
 		neighbors: []string{"none", "same_block", "computed"},
 	},
@@ -188,11 +188,15 @@ var expansionSpecs = []struct {
 		keys: func(name string) []string { return []string{name + `["k"]`} }},
 	{expansion: "foreach_set", sinkKind: "data", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + `["k"]`} }},
+	{expansion: "foreach_set3", sinkKind: "data", shapes: []string{"scalar"}, chains: 1,
+		keys: func(name string) []string {
+			return []string{name + `["k1"]`, name + `["k2"]`, name + `["k3"]`}
+		}},
 	{expansion: "foreach_set", sinkKind: "ephemeral", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name} }},
 	{expansion: "module_count", sinkKind: "module", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + "[0]"} }},
-	{expansion: "module_count3", sinkKind: "module", shapes: []string{"scalar"},
+	{expansion: "module_count3", sinkKind: "module", shapes: []string{"scalar"}, chains: 3,
 		keys: func(name string) []string { return []string{name} }},
 	{expansion: "module_foreach", sinkKind: "module", shapes: []string{"scalar"}, chains: 2,
 		keys: func(name string) []string { return []string{name + `["one"]`, name + `["two"]`} }},
@@ -320,6 +324,9 @@ func buildPair(outer, inner string, fire bool) Cell {
 		innerExpr = fmt.Sprintf("try(local.missing.attr, %s)", value)
 	case "for_expr":
 		innerExpr = fmt.Sprintf("[ for v in [%s] : v ]", value)
+		// The composed list is single-element; the non-firing polarity must
+		// not trip the count reads, which the pair does not use.
+		_ = value
 	case "module_io":
 		c.files["mod/main.tf"] = "variable \"in_val\" {}\n\noutput \"out_val\" {\n  value = var.in_val\n}\n"
 		c.files["inner.tf"] = fmt.Sprintf("module \"p\" {\n  source = \"./mod\"\n  in_val = %s\n}\n", value)
@@ -355,6 +362,13 @@ func buildPair(outer, inner string, fire bool) Cell {
 	case "for_expr":
 		c.files["sink.tf"] = renderSink("resource", []string{
 			fmt.Sprintf("probe = [ for v in [%s] : v ]", innerExpr)})
+		// The composed list is single-element, so the count read would
+		// fire on it too; the pair keeps the eq read only, and the
+		// non-firing cell must not trip the count rules either.
+		if !fire {
+			c.files["sink.tf"] = renderSink("resource", []string{
+				fmt.Sprintf("probe = [ for v in [%s, \"z\"] : v ]", innerExpr)})
+		}
 	case "module_io":
 		c.files["mod/main.tf"] = "variable \"in_val\" {}\n\noutput \"out_val\" {\n  value = var.in_val\n}\n"
 		c.files["main.tf"] = fmt.Sprintf("module \"m\" {\n  source = \"./mod\"\n  in_val = %s\n}\n", innerExpr)

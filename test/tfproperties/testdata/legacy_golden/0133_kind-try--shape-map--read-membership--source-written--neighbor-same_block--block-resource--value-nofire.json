@@ -1,0 +1,34 @@
+{
+ "locals.tf": [
+  {
+   "file": "locals.tf",
+   "locals": {
+    "missing": {}
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": {
+       "a": "safe",
+       "b": "x"
+      },
+      "unrelated": "${var.unset_value}"
+     }
+    }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "variable": {
+    "unset_value": {}
+   }
+  }
+ ]
+}

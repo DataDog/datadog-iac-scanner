@@ -1,0 +1,30 @@
+{
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "${[ for v in aws_instance.src.probe_source : v ]}"
+     }
+    }
+   }
+  }
+ ],
+ "src.tf": [
+  {
+   "file": "src.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "probe_source": [
+       "safe",
+       "x",
+       "y"
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

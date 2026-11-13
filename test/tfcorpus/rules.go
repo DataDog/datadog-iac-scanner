@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -81,6 +82,27 @@ func MaterializeState(t *testing.T, cells []StateCell) (string, []string) {
 	return dir, names
 }
 
+// labelRe matches a Terraform block header that declares a labeled block
+// (module, resource, data, ephemeral, variable, output).
+var labelRe = regexp.MustCompile(`(?m)^(module|resource|data|ephemeral|variable|output)\s+"[^"]+"\s+"([^"]+)"\s*\{`)
+
+// checkLabels rejects a root that declares the same labeled block twice:
+// a collision would make two cells' fixtures overlap and the findings
+// unattributable.
+func checkLabels(cell Cell) error {
+	seen := map[string]string{}
+	for name, content := range cell.files {
+		for _, m := range labelRe.FindAllStringSubmatch(content, -1) {
+			key := m[1] + " " + m[2]
+			if prev, ok := seen[key]; ok {
+				return fmt.Errorf("cell %s declares %s twice (%s and %s)", cell.Name(), key, prev, name)
+			}
+			seen[key] = name
+		}
+	}
+	return nil
+}
+
 // MaterializeAt writes the cells under dir (a new temporary directory when
 // empty), for callers outside a test.
 func MaterializeAt(dir string, cells []Cell) (string, []string, error) {
@@ -93,6 +115,9 @@ func MaterializeAt(dir string, cells []Cell) (string, []string, error) {
 	}
 	names := make([]string, len(cells))
 	for i, c := range cells {
+		if err := checkLabels(c); err != nil {
+			return "", nil, err
+		}
 		names[i] = DirName(i, c.Name())
 		if err := writeTree(filepath.Join(dir, names[i]), c.files); err != nil {
 			return "", nil, err
@@ -209,7 +234,14 @@ func WriteRules(t *testing.T) string {
 	for read, variants := range ruleVariants {
 		for _, v := range variants {
 			suffix := variantSuffix(v)
-			writeQuery(t, dir, "probe-contract-"+read+suffix, contractRule(read, v), "contract "+read+" "+v)
+			writeQuery(t, dir, "probe-contract-"+read+suffix, contractRule(read, v, "resource"), "contract "+read+" "+v)
+			if read == "eq" {
+				// The data and ephemeral block inventories are separate keys
+				// of the contract input; the expansion cells that sink there
+				// get their own eq probes.
+				writeQuery(t, dir, "probe-contract-data-eq"+suffix, contractRule("eq", v, "data"), "contract data eq "+v)
+				writeQuery(t, dir, "probe-contract-ephemeral-eq"+suffix, contractRule("eq", v, "ephemeral"), "contract ephemeral eq "+v)
+			}
 			for _, kind := range []string{"resource", "data", "ephemeral"} {
 				writeQuery(t, dir, "probe-legacy-"+kind+"-"+read+suffix, legacyRule(read, v, kind), "legacy "+kind+" "+read+" "+v)
 			}
@@ -272,8 +304,16 @@ var eqLiteral = map[string]string{
 }
 
 // contractRule is a rule on the contract input: every sink block whose probe
-// attribute holds the firing value, read the rule's way.
-func contractRule(read, variant string) string {
+// attribute holds the firing value, read the rule's way. The block kind
+// decides which inventory of the contract input the rule reads.
+func contractRule(read, variant, kind string) string {
+	blocks := `tf.blocks("aws_s3_bucket")`
+	switch kind {
+	case "data":
+		blocks = `tf.blocks_data("aws_s3_bucket")`
+	case "ephemeral":
+		blocks = `tf.blocks_ephemeral("aws_s3_bucket")`
+	}
 	return fmt.Sprintf(`package datadog
 
 import rego.v1
@@ -283,11 +323,11 @@ import data.generic.common as common
 import data.generic.terraform as tf
 
 DatadogPolicy contains result if {
-	some b in tf.blocks("aws_s3_bucket")
+	some b in %s
 	%s
 	result := common.finding(b, ["probe"], {})
 }
-`, ruleCondition(read, variant))
+`, blocks, ruleCondition(read, variant))
 }
 
 // legacyRule is a rule on the legacy documents: every sink entry whose probe
@@ -322,7 +362,7 @@ DatadogPolicy contains result if {
 // resource documents.
 func (c Cell) RuleID(probe string) string {
 	kind := ""
-	if probe == ProbeLegacy {
+	if probe == ProbeLegacy || c.SinkKind == "data" || c.SinkKind == "ephemeral" {
 		sink := c.SinkKind
 		if sink == "" || sink == "module" {
 			sink = "resource"
@@ -366,9 +406,17 @@ func ruleVariantOf(c Cell) string {
 // to: the firing or non-firing value of its shape, or the object its source
 // yields for the object-source variants.
 func (c Cell) ExpectedProbeValue() any {
+	// The splat composes its own two-element list from the items local; the
+	// shape's list literal does not apply to it.
+	if c.Indirection == "splat" {
+		if c.Fire {
+			return []any{"fire"}
+		}
+		return []any{"safe", "x"}
+	}
 	if objectSource(c) || c.Variant == "objmap" || c.Variant == "objmerged" {
 		value := "fire"
-		extra := map[string]any{"label": "x"}
+		extra := map[string]any{}
 		if !c.Fire {
 			value = "safe"
 			// The plain object gains a second attribute so no count read
@@ -376,10 +424,13 @@ func (c Cell) ExpectedProbeValue() any {
 			// merged object already carries one.
 			if c.Variant != "objmerged" {
 				extra["extra"] = "x"
+			} else {
+				extra["label"] = "x"
 			}
 		}
-		if c.Variant != "objmerged" {
-			delete(extra, "label")
+		if c.Variant == "objmerged" {
+			// The merged object always carries the label attribute.
+			extra["label"] = "x"
 		}
 		out := map[string]any{"probe_source": value}
 		for k, v := range extra {

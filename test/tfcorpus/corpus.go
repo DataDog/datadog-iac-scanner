@@ -121,7 +121,7 @@ type shapeDef struct {
 
 var shapes = map[string]shapeDef{
 	"scalar": {fire: `"fire"`, noFire: `"safe"`, regoFire: `"fire"`},
-	"list":   {fire: `["fire"]`, noFire: `["safe", "x"]`, regoFire: `["fire"]`},
+	"list":   {fire: `["fire"]`, noFire: `["safe", "x", "y"]`, regoFire: `["fire"]`},
 	"set":    {fire: `toset(["fire"])`, noFire: `toset(["safe", "x"])`, regoFire: `["fire"]`},
 	"map":    {fire: `{a = "fire"}`, noFire: `{a = "safe", b = "x"}`, regoFire: `{"a": "fire"}`},
 	"nested": {fire: `{a = {b = "fire"}}`, noFire: `{a = {b = "safe"}, c = "x"}`, regoFire: `{"a": {"b": "fire"}}`},

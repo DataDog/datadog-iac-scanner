@@ -1,0 +1,96 @@
+{
+ "locals.tf": [
+  {
+   "file": "locals.tf",
+   "locals": {
+    "src": {
+     "extra": "x",
+     "probe_source": "safe"
+    }
+   }
+  }
+ ],
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "in_val": {
+      "extra": "x",
+      "probe_source": "safe"
+     },
+     "source": "./mod"
+    },
+    "m2": {
+     "in_val": "${aws_instance.src}",
+     "source": "./mod"
+    }
+   },
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "extra": "x",
+      "probe_source": "safe"
+     }
+    },
+    "aws_s3_bucket": {
+     "sink2": {
+      "probe": "${module.m2.out_missing}"
+     },
+     "sink4": {
+      "probe": "${module.m.out_missing}"
+     }
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "output": {
+    "out_missing": {
+     "value": "${try(var.in_val.missing, { probe_source = \"safe\", extra = \"x\" })}"
+    },
+    "out_val": {
+     "value": "${var.in_val}"
+    }
+   },
+   "variable": {
+    "in_val": {}
+   }
+  }
+ ],
+ "neighbor.tf": [
+  {
+   "file": "neighbor.tf",
+   "resource": {
+    "aws_instance": {
+     "nbr": {
+      "for_each": "${var.unset_value}",
+      "probe_source": "nbr"
+     }
+    }
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "${module.m.out_val}"
+     }
+    }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "variable": {
+    "unset_value": {}
+   }
+  }
+ ]
+}
