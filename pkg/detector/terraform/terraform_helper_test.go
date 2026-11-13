@@ -571,6 +571,43 @@ func TestRepeatedBlockSlots_InterruptedColdExpansionIsNotMisread(t *testing.T) {
 	require.Len(t, after, 100000, "the healthy lookup must produce the complete result")
 }
 
+// Slot materialization itself honors the context: with the memo warm, a
+// lookup whose context is canceled while the slots are being appended returns
+// nothing, and a healthy re-lookup still materializes the complete result.
+func TestRepeatedBlockSlots_CanceledMaterializationReturnsNoPartialSlots(t *testing.T) {
+	var parts []string
+	for i := 0; i < 1000000; i++ {
+		parts = append(parts, strconv.Itoa(i))
+	}
+	src := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = [` + strings.Join(parts, ", ") + `]
+    content {
+      from_port = ingress.value
+    }
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+
+	// A healthy lookup populates the memo with the complete count.
+	warm := &sync.Map{}
+	complete := repeatedBlockSlots(context.Background(), body, "ingress", unknownBlocks, warm)
+	require.Len(t, complete, 1000000)
+
+	// Cancel while the warm lookup is appending its slots.
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { cancel() }()
+	slots := repeatedBlockSlots(ctx, body, "ingress", unknownBlocks, warm)
+	cancel()
+	require.Empty(t, slots, "a canceled materialization must not return partial slots")
+
+	after := repeatedBlockSlots(context.Background(), body, "ingress", unknownBlocks, warm)
+	require.Equal(t, complete, after, "the healthy re-lookup must materialize the complete result")
+}
+
 // A canceled lookup stops before any slot work even when the memo is warm,
 // leaves the memo untouched, and a later lookup on a healthy context still
 // produces the complete result.

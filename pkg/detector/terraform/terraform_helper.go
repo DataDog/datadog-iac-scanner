@@ -309,6 +309,12 @@ func repeatedBlockSlots(
 	var slots blockSlots
 	for _, e := range entries {
 		for i := 0; i < e.count; i++ {
+			if ctx.Err() != nil {
+				// Cancellation during materialization: stop appending and
+				// return nothing, like the other cancellation paths — a
+				// partial slot list must not come back as a result.
+				return nil
+			}
 			slots = append(slots, e.line)
 		}
 	}
