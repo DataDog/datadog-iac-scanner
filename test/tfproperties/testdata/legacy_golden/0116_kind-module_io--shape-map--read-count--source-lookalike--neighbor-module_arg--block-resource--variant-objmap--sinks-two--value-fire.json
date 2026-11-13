@@ -1,0 +1,85 @@
+{
+ "locals.tf": [
+  {
+   "file": "locals.tf",
+   "locals": {
+    "src": {
+     "probe_source": "fire"
+    }
+   }
+  }
+ ],
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "in_val": {
+      "probe_source": "fire"
+     },
+     "source": "./mod"
+    },
+    "m2": {
+     "in_val": "${aws_instance.src}",
+     "source": "./mod"
+    }
+   },
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "probe_source": "fire"
+     }
+    },
+    "aws_s3_bucket": {
+     "sink2": {
+      "probe": "${module.m2.out_val}"
+     }
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "output": {
+    "out_val": {
+     "value": "${var.in_val}"
+    }
+   },
+   "variable": {
+    "in_val": {}
+   }
+  }
+ ],
+ "neighbor.tf": [
+  {
+   "file": "neighbor.tf",
+   "module": {
+    "m2": {
+     "in_val": "${var.unset_value}",
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "${module.m.out_val}"
+     }
+    }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "variable": {
+    "unset_value": {}
+   }
+  }
+ ]
+}

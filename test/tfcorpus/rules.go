@@ -361,3 +361,81 @@ func ruleVariantOf(c Cell) string {
 	}
 	return ""
 }
+
+// ExpectedProbeValue is the JSON value the cell's probe attribute resolves
+// to: the firing or non-firing value of its shape, or the object its source
+// yields for the object-source variants.
+func (c Cell) ExpectedProbeValue() any {
+	if objectSource(c) || c.Variant == "objmap" || c.Variant == "objmerged" {
+		value := "fire"
+		extra := map[string]any{"label": "x"}
+		if !c.Fire {
+			value = "safe"
+			// The plain object gains a second attribute so no count read
+			// can mistake it for the firing single-attribute object; the
+			// merged object already carries one.
+			if c.Variant != "objmerged" {
+				extra["extra"] = "x"
+			}
+		}
+		if c.Variant != "objmerged" {
+			delete(extra, "label")
+		}
+		out := map[string]any{"probe_source": value}
+		for k, v := range extra {
+			out[k] = v
+		}
+		return out
+	}
+	fire, noFire := shapes[c.Shape].fire, shapes[c.Shape].noFire
+	expr := fire
+	if !c.Fire {
+		expr = noFire
+	}
+	return hclLiteralToJSON(expr)
+}
+
+// hclLiteralToJSON converts the corpus's HCL fire and non-fire literals to
+// their JSON values.
+func hclLiteralToJSON(expr string) any {
+	expr = strings.TrimSpace(expr)
+	if strings.HasPrefix(expr, "toset(") && strings.HasSuffix(expr, ")") {
+		expr = strings.TrimSuffix(strings.TrimPrefix(expr, "toset("), ")")
+	}
+	switch {
+	case expr == `null`:
+		return nil
+	case strings.HasPrefix(expr, `"`):
+		return strings.Trim(expr, `"`)
+	case strings.HasPrefix(expr, "["):
+		inner := strings.TrimSuffix(strings.TrimPrefix(expr, "["), "]")
+		var items []any
+		for _, part := range strings.Split(inner, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			items = append(items, hclLiteralToJSON(part))
+		}
+		if items == nil {
+			items = []any{}
+		}
+		return items
+	case strings.HasPrefix(expr, "{"):
+		inner := strings.TrimSuffix(strings.TrimPrefix(expr, "{"), "}")
+		out := map[string]any{}
+		for _, part := range strings.Split(inner, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			kv := strings.SplitN(part, "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			out[strings.TrimSpace(kv[0])] = hclLiteralToJSON(kv[1])
+		}
+		return out
+	}
+	return expr
+}

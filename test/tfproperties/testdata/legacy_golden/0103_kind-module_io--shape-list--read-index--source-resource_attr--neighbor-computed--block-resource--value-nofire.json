@@ -1,0 +1,54 @@
+{
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "in_val": "${aws_instance.src.probe_source}",
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "output": {
+    "out_val": {
+     "value": "${var.in_val}"
+    }
+   },
+   "variable": {
+    "in_val": {}
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "computed_ref": "${aws_instance.src.id}",
+      "probe": "${module.m.out_val}"
+     }
+    }
+   }
+  }
+ ],
+ "src.tf": [
+  {
+   "file": "src.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "probe_source": [
+       "safe",
+       "x"
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

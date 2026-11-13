@@ -5,9 +5,10 @@
    "resource": {
     "aws_s3_bucket": {
      "sink": {
-      "attr": "value",
+      "attr": "${each.value}",
       "for_each": {
-       "one": "a"
+       "one": "x",
+       "two": "y"
       }
      }
     }

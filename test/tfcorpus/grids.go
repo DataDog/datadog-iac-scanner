@@ -259,7 +259,7 @@ var pairKinds = [][2]string{
 	{"local", "conditional"},
 	{"try", "local"},
 	{"for_expr", "local"},
-	{"coalesce", "for_expr"},
+	{"for_expr", "coalesce"},
 	{"module_io", "local"},
 	{"local", "module_io"},
 	{"data_source", "local"},
@@ -292,6 +292,11 @@ func buildPair(outer, inner string, fire bool) Cell {
 	// needs; outer wraps it.
 	c := Cell{Indirection: outer + "+" + inner, Shape: "scalar", Read: "eq",
 		Source: "written", SinkKind: "resource", Fire: fire, files: map[string]string{}}
+	// A for expression over a scalar yields a list; the shape follows the
+	// projected probe value.
+	if outer == "for_expr" {
+		c.Shape = "list"
+	}
 	innerExpr := value
 	switch inner {
 	case "variable":

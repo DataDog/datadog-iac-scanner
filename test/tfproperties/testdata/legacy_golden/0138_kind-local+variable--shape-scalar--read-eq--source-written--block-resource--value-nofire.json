@@ -1,0 +1,32 @@
+{
+ "inner.tf": [
+  {
+   "file": "inner.tf",
+   "variable": {
+    "pair": {
+     "default": "safe"
+    }
+   }
+  }
+ ],
+ "outer.tf": [
+  {
+   "file": "outer.tf",
+   "locals": {
+    "val": "safe"
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "${local.val}"
+     }
+    }
+   }
+  }
+ ]
+}

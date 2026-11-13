@@ -1,0 +1,59 @@
+{
+ "main.tf": [
+  {
+   "file": "main.tf",
+   "module": {
+    "m": {
+     "in_val": {
+      "a": "fire"
+     },
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "output": {
+    "out_val": {
+     "value": "${var.in_val}"
+    }
+   },
+   "variable": {
+    "in_val": {}
+   }
+  }
+ ],
+ "neighbor.tf": [
+  {
+   "file": "neighbor.tf",
+   "module": {
+    "m2": {
+     "in_val": "${var.unset_value}",
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "${module.m.out_val}"
+     }
+    }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "variable": {
+    "unset_value": {}
+   }
+  }
+ ]
+}

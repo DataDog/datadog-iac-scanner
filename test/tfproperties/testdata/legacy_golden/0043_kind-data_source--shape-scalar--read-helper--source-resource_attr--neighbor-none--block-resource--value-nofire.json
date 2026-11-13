@@ -1,0 +1,41 @@
+{
+ "data.tf": [
+  {
+   "data": {
+    "probe_data": {
+     "src": {
+      "value": "${aws_instance.src.probe_source}"
+     }
+    }
+   },
+   "file": "data.tf",
+   "locals": {
+    "val": "${data.probe_data.src.value}"
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "${local.val}"
+     }
+    }
+   }
+  }
+ ],
+ "src.tf": [
+  {
+   "file": "src.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "probe_source": "safe"
+     }
+    }
+   }
+  }
+ ]
+}

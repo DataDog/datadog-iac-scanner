@@ -1,0 +1,36 @@
+{
+ "locals.tf": [
+  {
+   "file": "locals.tf",
+   "locals": [
+    {
+     "src": {
+      "extra": "x",
+      "probe_source": "safe"
+     }
+    },
+    {
+     "val": {
+      "extra": "x",
+      "probe_source": "safe"
+     }
+    }
+   ]
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": {
+       "extra": "x",
+       "probe_source": "safe"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

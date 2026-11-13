@@ -1,0 +1,46 @@
+{
+ "inner.tf": [
+  {
+   "file": "inner.tf",
+   "module": {
+    "p": {
+     "in_val": "fire",
+     "source": "./mod"
+    }
+   }
+  }
+ ],
+ "mod/main.tf": [
+  {
+   "file": "mod/main.tf",
+   "output": {
+    "out_val": {
+     "value": "${var.in_val}"
+    }
+   },
+   "variable": {
+    "in_val": {}
+   }
+  }
+ ],
+ "outer.tf": [
+  {
+   "file": "outer.tf",
+   "locals": {
+    "val": "${module.p.out_val}"
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "${local.val}"
+     }
+    }
+   }
+  }
+ ]
+}

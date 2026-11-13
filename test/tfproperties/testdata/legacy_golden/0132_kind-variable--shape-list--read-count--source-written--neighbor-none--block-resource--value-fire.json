@@ -1,0 +1,28 @@
+{
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": [
+       "fire"
+      ]
+     }
+    }
+   }
+  }
+ ],
+ "vars.tf": [
+  {
+   "file": "vars.tf",
+   "variable": {
+    "val": {
+     "default": [
+      "fire"
+     ]
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,37 @@
+{
+ "data.tf": [
+  {
+   "data": {
+    "probe_data": {
+     "p": {
+      "value": "safe"
+     }
+    }
+   },
+   "file": "data.tf",
+   "locals": {
+    "val": "${data.probe_data.p.value}"
+   }
+  }
+ ],
+ "inner.tf": [
+  {
+   "file": "inner.tf",
+   "locals": {
+    "pair": "safe"
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "${local.val}"
+     }
+    }
+   }
+  }
+ ]
+}

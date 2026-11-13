@@ -1,0 +1,52 @@
+{
+ "data.tf": [
+  {
+   "data": {
+    "probe_data": {
+     "src": {
+      "num": 1,
+      "value": "${local.val}"
+     }
+    }
+   },
+   "file": "data.tf",
+   "locals": {
+    "val": "${aws_instance.src.probe_source}"
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "count": "${data.probe_data.src.num}",
+      "probe": "${data.probe_data.src.value}",
+      "unrelated": "${var.unset_value}"
+     }
+    }
+   }
+  }
+ ],
+ "src.tf": [
+  {
+   "file": "src.tf",
+   "resource": {
+    "aws_instance": {
+     "src": {
+      "probe_source": "safe"
+     }
+    }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "variable": {
+    "unset_value": {}
+   }
+  }
+ ]
+}

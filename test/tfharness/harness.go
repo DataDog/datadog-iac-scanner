@@ -150,14 +150,26 @@ func normalizeSARIF(t *testing.T, raw []byte) []byte {
 	if err := json.Unmarshal(raw, &report); err != nil {
 		t.Fatal(err)
 	}
+	// The scan's own clock must not decide a comparison: drop the version
+	// fields and the execution-time tag that change between runs of the
+	// same build.
 	runs, ok := report["runs"].([]any)
 	if ok && len(runs) > 0 {
 		if tool, ok := runs[0].(map[string]any)["tool"].(map[string]any); ok {
 			if driver, ok := tool["driver"].(map[string]any); ok {
 				delete(driver, "version")
 				delete(driver, "semanticVersion")
-				if info, ok := driver["informationUri"].(string); ok {
-					_ = info
+				if props, ok := driver["properties"].(map[string]any); ok {
+					if tags, ok := props["tags"].([]any); ok {
+						var kept []any
+						for _, tag := range tags {
+							if s, ok := tag.(string); ok && strings.HasPrefix(s, "DATADOG_EXECUTION_TIME_SECS:") {
+								continue
+							}
+							kept = append(kept, tag)
+						}
+						props["tags"] = kept
+					}
 				}
 			}
 		}

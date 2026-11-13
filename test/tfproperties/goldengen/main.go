@@ -34,6 +34,7 @@ import (
 func corpusCells() ([]tfcorpus.Cell, []tfcorpus.StateCell) {
 	cells := tfcorpus.ExpansionGrid()
 	cells = append(cells, tfcorpus.CellsSample(tfcorpus.ValueGrid(), 13)...)
+	cells = append(cells, tfcorpus.PairGrid()...)
 	return cells, tfcorpus.StateGrid()
 }
 

@@ -1,0 +1,22 @@
+{
+ "outer.tf": [
+  {
+   "file": "outer.tf",
+   "locals": {
+    "pair": "fire"
+   }
+  }
+ ],
+ "sink.tf": [
+  {
+   "file": "sink.tf",
+   "resource": {
+    "aws_s3_bucket": {
+     "sink": {
+      "probe": "fire"
+     }
+    }
+   }
+  }
+ ]
+}
