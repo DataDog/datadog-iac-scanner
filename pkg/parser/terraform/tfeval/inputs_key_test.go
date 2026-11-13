@@ -30,23 +30,23 @@ func TestInputsKeySharedCollectionDoesNotScale(t *testing.T) {
 	}
 
 	var memo keyMemo
-	first := memo.inputsKey(map[string]cty.Value{
+	first, _ := memo.inputsKey(context.Background(), map[string]cty.Value{
 		"config": cfg,
 		"n":      cty.NumberIntVal(0),
 	})
-	if again := memo.inputsKey(map[string]cty.Value{
+	if again, _ := memo.inputsKey(context.Background(), map[string]cty.Value{
 		"config": cfg,
 		"n":      cty.NumberIntVal(0),
 	}); again != first {
 		t.Fatal("the same inputs produced a different key")
 	}
-	if got := memo.inputsKey(map[string]cty.Value{
+	if got, _ := memo.inputsKey(context.Background(), map[string]cty.Value{
 		"config": cfg,
 		"n":      cty.NumberIntVal(1),
 	}); got == first {
 		t.Fatal("a different instance reused the first key")
 	}
-	if got := memo.inputsKey(map[string]cty.Value{
+	if got, _ := memo.inputsKey(context.Background(), map[string]cty.Value{
 		"config": objectWithKeys(500, "other"),
 		"n":      cty.NumberIntVal(0),
 	}); got == first {
@@ -59,8 +59,8 @@ func TestInputsKeySharedCollectionDoesNotScale(t *testing.T) {
 
 func TestInputsKeyEmptyListsOfDifferentTypesDoNotCollide(t *testing.T) {
 	var memo keyMemo
-	strings := memo.inputsKey(map[string]cty.Value{"v": cty.ListValEmpty(cty.String)})
-	numbers := memo.inputsKey(map[string]cty.Value{"v": cty.ListValEmpty(cty.Number)})
+	strings, _ := memo.inputsKey(context.Background(), map[string]cty.Value{"v": cty.ListValEmpty(cty.String)})
+	numbers, _ := memo.inputsKey(context.Background(), map[string]cty.Value{"v": cty.ListValEmpty(cty.Number)})
 	if strings == numbers {
 		t.Fatal("empty lists of different types produced the same key")
 	}
@@ -111,7 +111,7 @@ func TestInputsKeyNonFiniteNumbersDoNotCollideWithUnknown(t *testing.T) {
 
 func TestInputsKeyMemoizesCollectionInputsOnly(t *testing.T) {
 	var memo keyMemo
-	memo.inputsKey(map[string]cty.Value{
+	_, _ = memo.inputsKey(context.Background(), map[string]cty.Value{
 		"config": cty.ObjectVal(map[string]cty.Value{
 			"nested": cty.ListVal([]cty.Value{cty.StringVal("x")}),
 		}),
@@ -306,7 +306,7 @@ func keyingAlloc(t *testing.T, cfg cty.Value, n int) uint64 {
 	var memo keyMemo
 	var last inputsDigest
 	for _, in := range inputs {
-		last = memo.inputsKey(in)
+		last, _ = memo.inputsKey(context.Background(), in)
 	}
 	runtime.KeepAlive(last)
 	runtime.ReadMemStats(&after)
@@ -339,12 +339,13 @@ func jsonObject(n int) string {
 }
 
 func canonicalInputsKey(inputs map[string]cty.Value) inputsDigest {
-	return (*keyMemo)(nil).inputsKey(inputs)
+	key, _ := (*keyMemo)(nil).inputsKey(context.Background(), inputs)
+	return key
 }
 
 func encodeCtyForKey(v cty.Value) string {
 	var b strings.Builder
-	(*keyMemo)(nil).writeValue(stringWriter{&b}, v, false)
+	(*keyMemo)(nil).writeValue(context.Background(), stringWriter{&b}, v, false)
 	return b.String()
 }
 

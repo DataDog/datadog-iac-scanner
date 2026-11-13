@@ -69,7 +69,11 @@ func (e *Evaluator) memoizedValue(
 	if !ok {
 		return evaluate(expr, ctx)
 	}
-	key := localMemoKey{expr: expr, inputs: e.keyMemo.inputsKey(inputs)}
+	// The memo key is computed without a scan context: locals holding large
+	// collections resolve to unknown downstream, so this walk never sees one,
+	// and the evaluation paths that can carry the scan context handle their
+	// own cancellation.
+	key := localMemoKey{expr: expr, inputs: e.keyMemo.inputsKeyUninterruptible(inputs)}
 	if v, hit := e.localMemo[key]; hit {
 		return v
 	}

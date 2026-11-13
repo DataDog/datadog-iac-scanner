@@ -11,10 +11,10 @@
 package localdata
 
 import (
+	"context"
 	"sort"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/convert"
@@ -24,8 +24,9 @@ import (
 // it cannot be evaluated. A field that cannot be evaluated is left out.
 type EvalFunc func(hcl.Expression) (cty.Value, bool)
 
-// Source renders the attributes a data source computes from its body.
-type Source func(body hcl.Body, eval EvalFunc) map[string]string
+// Source renders the attributes a data source computes from its body. A done
+// ctx stops dynamic block expansion, and the document is then not rendered.
+type Source func(ctx context.Context, body hcl.Body, eval EvalFunc) map[string]string
 
 var sources = map[string]Source{
 	awsIAMPolicyDocumentType: policyDocumentAttributes,
@@ -49,19 +50,15 @@ func Types() []string {
 }
 
 type decoder struct {
+	ctx  context.Context
 	eval EvalFunc
 	// skipped is set when a dynamic block could not be expanded, so the
 	// document read may lack blocks it declares.
 	skipped *bool
-	// budget is how many more blocks the dynamic blocks of the document may
-	// generate, nested ones included, so nesting cannot multiply the per-block
-	// cap.
-	budget *int
 }
 
-func newDecoder(eval EvalFunc) decoder {
-	budget := dynamicblock.MaxGeneratedPerResource
-	return decoder{eval: eval, skipped: new(bool), budget: &budget}
+func newDecoder(ctx context.Context, eval EvalFunc) decoder {
+	return decoder{ctx: ctx, eval: eval, skipped: new(bool)}
 }
 
 func (d decoder) value(attr *hcl.Attribute) (cty.Value, bool) {
