@@ -51,6 +51,49 @@ resource "aws_s3_bucket" "b" { bucket = var.in }
 	require.Less(t, time.Since(start), 10*time.Second, "module resolution must stop promptly at the deadline")
 }
 
+// One sane call and one whose count cannot be enumerated: planning the huge
+// call must neither panic nor run to completion — the scan stops at the
+// context, reports the error, and mutates nothing.
+func TestResolveModuleDocuments_HugeCountSiblingStopsWhenTheContextIsDone(t *testing.T) {
+	root := t.TempDir()
+	files := model.FileMetadatas{
+		fileMeta("root-id", writeFile(t, root, "main.tf", `
+module "sane" {
+  source = "./child"
+  count  = 2
+  in     = "sane-${count.index}"
+}
+module "huge" {
+  source = "./child"
+  count  = 9223372036854775807
+  in     = "huge-${count.index}"
+}
+`)),
+	}
+	writeFile(t, filepath.Join(root, "child"), "main.tf", `
+variable "in" { type = string }
+resource "aws_s3_bucket" "b" { bucket = var.in }
+`)
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.NotPanics(t, func() {
+		res := resolveModuleDocuments(canceled, files, root, nil, nil, nil, nil, nil, nil)
+		require.False(t, res.ok)
+		require.Empty(t, res.docs)
+	})
+
+	deadline, dl := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer dl()
+	start := time.Now()
+	require.NotPanics(t, func() {
+		res := resolveModuleDocuments(deadline, files, root, nil, nil, nil, nil, nil, nil)
+		require.False(t, res.ok)
+		require.Empty(t, res.docs)
+	})
+	require.Less(t, time.Since(start), 10*time.Second, "module resolution must stop promptly at the deadline")
+}
+
 // Inspect returns the context error for a canceled scan rather than findings
 // computed from partly evaluated modules.
 func TestInspect_StopsWhenTheContextIsDone(t *testing.T) {

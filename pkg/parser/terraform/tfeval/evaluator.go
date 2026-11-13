@@ -1692,7 +1692,9 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		}
 		plan := moduleInstances(ctx, mb, callCtx)
 		site := call.site(scope)
-		outs := make([]cty.Value, 0, plan.Len())
+		// Grown with append, never sized from plan.Len(): an uncapped count
+		// panics in make before the loop can check the context.
+		outs := make([]cty.Value, 0)
 		for i := range plan.Len() {
 			if ctx.Err() != nil {
 				break

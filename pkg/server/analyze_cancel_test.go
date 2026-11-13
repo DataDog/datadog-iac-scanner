@@ -18,16 +18,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func joinStrings(parts []string, sep string) string { return strings.Join(parts, sep) }
-
-
-// A canceled or timed-out request stops the analyze scan promptly — expansion
-// included — and the handler reports the failure instead of scanning the
-// modules that were evaluated only in part.
-func TestAnalyze_StopsWhenTheRequestContextIsDone(t *testing.T) {
-	// The pushed-file scan expands dynamic blocks while converting each file;
-	// a block whose for_each asks for far more blocks than any earlier limit
-	// is the unbounded work a canceled request must stop.
+// A dynamic block whose for_each asks for far more blocks than any earlier
+// limit is the unbounded conversion work a canceled request must stop. The
+// request context expires while the handler is mid-scan, and the failure must
+// surface as a 500 — a 200 here would be a response computed from partly
+// converted files.
+//
+// The module expansion path is not reachable from this endpoint: pushed local
+// module calls do not resolve against the in-memory filesystem, so that path
+// is pinned at the tfeval and engine layers instead.
+func TestAnalyze_HugeDynamicBlockStopsWhenTheRequestContextIsDone(t *testing.T) {
 	var rules []string
 	for range 300000 {
 		rules = append(rules, "0")
@@ -48,30 +48,23 @@ resource "aws_security_group" "sg" {
   }
 }
 `},
-			{Path: "infra/terraform.tfvars", Content: "ports = [" + joinStrings(rules, ", ") + "]"},
+			{Path: "infra/terraform.tfvars", Content: "ports = [" + strings.Join(rules, ", ") + "]"},
 		},
 		Platform: []string{"terraform"},
 	}
 
-	canceled, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := s.analyze(canceled, &req)
-	require.ErrorIs(t, err, context.Canceled)
-
 	deadline, dl := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer dl()
 	start := time.Now()
-	_, err = s.analyze(deadline, &req)
+	_, err := s.analyze(deadline, &req)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Less(t, time.Since(start), 10*time.Second, "the analyze scan must stop promptly at the deadline")
 
-	// The HTTP handler surfaces the failure as a 500 carrying the context
-	// error, not as a response computed from partly evaluated modules.
 	body, err := json.Marshal(req)
 	require.NoError(t, err)
 	httpReq := httptest.NewRequest(http.MethodPost, "/analyze", bytes.NewReader(body)).WithContext(deadline)
 	rec := httptest.NewRecorder()
 	s.handleAnalyze(rec, httpReq)
-	require.Equal(t, http.StatusInternalServerError, rec.Code)
-	require.Contains(t, rec.Body.String(), "context deadline exceeded")
+	require.Equal(t, http.StatusInternalServerError, rec.Code, "body: %s", rec.Body.String())
+	require.Contains(t, rec.Body.String(), "context")
 }

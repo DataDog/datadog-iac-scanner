@@ -428,7 +428,7 @@ func TestRepeatedBlockSlots(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, repeatedBlockSlots(body, "ingress", tt.repeated))
+			require.Equal(t, tt.want, repeatedBlockSlots(context.Background(), body, "ingress", tt.repeated))
 		})
 	}
 
@@ -443,7 +443,7 @@ func TestRepeatedBlockSlots(t *testing.T) {
 	file, diags = hclsyntax.ParseConfig([]byte(single), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	body = file.Body.(*hclsyntax.Body).Blocks[0].Body
-	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(body, "ingress", repeatedBlocks{total: 3}),
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "ingress", repeatedBlocks{total: 3}),
 		"a single unresolved block stands for what the document's total leaves")
 }
 
@@ -490,10 +490,10 @@ func TestRepeatedBlockSlotsInNestedBody(t *testing.T) {
 	require.False(t, diags.HasErrors(), diags.Error())
 	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
 
-	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(body, "flag", repeatedBlocks{total: 3}),
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3}),
 		"in the body it was counted for, the total sizes the one unresolved block")
-	require.Equal(t, blockSlots{5}, repeatedBlockSlots(body, "flag", repeatedBlocks{total: 3}.inNestedBody()),
+	require.Equal(t, blockSlots{5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3}.inNestedBody()),
 		"in a nested body it is not")
-	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(body, "flag", repeatedBlocks{total: 3, lines: []int{1, 1, 5}}.inNestedBody()),
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3, lines: []int{1, 1, 5}}.inNestedBody()),
 		"the document's lines still apply")
 }

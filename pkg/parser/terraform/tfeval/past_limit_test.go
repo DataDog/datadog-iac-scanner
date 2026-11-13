@@ -18,7 +18,7 @@ import (
 // The sizes sit well above the limits earlier engine builds stopped expanding
 // past: 50 count/for_each instances per block, 512-entry output shapes and
 // 1024 generated dynamic blocks per resource.
-const pastLimitN = 300
+const pastLimitN = 600
 
 // every instance of a count/for_each expansion is evaluated, however large.
 func TestEvaluateModule_ExpansionsPastTheOldLimitsEvaluateEveryInstance(t *testing.T) {

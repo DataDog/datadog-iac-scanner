@@ -119,7 +119,7 @@ func resolveListIndex(
 	}
 
 	// Search for the attribute in the parsed tree
-	result, lineNum := findInHCLBody(body, attrName, index, currentLine, repeated)
+	result, lineNum := findInHCLBody(ctx, body, attrName, index, currentLine, repeated)
 	if result == "" && lineNum == 0 {
 		if line, ok := findTupleElementLineInJsonencodeArgs(body, attrName, index, currentLine); ok {
 			return "", line
@@ -187,7 +187,9 @@ func findTupleElementLineInObject(expr hclsyntax.Expression, attrName string, in
 	return -1
 }
 
-func findInHCLBody(body *hclsyntax.Body, attrName string, index, contextLine int, repeated repeatedBlocks) (substr string, lineNum int) {
+func findInHCLBody(
+	ctx context.Context, body *hclsyntax.Body, attrName string, index, contextLine int, repeated repeatedBlocks,
+) (substr string, lineNum int) {
 	// If contextLine is provided (>= 0), first scope the search to the block containing that line
 	// Note: contextLine is 0-indexed, so 0 is a valid line (first line of file)
 	if contextLine >= 0 {
@@ -201,7 +203,7 @@ func findInHCLBody(body *hclsyntax.Body, attrName string, index, contextLine int
 
 			if contextLineHCL >= start && contextLineHCL <= end {
 				// We're inside this block - search within it (without contextLine, since we've already scoped to the right block)
-				result, line := findInHCLBodyScoped(block.Body, attrName, index, contextLine, repeated)
+				result, line := findInHCLBodyScoped(ctx, block.Body, attrName, index, contextLine, repeated)
 				if line > 0 || result != "" {
 					return result, line
 				}
@@ -210,7 +212,7 @@ func findInHCLBody(body *hclsyntax.Body, attrName string, index, contextLine int
 	}
 
 	// If contextLine is not provided or block not found, search globally
-	return findInHCLBodyScoped(body, attrName, index, contextLine, repeated)
+	return findInHCLBodyScoped(ctx, body, attrName, index, contextLine, repeated)
 }
 
 type blockSlots []int
@@ -234,7 +236,7 @@ func (s blockSlots) len() int { return len(s) }
 // the total is known. With several of them the total cannot be split between
 // them, so they stand for none, as the converter keeps them as written when it
 // cannot expand them.
-func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeatedBlocks) blockSlots {
+func repeatedBlockSlots(ctx context.Context, body *hclsyntax.Body, attrName string, repeated repeatedBlocks) blockSlots {
 	type entry struct {
 		line  int
 		count int
@@ -252,7 +254,7 @@ func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeated
 			fixed++
 		case dynamicblock.Is(block) && dynamicblock.GeneratedType(block) == attrName:
 			sourceLines[line] = true
-			if expansion := dynamicblock.Expand(context.Background(), block, dynamicForEachContext); expansion.Resolved {
+			if expansion := dynamicblock.Expand(ctx, block, dynamicForEachContext); expansion.Resolved {
 				entries = append(entries, entry{line, len(expansion.Iterators)})
 				fixed += len(expansion.Iterators)
 			} else {
@@ -317,7 +319,7 @@ var dynamicForEachContext = &hcl.EvalContext{Functions: functions.TerraformFuncs
 
 // findInHCLBodyScoped searches for an attribute or block in the given body without recursion beyond immediate nested blocks
 func findInHCLBodyScoped(
-	body *hclsyntax.Body, attrName string, index, contextLine int, repeated repeatedBlocks,
+	ctx context.Context, body *hclsyntax.Body, attrName string, index, contextLine int, repeated repeatedBlocks,
 ) (substr string, lineNum int) {
 	// Case 1: Array attribute (e.g., container = [{}, {}])
 	if attr, exists := body.Attributes[attrName]; exists {
@@ -342,7 +344,7 @@ func findInHCLBodyScoped(
 	}
 
 	// Case 2: Repeated blocks (e.g., binding { } binding { }).
-	if slots := repeatedBlockSlots(body, attrName, repeated); index < slots.len() {
+	if slots := repeatedBlockSlots(ctx, body, attrName, repeated); index < slots.len() {
 		return "", slots[index]
 	}
 
@@ -350,7 +352,7 @@ func findInHCLBodyScoped(
 	// the position the search has reached names the nested block the key is in,
 	// and the document's slots only fit the body that holds the blocks.
 	for _, block := range enclosingFirst(body.Blocks, contextLine) {
-		if result, line := findInHCLBodyScoped(block.Body, attrName, index, contextLine, repeated.inNestedBody()); line > 0 || result != "" {
+		if result, line := findInHCLBodyScoped(ctx, block.Body, attrName, index, contextLine, repeated.inNestedBody()); line > 0 || result != "" {
 			return result, line
 		}
 	}
