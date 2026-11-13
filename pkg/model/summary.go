@@ -287,6 +287,24 @@ func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObje
 	return returnPath
 }
 
+// sortVulnerableFiles orders a rule's findings by where they are reported, so
+// a report does not depend on the order scan services stored them in.
+func sortVulnerableFiles(files []VulnerableFile) {
+	sort.SliceStable(files, func(i, j int) bool {
+		a, b := &files[i], &files[j]
+		if a.FileName != b.FileName {
+			return a.FileName < b.FileName
+		}
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		if a.SearchKey != b.SearchKey {
+			return a.SearchKey < b.SearchKey
+		}
+		return a.Fingerprint < b.Fingerprint
+	})
+}
+
 // CreateSummary creates a report for a single scan, based on its scanID
 //
 //nolint:gocritic
@@ -374,6 +392,10 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		q[item.QueryID] = qItem
 	}
 
+	for idx := range q {
+		sortVulnerableFiles(q[idx].Files)
+	}
+
 	queries := make([]QueryResult, 0, len(q))
 	sevs := map[Severity]int{SeverityTrace: 0, SeverityInfo: 0, SeverityLow: 0, SeverityMedium: 0, SeverityHigh: 0, SeverityCritical: 0}
 	for idx := range q {
@@ -400,7 +422,10 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 	}
 	sort.Slice(queries, func(i, j int) bool {
 		if severityOrder[queries[i].Severity] == severityOrder[queries[j].Severity] {
-			return queries[i].QueryName < queries[j].QueryName
+			if queries[i].QueryName != queries[j].QueryName {
+				return queries[i].QueryName < queries[j].QueryName
+			}
+			return queries[i].QueryID < queries[j].QueryID
 		}
 		return severityOrder[queries[i].Severity] < severityOrder[queries[j].Severity]
 	})
