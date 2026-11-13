@@ -1,0 +1,11 @@
+{
+  "id": "dockercompose-privileged-service",
+  "legacyId": "aaa10004-0000-4000-8000-000000000004",
+  "queryName": "Compose service runs privileged",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "A Docker Compose service runs with privileged mode enabled. Test rule for the determinism suite.",
+  "descriptionUrl": "https://docs.datadoghq.com/",
+  "platform": "DockerCompose",
+  "descriptionID": "service"
+}

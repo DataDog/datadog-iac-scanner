@@ -1,0 +1,7 @@
+services:
+  primary:
+    image: nginx:1.21
+    privileged: true
+  secondary:
+    image: nginx:1.21
+    privileged: true

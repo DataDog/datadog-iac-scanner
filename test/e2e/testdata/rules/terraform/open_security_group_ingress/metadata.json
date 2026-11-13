@@ -1,0 +1,11 @@
+{
+  "id": "terraform-sg-open-ingress",
+  "legacyId": "aaa10001-0000-4000-8000-000000000001",
+  "queryName": "Security group ingress open to the internet",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "A security group ingress rule admits traffic from any address. Test rule for the determinism suite: it raises one result per open ingress block, so one resource raises several findings of one identity.",
+  "descriptionUrl": "https://docs.datadoghq.com/",
+  "platform": "Terraform",
+  "descriptionID": "ingress"
+}

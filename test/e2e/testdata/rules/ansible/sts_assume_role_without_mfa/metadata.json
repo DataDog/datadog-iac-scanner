@@ -1,0 +1,12 @@
+{
+  "id": "ansible-sts-assume-role-without-mfa",
+  "legacyId": "aaa10006-0000-4000-8000-000000000006",
+  "queryName": "STS assume role without MFA",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "An sts_assume_role task requires no MFA. Test rule for the determinism suite.",
+  "descriptionUrl": "https://docs.datadoghq.com/",
+  "platform": "Ansible",
+  "descriptionID": "mfa",
+  "cwe": "308"
+}

@@ -1,0 +1,9 @@
+Resources:
+  OpenBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: open-bucket
+  OtherBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: other-bucket

@@ -1,0 +1,12 @@
+{
+  "id": "kubernetes-seccomp-profile-not-configured",
+  "legacyId": "aaa10002-0000-4000-8000-000000000002",
+  "queryName": "Seccomp profile is not configured",
+  "severity": "LOW",
+  "category": "Insecure Configurations",
+  "descriptionText": "Containers should set a seccomp profile. Test rule for the determinism suite: it raises one result per container of the workload, so one workload raises several findings of one identity.",
+  "descriptionUrl": "https://docs.datadoghq.com/",
+  "platform": "Kubernetes",
+  "descriptionID": "configur",
+  "cwe": "269"
+}

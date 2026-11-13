@@ -96,6 +96,91 @@ func TestFirstFindingPerIdentity_KeepsTheSameFindingWhateverTheInputOrder(t *tes
 	}
 }
 
+// mutationTable changes one reported field of a finding at a time: every
+// field the reports carry except the three the order checks first (file,
+// line and search key, covered by orderedFindings) and the per-run
+// identifiers the order leaves out on purpose (QueryDuration, ID, ScanID,
+// FileID). Two findings that differ in any of these must compare unequal,
+// so first-of-identity can never follow arrival order.
+func mutationTable() []func(v *Vulnerability) {
+	lines := func(lines ...CodeLine) *[]CodeLine { return &lines }
+	return []func(v *Vulnerability){
+		func(v *Vulnerability) { v.QueryID = "q2" },
+		func(v *Vulnerability) { v.LegacyQueryID = "legacy2" },
+		func(v *Vulnerability) { v.QueryName = "other" },
+		func(v *Vulnerability) { v.QueryURI = "https://docs.datadoghq.com/rule" },
+		func(v *Vulnerability) { v.Platform = "Kubernetes" },
+		func(v *Vulnerability) { v.Severity = SeverityCritical },
+		func(v *Vulnerability) { v.Category = "Encryption" },
+		func(v *Vulnerability) { v.CWE = "798" },
+		func(v *Vulnerability) { v.Description = "different" },
+		func(v *Vulnerability) { v.DescriptionID = "desc-2" },
+		func(v *Vulnerability) { v.Experimental = true },
+		func(v *Vulnerability) { v.CloudProvider = "aws" },
+		func(v *Vulnerability) { v.ResourceType = "aws_s3_bucket_policy" },
+		func(v *Vulnerability) { v.ResourceName = "c" },
+		func(v *Vulnerability) { v.SearchValue = "value" },
+		func(v *Vulnerability) { s := "value"; v.Value = &s },
+		func(v *Vulnerability) { v.SearchLine = 5 },
+		func(v *Vulnerability) { v.Remediation = "b" },
+		func(v *Vulnerability) { v.RemediationType = "replacement" },
+		func(v *Vulnerability) { v.RemediationLocation.Start.Line = 2 },
+		func(v *Vulnerability) { v.VulnerabilityLocation.End.Line = 9 },
+		func(v *Vulnerability) { v.BlockLocation.Start.Line = 2 },
+		func(v *Vulnerability) { v.LineWithVulnerability = "other line text" },
+		func(v *Vulnerability) { v.ResourceSource = "terraform" },
+		func(v *Vulnerability) { v.FileSource = []string{"other.tf"} },
+		func(v *Vulnerability) { v.VulnLines = lines(CodeLine{Position: 1, Line: "x"}) },
+		func(v *Vulnerability) {
+			v.VulnLines = lines(CodeLine{Position: 1, Line: "x"}, CodeLine{Position: 2, Line: "y"})
+		},
+		func(v *Vulnerability) { v.Frameworks = []Framework{{Framework: "cis"}} },
+		func(v *Vulnerability) { v.Frameworks = []Framework{{Framework: "cis", Requirement: "1.2"}} },
+		func(v *Vulnerability) { v.IsSuppressed = true },
+		func(v *Vulnerability) { v.SuppressionKind = SuppressionKindInSource },
+		func(v *Vulnerability) { v.SuppressionJustification = SuppressionJustificationIgnoreComment },
+		func(v *Vulnerability) { v.ModuleCallChain = "stack/main.tf|module.a" },
+		func(v *Vulnerability) { v.DetectedFileName = "modules/app/main.tf" },
+		func(v *Vulnerability) { v.DetectedLineWithVulnerability = "detected text" },
+		func(v *Vulnerability) {
+			v.ModuleAttribution = &ModuleAttribution{ModulePath: []ModulePathHop{{Name: "b"}}}
+		},
+		func(v *Vulnerability) {
+			v.ModuleAttribution = &ModuleAttribution{ModulePath: []ModulePathHop{{Name: "a"}, {Name: "c"}}}
+		},
+	}
+}
+
+// CompareFindings must be a total order over every reported field: unequal
+// findings compare asymmetrically in both directions, equal findings are
+// exactly the same finding, and sorting is idempotent.
+func TestCompareFindings_TotalOrderOverReportedFields(t *testing.T) {
+	base := orderedFindings()[0]
+	raised := []Vulnerability{base}
+	for _, change := range mutationTable() {
+		v := base
+		change(&v)
+		raised = append(raised, v)
+	}
+	for i := range raised {
+		require.Zero(t, CompareFindings(&raised[i], &raised[i]), "%d compares equal to itself", i)
+		for j := range raised {
+			if i == j {
+				continue
+			}
+			forward, backward := CompareFindings(&raised[i], &raised[j]), CompareFindings(&raised[j], &raised[i])
+			require.Truef(t, forward < 0 && backward > 0 || forward > 0 && backward < 0,
+				"%d and %d must order asymmetrically, got %d and %d", i, j, forward, backward)
+		}
+	}
+	sorted := slices.Clone(raised)
+	SortFindings(sorted)
+	require.True(t, slices.IsSortedFunc(sorted, func(a, b Vulnerability) int { return CompareFindings(&a, &b) }))
+	again := slices.Clone(sorted)
+	SortFindings(again)
+	require.Equal(t, sorted, again)
+}
+
 func TestCreateSummary_FilesOrderDoesNotDependOnInputOrder(t *testing.T) {
 	var want []VulnerableFile
 	for _, raised := range permutations(orderedFindings()) {

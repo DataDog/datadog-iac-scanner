@@ -436,4 +436,3 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		})
 	}
 }
-

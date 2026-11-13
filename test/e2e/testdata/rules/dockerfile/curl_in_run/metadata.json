@@ -1,0 +1,11 @@
+{
+  "id": "dockerfile-curl-in-run",
+  "legacyId": "aaa10003-0000-4000-8000-000000000003",
+  "queryName": "RUN instruction fetches over HTTP with curl",
+  "severity": "MEDIUM",
+  "category": "Best Practices",
+  "descriptionText": "A RUN instruction fetches a remote resource with curl over plain HTTP. Test rule for the determinism suite.",
+  "descriptionUrl": "https://docs.datadoghq.com/",
+  "platform": "Dockerfile",
+  "descriptionID": "run"
+}

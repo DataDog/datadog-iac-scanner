@@ -1,0 +1,9 @@
+- name: determinism playbook
+  hosts: localhost
+  tasks:
+    - name: assume first
+      community.aws.sts_assume_role:
+        role_arn: arn:aws:iam::123456789012:role/first
+    - name: assume second
+      community.aws.sts_assume_role:
+        role_arn: arn:aws:iam::123456789012:role/second

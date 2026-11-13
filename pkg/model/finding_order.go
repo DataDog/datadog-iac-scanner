@@ -42,7 +42,9 @@ func CompareFindings(a, b *Vulnerability) int {
 
 // compareReported orders findings CompareFindings ties on by the rest of
 // what they report, so two findings compare equal only when the report
-// cannot tell them apart. QueryDuration is left out: it differs between runs.
+// cannot tell them apart. It compares every field the reports carry. The
+// per-run identifiers are left out on purpose: QueryDuration differs between
+// runs, and ID, ScanID and FileID are the scan's own bookkeeping.
 func compareReported(a, b *Vulnerability) int {
 	return cmp.Or(
 		cmp.Compare(a.ModuleCallChain, b.ModuleCallChain),
@@ -56,17 +58,51 @@ func compareReported(a, b *Vulnerability) int {
 		cmp.Compare(a.DetectedLineWithVulnerability, b.DetectedLineWithVulnerability),
 		cmp.Compare(a.LegacyQueryID, b.LegacyQueryID),
 		cmp.Compare(a.QueryName, b.QueryName),
+		cmp.Compare(a.QueryURI, b.QueryURI),
 		cmp.Compare(a.Platform, b.Platform),
 		cmp.Compare(a.Severity, b.Severity),
+		cmp.Compare(a.Category, b.Category),
+		cmp.Compare(a.CWE, b.CWE),
 		cmp.Compare(a.Description, b.Description),
+		cmp.Compare(a.DescriptionID, b.DescriptionID),
+		compareBool(a.Experimental, b.Experimental),
+		cmp.Compare(a.CloudProvider, b.CloudProvider),
 		cmp.Compare(a.Remediation, b.Remediation),
 		cmp.Compare(a.RemediationType, b.RemediationType),
 		cmp.Compare(a.ResourceSource, b.ResourceSource),
+		compareFrameworks(a.Frameworks, b.Frameworks),
+		slices.Compare(a.FileSource, b.FileSource),
+		compareCodeLines(a.VulnLines, b.VulnLines),
 		compareBool(a.IsSuppressed, b.IsSuppressed),
 		cmp.Compare(a.SuppressionKind, b.SuppressionKind),
 		cmp.Compare(a.SuppressionJustification, b.SuppressionJustification),
 		compareAttribution(a.ModuleAttribution, b.ModuleAttribution),
 	)
+}
+
+// compareCodeLines orders the reported code lines, nil slice first.
+func compareCodeLines(a, b *[]CodeLine) int {
+	if a == nil || b == nil {
+		return compareBool(a != nil, b != nil)
+	}
+	return slices.CompareFunc(*a, *b, func(x, y CodeLine) int {
+		return cmp.Or(
+			cmp.Compare(x.Position, y.Position),
+			cmp.Compare(x.Line, y.Line),
+		)
+	})
+}
+
+// compareFrameworks orders the compliance frameworks a finding cites.
+func compareFrameworks(a, b []Framework) int {
+	return slices.CompareFunc(a, b, func(x, y Framework) int {
+		return cmp.Or(
+			cmp.Compare(x.Framework, y.Framework),
+			cmp.Compare(x.FrameworkVersion, y.FrameworkVersion),
+			cmp.Compare(x.Requirement, y.Requirement),
+			cmp.Compare(x.Control, y.Control),
+		)
+	})
 }
 
 func compareBool(a, b bool) int {

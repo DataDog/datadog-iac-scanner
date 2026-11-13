@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,72 +15,114 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_E2EFindingOrderIsDeterministic runs the same scan several times, with
-// different worker counts, and requires the reports to match once the scan
-// duration is dropped. A scan's findings, their order, and the line a finding
-// whose identity is raised more than once reports must not depend on the
-// order rules were scheduled in.
+// determinismFixtures are the rules the determinism fixture directory raises,
+// with the findings each rule must report. Rules whose findings share an
+// identity (the Kubernetes and Terraform rules below raise one result per
+// container and per ingress block of one resource) must report exactly one
+// finding, at the first location in the report order, whatever order the
+// rules were evaluated in.
+var determinismFixtures = []struct {
+	queryName    string
+	wantLines    []int
+	wantFile     string
+	sameIdentity bool
+}{
+	{queryName: "Team tag missing on AWS resource", wantLines: []int{2, 16}, wantFile: "main.tf"},
+	// One security group with two open ingress blocks: two results of one
+	// identity, the report keeps the first block's line.
+	{queryName: "Security group ingress open to the internet", wantLines: []int{9}, wantFile: "main.tf", sameIdentity: true},
+	// Two privileged containers of one deployment: two results of one
+	// identity, the report keeps the first container's line.
+	{queryName: "Container is privileged", wantLines: []int{19}, wantFile: "workload.yaml", sameIdentity: true},
+	{queryName: "Seccomp profile is not configured", wantLines: []int{18}, wantFile: "workload.yaml", sameIdentity: true},
+	// Dockerfile findings carry their line in the identity, so both stay.
+	{queryName: "RUN instruction fetches over HTTP with curl", wantLines: []int{2, 4}, wantFile: "Dockerfile"},
+	{queryName: "Compose service runs privileged", wantLines: []int{4, 7}, wantFile: "compose.yaml"},
+	{queryName: "S3 bucket without public access block", wantLines: []int{2, 6}, wantFile: "template.yaml"},
+	{queryName: "STS assume role without MFA", wantLines: []int{5, 8}, wantFile: "playbook.yaml"},
+	{queryName: "Unpinned actions full length commit SHA", wantLines: []int{8, 13}, wantFile: filepath.Join(".github", "workflows", "determinism.yml")},
+}
+
+// Test_E2EFindingOrderIsDeterministic scans fixtures of every supported
+// platform several times, with different worker counts, and requires the
+// reports to match once the scan duration is dropped. A scan's findings,
+// their order, and the line a finding whose identity is raised more than
+// once reports must not depend on the order rules were scheduled in.
 func Test_E2EFindingOrderIsDeterministic(t *testing.T) {
-	fixtures := []struct {
-		file         string
-		queriesPaths []string
-	}{
-		{
-			file:         filepath.Join("fixtures", "no-exclusions.tf"),
-			queriesPaths: []string{filepath.Join("testdata", "rules", "terraform")},
-		},
-		{
-			file:         filepath.Join("fixtures", "k8s-no-exclusions.yaml"),
-			queriesPaths: []string{filepath.Join("testdata", "rules", "k8s")},
-		},
-		{
-			file:         filepath.Join("fixtures", ".github", "cicd-no-exclusions.yaml"),
-			queriesPaths: []string{filepath.Join("testdata", "rules", "cicd")},
-		},
-		{
-			file:         filepath.Join("fixtures", "positive.tofu"),
-			queriesPaths: []string{filepath.Join("testdata", "rules", "terraform")},
-		},
-		{
-			file:         filepath.Join("fixtures", "positive.tf.json"),
-			queriesPaths: []string{filepath.Join("testdata", "rules", "terraform")},
-		},
+	fixtureDir := filepath.Join("fixtures", "determinism")
+	ruleDirs := []string{"terraform", "k8s", "cicd", "dockerfile", "dockercompose", "cloudformation", "ansible"}
+	absQueriesPaths := make([]string, 0, len(ruleDirs))
+	for _, dir := range ruleDirs {
+		absQueriesPaths = append(absQueriesPaths, mustAbs(t, filepath.Join("testdata", "rules", dir)))
 	}
 
 	// The scan duration is stamped into the report, so reports of one scan
 	// differ by it alone.
 	durationTag := regexp.MustCompile(`DATADOG_EXECUTION_TIME_SECS:[0-9.]+`)
 
-	for _, fixture := range fixtures {
-		t.Run(fixture.file, func(t *testing.T) {
-			absQueriesPaths := make([]string, len(fixture.queriesPaths))
-			for i, qp := range fixture.queriesPaths {
-				absQueriesPaths[i] = mustAbs(t, qp)
-			}
-
-			var want []byte
-			for _, workers := range []int{0, 0, 1, 8} {
-				sarif := scanSARIF(t, fixture.file, absQueriesPaths, workers)
-				got := durationTag.ReplaceAll(sarif, []byte("DATADOG_EXECUTION_TIME_SECS:0"))
-				require.NotEmpty(t, got, "the scan must write a report")
-				if want == nil {
-					require.NotContains(t, string(got), "DATADOG_EXECUTION_TIME_SECS:DATADOG_EXECUTION_TIME_SECS")
-					want = got
-					continue
-				}
-				require.Equal(t, string(want), string(got),
-					"the report changed between runs or with %d workers", workers)
-			}
-		})
+	var want string
+	for _, workers := range []int{0, 0, 1, 8} {
+		sarif := scanSARIF(t, fixtureDir, absQueriesPaths, workers)
+		got := durationTag.ReplaceAllString(string(sarif), "DATADOG_EXECUTION_TIME_SECS:0")
+		require.NotEmpty(t, got, "the scan must write a report")
+		if want == "" {
+			want = got
+			requireDeterministicFindings(t, []byte(got))
+			continue
+		}
+		require.Equal(t, want, got, "the report changed between runs or with %d workers", workers)
 	}
 }
 
-// scanSARIF scans one file with the given worker count and returns the SARIF
+// requireDeterministicFindings pins what the fixture scan must report: every
+// rule's findings, at the expected lines.
+func requireDeterministicFindings(t *testing.T, sarif []byte) {
+	t.Helper()
+	var report struct {
+		Runs []struct {
+			Results []struct {
+				RuleID     string `json:"ruleId"`
+				Properties struct {
+					Tags []string `json:"tags"`
+				} `json:"properties"`
+				Locations []struct {
+					PhysicalLocation struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+						Region struct {
+							StartLine int `json:"startLine"`
+						} `json:"region"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(sarif, &report))
+	require.Len(t, report.Runs, 1)
+
+	got := map[string][]int{}
+	gotFiles := map[string]string{}
+	for _, r := range report.Runs[0].Results {
+		got[r.RuleID] = append(got[r.RuleID], r.Locations[0].PhysicalLocation.Region.StartLine)
+		gotFiles[r.RuleID] = r.Locations[0].PhysicalLocation.ArtifactLocation.URI
+	}
+	for _, fixture := range determinismFixtures {
+		lines := got[fixture.queryName]
+		require.NotEmpty(t, lines, "%s must report findings", fixture.queryName)
+		require.ElementsMatch(t, fixture.wantLines, lines,
+			"%s must report exactly one finding per expected location; with a shared identity the report keeps the first one", fixture.queryName)
+		require.True(t, filepath.IsAbs(gotFiles[fixture.queryName]) || filepath.Base(gotFiles[fixture.queryName]) == filepath.Base(fixture.wantFile),
+			"%s must report on %s, got %s", fixture.queryName, fixture.wantFile, gotFiles[fixture.queryName])
+	}
+}
+
+// scanSARIF scans one path with the given worker count and returns the SARIF
 // report the scan wrote.
-func scanSARIF(t *testing.T, testFile string, queriesPaths []string, workers int) []byte {
+func scanSARIF(t *testing.T, testPath string, queriesPaths []string, workers int) []byte {
 	t.Helper()
 	params, ctx := scan.GetDefaultParameters(context.Background(), "")
-	params.Path = []string{testFile}
+	params.Path = []string{testPath}
 	params.OutputPath = t.TempDir()
 	params.QueriesPath = queriesPaths
 	params.ChangedDefaultQueryPath = true

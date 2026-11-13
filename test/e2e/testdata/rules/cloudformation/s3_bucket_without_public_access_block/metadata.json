@@ -1,0 +1,11 @@
+{
+  "id": "cloudformation-s3-bucket-without-public-access-block",
+  "legacyId": "aaa10005-0000-4000-8000-000000000005",
+  "queryName": "S3 bucket without public access block",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "An S3 bucket resource declares no PublicAccessBlockConfiguration. Test rule for the determinism suite.",
+  "descriptionUrl": "https://docs.datadoghq.com/",
+  "platform": "CloudFormation",
+  "descriptionID": "block"
+}

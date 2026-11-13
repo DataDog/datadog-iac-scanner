@@ -287,24 +287,6 @@ func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObje
 	return returnPath
 }
 
-// sortVulnerableFiles orders a rule's findings by where they are reported, so
-// a report does not depend on the order scan services stored them in.
-func sortVulnerableFiles(files []VulnerableFile) {
-	sort.SliceStable(files, func(i, j int) bool {
-		a, b := &files[i], &files[j]
-		if a.FileName != b.FileName {
-			return a.FileName < b.FileName
-		}
-		if a.Line != b.Line {
-			return a.Line < b.Line
-		}
-		if a.SearchKey != b.SearchKey {
-			return a.SearchKey < b.SearchKey
-		}
-		return a.Fingerprint < b.Fingerprint
-	})
-}
-
 // CreateSummary creates a report for a single scan, based on its scanID
 //
 //nolint:gocritic
@@ -317,6 +299,11 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		ScanID: scanID,
 	}
 	filePaths := make(map[string]string)
+
+	// The findings arrive in CompareFindings order from storage; sorting again
+	// with the same comparator is a no-op then, and keeps the report ordered
+	// for callers that pass findings in another order.
+	SortFindings(vulnerabilities)
 
 	for i := range vulnerabilities {
 		item := vulnerabilities[i]
@@ -390,10 +377,6 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		filePaths[resolvedPath] = item.FileName
 
 		q[item.QueryID] = qItem
-	}
-
-	for idx := range q {
-		sortVulnerableFiles(q[idx].Files)
 	}
 
 	queries := make([]QueryResult, 0, len(q))
