@@ -26,13 +26,16 @@ import (
 // expansion grids are asserted cell by cell by the evaluator, gate,
 // agreement and parity properties, which is the coverage the corpus owes.
 func determinismCells() []tfcorpus.Cell {
-	var cells []tfcorpus.Cell
-	cells = append(cells, tfcorpus.ExpansionGrid()...)
-	value := append(tfcorpus.ValueGrid(), tfcorpus.PairGrid()...)
-	for i := 0; i < len(value); i += 10 {
-		cells = append(cells, value[i])
-	}
+	cells := tfcorpus.ExpansionGrid()
+	cells = append(cells, tfcorpus.ValueGrid()...)
+	cells = append(cells, tfcorpus.PairGrid()...)
 	return cells
+}
+
+// determinismStateCells is the attribute-state corpus the repeated-scan
+// check covers.
+func determinismStateCells() []tfcorpus.StateCell {
+	return tfcorpus.StateGrid()
 }
 
 // reportedKey is the stable identity of one reported finding.
@@ -49,11 +52,17 @@ func TestRepeatedScansProduceTheSameFindings(t *testing.T) {
 	rules := tfcorpus.WriteRules(t)
 	libs := tfharness.LibraryPath(t)
 	dir, _ := tfcorpus.Materialize(t, cells)
+	stateDir, _ := tfcorpus.MaterializeState(t, determinismStateCells())
 
 	first := tfharness.Inspect(t, dir, rules, libs)
 	again := tfharness.Inspect(t, dir, rules, libs)
 	require.Equal(t, reportedKeys(first.Vulns), reportedKeys(again.Vulns),
 		"two scans of the same corpus differ")
+
+	stateFirst := tfharness.Inspect(t, stateDir, rules, libs)
+	stateAgain := tfharness.Inspect(t, stateDir, rules, libs)
+	require.Equal(t, reportedKeys(stateFirst.Vulns), reportedKeys(stateAgain.Vulns),
+		"two scans of the state corpus differ")
 
 	files := tfharness.ParseTree(t, dir)
 	permutations := 5

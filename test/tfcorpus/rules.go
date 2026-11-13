@@ -13,6 +13,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 // ruleVariants lists the literal variants of each read: the conditions a
@@ -127,37 +130,138 @@ func checkLabels(cell Cell) error {
 
 // localRefRe and varRefRe match references to a local or a variable in an
 // expression.
-var (
-	localRefRe = regexp.MustCompile(`\blocal\.([A-Za-z_][A-Za-z0-9_]*)`)
-	varRefRe   = regexp.MustCompile(`\bvar\.([A-Za-z_][A-Za-z0-9_]*)`)
-)
 
-// checkRefs rejects a root that reads a local or a variable it never
-// declares: an undefined input evaluates as unknown-or-error depending on
-// the engine, which turns a fixture mistake into an engine-behavior
-// reading.
-func checkRefs(cell Cell) error {
-	declaredLocals := map[string]bool{}
-	declaredVars := map[string]bool{}
-	for _, content := range cell.files {
-		for _, m := range regexp.MustCompile(`(?s)locals\s*\{(.*?)\}`).FindAllStringSubmatch(content, -1) {
-			for _, name := range regexp.MustCompile(`(?m)^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=`).FindAllStringSubmatch(m[1], -1) {
-				declaredLocals[name[1]] = true
+// refsOf parses one Terraform file and returns the locals and variables it
+// declares and the locals and variables its expressions read. The walk is
+// the HCL syntax tree, so a nested object inside a locals block never looks
+// like a declaration and a local after a nested object is still found.
+func refsOf(content string) (declaredLocals, declaredVars, readLocals, readVars map[string]bool) {
+	declaredLocals, declaredVars = map[string]bool{}, map[string]bool{}
+	readLocals, readVars = map[string]bool{}, map[string]bool{}
+	file, diags := hclsyntax.ParseConfig([]byte(content), "fixture.tf", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		// The materializers already reject files that do not parse; treat
+		// an unreadable file as declaring and reading nothing.
+		return declaredLocals, declaredVars, readLocals, readVars
+	}
+	for _, b := range file.Body.(*hclsyntax.Body).Blocks {
+		switch b.Type {
+		case "locals":
+			for name, attr := range b.Body.Attributes {
+				declaredLocals[name] = true
+				collectRefs(attr.Expr, readLocals, readVars)
 			}
-		}
-		for _, m := range regexp.MustCompile(`(?m)^variable\s+"([^"]+)"\s*\{`).FindAllStringSubmatch(content, -1) {
-			declaredVars[m[1]] = true
+		case "variable":
+			for _, label := range b.Labels {
+				declaredVars[label] = true
+			}
 		}
 	}
-	for _, content := range cell.files {
-		for _, m := range localRefRe.FindAllStringSubmatch(content, -1) {
-			if !declaredLocals[m[1]] {
-				return fmt.Errorf("cell %s reads local.%s, which no file declares", cell.Name(), m[1])
+	for _, attr := range file.Body.(*hclsyntax.Body).Attributes {
+		collectRefs(attr.Expr, readLocals, readVars)
+	}
+	for _, b := range file.Body.(*hclsyntax.Body).Blocks {
+		if b.Type == "locals" {
+			continue
+		}
+		walkBlockExprs(b.Body, readLocals, readVars)
+	}
+	return declaredLocals, declaredVars, readLocals, readVars
+}
+
+// walkBlockExprs collects the references in every attribute of a block,
+// recursing into nested blocks.
+func walkBlockExprs(body *hclsyntax.Body, readLocals, readVars map[string]bool) {
+	for _, attr := range body.Attributes {
+		collectRefs(attr.Expr, readLocals, readVars)
+	}
+	for _, nested := range body.Blocks {
+		walkBlockExprs(nested.Body, readLocals, readVars)
+	}
+}
+
+// collectRefs records the local and variable names an expression reads.
+func collectRefs(expr hcl.Expression, readLocals, readVars map[string]bool) {
+	if expr == nil {
+		return
+	}
+	_ = hclsyntax.VisitAll(nodeOf(expr), func(node hclsyntax.Node) hcl.Diagnostics {
+		if scope, ok := node.(*hclsyntax.ScopeTraversalExpr); ok {
+			switch scope.Traversal.RootName() {
+			case "local":
+				if len(scope.Traversal) > 1 {
+					if name, ok := scope.Traversal[1].(hcl.TraverseAttr); ok {
+						readLocals[name.Name] = true
+					}
+				}
+			case "var":
+				if len(scope.Traversal) > 1 {
+					if name, ok := scope.Traversal[1].(hcl.TraverseAttr); ok {
+						readVars[name.Name] = true
+					}
+				}
 			}
 		}
-		for _, m := range varRefRe.FindAllStringSubmatch(content, -1) {
-			if !declaredVars[m[1]] {
-				return fmt.Errorf("cell %s reads var.%s, which no file declares", cell.Name(), m[1])
+		return nil
+	})
+}
+
+// scopeOf is the module directory a file declares in: the path up to its
+// last separator, or the root when the file sits at the top.
+func scopeOf(file string) string {
+	if i := strings.LastIndex(file, "/"); i >= 0 {
+		return file[:i]
+	}
+	return ""
+}
+
+// nodeOf adapts an expression to the syntax node interface.
+func nodeOf(expr hcl.Expression) hclsyntax.Node {
+	if n, ok := expr.(hclsyntax.Node); ok {
+		return n
+	}
+	return nil
+}
+
+// checkRefs rejects a root that reads a local or a variable its own
+// directory scope never declares: an undefined input evaluates as
+// unknown-or-error depending on the engine, which turns a fixture mistake
+// into an engine-behavior reading. A reference in one module directory
+// resolves only against declarations in that directory; the root's files
+// resolve against the root alone.
+func checkRefs(cell Cell) error {
+	declaredLocals := map[string]map[string]bool{}
+	declaredVars := map[string]map[string]bool{}
+	scopes := map[string]bool{}
+	for name := range cell.files {
+		scopes[scopeOf(name)] = true
+	}
+	for s := range scopes {
+		declaredLocals[s] = map[string]bool{}
+		declaredVars[s] = map[string]bool{}
+	}
+	reads := map[string][2]map[string]bool{}
+	for name, content := range cell.files {
+		dl, dv, rl, rv := refsOf(content)
+		s := scopeOf(name)
+		for l := range dl {
+			declaredLocals[s][l] = true
+		}
+		for v := range dv {
+			declaredVars[s][v] = true
+		}
+		reads[name] = [2]map[string]bool{rl, rv}
+	}
+	for name, refs := range reads {
+		s := scopeOf(name)
+		for l := range refs[0] {
+			if !declaredLocals[s][l] {
+				return fmt.Errorf("cell %s reads local.%s in %s, which that directory scope declares nowhere", cell.Name(), l, name)
+			}
+		}
+		for v := range refs[1] {
+			if !declaredVars[s][v] {
+				return fmt.Errorf("cell %s reads var.%s in %s, which that directory scope declares nowhere", cell.Name(), v, name)
 			}
 		}
 	}
