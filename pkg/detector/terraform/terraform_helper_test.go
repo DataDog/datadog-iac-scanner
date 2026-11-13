@@ -4,7 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -194,7 +197,7 @@ func TestResolveListIndex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fileData := []byte(strings.Join(tt.lines, "\n"))
 
-			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) }, unknownBlocks)
+			content, line := resolveListIndex(ctx, tt.attrName, tt.index, tt.currentLine, tt.lines, func() (*hclsyntax.Body, error) { return parseBody(fileData) }, unknownBlocks, nil)
 			require.Equal(t, tt.wantContent, content)
 			require.Equal(t, tt.wantLine, line)
 
@@ -390,7 +393,7 @@ func TestResolveListIndexStatementInJsonencodeThirdElement(t *testing.T) {
 	lines := *linesPtr
 	ctx := context.Background()
 	// currentLine 9 = line after `policy =` (0-indexed), same as DetectLine when resolving Statement[2]
-	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) }, unknownBlocks)
+	sub, lineNum := resolveListIndex(ctx, "Statement", 2, 9, lines, func() (*hclsyntax.Body, error) { return parseBody(data) }, unknownBlocks, nil)
 	require.Empty(t, sub)
 	// Third tuple element starts at `{` on file line 41 (1-based) -> index 40
 	require.Equal(t, 40, lineNum)
@@ -430,7 +433,7 @@ func TestRepeatedBlockSlots(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, repeatedBlockSlots(context.Background(), body, "ingress", tt.repeated))
+			require.Equal(t, tt.want, repeatedBlockSlots(context.Background(), body, "ingress", tt.repeated, nil))
 		})
 	}
 
@@ -445,7 +448,7 @@ func TestRepeatedBlockSlots(t *testing.T) {
 	file, diags = hclsyntax.ParseConfig([]byte(single), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	body = file.Body.(*hclsyntax.Body).Blocks[0].Body
-	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "ingress", repeatedBlocks{total: 3}),
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "ingress", repeatedBlocks{total: 3}, nil),
 		"a single unresolved block stands for what the document's total leaves")
 }
 
@@ -492,11 +495,11 @@ func TestRepeatedBlockSlotsInNestedBody(t *testing.T) {
 	require.False(t, diags.HasErrors(), diags.Error())
 	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
 
-	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3}),
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3}, nil),
 		"in the body it was counted for, the total sizes the one unresolved block")
-	require.Equal(t, blockSlots{5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3}.inNestedBody()),
+	require.Equal(t, blockSlots{5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3}.inNestedBody(), nil),
 		"in a nested body it is not")
-	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3, lines: []int{1, 1, 5}}.inNestedBody()),
+	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3, lines: []int{1, 1, 5}}.inNestedBody(), nil),
 		"the document's lines still apply")
 }
 
@@ -520,7 +523,7 @@ func TestRepeatedBlockSlots_StopsWhenTheContextIsDone(t *testing.T) {
 	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
 
 	start := time.Now()
-	slots := repeatedBlockSlots(canceledContext(), body, "ingress", unknownBlocks)
+	slots := repeatedBlockSlots(canceledContext(), body, "ingress", unknownBlocks, nil)
 	require.Less(t, time.Since(start), 10*time.Second, "the expansion must stop promptly at the context")
 	require.Empty(t, slots, "a canceled expansion stands for no slots")
 }
@@ -529,4 +532,43 @@ func canceledContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	return ctx
+}
+
+// Line detection revisits the same body once per finding, so the expansion of
+// one dynamic block is memoized across lookups: the allocations of many
+// lookups stay close to those of a single lookup instead of scaling with the
+// lookup count (a 100-lookup scan of a 10,000-element block would otherwise
+// re-expand the block a hundred times).
+func TestRepeatedBlockSlotsExpansionMemoizedAcrossLookups(t *testing.T) {
+	var parts []string
+	for i := 0; i < 10000; i++ {
+		parts = append(parts, strconv.Itoa(i))
+	}
+	src := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = [` + strings.Join(parts, ", ") + `]
+    content {
+      from_port = ingress.value
+    }
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+
+	lookups := func(r int) func() {
+		return func() {
+			expansions := &sync.Map{}
+			for i := 0; i < r; i++ {
+				slots := repeatedBlockSlots(context.Background(), body, "ingress", unknownBlocks, expansions)
+				runtime.KeepAlive(slots)
+			}
+		}
+	}
+
+	once := testing.AllocsPerRun(1, lookups(1))
+	twenty := testing.AllocsPerRun(1, lookups(20))
+	require.Less(t, twenty, 2*once,
+		"twenty lookups must reuse the first expansion instead of re-expanding per lookup")
 }

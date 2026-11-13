@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -31,9 +32,11 @@ func GenerateSubstrings(
 	currentLine int,
 	fileOriginalData string,
 ) (string, string, int) {
+	// No expansion cache: the callers of this shape read JSON documents, whose
+	// bodies never reach the HCL expansion.
 	return generateSubstrings(ctx, key, extracted, lines, currentLine, func() (*hclsyntax.Body, error) {
 		return parseBody([]byte(fileOriginalData))
-	}, unknownBlocks)
+	}, unknownBlocks, nil)
 }
 
 // nolint:gocyclo,gocritic
@@ -45,6 +48,7 @@ func generateSubstrings(
 	currentLine int,
 	parse func() (*hclsyntax.Body, error),
 	repeated repeatedBlocks,
+	expansions *sync.Map,
 ) (string, string, int) {
 	var substr1, substr2 string
 	var idx int
@@ -75,7 +79,7 @@ func generateSubstrings(
 			// Handle numeric index
 			if index, err := strconv.Atoi(bracketValue); err == nil {
 				substr1 = base
-				substr2, idx = resolveListIndex(ctx, base, index, currentLine, lines, parse, repeated)
+				substr2, idx = resolveListIndex(ctx, base, index, currentLine, lines, parse, repeated, expansions)
 				return substr1, substr2, idx
 			}
 
@@ -110,6 +114,7 @@ func resolveListIndex(
 	lines []string,
 	parse func() (*hclsyntax.Body, error),
 	repeated repeatedBlocks,
+	expansions *sync.Map,
 ) (substr string, linenum int) {
 	contextLogger := logger.FromContext(ctx)
 	body, err := parse()
@@ -119,7 +124,7 @@ func resolveListIndex(
 	}
 
 	// Search for the attribute in the parsed tree
-	result, lineNum := findInHCLBody(ctx, body, attrName, index, currentLine, repeated)
+	result, lineNum := findInHCLBody(ctx, body, attrName, index, currentLine, repeated, expansions)
 	if result == "" && lineNum == 0 {
 		if line, ok := findTupleElementLineInJsonencodeArgs(body, attrName, index, currentLine); ok {
 			return "", line
@@ -189,6 +194,7 @@ func findTupleElementLineInObject(expr hclsyntax.Expression, attrName string, in
 
 func findInHCLBody(
 	ctx context.Context, body *hclsyntax.Body, attrName string, index, contextLine int, repeated repeatedBlocks,
+	expansions *sync.Map,
 ) (substr string, lineNum int) {
 	// If contextLine is provided (>= 0), first scope the search to the block containing that line
 	// Note: contextLine is 0-indexed, so 0 is a valid line (first line of file)
@@ -203,7 +209,7 @@ func findInHCLBody(
 
 			if contextLineHCL >= start && contextLineHCL <= end {
 				// We're inside this block - search within it (without contextLine, since we've already scoped to the right block)
-				result, line := findInHCLBodyScoped(ctx, block.Body, attrName, index, contextLine, repeated)
+				result, line := findInHCLBodyScoped(ctx, block.Body, attrName, index, contextLine, repeated, expansions)
 				if line > 0 || result != "" {
 					return result, line
 				}
@@ -212,7 +218,7 @@ func findInHCLBody(
 	}
 
 	// If contextLine is not provided or block not found, search globally
-	return findInHCLBodyScoped(ctx, body, attrName, index, contextLine, repeated)
+	return findInHCLBodyScoped(ctx, body, attrName, index, contextLine, repeated, expansions)
 }
 
 type blockSlots []int
@@ -236,13 +242,33 @@ func (s blockSlots) len() int { return len(s) }
 // the total is known. With several of them the total cannot be split between
 // them, so they stand for none, as the converter keeps them as written when it
 // cannot expand them.
-func repeatedBlockSlots(ctx context.Context, body *hclsyntax.Body, attrName string, repeated repeatedBlocks) blockSlots {
+// nolint:gocyclo
+func repeatedBlockSlots(
+	ctx context.Context, body *hclsyntax.Body, attrName string, repeated repeatedBlocks, expansions *sync.Map,
+) blockSlots {
+	// The document's recorded lines answer the lookup without expanding any
+	// dynamic block, so they are checked before the expansion work below; the
+	// blocks' source lines are all the lookup needs from them.
+	sourceLines := make(map[int]bool)
+	for _, block := range body.Blocks {
+		if block.Type == attrName || (dynamicblock.Is(block) && dynamicblock.GeneratedType(block) == attrName) {
+			sourceLines[block.TypeRange.Start.Line-1] = true
+		}
+	}
+	if slots, ok := documentSlots(repeated, sourceLines); ok {
+		return slots
+	}
+
+	// Without usable document lines, every dynamic block of attrName stands
+	// for as many slots as its for_each yields. The expansion of one block is
+	// memoized for the duration of line detection: line detection revisits
+	// the same bodies once per finding, and re-expanding a large for_each per
+	// visit would multiply the expansion work by the number of lookups.
 	type entry struct {
 		line  int
 		count int
 	}
 	var entries []entry
-	sourceLines := make(map[int]bool)
 	fixed, unresolved := 0, -1
 	unresolvedBlocks := 0
 	for _, block := range body.Blocks {
@@ -250,22 +276,18 @@ func repeatedBlockSlots(ctx context.Context, body *hclsyntax.Body, attrName stri
 		switch {
 		case block.Type == attrName:
 			entries = append(entries, entry{line, 1})
-			sourceLines[line] = true
 			fixed++
 		case dynamicblock.Is(block) && dynamicblock.GeneratedType(block) == attrName:
-			sourceLines[line] = true
-			if expansion := dynamicblock.Expand(ctx, block, dynamicForEachContext); expansion.Resolved {
-				entries = append(entries, entry{line, len(expansion.Iterators)})
-				fixed += len(expansion.Iterators)
+			count, resolved := expansionCount(ctx, block, expansions)
+			if resolved {
+				entries = append(entries, entry{line, count})
+				fixed += count
 			} else {
 				unresolved = len(entries)
 				unresolvedBlocks++
 				entries = append(entries, entry{line, 0})
 			}
 		}
-	}
-	if slots, ok := documentSlots(repeated, sourceLines); ok {
-		return slots
 	}
 	if unresolvedBlocks == 1 && !repeated.nested && repeated.total != unknownTotal && repeated.total > fixed {
 		entries[unresolved].count = repeated.total - fixed
@@ -277,6 +299,33 @@ func repeatedBlockSlots(ctx context.Context, body *hclsyntax.Body, attrName stri
 		}
 	}
 	return slots
+}
+
+// expansionCount is how many blocks a dynamic block generates for line
+// detection, memoized by the block's identity. The parsed bodies live in the
+// detector's per-file cache, so one block keeps its identity across the
+// lookups of a scan. ok is false when the for_each does not resolve, which
+// the slots then treat as a block standing for the document's remaining
+// total, exactly as an unresolved expansion did.
+func expansionCount(ctx context.Context, block *hclsyntax.Block, expansions *sync.Map) (count int, ok bool) {
+	if expansions != nil {
+		if cached, hit := expansions.Load(block); hit {
+			e := cached.(expansionCount_)
+			return e.count, e.resolved
+		}
+	}
+	expansion := dynamicblock.Expand(ctx, block, dynamicForEachContext)
+	result := expansionCount_{resolved: expansion.Resolved, count: len(expansion.Iterators)}
+	if expansions != nil {
+		expansions.Store(block, result)
+	}
+	return result.count, result.resolved
+}
+
+// expansionCount_ is the memoized result of one dynamic block's expansion.
+type expansionCount_ struct {
+	resolved bool
+	count    int
 }
 
 // documentSlots takes the source lines the document records for its blocks, if
@@ -320,6 +369,7 @@ var dynamicForEachContext = &hcl.EvalContext{Functions: functions.TerraformFuncs
 // findInHCLBodyScoped searches for an attribute or block in the given body without recursion beyond immediate nested blocks
 func findInHCLBodyScoped(
 	ctx context.Context, body *hclsyntax.Body, attrName string, index, contextLine int, repeated repeatedBlocks,
+	expansions *sync.Map,
 ) (substr string, lineNum int) {
 	// Case 1: Array attribute (e.g., container = [{}, {}])
 	if attr, exists := body.Attributes[attrName]; exists {
@@ -344,7 +394,7 @@ func findInHCLBodyScoped(
 	}
 
 	// Case 2: Repeated blocks (e.g., binding { } binding { }).
-	if slots := repeatedBlockSlots(ctx, body, attrName, repeated); index < slots.len() {
+	if slots := repeatedBlockSlots(ctx, body, attrName, repeated, expansions); index < slots.len() {
 		return "", slots[index]
 	}
 
@@ -352,7 +402,8 @@ func findInHCLBodyScoped(
 	// the position the search has reached names the nested block the key is in,
 	// and the document's slots only fit the body that holds the blocks.
 	for _, block := range enclosingFirst(body.Blocks, contextLine) {
-		if result, line := findInHCLBodyScoped(ctx, block.Body, attrName, index, contextLine, repeated.inNestedBody()); line > 0 || result != "" {
+		if result, line := findInHCLBodyScoped(ctx, block.Body, attrName, index, contextLine,
+			repeated.inNestedBody(), expansions); line > 0 || result != "" {
 			return result, line
 		}
 	}
