@@ -63,7 +63,9 @@ func (x *CrossIndex) Add(pr *Projection) {
 
 // detach copies the evidence block, its instance and its provider onto a
 // module that holds only their address, so the index keeps no other block
-// of the evidence root alive once that root is dropped.
+// of the evidence root alive once that root is dropped. The native syntax
+// goes too: the ranges snapshot the projection built answers every location
+// question about the block, so the index does not pin the parsed file.
 func detach(loc *Located) {
 	if loc.Block == nil {
 		return
@@ -85,6 +87,7 @@ func detach(loc *Located) {
 
 func detachedBlock(b *model.Block) *model.Block {
 	out := *b
+	out.Syntax = nil
 	if b.Module != nil {
 		out.Module = &model.Module{Address: b.Module.Address, Dir: b.Module.Dir}
 	}
