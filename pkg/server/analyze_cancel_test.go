@@ -122,14 +122,32 @@ module "sane" {
 	_, err = s.analyze(canceled, &req)
 	require.ErrorIs(t, err, context.Canceled)
 
-	deadline, dl := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	// The request context expires while the handler is in flight: the huge
+	// count cannot finish expanding, so the deadline lands mid-expansion. A
+	// context that expired before the handler started would return in
+	// milliseconds, not after roughly the deadline.
+	deadlineCtx, dl := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer dl()
+	body, err := json.Marshal(req)
+	require.NoError(t, err)
+	httpReq := httptest.NewRequest(http.MethodPost, "/analyze", bytes.NewReader(body)).WithContext(deadlineCtx)
+	rec := httptest.NewRecorder()
 	start := time.Now()
-	_, err = s.analyze(deadline, &req)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Less(t, time.Since(start), 10*time.Second, "the analyze scan must stop promptly at the deadline")
-
-	postAnalyzeContext(t, s, req, deadline)
+	done := make(chan int)
+	go func() {
+		s.handleAnalyze(rec, httpReq)
+		done <- rec.Code
+	}()
+	select {
+	case code := <-done:
+		require.Equal(t, http.StatusInternalServerError, code, "body: %s", rec.Body.String())
+		require.Contains(t, rec.Body.String(), "context deadline exceeded")
+		require.GreaterOrEqual(t, time.Since(start), 400*time.Millisecond,
+			"the handler must still be working when the deadline lands, not start after it")
+		require.Less(t, time.Since(start), 10*time.Second, "the analyze scan must stop promptly at the deadline")
+	case <-time.After(30 * time.Second):
+		t.Fatal("the handler did not return after the request context expired")
+	}
 }
 
 // A dynamic block whose for_each asks for far more blocks than any earlier

@@ -111,12 +111,15 @@ variable "keys" { type = set(string) }
 	})
 
 	t.Run("a_huge_distinct_collection_stops_at_the_context", func(t *testing.T) {
+		// Built before the context: the deadline window is spent expanding,
+		// not constructing the input.
+		keys := distinctKeys(300000)
 		deadline, dl := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer dl()
 		start := time.Now()
 		require.NotPanics(t, func() {
 			resources, _, _, err := New().EvaluateModule(deadline, dir, map[string]cty.Value{
-				"keys": distinctKeys(300000),
+				"keys": keys,
 			})
 			require.ErrorIs(t, err, context.DeadlineExceeded)
 			// The partial tree is discarded, never returned as a completed
