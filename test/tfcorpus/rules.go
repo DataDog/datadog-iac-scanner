@@ -127,6 +127,45 @@ func checkLabels(cell Cell) error {
 	return nil
 }
 
+// localRefRe and varRefRe match references to a local or a variable in an
+// expression.
+var (
+	localRefRe = regexp.MustCompile(`\blocal\.([A-Za-z_][A-Za-z0-9_]*)`)
+	varRefRe   = regexp.MustCompile(`\bvar\.([A-Za-z_][A-Za-z0-9_]*)`)
+)
+
+// checkRefs rejects a root that reads a local or a variable it never
+// declares: an undefined input evaluates as unknown-or-error depending on
+// the engine, which turns a fixture mistake into an engine-behavior
+// reading.
+func checkRefs(cell Cell) error {
+	declaredLocals := map[string]bool{}
+	declaredVars := map[string]bool{}
+	for _, content := range cell.files {
+		for _, m := range regexp.MustCompile(`(?s)locals\s*\{(.*?)\}`).FindAllStringSubmatch(content, -1) {
+			for _, name := range regexp.MustCompile(`(?m)^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=`).FindAllStringSubmatch(m[1], -1) {
+				declaredLocals[name[1]] = true
+			}
+		}
+		for _, m := range regexp.MustCompile(`(?m)^variable\s+"([^"]+)"\s*\{`).FindAllStringSubmatch(content, -1) {
+			declaredVars[m[1]] = true
+		}
+	}
+	for _, content := range cell.files {
+		for _, m := range localRefRe.FindAllStringSubmatch(content, -1) {
+			if !declaredLocals[m[1]] {
+				return fmt.Errorf("cell %s reads local.%s, which no file declares", cell.Name(), m[1])
+			}
+		}
+		for _, m := range varRefRe.FindAllStringSubmatch(content, -1) {
+			if !declaredVars[m[1]] {
+				return fmt.Errorf("cell %s reads var.%s, which no file declares", cell.Name(), m[1])
+			}
+		}
+	}
+	return nil
+}
+
 // MaterializeAt writes the cells under dir (a new temporary directory when
 // empty), for callers outside a test.
 func MaterializeAt(dir string, cells []Cell) (string, []string, error) {
@@ -134,6 +173,9 @@ func MaterializeAt(dir string, cells []Cell) (string, []string, error) {
 	names := make([]string, len(cells))
 	for i, c := range cells {
 		if err := checkLabels(c); err != nil {
+			return "", nil, err
+		}
+		if err := checkRefs(c); err != nil {
 			return "", nil, err
 		}
 		names[i] = DirName(i, c.Name())
@@ -149,9 +191,12 @@ func MaterializeStateAt(dir string, cells []StateCell) (string, []string, error)
 	files := make([]map[string]string, len(cells))
 	names := make([]string, len(cells))
 	for i, c := range cells {
-		// The state cells pass the same validity check as the rest of the
-		// corpus.
+		// The state cells pass the same validity checks as the rest of
+		// the corpus.
 		if err := checkLabels(Cell{files: c.files}); err != nil {
+			return "", nil, err
+		}
+		if err := checkRefs(Cell{files: c.files}); err != nil {
 			return "", nil, err
 		}
 		names[i] = DirName(i, c.Name())
