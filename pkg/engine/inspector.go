@@ -1467,7 +1467,7 @@ func (c *Inspector) DecodeQueryResults(
 	var moduleSeverity model.Severity
 	var activeLineInfoFile string
 decodeLoop:
-	for i := range findings.order(len(queryResultItems)) {
+	for i := range queryResultItems {
 		queryResultItem := queryResultItems[i]
 		// Each item is decoded once; dropping it as it is read lets a rule
 		// raising many findings hold one decoded item rather than all of them.

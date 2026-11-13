@@ -8,8 +8,6 @@ package engine
 import (
 	"context"
 	"crypto/sha256"
-	"iter"
-	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
@@ -17,31 +15,32 @@ import (
 // findingSet collects the findings of one rule as they are decoded and
 // routed, optionally keeping one per identity.
 //
-// The scan reports the last finding of each identity (see
-// model.FindingIdentity), and a module instantiated per count or for_each
-// instance raises the same finding once per instance: one rule can raise
-// hundreds of thousands of findings that the report then collapses to a few
-// thousand. Keeping each identity's latest finding as they are decoded gives
-// the report the same findings without holding the others until the scan ends.
+// A compacting set keeps the first finding of each identity in
+// model.CompareFindings order, the same finding storage reports (see
+// Inspector.SetCompactFindingsAtDecode). The scan reports the first finding
+// of each identity (see model.FindingIdentity), and a module instantiated per
+// count or for_each instance raises the same finding once per instance: one
+// rule can raise hundreds of thousands of findings that the report then
+// collapses to a few thousand. Keeping each identity's first finding as they
+// are decoded gives the report the same findings without holding the others
+// until the scan ends.
 //
 // That reduction is only valid for a caller that, like storage, keeps the
-// last finding of each identity (see Inspector.SetCompactFindingsAtDecode).
+// first finding of each identity in CompareFindings order and drops the rest.
+// It must stay off for a caller that reads Inspect's return value directly,
+// such as the test-rules rule harness, because identity does not include the
+// line for most platforms and collapsing at decode would silently drop a
+// second genuine violation of one resource.
 //
-// A compacting set is given the rule's results last raised first, so the
-// finding it keeps is the first one it is given. A result whose every
-// identity is already kept can then be skipped before its line is detected
-// (see supersedes).
-//
-// Routing runs before the identity is recorded. It gives a finding the call
-// chain of each module caller it stands for, and two instances that share an
-// identity can stand for different callers. Recording the identity first would
-// drop the callers of every instance but the last.
+// Routing runs before the identity is recorded. Two instances that share an
+// identity can stand for different callers, and recording the identity first
+// would drop the callers of every instance but the first.
 type findingSet struct {
 	out     []model.Vulnerability
 	routing *findingRouting
-	// kept holds the identities of the findings in out. Nil when the set is
-	// not reducing by identity, so every finding is appended.
-	kept   map[[sha256.Size]byte]struct{}
+	// kept maps the identities of the findings in out to their index. Nil
+	// when the set is not reducing by identity, so every finding is appended.
+	kept   map[[sha256.Size]byte]int
 	keyBuf []byte
 }
 
@@ -51,43 +50,14 @@ type findingSet struct {
 func newFindingSet(compact bool, routing *findingRouting) *findingSet {
 	s := &findingSet{routing: routing}
 	if compact {
-		s.kept = make(map[[sha256.Size]byte]struct{})
+		s.kept = make(map[[sha256.Size]byte]int)
 	}
 	return s
 }
 
-// lastRaisedFirst reports whether the set must be given the rule's results
-// from the last one raised to the first.
-func (s *findingSet) lastRaisedFirst() bool {
-	return s != nil && s.kept != nil
-}
-
-// maySkip reports whether a result could be dropped before its line is
-// detected. The first result of a rule cannot: nothing is kept yet.
-func (s *findingSet) maySkip() bool {
-	return s != nil && len(s.kept) > 0
-}
-
-// order yields the positions of a rule's n results in the order the set must
-// be given them.
-func (s *findingSet) order(n int) iter.Seq[int] {
-	lastFirst := s.lastRaisedFirst()
-	return func(yield func(int) bool) {
-		for k := 0; k < n; k++ {
-			i := k
-			if lastFirst {
-				i = n - 1 - k
-			}
-			if !yield(i) {
-				return
-			}
-		}
-	}
-}
-
 // addRouted routes v to the module callers it stands for and keeps what
-// routing produced. A compacting set, given results last raised first, keeps
-// the first finding of each identity.
+// routing produced. A compacting set keeps, of the findings sharing an
+// identity, the first one in model.CompareFindings order.
 func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulnerability) {
 	var routed []model.Vulnerability
 	if s.routing == nil {
@@ -101,98 +71,35 @@ func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulne
 	}
 	// Routing changes only the call chain of what goes into the identity.
 	id, lineFree := model.IdentityBeforeLine(v)
-	for i := len(routed) - 1; i >= 0; i-- {
+	for i := range routed {
+		r := &routed[i]
+		var digest [sha256.Size]byte
 		if lineFree {
-			s.keepChained(id, &routed[i])
+			s.keyBuf = id.AppendWithChain(s.keyBuf[:0], r.ModuleCallChain)
+			digest = sha256.Sum256(s.keyBuf)
 		} else {
-			s.keepKey(model.FindingIdentity(&routed[i]), &routed[i])
+			digest = sha256.Sum256([]byte(model.FindingIdentity(r)))
 		}
+		s.keep(digest, r)
 	}
 }
 
-// keepChained records v unless id under v's call chain is already kept.
-func (s *findingSet) keepChained(id model.ChainedIdentity, v *model.Vulnerability) {
-	if s.has(id, v.ModuleCallChain) {
+// keep records v, unless the set already keeps a finding of identity digest
+// that comes first in model.CompareFindings order.
+func (s *findingSet) keep(digest [sha256.Size]byte, v *model.Vulnerability) {
+	if i, ok := s.kept[digest]; ok {
+		if model.CompareFindings(v, &s.out[i]) < 0 {
+			s.out[i] = *v
+		}
 		return
 	}
-	s.kept[sha256.Sum256(s.keyBuf)] = struct{}{}
+	s.kept[digest] = len(s.out)
 	s.out = append(s.out, *v)
 }
 
-func (s *findingSet) keepKey(key string, v *model.Vulnerability) {
-	digest := sha256.Sum256([]byte(key))
-	if _, ok := s.kept[digest]; ok {
-		return
-	}
-	s.kept[digest] = struct{}{}
-	s.out = append(s.out, *v)
-}
-
-// supersedes reports whether routing a result raised on file with identity id
-// now would only produce identities this set already kept, so the result
-// cannot change the report.
-//
-// It has to agree with findingRouting.route in that direction (see
-// TestFindingSet_SupersedesMeansRouteKeepsNothingNew). The as-written
-// identity is required only when routing can produce it: an external module
-// file that is reported only through its calls does not.
-func (s *findingSet) supersedes(id model.ChainedIdentity, file *model.FileMetadata) bool {
-	if file == nil || len(s.kept) == 0 {
-		return false
-	}
-	if !s.accounted(id, file.ID, file.ModuleCallChain, len(file.ModuleAttributions) > 0) {
-		return false
-	}
-	if s.routing == nil {
-		return true
-	}
-	for _, ex := range s.routing.extras[file.ID] {
-		if !s.accounted(id, ex.docID, ex.callChain, len(ex.attributions) > 0) {
-			return false
-		}
-	}
-	return true
-}
-
-// accounted reports whether every identity routing can give a finding raised
-// on document fileID and reported under chain is already kept.
-func (s *findingSet) accounted(id model.ChainedIdentity, fileID, chain string, attributionPossible bool) bool {
-	var file *moduleFileCalls
-	if s.routing != nil {
-		file = s.routing.moduleFiles[fileID]
-	}
-	if file == nil {
-		return s.has(id, chain)
-	}
-	// The calls are produced unless the line attributes the finding. The line
-	// is not known yet, so every call has to be kept already.
-	for i := range file.calls {
-		if !s.has(id, file.calls[i].callChain) {
-			return false
-		}
-	}
-	// Attributed from the line. Without attributions the as-written finding is
-	// not produced, and requiring it would never skip.
-	if attributionPossible {
-		return s.has(id, chain)
-	}
-	return true
-}
-
-func (s *findingSet) has(id model.ChainedIdentity, chain string) bool {
-	s.keyBuf = id.AppendWithChain(s.keyBuf[:0], chain)
-	_, ok := s.kept[sha256.Sum256(s.keyBuf)]
-	return ok
-}
-
-// findings returns what the set kept, in the order the rule raised it, and
-// empties the set. A compacting set is given its results last raised first,
-// so this reverses them.
+// findings returns what the set kept and empties the set.
 func (s *findingSet) findings() []model.Vulnerability {
 	out := s.out
-	if s.lastRaisedFirst() {
-		slices.Reverse(out)
-	}
 	s.out, s.kept, s.keyBuf = nil, nil, nil
 	return out
 }

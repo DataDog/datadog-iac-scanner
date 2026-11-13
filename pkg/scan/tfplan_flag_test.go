@@ -70,6 +70,8 @@ func TestJSONParserRegistration(t *testing.T) {
 				cloudProviders,
 				client.FlagEvaluator,
 				nil,
+
+				nil, // pathExtractionMap
 			)
 
 			require.NoError(t, err)
@@ -133,6 +135,8 @@ func TestJSONParserBuilder(t *testing.T) {
 		cloudProviders,
 		clientWithoutFlag.FlagEvaluator,
 		nil,
+
+		nil, // pathExtractionMap
 	)
 
 	require.NoError(t, err)
@@ -179,6 +183,8 @@ func TestJSONParserBuilder(t *testing.T) {
 		cloudProviders,
 		clientWithFlag.FlagEvaluator,
 		nil,
+
+		nil, // pathExtractionMap
 	)
 
 	require.NoError(t, err)
@@ -234,6 +240,8 @@ func TestCreateServiceWithTfPlanFlag(t *testing.T) {
 			[]string{""},
 			client.FlagEvaluator,
 			nil,
+
+			nil, // pathExtractionMap
 		)
 
 		require.NoError(t, err)
@@ -269,6 +277,8 @@ func TestCreateServiceWithTfPlanFlag(t *testing.T) {
 			[]string{""},
 			client.FlagEvaluator,
 			nil,
+
+			nil, // pathExtractionMap
 		)
 
 		require.NoError(t, err)
@@ -323,6 +333,8 @@ func TestJSONParserNotDoubleRegistered(t *testing.T) {
 			[]string{""},
 			client.FlagEvaluator,
 			nil,
+
+			nil, // pathExtractionMap
 		)
 
 		require.NoError(t, err)

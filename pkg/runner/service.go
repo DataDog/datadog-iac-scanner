@@ -92,6 +92,11 @@ type Service struct {
 	Platforms []string
 	// FilePlatform is the analyzer path → platform map, reused in the sink.
 	FilePlatform map[string]string
+	// PathExtractionMap names each fetched or extracted directory after where
+	// it came from, so findings are ordered by their canonical report path and
+	// not by the per-scan directory they were checked out into. Nil keeps the
+	// detected names.
+	PathExtractionMap map[string]model.ExtractedPathObject
 	// failedHelmChartDirsMu guards failedHelmChartDirs.
 	failedHelmChartDirsMu sync.RWMutex
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
@@ -329,6 +334,8 @@ func (s *Service) StartScan(
 		}
 	}
 
+	s.canonicalizeFindingNames(vulnerabilities)
+
 	err = s.Storage.SaveVulnerabilities(ctx, vulnerabilities)
 	if err != nil {
 		select {
@@ -409,6 +416,19 @@ func contentFromBytes(content []byte, maxSizeMB int, filename string) (*Content,
 		IsMinified:     minified.IsMinified(filename, copied),
 		CountResources: GetCountTerraformResources(copied),
 	}, nil
+}
+
+// canonicalizeFindingNames renames every finding reported on a file inside a
+// fetched or extracted checkout directory after where that directory came
+// from. Findings are ordered by the file they are reported on, and the
+// checkout directory itself is per-scan: without the rename, two scans of the
+// same repository could list the same findings in a different order.
+func (s *Service) canonicalizeFindingNames(vulnerabilities []model.Vulnerability) {
+	for i := range vulnerabilities {
+		if canonical := model.CanonicalReportedPath(vulnerabilities[i].FileName, s.PathExtractionMap); canonical != vulnerabilities[i].FileName {
+			vulnerabilities[i].OrderPath = canonical
+		}
+	}
 }
 
 // GetVulnerabilities returns a list of scan detected vulnerabilities
