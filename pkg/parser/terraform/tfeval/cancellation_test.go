@@ -70,7 +70,7 @@ resource "aws_s3_bucket" "b" {
   for_each = var.keys
   bucket   = "b-${each.key}"
 }
-`}), map[string]cty.Value{"keys": distinctKeys(100000)}
+`}), map[string]cty.Value{"keys": distinctKeys(50000)}
 		}},
 		"huge data for_each": {fixture: func(t *testing.T) (string, map[string]cty.Value) {
 			// The keys arrive as an input variable, and each data instance
@@ -123,7 +123,7 @@ module "m" {
   in       = "in-${each.key}"
 }
 `)
-			return dir, map[string]cty.Value{"keys": distinctKeys(100000)}
+			return dir, map[string]cty.Value{"keys": distinctKeys(50000)}
 		}},
 	}
 

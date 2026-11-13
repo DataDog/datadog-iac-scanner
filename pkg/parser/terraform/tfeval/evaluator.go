@@ -450,14 +450,19 @@ func (e *Evaluator) evaluate(
 		return nil, nil, err
 	}
 
+	// A canceled scan skips the cache: hashing a large input collection is
+	// not worth finishing when the evaluation is about to stop.
+	inputsKey, inputsKeyOK := e.keyMemo.inputsKey(ctx, inputs)
 	cacheKey := evalCacheKey{
 		dir:         dir,
 		rootDir:     rootDir,
 		packageRoot: packageRoot,
-		inputs:      e.keyMemo.inputsKey(inputs),
+		inputs:      inputsKey,
 	}
-	if resources, outputs, hit := e.reuseCachedEvaluation(cacheKey, addr, chain, depth, allVisited); hit {
-		return resources, outputs, nil
+	if inputsKeyOK {
+		if resources, outputs, hit := e.reuseCachedEvaluation(cacheKey, addr, chain, depth, allVisited); hit {
+			return resources, outputs, nil
+		}
 	}
 
 	visiting[dir] = true
@@ -556,9 +561,11 @@ func (e *Evaluator) evaluate(
 			visitedDirs = append(visitedDirs, d)
 		}
 	}
-	e.cacheCompletedEvaluation(
-		cacheKey, skippedBefore, resources, e.instances[instancesBefore:], outputs, visitedDirs, addr, len(chain), depth,
-	)
+	if inputsKeyOK {
+		e.cacheCompletedEvaluation(
+			cacheKey, skippedBefore, resources, e.instances[instancesBefore:], outputs, visitedDirs, addr, len(chain), depth,
+		)
+	}
 
 	return resources, outputs, nil
 }
@@ -1170,6 +1177,9 @@ func (e *Evaluator) expandKnownForEachResources(
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
 ) []ResolvedResource {
+	if ctx.Err() != nil {
+		return nil
+	}
 	// Grown with append, never sized from the collection: an uncapped for_each
 	// from an untrusted repository must not allocate before the scan can stop.
 	out := make([]ResolvedResource, 0)
