@@ -104,6 +104,19 @@ func (l *Layout) Root(ctx context.Context, resolver tfeval.RemoteResolver, dir s
 	return loadRoot(ctx, l.fsys, resolver, l.Base, dir, l.dirs, l.evaluator(resolver), l.varsPath)
 }
 
+// ReleaseRootParse drops the parsed files of dir from the scan-wide parse
+// cache and drains the evaluation cache. A root that has been modeled once —
+// evaluated for the scan or indexed for cross-root evidence — keeps nothing
+// but what its findings need, so its parse does not stay resident for the
+// rest of the scan.
+func (l *Layout) ReleaseRootParse(dir string) {
+	if l.eval == nil {
+		return
+	}
+	l.eval.ForgetRootParse(dir)
+	l.eval.ReleaseEvalCache()
+}
+
 // evaluator is the scan-wide evaluator: its parse cache is shared across
 // roots, and each root releases its evaluation cache when it finishes.
 func (l *Layout) evaluator(resolver tfeval.RemoteResolver) *tfeval.Evaluator {
