@@ -1,0 +1,134 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+
+package tfproperties
+
+import (
+	"fmt"
+	"math/rand"
+	"testing"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/test/tfcorpus"
+	"github.com/DataDog/datadog-iac-scanner/test/tfharness"
+	"github.com/stretchr/testify/require"
+)
+
+// determinismCells samples the corpus for the determinism checks: every
+// expansion cell, so modules and expansions are covered, and every tenth
+// value cell, so the indirection kinds rotate through.
+func determinismCells() []tfcorpus.Cell {
+	var cells []tfcorpus.Cell
+	cells = append(cells, tfcorpus.ExpansionGrid()...)
+	value := tfcorpus.ValueGrid()
+	for i := 0; i < len(value); i += 10 {
+		cells = append(cells, value[i])
+	}
+	return cells
+}
+
+// reportedKey is the stable identity of one reported finding.
+func reportedKey(v *model.Vulnerability) string {
+	return fmt.Sprintf("%s|%s|%d|%s|%s|%s|%s", v.QueryID, v.FileName, v.Line,
+		v.ResourceType, v.ResourceName, v.SearchKey, v.ModuleCallChain)
+}
+
+// TestRepeatedScansProduceTheSameFindings checks that scanning the same
+// corpus twice gives the same findings in the same order, and that the order
+// the files are handed to the engine in does not change the output.
+func TestRepeatedScansProduceTheSameFindings(t *testing.T) {
+	if testing.Short() {
+		t.Skip("the repeated scans run only in the full suite")
+	}
+	cells := determinismCells()
+	rules := tfcorpus.WriteRules(t)
+	libs := tfharness.LibraryPath(t)
+	dir, _ := tfcorpus.Materialize(t, cells)
+
+	first := tfharness.Inspect(t, dir, rules, libs)
+	again := tfharness.Inspect(t, dir, rules, libs)
+	require.Equal(t, reportedKeys(first.Vulns), reportedKeys(again.Vulns),
+		"two scans of the same corpus differ")
+
+	files := tfharness.ParseTree(t, dir)
+	for seed := 1; seed <= 5; seed++ {
+		shuffled := append(files[:0:0], files...)
+		rng := rand.New(rand.NewSource(int64(seed)))
+		rng.Shuffle(len(shuffled), func(i, j int) {
+			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+		})
+		run := tfharness.InspectParsed(t, shuffled, rules, libs, dir)
+		require.Equal(t, reportedKeys(first.Vulns), reportedKeys(run.Vulns),
+			"scan with file order seed %d differs", seed)
+	}
+}
+
+// reportedKeys renders the ordered findings of a run.
+func reportedKeys(vs []model.Vulnerability) []string {
+	out := make([]string, 0, len(vs))
+	for i := range vs {
+		out = append(out, reportedKey(&vs[i]))
+	}
+	return out
+}
+
+// TestRepeatedScansWriteTheSameReport checks that a whole scan, through the
+// command-line path, writes the same SARIF twice.
+func TestRepeatedScansWriteTheSameReport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("the repeated reports run only in the full suite")
+	}
+	cells := determinismCells()
+	rules := tfcorpus.WriteRules(t)
+	libs := tfharness.LibraryPath(t)
+	dir, _ := tfcorpus.Materialize(t, cells)
+	first := tfharness.ScanPath(t, dir, rules, libs)
+	second := tfharness.ScanPath(t, dir, rules, libs)
+	require.Equal(t, string(first), string(second), "two scans wrote different SARIF")
+}
+
+// TestCompactFindingsKeepTheFirstOfEachIdentity checks the engine's
+// identity compaction: when it keeps one finding per identity while
+// decoding, it keeps the finding of each identity group that compares first,
+// and no identity is lost.
+func TestCompactFindingsKeepTheFirstOfEachIdentity(t *testing.T) {
+	cells := determinismCells()
+	rules := tfcorpus.WriteRules(t)
+	libs := tfharness.LibraryPath(t)
+	dir, _ := tfcorpus.Materialize(t, cells)
+
+	full := tfharness.Inspect(t, dir, rules, libs)
+	compact := tfharness.InspectCompact(t, dir, rules, libs)
+
+	// Group the uncompacted findings by identity and keep the one that
+	// compares first.
+	type identityKey struct{ file, id string }
+	groups := map[identityKey][]*model.Vulnerability{}
+	var order []identityKey
+	for i := range full.Vulns {
+		v := &full.Vulns[i]
+		k := identityKey{file: v.FileName, id: model.FindingIdentity(v)}
+		if _, ok := groups[k]; !ok {
+			order = append(order, k)
+		}
+		groups[k] = append(groups[k], v)
+	}
+	var want []string
+	for _, k := range order {
+		g := groups[k]
+		best := g[0]
+		for _, v := range g[1:] {
+			if model.CompareFindings(v, best) < 0 {
+				best = v
+			}
+		}
+		want = append(want, reportedKey(best))
+	}
+	require.Len(t, compact.Vulns, len(want),
+		"the compacted scan holds a different number of findings than the identity groups")
+	require.Equal(t, want, reportedKeys(compact.Vulns),
+		"the compacted scan did not keep the first finding of each identity")
+}

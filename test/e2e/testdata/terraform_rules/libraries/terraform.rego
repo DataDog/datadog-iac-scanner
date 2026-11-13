@@ -33,4 +33,13 @@ related(block, type, path) := [by_id(id) | some id in object.get(_dd, ["related"
 
 targets(block, path) := [by_id(id) | some id in object.get(_dd, ["targets", block._dd_meta.id, path], [])]
 
+# matches reports whether a value holds an expected one. Rules that compare
+# values through this function read the placeholder inside the library, so
+# the unknown gate must treat the comparison as a value test, not as a read
+# of what the unknown stands for.
+matches(value, expected) if {
+	value != _placeholder
+	value == expected
+}
+
 literal_keys := {"aws_s3_bucket_versioning": {"bucket": {"aws_s3_bucket": ["bucket"]}}}
