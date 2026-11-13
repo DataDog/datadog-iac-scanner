@@ -31,6 +31,14 @@ func (environment valueEnvironment) lookup(frame int, name string) (string, bool
 			if binding.Name != name {
 				continue
 			}
+			// An ARG without a value keeps the global default: a global one
+			// keeps the earlier declaration, a stage one imports it.
+			if !binding.HasDefault && current.Kind == argumentBindings {
+				if frame <= environment.state.result.GlobalArguments {
+					continue
+				}
+				return environment.lookup(environment.state.result.GlobalArguments, name)
+			}
 			if binding.Value.Known {
 				return binding.Value.Text, true
 			}
@@ -45,11 +53,12 @@ func (environment valueEnvironment) lookup(frame int, name string) (string, bool
 }
 
 func defaultCandidate(raw string, environment valueEnvironment) shell.Value {
-	result := value(raw)
+	state := environment.state
+	result := state.value(raw)
 	if result.Known {
 		return result
 	}
-	lexer := buildkitshell.NewLex('\\')
+	lexer := buildkitshell.NewLex(state.escape)
 	lexer.SkipUnsetEnv = true
 	expanded, err := lexer.ProcessWordWithMatches(raw, environment)
 	if err == nil && len(expanded.Unmatched) == 0 {
@@ -63,14 +72,14 @@ func (state *analysisState) declaredValue(raw string) shell.Value {
 }
 
 func (state *analysisState) imageFact(raw string) *Image {
-	result := image(raw, state.result.Stages[:state.current])
+	result := state.image(raw, state.result.Stages[:state.current])
 	if result.Reference.Known {
 		return result
 	}
 	candidate := defaultCandidate(raw, valueEnvironment{state: state, environment: -1, arguments: state.result.GlobalArguments})
 	result.Reference = candidate
 	if candidate.Default != nil {
-		result.Default = image(*candidate.Default, state.result.Stages[:state.current])
+		result.Default = state.image(*candidate.Default, state.result.Stages[:state.current])
 	}
 	return result
 }

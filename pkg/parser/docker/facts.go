@@ -96,12 +96,12 @@ type Mount struct {
 	Required bool         `json:"required"`
 }
 
-func value(raw string) shell.Value {
+func (state *analysisState) value(raw string) shell.Value {
 	result := shell.Value{Text: raw, Known: true}
 	if !strings.ContainsAny(raw, "$\"'\\") {
 		return result
 	}
-	lexer := buildkitshell.NewLex('\\')
+	lexer := buildkitshell.NewLex(state.escape)
 	lexer.SkipUnsetEnv = true
 	expanded, err := lexer.ProcessWordWithMatches(raw, emptyEnvironment{})
 	if err != nil {
@@ -119,12 +119,12 @@ func value(raw string) shell.Value {
 	return result
 }
 
-func image(raw string, stages []Stage) *Image {
-	result := &Image{Reference: value(raw), Kind: unknownFact, Stage: -1}
+func (state *analysisState) image(raw string, stages []Stage) *Image {
+	result := &Image{Reference: state.value(raw), Kind: unknownFact, Stage: -1}
 	if !result.Reference.Known {
 		tail := raw[strings.LastIndex(raw, "/")+1:]
-		result.VersionKnown = value(tail).Known
-		lexer := buildkitshell.NewLex('\\')
+		result.VersionKnown = state.value(tail).Known
+		lexer := buildkitshell.NewLex(state.escape)
 		skeleton, _, err := lexer.ProcessWord(raw, placeholderEnvironment{})
 		if err == nil {
 			tail = skeleton[strings.LastIndex(skeleton, "/")+1:]
@@ -164,22 +164,24 @@ func image(raw string, stages []Stage) *Image {
 	return result
 }
 
-func copyFacts(command any) *Copy {
+func (state *analysisState) copyFacts(command any) *Copy {
 	result := &Copy{Sources: []FileSource{}, Exclude: []string{}, SourceStage: -1}
 	var sources instructions.SourcesAndDest
 	switch typed := command.(type) {
 	case *instructions.AddCommand:
 		sources = typed.SourcesAndDest
-		result.Owner, result.Mode, result.Checksum = optionalValue(typed.Chown), optionalValue(typed.Chmod), optionalValue(typed.Checksum)
+		result.Owner, result.Mode = state.optionalValue(typed.Chown), state.optionalValue(typed.Chmod)
+		result.Checksum = state.optionalValue(typed.Checksum)
 		result.Link, result.Exclude = typed.Link, typed.ExcludePatterns
 	case *instructions.CopyCommand:
 		sources = typed.SourcesAndDest
-		result.From, result.Owner, result.Mode = optionalValue(typed.From), optionalValue(typed.Chown), optionalValue(typed.Chmod)
+		result.Owner, result.Mode = state.optionalValue(typed.Chown), state.optionalValue(typed.Chmod)
+		result.From = state.optionalValue(typed.From)
 		result.Link, result.Exclude = typed.Link, typed.ExcludePatterns
 	}
-	result.Destination = value(sources.DestPath)
+	result.Destination = state.value(sources.DestPath)
 	for _, source := range sources.SourcePaths {
-		fact := FileSource{Value: value(source), Kind: "local"}
+		fact := FileSource{Value: state.value(source), Kind: "local"}
 		if !fact.Value.Known {
 			fact.Kind = unknownFact
 		} else if isRemoteSource(source) {
@@ -208,11 +210,11 @@ func isRemoteSource(source string) bool {
 	return false
 }
 
-func optionalValue(raw string) *shell.Value {
+func (state *analysisState) optionalValue(raw string) *shell.Value {
 	if raw == "" {
 		return nil
 	}
-	result := value(raw)
+	result := state.value(raw)
 	return &result
 }
 

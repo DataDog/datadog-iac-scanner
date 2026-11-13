@@ -13,7 +13,10 @@ import (
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
 
-const environmentBindings = "environment"
+const (
+	environmentBindings = "environment"
+	argumentBindings    = "arguments"
+)
 
 type Analysis struct {
 	// ResourceType and ResourceName identify the findings of rules using this
@@ -80,6 +83,7 @@ type analysisState struct {
 	// triggers, whose text is not where they run.
 	source *source
 	node   *parser.Node
+	escape rune
 }
 
 type pendingTrigger struct {
@@ -87,7 +91,7 @@ type pendingTrigger struct {
 	expression   string
 }
 
-func analyze(ast *parser.Node, src *source) *Analysis {
+func analyze(ast *parser.Node, src *source, escape rune) *Analysis {
 	state := &analysisState{
 		result: &Analysis{
 			ResourceType: dockerResource, ResourceName: dockerResource,
@@ -95,7 +99,7 @@ func analyze(ast *parser.Node, src *source) *Analysis {
 			Bindings: []BindingScope{{Parent: -1, Kind: "build_arguments", Bindings: []Binding{}}},
 			Contexts: []Context{{Environment: -1, Arguments: 0}},
 		},
-		current: -1, context: Context{Environment: -1, Arguments: 0}, source: src,
+		current: -1, context: Context{Environment: -1, Arguments: 0}, source: src, escape: escape,
 	}
 	for _, node := range ast.Children {
 		state.instruction(node)
@@ -121,7 +125,7 @@ func (state *analysisState) instruction(node *parser.Node) {
 		if !hasValue {
 			text = "true"
 		}
-		entry.Flags = append(entry.Flags, Flag{Name: name, Value: value(text)})
+		entry.Flags = append(entry.Flags, Flag{Name: name, Value: state.value(text)})
 	}
 	if err != nil {
 		entry.Error = err.Error()
@@ -143,7 +147,7 @@ func (state *analysisState) beginStage(typed any, source model.Source) {
 	stage := Stage{Index: state.current, From: len(state.result.Instructions), BaseStage: -1, Source: source}
 	if command, ok := typed.(*instructions.Stage); ok {
 		stage.Name = command.Name
-		base := image(command.BaseName, state.result.Stages)
+		base := state.image(command.BaseName, state.result.Stages)
 		stage.BaseStage = base.Stage
 		if base.Stage >= 0 {
 			state.currentShell = state.stageShells[base.Stage]
@@ -160,9 +164,9 @@ func (state *analysisState) enrich(entry *Instruction, typed any) {
 	switch command := typed.(type) {
 	case *instructions.Stage:
 		entry.Image = state.imageFact(command.BaseName)
-		entry.Platform = optionalValue(command.Platform)
+		entry.Platform = state.optionalValue(command.Platform)
 	case *instructions.AddCommand, *instructions.CopyCommand:
-		entry.Copy = copyFacts(command)
+		entry.Copy = state.copyFacts(command)
 		state.copyStage(entry.Copy)
 	case *instructions.RunCommand:
 		state.run(entry, command)
@@ -175,7 +179,7 @@ func (state *analysisState) enrich(entry *Instruction, typed any) {
 		if state.current >= 0 {
 			state.stageShells[state.current] = command.Shell
 		}
-		entry.Values = values(command.Shell)
+		entry.Values = state.values(command.Shell)
 	case *instructions.HealthCheckCommand:
 		state.healthcheck(entry, command)
 	case *instructions.OnbuildCommand:
@@ -206,14 +210,14 @@ func (state *analysisState) scalar(entry *Instruction, typed any) {
 		}
 		state.context.Workdir = v
 	case *instructions.ExposeCommand:
-		entry.Values = values(command.Ports)
+		entry.Values = state.values(command.Ports)
 	case *instructions.VolumeCommand:
-		entry.Values = values(command.Volumes)
+		entry.Values = state.values(command.Volumes)
 	case *instructions.StopSignalCommand:
-		v := value(command.Signal)
+		v := state.value(command.Signal)
 		entry.Value = &v
 	case *instructions.MaintainerCommand:
-		v := value(command.Maintainer)
+		v := state.value(command.Maintainer)
 		entry.Value = &v
 
 	default:
@@ -236,7 +240,7 @@ func (state *analysisState) bindings(entry *Instruction, typed any) {
 			}
 			entry.Bindings = append(entry.Bindings, fact)
 		}
-		state.bind(entry, "arguments")
+		state.bind(entry, argumentBindings)
 	case *instructions.LabelCommand:
 		for _, binding := range command.Labels {
 			entry.Bindings = append(entry.Bindings, Binding{Name: binding.Key, Value: state.declaredValue(binding.Value), HasDefault: true})
@@ -244,10 +248,10 @@ func (state *analysisState) bindings(entry *Instruction, typed any) {
 	}
 }
 
-func values(raw []string) []shell.Value {
+func (state *analysisState) values(raw []string) []shell.Value {
 	result := make([]shell.Value, len(raw))
 	for i, text := range raw {
-		result[i] = value(text)
+		result[i] = state.value(text)
 	}
 	return result
 }
@@ -276,8 +280,8 @@ func (state *analysisState) run(entry *Instruction, command *instructions.RunCom
 	} else {
 		for _, mount := range instructions.GetMounts(command) {
 			entry.Mounts = append(entry.Mounts, Mount{
-				Kind: string(mount.Type), Target: value(mount.Target), Source: value(mount.Source), From: optionalValue(mount.From),
-				ReadOnly: mount.ReadOnly, CacheID: value(mount.CacheID), Sharing: string(mount.CacheSharing), Required: mount.Required,
+				Kind: string(mount.Type), Target: state.value(mount.Target), Source: state.value(mount.Source), From: state.optionalValue(mount.From),
+				ReadOnly: mount.ReadOnly, CacheID: state.value(mount.CacheID), Sharing: string(mount.CacheSharing), Required: mount.Required,
 			})
 		}
 	}
@@ -311,7 +315,7 @@ func (state *analysisState) finishTriggers() {
 				Instructions: []Instruction{}, Stages: []Stage{},
 				Bindings: state.result.Bindings, Contexts: state.result.Contexts,
 			},
-			current: -1, context: inherited, currentShell: inheritedShell,
+			current: -1, context: inherited, currentShell: inheritedShell, escape: state.escape,
 		}
 		child.contextIndex = 0
 		child.snapshot()
@@ -365,7 +369,7 @@ func (state *analysisState) copyStage(fact *Copy) {
 		fact.SourceStage = index
 		return
 	}
-	resolved := image(fact.From.Text, state.result.Stages[:state.current])
+	resolved := state.image(fact.From.Text, state.result.Stages[:state.current])
 	fact.SourceStage = resolved.Stage
 }
 

@@ -283,7 +283,7 @@ func parseAnalysis(t *testing.T, content string) *Analysis {
 	t.Helper()
 	ast, err := parser.Parse(strings.NewReader(content))
 	require.NoError(t, err)
-	return analyze(ast.AST, newSource([]byte(content), ast.EscapeToken))
+	return analyze(ast.AST, newSource([]byte(content), ast.EscapeToken), ast.EscapeToken)
 }
 
 func TestParser_ParseModel(t *testing.T) {
@@ -346,6 +346,17 @@ RUN Write-Output hi
 	require.Equal(t, "run", trigger.Kind)
 	require.True(t, result.Contexts[trigger.Context].Deferred)
 	require.Equal(t, "1000:1000", result.Contexts[trigger.Context].User.Text)
+
+	defaults := parseAnalysis(t, "ARG STAGE=base\nARG STAGE\nFROM alpine AS base\nFROM ${STAGE}\n")
+	require.Equal(t, "base", *defaults.Instructions[3].Image.Reference.Default,
+		"an ARG without a value keeps the global default")
+
+	references := func(content string) []string {
+		return parseAnalysis(t, content).Instructions[1].Bindings[1].Value.References
+	}
+	require.Empty(t, references("FROM alpine\nENV DIR=bin CONFIG=C:\\$DIR\n"))
+	require.Equal(t, []string{"DIR"}, references("# escape=`\nFROM alpine\nENV DIR=bin CONFIG=C:\\$DIR\n"),
+		"values are read with the Dockerfile's escape character")
 }
 
 func TestParser_ParseSources(t *testing.T) {

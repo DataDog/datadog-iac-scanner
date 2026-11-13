@@ -59,7 +59,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	var analysis *Analysis
 	if !scannerparser.IsLineInfoOnly(ctx) {
-		analysis = analyze(parsed.AST, newSource(fileContent, parsed.EscapeToken))
+		analysis = analyze(parsed.AST, newSource(fileContent, parsed.EscapeToken), parsed.EscapeToken)
 	}
 
 	fromValue := ""
