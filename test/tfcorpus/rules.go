@@ -84,9 +84,7 @@ func MaterializeState(t *testing.T, cells []StateCell) (string, []string) {
 
 // oneLabelRe matches a block header taking one quoted label (the block
 // kind and its name); twoLabelRe matches one taking two (the kind, the
-// resource type, and the name). Resource and data identity includes the
-// type; module identity includes the source, so two calls of the same name
-// with different sources stay distinct.
+// resource type, and the name).
 var (
 	oneLabelRe = regexp.MustCompile(`(?m)^(module|variable|output)\s+"([^"]+)"\s*\{`)
 	twoLabelRe = regexp.MustCompile(`(?m)^(resource|data|ephemeral)\s+"([^"]+)"\s+"([^"]+)"\s*\{`)
