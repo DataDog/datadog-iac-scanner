@@ -2,9 +2,14 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	scannerparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/moby/buildkit/frontend/dockerfile/parser"
+	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/stretchr/testify/require"
 )
 
@@ -272,4 +277,126 @@ func TestSaveAndResolveEnvs(t *testing.T) {
 			require.Equal(t, tt.want.values, values)
 		})
 	}
+}
+
+func parseAnalysis(t *testing.T, content string) *Analysis {
+	t.Helper()
+	ast, err := parser.Parse(strings.NewReader(content))
+	require.NoError(t, err)
+	return analyze(ast.AST, newSource([]byte(content), ast.EscapeToken))
+}
+
+func TestParser_ParseModel(t *testing.T) {
+	result := parseAnalysis(t, `ARG BASE=alpine
+FROM --platform=$BUILDPLATFORM ${BASE} AS build
+ENV FOO=bar
+USER 1000:1000
+WORKDIR /src
+COPY --from=other --chown=1000:1000 a b /src/
+ADD --checksum=sha256:abc https://example.com/a /a
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN --mount=type=cache,target=/root/.cache/pip sudo pip install 'example==1.2' | cat
+CMD ["echo", "a | b"]
+HEALTHCHECK --interval=10s CMD curl https://example.com || exit 1
+ONBUILD RUN echo deferred
+FROM build AS final
+WORKDIR sub
+RUN echo inherited
+COPY one
+FROM registry.example.com:5000/team/image:tag
+SHELL ["powershell", "-Command"]
+RUN Write-Output hi
+`)
+	instructions := result.Instructions
+	require.Len(t, instructions, 19)
+	require.Len(t, result.Stages, 3)
+	require.Equal(t, -1, instructions[0].Stage)
+	require.Equal(t, "BASE", result.Bindings[result.GlobalArguments].Bindings[0].Name)
+	require.Equal(t, "unknown", instructions[1].Image.Kind)
+	require.False(t, instructions[1].Platform.Known)
+	require.Equal(t, 0, result.Stages[1].BaseStage)
+	require.Equal(t, "registry.example.com:5000", instructions[16].Image.Registry)
+	require.Equal(t, "team/image", instructions[16].Image.Repository)
+
+	require.Equal(t, "other", instructions[5].Copy.From.Text)
+	require.Len(t, instructions[5].Copy.Sources, 2)
+	require.Equal(t, "remote", instructions[6].Copy.Sources[0].Kind)
+	require.Equal(t, "sha256:abc", instructions[6].Copy.Checksum.Text)
+	require.False(t, instructions[15].ParseOK)
+
+	run := instructions[8]
+	require.Equal(t, "cache", run.Mounts[0].Kind)
+	require.Equal(t, "/root/.cache/pip", run.Mounts[0].Target.Text)
+	require.Equal(t, []string{"/bin/bash", "-o", "pipefail", "-c"}, run.Execution.Shell)
+	require.Equal(t, []string{"sudo"}, run.Execution.Calls[0].Wrappers)
+	require.True(t, run.Execution.Pipelines[0].Pipefail)
+	require.Equal(t, "pip", run.Execution.PackageCommands[0].Manager)
+	require.True(t, run.Execution.PackageCommands[0].Packages[0].Pinned)
+	require.Equal(t, []string{"echo", "a | b"}, instructions[9].Execution.Argv)
+	require.Equal(t, "10s", instructions[10].Healthcheck.Interval)
+	require.False(t, instructions[18].Execution.Complete)
+
+	context := func(index int) Context { return result.Contexts[instructions[index].Context] }
+	require.Equal(t, "1000:1000", context(8).User.Text)
+	require.Equal(t, context(8).Environment, context(14).Environment, "a stage inherits its base stage's environment")
+	require.Equal(t, "/src/sub", context(14).Workdir.Text)
+	require.Equal(t, -1, context(17).Environment)
+
+	trigger := instructions[11].Trigger
+	require.Equal(t, "run", trigger.Kind)
+	require.True(t, result.Contexts[trigger.Context].Deferred)
+	require.Equal(t, "1000:1000", result.Contexts[trigger.Context].User.Text)
+}
+
+func TestParser_ParseSources(t *testing.T) {
+	result := parseAnalysis(t, `FROM alpine AS build
+  RUN apt-get update \
+    # comment
+    && apt-get install -y \
+       curl=7.0 git
+RUN <<-EOF
+	pip install flask
+	EOF
+ONBUILD RUN echo deferred
+`)
+	require.Equal(t, model.Source{Line: 1, Column: 0, EndLine: 1, EndColumn: 20}, result.Stages[0].Source)
+	run := result.Instructions[1]
+	require.Equal(t, model.Source{Line: 2, Column: 2, EndLine: 5, EndColumn: 19}, run.Source)
+	calls := run.Execution.Calls
+	require.Equal(t, &model.Source{Line: 2, Column: 6, EndLine: 2, EndColumn: 20}, calls[0].Source)
+	require.Equal(t, &model.Source{Line: 4, Column: 7, EndLine: 5, EndColumn: 19}, calls[1].Source)
+	install := run.Execution.PackageCommands[1]
+	require.Equal(t, calls[1].Source, install.Source)
+	require.Equal(t, &model.Source{Line: 5, Column: 7, EndLine: 5, EndColumn: 15}, install.Packages[0].Source)
+	require.Equal(t, &model.Source{Line: 5, Column: 16, EndLine: 5, EndColumn: 19}, install.Packages[1].Source)
+
+	heredoc := result.Instructions[2].Execution.PackageCommands[0]
+	require.Equal(t, &model.Source{Line: 7, Column: 1, EndLine: 7, EndColumn: 18}, heredoc.Source)
+	require.Equal(t, &model.Source{Line: 7, Column: 13, EndLine: 7, EndColumn: 18}, heredoc.Packages[0].Source)
+
+	trigger := result.Instructions[3]
+	require.Equal(t, trigger.Source, trigger.Trigger.Source)
+	require.Nil(t, trigger.Trigger.Execution.Calls[0].Source, "a trigger runs in another build, not at its own text")
+}
+
+func TestParser_ParseLineInfoOnly(t *testing.T) {
+	content := []byte("FROM alpine\nENV TEXT=hello\nRUN echo '$TEXT'; sudo apt-get install example\n")
+	p := &Parser{}
+	ctx := context.Background()
+	_, enriched, _, _, err := p.Parse(ctx, content, "Dockerfile", false, 0)
+	require.NoError(t, err)
+	_, legacy, _, _, err := p.Parse(scannerparser.WithLineInfoOnly(ctx), content, "Dockerfile", false, 0)
+	require.NoError(t, err)
+	results, err := rego.New(rego.Query(`some instruction in input._dockerfile.instructions
+some command in instruction.execution.package_commands
+command.manager == "apt-get"
+command.packages[0].source.line == 3`), rego.Input(enriched[0])).Eval(ctx)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	encoded, err := json.Marshal(enriched[0])
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), "$TEXT")
+	require.NotContains(t, string(encoded), "span")
+	delete(enriched[0], "_dockerfile")
+	require.Equal(t, legacy, enriched)
 }
