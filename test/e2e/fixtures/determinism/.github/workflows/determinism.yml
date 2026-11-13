@@ -1,0 +1,13 @@
+name: Determinism
+on: pull_request
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: deploy
+        uses: docker/build-push-action@v3
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: publish
+        uses: pypa/gh-action-pypi-publish@v4

@@ -210,10 +210,20 @@ func getRelativePath(basePath, filePath string) string {
 }
 
 // replaceIfTemporaryPath names a file inside an extracted directory after where
-// that directory came from. Extracted directories can nest, a module package
-// and a module within it, so the innermost one containing the file names it
-// whatever order the map yields.
+// that directory came from; see canonicalExtractedName.
 func replaceIfTemporaryPath(filePath string, pathExtractionMap map[string]ExtractedPathObject) string {
+	if name, ok := canonicalExtractedName(filePath, pathExtractionMap); ok {
+		return name
+	}
+	return filePath
+}
+
+// canonicalExtractedName names a file inside an extracted directory after
+// where that directory came from. Extracted directories can nest, a module
+// package and a module within it, so the innermost one containing the file
+// names it whatever order the map yields. It reports false for a file outside
+// every directory the map knows.
+func canonicalExtractedName(filePath string, pathExtractionMap map[string]ExtractedPathObject) (string, bool) {
 	var dir string
 	for candidate := range pathExtractionMap {
 		if len(candidate) > len(dir) && pathWithinDir(filePath, candidate) {
@@ -221,17 +231,17 @@ func replaceIfTemporaryPath(filePath string, pathExtractionMap map[string]Extrac
 		}
 	}
 	if dir == "" {
-		return filePath
+		return "", false
 	}
 	rest := filePath[len(dir):]
 	origin := pathExtractionMap[dir]
 	if origin.LocalPath {
-		return filepath.FromSlash(filepath.Base(origin.Path) + rest)
+		return filepath.FromSlash(filepath.Base(origin.Path) + rest), true
 	}
 	source := removeURLCredentials(origin.Path)
 	// Query parameters such as ?ref=v1.2.3 are not part of the file's location.
 	source, _, _ = strings.Cut(source, "?")
-	return filepath.FromSlash(source + rest)
+	return filepath.FromSlash(source + rest), true
 }
 
 func pathWithinDir(path, dir string) bool {
@@ -280,6 +290,22 @@ func cloneModuleAttributionSummary(attr *ModuleAttribution) *ModuleAttribution {
 	return &clone
 }
 
+// CanonicalReportedPath names a file inside a fetched or extracted directory
+// after where that directory came from: the checkout directory itself is
+// per-scan and must never decide how findings are ordered. A path no
+// extracted directory contains is none of the map's business and comes back
+// untouched, byte for byte — pushed paths round-trip exactly as they arrived.
+func CanonicalReportedPath(filePath string, pathExtractionMap map[string]ExtractedPathObject) string {
+	// The lookup runs in native form, the same normalization resolvePath
+	// applies, so a slash-form detected path finds its directory on every
+	// platform. A path no extracted directory contains comes back untouched,
+	// byte for byte — pushed paths round-trip exactly as they arrived.
+	if name, ok := canonicalExtractedName(filepath.FromSlash(filePath), pathExtractionMap); ok {
+		return name
+	}
+	return filePath
+}
+
 func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) string {
 	var returnPath string
 	returnPath = replaceIfTemporaryPath(filepath.FromSlash(filePath), pathExtractionMap)
@@ -299,6 +325,11 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		ScanID: scanID,
 	}
 	filePaths := make(map[string]string)
+
+	// The findings arrive in CompareFindings order from storage; sorting again
+	// with the same comparator is a no-op then, and keeps the report ordered
+	// for callers that pass findings in another order.
+	SortFindings(vulnerabilities)
 
 	for i := range vulnerabilities {
 		item := vulnerabilities[i]
@@ -400,7 +431,10 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 	}
 	sort.Slice(queries, func(i, j int) bool {
 		if severityOrder[queries[i].Severity] == severityOrder[queries[j].Severity] {
-			return queries[i].QueryName < queries[j].QueryName
+			if queries[i].QueryName != queries[j].QueryName {
+				return queries[i].QueryName < queries[j].QueryName
+			}
+			return queries[i].QueryID < queries[j].QueryID
 		}
 		return severityOrder[queries[i].Severity] < severityOrder[queries[j].Severity]
 	})

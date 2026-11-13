@@ -699,6 +699,13 @@ type Vulnerability struct {
 	// at one declaration line.
 	DetectedFileName              string `json:"-"`
 	DetectedLineWithVulnerability string `json:"-"`
+	// OrderPath is the file name findings order by when the detected file
+	// sits inside a per-scan checkout directory: the directory is named after
+	// the scan, so findings order by where it came from instead. Empty when
+	// the detected name is already the report's own; the reported file name
+	// (FileName) is never rewritten, so reports that read the file from disk
+	// keep working.
+	OrderPath string `json:"-"`
 }
 
 // Identity returns the file and line text that tell v apart from other

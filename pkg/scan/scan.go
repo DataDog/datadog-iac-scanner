@@ -172,6 +172,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		c.ScanParams.CloudProvider,
 		c.FlagEvaluator,
 		filePlatform,
+		extractedPaths.ExtractionMap,
 	)
 	if err != nil {
 		contextLogger.Err(err).Msgf("failed to create service %v", err)
@@ -348,7 +349,8 @@ func (c *Client) createService(
 	types []string,
 	cloudProviders []string,
 	flagEvaluator featureflags.FlagEvaluator,
-	filePlatform map[string]string) ([]*runner.Service, error) {
+	filePlatform map[string]string,
+	pathExtractionMap map[string]model.ExtractedPathObject) ([]*runner.Service, error) {
 	var filesSource provider.SourceProvider
 	var renderedFileFilter provider.FileFilter
 	if c.inMemory {
@@ -429,6 +431,7 @@ func (c *Client) createService(
 				MaxFileSize:        c.ScanParams.MaxFileSizeFlag,
 				Platforms:          types,
 				FilePlatform:       filePlatform,
+				PathExtractionMap:  pathExtractionMap,
 			},
 		)
 	}
