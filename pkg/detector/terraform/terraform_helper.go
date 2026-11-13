@@ -246,6 +246,10 @@ func (s blockSlots) len() int { return len(s) }
 func repeatedBlockSlots(
 	ctx context.Context, body *hclsyntax.Body, attrName string, repeated repeatedBlocks, expansions *sync.Map,
 ) blockSlots {
+	if ctx.Err() != nil {
+		// A canceled lookup stops before any slot work, memo hits included.
+		return nil
+	}
 	// The document's recorded lines answer the lookup without expanding any
 	// dynamic block, so they are checked before the expansion work below; the
 	// blocks' source lines are all the lookup needs from them.
@@ -308,6 +312,9 @@ func repeatedBlockSlots(
 // the slots then treat as a block standing for the document's remaining
 // total, exactly as an unresolved expansion did.
 func expansionCount(ctx context.Context, block *hclsyntax.Block, expansions *sync.Map) (count int, ok bool) {
+	if ctx.Err() != nil {
+		return 0, false
+	}
 	if expansions != nil {
 		if cached, hit := expansions.Load(block); hit {
 			e := cached.(expansionCount_)
@@ -315,6 +322,12 @@ func expansionCount(ctx context.Context, block *hclsyntax.Block, expansions *syn
 		}
 	}
 	expansion := dynamicblock.Expand(ctx, block, dynamicForEachContext)
+	if ctx.Err() != nil {
+		// The expansion stopped mid-walk, so its count is partial. It is not
+		// memoized: a later lookup on a healthy context re-expands the block
+		// and gets the complete count.
+		return 0, false
+	}
 	result := expansionCount_{resolved: expansion.Resolved, count: len(expansion.Iterators)}
 	if expansions != nil {
 		expansions.Store(block, result)

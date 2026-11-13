@@ -534,6 +534,42 @@ func canceledContext() context.Context {
 	return ctx
 }
 
+// A canceled lookup stops before any slot work even when the memo is warm,
+// leaves the memo untouched, and a later lookup on a healthy context still
+// produces the complete result.
+func TestRepeatedBlockSlots_CanceledLookupsDoNotPoisonTheMemo(t *testing.T) {
+	var parts []string
+	for i := 0; i < 2000; i++ {
+		parts = append(parts, strconv.Itoa(i))
+	}
+	src := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = [` + strings.Join(parts, ", ") + `]
+    content {
+      from_port = ingress.value
+    }
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+
+	expansions := &sync.Map{}
+	first := repeatedBlockSlots(context.Background(), body, "ingress", unknownBlocks, expansions)
+	require.Len(t, first, 2000, "the healthy lookup expands the block completely and populates the memo")
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := 0; i < 100; i++ {
+		require.Empty(t, repeatedBlockSlots(canceled, body, "ingress", unknownBlocks, expansions),
+			"a canceled lookup stops before any slot work, memo hits included")
+	}
+
+	after := repeatedBlockSlots(context.Background(), body, "ingress", unknownBlocks, expansions)
+	require.Equal(t, first, after, "the canceled lookups must not corrupt or extend the memo")
+}
+
 // Line detection revisits the same body once per finding, so the expansion of
 // one dynamic block is memoized across lookups: the allocations of many
 // lookups stay close to those of a single lookup instead of scaling with the
