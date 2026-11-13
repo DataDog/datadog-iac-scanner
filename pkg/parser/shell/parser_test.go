@@ -296,7 +296,7 @@ func TestPackageCommands(t *testing.T) {
 			[]pkg{{"git+https://example.com/x.git", false}, {"flask==2.0", true}}},
 		{"npm i --registry https://registry.example.com @scope/a@1 b ./local", "npm", "install", false, true,
 			[]pkg{{"@scope/a@1", true}, {"b", false}}},
-		{"gem install rails -v 7.0", "gem", "install", false, true, []pkg{{"rails", true}}},
+		{"gem install rails -v 7.0 rake", "gem", "install", false, true, []pkg{{"rails", true}, {"rake", false}}},
 		{`yarn add "$PKG"`, "yarn", "install", false, false, []pkg{}},
 	} {
 		facts := Analyze(tc.script, "sh")

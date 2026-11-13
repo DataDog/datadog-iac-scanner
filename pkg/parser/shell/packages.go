@@ -39,7 +39,7 @@ type managerGrammar struct {
 	actions map[string]string
 	values  map[string]bool
 	operand func(token string) bool
-	pinned  func(token string, options []Option) bool
+	pinned  func(arguments []Value, index int, options []Option) bool
 	yes     func(options []Option) bool
 	// editable marks pip, whose -e/--editable value can be a VCS URL to install.
 	editable bool
@@ -66,9 +66,9 @@ func set(words string) map[string]bool {
 	return result
 }
 
-func versioned(token string, _ []Option) bool {
+func versioned(arguments []Value, index int, _ []Option) bool {
 	for _, pattern := range versionPatterns {
-		if pattern.MatchString(token) {
+		if pattern.MatchString(arguments[index].Text) {
 			return true
 		}
 	}
@@ -132,16 +132,20 @@ func nodePackage(token string) bool {
 	return token != "" && !nonRegistryNodePackage.MatchString(token)
 }
 
-func nodePinned(token string, _ []Option) bool {
-	name := token
-	if strings.HasPrefix(token, "@") {
-		_, name, _ = strings.Cut(token, "/")
+func nodePinned(arguments []Value, index int, _ []Option) bool {
+	name := arguments[index].Text
+	if strings.HasPrefix(name, "@") {
+		_, name, _ = strings.Cut(name, "/")
 	}
 	return strings.Contains(name, "@")
 }
 
-func gemPinned(token string, options []Option) bool {
-	return versioned(token, options) || hasOption(options, "-v", "--version")
+// gemPinned accepts a version given right after the gem it applies to.
+func gemPinned(arguments []Value, index int, options []Option) bool {
+	if versioned(arguments, index, options) {
+		return true
+	}
+	return index+1 < len(arguments) && (arguments[index+1].Text == "-v" || arguments[index+1].Text == "--version")
 }
 
 const nodeValues = "--registry --userconfig --globalconfig --cache --prefix -C --tag --proxy --https-proxy --noproxy " +
@@ -270,7 +274,7 @@ func (grammar *managerGrammar) read(arguments []Value, offset int) PackageComman
 	}
 	for i := range command.Packages {
 		if !grammar.editable || !strings.Contains(command.Packages[i].Name, "://") {
-			command.Packages[i].Pinned = grammar.pinned(command.Packages[i].Name, command.Options)
+			command.Packages[i].Pinned = grammar.pinned(arguments, command.Packages[i].Argument-offset, command.Options)
 		}
 	}
 	command.AssumeYes = grammar.yes(command.Options)
