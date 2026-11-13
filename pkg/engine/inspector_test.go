@@ -10,6 +10,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
@@ -23,10 +25,12 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -530,9 +534,10 @@ func TestEngine_GetFailedQueries(t *testing.T) {
 
 func TestShouldSkipFile(t *testing.T) {
 	type args struct {
-		commands      model.CommentsCommands
-		queryID       string
-		legacyQueryID string
+		commands       model.CommentsCommands
+		queryID        string
+		legacyQueryID  string
+		legacyQueryIDs []string
 	}
 	tests := []struct {
 		name     string
@@ -614,13 +619,282 @@ func TestShouldSkipFile(t *testing.T) {
 			},
 			expected: false,
 		},
+		{
+			name: "test_enabled_queries_valid_legacy_ids_entry",
+			args: args{
+				commands: model.CommentsCommands{
+					"enable": "old-renamed-id,0afa6ab8-a047-48cf-be07-93a2f8c34cf7",
+				},
+				queryID:        "platform-cloudprovider-slug",
+				legacyQueryID:  "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+				legacyQueryIDs: []string{"old-renamed-id", "merged-rule-id"},
+			},
+			expected: false,
+		},
+		{
+			name: "test_disabled_queries_valid_legacy_ids_entry_case_insensitive",
+			args: args{
+				commands: model.CommentsCommands{
+					"disable": "Merged-Rule-Id",
+				},
+				queryID:        "platform-cloudprovider-slug",
+				legacyQueryID:  "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+				legacyQueryIDs: []string{"old-renamed-id", "merged-rule-id"},
+			},
+			expected: true,
+		},
+		{
+			name: "test_disabled_queries_invalid_legacy_ids_entry",
+			args: args{
+				commands: model.CommentsCommands{
+					"disable": "unrelated-id",
+				},
+				queryID:        "platform-cloudprovider-slug",
+				legacyQueryID:  "ffdf4b37-7703-4dfe-a682-9d2e99bc6c09",
+				legacyQueryIDs: []string{"old-renamed-id", "merged-rule-id"},
+			},
+			expected: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ShouldSkipVulnerability(tt.args.commands, tt.args.queryID, tt.args.legacyQueryID)
+			got := ShouldSkipVulnerability(tt.args.commands, tt.args.queryID, tt.args.legacyQueryID, tt.args.legacyQueryIDs)
 			require.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestLookupRuleConfig(t *testing.T) {
+	canonicalConfig := config.IacRuleConfig{Severity: strPtr("HIGH")}
+	legacyConfig := config.IacRuleConfig{Severity: strPtr("MEDIUM")}
+	sortedConfig := config.IacRuleConfig{Severity: strPtr("LOW")}
+
+	tests := []struct {
+		name           string
+		ruleConfigs    map[string]config.IacRuleConfig
+		queryID        string
+		legacyQueryID  string
+		legacyQueryIDs []string
+		found          bool
+		severity       string
+	}{
+		{
+			name:        "match_by_canonical_id",
+			ruleConfigs: map[string]config.IacRuleConfig{"platform-provider-slug": canonicalConfig},
+			queryID:     "platform-provider-slug",
+			found:       true,
+			severity:    "HIGH",
+		},
+		{
+			name:          "match_by_legacy_id",
+			ruleConfigs:   map[string]config.IacRuleConfig{"old-legacy-id": legacyConfig},
+			queryID:       "platform-provider-slug",
+			legacyQueryID: "old-legacy-id",
+			found:         true,
+			severity:      "MEDIUM",
+		},
+		{
+			name:           "match_by_each_legacy_ids_entry",
+			ruleConfigs:    map[string]config.IacRuleConfig{"merged-b": sortedConfig},
+			queryID:        "platform-provider-slug",
+			legacyQueryIDs: []string{"merged-a", "merged-b"},
+			found:          true,
+			severity:       "LOW",
+		},
+		{
+			name:           "no_match",
+			ruleConfigs:    map[string]config.IacRuleConfig{"unrelated": canonicalConfig},
+			queryID:        "platform-provider-slug",
+			legacyQueryID:  "old-legacy-id",
+			legacyQueryIDs: []string{"merged-a"},
+			found:          false,
+		},
+		// Precedence: canonical id, then legacy id, then legacy_ids entries in
+		// sorted order, when several IDs of one rule have config keys.
+		{
+			name: "precedence_canonical_id_wins_over_legacy_id",
+			ruleConfigs: map[string]config.IacRuleConfig{
+				"platform-provider-slug": canonicalConfig,
+				"old-legacy-id":          legacyConfig,
+			},
+			queryID:       "platform-provider-slug",
+			legacyQueryID: "old-legacy-id",
+			found:         true,
+			severity:      "HIGH",
+		},
+		{
+			name: "precedence_canonical_id_wins_over_legacy_ids_entry",
+			ruleConfigs: map[string]config.IacRuleConfig{
+				"platform-provider-slug": canonicalConfig,
+				"merged-a":               sortedConfig,
+			},
+			queryID:        "platform-provider-slug",
+			legacyQueryIDs: []string{"merged-a"},
+			found:          true,
+			severity:       "HIGH",
+		},
+		{
+			name: "precedence_legacy_id_wins_over_legacy_ids_entry",
+			ruleConfigs: map[string]config.IacRuleConfig{
+				"old-legacy-id": legacyConfig,
+				"merged-a":      sortedConfig,
+			},
+			queryID:        "platform-provider-slug",
+			legacyQueryID:  "old-legacy-id",
+			legacyQueryIDs: []string{"merged-a"},
+			found:          true,
+			severity:       "MEDIUM",
+		},
+		{
+			name: "precedence_legacy_ids_entries_in_sorted_order",
+			ruleConfigs: map[string]config.IacRuleConfig{
+				"merged-b": sortedConfig,
+				"merged-a": legacyConfig,
+			},
+			queryID:        "platform-provider-slug",
+			legacyQueryIDs: []string{"merged-b", "merged-a"},
+			found:          true,
+			severity:       "MEDIUM",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rc, found := lookupRuleConfig(tt.ruleConfigs, tt.queryID, tt.legacyQueryID, tt.legacyQueryIDs)
+			require.Equal(t, tt.found, found)
+			if tt.found {
+				require.NotNil(t, rc.Severity)
+				require.Equal(t, tt.severity, *rc.Severity)
+			}
+		})
+	}
+}
+
+// TestQueryIDsFromMetadata_LegacyIdsWiring proves the loading path: legacyIds
+// entries parsed from metadata.json reach queryIDsFromMetadata.
+func TestQueryIDsFromMetadata_LegacyIdsWiring(t *testing.T) {
+	ctx := context.Background()
+	queryDir := t.TempDir()
+	metadata := `{
+  "id": "platform-provider-slug",
+  "legacyId": "old-legacy-id",
+  "legacyIds": ["renamed-away-id", "merged-rule-id"],
+  "queryName": "Wired rule",
+  "severity": "HIGH",
+  "category": "Security",
+  "platform": "Terraform"
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(queryDir, "metadata.json"), []byte(metadata), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(queryDir, "query.rego"), []byte("package datadog"), 0o644))
+	loaded, err := source.ReadQueryFile(ctx, queryDir)
+	require.NoError(t, err)
+
+	queryID, legacyQueryID, legacyQueryIDs := queryIDsFromMetadata(ctx, &loaded)
+	require.Equal(t, "platform-provider-slug", queryID)
+	require.Equal(t, "old-legacy-id", legacyQueryID)
+	require.Equal(t, []string{"renamed-away-id", "merged-rule-id"}, legacyQueryIDs)
+}
+
+// TestDoRun_WiresHistoricalIDsThroughConfigAndSuppression drives the real
+// production paths end to end: doRun must resolve a rule config keyed only by
+// a legacy_ids entry (its arguments gate the rule, so a finding only appears
+// when the arguments were forwarded), and the decoded finding — built by the
+// real vulnerability builder from a result carrying legacyIds — must be
+// severity-overridden and suppressed through the same historical ID.
+func TestDoRun_WiresHistoricalIDsThroughConfigAndSuppression(t *testing.T) {
+	ctx := context.Background()
+	const (
+		ruleID       = "platform-provider-slug"
+		legacyID     = "old-legacy-id"
+		historicalID = "renamed-away-id"
+	)
+	ruleRego := `package datadog
+import rego.v1
+
+DatadogPolicy contains result if {
+	input.arguments.strict == "true"
+	result := {
+		"documentId": "doc-1",
+		"resourceType": "AWS::S3::Bucket",
+		"resourceName": "Bucket",
+		"searchKey": "Bucket.Encryption",
+		"id": "platform-provider-slug",
+		"legacyId": "old-legacy-id",
+		"legacyIds": ["renamed-away-id", "merged-rule-id"],
+	}
+}`
+	metadata := model.QueryMetadata{
+		Query: ruleID, Content: ruleRego, Platform: "Terraform",
+		Metadata: map[string]interface{}{
+			"id": ruleID, "legacyId": legacyID, "legacyIds": []string{historicalID, "merged-rule-id"},
+			"queryName": "Wired rule", "severity": "HIGH", "platform": "Terraform",
+		},
+	}
+
+	prepared, err := rego.New(
+		rego.Query(utils.RegoQuery),
+		rego.SetRegoVersion(ast.RegoV1),
+		rego.Module("Common", "package generic.common\n"),
+		rego.Module("Generic", "package generic.terraform\n"),
+		rego.Module(ruleID, ruleRego),
+	).PrepareForEval(ctx)
+	require.NoError(t, err)
+
+	payloadValue, err := ast.InterfaceToValue(map[string]interface{}{
+		"document": map[string]interface{}{"id": "doc-1"},
+	})
+	require.NoError(t, err)
+
+	newInspector := func(ruleConfigs map[string]config.IacRuleConfig) *Inspector {
+		ins := newTestInspector(t, inspectorOpts{queries: []model.QueryMetadata{metadata}, vb: DefaultVulnerabilityBuilder})
+		ins.ruleConfigs = ruleConfigs
+		return ins
+	}
+	newQueryCtx := func(commands model.CommentsCommands) *QueryContext {
+		file := &model.FileMetadata{
+			ID:                "doc-1",
+			FilePath:          "bucket.yaml",
+			LinesOriginalData: &[]string{"Bucket:", "  Encryption:"},
+			Commands:          commands,
+		}
+		return &QueryContext{
+			Ctx:           ctx,
+			scanID:        "scan-id",
+			Files:         map[string]*model.FileMetadata{"doc-1": file},
+			Query:         &PreparedQuery{OpaQuery: prepared, Metadata: metadata},
+			payload:       &payloadValue,
+			FlagEvaluator: featureflags.NewLocalEvaluator(),
+			findings:      newFindingSet(false, nil),
+		}
+	}
+
+	t.Run("config_keyed_by_legacy_ids_entry_gates_and_overrides", func(t *testing.T) {
+		severity := "CRITICAL"
+		ins := newInspector(map[string]config.IacRuleConfig{
+			historicalID: {Arguments: map[string]any{"strict": "true"}, Severity: &severity},
+		})
+		vulns, _, _, err := ins.doRun(ctx, newQueryCtx(model.CommentsCommands{"disable": historicalID}))
+		require.NoError(t, err)
+		require.Len(t, vulns, 1, "the rule fires only when the config arguments keyed by the legacy_ids entry were forwarded")
+		require.Equal(t, model.Severity(model.SeverityCritical), vulns[0].Severity, "the config found via the legacy_ids entry must also override the severity")
+		require.Equal(t, []string{historicalID, "merged-rule-id"}, vulns[0].LegacyQueryIDs)
+		require.True(t, vulns[0].IsSuppressed)
+		require.Equal(t, model.SuppressionJustificationDisableInFile, vulns[0].SuppressionJustification,
+			"the decoded finding must be suppressed by a disable comment naming a legacy_ids entry")
+	})
+
+	t.Run("without_the_historical_config_key_the_rule_never_fires", func(t *testing.T) {
+		severity := "CRITICAL"
+		ins := newInspector(map[string]config.IacRuleConfig{
+			"unrelated-id": {Arguments: map[string]any{"strict": "true"}, Severity: &severity},
+		})
+		vulns, _, _, err := ins.doRun(ctx, newQueryCtx(nil))
+		require.NoError(t, err)
+		require.Empty(t, vulns, "arguments from a config that matches no ID of the rule must not be forwarded")
+	})
+}
+
+func strPtr(s string) *string {
+	return &s
 }
 
 // TestGetVulnerabilitiesFromQuery_SuppressionPaths covers the suppression

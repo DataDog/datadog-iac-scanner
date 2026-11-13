@@ -309,6 +309,7 @@ type Rule struct {
 	ID                string         `jsonapi:"primary,iac_rule" json:"id"`
 	Name              string         `jsonapi:"attribute" json:"name"`
 	LegacyId          *string        `jsonapi:"attribute" json:"legacy_id,omitempty"`
+	LegacyIds         []string       `jsonapi:"attribute" json:"legacy_ids,omitempty"`
 	ShortDescription  string         `jsonapi:"attribute" json:"short_description"`
 	Description       string         `jsonapi:"attribute" json:"description"`
 	DescriptionId     *string        `jsonapi:"attribute" json:"description_id,omitempty"`
