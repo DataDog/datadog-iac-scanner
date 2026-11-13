@@ -135,34 +135,6 @@ var readsOf = map[string][]string{
 	"null":   {"eq"},
 }
 
-// regoShapeFire is the Rego value of the projected attribute for a shape
-// whose source is an object (the whole resource, a lookalike, a merge).
-const objectRegoFire = `{"probe_source": "fire"}`
-
-// probeCondition is the Rego condition that holds exactly when value v holds
-// the cell's firing value, read the way the cell's read kind reads it.
-func probeCondition(read, shape, v string, objectSource bool) string {
-	fire := shapes[shape].regoFire
-	if objectSource {
-		fire = objectRegoFire
-	}
-	switch read {
-	case "eq":
-		return fmt.Sprintf("%s == %s", v, fire)
-	case "membership":
-		return fmt.Sprintf(`"fire" in %s`, v)
-	case "count":
-		return fmt.Sprintf("count(%s) == 1", v)
-	case "index":
-		return fmt.Sprintf(`%s[0] == "fire"`, v)
-	case "helper":
-		return fmt.Sprintf(`tf.matches(%s, "fire")`, v)
-	case "path":
-		return fmt.Sprintf(`%s.a.b == "fire"`, v)
-	}
-	panic("unknown read " + read)
-}
-
 // objectSource reports whether the cell's source makes the read value the
 // attributes of a resource (the whole object, a lookalike, a merge of one).
 func objectSource(c Cell) bool {

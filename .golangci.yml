@@ -29,6 +29,20 @@ linters:
     - unparam
     - unused
     - whitespace
+  exclusions:
+    rules:
+      # The Terraform fixture corpus and the scan harness generate their
+      # inputs from axis tables: the axis names repeat by design, the cell
+      # builder is one table walk, and the generated Terraform and file
+      # modes are data.
+      - path: test/(tfcorpus|tfharness|tfproperties)/
+        linters:
+          - goconst
+          - gocritic
+          - gocyclo
+          - gosec
+          - lll
+          - mnd
   settings:
     dupl:
       threshold: 100
@@ -93,11 +107,6 @@ formatters:
 
 issues:
   # Excluding configuration per-path, per-linter, per-text and per-source
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - mnd
-        - scopelint
   exclude-dirs:
     - assets
     - docs
