@@ -243,14 +243,18 @@ func intendedDifference(cell, path string) bool {
 //
 //   - the previous engine left an expression it could not resolve as its
 //     "${...}" source text; this engine's evaluator resolves the
-//     indirection, so a value the previous engine left as "${...}" may read
-//     as anything;
+//     indirection, so such a value now reads as a value, not as another
+//     "${...}" text;
 //   - the previous engine kept count and for_each meta-arguments in the
 //     documents; this engine removes meta-arguments, so the entry
 //     disappears.
 func intendedByContent(d difference) bool {
 	if strings.HasPrefix(d.want, `"${`) {
-		return true
+		// The new value must be readable: resolving the indirection, or
+		// rendering the unknown parts inside a value. Another "${...}"
+		// text would mean the expression is still unresolved, with the
+		// parts the rules need lost.
+		return !strings.HasPrefix(d.got, `"${`)
 	}
 	segments := strings.Split(strings.TrimPrefix(d.path, "/"), "/")
 	last := segments[len(segments)-1]

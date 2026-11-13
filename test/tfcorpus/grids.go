@@ -153,39 +153,40 @@ func expansionOfKind(kind string) string {
 var expansionSpecs = []struct {
 	expansion, sinkKind string
 	shapes              []string
+	chains              int
 	keys                func(name string) []string
 }{
-	{expansion: "none", sinkKind: "resource", shapes: []string{"scalar", "list"},
+	{expansion: "none", sinkKind: "resource", shapes: []string{"scalar", "list"}, chains: 1,
 		keys: func(name string) []string { return []string{name} }},
-	{expansion: "none", sinkKind: "data", shapes: []string{"scalar"},
+	{expansion: "none", sinkKind: "data", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name} }},
-	{expansion: "none", sinkKind: "ephemeral", shapes: []string{"scalar"},
+	{expansion: "none", sinkKind: "ephemeral", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name} }},
-	{expansion: "count1", sinkKind: "resource", shapes: []string{"scalar"},
+	{expansion: "count1", sinkKind: "resource", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + "[0]"} }},
-	{expansion: "count1", sinkKind: "data", shapes: []string{"scalar"},
+	{expansion: "count1", sinkKind: "data", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + "[0]"} }},
-	{expansion: "count1", sinkKind: "ephemeral", shapes: []string{"scalar"},
+	{expansion: "count1", sinkKind: "ephemeral", shapes: []string{"scalar"}, chains: 1,
 		// Ephemeral blocks are evaluated as written, so their count keeps
 		// one unkeyed instance.
 		keys: func(name string) []string { return []string{name} }},
-	{expansion: "count3", sinkKind: "resource", shapes: []string{"scalar", "list"},
+	{expansion: "count3", sinkKind: "resource", shapes: []string{"scalar", "list"}, chains: 1,
 		keys: func(name string) []string { return instances(name, 3) }},
-	{expansion: "count258", sinkKind: "resource", shapes: []string{"scalar"},
+	{expansion: "count258", sinkKind: "resource", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return instances(name, 258) }},
-	{expansion: "foreach_map", sinkKind: "resource", shapes: []string{"scalar"},
+	{expansion: "foreach_map", sinkKind: "resource", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + `["one"]`, name + `["two"]`} }},
-	{expansion: "foreach_set", sinkKind: "resource", shapes: []string{"scalar"},
+	{expansion: "foreach_set", sinkKind: "resource", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + `["k"]`} }},
-	{expansion: "foreach_set", sinkKind: "data", shapes: []string{"scalar"},
+	{expansion: "foreach_set", sinkKind: "data", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + `["k"]`} }},
-	{expansion: "foreach_set", sinkKind: "ephemeral", shapes: []string{"scalar"},
+	{expansion: "foreach_set", sinkKind: "ephemeral", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name} }},
-	{expansion: "module_count", sinkKind: "module", shapes: []string{"scalar"},
+	{expansion: "module_count", sinkKind: "module", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + "[0]"} }},
-	{expansion: "module_foreach", sinkKind: "module", shapes: []string{"scalar"},
+	{expansion: "module_foreach", sinkKind: "module", shapes: []string{"scalar"}, chains: 2,
 		keys: func(name string) []string { return []string{name + `["one"]`, name + `["two"]`} }},
-	{expansion: "nested", sinkKind: "module", shapes: []string{"scalar"},
+	{expansion: "nested", sinkKind: "module", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name} }},
 }
 
@@ -208,7 +209,7 @@ func ExpansionGrid() []Cell {
 			for _, fire := range []bool{true, false} {
 				cells = append(cells, buildExpansion(Cell{
 					Shape: shape, Expansion: spec.expansion, SinkKind: spec.sinkKind,
-					Fire: fire, Keys: spec.keys("sink"),
+					Fire: fire, Keys: spec.keys("sink"), WantChains: spec.chains,
 				}))
 			}
 		}

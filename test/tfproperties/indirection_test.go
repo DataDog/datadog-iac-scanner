@@ -32,6 +32,11 @@ func TestTheEvaluatorResolvesEveryIndirection(t *testing.T) {
 			byRule[f.Rule] = append(byRule[f.Rule], f)
 		}
 		for rule, oracleFs := range want {
+			if !strings.HasPrefix(rule, "probe-legacy-") {
+				// This property guards the evaluator on the legacy
+				// documents, where no unknown gate is involved.
+				continue
+			}
 			got := findingSet(ruleFindings(fs, rule))
 			require.Equal(t, findingSet(oracleFs), got,
 				"the legacy documents of cell %s differ from its literal oracle on rule %s\n%s",

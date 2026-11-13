@@ -63,11 +63,9 @@ func ruleCondition(read, variant string) string {
 // and, in cell order, the name of each cell's directory under it.
 func Materialize(t *testing.T, cells []Cell) (string, []string) {
 	t.Helper()
-	dir := t.TempDir()
-	names := make([]string, len(cells))
-	for i, c := range cells {
-		names[i] = DirName(i, c.Name())
-		writeFiles(t, filepath.Join(dir, names[i]), c.files)
+	dir, names, err := MaterializeAt("", cells)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return dir, names
 }
@@ -76,13 +74,51 @@ func Materialize(t *testing.T, cells []Cell) (string, []string) {
 // directory, with each cell's directory name in cell order.
 func MaterializeState(t *testing.T, cells []StateCell) (string, []string) {
 	t.Helper()
-	dir := t.TempDir()
+	dir, names, err := MaterializeStateAt("", cells)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir, names
+}
+
+// MaterializeAt writes the cells under dir (a new temporary directory when
+// empty), for callers outside a test.
+func MaterializeAt(dir string, cells []Cell) (string, []string, error) {
+	if dir == "" {
+		d, err := os.MkdirTemp("", "tfcorpus")
+		if err != nil {
+			return "", nil, err
+		}
+		dir = d
+	}
 	names := make([]string, len(cells))
 	for i, c := range cells {
 		names[i] = DirName(i, c.Name())
-		writeFiles(t, filepath.Join(dir, names[i]), c.files)
+		if err := writeTree(filepath.Join(dir, names[i]), c.files); err != nil {
+			return "", nil, err
+		}
 	}
-	return dir, names
+	return dir, names, nil
+}
+
+// MaterializeStateAt writes the state cells under dir (a new temporary
+// directory when empty), for callers outside a test.
+func MaterializeStateAt(dir string, cells []StateCell) (string, []string, error) {
+	if dir == "" {
+		d, err := os.MkdirTemp("", "tfcorpus-state")
+		if err != nil {
+			return "", nil, err
+		}
+		dir = d
+	}
+	names := make([]string, len(cells))
+	for i, c := range cells {
+		names[i] = DirName(i, c.Name())
+		if err := writeTree(filepath.Join(dir, names[i]), c.files); err != nil {
+			return "", nil, err
+		}
+	}
+	return dir, names, nil
 }
 
 // DirName is the directory name of cell i with the given cell name.
@@ -90,23 +126,54 @@ func DirName(i int, name string) string {
 	return fmt.Sprintf("%04d_%s", i, sanitize(name))
 }
 
-// writeFiles writes the files of one root.
-func writeFiles(t *testing.T, root string, files map[string]string) {
-	t.Helper()
+// writeTree writes the files of one root.
+func writeTree(root string, files map[string]string) error {
 	for name, content := range files {
 		path := filepath.Join(root, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			t.Fatal(err)
+			return err
 		}
 	}
+	return nil
 }
 
 // sanitize turns a cell name into one path element.
 func sanitize(name string) string {
 	return strings.NewReplacer("/", "--", "=", "-", "\"", "", " ", "").Replace(name)
+}
+
+// WriteRulesMulti writes the probe rules plus one rule that fires once per
+// matching instance and reports every finding under the same resource name,
+// so the instances of one block share one finding identity, while the search
+// key keeps the instance, so the findings of one group still order. It exists for the check that
+// identity compaction keeps the finding of an identity group that compares
+// first.
+func WriteRulesMulti(t *testing.T) string {
+	t.Helper()
+	dir := WriteRules(t)
+	writeQuery(t, dir, "probe-legacy-resource-multi", `package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	some name, b in doc.resource.aws_s3_bucket
+	startswith(name, "sink")
+	b.probe == "fire"
+	result := {
+		"documentId": doc.id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": "sink",
+		"searchKey": sprintf("aws_s3_bucket[%s].probe", [name]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "probe",
+		"keyActualValue": "probe",
+	}
+}`, "legacy shared identity")
+	return dir
 }
 
 // WriteRules writes the probe rules: the eq read in one rule per literal

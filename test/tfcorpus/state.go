@@ -97,7 +97,12 @@ func buildState(state, placement string) StateCell {
 	switch state {
 	case "known", "unknown", "template", "json", "computed", "null":
 		c.files["unset.tf"] = "variable \"unset\" {}\n\nresource \"aws_instance\" \"src\" {}\n"
-		line := attr(stateExpr[state])
+		expr := stateExpr[state]
+		if placement == "instance" {
+			// Each instance holds its own value.
+			expr = "each.value"
+		}
+		line := attr(expr)
 		c.writeSink(line)
 	case "absent":
 		switch placement {
@@ -151,11 +156,12 @@ func inValue(state string) string {
 	}
 }
 
-// strings_replaceForEach adds a known for_each to the sink block of a state
-// cell, so the attribute sits on every instance.
+// strings_replaceForEach adds a known for_each with one value per instance
+// to the sink block of a state cell, so the attribute sits on every
+// instance and the instances do not hold the same value.
 func strings_replaceForEach(body string) string {
 	const head = "resource \"aws_s3_bucket\" \"sink\" {"
-	return head + "\n  for_each = { one = \"a\" }\n" + body[len(head):]
+	return head + "\n  for_each = { one = \"x\", two = \"y\" }\n" + body[len(head):]
 }
 
 // writeSink writes the sink block of a state cell with the given attribute

@@ -60,6 +60,10 @@ type Cell struct {
 	// write them ("sink", "sink[0]", `sink["k"]`). Empty for value cells,
 	// whose sink has one unkeyed instance.
 	Keys []string
+	// WantChains is the number of module call chains the cell evaluates (1
+	// for most cells, 2 for a module call expanded over two instances). Zero
+	// means the cell makes no assertion about the chains.
+	WantChains int
 	// variant pins the eq rule literal a cell needs, when its source makes
 	// the read value an object of a resource's attributes. The oracle of
 	// such a cell carries the same variant.

@@ -132,6 +132,15 @@ func TestInstancesOfABlockProduceTheSameFindingShape(t *testing.T) {
 		}
 		for rule, fs := range byRule {
 			checkInstanceGroups(t, c, rule, fs, false)
+			if c.WantChains > 0 {
+				chains := map[string]bool{}
+				for _, f := range fs {
+					chains[f.CallChain] = true
+				}
+				require.Len(t, chains, c.WantChains,
+					"cell %s: rule %s evaluated %d module call chains, expected %d\n%s",
+					c.Name(), rule, len(chains), c.WantChains, c.Repro())
+			}
 		}
 		// The declared keys must all be covered by the rules that fire.
 		if len(byRule) > 0 {

@@ -93,24 +93,37 @@ func TestRepeatedScansWriteTheSameReport(t *testing.T) {
 // TestCompactFindingsKeepTheFirstOfEachIdentity checks the engine's
 // identity compaction: when it keeps one finding per identity while
 // decoding, it keeps the finding of each identity group that compares first,
-// and no identity is lost.
+// and no identity is lost. The corpus here is the counted expansions with
+// the shared-identity probe rule, so one identity group holds one finding
+// per instance, at a different line each.
 func TestCompactFindingsKeepTheFirstOfEachIdentity(t *testing.T) {
-	cells := determinismCells()
-	rules := tfcorpus.WriteRules(t)
+	var cells []tfcorpus.Cell
+	for _, c := range tfcorpus.ExpansionGrid() {
+		if c.Expansion == "count3" || c.Expansion == "count258" || c.Expansion == "foreach_map" ||
+			c.Expansion == "module_foreach" || c.Expansion == "module_count" {
+			if !c.Fire {
+				continue
+			}
+			cells = append(cells, c)
+		}
+	}
+	rules := tfcorpus.WriteRulesMulti(t)
 	libs := tfharness.LibraryPath(t)
 	dir, _ := tfcorpus.Materialize(t, cells)
 
 	full := tfharness.Inspect(t, dir, rules, libs)
 	compact := tfharness.InspectCompact(t, dir, rules, libs)
 
-	// Group the uncompacted findings by identity and keep the one that
-	// compares first.
-	type identityKey struct{ file, id string }
+	// Group the uncompacted findings by an identity built from the reported
+	// fields themselves, not from the engine's identity function: the two
+	// must agree, and a change to one of them shows up here.
+	type identityKey struct{ file, rule, typ, name, idKey, chain string }
 	groups := map[identityKey][]*model.Vulnerability{}
 	var order []identityKey
 	for i := range full.Vulns {
 		v := &full.Vulns[i]
-		k := identityKey{file: v.FileName, id: model.FindingIdentity(v)}
+		k := identityKey{file: v.FileName, rule: v.QueryID, typ: v.ResourceType,
+			name: v.ResourceName, idKey: v.IdentityKey, chain: v.ModuleCallChain}
 		if _, ok := groups[k]; !ok {
 			order = append(order, k)
 		}
@@ -127,6 +140,7 @@ func TestCompactFindingsKeepTheFirstOfEachIdentity(t *testing.T) {
 		}
 		want = append(want, reportedKey(best))
 	}
+	t.Logf("full=%d compact=%d want=%d", len(full.Vulns), len(compact.Vulns), len(want))
 	require.Len(t, compact.Vulns, len(want),
 		"the compacted scan holds a different number of findings than the identity groups")
 	require.Equal(t, want, reportedKeys(compact.Vulns),
