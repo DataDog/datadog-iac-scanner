@@ -283,6 +283,13 @@ func repeatedBlockSlots(
 			fixed++
 		case dynamicblock.Is(block) && dynamicblock.GeneratedType(block) == attrName:
 			count, resolved := expansionCount(ctx, block, expansions)
+			if ctx.Err() != nil {
+				// The expansion was interrupted: its count is partial, and
+				// treating it as an unresolved for_each would fill the
+				// document's total and grow the slots unchecked. Stop before
+				// either; a healthy lookup re-expands.
+				return nil
+			}
 			if resolved {
 				entries = append(entries, entry{line, count})
 				fixed += count
@@ -292,6 +299,9 @@ func repeatedBlockSlots(
 				entries = append(entries, entry{line, 0})
 			}
 		}
+	}
+	if ctx.Err() != nil {
+		return nil
 	}
 	if unresolvedBlocks == 1 && !repeated.nested && repeated.total != unknownTotal && repeated.total > fixed {
 		entries[unresolved].count = repeated.total - fixed

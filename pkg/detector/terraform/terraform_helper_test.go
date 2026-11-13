@@ -534,6 +534,43 @@ func canceledContext() context.Context {
 	return ctx
 }
 
+// A cold expansion interrupted mid-walk must not be misread as an unresolved
+// for_each: the document's total is not filled and the slots do not grow,
+// nothing partial is memoized, and a later lookup on a healthy context still
+// produces the complete result.
+func TestRepeatedBlockSlots_InterruptedColdExpansionIsNotMisread(t *testing.T) {
+	var parts []string
+	for i := 0; i < 100000; i++ {
+		parts = append(parts, strconv.Itoa(i))
+	}
+	src := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = [` + strings.Join(parts, ", ") + `]
+    content {
+      from_port = ingress.value
+    }
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+
+	// Cancel while the first, cold expansion is still walking the collection.
+	expansions := &sync.Map{}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(time.Millisecond)
+		cancel()
+	}()
+	slots := repeatedBlockSlots(ctx, body, "ingress", repeatedBlocks{total: 90000}, expansions)
+	cancel()
+	require.Empty(t, slots, "an interrupted expansion must not fill the total or grow the slots")
+
+	after := repeatedBlockSlots(context.Background(), body, "ingress", repeatedBlocks{total: 90000}, expansions)
+	require.Len(t, after, 100000, "the healthy lookup must produce the complete result")
+}
+
 // A canceled lookup stops before any slot work even when the memo is warm,
 // leaves the memo untouched, and a later lookup on a healthy context still
 // produces the complete result.
