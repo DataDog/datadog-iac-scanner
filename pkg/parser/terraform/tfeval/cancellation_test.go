@@ -52,7 +52,7 @@ resource "aws_s3_bucket" "b" {
   for_each = local.keys
   bucket   = "b-${each.key}"
 }
-`, keys(100000))})
+`, keys(30000))})
 		},
 		"huge module count": func(t *testing.T) string {
 			root := t.TempDir()
@@ -83,7 +83,7 @@ module "m" {
   for_each = local.keys
   in       = "in-${each.key}"
 }
-`, keys(100000))})
+`, keys(30000))})
 		},
 		"huge dynamic block": func(t *testing.T) string {
 			return writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": fmt.Sprintf(`

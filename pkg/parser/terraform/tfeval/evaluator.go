@@ -512,12 +512,9 @@ func (e *Evaluator) evaluate(
 
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
 
-	rootResources, err := e.evaluateRootResources(
-		ctx, dir, resourceBlocks, scope, evalCtx, data, addr, chain,
+	rootResources := e.evaluateRootResources(
+		ctx, resourceBlocks, scope, evalCtx, data, addr, chain,
 	)
-	if err != nil {
-		return nil, nil, err
-	}
 
 	// Re-inject the final-pass resource values so that outputs and locals that
 	// reference the Nth hop of an N-hop chain can resolve. For chains shorter
@@ -665,21 +662,14 @@ func (e *Evaluator) preinjectResourceRefs(
 
 func (e *Evaluator) evaluateRootResources(
 	ctx context.Context,
-	dir string,
 	resourceBlocks []*hclsyntax.Block,
 	scope *ModuleScope,
 	evalCtx *hcl.EvalContext,
 	data *moduleData,
 	addr string,
 	chain []CallSite,
-) ([]ResolvedResource, error) {
-	resources, complete := e.rootResourcesWithRefPasses(
-		ctx, resourceBlocks, scope, evalCtx, data, addr, chain,
-	)
-	if !complete {
-		return nil, e.skipEvaluation(dir)
-	}
-	return resources, nil
+) []ResolvedResource {
+	return e.rootResourcesWithRefPasses(ctx, resourceBlocks, scope, evalCtx, data, addr, chain)
 }
 
 func (e *Evaluator) cacheCompletedEvaluation(
@@ -902,7 +892,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	data *moduleData,
 	addr string,
 	chain []CallSite,
-) ([]ResolvedResource, bool) {
+) []ResolvedResource {
 	var rootResources []ResolvedResource
 	localsReadOwn := scope.localGraph.readsResources
 	dataReadsOwn := data.readsOwnResources()
@@ -916,7 +906,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 		if !changed || !readsOwn {
 			// Nothing the resource blocks or locals read has changed, so
 			// evaluating them again would reproduce these instances.
-			return rootResources, true
+			return rootResources
 		}
 		// Refresh locals after every successful injection so that locals referencing
 		// newly-resolved resource attrs are up-to-date before outputs are computed.
@@ -933,7 +923,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	// One final evaluation picks up attrs that were only injected on the last pass
 	// (e.g. the Nth resource in an A→B→C→D chain whose evalCtx was updated after the
 	// last evalResourceBlocks call).
-	return e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain), true
+	return e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain)
 }
 
 // declaredResourceTypes returns the resource types a module declares, the
