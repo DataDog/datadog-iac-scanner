@@ -112,7 +112,7 @@ func TestAttachMissingDependencies_UnpushedFileRepositoryIsRequested(t *testing.
 		"app/Chart.yaml": []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n" +
 			"dependencies:\n  - name: lib\n    repository: file://../lib\n    version: 1.0.0\n"),
 	})
-	ch, err := loadChart(context.Background(), memfs, "app")
+	ch, err := loadChart(context.Background(), memfs, "app", nil)
 	require.NoError(t, err)
 	attachMissingDependencies(context.Background(), memfs, newChartIndex(memfs, []string{"app"}), ch, "app")
 	require.Empty(t, ch.Dependencies())
@@ -129,7 +129,7 @@ func TestAttachMissingDependencies_FileRepositoryOutsideWorkspaceIsNotRequested(
 			"  - name: up\n    repository: file://../..\n    version: 1.0.0\n" +
 			"  - name: lib\n    repository: file://../lib\n    version: 1.0.0\n"),
 	})
-	ch, err := loadChart(context.Background(), memfs, "apps/app")
+	ch, err := loadChart(context.Background(), memfs, "apps/app", nil)
 	require.NoError(t, err)
 	attachMissingDependencies(context.Background(), memfs, newChartIndex(memfs, []string{"apps/app"}), ch, "apps/app")
 	var requested []string
@@ -169,7 +169,7 @@ func TestAttachMissingDependencies_BackslashRepository(t *testing.T) {
 				"apps/app/Chart.yaml": []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n" +
 					"dependencies:\n  - name: lib\n    repository: " + repo + "\n    version: 1.0.0\n"),
 			})
-			ch, err := loadChart(context.Background(), memfs, "apps/app")
+			ch, err := loadChart(context.Background(), memfs, "apps/app", nil)
 			require.NoError(t, err)
 			attachMissingDependencies(context.Background(), memfs, newChartIndex(memfs, []string{"apps/app"}), ch, "apps/app")
 			var requested []string

@@ -1013,3 +1013,38 @@ func TestAnalyze_KustomizeRoots(t *testing.T) {
 	require.Equal(t, []string{filepath.ToSlash(filepath.Join(dir, "a"))},
 		analyzeOne(filepath.Join(dir, "a", "kustomization.yaml")))
 }
+
+// The walk lists the files that may say how a chart is installed: named
+// after a descriptor, whatever their extension, or Kubernetes resources
+// installing charts.
+func TestAnalyze_HelmDescriptors(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"BUILD.bazel":           "helm_chart(name = \"chart\")\n",
+		"defs.bzl":              "X = 1\n",
+		"helmfile.yaml":         "releases: []\n",
+		"svc/deploy.yaml":       "config: {}\n",
+		"main.tf":               "resource \"helm_release\" \"x\" {}\n",
+		"apps/app.yaml":         "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: a\n",
+		"apps/release.yaml":     "apiVersion: helm.toolkit.fluxcd.io/v2\nkind: HelmRelease\nmetadata:\n  name: r\n",
+		"manifests/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: d\n",
+		"manifests/cm.yaml":     "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: c\n",
+	}
+	for rel, body := range files {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+	}
+	got, err := Analyze(context.Background(), &Analyzer{RepoPath: dir, Paths: []string{dir}, Types: []string{""}, MaxFileSize: -1})
+	require.NoError(t, err)
+	var rel []string
+	for _, p := range got.HelmDescriptors {
+		r, err := filepath.Rel(dir, filepath.FromSlash(p))
+		require.NoError(t, err)
+		rel = append(rel, filepath.ToSlash(r))
+	}
+	require.ElementsMatch(t, []string{
+		"BUILD.bazel", "defs.bzl", "helmfile.yaml", "svc/deploy.yaml", "main.tf",
+		"apps/app.yaml", "apps/release.yaml", "manifests/deploy.yaml",
+	}, rel)
+}

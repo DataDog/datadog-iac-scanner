@@ -32,6 +32,8 @@ type indexedChart struct {
 // It reads the roots' Chart.yaml only once a dependency is actually missing.
 type chartIndex struct {
 	fsys vfs.FS
+	// files are the files of the charts being rendered, see loadedCharts.
+	files loadedCharts
 	// dirs are the cleaned chart roots. Overlapping scan paths walk a chart
 	// more than once; a repeated root is the same chart, not a second candidate
 	// that would make the lookup a tie.
@@ -39,6 +41,14 @@ type chartIndex struct {
 	inScan map[string]bool
 	once   sync.Once
 	byName map[string][]indexedChart
+}
+
+// loadedFiles is the chart files cache of the scan, none without an index.
+func (x *chartIndex) loadedFiles() *loadedCharts {
+	if x == nil {
+		return nil
+	}
+	return &x.files
 }
 
 func newChartIndex(fsys vfs.FS, roots []string) *chartIndex {
@@ -345,7 +355,7 @@ func (a *attacher) attachDeclared(
 		}
 		return false
 	}
-	sub, err := loadChart(a.ctx, a.fsys, depDir)
+	sub, err := loadChart(a.ctx, a.fsys, depDir, nil)
 	if err != nil {
 		contextLogger.Warn().Msgf("helm dependency %q of chart '%s' could not be loaded from %s: %v",
 			dep.Name, dir, depDir, err)

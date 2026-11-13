@@ -330,6 +330,43 @@ type FileMetadata struct {
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
 	Platform string
+	// UnrenderedHelm is set for a template of a Helm chart that could not be
+	// rendered, scanned as written: what is known of the release it names its
+	// resources after.
+	UnrenderedHelm *UnrenderedChart
+}
+
+// UnrenderedChart is what is known of the installation of a chart that could
+// not be rendered, which a resource name its templates write reads.
+type UnrenderedChart struct {
+	// Chart is the chart's name.
+	Chart string
+	// Release and Namespace are those of the chart's installation, empty when
+	// unknown.
+	Release, Namespace string
+}
+
+// TemplateData is the template context a resource name of the chart reads
+// from, holding what is known of the chart and its release.
+func (u *UnrenderedChart) TemplateData() map[string]interface{} {
+	if u == nil {
+		return nil
+	}
+	data := map[string]interface{}{}
+	if u.Chart != "" {
+		data["Chart"] = map[string]interface{}{"Name": u.Chart}
+	}
+	release := map[string]interface{}{}
+	if u.Release != "" {
+		release["Name"] = u.Release
+	}
+	if u.Namespace != "" {
+		release["Namespace"] = u.Namespace
+	}
+	if len(release) > 0 {
+		data["Release"] = release
+	}
+	return data
 }
 
 // SetLineInfoLoader configures on-demand reconstruction of LineInfoDocument.
@@ -1032,6 +1069,9 @@ type AnalyzedPaths struct {
 	KustomizeRoots []string
 	TotalFiles     int
 	ContentCache   map[string][]byte
+	// HelmDescriptors are the files that may say how a Helm chart is
+	// installed (see helminstall.Discover).
+	HelmDescriptors []string
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file

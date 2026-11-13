@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -15,14 +16,67 @@ import (
 	"helm.sh/helm/v3/pkg/ignore"
 )
 
-// loadChart loads the chart at dir from the scan FS. The real disk keeps
-// helm's own directory loader (symlink and .helmignore semantics unchanged
-// from the CLI); any other FS (the server's in-memory one) is walked via the
-// vfs and assembled with helm's in-memory loader.
-func loadChart(ctx context.Context, fsys vfs.FS, dir string) (*chart.Chart, error) {
+// loadedCharts keeps the files a chart's first load read while the chart is
+// being rendered. A chart is installed once per installation, and each later
+// load builds the chart from these files instead of reading the disk again.
+// The files are dropped once the chart's installations are rendered (forget),
+// so the scan never holds more than the charts being rendered.
+type loadedCharts struct {
+	mu    sync.Mutex
+	byDir map[string][]*loader.BufferedFile
+}
+
+func (c *loadedCharts) get(dir string) ([]*loader.BufferedFile, bool) {
+	if c == nil {
+		return nil, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	files, ok := c.byDir[dir]
+	return files, ok
+}
+
+// forget drops the files kept for dir.
+func (c *loadedCharts) forget(dir string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.byDir, dir)
+}
+
+// put keeps the files ch was loaded from. A chart's Raw is every file its
+// load read, and rendering only ever replaces the bytes of a chart's files,
+// never writes into them, so the kept bytes stay those the disk held.
+func (c *loadedCharts) put(dir string, ch *chart.Chart) {
+	if c == nil {
+		return
+	}
+	files := make([]*loader.BufferedFile, 0, len(ch.Raw))
+	for _, f := range ch.Raw {
+		files = append(files, &loader.BufferedFile{Name: f.Name, Data: f.Data})
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.byDir == nil {
+		c.byDir = map[string][]*loader.BufferedFile{}
+	}
+	if _, ok := c.byDir[dir]; !ok {
+		c.byDir[dir] = files
+	}
+}
+
+// loadChart loads the chart at dir from the scan FS, from the files cache of
+// the scan when it holds them (nil for none). The real disk keeps helm's own directory loader (symlink and .helmignore
+// semantics unchanged from the CLI); any other FS (the server's in-memory one)
+// is walked via the vfs and assembled with helm's in-memory loader.
+func loadChart(ctx context.Context, fsys vfs.FS, dir string, cache *loadedCharts) (*chart.Chart, error) {
 	var ch *chart.Chart
 	var err error
-	if vfs.IsDisk(fsys) {
+	if files, ok := cache.get(dir); ok {
+		ch, err = loader.LoadFiles(files)
+	} else if vfs.IsDisk(fsys) {
 		ch, err = loader.LoadDir(dir)
 	} else {
 		ch, err = loadChartFromFS(fsys, dir)
@@ -30,6 +84,7 @@ func loadChart(ctx context.Context, fsys vfs.FS, dir string) (*chart.Chart, erro
 	if err != nil {
 		return ch, err
 	}
+	cache.put(dir, ch)
 	if dropped := dropNonTemplateFiles(ch); len(dropped) > 0 {
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Debug().Msgf("Not rendering non-template files of chart '%s': %s", dir, strings.Join(dropped, ", "))

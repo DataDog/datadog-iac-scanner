@@ -11,12 +11,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"fmt"
 	"maps"
 	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/stretchr/testify/require"
 )
 
 const syntheticK8sRuleID = "test-k8s-deployment-missing-owner"
@@ -485,5 +487,62 @@ func TestAnalyze_HelmChartMissingValueDoesNotEscalate(t *testing.T) {
 		if p == "chart" || p == "." {
 			t.Errorf("missing files = %v, a missing value must not escalate the chart", out.MissingFiles)
 		}
+	}
+}
+
+// Findings name resources as they are deployed: after the release a
+// descriptor installs the chart as, with placeholders for what only the
+// deployment knows. A chart that cannot be rendered at all is scanned as
+// written, its names resolved as far as its release is known, never reported
+// as template code.
+func TestAnalyze_HelmFindingResourceNames(t *testing.T) {
+	deployment := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: %s\n"
+	tests := []struct {
+		name  string
+		files []analyzeFile
+		want  string
+	}{
+		{
+			name: "release of a descriptor",
+			files: []analyzeFile{
+				{Path: "helmfile.yaml", Content: "releases:\n- name: web\n  chart: ./chart\n  values:\n  - env: prod\n"},
+				{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+				{Path: "chart/templates/deployment.yaml", Content: fmt.Sprintf(deployment, "{{ .Release.Name }}-{{ .Values.env }}")},
+			},
+			want: "web-prod",
+		},
+		{
+			name: "deployment-time values and random names",
+			files: []analyzeFile{
+				{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+				{Path: "chart/templates/deployment.yaml", Content: fmt.Sprintf(deployment,
+					"{{ .Release.Name }}-{{ .Values.global.env }}-{{ randAlphaNum 5 | lower }}")},
+			},
+			want: "e2e-<.Values.global.env>-<randAlphaNum>",
+		},
+		{
+			name: "chart that cannot be rendered",
+			files: []analyzeFile{
+				{Path: "chart/Chart.yaml", Content: "apiVersion: v2\nname: e2e\nversion: 0.1.0\n"},
+				{Path: "chart/templates/_broken.tpl", Content: "{{ define \"x\" }}{{ .Values.a ( }}{{ end }}\n"},
+				{Path: "chart/templates/deployment.yaml", Content: fmt.Sprintf(deployment, `"{{ .Release.Name }}-{{ .Values.env }}"`)},
+			},
+			want: "e2e-<.Values.env>",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newParallelTestServer(t)
+			out, _ := postAnalyzeK8s(t, s, analyzeRequest{
+				Files: tt.files, Ruleset: ruleset(syntheticK8sRule()), Platform: []string{"kubernetes"},
+			})
+			var names []string
+			for i := range out.Findings {
+				if f := out.Findings[i]; f.QueryID == syntheticK8sRuleID {
+					names = append(names, f.ResourceName)
+				}
+			}
+			require.Equal(t, []string{tt.want}, names, "failed queries: %v", out.FailedQueries)
+		})
 	}
 }

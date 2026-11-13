@@ -7,14 +7,20 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	helmdetector "github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/helminstall"
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/release"
@@ -110,7 +116,7 @@ func TestHelm_Resolve_DependencyFromScannedCharts(t *testing.T) {
 		libraries   map[string]string // dir -> version
 		constraint  string
 		repeatRoots bool
-		wantFrom    string // library dir the include resolved from, "" for no render
+		wantFrom    string // library dir the include resolved from, "" for none
 	}{
 		{name: "unique match", libraries: map[string]string{"libs/common": "1.2.0"}, constraint: "^1.0.0", wantFrom: "libs/common"},
 		{name: "no version constraint", libraries: map[string]string{"libs/common": "3.0.0"}, constraint: `""`, wantFrom: "libs/common"},
@@ -145,12 +151,14 @@ func TestHelm_Resolve_DependencyFromScannedCharts(t *testing.T) {
 			writeTree(t, root, files)
 
 			got, err := NewResolver(nil).WithChartRoots(roots).Resolve(context.Background(), filepath.Join(root, "dom/app"))
-			if tt.wantFrom == "" {
-				require.ErrorContains(t, err, `no template "common.labels"`)
-				return
-			}
 			require.NoError(t, err)
 			content := string(findResolvedBySuffix(t, got.File, "templates/cm.yaml").Content)
+			if tt.wantFrom == "" {
+				// No chart is attached: the chart renders without what its
+				// missing named template would have printed.
+				require.NotContains(t, content, "from:")
+				return
+			}
 			require.Contains(t, content, "app: app")
 			require.Contains(t, content, "from: "+tt.wantFrom)
 		})
@@ -613,11 +621,11 @@ func TestHelm_Resolve(t *testing.T) { //nolint
 apiVersion: v1
 kind: Service
 metadata:
-  name: dd-helm-test_helm
+  name: test_helm-test_helm
   labels:
     helm.sh/chart: test_helm-0.1.0
     app.kubernetes.io/name: test_helm
-    app.kubernetes.io/instance: dd-helm
+    app.kubernetes.io/instance: test_helm
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -629,7 +637,7 @@ spec:
       name: http
   selector:
     app.kubernetes.io/name: test_helm
-    app.kubernetes.io/instance: dd-helm
+    app.kubernetes.io/instance: test_helm
 `),
 						OriginalData: []byte(`# KICS_HELM_ID_2_0:
 apiVersion: v1
@@ -677,11 +685,11 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: dd-helm-test_helm_subchart
+  name: test_helm_subchart-test_helm_subchart
   labels:
     helm.sh/chart: test_helm_subchart-0.1.0
     app.kubernetes.io/name: test_helm_subchart
-    app.kubernetes.io/instance: dd-helm
+    app.kubernetes.io/instance: test_helm_subchart
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 `),
@@ -710,11 +718,11 @@ metadata:
 apiVersion: v1
 kind: Service
 metadata:
-  name: dd-helm-subchart
+  name: test_helm_subchart-subchart
   labels:
     helm.sh/chart: subchart-0.1.0
     app.kubernetes.io/name: subchart
-    app.kubernetes.io/instance: dd-helm
+    app.kubernetes.io/instance: test_helm_subchart
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 spec:
@@ -726,7 +734,7 @@ spec:
       name: http
   selector:
     app.kubernetes.io/name: subchart
-    app.kubernetes.io/instance: dd-helm
+    app.kubernetes.io/instance: test_helm_subchart
 `),
 						OriginalData: []byte(`# KICS_HELM_ID_5_0:
 apiVersion: v1
@@ -832,4 +840,425 @@ func requireStampLine(t *testing.T, stamp string, line int, msg string) {
 	id, ok := helmmarker.ParseIDLine(stamp)
 	require.True(t, ok, "%s: %q is not an ID stamp", msg, stamp)
 	require.Equal(t, line, id.Line, msg)
+}
+
+// The chart the installation tests render: its resource is named after the
+// release and a value, in the release namespace.
+const (
+	installedChartYAML = "apiVersion: v2\nname: web\nversion: 1.0.0\n"
+	installedTemplate  = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
+		"  name: {{ .Release.Name }}-{{ .Values.suffix }}\n  namespace: {{ .Release.Namespace }}\n"
+)
+
+// renderedNames writes a repository holding files, finds how its charts are
+// installed, renders the chart at chartDir, and returns the namespace/name of
+// every resource rendered. A file may lie beside the repository, as
+// "../outside.yaml".
+func renderedNames(t *testing.T, files map[string]string, chartDir string) []string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "repo")
+	writeTree(t, root, files)
+	var paths, roots []string
+	for rel := range files {
+		if strings.HasPrefix(rel, "../") {
+			continue
+		}
+		paths = append(paths, filepath.Join(root, filepath.FromSlash(rel)))
+		if filepath.Base(rel) == "Chart.yaml" {
+			roots = append(roots, filepath.Join(root, filepath.FromSlash(filepath.Dir(rel))))
+		}
+	}
+	sort.Strings(paths)
+	ctx := context.Background()
+	idx := helminstall.Discover(ctx, nil, &helminstall.Inputs{
+		Root: root, Files: paths, ChartRoots: roots,
+	})
+	got, err := NewResolver(nil).WithChartRoots(roots).WithInstallations(idx).
+		Resolve(ctx, filepath.Join(root, filepath.FromSlash(chartDir)))
+	require.NoError(t, err)
+	seen := map[string]bool{}
+	var names []string
+	for _, f := range got.File {
+		var doc struct {
+			Metadata struct {
+				Name      string `yaml:"name"`
+				Namespace string `yaml:"namespace"`
+			} `yaml:"metadata"`
+		}
+		require.NoError(t, yaml.Unmarshal(f.Content, &doc))
+		name := doc.Metadata.Namespace + "/" + doc.Metadata.Name
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// withChart adds the test chart at dir to files.
+func withChart(dir string, files map[string]string) map[string]string {
+	files[dir+"/Chart.yaml"] = installedChartYAML
+	files[dir+"/templates/cm.yaml"] = installedTemplate
+	return files
+}
+
+// A chart renders as each installation the repository describes: its release
+// name, its namespace and its values. Without any, it is installed under its
+// own name with the values files kept beside it.
+func TestHelm_Resolve_Installations(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string
+		chart string
+		want  []string
+	}{
+		{
+			name:  "no descriptor",
+			files: withChart("charts/web", map[string]string{}),
+			chart: "charts/web",
+			want:  []string{"dd-namespace/web-<.Values.suffix>"},
+		},
+		{
+			name: "environment values files beside the chart",
+			files: withChart("charts/web", map[string]string{
+				"charts/web/values-prod.yaml":       "suffix: prod\n",
+				"charts/web/values/staging.yaml":    "suffix: staging\n",
+				"charts/web/values/common.yaml":     "team: a\n",
+				"charts/web/ci/lint-values.yaml":    "suffix: lint\n",
+				"charts/web/values/lint/extra.yaml": "suffix: lint\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"dd-namespace/web-prod", "dd-namespace/web-staging"},
+		},
+		{
+			name: "test values only fill what nothing sets",
+			files: withChart("charts/web", map[string]string{
+				"charts/web/ci/default-values.yaml": "suffix: ci\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"dd-namespace/web-ci"},
+		},
+		{
+			name: "schema defaults of required values",
+			files: withChart("charts/web", map[string]string{
+				"charts/web/values.schema.json": `{"type": "object", "required": ["suffix"],` +
+					`"properties": {"suffix": {"type": "string", "default": "schema"}}}`,
+			}),
+			chart: "charts/web",
+			want:  []string{"dd-namespace/web-schema"},
+		},
+		{
+			name: "helmfile environments",
+			files: withChart("charts/web", map[string]string{
+				"helmfile.yaml": "environments:\n  default:\n    values:\n    - env/default.yaml\n" +
+					"  prod:\n    values:\n    - env/prod.yaml\n---\nreleases:\n- name: api\n  namespace: apps\n" +
+					"  chart: ./charts/web\n  values:\n  - suffix: {{ .Values.suffix }}\n",
+				"env/default.yaml": "suffix: dev\n",
+				"env/prod.yaml":    "suffix: prod\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"apps/api-dev", "apps/api-prod"},
+		},
+		{
+			name: "Argo CD applications",
+			files: withChart("charts/web", map[string]string{
+				"charts/web/values-eu.yaml": "suffix: eu\n",
+				"apps/shop.yaml": "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: shop\n" +
+					"spec:\n  destination:\n    namespace: store\n  source:\n    repoURL: https://example.invalid/repo.git\n" +
+					"    path: charts/web\n    helm:\n      valueFiles: [values-eu.yaml]\n" +
+					"      parameters:\n      - name: suffix\n        value: param\n" +
+					"---\napiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: other\n" +
+					"spec:\n  destination:\n    namespace: store\n  source:\n    path: charts/web\n" +
+					"    helm:\n      releaseName: front\n      valuesObject:\n        suffix: object\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"store/front-object", "store/shop-param"},
+		},
+		{
+			name: "Argo CD application set of a list",
+			files: withChart("charts/web", map[string]string{
+				"apps/set.yaml": "apiVersion: argoproj.io/v1alpha1\nkind: ApplicationSet\nmetadata:\n  name: envs\n" +
+					"spec:\n  generators:\n  - list:\n      elements:\n      - env: dev\n      - env: prod\n" +
+					"  template:\n    metadata:\n      name: 'web-{{env}}'\n    spec:\n      destination:\n" +
+					"        namespace: '{{env}}'\n      source:\n        path: charts/web\n        helm:\n" +
+					"          values: |\n            suffix: {{env}}\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"dev/web-dev-dev", "prod/web-prod-prod"},
+		},
+		{
+			name: "Argo CD application set of directories",
+			files: withChart("charts/web", map[string]string{
+				"apps/set.yaml": "apiVersion: argoproj.io/v1alpha1\nkind: ApplicationSet\nmetadata:\n  name: dirs\n" +
+					"spec:\n  goTemplate: true\n  generators:\n  - git:\n      repoURL: https://example.invalid/repo.git\n" +
+					"      directories:\n      - path: charts/*\n  template:\n    metadata:\n" +
+					"      name: '{{ .path.basename }}'\n    spec:\n      destination:\n" +
+					"        namespace: '{{ .path.basename }}-ns'\n      source:\n        path: '{{ .path.path }}'\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"web-ns/web-<.Values.suffix>"},
+		},
+		{
+			name: "Flux release with values from a ConfigMap",
+			files: withChart("charts/web", map[string]string{
+				"clusters/apps/release.yaml": "apiVersion: helm.toolkit.fluxcd.io/v2\nkind: HelmRelease\n" +
+					"metadata:\n  name: podinfo\n  namespace: flux-system\nspec:\n  targetNamespace: apps\n" +
+					"  chart:\n    spec:\n      chart: ./charts/web\n      sourceRef:\n        kind: GitRepository\n" +
+					"        name: repo\n  valuesFrom:\n  - kind: ConfigMap\n    name: podinfo-values\n" +
+					"  values:\n    team: a\n",
+				"clusters/apps/values.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: podinfo-values\n" +
+					"  namespace: flux-system\ndata:\n  values.yaml: |\n    suffix: configmap\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"apps/apps-podinfo-configmap"},
+		},
+		{
+			name: "Kustomize helm charts",
+			files: withChart("deploy/charts/web", map[string]string{
+				"deploy/kustomization.yaml": "helmCharts:\n- name: web\n  releaseName: kweb\n  namespace: kns\n" +
+					"  valuesInline:\n    suffix: inline\n- name: web\n  namespace: gen\n",
+			}),
+			chart: "deploy/charts/web",
+			want:  []string{"gen/web-<generated>-<.Values.suffix>", "kns/kweb-inline"},
+		},
+		{
+			name: "Terraform helm release",
+			files: withChart("charts/web", map[string]string{
+				"main.tf": "variable \"release\" {\n  default = \"tf\"\n}\nlocals {\n  suffix = \"local\"\n}\n" +
+					"resource \"helm_release\" \"web\" {\n  name   = var.release\n" +
+					"  chart  = \"${path.module}/charts/web\"\n  values = [yamlencode({ suffix = local.suffix })]\n" +
+					"  set {\n    name  = \"team\"\n    value = \"a\"\n  }\n}\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"default/tf-local"},
+		},
+		{
+			name: "Fleet bundle and its target customizations",
+			files: withChart("charts/web", map[string]string{
+				"charts/web/fleet.yaml": "defaultNamespace: fleet\nhelm:\n  releaseName: fl\n  values:\n" +
+					"    suffix: base\ntargetCustomizations:\n- name: prod\n  helm:\n    values:\n      suffix: prod\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"fleet/fl-base", "fleet/fl-prod"},
+		},
+		{
+			name: "Fleet bundle named after its GitRepo",
+			files: withChart("charts/web", map[string]string{
+				"charts/web/fleet.yaml": "helm:\n  values:\n    suffix: x\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"default/<fleet-gitrepo>-charts-web-x"},
+		},
+		{
+			name: "Flux release name past Helm's length",
+			files: withChart("charts/web", map[string]string{
+				"release.yaml": "apiVersion: helm.toolkit.fluxcd.io/v2\nkind: HelmRelease\nmetadata:\n" +
+					"  name: a-release-with-a-name-long-enough-to-be-shortened\n  namespace: ns\nspec:\n" +
+					"  targetNamespace: apps\n  chart:\n    spec:\n      chart: ./charts/web\n" +
+					"      sourceRef:\n        kind: GitRepository\n        name: repo\n  values:\n    suffix: s\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"apps/apps-a-release-with-a-name-long-enough-t-f0fee262abfc-s"},
+		},
+		{
+			name: "values as each tool passes them to --set",
+			files: withChart("charts/web", map[string]string{
+				"helmfile.yaml": "releases:\n- name: hf\n  namespace: a\n  chart: ./charts/web\n  set:\n" +
+					"  - name: suffix\n    value: \"{x,y}\"\n",
+				"apps/shop.yaml": "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: argo\n" +
+					"spec:\n  destination:\n    namespace: b\n  source:\n    path: charts/web\n    helm:\n" +
+					"      parameters:\n      - name: suffix\n        value: \"{x,y}\"\n",
+				"flux/release.yaml": "apiVersion: helm.toolkit.fluxcd.io/v2\nkind: HelmRelease\nmetadata:\n  name: flux\n" +
+					"  namespace: c\nspec:\n  chart:\n    spec:\n      chart: ./charts/web\n      sourceRef:\n" +
+					"        kind: GitRepository\n        name: repo\n  valuesFrom:\n  - kind: ConfigMap\n" +
+					"    name: version\n    valuesKey: v\n    targetPath: suffix\n",
+				"flux/version.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: version\n  namespace: c\n" +
+					"data:\n  v: '\"1.10\"'\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"a/hf-{x,y}", "b/argo-[x y]", "c/flux-1.10"},
+		},
+		{
+			name: "Kustomize inline values the chart's values win over",
+			files: withChart("deploy/charts/web", map[string]string{
+				"deploy/charts/web/values.yaml": "suffix: chart\n",
+				"deploy/kustomization.yaml": "helmCharts:\n- name: web\n  releaseName: kweb\n  namespace: kns\n" +
+					"  valuesMerge: merge\n  valuesInline:\n    suffix: inline\n",
+			}),
+			chart: "deploy/charts/web",
+			want:  []string{"kns/kweb-chart"},
+		},
+		{
+			name: "dependency its own values disable",
+			files: withChart("charts/web", map[string]string{
+				"charts/web/values.yaml": "enabled: false\n",
+				"charts/umbrella/Chart.yaml": "apiVersion: v2\nname: umbrella\nversion: 1.0.0\ndependencies:\n" +
+					"- name: web\n  version: 1.0.0\n  repository: file://../web\n  condition: web.enabled\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"dd-namespace/web-<.Values.suffix>"},
+		},
+		{
+			name: "dependency of an umbrella chart",
+			files: withChart("charts/web", map[string]string{
+				"charts/umbrella/Chart.yaml": "apiVersion: v2\nname: umbrella\nversion: 1.0.0\ndependencies:\n" +
+					"- name: web\n  version: 1.0.0\n  repository: file://../web\n  alias: front\n",
+				"charts/umbrella/values.yaml": "front:\n  suffix: parent\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"dd-namespace/umbrella-parent"},
+		},
+		{
+			name: "dependency an umbrella chart disables",
+			files: withChart("charts/web", map[string]string{
+				"charts/umbrella/Chart.yaml": "apiVersion: v2\nname: umbrella\nversion: 1.0.0\ndependencies:\n" +
+					"- name: web\n  version: 1.0.0\n  repository: file://../web\n  condition: web.enabled\n",
+				"charts/umbrella/values.yaml": "web:\n  enabled: false\n",
+			}),
+			chart: "charts/web",
+			want:  []string{"dd-namespace/web-<.Values.suffix>"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, renderedNames(t, tt.files, tt.chart))
+		})
+	}
+}
+
+// Bazel BUILD files are evaluated: a rule installing a chart through the
+// bundle packaging it, with a name and values files computed from settings a
+// .bzl file holds, is an installation; an installation name
+// <release>.<namespace>.<cluster>.<datacenter> gives its release and
+// namespace.
+func TestHelm_Resolve_BazelInstallations(t *testing.T) {
+	files := withChart("svc", map[string]string{
+		"MODULE.bazel":     "module(name = \"repo\")\n",
+		"svc/settings.bzl": "CLUSTERS = [\n    {\"name\": \"alpha\", \"dc\": \"us1.prod.example\"},\n    {\"name\": \"beta\", \"dc\": \"eu1.prod.example\"},\n]\n",
+		"svc/BUILD.bazel": "load(\":settings.bzl\", \"CLUSTERS\")\n" +
+			"load(\"@rules//helm:defs.bzl\", \"chart_bundle\", \"helm_chart\", \"helm_installation\")\n\n" +
+			"helm_chart(name = \"chart\", srcs = glob([\"**\"]))\n\n" +
+			"chart_bundle(name = \"bundle\", chart = \":chart\")\n\n" +
+			"[helm_installation(\n    name = \"{}.{}.{}.{}\".format(\"api\", \"api-ns\", c[\"name\"], c[\"dc\"]),\n" +
+			"    bundle = \":bundle\",\n    value_files = [\"values/{}.yaml\".format(c[\"name\"])],\n) for c in CLUSTERS]\n",
+		"svc/values/alpha.yaml": "suffix: alpha\n",
+		"svc/values/beta.yaml":  "suffix: beta\n",
+	})
+	require.Equal(t, []string{"api-ns/api-alpha", "api-ns/api-beta"}, renderedNames(t, files, "svc"))
+}
+
+// A Datadog deployment configuration installs its bundle's chart under its
+// release name on each cluster its targets select, with the values its
+// valuesFilesJs function selects for the cluster, over the values/environments
+// files matching the installation, and its apps install the bundles their
+// depName names.
+func TestHelm_Resolve_DeploymentConfigInstallations(t *testing.T) {
+	files := withChart("svc", map[string]string{
+		"MODULE.bazel": "module(name = \"repo\")\n",
+		"svc/BUILD.bazel": "load(\"@rules//helm:defs.bzl\", \"chart_bundle\", \"helm_chart\")\n\n" +
+			"helm_chart(name = \"chart\", srcs = glob([\"**\"]))\n\nchart_bundle(name = \"bundle\", chart = \":chart\")\n\n" +
+			"alias(name = \"worker-bundle\", actual = \"//apps/worker:bundle\")\n",
+		"svc/deploy.yaml": "config:\n  service: svc\n  k8s:\n    name: svc\n    namespace: svc-ns\n" +
+			"  extensions:\n    valuesFilesJs: |\n      (req) => glob([`values/datacenters/${req.datacenter.name}`])\n" +
+			"  apps:\n  - name: svc\n  - name: workers\n    appGroup:\n      apps:\n      - name: worker-blue\n" +
+			"        depName: worker-bundle\n  targets:\n  - name: staging\n" +
+			"    selector: cluster.name in [\"alpha.us1.staging.example\", \"beta.eu1.staging.example\", \"gamma.ap1.staging.example\"]\n",
+		"svc/values/datacenters/us1.staging.example.yaml":    "suffix: us1\n",
+		"svc/values/datacenters/eu1.staging.example.yaml":    "suffix: eu1\n",
+		"svc/values/environments/_.ap1.staging.example.yaml": "suffix: ap1\n",
+		"svc/values/environments/_.eu1.staging.example.yaml": "suffix: overridden\n",
+	})
+	files = withChart("apps/worker", files)
+	files["apps/worker/BUILD.bazel"] = "load(\"@rules//helm:defs.bzl\", \"chart_bundle\", \"helm_chart\")\n\n" +
+		"helm_chart(name = \"chart\", srcs = glob([\"**\"]))\n\nchart_bundle(name = \"bundle\", chart = \":chart\")\n"
+	require.Equal(t, []string{"svc-ns/svc-ap1", "svc-ns/svc-eu1", "svc-ns/svc-us1"}, renderedNames(t, files, "svc"))
+	require.Equal(t, []string{"svc-ns/worker-blue-<.Values.suffix>"}, renderedNames(t, files, "apps/worker"))
+}
+
+// A descriptor naming a file outside the repository, directly or through a
+// symbolic link, is not read.
+func TestHelm_Resolve_InstallationsStayInRepository(t *testing.T) {
+	files := withChart("charts/web", map[string]string{
+		"../outside.yaml": "suffix: leaked\n",
+		"apps/shop.yaml": "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: shop\n" +
+			"spec:\n  destination:\n    namespace: store\n  source:\n    path: charts/web\n" +
+			"    helm:\n      valueFiles: [../../../outside.yaml]\n",
+	})
+	require.Equal(t, []string{"store/shop-<.Values.suffix>"}, renderedNames(t, files, "charts/web"))
+
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{"outside.yaml": "suffix: leaked\n"})
+	repo := filepath.Join(root, "repo")
+	writeTree(t, repo, withChart("charts/web", map[string]string{}))
+	require.NoError(t, os.Symlink(filepath.Join(root, "outside.yaml"), filepath.Join(repo, "charts/web/values-prod.yaml")))
+	roots := []string{filepath.Join(repo, "charts/web")}
+	idx := helminstall.Discover(context.Background(), nil, &helminstall.Inputs{Root: repo, ChartRoots: roots})
+	got, err := NewResolver(nil).WithChartRoots(roots).WithInstallations(idx).Resolve(context.Background(), roots[0])
+	require.NoError(t, err)
+	for _, f := range got.File {
+		require.NotContains(t, string(f.Content), "leaked")
+	}
+}
+
+// Hooks are deployed with the release, as helm template prints them; test
+// hooks are only created by helm test.
+func TestHelm_Resolve_Hooks(t *testing.T) {
+	hook := "apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: %s\n  annotations:\n    helm.sh/hook: %s\n"
+	got := renderChart(t, map[string]string{
+		"templates/migrate.yaml": fmt.Sprintf(hook, "migrate", "pre-install,pre-upgrade"),
+		"templates/test.yaml":    fmt.Sprintf(hook, "test", "test"),
+		"templates/cm.yaml":      "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n",
+	})
+	require.Len(t, findAllResolvedBySuffix(t, got, "templates/migrate.yaml"), 1)
+	require.Len(t, findAllResolvedBySuffix(t, got, "templates/cm.yaml"), 1)
+	require.Empty(t, findAllResolvedBySuffix(t, got, "templates/test.yaml"))
+}
+
+// The code of descriptors is evaluated within bounds, whatever it does: a
+// label expanding exponentially, a values function returning a cyclic value
+// or globbing without end.
+func TestHelm_Resolve_DescriptorCodeIsBounded(t *testing.T) {
+	var fanOut strings.Builder
+	fanOut.WriteString("filegroup(name = \"g0\", srcs = [\"Chart.yaml\"])\n")
+	for i := 1; i < 16; i++ {
+		fmt.Fprintf(&fanOut, "filegroup(name = \"g%d\", srcs = [\":g%d\"] * 12)\n", i, i-1)
+	}
+	files := withChart("svc", map[string]string{
+		"MODULE.bazel": "module(name = \"repo\")\n",
+		"svc/BUILD.bazel": "load(\"@rules//helm:defs.bzl\", \"chart_bundle\", \"helm_chart\")\n\n" +
+			"helm_chart(name = \"chart\", srcs = glob([\"**\"]))\n\nchart_bundle(name = \"bundle\", chart = \":g15\")\n" + fanOut.String(),
+		"svc/deploy.yaml": "config:\n  k8s:\n    name: svc\n    namespace: ns\n  extensions:\n" +
+			"    valuesMapJs: |\n      (req) => { const o = { suffix: 'cyclic' }; o.self = o; return o }\n" +
+			"    valuesFilesJs: |\n      (req) => { const p = []; for (let i = 0; i < 100000; i++) p.push('values/' + i); return glob(p) }\n",
+	})
+	start := time.Now()
+	require.Equal(t, []string{"ns/svc-cyclic"}, renderedNames(t, files, "svc"))
+	require.Less(t, time.Since(start), 5*time.Second)
+}
+
+// One index serves the renders of a scan, which run in parallel.
+func TestHelm_Resolve_InstallationsInParallel(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, withChart("charts/web", map[string]string{
+		"main.tf": "resource \"helm_release\" \"web\" {\n  name   = \"tf\"\n  chart  = \"./charts/web\"\n" +
+			"  values = [yamlencode({ suffix = \"s\", a = { image = { repo = \"r\" } } })]\n" +
+			"  set {\n    name  = \"a.image.tag\"\n    value = \"t\"\n  }\n}\n",
+	}))
+	roots := []string{filepath.Join(root, "charts/web")}
+	idx := helminstall.Discover(context.Background(), nil, &helminstall.Inputs{
+		Root: root, Files: []string{filepath.Join(root, "main.tf")}, ChartRoots: roots,
+	})
+	resolver := NewResolver(nil).WithChartRoots(roots).WithInstallations(idx)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, err := resolver.Resolve(context.Background(), roots[0])
+			assert.NoError(t, err)
+			assert.Len(t, got.File, 1)
+		}()
+	}
+	wg.Wait()
 }
