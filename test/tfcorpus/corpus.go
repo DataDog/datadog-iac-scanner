@@ -60,6 +60,10 @@ type Cell struct {
 	// write them ("sink", "sink[0]", `sink["k"]`). Empty for value cells,
 	// whose sink has one unkeyed instance.
 	Keys []string
+	// Sinks is the number of sink blocks the cell expects findings on (0
+	// means one). A cell with two sinks observes two evaluations of the same
+	// module with equal-value but differently-provenanced inputs.
+	Sinks int
 	// WantChains is the number of module call chains the cell evaluates (1
 	// for most cells, 2 for a module call expanded over two instances). Zero
 	// means the cell makes no assertion about the chains.
@@ -88,6 +92,7 @@ func (c Cell) Name() string {
 	add("expansion", c.Expansion)
 	add("block", c.SinkKind)
 	add("variant", c.Variant)
+	add("sinks", map[int]string{0: "", 1: "one", 2: "two"}[c.Sinks])
 	add("value", map[bool]string{true: "fire", false: "nofire"}[c.Fire])
 	return strings.Join(parts, "/")
 }
@@ -118,9 +123,9 @@ var shapes = map[string]shapeDef{
 	"scalar": {fire: `"fire"`, noFire: `"safe"`, regoFire: `"fire"`},
 	"list":   {fire: `["fire"]`, noFire: `["safe", "x"]`, regoFire: `["fire"]`},
 	"set":    {fire: `toset(["fire"])`, noFire: `toset(["safe", "x"])`, regoFire: `["fire"]`},
-	"map":    {fire: `{a = "fire"}`, noFire: `{a = "safe"}`, regoFire: `{"a": "fire"}`},
-	"nested": {fire: `{a = {b = "fire"}}`, noFire: `{a = {b = "safe"}}`, regoFire: `{"a": {"b": "fire"}}`},
-	"empty":  {fire: `[]`, noFire: `["x"]`, regoFire: `[]`},
+	"map":    {fire: `{a = "fire"}`, noFire: `{a = "safe", b = "x"}`, regoFire: `{"a": "fire"}`},
+	"nested": {fire: `{a = {b = "fire"}}`, noFire: `{a = {b = "safe"}, c = "x"}`, regoFire: `{"a": {"b": "fire"}}`},
+	"empty":  {fire: `[]`, noFire: `["x", "y"]`, regoFire: `[]`},
 	"null":   {fire: `null`, noFire: `"safe"`, regoFire: `null`},
 }
 

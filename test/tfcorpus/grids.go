@@ -42,6 +42,13 @@ var kinds = map[string]struct {
 		sources:   []string{"written", "resource_attr"},
 		neighbors: []string{"none", "same_block", "sibling", "computed"},
 	},
+	"data_count": {
+		// resource -> local -> data, with the sink count driven from the
+		// data: a stale local during the count expansion loses the finding.
+		shapes:    []string{"scalar"},
+		sources:   []string{"written"},
+		neighbors: []string{"none", "same_block"},
+	},
 	"try": {
 		shapes:    []string{"scalar"},
 		sources:   []string{"written", "resource_attr", "lookalike", "resource_object"},
@@ -118,15 +125,12 @@ func ValueGrid() []Cell {
 							Indirection: kind, Shape: shape, Read: read,
 							Source: source, Neighbor: neighbor, SinkKind: "resource", Fire: true,
 						}))
-						// One polarity per scalar shape keeps the grid
-						// bounded: the non-firing value proves the probe
-						// does not fire on a same-shape near miss.
-						if shape == "scalar" {
-							cells = append(cells, buildCell(Cell{
-								Indirection: kind, Shape: shape, Read: read,
-								Source: source, Neighbor: neighbor, SinkKind: "resource", Fire: false,
-							}))
-						}
+						// Every polarity: the non-firing value proves the
+						// probe does not fire on a same-shape near miss.
+						cells = append(cells, buildCell(Cell{
+							Indirection: kind, Shape: shape, Read: read,
+							Source: source, Neighbor: neighbor, SinkKind: "resource", Fire: false,
+						}))
 					}
 				}
 			}
@@ -170,6 +174,8 @@ var expansionSpecs = []struct {
 		// Ephemeral blocks are evaluated as written, so their count keeps
 		// one unkeyed instance.
 		keys: func(name string) []string { return []string{name} }},
+	{expansion: "count3", sinkKind: "data", shapes: []string{"scalar"},
+		keys: func(name string) []string { return instances(name, 3) }},
 	{expansion: "count3", sinkKind: "resource", shapes: []string{"scalar", "list"}, chains: 1,
 		keys: func(name string) []string { return instances(name, 3) }},
 	{expansion: "count258", sinkKind: "resource", shapes: []string{"scalar"}, chains: 1,
@@ -184,6 +190,8 @@ var expansionSpecs = []struct {
 		keys: func(name string) []string { return []string{name} }},
 	{expansion: "module_count", sinkKind: "module", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name + "[0]"} }},
+	{expansion: "module_count3", sinkKind: "module", shapes: []string{"scalar"},
+		keys: func(name string) []string { return []string{name} }},
 	{expansion: "module_foreach", sinkKind: "module", shapes: []string{"scalar"}, chains: 2,
 		keys: func(name string) []string { return []string{name + `["one"]`, name + `["two"]`} }},
 	{expansion: "nested", sinkKind: "module", shapes: []string{"scalar"}, chains: 1,
@@ -208,7 +216,7 @@ func ExpansionGrid() []Cell {
 		for _, shape := range spec.shapes {
 			for _, fire := range []bool{true, false} {
 				cells = append(cells, buildExpansion(Cell{
-					Shape: shape, Expansion: spec.expansion, SinkKind: spec.sinkKind,
+					Shape: shape, Read: "eq", Expansion: spec.expansion, SinkKind: spec.sinkKind,
 					Fire: fire, Keys: spec.keys("sink"), WantChains: spec.chains,
 				}))
 			}
@@ -239,4 +247,116 @@ func objectSourceName(source string) bool {
 		return true
 	}
 	return false
+}
+
+// pairKinds lists the pairs of configuration indirections the pair grid
+// composes: the outer kind reads the value the inner kind yields. Both
+// indirections must resolve for the probe to fire.
+var pairKinds = [][2]string{
+	{"local", "variable"},
+	{"coalesce", "local"},
+	{"conditional", "coalesce"},
+	{"local", "conditional"},
+	{"try", "local"},
+	{"for_expr", "local"},
+	{"coalesce", "for_expr"},
+	{"module_io", "local"},
+	{"local", "module_io"},
+	{"data_source", "local"},
+	{"local", "data_source"},
+	{"module_io", "module_io"},
+}
+
+// PairGrid composes pairs of configuration indirections: the inner kind
+// yields the value, the outer kind reads it. Only the scalar shape and the
+// eq read, in both polarities.
+func PairGrid() []Cell {
+	var cells []Cell
+	for _, pair := range pairKinds {
+		outer, inner := pair[0], pair[1]
+		for _, fire := range []bool{true, false} {
+			cells = append(cells, buildPair(outer, inner, fire))
+		}
+	}
+	return cells
+}
+
+// buildPair composes two indirections: the inner kind's expression yields
+// the value where the outer kind's expression reads it.
+func buildPair(outer, inner string, fire bool) Cell {
+	value := shapes["scalar"].fire
+	if !fire {
+		value = shapes["scalar"].noFire
+	}
+	// innerExpr is the expression the inner kind yields, with the files it
+	// needs; outer wraps it.
+	c := Cell{Indirection: outer + "+" + inner, Shape: "scalar", Read: "eq",
+		Source: "written", SinkKind: "resource", Fire: fire, files: map[string]string{}}
+	innerExpr := value
+	switch inner {
+	case "variable":
+		c.files["inner.tf"] = fmt.Sprintf("variable \"pair\" {\n  default = %s\n}\n", value)
+		innerExpr = "var.pair"
+	case "local":
+		c.files["inner.tf"] = fmt.Sprintf("locals {\n  pair = %s\n}\n", value)
+		innerExpr = "local.pair"
+	case "coalesce":
+		innerExpr = fmt.Sprintf("coalesce(null, %s)", value)
+	case "conditional":
+		f, nf := shapes["scalar"].fire, shapes["scalar"].noFire
+		if !fire {
+			f, nf = nf, f
+		}
+		innerExpr = fmt.Sprintf("true ? %s : %s", f, nf)
+	case "try":
+		c.files["inner.tf"] = "locals {\n  missing = {}\n}\n"
+		innerExpr = fmt.Sprintf("try(local.missing.attr, %s)", value)
+	case "for_expr":
+		innerExpr = fmt.Sprintf("[ for v in [%s] : v ]", value)
+	case "module_io":
+		c.files["mod/main.tf"] = "variable \"in_val\" {}\n\noutput \"out_val\" {\n  value = var.in_val\n}\n"
+		c.files["inner.tf"] = fmt.Sprintf("module \"p\" {\n  source = \"./mod\"\n  in_val = %s\n}\n", value)
+		innerExpr = "module.p.out_val"
+	case "data_source":
+		c.files["inner.tf"] = fmt.Sprintf("data \"probe_data\" \"p\" {\n  value = %s\n}\n", value)
+		innerExpr = "data.probe_data.p.value"
+	default:
+		panic("unknown pair inner " + inner)
+	}
+	switch outer {
+	case "local":
+		c.files["outer.tf"] = fmt.Sprintf("locals {\n  val = %s\n}\n", innerExpr)
+		c.files["sink.tf"] = renderSink("resource", []string{"probe = local.val"})
+	case "coalesce":
+		c.files["sink.tf"] = renderSink("resource", []string{
+			fmt.Sprintf("probe = coalesce(null, %s)", innerExpr)})
+	case "conditional":
+		nf := shapes["scalar"].noFire
+		if !fire {
+			nf = shapes["scalar"].fire
+		}
+		c.files["sink.tf"] = renderSink("resource", []string{
+			fmt.Sprintf("probe = true ? %s : %s", innerExpr, nf)})
+	case "try":
+		c.files["sink.tf"] = renderSink("resource", []string{
+			fmt.Sprintf("probe = try(local.missing.attr, %s)", value)})
+		// The try discards the inner value: the composition exercises that
+		// the inner indirection still evaluates without breaking the outer.
+		c.files["outer.tf"] = c.files["inner.tf"]
+		c.files["inner.tf"] = ""
+		delete(c.files, "inner.tf")
+	case "for_expr":
+		c.files["sink.tf"] = renderSink("resource", []string{
+			fmt.Sprintf("probe = [ for v in [%s] : v ]", innerExpr)})
+	case "module_io":
+		c.files["mod/main.tf"] = "variable \"in_val\" {}\n\noutput \"out_val\" {\n  value = var.in_val\n}\n"
+		c.files["main.tf"] = fmt.Sprintf("module \"m\" {\n  source = \"./mod\"\n  in_val = %s\n}\n", innerExpr)
+		c.files["sink.tf"] = renderSink("resource", []string{"probe = module.m.out_val"})
+	case "data_source":
+		c.files["data.tf"] = fmt.Sprintf("data \"probe_data\" \"p\" {\n  value = %s\n}\n\nlocals {\n  val = data.probe_data.p.value\n}\n", innerExpr)
+		c.files["sink.tf"] = renderSink("resource", []string{"probe = local.val"})
+	default:
+		panic("unknown pair outer " + outer)
+	}
+	return c
 }

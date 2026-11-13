@@ -39,6 +39,16 @@ func buildCell(c Cell) Cell {
 			srcLiteral = `"safe"`
 		}
 	}
+	if objectSource(c) && !c.Fire {
+		// The non-firing object holds two attributes: no probe read can
+		// mistake it for the firing single-attribute object.
+		if c.Source == "lookalike" {
+			srcLiteral = `"safe", extra = "x"`
+		} else if c.Source == "resource_object" {
+			srcLiteral = `"safe"
+  extra = "x"`
+		}
+	}
 	srcExpr, srcFiles, _ := cellSource(c, srcLiteral)
 	for name, content := range srcFiles {
 		c.files[name] = content
@@ -65,10 +75,16 @@ func buildCell(c Cell) Cell {
 		// lookalike object in one root exercises the per-root caches: two
 		// arguments that evaluate equal but do not carry the same marks.
 		if c.Source == "resource_object" {
-			call += fmt.Sprintf("module \"m2\" {\n  source = \"./mod\"\n  in_val = local.src\n}\n\nlocals {\n  src = { probe_source = %s }\n}\n", srcLiteral)
+			// The second call passes the lookalike object: equal value,
+			// different provenance. Both outputs land on their own sink, so
+			// a per-root cache that mixes the two evaluations up shows up as
+			// a lost finding on sink2.
+			call += fmt.Sprintf("module \"m2\" {\n  source = \"./mod\"\n  in_val = local.src\n}\n\nlocals {\n  src = { probe_source = %s }\n}\n\nresource \"aws_s3_bucket\" \"sink2\" {\n  probe = module.m2.out_val\n}\n", srcLiteral)
+			c.Sinks = 2
 		}
 		if c.Source == "lookalike" {
-			call += fmt.Sprintf("module \"m2\" {\n  source = \"./mod\"\n  in_val = aws_instance.src\n}\n\nresource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n", srcLiteral)
+			call += fmt.Sprintf("module \"m2\" {\n  source = \"./mod\"\n  in_val = aws_instance.src\n}\n\nresource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n\nresource \"aws_s3_bucket\" \"sink2\" {\n  probe = module.m2.out_val\n}\n", strings.ReplaceAll(srcLiteral, ", extra = ", "\n  extra = "))
+			c.Sinks = 2
 		}
 		c.files["main.tf"] = call
 		probeExpr = "module.m.out_val"
@@ -83,6 +99,16 @@ func buildCell(c Cell) Cell {
 		}
 		c.files["data.tf"] = fmt.Sprintf("data \"probe_data\" \"src\" {\n  value = %s\n}\n\nlocals {\n  val = data.probe_data.src.value\n}\n", dataArg)
 		probeExpr = "local.val"
+	case "data_count":
+		// resource -> local -> data, with the sink count driven from the
+		// data as well: a stale local during the count expansion shows up
+		// as a wrong probe value or a lost instance.
+		c.files["src.tf"] = fmt.Sprintf("resource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n", literal)
+		c.files["data.tf"] = "locals {\n  val = aws_instance.src.probe_source\n}\n\n" +
+			"data \"probe_data\" \"src\" {\n  value = local.val\n  num = 1\n}\n"
+		sinkAttrs = append(sinkAttrs, "count = data.probe_data.src.num", "probe = data.probe_data.src.value")
+		c.Keys = []string{"sink[0]"}
+		probeExpr = ""
 	case "try":
 		// try keeps its first argument when it reads, and takes the fallback
 		// when reading errors: the fallback is the cell's value.
@@ -98,7 +124,12 @@ func buildCell(c Cell) Cell {
 			// is what Terraform does with an unknown first argument.
 			probeExpr = "try(aws_instance.src.probe_source, " + fallback + ")"
 		case "lookalike":
-			probeExpr = fmt.Sprintf("try(local.src.probe_source, %s)", fallback)
+			// An ordinary object equal to a resource's configured value,
+			// with the resource present: the try reads an attribute the
+			// object does not have, so the fallback is the value.
+			c.files["locals.tf"] = fmt.Sprintf("locals {\n  src = { probe_source = %s }\n}\n", srcLiteral)
+			c.files["src.tf"] = fmt.Sprintf("resource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n", srcLiteral)
+			probeExpr = fmt.Sprintf("try(local.src.missing, %s)", fallback)
 		}
 	case "coalesce":
 		probeExpr = fmt.Sprintf("coalesce(null, %s)", literal)
@@ -144,19 +175,25 @@ func buildCell(c Cell) Cell {
 		sinkAttrs = append(sinkAttrs, "count = length(var.vals)", "probe = "+literal)
 		probeExpr = ""
 	case "splat":
-		// The splat result is the list; its element is the scalar value.
+		// The splat result is the list; its element is the scalar value. A
+		// non-firing splat yields two elements, so a count read cannot
+		// mistake it for the firing single-element list.
 		item := shapes["scalar"].fire
 		if !c.Fire {
 			item = shapes["scalar"].noFire
 		}
+		items := fmt.Sprintf("[{ attr = %s }]", item)
+		if !c.Fire {
+			items = fmt.Sprintf("[{ attr = %s }, { attr = \"x\" }]", item)
+		}
 		if c.Source == "resource_attr" {
 			probeExpr = "aws_instance.src.items[*].attr"
 			if prev, ok := c.files["src.tf"]; ok {
-				c.files["src.tf"] = strings.Replace(prev, "  probe_source = ", "  items = [{ attr = "+item+" }]\n  probe_source = ", 1)
+				c.files["src.tf"] = strings.Replace(prev, "  probe_source = ", "  items = "+items+"\n  probe_source = ", 1)
 			}
 		} else {
 			probeExpr = "local.items[*].attr"
-			c.files["locals.tf"] = fmt.Sprintf("locals {\n  items = [{ attr = %s }]\n}\n", item)
+			c.files["locals.tf"] = fmt.Sprintf("locals {\n  items = %s\n}\n", items)
 		}
 	case "nested":
 		switch c.Shape {
@@ -217,18 +254,33 @@ func buildLiteral(c *Cell) {
 		if c.Variant == "objmerged" {
 			literal = fmt.Sprintf("{ probe_source = %s, label = \"x\" }", value)
 		}
-		c.files = map[string]string{
+		if !c.Fire {
+			// The cell's non-firing object holds two attributes; the
+			// oracle must match it.
+			literal = fmt.Sprintf("{ probe_source = %s, extra = \"x\" }", value)
+		}
+		files := map[string]string{
 			"sink.tf": renderSink("resource", []string{"probe = " + literal}),
 		}
+		if c.Sinks == 2 {
+			files["sink2.tf"] = renderSinkNamed("resource", "sink2", []string{"probe = " + literal})
+		}
+		c.files = files
 		return
 	}
 	literal := shapes[c.Shape].fire
 	if !c.Fire {
 		literal = shapes[c.Shape].noFire
 	}
-	c.files = map[string]string{
+	files := map[string]string{
 		"sink.tf": renderSink("resource", []string{"probe = " + literal}),
 	}
+	if c.Sinks == 2 {
+		// The cell observes two module calls with equal-value inputs; its
+		// oracle writes the same value on both sinks.
+		files["sink2.tf"] = renderSinkNamed("resource", "sink2", []string{"probe = " + literal})
+	}
+	c.files = files
 }
 
 // cellSource returns the expression yielding the read value from the cell's
@@ -284,18 +336,29 @@ func neighborAttrs(c Cell, needUnset *bool, extras *[]string) []string {
 		*extras = append(*extras, "module \"m2\" {\n  source = \"./mod\"\n  in_val = var.unset_value\n}\n\n")
 		return nil
 	case "module_empty_arg":
+		// The empty resource object is a second input of the module call:
+		// the module must still evaluate, and the probe attribute must keep
+		// its concrete value.
 		*extras = append(*extras, "resource \"aws_instance\" \"empty\" {}\n\n")
-		return []string{"extra = aws_instance.empty"}
+		if c.Indirection == "module_io" || c.Indirection == "module_sink" || c.Indirection == "module_io_pair" {
+			*extras = append(*extras, "module \"mEmpty\" {\n  source = \"./mod\"\n  in_val = aws_instance.empty\n}\n\n")
+		}
+		return nil
 	}
 	panic("unknown neighbor " + c.Neighbor)
 }
 
 // renderSink writes the sink block of a cell.
 func renderSink(kind string, attrs []string) string {
+	return renderSinkNamed(kind, "sink", attrs)
+}
+
+// renderSinkNamed writes a sink block with the given label.
+func renderSinkNamed(kind, name string, attrs []string) string {
 	head := map[string]string{
-		"resource":  fmt.Sprintf("resource %q %q {", SinkType, "sink"),
-		"data":      fmt.Sprintf("data %q %q {", SinkType, "sink"),
-		"ephemeral": fmt.Sprintf("ephemeral %q %q {", SinkType, "sink"),
+		"resource":  fmt.Sprintf("resource %q %q {", SinkType, name),
+		"data":      fmt.Sprintf("data %q %q {", SinkType, name),
+		"ephemeral": fmt.Sprintf("ephemeral %q %q {", SinkType, name),
 	}[kind]
 	if head == "" {
 		panic("unknown sink kind " + kind)
@@ -329,13 +392,15 @@ func buildExpansion(c Cell) Cell {
 	case "foreach_set":
 		c.files["sink.tf"] = renderSink(c.SinkKind, []string{
 			`for_each = toset(["k"])`, "probe = " + literal})
-	case "module_count", "module_foreach", "nested":
+	case "module_count", "module_count3", "module_foreach", "nested":
 		c.Keys = []string{name}
 		c.files["mod/main.tf"] = renderSink("resource", []string{"probe = " + literal})
 		call := "module \"m\" {\n  source = \"./mod\"\n"
 		switch c.Expansion {
 		case "module_count":
 			call += "  count = 1\n"
+		case "module_count3":
+			call += "  count = 3\n"
 		case "module_foreach":
 			call += "  for_each = { one = \"a\", two = \"b\" }\n"
 		case "nested":

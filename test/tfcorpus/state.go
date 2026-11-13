@@ -18,6 +18,10 @@ type StateCell struct {
 	State string
 	// Placement is where in the block it is written.
 	Placement string
+	// Absent lists the paths a state cell declares as never written (the
+	// absent states), so the projection walk can require them to stay
+	// absent in both projections.
+	Absent []string
 	// files are the Terraform files of the root.
 	files map[string]string
 }
@@ -98,8 +102,10 @@ func buildState(state, placement string) StateCell {
 	case "known", "unknown", "template", "json", "computed", "null":
 		c.files["unset.tf"] = "variable \"unset\" {}\n\nresource \"aws_instance\" \"src\" {}\n"
 		expr := stateExpr[state]
-		if placement == "instance" {
-			// Each instance holds its own value.
+		if placement == "instance" && state == "known" {
+			// The known state keeps one value per instance; every other
+			// state keeps its own expression, so an unknown instance
+			// really reads an unknown value.
 			expr = "each.value"
 		}
 		line := attr(expr)
@@ -108,8 +114,10 @@ func buildState(state, placement string) StateCell {
 		switch placement {
 		case "top":
 			c.writeSink("other = \"x\"")
+			c.Absent = []string{"attr"}
 		case "nested":
 			c.writeSink("settings {\n    other = \"x\"\n  }")
+			c.Absent = []string{"settings.0.attr"}
 		}
 	case "unknown_count":
 		c.files["unset.tf"] = "variable \"unset\" {}\n"

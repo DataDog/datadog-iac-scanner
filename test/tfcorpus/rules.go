@@ -145,10 +145,13 @@ func sanitize(name string) string {
 	return strings.NewReplacer("/", "--", "=", "-", "\"", "", " ", "").Replace(name)
 }
 
-// WriteRulesMulti writes the probe rules plus one rule that fires once per
-// matching instance and reports every finding under the same resource name,
-// so the instances of one block share one finding identity, while the search
-// key keeps the instance, so the findings of one group still order. It exists for the check that
+// WriteRulesMulti writes the probe rules plus one rule that fires twice per
+// matching instance and reports every finding under the same resource name
+// and search key, so the instances of one block share one finding identity.
+// The two results of an instance differ in their remediation, a field the
+// engine reports as written and CompareFindings orders on, so the findings
+// of one identity group are distinguishable and the first-of-identity
+// selection is observable. It exists for the check that
 // identity compaction keeps the finding of an identity group that compares
 // first.
 func WriteRulesMulti(t *testing.T) string {
@@ -167,10 +170,28 @@ DatadogPolicy contains result if {
 		"documentId": doc.id,
 		"resourceType": "aws_s3_bucket",
 		"resourceName": "sink",
-		"searchKey": sprintf("aws_s3_bucket[%s].probe", [name]),
+		"searchKey": sprintf("aws_s3_bucket[%s].probe#1", [name]),
 		"issueType": "IncorrectValue",
 		"keyExpectedValue": "probe",
 		"keyActualValue": "probe",
+		"remediation": "aa-first",
+	}
+}
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	some name, b in doc.resource.aws_s3_bucket
+	startswith(name, "sink")
+	b.probe == "fire"
+	result := {
+		"documentId": doc.id,
+		"resourceType": "aws_s3_bucket",
+		"resourceName": "sink",
+		"searchKey": sprintf("aws_s3_bucket[%s].probe#2", [name]),
+		"issueType": "IncorrectValue",
+		"keyExpectedValue": "probe",
+		"keyActualValue": "probe",
+		"remediation": "zz-later",
 	}
 }`, "legacy shared identity")
 	return dir

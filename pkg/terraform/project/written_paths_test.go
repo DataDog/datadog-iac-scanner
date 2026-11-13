@@ -9,6 +9,7 @@ package project
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -61,7 +62,8 @@ func TestProjectionsStayFaithfulToTheModel(t *testing.T) {
 							continue
 						}
 						for _, inst := range b.Instances {
-							checkInstance(t, proj, docs, placeholder, inst, cell.Name())
+							checkInstanceState(t, cell, inst)
+							checkInstance(t, proj, docs, placeholder, inst, cell)
 						}
 					}
 				}
@@ -139,9 +141,64 @@ func sortedAttrNames(attrs map[string]cty.Value) []string {
 	return names
 }
 
-// checkInstance checks one block instance's projections against the model.
-func checkInstance(t *testing.T, proj *Projection, docs []*LegacyDoc, placeholder string, inst *model.Instance, cell string) {
+// checkInstanceState asserts the fixture really holds the state it
+// declares, so the walk never trusts a mislabeled fixture: an unknown state
+// must read an unknown value, a template must have parts, a JSON state must
+// carry the encoded document, a null state must be null.
+func checkInstanceState(t *testing.T, cell tfcorpus.StateCell, inst *model.Instance) {
 	t.Helper()
+	// Only the sink block carries the state.
+	if inst.Block.Type != "aws_s3_bucket" || cell.Placement == "sink" || cell.State == "absent" {
+		return
+	}
+	name := "attr"
+	var v cty.Value
+	var ok bool
+	if cell.Placement == "nested" {
+		settings, okSettings := inst.Attrs["settings"]
+		if !okSettings {
+			t.Fatalf("%s: the fixture writes no settings block", cell.Name())
+		}
+		settings, _ = settings.UnmarkDeep()
+		first := settings.ElementIterator()
+		if !first.Next() {
+			t.Fatalf("%s: the fixture's settings block is empty", cell.Name())
+		}
+		_, elem := first.Element()
+		attrs := elem.AsValueMap()
+		v, ok = attrs["attr"]
+	} else {
+		v, ok = inst.Attrs[name]
+	}
+	if !ok {
+		if cell.State == "null" {
+			return // a null attribute is dropped by the model
+		}
+		t.Fatalf("%s: the fixture writes no %s attribute", cell.Name(), name)
+	}
+	uv, _ := v.UnmarkDeep()
+	leaf := name
+	if cell.Placement == "nested" {
+		leaf = "settings.0.attr"
+	}
+	switch cell.State {
+	case "unknown", "computed":
+		require.False(t, uv.IsKnown(), "%s: the fixture's %s attribute is known, not unknown", cell.Name(), leaf)
+	case "template":
+		require.Contains(t, inst.Templates, leaf, "%s: the fixture's %s attribute has no template parts", cell.Name(), leaf)
+	case "json":
+		require.Contains(t, inst.JSON, leaf, "%s: the fixture's %s attribute carries no JSON document", cell.Name(), leaf)
+	case "null":
+		require.True(t, uv.IsNull(), "%s: the fixture's %s attribute is not null", cell.Name(), leaf)
+	case "known":
+		require.True(t, uv.IsKnown() && !uv.IsNull(), "%s: the fixture's %s attribute is not a known value", cell.Name(), leaf)
+	}
+}
+
+// checkInstance checks one block instance's projections against the model.
+func checkInstance(t *testing.T, proj *Projection, docs []*LegacyDoc, placeholder string, inst *model.Instance, cell tfcorpus.StateCell) {
+	t.Helper()
+	cellName := cell.Name()
 	// The contract block of this instance.
 	var loc *Located
 	for _, l := range proj.Blocks {
@@ -150,10 +207,10 @@ func checkInstance(t *testing.T, proj *Projection, docs []*LegacyDoc, placeholde
 			break
 		}
 	}
-	require.NotNil(t, loc, "%s: the contract input has no block for instance %s%s", cell, inst.Block.Name, inst.Key)
+	require.NotNil(t, loc, "%s: the contract input has no block for instance %s%s", cellName, inst.Block.Name, inst.Key)
 
 	// The legacy document holding this instance.
-	legacy := legacyEntry(t, docs, inst, cell)
+	legacy := legacyEntry(t, docs, inst, cellName)
 
 	leaves := writtenLeaves(inst.Attrs)
 	contract := contractTree{root: loc.Term, nested: nestedOf(proj, loc.ID), placeholder: placeholder}
@@ -161,32 +218,32 @@ func checkInstance(t *testing.T, proj *Projection, docs []*LegacyDoc, placeholde
 		path := strings.Join(leaf.path, ".")
 		switch leaf.class {
 		case leafNull:
-			require.False(t, contract.has(leaf.path), "%s: %s: a null attribute is in the contract input", cell, path)
-			require.False(t, legacyHas(legacy, leaf.path), "%s: %s: a null attribute is in the legacy document", cell, path)
+			require.False(t, contract.has(leaf.path), "%s: %s: a null attribute is in the contract input", cellName, path)
+			require.False(t, legacyHas(legacy, leaf.path), "%s: %s: a null attribute is in the legacy document", cellName, path)
 		case leafUnknown:
 			require.True(t, contract.holdsPlaceholder(leaf.path),
-				"%s: %s: an unknown written attribute is not readable in the contract input", cell, path)
+				"%s: %s: an unknown written attribute is not readable in the contract input", cellName, path)
 			require.False(t, contract.isExactlyPlaceholder(leaf.path) && !contract.isWholeValue(leaf.path),
-				"%s: %s: the contract input replaced a written attribute with a stand-in", cell, path)
+				"%s: %s: the contract input replaced a written attribute with a stand-in", cellName, path)
 			require.True(t, legacyHoldsUnknown(legacy, leaf.path, placeholder),
-				"%s: %s: an unknown written attribute is not readable in the legacy document", cell, path)
+				"%s: %s: an unknown written attribute is not readable in the legacy document", cellName, path)
 		case leafKnown:
 			require.True(t, contract.has(leaf.path),
-				"%s: %s: a written attribute is missing from the contract input", cell, path)
+				"%s: %s: a written attribute is missing from the contract input", cellName, path)
 			got, err := contract.jsonAt(leaf.path)
-			require.NoError(t, err, "%s: %s", cell, path)
+			require.NoError(t, err, "%s: %s", cellName, path)
 			want, err := json.Marshal((value.Converter{Placeholder: placeholder}).Go(leaf.value))
-			require.NoError(t, err, "%s: %s", cell, path)
+			require.NoError(t, err, "%s: %s", cellName, path)
 			require.JSONEq(t, string(want), got,
 				"%s: %s: the contract input does not match the model", cell, path)
 			require.True(t, legacyHas(legacy, leaf.path),
-				"%s: %s: a written attribute is missing from the legacy document", cell, path)
+				"%s: %s: a written attribute is missing from the legacy document", cellName, path)
 			lgot, ok := legacyAt(legacy, leaf.path)
-			require.True(t, ok, "%s: %s", cell, path)
+			require.True(t, ok, "%s: %s", cellName, path)
 			require.JSONEq(t, string(want), marshalAny(t, lgot),
 				"%s: %s: the legacy document does not match the model", cell, path)
 			require.False(t, contract.holdsPlaceholder(leaf.path),
-				"%s: %s: the contract input holds a placeholder for a known value", cell, path)
+				"%s: %s: the contract input holds a placeholder for a known value", cellName, path)
 		}
 	}
 
@@ -194,10 +251,153 @@ func checkInstance(t *testing.T, proj *Projection, docs []*LegacyDoc, placeholde
 	// writes: every non-null path, containers included, without recursing
 	// into unknown values.
 	written := writtenSet(proj, loc.ID)
-	require.Equal(t, expectedWritten(inst.Attrs), written, "%s: _dd_meta.written does not match the model", cell)
+	require.Equal(t, expectedWritten(inst.Attrs), written, "%s: _dd_meta.written does not match the model", cellName)
 
 	// No placeholder outside the paths the model leaves unknown.
-	checkNoInventedPlaceholders(t, contract, inst, placeholder, cell)
+	checkNoInventedPlaceholders(t, contract, inst, placeholder, cellName)
+	checkNothingInvented(t, contract, legacy, inst, placeholder, cellName, cell)
+}
+
+// checkNothingInvented requires neither projection to hold anything the
+// model does not: every leaf of the legacy entry and of the contract block
+// maps to a path the model writes (or an unknown or template part of one),
+// the never-written paths of the cell stay absent, and no placeholder
+// stands in for one of them in either projection.
+func checkNothingInvented(t *testing.T, contract contractTree, legacy map[string]any, inst *model.Instance, placeholder string, cellName string, cell tfcorpus.StateCell) {
+	t.Helper()
+	written := map[string]bool{}
+	writtenCollapsed := map[string]bool{}
+	// Containers count as written too: a known tuple or object the model
+	// carries is present in the projections even when the walk only checks
+	// its leaves.
+	for _, p := range expectedWritten(inst.Attrs) {
+		written[p] = true
+		writtenCollapsed[collapsedForm(p)] = true
+	}
+	templates := map[string]bool{}
+	for path := range inst.Templates {
+		templates[path] = true
+	}
+	for path := range inst.JSON {
+		templates[path] = true
+	}
+	for path := range inst.JSONExpr {
+		templates[path] = true
+	}
+	for path := range inst.Computed {
+		templates[path] = true
+	}
+	known := func(path string) bool {
+		if strings.HasPrefix(path, "_dd_meta.") {
+			return true // the metadata the engine attaches to every block
+		}
+		if written[path] || templates[path] {
+			return true
+		}
+		// A nested block written once collapses to an object in the legacy
+		// document, so the model's index segment disappears: the path
+		// matches when the model writes a path whose indexes dropped give
+		// exactly this one.
+		if writtenCollapsed[collapsedForm(path)] || templates[collapsedForm(path)] {
+			return true
+		}
+		segments := strings.Split(path, ".")
+		for i := len(segments) - 1; i > 0; i-- {
+			prefix := strings.Join(segments[:i], ".")
+			if written[prefix] && !isLeafValue(modelLeafAt(inst, prefix)) {
+				// An unknown or container ancestor stands for its subtree.
+				return true
+			}
+			if templates[prefix] {
+				return true
+			}
+		}
+		return false
+	}
+	// The legacy document holds nothing the model does not.
+	for _, path := range legacyLeafPaths(legacy) {
+		require.True(t, known(path),
+			"%s: the legacy document holds %s, which the model does not write", cellName, path)
+	}
+	// The contract block holds nothing the model does not.
+	contract.eachLeaf(func(path []string) {
+		p := strings.Join(path, ".")
+		require.True(t, known(p),
+			"%s: the contract input holds %s, which the model does not write", cellName, p)
+	})
+	// The never-written paths stay absent, with no placeholder in for them.
+	for _, absent := range cell.Absent {
+		segments := strings.Split(absent, ".")
+		require.False(t, contract.has(segments),
+			"%s: the never-written attribute %s is in the contract input", cellName, absent)
+		require.False(t, legacyHas(legacy, segments),
+			"%s: the never-written attribute %s is in the legacy document", cellName, absent)
+		require.False(t, contract.holdsPlaceholder(segments),
+			"%s: the contract input holds a placeholder for the never-written %s", cellName, absent)
+		require.False(t, legacyHoldsUnknown(legacy, segments, placeholder),
+			"%s: the legacy document holds an unknown for the never-written %s", cellName, absent)
+	}
+}
+
+// modelLeafAt reads the model value at a dot-joined path.
+func modelLeafAt(inst *model.Instance, path string) (cty.Value, bool) {
+	return modelAt(inst.Attrs, strings.Split(path, "."))
+}
+
+// isLeafValue reports whether a model value is a leaf (not an unknown or
+// container whose subtree the projections render).
+func isLeafValue(v cty.Value, ok bool) bool {
+	if !ok {
+		return true
+	}
+	uv, _ := v.UnmarkDeep()
+	if !uv.IsKnown() {
+		return false
+	}
+	ty := uv.Type()
+	return !ty.IsListType() && !ty.IsTupleType() && !ty.IsSetType() &&
+		!ty.IsMapType() && !ty.IsObjectType()
+}
+
+// collapsedForm drops the integer segments of a path (the model's indexes
+// into a nested block the legacy document collapses).
+func collapsedForm(path string) string {
+	segments := strings.Split(path, ".")
+	out := make([]string, 0, len(segments))
+	for _, s := range segments {
+		if _, err := strconv.Atoi(s); err != nil {
+			out = append(out, s)
+		}
+	}
+	return strings.Join(out, ".")
+}
+
+// legacyLeafPaths lists the leaf paths of a legacy attribute map.
+func legacyLeafPaths(attrs map[string]any) []string {
+	var out []string
+	var walk func(prefix []string, node any)
+	walk = func(prefix []string, node any) {
+		switch v := node.(type) {
+		case map[string]any:
+			keys := make([]string, 0, len(v))
+			for k := range v {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				walk(append(append([]string{}, prefix...), k), v[k])
+			}
+		case []any:
+			for i, e := range v {
+				walk(append(append([]string{}, prefix...), strconv.Itoa(i)), e)
+			}
+		default:
+			out = append(out, strings.Join(prefix, "."))
+		}
+	}
+	walk(nil, attrs)
+	sort.Strings(out)
+	return out
 }
 
 // expectedWritten computes the written paths of an instance the way the
@@ -464,6 +664,42 @@ func (c contractTree) eachPlaceholder(visit func(path []string)) {
 	}
 }
 
+// eachLeaf walks the term and its nested lists, visiting every leaf path.
+func (c contractTree) eachLeaf(visit func(path []string)) {
+	var walk func(t *ast.Term, path []string)
+	walk = func(t *ast.Term, path []string) {
+		if t == nil {
+			return
+		}
+		switch v := t.Value.(type) {
+		case ast.String, ast.Boolean, ast.Number, ast.Null:
+			visit(path)
+		case ast.Object:
+			if v.Len() == 0 {
+				visit(path)
+				return
+			}
+			for _, key := range v.Keys() {
+				if s, ok := key.Value.(ast.String); ok {
+					walk(v.Get(key), append(append([]string{}, path...), string(s)))
+				}
+			}
+		case *ast.Array:
+			if v.Len() == 0 {
+				visit(path)
+				return
+			}
+			for i := 0; i < v.Len(); i++ {
+				walk(v.Elem(i), append(append([]string{}, path...), strconv.Itoa(i)))
+			}
+		}
+	}
+	walk(c.root, nil)
+	for name, list := range c.nested {
+		walk(list, []string{name})
+	}
+}
+
 func termContains(t *ast.Term, placeholder string) bool {
 	if t == nil {
 		return false
@@ -675,4 +911,86 @@ func modelAt(attrs map[string]cty.Value, path []string) (cty.Value, bool) {
 		}
 	}
 	return current, true
+}
+
+// planComputedFixture is a root whose bucket attribute the configuration
+// does not write and a plan supplies, and whose arn the plan marks unknown.
+const planComputedFixture = `{"format_version":"1.2","terraform_version":"1.6.0",
+ "planned_values":{"root_module":{"resources":[
+  {"address":"aws_s3_bucket.sink","mode":"managed","type":"aws_s3_bucket","name":"sink","provider_name":"registry.terraform.io/hashicorp/aws","schema_version":0,"values":{"probe":"planned"},"sensitive_values":{}}]}},
+ "resource_changes":[
+  {"address":"aws_s3_bucket.sink","mode":"managed","type":"aws_s3_bucket","name":"sink","provider_name":"registry.terraform.io/hashicorp/aws","change":{"actions":["create"],"before":null,"after":{"probe":"planned"},"after_unknown":{"computed_ref":true}}}],
+ "configuration":{"root_module":{"resources":[
+  {"address":"aws_s3_bucket.sink","mode":"managed","type":"aws_s3_bucket","name":"sink","provider_config_key":"aws","expressions":{},"schema_version":0}]}}}`
+
+// TestPlanComputedValuesStayReadable checks the plan-computed state: the
+// values a plan supplies for attributes the configuration does not write
+// are readable in both projections and never in the written set, and the
+// ones the plan marks unknown are the placeholder.
+func TestPlanComputedValuesStayReadable(t *testing.T) {
+	dir := t.TempDir()
+	plan := filepath.Join(dir, "tfplan.json")
+	require.NoError(t, os.WriteFile(plan, []byte(planComputedFixture), 0o600))
+	placeholder := value.NewPlaceholder()
+	scan, err := model.Load(t.Context(), dir, &model.Options{Plans: []string{plan}, PlansOnly: true})
+	require.NoError(t, err)
+	proj := Project(scan.Roots, Options{Placeholder: placeholder})
+	docs := LegacyDocs(scan.Roots, LegacyOptions{
+		Base:        dir,
+		Placeholder: placeholder,
+		FileID:      func(string) (string, bool) { return "doc", true },
+	})
+
+	var sink *Located
+	for _, loc := range proj.Blocks {
+		if loc.Type == "aws_s3_bucket" {
+			sink = loc
+		}
+	}
+	require.NotNil(t, sink, "the plan's sink block is not in the contract input")
+
+	// The planned value is readable in the contract input's computed
+	// metadata, never in the written set.
+	computed := mustMeta(t, proj, sink.ID, "computed")
+	require.Equal(t, "planned", objectGet(t, computed, "probe"),
+		"the plan-computed value is not readable in the contract input")
+	require.Equal(t, placeholder, objectGet(t, computed, "computed_ref"),
+		"the unknown planned attribute is not the placeholder in the contract input")
+	for _, w := range writtenSet(proj, sink.ID) {
+		require.NotEqual(t, "probe", w, "the plan-computed attribute is in the written set")
+	}
+
+	// The legacy document carries the planned value and the placeholder for
+	// the unknown one.
+	entry := legacyEntry(t, docs, sink.Instance(), "plan-computed")
+	require.Equal(t, "planned", entry["probe"], "the plan-computed attribute is not readable in the legacy document")
+	require.Equal(t, placeholder, entry["computed_ref"], "the unknown planned attribute is not the placeholder in the legacy document")
+}
+
+// objectGet reads one key of an object metadata value.
+func objectGet(t *testing.T, v ast.Value, key string) string {
+	t.Helper()
+	obj, ok := v.(ast.Object)
+	require.True(t, ok, "the metadata is not an object")
+	term := obj.Get(ast.StringTerm(key))
+	require.NotNil(t, term, "no %s in the metadata", key)
+	s, ok := term.Value.(ast.String)
+	require.True(t, ok, "%s is not a string", key)
+	return string(s)
+}
+
+// mustMeta reads one _dd_meta entry of a block.
+func mustMeta(t *testing.T, proj *Projection, id, key string) ast.Value {
+	t.Helper()
+	obj, ok := proj.Input.(ast.Object)
+	require.True(t, ok)
+	ddTerm := obj.Get(ast.StringTerm("_dd"))
+	require.NotNil(t, ddTerm)
+	dd := ddTerm.Value.(ast.Object)
+	byID := dd.Get(ast.StringTerm("by_id")).Value.(ast.Object)
+	block := byID.Get(ast.StringTerm(id)).Value.(ast.Object)
+	meta := block.Get(ast.StringTerm("_dd_meta")).Value.(ast.Object)
+	v := meta.Get(ast.StringTerm(key))
+	require.NotNil(t, v, "no %s in the metadata of %s", key, id)
+	return v.Value
 }

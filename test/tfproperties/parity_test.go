@@ -130,6 +130,13 @@ func TestInstancesOfABlockProduceTheSameFindingShape(t *testing.T) {
 				byRule[f.Rule] = append(byRule[f.Rule], f)
 			}
 		}
+		// The expected rule must fire, whatever else fires: losing every
+		// finding of a firing cell is a break, not an empty pass.
+		if c.Fire {
+			require.NotEmpty(t, byRule[c.RuleID(tfcorpus.ProbeLegacy)],
+				"cell %s: the legacy probe rule %s fired nothing\n%s",
+				c.Name(), c.RuleID(tfcorpus.ProbeLegacy), c.Repro())
+		}
 		for rule, fs := range byRule {
 			checkInstanceGroups(t, c, rule, fs, false)
 			if c.WantChains > 0 {
@@ -143,17 +150,20 @@ func TestInstancesOfABlockProduceTheSameFindingShape(t *testing.T) {
 			}
 		}
 		// The declared keys must all be covered by the rules that fire.
-		if len(byRule) > 0 {
-			covered := map[string]bool{}
-			for _, fs := range byRule {
-				for _, f := range fs {
-					covered[addressName(f.ResourceID)] = true
-				}
+		if !c.Fire {
+			require.Empty(t, byRule,
+				"cell %s holds a non-firing value but rules fired\n%s", c.Name(), c.Repro())
+			continue
+		}
+		covered := map[string]bool{}
+		for _, fs := range byRule {
+			for _, f := range fs {
+				covered[addressName(f.ResourceID)] = true
 			}
-			for _, key := range c.Keys {
-				require.True(t, covered[key],
-					"cell %s: no rule fires on instance %s\n%s", c.Name(), key, c.Repro())
-			}
+		}
+		for _, key := range c.Keys {
+			require.True(t, covered[key],
+				"cell %s: no rule fires on instance %s\n%s", c.Name(), key, c.Repro())
 		}
 	}
 }
@@ -173,6 +183,12 @@ func TestContractInstancesCarryTheirAddress(t *testing.T) {
 			if strings.HasPrefix(f.Rule, "probe-contract-") {
 				byRule[f.Rule] = append(byRule[f.Rule], f)
 			}
+		}
+		// The expected contract rule must fire as well.
+		if c.Fire {
+			require.NotEmpty(t, byRule[c.RuleID(tfcorpus.ProbeContract)],
+				"cell %s: the contract probe rule %s fired nothing\n%s",
+				c.Name(), c.RuleID(tfcorpus.ProbeContract), c.Repro())
 		}
 		for rule, fs := range byRule {
 			checkInstanceGroups(t, c, rule, fs, true)
