@@ -164,6 +164,8 @@ var expansionSpecs = []struct {
 		keys: func(name string) []string { return []string{name} }},
 	{expansion: "none", sinkKind: "data", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name} }},
+	// Ephemeral blocks are evaluated as written: they are not expanded, so
+	// their cells cover the singleton case only (see the package README).
 	{expansion: "none", sinkKind: "ephemeral", shapes: []string{"scalar"}, chains: 1,
 		keys: func(name string) []string { return []string{name} }},
 	{expansion: "count1", sinkKind: "resource", shapes: []string{"scalar"}, chains: 1,
