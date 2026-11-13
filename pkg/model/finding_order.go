@@ -93,10 +93,14 @@ func compareFileSource(a, b []string) int {
 
 // compareCodeLines orders the reported code lines, nil slice first. The
 // vulnLines pointer serializes null when missing, so the nil check keeps
-// null and [] apart as well.
+// null and [] apart as well. A pointer to a nil slice also serializes null,
+// so the pointed-to nil and empty states are kept apart too.
 func compareCodeLines(a, b *[]CodeLine) int {
 	if a == nil || b == nil {
 		return compareBool(a != nil, b != nil)
+	}
+	if c := compareBool(*a != nil, *b != nil); c != 0 {
+		return c
 	}
 	return slices.CompareFunc(*a, *b, func(x, y CodeLine) int {
 		return cmp.Or(

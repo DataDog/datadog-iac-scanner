@@ -137,6 +137,8 @@ func mutationTable() []func(v *Vulnerability) {
 			v.VulnLines = lines(CodeLine{Position: 1, Line: "x"}, CodeLine{Position: 2, Line: "y"})
 		},
 		func(v *Vulnerability) { empty := []CodeLine{}; v.VulnLines = &empty },
+		// A pointer to a nil slice serializes null, so it is its own entry too.
+		func(v *Vulnerability) { nilLines := []CodeLine(nil); v.VulnLines = &nilLines },
 		func(v *Vulnerability) { v.Frameworks = []Framework{{Framework: "cis"}} },
 		func(v *Vulnerability) { v.Frameworks = []Framework{{Framework: "cis", Requirement: "1.2"}} },
 		func(v *Vulnerability) { v.IsSuppressed = true },
