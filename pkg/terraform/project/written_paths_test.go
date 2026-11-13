@@ -107,6 +107,12 @@ func writtenLeaves(attrs map[string]cty.Value) []modelLeaf {
 		ty := v.Type()
 		switch {
 		case ty.IsListType() || ty.IsTupleType() || ty.IsSetType():
+			if v.LengthInt() == 0 {
+				// A known-empty container is present too: the projections
+				// carry it (or its absence must be accounted for).
+				out = append(out, modelLeaf{path: path, value: v, class: leafKnown})
+				return
+			}
 			i := 0
 			for it := v.ElementIterator(); it.Next(); i++ {
 				_, e := it.Element()
@@ -114,6 +120,10 @@ func writtenLeaves(attrs map[string]cty.Value) []modelLeaf {
 			}
 		case ty.IsMapType() || ty.IsObjectType():
 			m := v.AsValueMap()
+			if len(m) == 0 {
+				out = append(out, modelLeaf{path: path, value: v, class: leafKnown})
+				return
+			}
 			keys := make([]string, 0, len(m))
 			for k := range m {
 				keys = append(keys, k)

@@ -88,34 +88,36 @@ func MaterializeState(t *testing.T, cells []StateCell) (string, []string) {
 // type; module identity includes the source, so two calls of the same name
 // with different sources stay distinct.
 var (
-	oneLabelRe  = regexp.MustCompile(`(?m)^(module|variable|output)\s+"([^"]+)"\s*\{([^}]*)`)
-	twoLabelRe  = regexp.MustCompile(`(?m)^(resource|data|ephemeral)\s+"([^"]+)"\s+"([^"]+)"\s*\{`)
-	moduleSrcRe = regexp.MustCompile(`source\s*=\s*"([^"]+)"`)
+	oneLabelRe = regexp.MustCompile(`(?m)^(module|variable|output)\s+"([^"]+)"\s*\{`)
+	twoLabelRe = regexp.MustCompile(`(?m)^(resource|data|ephemeral)\s+"([^"]+)"\s+"([^"]+)"\s*\{`)
 )
 
 // checkLabels rejects a root that declares the same labeled block twice:
 // a collision would make two cells' fixtures overlap and the findings
-// unattributable.
+// unattributable. Identity is the declaring directory scope (a module
+// directory holds its own scope, where the same name may repeat legally),
+// the block kind, the labels, and the resource type for the two-label
+// kinds. The module source does not take part: two same-name calls in one
+// scope are one call whatever they point at.
 func checkLabels(cell Cell) error {
 	seen := map[string]string{}
+	scope := func(file string) string {
+		if i := strings.LastIndex(file, "/"); i >= 0 {
+			return file[:i]
+		}
+		return ""
+	}
 	for name, content := range cell.files {
+		dir := scope(name)
 		for _, m := range oneLabelRe.FindAllStringSubmatch(content, -1) {
-			key := m[1] + " " + m[2]
-			if m[1] == "module" {
-				// Two calls of the same name are the same call only when
-				// they share the source.
-				src := moduleSrcRe.FindStringSubmatch(m[3])
-				if src != nil {
-					key += " " + src[1]
-				}
-			}
+			key := dir + "\x00" + m[1] + " " + m[2]
 			if prev, ok := seen[key]; ok {
 				return fmt.Errorf("cell %s declares %s twice (%s and %s)", cell.Name(), key, prev, name)
 			}
 			seen[key] = name
 		}
 		for _, m := range twoLabelRe.FindAllStringSubmatch(content, -1) {
-			key := m[1] + " " + m[2] + " " + m[3]
+			key := dir + "\x00" + m[1] + " " + m[2] + " " + m[3]
 			if prev, ok := seen[key]; ok {
 				return fmt.Errorf("cell %s declares %s twice (%s and %s)", cell.Name(), key, prev, name)
 			}
@@ -128,44 +130,52 @@ func checkLabels(cell Cell) error {
 // MaterializeAt writes the cells under dir (a new temporary directory when
 // empty), for callers outside a test.
 func MaterializeAt(dir string, cells []Cell) (string, []string, error) {
-	if dir == "" {
-		d, err := os.MkdirTemp("", "tfcorpus")
-		if err != nil {
-			return "", nil, err
-		}
-		dir = d
-	}
+	files := make([]map[string]string, len(cells))
 	names := make([]string, len(cells))
 	for i, c := range cells {
 		if err := checkLabels(c); err != nil {
 			return "", nil, err
 		}
 		names[i] = DirName(i, c.Name())
-		if err := writeTree(filepath.Join(dir, names[i]), c.files); err != nil {
-			return "", nil, err
-		}
+		files[i] = c.files
 	}
-	return dir, names, nil
+	d, err := writeCells(dir, "tfcorpus", names, files)
+	return d, names, err
 }
 
 // MaterializeStateAt writes the state cells under dir (a new temporary
 // directory when empty), for callers outside a test.
 func MaterializeStateAt(dir string, cells []StateCell) (string, []string, error) {
-	if dir == "" {
-		d, err := os.MkdirTemp("", "tfcorpus-state")
-		if err != nil {
+	files := make([]map[string]string, len(cells))
+	names := make([]string, len(cells))
+	for i, c := range cells {
+		// The state cells pass the same validity check as the rest of the
+		// corpus.
+		if err := checkLabels(Cell{files: c.files}); err != nil {
 			return "", nil, err
+		}
+		names[i] = DirName(i, c.Name())
+		files[i] = c.files
+	}
+	d, err := writeCells(dir, "tfcorpus-state", names, files)
+	return d, names, err
+}
+
+// writeCells writes one root per entry under dir.
+func writeCells(dir, tempPattern string, names []string, files []map[string]string) (string, error) {
+	if dir == "" {
+		d, err := os.MkdirTemp("", tempPattern)
+		if err != nil {
+			return "", err
 		}
 		dir = d
 	}
-	names := make([]string, len(cells))
-	for i, c := range cells {
-		names[i] = DirName(i, c.Name())
-		if err := writeTree(filepath.Join(dir, names[i]), c.files); err != nil {
-			return "", nil, err
+	for i := range names {
+		if err := writeTree(filepath.Join(dir, names[i]), files[i]); err != nil {
+			return "", err
 		}
 	}
-	return dir, names, nil
+	return dir, nil
 }
 
 // DirName is the directory name of cell i with the given cell name.

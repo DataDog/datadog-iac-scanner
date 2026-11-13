@@ -2,13 +2,20 @@
  "main.tf": [
   {
    "file": "main.tf",
+   "locals": {
+    "src": {
+     "probe_source": "fire"
+    }
+   },
    "module": {
     "m": {
      "in_val": "${aws_instance.src}",
      "source": "./mod"
     },
     "m2": {
-     "in_val": "${local.src}",
+     "in_val": {
+      "probe_source": "fire"
+     },
      "source": "./mod"
     }
    },
@@ -29,7 +36,7 @@
    "file": "mod/main.tf",
    "output": {
     "out_missing": {
-     "value": "${try(var.in_val.missing, { probe_source = \"safe\", extra = \"x\" })}"
+     "value": "${try(var.in_val.missing, { probe_source = \"fire\" })}"
     },
     "out_val": {
      "value": "${var.in_val}"
@@ -40,13 +47,25 @@
    }
   }
  ],
+ "neighbor.tf": [
+  {
+   "file": "neighbor.tf",
+   "resource": {
+    "aws_instance": {
+     "nbr": {
+      "for_each": "${var.unset_value}",
+      "probe_source": "nbr"
+     }
+    }
+   }
+  }
+ ],
  "sink.tf": [
   {
    "file": "sink.tf",
    "resource": {
     "aws_s3_bucket": {
      "sink": {
-      "computed_ref": "${aws_instance.src.id}",
       "probe": "${module.m.out_val}"
      }
     }
@@ -59,10 +78,17 @@
    "resource": {
     "aws_instance": {
      "src": {
-      "extra": "x",
-      "probe_source": "safe"
+      "probe_source": "fire"
      }
     }
+   }
+  }
+ ],
+ "unset.tf": [
+  {
+   "file": "unset.tf",
+   "variable": {
+    "unset_value": {}
    }
   }
  ]

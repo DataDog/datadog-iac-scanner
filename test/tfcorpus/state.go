@@ -73,6 +73,8 @@ func StateGrid() []StateCell {
 		{"absent", "nested"},
 		{"unknown_count", "sink"},
 		{"unknown_dynamic", "sink"},
+		{"empty_list", "top"},
+		{"empty_map", "top"},
 		{"known_dynamic", "sink"},
 	}
 	cells := make([]StateCell, 0, len(rows))
@@ -126,6 +128,12 @@ func buildState(state, placement string) StateCell {
 		c.files["unset.tf"] = "variable \"unset\" {}\n"
 		c.files["sink.tf"] = renderSink("resource", []string{
 			"dynamic \"d\" {\n    for_each = var.unset\n    content {\n      inner = d.value\n    }\n  }"})
+	case "empty_list":
+		// A known-empty list attribute: present, with nothing in it.
+		c.files["sink.tf"] = renderSink("resource", []string{"attr = []"})
+	case "empty_map":
+		// A known-empty map attribute: present, with nothing in it.
+		c.files["sink.tf"] = renderSink("resource", []string{"attr = {}"})
 	case "known_dynamic":
 		c.files["sink.tf"] = renderSink("resource", []string{
 			`dynamic "d" {

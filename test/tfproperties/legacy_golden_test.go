@@ -42,13 +42,6 @@ const updateEnv = "TFGOLDEN_UPDATE"
 // assigned at the start of the test.
 var markPlaceholder func(content []byte, placeholder string) []byte
 
-// tryPairRename reports whether the cell is a pair whose outer kind is the
-// try: the previous engine evaluated the inner kind's file under outer.tf,
-// this engine keeps it as inner.tf.
-func tryPairRename(c tfcorpus.Cell) bool {
-	return strings.HasPrefix(c.Indirection, "try+")
-}
-
 // transformCount counts the applications of each exact transformation, so
 // the test can require every one of them to have changed a baseline.
 var transformCount = map[string]int{}
@@ -136,26 +129,7 @@ func TestLegacyDocumentsMatchThePreviousEngine(t *testing.T) {
 		if d.isState {
 			expected = transformStateGolden(t, d.state, golden, placeholders[name])
 		} else {
-			g := golden
-			if tryPairRename(d.cell) {
-				// The previous engine evaluated the inner kind's file under
-				// outer.tf; this engine keeps it as inner.tf.
-				var byFile map[string][]map[string]any
-				if err := json.Unmarshal(g, &byFile); err == nil {
-					if inner, ok := byFile["outer.tf"]; ok {
-						delete(byFile, "outer.tf")
-						for _, doc := range inner {
-							doc["file"] = "inner.tf"
-						}
-						byFile["inner.tf"] = inner
-						rebuilt, err := json.Marshal(byFile)
-						if err == nil {
-							g = rebuilt
-						}
-					}
-				}
-			}
-			expected = transformGolden(t, d.cell, g)
+			expected = transformGolden(t, d.cell, golden)
 		}
 		if string(expected) != string(d.raw) {
 			failed++
@@ -632,11 +606,16 @@ func resolveChain(c tfcorpus.Cell, doc map[string]any, probeValue any) bool {
 					// The empty resource object the observed call carries.
 					resolve(entry, "extraArg")
 				}
-				// The missing-attribute output resolves only where the
-				// call's input is the plain lookalike object (the read
-				// errors into the fallback); an instance object answers
-				// unknown and the try keeps it as the source text.
+				// The missing-attribute output resolves where the call's
+				// input is the plain object (the read errors into the
+				// fallback); an instance object answers unknown and the
+				// try keeps it as the source text. The plain object is
+				// the observed call's input for the lookalike source and
+				// the second call's input for the resource source.
 				if nameKey == "sink4" && c.Source == "lookalike" {
+					resolve(entry, "probe")
+				}
+				if nameKey == "sink2" && c.Source == "resource_object" {
 					resolve(entry, "probe")
 				}
 				if section == "data" {

@@ -100,8 +100,13 @@ func buildCell(c Cell) Cell {
 				fallbackObj = `{ probe_source = "safe", extra = "x" }`
 			}
 			c.files["mod/main.tf"] += "\noutput \"out_missing\" {\n  value = try(var.in_val.missing, " + fallbackObj + ")\n}\n"
+			// The observed call passes the resource object; the second
+			// call passes an ordinary object of the same value. Both are
+			// declared: the resource in src.tf by cellSource, the ordinary
+			// object here.
 			other := "local.src"
-			decl := ""
+			decl := "\nlocals {\n  src = { probe_source = %s }\n}\n"
+			decl = fmt.Sprintf(decl, srcLiteral)
 			if c.Source == "lookalike" {
 				other = "aws_instance.src"
 				decl = fmt.Sprintf("\nresource \"aws_instance\" \"src\" {\n  probe_source = %s\n}\n", strings.ReplaceAll(srcLiteral, ", extra = ", "\n  extra = "))
@@ -112,6 +117,12 @@ func buildCell(c Cell) Cell {
 				// The observed call's input is the plain lookalike object:
 				// its missing-attribute output resolves to the fallback, so
 				// sink4 fires like the sink does.
+				c.Sinks = 2
+			}
+			if c.Source == "resource_object" {
+				// The second call's input is the plain object: its
+				// missing-attribute output resolves to the fallback, so
+				// sink2 fires like the sink does.
 				c.Sinks = 2
 			}
 		}
@@ -312,7 +323,11 @@ func buildLiteral(c *Cell) {
 			"sink.tf": renderSink("resource", []string{"probe = " + literal}),
 		}
 		if c.Sinks == 2 {
-			files["sink4.tf"] = renderSinkNamed("resource", "sink4", []string{"probe = " + literal})
+			second := "sink2"
+			if c.Source == "lookalike" {
+				second = "sink4"
+			}
+			files[second+".tf"] = renderSinkNamed("resource", second, []string{"probe = " + literal})
 		}
 		c.files = files
 		return
@@ -325,9 +340,11 @@ func buildLiteral(c *Cell) {
 		"sink.tf": renderSink("resource", []string{"probe = " + literal}),
 	}
 	if c.Sinks == 2 {
-		// The cell observes two module calls with equal-value inputs; its
-		// oracle writes the same value on both sinks.
-		files["sink4.tf"] = renderSinkNamed("resource", "sink4", []string{"probe = " + literal})
+		second := "sink2"
+		if c.Source == "lookalike" {
+			second = "sink4"
+		}
+		files[second+".tf"] = renderSinkNamed("resource", second, []string{"probe = " + literal})
 	}
 	c.files = files
 }

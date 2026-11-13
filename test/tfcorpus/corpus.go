@@ -155,8 +155,10 @@ func objectSource(c Cell) bool {
 func (c Cell) Oracle() Cell {
 	o := c
 	o.Indirection = ""
-	o.Source = "written"
 	o.Neighbor = ""
+	// The oracle keeps the cell's provenance when it names the sinks: the
+	// second sink fires on the output of whichever call passes the plain
+	// object.
 	o.files = nil
 	buildLiteral(&o)
 	return o

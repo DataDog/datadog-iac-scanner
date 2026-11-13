@@ -1,7 +1,7 @@
 {
- "outer.tf": [
+ "inner.tf": [
   {
-   "file": "outer.tf",
+   "file": "inner.tf",
    "locals": {
     "pair": "fire"
    }
