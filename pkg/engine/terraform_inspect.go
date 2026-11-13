@@ -349,7 +349,7 @@ func (s *terraformStream) finish(ctx context.Context, vulns []model.Vulnerabilit
 	if s.legacyBuilt == nil {
 		return vulns, nil
 	}
-	docs := s.c.addWrittenSections(s.legacyBuilt.docs, s.legacyBuilt.covered, s.written)
+	docs := s.c.addWrittenSections(s.legacyBuilt.docs, s.legacyBuilt.covered, s.written, true)
 	legacyVulns, err := s.c.evalLegacyDocuments(ctx, s.scanID, s.files, s.legacy, docs, s.legacyBuilt.files)
 	if err != nil {
 		return nil, err

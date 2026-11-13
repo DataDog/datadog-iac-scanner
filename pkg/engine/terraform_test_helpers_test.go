@@ -35,11 +35,22 @@ DatadogPolicy contains result if {
 `
 
 func parseTerraform(t *testing.T, path string) model.FileMetadatas {
+	return parseTerraformWith(t, path, true)
+}
+
+// parseTerraformWritten parses the way a scan does, with references left as
+// written: the document keeps blocks whose expansion the model resolves
+// later, so tests see what the engine sees.
+func parseTerraformWritten(t *testing.T, path string) model.FileMetadatas {
+	return parseTerraformWith(t, path, false)
+}
+
+func parseTerraformWith(t *testing.T, path string, resolveReferences bool) model.FileMetadatas {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Clean(path))
 	require.NoError(t, err)
 
-	_, docs, ignore, resolved, err := terraformParser.NewDefault().Parse(context.Background(), content, path, true, 15)
+	_, docs, ignore, resolved, err := terraformParser.NewDefault().Parse(context.Background(), content, path, resolveReferences, 15)
 	require.NoError(t, err)
 
 	var out model.FileMetadatas

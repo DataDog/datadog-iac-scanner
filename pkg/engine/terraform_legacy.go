@@ -164,7 +164,7 @@ func (c *Inspector) inspectTerraformLegacyStream(
 	targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 	if !declaresTargetedResource(files, targets) && !declaresExpandedBlock(files, targets) &&
 		!declaresLocalModuleCall(files) {
-		docs := c.addWrittenSections(nil, nil, written)
+		docs := c.addWrittenSections(nil, nil, written, false)
 		return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, files)
 	}
 	layout, err := c.terraformLayout(ctx, files)
@@ -211,7 +211,7 @@ func (c *Inspector) inspectTerraformLegacyStream(
 		}
 		c.takeLegacyRoot(built, &b, layout.Plan(ctx, path))
 	}
-	docs := c.addWrittenSections(built.docs, built.covered, written)
+	docs := c.addWrittenSections(built.docs, built.covered, written, true)
 	return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, built.files)
 }
 
@@ -397,19 +397,19 @@ func copyWrittenSections(doc map[string]any, file *model.FileMetadata) {
 }
 
 // addWrittenSections adds a document for each scanned file the legacy docs do
-// not already stand for. When the stream skipped modeling (raw holds no
-// document), every scanned file contributes its whole written document: the
-// rules run on the files as they are written. When the model produced
-// documents, config files contribute only the sections the model does not
-// carry: their blocks reach the report through the root's modeled document,
-// or, when an override merges them away, through the file they override. A
-// Terraform plan file is never a config file, so the model only covers it
-// when the layout modeled it; an uncovered plan contributes its whole written
-// document, which is already shaped for rules.
+// not already stand for. modeled tells the two cases apart: when the stream
+// skipped modeling, every scanned file contributes its whole written document
+// — the rules run on the files as they are written. When the model ran, config
+// files contribute only the sections the model does not carry: their blocks
+// reach the report through the root's modeled document, or, when an override
+// merges them away, through the file they override, and a file whose every
+// block expanded to no instance holds no resource at all, so its written
+// document must not come back. A Terraform plan file is never a config file,
+// so the model only covers it when the layout modeled it; an uncovered plan
+// contributes its whole written document, which is already shaped for rules.
 func (c *Inspector) addWrittenSections(
-	docs []model.Document, raw []*project.LegacyDoc, written map[string]*model.FileMetadata,
+	docs []model.Document, raw []*project.LegacyDoc, written map[string]*model.FileMetadata, modeled bool,
 ) []model.Document {
-	modeled := len(raw) > 0
 	covered := make(map[string]bool, len(raw))
 	for _, d := range raw {
 		// Module instance documents stand for their defining file too: the
