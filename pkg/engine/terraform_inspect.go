@@ -8,6 +8,7 @@ package engine
 import (
 	"context"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -44,6 +45,21 @@ func (c *Inspector) inspectTerraformPlatform(
 	var vulns []model.Vulnerability
 	if len(terraformQueries) > 0 {
 		contract, legacy := splitTerraformRules(terraformQueries)
+		// The contract evaluation reads roots from the filesystem and decodes
+		// results from the files' line info; it never reads the scanned
+		// documents. When nothing else does either — no legacy Terraform
+		// payload and no other-platform payload is built from them, and the
+		// scan does not export the plain JSON payload — release the documents
+		// before evaluating, so their trees do not sit beside the contract
+		// input for the whole scan.
+		if len(legacy) == 0 && len(others) == 0 && c.releaseDocumentsAfterPayload {
+			for _, f := range files {
+				if f != nil {
+					f.Document = nil
+				}
+			}
+			runtime.GC()
+		}
 		// Absolute and relative paths are separate trees: each is modeled
 		// from its own base. Roots are evaluated one at a time so a root's
 		// model is gone before the next root.
@@ -377,6 +393,13 @@ func (c *Inspector) crossRootIndexLayout(
 			candidates = append(candidates, candidate{dir: filepath.Clean(root.Dir), idx: one})
 		}
 		root.Modules = nil
+		// The root has been modeled once; its parse and evaluation values are
+		// of no further use, so they do not stay resident for the scan. A
+		// directory another root calls as a module keeps its parse: the main
+		// pass reuses it for every call.
+		if !called[filepath.Clean(root.Dir)] {
+			layout.ReleaseRootParse(dir)
+		}
 	}
 	n := 0
 	for _, cand := range candidates {
