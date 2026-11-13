@@ -100,7 +100,7 @@ func getDataSourcePolicy(
 	// Each pass exposes one more link of a dependency chain through data or
 	// locals, so a chain can be at most as long as the blocks plus locals.
 	for pass := 0; pass <= len(blocks)+len(assignments); pass++ {
-		next := renderLocalData(blocks, inputVariables)
+		next := renderLocalData(ctx, blocks, inputVariables)
 		data, err := gocty.ToCtyValue(next, cty.Map(cty.Map(cty.Map(cty.String))))
 		if err != nil {
 			contextLogger.Error().Msgf("Error trying to convert data sources to cty value: %s", err)
@@ -383,7 +383,7 @@ func reachesItself(edges map[string][]string, start string) bool {
 }
 
 func renderLocalData(
-	blocks []localDataBlock, inputVariables converter.VariableMap,
+	ctx context.Context, blocks []localDataBlock, inputVariables converter.VariableMap,
 ) map[string]map[string]map[string]string {
 	evalCtx := &hcl.EvalContext{Variables: inputVariables, Functions: functions.TerraformFuncs}
 	out := map[string]map[string]map[string]string{}
@@ -393,7 +393,7 @@ func renderLocalData(
 		if b.json {
 			eval = jsonEval(evalCtx, b.src)
 		}
-		attrs := b.source(b.body, eval)
+		attrs := b.source(ctx, b.body, eval)
 		if attrs == nil {
 			continue
 		}

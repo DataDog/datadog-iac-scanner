@@ -252,7 +252,7 @@ func repeatedBlockSlots(body *hclsyntax.Body, attrName string, repeated repeated
 			fixed++
 		case dynamicblock.Is(block) && dynamicblock.GeneratedType(block) == attrName:
 			sourceLines[line] = true
-			if expansion := dynamicblock.Expand(block, dynamicForEachContext); expansion.Resolved {
+			if expansion := dynamicblock.Expand(context.Background(), block, dynamicForEachContext); expansion.Resolved {
 				entries = append(entries, entry{line, len(expansion.Iterators)})
 				fixed += len(expansion.Iterators)
 			} else {

@@ -574,6 +574,11 @@ func (c *Inspector) Inspect(
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		// A canceled scan must not scan the modules that were evaluated only in
+		// part; instantiateLocalModules mutates nothing in that case.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
 
