@@ -82,18 +82,22 @@ func reportedKeys(vs []model.Vulnerability) []string {
 }
 
 // TestRepeatedScansWriteTheSameReport checks that a whole scan, through the
-// command-line path, writes the same SARIF twice.
+// command-line path, writes the same SARIAT every time. The repetitions
+// reduce in short mode; the check itself never skips.
 func TestRepeatedScansWriteTheSameReport(t *testing.T) {
+	repetitions := 3
 	if testing.Short() {
-		t.Skip("the repeated reports run only in the full suite")
+		repetitions = 2
 	}
 	cells := determinismCells()
 	rules := tfcorpus.WriteRules(t)
 	libs := tfharness.LibraryPath(t)
 	dir, _ := tfcorpus.Materialize(t, cells)
-	first := tfharness.ScanPath(t, dir, rules, libs)
-	second := tfharness.ScanPath(t, dir, rules, libs)
-	require.Equal(t, string(first), string(second), "two scans wrote different SARIF")
+	reports := make(map[string]struct{}, repetitions)
+	for i := 0; i < repetitions; i++ {
+		reports[string(tfharness.ScanPath(t, dir, rules, libs))] = struct{}{}
+	}
+	require.Len(t, reports, 1, "%d scans wrote %d different SARIF", repetitions, len(reports))
 }
 
 // TestCompactFindingsKeepTheFirstOfEachIdentity checks the engine's
@@ -215,10 +219,12 @@ func sarifFingerprints(t *testing.T, sarif []byte) map[string][]string {
 // TestFingerprintsDiscriminateModuleCalls checks the report path's stable
 // identity: the fingerprint of the same identity is equal across runs, and
 // the same rule reached through different module call chains carries
-// different fingerprints.
+// different fingerprints. The repetitions reduce in short mode; the check
+// itself never skips.
 func TestFingerprintsDiscriminateModuleCalls(t *testing.T) {
+	repetitions := 2
 	if testing.Short() {
-		t.Skip("the report fingerprints run only in the full suite")
+		repetitions = 1
 	}
 	var cells []tfcorpus.Cell
 	for _, c := range tfcorpus.ExpansionGrid() {
@@ -231,16 +237,17 @@ func TestFingerprintsDiscriminateModuleCalls(t *testing.T) {
 	libs := tfharness.LibraryPath(t)
 	dir, _ := tfcorpus.Materialize(t, cells)
 
-	first := sarifFingerprints(t, tfharness.ScanPath(t, dir, rules, libs))
-	second := sarifFingerprints(t, tfharness.ScanPath(t, dir, rules, libs))
-	for rule, fps := range first {
-		require.NotEmpty(t, fps, "no fingerprint for rule %s", rule)
-		require.Equal(t, fps, second[rule], "the fingerprints of rule %s differ between runs", rule)
+	runs := make([]map[string][]string, 0, repetitions)
+	for i := 0; i < repetitions; i++ {
+		runs = append(runs, sarifFingerprints(t, tfharness.ScanPath(t, dir, rules, libs)))
+	}
+	for _, run := range runs[1:] {
+		require.Equal(t, runs[0], run, "the fingerprints differ between runs")
 	}
 	// One module_foreach cell reports the same rule, file and line for two
 	// call chains; their fingerprints must differ.
 	foundDistinct := false
-	for _, fps := range first {
+	for _, fps := range runs[0] {
 		seen := map[string]bool{}
 		for _, fp := range fps {
 			seen[fp] = true
