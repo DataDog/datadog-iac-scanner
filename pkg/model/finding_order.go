@@ -71,7 +71,7 @@ func compareReported(a, b *Vulnerability) int {
 		cmp.Compare(a.RemediationType, b.RemediationType),
 		cmp.Compare(a.ResourceSource, b.ResourceSource),
 		compareFrameworks(a.Frameworks, b.Frameworks),
-		slices.Compare(a.FileSource, b.FileSource),
+		compareFileSource(a.FileSource, b.FileSource),
 		compareCodeLines(a.VulnLines, b.VulnLines),
 		compareBool(a.IsSuppressed, b.IsSuppressed),
 		cmp.Compare(a.SuppressionKind, b.SuppressionKind),
@@ -80,7 +80,20 @@ func compareReported(a, b *Vulnerability) int {
 	)
 }
 
-// compareCodeLines orders the reported code lines, nil slice first.
+// compareFileSource orders the file sources a finding cites. The report
+// serializes a missing list as null and an empty one as [], so nil and empty
+// must not compare equal or two otherwise-identical duplicates could fall
+// back to arrival order.
+func compareFileSource(a, b []string) int {
+	if c := compareBool(a != nil, b != nil); c != 0 {
+		return c
+	}
+	return slices.Compare(a, b)
+}
+
+// compareCodeLines orders the reported code lines, nil slice first. The
+// vulnLines pointer serializes null when missing, so the nil check keeps
+// null and [] apart as well.
 func compareCodeLines(a, b *[]CodeLine) int {
 	if a == nil || b == nil {
 		return compareBool(a != nil, b != nil)

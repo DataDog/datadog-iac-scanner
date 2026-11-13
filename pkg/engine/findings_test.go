@@ -60,6 +60,43 @@ func TestFindingSet_KeepsTheFirstFindingOfEachIdentity(t *testing.T) {
 	require.Equal(t, "primary", got[1].ResourceName, "a different identity is kept on its own")
 }
 
+// The replacement path must not depend on arrival: a later-arriving finding
+// with a lower order displaces the retained duplicate, including on
+// same-line ties, and what the set keeps is what storage keeps.
+func TestFindingSet_KeepsTheFirstFindingWhateverTheArrivalOrder(t *testing.T) {
+	raised := instanceFindings(3, 10)
+	tie := raised[0]
+	tie.SearchValue = "z" // same file, line and search key, lower order without it
+	raised = append(raised, tie)
+
+	orders := [][]int{
+		{0, 1, 2, 3}, {3, 2, 1, 0}, {2, 3, 0, 1}, {1, 0, 3, 2}, {3, 0, 2, 1},
+	}
+	var want []model.Vulnerability
+	for _, order := range orders {
+		arriving := make([]model.Vulnerability, 0, len(order))
+		for _, i := range order {
+			arriving = append(arriving, raised[i])
+		}
+
+		kept := decodeAll(newFindingSet(true, nil), arriving)
+		require.Len(t, kept, 1)
+		stored := model.FirstFindingPerIdentity(append([]model.Vulnerability(nil), arriving...))
+		require.Equal(t, stored, kept,
+			"what the set keeps must be what storage keeps, whatever the arrival order")
+
+		canonical := append([]model.Vulnerability(nil), kept...)
+		model.SortFindings(canonical)
+		if want == nil {
+			want = canonical
+			require.Equal(t, 10, canonical[0].Line, "the earliest line is the one kept")
+			require.Empty(t, canonical[0].SearchValue, "the same-line tie goes to the lower search value")
+			continue
+		}
+		require.Equal(t, want, canonical, "the kept finding must not depend on the arrival order")
+	}
+}
+
 // What the set keeps must be what the scan reports, so that keeping findings
 // as they are decoded cannot change a report.
 func TestFindingSet_KeepsWhatStorageReports(t *testing.T) {

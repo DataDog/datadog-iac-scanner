@@ -130,10 +130,13 @@ func mutationTable() []func(v *Vulnerability) {
 		func(v *Vulnerability) { v.LineWithVulnerability = "other line text" },
 		func(v *Vulnerability) { v.ResourceSource = "terraform" },
 		func(v *Vulnerability) { v.FileSource = []string{"other.tf"} },
+		// null vs [] is a wire difference, so the empty list is its own entry.
+		func(v *Vulnerability) { v.FileSource = []string{} },
 		func(v *Vulnerability) { v.VulnLines = lines(CodeLine{Position: 1, Line: "x"}) },
 		func(v *Vulnerability) {
 			v.VulnLines = lines(CodeLine{Position: 1, Line: "x"}, CodeLine{Position: 2, Line: "y"})
 		},
+		func(v *Vulnerability) { empty := []CodeLine{}; v.VulnLines = &empty },
 		func(v *Vulnerability) { v.Frameworks = []Framework{{Framework: "cis"}} },
 		func(v *Vulnerability) { v.Frameworks = []Framework{{Framework: "cis", Requirement: "1.2"}} },
 		func(v *Vulnerability) { v.IsSuppressed = true },
