@@ -8,8 +8,14 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	scannerparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
+)
+
+const (
+	dockerFrom     = "from"
+	dockerResource = "dockerfile_container"
 )
 
 // Parser is a Dockerfile parser
@@ -20,6 +26,7 @@ type Parser struct {
 type Resource struct {
 	CommandList map[string][]Command `json:"command"`
 	Arguments   []Command            `json:"args"`
+	Analysis    *Analysis            `json:"_dockerfile,omitempty"`
 }
 
 // Command is the struct for each dockerfile command
@@ -50,6 +57,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		return nil, nil, nil, nil, errors.Wrap(err, "failed to parse Dockerfile")
 	}
 
+	var analysis *Analysis
+	if !scannerparser.IsLineInfoOnly(ctx) {
+		analysis = analyze(parsed.AST, newSource(fileContent, parsed.EscapeToken), parsed.EscapeToken)
+	}
+
 	fromValue := ""
 	from := make(map[string][]Command)
 	arguments := make([]Command, 0)
@@ -60,7 +72,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	for _, child := range parsed.AST.Children {
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
-		if child.Value == "from" {
+		if child.Value == dockerFrom {
 			fromValue = strings.TrimPrefix(strings.TrimSpace(child.Original), "FROM ")
 		}
 
@@ -109,9 +121,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	}
 
 	doc := &model.Document{}
-	var resource Resource
-	resource.CommandList = from
-	resource.Arguments = arguments
+	resource := Resource{Analysis: analysis, CommandList: from, Arguments: arguments}
 
 	j, err := json.Marshal(resource)
 	if err != nil {
