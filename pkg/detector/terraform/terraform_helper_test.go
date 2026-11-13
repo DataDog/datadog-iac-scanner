@@ -597,15 +597,39 @@ func TestRepeatedBlockSlots_CanceledMaterializationReturnsNoPartialSlots(t *test
 	complete := repeatedBlockSlots(context.Background(), body, "ingress", unknownBlocks, warm)
 	require.Len(t, complete, 1000000)
 
-	// Cancel while the warm lookup is appending its slots.
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() { cancel() }()
+	// cancelAfterQueries cancels itself after a fixed number of Err queries:
+	// the lookup calls Err once at entry and once per slot appended, so
+	// cancellation after 1,000 queries provably lands inside the append loop,
+	// well past the entry guard, whatever the goroutine scheduling.
+	ctx := &cancelAfterQueries{Context: context.Background(), remaining: 1000}
 	slots := repeatedBlockSlots(ctx, body, "ingress", unknownBlocks, warm)
-	cancel()
 	require.Empty(t, slots, "a canceled materialization must not return partial slots")
+	require.ErrorIs(t, ctx.Err(), context.Canceled,
+		"the cancellation must have fired inside the append loop, past the entry guard")
 
 	after := repeatedBlockSlots(context.Background(), body, "ingress", unknownBlocks, warm)
 	require.Equal(t, complete, after, "the healthy re-lookup must materialize the complete result")
+}
+
+// cancelAfterQueries is a context that cancels itself once Err has been
+// queried a fixed number of times, so a test can land cancellation at a
+// chosen call site deterministically instead of racing a timer.
+type cancelAfterQueries struct {
+	context.Context
+	remaining int
+	mu        sync.Mutex
+	canceled  bool
+}
+
+func (c *cancelAfterQueries) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.remaining == 0 {
+		c.canceled = true
+		return context.Canceled
+	}
+	c.remaining--
+	return nil
 }
 
 // A canceled lookup stops before any slot work even when the memo is warm,
