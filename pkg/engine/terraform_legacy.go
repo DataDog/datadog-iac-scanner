@@ -430,7 +430,9 @@ func (c *Inspector) addWrittenSections(
 		default:
 			continue
 		}
-		docs = append(docs, doc)
+		if len(doc) > 2 {
+			docs = append(docs, doc)
+		}
 	}
 	return docs
 }

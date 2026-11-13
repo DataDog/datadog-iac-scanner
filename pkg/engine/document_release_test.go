@@ -12,22 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// contractLibSource serves the contract libraries a contract rule imports:
-// the common library defines finding, the Terraform library the input lookups.
-type contractLibSource struct{ queries []model.QueryMetadata }
-
-func (s *contractLibSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
-	return s.queries, nil
-}
-
-func (s *contractLibSource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
-	code := releaseTerraformLib
-	if platform == "common" {
-		code = releaseCommonLib
-	}
-	return source.RegoLibraries{LibraryCode: code, LibraryInputData: "{}"}, nil
-}
-
 // The libraries a contract rule needs: the engine locates findings from the
 // block ids the results name, so the library only looks them up in input._dd.
 const (
@@ -56,9 +40,8 @@ by_id(id) := object.get(_dd, ["by_id", id], _placeholder)
 
 literal_keys := {"aws_s3_bucket_versioning": {"bucket": {"aws_s3_bucket": ["bucket"]}}}
 `
-)
 
-const releaseBucketRule = `package datadog
+	releaseBucketRule = `package datadog
 
 import rego.v1
 
@@ -70,26 +53,41 @@ DatadogPolicy contains result if {
 	result := common.finding(b, [], {})
 }
 `
+)
+
+// contractLibSource serves the contract libraries a contract rule imports:
+// the common library defines finding, the Terraform library the input lookups.
+type contractLibSource struct{ queries []model.QueryMetadata }
+
+func (s *contractLibSource) GetQueries(_ context.Context, _ *source.QueryInspectorParameters) ([]model.QueryMetadata, error) {
+	return s.queries, nil
+}
+
+func (s *contractLibSource) GetQueryLibrary(_ context.Context, platform string) (source.RegoLibraries, error) {
+	code := releaseTerraformLib
+	if platform == "common" {
+		code = releaseCommonLib
+	}
+	return source.RegoLibraries{LibraryCode: code, LibraryInputData: "{}"}, nil
+}
 
 // releaseInspector is an inspector whose scan releases every scanned file's
-// documents before the Terraform rules evaluate — the path a scan takes when
-// its Terraform rules all read the contract input and no other platform runs.
-func releaseInspector(t *testing.T, root string, rule model.QueryMetadata) *Inspector {
+// documents before the Terraform rules evaluate (release true) or keeps them
+// (release false) — the two configurations a scan runs in, depending on
+// whether the plain JSON payload is exported.
+func releaseInspector(t *testing.T, root string, rule model.QueryMetadata, release bool) *Inspector {
 	t.Helper()
 	ins, err := NewInspector(context.Background(), &contractLibSource{queries: []model.QueryMetadata{rule}},
 		DefaultVulnerabilityBuilder, &tracker.CITracker{}, &source.QueryInspectorParameters{}, nil,
 		root, false, false, 1, featureflags.NewLocalEvaluator(), nil, false)
 	require.NoError(t, err)
-	ins.SetReleaseDocumentsAfterPayload(true)
+	ins.SetReleaseDocumentsAfterPayload(release)
 	ins.SetReleasePostEvalData(true)
 	return ins
 }
 
-// With the documents released before evaluation, a called module still models:
-// its resource is found, attributed to the root call, and the finding carries
-// the module call chain.
-func TestInspect_DocumentReleaseKeepsModuleCallsAndAttribution(t *testing.T) {
-	root := t.TempDir()
+func releaseModuleFiles(t *testing.T, root string) model.FileMetadatas {
+	t.Helper()
 	writeFile(t, root, "main.tf", `
 module "bucket" {
   source = "./mod"
@@ -100,26 +98,57 @@ resource "aws_s3_bucket" "mod_bucket" {
   bucket = "called"
 }
 `)
-	files := append(parseTerraformWritten(t, filepath.Join(root, "main.tf")),
+	return append(parseTerraformWritten(t, filepath.Join(root, "main.tf")),
 		parseTerraformWritten(t, filepath.Join(root, "mod", "main.tf"))...)
-	ins := releaseInspector(t, root, model.QueryMetadata{
+}
+
+func releaseRule() model.QueryMetadata {
+	return model.QueryMetadata{
 		Query: "release_bucket_rule", Content: releaseBucketRule, InputData: "{}", Platform: "terraform",
 		Metadata: map[string]interface{}{"id": "release-bucket-rule", "platform": "Terraform"}, Aggregation: 1,
-	})
-
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
-	require.NoError(t, err)
-	require.Empty(t, ins.GetFailedQueries())
-	require.NotEmpty(t, vulns, "the module's resource must be found with the documents released")
-	found := false
-	for _, v := range vulns {
-		if v.ResourceName == "mod_bucket" {
-			found = true
-			require.NotEmpty(t, v.ModuleCallChain, "the finding carries the module call chain")
-			require.NotNil(t, v.ModuleAttribution, "the finding is attributed to the root call")
-		}
 	}
-	require.True(t, found, "the called module's bucket is reported; got %v", vulns)
+}
+
+// Releasing the documents before evaluation must not change what the scan
+// reports: the same module resource, with the same identity, whether the
+// documents were released or kept.
+func TestInspect_DocumentReleaseKeepsFindingsIdentical(t *testing.T) {
+	run := func(t *testing.T, release bool) []model.Vulnerability {
+		root := t.TempDir()
+		files := releaseModuleFiles(t, root)
+		ins := releaseInspector(t, root, releaseRule(), release)
+		vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+		require.NoError(t, err)
+		require.Empty(t, ins.GetFailedQueries())
+
+		// The release is the designed state for scans that do not export the
+		// plain JSON payload: the document maps are gone once the payload the
+		// rules read has been built, and legacy and export consumers reparse
+		// from the kept original data. With the release off, the documents
+		// are preserved.
+		for _, f := range files {
+			if release {
+				require.Nil(t, f.Document, "released documents are absent after the scan")
+			} else {
+				require.NotNil(t, f.Document, "kept documents are preserved")
+			}
+		}
+		return vulns
+	}
+
+	released := run(t, true)
+	kept := run(t, false)
+	require.NotEmpty(t, released, "the module's resource is found with the documents released")
+	require.Len(t, released, len(kept), "the release does not change what is reported")
+	for i := range released {
+		require.Equal(t, kept[i].ResourceID, released[i].ResourceID, "same address either way")
+		require.Equal(t, kept[i].IdentityKey, released[i].IdentityKey, "same finding identity either way")
+		require.Equal(t, kept[i].SearchKey, released[i].SearchKey, "same search key either way")
+		require.Equal(t, kept[i].ModuleCallChain, released[i].ModuleCallChain, "same module call chain either way")
+		require.NotNil(t, released[i].ModuleAttribution, "the finding is attributed to the root call")
+		require.Equal(t, kept[i].ModuleAttribution.CallSite, released[i].ModuleAttribution.CallSite,
+			"same attribution either way")
+	}
 }
 
 // Releasing the documents must not bring a resource that expands to no
@@ -137,10 +166,7 @@ resource "aws_s3_bucket" "gone" {
 `)
 	files := append(parseTerraformWritten(t, filepath.Join(root, "main.tf")),
 		parseTerraformWritten(t, filepath.Join(root, "variables.tf"))...)
-	ins := releaseInspector(t, root, model.QueryMetadata{
-		Query: "release_bucket_rule", Content: releaseBucketRule, InputData: "{}", Platform: "terraform",
-		Metadata: map[string]interface{}{"id": "release-bucket-rule", "platform": "Terraform"}, Aggregation: 1,
-	})
+	ins := releaseInspector(t, root, releaseRule(), true)
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
