@@ -10,7 +10,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
-	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 )
 
 // declaresTargetedResource reports whether any scanned Terraform file declares
@@ -20,7 +19,7 @@ func declaresTargetedResource(files model.FileMetadatas, targets *ruleTargets) b
 		return true
 	}
 	for _, f := range files {
-		if f == nil || !tfpath.IsConfig(f.FilePath) {
+		if f == nil || !isTerraformConfigFile(f) {
 			continue
 		}
 		for _, key := range [...]string{address.KindResource, address.KindData, address.KindEphemeral} {
@@ -73,7 +72,7 @@ func declaresExpandedBlock(files model.FileMetadatas, targets *ruleTargets) bool
 		return false
 	}
 	for _, f := range files {
-		if f == nil || !tfpath.IsConfig(f.FilePath) {
+		if f == nil || !isTerraformConfigFile(f) {
 			continue
 		}
 		for _, bs := range blockSections {
@@ -100,10 +99,12 @@ func declaresExpandedBlock(files model.FileMetadatas, targets *ruleTargets) bool
 // A scan whose rules target no declared resource type still models the layout
 // when files call local modules: expansion changes what the documents hold,
 // and a module directory the scan was not given is an escalation request
-// recorded when the model reads it.
+// recorded when the model reads it. Plain .json files the scan recognizes as
+// Terraform configuration by content count like .tf files: the model reads
+// them, so their module calls escalate the same way.
 func declaresLocalModuleCall(files model.FileMetadatas) bool {
 	for _, f := range files {
-		if f == nil || !tfpath.IsConfig(f.FilePath) {
+		if f == nil || !isTerraformConfigFile(f) {
 			continue
 		}
 		modules, _ := asStringMap(f.Document["module"])
