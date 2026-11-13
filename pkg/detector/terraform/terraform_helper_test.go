@@ -2,12 +2,14 @@ package terraform
 
 import (
 	"context"
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/stretchr/testify/require"
@@ -496,4 +498,35 @@ func TestRepeatedBlockSlotsInNestedBody(t *testing.T) {
 		"in a nested body it is not")
 	require.Equal(t, blockSlots{1, 1, 5}, repeatedBlockSlots(context.Background(), body, "flag", repeatedBlocks{total: 3, lines: []int{1, 1, 5}}.inNestedBody()),
 		"the document's lines still apply")
+}
+
+// A dynamic block whose for_each asks for more blocks than any scan enumerates
+// stops expanding at the context: the walk ends promptly and materializes
+// nothing, instead of building the full slot list.
+func TestRepeatedBlockSlots_StopsWhenTheContextIsDone(t *testing.T) {
+	var rules []string
+	for i := 0; i < 300000; i++ {
+		rules = append(rules, "0")
+	}
+	src := `resource "aws_security_group" "sg" {
+  dynamic "ingress" {
+    for_each = ["` + strings.Join(rules, `", "`) + `"]
+    content {}
+  }
+}
+`
+	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	body := file.Body.(*hclsyntax.Body).Blocks[0].Body
+
+	start := time.Now()
+	slots := repeatedBlockSlots(canceledContext(), body, "ingress", unknownBlocks)
+	require.Less(t, time.Since(start), 10*time.Second, "the expansion must stop promptly at the context")
+	require.Empty(t, slots, "a canceled expansion stands for no slots")
+}
+
+func canceledContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
 }
