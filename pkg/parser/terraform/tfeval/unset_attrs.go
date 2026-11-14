@@ -144,9 +144,16 @@ func markResourceInstance(v cty.Value) cty.Value {
 }
 
 // markEmptyResourceInstance marks v only when it is the empty object.
-func markEmptyResourceInstance(v cty.Value) cty.Value {
+func emptyResourceInstanceNeedsMark(v cty.Value) bool {
+	if v.HasMark(resourceInstanceMark{}) {
+		return false
+	}
 	u, _ := v.Unmark()
-	if !u.IsKnown() || u.IsNull() || !u.Type().IsObjectType() || len(u.Type().AttributeTypes()) > 0 {
+	return u.IsKnown() && !u.IsNull() && u.Type().IsObjectType() && len(u.Type().AttributeTypes()) == 0
+}
+
+func markEmptyResourceInstance(v cty.Value) cty.Value {
+	if !emptyResourceInstanceNeedsMark(v) {
 		return v
 	}
 	return markResourceInstance(v)
@@ -158,9 +165,27 @@ func markResourceInstances(v cty.Value, expanded bool) cty.Value {
 	if !expanded {
 		return markEmptyResourceInstance(v)
 	}
-	if v.IsNull() || !v.IsKnown() || !v.CanIterateElements() {
+	if v.IsNull() || !v.IsKnown() || !v.CanIterateElements() || !hasEmptyResourceInstanceToMark(v) {
 		return v
 	}
+	return markResourceInstanceCollection(v)
+}
+
+func hasEmptyResourceInstanceToMark(v cty.Value) bool {
+	ty := v.Type()
+	if !ty.IsTupleType() && !ty.IsListType() && !ty.IsObjectType() && !ty.IsMapType() {
+		return false
+	}
+	for it := v.ElementIterator(); it.Next(); {
+		_, elem := it.Element()
+		if emptyResourceInstanceNeedsMark(elem) {
+			return true
+		}
+	}
+	return false
+}
+
+func markResourceInstanceCollection(v cty.Value) cty.Value {
 	ty := v.Type()
 	switch {
 	case ty.IsTupleType() || ty.IsListType():
@@ -213,9 +238,6 @@ func isUserMarked(v cty.Value) bool {
 // removed at every path, keeping any other marks. Resource attributes and
 // module outputs that leave the evaluator must not carry it.
 func withoutResourceInstanceMarks(v cty.Value) cty.Value {
-	if !v.IsMarked() && (!v.IsKnown() || v.IsNull() || v.Type().IsPrimitiveType()) {
-		return v
-	}
 	v, paths := v.UnmarkDeepWithPaths()
 	if len(paths) == 0 {
 		return v
