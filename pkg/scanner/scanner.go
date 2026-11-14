@@ -91,7 +91,7 @@ const evalGcFileThreshold = 10000
 const evalGcHeapBytes = 3 << 30 // 3 GiB
 
 // reducedEvalGCPercent is the GC percent used on heap-gated scans: lower peak
-// for more frequent collections over a large live set.
+// for more frequent collections over a multi-GiB live set.
 const reducedEvalGCPercent = 30
 
 // liveHeapAfterGC returns the live heap after a full collection (which also
