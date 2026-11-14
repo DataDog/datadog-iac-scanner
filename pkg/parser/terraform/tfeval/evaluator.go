@@ -1641,20 +1641,20 @@ func (n *nestedBlocks) flushAll() {
 // a dynamic block's iterator across the instances of one resource block and the
 // blocks its dynamic blocks generate, which share a parent context. It keeps
 // mark-cleaned invariant attributes too, so instances reuse that value.
-type memoizedExpression struct {
-	value        cty.Value
-	marksCleaned bool
-}
+const (
+	expressionReadsIteration uint8 = 1 << iota
+	expressionMarksCleaned
+)
 
 type invariantMemo struct {
-	values map[hclsyntax.Expression]memoizedExpression
-	varies map[hclsyntax.Expression]bool
+	values map[hclsyntax.Expression]cty.Value
+	state  map[hclsyntax.Expression]uint8
 }
 
 func newInvariantMemo() *invariantMemo {
 	return &invariantMemo{
-		values: make(map[hclsyntax.Expression]memoizedExpression),
-		varies: make(map[hclsyntax.Expression]bool),
+		values: make(map[hclsyntax.Expression]cty.Value),
+		state:  make(map[hclsyntax.Expression]uint8),
 	}
 }
 
@@ -1662,8 +1662,8 @@ func newInvariantMemo() *invariantMemo {
 // enclosing dynamic block. An expression sits in one place of the body, so its
 // enclosing iterators, and with them the answer, never change.
 func (m *invariantMemo) readsIteration(expr hclsyntax.Expression, iterators []string) bool {
-	if v, ok := m.varies[expr]; ok {
-		return v
+	if state, ok := m.state[expr]; ok {
+		return state&expressionReadsIteration != 0
 	}
 	reads := false
 	for _, t := range expr.Variables() {
@@ -1673,7 +1673,11 @@ func (m *invariantMemo) readsIteration(expr hclsyntax.Expression, iterators []st
 			break
 		}
 	}
-	m.varies[expr] = reads
+	if reads {
+		m.state[expr] = expressionReadsIteration
+	} else {
+		m.state[expr] = 0
+	}
 	return reads
 }
 
@@ -1683,11 +1687,12 @@ func (m *invariantMemo) stripResourceInstanceMarks(
 	if m == nil || m.readsIteration(expr, iterators) {
 		return withoutResourceInstanceMarks(value)
 	}
-	if cached, ok := m.values[expr]; ok && cached.marksCleaned {
-		return cached.value
+	if m.state[expr]&expressionMarksCleaned != 0 {
+		return m.values[expr]
 	}
 	cleaned := withoutResourceInstanceMarks(value)
-	m.values[expr] = memoizedExpression{value: cleaned, marksCleaned: true}
+	m.values[expr] = cleaned
+	m.state[expr] |= expressionMarksCleaned
 	return cleaned
 }
 
@@ -1696,10 +1701,10 @@ func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext
 		return e.evalExpr(expr, ctx)
 	}
 	if v, ok := st.memo.values[expr]; ok {
-		return v.value
+		return v
 	}
 	v := e.evalExpr(expr, ctx)
-	st.memo.values[expr] = memoizedExpression{value: v}
+	st.memo.values[expr] = v
 	return v
 }
 
