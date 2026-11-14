@@ -274,18 +274,35 @@ output "empty_can" {
 	require.True(t, outputs["empty_can"].RawEquals(cty.False), "empty_can = %#v", outputs["empty_can"])
 }
 
-func TestWithoutResourceInstanceMarks(t *testing.T) {
-	instance := markResourceInstance(cty.EmptyObjectVal).Mark("sensitive")
-	value := cty.ObjectVal(map[string]cty.Value{
-		"nested": cty.TupleVal([]cty.Value{instance}),
-		"plain":  cty.StringVal("value"),
-	})
+func TestEvaluateModule_CleansInvariantResourceAttributes(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), ".", map[string]string{"main.tf": `
+resource "terraform_data" "source" {}
+resource "terraform_data" "many" {
+  count  = 3
+  input  = "v${count.index}"
+  nested = [terraform_data.source]
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
 
-	got := withoutResourceInstanceMarks(value)
-	nested := got.GetAttr("nested").Index(cty.NumberIntVal(0))
-	require.False(t, got.HasMarkDeep(resourceInstanceMark{}))
+	instances := 0
+	for _, resource := range resources {
+		if resource.Type != "terraform_data" || resource.Label != "many" {
+			continue
+		}
+		instances++
+		require.False(t, resource.Attributes["nested"].HasMarkDeep(resourceInstanceMark{}))
+	}
+	require.Equal(t, 3, instances)
+}
+
+func TestWithoutResourceInstanceMarksPreservesUserMarks(t *testing.T) {
+	instance := markResourceInstance(cty.EmptyObjectVal).Mark("sensitive")
+	got := withoutResourceInstanceMarks(cty.TupleVal([]cty.Value{instance}))
+	nested := got.Index(cty.NumberIntVal(0))
+	require.False(t, nested.HasMark(resourceInstanceMark{}))
 	require.True(t, nested.HasMark("sensitive"))
-	require.True(t, got.GetAttr("plain").RawEquals(cty.StringVal("value")))
 }
 
 func TestIsUserMarked(t *testing.T) {

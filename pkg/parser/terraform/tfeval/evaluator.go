@@ -1034,9 +1034,6 @@ func (e *Evaluator) expandBlock(
 		}
 		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
 		attrs := e.evalBodyWith(ctx, rb.Body, child, nil, state)
-		for attrName, v := range attrs {
-			attrs[attrName] = withoutResourceInstanceMarks(v)
-		}
 		return ResolvedResource{
 			Type:          typeName,
 			Name:          name,
@@ -1567,7 +1564,11 @@ func (e *Evaluator) evalBodyWith(
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExprMemo(attr.Expr, evalCtx, st)
+		value := e.evalExprMemo(attr.Expr, evalCtx, st)
+		if st != nil {
+			value = st.memo.stripResourceInstanceMarks(attr.Expr, st.iterators, value)
+		}
+		out[name] = value
 	}
 
 	blocks := nestedBlocks{out: out}
@@ -1638,10 +1639,12 @@ func (n *nestedBlocks) flushAll() {
 
 // invariantMemo reuses the value of expressions that do not read each, count or
 // a dynamic block's iterator across the instances of one resource block and the
-// blocks its dynamic blocks generate, which share a parent context.
+// blocks its dynamic blocks generate, which share a parent context. It keeps
+// mark-cleaned invariant attributes too, so instances reuse that value.
 type invariantMemo struct {
-	values map[hclsyntax.Expression]cty.Value
-	varies map[hclsyntax.Expression]bool
+	values  map[hclsyntax.Expression]cty.Value
+	varies  map[hclsyntax.Expression]bool
+	cleaned map[hclsyntax.Expression]cty.Value
 }
 
 func newInvariantMemo() *invariantMemo {
@@ -1668,6 +1671,23 @@ func (m *invariantMemo) readsIteration(expr hclsyntax.Expression, iterators []st
 	}
 	m.varies[expr] = reads
 	return reads
+}
+
+func (m *invariantMemo) stripResourceInstanceMarks(
+	expr hclsyntax.Expression, iterators []string, value cty.Value,
+) cty.Value {
+	if m == nil || m.readsIteration(expr, iterators) {
+		return withoutResourceInstanceMarks(value)
+	}
+	if cleaned, ok := m.cleaned[expr]; ok {
+		return cleaned
+	}
+	cleaned := withoutResourceInstanceMarks(value)
+	if m.cleaned == nil {
+		m.cleaned = make(map[hclsyntax.Expression]cty.Value)
+	}
+	m.cleaned[expr] = cleaned
+	return cleaned
 }
 
 func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, st *bodyState) cty.Value {
