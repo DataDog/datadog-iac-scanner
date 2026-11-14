@@ -85,13 +85,12 @@ const evalGcFileThreshold = 10000
 
 // evalGcHeapBytes is the live-heap size, measured after prepare, above which
 // StartScan enables GC pressure relief (reduced GC percent plus the eval ticker)
-// for payload build and eval. Heap, not file count: mid-size corpora never need
-// the relief and pay +30% CPU for it; multi-GiB scans would otherwise carry it
-// as headroom before every collection, driving peak RSS.
-const evalGcHeapBytes = 3 << 30 // 3 GiB
+// for payload build and eval. Combined with the file threshold, this catches
+// high-allocation scans before their peak RSS exceeds the memory budget.
+const evalGcHeapBytes = 768 << 20 // 768 MiB
 
 // reducedEvalGCPercent is the GC percent used on heap-gated scans: lower peak
-// for more frequent collections over a multi-GiB live set.
+// for more frequent collections over a large live set.
 const reducedEvalGCPercent = 30
 
 // liveHeapAfterGC returns the live heap after a full collection (which also
