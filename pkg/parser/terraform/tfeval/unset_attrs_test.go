@@ -274,6 +274,20 @@ output "empty_can" {
 	require.True(t, outputs["empty_can"].RawEquals(cty.False), "empty_can = %#v", outputs["empty_can"])
 }
 
+func TestWithoutResourceInstanceMarks(t *testing.T) {
+	instance := markResourceInstance(cty.EmptyObjectVal).Mark("sensitive")
+	value := cty.ObjectVal(map[string]cty.Value{
+		"nested": cty.TupleVal([]cty.Value{instance}),
+		"plain":  cty.StringVal("value"),
+	})
+
+	got := withoutResourceInstanceMarks(value)
+	nested := got.GetAttr("nested").Index(cty.NumberIntVal(0))
+	require.False(t, got.HasMarkDeep(resourceInstanceMark{}))
+	require.True(t, nested.HasMark("sensitive"))
+	require.True(t, got.GetAttr("plain").RawEquals(cty.StringVal("value")))
+}
+
 func TestIsUserMarked(t *testing.T) {
 	plain := cty.StringVal("a")
 	inst := markEmptyResourceInstance(cty.EmptyObjectVal)

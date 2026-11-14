@@ -213,6 +213,9 @@ func isUserMarked(v cty.Value) bool {
 // removed at every path, keeping any other marks. Resource attributes and
 // module outputs that leave the evaluator must not carry it.
 func withoutResourceInstanceMarks(v cty.Value) cty.Value {
+	if !v.IsMarked() && (!v.IsKnown() || v.IsNull() || v.Type().IsPrimitiveType()) {
+		return v
+	}
 	v, paths := v.UnmarkDeepWithPaths()
 	if len(paths) == 0 {
 		return v
