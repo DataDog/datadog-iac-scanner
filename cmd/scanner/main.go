@@ -18,10 +18,10 @@ import (
 
 const defaultFailCode = 126
 
-// gcPercent sets the garbage collection target percentage. A lower value makes
-// the GC run more frequently, reclaiming transient allocations from OPA query
-// evaluation faster and reducing peak memory usage.
-const gcPercent = 50
+// gcPercent sets the garbage collection target percentage. A lower value
+// reclaims transient allocations from parsing and rule evaluation sooner,
+// reducing peak memory at the cost of more frequent collections.
+const gcPercent = 30
 
 func main() {
 	if _, ok := os.LookupEnv("GOGC"); !ok {
