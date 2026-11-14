@@ -1641,15 +1641,19 @@ func (n *nestedBlocks) flushAll() {
 // a dynamic block's iterator across the instances of one resource block and the
 // blocks its dynamic blocks generate, which share a parent context. It keeps
 // mark-cleaned invariant attributes too, so instances reuse that value.
+type memoizedExpression struct {
+	value        cty.Value
+	marksCleaned bool
+}
+
 type invariantMemo struct {
-	values  map[hclsyntax.Expression]cty.Value
-	varies  map[hclsyntax.Expression]bool
-	cleaned map[hclsyntax.Expression]cty.Value
+	values map[hclsyntax.Expression]memoizedExpression
+	varies map[hclsyntax.Expression]bool
 }
 
 func newInvariantMemo() *invariantMemo {
 	return &invariantMemo{
-		values: make(map[hclsyntax.Expression]cty.Value),
+		values: make(map[hclsyntax.Expression]memoizedExpression),
 		varies: make(map[hclsyntax.Expression]bool),
 	}
 }
@@ -1679,14 +1683,11 @@ func (m *invariantMemo) stripResourceInstanceMarks(
 	if m == nil || m.readsIteration(expr, iterators) {
 		return withoutResourceInstanceMarks(value)
 	}
-	if cleaned, ok := m.cleaned[expr]; ok {
-		return cleaned
+	if cached, ok := m.values[expr]; ok && cached.marksCleaned {
+		return cached.value
 	}
 	cleaned := withoutResourceInstanceMarks(value)
-	if m.cleaned == nil {
-		m.cleaned = make(map[hclsyntax.Expression]cty.Value)
-	}
-	m.cleaned[expr] = cleaned
+	m.values[expr] = memoizedExpression{value: cleaned, marksCleaned: true}
 	return cleaned
 }
 
@@ -1695,10 +1696,10 @@ func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext
 		return e.evalExpr(expr, ctx)
 	}
 	if v, ok := st.memo.values[expr]; ok {
-		return v
+		return v.value
 	}
 	v := e.evalExpr(expr, ctx)
-	st.memo.values[expr] = v
+	st.memo.values[expr] = memoizedExpression{value: v}
 	return v
 }
 
