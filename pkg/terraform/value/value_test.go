@@ -7,9 +7,12 @@
 package value
 
 import (
+	"encoding/json"
+	"math/big"
 	"strings"
 	"testing"
 
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -33,7 +36,7 @@ func TestConverter(t *testing.T) {
 		{"dynamic unknown", cty.DynamicVal, "P"},
 		{"string", cty.StringVal("${aws:username}"), "${aws:username}"},
 		{"int", cty.NumberIntVal(3), int64(3)},
-		{"float", cty.NumberFloatVal(1.5), 1.5},
+		{"float", cty.NumberFloatVal(1.5), json.Number("1.5")},
 		{"bool", cty.True, true},
 		{"null", cty.NullVal(cty.String), nil},
 		{"sensitive", cty.StringVal("s").Mark("sensitive"), "s"},
@@ -55,6 +58,71 @@ func TestConverter(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, c.Go(tc.in))
+		})
+	}
+}
+
+// Every number the converter produces must reach the rule payload as an OPA
+// number: a decimal literal such as an app-service minimum_tls_version of 1.2
+// used to become a *big.Float the payload cannot represent, and the attribute
+// reached rules as an empty object.
+func mustNumber(t *testing.T, s string) cty.Value {
+	t.Helper()
+	v, err := cty.ParseNumberVal(s)
+	require.NoError(t, err)
+	return v
+}
+
+func TestNumberPayloadShapes(t *testing.T) {
+	c := Converter{Placeholder: "P"}
+	// The exact decimal expansion of the float64 1.2, which the previous
+	// engine's documents carried through their JSON round-trip.
+	const onePointTwo = "1.1999999999999999555910790149937383830547332763671875"
+	for _, tc := range []struct {
+		name    string
+		in      cty.Value
+		want    any
+		wantOPA string
+	}{
+		{"zero", cty.NumberIntVal(0), int64(0), "0"},
+		{"int", cty.NumberIntVal(42), int64(42), "42"},
+		{"negative", cty.NumberIntVal(-7), int64(-7), "-7"},
+		{"float", cty.NumberFloatVal(1.5), json.Number("1.5"), "1.5"},
+		{"azure app-service minimum_tls_version", mustNumber(t, "1.2"),
+			json.Number("1.2"), "1.2"},
+		{"negative float", cty.NumberFloatVal(-0.5), json.Number("-0.5"), "-0.5"},
+		{"large integer", mustNumber(t, "9223372036854775808"),
+			json.Number("9223372036854775808"), "9223372036854775808"},
+		{"integer beyond float64 precision", mustNumber(t, "9223372036854775809"),
+			json.Number("9223372036854775809"), "9223372036854775809"},
+		{"exponent", mustNumber(t, "1e21"),
+			json.Number("1000000000000000000000"), "1000000000000000000000"},
+		{"beyond float64", mustNumber(t, "1e400"),
+			json.Number("1" + strings.Repeat("0", 400)), "1" + strings.Repeat("0", 400)},
+		{"precise decimal", mustNumber(t, "1.0000000000000000005"),
+			json.Number(mustNumber(t, "1.0000000000000000005").AsBigFloat().Text('f', -1)),
+			"1.0000000000000000005"},
+		{"big.Float input", cty.NumberVal(new(big.Float).SetPrec(200).SetFloat64(1.2)),
+			json.Number(onePointTwo), onePointTwo},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := c.Go(tc.in)
+			require.Equal(t, tc.want, got)
+			require.IsType(t, tc.want, got)
+			// The payload converter must represent the value exactly: no
+			// *big.Float, no JSON marshal failure, and an OPA number that
+			// holds the source value with no rounding and no saturation.
+			b, err := json.Marshal(got)
+			require.NoError(t, err)
+			v, err := ast.InterfaceToValue(got)
+			require.NoError(t, err)
+			num, isNumber := v.(ast.Number)
+			require.True(t, isNumber, "payload value %v of %v is not a number", v, string(b))
+			parsed, ok := new(big.Float).SetPrec(4096).SetString(string(num))
+			require.True(t, ok, "OPA number %q does not parse", string(num))
+			want, _, err2 := big.ParseFloat(tc.wantOPA, 10, 4096, big.ToNearestEven)
+			require.NoError(t, err2)
+			require.Zero(t, parsed.Cmp(want), "payload number %s does not match the expected digits %s", string(num), tc.wantOPA)
 		})
 	}
 }

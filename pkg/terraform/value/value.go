@@ -11,6 +11,7 @@ package value
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"math/big"
 	"strings"
 
@@ -133,15 +134,16 @@ func (c Converter) goMap(v cty.Value) map[string]any {
 }
 
 // Number returns n as an int64 when it is an integer that fits, else as a
-// float64 when that is exact, else n itself.
+// JSON number carrying the value's exact digits — the serialization the
+// previous engine's documents carried through their JSON round-trip. Rounding
+// to float64 or saturating would change the value rules read, and a
+// *big.Float has no representation in the payload and would lose the
+// attribute.
 func Number(n *big.Float) any {
 	if n.IsInt() {
 		if i, acc := n.Int64(); acc == big.Exact {
 			return i
 		}
 	}
-	if f, acc := n.Float64(); acc == big.Exact {
-		return f
-	}
-	return n
+	return json.Number(n.Text('f', -1))
 }
