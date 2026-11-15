@@ -272,10 +272,8 @@ func substitutionVerdict(o occurrence, r replacement) Verdict {
 }
 
 // batch checks candidates together. Each replacement is applied to every unknown of every
-// scope at once, in one evaluation. A candidate whose result disappears is checked again one
-// unknown at a time; that check decides. A result that a single substitution removes but that
-// the combined substitutions keep is missed: the batch trades that case for one evaluation per
-// replacement instead of one per candidate.
+// scope at once, in one evaluation. Candidates whose result disappears, or survives a combined
+// round with multiple unknowns, are confirmed one unknown at a time.
 func (s *substitution) batch(jobs []job, out []Verdict) error {
 	scopes := make([][]ast.Value, len(jobs))
 	all := newValueSet()
@@ -340,7 +338,7 @@ func (s *substitution) batchRound(jobs []job, scopes [][]ast.Value, list []ast.V
 	decided := 0
 	for i := range jobs {
 		j := &jobs[i]
-		if len(scopes[i]) == 0 || ids.has(j.id, j.mask) {
+		if len(scopes[i]) == 0 || (ids.has(j.id, j.mask) && !s.multipleApplicable(list, r)) {
 			continue
 		}
 		v, err := s.confirm(scopes[i], r, j)
@@ -354,6 +352,21 @@ func (s *substitution) batchRound(jobs []job, scopes [][]ast.Value, list []ast.V
 		}
 	}
 	return decided, nil
+}
+
+func (s *substitution) multipleApplicable(scopes []ast.Value, r batchReplacement) bool {
+	count := 0
+	for _, scope := range scopes {
+		for _, o := range occurrences(scope, s.ph) {
+			if r.applies(o.parent) {
+				count++
+				if count > 1 {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // confirm checks replacement r on each unknown of scopes, one at a time.

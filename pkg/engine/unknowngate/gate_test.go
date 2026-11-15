@@ -448,3 +448,87 @@ DatadogPolicy contains {"rule": "probe", "name": name} if name := lib.read()
 		t.Run(tc.name, tc.run)
 	}
 }
+func TestCombinedSubstitutionChecksUnknownsIndividually(t *testing.T) {
+	g := newTestGate(t, testPlaceholder, `package datadog
+import rego.v1
+
+DatadogPolicy contains {"rule": "same_count", "name": name} if {
+	some name, sg in input.document[0].resource.aws_security_group
+	count(sg.ingress) == count(sg.egress)
+}
+`)
+	input := mustValue(t, `{"document": [{"resource": {"aws_security_group": {"sg": {"ingress": [{"cidr": "a"}, "`+testPlaceholder+`"], "egress": [{"cidr": "b"}, "`+testPlaceholder+`"]}}}}]}`)
+	results, err := g.Results(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	report, err := g.Check(context.Background(), input, []Candidate{{Result: results[0]}})
+	require.NoError(t, err)
+	t.Logf("verdict=%+v substitution evaluations=%d", report.Verdicts[0], report.SubstitutionEvals)
+	require.True(t, report.Verdicts[0].Uncertain)
+	require.Equal(t, StageSubstitution, report.Verdicts[0].Stage)
+}
+
+func TestCombinedSubstitutionConfirmsAcrossCandidateScopes(t *testing.T) {
+	g := newTestGate(t, testPlaceholder, `package datadog
+import rego.v1
+
+DatadogPolicy contains {"rule": "same_count", "name": a.name} if {
+	some a in input.blocks
+	some b in input.blocks
+	a.id != b.id
+	count(a.items) == count(b.items)
+}
+`)
+	input := mustValue(t, `{"blocks": [
+		{"id": "a", "name": "a", "items": ["`+testPlaceholder+`"]},
+		{"id": "b", "name": "b", "items": ["`+testPlaceholder+`"]}
+	]}`)
+	blocks := input.(ast.Object).Get(ast.StringTerm("blocks")).Value.(*ast.Array)
+	scopes := []ast.Value{blocks.Elem(0).Value, blocks.Elem(1).Value}
+	results, err := g.Results(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+
+	ph := newPlaceholder(testPlaceholder)
+	r := batchReplacement{replacement: replacement{remove: true}, listOnly: true}
+	replacements := newValueMap[ast.Value]()
+	for _, scope := range scopes {
+		replacements.put(scope, replaceEvery(scope, r, ph))
+		occ := occurrences(scope, ph)
+		require.Len(t, occ, 1)
+		singleScope := replaceAt(scope, occ[0].path, r.replacement)
+		singleInput := rebuild(input, ph, func(v ast.Value) (ast.Value, bool) {
+			return singleScope, sameValue(v, scope)
+		})
+		singleResults, err := g.Results(context.Background(), singleInput)
+		require.NoError(t, err)
+		require.Empty(t, singleResults, "either single-scope substitution must remove both results")
+	}
+	combinedInput := replaceScopes(input, replacements, ph)
+	combinedResults, err := g.Results(context.Background(), combinedInput)
+	require.NoError(t, err)
+	require.Len(t, combinedResults, len(results))
+	for _, result := range results {
+		matched := false
+		for _, combinedResult := range combinedResults {
+			matched = matched || ast.Compare(result, combinedResult) == 0
+		}
+		require.True(t, matched, "combined substitution keeps result %v", result)
+	}
+
+	candidates := make([]Candidate, len(results))
+	for i, result := range results {
+		name := result.(ast.Object).Get(ast.StringTerm("name")).Value.(ast.String)
+		idx := 0
+		if name == "b" {
+			idx = 1
+		}
+		candidates[i] = Candidate{Result: result, Scope: []ast.Value{scopes[idx]}}
+	}
+	report, err := g.Check(context.Background(), input, candidates)
+	require.NoError(t, err)
+	for i, verdict := range report.Verdicts {
+		require.True(t, verdict.Uncertain, "candidate %v", candidates[i].Result)
+		require.Equal(t, StageSubstitution, verdict.Stage)
+	}
+}
