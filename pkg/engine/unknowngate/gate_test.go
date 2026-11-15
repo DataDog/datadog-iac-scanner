@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/storage"
+	"github.com/open-policy-agent/opa/v1/storage/inmem"
+	"github.com/open-policy-agent/opa/v1/topdown"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -286,6 +289,10 @@ func newTestGate(t testing.TB, ph, src string) *Gate {
 }
 
 func newMultiModuleGate(t testing.TB, ph string, sources map[string]string) *Gate {
+	return newMultiModuleGateWithStore(t, ph, sources, nil)
+}
+
+func newMultiModuleGateWithStore(t testing.TB, ph string, sources map[string]string, store storage.Store) *Gate {
 	t.Helper()
 	modules := make(map[string]*ast.Module, len(sources))
 	for name, src := range sources {
@@ -293,7 +300,7 @@ func newMultiModuleGate(t testing.TB, ph string, sources map[string]string) *Gat
 		require.NoError(t, err, name)
 		modules[name] = m
 	}
-	g, err := New(Options{Placeholder: ph, Modules: modules, Query: "data.datadog.DatadogPolicy"})
+	g, err := New(Options{Placeholder: ph, Modules: modules, Query: "data.datadog.DatadogPolicy", Store: store})
 	require.NoError(t, err)
 	return g
 }
@@ -320,4 +327,124 @@ func verdicts(t testing.TB, g *Gate, input ast.Value) map[string]Verdict {
 		out[string(rule)+"/"+string(name)] = rep.Verdicts[i]
 	}
 	return out
+}
+
+type cancelOnReadStore struct {
+	storage.Store
+	cancel           context.CancelFunc
+	cancelAt         int
+	reads            int
+	cancelledAt      int
+	readsAfterCancel int
+}
+
+func (s *cancelOnReadStore) Read(ctx context.Context, txn storage.Transaction, path storage.Path) (any, error) {
+	s.reads++
+	if s.cancel != nil && s.cancelAt > 0 && s.reads == s.cancelAt {
+		s.cancel()
+		s.cancelledAt = s.reads
+	}
+	if s.cancelledAt > 0 && s.reads > s.cancelledAt {
+		s.readsAfterCancel++
+	}
+	return s.Store.Read(ctx, txn, path)
+}
+
+func probeCall(t testing.TB, g *Gate) (*ast.Rule, *ast.Expr) {
+	t.Helper()
+	rules := g.traced.GetRulesExact(ast.MustParseRef("data.datadog.DatadogPolicy"))
+	require.Len(t, rules, 1)
+	for _, expr := range rules[0].Body {
+		if expr.IsCall() && expr.Operator().String() == "data.generic.lib.read" {
+			return rules[0], expr
+		}
+	}
+	t.Fatal("compiled rule does not call the helper")
+	return nil, nil
+}
+
+func tracerWithContext(g *Gate, ctx context.Context, input ast.Value) *tracer {
+	return newTracer(g, ctx, input)
+}
+
+func TestCheckStopsWhenCanceled(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*testing.T)
+	}{
+		{"pre-canceled", func(t *testing.T) {
+			g := newTestGate(t, testPlaceholder, `package datadog
+DatadogPolicy contains {"rule": "x", "name": "x"} if input.flag
+`)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_, err := g.Check(ctx, mustValue(t, `{"flag": true}`), []Candidate{{Result: mustValue(t, `{"rule": "x", "name": "x"}`)}})
+			require.ErrorIs(t, err, context.Canceled)
+		}},
+		{"during-evaluation", func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			store := &cancelOnReadStore{
+				Store:  inmem.NewFromObject(map[string]any{"test": map[string]any{"enabled": true}}),
+				cancel: cancel, cancelAt: 1,
+			}
+			g := newMultiModuleGateWithStore(t, testPlaceholder, map[string]string{"rule.rego": `package datadog
+DatadogPolicy contains {"rule": "read", "name": "x"} if data.test.enabled
+`}, store)
+			_, err := g.Check(ctx, mustValue(t, `{}`), []Candidate{{Result: mustValue(t, `{"rule": "read", "name": "x"}`)}})
+			require.ErrorIs(t, err, context.Canceled)
+			require.Positive(t, store.reads)
+		}},
+		{"inside-probe", func(t *testing.T) {
+			sources := map[string]string{
+				"lib.rego": `package generic.lib
+read() := data.other.value if data.test.enabled
+`,
+				"rule.rego": `package datadog
+import rego.v1
+import data.generic.lib as lib
+DatadogPolicy contains {"rule": "probe", "name": name} if name := lib.read()
+`,
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			store := &cancelOnReadStore{
+				Store: inmem.NewFromObject(map[string]any{
+					"test":  map[string]any{"enabled": true},
+					"other": map[string]any{"value": "x"},
+				}),
+				cancel: cancel, cancelAt: 1,
+			}
+			g := newMultiModuleGateWithStore(t, testPlaceholder, sources, store)
+			rule, call := probeCall(t, g)
+			tr := tracerWithContext(g, ctx, mustValue(t, `{}`))
+			got := tr.evalCall(&frame{input: tr.input}, rule, call, &topdown.Event{}, 0)
+			require.Nil(t, got)
+			require.ErrorIs(t, ctx.Err(), context.Canceled)
+			require.Equal(t, 1, store.cancelledAt)
+			require.Zero(t, store.readsAfterCancel, "probe must not make a later store read after cancellation")
+			require.Empty(t, tr.probes.m, "canceled probe must not cache a partial result")
+
+			controlStore := &cancelOnReadStore{Store: inmem.NewFromObject(map[string]any{
+				"test":  map[string]any{"enabled": true},
+				"other": map[string]any{"value": "x"},
+			})}
+			controlGate := newMultiModuleGateWithStore(t, testPlaceholder, sources, controlStore)
+			controlRule, controlCall := probeCall(t, controlGate)
+			controlTracer := tracerWithContext(controlGate, context.Background(), mustValue(t, `{}`))
+			controlResult := controlTracer.evalCall(&frame{input: controlTracer.input}, controlRule, controlCall, &topdown.Event{}, 0)
+			require.Equal(t, ast.String("x"), controlResult)
+			require.GreaterOrEqual(t, controlStore.reads, 2, "control must read both data paths")
+			require.Zero(t, controlStore.readsAfterCancel)
+			require.Len(t, controlTracer.probes.m, 1)
+			cached := false
+			for _, entries := range controlTracer.probes.m {
+				for _, entry := range entries {
+					cached = cached || ast.Compare(entry.v, ast.String("x")) == 0
+				}
+			}
+			require.True(t, cached, "uncanceled probe must cache its result")
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, tc.run)
+	}
 }

@@ -1,6 +1,7 @@
 package unknowngate
 
 import (
+	"context"
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -76,6 +77,7 @@ type resultState struct {
 // tracer marks, per derivation of the gated rule, whether it depends on an unknown value.
 type tracer struct {
 	g       *Gate
+	ctx     context.Context
 	ph      *placeholder
 	input   ast.Value
 	frames  map[uint64]*frame
@@ -163,9 +165,10 @@ func (f *frame) inputAt(i int) ast.Value {
 
 const maxProbeDepth = 2
 
-func newTracer(g *Gate, input ast.Value) *tracer {
+func newTracer(g *Gate, ctx context.Context, input ast.Value) *tracer {
 	return &tracer{
 		g:       g,
+		ctx:     ctx,
 		ph:      newPlaceholder(g.placeholder),
 		input:   input,
 		frames:  map[uint64]*frame{},
@@ -512,6 +515,9 @@ func (t *tracer) evalCall(f *frame, r *ast.Rule, c *ast.Expr, ev *topdown.Event,
 	var out ast.Value
 	if v, ok := t.g.probe(t, f.input, call); ok {
 		out = v
+	}
+	if t.ctx.Err() != nil {
+		return nil
 	}
 	t.probes.put(key, out)
 	return out

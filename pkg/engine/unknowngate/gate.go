@@ -50,6 +50,20 @@ type Options struct {
 }
 
 // Gate checks the results of one rule. It is safe for concurrent use.
+type contextCancel struct{ ctx context.Context }
+
+func (contextCancel) Cancel() {}
+
+//nolint:misspell // topdown.Cancel requires this method name.
+func (c contextCancel) Cancelled() bool {
+	select {
+	case <-c.ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 type Gate struct {
 	placeholder string
 	query       ast.Ref
@@ -265,7 +279,7 @@ type job struct {
 }
 
 func (g *Gate) trace(ctx context.Context, input ast.Value) (*tracer, error) {
-	tr := newTracer(g, input)
+	tr := newTracer(g, ctx, input)
 	if _, err := g.eval(ctx, g.traced, g.tracedBody, input, tr); err != nil {
 		return nil, err
 	}
@@ -295,6 +309,7 @@ func (g *Gate) run(
 		WithCompiler(c).
 		WithStore(g.store).
 		WithTransaction(txn).
+		WithCancel(contextCancel{ctx}).
 		WithInput(ast.NewTerm(input))
 	if tr != nil {
 		q = q.WithQueryTracer(tr).WithIndexing(false)
@@ -349,9 +364,9 @@ func (g *Gate) probe(parent *tracer, input ast.Value, call *ast.Term) (ast.Value
 	if err != nil {
 		return nil, false
 	}
-	tr := newTracer(g, input)
+	ctx := parent.ctx
+	tr := newTracer(g, ctx, input)
 	tr.probeDepth = parent.probeDepth + 1
-	ctx := context.Background()
 	txn, err := g.store.NewTransaction(ctx)
 	if err != nil {
 		return nil, false
@@ -366,6 +381,7 @@ func (g *Gate) probe(parent *tracer, input ast.Value, call *ast.Term) (ast.Value
 		WithInput(ast.NewTerm(input)).
 		WithQueryTracer(tr).
 		WithIndexing(false).
+		WithCancel(contextCancel{ctx}).
 		Iter(ctx, func(qr topdown.QueryResult) error {
 			if t := qr["unknowngate_probe"]; t != nil {
 				if n == 0 || out.Compare(t.Value) != 0 {
