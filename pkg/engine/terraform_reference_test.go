@@ -257,3 +257,40 @@ func TestTerraformReferenceModeMatchesOptimized(t *testing.T) {
 	require.True(t, planted, "examples/ companions must not clear the planted bucket")
 	require.False(t, versionedElsewhere, "ops companion must clear the versioned bucket")
 }
+
+func TestInspect_ElseBranchSchedulesSqsRoot(t *testing.T) {
+	dir := t.TempDir()
+	sqs := writeFile(t, dir, "sqs/main.tf", `resource "aws_sqs_queue" "only" {}`)
+	files := parseTerraform(t, sqs)
+	query := `package datadog
+
+import rego.v1
+import data.generic.common as common
+import data.generic.terraform as tf
+
+DatadogPolicy := out if {
+	some b in tf.blocks("aws_s3_bucket")
+	out := [common.finding(b, [], {})]
+} else := out if {
+	some q in tf.blocks("aws_sqs_queue")
+	out := [common.finding(q, [], {})]
+}
+`
+	meta := referenceQuery("else_branch", "else-branch", query)
+	ins := newTestInspector(t, inspectorOpts{
+		querySource: &referenceQueriesSource{queries: []model.QueryMetadata{meta}},
+		repoPath:    dir, vb: DefaultVulnerabilityBuilder,
+		tracker: &tracker.CITracker{}, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1)
+	var sawSqs bool
+	for i := range vulns {
+		if vulns[i].ResourceType == "aws_sqs_queue" {
+			sawSqs = true
+		}
+	}
+	require.True(t, sawSqs, "the sqs-only root must not be skipped")
+}

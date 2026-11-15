@@ -100,3 +100,60 @@ DatadogPolicy contains result if {
 	require.False(t, got.AlwaysRun, "reasons: %v", got.Reasons)
 	require.Contains(t, got.Types, TypeKey{Kind: KindResource, Type: "aws_s3_bucket"})
 }
+
+func TestHarvestElseBranches(t *testing.T) {
+	const lib = `package generic.terraform
+import rego.v1
+blocks(type) := object.get(input._dd, ["blocks", "resource", type], [])
+related(block, type, path) := object.get(input._dd, ["related", block._dd_meta.id, type, path], [])
+`
+	for _, tc := range []struct {
+		name, elseBody string
+		unknownBuiltin bool
+	}{
+		{name: "another_resource_type", elseBody: `some queue in tf.blocks("aws_sqs_queue")
+out := [{"type": "sqs"}]`},
+		{name: "relation", elseBody: `some bucket in tf.blocks("aws_s3_bucket")
+some related in tf.related(bucket, "aws_sqs_queue", "bucket")
+out := [{"type": "related"}]`},
+		{name: "unknown_builtin", elseBody: `out := []`, unknownBuiltin: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := `package datadog
+import rego.v1
+import data.generic.terraform as tf
+DatadogPolicy := out if {
+	some bucket in tf.blocks("aws_s3_bucket")
+	out := [{"type": "s3"}]
+} else := out if {
+	` + tc.elseBody + `
+}
+`
+			c := compileModules(t, map[string]string{"lib.rego": lib, "rule.rego": policy})
+			if tc.unknownBuiltin {
+				body, err := ast.ParseBody("missing_builtin()")
+				require.NoError(t, err)
+				c.GetRulesExact(ast.MustParseRef("data.datadog.DatadogPolicy"))[0].Else.Body = body
+			}
+			got := NewHarvester(c, Options{}).Harvest(ast.MustParseRef("data.datadog.DatadogPolicy"))
+			switch tc.name {
+			case "another_resource_type":
+				queue := TypeKey{Kind: KindResource, Type: "aws_sqs_queue"}
+				require.Contains(t, got.Types, bucket)
+				require.Contains(t, got.Types, queue)
+				require.False(t, got.AlwaysRun, "reasons: %v", got.Reasons)
+				plan := NewPlan([]Rule{got}, Roots{
+					"s3":  {bucket: {Blocks: 1}},
+					"sqs": {queue: {Blocks: 1}},
+				}, PlanOptions{})
+				require.Empty(t, plan.Skipped)
+			case "relation":
+				require.True(t, got.Relations)
+				require.Equal(t, Relational, got.Class)
+			case "unknown_builtin":
+				require.True(t, got.AlwaysRun, "reasons: %v", got.Reasons)
+				require.Contains(t, got.Reasons[0], "unknown builtin missing_builtin")
+			}
+		})
+	}
+}

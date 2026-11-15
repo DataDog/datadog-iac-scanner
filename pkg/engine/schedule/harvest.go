@@ -148,25 +148,26 @@ func (h *Harvester) Harvest(path ast.Ref) Rule {
 	dynamic := map[string]struct{}{}
 	out.Class = Anchored
 	for _, r := range rules {
-		eff := newEffects()
-		f := h.newFrame(r, eff, true)
-		f.evalBody(r.Body)
-		f.top = false
-		f.consume(f.docValue(r))
-		for k := range eff.types {
-			types[k] = struct{}{}
-		}
-		for d := range eff.dynamic {
-			dynamic[d] = struct{}{}
-		}
-		if len(eff.types) == 0 && len(eff.dynamic) == 0 {
-			dynamic[fmt.Sprintf("%s:%d: a body reads no block", f.where, f.row)] = struct{}{}
-		}
-		out.Relations = out.Relations || eff.relations
-		if why := bodyClassReason(eff); why != "" && out.Class == Anchored {
-			out.Class = Relational
-			out.ClassReason = fmt.Sprintf("%s:%d: %s", f.where, f.row, why)
-		}
+		h.walkAlternatives(r, nil, true, newEffects, func(alt *ast.Rule, f *frame) {
+			f.evalBody(alt.Body)
+			f.top = false
+			f.consume(f.docValue(alt))
+			eff := f.eff
+			for k := range eff.types {
+				types[k] = struct{}{}
+			}
+			for d := range eff.dynamic {
+				dynamic[d] = struct{}{}
+			}
+			if len(eff.types) == 0 && len(eff.dynamic) == 0 {
+				dynamic[fmt.Sprintf("%s:%d: a body reads no block", f.where, f.row)] = struct{}{}
+			}
+			out.Relations = out.Relations || eff.relations
+			if why := bodyClassReason(eff); why != "" && out.Class == Anchored {
+				out.Class = Relational
+				out.ClassReason = fmt.Sprintf("%s:%d: %s", f.where, f.row, why)
+			}
+		})
 	}
 	out.Types = sortTypes(types)
 	out.Reasons = sortStrings(dynamic)
@@ -349,6 +350,28 @@ func (f *frame) splitBuiltinArgs(name string, args []*ast.Term) (in []*ast.Term,
 	return args, nil
 }
 
+func (h *Harvester) walkAlternatives(
+	r *ast.Rule, args []absVal, top bool, effectsFor func() *effects,
+	visit func(*ast.Rule, *frame),
+) {
+	for alt := r; alt != nil; alt = alt.Else {
+		f := h.newFrame(r, effectsFor(), top)
+		if alt.Location != nil {
+			f.row = alt.Location.Row
+		}
+		params := alt.Head.Args
+		if len(params) == 0 {
+			params = r.Head.Args
+		}
+		for i, p := range params {
+			if i < len(args) {
+				f.destructure(p, args[i])
+			}
+		}
+		visit(alt, f)
+	}
+}
+
 // summarize returns the value and effects of a rule or function for the given
 // abstract arguments.
 func (h *Harvester) summarize(ref ast.Ref, rules []*ast.Rule, args []absVal) *summary {
@@ -370,23 +393,10 @@ func (h *Harvester) summarize(ref ast.Ref, rules []*ast.Rule, args []absVal) *su
 	h.memo[key.String()] = s
 	var vals []absVal
 	for _, r := range rules {
-		for alt := r; alt != nil; alt = alt.Else {
-			f := h.newFrame(r, s.eff, false)
-			if alt.Location != nil {
-				f.row = alt.Location.Row
-			}
-			params := alt.Head.Args
-			if len(params) == 0 {
-				params = r.Head.Args
-			}
-			for i, p := range params {
-				if i < len(args) {
-					f.destructure(p, args[i])
-				}
-			}
+		h.walkAlternatives(r, args, false, func() *effects { return s.eff }, func(alt *ast.Rule, f *frame) {
 			f.evalBody(alt.Body)
 			vals = append(vals, f.docValue(alt))
-		}
+		})
 	}
 	s.val = union(vals...)
 	s.busy = false
