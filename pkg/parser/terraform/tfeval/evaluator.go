@@ -158,6 +158,12 @@ type ModuleScope struct {
 	// and reuses the rest verbatim.
 	localGraph *localGraph
 	localCache map[string]cty.Value
+
+	// renderVars and renderFuncs keep the evaluated variables and functions
+	// across ReleaseEvalState, so an expression of the module can still be
+	// rendered (see KeepRenderContext).
+	renderVars  map[string]cty.Value
+	renderFuncs map[string]function.Function
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not

@@ -314,6 +314,25 @@ func withChildren(expr hclsyntax.Expression, children []hclsyntax.Expression) hc
 	return expr
 }
 
+// Places reports whether a call only places its arguments into its result
+// (a format with a literal specification, a templatefile or templatestring
+// that only interpolates, jsonencode and the other placing functions), as
+// opposed to deciding on them — a try choosing a fallback, a conditional
+// argument, a function the renderer does not know.
+func (r *Renderer) Places(call *hclsyntax.FunctionCallExpr) bool {
+	_, ok := r.placedChildren(call)
+	return ok
+}
+
+// PlacesOnly reports whether expr only ever places the references it reads
+// into its value: a traversal, a template or collection of them, or a call
+// to a function that only places its arguments. The value of such an
+// expression is its references; the value of one deciding on them (a
+// condition, a loop) is not.
+func (r *Renderer) PlacesOnly(expr hclsyntax.Expression) bool {
+	return r.placesOnly(expr)
+}
+
 // placesOnly reports whether expr only ever places the references it reads.
 func (r *Renderer) placesOnly(expr hclsyntax.Expression) bool {
 	switch expr.(type) {

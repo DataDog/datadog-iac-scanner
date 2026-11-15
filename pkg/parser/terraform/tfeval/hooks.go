@@ -50,6 +50,32 @@ func (s *ModuleScope) EvalContext() *hcl.EvalContext { return s.evalCtx }
 // Sources returns the module's file contents by the filename their ranges carry.
 func (s *ModuleScope) Sources() map[string][]byte { return s.sources }
 
+// KeepRenderContext retains the evaluated variables and functions across
+// ReleaseEvalState, for rendering an expression after evaluation. Call it
+// before ReleaseEvalState; the retained map holds values the model keeps
+// anyway, so only the map itself is new.
+func (s *ModuleScope) KeepRenderContext() {
+	if s == nil || s.evalCtx == nil {
+		return
+	}
+	vars := make(map[string]cty.Value, len(s.evalCtx.Variables))
+	for name, v := range s.evalCtx.Variables {
+		vars[name] = v
+	}
+	s.renderVars = vars
+	s.renderFuncs = s.evalCtx.Functions
+}
+
+// RenderContext is the context an expression renders in after
+// ReleaseEvalState: the evaluated variables and functions, read-only. It is
+// nil when KeepRenderContext was not called or the module was not evaluated.
+func (s *ModuleScope) RenderContext() *hcl.EvalContext {
+	if s == nil || s.renderVars == nil {
+		return nil
+	}
+	return &hcl.EvalContext{Variables: s.renderVars, Functions: s.renderFuncs}
+}
+
 // ReleaseEvalState drops the evaluation context and local caches once the
 // model is built. Locals, Bodies, Var, Local and the sources stay: module
 // argument attribution and unknown-attribute text still read them.

@@ -15,11 +15,17 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/terraform/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/terraform/value"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 )
+
+// localNamespace is the root name the module's locals are read through.
+const localNamespace = "local"
 
 // JoinRoot joins a scan base and a model-relative file. The model stores
 // relative paths with forward slashes. A base that uses forward slashes, as
@@ -80,7 +86,9 @@ type LegacyInstance struct{ Label, Suffix string }
 // nested block written several times a list. The blocks of a module instance
 // are a document of their own, per instance, so each call is evaluated and
 // attributed separately. A wholly unknown attribute is its expression as
-// "${...}", an unknown part of a value the placeholder.
+// "${...}", an unknown part of a value the placeholder. A reference to
+// another block of its module keeps its source text wherever it appears, as
+// the documents the rules were written against carried it.
 func Legacy(roots []*model.Root, opts LegacyOptions) []map[string]any {
 	docs := LegacyDocs(roots, opts)
 	out := make([]map[string]any, len(docs))
@@ -93,6 +101,7 @@ func Legacy(roots []*model.Root, opts LegacyOptions) []map[string]any {
 // LegacyDocs is Legacy with what each document was built from.
 func LegacyDocs(roots []*model.Root, opts LegacyOptions) []*LegacyDoc {
 	conv := value.Converter{Placeholder: opts.Placeholder}
+	renders := map[*model.Module]*legacyRender{}
 	owners := map[string]*model.Module{}
 	docs := map[string]*LegacyDoc{}
 	var order []string
@@ -124,7 +133,7 @@ func LegacyDocs(roots []*model.Root, opts LegacyOptions) []*LegacyDoc {
 					docs[key] = d
 					order = append(order, key)
 				}
-				d.add(b, conv)
+				d.add(b, conv, renders)
 			}
 		}
 	}
@@ -162,13 +171,13 @@ func instanceID(opts LegacyOptions, fileID string, r *model.Root, m *model.Modul
 	return fileID + "\x00" + r.ID + "|" + m.Address
 }
 
-func (d *LegacyDoc) add(b *model.Block, conv value.Converter) {
+func (d *LegacyDoc) add(b *model.Block, conv value.Converter, renders map[*model.Module]*legacyRender) {
 	switch b.Kind {
 	case address.KindResource, address.KindData, address.KindEphemeral:
 		byName := child(child(d.Doc, b.Kind), b.Type)
 		for _, inst := range b.Instances {
 			name := b.Name + inst.Key
-			byName[name] = legacyAttrs(b, inst, conv)
+			byName[name] = legacyAttrs(b, inst, conv, renderOf(b.Module, inst, conv, renders))
 			if inst.Key != "" {
 				if d.Instances == nil {
 					d.Instances = map[LegacyKey]LegacyInstance{}
@@ -182,14 +191,25 @@ func (d *LegacyDoc) add(b *model.Block, conv value.Converter) {
 		if resolvedLocalCall(b) {
 			return
 		}
-		addLegacyBlock(d.Doc, b, legacyAttrs(b, firstInstance(b), conv))
+		addLegacyBlock(d.Doc, b, legacyAttrs(b, firstInstance(b), conv, renderOf(b.Module, firstInstance(b), conv, renders)))
 	default:
 		var inst *model.Instance
 		if len(b.Instances) > 0 {
 			inst = b.Instances[0]
 		}
-		addLegacyBlock(d.Doc, b, legacyAttrs(b, inst, conv))
+		addLegacyBlock(d.Doc, b, legacyAttrs(b, inst, conv, renderOf(b.Module, inst, conv, renders)))
 	}
+}
+
+// renderOf is the renderer of the blocks of module m; one per module, with
+// the iteration of the instance added when it has one.
+func renderOf(m *model.Module, inst *model.Instance, conv value.Converter, renders map[*model.Module]*legacyRender) *legacyRender {
+	lr, ok := renders[m]
+	if !ok {
+		lr = newLegacyRender(m, conv)
+		renders[m] = lr
+	}
+	return lr.forInstance(inst)
 }
 
 func firstInstance(b *model.Block) *model.Instance {
@@ -248,9 +268,195 @@ func child(m map[string]any, key string) map[string]any {
 	return c
 }
 
+// legacyRender renders the attributes of a block of module m the way the
+// legacy converter did: from the written expressions, with what evaluation
+// could resolve resolved and every reference to a managed or ephemeral block
+// of the module kept as its source text. The model resolves such references
+// to the values of the blocks they name, which the legacy view must not see;
+// their namespace is therefore taken out of the context the expressions
+// evaluate in, and a value one of them reaches renders from the partial
+// renderer, which keeps the reference text wherever evaluation put it.
+type legacyRender struct {
+	conv value.Converter
+	// refs are the root names of the blocks whose values stay unseen: the
+	// module's resource types, the ephemeral namespace and the locals that
+	// read them.
+	refs map[string]bool
+	ctx  *hcl.EvalContext
+	rd   *partial.Renderer
+}
+
+// newLegacyRender is the renderer for the blocks of m; nil when the module
+// was not evaluated and nothing can render from expressions.
+func newLegacyRender(m *model.Module, conv value.Converter) *legacyRender {
+	if m == nil || m.Scope == nil {
+		return nil
+	}
+	scope := m.Scope
+	base := scope.RenderContext()
+	if base == nil {
+		return nil
+	}
+	refs := map[string]bool{"ephemeral": true, "local": true}
+	for _, b := range m.Blocks {
+		if b.Kind == address.KindResource || b.Kind == address.KindEphemeral {
+			refs[b.Type] = true
+		}
+	}
+	vars := make(map[string]cty.Value, len(base.Variables))
+	for name, v := range base.Variables {
+		vars[name] = v
+	}
+	for name := range refs {
+		delete(vars, name)
+	}
+	ctx := &hcl.EvalContext{Variables: vars, Functions: base.Functions}
+	// The model resolved the module's locals with the resource values
+	// in scope, which the legacy view keeps unseen. Re-resolve them
+	// without those values: a local that still resolves keeps its value,
+	// one that reads a block of the module stays out of the context, so a
+	// consumer of it renders its reference text, as the previous
+	// engine's documents carried.
+	delete(vars, localNamespace)
+	if len(scope.Locals) > 0 {
+		vars[localNamespace] = legacyLocals(scope, ctx)
+	}
+	return &legacyRender{
+		conv: conv,
+		refs: refs,
+		ctx:  ctx,
+		rd:   &partial.Renderer{Ctx: ctx, Source: partial.FileSources(scope.Sources())},
+	}
+}
+
+// legacyLocals re-resolves the module's local expressions without the
+// module's resource values, in dependency order: a local whose expression
+// resolves keeps its value, one that does not is left out. nil when the
+// module declares no locals.
+func legacyLocals(scope *tfeval.ModuleScope, base *hcl.EvalContext) cty.Value {
+	vals := make(map[string]cty.Value, len(scope.Locals))
+	child := base.NewChild()
+	// The expressions read their peers through the local namespace, so the
+	// values resolved so far are installed under it and refreshed as the
+	// passes add more, letting chains of locals resolve in dependency order.
+	child.Variables = map[string]cty.Value{localNamespace: cty.ObjectVal(vals)}
+	remaining := make(map[string]hclsyntax.Expression, len(scope.Locals))
+	for name, expr := range scope.Locals {
+		remaining[name] = expr
+	}
+	for progress, passes := true, len(scope.Locals)+1; progress && passes > 0; passes-- {
+		progress = false
+		for name, expr := range remaining {
+			v, diags := expr.Value(child)
+			if diags.HasErrors() {
+				continue
+			}
+			v, _ = v.UnmarkDeep()
+			if !v.IsWhollyKnown() {
+				continue
+			}
+			vals[name] = v
+			child.Variables[localNamespace] = cty.ObjectVal(vals)
+			delete(remaining, name)
+			progress = true
+		}
+	}
+	return cty.ObjectVal(vals)
+}
+
+// forInstance is the renderer for one block instance, whose count.index or
+// each.key the expressions may read.
+func (lr *legacyRender) forInstance(inst *model.Instance) *legacyRender {
+	if lr == nil || len(inst.Iteration) == 0 {
+		return lr
+	}
+	child := lr.ctx.NewChild()
+	child.Variables = inst.Iteration
+	return &legacyRender{
+		conv: lr.conv,
+		refs: lr.refs,
+		ctx:  child,
+		rd:   &partial.Renderer{Ctx: child, Source: lr.source()},
+	}
+}
+
+// source is the configuration the renderer reads reference text from.
+func (lr *legacyRender) source() partial.Source {
+	return lr.rd.Source
+}
+
+// readsRefs reports whether expr reaches a block whose values the legacy view
+// keeps unseen. Every other expression already evaluated to the value the
+// view carries, so its conversion is kept as is.
+func (lr *legacyRender) readsRefs(expr hcl.Expression) bool {
+	if lr == nil || expr == nil {
+		return false
+	}
+	for _, traversal := range expr.Variables() {
+		if lr.refs[traversal.RootName()] {
+			return true
+		}
+	}
+	return false
+}
+
+// value renders one attribute: an expression reading a hidden block renders
+// from the partial renderer, which keeps what resolves and writes every
+// reference the hidden namespace reaches as its source text, with a
+// genuinely unrenderable part as the placeholder.
+func (lr *legacyRender) value(v cty.Value, expr hcl.Expression) any {
+	// The renderer evaluates the expression with the hidden namespaces out
+	// of its context, which reproduces the previous engine's semantics: a
+	// try whose failing argument errors answers from its fallback, one
+	// whose argument is unknown stays unknown and renders whole as
+	// written, and a placing function builds its value around the
+	// reference texts.
+	rendered, ok := lr.rd.Render(expr)
+	if !ok {
+		return lr.conv.Go(v)
+	}
+	return lr.conv.Go(renderedValue(rendered, lr.conv.Placeholder))
+}
+
+// renderedValue replaces each unresolved leaf the renderer could not give
+// source text with the placeholder of the view, at every depth.
+func renderedValue(v cty.Value, placeholder string) cty.Value {
+	v, _ = v.UnmarkDeep()
+	if !v.IsKnown() || v.IsNull() {
+		return v
+	}
+	if v.Type() == cty.String {
+		s := v.AsString()
+		if strings.Contains(s, partial.UnknownPlaceholder) {
+			return cty.StringVal(strings.ReplaceAll(s, partial.UnknownPlaceholder, placeholder))
+		}
+		return v
+	}
+	ty := v.Type()
+	switch {
+	case ty.IsListType() || ty.IsTupleType() || ty.IsSetType():
+		elems := v.AsValueSlice()
+		out := make([]cty.Value, len(elems))
+		for i, e := range elems {
+			out[i] = renderedValue(e, placeholder)
+		}
+		return cty.TupleVal(out)
+	case ty.IsMapType() || ty.IsObjectType():
+		elems := v.AsValueMap()
+		out := make(map[string]cty.Value, len(elems))
+		for k, e := range elems {
+			out[k] = renderedValue(e, placeholder)
+		}
+		return cty.ObjectVal(out)
+	}
+	return v
+}
+
 // legacyAttrs is instance inst of b in the legacy shape; a plan's computed
-// values fill the attributes the configuration does not write.
-func legacyAttrs(b *model.Block, inst *model.Instance, conv value.Converter) map[string]any {
+// values fill the attributes the configuration does not write. Attributes
+// reading a block of the module render from their expression with the block's
+// namespace out of the context, so a reference keeps its source text.
+func legacyAttrs(b *model.Block, inst *model.Instance, conv value.Converter, lr *legacyRender) map[string]any {
 	out := map[string]any{}
 	if inst == nil {
 		return out
@@ -268,6 +474,9 @@ func legacyAttrs(b *model.Block, inst *model.Instance, conv value.Converter) map
 		if !value.Present(v) {
 			continue
 		}
+		if lr.renderValue(out, name, v, body) {
+			continue
+		}
 		if text, ok := partialText(inst, name, conv); ok {
 			out[name] = text
 			continue
@@ -280,6 +489,246 @@ func legacyAttrs(b *model.Block, inst *model.Instance, conv value.Converter) map
 	}
 	collapseBlocks(out, body)
 	prepareLegacyFilterPatterns(out)
+	return out
+}
+
+// renderValue writes the document value of one attribute of the written body
+// under name and reports whether it did: a reference-like attribute reading a
+// hidden block, or whose value the model could not resolve, renders from its
+// expression, so a reference keeps its source text. An expression deciding on
+// what it reads (a condition, a loop) keeps the value evaluation produced,
+// and attributes of no expression the renderer knows — a plan's computed
+// ones, a merged override, unknown dynamic content — keep the conversion of
+// the value the model carries.
+func (lr *legacyRender) renderValue(out map[string]any, name string, v cty.Value, body *hclsyntax.Body) bool {
+	if lr == nil || body == nil {
+		return false
+	}
+	v, _ = v.UnmarkDeep()
+	if attr, ok := body.Attributes[name]; ok && lr.rendersFromExpr(attr.Expr, v) {
+		out[name] = lr.value(v, attr.Expr)
+		return true
+	}
+	if sources, ok := nestedSources(body)[name]; ok && len(sources) > 0 && rendersNested(lr, sources, v) {
+		out[name] = lr.nested(v, sources)
+		return true
+	}
+	return false
+}
+
+// rendersFromExpr reports whether expr renders from the partial renderer: it
+// only places references into its value, and one of them reaches a hidden
+// block, or the value evaluation produced is not wholly known and the
+// expression would otherwise lose its reference text.
+func (lr *legacyRender) rendersFromExpr(expr hcl.Expression, v cty.Value) bool {
+	syn, ok := expr.(hclsyntax.Expression)
+	if !ok {
+		return false
+	}
+	if call, isCall := syn.(*hclsyntax.FunctionCallExpr); isCall && !lr.rd.Places(call) {
+		// A function deciding on its arguments renders whole as written as
+		// soon as one reference argument does not resolve: evaluating it
+		// would answer from a fallback (try) or otherwise without the
+		// reference the view keeps unseen, whatever the model resolved.
+		return !lr.argsResolve(call) || ((lr.readsRefs(syn) || !v.IsWhollyKnown()) && lr.referenceLike(syn))
+	}
+	return (lr.readsRefs(syn) || !v.IsWhollyKnown()) && lr.referenceLike(syn)
+}
+
+// argsResolve reports whether every argument of the call resolves in the
+// rendering context.
+func (lr *legacyRender) argsResolve(e *hclsyntax.FunctionCallExpr) bool {
+	for _, arg := range e.Args {
+		v, diags := arg.Value(lr.ctx)
+		if diags.HasErrors() || !v.IsWhollyKnown() {
+			return false
+		}
+	}
+	return true
+}
+
+// referenceLike reports whether expr places references into its value: a
+// traversal, an index or relative traversal over one — a selector reading
+// count.index or each.key still names a block of the module and renders as
+// its written text — a template or collection of them, or a call to a
+// function that only places its arguments. An expression deciding on what
+// it reads (a condition, a loop) is not.
+func (lr *legacyRender) referenceLike(expr hclsyntax.Expression) bool {
+	switch e := expr.(type) {
+	case *hclsyntax.LiteralValueExpr, *hclsyntax.ScopeTraversalExpr, *hclsyntax.AnonSymbolExpr:
+		return true
+	case *hclsyntax.IndexExpr:
+		return lr.referenceLike(e.Collection)
+	case *hclsyntax.RelativeTraversalExpr:
+		return lr.referenceLike(e.Source)
+	case *hclsyntax.ConditionalExpr, *hclsyntax.ForExpr:
+		// A condition or loop reading a block of the module renders whole
+		// as its written text: evaluation cannot choose a branch or expand
+		// the loop without the values the view keeps unseen.
+		return true
+	case *hclsyntax.FunctionCallExpr:
+		// A call one of whose arguments reads a block renders from its
+		// written text, whole when the function decides on its arguments
+		// and per placed part when it only places them.
+		return lr.rd.PlacesOnly(e) || lr.referenceLikeAll(e.Args)
+	}
+	return lr.referenceLikeChildren(expr)
+}
+
+// referenceLikeChildren reports whether the container expressions place
+// references: every child of a template, a collection or an object
+// constructor is reference-like, and an object key only has to resolve (the
+// parser wraps a bare identifier in an ObjectConsKeyExpr; the key shapes the
+// object, only the value places references).
+func (lr *legacyRender) referenceLikeChildren(expr hclsyntax.Expression) bool {
+	switch e := expr.(type) {
+	case *hclsyntax.TemplateExpr:
+		return lr.referenceLikeAll(e.Parts)
+	case *hclsyntax.TemplateWrapExpr:
+		return lr.referenceLike(e.Wrapped)
+	case *hclsyntax.ParenthesesExpr:
+		return lr.referenceLike(e.Expression)
+	case *hclsyntax.TupleConsExpr:
+		return lr.referenceLikeAll(e.Exprs)
+	case *hclsyntax.ObjectConsExpr:
+		for _, item := range e.Items {
+			if _, diags := item.KeyExpr.Value(lr.ctx); diags.HasErrors() {
+				return false
+			}
+			if !lr.referenceLike(item.ValueExpr) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func (lr *legacyRender) referenceLikeAll(exprs []hclsyntax.Expression) bool {
+	for _, e := range exprs {
+		if !lr.referenceLike(e) {
+			return false
+		}
+	}
+	return true
+}
+
+// rendersNested reports whether an element of the nested block value v
+// renders from its written body.
+func rendersNested(lr *legacyRender, sources []nestedSource, v cty.Value) bool {
+	if !v.IsWhollyKnown() {
+		return true
+	}
+	if !v.CanIterateElements() {
+		return false
+	}
+	i := 0
+	for it := v.ElementIterator(); it.Next(); i++ {
+		_, ev := it.Element()
+		idx := i
+		if idx >= len(sources) {
+			idx = len(sources) - 1
+		}
+		if sources[idx].dynamic {
+			continue
+		}
+		if rendersNestedElement(lr, sources[idx].body, ev) {
+			return true
+		}
+	}
+	return false
+}
+
+// rendersNestedElement reports whether the object v, produced by one block
+// body, holds an attribute or a deeper nested block that renders from its
+// expression, at every depth.
+func rendersNestedElement(lr *legacyRender, body *hclsyntax.Body, v cty.Value) bool {
+	v, _ = v.UnmarkDeep()
+	if !v.IsKnown() || !v.Type().IsObjectType() {
+		return false
+	}
+	for name, attr := range body.Attributes {
+		if ev, ok := attrValue(v, name); ok && lr.rendersFromExpr(attr.Expr, ev) {
+			return true
+		}
+	}
+	for name, inner := range nestedSources(body) {
+		if len(inner) == 0 {
+			continue
+		}
+		if ev, ok := attrValue(v, name); ok && rendersNested(lr, inner, ev) {
+			return true
+		}
+	}
+	return false
+}
+
+// attrValue is the value of one attribute of an object value.
+func attrValue(v cty.Value, name string) (cty.Value, bool) {
+	if !v.Type().IsObjectType() && !v.Type().IsMapType() {
+		return cty.NilVal, false
+	}
+	if !v.Type().HasAttribute(name) {
+		return cty.NilVal, false
+	}
+	return v.GetAttr(name), true
+}
+
+// nested renders the elements of one nested block type of an instance. A
+// static block renders from its written body; the content of a dynamic block
+// keeps the value evaluation produced, since its iterator is no longer bound.
+func (lr *legacyRender) nested(v cty.Value, sources []nestedSource) any {
+	v, _ = v.UnmarkDeep()
+	if !v.IsKnown() || !v.CanIterateElements() {
+		return lr.conv.Go(v)
+	}
+	out := make([]any, 0, v.LengthInt())
+	i := 0
+	for it := v.ElementIterator(); it.Next(); i++ {
+		_, e := it.Element()
+		e, _ = e.UnmarkDeep()
+		if i < len(sources) && !sources[i].dynamic && e.IsKnown() && e.Type().IsObjectType() {
+			out = append(out, lr.attrs(e, sources[i].body))
+			continue
+		}
+		if m, ok := lr.conv.Go(e).(map[string]any); ok {
+			collapseBlocks(m, sources[min(i, len(sources)-1)].body)
+			out = append(out, m)
+			continue
+		}
+		out = append(out, lr.conv.Go(e))
+	}
+	if len(out) == 1 {
+		if m, ok := out[0].(map[string]any); ok {
+			return m
+		}
+	}
+	return out
+}
+
+// attrs renders the attributes and nested blocks of one block body from the
+// values they evaluated to, with the attributes reading a hidden block
+// rendered from their expressions.
+func (lr *legacyRender) attrs(v cty.Value, body *hclsyntax.Body) map[string]any {
+	out := make(map[string]any, v.LengthInt())
+	sources := nestedSources(body)
+	for it := v.ElementIterator(); it.Next(); {
+		k, e := it.Element()
+		name := k.AsString()
+		e, _ = e.UnmarkDeep()
+		if !value.Present(e) {
+			continue
+		}
+		if attr, ok := body.Attributes[name]; ok && lr.rendersFromExpr(attr.Expr, e) {
+			out[name] = lr.value(e, attr.Expr)
+			continue
+		}
+		if sources, ok := sources[name]; ok && len(sources) > 0 {
+			out[name] = lr.nested(e, sources)
+			continue
+		}
+		out[name] = lr.conv.Go(e)
+	}
 	return out
 }
 
@@ -355,14 +804,14 @@ func collapseBlocks(obj map[string]any, body *hclsyntax.Body) {
 	if body == nil {
 		return
 	}
-	for name, bodies := range nestedBodies(body) {
+	for name, sources := range nestedSources(body) {
 		list, ok := obj[name].([]any)
 		if !ok {
 			continue
 		}
 		for i, e := range list {
 			if m, ok := e.(map[string]any); ok {
-				collapseBlocks(m, bodies[min(i, len(bodies)-1)])
+				collapseBlocks(m, sources[min(i, len(sources)-1)].body)
 			}
 		}
 		if len(list) == 1 {
@@ -373,19 +822,27 @@ func collapseBlocks(obj map[string]any, body *hclsyntax.Body) {
 	}
 }
 
-// nestedBodies returns, by block type, the bodies of the nested blocks of
+// nestedSource is the body one written nested block contributed to its block
+// type. A dynamic block contributes the body of its content, whose
+// expressions read the iterator the expansion bound.
+type nestedSource struct {
+	body    *hclsyntax.Body
+	dynamic bool
+}
+
+// nestedSources returns, by block type, the source of every nested block of
 // body; a dynamic block contributes its content to the type it generates.
-func nestedBodies(body *hclsyntax.Body) map[string][]*hclsyntax.Body {
-	out := map[string][]*hclsyntax.Body{}
+func nestedSources(body *hclsyntax.Body) map[string][]nestedSource {
+	out := map[string][]nestedSource{}
 	for _, nb := range body.Blocks {
 		if dynamicblock.Is(nb) {
 			if content := dynamicblock.Content(nb); content != nil {
 				typ := dynamicblock.GeneratedType(nb)
-				out[typ] = append(out[typ], content)
+				out[typ] = append(out[typ], nestedSource{body: content, dynamic: true})
 			}
 			continue
 		}
-		out[nb.Type] = append(out[nb.Type], nb.Body)
+		out[nb.Type] = append(out[nb.Type], nestedSource{body: nb.Body})
 	}
 	return out
 }

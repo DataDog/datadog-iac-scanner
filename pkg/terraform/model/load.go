@@ -291,6 +291,7 @@ func loadRoot(
 	root.Notes = slices.Compact(root.Notes)
 	newBuilder(root, base).build(ev.resources)
 	for _, m := range root.Modules {
+		m.Scope.KeepRenderContext()
 		m.Scope.ReleaseEvalState()
 	}
 	return root
