@@ -8,6 +8,7 @@ package localdata
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 
 	"github.com/hashicorp/hcl/v2"
@@ -67,12 +68,12 @@ type googleAuditLogConfig struct {
 
 // googleIAMPolicyAttributes renders policy_data in the JSON shape of a GCP IAM
 // policy, as Terraform does.
-func googleIAMPolicyAttributes(body hcl.Body, eval EvalFunc) map[string]string {
+func googleIAMPolicyAttributes(ctx context.Context, body hcl.Body, eval EvalFunc) map[string]string {
 	content, _, _ := body.PartialContent(googlePolicySchema)
 	if content == nil {
 		return nil
 	}
-	d := newDecoder(eval)
+	d := newDecoder(ctx, eval)
 	var policy googlePolicy
 	for _, block := range d.blocks(content, "binding") {
 		policy.Bindings = append(policy.Bindings, block.d.googleBinding(block.body))
@@ -80,7 +81,7 @@ func googleIAMPolicyAttributes(body hcl.Body, eval EvalFunc) map[string]string {
 	for _, block := range d.blocks(content, "audit_config") {
 		policy.AuditConfigs = append(policy.AuditConfigs, block.d.googleAuditConfig(block.body))
 	}
-	if *d.skipped {
+	if *d.skipped || ctx.Err() != nil {
 		return nil
 	}
 	buf := &bytes.Buffer{}

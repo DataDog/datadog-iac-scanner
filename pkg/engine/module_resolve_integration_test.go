@@ -17,7 +17,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -267,62 +266,6 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 	}
 }
 
-func TestModuleInstantiationTruncation_LoggedAtWarnLevel(t *testing.T) {
-	root := t.TempDir()
-	rootDir := filepath.Join(root, "stack")
-	modDir := filepath.Join(root, "modules", "bucket")
-	require.NoError(t, os.MkdirAll(rootDir, 0o755))
-	require.NoError(t, os.MkdirAll(modDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(rootDir, "main.tf"), []byte(`
-module "bucket" {
-  source = "../modules/bucket"
-  acl    = "public-read"
-}
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(modDir, "main.tf"), []byte(fmt.Sprintf(`
-variable "acl" { type = string }
-resource "aws_s3_bucket" "this" {
-  count  = %d
-  acl    = var.acl
-  bucket = "bucket-${count.index}"
-}
-`, tfeval.MaxCountExpansion()+2)), 0o644))
-
-	var files model.FileMetadatas
-	files = append(files, parseTerraform(t, filepath.Join(rootDir, "main.tf"))...)
-	files = append(files, parseTerraform(t, filepath.Join(modDir, "main.tf"))...)
-
-	queries := []model.QueryMetadata{{
-		Query: aclRule, InputData: "{}", Platform: "terraform",
-		Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
-	}}
-
-	ins := newTestInspector(t, inspectorOpts{
-		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder,
-		flagEvaluator: featureflags.NewLocalEvaluator(),
-	})
-
-	var logs bytes.Buffer
-	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
-	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...))
-
-	out := logs.String()
-	require.Contains(t, out, "tfeval: module instantiation summary",
-		"the truncated run must still emit the info-level summary")
-	require.Contains(t, out, "tfeval: module instantiation truncated",
-		"the truncated run must emit a warn-level record for on-call searches")
-	var warnLine string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "tfeval: module instantiation truncated") {
-			warnLine = line
-		}
-	}
-	require.NotEmpty(t, warnLine, "expected a warn line, got %q", out)
-	require.Contains(t, warnLine, `"level":"warn"`)
-	require.Contains(t, warnLine, `"count_expansion_truncated":`)
-	require.Contains(t, warnLine, `"count_expansion_max_requested":`)
-	require.Contains(t, warnLine, `"resource_budget_exhausted":false`)
-}
 
 // Two roots call the same module with the same inputs: expect two findings and two distinct ModuleCallChain values.
 func TestInspect_TwoCallersGetDistinctCallChains(t *testing.T) {

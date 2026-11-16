@@ -256,9 +256,14 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 	rootEvalWorkers = 1
 	defer func() { rootEvalWorkers = previous }()
 
+	// The second root is removed after parsing, so its evaluation fails and
+	// the test exercises what a failed root leaves behind.
+	if err := os.RemoveAll(filepath.Join(repo, "stack-b")); err != nil {
+		t.Fatal(err)
+	}
+
 	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, repo)
 	evaluator := tfeval.New()
-	evaluator.SetMaxInstantiated(1)
 	moduleCalls := newModuleCallIndex(filesByDir, func(path string) bool {
 		return pathWithinRoot(path, filepath.Join(repo, "modules"))
 	})
@@ -401,11 +406,14 @@ resource "aws_s3_bucket" "this" {
 	}
 }
 
-func TestResolveModuleDocuments_TruncatedCountKeepsSourceBlock(t *testing.T) {
+// A module call whose count expands past the old per-block limit instantiates
+// every instance and suppresses the source block: nothing is left to scan as
+// written.
+func TestResolveModuleDocuments_CountPastTheOldLimitInstantiatesEveryInstance(t *testing.T) {
 	root := t.TempDir()
 	rootDir := filepath.Join(root, "stack")
 	modDir := filepath.Join(root, "modules", "buckets")
-	cap := tfeval.MaxCountExpansion()
+	const count = 52
 
 	rootFile := writeFile(t, rootDir, "main.tf", `
 module "buckets" {
@@ -417,7 +425,7 @@ resource "aws_s3_bucket" "replica" {
   count  = %d
   bucket = "bucket-${count.index}"
 }
-`, cap+2))
+`, count))
 
 	files := model.FileMetadatas{
 		fileMeta("root-id", rootFile),
@@ -428,17 +436,11 @@ resource "aws_s3_bucket" "replica" {
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed")
 	}
-	if len(res.docs) != cap {
-		t.Fatalf("expected %d instantiated docs for truncated count, got %d", cap, len(res.docs))
+	if len(res.docs) != count {
+		t.Fatalf("expected %d instantiated docs, got %d", count, len(res.docs))
 	}
-	if res.expansionTruncations == 0 {
-		t.Fatal("expected count expansion truncation to be recorded")
-	}
-	if res.expansionMaxRequested != cap+2 {
-		t.Fatalf("expansionMaxRequested = %d, want %d", res.expansionMaxRequested, cap+2)
-	}
-	if len(res.suppressed["mod-id"]["aws_s3_bucket"]) != 0 {
-		t.Fatalf("truncated expansion must not suppress the source block: %#v", res.suppressed)
+	if !res.suppressed["mod-id"]["aws_s3_bucket"]["replica"] {
+		t.Fatalf("fully expanded block must suppress the source block: %#v", res.suppressed["mod-id"])
 	}
 }
 

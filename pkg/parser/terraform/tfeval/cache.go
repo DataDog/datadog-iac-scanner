@@ -7,6 +7,7 @@
 package tfeval
 
 import (
+	"context"
 	"encoding/binary"
 	"hash/maphash"
 	"reflect"
@@ -143,9 +144,14 @@ type keyMemoEntry struct {
 // Map keys are sorted. The encoding is streamed into the digest rather than
 // retained: the key of every evaluation is kept until the root is merged, and
 // a module input can be a decoded configuration passed to every instance.
-func (m *keyMemo) inputsKey(inputs map[string]cty.Value) inputsDigest {
+// A canceled ctx stops the encoding and ok comes back false: the caller then
+// skips the cache, since the evaluation is about to stop anyway.
+func (m *keyMemo) inputsKey(ctx context.Context, inputs map[string]cty.Value) (key inputsDigest, ok bool) {
+	if ctx.Err() != nil {
+		return inputsDigest{}, false
+	}
 	if len(inputs) == 0 {
-		return inputsDigest{}
+		return inputsDigest{}, true
 	}
 	keys := make([]string, 0, len(inputs))
 	for k := range inputs {
@@ -154,12 +160,28 @@ func (m *keyMemo) inputsKey(inputs map[string]cty.Value) inputsDigest {
 	sort.Strings(keys)
 	w := newKeyWriter()
 	for _, k := range keys {
+		if ctx.Err() != nil {
+			return inputsDigest{}, false
+		}
 		w.WriteString(k)
 		w.WriteString("=")
-		m.writeValue(w, inputs[k], true)
+		if !m.writeValue(ctx, w, inputs[k], true) {
+			return inputsDigest{}, false
+		}
 		w.WriteString("\n")
 	}
-	return w.digest()
+	return w.digest(), true
+}
+
+// inputsKeyUninterruptible computes the input digest without cancellation
+// checks, for callers that hold no scan context.
+func (m *keyMemo) inputsKeyUninterruptible(inputs map[string]cty.Value) inputsDigest {
+	key, ok := m.inputsKey(context.Background(), inputs)
+	if !ok {
+		// Only a canceled context stops the encoding; Background never is.
+		panic("tfeval: input key encoding stopped without a canceled context")
+	}
+	return key
 }
 
 // keySink receives a key encoding.
@@ -190,34 +212,39 @@ func (w *keyWriter) digest() inputsDigest { return inputsDigest{a: w.a.Sum64(), 
 // check because null values are also considered known. All DynamicPseudoType
 // values are unknown (IsKnown()==false), so they are handled by the unknown
 // branch and the DynamicPseudoType case never needs a special guard.
-func (m *keyMemo) writeValue(w keySink, v cty.Value, digestCollection bool) {
+func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digestCollection bool) bool {
+	if ctx.Err() != nil {
+		return false
+	}
 	if v.IsNull() {
 		// Include the type so cty.NullVal(cty.String) and cty.NullVal(cty.Number)
 		// do not collide.
 		w.WriteString("null(")
 		writeType(w, v.Type())
 		w.WriteString(")")
-		return
+		return true
 	}
 	if !v.IsKnown() {
 		w.WriteString("?")
 		writeType(w, v.Type())
-		return
+		return true
 	}
 	// Walk collections instead of cty/json: JSON collapses list/set and map/object
 	// to the same shape, including nested wholly-known values inside partial keys.
 	if isCollectionOrStructural(v.Type()) {
 		if digestCollection {
-			d := m.collectionDigest(v)
+			d, ok := m.collectionDigest(ctx, v)
+			if !ok {
+				return false
+			}
 			var buf [16]byte
 			binary.LittleEndian.PutUint64(buf[:8], d.a)
 			binary.LittleEndian.PutUint64(buf[8:], d.b)
 			w.WriteString("\x00")
 			w.WriteString(string(buf[:]))
-			return
+			return true
 		}
-		m.writeCollection(w, v)
-		return
+		return m.writeCollection(ctx, w, v)
 	}
 	data, err := ctyjson.Marshal(v, v.Type())
 	if err != nil {
@@ -225,17 +252,18 @@ func (m *keyMemo) writeValue(w keySink, v cty.Value, digestCollection bool) {
 			w.WriteString("number(")
 			w.WriteString(v.AsBigFloat().Text('g', -1))
 			w.WriteString(")")
-			return
+			return true
 		}
 		w.WriteString("marshal-error(")
 		writeType(w, v.Type())
 		w.WriteString(")")
-		return
+		return true
 	}
 	w.WriteString(string(data))
+	return true
 }
 
-func (m *keyMemo) writeCollection(w keySink, v cty.Value) {
+func (m *keyMemo) writeCollection(ctx context.Context, w keySink, v cty.Value) bool {
 	t := v.Type()
 	writeType(w, t)
 	open, closing := "[", "]"
@@ -245,31 +273,39 @@ func (m *keyMemo) writeCollection(w keySink, v cty.Value) {
 	w.WriteString(open)
 	// ElementIterator sorts map/object keys, so the encoding is insertion-order stable.
 	for it := v.ElementIterator(); it.Next(); {
+		if ctx.Err() != nil {
+			return false
+		}
 		key, elem := it.Element()
 		if t.IsObjectType() || t.IsMapType() {
 			w.WriteString(strconv.Quote(key.AsString()))
 			w.WriteString(":")
 		}
-		m.writeValue(w, elem, false)
+		if !m.writeValue(ctx, w, elem, false) {
+			return false
+		}
 		w.WriteString(",")
 	}
 	w.WriteString(closing)
+	return true
 }
 
 // collectionDigest is the digest of a collection's own encoding, memoized by
 // the identity of the collection's storage.
-func (m *keyMemo) collectionDigest(v cty.Value) inputsDigest {
+func (m *keyMemo) collectionDigest(ctx context.Context, v cty.Value) (inputsDigest, bool) {
 	id, ok := collectionIdentity(v)
 	// Empty slices of different types can share one runtime pointer, so their
 	// identity is not safe to reuse. They are cheap to encode directly.
 	memoize := ok && m != nil && id.n > 0
 	if memoize {
 		if e, hit := m.entries[id]; hit {
-			return e.digest
+			return e.digest, true
 		}
 	}
 	w := newKeyWriter()
-	m.writeCollection(w, v)
+	if !m.writeCollection(ctx, w, v) {
+		return inputsDigest{}, false
+	}
 	d := w.digest()
 	if memoize {
 		if m.entries == nil {
@@ -277,7 +313,7 @@ func (m *keyMemo) collectionDigest(v cty.Value) inputsDigest {
 		}
 		m.entries[id] = keyMemoEntry{value: v, digest: d}
 	}
-	return d
+	return d, true
 }
 
 // collectionID identifies a collection value by the storage cty keeps it in.

@@ -8,6 +8,7 @@ package localdata
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -88,11 +89,11 @@ var conditionSchema = &hcl.BodySchema{
 
 // policyDocumentAttributes renders the json and minified_json attributes; the
 // two only differ in whitespace, which rules do not read.
-func policyDocumentAttributes(body hcl.Body, eval EvalFunc) map[string]string {
-	policy, ok := decodePolicyDocument(body, eval)
+func policyDocumentAttributes(ctx context.Context, body hcl.Body, eval EvalFunc) map[string]string {
+	policy, ok := decodePolicyDocument(ctx, body, eval)
 	// Any unresolved dynamic or source/override leaves the document incomplete,
 	// so emitting a partial policy would mislead rules.
-	if !ok || policy.Incomplete {
+	if !ok || policy.Incomplete || ctx.Err() != nil {
 		return nil
 	}
 	out, err := policy.render()
@@ -107,12 +108,12 @@ func policyDocumentAttributes(body hcl.Body, eval EvalFunc) map[string]string {
 // Terraform does. Arguments the data source does not define, and values eval
 // cannot resolve, are left out rather than discarding the document. ok is
 // false when a named source or override document could not be read.
-func decodePolicyDocument(body hcl.Body, eval EvalFunc) (policyDocument, bool) {
+func decodePolicyDocument(ctx context.Context, body hcl.Body, eval EvalFunc) (policyDocument, bool) {
 	content, _, _ := body.PartialContent(documentSchema)
 	if content == nil {
 		return policyDocument{}, true
 	}
-	d := newDecoder(eval)
+	d := newDecoder(ctx, eval)
 	own := policyDocument{
 		ID:      d.str(content.Attributes["policy_id"]),
 		Version: d.str(content.Attributes["version"]),

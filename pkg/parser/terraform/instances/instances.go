@@ -5,18 +5,17 @@
  */
 
 // Package instances resolves Terraform count and for_each expressions into
-// bounded instance plans, without evaluating block bodies or charging budgets.
+// instance plans, without evaluating block bodies.
 package instances
 
 import (
+	"context"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 )
-
-// MaxPerBlock caps the instances expanded from one count or for_each block.
-const MaxPerBlock = 50
 
 const (
 	// KindCount and KindForEach name the meta-argument a block expands by.
@@ -34,18 +33,14 @@ type Plan struct {
 	// Kind is empty for a block without count or for_each.
 	Kind string
 	// Unresolved means the expression failed or its instance keys are unknown
-	// or invalid. No concrete Items are returned in this case.
+	// or invalid. No concrete instances are returned in this case.
 	Unresolved bool
-	// Requested is the full instance count before the per-block cap, when known.
-	Requested int
-	Items     []Item
-	// ForEachKeys retains all keys only for truncated collections small enough
-	// to preserve their output shape. Otherwise it is nil.
-	ForEachKeys []cty.Value
+	// count is the size of a resolved count. Its instances are produced by At,
+	// so a large count is not allocated before the caller can stop.
+	count int
+	// Items holds a resolved for_each. A count leaves it empty.
+	Items []Item
 }
-
-// Truncated reports whether a known expansion exceeded the per-block cap.
-func (p *Plan) Truncated() bool { return p.Requested > MaxPerBlock }
 
 // Attributes picks the count and for_each expressions of an HCL body.
 func Attributes(body *hclsyntax.Body) (count, forEach hcl.Expression) {
@@ -60,52 +55,88 @@ func Attributes(body *hclsyntax.Body) (count, forEach hcl.Expression) {
 
 // Resolve expands the supplied expressions (nil when absent). Count takes
 // precedence if both are present, matching the module evaluator's fallback for
-// invalid configurations. maxShape bounds retention of truncated for_each keys;
-// callers may use these keys to pad unevaluated outputs with unknown values.
-// Values retain their cty marks, including marks on each.value.
-func Resolve(count, forEach hcl.Expression, ctx *hcl.EvalContext, maxShape int) Plan {
+// invalid configurations. Values retain their cty marks, including marks on
+// each.value. A canceled scanCtx stops for_each before the instance slice is
+// allocated and during enumeration; the plan is then unresolved so callers do
+// not treat the interruption as a known-empty expansion.
+func Resolve(scanCtx context.Context, count, forEach hcl.Expression, evalCtx *hcl.EvalContext) Plan {
 	if count != nil {
-		return resolveCount(count, ctx)
+		return resolveCount(count, evalCtx)
 	}
 	if forEach != nil {
-		return resolveForEach(forEach, ctx, maxShape)
+		return resolveForEach(scanCtx, forEach, evalCtx)
 	}
 	return Plan{}
 }
 
-func resolveCount(expr hcl.Expression, ctx *hcl.EvalContext) Plan {
+func countValue(expr hcl.Expression, ctx *hcl.EvalContext) (int, bool) {
 	v, diags := expr.Value(ctx)
-	n, ok := 0, false
-	if !diags.HasErrors() {
-		n, ok = ctyutil.LiteralInt(v)
+	if diags.HasErrors() {
+		return 0, false
 	}
+	return ctyutil.LiteralInt(v)
+}
+
+func resolveCount(expr hcl.Expression, ctx *hcl.EvalContext) Plan {
+	n, ok := countValue(expr, ctx)
 	if !ok {
 		return Plan{Kind: KindCount, Unresolved: true}
 	}
-	requested := max(n, 0)
-	items := make([]Item, min(requested, MaxPerBlock))
-	for i := range items {
-		index := cty.NumberIntVal(int64(i))
-		items[i] = Item{Key: index, Value: index}
+	if n <= 0 {
+		return Plan{Kind: KindCount}
 	}
-	return Plan{Kind: KindCount, Requested: requested, Items: items}
+	return Plan{Kind: KindCount, count: n}
 }
 
-func resolveForEach(expr hcl.Expression, ctx *hcl.EvalContext, maxShape int) Plan {
+// Len is the number of concrete instances. A count reports its size without
+// allocating them.
+func (p Plan) Len() int {
+	if p.Kind == KindCount && !p.Unresolved {
+		return p.count
+	}
+	return len(p.Items)
+}
+
+// At returns instance i. i is valid in [0, Len).
+func (p Plan) At(i int) Item {
+	if p.Kind == KindCount && !p.Unresolved {
+		index := cty.NumberIntVal(int64(i))
+		return Item{Key: index, Value: index}
+	}
+	return p.Items[i]
+}
+
+func resolveForEach(scanCtx context.Context, expr hcl.Expression, evalCtx *hcl.EvalContext) Plan {
 	unknown := Plan{Kind: KindForEach, Unresolved: true}
-	v, diags := expr.Value(ctx)
+	if scanCtx.Err() != nil {
+		return unknown
+	}
+	v, diags := expr.Value(evalCtx)
 	if diags.HasErrors() || !ForEachCollection(v) {
 		return unknown
 	}
-	requested := v.LengthInt()
-	if requested == 0 {
+	if v.LengthInt() == 0 {
 		return Plan{Kind: KindForEach}
 	}
-	plan, ok := expandForEach(v, requested, maxShape)
-	if !ok {
+	if scanCtx.Err() != nil {
 		return unknown
 	}
-	return plan
+	// Grown with append, not sized from the collection: the caller stops
+	// enumerating as soon as the scan context is done.
+	var items []Item
+	for it := v.ElementIterator(); it.Next(); {
+		if scanCtx.Err() != nil {
+			return unknown
+		}
+		key, value := it.Element()
+		if _, ok := ctyutil.ConcreteString(key); !ok {
+			// A collection with any key that is not a concrete string is not a
+			// for_each Terraform itself would accept; resolve it as unknown.
+			return unknown
+		}
+		items = append(items, Item{Key: key, Value: value})
+	}
+	return Plan{Kind: KindForEach, Items: items}
 }
 
 // ForEachCollection reports whether v is a known, non-null map, object or set
@@ -116,32 +147,6 @@ func ForEachCollection(v cty.Value) bool {
 	}
 	t := v.Type()
 	return t.IsObjectType() || t.IsMapType() || t.IsSetType()
-}
-
-func expandForEach(v cty.Value, requested, maxShape int) (Plan, bool) {
-	expandTo := min(requested, MaxPerBlock)
-	keepKeys := requested > MaxPerBlock && requested <= maxShape
-	plan := Plan{Kind: KindForEach, Requested: requested, Items: make([]Item, 0, expandTo)}
-	if keepKeys {
-		plan.ForEachKeys = make([]cty.Value, 0, requested)
-	}
-	for it := v.ElementIterator(); it.Next(); {
-		key, value := it.Element()
-		if _, ok := ctyutil.ConcreteString(key); !ok {
-			return Plan{}, false
-		}
-		if keepKeys {
-			plan.ForEachKeys = append(plan.ForEachKeys, key)
-		}
-		if len(plan.Items) < expandTo {
-			plan.Items = append(plan.Items, Item{Key: key, Value: value})
-			continue
-		}
-		if !keepKeys {
-			break
-		}
-	}
-	return plan, true
 }
 
 // Variable returns the count.index or each.key/each.value binding for item.

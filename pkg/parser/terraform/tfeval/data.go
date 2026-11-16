@@ -65,11 +65,6 @@ type moduleData struct {
 	// inputs it read, so a refresh pass with unchanged inputs reuses it.
 	evalCache map[*hclsyntax.Block]blockEvalCache
 
-	// hasUnconditionalResource records whether the module has a resource block
-	// instantiating regardless of context, so an exhausted budget discards it
-	// and its data need not expand.
-	hasUnconditionalResource bool
-
 	// moduleAtRefresh is the module.* value the data blocks were last refreshed
 	// against; republishing it need not refresh the data again.
 	moduleAtRefresh cty.Value
@@ -101,11 +96,10 @@ func newModuleData(
 	d := &moduleData{
 		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
 		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
-		hasUnconditionalResource: static.hasUnconditionalResource,
-		readsData:                static.dataReadsData,
-		readsLocals:              static.dataReadsLocals,
-		readsResources:           static.dataReadsResources,
-		readsModuleOutputs:       static.dataReadsModules,
+		readsData:          static.dataReadsData,
+		readsLocals:        static.dataReadsLocals,
+		readsResources:     static.dataReadsResources,
+		readsModuleOutputs: static.dataReadsModules,
 	}
 	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
 	return d
@@ -297,16 +291,13 @@ func (d *moduleData) evalBlock(
 	ctx context.Context, b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
-	if !d.e.dataExpansionWithinBudget(d.addr, d.hasUnconditionalResource) {
-		return cached
-	}
 	d.e.dataBlockEvals++
 	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
 		if source, ok := localdata.Lookup(inst.Type); ok {
-			view.Attributes = d.withComputedAttributes(inst, b, evalCtx, source)
+			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx, source)
 		}
 		if d.addr == "" {
 			inst.Iteration = nil
@@ -473,7 +464,7 @@ func sameCtyValues(a, b map[string]cty.Value) bool {
 // withComputedAttributes adds the attributes a data source computes from its
 // configuration to inst's, rendering what does not resolve as text.
 func (d *moduleData) withComputedAttributes(
-	inst *ResolvedResource, b *hclsyntax.Block, evalCtx *hcl.EvalContext, source localdata.Source,
+	inst *ResolvedResource, b *hclsyntax.Block, scanCtx context.Context, evalCtx *hcl.EvalContext, source localdata.Source,
 ) map[string]cty.Value {
 	ctx := evalCtx
 	if inst.Iteration != nil {
@@ -484,11 +475,11 @@ func (d *moduleData) withComputedAttributes(
 	var computed map[string]string
 	if body, ok := d.jsonBodies[b]; ok {
 		src := d.sources[b.TypeRange.Filename]
-		computed = source(body, func(expr hcl.Expression) (cty.Value, bool) {
+		computed = source(scanCtx, body, func(expr hcl.Expression) (cty.Value, bool) {
 			return renderJSON(rd, expr, src)
 		})
 	} else {
-		computed = source(b.Body, rd.Render)
+		computed = source(scanCtx, b.Body, rd.Render)
 	}
 	attrs := make(map[string]cty.Value, len(inst.Attributes)+len(computed))
 	for k, v := range inst.Attributes {

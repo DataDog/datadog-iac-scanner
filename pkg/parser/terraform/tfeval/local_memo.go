@@ -69,7 +69,11 @@ func (e *Evaluator) memoizedValue(
 	if !ok {
 		return evaluate(expr, ctx)
 	}
-	key := localMemoKey{expr: expr, inputs: e.keyMemo.inputsKey(inputs)}
+	// The memo key is computed without cancellation checks: memoizedValue
+	// receives only the HCL eval context, which carries no scan context, so
+	// there is none to poll here; the evaluation paths that can carry the scan
+	// context handle their own cancellation.
+	key := localMemoKey{expr: expr, inputs: e.keyMemo.inputsKeyUninterruptible(inputs)}
 	if v, hit := e.localMemo[key]; hit {
 		return v
 	}

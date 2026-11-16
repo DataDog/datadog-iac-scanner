@@ -44,6 +44,11 @@ type DetectKindLine struct {
 	// type and labels, so finding the block a search key names does not read
 	// every block of the file.
 	namedBlocks sync.Map
+	// dynamicExpansions maps a dynamic block → its line-detection expansion
+	// count, computed once. Line detection revisits the same parsed bodies
+	// once per finding, and re-expanding a large for_each per visit would
+	// multiply the expansion work by the number of lookups.
+	dynamicExpansions sync.Map
 }
 
 // namedBlocks indexes the top-level blocks of a body by blockKey, in order.
@@ -189,7 +194,7 @@ func detectKeyParts(
 	for _, part := range keyParts {
 		prevLine, prevFound := detection.CurrentLine, detection.FoundAtLeastOne
 		repeated := withSourceLines(cursor.advance(part), lineCursor.advance(part))
-		s1, s2, idx := generateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, parse, repeated)
+		s1, s2, idx := generateSubstrings(ctx, part, extracted, lines, detection.CurrentLine, parse, repeated, &d.dynamicExpansions)
 
 		// Jumps to line in case of multiline Array
 		if idx != 0 {
