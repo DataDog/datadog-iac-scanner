@@ -81,6 +81,23 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string, kind model.File
 	return model.ResolvedFiles{}, nil
 }
 
+// unrenderedResolver says what is known of a file it failed to resolve.
+type unrenderedResolver interface {
+	Unrendered(ctx context.Context, filePath string) model.UnrenderedChart
+}
+
+// Unrendered returns what the resolver of kind knows of filePath, which it
+// failed to resolve, for the resource names its templates write.
+func (r *Resolver) Unrendered(ctx context.Context, filePath string, kind model.FileKind) (model.UnrenderedChart, bool) {
+	if r == nil {
+		return model.UnrenderedChart{}, false
+	}
+	if u, ok := r.resolvers[kind].(unrenderedResolver); ok {
+		return u.Unrendered(ctx, filePath), true
+	}
+	return model.UnrenderedChart{}, false
+}
+
 // GetType returns the kind of the first registered resolver that claims
 // filePath, or KindCOMMON when none does (including when no resolver for that
 // kind is registered, e.g. the Helm resolver behind its feature flag).

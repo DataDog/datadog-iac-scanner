@@ -134,6 +134,8 @@ type Client struct {
 	inMemoryPaths []string
 	walkInventory []string
 	chartRoots    []string
+	// helmDescriptors are the files that may say how the charts are installed.
+	helmDescriptors []string
 	// chartFilter holds the user's own path filters. The analyzer's exclusions
 	// also list raw templates it does not classify and gitignored files, whose
 	// rendered documents are still scanned.

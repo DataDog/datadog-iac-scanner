@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -162,4 +163,41 @@ func TestPrepareDiskSources_RenderedFileNotDuplicatedAcrossScanPaths(t *testing.
 			require.Equal(t, want, templatesStored(t, services, dir))
 		})
 	}
+}
+
+// The templates of a chart that cannot be rendered are scanned as written,
+// each with what is known of the chart's installation, which the names they
+// write are resolved from.
+func TestPrepareSources_UnrenderedTemplatesKnowTheirRelease(t *testing.T) {
+	files := map[string]string{
+		"web/Chart.yaml":           "apiVersion: v2\nname: web\nversion: 1.0.0\n",
+		"web/templates/broken.tpl": "{{ define \"x\" }}{{ .Values.a ( }}{{ end }}\n",
+		"web/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
+			"  name: \"{{ .Release.Name }}-cm\"\n",
+	}
+	check := func(t *testing.T, services []*Service, dir string) {
+		t.Helper()
+		found := false
+		for _, service := range services {
+			for _, file := range service.files {
+				r, err := filepath.Rel(dir, file.FilePath)
+				require.NoError(t, err)
+				if filepath.ToSlash(r) != "web/templates/cm.yaml" {
+					continue
+				}
+				found = true
+				require.Equal(t, &model.UnrenderedChart{Chart: "web", Release: "web"}, file.UnrenderedHelm)
+			}
+		}
+		require.True(t, found, "the raw template is scanned")
+	}
+
+	t.Run("disk", func(t *testing.T) {
+		services, dir := scanOnDisk(t, files, "web")
+		check(t, services, dir)
+	})
+
+	t.Run("memory", func(t *testing.T) {
+		check(t, scanInMemory(t, files), ".")
+	})
 }

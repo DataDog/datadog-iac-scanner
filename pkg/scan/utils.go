@@ -92,6 +92,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	c.ScanParams.Config.IgnorePaths = pathTypes.Exc
 	c.walkInventory = pathTypes.Inventory
 	c.chartRoots = pathTypes.ChartRoots
+	c.helmDescriptors = pathTypes.HelmDescriptors
 	c.chartFilter = chartFilter
 	c.contentCache = pathTypes.ContentCache
 

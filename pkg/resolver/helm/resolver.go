@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helminstall"
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -16,7 +19,6 @@ import (
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/cli/values"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/releaseutil"
 )
@@ -26,6 +28,12 @@ import (
 type Resolver struct {
 	fsys       vfs.FS
 	chartIndex *chartIndex
+	// installations says how each chart is installed. Without one, it is
+	// found from the charts alone (see helminstall): their dependencies and
+	// their conventions.
+	installations *helminstall.Index
+	roots         []string
+	indexOnce     sync.Once
 }
 
 // NewResolver builds a helm resolver reading chart files from fsys.
@@ -36,10 +44,46 @@ func NewResolver(fsys vfs.FS) *Resolver {
 // WithChartRoots lets missing chart dependencies be resolved from the other
 // charts in the scan (see attachMissingDependencies).
 func (r *Resolver) WithChartRoots(roots []string) *Resolver {
+	r.roots = roots
 	if len(roots) > 0 {
 		r.chartIndex = newChartIndex(r.filesystem(), roots)
 	}
 	return r
+}
+
+// WithInstallations renders each chart as the installations idx found for it.
+func (r *Resolver) WithInstallations(idx *helminstall.Index) *Resolver {
+	r.installations = idx
+	return r
+}
+
+// installationsOf returns the installations of the chart at filePath.
+func (r *Resolver) installationsOf(ctx context.Context, filePath string) []helminstall.Installation {
+	r.indexOnce.Do(func() {
+		if r.installations == nil {
+			r.installations = helminstall.Discover(ctx, r.filesystem(), &helminstall.Inputs{ChartRoots: r.roots})
+		}
+	})
+	return r.installations.For(filePath)
+}
+
+// Unrendered returns what is known of the installation of the chart at
+// filePath, which failed to render, for the names its templates write.
+func (r *Resolver) Unrendered(ctx context.Context, filePath string) model.UnrenderedChart {
+	out := model.UnrenderedChart{}
+	if data, err := r.filesystem().ReadFile(filepath.Join(filepath.FromSlash(filePath), "Chart.yaml")); err == nil {
+		var meta struct {
+			Name string `yaml:"name"`
+		}
+		if yaml.Unmarshal(data, &meta) == nil {
+			out.Chart = meta.Name
+		}
+	}
+	// A release placeholder is no name to write in place of the template's.
+	if installs := r.installationsOf(ctx, filePath); len(installs) > 0 && !strings.ContainsAny(installs[0].Release, "<>") {
+		out.Release, out.Namespace = installs[0].Release, installs[0].Namespace
+	}
+	return out
 }
 
 // splitManifest keeps the information of the manifest splitted by source
@@ -75,10 +119,11 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 		}
 	}()
 	fsys := r.filesystem()
-	splits, loaded, excluded, err := renderHelm(ctx, fsys, r.chartIndex, filePath)
+	out, err := r.renderInstallations(ctx, fsys, filePath)
 	if err != nil {
-		return model.ResolvedFiles{}, errors.Wrap(err, "failed to render helm chart")
+		return model.ResolvedFiles{}, err
 	}
+	splits, loaded, excluded := out.splits, out.loaded, out.excluded
 	// Pushed charts are addressed with "/" on every OS, so their resolved files
 	// must be too; disk charts keep the OS separator.
 	slashPaths := !vfs.IsDisk(fsys)
@@ -97,15 +142,19 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 	var rfiles = model.ResolvedFiles{
 		Excluded: excluded,
 	}
+	covered := map[string]bool{}
 	for _, t := range loaded {
 		if _, ok := chartRelativeFromSource(t.key); ok {
-			rfiles.Covered = append(rfiles.Covered, reportedPath(t.key, t.realPath))
+			if p := reportedPath(t.key, t.realPath); !covered[p] {
+				covered[p] = true
+				rfiles.Covered = append(rfiles.Covered, p)
+			}
 		}
 	}
-	contextLogger.Debug().Msgf("Processing %d helm manifest splits from chart '%s'", len(*splits), filePath)
+	contextLogger.Debug().Msgf("Processing %d helm manifest splits from chart '%s'", len(splits), filePath)
 	archives := newArchiveLocations(fsys)
-	for i := range *splits {
-		split := &(*splits)[i]
+	for i := range splits {
+		split := &splits[i]
 		sourceKey := chartSourceKey(split.path)
 		if _, ok := chartRelativeFromSource(sourceKey); !ok {
 			continue
@@ -130,6 +179,64 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 	}
 	contextLogger.Debug().Msgf("Successfully processed %d helm files from chart '%s'", len(rfiles.File), filePath)
 	return rfiles, nil
+}
+
+// renderedInstallations is what rendering the installations of a chart gave.
+type renderedInstallations struct {
+	splits   []splitManifest
+	loaded   []loadedTemplate
+	excluded []string
+}
+
+// renderInstallations renders the chart at filePath as each of its
+// installations. It fails when none renders.
+func (r *Resolver) renderInstallations(ctx context.Context, fsys vfs.FS, filePath string) (renderedInstallations, error) {
+	contextLogger := logger.FromContext(ctx)
+	var out renderedInstallations
+	var firstErr error
+	var missing []string
+	rendered := 0
+	installs := r.installationsOf(ctx, filePath)
+	defer r.chartIndex.loadedFiles().forget(filePath)
+	for i := range installs {
+		inst := &installs[i]
+		splits, loaded, excluded, instMissing, err := renderHelm(ctx, fsys, r.chartIndex, filePath, inst)
+		if err != nil {
+			contextLogger.Debug().Msgf("Could not render chart '%s' as %s: %v", filePath, inst.String(), err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		contextLogger.Debug().Msgf("Rendered chart '%s' as %s", filePath, inst.String())
+		rendered++
+		for _, m := range instMissing {
+			if !slices.Contains(missing, m) {
+				missing = append(missing, m)
+			}
+		}
+		out.splits = append(out.splits, *splits...)
+		out.loaded = append(out.loaded, loaded...)
+		if out.excluded == nil {
+			out.excluded = excluded
+		}
+	}
+	if rendered == 0 {
+		if firstErr == nil {
+			firstErr = errors.New("no installation to render")
+		}
+		return out, errors.Wrap(firstErr, "failed to render helm chart")
+	}
+	if len(missing) > 0 {
+		contextLogger.Debug().Msgf("Chart '%s' calls named templates no chart of the scan defines, rendered as placeholders: %s",
+			filePath, strings.Join(missing, ", "))
+		// They may be in files the scan was not given, which an in-memory FS
+		// requests, as for a chart that fails to render.
+		if recorder, ok := fsys.(vfs.MissingRecorder); ok {
+			recorder.RecordMissing(filePath)
+		}
+	}
+	return out, nil
 }
 
 // SupportedTypes returns the supported fileKinds for this resolver
@@ -180,24 +287,53 @@ func yamlParseErrorTemplate(err error) (template string, ok bool) {
 	return m[1], true
 }
 
-// renderHelm will use helm library to render helm charts. A chart that fails
-// to render with the dependencies attached from elsewhere in the scan is
-// rendered again without them, as it was before they were attached.
-func renderHelm(ctx context.Context, fsys vfs.FS, index *chartIndex, path string) (
-	*[]splitManifest, []loadedTemplate, []string, error,
+// renderHelm will use helm library to render helm charts as the installation
+// inst. A chart that fails to render with the dependencies attached from
+// elsewhere in the scan is rendered again without them, as it was before they
+// were attached.
+// It also returns the named templates the chart calls that no chart defines.
+func renderHelm(ctx context.Context, fsys vfs.FS, index *chartIndex, path string, inst *helminstall.Installation) (
+	splits *[]splitManifest, loaded []loadedTemplate, excluded, missing []string, err error,
 ) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("Running helm install")
-	manifest, loadedChart, stamped, excluded, locator, err := renderWithMarkers(ctx, fsys, index, true, path)
+	var rewrote rewriteSummary
+	manifest, loadedChart, stamped, excluded, locator, err := renderLenient(ctx, fsys, index, true, path, inst, &rewrote)
 	if err != nil && locator.attachedAny() {
 		contextLogger.Debug().Msgf("Rendering chart '%s' again without the dependencies attached from the scan: %v", path, err)
-		manifest, loadedChart, stamped, excluded, locator, err = renderWithMarkers(ctx, fsys, index, false, path)
+		manifest, loadedChart, stamped, excluded, locator, err = renderLenient(ctx, fsys, index, false, path, inst, &rewrote)
 	}
 	if err != nil {
-		return nil, nil, []string{}, err
+		return nil, nil, []string{}, nil, err
 	}
-	splits, loaded := splitManifestYAML(manifest, loadedChart, stamped, locator)
-	return splits, loaded, excluded, nil
+	splits, loaded = splitManifestYAML(manifest, loadedChart, stamped, locator)
+	return splits, loaded, excluded, rewrote.missing, nil
+}
+
+// renderLenient renders the chart with templates rewritten to show what only
+// a deployment knows, then, should that fail, with fewer rewrites: only what
+// lets the render through, then Helm's own semantics, should a rewrite be what
+// breaks the render. Nondeterministic functions are always rewritten. A level
+// rewriting the templates as one that failed is not rendered again, and the
+// error of the last render is returned when none renders.
+//
+// nolint:gocritic
+func renderLenient(ctx context.Context, fsys vfs.FS, index *chartIndex, attach bool, path string,
+	inst *helminstall.Installation, rewrote *rewriteSummary) (*release.Release, *chart.Chart, stampedSources, []string, *fileLocator, error) {
+	contextLogger := logger.FromContext(ctx)
+	for level := rewritePlaceholders; ; {
+		// A render failing before its templates are rewritten fails the same
+		// at every level.
+		*rewrote = rewriteSummary{}
+		manifest, loadedChart, stamped, excluded, locator, err := renderWithMarkers(ctx, fsys, index, attach, path,
+			renderRequest{install: inst, level: level, rewrote: rewrote})
+		if err == nil || rewrote.needed == rewriteDeterministic {
+			return manifest, loadedChart, stamped, excluded, locator, err
+		}
+		contextLogger.Debug().Msgf("Rendering chart '%s' again with fewer rewrites: %v", path, err)
+		// Every level from needed on rewrites the templates as this one did.
+		level = rewrote.needed - 1
+	}
 }
 
 // loadedTemplate is a template file the render loaded, whether or not it
@@ -217,7 +353,7 @@ type loadedTemplate struct {
 // broken by itself, and its error is returned at once.
 //
 // nolint:gocritic
-func renderWithMarkers(ctx context.Context, fsys vfs.FS, index *chartIndex, attach bool, path string) (
+func renderWithMarkers(ctx context.Context, fsys vfs.FS, index *chartIndex, attach bool, path string, req renderRequest) (
 	*release.Release, *chart.Chart, stampedSources, []string, *fileLocator, error,
 ) {
 	contextLogger := logger.FromContext(ctx)
@@ -226,7 +362,7 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, index *chartIndex, atta
 		marks := newInvocationMarks()
 		marks.unmarked, marks.cautious = unmarked, cautious
 		manifest, loadedChart, stamped, excluded, locator, err := runInstall(
-			ctx, path, fsys, index, attach, newClient(ctx), &values.Options{}, marks)
+			ctx, path, fsys, index, attach, newClient(ctx), req, marks)
 		template, parseErr := yamlParseErrorTemplate(err)
 		if !parseErr || (marks.seen[template] && !marks.marked[template]) {
 			return manifest, loadedChart, stamped, excluded, locator, err
@@ -246,7 +382,7 @@ func renderWithMarkers(ctx context.Context, fsys vfs.FS, index *chartIndex, atta
 		contextLogger.Debug().Msgf("Rendering chart '%s' again without invocation markers in template '%s'", path, template)
 	}
 	contextLogger.Debug().Msgf("Rendering chart '%s' again without any invocation marker", path)
-	return runInstall(ctx, path, fsys, index, attach, newClient(ctx), &values.Options{}, &invocationMarks{none: true})
+	return runInstall(ctx, path, fsys, index, attach, newClient(ctx), req, &invocationMarks{none: true})
 }
 
 // splitManifestYAML will split the rendered file and return its content by template as well as the template path.

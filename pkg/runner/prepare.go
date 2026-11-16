@@ -185,8 +185,12 @@ func (s *renderCoverage) withoutRaw(files []provider.InventoryFile) []provider.I
 // service.
 func reportRenderFailure(ctx context.Context, services []*Service, kind model.FileKind, chartPath string, err error) {
 	if kind == model.KindHELM {
+		var chart *model.UnrenderedChart
+		if info, ok := services[0].Resolver.Unrendered(ctx, chartPath, kind); ok {
+			chart = &info
+		}
 		for _, s := range services {
-			s.recordFailedHelmChart(chartPath)
+			s.recordFailedHelmChart(chartPath, chart)
 		}
 	}
 	logResolveError(ctx, kind, chartPath, err)

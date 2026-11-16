@@ -85,7 +85,7 @@ func TestLoadChart_DropsNonTemplateFiles(t *testing.T) {
 	}, dropNonTemplateFiles(raw))
 	require.ElementsMatch(t, kept, templateNames(raw), "templates with any extension and partials are kept")
 
-	ch, err := loadChart(context.Background(), vfs.DiskFS{}, dir)
+	ch, err := loadChart(context.Background(), vfs.DiskFS{}, dir, nil)
 	require.NoError(t, err)
 	require.ElementsMatch(t, kept, templateNames(ch), "loadChart drops the same files")
 }

@@ -91,3 +91,32 @@ func TestInAnyAndInQuote(t *testing.T) {
 	require.True(t, InQuote(s, strings.Index(s, "}}%s"), code))
 	require.False(t, InAny(strings.LastIndex(s, "now"), code), "text after the action is not in it")
 }
+
+func TestResolveName(t *testing.T) {
+	data := map[string]interface{}{
+		"Release": map[string]interface{}{"Name": "rel", "Namespace": "ns"},
+		"Chart":   map[string]interface{}{"Name": "app"},
+	}
+	for name, tc := range map[string]struct {
+		name, want string
+	}{
+		"no action":         {"plain", "plain"},
+		"release name":      {"{{ $.Release.Name }}-worker", "rel-worker"},
+		"transformed":       {"{{ .Chart.Name | upper }}", "APP"},
+		"printf of known":   {`{{ printf "%s-%s" .Release.Name .Chart.Name }}`, "rel-app"},
+		"value":             {"{{ .Chart.Name }}-{{ $.Values.env }}", "app-<.Values.env>"},
+		"random":            {"{{ .Chart.Name }}-{{ randAlphaNum 8 | lower }}", "app-<randAlphaNum>"},
+		"named template":    {`{{ include "app.fullname" . }}`, "<include app.fullname>"},
+		"variable":          {"{{ $name }}-x", "<$name>-x"},
+		"trim markers":      {"{{- .Release.Name -}}", "rel"},
+		"unparsable":        {"{{ .x ( }}", "<template>"},
+		"unknown context":   {"{{ .Capabilities.KubeVersion }}", "<.Capabilities.KubeVersion>"},
+		"printf of unknown": {`{{ printf "%s-x" .Values.name }}`, "<.Values.name>"},
+		"comment":           {"a{{/* c */}}b", "ab"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.want, ResolveName(tc.name, data))
+		})
+	}
+	require.Equal(t, "<.Release.Name>", ResolveName("{{ .Release.Name }}", nil), "nothing known of the release")
+}

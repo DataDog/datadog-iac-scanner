@@ -114,6 +114,28 @@ You can also use inline comments to exclude files, blocks, and individual lines 
 | `# dd-iac-scan disable=<rule_id>` | Ignores findings for the specified rule. Must appear at the beginning of the file; applies to the whole file. |
 | `# dd-iac-scan enable=<rule_id>` | Ignores findings for all rules _except_ the specified rule. Must appear at the beginning of the file; applies to the whole file. |
 
+### Helm charts
+
+The scanner renders each Helm chart as it is installed, so findings name the resources that are deployed. It finds the installations of a chart in the deployment descriptors of the repository:
+
+| Descriptor | Release name | Values |
+|---|---|---|
+| helmfile | `releases[].name` | `values`, `set`, per environment |
+| Argo CD `Application`, `ApplicationSet` | `helm.releaseName`, or the application name | `valueFiles`, `values`, `valuesObject`, `parameters` |
+| Flux `HelmRelease` | `releaseName`, or `[<targetNamespace>-]<name>` | `valuesFiles`, `valuesFrom` the ConfigMaps and Secrets of the repository, `values` |
+| Kustomize `helmCharts` | `releaseName` | `valuesFile`, `valuesInline`, `additionalValuesFiles` |
+| Terraform `helm_release` | `name` | `values`, `set` |
+| Rancher Fleet `fleet.yaml` | `helm.releaseName` | `helm.values`, `helm.valuesFiles`, target customizations |
+| Umbrella chart | the parent's release | the parent's values for the dependency, and its global values |
+| Datadog `deploy.yaml` | `k8s.name`, `apps[].name` | the `values/environments` files of each cluster, `valuesFilesJs`, `valuesMapJs` |
+| Bazel BUILD files | the installation rule's release name, or its `<release>.<namespace>.<cluster>.<datacenter>` name | `value_files` |
+
+A chart no descriptor installs is installed under its own name, once for each environment values file beside it (`values-<env>.yaml` and the files under `values/`). Test and lint values (`ci/*.yaml`, `lint-values.yaml`) only fill what nothing else sets, and the defaults of the values that `values.schema.json` requires are used.
+
+Hooks are scanned with the resources they are deployed with, except test hooks, which only `helm test` creates. A value that only the deployment supplies is rendered as a placeholder naming it, such as `web-<.Values.env>`, and nondeterministic functions are rendered as labels, such as `job-<randAlphaNum>`. A chart that still cannot be rendered is scanned as written, and its resource names are resolved from its release name where possible, never reported as template code.
+
+Bazel files and `deploy.yaml` values functions are evaluated in a sandbox, without access to the network, the environment, or files outside the repository.
+
 ## License
 
 Datadog IaC Scanner is licensed under the [Apache License, Version 2.0](LICENSE).

@@ -96,7 +96,7 @@ type Service struct {
 	failedHelmChartDirsMu sync.RWMutex
 	// failedHelmChartDirs tracks chart directories that could not be rendered,
 	// so their raw template files are not mistaken for parse bugs in sink.
-	failedHelmChartDirs map[string]struct{}
+	failedHelmChartDirs map[string]*model.UnrenderedChart
 	// storedHelmMu guards storedHelm, the keys of the rendered Helm documents
 	// already stored (see firstHelmRender).
 	storedHelmMu sync.Mutex
@@ -268,7 +268,9 @@ func cloneSharedParseDocument(d model.Document, filename string) model.Document 
 	return clone
 }
 
-func (s *Service) recordFailedHelmChart(chartDir string) {
+// recordFailedHelmChart records a chart that could not be rendered, with what
+// is known of its installation.
+func (s *Service) recordFailedHelmChart(chartDir string, chart *model.UnrenderedChart) {
 	// Absolutize so that relative roots (e.g. ".") match correctly when
 	// isUnderFailedHelmChart receives the children reported by filepath.Walk.
 	if abs, err := filepath.Abs(chartDir); err == nil {
@@ -281,28 +283,43 @@ func (s *Service) recordFailedHelmChart(chartDir string) {
 	s.failedHelmChartDirsMu.Lock()
 	defer s.failedHelmChartDirsMu.Unlock()
 	if s.failedHelmChartDirs == nil {
-		s.failedHelmChartDirs = make(map[string]struct{})
+		s.failedHelmChartDirs = make(map[string]*model.UnrenderedChart)
 	}
-	s.failedHelmChartDirs[templatesDir] = struct{}{}
+	s.failedHelmChartDirs[templatesDir] = chart
 }
 
 func (s *Service) isUnderFailedHelmChart(filePath string) bool {
+	_, ok := s.failedHelmChartOf(filePath)
+	return ok
+}
+
+// unrenderedHelmChart returns what is known of the chart that could not be
+// rendered whose template filePath is, nil when it is none.
+func (s *Service) unrenderedHelmChart(filePath string) *model.UnrenderedChart {
+	chart, _ := s.failedHelmChartOf(filePath)
+	return chart
+}
+
+func (s *Service) failedHelmChartOf(filePath string) (*model.UnrenderedChart, bool) {
 	s.failedHelmChartDirsMu.RLock()
 	defer s.failedHelmChartDirsMu.RUnlock()
 	if len(s.failedHelmChartDirs) == 0 {
-		return false
+		return nil, false
 	}
 	// Normalize to absolute so relative paths (e.g. from a "." root walk)
 	// match the absolute dirs stored by recordFailedHelmChart.
 	if abs, err := filepath.Abs(filePath); err == nil {
 		filePath = filepath.ToSlash(abs)
 	}
-	for dir := range s.failedHelmChartDirs {
-		if strings.HasPrefix(filePath, dir+"/") {
-			return true
+	// The deepest chart holding the file is the one rendering it.
+	var found *model.UnrenderedChart
+	best, ok := -1, false
+	for dir, chart := range s.failedHelmChartDirs {
+		if strings.HasPrefix(filePath, dir+"/") && len(dir) > best {
+			found, best, ok = chart, len(dir), true
 		}
 	}
-	return false
+	return found, ok
 }
 
 // StartScan executes scan over the context, using the scanID as reference

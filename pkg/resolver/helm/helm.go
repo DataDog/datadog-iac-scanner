@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/helminstall"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -18,9 +19,6 @@ import (
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
 )
 
@@ -43,8 +41,6 @@ const (
 )
 
 var (
-	settings = cli.New()
-
 	kubeVersionOnce   sync.Once
 	cachedKubeVersion *chartutil.KubeVersion
 )
@@ -103,31 +99,38 @@ func chartKubeVersionConstraint(ch *chart.Chart) string {
 	return ch.Metadata.KubeVersion
 }
 
+// renderRequest is one installation of a chart to render: its release name,
+// namespace and values, with the templates rewritten to level.
+type renderRequest struct {
+	install *helminstall.Installation
+	level   rewriteLevel
+	// rewrote, when set, receives what rewriting the templates did.
+	rewrote *rewriteSummary
+}
+
+// unknownNamespace is the release namespace of an installation no descriptor
+// gives one.
+const unknownNamespace = "dd-namespace"
+
+// releaseSentinel stands for a release name Helm would reject, as one holding
+// a placeholder, during the render; the rendered manifest gets the name back.
+const releaseSentinel = "ddscan-release-sentinel"
+
 // runInstall renders the chart at chartPath. With attach false no dependency
 // is attached from outside charts/. The locator is returned with a render
 // error too, which says whether any was.
 //
 // nolint:gocritic
 func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chartIndex, attach bool, client *action.Install,
-	valueOpts *values.Options, marks *invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, *fileLocator, error) {
+	req renderRequest, marks *invocationMarks) (*release.Release, *chart.Chart, stampedSources, []string, *fileLocator, error) {
 	contextLogger := logger.FromContext(ctx)
 	defer logger.SilenceStdLog()()
 
 	contextLogger.Debug().Msgf("Starting helm install process for chart path: %s", chartPath)
 
-	// The release name is fixed in newClient and the chart path is local, so
-	// LocateChart's disk stat and repository resolution is unnecessary.
-
-	p := getter.All(settings)
-	vals, err := valueOpts.MergeValues(p)
-	if err != nil {
-		return nil, nil, nil, []string{}, nil, err
-	}
-	contextLogger.Debug().Msgf("Merged helm values successfully, values count: %d", len(vals))
-
 	// Check chart dependencies to make sure all are present in /charts
 	contextLogger.Debug().Msgf("Loading chart from path: '%s'", chartPath)
-	chartRequested, err := loadChart(ctx, fsys, chartPath)
+	chartRequested, err := loadChart(ctx, fsys, chartPath, index.loadedFiles())
 	if err != nil {
 		return nil, nil, nil, []string{}, nil, err
 	}
@@ -137,6 +140,8 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chart
 	} else {
 		locator = locateDependencies(ctx, fsys, chartRequested, chartPath)
 	}
+	vals := installationValues(ctx, fsys, chartRequested, req.install)
+	contextLogger.Debug().Msgf("Merged helm values successfully, values count: %d", len(vals))
 
 	// Set KubeVersion; clear the constraint only when unsatisfiable.
 	kubeVersion, dropConstraint := resolveChartKubeVersion(chartKubeVersionConstraint(chartRequested))
@@ -147,24 +152,90 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chart
 
 	excluded := getExcluded(ctx, chartRequested, chartPath)
 
-	chartRequested = makeDeterministic(chartRequested)
 	sources := setID(chartRequested, marks)
+	// The sources findings are located in are the templates as written: they
+	// are rewritten once stamped.
+	rewrote := rewriteChart(chartRequested, req.level)
+	if req.rewrote != nil {
+		*req.rewrote = rewrote
+	}
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {
 		return nil, nil, nil, []string{}, locator, instErr
 	}
 	contextLogger.Debug().Msg("Chart installability check passed")
 
-	client.Namespace = "dd-namespace"
-	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, client.ReleaseName)
+	client.Namespace = req.install.Namespace
+	if client.Namespace == "" {
+		client.Namespace = unknownNamespace
+	}
+	client.ReleaseName = req.install.Release
+	if chartutil.ValidateReleaseName(client.ReleaseName) != nil {
+		client.ReleaseName = releaseSentinel
+	}
+	contextLogger.Debug().Msgf("Running helm chart with namespace: '%s', release name: '%s'", client.Namespace, req.install.Release)
 	helmRelease, err := client.Run(chartRequested, vals)
 	if err != nil {
 		return nil, nil, nil, []string{}, locator, err
+	}
+	helmRelease.Manifest = withHooks(helmRelease)
+	if client.ReleaseName != req.install.Release {
+		helmRelease.Manifest = strings.ReplaceAll(helmRelease.Manifest, releaseSentinel, req.install.Release)
 	}
 
 	contextLogger.Debug().Msgf("Successfully rendered helm chart '%s', manifest length: %d bytes",
 		chartRequested.Metadata.Name, len(helmRelease.Manifest))
 	return helmRelease, chartRequested, sources, excluded, locator, nil
+}
+
+// withHooks returns the manifest of rel with its hooks, as helm template
+// prints them: a hook, as a migration job, is deployed like any resource.
+// Test hooks are not: only helm test creates them.
+func withHooks(rel *release.Release) string {
+	var b strings.Builder
+	b.WriteString(rel.Manifest)
+	for _, h := range rel.Hooks {
+		if h == nil || onlyTestHook(h) {
+			continue
+		}
+		fmt.Fprintf(&b, "---\n# Source: %s\n%s\n", h.Path, h.Manifest)
+	}
+	return b.String()
+}
+
+func onlyTestHook(h *release.Hook) bool {
+	for _, e := range h.Events {
+		if e != release.HookTest {
+			return false
+		}
+	}
+	return len(h.Events) > 0
+}
+
+// installationValues returns the values an installation gives the chart: its
+// layers, then the test and lint values filling what they leave unset, then
+// the values the chart's schema requires that are still missing.
+func installationValues(ctx context.Context, fsys vfs.FS, ch *chart.Chart, inst *helminstall.Installation) map[string]interface{} {
+	contextLogger := logger.FromContext(ctx)
+	vals, fills := inst.Resolve(fsys, func(err error) {
+		contextLogger.Debug().Msgf("Skipping values of the installation %s: %v", inst.String(), err)
+	})
+	if inst.ReplaceChartValues {
+		ch.Values = map[string]interface{}{}
+	}
+	if len(fills) == 0 && !hasSchema(ch) {
+		return vals
+	}
+	coalesced, err := chartutil.CoalesceValues(ch, vals)
+	if err != nil {
+		return vals
+	}
+	for _, fill := range fills {
+		missing := helminstall.Missing(coalesced, fill)
+		vals = helminstall.MergeValues(vals, missing)
+		coalesced = helminstall.MergeValues(coalesced, missing)
+	}
+	return helminstall.MergeValues(vals, requiredBySchema(ch, coalesced))
 }
 
 // Application chart type is only installable
@@ -184,14 +255,16 @@ func newClient(ctx context.Context) *action.Install {
 	cfg := new(action.Configuration)
 	client := action.NewInstall(cfg)
 	client.DryRun = true
-	client.ReleaseName = "dd-helm"
 	client.Replace = true // Skip the name check
 	client.ClientOnly = true
 	client.APIVersions = chartutil.VersionSet([]string{})
 	client.IncludeCRDs = true
+	// The scan renders what is deployed, whatever the values: a schema that
+	// requires a value only supplied when deploying does not stop it.
+	client.SkipSchemaValidation = true
 
-	contextLogger.Debug().Msgf("Configured helm client - DryRun: %t, ClientOnly: %t, IncludeCRDs: %t, ReleaseName: '%s'",
-		client.DryRun, client.ClientOnly, client.IncludeCRDs, client.ReleaseName)
+	contextLogger.Debug().Msgf("Configured helm client - DryRun: %t, ClientOnly: %t, IncludeCRDs: %t",
+		client.DryRun, client.ClientOnly, client.IncludeCRDs)
 
 	return client
 }

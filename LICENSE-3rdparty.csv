@@ -258,6 +258,17 @@ core,github.com/cyphar/filepath-securejoin,BSD-3-Clause,copyright header describ
 core,github.com/cyphar/filepath-securejoin/internal/consts,BSD-3-Clause,copyright header describing its
 core,github.com/davecgh/go-spew/spew,ISC,Copyright (c) 2012-2016 Dave Collins <dave@davec.name>
 core,github.com/decred/dcrd/dcrec/secp256k1/v4,ISC,Copyright (c) 2013-2017 The btcsuite developers | Copyright (c) 2015-2024 The Decred developers | Copyright (c) 2017 The Lightning Network Developers
+core,github.com/dlclark/regexp2/v2,MIT,Copyright (c) Doug Clark
+core,github.com/dlclark/regexp2/v2/helpers,MIT,Copyright (c) Doug Clark
+core,github.com/dlclark/regexp2/v2/syntax,MIT,Copyright (c) Doug Clark
+core,github.com/dop251/goja,MIT,Copyright (c) 2012 Robert Krimen | Copyright (c) 2016 Dmitry Panov
+core,github.com/dop251/goja/ast,MIT,Copyright (c) 2012 Robert Krimen | Copyright (c) 2016 Dmitry Panov
+core,github.com/dop251/goja/file,MIT,Copyright (c) 2012 Robert Krimen | Copyright (c) 2016 Dmitry Panov
+core,github.com/dop251/goja/ftoa,MIT,Copyright (c) 2012 Robert Krimen | Copyright (c) 2016 Dmitry Panov
+core,github.com/dop251/goja/ftoa/internal/fast,MIT,Copyright (c) 2012 Robert Krimen | Copyright (c) 2016 Dmitry Panov
+core,github.com/dop251/goja/parser,MIT,Copyright (c) 2012 Robert Krimen | Copyright (c) 2016 Dmitry Panov
+core,github.com/dop251/goja/token,MIT,Copyright (c) 2012 Robert Krimen | Copyright (c) 2016 Dmitry Panov
+core,github.com/dop251/goja/unistring,MIT,Copyright (c) 2012 Robert Krimen | Copyright (c) 2016 Dmitry Panov
 core,github.com/emicklei/go-restful/v3,MIT,"Copyright (c) 2012,2013 Ernest Micklei"
 core,github.com/emicklei/go-restful/v3/log,MIT,"Copyright (c) 2012,2013 Ernest Micklei"
 core,github.com/emicklei/proto,MIT,Copyright (c) 2017 Ernest Micklei
@@ -403,6 +414,8 @@ core,github.com/go-openapi/swag/pools,Apache-2.0,Copyright 2015 go-swagger maint
 core,github.com/go-openapi/swag/stringutils,Apache-2.0,Copyright 2015 go-swagger maintainers
 core,github.com/go-openapi/swag/typeutils,Apache-2.0,Copyright 2015 go-swagger maintainers
 core,github.com/go-openapi/swag/yamlutils,Apache-2.0,Copyright 2015 go-swagger maintainers
+core,github.com/go-sourcemap/sourcemap,BSD-2-Clause,Copyright (c) 2016 The github.com/go-sourcemap/sourcemap Contributors
+core,github.com/go-sourcemap/sourcemap/internal/base64vlq,BSD-2-Clause,Copyright (c) 2016 The github.com/go-sourcemap/sourcemap Contributors
 core,github.com/go-viper/mapstructure/v2,MIT,Copyright (c) 2013 Mitchell Hashimoto
 core,github.com/go-viper/mapstructure/v2/internal/errors,MIT,Copyright (c) 2013 Mitchell Hashimoto
 core,github.com/gobwas/glob,MIT,Copyright (c) 2016 Sergey Kamardin
@@ -890,6 +903,13 @@ core,go.opentelemetry.io/otel/trace,Apache-2.0,Copyright The OpenTelemetry Autho
 core,go.opentelemetry.io/otel/trace/embedded,Apache-2.0,Copyright The OpenTelemetry Authors
 core,go.opentelemetry.io/otel/trace/internal/telemetry,Apache-2.0,Copyright The OpenTelemetry Authors
 core,go.opentelemetry.io/otel/trace/noop,Apache-2.0,Copyright The OpenTelemetry Authors
+core,go.starlark.net/internal/compile,BSD-3-Clause,Copyright (c) 2017 The Bazel Authors.  All rights reserved
+core,go.starlark.net/internal/spell,BSD-3-Clause,Copyright (c) 2017 The Bazel Authors.  All rights reserved
+core,go.starlark.net/lib/json,BSD-3-Clause,Copyright (c) 2017 The Bazel Authors.  All rights reserved
+core,go.starlark.net/resolve,BSD-3-Clause,Copyright (c) 2017 The Bazel Authors.  All rights reserved
+core,go.starlark.net/starlark,BSD-3-Clause,Copyright (c) 2017 The Bazel Authors.  All rights reserved
+core,go.starlark.net/starlarkstruct,BSD-3-Clause,Copyright (c) 2017 The Bazel Authors.  All rights reserved
+core,go.starlark.net/syntax,BSD-3-Clause,Copyright (c) 2017 The Bazel Authors.  All rights reserved
 core,go.yaml.in/yaml/v2,Apache-2.0,Copyright 2011-2016 Canonical Ltd
 core,go.yaml.in/yaml/v3,MIT,Copyright (c) 2006-2010 Kirill Simonov | Copyright (c) 2006-2011 Kirill Simonov | Copyright (c) 2011-2019 Canonical Ltd | Copyright 2011-2016 Canonical Ltd | copyright staring in 2011 when the project was ported over:
 core,golang.org/x/crypto/argon2,BSD-3-Clause,Copyright 2009 The Go Authors
@@ -954,6 +974,7 @@ core,golang.org/x/sys/windows,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/sys/windows/registry,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/term,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/cases,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/collate,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/encoding,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/encoding/charmap,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/encoding/ianaindex,BSD-3-Clause,Copyright 2009 The Go Authors
@@ -967,6 +988,7 @@ core,golang.org/x/text/encoding/unicode,BSD-3-Clause,Copyright 2009 The Go Autho
 core,golang.org/x/text/feature/plural,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/internal,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/internal/catmsg,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/internal/colltab,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/internal/format,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/internal/language,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/internal/language/compact,BSD-3-Clause,Copyright 2009 The Go Authors
@@ -982,6 +1004,7 @@ core,golang.org/x/text/secure/bidirule,BSD-3-Clause,Copyright 2009 The Go Author
 core,golang.org/x/text/transform,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/unicode/bidi,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/text/unicode/norm,BSD-3-Clause,Copyright 2009 The Go Authors
+core,golang.org/x/text/unicode/rangetable,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/time/rate,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/tools/cmd/stringer,BSD-3-Clause,Copyright 2009 The Go Authors
 core,golang.org/x/tools/go/ast/edge,BSD-3-Clause,Copyright 2009 The Go Authors
@@ -1253,7 +1276,6 @@ core,helm.sh/helm/v3/pkg/chart,Apache-2.0,Copyright 2016 The Kubernetes Authors 
 core,helm.sh/helm/v3/pkg/chart/loader,Apache-2.0,Copyright 2016 The Kubernetes Authors All Rights Reserved
 core,helm.sh/helm/v3/pkg/chartutil,Apache-2.0,Copyright 2016 The Kubernetes Authors All Rights Reserved
 core,helm.sh/helm/v3/pkg/cli,Apache-2.0,Copyright 2016 The Kubernetes Authors All Rights Reserved
-core,helm.sh/helm/v3/pkg/cli/values,Apache-2.0,Copyright 2016 The Kubernetes Authors All Rights Reserved
 core,helm.sh/helm/v3/pkg/downloader,Apache-2.0,Copyright 2016 The Kubernetes Authors All Rights Reserved
 core,helm.sh/helm/v3/pkg/engine,Apache-2.0,Copyright 2016 The Kubernetes Authors All Rights Reserved
 core,helm.sh/helm/v3/pkg/getter,Apache-2.0,Copyright 2016 The Kubernetes Authors All Rights Reserved

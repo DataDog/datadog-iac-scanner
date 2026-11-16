@@ -470,8 +470,11 @@ func isHelmInvocationWrapper(source string) bool {
 	return true
 }
 
-const helmInclude = "include"
+const (
+	helmInclude = "include"
+	helmTpl     = "tpl"
+)
 
 func isHelmOutputInvocation(name string) bool {
-	return name == helmInclude || name == "template" || name == "tpl"
+	return name == helmInclude || name == "template" || name == helmTpl
 }

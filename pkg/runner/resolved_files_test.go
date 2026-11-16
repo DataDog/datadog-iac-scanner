@@ -487,8 +487,8 @@ func TestUnrenderedHelmChartsSummary(t *testing.T) {
 
 func TestIsUnderFailedHelmChart(t *testing.T) {
 	svc := &Service{}
-	svc.recordFailedHelmChart("/repo/charts/watchdog")
-	svc.recordFailedHelmChart("/repo/charts/ingester/")
+	svc.recordFailedHelmChart("/repo/charts/watchdog", nil)
+	svc.recordFailedHelmChart("/repo/charts/ingester/", nil)
 
 	tests := []struct {
 		name     string
@@ -524,7 +524,7 @@ func TestIsUnderFailedHelmChart_RelativeRoot(t *testing.T) {
 	// filepath.Walk(".") reports children as "templates/deploy.yaml" (no leading "./"),
 	// so prefix matching must work even when the chart dir is relative.
 	svc := &Service{}
-	svc.recordFailedHelmChart(".")
+	svc.recordFailedHelmChart(".", nil)
 
 	require.True(t, svc.isUnderFailedHelmChart("templates/deploy.yaml"))
 	require.True(t, svc.isUnderFailedHelmChart("templates/subdir/cm.yaml"))

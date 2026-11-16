@@ -48,7 +48,7 @@ func TestLogParseFailure(t *testing.T) {
 			var logs bytes.Buffer
 			ctx := zerolog.New(&logs).WithContext(context.Background())
 			s := &Service{}
-			s.recordFailedHelmChart(chart)
+			s.recordFailedHelmChart(chart, nil)
 
 			s.logParseFailure(ctx, tt.file, []byte(tt.content), errors.New("bad"))
 
