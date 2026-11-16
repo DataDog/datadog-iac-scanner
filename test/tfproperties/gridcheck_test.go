@@ -17,6 +17,7 @@ import (
 // runs; it is skipped in short mode, where the per-property tests carry
 // the coverage.
 func TestEveryFiringCellProducesItsFindings(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("the whole-grid scan runs only in the full suite")
 	}

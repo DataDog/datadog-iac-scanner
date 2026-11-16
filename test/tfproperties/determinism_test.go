@@ -48,36 +48,46 @@ func reportedKey(v *model.Vulnerability) string {
 // corpus twice gives the same findings in the same order, and that the order
 // the files are handed to the engine in does not change the output.
 func TestRepeatedScansProduceTheSameFindings(t *testing.T) {
+	t.Parallel()
 	cells := determinismCells()
 	rules := tfcorpus.WriteRules(t)
 	libs := tfharness.LibraryPath(t)
 	dir, _ := tfcorpus.Materialize(t, cells)
 	stateDir, _ := tfcorpus.MaterializeState(t, determinismStateCells())
-
 	first := tfharness.Inspect(t, dir, rules, libs)
-	again := tfharness.Inspect(t, dir, rules, libs)
-	require.Equal(t, reportedKeys(first.Vulns), reportedKeys(again.Vulns),
-		"two scans of the same corpus differ")
 
-	stateFirst := tfharness.Inspect(t, stateDir, rules, libs)
-	stateAgain := tfharness.Inspect(t, stateDir, rules, libs)
-	require.Equal(t, reportedKeys(stateFirst.Vulns), reportedKeys(stateAgain.Vulns),
-		"two scans of the state corpus differ")
+	t.Run("rescan", func(t *testing.T) {
+		t.Parallel()
+		again := tfharness.Inspect(t, dir, rules, libs)
+		require.Equal(t, reportedKeys(first.Vulns), reportedKeys(again.Vulns),
+			"two scans of the same corpus differ")
+	})
+	t.Run("state rescan", func(t *testing.T) {
+		t.Parallel()
+		stateFirst := tfharness.Inspect(t, stateDir, rules, libs)
+		stateAgain := tfharness.Inspect(t, stateDir, rules, libs)
+		require.Equal(t, reportedKeys(stateFirst.Vulns), reportedKeys(stateAgain.Vulns),
+			"two scans of the state corpus differ")
+	})
 
-	files := tfharness.ParseTree(t, dir)
 	permutations := 5
 	if testing.Short() {
 		permutations = 2
 	}
 	for seed := 1; seed <= permutations; seed++ {
-		shuffled := append(files[:0:0], files...)
-		rng := rand.New(rand.NewSource(int64(seed)))
-		rng.Shuffle(len(shuffled), func(i, j int) {
-			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+		t.Run(fmt.Sprintf("file order seed %d", seed), func(t *testing.T) {
+			t.Parallel()
+			// The engine stamps the files it inspects, so concurrent scans
+			// each parse their own.
+			shuffled := tfharness.ParseTree(t, dir)
+			rng := rand.New(rand.NewSource(int64(seed)))
+			rng.Shuffle(len(shuffled), func(i, j int) {
+				shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+			})
+			run := tfharness.InspectParsed(t, shuffled, rules, libs, dir)
+			require.Equal(t, reportedKeys(first.Vulns), reportedKeys(run.Vulns),
+				"scan with file order seed %d differs", seed)
 		})
-		run := tfharness.InspectParsed(t, shuffled, rules, libs, dir)
-		require.Equal(t, reportedKeys(first.Vulns), reportedKeys(run.Vulns),
-			"scan with file order seed %d differs", seed)
 	}
 }
 
@@ -94,6 +104,7 @@ func reportedKeys(vs []model.Vulnerability) []string {
 // command-line path, writes the same SARIF every time. The repetitions
 // reduce in short mode; the check itself never skips.
 func TestRepeatedScansWriteTheSameReport(t *testing.T) {
+	t.Parallel()
 	repetitions := 3
 	if testing.Short() {
 		repetitions = 2
@@ -102,11 +113,20 @@ func TestRepeatedScansWriteTheSameReport(t *testing.T) {
 	rules := tfcorpus.WriteRules(t)
 	libs := tfharness.LibraryPath(t)
 	dir, _ := tfcorpus.Materialize(t, cells)
-	reports := make(map[string]struct{}, repetitions)
-	for i := 0; i < repetitions; i++ {
-		reports[string(tfharness.ScanPath(t, dir, rules, libs))] = struct{}{}
+	reports := make([]string, repetitions)
+	t.Run("scans", func(t *testing.T) {
+		for i := range reports {
+			t.Run(fmt.Sprintf("scan %d", i+1), func(t *testing.T) {
+				t.Parallel()
+				reports[i] = string(tfharness.ScanPath(t, dir, rules, libs))
+			})
+		}
+	})
+	distinct := map[string]struct{}{}
+	for _, r := range reports {
+		distinct[r] = struct{}{}
 	}
-	require.Len(t, reports, 1, "%d scans wrote %d different SARIF", repetitions, len(reports))
+	require.Len(t, distinct, 1, "%d scans wrote %d different SARIF", repetitions, len(distinct))
 }
 
 // TestCompactFindingsKeepTheFirstOfEachIdentity checks the engine's
@@ -116,6 +136,7 @@ func TestRepeatedScansWriteTheSameReport(t *testing.T) {
 // the shared-identity probe rule, so one identity group holds one finding
 // per instance, at a different line each.
 func TestCompactFindingsKeepTheFirstOfEachIdentity(t *testing.T) {
+	t.Parallel()
 	var cells []tfcorpus.Cell
 	for _, c := range tfcorpus.ExpansionGrid() {
 		if c.Expansion == "count3" || c.Expansion == "count258" || c.Expansion == "foreach_map" ||
@@ -231,6 +252,7 @@ func sarifFingerprints(t *testing.T, sarif []byte) map[string][]string {
 // different fingerprints. The repetitions reduce in short mode; the check
 // itself never skips.
 func TestFingerprintsDiscriminateModuleCalls(t *testing.T) {
+	t.Parallel()
 	repetitions := 2
 	if testing.Short() {
 		repetitions = 1

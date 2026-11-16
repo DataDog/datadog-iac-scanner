@@ -57,6 +57,7 @@ var transformCount = map[string]int{}
 // the transformations do not produce fails, and a transformation that
 // changes no baseline anywhere is stale and fails.
 func TestLegacyDocumentsMatchThePreviousEngine(t *testing.T) {
+	t.Parallel()
 	markPlaceholder = func(content []byte, placeholder string) []byte {
 		escaped := strings.ReplaceAll(placeholder, "\u0000", `\u0000`)
 		out := strings.ReplaceAll(string(content), placeholder, "\u0000PH")

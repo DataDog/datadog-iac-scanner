@@ -27,6 +27,7 @@ import (
 // findings, in both polarities. This guards the evaluator, on the legacy
 // documents, where no unknown gate is involved.
 func TestTheEvaluatorResolvesEveryIndirection(t *testing.T) {
+	t.Parallel()
 	grid, oracle, cells, oracleOf := valueGrid(t)
 	knownLost := loadCellList(t, knownLostFile)
 	keepsText := loadCellList(t, keepsTextFile)
@@ -124,6 +125,7 @@ func loadCellList(t *testing.T, file string) map[string]knownLostEntry {
 // inputs are all concrete is a false negative, and the message below names
 // it as such.
 func TestConcreteInputsSurviveTheUnknownGate(t *testing.T) {
+	t.Parallel()
 	grid, oracle, cells, oracleOf := valueGrid(t)
 	knownLost := loadCellList(t, knownLostFile)
 	lostButListed := map[string]bool{}
@@ -197,6 +199,7 @@ func oracleIndexOf(oracle *gridResult, o tfcorpus.Cell) int {
 // gate or evaluator change that starts reporting uncertain results shows up
 // here.
 func TestNoUnknownValueAloneFiresAProbe(t *testing.T) {
+	t.Parallel()
 	_, _, cells, _ := valueGrid(t)
 	grid, _, _, _ := valueGrid(t)
 	for i, c := range cells {
@@ -219,6 +222,7 @@ func TestNoUnknownValueAloneFiresAProbe(t *testing.T) {
 // contract input and the legacy documents answer a rule identically: the
 // same rules fire on the same sink with the same attribute paths.
 func TestContractAndLegacyProbesAgree(t *testing.T) {
+	t.Parallel()
 	grid, _, cells, _ := valueGrid(t)
 	keepsText := loadCellList(t, keepsTextFile)
 	keptButListed := map[string]bool{}

@@ -122,6 +122,7 @@ func addressName(id string) string {
 // for_each, or a module call, and whether it is a resource, a data source or
 // an ephemeral block.
 func TestInstancesOfABlockProduceTheSameFindingShape(t *testing.T) {
+	t.Parallel()
 	grid, cells := expansionGrid(t)
 	for i, c := range cells {
 		byRule := map[string][]tfharness.Finding{}
@@ -174,6 +175,7 @@ func TestInstancesOfABlockProduceTheSameFindingShape(t *testing.T) {
 // as its siblings. Ephemeral blocks are evaluated as written, so their cells
 // hold a singleton and their contract rule fires on the one instance.
 func TestContractInstancesCarryTheirAddress(t *testing.T) {
+	t.Parallel()
 	grid, cells := expansionGrid(t)
 	for i, c := range cells {
 		byRule := map[string][]tfharness.Finding{}

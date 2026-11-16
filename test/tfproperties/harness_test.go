@@ -23,6 +23,7 @@ import (
 // all work, and the engine reads a literal attribute on the contract input
 // and on the legacy documents.
 func TestTheHarnessFindsWhatTheFixturesWrite(t *testing.T) {
+	t.Parallel()
 	rules := tfcorpus.WriteRules(t)
 	libs := tfharness.LibraryPath(t)
 
