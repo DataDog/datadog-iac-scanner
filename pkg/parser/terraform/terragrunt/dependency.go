@@ -67,7 +67,8 @@ func (e *Evaluator) dependencyConfig(dir, target string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if info, statErr := e.fsys.Stat(path); statErr == nil && info.IsDir() {
+	// A stack unit's dependency is generated too, so it may not exist.
+	if info, statErr := e.fsys.Stat(path); (statErr == nil && info.IsDir()) || filepath.Ext(path) != ".hcl" {
 		return e.confine(path, ConfigFileName)
 	}
 	return path, nil

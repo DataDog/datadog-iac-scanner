@@ -24,8 +24,12 @@ type SyntheticCall struct {
 	Label   string
 	Source  string
 	Version string
-	// CallerFile declares the call; relative sources resolve from its directory.
+	// CallerFile declares the call; relative sources resolve from its directory
+	// unless SourceDir is set.
 	CallerFile string
+	// SourceDir is where relative sources resolve from, when not CallerFile's
+	// directory, as for a Terragrunt stack unit's generated directory.
+	SourceDir string
 	// Range is the call-site anchor in CallerFile.
 	Range hcl.Range
 	// Body holds one attribute per argument, positioned where the argument is
@@ -49,8 +53,12 @@ func (e *Evaluator) EvaluateCall(
 	if absErr != nil {
 		callerFile = filepath.Clean(call.CallerFile)
 	}
+	sourceDir := call.SourceDir
+	if sourceDir == "" {
+		sourceDir = filepath.Dir(callerFile)
+	}
 	dir, packageRoot, ok := e.resolveModuleDir(
-		ctx, filepath.Dir(callerFile), "", call.Source, call.Version, callerFile, call.Label,
+		ctx, sourceDir, "", call.Source, call.Version, callerFile, call.Label,
 	)
 	if !ok {
 		return nil, nil, nil, fmt.Errorf("%w: source %q of %s did not resolve", ErrModuleNotEvaluated, call.Source, callerFile)

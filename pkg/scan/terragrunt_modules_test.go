@@ -63,3 +63,38 @@ skip = true`,
 			filepath.Join(root, "live/db/terragrunt.hcl") + " git",
 	}, bySource)
 }
+
+// A stack unit's remote module is fetched for the stack file declaring it;
+// the unit configuration it is generated from is not a unit of its own.
+func TestTerragruntModuleCalls_Stack(t *testing.T) {
+	root := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	files := map[string]string{
+		"units/vpc/terragrunt.hcl": `terraform {
+  source = "tfr:///acme/vpc/aws?version=${values.version}"
+}`,
+		"live/terragrunt.stack.hcl": `unit "network" {
+  source = "../units/vpc"
+  path   = "network"
+  values = { version = "3.0.0" }
+}`,
+	}
+	for name, content := range files {
+		path := filepath.Join(root, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+	}
+
+	calls := terragruntModuleCalls(context.Background(), []string{
+		filepath.Join(root, "live/terragrunt.stack.hcl"),
+		filepath.Join(root, "units/vpc/terragrunt.hcl"),
+	}, root, nil)
+
+	require.Len(t, calls, 1)
+	require.Equal(t, "network", calls[0].Name)
+	require.Equal(t, "acme/vpc/aws", calls[0].Source)
+	require.Equal(t, "3.0.0", calls[0].Version)
+	require.Equal(t, filepath.Join(root, "live/terragrunt.stack.hcl"), calls[0].FileName)
+}

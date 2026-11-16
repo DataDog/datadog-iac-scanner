@@ -55,3 +55,23 @@ func TestOverlay(t *testing.T) {
 	_, err = os.Stat(filepath.Join(dir, "extra.tf"))
 	require.True(t, os.IsNotExist(err))
 }
+
+// A directory holding only overlay files exists in the overlay.
+func TestOverlayVirtualDirectory(t *testing.T) {
+	dir := t.TempDir()
+	virtual := filepath.Join(dir, ".terragrunt-stack", "vpc")
+	o := NewOverlay(DiskFS{}, map[string][]byte{filepath.Join(virtual, "terragrunt.hcl"): []byte("inputs = {}")})
+
+	info, err := o.Stat(virtual)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+	entries, err := o.ReadDir(virtual)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "terragrunt.hcl", entries[0].Name())
+
+	_, err = o.Stat(filepath.Join(dir, "missing"))
+	require.Error(t, err)
+	_, err = o.ReadDir(filepath.Join(dir, "missing"))
+	require.Error(t, err)
+}
