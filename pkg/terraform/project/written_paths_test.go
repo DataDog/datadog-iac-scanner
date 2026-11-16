@@ -804,7 +804,8 @@ func legacyHas(attrs map[string]any, path []string) bool {
 }
 
 // legacyHoldsUnknown reports whether the value at the path renders an
-// unknown: the expression source text, or a value holding the placeholder.
+// unknown: expression source text, whole or inside a template or JSON
+// document as main kept it, or a value holding the placeholder.
 func legacyHoldsUnknown(attrs map[string]any, path []string, placeholder string) bool {
 	v, ok := legacyAt(attrs, path)
 	if !ok {
@@ -813,7 +814,7 @@ func legacyHoldsUnknown(attrs map[string]any, path []string, placeholder string)
 	escaped := strings.ReplaceAll(placeholder, "\u0000", `\u0000`)
 	switch node := v.(type) {
 	case string:
-		return strings.HasPrefix(node, "${") ||
+		return strings.Contains(node, "${") ||
 			strings.Contains(node, placeholder) ||
 			strings.Contains(node, escaped)
 	case map[string]any, []any:
