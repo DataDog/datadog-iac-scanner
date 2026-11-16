@@ -281,7 +281,7 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated,
 		map[string]bool{}, map[string]bool{}, map[string]bool{},
-		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls,
+		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil,
 	)
 
 	if evaluator.LocalMemoSize() != 0 {

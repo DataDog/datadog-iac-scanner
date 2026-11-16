@@ -400,6 +400,7 @@ func evaluateRootModules(
 	resourceCount *int,
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
+	units []terragruntUnit,
 ) {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
@@ -424,6 +425,7 @@ func evaluateRootModules(
 		evaluator.ReleaseEvalCache()
 		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
 	}
+	m.evaluateTerragruntUnits(units)
 }
 
 // rootEvalWorkers bounds the roots evaluated at once. Each holds its own
@@ -476,8 +478,17 @@ func (m *rootMerge) merge(
 		}
 		return
 	}
-	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
+	m.mergeResolved(resources, instances, childDirs)
+}
+
+// mergeResolved folds a successful evaluation into the scan's documents.
+func (m *rootMerge) mergeResolved(
+	resources []tfeval.ResolvedResource,
+	instances []tfeval.ModuleInstance,
+	childDirs map[string]bool,
+) {
+	*m.rootEvalOK = true
 	for d := range childDirs {
 		m.actualCalledDirs[d] = true
 	}
@@ -687,6 +698,8 @@ func resolveModuleDocuments(
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
 	staticCalledDirs, staticCalls := discoverStaticCalls(
 		ctx, evaluator, filesByDir, dirsWithTf, repoPath, resolver, onlyExternalCalls)
+	// A module a Terragrunt unit calls is called, not a root.
+	units := discoverTerragruntUnits(ctx, files, repoPath, fsys, resolver, staticCalledDirs)
 
 	// seen maps a content-based key to the primary docID so duplicate callers can
 	// be recorded in extras rather than emitted as separate OPA documents.
@@ -722,7 +735,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, units,
 	)
 	if ctx.Err() != nil {
 		// The scan is stopping: report no resolution rather than one whose
