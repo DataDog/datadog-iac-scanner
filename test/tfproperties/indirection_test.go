@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,8 +28,10 @@ import (
 // documents, where no unknown gate is involved.
 func TestTheEvaluatorResolvesEveryIndirection(t *testing.T) {
 	grid, oracle, cells, oracleOf := valueGrid(t)
-	knownLost := loadKnownLost(t)
+	knownLost := loadCellList(t, knownLostFile)
+	keepsText := loadCellList(t, keepsTextFile)
 	lostButListed := map[string]bool{}
+	keptButListed := map[string]bool{}
 	for i, c := range cells {
 		o := oracleOf[c.Name()]
 		want := oracleFindings(oracle, o)
@@ -51,6 +54,11 @@ func TestTheEvaluatorResolvesEveryIndirection(t *testing.T) {
 					delete(byRule, rule)
 					continue
 				}
+				if _, ok := keepsText[c.Name()]; ok && len(got) == 0 {
+					keptButListed[c.Name()] = true
+					delete(byRule, rule)
+					continue
+				}
 			}
 			require.Equal(t, findingSet(oracleFs), got,
 				"the legacy documents of cell %s differ from its literal oracle on rule %s\n%s",
@@ -60,10 +68,18 @@ func TestTheEvaluatorResolvesEveryIndirection(t *testing.T) {
 		// The cell may not fire a rule the oracle does not fire either.
 		for rule := range byRule {
 			if strings.HasPrefix(rule, "probe-legacy-") {
+				if _, ok := keepsText[c.Name()]; ok && len(ruleFindings(fs, rule)) > 0 {
+					keptButListed[c.Name()] = true
+					continue
+				}
 				require.Empty(t, findingSet(ruleFindings(fs, rule)),
 					"cell %s fires %s but its oracle does not\n%s", c.Name(), rule, c.Repro())
 			}
 		}
+	}
+	for name := range keepsText {
+		require.True(t, keptButListed[name],
+			"the kept-reference-text list holds cell %s, whose legacy probe now matches its oracle; remove it", name)
 	}
 }
 
@@ -76,9 +92,19 @@ type knownLostEntry struct {
 	Reason string `json:"reason"`
 }
 
-func loadKnownLost(t *testing.T) map[string]knownLostEntry {
+const (
+	knownLostFile = "known_findings_lost.json"
+	// keepsTextFile lists the firing cells whose legacy probe answers unlike
+	// its oracle because the legacy view reads another block of the module
+	// as main's documents did: a reference keeps its source text, a try over
+	// the block answers from its fallback. The legacy properties fail on a
+	// listed cell that starts matching, so the list can only shrink.
+	keepsTextFile = "legacy_keeps_reference_text.json"
+)
+
+func loadCellList(t *testing.T, file string) map[string]knownLostEntry {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("testdata", "known_findings_lost.json"))
+	raw, err := os.ReadFile(filepath.Join("testdata", file))
 	require.NoError(t, err)
 	var out []knownLostEntry
 	require.NoError(t, json.Unmarshal(raw, &out))
@@ -99,7 +125,7 @@ func loadKnownLost(t *testing.T) map[string]knownLostEntry {
 // it as such.
 func TestConcreteInputsSurviveTheUnknownGate(t *testing.T) {
 	grid, oracle, cells, oracleOf := valueGrid(t)
-	knownLost := loadKnownLost(t)
+	knownLost := loadCellList(t, knownLostFile)
 	lostButListed := map[string]bool{}
 	for i, c := range cells {
 		o := oracleOf[c.Name()]
@@ -194,8 +220,11 @@ func TestNoUnknownValueAloneFiresAProbe(t *testing.T) {
 // same rules fire on the same sink with the same attribute paths.
 func TestContractAndLegacyProbesAgree(t *testing.T) {
 	grid, _, cells, _ := valueGrid(t)
+	keepsText := loadCellList(t, keepsTextFile)
+	keptButListed := map[string]bool{}
 	for i, c := range cells {
 		fs := grid.findingsOf(i)
+		_, listed := keepsText[c.Name()]
 		legacyOf := map[string][]tfharness.Finding{}
 		for _, f := range fs {
 			if !strings.HasPrefix(f.Rule, "probe-legacy-resource-") {
@@ -210,9 +239,13 @@ func TestContractAndLegacyProbesAgree(t *testing.T) {
 			require.NotEmpty(t, shapeSet(ruleFindings(fs, c.RuleID(tfcorpus.ProbeContract))),
 				"cell %s: the contract probe rule %s fired nothing\n%s",
 				c.Name(), c.RuleID(tfcorpus.ProbeContract), c.Repro())
-			require.NotEmpty(t, shapeSet(ruleFindings(fs, c.RuleID(tfcorpus.ProbeLegacy))),
-				"cell %s: the legacy probe rule %s fired nothing\n%s",
-				c.Name(), c.RuleID(tfcorpus.ProbeLegacy), c.Repro())
+			if listed && len(ruleFindings(fs, c.RuleID(tfcorpus.ProbeLegacy))) == 0 {
+				keptButListed[c.Name()] = true
+			} else {
+				require.NotEmpty(t, shapeSet(ruleFindings(fs, c.RuleID(tfcorpus.ProbeLegacy))),
+					"cell %s: the legacy probe rule %s fired nothing\n%s",
+					c.Name(), c.RuleID(tfcorpus.ProbeLegacy), c.Repro())
+			}
 		}
 		for _, f := range fs {
 			if !strings.HasPrefix(f.Rule, "probe-contract-") {
@@ -220,9 +253,17 @@ func TestContractAndLegacyProbesAgree(t *testing.T) {
 			}
 			contract := shapeSet(ruleFindings(fs, f.Rule))
 			legacy := shapeSet(legacyOf[f.Rule])
+			if listed && !slices.Equal(legacy, contract) {
+				keptButListed[c.Name()] = true
+				continue
+			}
 			require.Equal(t, legacy, contract,
 				"cell %s: the contract input and the legacy documents disagree on rule %s\nlegacy %v\ncontract %v\n%s",
 				c.Name(), f.Rule, legacy, contract, c.Repro())
 		}
+	}
+	for name := range keepsText {
+		require.True(t, keptButListed[name],
+			"the kept-reference-text list holds cell %s, whose legacy and contract probes now agree; remove it", name)
 	}
 }

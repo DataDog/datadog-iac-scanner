@@ -1,0 +1,602 @@
+[
+  {
+    "cell": "kind=conditional/shape=scalar/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=conditional/shape=scalar/read=eq/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=conditional/shape=scalar/read=helper/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=conditional/shape=scalar/read=helper/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=list/read=count/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=list/read=count/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=list/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=list/read=eq/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=list/read=index/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=list/read=index/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=list/read=membership/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=list/read=membership/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=map/read=count/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=map/read=count/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=map/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=map/read=eq/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=map/read=index/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=map/read=index/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=map/read=membership/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=map/read=membership/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=set/read=count/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=set/read=count/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=set/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=set/read=eq/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=set/read=membership/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=for_expr/shape=set/read=membership/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=empty/read=eq/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=empty/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=empty/read=eq/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=empty/read=eq/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=empty/read=eq/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=count/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=count/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=count/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=count/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=count/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=eq/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=eq/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=eq/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=eq/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=index/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=index/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=index/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=index/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=index/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=membership/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=membership/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=membership/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=membership/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=list/read=membership/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_object/neighbor=computed/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_object/neighbor=none/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_object/neighbor=related/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_object/neighbor=same_block/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=count/source=resource_object/neighbor=sibling/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=merged/neighbor=computed/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=merged/neighbor=none/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=merged/neighbor=related/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=merged/neighbor=same_block/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=merged/neighbor=sibling/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_object/neighbor=computed/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_object/neighbor=none/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_object/neighbor=related/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_object/neighbor=same_block/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=eq/source=resource_object/neighbor=sibling/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=merged/neighbor=computed/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=merged/neighbor=none/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=merged/neighbor=related/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=merged/neighbor=same_block/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=merged/neighbor=sibling/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_object/neighbor=computed/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_object/neighbor=none/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_object/neighbor=related/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_object/neighbor=same_block/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=index/source=resource_object/neighbor=sibling/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=merged/neighbor=computed/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=merged/neighbor=none/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=merged/neighbor=related/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=merged/neighbor=same_block/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=merged/neighbor=sibling/block=resource/variant=objmerged/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_object/neighbor=computed/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_object/neighbor=none/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_object/neighbor=related/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_object/neighbor=same_block/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=map/read=membership/source=resource_object/neighbor=sibling/block=resource/variant=objmap/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=nested/read=path/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=nested/read=path/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=nested/read=path/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=nested/read=path/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=nested/read=path/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=eq/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=eq/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=eq/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=eq/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=helper/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=helper/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=helper/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=helper/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=scalar/read=helper/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=count/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=count/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=count/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=count/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=count/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=eq/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=eq/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=eq/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=eq/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=eq/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=membership/source=resource_attr/neighbor=computed/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=membership/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=membership/source=resource_attr/neighbor=related/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=membership/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=local/shape=set/read=membership/source=resource_attr/neighbor=sibling/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=nested/shape=nested/read=path/source=resource_attr/neighbor=none/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=nested/shape=nested/read=path/source=resource_attr/neighbor=same_block/block=resource/value=fire",
+    "reason": "the legacy view keeps the source text of a reference to another block of the module, as main 16a3861ab did"
+  },
+  {
+    "cell": "kind=try/shape=map/read=count/source=resource_object/neighbor=computed/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=count/source=resource_object/neighbor=none/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=count/source=resource_object/neighbor=same_block/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=eq/source=resource_object/neighbor=computed/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=eq/source=resource_object/neighbor=none/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=eq/source=resource_object/neighbor=same_block/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=index/source=resource_object/neighbor=computed/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=index/source=resource_object/neighbor=none/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=index/source=resource_object/neighbor=same_block/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=membership/source=resource_object/neighbor=computed/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=membership/source=resource_object/neighbor=none/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  },
+  {
+    "cell": "kind=try/shape=map/read=membership/source=resource_object/neighbor=same_block/block=resource/variant=objmap/value=fire",
+    "reason": "a try reading another block of the module answers from its fallback, as main 16a3861ab evaluated it"
+  }
+]

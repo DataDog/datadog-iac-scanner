@@ -33,7 +33,7 @@ func TestEveryFiringCellProducesItsFindings(t *testing.T) {
 		}
 		byCell[f.File[:i]] = append(byCell[f.File[:i]], f)
 	}
-	knownLost := loadKnownLost(t)
+	knownLost := loadCellList(t, knownLostFile)
 	var missing, falseFire []string
 	for i, c := range cells {
 		fs := byCell[names[i]]
