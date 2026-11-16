@@ -172,6 +172,12 @@ type lineInfoGroup struct {
 type linesLazyState struct {
 	once sync.Once
 
+	// lines holds the split computed by the first Lines() caller, so module
+	// instances (ShallowCopy of one source file) reuse it instead of each
+	// splitting the whole file again. nil until once.Do ran and the computing
+	// copy had no lazy-state source (no OriginalData to split).
+	lines *[]string
+
 	matchMu sync.Mutex
 	matches map[string][]int
 	// matchedIndexes counts the indexes held in matches.
@@ -390,12 +396,18 @@ func (f *FileMetadata) SetReleaseOriginalDataAfterLineInfo(release bool) {
 // OriginalData on first access when SetLazyLines was configured. Safe for
 // concurrent callers.
 func (f *FileMetadata) Lines() []string {
-	if f.linesLazy != nil {
-		f.linesLazy.once.Do(func() {
+	if st := f.linesLazy; st != nil {
+		st.once.Do(func() {
 			if f.LinesOriginalData == nil {
 				f.LinesOriginalData = utils.SplitLines(f.OriginalData)
 			}
+			st.lines = f.LinesOriginalData
 		})
+		if st.lines != nil {
+			// A copy shares the split of the file it was copied from; only
+			// the first caller computed it.
+			return *st.lines
+		}
 	}
 	if f.LinesOriginalData == nil {
 		// No lazy state (e.g. test fixtures); compute directly.

@@ -309,6 +309,68 @@ func TestReleaseSubstringIndexDropsTheArrayAndSharesItAcrossCopies(t *testing.T)
 	require.Equal(t, 1, f.linesLazy.scans)
 }
 
+func TestShallowCopySharesSplitLines(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{"zero lines", ""},
+		{"one line", "resource \"t\" \"r\" {}\n"},
+		{"several lines", "a\nb\nc\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, n := range []int{1, 2, 8} {
+				f := &FileMetadata{OriginalData: tc.content}
+				f.SetLazyLines()
+				copies := make([]*FileMetadata, n)
+				for i := range copies {
+					copies[i] = f.ShallowCopy()
+				}
+				// The first caller computes; every other copy must reuse it.
+				want := copies[0].Lines()
+				for i := 1; i < n; i++ {
+					got := copies[i].Lines()
+					require.Len(t, got, len(want))
+					require.Equal(t, want, got)
+					require.True(t, &got[0] == &want[0],
+						"%d clones must reuse the same split, not recompute it", n)
+					require.Nil(t, copies[i].LinesOriginalData,
+						"a copy must not hold its own split of the file")
+				}
+				require.Nil(t, f.LinesOriginalData,
+					"the source file never called Lines() and holds no split")
+			}
+		})
+	}
+}
+
+func TestLinesConcurrentAcrossCopies(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 200; i++ {
+		fmt.Fprintf(&b, "resource \"t\" \"r%d\" {}\n", i)
+	}
+	f := &FileMetadata{OriginalData: b.String()}
+	f.SetLazyLines()
+	want := f.Lines()
+	var wg sync.WaitGroup
+	for c := 0; c < 16; c++ {
+		wg.Add(1)
+		go func(c int) {
+			defer wg.Done()
+			clone := f.ShallowCopy()
+			for g := 0; g < 4; g++ {
+				got := clone.Lines()
+				if &got[0] != &want[0] {
+					t.Errorf("copy %d: split not shared with the source file", c)
+					return
+				}
+			}
+		}(c)
+	}
+	wg.Wait()
+}
+
 func TestLinesContainingIndexConcurrent(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 400; i++ {
