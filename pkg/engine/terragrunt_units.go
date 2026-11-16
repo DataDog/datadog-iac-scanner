@@ -26,6 +26,12 @@ type terragruntUnit struct {
 	inputs map[string]cty.Value
 	// moduleDir is the directory the call resolves to.
 	moduleDir string
+	// workingFiles maps the unit's own files, as Terragrunt copies them into
+	// the module's working copy, to where they are.
+	workingFiles map[string]string
+	// unitIsModule is set when the unit's own Terraform files are part of
+	// its module, rather than a root of their own.
+	unitIsModule bool
 }
 
 // discoverTerragruntUnits evaluates the scanned terragrunt.hcl files into the
@@ -47,11 +53,12 @@ func discoverTerragruntUnits(
 		if included[unit.ConfigFile] && unit.Source == "" {
 			continue
 		}
-		call, inputs, ok := unit.Call()
+		tgCall, inputs, ok := unit.Call()
 		if !ok {
 			contextLogger.Info().Msgf("terragrunt: unit %s is skipped or has no known source", unit.ConfigFile)
 			continue
 		}
+		call := syntheticCall(tgCall)
 		moduleDir, ok := resolveModuleTargetDir(
 			ctx, fsys, unit.Dir, repoPath, call.Source, call.Version, call.CallerFile, call.Label, resolver)
 		if !ok || moduleDir == "" {
@@ -60,9 +67,47 @@ func discoverTerragruntUnits(
 		}
 		moduleDir = filepath.Clean(moduleDir)
 		called[moduleDir] = true
-		units = append(units, terragruntUnit{unit: unit, call: call, inputs: inputs, moduleDir: moduleDir})
+		tu := terragruntUnit{unit: unit, call: call, inputs: inputs, moduleDir: moduleDir}
+		if moduleDir != unit.Dir {
+			tu.workingFiles, tu.unitIsModule = workingCopyFiles(fsys, unit.Dir, moduleDir)
+			if tu.unitIsModule {
+				called[unit.Dir] = true
+			}
+		}
+		units = append(units, tu)
 	}
 	return dependencyOrder(units)
+}
+
+// workingCopyFiles lists the unit directory's Terraform and auto-loaded
+// tfvars files by the path Terragrunt copies them to in the module. hasConfig
+// reports whether any is Terraform configuration.
+func workingCopyFiles(fsys vfs.FS, unitDir, moduleDir string) (files map[string]string, hasConfig bool) {
+	entries, err := fsys.ReadDir(unitDir)
+	if err != nil {
+		return nil, false
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Type().IsRegular() {
+			names = append(names, entry.Name())
+		}
+	}
+	selected := tfpath.AutoloadedVarFiles(names)
+	for _, name := range names {
+		if tfpath.IsConfig(name) {
+			selected = append(selected, name)
+			hasConfig = true
+		}
+	}
+	if len(selected) == 0 {
+		return nil, false
+	}
+	files = make(map[string]string, len(selected))
+	for _, name := range selected {
+		files[filepath.Join(moduleDir, name)] = filepath.Join(unitDir, name)
+	}
+	return files, hasConfig
 }
 
 // dependencyOrder puts each unit after the units it reads outputs of, keeping
@@ -152,10 +197,14 @@ func (m *rootMerge) evaluateTerragruntUnits(units []terragruntUnit) {
 		}
 		unit := &units[i]
 		m.withDependencyOutputs(unit, outputs)
-		inputs := m.unitInputs(unit)
-		resources, unitOutputs, visited, err := m.evaluator.EvaluateCall(m.ctx, unit.call, inputs)
-		m.evaluator.ReleaseEvalCache()
-		instances := m.evaluator.TakeModuleInstances()
+		evaluator := m.unitEvaluator(unit)
+		inputs := m.unitInputs(evaluator, unit)
+		resources, unitOutputs, visited, err := evaluator.EvaluateCall(m.ctx, unit.call, inputs)
+		evaluator.ReleaseEvalCache()
+		instances := evaluator.TakeModuleInstances()
+		if evaluator != m.evaluator {
+			m.evaluator.AddNotEvaluatedDirs(evaluator.TakeNotEvaluatedDirs())
+		}
 		if err != nil {
 			if isContextError(err) {
 				return
@@ -163,6 +212,9 @@ func (m *rootMerge) evaluateTerragruntUnits(units []terragruntUnit) {
 			contextLogger := logger.FromContext(m.ctx)
 			contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate Terragrunt unit %s", unit.call.CallerFile)
 			m.unresolvedModuleDirs[unit.moduleDir] = true
+			if unit.unitIsModule {
+				m.unresolvedModuleDirs[unit.unit.Dir] = true
+			}
 			for _, called := range discoverCalledModuleClosure(
 				m.ctx, m.evaluator, m.filesByDir, m.repoPath, m.resolver, unit.moduleDir,
 			) {
@@ -171,6 +223,10 @@ func (m *rootMerge) evaluateTerragruntUnits(units []terragruntUnit) {
 			continue
 		}
 		outputs[unit.unit.ConfigFile] = cty.ObjectVal(unitOutputs)
+		remapWorkingCopy(resources, instances, unit.workingFiles)
+		if unit.unitIsModule {
+			visited[unit.unit.Dir] = true
+		}
 		m.mergeResolved(resources, instances, visited)
 	}
 }
@@ -195,17 +251,17 @@ func (m *rootMerge) withDependencyOutputs(unit *terragruntUnit, outputs map[stri
 	if err != nil {
 		return
 	}
-	call, inputs, ok := again.Call()
-	if !ok || call.Source != unit.call.Source || call.Version != unit.call.Version {
+	tgCall, inputs, ok := again.Call()
+	if !ok || tgCall.Source != unit.call.Source || tgCall.Version != unit.call.Version {
 		return
 	}
-	unit.unit, unit.call, unit.inputs = again, call, inputs
+	unit.unit, unit.call, unit.inputs = again, syntheticCall(tgCall), inputs
 }
 
 // unitInputs applies Terraform's precedence to the unit's values: inputs
 // (TF_VAR_), then the module's tfvars files, then -var-file and -var. An
 // input something else overrides is no longer an argument of the call.
-func (m *rootMerge) unitInputs(unit *terragruntUnit) map[string]cty.Value {
+func (m *rootMerge) unitInputs(evaluator *tfeval.Evaluator, unit *terragruntUnit) map[string]cty.Value {
 	inputs := make(map[string]cty.Value, len(unit.inputs))
 	for name, value := range unit.inputs {
 		inputs[name] = value
@@ -216,11 +272,63 @@ func (m *rootMerge) unitInputs(unit *terragruntUnit) map[string]cty.Value {
 			delete(unit.call.Body.Attributes, name)
 		}
 	}
-	for name, value := range m.evaluator.LoadRootVarsWithContext(m.ctx, unit.moduleDir) {
+	for name, value := range evaluator.LoadRootVarsWithContext(m.ctx, unit.moduleDir) {
 		overridden(name, value)
 	}
 	for _, override := range unit.unit.VarOverrides {
 		overridden(override.Name, override.Value)
 	}
 	return inputs
+}
+
+func syntheticCall(call *terragrunt.Call) *tfeval.SyntheticCall {
+	return &tfeval.SyntheticCall{
+		Label:      call.Label,
+		Source:     call.Source,
+		Version:    call.Version,
+		CallerFile: call.CallerFile,
+		Range:      call.Range,
+		Body:       call.Body,
+	}
+}
+
+// unitEvaluator reads the module as Terragrunt's working copy: the module
+// with the unit's own files added, which replace module files of the same
+// name.
+func (m *rootMerge) unitEvaluator(unit *terragruntUnit) *tfeval.Evaluator {
+	if len(unit.workingFiles) == 0 {
+		return m.evaluator
+	}
+	fsys := m.evaluator.FS()
+	files := make(map[string][]byte, len(unit.workingFiles))
+	for copied, original := range unit.workingFiles {
+		if content, err := fsys.ReadFile(original); err == nil {
+			files[copied] = content
+		}
+	}
+	return m.evaluator.WithFS(vfs.NewOverlay(fsys, files))
+}
+
+// remapWorkingCopy points what the unit's copied files declare back to the
+// files themselves.
+func remapWorkingCopy(resources []tfeval.ResolvedResource, instances []tfeval.ModuleInstance, files map[string]string) {
+	if len(files) == 0 {
+		return
+	}
+	remapChain := func(chain []tfeval.CallSite) {
+		for i := range chain {
+			if original, ok := files[chain[i].CalledFrom]; ok {
+				chain[i].CalledFrom = original
+			}
+		}
+	}
+	for i := range resources {
+		if original, ok := files[resources[i].DefinedIn]; ok {
+			resources[i].DefinedIn = original
+		}
+		remapChain(resources[i].CallChain)
+	}
+	for i := range instances {
+		remapChain(instances[i].CallChain)
+	}
 }

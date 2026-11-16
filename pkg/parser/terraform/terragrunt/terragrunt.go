@@ -60,6 +60,10 @@ type Unit struct {
 	// -var, in the order Terraform applies them. They override inputs and
 	// the module's tfvars files.
 	VarOverrides []VarOverride
+	// Generated are the files generate blocks write, sorted by label.
+	Generated []GeneratedFile
+	// RemoteState is the backend remote_state configures, nil without one.
+	RemoteState *RemoteState
 }
 
 // VarOverride is a variable value -var-file or -var sets.
@@ -114,6 +118,10 @@ func (e *Evaluator) EvaluateUnit(ctx context.Context, configFile string) (*Unit,
 	}
 	slices.Sort(unit.Dependencies)
 	unit.VarOverrides = e.varOverrides(ctx, cfg.extraArgs, unit.Dir)
+	for _, label := range sortedKeys(cfg.generated) {
+		unit.Generated = append(unit.Generated, cfg.generated[label])
+	}
+	unit.RemoteState = cfg.remoteState
 	if cfg.source != nil {
 		unit.SourceRange = cfg.source.Range
 		if s, ok := knownString(cfg.source.Value); ok {

@@ -51,6 +51,15 @@ func mergeConfigs(base, over *config, deep bool) *config {
 	}
 	maps.Copy(out.dependencies, over.dependencies)
 	out.extraArgs = mergeExtraArguments(base.extraArgs, over.extraArgs)
+	out.generated = maps.Clone(base.generated)
+	if out.generated == nil {
+		out.generated = map[string]GeneratedFile{}
+	}
+	maps.Copy(out.generated, over.generated)
+	out.remoteState = base.remoteState
+	if over.remoteState != nil {
+		out.remoteState = over.remoteState
+	}
 	if over.inputs != nil {
 		out.inputsRange = over.inputsRange
 	}

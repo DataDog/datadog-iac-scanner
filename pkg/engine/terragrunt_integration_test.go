@@ -330,3 +330,56 @@ inputs = {
 		require.Equal(t, 2, v.ModuleAttribution.CallSite.LineStart, "anchored at terraform.source, not the overridden input")
 	}
 }
+
+// The unit's own Terraform files are part of its module's working copy: they
+// read the module's variables, set by the unit's inputs, and findings on them
+// stay on the unit's files.
+func TestInspect_TerragruntUnitFilesJoinTheModule(t *testing.T) {
+	root, files := writeTerragruntRepo(t, map[string]string{
+		"modules/bucket/main.tf": `variable "acl" {
+  default = "private"
+}
+`,
+		"live/prod/extra.tf": `resource "aws_s3_bucket" "extra" {
+  acl = var.acl
+}
+`,
+		"live/prod/terragrunt.hcl": `terraform {
+  source = "../../modules/bucket"
+}
+
+inputs = {
+  acl = "public-read"
+}
+`,
+	})
+	vulns := inspectACL(t, root, files)
+
+	require.Len(t, vulns, 1)
+	require.Equal(t, filepath.Join(root, "live/prod/extra.tf"), vulns[0].FileName)
+	require.Equal(t, "live/prod/terragrunt.hcl", callSiteFile(vulns[0]))
+	require.Equal(t, 6, vulns[0].ModuleAttribution.CallSite.LineStart)
+}
+
+// The unit's terraform.tfvars is copied into the working copy and overrides
+// inputs, as Terraform loads it there.
+func TestInspect_TerragruntUnitTfvarsOverrideInputs(t *testing.T) {
+	root, files := writeTerragruntRepo(t, map[string]string{
+		"modules/bucket/main.tf": bucketModuleDefaultPublic,
+		"live/prod/terraform.tfvars": `acl = "public-read"
+`,
+		"live/prod/terragrunt.hcl": `terraform {
+  source = "../../modules/bucket"
+}
+
+inputs = {
+  acl = "private"
+}
+`,
+	})
+	vulns := inspectACL(t, root, files)
+
+	require.Len(t, vulns, 1)
+	require.Equal(t, filepath.Join(root, "modules/bucket/main.tf"), vulns[0].FileName)
+	require.Equal(t, "live/prod/terragrunt.hcl", callSiteFile(vulns[0]))
+}

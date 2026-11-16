@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -424,42 +423,6 @@ inputs = {
 	u.Skip = true
 	_, _, ok = u.Call()
 	require.False(t, ok)
-}
-
-// End to end with tfeval: the unit's inputs reach the module's resources.
-func TestUnitCall_EvaluatesModule(t *testing.T) {
-	root := writeTree(t, map[string]string{
-		"modules/bucket/main.tf": `
-variable "name" {}
-variable "acl" { default = "private" }
-resource "aws_s3_bucket" "this" {
-  bucket = var.name
-  acl    = var.acl
-}`,
-		"root.hcl": `terraform {
-  source = "${get_parent_terragrunt_dir()}/modules//bucket"
-}`,
-		"prod/logs/terragrunt.hcl": `include "root" {
-  path = find_in_parent_folders("root.hcl")
-}
-inputs = {
-  name = "prod-logs"
-  acl  = "public-read"
-}`,
-	})
-	u := evaluate(t, root, "prod/logs/terragrunt.hcl")
-	call, inputs, ok := u.Call()
-	require.True(t, ok)
-
-	resources, _, visited, err := tfeval.New().EvaluateCall(context.Background(), call, inputs)
-	require.NoError(t, err)
-	require.Len(t, resources, 1)
-	bucket := resources[0]
-	require.Equal(t, "module.terragrunt", bucket.ModuleAddress)
-	require.Equal(t, "prod-logs", bucket.Attributes["bucket"].AsString())
-	require.Equal(t, "public-read", bucket.Attributes["acl"].AsString())
-	require.Equal(t, u.ConfigFile, bucket.CallChain[0].CalledFrom)
-	require.True(t, visited[filepath.Join(root, "modules/bucket")])
 }
 
 func TestEvaluateUnit_InputRangesThroughMerge(t *testing.T) {
