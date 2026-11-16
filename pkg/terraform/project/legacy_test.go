@@ -236,6 +236,7 @@ resource "aws_cloudwatch_log_metric_filter" "cis" {
 	require.Contains(t, got, "_dd_filter_expr")
 	require.NotEqual(t, pattern, got)
 }
+
 // The model computes the document of a data source Terraform derives from its
 // configuration (aws_iam_policy_document), replacing an unresolved part with
 // the unknown marker; the legacy view keeps the interpolation text the
@@ -290,6 +291,7 @@ resource "aws_kms_key" "other" {
 	require.Contains(t, other, "${aws_kms_key.key.arn}",
 		"a resource reference the view keeps unseen stays its source text")
 }
+
 // An undeclared .tfvars key still resolves: the previous engine merged every
 // key the variable files define into its documents, while the model binds
 // only the variables the module declares.

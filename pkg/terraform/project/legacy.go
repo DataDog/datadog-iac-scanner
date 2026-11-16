@@ -875,6 +875,7 @@ func nestedSources(body *hclsyntax.Body) map[string][]nestedSource {
 	}
 	return out
 }
+
 // dataNamespace is the root name the module's data sources are read through.
 const dataNamespace = "data"
 
@@ -891,48 +892,63 @@ const varNamespace = "var"
 // an object already in the render context is patched; the others keep the
 // values the model carries.
 func patchLegacyData(m *model.Module, vars map[string]cty.Value, lr *legacyRender) {
-	dv, ok := vars[dataNamespace]
-	if !ok || !dv.IsKnown() || !dv.Type().IsObjectType() {
+	byType, ok := knownObjectMap(vars, dataNamespace)
+	if !ok {
 		return
 	}
-	byType := dv.AsValueMap()
 	changed := false
 	for _, b := range m.Blocks {
-		if b.Kind != address.KindData || b.Syntax == nil {
-			continue
+		if patchLegacyDataBlock(b, byType, lr) {
+			changed = true
 		}
-		source, ok := localdata.Lookup(b.Type)
-		if !ok || len(b.Instances) != 1 || b.Instances[0].Key != "" {
-			continue
-		}
-		typeVal, ok := byType[b.Type]
-		if !ok || !typeVal.IsKnown() || !typeVal.Type().IsObjectType() {
-			continue
-		}
-		entries := typeVal.AsValueMap()
-		entry, ok := entries[b.Name]
-		if !ok || !entry.IsKnown() || !entry.Type().IsObjectType() {
-			continue
-		}
-		computed := source(context.Background(), b.Syntax.Body, func(expr hcl.Expression) (cty.Value, bool) {
-			return lr.rd.Render(expr)
-		})
-		if len(computed) == 0 {
-			continue
-		}
-		lr.dataKinds[b.Type] = true
-		attrs := entry.AsValueMap()
-		for name, v := range computed {
-			attrs[name] = cty.StringVal(v)
-		}
-		entries[b.Name] = cty.ObjectVal(attrs)
-		byType[b.Type] = cty.ObjectVal(entries)
-		changed = true
 	}
 	if changed {
 		vars[dataNamespace] = cty.ObjectVal(byType)
 	}
 }
+
+// patchLegacyDataBlock patches, in byType, the entry of data source b and
+// reports whether it did.
+func patchLegacyDataBlock(b *model.Block, byType map[string]cty.Value, lr *legacyRender) bool {
+	if b.Kind != address.KindData || b.Syntax == nil {
+		return false
+	}
+	source, ok := localdata.Lookup(b.Type)
+	if !ok || len(b.Instances) != 1 || b.Instances[0].Key != "" {
+		return false
+	}
+	entries, ok := knownObjectMap(byType, b.Type)
+	if !ok {
+		return false
+	}
+	attrs, ok := knownObjectMap(entries, b.Name)
+	if !ok {
+		return false
+	}
+	computed := source(context.Background(), b.Syntax.Body, func(expr hcl.Expression) (cty.Value, bool) {
+		return lr.rd.Render(expr)
+	})
+	if len(computed) == 0 {
+		return false
+	}
+	lr.dataKinds[b.Type] = true
+	for name, v := range computed {
+		attrs[name] = cty.StringVal(v)
+	}
+	entries[b.Name] = cty.ObjectVal(attrs)
+	byType[b.Type] = cty.ObjectVal(entries)
+	return true
+}
+
+// knownObjectMap returns the attributes of values[key] when it is a known object.
+func knownObjectMap(values map[string]cty.Value, key string) (map[string]cty.Value, bool) {
+	v, ok := values[key]
+	if !ok || !v.IsKnown() || !v.Type().IsObjectType() {
+		return nil, false
+	}
+	return v.AsValueMap(), true
+}
+
 // patchLegacyRootInputs adds, for the root module, the variable values the
 // model does not bind: the previous engine merged every key the .tfvars
 // files define into its documents, while the model binds only the variables
