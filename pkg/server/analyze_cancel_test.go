@@ -46,21 +46,6 @@ DatadogPolicy contains result if {
 	return r
 }
 
-// postAnalyzeContext runs the handler with the given request context and
-// asserts the failure shape: a canceled or timed-out scan must come back as a
-// 500 carrying the context error, never as a response computed from partly
-// evaluated modules.
-func postAnalyzeContext(t *testing.T, s *Server, req analyzeRequest, reqCtx context.Context) {
-	t.Helper()
-	body, err := json.Marshal(req)
-	require.NoError(t, err)
-	httpReq := httptest.NewRequest(http.MethodPost, "/analyze", bytes.NewReader(body)).WithContext(reqCtx)
-	rec := httptest.NewRecorder()
-	s.handleAnalyze(rec, httpReq)
-	require.Equal(t, http.StatusInternalServerError, rec.Code, "body: %s", rec.Body.String())
-	require.Contains(t, rec.Body.String(), "context")
-}
-
 // A request whose scan cannot finish inside its deadline must fail with the
 // context error — the denial-of-service path for pushed content. Each row is
 // an expansion that outlasts any deadline: a module call whose count cannot be

@@ -868,9 +868,11 @@ func (e *Evaluator) installSiblingModuleOutputs(
 }
 
 // isReportableModuleEvalError excludes a missing local source, which the module
-// parser already reports.
+// parser already reports, and a canceled or expired context, which a scan
+// cancellation raises for every call still in flight.
 func isReportableModuleEvalError(err error) bool {
-	return !errors.Is(err, ErrModuleNotEvaluated) && !errors.Is(err, fs.ErrNotExist)
+	return !errors.Is(err, ErrModuleNotEvaluated) && !errors.Is(err, fs.ErrNotExist) &&
+		!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 func (e *Evaluator) resolveModuleDir(
@@ -1410,7 +1412,8 @@ func (e *Evaluator) resolveLocalsIncremental(
 }
 
 // evalBody evaluates an HCL body into the shape produced by the Terraform parser.
-// It keeps dynamic blocks as written when their for_each does not resolve.
+// It passes no body state, so it never expands dynamic blocks: they are kept
+// as written.
 func (e *Evaluator) evalBody(
 	ctx context.Context,
 	body *hclsyntax.Body,

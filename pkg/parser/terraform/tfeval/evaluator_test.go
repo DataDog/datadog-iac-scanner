@@ -2170,6 +2170,12 @@ func TestIsReportableModuleEvalError(t *testing.T) {
 	if !isReportableModuleEvalError(errors.New("invalid expression")) {
 		t.Error("other evaluation errors are reported")
 	}
+	if isReportableModuleEvalError(fmt.Errorf("x: %w", context.Canceled)) {
+		t.Error("a canceled context is a scan cancellation, not an evaluation error")
+	}
+	if isReportableModuleEvalError(fmt.Errorf("x: %w", context.DeadlineExceeded)) {
+		t.Error("an expired deadline is a scan cancellation, not an evaluation error")
+	}
 }
 
 func TestEvaluateModule_KeepsScopesForAttribution(t *testing.T) {

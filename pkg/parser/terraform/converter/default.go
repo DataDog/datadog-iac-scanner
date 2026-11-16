@@ -50,7 +50,6 @@ func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, op
 		variables[name] = value
 	}
 	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS))
-	c.file = file.Body.(*hclsyntax.Body)
 	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 
 	if err != nil {
@@ -74,8 +73,6 @@ type converter struct {
 	bytes     []byte
 	inputVars VariableMap
 	renderer  *partial.Renderer
-	// file is the body of the whole file.
-	file *hclsyntax.Body
 }
 
 func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
