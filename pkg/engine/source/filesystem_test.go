@@ -312,6 +312,54 @@ func TestCheckQueryExcludeWithLegacyId(t *testing.T) {
 			expectedResult: true,
 			description:    "Should exclude with case-insensitive match on legacy ID",
 		},
+		{
+			name: "exclude_by_legacy_ids_entry",
+			metadata: map[string]any{
+				"id":        "terraform-aws-s3-bucket-public",
+				"legacyIds": []any{"old-renamed-id", "merged-rule-id"},
+				"category":  "Security",
+				"severity":  "HIGH",
+			},
+			excludeIDs:     []string{"merged-rule-id"},
+			expectedResult: true,
+			description:    "Should exclude when a legacy_ids entry matches",
+		},
+		{
+			name: "exclude_case_insensitive_legacy_ids_entry",
+			metadata: map[string]any{
+				"id":        "terraform-aws-s3-bucket-public",
+				"legacyIds": []any{"old-renamed-id", "merged-rule-id"},
+				"category":  "Security",
+				"severity":  "HIGH",
+			},
+			excludeIDs:     []string{"MERGED-RULE-ID"},
+			expectedResult: true,
+			description:    "Should exclude with case-insensitive match on a legacy_ids entry",
+		},
+		{
+			name: "no_exclude_when_no_legacy_ids_entry_matches",
+			metadata: map[string]any{
+				"id":        "terraform-aws-s3-bucket-public",
+				"legacyIds": []any{"old-renamed-id", "merged-rule-id"},
+				"category":  "Security",
+				"severity":  "HIGH",
+			},
+			excludeIDs:     []string{"different-id"},
+			expectedResult: false,
+			description:    "Should not exclude when no legacy_ids entry matches",
+		},
+		{
+			name: "exclude_by_legacy_ids_entry_as_string_slice",
+			metadata: map[string]any{
+				"id":        "terraform-aws-s3-bucket-public",
+				"legacyIds": []string{"old-renamed-id", "merged-rule-id"},
+				"category":  "Security",
+				"severity":  "HIGH",
+			},
+			excludeIDs:     []string{"old-renamed-id"},
+			expectedResult: true,
+			description:    "Should exclude a legacy_ids entry stored as []string by the API source",
+		},
 	}
 
 	for _, tt := range tests {
@@ -433,6 +481,30 @@ func TestCheckQueryIncludeWithLegacyId(t *testing.T) {
 			includeIDs:     []string{"ABC-123-DEF-456"},
 			expectedResult: true,
 			description:    "Should include with case-insensitive match on legacy ID",
+		},
+		{
+			name: "include_by_legacy_ids_entry",
+			metadata: map[string]any{
+				"id":        "terraform-aws-s3-bucket-public",
+				"legacyIds": []any{"old-renamed-id", "merged-rule-id"},
+				"category":  "Security",
+				"severity":  "HIGH",
+			},
+			includeIDs:     []string{"merged-rule-id"},
+			expectedResult: true,
+			description:    "Should include when a legacy_ids entry matches",
+		},
+		{
+			name: "no_include_when_no_legacy_ids_entry_matches",
+			metadata: map[string]any{
+				"id":        "terraform-aws-s3-bucket-public",
+				"legacyIds": []any{"old-renamed-id", "merged-rule-id"},
+				"category":  "Security",
+				"severity":  "HIGH",
+			},
+			includeIDs:     []string{"different-id"},
+			expectedResult: false,
+			description:    "Should not include when no legacy_ids entry matches",
 		},
 	}
 

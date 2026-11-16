@@ -64,6 +64,30 @@ func TestFindingIdentity_EqualIdentityMeansEqualCreateSummaryFingerprint(t *test
 		"equal FindingIdentity must mean equal CreateSummary fingerprints")
 }
 
+// TestFindingIdentity_IgnoresLegacyQueryIDs pins that adding legacy_ids
+// entries to a rule does not change its findings' fingerprints: identity stays
+// anchored on the legacy id, exactly as before the rule gained legacy_ids.
+func TestFindingIdentity_IgnoresLegacyQueryIDs(t *testing.T) {
+	before := Vulnerability{
+		FileName: "/repo/stack/main.tf", Platform: terraformPlatform, QueryID: "rule-1", LegacyQueryID: "old-id",
+		ResourceType: "aws_security_group", ResourceName: "sg",
+		Line: 4, LineWithVulnerability: "cidr_blocks = [\"0.0.0.0/0\"]",
+		Severity: SeverityHigh, SearchKey: "aws_security_group[sg].ingress[0].cidr_blocks",
+	}
+	withLegacyIDs := before
+	withLegacyIDs.LegacyQueryIDs = []string{"renamed-away-id", "merged-rule-id"}
+
+	require.Equal(t, FindingIdentity(&before), FindingIdentity(&withLegacyIDs),
+		"legacy_ids entries must not enter the finding identity")
+
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{before, withLegacyIDs}, "scan", nil, "/repo", SCIInfo{})
+	require.Len(t, summary.Queries, 1)
+	files := summary.Queries[0].Files
+	require.Len(t, files, 2)
+	require.Equal(t, files[0].Fingerprint, files[1].Fingerprint,
+		"adding legacy_ids to a rule must not change its findings' fingerprints")
+}
+
 func TestIdentityBeforeLine_IsFindingIdentityUnderEveryChain(t *testing.T) {
 	for _, platform := range []string{"Terraform", "CloudFormation", "Kubernetes", ""} {
 		for _, chain := range []string{"", "module.a", "module.a.module.b[\"k\"]"} {

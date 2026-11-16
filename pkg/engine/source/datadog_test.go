@@ -373,6 +373,82 @@ func TestConvertRuleIncludesArgumentsInMetadata(t *testing.T) {
 	}, query.Metadata["arguments"])
 }
 
+// TestConvertRuleCarriesLegacyIdsInMetadata checks that the legacy_ids
+// entries of an API rule reach the query metadata next to legacyId.
+func TestConvertRuleCarriesLegacyIdsInMetadata(t *testing.T) {
+	rule := &datadog.Rule{
+		ID:          "terraform-aws-required-tags",
+		Name:        "required_tags",
+		Platform:    "Terraform",
+		Type:        "rego",
+		RegoQuery:   []byte("package datadog"),
+		Severity:    "HIGH",
+		Category:    "Best Practices",
+		LegacyId:    ptr("old-legacy-id"),
+		LegacyIds:   []string{"old-renamed-id", "merged-rule-id"},
+		IsPublished: true,
+	}
+
+	query := ConvertRule(rule)
+
+	assert.Equal(t, "old-legacy-id", query.Metadata["legacyId"])
+	assert.Equal(t, []string{"old-renamed-id", "merged-rule-id"}, query.Metadata["legacyIds"])
+
+	// A rule without legacy_ids stores none.
+	rule.LegacyIds = nil
+	query = ConvertRule(rule)
+	_, present := query.Metadata["legacyIds"]
+	assert.False(t, present)
+}
+
+// TestFilterRulesMatchesLegacyIds checks that a rule is filtered in and out by
+// each of its IDs: canonical id, legacy id, and any legacy_ids entry.
+func TestFilterRulesMatchesLegacyIds(t *testing.T) {
+	rule := &datadog.Rule{
+		ID:          "terraform-aws-required-tags",
+		Name:        "required_tags",
+		Platform:    "Terraform",
+		Type:        "rego",
+		RegoQuery:   []byte("package datadog"),
+		Severity:    "HIGH",
+		Category:    "Best Practices",
+		LegacyId:    ptr("old-legacy-id"),
+		LegacyIds:   []string{"old-renamed-id", "merged-rule-id"},
+		IsPublished: true,
+	}
+	s := &DatadogSource{wantedPlatforms: []string{""}, wantedCloudProviders: []string{""}}
+
+	for _, tc := range []struct {
+		name       string
+		includeIDs []string
+		excludeIDs []string
+		wantKept   bool
+	}{
+		{name: "kept_without_id_filters", wantKept: true},
+		{name: "kept_by_canonical_id", includeIDs: []string{"terraform-aws-required-tags"}, wantKept: true},
+		{name: "kept_by_legacy_id", includeIDs: []string{"old-legacy-id"}, wantKept: true},
+		{name: "kept_by_legacy_ids_entry", includeIDs: []string{"merged-rule-id"}, wantKept: true},
+		{name: "dropped_when_other_ids_included", includeIDs: []string{"other-rule"}, wantKept: false},
+		{name: "dropped_by_canonical_id", excludeIDs: []string{"terraform-aws-required-tags"}, wantKept: false},
+		{name: "dropped_by_legacy_id", excludeIDs: []string{"old-legacy-id"}, wantKept: false},
+		{name: "dropped_by_legacy_ids_entry", excludeIDs: []string{"old-renamed-id"}, wantKept: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			selection := &QueryInspectorParameters{
+				IncludeQueries: QueryFilter{ByIDs: tc.includeIDs},
+				ExcludeQueries: QueryFilter{ByIDs: tc.excludeIDs},
+			}
+			got, err := s.filterRules(&datadog.Ruleset{Rules: []*datadog.Rule{rule}}, selection)
+			assert.NoError(t, err)
+			if tc.wantKept {
+				assert.Len(t, got, 1)
+			} else {
+				assert.Empty(t, got)
+			}
+		})
+	}
+}
+
 var rules = []*datadog.Rule{
 	{
 		ID:               "dockerfile-gcp-rule-1",

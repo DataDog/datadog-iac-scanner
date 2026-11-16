@@ -154,7 +154,12 @@ func shouldRunRule(rule *datadog.Rule, platformFilter, ruleFilter []string) bool
 	if rule.LegacyId != nil {
 		legacyID = *rule.LegacyId
 	}
-	return slices.Contains(ruleFilter, rule.ID) || slices.Contains(ruleFilter, legacyID)
+	for _, ref := range ruleFilter {
+		if scanUtils.RuleIDMatches(rule.ID, legacyID, rule.LegacyIds, ref) {
+			return true
+		}
+	}
+	return false
 }
 
 func finishTests(results []ruleOutcome, allPass bool) error {
