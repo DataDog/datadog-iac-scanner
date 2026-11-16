@@ -6,7 +6,6 @@
 package terragrunt
 
 import (
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -19,10 +18,22 @@ const CallLabel = "terragrunt"
 // directory is the module.
 const unitDirSource = "./"
 
+// Call is a module call a unit makes, as tfeval.SyntheticCall describes one.
+type Call struct {
+	Label      string
+	Source     string
+	Version    string
+	CallerFile string
+	// Range is where a finding the inputs do not control points.
+	Range hcl.Range
+	// Body holds one attribute per input, positioned where it is set.
+	Body *hclsyntax.Body
+}
+
 // Call is the module call the unit makes, and its inputs. Inputs the unit's
 // own file sets are arguments positioned where they are set. ok is false when
 // the unit makes no call that can be evaluated.
-func (u *Unit) Call() (call *tfeval.SyntheticCall, inputs map[string]cty.Value, ok bool) {
+func (u *Unit) Call() (call *Call, inputs map[string]cty.Value, ok bool) {
 	if u.Skip || !u.SourceKnown {
 		return nil, nil, false
 	}
@@ -46,7 +57,7 @@ func (u *Unit) Call() (call *tfeval.SyntheticCall, inputs map[string]cty.Value, 
 			NameRange: input.Range,
 		}
 	}
-	return &tfeval.SyntheticCall{
+	return &Call{
 		Label:      CallLabel,
 		Source:     source,
 		Version:    version,

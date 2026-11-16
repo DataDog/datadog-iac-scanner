@@ -257,7 +257,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
 	if tfpath.IsTerragrunt(path) {
-		return parseTerragrunt(ctx, fileContent, path)
+		return p.parseTerragrunt(ctx, fileContent, path)
 	}
 	contextLogger := logger.FromContext(ctx)
 	resolved, inputVariables, err := p.Resolve(ctx, fileContent, path, resolveReferences, maxResolverDepth)
@@ -313,7 +313,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 func (p *Parser) SupportedExtensions() []string {
 	return []string{
 		tfpath.ExtTF, tfpath.ExtTofu, tfpath.ExtTFJSON, tfpath.ExtTofuJSON, tfpath.ExtTFVars,
-		tfpath.TerragruntConfig, tfpath.TerragruntStack,
+		tfpath.TerragruntConfig, tfpath.TerragruntStack, tfpath.TerragruntRoot,
 	}
 }
 

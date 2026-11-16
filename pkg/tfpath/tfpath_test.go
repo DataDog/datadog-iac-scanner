@@ -367,7 +367,8 @@ func TestIsTerragrunt(t *testing.T) {
 	}{
 		{path: "live/prod/terragrunt.hcl", want: true},
 		{path: "terragrunt.stack.hcl", want: true},
-		{path: "live/root.hcl", want: false},
+		{path: "live/root.hcl", want: true},
+		{path: "live/env.hcl", want: false},
 		{path: "live/Terragrunt.hcl", want: false},
 		{path: "live/terragrunt.hcl.json", want: false},
 		{path: "main.tf", want: false},

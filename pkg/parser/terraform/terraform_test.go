@@ -127,7 +127,7 @@ func TestParser_SupportedTypes(t *testing.T) {
 func TestParser_SupportedExtensions(t *testing.T) {
 	p := &Parser{}
 	require.Equal(t, []string{
-		".tf", ".tofu", ".tf.json", ".tofu.json", ".tfvars", "terragrunt.hcl", "terragrunt.stack.hcl",
+		".tf", ".tofu", ".tf.json", ".tofu.json", ".tfvars", "terragrunt.hcl", "terragrunt.stack.hcl", "root.hcl",
 	}, p.SupportedExtensions())
 }
 

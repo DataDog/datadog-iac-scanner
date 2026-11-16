@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
@@ -182,4 +183,36 @@ func TestEvaluateCall_CanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, resources)
 	require.Empty(t, visited)
+}
+
+// An evaluator reading through an overlay sees files the disk does not have,
+// and keeps the settings of the evaluator it comes from.
+func TestEvaluatorWithFS(t *testing.T) {
+	root := t.TempDir()
+	module := writeModule(t, root, "modules/bucket", map[string]string{"main.tf": syntheticBucketModule})
+	unit := writeModule(t, root, "live/prod", map[string]string{"terragrunt.hcl": ""})
+
+	base := New()
+	base.SetTrackModuleInstances(true)
+	overlay := vfs.NewOverlay(vfs.DiskFS{}, map[string][]byte{
+		filepath.Join(module, "extra.tf"): []byte(`resource "aws_s3_bucket" "extra" {
+  bucket = "${var.name}-extra"
+}`),
+	})
+	e := base.WithFS(overlay)
+
+	resources, _, _, err := e.EvaluateCall(context.Background(),
+		syntheticCall(filepath.Join(unit, "terragrunt.hcl"), "../../modules/bucket"),
+		map[string]cty.Value{"name": cty.StringVal("logs")})
+	require.NoError(t, err)
+	extra := findResource(t, resources, "aws_s3_bucket", "extra")
+	requireString(t, extra.Attributes, "bucket", "logs-extra")
+	require.Equal(t, filepath.Join(module, "extra.tf"), extra.DefinedIn)
+	require.Len(t, e.TakeModuleInstances(), 1, "instance tracking carries over")
+
+	baseResources, _, _, err := base.EvaluateCall(context.Background(),
+		syntheticCall(filepath.Join(unit, "terragrunt.hcl"), "../../modules/bucket"),
+		map[string]cty.Value{"name": cty.StringVal("logs")})
+	require.NoError(t, err)
+	require.Len(t, baseResources, 1, "the base evaluator does not see the overlay")
 }

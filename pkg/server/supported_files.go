@@ -52,6 +52,7 @@ var strategyByPattern = map[string]fileStrategy{
 	// Terragrunt units read the files they include and the modules they call.
 	"terragrunt.hcl":       strategyDirectory,
 	"terragrunt.stack.hcl": strategyDirectory,
+	"root.hcl":             strategyDirectory,
 	".yaml":                strategyDirectory,
 	".yml":                 strategyDirectory,
 	".json":                strategyDirectory,

@@ -24,17 +24,20 @@ const (
 	TerragruntConfig = "terragrunt.hcl"
 	// TerragruntStack declares a Terragrunt stack.
 	TerragruntStack = "terragrunt.stack.hcl"
+	// TerragruntRoot is the configuration Terragrunt units conventionally
+	// include.
+	TerragruntRoot = "root.hcl"
 
 	ExtTFVarsJSON = ".tfvars.json"
 	defaultVars   = "terraform.tfvars"
 	autoVars      = ".auto.tfvars"
 )
 
-// IsTerragrunt reports whether path is a Terragrunt unit or stack file. Names
-// are case-sensitive, as in Terragrunt.
+// IsTerragrunt reports whether path is a Terragrunt unit, stack or root
+// configuration file. Names are case-sensitive, as in Terragrunt.
 func IsTerragrunt(path string) bool {
 	base := filepath.Base(path)
-	return base == TerragruntConfig || base == TerragruntStack
+	return base == TerragruntConfig || base == TerragruntStack || base == TerragruntRoot
 }
 
 // IsTFVarsJSON reports whether path is a variable definitions file in JSON syntax.

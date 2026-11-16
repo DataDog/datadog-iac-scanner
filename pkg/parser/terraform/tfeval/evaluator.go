@@ -283,6 +283,18 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	return dp
 }
 
+// WithFS returns an evaluator with e's settings reading through fsys. Its
+// caches are its own, since fsys may serve directories differently from e's.
+func (e *Evaluator) WithFS(fsys vfs.FS) *Evaluator {
+	out := NewWithFS(fsys)
+	out.funcs = e.funcs
+	out.maxDepth = e.maxDepth
+	out.remoteResolver = e.remoteResolver
+	out.mergeAllow = e.mergeAllow
+	out.trackInstances = e.trackInstances
+	return out
+}
+
 // Fork returns an evaluator that can evaluate other roots concurrently with e.
 // It shares e's settings and its parse and path caches; its evaluation cache
 // and skipped directories are its own.

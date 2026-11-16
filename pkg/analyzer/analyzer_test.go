@@ -1014,17 +1014,20 @@ func TestAnalyze_KustomizeRoots(t *testing.T) {
 		analyzeOne(filepath.Join(dir, "a", "kustomization.yaml")))
 }
 
-// Terragrunt files are recognized by name; other .hcl files are not scanned.
+// Terragrunt files are recognized by name (unit, stack and root.hcl); other
+// .hcl files are not scanned.
 func TestAnalyze_TerragruntFilesClassifyAsTerraform(t *testing.T) {
 	dir := t.TempDir()
 	unit := filepath.Join(dir, "live", "terragrunt.hcl")
 	stack := filepath.Join(dir, "live", "terragrunt.stack.hcl")
 	root := filepath.Join(dir, "root.hcl")
+	env := filepath.Join(dir, "env.hcl")
 	packer := filepath.Join(dir, "image.pkr.hcl")
 	require.NoError(t, os.MkdirAll(filepath.Dir(unit), 0o755))
 	require.NoError(t, os.WriteFile(unit, []byte("terraform {\n  source = \"../modules/vpc\"\n}\n"), 0o600))
 	require.NoError(t, os.WriteFile(stack, []byte("unit \"vpc\" {\n  source = \"../units/vpc\"\n  path = \"vpc\"\n}\n"), 0o600))
 	require.NoError(t, os.WriteFile(root, []byte("inputs = {}\n"), 0o600))
+	require.NoError(t, os.WriteFile(env, []byte("locals {}\n"), 0o600))
 	require.NoError(t, os.WriteFile(packer, []byte("source \"amazon-ebs\" \"x\" {}\n"), 0o600))
 
 	got, err := Analyze(context.Background(), &Analyzer{
@@ -1038,5 +1041,6 @@ func TestAnalyze_TerragruntFilesClassifyAsTerraform(t *testing.T) {
 	require.Equal(t, []string{terraform}, got.Types)
 	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(unit)])
 	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(stack)])
-	require.ElementsMatch(t, []string{filepath.ToSlash(unit), filepath.ToSlash(stack)}, got.Inventory)
+	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(root)])
+	require.ElementsMatch(t, []string{filepath.ToSlash(unit), filepath.ToSlash(stack), filepath.ToSlash(root)}, got.Inventory)
 }

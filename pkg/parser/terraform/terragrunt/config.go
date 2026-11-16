@@ -53,6 +53,8 @@ type config struct {
 	included     []string
 	dependencies map[string]dependency
 	extraArgs    []extraArguments
+	generated    map[string]GeneratedFile
+	remoteState  *RemoteState
 }
 
 type include struct {
@@ -215,6 +217,8 @@ func evaluateBody(ctx context.Context, body *hclsyntax.Body, evalCtx *hcl.EvalCo
 		}
 		cfg.attrs[name] = value
 	}
+	cfg.generated = evaluateGenerate(ctx, body, evalCtx)
+	cfg.remoteState = evaluateRemoteState(body, evalCtx)
 	for _, block := range blocksOfType(body, "exclude") {
 		if excludesPlanOrApply(block.Body, evalCtx) {
 			cfg.excluded = true
