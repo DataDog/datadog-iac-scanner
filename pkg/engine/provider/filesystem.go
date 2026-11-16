@@ -188,9 +188,18 @@ func (s *FileSystemSourceProvider) AddUnfilteredPaths(paths []string) {
 // TerraformFiles returns Terraform/OpenTofu config paths used for module discovery
 // before scanning: native .tf/.tofu files plus .tf.json/.tofu.json files.
 func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string, error) {
-	configExtensions := model.Extensions{
+	return s.filesWithExtensions(ctx, model.Extensions{
 		tfpath.ExtTF: {}, tfpath.ExtTofu: {}, tfpath.ExtTFJSON: {}, tfpath.ExtTofuJSON: {},
-	}
+	})
+}
+
+// TerragruntFiles returns the Terragrunt unit files, whose remote module calls
+// module discovery resolves too.
+func (s *FileSystemSourceProvider) TerragruntFiles(ctx context.Context) ([]string, error) {
+	return s.filesWithExtensions(ctx, model.Extensions{tfpath.TerragruntConfig: {}})
+}
+
+func (s *FileSystemSourceProvider) filesWithExtensions(ctx context.Context, configExtensions model.Extensions) ([]string, error) {
 	seen := make(map[string]struct{})
 	var files []string
 	add := func(path string) {

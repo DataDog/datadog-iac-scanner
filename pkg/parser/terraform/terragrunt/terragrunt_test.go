@@ -480,3 +480,31 @@ inputs = merge(
 	requireInput(t, u, "region", cty.StringVal("eu-west-1"))
 	require.Equal(t, u.InputsRange, u.Inputs["region"].Range, "a computed key falls back to the inputs attribute")
 }
+
+func TestModuleSource(t *testing.T) {
+	tests := []struct{ source, wantSource, wantVersion string }{
+		{"tfr:///terraform-aws-modules/vpc/aws?version=5.8.1", "terraform-aws-modules/vpc/aws", "5.8.1"},
+		{"tfr:///terraform-aws-modules/iam/aws//modules/iam-role?version=5.0.0", "terraform-aws-modules/iam/aws//modules/iam-role", "5.0.0"},
+		{"tfr://registry.example.com/acme/vpc/aws?version=1.2.0", "registry.example.com/acme/vpc/aws", "1.2.0"},
+		{"tfr:///acme/vpc/aws", "acme/vpc/aws", ""},
+		{"git::https://example.com/m.git//vpc?ref=v1.0.0", "git::https://example.com/m.git//vpc?ref=v1.0.0", ""},
+		{"../modules//vpc", "../modules//vpc", ""},
+	}
+	for _, tt := range tests {
+		source, version := moduleSource(tt.source)
+		require.Equal(t, tt.wantSource, source, tt.source)
+		require.Equal(t, tt.wantVersion, version, tt.source)
+	}
+}
+
+func TestUnitCall_RegistrySource(t *testing.T) {
+	root := writeTree(t, map[string]string{
+		"vpc/terragrunt.hcl": `terraform {
+  source = "tfr:///terraform-aws-modules/vpc/aws?version=5.8.1"
+}`,
+	})
+	call, _, ok := evaluate(t, root, "vpc/terragrunt.hcl").Call()
+	require.True(t, ok)
+	require.Equal(t, "terraform-aws-modules/vpc/aws", call.Source)
+	require.Equal(t, "5.8.1", call.Version)
+}
