@@ -236,3 +236,57 @@ resource "aws_cloudwatch_log_metric_filter" "cis" {
 	require.Contains(t, got, "_dd_filter_expr")
 	require.NotEqual(t, pattern, got)
 }
+// The model computes the document of a data source Terraform derives from its
+// configuration (aws_iam_policy_document), replacing an unresolved part with
+// the unknown marker; the legacy view keeps the interpolation text the
+// previous engine carried, both for data source references and for resource
+// references the view keeps unseen.
+func TestLegacyKeepsDataDocumentReferenceText(t *testing.T) {
+	_, docs := legacy(t, map[string]string{
+		"main.tf": `
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "own_account" {
+  statement {
+    sid    = "EnableIAMUserPermissions"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+}
+
+data "aws_iam_policy_document" "key_admin" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["${aws_kms_key.key.arn}"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_kms_key" "key" {
+  policy = data.aws_iam_policy_document.own_account.json
+}
+
+resource "aws_kms_key" "other" {
+  policy = data.aws_iam_policy_document.key_admin.json
+}
+`,
+	})
+	d := docByID(docs, "id:main.tf")
+	resources := d["resource"].(map[string]any)
+	keys := resources["aws_kms_key"].(map[string]any)
+	own := keys["key"].(map[string]any)["policy"].(string)
+	require.Contains(t, own, "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root",
+		"the own-account principal keeps the interpolation text the previous engine carried")
+	other := keys["other"].(map[string]any)["policy"].(string)
+	require.Contains(t, other, "${aws_kms_key.key.arn}",
+		"a resource reference the view keeps unseen stays its source text")
+}

@@ -7,6 +7,7 @@
 package project
 
 import (
+	"context"
 	"encoding/json"
 	slashpath "path"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/terraform/model"
@@ -282,8 +284,11 @@ type legacyRender struct {
 	// module's resource types, the ephemeral namespace and the locals that
 	// read them.
 	refs map[string]bool
-	ctx  *hcl.EvalContext
-	rd   *partial.Renderer
+	// dataKinds holds the data source types whose computed attributes the
+	// render context re-renders (patchLegacyData).
+	dataKinds map[string]bool
+	ctx       *hcl.EvalContext
+	rd        *partial.Renderer
 }
 
 // newLegacyRender is the renderer for the blocks of m; nil when the module
@@ -321,12 +326,15 @@ func newLegacyRender(m *model.Module, conv value.Converter) *legacyRender {
 	if len(scope.Locals) > 0 {
 		vars[localNamespace] = legacyLocals(scope, ctx)
 	}
-	return &legacyRender{
-		conv: conv,
-		refs: refs,
-		ctx:  ctx,
-		rd:   &partial.Renderer{Ctx: ctx, Source: partial.FileSources(scope.Sources())},
+	lr := &legacyRender{
+		conv:      conv,
+		refs:      refs,
+		dataKinds: map[string]bool{},
+		ctx:       ctx,
+		rd:        &partial.Renderer{Ctx: ctx, Source: partial.FileSources(scope.Sources())},
 	}
+	patchLegacyData(m, vars, lr)
+	return lr
 }
 
 // legacyLocals re-resolves the module's local expressions without the
@@ -373,10 +381,11 @@ func (lr *legacyRender) forInstance(inst *model.Instance) *legacyRender {
 	child := lr.ctx.NewChild()
 	child.Variables = inst.Iteration
 	return &legacyRender{
-		conv: lr.conv,
-		refs: lr.refs,
-		ctx:  child,
-		rd:   &partial.Renderer{Ctx: child, Source: lr.source()},
+		conv:      lr.conv,
+		refs:      lr.refs,
+		dataKinds: lr.dataKinds,
+		ctx:       child,
+		rd:        &partial.Renderer{Ctx: child, Source: lr.source()},
 	}
 }
 
@@ -532,7 +541,26 @@ func (lr *legacyRender) rendersFromExpr(expr hcl.Expression, v cty.Value) bool {
 		// reference the view keeps unseen, whatever the model resolved.
 		return !lr.argsResolve(call) || ((lr.readsRefs(syn) || !v.IsWhollyKnown()) && lr.referenceLike(syn))
 	}
-	return (lr.readsRefs(syn) || !v.IsWhollyKnown()) && lr.referenceLike(syn)
+	return (lr.readsRefs(syn) || lr.readsComputedData(syn) || !v.IsWhollyKnown()) && lr.referenceLike(syn)
+}
+
+// readsComputedData reports whether expr reads a computed attribute of a data
+// source whose value the render context re-renders: the model computed it with
+// the unknown marker in place of what does not resolve, while the view keeps
+// the interpolation text.
+func (lr *legacyRender) readsComputedData(expr hcl.Expression) bool {
+	if lr == nil || expr == nil || len(lr.dataKinds) == 0 {
+		return false
+	}
+	for _, traversal := range expr.Variables() {
+		if traversal.RootName() != dataNamespace || len(traversal) < 2 {
+			continue
+		}
+		if attr, ok := traversal[1].(hcl.TraverseAttr); ok && lr.dataKinds[attr.Name] {
+			return true
+		}
+	}
+	return false
 }
 
 // argsResolve reports whether every argument of the call resolves in the
@@ -845,4 +873,59 @@ func nestedSources(body *hclsyntax.Body) map[string][]nestedSource {
 		out[nb.Type] = append(out[nb.Type], nestedSource{body: nb.Body})
 	}
 	return out
+}
+// dataNamespace is the root name the module's data sources are read through.
+const dataNamespace = "data"
+
+// patchLegacyData re-renders, in the legacy view's own context, the attributes
+// the data sources Terraform computes from their configuration alone
+// (aws_iam_policy_document, google_iam_policy) carry. The model evaluates
+// those data sources too, but replaces an unresolved part of the computed
+// document with the unknown marker, so a policy document built over a data
+// source reference loses the reference text around it; the previous engine
+// kept the interpolation text. Only a data source with one keyed instance and
+// an object already in the render context is patched; the others keep the
+// values the model carries.
+func patchLegacyData(m *model.Module, vars map[string]cty.Value, lr *legacyRender) {
+	dv, ok := vars[dataNamespace]
+	if !ok || !dv.IsKnown() || !dv.Type().IsObjectType() {
+		return
+	}
+	byType := dv.AsValueMap()
+	changed := false
+	for _, b := range m.Blocks {
+		if b.Kind != address.KindData || b.Syntax == nil {
+			continue
+		}
+		source, ok := localdata.Lookup(b.Type)
+		if !ok || len(b.Instances) != 1 || b.Instances[0].Key != "" {
+			continue
+		}
+		typeVal, ok := byType[b.Type]
+		if !ok || !typeVal.IsKnown() || !typeVal.Type().IsObjectType() {
+			continue
+		}
+		entries := typeVal.AsValueMap()
+		entry, ok := entries[b.Name]
+		if !ok || !entry.IsKnown() || !entry.Type().IsObjectType() {
+			continue
+		}
+		computed := source(context.Background(), b.Syntax.Body, func(expr hcl.Expression) (cty.Value, bool) {
+			return lr.rd.Render(expr)
+		})
+		if len(computed) == 0 {
+			continue
+		}
+		lr.dataKinds[b.Type] = true
+		attrs := entry.AsValueMap()
+		for name, v := range computed {
+			attrs[name] = cty.StringVal(v)
+		}
+		entries[b.Name] = cty.ObjectVal(attrs)
+		byType[b.Type] = cty.ObjectVal(entries)
+		changed = true
+	}
+	if changed {
+		vars[dataNamespace] = cty.ObjectVal(byType)
+	}
 }
