@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
@@ -21,9 +22,9 @@ import (
 
 const (
 	// ConfigFileName is the file that makes a directory a Terragrunt unit.
-	ConfigFileName = "terragrunt.hcl"
+	ConfigFileName = tfpath.TerragruntConfig
 	// StackFileName declares a Terragrunt stack.
-	StackFileName = "terragrunt.stack.hcl"
+	StackFileName = tfpath.TerragruntStack
 
 	// maxReadDepth caps nested read_terragrunt_config calls.
 	maxReadDepth = 10

@@ -20,10 +20,22 @@ const (
 	ExtTofuJSON = ".tofu.json"
 	ExtTFVars   = ".tfvars"
 
+	// TerragruntConfig makes a directory a Terragrunt unit.
+	TerragruntConfig = "terragrunt.hcl"
+	// TerragruntStack declares a Terragrunt stack.
+	TerragruntStack = "terragrunt.stack.hcl"
+
 	ExtTFVarsJSON = ".tfvars.json"
 	defaultVars   = "terraform.tfvars"
 	autoVars      = ".auto.tfvars"
 )
+
+// IsTerragrunt reports whether path is a Terragrunt unit or stack file. Names
+// are case-sensitive, as in Terragrunt.
+func IsTerragrunt(path string) bool {
+	base := filepath.Base(path)
+	return base == TerragruntConfig || base == TerragruntStack
+}
 
 // IsTFVarsJSON reports whether path is a variable definitions file in JSON syntax.
 func IsTFVarsJSON(path string) bool {

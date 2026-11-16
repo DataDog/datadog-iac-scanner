@@ -19,7 +19,8 @@ func normalizePattern(fileType string) string {
 	if fileType == "" || strings.HasPrefix(fileType, ".") {
 		return fileType
 	}
-	if fileType[0] >= 'A' && fileType[0] <= 'Z' {
+	// Full file names ("Dockerfile", "terragrunt.hcl") are patterns as is.
+	if (fileType[0] >= 'A' && fileType[0] <= 'Z') || strings.Contains(fileType, ".") {
 		return fileType
 	}
 	return "." + fileType

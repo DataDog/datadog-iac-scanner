@@ -21,7 +21,11 @@ import (
 var extensionNameTargets = []string{"tfvars", "Dockerfile", "possibleDockerfile"}
 
 // ExtensionFromPath returns the extension from path alone (no stat/read).
+// Terragrunt files are identified by name, not by their .hcl extension.
 func ExtensionFromPath(path string) string {
+	if tfpath.IsTerragrunt(path) {
+		return filepath.Base(path)
+	}
 	ext := tfpath.Extension(path)
 	if ext != "" {
 		return ext
@@ -62,6 +66,9 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 		return "", err
 	}
 
+	if tfpath.IsTerragrunt(path) {
+		return filepath.Base(path), nil
+	}
 	ext := tfpath.Extension(path)
 	if ext == "" {
 		base := filepath.Base(path)

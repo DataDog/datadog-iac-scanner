@@ -359,3 +359,25 @@ func TestOrderOverrideLast(t *testing.T) {
 func keys(m map[string]struct{}) []string {
 	return slices.Sorted(maps.Keys(m))
 }
+
+func TestIsTerragrunt(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "live/prod/terragrunt.hcl", want: true},
+		{path: "terragrunt.stack.hcl", want: true},
+		{path: "live/root.hcl", want: false},
+		{path: "live/Terragrunt.hcl", want: false},
+		{path: "live/terragrunt.hcl.json", want: false},
+		{path: "main.tf", want: false},
+	}
+	for _, tt := range tests {
+		if got := IsTerragrunt(tt.path); got != tt.want {
+			t.Errorf("IsTerragrunt(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+	if IsConfig("live/terragrunt.hcl") {
+		t.Error("Terragrunt files are not Terraform configuration files")
+	}
+}

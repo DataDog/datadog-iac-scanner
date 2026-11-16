@@ -99,6 +99,8 @@ var (
 		extTfJSON:      true,
 		extTofuJSON:    true,
 		extTfvars:      true,
+		extTerragrunt:  true,
+		extTgStack:     true,
 		extProto:       true,
 		extCfg:         true,
 		extConf:        true,
@@ -169,6 +171,8 @@ const (
 	extTfJSON             = tfpath.ExtTFJSON
 	extTofuJSON           = tfpath.ExtTofuJSON
 	extTfvars             = tfpath.ExtTFVars
+	extTerragrunt         = tfpath.TerragruntConfig
+	extTgStack            = tfpath.TerragruntStack
 	extBicepFile          = ".bicep"
 	extProto              = ".proto"
 	extCfg                = ".cfg"
@@ -887,7 +891,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 			return dockerfile
 		}
 		return ""
-	case extTf, extTofu, extTfJSON, extTofuJSON, extTfvars:
+	case extTf, extTofu, extTfJSON, extTofuJSON, extTfvars, extTerragrunt, extTgStack:
 		return terraform
 	case extBicepFile:
 		return bicep
