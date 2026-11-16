@@ -13,8 +13,8 @@ import (
 )
 
 // Overlay serves Files over Base: a file in Files replaces or adds to Base's
-// file of the same path. Files are regular files; their directories must
-// exist in Base. Overlay never writes.
+// file of the same path. Files are regular files; a directory holding only
+// overlay files exists in the overlay alone. Overlay never writes.
 type Overlay struct {
 	Base  FS
 	Files map[string][]byte
@@ -40,22 +40,41 @@ func (o *Overlay) ReadFile(name string) ([]byte, error) {
 	return o.Base.ReadFile(name)
 }
 
-// Stat stats an overlay file, or Base's.
+// Stat stats an overlay file, or Base's, or a directory holding only overlay
+// files.
 func (o *Overlay) Stat(name string) (fs.FileInfo, error) {
 	if content, ok := o.Files[filepath.Clean(name)]; ok {
 		return overlayInfo{name: filepath.Base(name), size: int64(len(content))}, nil
 	}
-	return o.Base.Stat(name)
+	info, err := o.Base.Stat(name)
+	if err != nil && o.holdsFiles(filepath.Clean(name)) {
+		return overlayInfo{name: filepath.Base(name), dir: true}, nil
+	}
+	return info, err
+}
+
+// holdsFiles reports whether an overlay file is under dir.
+func (o *Overlay) holdsFiles(dir string) bool {
+	prefix := dir + string(filepath.Separator)
+	for path := range o.Files {
+		if len(path) > len(prefix) && path[:len(prefix)] == prefix {
+			return true
+		}
+	}
+	return false
 }
 
 // ReadDir lists Base's entries with the overlay files of the directory added,
 // replacing Base's entries of the same name.
 func (o *Overlay) ReadDir(name string) ([]fs.DirEntry, error) {
+	dir := filepath.Clean(name)
 	entries, err := o.Base.ReadDir(name)
 	if err != nil {
-		return nil, err
+		if !o.holdsFiles(dir) {
+			return nil, err
+		}
+		entries = nil
 	}
-	dir := filepath.Clean(name)
 	added := map[string]fs.DirEntry{}
 	for path, content := range o.Files {
 		if filepath.Dir(path) == dir {
@@ -107,11 +126,17 @@ const overlayFileMode fs.FileMode = 0o444
 type overlayInfo struct {
 	name string
 	size int64
+	dir  bool
 }
 
-func (i overlayInfo) Name() string       { return i.name }
-func (i overlayInfo) Size() int64        { return i.size }
-func (i overlayInfo) Mode() fs.FileMode  { return overlayFileMode }
+func (i overlayInfo) Name() string { return i.name }
+func (i overlayInfo) Size() int64  { return i.size }
+func (i overlayInfo) Mode() fs.FileMode {
+	if i.dir {
+		return fs.ModeDir | overlayFileMode
+	}
+	return overlayFileMode
+}
 func (i overlayInfo) ModTime() time.Time { return time.Time{} }
-func (i overlayInfo) IsDir() bool        { return false }
+func (i overlayInfo) IsDir() bool        { return i.dir }
 func (i overlayInfo) Sys() any           { return nil }

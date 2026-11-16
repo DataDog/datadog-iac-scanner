@@ -32,6 +32,8 @@ type terragruntUnit struct {
 	// unitIsModule is set when the unit's own Terraform files are part of
 	// its module, rather than a root of their own.
 	unitIsModule bool
+	// stack is set for a unit a stack generates.
+	stack *terragrunt.StackUnit
 }
 
 // discoverTerragruntUnits evaluates the scanned terragrunt.hcl files into the
@@ -46,11 +48,18 @@ func discoverTerragruntUnits(
 	resolver tfeval.RemoteResolver,
 	called map[string]bool,
 ) []terragruntUnit {
-	evaluated, included := evaluateTerragruntFiles(ctx, terragruntUnitPaths(files, repoPath), repoPath, fsys)
+	stackUnits := expandTerragruntStacks(ctx, terragruntPaths(files, repoPath, tfpath.TerragruntStack), repoPath, fsys)
+	templates := map[string]bool{}
+	for _, su := range stackUnits {
+		templates[su.SourceConfig] = true
+	}
+	evaluated, included := evaluateTerragruntFiles(
+		ctx, terragruntPaths(files, repoPath, tfpath.TerragruntConfig), repoPath, fsys)
 	contextLogger := logger.FromContext(ctx)
-	units := make([]terragruntUnit, 0, len(evaluated))
+	units := make([]terragruntUnit, 0, len(evaluated)+len(stackUnits))
 	for _, unit := range evaluated {
-		if included[unit.ConfigFile] && unit.Source == "" {
+		// A stack's unit configuration is evaluated where the stack generates it.
+		if templates[unit.ConfigFile] || (included[unit.ConfigFile] && unit.Source == "") {
 			continue
 		}
 		tgCall, inputs, ok := unit.Call()
@@ -76,7 +85,66 @@ func discoverTerragruntUnits(
 		}
 		units = append(units, tu)
 	}
+	for _, su := range stackUnits {
+		if tu, ok := stackTerragruntUnit(ctx, su, repoPath, fsys, resolver, called); ok {
+			units = append(units, tu)
+		}
+	}
 	return dependencyOrder(units)
+}
+
+// expandTerragruntStacks expands the scanned stack files into their units.
+func expandTerragruntStacks(ctx context.Context, paths []string, repoPath string, fsys vfs.FS) []*terragrunt.StackUnit {
+	if len(paths) == 0 {
+		return nil
+	}
+	contextLogger := logger.FromContext(ctx)
+	evaluator := terragrunt.New(fsys, repoPath)
+	var out []*terragrunt.StackUnit
+	for _, path := range paths {
+		units, err := evaluator.ExpandStack(ctx, path)
+		if err != nil {
+			contextLogger.Warn().Err(err).Msgf("terragrunt: failed to expand stack %s", path)
+			continue
+		}
+		out = append(out, units...)
+	}
+	return out
+}
+
+// stackTerragruntUnit is the call of a unit a stack generates. Its generated
+// files map back to the unit's configuration in the repository; when they are
+// the module, that directory is called rather than a root.
+func stackTerragruntUnit(
+	ctx context.Context,
+	su *terragrunt.StackUnit,
+	repoPath string,
+	fsys vfs.FS,
+	resolver tfeval.RemoteResolver,
+	called map[string]bool,
+) (terragruntUnit, bool) {
+	tgCall, inputs, ok := su.Call()
+	if !ok {
+		return terragruntUnit{}, false
+	}
+	call := syntheticCall(tgCall)
+	moduleDir := call.SourceDir
+	if filepath.Clean(call.Source) != "." {
+		resolved, ok := resolveModuleTargetDir(
+			ctx, fsys, call.SourceDir, repoPath, call.Source, call.Version, call.CallerFile, call.Label, resolver)
+		if !ok || resolved == "" {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Info().Msgf("terragrunt: source %q of stack unit %s did not resolve", call.Source, su.Unit.ConfigFile)
+			return terragruntUnit{}, false
+		}
+		moduleDir = filepath.Clean(resolved)
+	} else {
+		called[filepath.Dir(su.SourceConfig)] = true
+	}
+	called[moduleDir] = true
+	return terragruntUnit{
+		unit: su.Unit, call: call, inputs: inputs, moduleDir: moduleDir, workingFiles: su.Files, stack: su,
+	}, true
 }
 
 // workingCopyFiles lists the unit directory's Terraform and auto-loaded
@@ -139,12 +207,13 @@ func dependencyOrder(units []terragruntUnit) []terragruntUnit {
 	return ordered
 }
 
-// terragruntUnitPaths returns the absolute paths of the scanned units, sorted.
-func terragruntUnitPaths(files model.FileMetadatas, repoPath string) []string {
+// terragruntPaths returns the absolute paths of the scanned files named name,
+// sorted.
+func terragruntPaths(files model.FileMetadatas, repoPath, name string) []string {
 	var paths []string
 	seen := map[string]bool{}
 	for _, f := range files {
-		if f == nil || filepath.Base(f.FilePath) != tfpath.TerragruntConfig {
+		if f == nil || filepath.Base(f.FilePath) != name {
 			continue
 		}
 		path := absPath(f.FilePath, repoPath)
@@ -246,6 +315,18 @@ func (m *rootMerge) withDependencyOutputs(unit *terragruntUnit, outputs map[stri
 	if len(known) == 0 {
 		return
 	}
+	if unit.stack != nil {
+		again, err := unit.stack.WithDependencyOutputs(m.ctx, known)
+		if err != nil {
+			return
+		}
+		tgCall, inputs, ok := again.Call()
+		if !ok || tgCall.Source != unit.call.Source || tgCall.Version != unit.call.Version {
+			return
+		}
+		unit.stack, unit.unit, unit.call, unit.inputs = again, again.Unit, syntheticCall(tgCall), inputs
+		return
+	}
 	evaluator := terragrunt.New(m.evaluator.FS(), m.repoPath).WithDependencyOutputs(known)
 	again, err := evaluator.EvaluateUnit(m.ctx, unit.unit.ConfigFile)
 	if err != nil {
@@ -275,8 +356,8 @@ func (m *rootMerge) unitInputs(evaluator *tfeval.Evaluator, unit *terragruntUnit
 	for name, value := range evaluator.LoadRootVarsWithContext(m.ctx, unit.moduleDir) {
 		overridden(name, value)
 	}
-	for _, override := range unit.unit.VarOverrides {
-		overridden(override.Name, override.Value)
+	for i := range unit.unit.VarOverrides {
+		overridden(unit.unit.VarOverrides[i].Name, unit.unit.VarOverrides[i].Value)
 	}
 	return inputs
 }
@@ -287,6 +368,7 @@ func syntheticCall(call *terragrunt.Call) *tfeval.SyntheticCall {
 		Source:     call.Source,
 		Version:    call.Version,
 		CallerFile: call.CallerFile,
+		SourceDir:  call.SourceDir,
 		Range:      call.Range,
 		Body:       call.Body,
 	}

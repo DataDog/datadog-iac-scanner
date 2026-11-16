@@ -86,9 +86,13 @@ func (e *Evaluator) evaluateConfig(ctx context.Context, path string, s *scope, w
 	}
 
 	funcs := e.functions(ctx, s)
+	values := e.values
+	if values == cty.NilVal {
+		values = cty.DynamicVal
+	}
 	vars := map[string]cty.Value{
 		"dependency": cty.DynamicVal,
-		"values":     cty.DynamicVal,
+		"values":     values,
 	}
 	evalCtx := &hcl.EvalContext{Variables: vars, Functions: funcs}
 	vars["feature"] = evaluateFeatures(body, evalCtx)

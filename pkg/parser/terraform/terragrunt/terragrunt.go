@@ -35,6 +35,8 @@ const (
 type Input struct {
 	Value cty.Value
 	Range hcl.Range
+	// ValuesKey names the stack value the input passes as is, if any.
+	ValuesKey string
 }
 
 // Unit is an evaluated terragrunt.hcl, merged with the files it includes.
@@ -79,6 +81,8 @@ type Evaluator struct {
 	repoRoot string
 	// outputs are dependency outputs by the dependency's terragrunt.hcl.
 	outputs map[string]cty.Value
+	// values is the values variable of a stack's units, unknown elsewhere.
+	values cty.Value
 }
 
 // New returns an Evaluator reading through fsys, confined to repoRoot.

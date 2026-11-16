@@ -193,10 +193,10 @@ func (s *FileSystemSourceProvider) TerraformFiles(ctx context.Context) ([]string
 	})
 }
 
-// TerragruntFiles returns the Terragrunt unit files, whose remote module calls
-// module discovery resolves too.
+// TerragruntFiles returns the Terragrunt unit and stack files, whose remote
+// module calls module discovery resolves too.
 func (s *FileSystemSourceProvider) TerragruntFiles(ctx context.Context) ([]string, error) {
-	return s.filesWithExtensions(ctx, model.Extensions{tfpath.TerragruntConfig: {}})
+	return s.filesWithExtensions(ctx, model.Extensions{tfpath.TerragruntConfig: {}, tfpath.TerragruntStack: {}})
 }
 
 func (s *FileSystemSourceProvider) filesWithExtensions(ctx context.Context, configExtensions model.Extensions) ([]string, error) {

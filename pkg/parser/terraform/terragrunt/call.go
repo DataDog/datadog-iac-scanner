@@ -24,6 +24,9 @@ type Call struct {
 	Source     string
 	Version    string
 	CallerFile string
+	// SourceDir is where relative sources resolve from, when not CallerFile's
+	// directory.
+	SourceDir string
 	// Range is where a finding the inputs do not control points.
 	Range hcl.Range
 	// Body holds one attribute per input, positioned where it is set.

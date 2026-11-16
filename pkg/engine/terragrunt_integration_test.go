@@ -383,3 +383,45 @@ inputs = {
 	require.Equal(t, filepath.Join(root, "modules/bucket/main.tf"), vulns[0].FileName)
 	require.Equal(t, "live/prod/terragrunt.hcl", callSiteFile(vulns[0]))
 }
+
+// A stack's units are evaluated where the stack generates them, with their
+// values, and attributed to the stack file. The unit configuration they are
+// generated from is not a unit of its own.
+func TestInspect_TerragruntStack(t *testing.T) {
+	root, files := writeTerragruntRepo(t, map[string]string{
+		"modules/bucket/main.tf": bucketModuleDefaultPublic,
+		"units/bucket/terragrunt.hcl": `terraform {
+  source = "${get_repo_root()}/modules/bucket"
+}
+
+inputs = {
+  acl = values.acl
+}
+`,
+		"live/terragrunt.stack.hcl": `unit "public" {
+  source = "../units/bucket"
+  path   = "public"
+  values = {
+    acl = "public-read"
+  }
+}
+
+unit "private" {
+  source = "../units/bucket"
+  path   = "private"
+  values = {
+    acl = "private"
+  }
+}
+`,
+	})
+	files = append(files, parseTerraform(t, filepath.Join(root, "live/terragrunt.stack.hcl"))...)
+	vulns := inspectACL(t, root, files)
+
+	require.Len(t, vulns, 1)
+	v := vulns[0]
+	require.Equal(t, filepath.Join(root, "modules/bucket/main.tf"), v.FileName)
+	require.Equal(t, "live/terragrunt.stack.hcl", callSiteFile(v))
+	require.Equal(t, 5, v.ModuleAttribution.CallSite.LineStart, "where the stack sets the value")
+	require.Equal(t, "public", v.ModuleAttribution.ModulePath[0].Name)
+}
