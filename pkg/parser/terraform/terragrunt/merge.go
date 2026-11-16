@@ -6,6 +6,8 @@
 package terragrunt
 
 import (
+	"maps"
+
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -43,6 +45,12 @@ func mergeConfigs(base, over *config, deep bool) *config {
 	if over.source != nil {
 		out.source = over.source
 	}
+	out.dependencies = maps.Clone(base.dependencies)
+	if out.dependencies == nil {
+		out.dependencies = map[string]dependency{}
+	}
+	maps.Copy(out.dependencies, over.dependencies)
+	out.extraArgs = mergeExtraArguments(base.extraArgs, over.extraArgs)
 	if over.inputs != nil {
 		out.inputsRange = over.inputsRange
 	}

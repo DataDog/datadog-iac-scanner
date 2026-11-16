@@ -8,6 +8,7 @@ package terragrunt
 import (
 	"context"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"sort"
 
@@ -49,7 +50,9 @@ type config struct {
 	excluded bool
 	attrs    map[string]cty.Value
 	// included lists the files the unit includes.
-	included []string
+	included     []string
+	dependencies map[string]dependency
+	extraArgs    []extraArguments
 }
 
 type include struct {
@@ -100,7 +103,14 @@ func (e *Evaluator) evaluateConfig(ctx context.Context, path string, s *scope, w
 	locals := evaluateLocals(ctx, body, evalCtx)
 	vars[varLocal] = cty.ObjectVal(locals)
 
-	cfg := &config{file: path, locals: locals, attrs: map[string]cty.Value{}}
+	deps := map[string]dependency{}
+	for _, inc := range includes {
+		maps.Copy(deps, inc.cfg.dependencies)
+	}
+	maps.Copy(deps, e.evaluateDependencies(ctx, body, evalCtx, s))
+	vars["dependency"] = e.dependencyObject(deps)
+
+	cfg := &config{file: path, locals: locals, attrs: map[string]cty.Value{}, dependencies: deps}
 	evaluateBody(ctx, body, evalCtx, cfg)
 	if !withIncludes {
 		return cfg, nil
@@ -195,6 +205,7 @@ func evaluateBody(ctx context.Context, body *hclsyntax.Body, evalCtx *hcl.EvalCo
 		if attr, ok := block.Body.Attributes["source"]; ok {
 			cfg.source = &Input{Value: evalExpr(ctx, attr.Expr, evalCtx), Range: attr.SrcRange}
 		}
+		cfg.extraArgs = append(cfg.extraArgs, evaluateExtraArguments(block.Body, evalCtx)...)
 	}
 	for name, attr := range body.Attributes {
 		value := evalExpr(ctx, attr.Expr, evalCtx)
