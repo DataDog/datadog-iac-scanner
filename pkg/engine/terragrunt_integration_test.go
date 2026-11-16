@@ -254,3 +254,79 @@ inputs = {
 	require.Equal(t, remoteBucketSource, v.ModuleAttribution.Source)
 	require.Equal(t, remoteBucketVersion, v.ModuleAttribution.Version)
 }
+
+// A dependency output the scan evaluated reaches the unit reading it, over
+// the mock, whichever unit comes first in file order.
+func TestInspect_TerragruntDependencyOutputs(t *testing.T) {
+	root, files := writeTerragruntRepo(t, map[string]string{
+		"modules/bucket/main.tf": bucketModuleDefaultPublic,
+		"modules/settings/main.tf": `output "acl" {
+  value = "public-read"
+}
+`,
+		"live/settings/terragrunt.hcl": `terraform {
+  source = "../../modules/settings"
+}
+`,
+		"live/app/terragrunt.hcl": `terraform {
+  source = "../../modules/bucket"
+}
+
+dependency "settings" {
+  config_path  = "../settings"
+  mock_outputs = { acl = "private" }
+}
+
+inputs = {
+  acl = dependency.settings.outputs.acl
+}
+`,
+	})
+	vulns := inspectACL(t, root, files)
+
+	require.Len(t, vulns, 1)
+	require.Equal(t, "live/app/terragrunt.hcl", callSiteFile(vulns[0]))
+	require.Equal(t, 11, vulns[0].ModuleAttribution.CallSite.LineStart)
+}
+
+// -var-file values override inputs, and the module's own tfvars files do too:
+// the overridden input is no longer where the value comes from.
+func TestInspect_TerragruntVarFilesOverrideInputs(t *testing.T) {
+	root, files := writeTerragruntRepo(t, map[string]string{
+		"modules/bucket/main.tf": bucketModuleDefaultPublic,
+		"modules/tfvars/main.tf": bucketModuleDefaultPublic,
+		"modules/tfvars/terraform.tfvars": `acl = "public-read"
+`,
+		"live/varfile/public.tfvars": `acl = "public-read"
+`,
+		"live/varfile/terragrunt.hcl": `terraform {
+  source = "../../modules/bucket"
+
+  extra_arguments "vars" {
+    commands           = ["plan", "apply"]
+    required_var_files = ["public.tfvars"]
+  }
+}
+
+inputs = {
+  acl = "private"
+}
+`,
+		"live/tfvars/terragrunt.hcl": `terraform {
+  source = "../../modules/tfvars"
+}
+
+inputs = {
+  acl = "private"
+}
+`,
+	})
+	vulns := inspectACL(t, root, files)
+
+	require.Len(t, vulns, 2)
+	require.Equal(t, "live/tfvars/terragrunt.hcl", callSiteFile(vulns[0]))
+	require.Equal(t, "live/varfile/terragrunt.hcl", callSiteFile(vulns[1]))
+	for _, v := range vulns {
+		require.Equal(t, 2, v.ModuleAttribution.CallSite.LineStart, "anchored at terraform.source, not the overridden input")
+	}
+}

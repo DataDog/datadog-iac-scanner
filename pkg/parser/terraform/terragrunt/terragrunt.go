@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -53,6 +54,18 @@ type Unit struct {
 	Skip bool
 	// Includes lists the files the unit includes.
 	Includes []string
+	// Dependencies lists the terragrunt.hcl of the units it reads outputs of.
+	Dependencies []string
+	// VarOverrides are the values extra_arguments pass with -var-file and
+	// -var, in the order Terraform applies them. They override inputs and
+	// the module's tfvars files.
+	VarOverrides []VarOverride
+}
+
+// VarOverride is a variable value -var-file or -var sets.
+type VarOverride struct {
+	Name string
+	Input
 }
 
 // Evaluator evaluates Terragrunt configurations under one repository root.
@@ -60,6 +73,8 @@ type Unit struct {
 type Evaluator struct {
 	fsys     vfs.FS
 	repoRoot string
+	// outputs are dependency outputs by the dependency's terragrunt.hcl.
+	outputs map[string]cty.Value
 }
 
 // New returns an Evaluator reading through fsys, confined to repoRoot.
@@ -92,6 +107,13 @@ func (e *Evaluator) EvaluateUnit(ctx context.Context, configFile string) (*Unit,
 		Skip:        cfg.skipped(),
 		Includes:    cfg.included,
 	}
+	for _, dep := range cfg.dependencies {
+		if dep.configPath != "" && !slices.Contains(unit.Dependencies, dep.configPath) {
+			unit.Dependencies = append(unit.Dependencies, dep.configPath)
+		}
+	}
+	slices.Sort(unit.Dependencies)
+	unit.VarOverrides = e.varOverrides(ctx, cfg.extraArgs, unit.Dir)
 	if cfg.source != nil {
 		unit.SourceRange = cfg.source.Range
 		if s, ok := knownString(cfg.source.Value); ok {
