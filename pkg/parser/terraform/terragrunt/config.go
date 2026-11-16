@@ -48,6 +48,8 @@ type config struct {
 	// excluded is set by an exclude block known to cover plan or apply.
 	excluded bool
 	attrs    map[string]cty.Value
+	// included lists the files the unit includes.
+	included []string
 }
 
 type include struct {
@@ -103,7 +105,11 @@ func (e *Evaluator) evaluateConfig(ctx context.Context, path string, s *scope, w
 	if !withIncludes {
 		return cfg, nil
 	}
-	return mergeIncludes(cfg, includes), nil
+	merged := mergeIncludes(cfg, includes)
+	for _, inc := range includes {
+		merged.included = append(merged.included, inc.path)
+	}
+	return merged, nil
 }
 
 // evaluateIncludes resolves the include blocks, then evaluates each included

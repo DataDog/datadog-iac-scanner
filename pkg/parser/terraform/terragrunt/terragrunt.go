@@ -51,6 +51,8 @@ type Unit struct {
 	// Skip is true when skip or exclude are known to take the unit out of
 	// plan and apply.
 	Skip bool
+	// Includes lists the files the unit includes.
+	Includes []string
 }
 
 // Evaluator evaluates Terragrunt configurations under one repository root.
@@ -88,6 +90,7 @@ func (e *Evaluator) EvaluateUnit(ctx context.Context, configFile string) (*Unit,
 		Inputs:      cfg.inputs,
 		InputsRange: cfg.inputsRange,
 		Skip:        cfg.skipped(),
+		Includes:    cfg.included,
 	}
 	if cfg.source != nil {
 		unit.SourceRange = cfg.source.Range

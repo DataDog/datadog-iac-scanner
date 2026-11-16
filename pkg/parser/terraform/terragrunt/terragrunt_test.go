@@ -126,6 +126,7 @@ inputs = {
 	require.Equal(t, 8, u.Inputs["region"].Range.Start.Line)
 	require.Equal(t, u.ConfigFile, u.Inputs["tags"].Range.Filename)
 	require.Equal(t, u.ConfigFile, u.InputsRange.Filename)
+	require.Equal(t, []string{filepath.Join(root, "root.hcl")}, u.Includes)
 }
 
 func TestEvaluateUnit_IncludeDeepMerge(t *testing.T) {
