@@ -333,6 +333,7 @@ func newLegacyRender(m *model.Module, conv value.Converter) *legacyRender {
 		ctx:       ctx,
 		rd:        &partial.Renderer{Ctx: ctx, Source: partial.FileSources(scope.Sources())},
 	}
+	patchLegacyRootInputs(m, vars)
 	patchLegacyData(m, vars, lr)
 	return lr
 }
@@ -877,6 +878,9 @@ func nestedSources(body *hclsyntax.Body) map[string][]nestedSource {
 // dataNamespace is the root name the module's data sources are read through.
 const dataNamespace = "data"
 
+// varNamespace is the root name the module's variables are read through.
+const varNamespace = "var"
+
 // patchLegacyData re-renders, in the legacy view's own context, the attributes
 // the data sources Terraform computes from their configuration alone
 // (aws_iam_policy_document, google_iam_policy) carry. The model evaluates
@@ -928,4 +932,29 @@ func patchLegacyData(m *model.Module, vars map[string]cty.Value, lr *legacyRende
 	if changed {
 		vars[dataNamespace] = cty.ObjectVal(byType)
 	}
+}
+// patchLegacyRootInputs adds, for the root module, the variable values the
+// model does not bind: the previous engine merged every key the .tfvars
+// files define into its documents, while the model binds only the variables
+// the module declares. A key the module does not declare keeps its .tfvars
+// value in the view, as the previous engine's documents carried.
+func patchLegacyRootInputs(m *model.Module, vars map[string]cty.Value) {
+	if m == nil || m.Address != "" || m.Scope == nil || len(m.Scope.RootInputs) == 0 {
+		return
+	}
+	v, ok := vars[varNamespace]
+	if !ok || !v.IsKnown() || !v.Type().IsObjectType() {
+		return
+	}
+	bound := v.AsValueMap()
+	out := make(map[string]cty.Value, len(bound)+len(m.Scope.RootInputs))
+	for name, val := range bound {
+		out[name] = val
+	}
+	for name, val := range m.Scope.RootInputs {
+		if _, declared := bound[name]; !declared {
+			out[name] = val
+		}
+	}
+	vars[varNamespace] = cty.ObjectVal(out)
 }

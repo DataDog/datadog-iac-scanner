@@ -164,6 +164,13 @@ type ModuleScope struct {
 	// rendered (see KeepRenderContext).
 	renderVars  map[string]cty.Value
 	renderFuncs map[string]function.Function
+
+	// RootInputs holds, for the root module, the inputs the scan loaded
+	// before the module's declared variables were bound to them: every key
+	// the .tfvars files define, declared or not. The legacy view re-merges
+	// the keys the module does not declare; evaluation itself binds only
+	// the declared ones.
+	RootInputs map[string]cty.Value
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not
@@ -618,6 +625,9 @@ func (e *Evaluator) evaluate(
 	scope := &ModuleScope{
 		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
 		localGraph: parsed.locals,
+	}
+	if addr == "" {
+		scope.RootInputs = inputs
 	}
 	e.noteCycles(ctx, dir, parsed.locals)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)

@@ -290,3 +290,22 @@ resource "aws_kms_key" "other" {
 	require.Contains(t, other, "${aws_kms_key.key.arn}",
 		"a resource reference the view keeps unseen stays its source text")
 }
+// An undeclared .tfvars key still resolves: the previous engine merged every
+// key the variable files define into its documents, while the model binds
+// only the variables the module declares.
+func TestLegacyResolvesUndeclaredRootVariable(t *testing.T) {
+	_, docs := legacy(t, map[string]string{
+		"main.tf": `
+resource "aws_instance" "example" {
+  ami              = "ami-005e54dee72cc1d00"
+  instance_type    = "t2.micro"
+  user_data_base64 = var.init_aws_cli
+}
+`,
+		"terraform.tfvars": `init_aws_cli = "aGVsbG8="
+`,
+	})
+	d := docByID(docs, "id:main.tf")
+	res := d["resource"].(map[string]any)["aws_instance"].(map[string]any)["example"].(map[string]any)
+	require.Equal(t, "aGVsbG8=", res["user_data_base64"])
+}
