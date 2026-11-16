@@ -148,7 +148,7 @@ func TestLegacyDocumentsMatchThePreviousEngine(t *testing.T) {
 
 	// Every transformation must have changed a baseline somewhere: one that
 	// changed nothing is stale and hides a fixed behavior.
-	for _, class := range []string{"dropModuleCalls", "splitModuleDoc", "rekeySink", "dropBlockMetaArgs", "resolveChain", "mergeLocals", "repeatModuleDocs", "stateRekey", "stateNull", "stateUnknownCount", "stateDynamic", "stateUnknownRender"} {
+	for _, class := range []string{"dropModuleCalls", "splitModuleDoc", "rekeySink", "dropBlockMetaArgs", "resolveChain", "mergeLocals", "repeatModuleDocs", "stateRekey", "stateNull", "stateUnknownCount", "stateDynamic"} {
 		require.NotZero(t, transformCount[class],
 			"the exact transformation %q changed no baseline; it is stale", class)
 	}
@@ -181,6 +181,7 @@ func transformGolden(t *testing.T, cell tfcorpus.Cell, golden []byte) []byte {
 	var byFile map[string][]map[string]any
 	require.NoError(t, json.Unmarshal(golden, &byFile))
 	probeValue := cell.ExpectedProbeValue()
+	keepsText := keepsReferenceText(t, cell)
 	fileNames := make([]string, 0, len(byFile))
 	for f := range byFile {
 		fileNames = append(fileNames, f)
@@ -234,11 +235,10 @@ func transformGolden(t *testing.T, cell tfcorpus.Cell, golden []byte) []byte {
 			if dropBlockMetaArgs(doc) {
 				transformCount["dropBlockMetaArgs"]++
 			}
-			if resolveChain(cell, doc, probeValue) {
+			if !keepsText && resolveChain(cell, doc, probeValue) {
 				transformCount["resolveChain"]++
 			}
-			_ = tryObjectProbe
-			if tryObjectProbe(cell) {
+			if !keepsText && tryObjectProbe(cell) {
 				// The previous engine's try over the whole object fell back
 				// to the literal; the rebuild keeps the object itself.
 				if resource, ok := doc["resource"].(map[string]any); ok {
@@ -255,17 +255,20 @@ func transformGolden(t *testing.T, cell tfcorpus.Cell, golden []byte) []byte {
 			if mergeLocals(doc) {
 				transformCount["mergeLocals"]++
 			}
-			// The unknown rendering walks from each block entry: a wholly
-			// unknown attribute of an entry keeps its source text, one
-			// nested inside a known value renders as the placeholder.
-			walkBlockEntries(doc, func(entry map[string]any) {
-				if renderUnknowns(entry, "\u0000PH", 0) {
-					transformCount["stateUnknownRender"]++
-				}
-			})
 		}
 	}
 	return tfcorpus.NormalizeDocs(".", flatten(byFile))
+}
+
+// keepsReferenceText reports whether the cell, in either polarity, is on the
+// kept-reference-text list: its chain reads another block of the module, so
+// the legacy view keeps what main's documents held along it.
+func keepsReferenceText(t *testing.T, c tfcorpus.Cell) bool {
+	t.Helper()
+	fire := c
+	fire.Fire = true
+	_, ok := loadCellList(t, keepsTextFile)[fire.Name()]
+	return ok
 }
 
 // tryObjectProbe reports whether the cell's try reads a whole object: the
@@ -273,32 +276,6 @@ func transformGolden(t *testing.T, cell tfcorpus.Cell, golden []byte) []byte {
 // object itself.
 func tryObjectProbe(c tfcorpus.Cell) bool {
 	return c.Indirection == "try" && (c.Source == "resource_object" || c.Source == "lookalike")
-}
-
-// walkBlockEntries visits every block entry of a document.
-func walkBlockEntries(doc map[string]any, visit func(map[string]any)) {
-	for _, section := range []string{"resource", "data", "ephemeral", "module", "variable", "output", "provider", "locals"} {
-		byType, ok := doc[section].(map[string]any)
-		if !ok {
-			continue
-		}
-		for _, byNameAny := range byType {
-			switch byName := byNameAny.(type) {
-			case map[string]any:
-				for _, entryAny := range byName {
-					if entry, ok := entryAny.(map[string]any); ok {
-						visit(entry)
-					}
-				}
-			case []any:
-				for _, entryAny := range byName {
-					if entry, ok := entryAny.(map[string]any); ok {
-						visit(entry)
-					}
-				}
-			}
-		}
-	}
 }
 
 // transformStateGolden applies the exact transformations the rebuild makes
@@ -333,11 +310,6 @@ func transformStateGolden(t *testing.T, cell tfcorpus.StateCell, golden []byte, 
 					}
 				}
 			}
-			walkBlockEntries(doc, func(entry map[string]any) {
-				if renderUnknowns(entry, "\u0000PH", 0) {
-					transformCount["stateUnknownRender"]++
-				}
-			})
 			// The sink entry of the state cell.
 			if resource, ok := doc["resource"].(map[string]any); ok {
 				if byName, ok := resource["aws_s3_bucket"].(map[string]any); ok {
@@ -393,17 +365,6 @@ func transformStateSink(cell tfcorpus.StateCell, entry map[string]any, marker st
 		}
 		entry["d"] = []any{marker}
 		transformCount["stateDynamic"]++
-	case "template":
-		// A template inside a nested block renders wholly as the
-		// placeholder; at the top level its known parts stay.
-		if cell.Placement == "nested" {
-			if settings, ok := entry["settings"].(map[string]any); ok {
-				settings["attr"] = marker
-			}
-		}
-	case "json":
-		// A JSON document carries the escaped placeholder.
-		entry["attr"] = `{"k":"` + strings.ReplaceAll(marker, "\u0000", `\u0000`) + `"}`
 	}
 }
 
@@ -568,12 +529,28 @@ func dropBlockMetaArgs(doc map[string]any) bool {
 	return changed
 }
 
+// sourceBlock is the address of the block every probe chain reads from.
+const sourceBlock = "aws_instance.src"
+
+// readsSource reports whether v is expression text reading sourceBlock.
+func readsSource(v any) bool {
+	s, ok := v.(string)
+	return ok && strings.Contains(s, sourceBlock)
+}
+
 // resolveChain replaces the unresolved expression text of the paths the
 // probe chain reads with the value they resolve to: the probe attribute of
-// a sink entry, the locals a data source feeds through, and the output of
-// the observed module call.
+// a sink entry, the locals a data source feeds through, and the value
+// output of a module call.
 func resolveChain(c tfcorpus.Cell, doc map[string]any, probeValue any) bool {
 	changed := false
+	// A local or data attribute reading the source block, or a data
+	// attribute reading such a local, keeps its text, as main kept a
+	// reference to another block.
+	var localVal any
+	if locals, ok := doc["locals"].(map[string]any); ok {
+		localVal = locals["val"]
+	}
 	resolve := func(node map[string]any, key string) {
 		if s, ok := node[key].(string); ok && strings.HasPrefix(s, "${") {
 			// The empty resource object the module call carries resolves to
@@ -618,14 +595,15 @@ func resolveChain(c tfcorpus.Cell, doc map[string]any, probeValue any) bool {
 				if nameKey == "sink2" && c.Source == "resource_object" {
 					resolve(entry, "probe")
 				}
-				if section == "data" {
+				if section == "data" && !readsSource(entry["value"]) &&
+					(entry["value"] != "${local.val}" || !readsSource(localVal)) {
 					// The data attribute the chain feeds resolves too.
 					resolve(entry, "value")
 				}
 			}
 		}
 	}
-	if locals, ok := doc["locals"].(map[string]any); ok {
+	if locals, ok := doc["locals"].(map[string]any); ok && !readsSource(localVal) {
 		if _, ok := locals["val"]; ok {
 			resolve(locals, "val")
 		}
@@ -633,13 +611,6 @@ func resolveChain(c tfcorpus.Cell, doc map[string]any, probeValue any) bool {
 	if output, ok := doc["output"].(map[string]any); ok {
 		if outVal, ok := output["out_val"].(map[string]any); ok {
 			resolve(outVal, "value")
-		}
-		if outMissing, ok := output["out_missing"].(map[string]any); ok {
-			if c.Source == "lookalike" {
-				// The observed call's input is the plain lookalike object:
-				// the missing-attribute read errors into the fallback.
-				resolve(outMissing, "value")
-			}
 		}
 	}
 	return changed
@@ -663,92 +634,6 @@ func mergeLocals(doc map[string]any) bool {
 	}
 	doc["locals"] = merged
 	return true
-}
-
-// losesFindings reports whether the cell is on the known-findings list:
-// the concrete finding of its second module call turns unknown today, so
-// its probe stays unresolved in the rebuilt documents.
-func losesFindings(c tfcorpus.Cell) bool {
-	raw, err := os.ReadFile(filepath.Join("testdata", "known_findings_lost.json"))
-	if err != nil {
-		return false
-	}
-	var known []struct {
-		Cell string `json:"cell"`
-	}
-	if err := json.Unmarshal(raw, &known); err != nil {
-		return false
-	}
-	for _, k := range known {
-		if k.Cell == c.Name() {
-			return true
-		}
-	}
-	return false
-}
-
-// renderUnknowns walks a block entry: an unknown value nested inside a
-// known one renders as the placeholder, a wholly unknown attribute keeps
-// its expression source text, and a template or JSON document with unknown
-// parts renders those parts as the placeholder.
-func renderUnknowns(node map[string]any, marker string, depth int) bool {
-	changed := false
-	for k, v := range node {
-		switch tv := v.(type) {
-		case string:
-			if !strings.Contains(tv, "${var.") {
-				continue
-			}
-			if isWholeUnknownExpr(tv) {
-				if depth >= 1 {
-					node[k] = marker
-					changed = true
-				}
-				continue
-			}
-			node[k] = replaceVarExprs(tv, marker)
-			changed = true
-		case map[string]any:
-			if renderUnknowns(tv, marker, depth+1) {
-				changed = true
-			}
-		case []any:
-			for _, e := range tv {
-				if m, ok := e.(map[string]any); ok {
-					if renderUnknowns(m, marker, depth+1) {
-						changed = true
-					}
-				}
-			}
-		}
-	}
-	return changed
-}
-
-// isWholeUnknownExpr reports whether a string is exactly one unknown
-// variable's expression text.
-func isWholeUnknownExpr(s string) bool {
-	if !strings.HasPrefix(s, "${var.") || !strings.HasSuffix(s, "}") {
-		return false
-	}
-	inner := s[2 : len(s)-1]
-	return !strings.Contains(inner, "${")
-}
-
-// replaceVarExprs renders every unknown variable part of a string as the
-// placeholder.
-func replaceVarExprs(s, marker string) string {
-	for {
-		start := strings.Index(s, "${var.")
-		if start < 0 {
-			return s
-		}
-		end := strings.Index(s[start:], "}")
-		if end < 0 {
-			return s
-		}
-		s = s[:start] + marker + s[start+end+1:]
-	}
 }
 
 // flatten maps the per-file documents back to the flat list NormalizeDocs
