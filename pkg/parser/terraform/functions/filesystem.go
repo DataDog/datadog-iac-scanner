@@ -147,6 +147,12 @@ func readConfinedFile(baseDir, rootDir string, fsys vfs.FS, rel string) ([]byte,
 	return fsys.ReadFile(full)
 }
 
+// ConfinePath resolves rel against baseDir and returns it when it stays under
+// baseDir or rootDir, symlinks included.
+func ConfinePath(baseDir, rootDir string, fsys vfs.FS, rel string) (string, error) {
+	return confinePath(baseDir, rootDir, fsys, rel)
+}
+
 // confinePath resolves rel against baseDir and rejects any result that leaves that tree.
 func confinePath(baseDir, rootDir string, fsys vfs.FS, rel string) (string, error) {
 	base := filepath.Clean(baseDir)
