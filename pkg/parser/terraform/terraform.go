@@ -256,6 +256,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
+	if tfpath.IsTerragrunt(path) {
+		return parseTerragrunt(ctx, fileContent, path)
+	}
 	contextLogger := logger.FromContext(ctx)
 	resolved, inputVariables, err := p.Resolve(ctx, fileContent, path, resolveReferences, maxResolverDepth)
 	if errors.Is(err, tfmodules.ErrSkippedLinkPlaceholder) {
@@ -306,9 +309,12 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	return resolved, json, linesToIgnore, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
 }
 
-// SupportedExtensions returns Terraform/OpenTofu extensions.
+// SupportedExtensions returns Terraform/OpenTofu extensions and Terragrunt file names.
 func (p *Parser) SupportedExtensions() []string {
-	return []string{tfpath.ExtTF, tfpath.ExtTofu, tfpath.ExtTFJSON, tfpath.ExtTofuJSON, tfpath.ExtTFVars}
+	return []string{
+		tfpath.ExtTF, tfpath.ExtTofu, tfpath.ExtTFJSON, tfpath.ExtTofuJSON, tfpath.ExtTFVars,
+		tfpath.TerragruntConfig, tfpath.TerragruntStack,
+	}
 }
 
 // SupportedTypes returns types supported by this parser, which are terraform

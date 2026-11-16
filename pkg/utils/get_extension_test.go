@@ -28,6 +28,9 @@ func TestExtensionFromPath(t *testing.T) {
 		{path: "/repo/vars.tfvars", want: ".tfvars"},
 		{path: "/repo/terraform.tfvars", want: ".tfvars"},
 		{path: "/repo/pnpm-lock.yaml", want: ".yaml"},
+		{path: "/repo/live/terragrunt.hcl", want: "terragrunt.hcl"},
+		{path: "/repo/live/terragrunt.stack.hcl", want: "terragrunt.stack.hcl"},
+		{path: "/repo/live/root.hcl", want: ".hcl"},
 		{path: "/repo/Makefile", want: ""},
 		{path: "/repo/bin/aws", want: ""},
 	}
