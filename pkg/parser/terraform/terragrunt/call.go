@@ -26,7 +26,7 @@ func (u *Unit) Call() (call *tfeval.SyntheticCall, inputs map[string]cty.Value, 
 	if u.Skip || !u.SourceKnown {
 		return nil, nil, false
 	}
-	source := u.Source
+	source, version := moduleSource(u.Source)
 	if source == "" {
 		source = unitDirSource
 	}
@@ -49,6 +49,7 @@ func (u *Unit) Call() (call *tfeval.SyntheticCall, inputs map[string]cty.Value, 
 	return &tfeval.SyntheticCall{
 		Label:      CallLabel,
 		Source:     source,
+		Version:    version,
 		CallerFile: u.ConfigFile,
 		Range:      u.anchor(),
 		Body:       body,

@@ -46,6 +46,9 @@ type Request struct {
 	// reads every file.
 	MaxConfigFileBytes int64
 	FS                 vfs.FS
+	// ExtraCalls are remote module calls declared outside Terraform files,
+	// such as Terragrunt units. Each is resolved as a call its FileName makes.
+	ExtraCalls []tfmodules.ParsedModule
 }
 
 type ResolvedModule struct {
@@ -300,6 +303,12 @@ func Resolve(ctx context.Context, request *Request) Result {
 	for seedDir, allowedFiles := range seedGroups {
 		g.Go(func() error {
 			w.traverse(gCtx, seedDir, allowedFiles, repositoryGroups, 0, "")
+			return nil
+		})
+	}
+	if extra := extraRemoteCalls(request.ExtraCalls); len(extra) > 0 {
+		g.Go(func() error {
+			w.traverseRemoteModules(gCtx, extra, repositoryGroups, "")
 			return nil
 		})
 	}
@@ -881,6 +890,18 @@ func (w *walker) localModuleChildDirs(
 		}
 	}
 	return children
+}
+
+// extraRemoteCalls keeps the remote calls among calls, as calls a root makes.
+func extraRemoteCalls(calls []tfmodules.ParsedModule) []remoteModuleCall {
+	var out []remoteModuleCall
+	for i := range calls {
+		if calls[i].IsLocal || tfmodules.ValidateModuleSource(calls[i].Source) != nil {
+			continue
+		}
+		out = append(out, remoteModuleCall{mod: calls[i]})
+	}
+	return out
 }
 
 // remoteModuleCall is a remote module call found while walking local modules,

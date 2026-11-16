@@ -227,3 +227,30 @@ inputs = { acl = "public-read" }
 	got := []string{callSiteFile(vulns[0]), callSiteFile(vulns[1]), callSiteFile(vulns[2])}
 	require.Equal(t, []string{"live/a/terragrunt.hcl", "live/b/terragrunt.hcl", "live/c/terragrunt.hcl"}, got)
 }
+
+// A unit's tfr:// source resolves to the module the pre-scan fetched for the
+// unit, which is then instantiated with the unit's inputs.
+func TestInspect_TerragruntRemoteSource(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	require.NoError(t, os.MkdirAll(fx.callerRoot, 0o755))
+	unitPath := filepath.Join(fx.callerRoot, "terragrunt.hcl")
+	require.NoError(t, os.WriteFile(unitPath, []byte(`terraform {
+  source = "tfr://`+remoteBucketSource+`?version=`+remoteBucketVersion+`"
+}
+
+inputs = {
+  acl = "public-read"
+}
+`), 0o644))
+
+	vulns := inspectRemoteBucket(t, fx, []string{unitPath}, aclRule)
+
+	require.Len(t, vulns, 1)
+	v := vulns[0]
+	require.Equal(t, fx.modPath, v.FileName)
+	require.NotNil(t, v.ModuleAttribution)
+	require.Equal(t, "stack/terragrunt.hcl", v.ModuleAttribution.CallSite.Filename)
+	require.Equal(t, 6, v.ModuleAttribution.CallSite.LineStart)
+	require.Equal(t, remoteBucketSource, v.ModuleAttribution.Source)
+	require.Equal(t, remoteBucketVersion, v.ModuleAttribution.Version)
+}
