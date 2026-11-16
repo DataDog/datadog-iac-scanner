@@ -11,14 +11,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
-	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
-	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -43,14 +39,14 @@ func instanceFindings(instances int, line int) []model.Vulnerability {
 // decodeAll gives set the findings a rule raised, in the order
 // DecodeQueryResults would, and returns what it kept.
 func decodeAll(set *findingSet, raised []model.Vulnerability) []model.Vulnerability {
-	for i := range set.order(len(raised)) {
+	for i := range raised {
 		v := raised[i]
 		set.addRouted(context.Background(), &Inspector{}, &v)
 	}
 	return set.findings()
 }
 
-func TestFindingSet_KeepsTheLastFindingOfEachIdentity(t *testing.T) {
+func TestFindingSet_KeepsTheFirstFindingOfEachIdentity(t *testing.T) {
 	set := newFindingSet(true, nil)
 	raised := instanceFindings(3, 10)
 	other := raised[0]
@@ -60,8 +56,45 @@ func TestFindingSet_KeepsTheLastFindingOfEachIdentity(t *testing.T) {
 	got := decodeAll(set, raised)
 
 	require.Len(t, got, 2)
-	require.Equal(t, 12, got[0].Line, "the last instance's finding is the one kept")
+	require.Equal(t, 10, got[0].Line, "the first instance's finding is the one kept")
 	require.Equal(t, "primary", got[1].ResourceName, "a different identity is kept on its own")
+}
+
+// The replacement path must not depend on arrival: a later-arriving finding
+// with a lower order displaces the retained duplicate, including on
+// same-line ties, and what the set keeps is what storage keeps.
+func TestFindingSet_KeepsTheFirstFindingWhateverTheArrivalOrder(t *testing.T) {
+	raised := instanceFindings(3, 10)
+	tie := raised[0]
+	tie.SearchValue = "z" // same file, line and search key, lower order without it
+	raised = append(raised, tie)
+
+	orders := [][]int{
+		{0, 1, 2, 3}, {3, 2, 1, 0}, {2, 3, 0, 1}, {1, 0, 3, 2}, {3, 0, 2, 1},
+	}
+	var want []model.Vulnerability
+	for _, order := range orders {
+		arriving := make([]model.Vulnerability, 0, len(order))
+		for _, i := range order {
+			arriving = append(arriving, raised[i])
+		}
+
+		kept := decodeAll(newFindingSet(true, nil), arriving)
+		require.Len(t, kept, 1)
+		stored := model.FirstFindingPerIdentity(append([]model.Vulnerability(nil), arriving...))
+		require.Equal(t, stored, kept,
+			"what the set keeps must be what storage keeps, whatever the arrival order")
+
+		canonical := append([]model.Vulnerability(nil), kept...)
+		model.SortFindings(canonical)
+		if want == nil {
+			want = canonical
+			require.Equal(t, 10, canonical[0].Line, "the earliest line is the one kept")
+			require.Empty(t, canonical[0].SearchValue, "the same-line tie goes to the lower search value")
+			continue
+		}
+		require.Equal(t, want, canonical, "the kept finding must not depend on the arrival order")
+	}
 }
 
 // What the set keeps must be what the scan reports, so that keeping findings
@@ -84,7 +117,7 @@ func TestFindingSet_KeepsWhatStorageReports(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, want, got)
-	require.Equal(t, want, kept, "nothing is left for storage to deduplicate")
+	require.ElementsMatch(t, want, kept, "nothing is left for storage to deduplicate")
 }
 
 // Two instances of one block share an identity, and a caller deduplicated
@@ -111,7 +144,7 @@ func TestFindingSet_RoutesBeforeKeepingAnIdentity(t *testing.T) {
 		got[kept[i].ModuleCallChain] = kept[i].Line
 	}
 	require.Equal(t, map[string]int{
-		chain:                      2,
+		chain:                      1,
 		"other/main.tf|module.app": 1,
 	}, got)
 }
@@ -134,118 +167,6 @@ func TestNewFindingRouting_IndexesRootCallersOnly(t *testing.T) {
 	routing := newFindingRouting(nil, nil, files, repo, nil)
 	require.Len(t, routing.callers, 1)
 	require.Contains(t, routing.callers, "stack/main.tf")
-}
-
-// TestFindingSet_SupersedesMeansRouteKeepsNothingNew guards the hand-kept
-// agreement between supersedes and findingRouting.route: a skipped result's
-// routed identities are all already kept. It may decline to skip.
-func TestFindingSet_SupersedesMeansRouteKeepsNothingNew(t *testing.T) {
-	ctx := context.Background()
-	base := model.Vulnerability{
-		FileID: "doc", FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
-		ResourceType: "aws_s3_bucket", ResourceName: "this", ModuleCallChain: "stack/main.tf|module.app",
-	}
-	calls := []moduleCall{
-		{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-		{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-	}
-	moduleFiles := map[string]*moduleFileCalls{
-		"doc": {calls: calls, name: "main.tf"},
-	}
-	same := func(v model.Vulnerability, line int) model.Vulnerability {
-		v.Line = line
-		return v
-	}
-
-	cases := []struct {
-		name        string
-		routing     *findingRouting
-		steps       []model.Vulnerability
-		attr        []bool
-		wantSkipped int
-	}{
-		{
-			name:        "same identity",
-			steps:       []model.Vulnerability{same(base, 1), same(base, 2), same(base, 3)},
-			wantSkipped: 2,
-		},
-		{
-			name: "extra caller on the earlier instance only",
-			routing: newFindingRouting(map[string][]extraCallerInfo{
-				"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
-			}, nil, nil, "/repo", nil),
-			steps: []model.Vulnerability{
-				func() model.Vulnerability { v := same(base, 1); v.FileID = "doc-early"; return v }(),
-				func() model.Vulnerability { v := same(base, 2); v.FileID = "doc-late"; return v }(),
-				func() model.Vulnerability { v := same(base, 3); v.FileID = "doc-late"; return v }(),
-			},
-			wantSkipped: 1,
-		},
-		{
-			name: "extra caller whose own document is an external module file",
-			routing: newFindingRouting(map[string][]extraCallerInfo{
-				"doc": {{callChain: "other/main.tf|module.app", docID: "ext"}},
-			}, map[string]*moduleFileCalls{
-				"ext": {calls: calls, name: "main.tf"},
-			}, nil, "/repo", nil),
-			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
-			wantSkipped: 1,
-		},
-		{
-			name:        "module file reported only through its calls",
-			routing:     newFindingRouting(nil, moduleFiles, nil, "/repo", nil),
-			steps:       []model.Vulnerability{same(base, 1), same(base, 2)},
-			wantSkipped: 1,
-		},
-		{
-			name:    "module file that the line may attribute",
-			routing: newFindingRouting(nil, moduleFiles, nil, "/repo", nil),
-			steps: []model.Vulnerability{
-				func() model.Vulnerability {
-					v := same(base, 1)
-					v.ModuleAttribution = &model.ModuleAttribution{}
-					return v
-				}(),
-				func() model.Vulnerability {
-					v := same(base, 2)
-					v.ModuleAttribution = &model.ModuleAttribution{}
-					return v
-				}(),
-			},
-			attr:        []bool{true, true},
-			wantSkipped: 0,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			set := newFindingSet(true, tc.routing)
-			skipped := 0
-			for i := range set.order(len(tc.steps)) {
-				step := tc.steps[i]
-				file := &model.FileMetadata{ID: step.FileID, ModuleCallChain: step.ModuleCallChain}
-				if tc.attr != nil && tc.attr[i] {
-					file.ModuleAttributions = map[string]*model.ModuleAttribution{"": {}}
-				}
-				id, ok := model.IdentityBeforeLine(&step)
-				require.True(t, ok)
-				if set.supersedes(id, file) {
-					skipped++
-					routed := tc.routing.route(ctx, &Inspector{}, []model.Vulnerability{step})
-					for j := range routed {
-						require.Truef(t, set.has(id, routed[j].ModuleCallChain),
-							"skipped a result route still keeps (%s)", routed[j].ModuleCallChain)
-					}
-					continue
-				}
-				set.addRouted(ctx, &Inspector{}, &step)
-			}
-			require.Equal(t, tc.wantSkipped, skipped)
-		})
-	}
-
-	require.False(t, newFindingSet(false, nil).supersedes(model.ChainedIdentity{}, &model.FileMetadata{}),
-		"a set keeping every finding never skips one")
 }
 
 // openIngressRule fires once per ingress block open to the internet, mirroring
@@ -325,8 +246,9 @@ func TestInspect_TwoViolationsOnOneResource_InspectReturnsBoth(t *testing.T) {
 }
 
 // The scan path that retains findings for storage opts into decode-time
-// identity reduction, so it keeps only the last of the two violations: the
-// same reduction storage itself would apply at the end of the scan.
+// identity reduction, so it keeps only the first of the two violations in
+// model.CompareFindings order: the same reduction storage itself applies at
+// the end of the scan.
 func TestInspect_TwoViolationsOnOneResource_CompactedScanPathKeepsOne(t *testing.T) {
 	files, root := twoIngressBlocks(t)
 	ins := newTestInspector(t, inspectorOpts{
@@ -341,7 +263,7 @@ func TestInspect_TwoViolationsOnOneResource_CompactedScanPathKeepsOne(t *testing
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1, "the scan path that retains findings for storage keeps one finding per identity")
-	require.Equal(t, 11, vulns[0].Line, "the last decoded violation (port 3389) is the one kept")
+	require.Equal(t, 6, vulns[0].Line, "the first violation in model.CompareFindings order (port 22) is the one kept")
 }
 
 const decodedBucketHCL = `
@@ -389,16 +311,14 @@ func storedFindings(t *testing.T, vulns []model.Vulnerability) []model.Vulnerabi
 }
 
 // decodeCompacted runs DecodeQueryResults with compaction on and off and
-// returns both, plus how many results the compacting run skipped.
+// returns both.
 func decodeCompacted(
 	t *testing.T, ins *Inspector, files map[string]*model.FileMetadata,
 	routing *findingRouting, items []map[string]interface{},
-) (compacted, full []model.Vulnerability, skipped int) {
+) (compacted, full []model.Vulnerability) {
 	t.Helper()
 	ctx := context.Background()
 	run := func(compact bool) []model.Vulnerability {
-		tr := &tracker.CITracker{}
-		ins.tracker = tr
 		qCtx := &QueryContext{
 			Ctx:           ctx,
 			Files:         files,
@@ -409,12 +329,9 @@ func decodeCompacted(
 		got, _, _, err := ins.DecodeQueryResults(ctx, qCtx, ctx, bucketResultSet(items), 0)
 		require.NoError(t, err)
 		require.Empty(t, ins.GetFailedQueries())
-		if compact {
-			skipped = int(atomic.LoadInt64(&tr.SupersededResults))
-		}
 		return got
 	}
-	return run(true), run(false), skipped
+	return run(true), run(false)
 }
 
 func moduleCalls() *moduleFileCalls {
@@ -438,7 +355,6 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		items       func(file *model.FileMetadata) []map[string]interface{}
 		files       func(file *model.FileMetadata) map[string]*model.FileMetadata
 		ruleConfigs map[string]config.IacRuleConfig
-		wantSkipped int
 	}
 
 	one := func(file *model.FileMetadata) map[string]*model.FileMetadata {
@@ -450,10 +366,9 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 
 	cases := []spec{
 		{
-			name:        "extra caller",
-			wantSkipped: 1,
-			files:       one,
-			items:       twice,
+			name:  "extra caller",
+			files: one,
+			items: twice,
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(map[string][]extraCallerInfo{
 					file.ID: {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
@@ -461,10 +376,9 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			},
 		},
 		{
-			name:        "module file reported only through its calls",
-			wantSkipped: 1,
-			files:       one,
-			items:       twice,
+			name:  "module file reported only through its calls",
+			files: one,
+			items: twice,
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(nil, map[string]*moduleFileCalls{
 					file.ID: moduleCalls(),
@@ -479,9 +393,8 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			file.ModuleCallChain = "stack/main.tf|module.app"
 			ins := newTestInspector(t, inspectorOpts{vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator()})
 			ins.ruleConfigs = tc.ruleConfigs
-			compacted, full, skipped := decodeCompacted(t, ins, tc.files(file), tc.routing(file), tc.items(file))
+			compacted, full := decodeCompacted(t, ins, tc.files(file), tc.routing(file), tc.items(file))
 			require.Equal(t, storedFindings(t, full), storedFindings(t, compacted))
-			require.Equal(t, tc.wantSkipped, skipped)
 		})
 	}
 
@@ -510,13 +423,12 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		routing := newFindingRouting(nil, nil, model.FileMetadatas{
 			{FilePath: callerName},
 		}, "", nil)
-		compacted, full, skipped := decodeCompacted(t, ins, map[string]*model.FileMetadata{
+		compacted, full := decodeCompacted(t, ins, map[string]*model.FileMetadata{
 			older.ID: older, newer.ID: newer,
 		}, routing, []map[string]interface{}{bucketItem(older.ID), bucketItem(newer.ID)})
 		require.Equal(t, storedFindings(t, full), storedFindings(t, compacted))
-		require.Len(t, compacted, 1, "the filtered result is the last one raised, so the earlier one is kept")
+		require.Len(t, compacted, 1, "the filtered result is dropped, so the earlier one is kept")
 		require.Equal(t, older.ID, compacted[0].FileID)
-		require.Zero(t, skipped, "the last result was dropped, so it does not cover the earlier one")
 	})
 
 	// The failing document is raised first, so it is decoded after the other
@@ -538,7 +450,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			}
 
 			ins := newTestInspector(t, inspectorOpts{vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator()})
-			compacted, full, skipped := decodeCompacted(t, ins, map[string]*model.FileMetadata{
+			compacted, full := decodeCompacted(t, ins, map[string]*model.FileMetadata{
 				good.ID: good, bad.ID: bad,
 			}, nil, []map[string]interface{}{bucketItem(bad.ID), bucketItem(good.ID)})
 			require.Len(t, full, 2)
@@ -555,80 +467,9 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			require.Equal(t, 1, failed.VulnerabilityLocation.End.Line)
 			require.Equal(t, storedFindings(t, full), storedFindings(t, compacted))
 			require.Len(t, compacted, 1)
-			require.Equal(t, good.ID, compacted[0].FileID)
-			require.Equal(t, 1, skipped)
+			// Both findings land on line 1, so they compare equal in
+			// model.CompareFindings order and the first decoded one is kept.
+			require.Equal(t, bad.ID, compacted[0].FileID)
 		})
 	}
-}
-
-// supersededInstances inspects a counted bucket and reports how many line-info
-// documents decoding parsed.
-func supersededInstances(t *testing.T, instances int, compact bool) (detected int64, vulns []model.Vulnerability) {
-	t.Helper()
-	root := t.TempDir()
-	sources := map[string]string{
-		"stack/main.tf": `
-module "bucket" {
-  source = "../modules/bucket"
-}
-`,
-		"modules/bucket/main.tf": fmt.Sprintf(`
-resource "aws_s3_bucket" "this" {
-  count  = %d
-  bucket = "shared"
-  acl    = "public-read"
-}
-`, instances),
-	}
-	var files model.FileMetadatas
-	for name, content := range sources {
-		path := filepath.Join(root, name)
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
-		files = append(files, parseTerraform(t, path)...)
-	}
-	// The builder detects the line of each result it is given unless it skips
-	// the result as superseded, which the tracker counts.
-	var calls atomic.Int64
-	ciTracker := &tracker.CITracker{}
-	ins := newTestInspector(t, inspectorOpts{
-		tracker: ciTracker,
-		queries: []model.QueryMetadata{{
-			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
-			Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1,
-		}},
-		repoPath: root,
-		vb: func(ctx context.Context, qCtx *QueryContext, tracker Tracker, v interface{},
-			lines *detector.DetectLine, useOldSeverities bool, queryDuration time.Duration) (*model.Vulnerability, error) {
-			calls.Add(1)
-			return DefaultVulnerabilityBuilder(ctx, qCtx, tracker, v, lines, useOldSeverities, queryDuration)
-		},
-		flagEvaluator: featureflags.NewLocalEvaluator(),
-	})
-	ins.SetCompactFindingsAtDecode(compact)
-
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
-	require.NoError(t, err)
-	require.Empty(t, ins.GetFailedQueries())
-	return calls.Load() - atomic.LoadInt64(&ciTracker.SupersededResults), vulns
-}
-
-// On the scan path, instances of one counted resource share an identity, so
-// only the instance that is kept may have its line detected.
-func TestInspect_SupersededInstanceFindingsSkipLineDetection(t *testing.T) {
-	sizes := []int{20, 40}
-	detected := make([]int64, len(sizes))
-	uncompacted := make([]int64, len(sizes))
-	for i, n := range sizes {
-		var vulns []model.Vulnerability
-		detected[i], vulns = supersededInstances(t, n, true)
-		require.Len(t, vulns, 1, "the instances share one identity")
-
-		uncompacted[i], vulns = supersededInstances(t, n, false)
-		require.Len(t, vulns, n)
-	}
-
-	require.Equal(t, uncompacted[1]-uncompacted[0], int64(sizes[1]-sizes[0]),
-		"without compaction, every decoded instance has its line detected")
-	require.Equal(t, detected[0], detected[1], "only the finding that is kept has its line detected")
 }

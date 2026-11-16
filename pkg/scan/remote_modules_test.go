@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	cyclonedx "github.com/DataDog/datadog-iac-scanner/pkg/report/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -151,7 +152,12 @@ func TestRemoteModulesManifestEnablesModuleInstantiation(t *testing.T) {
 
 	results := executeRemoteModuleScan(t, params)
 	require.NotEmpty(t, results.Results)
+	// The finding reports the resolved module path, exactly as before; its
+	// ordering path names the module's canonical source, so the order cannot
+	// follow a per-scan location.
 	require.Equal(t, filepath.ToSlash(filepath.Join(moduleDir, "main.tf")), filepath.ToSlash(results.Results[0].FileName))
+	require.Equal(t, "registry.terraform.io/terraform-aws-modules/vpc/aws@5.0.0/main.tf",
+		filepath.ToSlash(results.Results[0].OrderPath))
 }
 
 func TestScanRemoteModuleConfigPlaceholder(t *testing.T) {
@@ -400,4 +406,30 @@ DatadogPolicy contains result if {
 	require.NoError(t, err)
 	require.NotNil(t, results)
 	return results
+}
+
+// The CycloneDX report hashes each reported file from disk. Findings from a
+// fetched module keep the detected (readable) path as their reported name —
+// only the ordering path names the canonical source — so the module's
+// component stays in the report with a real hash.
+func TestRemoteModuleCycloneDXReportKeepsTheComponentHash(t *testing.T) {
+	root := t.TempDir()
+	_, manifestPath := writeRemoteModuleFixture(t, root)
+
+	params := remoteModuleScanParams(root)
+	params.TerraformModules = TerraformModulesOn
+	params.RemoteModulesManifestPath = manifestPath
+
+	results := executeRemoteModuleScan(t, params)
+	require.NotEmpty(t, results.Results)
+
+	summary := model.CreateSummary(t.Context(), model.Counters{}, results.Results, params.ScanID,
+		results.ExtractedPaths.ExtractionMap, root, model.SCIInfo{})
+	report := cyclonedx.BuildCycloneDxReport(t.Context(), &summary, summary.FilePaths)
+	require.NotEmpty(t, report.Components.Components)
+	for _, component := range report.Components.Components {
+		require.Len(t, component.Hashes, 1)
+		require.Regexp(t, "^[0-9a-f]{64}$", component.Hashes[0].Content,
+			"the component's sha256 must be a real hash of the file on disk")
+	}
 }

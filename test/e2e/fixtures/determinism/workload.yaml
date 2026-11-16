@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: determinism-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: determinism
+  template:
+    metadata:
+      labels:
+        app: determinism
+    spec:
+      containers:
+      - name: alpha
+        image: nginx:1.21
+        securityContext:
+          privileged: true
+      - name: beta
+        image: nginx:1.21
+        securityContext:
+          privileged: true

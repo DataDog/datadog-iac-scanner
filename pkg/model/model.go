@@ -172,6 +172,12 @@ type lineInfoGroup struct {
 type linesLazyState struct {
 	once sync.Once
 
+	// lines holds the split computed by the first Lines() caller, so module
+	// instances (ShallowCopy of one source file) reuse it instead of each
+	// splitting the whole file again. nil until once.Do ran and the computing
+	// copy had no lazy-state source (no OriginalData to split).
+	lines *[]string
+
 	matchMu sync.Mutex
 	matches map[string][]int
 	// matchedIndexes counts the indexes held in matches.
@@ -390,12 +396,18 @@ func (f *FileMetadata) SetReleaseOriginalDataAfterLineInfo(release bool) {
 // OriginalData on first access when SetLazyLines was configured. Safe for
 // concurrent callers.
 func (f *FileMetadata) Lines() []string {
-	if f.linesLazy != nil {
-		f.linesLazy.once.Do(func() {
+	if st := f.linesLazy; st != nil {
+		st.once.Do(func() {
 			if f.LinesOriginalData == nil {
 				f.LinesOriginalData = utils.SplitLines(f.OriginalData)
 			}
+			st.lines = f.LinesOriginalData
 		})
+		if st.lines != nil {
+			// A copy shares the split of the file it was copied from; only
+			// the first caller computed it.
+			return *st.lines
+		}
 	}
 	if f.LinesOriginalData == nil {
 		// No lazy state (e.g. test fixtures); compute directly.
@@ -700,6 +712,13 @@ type Vulnerability struct {
 	// at one declaration line.
 	DetectedFileName              string `json:"-"`
 	DetectedLineWithVulnerability string `json:"-"`
+	// OrderPath is the file name findings order by when the detected file
+	// sits inside a per-scan checkout directory: the directory is named after
+	// the scan, so findings order by where it came from instead. Empty when
+	// the detected name is already the report's own; the reported file name
+	// (FileName) is never rewritten, so reports that read the file from disk
+	// keep working.
+	OrderPath string `json:"-"`
 }
 
 // Identity returns the file and line text that tell v apart from other

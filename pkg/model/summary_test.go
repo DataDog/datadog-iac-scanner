@@ -57,10 +57,16 @@ func TestCreateSummary_ReportedFindingsKeepTheirIdentity(t *testing.T) {
 	require.Equal(t, filepath.FromSlash("web/Chart.yaml"), files[0].FileName)
 	require.Equal(t, filepath.FromSlash("web/Chart.yaml"), files[1].FileName)
 	require.NotEqual(t, files[0].Fingerprint, files[1].Fingerprint)
-	require.Equal(t, GetDatadogFingerprintHash(SCIInfo{}, filepath.FromSlash("web/charts/pkg/templates/deploy.yaml"),
-		"Kubernetes", "Deployment", "dd-helm", "q", "  privileged: true", ""), files[0].Fingerprint,
+	var pkgFile *VulnerableFile
+	for i := range files {
+		if files[i].Fingerprint == GetDatadogFingerprintHash(SCIInfo{}, filepath.FromSlash("web/charts/pkg/templates/deploy.yaml"),
+			"Kubernetes", "Deployment", "dd-helm", "q", "  privileged: true", "") {
+			pkgFile = &files[i]
+		}
+	}
+	require.NotNil(t, pkgFile,
 		"the fingerprint stays the detected file's and line's, so it is the one main computes")
-	require.Equal(t, "- name: pkg", files[0].LineWithVulnerability)
+	require.Equal(t, "- name: pkg", pkgFile.LineWithVulnerability)
 }
 
 // TestCreateSummary tests the functions [CreateSummary()] and all the methods called by them
@@ -608,4 +614,30 @@ func TestRemoveAllURLCredentials(t *testing.T) {
 			require.Contains(t, got, tt.want[key])
 		}
 	}
+}
+
+// A finding from a fetched checkout orders by where the checkout came from;
+// a finding outside every checkout keeps its name byte for byte, so pushed
+// paths round-trip exactly as they arrived, separators included.
+func TestCanonicalReportedPath(t *testing.T) {
+	// The map's keys and the detected paths use the platform's own
+	// separators, as the scan produces them.
+	extractionMap := map[string]ExtractedPathObject{
+		filepath.FromSlash("/scan/checkout-1"): {Path: "registry.example.com/org/module?ref=v1.2.3", LocalPath: false},
+		filepath.FromSlash("/scan/extracted"):  {Path: filepath.FromSlash("/tmp/inner/archive"), LocalPath: true},
+	}
+	detected := filepath.FromSlash("/scan/checkout-1/main.tf")
+
+	// A slash-form detected path finds its directory too: the lookup
+	// normalizes separators before matching, so both forms resolve to the
+	// same canonical name.
+	native := CanonicalReportedPath(detected, extractionMap)
+	require.Equal(t, filepath.FromSlash("registry.example.com/org/module/main.tf"), native)
+	require.Equal(t, native, CanonicalReportedPath("/scan/checkout-1/main.tf", extractionMap))
+	require.Equal(t, filepath.FromSlash("archive/main.tf"),
+		CanonicalReportedPath(filepath.FromSlash("/scan/extracted/main.tf"), extractionMap))
+
+	// Outside every checkout: untouched, byte for byte.
+	require.Equal(t, "src/a/b/c.yaml", CanonicalReportedPath("src/a/b/c.yaml", extractionMap))
+	require.Equal(t, "src/a/b/c.yaml", CanonicalReportedPath("src/a/b/c.yaml", nil))
 }
