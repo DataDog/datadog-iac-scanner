@@ -215,3 +215,46 @@ func TestBuildSarifIssue_NonModuleFindingUnchanged(t *testing.T) {
 	_, hasModule := result.ResultProperties["module"]
 	require.False(t, hasModule)
 }
+
+func TestBuildSarifIssue_SeparatesNativeDetectionAndFixLocations(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		keepDetectionLocation bool
+		wantPrimaryStartLine  int
+		wantPrimaryEndLine    int
+	}{
+		{name: "legacy retains remediation highlighting", wantPrimaryStartLine: 2, wantPrimaryEndLine: 3},
+		{name: "native keeps detection region", keepDetectionLocation: true, wantPrimaryStartLine: 1, wantPrimaryEndLine: 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			issue := model.QueryResult{
+				QueryName: "test", QueryID: "test", Severity: model.SeverityHigh, Platform: "Terraform",
+				Files: []model.VulnerableFile{{
+					FileName: "main.tf", ResourceType: "aws_security_group", ResourceName: "sg",
+					ResourceLocation: model.ResourceLocation{
+						Start: model.ResourceLine{Line: 1, Col: 1}, End: model.ResourceLine{Line: 5, Col: 2},
+					},
+					BlockLocation: model.ResourceLocation{
+						Start: model.ResourceLine{Line: 1, Col: 1}, End: model.ResourceLine{Line: 5, Col: 2},
+					},
+					RemediationLocation: model.ResourceLocation{
+						Start: model.ResourceLine{Line: 2, Col: 3}, End: model.ResourceLine{Line: 3, Col: 10},
+					},
+					Remediation: "remove the insecure value", RemediationType: "removal",
+					KeepDetectionLocation: tc.keepDetectionLocation,
+				}},
+			}
+			report := NewSarifReport().(*sarifReport)
+			_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+			require.NoError(t, err)
+			result := report.Runs[0].Results[0]
+			region := result.ResultLocations[0].PhysicalLocation.Region
+			require.Equal(t, tc.wantPrimaryStartLine, region.StartLine)
+			require.Equal(t, tc.wantPrimaryEndLine, region.EndLine)
+			require.Len(t, result.ResultFixes, 1)
+			fixRegion := result.ResultFixes[0].ArtifactChanges[0].Replacements[0].DeletedRegion
+			require.Equal(t, 2, fixRegion.StartLine)
+			require.Equal(t, 3, fixRegion.EndLine)
+		})
+	}
+}

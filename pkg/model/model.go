@@ -800,6 +800,8 @@ type Vulnerability struct {
 	IsSuppressed             bool   `json:"isSuppressed,omitempty"`
 	SuppressionKind          string `json:"suppressionKind,omitempty"`
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
+	// KeepDetectionLocation prevents SARIF from replacing the detection region with the fix location.
+	KeepDetectionLocation bool `json:"-"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
 	// ModuleAttribution: provenance for instantiated module findings, serialized

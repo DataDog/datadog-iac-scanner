@@ -188,8 +188,9 @@ func (t *terraformInput) vulnerability(
 	vulnerability.FileID = file.ID
 	vulnerability.FileName = file.FilePath
 	vulnerability.Line = rng.Start.Line
-	vulnerability.VulnerabilityLocation = block
+	vulnerability.VulnerabilityLocation = at
 	vulnerability.RemediationLocation = at
+	vulnerability.KeepDetectionLocation = true
 	vulnerability.BlockLocation = block
 	if filepath.Clean(rng.Filename) == filepath.Clean(file.FilePath) {
 		// Fixes are built on these lines, the untrimmed line and the
