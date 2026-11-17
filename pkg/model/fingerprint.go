@@ -13,10 +13,10 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
-const (
-	dockerfilePlatform = "Dockerfile"
-	terraformPlatform  = "Terraform"
-)
+const dockerfilePlatform = "Dockerfile"
+
+// TerraformPlatform is the platform Terraform findings carry.
+const TerraformPlatform = "Terraform"
 
 // GetDatadogFingerprintHash is the single source of truth for a finding's
 // stable identity. It is computed once when the summary is built and reused by
@@ -25,18 +25,27 @@ const (
 func GetDatadogFingerprintHash(
 	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
 ) string {
-	return stringToHash(fingerprintInput(sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain))
+	return stringToHash(fingerprintInput(sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, "", moduleCallChain))
+}
+
+// findingFingerprintHash is GetDatadogFingerprintHash for v, with its
+// identity key.
+// nolint:gocritic
+func findingFingerprintHash(sciInfo SCIInfo, filePath string, v *Vulnerability, ruleID, vulnLine string) string {
+	return stringToHash(fingerprintInput(
+		sciInfo, filePath, v.Platform, v.ResourceType, v.ResourceName, ruleID, vulnLine, v.IdentityKey, v.ModuleCallChain))
 }
 
 // FindingIdentity is what a scan reports one finding for: findings of equal
-// identity share a fingerprint, and only the last of them is reported.
+// identity share a fingerprint, and only the first of them in CompareFindings
+// order is reported.
 func FindingIdentity(v *Vulnerability) string {
 	fileName, line, ruleID := fingerprintFields(v)
-	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID); ok {
+	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, v.IdentityKey); ok {
 		return id.WithChain(v.ModuleCallChain)
 	}
 	// SCIInfo is constant within a scan; an empty value yields the same grouping.
-	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.ModuleCallChain)
+	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.IdentityKey, v.ModuleCallChain)
 }
 
 // ChainedIdentity is the FindingIdentity of a finding whose identity does not
@@ -51,22 +60,22 @@ type ChainedIdentity struct {
 // false when v's platform puts the line in the identity.
 func IdentityBeforeLine(v *Vulnerability) (ChainedIdentity, bool) {
 	fileName, _, ruleID := fingerprintFields(v)
-	return chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID)
+	return chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, v.IdentityKey)
 }
 
 // ChainedIdentityFor is IdentityBeforeLine for a finding that is not built
 // yet. ruleID is the id FindingIdentity would choose (see utils.ChooseQueryID).
 func ChainedIdentityFor(fileName, platform, resourceType, resourceName, queryID, legacyQueryID string) (ChainedIdentity, bool) {
-	return chainedIdentity(fileName, platform, resourceType, resourceName, utils.ChooseQueryID(queryID, legacyQueryID))
+	return chainedIdentity(fileName, platform, resourceType, resourceName, utils.ChooseQueryID(queryID, legacyQueryID), "")
 }
 
-func chainedIdentity(fileName, platform, resourceType, resourceName, ruleID string) (ChainedIdentity, bool) {
+func chainedIdentity(fileName, platform, resourceType, resourceName, ruleID, identityKey string) (ChainedIdentity, bool) {
 	if platform == dockerfilePlatform {
 		return ChainedIdentity{}, false
 	}
 	return ChainedIdentity{
-		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", ""),
-		chained: platform == terraformPlatform,
+		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", identityKey, ""),
+		chained: platform == TerraformPlatform,
 	}, true
 }
 
@@ -100,14 +109,18 @@ func fingerprintFields(v *Vulnerability) (file, line, ruleID string) {
 
 // nolint:gocritic
 func fingerprintInput(
-	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
+	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, identityKey, moduleCallChain string,
 ) string {
 	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleID}
 
 	switch platform {
 	case dockerfilePlatform:
 		segments = append(segments, vulnLine)
-	case terraformPlatform:
+	case TerraformPlatform:
+		// Several findings of a rule on one Terraform block (Terraform rule contract).
+		if identityKey != "" {
+			segments = append(segments, "#"+identityKey)
+		}
 		// Same resource reached through different module call paths is a distinct finding.
 		if moduleCallChain != "" {
 			segments = append(segments, moduleCallChain)
