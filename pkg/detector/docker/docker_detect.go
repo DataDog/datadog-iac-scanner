@@ -5,13 +5,18 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	dockerparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 )
 
 // DetectKindLine defines a kindDetectLine type
 type DetectKindLine struct {
+	mu       sync.Mutex
+	fileID   string
+	document model.Document
 }
 
 const (
@@ -24,7 +29,7 @@ var (
 )
 
 // DetectLine searches vulnerability line in docker files
-func (d DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata, searchKey string,
+func (d *DetectKindLine) DetectLine(ctx context.Context, file *model.FileMetadata, searchKey string,
 	outputLines int) model.VulnerabilityLines {
 	det := &detector.DefaultDetectLineResponse{
 		CurrentLine:     0,
@@ -133,4 +138,22 @@ func multiLineSpliter(textSplit []string, key string, idx int) string {
 	result := b.String()
 	textSplit[idx] = result
 	return result
+}
+
+// LocateNode resolves a rule contract finding against the file's Dockerfile
+// model. Parsed documents are released during evaluation, so the model is
+// rebuilt from the file; findings of a file arrive together, so the last one
+// is kept.
+func (d *DetectKindLine) LocateNode(ctx context.Context, file *model.FileMetadata,
+	pointer []string) (detector.NodeLocation, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.fileID != file.ID || d.document == nil {
+		_, documents, _, _, err := (&dockerparser.Parser{}).Parse(ctx, []byte(strings.Join(file.Lines(), "\n")), file.FilePath, false, 0)
+		if err != nil || len(documents) != 1 {
+			return detector.NodeLocation{}, false
+		}
+		d.fileID, d.document = file.ID, documents[0]
+	}
+	return detector.LocateNode(map[string]any(d.document), pointer)
 }
