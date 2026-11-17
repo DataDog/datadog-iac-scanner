@@ -64,7 +64,7 @@ func Addr(b Block) string {
 // instance address. suffix is already formatted HCL syntax (for example [0]).
 func Instance(module string, b Block, suffix string) string {
 	addr := Addr(b)
-	if suffix != "" && (b.Kind == KindResource || b.Kind == KindData || b.Kind == KindEphemeral) {
+	if suffix != "" && (b.Kind == KindResource || b.Kind == KindData || b.Kind == KindEphemeral || b.Kind == KindModule) {
 		addr += suffix
 	}
 	if module != "" {

@@ -22,6 +22,8 @@ func TestInstanceAddress(t *testing.T) {
 	}{
 		{"root count", "", Block{Kind: KindResource, Type: "aws_s3_bucket", Name: "web"}, "[1]", "aws_s3_bucket.web[1]"},
 		{"nested for_each", `module.network["blue"]`, Block{Kind: KindData, Type: "aws_vpc", Name: "current"}, `["prod"]`, `module.network["blue"].data.aws_vpc.current["prod"]`},
+		{"root module count", "", Block{Kind: KindModule, Name: "child"}, "[0]", "module.child[0]"},
+		{"nested module for_each", `module.network["blue"]`, Block{Kind: KindModule, Name: "storage"}, `["prod"]`, `module.network["blue"].module.storage["prod"]`},
 		{"variable", "", Block{Kind: KindVariable, Name: "region"}, "[0]", "var.region"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
