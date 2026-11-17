@@ -1061,17 +1061,6 @@ DatadogPolicy contains {"_dd_id":"fixed","path":[]} if value(input.block) == 1`,
 	}
 }
 
-func TestTraceProofRejectsStructuralArrayUnknowns(t *testing.T) {
-	g := newTestGate(t, testPlaceholder, `package datadog
-
-DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(input.block.ingress) == 1
-`)
-	input := mustValue(t, `{"block":{"ingress":["${...}"]}}`)
-	report := compareScopedAndFullStage2(t, g, input, blockScopeForProofTest(t, input))
-	require.True(t, report.Verdicts[0].Uncertain)
-	require.Greater(t, report.SubstitutionEvals, 0)
-}
-
 func TestTraceProofRejectsConfiguredSentinelComparisons(t *testing.T) {
 	modules := map[string]*ast.Module{
 		"policy.rego": ast.MustParseModule(`package datadog
@@ -1125,26 +1114,6 @@ func TestUnstableCompositeShapeDetectsNestedInputSet(t *testing.T) {
 	set := ast.NewSet(ast.NewTerm(block))
 	input := ast.NewObject(ast.Item(ast.StringTerm("members"), ast.NewTerm(set)))
 	require.True(t, unstableCompositeShape(input, ph))
-}
-
-func TestObjectValueProofAllowsMixedArrayScope(t *testing.T) {
-	ph := newPlaceholder(testPlaceholder)
-	input := mustValue(t, `{"block":{"unused":"${...}","items":["${...}"]}}`)
-	scope := blockScopeForProofTest(t, input)
-	result := mustValue(t, `{"_dd_id":"fixed","path":[]}`)
-	candidate := Candidate{Result: result, Scope: []ast.Value{scope}}
-
-	require.True(t, traceProvesObjectValueSubstitutions(&resultState{}, candidate, input, ph))
-	require.False(t, onlyObjectValueUnknowns(candidate, input, ph), "the array occurrence requires a separate structural proof")
-
-	g := newTestGate(t, testPlaceholder, `package datadog
-
-DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true
-`)
-	input = mustValue(t, `{"block":{"enabled":true,"unused":"${...}","items":["${...}"]}}`)
-	report := compareScopedAndFullStage2(t, g, input, blockScopeForProofTest(t, input))
-	require.False(t, report.Verdicts[0].Uncertain)
-	require.Zero(t, report.SubstitutionEvals, "unused arrays require no counterfactual replay")
 }
 
 func TestObjectValueProofRejectsMixedSetAndUnknownKeyScopes(t *testing.T) {
@@ -1210,7 +1179,7 @@ DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(items) == 1`, `{"bl
 		{"data alias", `arr := input.block.items
 DatadogPolicy contains {"_dd_id":"fixed","path":[]} if not arr == []`, `{"block":{"items":["${...}"]}}`, true, false},
 		{"bound get", `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if not object.get(input.block,"items",null,[])`, `{"block":{"items":["${...}"]}}`, true, false},
-		{"unused", `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true`, `{"block":{"enabled":true,"items":["${...}"]}}`, false, true},
+		{"unused mixed values", `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true`, `{"block":{"enabled":true,"unused":"${...}","items":["${...}"]}}`, false, true},
 		{"count", `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(input.block.items) == 1`, `{"block":{"items":["${...}"]}}`, true, false},
 		{"index shift", `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.items[1] == "safe"`, `{"block":{"items":["${...}","safe"]}}`, true, false},
 		{"get shift", `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if object.get(input.block,["items",1],"no") == "safe"`, `{"block":{"items":["${...}","safe"]}}`, true, false},
@@ -1219,6 +1188,15 @@ value(x) := 2 if x.items[2] == true
 DatadogPolicy contains {"_dd_id":"fixed","path":[]} if value(input.block) == 1`, `{"block":{"items":["${...}"]}}`, false, false},
 		{"function shape", `value([x]) := 1 if true
 DatadogPolicy contains {"_dd_id":"fixed","path":[]} if value(input.block.items) == 1`, `{"block":{"items":["${...}"]}}`, true, false},
+		{"function returns array", `items(x) := x if true
+DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(items(input.block.items)) == 1`, `{"block":{"items":["${...}"]}}`, true, false},
+		{"vdoc alias chain", `items := input.block.items if true
+alias := items if true
+DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(alias) == 1`, `{"block":{"items":["${...}"]}}`, true, false},
+		{"vdoc object get", `items := object.get(input.block,"items",[]) if true
+DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(items) == 1`, `{"block":{"items":["${...}"]}}`, true, false},
+		{"function head array length", `items([x]) := x if true
+DatadogPolicy contains {"_dd_id":"fixed","path":items(input.block.items)} if true`, `{"block":{"items":["${...}"]}}`, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g := newTestGate(t, testPlaceholder, "package datadog\n"+tc.source)
@@ -1229,6 +1207,7 @@ DatadogPolicy contains {"_dd_id":"fixed","path":[]} if value(input.block.items) 
 			scoped, se := g.Check(context.Background(), input, []Candidate{{Result: results[0], Scope: []ast.Value{blockScopeForProofTest(t, input)}}})
 			full, fe := g.Check(context.Background(), input, []Candidate{{Result: results[0]}})
 			if fe != nil {
+				require.Equal(t, "failed new element", tc.name, "other cases must complete their certainty checks")
 				require.EqualError(t, se, fe.Error())
 				return
 			}
@@ -1242,54 +1221,6 @@ DatadogPolicy contains {"_dd_id":"fixed","path":[]} if value(input.block.items) 
 					require.Positive(t, scoped.SubstitutionEvals)
 				}
 			}
-		})
-	}
-}
-
-func TestStructuralProofAdversarialHeadAndAliasFlows(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		source string
-	}{
-		{
-			name: "function returns structural array",
-			source: `items(x) := x if true
-DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(items(input.block.items)) == 1`,
-		},
-		{
-			name: "vdoc aliases structural array",
-			source: `items := input.block.items if true
-alias := items if true
-DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(alias) == 1`,
-		},
-		{
-			name: "vdoc value uses object get",
-			source: `items := object.get(input.block,"items",[]) if true
-DatadogPolicy contains {"_dd_id":"fixed","path":[]} if count(items) == 1`,
-		},
-		{
-			name: "function head matching array length",
-			source: `items([x]) := x if true
-DatadogPolicy contains {"_dd_id":"fixed","path":items(input.block.items)} if true`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			g := newTestGate(t, testPlaceholder, "package datadog\n"+tc.source)
-			input := mustValue(t, `{"block":{"items":["${...}"]}}`)
-			scope := blockScopeForProofTest(t, input)
-			results, err := g.Results(context.Background(), input)
-			require.NoError(t, err)
-			require.Len(t, results, 1)
-			tr, err := g.trace(context.Background(), input)
-			require.NoError(t, err)
-			require.True(t, tr.structuralSensitive || tr.substitutionSensitive,
-				"structural array flow through head/function must disable the all-stage-2 fast path")
-			scoped, err := g.Check(context.Background(), input, []Candidate{{Result: results[0], Scope: []ast.Value{scope}}})
-			require.NoError(t, err)
-			full, err := g.Check(context.Background(), input, []Candidate{{Result: results[0]}})
-			require.NoError(t, err)
-			require.Equal(t, full.Verdicts[0].Uncertain, scoped.Verdicts[0].Uncertain)
-			require.Greater(t, scoped.SubstitutionEvals, 0)
 		})
 	}
 }

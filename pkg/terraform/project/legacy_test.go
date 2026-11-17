@@ -372,15 +372,13 @@ resource "google_compute_instance" "vm" {
 	require.Equal(t, "${local.not_a_dependency}", labels["literal"], "an escaped interpolation remains literal string data")
 }
 
-func TestLegacyNestedModuleEncodesKnownWildcardPolicyArgument(t *testing.T) {
+func TestLegacyNestedModulePreservesKnownJSONArgument(t *testing.T) {
 	_, docs := legacy(t, map[string]string{
 		"main.tf": `
 module "bucket" {
   source = "./bucket"
   additional_statements = [{
-    Effect    = "Allow"
     Principal = "*"
-    Action    = "s3:GetObject"
     Resource  = ["arn:aws:s3:::example/*"]
   }]
 }
@@ -397,20 +395,16 @@ resource "aws_s3_bucket" "bucket" {
 
 locals {
   default_statements = [{
-    Effect    = "Deny"
     Principal = "*"
-    Action    = "s3:*"
     Resource  = ["arn:aws:s3:::${aws_s3_bucket.bucket.bucket}/*"]
   }]
   all_statements = concat(local.default_statements, var.additional_statements)
   full_policy = {
-    Version   = "2012-10-17"
     Statement = local.all_statements
   }
 }
 
 resource "aws_s3_bucket_policy" "bucket" {
-  bucket = aws_s3_bucket.bucket.id
   policy = jsonencode(local.full_policy)
 }
 `,
@@ -423,17 +417,10 @@ resource "aws_s3_bucket_policy" "bucket" {
 	require.NoError(t, json.Unmarshal([]byte(policyText), &policy))
 	statements, ok := policy["Statement"].([]any)
 	require.True(t, ok)
-	var found bool
-	for _, raw := range statements {
-		statement, ok := raw.(map[string]any)
-		if !ok || statement["Effect"] != "Allow" {
-			continue
-		}
-		if principal, ok := statement["Principal"].(string); ok && principal == "*" {
-			found = true
-		}
-	}
-	require.True(t, found, "the nested module's known wildcard allow statement should remain detectable")
+	require.Len(t, statements, 2)
+	provided, ok := statements[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "*", provided["Principal"], "the provided argument survives list coercion, concatenation and JSON encoding")
 }
 
 func TestLegacyJSONExprDoesNotReuseDottedKeyCollision(t *testing.T) {

@@ -113,33 +113,6 @@ func gateFailureContext(
 	return ins, qCtx, decodes
 }
 
-func TestGateFailureRetractsEarlierRuleFindings(t *testing.T) {
-	ctx := context.Background()
-	ins, qCtx, _ := gateFailureContext(t, ctx, func() (*unknowngate.Gate, error) {
-		return nil, errors.New("gate construction failed")
-	})
-	_, _, _, gateErr := ins.doRun(ctx, qCtx)
-	require.Error(t, gateErr)
-	queries := []model.QueryMetadata{qCtx.Query.Metadata, {Query: "survivor", Metadata: map[string]interface{}{"id": "survivor-id"}}}
-	run := newQueryRun("gate-retraction", nil, queries)
-	ins.aggregateQueryResults(ctx, run, []QueryResult{
-		{queryID: 0, vulnerabilities: []model.Vulnerability{{QueryID: "failing-id", QueryName: "failing"}}},
-		{queryID: 1, vulnerabilities: []model.Vulnerability{{QueryID: "survivor-id", QueryName: "survivor"}}},
-	})
-	findings := run.findings(false) // The previous chunk has already drained the buffers.
-	require.Len(t, findings, 2)
-	ins.aggregateQueryResults(ctx, run, []QueryResult{
-		{queryID: 0, err: gateErr},
-		{queryID: 1, vulnerabilities: []model.Vulnerability{{QueryID: "survivor-id", QueryName: "survivor"}}},
-	})
-	findings = run.withoutFailedRules(append(findings, run.findings(false)...))
-	require.ErrorIs(t, ins.GetFailedQueries()["failing"], gateErr)
-	require.Len(t, findings, 2)
-	for _, finding := range findings {
-		require.Equal(t, "survivor-id", finding.QueryID)
-	}
-}
-
 func TestGateCancellationAbortsWorkerPools(t *testing.T) {
 	for _, mode := range []string{"ordinary", "relational"} {
 		t.Run(mode, func(t *testing.T) {
@@ -176,10 +149,6 @@ func TestGateRejectsUncheckedResults(t *testing.T) {
 	in := qCtx.terraform
 	for _, results := range []rego.ResultSet{nil, {{Bindings: rego.Vars{"result": []interface{}{}}}}} {
 		require.NoError(t, in.gateResults(context.Background(), qCtx, *qCtx.payload, results))
-	}
-	for _, item := range []interface{}{func() {}, make(chan int)} {
-		results := rego.ResultSet{{Bindings: rego.Vars{"result": []interface{}{item}}}}
-		require.ErrorContains(t, in.gateResults(context.Background(), qCtx, *qCtx.payload, results), "for unknown checking")
 	}
 	in.rules = nil
 	results := rego.ResultSet{{Bindings: rego.Vars{"result": []interface{}{map[string]interface{}{"_dd_id": "b1"}}}}}

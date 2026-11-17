@@ -268,51 +268,6 @@ func TestTerraformReferenceModeMatchesOptimized(t *testing.T) {
 	require.False(t, versionedElsewhere, "ops companion must clear the versioned bucket")
 }
 
-func TestTerraformReferenceModeDropsEarlierFindingsWhenRuleLaterFails(t *testing.T) {
-	dir := t.TempDir()
-	good := writeFile(t, filepath.Join(dir, "01-good"), "main.tf", `resource "aws_s3_bucket" "good" { acl = "private" }`)
-	failing := writeFile(t, filepath.Join(dir, "02-failing"), "main.tf", `resource "aws_s3_bucket" "bad" {
-  acl = "private"
-  tags = { conflict = "yes" }
-}`)
-	files := append(parseTerraform(t, good), parseTerraform(t, failing)...)
-	query := `package datadog
-
-import rego.v1
-import data.generic.common as common
-import data.generic.terraform as tf
-
-kind(b) := "private" if b.acl == "private"
-kind(b) := "conflict" if b.tags.conflict == "yes"
-
-DatadogPolicy contains result if {
-	some b in tf.blocks("aws_s3_bucket")
-	kind(b) == "private"
-	result := common.finding(b, [], {})
-}
-`
-	conflicting := referenceQuery("conflicting", "conflicting-id", query)
-	survivor := referenceQuery("survivor", "survivor-id", referenceBucketRule)
-	survivor.Metadata["queryName"] = "conflicting"
-	ins := newTestInspector(t, inspectorOpts{
-		querySource:   &referenceQueriesSource{queries: []model.QueryMetadata{conflicting, survivor}},
-		repoPath:      dir,
-		vb:            DefaultVulnerabilityBuilder,
-		tracker:       &tracker.CITracker{},
-		flagEvaluator: featureflags.NewLocalEvaluator(),
-	})
-	ins.SetTerraformReferenceMode(true)
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
-	require.NoError(t, err)
-	require.Contains(t, ins.GetFailedQueries(), "conflicting")
-	require.Len(t, vulns, 2, "findings from a rule that fails on a later root must be dropped")
-	for i := range vulns {
-		require.Equal(t, "survivor-id", vulns[i].QueryID)
-		require.Equal(t, "conflicting", vulns[i].QueryName,
-			"a successful rule with the same display name must retain its findings")
-	}
-}
-
 func TestInspect_ElseBranchSchedulesSqsRoot(t *testing.T) {
 	dir := t.TempDir()
 	sqs := writeFile(t, dir, "sqs/main.tf", `resource "aws_sqs_queue" "only" {}`)

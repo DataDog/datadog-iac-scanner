@@ -14,11 +14,10 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"sync"
-	"sync/atomic"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
@@ -194,11 +193,13 @@ func scannedDirs(ctx context.Context, fsys vfs.FS, base string, files map[string
 
 func parallelMap[T any, R any](ctx context.Context, input []T, workers int, fn func(T) (R, error)) ([]R, error) {
 	out := make([]R, len(input))
-	errs := make([]error, len(input))
 	if len(input) == 0 {
 		return out, nil
 	}
 	workers = max(1, min(workers, len(input)))
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if workers == 1 {
 		for i, item := range input {
 			if err := ctx.Err(); err != nil {
@@ -215,27 +216,11 @@ func parallelMap[T any, R any](ctx context.Context, input []T, workers int, fn f
 		}
 		return out, nil
 	}
-	var next atomic.Int64
-	var wg sync.WaitGroup
-	for range workers {
-		wg.Go(func() {
-			for {
-				if ctx.Err() != nil {
-					return
-				}
-				i := int(next.Add(1) - 1)
-				if i >= len(input) {
-					return
-				}
-				out[i], errs[i] = fn(input[i])
-				if errs[i] != nil {
-					return
-				}
-			}
-		})
-	}
-	wg.Wait()
-	if err := ctx.Err(); err != nil {
+	errs := make([]error, len(input))
+	if err := utils.ForEach(ctx, input, utils.PoolOptions{Workers: workers}, func(_ context.Context, item T, i int) error {
+		out[i], errs[i] = fn(item)
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	for _, err := range errs {
