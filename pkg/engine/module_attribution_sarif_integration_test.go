@@ -224,7 +224,7 @@ resource "aws_s3_bucket" "this" {
 	require.Len(t, summary.Queries[0].Files, 1)
 	fingerprintPath, err := filepath.Rel(root, vulns[0].FileName)
 	require.NoError(t, err)
-	want := model.GetDatadogFingerprintHash(model.SCIInfo{}, filepath.ToSlash(fingerprintPath), vulns[0].Platform,
+	want := model.GetDatadogFingerprintHash(model.SCIInfo{}, fingerprintPath, vulns[0].Platform,
 		vulns[0].ResourceType, vulns[0].ResourceName, vulns[0].QueryID, "", legacyChain)
 	require.Equal(t, want, summary.Queries[0].Files[0].Fingerprint)
 }

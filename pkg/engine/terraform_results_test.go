@@ -213,7 +213,7 @@ func TestLegacyModuleAddressSpellingPreservesLegacyIdentity(t *testing.T) {
 				ModuleCallChain: chain,
 			}
 			wantFingerprint := model.GetDatadogFingerprintHash(
-				model.SCIInfo{}, v.FileName, v.Platform, v.ResourceType, v.ResourceName,
+				model.SCIInfo{}, filepath.FromSlash(v.FileName), v.Platform, v.ResourceType, v.ResourceName,
 				v.QueryID, "", "stack/main.tf|"+legacyModule,
 			)
 			summary := model.CreateSummary(context.Background(), model.Counters{}, []model.Vulnerability{v}, "scan", nil, "/repo", model.SCIInfo{})
