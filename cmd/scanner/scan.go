@@ -80,7 +80,7 @@ var scanAction = &cli.Command{
 		&cli.StringFlag{
 			Name:  "terraform-modules",
 			Usage: "enable remote Terraform module resolution: off or on",
-			Value: string(scan.TerraformModulesOff),
+			Value: string(scan.TerraformModulesOn),
 		},
 		&cli.StringFlag{
 			Name:  "terraform-modules-manifest",

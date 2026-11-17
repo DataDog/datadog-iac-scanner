@@ -208,6 +208,16 @@ func TestTerraformModuleFlagsUseAuthoritativeMode(t *testing.T) {
 	require.False(t, names["x-remote-modules"])
 }
 
+func TestTerraformModulesFlagDefaultsToOn(t *testing.T) {
+	for _, flag := range scanAction.Flags {
+		if typed, ok := flag.(*cli.StringFlag); ok && typed.Name == "terraform-modules" {
+			assert.Equal(t, string(scan.TerraformModulesOn), typed.Value)
+			return
+		}
+	}
+	t.Fatal("terraform-modules flag should be defined")
+}
+
 func TestValidateQueriesPaths(t *testing.T) {
 	tmp := t.TempDir()
 
