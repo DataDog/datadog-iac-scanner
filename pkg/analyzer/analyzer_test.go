@@ -541,9 +541,16 @@ func TestAnalyze_JSONConfigClassifiesAsTerraform(t *testing.T) {
 	tfJSON := filepath.Join(dir, "main.tf.json")
 	tofuJSON := filepath.Join(dir, "main.tofu.json")
 	plainJSON := filepath.Join(dir, "data.json")
+	cdktfJSON := filepath.Join(dir, "positive5.json")
 	require.NoError(t, os.WriteFile(tfJSON, []byte(`{"resource":{"aws_s3_bucket":{"b":{"acl":"public-read"}}}}`), 0o600))
 	require.NoError(t, os.WriteFile(tofuJSON, []byte(`{"resource":{"aws_s3_bucket":{"c":{"acl":"private"}}}}`), 0o600))
 	require.NoError(t, os.WriteFile(plainJSON, []byte(`{"hello":"world"}`), 0o600))
+	require.NoError(t, os.WriteFile(cdktfJSON, []byte(`{
+  "//": {"metadata": {"stackName": "cdktf-test", "version": "0.9.0"}},
+  "provider": {"aws": [{"region": "us-east-1"}]},
+  "resource": {"aws_instance": {"cdktf-test": {"ami": "ami-1", "monitoring": false}}},
+  "terraform": {"required_providers": {"aws": {"source": "aws"}}}
+}`), 0o600))
 
 	got, err := Analyze(context.Background(), &Analyzer{
 		RepoPath:    dir,
@@ -556,9 +563,11 @@ func TestAnalyze_JSONConfigClassifiesAsTerraform(t *testing.T) {
 	require.Equal(t, []string{terraform}, got.Types)
 	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(tfJSON)])
 	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(tofuJSON)])
+	require.Equal(t, terraform, got.FilePlatform[filepath.ToSlash(cdktfJSON)])
 	require.ElementsMatch(t, []string{
 		filepath.ToSlash(tfJSON),
 		filepath.ToSlash(tofuJSON),
+		filepath.ToSlash(cdktfJSON),
 	}, got.Inventory)
 	require.NotContains(t, got.Inventory, filepath.ToSlash(plainJSON))
 }

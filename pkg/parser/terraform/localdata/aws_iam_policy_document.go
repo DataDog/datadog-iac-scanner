@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/terraform/value"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -177,7 +178,8 @@ func overrideBySid(base, statements []policyStatement) []policyStatement {
 	for i := range statements {
 		st := &statements[i]
 		replaced := false
-		if st.Sid != "" {
+		// An unknown sid may equal any other, so it replaces nothing.
+		if st.Sid != "" && !value.HasUnknownMarker(st.Sid) {
 			for j := range base {
 				if base[j].Sid == st.Sid {
 					base[j] = *st
@@ -501,9 +503,10 @@ func (r *jsonReader) strings(raw json.RawMessage) []string {
 }
 
 // unresolvedTemplate reports whether s is a placeholder the partial renderer
-// leaves when an expression does not resolve.
+// leaves when an expression does not resolve, or an unknown part of a rendered
+// document.
 func unresolvedTemplate(s string) bool {
-	return strings.Contains(s, "${")
+	return strings.Contains(s, "${") || value.HasUnknownMarker(s)
 }
 
 func (r *jsonReader) principal(raw json.RawMessage) map[string][]string {

@@ -312,6 +312,82 @@ block "label_one" {
 	}
 }
 
+func TestEmptyForEachCreatesNoBlock(t *testing.T) {
+	input := `
+resource "aws_s3_bucket" "empty_set" {
+	for_each = toset([])
+}
+resource "aws_s3_bucket" "empty_map" {
+	for_each = {}
+}
+resource "aws_s3_bucket" "from_var" {
+	for_each = var.names
+}
+resource "aws_s3_bucket" "list" {
+	for_each = []
+}
+resource "aws_s3_bucket" "zero" {
+	count = 0
+}
+resource "aws_s3_bucket" "nested_count" {
+	rule {
+		count = 0
+	}
+}
+resource "aws_s3_bucket" "unknown" {
+	for_each = var.missing
+}
+resource "aws_s3_bucket" "one" {
+	for_each = toset(["a"])
+}
+resource "aws_s3_bucket" "nested" {
+	rule {
+		for_each = []
+	}
+}
+data "aws_iam_policy_document" "empty" {
+	for_each = {}
+}
+ephemeral "aws_secretsmanager_secret_version" "empty" {
+	for_each = {}
+}
+module "empty" {
+	source   = "./m"
+	for_each = {}
+}
+locals {
+	for_each = []
+	count    = 0
+}
+provider "aws" {
+	for_each = {}
+}
+`
+	file, _ := hclsyntax.ParseConfig([]byte(input), "main.tf", hcl.Pos{Byte: 0, Line: 1, Column: 1})
+	body, err := DefaultConverted(context.Background(), file, VariableMap{
+		"var": cty.ObjectVal(map[string]cty.Value{
+			"names": cty.SetValEmpty(cty.String),
+		}),
+	})
+	require.NoError(t, err)
+
+	buckets := body["resource"].(model.Document)["aws_s3_bucket"].(model.Document)
+	for _, name := range []string{"empty_set", "empty_map", "zero"} {
+		require.NotContains(t, buckets, name, "a known empty expansion creates no instance")
+	}
+	require.Contains(t, buckets, "from_var", "a caller may set the variable, so module evaluation decides")
+	require.Contains(t, buckets, "list", "Terraform rejects a list for_each, so it is kept as written")
+	require.Contains(t, buckets["nested_count"].(model.Document), "rule", "a nested count is an attribute")
+	require.Contains(t, buckets, "unknown", "an unknown for_each may create instances")
+	require.Contains(t, buckets, "one")
+	require.Contains(t, buckets["nested"].(model.Document), "rule", "a nested block does not expand")
+	require.NotContains(t, body, "data")
+	require.NotContains(t, body, "ephemeral")
+	require.NotContains(t, body, "module")
+	require.Contains(t, body, "locals", "locals do not expand")
+	require.Contains(t, body, "provider", "a provider does not expand")
+}
+
 func TestUnknownValuesRemainSerializable(t *testing.T) {
 	input := `
 block "test" {
@@ -1071,7 +1147,7 @@ resource "aws_security_group" "sg" {
 		"the iterator must not stay bound after its dynamic block")
 }
 
-func TestCountResolvedFromVariables(t *testing.T) {
+func TestCountFromVariablesIsLeftToModuleEvaluation(t *testing.T) {
 	input := `
 resource "aws_s3_bucket" "disabled" {
   count  = var.enabled ? 1 : 0
@@ -1089,7 +1165,8 @@ resource "aws_s3_bucket" "unknown" {
 		}),
 	})
 	buckets := out["resource"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})
-	require.NotContains(t, buckets, "disabled", "a count of zero creates no block")
+	require.Contains(t, buckets, "disabled", "a caller may set the variable, so module evaluation decides")
+	require.Equal(t, float64(0), buckets["disabled"].(map[string]interface{})["count"])
 	require.Contains(t, buckets, "unknown")
 }
 

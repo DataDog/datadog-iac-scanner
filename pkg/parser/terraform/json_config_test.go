@@ -60,6 +60,38 @@ func TestParseJSONConfigCountZeroSkipped(t *testing.T) {
 	require.True(t, kept)
 }
 
+func TestParseJSONConfigEmptyForEachSkipped(t *testing.T) {
+	src := []byte(`{
+  "resource": {
+    "aws_instance": {
+      "none": { "for_each": {}, "ami": "ami-123" },
+      "empty": { "for_each": [], "ami": "ami-123" },
+      "one": { "for_each": { "a": "x" }, "ami": "ami-123" },
+      "zero": { "count": 0, "ami": "ami-123" },
+      "nested": { "rule": { "for_each": [], "count": 0 } }
+    }
+  },
+  "data": { "aws_iam_policy_document": { "empty": { "for_each": {} } } },
+  "ephemeral": { "aws_secretsmanager_secret_version": { "empty": { "for_each": {} } } },
+  "module": { "empty": { "source": "./m", "for_each": {} } },
+  "locals": { "for_each": [], "count": 0 },
+  "provider": { "aws": { "for_each": {} } }
+}`)
+	doc, err := parseJSONConfig(src, "main.tf.json", nil)
+	require.NoError(t, err)
+	instances := doc["resource"].(model.Document)["aws_instance"].(model.Document)
+	require.NotContains(t, instances, "none")
+	require.Contains(t, instances, "empty", "Terraform rejects a list for_each, so it is kept as written")
+	require.NotContains(t, instances, "zero")
+	require.Contains(t, instances, "one")
+	require.Contains(t, instances, "nested", "a nested for_each does not expand the block")
+	require.NotContains(t, doc, "data")
+	require.NotContains(t, doc, "ephemeral")
+	require.NotContains(t, doc, "module")
+	require.Contains(t, doc, "locals", "locals do not expand")
+	require.Contains(t, doc, "provider", "a provider does not expand")
+}
+
 func TestParser_JSONConfigAndTofuJSON(t *testing.T) {
 	ctx := context.Background()
 	parser := NewDefault()

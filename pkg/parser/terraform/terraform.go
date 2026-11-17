@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/parsecontext"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -257,7 +258,13 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
 	contextLogger := logger.FromContext(ctx)
-	resolved, inputVariables, err := p.Resolve(ctx, fileContent, path, resolveReferences, maxResolverDepth)
+	metadataOnly := metadataOnlyTerraformParse(ctx, path)
+	var inputVariables converter.VariableMap
+	if metadataOnly {
+		resolved, err = tfmodules.ResolveConfigContent(ctx, p.fsys, path, "", fileContent)
+	} else {
+		resolved, inputVariables, err = p.Resolve(ctx, fileContent, path, resolveReferences, maxResolverDepth)
+	}
 	if errors.Is(err, tfmodules.ErrSkippedLinkPlaceholder) {
 		return nil, nil, nil, nil, nil
 	}
@@ -293,6 +300,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	}
 
 	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
+	if metadataOnly {
+		return resolved, []model.Document{{}}, linesToIgnore, resolvedFiles, nil
+	}
 
 	fc, parseErr := p.convertFunc(ctx, file, inputVariables, converter.Options{
 		BaseDir: filepath.Dir(path),
@@ -304,6 +314,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	}
 
 	return resolved, json, linesToIgnore, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
+}
+
+func metadataOnlyTerraformParse(ctx context.Context, path string) bool {
+	return parsecontext.IsTerraformMetadataOnly(ctx) &&
+		!parsecontext.IsLineInfoOnly(ctx) && tfpath.IsHCLConfig(path)
 }
 
 // SupportedExtensions returns Terraform/OpenTofu extensions.

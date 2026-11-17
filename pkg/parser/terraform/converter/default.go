@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -50,6 +51,7 @@ func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, op
 		variables[name] = value
 	}
 	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS))
+	c.file = file.Body.(*hclsyntax.Body)
 	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 
 	if err != nil {
@@ -73,6 +75,8 @@ type converter struct {
 	bytes     []byte
 	inputVars VariableMap
 	renderer  *partial.Renderer
+	// file is the body of the whole file.
+	file *hclsyntax.Body
 }
 
 func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
@@ -92,22 +96,6 @@ func (c *converter) rangeSource(r hcl.Range) string {
 
 func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLine int) (model.Document, error) {
 	var err error
-	countValue := body.Attributes["count"]
-	count := -1
-
-	if countValue != nil {
-		value, diags := countValue.Expr.Value(c.renderer.Ctx)
-		if !diags.HasErrors() {
-			if intValue, ok := ctyutil.LiteralInt(value); ok {
-				count = intValue
-			}
-		}
-	}
-
-	if count == 0 {
-		return nil, nil
-	}
-
 	out := make(model.Document)
 	ddLines := make(map[string]model.LineObject)
 	// set line info for the body
@@ -148,6 +136,9 @@ func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLi
 		// set line info for block
 		ddLines["_dd_"+block.Type] = model.LineObject{
 			Line: block.TypeRange.Start.Line,
+		}
+		if body == c.file && c.zeroInstances(block) {
+			continue
 		}
 		err = c.convertBlock(ctx, block, out, block.TypeRange.Start.Line)
 		if err != nil {
@@ -196,6 +187,11 @@ func (c *converter) getArrLines(expr hclsyntax.Expression) []map[string]*model.L
 		}
 	}
 	return arr
+}
+
+func (c *converter) zeroInstances(block *hclsyntax.Block) bool {
+	count, forEach := tfinstances.Attributes(block.Body)
+	return tfinstances.ZeroInstancesAsWritten(block.Type, len(block.Labels), count, forEach, c.renderer.Ctx)
 }
 
 func (c *converter) convertBlock(ctx context.Context, block *hclsyntax.Block, out model.Document, defLine int) error {

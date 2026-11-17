@@ -57,6 +57,49 @@ func TestInputsKeySharedCollectionDoesNotScale(t *testing.T) {
 	}
 }
 
+func TestInputsKeyMarkedValuesDoNotPanic(t *testing.T) {
+	plain := cty.EmptyObjectVal
+	marked := markResourceInstance(plain)
+	nested := cty.ObjectVal(map[string]cty.Value{
+		"src": marked,
+		"n":   cty.NumberIntVal(1),
+	})
+	require.NotEqual(t,
+		canonicalInputsKey(map[string]cty.Value{"v": plain}),
+		canonicalInputsKey(map[string]cty.Value{"v": marked}),
+		"instance marks change missing-attribute semantics",
+	)
+	require.NotEqual(t,
+		canonicalInputsKey(map[string]cty.Value{"cfg": cty.ObjectVal(map[string]cty.Value{
+			"src": plain, "n": cty.NumberIntVal(1),
+		})}),
+		canonicalInputsKey(map[string]cty.Value{"cfg": nested}),
+		"nested instance marks must affect the key",
+	)
+	require.NotEqual(t, encodeCtyForKey(plain), encodeCtyForKey(marked))
+	require.NotPanics(t, func() {
+		_ = canonicalInputsKey(map[string]cty.Value{
+			"v": marked.Mark("sensitive"),
+		})
+	})
+}
+
+func TestInputsKeyRegisteredInstancesDifferFromLookalikes(t *testing.T) {
+	reg := newInstanceRegistry()
+	src := cty.ObjectVal(map[string]cty.Value{"input": cty.StringVal("secure")})
+	reg.register(&instanceAt{dir: ".", addr: "", kind: refManaged, typ: "terraform_data", name: "src"}, src)
+	lookalike := cty.ObjectVal(map[string]cty.Value{"input": cty.StringVal("secure")})
+	memo := keyMemo{registry: reg}
+	require.NotEqual(t,
+		memo.inputsKeyUninterruptible(map[string]cty.Value{"in": src}),
+		memo.inputsKeyUninterruptible(map[string]cty.Value{"in": lookalike}),
+	)
+	require.NotEqual(t,
+		memo.inputsKeyUninterruptible(map[string]cty.Value{"cfg": cty.ObjectVal(map[string]cty.Value{"src": src})}),
+		memo.inputsKeyUninterruptible(map[string]cty.Value{"cfg": cty.ObjectVal(map[string]cty.Value{"src": lookalike})}),
+	)
+}
+
 func TestInputsKeyEmptyListsOfDifferentTypesDoNotCollide(t *testing.T) {
 	var memo keyMemo
 	strings, _ := memo.inputsKey(context.Background(), map[string]cty.Value{"v": cty.ListValEmpty(cty.String)})

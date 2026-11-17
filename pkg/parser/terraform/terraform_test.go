@@ -16,6 +16,8 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -534,4 +536,54 @@ func TestParseUnavailableJSONLinkPlaceholder(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, docs)
 	require.Contains(t, logs.String(), `"level":"debug"`)
+}
+
+func TestTerraformMetadataOnlyPreservesSourceAndIgnoreLines(t *testing.T) {
+	const source = `resource "aws_s3_bucket" "b" {
+  bucket = "example"
+  // dd-iac-scan ignore-line
+  acl = "public-read"
+}
+`
+	p := NewDefaultWithParams(vfs.NewMemFS(nil), "", model.SCIInfo{})
+	converted := false
+	p.convertFunc = func(context.Context, *hcl.File, converter.VariableMap, converter.Options) (model.Document, error) {
+		converted = true
+		return nil, nil
+	}
+
+	resolved, docs, ignored, _, err := p.Parse(
+		iacparser.WithTerraformMetadataOnly(context.Background()), []byte(source), "main.tf", false, 0)
+	require.NoError(t, err)
+	require.Equal(t, source, string(resolved))
+	require.Equal(t, []model.Document{{}}, docs)
+	require.Contains(t, ignored, 3)
+	require.False(t, converted)
+	entries := 0
+	p.dirVarsCache.Range(func(_, _ any) bool { entries++; return true })
+	require.Zero(t, entries, "metadata-only parsing must not resolve directory variables")
+}
+
+func TestTerraformMetadataOnlyKeepsSyntaxErrors(t *testing.T) {
+	p := NewDefault()
+	_, docs, _, _, err := p.Parse(
+		iacparser.WithTerraformMetadataOnly(context.Background()), []byte(`resource "aws_s3_bucket" {`), "bad.tf", false, 0)
+	require.Error(t, err)
+	require.Nil(t, docs)
+}
+
+func TestTerraformMetadataOnlyDoesNotAffectLineInfoOrJSON(t *testing.T) {
+	p := NewDefault()
+	ctx := iacparser.WithTerraformMetadataOnly(context.Background())
+	lineInfoCtx := iacparser.WithLineInfoOnly(ctx)
+	_, docs, _, _, err := p.Parse(lineInfoCtx, []byte(`resource "aws_s3_bucket" "b" { bucket = "example" }`), "main.tf", false, 0)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	require.NotEmpty(t, docs[0]["resource"])
+
+	jsonConfig := `{"resource":{"aws_s3_bucket":{"b":{"bucket":"example"}}}}`
+	_, docs, _, _, err = p.Parse(ctx, []byte(jsonConfig), "main.tf.json", false, 0)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	require.NotEmpty(t, docs[0]["resource"])
 }

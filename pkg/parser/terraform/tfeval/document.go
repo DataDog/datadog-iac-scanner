@@ -9,7 +9,9 @@ package tfeval
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
@@ -452,6 +454,52 @@ type RemoteResolver func(
 	source, version, callerFile, moduleName string,
 ) (dir, packageRoot string, ok bool)
 
+// DeclarationSummary is the small part of a parsed directory needed to decide
+// which roots can contribute resources and which roots are called as modules.
+// It intentionally holds no syntax trees or source buffers.
+type DeclarationSummary struct {
+	ResourceTypes     []string
+	CalledDirectories []string
+	// ParsedFiles lists sorted config paths whose syntax bodies the evaluator accepted.
+	// Callers can reuse this compact list to avoid reparsing successful files.
+	ParsedFiles []string
+	Incomplete  bool
+	// UnavailableCallsOnly means all incompleteness comes from statically known non-local calls with no resolver.
+	UnavailableCallsOnly bool
+}
+
+// InspectDeclarations parses dir once and summarizes its resource declarations
+// and statically resolved module calls without evaluating resource instances.
+func InspectDeclarations(
+	ctx context.Context, dir string, resolver RemoteResolver, fsys vfs.FS,
+) DeclarationSummary {
+	bodies, sources, err := parseDir(ctx, dir, "", nil, fsys)
+	if err != nil {
+		return DeclarationSummary{Incomplete: true}
+	}
+
+	summary := DeclarationSummary{}
+	for path := range sources {
+		summary.ParsedFiles = append(summary.ParsedFiles, filepath.Clean(strings.Clone(path)))
+	}
+	slices.Sort(summary.ParsedFiles)
+	for _, body := range bodies {
+		for _, block := range body.Blocks {
+			if block.Type == blockTypeResource && len(block.Labels) > 0 {
+				summary.ResourceTypes = append(summary.ResourceTypes, strings.Clone(block.Labels[0]))
+			}
+		}
+	}
+	calls := collectModuleBlocks(bodies)
+	calledDirs, unavailableOnly := calledModuleDirsWithReason(ctx, dir, bodies, resolver, fsys)
+	for _, called := range calledDirs {
+		summary.CalledDirectories = append(summary.CalledDirectories, filepath.Clean(strings.Clone(called)))
+	}
+	summary.Incomplete = len(calls) > len(summary.CalledDirectories)
+	summary.UnavailableCallsOnly = summary.Incomplete && unavailableOnly
+	return summary
+}
+
 func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string {
 	bodies, _, err := parseDir(context.Background(), dir, "", nil, fsys)
 	if err != nil {
@@ -460,48 +508,123 @@ func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string
 	return calledModuleDirs(context.Background(), dir, bodies, resolver, fsys)
 }
 
-func (e *Evaluator) CalledModuleDirs(dir string) []string {
-	return e.CalledModuleDirsWithContext(context.Background(), dir)
-}
-
-// CalledModuleDirsWithContext retains the scan's root and confinement cache
-// during discovery, which shares parsed directories with module evaluation.
-func (e *Evaluator) CalledModuleDirsWithContext(ctx context.Context, dir string) []string {
-	parsed := e.parseDir(ctx, dir, "")
-	if parsed.err != nil {
-		return nil
-	}
-	return calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys)
-}
-
 func calledModuleDirs(ctx context.Context, dir string, bodies []*hclsyntax.Body, resolver RemoteResolver, fsys vfs.FS) []string {
-	moduleBlocks := collectModuleBlocks(bodies)
+	dirs, _ := calledModuleDirsWithReason(ctx, dir, bodies, resolver, fsys)
+	return dirs
+}
 
+// calledModuleDirsWithReason reports whether every unresolved call is a statically known non-local source
+// that cannot be resolved because resolver is nil. It uses the same source extraction and resolver behavior.
+func calledModuleDirsWithReason(
+	ctx context.Context, dir string, bodies []*hclsyntax.Body, resolver RemoteResolver, fsys vfs.FS,
+) ([]string, bool) {
+	moduleBlocks := collectModuleBlocks(bodies)
 	emptyCtx := &hcl.EvalContext{}
 	var dirs []string
+	hasUnavailable, onlyUnavailable := false, true
 	for _, mb := range moduleBlocks {
 		source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], emptyCtx)
 		if source == "" {
+			onlyUnavailable = false
 			continue
 		}
 		if localDir, local, err := tfmodules.LocalModuleDirWithContext(ctx, fsys, dir, source); local {
 			if err == nil {
 				dirs = append(dirs, localDir)
+			} else {
+				onlyUnavailable = false
 			}
 			continue
 		}
-		if resolver != nil {
-			version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], emptyCtx)
-			if d, _, ok := resolver(source, version, mb.TypeRange.Filename, blockLabel(mb)); ok {
-				dirs = append(dirs, d)
-			}
+		if resolver == nil {
+			hasUnavailable = true
+			continue
+		}
+		version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], emptyCtx)
+		if d, _, ok := resolver(source, version, mb.TypeRange.Filename, blockLabel(mb)); ok {
+			dirs = append(dirs, d)
+		} else {
+			onlyUnavailable = false
 		}
 	}
-	return dirs
+	return dirs, hasUnavailable && onlyUnavailable
 }
 
 // CalledLocalDirs returns the resolved directories of every local module called
 // from dir. Remote/registry sources are ignored.
 func CalledLocalDirs(dir string, fsys vfs.FS) []string {
 	return CalledModuleDirs(dir, nil, fsys)
+}
+
+// CalledModuleTree returns every module directory reachable from dir through
+// module blocks whose source resolves statically or via the remote resolver,
+// without evaluating resource blocks.
+func (e *Evaluator) CalledModuleTree(ctx context.Context, dir string) []string {
+	seen := map[string]bool{}
+	var out []string
+	var visit func(dir string)
+	visit = func(dir string) {
+		dir = filepath.Clean(dir)
+		if seen[dir] {
+			return
+		}
+		seen[dir] = true
+		parsed := e.parseDir(ctx, dir, "")
+		if parsed.err != nil {
+			return
+		}
+		for _, d := range calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys) {
+			d = filepath.Clean(d)
+			out = append(out, d)
+			visit(d)
+		}
+	}
+	visit(dir)
+	return out
+}
+
+// MayDeclareResource reports whether dir or a module it calls, transitively,
+// may declare a resource of one of types. A module call it cannot resolve
+// counts as a yes.
+func (e *Evaluator) MayDeclareResource(ctx context.Context, dir string, types func(string) bool) bool {
+	seen := map[string]bool{}
+	var visit func(dir string) bool
+	visit = func(dir string) bool {
+		dir = filepath.Clean(dir)
+		if seen[dir] {
+			return false
+		}
+		seen[dir] = true
+		parsed := e.parseDir(ctx, dir, "")
+		if parsed.err != nil {
+			return true
+		}
+		for _, body := range parsed.bodies {
+			for _, b := range body.Blocks {
+				if b.Type == "resource" && len(b.Labels) > 0 && types(b.Labels[0]) {
+					return true
+				}
+			}
+		}
+		calls := collectModuleBlocks(parsed.bodies)
+		dirs := calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys)
+		if len(dirs) < len(calls) {
+			return true
+		}
+		for _, d := range dirs {
+			if visit(d) {
+				return true
+			}
+		}
+		return false
+	}
+	return visit(dir)
+}
+
+func (e *Evaluator) CalledModuleDirsWithContext(ctx context.Context, dir string) []string {
+	parsed := e.parseDir(ctx, dir, "")
+	if parsed.err != nil {
+		return nil
+	}
+	return calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys)
 }

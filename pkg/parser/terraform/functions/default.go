@@ -151,7 +151,7 @@ var TerraformFuncs = func() map[string]function.Function {
 	}
 	funcs["templatestring"] = makeTemplateStringFunc(func() map[string]function.Function {
 		return funcs
-	})
+	}, nil)
 	return funcs
 }()
 
@@ -190,6 +190,6 @@ func EvalFuncsWithRoot(baseDir, rootDir string, fsys vfs.FS) map[string]function
 		}
 	}
 	funcs["templatefile"] = makeTemplateFileFunc(baseDir, rootDir, fsys, funcsCb)
-	funcs["templatestring"] = makeTemplateStringFunc(funcsCb)
+	funcs["templatestring"] = makeTemplateStringFunc(funcsCb, templatesOf(fsys))
 	return funcs
 }

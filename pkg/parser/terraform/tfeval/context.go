@@ -27,7 +27,9 @@ func (e *Evaluator) moduleContext(dir, root string) moduleContext {
 		return cached
 	}
 	shared := moduleContext{
-		functions: functions.EvalFuncsWithRoot(dir, root, e.funcFS),
+		// templatefile reads its functions from this map, so it sees the
+		// evaluator's own try, can and merge too.
+		functions: e.withUnsetAttrFunctions(functions.EvalFuncsWithRoot(dir, root, e.funcFS)),
 		variables: functions.ContextVariables(dir, root),
 	}
 	if e.contexts == nil {

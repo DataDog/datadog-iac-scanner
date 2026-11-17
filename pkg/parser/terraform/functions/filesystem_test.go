@@ -51,8 +51,24 @@ func TestFileFunctionsConfined(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.RawEquals(cty.False) {
-		t.Fatalf("fileexists missing = %#v", got)
+	if !got.RawEquals(cty.UnknownVal(cty.Bool)) {
+		t.Fatalf("fileexists missing = %#v, want unknown: a run may create the file", got)
+	}
+	for _, name := range []string{"file", "filebase64", "filemd5", "filesha256"} {
+		got, err = funcs[name].Call([]cty.Value{cty.StringVal("missing.txt")})
+		if err != nil {
+			t.Fatalf("%s missing: %v", name, err)
+		}
+		if !got.RawEquals(cty.UnknownVal(cty.String)) {
+			t.Fatalf("%s missing = %#v, want unknown", name, got)
+		}
+	}
+	got, err = funcs["templatefile"].Call([]cty.Value{cty.StringVal("missing.tftpl"), cty.EmptyObjectVal})
+	if err != nil {
+		t.Fatalf("templatefile missing: %v", err)
+	}
+	if got.IsKnown() {
+		t.Fatalf("templatefile missing = %#v, want unknown", got)
 	}
 
 	if _, err = funcs["file"].Call([]cty.Value{cty.StringVal("../outside/secret")}); err == nil {

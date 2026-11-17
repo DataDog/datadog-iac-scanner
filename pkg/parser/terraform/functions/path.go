@@ -95,7 +95,8 @@ func ContextVariables(moduleDir, rootDir string) map[string]cty.Value {
 			"root":   cty.StringVal(rootDir),
 		}),
 		"terraform": cty.ObjectVal(map[string]cty.Value{
-			"workspace": cty.StringVal("default"),
+			// A run selects its workspace, so the configuration cannot know it.
+			"workspace": cty.UnknownVal(cty.String),
 		}),
 	}
 }

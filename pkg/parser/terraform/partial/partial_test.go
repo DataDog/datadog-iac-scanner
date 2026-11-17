@@ -176,6 +176,45 @@ func TestWithUnknownRefs(t *testing.T) {
 	require.Equal(t, cty.StringVal("y"), v.GetAttr("b"))
 }
 
+func TestTraversalUnresolvedMatchesTraverseAbs(t *testing.T) {
+	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{
+		"var": cty.ObjectVal(map[string]cty.Value{"x": cty.StringVal("y")}),
+		"module": cty.ObjectVal(map[string]cty.Value{
+			"a": cty.ObjectVal(map[string]cty.Value{"id": cty.StringVal("a-id")}),
+			"items": cty.ListVal([]cty.Value{
+				cty.ObjectVal(map[string]cty.Value{"id": cty.StringVal("i0")}),
+			}),
+		}),
+		"local": cty.ObjectVal(map[string]cty.Value{"x": cty.StringVal("x")}),
+		"dyn":   cty.DynamicVal,
+	}}
+	for _, src := range []string{
+		"var.x",
+		"var.missing",
+		"missing.x",
+		"module.a.id",
+		"module.b.id",
+		`module.c["k"].id`,
+		"module.items[0].id",
+		"module.items[3].id",
+		"local.y.z",
+		"dyn.anything",
+	} {
+		expr, diags := hclsyntax.ParseExpression([]byte(src), "main.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors(), src)
+		for _, traversal := range expr.Variables() {
+			want, gotDiags := traversal.TraverseAbs(ctx)
+			got, resolved := traversalValue(ctx, traversal)
+			if resolved == gotDiags.HasErrors() {
+				t.Errorf("%s: resolved=%v diags=%v", src, resolved, gotDiags.HasErrors())
+			}
+			if resolved && !got.RawEquals(want) {
+				t.Errorf("%s: value %#v, TraverseAbs %#v", src, got, want)
+			}
+		}
+	}
+}
+
 // References under one root are gathered into one object, keeping the known
 // attributes of the root and the ones other references set.
 func TestWithUnknownRefsManyAttributesOfOneRoot(t *testing.T) {

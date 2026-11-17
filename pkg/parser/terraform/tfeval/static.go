@@ -9,9 +9,9 @@ package tfeval
 // dirStatic is dependency analysis of parsed syntax, shared by every instance
 // of a directory. None of these answers depends on the evaluated input values.
 type dirStatic struct {
+	// siblings is what each resource block, then each module call, reads of
+	// the module's other blocks, in the order of the block schedule's units.
 	siblings           []siblingReads
-	resourcesReadOwn   bool
-	resourcesReadData  bool
 	dataReadsData      bool
 	dataReadsLocals    bool
 	dataReadsResources bool
@@ -20,10 +20,7 @@ type dirStatic struct {
 
 func newDirStatic(dp *dirParse) *dirStatic {
 	s := &dirStatic{
-		siblings:         callSiblingReads(dp.modules),
-		resourcesReadOwn: dp.locals.readsResources || resourcesReadResources(dp.resources, dp.resourceTypes),
-		resourcesReadData: resourcesReadResources(dp.resources, dataRoot) ||
-			resourcesReadNamedLocals(dp.resources, dp.locals.dataLocals),
+		siblings: append(callSiblingReads(dp.resources), callSiblingReads(dp.modules)...),
 	}
 	for _, b := range dp.locals.dataBlocks {
 		s.dataReadsData = s.dataReadsData || bodyReadsResource(b.Body, dataRoot)
