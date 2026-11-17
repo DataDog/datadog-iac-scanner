@@ -7,6 +7,7 @@
 package project
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"path"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 )
@@ -165,7 +167,9 @@ func (pr *Projection) Digest(ids []string) string {
 	}
 	dd := pr.Input.(ast.Object).Get(ast.StringTerm("_dd")).Value
 	h := sha256.New()
-	canonical(h, dd, ord, false)
+	w := bufio.NewWriter(h)
+	canonical(w, dd, ord, false)
+	_ = w.Flush() // SHA-256 does not return write errors.
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -176,14 +180,17 @@ const (
 	metaFile = "file"
 )
 
+func canonicalString(x ast.String, ord map[string]int) string {
+	if i, ok := ord[string(x)]; ok {
+		return "i" + strconv.Itoa(i) + ";"
+	}
+	return "s" + strconv.Quote(string(x)) + ";"
+}
+
 func canonical(w io.Writer, v ast.Value, ord map[string]int, meta bool) {
 	switch x := v.(type) {
 	case ast.String:
-		if i, ok := ord[string(x)]; ok {
-			_, _ = io.WriteString(w, "i"+strconv.Itoa(i)+";")
-			return
-		}
-		_, _ = io.WriteString(w, "s"+strconv.Quote(string(x))+";")
+		_, _ = io.WriteString(w, canonicalString(x, ord))
 	case *ast.Array:
 		_, _ = io.WriteString(w, "[")
 		x.Foreach(func(e *ast.Term) { canonical(w, e.Value, ord, false) })
@@ -195,25 +202,31 @@ func canonical(w io.Writer, v ast.Value, ord map[string]int, meta bool) {
 			// meta marks the value as a _dd_meta object.
 			meta bool
 		}
-		var entries []entry
+		entries := make([]entry, 0, x.Len())
 		x.Foreach(func(k, e *ast.Term) {
-			var kb bytes.Buffer
-			canonical(&kb, k.Value, ord, false)
-			ks, _ := k.Value.(ast.String)
-			if meta {
+			ks, isString := k.Value.(ast.String)
+			if meta && isString {
 				switch string(ks) {
 				case metaID, metaRoot:
 					return
 				case metaFile:
 					if f, ok := e.Value.(ast.String); ok {
-						entries = append(entries, entry{key: kb.String(), val: ast.String(path.Base(string(f)))})
+						entries = append(entries, entry{key: canonicalString(ks, ord), val: ast.String(path.Base(string(f)))})
 						return
 					}
 				}
 			}
-			entries = append(entries, entry{key: kb.String(), val: e.Value, meta: string(ks) == metaKey})
+			var key string
+			if isString {
+				key = canonicalString(ks, ord)
+			} else {
+				var kb bytes.Buffer
+				canonical(&kb, k.Value, ord, false)
+				key = kb.String()
+			}
+			entries = append(entries, entry{key: key, val: e.Value, meta: isString && string(ks) == metaKey})
 		})
-		slices.SortFunc(entries, func(a, b entry) int { return bytes.Compare([]byte(a.key), []byte(b.key)) })
+		slices.SortFunc(entries, func(a, b entry) int { return strings.Compare(a.key, b.key) })
 		_, _ = io.WriteString(w, "{")
 		for _, e := range entries {
 			_, _ = io.WriteString(w, e.key)
