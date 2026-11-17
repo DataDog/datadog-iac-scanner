@@ -45,7 +45,7 @@ var targetTemplate = sarifDescriptorReference{
 // TestNewSarifReport tests if creates a sarif report correctly
 func TestNewSarifReport(t *testing.T) {
 	sarif := NewSarifReport().(*sarifReport)
-	require.Equal(t, "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", sarif.Schema)
+	require.Equal(t, "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json", sarif.Schema)
 	require.Equal(t, "2.1.0", sarif.SarifVersion)
 	require.Equal(t, "Datadog IaC Scanning", sarif.Runs[0].Tool.Driver.ToolName)
 	require.Equal(t, constants.URL, sarif.Runs[0].Tool.Driver.ToolURI)

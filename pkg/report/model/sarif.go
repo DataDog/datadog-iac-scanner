@@ -298,7 +298,7 @@ func initSarifRun() []SarifRun {
 // NewSarifReport creates and start a new sarif report with default values respecting SARIF schema 2.1.0
 func NewSarifReport() SarifReport {
 	return &sarifReport{
-		Schema:       "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+		Schema:       "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
 		SarifVersion: "2.1.0",
 		Runs:         initSarifRun(),
 	}

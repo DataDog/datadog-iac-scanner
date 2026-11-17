@@ -161,7 +161,7 @@ func TestPrintSarifReport(t *testing.T) {
 			var resultSarif sarifReport
 			err = json.Unmarshal(jsonResult, &resultSarif)
 			require.NoError(t, err)
-			require.Equal(t, "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", resultSarif.Schema)
+			require.Equal(t, "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json", resultSarif.Schema)
 			require.Equal(t, "2.1.0", resultSarif.SarifVersion)
 			require.Len(t, resultSarif.Runs, len(sarifTest.expectedResult.Queries))
 			require.NoError(t, os.RemoveAll(sarifTest.caseTest.path))
