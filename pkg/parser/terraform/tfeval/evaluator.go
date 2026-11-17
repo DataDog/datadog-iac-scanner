@@ -153,8 +153,9 @@ type ModuleScope struct {
 	// evalCtx is the context the module's blocks were evaluated in, final once
 	// evaluation completes, and sources the module's files by filename. They
 	// let a value evaluation could not resolve be rendered as its parts.
-	evalCtx *hcl.EvalContext
-	sources map[string][]byte
+	evalCtx      *hcl.EvalContext
+	sources      map[string][]byte
+	renderSource partial.Source
 
 	// localGraph is the graph of the module directory's locals, which gives
 	// the order they resolve in and which of the roots that change during
@@ -177,6 +178,14 @@ type ModuleScope struct {
 	// the keys the module does not declare; evaluation itself binds only
 	// the declared ones.
 	RootInputs map[string]cty.Value
+}
+
+// RenderSource returns the source lookup shared by renderers for this scope.
+func (s *ModuleScope) RenderSource() partial.Source {
+	if s == nil {
+		return nil
+	}
+	return s.renderSource
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not
@@ -276,6 +285,7 @@ type Evaluator struct {
 type dirParse struct {
 	bodies        []*hclsyntax.Body
 	sources       map[string][]byte
+	renderSource  partial.Source
 	varDecls      map[string]variableDecl
 	localExprs    map[string]hclsyntax.Expression
 	modules       []*hclsyntax.Block
@@ -416,6 +426,7 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	bodies = e.hookBodies(dir, bodies)
 	dp := dirParse{bodies: bodies, sources: sources, err: err}
 	if err == nil {
+		dp.renderSource = partial.FileSources(sources)
 		dp.varDecls, dp.localExprs, dp.modules, dp.resources, dp.outputs = collectBlocks(bodies)
 		dp.resourceTypes = declaredResourceTypes(dp.resources)
 		dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, collectDataBlocks(bodies))
@@ -640,14 +651,14 @@ func (e *Evaluator) evaluate(
 
 	scope := &ModuleScope{
 		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
-		localGraph: parsed.locals,
+		renderSource: parsed.renderSource, localGraph: parsed.locals,
 	}
 	if addr == "" {
 		scope.RootInputs = inputs
 	}
 	e.noteCycles(ctx, dir, parsed.locals)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
-	data := newModuleData(ctx, e, sources, parsed.locals, parsed.static, parsed.refAttrs, dir, addr, chain)
+	data := newModuleData(ctx, e, sources, parsed.renderSource, parsed.locals, parsed.static, parsed.refAttrs, dir, addr, chain)
 	data.refresh(evalCtx)
 
 	sched := e.newBlockSchedule(

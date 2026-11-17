@@ -135,7 +135,7 @@ func jsonEncodeArg(expr hcl.Expression, ctx *hcl.EvalContext, m *Module) (doc ct
 func jsonRenderer(m *Module, ctx *hcl.EvalContext) *partial.Renderer {
 	rd := &partial.Renderer{Ctx: ctx}
 	if m != nil && m.Scope != nil {
-		rd.Source = partial.FileSources(m.Scope.Sources())
+		rd.Source = m.Scope.RenderSource()
 	}
 	return rd
 }

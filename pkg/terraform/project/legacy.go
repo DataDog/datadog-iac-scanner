@@ -331,7 +331,7 @@ func newLegacyRender(m *model.Module, conv value.Converter) *legacyRender {
 		dataKinds: map[string]bool{},
 		unsetVars: unsetModuleVariables(m),
 		ctx:       ctx,
-		rd:        &partial.Renderer{Ctx: ctx, Source: partial.FileSources(scope.Sources())},
+		rd:        &partial.Renderer{Ctx: ctx, Source: scope.RenderSource()},
 	}
 	patchLegacyRootInputs(m, vars)
 	patchLegacyData(m, vars, lr)
@@ -350,7 +350,7 @@ func legacyLocals(scope *tfeval.ModuleScope, base *hcl.EvalContext) cty.Value {
 	// pass, letting chains of locals resolve in dependency order without
 	// rebuilding the object on every successful bind.
 	child.Variables = map[string]cty.Value{localNamespace: cty.ObjectVal(vals)}
-	renderer := &partial.Renderer{Ctx: child, Source: partial.FileSources(scope.Sources())}
+	renderer := &partial.Renderer{Ctx: child, Source: scope.RenderSource()}
 	remaining := make(map[string]hclsyntax.Expression, len(scope.Locals))
 	for name, expr := range scope.Locals {
 		remaining[name] = expr

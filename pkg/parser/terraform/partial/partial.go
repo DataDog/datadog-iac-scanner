@@ -37,9 +37,15 @@ type Source func(hcl.Range) (string, bool)
 // FileSources reads ranges from the native syntax files in files, keyed by
 // filename.
 func FileSources(files map[string][]byte) Source {
+	texts := make(map[string]string, len(files))
+	for name, src := range files {
+		if !tfpath.IsJSONConfig(name) {
+			texts[name] = string(src)
+		}
+	}
 	return func(rng hcl.Range) (string, bool) {
-		src, ok := files[rng.Filename]
-		if !ok || tfpath.IsJSONConfig(rng.Filename) {
+		src, ok := texts[rng.Filename]
+		if !ok {
 			return "", false
 		}
 		return sourceRange(src, rng)
@@ -49,11 +55,18 @@ func FileSources(files map[string][]byte) Source {
 // BytesSource reads ranges from the single file src.
 func BytesSource(src []byte) Source {
 	return func(rng hcl.Range) (string, bool) {
-		return sourceRange(src, rng)
+		return sourceRangeBytes(src, rng)
 	}
 }
 
-func sourceRange(src []byte, rng hcl.Range) (string, bool) {
+func sourceRange(src string, rng hcl.Range) (string, bool) {
+	if rng.Start.Byte < 0 || rng.Start.Byte >= rng.End.Byte || rng.End.Byte > len(src) {
+		return "", false
+	}
+	return strings.TrimSpace(src[rng.Start.Byte:rng.End.Byte]), true
+}
+
+func sourceRangeBytes(src []byte, rng hcl.Range) (string, bool) {
 	if rng.Start.Byte < 0 || rng.Start.Byte >= rng.End.Byte || rng.End.Byte > len(src) {
 		return "", false
 	}

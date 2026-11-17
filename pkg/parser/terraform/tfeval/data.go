@@ -49,14 +49,15 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 type moduleData struct {
 	// ctx bounds the expansion of the data blocks, which runs outside the call
 	// stack that carries the scan's context.
-	ctx     context.Context
-	e       *Evaluator
-	blocks  []*hclsyntax.Block
-	sources map[string][]byte
-	locals  *localGraph
-	dir     string
-	addr    string
-	chain   []CallSite
+	ctx          context.Context
+	e            *Evaluator
+	blocks       []*hclsyntax.Block
+	sources      map[string][]byte
+	renderSource partial.Source
+	locals       *localGraph
+	dir          string
+	addr         string
+	chain        []CallSite
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -97,6 +98,7 @@ func newModuleData(
 	ctx context.Context,
 	e *Evaluator,
 	sources map[string][]byte,
+	renderSource partial.Source,
 	locals *localGraph,
 	static *dirStatic,
 	refAttrs referencedAttrs,
@@ -108,7 +110,7 @@ func newModuleData(
 		return nil
 	}
 	d := &moduleData{
-		ctx: ctx, e: e, blocks: blocks, sources: sources, locals: locals, dir: dir, addr: addr, chain: chain,
+		ctx: ctx, e: e, blocks: blocks, sources: sources, renderSource: renderSource, locals: locals, dir: dir, addr: addr, chain: chain,
 		dataLocals: locals.dataLocals, cyclic: locals.cyclicData, refAttrs: refAttrs,
 		readsData:          static.dataReadsData,
 		readsLocals:        static.dataReadsLocals,
@@ -507,7 +509,7 @@ func (d *moduleData) withComputedAttributes(
 		ctx = evalCtx.NewChild()
 		ctx.Variables = inst.Iteration
 	}
-	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources)}
+	rd := &partial.Renderer{Ctx: ctx, Source: d.renderSource}
 	// In opaque mode the unresolved parts of a rendered value become
 	// the unknown marker, so what the data source computes stays readable
 	// around them.
