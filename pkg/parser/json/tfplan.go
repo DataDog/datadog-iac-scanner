@@ -38,39 +38,6 @@ type TFPlanResource map[string]any
 
 type TFPlanNamedResource map[string]any
 
-// TfplanMetaKey is where the parser stores Terraform's own per-resource plan
-// addresses, parallel to the resource sections in a parsed plan document.
-const TfplanMetaKey = "_dd_tfplan_meta"
-
-// PlanAddresses flattens parser metadata to a section/document-key lookup.
-func PlanAddresses(doc model.Document) map[model.PlanResourceKey]string {
-	raw, ok := doc[TfplanMetaKey].(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	out := make(map[model.PlanResourceKey]string)
-	for section, entriesRaw := range raw {
-		entries, ok := entriesRaw.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		for key, entryRaw := range entries {
-			entry, ok := entryRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			address, _ := entry["address"].(string)
-			if address != "" {
-				out[model.PlanResourceKey{Section: section, Key: key}] = address
-			}
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
 // tfplanResourceMeta is the payload stored under
 // _dd_tfplan_meta.<type>.<flattened-key>.
 type tfplanResourceMeta struct {

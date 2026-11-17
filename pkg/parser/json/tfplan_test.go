@@ -12,22 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPlanAddressesUsesPlanNativeKeys(t *testing.T) {
-	doc := model.Document{TfplanMetaKey: map[string]interface{}{
-		"aws_s3_bucket": map[string]interface{}{
-			"web[0]": map[string]interface{}{"address": "module.stack.aws_s3_bucket.web[0]"},
-		},
-		"data.aws_caller_identity": map[string]interface{}{
-			"current": map[string]interface{}{"address": "data.aws_caller_identity.current"},
-		},
-	}}
-	require.Equal(t, map[model.PlanResourceKey]string{
-		{Section: "aws_s3_bucket", Key: "web[0]"}:             "module.stack.aws_s3_bucket.web[0]",
-		{Section: "data.aws_caller_identity", Key: "current"}: "data.aws_caller_identity.current",
-	}, PlanAddresses(doc))
-	require.Nil(t, PlanAddresses(model.Document{}))
-}
-
 func TestJson_parseTFPlan(t *testing.T) {
 	type args struct {
 		doc model.Document

@@ -25,16 +25,7 @@ const (
 func GetDatadogFingerprintHash(
 	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
 ) string {
-	return stringToHash(fingerprintInput(
-		sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain, "", "",
-	))
-}
-
-func findingFingerprintHash(sciInfo *SCIInfo, filePath string, v *Vulnerability, ruleID, vulnLine string) string {
-	return stringToHash(fingerprintInput(
-		*sciInfo, filePath, v.Platform, v.ResourceType, v.ResourceName, ruleID, vulnLine,
-		v.ModuleCallChain, v.RootModule, v.ResourceID,
-	))
+	return stringToHash(fingerprintInput(sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain))
 }
 
 // FindingIdentity is what a scan reports one finding for: findings of equal
@@ -42,33 +33,25 @@ func findingFingerprintHash(sciInfo *SCIInfo, filePath string, v *Vulnerability,
 func FindingIdentity(v *Vulnerability) string {
 	fileName, line, ruleID := fingerprintFields(v)
 	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID); ok {
-		id.rootModule, id.resourceID = v.RootModule, v.ResourceID
 		return id.WithChain(v.ModuleCallChain)
 	}
 	// SCIInfo is constant within a scan; an empty value yields the same grouping.
-	return fingerprintInput(
-		SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line,
-		v.ModuleCallChain, v.RootModule, v.ResourceID,
-	)
+	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.ModuleCallChain)
 }
 
 // ChainedIdentity is the FindingIdentity of a finding whose identity does not
 // include its line, less its module call chain: the finding's identity under
 // any call chain is built from it without rebuilding the rest.
 type ChainedIdentity struct {
-	prefix     string
-	chained    bool
-	rootModule string
-	resourceID string
+	prefix  string
+	chained bool
 }
 
 // IdentityBeforeLine returns v's identity less its call chain. It returns
 // false when v's platform puts the line in the identity.
 func IdentityBeforeLine(v *Vulnerability) (ChainedIdentity, bool) {
 	fileName, _, ruleID := fingerprintFields(v)
-	id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID)
-	id.rootModule, id.resourceID = v.RootModule, v.ResourceID
-	return id, ok
+	return chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID)
 }
 
 // ChainedIdentityFor is IdentityBeforeLine for a finding that is not built
@@ -82,26 +65,17 @@ func chainedIdentity(fileName, platform, resourceType, resourceName, ruleID stri
 		return ChainedIdentity{}, false
 	}
 	return ChainedIdentity{
-		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", "", "", ""),
+		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", ""),
 		chained: platform == terraformPlatform,
 	}, true
 }
 
 // WithChain is the identity of the finding reported under chain.
 func (id ChainedIdentity) WithChain(chain string) string {
-	var b strings.Builder
-	b.WriteString(id.prefix)
-	if id.chained && chain != "" {
-		b.WriteByte('|')
-		b.WriteString(chain)
+	if !id.chained || chain == "" {
+		return id.prefix
 	}
-	if id.rootModule != "" || id.resourceID != "" {
-		b.WriteByte('|')
-		b.WriteString(id.rootModule)
-		b.WriteByte('|')
-		b.WriteString(id.resourceID)
-	}
-	return b.String()
+	return id.prefix + "|" + chain
 }
 
 // AppendWithChain appends WithChain(chain) to dst, so a caller looking the
@@ -111,12 +85,6 @@ func (id ChainedIdentity) AppendWithChain(dst []byte, chain string) []byte {
 	if id.chained && chain != "" {
 		dst = append(dst, '|')
 		dst = append(dst, chain...)
-	}
-	if id.rootModule != "" || id.resourceID != "" {
-		dst = append(dst, '|')
-		dst = append(dst, id.rootModule...)
-		dst = append(dst, '|')
-		dst = append(dst, id.resourceID...)
 	}
 	return dst
 }
@@ -133,7 +101,6 @@ func fingerprintFields(v *Vulnerability) (file, line, ruleID string) {
 // nolint:gocritic
 func fingerprintInput(
 	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
-	rootModule, resourceID string,
 ) string {
 	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleID}
 
@@ -145,12 +112,6 @@ func fingerprintInput(
 		if moduleCallChain != "" {
 			segments = append(segments, moduleCallChain)
 		}
-	}
-	// Addresses are identity fields when present, regardless of query platform.
-	// Terraform metadata is attached from the scanned file kind, while a custom
-	// rule may omit its platform field.
-	if rootModule != "" || resourceID != "" {
-		segments = append(segments, rootModule, resourceID)
 	}
 
 	return strings.Join(segments, "|")

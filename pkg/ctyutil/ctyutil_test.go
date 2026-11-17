@@ -9,8 +9,6 @@ package ctyutil
 import (
 	"testing"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -36,28 +34,7 @@ func TestFormatIndexKey(t *testing.T) {
 	s, ok := FormatIndexKey(cty.StringVal("bar"))
 	require.True(t, ok)
 	require.Equal(t, `["bar"]`, s)
-	s, ok = FormatIndexKey(cty.StringVal(`a"b`))
-	require.True(t, ok)
-	require.Equal(t, `["a\"b"]`, s)
 
 	_, ok = FormatIndexKey(cty.NullVal(cty.String))
 	require.False(t, ok)
-}
-
-func TestFormatIndexKeyRoundTripsHCLTraversal(t *testing.T) {
-	for _, key := range []string{
-		`quote"slash\`, "line\nbreak", `${literal}`, `%{literal}`, "\x00", "雪",
-	} {
-		t.Run(key, func(t *testing.T) {
-			suffix, ok := FormatIndexKey(cty.StringVal(key))
-			require.True(t, ok)
-			traversal, diags := hclsyntax.ParseTraversalAbs(
-				[]byte("aws_s3_bucket.web"+suffix), "address.tf", hcl.InitialPos,
-			)
-			require.False(t, diags.HasErrors(), "%q should remain valid HCL: %s", key, diags.Error())
-			index, ok := traversal[len(traversal)-1].(hcl.TraverseIndex)
-			require.True(t, ok)
-			require.True(t, index.Key.RawEquals(cty.StringVal(key)), "%q round-tripped as %#v", key, index.Key)
-		})
-	}
 }

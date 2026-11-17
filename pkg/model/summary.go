@@ -33,8 +33,6 @@ type VulnerableFile struct {
 	VulnLines             *[]CodeLine      `json:"-"`
 	ResourceType          string           `json:"resource_type,omitempty"`
 	ResourceName          string           `json:"resource_name,omitempty"`
-	ResourceID            string           `json:"resource_id,omitempty"`
-	RootModule            string           `json:"root_module,omitempty"`
 	SearchKey             string           `json:"search_key"`
 	SearchLine            int              `json:"search_line"`
 	SearchValue           string           `json:"search_value"`
@@ -364,7 +362,16 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		if fingerprintPath == "." {
 			fingerprintPath = ""
 		}
-		fingerprint := findingFingerprintHash(&sciInfo, fingerprintPath, &item, ruleID, identityLine)
+		fingerprint := GetDatadogFingerprintHash(
+			sciInfo,
+			fingerprintPath,
+			item.Platform,
+			item.ResourceType,
+			item.ResourceName,
+			ruleID,
+			identityLine,
+			item.ModuleCallChain,
+		)
 
 		qItem := q[item.QueryID]
 		qItem.Files = append(qItem.Files, VulnerableFile{
@@ -390,8 +397,6 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionKind:          item.SuppressionKind,
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
-			ResourceID:               item.ResourceID,
-			RootModule:               item.RootModule,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
 		})
 

@@ -839,20 +839,10 @@ resource "aws_s3_bucket" "this" {
   count  = 0
   bucket = "never"
 }
-resource "aws_s3_bucket" "empty" {
-  for_each = {}
-  bucket   = each.key
-}
-resource "aws_s3_bucket" "unknown" {
-  for_each = var.unknown
-  bucket   = each.key
-}
-variable "unknown" {}
 `,
 	})
 
-	evaluator := New()
-	resources, _, _, err := evaluator.EvaluateModule(context.Background(), dir, nil)
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -860,21 +850,6 @@ variable "unknown" {}
 		if r.Type == "aws_s3_bucket" && r.Name == "this" {
 			t.Fatal("count=0 resource should not be materialized")
 		}
-	}
-	zeroes := evaluator.TakeZeroResources()
-	if len(zeroes) != 2 {
-		t.Fatalf("expected count=0 and empty for_each blocks, got %#v", zeroes)
-	}
-	if zeroes[0].Name == "unknown" || zeroes[1].Name == "unknown" {
-		t.Fatalf("unknown expansion must not be marked empty: %#v", zeroes)
-	}
-	// The module cache must replay zero-expansion metadata alongside resources.
-	_, _, _, err = evaluator.EvaluateModule(context.Background(), dir, nil)
-	if err != nil {
-		t.Fatalf("cached EvaluateModule: %v", err)
-	}
-	if got := evaluator.TakeZeroResources(); len(got) != 2 {
-		t.Fatalf("cached zero expansions = %#v", got)
 	}
 }
 

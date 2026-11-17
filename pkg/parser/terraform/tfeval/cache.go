@@ -42,8 +42,7 @@ type evalCacheKey struct {
 // address and chain onto the result. Outputs need no rewrite because rootDir is
 // part of the cache key.
 type evalCacheEntry struct {
-	resources     []ResolvedResource
-	zeroResources []ZeroResource
+	resources []ResolvedResource
 	// instances are the module calls evaluated inside this evaluation.
 	instances    []ModuleInstance
 	outputs      map[string]cty.Value
@@ -54,18 +53,6 @@ type evalCacheEntry struct {
 	// from a deeper call may have truncated descendants; shallower callers need a
 	// fresh evaluation with more depth remaining.
 	evalDepth int
-}
-
-func (entry *evalCacheEntry) rebaseZeroResources(addr string) []ZeroResource {
-	if len(entry.zeroResources) == 0 || entry.baseAddr == addr {
-		return entry.zeroResources
-	}
-	out := make([]ZeroResource, len(entry.zeroResources))
-	for i, zero := range entry.zeroResources {
-		zero.ModuleAddress = rebaseAddr(zero.ModuleAddress, entry.baseAddr, addr)
-		out[i] = zero
-	}
-	return out
 }
 
 // rebase returns the cached resources as they would have been recorded had the

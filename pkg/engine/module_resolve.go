@@ -34,7 +34,6 @@ import (
 type extraCallerInfo struct {
 	callChain    string
 	docID        string
-	rootModule   string
 	attributions map[string]*model.ModuleAttribution
 }
 
@@ -393,7 +392,6 @@ func evaluateRootModules(
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
 	instantiated instantiatedIndex,
-	zeroInstantiated instantiatedIndex,
 	successfulRoots map[string]bool,
 	unresolvedModuleDirs map[string]bool,
 	actualCalledDirs map[string]bool,
@@ -406,8 +404,7 @@ func evaluateRootModules(
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
-		instantiated: instantiated, zeroInstantiated: zeroInstantiated,
-		successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
+		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
 	}
@@ -421,12 +418,11 @@ func evaluateRootModules(
 	}
 	for _, dir := range roots[next:] {
 		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
-		zeroes := evaluator.TakeZeroResources()
 		// The cache key includes rootDir, so the next root cannot reuse these
 		// evaluations. Release their subtree slices and memo keys before building
 		// documents; resources and instances keep the values merging still needs.
 		evaluator.ReleaseEvalCache()
-		m.merge(dir, resources, evaluator.TakeModuleInstances(), zeroes, childDirs, err)
+		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
 	}
 }
 
@@ -448,7 +444,6 @@ type rootMerge struct {
 	seen                 map[docContentKey]string
 	extras               map[string][]extraCallerInfo
 	instantiated         instantiatedIndex
-	zeroInstantiated     instantiatedIndex
 	successfulRoots      map[string]bool
 	unresolvedModuleDirs map[string]bool
 	actualCalledDirs     map[string]bool
@@ -463,7 +458,6 @@ func (m *rootMerge) merge(
 	dir string,
 	resources []tfeval.ResolvedResource,
 	instances []tfeval.ModuleInstance,
-	zeroes []tfeval.ZeroResource,
 	childDirs map[string]bool,
 	err error,
 ) {
@@ -484,27 +478,12 @@ func (m *rootMerge) merge(
 	}
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
-	for _, zero := range zeroes {
-		if m.targets != nil && !m.targets.matches(zero.Type) {
-			continue
-		}
-		fm := m.byAbsPath[absPath(zero.DefinedIn, m.repoPath)]
-		if fm == nil {
-			continue
-		}
-		kind := zero.Type
-		if zero.Data {
-			kind = dataTypePrefix + kind
-		}
-		m.zeroInstantiated.add(fm.ID, kind, zero.Name)
-	}
 	for d := range childDirs {
 		m.actualCalledDirs[d] = true
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		resources, m.repoPath, repoRelativeDir(dir, m.repoPath), m.byAbsPath, m.targets,
-		m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -515,7 +494,6 @@ func (m *rootMerge) merge(
 type rootResult struct {
 	resources    []tfeval.ResolvedResource
 	instances    []tfeval.ModuleInstance
-	zeroes       []tfeval.ZeroResource
 	childDirs    map[string]bool
 	err          error
 	notEvaluated []string
@@ -584,7 +562,7 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 			panic(r.panicked)
 		}
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
-		m.merge(dir, r.resources, r.instances, r.zeroes, r.childDirs, r.err)
+		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
 	}
 	return len(roots)
 }
@@ -599,7 +577,6 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 	}()
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
 	r.instances = worker.TakeModuleInstances()
-	r.zeroes = worker.TakeZeroResources()
 	return r
 }
 
@@ -716,7 +693,6 @@ func resolveModuleDocuments(
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
 	instantiated := make(instantiatedIndex)
-	zeroInstantiated := make(instantiatedIndex)
 	var rootEvalOK bool
 	actualCalledDirs := make(map[string]bool)
 	successfulRoots := make(map[string]bool)
@@ -744,7 +720,7 @@ func resolveModuleDocuments(
 
 	evaluateRootModules(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
-		byAbsPath, seen, extras, instantiated, zeroInstantiated,
+		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
 	)
@@ -790,8 +766,6 @@ func resolveModuleDocuments(
 	}
 
 	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
-	scrubInstantiatedForUnresolvedDirs(zeroInstantiated, files, unresolvedModuleDirs, repoPath)
-	mergeInstantiatedIndexes(instantiated, zeroInstantiated)
 
 	return moduleResolutionResult{
 		docs:                 extra,
@@ -806,16 +780,6 @@ func resolveModuleDocuments(
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		ok:                   true,
-	}
-}
-
-func mergeInstantiatedIndexes(dst, src instantiatedIndex) {
-	for fileID, byType := range src {
-		for typ, names := range byType {
-			for name := range names {
-				dst.add(fileID, typ, name)
-			}
-		}
 	}
 }
 
@@ -930,7 +894,6 @@ type instantiatedResource struct {
 	typ       string
 	baseName  string
 	fullName  string
-	instance  model.TerraformInstance
 	defLine   int
 	attrs     map[string]interface{}
 	attrsHash uint64
@@ -941,7 +904,6 @@ type docGroup struct {
 	fm            *model.FileMetadata
 	callChain     string
 	moduleAddress string
-	rootModule    string
 	layer         int
 	entries       []instantiatedResource
 	attributions  map[string]*model.ModuleAttribution
@@ -973,11 +935,10 @@ type docContentKey struct{ a, b uint64 }
 // Callers whose resolved content is identical share one document; the rest are
 // recorded in extras so their findings are cloned after evaluation, keeping
 // per-call-site attribution without re-evaluating identical input.
-// nolint:gocyclo // grouping, content deduplication and attribution cloning are one pass over resolved instances.
 func instantiatedDocs(
 	resources []tfeval.ResolvedResource,
-	repoPath, rootModule string,
 	byAbsPath map[string]*model.FileMetadata,
+	repoPath string,
 	targets *ruleTargets,
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
@@ -995,9 +956,7 @@ func instantiatedDocs(
 
 	for i := range resources {
 		r := &resources[i]
-		base := tfeval.ResourceBaseName(r.Name)
-		expanded := base != r.Name
-		if r.ModuleAddress == "" && !expanded {
+		if r.ModuleAddress == "" {
 			continue
 		}
 		if !targets.matches(r.Type) {
@@ -1012,12 +971,12 @@ func instantiatedDocs(
 			continue
 		}
 		cck := callChainKey(r, repoPath)
+		base := tfeval.ResourceBaseName(r.Name)
 		attrs := tfeval.AttributesToDocument(r)
 		entry := instantiatedResource{
 			typ:       kind,
 			baseName:  base,
 			fullName:  r.Name,
-			instance:  model.TerraformInstance{Label: base, Suffix: strings.TrimPrefix(r.Name, base)},
 			defLine:   r.DefLine,
 			attrs:     attrs,
 			attrsHash: hashAttributes(attrs),
@@ -1031,7 +990,7 @@ func instantiatedDocs(
 		g, exists := groups[key]
 		if !exists {
 			g = &docGroup{
-				fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, rootModule: rootModule, layer: layer,
+				fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer,
 				attributions: make(map[string]*model.ModuleAttribution),
 			}
 			groups[key] = g
@@ -1042,9 +1001,7 @@ func instantiatedDocs(
 		g.entries = append(g.entries, entry)
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
-		if r.ModuleAddress != "" || expanded {
-			instantiated.add(fm.ID, kind, base)
-		}
+		instantiated.add(fm.ID, kind, base)
 		resourceCount++
 	}
 
@@ -1057,7 +1014,6 @@ func instantiatedDocs(
 			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
 				callChain:    g.callChain,
 				docID:        docID,
-				rootModule:   g.rootModule,
 				attributions: cloneModuleAttributions(g.attributions),
 			})
 			continue
@@ -1092,8 +1048,7 @@ func instantiatedDocs(
 			doc["data"] = data
 		}
 		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.moduleAddress,
-			g.rootModule, g.entries, g.attributions))
+		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
 }
@@ -1174,30 +1129,13 @@ func (h contentHasher) key() docContentKey {
 
 // newInstanceFileMetadata clones fm for a synthetic doc (empty Document so Combine skips it).
 func newInstanceFileMetadata(
-	fm *model.FileMetadata, id, callChain, moduleAddress, rootModule string,
-	entries []instantiatedResource, attributions map[string]*model.ModuleAttribution,
+	fm *model.FileMetadata, id, callChain string, attributions map[string]*model.ModuleAttribution,
 ) *model.FileMetadata {
 	clone := fm.ShallowCopy()
 	clone.ID = id
 	clone.Document = model.Document{}
 	clone.ModuleCallChain = callChain
 	clone.ModuleAttributions = cloneModuleAttributions(attributions)
-	blocks := map[model.TerraformInstanceKey]model.TerraformInstance{}
-	for _, entry := range entries {
-		kind, typ := "resource", entry.typ
-		if dataType, ok := strings.CutPrefix(typ, dataTypePrefix); ok {
-			kind, typ = "data", dataType
-		}
-		blocks[model.TerraformInstanceKey{Kind: kind, Type: typ, Name: entry.baseName}] = entry.instance
-	}
-	clone.TerraformInstances = blocks
-	scope := &model.TerraformScope{}
-	if fm.TerraformScope != nil {
-		*scope = *fm.TerraformScope
-	}
-	scope.RootModule = rootModule
-	scope.ModuleAddress = moduleAddress
-	clone.TerraformScope = scope
 	if fm.LineInfoDocument != nil {
 		// Already materialized: shallow-clone so later mutations on the
 		// parent (e.g. deleting a suppressed "resource" key) don't alias
