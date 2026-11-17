@@ -245,12 +245,41 @@ func TestPlanReferencesFromConfiguration(t *testing.T) {
 
 	call := instanceAt(t, r, `module.m["a"]`)
 	require.Equal(t, "module", call.Block.Kind)
+	require.False(t, call.Block.KeyUnknown, "a module instance explicitly listed in planned values remains concrete")
 	require.Equal(t, `["a"]`, call.Key)
 	require.Equal(t, map[string]any{"bucket": "P", "source": "./m"}, attrsOf(call.Attrs))
 	require.Equal(t, []string{"bucket->aws_s3_bucket.c.id"}, refsOf(call))
 
 	b := blocksOf(r, "resource", "aws_s3_bucket")
 	require.Equal(t, []string{"aws_s3_bucket.b[0]", "aws_s3_bucket.b[1]", "aws_s3_bucket.c"}, addresses(b))
+}
+
+func TestPlanMarksUnplannedModuleExpansionAsSymbolic(t *testing.T) {
+	for name, expansion := range map[string]string{
+		"unknown for_each":               `"for_each_expression":{"references":["var.names"]}`,
+		"count with no planned child":    `"count_expression":{"constant_value":2}`,
+		"for_each with no planned child": `"for_each_expression":{"constant_value":{"a":"x","b":"y"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			plan := `{"format_version":"1.2","complete":true,
+ "planned_values":{"root_module":{}},
+ "configuration":{"root_module":{"module_calls":{"child":{
+  "source":"./child",` + expansion + `,
+  "module":{"resources":[]}
+ }}}}}`
+			r := rootByID(t, loadPlans(t, map[string]string{"tfplan.json": plan}, "tfplan.json"), "tfplan.json")
+			var call *Block
+			for _, b := range r.Modules[0].Blocks {
+				if b.Kind == "module" && b.Name == "child" {
+					call = b
+				}
+			}
+			require.NotNil(t, call)
+			require.Len(t, call.Instances, 1)
+			require.Equal(t, "module.child", call.Instances[0].Address)
+			require.True(t, call.KeyUnknown, "an unplanned expanded call has no concrete unindexed address")
+		})
+	}
 }
 
 func TestPlanIncomplete(t *testing.T) {

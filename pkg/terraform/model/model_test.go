@@ -102,9 +102,21 @@ resource "aws_security_group" "sg" {
 resource "aws_instance" "zero" {
   count = 0
 }
+variable "key_map" { type = map(string) }
+resource "aws_instance" "map_values" {
+  for_each = { dev = var.u, prod = var.u }
+  ami      = each.key
+}
+resource "aws_instance" "variable_keys" {
+  for_each = var.key_map
+  ami      = each.key
+}
 `})
 	r := rootByID(t, s, ".")
-	require.Equal(t, []string{"aws_instance.c[0]", "aws_instance.c[1]", "aws_instance.f", "aws_instance.u"}, addresses(blocksOf(r, "resource", "aws_instance")))
+	require.Equal(t, []string{
+		"aws_instance.c[0]", "aws_instance.c[1]", "aws_instance.f",
+		`aws_instance.map_values["dev"]`, `aws_instance.map_values["prod"]`, "aws_instance.u", "aws_instance.variable_keys",
+	}, addresses(blocksOf(r, "resource", "aws_instance")))
 	c := blocksOf(r, "resource", "aws_instance")[0]
 	require.Equal(t, "a-1", conv(c.Instances[1].Attrs["ami"]))
 	require.NotContains(t, c.Instances[0].Attrs, "count")
@@ -120,6 +132,21 @@ resource "aws_instance" "zero" {
 	u := blocksOf(r, "resource", "aws_instance")[2]
 	require.True(t, u.KeyUnknown)
 	require.True(t, u.Overridable)
+	var mapValues, variableKeys *Block
+	for _, b := range blocksOf(r, "resource", "aws_instance") {
+		switch b.Name {
+		case "map_values":
+			mapValues = b
+		case "variable_keys":
+			variableKeys = b
+		}
+	}
+	require.NotNil(t, mapValues)
+	require.False(t, mapValues.KeyUnknown)
+	require.False(t, mapValues.Overridable, "root-input values do not make a literal object's key inventory overridable")
+	require.NotNil(t, variableKeys)
+	require.True(t, variableKeys.KeyUnknown)
+	require.True(t, variableKeys.Overridable, "root-input keys can change the instance inventory")
 	require.False(t, c.KeyUnknown)
 	require.False(t, c.Overridable)
 

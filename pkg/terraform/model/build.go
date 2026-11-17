@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
@@ -158,6 +159,13 @@ func (b *builder) resourceBlock(m *Module, sb *hclsyntax.Block, rs []*tfeval.Res
 		blk.KeyUnknown = true
 	}
 	blk.Overridable = expands && readsRootInput(m, expansionExpr(sb.Body), 0)
+	if blk.Overridable {
+		if _, hasCount := sb.Body.Attributes["count"]; !hasCount {
+			if attr, ok := sb.Body.Attributes["for_each"]; ok && fixedForEachObjectKeys(attr.Expr) {
+				blk.Overridable = false
+			}
+		}
+	}
 	return blk
 }
 
@@ -232,6 +240,29 @@ func expansionExpr(body *hclsyntax.Body) hclsyntax.Expression {
 		return a.Expr
 	}
 	return nil
+}
+
+// fixedForEachObjectKeys reports whether a literal object constructor has
+// only static string keys. Its values may depend on root inputs without
+// changing the instance inventory.
+func fixedForEachObjectKeys(expr hclsyntax.Expression) bool {
+	obj, ok := expr.(*hclsyntax.ObjectConsExpr)
+	if !ok {
+		return false
+	}
+	keys := make(map[string]bool, len(obj.Items))
+	for _, item := range obj.Items {
+		v, diags := item.KeyExpr.Value(nil)
+		if diags.HasErrors() {
+			return false
+		}
+		key, ok := ctyutil.ConcreteString(v)
+		if !ok || keys[key] {
+			return false
+		}
+		keys[key] = true
+	}
+	return true
 }
 
 // normalizeBody shapes the attributes tfeval evaluated from body: nested

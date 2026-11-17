@@ -34,6 +34,25 @@ func project(t *testing.T, files map[string]string, keys LiteralKeys) *Projectio
 	return Project(scan.Roots, Options{Placeholder: testPlaceholder, LiteralKeys: keys})
 }
 
+func projectPlan(t *testing.T, plan string) *Projection {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tfplan.json")
+	require.NoError(t, os.WriteFile(path, []byte(plan), 0o600))
+	scan, err := model.Load(context.Background(), dir, &model.Options{Plans: []string{path}})
+	require.NoError(t, err)
+	return Project(scan.Roots, Options{Placeholder: testPlaceholder})
+}
+
+func locatedAt(p *Projection, address string) *Located {
+	for _, loc := range p.Blocks {
+		if loc.Address == address {
+			return loc
+		}
+	}
+	return nil
+}
+
 func decode(t *testing.T, p *Projection) map[string]any {
 	t.Helper()
 	raw, err := ast.JSON(p.Input)
@@ -383,8 +402,8 @@ resource "aws_s3_bucket_versioning" "path" { bucket = "${path.module}-late" }
 		"an unknown bucket name may match any literal; a path.* literal names nothing")
 	require.Equal(t, []any{"./aws_s3_bucket.named", testPlaceholder}, get(idx, "targets", "./aws_s3_bucket_versioning.v", "bucket"),
 		"the literal names the bucket; a bucket with an unknown name may be named too")
-	require.Equal(t, []any{"./aws_s3_bucket.other", testPlaceholder}, get(idx, "targets", "./aws_s3_bucket_versioning.many", "bucket"),
-		"a bucket whose name is unknown may be named too")
+	require.Nil(t, get(idx, "targets", "./aws_s3_bucket_versioning.many", "bucket"),
+		"an unknown-count stand-in is not published as a concrete contract block")
 	require.Nil(t, get(idx, "targets", "./aws_s3_bucket_versioning.path", "bucket"), "a path.* literal names nothing")
 }
 
@@ -1086,6 +1105,146 @@ resource "alicloud_ram_user" "u" { name = "u" }
 `}, nil)
 	require.True(t, p.BlocksComplete)
 	require.Equal(t, true, get(dd(t, p), "blocks_complete"))
+}
+
+func TestUnknownResourceExpansionIsNotProjectedAsAConcreteBlock(t *testing.T) {
+	p := project(t, map[string]string{"main.tf": `
+variable "unknown_key" {}
+resource "aws_security_group" "partial" {
+  for_each = toset(["dev", var.unknown_key])
+  name     = "partial-${each.key}"
+  bucket   = aws_s3_bucket.known_bucket.bucket
+}
+resource "aws_s3_bucket" "known_bucket" { bucket = "known" }
+resource "aws_security_group" "known" { name = "known" }
+resource "aws_security_group" "attachment" {
+  ingress { security_groups = [aws_security_group.partial["dev"].id] }
+}
+`}, nil)
+	require.False(t, p.BlocksComplete)
+	require.Nil(t, p.Blocks["./aws_security_group.partial"], "the unknown-key stand-in is not a contract block")
+	require.NotNil(t, p.Blocks["./aws_security_group.known"])
+	require.True(t, p.Blocks["./aws_security_group.attachment"].RelPlaceholder,
+		"a reference targeting the unknown-key stand-in remains uncertain")
+	raw, err := json.Marshal(decode(t, p))
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "./aws_security_group.partial",
+		"the stand-in must not appear in blocks, by_id or relation indexes")
+	input := dd(t, p)
+	require.Equal(t, []any{testPlaceholder},
+		get(input, "targets", "./aws_security_group.attachment", "ingress.security_groups"),
+		"a reference to the unknown-key stand-in remains a placeholder, not a concrete target id")
+	require.Equal(t, []any{testPlaceholder}, ids(get(input, "referrers", "./aws_s3_bucket.known_bucket", "bucket")),
+		"an outgoing ref from the stand-in leaves a placeholder, not its omitted id")
+	require.Equal(t, []any{testPlaceholder}, ids(get(input, "related", "./aws_s3_bucket.known_bucket", "aws_security_group", "bucket")))
+}
+
+func TestKnownForEachMapKeysRemainCertainWhenValuesAreUnknown(t *testing.T) {
+	p := project(t, map[string]string{"main.tf": `
+variable "dev_name" {}
+variable "prod_name" {}
+resource "aws_security_group" "mapped" {
+  for_each = { dev = var.dev_name, prod = var.prod_name }
+  name     = "map-${each.key}"
+}
+resource "aws_security_group" "attachment" {
+  ingress { security_groups = [aws_security_group.mapped["dev"].id] }
+}
+`}, nil)
+	require.True(t, p.BlocksComplete)
+	dev := p.Blocks[`./aws_security_group.mapped["dev"]`]
+	prod := p.Blocks[`./aws_security_group.mapped["prod"]`]
+	require.NotNil(t, dev, "known map keys are projected as concrete instances")
+	require.NotNil(t, prod)
+	require.False(t, dev.Placeholder)
+	require.False(t, prod.Placeholder)
+	require.False(t, prod.RelPlaceholder)
+	require.NotNil(t, p.Blocks["./aws_security_group.attachment"])
+	idx := dd(t, p)
+	require.Equal(t, []any{`./aws_security_group.mapped["dev"]`}, ids(get(idx, "targets", "./aws_security_group.attachment", "ingress.security_groups")))
+	require.Equal(t, []any{"./aws_security_group.attachment"}, ids(get(idx, "referrers", `./aws_security_group.mapped["dev"]`, "ingress.security_groups")))
+}
+
+func TestUnknownModuleExpansionDoesNotProjectSymbolicChildBlocks(t *testing.T) {
+	p := project(t, map[string]string{
+		"main.tf": `
+variable "names" { type = set(string) }
+module "child" {
+  source   = "./child"
+  for_each = var.names
+}
+resource "aws_security_group" "root" { name = "root" }
+resource "aws_s3_bucket" "root_bucket" { bucket = "root-bucket" }
+resource "aws_s3_bucket_versioning" "root_versioning" { bucket = aws_s3_bucket.root_bucket.bucket }
+resource "aws_s3_bucket_versioning" "through_module" { bucket = module.child.id }
+`,
+		"child/main.tf": `
+resource "aws_s3_bucket" "only" { bucket = "inside" }
+output "id" { value = aws_s3_bucket.only.bucket }
+	`}, nil)
+	require.False(t, p.BlocksComplete)
+	require.NotNil(t, p.Blocks["./aws_security_group.root"])
+	require.Nil(t, p.Blocks["./module.child/aws_s3_bucket.only"],
+		"a child from an unexpanded module call is not a concrete contract block")
+	raw, err := json.Marshal(decode(t, p))
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "aws_s3_bucket.only",
+		"symbolic child blocks must not leak into typed blocks, by_id or relations")
+	idx := dd(t, p)
+	requireDefinite(t, p, idx, "./aws_s3_bucket.root_bucket", []any{"./aws_s3_bucket_versioning.root_versioning"})
+	require.Equal(t, []any{testPlaceholder}, ids(get(idx, "targets", "./aws_s3_bucket_versioning.through_module", "bucket")),
+		"a reference through a module output cannot name a child omitted from the native input")
+}
+
+func TestUnknownPlannedModuleExpansionIsNotProjectedAsConcrete(t *testing.T) {
+	p := projectPlan(t, `{"format_version":"1.2","complete":false,
+ "planned_values":{"root_module":{"resources":[
+  {"address":"aws_s3_bucket.known","mode":"managed","type":"aws_s3_bucket","name":"known","values":{"bucket":"known"}}
+ ]}},
+ "configuration":{"root_module":{
+  "resources":[{"address":"aws_s3_bucket.known","mode":"managed","type":"aws_s3_bucket","name":"known","expressions":{"bucket":{"constant_value":"known"}}}],
+  "module_calls":{"child":{
+   "source":"./child",
+   "for_each_expression":{"references":["var.names"]},
+   "module":{"resources":[]}
+  }}
+ }}}`)
+	require.False(t, p.BlocksComplete)
+	require.Empty(t, get(dd(t, p), "blocks", "module"),
+		"a synthetic call with unknown for_each cannot appear as a concrete module")
+	known := locatedAt(p, "aws_s3_bucket.known")
+	require.NotNil(t, known)
+	require.True(t, known.RelPlaceholder,
+		"an incomplete plan leaves relations open when the module expansion is unrepresented")
+}
+
+func TestZeroCountPlannedModuleKeepsKnownRelationsDefinite(t *testing.T) {
+	p := projectPlan(t, `{"format_version":"1.2","complete":true,
+ "planned_values":{"root_module":{"resources":[
+  {"address":"aws_s3_bucket.known","mode":"managed","type":"aws_s3_bucket","name":"known","values":{"bucket":"known"}},
+  {"address":"aws_s3_bucket_versioning.v","mode":"managed","type":"aws_s3_bucket_versioning","name":"v","values":{"bucket":"known"}}
+ ]}},
+ "configuration":{"root_module":{
+  "resources":[
+   {"address":"aws_s3_bucket.known","mode":"managed","type":"aws_s3_bucket","name":"known","expressions":{"bucket":{"constant_value":"known"}}},
+   {"address":"aws_s3_bucket_versioning.v","mode":"managed","type":"aws_s3_bucket_versioning","name":"v","expressions":{"bucket":{"references":["aws_s3_bucket.known.bucket"]}}}
+  ],
+  "module_calls":{"child":{
+   "source":"./child",
+   "count_expression":{"constant_value":0},
+   "module":{"resources":[]}
+  }}
+ }}}`)
+	require.True(t, p.BlocksComplete)
+	bucket := locatedAt(p, "aws_s3_bucket.known")
+	versioning := locatedAt(p, "aws_s3_bucket_versioning.v")
+	require.NotNil(t, bucket)
+	require.NotNil(t, versioning)
+	idx := dd(t, p)
+	require.Equal(t, []any{versioning.ID}, ids(get(idx, "related", bucket.ID, "aws_s3_bucket_versioning", "bucket")))
+	require.Equal(t, []any{versioning.ID}, ids(get(idx, "referrers", bucket.ID, "bucket")))
+	require.False(t, bucket.RelPlaceholder)
+	require.Len(t, p.Blocks, 2, "zero-count module must not appear as a concrete instance")
 }
 
 // The evidence block of another root keeps its nested blocks in every root

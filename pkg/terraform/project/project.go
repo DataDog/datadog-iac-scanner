@@ -180,11 +180,13 @@ var typedKinds = []string{address.KindResource, address.KindData, address.KindEp
 var listKinds = []string{address.KindModule, address.KindVariable, address.KindOutput, model.KindLocals}
 
 type projector struct {
-	opts    Options
-	t       terms
-	ids     map[*model.Instance]string
-	located map[string]*Located
-	unknown map[TypeKey]bool
+	opts           Options
+	t              terms
+	ids            map[*model.Instance]string
+	omitted        map[*model.Instance]bool
+	unknownModules map[*model.Module]bool
+	located        map[string]*Located
+	unknown        map[TypeKey]bool
 
 	emptyObject *ast.Term
 	emptySet    *ast.Term
@@ -240,9 +242,19 @@ func (p *projector) key(name string) *ast.Term {
 }
 
 // assignIDs names every instance of r: root-qualified address, plus the
-// declaring position when the address is not unique.
+// declaring position when the address is not unique. Root.Modules is ordered
+// parent before child, so an unknown module prefix is known before its
+// descendants are visited.
 func (p *projector) assignIDs(r *model.Root) {
+	var unknownModules []string
 	for _, m := range r.Modules {
+		underUnknownModule := underModulePrefix(m.Address, unknownModules)
+		if underUnknownModule {
+			if p.unknownModules == nil {
+				p.unknownModules = make(map[*model.Module]bool)
+			}
+			p.unknownModules[m] = true
+		}
 		for _, b := range m.Blocks {
 			for _, inst := range b.Instances {
 				id := r.ID + "/" + inst.Address
@@ -250,9 +262,29 @@ func (p *projector) assignIDs(r *model.Root) {
 					id += "#" + b.File + ":" + strconv.Itoa(b.Range.Start.Line)
 				}
 				p.ids[inst] = id
+				if b.KeyUnknown || underUnknownModule {
+					if p.omitted == nil {
+						p.omitted = make(map[*model.Instance]bool)
+					}
+					p.omitted[inst] = true
+				}
+			}
+			if b.Kind == address.KindModule && b.KeyUnknown && !underUnknownModule {
+				for _, inst := range b.Instances {
+					unknownModules = append(unknownModules, inst.Address)
+				}
 			}
 		}
 	}
+}
+
+func underModulePrefix(module string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if module == prefix || strings.HasPrefix(module, prefix+".") {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *projector) root(r *model.Root) {
@@ -268,9 +300,20 @@ func (p *projector) root(r *model.Root) {
 		p.rel.scoped[r.ID] = r
 	}
 	for _, m := range r.Modules {
+		underUnknownModule := p.unknownModules[m]
 		var files []string
 		byFile := map[string]*document{}
 		for _, b := range m.Blocks {
+			if b.KeyUnknown || underUnknownModule {
+				// Keep the model's stand-in for legacy consumers, but do not
+				// publish it as a concrete native-contract block. Its absence
+				// leaves the block inventory incomplete; its own references and
+				// values add only the relation uncertainty they can affect.
+				p.incompleteInventory = true
+				p.unknown[TypeKey{Root: r.ID, Kind: b.Kind, Type: b.Type}] = true
+				p.unresolvedBlock(r, b)
+				continue
+			}
 			d, ok := byFile[b.File]
 			if !ok {
 				d = newDocument()
@@ -393,6 +436,29 @@ func (p *projector) block(r *model.Root, b *model.Block, d *document) {
 		if unknown {
 			p.unknown[TypeKey{Root: r.ID, Kind: b.Kind, Type: b.Type}] = true
 		}
+	}
+}
+
+// unresolvedBlock keeps the uncertainty an unknown-key stand-in contributes
+// to relations without publishing that stand-in as a concrete contract block.
+func (p *projector) unresolvedBlock(r *model.Root, b *model.Block) {
+	for _, inst := range b.Instances {
+		id := p.ids[inst]
+		for _, ref := range inst.Refs {
+			if to, ok := p.ids[ref.To]; ok {
+				ref.Certain = false
+				p.rel.reference(id, b, to, ref)
+			}
+		}
+		for path := range inst.Untraced {
+			p.rel.markUntargeted(r.ID, b.Kind, b.Type, path)
+		}
+		for path := range inst.UnresolvedAt {
+			p.rel.markUntargeted(r.ID, b.Kind, b.Type, path)
+		}
+		uncertain := *b
+		uncertain.KeyUnknown = true
+		p.rel.literals(r.ID, &uncertain, inst, id)
 	}
 }
 
@@ -681,6 +747,9 @@ func (p *projector) index(r *model.Root, b *model.Block, inst *model.Instance, i
 
 	for _, ref := range inst.Refs {
 		if to, ok := p.ids[ref.To]; ok {
+			if p.omitted[ref.To] || (ref.To.Block != nil && ref.To.Block.KeyUnknown) {
+				ref.Certain = false
+			}
 			p.rel.reference(id, b, to, ref)
 		}
 	}

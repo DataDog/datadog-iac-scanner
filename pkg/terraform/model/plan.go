@@ -765,6 +765,11 @@ func (b *planBuilder) moduleCallBlocks() {
 				blk.Range = b.rangeOf(p)
 			}
 			prefix := joinAddr(parent.Address, address.KindModule+"."+label)
+			if len(children) == 1 && b.modulePos[children[0].Address] == nil && hasConfigExpansion(call) {
+				// Without a planned child, the synthetic unindexed module address
+				// is not a concrete instance address for count or for_each calls.
+				blk.KeyUnknown = true
+			}
 			for _, child := range children {
 				pos := b.modulePos[child.Address]
 				if pos == nil {
@@ -787,6 +792,10 @@ func (b *planBuilder) moduleCallBlocks() {
 			parent.Blocks = append(parent.Blocks, blk)
 		}
 	}
+}
+
+func hasConfigExpansion(call map[string]any) bool {
+	return call["count_expression"] != nil || call["for_each_expression"] != nil
 }
 
 // configPos is the JSON range of a path under the configuration module of m.
