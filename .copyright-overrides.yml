@@ -315,3 +315,10 @@ github.com/go-jose/go-jose/v4: Copyright 2014 Square Inc.
 github.com/go-jose/go-jose/v4/*: Copyright 2014 Square Inc.
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/*: Copyright 2020 Google LLC
 github.com/spiffe/go-spiffe/v2/*: Copyright SPIFFE Project Contributors
+
+# Upstream v1.3.1 ships the Apache-2.0 license without a copyright notice.
+# Record the absence explicitly instead of inventing an owner or date.
+github.com/moby/docker-image-spec/*: NOASSERTION
+
+# Explicit copyright notice in distribution/reference v0.6.0 sort.go.
+github.com/distribution/reference: Copyright The containerd Authors.
