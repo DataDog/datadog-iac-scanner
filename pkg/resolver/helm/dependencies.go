@@ -347,8 +347,8 @@ func (a *attacher) attachDeclared(
 	}
 	sub, err := loadChart(a.ctx, a.fsys, depDir)
 	if err != nil {
-		contextLogger.Warn().Msgf("helm dependency %q of chart '%s' could not be loaded from %s: %v",
-			dep.Name, dir, depDir, err)
+		contextLogger.Warn().Err(logger.RedactError(err)).Msgf("helm dependency %q of chart '%s' could not be loaded from %s",
+			dep.Name, dir, depDir)
 		return true
 	}
 	attachedDirs[key] = true

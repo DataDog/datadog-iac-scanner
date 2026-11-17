@@ -7,6 +7,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -225,7 +226,8 @@ func resolveAndStoreChart(
 	defer func() {
 		if r := recover(); r != nil {
 			contextLogger := logger.FromContext(ctx)
-			contextLogger.Error().Msgf("panic storing the resolved files of chart %s: %v", chartPath, r)
+			contextLogger.Error().Err(logger.RedactError(fmt.Errorf("panic: %v", r))).
+				Msgf("panic storing the resolved files of chart %s", chartPath)
 			rendered = true
 		}
 	}()

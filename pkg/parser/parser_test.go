@@ -6,15 +6,72 @@
 package parser
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
+
+type failingParser struct {
+	kindParser
+	parseErr     error
+	stringifyErr error
+}
+
+func (p *failingParser) Parse(context.Context, []byte, string, bool, int) (
+	[]byte, []model.Document, []int, map[string]model.ResolvedFile, error,
+) {
+	return nil, nil, nil, nil, p.parseErr
+}
+
+func (p *failingParser) StringifyContent([]byte) (string, error) {
+	return "", p.stringifyErr
+}
+
+func TestParserRedactsErrorsAtSharedBoundary(t *testing.T) {
+	const secret = "synthetic-private-value"
+	for _, stage := range []string{"parse", "stringify"} {
+		t.Run(stage, func(t *testing.T) {
+			cause := errors.New("invalid content: " + secret)
+			kind := &failingParser{kindParser: &jsonParser.Parser{}}
+			if stage == "parse" {
+				kind.parseErr = cause
+			} else {
+				kind.stringifyErr = cause
+			}
+			parsers, err := NewBuilder(t.Context()).Add(kind).Build([]string{""}, nil)
+			require.NoError(t, err)
+			require.Len(t, parsers, 1)
+			for name, parse := range map[string]func(context.Context, string, []byte, bool, bool, int) (ParsedDocument, error){
+				"Parse":        parsers[0].Parse,
+				"ParseContent": parsers[0].ParseContent,
+			} {
+				t.Run(name, func(t *testing.T) {
+					var logs bytes.Buffer
+					log := zerolog.New(&logs)
+					_, err := parse(log.WithContext(t.Context()), "test.json", nil, false, false, 1)
+					if stage == "parse" {
+						require.ErrorIs(t, err, cause)
+						require.NotContains(t, err.Error(), secret)
+						// Ordinary downstream logging needs no additional redaction.
+						log.Error().Err(err).Msgf("parse failed: %+v", err)
+					} else {
+						require.NoError(t, err)
+					}
+					require.Contains(t, logs.String(), "details redacted")
+					require.NotContains(t, logs.String(), secret)
+				})
+			}
+		})
+	}
+}
 
 // TestParser_Parse tests the functions [Parse()] and all the methods called by them
 func TestParser_Parse(t *testing.T) {

@@ -197,7 +197,7 @@ func parseRunBlocksInSteps(ctx context.Context, steps []interface{}) {
 
 		parsed := parseRunBlock(runScript, shell)
 		if parsed.Error != nil {
-			contextLogger.Err(parsed.Error).Msg("Failed to parse shell expressions in run block")
+			contextLogger.Err(logger.RedactError(parsed.Error)).Msg("Failed to parse shell expressions in run block")
 		}
 
 		step["_parsed_run"] = parsed
@@ -249,7 +249,7 @@ func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{})
 				for _, expr := range allExpressions {
 					parsed := parseExpression(ctx, expr)
 					if parsed.Error != nil {
-						contextLogger.Err(parsed.Error).Msg("Failed to parse ghaction expression")
+						contextLogger.Err(logger.RedactError(parsed.Error)).Msg("Failed to parse ghaction expression")
 					}
 					parsedExprs = append(parsedExprs, *parsed)
 				}

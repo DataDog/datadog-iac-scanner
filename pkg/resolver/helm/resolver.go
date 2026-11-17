@@ -190,7 +190,8 @@ func renderHelm(ctx context.Context, fsys vfs.FS, index *chartIndex, path string
 	contextLogger.Debug().Msg("Running helm install")
 	manifest, loadedChart, stamped, excluded, locator, err := renderWithMarkers(ctx, fsys, index, true, path)
 	if err != nil && locator.attachedAny() {
-		contextLogger.Debug().Msgf("Rendering chart '%s' again without the dependencies attached from the scan: %v", path, err)
+		contextLogger.Debug().Err(logger.RedactError(err)).
+			Msgf("Rendering chart '%s' again without the dependencies attached from the scan", path)
 		manifest, loadedChart, stamped, excluded, locator, err = renderWithMarkers(ctx, fsys, index, false, path)
 	}
 	if err != nil {

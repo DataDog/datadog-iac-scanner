@@ -372,7 +372,7 @@ func TestStoreResolvedFilesSkipsHelmJSONOnJSONParser(t *testing.T) {
 }
 
 // TestLogResolverResolveError_RedactsCredentials verifies that render failures
-// are logged with URL credentials stripped. Helm surfaces the offending
+// are logged without untrusted error text. Helm surfaces the offending
 // template/values fragment inside its error, so a chart whose values embed a
 // database connection string would otherwise copy those credentials into the
 // scanner's logs.
@@ -404,7 +404,8 @@ func TestLogResolverResolveError_RedactsCredentials(t *testing.T) {
 
 			logged := logBuf.String()
 			require.Contains(t, logged, tt.wantLevel)
-			require.Contains(t, logged, "mysql://db:3306/app")
+			require.Contains(t, logged, "details redacted")
+			require.NotContains(t, logged, "mysql://")
 			require.NotContains(t, logged, "sup3rs3cret")
 			// Any render failure silences the raw templates' parse errors.
 			require.True(t, service.isUnderFailedHelmChart("chart/templates/a.yaml"))

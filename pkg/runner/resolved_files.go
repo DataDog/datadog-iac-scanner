@@ -25,7 +25,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/google/uuid"
-	"github.com/rs/zerolog"
 )
 
 // resolveOnly renders a chart without parsing or storing it, dropping the
@@ -76,7 +75,7 @@ func (s *Service) storeResolvedFiles(
 			if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
 				continue
 			}
-			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+			contextLogger.Error().Err(logger.RedactError(err)).
 				Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
 			continue
 		}
@@ -94,7 +93,7 @@ func (s *Service) storeResolvedFiles(
 		for docIdx, document := range documents.Docs {
 			preparedDocument, prepareErr := prepareResolvedScanDocument(document, kind)
 			if prepareErr != nil {
-				contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(prepareErr)).
+				contextLogger.Error().Err(logger.RedactError(prepareErr)).
 					Msgf("failed to prepare scan document '%s' with fileType '%s'", rfile.FileName, kind)
 				continue
 			}
@@ -312,13 +311,12 @@ func newOriginalResolvedLineInfoLoader(
 func logResolveError(ctx context.Context, kind model.FileKind, filename string, err error) {
 	contextLogger := logger.FromContext(ctx)
 	if kind == model.KindHELM && isExpectedHelmRenderError(err) {
-		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+		contextLogger.Debug().Err(logger.RedactError(err)).
 			Msgf("helm chart '%s' could not be rendered with available values", filename)
 		return
 	}
-	// Render errors quote the offending template/values fragment, so they are
-	// redacted for the same reason parse errors are — see redactErrorForLog.
-	contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+	// Classify the original error before hiding potentially sensitive details.
+	contextLogger.Error().Err(logger.RedactError(err)).
 		Msgf("failed to render file content '%s' with fileType '%s'", filename, kind)
 }
 

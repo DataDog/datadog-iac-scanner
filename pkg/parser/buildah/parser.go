@@ -169,7 +169,7 @@ func getWordValue(ctx context.Context, wd *syntax.Word) string {
 	err := printer.Print(&buf, wd)
 
 	if err != nil {
-		contextLogger.Debug().Msgf("failed to get word value: %s", err)
+		contextLogger.Debug().Err(logger.RedactError(err)).Msg("failed to get word value")
 	}
 
 	value := buf.String()
@@ -188,7 +188,7 @@ func getFullCommand(ctx context.Context, args []*syntax.Word) string {
 	err := printer.Print(&buf, call)
 
 	if err != nil {
-		contextLogger.Debug().Msgf("failed to get full command: %s", err)
+		contextLogger.Debug().Err(logger.RedactError(err)).Msg("failed to get full command")
 	}
 
 	command := buf.String()

@@ -782,7 +782,8 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			)
 			if cErr != nil {
 				if isReportableModuleEvalError(cErr) {
-					contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, cErr)
+					contextLogger.Warn().Err(logger.RedactError(cErr)).
+						Msgf("tfeval: failed to evaluate module %q at %s", call.label, call.dir)
 				}
 				// Deliberately not added to allVisited: the module was not resolved, so
 				// it must keep being scanned where it is written.

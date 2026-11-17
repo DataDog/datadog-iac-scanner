@@ -6,14 +6,28 @@
 package model
 
 import (
+	"bytes"
 	"context"
 	json "encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
+
+func TestScalarNodeResolverDoesNotLogSourceValues(t *testing.T) {
+	const secret = "synthetic-private-scalar"
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(t.Context())
+	value := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: secret}
+
+	// Invalid typed scalars retain their value for scanning, but never for logs.
+	require.Equal(t, secret, scalarNodeResolver(ctx, value))
+	require.Contains(t, logs.String(), "failed to decode scalar")
+	require.NotContains(t, logs.String(), secret)
+}
 
 type args struct {
 	value *yaml.Node

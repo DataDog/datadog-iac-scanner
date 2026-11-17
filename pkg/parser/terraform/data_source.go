@@ -103,7 +103,7 @@ func getDataSourcePolicy(
 		next := renderLocalData(ctx, blocks, inputVariables)
 		data, err := gocty.ToCtyValue(next, cty.Map(cty.Map(cty.Map(cty.String))))
 		if err != nil {
-			contextLogger.Error().Msgf("Error trying to convert data sources to cty value: %s", err)
+			contextLogger.Error().Err(logger.RedactError(err)).Msg("Error trying to convert data sources to cty value")
 			return inputVariables
 		}
 		inputVariables["data"] = data

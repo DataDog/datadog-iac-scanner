@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
@@ -189,7 +190,7 @@ func (t *transformer) readSibling(path string) []byte {
 	}
 	content, err := t.fsys.ReadFile(full)
 	if err != nil {
-		t.logger.Debug().Msgf("dockercompose: could not read %s: %s", full, err)
+		t.logger.Debug().Err(logger.RedactError(err)).Msgf("dockercompose: could not read %s", full)
 		return nil
 	}
 	if t.fileContent == nil {

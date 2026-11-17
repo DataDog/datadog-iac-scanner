@@ -21,7 +21,6 @@ import (
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
 )
 
 var (
@@ -33,23 +32,6 @@ var (
 	}
 )
 
-// redactErrorForLog renders err for logging with URL credentials stripped.
-//
-// Parse/render errors are produced by third-party libraries that routinely
-// quote the offending fragment of the file being scanned: e.g. the Ansible INI
-// parser reports `bad key=value pair supplied: postgres://user:pass@host/db`.
-// Since scanned files belong to customer repositories, logging such an error
-// verbatim copies whatever credentials it happens to embed into our logs. The
-// message is still needed for triage, so redact the credentials rather than
-// dropping the error, and log the result under the same field `.Err()` would
-// have used so downstream log consumers keep working.
-func redactErrorForLog(err error) string {
-	if err == nil {
-		return ""
-	}
-	return model.RedactURLCredentials(err.Error())
-}
-
 // logParseFailure logs a file that could not be parsed. Raw templates of a
 // failed Helm chart, template syntax outside a chart and deliberately invalid
 // test fixtures are expected not to parse, so they stay at debug level.
@@ -57,13 +39,13 @@ func (s *Service) logParseFailure(ctx context.Context, filename string, content 
 	contextLogger := logger.FromContext(ctx)
 	switch {
 	case s.isUnderFailedHelmChart(filename):
-		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+		contextLogger.Debug().Err(logger.RedactError(err)).
 			Msgf("skipping unparseable raw Helm template: %s", filename)
 	case utils.IsTestFixturePath(filename) || utils.HasYAMLBreakingTemplate(content):
-		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+		contextLogger.Debug().Err(logger.RedactError(err)).
 			Msgf("skipping unparseable templated or fixture file: %s", filename)
 	default:
-		contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
+		contextLogger.Error().Err(logger.RedactError(err)).
 			Msgf("failed to parse file content: %s", filename)
 	}
 }
@@ -172,7 +154,7 @@ func (s *Service) sinkDocument(
 	// lazily reparsed) — and reject cycles, as json.Marshal would.
 	preparedDocument, err := sanitizeScanDocumentInPlace(document, documents.Kind)
 	if err != nil {
-		contextLogger.Err(err).Msgf("failed to sanitize document for file: %s", filename)
+		contextLogger.Err(logger.RedactError(err)).Msgf("failed to sanitize document for file: %s", filename)
 		return nil
 	}
 

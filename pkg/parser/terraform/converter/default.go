@@ -269,7 +269,7 @@ func insertBlock(ctx context.Context, out model.Document, path []string, value m
 			if !ok {
 				err := fmt.Errorf("unable to convert Block to JSON: %v", strings.Join(path, "."))
 				contextLogger := logger.FromContext(ctx)
-				contextLogger.Error().Msg(err.Error())
+				contextLogger.Error().Err(logger.RedactError(err)).Msg("unable to convert block to JSON")
 				return err
 			}
 		} else {

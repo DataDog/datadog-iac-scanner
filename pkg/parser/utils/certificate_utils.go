@@ -74,7 +74,7 @@ func AddCertificateInfo(ctx context.Context, path, content string) map[string]in
 	_, err := os.Stat(content)
 
 	if err != nil { // content is not a full valid path or is an incomplete path
-		loggerFromContext.Trace().Msgf("path to the certificate content is not a valid: %s", content)
+		loggerFromContext.Trace().Msg("path to the certificate content is not valid (value redacted)")
 		filePath = filepath.Join(filepath.Dir(path), content)
 	} else { // content is a full valid path
 		filePath = content
@@ -94,7 +94,7 @@ func AddCertificateInfo(ctx context.Context, path, content string) map[string]in
 		return attributes
 	}
 
-	loggerFromContext.Error().Msgf("Failed to get certificate path %s: %s", filePath, err)
+	loggerFromContext.Error().Err(logger.RedactError(err)).Msgf("Failed to get certificate referenced by %s", path)
 
 	return nil
 }

@@ -496,7 +496,7 @@ func PrepareScanDocument(ctx context.Context, body map[string]interface{}, kind 
 	bodyMap, err := prepareScanDocument(body, kind)
 	if err != nil {
 		contextLogger := logger.FromContext(ctx)
-		contextLogger.Error().Msgf("failed to remove dd line information: '%s'", err)
+		contextLogger.Error().Err(logger.RedactError(err)).Msg("failed to remove dd line information")
 		return body
 	}
 	return bodyMap

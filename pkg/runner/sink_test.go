@@ -8,8 +8,8 @@ package runner
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	iniConfigParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/config"
 	iniHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
@@ -425,76 +426,79 @@ func TestSink_ParseFailureLogLevel(t *testing.T) {
 	}
 }
 
-// TestSink_ParseFailureRedactsCredentials verifies that the credentials a
-// third-party parser echoes back from the scanned file never reach the logs.
-// The Ansible INI parser quotes the offending line verbatim
-// ("bad key=value pair supplied: postgres://user:pass@host/db"), which is how
-// customer database credentials used to leak into the scanner's error logs.
+// Exercise the real INI libraries through both the normal and resolved-file
+// paths. These libraries echo source lines, including arbitrary secret formats.
 func TestSink_ParseFailureRedactsCredentials(t *testing.T) {
-	tests := []struct {
-		name     string
-		url      string
-		wantKept string
-	}{
-		{
-			name:     "plain scheme",
-			url:      "postgres://user:sup3rs3cret@localhost:5432/dogdata",
-			wantKept: "postgres://localhost:5432/dogdata",
-		},
-		{
-			// Driver-qualified schemes are the common spelling in .ini/.env
-			// config and put `+driver` before `://`.
-			name:     "driver qualified scheme",
-			url:      "postgresql+psycopg2://user:sup3rs3cret@localhost:5432/dogdata",
-			wantKept: "postgresql+psycopg2://localhost:5432/dogdata",
-		},
+	// Synthetic JWT-shaped data, with no valid signature or credentials.
+	encode := base64.RawURLEncoding.EncodeToString
+	jwt := encode([]byte(`{"alg":"HS256"}`)) + "." +
+		encode([]byte(`{"sub":"test-only"}`)) + "." + encode([]byte("invalid-signature"))
+	secrets := map[string]string{
+		"URL userinfo":         "postgres://user:synthetic-password@localhost:5432/db",
+		"driver qualified URL": "postgresql+psycopg2://user:synthetic-password@localhost/db",
+		"JWT":                  jwt,
+		"opaque API key":       "synthetic-opaque-value-with-no-known-secret-prefix",
+		"password with spaces": "synthetic password containing spaces",
 	}
+	parsers, err := parser.NewBuilder(context.Background()).
+		Add(&iniHostsParser.Parser{}).
+		Add(&iniConfigParser.Parser{}).
+		Build([]string{"ansible"}, nil)
+	require.NoError(t, err)
+	require.Len(t, parsers, 2)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+	for _, p := range parsers {
+		for name, secret := range secrets {
+			t.Run(string(p.Parsers.GetKind())+"/"+name, func(t *testing.T) {
+				content, filename := "[main]\nvalue = \""+secret+"\"\n", "/repo/config.ini"
+				if p.Parsers.GetKind() == model.KindCFG {
+					// NATS-style configuration is not INI: missing section header.
+					content, filename = "# configuration\noperator: "+secret+"\n", "/repo/config.conf"
+				}
+				_, _, _, _, rawErr := p.Parsers.Parse(t.Context(), []byte(content), filename, false, 1)
+				require.Error(t, rawErr)
+				require.Contains(t, rawErr.Error(), secret, "fixture must reproduce content echoed by the library")
 
-			parsers, err := parser.NewBuilder(ctx).
-				Add(&iniHostsParser.Parser{}).
-				Build([]string{"ansible"}, []string{""})
-			require.NoError(t, err)
-			require.NotEmpty(t, parsers)
+				for _, mode := range []string{"error", "debug fixture", "debug failed chart", "resolved"} {
+					t.Run(mode, func(t *testing.T) {
+						var logBuf bytes.Buffer
+						ctx := zerolog.New(&logBuf).WithContext(t.Context())
+						svc := &Service{Parser: p, Tracker: noopTracker{}, MaxFileSize: 1}
+						path, level := filename, "error"
+						switch mode {
+						case "debug fixture":
+							path, level = "/repo/testdata/"+filepath.Base(filename), "debug"
+						case "debug failed chart":
+							path, level = "/repo/chart/templates/"+filepath.Base(filename), "debug"
+							svc.recordFailedHelmChart("/repo/chart")
+						}
+						if mode == "resolved" {
+							paths := svc.storeResolvedFiles(ctx, model.ResolvedFiles{File: []model.ResolvedHelm{
+								{FileName: path, Content: []byte(content)},
+							}}, p.Parsers.GetKind(), "scan1", false, 1)
+							require.Empty(t, paths)
+						} else {
+							err := sinkReader(svc, ctx, path, "scan1", bytes.NewReader([]byte(content)),
+								make([]byte, 1024), false, 1)
+							require.NoError(t, err)
+						}
 
-			// A connection string is not valid Ansible inventory syntax, so
-			// aini.Parse fails with "bad key=value pair supplied: <the URL>".
-			content := "[main]\ndogdata_url = " + tt.url + "\n"
-
-			var logBuf bytes.Buffer
-			testCtx := zerolog.New(&logBuf).WithContext(ctx)
-
-			svc := &Service{
-				Parser:      parsers[0],
-				Tracker:     noopTracker{},
-				MaxFileSize: 1,
-			}
-
-			rc := bytes.NewReader([]byte(content))
-			buf := make([]byte, 1024)
-			require.NoError(t, sinkReader(svc, testCtx, "/repo/test/etc/test.ini", "scan1", rc, buf, false, 1))
-
-			logged := logBuf.String()
-			// The failure is still reported, with the offending scheme/host kept for triage.
-			require.Contains(t, logged, "failed to parse file content")
-			require.Contains(t, logged, tt.wantKept)
-			// ... but without the credentials that were embedded in the scanned file.
-			require.NotContains(t, logged, "sup3rs3cret")
-			require.NotContains(t, logged, "user:sup3rs3cret")
-		})
+						var entry struct {
+							Level   string `json:"level"`
+							Error   string `json:"error"`
+							Message string `json:"message"`
+						}
+						require.NoError(t, json.Unmarshal(logBuf.Bytes(), &entry))
+						require.Equal(t, level, entry.Level)
+						require.Contains(t, entry.Message, path)
+						require.Contains(t, entry.Error, "details redacted")
+						require.NotContains(t, logBuf.String(), secret)
+						require.NotContains(t, logBuf.String(), "operator:")
+					})
+				}
+			})
+		}
 	}
-}
-
-func TestRedactErrorForLog(t *testing.T) {
-	require.Equal(t, "", redactErrorForLog(nil))
-	require.Equal(t,
-		"bad key=value pair supplied: postgres://localhost:5432/dogdata",
-		redactErrorForLog(errors.New("bad key=value pair supplied: postgres://u:p@localhost:5432/dogdata")))
-	require.Equal(t, "yaml: line 1: did not find expected node content",
-		redactErrorForLog(errors.New("yaml: line 1: did not find expected node content")))
 }
 
 func TestSink_IgnoreLinesWithResolvedFiles(t *testing.T) {
