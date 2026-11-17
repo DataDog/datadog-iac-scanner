@@ -361,6 +361,9 @@ func (c *Inspector) SetMergeAllow(paths []string) {
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
 // the query compiled and its payload
 type QueryContext struct {
+	dockerInput   *dockerRuleInput
+	dockerGate    *dockerGateState
+	coverage      *cover.Cover
 	Ctx           context.Context
 	scanID        string
 	Files         map[string]*model.FileMetadata
@@ -509,6 +512,10 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
 	contextLogger := logger.FromContext(ctx)
 
+	if err := c.QueryLoader.validateDockerContractMetadata(&queries[queryID]); err != nil {
+		return QueryResult{err: err, queryID: queryID}
+	}
+
 	loadStart := time.Now()
 	// Prefer the shared-compiler query when one was prepared for this rule (rule
 	// isolation disabled); otherwise compile/load it individually, using the
@@ -534,6 +541,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	// is safe.
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
 	queryContext := &QueryContext{
+		dockerInput:             payloads.dockerInput,
 		Ctx:                     ctx,
 		scanID:                  scanID,
 		Files:                   filesMap,
@@ -544,8 +552,18 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
 	}
 
+	if !strings.EqualFold(query.Metadata.Platform, "Dockerfile") {
+		queryContext.dockerInput = nil
+	}
 	evalStart := time.Now()
-	vuls, moduleRaised, moduleSeverity, err := c.doRun(ctx, queryContext)
+	var vuls []model.Vulnerability
+	var moduleRaised int
+	var moduleSeverity model.Severity
+	if queryContext.dockerInput != nil && dockerContractRule(&query.Metadata) {
+		vuls, moduleRaised, moduleSeverity, err = c.doRunDockerRoots(ctx, queryContext)
+	} else {
+		vuls, moduleRaised, moduleSeverity, err = c.doRun(ctx, queryContext)
+	}
 	evalDur := time.Since(evalStart)
 	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
 		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
@@ -785,6 +803,16 @@ func (c *Inspector) executeQueries(
 	// budget and cannot oversubscribe the machine. Results land in an
 	// index-aligned slice (no shared mutable state between workers); the actual
 	// aggregation happens serially below.
+	for _, query := range queries {
+		if strings.EqualFold(query.Platform, "Dockerfile") {
+			var err error
+			payloads.dockerInput, err = newDockerRuleInput(selectPlatformPayload(query.Platform, payloads.byPlatform, payloads.full))
+			if err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
 	results := make([]QueryResult, len(queries))
 	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
 		func(ctx context.Context, _ model.QueryMetadata, i int) error {
@@ -996,23 +1024,18 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 		}
 	}()
 
-	payload := *qCtx.payload
-	queryID, legacyQueryID, legacyQueryIDs := queryIDsFromMetadata(ctx, &qCtx.Query.Metadata)
-	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID, legacyQueryIDs); found {
-		if args, ok, err := ruleArgumentsValue(rc); err != nil {
-			return nil, 0, "", errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
-		} else if ok {
-			payload, err = withRuleArguments(payload, args)
-			if err != nil {
-				return nil, 0, "", err
-			}
-		}
+	payload, err := c.prepareQueryPayload(qCtx)
+	if err != nil {
+		return nil, 0, "", err
 	}
 	options := []rego.EvalOption{rego.EvalParsedInput(payload)}
 
 	var cov *cover.Cover
 	if c.enableCoverageReport {
-		cov = cover.New()
+		cov = qCtx.coverage
+		if cov == nil {
+			cov = cover.New()
+		}
 		options = append(options, rego.EvalQueryTracer(cov))
 	}
 
@@ -1042,6 +1065,11 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 		})
 	}
 
+	if qCtx.dockerInput != nil {
+		if err := c.gateDockerResults(qCtx.Ctx, qCtx, qCtx.dockerInput, payload, results); err != nil {
+			return nil, 0, "", err
+		}
+	}
 	decodeStart := time.Now()
 	vulns, moduleRaised, moduleSeverity, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
 	decodeDuration := time.Since(decodeStart)
@@ -1059,6 +1087,33 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 			Msg("slow rule")
 	}
 	return vulns, moduleRaised, moduleSeverity, err
+}
+
+func (c *Inspector) prepareQueryPayload(qCtx *QueryContext) (ast.Value, error) {
+	var err error
+	payload := *qCtx.payload
+	if strings.EqualFold(qCtx.Query.Metadata.Platform, "Dockerfile") {
+		if qCtx.dockerInput == nil {
+			qCtx.dockerInput, err = newDockerRuleInput(payload)
+			if err != nil {
+				return nil, err
+			}
+		}
+		payload = qCtx.dockerInput.payload
+	}
+	queryID, legacyQueryID, legacyQueryIDs := queryIDsFromMetadata(qCtx.Ctx, &qCtx.Query.Metadata)
+	if rc, found := lookupRuleConfig(c.ruleConfigs, queryID, legacyQueryID, legacyQueryIDs); found {
+		if args, ok, err := ruleArgumentsValue(rc); err != nil {
+			return nil, errors.Wrap(err, "Failed to prepare rule arguments for query "+queryID)
+		} else if ok {
+			payload, err = withRuleArguments(payload, args)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return payload, nil
 }
 
 func (c *Inspector) TransformJsonencodeInPayload(ctx context.Context, value ast.Value) ast.Value {
@@ -1741,8 +1796,9 @@ const (
 
 // platformPayloads holds per-platform OPA input payloads built once per scan.
 type platformPayloads struct {
-	byPlatform map[string]ast.Value
-	full       ast.Value
+	dockerInput *dockerRuleInput
+	byPlatform  map[string]ast.Value
+	full        ast.Value
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -2156,6 +2212,9 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		} else {
 			opts = append(opts, rego.Module("Generic", platformGeneralQuery.LibraryCode))
 		}
+		if strings.EqualFold(query.Platform, "Dockerfile") {
+			opts = append(opts, rego.Module(dockerContractModuleName, dockerContractModule))
+		}
 		opts = append(opts, rego.Module(query.Query, query.Content))
 
 		opaQuery, err := rego.New(opts...).PrepareForEval(ctx)
@@ -2227,6 +2286,9 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 		if modules["Generic"] == nil {
 			modules["Generic"], _ = ast.ParseModuleWithOpts("Generic", platformLib.LibraryCode,
 				ast.ParserOptions{RegoVersion: ast.RegoV1})
+		}
+		if strings.EqualFold(platform, "Dockerfile") {
+			modules[dockerContractModuleName] = ast.MustParseModule(dockerContractModule)
 		}
 		// queryPath maps each surviving rule index to its unique query path.
 		queryPath := make(map[int]string, len(indices))
