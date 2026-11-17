@@ -613,7 +613,7 @@ func (t *tracer) check(f *frame, e *ast.Expr, ev *topdown.Event) {
 	if len(e.With) > 0 {
 		t.substitutionSensitive = true
 	}
-	if e.IsCall() && t.sentinelOperand(f, e.Operands()) && !t.typePredicateHasKnownNonPlaceholderOperand(e, ev) {
+	if e.IsCall() && t.sentinelOperand(f, e.Operands()) && t.sentinelObserved(f, e, ev) {
 		t.sentinelRead = true
 	}
 	switch terms := e.Terms.(type) {
@@ -643,6 +643,28 @@ func (t *tracer) check(f *frame, e *ast.Expr, ev *topdown.Event) {
 		}
 		t.checkBuiltin(f, e, ev, op.String())
 	}
+}
+
+// sentinelObserved checks whether this expression can observe an unknown value.
+// Sentinel variables are classified across all calls, so resolve their actual
+// values at this event before rejecting the substitution proof.
+func (t *tracer) sentinelObserved(f *frame, e *ast.Expr, ev *topdown.Event) bool {
+	if ev == nil {
+		return true
+	}
+	if t.typePredicateHasKnownNonPlaceholderOperand(e, ev) {
+		return false
+	}
+	for _, term := range e.Operands() {
+		if isSentinelRef(term.Value, t.g.sentinels) {
+			continue
+		}
+		value := t.evalTerm(f, f.rule, term, ev, 0)
+		if value == nil || t.ph.has(value) {
+			return true
+		}
+	}
+	return false
 }
 
 // typePredicateHasKnownNonPlaceholderOperand prevents a static sentinel variable

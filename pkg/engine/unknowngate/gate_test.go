@@ -1061,28 +1061,74 @@ DatadogPolicy contains {"_dd_id":"fixed","path":[]} if value(input.block) == 1`,
 	}
 }
 
-func TestTraceProofRejectsConfiguredSentinelComparisons(t *testing.T) {
-	modules := map[string]*ast.Module{
-		"policy.rego": ast.MustParseModule(`package datadog
-
-DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.value == data.generic.terraform._placeholder
-`),
-		"terraform.rego": ast.MustParseModule(`package generic.terraform
-
+func TestTraceProofConfiguredSentinelComparisons(t *testing.T) {
+	for _, tc := range []struct {
+		name, policy, input                     string
+		wantSentinel, wantUncertain, wantStage2 bool
+	}{
+		{
+			name:         "direct placeholder",
+			policy:       `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.value == tf._placeholder`,
+			input:        `{"block":{"value":"${...}"}}`,
+			wantSentinel: true, wantUncertain: true, wantStage2: true,
+		},
+		{
+			name: "formal alias in failed alternative",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true
+DatadogPolicy contains {"_dd_id":"fixed","path":[]} if {
+    alias := input.block.value
+    tf.guard(alias)
+    false
+}`,
+			input:        `{"block":{"enabled":true,"value":"${...}"}}`,
+			wantSentinel: true, wantUncertain: false, wantStage2: true,
+		},
+		{
+			name: "nested placeholder in failed alternative",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true
+DatadogPolicy contains {"_dd_id":"fixed","path":[]} if tf.guard(input.block.container)`,
+			input:        `{"block":{"enabled":true,"container":{"nested":"${...}"}}}`,
+			wantSentinel: true, wantUncertain: false, wantStage2: true,
+		},
+		{
+			name: "concrete resolved ID",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if {
+    tf.resolved(input.block.id) == "known"
+    input.block.enabled == true
+}`,
+			input:        `{"block":{"id":"resource-id","enabled":true,"unused":"${...}"}}`,
+			wantSentinel: false, wantUncertain: false, wantStage2: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			modules := map[string]*ast.Module{
+				"policy.rego": ast.MustParseModule("package datadog\nimport data.generic.terraform as tf\n" + tc.policy),
+				"terraform.rego": ast.MustParseModule(`package generic.terraform
 _placeholder := "${...}"
+guard(v) if v == _placeholder
+resolved(v) := "unknown" if v == _placeholder else := "known"
 `),
+			}
+			g, err := New(Options{
+				Placeholder: testPlaceholder,
+				Modules:     modules,
+				Query:       "data.datadog.DatadogPolicy",
+				Sentinels:   []string{"data.generic.terraform._placeholder"},
+			})
+			require.NoError(t, err)
+			input := mustValue(t, tc.input)
+			results, err := g.Results(context.Background(), input)
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			tr, err := g.trace(context.Background(), input)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantSentinel, tr.sentinelRead)
+			scope := blockScopeForProofTest(t, input)
+			report := compareScopedAndFullStage2(t, g, input, scope)
+			require.Equal(t, tc.wantUncertain, report.Verdicts[0].Uncertain)
+			require.Equal(t, tc.wantStage2, report.SubstitutionEvals > 0)
+		})
 	}
-	g, err := New(Options{
-		Placeholder: testPlaceholder,
-		Modules:     modules,
-		Query:       "data.datadog.DatadogPolicy",
-		Sentinels:   []string{"data.generic.terraform._placeholder"},
-	})
-	require.NoError(t, err)
-	input := mustValue(t, `{"block":{"value":"${...}"}}`)
-	report := compareScopedAndFullStage2(t, g, input, blockScopeForProofTest(t, input))
-	require.True(t, report.Verdicts[0].Uncertain)
-	require.Greater(t, report.SubstitutionEvals, 0)
 }
 
 func TestTraceProofRetainsWithAndNondeterministicChecks(t *testing.T) {
