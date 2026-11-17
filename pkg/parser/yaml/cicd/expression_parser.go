@@ -20,6 +20,7 @@ import (
 var exprRegex = regexp.MustCompile(`\$\{\{\s*(.*?)\s*\}\}`)
 
 const (
+	expressionStringNode = "string"
 	// Node kinds
 	call_expression      = "call_expression"
 	function_call        = "function_call"
@@ -263,7 +264,7 @@ func isBareSecretsContext(node *sitter.Node, source []byte) bool {
 // isLiteralString checks if a node is a string literal (not a variable or expression)
 func isLiteralString(node *sitter.Node) bool {
 	kind := node.Kind()
-	return kind == string_kind || kind == string_literal || kind == string_content
+	return kind == expressionStringNode || kind == string_literal || kind == string_content
 }
 
 // isComputedIndex checks if an index expression uses runtime values
@@ -287,7 +288,7 @@ func isConstantReducible(node *sitter.Node) bool {
 	kind := node.Kind()
 
 	// Literals are constant
-	if kind == string_kind || kind == string_literal || kind == "number" || kind == "boolean" ||
+	if kind == expressionStringNode || kind == string_literal || kind == "number" || kind == "boolean" ||
 		kind == "true" || kind == "false" || kind == "null" {
 		return true
 	}
