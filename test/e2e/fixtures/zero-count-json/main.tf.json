@@ -1,0 +1,22 @@
+{
+  "variable": {
+    "zero": {
+      "default": 0
+    }
+  },
+  "resource": {
+    "aws_s3_bucket": {
+      "enabled": {
+        "bucket": "enabled"
+      },
+      "zero": {
+        "count": 0,
+        "bucket": "zero"
+      },
+      "from_var": {
+        "count": "${var.zero}",
+        "bucket": "from_var"
+      }
+    }
+  }
+}

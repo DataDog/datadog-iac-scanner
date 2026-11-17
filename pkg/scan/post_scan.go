@@ -24,7 +24,7 @@ import (
 )
 
 func (c *Client) getSummary(ctx context.Context, results []model.Vulnerability,
-	end time.Time, pathParameters model.PathParameters) model.Summary {
+	failedQueries map[string]error, end time.Time, pathParameters model.PathParameters) model.Summary {
 	counters := model.Counters{
 		ScannedFiles:           c.Tracker.FoundFiles,
 		ScannedFilesLines:      c.Tracker.FoundCountLines,
@@ -32,7 +32,7 @@ func (c *Client) getSummary(ctx context.Context, results []model.Vulnerability,
 		ParsedFiles:            c.Tracker.ParsedFiles,
 		IgnoredFilesLines:      c.Tracker.IgnoreCountLines,
 		TotalQueries:           c.Tracker.LoadedQueries,
-		FailedToExecuteQueries: c.Tracker.ExecutingQueries - c.Tracker.ExecutedQueries,
+		FailedToExecuteQueries: len(failedQueries),
 		FoundResources:         c.Tracker.FoundResources,
 	}
 
@@ -118,7 +118,7 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 	}
 
 	sort.Strings(c.ScanParams.Path)
-	summary := c.getSummary(ctx, scanResults.Results, time.Now(), model.PathParameters{
+	summary := c.getSummary(ctx, scanResults.Results, scanResults.FailedQueries, time.Now(), model.PathParameters{
 		ScannedPaths:      c.ScanParams.Path,
 		PathExtractionMap: scanResults.ExtractedPaths.ExtractionMap,
 	})
