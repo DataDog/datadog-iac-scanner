@@ -27,6 +27,34 @@ func TestAvailableCPUs(t *testing.T) {
 	}
 }
 
+func TestTryAcquireCPUIsNonBlockingAndReleasesSlot(t *testing.T) {
+	var releases []func()
+	for range AvailableCPUs() {
+		release, ok := TryAcquireCPU()
+		if !ok {
+			t.Fatal("expected every available CPU slot to be acquirable")
+		}
+		releases = append(releases, release)
+	}
+	defer func() {
+		for _, release := range releases {
+			release()
+		}
+	}()
+	if release, ok := TryAcquireCPU(); ok {
+		release()
+		t.Fatal("TryAcquireCPU should not wait or exceed the shared budget")
+	}
+
+	releases[0]()
+	release, ok := TryAcquireCPU()
+	if !ok {
+		t.Fatal("a released slot should be acquirable again")
+	}
+	release()
+	releases[0] = func() {}
+}
+
 func TestIOWorkerBounds(t *testing.T) {
 	if IOMinWorkers < 1 || IOMaxWorkers < IOMinWorkers {
 		t.Fatalf("invalid IO bounds [%d,%d]", IOMinWorkers, IOMaxWorkers)
