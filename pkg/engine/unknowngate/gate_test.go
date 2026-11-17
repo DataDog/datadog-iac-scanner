@@ -1090,6 +1090,40 @@ DatadogPolicy contains {"_dd_id":"unused","path":[]} if {
 			wantSentinel: true, wantUncertain: false, wantStage2: true,
 		},
 		{
+			name: "proven marker temp skips only its operand",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true
+DatadogPolicy contains {"_dd_id":"unused","path":[]} if {
+    marker := tf._placeholder
+    input.block.container != marker
+    false
+}`,
+			input:        `{"block":{"enabled":true,"container":{"known":true},"unused":"${...}"}}`,
+			wantSentinel: false, wantUncertain: false, wantStage2: false,
+		},
+		{
+			name: "proven marker temp preserves scalar placeholder reads",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true
+DatadogPolicy contains {"_dd_id":"unused","path":[]} if {
+    marker := tf._placeholder
+    input.block.container != marker
+    false
+}`,
+			input:        `{"block":{"enabled":true,"container":"${...}","unused":"${...}"}}`,
+			wantSentinel: true, wantUncertain: false, wantStage2: true,
+		},
+		{
+			name: "marker alias remains conservative",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true
+DatadogPolicy contains {"_dd_id":"unused","path":[]} if {
+    marker := tf._placeholder
+    alias := marker
+    input.block.container != alias
+    false
+}`,
+			input:        `{"block":{"enabled":true,"container":{"known":true},"unused":"${...}"}}`,
+			wantSentinel: true, wantUncertain: false, wantStage2: true,
+		},
+		{
 			name: "indexed unused function return retains conflict",
 			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if {
     values := [tf.value(input.block.value)]

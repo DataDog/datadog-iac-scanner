@@ -662,6 +662,9 @@ func (t *tracer) sentinelObserved(f *frame, e *ast.Expr, ev *topdown.Event) bool
 		if isSentinelRef(term.Value, t.g.sentinels) {
 			continue
 		}
+		if variable, ok := term.Value.(ast.Var); ok && t.g.constantSentinelVars[f.rule][variable] {
+			continue
+		}
 		value := t.evalTerm(f, f.rule, term, ev, 0)
 		if value == nil || t.ph.has(value) {
 			return true

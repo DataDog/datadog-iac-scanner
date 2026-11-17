@@ -92,6 +92,8 @@ type Gate struct {
 	sentinels    []ast.Ref
 	// sentinelVars holds, per rule, the variables bound to a sentinel.
 	sentinelVars map[*ast.Rule]map[ast.Var]bool
+	// constantSentinelVars holds direct marker temps used only in equality predicates.
+	constantSentinelVars map[*ast.Rule]map[ast.Var]bool
 
 	tracerOnly          bool
 	parallelBatchRounds bool
@@ -148,6 +150,7 @@ func New(opts Options) (*Gate, error) { //nolint:gocritic // the options are rea
 	g.parallelBatchRounds = batchRoundsArePure(g.rules)
 	g.flow = analyzeFlow(g.rules)
 	g.sentinelVars = sentinelVars(g.rules, g.sentinels)
+	g.constantSentinelVars = constantSentinelVars(g.rules, g.sentinels)
 	g.setDocs = map[string]bool{}
 	for p, rs := range g.rules.byPath {
 		if len(rs) > 0 && rs[0].Head.RuleKind() == ast.MultiValue {

@@ -264,6 +264,95 @@ func sentinelVars(cr *compiledRules, sentinels []ast.Ref) map[*ast.Rule]map[ast.
 	return out
 }
 
+// constantSentinelVars identifies a direct marker temp only when its one
+// binding is the variable's first definition and every later use is a direct
+// equality predicate. Any alias, head use, call, modifier, or nested use fails
+// closed to the broader sentinelVars behavior.
+func constantSentinelVars(cr *compiledRules, sentinels []ast.Ref) map[*ast.Rule]map[ast.Var]bool {
+	out := map[*ast.Rule]map[ast.Var]bool{}
+	for r, vars := range definitions(cr) {
+		for v, term := range vars {
+			if !isSentinelRef(term.Value, sentinels) || sentinelTempUsedInHead(r, v) {
+				continue
+			}
+			if !sentinelTempPredicateUsesOnly(r, v) {
+				continue
+			}
+			if out[r] == nil {
+				out[r] = map[ast.Var]bool{}
+			}
+			out[r][v] = true
+		}
+	}
+	return out
+}
+
+func sentinelTempUsedInHead(r *ast.Rule, v ast.Var) bool {
+	if occurs(r.Head.Key, v) || occurs(r.Head.Value, v) {
+		return true
+	}
+	for _, term := range r.Head.Reference {
+		if occurs(term, v) {
+			return true
+		}
+	}
+	for _, arg := range r.Head.Args {
+		if occurs(arg, v) {
+			return true
+		}
+	}
+	return false
+}
+
+func sentinelTempPredicateUsesOnly(r *ast.Rule, v ast.Var) bool {
+	definitionFound := false
+	for i, e := range r.Body {
+		if !occursExpr(e, v) {
+			continue
+		}
+		if !definitionFound {
+			// definitions() only records first-use, positive equality bindings and
+			// term is the direct marker assigned by that binding.
+			definitionFound = true
+			continue
+		}
+		if !directSentinelPredicateUse(r, e, v, i) {
+			return false
+		}
+	}
+	return definitionFound
+}
+
+func directSentinelPredicateUse(r *ast.Rule, e *ast.Expr, v ast.Var, index int) bool {
+	if e.Negated || len(e.With) != 0 {
+		return false
+	}
+	if !e.IsEquality() && (!e.IsCall() || (e.Operator().String() != ast.Equal.Name && e.Operator().String() != ast.NotEqual.Name)) {
+		return false
+	}
+	operands := e.Operands()
+	if len(operands) != 2 {
+		return false
+	}
+	found := false
+	for _, operand := range operands {
+		if variable, ok := operand.Value.(ast.Var); ok && variable == v {
+			if found {
+				return false
+			}
+			found = true
+			continue
+		}
+		if occurs(operand, v) {
+			return false
+		}
+		if other, ok := operand.Value.(ast.Var); ok && !boundBefore(r, other, index) {
+			return false
+		}
+	}
+	return found
+}
+
 func isSentinelRef(v ast.Value, sentinels []ast.Ref) bool {
 	ref, ok := v.(ast.Ref)
 	if !ok {
