@@ -652,6 +652,9 @@ func (t *tracer) sentinelObserved(f *frame, e *ast.Expr, ev *topdown.Event) bool
 	if ev == nil {
 		return true
 	}
+	if t.unboundEmptyIteratorBinding(f, e, ev) {
+		return false
+	}
 	if t.typePredicateHasKnownNonPlaceholderOperand(e, ev) {
 		return false
 	}
@@ -661,6 +664,40 @@ func (t *tracer) sentinelObserved(f *frame, e *ast.Expr, ev *topdown.Event) bool
 		}
 		value := t.evalTerm(f, f.rule, term, ev, 0)
 		if value == nil || t.ph.has(value) {
+			return true
+		}
+	}
+	return false
+}
+
+// unboundEmptyIteratorBinding recognizes the compiler-generated equality that
+// reads an element from a known empty array into an unbound variable. It cannot
+// bind or observe a value; checkEquality still handles ordinary taint and shape.
+func (t *tracer) unboundEmptyIteratorBinding(f *frame, e *ast.Expr, ev *topdown.Event) bool {
+	if !e.IsEquality() || e.Negated || len(e.Operands()) != 2 {
+		return false
+	}
+	operands := e.Operands()
+	for i, operand := range operands {
+		variable, ok := operand.Value.(ast.Var)
+		if !ok {
+			continue
+		}
+		plugged := ev.Plug(operand)
+		if plugged == nil {
+			continue
+		}
+		bound, ok := plugged.Value.(ast.Var)
+		if !ok || bound != variable {
+			continue
+		}
+		indexed, ok := operands[1-i].Value.(ast.Ref)
+		if !ok || len(indexed) < 2 || isSentinelRef(indexed, t.g.sentinels) {
+			continue
+		}
+		prefix := ast.NewTerm(indexed[:len(indexed)-1])
+		collection, ok := t.evalTerm(f, f.rule, prefix, ev, 0).(*ast.Array)
+		if ok && collection.Len() == 0 {
 			return true
 		}
 	}

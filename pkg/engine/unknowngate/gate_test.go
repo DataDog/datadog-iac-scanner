@@ -1065,7 +1065,40 @@ func TestTraceProofConfiguredSentinelComparisons(t *testing.T) {
 	for _, tc := range []struct {
 		name, policy, input                     string
 		wantSentinel, wantUncertain, wantStage2 bool
+		wantError                               bool
 	}{
+		{
+			name: "empty iterator does not observe a sentinel",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true
+DatadogPolicy contains {"_dd_id":"unused","path":[]} if {
+    some id in input.block.entries
+    id == tf._placeholder
+    false
+}`,
+			input:        `{"block":{"enabled":true,"entries":[],"unused":"${...}"}}`,
+			wantSentinel: false, wantUncertain: false, wantStage2: false,
+		},
+		{
+			name: "nonempty placeholder iterator remains observed",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.enabled == true
+DatadogPolicy contains {"_dd_id":"unused","path":[]} if {
+    some id in input.block.entries
+    id == tf._placeholder
+    false
+}`,
+			input:        `{"block":{"enabled":true,"entries":["${...}"],"unused":"${...}"}}`,
+			wantSentinel: true, wantUncertain: false, wantStage2: true,
+		},
+		{
+			name: "indexed unused function return retains conflict",
+			policy: `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if {
+    values := [tf.value(input.block.value)]
+    ignored := values[0]
+    input.block.enabled == true
+}`,
+			input:        `{"block":{"enabled":true,"value":"${...}"}}`,
+			wantSentinel: true, wantError: true,
+		},
 		{
 			name:         "direct placeholder",
 			policy:       `DatadogPolicy contains {"_dd_id":"fixed","path":[]} if input.block.value == tf._placeholder`,
@@ -1107,6 +1140,8 @@ DatadogPolicy contains {"_dd_id":"fixed","path":[]} if tf.guard(input.block.cont
 _placeholder := "${...}"
 guard(v) if v == _placeholder
 resolved(v) := "unknown" if v == _placeholder else := "known"
+value(x) := _placeholder
+value(x) := x
 `),
 			}
 			g, err := New(Options{
@@ -1123,6 +1158,17 @@ resolved(v) := "unknown" if v == _placeholder else := "known"
 			tr, err := g.trace(context.Background(), input)
 			require.NoError(t, err)
 			require.Equal(t, tc.wantSentinel, tr.sentinelRead)
+			if tc.wantError {
+				scope := blockScopeForProofTest(t, input)
+				scoped, scopedErr := g.Check(context.Background(), input, []Candidate{{Result: results[0], Scope: []ast.Value{scope}}})
+				full, fullErr := g.Check(context.Background(), input, []Candidate{{Result: results[0]}})
+				require.Error(t, scopedErr)
+				require.Error(t, fullErr)
+				require.EqualError(t, scopedErr, fullErr.Error())
+				require.Nil(t, scoped)
+				require.Nil(t, full)
+				return
+			}
 			scope := blockScopeForProofTest(t, input)
 			report := compareScopedAndFullStage2(t, g, input, scope)
 			require.Equal(t, tc.wantUncertain, report.Verdicts[0].Uncertain)
