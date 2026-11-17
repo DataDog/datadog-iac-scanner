@@ -620,11 +620,3 @@ func (e *Evaluator) MayDeclareResource(ctx context.Context, dir string, types fu
 	}
 	return visit(dir)
 }
-
-func (e *Evaluator) CalledModuleDirsWithContext(ctx context.Context, dir string) []string {
-	parsed := e.parseDir(ctx, dir, "")
-	if parsed.err != nil {
-		return nil
-	}
-	return calledModuleDirs(ctx, dir, parsed.bodies, e.remoteResolver, e.fsys)
-}

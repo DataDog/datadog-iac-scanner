@@ -8,6 +8,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,7 +16,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	reportModel "github.com/DataDog/datadog-iac-scanner/pkg/report/model"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const displayNameAclRule = `package datadog
@@ -166,4 +169,62 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, "stack/main.tf", module.ModulePath[0].CodeLocation.Filename)
 	require.Equal(t, 2, module.ModulePath[0].CodeLocation.LineStart)
 	require.Equal(t, 5, module.ModulePath[0].CodeLocation.LineEnd)
+}
+
+func TestInspect_ModuleForEachLegacyFingerprintKeepsHistoricalKeySpelling(t *testing.T) {
+	root := t.TempDir()
+	rootDir := filepath.Join(root, "stack")
+	modDir := filepath.Join(root, "modules", "bucket")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+
+	key := `quote" slash\\ ${literal} %{template}`
+	literal := string(hclwrite.TokensForValue(cty.StringVal(key)).Bytes())
+	rootPath := filepath.Join(rootDir, "main.tf")
+	modPath := filepath.Join(modDir, "main.tf")
+	rootConfig := fmt.Sprintf(`module "bucket" {
+  for_each = toset([%s])
+  source   = "../modules/bucket"
+  acl      = "public-read"
+}
+`, literal)
+	moduleConfig := `
+variable "acl" {
+  type = string
+}
+
+resource "aws_s3_bucket" "this" {
+  bucket = "customer-bucket"
+  acl    = var.acl
+}
+`
+	require.NoError(t, os.WriteFile(rootPath, []byte(rootConfig), 0o644))
+	require.NoError(t, os.WriteFile(modPath, []byte(moduleConfig), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootPath)...)
+	files = append(files, parseTerraform(t, modPath)...)
+	queries := []model.QueryMetadata{{
+		Query: "acl_rule", Content: displayNameAclRule, InputData: "{}", Platform: model.TerraformPlatform,
+		Metadata: map[string]interface{}{"id": "acl-rule", "platform": model.TerraformPlatform}, Aggregation: 1,
+	}}
+	ins := newTestInspector(t, inspectorOpts{
+		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Len(t, vulns, 1)
+	require.Equal(t, model.TerraformPlatform, vulns[0].Platform)
+	legacyChain := `stack/main.tf|module.bucket["` + key + `"]`
+	require.Equal(t, legacyChain, vulns[0].ModuleCallChain)
+
+	summary := model.CreateSummary(context.Background(), model.Counters{}, vulns, "test", nil, root, model.SCIInfo{})
+	require.Len(t, summary.Queries, 1)
+	require.Len(t, summary.Queries[0].Files, 1)
+	fingerprintPath, err := filepath.Rel(root, vulns[0].FileName)
+	require.NoError(t, err)
+	want := model.GetDatadogFingerprintHash(model.SCIInfo{}, filepath.ToSlash(fingerprintPath), vulns[0].Platform,
+		vulns[0].ResourceType, vulns[0].ResourceName, vulns[0].QueryID, "", legacyChain)
+	require.Equal(t, want, summary.Queries[0].Files[0].Fingerprint)
 }

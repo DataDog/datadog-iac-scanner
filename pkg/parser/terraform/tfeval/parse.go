@@ -533,10 +533,3 @@ func cloneChain(chain []CallSite) []CallSite {
 	copy(out, chain)
 	return out
 }
-
-func ResourceBaseName(name string) string {
-	if idx := strings.IndexByte(name, '['); idx >= 0 {
-		return name[:idx]
-	}
-	return name
-}

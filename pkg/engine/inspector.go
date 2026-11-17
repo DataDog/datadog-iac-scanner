@@ -17,13 +17,13 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
@@ -236,6 +236,7 @@ type Inspector struct {
 	repoPath             string
 	enableCoverageReport bool
 	coverageReport       cover.Report
+	coverageMu           sync.RWMutex
 	useOldSeverities     bool
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
@@ -266,6 +267,18 @@ type Inspector struct {
 	// findings are decoded (see findingSet) instead of returning every decoded
 	// finding (see SetCompactFindingsAtDecode).
 	compactFindingsAtDecode bool
+	// terraformReference evaluates each Terraform root alone with the same
+	// cross-root evidence and unknown gate, without chunking, merge, digests
+	// or fanout. Production scans leave it false; equivalence tests enable it.
+	terraformReference bool
+	// terraformVarsPath is the scan-selected .tfvars file (CLI). Empty lets
+	// the model discover a // kics_terraform_vars: directive per root.
+	terraformVarsPath string
+	// ruleScope caches terraformJoiningQueries for the ruleset hashed in
+	// ruleScopeKey.
+	ruleScopeMu  sync.Mutex
+	ruleScopeKey uint64
+	ruleScope    map[int]bool
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -311,6 +324,13 @@ func (c *Inspector) SetReleaseDocumentsAfterPayload(release bool) {
 	c.releaseDocumentsAfterPayload = release
 }
 
+// SetTerraformReferenceMode selects per-root Terraform evaluation without
+// chunking, merge, digests or fanout. Cross-root evidence and the unknown
+// gate stay the same. Intended for equivalence tests against the optimized path.
+func (c *Inspector) SetTerraformReferenceMode(enabled bool) {
+	c.terraformReference = enabled
+}
+
 // SetReleasePostEvalData drops OriginalData and LinesOriginalData after the
 // eval+decode phases (see releasePostEvalFileData) and enables per-file
 // line-info tree discarding during decode. OriginalData must stay live
@@ -329,10 +349,11 @@ func (c *Inspector) SetEvalGcRelief(relief bool) {
 // SetCompactFindingsAtDecode keeps one finding per identity as each rule's
 // findings are decoded, so a module instantiated per count/for_each instance
 // does not have every duplicate instance of its findings held in memory until
-// storage reduces them at the end of the scan.
+// storage reduces them at the end of the scan. Inspect then returns one
+// finding per identity, the first in model.CompareFindings order.
 //
-// Only a caller that, like storage, keeps the last finding of each identity
-// and drops the rest should enable this: it must stay off for a caller that
+// Only a caller that, like storage, keeps one finding of each identity and
+// drops the rest should enable this: it must stay off for a caller that
 // reads Inspect's return value directly, such as the test-rules rule
 // harness, because identity does not include the line for most platforms and
 // collapsing at decode would silently drop a second genuine violation of one
@@ -358,6 +379,12 @@ func (c *Inspector) SetMergeAllow(paths []string) {
 	c.mergeAllow = tfpath.AllowSet(paths)
 }
 
+// SetTerraformVarsPath selects the .tfvars file root evaluation overlays on
+// autoloaded vars, matching the Terraform parser.
+func (c *Inspector) SetTerraformVarsPath(path string) {
+	c.terraformVarsPath = path
+}
+
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
 // the query compiled and its payload
 type QueryContext struct {
@@ -373,6 +400,24 @@ type QueryContext struct {
 	// findings collects this rule's results. Nil when the context was not built
 	// for a scan; DecodeQueryResults then keeps every decoded finding.
 	findings *findingSet
+	// ruleConfigs is the scan's per-rule config, used so early-skip compares the
+	// same severity the report keeps after lookupRuleConfig.
+	ruleConfigs map[string]config.IacRuleConfig
+	// terraform is the contract input for a Terraform rule, nil otherwise.
+	terraform *terraformInput
+	// deferDecode keeps result decoding in ordered aggregation for parallel root
+	// evaluation, so shared static findings retain their serial winner.
+	deferDecode bool
+	deferred    *deferredQueryResults
+	// unknownBlocks counts the results naming no block of that input.
+	unknownBlocks int
+}
+
+type deferredQueryResults struct {
+	results      rego.ResultSet
+	evalDuration time.Duration
+	coverage     cover.Report
+	hasCoverage  bool
 }
 
 var (
@@ -492,6 +537,7 @@ func getPlatformLibraries(ctx context.Context, queriesSource source.QueriesSourc
 
 type QueryResult struct {
 	vulnerabilities []model.Vulnerability
+	pending         *QueryContext
 	// moduleResultsRaised is how many ResourceType=="module" results the rule
 	// raised before identity dedup at decode.
 	moduleResultsRaised int
@@ -500,27 +546,44 @@ type QueryResult struct {
 	queryID             int
 }
 
+// isQueryCancellation distinguishes an aborted evaluation from a rule failure.
+// Cancellation must stop the scan rather than produce a partial report.
+func isQueryCancellation(err error) bool {
+	return err != nil && (topdown.IsCancel(err) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
+}
+
 // evalQuery loads and evaluates a single query, returning its result. Load and
 // evaluation failures both carry their error so the serial aggregation records
 // them in FailedQueries without terminating the rest of the scan.
-func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
-	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
-	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
+func (c *Inspector) evalQuery(ctx context.Context, run *queryRun, payloads platformPayloads, queryID int) QueryResult {
+	return c.evalQueryMode(ctx, run, payloads, queryID, false)
+}
+
+// evalQueryDeferred evaluates the rule and applies the unknown gate now, then
+// leaves result decoding to the ordered aggregation step.
+func (c *Inspector) evalQueryDeferred(ctx context.Context, run *queryRun, payloads platformPayloads, queryID int) QueryResult {
+	return c.evalQueryMode(ctx, run, payloads, queryID, true)
+}
+
+func (c *Inspector) evalQueryMode(
+	ctx context.Context, run *queryRun, payloads platformPayloads, queryID int, deferDecode bool,
+) QueryResult {
 	contextLogger := logger.FromContext(ctx)
+	queries := run.queries
 
 	loadStart := time.Now()
 	// Prefer the shared-compiler query when one was prepared for this rule (rule
 	// isolation disabled); otherwise compile/load it individually, using the
 	// process-global compiled-query cache when enabled.
-	queryOpa, ok := sharedQueries[queryID]
+	queryOpa, ok := run.sharedQueries[queryID]
 	var err error
 	if !ok {
-		queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[queryID], modules, baseStores, baseDataHashes, c.useRulesCache)
+		queryOpa, err = c.QueryLoader.LoadQuery(ctx, &queries[queryID], run.baseStores,
+			run.baseDataHashes, c.useRulesCache)
 	}
 	loadDur := time.Since(loadStart)
 	if err != nil {
-		contextLogger.Warn().Err(err).Msgf("failed to load query %s", queries[queryID].Query)
+		contextLogger.Error().Err(err).Msgf("failed to load query %s", queries[queryID].Query)
 		return QueryResult{err: err, queryID: queryID}
 	}
 
@@ -535,13 +598,16 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
 	queryContext := &QueryContext{
 		Ctx:                     ctx,
-		scanID:                  scanID,
-		Files:                   filesMap,
+		scanID:                  run.scanID,
+		Files:                   run.filesMap,
 		Query:                   query,
 		payload:                 &payload,
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
-		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
+		findings:                newFindingSet(c.compactFindingsAtDecode, run.routing),
+		ruleConfigs:             c.ruleConfigs,
+		terraform:               payloads.terraform,
+		deferDecode:             deferDecode,
 	}
 
 	evalStart := time.Now()
@@ -549,8 +615,8 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	evalDur := time.Since(evalStart)
 	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
 		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
-	if err == nil {
-		c.tracker.TrackQueryExecution(query.Metadata.Aggregation)
+	if deferDecode && queryContext.deferred != nil && err == nil {
+		return QueryResult{pending: queryContext, queryID: queryID}
 	}
 	return QueryResult{
 		vulnerabilities: vuls, moduleResultsRaised: moduleRaised, moduleSeverity: moduleSeverity, err: err, queryID: queryID,
@@ -564,61 +630,38 @@ func (c *Inspector) Inspect(
 	platforms []string) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
-
 	queries := c.getQueriesByPlat(platforms)
-
-	var moduleDocs []model.Document
-	var moduleExtras map[string][]extraCallerInfo
-	var moduleFiles map[string]*moduleFileCalls
-	var syntheticFiles []*model.FileMetadata
-	if shouldInstantiateLocalModules(platforms, files) {
-		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
-		// A canceled scan must not scan the modules that were evaluated only in
-		// part; instantiateLocalModules mutates nothing in that case.
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
+	if !slices.ContainsFunc(platforms, isTerraformPlatform) {
+		return c.inspect(ctx, scanID, files, queries)
 	}
+	return c.inspectTerraformPlatform(ctx, scanID, files, queries)
+}
 
-	// Must run after module mutations (which suppress module bodies in place).
+// inspect evaluates queries over the parsed documents of files.
+func (c *Inspector) inspect(
+	ctx context.Context,
+	scanID string,
+	files model.FileMetadatas,
+	queries []model.QueryMetadata) ([]model.Vulnerability, error) {
+	contextLogger := logger.FromContext(ctx)
+
+	// Stamp the files' Terraform address context before anything reads it:
+	// module evaluation captures external-module-file scopes and mutates
+	// documents (instantiated blocks are stripped), and the payload build may
+	// release the documents the plan metadata and block sets are extracted
+	// from.
+	c.stampTerraformScopes(files)
+
+	// common_lib.modules is removed: do not parse or merge scanned module
+	// attribute maps into rule input data. Terraform scans use
+	// inspectTerraformPlatform instead of this path.
 	combinedFiles := files.Combine(ctx, false)
-
-	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
-	// non-fatal (logged, scan continues), but a context cancellation must abort
-	// the scan rather than proceed with partial module data.
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
-	}
-	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
-
-	// Step 2: Enrich modules with parsed variables. As with Step 1, a context
-	// cancellation must abort the scan rather than proceed with partial module
-	// data; per-module parse failures are non-fatal and handled internally.
-	rootDir := c.repoPath
-	enrichedModules, err := tfmodules.ParseAllModuleVariables(
-		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver(), c.mergeAllow)
-	if err != nil {
-		return nil, err
-	}
-
-	// Synthetic files stand in for module instantiations of a file that has
-	// already been read; they are only joined once findings need to be
-	// attributed back to a call site. Adding them any earlier would have every
-	// pass over the scan input, module parsing above in particular, redo that
-	// file's work once per instantiation.
-	files = append(files, syntheticFiles...)
 
 	// Compute the file map once and share it (read-only) across all workers and
 	// payload partitioning.
 	filesMap := files.ToMap()
 
-	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries)
+	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, nil, queries)
 	if err != nil {
 		return nil, err
 	}
@@ -644,7 +687,7 @@ func (c *Inspector) Inspect(
 	// same payload for every PrepareForEval call. The per-platform data hash is
 	// folded into each compiled-query cache key so a compiled query is only
 	// reused by a later scan whose base data is byte-identical.
-	baseInputData := c.QueryLoader.precomputeBaseInputData(enrichedModules)
+	baseInputData := c.QueryLoader.precomputeBaseInputData()
 	baseStores := precomputeBaseStores(baseInputData)
 	baseDataHashes := hashBaseInputData(baseInputData)
 
@@ -668,15 +711,34 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
-	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath, c.isExternalModulePath)
+	run := newQueryRun(scanID, filesMap, queries)
+	run.baseStores, run.baseDataHashes = baseStores, baseDataHashes
+	run.sharedQueries = sharedQueries
+	run.routing = newFindingRouting(files, c.repoPath)
 
-	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
+	vulnerabilities, err := c.evaluate(ctx, run, payloads)
 	if err != nil {
 		return nil, err
 	}
-
 	c.releasePostEvalFileData(filesMap)
+	return vulnerabilities, nil
+}
+
+// evaluate runs every rule of run on payloads, and returns the scan's findings in model.CompareFindings order.
+func (c *Inspector) evaluate(ctx context.Context, run *queryRun, payloads platformPayloads) ([]model.Vulnerability, error) {
+	var err error
+	if docs, ok := c.batchLargeTerraform(run.queries, payloads); ok {
+		err = c.evalTerraformInBatches(ctx, run, payloads, docs)
+	} else {
+		err = c.executeQueries(ctx, run, payloads, nil, c.numWorkers)
+	}
+	if err != nil {
+		return nil, err
+	}
+	c.trackExecutions(run)
+	vulnerabilities := run.findings(c.compactFindingsAtDecode)
+	run.logModuleVulns(ctx)
+	model.SortFindings(vulnerabilities)
 	return vulnerabilities, nil
 }
 
@@ -741,43 +803,147 @@ func (c *Inspector) releasePostEvalFileData(filesMap map[string]*model.FileMetad
 	debug.FreeOSMemory()
 }
 
-// executeQueries runs all prepared queries concurrently and collects vulnerabilities.
-func (c *Inspector) executeQueries(
-	ctx context.Context,
-	scanID string,
-	filesMap map[string]*model.FileMetadata,
-	payloads platformPayloads,
-	queries []model.QueryMetadata,
-	enrichedModules []tfmodules.ParsedModule,
-	baseStores map[string]storage.Store,
-	baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery,
-	routing *findingRouting,
-) ([]model.Vulnerability, error) {
-	contextLogger := logger.FromContext(ctx)
-	vulnerabilities := make([]model.Vulnerability, 0)
+// queryRun is what every evaluation of the rules of one Inspect shares, and
+// what those evaluations collect: a rule may be evaluated once per document
+// batch.
+type queryRun struct {
+	scanID         string
+	filesMap       map[string]*model.FileMetadata
+	queries        []model.QueryMetadata
+	baseStores     map[string]storage.Store
+	baseDataHashes map[string]uint64
+	sharedQueries  map[int]*rego.PreparedEvalQuery
+	routing        *findingRouting
 
-	// OPA eval generates massive transient allocations that outpace the default GC,
-	// driving peak RSS well above the live set; a background ticker forces a
-	// collection every 30s. Only for heap-gated scans (c.evalGcRelief): mid-size
-	// corpora keep the default pacing.
-	if c.evalGcRelief {
-		const evalGcInterval = 30 * time.Second
-		gcCtx, gcCancel := context.WithCancel(ctx)
-		defer gcCancel()
-		go func() {
-			ticker := time.NewTicker(evalGcInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					runtime.GC()
-				case <-gcCtx.Done():
-					return
-				}
-			}
-		}()
+	// found holds each rule's findings, by index in queries.
+	found [][]model.Vulnerability
+	// evaluations counts how many times each rule was evaluated.
+	evaluations []int
+	tally       queryTally
+	moduleVulns moduleVulnTotals
+}
+
+func newQueryRun(scanID string, filesMap map[string]*model.FileMetadata, queries []model.QueryMetadata) *queryRun {
+	return &queryRun{
+		scanID:      scanID,
+		filesMap:    filesMap,
+		queries:     queries,
+		found:       make([][]model.Vulnerability, len(queries)),
+		evaluations: make([]int, len(queries)),
+		tally:       queryTally{},
+		moduleVulns: moduleVulnTotals{},
 	}
+}
+
+// findings returns the findings of every rule that did not fail, each rule's
+// reduced to one per identity when compact is set and the rule was evaluated
+// more than once, and records each rule's unique module findings.
+func (r *queryRun) findings(compact bool) []model.Vulnerability {
+	n := 0
+	for i := range r.found {
+		if !r.tally[i] {
+			n += len(r.found[i])
+		}
+	}
+	out := make([]model.Vulnerability, 0, n)
+	for i, found := range r.found {
+		r.found[i] = nil
+		if r.tally[i] {
+			continue
+		}
+		if compact && r.evaluations[i] > 1 {
+			found = model.FirstFindingPerIdentity(found)
+		}
+		r.moduleVulns.countUnique(i, found)
+		out = append(out, found...)
+	}
+	return out
+}
+
+// moduleVulnTotals sums, by rule index, the module findings of every
+// evaluation of a rule, so they are logged once.
+type moduleVulnTotals map[int]moduleVulnCounts
+
+func (t moduleVulnTotals) countUnique(queryID int, found []model.Vulnerability) {
+	counts, ok := t[queryID]
+	if !ok {
+		return
+	}
+	for i := range found {
+		if found[i].ResourceType == moduleCallRoot {
+			counts.unique++
+		}
+	}
+	t[queryID] = counts
+}
+
+// logModuleVulns logs the module findings of the rules that did not fail,
+// summed by rule name.
+func (r *queryRun) logModuleVulns(ctx context.Context) {
+	byName := make(map[string]moduleVulnCounts, len(r.moduleVulns))
+	for queryID, counts := range r.moduleVulns {
+		if r.tally[queryID] {
+			continue
+		}
+		total := byName[r.queries[queryID].Query]
+		total.raised += counts.raised
+		total.unique += counts.unique
+		byName[r.queries[queryID].Query] = total
+	}
+	contextLogger := logger.FromContext(ctx)
+	for name, counts := range byName {
+		event := contextLogger.Info()
+		if counts.unique != counts.raised {
+			event = event.Int("uniqueFindings", counts.unique)
+		}
+		event.Msgf("Found %d of module vulnerability %s", counts.raised, name)
+	}
+}
+
+// queryTally records, by rule index, whether any evaluation of a rule that
+// ran failed.
+type queryTally map[int]bool
+
+// trackExecutions counts every rule that ran without failing in
+// ExecutedQueries once, however many times it was evaluated.
+func (c *Inspector) trackExecutions(run *queryRun) {
+	for queryID, failed := range run.tally {
+		if !failed {
+			c.tracker.TrackQueryExecution(run.queries[queryID].Aggregation)
+		}
+	}
+}
+
+// startEvalGCRelief bounds transient heap growth for heap-gated scans.
+func (c *Inspector) startEvalGCRelief(ctx context.Context) context.CancelFunc {
+	if !c.evalGcRelief {
+		return func() {}
+	}
+	const evalGcInterval = 30 * time.Second
+	gcCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(evalGcInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				runtime.GC()
+			case <-gcCtx.Done():
+				return
+			}
+		}
+	}()
+	return cancel
+}
+
+// executeQueries evaluates the rules in only (every rule when nil) on
+// payloads with up to workers concurrent evaluations, and adds what they
+// raise to run.
+func (c *Inspector) executeQueries(
+	ctx context.Context, run *queryRun, payloads platformPayloads, only map[int]bool, workers int,
+) error {
+	stopGC := c.startEvalGCRelief(ctx)
+	defer stopGC()
 
 	// Evaluate each query in parallel. Eval is CPU-bound (Rego), so the pool
 	// draws from the process-wide CPU budget: when this scan runs as one of N
@@ -785,76 +951,65 @@ func (c *Inspector) executeQueries(
 	// budget and cannot oversubscribe the machine. Results land in an
 	// index-aligned slice (no shared mutable state between workers); the actual
 	// aggregation happens serially below.
-	results := make([]QueryResult, len(queries))
-	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
-		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
-				sharedQueries, routing)
+	ids := make([]int, 0, len(run.queries))
+	for i := range run.queries {
+		if only == nil || only[i] {
+			ids = append(ids, i)
+		}
+	}
+	results := make([]QueryResult, len(ids))
+	err := utils.ForEach(ctx, ids, utils.PoolOptions{Workers: workers, CPUBound: true},
+		func(ctx context.Context, queryID int, i int) error {
+			results[i] = c.evalQuery(ctx, run, payloads, queryID)
+			if isQueryCancellation(results[i].err) {
+				return results[i].err
+			}
 			return nil
 		})
-	// The closure never returns a non-nil error itself, so ForEach only reports
-	// context cancellation here; surfacing it keeps a canceled scan from being
-	// reported as a successful scan with partial/empty results.
+	// Both parent cancellation and a canceled query abort before aggregation,
+	// so an incomplete scan cannot be reported as successful.
 	if err != nil {
-		return vulnerabilities, err
+		return err
 	}
 
-	// Aggregate serially: processResult mutates shared state.
-	moduleVulns := make(map[string]moduleVulnCounts)
+	c.aggregateQueryResults(ctx, run, results)
+	return nil
+}
+
+// aggregateQueryResults is called only after all evaluation workers have joined.
+func (c *Inspector) aggregateQueryResults(ctx context.Context, run *queryRun, results []QueryResult) {
 	for i := range results {
-		processResult(ctx, &results[i], &vulnerabilities, &moduleVulns, queries, c)
-	}
-	for name, counts := range moduleVulns {
-		event := contextLogger.Info()
-		if counts.unique != counts.raised {
-			event = event.Int("uniqueFindings", counts.unique)
+		if pending := results[i].pending; pending != nil {
+			deferred := pending.deferred
+			pending.Ctx = ctx // the worker context is canceled when ForEach joins
+			pending.deferred = nil
+			results[i].pending = nil
+			if deferred == nil {
+				results[i].err = errors.New("deferred query result is missing its Rego results")
+			} else {
+				results[i].vulnerabilities, results[i].moduleResultsRaised, results[i].moduleSeverity, results[i].err =
+					c.finishQueryDecode(ctx, pending, deferred.results, deferred.evalDuration,
+						deferred.coverage, deferred.hasCoverage)
+			}
 		}
-		event.Msgf("Found %d of module vulnerability %s", counts.raised, name)
+		queryID := results[i].queryID
+		run.evaluations[queryID]++
+		if results[i].err != nil {
+			run.tally[queryID] = true
+		} else if _, seen := run.tally[queryID]; !seen {
+			run.tally[queryID] = false
+		}
+		processResult(ctx, &results[i], &run.found[queryID], run.moduleVulns, run.queries, c)
 	}
-
-	return vulnerabilities, nil
 }
 
 type moduleVulnCounts struct {
 	raised, unique int
 }
 
-func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas) bool {
-	for _, platform := range platforms {
-		if strings.EqualFold(platform, "Terraform") {
-			for _, file := range files {
-				if file != nil && tfpath.IsConfig(file.FilePath) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-// expandModuleFindings clones findings from deduplicated OPA docs back to each
-// extra caller, so every call-site gets its own fingerprint/file attribution.
-func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo) []model.Vulnerability {
-	if len(extras) == 0 {
-		return vulns
-	}
-	expanded := make([]model.Vulnerability, 0, len(vulns))
-	for i := range vulns {
-		expanded = append(expanded, vulns[i])
-		for _, ex := range extras[vulns[i].FileID] {
-			vCopy := vulns[i]
-			vCopy.ModuleCallChain = ex.callChain
-			vCopy.FileID = ex.docID
-			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
-			expanded = append(expanded, vCopy)
-		}
-	}
-	return expanded
-}
-
 // nolint:gocritic
 func processResult(ctx context.Context, result *QueryResult,
-	vulnerabilities *[]model.Vulnerability, moduleVulns *map[string]moduleVulnCounts,
+	vulnerabilities *[]model.Vulnerability, moduleVulns moduleVulnTotals,
 	queries []model.QueryMetadata, c *Inspector) {
 	contextLogger := logger.FromContext(ctx)
 	if result.err != nil {
@@ -889,13 +1044,12 @@ func processResult(ctx context.Context, result *QueryResult,
 		raisedModule = uniqueModule
 	}
 	if raisedModule > 0 {
-		counts := (*moduleVulns)[moduleName]
+		counts := moduleVulns[result.queryID]
 		if counts.raised == 0 && moduleSeverity != "" {
 			contextLogger.Info().Msgf("Found module vulnerability %s of severity %s", moduleName, moduleSeverity)
 		}
 		counts.raised += raisedModule
-		counts.unique += uniqueModule
-		(*moduleVulns)[moduleName] = counts
+		moduleVulns[result.queryID] = counts
 	}
 	*vulnerabilities = append(*vulnerabilities, result.vulnerabilities...)
 	// The aggregate holds a copy, so releasing the rule's own slice keeps the
@@ -932,7 +1086,15 @@ func (c *Inspector) EnableCoverageReport() {
 
 // GetCoverageReport returns the scan coverage report
 func (c *Inspector) GetCoverageReport() cover.Report {
+	c.coverageMu.RLock()
+	defer c.coverageMu.RUnlock()
 	return c.coverageReport
+}
+
+func (c *Inspector) setCoverageReport(report cover.Report) {
+	c.coverageMu.Lock()
+	c.coverageReport = report
+	c.coverageMu.Unlock()
 }
 
 // GetFailedQueries returns a map of failed queries and the associated error.
@@ -1027,6 +1189,15 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 
 		return nil, 0, "", errors.Wrap(err, "failed to evaluate query")
 	}
+	if qCtx.terraform != nil {
+		if err := qCtx.terraform.gateResults(ctx, qCtx, payload, results); err != nil {
+			return nil, 0, "", errors.Wrap(err, "failed to validate Terraform query results")
+		}
+		// Unknown checks are part of rule evaluation and may dominate it.
+		evalDuration = time.Since(evalStart)
+	}
+	var coverage cover.Report
+	hasCoverage := false
 	if c.enableCoverageReport && cov != nil {
 		module, parseErr := ast.ParseModuleWithOpts(
 			qCtx.Query.Metadata.Query,
@@ -1036,17 +1207,43 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 		if parseErr != nil {
 			return nil, 0, "", errors.Wrap(parseErr, "failed to parse coverage module")
 		}
-
-		c.coverageReport = cov.Report(map[string]*ast.Module{
+		coverage = cov.Report(map[string]*ast.Module{
 			qCtx.Query.Metadata.Query: module,
 		})
+		hasCoverage = true
 	}
 
-	decodeStart := time.Now()
-	vulns, moduleRaised, moduleSeverity, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
-	decodeDuration := time.Since(decodeStart)
+	if qCtx.deferDecode {
+		qCtx.deferred = &deferredQueryResults{
+			results: results, evalDuration: evalDuration,
+			coverage: coverage, hasCoverage: hasCoverage,
+		}
+		return nil, 0, "", nil
+	}
+	return c.finishQueryDecode(ctx, qCtx, results, evalDuration, coverage, hasCoverage)
+}
 
-	// Flag slow rules so they can be debugged/optimized later
+// finishQueryDecode decodes a query's results and records its coverage report.
+// For relational roots this runs only after parallel evaluation joins, in the
+// original root order.
+func (c *Inspector) finishQueryDecode(
+	ctx context.Context, qCtx *QueryContext, results rego.ResultSet, evalDuration time.Duration,
+	coverage cover.Report, hasCoverage bool,
+) (vulns []model.Vulnerability, moduleRaised int, moduleSeverity model.Severity, err error) {
+	contextLogger := logger.FromContext(ctx)
+	defer func() {
+		if r := recover(); r != nil {
+			errMessage := fmt.Sprintf("Recovered from panic during query '%s' decode. ", qCtx.Query.Metadata.Query)
+			err = fmt.Errorf("panic: %v\n%s", r, string(debug.Stack()))
+			contextLogger.Err(err).Msg(errMessage)
+		}
+	}()
+	if hasCoverage {
+		c.setCoverageReport(coverage)
+	}
+	decodeStart := time.Now()
+	vulns, moduleRaised, moduleSeverity, err = c.decodeResults(ctx, qCtx, results, evalDuration)
+	decodeDuration := time.Since(decodeStart)
 	if total := evalDuration + decodeDuration; total > slowQueryWarnThreshold {
 		contextLogger.Warn().
 			Str("event", "slow_rule").
@@ -1187,7 +1384,8 @@ func (c *Inspector) mapToPayloadValue(
 			return memo.val, nil
 		}
 	}
-	pairs := make([]payloadChildPair, 0, len(v))
+	mark := len(cons.childPairs)
+	defer func() { cons.childPairs = cons.childPairs[:mark] }()
 	for key, raw := range v {
 		converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
 		if err != nil {
@@ -1198,9 +1396,10 @@ func (c *Inspector) mapToPayloadValue(
 			h = hashConsScalarKey(converted)
 			cons.valHash[converted] = h
 		}
-		pairs = append(pairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
+		cons.childPairs = append(cons.childPairs, payloadChildPair{key: key, term: cons.valueTerm(converted), hash: h})
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].key < pairs[j].key })
+	pairs := cons.childPairs[mark:]
+	slices.SortFunc(pairs, func(a, b payloadChildPair) int { return strings.Compare(a.key, b.key) })
 
 	contentKey := hashConsBase
 	for _, p := range pairs {
@@ -1288,6 +1487,10 @@ type payloadHashCons struct {
 	// jsonencodeCache memoizes TransformJsonencodeInPayload results per
 	// input scalar value.
 	jsonencodeCache map[ast.Value]ast.Value
+	// childPairs is the children of the object nodes being converted. The
+	// conversion is depth first and no node keeps its children past its own
+	// conversion, so one stack serves every node instead of a slice per node.
+	childPairs []payloadChildPair
 }
 
 // pointerMemo is a byPointer entry: the converted value plus a fingerprint of
@@ -1453,15 +1656,13 @@ func (c *Inspector) DecodeQueryResults(
 	if err != nil {
 		return nil, 0, "", err
 	}
-	if qCtx.discardLineInfoAfterUse {
-		// Group findings by file so each file's line-info tree is built once and
-		// discarded on its last finding (advanceLineInfoFile); without grouping,
-		// interleaved documentIds would discard and reparse per transition.
-		// Stable keeps the per-file ordering the query produced.
-		sort.SliceStable(queryResultItems, func(i, j int) bool {
-			return resultDocumentID(queryResultItems[i]) < resultDocumentID(queryResultItems[j])
-		})
-	}
+	// Group findings by document so each file's line-info tree is built once and
+	// discarded on its last finding (advanceLineInfoFile); without grouping,
+	// interleaved documentIds would discard and reparse per transition.
+	// Documents are ordered by path, since document ids are random, so the
+	// findings a compacting set skips do not depend on the run. Stable keeps
+	// the per-document ordering the query produced.
+	sortResultItems(queryResultItems, qCtx.Files)
 
 	findings := qCtx.findings
 	if findings == nil {
@@ -1506,6 +1707,13 @@ decodeLoop:
 
 	if failedDetectLine {
 		c.tracker.FailedDetectLine()
+	}
+
+	if qCtx.unknownBlocks > 0 {
+		contextLogger.Error().
+			Str("queryID", qCtx.Query.Metadata.Query).
+			Int("results", qCtx.unknownBlocks).
+			Msg("Rule results name no Terraform block of the input; they are not reported")
 	}
 
 	if qCtx.discardLineInfoAfterUse && activeLineInfoFile != "" {
@@ -1571,6 +1779,22 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 	return nextID
 }
 
+func sortResultItems(items []interface{}, files map[string]*model.FileMetadata) {
+	path := func(id string) string {
+		if f := files[id]; f != nil {
+			return f.FilePath
+		}
+		return ""
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := resultDocumentID(items[i]), resultDocumentID(items[j])
+		if pa, pb := path(a), path(b); pa != pb {
+			return pa < pb
+		}
+		return a < b
+	})
+}
+
 // resultDocumentID returns the file id a result item points at.
 func resultDocumentID(item interface{}) string {
 	if m, ok := item.(map[string]interface{}); ok {
@@ -1601,7 +1825,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	queryResultItem interface{}, queryDuration time.Duration) (*model.Vulnerability, bool) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerability, err := c.vb(ctx, qCtx, c.tracker, queryResultItem, c.detector, c.useOldSeverities, queryDuration)
-	if err != nil && err.Error() == ErrNoResult.Error() {
+	if err != nil && (err.Error() == ErrNoResult.Error() || errors.Is(err, errUnknownBlock)) {
 		// Ignoring bad results
 		return nil, false
 	}
@@ -1737,12 +1961,15 @@ const (
 	platformKnative        = "knative"
 	platformServerlessFW   = "serverlessfw"
 	platformCloudFormation = "cloudformation"
+	platformTerraform      = "terraform"
 )
 
 // platformPayloads holds per-platform OPA input payloads built once per scan.
 type platformPayloads struct {
 	byPlatform map[string]ast.Value
 	full       ast.Value
+	// terraform is set when full is the contract input for a Terraform rule.
+	terraform *terraformInput
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -2029,10 +2256,9 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 	}, nil
 }
 
-// buildMergedInputData merges the platform library, common library and (when
-// present) module input data into a single JSON document for a query.
-func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
-	modules []tfmodules.ParsedModule) (string, error) {
+// buildMergedInputData merges the platform library and common library into a
+// single JSON document for a query.
+func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata) (string, error) {
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
 	if !ok {
 		return "", errors.New("failed to get platform library")
@@ -2045,23 +2271,15 @@ func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
 	if err != nil {
 		return "", errors.Wrap(err, "could not merge common library input data")
 	}
-	if modules != nil {
-		mergedInputData, err = source.MergeModulesData(modules, mergedInputData)
-		if err != nil {
-			return "", errors.Wrap(err, "could not merge modules input data")
-		}
-	}
 	return mergedInputData, nil
 }
 
-// precomputeBaseInputData builds, once per platform, the merged input data for
-// queries that carry no custom InputData. The common/platform library data and
-// the module payload are identical across such queries, so doing this once
-// avoids re-serializing the (potentially large) module set for every query.
-func (q *QueryLoader) precomputeBaseInputData(modules []tfmodules.ParsedModule) map[string]string {
+// precomputeBaseInputData builds, once per platform, the merged library input
+// data for queries that carry no custom InputData.
+func (q *QueryLoader) precomputeBaseInputData() map[string]string {
 	base := make(map[string]string, len(q.platformLibraries))
 	for platform := range q.platformLibraries {
-		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform}, modules)
+		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform})
 		if err != nil {
 			continue
 		}
@@ -2085,16 +2303,12 @@ func precomputeBaseStores(baseInputData map[string]string) map[string]storage.St
 // LoadQuery loads the query into memory so it can be freed when not used anymore.
 //
 // baseStores holds one shared, read-only inmem store per platform (the merged
-// library + module input data for this scan); baseDataHashes holds a hash of
-// each store's data. When the query carries no custom InputData it uses the
-// shared base store, and its compiled *PreparedEvalQuery is served from / stored
-// in the process-global preparedQueryCache — the cache key folds in the base
-// data hash, so a compiled query (whose store bakes in this scan's data) is only
-// reused by a later scan whose base data is byte-identical. This makes warm
-// scans skip the expensive PrepareForEval compile even when Terraform module
-// data is present, as long as that data is unchanged.
+// library input data for this scan); baseDataHashes holds a hash of each
+// store's data. When the query carries no custom InputData it uses the shared
+// base store, and its compiled *PreparedEvalQuery is served from / stored in the
+// process-global preparedQueryCache. The cache key folds in the base data hash,
+// so a compiled query is reused only when the base input is byte-identical.
 func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
-	modules []tfmodules.ParsedModule,
 	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
 	cacheEnabled bool) (*rego.PreparedEvalQuery, error) {
 	platformGeneralQuery, ok := q.platformLibraries[query.Platform]
@@ -2128,7 +2342,7 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		if useCache {
 			store = prebuilt
 		} else {
-			mergedInputData, err := q.buildMergedInputData(query, modules)
+			mergedInputData, err := q.buildMergedInputData(query)
 			if err != nil {
 				return nil, err
 			}

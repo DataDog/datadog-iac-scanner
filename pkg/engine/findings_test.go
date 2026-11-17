@@ -120,35 +120,6 @@ func TestFindingSet_KeepsWhatStorageReports(t *testing.T) {
 	require.ElementsMatch(t, want, kept, "nothing is left for storage to deduplicate")
 }
 
-// Two instances of one block share an identity, and a caller deduplicated
-// onto the earlier instance is not a caller of the later one. Routing after
-// keeping one finding would report only the later instance's callers.
-func TestFindingSet_RoutesBeforeKeepingAnIdentity(t *testing.T) {
-	chain := "stack/main.tf|module.app"
-	finding := func(docID string, line int) model.Vulnerability {
-		return model.Vulnerability{
-			FileID: docID, FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
-			ResourceType: "aws_s3_bucket", ResourceName: "replica", ModuleCallChain: chain, Line: line,
-		}
-	}
-	routing := newFindingRouting(map[string][]extraCallerInfo{
-		"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
-	}, nil, nil, "/repo", nil)
-
-	kept := decodeAll(newFindingSet(true, routing), []model.Vulnerability{
-		finding("doc-early", 1), finding("doc-late", 2),
-	})
-
-	got := map[string]int{}
-	for i := range kept {
-		got[kept[i].ModuleCallChain] = kept[i].Line
-	}
-	require.Equal(t, map[string]int{
-		chain:                      1,
-		"other/main.tf|module.app": 1,
-	}, got)
-}
-
 func TestFindingSet_KeepsEveryFindingWhenNotCompacting(t *testing.T) {
 	raised := instanceFindings(3, 10)
 
@@ -164,7 +135,7 @@ func TestNewFindingRouting_IndexesRootCallersOnly(t *testing.T) {
 		{FilePath: filepath.Join(repo, "modules", "app", "main.tf"), ModuleCallChain: "stack/main.tf|module.app"},
 		nil,
 	}
-	routing := newFindingRouting(nil, nil, files, repo, nil)
+	routing := newFindingRouting(files, repo)
 	require.Len(t, routing.callers, 1)
 	require.Contains(t, routing.callers, "stack/main.tf")
 }
@@ -334,16 +305,6 @@ func decodeCompacted(
 	return run(true), run(false)
 }
 
-func moduleCalls() *moduleFileCalls {
-	return &moduleFileCalls{
-		name: "main.tf",
-		calls: []moduleCall{
-			{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-			{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-		},
-	}
-}
-
 // Compacting at decode has to report the same findings storage would keep,
 // including the callers a result is routed to.
 func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
@@ -366,23 +327,11 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 
 	cases := []spec{
 		{
-			name:  "extra caller",
+			name:  "same identity",
 			files: one,
 			items: twice,
-			routing: func(file *model.FileMetadata) *findingRouting {
-				return newFindingRouting(map[string][]extraCallerInfo{
-					file.ID: {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
-				}, nil, nil, "", nil)
-			},
-		},
-		{
-			name:  "module file reported only through its calls",
-			files: one,
-			items: twice,
-			routing: func(file *model.FileMetadata) *findingRouting {
-				return newFindingRouting(nil, map[string]*moduleFileCalls{
-					file.ID: moduleCalls(),
-				}, nil, "", nil)
+			routing: func(*model.FileMetadata) *findingRouting {
+				return nil
 			},
 		},
 	}
@@ -420,9 +369,9 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		ins.ruleConfigs = map[string]config.IacRuleConfig{
 			"bucket-rule": {IgnorePaths: []string{"**/excluded/**"}},
 		}
-		routing := newFindingRouting(nil, nil, model.FileMetadatas{
+		routing := newFindingRouting(model.FileMetadatas{
 			{FilePath: callerName},
-		}, "", nil)
+		}, "")
 		compacted, full := decodeCompacted(t, ins, map[string]*model.FileMetadata{
 			older.ID: older, newer.ID: newer,
 		}, routing, []map[string]interface{}{bucketItem(older.ID), bucketItem(newer.ID)})
