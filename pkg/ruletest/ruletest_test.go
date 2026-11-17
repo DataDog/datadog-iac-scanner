@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/stretchr/testify/assert"
@@ -312,6 +313,71 @@ func TestLoadDirAndRun(t *testing.T) {
 	res, err := suite.Run(ctx, tf, Options{LegacyRoots: true})
 	require.NoError(t, err)
 	assert.Equal(t, []Mismatch{{Kind: MissingFinding, Finding: tf.Tests.Expected[0]}}, res.Mismatches)
+}
+
+// LegacyRoots evaluates written HCL and plan JSON together. The plan's
+// computed field must remain absent in the written document after HCL modeling.
+func TestLegacyRootsFindsPlanJSON(t *testing.T) {
+	ctx := context.Background()
+	assets := testAssets(t)
+	writeFiles(t, assets, map[string]string{
+		"queries/terraform/plan_field_missing/metadata.json": metadata(t, "terraform-plan-field-missing", "Plan field missing", "Terraform", "MEDIUM"),
+		"queries/terraform/plan_field_missing/query.rego": `package datadog
+import rego.v1
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	some name, resource in doc.resource.example_resource
+	not "enabled" in object.keys(resource)
+	result := {
+		"documentId": doc.id,
+		"resourceType": "example_resource",
+		"resourceName": name,
+		"searchKey": sprintf("example_resource[%s]", [name]),
+	}
+}
+`,
+		"queries/terraform/plan_field_missing/test/positive.tf": `resource "example_resource" "item" {
+  description = "from hcl"
+}
+`,
+		"queries/terraform/plan_field_missing/test/positive1.json": `{
+  "format_version": "1.2",
+  "terraform_version": "1.6.0",
+  "planned_values": {"root_module": {"resources": [
+    {"address": "example_resource.item", "mode": "managed", "type": "example_resource", "name": "item",
+     "values": {"description": "Hello"}}
+  ]}},
+  "resource_changes": [
+    {"address": "example_resource.item", "mode": "managed", "type": "example_resource", "name": "item",
+     "change": {"actions": ["create"], "before": null, "after": {"description": "Hello"},
+       "after_unknown": {"enabled": true}}}
+  ],
+  "configuration": {"root_module": {"resources": [
+    {"address": "example_resource.item", "mode": "managed", "type": "example_resource", "name": "item",
+     "expressions": {"description": {"constant_value": "Hello"}}}
+  ]}}
+}`,
+		"queries/terraform/plan_field_missing/test/positive_expected_result.json": `[
+  {"queryName": "Plan field missing", "severity": "MEDIUM", "line": 1, "fileName": "positive.tf"},
+  {"queryName": "Plan field missing", "severity": "MEDIUM", "line": 6, "fileName": "positive1.json"}
+]`,
+	})
+
+	suite, err := LoadDir(ctx, assets)
+	require.NoError(t, err)
+	var rule *Rule
+	for _, candidate := range suite.Rules {
+		if candidate.ID == "terraform-plan-field-missing" {
+			rule = candidate
+			break
+		}
+	}
+	require.NotNil(t, rule)
+
+	res, err := suite.Run(ctx, rule, Options{LegacyRoots: true, Timeout: 2 * time.Minute})
+	require.NoError(t, err)
+	assert.Empty(t, res.Mismatches, "the HCL and plan JSON findings must both be reported")
 }
 
 func TestRunReportsMismatches(t *testing.T) {
