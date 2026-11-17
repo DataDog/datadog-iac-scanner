@@ -1244,6 +1244,9 @@ func (c *Inspector) finishQueryDecode(
 	decodeStart := time.Now()
 	vulns, moduleRaised, moduleSeverity, err = c.decodeResults(ctx, qCtx, results, evalDuration)
 	decodeDuration := time.Since(decodeStart)
+	contextLogger.Debug().Str("event", "query_complete").Str("queryID", qCtx.Query.Metadata.Query).
+		Int64("evalNs", evalDuration.Nanoseconds()).Int64("decodeNs", decodeDuration.Nanoseconds()).
+		Msg("query completed")
 	if total := evalDuration + decodeDuration; total > slowQueryWarnThreshold {
 		contextLogger.Warn().
 			Str("event", "slow_rule").
