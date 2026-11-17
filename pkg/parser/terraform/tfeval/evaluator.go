@@ -136,6 +136,13 @@ type ModuleInstance struct {
 	CallChain     []CallSite
 }
 
+// ZeroResource identifies a resource or data block whose known count or
+// for_each produced no Terraform instances.
+type ZeroResource struct {
+	Type, Name, DefinedIn, ModuleAddress string
+	Data                                 bool
+}
+
 // Evaluator evaluates local Terraform modules.
 type Evaluator struct {
 	funcs    map[string]function.Function
@@ -181,6 +188,7 @@ type Evaluator struct {
 	// instances holds the module calls the running EvaluateModule evaluated.
 	// They are only collected when trackInstances is set.
 	instances      []ModuleInstance
+	zeroResources  []ZeroResource
 	trackInstances bool
 
 	// parseMu guards dirCache, which evaluators forked from one another share.
@@ -326,6 +334,32 @@ func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
 	return instances
 }
 
+// TakeZeroResources returns known-empty resource expansions from the last
+// module evaluation and clears the collected list.
+func (e *Evaluator) TakeZeroResources() []ZeroResource {
+	zeroes := e.zeroResources
+	e.zeroResources = nil
+	if len(zeroes) < 2 {
+		return zeroes
+	}
+	seen := make(map[ZeroResource]bool, len(zeroes))
+	out := zeroes[:0]
+	for _, zero := range zeroes {
+		if !seen[zero] {
+			seen[zero] = true
+			out = append(out, zero)
+		}
+	}
+	return out
+}
+
+func (e *Evaluator) recordZeroResource(rb *hclsyntax.Block, name, addr string, data bool) {
+	e.zeroResources = append(e.zeroResources, ZeroResource{
+		Type: rb.Labels[0], Name: name, DefinedIn: rb.TypeRange.Filename,
+		ModuleAddress: addr, Data: data,
+	})
+}
+
 // recordModuleInstance notes an evaluated call when instances are tracked. The
 // chain is shared with the call's resources and must not be modified.
 func (e *Evaluator) recordModuleInstance(dir, addr string, chain []CallSite) {
@@ -421,6 +455,7 @@ func (e *Evaluator) EvaluateModule(
 	visiting := map[string]bool{}
 	allVisited := map[string]bool{}
 	e.instances = nil
+	e.zeroResources = nil
 	resources, outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err == nil {
 		// A canceled or timed-out scan may have stopped mid-expansion. Do not
@@ -429,6 +464,7 @@ func (e *Evaluator) EvaluateModule(
 	}
 	if err != nil {
 		e.instances = nil
+		e.zeroResources = nil
 	}
 	return resources, outputs, allVisited, err
 }
@@ -469,6 +505,7 @@ func (e *Evaluator) evaluate(
 	defer delete(visiting, dir)
 	skippedBefore := e.skipped
 	instancesBefore := len(e.instances)
+	zeroesBefore := len(e.zeroResources)
 
 	// Snapshot allVisited so we can determine which dirs this subtree adds.
 	prevAllVisited := make(map[string]bool, len(allVisited))
@@ -551,6 +588,7 @@ func (e *Evaluator) evaluate(
 	// would reuse it as a complete result.
 	if err := ctx.Err(); err != nil {
 		e.instances = e.instances[:instancesBefore]
+		e.zeroResources = e.zeroResources[:zeroesBefore]
 		return nil, nil, err
 	}
 
@@ -563,7 +601,8 @@ func (e *Evaluator) evaluate(
 	}
 	if inputsKeyOK {
 		e.cacheCompletedEvaluation(
-			cacheKey, skippedBefore, resources, e.instances[instancesBefore:], outputs, visitedDirs, addr, len(chain), depth,
+			cacheKey, skippedBefore, resources, e.instances[instancesBefore:], e.zeroResources[zeroesBefore:],
+			outputs, visitedDirs, addr, len(chain), depth,
 		)
 	}
 
@@ -644,6 +683,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 		allVisited[visited] = true
 	}
 	e.instances = append(e.instances, entry.rebaseInstances(addr, chain)...)
+	e.zeroResources = append(e.zeroResources, entry.rebaseZeroResources(addr)...)
 	return entry.rebase(addr, chain), entry.outputs, true
 }
 
@@ -684,6 +724,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	skippedBefore uint64,
 	resources []ResolvedResource,
 	instances []ModuleInstance,
+	zeroResources []ZeroResource,
 	outputs map[string]cty.Value,
 	visitedDirs []string,
 	addr string,
@@ -694,13 +735,14 @@ func (e *Evaluator) cacheCompletedEvaluation(
 		return
 	}
 	e.cache[key] = &evalCacheEntry{
-		resources:    resources,
-		instances:    slices.Clone(instances),
-		outputs:      outputs,
-		visitedDirs:  visitedDirs,
-		baseAddr:     addr,
-		baseChainLen: chainLen,
-		evalDepth:    depth,
+		resources:     resources,
+		instances:     slices.Clone(instances),
+		zeroResources: slices.Clone(zeroResources),
+		outputs:       outputs,
+		visitedDirs:   visitedDirs,
+		baseAddr:      addr,
+		baseChainLen:  chainLen,
+		evalDepth:     depth,
 	}
 }
 
@@ -1081,10 +1123,10 @@ func (e *Evaluator) expandBlock(
 		}
 	}
 
-	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne); ok {
+	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, addr, data, makeOne); ok {
 		return out
 	}
-	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne); ok {
+	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, addr, data, makeOne); ok {
 		return out
 	}
 	return []ResolvedResource{makeOne(resName, evalCtx)}
@@ -1095,6 +1137,8 @@ func (e *Evaluator) expandCountInstances(
 	rb *hclsyntax.Block,
 	resName string,
 	evalCtx *hcl.EvalContext,
+	addr string,
+	data bool,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
 ) ([]ResolvedResource, bool) {
 	countAttr := rb.Body.Attributes["count"]
@@ -1108,6 +1152,7 @@ func (e *Evaluator) expandCountInstances(
 			return nil, false
 		}
 		if n <= 0 {
+			e.recordZeroResource(rb, resName, addr, data)
 			return nil, true
 		}
 		// Grown with append, never sized from n: an uncapped count from an
@@ -1141,6 +1186,8 @@ func (e *Evaluator) expandForEachInstances(
 	rb *hclsyntax.Block,
 	resName string,
 	evalCtx *hcl.EvalContext,
+	addr string,
+	data bool,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
 ) ([]ResolvedResource, bool) {
 	feAttr := rb.Body.Attributes["for_each"]
@@ -1152,6 +1199,7 @@ func (e *Evaluator) expandForEachInstances(
 		return []ResolvedResource{unknownForEachResource(resName, evalCtx, makeOne)}, true
 	}
 	if fv.LengthInt() == 0 {
+		e.recordZeroResource(rb, resName, addr, data)
 		return nil, true
 	}
 	return e.expandKnownForEachResources(ctx, fv, resName, evalCtx, makeOne), true

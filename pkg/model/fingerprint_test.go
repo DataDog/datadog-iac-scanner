@@ -35,6 +35,33 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 	require.Equal(t, base, k8sWithChain, "non-Terraform platforms must ignore the module call chain")
 }
 
+func TestTerraformResourceAddressSeparatesFindingIdentity(t *testing.T) {
+	a := Vulnerability{FileName: "main.tf", Platform: terraformPlatform, ResourceType: "aws_s3_bucket", ResourceName: "web", QueryID: "q", RootModule: ".", ResourceID: "aws_s3_bucket.web[0]"}
+	b := a
+	b.ResourceID = "aws_s3_bucket.web[1]"
+	require.NotEqual(t, FindingIdentity(&a), FindingIdentity(&b))
+	ida, ok := IdentityBeforeLine(&a)
+	require.True(t, ok)
+	require.Equal(t, FindingIdentity(&a), ida.WithChain(a.ModuleCallChain))
+	require.Equal(t, FindingIdentity(&a), string(ida.AppendWithChain(nil, a.ModuleCallChain)))
+}
+
+func TestResourceAddressIsConsistentAcrossIdentityAndFingerprintWithoutPlatform(t *testing.T) {
+	a := Vulnerability{
+		FileName: "/repo/main.tf", QueryID: "q", ResourceType: "aws_s3_bucket", ResourceName: "web",
+		RootModule: ".", ResourceID: "aws_s3_bucket.web[0]",
+	}
+	b := a
+	b.ResourceID = "aws_s3_bucket.web[1]"
+	require.NotEqual(t, FindingIdentity(&a), FindingIdentity(&b))
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{a, b}, "scan", nil, "/repo", SCIInfo{})
+	require.Len(t, summary.Queries, 1)
+	files := summary.Queries[0].Files
+	require.Len(t, files, 2)
+	require.NotEqual(t, files[0].Fingerprint, files[1].Fingerprint,
+		"persisted fingerprints must include address fields even when a custom rule omits platform")
+}
+
 // FindingIdentity (storage's grouping) and CreateSummary (the report's
 // persisted fingerprint) must group findings on exactly the same fields (see
 // fingerprintFields), or a finding storage reduced to one copy could still be
@@ -98,7 +125,10 @@ func TestIdentityBeforeLine_IsFindingIdentityUnderEveryChain(t *testing.T) {
 			}
 			id, ok := IdentityBeforeLine(v)
 			require.True(t, ok, platform)
-			want := fingerprintInput(SCIInfo{}, v.FileName, platform, v.ResourceType, v.ResourceName, "legacy", "line text", chain)
+			want := fingerprintInput(
+				SCIInfo{}, v.FileName, platform, v.ResourceType, v.ResourceName, "legacy", "line text", chain,
+				v.RootModule, v.ResourceID,
+			)
 			require.Equal(t, want, FindingIdentity(v), platform)
 			require.Equal(t, want, id.WithChain(chain), platform)
 			require.Equal(t, want, string(id.AppendWithChain(nil, chain)), platform)

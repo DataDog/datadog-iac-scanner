@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -53,12 +54,29 @@ func FormatIndexKey(key cty.Value) (string, bool) {
 	}
 	switch key.Type() {
 	case cty.String:
-		return `["` + key.AsString() + `"]`, true
+		s := key.AsString()
+		if isPlainQuotedLiteral(s) {
+			return `[` + `"` + s + `"` + `]`, true
+		}
+		return "[" + string(hclwrite.TokensForValue(key).Bytes()) + "]", true
 	case cty.Number:
 		return "[" + key.AsBigFloat().Text('f', -1) + "]", true
 	default:
 		return "", false
 	}
+}
+
+func isPlainQuotedLiteral(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 0x20 || c > 0x7e || c == '"' || c == '\\' {
+			return false
+		}
+		if (c == '$' || c == '%') && i+1 < len(s) && s[i+1] == '{' {
+			return false
+		}
+	}
+	return true
 }
 
 // LiteralInt parses a materialized number or decimal string as int (e.g. count).

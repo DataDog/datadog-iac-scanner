@@ -190,8 +190,9 @@ resource "aws_s3_bucket" "replica" {
 
 	docs, _, _ := instantiatedDocs(
 		resources,
-		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
 		root,
+		".",
+		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
 		nil,
 		make(map[docContentKey]string),
 		make(map[string][]extraCallerInfo),
@@ -279,7 +280,7 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 	var rootEvalOK bool
 	evaluateRootModules(
 		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
-		byAbsPath, seen, extras, instantiated,
+		byAbsPath, seen, extras, instantiated, make(instantiatedIndex),
 		map[string]bool{}, map[string]bool{}, map[string]bool{},
 		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls,
 	)
@@ -1021,6 +1022,118 @@ resource "aws_s3_bucket" "this" {
 	}
 }
 
+func TestInstantiatedDocs_RootExpansionCarriesTerraformAddress(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "main.tf")
+	fm := &model.FileMetadata{
+		ID: "root-file", Kind: model.KindTerraform, FilePath: file,
+		Document: model.Document{"resource": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{"web": map[string]interface{}{}},
+		}},
+		TerraformScope: &model.TerraformScope{RootModule: ".", Blocks: map[model.TerraformBlock]bool{
+			{Kind: "resource", Type: "aws_s3_bucket", Name: "web"}: true,
+		}},
+	}
+	instantiated := make(instantiatedIndex)
+	docs, files, _ := instantiatedDocs([]tfeval.ResolvedResource{{
+		Type: "aws_s3_bucket", Name: "web[1]", DefinedIn: file,
+	}}, root, ".", map[string]*model.FileMetadata{filepath.Clean(file): fm}, nil,
+		make(map[docContentKey]string), make(map[string][]extraCallerInfo), instantiated, nil,
+		newModuleAttributionCache())
+	require.Len(t, docs, 1)
+	require.Len(t, files, 1)
+	require.True(t, instantiated[fm.ID]["aws_s3_bucket"]["web"])
+	require.Equal(t, model.TerraformInstance{Label: "web", Suffix: "[1]"}, files[0].TerraformInstances[model.TerraformInstanceKey{Kind: "resource", Type: "aws_s3_bucket", Name: "web"}])
+	got, ok := terraformAddressFor(files[0], "aws_s3_bucket", "web", "[1]")
+	require.True(t, ok)
+	require.Equal(t, "aws_s3_bucket.web[1]", got)
+}
+
+func TestInstantiatedDocs_RootExpansionRetainsEachInstanceValue(t *testing.T) {
+	root := t.TempDir()
+	file := writeFile(t, root, "main.tf", `
+resource "aws_s3_bucket" "counted" {
+  count  = 2
+  marker = count.index
+}
+resource "aws_s3_bucket" "each" {
+  for_each = { safe = "safe", unsafe = "unsafe" }
+  marker   = each.value
+}
+`)
+	fm := &model.FileMetadata{
+		ID: "root-file", Kind: model.KindTerraform, FilePath: file,
+		Document: model.Document{"resource": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{"counted": map[string]interface{}{}, "each": map[string]interface{}{}},
+		}},
+		TerraformScope: &model.TerraformScope{RootModule: ".", Blocks: map[model.TerraformBlock]bool{
+			{Kind: "resource", Type: "aws_s3_bucket", Name: "counted"}: true,
+			{Kind: "resource", Type: "aws_s3_bucket", Name: "each"}:    true,
+		}},
+	}
+	resources, _, _, err := tfeval.New().EvaluateModule(context.Background(), root, nil)
+	require.NoError(t, err)
+	want := map[string]bool{
+		"counted[0]": false, "counted[1]": false, "each[\"safe\"]": false, "each[\"unsafe\"]": false,
+	}
+	for _, resource := range resources {
+		if resource.Type != "aws_s3_bucket" {
+			continue
+		}
+		if _, ok := want[resource.Name]; !ok {
+			continue
+		}
+		if resource.Name == "counted[0]" {
+			want[resource.Name] = resource.Attributes["marker"].AsBigFloat().Text('f', 0) == "0"
+		} else if resource.Name == "counted[1]" {
+			want[resource.Name] = resource.Attributes["marker"].AsBigFloat().Text('f', 0) == "1"
+		} else {
+			key := strings.TrimSuffix(strings.TrimPrefix(resource.Name, `each["`), `"]`)
+			want[resource.Name] = resource.Attributes["marker"].AsString() == key
+		}
+	}
+	for name, correct := range want {
+		require.True(t, correct, "evaluated instance %s retains its distinct count.index/each.value", name)
+	}
+
+	instantiated := make(instantiatedIndex)
+	_, synthetic, _ := instantiatedDocs(resources, root, ".", map[string]*model.FileMetadata{
+		filepath.Clean(file): fm,
+	}, nil, make(map[docContentKey]string), make(map[string][]extraCallerInfo), instantiated, nil,
+		newModuleAttributionCache())
+	var suffixes []string
+	for _, f := range synthetic {
+		if instance, ok := f.TerraformInstances[model.TerraformInstanceKey{Kind: "resource", Type: "aws_s3_bucket", Name: "counted"}]; ok {
+			suffixes = append(suffixes, instance.Suffix)
+		}
+		if instance, ok := f.TerraformInstances[model.TerraformInstanceKey{Kind: "resource", Type: "aws_s3_bucket", Name: "each"}]; ok {
+			suffixes = append(suffixes, instance.Suffix)
+		}
+	}
+	require.ElementsMatch(t, []string{"[0]", "[1]", `["safe"]`, `["unsafe"]`}, suffixes)
+}
+
+func TestResolveModuleDocuments_SuppressesKnownEmptyRootExpansion(t *testing.T) {
+	root := t.TempDir()
+	file := writeFile(t, root, "main.tf", `resource "aws_s3_bucket" "empty" {
+  for_each = {}
+  bucket   = each.key
+}
+`)
+	fm := &model.FileMetadata{
+		ID: "root-file", Kind: model.KindTerraform, FilePath: file,
+		Document: model.Document{"resource": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{"empty": map[string]interface{}{}},
+		}},
+	}
+	resolved := resolveModuleDocuments(context.Background(), model.FileMetadatas{fm}, root,
+		nil, nil, nil, nil, vfs.DiskFS{}, nil)
+	require.True(t, resolved.ok)
+	require.Empty(t, resolved.docs)
+	require.True(t, resolved.suppressed[fm.ID]["aws_s3_bucket"]["empty"])
+	require.Empty(t, resolved.calledDirs, "a zero-instance root block does not imply a module call")
+}
+
 func TestNewInstanceFileMetadata_LineInfoDocumentNotAliased(t *testing.T) {
 	fm := &model.FileMetadata{
 		ID: "mod-id",
@@ -1030,7 +1143,7 @@ func TestNewInstanceFileMetadata_LineInfoDocumentNotAliased(t *testing.T) {
 			},
 		},
 	}
-	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x", nil)
+	synth := newInstanceFileMetadata(fm, "synth-id", "stack|module.x", "module.x", "stack", nil, nil)
 	delete(fm.LineInfoDocument, "resource")
 	if _, ok := synth.LineInfoDocument["resource"]; !ok {
 		t.Fatal("synthetic LineInfoDocument must keep resource after suppression on parent")

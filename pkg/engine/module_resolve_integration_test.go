@@ -266,7 +266,6 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 	}
 }
 
-
 // Two roots call the same module with the same inputs: expect two findings and two distinct ModuleCallChain values.
 func TestInspect_TwoCallersGetDistinctCallChains(t *testing.T) {
 	root := t.TempDir()
@@ -333,12 +332,16 @@ resource "aws_s3_bucket" "this" {
 	// each attributed to the module body but with a distinct call chain.
 	require.Len(t, vulns, 2, "expected one finding per module caller")
 	chains := map[string]bool{}
+	roots := map[string]bool{}
 	for _, v := range vulns {
 		require.Equal(t, modPath, v.FileName, "findings should be reported at the module resource definition")
 		require.NotEmpty(t, v.ModuleCallChain, "instantiated finding must carry a module call chain")
+		require.Equal(t, "module.bucket.aws_s3_bucket.this", v.ResourceID)
 		chains[v.ModuleCallChain] = true
+		roots[v.RootModule] = true
 	}
 	require.Len(t, chains, 2, "the two callers must produce distinct module call chains")
+	require.Equal(t, map[string]bool{"stack-a": true, "stack-b": true}, roots)
 }
 
 // aggregateCountRule fires when two or more aws_s3_bucket resources exist in the scan.
@@ -885,8 +888,7 @@ module "buckets" {
 }
 `), 0o644))
 	// Only the second instance is public: a finding proves that instance was
-	// evaluated and scanned. Both instances raise the same finding identity,
-	// which the scan reports once, so counting findings would prove nothing.
+	// evaluated and scanned.
 	require.NoError(t, os.WriteFile(modPath, []byte(`
 variable "acl" {
   type = string
@@ -923,9 +925,190 @@ resource "aws_s3_bucket" "replica" {
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
-	require.Len(t, vulns, 1, "the second count-expanded instance must be scanned")
+	require.Len(t, vulns, 1, "only the second count-expanded instance is public")
 	require.Equal(t, "replica", vulns[0].ResourceName)
 	require.Equal(t, "stack/main.tf|module.buckets", vulns[0].ModuleCallChain)
+	require.Equal(t, "module.buckets.aws_s3_bucket.replica[1]", vulns[0].ResourceID)
+	require.Equal(t, "stack", vulns[0].RootModule)
+}
+
+func TestInspect_NestedRepeatedModulesKeepDifferingInputAddresses(t *testing.T) {
+	root := t.TempDir()
+	stack := filepath.Join(root, "stack")
+	buckets := filepath.Join(root, "modules", "buckets")
+	child := filepath.Join(root, "modules", "bucket")
+	for _, dir := range []string{stack, buckets, child} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	rootFile := filepath.Join(stack, "main.tf")
+	bucketsFile := filepath.Join(buckets, "main.tf")
+	childFile := filepath.Join(child, "main.tf")
+	require.NoError(t, os.WriteFile(rootFile, []byte(`
+module "buckets" {
+  count = 2
+  source = "../modules/buckets"
+  acl = count.index == 1 ? "public-read" : "private"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(bucketsFile, []byte(`
+variable "acl" { type = string }
+module "bucket" {
+  source = "../bucket"
+  acl = var.acl
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(childFile, []byte(`
+variable "acl" { type = string }
+resource "aws_s3_bucket" "this" {
+  bucket = "logs"
+  acl = var.acl
+}
+`), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootFile)...)
+	files = append(files, parseTerraform(t, bucketsFile)...)
+	files = append(files, parseTerraform(t, childFile)...)
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		}},
+		repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1, "the private instance must not inherit the other call's ACL")
+	require.Equal(t, "module.buckets[1].module.bucket.aws_s3_bucket.this", vulns[0].ResourceID)
+	require.Equal(t, "stack", vulns[0].RootModule)
+}
+
+func TestInspect_ReplayedIdenticalModuleInputsKeepBothInstanceAddresses(t *testing.T) {
+	root := t.TempDir()
+	stack := filepath.Join(root, "stack")
+	child := filepath.Join(root, "modules", "bucket")
+	for _, dir := range []string{stack, child} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	rootFile := filepath.Join(stack, "main.tf")
+	childFile := filepath.Join(child, "main.tf")
+	require.NoError(t, os.WriteFile(rootFile, []byte(`
+module "bucket" {
+  source = "../modules/bucket"
+  count  = 2
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(childFile, []byte(`
+variable "acl" { type = string }
+resource "aws_s3_bucket" "this" { acl = var.acl }
+`), 0o644))
+	var files model.FileMetadatas
+	files = append(files, parseTerraform(t, rootFile)...)
+	files = append(files, parseTerraform(t, childFile)...)
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		}},
+		repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 2, "identical module inputs replay findings for both module instances")
+	addresses := map[string]bool{}
+	for _, vuln := range vulns {
+		addresses[vuln.ResourceID] = true
+		require.Equal(t, "stack", vuln.RootModule)
+	}
+	require.Equal(t, map[string]bool{
+		"module.bucket[0].aws_s3_bucket.this": true,
+		"module.bucket[1].aws_s3_bucket.this": true,
+	}, addresses)
+}
+
+func TestInspect_RootCountExpansionAddressesOnlyFailingInstance(t *testing.T) {
+	root := t.TempDir()
+	stack := filepath.Join(root, "stacks", "prod")
+	require.NoError(t, os.MkdirAll(stack, 0o755))
+	file := filepath.Join(stack, "main.tf")
+	require.NoError(t, os.WriteFile(file, []byte(`
+resource "aws_s3_bucket" "replica" {
+  count  = 2
+  bucket = "bucket-${count.index}"
+  acl    = count.index == 1 ? "public-read" : "private"
+}
+resource "aws_s3_bucket" "keyed" {
+  for_each = { safe = "private", unsafe = "public-read" }
+  bucket   = each.key
+  acl      = each.value
+}
+`), 0o644))
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		}},
+		repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", parseTerraform(t, file), []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 2, "only the failing count.index and each.value instances are findings")
+	addresses := map[string]bool{}
+	for _, vuln := range vulns {
+		addresses[vuln.ResourceID] = true
+		require.Equal(t, "stacks/prod", vuln.RootModule)
+	}
+	require.Equal(t, map[string]bool{
+		"aws_s3_bucket.replica[1]":      true,
+		`aws_s3_bucket.keyed["unsafe"]`: true,
+	}, addresses)
+}
+
+func TestInspect_AllFailingCountAndForEachInstancesKeepDistinctAddresses(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(file, []byte(`
+resource "aws_s3_bucket" "counted" {
+  count = 2
+  acl = "public-read"
+}
+resource "aws_s3_bucket" "keyed" {
+  for_each = { first = "public-read", second = "public-read" }
+  acl = each.value
+}
+`), 0o644))
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		}},
+		repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	vulns, err := ins.Inspect(context.Background(), "test", parseTerraform(t, file), []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 4, "identical findings on distinct instances remain separate identities")
+	addresses := map[string]bool{}
+	for _, vuln := range vulns {
+		addresses[vuln.ResourceID] = true
+	}
+	require.Equal(t, map[string]bool{
+		"aws_s3_bucket.counted[0]":      true,
+		"aws_s3_bucket.counted[1]":      true,
+		`aws_s3_bucket.keyed["first"]`:  true,
+		`aws_s3_bucket.keyed["second"]`: true,
+	}, addresses)
+	summary := model.CreateSummary(context.Background(), model.Counters{}, vulns, "test", nil, root, model.SCIInfo{})
+	require.Len(t, summary.Queries, 1)
+	fingerprints := map[string]bool{}
+	for _, finding := range summary.Queries[0].Files {
+		fingerprints[finding.Fingerprint] = true
+	}
+	require.Len(t, fingerprints, 4, "each expanded instance has a distinct persisted fingerprint")
 }
 
 // TestInspect_SharedBaseStoresConcurrentReads runs multiple queries on one platform

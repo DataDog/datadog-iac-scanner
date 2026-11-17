@@ -566,6 +566,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Debug().Msg("engine.Inspect()")
 
 	queries := c.getQueriesByPlat(platforms)
+	c.stampTerraformScopes(files)
 
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
@@ -845,6 +846,7 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy := vulns[i]
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
+			vCopy.RootModule = ex.rootModule
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
 			expanded = append(expanded, vCopy)
 		}

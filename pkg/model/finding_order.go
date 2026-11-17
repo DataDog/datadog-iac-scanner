@@ -68,6 +68,8 @@ func normalizeOrderPath(path string) string {
 func compareReported(a, b *Vulnerability) int {
 	return cmp.Or(
 		cmp.Compare(a.ModuleCallChain, b.ModuleCallChain),
+		cmp.Compare(a.RootModule, b.RootModule),
+		cmp.Compare(a.ResourceID, b.ResourceID),
 		compareBool(a.Value != nil, b.Value != nil),
 		cmp.Compare(a.SearchLine, b.SearchLine),
 		compareResourceLocation(a.VulnerabilityLocation, b.VulnerabilityLocation),
