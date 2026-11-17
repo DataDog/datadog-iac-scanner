@@ -2,18 +2,13 @@ const DEBOUNCE_MS = 500;
 
 const DEFAULT_REGO = `package datadog
 
-import data.generic.common as common_lib
-import data.generic.terraform as tf_lib
+import data.generic.common as common
+import data.generic.terraform as tf
 
 DatadogPolicy contains result if {
-\tresource := input.document[i].resource.aws_s3_bucket[name]
-\tresource.acl == "public-read"
-\tresult := {
-\t\t"documentId": input.document[i].id,
-\t\t"resourceType": "aws_s3_bucket",
-\t\t"resourceName": tf_lib.resolve_s3_bucket_name(resource, name),
-\t\t"searchKey": sprintf("aws_s3_bucket[%s].acl", [name]),
-\t}
+\tsome bucket in tf.blocks("aws_s3_bucket")
+\tbucket.acl == "public-read"
+\tresult := common.finding(bucket, ["acl"], {})
 }
 `;
 

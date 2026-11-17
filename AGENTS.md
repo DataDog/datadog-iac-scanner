@@ -23,8 +23,21 @@ messages or pull request descriptions.
   - `pkg/analyzer/`: classifies each file by platform.
   - `pkg/parser/`: one parser per platform; Terraform modules live in
     `pkg/parser/terraform/modules/`.
+  - `pkg/terraform/`: Terraform model and projection for Rego
+    (`model` evaluates configuration and plans, `project` builds `_dd`
+    indexes and relations, `refs` traces references, `value` holds the
+    shared value layer; instance addresses come from
+    `pkg/parser/terraform/address`). One `model.Load` feeds both the
+    contract projection and, during the migration window, a thin legacy
+    `input.document` view (`project.Legacy`) for old-format rules and
+    customs.
   - `pkg/resolver/`: renders Helm charts and resolves files.
   - `pkg/engine/`: evaluates Rego; query sources are in `pkg/engine/source/`.
+    Terraform unknown handling and scheduling live here
+    (`unknowngate`, harvest/schedule). Terraform rules are routed per rule
+    `contract` metadata: `contract: "legacy"` forces the
+    legacy view, else a rule calling `common.finding(` or `tf.blocks(` gets
+    the contract input, else the legacy view (`terraform_legacy.go`).
   - `pkg/report/`: SARIF and the other output formats.
 - `pkg/config/` reads `code-security.datadog.yaml` from the root of the scanned
   repository (see `README.md`). The decoder is strict: an unknown key makes the
@@ -32,6 +45,8 @@ messages or pull request descriptions.
 - `pkg/datadog/` is the Datadog API client (rulesets, libraries, remote config).
 - `pkg/platforms/` holds `Supported`, the platforms exposed to users and the
   default value of `scan -t`.
+- `pkg/ruletest/` is the rule test harness behind `test-rules`, also imported
+  by the rules repository.
 - `e2e/` runs end-to-end tests against the built binary (see
   `e2e/README.md`). `test/e2e/` runs end-to-end scans in-process. `test/`
   also holds the helpers and fixtures shared by the tests (see
@@ -54,7 +69,12 @@ builds, pin the rules with an offline bundle.**
 
 Rules (Rego, metadata, fixtures, cross-platform consistency) are written where
 they are maintained, not here. After an engine change, run `test-rules`: it
-runs the rule tests stored in the backend against this engine.
+runs the rule tests stored in the backend against this engine. With
+`--rules-dir <rules checkout>/assets` it runs the tests of a local rules
+checkout instead. The harness is `pkg/ruletest`, which the rules repository
+uses too. In local mode, each top-level `positive*`/`negative*` fixture file
+is its own root and each top-level subdirectory of `test/` is one multi-file
+root; the backend tests keep one root per polarity.
 
 ## Commands
 
@@ -68,7 +88,7 @@ Run every command from the repository root.
 | In-process end-to-end tests | `go test ./test/e2e -count=1` | `ok` (about 30 s) |
 | One test | `go test ./pkg/scan/ -run TestName -count=1 -v` | `--- PASS` |
 | Binary end-to-end tests | `make test-e2e` builds the binary and runs the suite. With an existing build: `go test ./e2e -count=1 -run Test_E2E_Config` | `ok` (about 35 s). CI never fails this job (`\|\| cat results.json`), so read the results yourself. |
-| Rule tests against this engine | `./bin/datadog-iac-scanner test-rules -t Dockerfile` (omit `-t` for all platforms) | `PASS: <n> rules` |
+| Rule tests against this engine | `./bin/datadog-iac-scanner test-rules -t Dockerfile` (omit `-t` for all platforms; add `--rules-dir <rules>/assets` for a local rules checkout) | `PASS: <n> rules` |
 | Go lint | `golangci-lint run -c .golangci.yml --timeout 20m` | No issues. CI pins v2.9.0; use the same version if results differ. |
 | Rego changes | `opa fmt --fail .` and `regal lint` with the flags from `.github/workflows/lint-rego.yml` | Exit code 0 |
 | New dependency | Update `LICENSE-3rdparty.csv` | The CI `lint-licenses` job passes |

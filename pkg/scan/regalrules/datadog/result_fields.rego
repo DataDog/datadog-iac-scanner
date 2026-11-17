@@ -5,7 +5,11 @@ package custom.regal.rules.datadog["result-fields"]
 import data.regal.ast
 import data.regal.result
 
-_required := {"documentId", "resourceType", "resourceName", "searchKey"}
+# A result naming a Terraform block (Terraform rule contract, built with
+# common.finding) gets its document, resource and search key from the id.
+_required(present) := {"_dd_id", "path"} if "_dd_id" in present
+
+else := {"documentId", "resourceType", "resourceName", "searchKey"}
 
 report contains violation if {
 	some rule in ast.rules
@@ -23,7 +27,7 @@ report contains violation if {
 		key := pair[0].value
 	}
 
-	some missing in (_required - present)
+	some missing in (_required(present) - present)
 
 	violation := result.fail(
 		rego.metadata.chain(),
