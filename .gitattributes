@@ -1,1 +1,2 @@
 *.go text eol=lf
+/pkg/report/testdata/sarif-schema-2.1.0-errata01.json -text

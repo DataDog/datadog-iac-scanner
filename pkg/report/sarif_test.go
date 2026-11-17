@@ -94,11 +94,16 @@ func TestPrintSarifReportSchema(t *testing.T) {
 			result, err := schema.Validate(gojsonschema.NewBytesLoader(invalid))
 			require.NoError(t, err)
 			require.False(t, result.Valid(), "obsolete suppression.state should be rejected")
+			schemaErrors := result.Errors()
+			require.Len(t, schemaErrors, 1)
+			require.Equal(t, "additional_property_not_allowed", schemaErrors[0].Type())
+			require.Equal(t, "runs.0.results.0.suppressions.0", schemaErrors[0].Field())
+			require.Equal(t, "state", schemaErrors[0].Details()["property"])
 		})
 	}
 }
 
-func TestSarifSchemaRejectsInvalidJSON(t *testing.T) {
+func TestSarifSchemaRejectsUnsupportedVersion(t *testing.T) {
 	schema := loadSarifSchema(t)
 	// Both documents decode as JSON; only the SARIF version makes one invalid.
 	requireValidSarif(t, schema, []byte(`{"version":"2.1.0","runs":[]}`))
@@ -141,6 +146,7 @@ var sarifTests = []reportTestCase{
 
 // TestPrintSarifReport tests the functions [PrintSarifReport()] and all the methods called by them
 func TestPrintSarifReport(t *testing.T) {
+	schema := loadSarifSchema(t)
 	ctx := context.Background()
 	for idx, sarifTest := range sarifTests {
 		t.Run(fmt.Sprintf("Sarif File test case %d", idx), func(t *testing.T) {
@@ -151,6 +157,7 @@ func TestPrintSarifReport(t *testing.T) {
 			checkFileExists(t, err, &sarifTest, "sarif")
 			jsonResult, err := os.ReadFile(filepath.Join(sarifTest.caseTest.path, sarifTest.caseTest.filename+".sarif"))
 			require.NoError(t, err)
+			requireValidSarif(t, schema, jsonResult)
 			var resultSarif sarifReport
 			err = json.Unmarshal(jsonResult, &resultSarif)
 			require.NoError(t, err)
