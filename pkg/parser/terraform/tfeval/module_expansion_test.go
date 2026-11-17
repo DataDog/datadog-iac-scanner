@@ -197,6 +197,7 @@ func TestResolvedResourceTerraformAddressQuotesForEachKeysAsHCL(t *testing.T) {
 				func(name string, _ *hcl.EvalContext) ResolvedResource {
 					return ResolvedResource{Type: "aws_s3_bucket", Name: name}
 				})
+			require.Equal(t, fmt.Sprintf("web[%q]", tc.key), resource.Name, "legacy Name representation stays unchanged")
 			got, ok := resource.TerraformAddress()
 			require.True(t, ok, "resource name %q", resource.Name)
 			require.Equal(t, tc.want, got)
@@ -210,6 +211,28 @@ func TestResolvedResourceTerraformAddressQuotesForEachKeysAsHCL(t *testing.T) {
 			require.Equal(t, "module.bucket"+resourceSuffix+".aws_s3_bucket.web", moduleGot)
 		})
 	}
+}
+
+func TestResolvedResourceCanonicalModuleAddressKeepsLegacyAddress(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "this" { bucket = "logs" }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "bucket" {
+  source = "../child"
+  for_each = { "$${literal}" = "same" }
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	resource := resources[0]
+	require.Equal(t, `module.bucket["${literal}"]`, resource.ModuleAddress,
+		"legacy ModuleAddress remains byte-identical")
+	canonical, ok := resource.TerraformAddress()
+	require.True(t, ok)
+	require.Equal(t, `module.bucket["$${literal}"].aws_s3_bucket.this`, canonical)
 }
 
 func TestEvaluateModule_UnknownModuleExpansionEvaluatesOnce(t *testing.T) {

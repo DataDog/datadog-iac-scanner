@@ -541,6 +541,18 @@ func (kp *TFPlan) readPriorStateData(
 		typeData := kp.Data[resource.Type]
 		typeData[dataKey] = resource.AttributeValues
 
+		// Keep plan-native addresses beside prior-state data values, just as
+		// readModule does for planned resources. The scanner's flattened data
+		// keys do not preserve Terraform's data. prefix or module path.
+		section := "data." + resource.Type
+		if kp.TfplanMeta[section] == nil {
+			if kp.TfplanMeta == nil {
+				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
+			}
+			kp.TfplanMeta[section] = make(map[string]tfplanResourceMeta)
+		}
+		kp.TfplanMeta[section][dataKey] = tfplanResourceMeta{Address: resource.Address}
+
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
 			if !isMap {

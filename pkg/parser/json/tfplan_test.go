@@ -821,6 +821,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 				},
 			},
 			want: model.Document{
+				TfplanMetaKey: map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
+					},
+				},
 				"resource": map[string]any{},
 				"data": map[string]any{
 					"aws_kms_key": map[string]any{
@@ -880,6 +885,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 				},
 			},
 			want: model.Document{
+				TfplanMetaKey: map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
+					},
+				},
 				"resource": map[string]any{},
 				"data": map[string]any{
 					"aws_kms_key": map[string]any{
@@ -993,6 +1003,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 				},
 			},
 			want: model.Document{
+				TfplanMetaKey: map[string]any{
+					"data.aws_kms_key": map[string]any{
+						`by_alias["prod"]`: map[string]any{"address": `data.aws_kms_key.by_alias["prod"]`},
+						`by_alias["dev"]`:  map[string]any{"address": `data.aws_kms_key.by_alias["dev"]`},
+					},
+				},
 				"resource": map[string]any{},
 				"data": map[string]any{
 					"aws_kms_key": map[string]any{
@@ -1059,6 +1075,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 				},
 			},
 			want: model.Document{
+				TfplanMetaKey: map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias":                map[string]any{"address": "data.aws_kms_key.by_alias"},
+						"module.storage.by_alias": map[string]any{"address": "module.storage.data.aws_kms_key.by_alias"},
+					},
+				},
 				"resource": map[string]any{},
 				"data": map[string]any{
 					"aws_kms_key": map[string]any{
@@ -1086,6 +1108,7 @@ func TestJson_parseTFPlan(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Equal(t, tt.want, got)
+			require.Equal(t, PlanAddresses(tt.want), PlanAddresses(got))
 		})
 	}
 }
