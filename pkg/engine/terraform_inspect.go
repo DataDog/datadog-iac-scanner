@@ -381,7 +381,7 @@ func (s *terraformStream) finish(ctx context.Context, vulns []model.Vulnerabilit
 	docs := s.c.addWrittenSections(s.legacyBuilt.docs, s.legacyBuilt.covered, s.written, true, nil)
 	scopeLegacyDocuments(docs, s.written)
 	legacyVulns, err := s.c.evalLegacyDocuments(ctx, s.scanID, s.files, s.legacy, docs, s.legacyBuilt.files,
-		s.legacyBuilt.moduleCalls.fileCalls())
+		s.legacyBuilt.moduleCalls.fileCalls(), s.othersReadDocuments)
 	if err != nil {
 		return nil, err
 	}

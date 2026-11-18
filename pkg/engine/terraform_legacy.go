@@ -122,20 +122,25 @@ func splitTerraformRules(queries []model.QueryMetadata) (contract, legacy []mode
 // with no modeling. Used when modeling is skipped or the layout cannot load.
 func (c *Inspector) evalLegacyWrittenDocuments(
 	ctx context.Context, scanID string, files model.FileMetadatas, queries []model.QueryMetadata,
+	othersReadDocuments bool,
 ) ([]model.Vulnerability, error) {
 	written := c.terraformFiles(files)
 	docs := c.addWrittenSections(nil, nil, written, false, nil)
 	scopeLegacyDocuments(docs, written)
-	return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, files, nil)
+	return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, files, nil, othersReadDocuments)
 }
 
 // evalLegacyDocuments runs queries on the legacy documents.
 func (c *Inspector) evalLegacyDocuments(
 	ctx context.Context, scanID string, files model.FileMetadatas, queries []model.QueryMetadata,
 	docs []model.Document, allFiles model.FileMetadatas, moduleFiles map[string]*moduleFileCalls,
+	othersReadDocuments bool,
 ) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	filesMap := allFiles.ToMap()
+	if othersReadDocuments {
+		filesMap = copyFileMetadataOwners(filesMap)
+	}
 	payloads, err := c.buildPlatformPayloads(ctx, filesMap, docs, nil, queries)
 	if err != nil {
 		return nil, err
@@ -166,6 +171,22 @@ func (c *Inspector) evalLegacyDocuments(
 	return vulns, nil
 }
 
+// copyFileMetadataOwners isolates Document release for this payload build.
+// The maps stay shared and read-only; only nil assignments to Document belong
+// to this build. A later platform may still need the original parsed maps.
+func copyFileMetadataOwners(files map[string]*model.FileMetadata) map[string]*model.FileMetadata {
+	copies := make(map[string]*model.FileMetadata, len(files))
+	for id, file := range files {
+		if file == nil {
+			copies[id] = nil
+			continue
+		}
+		fileCopy := *file
+		copies[id] = &fileCopy
+	}
+	return copies
+}
+
 // inspectTerraformLegacyStream models one root at a time and drops it once
 // its documents are built. It is the path taken when no contract rule needs
 // every root resident together.
@@ -185,7 +206,7 @@ func (c *Inspector) inspectTerraformLegacyStream(
 	written := c.terraformFiles(files)
 	targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 	if c.skipLegacyModeling(files, targets) {
-		return c.evalLegacyWrittenDocuments(ctx, scanID, files, queries)
+		return c.evalLegacyWrittenDocuments(ctx, scanID, files, queries, othersReadDocuments)
 	}
 	layout, err := c.terraformLayout(ctx, files)
 	if err != nil {
@@ -193,10 +214,10 @@ func (c *Inspector) inspectTerraformLegacyStream(
 			return nil, err
 		}
 		// Main kept going on written documents when modules failed to load.
-		return c.evalLegacyWrittenDocuments(ctx, scanID, files, queries)
+		return c.evalLegacyWrittenDocuments(ctx, scanID, files, queries, othersReadDocuments)
 	}
 	if layout == nil {
-		return c.evalLegacyWrittenDocuments(ctx, scanID, files, queries)
+		return c.evalLegacyWrittenDocuments(ctx, scanID, files, queries, othersReadDocuments)
 	}
 	chainBase := c.repoPath
 	if chainBase == "" {
@@ -246,7 +267,7 @@ func (c *Inspector) inspectTerraformLegacyStream(
 	docs := c.addWrittenSections(built.docs, built.covered, written, true, asWritten)
 	scopeLegacyDocuments(docs, written)
 	return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, built.files,
-		built.moduleCalls.fileCalls())
+		built.moduleCalls.fileCalls(), othersReadDocuments)
 }
 
 func scopeLegacyDocuments(docs []model.Document, written map[string]*model.FileMetadata) {

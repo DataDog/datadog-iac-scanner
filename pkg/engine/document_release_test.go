@@ -138,3 +138,52 @@ resource "aws_s3_bucket" "gone" {
 	require.Empty(t, ins.GetFailedQueries())
 	require.Empty(t, vulns, "a resource that expands to no instance does not exist")
 }
+
+func TestInspect_LegacyAndCommonDocumentReleaseKeepsFindingsIdentical(t *testing.T) {
+	root := t.TempDir()
+	releaseModuleFiles(t, root)
+	writeFile(t, root, "main.tf", `
+module "bucket" { source = "./mod" }
+resource "aws_s3_bucket" "root_bucket" { bucket = "root" }
+`)
+
+	run := func(t *testing.T, release bool) []model.Vulnerability {
+		files := append(parseTerraformWritten(t, filepath.Join(root, "main.tf")),
+			parseTerraformWritten(t, filepath.Join(root, "mod", "main.tf"))...)
+		legacy := referenceQuery("legacy_bucket", "legacy-bucket", bucketRule)
+		contract := referenceQuery("contract_bucket", "contract-bucket", referenceBucketRule)
+		common := referenceQuery("common_bucket", "common-bucket", bucketRule)
+		common.Platform = "common"
+		common.Metadata["platform"] = "Common"
+		ins := newTestInspector(t, inspectorOpts{
+			querySource: &referenceQueriesSource{queries: []model.QueryMetadata{legacy, contract, common}},
+			repoPath:    root, vb: DefaultVulnerabilityBuilder, tracker: &tracker.CITracker{},
+			flagEvaluator: featureflags.NewLocalEvaluator(),
+		})
+		ins.SetReleaseDocumentsAfterPayload(release)
+		ins.SetReleasePostEvalData(true)
+		vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform", "common"})
+		require.NoError(t, err)
+		require.Empty(t, ins.GetFailedQueries())
+		return vulns
+	}
+
+	released := run(t, true)
+	kept := run(t, false)
+	findingsFor := func(vulns []model.Vulnerability, queryID string) []string {
+		var identities []string
+		for _, vuln := range vulns {
+			if vuln.QueryID == queryID {
+				identities = append(identities, model.FindingIdentity(&vuln))
+			}
+		}
+		return identities
+	}
+	for _, queryID := range []string{"legacy-bucket", "contract-bucket", "common-bucket"} {
+		want := findingsFor(kept, queryID)
+		got := findingsFor(released, queryID)
+		require.NotEmpty(t, want, "%s should report bucket findings", queryID)
+		require.Len(t, got, len(want), "%s finding count must survive release", queryID)
+		require.ElementsMatch(t, want, got, "%s finding identities must survive release", queryID)
+	}
+}
