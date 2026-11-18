@@ -84,6 +84,7 @@ func TestResolveCollectsFailureModuleStat(t *testing.T) {
 	require.Equal(t, ModuleOutcomeUnresolved, stat.Outcome)
 	require.Equal(t, resolver.FailureAllowlistDenied, stat.FailureCode)
 	require.Empty(t, stat.Cache)
+	require.Equal(t, resolver.FailureAllowlistDenied, result.Failures[0].Code)
 }
 
 func TestResolveCollectsHTTPFailureCode(t *testing.T) {
@@ -99,4 +100,27 @@ func TestResolveCollectsHTTPFailureCode(t *testing.T) {
 	require.Len(t, result.Stats, 1)
 	require.Equal(t, ModuleOutcomeUnresolved, result.Stats[0].Outcome)
 	require.Equal(t, resolver.FailureHTTPServer, result.Stats[0].FailureCode)
+}
+
+// A remote source that is not a static value fails before any resolver runs:
+// the reason and code come from the declaration, not from the resolver.
+func TestResolveRejectsNonStaticSourcesBeforeResolving(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "dynamic" {
+  source = var.module_source
+}
+`), 0o644))
+
+	result := Resolve(context.Background(), &Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+		Resolver:       errorResolver{err: fmt.Errorf("the resolver must not run")},
+		MaxDepth:       2,
+	})
+
+	require.Len(t, result.Failures, 1)
+	require.Equal(t, tfmodules.ErrNonStaticModuleSource.Error(), result.Failures[0].Reason)
+	require.Equal(t, tfmodules.FailureSourceNotStatic, result.Failures[0].Code)
+	require.Equal(t, `source contains "__UNKNOWN_REF__"`, result.Failures[0].Detail)
 }

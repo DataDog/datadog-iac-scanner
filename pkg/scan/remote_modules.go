@@ -134,14 +134,17 @@ const maxLoggedFailureSources = 5
 
 type moduleFailureGroup struct {
 	reason  string
+	code    string
+	detail  string
 	sources []string
 	seen    map[string]bool
 	calls   int
 }
 
-// logModuleResolutionFailures warns once per distinct failure reason, since a
+// logModuleResolutionFailures warns once per distinct code and reason, since a
 // single unreachable host or repository fails every call site that uses it.
-// Per-call details stay available at debug level.
+// Each warning carries the detail of the first failure in its group. Per-call
+// details stay available at debug level.
 func logModuleResolutionFailures(contextLogger *zerolog.Logger, failures []modulegraph.ResolutionFailure) {
 	groups := make(map[string]*moduleFailureGroup)
 	for i := range failures {
@@ -151,11 +154,19 @@ func logModuleResolutionFailures(contextLogger *zerolog.Logger, failures []modul
 			Str("module_name", failure.Name).
 			Str("caller_file", failure.CallerFile).
 			Str("reason", failure.Reason).
+			Str("code", failure.Code).
+			Str("detail", failure.Detail).
 			Msg("Terraform module call unresolved")
-		group, ok := groups[failure.Reason]
+		key := failure.Code + "\x00" + failure.Reason
+		group, ok := groups[key]
 		if !ok {
-			group = &moduleFailureGroup{reason: failure.Reason, seen: make(map[string]bool)}
-			groups[failure.Reason] = group
+			group = &moduleFailureGroup{
+				reason: failure.Reason,
+				code:   failure.Code,
+				detail: failure.Detail,
+				seen:   make(map[string]bool),
+			}
+			groups[key] = group
 		}
 		group.calls++
 		if !group.seen[failure.Source] {
@@ -172,7 +183,10 @@ func logModuleResolutionFailures(contextLogger *zerolog.Logger, failures []modul
 		if ordered[i].calls != ordered[j].calls {
 			return ordered[i].calls > ordered[j].calls
 		}
-		return ordered[i].reason < ordered[j].reason
+		if ordered[i].reason != ordered[j].reason {
+			return ordered[i].reason < ordered[j].reason
+		}
+		return ordered[i].code < ordered[j].code
 	})
 	for _, group := range ordered {
 		sources := group.sources
@@ -181,6 +195,8 @@ func logModuleResolutionFailures(contextLogger *zerolog.Logger, failures []modul
 		}
 		contextLogger.Warn().
 			Str("reason", group.reason).
+			Str("code", group.code).
+			Str("detail", group.detail).
 			Strs("module_sources", sources).
 			Int("module_source_count", len(group.sources)).
 			Int("module_calls", group.calls).

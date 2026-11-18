@@ -14,7 +14,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/moduleprepare"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	cyclonedx "github.com/DataDog/datadog-iac-scanner/pkg/report/model"
@@ -37,6 +39,7 @@ func TestLogModuleResolutionFailuresWarnsOncePerReason(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		failures = append(failures, modulegraph.ResolutionFailure{
 			Source: "git@github.com:acme/private//vpc?ref=v1", CallerFile: "root/main.tf", Reason: denied,
+			Code: resolver.FailureGitAuthRequired, Detail: "git clone --bare ssh://git@github.com/acme/private",
 		})
 	}
 
@@ -56,9 +59,113 @@ func TestLogModuleResolutionFailuresWarnsOncePerReason(t *testing.T) {
 	require.EqualValues(t, 7, warnings[0]["module_source_count"])
 	require.Len(t, warnings[0]["module_sources"], maxLoggedFailureSources)
 	require.Equal(t, denied, warnings[1]["reason"])
+	require.Equal(t, resolver.FailureGitAuthRequired, warnings[1]["code"])
+	require.Equal(t, "git clone --bare ssh://git@github.com/acme/private", warnings[1]["detail"])
 	require.EqualValues(t, 3, warnings[1]["module_calls"])
 	require.EqualValues(t, 1, warnings[1]["module_source_count"])
 }
+
+func logLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var lines []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &entry))
+		lines = append(lines, entry)
+	}
+	return lines
+}
+
+// failingPrepareResolver fails every module with a code it names itself and
+// a detail that carries URL credentials, as a download failure can.
+type failingPrepareResolver struct {
+	code string
+}
+
+func (r failingPrepareResolver) Resolve(context.Context, *tfmodules.ParsedModule) (resolver.Resolution, error) {
+	// The detail says nothing a text rule could classify, so only the code
+	// named here can reach the offline scan.
+	return resolver.Resolution{}, &tfmodules.UnresolvedError{
+		Reason: "fetch failed",
+		Code:   r.code,
+		Detail: "error downloading 'https://user:SECRETXYZ987@modules.example/acme/vpc': resolver returned no body",
+	}
+}
+
+// TestModuleFailureSurvivesPreparationAndOfflineScan checks the handoff from
+// preparation to the offline scan: a failure classified during Prepare reaches
+// the manifest, and the offline scan reports the same code and detail in its
+// failure log line, with credentials redacted. The code may come from the
+// scanner or from a resolver outside it.
+func TestModuleFailureSurvivesPreparationAndOfflineScan(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolver failingPrepareResolver
+		wantCode string
+	}{
+		{"scanner code", failingPrepareResolver{code: resolver.FailureNetwork}, resolver.FailureNetwork},
+		{"code set by an injected resolver", failingPrepareResolver{code: "request_limit_exceeded"}, "request_limit_exceeded"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "vpc" {
+  source = "https://modules.example/acme/vpc.zip"
+}
+`), 0o644))
+			artifactDir := filepath.Join(t.TempDir(), "prepared")
+
+			prepared, err := moduleprepare.Prepare(t.Context(), &moduleprepare.Config{
+				RepositoryRoot: root,
+				ArtifactDir:    artifactDir,
+				DiscoveryPaths: []string{"main.tf"},
+				Resolver:       tt.resolver,
+			})
+			require.NoError(t, err)
+			require.Len(t, prepared.Failures, 1)
+			wantDetail := prepared.Failures[0].Detail
+			require.Equal(t, tt.wantCode, prepared.Failures[0].Code)
+			require.Contains(t, wantDetail, "no body")
+			require.NotContains(t, wantDetail, "SECRETXYZ987")
+
+			manifestData, err := os.ReadFile(prepared.ManifestPath)
+			require.NoError(t, err)
+			require.NotContains(t, string(manifestData), "SECRETXYZ987")
+			manifest, err := resolver.LoadManifest(t.Context(), prepared.ManifestPath)
+			require.NoError(t, err)
+
+			// The offline scan resolves the same declaration from the manifest.
+			offline := modulegraph.Resolve(t.Context(), &modulegraph.Request{
+				RootPaths:      []string{root},
+				DiscoveryPaths: []string{filepath.Join(root, "main.tf")},
+				Resolver:       resolver.NewPrefetchedResolver(manifest),
+				MaxDepth:       2,
+			})
+			require.Len(t, offline.Failures, 1)
+			require.Equal(t, tt.wantCode, offline.Failures[0].Code)
+			require.Equal(t, wantDetail, offline.Failures[0].Detail)
+
+			var buf bytes.Buffer
+			log := zerolog.New(&buf).Level(zerolog.WarnLevel)
+			logModuleResolutionFailures(&log, offline.Failures)
+			lines := logLines(t, &buf)
+			require.Len(t, lines, 1)
+			require.Equal(t, "Terraform module resolution failed", lines[0]["message"])
+			require.Equal(t, tt.wantCode, lines[0]["code"])
+			require.Equal(t, wantDetail, lines[0]["detail"])
+			require.Equal(t, "fetch failed", lines[0]["reason"])
+			require.NotContains(t, buf.String(), "SECRETXYZ987")
+		})
+	}
+}
+
+// TestLogModuleResolutionFailures covers the failure log lines of a scan: one
+// debug line per call and one warning per distinct code and reason. Log relays
+// read their keys, so the key sets are part of the contract.
 
 func TestResolvedModuleSourceTypeUsesResolvedGitRef(t *testing.T) {
 	module := &modulegraph.ResolvedModule{

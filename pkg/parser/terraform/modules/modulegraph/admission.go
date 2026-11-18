@@ -121,6 +121,7 @@ func shedToTotalLimit(
 				"module package rejected: pre-parse admission exceeds module_bytes_total limit %d",
 				maximum,
 			),
+			Code: resolver.FailureBudgetExceeded,
 		})
 	}
 	snapshot.modules = filterModulesByPackages(snapshot.modules, accepted)

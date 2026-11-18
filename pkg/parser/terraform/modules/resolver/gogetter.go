@@ -669,7 +669,7 @@ func validateGetterSourceTransport(source string) error {
 	}
 	parsed, err := url.Parse(source)
 	if err != nil {
-		return &tfmodules.UnresolvedError{Reason: "invalid module source transport: " + err.Error()}
+		return &tfmodules.UnresolvedError{Reason: "invalid module source transport: " + err.Error(), Code: FailureSourceInvalid}
 	}
 	scheme := strings.ToLower(parsed.Scheme)
 	if forced == sourceTypeGit {
@@ -678,6 +678,7 @@ func validateGetterSourceTransport(source string) error {
 				"network git transport %q is disabled unless it is pinned by BareGitResolver, which requires a ref=",
 				scheme,
 			),
+			Code: FailureTransportUnsupported,
 		}
 	}
 	if forced != "" {
@@ -689,9 +690,10 @@ func validateGetterSourceTransport(source string) error {
 	case "ssh", "git", "s3", "gcs", "hg":
 		return &tfmodules.UnresolvedError{
 			Reason: fmt.Sprintf("module transport %q is disabled because destination policy cannot be enforced", scheme),
+			Code:   FailureTransportUnsupported,
 		}
 	default:
-		return &tfmodules.UnresolvedError{Reason: fmt.Sprintf("module transport %q is not supported", scheme)}
+		return &tfmodules.UnresolvedError{Reason: fmt.Sprintf("module transport %q is not supported", scheme), Code: FailureTransportUnsupported}
 	}
 }
 

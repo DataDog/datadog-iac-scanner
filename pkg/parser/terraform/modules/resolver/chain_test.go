@@ -136,6 +136,69 @@ func TestChainResolver(t *testing.T) {
 	})
 }
 
+func TestChainCarriesCodeAndDetail(t *testing.T) {
+	ctx := context.Background()
+	mod := &tfmodules.ParsedModule{Name: "vpc", Source: "git::https://github.com/acme/vpc.git?ref=v1"}
+
+	t.Run("the first code in chain order is reported, whatever a later resolver sets", func(t *testing.T) {
+		_, err := NewChainResolver(
+			decliningResolver("not a local module"),
+			failingResolver(&tfmodules.UnresolvedError{Reason: "ref v1 does not exist", Code: FailureGitRefNotFound}),
+			failingResolver(&tfmodules.UnresolvedError{Reason: "clone failed", Code: FailureGitAuthRequired}),
+		).Resolve(ctx, mod)
+		var unresolved *tfmodules.UnresolvedError
+		require.ErrorAs(t, err, &unresolved)
+		require.Equal(t, "ref v1 does not exist; clone failed", unresolved.Reason)
+		require.Equal(t, FailureGitRefNotFound, unresolved.Code)
+		require.Equal(t, "module unresolved: ref v1 does not exist; clone failed", err.Error())
+	})
+
+	t.Run("a code is taken from a declined resolver only when nothing attempted", func(t *testing.T) {
+		_, err := NewChainResolver(
+			failingResolver(&tfmodules.UnresolvedError{Reason: "not handled", Code: FailureTransportUnsupported, NotApplicable: true}),
+			failingResolver(&tfmodules.UnresolvedError{Reason: "failed", Code: FailureNetwork}),
+		).Resolve(ctx, mod)
+		var unresolved *tfmodules.UnresolvedError
+		require.ErrorAs(t, err, &unresolved)
+		require.Equal(t, FailureNetwork, unresolved.Code)
+	})
+
+	t.Run("a wrapped error keeps its text and its code and detail", func(t *testing.T) {
+		wrapped := fmt.Errorf("fetching module: %w", &tfmodules.UnresolvedError{
+			Reason: "ref v1 does not exist", Code: FailureGitRefNotFound, Detail: "fatal: couldn't find remote ref v1",
+		})
+		_, err := NewChainResolver(failingResolver(wrapped)).Resolve(ctx, mod)
+		var unresolved *tfmodules.UnresolvedError
+		require.ErrorAs(t, err, &unresolved)
+		require.Equal(t, "fetching module: module unresolved: ref v1 does not exist", unresolved.Reason)
+		require.Equal(t, FailureGitRefNotFound, unresolved.Code)
+		require.Equal(t, "fatal: couldn't find remote ref v1", unresolved.Detail)
+	})
+
+	t.Run("the first code wins over a wrapped code from a later resolver", func(t *testing.T) {
+		_, err := NewChainResolver(
+			failingResolver(&tfmodules.UnresolvedError{Reason: "first", Code: FailureGitRefNotFound}),
+			failingResolver(fmt.Errorf("second: %w", &tfmodules.UnresolvedError{Reason: "clone", Code: FailureGitAuthRequired})),
+		).Resolve(ctx, mod)
+		var unresolved *tfmodules.UnresolvedError
+		require.ErrorAs(t, err, &unresolved)
+		require.Equal(t, FailureGitRefNotFound, unresolved.Code)
+	})
+
+	t.Run("details are joined, redacted and bounded", func(t *testing.T) {
+		raw := "fatal: unable to access\n'https://user:pass@github.com/acme/vpc.git/'"
+		_, err := NewChainResolver(
+			failingResolver(&tfmodules.UnresolvedError{Reason: "first", Detail: raw}),
+			failingResolver(&tfmodules.UnresolvedError{Reason: "second", Detail: raw}),
+		).Resolve(ctx, mod)
+		var unresolved *tfmodules.UnresolvedError
+		require.ErrorAs(t, err, &unresolved)
+		require.Equal(t,
+			"fatal: unable to access 'https://github.com/acme/vpc.git/'; fatal: unable to access 'https://github.com/acme/vpc.git/'",
+			unresolved.Detail)
+	})
+}
+
 // fakeScreener is a resolver whose Screen outcome is scripted; Resolve fails
 // the test because screening must never resolve anything.
 type fakeScreener struct {

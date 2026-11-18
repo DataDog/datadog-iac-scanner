@@ -38,6 +38,10 @@ type ManifestEntry struct {
 	ResolvedRef      string `json:"resolved_ref,omitempty"`
 	Status           string `json:"status,omitempty"`
 	Failure          string `json:"failure,omitempty"`
+	// FailureCode and FailureDetail classify Failure when it was prepared, so an
+	// offline scan reports the same code and detail. Older manifests omit them.
+	FailureCode   string `json:"failure_code,omitempty"`
+	FailureDetail string `json:"failure_detail,omitempty"`
 }
 
 type Manifest struct {
@@ -58,20 +62,23 @@ type manifestCandidate struct {
 }
 
 type ManifestModule struct {
-	ID               string                `json:"id,omitempty"`
-	Source           string                `json:"source"`
-	CanonicalSource  string                `json:"canonical_source,omitempty"`
-	SourceType       string                `json:"source_type,omitempty"`
-	RegistryScope    string                `json:"registry_scope,omitempty"`
-	RequestedVersion string                `json:"requested_version,omitempty"`
-	ResolvedVersion  string                `json:"resolved_version,omitempty"`
-	ResolvedRef      string                `json:"resolved_ref,omitempty"`
-	ContentDigest    string                `json:"content_digest,omitempty"`
-	PackageRoot      string                `json:"package_root,omitempty"`
-	LocalPath        string                `json:"local_path,omitempty"`
-	Status           string                `json:"status"`
-	Failure          string                `json:"failure,omitempty"`
-	Declarations     []ManifestDeclaration `json:"declarations"`
+	ID               string `json:"id,omitempty"`
+	Source           string `json:"source"`
+	CanonicalSource  string `json:"canonical_source,omitempty"`
+	SourceType       string `json:"source_type,omitempty"`
+	RegistryScope    string `json:"registry_scope,omitempty"`
+	RequestedVersion string `json:"requested_version,omitempty"`
+	ResolvedVersion  string `json:"resolved_version,omitempty"`
+	ResolvedRef      string `json:"resolved_ref,omitempty"`
+	ContentDigest    string `json:"content_digest,omitempty"`
+	PackageRoot      string `json:"package_root,omitempty"`
+	LocalPath        string `json:"local_path,omitempty"`
+	Status           string `json:"status"`
+	Failure          string `json:"failure,omitempty"`
+	// FailureCode and FailureDetail classify Failure; see ManifestEntry.
+	FailureCode   string                `json:"failure_code,omitempty"`
+	FailureDetail string                `json:"failure_detail,omitempty"`
+	Declarations  []ManifestDeclaration `json:"declarations"`
 }
 
 type ManifestDeclaration struct {
@@ -260,6 +267,8 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) (stri
 		ResolvedRef:      strings.TrimSpace(module.ResolvedRef),
 		Status:           module.Status,
 		Failure:          module.Failure,
+		FailureCode:      module.FailureCode,
+		FailureDetail:    module.FailureDetail,
 		Origin:           module.SourceType,
 	}
 	switch module.Status {
@@ -574,7 +583,18 @@ func resolveManifestEntry(
 	ctx context.Context, mod *tfmodules.ParsedModule, entry *ManifestEntry,
 ) (Resolution, error) {
 	if entry.Status == ManifestStatusUnresolved {
-		return Resolution{}, &tfmodules.UnresolvedError{Reason: entry.Failure}
+		// The recorded failure is final. Its code is kept when it is a well-formed
+		// token, and its detail is redacted and bounded again on read, so an edited
+		// manifest cannot add an arbitrary value or a credential.
+		code := entry.FailureCode
+		if !isWellFormedFailureCode(code) {
+			code = ""
+		}
+		return Resolution{}, &tfmodules.UnresolvedError{
+			Reason: entry.Failure,
+			Code:   code,
+			Detail: tfmodules.FailureDetail(entry.FailureDetail),
+		}
 	}
 	if entry.RequestedVersion != "" && mod.Version != "" && entry.RequestedVersion != mod.Version {
 		return Resolution{}, &tfmodules.UnresolvedError{

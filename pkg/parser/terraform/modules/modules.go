@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
@@ -42,7 +43,14 @@ type ParsedModule struct {
 }
 
 type UnresolvedError struct {
+	// Reason is a readable message. Error() returns it, so it stays bounded.
 	Reason string
+	// Code is a stable token naming the failure, for grouping and telemetry.
+	// When empty, the code is derived from Reason and Detail.
+	Code string
+	// Detail holds the specifics Reason leaves out, such as the command or
+	// the output of a failed git run. Build it with FailureDetail.
+	Detail string
 	Cause  error
 	// NotApplicable marks a resolver declining a source it does not handle, as
 	// opposed to a resolver that attempted the source and failed.
@@ -55,15 +63,74 @@ func (e *UnresolvedError) Error() string {
 
 func (e *UnresolvedError) Unwrap() error { return e.Cause }
 
-var ErrEmptyModuleSource = errors.New("module source is empty or missing after override merging")
+var (
+	ErrEmptyModuleSource     = errors.New("module source is empty or missing after override merging")
+	ErrNonStaticModuleSource = errors.New("module source is not a static value")
+)
 
-// ValidateModuleSource rejects source-less declarations after override merging.
-// Keep these declarations in the parsed result so callers can report their location.
+// Failure codes for declarations whose source cannot be fetched.
+const (
+	FailureSourceEmpty     = "source_empty"
+	FailureSourceNotStatic = "source_not_static"
+)
+
+// MaxFailureDetailBytes bounds UnresolvedError.Detail.
+const MaxFailureDetailBytes = 1024
+
+// placeholderTokenRe matches the __NAME__ tokens resolveExpr substitutes for
+// expressions it cannot evaluate, such as __UNKNOWN_REF__.
+var placeholderTokenRe = regexp.MustCompile(`__[A-Z][A-Za-z0-9_]*__`)
+
+// ValidateModuleSource rejects source-less declarations after override merging,
+// and remote sources that are not static values. Keep these declarations in the
+// parsed result so callers can report their location.
 func ValidateModuleSource(source string) error {
 	if strings.TrimSpace(source) == "" {
-		return &UnresolvedError{Reason: ErrEmptyModuleSource.Error(), Cause: ErrEmptyModuleSource}
+		return &UnresolvedError{
+			Reason: ErrEmptyModuleSource.Error(),
+			Code:   FailureSourceEmpty,
+			Cause:  ErrEmptyModuleSource,
+		}
+	}
+	if LooksLikeLocalModuleSource(source) {
+		return nil
+	}
+	marker := placeholderTokenRe.FindString(source)
+	if marker == "" && strings.HasPrefix(source, "data_ref:") {
+		marker = "data_ref:"
+	}
+	if marker != "" {
+		return &UnresolvedError{
+			Reason: ErrNonStaticModuleSource.Error(),
+			Code:   FailureSourceNotStatic,
+			Detail: FailureDetail(fmt.Sprintf("source contains %q", marker)),
+			Cause:  ErrNonStaticModuleSource,
+		}
 	}
 	return nil
+}
+
+// FailureDetail removes URL credentials from s, puts it on one line and keeps
+// at most MaxFailureDetailBytes of it. Longer text keeps its beginning, which
+// names the command or URL, and its end, where the error is. Credentials are
+// removed first: a cut inside a URL's userinfo would leave a fragment that the
+// redaction no longer recognizes.
+func FailureDetail(s string) string {
+	s = strings.Join(strings.Fields(model.RedactURLCredentials(s)), " ")
+	if len(s) <= MaxFailureDetailBytes {
+		return s
+	}
+	const elision = " ... "
+	keep := (MaxFailureDetailBytes - len(elision)) / 2
+	head := keep
+	for head > 0 && !utf8.RuneStart(s[head]) {
+		head--
+	}
+	tail := len(s) - keep
+	for tail < len(s) && !utf8.RuneStart(s[tail]) {
+		tail++
+	}
+	return s[:head] + elision + s[tail:]
 }
 
 func IsUnresolved(err error) bool {
@@ -262,20 +329,80 @@ func groupTerraformFilesByDir(files model.FileMetadatas) []dirFiles {
 }
 
 // ParseTerraformModules parses HCL content and extracts module source/version.
-// numWorkers: 0 means auto-detect (GOMAXPROCS).
+// It reports the local sources that are not a module directory once, in a
+// single warning. numWorkers: 0 means auto-detect (GOMAXPROCS).
 func ParseTerraformModules(
 	ctx context.Context, fsys vfs.FS, files model.FileMetadatas, numWorkers int,
 ) (map[string]ParsedModule, error) {
-	return parseModulesByDir(ctx, fsys, files, moduleParseOptions{validateLocalSources: true}, numWorkers)
+	invalidLocal := &invalidLocalSources{}
+	modules, err := parseModulesByDir(ctx, fsys, files, moduleParseOptions{invalidLocal: invalidLocal}, numWorkers)
+	if err != nil {
+		return nil, err
+	}
+	invalidLocal.log(ctx)
+	return modules, nil
 }
+
+// InvalidLocalSourcesMessage is the message of the warning a scan logs once for
+// the local module sources that are not a module directory. It keeps the prefix
+// of the per-call message it replaces, so existing log filters still match.
+const InvalidLocalSourcesMessage = "Invalid local module sources"
+
+// invalidLocalSources counts the module calls whose local source is not a
+// module directory, and keeps one example. Parsing runs on several workers.
+type invalidLocalSources struct {
+	mu      sync.Mutex
+	calls   int
+	example invalidLocalSource
+}
+
+type invalidLocalSource struct {
+	file, source, detail string
+}
+
+func (s *invalidLocalSources) add(ctx context.Context, file, source string, err error) {
+	detail := FailureDetail(err.Error())
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Debug().
+		Str("code", FailureLocalSourceInvalid).
+		Str("detail", detail).
+		Str("caller_file", file).
+		Msgf("Invalid local module source %q: %v", source, err)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls++
+	// The smallest file and source is the example, so the choice does not depend
+	// on which worker finished first.
+	if s.calls == 1 || file < s.example.file || file == s.example.file && source < s.example.source {
+		s.example = invalidLocalSource{file: file, source: source, detail: detail}
+	}
+}
+
+func (s *invalidLocalSources) log(ctx context.Context) {
+	if s.calls == 0 {
+		return
+	}
+	contextLogger := logger.FromContext(ctx)
+	contextLogger.Warn().
+		Str("code", FailureLocalSourceInvalid).
+		Str("detail", s.example.detail).
+		Int("module_calls", s.calls).
+		Str("example_source", s.example.source).
+		Str("example_file", s.example.file).
+		Msg(InvalidLocalSourcesMessage)
+}
+
+// FailureLocalSourceInvalid is the code of the local source warning. A local
+// module call never fails to resolve, so this code names no resolution failure.
+const FailureLocalSourceInvalid = "local_source_invalid"
 
 type moduleParseOptions struct {
 	// allowedFiles, when non-nil, restricts which files contribute module blocks;
 	// every file still contributes locals/vars so resolution stays correct.
 	allowedFiles map[string]bool
-	// validateLocalSources warns about local sources that are not a module
-	// directory. Only the pass that sees every scanned file should report them.
-	validateLocalSources bool
+	// invalidLocal, when non-nil, collects the local sources that are not a
+	// module directory. Only the pass that sees every scanned file reports them.
+	invalidLocal *invalidLocalSources
 }
 
 // parseModulesByDir resolves module blocks one directory at a time. Locals and
@@ -393,7 +520,7 @@ func parseDirModules(
 			return nil, err
 		}
 		resolveModuleBlocks(
-			ctx, fsys, group.dir, file.path, file.blocks, localsMap, varsMap, opts.validateLocalSources, modules,
+			ctx, fsys, group.dir, file.path, file.blocks, localsMap, varsMap, opts.invalidLocal, modules,
 		)
 	}
 	return modules, nil
@@ -476,7 +603,7 @@ func resolveModuleBlocks(
 	baseDir, filePath string,
 	blocks []moduleBlockExtract,
 	localsMap, varsMap map[string]string,
-	validateLocal bool,
+	invalidLocal *invalidLocalSources,
 	modules map[string]ParsedModule,
 ) {
 	for i := range blocks {
@@ -486,7 +613,7 @@ func resolveModuleBlocks(
 			DefLine:    blocks[i].defLine,
 			DefEndLine: blocks[i].defEndLine,
 		}
-		fillModuleAttrs(ctx, fsys, &mod, &blocks[i], baseDir, localsMap, varsMap, validateLocal)
+		fillModuleAttrs(ctx, fsys, &mod, &blocks[i], baseDir, localsMap, varsMap, invalidLocal)
 		key := moduleIdentityKey(&mod)
 		if _, exists := modules[key]; !exists {
 			modules[key] = mod
@@ -501,7 +628,7 @@ func fillModuleAttrs(
 	block *moduleBlockExtract,
 	baseDir string,
 	localsMap, varsMap map[string]string,
-	validateLocal bool,
+	invalidLocal *invalidLocalSources,
 ) {
 	log := logger.FromContext(ctx)
 	if block.version != nil {
@@ -530,15 +657,16 @@ func fillModuleAttrs(
 		log.Warn().Msgf("Could not compute absolute path name for %v: %v", absPath, err)
 		mod.AbsSource = filepath.Clean(absPath)
 	}
-	if !validateLocal {
+	if invalidLocal == nil {
 		return
 	}
 	if err = validateModuleSource(fsys, mod.AbsSource); err != nil {
-		event := log.Warn()
+		// A fixture may point anywhere, so its calls are not reported.
 		if utils.IsTestFixturePath(baseDir) {
-			event = log.Debug()
+			log.Debug().Msgf("Invalid local module source %q: %v", mod.Source, err)
+			return
 		}
-		event.Msgf("Invalid local module source %q: %v", mod.Source, err)
+		invalidLocal.add(ctx, mod.FileName, mod.Source, err)
 	}
 }
 

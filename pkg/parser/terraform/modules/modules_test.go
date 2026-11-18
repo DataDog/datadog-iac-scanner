@@ -3,16 +3,20 @@ package tfmodules
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -21,6 +25,98 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
+
+func TestValidateModuleSource(t *testing.T) {
+	tests := []struct {
+		source     string
+		wantErr    error
+		wantCode   string
+		wantDetail string
+	}{
+		{source: "terraform-aws-modules/vpc/aws"},
+		{source: "git::https://github.com/acme/network.git//modules/vpc?ref=v1.2.3"},
+		{source: "git@github.com:acme/network.git?ref=v1"},
+		// A local path is resolved from disk and skipped when missing, not rejected here.
+		{source: "./modules/__UNKNOWN_REF__"},
+		{source: "  ", wantErr: ErrEmptyModuleSource, wantCode: FailureSourceEmpty},
+		{source: "__UNKNOWN_REF__", wantErr: ErrNonStaticModuleSource, wantCode: FailureSourceNotStatic,
+			wantDetail: `source contains "__UNKNOWN_REF__"`},
+		{source: "git::https://github.com/acme/__MODULE_SOURCE__.git?ref=v1", wantErr: ErrNonStaticModuleSource,
+			wantCode: FailureSourceNotStatic, wantDetail: `source contains "__MODULE_SOURCE__"`},
+		{source: "data_ref:aws_s3_bucket.modules.bucket", wantErr: ErrNonStaticModuleSource,
+			wantCode: FailureSourceNotStatic, wantDetail: `source contains "data_ref:"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.source, func(t *testing.T) {
+			err := ValidateModuleSource(tt.source)
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, tt.wantErr)
+			var unresolved *UnresolvedError
+			require.ErrorAs(t, err, &unresolved)
+			require.Equal(t, tt.wantErr.Error(), unresolved.Reason)
+			require.Equal(t, tt.wantCode, unresolved.Code)
+			require.Equal(t, tt.wantDetail, unresolved.Detail)
+		})
+	}
+}
+
+// Error() returns Reason only, so a detail never reaches a message built from it.
+func TestUnresolvedErrorLeavesDetailOut(t *testing.T) {
+	err := &UnresolvedError{Reason: "fetch failed", Detail: "error downloading 'https://modules.example/vpc.zip'"}
+	require.Equal(t, "module unresolved: fetch failed", err.Error())
+}
+
+func TestFailureDetail(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"empty", "", ""},
+		{"flattens whitespace", "git clone failed: exit status 128\n\tfatal: could not read Username\r\n",
+			"git clone failed: exit status 128 fatal: could not read Username"},
+		{"keeps text at the bound", strings.Repeat("a", MaxFailureDetailBytes), strings.Repeat("a", MaxFailureDetailBytes)},
+		{"redacts URL credentials", "fatal: unable to access 'https://user:pass@github.com/acme/repo/'",
+			"fatal: unable to access 'https://github.com/acme/repo/'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, FailureDetail(tt.in))
+		})
+	}
+
+	t.Run("keeps the head and the tail of long text", func(t *testing.T) {
+		long := "git fetch https://github.com/acme/repo v1: exit status 128\n" +
+			strings.Repeat("remote: é progress line\n", 200) +
+			"fatal: couldn't find remote ref v1"
+		got := FailureDetail(long)
+		require.LessOrEqual(t, len(got), MaxFailureDetailBytes)
+		require.True(t, utf8.ValidString(got))
+		require.True(t, strings.HasPrefix(got, "git fetch https://github.com/acme/repo v1"))
+		require.True(t, strings.HasSuffix(got, "fatal: couldn't find remote ref v1"))
+	})
+
+	// Whichever side the cut falls on, no part of the credential survives.
+	t.Run("no credential fragment survives wherever the cut falls", func(t *testing.T) {
+		const secret = "SECRETXYZ987"
+		credentialURL := "https://user:" + secret + "@github.com/acme/repo"
+		const total = 2 * MaxFailureDetailBytes
+		keep := (MaxFailureDetailBytes - len(" ... ")) / 2
+		for _, cut := range []int{keep, total - keep} {
+			for offset := cut - len(credentialURL); offset <= cut; offset++ {
+				text := strings.Repeat("a", offset) + credentialURL + strings.Repeat("b", total-offset-len(credentialURL))
+				got := FailureDetail(text)
+				if len(got) > MaxFailureDetailBytes {
+					t.Fatalf("URL at offset %d: detail of %d bytes", offset, len(got))
+				}
+				for start := 0; start+4 <= len(secret); start++ {
+					if strings.Contains(got, secret[start:start+4]) {
+						t.Fatalf("URL at offset %d leaks %q", offset, secret[start:start+4])
+					}
+				}
+			}
+		}
+	})
+}
 
 func TestParseTerraformModules_LocalModuleOnDisk(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -259,8 +355,57 @@ func TestInvalidLocalModuleSourceWarnsOnlyInScanPass(t *testing.T) {
 
 	scanLog := parse(true)
 	require.Equal(t, 1, strings.Count(scanLog, "\n"), "expected one warning, got %q", scanLog)
-	require.Contains(t, scanLog, `Invalid local module source \"../missing\"`)
+	require.Contains(t, scanLog, `"message":"Invalid local module sources"`)
+	require.Contains(t, scanLog, `"example_source":"../missing"`)
 	require.Empty(t, parse(false), "the module graph pass must leave local source warnings to the scan pass")
+}
+
+// The warning counts every call and keeps one example, whichever file or
+// worker reports first. Its keys are the ones log relays read.
+func TestInvalidLocalModuleSourcesAreAggregated(t *testing.T) {
+	repo := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "modules", "vpc"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "modules", "vpc", "main.tf"), []byte(`resource "aws_vpc" "this" {}`), 0o600))
+	files := model.FileMetadatas{
+		{FilePath: filepath.Join(repo, "b", "main.tf"), OriginalData: `
+module "one" { source = "../terraform-modules/one" }
+module "two" { source = "../terraform-modules/two" }
+module "vpc" { source = "../modules/vpc" }
+`},
+		{FilePath: filepath.Join(repo, "a", "main.tf"), OriginalData: `module "three" { source = "../terraform-modules/three" }`},
+	}
+	var buf bytes.Buffer
+	// Parsing logs from several workers at once.
+	ctx := zerolog.New(zerolog.SyncWriter(&buf)).WithContext(t.Context())
+
+	_, err := ParseTerraformModules(ctx, nil, files, 4)
+	require.NoError(t, err)
+
+	var warnings, debugs []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &entry))
+		if entry["level"] == "warn" {
+			warnings = append(warnings, entry)
+		} else {
+			debugs = append(debugs, entry)
+		}
+	}
+	require.Len(t, warnings, 1)
+	require.ElementsMatch(t,
+		[]string{"level", "message", "code", "detail", "module_calls", "example_source", "example_file"},
+		slices.Collect(maps.Keys(warnings[0])))
+	require.Equal(t, "Invalid local module sources", warnings[0]["message"])
+	require.Equal(t, "local_source_invalid", warnings[0]["code"])
+	require.EqualValues(t, 3, warnings[0]["module_calls"])
+	require.Equal(t, filepath.Join(repo, "a", "main.tf"), warnings[0]["example_file"])
+	require.Equal(t, "../terraform-modules/three", warnings[0]["example_source"])
+	require.Contains(t, warnings[0]["detail"], "is not accessible")
+
+	require.Len(t, debugs, 3)
+	for _, entry := range debugs {
+		require.Equal(t, "local_source_invalid", entry["code"])
+	}
 }
 
 // TestParseAllModuleVariables_CanceledContext guards the cancellation contract:

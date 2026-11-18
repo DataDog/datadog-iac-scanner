@@ -179,6 +179,7 @@ func TestGoGetterDisablesUnpinnedNetworkTransports(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("expected %q, got %v", test.want, err)
 			}
+			require.Equal(t, FailureTransportUnsupported, ClassifyFailure(err))
 		})
 	}
 	if err := validateGetterSourceTransport("git::file:///tmp/repository"); err == nil {

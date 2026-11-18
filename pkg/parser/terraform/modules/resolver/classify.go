@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
 // Failure codes for module resolution telemetry. The set is intentionally
@@ -27,7 +29,26 @@ const (
 	FailureNetwork         = "network"
 	FailureUnpack          = "unpack_failed"
 	FailureUnknown         = "unknown"
+
+	// Codes for declarations and git failures, set where the failure is
+	// known. The source codes are defined in the tfmodules package.
+	FailureSourceInvalid        = "source_invalid"
+	FailureTransportUnsupported = "transport_unsupported"
+	FailureGitAuthRequired      = "git_auth_required"
+	FailureGitRepoNotFound      = "git_repo_not_found"
+	FailureGitRefNotFound       = "git_ref_not_found"
 )
+
+// wellFormedFailureCode is the shape of a failure code read from outside the
+// process, such as a manifest. Resolvers outside the scanner name their own
+// failures, so the check is on form: a short lowercase token that cannot carry
+// spaces, punctuation or free text. It is not a list of the scanner's codes.
+var wellFormedFailureCode = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+
+// isWellFormedFailureCode reports whether code has the shape of a failure code.
+func isWellFormedFailureCode(code string) bool {
+	return wellFormedFailureCode.MatchString(code)
+}
 
 // httpStatusRe matches an "HTTP NNN" reference in a resolver error message.
 // Registry and git errors are formatted as "returned HTTP %d".
@@ -63,6 +84,10 @@ func ClassifyFailure(err error) string {
 	if err == nil {
 		return ""
 	}
+	var unresolved *tfmodules.UnresolvedError
+	if errors.As(err, &unresolved) && unresolved.Code != "" {
+		return unresolved.Code
+	}
 	var budgetErr *BudgetExceededError
 	if errors.As(err, &budgetErr) {
 		return FailureBudgetExceeded
@@ -75,7 +100,17 @@ func ClassifyFailure(err error) string {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return FailureNetwork
 	}
-	msg := strings.ToLower(err.Error())
+	return classifyText(err, unresolved)
+}
+
+// classifyText applies the substring and status rules to the text of err. Error()
+// leaves Detail out, so the detail of an UnresolvedError is read too.
+func classifyText(err error, unresolved *tfmodules.UnresolvedError) string {
+	msg := err.Error()
+	if unresolved != nil {
+		msg += "\n" + unresolved.Detail
+	}
+	msg = strings.ToLower(msg)
 	for _, rule := range failureSubstrings {
 		for _, key := range rule.match {
 			if strings.Contains(msg, key) {
