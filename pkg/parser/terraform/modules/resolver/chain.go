@@ -74,29 +74,56 @@ func (c *ChainResolver) Screen(ctx context.Context, mod *tfmodules.ParsedModule)
 	return failures.err()
 }
 
-// chainFailures keeps the reasons of resolvers that attempted a module apart
+// chainFailures keeps the failures of resolvers that attempted a module apart
 // from those that declined it, so a failure names what actually went wrong.
 type chainFailures struct {
-	attempted, declined []string
+	attempted, declined []chainFailure
+}
+
+type chainFailure struct {
+	reason, code, detail string
 }
 
 func (f *chainFailures) add(err error) {
-	reason := err.Error()
-	// Wrapped errors keep their full text so the wrapping context survives.
-	if unresolved, ok := err.(*tfmodules.UnresolvedError); ok { //nolint:errorlint
-		reason = unresolved.Reason
-		if unresolved.NotApplicable {
-			f.declined = append(f.declined, reason)
+	// A wrapped error keeps its full text as the reason, so the wrapping context
+	// survives. Its code and detail are still read, as the classification does.
+	failure := chainFailure{reason: err.Error()}
+	var unresolved *tfmodules.UnresolvedError
+	if errors.As(err, &unresolved) {
+		failure.code, failure.detail = unresolved.Code, unresolved.Detail
+	}
+	if direct, ok := err.(*tfmodules.UnresolvedError); ok { //nolint:errorlint
+		failure = chainFailure{reason: direct.Reason, code: direct.Code, detail: direct.Detail}
+		if direct.NotApplicable {
+			f.declined = append(f.declined, failure)
 			return
 		}
 	}
-	f.attempted = append(f.attempted, reason)
+	f.attempted = append(f.attempted, failure)
 }
 
+// err joins the reasons and details of the failures. The code is the first one
+// a resolver set, in chain order: a resolver that answers authoritatively names
+// the failure even when a later resolver also fails, for example by cloning
+// the repository anonymously.
 func (f *chainFailures) err() error {
-	reasons := f.attempted
-	if len(reasons) == 0 {
-		reasons = f.declined
+	failures := f.attempted
+	if len(failures) == 0 {
+		failures = f.declined
 	}
-	return &tfmodules.UnresolvedError{Reason: strings.Join(reasons, "; ")}
+	reasons := make([]string, 0, len(failures))
+	details := make([]string, 0, len(failures))
+	err := &tfmodules.UnresolvedError{}
+	for _, failure := range failures {
+		reasons = append(reasons, failure.reason)
+		if failure.detail != "" {
+			details = append(details, failure.detail)
+		}
+		if err.Code == "" {
+			err.Code = failure.code
+		}
+	}
+	err.Reason = strings.Join(reasons, "; ")
+	err.Detail = tfmodules.FailureDetail(strings.Join(details, "; "))
+	return err
 }

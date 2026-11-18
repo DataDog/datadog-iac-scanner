@@ -62,6 +62,10 @@ func unresolvedResourceError(err error) error {
 	if errors.As(err, &budgetErr) {
 		return budgetErr
 	}
+	var gitErr *gitCommandError
+	if errors.As(err, &gitErr) {
+		return gitErr.unresolved()
+	}
 	return &tfmodules.UnresolvedError{Reason: err.Error()}
 }
 

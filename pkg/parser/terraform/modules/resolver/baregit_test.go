@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
@@ -847,4 +849,59 @@ func TestStaleRefFallbackOnlyCoversTransientFailures(t *testing.T) {
 			t.Errorf("%q must not serve the cached commit %q", permanent, sha)
 		}
 	}
+}
+
+// TestGitCommandFailureReporting checks what a failed network git command
+// reports: a short reason, the code of the output git printed last, and the
+// command with its output as the detail. The error text itself is unchanged.
+func TestGitCommandFailureReporting(t *testing.T) {
+	const remote = "https://github.com/acme/repo"
+	exit := errors.New("exit status 128")
+	tests := []struct {
+		name      string
+		operation string
+		output    string
+		reason    string
+		code      string
+	}{
+		{"missing credentials", "clone --bare",
+			"fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+			"git clone --bare failed: authentication required", FailureGitAuthRequired},
+		{"rejected ssh key", "clone --bare",
+			"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+			"git clone --bare failed: authentication required", FailureGitAuthRequired},
+		{"missing repository", "clone --bare",
+			"remote: Repository not found.\nfatal: repository 'https://github.com/acme/gone/' not found",
+			"git clone --bare failed: no such repository", FailureGitRepoNotFound},
+		{"missing branch or tag", "fetch",
+			"fatal: couldn't find remote ref release-2024-11-05",
+			"git fetch failed: ref not found", FailureGitRefNotFound},
+		{"other output has no code", "fetch",
+			"fatal: unable to access 'https://github.com/acme/repo/': Connection reset by peer",
+			"git fetch failed", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := "git " + tt.operation + " " + remote + ": " + exit.Error() + "\n" + tt.output
+			gitErr := newGitFailure(msg, tt.operation, []byte(tt.output+"\n"), exit)
+			require.Equal(t, msg, gitErr.Error())
+			require.ErrorIs(t, gitErr, exit)
+
+			err := unresolvedResourceError(gitErr)
+			var unresolved *tfmodules.UnresolvedError
+			require.ErrorAs(t, err, &unresolved)
+			require.Equal(t, tt.reason, unresolved.Reason)
+			require.Equal(t, tt.code, unresolved.Code)
+			require.Equal(t, tfmodules.FailureDetail(msg), unresolved.Detail)
+			require.NotContains(t, unresolved.Reason, remote, "the reason carries no URL or output")
+		})
+	}
+
+	t.Run("the output of the last attempt decides the code", func(t *testing.T) {
+		gitErr := newGitFailure("git fetch "+remote+" main: first\nsecond", "fetch",
+			[]byte("fatal: connection reset by peer\n"), exit)
+		var unresolved *tfmodules.UnresolvedError
+		require.ErrorAs(t, unresolvedResourceError(gitErr), &unresolved)
+		require.Empty(t, unresolved.Code)
+	})
 }

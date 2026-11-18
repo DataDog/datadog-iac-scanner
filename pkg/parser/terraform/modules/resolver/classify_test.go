@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
 func TestClassifyFailure(t *testing.T) {
@@ -36,6 +38,8 @@ func TestClassifyFailure(t *testing.T) {
 		{"connection refused", fmt.Errorf("connection refused"), FailureNetwork},
 		{"unpack failure", fmt.Errorf("unpacking archive: gzip: invalid header"), FailureUnpack},
 		{"unknown error", fmt.Errorf("something novel"), FailureUnknown},
+		{"a code set by the error wins over its text", &tfmodules.UnresolvedError{Reason: "connection refused", Code: FailureGitRefNotFound}, FailureGitRefNotFound},
+		{"detail is read by the text rules", &tfmodules.UnresolvedError{Reason: "fetch failed", Detail: "dial tcp: no such host"}, FailureNetwork},
 		{"wrapped timeout", fmt.Errorf("fetching module: %w", context.DeadlineExceeded), FailureTimeout},
 		{"wrapped budget", fmt.Errorf("module package rejected: %w", &BudgetExceededError{Gate: "acquisition"}), FailureBudgetExceeded},
 	}

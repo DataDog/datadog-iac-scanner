@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -438,7 +439,10 @@ func (rem *bareRemote) doClone(ctx context.Context) error {
 			return nil
 		}
 		_ = os.RemoveAll(rem.barePath)
-		lastErr = fmt.Errorf("git clone --bare %s: %w\n%s", rem.cloneURL, cloneErr, bytes.TrimSpace(out))
+		lastErr = newGitFailure(
+			fmt.Sprintf("git clone --bare %s: %v\n%s", rem.cloneURL, cloneErr, bytes.TrimSpace(out)),
+			"clone --bare", out, cloneErr,
+		)
 		if !gitCloneRetryable(out, cloneErr) {
 			break
 		}
@@ -446,6 +450,53 @@ func (rem *bareRemote) doClone(ctx context.Context) error {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Err(lastErr).Msgf("BareGitResolver: failed to clone %s", rem.cloneURL)
 	return lastErr
+}
+
+// gitCommandError is a failed network git command. Its message is the text the
+// retry and staleness checks read. As a module failure it gets a short reason,
+// a code from the output git printed last, and the message as its detail, so
+// the output never reaches the reason.
+type gitCommandError struct {
+	msg, operation, output string
+	cause                  error
+}
+
+func newGitFailure(msg, operation string, output []byte, cause error) error {
+	return &gitCommandError{msg: msg, operation: operation, output: string(output), cause: cause}
+}
+
+func (e *gitCommandError) Error() string { return e.msg }
+
+func (e *gitCommandError) Unwrap() error { return e.cause }
+
+// gitOutputCodes are the failure codes of the output git prints for them, in
+// priority order: a server that hides private repositories can report both a
+// missing repository and an authentication failure.
+var gitOutputCodes = []struct {
+	code, description string
+	pattern           *regexp.Regexp
+}{
+	{FailureGitAuthRequired, "authentication required",
+		regexp.MustCompile(`could not read (username|password)|terminal prompts disabled|` +
+			`authentication failed|invalid username or password|permission denied \(publickey`)},
+	{FailureGitRepoNotFound, "no such repository",
+		regexp.MustCompile(`repository (?:'[^']*' )?not found|does not appear to be a git repository`)},
+	{FailureGitRefNotFound, "ref not found",
+		regexp.MustCompile(`couldn't find remote ref|not our ref`)},
+}
+
+func (e *gitCommandError) unresolved() *tfmodules.UnresolvedError {
+	output := strings.ToLower(e.output)
+	reason := "git " + e.operation + " failed"
+	failure := &tfmodules.UnresolvedError{Reason: reason, Detail: tfmodules.FailureDetail(e.msg), Cause: e}
+	for _, known := range gitOutputCodes {
+		if known.pattern.MatchString(output) {
+			failure.Code = known.code
+			failure.Reason += ": " + known.description
+			break
+		}
+	}
+	return failure
 }
 
 // gitCloneRetryable is false when another attempt cannot succeed without a
@@ -533,7 +584,10 @@ func (rem *bareRemote) fetchSHARef(ctx context.Context, ref string) (string, err
 			return gitInDir(ctx, rem.barePath, args...)
 		})
 		if err != nil {
-			return "", fmt.Errorf("git fetch %s %s: %w\n%s", rem.cloneURL, ref, err, bytes.TrimSpace(out))
+			return "", newGitFailure(
+				fmt.Sprintf("git fetch %s %s: %v\n%s", rem.cloneURL, ref, err, bytes.TrimSpace(out)),
+				"fetch", out, err,
+			)
 		}
 		return ref, nil
 	})
@@ -666,7 +720,10 @@ func (rem *bareRemote) fetchNamedRefFromRemote(ctx context.Context, ref, safeRef
 	}
 	var budgetErr *BudgetExceededError
 	if errors.As(err, &budgetErr) || !isShallowUnsupportedMessage(err.Error()+"\n"+string(out)) {
-		return bareRefEntry{}, fmt.Errorf("git fetch %s %s: %w\n%s", rem.cloneURL, ref, err, bytes.TrimSpace(out))
+		return bareRefEntry{}, newGitFailure(
+			fmt.Sprintf("git fetch %s %s: %v\n%s", rem.cloneURL, ref, err, bytes.TrimSpace(out)),
+			"fetch", out, err,
+		)
 	}
 	out2, err2 := rem.runNetworkGitThen(ctx, func(remote string, extraConfig []string) *exec.Cmd {
 		args := append(append([]string{}, extraConfig...),
@@ -674,9 +731,9 @@ func (rem *bareRemote) fetchNamedRefFromRemote(ctx context.Context, ref, safeRef
 		return gitInDir(ctx, rem.barePath, args...)
 	}, readFetchHead)
 	if err2 != nil {
-		return bareRefEntry{}, fmt.Errorf(
-			"git fetch %s %s: %w\n%s\n%s",
-			rem.cloneURL, ref, err2, bytes.TrimSpace(out), bytes.TrimSpace(out2),
+		return bareRefEntry{}, newGitFailure(
+			fmt.Sprintf("git fetch %s %s: %v\n%s\n%s", rem.cloneURL, ref, err2, bytes.TrimSpace(out), bytes.TrimSpace(out2)),
+			"fetch", out2, err2,
 		)
 	}
 	return fetched, nil
@@ -1698,6 +1755,7 @@ func checkGitTransportAllowed(ctx context.Context, repo *url.URL) error {
 				"git module transport %q is disabled because its destination cannot be pinned",
 				repo.Scheme,
 			),
+			Code:          FailureTransportUnsupported,
 			NotApplicable: true,
 		}
 	}

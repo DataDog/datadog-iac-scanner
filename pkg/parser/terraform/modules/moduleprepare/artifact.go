@@ -226,6 +226,10 @@ func (m *materializer) buildEntry(group *manifestGroup) (resolver.ManifestModule
 	if len(group.failures) > 0 {
 		entry.Status = resolver.ManifestStatusUnresolved
 		entry.Failure = joinedFailureReasons(group.failures)
+		// The failures come sorted by caller, so the first one is the same on
+		// every run.
+		entry.FailureCode = group.failures[0].Code
+		entry.FailureDetail = group.failures[0].Detail
 		return entry, nil
 	}
 	if len(group.resolved) == 0 {

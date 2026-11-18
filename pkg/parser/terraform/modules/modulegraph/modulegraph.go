@@ -97,6 +97,10 @@ type ResolutionFailure struct {
 	Version           string
 	Name              string
 	Reason            string
+	// Code classifies the failure (resolver.ClassifyFailure). Detail holds what
+	// Reason leaves out, bounded and redacted.
+	Code   string
+	Detail string
 }
 
 // Terminal outcomes for ModuleStat. One sample is recorded per unique module
@@ -617,6 +621,11 @@ func (c *resultCollector) addResolutionFailure(
 	if unresolved, ok := err.(*tfmodules.UnresolvedError); ok { //nolint:errorlint
 		reason = unresolved.Reason
 	}
+	var detail string
+	var unresolved *tfmodules.UnresolvedError
+	if errors.As(err, &unresolved) {
+		detail = unresolved.Detail
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.failures = append(c.failures, ResolutionFailure{
@@ -629,6 +638,8 @@ func (c *resultCollector) addResolutionFailure(
 		Version:           mod.Version,
 		Name:              mod.Name,
 		Reason:            model.RedactURLCredentials(reason),
+		Code:              resolver.ClassifyFailure(err),
+		Detail:            tfmodules.FailureDetail(detail),
 	})
 }
 
@@ -761,7 +772,7 @@ func (w *walker) accountPackage(
 		if errors.As(err, &budgetErr) {
 			w.results.addBudgetEvent(source, budgetErr)
 		}
-		return &tfmodules.UnresolvedError{Reason: "module package rejected: " + err.Error()}
+		return &tfmodules.UnresolvedError{Reason: "module package rejected: " + err.Error(), Cause: err}
 	}
 	return nil
 }
@@ -1152,6 +1163,7 @@ func (w *walker) recordUnacquiredGroups(groups map[string]*remoteModuleGroup, id
 		for _, mod := range group.callers {
 			w.results.addResolutionFailure(mod, group.parentPackageRoot, &tfmodules.UnresolvedError{
 				Reason: "module package rejected: " + budgetErr.Error(),
+				Cause:  budgetErr,
 			})
 		}
 	}

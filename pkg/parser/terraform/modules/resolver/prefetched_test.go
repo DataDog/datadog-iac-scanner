@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -119,33 +120,93 @@ func TestLoadManifestV1ResolvesRelativePackageAndVerifiesDigest(t *testing.T) {
 	require.Equal(t, measured, *resolution.Usage)
 }
 
+// TestLoadManifestV1PreservesUnresolvedStatus checks that an entry recorded as
+// unresolved stays final, with the code and detail the manifest recorded. A
+// manifest without the fields, or with a code this version does not know, gets
+// the code its reason classifies to. The detail is redacted again on read.
 func TestLoadManifestV1PreservesUnresolvedStatus(t *testing.T) {
-	dir := t.TempDir()
-	manifestPath := filepath.Join(dir, "modules.json")
-	require.NoError(t, os.Mkdir(filepath.Join(dir, "modules"), 0o755))
-	writeManifestJSON(t, manifestPath, map[string]any{
-		"schema_version": ManifestSchemaVersion,
-		"root":           "modules",
-		"modules": []map[string]any{{
-			"source":      "example.invalid/module",
-			"source_type": "git",
-			"status":      "unresolved",
-			"failure":     "credentials_unavailable",
-			"declarations": []map[string]any{{
-				"filename":    "main.tf",
-				"line_start":  1,
-				"line_end":    3,
-				"module_name": "example",
-			}},
-		}},
-	})
+	const secret = "SECRETXYZ987"
+	tests := []struct {
+		name       string
+		failure    map[string]any
+		wantReason string
+		wantCode   string
+		wantDetail string
+	}{
+		{
+			name:       "fields written by a current preparation",
+			failure:    map[string]any{"failure": "fetch failed", "failure_code": "network", "failure_detail": "dial tcp: no such host"},
+			wantReason: "fetch failed", wantCode: "network", wantDetail: "dial tcp: no such host",
+		},
+		{
+			name:       "manifest written before the fields existed",
+			failure:    map[string]any{"failure": "versions endpoint returned HTTP 502"},
+			wantReason: "versions endpoint returned HTTP 502", wantCode: "http_5xx", wantDetail: "",
+		},
+		{
+			name:       "well-formed code from a resolver outside the scanner is kept",
+			failure:    map[string]any{"failure": "fetch failed", "failure_code": "request_limit_exceeded"},
+			wantReason: "fetch failed", wantCode: "request_limit_exceeded", wantDetail: "",
+		},
+		{
+			name:       "malformed code is dropped",
+			failure:    map[string]any{"failure": "fetch failed", "failure_code": "Bad Code!"},
+			wantReason: "fetch failed", wantCode: "unknown", wantDetail: "",
+		},
+		{
+			name:       "overlong code is dropped",
+			failure:    map[string]any{"failure": "fetch failed", "failure_code": strings.Repeat("a", 200)},
+			wantReason: "fetch failed", wantCode: "unknown", wantDetail: "",
+		},
+		{
+			name: "credentials in the detail are redacted on read",
+			failure: map[string]any{
+				"failure": "fetch failed", "failure_code": "network",
+				"failure_detail": "error downloading 'https://user:" + secret + "@modules.example/acme/vpc': no such host",
+			},
+			wantReason: "fetch failed", wantCode: "network",
+			wantDetail: "error downloading 'https://modules.example/acme/vpc': no such host",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			manifestPath := filepath.Join(dir, "modules.json")
+			require.NoError(t, os.Mkdir(filepath.Join(dir, "modules"), 0o755))
+			module := map[string]any{
+				"source":      "example.invalid/module",
+				"source_type": "git",
+				"status":      "unresolved",
+				"declarations": []map[string]any{{
+					"filename":    "main.tf",
+					"line_start":  1,
+					"line_end":    3,
+					"module_name": "example",
+				}},
+			}
+			for k, v := range tt.failure {
+				module[k] = v
+			}
+			writeManifestJSON(t, manifestPath, map[string]any{
+				"schema_version": ManifestSchemaVersion,
+				"root":           "modules",
+				"modules":        []map[string]any{module},
+			})
 
-	manifest, err := LoadManifest(t.Context(), manifestPath)
-	require.NoError(t, err)
-	_, err = NewPrefetchedResolver(manifest).Resolve(t.Context(), &tfmodules.ParsedModule{
-		Source: "example.invalid/module",
-	})
-	require.ErrorContains(t, err, "credentials_unavailable")
+			manifest, err := LoadManifest(t.Context(), manifestPath)
+			require.NoError(t, err)
+			_, err = NewPrefetchedResolver(manifest).Resolve(t.Context(), &tfmodules.ParsedModule{
+				Source: "example.invalid/module",
+			})
+			var unresolved *tfmodules.UnresolvedError
+			require.ErrorAs(t, err, &unresolved)
+			require.False(t, unresolved.NotApplicable, "a recorded failure is final")
+			require.Equal(t, tt.wantReason, unresolved.Reason)
+			require.Equal(t, tt.wantCode, ClassifyFailure(err))
+			require.Equal(t, tt.wantDetail, unresolved.Detail)
+			require.NotContains(t, unresolved.Detail, secret)
+		})
+	}
 }
 
 func TestPrefetchedResolverChoosesMostSpecificDeclaration(t *testing.T) {
