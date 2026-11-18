@@ -398,33 +398,36 @@ func splatOf(root hcl.Expression, item *hclsyntax.AnonSymbolExpr) *hclsyntax.Spl
 // resource instance does not set as unknown, and merge keeping that recognition
 // on its result when an argument is an instance.
 func (e *Evaluator) withUnsetAttrFunctions(funcs map[string]function.Function) map[string]function.Function {
+	// Render contexts retain these functions after ReleaseEvalCache and may
+	// outlive reuse of e, so bind them to this evaluation's registry.
+	registry := e.registry
 	funcs["try"] = function.New(&function.Spec{
 		VarParam: &function.Parameter{Name: "expressions", Type: customdecode.ExpressionClosureType},
 		Type: func(args []cty.Value) (cty.Type, error) {
-			v, err := e.try(args)
+			v, err := registry.try(args)
 			if err != nil {
 				return cty.NilType, err
 			}
 			return v.Type(), nil
 		},
 		Impl: func(args []cty.Value, _ cty.Type) (cty.Value, error) {
-			return e.try(args)
+			return registry.try(args)
 		},
 	})
 	funcs["can"] = function.New(&function.Spec{
 		Params: []function.Parameter{{Name: "expression", Type: customdecode.ExpressionClosureType}},
 		Type:   function.StaticReturnType(cty.Bool),
 		Impl: func(args []cty.Value, _ cty.Type) (cty.Value, error) {
-			return e.can(args[0]), nil
+			return registry.can(args[0]), nil
 		},
 	})
-	funcs["merge"] = e.mergeFunc(funcs["merge"])
+	funcs["merge"] = mergeFunc(registry, funcs["merge"])
 	return funcs
 }
 
 // mergeFunc wraps merge so a result that includes a resource instance is still
 // recognized as one: merge builds a new object, so identity alone would not.
-func (e *Evaluator) mergeFunc(base function.Function) function.Function {
+func mergeFunc(registry *instanceRegistry, base function.Function) function.Function {
 	if base == (function.Function{}) {
 		base = stdlib.MergeFunc
 	}
@@ -444,7 +447,7 @@ func (e *Evaluator) mergeFunc(base function.Function) function.Function {
 				return cty.NilVal, err
 			}
 			for _, arg := range args {
-				if e.registry.isResourceInstance(arg) {
+				if registry.isResourceInstance(arg) {
 					return markResourceInstance(v), nil
 				}
 			}
@@ -453,7 +456,7 @@ func (e *Evaluator) mergeFunc(base function.Function) function.Function {
 	})
 }
 
-func (e *Evaluator) try(args []cty.Value) (cty.Value, error) {
+func (r *instanceRegistry) try(args []cty.Value) (cty.Value, error) {
 	if len(args) == 0 {
 		return cty.NilVal, errors.New("at least one argument is required")
 	}
@@ -462,7 +465,7 @@ func (e *Evaluator) try(args []cty.Value) (cty.Value, error) {
 		closure := customdecode.ExpressionClosureFromVal(arg)
 		v, argDiags := closure.Value()
 		if argDiags.HasErrors() {
-			if e.registry.readsUnsetAttributes(closure.Expression, argDiags) {
+			if r.readsUnsetAttributes(closure.Expression, argDiags) {
 				return cty.DynamicVal, nil
 			}
 			diags = append(diags, argDiags...)
@@ -486,11 +489,11 @@ func (e *Evaluator) try(args []cty.Value) (cty.Value, error) {
 	return cty.NilVal, errors.New(buf.String())
 }
 
-func (e *Evaluator) can(arg cty.Value) cty.Value {
+func (r *instanceRegistry) can(arg cty.Value) cty.Value {
 	closure := customdecode.ExpressionClosureFromVal(arg)
 	v, diags := closure.Value()
 	if diags.HasErrors() {
-		if e.registry.readsUnsetAttributes(closure.Expression, diags) {
+		if r.readsUnsetAttributes(closure.Expression, diags) {
 			return cty.UnknownVal(cty.Bool)
 		}
 		return cty.False

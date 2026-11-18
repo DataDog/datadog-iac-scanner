@@ -12,9 +12,52 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/function"
 )
+
+func TestRenderFunctionsKeepTheirEvaluationRegistry(t *testing.T) {
+	e := New()
+	first := cty.ObjectVal(map[string]cty.Value{"id": cty.StringVal("first")})
+	firstAt := instanceAt{dir: "first", addr: "terraform_data.source", kind: refManaged, typ: "terraform_data", name: "source"}
+	e.registry.register(&firstAt, first)
+	firstFuncs := e.moduleContext("first", "first").functions
+
+	e.ReleaseEvalCache()
+	second := cty.ObjectVal(map[string]cty.Value{"id": cty.StringVal("second")})
+	secondAt := instanceAt{dir: "second", addr: "terraform_data.source", kind: refManaged, typ: "terraform_data", name: "source"}
+	e.registry.register(&secondAt, second)
+	secondFuncs := e.moduleContext("second", "second").functions
+
+	for name, tc := range map[string]struct {
+		value cty.Value
+		funcs map[string]function.Function
+	}{
+		"first render context": {value: first, funcs: firstFuncs},
+		"second evaluation":    {value: second, funcs: secondFuncs},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := &hcl.EvalContext{
+				Variables: map[string]cty.Value{"local": cty.ObjectVal(map[string]cty.Value{"s": tc.value})},
+				Functions: tc.funcs,
+			}
+			for expr, want := range map[string]cty.Value{
+				`try(local.s.missing, "fallback")`:            cty.DynamicVal,
+				`can(local.s.missing)`:                        cty.UnknownVal(cty.Bool),
+				`try(merge({}, local.s).missing, "fallback")`: cty.DynamicVal,
+			} {
+				parsed, diags := hclsyntax.ParseExpression([]byte(expr), "test.tf", hcl.InitialPos)
+				require.False(t, diags.HasErrors(), "%s", diags.Error())
+				got, diags := parsed.Value(ctx)
+				require.False(t, diags.HasErrors(), "%s", diags.Error())
+				require.True(t, got.RawEquals(want), "%s = %#v, want %#v", expr, got, want)
+			}
+		})
+	}
+}
 
 // An attribute a resource leaves to its provider is unknown to try and can
 // however the resource object is reached, as Terraform 1.15 plans it; a
