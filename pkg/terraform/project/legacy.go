@@ -288,6 +288,7 @@ type legacyRender struct {
 	unsetVars map[string]bool
 	ctx       *hcl.EvalContext
 	rd        *partial.Renderer
+	dynamic   tfeval.DynamicCounts
 }
 
 // newLegacyRender is the renderer for the blocks of m; nil when the module
@@ -504,6 +505,11 @@ func legacyAttrs(b *model.Block, inst *model.Instance, conv value.Converter, lr 
 	if inst == nil {
 		return out
 	}
+	if lr != nil && len(inst.Dynamic) > 0 {
+		renderer := *lr
+		renderer.dynamic = inst.Dynamic
+		lr = &renderer
+	}
 	var body *hclsyntax.Body
 	if b.Syntax != nil {
 		body = b.Syntax.Body
@@ -513,6 +519,18 @@ func legacyAttrs(b *model.Block, inst *model.Instance, conv value.Converter, lr 
 			out[name] = conv.Go(v)
 		}
 	}
+	if value.Present(inst.Lifecycle) {
+		if lr != nil && body != nil {
+			for _, block := range body.Blocks {
+				if block.Type == "lifecycle" {
+					out["lifecycle"] = lr.attrs(inst.Lifecycle, block.Body)
+					break
+				}
+			}
+		} else {
+			out["lifecycle"] = conv.Go(inst.Lifecycle)
+		}
+	}
 	putLegacyAttrValues(out, b, body, inst, conv, lr)
 	// The previous engine's documents of a called module's instances kept
 	// count and for_each as evaluated, for_each narrowed to the instance.
@@ -520,7 +538,7 @@ func legacyAttrs(b *model.Block, inst *model.Instance, conv value.Converter, lr 
 		putLegacyMetaValues(out, b, body, inst, conv)
 	}
 	lr.keepWrittenDynamic(out, body, inst.Dynamic)
-	collapseBlocks(out, body)
+	collapseBlocks(out, body, inst.Dynamic)
 	prepareLegacyFilterPatterns(out)
 	return out
 }
@@ -592,7 +610,7 @@ func (lr *legacyRender) renderValue(out map[string]any, name string, v cty.Value
 		out[name] = lr.value(v, attr.Expr)
 		return true
 	}
-	if sources, ok := nestedSources(body)[name]; ok && len(sources) > 0 && rendersNested(lr, sources, v) {
+	if sources, ok := nestedSources(body, lr.dynamic)[name]; ok && len(sources) > 0 && rendersNested(lr, sources, v) {
 		out[name] = lr.nested(v, sources)
 		return true
 	}
@@ -825,7 +843,7 @@ func rendersNestedElement(lr *legacyRender, body *hclsyntax.Body, v cty.Value) b
 			return true
 		}
 	}
-	for name, inner := range nestedSources(body) {
+	for name, inner := range nestedSources(body, lr.dynamic) {
 		if len(inner) == 0 {
 			continue
 		}
@@ -852,6 +870,9 @@ func attrValue(v cty.Value, name string) (cty.Value, bool) {
 // keeps the value evaluation produced, since its iterator is no longer bound.
 func (lr *legacyRender) nested(v cty.Value, sources []nestedSource) any {
 	v, _ = v.UnmarkDeep()
+	if v.IsKnown() && v.Type().IsObjectType() && len(sources) == 1 && !sources[0].dynamic {
+		return lr.attrs(v, sources[0].body)
+	}
 	if !v.IsKnown() || !v.CanIterateElements() {
 		return lr.conv.Go(v)
 	}
@@ -865,7 +886,7 @@ func (lr *legacyRender) nested(v cty.Value, sources []nestedSource) any {
 			continue
 		}
 		if m, ok := lr.conv.Go(e).(map[string]any); ok {
-			collapseBlocks(m, sources[min(i, len(sources)-1)].body)
+			collapseBlocks(m, sources[min(i, len(sources)-1)].body, lr.dynamic)
 			out = append(out, m)
 			continue
 		}
@@ -884,7 +905,7 @@ func (lr *legacyRender) nested(v cty.Value, sources []nestedSource) any {
 // rendered from their expressions.
 func (lr *legacyRender) attrs(v cty.Value, body *hclsyntax.Body) map[string]any {
 	out := make(map[string]any, v.LengthInt())
-	sources := nestedSources(body)
+	sources := nestedSources(body, lr.dynamic)
 	for it := v.ElementIterator(); it.Next(); {
 		k, e := it.Element()
 		name := k.AsString()
@@ -1099,7 +1120,7 @@ func (lr *legacyRender) keepWrittenDynamic(obj map[string]any, body *hclsyntax.B
 	if lr == nil || body == nil || len(counts) == 0 {
 		return
 	}
-	for name, sources := range nestedSources(body) {
+	for name, sources := range nestedSources(body, counts) {
 		for i, e := range blockElements(obj[name]) {
 			if m, ok := e.(map[string]any); ok {
 				lr.keepWrittenDynamic(m, sources[min(i, len(sources)-1)].body, counts)
@@ -1212,18 +1233,18 @@ func blockElements(v any) []any {
 
 // collapseBlocks turns the nested blocks of obj written once in body into an
 // object, at every depth.
-func collapseBlocks(obj map[string]any, body *hclsyntax.Body) {
+func collapseBlocks(obj map[string]any, body *hclsyntax.Body, counts tfeval.DynamicCounts) {
 	if body == nil {
 		return
 	}
-	for name, sources := range nestedSources(body) {
+	for name, sources := range nestedSources(body, counts) {
 		list, ok := obj[name].([]any)
 		if !ok {
 			continue
 		}
 		for i, e := range list {
 			if m, ok := e.(map[string]any); ok {
-				collapseBlocks(m, sources[min(i, len(sources)-1)].body)
+				collapseBlocks(m, sources[min(i, len(sources)-1)].body, counts)
 			}
 		}
 		if len(list) == 1 {
@@ -1244,13 +1265,19 @@ type nestedSource struct {
 
 // nestedSources returns, by block type, the source of every nested block of
 // body; a dynamic block contributes its content to the type it generates.
-func nestedSources(body *hclsyntax.Body) map[string][]nestedSource {
+func nestedSources(body *hclsyntax.Body, counts tfeval.DynamicCounts) map[string][]nestedSource {
 	out := map[string][]nestedSource{}
 	for _, nb := range body.Blocks {
 		if dynamicblock.Is(nb) {
 			if content := dynamicblock.Content(nb); content != nil {
 				typ := dynamicblock.GeneratedType(nb)
-				out[typ] = append(out[typ], nestedSource{body: content, dynamic: true})
+				n := 1
+				if count, ok := counts[nb]; ok && count >= 0 {
+					n = count
+				}
+				for range n {
+					out[typ] = append(out[typ], nestedSource{body: content, dynamic: true})
+				}
 			}
 			continue
 		}

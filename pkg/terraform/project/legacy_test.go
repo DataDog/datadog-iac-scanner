@@ -795,3 +795,60 @@ output "out" {
 		"the locals section keeps the reference text of a local the view cannot resolve")
 	require.Equal(t, "b-", locals["label"], "a chain of locals resolves through the local namespace")
 }
+
+func TestLegacyDynamicSourceAlignmentTracksExpansion(t *testing.T) {
+	_, docs := legacy(t, map[string]string{"main.tf": `resource "example" "x" {
+  dynamic "parent" {
+    for_each = ["one", "two"]
+    content {
+      name = parent.value
+      child {
+        name = parent.value
+        leaf { name = parent.value }
+      }
+    }
+  }
+  parent {
+    name = "static"
+    child { name = "static-child" }
+  }
+}`})
+	d := docWithIDPrefix(docs, "id:main.tf")
+	parent := get(d, "resource", "example", "x", "parent").([]any)
+	require.Len(t, parent, 3)
+	for i, want := range []string{"one", "two"} {
+		child, ok := parent[i].(map[string]any)["child"].(map[string]any)
+		require.True(t, ok, "parent[%d].child should keep the single-block object shape", i)
+		leaf, ok := child["leaf"].(map[string]any)
+		require.True(t, ok, "parent[%d].child.leaf should keep the single-block object shape", i)
+		require.Equal(t, want, leaf["name"])
+	}
+	staticChild, ok := parent[2].(map[string]any)["child"].(map[string]any)
+	require.True(t, ok, "the following static parent should keep its own singleton child")
+	require.Equal(t, "static-child", staticChild["name"])
+	require.NotContains(t, staticChild, "leaf")
+}
+
+func TestLegacyLifecycleMetadataIsPreservedPerInstance(t *testing.T) {
+	_, docs := legacy(t, map[string]string{"main.tf": `resource "example" "x" {
+  count = 2
+  name = "x"
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [tags]
+    precondition {
+      condition = true
+      error_message = "instance ${count.index}"
+    }
+  }
+}`})
+	d := docWithIDPrefix(docs, "id:main.tf")
+	for i, key := range []string{"x[0]", "x[1]"} {
+		resource := get(d, "resource", "example", key).(map[string]any)
+		lifecycle := resource["lifecycle"].(map[string]any)
+		require.Equal(t, true, lifecycle["prevent_destroy"])
+		require.Equal(t, []any{"${tags}"}, lifecycle["ignore_changes"])
+		precondition := lifecycle["precondition"].(map[string]any)
+		require.Equal(t, fmt.Sprintf("instance %d", i), precondition["error_message"])
+	}
+}
