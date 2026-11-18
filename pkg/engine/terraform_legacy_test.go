@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
@@ -111,4 +112,51 @@ func TestSplitTerraformRules(t *testing.T) {
 	}
 	require.Equal(t, []string{"finding", "blocks", "qualified"}, names(contract))
 	require.Equal(t, []string{"document", "comment", "other_package", "forced"}, names(legacy))
+}
+
+const legacyTFVarsMarkerRule = `package datadog
+
+has_marker(doc) if {
+  walk(doc, [_, "visible"])
+}
+
+has_resource(doc) if {
+  doc.resource.null_resource.probe
+}
+
+probe_key(doc) := "null_resource[probe].triggers" if has_resource(doc)
+probe_key(doc) := "probe_marker" if not has_resource(doc)
+
+DatadogPolicy contains result if {
+  some doc in input.document
+  has_marker(doc)
+  result := {"documentId": doc.id, "searchKey": probe_key(doc), "issueType": "IncorrectValue", "keyExpectedValue": "absent", "keyActualValue": "present"}
+}
+`
+
+func TestInspect_LegacyScanIncludesScannedTFVarsDocument(t *testing.T) {
+	root := t.TempDir()
+	main := writeFile(t, root, "main.tf", `variable "probe_marker" { type = string }
+resource "null_resource" "probe" {
+  triggers = { marker = var.probe_marker }
+}`)
+	tfvars := writeFile(t, root, "terraform.tfvars", `probe_marker = "visible"`)
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "legacy_tfvars_marker", Content: legacyTFVarsMarkerRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "legacy-tfvars-marker", "platform": "Terraform", "contract": "legacy"}, Aggregation: 1,
+		}},
+		repoPath: root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	files := append(parseTerraformWritten(t, main), parseTerraformWritten(t, tfvars)...)
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 2)
+	got := map[string]bool{}
+	for _, vuln := range vulns {
+		got[filepath.Base(vuln.FileName)] = true
+	}
+	require.True(t, got["main.tf"])
+	require.True(t, got["terraform.tfvars"])
 }

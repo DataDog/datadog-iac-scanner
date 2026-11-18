@@ -578,7 +578,7 @@ func (c *Inspector) addWrittenSections(
 	}
 	for _, path := range slices.Sorted(maps.Keys(written)) {
 		f := written[path]
-		if covered[path] || isTFVarsFile(f.FilePath) || c.isModulePackageFile(path) {
+		if covered[path] || c.isModulePackageFile(path) {
 			continue
 		}
 		doc := model.Document{legacyIDKey: f.ID, legacyFileKey: path}
