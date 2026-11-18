@@ -332,10 +332,47 @@ type FileMetadata struct {
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
 	// document groups multiple module resources from the same file.
 	ModuleAttributions map[string]*ModuleAttribution
+	// TerraformScope identifies the address context for a Terraform file or
+	// synthetic resource instance document.
+	TerraformScope *TerraformScope `json:"-"`
+	// TerraformInstances maps document keys for expanded blocks to their
+	// written label and HCL instance suffix.
+	TerraformInstances map[TerraformInstanceKey]TerraformInstance `json:"-"`
 	// Platform is the lowercased platform the file was classified as (e.g.
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
 	Platform string
+}
+
+// TerraformInstance is a written block label and its count/for_each suffix.
+type TerraformInstance struct {
+	Label, Suffix string
+}
+
+// TerraformInstanceKey names a resource block in the document's kind/type/name
+// namespaces. Kind is "resource", "data", or "ephemeral".
+type TerraformInstanceKey struct {
+	Kind, Type, Name string
+}
+
+// TerraformBlock identifies a declared Terraform block.
+type TerraformBlock struct {
+	Kind, Type, Name string
+}
+
+// PlanResourceKey is a terraform plan -json resource section and document key.
+type PlanResourceKey struct {
+	Section, Key string
+}
+
+// TerraformScope carries caller-supplied root module and module instance
+// context, declared blocks, and plan-native addresses. RootModule is not
+// inferred from the directory containing a resource's source file.
+type TerraformScope struct {
+	RootModule    string
+	ModuleAddress string
+	Blocks        map[TerraformBlock]bool
+	PlanAddresses map[PlanResourceKey]string
 }
 
 // SetLineInfoLoader configures on-demand reconstruction of LineInfoDocument.
@@ -706,6 +743,11 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// ResourceID is the Terraform address of the affected block instance.
+	ResourceID string `json:"resourceId,omitempty"`
+	// RootModule is the repository-relative root module that evaluated this
+	// finding. It disambiguates identical addresses in separate root modules.
+	RootModule string `json:"rootModule,omitempty"`
 	// DetectedFileName and DetectedLineWithVulnerability are where the finding
 	// was detected when it is reported at another place (see ReportedLocation).
 	// They stay its identity: every file of a packaged dependency is reported

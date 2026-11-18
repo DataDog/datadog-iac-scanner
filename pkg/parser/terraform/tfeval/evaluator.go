@@ -54,9 +54,12 @@ var ErrModuleNotEvaluated = errors.New("tfeval: module not evaluated")
 // ResolvedResource is a resource block after evaluation with attributes
 // resolved to concrete cty values where possible, unknown otherwise.
 type ResolvedResource struct {
-	Type       string
-	Name       string
-	Attributes map[string]cty.Value
+	Type string
+	Name string
+	// InstanceKey is the raw count/for_each key for canonical address APIs.
+	// Nil means unexpanded; unknown means the concrete key is unresolved.
+	InstanceKey cty.Value
+	Attributes  map[string]cty.Value
 	// Body is the resource's HCL body, used to recover the reference text of
 	// attributes evaluation could not resolve. It is not consulted during
 	// evaluation, so recovered references never feed back into resolved values.
@@ -85,7 +88,10 @@ type ResolvedResource struct {
 
 // CallSite records one hop in a module call chain.
 type CallSite struct {
-	ModuleName      string
+	ModuleName string
+	// InstanceKey preserves the raw key for canonical address formatting. Nil
+	// means the call is unexpanded; an unknown value means its key is unresolved.
+	InstanceKey     cty.Value
 	Source          string
 	Version         string
 	CalledFrom      string
@@ -773,7 +779,12 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			instance := plan.At(i)
 			modInputs := e.evalBody(ctx, mb.Body, instance.ctx, reservedModuleAttrs)
 			childAddr := instance.address(addr, call.label)
-			childChain := append(cloneChain(chain), site)
+			instanceSite := site
+			instanceSite.InstanceKey = instance.key
+			if instance.unknownKey {
+				instanceSite.InstanceKey = cty.DynamicVal
+			}
+			childChain := append(cloneChain(chain), instanceSite)
 			instancesBefore := len(e.instances)
 
 			childRes, childOuts, cErr := e.evaluate(
@@ -1123,7 +1134,9 @@ func (e *Evaluator) expandCountInstances(
 					"index": cty.NumberIntVal(int64(i)),
 				}),
 			}
-			out = append(out, makeOne(fmt.Sprintf("%s[%d]", resName, i), child))
+			resource := makeOne(fmt.Sprintf("%s[%d]", resName, i), child)
+			resource.InstanceKey = cty.NumberIntVal(int64(i))
+			out = append(out, resource)
 		}
 		return out, true
 	}
@@ -1133,7 +1146,9 @@ func (e *Evaluator) expandCountInstances(
 			"index": cty.UnknownVal(cty.Number),
 		}),
 	}
-	return []ResolvedResource{makeOne(resName, child)}, true
+	resource := makeOne(resName, child)
+	resource.InstanceKey = cty.DynamicVal
+	return []ResolvedResource{resource}, true
 }
 
 func (e *Evaluator) expandForEachInstances(
@@ -1169,7 +1184,9 @@ func unknownForEachResource(
 			"value": cty.UnknownVal(cty.DynamicPseudoType),
 		}),
 	}
-	return makeOne(resName, child)
+	resource := makeOne(resName, child)
+	resource.InstanceKey = cty.DynamicVal
+	return resource
 }
 
 func (e *Evaluator) expandKnownForEachResources(
@@ -1213,6 +1230,7 @@ func makeForEachResource(
 		}),
 	}
 	res := makeOne(fmt.Sprintf("%s[%q]", resName, keyStr), child)
+	res.InstanceKey = key
 	if fe, ok := res.Attributes[metaArgForEach]; ok {
 		res.Attributes[metaArgForEach] = instanceForEach(fe, keyStr, value)
 	}
@@ -1714,7 +1732,12 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			}
 			instance := plan.At(i)
 			modInputs := e.evalBody(ctx, mb.Body, instance.ctx, reservedModuleAttrs)
-			childChain := append(cloneChain(chain), site)
+			instanceSite := site
+			instanceSite.InstanceKey = instance.key
+			if instance.unknownKey {
+				instanceSite.InstanceKey = cty.DynamicVal
+			}
+			childChain := append(cloneChain(chain), instanceSite)
 			_, childOuts, err := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
 				depth+1, tmpVisiting, map[string]bool{},

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
@@ -61,6 +62,21 @@ module "logs" {
 	require.NoError(t, err)
 
 	byAddr := resourcesByAddress(resources)
+	canonicalAddresses := make(map[string]string, len(resources))
+	for _, resource := range resources {
+		if strings.HasPrefix(resource.ModuleAddress, "module.buckets[") {
+			require.NotEmpty(t, resource.CallChain)
+			require.NotEqual(t, cty.NilVal, resource.CallChain[0].InstanceKey)
+		}
+		address, ok := resource.TerraformAddress()
+		require.True(t, ok)
+		canonicalAddresses[resource.ModuleAddress] = address
+	}
+	require.Equal(t, map[string]string{
+		`module.buckets["prod"]`: `module.buckets["prod"].aws_s3_bucket.this`,
+		`module.buckets["dev"]`:  `module.buckets["dev"].aws_s3_bucket.this`,
+		"module.logs":            "module.logs.aws_s3_bucket.this",
+	}, canonicalAddresses)
 	prod, ok := byAddr[`module.buckets["prod"]/aws_s3_bucket.this`]
 	require.True(t, ok, "instances are addressed by their for_each key: %v", byAddr)
 	requireString(t, prod.Attributes, "bucket", "bucket-prod")
@@ -116,6 +132,109 @@ output "replica_count" { value = length(module.replicas) }
 	require.True(t, outputs["replica_count"].RawEquals(cty.NumberIntVal(2)), "replica_count = %#v", outputs["replica_count"])
 }
 
+func TestResolvedResourceTerraformAddressInstances(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "from_module" { bucket = "logs" }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+variable "unknown_items" {}
+resource "aws_s3_bucket" "counted" {
+  count = 2
+  bucket = "count-${count.index}"
+}
+resource "aws_s3_bucket" "keyed" {
+  for_each = { first = "one", second = "two" }
+  bucket = each.value
+}
+resource "aws_s3_bucket" "unexpanded" { bucket = "plain" }
+resource "aws_s3_bucket" "unknown" {
+  for_each = var.unknown_items
+  bucket = each.key
+}
+module "child" {
+  source = "../child"
+  count = 2
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	addresses := make(map[string]bool, len(resources))
+	for _, resource := range resources {
+		address, ok := resource.TerraformAddress()
+		if ok {
+			addresses[address] = true
+		}
+	}
+	require.Equal(t, map[string]bool{
+		"aws_s3_bucket.counted[0]":                  true,
+		"aws_s3_bucket.counted[1]":                  true,
+		`aws_s3_bucket.keyed["first"]`:              true,
+		`aws_s3_bucket.keyed["second"]`:             true,
+		"aws_s3_bucket.unexpanded":                  true,
+		"module.child[0].aws_s3_bucket.from_module": true,
+		"module.child[1].aws_s3_bucket.from_module": true,
+	}, addresses)
+	for _, resource := range resources {
+		if resource.Name == "unknown" {
+			_, ok := resource.TerraformAddress()
+			require.False(t, ok, "unresolved for_each must not claim a concrete instance address")
+		}
+	}
+}
+
+func TestResolvedResourceTerraformAddressQuotesForEachKeysAsHCL(t *testing.T) {
+	for _, tc := range []struct{ key, want string }{
+		{`quote"slash\`, `aws_s3_bucket.web["quote\"slash\\"]`},
+		{"line\nbreak", `aws_s3_bucket.web["line\nbreak"]`},
+		{`${literal}`, `aws_s3_bucket.web["$${literal}"]`},
+		{`%{literal}`, `aws_s3_bucket.web["%%{literal}"]`},
+		{"\x00", `aws_s3_bucket.web["\u0000"]`},
+		{"雪", `aws_s3_bucket.web["雪"]`},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			resource := makeForEachResource("web", tc.key, cty.StringVal(tc.key), cty.StringVal(tc.key), &hcl.EvalContext{},
+				func(name string, _ *hcl.EvalContext) ResolvedResource {
+					return ResolvedResource{Type: "aws_s3_bucket", Name: name}
+				})
+			require.Equal(t, fmt.Sprintf("web[%q]", tc.key), resource.Name, "legacy Name representation stays unchanged")
+			got, ok := resource.TerraformAddress()
+			require.True(t, ok, "resource name %q", resource.Name)
+			require.Equal(t, tc.want, got)
+			moduleResource := ResolvedResource{
+				Type: "aws_s3_bucket", Name: "web", ModuleAddress: "module.bucket",
+				CallChain: []CallSite{{ModuleName: "bucket", InstanceKey: cty.StringVal(tc.key)}},
+			}
+			moduleGot, ok := moduleResource.TerraformAddress()
+			require.True(t, ok)
+			resourceSuffix := strings.TrimPrefix(tc.want, "aws_s3_bucket.web")
+			require.Equal(t, "module.bucket"+resourceSuffix+".aws_s3_bucket.web", moduleGot)
+		})
+	}
+}
+
+func TestResolvedResourceCanonicalModuleAddressKeepsLegacyAddress(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "this" { bucket = "logs" }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "bucket" {
+  source = "../child"
+  for_each = { "$${literal}" = "same" }
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	resource := resources[0]
+	require.Equal(t, `module.bucket["${literal}"]`, resource.ModuleAddress,
+		"legacy ModuleAddress remains byte-identical")
+	canonical, ok := resource.TerraformAddress()
+	require.True(t, ok)
+	require.Equal(t, `module.bucket["$${literal}"].aws_s3_bucket.this`, canonical)
+}
+
 func TestEvaluateModule_UnknownModuleExpansionEvaluatesOnce(t *testing.T) {
 	root := t.TempDir()
 	bucketModule(t, root)
@@ -139,6 +258,8 @@ output "names" { value = module.buckets }
 
 	require.Len(t, resources, 1)
 	require.Equal(t, "module.buckets", resources[0].ModuleAddress)
+	_, addressKnown := resources[0].TerraformAddress()
+	require.False(t, addressKnown, "an unresolved module key must not become a concrete resource address")
 	require.False(t, resources[0].Attributes["bucket"].IsKnown())
 	require.True(t, resources[0].Attributes["encrypted"].False())
 	require.False(t, outputs["names"].IsKnown(), "outputs of an unexpanded call are unknown")

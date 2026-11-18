@@ -78,8 +78,9 @@ const (
 // moduleInstance is one instance of a module call: the key Terraform addresses
 // it by and the context its arguments are evaluated in.
 type moduleInstance struct {
-	key cty.Value
-	ctx *hcl.EvalContext
+	key        cty.Value
+	unknownKey bool
+	ctx        *hcl.EvalContext
 }
 
 func (i moduleInstance) address(parent, label string) string {
@@ -113,7 +114,7 @@ func (p moduleExpansionPlan) At(i int) moduleInstance {
 	case expansionNone:
 		return moduleInstance{ctx: p.base}
 	case expansionUnknown:
-		return moduleInstance{ctx: instanceContext(p.base, p.plan, tfinstances.Item{})}
+		return moduleInstance{unknownKey: true, ctx: instanceContext(p.base, p.plan, tfinstances.Item{})}
 	}
 	item := p.plan.At(i)
 	return moduleInstance{key: item.Key, ctx: instanceContext(p.base, p.plan, item)}

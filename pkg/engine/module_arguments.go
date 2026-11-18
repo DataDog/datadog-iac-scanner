@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfaddress "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/hashicorp/hcl/v2"
@@ -862,7 +863,7 @@ func (a *valueAnalyzer) blockBody(address string) *hclsyntax.Body {
 		for _, body := range a.scope.Bodies {
 			for _, block := range body.Blocks {
 				switch {
-				case block.Type == "resource" && len(block.Labels) == 2:
+				case block.Type == tfaddress.KindResource && len(block.Labels) == 2:
 					index[block.Labels[0]+"."+block.Labels[1]] = block.Body
 				case block.Type == dataRoot && len(block.Labels) == 2:
 					index[dataRoot+"."+block.Labels[0]+"."+block.Labels[1]] = block.Body

@@ -12,6 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPlanAddressesUsesPlanNativeKeys(t *testing.T) {
+	doc := model.Document{TfplanMetaKey: map[string]interface{}{
+		"aws_s3_bucket": map[string]interface{}{
+			"web[0]": map[string]interface{}{"address": "module.stack.aws_s3_bucket.web[0]"},
+		},
+		"data.aws_caller_identity": map[string]interface{}{
+			"current": map[string]interface{}{"address": "data.aws_caller_identity.current"},
+		},
+	}}
+	require.Equal(t, map[model.PlanResourceKey]string{
+		{Section: "aws_s3_bucket", Key: "web[0]"}:             "module.stack.aws_s3_bucket.web[0]",
+		{Section: "data.aws_caller_identity", Key: "current"}: "data.aws_caller_identity.current",
+	}, PlanAddresses(doc))
+	require.Nil(t, PlanAddresses(model.Document{}))
+}
+
 func TestJson_parseTFPlan(t *testing.T) {
 	type args struct {
 		doc model.Document
@@ -805,6 +821,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 				},
 			},
 			want: model.Document{
+				TfplanMetaKey: map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
+					},
+				},
 				"resource": map[string]any{},
 				"data": map[string]any{
 					"aws_kms_key": map[string]any{
@@ -864,6 +885,11 @@ func TestJson_parseTFPlan(t *testing.T) {
 				},
 			},
 			want: model.Document{
+				TfplanMetaKey: map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
+					},
+				},
 				"resource": map[string]any{},
 				"data": map[string]any{
 					"aws_kms_key": map[string]any{
@@ -977,6 +1003,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 				},
 			},
 			want: model.Document{
+				TfplanMetaKey: map[string]any{
+					"data.aws_kms_key": map[string]any{
+						`by_alias["prod"]`: map[string]any{"address": `data.aws_kms_key.by_alias["prod"]`},
+						`by_alias["dev"]`:  map[string]any{"address": `data.aws_kms_key.by_alias["dev"]`},
+					},
+				},
 				"resource": map[string]any{},
 				"data": map[string]any{
 					"aws_kms_key": map[string]any{
@@ -1043,6 +1075,12 @@ func TestJson_parseTFPlan(t *testing.T) {
 				},
 			},
 			want: model.Document{
+				TfplanMetaKey: map[string]any{
+					"data.aws_kms_key": map[string]any{
+						"by_alias":                map[string]any{"address": "data.aws_kms_key.by_alias"},
+						"module.storage.by_alias": map[string]any{"address": "module.storage.data.aws_kms_key.by_alias"},
+					},
+				},
 				"resource": map[string]any{},
 				"data": map[string]any{
 					"aws_kms_key": map[string]any{
@@ -1070,6 +1108,7 @@ func TestJson_parseTFPlan(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Equal(t, tt.want, got)
+			require.Equal(t, PlanAddresses(tt.want), PlanAddresses(got))
 		})
 	}
 }
