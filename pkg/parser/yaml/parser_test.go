@@ -6,14 +6,55 @@
 package yaml
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
+
+func TestParse_InvalidScalarLogging(t *testing.T) {
+	tests := []struct {
+		name      string
+		filePath  string
+		logLevel  zerolog.Level
+		wantLevel string
+	}{
+		{"regular file", "services/app.yaml", zerolog.DebugLevel, "warn"},
+		{"regular file at error level", "services/app.yaml", zerolog.ErrorLevel, ""},
+		{"testdata", "testdata/golden/services/app.yaml", zerolog.DebugLevel, "debug"},
+		{"testdata at warn level", "testdata/golden/services/app.yaml", zerolog.WarnLevel, ""},
+		{"fixtures", "tests/fixtures/app.yaml", zerolog.DebugLevel, "debug"},
+		{"__fixtures__", "tests/__fixtures__/app.yaml", zerolog.DebugLevel, "debug"},
+		{"non-fixture filename", "config/fixtures.yaml", zerolog.DebugLevel, "warn"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			ctx := zerolog.New(&logs).Level(tt.logLevel).WithContext(t.Context())
+			_, docs, _, _, err := Parse(ctx, []byte("count: !!int invalid-number\n"), tt.filePath, false, 0)
+			require.NoError(t, err)
+			require.Len(t, docs, 1)
+			require.Equal(t, "invalid-number", docs[0]["count"])
+			require.Equal(t, tt.filePath, docs[0]["_path"])
+
+			if tt.wantLevel == "" {
+				require.Empty(t, logs.String())
+				return
+			}
+			var event map[string]interface{}
+			require.NoError(t, json.Unmarshal(logs.Bytes(), &event))
+			require.Equal(t, tt.wantLevel, event["level"])
+			require.Contains(t, event["message"], "failed to decode scalar in yaml parser")
+			require.Contains(t, event["message"], tt.filePath)
+			require.Contains(t, event["message"], "invalid-number")
+		})
+	}
+}
 
 // TestParser_Parse tests the functions [Parse()] and all the methods called by them
 func TestParser_Parse(t *testing.T) { //nolint
