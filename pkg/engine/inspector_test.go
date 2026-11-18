@@ -1810,6 +1810,72 @@ func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {
 	require.False(t, ins.rulePathsExcluded([]string{"/tmp/remote-module/main.tf"}, []string{"/tmp/**"}, nil))
 }
 
+func TestInspectorRemoteModulePackagePathIndex(t *testing.T) {
+	base := t.TempDir()
+	moduleRoot := filepath.Join(base, "cache", "module")
+	packageRoot := filepath.Join(base, "cache", "package")
+	externalRoot := filepath.Join(base, "external")
+	relativeRoot := filepath.Join("relative", "cache", "module")
+	windowsRoot := `C:\iac\modules\shared`
+	dirs := map[string]RemoteModuleDirectory{
+		"module":    {Path: moduleRoot, PackageRoot: packageRoot},
+		"duplicate": {Path: moduleRoot, PackageRoot: moduleRoot},
+		"relative":  {Path: relativeRoot},
+		"windows":   {Path: windowsRoot},
+	}
+	ins := &Inspector{}
+	ins.SetExternalModulePaths([]string{externalRoot})
+	ins.SetRemoteModuleDirectories(dirs)
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "exact root", path: moduleRoot, want: true},
+		{name: "module descendant", path: filepath.Join(moduleRoot, "main.tf"), want: true},
+		{name: "package root descendant", path: filepath.Join(packageRoot, "nested", "main.tf"), want: true},
+		{name: "sibling prefix", path: moduleRoot + "-sibling/main.tf", want: false},
+		{name: "parent escape", path: filepath.Join(moduleRoot, "..", "other", "main.tf"), want: false},
+		{name: "external path", path: filepath.Join(externalRoot, "main.tf"), want: true},
+		{name: "unrelated path", path: filepath.Join(base, "other", "main.tf"), want: false},
+		{name: "relative module descendant", path: filepath.Join(relativeRoot, "main.tf"), want: true},
+		{name: "relative sibling prefix", path: relativeRoot + "-sibling/main.tf", want: false},
+		{name: "relative parent escape", path: filepath.Join(relativeRoot, "..", "other", "main.tf"), want: false},
+		{name: "Windows-style path uses existing path semantics", path: windowsRoot + `\main.tf`, want: legacyIsModulePackageFile(ins, windowsRoot+`\main.tf`)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ins.isModulePackageFile(tt.path))
+			require.Equal(t, legacyIsModulePackageFile(ins, tt.path), ins.isModulePackageFile(tt.path), "optimized result must match the previous predicate")
+		})
+	}
+
+	oldRoot := filepath.Join(base, "old-cache")
+	newRoot := filepath.Join(base, "new-cache")
+	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{"old": {Path: oldRoot}})
+	require.True(t, ins.isModulePackageFile(filepath.Join(oldRoot, "main.tf")))
+	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{"new": {Path: newRoot}})
+	require.False(t, ins.isModulePackageFile(filepath.Join(oldRoot, "main.tf")), "replacing module directories must discard the old root index")
+	require.True(t, ins.isModulePackageFile(filepath.Join(newRoot, "main.tf")))
+	ins.SetRemoteModuleDirectories(nil)
+	require.False(t, ins.isModulePackageFile(filepath.Join(newRoot, "main.tf")), "clearing module directories must clear the root index")
+}
+
+func legacyIsModulePackageFile(c *Inspector, path string) bool {
+	if c.isExternalModulePath(path) {
+		return true
+	}
+	for _, dir := range c.remoteModuleDirs {
+		for _, root := range [...]string{dir.Path, dir.PackageRoot} {
+			if root != "" && within(path, filepath.Clean(root)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // The archive a packaged dependency was rendered from is one more path its
 // findings are known by, so a glob naming it drops them.
 func TestInspectorRulePathsExcludedNamesArchive(t *testing.T) {

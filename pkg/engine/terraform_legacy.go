@@ -660,14 +660,32 @@ func hasWrittenSections(f *model.FileMetadata) bool {
 // isModulePackageFile reports whether path is a file of an external or remote
 // module package, which is scanned through the calls reaching it.
 func (c *Inspector) isModulePackageFile(path string) bool {
-	if c.isExternalModulePath(path) {
-		return true
+	return c.isExternalModulePath(path) || c.isRemoteModulePackageFile(path)
+}
+
+// isRemoteModulePackageFile reports whether path is within a fetched module
+// directory indexed by the resolver. Unlike external paths, these directories
+// have concrete call ownership in remoteModuleDirs.
+func (c *Inspector) isRemoteModulePackageFile(path string) bool {
+	if len(c.remoteModuleRoots) == 0 && len(c.remoteModuleOtherRoots) == 0 {
+		return false
 	}
-	for _, dir := range c.remoteModuleDirs {
-		for _, root := range [...]string{dir.Path, dir.PackageRoot} {
-			if root != "" && within(path, filepath.Clean(root)) {
+	cleanPath := filepath.Clean(path)
+	if filepath.Separator == '/' && filepath.IsAbs(cleanPath) && filepath.VolumeName(cleanPath) == "" {
+		for ancestor := cleanPath; ; {
+			if _, ok := c.remoteModuleRoots[ancestor]; ok {
 				return true
 			}
+			parent := filepath.Dir(ancestor)
+			if parent == ancestor {
+				break
+			}
+			ancestor = parent
+		}
+	}
+	for _, root := range c.remoteModuleOtherRoots {
+		if within(cleanPath, root) {
+			return true
 		}
 	}
 	return false

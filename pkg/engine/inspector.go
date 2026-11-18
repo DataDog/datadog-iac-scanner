@@ -244,8 +244,12 @@ type Inspector struct {
 	// fsys is the filesystem used for Terraform module resolution. Defaults to
 	// the real disk; the HTTP server injects an in-memory FS built from pushed
 	// content.
-	fsys                   vfs.FS
-	remoteModuleDirs       map[string]RemoteModuleDirectory
+	fsys             vfs.FS
+	remoteModuleDirs map[string]RemoteModuleDirectory
+	// remoteModuleRoots indexes cleaned native absolute roots for Unix ancestor lookups.
+	remoteModuleRoots map[string]struct{}
+	// remoteModuleOtherRoots keeps cleaned relative or volume-specific roots for within fallback checks.
+	remoteModuleOtherRoots []string
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
 	mergeAllow             map[string]struct{}
@@ -283,6 +287,35 @@ type Inspector struct {
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
 	c.remoteModuleDirs = sourceToDir
+	c.remoteModuleRoots = nil
+	c.remoteModuleOtherRoots = nil
+	if len(sourceToDir) == 0 {
+		return
+	}
+	seen := make(map[string]struct{}, 2*len(sourceToDir))
+	roots := make(map[string]struct{}, 2*len(sourceToDir))
+	var otherRoots []string
+	for _, dir := range sourceToDir {
+		for _, root := range [...]string{dir.Path, dir.PackageRoot} {
+			if root == "" {
+				continue
+			}
+			root = filepath.Clean(root)
+			if _, ok := seen[root]; ok {
+				continue
+			}
+			seen[root] = struct{}{}
+			if filepath.Separator == '/' && filepath.IsAbs(root) && filepath.VolumeName(root) == "" {
+				roots[root] = struct{}{}
+			} else {
+				otherRoots = append(otherRoots, root)
+			}
+		}
+	}
+	if len(roots) > 0 {
+		c.remoteModuleRoots = roots
+	}
+	c.remoteModuleOtherRoots = otherRoots
 }
 
 func (c *Inspector) SetRemoteModuleProvenance(sourceToProvenance map[string]RemoteModuleProvenance) {
