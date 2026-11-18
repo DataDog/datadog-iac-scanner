@@ -3207,6 +3207,9 @@ ephemeral "aws_secretsmanager_secret" "login" {
 	require.Len(t, resources, 2)
 	for i := range resources {
 		require.Equal(t, "aws_secretsmanager_secret", resources[i].Type)
+		addr, ok := resources[i].TerraformAddress()
+		require.True(t, ok)
+		require.Equal(t, "ephemeral.aws_secretsmanager_secret."+resources[i].Name, addr)
 	}
 	require.ElementsMatch(t, []string{
 		`login["a"]`,

@@ -458,6 +458,8 @@ func (r *ResolvedResource) TerraformAddress() (string, bool) {
 	kind := address.KindResource
 	if r.Data {
 		kind = address.KindData
+	} else if r.Ephemeral {
+		kind = address.KindEphemeral
 	}
 	return address.Instance(moduleAddress, address.Block{Kind: kind, Type: r.Type, Name: baseName}, suffix), true
 }
