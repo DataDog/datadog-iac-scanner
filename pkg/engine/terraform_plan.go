@@ -328,10 +328,20 @@ func dedupRoots(ctx context.Context, roots []*terraformRoot) ([]*terraformRoot, 
 	if len(roots) < 2 {
 		return roots, nil
 	}
+	blockCounts := make(map[int]int, len(roots))
+	for _, r := range roots {
+		blockCounts[len(r.input.projection.Blocks)]++
+	}
 	first := map[string]*terraformRoot{}
 	var units []*terraformRoot
 	fan := &terraformFanout{dups: map[string][]*terraformDup{}, ordinal: map[string]map[string]int{}}
 	for _, r := range roots {
+		// Equal projections have the same number of block IDs, so a block
+		// count unique to this chunk cannot match another root's digest.
+		if blockCounts[len(r.input.projection.Blocks)] == 1 {
+			units = append(units, r)
+			continue
+		}
 		r.order = r.input.projection.BlockOrder()
 		r.digest = r.input.projection.Digest(r.order)
 		u, ok := first[r.digest]
