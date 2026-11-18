@@ -32,10 +32,17 @@ type Scan struct {
 
 // dirInfo is what loading reads of one directory before evaluation.
 type dirInfo struct {
-	configs  []string
-	varFiles []string
-	vars     []string
-	failed   []string
+	configs           []string
+	varFiles          []string
+	vars              []string
+	failed            []string
+	hasTerraformTests bool
+}
+
+func (d *dirInfo) noteTerraformTest(name string) {
+	if strings.HasSuffix(name, ".tftest.hcl") {
+		d.hasTerraformTests = true
+	}
 }
 
 // Layout is the directories and plan files under a base, before any root is
@@ -308,6 +315,7 @@ func readDirInfoMode(fsys vfs.FS, dir string, checkParse bool) (*dirInfo, []stri
 			}
 			continue
 		}
+		info.noteTerraformTest(name)
 		switch {
 		case tfpath.IsConfig(path):
 			info.configs = append(info.configs, path)
@@ -376,6 +384,7 @@ func loadRoot(
 ) *Root {
 	root := &Root{ID: rootID(base, dir), Dir: dir}
 	info := dirs[dir]
+	root.HasTerraformTests = info.hasTerraformTests
 	root.VarFiles = info.varFiles
 	ev := evaluate(ctx, fsys, resolver, dir, info.vars, eval, varsPath)
 	root.Degraded = ev.degraded

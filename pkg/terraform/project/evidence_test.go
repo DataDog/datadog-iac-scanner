@@ -7,12 +7,14 @@
 package project
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/terraform/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +38,51 @@ func TestEvidenceRootExclusions(t *testing.T) {
 	testRoot := filepath.Join(dir, "with-test")
 	require.NoError(t, os.MkdirAll(testRoot, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(testRoot, "main.tftest.hcl"), []byte(""), 0o600))
-	require.False(t, EvidenceRoot(&model.Root{ID: "with-test", Dir: testRoot}, nil))
+	require.False(t, EvidenceRoot(&model.Root{ID: "with-test", Dir: testRoot, HasTerraformTests: true}, nil))
+}
+
+func TestEvidenceRootUsesScannedFilesystemInventory(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fsys vfs.FS
+		base string
+		want bool
+	}{
+		{
+			name: "memory filesystem",
+			fsys: vfs.NewMemFS(map[string][]byte{
+				"workspace/main.tf":         []byte(`resource "aws_s3_bucket" "b" {}`),
+				"workspace/case.tftest.hcl": []byte("run \"check\" {}"),
+			}),
+			base: "workspace",
+			want: false,
+		},
+		{
+			name: "memory filesystem without tests",
+			fsys: vfs.NewMemFS(map[string][]byte{
+				"workspace/main.tf": []byte(`resource "aws_s3_bucket" "b" {}`),
+			}),
+			base: "workspace",
+			want: true,
+		},
+		{
+			name: "disk filesystem",
+			base: filepath.Join(t.TempDir(), "workspace"),
+			want: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.fsys == nil {
+				require.NoError(t, os.MkdirAll(tc.base, 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(tc.base, "main.tf"), []byte(`resource "aws_s3_bucket" "b" {}`), 0o600))
+				require.NoError(t, os.WriteFile(filepath.Join(tc.base, "case.tftest.hcl"), []byte("run \"check\" {}"), 0o600))
+			}
+			scan, err := model.Load(context.Background(), tc.base, &model.Options{FS: tc.fsys})
+			require.NoError(t, err)
+			require.Len(t, scan.Roots, 1)
+			require.Equal(t, tc.want, EvidenceRoot(scan.Roots[0], nil))
+		})
+	}
 }
 
 func TestHoldsCompanion(t *testing.T) {

@@ -22,6 +22,9 @@ type Root struct {
 	// base, "." for the base itself.
 	ID  string
 	Dir string
+	// HasTerraformTests reports whether the root directory contains a .tftest.hcl
+	// file in the filesystem view used to build this root.
+	HasTerraformTests bool
 	// Modules holds the root module first, then the module instances in
 	// address order.
 	Modules []*Module

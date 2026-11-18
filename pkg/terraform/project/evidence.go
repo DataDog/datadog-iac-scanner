@@ -31,8 +31,7 @@ func EvidenceRoot(r *model.Root, called map[string]bool) bool {
 	if called[filepath.Clean(r.Dir)] {
 		return false
 	}
-	tests, _ := filepath.Glob(filepath.Join(r.Dir, "*.tftest.hcl"))
-	return len(tests) == 0
+	return !r.HasTerraformTests
 }
 
 // HoldsCompanion reports whether r declares a resource type that can write a
