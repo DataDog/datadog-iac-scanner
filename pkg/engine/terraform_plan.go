@@ -330,7 +330,7 @@ func dedupRoots(ctx context.Context, roots []*terraformRoot) ([]*terraformRoot, 
 	}
 	first := map[string]*terraformRoot{}
 	var units []*terraformRoot
-	fan := &terraformFanout{dups: map[string][]*terraformDup{}, ordinal: map[string]int{}}
+	fan := &terraformFanout{dups: map[string][]*terraformDup{}, ordinal: map[string]map[string]int{}}
 	for _, r := range roots {
 		r.order = r.input.projection.BlockOrder()
 		r.digest = r.input.projection.Digest(r.order)
@@ -338,9 +338,11 @@ func dedupRoots(ctx context.Context, roots []*terraformRoot) ([]*terraformRoot, 
 		if !ok {
 			first[r.digest] = r
 			units = append(units, r)
+			ordinal := make(map[string]int, len(r.order))
 			for i, id := range r.order {
-				fan.ordinal[id] = i
+				ordinal[id] = i
 			}
+			fan.ordinal[r.root.ID] = ordinal
 			continue
 		}
 		fan.dups[u.root.ID] = append(fan.dups[u.root.ID], &terraformDup{input: r.input, ids: r.order})
@@ -358,8 +360,9 @@ func dedupRoots(ctx context.Context, roots []*terraformRoot) ([]*terraformRoot, 
 type terraformFanout struct {
 	// dups lists, per unit root, the roots with the same content.
 	dups map[string][]*terraformDup
-	// ordinal is the position of the id of a unit block in the order of its root.
-	ordinal map[string]int
+	// ordinal maps each unit root's block ids to their positions, so external
+	// evidence ids from other roots are not rewritten during fanout.
+	ordinal map[string]map[string]int
 }
 
 type terraformDup struct {
@@ -396,10 +399,11 @@ func (f *terraformFanout) copies(results rego.ResultSet, blocks map[string]*proj
 	sort.Strings(names)
 	var out []fanCopy
 	for _, name := range names {
+		ordinal := f.ordinal[name]
 		for _, dup := range f.dups[name] {
 			mapped := make([]interface{}, len(byRoot[name]))
 			for i, item := range byRoot[name] {
-				mapped[i] = f.remap(item, dup)
+				mapped[i] = f.remap(item, dup, ordinal)
 			}
 			out = append(out, fanCopy{input: dup.input, results: rego.ResultSet{{Bindings: rego.Vars{"result": mapped}}}})
 		}
@@ -408,13 +412,13 @@ func (f *terraformFanout) copies(results rego.ResultSet, blocks map[string]*proj
 }
 
 // remap rewrites the block ids of a result for a duplicate.
-func (f *terraformFanout) remap(item interface{}, dup *terraformDup) interface{} {
+func (f *terraformFanout) remap(item interface{}, dup *terraformDup, ordinal map[string]int) interface{} {
 	obj, _ := item.(map[string]interface{})
 	out := make(map[string]interface{}, len(obj))
 	for k, v := range obj {
 		out[k] = v
 	}
-	out[blockResultField] = f.mapID(obj[blockResultField], dup)
+	out[blockResultField] = mapFanoutID(obj[blockResultField], dup, ordinal)
 	if ev, ok := obj["evidence"].([]interface{}); ok {
 		mapped := make([]interface{}, len(ev))
 		for i, e := range ev {
@@ -424,7 +428,7 @@ func (f *terraformFanout) remap(item interface{}, dup *terraformDup) interface{}
 				continue
 			}
 			p := slices.Clone(pair)
-			p[0] = f.mapID(pair[0], dup)
+			p[0] = mapFanoutID(pair[0], dup, ordinal)
 			mapped[i] = p
 		}
 		out["evidence"] = mapped
@@ -432,9 +436,9 @@ func (f *terraformFanout) remap(item interface{}, dup *terraformDup) interface{}
 	return out
 }
 
-func (f *terraformFanout) mapID(v interface{}, dup *terraformDup) interface{} {
+func mapFanoutID(v interface{}, dup *terraformDup, ordinal map[string]int) interface{} {
 	id, _ := v.(string)
-	if n, ok := f.ordinal[id]; ok && n < len(dup.ids) {
+	if n, ok := ordinal[id]; ok && n < len(dup.ids) {
 		return dup.ids[n]
 	}
 	return v

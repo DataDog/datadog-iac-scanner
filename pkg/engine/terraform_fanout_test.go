@@ -27,12 +27,19 @@ resource "aws_s3_bucket" "b" {
 }
 `
 
-// fanoutRoots models roots a and b with the same content and root c with
-// another one.
+// fanoutRoots models roots a and b with the same content, root c with a
+// different block count, and root d with the same block count but different
+// content.
 func fanoutRoots(t *testing.T) map[string]*terraformRoot {
 	t.Helper()
 	dir := t.TempDir()
-	files := map[string]string{"a/main.tf": fanoutRoot, "b/main.tf": fanoutRoot, "c/main.tf": `resource "aws_s3_bucket" "b" {}`}
+	files := map[string]string{
+		"a/main.tf": fanoutRoot,
+		"b/main.tf": fanoutRoot,
+		"c/main.tf": `resource "aws_s3_bucket" "b" {}`,
+		"d/main.tf": `resource "aws_security_group" "sg" { name = "other" }
+resource "aws_s3_bucket" "b" { bucket = "other" }`,
+	}
 	for name, content := range files {
 		path := filepath.Join(dir, name)
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
@@ -45,7 +52,7 @@ func fanoutRoots(t *testing.T) map[string]*terraformRoot {
 		proj := project.Project([]*tfmodel.Root{r}, project.Options{Placeholder: resultsTestPlaceholder})
 		out[filepath.Base(r.Dir)] = &terraformRoot{root: r, input: &terraformInput{projection: proj}}
 	}
-	require.Len(t, out, 3)
+	require.Len(t, out, 4)
 	return out
 }
 
@@ -64,17 +71,27 @@ func blockIDOf(t *testing.T, r *terraformRoot, typ string) string {
 // copied to the duplicate with its own block ids, evidence included.
 func TestFanoutCopiesResultsToDuplicateRoots(t *testing.T) {
 	roots := fanoutRoots(t)
-	units, fan := dedupRoots(context.Background(), []*terraformRoot{roots["a"], roots["b"], roots["c"]})
-	require.Len(t, units, 2)
+	units, fan := dedupRoots(context.Background(), []*terraformRoot{roots["a"], roots["b"], roots["c"], roots["d"]})
+	require.Len(t, units, 3)
 	require.NotNil(t, fan)
 	require.Same(t, roots["a"], units[0])
 	require.Same(t, roots["c"], units[1])
+	require.Same(t, roots["d"], units[2])
 
 	a, b := roots["a"], roots["b"]
+	require.Equal(t, len(a.input.projection.Blocks), len(b.input.projection.Blocks),
+		"duplicate roots share a block count")
+	require.NotEqual(t, len(a.input.projection.Blocks), len(roots["c"].input.projection.Blocks),
+		"c has a singleton block count")
+	require.Equal(t, len(a.input.projection.Blocks), len(roots["d"].input.projection.Blocks),
+		"d shares the block count but not the content")
 	item := map[string]interface{}{
 		blockResultField:    blockIDOf(t, a, "aws_s3_bucket"),
 		"path":              []interface{}{"bucket"},
-		evidenceResultField: []interface{}{[]interface{}{blockIDOf(t, a, "aws_security_group"), []interface{}{"name"}}},
+		evidenceResultField: []interface{}{
+			[]interface{}{blockIDOf(t, a, "aws_security_group"), []interface{}{"name"}},
+			[]interface{}{blockIDOf(t, roots["d"], "aws_security_group"), []interface{}{"name"}},
+		},
 	}
 	other := map[string]interface{}{blockResultField: blockIDOf(t, roots["c"], "aws_s3_bucket")}
 	blocks := map[string]*project.Located{}
@@ -92,8 +109,12 @@ func TestFanoutCopiesResultsToDuplicateRoots(t *testing.T) {
 	obj := got[0].(map[string]interface{})
 	require.Equal(t, blockIDOf(t, b, "aws_s3_bucket"), obj[blockResultField])
 	require.Equal(t, []interface{}{"bucket"}, obj["path"])
-	ev := obj[evidenceResultField].([]interface{})[0].([]interface{})
+	allEvidence := obj[evidenceResultField].([]interface{})
+	ev := allEvidence[0].([]interface{})
 	require.Equal(t, blockIDOf(t, b, "aws_security_group"), ev[0])
+	externalEvidence := allEvidence[1].([]interface{})
+	require.Equal(t, blockIDOf(t, roots["d"], "aws_security_group"), externalEvidence[0],
+		"evidence from another unit keeps that unit's block ID")
 	require.Equal(t, blockIDOf(t, a, "aws_s3_bucket"), item[blockResultField], "the unit's result is left as is")
 }
 
