@@ -370,8 +370,8 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 	resourceLines := extractResourceHeaderLines(b)
 	correlation := buildResourceChangeCorrelation(b)
 
-	parsed := readPlan(plan, doc["resource_changes"], doc["configuration"], resourceLines, &correlation)
-	return parsed, nil
+	parsedPlan := readPlan(plan, doc["resource_changes"], doc["configuration"], resourceLines, &correlation)
+	return parsedPlan, nil
 }
 
 // extractResourceHeaderLines returns each resource's "values" attribute
@@ -409,7 +409,7 @@ func readPlan(
 	resourceChanges, configuration any,
 	resourceLines map[string]int,
 	correlation *resourceChangeCorrelation,
-) (doc model.Document) {
+) model.Document {
 	kp := TFPlan{
 		Resource:        make(map[string]TFPlanResource),
 		ResourceChanges: resourceChanges,
@@ -422,7 +422,8 @@ func readPlan(
 		kp.readPriorStateData(plan.PriorState.Values.RootModule, "", resourceLines, deletedAddresses(plan.ResourceChanges))
 	}
 
-	doc = model.Document{}
+	doc := model.Document{}
+
 	tmpDocBytes, err := json.Marshal(kp)
 	if err != nil {
 		return model.Document{}
@@ -431,6 +432,7 @@ func readPlan(
 	if err != nil {
 		return model.Document{}
 	}
+
 	return doc
 }
 
@@ -470,7 +472,13 @@ func (kp *TFPlan) readModule(
 			ddLines["_dd_"+resourceKey] = &model.LineObject{Line: line}
 		}
 
-		kp.recordPlanMeta(resource.Type, resourceKey, resourceMetaFor(resource.Address, correlation))
+		if kp.TfplanMeta[resource.Type] == nil {
+			if kp.TfplanMeta == nil {
+				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
+			}
+			kp.TfplanMeta[resource.Type] = make(map[string]tfplanResourceMeta)
+		}
+		kp.TfplanMeta[resource.Type][resourceKey] = resourceMetaFor(resource.Address, correlation)
 	}
 
 	for _, childModule := range module.ChildModules {
@@ -533,10 +541,17 @@ func (kp *TFPlan) readPriorStateData(
 		typeData := kp.Data[resource.Type]
 		typeData[dataKey] = resource.AttributeValues
 
-		// prior_state data sources are not in planned_values, so readModule
-		// never records their address. Key the meta by data.<type> so it
-		// cannot collide with a managed resource of the same type and name.
-		kp.recordPlanMeta("data."+resource.Type, dataKey, tfplanResourceMeta{Address: resource.Address})
+		// Keep plan-native addresses beside prior-state data values, just as
+		// readModule does for planned resources. The scanner's flattened data
+		// keys do not preserve Terraform's data. prefix or module path.
+		section := "data." + resource.Type
+		if kp.TfplanMeta[section] == nil {
+			if kp.TfplanMeta == nil {
+				kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
+			}
+			kp.TfplanMeta[section] = make(map[string]tfplanResourceMeta)
+		}
+		kp.TfplanMeta[section][dataKey] = tfplanResourceMeta{Address: resource.Address}
 
 		if line, ok := resourceLines[resource.Address]; ok {
 			ddLines, isMap := typeData["_dd_lines"].(map[string]*model.LineObject)
@@ -551,17 +566,6 @@ func (kp *TFPlan) readPriorStateData(
 	for _, childModule := range module.ChildModules {
 		kp.readPriorStateData(childModule, childModule.Address, resourceLines, deleted)
 	}
-}
-
-// recordPlanMeta stores meta for one planned resource, creating the maps it needs.
-func (kp *TFPlan) recordPlanMeta(typ, key string, meta tfplanResourceMeta) {
-	if kp.TfplanMeta == nil {
-		kp.TfplanMeta = make(map[string]map[string]tfplanResourceMeta)
-	}
-	if kp.TfplanMeta[typ] == nil {
-		kp.TfplanMeta[typ] = make(map[string]tfplanResourceMeta)
-	}
-	kp.TfplanMeta[typ][key] = meta
 }
 
 // formatResourceKeyWithIndex appends a count/for_each index, e.g. "web[0]" or "bucket[\"prod\"]".

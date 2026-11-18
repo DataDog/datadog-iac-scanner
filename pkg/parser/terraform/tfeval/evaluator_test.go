@@ -3111,10 +3111,9 @@ module "b" {
 	}
 }
 
-// Instance names carry HCL-escaped for_each keys — the same escaping the
-// address formatter uses — so keys with quotes, backslashes or template
-// openers produce valid, round-trippable addresses.
-func TestExpandBlock_InstanceNamesUseHCLEscaping(t *testing.T) {
+// Legacy instance names retain Go quoting while canonical addresses round-trip
+// keys with quotes, backslashes and template introducers through HCL.
+func TestExpandBlock_LegacyNamesAndCanonicalAddresses(t *testing.T) {
 	root := t.TempDir()
 	stack := writeModule(t, root, "stack", map[string]string{
 		"main.tf": `
@@ -3135,14 +3134,13 @@ resource "aws_s3_bucket" "b" {
 	for i := range resources {
 		names = append(names, resources[i].Name)
 	}
-	// Template openers carry exactly one level of $$ / %% escaping — the same
-	// the address formatter produces — never doubled by a second escaping pass.
+	// Names keep the legacy Go quoting; canonical addresses use HCL escaping.
 	require.ElementsMatch(t, []string{
 		`b["a\"b"]`,
 		`b["a\\b"]`,
 		`b["a[b"]`,
-		`b["$${key}"]`,
-		`b["%%{if}"]`,
+		`b["${key}"]`,
+		`b["%{if}"]`,
 	}, names)
 
 	// Every instance's address parses as Terraform does, and its key is the
@@ -3254,15 +3252,14 @@ output "percent" {
 	for i := range resources {
 		names = append(names, resources[i].Name)
 	}
-	// The HCL-escaped names carry one introducer escape per real brace —
-	// literal $$ and %% (not before a brace) stay as written.
+	// Legacy names preserve literal keys; canonical suffixes below escape HCL introducers.
 	require.ElementsMatch(t, []string{
 		`b["a$b"]`,
 		`b["a$$b"]`,
-		`b["a$${b}"]`,
+		`b["a${b}"]`,
 		`b["a%b"]`,
 		`b["a%%b"]`,
-		`b["a%%{b}"]`,
+		`b["a%{b}"]`,
 	}, names)
 
 	// References through those keys resolve the right instances, including

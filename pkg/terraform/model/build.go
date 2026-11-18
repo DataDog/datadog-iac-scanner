@@ -41,10 +41,22 @@ func newBuilder(root *Root, base string) *builder {
 }
 
 func (b *builder) build(resources []tfeval.ResolvedResource) {
+	// Keep the evaluator's legacy addresses intact through cached descendant rebasing
+	// and parent linking. The model boundary uses Terraform's
+	// canonical HCL key quoting for addresses exposed to consumers.
+	for _, m := range b.root.Modules {
+		if moduleAddress, ok := tfeval.ModuleTerraformAddress(m.Chain); ok {
+			m.Address = moduleAddress
+		}
+	}
 	byModule := map[string][]*tfeval.ResolvedResource{}
 	for i := range resources {
 		r := &resources[i]
-		byModule[r.ModuleAddress] = append(byModule[r.ModuleAddress], r)
+		moduleAddress, ok := tfeval.ModuleTerraformAddress(r.CallChain)
+		if !ok {
+			moduleAddress = r.ModuleAddress
+		}
+		byModule[moduleAddress] = append(byModule[moduleAddress], r)
 	}
 	for _, m := range b.root.Modules {
 		if m.parent == nil {
@@ -135,7 +147,7 @@ func (b *builder) resourceBlock(m *Module, sb *hclsyntax.Block, rs []*tfeval.Res
 		expands = true
 	}
 	for _, r := range rs {
-		key := instanceKey(r.Name, sb.Labels[1])
+		key := r.InstanceSuffix()
 		inst := &Instance{Block: blk, Key: key}
 		inst.Address = joinAddr(m.Address, address.Addr(address.Block{Kind: blk.Kind, Type: blk.Type, Name: blk.Name})+key)
 		inst.Iteration = r.Iteration
@@ -164,23 +176,6 @@ func (b *builder) resourceBlock(m *Module, sb *hclsyntax.Block, rs []*tfeval.Res
 		}
 	}
 	return blk
-}
-
-// instanceKey turns the instance name tfeval gives ("b[0]", `b["x"]`, with
-// Go quoting) into the HCL suffix of the address.
-func instanceKey(name, label string) string {
-	rest := strings.TrimPrefix(name, label)
-	if rest == "" || rest == name {
-		return ""
-	}
-	inner := strings.TrimSuffix(strings.TrimPrefix(rest, "["), "]")
-	if s, err := strconv.Unquote(inner); err == nil {
-		return address.InstanceSuffix(cty.StringVal(s))
-	}
-	if n, err := strconv.Atoi(inner); err == nil {
-		return address.InstanceSuffix(cty.NumberIntVal(int64(n)))
-	}
-	return rest
 }
 
 // iterationOf rebuilds count or each for an instance tfeval did not keep the

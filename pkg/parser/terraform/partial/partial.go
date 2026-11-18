@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -170,7 +171,7 @@ func formatTraversal(traversal hcl.Traversal) (string, bool) {
 			sb.WriteByte('.')
 			sb.WriteString(s.Name)
 		case hcl.TraverseIndex:
-			formatted, ok := ctyutil.FormatIndexKey(s.Key)
+			formatted, ok := address.FormatIndexKey(s.Key)
 			if !ok {
 				return "", false
 			}

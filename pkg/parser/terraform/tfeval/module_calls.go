@@ -12,7 +12,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -87,7 +86,8 @@ type moduleInstance struct {
 func (i moduleInstance) address(parent, label string) string {
 	seg := "module." + label
 	if i.key != cty.NilVal {
-		seg += address.InstanceSuffix(i.key)
+		suffix, _ := ctyutil.FormatIndexKey(i.key)
+		seg += suffix
 	}
 	return joinAddr(parent, seg)
 }

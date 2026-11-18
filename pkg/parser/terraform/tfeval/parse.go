@@ -15,7 +15,6 @@ import (
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -418,36 +417,6 @@ func parseVarsFile(src []byte, path string) hcl.Attributes {
 	return attrs
 }
 
-// parseResourceInstanceKey splits an expanded resource Name into its base label, instance key,
-// whether the key is a count index (true) vs a for_each string key (false), and whether the
-// name contained any expansion brackets at all.
-//   - "foo"        → ("foo", "",    false, false) — no expansion
-//   - "foo[0]"     → ("foo", "0",   true,  true)  — count
-//   - `foo["bar"]` → ("foo", "bar", false, true)  — for_each (including empty-string key)
-func parseResourceInstanceKey(name string) (base, key string, isCount, expanded bool) {
-	// for_each: name ends with `"]` and contains `["`
-	if strings.HasSuffix(name, `"]`) {
-		if idx := strings.LastIndex(name, `["`); idx >= 0 {
-			quoted := name[idx+1 : len(name)-1] // `"bar"`
-			unquoted, err := strconv.Unquote(quoted)
-			if err != nil {
-				unquoted = strings.Trim(quoted, `"`)
-			}
-			return name[:idx], unquoted, false, true
-		}
-	}
-	// count: name ends with [N] where N is an integer
-	if strings.HasSuffix(name, "]") {
-		if idx := strings.LastIndex(name, "["); idx >= 0 {
-			inner := name[idx+1 : len(name)-1]
-			if _, err := strconv.Atoi(inner); err == nil {
-				return name[:idx], inner, true, true
-			}
-		}
-	}
-	return name, "", false, false
-}
-
 // ResourceBaseName strips any count/for_each instance suffix from a resource Name
 // (e.g. "k[0]" → "k", `k["dev"]` → "k"). Used by callers that need the bare label
 // for rule matching or source-line lookups.
@@ -479,9 +448,28 @@ func (r *ResolvedResource) TerraformAddress() (string, bool) {
 			return "", false
 		}
 	}
+	moduleAddress, ok := ModuleTerraformAddress(r.CallChain)
+	if !ok {
+		return "", false
+	}
+	if r.ModuleAddress != "" && len(r.CallChain) == 0 {
+		return "", false
+	}
+	kind := address.KindResource
+	if r.Data {
+		kind = address.KindData
+	}
+	return address.Instance(moduleAddress, address.Block{Kind: kind, Type: r.Type, Name: baseName}, suffix), true
+}
+
+// ModuleTerraformAddress returns the canonical Terraform address prefix for
+// a module call chain. It is derived from native call-site labels and keys,
+// not the legacy ModuleAddress string, whose key quoting is retained for
+// existing internal identities.
+func ModuleTerraformAddress(chain []CallSite) (string, bool) {
 	moduleAddress := ""
-	for i := range r.CallChain {
-		call := &r.CallChain[i]
+	for i := range chain {
+		call := &chain[i]
 		segment := "module." + call.ModuleName
 		if call.InstanceKey != cty.NilVal {
 			keySuffix, ok := address.FormatIndexKey(call.InstanceKey)
@@ -492,14 +480,7 @@ func (r *ResolvedResource) TerraformAddress() (string, bool) {
 		}
 		moduleAddress = joinAddr(moduleAddress, segment)
 	}
-	if r.ModuleAddress != "" && len(r.CallChain) == 0 {
-		return "", false
-	}
-	kind := address.KindResource
-	if r.Data {
-		kind = address.KindData
-	}
-	return address.Instance(moduleAddress, address.Block{Kind: kind, Type: r.Type, Name: baseName}, suffix), true
+	return moduleAddress, true
 }
 
 func blockLabel(b *hclsyntax.Block) string {

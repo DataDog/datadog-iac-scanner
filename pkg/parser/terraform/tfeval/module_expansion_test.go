@@ -13,11 +13,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
-	"strings"
 )
 
 func bucketModule(t *testing.T, root string) string {
@@ -194,10 +194,13 @@ func TestResolvedResourceTerraformAddressQuotesForEachKeysAsHCL(t *testing.T) {
 		{"雪", `aws_s3_bucket.web["雪"]`},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
-			resource := makeForEachResource("web", tc.key, cty.StringVal(tc.key), cty.StringVal(tc.key), &hcl.EvalContext{},
-				func(name string, _ *hcl.EvalContext) ResolvedResource {
-					return ResolvedResource{Type: "aws_s3_bucket", Name: name}
-				})
+			key, ok := address.FormatIndexKey(cty.StringVal(tc.key))
+			require.True(t, ok)
+			dir := writeModule(t, t.TempDir(), "root", map[string]string{"main.tf": `resource "aws_s3_bucket" "web" { for_each = toset(` + key + `) }`})
+			resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			require.Len(t, resources, 1)
+			resource := resources[0]
 			require.Equal(t, fmt.Sprintf("web[%q]", tc.key), resource.Name, "legacy Name representation stays unchanged")
 			got, ok := resource.TerraformAddress()
 			require.True(t, ok, "resource name %q", resource.Name)

@@ -116,6 +116,9 @@ func (r *ResolvedResource) BaseName() string {
 // InstanceSuffix is the instance's count index or for_each key in HCL syntax,
 // "" for a block without count or for_each.
 func (r *ResolvedResource) InstanceSuffix() string {
+	if r.InstanceKey != cty.NilVal {
+		return address.InstanceSuffix(r.InstanceKey)
+	}
 	return r.Name[len(r.BaseName()):]
 }
 
@@ -1125,7 +1128,7 @@ func (e *Evaluator) expandBlock(
 		child.Variables = map[string]cty.Value{name: value}
 		resource := makeOne(resName, child)
 		resource.InstanceKey = cty.DynamicVal
-		return []ResolvedResource{resource}, true
+		return []ResolvedResource{resource}, false
 	case plan.Len() == 0:
 		// The expansion resolved to zero instances: the block exists nowhere.
 		return nil, true
@@ -1150,10 +1153,13 @@ func expandPlanInstances(
 		}
 		item := plan.At(i)
 		var keyStr string
-		suffix := address.InstanceSuffix(item.Key)
+		suffix := ""
 		if !isCount {
 			// Resolve validated every key as a concrete string.
 			keyStr, _ = ctyutil.ConcreteString(item.Key)
+			suffix = "[" + strconv.Quote(keyStr) + "]"
+		} else {
+			suffix, _ = ctyutil.FormatIndexKey(item.Key)
 		}
 		name, value := plan.Variable(item)
 		child := evalCtx.NewChild()

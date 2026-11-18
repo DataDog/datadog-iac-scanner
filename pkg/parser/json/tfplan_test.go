@@ -859,11 +859,6 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
-				"_dd_tfplan_meta": map[string]any{
-					"data.aws_kms_key": map[string]any{
-						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
-					},
-				},
 				"resource_changes": []any{},
 				"configuration":    map[string]any{},
 			},
@@ -927,11 +922,6 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"by_alias": map[string]any{
 							"key_id": "alias/aws/s3",
 						},
-					},
-				},
-				"_dd_tfplan_meta": map[string]any{
-					"data.aws_kms_key": map[string]any{
-						"by_alias": map[string]any{"address": "data.aws_kms_key.by_alias"},
 					},
 				},
 				"resource_changes": []any{},
@@ -1053,12 +1043,6 @@ func TestJson_parseTFPlan(t *testing.T) {
 						},
 					},
 				},
-				"_dd_tfplan_meta": map[string]any{
-					"data.aws_kms_key": map[string]any{
-						`by_alias["prod"]`: map[string]any{"address": `data.aws_kms_key.by_alias["prod"]`},
-						`by_alias["dev"]`:  map[string]any{"address": `data.aws_kms_key.by_alias["dev"]`},
-					},
-				},
 				"resource_changes": []any{},
 				"configuration":    map[string]any{},
 			},
@@ -1129,12 +1113,6 @@ func TestJson_parseTFPlan(t *testing.T) {
 						"module.storage.by_alias": map[string]any{
 							"key_id": "alias/storage",
 						},
-					},
-				},
-				"_dd_tfplan_meta": map[string]any{
-					"data.aws_kms_key": map[string]any{
-						"by_alias":                map[string]any{"address": "data.aws_kms_key.by_alias"},
-						"module.storage.by_alias": map[string]any{"address": "module.storage.data.aws_kms_key.by_alias"},
 					},
 				},
 				"resource_changes": []any{},
