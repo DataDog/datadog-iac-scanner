@@ -6,12 +6,26 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAddCertificateInfoDoesNotLogSourceValues(t *testing.T) {
+	const secret = "synthetic-private-certificate-content"
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(t.Context())
+	path := filepath.Join(t.TempDir(), "main.tf")
+
+	require.Nil(t, AddCertificateInfo(ctx, path, secret))
+	require.Contains(t, logs.String(), "Failed to get certificate")
+	require.Contains(t, logs.String(), path)
+	require.NotContains(t, logs.String(), secret)
+}
 
 func TestAddCertificateInfo(t *testing.T) {
 	ctx := context.Background()

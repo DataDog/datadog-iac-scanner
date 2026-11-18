@@ -104,7 +104,7 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 			if fixtureutils.IsTestFixturePath(filePath) {
 				event = contextLogger.Debug()
 			}
-			event.Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
+			event.Err(logger.RedactError(err)).Msgf("skipping unparseable yaml document in %s", filePath)
 			continue
 		}
 

@@ -232,7 +232,9 @@ func (c *Parser) parseContent(
 	resolved, obj, igLines, resolvedFiles, err := c.Parsers.Parse(
 		ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
 	if err != nil {
-		return ParsedDocument{}, err
+		// All downstream consumers, including lazy reparses and resolved files,
+		// receive a safe error even if they log it without special handling.
+		return ParsedDocument{}, logger.RedactError(err)
 	}
 
 	kind := c.Parsers.GetKind()
@@ -243,7 +245,7 @@ func (c *Parser) parseContent(
 	}
 	cont, err := c.Parsers.StringifyContent(fileContent)
 	if err != nil {
-		contextLogger.Error().Msgf("failed to stringify original content: %s", err)
+		contextLogger.Error().Err(logger.RedactError(err)).Msg("failed to stringify original content")
 		cont = string(fileContent)
 	}
 

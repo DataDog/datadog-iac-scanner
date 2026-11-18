@@ -289,7 +289,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 
 	ignore, err := comment.ParseComments(resolved, path)
 	if err != nil {
-		contextLogger.Err(err).Msg("failed to parse comments")
+		contextLogger.Err(logger.RedactError(err)).Msg("failed to parse comments")
 	}
 
 	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))

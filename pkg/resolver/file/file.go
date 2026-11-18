@@ -80,7 +80,7 @@ func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("panic: %v", r)
-			contextLogger.Err(err).Msg("Recovered from panic during resolve of file " + path)
+			contextLogger.Err(logger.RedactError(err)).Msg("Recovered from panic during resolve of file " + path)
 		}
 	}()
 

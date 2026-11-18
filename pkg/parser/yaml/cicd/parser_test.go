@@ -6,6 +6,7 @@
 package cicd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,8 +15,21 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRunBlockParseFailureDoesNotLogSourceValues(t *testing.T) {
+	const secret = "synthetic-private-shell-value"
+	var logs bytes.Buffer
+	ctx := zerolog.New(&logs).WithContext(t.Context())
+	steps := []interface{}{map[string]interface{}{"run": "echo hello", "shell": secret}}
+
+	parseRunBlocksInSteps(ctx, steps)
+	require.Contains(t, logs.String(), "Failed to parse shell expressions")
+	require.Contains(t, logs.String(), "details redacted")
+	require.NotContains(t, logs.String(), secret)
+}
 
 // TestParser_GetKind tests the functions [GetKind()] and all the methods called by them
 func TestParser_GetKind(t *testing.T) {

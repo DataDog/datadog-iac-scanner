@@ -96,7 +96,7 @@ func (p *Parser) loadEnv(ctx context.Context, filePath string) map[string]string
 	contextLogger := logger.FromContext(ctx)
 	content, err := p.fsys.ReadFile(filepath.Join(filepath.Dir(filePath), envFileName))
 	if err != nil {
-		contextLogger.Debug().Msgf("dockercompose: no .env loaded for %s: %s", filePath, err)
+		contextLogger.Debug().Err(logger.RedactError(err)).Msgf("dockercompose: no .env loaded for %s", filePath)
 		return nil
 	}
 	return ParseEnvFile(content)
@@ -118,7 +118,7 @@ func (p *Parser) loadOverride(ctx context.Context, filePath string) (content []b
 		return content, name
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		contextLogger.Debug().Msgf("dockercompose: could not read override %s: %s", name, err)
+		contextLogger.Debug().Err(logger.RedactError(err)).Msgf("dockercompose: could not read override %s", name)
 	}
 	return nil, ""
 }

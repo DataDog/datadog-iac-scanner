@@ -15,5 +15,5 @@ import (
 func HandlePanic(ctx context.Context, r any, errMessage string) {
 	contextLogger := logger.FromContext(ctx)
 	err := fmt.Errorf("panic: %v", r)
-	contextLogger.Err(err).Msg(errMessage)
+	contextLogger.Err(logger.RedactError(err)).Msg(errMessage)
 }

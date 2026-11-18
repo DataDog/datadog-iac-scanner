@@ -573,7 +573,7 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 	contextLogger := logger.FromContext(ctx)
 	var resolved interface{}
 	if err := val.Decode(&resolved); err != nil {
-		contextLogger.Error().Msgf("failed to decode scalar in yaml parser: %q", val.Value)
+		contextLogger.Error().Msg("failed to decode scalar in yaml parser (value redacted)")
 		return val.Value
 	}
 	return normalizeScalar(resolved)

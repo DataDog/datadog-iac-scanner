@@ -487,7 +487,7 @@ func getInputVariables(
 		if err != nil {
 			// Non-fatal: a sibling may be unreadable (broken symlink, partial
 			// MemFS push) or invalid HCL (testdata). Match getDataSourcePolicy.
-			contextLogger.Debug().Err(err).Msgf("Skipping default values and locals from %s", tfFile)
+			contextLogger.Debug().Err(logger.RedactError(err)).Msgf("Skipping default values and locals from %s", tfFile)
 			continue
 		}
 		mergeMaps(variablesMap, vars)
@@ -501,7 +501,7 @@ func getInputVariables(
 			if errors.Is(errInput, tfmodules.ErrSkippedLinkPlaceholder) {
 				event = contextLogger.Debug()
 			}
-			event.Err(errInput).Msgf("Skipping values from %s", tfVarsFile)
+			event.Err(logger.RedactError(errInput)).Msgf("Skipping values from %s", tfVarsFile)
 			continue
 		}
 		mergeMaps(variablesMap, vars)
@@ -525,7 +525,7 @@ func getInputVariables(
 				if errors.Is(errInput, tfmodules.ErrSkippedLinkPlaceholder) {
 					event = contextLogger.Debug()
 				}
-				event.Err(errInput).Msgf("Error getting values from %s", terraformVarsPath)
+				event.Err(logger.RedactError(errInput)).Msgf("Error getting values from %s", terraformVarsPath)
 			} else {
 				mergeMaps(variablesMap, vars)
 			}
