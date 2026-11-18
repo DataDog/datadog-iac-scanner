@@ -691,10 +691,12 @@ func moduleAttributionKey(resourceType string, definitionLine, definitionColumn 
 	return resourceType + "." + strconv.Itoa(definitionLine) + "." + strconv.Itoa(definitionColumn)
 }
 
+const defaultModuleAttributionKey = "*"
+
 // moduleAttributionForResource returns the attribution of the resource the
-// finding was raised on, with the control of the flagged line, its call site
-// narrowed to the argument setting that line when one does, and its code
-// location narrowed to the flagged region inside the module.
+// finding was raised on, with the control of the flagged line and code
+// location narrowed to the finding. External legacy files also carry a
+// default attribution for findings on blocks without resource attribution.
 func moduleAttributionForResource(
 	attrs map[string]*model.ModuleAttribution, v *model.Vulnerability,
 ) *model.ModuleAttribution {
@@ -715,7 +717,16 @@ func moduleAttributionForResource(
 		}
 	}
 	if !ok {
-		return nil
+		attr, ok = attrs[defaultModuleAttributionKey]
+		if !ok {
+			return nil
+		}
+		clone := cloneModuleAttribution(attr)
+		if clone == nil {
+			return nil
+		}
+		narrowCodeLocation(&clone.ModuleCodeLocation, v)
+		return clone
 	}
 	return findingAttribution(attr, v)
 }

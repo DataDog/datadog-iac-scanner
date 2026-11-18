@@ -115,6 +115,48 @@ resource "aws_s3_bucket" "caller" {}
 	require.Equal(t, []string{"work/repo/main.tf|", "work2/x/main.tf|"}, got)
 }
 
+func TestTerraformLayoutExcludesExternalPackageRootsButKeepsTargets(t *testing.T) {
+	repo := t.TempDir()
+	remoteSource := "example.com/acme/storage/aws"
+	writeTerraformTree(t, repo, map[string]string{
+		"cache/module/main.tf": `resource "aws_s3_bucket" "module" {}`,
+		"cache/orphan/main.tf": `resource "aws_s3_bucket" "orphan" {}`,
+		"stacks/a/main.tf":     `module "m" { source = "example.com/acme/storage/aws" }`,
+		"stacks/b/main.tf":     `module "m" { source = "example.com/acme/storage/aws" }`,
+	})
+	moduleDir := filepath.Join(repo, "cache", "module")
+	orphanDir := filepath.Join(repo, "cache", "orphan")
+	stackADir := filepath.Join(repo, "stacks", "a")
+	stackBDir := filepath.Join(repo, "stacks", "b")
+	files := append(parseTerraformWritten(t, filepath.Join(moduleDir, "main.tf")),
+		parseTerraformWritten(t, filepath.Join(repo, "cache", "orphan", "main.tf"))...)
+	files = append(files, parseTerraformWritten(t, filepath.Join(stackADir, "main.tf"))...)
+	files = append(files, parseTerraformWritten(t, filepath.Join(stackBDir, "main.tf"))...)
+
+	ins := newTestInspector(t, inspectorOpts{})
+	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{
+		RemoteModuleCallKey(stackADir, remoteSource, "", "m"):    {Path: moduleDir, PackageRoot: moduleDir},
+		RemoteModuleCallKey(stackBDir, remoteSource, "", "m"):    {Path: moduleDir, PackageRoot: moduleDir},
+		RemoteModuleKey(repo, "example.com/acme/orphan/aws", ""): {Path: orphanDir, PackageRoot: orphanDir},
+	})
+	layout, err := ins.terraformLayout(context.Background(), files)
+	require.NoError(t, err)
+	require.NotNil(t, layout)
+	require.Equal(t, []string{stackADir, stackBDir}, layout.Roots,
+		"only scanned repository directories are independent roots")
+
+	root := layout.Root(context.Background(), ins.buildRemoteResolver(), stackADir)
+	require.NotNil(t, root)
+	var reachedModule bool
+	for _, module := range root.Modules {
+		if filepath.Clean(module.Dir) == moduleDir {
+			reachedModule = true
+			break
+		}
+	}
+	require.True(t, reachedModule, "the referenced external package remains available as a module target")
+}
+
 type absFailFS struct{ vfs.FS }
 
 func (absFailFS) Abs(string) (string, error) { return "", errAbsBoom }

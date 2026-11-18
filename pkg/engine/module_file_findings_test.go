@@ -122,6 +122,85 @@ module "m" {
 	require.Contains(t, ids, "module.m.moved.1", "second file's block keeps a distinct index")
 }
 
+func TestInspect_ExternalModuleVariableFindingsFollowResolvedCallers(t *testing.T) {
+	repo := t.TempDir()
+	cacheDir := filepath.Join(repo, "cache", "module")
+	orphanDir := filepath.Join(repo, "cache", "orphan")
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+	require.NoError(t, os.MkdirAll(orphanDir, 0o755))
+
+	modulePath := filepath.Join(cacheDir, "variables.tf")
+	require.NoError(t, os.WriteFile(modulePath, []byte("variable \"placement_group\" {\n  default = \"group\"\n}\n"), 0o644))
+	orphanPath := filepath.Join(orphanDir, "variables.tf")
+	require.NoError(t, os.WriteFile(orphanPath, []byte("variable \"orphan\" {}\n"), 0o644))
+
+	var files model.FileMetadatas
+	files = append(files, parseTerraformWritten(t, modulePath)...)
+	files = append(files, parseTerraformWritten(t, orphanPath)...)
+	for _, env := range []string{"a", "b"} {
+		path := filepath.Join(repo, "stacks", env, "main.tf")
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("module \"module\" {\n  source = \"../../cache/module\"\n}\n"), 0o644))
+		files = append(files, parseTerraformWritten(t, path)...)
+	}
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "variable_without_description", Content: variableWithoutDescriptionRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "variable-rule", "platform": "Terraform"}, Aggregation: 1,
+		}},
+		repoPath: repo, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	ins.SetExternalModulePaths([]string{filepath.Join(repo, "cache")})
+	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{
+		RemoteModuleKey(filepath.Join(repo, "stacks", "a"), "../../cache/module", ""): {
+			Path: cacheDir, PackageRoot: filepath.Dir(cacheDir),
+		},
+		RemoteModuleKey(filepath.Join(repo, "stacks", "b"), "../../cache/module", ""): {
+			Path: cacheDir, PackageRoot: filepath.Dir(cacheDir),
+		},
+		RemoteModuleKey(filepath.Join(repo, "stacks", "a"), "../../cache/orphan", ""): {
+			Path: orphanDir, PackageRoot: filepath.Dir(orphanDir),
+		},
+	})
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 2, "the written module finding is reported through each resolved call, and the orphan is dropped")
+	callers := map[string]bool{}
+	for i := range vulns {
+		require.Equal(t, "placement_group", vulns[i].ResourceName)
+		require.NotNil(t, vulns[i].ModuleAttribution)
+		callers[vulns[i].ModuleAttribution.CallSite.Filename] = true
+	}
+	require.Contains(t, callers, "stacks/a/main.tf")
+	require.Contains(t, callers, "stacks/b/main.tf")
+
+	routing := newFindingRouting(files, repo)
+	nestedExternal := model.Vulnerability{
+		FileName: modulePath,
+		ModuleAttribution: &model.ModuleAttribution{
+			CallSite: model.SourceLocation{Filename: "cache/module/variables.tf"},
+		},
+	}
+	require.Empty(t, routing.route(context.Background(), ins, []model.Vulnerability{nestedExternal}),
+		"a call site in an external module is not a scanned-repository caller")
+	validCall := model.Vulnerability{
+		FileName: modulePath,
+		ModuleAttribution: &model.ModuleAttribution{
+			CallSite: model.SourceLocation{Filename: vulns[0].ModuleAttribution.CallSite.Filename},
+		},
+	}
+	require.Len(t, routing.route(context.Background(), ins, []model.Vulnerability{validCall}), 1,
+		"a finding with a scanned repository caller remains attributable")
+	rootPath := filepath.Join(repo, "stacks", "a", "main.tf")
+	rootFinding := model.Vulnerability{FileName: rootPath}
+	require.Equal(t, []model.Vulnerability{rootFinding},
+		routing.route(context.Background(), ins, []model.Vulnerability{rootFinding}),
+		"non-external findings without module attribution remain untouched")
+}
+
 func TestLegacyModuleBlockIndexPreservesPerFileAttributions(t *testing.T) {
 	repo := t.TempDir()
 	callFile := filepath.Join(repo, "main.tf")

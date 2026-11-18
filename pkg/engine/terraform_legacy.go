@@ -33,8 +33,9 @@ const contractLegacy = "legacy"
 // documents, which rules may print in their messages.
 // legacyFileKey is the key of a document naming its file.
 const (
-	legacyFileKey = "file"
-	legacyIDKey   = "id"
+	legacyFileKey      = "file"
+	legacyIDKey        = "id"
+	legacyRootScopeKey = "_dd_tf_root_scope"
 )
 
 const legacyUnknown = "${unknown}"
@@ -124,13 +125,14 @@ func (c *Inspector) evalLegacyWrittenDocuments(
 ) ([]model.Vulnerability, error) {
 	written := c.terraformFiles(files)
 	docs := c.addWrittenSections(nil, nil, written, false, nil)
-	return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, files)
+	scopeLegacyDocuments(docs, written)
+	return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, files, nil)
 }
 
 // evalLegacyDocuments runs queries on the legacy documents.
 func (c *Inspector) evalLegacyDocuments(
 	ctx context.Context, scanID string, files model.FileMetadatas, queries []model.QueryMetadata,
-	docs []model.Document, allFiles model.FileMetadatas,
+	docs []model.Document, allFiles model.FileMetadatas, moduleFiles map[string]*moduleFileCalls,
 ) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	filesMap := allFiles.ToMap()
@@ -155,6 +157,7 @@ func (c *Inspector) evalLegacyDocuments(
 	run.baseStores, run.baseDataHashes = baseStores, baseDataHashes
 	run.sharedQueries = sharedQueries
 	run.routing = newFindingRouting(files, c.repoPath)
+	run.routing.moduleFiles = moduleFiles
 	vulns, err := c.evaluate(ctx, run, payloads)
 	if err != nil {
 		return nil, err
@@ -223,6 +226,7 @@ func (c *Inspector) inspectTerraformLegacyStream(
 		base: layout.Base, chainBase: chainBase, opts: opts, written: written,
 		byDir: writtenByDir(written), instanceID: instanceID, lookup: lookup,
 	}
+	built.moduleCalls = newModuleCallIndex(written, c.isModulePackageFile)
 	modeled, asWritten := legacyModeledRoots(layout.Roots, written, b.byDir, targets)
 	if err := layout.EachRoot(ctx, resolver, modeled, func(root *tfmodel.Root) error {
 		c.takeLegacyRoot(built, &b, root)
@@ -240,7 +244,30 @@ func (c *Inspector) inspectTerraformLegacyStream(
 	// Plan JSON keeps its written document for legacy rules (see takeLegacyRoot);
 	// modeling plans here would cover those paths and drop the parser shape.
 	docs := c.addWrittenSections(built.docs, built.covered, written, true, asWritten)
-	return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, built.files)
+	scopeLegacyDocuments(docs, written)
+	return c.evalLegacyDocuments(ctx, scanID, files, queries, docs, built.files,
+		built.moduleCalls.fileCalls())
+}
+
+func scopeLegacyDocuments(docs []model.Document, written map[string]*model.FileMetadata) {
+	for _, doc := range docs {
+		if _, ok := doc[legacyRootScopeKey]; ok {
+			continue
+		}
+		file, _ := doc[legacyFileKey].(string)
+		if file == "" {
+			continue
+		}
+		file = filepath.Clean(file)
+		scope := ""
+		meta := written[file]
+		if (meta != nil && meta.Kind == model.KindTerraformPlan) || isTFVarsFile(file) {
+			scope = file
+		} else {
+			scope = filepath.Dir(file)
+		}
+		doc[legacyRootScopeKey] = filepath.Clean(scope)
+	}
 }
 
 // legacyModeledRoots splits roots into the ones the legacy documents need
@@ -312,6 +339,7 @@ type legacyBuild struct {
 	files               model.FileMetadatas
 	covered             []*project.LegacyDoc
 	othersReadDocuments bool
+	moduleCalls         *moduleCallIndex
 }
 
 // legacyRootBuild is what turning one root into legacy documents needs.
@@ -336,20 +364,21 @@ func (c *Inspector) takeLegacyRoot(built *legacyBuild, b *legacyRootBuild, root 
 	if root == nil {
 		return
 	}
-	// Attribution caches retain root evaluation state and must not outlive it.
+	// Attribution caches contain HCL nodes and module scopes, so keep one only
+	// while this root is being converted into detached model attributions.
 	attribution := &terraformAttribution{lookup: b.lookup, cache: newModuleAttributionCache()}
+	built.moduleCalls.recordModules(root.Modules, c.repoPath, b.chainBase, attribution)
 	one := &tfmodel.Scan{Base: b.base, Roots: []*tfmodel.Root{root}}
 	part := project.LegacyDocs(one.Roots, b.opts)
 	part = slices.DeleteFunc(part, func(d *project.LegacyDoc) bool {
-		if d.Module == nil && c.isModulePackageFile(d.Path) {
-			return true
-		}
 		f := b.written[d.Path]
 		return f != nil && f.Kind == model.KindTerraformPlan
 	})
 	part = addModuleSectionsIndexed(part, one, b.written, b.byDir, b.instanceID)
+	scope := filepath.Clean(root.Dir)
 	moduleBlocks := legacyModuleBlockIndex{}
 	for _, d := range part {
+		d.Doc[legacyRootScopeKey] = scope
 		built.docs = append(built.docs, d.Doc)
 		file := b.written[d.Path]
 		copyWrittenSections(d.Doc, file)
@@ -466,6 +495,12 @@ func (c *Inspector) legacyModuleFile(
 	}
 	if written.TerraformScope != nil {
 		f.TerraformScope.UnlabeledIndex = written.TerraformScope.UnlabeledIndex
+	}
+	if c.isModulePackageFile(d.Path) && len(m.Chain) > 0 {
+		attribution.mu.Lock()
+		f.ModuleAttributions[defaultModuleAttributionKey] = callAttribution(
+			m.Chain, d.Path, c.repoPath, attribution.lookup, attribution.cache)
+		attribution.mu.Unlock()
 	}
 	for _, b := range blocks {
 		r, kind := resolvedBlock(b, b.Instances[0], m, d.Path)
@@ -587,6 +622,7 @@ func (c *Inspector) addWrittenSections(
 		switch {
 		case f.Kind == model.KindTerraformPlan || !modeled || asWritten[path]:
 			maps.Copy(doc, f.Document)
+			delete(doc, legacyRootScopeKey)
 		case f.Kind == model.KindTerraform:
 			copyWrittenSections(doc, f)
 		default:

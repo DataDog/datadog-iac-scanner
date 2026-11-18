@@ -108,7 +108,8 @@ func (s *findingSet) findings() []model.Vulnerability {
 // documents into the findings of the scan: each finding of a module file is
 // filtered by the caller files whose filters apply to it.
 type findingRouting struct {
-	callers map[string]*model.FileMetadata
+	callers     map[string]*model.FileMetadata
+	moduleFiles map[string]*moduleFileCalls
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
@@ -136,5 +137,7 @@ func (r *findingRouting) route(
 	if r == nil {
 		return vulns
 	}
+	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
+	vulns = dropUnattributedExternalFindings(vulns, r.callers, c.isModulePackageFile, c.isRemoteModulePackageFile)
 	return c.filterAtCallSites(ctx, vulns, r.callers)
 }

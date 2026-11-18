@@ -207,24 +207,49 @@ resource "aws_s3_bucket" "this" {
 	queries := []model.QueryMetadata{{
 		Query: "acl_rule", Content: displayNameAclRule, InputData: "{}", Platform: model.TerraformPlatform,
 		Metadata: map[string]interface{}{"id": "acl-rule", "platform": model.TerraformPlatform}, Aggregation: 1,
+	}, {
+		Query: "variable_without_description", Content: variableWithoutDescriptionRule, InputData: "{}", Platform: model.TerraformPlatform,
+		Metadata: map[string]interface{}{"id": "variable-rule", "platform": model.TerraformPlatform}, Aggregation: 1,
 	}}
 	ins := newTestInspector(t, inspectorOpts{
 		queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder,
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
+	ins.SetExternalModulePaths([]string{modDir})
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
-	require.Len(t, vulns, 1)
-	require.Equal(t, model.TerraformPlatform, vulns[0].Platform)
+	require.Len(t, vulns, 2)
 	legacyChain := `stack/main.tf|module.bucket["` + key + `"]`
-	require.Equal(t, legacyChain, vulns[0].ModuleCallChain)
+	var resourceFinding, variableFinding *model.Vulnerability
+	for i := range vulns {
+		switch vulns[i].QueryID {
+		case "acl-rule":
+			resourceFinding = &vulns[i]
+		case "variable-rule":
+			variableFinding = &vulns[i]
+		}
+	}
+	require.NotNil(t, resourceFinding)
+	require.Equal(t, model.TerraformPlatform, resourceFinding.Platform)
+	require.Equal(t, legacyChain, resourceFinding.ModuleCallChain)
+	require.NotNil(t, variableFinding)
+	require.Equal(t, legacyChain, variableFinding.ModuleCallChain,
+		"written module findings use legacy escaped call-chain spelling")
+	require.NotNil(t, variableFinding.ModuleAttribution)
 
 	summary := model.CreateSummary(context.Background(), model.Counters{}, vulns, "test", nil, root, model.SCIInfo{})
-	require.Len(t, summary.Queries, 1)
-	require.Len(t, summary.Queries[0].Files, 1)
-	fingerprintPath, err := filepath.Rel(root, vulns[0].FileName)
+	require.Len(t, summary.Queries, 2)
+	var aclSummary *model.QueryResult
+	for i := range summary.Queries {
+		if summary.Queries[i].QueryID == "acl-rule" {
+			aclSummary = &summary.Queries[i]
+		}
+	}
+	require.NotNil(t, aclSummary)
+	require.Len(t, aclSummary.Files, 1)
+	fingerprintPath, err := filepath.Rel(root, resourceFinding.FileName)
 	require.NoError(t, err)
-	want := model.GetDatadogFingerprintHash(model.SCIInfo{}, fingerprintPath, vulns[0].Platform,
-		vulns[0].ResourceType, vulns[0].ResourceName, vulns[0].QueryID, "", legacyChain)
-	require.Equal(t, want, summary.Queries[0].Files[0].Fingerprint)
+	want := model.GetDatadogFingerprintHash(model.SCIInfo{}, fingerprintPath, resourceFinding.Platform,
+		resourceFinding.ResourceType, resourceFinding.ResourceName, resourceFinding.QueryID, "", legacyChain)
+	require.Equal(t, want, aclSummary.Files[0].Fingerprint)
 }

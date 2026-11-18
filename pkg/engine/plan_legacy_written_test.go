@@ -55,6 +55,7 @@ func TestLegacyPlanUsesWrittenDocument(t *testing.T) {
 	require.Len(t, scan.Roots, 1)
 
 	writtenDoc := model.Document{
+		legacyRootScopeKey: "forged-scope",
 		"resource": map[string]any{
 			"alicloud_kms_key": map[string]any{
 				"key": map[string]any{"status": "Enabled"},
@@ -90,6 +91,8 @@ func TestLegacyPlanUsesWrittenDocument(t *testing.T) {
 
 	docs := ins.addWrittenSections(built.docs, built.covered, written, true, nil)
 	require.Len(t, docs, 1)
+	scopeLegacyDocuments(docs, written)
+	require.Equal(t, filepath.Clean(planPath), docs[0][legacyRootScopeKey])
 	res := docs[0]["resource"].(map[string]any)
 	key := res["alicloud_kms_key"].(map[string]any)["key"].(map[string]any)
 	_, hasIsEnabled := key["is_enabled"]

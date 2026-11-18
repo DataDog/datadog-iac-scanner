@@ -148,6 +148,12 @@ func (c *Inspector) terraformLayout(ctx context.Context, files model.FileMetadat
 		contextLogger.Warn().Err(err).Msg("Terraform layout could not be loaded; legacy rules fall back to written documents")
 		return nil, err
 	}
+	// Remote and external module directories stay in the layout as reachable
+	// module targets, but only scanned-repository directories are scan roots.
+	// Modeling a package directory by itself can report findings without a
+	// scanned caller and duplicates work already done when a repository root
+	// evaluates the package.
+	layout.Roots = slices.DeleteFunc(layout.Roots, c.isRemoteModulePackageFile)
 	return layout, nil
 }
 
@@ -242,6 +248,7 @@ func (s *terraformStream) initLegacy() {
 		written: s.written, byDir: writtenByDir(s.written), instanceID: instanceID,
 		lookup: s.c.buildModuleProvenanceLookup(),
 	}
+	s.legacyBuilt.moduleCalls = newModuleCallIndex(s.written, s.c.isModulePackageFile)
 }
 
 func (s *terraformStream) execute(ctx context.Context) ([]model.Vulnerability, error) {
@@ -372,7 +379,9 @@ func (s *terraformStream) finish(ctx context.Context, vulns []model.Vulnerabilit
 		return vulns, nil
 	}
 	docs := s.c.addWrittenSections(s.legacyBuilt.docs, s.legacyBuilt.covered, s.written, true, nil)
-	legacyVulns, err := s.c.evalLegacyDocuments(ctx, s.scanID, s.files, s.legacy, docs, s.legacyBuilt.files)
+	scopeLegacyDocuments(docs, s.written)
+	legacyVulns, err := s.c.evalLegacyDocuments(ctx, s.scanID, s.files, s.legacy, docs, s.legacyBuilt.files,
+		s.legacyBuilt.moduleCalls.fileCalls())
 	if err != nil {
 		return nil, err
 	}
