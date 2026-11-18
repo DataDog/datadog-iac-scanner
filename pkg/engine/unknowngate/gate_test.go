@@ -160,6 +160,37 @@ DatadogPolicy contains {"rule": "port", "name": name} if {
 	assert.True(t, got["port/sg"].Uncertain)
 }
 
+func TestCountComparisonExpansionFindings(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		expr string
+		want bool
+	}{
+		{"count_greater_than_bound", "count(input.items) > 3", true},
+		{"bound_less_than_count", "3 < count(input.items)", true},
+		{"bound_less_or_equal_count", "3 <= count(input.items)", true},
+		{"count_greater_or_equal_bound", "count(input.items) >= 3", true},
+		{"count_less_than_zero", "count(input.items) < 0", false},
+		{"zero_greater_than_count", "0 > count(input.items)", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := `package datadog
+
+over if { ` + tc.expr + ` }
+DatadogPolicy contains {"rule": "count", "name": "candidate"} if { not over }
+`
+			g := newTestGate(t, testPlaceholder, src)
+			input := mustValue(t, `{"items": ["known", "${...}"]}`)
+			got := verdicts(t, g, input)["count/candidate"]
+			assert.Equal(t, tc.want, got.Uncertain)
+			if tc.want {
+				assert.Equal(t, StageSubstitution, got.Stage,
+					"a dynamic cardinality can flip the generic finding predicate")
+			}
+		})
+	}
+}
+
 // The placeholder is compared by exact match: with a per-scan nonce, the text "${...}" in an
 // input is a known value.
 func TestPlaceholderNonce(t *testing.T) {

@@ -640,22 +640,22 @@ func countCompareExpand(countVars map[ast.Var]bool, op string, left, right *ast.
 		if countLeft {
 			return n, n > 0
 		}
-		return 0, false
+		return n + 1, true
 	case ast.LessThanEq.Name:
 		if countLeft {
 			return n + 1, true
 		}
-		return 0, false
+		return n, n > 0
 	case ast.GreaterThan.Name:
-		if !countLeft {
-			return n, n > 0
-		}
-		return 0, false
-	case ast.GreaterThanEq.Name:
-		if !countLeft {
+		if countLeft {
 			return n + 1, true
 		}
-		return 0, false
+		return n, n > 0
+	case ast.GreaterThanEq.Name:
+		if countLeft {
+			return n, n > 0
+		}
+		return n + 1, true
 	}
 	return 0, false
 }
