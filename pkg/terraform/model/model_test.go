@@ -122,6 +122,14 @@ resource "aws_instance" "map_values" {
   for_each = { dev = var.u, prod = var.u }
   ami      = each.key
 }
+resource "aws_instance" "special_keys" {
+  for_each = {
+    "$${literal}" = "dollar"
+    "%%{literal}" = "percent"
+  }
+  ami           = each.key
+  instance_type = each.value
+}
 resource "aws_instance" "variable_keys" {
   for_each = var.key_map
   ami      = each.key
@@ -130,7 +138,9 @@ resource "aws_instance" "variable_keys" {
 	r := rootByID(t, s, ".")
 	require.Equal(t, []string{
 		"aws_instance.c[0]", "aws_instance.c[1]", "aws_instance.f",
-		`aws_instance.map_values["dev"]`, `aws_instance.map_values["prod"]`, "aws_instance.u", "aws_instance.variable_keys",
+		`aws_instance.map_values["dev"]`, `aws_instance.map_values["prod"]`,
+		`aws_instance.special_keys["$${literal}"]`, `aws_instance.special_keys["%%{literal}"]`,
+		"aws_instance.u", "aws_instance.variable_keys",
 	}, addresses(blocksOf(r, "resource", "aws_instance")))
 	c := blocksOf(r, "resource", "aws_instance")[0]
 	require.Equal(t, "a-1", conv(c.Instances[1].Attrs["ami"]))
@@ -147,11 +157,13 @@ resource "aws_instance" "variable_keys" {
 	u := blocksOf(r, "resource", "aws_instance")[2]
 	require.True(t, u.KeyUnknown)
 	require.True(t, u.Overridable)
-	var mapValues, variableKeys *Block
+	var mapValues, variableKeys, specialKeys *Block
 	for _, b := range blocksOf(r, "resource", "aws_instance") {
 		switch b.Name {
 		case "map_values":
 			mapValues = b
+		case "special_keys":
+			specialKeys = b
 		case "variable_keys":
 			variableKeys = b
 		}
@@ -159,6 +171,17 @@ resource "aws_instance" "variable_keys" {
 	require.NotNil(t, mapValues)
 	require.False(t, mapValues.KeyUnknown)
 	require.False(t, mapValues.Overridable, "root-input values do not make a literal object's key inventory overridable")
+	require.NotNil(t, specialKeys)
+	require.Len(t, specialKeys.Instances, 2)
+	wantSpecial := map[string]string{"${literal}": "dollar", "%{literal}": "percent"}
+	for _, inst := range specialKeys.Instances {
+		iteration := inst.Iteration["each"]
+		key := conv(iteration.GetAttr("key")).(string)
+		require.Equal(t, wantSpecial[key], conv(iteration.GetAttr("value")))
+		require.Equal(t, key, conv(inst.Attrs["ami"]))
+		require.Equal(t, wantSpecial[key], conv(inst.Attrs["instance_type"]))
+		require.Equal(t, key, conv(iterationOf(inst.Key, cty.NilVal)["each"].GetAttr("key")))
+	}
 	require.NotNil(t, variableKeys)
 	require.True(t, variableKeys.KeyUnknown)
 	require.True(t, variableKeys.Overridable, "root-input keys can change the instance inventory")

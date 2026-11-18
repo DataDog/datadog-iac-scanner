@@ -152,7 +152,7 @@ func (b *builder) resourceBlock(m *Module, sb *hclsyntax.Block, rs []*tfeval.Res
 		inst.Address = joinAddr(m.Address, address.Addr(address.Block{Kind: blk.Kind, Type: blk.Type, Name: blk.Name})+key)
 		inst.Iteration = r.Iteration
 		if inst.Iteration == nil {
-			inst.Iteration = iterationOf(key, r.Attributes["for_each"])
+			inst.Iteration = iterationOfRawKey(r.InstanceKey, r.Attributes["for_each"])
 		}
 		inst.Ranges = map[string]hcl.Range{"": blk.Range}
 		inst.Attrs = normalizeBody(r.Attributes, sb.Body, r.DynamicCounts, "", inst.Ranges, metaArgs)
@@ -178,35 +178,59 @@ func (b *builder) resourceBlock(m *Module, sb *hclsyntax.Block, rs []*tfeval.Res
 	return blk
 }
 
-// iterationOf rebuilds count or each for an instance tfeval did not keep the
-// iteration of. forEach is the instance's own element of for_each.
+// iterationOf rebuilds count or each for module instances represented only by
+// their canonical address suffix. Resource instances use iterationOfRawKey so
+// HCL quoting is never parsed to recover their raw key.
 func iterationOf(key string, forEach cty.Value) map[string]cty.Value {
 	if key == "" {
 		return nil
 	}
-	inner := strings.TrimSuffix(strings.TrimPrefix(key, "["), "]")
-	if n, err := strconv.Atoi(inner); err == nil {
-		return map[string]cty.Value{"count": cty.ObjectVal(map[string]cty.Value{"index": cty.NumberIntVal(int64(n))})}
-	}
-	k, err := strconv.Unquote(inner)
-	if err != nil {
+	traversal, diags := hclsyntax.ParseTraversalAbs([]byte("x"+key), "", hcl.InitialPos)
+	if diags.HasErrors() || len(traversal) != 2 {
 		return nil
 	}
+	index, ok := traversal[1].(hcl.TraverseIndex)
+	if !ok {
+		return nil
+	}
+	return iterationOfRawKey(index.Key, forEach)
+}
+
+// iterationOfRawKey rebuilds count or each from the original cty instance key.
+// forEach is the instance's own element of for_each.
+func iterationOfRawKey(key, forEach cty.Value) map[string]cty.Value {
+	if key == cty.NilVal {
+		return nil
+	}
+	key, _ = key.Unmark()
+	if key.IsNull() || !key.IsWhollyKnown() {
+		return nil
+	}
+	if key.Type() == cty.Number {
+		return map[string]cty.Value{"count": cty.ObjectVal(map[string]cty.Value{"index": key})}
+	}
+	if key.Type() != cty.String {
+		return nil
+	}
+
+	k := key.AsString()
 	each := cty.DynamicVal
 	if forEach != cty.NilVal && forEach.IsWhollyKnown() && !forEach.IsNull() {
 		ty := forEach.Type()
 		switch {
-		case ty.IsMapType() || ty.IsObjectType():
-			if forEach.Type().IsObjectType() && forEach.Type().HasAttribute(k) {
+		case ty.IsObjectType():
+			if ty.HasAttribute(k) {
 				each = forEach.GetAttr(k)
-			} else if ty.IsMapType() && forEach.HasIndex(cty.StringVal(k)).True() {
-				each = forEach.Index(cty.StringVal(k))
+			}
+		case ty.IsMapType():
+			if forEach.HasIndex(key).True() {
+				each = forEach.Index(key)
 			}
 		case ty.IsSetType():
-			each = cty.StringVal(k)
+			each = key
 		}
 	}
-	return map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{"key": cty.StringVal(k), "value": each})}
+	return map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{"key": key, "value": each})}
 }
 
 // expansionArgs are the count and for_each of attrs, nil when there is
