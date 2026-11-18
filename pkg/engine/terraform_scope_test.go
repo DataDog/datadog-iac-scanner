@@ -34,6 +34,96 @@ func TestRepoRelativeDirNeverEscapesTheRepository(t *testing.T) {
 	require.Equal(t, "stack", repoRelativeDir("stack", "", nil))
 }
 
+func TestExternalRelativeDirIndexedMatchesLinear(t *testing.T) {
+	tests := []struct {
+		name  string
+		abs   string
+		roots map[string]bool
+	}{
+		{
+			name:  "nearest nested absolute root",
+			abs:   "/tmp/cache/module/child",
+			roots: map[string]bool{"/tmp/cache": true, "/tmp/cache/module": true},
+		},
+		{
+			name:  "exact absolute root",
+			abs:   "/tmp/cache/module",
+			roots: map[string]bool{"/tmp/cache/module/": true},
+		},
+		{
+			name:  "file path ancestor remains a match",
+			abs:   "/tmp/cache/module/main.tf/child",
+			roots: map[string]bool{"/tmp/cache/module/main.tf": true},
+		},
+		{
+			name:  "file path is not its containing directory",
+			abs:   "/tmp/cache/module",
+			roots: map[string]bool{"/tmp/cache/module/main.tf": true},
+		},
+		{
+			name:  "sibling prefix",
+			abs:   "/tmp/cache/module2/child",
+			roots: map[string]bool{"/tmp/cache/module": true},
+		},
+		{
+			name:  "noncanonical absolute root",
+			abs:   "/tmp/cache/module/child",
+			roots: map[string]bool{"/tmp/cache/other/../module/": true},
+		},
+		{
+			name:  "relative paths use fallback",
+			abs:   "cache/module/child",
+			roots: map[string]bool{"cache/module": true},
+		},
+		{
+			name:  "Windows paths use fallback",
+			abs:   `C:/cache/module/child`,
+			roots: map[string]bool{`C:/cache/module`: true},
+		},
+		{
+			name:  "different Windows volumes",
+			abs:   `D:/cache/module/child`,
+			roots: map[string]bool{`C:/cache/module`: true},
+		},
+		{
+			name: "unmatched absolute roots",
+			abs:  "/tmp/other/module",
+			roots: map[string]bool{
+				"/tmp/cache-a/module": true,
+				"/tmp/cache-b/module": true,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want, wantOK := externalRelativeDir(tt.abs, tt.roots)
+			got, gotOK := externalRelativeDirIndexed(tt.abs, newExternalPathRootIndex(tt.roots))
+			require.Equal(t, wantOK, gotOK)
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+func TestRepoRelativeDirIndexedMatchesLinear(t *testing.T) {
+	tests := []struct {
+		name, dir, repo string
+		roots           map[string]bool
+	}{
+		{name: "inside repository", dir: "/repo/stack/module", repo: "/repo"},
+		{name: "nearest external root", dir: "/tmp/cache/module/child", repo: "/repo", roots: map[string]bool{"/tmp/cache": true, "/tmp/cache/module": true}},
+		{name: "unmatched sibling", dir: "/tmp/cache2/module", repo: "/repo", roots: map[string]bool{"/tmp/cache": true}},
+		{name: "relative repository fallback", dir: "cache/module/child", repo: "repo", roots: map[string]bool{"cache/module": true}},
+		{name: "content push paths", dir: "stack/module", repo: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := repoRelativeDir(tt.dir, tt.repo, tt.roots)
+			got := repoRelativeDirIndexed(tt.dir, tt.repo, newExternalPathRootIndex(tt.roots))
+			require.Equal(t, want, got)
+		})
+	}
+}
+
 func TestDocumentBlocks(t *testing.T) {
 	doc := model.Document{
 		"resource": model.Document{

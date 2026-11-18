@@ -25,8 +25,9 @@ import (
 // builder runs after the documents may have been released, so everything it
 // needs from the document is extracted here.
 func (c *Inspector) stampTerraformScopes(files model.FileMetadatas) {
+	externalRootIndex := newExternalPathRootIndex(c.externalPathRoots)
 	relDir := func(dir string) string {
-		return repoRelativeDir(dir, c.repoPath, c.externalPathRoots)
+		return repoRelativeDirIndexed(dir, c.repoPath, externalRootIndex)
 	}
 	for _, f := range files {
 		if f == nil {
@@ -133,13 +134,45 @@ func isTFVarsFile(p string) bool {
 // module attribution names its files, so two different modules never share a
 // root name; and it never returns a ../-prefixed path.
 func repoRelativeDir(dir, repoPath string, externalRoots map[string]bool) string {
+	return repoRelativeDirWithIndex(dir, repoPath, externalRoots, nil)
+}
+
+// externalPathRootIndex keeps native absolute roots in a path-component index
+// so a lookup checks only the target's ancestors. Other path forms retain the
+// filepath.Rel fallback used by externalRelativeDir.
+type externalPathRootIndex struct {
+	absRoots      map[string]struct{}
+	fallbackRoots map[string]bool
+}
+
+func newExternalPathRootIndex(roots map[string]bool) externalPathRootIndex {
+	index := externalPathRootIndex{}
+	if len(roots) == 0 {
+		return index
+	}
+	if filepath.Separator == '/' {
+		index.absRoots = make(map[string]struct{}, len(roots))
+	}
+	index.fallbackRoots = make(map[string]bool)
+	for root := range roots {
+		cleaned := path.Clean(filepath.ToSlash(root))
+		if filepath.Separator == '/' && filepath.IsAbs(cleaned) && filepath.VolumeName(cleaned) == "" {
+			index.absRoots[cleaned] = struct{}{}
+		} else {
+			index.fallbackRoots[cleaned] = true
+		}
+	}
+	return index
+}
+
+func repoRelativeDirIndexed(dir, repoPath string, index externalPathRootIndex) string {
+	return repoRelativeDirWithIndex(dir, repoPath, nil, &index)
+}
+
+func repoRelativeDirWithIndex(dir, repoPath string, externalRoots map[string]bool, index *externalPathRootIndex) string {
 	if repoPath == "" {
-		// No repo root in content-push mode: the pushed path's shape is
-		// self-locating (see repoRelativeFile).
 		return path.Clean(filepath.ToSlash(dir))
 	}
-	// Both sides are slashed so a Windows path rooted without a volume ("/repo")
-	// compares like any other; filepath.Rel still returns platform separators.
 	absDir := path.Clean(filepath.ToSlash(absPath(dir, repoPath)))
 	root := path.Clean(filepath.ToSlash(repoPath))
 	if rel, err := filepath.Rel(root, absDir); err == nil {
@@ -148,10 +181,43 @@ func repoRelativeDir(dir, repoPath string, externalRoots map[string]bool) string
 			return rel
 		}
 	}
-	if base, ok := externalRelativeDir(absDir, externalRoots); ok {
+	base, ok := "", false
+	if index == nil {
+		base, ok = externalRelativeDir(absDir, externalRoots)
+	} else {
+		base, ok = externalRelativeDirIndexed(absDir, *index)
+	}
+	if ok {
 		return base
 	}
 	return path.Base(absDir)
+}
+
+func externalRelativeDirIndexed(abs string, index externalPathRootIndex) (string, bool) {
+	if filepath.Separator != '/' || !filepath.IsAbs(abs) || filepath.VolumeName(abs) != "" || len(index.absRoots) == 0 {
+		return externalRelativeDir(abs, index.fallbackRoots)
+	}
+	best := ""
+	for ancestor := path.Clean(abs); ; {
+		if _, ok := index.absRoots[ancestor]; ok {
+			best = ancestor
+			break
+		}
+		parent := path.Dir(ancestor)
+		if parent == ancestor {
+			break
+		}
+		ancestor = parent
+	}
+	if best != "" {
+		rel, err := filepath.Rel(best, abs)
+		if err == nil {
+			return path.Base(best) + "/" + filepath.ToSlash(rel), true
+		}
+	}
+	// Nonnative roots keep the old path behavior. Native absolute roots cannot
+	// contain abs unless one appeared in its ancestors.
+	return externalRelativeDir(abs, index.fallbackRoots)
 }
 
 // externalRelativeDir names abs relative to the innermost external root that
