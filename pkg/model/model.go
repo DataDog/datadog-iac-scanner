@@ -794,10 +794,6 @@ type Vulnerability struct {
 	// (FileName) is never rewritten, so reports that read the file from disk
 	// keep working.
 	OrderPath string `json:"-"`
-	// IdentityKey tells apart several findings of a rule on one Terraform
-	// block (Terraform rule contract: the result's path and key); folded into the
-	// fingerprint.
-	IdentityKey string `json:"identityKey,omitempty"`
 	// RelatedLocations are the places a finding cites as evidence.
 	RelatedLocations []SourceLocation `json:"relatedLocations,omitempty"`
 }

@@ -10,6 +10,8 @@
 package model
 
 import (
+	"strconv"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -207,6 +209,30 @@ func (b *Block) Address() string {
 		return b.Instances[0].Address
 	}
 	return joinAddr(b.Module.Address, blockAddr(b))
+}
+
+// LegacyName returns the block name with the instance suffix historically
+// used in legacy document keys. Canonical addresses use HCL escaping in
+// Instance.Key; legacy document keys use Go quoting of the raw each.key.
+func (b *Block) LegacyName(inst *Instance) string {
+	if b == nil {
+		return ""
+	}
+	name := b.Name
+	if inst == nil {
+		return name
+	}
+	suffix := inst.Key
+	if each, ok := inst.Iteration["each"]; ok && each != cty.NilVal && each.Type().IsObjectType() && each.Type().HasAttribute("key") {
+		rawKey := each.GetAttr("key")
+		if rawKey != cty.NilVal {
+			key, _ := rawKey.Unmark()
+			if key.IsWhollyKnown() && !key.IsNull() && key.Type() == cty.String {
+				suffix = "[" + strconv.Quote(key.AsString()) + "]"
+			}
+		}
+	}
+	return name + suffix
 }
 
 // KindLocals is the kind of a locals block, which Terraform does not address

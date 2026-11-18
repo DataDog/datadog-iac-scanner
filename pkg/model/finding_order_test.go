@@ -154,7 +154,6 @@ func mutationTable() []func(v *Vulnerability) {
 		func(v *Vulnerability) {
 			v.ModuleAttribution = &ModuleAttribution{ModulePath: []ModulePathHop{{Name: "a"}, {Name: "c"}}}
 		},
-		func(v *Vulnerability) { v.IdentityKey = "ingress[0]" },
 		func(v *Vulnerability) { v.RelatedLocations = []SourceLocation{{Filename: "kms.tf", LineStart: 3}} },
 		func(v *Vulnerability) { v.RootModule = "stack" },
 		func(v *Vulnerability) { v.ResourceID = "aws_s3_bucket.b[0]" },

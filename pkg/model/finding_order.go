@@ -99,7 +99,6 @@ func compareReported(a, b *Vulnerability) int {
 		cmp.Compare(a.SuppressionKind, b.SuppressionKind),
 		cmp.Compare(a.SuppressionJustification, b.SuppressionJustification),
 		compareAttribution(a.ModuleAttribution, b.ModuleAttribution),
-		cmp.Compare(a.IdentityKey, b.IdentityKey),
 		slices.CompareFunc(a.RelatedLocations, b.RelatedLocations, compareSourceLocation),
 		cmp.Compare(a.RootModule, b.RootModule),
 		cmp.Compare(a.ResourceID, b.ResourceID),

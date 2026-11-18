@@ -97,10 +97,10 @@ func TestInspect_DocumentReleaseKeepsFindingsIdentical(t *testing.T) {
 		require.Equal(t, k.Line, r.Line, "same line either way")
 		require.Equal(t, k.ResourceType, r.ResourceType)
 		require.Equal(t, k.ResourceName, r.ResourceName)
+		require.Equal(t, k.ResourceID, r.ResourceID, "same canonical resource address either way")
+		require.Equal(t, k.RootModule, r.RootModule, "same root context either way")
 		require.NotEmpty(t, r.SearchKey, "the search key is populated on this path")
 		require.Equal(t, k.SearchKey, r.SearchKey, "same search key either way")
-		require.NotEmpty(t, r.IdentityKey, "the rule's path makes the identity key non-empty")
-		require.Equal(t, k.IdentityKey, r.IdentityKey, "same identity key either way")
 		require.Equal(t, k.ModuleCallChain, r.ModuleCallChain, "same module call chain either way")
 		require.NotNil(t, r.ModuleAttribution, "the finding is attributed to the root call")
 		require.Equal(t, k.ModuleAttribution.CallSite, r.ModuleAttribution.CallSite,

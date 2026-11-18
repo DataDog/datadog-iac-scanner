@@ -49,9 +49,14 @@ module "m" {
   source = "./mod"
   count  = 2
 }
+
+variable "name" { default = "root" }
+output "name" { value = var.name }
+provider "aws" { region = "us-east-1" }
 `
 
 const resultsModule = `resource "aws_s3_bucket" "b" {
+  count  = 2
   bucket = "b"
   acl    = "public-read"
 }
@@ -127,18 +132,18 @@ func TestTerraformBlockResult(t *testing.T) {
 	input, files := terraformResultsInput(t, map[string]string{"main.tf": resultsMain, "mod/main.tf": resultsModule})
 
 	tests := []struct {
-		name, result           string
-		line, remediation      int
-		searchKey, identityKey string
+		name, result      string
+		line, remediation int
+		searchKey         string
 	}{
-		{"block header", `{"_dd_id": "./aws_security_group.sg", "path": []}`, 1, 12, "aws_security_group.sg", ""},
-		{"attribute", `{"_dd_id": "./aws_security_group.sg", "path": ["name"]}`, 2, 2, "aws_security_group.sg.name", `[["name"],""]`},
+		{"block header", `{"_dd_id": "./aws_security_group.sg", "path": []}`, 1, 12, "aws_security_group.sg"},
+		{"attribute", `{"_dd_id": "./aws_security_group.sg", "path": ["name"]}`, 2, 2, "aws_security_group.sg.name"},
 		{"nested block element", `{"_dd_id": "./aws_security_group.sg", "path": ["ingress", 1, "from_port"]}`,
-			10, 10, "aws_security_group.sg.ingress[1].from_port", `[["ingress","1","from_port"],""]`},
+			10, 10, "aws_security_group.sg.ingress[1].from_port"},
 		{"missing leaf", `{"_dd_id": "./aws_security_group.sg", "path": ["ingress", 0, "cidr_blocks"]}`,
-			4, 5, "aws_security_group.sg.ingress[0].cidr_blocks", `[["ingress","0","cidr_blocks"],""]`},
+			4, 5, "aws_security_group.sg.ingress[0].cidr_blocks"},
 		{"key on a nested block list", `{"_dd_id": "./aws_security_group.sg", "path": ["ingress"], "key": 22}`,
-			4, 5, `aws_security_group.sg.ingress["22"]`, `[["ingress"],"22"]`},
+			4, 5, `aws_security_group.sg.ingress["22"]`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -149,8 +154,9 @@ func TestTerraformBlockResult(t *testing.T) {
 			require.Equal(t, "main.tf", v.FileID)
 			require.Equal(t, "aws_security_group", v.ResourceType)
 			require.Equal(t, "sg", v.ResourceName)
+			require.Equal(t, "aws_security_group.sg", v.ResourceID)
+			require.Equal(t, ".", v.RootModule)
 			require.Equal(t, tt.searchKey, v.SearchKey)
-			require.Equal(t, tt.identityKey, v.IdentityKey)
 			require.Equal(t, "rule-id", v.QueryID)
 			require.Equal(t, model.SeverityHigh, string(v.Severity))
 			require.Equal(t, tt.line, v.VulnerabilityLocation.Start.Line, "the native detection range")
@@ -164,19 +170,39 @@ func TestTerraformBlockResult(t *testing.T) {
 			require.Empty(t, v.ModuleCallChain)
 		})
 	}
+	seenStaticKinds := map[string]bool{}
+	for id, loc := range input.projection.Blocks {
+		if loc.Block.Module.Address != "" {
+			continue
+		}
+		switch loc.Kind {
+		case address.KindVariable, address.KindOutput, address.KindProvider, address.KindModule:
+			v, _, err := decodeBlockResult(t, input, files, `{"_dd_id":"`+id+`","path":[]}`)
+			require.NoError(t, err)
+			require.Equal(t, loc.Address, v.ResourceID, id)
+			require.Equal(t, ".", v.RootModule, id)
+			seenStaticKinds[loc.Kind] = true
+		}
+	}
+	require.True(t, seenStaticKinds[address.KindVariable])
+	require.True(t, seenStaticKinds[address.KindOutput])
+	require.True(t, seenStaticKinds[address.KindProvider])
+	require.True(t, seenStaticKinds[address.KindModule])
 }
 
 func TestTerraformBlockResult_ModuleInstance(t *testing.T) {
 	input, files := terraformResultsInput(t, map[string]string{"main.tf": resultsMain, "mod/main.tf": resultsModule})
 
 	v, _, err := decodeBlockResult(t, input, files,
-		`{"_dd_id": "./module.m[1].aws_s3_bucket.b", "path": ["acl"], "evidence": [["./aws_security_group.sg", ["name"]]]}`)
+		`{"_dd_id": "./module.m[1].aws_s3_bucket.b[0]", "path": ["acl"], "evidence": [["./aws_security_group.sg", ["name"]]]}`)
 	require.NoError(t, err)
 	require.Equal(t, files["mod/main.tf"].FilePath, v.FileName)
-	require.Equal(t, 3, v.Line)
+	require.Equal(t, 4, v.Line)
 	require.Equal(t, "aws_s3_bucket", v.ResourceType)
 	require.Equal(t, "b", v.ResourceName, "no resource instance key; the module key is in ModuleCallChain")
 	require.Equal(t, "main.tf|module.m[1]", v.ModuleCallChain)
+	require.Equal(t, "module.m[1].aws_s3_bucket.b[0]", v.ResourceID)
+	require.Equal(t, ".", v.RootModule)
 	require.NotNil(t, v.ModuleAttribution)
 	require.Equal(t, "main.tf", v.ModuleAttribution.CallSite.Filename)
 	require.Equal(t, 16, v.ModuleAttribution.CallSite.LineStart, "the root call's source argument")
@@ -243,17 +269,27 @@ func TestTerraformBlockResult_SpecialModuleKeyKeepsCanonicalAddress(t *testing.T
 	canonicalModule := "module.m" + address.InstanceSuffix(cty.StringVal(key))
 	result, err := json.Marshal(map[string]interface{}{
 		"_dd_id": "./" + canonicalModule + ".aws_s3_bucket.b",
-		"path":   []string{"acl"},
+		"path":   []string{},
 	})
 	require.NoError(t, err)
 	v, _, err := decodeBlockResult(t, input, files, string(result))
 	require.NoError(t, err)
-	require.Equal(t, "main.tf|"+canonicalModule, v.ModuleCallChain)
+	legacyChain := "main.tf|" + legacyModuleAddress(canonicalModule)
+	require.Equal(t, legacyChain, v.ModuleCallChain)
+	require.Equal(t, "b", v.ResourceName)
+	require.Equal(t, canonicalModule+".aws_s3_bucket.b", v.ResourceID)
+	require.Equal(t, ".", v.RootModule)
+	summary := model.CreateSummary(context.Background(), model.Counters{}, []model.Vulnerability{*v}, "scan", nil, "/repo", model.SCIInfo{})
+	wantFingerprint := model.GetDatadogFingerprintHash(
+		model.SCIInfo{}, summary.Queries[0].Files[0].FileName, v.Platform, v.ResourceType, v.ResourceName,
+		v.QueryID, "", legacyChain,
+	)
+	require.Equal(t, wantFingerprint, summary.Queries[0].Files[0].Fingerprint)
 }
 
-// Root count and for_each instances put the instance key in ResourceName so
-// SARIF resource identity and FindingIdentity tell them apart.
-func TestTerraformBlockResult_InstanceKeyInResourceName(t *testing.T) {
+// Native reporting keeps the historical bare ResourceName while ResourceID
+// carries the canonical count or for_each address.
+func TestTerraformBlockResult_InstanceResourceID(t *testing.T) {
 	input, files := terraformResultsInput(t, map[string]string{
 		"main.tf": `
 resource "aws_db_instance" "db" {
@@ -267,27 +303,116 @@ resource "aws_s3_bucket" "b" {
   bucket   = each.key
   acl      = "public-read"
 }
+
+resource "aws_s3_bucket" "special" {
+  for_each = {
+    "$${literal}"  = "dollar"
+    "%%{template}" = "percent"
+  }
+  bucket = each.key
+  acl    = "public-read"
+}
 `,
 	})
 
 	db, _, err := decodeBlockResult(t, input, files, `{"_dd_id": "./aws_db_instance.db[0]", "path": ["publicly_accessible"]}`)
 	require.NoError(t, err)
 	require.Equal(t, "aws_db_instance", db.ResourceType)
-	require.Equal(t, "db[0]", db.ResourceName)
+	require.Equal(t, "db", db.ResourceName)
+	require.Equal(t, "aws_db_instance.db[0]", db.ResourceID)
 	require.Equal(t, "aws_db_instance.db[0].publicly_accessible", db.SearchKey)
-	require.Equal(t, `[["publicly_accessible"],""]`, db.IdentityKey)
 
 	open, _, err := decodeBlockResult(t, input, files, `{"_dd_id": "./aws_s3_bucket.b[\"open\"]", "path": ["acl"]}`)
 	require.NoError(t, err)
-	require.Equal(t, `b["open"]`, open.ResourceName)
+	require.Equal(t, "b", open.ResourceName)
+	require.Equal(t, `aws_s3_bucket.b["open"]`, open.ResourceID)
+	require.Equal(t, ".", open.RootModule)
 	require.Equal(t, `aws_s3_bucket.b["open"].acl`, open.SearchKey)
 
 	closed, _, err := decodeBlockResult(t, input, files, `{"_dd_id": "./aws_s3_bucket.b[\"closed\"]", "path": ["acl"]}`)
 	require.NoError(t, err)
-	require.Equal(t, `b["closed"]`, closed.ResourceName)
-	require.NotEqual(t, model.FindingIdentity(open), model.FindingIdentity(closed),
-		"instance keys in ResourceName keep for_each findings distinct")
-	require.Equal(t, open.IdentityKey, closed.IdentityKey, "IdentityKey is still the path/key pair")
+	require.Equal(t, "b", closed.ResourceName)
+	require.Equal(t, closed.ResourceID, "aws_s3_bucket.b[\"closed\"]")
+	require.Equal(t, model.FindingIdentity(open), model.FindingIdentity(closed),
+		"HCL finding identity keeps main's historical bare block name")
+	aclOtherPath, _, err := decodeBlockResult(t, input, files, `{"_dd_id": "./aws_s3_bucket.b[\"open\"]", "path": ["bucket"]}`)
+	require.NoError(t, err)
+	require.Equal(t, model.FindingIdentity(open), model.FindingIdentity(aclOtherPath),
+		"different attribute paths on the same resource keep main's identity semantics")
+
+	rawKey := "${literal}"
+	suffix := address.InstanceSuffix(cty.StringVal(rawKey))
+	result, err := json.Marshal(map[string]interface{}{"_dd_id": "./aws_s3_bucket.special" + suffix, "path": []string{}})
+	require.NoError(t, err)
+	special, _, err := decodeBlockResult(t, input, files, string(result))
+	require.NoError(t, err)
+	require.Equal(t, "special", special.ResourceName)
+	require.Equal(t, "aws_s3_bucket.special"+suffix, special.ResourceID)
+	require.Equal(t, "aws_s3_bucket.special"+suffix, special.SearchKey)
+	require.Equal(t, ".", special.RootModule)
+	summary := model.CreateSummary(context.Background(), model.Counters{}, []model.Vulnerability{*special}, "scan", nil, "/repo", model.SCIInfo{})
+	wantFingerprint := model.GetDatadogFingerprintHash(
+		model.SCIInfo{}, summary.Queries[0].Files[0].FileName, special.Platform, special.ResourceType,
+		special.ResourceName, special.QueryID, "", "",
+	)
+	require.Equal(t, wantFingerprint, summary.Queries[0].Files[0].Fingerprint)
+
+	t.Run("plan keeps its historical qualified instance name", func(t *testing.T) {
+		repo := t.TempDir()
+		planPath := filepath.Join(repo, "stacks", "prod", "tfplan.json")
+		require.NoError(t, os.MkdirAll(filepath.Dir(planPath), 0o755))
+		plan := `{"format_version":"1.2","terraform_version":"1.6.0",
+"planned_values":{"root_module":{"resources":[{"address":"aws_s3_bucket.this[\"${literal}\"]","mode":"managed","type":"aws_s3_bucket","name":"this","index":"${literal}","values":{"bucket":"literal"},"sensitive_values":{}}],"child_modules":[{"address":"module.m[\"modkey\"]","resources":[{"address":"module.m[\"modkey\"].aws_s3_bucket.child[\"${literal}\"]","mode":"managed","type":"aws_s3_bucket","name":"child","index":"${literal}","values":{"bucket":"literal"},"sensitive_values":{}}]}]}},
+"configuration":{"root_module":{"resources":[{"address":"aws_s3_bucket.this","mode":"managed","type":"aws_s3_bucket","name":"this","provider_config_key":"aws","expressions":{"bucket":{"constant_value":"literal"}},"schema_version":0}],"module_calls":{"m":{"source":"./m","for_each_expression":{"constant_value":["modkey"]},"module":{"resources":[{"address":"aws_s3_bucket.child","mode":"managed","type":"aws_s3_bucket","name":"child","provider_config_key":"aws","expressions":{"bucket":{"constant_value":"literal"}},"schema_version":0}]}}}}}}`
+		require.NoError(t, os.WriteFile(planPath, []byte(plan), 0o600))
+		scan, err := tfmodel.Load(context.Background(), repo, &tfmodel.Options{Plans: []string{planPath}})
+		require.NoError(t, err)
+		require.Len(t, scan.Roots, 1)
+		require.False(t, scan.Roots[0].Degraded, "%#v", scan.Roots[0].Notes)
+		projection := project.Project(scan.Roots, project.Options{Placeholder: resultsTestPlaceholder})
+		var blockID, canonicalID, moduleBlockID, moduleCanonicalID string
+		for id, loc := range projection.Blocks {
+			if loc.Kind != address.KindResource || loc.Type != "aws_s3_bucket" {
+				continue
+			}
+			switch loc.Block.Name {
+			case "this":
+				blockID, canonicalID = id, loc.Address
+			case "child":
+				moduleBlockID, moduleCanonicalID = id, loc.Address
+			}
+		}
+		require.NotEmpty(t, blockID, "%#v", projection.Blocks)
+		require.NotEmpty(t, moduleBlockID)
+		lines := strings.Split(plan, "\n")
+		file := &model.FileMetadata{ID: "plan", FilePath: planPath, Kind: model.KindTerraformPlan,
+			OriginalData: plan, LinesOriginalData: &lines}
+		input := &terraformInput{
+			projection: projection, base: repo, repoPath: repo,
+			files:       keyedFiles(map[string]*model.FileMetadata{planPath: file}),
+			placeholder: resultsTestPlaceholder, outputLines: 3,
+			attribution: &terraformAttribution{cache: newModuleAttributionCache()}, written: newWrittenFindings(),
+		}
+		for _, tc := range []struct {
+			blockID, canonicalID, name string
+		}{
+			{blockID, canonicalID, `this["${literal}"]`},
+			{moduleBlockID, moduleCanonicalID, `module.m["modkey"].child["${literal}"]`},
+		} {
+			result, err := json.Marshal(map[string]interface{}{"_dd_id": tc.blockID, "path": []string{}})
+			require.NoError(t, err)
+			v, _, err := decodeBlockResult(t, input, map[string]*model.FileMetadata{"plan": file}, string(result))
+			require.NoError(t, err)
+			require.Equal(t, tc.name, v.ResourceName)
+			require.Equal(t, tc.canonicalID, v.ResourceID)
+			require.Equal(t, "stacks/prod/tfplan.json", v.RootModule)
+			require.Empty(t, v.ModuleCallChain)
+			summary := model.CreateSummary(context.Background(), model.Counters{}, []model.Vulnerability{*v}, "scan", nil, repo, model.SCIInfo{})
+			want := model.GetDatadogFingerprintHash(model.SCIInfo{}, summary.Queries[0].Files[0].FileName,
+				v.Platform, v.ResourceType, v.ResourceName, v.QueryID, "", "")
+			require.Equal(t, want, summary.Queries[0].Files[0].Fingerprint)
+		}
+	})
 }
 
 func TestTerraformBlockResult_Errors(t *testing.T) {
@@ -311,22 +436,6 @@ func TestTerraformBlockResult_PlaceholderInRemediation(t *testing.T) {
 		"remediation": "name = \"\u0000dd-unknown-test\"", "remediationType": "replacement"}`)
 	require.NoError(t, err)
 	require.Equal(t, `name = "${...}"`, v.Remediation)
-}
-
-func TestFindingIdentity_BlockResultKey(t *testing.T) {
-	a := model.Vulnerability{FileName: "main.tf", Platform: "Terraform", ResourceType: "t", ResourceName: "n", QueryID: "q"}
-	b := a
-	b.IdentityKey = `[["ingress"],"22"]`
-	require.NotEqual(t, model.FindingIdentity(&a), model.FindingIdentity(&b))
-	idA, _ := model.IdentityBeforeLine(&a)
-	idB, _ := model.IdentityBeforeLine(&b)
-	require.Equal(t, model.FindingIdentity(&b), idB.WithChain(""))
-	require.NotEqual(t, idA.WithChain(""), idB.WithChain(""))
-
-	keyed := a
-	keyed.ResourceName = `n["open"]`
-	require.NotEqual(t, model.FindingIdentity(&a), model.FindingIdentity(&keyed),
-		"ResourceName instance keys distinguish findings even with the same IdentityKey")
 }
 
 // Blocks written once in a module (variables, nested module calls) are
@@ -357,14 +466,21 @@ module "inner" {
 		if staticInModule(loc) {
 			require.Nil(t, v.ModuleAttribution, id)
 			require.Empty(t, v.ModuleCallChain, id)
+			require.Empty(t, v.ResourceID, id)
+			require.Empty(t, v.RootModule, id)
+		} else if loc.Kind == address.KindResource {
+			require.NotEmpty(t, v.ResourceID, id)
+			require.Equal(t, ".", v.RootModule, id)
 		}
 	}
 	require.Equal(t, map[string]int{
-		"resource module.m[0].aws_s3_bucket.b": 1,
-		"resource module.m[1].aws_s3_bucket.b": 1,
-		"variable var.name":                    1,
-		"variable var.x":                       1,
-		"module module.inner":                  1,
+		"resource module.m[0].aws_s3_bucket.b[0]": 1,
+		"resource module.m[0].aws_s3_bucket.b[1]": 1,
+		"resource module.m[1].aws_s3_bucket.b[0]": 1,
+		"resource module.m[1].aws_s3_bucket.b[1]": 1,
+		"variable var.name":                       1,
+		"variable var.x":                          1,
+		"module module.inner":                     1,
 	}, decoded)
 }
 

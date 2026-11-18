@@ -181,6 +181,7 @@ resource "aws_instance" "variable_keys" {
 		require.Equal(t, key, conv(inst.Attrs["ami"]))
 		require.Equal(t, wantSpecial[key], conv(inst.Attrs["instance_type"]))
 		require.Equal(t, key, conv(iterationOf(inst.Key, cty.NilVal)["each"].GetAttr("key")))
+		require.Equal(t, "special_keys[\""+key+"\"]", specialKeys.LegacyName(inst))
 	}
 	require.NotNil(t, variableKeys)
 	require.True(t, variableKeys.KeyUnknown)

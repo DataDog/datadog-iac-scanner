@@ -366,7 +366,16 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 		if fingerprintPath == "." {
 			fingerprintPath = ""
 		}
-		fingerprint := findingFingerprintHash(sciInfo, fingerprintPath, &item, ruleID, identityLine)
+		fingerprint := GetDatadogFingerprintHash(
+			sciInfo,
+			fingerprintPath,
+			item.Platform,
+			item.ResourceType,
+			item.ResourceName,
+			ruleID,
+			identityLine,
+			item.ModuleCallChain,
+		)
 
 		qItem := q[item.QueryID]
 		qItem.Files = append(qItem.Files, VulnerableFile{

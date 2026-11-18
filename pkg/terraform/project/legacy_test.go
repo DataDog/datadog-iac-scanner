@@ -259,6 +259,14 @@ resource "aws_security_group" "sg" {
     from_port = 443
   }
 }
+
+resource "google_storage_bucket" "special" {
+  for_each = {
+    "$${literal}"  = "dollar"
+    "%%{template}" = "percent"
+  }
+  name = each.key
+}
 `,
 	})
 	require.Len(t, docs, 1)
@@ -278,6 +286,9 @@ resource "aws_security_group" "sg" {
 	ingress := get(doc, "resource", "aws_security_group", "sg", "ingress").([]any)
 	require.Len(t, ingress, 2)
 	require.Equal(t, int64(443), ingress[1].(map[string]any)["from_port"])
+	special := get(doc, "resource", "google_storage_bucket").(map[string]any)
+	require.Equal(t, "${literal}", special[`special["${literal}"]`].(map[string]any)["name"])
+	require.Equal(t, "%{template}", special[`special["%{template}"]`].(map[string]any)["name"])
 
 	require.Equal(t, "private", get(doc, "variable", "acl", "default"))
 	require.Equal(t, "prod", get(doc, "locals", "env"))

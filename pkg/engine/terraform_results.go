@@ -214,11 +214,11 @@ func (t *terraformInput) vulnerability(
 	}
 	vulnerability.ResourceType, vulnerability.ResourceName = blockResource(loc)
 	vulnerability.SearchKey = searchKey(loc.Address, path, key)
-	vulnerability.IdentityKey = identityKey(path, key)
 	vulnerability.Remediation = strings.ReplaceAll(vulnerability.Remediation, t.placeholder, unknownShown)
 	if staticInModule(loc) {
 		return t.writtenOnce(vulnerability, loc, file, rng, path, key, vObj)
 	}
+	t.setTerraformAddress(vulnerability, loc, file)
 	t.setModule(vulnerability, loc, declaring, span)
 	vulnerability.RelatedLocations = t.evidence(vObj[evidenceResultField])
 	return vulnerability, nil
@@ -234,7 +234,7 @@ func (t *terraformInput) writtenOnce(
 	local := strings.TrimPrefix(loc.Address, loc.Block.Module.Address+".")
 	v.SearchKey = searchKey(local, path, key)
 	if !t.written.first(strings.Join([]string{v.QueryID, file.FilePath,
-		strconv.Itoa(rng.Start.Line), strconv.Itoa(rng.Start.Column), v.IdentityKey}, "\x00")) {
+		strconv.Itoa(rng.Start.Line), strconv.Itoa(rng.Start.Column)}, "\x00")) {
 		return nil, ErrNoResult
 	}
 	v.RelatedLocations = t.evidence(vObj[evidenceResultField])
@@ -258,10 +258,10 @@ func (t *terraformInput) reportedFile(loc *project.Located, rng hcl.Range) *mode
 // the instance's call chain.
 func (t *terraformInput) setModule(v *model.Vulnerability, loc *project.Located, declaring string, span hcl.Range) {
 	m := loc.Block.Module
-	if m == nil || m.Address == "" {
+	if m == nil || m.Address == "" || (m.Root != nil && m.Root.Plan) {
 		return
 	}
-	v.ModuleCallChain = moduleCallChainKey(m.Chain, m.Address, t.chainBase())
+	v.ModuleCallChain = legacyModuleCallChainKey(m.Chain, m.Address, t.chainBase())
 	if inst := loc.Instance(); inst != nil && m.Scope != nil {
 		if r, _ := resolvedBlock(loc.Block, inst, m, declaring); r != nil {
 			// As in legacy: who controls the finding's line, the caller's
@@ -280,6 +280,45 @@ func (t *terraformInput) setModule(v *model.Vulnerability, loc *project.Located,
 		attr.ModuleCodeLocation.ColumnEnd = span.End.Column
 		narrowCodeLocation(&attr.ModuleCodeLocation, v)
 	}
+}
+
+// setTerraformAddress attaches canonical resource address and root scope only
+// when the model gives the finding an unambiguous address. Written-once static
+// blocks and unknown instance inventories have no unique address to publish.
+func (t *terraformInput) setTerraformAddress(v *model.Vulnerability, loc *project.Located, file *model.FileMetadata) {
+	if loc.Block == nil || loc.Block.KeyUnknown || loc.Block.Module == nil || loc.Block.Module.Root == nil {
+		return
+	}
+	var id string
+	switch loc.Kind {
+	case address.KindResource, address.KindData, address.KindEphemeral:
+		inst := loc.Instance()
+		if inst == nil || inst.Address == "" {
+			return
+		}
+		id = inst.Address
+	case address.KindVariable, address.KindOutput, address.KindProvider, address.KindModule:
+		// Static blocks of called modules are reported once on their written
+		// file before this helper runs. Root declarations have a unique scope.
+		if loc.Block.Module.Address != "" || loc.Address == "" {
+			return
+		}
+		id = loc.Address
+	default:
+		return
+	}
+	base := t.repoPath
+	if base == "" {
+		base = t.base
+	}
+	v.ResourceID = id
+	if loc.Block.Module.Root.Plan {
+		if file != nil {
+			v.RootModule = repoRelativeFile(file.FilePath, base)
+		}
+		return
+	}
+	v.RootModule = repoRelativeDir(loc.Block.Module.Root.Dir, base, nil)
 }
 
 func (t *terraformInput) file(path string) *model.FileMetadata {
@@ -377,7 +416,7 @@ func resultPath(raw any) ([]any, error) {
 	return path, nil
 }
 
-// resultKey reads the key telling apart several findings on one block.
+// resultKey reads the keyed collection element used in the reported SearchKey.
 func resultKey(raw any) (string, error) {
 	switch k := raw.(type) {
 	case nil:
@@ -396,10 +435,13 @@ func resultKey(raw any) (string, error) {
 	return string(b), nil
 }
 
-// blockResource is the resource type and name a finding on loc reports: the
-// type and label, with the count or for_each instance key in Terraform address
-// style (e.g. db[0], b["open"]) when the block is expanded.
+// blockResource is the resource type and name a finding on loc reports. HCL
+// uses the bare label; plan JSON preserves its module-qualified name and
+// Go-quoted instance suffix. The canonical address is carried in ResourceID.
 func blockResource(loc *project.Located) (resourceType, resourceName string) {
+	if loc == nil || loc.Block == nil {
+		return "", ""
+	}
 	switch loc.Kind {
 	case address.KindModule:
 		return moduleCallRoot, loc.Block.Name
@@ -410,11 +452,14 @@ func blockResource(loc *project.Located) (resourceType, resourceName string) {
 	case tfmodel.KindLocals:
 		return loc.Kind, loc.Kind
 	}
-	name := loc.Block.Name
-	if inst := loc.Instance(); inst != nil {
-		name += inst.Key
+	if loc.Block.Module != nil && loc.Block.Module.Root != nil && loc.Block.Module.Root.Plan {
+		name := loc.Block.LegacyName(loc.Instance())
+		if loc.Block.Module.Address != "" {
+			name = loc.Block.Module.Address + "." + name
+		}
+		return loc.Type, name
 	}
-	return loc.Type, name
+	return loc.Type, loc.Block.Name
 }
 
 // searchKey names the attribute a finding is on, for output.
@@ -434,25 +479,6 @@ func searchKey(addr string, path []any, key string) string {
 		b.WriteString("[" + strconv.Quote(key) + "]")
 	}
 	return b.String()
-}
-
-// identityKey is what tells a finding apart from the rule's other findings on
-// the same block: its path and key. Empty for the block itself.
-func identityKey(path []any, key string) string {
-	if len(path) == 0 && key == "" {
-		return ""
-	}
-	steps := make([]string, 0, len(path))
-	for _, s := range path {
-		switch s := s.(type) {
-		case string:
-			steps = append(steps, s)
-		case int:
-			steps = append(steps, strconv.Itoa(s))
-		}
-	}
-	b, _ := json.Marshal([]any{steps, key})
-	return string(b)
 }
 
 func resourceLocation(r hcl.Range) model.ResourceLocation {

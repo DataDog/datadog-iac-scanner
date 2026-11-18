@@ -173,7 +173,7 @@ func (d *LegacyDoc) add(b *model.Block, conv value.Converter, renders map[*model
 	case address.KindResource, address.KindData, address.KindEphemeral:
 		byName := child(child(d.Doc, b.Kind), b.Type)
 		for _, inst := range b.Instances {
-			name := b.Name + inst.Key
+			name := b.LegacyName(inst)
 			byName[name] = legacyAttrs(b, inst, conv, renderOf(b.Module, inst, conv, renders))
 			if inst.Key != "" {
 				if d.Instances == nil {
