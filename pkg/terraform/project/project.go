@@ -550,6 +550,14 @@ func (p *projector) instanceTerm(
 		computed = p.computed(inst)
 		unknown = unknown || p.t.unknown
 	}
+	lifecycle := p.emptyObject
+	if inst.Lifecycle != cty.NilVal {
+		p.t.unknown = false
+		if term := p.t.term(inst.Lifecycle); term != nil {
+			lifecycle = term
+		}
+		unknown = unknown || p.t.unknown
+	}
 	meta := append([][2]*ast.Term{
 		ast.Item(p.key("id"), ast.StringTerm(id)),
 		ast.Item(p.key("address"), ast.StringTerm(inst.Address)),
@@ -557,6 +565,7 @@ func (p *projector) instanceTerm(
 		ast.Item(p.key("derived"), derived),
 		ast.Item(p.key("computed"), computed),
 		ast.Item(p.key("written"), p.written(inst)),
+		ast.Item(p.key("lifecycle"), lifecycle),
 	}, shared...)
 	if filter, uncertain := p.filterInterpretation(inst); filter != nil {
 		meta = append(meta, ast.Item(p.key("filter"), filter))
@@ -593,12 +602,6 @@ func (p *projector) sharedMeta(r *model.Root, b *model.Block) [][2]*ast.Term {
 	if b.Kind == address.KindProvider {
 		label = b.Type
 	}
-	lifecycle := p.emptyObject
-	if b.Lifecycle != cty.NilVal {
-		if t := p.t.term(b.Lifecycle); t != nil {
-			lifecycle = t
-		}
-	}
 	dependsOn := make([]*ast.Term, 0, len(b.DependsOn))
 	for _, d := range b.DependsOn {
 		dependsOn = append(dependsOn, ast.StringTerm(d))
@@ -611,7 +614,6 @@ func (p *projector) sharedMeta(r *model.Root, b *model.Block) [][2]*ast.Term {
 		ast.Item(p.key("root"), ast.StringTerm(r.ID)),
 		ast.Item(p.key("file"), ast.StringTerm(b.File)),
 		ast.Item(p.key("line"), ast.IntNumberTerm(b.Range.Start.Line)),
-		ast.Item(p.key("lifecycle"), lifecycle),
 		ast.Item(p.key("depends_on"), ast.ArrayTerm(dependsOn...)),
 	}
 	if b.ProviderBlock != nil && len(b.ProviderBlock.Instances) > 0 {

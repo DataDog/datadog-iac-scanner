@@ -726,6 +726,41 @@ resource "aws_s3_bucket_versioning" "v" { bucket = aws_s3_bucket.b.bucket }
 	require.True(t, p.Blocks["./aws_s3_bucket.b"].RelPlaceholder)
 }
 
+func TestLifecycleMetadataFollowsEachInstance(t *testing.T) {
+	p := project(t, map[string]string{"main.tf": `
+resource "aws_instance" "c" {
+  count = 2
+  lifecycle {
+    precondition {
+      condition     = count.index >= 0
+      error_message = "instance ${count.index}"
+    }
+  }
+}
+`}, nil)
+	byID := dd(t, p)["by_id"].(map[string]any)
+	first := get(byID, "./aws_instance.c[0]", "_dd_meta", "lifecycle").(map[string]any)
+	second := get(byID, "./aws_instance.c[1]", "_dd_meta", "lifecycle").(map[string]any)
+	require.Equal(t, "instance 0", first["precondition"].(map[string]any)["error_message"])
+	require.Equal(t, "instance 1", second["precondition"].(map[string]any)["error_message"])
+	require.False(t, locatedAt(p, "aws_instance.c[0]").Placeholder)
+	require.False(t, locatedAt(p, "aws_instance.c[1]").Placeholder)
+	unknown := project(t, map[string]string{"main.tf": `
+variable "enabled" {}
+resource "aws_instance" "unknown" {
+  count = 2
+  lifecycle {
+    precondition {
+      condition     = var.enabled
+      error_message = "unknown"
+    }
+  }
+}
+`}, nil)
+	require.True(t, locatedAt(unknown, "aws_instance.unknown[0]").Placeholder)
+	require.True(t, locatedAt(unknown, "aws_instance.unknown[1]").Placeholder)
+}
+
 func TestInvariantValuesShareTerms(t *testing.T) {
 	p := project(t, map[string]string{"main.tf": `
 resource "aws_instance" "c" {

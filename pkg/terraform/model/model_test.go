@@ -127,7 +127,7 @@ resource "aws_instance" "variable_keys" {
 	require.NotContains(t, f.Instances[0].Attrs, "lifecycle")
 	require.NotContains(t, f.Instances[0].Attrs, "depends_on")
 	require.Equal(t, []string{"aws_instance.c"}, f.DependsOn)
-	require.True(t, f.Lifecycle.IsKnown())
+	require.True(t, f.Instances[0].Lifecycle.IsKnown())
 
 	u := blocksOf(r, "resource", "aws_instance")[2]
 	require.True(t, u.KeyUnknown)
@@ -158,6 +158,63 @@ resource "aws_instance" "variable_keys" {
 	require.Equal(t, 24, sg.Ranges["ingress.1"].Start.Line, "a generated block maps to its content")
 	require.Equal(t, 24, sg.Ranges["ingress.2.from_port"].Start.Line)
 	require.Equal(t, 18, sg.Ranges["egress.0"].Start.Line)
+}
+
+func TestEphemeralExpansionIsModeledFromEvaluatedInstances(t *testing.T) {
+	s := load(t, map[string]string{"main.tf": `
+variable "n" {}
+
+ephemeral "aws_secretsmanager_secret" "counted" {
+  count = 2
+  name  = count.index
+}
+
+ephemeral "aws_secretsmanager_secret" "iterated" {
+  for_each = toset(["a", "b"])
+  name     = each.key
+}
+
+ephemeral "aws_secretsmanager_secret" "empty" {
+  count = 0
+  name  = "unused"
+}
+
+ephemeral "aws_secretsmanager_secret" "unknown" {
+  count = var.n
+  name  = "unknown"
+}
+`})
+
+	root := rootByID(t, s, ".")
+	blocks := blocksOf(root, "ephemeral", "aws_secretsmanager_secret")
+	byName := make(map[string]*Block, len(blocks))
+	for _, block := range blocks {
+		byName[block.Name] = block
+	}
+	require.NotContains(t, byName, "empty", "a known zero count has no real instance")
+
+	counted := byName["counted"]
+	require.NotNil(t, counted)
+	require.Equal(t, []string{
+		"ephemeral.aws_secretsmanager_secret.counted[0]",
+		"ephemeral.aws_secretsmanager_secret.counted[1]",
+	}, addresses([]*Block{counted}))
+	require.False(t, counted.KeyUnknown)
+	require.Equal(t, int64(1), conv(counted.Instances[1].Attrs["name"]))
+
+	iterated := byName["iterated"]
+	require.NotNil(t, iterated)
+	require.Equal(t, []string{
+		"ephemeral.aws_secretsmanager_secret.iterated[\"a\"]",
+		"ephemeral.aws_secretsmanager_secret.iterated[\"b\"]",
+	}, addresses([]*Block{iterated}))
+	require.False(t, iterated.KeyUnknown)
+
+	unknown := byName["unknown"]
+	require.NotNil(t, unknown)
+	require.True(t, unknown.KeyUnknown)
+	require.Len(t, unknown.Instances, 1, "unknown expansion is represented by one unindexed stand-in")
+	require.Equal(t, "ephemeral.aws_secretsmanager_secret.unknown", unknown.Instances[0].Address)
 }
 
 // Attribute-style object lists must expose per-element and nested member
@@ -267,6 +324,26 @@ output "id" { value = "x" }
 	require.Equal(t, "x", conv(last[0].Instances[0].Attrs["value"]))
 }
 
+func TestLifecycleMetadataIsEvaluatedPerInstance(t *testing.T) {
+	s := load(t, map[string]string{"main.tf": `
+resource "aws_instance" "c" {
+  count = 2
+  lifecycle {
+    precondition {
+      condition     = count.index >= 0
+      error_message = "instance ${count.index}"
+    }
+  }
+}
+`})
+	instances := blocksOf(rootByID(t, s, "."), "resource", "aws_instance")[0].Instances
+	require.Len(t, instances, 2)
+	first := conv(instances[0].Lifecycle).(map[string]any)
+	second := conv(instances[1].Lifecycle).(map[string]any)
+	require.Equal(t, "instance 0", first["precondition"].(map[string]any)["error_message"])
+	require.Equal(t, "instance 1", second["precondition"].(map[string]any)["error_message"])
+}
+
 func TestOverrideMerge(t *testing.T) {
 	s := load(t, map[string]string{
 		"main.tf": `
@@ -305,7 +382,7 @@ locals { b = 3 }
 	require.Equal(t, []any{map[string]any{"b": int64(2)}}, conv(inst.Attrs["tags"]))
 	require.True(t, strings.HasSuffix(inst.Ranges["publicly_accessible"].Filename, "main_override.tf"))
 	require.True(t, strings.HasSuffix(inst.Ranges["engine"].Filename, "main.tf"))
-	lc := conv(db.Lifecycle).(map[string]any)
+	lc := conv(db.Instances[0].Lifecycle).(map[string]any)
 	require.Equal(t, false, lc["prevent_destroy"])
 	require.Contains(t, lc, "ignore_changes")
 	locals := blocksOf(r, "locals", "")
@@ -969,6 +1046,29 @@ resource "aws_kms_key" "k" {
 	}, conv(kms.JSON["policy"]))
 	require.Equal(t, "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root",
 		kms.JSONExpr["policy"]["Statement.0.Principal.AWS"])
+}
+
+func TestJSONTemplateUnknownExpressionsStayWithTheirSourcePaths(t *testing.T) {
+	s := load(t, map[string]string{"main.tf": `
+variable "first" {}
+variable "second" {}
+
+resource "aws_kms_key" "k" {
+  policy = <<-JSON
+  {
+    "first": "${var.first}",
+    "second": "${var.second}",
+    "combined": "arn:${var.first}:${var.second}:root"
+  }
+  JSON
+}
+`})
+	policy := blocksOf(s.Roots[0], "resource", "aws_kms_key")[0].Instances[0]
+	require.Equal(t, cty.UnknownVal(cty.String), policy.JSON["policy"].GetAttr("first"))
+	require.Equal(t, cty.UnknownVal(cty.String), policy.JSON["policy"].GetAttr("second"))
+	require.Equal(t, "${var.first}", policy.JSONExpr["policy"]["first"])
+	require.Equal(t, "${var.second}", policy.JSONExpr["policy"]["second"])
+	require.Equal(t, "arn:${var.first}:${var.second}:root", policy.JSONExpr["policy"]["combined"])
 }
 
 func TestExpansionPastTraceDepthCountsAsRootInput(t *testing.T) {

@@ -77,8 +77,8 @@ func deriveAttr(inst *Instance, m *Module, expr hclsyntax.Expression, path strin
 			}
 			parts = append(parts, cty.UnknownVal(cty.String))
 			// JSONUnknownMarker is valid JSON source (\u0000…); a raw NUL is not.
-			jsonParts = append(jsonParts, cty.StringVal(value.JSONUnknownMarker))
 			unknownTexts = append(unknownTexts, expandLocalText(rd.StringPart(part), rd, m))
+			jsonParts = append(jsonParts, cty.StringVal(templateJSONUnknownMarker(len(unknownTexts)-1)))
 			unknown = true
 		}
 		if known {
@@ -88,12 +88,12 @@ func deriveAttr(inst *Instance, m *Module, expr hclsyntax.Expression, path strin
 			inst.Templates[path] = parts
 		}
 		if known && unknown {
-			if doc, ok := jsonFromTemplate(jsonParts); ok {
+			if doc, leafExprs, ok := jsonFromTemplate(jsonParts, unknownTexts); ok {
 				if inst.JSON == nil {
 					inst.JSON = map[string]cty.Value{}
 				}
 				inst.JSON[path] = doc
-				if leafExprs := assignJSONUnknownExprs(doc, "", unknownTexts, new(int)); len(leafExprs) > 0 {
+				if len(leafExprs) > 0 {
 					if inst.JSONExpr == nil {
 						inst.JSONExpr = map[string]map[string]string{}
 					}
@@ -318,64 +318,23 @@ func expandLocalText(s string, rd *partial.Renderer, m *Module) string {
 	return s
 }
 
-// assignJSONUnknownExprs walks doc and assigns unknownTexts, in order, to each
-// unknown leaf (or string holding UnknownMarker).
-// nolint:gocyclo
-func assignJSONUnknownExprs(doc cty.Value, path string, texts []string, at *int) map[string]string {
-	out := map[string]string{}
-	doc, _ = doc.UnmarkDeep()
-	if !doc.IsKnown() {
-		if *at < len(texts) {
-			out[path] = texts[*at]
-			*at++
-		}
-		return out
-	}
-	if doc.IsNull() {
-		return out
-	}
-	ty := doc.Type()
-	switch {
-	case ty == cty.String:
-		if value.HasUnknownMarker(doc.AsString()) && *at < len(texts) {
-			out[path] = texts[*at]
-			*at++
-		}
-	case ty.IsObjectType() || ty.IsMapType():
-		for k, ev := range doc.AsValueMap() {
-			child := k
-			if path != "" {
-				child = path + "." + k
-			}
-			for p, t := range assignJSONUnknownExprs(ev, child, texts, at) {
-				out[p] = t
-			}
-		}
-	case ty.IsTupleType() || ty.IsListType() || ty.IsSetType():
-		for i, ev := range doc.AsValueSlice() {
-			child := strconv.Itoa(i)
-			if path != "" {
-				child = path + "." + strconv.Itoa(i)
-			}
-			for p, t := range assignJSONUnknownExprs(ev, child, texts, at) {
-				out[p] = t
-			}
-		}
-	}
-	return out
+func templateJSONUnknownMarker(index int) string {
+	return value.JSONUnknownMarker + "__iac_json_template_unknown_" + strconv.Itoa(index) + "__"
 }
+
+const jsonTemplateUnknownPrefix = value.UnknownMarker + "__iac_json_template_unknown_"
 
 // jsonFromTemplate parses parts as JSON when they form an object or array,
 // with each unknown part replaced by a mark that stays in its surrounding
 // known text after decode.
-func jsonFromTemplate(parts []cty.Value) (cty.Value, bool) {
-	if doc, ok := parseTemplateJSON(parts, false); ok {
-		return doc, true
+func jsonFromTemplate(parts []cty.Value, texts []string) (cty.Value, map[string]string, bool) {
+	if doc, exprs, ok := parseTemplateJSON(parts, false, texts); ok {
+		return doc, exprs, true
 	}
-	return parseTemplateJSON(parts, true)
+	return parseTemplateJSON(parts, true, texts)
 }
 
-func parseTemplateJSON(parts []cty.Value, quoted bool) (cty.Value, bool) {
+func parseTemplateJSON(parts []cty.Value, quoted bool, texts []string) (cty.Value, map[string]string, bool) {
 	var b strings.Builder
 	for _, part := range parts {
 		if s, err := stringOf(part); err == nil {
@@ -392,18 +351,75 @@ func parseTemplateJSON(parts []cty.Value, quoted bool) (cty.Value, bool) {
 	}
 	raw := strings.TrimSpace(b.String())
 	if raw == "" || (raw[0] != '{' && raw[0] != '[') {
-		return cty.NilVal, false
+		return cty.NilVal, nil, false
 	}
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.UseNumber()
 	var decoded any
 	if err := dec.Decode(&decoded); err != nil {
-		return cty.NilVal, false
+		return cty.NilVal, nil, false
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return cty.NilVal, false
+		return cty.NilVal, nil, false
 	}
-	return ctyFromMarkedJSON(decoded), true
+	exprs := map[string]string{}
+	decoded = replaceTemplateJSONMarkers(decoded, "", texts, exprs)
+	return ctyFromMarkedJSON(decoded), exprs, true
+}
+
+func replaceTemplateJSONMarkers(v any, path string, texts []string, exprs map[string]string) any {
+	switch x := v.(type) {
+	case map[string]any:
+		for key, child := range x {
+			x[key] = replaceTemplateJSONMarkers(child, joinPath(path, key), texts, exprs)
+		}
+	case []any:
+		for i, child := range x {
+			x[i] = replaceTemplateJSONMarkers(child, joinPath(path, strconv.Itoa(i)), texts, exprs)
+		}
+	case string:
+		if !strings.Contains(x, jsonTemplateUnknownPrefix) {
+			return x
+		}
+		var source, marked strings.Builder
+		read := 0
+		replaced := false
+		for {
+			relative := strings.Index(x[read:], jsonTemplateUnknownPrefix)
+			if relative < 0 {
+				source.WriteString(x[read:])
+				marked.WriteString(x[read:])
+				break
+			}
+			start := read + relative
+			source.WriteString(x[read:start])
+			marked.WriteString(x[read:start])
+			digitStart := start + len(jsonTemplateUnknownPrefix)
+			endRel := strings.Index(x[digitStart:], "__")
+			if endRel < 0 {
+				source.WriteString(x[start:])
+				marked.WriteString(x[start:])
+				break
+			}
+			end := digitStart + endRel
+			index, err := strconv.Atoi(x[digitStart:end])
+			if err != nil || index < 0 || index >= len(texts) {
+				source.WriteString(x[start : end+2])
+				marked.WriteString(x[start : end+2])
+				read = end + 2
+				continue
+			}
+			source.WriteString(texts[index])
+			marked.WriteString(value.UnknownMarker)
+			replaced = true
+			read = end + 2
+		}
+		if replaced {
+			exprs[path] = source.String()
+		}
+		return marked.String()
+	}
+	return v
 }
 
 func ctyFromMarkedJSON(v any) cty.Value {

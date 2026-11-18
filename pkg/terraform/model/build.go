@@ -89,12 +89,8 @@ func (b *builder) buildModule(m *Module, resources []*tfeval.ResolvedResource) {
 func (b *builder) blockOf(m *Module, sb *hclsyntax.Block, rs []*tfeval.ResolvedResource) *Block {
 	labels := len(sb.Labels)
 	switch sb.Type {
-	case address.KindResource, address.KindData:
+	case address.KindResource, address.KindData, address.KindEphemeral:
 		return b.resourceBlock(m, sb, rs)
-	case address.KindEphemeral:
-		if labels == 2 {
-			return b.evaluatedBlock(m, sb, address.KindEphemeral, sb.Labels[0], sb.Labels[1], metaArgs)
-		}
 	case address.KindProvider:
 		// Providers are modeled for every module instance: two calls of the
 		// same module may declare distinct configurations (regions,
@@ -150,7 +146,7 @@ func (b *builder) resourceBlock(m *Module, sb *hclsyntax.Block, rs []*tfeval.Res
 		inst.Meta = expansionArgs(r.Attributes)
 		inst.Dynamic = r.DynamicCounts
 		if lc, ok := r.Attributes[lifecycleBlock]; ok {
-			blk.Lifecycle = lc
+			inst.Lifecycle = lc
 		}
 		derive(inst, m, sb.Body)
 		blk.Instances = append(blk.Instances, inst)
@@ -544,20 +540,13 @@ func recordBodyRanges(body *hclsyntax.Body, prefix string, ranges map[string]hcl
 	}
 }
 
-// evaluatedBlock evaluates a block tfeval does not expand (ephemeral
-// resources, providers) in the module's scope, as one instance.
+// evaluatedBlock evaluates a block tfeval does not expand (providers) in the
+// module's scope, as one instance.
 func (b *builder) evaluatedBlock(m *Module, sb *hclsyntax.Block, kind, typ, name string, skip map[string]bool) *Block {
 	blk := b.newBlock(m, sb, kind, typ, name)
-	if kind == address.KindEphemeral {
-		blk.Provider = providerRef(sb.Body, typ)
-		blk.KeyUnknown = expansionExpr(sb.Body) != nil
-	}
 	inst := &Instance{Block: blk, Ranges: map[string]hcl.Range{"": blk.Range}}
 	inst.Address = joinAddr(m.Address, address.Addr(address.Block{Kind: kind, Type: typ, Name: name}))
 	ctx := m.Scope.EvalContext()
-	if blk.KeyUnknown {
-		ctx = unknownIteration(ctx)
-	}
 	inst.Attrs = evalBody(sb.Body, ctx, "", inst.Ranges, skip)
 	derive(inst, m, sb.Body)
 	blk.Instances = []*Instance{inst}

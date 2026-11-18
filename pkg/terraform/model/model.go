@@ -122,7 +122,6 @@ type Block struct {
 	// ProviderBlock is the resolved provider configuration, nil when the
 	// provider is not configured in the root.
 	ProviderBlock *Block
-	Lifecycle     cty.Value
 	DependsOn     []string
 	// Nonliteral holds the attribute paths (dot-joined) whose value derives
 	// from path.* or terraform.*: their literals name nothing reliably.
@@ -145,6 +144,9 @@ type Instance struct {
 	// for_each narrowed to the instance's own element; nil when the block
 	// writes neither.
 	Meta map[string]cty.Value
+	// Lifecycle is the evaluated lifecycle metadata for this instance. Like
+	// other lifecycle expressions, preconditions may depend on count or each.
+	Lifecycle cty.Value
 	// Dynamic is how many blocks each dynamic block of the block's body
 	// generated, at every depth; tfeval.DynamicKeptAsWritten for one kept as
 	// written, which Attrs holds as an unknown element of its block type.
