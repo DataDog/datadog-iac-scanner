@@ -188,7 +188,7 @@ func (c *Inspector) newTerraformStream(
 		input: terraformInput{
 			base: layout.Base, files: keyedFiles(c.terraformFiles(files)), repoPath: c.repoPath,
 			placeholder: value.NewPlaceholder(), outputLines: c.tracker.GetOutputLines(),
-			attribution: &terraformAttribution{lookup: c.buildModuleProvenanceLookup(), cache: newModuleAttributionCache()},
+			attribution: &terraformAttribution{lookup: c.buildModuleProvenanceLookup()},
 			written:     newWrittenFindings(),
 		},
 		resolver: c.buildRemoteResolver(),
@@ -240,7 +240,7 @@ func (s *terraformStream) initLegacy() {
 			InstanceID: instanceID, Taken: map[string]struct{}{},
 		},
 		written: s.written, byDir: writtenByDir(s.written), instanceID: instanceID,
-		attribution: &terraformAttribution{lookup: s.c.buildModuleProvenanceLookup(), cache: newModuleAttributionCache()},
+		lookup: s.c.buildModuleProvenanceLookup(),
 	}
 }
 
@@ -270,6 +270,7 @@ func (s *terraformStream) execute(ctx context.Context) ([]model.Vulnerability, e
 		}
 		evaluated++
 		rootInput := s.input
+		rootInput.attribution = &terraformAttribution{lookup: s.input.attribution.lookup, cache: newModuleAttributionCache()}
 		rootInput.projection = project.Project([]*tfmodel.Root{root}, s.opts)
 		logCrossMatches(ctx, rootInput.projection)
 		logIncompleteness(ctx, rootInput.projection)
@@ -325,6 +326,7 @@ func (s *terraformStream) executeReference(ctx context.Context) ([]model.Vulnera
 		}
 		evaluated++
 		rootInput := s.input
+		rootInput.attribution = &terraformAttribution{lookup: s.input.attribution.lookup, cache: newModuleAttributionCache()}
 		rootInput.projection = project.Project([]*tfmodel.Root{root}, s.opts)
 		logCrossMatches(ctx, rootInput.projection)
 		logIncompleteness(ctx, rootInput.projection)

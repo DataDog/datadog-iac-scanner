@@ -217,11 +217,11 @@ func (c *Inspector) inspectTerraformLegacyStream(
 		Taken:      map[string]struct{}{},
 	}
 	resolver := c.buildRemoteResolver()
-	attribution := &terraformAttribution{lookup: c.buildModuleProvenanceLookup(), cache: newModuleAttributionCache()}
+	lookup := c.buildModuleProvenanceLookup()
 	built := &legacyBuild{files: slices.Clone(files), othersReadDocuments: othersReadDocuments}
 	b := legacyRootBuild{
 		base: layout.Base, chainBase: chainBase, opts: opts, written: written,
-		byDir: writtenByDir(written), instanceID: instanceID, attribution: attribution,
+		byDir: writtenByDir(written), instanceID: instanceID, lookup: lookup,
 	}
 	modeled, asWritten := legacyModeledRoots(layout.Roots, written, b.byDir, targets)
 	if err := layout.EachRoot(ctx, resolver, modeled, func(root *tfmodel.Root) error {
@@ -321,9 +321,9 @@ type legacyRootBuild struct {
 	opts      project.LegacyOptions
 	written   map[string]*model.FileMetadata
 	// byDir is written indexed by cleaned directory, built once for the scan.
-	byDir       map[string][]string
-	instanceID  func(string, *tfmodel.Module) string
-	attribution *terraformAttribution
+	byDir      map[string][]string
+	instanceID func(string, *tfmodel.Module) string
+	lookup     moduleProvenanceLookup
 }
 
 // takeLegacyRoot appends root's documents and drops the root's modules.
@@ -336,6 +336,8 @@ func (c *Inspector) takeLegacyRoot(built *legacyBuild, b *legacyRootBuild, root 
 	if root == nil {
 		return
 	}
+	// Attribution caches retain root evaluation state and must not outlive it.
+	attribution := &terraformAttribution{lookup: b.lookup, cache: newModuleAttributionCache()}
 	one := &tfmodel.Scan{Base: b.base, Roots: []*tfmodel.Root{root}}
 	part := project.LegacyDocs(one.Roots, b.opts)
 	part = slices.DeleteFunc(part, func(d *project.LegacyDoc) bool {
@@ -358,7 +360,7 @@ func (c *Inspector) takeLegacyRoot(built *legacyBuild, b *legacyRootBuild, root 
 			continue
 		}
 		blocks := moduleBlocks.forFile(d.Module, b.base, d.Path)
-		built.files = append(built.files, c.legacyModuleFile(file, d, blocks, b.chainBase, b.attribution))
+		built.files = append(built.files, c.legacyModuleFile(file, d, blocks, b.chainBase, attribution))
 	}
 	if c.releaseDocumentsAfterPayload && !built.othersReadDocuments {
 		releaseRootDocuments(part, b.written, filepath.Clean(root.Dir))
