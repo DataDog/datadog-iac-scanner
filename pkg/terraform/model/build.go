@@ -33,10 +33,11 @@ var moduleMetaArgs = map[string]bool{
 type builder struct {
 	root *Root
 	base string
+	refs expressionRefCache
 }
 
 func newBuilder(root *Root, base string) *builder {
-	return &builder{root: root, base: base}
+	return &builder{root: root, base: base, refs: make(expressionRefCache)}
 }
 
 func (b *builder) build(resources []tfeval.ResolvedResource) {
@@ -118,7 +119,7 @@ func (b *builder) newBlock(m *Module, sb *hclsyntax.Block, kind, typ, name strin
 	return &Block{
 		Module: m, Kind: kind, Type: typ, Name: name,
 		File: relPath(b.base, sb.TypeRange.Filename), Range: sb.DefRange(), Syntax: sb,
-		Nonliteral: nonliteralPaths(m, sb.Body),
+		Nonliteral: nonliteralPaths(m, sb.Body, b.refs),
 	}
 }
 
@@ -154,7 +155,7 @@ func (b *builder) resourceBlock(m *Module, sb *hclsyntax.Block, rs []*tfeval.Res
 	if expands && len(blk.Instances) == 1 && blk.Instances[0].Key == "" {
 		blk.KeyUnknown = true
 	}
-	blk.Overridable = expands && readsRootInput(m, expansionExpr(sb.Body), 0)
+	blk.Overridable = expands && readsRootInput(m, expansionExpr(sb.Body), 0, b.refs)
 	if blk.Overridable {
 		if _, hasCount := sb.Body.Attributes["count"]; !hasCount {
 			if attr, ok := sb.Body.Attributes["for_each"]; ok && fixedForEachObjectKeys(attr.Expr) {
@@ -724,7 +725,7 @@ func (b *builder) moduleCallBlock(m *Module, sb *hclsyntax.Block) *Block {
 	if expansion != nil && len(children) == 1 && children[0].Address == prefix {
 		blk.KeyUnknown = true
 	}
-	blk.Overridable = expansion != nil && readsRootInput(m, expansion, 0)
+	blk.Overridable = expansion != nil && readsRootInput(m, expansion, 0, b.refs)
 	sort.SliceStable(blk.Instances, func(i, j int) bool { return blk.Instances[i].Address < blk.Instances[j].Address })
 	return blk
 }

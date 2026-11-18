@@ -516,15 +516,32 @@ func (unknownError) Error() string { return "unknown" }
 
 var errUnknown error = unknownError{}
 
+// expressionRefCache is scoped to one root build. Ref extraction depends only
+// on the immutable HCL expression; the subsequent reads decision still depends
+// on the module scope and root-input mode.
+type expressionRefCache map[hcl.Expression][]refs.Ref
+
+func (c expressionRefCache) of(expr hcl.Expression) []refs.Ref {
+	if expr == nil {
+		return nil
+	}
+	if all, ok := c[expr]; ok {
+		return all
+	}
+	all := refs.Of(expr)
+	c[expr] = all
+	return all
+}
+
 // nonliteralPaths lists the attribute paths of body (names only) whose
 // expression reads path.* or terraform.*, directly or through locals and
 // module arguments.
-func nonliteralPaths(m *Module, body *hclsyntax.Body) []string {
+func nonliteralPaths(m *Module, body *hclsyntax.Body, refCache expressionRefCache) []string {
 	var out []string
 	var walkBody func(body *hclsyntax.Body, prefix string)
 	walkBody = func(body *hclsyntax.Body, prefix string) {
 		for name, attr := range body.Attributes {
-			if readsContext(m, attr.Expr, 0) {
+			if readsContext(m, attr.Expr, 0, refCache) {
 				out = append(out, joinPath(prefix, name))
 			}
 		}
@@ -542,24 +559,24 @@ func nonliteralPaths(m *Module, body *hclsyntax.Body) []string {
 	return out
 }
 
-func readsContext(m *Module, expr hcl.Expression, depth int) bool {
-	return reads(m, expr, depth, false)
+func readsContext(m *Module, expr hcl.Expression, depth int, refCache expressionRefCache) bool {
+	return reads(m, expr, depth, false, refCache)
 }
 
 // readsRootInput reports whether expr reads a value a plan can set: a root
 // variable or terraform.workspace, directly or through locals and module
 // arguments.
-func readsRootInput(m *Module, expr hcl.Expression, depth int) bool {
+func readsRootInput(m *Module, expr hcl.Expression, depth int, refCache expressionRefCache) bool {
 	if expr == nil {
 		return false
 	}
-	return reads(m, expr, depth, true)
+	return reads(m, expr, depth, true, refCache)
 }
 
 // reads reports whether expr reads terraform.*, path.* (unless rootInput) or
 // a root variable (if rootInput), following locals in m and variables to the
 // argument of the call that set them.
-func reads(m *Module, expr hcl.Expression, depth int, rootInput bool) bool {
+func reads(m *Module, expr hcl.Expression, depth int, rootInput bool, refCache expressionRefCache) bool {
 	if depth > maxTraceDepth {
 		// Too deep to follow: assume the value reads an input, so it never counts as a literal.
 		return true
@@ -567,7 +584,7 @@ func reads(m *Module, expr hcl.Expression, depth int, rootInput bool) bool {
 	if m == nil || m.Scope == nil {
 		return false
 	}
-	for _, r := range refs.Of(expr) {
+	for _, r := range refCache.of(expr) {
 		switch r.Kind {
 		case refs.KindTerraform:
 			return true
@@ -576,11 +593,11 @@ func reads(m *Module, expr hcl.Expression, depth int, rootInput bool) bool {
 				return true
 			}
 		case refs.KindLocal:
-			if e, ok := m.Scope.Locals[r.Name]; ok && reads(m, e, depth+1, rootInput) {
+			if e, ok := m.Scope.Locals[r.Name]; ok && reads(m, e, depth+1, rootInput, refCache) {
 				return true
 			}
 		case refs.KindVar:
-			if readsVar(m, r.Name, depth, rootInput) {
+			if readsVar(m, r.Name, depth, rootInput, refCache) {
 				return true
 			}
 		}
@@ -588,7 +605,7 @@ func reads(m *Module, expr hcl.Expression, depth int, rootInput bool) bool {
 	return false
 }
 
-func readsVar(m *Module, name string, depth int, rootInput bool) bool {
+func readsVar(m *Module, name string, depth int, rootInput bool, refCache expressionRefCache) bool {
 	if m.Address == "" {
 		return rootInput
 	}
@@ -597,7 +614,7 @@ func readsVar(m *Module, name string, depth int, rootInput bool) bool {
 		return false
 	}
 	a, ok := m.Chain[len(m.Chain)-1].Body.Attributes[name]
-	return ok && reads(parent, a.Expr, depth+1, rootInput)
+	return ok && reads(parent, a.Expr, depth+1, rootInput, refCache)
 }
 
 // parentOf returns the module instance that calls m, nil for the root module.

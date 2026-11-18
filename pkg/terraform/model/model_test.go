@@ -19,6 +19,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/terraform/value"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -68,6 +70,19 @@ func addresses(blocks []*Block) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func TestExpressionRefCacheKeepsModuleContextSeparate(t *testing.T) {
+	expr, diags := hclsyntax.ParseExpression([]byte("var.input"), "test.tf", hcl.Pos{Line: 1, Column: 1})
+	require.False(t, diags.HasErrors())
+	cache := make(expressionRefCache)
+	root := &Module{Scope: &tfeval.ModuleScope{}}
+	child := &Module{Address: "module.child", Scope: &tfeval.ModuleScope{}}
+
+	require.False(t, readsContext(root, expr, 0, cache), "root-input detection must not change context-read semantics")
+	require.True(t, readsRootInput(root, expr, 0, cache))
+	require.False(t, readsRootInput(child, expr, 0, cache), "cached references must still be interpreted in the child module scope")
+	require.Len(t, cache, 1, "immutable expression references should be extracted once")
 }
 
 func conv(v cty.Value) any { return value.Converter{Placeholder: "P"}.Go(v) }
