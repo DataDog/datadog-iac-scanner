@@ -171,6 +171,7 @@ type terraformStream struct {
 	tfRun               *terraformRun
 	legacyBuilt         *legacyBuild
 	legacyB             *legacyRootBuild
+	nativeModuleCalls   *moduleCallIndex
 	written             map[string]*model.FileMetadata
 }
 
@@ -215,6 +216,11 @@ func (c *Inspector) newTerraformStream(
 	s.tfRun.queries.baseStores, s.tfRun.queries.baseDataHashes = baseStores, baseDataHashes
 	s.tfRun.queries.sharedQueries, s.tfRun.queries.routing = prepared, routing
 	s.initLegacy()
+	if s.legacyBuilt != nil {
+		s.nativeModuleCalls = s.legacyBuilt.moduleCalls
+	} else {
+		s.nativeModuleCalls = newModuleCallIndex(s.written, c.isModulePackageFile)
+	}
 	return s, nil
 }
 
@@ -286,7 +292,7 @@ func (s *terraformStream) execute(ctx context.Context) ([]model.Vulnerability, e
 		if s.legacyB != nil {
 			s.c.takeLegacyRoot(s.legacyBuilt, s.legacyB, root)
 		} else {
-			root.Modules = nil
+			s.releaseNativeRoot(root, &rootInput)
 		}
 		if chunkBlocks >= terraformChunkBlocks {
 			return flush()
@@ -317,6 +323,13 @@ func (s *terraformStream) execute(ctx context.Context) ([]model.Vulnerability, e
 	return s.finish(ctx, vulns, evaluated)
 }
 
+func (s *terraformStream) releaseNativeRoot(root *tfmodel.Root, input *terraformInput) {
+	if s.nativeModuleCalls != nil {
+		s.nativeModuleCalls.recordModules(root.Modules, s.c.repoPath, input.chainBase(), input.attribution)
+	}
+	root.Modules = nil
+}
+
 // executeReference evaluates each root alone with the same cross-root evidence
 // and unknown gate as the optimized path, without chunking, merge, digests or
 // fanout. Used to check that those optimizations keep the same findings.
@@ -345,7 +358,7 @@ func (s *terraformStream) executeReference(ctx context.Context) ([]model.Vulnera
 		if s.legacyB != nil {
 			s.c.takeLegacyRoot(s.legacyBuilt, s.legacyB, root)
 		} else {
-			root.Modules = nil
+			s.releaseNativeRoot(root, &rootInput)
 		}
 		return nil
 	}
@@ -370,6 +383,12 @@ func (s *terraformStream) executeReference(ctx context.Context) ([]model.Vulnera
 
 func (s *terraformStream) finish(ctx context.Context, vulns []model.Vulnerability, evaluated int) ([]model.Vulnerability, error) {
 	vulns = s.tfRun.queries.withoutFailedRules(vulns)
+	if s.nativeModuleCalls != nil {
+		routing := s.tfRun.queries.routing
+		routing.moduleFiles = s.nativeModuleCalls.fileCalls()
+		routing.dropUnattributedExternal = true
+		vulns = routing.route(ctx, s.c, vulns)
+	}
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Info().Msgf("Evaluated %d Terraform rules on %d of %d roots",
 		len(s.tfRun.ready), evaluated, len(s.layout.Roots)+len(s.layout.Plans))

@@ -162,6 +162,7 @@ func (c *Inspector) evalLegacyDocuments(
 	run.baseStores, run.baseDataHashes = baseStores, baseDataHashes
 	run.sharedQueries = sharedQueries
 	run.routing = newFindingRouting(files, c.repoPath)
+	run.routing.dropUnattributedExternal = true
 	run.routing.moduleFiles = moduleFiles
 	vulns, err := c.evaluate(ctx, run, payloads)
 	if err != nil {
@@ -623,7 +624,9 @@ func copyWrittenSections(doc map[string]any, file *model.FileMetadata) {
 // legacy: takeLegacyRoot skips it, so its whole written document (already
 // shaped for rules by the JSON parser) is always contributed here. A path in
 // asWritten belongs to a root the model run left out, so its whole written
-// document stands for it as when modeling is skipped.
+// document stands for it as when modeling is skipped. A called module skipped
+// at the depth or cycle limit is not restored as written: its caller inputs
+// and instance inventory are unknown, and the evaluator logs that omission.
 func (c *Inspector) addWrittenSections(
 	docs []model.Document, raw []*project.LegacyDoc, written map[string]*model.FileMetadata, modeled bool,
 	asWritten map[string]bool,

@@ -416,6 +416,7 @@ func TestTerraformDeferredDecodeUsesRootOrderAfterWorkerCancellation(t *testing.
 	moduleDir := filepath.Join(dir, "modules", "shared")
 	rootA := filepath.Join(dir, "envs", "a")
 	rootB := filepath.Join(dir, "envs", "b")
+	rootC := filepath.Join(dir, "envs", "c")
 	moduleFile := writeFile(t, moduleDir, "main.tf", `
 variable "marker" {}
 resource "aws_s3_bucket" "bucket" {
@@ -434,8 +435,17 @@ module "shared" {
   marker = "second"
 }
 `)
+	rootCFile := writeFile(t, rootC, "main.tf", `
+variable "instances" {}
+module "shared" {
+  count  = var.instances
+  source = "../../modules/shared"
+  marker = "unresolved"
+}
+`)
 	files := append(parseTerraform(t, moduleFile), parseTerraform(t, rootAFile)...)
 	files = append(files, parseTerraform(t, rootBFile)...)
+	files = append(files, parseTerraform(t, rootCFile)...)
 
 	query := referenceQuery("static_module_variable", "static-module-variable", `package datadog
 
@@ -458,6 +468,10 @@ DatadogPolicy contains result if {
 		tracker:       &tracker.CITracker{},
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
+	// The static variable finding is from a reached module whose files are
+	// external to the scanned roots. Native projection reports it at its
+	// written source and does not attach a legacy module attribution.
+	ins.SetExternalModulePaths([]string{moduleDir})
 	ctx := context.Background()
 	layout, err := ins.terraformLayout(ctx, files)
 	require.NoError(t, err)
@@ -497,6 +511,25 @@ DatadogPolicy contains result if {
 	findings := stream.tfRun.queries.findings(false)
 	require.Len(t, findings, 1, "the shared static variable finding is reported once across module instances")
 	require.Equal(t, "first", findings[0].Description, "root A owns the shared written finding even though B evaluated first")
+
+	// The full native stream routes that one written finding back to each
+	// resolved caller. The third call has an unknown module count and must not
+	// acquire an unindexed module address through static finding fanout.
+	nativeFindings, err := ins.inspectTerraformStream(ctx, "native-route", files, []model.QueryMetadata{query}, nil, false)
+	require.NoError(t, err)
+	require.Len(t, nativeFindings, 2)
+	byCall := make(map[string]model.Vulnerability, len(nativeFindings))
+	for _, finding := range nativeFindings {
+		byCall[finding.ModuleCallChain] = finding
+	}
+	for _, rootDir := range []string{rootA, rootB} {
+		call := filepath.ToSlash(filepath.Join(filepath.Base(filepath.Dir(rootDir)), filepath.Base(rootDir), "main.tf")) + "|module.shared"
+		finding, ok := byCall[call]
+		require.True(t, ok, call)
+		require.NotNil(t, finding.ModuleAttribution)
+		require.Equal(t, filepath.ToSlash(filepath.Join(filepath.Base(filepath.Dir(rootDir)), filepath.Base(rootDir))), finding.RootModule)
+		require.Equal(t, "module.shared.var.marker", finding.ResourceID)
+	}
 }
 
 func TestParallelRelationalRootsRetractFailedRuleAndKeepOrder(t *testing.T) {

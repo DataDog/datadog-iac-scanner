@@ -178,6 +178,7 @@ func TestInspect_ExternalModuleVariableFindingsFollowResolvedCallers(t *testing.
 	require.Contains(t, callers, "stacks/b/main.tf")
 
 	routing := newFindingRouting(files, repo)
+	routing.dropUnattributedExternal = true
 	nestedExternal := model.Vulnerability{
 		FileName: modulePath,
 		ModuleAttribution: &model.ModuleAttribution{
@@ -273,4 +274,15 @@ func TestLegacyModuleBlockIndexPreservesPerFileAttributions(t *testing.T) {
 		}
 		require.Equal(t, want, got.ModuleAttributions, "file %s keeps the legacy attribution map", rel)
 	}
+
+	moduleFile := filepath.Join(repo, "modules", "app", "a.tf")
+	moduleIndex := newModuleCallIndex(map[string]*model.FileMetadata{
+		moduleFile: {ID: "module-file", FilePath: moduleFile, Kind: model.KindTerraform},
+	}, func(string) bool { return true })
+	moduleIndex.recordModules([]*tfmodel.Module{module}, "", repo, &terraformAttribution{cache: newModuleAttributionCache()})
+	fileCalls := moduleIndex.fileCalls()["module-file"]
+	require.NotNil(t, fileCalls)
+	require.Len(t, fileCalls.calls, 1)
+	require.Equal(t, ".", fileCalls.calls[0].rootModule,
+		"an empty repoPath uses the resolved chainBase for the relative root module")
 }

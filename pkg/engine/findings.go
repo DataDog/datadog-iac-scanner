@@ -110,6 +110,9 @@ func (s *findingSet) findings() []model.Vulnerability {
 type findingRouting struct {
 	callers     map[string]*model.FileMetadata
 	moduleFiles map[string]*moduleFileCalls
+	// Drop unattributed external static findings only after the caller index is
+	// complete. Native decoding leaves this unset until all roots are indexed.
+	dropUnattributedExternal bool
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
@@ -138,6 +141,8 @@ func (r *findingRouting) route(
 		return vulns
 	}
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
-	vulns = dropUnattributedExternalFindings(vulns, r.callers, c.isModulePackageFile, c.isRemoteModulePackageFile)
+	if r.dropUnattributedExternal {
+		vulns = dropUnattributedExternalFindings(vulns, r.callers, c.isModulePackageFile, c.isRemoteModulePackageFile)
+	}
 	return c.filterAtCallSites(ctx, vulns, r.callers)
 }

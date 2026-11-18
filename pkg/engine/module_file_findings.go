@@ -13,12 +13,17 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	tfmodel "github.com/DataDog/datadog-iac-scanner/pkg/terraform/model"
 )
 
 // moduleCall is one evaluated call of a module directory.
 type moduleCall struct {
 	callChain string
+	// moduleAddress and rootModule are detached from the evaluated model. They
+	// let static written findings receive the same per-caller address as legacy.
+	moduleAddress string
+	rootModule    string
 	// attribution names the directory in ModuleCodeLocation.Filename. It is
 	// shared by every file of the directory and read-only.
 	attribution *model.ModuleAttribution
@@ -29,6 +34,7 @@ type moduleCall struct {
 type moduleFileCalls struct {
 	calls []moduleCall
 	name  string
+	file  *model.FileMetadata
 }
 
 // moduleCallIndex collects the evaluated calls of the directories holding
@@ -82,6 +88,9 @@ func (idx *moduleCallIndex) recordModules(
 		if instance == nil || instance.Address == "" || len(instance.Chain) == 0 {
 			continue
 		}
+		if _, ok := tfeval.ModuleTerraformAddress(instance.Chain); !ok {
+			continue
+		}
 		dir := filepath.Clean(instance.Dir)
 		if _, ok := idx.files[dir]; !ok {
 			continue
@@ -92,9 +101,15 @@ func (idx *moduleCallIndex) recordModules(
 		if attr == nil {
 			continue
 		}
+		rootModule := ""
+		if instance.Root != nil {
+			rootModule = repoRelativeDir(instance.Root.Dir, chainBase, nil)
+		}
 		idx.calls[dir] = append(idx.calls[dir], moduleCall{
-			callChain:   legacyModuleCallChainKey(instance.Chain, instance.Address, chainBase),
-			attribution: attr,
+			callChain:     legacyModuleCallChainKey(instance.Chain, instance.Address, chainBase),
+			moduleAddress: instance.Address,
+			rootModule:    rootModule,
+			attribution:   attr,
 		})
 	}
 }
@@ -115,6 +130,7 @@ func (idx *moduleCallIndex) fileCalls() map[string]*moduleFileCalls {
 			out[f.ID] = &moduleFileCalls{
 				calls: calls,
 				name:  filepath.Base(f.FilePath),
+				file:  f,
 			}
 		}
 	}
@@ -147,6 +163,7 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 			attributed := *v
 			attributed.ModuleCallChain = call.callChain
 			attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
+			attachModuleCallAddress(file.file, &attributed, *call)
 			out = append(out, attributed)
 		}
 	}
@@ -154,6 +171,23 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 		return vulns
 	}
 	return out
+}
+
+// attachModuleCallAddress supplies TerraformScope for this one caller without
+// changing the scanned file's scope or retaining the evaluated module tree.
+func attachModuleCallAddress(file *model.FileMetadata, v *model.Vulnerability, call moduleCall) {
+	if file == nil || call.moduleAddress == "" {
+		return
+	}
+	scopedFile := *file
+	scope := model.TerraformScope{}
+	if file.TerraformScope != nil {
+		scope = *file.TerraformScope
+	}
+	scope.ModuleAddress = call.moduleAddress
+	scope.RootModule = call.rootModule
+	scopedFile.TerraformScope = &scope
+	attachTerraformAddress(&scopedFile, v, "")
 }
 
 // dropUnattributedExternalFindings removes the findings on an external module
