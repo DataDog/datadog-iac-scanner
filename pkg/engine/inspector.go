@@ -567,6 +567,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Debug().Msg("engine.Inspect()")
 
 	queries := c.getQueriesByPlat(platforms)
+	c.inventoryDocuments(ctx, files)
 
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo

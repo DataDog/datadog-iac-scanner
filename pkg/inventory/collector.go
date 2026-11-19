@@ -73,6 +73,7 @@ func (c *Collector) resourcePath(path string) string {
 func (c *Collector) finish(r *Resource) {
 	r.File = c.resourcePath(r.File)
 	r.CallSiteFile = c.resourcePath(r.CallSiteFile)
+	r.OriginChartPath = c.resourcePath(r.OriginChartPath)
 	scope := r.File
 	if r.RootModule != "" {
 		scope = c.resourcePath(r.RootModule)

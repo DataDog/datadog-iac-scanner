@@ -37,9 +37,14 @@ const (
 // PlatformTerraform is the platform of Terraform rows, the value findings carry.
 const PlatformTerraform = "terraform"
 
-// FailureTerraformPanic marks an inventory whose Terraform evaluation panicked,
-// so that some of its resources may be missing.
-const FailureTerraformPanic = "terraform_evaluation_panic"
+// Reasons an inventory is unusable, because some of its resources may be
+// missing.
+const (
+	// FailureTerraformPanic marks a Terraform evaluation that panicked.
+	FailureTerraformPanic = "terraform_evaluation_panic"
+	// FailureDocumentsPanic marks a panic while listing parsed documents.
+	FailureDocumentsPanic = "documents_panic"
+)
 
 // Reasons a file failed.
 const (
@@ -114,9 +119,9 @@ type UnresolvedSource struct {
 
 // Resource is one inventory row.
 //
-// A producer may give File, CallSiteFile and RootModule as absolute paths and
-// leave ResourceRef empty: the collector makes the paths relative and builds
-// the reference.
+// A producer may give File, CallSiteFile, OriginChartPath and RootModule as
+// absolute paths and leave ResourceRef empty: the collector makes the paths
+// relative and builds the reference.
 type Resource struct {
 	// ResourceRef identifies the resource within the repository:
 	// "<root module>|<resource path>" for Terraform, "<file>|<resource path>"
