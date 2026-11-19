@@ -39,6 +39,7 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 		}
 		index := docIndex[f.FilePath]
 		docIndex[f.FilePath] = index + 1
+		first := len(rows)
 		switch {
 		case f.Kind == model.KindDOCKER:
 			rows = append(rows, dockerfileResource(f))
@@ -54,6 +55,10 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 			rows = append(rows, e.keyedRows(f, index, "jobs", workflowJobRow)...)
 		case f.Platform == PlatformAnsible:
 			rows = append(rows, e.ansibleRows(f, index)...)
+		}
+		// The findings raised on the document link to its rows.
+		for i := first; i < len(rows); i++ {
+			rows[i].DocumentID = f.ID
 		}
 	}
 	return rows

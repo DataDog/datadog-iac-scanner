@@ -129,7 +129,13 @@ type Resource struct {
 	ResourceRef string `json:"resource_ref"`
 	// RootModule is the root module directory of a Terraform resource. It is
 	// part of the reference, not of the document.
-	RootModule   string `json:"-"`
+	RootModule string `json:"-"`
+	// DocumentID is the parsed document a row comes from, and ModuleCallChain
+	// the module calls of a Terraform row as findings name them. Both link
+	// findings to rows and are not written.
+	DocumentID      string `json:"-"`
+	ModuleCallChain string `json:"-"`
+
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`
 	ResourceType string `json:"resource_type"`

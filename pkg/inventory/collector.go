@@ -36,6 +36,7 @@ type Collector struct {
 	resources        []Resource
 	unresolved       []UnresolvedSource
 	links            []FindingLink
+	findings         []Finding
 	findingsUnlinked int
 	failure          string
 
@@ -227,7 +228,8 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 	})
 	unresolved = slices.Compact(unresolved)
 
-	links := slices.Clone(c.links)
+	found, unlinked := c.linkFindings(resources)
+	links := append(slices.Clone(c.links), found...)
 	slices.SortFunc(links, func(a, b FindingLink) int {
 		return cmp.Or(
 			strings.Compare(a.FindingFingerprint, b.FindingFingerprint),
@@ -256,7 +258,7 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 		Stats: Stats{
 			Resources:        len(resources),
 			FilesFailed:      failed,
-			FindingsUnlinked: c.findingsUnlinked,
+			FindingsUnlinked: c.findingsUnlinked + unlinked,
 		},
 		Files:             files,
 		UnresolvedSources: nonNil(unresolved),

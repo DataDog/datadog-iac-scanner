@@ -227,7 +227,7 @@ func TestInventoryRedactsRepositoryCredentials(t *testing.T) {
 		}},
 	}}
 	c.startInventory(context.Background())
-	require.Equal(t, InventoryWritten, c.finishInventory(context.Background(), nil).Status)
+	require.Equal(t, InventoryWritten, c.finishInventory(context.Background(), nil, nil).Status)
 
 	data, err := os.ReadFile(inventoryPath)
 	require.NoError(t, err)
@@ -274,7 +274,7 @@ func TestInventoryFailuresDoNotFailTheScan(t *testing.T) {
 		// A run without a collector panics when it builds.
 		c.inventory = &inventoryRun{}
 
-		status := c.finishInventory(context.Background(), nil)
+		status := c.finishInventory(context.Background(), nil, nil)
 		require.Equal(t, InventoryFailed, status.Status)
 		require.Equal(t, InventoryReasonPanic, status.Reason)
 		_, err := os.Stat(inventoryPath)

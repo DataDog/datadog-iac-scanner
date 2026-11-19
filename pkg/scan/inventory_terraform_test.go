@@ -309,7 +309,7 @@ func TestInventoryFailsWhenResourcesMayBeMissing(t *testing.T) {
 	c.startInventory(context.Background())
 	c.inventory.collector.Fail(inventory.FailureTerraformPanic)
 
-	status := c.finishInventory(context.Background(), nil)
+	status := c.finishInventory(context.Background(), nil, nil)
 	require.Equal(t, InventoryFailed, status.Status)
 	require.Equal(t, inventory.FailureTerraformPanic, status.Reason)
 	_, err := os.Stat(inventoryPath)

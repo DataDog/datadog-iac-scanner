@@ -170,6 +170,8 @@ func (inv *terraformInventory) row(
 		LineStart:    r.DefLine,
 		ModuleCall:   moduleCall,
 		Completeness: inventory.CompletenessComplete,
+		// As findings name the module calls, to link them to the row.
+		ModuleCallChain: callChainKey(r, inv.repoPath),
 	}
 	if !complete {
 		row.Completeness = inventory.CompletenessInstanceUnresolved

@@ -142,7 +142,7 @@ func (c *Client) startInventory(ctx context.Context) {
 // finishInventory writes the inventory and reports what happened. A failure
 // never fails the scan: the findings are already written, and no inventory
 // file is left behind.
-func (c *Client) finishInventory(ctx context.Context, results *Results) (status *InventoryMetadata) {
+func (c *Client) finishInventory(ctx context.Context, results *Results, summary *model.Summary) (status *InventoryMetadata) {
 	run := c.inventory
 	if run == nil {
 		return nil
@@ -170,6 +170,7 @@ func (c *Client) finishInventory(ctx context.Context, results *Results) (status 
 		return &InventoryMetadata{Status: InventoryFailed, Reason: reason}
 	}
 	c.recordManifest(run, files)
+	recordFindings(run.collector, files, summary)
 	// A resource of a fetched module is named after where the module came
 	// from, as in the reports.
 	run.collector.SetPathResolver(func(path string) string {
@@ -254,6 +255,39 @@ func (c *Client) recordManifest(run *inventoryRun, files model.FileMetadatas) {
 	}
 	for path, platform := range run.tooLarge {
 		record(path, platform, inventory.FileFailed, inventory.ReasonTooLarge)
+	}
+}
+
+// recordFindings gives the collector every finding the SARIF report holds,
+// to link them to their rows.
+func recordFindings(collector *inventory.Collector, files model.FileMetadatas, summary *model.Summary) {
+	if summary == nil {
+		return
+	}
+	paths := make(map[string]string, len(files))
+	for _, f := range files {
+		if f != nil {
+			paths[f.ID] = f.FilePath
+		}
+	}
+	for i := range summary.Queries {
+		for j := range summary.Queries[i].Files {
+			vf := &summary.Queries[i].Files[j]
+			// The SARIF report leaves out a finding with no location.
+			if vf.ResourceLocation.Start.Line < 1 || vf.ResourceLocation.End.Line < 1 {
+				continue
+			}
+			// A module instance's document is named after its file's.
+			fileID, _, _ := strings.Cut(vf.FileID, "\x00")
+			collector.AddFinding(&inventory.Finding{
+				Fingerprint:     vf.Fingerprint,
+				DocumentID:      vf.FileID,
+				File:            paths[fileID],
+				Line:            vf.Line,
+				BlockStart:      vf.BlockLocation.Start.Line,
+				ModuleCallChain: vf.ModuleCallChain,
+			})
+		}
 	}
 }
 

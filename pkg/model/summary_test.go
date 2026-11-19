@@ -151,6 +151,7 @@ func TestCreateSummary(t *testing.T) {
 							Line:        1,
 							SearchKey:   "searchKey",
 							Value:       nil,
+							FileID:      "fileId",
 						},
 					},
 				},

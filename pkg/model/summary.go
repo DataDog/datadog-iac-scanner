@@ -52,6 +52,8 @@ type VulnerableFile struct {
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
+	// FileID is the document the finding was raised on (Vulnerability.FileID).
+	FileID string `json:"-"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -405,6 +407,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
+			FileID:                   item.FileID,
 		})
 
 		filePaths[resolvedPath] = item.FileName
