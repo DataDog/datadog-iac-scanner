@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	tfvalue "github.com/DataDog/datadog-iac-scanner/pkg/terraform/value"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -22,7 +23,10 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-const blockTypeData = "data"
+const (
+	blockTypeData     = "data"
+	blockTypeResource = "resource"
+)
 
 var dataRoot = map[string]struct{}{blockTypeData: {}}
 
@@ -43,12 +47,17 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 // attributes localdata computes for data sources whose result follows from
 // their configuration alone.
 type moduleData struct {
-	e       *Evaluator
-	blocks  []*hclsyntax.Block
-	sources map[string][]byte
-	locals  *localGraph
-	addr    string
-	chain   []CallSite
+	// ctx bounds the expansion of the data blocks, which runs outside the call
+	// stack that carries the scan's context.
+	ctx          context.Context
+	e            *Evaluator
+	blocks       []*hclsyntax.Block
+	sources      map[string][]byte
+	renderSource partial.Source
+	locals       *localGraph
+	dir          string
+	addr         string
+	chain        []CallSite
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -78,15 +87,22 @@ type moduleData struct {
 	// without a schema, its nested blocks read as attributes.
 	jsonBodies map[*hclsyntax.Block]hcl.Body
 
+	// refAttrs are the attributes read where an unknown value and a missing
+	// key differ.
+	refAttrs referencedAttrs
+
 	instances []ResolvedResource
 }
 
 func newModuleData(
+	ctx context.Context,
 	e *Evaluator,
 	sources map[string][]byte,
+	renderSource partial.Source,
 	locals *localGraph,
 	static *dirStatic,
-	addr string,
+	refAttrs referencedAttrs,
+	dir, addr string,
 	chain []CallSite,
 ) *moduleData {
 	blocks := locals.dataBlocks
@@ -94,8 +110,8 @@ func newModuleData(
 		return nil
 	}
 	d := &moduleData{
-		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
-		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
+		ctx: ctx, e: e, blocks: blocks, sources: sources, renderSource: renderSource, locals: locals, dir: dir, addr: addr, chain: chain,
+		dataLocals: locals.dataLocals, cyclic: locals.cyclicData, refAttrs: refAttrs,
 		readsData:          static.dataReadsData,
 		readsLocals:        static.dataReadsLocals,
 		readsResources:     static.dataReadsResources,
@@ -197,7 +213,7 @@ func (d *moduleData) readsOwnResources() bool {
 // locals that read it when it changed, until data.* settles. The pass bound
 // matches a source_policy_documents chain as long as the blocks and the locals
 // aliasing them, as getDataSourcePolicy does at the root.
-func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
+func (d *moduleData) refresh(evalCtx *hcl.EvalContext) {
 	if d == nil {
 		return
 	}
@@ -208,7 +224,7 @@ func (d *moduleData) refresh(ctx context.Context, evalCtx *hcl.EvalContext) {
 		bound = 1
 	}
 	for pass := 0; pass <= bound; pass++ {
-		value := d.evaluate(ctx, evalCtx)
+		value := d.evaluate(evalCtx)
 		if existing, ok := evalCtx.Variables[blockTypeData]; ok && equalValues(existing, value) {
 			break
 		}
@@ -238,21 +254,25 @@ func (d *moduleData) refreshDataLocals(evalCtx *hcl.EvalContext) {
 	evalCtx.Variables["local"] = objectOrEmpty(values)
 }
 
-func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty.Value {
+func (d *moduleData) evaluate(evalCtx *hcl.EvalContext) cty.Value {
 	instances := make([]ResolvedResource, 0, len(d.blocks))
 	exposed := make([]ResolvedResource, 0, len(d.blocks))
+	var empty []*hclsyntax.Block
 	for _, b := range d.blocks {
 		inputs := blockEvalInputs(b, evalCtx)
 		cached, ok := d.evalCache[b]
 		if !ok || !sameCtyValues(cached.inputs, inputs) {
-			cached = d.evalBlock(ctx, b, evalCtx, inputs)
+			cached = d.evalBlock(b, evalCtx, inputs)
 		}
 		instances = append(instances, cached.instances...)
 		exposed = append(exposed, cached.exposed...)
+		if cached.empty {
+			empty = append(empty, b)
+		}
 	}
 	d.instances = instances
 	byType := &hcl.EvalContext{Variables: map[string]cty.Value{}}
-	injectResourceRefs(byType, exposed)
+	injectResourceRefs(byType, exposed, empty, d.e.newModuleRefInjector(d.refAttrs, refData, d.dir, d.addr))
 	for _, b := range d.blocks {
 		if d.cyclic[b] {
 			exposeUnknown(byType, b.Labels[0], b.Labels[1])
@@ -283,21 +303,24 @@ type blockEvalCache struct {
 	// exposed are the instances as data.* exposes them, with the attributes
 	// localdata computes added and, at the root module, the iteration dropped.
 	exposed []ResolvedResource
+	// empty reports that the block expanded to zero instances.
+	empty bool
 }
 
 // evalBlock evaluates one data block and memoizes the result against the
 // context inputs it read: unchanged inputs reproduce the same result.
 func (d *moduleData) evalBlock(
-	ctx context.Context, b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
+	b *hclsyntax.Block, evalCtx *hcl.EvalContext, inputs map[string]cty.Value,
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
+	expanded, empty := d.e.expandBlock(d.ctx, b, evalCtx, d.addr, d.chain, true)
+	cached.empty = empty
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
 		if source, ok := localdata.Lookup(inst.Type); ok {
-			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx, source)
+			view.Attributes = d.withComputedAttributes(inst, b, evalCtx, source)
 		}
 		if d.addr == "" {
 			inst.Iteration = nil
@@ -310,6 +333,21 @@ func (d *moduleData) evalBlock(
 	}
 	d.evalCache[b] = cached
 	return cached
+}
+
+// emptyBlocks returns the blocks whose last evaluation, the one the current
+// instances come from, expanded to zero instances.
+func (d *moduleData) emptyBlocks() []EmptyBlock {
+	if d == nil {
+		return nil
+	}
+	var out []EmptyBlock
+	for _, b := range d.blocks {
+		if d.evalCache[b].empty {
+			out = append(out, emptyBlockOf(b, true))
+		}
+	}
+	return out
 }
 
 // blockEvalInputs snapshots the context variables the block's traversals name.
@@ -464,22 +502,39 @@ func sameCtyValues(a, b map[string]cty.Value) bool {
 // withComputedAttributes adds the attributes a data source computes from its
 // configuration to inst's, rendering what does not resolve as text.
 func (d *moduleData) withComputedAttributes(
-	inst *ResolvedResource, b *hclsyntax.Block, scanCtx context.Context, evalCtx *hcl.EvalContext, source localdata.Source,
+	inst *ResolvedResource, b *hclsyntax.Block, evalCtx *hcl.EvalContext, source localdata.Source,
 ) map[string]cty.Value {
 	ctx := evalCtx
 	if inst.Iteration != nil {
 		ctx = evalCtx.NewChild()
 		ctx.Variables = inst.Iteration
 	}
-	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources)}
+	rd := &partial.Renderer{Ctx: ctx, Source: d.renderSource}
+	// In opaque mode the unresolved parts of a rendered value become
+	// the unknown marker, so what the data source computes stays readable
+	// around them.
+	track := func(expr hcl.Expression, v cty.Value, ok bool) (cty.Value, bool) {
+		if ok && d.e.opaquePartialData && containsInterpolation(v) {
+			known, diags := expr.Value(ctx)
+			evaluated := !diags.HasErrors()
+			if !evaluated || !known.IsWhollyKnown() {
+				v = markUnresolved(v, known, evaluated)
+			}
+		}
+		return v, ok
+	}
 	var computed map[string]string
 	if body, ok := d.jsonBodies[b]; ok {
 		src := d.sources[b.TypeRange.Filename]
-		computed = source(scanCtx, body, func(expr hcl.Expression) (cty.Value, bool) {
-			return renderJSON(rd, expr, src)
+		computed = source(d.ctx, body, func(expr hcl.Expression) (cty.Value, bool) {
+			v, ok := renderJSON(rd, expr, src)
+			return track(expr, v, ok)
 		})
 	} else {
-		computed = source(scanCtx, b.Body, rd.Render)
+		computed = source(d.ctx, b.Body, func(expr hcl.Expression) (cty.Value, bool) {
+			v, ok := rd.Render(expr)
+			return track(expr, v, ok)
+		})
 	}
 	attrs := make(map[string]cty.Value, len(inst.Attributes)+len(computed))
 	for k, v := range inst.Attributes {
@@ -489,6 +544,44 @@ func (d *moduleData) withComputedAttributes(
 		attrs[k] = cty.StringVal(v)
 	}
 	return attrs
+}
+
+// markUnresolved replaces each string of v that holds interpolation text with
+// the unknown marker. known is the expression evaluated for real when
+// evaluated is set: a string it holds wholly known, such as a literal
+// "$${...}", is kept.
+func markUnresolved(v, known cty.Value, evaluated bool) cty.Value {
+	v, _ = v.UnmarkDeep()
+	if evaluated {
+		known, _ = known.UnmarkDeep()
+	}
+	out, err := cty.Transform(v, func(path cty.Path, leaf cty.Value) (cty.Value, error) {
+		if !leaf.IsKnown() || leaf.IsNull() || leaf.Type() != cty.String || !strings.Contains(leaf.AsString(), "${") {
+			return leaf, nil
+		}
+		if evaluated {
+			if at, err := path.Apply(known); err == nil && at.IsWhollyKnown() {
+				return leaf, nil
+			}
+		}
+		return cty.StringVal(tfvalue.UnknownMarker), nil
+	})
+	if err != nil {
+		return v
+	}
+	return out
+}
+
+// containsInterpolation reports whether a rendered value holds interpolation text.
+func containsInterpolation(v cty.Value) bool {
+	found := false
+	_ = cty.Walk(v, func(_ cty.Path, leaf cty.Value) (bool, error) {
+		if leaf.IsKnown() && !leaf.IsNull() && leaf.Type() == cty.String && strings.Contains(leaf.AsString(), "${") {
+			found = true
+		}
+		return !found, nil
+	})
+	return found
 }
 
 // renderJSON renders a JSON configuration expression, in the scope of the

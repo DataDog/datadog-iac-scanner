@@ -48,10 +48,14 @@ type VulnerableFile struct {
 	IsSuppressed             bool   `json:"is_suppressed,omitempty"`
 	SuppressionKind          string `json:"suppression_kind,omitempty"`
 	SuppressionJustification string `json:"suppression_justification,omitempty"`
+	// KeepDetectionLocation is a SARIF-only rendering hint.
+	KeepDetectionLocation bool `json:"-"`
 	// ModuleCallChain: local-module call path; empty for root; included in fingerprint.
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
+	// RelatedLocations are the places the finding cites as evidence.
+	RelatedLocations []SourceLocation `json:"-"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -396,8 +400,10 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			IsSuppressed:             item.IsSuppressed,
 			SuppressionKind:          item.SuppressionKind,
 			SuppressionJustification: item.SuppressionJustification,
+			KeepDetectionLocation:    item.KeepDetectionLocation,
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
+			RelatedLocations:         item.RelatedLocations,
 		})
 
 		filePaths[resolvedPath] = item.FileName

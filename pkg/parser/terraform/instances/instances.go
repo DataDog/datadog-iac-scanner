@@ -69,6 +69,48 @@ func Resolve(scanCtx context.Context, count, forEach hcl.Expression, evalCtx *hc
 	return Plan{}
 }
 
+// ZeroInstances reports whether a top-level block with these labels and
+// count and for_each expressions (nil when absent) resolves under ctx to no
+// instance, as Resolve does: Terraform creates none of it. Only resource,
+// data, ephemeral and module blocks expand; any other block, locals among
+// them, never does, whatever its attributes.
+func ZeroInstances(blockType string, labels int, count, forEach hcl.Expression, ctx *hcl.EvalContext) bool {
+	switch blockType {
+	case "resource", "data", "ephemeral":
+		if labels != 2 {
+			return false
+		}
+	case "module":
+		if labels != 1 {
+			return false
+		}
+	default:
+		return false
+	}
+	if count != nil {
+		n, ok := countValue(count, ctx)
+		return ok && n <= 0
+	}
+	if forEach != nil {
+		v, diags := forEach.Value(ctx)
+		return !diags.HasErrors() && ForEachCollection(v) && v.LengthInt() == 0
+	}
+	return false
+}
+
+// ZeroInstancesAsWritten is ZeroInstances for a block read before its
+// module's inputs are known. A caller can set any variable of a called module,
+// so only an expansion that reads no variable is known to create no instance;
+// the others are left to module evaluation.
+func ZeroInstancesAsWritten(blockType string, labels int, count, forEach hcl.Expression, ctx *hcl.EvalContext) bool {
+	for _, expr := range [...]hcl.Expression{count, forEach} {
+		if expr != nil && len(expr.Variables()) > 0 {
+			return false
+		}
+	}
+	return ZeroInstances(blockType, labels, count, forEach, ctx)
+}
+
 func countValue(expr hcl.Expression, ctx *hcl.EvalContext) (int, bool) {
 	v, diags := expr.Value(ctx)
 	if diags.HasErrors() {

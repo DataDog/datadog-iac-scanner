@@ -241,6 +241,24 @@ DatadogPolicy contains result if {
 	assert.Contains(t, strings.Join(missing, "|"), "searchKey")
 }
 
+func TestValidate_BlockResultFields(t *testing.T) {
+	missingFields := func(result string) []string {
+		rego := "package datadog\n\nDatadogPolicy contains result if {\n\tsome i\n\tresult := " + result + "\n}\n"
+		var missing []string
+		for _, e := range validate(t, "terraform", rego) {
+			if e.Code == codeMissingResultField {
+				missing = append(missing, e.Message)
+			}
+		}
+		return missing
+	}
+
+	assert.Empty(t, missingFields(`{"_dd_id": input.document[i].id, "path": ["acl"]}`))
+	missing := missingFields(`{"_dd_id": input.document[i].id}`)
+	require.Len(t, missing, 1, "got %v", missing)
+	assert.Contains(t, missing[0], `"path"`)
+}
+
 // A wrong package name must not hide the other contract problems: all phases after
 // parsing run against the same AST, so one broken convention no longer gates the rest.
 func TestValidate_WrongPackageStillReportsFieldErrors(t *testing.T) {

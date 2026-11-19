@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"errors"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/printer"
@@ -102,7 +103,7 @@ func Test_GetSummary(t *testing.T) {
 			c.Tracker = &tt.tracker
 			c.ScanParams = &tt.scanParameters
 
-			v := c.getSummary(ctx, tt.results, tt.endTime, tt.pathParameters)
+			v := c.getSummary(ctx, tt.results, nil, tt.endTime, tt.pathParameters)
 
 			require.Equal(t, tt.expectedResult.Counters, v.Counters)
 			require.Equal(t, tt.expectedResult.SeveritySummary, v.SeveritySummary)
@@ -443,6 +444,31 @@ func Test_GetScanMetadata(t *testing.T) {
 			require.Equal(t, tt.expectedMetadata.StartTime, v.StartTime)
 			require.Equal(t, tt.expectedMetadata.Stats.Violations, v.Stats.Violations)
 			require.Equal(t, tt.expectedMetadata.Stats.ViolationBreakdowns, v.Stats.ViolationBreakdowns)
+		})
+	}
+}
+
+func TestGetSummaryCountsActualFailedQueries(t *testing.T) {
+	ctx := context.Background()
+	client := &Client{
+		Tracker: &tracker.CITracker{
+			ExecutingQueries: 104,
+			ExecutedQueries:  65,
+		},
+		ScanParams: &Parameters{},
+	}
+
+	for _, tt := range []struct {
+		name         string
+		failed       map[string]error
+		wantFailures int
+	}{
+		{name: "rules skipped by scheduler are not failures", failed: map[string]error{}, wantFailures: 0},
+		{name: "actual query error is counted", failed: map[string]error{"broken_rule": errors.New("compile error")}, wantFailures: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			summary := client.getSummary(ctx, []model.Vulnerability{}, tt.failed, time.Time{}, model.PathParameters{})
+			require.Equal(t, tt.wantFailures, summary.Counters.FailedToExecuteQueries)
 		})
 	}
 }

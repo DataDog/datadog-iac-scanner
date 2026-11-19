@@ -16,15 +16,82 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
+
+// errAfterN is a context whose Err becomes Canceled after n successful Err
+// observations. Expansion checks Err once per instance, so a small budget
+// stops after the first few instances without relying on timing.
+type errAfterN struct {
+	context.Context
+	left atomic.Int64
+}
+
+func (c *errAfterN) Err() error {
+	if c.left.Add(-1) < 0 {
+		return context.Canceled
+	}
+	return nil
+}
+
+// A canceled mid-expansion must not leave a partial tree in the evaluation
+// cache for a later EvaluateModule on the same Evaluator to reuse.
+func TestEvaluateModule_CanceledPartialResultIsNotCached(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "root", map[string]string{
+		"main.tf": "resource \"aws_s3_bucket\" \"b\" {\n  count = 75\n}\n",
+	})
+	e := New()
+	ctx := &errAfterN{Context: context.Background()}
+	// evaluationStop, evalResourceBlocks, and the first expandPlanInstances
+	// check succeed; the next check cancels before instance 1 is built.
+	ctx.left.Store(3)
+
+	resources, _, _, err := e.EvaluateModule(ctx, dir, nil)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, resources)
+	require.Zero(t, e.EvalCacheSize())
+
+	resources, _, _, err = e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 75)
+}
+
+func TestExpandBlock_StopsWhenTheContextIsDone(t *testing.T) {
+	file, diags := hclsyntax.ParseConfig(
+		[]byte("resource \"aws_s3_bucket\" \"b\" {\n  count = 1000000000000000\n}\n"), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	rb := file.Body.(*hclsyntax.Body).Blocks[0]
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	resources, _ := New().expandBlock(ctx, rb, &hcl.EvalContext{}, "", nil, false)
+	require.Empty(t, resources)
+}
+
+func TestExpandBlock_DynamicStopsWhenTheContextIsDone(t *testing.T) {
+	items := make([]string, 5000)
+	for i := range items {
+		items[i] = strconv.Itoa(i)
+	}
+	src := "resource \"aws_security_group\" \"sg\" {\n  dynamic \"ingress\" {\n    for_each = [" +
+		strings.Join(items, ", ") +
+		"]\n    content {\n      from_port = ingress.value\n    }\n  }\n}\n"
+	file, diags := hclsyntax.ParseConfig([]byte(src), "dyn.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	rb := file.Body.(*hclsyntax.Body).Blocks[0]
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	resources, _ := New().expandBlock(ctx, rb, &hcl.EvalContext{}, "", nil, false)
+	require.Empty(t, resources)
+}
 
 // writeModule lays down a module directory containing the given files (name ->
 // content) under root and returns its path.
@@ -508,7 +575,9 @@ module "child" {
 	requireString(t, r.Attributes, "module_file", "module")
 	requireString(t, r.Attributes, "root_file", "root")
 	requireString(t, r.Attributes, "cwd", filepath.ToSlash(rootDir))
-	requireString(t, r.Attributes, "workspace", "default")
+	if v := r.Attributes["workspace"]; v.IsKnown() {
+		t.Errorf("workspace = %#v, want unknown: a run selects the workspace", v)
+	}
 }
 
 func TestEvaluateModule_TopLevelOutputsReturned(t *testing.T) {
@@ -608,6 +677,69 @@ resource "aws_s3_bucket" "a_bucket" {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
 	findResource(t, resources, "aws_s3_bucket", "a_bucket")
+}
+
+// A module the evaluator declines to enter leaves no instances and no empty
+// blocks, and the call after it is still evaluated.
+func TestEvaluateModule_DeclinedChildLeavesNoResidue(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{
+		"main.tf": `
+resource "aws_s3_bucket" "leaf" {
+  count = 0
+}
+`,
+	})
+	writeModule(t, root, "deep", map[string]string{
+		"main.tf": `
+module "leaf" {
+  source = "../leaf"
+}
+`,
+	})
+	side := writeModule(t, root, "side", map[string]string{
+		"main.tf": `
+resource "aws_s3_bucket" "gone" {
+  count = 0
+}
+resource "aws_s3_bucket" "ok" {
+  bucket = "ok"
+}
+`,
+	})
+	caller := writeModule(t, root, "caller", map[string]string{
+		"main.tf": `
+module "deep" {
+  source = "../deep"
+}
+module "side" {
+  source = "../side"
+}
+`,
+	})
+
+	e := New()
+	e.maxDepth = 1
+	e.SetTrackModuleInstances(true)
+	resources, _, _, err := e.EvaluateModule(context.Background(), caller, nil)
+	require.NoError(t, err)
+	findResource(t, resources, "aws_s3_bucket", "ok")
+	for _, r := range resources {
+		require.NotEqual(t, "leaf", r.Name)
+	}
+
+	leafDir := filepath.Join(root, "leaf")
+	require.Contains(t, e.NotEvaluatedDirs(), leafDir)
+	for _, inst := range e.TakeModuleInstances() {
+		require.NotEqual(t, leafDir, inst.Dir)
+	}
+	blocks := e.TakeEmptyBlocks()
+	for _, block := range blocks {
+		require.NotEqual(t, filepath.Join(leafDir, "main.tf"), block.DefinedIn)
+	}
+	gone, ok := emptyBlockNames(blocks)["aws_s3_bucket.gone"]
+	require.True(t, ok)
+	require.Equal(t, filepath.Join(side, "main.tf"), gone.DefinedIn)
 }
 
 func TestEvaluateModule_UnresolvedReferenceIsUnknown(t *testing.T) {
@@ -891,6 +1023,42 @@ resource "aws_s3_bucket" "this" {
 	}
 }
 
+// A for_each set with non-string elements is not something Terraform itself
+// accepts; it must be treated as unresolved (one "each.key"-unknown instance),
+// never as distinct instances sharing one invented placeholder key.
+func TestEvaluateModule_ForEachNonStringKeysAreUnresolved(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "mod", map[string]string{
+		"main.tf": `
+resource "aws_s3_bucket" "this" {
+  for_each = toset([1, 2, 3])
+  bucket   = "bucket-${each.key}"
+}
+`,
+	})
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("EvaluateModule: %v", err)
+	}
+
+	var got []ResolvedResource
+	for _, r := range resources {
+		if r.Type == "aws_s3_bucket" {
+			got = append(got, r)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d aws_s3_bucket instances, want 1 (unresolved, not one per element)", len(got))
+	}
+	if got[0].Name != "this" {
+		t.Fatalf("unresolved instance name = %q, want the base name %q", got[0].Name, "this")
+	}
+	if v := got[0].Attributes["bucket"]; v.IsKnown() {
+		t.Fatalf("bucket = %v, want unknown since each.key could not be resolved", v)
+	}
+}
+
 func TestEvaluateModule_ForEachEmptySkipped(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{
@@ -1135,20 +1303,11 @@ func TestCanonicalInputsKey_NullTypeDistinct(t *testing.T) {
 	}
 }
 
-func TestEvaluateLocalModuleBlocksIgnoresNullPreliminaryOutputs(t *testing.T) {
+func TestPublishedModuleOutputsIgnoresNullModule(t *testing.T) {
 	evalCtx := &hcl.EvalContext{Variables: map[string]cty.Value{
 		"module": cty.NullVal(cty.EmptyObject),
 	}}
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			t.Fatalf("evaluateLocalModuleBlocks panicked: %v", recovered)
-		}
-	}()
-
-	_, outputs := New().evaluateLocalModuleBlocks(
-		context.Background(), nil, nil, evalCtx, nil, nil, "", "", "", "", nil, 0, nil, nil,
-	)
-	if len(outputs) != 0 {
+	if outputs := publishedModuleOutputs(evalCtx); len(outputs) != 0 {
 		t.Fatalf("outputs = %#v, want empty", outputs)
 	}
 }
@@ -2283,8 +2442,7 @@ resource "aws_y" "b" {
 	}
 }
 
-// A dynamic block in a module call is kept as written, however deeply nested,
-// instead of being expanded outside any budget.
+// A dynamic block in a module call is kept as written, however deeply nested.
 func TestEvalBody_ModuleCallKeepsNestedDynamicBlocksAsWritten(t *testing.T) {
 	src := `
 dynamic "a" {
@@ -2951,4 +3109,381 @@ module "b" {
 		require.True(t, sharesStorage(resources[0].Attributes["tags"], resources[1].Attributes["tags"]),
 			"instances in one directory and root share equal file-derived attributes")
 	}
+}
+
+// Legacy instance names retain Go quoting while canonical addresses round-trip
+// keys with quotes, backslashes and template introducers through HCL.
+func TestExpandBlock_LegacyNamesAndCanonicalAddresses(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+locals {
+  keys = toset(["a\"b", "a\\b", "a[b", "$${key}", "%%{if}"])
+}
+
+resource "aws_s3_bucket" "b" {
+  for_each = local.keys
+  bucket   = each.key
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 5)
+	names := make([]string, 0, 5)
+	for i := range resources {
+		names = append(names, resources[i].Name)
+	}
+	// Names keep the legacy Go quoting; canonical addresses use HCL escaping.
+	require.ElementsMatch(t, []string{
+		`b["a\"b"]`,
+		`b["a\\b"]`,
+		`b["a[b"]`,
+		`b["${key}"]`,
+		`b["%{if}"]`,
+	}, names)
+
+	// Every instance's address parses as Terraform does, and its key is the
+	// raw for_each key recorded at expansion.
+	for i := range resources {
+		r := &resources[i]
+		name, key := r.Name, r.instance.key
+		require.True(t, r.instance.set, name)
+		require.Equal(t, "b", r.BaseName(), name)
+		full := address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: r.BaseName()}, r.InstanceSuffix())
+		traversal, diags := hclsyntax.ParseTraversalAbs([]byte(full), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors(), "%s: %s", name, diags.Error())
+		index := traversal[len(traversal)-1].(hcl.TraverseIndex)
+		require.Equal(t, key, index.Key.AsString(), name)
+	}
+}
+
+// Reference injection decodes the HCL-escaped instance key back to the raw
+// for_each key, so a local reading aws_s3_bucket.b["a\"b"] resolves the right
+// instance instead of an extra-$ shadow key.
+func TestInjectResourceRefs_DecodesHCLEscapedKeys(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+locals {
+  keys = toset(["a\"b", "$${key}"])
+}
+
+resource "aws_s3_bucket" "b" {
+  for_each = local.keys
+  bucket   = each.key
+}
+
+output "names" {
+  value = [for k, v in aws_s3_bucket.b : v.bucket]
+}
+
+output "quoted" {
+  value = aws_s3_bucket.b["a\"b"].bucket
+}
+`,
+	})
+	_, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	quoted := outputs["quoted"]
+	require.False(t, quoted.IsKnown() == false, "the reference through the HCL-escaped key must resolve")
+	require.Equal(t, `a"b`, quoted.AsString())
+}
+
+// Ephemeral resource blocks expand and are addressed like resources, with the
+// instance suffix, so their instances never collapse onto the bare block.
+func TestExpandBlock_EphemeralInstancesAreExpanded(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+ephemeral "aws_secretsmanager_secret" "login" {
+  for_each = toset(["a", "b"])
+  name     = each.key
+}
+`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 2)
+	for i := range resources {
+		require.Equal(t, "aws_secretsmanager_secret", resources[i].Type)
+		addr, ok := resources[i].TerraformAddress()
+		require.True(t, ok)
+		require.Equal(t, "ephemeral.aws_secretsmanager_secret."+resources[i].Name, addr)
+	}
+	require.ElementsMatch(t, []string{
+		`login["a"]`,
+		`login["b"]`,
+	}, []string{resources[0].Name, resources[1].Name})
+}
+
+// Keys with literal dollar/percent signs keep their identity through HCL
+// escaping: hclwrite doubles an introducer only before a brace, and the
+// reference-injection decode must be its exact inverse — a$$b and a$b are
+// different keys and never collapse.
+func TestExpandBlock_RepeatedSymbolKeysStayDistinct(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+locals {
+  keys = toset(["a$b", "a$$b", "a$${b}", "a%b", "a%%b", "a%%{b}"])
+}
+
+resource "aws_s3_bucket" "b" {
+  for_each = local.keys
+  bucket   = each.key
+}
+
+output "direct" {
+  value = aws_s3_bucket.b["a$$b"].bucket
+}
+
+output "escaped_introducer" {
+  value = aws_s3_bucket.b["a$${b}"].bucket
+}
+
+output "percent" {
+  value = aws_s3_bucket.b["a%%{b}"].bucket
+}
+`,
+	})
+	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 6)
+
+	names := make([]string, 0, 6)
+	for i := range resources {
+		names = append(names, resources[i].Name)
+	}
+	// Legacy names preserve literal keys; canonical suffixes below escape HCL introducers.
+	require.ElementsMatch(t, []string{
+		`b["a$b"]`,
+		`b["a$$b"]`,
+		`b["a${b}"]`,
+		`b["a%b"]`,
+		`b["a%%b"]`,
+		`b["a%{b}"]`,
+	}, names)
+
+	// References through those keys resolve the right instances, including
+	// the escaped-introducer key.
+	require.Equal(t, "a$$b", outputs["direct"].AsString())
+	require.Equal(t, "a${b}", outputs["escaped_introducer"].AsString())
+	require.Equal(t, "a%{b}", outputs["percent"].AsString())
+
+	// And the final identities are distinct per key.
+	ids := map[string]bool{}
+	for i := range resources {
+		ids[address.Instance(`module.a["x"]`, address.Block{Kind: address.KindResource, Type: "aws_s3_bucket", Name: resources[i].BaseName()}, resources[i].InstanceSuffix())] = true
+	}
+	require.Len(t, ids, 6, "six distinct keys, six distinct addresses")
+}
+
+// A local reading an ephemeral instance directly (or feeding another
+// ephemeral block or an output through a chain) is a resource-dependent
+// local: it re-resolves when the ephemeral block's values are injected, so
+// the values it feeds arrive known.
+func TestEphemeralReadsDriveLocalResolution(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+ephemeral "random_password" "source" {
+  count    = 2
+  result   = "pw-${count.index}"
+}
+
+locals {
+  ref = ephemeral.random_password.source[1].result
+}
+
+ephemeral "random_password" "consumer" {
+  result = local.ref
+}
+
+output "ref" {
+  value = local.ref
+}
+
+output "consumed" {
+  value = ephemeral.random_password.consumer.result
+}
+`,
+	})
+	_, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Equal(t, "pw-1", outputs["ref"].AsString(),
+		"the local reading the ephemeral instance must re-resolve after injection")
+	require.Equal(t, "pw-1", outputs["consumed"].AsString(),
+		"the ephemeral block fed by that local sees the known value")
+}
+
+// A JSON configuration's ephemeral blocks expand like HCL ones: without
+// ephemeral in the JSON schema their count/for_each instances were lost
+// entirely.
+func TestJSONConfigEphemeralExpands(t *testing.T) {
+	root := t.TempDir()
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf.json": `{
+  "ephemeral": {
+    "aws_secretsmanager_secret": {
+      "login": {
+        "count": 2,
+        "name": "secret-${count.index}"
+      }
+    }
+  },
+  "output": {
+    "name": {"value": "${ephemeral.aws_secretsmanager_secret.login[1].name}"}
+  }
+}
+`,
+	})
+	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 2, "both count instances expand")
+	names := []string{resources[0].Name, resources[1].Name}
+	require.ElementsMatch(t, []string{`login[0]`, `login[1]`}, names)
+	require.Equal(t, "secret-1", outputs["name"].AsString(),
+		"a reference through a JSON ephemeral instance resolves")
+}
+
+func emptyBlockNames(blocks []EmptyBlock) map[string]EmptyBlock {
+	out := map[string]EmptyBlock{}
+	for _, b := range blocks {
+		key := b.Type + "." + b.Name
+		if b.Module {
+			key = "module." + b.Name
+		}
+		out[key] = b
+	}
+	return out
+}
+
+func TestEmptyBlocks_KnownZero(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "x" {}
+`})
+	dir := writeModule(t, root, "mod", map[string]string{"main.tf": `
+variable "on" {
+  default = false
+}
+resource "aws_s3_bucket" "a" {
+  count = 0
+}
+resource "aws_s3_bucket" "b" {
+  for_each = {}
+}
+resource "aws_s3_bucket" "c" {
+  count = var.on ? 1 : 0
+}
+data "aws_iam_policy_document" "d" {
+  count = 0
+}
+module "off" {
+  source = "../child"
+  count  = 0
+}
+module "empty" {
+  source   = "../child"
+  for_each = {}
+}
+resource "aws_s3_bucket" "kept" {}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	blocks := e.TakeEmptyBlocks()
+	require.Len(t, blocks, 6)
+	got := emptyBlockNames(blocks)
+	for _, key := range []string{"aws_s3_bucket.a", "aws_s3_bucket.b", "aws_s3_bucket.c", "aws_iam_policy_document.d"} {
+		b, ok := got[key]
+		require.True(t, ok, key)
+		require.Equal(t, filepath.Join(dir, "main.tf"), b.DefinedIn)
+		require.Equal(t, key == "aws_iam_policy_document.d", b.Data, key)
+		require.False(t, b.Ephemeral, key)
+		require.False(t, b.Module, key)
+	}
+	for _, key := range []string{"module.off", "module.empty"} {
+		b, ok := got[key]
+		require.True(t, ok, key)
+		require.Equal(t, filepath.Join(dir, "main.tf"), b.DefinedIn)
+		require.True(t, b.Module, key)
+		require.Empty(t, b.Type, key)
+	}
+	require.Len(t, resources, 1)
+	require.Equal(t, "kept", resources[0].Name)
+}
+
+func TestEmptyBlocks_UnknownKeepsPlaceholder(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+variable "n" {}
+resource "aws_s3_bucket" "a" {
+  count = var.n
+}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Empty(t, e.TakeEmptyBlocks())
+	require.Len(t, resources, 1)
+	require.Equal(t, "a", resources[0].Name)
+}
+
+func TestEmptyBlocks_ReplayedOnCacheHit(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "child", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "gone" {
+  count = 0
+}
+`})
+	parent := writeModule(t, root, "parent", map[string]string{"main.tf": `
+module "one" {
+  source = "../child"
+}
+module "two" {
+  source = "../child"
+}
+`})
+	e := New()
+	_, _, _, err := e.EvaluateModule(context.Background(), parent, nil)
+	require.NoError(t, err)
+	blocks := e.TakeEmptyBlocks()
+	require.Len(t, blocks, 2)
+	for _, b := range blocks {
+		require.Equal(t, "aws_s3_bucket", b.Type)
+		require.Equal(t, "gone", b.Name)
+		require.Equal(t, filepath.Join(root, "child", "main.tf"), b.DefinedIn)
+	}
+}
+
+func TestEmptyBlocks_NotRecordedWhenEmptyOnlyInEarlierPass(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+resource "null_resource" "a" {
+  triggers = {
+    n = "1"
+  }
+}
+resource "aws_s3_bucket" "b" {
+  count = try(null_resource.a.triggers.n == "1" ? 1 : 0, 0)
+}
+`})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Empty(t, e.TakeEmptyBlocks())
+	findResource(t, resources, "aws_s3_bucket", "b[0]")
+}
+
+func TestEmptyBlocks_ClearedByTake(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": `
+resource "aws_s3_bucket" "a" {
+  count = 0
+}
+`})
+	e := New()
+	_, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+	require.Len(t, e.TakeEmptyBlocks(), 1)
+	require.Nil(t, e.TakeEmptyBlocks())
 }

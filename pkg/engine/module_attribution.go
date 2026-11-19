@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	tfaddress "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -690,21 +691,12 @@ func moduleAttributionKey(resourceType string, definitionLine, definitionColumn 
 	return resourceType + "." + strconv.Itoa(definitionLine) + "." + strconv.Itoa(definitionColumn)
 }
 
-func cloneModuleAttributions(attrs map[string]*model.ModuleAttribution) map[string]*model.ModuleAttribution {
-	if len(attrs) == 0 {
-		return nil
-	}
-	out := make(map[string]*model.ModuleAttribution, len(attrs))
-	for key, attr := range attrs {
-		out[key] = cloneModuleAttribution(attr)
-	}
-	return out
-}
+const defaultModuleAttributionKey = "*"
 
 // moduleAttributionForResource returns the attribution of the resource the
-// finding was raised on, with the control of the flagged line, its call site
-// narrowed to the argument setting that line when one does, and its code
-// location narrowed to the flagged region inside the module.
+// finding was raised on, with the control of the flagged line and code
+// location narrowed to the finding. External legacy files also carry a
+// default attribution for findings on blocks without resource attribution.
 func moduleAttributionForResource(
 	attrs map[string]*model.ModuleAttribution, v *model.Vulnerability,
 ) *model.ModuleAttribution {
@@ -713,14 +705,36 @@ func moduleAttributionForResource(
 	}
 	line, col := v.BlockLocation.Start.Line, v.BlockLocation.Start.Col
 	attr, ok := attrs[moduleAttributionKey(v.ResourceType, line, col)]
-	if !ok && !strings.HasPrefix(v.ResourceType, dataTypePrefix) {
-		// A data rule may name its type without the prefix; the block's
-		// position still identifies it.
-		attr, ok = attrs[moduleAttributionKey(dataTypePrefix+v.ResourceType, line, col)]
+	if !ok {
+		for _, prefix := range [...]string{tfaddress.DataPrefix, tfaddress.EphemeralPrefix} {
+			if strings.HasPrefix(v.ResourceType, prefix) {
+				continue
+			}
+			attr, ok = attrs[moduleAttributionKey(prefix+v.ResourceType, line, col)]
+			if ok {
+				break
+			}
+		}
 	}
 	if !ok {
-		return nil
+		attr, ok = attrs[defaultModuleAttributionKey]
+		if !ok {
+			return nil
+		}
+		clone := cloneModuleAttribution(attr)
+		if clone == nil {
+			return nil
+		}
+		narrowCodeLocation(&clone.ModuleCodeLocation, v)
+		return clone
 	}
+	return findingAttribution(attr, v)
+}
+
+// findingAttribution is attr, the attribution of a resource, narrowed to the
+// finding v on it: the module argument holding its line decides who controls
+// it, and the module code location is the region reported.
+func findingAttribution(attr *model.ModuleAttribution, v *model.Vulnerability) *model.ModuleAttribution {
 	clone := cloneModuleAttribution(attr)
 	if clone == nil {
 		return nil

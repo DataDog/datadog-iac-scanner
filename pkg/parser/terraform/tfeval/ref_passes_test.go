@@ -12,6 +12,15 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
+func resourcesReadResources(blocks []*hclsyntax.Block, types map[string]struct{}) bool {
+	for _, rb := range blocks {
+		if bodyReadsResource(rb.Body, types) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestResourceSelfReferenceDetection(t *testing.T) {
 	tests := []struct {
 		name                      string

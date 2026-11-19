@@ -11,6 +11,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -257,6 +258,50 @@ func Test_CreateQueryFilter(t *testing.T) {
 			v := c.createQueryFilter()
 
 			require.Equal(t, tt.expectedOutput, *v)
+		})
+	}
+}
+
+func TestTerraformPreparationKeepsDocumentConsumers(t *testing.T) {
+	modern := model.QueryMetadata{Platform: "Terraform", Content: `package datadog
+import rego.v1
+import data.generic.terraform as tf
+DatadogPolicy contains result if { some block in tf.blocks("aws_s3_bucket"); result := block }
+`}
+	legacy := model.QueryMetadata{Platform: "Terraform", Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if { result := input.document[_] }
+`}
+	other := modern
+	other.Platform = "Kubernetes"
+	forcedLegacy := modern
+	forcedLegacy.Metadata = map[string]interface{}{"contract": "legacy"}
+	malformed := modern
+	malformed.Content = "not valid Rego"
+	for _, tc := range []struct {
+		name         string
+		params       Parameters
+		queries      []model.QueryMetadata
+		wantMetadata bool
+	}{
+		{name: "only modern Terraform", queries: []model.QueryMetadata{modern}, wantMetadata: true},
+		{name: "no queries"},
+		{name: "legacy", queries: []model.QueryMetadata{legacy}},
+		{name: "explicit legacy", queries: []model.QueryMetadata{forcedLegacy}},
+		{name: "mixed contract", queries: []model.QueryMetadata{modern, legacy}},
+		{name: "other platform", queries: []model.QueryMetadata{other}},
+		{name: "mixed platforms", queries: []model.QueryMetadata{modern, other}},
+		{name: "invalid rule", queries: []model.QueryMetadata{malformed}},
+		{name: "payload export", params: Parameters{PayloadPath: "payload.json"}, queries: []model.QueryMetadata{modern}},
+		{name: "line info export", params: Parameters{LineInfoPayload: true}, queries: []model.QueryMetadata{modern}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			prepared := terraformPreparationContext(ctx, &tc.params, tc.queries)
+			require.Equal(t, tc.wantMetadata, parser.IsTerraformMetadataOnly(prepared))
+			cancel()
+			require.ErrorIs(t, prepared.Err(), context.Canceled)
 		})
 	}
 }

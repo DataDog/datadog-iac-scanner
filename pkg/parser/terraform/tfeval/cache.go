@@ -44,14 +44,18 @@ type evalCacheKey struct {
 type evalCacheEntry struct {
 	resources []ResolvedResource
 	// instances are the module calls evaluated inside this evaluation.
-	instances    []ModuleInstance
+	instances []ModuleInstance
+	// emptyBlocks are the blocks found empty inside this evaluation.
+	emptyBlocks []EmptyBlock
+	// liveModules are the module calls that expanded to at least one instance.
+	liveModules  []EmptyBlock
 	outputs      map[string]cty.Value
 	visitedDirs  []string
 	baseAddr     string
 	baseChainLen int
-	// evalDepth is the nesting depth this entry was evaluated at. A module cached
-	// from a deeper call may have truncated descendants; shallower callers need a
-	// fresh evaluation with more depth remaining.
+	// evalDepth is the nesting depth this entry was evaluated at. A module
+	// cached from a deeper call may lack descendants a shallower caller still
+	// has the depth to evaluate, so it is re-evaluated rather than reused.
 	evalDepth int
 }
 
@@ -127,12 +131,25 @@ func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite 
 // one module's evaluation for different inputs.
 type inputsDigest struct{ a, b uint64 }
 
+// InputKey is a stable identity for a module input map (same digest as the
+// evaluation cache).
+type InputKey struct{ a, b uint64 }
+
+// InputMemo memoizes digests of large input collections for one root evaluation.
+type InputMemo struct{ keyMemo }
+
+// Key returns the cache identity of inputs.
+func (m *InputMemo) Key(inputs map[string]cty.Value) InputKey {
+	return InputKey(m.inputsKeyUninterruptible(inputs))
+}
+
 // keyMemo memoizes digests of large collections for one evaluator. The same
 // decoded configuration is handed to every instance of a module loop, and cty
 // shares the collection's storage across those copies. Each entry keeps the
 // value so that storage cannot be reused under the same identity.
 type keyMemo struct {
-	entries map[collectionID]keyMemoEntry
+	entries  map[collectionID]keyMemoEntry
+	registry *instanceRegistry
 }
 
 type keyMemoEntry struct {
@@ -216,6 +233,13 @@ func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digest
 	if ctx.Err() != nil {
 		return false
 	}
+	// Resource-instance provenance changes missing-attribute semantics, so two
+	// inputs that RawEquals would treat as equal must not share a module cache
+	// entry. Record it before Unmark: ElementIterator panics on marked values.
+	if m.resourceInstance(v) {
+		w.WriteString("\x01ri")
+	}
+	v, _ = v.Unmark()
 	if v.IsNull() {
 		// Include the type so cty.NullVal(cty.String) and cty.NullVal(cty.Number)
 		// do not collide.
@@ -261,6 +285,14 @@ func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digest
 	}
 	w.WriteString(string(data))
 	return true
+}
+
+// resourceInstance reports whether v is a resource instance object for keying.
+func (m *keyMemo) resourceInstance(v cty.Value) bool {
+	if m != nil && m.registry != nil {
+		return m.registry.isResourceInstance(v)
+	}
+	return v.HasMark(resourceInstanceMark{})
 }
 
 func (m *keyMemo) writeCollection(ctx context.Context, w keySink, v cty.Value) bool {

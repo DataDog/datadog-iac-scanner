@@ -136,6 +136,7 @@ type sarifResult struct {
 	ResultKind          string                   `json:"kind,omitempty"`
 	ResultMessage       sarifMessage             `json:"message"`
 	ResultLocations     []SarifLocation          `json:"locations"`
+	RelatedLocations    []SarifLocation          `json:"relatedLocations,omitempty"`
 	PartialFingerprints SarifPartialFingerprints `json:"partialFingerprints,omitempty"`
 	ResultLevel         string                   `json:"level"`
 	ResultProperties    sarifProperties          `json:"properties,omitempty"`
@@ -532,12 +533,11 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				resourceStartLocation.Col = 1
 			}
 
-			// Always narrow the SARIF region to the remediation location when it falls
-			// within the resource block. The remediation location holds the precise
-			// attribute-level line even when no remediation
-			// string is present. Do NOT gate change this,
-			// that would cause rules without a fix to fall back to the full block range.
-			if remediationStartLocation.Line >= resourceStartLocation.Line &&
+			// Legacy findings use the remediation location as their primary SARIF
+			// region when it falls within the reported resource range. Native
+			// Terraform findings keep their result range here and use the remediation
+			// location only for the fix edit.
+			if !vulnerability.KeepDetectionLocation && remediationStartLocation.Line >= resourceStartLocation.Line &&
 				remediationEndLocation.Line <= resourceEndLocation.Line {
 				resourceStartLocation = remediationStartLocation
 				resourceEndLocation = remediationEndLocation
@@ -615,7 +615,8 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 				PartialFingerprints: SarifPartialFingerprints{
 					DatadogFingerprint: vulnerability.Fingerprint,
 				},
-				Suppressions: buildSarifSuppressions(ctx, &vulnerability),
+				Suppressions:     buildSarifSuppressions(ctx, &vulnerability),
+				RelatedLocations: sarifRelatedLocations(vulnerability.RelatedLocations),
 			}
 			// A fix rewriting the module body changes the value for every
 			// caller, so it is only offered for a value the module sets itself.
@@ -631,7 +632,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 					remediationEndLocation,
 				)
 				if err == nil {
-					if moduleAttribution == nil {
+					if moduleAttribution == nil && !vulnerability.KeepDetectionLocation {
 						// we want the location displayed in the UI to properly highlight the remediation
 						result.ResultLocations[0].PhysicalLocation.Region.StartLine = remediationStartLocation.Line
 						result.ResultLocations[0].PhysicalLocation.Region.EndLine = remediationEndLocation.Line
@@ -644,6 +645,23 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 		return issue.CWE, nil
 	}
 	return "", nil
+}
+
+// sarifRelatedLocations renders the evidence a finding cites.
+func sarifRelatedLocations(locations []model.SourceLocation) []SarifLocation {
+	if len(locations) == 0 {
+		return nil
+	}
+	out := make([]SarifLocation, 0, len(locations))
+	for _, l := range locations {
+		region := model.SarifRegion{StartLine: l.LineStart, EndLine: max(l.LineEnd, l.LineStart),
+			StartColumn: max(l.ColumnStart, 1), EndColumn: max(l.ColumnEnd, 1)}
+		out = append(out, SarifLocation{PhysicalLocation: sarifPhysicalLocation{
+			ArtifactLocation: sarifArtifactLocation{ArtifactURI: filepath.ToSlash(l.Filename)},
+			Region:           region,
+		}})
+	}
+	return out
 }
 
 // buildSarifSuppressions returns the SARIF `suppressions` array for a

@@ -13,10 +13,10 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
-const (
-	dockerfilePlatform = "Dockerfile"
-	terraformPlatform  = "Terraform"
-)
+const dockerfilePlatform = "Dockerfile"
+
+// TerraformPlatform is the platform Terraform findings carry.
+const TerraformPlatform = "Terraform"
 
 // GetDatadogFingerprintHash is the single source of truth for a finding's
 // stable identity. It is computed once when the summary is built and reused by
@@ -29,7 +29,8 @@ func GetDatadogFingerprintHash(
 }
 
 // FindingIdentity is what a scan reports one finding for: findings of equal
-// identity share a fingerprint, and only the last of them is reported.
+// identity share a fingerprint, and only the first of them in CompareFindings
+// order is reported.
 func FindingIdentity(v *Vulnerability) string {
 	fileName, line, ruleID := fingerprintFields(v)
 	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID); ok {
@@ -66,7 +67,7 @@ func chainedIdentity(fileName, platform, resourceType, resourceName, ruleID stri
 	}
 	return ChainedIdentity{
 		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", ""),
-		chained: platform == terraformPlatform,
+		chained: platform == TerraformPlatform,
 	}, true
 }
 
@@ -107,7 +108,7 @@ func fingerprintInput(
 	switch platform {
 	case dockerfilePlatform:
 		segments = append(segments, vulnLine)
-	case terraformPlatform:
+	case TerraformPlatform:
 		// Same resource reached through different module call paths is a distinct finding.
 		if moduleCallChain != "" {
 			segments = append(segments, moduleCallChain)

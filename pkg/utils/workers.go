@@ -74,6 +74,17 @@ func CPUBound(ctx context.Context, fn func() error) error {
 	return fn()
 }
 
+// TryAcquireCPU reserves one shared CPU-bound slot without waiting. A nested
+// pool should use this when its parent already owns a slot and can always make
+// progress inline, even when no additional budget is available.
+func TryAcquireCPU() (release func(), ok bool) {
+	sem := cpuBudgetSem()
+	if !sem.TryAcquire(1) {
+		return nil, false
+	}
+	return func() { sem.Release(1) }, true
+}
+
 // IO worker bounds. I/O-bound pools (file open/read) fan out wider than the
 // core count because workers spend most of their time blocked on the kernel, so
 // more goroutines than cores keeps the disk/FS queue full. The floor guarantees

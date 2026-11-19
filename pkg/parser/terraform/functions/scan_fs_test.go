@@ -54,7 +54,7 @@ func TestScanFSKeepsConfinementAcrossCalls(t *testing.T) {
 			}
 		}
 		exists, err := funcs["fileexists"].Call([]cty.Value{cty.StringVal("missing.txt")})
-		if err != nil || !exists.RawEquals(cty.False) {
+		if err != nil || !exists.RawEquals(cty.UnknownVal(cty.Bool)) {
 			t.Fatalf("call %d: fileexists(missing.txt) = %#v, %v", call, exists, err)
 		}
 	}
@@ -276,5 +276,49 @@ func TestMemoizeDecodeSharesOneInFlightDecode(t *testing.T) {
 	}
 	if n := len(scan.decodes.results); n != 1 {
 		t.Fatalf("memo holds %d results, want 1", n)
+	}
+}
+
+func TestScanFSParsesTemplatesOncePerScan(t *testing.T) {
+	t.Parallel()
+
+	scanFS := NewScanFS(vfs.NewMemFS(map[string][]byte{"mod/t.tpl": []byte("hi ${name}")}))
+	for call := range 3 {
+		funcs := EvalFuncs("mod", scanFS)
+		vars := cty.ObjectVal(map[string]cty.Value{"name": cty.StringVal(fmt.Sprint(call))})
+		got, err := funcs["templatefile"].Call([]cty.Value{cty.StringVal("t.tpl"), vars})
+		if err != nil || !got.RawEquals(cty.StringVal(fmt.Sprintf("hi %d", call))) {
+			t.Fatalf("call %d: templatefile = %#v, %v", call, got, err)
+		}
+		got, err = funcs["templatestring"].Call([]cty.Value{cty.StringVal("hi ${name}"), vars})
+		if err != nil || !got.RawEquals(cty.StringVal(fmt.Sprintf("hi %d", call))) {
+			t.Fatalf("call %d: templatestring = %#v, %v", call, got, err)
+		}
+	}
+	scanFS.templates.mu.Lock()
+	remembered := len(scanFS.templates.exprs)
+	scanFS.templates.mu.Unlock()
+	if remembered != 1 {
+		t.Fatalf("remembered templates = %d, want the one shared source", remembered)
+	}
+
+	if other := NewScanFS(vfs.NewMemFS(nil)); len(other.templates.exprs) != 0 {
+		t.Fatal("a new scan starts with no remembered template")
+	}
+}
+
+func TestTemplateMemoStopsRememberingPastItsBudget(t *testing.T) {
+	t.Parallel()
+
+	var m templateMemo
+	m.bytes = templateMemoBudget
+	if _, err := m.parse("hi ${name}"); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.exprs) != 0 {
+		t.Fatal("a template past the budget is parsed and not remembered")
+	}
+	if _, err := m.parse("${"); err == nil {
+		t.Fatal("a template that does not parse returns its error")
 	}
 }

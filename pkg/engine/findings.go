@@ -105,24 +105,19 @@ func (s *findingSet) findings() []model.Vulnerability {
 }
 
 // findingRouting is what turns the findings a rule raises on the scanned
-// documents into the findings of the scan: the callers a deduplicated module
-// document stands for, the calls reaching an external module file, and the
-// caller files whose filters apply to module findings.
+// documents into the findings of the scan: each finding of a module file is
+// filtered by the caller files whose filters apply to it.
 type findingRouting struct {
-	extras      map[string][]extraCallerInfo
-	moduleFiles map[string]*moduleFileCalls
 	callers     map[string]*model.FileMetadata
-	// external reports whether a path is an external module file, reported
-	// only through the calls that reach it. It may be nil.
-	external func(string) bool
+	moduleFiles map[string]*moduleFileCalls
+	// Drop unattributed external static findings only after the caller index is
+	// complete. Native decoding leaves this unset until all roots are indexed.
+	dropUnattributedExternal bool
 }
 
 // newFindingRouting indexes the caller files once for the whole scan. The
 // rules route concurrently, so the index is built before any of them run.
-func newFindingRouting(
-	extras map[string][]extraCallerInfo, moduleFiles map[string]*moduleFileCalls,
-	files model.FileMetadatas, repoPath string, external func(string) bool,
-) *findingRouting {
+func newFindingRouting(files model.FileMetadatas, repoPath string) *findingRouting {
 	callers := make(map[string]*model.FileMetadata)
 	for _, f := range files {
 		if f == nil || f.ModuleCallChain != "" {
@@ -133,7 +128,7 @@ func newFindingRouting(
 			callers[key] = f
 		}
 	}
-	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers, external: external}
+	return &findingRouting{callers: callers}
 }
 
 // route turns one rule's decoded findings into the findings the scan reports
@@ -145,8 +140,9 @@ func (r *findingRouting) route(
 	if r == nil {
 		return vulns
 	}
-	vulns = expandModuleFindings(vulns, r.extras)
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
-	vulns = dropUnattributedExternalFindings(vulns, r.external)
+	if r.dropUnattributedExternal {
+		vulns = dropUnattributedExternalFindings(vulns, r.callers, c.isModulePackageFile, c.isRemoteModulePackageFile)
+	}
 	return c.filterAtCallSites(ctx, vulns, r.callers)
 }

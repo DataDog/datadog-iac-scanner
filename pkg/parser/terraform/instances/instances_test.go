@@ -183,3 +183,60 @@ func TestResolveCountPrecedenceAndNoExpansion(t *testing.T) {
 	require.Empty(t, name)
 	require.Equal(t, cty.NilVal, value)
 }
+
+func TestZeroInstances(t *testing.T) {
+	for _, tt := range []struct {
+		blockType string
+		labels    int
+		body      string
+		zero      bool
+	}{
+		{"resource", 2, "count = 0", true},
+		{"resource", 2, "count = -1", true},
+		{"resource", 2, "count = 1", false},
+		{"resource", 2, "count = var.n", false},
+		{"resource", 2, "for_each = {}", true},
+		{"resource", 2, "for_each = var.empty_set", true},
+		{"resource", 2, "for_each = []", false},
+		{"resource", 2, "for_each = { a = 1 }", false},
+		{"data", 2, "count = 0", true},
+		{"ephemeral", 2, "count = 0", true},
+		{"module", 1, "count = 0", true},
+		{"module", 1, "for_each = {}", true},
+		{"locals", 0, "count = 0", false},
+		{"variable", 1, "count = 0", false},
+		{"resource", 1, "count = 0", false},
+		{"resource", 2, "bucket = \"b\"", false},
+	} {
+		t.Run(tt.blockType+" "+tt.body, func(t *testing.T) {
+			file, diags := hclsyntax.ParseConfig([]byte(tt.body), "test.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			count, forEach := Attributes(file.Body.(*hclsyntax.Body))
+			ctx := &hcl.EvalContext{
+				Variables: map[string]cty.Value{"var": cty.ObjectVal(map[string]cty.Value{
+					"n":         cty.UnknownVal(cty.Number),
+					"empty_set": cty.SetValEmpty(cty.String),
+				})},
+			}
+			require.Equal(t, tt.zero, ZeroInstances(tt.blockType, tt.labels, count, forEach, ctx))
+		})
+	}
+}
+
+func TestZeroInstancesAsWritten(t *testing.T) {
+	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{
+		"var": cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(0), "items": cty.MapValEmpty(cty.String)}),
+	}}
+	for body, zero := range map[string]bool{
+		"count = 0":            true,
+		"for_each = {}":        true,
+		"count = var.n":        false,
+		"for_each = var.items": false,
+	} {
+		file, diags := hclsyntax.ParseConfig([]byte(body), "test.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors(), diags.Error())
+		count, forEach := Attributes(file.Body.(*hclsyntax.Body))
+		require.True(t, ZeroInstances("resource", 2, count, forEach, ctx), body)
+		require.Equal(t, zero, ZeroInstancesAsWritten("resource", 2, count, forEach, ctx), body)
+	}
+}

@@ -797,10 +797,18 @@ func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []
 
 	endReturnType := checkReturnType(ctx, fsys, path, returnType, ext, content, typesFlag, hc, scanFiles)
 
-	// Only process JSON files if they are Terraform plans
-	// This will be the case until other platforms support json scanning
-	if ext == json && (endReturnType != "terraform" || returnType == cdkTf) {
-		return ""
+	if ext == json {
+		// CDKTF and other Terraform JSON configuration under a plain .json
+		// name (not .tf.json). Content detection keeps package.json and plans out.
+		if returnType == cdkTf || tfpath.LooksLikeJSONConfig(content) {
+			return terraform
+		}
+		// Only Terraform plans among remaining JSON; other platforms' JSON is
+		// not scanned here until they register JSON support.
+		if endReturnType != terraform {
+			return ""
+		}
+		return terraform
 	}
 
 	return endReturnType

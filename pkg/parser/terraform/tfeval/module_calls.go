@@ -86,9 +86,8 @@ type moduleInstance struct {
 func (i moduleInstance) address(parent, label string) string {
 	seg := "module." + label
 	if i.key != cty.NilVal {
-		if formatted, ok := ctyutil.FormatIndexKey(i.key); ok {
-			seg += formatted
-		}
+		suffix, _ := ctyutil.FormatIndexKey(i.key)
+		seg += suffix
 	}
 	return joinAddr(parent, seg)
 }
@@ -154,8 +153,6 @@ func instanceContext(ctx *hcl.EvalContext, plan *tfinstances.Plan, item tfinstan
 	child.Variables = map[string]cty.Value{name: value}
 	return child
 }
-
-func isForEachCollection(v cty.Value) bool { return tfinstances.ForEachCollection(v) }
 
 // maxOutputShape bounds the collection an expansion that did not run to
 // completion is materialized as: beyond it, the whole value is unknown instead
@@ -325,7 +322,7 @@ func (s *siblingOutputs) set(label string, value cty.Value) {
 
 func (s *siblingOutputs) publish() *hcl.EvalContext {
 	if s.stale {
-		s.e.installModuleOutputs(s.ctx, s.evalCtx, s.scope, s.data, s.outputs)
+		s.e.installModuleOutputs(s.evalCtx, s.scope, s.data, s.outputs)
 		s.stale = false
 	}
 	return s.evalCtx

@@ -1,0 +1,530 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+
+package model
+
+import (
+	"context"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	hcljson "github.com/hashicorp/hcl/v2/json"
+)
+
+// Scan is every root found under a directory.
+type Scan struct {
+	Base  string
+	Roots []*Root
+}
+
+// dirInfo is what loading reads of one directory before evaluation.
+type dirInfo struct {
+	configs           []string
+	varFiles          []string
+	vars              []string
+	failed            []string
+	hasTerraformTests bool
+}
+
+func (d *dirInfo) noteTerraformTest(name string) {
+	if strings.HasSuffix(name, ".tftest.hcl") {
+		d.hasTerraformTests = true
+	}
+}
+
+// Layout is the directories and plan files under a base, before any root is
+// evaluated. Evaluating one root at a time keeps a single root's values live.
+type Layout struct {
+	Base  string
+	fsys  vfs.FS
+	dirs  map[string]*dirInfo
+	Roots []string
+	Plans []string
+	// declarationSummaries is populated only for file-scoped layouts, where
+	// scanFiles already parsed every directory to discover its module graph.
+	declarationSummaries map[string]tfeval.DeclarationSummary
+	snapshotReady        bool
+	// varsPath is the scan-wide selected .tfvars path (see Options.VarsPath).
+	varsPath string
+	// eval is shared across roots so a module directory is parsed once. Nil
+	// until the first Root call.
+	eval *tfeval.Evaluator
+}
+
+// ScanLayout finds the roots under base without evaluating them. A root is a
+// directory holding configuration files that no other directory under base
+// calls as a local module. Hidden directories (.git, .terraform) are skipped.
+// Each file of opts.Plans is listed after the source roots. When opts.Files
+// is set, only the directories of those files can be roots, and only those
+// files and the modules they call are read.
+func ScanLayout(ctx context.Context, base string, opts *Options) (*Layout, error) {
+	fsys := opts.FS
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
+	abs, err := fsys.Abs(base)
+	if err != nil {
+		return nil, err
+	}
+	dirs := map[string]*dirInfo{}
+	called := map[string]bool{}
+	var declarations map[string]tfeval.DeclarationSummary
+	switch {
+	case opts.Files != nil:
+		fsys = newScannedFS(fsys, opts.Files, opts.Plans)
+		if !opts.PlansOnly {
+			declarations = make(map[string]tfeval.DeclarationSummary)
+			if err := scanFiles(ctx, fsys, opts.Resolver, abs, opts.Files, dirs, called, declarations); err != nil {
+				return nil, err
+			}
+		}
+	case !opts.PlansOnly:
+		if err := walkCalls(ctx, fsys, abs, dirs, called); err != nil {
+			return nil, err
+		}
+	}
+	layout := &Layout{
+		Base: abs, fsys: fsys, dirs: dirs, varsPath: opts.VarsPath,
+		declarationSummaries: declarations, snapshotReady: opts.Files != nil && !opts.PlansOnly,
+	}
+	for _, dir := range slices.Sorted(mapsKeys(dirs)) {
+		if called[dir] || len(dirs[dir].configs) == 0 {
+			continue
+		}
+		layout.Roots = append(layout.Roots, dir)
+	}
+	plans := slices.Clone(opts.Plans)
+	slices.Sort(plans)
+	for _, plan := range slices.Compact(plans) {
+		path, err := fsys.Abs(plan)
+		if err != nil {
+			return nil, err
+		}
+		layout.Plans = append(layout.Plans, path)
+	}
+	return layout, nil
+}
+
+// Root evaluates one source directory of the layout.
+func (l *Layout) Root(ctx context.Context, resolver tfeval.RemoteResolver, dir string) *Root {
+	return loadRoot(ctx, l.fsys, resolver, l.Base, dir, l.dirs, l.evaluator(resolver), l.varsPath)
+}
+
+// rootWorkers bounds the roots EachRoot evaluates at once.
+var rootWorkers = 4
+
+// EachRoot evaluates the source directories dirs and hands each root to take
+// in the order of dirs. Roots are evaluated on forks of the scan-wide
+// evaluator, which share its parse cache, and at most one root per worker is
+// evaluated ahead of take: a modeled root is far larger than its evaluation,
+// so each root waiting for take would add a whole model to the peak.
+// The first error take returns stops the evaluation and is returned.
+func (l *Layout) EachRoot(
+	ctx context.Context, resolver tfeval.RemoteResolver, dirs []string, take func(*Root) error,
+) error {
+	workers := min(rootWorkers, runtime.GOMAXPROCS(0), len(dirs))
+	if workers < 2 {
+		for _, dir := range dirs {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := take(l.Root(ctx, resolver, dir)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	base := l.evaluator(resolver)
+	results := make([]chan *Root, len(dirs))
+	for i := range results {
+		results[i] = make(chan *Root, 1)
+	}
+	// A worker takes a token before an index, so the roots in flight are
+	// always the next ones take receives.
+	window := make(chan struct{}, workers)
+	stop := make(chan struct{})
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for range workers {
+		fork := base.Fork()
+		wg.Go(func() {
+			for {
+				select {
+				case window <- struct{}{}:
+				case <-stop:
+					return
+				}
+				i := int(next.Add(1) - 1)
+				if i >= len(dirs) {
+					return
+				}
+				results[i] <- loadRoot(ctx, l.fsys, resolver, l.Base, dirs[i], l.dirs, fork, l.varsPath)
+			}
+		})
+	}
+	defer func() {
+		close(stop)
+		wg.Wait()
+	}()
+	for i := range dirs {
+		root := <-results[i]
+		<-window
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := take(root); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ReleaseRootParse drops the parsed files of dir from the scan-wide parse
+// cache and drains the evaluation cache. A root that has been modeled once —
+// evaluated for the scan or indexed for cross-root evidence — keeps nothing
+// but what its findings need, so its parse does not stay resident for the
+// rest of the scan.
+func (l *Layout) ReleaseRootParse(dir string) {
+	if l.eval == nil {
+		return
+	}
+	l.eval.ForgetRootParse(dir)
+	l.eval.ReleaseEvalCache()
+}
+
+// evaluator is the scan-wide evaluator: its parse cache is shared across
+// roots, and each root releases its evaluation cache when it finishes.
+func (l *Layout) evaluator(resolver tfeval.RemoteResolver) *tfeval.Evaluator {
+	if l.eval == nil {
+		l.eval = tfeval.NewWithFS(l.fsys)
+		l.eval.SetOpaquePartialData(true)
+		l.eval.SetTrackModuleInstances(true)
+	}
+	if resolver != nil {
+		l.eval.SetRemoteResolver(resolver)
+	}
+	return l.eval
+}
+
+// Plan evaluates one plan file of the layout.
+func (l *Layout) Plan(ctx context.Context, path string) *Root {
+	return loadPlan(ctx, l.fsys, l.Base, path)
+}
+
+// Load finds the roots under base and models each of them.
+func Load(ctx context.Context, base string, opts *Options) (*Scan, error) {
+	layout, err := ScanLayout(ctx, base, opts)
+	if err != nil {
+		return nil, err
+	}
+	scan := &Scan{Base: layout.Base, Roots: make([]*Root, 0, len(layout.Roots)+len(layout.Plans))}
+	for _, dir := range layout.Roots {
+		scan.Roots = append(scan.Roots, layout.Root(ctx, opts.Resolver, dir))
+	}
+	for _, path := range layout.Plans {
+		scan.Roots = append(scan.Roots, layout.Plan(ctx, path))
+	}
+	return scan, nil
+}
+
+func mapsKeys(m map[string]*dirInfo) func(func(string) bool) {
+	return func(yield func(string) bool) {
+		for k := range m {
+			if !yield(k) {
+				return
+			}
+		}
+	}
+}
+
+// walkCalls fills dirs with every directory under base and marks the ones
+// another of them calls as a local module.
+func walkCalls(ctx context.Context, fsys vfs.FS, base string, dirs map[string]*dirInfo, called map[string]bool) error {
+	if err := walk(ctx, fsys, base, dirs); err != nil {
+		return err
+	}
+	for dir := range dirs {
+		for _, child := range tfeval.CalledLocalDirs(dir, fsys) {
+			if filepath.Clean(child) != dir {
+				called[filepath.Clean(child)] = true
+			}
+		}
+	}
+	return nil
+}
+
+func walk(ctx context.Context, fsys vfs.FS, dir string, out map[string]*dirInfo) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	info, subdirs, err := readDirInfo(fsys, dir)
+	if err != nil {
+		return err
+	}
+	if info != nil {
+		out[filepath.Clean(dir)] = info
+	}
+	for _, sub := range subdirs {
+		if err := walk(ctx, fsys, sub, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// readDirInfo reads the files of dir, and lists its subdirectories that are
+// not hidden. The info is nil when dir holds no configuration or variable
+// file.
+func readDirInfo(fsys vfs.FS, dir string) (*dirInfo, []string, error) {
+	return readDirInfoMode(fsys, dir, true)
+}
+
+// readDirInfoForSnapshot inventories configs without a separate syntax pass;
+// scanFiles reuses InspectDeclarations' parse result for successful files and
+// applies noteParse only to files that parser did not accept.
+func readDirInfoForSnapshot(fsys vfs.FS, dir string) (*dirInfo, []string, error) {
+	return readDirInfoMode(fsys, dir, false)
+}
+
+func readDirInfoMode(fsys vfs.FS, dir string, checkParse bool) (*dirInfo, []string, error) {
+	entries, err := fsys.ReadDir(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	info := &dirInfo{}
+	var subdirs []string
+	for _, entry := range entries {
+		name := entry.Name()
+		path := filepath.Join(dir, name)
+		if entry.IsDir() {
+			if !strings.HasPrefix(name, ".") {
+				subdirs = append(subdirs, path)
+			}
+			continue
+		}
+		info.noteTerraformTest(name)
+		switch {
+		case tfpath.IsConfig(path):
+			info.configs = append(info.configs, path)
+			if checkParse {
+				info.noteParse(fsys, path)
+			}
+		case tfpath.IsPlainJSON(path):
+			src, readErr := fsys.ReadFile(path)
+			if readErr == nil && tfpath.LooksLikeJSONConfig(src) {
+				info.configs = append(info.configs, path)
+				if checkParse {
+					info.noteParse(fsys, path)
+				}
+			}
+		case strings.HasSuffix(name, ".tfvars") || tfpath.IsTFVarsJSON(path):
+			info.varFiles = append(info.varFiles, path)
+		}
+	}
+	if len(info.configs) == 0 && len(info.varFiles) == 0 {
+		return nil, subdirs, nil
+	}
+	return info, subdirs, nil
+}
+
+// noteUnparsed preserves the syntax check for files omitted from the evaluator's
+// sorted successful parse list (for example shadowed twins and confined links).
+func (d *dirInfo) noteUnparsed(fsys vfs.FS, parsed []string) {
+	for _, path := range d.configs {
+		if _, ok := slices.BinarySearch(parsed, filepath.Clean(path)); !ok {
+			d.noteParse(fsys, path)
+		}
+	}
+}
+
+// noteParse records whether the file parses. Variable names are read from the
+// evaluator when a root needs the degraded path.
+func (d *dirInfo) noteParse(fsys vfs.FS, path string) {
+	src, err := fsys.ReadFile(path)
+	if err != nil {
+		d.failed = append(d.failed, path)
+		return
+	}
+	var body hcl.Body
+	var diags hcl.Diagnostics
+	if tfpath.UsesJSONSyntax(path) {
+		var f *hcl.File
+		f, diags = hcljson.Parse(src, path)
+		if f != nil {
+			body = f.Body
+		}
+	} else {
+		var f *hcl.File
+		f, diags = hclsyntax.ParseConfig(src, path, hcl.InitialPos)
+		if f != nil {
+			body = f.Body
+		}
+	}
+	if diags.HasErrors() || body == nil {
+		d.failed = append(d.failed, path)
+	}
+}
+
+func loadRoot(
+	ctx context.Context, fsys vfs.FS, resolver tfeval.RemoteResolver, base, dir string, dirs map[string]*dirInfo,
+	eval *tfeval.Evaluator, varsPath string,
+) *Root {
+	root := &Root{ID: rootID(base, dir), Dir: dir}
+	info := dirs[dir]
+	root.HasTerraformTests = info.hasTerraformTests
+	root.VarFiles = info.varFiles
+	ev := evaluate(ctx, fsys, resolver, dir, info.vars, eval, varsPath)
+	root.Degraded = ev.degraded
+	root.Notes = ev.notes(base)
+	if len(ev.skipped) > 0 || ev.err != nil {
+		root.Incomplete, root.Unscoped = true, true
+	}
+	root.Modules = ev.modules(root, dir)
+	for _, m := range root.Modules {
+		if d, ok := dirs[filepath.Clean(m.Dir)]; ok && len(d.failed) > 0 {
+			root.Incomplete, root.Unscoped = true, true
+			for _, f := range d.failed {
+				root.Notes = append(root.Notes, "file failed to parse: "+relPath(base, f))
+				contextLogger := logger.FromContext(ctx)
+				contextLogger.Info().Str("file", f).Msg("terraform model: file failed to parse")
+			}
+		}
+	}
+	root.Notes = slices.Compact(root.Notes)
+	newBuilder(root, base).build(ev.resources)
+	for _, m := range root.Modules {
+		m.Scope.KeepRenderContext()
+		m.Scope.ReleaseEvalState()
+	}
+	return root
+}
+
+func rootID(base, dir string) string {
+	rel, err := filepath.Rel(base, dir)
+	if err != nil {
+		return filepath.ToSlash(dir)
+	}
+	return filepath.ToSlash(rel)
+}
+
+func relPath(base, path string) string {
+	if rel, err := filepath.Rel(base, path); err == nil {
+		return filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(path)
+}
+
+// MayDeclareResource reports, without evaluating, whether the root at dir may
+// declare a resource of one of types.
+func (l *Layout) MayDeclareResource(ctx context.Context, resolver tfeval.RemoteResolver, dir string, types func(string) bool) bool {
+	return l.evaluator(resolver).MayDeclareResource(ctx, dir, types)
+}
+
+// CalledModuleDirectories returns the module directories any root may reach
+// without instantiating resources.
+func (l *Layout) CalledModuleDirectories(ctx context.Context, resolver tfeval.RemoteResolver) map[string]bool {
+	called := make(map[string]bool)
+	eval := l.evaluator(resolver)
+	for _, dir := range l.Roots {
+		if ctx.Err() != nil {
+			break
+		}
+		for _, d := range eval.CalledModuleTree(ctx, dir) {
+			called[filepath.Clean(d)] = true
+		}
+	}
+	return called
+}
+
+// ScannedCalledModuleDirectories returns the called-directory graph captured
+// while scanning a file-scoped layout. The graph is traversed only from roots.
+// The boolean is false when this layout has no such snapshot.
+func (l *Layout) ScannedCalledModuleDirectories() (map[string]bool, bool) {
+	if !l.snapshotReady {
+		return nil, false
+	}
+	called := make(map[string]bool)
+	seen := make(map[string]bool)
+	var visit func(string)
+	visit = func(dir string) {
+		dir = filepath.Clean(dir)
+		if seen[dir] {
+			return
+		}
+		seen[dir] = true
+		for _, child := range l.declarationSummaries[dir].CalledDirectories {
+			child = filepath.Clean(child)
+			called[child] = true
+			visit(child)
+		}
+	}
+	for _, root := range l.Roots {
+		visit(root)
+	}
+	return called, true
+}
+
+// ScannedResourceCandidates returns roots whose declarations, including
+// transitively called modules, may contain a resource matching types. The
+// resolver is the resolver the caller will use to evaluate roots. Incomplete
+// declarations conservatively keep the root except for static non-local calls
+// proven unavailable when this resolver is nil. The boolean is false when this
+// layout has no declaration snapshot.
+func (l *Layout) ScannedResourceCandidates(resolver tfeval.RemoteResolver, types func(string) bool) (map[string]bool, bool) {
+	if !l.snapshotReady {
+		return nil, false
+	}
+	candidates := make(map[string]bool)
+	seen := make(map[string]bool)
+	var mayDeclare func(string) bool
+	mayDeclare = func(dir string) bool {
+		dir = filepath.Clean(dir)
+		if seen[dir] {
+			return false
+		}
+		seen[dir] = true
+		summary, ok := l.declarationSummaries[dir]
+		if !ok {
+			return true
+		}
+		if summary.Incomplete {
+			if !summary.UnavailableCallsOnly || resolver != nil {
+				return true
+			}
+			if info := l.dirs[dir]; info != nil && len(info.failed) > 0 {
+				return true
+			}
+		}
+		for _, typ := range summary.ResourceTypes {
+			if types(typ) {
+				return true
+			}
+		}
+		for _, child := range summary.CalledDirectories {
+			if mayDeclare(child) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, root := range l.Roots {
+		clear(seen)
+		if mayDeclare(root) {
+			candidates[filepath.Clean(root)] = true
+		}
+	}
+	return candidates, true
+}

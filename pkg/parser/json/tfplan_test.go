@@ -6,6 +6,8 @@
 package json
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -17,6 +19,9 @@ func TestPlanAddressesUsesPlanNativeKeys(t *testing.T) {
 		"aws_s3_bucket": map[string]interface{}{
 			"web[0]": map[string]interface{}{"address": "module.stack.aws_s3_bucket.web[0]"},
 		},
+		"data.aws_s3_bucket": map[string]interface{}{
+			"web[0]": map[string]interface{}{"address": "data.aws_s3_bucket.web[0]"},
+		},
 		"data.aws_caller_identity": map[string]interface{}{
 			"current": map[string]interface{}{"address": "data.aws_caller_identity.current"},
 		},
@@ -24,8 +29,26 @@ func TestPlanAddressesUsesPlanNativeKeys(t *testing.T) {
 	require.Equal(t, map[model.PlanResourceKey]string{
 		{Section: "aws_s3_bucket", Key: "web[0]"}:             "module.stack.aws_s3_bucket.web[0]",
 		{Section: "data.aws_caller_identity", Key: "current"}: "data.aws_caller_identity.current",
+		{Section: "data.aws_s3_bucket", Key: "web[0]"}:        "data.aws_s3_bucket.web[0]",
 	}, PlanAddresses(doc))
 	require.Nil(t, PlanAddresses(model.Document{}))
+}
+
+func TestFormatResourceKeyWithIndex(t *testing.T) {
+	for _, tt := range []struct {
+		index any
+		want  string
+	}{
+		{float64(0), "web[0]"},
+		{2, "web[2]"},
+		{"prod", `web["prod"]`},
+		{`a"b`, `web["a\"b"]`},
+		{"a${b}", `web["a${b}"]`},
+		{"a%{b}", `web["a%{b}"]`},
+		{nil, "web"},
+	} {
+		require.Equal(t, tt.want, formatResourceKeyWithIndex("web", tt.index))
+	}
 }
 
 func TestJson_parseTFPlan(t *testing.T) {
@@ -2099,4 +2122,29 @@ func TestJson_parseTFPlan_dd_tfplan_meta_call_site_chain_grows_linearly_not_expo
 		depth, full, depth/2, half)
 	require.Less(t, full, 100,
 		"call_site_expressions should stay proportional to the number of real call sites (depth=%d), not explode to %d", depth, full)
+}
+
+func TestParser_PlanDocumentKeepsItsAddresses(t *testing.T) {
+	raw, err := json.Marshal(model.Document{
+		"format_version": "0.2",
+		"planned_values": map[string]interface{}{
+			"root_module": map[string]interface{}{
+				"resources": []map[string]interface{}{{
+					"address": "fakewebservices_database.prod_db",
+					"mode":    "managed",
+					"type":    "fakewebservices_database",
+					"name":    "prod_db",
+					"values":  map[string]interface{}{"name": "Production DB"},
+				}},
+			},
+		},
+	})
+	require.NoError(t, err)
+	p := &Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), raw, "plan.json", false, 0)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	require.Contains(t, docs[0], "_dd_tfplan_meta")
+	require.Equal(t, "fakewebservices_database.prod_db",
+		PlanAddresses(docs[0])[model.PlanResourceKey{Section: "fakewebservices_database", Key: "prod_db"}])
 }

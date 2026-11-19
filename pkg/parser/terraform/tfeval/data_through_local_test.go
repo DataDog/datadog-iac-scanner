@@ -41,13 +41,13 @@ resource "aws_iam_policy" "consumer" {
 `
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.Pos{Line: 1, Column: 1})
 	require.False(t, diags.HasErrors(), diags.Error())
-	_, _, _, resourceBlocks, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
-	types := declaredResourceTypes(resourceBlocks)
-	dataLocals := parseLocals(t, src).dataLocals
-	require.True(t, dataLocals["policy"])
-	require.True(t, resourcesReadNamedLocals(resourceBlocks, dataLocals))
-	require.False(t, resourcesReadResources(resourceBlocks, dataRoot))
-	require.False(t, resourcesReadResources(resourceBlocks, types))
+	bodies := []*hclsyntax.Body{file.Body.(*hclsyntax.Body)}
+	_, localExprs, modules, resourceBlocks, _ := collectBlocks(bodies)
+	g := newLocalGraph(localExprs, declaredResourceTypes(resourceBlocks), collectDataBlocks(bodies))
+	require.True(t, g.dataLocals["policy"])
+	units := newUnitGraph(resourceBlocks, modules, g)
+	require.False(t, units.readsData[0], "the bucket reads no data")
+	require.True(t, units.readsData[1], "the consumer reads data through a local")
 
 	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": src}, callChild)
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_policy", "consumer")))
@@ -62,6 +62,34 @@ resource "aws_iam_policy" "direct" {
 `}, callChild)
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_policy", "direct")))
 	require.Contains(t, doc["policy"], `arn:aws:s3:::mybucket`)
+}
+
+// A consumer that reads data directly still needs the locals that data reads
+// from resources refreshed before data is: viaLocals of the consumer is empty.
+func TestDataRefreshSeesResourceBackedLocals(t *testing.T) {
+	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": `
+resource "aws_s3_bucket" "b" {
+  bucket = "secure"
+}
+locals {
+  name = aws_s3_bucket.b.bucket
+}
+data "aws_iam_policy_document" "middle" {
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${local.name}"]
+  }
+}
+resource "aws_iam_policy" "sink" {
+  count  = strcontains(data.aws_iam_policy_document.middle.json, "secure") ? 0 : 1
+  policy = "unused"
+}
+`}, callChild)
+	for _, r := range resources {
+		require.False(t, r.Type == "aws_iam_policy" && r.Label == "sink",
+			"stale locals would leave the policy without \"secure\" and expand sink[0]")
+	}
 }
 
 func TestRootResourcesReevaluateWhenConsumingDataThroughIndexedLocal(t *testing.T) {

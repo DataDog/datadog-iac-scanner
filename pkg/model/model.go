@@ -288,6 +288,68 @@ func (st *linesLazyState) cacheLineMatches(lines, n int) bool {
 	return len(st.matches) < lines && st.matchedIndexes+n <= cachedLineMatchesPerLine*lines
 }
 
+// TerraformInstance is one instance of a root block with count or for_each:
+// the label the block is written with and the instance's count index or
+// for_each key in HCL syntax, e.g. "[0]" or `["a"]`.
+type TerraformInstance struct {
+	Label, Suffix string
+}
+
+// TerraformInstanceKey is the block kind ("resource", "data", "ephemeral"),
+// the block type without a data. or ephemeral. prefix, and the document key,
+// such as web[0] or web["a"], a root instance is documented under. The kind
+// keeps a resource and a data source of the same type and name apart.
+type TerraformInstanceKey struct {
+	Kind, Type, Name string
+}
+
+// TerraformBlock identifies one Terraform configuration block the way
+// Terraform's own addresses name it: kind ("resource", "data", "module",
+// "variable", ...), and for the labeled kinds its type and name. See
+// pkg/parser/terraform/address, which aliases this type.
+type TerraformBlock struct {
+	Kind string
+	Type string
+	Name string
+}
+
+// PlanResourceKey is how a terraform plan -json document keys a resource: its
+// section ("aws_s3_bucket", "data.aws_kms_key") and document key ("this[0]").
+type PlanResourceKey struct {
+	Section, Key string
+}
+
+// TerraformScope is a scanned file's Terraform address context: the root
+// module its blocks belong to, the module instance address they are evaluated
+// under, the blocks it declares, and which block instances a module instance
+// document represents.
+type TerraformScope struct {
+	// RootModule is the repository-relative root module directory this file's
+	// blocks belong to: the file's own directory for an HCL file, the file
+	// itself for a terraform plan -json or .tfvars file (a plan or a vars file
+	// is one evaluation, not a directory of source).
+	RootModule string
+	// ModuleAddress is the module instance address the file's blocks are
+	// evaluated under (module.a["x"], keys included), empty for a root or
+	// standalone file.
+	ModuleAddress string
+	// Blocks records every top-level block the file declares, so a finding's
+	// resourceType and resourceName can be verified against the configuration
+	// before its address is built. Nil when there is no document to verify
+	// against (a .tfvars file).
+	Blocks map[TerraformBlock]bool
+	// UnlabeledIndex maps a repeated unlabeled block (terraform, moved, import,
+	// removed) under the key rules report to its
+	// module-wide index in deterministic file order, which is what the address
+	// carries. Two files of one module each declaring such a block keep
+	// distinct addresses without disturbing the declaration keys.
+	UnlabeledIndex map[TerraformBlock]int
+	// PlanAddresses holds a terraform plan -json document's per-resource
+	// addresses (the ones Terraform itself computed), keyed by (type,
+	// document key). Filled by walking the plan document.
+	PlanAddresses map[PlanResourceKey]string
+}
+
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
 	ID               string `db:"id"`
@@ -342,37 +404,6 @@ type FileMetadata struct {
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
 	Platform string
-}
-
-// TerraformInstance is a written block label and its count/for_each suffix.
-type TerraformInstance struct {
-	Label, Suffix string
-}
-
-// TerraformInstanceKey names a resource block in the document's kind/type/name
-// namespaces. Kind is "resource", "data", or "ephemeral".
-type TerraformInstanceKey struct {
-	Kind, Type, Name string
-}
-
-// TerraformBlock identifies a declared Terraform block.
-type TerraformBlock struct {
-	Kind, Type, Name string
-}
-
-// PlanResourceKey is a terraform plan -json resource section and document key.
-type PlanResourceKey struct {
-	Section, Key string
-}
-
-// TerraformScope carries caller-supplied root module and module instance
-// context, declared blocks, and plan-native addresses. RootModule is not
-// inferred from the directory containing a resource's source file.
-type TerraformScope struct {
-	RootModule    string
-	ModuleAddress string
-	Blocks        map[TerraformBlock]bool
-	PlanAddresses map[PlanResourceKey]string
 }
 
 // SetLineInfoLoader configures on-demand reconstruction of LineInfoDocument.
@@ -738,6 +769,8 @@ type Vulnerability struct {
 	IsSuppressed             bool   `json:"isSuppressed,omitempty"`
 	SuppressionKind          string `json:"suppressionKind,omitempty"`
 	SuppressionJustification string `json:"suppressionJustification,omitempty"`
+	// KeepDetectionLocation prevents SARIF from replacing the detection region with the fix location.
+	KeepDetectionLocation bool `json:"-"`
 	// ModuleCallChain: local-module instantiation path; empty for root resources; folded into fingerprint.
 	ModuleCallChain string `json:"moduleCallChain,omitempty"`
 	// ModuleAttribution: provenance for instantiated module findings, serialized
@@ -761,6 +794,8 @@ type Vulnerability struct {
 	// (FileName) is never rewritten, so reports that read the file from disk
 	// keep working.
 	OrderPath string `json:"-"`
+	// RelatedLocations are the places a finding cites as evidence.
+	RelatedLocations []SourceLocation `json:"relatedLocations,omitempty"`
 }
 
 // Identity returns the file and line text that tell v apart from other

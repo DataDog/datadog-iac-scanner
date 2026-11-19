@@ -152,6 +152,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	if len(remoteModuleProvenance) > 0 {
 		inspector.SetRemoteModuleProvenance(remoteModuleProvenance)
 	}
+	inspector.SetTerraformVarsPath(c.ScanParams.TerraformVarsPath)
 	inspector.SetExternalModulePaths(remoteModulePaths)
 	if c.inMemory {
 		inspector.SetMergeAllow(append(append([]string{}, c.inMemoryPaths...), remoteModulePaths...))
@@ -263,8 +264,9 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 
 	contextLogger.Info().Msgf("Preparing to scan")
 
+	prepareCtx := terraformPreparationContext(ctx, c.ScanParams, executeScanParameters.inspector.QueryLoader.QueriesMetadata)
 	if err = scanner.PrepareAndScan(
-		ctx,
+		prepareCtx,
 		c.ScanParams.ScanID, c.ScanParams.OpenAPIResolveReferences, c.ScanParams.MaxResolverDepth,
 		executeScanParameters.services); err != nil {
 		contextLogger.Err(err).Msgf("failed to prepare and scan %v", err)

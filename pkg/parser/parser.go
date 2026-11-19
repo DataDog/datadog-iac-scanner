@@ -234,7 +234,6 @@ func (c *Parser) parseContent(
 	if err != nil {
 		return ParsedDocument{}, err
 	}
-
 	kind := c.Parsers.GetKind()
 	// Terraform resolves checkout symlink placeholders to source bytes while
 	// retaining the logical filename. Keep that source for detection and snippets.

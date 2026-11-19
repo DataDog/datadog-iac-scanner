@@ -64,7 +64,9 @@ func normalizeOrderPath(path string) string {
 // what they report, so two findings compare equal only when the report
 // cannot tell them apart. It compares every field the reports carry. The
 // per-run identifiers are left out on purpose: QueryDuration differs between
-// runs, and ID, ScanID and FileID are the scan's own bookkeeping.
+// runs, and ID, ScanID and FileID are the scan's own bookkeeping. The stored
+// Terraform address comes last so it never decides which reported fields a
+// duplicate keeps.
 func compareReported(a, b *Vulnerability) int {
 	return cmp.Or(
 		cmp.Compare(a.ModuleCallChain, b.ModuleCallChain),
@@ -97,6 +99,9 @@ func compareReported(a, b *Vulnerability) int {
 		cmp.Compare(a.SuppressionKind, b.SuppressionKind),
 		cmp.Compare(a.SuppressionJustification, b.SuppressionJustification),
 		compareAttribution(a.ModuleAttribution, b.ModuleAttribution),
+		slices.CompareFunc(a.RelatedLocations, b.RelatedLocations, compareSourceLocation),
+		cmp.Compare(a.RootModule, b.RootModule),
+		cmp.Compare(a.ResourceID, b.ResourceID),
 	)
 }
 

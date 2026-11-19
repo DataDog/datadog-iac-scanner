@@ -12,8 +12,9 @@ import (
 	"io/fs"
 	"maps"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -29,6 +30,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
+
+// Same wire format as the Terraform parser's selected-vars directive.
+var selectedVarsPathDirective = regexp.MustCompile(`(?m)^\s*// kics_terraform_vars: ([\w/\\.:-]+)\r?\n`)
 
 const blockTypeModule = "module"
 
@@ -64,6 +68,7 @@ func parseDir(
 		}
 	}
 	names := tfmodules.SelectConfigNames(entries, dir, allow, "")
+	names = appendPlainJSONConfigNames(ctx, names, entries, dir, allow, fsys)
 	sort.Strings(names)
 	// Override files apply last regardless of their name, so locals, variable
 	// defaults and module attributes they set win over the directory's other
@@ -93,8 +98,42 @@ func parseDir(
 	return bodies, sources, nil
 }
 
+// appendPlainJSONConfigNames adds bare .json files whose content is Terraform
+// configuration, matching model load and the analyzer.
+func appendPlainJSONConfigNames(
+	ctx context.Context, names []string, entries []fs.DirEntry, dir string, allow map[string]struct{}, fsys vfs.FS,
+) []string {
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !tfpath.IsPlainJSON(name) || slices.Contains(names, name) {
+			continue
+		}
+		if allow != nil {
+			joined := filepath.Join(dir, name)
+			if _, ok := allow[filepath.ToSlash(joined)]; !ok {
+				if _, ok := allow[filepath.ToSlash(filepath.Clean(joined))]; !ok {
+					continue
+				}
+			}
+		}
+		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, "")
+		if !ok {
+			continue
+		}
+		src, err := tfmodules.ReadConfigFile(ctx, fsys, path, "")
+		if err != nil || !tfpath.LooksLikeJSONConfig(src) {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
 func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
-	if tfpath.IsJSONConfig(path) {
+	if tfpath.IsJSONConfig(path) || tfpath.IsPlainJSON(path) {
 		return parseJSONAsHCLBody(src, path)
 	}
 	f, diags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
@@ -160,8 +199,12 @@ func (d variableDecl) conform(v cty.Value) cty.Value {
 	return converted
 }
 
+// blockTypeEphemeral is the ephemeral resource block type; its blocks expand
+// and are addressed like resources, in their own namespace.
+const blockTypeEphemeral = "ephemeral"
+
 // collectBlocks partitions blocks across all bodies into variables, locals,
-// module calls, resources, and outputs.
+// module calls, resources (ephemeral resource blocks included), and outputs.
 func collectBlocks(bodies []*hclsyntax.Body) (
 	varDecls map[string]variableDecl,
 	localExprs map[string]hclsyntax.Expression,
@@ -187,7 +230,7 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 				}
 			case blockTypeModule:
 				modules = append(modules, block)
-			case "resource":
+			case blockTypeResource, blockTypeEphemeral:
 				resources = append(resources, block)
 			case "output":
 				if len(block.Labels) != 1 {
@@ -289,6 +332,14 @@ func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
 
 // LoadRootVarsWithContext preserves the scan boundary for linked variable files.
 func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map[string]cty.Value {
+	return e.LoadRootInputs(ctx, dir, "")
+}
+
+// LoadRootInputs is LoadRootVarsWithContext, then overlays selected when set.
+// When selected is empty, a // kics_terraform_vars: path directive in a root
+// config file of dir is used. Selected values override autoloaded ones so
+// empty-block decisions see the same inputs the parser used.
+func (e *Evaluator) LoadRootInputs(ctx context.Context, dir, selected string) map[string]cty.Value {
 	fsys := e.fsys
 	entries, _ := fsys.ReadDir(dir)
 	names := make([]string, 0, len(entries))
@@ -300,11 +351,10 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 
 	out := map[string]cty.Value{}
 	emptyCtx := &hcl.EvalContext{}
-	for _, name := range tfpath.AutoloadedVarFiles(names) {
-		p := filepath.Clean(filepath.Join(dir, name))
+	mergeFile := func(p string) {
 		src, err := tfmodules.ReadConfigFile(ctx, fsys, p, "")
 		if err != nil {
-			continue
+			return
 		}
 		for attrName, attr := range parseVarsFile(src, p) {
 			v, attrDiags := attr.Expr.Value(emptyCtx)
@@ -313,7 +363,41 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 			}
 		}
 	}
+	for _, name := range tfpath.AutoloadedVarFiles(names) {
+		mergeFile(filepath.Clean(filepath.Join(dir, name)))
+	}
+	if selected == "" {
+		selected = discoverSelectedVarsPath(ctx, fsys, dir, names)
+	}
+	if selected != "" {
+		mergeFile(filepath.Clean(selected))
+	}
 	return out
+}
+
+func discoverSelectedVarsPath(ctx context.Context, fsys vfs.FS, dir string, names []string) string {
+	sorted := append([]string(nil), names...)
+	sort.Strings(sorted)
+	for _, name := range sorted {
+		if !tfpath.IsHCLConfig(name) {
+			continue
+		}
+		p := filepath.Clean(filepath.Join(dir, name))
+		src, err := tfmodules.ReadConfigFile(ctx, fsys, p, "")
+		if err != nil {
+			continue
+		}
+		match := selectedVarsPathDirective.FindStringSubmatch(string(src))
+		if match == nil {
+			continue
+		}
+		path := filepath.FromSlash(strings.ReplaceAll(match[1], "\\", "/"))
+		if !strings.Contains(match[1], ":") {
+			path = filepath.Join(dir, path)
+		}
+		return path
+	}
+	return ""
 }
 
 // parseVarsFile returns the assignments of a variable definitions file, in
@@ -331,36 +415,6 @@ func parseVarsFile(src []byte, path string) hcl.Attributes {
 	}
 	attrs, _ := file.Body.JustAttributes()
 	return attrs
-}
-
-// parseResourceInstanceKey splits an expanded resource Name into its base label, instance key,
-// whether the key is a count index (true) vs a for_each string key (false), and whether the
-// name contained any expansion brackets at all.
-//   - "foo"        → ("foo", "",    false, false) — no expansion
-//   - "foo[0]"     → ("foo", "0",   true,  true)  — count
-//   - `foo["bar"]` → ("foo", "bar", false, true)  — for_each (including empty-string key)
-func parseResourceInstanceKey(name string) (base, key string, isCount, expanded bool) {
-	// for_each: name ends with `"]` and contains `["`
-	if strings.HasSuffix(name, `"]`) {
-		if idx := strings.LastIndex(name, `["`); idx >= 0 {
-			quoted := name[idx+1 : len(name)-1] // `"bar"`
-			unquoted, err := strconv.Unquote(quoted)
-			if err != nil {
-				unquoted = strings.Trim(quoted, `"`)
-			}
-			return name[:idx], unquoted, false, true
-		}
-	}
-	// count: name ends with [N] where N is an integer
-	if strings.HasSuffix(name, "]") {
-		if idx := strings.LastIndex(name, "["); idx >= 0 {
-			inner := name[idx+1 : len(name)-1]
-			if _, err := strconv.Atoi(inner); err == nil {
-				return name[:idx], inner, true, true
-			}
-		}
-	}
-	return name, "", false, false
 }
 
 // ResourceBaseName strips any count/for_each instance suffix from a resource Name
@@ -394,9 +448,30 @@ func (r *ResolvedResource) TerraformAddress() (string, bool) {
 			return "", false
 		}
 	}
+	moduleAddress, ok := ModuleTerraformAddress(r.CallChain)
+	if !ok {
+		return "", false
+	}
+	if r.ModuleAddress != "" && len(r.CallChain) == 0 {
+		return "", false
+	}
+	kind := address.KindResource
+	if r.Data {
+		kind = address.KindData
+	} else if r.Ephemeral {
+		kind = address.KindEphemeral
+	}
+	return address.Instance(moduleAddress, address.Block{Kind: kind, Type: r.Type, Name: baseName}, suffix), true
+}
+
+// ModuleTerraformAddress returns the canonical Terraform address prefix for
+// a module call chain. It is derived from native call-site labels and keys,
+// not the legacy ModuleAddress string, whose key quoting is retained for
+// existing internal identities.
+func ModuleTerraformAddress(chain []CallSite) (string, bool) {
 	moduleAddress := ""
-	for i := range r.CallChain {
-		call := &r.CallChain[i]
+	for i := range chain {
+		call := &chain[i]
 		segment := "module." + call.ModuleName
 		if call.InstanceKey != cty.NilVal {
 			keySuffix, ok := address.FormatIndexKey(call.InstanceKey)
@@ -407,14 +482,7 @@ func (r *ResolvedResource) TerraformAddress() (string, bool) {
 		}
 		moduleAddress = joinAddr(moduleAddress, segment)
 	}
-	if r.ModuleAddress != "" && len(r.CallChain) == 0 {
-		return "", false
-	}
-	kind := address.KindResource
-	if r.Data {
-		kind = address.KindData
-	}
-	return address.Instance(moduleAddress, address.Block{Kind: kind, Type: r.Type, Name: baseName}, suffix), true
+	return moduleAddress, true
 }
 
 func blockLabel(b *hclsyntax.Block) string {

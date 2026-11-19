@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
@@ -193,10 +194,13 @@ func TestResolvedResourceTerraformAddressQuotesForEachKeysAsHCL(t *testing.T) {
 		{"雪", `aws_s3_bucket.web["雪"]`},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
-			resource := makeForEachResource("web", tc.key, cty.StringVal(tc.key), cty.StringVal(tc.key), &hcl.EvalContext{},
-				func(name string, _ *hcl.EvalContext) ResolvedResource {
-					return ResolvedResource{Type: "aws_s3_bucket", Name: name}
-				})
+			key, ok := address.FormatIndexKey(cty.StringVal(tc.key))
+			require.True(t, ok)
+			dir := writeModule(t, t.TempDir(), "root", map[string]string{"main.tf": `resource "aws_s3_bucket" "web" { for_each = toset(` + key + `) }`})
+			resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			require.Len(t, resources, 1)
+			resource := resources[0]
 			require.Equal(t, fmt.Sprintf("web[%q]", tc.key), resource.Name, "legacy Name representation stays unchanged")
 			got, ok := resource.TerraformAddress()
 			require.True(t, ok, "resource name %q", resource.Name)
@@ -273,6 +277,36 @@ func TestModuleInstances_CanceledContextDoesNotAllocateTheCount(t *testing.T) {
 	plan := moduleInstances(ctx, &hclsyntax.Block{Body: file.Body.(*hclsyntax.Body)}, &hcl.EvalContext{})
 	require.Equal(t, expansionCount, plan.mode)
 	require.Zero(t, plan.Len())
+}
+
+func TestExpandModuleCallInstances_CanceledHugeCountDoesNotAllocate(t *testing.T) {
+	root := t.TempDir()
+	child := writeModule(t, root, "child", map[string]string{
+		"main.tf": `output "x" { value = 1 }`,
+	})
+	file, diags := hclsyntax.ParseConfig([]byte(`
+module "m" {
+  source = "./child"
+  count  = 1000000000000000
+}
+`), "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	mb := file.Body.(*hclsyntax.Body).Blocks[0]
+	plan := moduleInstances(context.Background(), mb, &hcl.EvalContext{})
+	require.Equal(t, expansionCount, plan.mode)
+	require.Equal(t, 1000000000000000, plan.Len())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	call := moduleCall{block: mb, label: "m", source: "./child", dir: child}
+	var got []ResolvedResource
+	require.NotPanics(t, func() {
+		got = New().expandModuleCallInstances(
+			ctx, mb, &call, plan, &hcl.EvalContext{}, nil, nil, root, "", nil, 0,
+			nil, map[string]bool{}, nil, map[string]cty.Value{},
+		)
+	})
+	require.Empty(t, got)
 }
 
 func TestForEachInstances_SmallKeepsConcreteOutputsWithoutFullKeyList(t *testing.T) {
@@ -423,6 +457,140 @@ resource "aws_s3_bucket" "b" {
 			require.NoError(t, err)
 			require.Len(t, resources, 1)
 			require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(32<<20))
+		})
+	}
+}
+
+// Every leaf of a deeply nested module fan-out is instantiated.
+func TestEvaluateModule_InstantiatesEveryLeafOfANestedFanOut(t *testing.T) {
+	const depth, branch = 12, 3
+	root := t.TempDir()
+	for i := 0; i < depth; i++ {
+		body := "variable \"in\" { type = string }\n"
+		if i == depth-1 {
+			body += "resource \"aws_s3_bucket\" \"leaf\" { bucket = var.in }\noutput \"out\" { value = var.in }\n"
+		} else {
+			for b := 0; b < branch; b++ {
+				body += fmt.Sprintf("module \"m%d\" {\n  source = \"../lvl%02d\"\n  in = var.in\n}\n", b, i+1)
+			}
+			body += "output \"out\" { value = module.m0.out }\n"
+		}
+		writeModule(t, root, fmt.Sprintf("lvl%02d", i), map[string]string{"main.tf": body})
+	}
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": "module \"m\" {\n  source = \"../lvl00\"\n  in = \"seed\"\n}\n",
+	})
+	want := 1
+	for i := 0; i < depth-1; i++ {
+		want *= branch
+	}
+
+	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	leaves := 0
+	for _, r := range resources {
+		if r.Type == "aws_s3_bucket" && r.Name == "leaf" {
+			leaves++
+		}
+	}
+	require.Equal(t, want, leaves)
+}
+
+func TestEvaluateModule_LateExpansionAddressesDoNotDependOnBlockOrder(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		name := "dependencies first"
+		if reverse {
+			name = "expansions first"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeModule(t, root, "inner", map[string]string{"main.tf": `
+variable "name" {}
+resource "aws_sqs_queue" "q" { name = var.name }
+`})
+			writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "name" {}
+resource "aws_s3_bucket" "b" { bucket = var.name }
+module "inner" {
+  source = "../inner"
+  name   = var.name
+}
+`})
+
+			counted := `module "counted" {
+  source = "../leaf"
+  count  = length(r.seed.tags)
+  name   = "shared"
+}`
+			mapped := `module "mapped" {
+  source   = "../leaf"
+  for_each = toset(r.seed.tags)
+  name     = "shared"
+}`
+			seed := `resource "r" "seed" { tags = ["blue", "green"] }`
+			var blocks []string
+			if reverse {
+				blocks = []string{counted, mapped, seed}
+			} else {
+				blocks = []string{seed, mapped, counted}
+			}
+			stack := writeModule(t, root, "stack", map[string]string{"main.tf": strings.Join(blocks, "\n")})
+
+			engine := New()
+			engine.SetTrackModuleInstances(true)
+			resources, _, _, err := engine.EvaluateModule(context.Background(), stack, nil)
+			require.NoError(t, err)
+
+			var modules []string
+			for _, instance := range engine.TakeModuleInstances() {
+				modules = append(modules, instance.ModuleAddress)
+			}
+			sort.Strings(modules)
+			require.Equal(t, []string{
+				"module.counted[0]", "module.counted[0].module.inner",
+				"module.counted[1]", "module.counted[1].module.inner",
+				`module.mapped["blue"]`, `module.mapped["blue"].module.inner`,
+				`module.mapped["green"]`, `module.mapped["green"].module.inner`,
+			}, modules)
+
+			var nested []string
+			for _, resource := range resources {
+				if resource.Type == "aws_sqs_queue" {
+					nested = append(nested, resource.ModuleAddress+"/"+resource.Type+"."+resource.Name)
+					if len(resource.CallChain) != 2 {
+						t.Fatalf("%s has call chain length %d, want 2", resource.ModuleAddress, len(resource.CallChain))
+					}
+					if strings.HasPrefix(resource.ModuleAddress, "module.counted[") {
+						require.Equal(t, "counted", resource.CallChain[0].ModuleName)
+					} else {
+						require.Equal(t, "mapped", resource.CallChain[0].ModuleName)
+					}
+					require.Equal(t, "inner", resource.CallChain[1].ModuleName)
+				}
+			}
+			sort.Strings(nested)
+			require.Equal(t, []string{
+				"module.counted[0].module.inner/aws_sqs_queue.q",
+				"module.counted[1].module.inner/aws_sqs_queue.q",
+				`module.mapped["blue"].module.inner/aws_sqs_queue.q`,
+				`module.mapped["green"].module.inner/aws_sqs_queue.q`,
+			}, nested)
+			var buckets []string
+			for _, resource := range resources {
+				if resource.Type == "aws_s3_bucket" {
+					buckets = append(buckets, resource.ModuleAddress)
+				}
+			}
+			sort.Strings(buckets)
+			require.Equal(t, []string{
+				"module.counted[0]", "module.counted[1]", `module.mapped["blue"]`, `module.mapped["green"]`,
+			}, buckets)
+			for _, resource := range resources {
+				if resource.Type != "aws_s3_bucket" {
+					continue
+				}
+				require.Equal(t, "shared", resource.Attributes["bucket"].AsString())
+			}
 		})
 	}
 }
