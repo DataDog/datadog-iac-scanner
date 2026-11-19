@@ -84,6 +84,36 @@ func requireUnknown(t *testing.T, attrs map[string]cty.Value, key string) {
 	}
 }
 
+func TestEvaluateModule_ResourceDeclarations(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		declaration string
+		wantCount   int
+	}{
+		{"no labels", `resource {}`, 1},
+		{"type only", `resource "test_resource" {}`, 1},
+		{"type and name", `resource "test_resource" "other" {}`, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := writeModule(t, t.TempDir(), "mod", map[string]string{
+				"main.tf": tc.declaration + `
+resource "test_resource" "valid" {
+  value = "retained"
+}
+output "value" {
+  value = test_resource.valid.value
+}
+`,
+			})
+			resources, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			require.Len(t, resources, tc.wantCount)
+			requireString(t, findResource(t, resources, "test_resource", "valid").Attributes, "value", "retained")
+			require.True(t, outputs["value"].RawEquals(cty.StringVal("retained")))
+		})
+	}
+}
+
 func TestEvaluateModule_InputPropagatedToChildResource(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "mod", map[string]string{

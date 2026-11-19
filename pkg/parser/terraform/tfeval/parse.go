@@ -188,6 +188,9 @@ func collectBlocks(bodies []*hclsyntax.Body) (
 			case blockTypeModule:
 				modules = append(modules, block)
 			case "resource":
+				if len(block.Labels) < 2 {
+					continue
+				}
 				resources = append(resources, block)
 			case "output":
 				if len(block.Labels) != 1 {
