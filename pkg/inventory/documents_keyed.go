@@ -182,8 +182,15 @@ func workflowJobRow(key string, _ interface{}) (Resource, bool) {
 	}, true
 }
 
+// Lists of tasks of an Ansible play, which also name the directories of a
+// role's task files.
+const (
+	ansibleTasks    = "tasks"
+	ansibleHandlers = "handlers"
+)
+
 // ansibleTaskSections are the lists of tasks of a play, in run order.
-var ansibleTaskSections = []string{"pre_tasks", "tasks", "post_tasks", "handlers"}
+var ansibleTaskSections = []string{"pre_tasks", ansibleTasks, "post_tasks", ansibleHandlers}
 
 // ansiblePlayKeys mark a playbook's items as plays rather than tasks.
 var ansiblePlayKeys = append([]string{"hosts", "import_playbook", "roles"}, ansibleTaskSections...)
@@ -224,7 +231,7 @@ func (e *documentEnumerator) ansibleRows(f *model.FileMetadata, index int) []Res
 		if !isAnsibleTaskFile(f.FilePath) {
 			return nil
 		}
-		e.addAnsibleTasks(&rows, f, "tasks", items, node, doc.end, lines)
+		e.addAnsibleTasks(&rows, f, ansibleTasks, items, node, doc.end, lines)
 		return rows
 	}
 	plays := itemSpans(node, doc.end, lines)
@@ -251,7 +258,7 @@ func (e *documentEnumerator) ansibleRows(f *model.FileMetadata, index int) []Res
 
 func isAnsibleTaskFile(path string) bool {
 	for _, dir := range strings.Split(filepath.ToSlash(filepath.Dir(path)), "/") {
-		if dir == "tasks" || dir == "handlers" {
+		if dir == ansibleTasks || dir == ansibleHandlers {
 			return true
 		}
 	}
