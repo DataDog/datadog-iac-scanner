@@ -2965,7 +2965,7 @@ func TestEvaluateModule_ResourceAttributeAccess(t *testing.T) {
 		{"computed", `terraform_data.single.output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
 		{"local_alias", `local.alias.output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
 		{"chained_alias", `local.chained.output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
-		{"indexed_alias", `local["alias"]["output"]`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"indexed_alias", `local.alias["output"]`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
 		{"count_instance", `terraform_data.counted[0].output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
 		{"each_attribute_key", `terraform_data.keyed.a.output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
 		{"each_missing_key", `terraform_data.keyed.missing`, cty.StringVal("fallback"), cty.False},
