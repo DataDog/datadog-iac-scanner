@@ -3183,6 +3183,9 @@ func TestNativePolicyValueReads(t *testing.T) {
 		"bounded_list":      cty.UnknownVal(cty.List(cty.String)).Refine().NotNull().CollectionLengthLowerBound(1).CollectionLengthUpperBound(2).NewValue(),
 		"nullable_list":     cty.UnknownVal(cty.List(cty.String)).Refine().CollectionLengthLowerBound(1).CollectionLengthUpperBound(2).NewValue(),
 		"positive_infinity": cty.PositiveInfinity, "negative_infinity": cty.NegativeInfinity,
+		"nonempty_map":       cty.UnknownVal(cty.Map(cty.String)).Refine().NotNull().CollectionLengthLowerBound(1).NewValue(),
+		"empty_map":          cty.UnknownVal(cty.Map(cty.String)).Refine().NotNull().CollectionLengthUpperBound(0).NewValue(),
+		"nullable_empty_map": cty.UnknownVal(cty.Map(cty.String)).Refine().CollectionLengthUpperBound(0).NewValue(),
 	})
 	for _, test := range []struct {
 		name               string
@@ -3203,6 +3206,9 @@ func TestNativePolicyValueReads(t *testing.T) {
 		{"unknown ancestor nonnull", policy.Path{policy.Key("nonnull_object"), policy.Key("field")}, policy.Unknown, nil, false, false},
 		{"unknown ancestor absent attribute", policy.Path{policy.Key("unknown"), policy.Key("missing")}, policy.Absent, nil, false, false},
 		{"unknown map presence", policy.Path{policy.Key("map"), policy.Key("field")}, policy.Unknown, nil, true, false},
+		{"nonempty map key presence", policy.Path{policy.Key("nonempty_map"), policy.Key("field")}, policy.Unknown, nil, true, false},
+		{"empty map key absence", policy.Path{policy.Key("empty_map"), policy.Key("field")}, policy.Absent, nil, false, false},
+		{"nullable empty map key absence", policy.Path{policy.Key("nullable_empty_map"), policy.Key("field")}, policy.Absent, nil, false, false},
 		{"list required member", policy.Path{policy.Key("bounded_list"), policy.Index(0)}, policy.Unknown, nil, false, false},
 		{"list optional member", policy.Path{policy.Key("bounded_list"), policy.Index(1)}, policy.Unknown, nil, true, false},
 		{"list excluded member", policy.Path{policy.Key("bounded_list"), policy.Index(2)}, policy.Absent, nil, false, false},

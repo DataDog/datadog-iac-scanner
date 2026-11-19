@@ -97,6 +97,9 @@ func readValueProperty(value cty.Value, key string) (next cty.Value, uncertain, 
 	}
 }
 func readValueIndex(value, key cty.Value) (next cty.Value, uncertain, absent bool, err error) {
+	if !value.IsKnown() && value.Range().LengthUpperBound() == 0 {
+		return cty.NilVal, false, true, nil
+	}
 	exists := value.HasIndex(key)
 	if !exists.IsKnown() {
 		return cty.UnknownVal(value.Type().ElementType()), true, false, nil
