@@ -64,7 +64,8 @@ type Read struct {
 // must reject inventories whose membership is not authoritative for this API;
 // an incomplete inventory cannot silently look empty. Read must reject unknown
 // subjects and unsupported operations rather than interpret either as absence.
-// Returned paths and values must not be retained or mutated by the caller.
+// Entities returns a caller-owned slice; retaining, reordering or appending to
+// it must not mutate the reader. Adapters must not retain or mutate read paths.
 type Reader interface {
 	CheckSubject(subject string) error
 	Entities(kind, typ string) ([]string, error)

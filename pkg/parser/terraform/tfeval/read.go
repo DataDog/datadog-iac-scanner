@@ -8,7 +8,7 @@ package tfeval
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
 	"github.com/zclconf/go-cty/cty"
@@ -170,7 +170,7 @@ func NewValueReader(subjects map[string]ValueSubject, complete bool) *ValueReade
 		reader.indexes[key] = append(reader.indexes[key], id)
 	}
 	for _, ids := range reader.indexes {
-		sort.Strings(ids)
+		slices.Sort(ids)
 	}
 	return reader
 }
@@ -184,7 +184,7 @@ func (r *ValueReader) Entities(kind, typ string) ([]string, error) {
 	if !r.complete {
 		return nil, &policy.Unsupported{Operation: "enumerating an open Terraform inventory"}
 	}
-	return r.indexes[[2]string{kind, typ}], nil
+	return slices.Clone(r.indexes[[2]string{kind, typ}]), nil
 }
 func (r *ValueReader) Read(id string, path policy.Path) (policy.Read, error) {
 	subject, ok := r.subjects[id]
