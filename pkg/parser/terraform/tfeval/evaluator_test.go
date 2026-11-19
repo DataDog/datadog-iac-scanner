@@ -8,6 +8,7 @@ package tfeval
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
@@ -3168,4 +3170,137 @@ func TestModuleCallResources(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNativePolicyValueReads(t *testing.T) {
+	value := cty.ObjectVal(map[string]cty.Value{
+		"unknown_scalar": cty.UnknownVal(cty.String), "nonnull_scalar": cty.UnknownVal(cty.String).RefineNotNull(),
+		"dynamic":    cty.DynamicVal,
+		"known_list": cty.ListVal([]cty.Value{cty.StringVal("value"), cty.NullVal(cty.String), cty.UnknownVal(cty.String)}),
+		"known_map":  cty.MapVal(map[string]cty.Value{"present": cty.StringVal("value"), "null": cty.NullVal(cty.String), "unknown": cty.UnknownVal(cty.String)}),
+		"null":       cty.NullVal(cty.String), "flag": cty.False, "number": cty.MustParseNumberVal("123456789012345678901234567890"),
+		"object":         cty.ObjectVal(map[string]cty.Value{"0": cty.StringVal("key")}),
+		"list":           cty.TupleVal([]cty.Value{cty.StringVal("index"), cty.DynamicVal}),
+		"unknown":        cty.UnknownVal(cty.Object(map[string]cty.Type{"field": cty.String})),
+		"nonnull_object": cty.UnknownVal(cty.Object(map[string]cty.Type{"field": cty.String})).RefineNotNull(),
+		"map":            cty.UnknownVal(cty.Map(cty.String)), "set": cty.SetVal([]cty.Value{cty.StringVal("a")}),
+		"bounded_list":      cty.UnknownVal(cty.List(cty.String)).Refine().NotNull().CollectionLengthLowerBound(1).CollectionLengthUpperBound(2).NewValue(),
+		"nullable_list":     cty.UnknownVal(cty.List(cty.String)).Refine().CollectionLengthLowerBound(1).CollectionLengthUpperBound(2).NewValue(),
+		"positive_infinity": cty.PositiveInfinity, "negative_infinity": cty.NegativeInfinity,
+		"nonempty_map":       cty.UnknownVal(cty.Map(cty.String)).Refine().NotNull().CollectionLengthLowerBound(1).NewValue(),
+		"empty_map":          cty.UnknownVal(cty.Map(cty.String)).Refine().NotNull().CollectionLengthUpperBound(0).NewValue(),
+		"nullable_empty_map": cty.UnknownVal(cty.Map(cty.String)).Refine().CollectionLengthUpperBound(0).NewValue(),
+	})
+	for _, test := range []struct {
+		name                        string
+		path                        policy.Path
+		state                       policy.State
+		want                        any
+		maybe, nonNull, unsupported bool
+	}{
+		{"present null", policy.Path{policy.Key("null")}, policy.Null, nil, false, false, false},
+		{"present false", policy.Path{policy.Key("flag")}, policy.Known, false, false, true, false},
+		{"number precision", policy.Path{policy.Key("number")}, policy.Known, json.Number("123456789012345678901234567890"), false, true, false},
+		{"absent", policy.Path{policy.Key("missing")}, policy.Absent, nil, false, false, false},
+		{"null descendants", policy.Path{policy.Key("null"), policy.Key("x")}, policy.Absent, nil, false, false, false},
+		{"numeric key", policy.Path{policy.Key("object"), policy.Key("0")}, policy.Known, "key", false, true, false},
+		{"numeric index", policy.Path{policy.Key("list"), policy.Index(0)}, policy.Known, "index", false, true, false},
+		{"unknown element", policy.Path{policy.Key("list"), policy.Index(1)}, policy.Unknown, nil, false, false, false},
+		{"unknown ancestor nullable", policy.Path{policy.Key("unknown"), policy.Key("field")}, policy.Unknown, nil, true, false, false},
+		{"unknown ancestor nonnull", policy.Path{policy.Key("nonnull_object"), policy.Key("field")}, policy.Unknown, nil, false, false, false},
+		{"unknown ancestor absent attribute", policy.Path{policy.Key("unknown"), policy.Key("missing")}, policy.Absent, nil, false, false, false},
+		{"unknown map presence", policy.Path{policy.Key("map"), policy.Key("field")}, policy.Unknown, nil, true, false, false},
+		{"nonempty map key presence", policy.Path{policy.Key("nonempty_map"), policy.Key("field")}, policy.Unknown, nil, true, false, false},
+		{"empty map key absence", policy.Path{policy.Key("empty_map"), policy.Key("field")}, policy.Absent, nil, false, false, false},
+		{"nullable empty map key absence", policy.Path{policy.Key("nullable_empty_map"), policy.Key("field")}, policy.Absent, nil, false, false, false},
+		{"list required member", policy.Path{policy.Key("bounded_list"), policy.Index(0)}, policy.Unknown, nil, false, false, false},
+		{"list optional member", policy.Path{policy.Key("bounded_list"), policy.Index(1)}, policy.Unknown, nil, true, false, false},
+		{"list excluded member", policy.Path{policy.Key("bounded_list"), policy.Index(2)}, policy.Absent, nil, false, false, false},
+		{"nullable list required member", policy.Path{policy.Key("nullable_list"), policy.Index(0)}, policy.Unknown, nil, true, false, false},
+		{"nullable list excluded member", policy.Path{policy.Key("nullable_list"), policy.Index(2)}, policy.Absent, nil, false, false, false},
+		{"unknown nullable scalar", policy.Path{policy.Key("unknown_scalar")}, policy.Unknown, nil, false, false, false},
+		{"unknown nonnull scalar", policy.Path{policy.Key("nonnull_scalar")}, policy.Unknown, nil, false, true, false},
+		{"known list present", policy.Path{policy.Key("known_list"), policy.Index(0)}, policy.Known, "value", false, true, false},
+		{"known list null", policy.Path{policy.Key("known_list"), policy.Index(1)}, policy.Null, nil, false, false, false},
+		{"known list unknown", policy.Path{policy.Key("known_list"), policy.Index(2)}, policy.Unknown, nil, false, false, false},
+		{"known list absent", policy.Path{policy.Key("known_list"), policy.Index(3)}, policy.Absent, nil, false, false, false},
+		{"known map present", policy.Path{policy.Key("known_map"), policy.Key("present")}, policy.Known, "value", false, true, false},
+		{"known map null", policy.Path{policy.Key("known_map"), policy.Key("null")}, policy.Null, nil, false, false, false},
+		{"known map unknown", policy.Path{policy.Key("known_map"), policy.Key("unknown")}, policy.Unknown, nil, false, false, false},
+		{"known map absent", policy.Path{policy.Key("known_map"), policy.Key("missing")}, policy.Absent, nil, false, false, false},
+		{"dynamic property", policy.Path{policy.Key("dynamic"), policy.Key("field")}, policy.Unknown, nil, true, false, false},
+		{"dynamic index", policy.Path{policy.Key("dynamic"), policy.Index(0)}, policy.Unknown, nil, true, false, false},
+		{"whole unknown object", policy.Path{policy.Key("unknown")}, policy.Invalid, nil, false, false, true},
+		{"positive infinity", policy.Path{policy.Key("positive_infinity")}, policy.Invalid, nil, false, false, true},
+		{"negative infinity", policy.Path{policy.Key("negative_infinity")}, policy.Invalid, nil, false, false, true},
+		{"whole object", policy.Path{policy.Key("object")}, policy.Invalid, nil, false, false, true},
+		{"set index", policy.Path{policy.Key("set"), policy.Index(0)}, policy.Invalid, nil, false, false, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ReadValue(value, test.path)
+			_, jsonErr := json.Marshal(got)
+			require.NoError(t, jsonErr)
+			if test.unsupported {
+				var unsupported *policy.Unsupported
+				require.ErrorAs(t, err, &unsupported)
+				require.Zero(t, got)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.state, got.State)
+			require.Equal(t, test.want, got.Value)
+			require.Equal(t, test.maybe, got.MaybeAbsent)
+			require.Equal(t, test.nonNull, got.NonNull)
+		})
+	}
+	_, err := ReadValue(cty.NilVal, nil)
+	require.Error(t, err)
+
+	t.Run("evaluation unit inventory", func(t *testing.T) {
+		failure := errors.New("native evaluation failed")
+		subjects := map[string]ValueSubject{
+			"b": {Kind: "resource", Type: "bucket", Value: cty.True},
+			"a": {Kind: "resource", Type: "bucket", Err: failure},
+		}
+		reader := NewValueReader(subjects, true)
+		delete(subjects, "b")
+		ids, err := reader.Entities("resource", "bucket")
+		require.NoError(t, err)
+		require.Equal(t, []string{"a", "b"}, ids)
+		// Returned inventories are owned by the caller, independently of the snapshot.
+		ids[0] = "local-change"
+		ids = append(ids, "local-addition")
+		ids = ids[:0]
+		ids = append(ids, "local-filter")
+		require.Equal(t, []string{"local-filter"}, ids)
+		fresh, err := reader.Entities("resource", "bucket")
+		require.NoError(t, err)
+		require.Equal(t, []string{"a", "b"}, fresh)
+		for _, name := range []string{"left", "right"} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				owned, err := reader.Entities("resource", "bucket")
+				require.NoError(t, err)
+				owned[0] = name
+				owned = append(owned, name)
+				require.Len(t, owned, 3)
+			})
+		}
+		require.NoError(t, reader.CheckSubject("b"))
+		got, err := reader.Read("b", nil)
+		require.NoError(t, err)
+		require.Equal(t, true, got.Value)
+		_, err = reader.Read("a", nil)
+		require.ErrorIs(t, err, failure)
+		_, err = reader.Read("unregistered", nil)
+		require.Error(t, err)
+		require.Error(t, reader.CheckSubject("unregistered"))
+		_, err = NewValueReader(nil, false).Entities("resource", "bucket")
+		var unsupported *policy.Unsupported
+		require.ErrorAs(t, err, &unsupported)
+		otherRoot := NewValueReader(map[string]ValueSubject{"b": {Kind: "resource", Type: "bucket", Value: cty.False}}, true)
+		got, err = otherRoot.Read("b", nil)
+		require.NoError(t, err)
+		require.Equal(t, false, got.Value)
+	})
 }
