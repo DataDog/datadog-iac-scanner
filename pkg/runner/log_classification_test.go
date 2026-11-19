@@ -32,16 +32,16 @@ func TestIsExpectedHelmRenderError_UndefinedNames(t *testing.T) {
 func TestLogParseFailure(t *testing.T) {
 	chart := t.TempDir()
 	tests := []struct {
-		name, file, content, wantLevel string
+		name, file, content, wantLevel, wantReason string
 	}{
-		{"raw template of a failed chart", filepath.Join(chart, "templates", "a.yaml"), "kind: A\n", "debug"},
-		{"other file of a failed chart", filepath.Join(chart, "values.yaml"), "kind: A\n", "error"},
-		{"test fixture", "repo/testdata/bad.yaml", "kind: A\n", "debug"},
-		{"templated YAML", "deploy.yaml", "name: {{ .Values.name }}\n", "debug"},
-		{"GitHub Actions expression", ".github/workflows/ci.yaml", "run: echo ${{ secrets.X }}\n", "error"},
-		{"quoted Ansible Jinja", "playbook.yaml", "msg: \"{{ foo }}\"\n", "error"},
-		{"CloudFormation dynamic reference", "stack.yaml", "Password: '{{resolve:ssm:/p}}'\n", "error"},
-		{"template in a trailing comment", "deploy.yaml", "kind: A # {{ x }}\n", "error"},
+		{"raw template of a failed chart", filepath.Join(chart, "templates", "a.yaml"), "kind: A\n", "debug", "helm_render_failed"},
+		{"other file of a failed chart", filepath.Join(chart, "values.yaml"), "kind: A\n", "error", "parse_error"},
+		{"test fixture", "repo/testdata/bad.yaml", "kind: A\n", "debug", "test_fixture"},
+		{"templated YAML", "deploy.yaml", "name: {{ .Values.name }}\n", "debug", "template_syntax"},
+		{"GitHub Actions expression", ".github/workflows/ci.yaml", "run: echo ${{ secrets.X }}\n", "error", "parse_error"},
+		{"quoted Ansible Jinja", "playbook.yaml", "msg: \"{{ foo }}\"\n", "error", "parse_error"},
+		{"CloudFormation dynamic reference", "stack.yaml", "Password: '{{resolve:ssm:/p}}'\n", "error", "parse_error"},
+		{"template in a trailing comment", "deploy.yaml", "kind: A # {{ x }}\n", "error", "parse_error"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -53,6 +53,8 @@ func TestLogParseFailure(t *testing.T) {
 			s.logParseFailure(ctx, tt.file, []byte(tt.content), errors.New("bad"))
 
 			require.Contains(t, logs.String(), `"level":"`+tt.wantLevel+`"`)
+			// The inventory records the failure with the same classes.
+			require.Equal(t, tt.wantReason, s.parseFailureReason(tt.file, []byte(tt.content)))
 		})
 	}
 }

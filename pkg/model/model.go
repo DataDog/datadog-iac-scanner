@@ -1094,6 +1094,9 @@ type AnalyzedPaths struct {
 	KustomizeRoots []string
 	TotalFiles     int
 	ContentCache   map[string][]byte
+	// TooLarge holds, per file skipped for its size, the platform its
+	// extension gives.
+	TooLarge map[string]string
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file

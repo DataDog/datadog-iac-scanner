@@ -192,6 +192,7 @@ type analyzerInfo struct {
 	filePath        string
 	maxFileSize     int
 	filePlatformMap *sync.Map
+	tooLargeMap     *sync.Map
 	contentCache    *sync.Map
 	helmCache       *sync.Map
 	// scanFiles is the analyzer's walked candidate set (slash paths); scopes
@@ -528,6 +529,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	}
 
 	var filePlatformMap sync.Map
+	var tooLargeMap sync.Map
 	var contentCache sync.Map
 	var helmCacheLocal sync.Map
 
@@ -551,6 +553,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					filePath:        filePath,
 					maxFileSize:     a.MaxFileSize,
 					filePlatformMap: &filePlatformMap,
+					tooLargeMap:     &tooLargeMap,
 					contentCache:    &contentCache,
 					helmCache:       &helmCacheLocal,
 					scanFiles:       scanFiles,
@@ -582,6 +585,12 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 		return true
 	})
 	returnAnalyzedPaths.FilePlatform = fp
+	tooLarge := make(map[string]string)
+	tooLargeMap.Range(func(k, v interface{}) bool {
+		tooLarge[k.(string)] = v.(string)
+		return true
+	})
+	returnAnalyzedPaths.TooLarge = tooLarge
 	returnAnalyzedPaths.TotalFiles = totalFiles
 	returnAnalyzedPaths.ChartRoots = chartRoots
 	returnAnalyzedPaths.KustomizeRoots = kustomizeRoots
@@ -624,6 +633,7 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 				contextLogger := logger.FromContext(ctx)
 				contextLogger.Warn().Msgf(
 					"file %s exceeds maximum file size of %d Mb", a.filePath, a.maxFileSize)
+				a.recordTooLarge(ext)
 				unwanted <- a.filePath
 				return
 			}
@@ -655,6 +665,33 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 	// Counted only once the file is known to be scanned, and from the content
 	// read for classification when there is any, so the file is opened once.
 	locCount <- a.countLines(ctx, content)
+}
+
+// recordTooLarge notes a file skipped for its size when its extension alone
+// gives a platform the scan covers. A file classified by its content is not
+// noted: unread, it is not known to be IaC.
+func (a *analyzerInfo) recordTooLarge(ext string) {
+	platform := platformByExtension(ext)
+	if platform == "" || a.tooLargeMap == nil || !a.isAvailableType(platform) {
+		return
+	}
+	a.tooLargeMap.Store(a.filePath, platform)
+}
+
+// platformByExtension returns the platform a file has by its extension alone,
+// or "" when the content decides.
+func platformByExtension(ext string) string {
+	switch ext {
+	case extDockerfile, nameDockerfile:
+		return dockerfile
+	case extTf, extTofu, extTfJSON, extTofuJSON, extTfvars:
+		return terraform
+	case extBicepFile:
+		return bicep
+	case extProto:
+		return grpc
+	}
+	return ""
 }
 
 func (a *analyzerInfo) countLines(ctx context.Context, content []byte) int {
@@ -905,20 +942,15 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	if err != nil {
 		return ""
 	}
+	if platform := platformByExtension(ext); platform != "" {
+		return platform
+	}
 	switch ext {
-	case extDockerfile, nameDockerfile:
-		return dockerfile
 	case extPossibleDockerfile, extUbi8, extDebian:
 		if isDockerfile(ctx, path) {
 			return dockerfile
 		}
 		return ""
-	case extTf, extTofu, extTfJSON, extTofuJSON, extTfvars:
-		return terraform
-	case extBicepFile:
-		return bicep
-	case extProto:
-		return grpc
 	case extCfg, extConf:
 		if looksLikeAnsibleConfig(content) {
 			return ansible

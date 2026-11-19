@@ -99,6 +99,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	moduleCleanup, remoteModulePaths, remoteSourceDirs, remoteModuleProvenance, err := c.resolveTerraformModulesForScan(
 		ctx, paramsPlatforms, &extractedPaths, baselinePaths,
 	)
+	c.inventory.noteFiles(filePlatform, remoteModulePaths)
 	metrics.Metric.Stop()
 	memwatch.Sample(ctx, memwatch.PhaseModuleResolve)
 	if err != nil {

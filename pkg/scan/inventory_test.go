@@ -12,8 +12,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
@@ -118,6 +120,102 @@ func TestInventoryDoesNotChangeTheScan(t *testing.T) {
 	require.NotEmpty(t, inv.ScanID)
 }
 
+// writeRepo creates the files of a test repository.
+func writeRepo(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for name, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	}
+	return root
+}
+
+func TestInventoryManifest(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"infra/main.tf":      "resource \"aws_s3_bucket\" \"logs\" {\n  bucket = \"logs\"\n}\n",
+		"infra/variables.tf": "variable \"env\" {\n  type = string\n}\n",
+		"infra/broken.tf":    "resource \"aws_s3_bucket\" \"oops\" {\n  bucket = \n",
+		"k8s/web.yaml":       "apiVersion: v1\nkind: Service\nmetadata:\n  name: web\n",
+		"k8s/broken.yaml":    "apiVersion: v1\nkind: Service\nmetadata:\n  name: \"web\n",
+		"k8s/empty.yaml":     "# apiVersion: v1\n# kind: Service\n",
+		"docs/notes.md":      "not IaC\n",
+	})
+	// One megabyte is the smallest limit: a larger Terraform file is skipped.
+	big := strings.Repeat("# padding to exceed the size limit\n", 40000)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "infra", "generated.tf"), []byte(big), 0o600))
+
+	inventoryPath := filepath.Join(t.TempDir(), "inventory.json")
+	params := Parameters{
+		Path:             []string{root},
+		RepoPath:         root,
+		QueriesPath:      []string{"."},
+		LibrariesPath:    "assets/libraries",
+		PreviewLines:     3,
+		CloudProvider:    []string{"aws"},
+		Platform:         []string{"Terraform", "Kubernetes"},
+		MaxFileSizeFlag:  1,
+		ScanID:           "console",
+		MaxResolverDepth: 15,
+		FlagEvaluator:    featureflags.NewLocalEvaluator(),
+		InventoryPath:    inventoryPath,
+	}
+	ctx := context.Background()
+	c, err := NewClient(ctx, &params, &consolePrinter.Printer{})
+	require.NoError(t, err)
+	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
+		return &stubQuerySource{queries: []model.QueryMetadata{inventoryTestQuery}}, nil
+	}
+	metadata, err := c.PerformScan(ctx)
+	require.NoError(t, err)
+	require.Equal(t, InventoryWritten, metadata.Inventory.Status)
+
+	data, err := os.ReadFile(inventoryPath)
+	require.NoError(t, err)
+	var inv inventory.Inventory
+	require.NoError(t, json.Unmarshal(data, &inv))
+
+	require.Equal(t, []inventory.File{
+		{Path: "infra/broken.tf", Platform: "terraform", Status: inventory.FileFailed, Reason: inventory.ReasonParseError},
+		{Path: "infra/generated.tf", Platform: "terraform", Status: inventory.FileFailed, Reason: inventory.ReasonTooLarge},
+		{Path: "infra/main.tf", Platform: "terraform", Status: inventory.FileScanned},
+		{Path: "infra/variables.tf", Platform: "terraform", Status: inventory.FileScanned},
+		{Path: "k8s/broken.yaml", Platform: "kubernetes", Status: inventory.FileFailed, Reason: inventory.ReasonParseError},
+		{Path: "k8s/empty.yaml", Platform: "kubernetes", Status: inventory.FileScanned},
+		{Path: "k8s/web.yaml", Platform: "kubernetes", Status: inventory.FileScanned},
+	}, inv.Files)
+	require.Equal(t, inventory.StatusPartial, inv.Status)
+	require.Equal(t, 3, inv.Stats.FilesFailed)
+	require.Equal(t, 7, metadata.Inventory.Files)
+	require.Equal(t, 3, metadata.Inventory.FilesFailed)
+}
+
+func TestInventoryManifestLeavesOutExternalFiles(t *testing.T) {
+	root := t.TempDir()
+	run := &inventoryRun{collector: inventory.NewCollector(root)}
+	run.noteFiles(nil, []string{filepath.Join(root, ".terraform", "modules", "vpc")})
+	c := &Client{Tracker: &tracker.CITracker{
+		BagOfFilesFound: map[string]int{
+			filepath.Join(root, "main.tf"):                                   1,
+			filepath.Join(root, ".terraform", "modules", "vpc", "main.tf"):   1,
+			filepath.Join(filepath.Dir(root), "elsewhere", "module", "x.tf"): 1,
+			filepath.Join(root, "charts", "api", "templates", "empty.yaml"):  1,
+			filepath.Join(root, "odd.yaml"):                                  1,
+		},
+		BagOfFilesParse: map[string]int{filepath.Join(root, "main.tf"): 1},
+		EmptyFiles:      map[string]bool{filepath.Join(root, "charts", "api", "templates", "empty.yaml"): true},
+	}}
+
+	c.recordManifest(run, nil)
+	inv := run.collector.Build(&inventory.Metadata{})
+	require.Equal(t, []inventory.File{
+		{Path: "charts/api/templates/empty.yaml", Status: inventory.FileScanned},
+		{Path: "main.tf", Status: inventory.FileScanned},
+		{Path: "odd.yaml", Status: inventory.FileFailed, Reason: inventory.ReasonUnknown},
+	}, inv.Files)
+}
+
 func TestInventoryRedactsRepositoryCredentials(t *testing.T) {
 	inventoryPath := filepath.Join(t.TempDir(), "inventory.json")
 	c := &Client{ScanParams: &Parameters{
@@ -129,7 +227,7 @@ func TestInventoryRedactsRepositoryCredentials(t *testing.T) {
 		}},
 	}}
 	c.startInventory(context.Background())
-	require.Equal(t, InventoryWritten, c.finishInventory(context.Background()).Status)
+	require.Equal(t, InventoryWritten, c.finishInventory(context.Background(), nil).Status)
 
 	data, err := os.ReadFile(inventoryPath)
 	require.NoError(t, err)
@@ -176,7 +274,7 @@ func TestInventoryFailuresDoNotFailTheScan(t *testing.T) {
 		// A run without a collector panics when it builds.
 		c.inventory = &inventoryRun{}
 
-		status := c.finishInventory(context.Background())
+		status := c.finishInventory(context.Background(), nil)
 		require.Equal(t, InventoryFailed, status.Status)
 		require.Equal(t, InventoryReasonPanic, status.Reason)
 		_, err := os.Stat(inventoryPath)

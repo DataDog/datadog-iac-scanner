@@ -7,8 +7,10 @@
 package scan
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
@@ -33,8 +35,52 @@ type inventoryRun struct {
 	collector *inventory.Collector
 	scanID    string
 	platforms []string
+	// filePlatform is the analyzer's platform per file, by slash path.
+	filePlatform map[string]string
+	// tooLarge holds the files skipped for their size, with their platform.
+	tooLarge map[string]string
+	// external holds the fetched remote modules, which are not part of the
+	// repository even when they sit inside it.
+	external map[string]bool
 	// failure is set when the run can no longer produce an inventory.
 	failure *InventoryMetadata
+}
+
+// noteFiles keeps what the scan learnt about its files before parsing them.
+// A nil run, a scan without inventory, ignores it.
+func (run *inventoryRun) noteFiles(filePlatform map[string]string, remoteModulePaths []string) {
+	if run == nil {
+		return
+	}
+	run.filePlatform = filePlatform
+	run.external = make(map[string]bool, len(remoteModulePaths))
+	for _, p := range remoteModulePaths {
+		run.external[filepath.Clean(p)] = true
+	}
+}
+
+// noteTooLarge keeps the files the analyzer skipped for their size.
+func (run *inventoryRun) noteTooLarge(tooLarge map[string]string) {
+	if run != nil {
+		run.tooLarge = tooLarge
+	}
+}
+
+// isExternal reports whether path belongs to a fetched remote module.
+func (run *inventoryRun) isExternal(path string) bool {
+	if len(run.external) == 0 {
+		return false
+	}
+	for p := filepath.Clean(path); ; {
+		if run.external[p] {
+			return true
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return false
+		}
+		p = parent
+	}
 }
 
 // startInventory prepares the inventory of a scan that asked for one. It runs
@@ -67,7 +113,7 @@ func (c *Client) startInventory(ctx context.Context) {
 // finishInventory writes the inventory and reports what happened. A failure
 // never fails the scan: the findings are already written, and no inventory
 // file is left behind.
-func (c *Client) finishInventory(ctx context.Context) (status *InventoryMetadata) {
+func (c *Client) finishInventory(ctx context.Context, files model.FileMetadatas) (status *InventoryMetadata) {
 	run := c.inventory
 	if run == nil {
 		return nil
@@ -85,6 +131,7 @@ func (c *Client) finishInventory(ctx context.Context) (status *InventoryMetadata
 		}
 	}()
 
+	c.recordManifest(run, files)
 	commit := c.ScanParams.SCIInfo.RepositoryCommitInfo
 	inv := run.collector.Build(&inventory.Metadata{
 		ScanID:         run.scanID,
@@ -111,6 +158,54 @@ func (c *Client) finishInventory(ctx context.Context) (status *InventoryMetadata
 		Resources:   inv.Stats.Resources,
 		Files:       len(inv.Files),
 		FilesFailed: inv.Stats.FilesFailed,
+	}
+}
+
+// recordManifest records the outcome of every file the scan considered: each
+// file a parser was given, and each file skipped for its size. Files outside
+// the repository and fetched remote modules are left out.
+func (c *Client) recordManifest(run *inventoryRun, files model.FileMetadatas) {
+	// A parsed file takes the platform its documents were scanned as; a file
+	// that never parsed takes the analyzer's.
+	parsedPlatform := make(map[string]string, len(files))
+	for _, f := range files {
+		if f == nil || f.Platform == "" {
+			continue
+		}
+		key := filepath.ToSlash(f.FilePath)
+		if prev, ok := parsedPlatform[key]; !ok || f.Platform < prev {
+			parsedPlatform[key] = f.Platform
+		}
+	}
+	record := func(path, platform, status, reason string) {
+		if run.isExternal(path) {
+			return
+		}
+		rel, ok := run.collector.RelPath(path)
+		if !ok {
+			return
+		}
+		if platform == "" {
+			key := filepath.ToSlash(path)
+			platform = cmp.Or(parsedPlatform[key], run.filePlatform[key])
+		}
+		run.collector.RecordFile(rel, platform, status, reason)
+	}
+
+	if t := c.Tracker; t != nil {
+		for path := range t.BagOfFilesFound {
+			switch {
+			case t.BagOfFilesParse[path] > 0 || t.EmptyFiles[path]:
+				record(path, "", inventory.FileScanned, "")
+			case t.FailedFiles[path] != "":
+				record(path, "", inventory.FileFailed, t.FailedFiles[path])
+			default:
+				record(path, "", inventory.FileFailed, inventory.ReasonUnknown)
+			}
+		}
+	}
+	for path, platform := range run.tooLarge {
+		record(path, platform, inventory.FileFailed, inventory.ReasonTooLarge)
 	}
 }
 

@@ -170,3 +170,19 @@ func TestNewTracker(t *testing.T) {
 		})
 	}
 }
+
+func TestTrackFileOutcomes(t *testing.T) {
+	// A zero tracker, as some tests build it, records outcomes too.
+	c := &CITracker{}
+
+	c.TrackFileFailed("a.yaml", "test_fixture")
+	c.TrackFileFailed("a.yaml", "parse_error")
+	c.TrackFileFailed("a.yaml", "template_syntax")
+	c.TrackFileEmpty("empty.yaml")
+
+	require.Equal(t, map[string]string{"a.yaml": "parse_error"}, c.FailedFiles,
+		"the first reason in sort order is kept")
+	require.Equal(t, map[string]bool{"empty.yaml": true}, c.EmptyFiles)
+	require.Zero(t, c.FoundFiles)
+	require.Zero(t, c.ParsedFiles)
+}

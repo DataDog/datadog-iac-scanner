@@ -8,6 +8,7 @@ package yaml
 import (
 	"bytes"
 	"context"
+	"io"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
@@ -90,6 +91,10 @@ func ParseWithNodeTransformNoResolve(ctx context.Context, fileContent []byte, fi
 	return parseNodes(ctx, fileContent, filePath, fn)
 }
 
+// ErrNoDocuments is returned for a YAML file that holds no document and no
+// syntax error.
+var ErrNoDocuments = errors.New("no documents found in yaml file")
+
 // parseNodes decodes the (already resolved) YAML bytes into documents,
 // applying fn to each document's root node before conversion.
 func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(node *yaml.Node)) (
@@ -100,16 +105,24 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 	ignore := &model.Ignore{}
 
 	dec := yaml.NewDecoder(bytes.NewReader(resolved))
+	var decodeErr error
 	for {
 		var node yaml.Node
 		if err := dec.Decode(&node); err != nil {
+			if !errors.Is(err, io.EOF) {
+				decodeErr = err
+			}
 			break
 		}
 		documents = appendDocument(ctx, documents, &node, filePath, fn, ignore)
 	}
 
 	if len(documents) == 0 {
-		return nil, []int{}, errors.New("no documents found in yaml file")
+		if decodeErr != nil {
+			// A syntax error before any document: invalid, not empty.
+			return nil, []int{}, errors.Wrap(decodeErr, ErrNoDocuments.Error())
+		}
+		return nil, []int{}, ErrNoDocuments
 	}
 
 	linesToIgnore := ignore.GetLines()

@@ -13,10 +13,12 @@ import (
 	"sort"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
+	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
+	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/google/uuid"
@@ -68,6 +70,21 @@ func (s *Service) logParseFailure(ctx context.Context, filename string, content 
 	}
 }
 
+// parseFailureReason classifies a parse failure for the inventory, with the
+// same classes as logParseFailure.
+func (s *Service) parseFailureReason(filename string, content []byte) string {
+	switch {
+	case s.isUnderFailedHelmChart(filename):
+		return inventory.ReasonHelmRenderFailed
+	case utils.IsTestFixturePath(filename):
+		return inventory.ReasonTestFixture
+	case utils.HasYAMLBreakingTemplate(content):
+		return inventory.ReasonTemplateSyntax
+	default:
+		return inventory.ReasonParseError
+	}
+}
+
 // sinkContent parses already-read file content; used when one read feeds several parsers.
 func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	c *Content, getErr error,
@@ -98,6 +115,12 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
 		s.logParseFailure(ctx, filename, *content, err)
+		if errors.Is(err, yamlparser.ErrNoDocuments) {
+			// Nothing is missing from a file that holds no document.
+			s.Tracker.TrackFileEmpty(filename)
+		} else {
+			s.Tracker.TrackFileFailed(filename, s.parseFailureReason(filename, *content))
+		}
 		return nil
 	}
 	var fileCommands model.CommentsCommands

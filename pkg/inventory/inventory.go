@@ -34,6 +34,17 @@ const (
 	FileFailed  = "failed"
 )
 
+// Reasons a file failed.
+const (
+	ReasonParseError       = "parse_error"
+	ReasonHelmRenderFailed = "helm_render_failed"
+	ReasonTestFixture      = "test_fixture"
+	ReasonTemplateSyntax   = "template_syntax"
+	ReasonTooLarge         = "too_large"
+	// ReasonUnknown marks a file that gave no documents for no recorded reason.
+	ReasonUnknown = "unknown"
+)
+
 // Resource completeness values.
 const (
 	CompletenessComplete = "complete"
