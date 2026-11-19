@@ -44,6 +44,9 @@ type terraformInventory struct {
 	// external reports a fetched module, which is not a root of the
 	// repository even when nothing in the scan calls it.
 	external func(string) bool
+	// modulePaths keeps one copy of each module path: every instance of a
+	// module, in every root that calls it, has the same.
+	modulePaths map[string]string
 }
 
 // newTerraformInventory returns nil when the scan has no inventory.
@@ -211,8 +214,19 @@ func (inv *terraformInventory) addModuleFields(row *inventory.Resource, attr *mo
 	row.CallSiteLineStart = callSite.LineStart
 	row.CallSiteLineEnd = callSite.LineEnd
 	if encoded, err := json.Marshal(hops); err == nil {
-		row.ModulePath = string(encoded)
+		row.ModulePath = inv.intern(string(encoded))
 	}
+}
+
+func (inv *terraformInventory) intern(s string) string {
+	if shared, ok := inv.modulePaths[s]; ok {
+		return shared
+	}
+	if inv.modulePaths == nil {
+		inv.modulePaths = make(map[string]string)
+	}
+	inv.modulePaths[s] = s
+	return s
 }
 
 // inventoryAddress returns the Terraform address of r and of its module call.
