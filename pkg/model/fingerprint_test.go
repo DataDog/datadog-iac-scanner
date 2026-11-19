@@ -108,3 +108,21 @@ func TestIdentityBeforeLine_IsFindingIdentityUnderEveryChain(t *testing.T) {
 	_, ok := IdentityBeforeLine(&Vulnerability{Platform: "Dockerfile"})
 	require.False(t, ok, "a Dockerfile identity includes the line")
 }
+
+func TestSourcePathFindingIdentity(t *testing.T) {
+	keyID, keyDisplay := SourcePathIdentity(SourcePath{{Key: "0"}}, 0)
+	indexID, indexDisplay := SourcePathIdentity(SourcePath{{Index: 0, IsIndex: true}}, 0)
+	require.NotEqual(t, keyID, indexID)
+	require.Equal(t, `["0"]`, keyDisplay)
+	require.Equal(t, `[0]`, indexDisplay)
+	secondDocument, _ := SourcePathIdentity(SourcePath{{Key: "0"}}, 1)
+	require.NotEqual(t, keyID, secondDocument)
+	for _, platform := range []string{"Kubernetes", terraformPlatform} {
+		v := Vulnerability{SourcePathID: keyID, FileName: "source.yaml", FileID: "random", Platform: platform, QueryID: "rule", ModuleCallChain: "caller"}
+		before, ok := IdentityBeforeLine(&v)
+		require.True(t, ok)
+		require.Equal(t, FindingIdentity(&v), before.WithChain(v.ModuleCallChain))
+		v.ModuleCallChain = "another"
+		require.Equal(t, FindingIdentity(&v), before.WithChain(v.ModuleCallChain))
+	}
+}

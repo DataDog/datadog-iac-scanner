@@ -1574,7 +1574,10 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 // resultDocumentID returns the file id a result item points at.
 func resultDocumentID(item interface{}) string {
 	if m, ok := item.(map[string]interface{}); ok {
-		if id, ok := m["documentId"].(string); ok {
+		if id, ok := m["documentId"].(string); ok && id != "" {
+			return id
+		}
+		if id, ok := m["_dd_id"].(string); ok {
 			return id
 		}
 	}
