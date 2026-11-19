@@ -189,7 +189,7 @@ resource "aws_s3_bucket" "replica" {
 	}
 
 	docs, _, _ := instantiatedDocs(
-		resources,
+		context.Background(), resources,
 		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
 		root,
 		nil,

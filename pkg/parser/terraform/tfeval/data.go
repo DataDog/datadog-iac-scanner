@@ -296,8 +296,8 @@ func (d *moduleData) evalBlock(
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
-		if source, ok := localdata.Lookup(inst.Type); ok {
-			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx, source)
+		if _, ok := localdata.Lookup(inst.Type); ok {
+			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx)
 		}
 		if d.addr == "" {
 			inst.Iteration = nil
@@ -461,44 +461,41 @@ func sameCtyValues(a, b map[string]cty.Value) bool {
 	return true
 }
 
-// withComputedAttributes adds the attributes a data source computes from its
-// configuration to inst's, rendering what does not resolve as text.
+// withComputedAttributes adds evaluated data-source outputs to the reference
+// context. Partial text rendering is reserved for rule documents, not Terraform
+// expressions which can transform the string and lose its unresolved parts.
 func (d *moduleData) withComputedAttributes(
-	inst *ResolvedResource, b *hclsyntax.Block, scanCtx context.Context, evalCtx *hcl.EvalContext, source localdata.Source,
+	inst *ResolvedResource, b *hclsyntax.Block, scanCtx context.Context, evalCtx *hcl.EvalContext,
 ) map[string]cty.Value {
 	ctx := evalCtx
 	if inst.Iteration != nil {
 		ctx = evalCtx.NewChild()
 		ctx.Variables = inst.Iteration
 	}
-	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(d.sources)}
-	var computed map[string]string
-	if body, ok := d.jsonBodies[b]; ok {
-		src := d.sources[b.TypeRange.Filename]
-		computed = source(scanCtx, body, func(expr hcl.Expression) (cty.Value, bool) {
-			return renderJSON(rd, expr, src)
-		})
-	} else {
-		computed = source(scanCtx, b.Body, rd.Render)
+	var body hcl.Body = b.Body
+	if json, ok := d.jsonBodies[b]; ok {
+		body = json
 	}
+	computed := localdata.Evaluate(scanCtx, inst.Type, body, func(expr hcl.Expression) (cty.Value, bool) {
+		scoped := ctx
+		for {
+			inner, vars, bound := partial.Unbind(expr)
+			if !bound {
+				break
+			}
+			expr, scoped = inner, partial.Scope(scoped, vars)
+		}
+		v, diags := expr.Value(scoped)
+		return v, !diags.HasErrors()
+	})
 	attrs := make(map[string]cty.Value, len(inst.Attributes)+len(computed))
 	for k, v := range inst.Attributes {
 		attrs[k] = v
 	}
 	for k, v := range computed {
-		attrs[k] = cty.StringVal(v)
+		attrs[k] = v
 	}
 	return attrs
-}
-
-// renderJSON renders a JSON configuration expression, in the scope of the
-// variables it was bound to when read inside a dynamic block.
-func renderJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.Value, bool) {
-	if inner, vars, ok := partial.Unbind(expr); ok {
-		scoped := &partial.Renderer{Ctx: partial.Scope(rd.Ctx, vars), Source: rd.Source}
-		return renderJSON(scoped, inner, src)
-	}
-	return rd.Render(jsonExprToHCL(expr, src))
 }
 
 // resolved returns the data instances of the module's final evaluation.
@@ -508,6 +505,29 @@ func (d *moduleData) resolved(scope *ModuleScope) []ResolvedResource {
 	}
 	for i := range d.instances {
 		d.instances[i].Scope = scope
+	}
+	scope.dataSources = make(map[documentDataKey]documentDataSource)
+	for block, cached := range d.evalCache {
+		source, ok := localdata.Lookup(block.Labels[0])
+		if !ok {
+			continue
+		}
+		var body hcl.Body = block.Body
+		jsonBody, json := d.jsonBodies[block]
+		if json {
+			body = jsonBody
+		}
+		for i := range cached.exposed {
+			inst := &cached.exposed[i]
+			key := documentDataKey{typ: inst.Type, name: block.Labels[1]}
+			if inst.InstanceKey != cty.NilVal {
+				value, _ := inst.InstanceKey.Unmark()
+				key.instance = value.GoString()
+			}
+			scope.dataSources[key] = documentDataSource{
+				source: source, body: body, iteration: inst.Iteration, json: json, filename: block.TypeRange.Filename,
+			}
+		}
 	}
 	return d.instances
 }

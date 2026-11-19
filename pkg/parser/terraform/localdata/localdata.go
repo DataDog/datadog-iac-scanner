@@ -28,15 +28,49 @@ type EvalFunc func(hcl.Expression) (cty.Value, bool)
 // ctx stops dynamic block expansion, and the document is then not rendered.
 type Source func(ctx context.Context, body hcl.Body, eval EvalFunc) map[string]string
 
-var sources = map[string]Source{
-	awsIAMPolicyDocumentType: policyDocumentAttributes,
-	googleIAMPolicyType:      googleIAMPolicyAttributes,
+type sourceDefinition struct {
+	render     Source
+	attributes []string
+}
+
+var sources = map[string]sourceDefinition{
+	awsIAMPolicyDocumentType: {render: policyDocumentAttributes, attributes: []string{"json", "minified_json"}},
+	googleIAMPolicyType:      {render: googleIAMPolicyAttributes, attributes: []string{"policy_data"}},
 }
 
 // Lookup returns the Source for a data source type.
 func Lookup(typ string) (Source, bool) {
 	s, ok := sources[typ]
-	return s, ok
+	return s.render, ok
+}
+
+// Evaluate computes the source's attributes without rendering unresolved values
+// as text. A computed string is known only when every input consumed by the
+// source was known; otherwise string operations on it must remain uncertain.
+// Lookup remains the partial rendering path for rule documents.
+func Evaluate(ctx context.Context, typ string, body hcl.Body, eval EvalFunc) map[string]cty.Value {
+	source, ok := sources[typ]
+	if !ok {
+		return nil
+	}
+	unresolved := false
+	computed := source.render(ctx, body, func(expr hcl.Expression) (cty.Value, bool) {
+		v, known := eval(expr)
+		if !known || !v.IsWhollyKnown() {
+			unresolved = true
+			return cty.DynamicVal, false
+		}
+		return v, true
+	})
+	out := make(map[string]cty.Value, len(source.attributes))
+	for _, name := range source.attributes {
+		if value, exists := computed[name]; exists && !unresolved && ctx.Err() == nil {
+			out[name] = cty.StringVal(value)
+		} else {
+			out[name] = cty.UnknownVal(cty.String)
+		}
+	}
+	return out
 }
 
 // Types returns the data source types Lookup knows, sorted.

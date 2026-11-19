@@ -10,9 +10,11 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -33,20 +35,206 @@ const UnknownAttributePlaceholder = partial.UnknownPlaceholder
 // rules do not fire false positives on unresolved expressions and a string
 // interpolating an unresolved value still carries the rest of its content.
 func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
-	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(r))
+	return AttributesToDocumentWithContext(context.Background(), r)
+}
+
+// AttributesToDocumentWithContext is AttributesToDocument with cancellation for
+// any data-source expansion needed to render unresolved document references.
+func AttributesToDocumentWithContext(ctx context.Context, r *ResolvedResource) map[string]interface{} {
+	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(ctx, r))
 }
 
 // newRenderer renders r's attributes in the context they were evaluated in.
-func newRenderer(r *ResolvedResource) *partial.Renderer {
+func newRenderer(scanCtx context.Context, r *ResolvedResource) *partial.Renderer {
 	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {
 		return &partial.Renderer{}
 	}
 	ctx := r.Scope.evalCtx
-	if r.Iteration != nil {
+	if iteration := documentIteration(r); iteration != nil {
 		ctx = ctx.NewChild()
-		ctx.Variables = r.Iteration
+		ctx.Variables = iteration
 	}
-	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources)}
+	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources), Reference: documentReferences(scanCtx, r.Scope)}
+}
+
+// Root resources omit their iteration map during evaluation. Recover its
+// bindings from the concrete key and the already narrowed for_each value,
+// without evaluating or copying the original collection for every consumer.
+func documentIteration(r *ResolvedResource) map[string]cty.Value {
+	if r.Iteration != nil {
+		return r.Iteration
+	}
+	if r.InstanceKey == cty.NilVal || !ctyutil.Materialized(r.InstanceKey) {
+		return nil
+	}
+	if r.InstanceKey.Type() == cty.Number {
+		return map[string]cty.Value{"count": cty.ObjectVal(map[string]cty.Value{"index": r.InstanceKey})}
+	}
+	value := cty.DynamicVal
+	if collection, ok := r.Attributes[metaArgForEach]; ok && ctyutil.Materialized(collection) && collection.CanIterateElements() {
+		it := collection.ElementIterator()
+		if it.Next() {
+			_, value = it.Element()
+		}
+	}
+	return map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{"key": r.InstanceKey, "value": value})}
+}
+
+const (
+	maxDocumentReferenceDepth   = 32
+	dataAttributeTraversalSteps = 4
+)
+
+// documentReferences recovers partial data-source output only when an
+// expression places a reference's value into a document. Its values never enter
+// the evaluation context. Completed results are memoized by scope; recursion
+// state belongs to this rendering, and canceled or truncated results are not shared.
+func documentReferences(ctx context.Context, scope *ModuleScope) func(hcl.Traversal, *hcl.EvalContext) (cty.Value, bool) {
+	cache := scope.renderedData
+	if cache == nil {
+		cache = &sync.Map{}
+	}
+	r := &documentReferenceRenderer{
+		scope: scope, ctx: ctx, rendered: cache, visiting: map[documentDataKey]bool{}, cacheable: true,
+	}
+	return r.resolve
+}
+
+type documentReferenceRenderer struct {
+	scope     *ModuleScope
+	ctx       context.Context
+	rendered  *sync.Map
+	cacheable bool
+	visiting  map[documentDataKey]bool
+	depth     int
+}
+
+func (r *documentReferenceRenderer) resolve(t hcl.Traversal, ctx *hcl.EvalContext) (cty.Value, bool) {
+	if len(t) < 2 {
+		return cty.NilVal, false
+	}
+	if r.depth >= maxDocumentReferenceDepth {
+		r.cacheable = false
+		return cty.NilVal, false
+	}
+	r.depth++
+	defer func() { r.depth-- }()
+	name, ok := t[1].(hcl.TraverseAttr)
+	if !ok {
+		return cty.NilVal, false
+	}
+	switch t.RootName() {
+	case rootLocal:
+		return r.local(t, name.Name, ctx)
+	case blockTypeData:
+		return r.data(t, name.Name)
+	default:
+		return cty.NilVal, false
+	}
+}
+
+func (r *documentReferenceRenderer) local(t hcl.Traversal, name string, ctx *hcl.EvalContext) (cty.Value, bool) {
+	expr := r.scope.Locals[name]
+	if expr == nil {
+		return cty.NilVal, false
+	}
+	alias, known := partial.ReferenceTraversal(expr, ctx)
+	if !known {
+		return cty.NilVal, false
+	}
+	combined := append(append(hcl.Traversal{}, alias...), t[2:]...)
+	return r.resolve(combined, ctx)
+}
+
+func (r *documentReferenceRenderer) data(t hcl.Traversal, typ string) (cty.Value, bool) {
+	if len(t) < dataAttributeTraversalSteps {
+		return cty.NilVal, false
+	}
+	label, ok := t[2].(hcl.TraverseAttr)
+	if !ok {
+		return cty.NilVal, false
+	}
+	key := documentDataKey{typ: typ, name: label.Name}
+	end := 3
+	if index, indexed := t[end].(hcl.TraverseIndex); indexed {
+		value, _ := index.Key.Unmark()
+		if !ctyutil.Materialized(value) {
+			return cty.NilVal, false
+		}
+		key.instance = value.GoString()
+		end++
+	}
+	data, exists := r.scope.dataSources[key]
+	if !exists {
+		return cty.NilVal, false
+	}
+	v, ok := r.render(key, data)
+	if !ok {
+		return cty.NilVal, false
+	}
+	v, diags := t[end:].TraverseRel(v)
+	return v, !diags.HasErrors()
+}
+
+type documentDataKey struct {
+	typ, name, instance string
+}
+
+type documentDataSource struct {
+	source    localdata.Source
+	body      hcl.Body
+	iteration map[string]cty.Value
+	filename  string
+	json      bool
+}
+
+func (r *documentReferenceRenderer) render(key documentDataKey, data documentDataSource) (cty.Value, bool) {
+	if v, ok := r.rendered.Load(key); ok {
+		return v.(cty.Value), true
+	}
+	if r.visiting[key] {
+		r.cacheable = false
+		return cty.NilVal, false
+	}
+	if r.ctx.Err() != nil {
+		return cty.NilVal, false
+	}
+	r.visiting[key] = true
+	defer delete(r.visiting, key)
+	ctx := r.scope.evalCtx
+	if data.iteration != nil {
+		ctx = ctx.NewChild()
+		ctx.Variables = data.iteration
+	}
+	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.scope.sources), Reference: r.resolve}
+	eval := rd.Render
+	if data.json {
+		eval = func(expr hcl.Expression) (cty.Value, bool) {
+			return renderDataJSON(rd, expr, r.scope.sources[data.filename])
+		}
+	}
+	attrs := data.source(r.ctx, data.body, eval)
+	if r.ctx.Err() != nil {
+		r.cacheable = false
+		return cty.NilVal, false
+	}
+	values := make(map[string]cty.Value, len(attrs))
+	for name, value := range attrs {
+		values[name] = cty.StringVal(value)
+	}
+	v := objectOrEmpty(values)
+	if r.cacheable {
+		r.rendered.Store(key, v)
+	}
+	return v, true
+}
+
+func renderDataJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.Value, bool) {
+	if inner, vars, ok := partial.Unbind(expr); ok {
+		scoped := &partial.Renderer{Ctx: partial.Scope(rd.Ctx, vars), Source: rd.Source, Reference: rd.Reference}
+		return renderDataJSON(scoped, inner, src)
+	}
+	return rd.Render(jsonExprToHCL(expr, src))
 }
 
 // attrSource locates the HCL that produced a value so unresolved values can fall

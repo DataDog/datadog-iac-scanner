@@ -8,11 +8,13 @@ package tfeval
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const resourceViaDataFixture = `
@@ -139,4 +141,57 @@ module "b" {
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_policy", "p")))
 	require.Contains(t, doc["policy"], `arn:aws:s3:::from-a`)
 	require.NotContains(t, doc["policy"], `${module.a.arn}`)
+}
+
+// Policy documents used in Terraform expressions are computed values, whereas
+// rule documents can retain a partial rendering of the configured statements.
+func TestPolicyDocumentExpressionValues(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		actions  string
+		known    bool
+		contains bool
+	}{
+		{name: "known action", actions: `["s3:*"]`, known: true, contains: true},
+		{name: "known other action", actions: `["s3:GetObject"]`, known: true},
+		{name: "unknown action", actions: `[var.action]`},
+		{name: "partially known actions", actions: `["s3:*", var.action]`},
+		{name: "literal interpolation text", actions: `["$${literal}"]`, known: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resources := evaluateWithChild(t, New(), map[string]string{"main.tf": fmt.Sprintf(`
+variable "action" { type = string }
+data "aws_iam_policy_document" "p" {
+ statement {
+  actions = %s
+  resources = ["*"]
+ }
+}
+locals {
+ document = data.aws_iam_policy_document.p
+ policy = local.document.json
+}
+resource "aws_iam_policy" "consumer" {
+ policy = local.policy
+ compact = data.aws_iam_policy_document.p.minified_json
+ contains_action = strcontains(local.policy, "s3:*")
+ configured = true
+}
+`, tc.actions)}, callChild)
+			consumer := findResource(t, resources, "aws_iam_policy", "consumer")
+			attrs := consumer.Attributes
+			for _, name := range []string{"policy", "compact", "contains_action"} {
+				require.Equal(t, tc.known, attrs[name].IsWhollyKnown(), "%s = %#v", name, attrs[name])
+			}
+			doc := AttributesToDocument(&consumer)
+			if !tc.known {
+				require.Contains(t, doc["policy"], `"Actions":`)
+				require.Contains(t, doc["contains_action"], "strcontains(")
+			}
+			require.True(t, attrs["configured"].RawEquals(cty.True))
+			if tc.known {
+				require.Equal(t, tc.contains, attrs["contains_action"].True())
+			}
+		})
+	}
 }

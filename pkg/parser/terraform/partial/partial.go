@@ -66,6 +66,10 @@ func sourceRange(src []byte, rng hcl.Range) (string, bool) {
 type Renderer struct {
 	Ctx    *hcl.EvalContext
 	Source Source
+	// Reference optionally supplies a partial value for a bare reference during
+	// rendering. It must not install that value in Ctx: content-dependent
+	// expressions must continue to evaluate against authoritative values.
+	Reference func(hcl.Traversal, *hcl.EvalContext) (cty.Value, bool)
 }
 
 var emptyCtx = &hcl.EvalContext{}
@@ -81,7 +85,7 @@ func (r *Renderer) ctx() *hcl.EvalContext {
 // false when expr cannot be rendered.
 func (r *Renderer) Render(expr hcl.Expression) (cty.Value, bool) {
 	if b, ok := expr.(bound); ok {
-		return (&Renderer{Ctx: scope(r.Ctx, b.vars), Source: r.Source}).Render(b.Expression)
+		return (&Renderer{Ctx: scope(r.Ctx, b.vars), Source: r.Source, Reference: r.Reference}).Render(b.Expression)
 	}
 	if v, diags := expr.Value(r.ctx()); !diags.HasErrors() && v.IsWhollyKnown() {
 		v, _ = v.UnmarkDeep()
@@ -96,8 +100,8 @@ func (r *Renderer) Render(expr hcl.Expression) (cty.Value, bool) {
 
 // RenderUnresolved is Render for an expr already known not to resolve.
 func (r *Renderer) RenderUnresolved(expr hclsyntax.Expression) (cty.Value, bool) {
-	if traversal, diags := hcl.AbsTraversalForExpr(expr); !diags.HasErrors() {
-		return r.reference(traversal)
+	if v, ok := r.referenceExpression(expr); ok {
+		return v, true
 	}
 	if f, ok := expr.(*hclsyntax.ForExpr); ok && !r.forPlacesOnly(f) {
 		// A for body that decides on its elements cannot render per element,
@@ -172,6 +176,11 @@ func formatTraversal(traversal hcl.Traversal) (string, bool) {
 // reference renders a bare reference: a value with no resolved part is its own
 // text, and a partly resolved one keeps its resolved parts.
 func (r *Renderer) reference(traversal hcl.Traversal) (cty.Value, bool) {
+	if r.Reference != nil {
+		if v, ok := r.Reference(traversal, r.ctx()); ok {
+			return v, true
+		}
+	}
 	text, ok := r.traversalText(traversal)
 	if !ok {
 		return cty.NilVal, false
@@ -182,6 +191,57 @@ func (r *Renderer) reference(traversal hcl.Traversal) (cty.Value, bool) {
 	}
 	v, _ = v.UnmarkDeep()
 	return substituteUnknowns(v, text), true
+}
+
+// referenceExpression also accepts an indexed reference when its selector is
+// known in the current instance. A function-valued base remains an expression,
+// not a reference whose result can be replaced by presentation text.
+func (r *Renderer) referenceExpression(expr hclsyntax.Expression) (cty.Value, bool) {
+	if t, diags := hcl.AbsTraversalForExpr(expr); !diags.HasErrors() {
+		return r.reference(t)
+	}
+	if r.Reference != nil {
+		if t, ok := ReferenceTraversal(expr, r.ctx()); ok {
+			return r.Reference(t, r.ctx())
+		}
+	}
+	return cty.NilVal, false
+}
+
+// ReferenceTraversal resolves known index selectors of a pure reference without
+// evaluating its base. It does not turn transformations into references.
+func ReferenceTraversal(expr hcl.Expression, ctx *hcl.EvalContext) (hcl.Traversal, bool) {
+	var parts []hcl.Traversal
+	for {
+		switch node := expr.(type) {
+		case *hclsyntax.RelativeTraversalExpr:
+			parts = append(parts, node.Traversal)
+			expr = node.Source
+		case *hclsyntax.IndexExpr:
+			key, diags := node.Key.Value(ctx)
+			if diags.HasErrors() {
+				return nil, false
+			}
+			key, _ = key.Unmark()
+			if !key.IsKnown() || key.IsNull() {
+				return nil, false
+			}
+			parts = append(parts, hcl.Traversal{hcl.TraverseIndex{Key: key, SrcRange: node.Key.Range()}})
+			expr = node.Collection
+		case *hclsyntax.ParenthesesExpr:
+			expr = node.Expression
+		default:
+			t, diags := hcl.AbsTraversalForExpr(expr)
+			if diags.HasErrors() {
+				return nil, false
+			}
+			t = append(hcl.Traversal{}, t...)
+			for i := len(parts) - 1; i >= 0; i-- {
+				t = append(t, parts[i]...)
+			}
+			return t, true
+		}
+	}
 }
 
 // traversalText is a traversal as written, which keeps spellings such as
@@ -230,8 +290,8 @@ func (r *Renderer) leaf(expr hclsyntax.Expression) hclsyntax.Expression {
 // renderWhole renders expr without looking into it: a reference keeps what
 // resolves of its value, anything else is its own text.
 func (r *Renderer) renderWhole(expr hclsyntax.Expression) (cty.Value, bool) {
-	if traversal, diags := hcl.AbsTraversalForExpr(expr); !diags.HasErrors() {
-		return r.reference(traversal)
+	if v, ok := r.referenceExpression(expr); ok {
+		return v, true
 	}
 	return r.textValue(expr)
 }

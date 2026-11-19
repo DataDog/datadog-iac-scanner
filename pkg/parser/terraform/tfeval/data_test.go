@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const policyModule = `
@@ -78,6 +79,20 @@ resource "google_kms_crypto_key_iam_policy" "k" {
   crypto_key_id = "k"
   policy_data   = data.google_iam_policy.kms.policy_data
 }
+data "aws_iam_policy_document" "per_key" {
+ for_each = toset(["a", "b"])
+ statement {
+  sid = each.key
+  actions = ["sqs:*"]
+  resources = [aws_sqs_queue.q.arn]
+ }
+}
+resource "aws_sqs_queue_policy" "per_key" {
+ for_each = toset(["a", "b"])
+ queue_url = aws_sqs_queue.q.id
+ policy = data.aws_iam_policy_document.per_key[each.key].json
+}
+
 `
 
 func evaluateChild(t *testing.T) []ResolvedResource {
@@ -96,18 +111,45 @@ module "c" {
 }
 
 func TestDataPolicyDocumentResolvesInModule(t *testing.T) {
-	resources := evaluateChild(t)
-	want := `{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Principals":{"AWS":["*"]},` +
-		`"Resources":["${aws_sqs_queue.q.arn}"]}],"Version":"2012-10-17"}` + "\n"
-	for _, name := range []string{"direct", "via_local"} {
-		doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", name)))
-		require.Equal(t, want, doc["policy"], name)
-	}
+	for _, location := range []string{"root", "module"} {
+		t.Run(location, func(t *testing.T) {
+			var resources []ResolvedResource
+			if location == "module" {
+				resources = evaluateChild(t)
+			} else {
+				dir := writeModule(t, t.TempDir(), "root", map[string]string{"main.tf": policyModule})
+				var err error
+				evaluator := New()
+				inputs := map[string]cty.Value{"principal": cty.StringVal("*")}
+				ctx, cancel := context.WithCancel(context.Background())
+				_, _, _, err = evaluator.EvaluateModule(ctx, dir, inputs)
+				cancel()
+				require.NoError(t, err)
+				// Reusing an evaluated module must not retain the caller's old lifetime.
+				resources, _, _, err = evaluator.EvaluateModule(context.Background(), dir, inputs)
+				require.NoError(t, err)
+			}
 
-	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "indexed")))
-	var policy struct{ Statement []map[string]interface{} }
-	require.NoError(t, json.Unmarshal([]byte(doc["policy"].(string)), &policy))
-	require.Equal(t, "s1", policy.Statement[0]["Sid"])
+			want := `{"Statement":[{"Actions":["sqs:*"],"Effect":"Allow","Principals":{"AWS":["*"]},` +
+				`"Resources":["${aws_sqs_queue.q.arn}"]}],"Version":"2012-10-17"}` + "\n"
+			for _, name := range []string{"direct", "via_local"} {
+				doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", name)))
+				require.Equal(t, want, doc["policy"], name)
+			}
+
+			doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "indexed")))
+			var policy struct{ Statement []map[string]interface{} }
+			require.NoError(t, json.Unmarshal([]byte(doc["policy"].(string)), &policy))
+			require.Equal(t, "s1", policy.Statement[0]["Sid"])
+			for _, key := range []string{"a", "b"} {
+				r := findResource(t, resources, "aws_sqs_queue_policy", fmt.Sprintf("per_key[%q]", key))
+				doc := AttributesToDocument(&r)
+				require.NoError(t, json.Unmarshal([]byte(doc["policy"].(string)), &policy))
+				require.Equal(t, key, policy.Statement[0]["Sid"])
+			}
+
+		})
+	}
 }
 
 // TestDataCacheInvalidatesPerSource changes one data source after the blocks
@@ -281,6 +323,8 @@ func TestDataInstancesAreReturned(t *testing.T) {
 		"aws_iam_policy_document.p",
 		"aws_iam_policy_document.per_index[0]",
 		"aws_iam_policy_document.per_index[1]",
+		`aws_iam_policy_document.per_key["a"]`,
+		`aws_iam_policy_document.per_key["b"]`,
 		"aws_ami.ubuntu",
 		"google_iam_policy.kms",
 	}, names)
