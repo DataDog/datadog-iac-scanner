@@ -212,7 +212,8 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 	}
 	slices.SortFunc(files, func(a, b File) int { return strings.Compare(a.Path, b.Path) })
 
-	resources := slices.Clone(c.resources)
+	// The rows are finished in place, not copied: there can be many.
+	resources := c.resources
 	for i := range resources {
 		c.finish(&resources[i])
 	}

@@ -87,11 +87,11 @@ func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int
 	apiVersion, _ := f.Document["apiVersion"].(string)
 	kind, _ := f.Document["kind"].(string)
 	metadata, _ := f.Document["metadata"].(map[string]interface{})
-	name, _ := metadata["name"].(string)
+	name := e.metadataField(f, index, metadata, "name")
 	if apiVersion == "" || kind == "" || name == "" {
 		return Resource{}, false
 	}
-	namespace, _ := metadata["namespace"].(string)
+	namespace := e.metadataField(f, index, metadata, "namespace")
 	row := Resource{
 		ResourcePath: apiVersion + "/" + kind + "/" + namespace + "/" + name,
 		Platform:     PlatformKubernetes,
@@ -111,6 +111,34 @@ func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int
 		row.LineStart = e.firstKeyLine(f)
 	}
 	return row, true
+}
+
+// metadataField returns a metadata field of a Kubernetes document. A value
+// that is not a string, such as an unrendered template the YAML reads as a
+// mapping ({{ .Name }}), is taken as written in the file.
+func (e *documentEnumerator) metadataField(f *model.FileMetadata, index int, metadata map[string]interface{}, key string) string {
+	value, ok := metadata[key]
+	if !ok {
+		return ""
+	}
+	if s, ok := value.(string); ok {
+		return s
+	}
+	if f.Kind == model.KindHELM {
+		return ""
+	}
+	node, _, found := e.documentNode(f, index)
+	if !found {
+		return ""
+	}
+	_, metadataNode := mappingEntry(node, "metadata")
+	keyNode, _ := mappingEntry(metadataNode, key)
+	lines := e.yamlFile(f).lines
+	if keyNode == nil || keyNode.Line > len(lines) {
+		return ""
+	}
+	_, written, _ := strings.Cut(lines[keyNode.Line-1], key+":")
+	return strings.Trim(strings.TrimSpace(written), `"'`)
 }
 
 // documentLines returns the line range of the index-th document of f's file,

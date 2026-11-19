@@ -8,11 +8,14 @@ package inventory
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const filePerms = 0o644
@@ -49,9 +52,7 @@ func WriteFile(path string, inv *Inventory) error {
 // fill writes inv to f, flushed to disk, and closes f.
 func fill(f *os.File, inv *Inventory) error {
 	w := bufio.NewWriter(f)
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(inv); err != nil {
+	if err := encode(w, inv); err != nil {
 		return err
 	}
 	if err := w.Flush(); err != nil {
@@ -64,4 +65,77 @@ func fill(f *os.File, inv *Inventory) error {
 		return err
 	}
 	return f.Close()
+}
+
+// inventoryHead is Inventory without its lists, which come last.
+type inventoryHead struct {
+	SchemaVersion    string     `json:"schema_version"`
+	ScanID           string     `json:"scan_id"`
+	ScannerVersion   string     `json:"scanner_version"`
+	ScannedAt        time.Time  `json:"scanned_at"`
+	Repository       Repository `json:"repository"`
+	Status           string     `json:"status"`
+	PlatformsScanned []string   `json:"platforms_scanned"`
+	Stats            Stats      `json:"stats"`
+}
+
+// encode writes inv as JSON followed by a newline, as json.Encoder with HTML
+// escaping off would, one list entry at a time: an inventory can hold tens
+// of thousands of rows, which would otherwise be encoded in memory at once.
+func encode(w io.Writer, inv *Inventory) error {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	put := func(v any) ([]byte, error) {
+		buf.Reset()
+		if err := enc.Encode(v); err != nil {
+			return nil, err
+		}
+		return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+	}
+	head, err := put(inventoryHead{
+		SchemaVersion: inv.SchemaVersion, ScanID: inv.ScanID, ScannerVersion: inv.ScannerVersion,
+		ScannedAt: inv.ScannedAt, Repository: inv.Repository, Status: inv.Status,
+		PlatformsScanned: inv.PlatformsScanned, Stats: inv.Stats,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(bytes.TrimSuffix(head, []byte("}"))); err != nil {
+		return err
+	}
+	lists := []struct {
+		name  string
+		count int
+		item  func(int) any
+	}{
+		{"files", len(inv.Files), func(i int) any { return &inv.Files[i] }},
+		{"unresolved_sources", len(inv.UnresolvedSources), func(i int) any { return &inv.UnresolvedSources[i] }},
+		{"resources", len(inv.Resources), func(i int) any { return &inv.Resources[i] }},
+		{"finding_links", len(inv.FindingLinks), func(i int) any { return &inv.FindingLinks[i] }},
+	}
+	for _, list := range lists {
+		if _, err := io.WriteString(w, `,"`+list.name+`":[`); err != nil {
+			return err
+		}
+		for i := 0; i < list.count; i++ {
+			if i > 0 {
+				if _, err := io.WriteString(w, ","); err != nil {
+					return err
+				}
+			}
+			item, err := put(list.item(i))
+			if err != nil {
+				return err
+			}
+			if _, err := w.Write(item); err != nil {
+				return err
+			}
+		}
+		if _, err := io.WriteString(w, "]"); err != nil {
+			return err
+		}
+	}
+	_, err = io.WriteString(w, "}\n")
+	return err
 }

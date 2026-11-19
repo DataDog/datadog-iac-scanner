@@ -7,6 +7,7 @@
 package inventory
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -69,4 +70,26 @@ func TestRemoveStale(t *testing.T) {
 
 	require.NoError(t, os.MkdirAll(filepath.Join(path, "child"), 0o755))
 	require.Error(t, RemoveStale(path), "a non-empty directory cannot be removed")
+}
+
+func TestEncodeIsTheJSONOfTheInventory(t *testing.T) {
+	c := NewCollector(t.TempDir())
+	c.RecordFile("a.tf", "terraform", FileScanned, "")
+	c.RecordFile("b<c>.yaml", "", FileFailed, ReasonParseError)
+	c.AddUnresolvedSource(UnresolvedSource{Platform: "terraform", Source: "git::https://example.invalid/m.git?ref=a&depth=1", Reason: "network"})
+	c.AddResource(&Resource{ResourcePath: "aws_s3_bucket.a", Platform: "terraform", ResourceType: "aws_s3_bucket",
+		ResourceName: "a", File: "a.tf", LineStart: 1, LineEnd: 3, Completeness: CompletenessComplete, ModulePath: `[{"name":"x"}]`})
+	c.AddResource(&Resource{ResourcePath: "v1/Service//web", Platform: "kubernetes", ResourceType: "Service",
+		ResourceName: "web", File: "k.yaml", LineStart: 1, Completeness: CompletenessComplete})
+	c.AddFindingLink(FindingLink{FindingFingerprint: "f", ResourceRef: "a.tf|aws_s3_bucket.a"})
+	for _, inv := range []*Inventory{c.Build(testMetadata()), NewCollector(t.TempDir()).Build(testMetadata())} {
+		var want bytes.Buffer
+		enc := json.NewEncoder(&want)
+		enc.SetEscapeHTML(false)
+		require.NoError(t, enc.Encode(inv))
+
+		var got bytes.Buffer
+		require.NoError(t, encode(&got, inv))
+		require.Equal(t, want.String(), got.String())
+	}
 }

@@ -183,7 +183,10 @@ func (inv *terraformInventory) row(
 		row.ColumnStart = r.DefColumn
 		row.ColumnEnd = r.DefEndColumn
 	}
-	inv.addModuleFields(&row, attributions.attribution(r, inv.repoPath, inv.lookup))
+	// The module calls and the module's package, as the SARIF module property
+	// gives them, without the per-finding locations and arguments.
+	attr := callAttribution(r.CallChain, absPath(r.DefinedIn, inv.repoPath), inv.repoPath, inv.lookup, attributions)
+	inv.addModuleFields(&row, attr)
 	return row
 }
 

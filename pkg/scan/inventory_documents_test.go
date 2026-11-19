@@ -67,6 +67,8 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 		"charts/api/values.yaml":               "replicas: 2\n",
 		"charts/api/templates/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Release.Name }}-{{ .Chart.Name }}\nspec:\n  replicas: {{ .Values.replicas }}\n",
 		"services/api/Dockerfile":              inventoryDockerfile,
+		// A template rendered by another tool: its name stays as written.
+		"dev/manifest.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .ServiceName }}\nspec:\n  replicas: 1\n",
 	})
 	inv := scanInventory(t, documentParams(root))
 	rows := rowsByPath(inv)
@@ -116,7 +118,10 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 		LineEnd:      lineOf(t, inventoryDockerfile, "ENTRYPOINT"),
 		Completeness: inventory.CompletenessComplete,
 	}, rows["Dockerfile"])
-	require.Len(t, inv.Resources, 4)
+	templated := rows["apps/v1/Deployment//{{ .ServiceName }}"]
+	require.Equal(t, "{{ .ServiceName }}", templated.ResourceName)
+	require.Equal(t, "dev/manifest.yaml", templated.File)
+	require.Len(t, inv.Resources, 5)
 }
 
 func TestInventoryDoesNotChangeDocumentFindings(t *testing.T) {
