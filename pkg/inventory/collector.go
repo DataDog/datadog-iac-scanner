@@ -269,7 +269,8 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 }
 
 // compareResources orders rows by where they are defined, then by identity.
-// Every field takes part so that equal rows, and only those, compare equal.
+// Every written field takes part, so that the order does not depend on the
+// order rows were added in.
 func compareResources(a, b *Resource) int {
 	return cmp.Or(
 		strings.Compare(a.File, b.File),
@@ -285,6 +286,19 @@ func compareResources(a, b *Resource) int {
 		cmp.Compare(a.ColumnEnd, b.ColumnEnd),
 		strings.Compare(a.CallSiteFile, b.CallSiteFile),
 		cmp.Compare(a.CallSiteLineStart, b.CallSiteLineStart),
+		cmp.Compare(a.CallSiteLineEnd, b.CallSiteLineEnd),
+		strings.Compare(a.Provider, b.Provider),
+		strings.Compare(a.Completeness, b.Completeness),
+		strings.Compare(a.ModuleSource, b.ModuleSource),
+		strings.Compare(a.ModuleSourceType, b.ModuleSourceType),
+		strings.Compare(a.ModuleVersion, b.ModuleVersion),
+		strings.Compare(a.ModuleDependencyType, b.ModuleDependencyType),
+		strings.Compare(a.ModulePath, b.ModulePath),
+		strings.Compare(a.OriginGenerator, b.OriginGenerator),
+		strings.Compare(a.OriginChartPath, b.OriginChartPath),
+		strings.Compare(a.OriginChartName, b.OriginChartName),
+		strings.Compare(a.OriginChartVersion, b.OriginChartVersion),
+		strings.Compare(a.OriginTemplate, b.OriginTemplate),
 	)
 }
 

@@ -37,15 +37,21 @@ func WriteFile(path string, inv *Inventory) error {
 	if err != nil {
 		return err
 	}
+	renamed := false
+	// Also on a panic, the temporary file does not stay behind.
+	defer func() {
+		if !renamed {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+		}
+	}()
 	if err := fill(tmp, inv); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
 		return err
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
-		_ = os.Remove(tmp.Name())
 		return err
 	}
+	renamed = true
 	return nil
 }
 

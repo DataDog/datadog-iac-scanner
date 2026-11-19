@@ -55,13 +55,13 @@ func redactErrorForLog(err error) string {
 // logParseFailure logs a file that could not be parsed. Raw templates of a
 // failed Helm chart, template syntax outside a chart and deliberately invalid
 // test fixtures are expected not to parse, so they stay at debug level.
-func (s *Service) logParseFailure(ctx context.Context, filename string, content []byte, err error) {
+func (s *Service) logParseFailure(ctx context.Context, filename, reason string, err error) {
 	contextLogger := logger.FromContext(ctx)
-	switch {
-	case s.isUnderFailedHelmChart(filename):
+	switch reason {
+	case inventory.ReasonHelmRenderFailed:
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable raw Helm template: %s", filename)
-	case utils.IsTestFixturePath(filename) || utils.HasYAMLBreakingTemplate(content):
+	case inventory.ReasonTestFixture, inventory.ReasonTemplateSyntax:
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable templated or fixture file: %s", filename)
 	default:
@@ -70,8 +70,8 @@ func (s *Service) logParseFailure(ctx context.Context, filename string, content 
 	}
 }
 
-// parseFailureReason classifies a parse failure for the inventory, with the
-// same classes as logParseFailure.
+// parseFailureReason classifies a parse failure, for its log level and for
+// the inventory.
 func (s *Service) parseFailureReason(filename string, content []byte) string {
 	switch {
 	case s.isUnderFailedHelmChart(filename):
@@ -114,12 +114,13 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 
 	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
-		s.logParseFailure(ctx, filename, *content, err)
+		reason := s.parseFailureReason(filename, *content)
+		s.logParseFailure(ctx, filename, reason, err)
 		if errors.Is(err, yamlparser.ErrNoDocuments) {
 			// Nothing is missing from a file that holds no document.
 			s.Tracker.TrackFileEmpty(filename)
 		} else {
-			s.Tracker.TrackFileFailed(filename, s.parseFailureReason(filename, *content))
+			s.Tracker.TrackFileFailed(filename, reason)
 		}
 		return nil
 	}

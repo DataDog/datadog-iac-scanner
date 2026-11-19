@@ -38,6 +38,8 @@ metadata:
 	require.Equal(t, []lineRange{{2, 5}, {9, 14}, {18, 21}}, parseYAMLFile(content).ranges)
 	require.Empty(t, parseYAMLFile("# only a comment\n").ranges)
 	require.Equal(t, []lineRange{{1, 1}}, parseYAMLFile("a: b\n---\nc: [\n").ranges, "documents before a syntax error are kept, as the parser keeps them")
+	require.Equal(t, []lineRange{{1, 1}, {5, 5}}, parseYAMLFile("a: 1\n---\njust a string\n---\nb: 2\n").ranges,
+		"a scalar document is skipped, as the parser skips it")
 }
 
 func TestSplitChartPath(t *testing.T) {

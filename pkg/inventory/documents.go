@@ -105,12 +105,22 @@ func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int
 		e.addHelmOrigin(&row, f)
 		return row, true
 	}
-	if r, ok := e.documentLines(f, index); ok {
+	// The decoded document must be this one; else its lines are not known.
+	if node, r, ok := e.documentNode(f, index); ok && scalarValue(node, "kind") == kind {
 		row.LineStart, row.LineEnd = r.start, r.end
 	} else {
 		row.LineStart = e.firstKeyLine(f)
 	}
 	return row, true
+}
+
+// scalarValue returns the value of key in a mapping node, "" when it is not a
+// scalar.
+func scalarValue(node *yaml.Node, key string) string {
+	if _, value := mappingEntry(node, key); value != nil && value.Kind == yaml.ScalarNode {
+		return value.Value
+	}
+	return ""
 }
 
 // metadataField returns a metadata field of a Kubernetes document. A value
@@ -139,16 +149,6 @@ func (e *documentEnumerator) metadataField(f *model.FileMetadata, index int, met
 	}
 	_, written, _ := strings.Cut(lines[keyNode.Line-1], key+":")
 	return strings.Trim(strings.TrimSpace(written), `"'`)
-}
-
-// documentLines returns the line range of the index-th document of f's file,
-// counted as the YAML parser counts them.
-func (e *documentEnumerator) documentLines(f *model.FileMetadata, index int) (lineRange, bool) {
-	file := e.yamlFile(f)
-	if index >= len(file.ranges) {
-		return lineRange{}, false
-	}
-	return file.ranges[index], true
 }
 
 // documentNode returns the root node of the index-th document of f's file,
@@ -185,7 +185,8 @@ func parseYAMLFile(content string) *yamlFile {
 		if err := dec.Decode(&node); err != nil {
 			break
 		}
-		if yamlparser.IsEmptyDocument(&node) {
+		// The parser keeps a mapping or a sequence and skips the rest.
+		if yamlparser.IsEmptyDocument(&node) || node.Content[0].Kind == yaml.ScalarNode {
 			continue
 		}
 		nodes = append(nodes, node.Content[0])

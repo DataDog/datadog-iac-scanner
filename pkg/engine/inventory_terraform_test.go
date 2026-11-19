@@ -149,3 +149,18 @@ func TestInventoryEvaluatesRootsNoRuleTargets(t *testing.T) {
 	require.Equal(t, "random_id.x", sink.rows[0].ResourcePath)
 	require.Empty(t, sink.failure)
 }
+
+// panickingSink fails on every row, as a bug in the inventory would.
+type panickingSink struct{ failure string }
+
+func (s *panickingSink) AddResource(*inventory.Resource) { panic("bug") }
+func (s *panickingSink) Fail(reason string)              { s.failure = reason }
+
+func TestInventoryPanicDoesNotReachModuleEvaluation(t *testing.T) {
+	sink := &panickingSink{}
+	inv := &terraformInventory{sink: sink, repoPath: t.TempDir()}
+	require.NotPanics(t, func() {
+		inv.addRoot(inv.repoPath, []tfeval.ResolvedResource{{Type: "aws_s3_bucket", Name: "b"}})
+	}, "a panic in the inventory must not abort the evaluation findings depend on")
+	require.Equal(t, inventory.FailureTerraformPanic, sink.failure)
+}

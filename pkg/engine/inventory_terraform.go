@@ -139,12 +139,17 @@ func (inv *terraformInventory) evaluate(ctx context.Context, evaluator *tfeval.E
 }
 
 // addRoot reports the resources of one evaluated root module, once per
-// address. It keeps its own attribution cache so that it cannot change what
-// the findings are attributed to.
+// address. It runs inside the module evaluation findings depend on, so it
+// keeps its own attribution cache and a panic in it fails the inventory only.
 func (inv *terraformInventory) addRoot(dir string, resources []tfeval.ResolvedResource) {
 	if inv == nil || (inv.external != nil && inv.external(dir)) {
 		return
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			inv.fail(inventory.FailureTerraformPanic)
+		}
+	}()
 	attributions := newModuleAttributionCache()
 	seen := make(map[string]bool, len(resources))
 	for i := range resources {

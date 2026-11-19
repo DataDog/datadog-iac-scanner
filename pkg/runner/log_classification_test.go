@@ -50,11 +50,11 @@ func TestLogParseFailure(t *testing.T) {
 			s := &Service{}
 			s.recordFailedHelmChart(chart)
 
-			s.logParseFailure(ctx, tt.file, []byte(tt.content), errors.New("bad"))
+			reason := s.parseFailureReason(tt.file, []byte(tt.content))
+			s.logParseFailure(ctx, tt.file, reason, errors.New("bad"))
 
+			require.Equal(t, tt.wantReason, reason)
 			require.Contains(t, logs.String(), `"level":"`+tt.wantLevel+`"`)
-			// The inventory records the failure with the same classes.
-			require.Equal(t, tt.wantReason, s.parseFailureReason(tt.file, []byte(tt.content)))
 		})
 	}
 }
