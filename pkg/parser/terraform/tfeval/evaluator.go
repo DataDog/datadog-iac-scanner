@@ -211,6 +211,7 @@ type Evaluator struct {
 // dirParse is a parsed module directory: its files, the blocks evaluation
 // reads, and the graph of its locals and data blocks.
 type dirParse struct {
+	diagnostics   []EvaluationDiagnostic
 	bodies        []*hclsyntax.Body
 	sources       map[string][]byte
 	varDecls      map[string]variableDecl
@@ -273,6 +274,9 @@ func (e *Evaluator) NotEvaluatedDirs() []string {
 // parseDir returns the parsed module directory, parsed once and shared by
 // every fork with its locals graph.
 func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirParse {
+	if err := ctx.Err(); err != nil {
+		return dirParse{err: err}
+	}
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
 
 	e.parseMu.Lock()
@@ -282,13 +286,18 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	}
 	e.parseMu.Unlock()
 
-	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
-	dp := dirParse{bodies: bodies, sources: sources, err: err}
-	if err == nil {
-		dp.varDecls, dp.localExprs, dp.modules, dp.resources, dp.outputs = collectBlocks(bodies)
+	dp := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+	if ctx.Err() != nil {
+		return dirParse{err: ctx.Err()}
+	}
+	if dp.err == nil {
+		dp.varDecls, dp.localExprs, dp.modules, dp.resources, dp.outputs = collectBlocks(dp.bodies)
 		dp.resourceTypes = declaredResourceTypes(dp.resources)
-		dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, collectDataBlocks(bodies))
+		dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, collectDataBlocks(dp.bodies))
 		dp.static = newDirStatic(&dp)
+	}
+	if err := ctx.Err(); err != nil {
+		return dirParse{err: err}
 	}
 
 	e.parseMu.Lock()
@@ -509,6 +518,10 @@ func (e *Evaluator) evaluate(
 	parsed := e.parseDir(ctx, dir, packageRoot)
 	if parsed.err != nil {
 		return nil, nil, parsed.err
+	}
+	for _, diagnostic := range parsed.diagnostics {
+		diagnostic.ModuleAddress = addr
+		e.diagnostics = append(e.diagnostics, diagnostic)
 	}
 	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
 

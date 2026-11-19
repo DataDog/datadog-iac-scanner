@@ -2590,18 +2590,26 @@ DatadogPolicy contains iac.finding(e,["flag"],{}) if {some e in iac.targets("res
 	})
 
 	for _, test := range []struct {
-		name, source string
-		child        bool
-		confirmed    int
+		name, source  string
+		file, invalid string
+		child         bool
+		confirmed     int
 	}{
-		{"failed output without resource inventory", `output "invalid" {value=tonumber("invalid")}`, false, 0},
-		{"failed child without resource inventory", `module "child" {source="./child"}`, true, 0},
+		{"failed output without resource inventory", `output "invalid" {value=tonumber("invalid")}`, "", "", false, 0},
+		{"failed child without resource inventory", `module "child" {source="./child"}`, "", "", true, 0},
 		{"failed child preserves independent witness", `module "child" {source="./child"}
-resource "aws_s3_bucket" "example" {acl="public"}`, true, 1},
+resource "aws_s3_bucket" "example" {acl="public"}`, "", "", true, 1},
+		{"invalid HCL without resource inventory", "", "invalid.tf", `resource "aws_s3_bucket" "broken" {`, false, 0},
+		{"invalid JSON without resource inventory", "", "invalid.tf.json", `{"resource":`, false, 0},
+		{"invalid HCL preserves independent witness", `resource "aws_s3_bucket" "example" {acl="public"}`, "invalid.tf", `resource "aws_s3_bucket" "broken" {`, false, 1},
+		{"invalid JSON preserves independent witness", `resource "aws_s3_bucket" "example" {acl="public"}`, "invalid.tf.json", `{"resource":`, false, 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(test.source), 0600))
+			if test.file != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, test.file), []byte(test.invalid), 0600))
+			}
 			if test.child {
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "child"), 0700))
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "child", "main.tf"), []byte(`output "name" {value="unused"}`), 0600))
@@ -2625,6 +2633,9 @@ resource "aws_s3_bucket" "example" {acl="public"}`, true, 1},
 			require.ErrorAs(t, err, &diagnostic)
 			require.Equal(t, test.confirmed, result.Confirmed)
 			require.Equal(t, test.confirmed, emitted)
+			if test.file != "" {
+				require.Equal(t, filepath.Join(dir, test.file), diagnostic.Subject.Filename)
+			}
 			if test.child {
 				require.Equal(t, "module.child", diagnostic.ModuleAddress)
 			}

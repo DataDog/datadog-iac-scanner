@@ -764,6 +764,16 @@ module "escape" {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
 
+	// A selected file that cannot be read inside the package boundary is an
+	// incomplete producer observation, without following the external target.
+	var confinedFileDiagnostic bool
+	for _, diagnostic := range evaluation.Diagnostics() {
+		if diagnostic.Subject.Filename == filepath.Join(selected, "linked.tf") {
+			require.Equal(t, "module.remote", diagnostic.ModuleAddress)
+			confinedFileDiagnostic = true
+		}
+	}
+	require.True(t, confinedFileDiagnostic)
 	findResource(t, resources, "test_resource", "selected")
 	findResource(t, resources, "test_resource", "shared")
 	for _, resource := range resources {
