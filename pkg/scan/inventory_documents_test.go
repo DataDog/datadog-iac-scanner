@@ -129,3 +129,71 @@ func TestInventoryDoesNotChangeDocumentFindings(t *testing.T) {
 	with.InventoryPath = filepath.Join(t.TempDir(), "inventory.json")
 	require.Equal(t, without, scanSARIF(t, with))
 }
+
+const inventoryPlaybook = `- hosts: all
+  tasks:
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+    - block:
+        - name: Start nginx
+          ansible.builtin.service:
+            name: nginx
+  handlers:
+    - name: restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+- hosts: db
+  tasks:
+    - ansible.builtin.ping:
+`
+
+func TestInventoryKeyedRows(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"cfn/stack.yaml": "AWSTemplateFormatVersion: \"2010-09-09\"\nResources:\n  LogsBucket:\n    Type: AWS::S3::Bucket\n" +
+			"    Properties:\n      BucketName: acme-logs\n\n  Queue:\n    Type: AWS::SQS::Queue\n",
+		"docker-compose.yml":       "services:\n  web:\n    image: nginx:1.27\n  db:\n    image: postgres:16\n",
+		".github/workflows/ci.yml": "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test\n",
+		"site.yml":                 inventoryPlaybook,
+		"roles/web/tasks/main.yml": "- name: Copy config\n  ansible.builtin.copy:\n    src: a\n    dest: b\n",
+		// A list the scanner reads as Ansible tasks, outside any tasks
+		// directory: not a task file.
+		"data/cities.yml": "- name: Paris\n  country: FR\n- name: Madrid\n  country: ES\n",
+	})
+	params := documentParams(root)
+	params.Platform = []string{"CloudFormation", "DockerCompose", "CICD", "Ansible"}
+	inv := scanInventory(t, params)
+
+	type want struct {
+		ref, typ, name string
+		start, end     int
+	}
+	got := make(map[string]want, len(inv.Resources))
+	for _, r := range inv.Resources {
+		got[r.ResourceRef] = want{r.ResourceRef, r.ResourceType, r.ResourceName, r.LineStart, r.LineEnd}
+	}
+	for _, w := range []want{
+		{"cfn/stack.yaml|LogsBucket", "AWS::S3::Bucket", "acme-logs", 3, 6},
+		{"cfn/stack.yaml|Queue", "AWS::SQS::Queue", "Queue", 8, 9},
+		{"docker-compose.yml|services.web", "docker_compose_service", "web", 2, 3},
+		{"docker-compose.yml|services.db", "docker_compose_service", "db", 4, 5},
+		{".github/workflows/ci.yml|jobs.build", "github_actions_job", "build", 3, 6},
+		{".github/workflows/ci.yml|jobs.test", "github_actions_job", "test", 7, 10},
+		{"site.yml|plays[0].tasks[0]", "ansible.builtin.apt", "Install nginx", 3, 5},
+		{"site.yml|plays[0].tasks[1].block[0]", "ansible.builtin.service", "Start nginx", 7, 9},
+		{"site.yml|plays[0].handlers[0]", "ansible.builtin.service", "restart nginx", 11, 14},
+		{"site.yml|plays[1].tasks[0]", "ansible.builtin.ping", "ansible.builtin.ping", 17, 17},
+		{"roles/web/tasks/main.yml|tasks[0]", "ansible.builtin.copy", "Copy config", 1, 4},
+	} {
+		require.Equal(t, w, got[w.ref], w.ref)
+	}
+	require.Len(t, inv.Resources, 11)
+	require.Contains(t, inv.Files, inventory.File{Path: "data/cities.yml", Platform: "ansible", Status: inventory.FileScanned},
+		"the list is scanned as Ansible, yet gives no row")
+	for _, r := range inv.Resources {
+		if r.Platform == inventory.PlatformCloudFormation {
+			require.Equal(t, "aws", r.Provider)
+		}
+	}
+}

@@ -46,6 +46,14 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 			if row, ok := e.kubernetesResource(f, index); ok {
 				rows = append(rows, row)
 			}
+		case f.Platform == PlatformCloudFormation:
+			rows = append(rows, e.keyedRows(f, index, "Resources", cloudFormationRow)...)
+		case f.Platform == PlatformDockerCompose:
+			rows = append(rows, e.keyedRows(f, index, "services", composeServiceRow)...)
+		case f.Platform == PlatformCICD:
+			rows = append(rows, e.keyedRows(f, index, "jobs", workflowJobRow)...)
+		case f.Platform == PlatformAnsible:
+			rows = append(rows, e.ansibleRows(f, index)...)
 		}
 	}
 	return rows
@@ -53,12 +61,20 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 
 type documentEnumerator struct {
 	ctx context.Context
-	// lines caches the document line ranges of each multi-document file.
-	lines  map[string][]lineRange
+	// yaml caches each YAML file decoded once, whatever its documents.
+	yaml   map[string]*yamlFile
 	charts map[string]chartInfo
 }
 
 type lineRange struct{ start, end int }
+
+// yamlFile is a YAML file decoded as the parser decodes it: its non-empty
+// documents, their line ranges and the file's lines.
+type yamlFile struct {
+	nodes  []*yaml.Node
+	ranges []lineRange
+	lines  []string
+}
 
 type chartInfo struct{ name, version string }
 
@@ -95,25 +111,41 @@ func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int
 // documentLines returns the line range of the index-th document of f's file,
 // counted as the YAML parser counts them.
 func (e *documentEnumerator) documentLines(f *model.FileMetadata, index int) (lineRange, bool) {
-	if e.lines == nil {
-		e.lines = make(map[string][]lineRange)
-	}
-	ranges, ok := e.lines[f.FilePath]
-	if !ok {
-		ranges = yamlDocumentLines(f.OriginalData)
-		e.lines[f.FilePath] = ranges
-	}
-	if index >= len(ranges) {
+	file := e.yamlFile(f)
+	if index >= len(file.ranges) {
 		return lineRange{}, false
 	}
-	return ranges[index], true
+	return file.ranges[index], true
 }
 
-// yamlDocumentLines returns the line range of each non-empty document of a
-// YAML file. A document ends at its last line that is neither blank, a
-// comment nor a document marker, before the next document.
-func yamlDocumentLines(content string) []lineRange {
+// documentNode returns the root node of the index-th document of f's file,
+// and the document's line range.
+func (e *documentEnumerator) documentNode(f *model.FileMetadata, index int) (*yaml.Node, lineRange, bool) {
+	file := e.yamlFile(f)
+	if index >= len(file.nodes) {
+		return nil, lineRange{}, false
+	}
+	return file.nodes[index], file.ranges[index], true
+}
+
+func (e *documentEnumerator) yamlFile(f *model.FileMetadata) *yamlFile {
+	if e.yaml == nil {
+		e.yaml = make(map[string]*yamlFile)
+	}
+	file, ok := e.yaml[f.FilePath]
+	if !ok {
+		file = parseYAMLFile(f.OriginalData)
+		e.yaml[f.FilePath] = file
+	}
+	return file
+}
+
+// parseYAMLFile decodes the documents of a YAML file. A document ends at its
+// last line that is neither blank, a comment nor a document marker, before
+// the next document.
+func parseYAMLFile(content string) *yamlFile {
 	dec := yaml.NewDecoder(strings.NewReader(content))
+	var nodes []*yaml.Node
 	var starts []int
 	for {
 		var node yaml.Node
@@ -123,6 +155,7 @@ func yamlDocumentLines(content string) []lineRange {
 		if yamlparser.IsEmptyDocument(&node) {
 			continue
 		}
+		nodes = append(nodes, node.Content[0])
 		starts = append(starts, node.Content[0].Line)
 	}
 	lines := strings.Split(content, "\n")
@@ -142,7 +175,7 @@ func yamlDocumentLines(content string) []lineRange {
 		}
 		ranges[i] = lineRange{start: start, end: end}
 	}
-	return ranges
+	return &yamlFile{nodes: nodes, ranges: ranges, lines: lines}
 }
 
 func isDocumentMarker(line string) bool {

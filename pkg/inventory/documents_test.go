@@ -35,9 +35,9 @@ kind: Service
 metadata:
   name: web
 `
-	require.Equal(t, []lineRange{{2, 5}, {9, 14}, {18, 21}}, yamlDocumentLines(content))
-	require.Empty(t, yamlDocumentLines("# only a comment\n"))
-	require.Equal(t, []lineRange{{1, 1}}, yamlDocumentLines("a: b\n---\nc: [\n"), "documents before a syntax error are kept, as the parser keeps them")
+	require.Equal(t, []lineRange{{2, 5}, {9, 14}, {18, 21}}, parseYAMLFile(content).ranges)
+	require.Empty(t, parseYAMLFile("# only a comment\n").ranges)
+	require.Equal(t, []lineRange{{1, 1}}, parseYAMLFile("a: b\n---\nc: [\n").ranges, "documents before a syntax error are kept, as the parser keeps them")
 }
 
 func TestSplitChartPath(t *testing.T) {
