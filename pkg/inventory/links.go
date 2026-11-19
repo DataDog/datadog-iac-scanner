@@ -37,10 +37,14 @@ type terraformScope struct{ file, chain string }
 //
 //   - A finding on a document that holds one row belongs to it; on a document
 //     that holds several, to the narrowest row whose lines hold the finding.
+//   - Rows that shared a reference, such as two documents of a file with the
+//     same name, can raise one finding that the scan keeps once, with either
+//     document. The finding belongs to the narrowest of them whose lines hold
+//     it, else to the first, whichever document it kept.
 //   - A Terraform finding belongs to every instance of its block, reached
 //     through the same module calls: the instances of a count or for_each
 //     block share their findings.
-func (c *Collector) linkFindings(rows []Resource) (links []FindingLink, unlinked int) {
+func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links []FindingLink, unlinked int) {
 	byDocument := make(map[string][]int)
 	byScope := make(map[terraformScope][]int)
 	for i := range rows {
@@ -56,6 +60,9 @@ func (c *Collector) linkFindings(rows []Resource) (links []FindingLink, unlinked
 	for i := range c.findings {
 		f := &c.findings[i]
 		matched := matchDocument(rows, byDocument[f.DocumentID], f.Line)
+		if len(matched) == 1 && repeats[matched[0]] != nil {
+			matched = []int{repeatHolding(rows, repeats[matched[0]], f.Line)}
+		}
 		if len(matched) == 0 && f.File != "" {
 			matched = matchTerraform(rows, byScope[terraformScope{c.resourcePath(f.File), f.ModuleCallChain}], f)
 		}
@@ -104,6 +111,15 @@ func matchTerraform(rows []Resource, candidates []int, f *Finding) []int {
 		}
 	}
 	return matched
+}
+
+// repeatHolding returns the narrowest of rows that shared a reference whose
+// lines hold line, else the first of them.
+func repeatHolding(rows []Resource, repeated []int, line int) int {
+	if j, ok := narrowestHolding(rows, repeated, line); ok {
+		return j
+	}
+	return repeated[0]
 }
 
 // narrowestHolding returns the candidate row with the fewest lines that holds

@@ -239,3 +239,68 @@ func TestSchemaAcceptsAFullRow(t *testing.T) {
 	})
 	requireValid(t, c.Build(testMetadata()))
 }
+
+func TestBuildMakesReferencesUnique(t *testing.T) {
+	row := func(line, documentIndex int, document string) *Resource {
+		return &Resource{ResourcePath: "v1/ConfigMap//cm", Platform: "kubernetes", ResourceType: "ConfigMap",
+			ResourceName: "cm", File: "k8s/dup.yaml", LineStart: line, Completeness: CompletenessComplete,
+			DocumentID: document, documentIndex: documentIndex}
+	}
+	c := NewCollector(t.TempDir())
+	c.AddResource(row(8, 1, "second"))
+	c.AddResource(row(15, 2, "third"))
+	c.AddResource(row(1, 0, "first"))
+	// A reference that already ends like a suffix is not reused.
+	taken := row(20, 3, "taken")
+	taken.ResourceRef = "k8s/dup.yaml|v1/ConfigMap//cm#2"
+	c.AddResource(taken)
+	// Rows equal but for their document keep the order of the documents.
+	c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//same", Platform: "kubernetes", ResourceType: "ConfigMap",
+		ResourceName: "same", File: "chart/templates/cm.yaml", LineStart: 1, Completeness: CompletenessComplete,
+		DocumentID: "loop-1", documentIndex: 1})
+	c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//same", Platform: "kubernetes", ResourceType: "ConfigMap",
+		ResourceName: "same", File: "chart/templates/cm.yaml", LineStart: 1, Completeness: CompletenessComplete,
+		DocumentID: "loop-0", documentIndex: 0})
+	for document, line := range map[string]int{"first": 1, "second": 8, "third": 15, "taken": 20, "loop-0": 1, "loop-1": 1} {
+		c.AddFinding(&Finding{Fingerprint: document, DocumentID: document, Line: line})
+	}
+	// The scan raised one finding on every document and kept it with the
+	// third: it belongs to the row holding its line.
+	c.AddFinding(&Finding{Fingerprint: "kept-once", DocumentID: "third", Line: 1})
+	// No row holds it: the first.
+	c.AddFinding(&Finding{Fingerprint: "no-line", DocumentID: "second"})
+
+	inv := c.Build(testMetadata())
+
+	var refs []string
+	for i := range inv.Resources {
+		refs = append(refs, inv.Resources[i].ResourceRef)
+	}
+	require.Equal(t, []string{
+		"chart/templates/cm.yaml|v1/ConfigMap//same",
+		"chart/templates/cm.yaml|v1/ConfigMap//same#2",
+		"k8s/dup.yaml|v1/ConfigMap//cm",
+		"k8s/dup.yaml|v1/ConfigMap//cm#3",
+		"k8s/dup.yaml|v1/ConfigMap//cm#4",
+		"k8s/dup.yaml|v1/ConfigMap//cm#2",
+	}, refs)
+	require.Equal(t, []FindingLink{
+		{FindingFingerprint: "first", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"},
+		{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"},
+		// Rows with the same lines cannot be told apart: the first.
+		{FindingFingerprint: "loop-0", ResourceRef: "chart/templates/cm.yaml|v1/ConfigMap//same"},
+		{FindingFingerprint: "loop-1", ResourceRef: "chart/templates/cm.yaml|v1/ConfigMap//same"},
+		{FindingFingerprint: "no-line", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"},
+		{FindingFingerprint: "second", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#3"},
+		{FindingFingerprint: "taken", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#2"},
+		{FindingFingerprint: "third", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#4"},
+	}, inv.FindingLinks, "a finding links to the repeated row holding its line, whichever document the scan kept")
+	requireValid(t, inv)
+	require.Equal(t, refs[2:], func() []string {
+		var again []string
+		for _, r := range c.Build(testMetadata()).Resources {
+			again = append(again, r.ResourceRef)
+		}
+		return again[2:]
+	}(), "building again keeps the references")
+}

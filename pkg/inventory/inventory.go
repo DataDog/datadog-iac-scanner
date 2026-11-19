@@ -125,7 +125,9 @@ type UnresolvedSource struct {
 type Resource struct {
 	// ResourceRef identifies the resource within the repository:
 	// "<root module>|<resource path>" for Terraform, "<file>|<resource path>"
-	// for every other platform. Consumers derive their keys from it.
+	// for every other platform. Consumers derive their keys from it, so it is
+	// unique: rows that would share one, such as two documents of a file with
+	// the same name, get "#2", "#3"... after the first in the list.
 	ResourceRef string `json:"resource_ref"`
 	// RootModule is the root module directory of a Terraform resource. It is
 	// part of the reference, not of the document.
@@ -135,6 +137,9 @@ type Resource struct {
 	// findings to rows and are not written.
 	DocumentID      string `json:"-"`
 	ModuleCallChain string `json:"-"`
+	// documentIndex is the document's position in its file. It orders rows
+	// that are otherwise equal, such as those a Helm loop renders.
+	documentIndex int
 
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`

@@ -110,7 +110,7 @@
       ],
       "properties": {
         "resource_ref": {
-          "description": "<root module>|<resource path> for Terraform, <file>|<resource path> otherwise.",
+          "description": "<root module>|<resource path> for Terraform, <file>|<resource path> otherwise. Unique in the inventory: rows that would share a reference, such as two documents of a file with the same name, get #2, #3... after the first in the list.",
           "type": "string",
           "minLength": 1
         },

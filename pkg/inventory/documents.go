@@ -71,6 +71,7 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 		// The findings raised on the document link to its rows.
 		for j := first; j < len(rows); j++ {
 			rows[j].DocumentID = f.ID
+			rows[j].documentIndex = index
 		}
 	}
 	return rows

@@ -164,3 +164,40 @@ func TestInventoryCountsUnlinkedFindings(t *testing.T) {
 	require.Empty(t, inv.FindingLinks, "a variable is not a resource")
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 }
+
+func TestInventoryDuplicateDocumentsGetTheirOwnRows(t *testing.T) {
+	dup := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  a: \"1\"\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  b: \"2\"\n"
+	root := writeRepo(t, map[string]string{"k8s/dup.yaml": dup})
+	configMap := syntheticQuery("test-k8s-configmap", "k8s", "Kubernetes", `	input.document[i].kind == "ConfigMap"
+	typ := "ConfigMap"
+	some field
+	input.document[i].data[field]
+	name := sprintf("%s-%s", [input.document[i].metadata.name, field])
+	key := sprintf("metadata.name={{%s}}.data.%s", [input.document[i].metadata.name, field])`)
+	// Raised on both documents, kept once by the scan.
+	both := syntheticQuery("test-k8s-configmap-name", "k8s", "Kubernetes", `	input.document[i].kind == "ConfigMap"
+	typ := "ConfigMap"
+	name := input.document[i].metadata.name
+	key := sprintf("metadata.name={{%s}}", [name])`)
+	params := documentParams(root)
+	params.Platform = []string{"Kubernetes"}
+
+	inv, fingerprints := scanLinks(t, params, configMap, both)
+	require.Len(t, fingerprints, 3)
+	require.Len(t, inv.Resources, 2)
+	require.Equal(t, "k8s/dup.yaml|v1/ConfigMap//cm", inv.Resources[0].ResourceRef)
+	require.Equal(t, 1, inv.Resources[0].LineStart)
+	require.Equal(t, "k8s/dup.yaml|v1/ConfigMap//cm#2", inv.Resources[1].ResourceRef)
+	require.Equal(t, lineOf(t, dup, "---")+1, inv.Resources[1].LineStart)
+	require.Equal(t, "v1/ConfigMap//cm", inv.Resources[1].ResourcePath, "the path stays as the document names it")
+
+	refs := linkedRefs(inv)
+	var linked []string
+	for _, fp := range fingerprints {
+		require.Len(t, refs[fp], 1)
+		linked = append(linked, refs[fp][0])
+	}
+	require.ElementsMatch(t, []string{"k8s/dup.yaml|v1/ConfigMap//cm", "k8s/dup.yaml|v1/ConfigMap//cm#2",
+		"k8s/dup.yaml|v1/ConfigMap//cm"}, linked,
+		"each document's finding links to its own row, and the finding kept once to the row holding its line")
+}
